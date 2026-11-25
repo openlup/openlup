@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { Pool } from "pg";
+import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 import { draftEffectCounts, draftHandoff, governedCore, ownerDraft, ownerSql, prelockDraft, productPromotion,
@@ -296,6 +296,66 @@ it("uses the sampled half-open boundary for the quote and the SQL price verifier
   }
 });
 
+it("ignores a higher matching subscription tier on another regional list", async () => {
+  const db = await store.owner.connect();
+  try {
+    await db.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+    const current = { ...fixture, original: { ...fixture.original, key: randomUUID() } };
+    const { skuIds, priceListId } = current.profile;
+    const { rows: [rival] } = await db.query(`WITH other AS (
+      INSERT INTO public.price_lists(name,region_code,currency,status,valid_from)
+      SELECT 'Other market','XY',currency,'active',clock_timestamp()-interval '1 day'
+      FROM public.price_lists WHERE id=$1 RETURNING id
+    ) INSERT INTO public.price_entries(price_list_id,variant_id,mode,min_qty,unit_price_minor,amount_kind,valid_from)
+      SELECT id,$2,'subscription',2,987,'gross',clock_timestamp()-interval '1 day' FROM other RETURNING id`, [priceListId, skuIds[0]]);
+    await prelockDraft(db, current);
+    const value = await draftHandoff(db, current, await sampleDraftTime(db));
+    expect(value.draft.lines[0]).toMatchObject({ quantity: 2, catalogFacts: { version: "catalog_facts_v1", resolvedUnitAmountMinor: 1340 } });
+    expect(value.draft.lines[0]!.catalogFacts).not.toMatchObject({ resolvedPriceEntryId: rival!.id });
+    await expect(db.query(ownerSql, [current.original.key, current.original.clientId, value])).resolves.toMatchObject({ rowCount: 1 });
+    await db.query("SET CONSTRAINTS ALL IMMEDIATE");
+  } finally {
+    await db.query("ROLLBACK");
+    db.release();
+  }
+});
+
+async function waitForExpiry(db: PoolClient, atTime: string, expiry: string) {
+  await db.query("SELECT pg_sleep(greatest(0,extract(epoch FROM $1::timestamptz-clock_timestamp())))", [expiry]);
+  expect((await db.query(`SELECT $1::timestamptz<$2::timestamptz AND $2::timestamptz<=clock_timestamp() AS crossed`,
+    [atTime, expiry])).rows).toEqual([{ crossed: true }]);
+}
+
+it.each(["legacy price", "acquisition", "promotion"] as const)(
+  "honors a sampled %s window after it expires", async window => {
+    const db = await store.owner.connect();
+    try {
+      await db.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+      const current = { ...fixture, original: { ...fixture.original, key: randomUUID() } };
+      await prelockDraft(db, current);
+      const atTime = await sampleDraftTime(db);
+      const expiry = new Date(+new Date(atTime) + 1).toISOString();
+      const { priceListId, skuIds } = current.profile;
+      if (window === "legacy price") {
+        expect((await db.query(`UPDATE public.price_entries SET valid_to=$3 WHERE price_list_id=$1
+          AND variant_id=$2 AND mode='subscription'`, [priceListId, skuIds[0], expiry])).rowCount).toBe(1);
+      }
+      if (window === "promotion") expect((await setPromotionExpiry(db, expiry)).rowCount).toBe(1);
+      const quoted = await draftHandoff(db, window === "acquisition" ? withAcquisitionExpiry(current, expiry) : current, atTime);
+      expect(quoted.draft.lines[0]!.catalogFacts.version).toBe("catalog_facts_v1");
+      await waitForExpiry(db, quoted.quoteSnapshot.quote.context.atTime!, expiry);
+      const { rows } = await db.query(ownerSql, [current.original.key, current.original.clientId, quoted]);
+      const id = String(rows[0]!.result.orderDraft.orderId).slice(6);
+      await db.query("SET CONSTRAINTS ALL IMMEDIATE");
+      expect((await db.query("SELECT created_at FROM public.commerce_orders WHERE id=$1", [id])).rows)
+        .toEqual([{ created_at: new Date(atTime) }]);
+    } finally {
+      await db.query("ROLLBACK");
+      db.release();
+    }
+  },
+);
+
 it("passes the sampled instant into the derived-price verifier", async () => {
   const current = { ...fixture, original: { ...fixture.original, key: randomUUID() } };
   const { rows: [policy] } = await store.owner.query<{ id: string; effective_from: Date }>(`WITH revision AS (
@@ -315,11 +375,16 @@ it("passes the sampled instant into the derived-price verifier", async () => {
     await expect(draftHandoff(db, current, new Date(+boundary - 1).toISOString()))
       .rejects.toMatchObject({ message: "subscription_price_policy_not_effective" });
     await db.query("SELECT pg_sleep(greatest(0,extract(epoch FROM $1::timestamptz-clock_timestamp())))", [boundary]);
-    const atTime = await sampleDraftTime(db), currentQuote = await draftHandoff(db, current, atTime);
+    const atTime = await sampleDraftTime(db);
+    const expiry = new Date(+new Date(atTime) + 1).toISOString();
+    expect((await db.query(`UPDATE public.price_entries SET valid_to=$3 WHERE price_list_id=$1
+      AND variant_id=$2 AND mode='one_time'`, [current.profile.priceListId, current.profile.skuIds[0], expiry])).rowCount).toBe(1);
+    const currentQuote = await draftHandoff(db, current, atTime);
     expect(+new Date(atTime)).toBeGreaterThanOrEqual(+boundary);
     expect(currentQuote.draft.lines.map(line => line.catalogFacts)).toEqual([0, 1].map(() => expect.objectContaining({
       version: "catalog_facts_v2", policyRevisionId: policy!.id, resolvedUnitAmountMinor: 1192, atTime,
     })));
+    await waitForExpiry(db, currentQuote.quoteSnapshot.quote.context.atTime!, expiry);
     const { rows } = await db.query(ownerSql, [current.original.key, current.original.clientId, currentQuote]);
     const id = String(rows[0]!.result.orderDraft.orderId).slice(6);
     expect((await db.query("SELECT created_at,total_amount_minor::integer AS amount FROM public.commerce_orders WHERE id=$1", [id])).rows)
@@ -329,6 +394,23 @@ it("passes the sampled instant into the derived-price verifier", async () => {
     db.release();
   }
 });
+
+function withAcquisitionExpiry(current: GovernedFixture, effectiveTo: string): GovernedFixture {
+  const authority = current.profile.authority!;
+  return { ...current, profile: { ...current.profile, authority: {
+    ...authority, async evaluate(input: Parameters<typeof authority.evaluate>[0]) {
+      const evaluation = await authority.evaluate(input);
+      return { ...evaluation, result: { ...evaluation.result,
+        acquisitionTerms: { ...evaluation.result.acquisitionTerms, effectiveTo } } };
+    },
+  } } };
+}
+
+function setPromotionExpiry(db: PoolClient, validTo: string | null) {
+  return db.query(`UPDATE public.commerce_promotion_definitions
+    SET definition=jsonb_set(definition,'{valid_to}',coalesce(to_jsonb($2::text),'null'::jsonb)) WHERE promotion_id=$1`,
+  [productPromotion, validTo]);
+}
 
 it.each([
   ["acquisition", mismatch],
@@ -342,18 +424,8 @@ it.each([
     const { rows: [timing] } = await db.query<{ expiry: Date }>(`
       SELECT date_trunc('milliseconds',clock_timestamp())+interval '1 millisecond' AS expiry`);
     const expiry = timing!.expiry.toISOString();
-    const authority = current.profile.authority!;
-    const expiring = window === "acquisition" ? { ...current, profile: { ...current.profile, authority: {
-      ...authority, async evaluate(input: Parameters<typeof authority.evaluate>[0]) {
-        const evaluation = await authority.evaluate(input);
-        return { ...evaluation, result: { ...evaluation.result,
-          acquisitionTerms: { ...evaluation.result.acquisitionTerms, effectiveTo: expiry } } };
-      },
-    } } } : current;
-    const setPromotionExpiry = (validTo: string | null) => db.query(`UPDATE public.commerce_promotion_definitions
-      SET definition=jsonb_set(definition,'{valid_to}',coalesce(to_jsonb($2::text),'null'::jsonb)) WHERE promotion_id=$1`,
-    [productPromotion, validTo]);
-    if (window === "promotion") expect((await setPromotionExpiry(expiry)).rowCount).toBe(1);
+    const expiring = window === "acquisition" ? withAcquisitionExpiry(current, expiry) : current;
+    if (window === "promotion") expect((await setPromotionExpiry(db, expiry)).rowCount).toBe(1);
 
     await db.query("SELECT pg_sleep(greatest(0,extract(epoch FROM $1::timestamptz-clock_timestamp())))", [expiry]);
     const atTime = await sampleDraftTime(db);
@@ -367,7 +439,7 @@ it.each([
     await db.query("ROLLBACK TO SAVEPOINT expired_window");
     expect(await draftEffectCounts(db)).toEqual(before);
 
-    if (window === "promotion") expect((await setPromotionExpiry(null)).rowCount).toBe(1);
+    if (window === "promotion") expect((await setPromotionExpiry(db, null)).rowCount).toBe(1);
     const active = window === "acquisition" ? await draftHandoff(db, current, atTime) : expired;
     const { rows } = await write(active);
     const id = String(rows[0]!.result.orderDraft.orderId).slice(6);
@@ -381,6 +453,9 @@ it.each([
 });
 
 it("rejects late adjustment inserts and claim money changes at ordinary COMMIT", async () => {
+  expect((await store.owner.query(`SELECT catalog_acceptance->'admission' IS NOT NULL AS accepted,
+    metadata->'catalogAdmissionOwnerOrigin' IS NOT NULL AS stamped FROM public.commerce_orders WHERE id=$1`, [order.id])).rows)
+    .toEqual([{ accepted: true, stamped: true }]);
   const { rows: [definition] } = await store.owner.query(`INSERT INTO public.commerce_promotion_definitions(promotion_id,definition,active)
     SELECT 'example:late',jsonb_set(definition,'{id}','"example:late"'),active
     FROM public.commerce_promotion_definitions WHERE promotion_id=$1 RETURNING definition_fingerprint`, [productPromotion]);

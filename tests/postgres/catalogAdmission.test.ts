@@ -1123,10 +1123,57 @@ it("appends governed draft finality in place and preserves the installed runtime
   try {
     const before = await fingerprints();
     const legacy = (await store.owner.query("INSERT INTO public.commerce_orders(status,currency_code,total_amount_minor) VALUES('pending_payment','XTS',0) RETURNING id")).rows[0]!.id;
+    const subject = await priceSubject(store.owner, "XXX");
+    await addPrice(store.owner, subject, 125);
+    const customer = (await store.owner.query("INSERT INTO public.clients(email) VALUES('classic@example.invalid') RETURNING id")).rows[0]!.id;
+    const classic = await transaction(store.runtime, async db => {
+      const ids: string[] = [];
+      for (const key of [randomUUID(), randomUUID()]) {
+        const snapshot = quote(subject.sku);
+        const response = await createPostgresNativeCheckoutPersistence(db)
+          .createOrderDraft({ idempotencyKey: key, quoteSnapshot: snapshot }, { clientId: customer });
+        await db.query("SELECT public.catalog_admission_attach_legacy_submit($1,$2,$3)", [key, customer, {
+          schemaVersion: 1, ownerNamespace: "example:store", clientId: customer, lane: "example-checkout", requestKey: key,
+          submitDigest: "a".repeat(64), acceptanceTokenDigest: null,
+        }]);
+        ids.push(response.orderDraft.orderId.slice(6));
+      }
+      expect((await db.query(`UPDATE public.commerce_orders SET metadata=metadata||'{"catalogAdmissionOwnerOrigin":{"stray":true}}'
+        WHERE id=ANY($1) AND catalog_acceptance IS NULL`, [ids])).rowCount).toBe(2);
+      return ids;
+    });
+    await store.owner.query(`WITH definition AS (
+      INSERT INTO public.commerce_promotion_definitions(promotion_id,definition,active) VALUES('example:stale',
+        '{"id":"example:stale","status":"active","trigger_type":"automatic","discount_type":"fixed_amount",
+          "applies_to_kind":"order_total","stacking_rule":"exclusive","eligibility":{},"applies_to_payload":{},"region_availability":["ZZ"]}',true)
+      RETURNING promotion_id,definition_fingerprint
+    ), adjustment AS (
+      INSERT INTO public.commerce_order_adjustments(order_id,kind,scope,amount_minor,promotion_id,definition_fingerprint)
+      SELECT $1,'promotion_discount','order_total',1,promotion_id,definition_fingerprint FROM definition RETURNING *
+    ) INSERT INTO public.commerce_promotion_claims(promotion_id,definition_fingerprint,adjustment_id,order_id,client_id,amount_off_minor,expires_at)
+      SELECT promotion_id,definition_fingerprint,id,order_id,$2,amount_minor,clock_timestamp()+interval '1 hour' FROM adjustment`,
+    [classic[1], customer]);
     expect((await store.runner.apply()).applied.slice(0, 1)).toEqual([forward]);
     expect(await fingerprints()).toEqual(before);
     expect((await store.owner.query("SELECT metadata ? 'catalogAdmissionOwnerOrigin' AS stamped FROM public.commerce_orders WHERE id=$1", [legacy])).rows)
       .toEqual([{ stamped: false }]);
+    await expect(store.owner.query(`INSERT INTO public.commerce_orders(status,currency_code,total_amount_minor,metadata)
+      VALUES('pending_payment','XXX',0,'{"catalogAdmissionOwnerOrigin":{}}')`)).rejects.toMatchObject({
+      code: "55000", message: "catalog_acceptance_immutable", constraint: "catalog_owner_origin",
+    });
+    await transaction(store.runtime, async db => {
+      expect((await db.query("UPDATE public.commerce_orders SET status='cancelled' WHERE id=$1", [classic[0]])).rowCount).toBe(1);
+    });
+    await transaction(store.runtime, async db => {
+      expect((await db.query(`SELECT public.commerce_sweep_stale_promotion_claims(clock_timestamp()+interval '3 hours',1,15,0) AS sweep`)).rows)
+        .toEqual([{ sweep: { checked: 1, cancelled: 1, skipped: 0 } }]);
+    });
+    expect((await store.owner.query(`SELECT status,catalog_acceptance,metadata->'catalogAdmissionOwnerOrigin' AS marker
+      FROM public.commerce_orders WHERE id=ANY($1)`, [classic])).rows)
+      .toEqual(Array.from({ length: 2 }, () => ({ status: "cancelled", catalog_acceptance: null, marker: { stray: true } })));
+    expect((await store.owner.query(`SELECT c.status,c.release_reason,r.invalidation_reason
+      FROM public.commerce_promotion_claims c JOIN public.commerce_order_draft_receipts r USING (order_id) WHERE c.order_id=$1`,
+    [classic[1]])).rows).toEqual([{ status: "released", release_reason: "order_cancelled", invalidation_reason: "stale_promotion_claim" }]);
     const privileges = (await store.owner.query(`SELECT p.proconfig,p.prosecdef,p.proowner=t.relowner AS table_owner,
       has_function_privilege('service_role',p.oid,'EXECUTE') AS runtime,
       has_function_privilege(0::oid,p.oid,'EXECUTE') AS public

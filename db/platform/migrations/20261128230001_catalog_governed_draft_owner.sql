@@ -49,7 +49,7 @@ BEGIN
  IF TG_TABLE_NAME='commerce_orders' THEN
   IF TG_OP='INSERT' THEN
    IF NEW.metadata->'catalogAdmissionOwnerOrigin' IS NULL OR
-    (owned AND jsonb_typeof(NEW.catalog_acceptance)='object' AND jsonb_typeof(NEW.metadata->'catalogAdmissionSubmit')='object') THEN RETURN NEW; END IF;
+    (owned AND jsonb_typeof(NEW.catalog_acceptance->'admission')='object' AND jsonb_typeof(NEW.metadata->'catalogAdmissionSubmit')='object') THEN RETURN NEW; END IF;
   ELSIF TG_OP='UPDATE' THEN
    IF OLD.metadata->'catalogAdmissionOwnerOrigin' IS NULL AND NEW.metadata->'catalogAdmissionOwnerOrigin' IS NULL THEN RETURN NEW; END IF;
    IF (OLD.id,OLD.client_id,OLD.currency_code,OLD.total_amount_minor,OLD.created_at,OLD.catalog_acceptance,
@@ -94,7 +94,7 @@ BEGIN
  SELECT * INTO target FROM public.commerce_orders WHERE id=p_order_id;
  submit := target.metadata->'catalogAdmissionSubmit';
  origin := target.metadata->'catalogAdmissionOwnerOrigin';
- IF origin IS NOT NULL THEN
+ IF origin IS NOT NULL AND target.catalog_acceptance->'admission' IS NOT NULL THEN
   snapshot:=target.metadata->'quoteSnapshot'; draft:=target.metadata->'orderDraftSnapshot';
   fingerprint:=md5(snapshot::text||'|'||draft::text||'|'||target.client_id::text);
   IF target.catalog_receipt_key IS NULL OR target.client_id IS NULL OR target.renewal_operation_id IS NOT NULL
@@ -317,6 +317,7 @@ BEGIN
    ELSE
     SELECT p.* INTO actual FROM public.price_entries p JOIN public.price_lists l ON l.id=p.price_list_id
      WHERE p.variant_id=base.variant_id AND p.active AND p.amount_kind='gross' AND p.mode IN ('subscription','any')
+      AND p.price_list_id=list_id
       AND p.min_qty<=(line->>'quantity')::integer AND p.valid_from<=at_time AND (p.valid_to IS NULL OR p.valid_to>at_time)
       AND l.status='active' AND l.currency=v_currency AND l.valid_from<=at_time AND (l.valid_to IS NULL OR l.valid_to>at_time)
      ORDER BY (p.mode='subscription') DESC,p.min_qty DESC,p.id LIMIT 1;
