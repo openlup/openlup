@@ -1598,6 +1598,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/browser/checkout-expected-total.spec.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/browser/dev-loop.proof.ts",
       "class": "public-output"
     },

@@ -75,9 +75,15 @@ const shippingScript = String.raw`
   const bindings = await composeNativeBindings(fixture.runtimeUrl,createOriginPolicy(config,port),config,{current:'fixture-only-acceptance-key-00000000000000'});
   server.on('request',createApplication(bindings).listeners('request')[0]);
   try {
-    const call = async (operation,payload,key=crypto.randomUUID()) => {
+    const exchange = async (operation,payload,key=crypto.randomUUID()) => {
       const response = await fetch(base+'/api/actions/'+operation,{method:'POST',headers:{Origin:base,'Content-Type':'application/json','X-Starter-Request':'1','Idempotency-Key':key},body:JSON.stringify(payload)});
-      const body = await response.json();assert.equal(body.ok,true,body.code);return body;
+      return {status:response.status,body:await response.json()};
+    };
+    const call = async (...args) => {
+      const {body}=await exchange(...args);assert.equal(body.ok,true,body.code);return body;
+    };
+    const requireTotal = async input => {
+      assert.deepEqual(await exchange('checkout.create',input),{status:409,body:{ok:false,code:'starter_expected_total_required'}});
     };
     const cart = {schemaVersion:1,configuration:config.id,mode:'one_time',cadenceDays:null,lines:[{sku:config.offer.products[0].sku,quantity:3}]};
     const input = {locale:'en',configuration:config.id,country:config.market.country,termsAccepted:true,termsRevision:config.legal.revision,
@@ -108,7 +114,8 @@ const shippingScript = String.raw`
       assert.equal(discounted.subtotalMinor,4497);assert.ok(discounted.discountMinor>0);
       const products=discounted.subtotalMinor-discounted.discountMinor;
       assert.ok(products<4000);assert.equal(discounted.shippingMinor,640);
-      const discountedOrder=(await call('checkout.create',input)).value;
+      await requireTotal(input);
+      const discountedOrder=(await call('checkout.create',{...input,expectedTotal:discounted.expectedTotal})).value;
       assert.equal(discountedOrder.total.amountMinor,discounted.totalMinor);
       assert.deepEqual(await money(discountedOrder.orderRef),{total:products+640,products,shipping:640,charges:1});
     } finally {await owner.query('UPDATE public.commerce_promotion_definitions SET active=false WHERE promotion_id=$1',[promotionId]);}
@@ -148,7 +155,8 @@ const shippingScript = String.raw`
     config.offer.shippingMinor=640;config.offer.freeShippingFromMinor=4000;
     const ordinary={...subscription,cart:{...subscription.cart,lines:[{sku:cart.lines[0].sku,quantity:1}]}};
     const ordinaryView=(await call('offer.validate',ordinary)).value;assert.equal(ordinaryView.acquisitionTerms,undefined);
-    const ordinaryOrder=(await call('checkout.create',ordinary)).value;
+    await requireTotal(ordinary);
+    const ordinaryOrder=(await call('checkout.create',{...ordinary,expectedTotal:ordinaryView.expectedTotal})).value;
     config.offer.shippingMinor=19;config.offer.freeShippingFromMinor=0;
     assert.equal((await call('payment.simulate',{orderRef:ordinaryOrder.orderRef,token:ordinaryOrder.token,outcome:'captured'})).value.renewalAttachment,'complete');
     const ordinaryTerms=(await owner.query('SELECT subscription_id,purchase_facts FROM public.subscription_renewal_attachments WHERE order_id=$1',[ordinaryOrder.orderRef])).rows[0];
@@ -276,11 +284,14 @@ const bundleProof = String.raw`
     bindings=await composeNativeBindings(fixture.runtimeUrl,createOriginPolicy(config,port),config,
       {current:'fixture-only-acceptance-key-00000000000000'});
     server.on('request',createApplication(bindings).listeners('request')[0]);
-    const call = async (operation,payload) => {
+    const exchange = async (operation,payload) => {
       const response=await fetch(base+'/api/actions/'+operation,{method:'POST',
         headers:{Origin:base,'Content-Type':'application/json','X-Starter-Request':'1','Idempotency-Key':crypto.randomUUID()},
         body:JSON.stringify(payload)});
-      const result=await response.json();assert.equal(result.ok,true,result.code);return result.value;
+      return {status:response.status,body:await response.json()};
+    };
+    const call = async (...args) => {
+      const {body}=await exchange(...args);assert.equal(body.ok,true,body.code);return body.value;
     };
     const [first,second] = config.offer.products;
     const cart = lines => ({schemaVersion:1,configuration:config.id,mode:'one_time',cadenceDays:null,lines});
@@ -314,7 +325,18 @@ const bundleProof = String.raw`
         const data={locale:'en',configuration:config.id,country:config.market.country,termsAccepted:true,termsRevision:config.legal.revision,
           email:'bundle@example.test',firstName:'Example',lastName:'Buyer',phone:'00000',line1:'1 Example Lane',city:'Example',postalCode:'00000',
           cart:request,expectedTotal:previous.expectedTotal};
-        const made=await call('checkout.create',data);
+        const effects=async()=>(await owner.query('SELECT '+
+          '(SELECT count(*) FROM public.clients) AS clients, '+
+          '(SELECT count(*) FROM public.commerce_checkout_attempt_ledger) AS attempts, '+
+          '(SELECT count(*) FROM public.commerce_orders) AS orders, '+
+          '(SELECT count(*) FROM public.commerce_order_items) AS items, '+
+          '(SELECT count(*) FROM public.commerce_order_draft_receipts) AS receipts, '+
+          '(SELECT count(*) FROM public.commerce_settlement_intents) AS intents, '+
+          '(SELECT count(*) FROM public.outbox_events) AS events')).rows;
+        const beforeCreate=await effects();
+        assert.deepEqual(await exchange('checkout.create',data),{status:409,body:{ok:false,code:'starter_quote_price_changed'}});
+        assert.deepEqual(await effects(),beforeCreate);
+        const made=await call('checkout.create',{...data,expectedTotal:current.expectedTotal});
         assert.equal(made.total.amountMinor,current.totalMinor);
         const saved=(await owner.query('SELECT total_amount_minor::int AS total FROM public.commerce_orders WHERE id=$1',[made.orderRef])).rows[0];
         assert.equal(saved.total,current.totalMinor);
@@ -632,7 +654,8 @@ function runQuoteProof({ configuration, multiSize, ownerUrl, runtimeUrl }: Await
         await refused('payment.simulate',{orderRef:made.value.orderRef,token:made.value.token,outcome:'captured'},'starter_order_not_found');
         const linkedEmail='linked-capture-'+config.id+'@example.test';
         const linkedInput={...input,email:linkedEmail,cart:{...cart,mode:'one_time',cadenceDays:null}};
-        const first=(await call('checkout.create',linkedInput)).body;assert.equal(first.ok,true,first.code);
+        const firstQuote=await quote(linkedInput);
+        const first=(await call('checkout.create',{...linkedInput,expectedTotal:firstQuote.expectedTotal})).body;assert.equal(first.ok,true,first.code);
         assert.equal((await call('payment.simulate',{orderRef:first.value.orderRef,token:first.value.token,outcome:'captured'})).body.ok,true);
         assert.equal((await call('auth.request',{email:linkedEmail})).body.ok,true);
         const messages=(await (await import('node:fs/promises')).readFile('.context/captured-messages/identity.jsonl','utf8')).trim().split(String.fromCharCode(10)).map(JSON.parse);
@@ -648,7 +671,7 @@ function runQuoteProof({ configuration, multiSize, ownerUrl, runtimeUrl }: Await
           const largeInput = {...input,email:'multi-size@example.test',cart:{...cart,mode:'one_time',cadenceDays:null,lines:[{sku:large.sku,quantity:2}]}};
           const largeQuote = await quote(largeInput);
           assert.equal(largeQuote.totalMinor,5996);
-          const largeOrder = (await call('checkout.create',largeInput)).body;
+          const largeOrder = (await call('checkout.create',{...largeInput,expectedTotal:largeQuote.expectedTotal})).body;
           assert.equal(largeOrder.ok,true,largeOrder.code);
           assert.equal(largeOrder.value.total.amountMinor,5996);
           const line = (await owner.query('SELECT i.sku_id,s.product_id,p.current_document_revision_id FROM public.commerce_order_items i JOIN public.catalog_skus s ON s.id=i.sku_id JOIN public.catalog_products p ON p.id=s.product_id WHERE i.order_id=$1',[largeOrder.value.orderRef])).rows[0];

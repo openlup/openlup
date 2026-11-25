@@ -27,6 +27,7 @@ export interface ActionFormOptions {
   input?: () => ActionInput;
   transform?: (values: ActionInput) => ActionInput;
   prepare?: (values: ActionInput) => Promise<ActionInput | null>;
+  onRefusal?: (code: string, retireCommand: () => void) => void;
   onSuccess?: (value: unknown) => void;
   onFailure?: (code: string) => void;
   display?: (value: unknown) => unknown;
@@ -78,13 +79,16 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
   let uncertain: { input: string; prepared: ActionInput } | undefined;
   let inFlight = false;
   let generation = 0;
+  const retireCommand = () => {
+    commandKey = crypto.randomUUID();
+    priorInput = null;
+  };
   form.addEventListener('input', () => { ++generation; });
   form.addEventListener('change', () => { ++generation; });
   const reset = button(context.t('newAction'), () => {
     if (inFlight) return;
     ++generation;
-    commandKey = crypto.randomUUID();
-    priorInput = null;
+    retireCommand();
     uncertain = undefined;
     output.replaceChildren();
   }, 'secondary');
@@ -131,9 +135,10 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
       output.replaceChildren(el('p', {}, context.t('loading')));
       try {
         const result = await act(options.operation, values, commandKey);
-        if (!current()) return;
         uncertain = uncertainAction(result)
           ? { input, prepared: values } : undefined;
+        if (!result.ok && !uncertain) options.onRefusal?.(result.code, retireCommand);
+        if (!current()) return;
         output.replaceChildren(result.ok
           ? el('section', {}, el('h4', {}, context.t('response')),
             options.resultMessage?.(result.value) ? el('p', {}, context.t(options.resultMessage(result.value)!)) : null,

@@ -64,7 +64,7 @@ export function checkoutPage(context: PageContext): HTMLElement {
       ],
       input: quote.input,
       prepare: quote.prepare,
-      onFailure: quote.refused,
+      onRefusal: quote.refused,
       display: visiblePurchase,
       onSuccess: value => {
         if (!isRecord(value) || typeof value.orderRef !== 'string') return;

@@ -637,8 +637,8 @@ it("passes readiness for a starter purchase strictly above the free-shipping thr
           line1:"1 Example Lane",city:"Example",postalCode:"00000",
           cart:{schemaVersion:1,configuration:config.id,mode:"one_time",cadenceDays:null,
             lines:[{sku:config.offer.products[0].sku,quantity:1}]}};
-        await call("offer.validate",submit);
-        const {orderRef} = await call("checkout.create",submit);
+        const reviewed = await call("offer.validate",submit);
+        const {orderRef} = await call("checkout.create",{...submit,expectedTotal:reviewed.expectedTotal});
         await call("payment.simulate",{orderRef,outcome:"captured"});
         process.stdout.write(orderRef);
       } finally { await bindings.close(); await accounts.close(); }

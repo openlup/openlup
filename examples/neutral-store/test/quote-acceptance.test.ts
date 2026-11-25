@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test, type TestContext } from 'node:test';
 import { setImmediate } from 'node:timers/promises';
 import { createQuoteAcceptance } from '../client/quote-acceptance.ts';
+import { actionForm } from '../client/forms.ts';
 import type { PageContext } from '../client/context.ts';
 import { configurations } from '../owned/store.config.ts';
 
@@ -19,18 +20,36 @@ const quote = {
 const equal = { ...quote, observedAt: new Date(now + 100).toISOString(),
   validUntil: new Date(now + 2000).toISOString(), quoteAcceptance: 'new-token' };
 
-async function fixture(t: TestContext) {
+const unsigned = { ...quote, secondTotalMinor: undefined, acquisitionTerms: undefined, quoteAcceptance: null };
+const oneTime = { ...unsigned, mode: 'one_time', cadenceDays: null };
+
+async function fixture(t: TestContext, { initial = quote, render = true, integrated = false }: {
+  initial?: typeof quote | typeof unsigned | typeof oneTime; render?: boolean; integrated?: boolean;
+} = {}) {
   class Element extends EventTarget {
     isConnected = true;
+    checked = false;
+    name = '';
+    value = '';
+    children: Element[] = [];
     append() {}
-    appendChild() {}
+    appendChild(child: Element) { this.children.push(child); }
     replaceChildren() {}
-    querySelector() { return consent; }
+    setAttribute(name: string, value: string) {
+      if (name === 'name' || name === 'value') this[name] = value;
+    }
+    removeAttribute() {}
+    reportValidity() { return true; }
+    control(name: string) { return this.children.flatMap(child => child.children).find(child => child.name === name); }
+    querySelector() { return this.control('termsAccepted') ?? fallbackConsent; }
   }
-  const consent = { checked: false };
-  const cart = { mode: 'subscription', cadenceDays: 28, lines: quote.lines };
+  const fallbackConsent = { checked: false };
+  let email = '';
+  const cart = { mode: initial.mode, cadenceDays: initial.cadenceDays, lines: initial.lines };
   for (const [key, value] of Object.entries({
-    Node: Element, FormData: class extends FormData { constructor(_form: unknown) { super(); } },
+    Node: Element, FormData: class extends FormData {
+      constructor(_form: unknown) { super(); if (email) this.set('email', email); }
+    },
     document: { createElement: () => new Element(), createTextNode: () => new Element() },
   })) {
     const previous = Object.getOwnPropertyDescriptor(globalThis, key);
@@ -38,20 +57,38 @@ async function fixture(t: TestContext) {
     t.after(() => { if (previous) Object.defineProperty(globalThis, key, previous); else Reflect.deleteProperty(globalThis, key); });
   }
   t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now });
-  const requests: ((value: Response) => void)[] = [];
-  t.mock.method(globalThis, 'fetch', () => new Promise<Response>(resolve => requests.push(resolve)));
-  const form = new Element();
+  const requests: { url: string; body: string; key: string; resolve: (response: Response) => void; reject: (error: Error) => void }[] = [];
+  t.mock.method(globalThis, 'fetch', (url: string, input: { body: string; headers: Record<string, string> }) =>
+    new Promise<Response>((resolve, reject) => requests.push({ url, body: input.body, key: input.headers['Idempotency-Key']!, resolve, reject })));
+  const summary = new Element();
   const context = { config, locale: config.market.defaultLocale, getCart: () => cart,
-    fragments: { checkoutSummary: () => new Element() }, money: String } as unknown as PageContext;
-  const controller = createQuoteAcceptance(context, new Element() as unknown as HTMLElement);
-  const input = { ...controller.input(), termsAccepted: true };
-  const reply = (index: number, value: unknown) => requests[index]!(Response.json({ ok: true, value }));
+    fragments: { checkoutSummary: () => new Element() }, money: String, t: String } as unknown as PageContext;
+  const controller = createQuoteAcceptance(context, summary as unknown as HTMLElement);
+  if (integrated) email = 'buyer@example.test';
+  const form = integrated ? actionForm(context, {
+    operation: 'checkout.create', submit: 'placeOrder', input: controller.input, prepare: controller.prepare, onRefusal: controller.refused,
+    fields: [{ name: 'email', label: 'email', value: email }, { name: 'termsAccepted', label: 'termsAccept', type: 'checkbox' }],
+  }) as unknown as Element : new Element();
+  const consent = form.querySelector();
+  const input = { ...controller.input(), termsAccepted: true, ...(email ? { email } : {}) };
+  const reply = (index: number, value: unknown) => requests[index]!.resolve(Response.json({ ok: true, value }));
   controller.attach(form as unknown as HTMLElement);
   await setImmediate();
-  reply(0, quote);
-  await setImmediate();
-  consent.checked = true;
-  return { form, cart, controller, consent, input, reply, requests };
+  if (render) {
+    reply(0, initial);
+    await setImmediate();
+    consent.checked = true;
+  }
+  return { form, controller, consent, input, reply, requests,
+    editEmail(value: string) {
+      email = value;
+      const field = form.control('email');
+      if (field) field.value = value;
+      form.dispatchEvent(new Event('input'));
+      form.dispatchEvent(new Event('change'));
+    },
+    async submit() { form.dispatchEvent(new Event('submit')); await setImmediate(); },
+  };
 }
 
 test('equal observations submit the reviewed token and payable until the original deadline', async t => {
@@ -110,9 +147,84 @@ test('stale completion, disconnect and expiry during a refresh cannot revive con
   assert.equal(consent.checked, false);
 });
 
-test('one-time submit passes through without refreshing', async t => {
-  const { controller, cart, input, requests } = await fixture(t);
-  cart.mode = 'one_time';
-  assert.equal(await controller.prepare(input), input);
-  assert.equal(requests.length, 1);
+test('one-time submit requires a matching rendered review and consent', async t => {
+  const { controller, consent, input, reply, requests, editEmail } = await fixture(t, { initial: oneTime, render: false });
+  consent.checked = true;
+  assert.equal(await controller.prepare(input), null);
+  reply(0, oneTime);
+  await setImmediate();
+  assert.equal(await controller.prepare(input), null);
+  editEmail('  buyer@example.test  ');
+  assert.deepEqual(JSON.parse(requests[1]!.body), { ...controller.input(), email: 'buyer@example.test' });
+  consent.checked = true;
+  const reviewedInput = { ...input, email: 'buyer@example.test', locale: 'en', quoteAcceptance: null };
+  assert.equal(await controller.prepare(reviewedInput), null);
+  reply(1, oneTime);
+  await setImmediate();
+  assert.equal(await controller.prepare(reviewedInput), null);
+  consent.checked = true;
+  assert.deepEqual(await controller.prepare(reviewedInput), { ...reviewedInput, expectedTotal: oneTime.expectedTotal });
+  assert.equal(requests.length, 2);
 });
+
+test('term-less subscriptions submit the displayed payable and null signed acceptance', async t => {
+  const { controller, input, reply } = await fixture(t, { initial: unsigned });
+  const prepared = controller.prepare(input);
+  reply(1, unsigned);
+  assert.deepEqual(await prepared, { ...input, quoteAcceptance: null, expectedTotal: unsigned.expectedTotal });
+});
+
+test('one-time quote refresh refusal clears consent without retiring the command', async t => {
+  const { controller, consent, reply, requests } = await fixture(t, { initial: oneTime });
+  controller.refused('starter_quote_refresh_required', () => assert.fail('The command must keep its key'));
+  assert.equal(consent.checked, false);
+  assert.ok(requests[1]!.url.endsWith('offer.validate'));
+  reply(1, oneTime);
+  await setImmediate();
+  assert.equal(consent.checked, false);
+});
+
+for (const code of ['starter_expected_total_required', 'starter_quote_price_changed']) {
+  test(`a stale definitive ${code} retires the exact uncertain retry and refreshes review`, async t => {
+    const { consent, editEmail, reply, requests, submit } = await fixture(t, { initial: oneTime, integrated: true });
+    await submit();
+    editEmail('another@example.test');
+    editEmail('buyer@example.test');
+    reply(3, oneTime);
+    requests[1]!.reject(new Error('transport lost'));
+    await setImmediate();
+    consent.checked = true;
+    await submit();
+    assert.deepEqual([requests[4]!.url, requests[4]!.body, requests[4]!.key], [requests[1]!.url, requests[1]!.body, requests[1]!.key]);
+    editEmail('another@example.test');
+    editEmail('buyer@example.test');
+    reply(6, oneTime);
+    await setImmediate();
+    consent.checked = true;
+    requests[4]!.resolve(Response.json({ ok: false, code }, { status: 409 }));
+    await setImmediate();
+    assert.equal(consent.checked, false);
+    assert.ok(requests[7]!.url.endsWith('offer.validate'));
+    if (code === 'starter_expected_total_required') {
+      requests[7]!.resolve(Response.json({ ok: false, code: 'base_price_not_found' }, { status: 409 }));
+      await setImmediate();
+      consent.checked = true;
+      await submit();
+      assert.equal(requests.length, 8);
+      editEmail('buyer@example.test');
+      reply(8, oneTime);
+    } else {
+      reply(7, oneTime);
+    }
+    await setImmediate();
+    await submit();
+    assert.equal(requests.filter(request => request.url.endsWith('checkout.create')).length, 2);
+    consent.checked = true;
+    await submit();
+    const renewed = requests.at(-1)!;
+    assert.ok(renewed.url.endsWith('checkout.create'));
+    assert.equal(renewed.body, requests[1]!.body);
+    assert.notEqual(renewed.key, requests[1]!.key);
+    renewed.resolve(Response.json({ ok: true, value: null }));
+  });
+}
