@@ -18,6 +18,7 @@ import { catalogueWatchdogPrincipalId, startCatalogueReadinessJobs } from '../ho
 import { starterCatalogue } from '../host/editor-catalogue.ts';
 import { createPrivateCapture } from '../host/private-capture.ts';
 import { runScheduledCare } from '../host/scheduled-renewal.ts';
+import { buildDemoSeed } from '../owned/demo-seed.ts';
 import { selectConfiguration } from '../owned/store.config.ts';
 import { copy } from '../owned/copy.ts';
 import { routes } from '../shared/routes.ts';
@@ -450,9 +451,18 @@ test('authenticated Publish discloses only owned degraded jobs and supports exac
           subject: body.reason, message: body.message, ...(body.issues[0].failedJobs ? { failedJobs: body.issues[0].failedJobs } : {}) }] });
       return body;
     };
-    expect(await wire()).toMatchObject({ reason: 'catalog_1490_legacy_1340_invalid', message: expect.stringContaining('with the pricing owner') });
-    await owner.query(`UPDATE public.price_entries SET active=false,valid_to=statement_timestamp(),updated_at=statement_timestamp()
-      WHERE mode='subscription' AND active`);
+    const legacy = buildDemoSeed(config).prices.find(entry => entry.mode === 'subscription')!;
+    await owner.query(`INSERT INTO public.price_entries
+      (id,price_list_id,variant_id,mode,min_qty,unit_price_minor,amount_kind,active,valid_from)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [legacy.id,legacy.price_list_id,legacy.variant_id,legacy.mode,
+      legacy.min_qty,legacy.unit_price_minor,legacy.amount_kind,legacy.active,legacy.valid_from]);
+    expect(await wire()).toMatchObject({ reason: 'catalog_1490_legacy_1340_invalid',
+      message: expect.stringContaining('Restore one effective list and verify each eligible SKU’s base and subscription branch with the pricing owner.') });
+    const repair = await owner.query(`UPDATE public.price_entries
+      SET active=false,valid_to=statement_timestamp(),updated_at=statement_timestamp() WHERE id=$1 AND active`, [legacy.id]);
+    expect(repair.rowCount).toBe(1);
+    expect((await owner.query('SELECT public.commerce_offer_policy_v2_readiness() AS verdict')).rows[0].verdict)
+      .toMatchObject({ reasons: [], evidence: { priceMismatchCount: 0 } });
     for (const name of [ownedJob, unownedJob]) {
       const run = await ledger.claimJobRun(name, invocation, 300);
       expect(run.acquired).toBe(true);

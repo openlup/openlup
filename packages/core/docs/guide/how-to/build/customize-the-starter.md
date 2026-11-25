@@ -177,11 +177,14 @@ project. The procedure removes all data in the demo volume. For
 ## Make the store ready to publish
 
 Run `./lifecycle up` for the marked demo. The installer preserves its base
-prices and price history, installs the one-time bundle and tries to register
-the starter catalogue watchdog control-plane principal. The database-backed
-host starts the promotion claim sweep and watchdog in the background. It
-continues serving requests when either job is unavailable. Allow the initial
-pair to finish before trying Publish.
+prices and closes the exact old explicit subscription entries, retaining their
+history. On a fresh demo, it seeds the bases and the subscription policy.
+Checkout derives the same subscription unit prices from that policy. The
+installer also installs the one-time bundle and tries to register the starter
+catalogue watchdog control-plane principal. The database-backed host starts
+the promotion claim sweep and watchdog in the background. It continues serving
+requests when either job is unavailable. Allow the initial pair to finish
+before trying Publish.
 
 For an unmarked installation, the owner can register the non-human watchdog
 principal from the installed starter using the authenticated installer
@@ -222,9 +225,6 @@ installer.
 For a Publish refusal at `pricing.readiness`, follow its fix and recheck.
 For `catalog_1490_legacy_1340_invalid`, verify the effective list with the
 pricing owner and review each eligible SKU’s base and subscription prices.
-The shipped legacy subscription checkout uses the explicit subscription
-entries in the marked demo. Keep them in place until the installed checkout
-writer supports derived subscription prices.
 `promotion_watchdog_not_ready` can include failed job names. Use the
 matching owned ID for `<id>` and your authorized runtime connection for
 `<runtime-url>`.
