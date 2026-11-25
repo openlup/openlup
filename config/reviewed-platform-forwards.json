@@ -9619,6 +9619,19 @@
         "createdFunctions": [],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "payment-capture-time-read",
+        "path": "db/platform/migrations/20261129130000_payment_capture_time_read.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.payment_read_capture_time(uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -13896,6 +13909,17 @@
           "signature": "public.catalog_admission_derived_subscription_prices(text,jsonb,jsonb,timestamptz)",
           "beforeSha256": "46951df895d85576f91fc662bf12bdad4d65e0c96d142220404825c6a6154e37",
           "afterSha256": "00084e9310c923ed26f0a58a2b42ec66b4b7d822c4cd47352ba8c121564b4537"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261129130000_payment_capture_time_read.sql",
+      "sha256": "7c09ac19ddfb07c9476329b01d061934d3d84d94ed10e206c7aa64d1999a7f56",
+      "functions": [
+        {
+          "signature": "public.payment_read_capture_time(uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "ca51b04211dcb574196a010f40b2103dd795be12bc39a1d2b8b0032baecfbff0"
         }
       ]
     }

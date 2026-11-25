@@ -115,9 +115,11 @@ const owned = [
   "catalog_price_setup_receipts",
 ] as const;
 
-// Intentionally not carried: single-use authorization state must stay in its
-// source store. Only this exact relation receives the count-only disposition.
-const intentionallyNotCarriedRelation = "public.customer_identity_challenges";
+// Single-use authorization state and installation qualification stay local.
+export const connectedNativeStoreCountOnlyRelations: readonly string[] = [
+  "public.customer_identity_challenges",
+  "public.payment_capture_time_test_qualification",
+];
 
 // REBUILDABLE: count only, never transport stale attribute rows as authority.
 const rebuildableRelation = "public.catalog_attribute_projection";
@@ -234,7 +236,7 @@ export async function captureConnectedNativeStore(input: {
         const qualified = `${identifier(relation.schema)}.${identifier(relation.table)}`;
         if (relation.schema === "acquisition_private" && (relation.table === "installation_key" || relation.table === "address_references")
           || relation.schema === "public" && relation.table === "platform_schema_migrations"
-          || `${relation.schema}.${relation.table}` === intentionallyNotCarriedRelation
+          || connectedNativeStoreCountOnlyRelations.includes(`${relation.schema}.${relation.table}`)
           || `${relation.schema}.${relation.table}` === rebuildableRelation) {
           // Count/ownership only. Never read, hash or transport installation key
           // payloads, target-owned address-reference registry rows or any challenge

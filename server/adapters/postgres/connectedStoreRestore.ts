@@ -9,7 +9,7 @@ import { deriveOidcPrincipalId, validateRequiredPrivacyContributorIds } from "@o
 import { evaluatePlatformMigrationManifest, readPlatformMigrationManifest, readPlatformMigrations, selectPlatformMigrationManifest, type PlatformMigrationManifest } from "../../../scripts/platform-migration-manifest.js";
 import { qualifiedAdminPostgresCatalogPayload, qualifiedPostgresCatalogPayload,
   assertQualifiedAdminPostgresSelection, type QualifiedAdminPostgresInstallation, type QualifiedPostgresInstallation } from "./qualifiedInstall.js";
-import { assertConnectedCatalogPublications, connectedNativeStoreTables,
+import { assertConnectedCatalogPublications, connectedNativeStoreCountOnlyRelations, connectedNativeStoreTables,
   connectedStoreClusterIdentitySql, connectedStoreRowSource, readPrivacyDeclarationCensus,
   requiredPrivacyDeclarationTable, type ConnectedNativeStoreCapture } from "./connectedStoreCapture.js";
 
@@ -600,7 +600,7 @@ function copyCapture(input: ConnectedNativeStoreCapture, shape: SourceShape = "c
       const disposition = entry.relation === "acquisition_private.installation_key" ? "new-target-installation-key"
         : entry.relation === "public.platform_schema_migrations" ? "target-migration-history"
           : entry.relation === "acquisition_private.address_references" ? "target-address-references"
-            : entry.relation === "public.customer_identity_challenges" ? "intentionally-not-carried"
+            : connectedNativeStoreCountOnlyRelations.includes(entry.relation) ? "intentionally-not-carried"
               : entry.relation === "public.catalog_attribute_projection" ? "rebuildable" : "unsupported-empty";
       if (entry.disposition !== disposition || disposition === "unsupported-empty" && entry.rows !== "0") fail("invalid_input");
     }

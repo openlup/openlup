@@ -87,6 +87,8 @@ export function normalizeStripeWebhookEvent(
     refundKind: refund.refundKind,
     rawPayload: {
       ...stripeWebhookPayload({ eventId: providerEventId, eventType, providerPaymentId, amountMinor, currency }, object),
+      ...(eventType === "payment_intent.succeeded" && typeof rawPayload.livemode === "boolean"
+        ? { livemode: rawPayload.livemode } : {}),
       ...(amountConflict ? {
         ...(typeof requested === "number" ? { configuredAmountMinor: requested } : {}),
         ...(typeof received === "number" ? { paidAmountMinor: received } : {}),

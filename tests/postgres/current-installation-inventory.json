@@ -2,10 +2,14 @@
   "current": {
     "profiles": {
       "legacy": {
-        "count": 220,
-        "exactTailCount": 110,
-        "objectInventorySha256": "720893e7e2ba4ef0ec3d63ca1f6146f5c903d17bf7782c9fcca40d34ee3e1192",
+        "count": 221,
+        "exactTailCount": 111,
+        "objectInventorySha256": "25628198d53b55a24c6fea9b5862892e4ec55eb4ab8ee6cf4e74c158d5b8e250",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261129130000_payment_capture_time_read.sql",
+            "sha256": "7c09ac19ddfb07c9476329b01d061934d3d84d94ed10e206c7aa64d1999a7f56"
+          },
           {
             "file": "db/platform/migrations/20261128230000_derived_subscription_price_retired_base.sql",
             "sha256": "8447cb5d1a56d254860a2b0b11b496e80fe64f6da3cba9b5d0615cd421a367fb"
@@ -889,10 +893,14 @@
         ]
       },
       "bootstrap": {
-        "count": 226,
-        "exactTailCount": 111,
-        "objectInventorySha256": "ec6b879883cdf1053a6b8f75afae8525443f1e0525341fae589b6821c6b037f9",
+        "count": 227,
+        "exactTailCount": 112,
+        "objectInventorySha256": "6cbe6b85ab84e401a9c82fe731c8421fa66d00dfb5cd21af79deb13826c755c4",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261129130000_payment_capture_time_read.sql",
+            "sha256": "7c09ac19ddfb07c9476329b01d061934d3d84d94ed10e206c7aa64d1999a7f56"
+          },
           {
             "file": "db/platform/migrations/20261128230000_derived_subscription_price_retired_base.sql",
             "sha256": "8447cb5d1a56d254860a2b0b11b496e80fe64f6da3cba9b5d0615cd421a367fb"
@@ -1800,10 +1808,14 @@
         ]
       },
       "separate": {
-        "count": 226,
-        "exactTailCount": 111,
-        "objectInventorySha256": "7f6b3b721395d44d0df613387ad4ba733661a2f1972a623828a2fd8e368811cb",
+        "count": 227,
+        "exactTailCount": 112,
+        "objectInventorySha256": "487141b85e1c314d40d028c821b0ad0b48c720099f6ceda762ec02435dc069f3",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261129130000_payment_capture_time_read.sql",
+            "sha256": "7c09ac19ddfb07c9476329b01d061934d3d84d94ed10e206c7aa64d1999a7f56"
+          },
           {
             "file": "db/platform/migrations/20261128230000_derived_subscription_price_retired_base.sql",
             "sha256": "8447cb5d1a56d254860a2b0b11b496e80fe64f6da3cba9b5d0615cd421a367fb"
@@ -2711,10 +2723,14 @@
         ]
       },
       "admin-managed": {
-        "count": 224,
-        "exactTailCount": 110,
-        "objectInventorySha256": "f338673e9a16595d37ab024a21e97b37c110cec0b756bba0fb9f221053f95b17",
+        "count": 225,
+        "exactTailCount": 111,
+        "objectInventorySha256": "86b65253b4f814c40e9f8efdc69d5ebf6e6e538f902fedfdd1b830bdefb5fa25",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261129130000_payment_capture_time_read.sql",
+            "sha256": "7c09ac19ddfb07c9476329b01d061934d3d84d94ed10e206c7aa64d1999a7f56"
+          },
           {
             "file": "db/platform/migrations/20261128230000_derived_subscription_price_retired_base.sql",
             "sha256": "8447cb5d1a56d254860a2b0b11b496e80fe64f6da3cba9b5d0615cd421a367fb"
@@ -3614,10 +3630,14 @@
         ]
       },
       "admin-operator": {
-        "count": 224,
-        "exactTailCount": 110,
-        "objectInventorySha256": "a08eda24f0022ea09808d89ecb6790bff6ff0405aa3b2f795efe4ae34eeada1e",
+        "count": 225,
+        "exactTailCount": 111,
+        "objectInventorySha256": "4d845e8fc9ff9a4a862124ac32759b78c42eaa6403948634008814907c4e4ba8",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261129130000_payment_capture_time_read.sql",
+            "sha256": "7c09ac19ddfb07c9476329b01d061934d3d84d94ed10e206c7aa64d1999a7f56"
+          },
           {
             "file": "db/platform/migrations/20261128230000_derived_subscription_price_retired_base.sql",
             "sha256": "8447cb5d1a56d254860a2b0b11b496e80fe64f6da3cba9b5d0615cd421a367fb"
