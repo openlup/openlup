@@ -659,6 +659,82 @@ describe.sequential('installed quote proofs', () => {
   beforeAll(prepareQuoteConsumer, postgresSetupTimeoutMs);
   afterAll(removeQuoteConsumer, postgresTeardownTimeoutMs);
 
+  it('checks out and replays the installed derived quote without a stored subscription price', async () => {
+    const database = quoteCaseFixture('coffee', false);
+    try {
+      const { ownerUrl, runtimeUrl } = await database.setup();
+      const script = String.raw`
+        import assert from 'node:assert/strict';
+        import pg from 'pg';
+        import {bindScenarioServer} from ${JSON.stringify(scenarioHelper)};
+        import {configurations} from './application/owned/store.config.ts';
+        import {applyDemoSeed} from './application/installation/install.ts';
+        import {createNativeQuoteService} from './application/host/quote-composition.ts';
+        import {installedAcquisitionPredecessors} from './application/host/acquisition-predecessors.ts';
+        import {composeNativeBindings} from './application/host/native-composition.ts';
+        import {createOriginPolicy} from './application/host/origin-policy.ts';
+        const config = configurations.coffee;
+        config.offer.products[0].unitPrice.amountMinor = 1499;
+        const owner = new pg.Pool({connectionString:fixture.ownerUrl});
+        const runtime = new pg.Pool({connectionString:fixture.runtimeUrl});
+        try {
+          await applyDemoSeed(config,{connection:owner,installRole:'postgres',runtimeRole:'starter_runtime',close:async()=>{}});
+          await owner.query("DELETE FROM public.price_entries WHERE mode IN ('subscription','any')");
+          const sku=config.offer.products[0].sku;
+          const cart={schemaVersion:1,configuration:config.id,mode:'subscription',cadenceDays:config.offer.defaultCadenceDays,lines:[{sku,quantity:3}]};
+          const input={locale:'en',configuration:config.id,country:config.market.country,termsAccepted:true,termsRevision:config.legal.revision,
+            email:'derived-quote@example.test',firstName:'Example',lastName:'Buyer',phone:'00000',line1:'1 Example Lane',city:'Example',postalCode:'00000',
+            cart,acquisitionCapability:'subscription-acquisition.v1'};
+          const keyring={current:'fixture-only-acceptance-key-00000000000000'};
+          const quotes=createNativeQuoteService(runtime,installedAcquisitionPredecessors(),keyring);
+          const observed=await quotes.quote(input,{config,actor:{customerRef:null,operatorRef:null},commandKey:crypto.randomUUID()});
+          const quoted=observed.snapshot.quote.lines[0];
+          const price=(await owner.query("SELECT e.id AS base,p.id AS revision,p.digest FROM public.price_entries e JOIN public.catalog_skus s ON s.id=e.variant_id JOIN public.subscription_price_policy_revisions p ON p.price_list_id=e.price_list_id WHERE s.sku=$1 AND e.mode='one_time' AND e.min_qty=1",[sku])).rows;
+          const evidence=line=>[line.catalogFacts.basePriceEntryId,line.catalogFacts.policyRevisionId,line.catalogFacts.policyDigest,line.unitPriceGross.amountMinor];
+          assert.equal(price.length,1);
+          assert.equal(quoted.catalogFacts.version,'catalog_facts_v2');
+          assert.deepEqual(evidence(quoted),[price[0].base,price[0].revision,price[0].digest,1420]);
+          const {server,port,base}=await bindScenarioServer();
+          const {createApplication}=await import('./application/host/server.ts');
+          const bindings=await composeNativeBindings(fixture.runtimeUrl,createOriginPolicy(config,port),config,keyring);
+          server.on('request',createApplication(bindings).listeners('request')[0]);
+          try {
+            const call=async(operation,payload,key=crypto.randomUUID())=>(await fetch(base+'/api/actions/'+operation,{
+              method:'POST',headers:{Origin:base,'Content-Type':'application/json','X-Starter-Request':'1','Idempotency-Key':key},body:JSON.stringify(payload)
+            })).json();
+            const checked=await call('offer.validate',input);
+            assert.equal(checked.ok,true,checked.code);
+            const accepted={...input,quoteAcceptance:checked.value.quoteAcceptance,expectedTotal:checked.value.expectedTotal};
+            const key=crypto.randomUUID();
+            const made=await call('checkout.create',accepted,key);
+            assert.equal(made.ok,true,made.code);
+            assert.equal(made.replayed,false);
+            const saved=(await owner.query("SELECT metadata FROM public.commerce_orders WHERE id=$1",[made.value.orderRef])).rows[0].metadata;
+            const retained=saved.quoteSnapshot.quote.lines[0];
+            assert.deepEqual(evidence(retained),evidence(quoted));
+            assert.deepEqual(saved.orderDraftSnapshot.lines[0].catalogFacts,retained.catalogFacts);
+            assert.equal(saved.orderDraftSnapshot.lines[0].lineSubtotalGross.amountMinor,4260);
+            const receipts=async()=>(await owner.query("SELECT response_payload::text FROM public.commerce_order_draft_receipts WHERE order_id=$1",[made.value.orderRef])).rows;
+            const beforeReplay=await receipts();
+            assert.equal(beforeReplay.length,1);
+            const replay=await call('checkout.create',accepted,key);
+            assert.equal(replay.ok,true,replay.code);
+            assert.equal(replay.replayed,true);
+            assert.equal(replay.value.orderRef,made.value.orderRef);
+            assert.deepEqual(await receipts(),beforeReplay);
+          } finally {await new Promise(resolve=>{server.close(resolve);server.closeIdleConnections();});await bindings.close();}
+        } finally {await runtime.end();await owner.end();}
+      `;
+      try {
+        execFileSync(process.execPath, ['--experimental-strip-types', '--input-type=module', '-', '--configuration', 'coffee'], {
+          cwd: consumer, input: `const fixture = ${JSON.stringify({ ownerUrl, runtimeUrl })};\n${script}`, stdio: 'pipe', timeout: 20_000,
+        });
+      } catch (error) {
+        throw new Error((error as { stderr?: Buffer }).stderr?.toString() ?? 'Installed derived price proof failed', { cause: error });
+      }
+    } finally { await database.teardown(); }
+  }, postgresSetupTimeoutMs);
+
   describe('active published catalogue', () => {
     const database = quoteCaseFixture('coffee', false);
     let fixture: Awaited<ReturnType<typeof provisionQuoteCase>>;
