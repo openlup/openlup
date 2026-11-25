@@ -575,7 +575,7 @@ runs with the host user identity to preserve private capture permissions.
 The script captures output privately, scans it for credentials, removes its
 hosts, containers, databases, roles and scratch files on success or failure, and
 prints the public image identity, counts, timings and bounded failure diagnostics. It uploads no artifacts.
-Current deadlines are 12 minutes for packages, 8 per browser shard and 2 for
+Current deadlines are 20 minutes for packages, 8 per browser shard and 2 for
 the aggregate. Set each job deadline to at least 1.3 times its slowest observed
 hosted run.
 Browser journeys retain zero retries. See the
