@@ -30290,7 +30290,19 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/checkoutOwnerRestoreStates.fixture.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/checkoutOwnerRestoreStates.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/checkoutOwnerRestoreStatesBootstrapAbsent.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/checkoutOwnerRestoreStatesBootstrapDormant.test.ts",
       "class": "public-output"
     },
     {
