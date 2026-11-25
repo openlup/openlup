@@ -107,10 +107,26 @@ export function report(verdict: Verdict, log: (line: string) => void): boolean {
   return false;
 }
 
+export function checkPrBodySignOff(body: string, log: (line: string) => void): boolean {
+  if (SIGN_OFF.test(body)) {
+    log("- pull-request body signed off: yes");
+    return true;
+  }
+  log("- ⛔ pull-request body is missing a Signed-off-by trailer");
+  log("");
+  log("Merge-queue commits inherit the pull-request body. Add a line of its own reading:");
+  log("    Signed-off-by: Your Name <your.email@example.com>");
+  return false;
+}
+
 export function main(root: string, argv: string[], log: (line: string) => void): number {
+  if (argv.length === 1 && argv[0] === "--pr-body") {
+    const body = process.env.PR_BODY ?? "";
+    return checkPrBodySignOff(body, log) ? 0 : 1;
+  }
   const [base, head, ...extra] = argv;
   if (!base || !head || extra.length > 0) {
-    process.stderr.write("usage: dco-signoff-check.ts <base-commit> <head-commit>\n  both ends as full 40-character digests\n");
+    process.stderr.write("usage: dco-signoff-check.ts <base-commit> <head-commit> | --pr-body\n  both ends as full 40-character digests (or --pr-body with PR_BODY env)\n");
     return 2;
   }
   let commits: Commit[];

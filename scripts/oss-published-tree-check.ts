@@ -45,7 +45,7 @@ function readMigrationBlob(root: string, entry: MigrationEntry): string {
   return documentationGit(root, ["cat-file", "blob", entry.oid]).toString("utf8");
 }
 
-export function assertAppendOnlyMigrationHistory(root: string, base: string, head: string, { enforceUtc = false } = {}): string[] {
+export function assertAppendOnlyMigrationHistory(root: string, base: string, head: string, { enforceUtc = true } = {}): string[] {
   if (!MIGRATION_SHA.test(base) || !MIGRATION_SHA.test(head) || base === head) throw new Error("migration history requires distinct full base and head commit SHAs");
   const actualHead = documentationGit(root, ["rev-parse", "HEAD"]).toString("utf8").trim();
   if (actualHead !== head) throw new Error("migration history head differs from the checkout");
