@@ -177,7 +177,7 @@ if (env[workerFlag] === '1') {
     assert.equal(new Headers(init?.headers).get('cookie'), 'starter_session=' + (refreshed ? 'y' : 'x').repeat(43));
     switch (action) {
       case 'price-target': return response({
-        actorId: refreshed && options.refresh === 'actor' ? alternate : actor,
+        actorId: refreshed && options.refresh === 'actor' ? (actor === actorId ? alternate : actorId) : actor,
         priceListId: refreshed && options.refresh === 'list' ? alternate : priceListId, currency, policy: effectivePolicy,
       });
       case 'receipt': {
@@ -811,16 +811,46 @@ if (!env[workerFlag]) {
     noWrites(result, initial.state);
   });
 
-  test('default stops reading SKUs when the refreshed session has a different administrator', { skip: nestedSkip }, () => {
-    const declaration = { ...authored, product: { ...authored.product, skus: [...authored.product.skus, sku('THIRD', 206)] },
-      basePrices: { ...authored.basePrices, THIRD: 3500 } };
-    const initial = invoke({ declaration });
+  const threeSkuDeclaration = { ...authored, product: { ...authored.product, skus: [...authored.product.skus, sku('THIRD', 206)] },
+    basePrices: { ...authored.basePrices, THIRD: 3500 } };
+  const stoppedScan = [...observed.slice(0, -1), 'email', 'challenge', 'token', 'redeem', 'price-target'];
+
+  test('default scan aborts on a failed identity refresh and retains earlier observations', { skip: nestedSkip }, async testContext => {
+    const args = ['--configuration', 'coffee'];
+    const configurationId = 'coffee';
+    const declaration = threeSkuDeclaration;
+    const initial = invoke({ args, configurationId, declaration });
     complete(initial);
+    const options = { configurationId, declaration, state: initial.state, actor: alternate, expireAfterPreview: 'FIRST' };
+    const npmApply = ['run', '--silent', 'catalogue:apply', '--', '--json', ...args];
+    for (const [code, fault] of [
+      ['operator_required', { refresh: 'same', failAt: stoppedScan.length, refusal: { code: 'operator_required' } }],
+      ['OPENLUP_E_CATALOGUE_APPLY_UNAVAILABLE', { refresh: 'same', failAt: stoppedScan.length }],
+      ['publisher_not_authorized', { refresh: 'actor' }],
+    ] as const) await testContext.test(code, () => {
+      const result = invoke({ ...options, ...fault }, npmApply);
+      assert.deepEqual(result.trace, stoppedScan);
+      assert.deepEqual(result.report.receipts.flatMap(row => row.prices).map(({ entryId }) => entryId),
+        [price(initial.state).entryId]);
+      noWrites(result, initial.state);
+      const row = finding(result, code, /Restart read-only verification with the same flags under an active administrator/u);
+      assert.match(row.fix, /npm run --silent catalogue:apply -- --json --configuration coffee/u);
+      assert.doesNotMatch(JSON.stringify(row), /original issuing administrator|only the issuing administrator/iu);
+    });
+  });
+
+  test('default scan preserves earlier price discrepancies when identity verification stops it', { skip: nestedSkip }, () => {
+    const initial = invoke({ declaration: threeSkuDeclaration });
+    complete(initial);
+    const declaration = { ...threeSkuDeclaration, basePrices: { ...threeSkuDeclaration.basePrices, FIRST: 2200 } };
     const result = invoke({ declaration, state: initial.state, refresh: 'actor', expireAfterPreview: 'FIRST' });
-    finding(result, 'publisher_not_authorized', /original issuing administrator/u);
-    assert.deepEqual(result.trace, [...observed.slice(0, -1), 'email', 'challenge', 'token', 'redeem', 'price-target']);
-    assert.deepEqual(result.report.receipts.flatMap(row => row.prices).map(({ entryId }) => entryId), [price(initial.state).entryId]);
+    assert.equal(result.status, 2);
+    assert.deepEqual(result.trace, stoppedScan);
     noWrites(result, initial.state);
+    const difference = result.report.findings.find(row => row.code === 'starter_catalogue_reprice_required');
+    assert.equal(difference?.subject, 'FIRST');
+    assert.match(difference!.fix, /npm run catalogue:apply -- --json --reprice/u);
+    assert.ok(result.report.findings.some(row => row.code === 'publisher_not_authorized'));
   });
 
   test('terminal refusals identify each SKU using the JSON subjects', { skip: nestedSkip }, () => {

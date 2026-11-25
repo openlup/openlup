@@ -382,7 +382,8 @@ async function catalogueApply(argv) {
     const applyCommand = flags => [npmApply, ...(flags.length ? ['--', ...flags.map(flag =>
       /^[a-z0-9_-]+$/iu.test(flag) ? flag : "'" + flag.replaceAll("'", "'\\''") + "'")] : [])].join(' ');
     freshReprice = applyCommand(mode === '--reprice' ? options : [...sharedFlags, '--reprice']);
-    recovery = repriceRecovery(applyCommand(sharedFlags), freshReprice);
+    const verifyApply = applyCommand(sharedFlags);
+    recovery = repriceRecovery(verifyApply, freshReprice);
     const [owned, { buildCatalogReleaseDraftV3 }, { canonicalCatalogDraftJson }, pricing, { mapStarterPresentation }, { digestStarterMedia }] = await Promise.all([
       import('./owned/catalogue.ts'), import('@openlup/platform/catalog'), import('@openlup/platform/catalog/contracts'),
       import('@openlup/platform/pricing'), import('./shared/catalogue-presentation.ts'), import('./host/catalogue-media.ts'),
@@ -434,7 +435,7 @@ async function catalogueApply(argv) {
     makeStage('activation', activation, null);
     if (!process.stdin.isTTY || !process.stderr.isTTY) deny('OPENLUP_E_CATALOGUE_TERMINAL_REQUIRED', { path: '/terminal' });
     const origin = config.publicOrigin ?? 'http://127.0.0.1:4319';
-    let cookie, expiresAt, operator, actorChanged;
+    let cookie, expiresAt, operator, scanAbortedOnIdentity;
     async function request(operation, body, key = hash([operation, body]), sessionCookie, sku) {
       const unavailableCodes = ['host_binding_required', 'starter_dependency_unavailable', 'starter_operation_unknown',
         'price_setup_dependency_unavailable', 'store_unavailable'];
@@ -488,7 +489,7 @@ async function catalogueApply(argv) {
       if (!/^starter_session=[A-Za-z0-9_-]{43}$/u.test(nextCookie ?? '') || !Number.isFinite(nextExpiry)) deny(unavailable);
       path = 'price-target';
       const { value } = await request('operator.catalogPublication', { action: 'price-target' }, undefined, nextCookie);
-      actorChanged = operator && operator.actorId !== value.actorId;
+      const actorChanged = operator && operator.actorId !== value.actorId;
       if (operator && mode === '--reprice' && (actorChanged || operator.priceListId !== value.priceListId))
         deny('starter_catalogue_reprice_review_required');
       if (actorChanged) deny('publisher_not_authorized');
@@ -499,7 +500,10 @@ async function catalogueApply(argv) {
       path = priorPath;
     }
     async function action(operation, body, key, sku) {
-      if (Date.now() >= expiresAt) await signIn();
+      if (Date.now() >= expiresAt) await signIn().catch(error => {
+        scanAbortedOnIdentity = true;
+        throw error;
+      });
       return (await request(operation, body, key, cookie, sku)).value;
     }
     const publish = (body, key, sku) => action('operator.catalogPublication', body, key, sku);
@@ -653,8 +657,16 @@ async function catalogueApply(argv) {
           changes.push({ code, skuId, from: { entryId, unitPriceMinor }, to: { unitPriceMinor: declared },
             subscriptionEstimate: { from: estimate(unitPriceMinor), to: estimate(declared) } });
         } catch (error) {
-          if (mode || actorChanged) throw error;
-          refusals.push(refusalFinding(error, code));
+          if (mode) throw error;
+          const finding = refusalFinding(error, code);
+          if (scanAbortedOnIdentity) {
+            refusals.push({ ...finding, subject: code, observed: 'The refreshed administrator could not be verified.',
+              cause: 'Read-only verification requires continuity with the signed-in administrator.',
+              fix: `Restart read-only verification with the same flags under an active administrator. Run ${verifyApply}.`,
+              recheck: 'Check the report for verified prices and remaining findings.' });
+            break;
+          }
+          refusals.push(finding);
         }
       }
       if (!mode) {
