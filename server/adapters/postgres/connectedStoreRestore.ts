@@ -250,6 +250,7 @@ const order = [
   "platform_human_principals", "platform_control_operators", "commerce_operators", "clients",
   "platform_human_memberships", "platform_human_membership_audit_events", "platform_communication_operators",
   "identity_operator_invitations", "identity_operator_invitation_events", "identity_privacy_erasures",
+  "identity_privacy_erasure_reconciliations",
   "customer_subject_lifecycle_events", "customer_communication_preferences", "customer_communication_preference_events", "customer_account_events", "customer_saved_addresses", "customer_payment_preferences", "customer_delivery_preferences", "customer_orderer_profiles",
   "platform_operational_controls", "platform_control_operations", "platform_alerts", "platform_alert_notifications", "platform_job_runs",
   // AUTHORITATIVE pack metadata; no customer FK or absorption/erasure duty.
@@ -606,6 +607,7 @@ function copyCapture(input: ConnectedNativeStoreCapture, shape: SourceShape = "c
       if (!table.columns.length || new Set(table.columns.map(column => column.name)).size !== table.columns.length) fail("invalid_input");
       for (const row of table.rows) {
         const value = JSON.parse(row) as Record<string, unknown>;
+        if (table.table === "identity_privacy_erasure_reconciliations" && !isPrivacyApprovalRow(value)) fail("invalid_input", table.table);
         if (!value || Array.isArray(value) || Object.keys(value).sort().join("\0") !== table.columns.map(column => column.name).sort().join("\0")) fail("invalid_input");
         count++; bytes += Buffer.byteLength(row);
       }
@@ -613,6 +615,15 @@ function copyCapture(input: ConnectedNativeStoreCapture, shape: SourceShape = "c
     if (count > 10000 || bytes > 64 * 1024 * 1024) fail("limit_exceeded");
     return copy;
   } catch (error) { if (error instanceof PostgresTransferError) throw error; fail("invalid_input"); }
+}
+
+function isPrivacyApprovalRow(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)
+    || Object.keys(value).sort().join("\0") !== "contributor_id\0erasure_id\0evidence_ref") return false;
+  const { contributor_id, erasure_id, evidence_ref } = value as Record<string, unknown>;
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
+  return typeof contributor_id === "string" && /^[a-z][a-z0-9.-]{0,99}$/u.test(contributor_id)
+    && typeof erasure_id === "string" && uuid.test(erasure_id) && typeof evidence_ref === "string" && uuid.test(evidence_ref);
 }
 
 function tables(packet: ConnectedNativeStoreCapture): Map<TableName, Rows> {

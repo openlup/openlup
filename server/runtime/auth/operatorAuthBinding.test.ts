@@ -41,7 +41,7 @@ it.each([["active", "PRIVACY_ACTIVE_SUBSCRIPTION"], ["paused", "PRIVACY_RESUMABL
   const { db, query } = executor(sql => sql.startsWith("SELECT status") ? [{ status }] : []);
   const subscriptions = createSubscriptionsPrivacyContributor(); const store = createPostgresPrivacyStore();
   store.readRequiredContributorIds = async () => ["identity", "subscriptions"];
-  store.prepareErasure = async () => {}; store.authorizeErasure = async () => {}; store.resolve = async () => structuredClone(subject); store.findReceipt = async () => null;
+  store.prepareErasure = async () => {}; store.authorizeErasure = async () => {}; store.resolve = async () => structuredClone(subject); store.findErasureReplay = async () => null;
   const erase = vi.spyOn(store, "eraseIdentity"); const save = vi.spyOn(store, "saveReceipt");
   const registry = createPersonalDataContributorRegistry([createIdentityPersonalDataContributor(store, { retainedContactFields: {} }, () => K), subscriptions], { requiredContributorIds: ["identity", "subscriptions"] });
   const ops = createPrivacyOperations({ store, registry, unitOfWork: { run: work => work(db) }, now: () => new Date(), randomId: () => K });

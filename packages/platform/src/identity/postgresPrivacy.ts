@@ -1,6 +1,9 @@
 import { createPostgresRoleFreeTransactionLane, type PgQueryExecutor, type PostgresDataGatewayEnv, type PostgresDataGatewayOptions } from "../data/index.js";
-import { PrivacyRefusal, type NativePrivacyStore, type ResolvedPrivacySubject, type AuthorizedHumanAdministrator } from "./privacyPorts.js";
+import { PrivacyRefusal, type NativePrivacyStore, type ResolvedPrivacySubject, type AuthorizedHumanAdministrator,
+  type ContributorDisposition, type PersonalDataContributorRegistry, type PrivacyUnitOfWork } from "./privacyPorts.js";
 import { erasureReceiptSchema, type PrivacySubjectRef, type PrivacyJson } from "./contracts/privacy.js";
+import { nativePrivacyUnavailable, privacyContributorId, recognizeReceiptContributorIds, unverifiedPrivacyReconciliationApproval,
+  validateOrderedPrivacyContributorIds, validateRequiredPrivacyContributorIds } from "./requiredPrivacyContributors.js";
 
 type Row = Record<string, unknown>;
 function json(value: unknown): PrivacyJson { return JSON.parse(JSON.stringify(value)) as PrivacyJson; }
@@ -11,69 +14,60 @@ export async function readRequiredPrivacyContributorIds(db: PgQueryExecutor): Pr
   return rows[0].ids as string[];
 }
 
+async function lockErasureReceipts(db: PgQueryExecutor): Promise<void> {
+  await db.query("SET LOCAL lock_timeout = '5s'");
+  await db.query("SET LOCAL statement_timeout = '15s'");
+  await db.query("LOCK TABLE public.identity_privacy_erasures IN SHARE ROW EXCLUSIVE MODE");
+}
+
+async function assertPrivacyStorePrivileges(db: PgQueryExecutor): Promise<void> {
+  const { rows } = await db.query(`SELECT EXISTS (
+    SELECT 1 FROM (VALUES ('public.identity_privacy_erasures'::regclass),
+      ('public.identity_privacy_erasure_reconciliations'::regclass)) AS relation(oid)
+    WHERE EXISTS (SELECT 1 FROM pg_roles r WHERE r.rolname IN ('anon', 'authenticated', 'authenticator')
+      AND (has_table_privilege(r.oid, relation.oid, 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+        OR has_any_column_privilege(r.oid, relation.oid, 'SELECT,INSERT,UPDATE,REFERENCES')))
+      OR EXISTS (SELECT 1 FROM pg_class c, LATERAL aclexplode(coalesce(c.relacl, acldefault('r', c.relowner))) a
+        WHERE c.oid = relation.oid AND a.grantee = 0)
+      OR EXISTS (SELECT 1 FROM pg_attribute c, LATERAL aclexplode(c.attacl) a
+        WHERE c.attrelid = relation.oid AND a.grantee = 0)
+  ) AS unsafe`);
+  if (rows[0]?.unsafe !== false) throw new PrivacyRefusal("PRIVACY_STORE_PRIVILEGES_UNSAFE");
+}
+
+async function lockErasureChallenges(db: PgQueryExecutor): Promise<void> {
+  await db.query("LOCK TABLE public.customer_identity_challenges IN EXCLUSIVE MODE");
+}
+
 export function createPostgresPrivacyStore(): NativePrivacyStore<PgQueryExecutor> {
   return {
     privacyRail: "native",
     readRequiredContributorIds: readRequiredPrivacyContributorIds,
     erasureSupported: true,
     async prepareErasure(db) {
-      await db.query("SET LOCAL lock_timeout = '5s'");
-      await db.query("SET LOCAL statement_timeout = '15s'");
-      // Serialize receipt/key decisions; challenge relation precedes every contact lock.
-      await db.query("LOCK TABLE public.identity_privacy_erasures IN SHARE ROW EXCLUSIVE MODE");
-      const unsafe = (await db.query(`SELECT EXISTS (
-        SELECT 1 FROM pg_roles r WHERE r.rolname IN ('anon', 'authenticated', 'authenticator')
-        AND (has_table_privilege(r.oid, 'public.identity_privacy_erasures', 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
-          OR has_any_column_privilege(r.oid, 'public.identity_privacy_erasures', 'SELECT,INSERT,UPDATE,REFERENCES'))
-      ) OR EXISTS (SELECT 1 FROM pg_class c, LATERAL aclexplode(coalesce(c.relacl, acldefault('r', c.relowner))) a
-        WHERE c.oid = 'public.identity_privacy_erasures'::regclass AND a.grantee = 0)
-        OR EXISTS (SELECT 1 FROM pg_attribute c, LATERAL aclexplode(c.attacl) a
-        WHERE c.attrelid = 'public.identity_privacy_erasures'::regclass AND a.grantee = 0) AS unsafe`)).rows[0]?.unsafe;
-      if (unsafe !== false) throw new PrivacyRefusal("PRIVACY_STORE_PRIVILEGES_UNSAFE");
-      await db.query("LOCK TABLE public.customer_identity_challenges IN EXCLUSIVE MODE");
+      await lockErasureReceipts(db);
+      await assertPrivacyStorePrivileges(db);
+      await lockErasureChallenges(db);
     },
     async authorizeErasure(db, actor) {
       const row = (await db.query(`SELECT m.role, m.membership_state FROM public.platform_human_memberships m
         WHERE m.principal_id = $1 AND NOT EXISTS (SELECT 1 FROM public.platform_control_operators o WHERE o.principal_id = m.principal_id)`, [actor.principalId])).rows[0];
       if (row?.role !== "admin" || row.membership_state !== "active") throw new PrivacyRefusal("PRIVACY_PROTECTED_OPERATOR");
     },
-    async resolve(db, ref, actor) {
-      const contactPredicate = ref.kind === "contact" ? "c.id = $1" : "c.principal_id = $1";
-      const id = ref.kind === "contact" ? ref.contactId : ref.principalId;
-      let contact = (await db.query(`SELECT c.* FROM public.clients c WHERE ${contactPredicate}`, [id])).rows[0] ?? null;
-      if (ref.kind === "principal" && !contact) {
-        const receipt = (await db.query("SELECT client_id FROM public.identity_privacy_erasures WHERE principal_id = $1", [id])).rows[0];
-        if (receipt?.client_id) contact = (await db.query("SELECT * FROM public.clients WHERE id = $1", [receipt.client_id])).rows[0] ?? null;
-      }
-      let principalId = ref.kind === "principal" ? ref.principalId : contact?.principal_id ? String(contact.principal_id) : null;
-      if (!principalId && contact) {
-        const receipt = (await db.query("SELECT principal_id FROM public.identity_privacy_erasures WHERE client_id = $1", [contact.id])).rows[0];
-        if (receipt?.principal_id) principalId = String(receipt.principal_id);
-      }
-      let principal = principalId ? (await db.query("SELECT principal_id, email, created_at FROM public.platform_human_principals WHERE principal_id = $1", [principalId])).rows[0] ?? null : null;
-      if (!contact && !principal) return null;
-      if (actor) {
-        if (principal) {
-          await db.query("SELECT pg_advisory_xact_lock(hashtext($1)::bigint)", [`operator_invitation:${String(principal.email).trim().toLowerCase()}`]);
-        }
-        await db.query("SELECT principal_id FROM public.platform_human_memberships WHERE principal_id = ANY($1::uuid[]) ORDER BY principal_id FOR UPDATE", [[actor.principalId, principalId].filter(Boolean)]);
-        if (contact) contact = (await db.query("SELECT * FROM public.clients WHERE id = $1 FOR UPDATE", [contact.id])).rows[0] ?? null;
-        if (principal) principal = (await db.query("SELECT principal_id, email, created_at FROM public.platform_human_principals WHERE principal_id = $1 FOR UPDATE", [principalId])).rows[0] ?? null;
-      }
-      const membership = principalId ? (await db.query("SELECT * FROM public.platform_human_memberships WHERE principal_id = $1", [principalId])).rows[0] ?? null : null;
-      const invitations = principalId ? (await db.query("SELECT * FROM public.identity_operator_invitations WHERE principal_id = $1", [principalId])).rows : [];
-      const invitationHistory = principalId ? (await db.query("SELECT * FROM public.identity_operator_invitation_events WHERE principal_id = $1 ORDER BY occurred_at, event_id", [principalId])).rows : [];
-      const membershipHistory = principalId ? (await db.query("SELECT * FROM public.platform_human_membership_audit_events WHERE target_principal_id = $1 ORDER BY occurred_at, id", [principalId])).rows : [];
-      return { contactId: contact ? String(contact.id) : null, principalId,
-        identity: { contact: json(contact), principal: json(principal), membership: json(membership), invitations: json(invitations), invitationHistory: json(invitationHistory), membershipHistory: json(membershipHistory) } };
-    },
+    resolve: resolvePostgresPrivacySubject,
     async findReceipt(db, ref, key) {
-      const column = ref.kind === "contact" ? "client_id" : "principal_id";
-      const id = ref.kind === "contact" ? ref.contactId : ref.principalId;
-      const rows = (await db.query(`SELECT * FROM public.identity_privacy_erasures WHERE ${column} = $1 OR idempotency_key = $2::uuid`, [id, key ?? null])).rows;
-      if (rows.some(row => row.idempotency_key === key && row[column] !== id)) throw new PrivacyRefusal("PRIVACY_IDEMPOTENCY_CONFLICT");
-      const row = rows.find(row => row[column] === id);
-      return row ? erasureReceiptSchema.parse({ version: row.contract_version, erasureId: row.erasure_id, completedAt: row.completed_at instanceof Date ? row.completed_at.toISOString() : new Date(String(row.completed_at)).toISOString(), outcome: "ERASED", obligations: row.retained_obligations }) : null;
+      const row = await findScopedReceipt(db, ref, key);
+      return row ? decodeReceipt(row) : null;
+    },
+    async findErasureReplay(db, ref, key) {
+      const row = await findScopedReceipt(db, ref, key);
+      if (!row) return null;
+      const receipt = decodeReceipt(row);
+      const { rows } = await db.query("SELECT public.identity_privacy_reconciled_contributor_ids($1::uuid) AS ids", [receipt.erasureId]);
+      if (rows.length !== 1) throw new Error("privacy_reconciliation_reader_invalid");
+      const approvals = validateOrderedPrivacyContributorIds(rows[0]?.ids, 10_000);
+      const coveredContributorIds = [...new Set([...recognizeReceiptContributorIds(row.contributor_versions), ...approvals])].sort();
+      return { receipt, coveredContributorIds };
     },
     async eraseIdentity(db, subject, actor, pseudonym) {
       await erasePostgresIdentity(db, subject, actor, pseudonym);
@@ -87,6 +81,59 @@ export function createPostgresPrivacyStore(): NativePrivacyStore<PgQueryExecutor
     },
   };
 }
+type ReceiptAliases = { client_id: string | null; principal_id: string | null };
+
+async function resolvePostgresPrivacySubject(
+  db: PgQueryExecutor, ref: PrivacySubjectRef, actor?: AuthorizedHumanAdministrator, aliases?: ReceiptAliases,
+): Promise<ResolvedPrivacySubject | null> {
+  const contactPredicate = ref.kind === "contact" ? "c.id = $1" : "c.principal_id = $1";
+  const id = ref.kind === "contact" ? ref.contactId : ref.principalId;
+  let contact = aliases
+    ? (aliases.client_id ? (await db.query("SELECT * FROM public.clients WHERE id = $1", [aliases.client_id])).rows[0] ?? null : null)
+    : (await db.query(`SELECT c.* FROM public.clients c WHERE ${contactPredicate}`, [id])).rows[0] ?? null;
+  if (!aliases && ref.kind === "principal" && !contact) {
+    const receipt = (await db.query("SELECT client_id FROM public.identity_privacy_erasures WHERE principal_id = $1", [id])).rows[0];
+    if (receipt?.client_id) contact = (await db.query("SELECT * FROM public.clients WHERE id = $1", [receipt.client_id])).rows[0] ?? null;
+  }
+  let principalId = aliases ? aliases.principal_id : ref.kind === "principal" ? ref.principalId : contact?.principal_id ? String(contact.principal_id) : null;
+  if (!aliases && !principalId && contact) {
+    const receipt = (await db.query("SELECT principal_id FROM public.identity_privacy_erasures WHERE client_id = $1", [contact.id])).rows[0];
+    if (receipt?.principal_id) principalId = String(receipt.principal_id);
+  }
+  let principal = principalId ? (await db.query("SELECT principal_id, email, created_at FROM public.platform_human_principals WHERE principal_id = $1", [principalId])).rows[0] ?? null : null;
+  if (!aliases && !contact && !principal) return null;
+  if (actor) {
+    if (principal) {
+      await db.query("SELECT pg_advisory_xact_lock(hashtext($1)::bigint)", [`operator_invitation:${String(principal.email).trim().toLowerCase()}`]);
+    }
+    await db.query("SELECT principal_id FROM public.platform_human_memberships WHERE principal_id = ANY($1::uuid[]) ORDER BY principal_id FOR UPDATE", [[actor.principalId, principalId].filter(Boolean)]);
+    if (contact) contact = (await db.query("SELECT * FROM public.clients WHERE id = $1 FOR UPDATE", [contact.id])).rows[0] ?? null;
+    if (principal) principal = (await db.query("SELECT principal_id, email, created_at FROM public.platform_human_principals WHERE principal_id = $1 FOR UPDATE", [principalId])).rows[0] ?? null;
+  }
+  const membership = principalId ? (await db.query("SELECT * FROM public.platform_human_memberships WHERE principal_id = $1", [principalId])).rows[0] ?? null : null;
+  const invitations = principalId ? (await db.query("SELECT * FROM public.identity_operator_invitations WHERE principal_id = $1", [principalId])).rows : [];
+  const invitationHistory = principalId ? (await db.query("SELECT * FROM public.identity_operator_invitation_events WHERE principal_id = $1 ORDER BY occurred_at, event_id", [principalId])).rows : [];
+  const membershipHistory = principalId ? (await db.query("SELECT * FROM public.platform_human_membership_audit_events WHERE target_principal_id = $1 ORDER BY occurred_at, id", [principalId])).rows : [];
+  return { contactId: contact ? String(contact.id) : null, principalId,
+    identity: { contact: json(contact), principal: json(principal), membership: json(membership), invitations: json(invitations), invitationHistory: json(invitationHistory), membershipHistory: json(membershipHistory) } };
+}
+
+async function findScopedReceipt(db: PgQueryExecutor, ref: PrivacySubjectRef, key?: string): Promise<Row | undefined> {
+  const column = ref.kind === "contact" ? "client_id" : "principal_id";
+  const id = ref.kind === "contact" ? ref.contactId : ref.principalId;
+  const { rows } = await db.query(`SELECT * FROM public.identity_privacy_erasures WHERE ${column} = $1 OR idempotency_key = $2::uuid`, [id, key ?? null]);
+  if (rows.some(row => row.idempotency_key === key && row[column] !== id)) throw new PrivacyRefusal("PRIVACY_IDEMPOTENCY_CONFLICT");
+  return rows.find(row => row[column] === id);
+}
+
+function decodeReceipt(row: Row) {
+  return erasureReceiptSchema.parse({
+    version: row.contract_version, erasureId: row.erasure_id,
+    completedAt: row.completed_at instanceof Date ? row.completed_at.toISOString() : new Date(String(row.completed_at)).toISOString(),
+    outcome: "ERASED", obligations: row.retained_obligations,
+  });
+}
+
 async function erasePostgresIdentity(db: PgQueryExecutor, subject: ResolvedPrivacySubject, actor: AuthorizedHumanAdministrator, pseudonym: string): Promise<void> {
   const id = subject.principalId;
   if (id) {
@@ -123,4 +170,70 @@ async function erasePostgresIdentity(db: PgQueryExecutor, subject: ResolvedPriva
 export function createPostgresPrivacyUnitOfWork(env: PostgresDataGatewayEnv, options: PostgresDataGatewayOptions = {}) {
   const lane = createPostgresRoleFreeTransactionLane<PgQueryExecutor>(env, options);
   return { run: <T>(work: (context: PgQueryExecutor) => Promise<T>) => lane.run(work), close: lane.close };
+}
+
+const bindingUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+
+/** Apply one locally verified approval using the selected installation owner's transaction lane. */
+export async function reconcilePostgresPrivacyErasure(
+  ownerContext: {
+    unitOfWork: PrivacyUnitOfWork<PgQueryExecutor>;
+    registry: PersonalDataContributorRegistry<PgQueryExecutor>;
+    actor: AuthorizedHumanAdministrator;
+  },
+  input: { erasure_id: string; contributor_id: string; evidence_ref: string },
+): Promise<ContributorDisposition | null> {
+  if (!input || Object.getPrototypeOf(input) !== Object.prototype || Reflect.ownKeys(input).length !== 3
+    || !["erasure_id", "contributor_id", "evidence_ref"].every(key => Object.hasOwn(input, key))
+    || typeof input.contributor_id !== "string" || !privacyContributorId.test(input.contributor_id)) throw unverifiedPrivacyReconciliationApproval();
+  if (typeof input.erasure_id !== "string" || !bindingUuid.test(input.erasure_id)
+    || typeof input.evidence_ref !== "string" || !bindingUuid.test(input.evidence_ref)) throw unverifiedPrivacyReconciliationApproval();
+  const erasureId = input.erasure_id.toLowerCase(), evidenceRef = input.evidence_ref.toLowerCase(), contributorId = input.contributor_id;
+  const { registry, unitOfWork } = ownerContext;
+  const actor = { principalId: ownerContext.actor.principalId };
+  const store = createPostgresPrivacyStore();
+  try {
+    return await unitOfWork.run(async db => {
+      await lockErasureReceipts(db);
+      const privilege = await db.query(`SELECT pg_has_role(c.relowner, 'USAGE') AS owner FROM pg_class c
+        WHERE c.oid = 'public.identity_privacy_erasure_reconciliations'::regclass`);
+      if (privilege.rows[0]?.owner !== true) throw new Error("privacy_reconciliation_owner_required");
+      const { rows: [row] } = await db.query(
+        "SELECT * FROM public.identity_privacy_erasures WHERE erasure_id = $1", [erasureId]);
+      const declared = validateRequiredPrivacyContributorIds(await readRequiredPrivacyContributorIds(db));
+      const owners = registry.contributors.filter(owner => owner.id === contributorId);
+      if (!row || !declared.includes(contributorId) || owners.length !== 1) throw unverifiedPrivacyReconciliationApproval();
+      decodeReceipt(row);
+      const { client_id, principal_id } = row;
+      if ((client_id !== null && (typeof client_id !== "string" || !bindingUuid.test(client_id)))
+        || (principal_id !== null && (typeof principal_id !== "string" || !bindingUuid.test(principal_id)))
+        || (!client_id && !principal_id)) throw new Error("privacy_receipt_aliases_invalid");
+      const contributor = owners[0]!;
+      const values = [erasureId, contributorId, evidenceRef];
+      const { rows: existing } = await db.query(`SELECT erasure_id, contributor_id, evidence_ref FROM public.identity_privacy_erasure_reconciliations
+        WHERE (erasure_id = $1 AND contributor_id = $2) OR evidence_ref = $3`, values);
+      if (existing.some(binding => binding.erasure_id !== erasureId || binding.contributor_id !== contributorId || binding.evidence_ref !== evidenceRef)) {
+        throw unverifiedPrivacyReconciliationApproval();
+      }
+      await store.authorizeErasure(db, actor);
+      if (existing.length) return null;
+      await assertPrivacyStorePrivileges(db);
+      await lockErasureChallenges(db);
+      await contributor.prepareErasure(db);
+      const ref: PrivacySubjectRef = client_id
+        ? { kind: "contact", contactId: client_id } : { kind: "principal", principalId: principal_id! };
+      const subject = await resolvePostgresPrivacySubject(db, ref, actor, { client_id, principal_id });
+      if (!subject) throw unverifiedPrivacyReconciliationApproval();
+      await store.authorizeErasure(db, actor);
+      const assessment = await contributor.assessErasure(db, subject);
+      if (assessment.obligations.some(obligation => obligation.disposition === "unresolved")) throw new PrivacyRefusal("PRIVACY_OWNERSHIP_UNDECLARED");
+      const disposition = await contributor.eraseOrRetain(db, subject, assessment, actor);
+      await db.query(`INSERT INTO public.identity_privacy_erasure_reconciliations (erasure_id, contributor_id, evidence_ref)
+        VALUES ($1, $2, $3)`, values);
+      return disposition;
+    });
+  } catch (cause) {
+    if (cause instanceof PrivacyRefusal) throw cause;
+    throw nativePrivacyUnavailable(cause);
+  }
 }

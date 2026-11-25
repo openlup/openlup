@@ -482,7 +482,7 @@ export declare const privacyExportRequestSchema: OperatorSchema<{
 export declare const privacyEraseRequestSchema: OperatorSchema<PrivacyEraseRequest>;
 export declare const privacyExportResponseSchema: OperatorSchema<PrivacyExport>;
 export declare const privacyEraseResponseSchema: OperatorSchema<ErasureReceipt>;
-declare const refusalCodes: readonly ["PRIVACY_SUBJECT_NOT_FOUND", "PRIVACY_CONTRIBUTOR_DUPLICATE", "PRIVACY_CONTRIBUTOR_MISSING", "PRIVACY_ASSESSMENT_UNAVAILABLE", "PRIVACY_OWNERSHIP_UNDECLARED", "PRIVACY_ACTIVE_SUBSCRIPTION", "PRIVACY_RESUMABLE_SUBSCRIPTION", "PRIVACY_PROTECTED_OPERATOR", "PRIVACY_IDEMPOTENCY_CONFLICT", "PRIVACY_SUBJECT_ERASED", "PRIVACY_STORE_PRIVILEGES_UNSAFE", "MANAGED_PRIVACY_ERASURE_UNAVAILABLE"];
+declare const refusalCodes: readonly ["PRIVACY_SUBJECT_NOT_FOUND", "PRIVACY_CONTRIBUTOR_DUPLICATE", "PRIVACY_CONTRIBUTOR_MISSING", "PRIVACY_ASSESSMENT_UNAVAILABLE", "PRIVACY_OWNERSHIP_UNDECLARED", "PRIVACY_ACTIVE_SUBSCRIPTION", "PRIVACY_RESUMABLE_SUBSCRIPTION", "PRIVACY_PROTECTED_OPERATOR", "PRIVACY_IDEMPOTENCY_CONFLICT", "PRIVACY_SUBJECT_ERASED", "PRIVACY_STORE_PRIVILEGES_UNSAFE", "PRIVACY_RECEIPT_COVERAGE_INCOMPLETE", "PRIVACY_RECONCILIATION_APPROVAL_UNVERIFIED", "MANAGED_PRIVACY_ERASURE_UNAVAILABLE"];
 export type PrivacyRefusalCode = typeof refusalCodes[number];
 export declare const privacyRefusalCodeSchema: OperatorSchema<PrivacyRefusalCode>;
 export {};
@@ -1955,7 +1955,7 @@ export declare function createPostgresOperatorIdentityStore(env: {
 
 ```ts
 import { type PgQueryExecutor, type PostgresDataGatewayEnv, type PostgresDataGatewayOptions } from "../data/index.js";
-import { type NativePrivacyStore } from "./privacyPorts.js";
+import { type NativePrivacyStore, type AuthorizedHumanAdministrator, type ContributorDisposition, type PersonalDataContributorRegistry, type PrivacyUnitOfWork } from "./privacyPorts.js";
 /** Read the installed declaration through the caller's held connection. */
 export declare function readRequiredPrivacyContributorIds(db: PgQueryExecutor): Promise<readonly string[]>;
 export declare function createPostgresPrivacyStore(): NativePrivacyStore<PgQueryExecutor>;
@@ -1963,6 +1963,16 @@ export declare function createPostgresPrivacyUnitOfWork(env: PostgresDataGateway
     run: <T>(work: (context: PgQueryExecutor) => Promise<T>) => Promise<T>;
     close: () => Promise<void>;
 };
+/** Apply one locally verified approval using the selected installation owner's transaction lane. */
+export declare function reconcilePostgresPrivacyErasure(ownerContext: {
+    unitOfWork: PrivacyUnitOfWork<PgQueryExecutor>;
+    registry: PersonalDataContributorRegistry<PgQueryExecutor>;
+    actor: AuthorizedHumanAdministrator;
+}, input: {
+    erasure_id: string;
+    contributor_id: string;
+    evidence_ref: string;
+}): Promise<ContributorDisposition | null>;
 ```
 ## dist/identity/privacyHandlers.d.ts
 
@@ -2042,6 +2052,10 @@ export interface PrivacyStore<Context> {
 export interface NativePrivacyStore<Context> extends PrivacyStore<Context> {
     readonly privacyRail: "native";
     readRequiredContributorIds(context: Context): Promise<readonly string[]>;
+    findErasureReplay(context: Context, subject: PrivacySubjectRef, key: string): Promise<{
+        receipt: ErasureReceipt;
+        coveredContributorIds: readonly string[];
+    } | null>;
 }
 export type PrivacyUseCaseDependencies<Context> = {
     unitOfWork: PrivacyUnitOfWork<Context>;
@@ -2166,17 +2180,23 @@ export declare function runRemoveAdminUserUseCase(request: {
 
 ```ts
 import { PrivacyRefusal } from "./privacyPorts.js";
+export declare const privacyContributorId: RegExp;
+export declare const privacyContributorVersion: RegExp;
+export declare function validateOrderedPrivacyContributorIds(value: unknown, maximum: number): readonly string[];
 /** Verify the bounded, unique, C-sorted declaration used in native operations and transfers. */
 export declare function validateRequiredPrivacyContributorIds(value: unknown): readonly string[];
+export declare function recognizeReceiptContributorIds(value: unknown): string[];
 export declare function privacyRefusalDetails(error: PrivacyRefusal): {
     observed?: string | undefined;
     cause?: string | undefined;
     fix?: string | undefined;
     recheck?: string | undefined;
-    privacyCode: "PRIVACY_SUBJECT_NOT_FOUND" | "PRIVACY_CONTRIBUTOR_DUPLICATE" | "PRIVACY_CONTRIBUTOR_MISSING" | "PRIVACY_ASSESSMENT_UNAVAILABLE" | "PRIVACY_OWNERSHIP_UNDECLARED" | "PRIVACY_ACTIVE_SUBSCRIPTION" | "PRIVACY_RESUMABLE_SUBSCRIPTION" | "PRIVACY_PROTECTED_OPERATOR" | "PRIVACY_IDEMPOTENCY_CONFLICT" | "PRIVACY_SUBJECT_ERASED" | "PRIVACY_STORE_PRIVILEGES_UNSAFE" | "MANAGED_PRIVACY_ERASURE_UNAVAILABLE";
+    privacyCode: "PRIVACY_SUBJECT_NOT_FOUND" | "PRIVACY_CONTRIBUTOR_DUPLICATE" | "PRIVACY_CONTRIBUTOR_MISSING" | "PRIVACY_ASSESSMENT_UNAVAILABLE" | "PRIVACY_OWNERSHIP_UNDECLARED" | "PRIVACY_ACTIVE_SUBSCRIPTION" | "PRIVACY_RESUMABLE_SUBSCRIPTION" | "PRIVACY_PROTECTED_OPERATOR" | "PRIVACY_IDEMPOTENCY_CONFLICT" | "PRIVACY_SUBJECT_ERASED" | "PRIVACY_STORE_PRIVILEGES_UNSAFE" | "PRIVACY_RECEIPT_COVERAGE_INCOMPLETE" | "PRIVACY_RECONCILIATION_APPROVAL_UNVERIFIED" | "MANAGED_PRIVACY_ERASURE_UNAVAILABLE";
 };
 export declare function nativePrivacyUnavailable(cause: unknown): PrivacyRefusal;
 export declare function missingPrivacyContributors(ids: readonly string[], installed: boolean): PrivacyRefusal;
+export declare function incompletePrivacyReceiptCoverage(ids: readonly string[]): PrivacyRefusal;
+export declare function unverifiedPrivacyReconciliationApproval(): PrivacyRefusal;
 ```
 ## dist/identity/response.d.ts
 
