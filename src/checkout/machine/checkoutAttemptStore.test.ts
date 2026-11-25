@@ -374,7 +374,7 @@ describe("checkout attempt record", () => {
 
       const key = getOrCreateCheckoutAttemptKey(MINIMAL_INTENT);
 
-      expect(key).toBe(mintedKey(1));
+      expect(key).toMatch(ATTEMPT_KEY_PATTERN);
       expect(storedRecord()).toEqual({ fingerprint: fingerprintCheckoutIntent(MINIMAL_INTENT), key });
     });
   });
@@ -428,6 +428,7 @@ describe("checkout attempt record", () => {
     });
 
     it("throws from create and from bump when a write is refused", () => {
+      // PINNED AS IT IS TODAY: a refused write surfaces as the browser's own error.
       getOrCreateCheckoutAttemptKey(MINIMAL_INTENT);
       const stored = sessionStorage.getItem(CHECKOUT_ATTEMPT_STORAGE_KEY);
       const refusal = throwingStorage("setItem");
@@ -443,6 +444,7 @@ describe("checkout attempt record", () => {
     });
 
     it("throws from create and from read when a read is refused", () => {
+      // PINNED AS IT IS TODAY: a refused read surfaces as the browser's own error.
       const refusal = throwingStorage("getItem");
 
       expect(() => getOrCreateCheckoutAttemptKey(MINIMAL_INTENT)).toThrow(refusal);
@@ -450,6 +452,7 @@ describe("checkout attempt record", () => {
     });
 
     it("throws from clear when removal is refused and keeps the record", () => {
+      // PINNED AS IT IS TODAY: a refused removal surfaces as the browser's own error.
       getOrCreateCheckoutAttemptKey(MINIMAL_INTENT);
       const stored = sessionStorage.getItem(CHECKOUT_ATTEMPT_STORAGE_KEY);
       const refusal = throwingStorage("removeItem");
@@ -475,8 +478,9 @@ describe("checkout attempt record", () => {
           expect(result).toBe(stored);
           expect(storedRecord().key).toBe(stored);
         } else {
-          expect(result).toBe(mintedKey(1));
-          expect(storedRecord().key).toBe(mintedKey(1));
+          expect(result).toMatch(ATTEMPT_KEY_PATTERN);
+          expect(result).not.toBe(stored);
+          expect(storedRecord().key).toBe(result);
         }
       },
     );
@@ -497,11 +501,17 @@ describe("checkout attempt record", () => {
 
       const result = getOrCreateCheckoutAttemptKey(MINIMAL_INTENT);
 
-      expect(result).toBe(accepted ? stored : mintedKey(1));
+      if (accepted) {
+        expect(result).toBe(stored);
+      } else {
+        expect(result).toMatch(ATTEMPT_KEY_PATTERN);
+        expect(result).not.toBe(stored);
+        expect(storedRecord().key).toBe(result);
+      }
     });
 
     it("mints a key the platform schema accepts", () => {
-      // The default setup spy would hand back a fixed shape; mint a real one.
+      // This block's UUID spy would hand back a fixed shape; mint a real one.
       vi.restoreAllMocks();
 
       const key = getOrCreateCheckoutAttemptKey(MINIMAL_INTENT);

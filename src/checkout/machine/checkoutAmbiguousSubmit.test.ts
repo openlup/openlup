@@ -136,10 +136,11 @@ describe("recoverAmbiguousCheckoutSubmit", () => {
     submitCheckout.mockResolvedValue(RESPONSE);
     const headers = new Headers({ "x-probe": "1" });
     const fetcher = vi.fn();
+    const signal = new AbortController().signal;
 
     for (const options of [
-      { timeoutMs: 30_000, headers, credentials: "include" as const, fetcher },
-      { timeoutMs: 1_000, headers, credentials: "include" as const, fetcher },
+      { timeoutMs: 30_000, headers, credentials: "include" as const, fetcher, signal },
+      { timeoutMs: 1_000, headers, credentials: "include" as const, fetcher, signal },
     ]) {
       submitCheckout.mockClear();
       await recoverAmbiguousCheckoutSubmit({
@@ -153,7 +154,10 @@ describe("recoverAmbiguousCheckoutSubmit", () => {
         headers,
         credentials: "include",
         fetcher,
+        signal,
       });
+      // The caller's signal reaches the replay unchanged, not a copy.
+      expect(submitCheckout.mock.calls[0]![1].signal).toBe(signal);
     }
 
     submitCheckout.mockClear();
@@ -193,6 +197,7 @@ describe("recoverAmbiguousCheckoutSubmit", () => {
 
     expect(result).toEqual({ kind: "unknown" });
     expect(submitCheckout).toHaveBeenCalledTimes(1);
+    expect(reportCheckoutClientEvent).not.toHaveBeenCalled();
   });
 
   it("keeps in_flight when the replay observes the open attempt", async () => {

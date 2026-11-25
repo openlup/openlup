@@ -1,3 +1,4 @@
+/** @vitest-environment jsdom -- exercises browser-path behavior (window/storage). */
 import { createHash } from "node:crypto";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -304,6 +305,61 @@ describe("storage that refuses a call", () => {
     expect(() => clearCheckoutContinuation()).not.toThrow();
     // The refused removal leaves the marker where it was.
     expect(readCheckoutContinuation()).toMatchObject(MARKER);
+  });
+});
+
+describe("storage whose accessor throws", () => {
+  // The marker functions read the global `sessionStorage`. In this environment
+  // the global and `window` are separate objects holding the same storage, so
+  // both are made to throw and both descriptors are restored exactly.
+  function withDeniedAccessor(run: () => void) {
+    const targets: object[] = window === (globalThis as unknown as Window) ? [window] : [globalThis, window];
+    const saved = targets.map((target) => Object.getOwnPropertyDescriptor(target, "sessionStorage"));
+    try {
+      for (const target of targets) {
+        Object.defineProperty(target, "sessionStorage", {
+          configurable: true,
+          get() {
+            throw new Error("storage denied");
+          },
+        });
+      }
+      run();
+    } finally {
+      targets.forEach((target, index) => {
+        const descriptor = saved[index];
+        if (descriptor) Object.defineProperty(target, "sessionStorage", descriptor);
+        else delete (target as Record<string, unknown>).sessionStorage;
+      });
+    }
+  }
+
+  it("never throws and reads null while the accessor is denied", () => {
+    // PINNED AS IT IS TODAY: every marker function swallows a denied accessor,
+    // unlike the attempt record, which continues unpersisted. Nothing is written,
+    // and a marker stored before the denial is neither read nor changed by it.
+    persistCheckoutContinuation(MARKER);
+    const before = sessionStorage.getItem(CHECKOUT_CONTINUATION_KEY);
+    expect(before).not.toBeNull();
+
+    withDeniedAccessor(() => {
+      expect(() => persistCheckoutContinuation({ ...MARKER, orderRef: "another" })).not.toThrow();
+      expect(() => setCheckoutContinuationPhase("confirm_dispatched")).not.toThrow();
+      expect(() => clearCheckoutContinuation()).not.toThrow();
+      expect(() => readCheckoutContinuation()).not.toThrow();
+      expect(readCheckoutContinuation()).toBeNull();
+    });
+
+    expect(sessionStorage.getItem(CHECKOUT_CONTINUATION_KEY)).toBe(before);
+  });
+
+  it("writes nothing while the accessor is denied", () => {
+    withDeniedAccessor(() => {
+      expect(() => persistCheckoutContinuation(MARKER)).not.toThrow();
+    });
+
+    expect(sessionStorage.length).toBe(0);
+    expect(readCheckoutContinuation()).toBeNull();
   });
 });
 
