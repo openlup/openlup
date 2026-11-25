@@ -515,7 +515,7 @@ each of which must fail. It is not a required context of its own; the required
 See [Test scope and diagnostics](#test-scope-and-diagnostics) for selection,
 sharding, discovery and test-author guidance.
 
-The required `install-proof` context aggregates `install-packages` and all four
+The required `install-proof` context aggregates `install-packages` and all five
 `install-browser` shards. It requires actual success from both dependencies; failed,
 cancelled or skipped jobs refuse admission. On main pushes, `install-packages`
 checks `scripts/public-ci-reuse.mjs`; browser shards share its decision so a
@@ -547,13 +547,13 @@ for trust, evidence and support limits. The workflow adds no required PR check,
 does not hold publication open and does not delay the next dispatch.
 
 After package proof succeeds, `install-browser` runs the starter's installed
-PostgreSQL browser journeys in four parallel shards through
+PostgreSQL browser journeys in five parallel shards through
 [`starter-browser-ci.mjs`](scripts/starter-browser-ci.mjs). Pinned official artifact
 actions transfer only the verified manifest and public tarballs from the package
 job, retained for one day; private browser output is never uploaded. Each shard
 verifies all manifest hashes, the package inventory and the exact checkout commit
 before installing, then checks installed-package confinement. The zero-based
-`--groups` selections are `0`, `1,6`, `2,4` and `3,5`, covering every group once.
+`--groups` selections are `0`, `6`, `1,2`, `3,5` and `4`, covering every group once.
 Each shard acquires an isolated disposable
 PostgreSQL 16 per configuration through the shared test helper and `test-postgres`
 inventory pin. The package job's PostgreSQL 17 service retains its package proofs. The runner

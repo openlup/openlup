@@ -282,7 +282,7 @@ jobs:
       contents: read
       actions: read
       packages: read
-    # Five balanced shards give the catalogue-upgrade remainder (group 6) its own runner while keeping install-browser bounded below 5 minutes.
+    # Five balanced shards isolate the heavy remainder journeys (group 6) while keeping group 1 (catalogue upgrade) paired with light group 2.
     strategy:
       fail-fast: false
       max-parallel: 5
