@@ -502,3 +502,82 @@ it("matches the landed quote ref validator on all six decoded service coordinate
     await expectInfrastructure(port.recheck(context, check));
   }
 });
+
+const subscriptionCheck = { ...check, kind: "subscription" } as const;
+const currentSubscription = { binding, selectionRevision, service };
+const recheckedSubscription = { ...selected, selection: { ...selection, kind: "subscription" } };
+const verifiedSubscription = { ...verified, ...recheckedSubscription, evidenceExpiresAt: null };
+
+it("binds the three subscription arms with the incumbent casts and only current read uses SQL NULL", async () => {
+  const input = malformed("subscriptionId");
+  const { port, calls } = scriptedDestination(currentSubscription, verifiedSubscription, recheckedSubscription, input, invalidBinding);
+  expect(await port.read(context, "subscription", scopeRef, null)).toStrictEqual(currentSubscription);
+  expect(await port.read(context, "subscription", scopeRef, binding)).toStrictEqual(verifiedSubscription);
+  expect(await port.recheck(context, subscriptionCheck)).toStrictEqual(recheckedSubscription);
+  expectRefusal(await port.read(context, "subscription", "uncastable", null), input);
+  expectRefusal(await port.read(context, "snapshot", scopeRef, null as never), invalidBinding);
+  expect(calls).toStrictEqual([
+    [sql.read, [contextJson, "subscription", scopeRef, null]],
+    [sql.read, [contextJson, "subscription", scopeRef, JSON.stringify(binding)]],
+    [sql.recheck, [contextJson, "subscription", ...checkValues.slice(1)]],
+    [sql.read, [contextJson, "subscription", null, null]],
+    [sql.read, [contextJson, "snapshot", scopeRef, "null"]],
+  ]);
+});
+
+it("accepts the four new refusal pairs only on subscription routing", async () => {
+  const decisions = [
+    malformed("subscriptionId"),
+    refusal("destination_evidence_unavailable", "subscriptionId", [
+      "Owned evidence could not be established.", "The operation requires evidence in the authenticated owner scope.",
+      "Re-obtain evidence through the authenticated owner.", "Repeat the authorized subscription lookup.",
+    ]),
+    refusal("destination_v2_selection_required", "subscriptionId", [
+      "There is no current authorized selection.", "A retained subscription read requires an issued selection.",
+      "Recover through direct address selection on a qualified edit rail.", "Verify the successful selection with the authorized read.",
+    ]),
+    refusal("destination_version_changed", "selectedDelivery", [
+      "The current subscription destination coordinates differ.", "The operation requires the current subscription destination coordinates.",
+      "Read the current subscription destination with commerce_read_destination_v2 and a null expected binding.",
+      "Repeat the operation with the verified current binding and pins.",
+    ]),
+  ];
+  for (const decision of decisions) {
+    const { port } = scriptedDestination(...Array(9).fill(decision), { ...decision, extra: true }, { ...decision, field: "expectedTemplateVersion" });
+    expectRefusal(await port.read(context, "subscription", scopeRef, null), decision);
+    expectRefusal(await port.read(context, "subscription", scopeRef, binding), decision);
+    expectRefusal(await port.recheck(context, subscriptionCheck), decision);
+    for (const kind of ["snapshot", "order", "shipment"] as const) await expectInfrastructure(port.read(context, kind, scopeRef, binding));
+    await expectInfrastructure(port.recheck(context, check));
+    await expectInfrastructure(port.snapshot(context, command, now));
+    await expectInfrastructure(port.registerOrder(context, orderId, subscriptionCheck as never));
+    await expectInfrastructure(port.recheck(context, subscriptionCheck));
+    await expectInfrastructure(port.recheck(context, subscriptionCheck));
+  }
+});
+
+it("decodes only the closed subscription result shapes and preserves the service domain", async () => {
+  const doc = verifiedSubscription.document;
+  for (const output of [
+    currentSubscription, { ...verifiedSubscription, evidenceExpiresAt }, { ...verifiedSubscription, evidenceExpiresAt: undefined },
+    { ...verifiedSubscription, extra: true }, { ...verifiedSubscription, binding: { ...binding, extra: true } },
+    { ...verifiedSubscription, selection }, { ...verifiedSubscription, selection: { ...recheckedSubscription.selection, extra: true } },
+    { ...verifiedSubscription, service: { ...service, extra: true } }, { ...verifiedSubscription, document: { ...doc, extra: true } },
+    { ...verifiedSubscription, document: { ...doc, classificationKeys: [{ extra: true }] } },
+    ...(["owner", "address", "contact"] as const).map(key => ({ ...verifiedSubscription, document: { ...doc, [key]: { ...doc[key], extra: true } } })),
+  ]) await expectInfrastructure(scriptedDestination(output).port.read(context, "subscription", scopeRef, binding));
+  await expectInfrastructure(scriptedDestination(verifiedSubscription).port.read(context, "subscription", scopeRef, null));
+  await expectInfrastructure(scriptedDestination({ ...currentSubscription, extra: true }).port.read(context, "subscription", scopeRef, null));
+  await expectInfrastructure(scriptedDestination(verifiedSubscription).port.recheck(context, subscriptionCheck));
+  await expectInfrastructure(scriptedDestination(selected).port.recheck(context, subscriptionCheck));
+  const { port, calls } = scriptedDestination();
+  expectRefusal(await port.recheck(context, { ...subscriptionCheck, extra: true } as typeof subscriptionCheck), transportRefusal("check"));
+  expect(calls).toEqual([]);
+  for (const key of Object.keys(service)) {
+    const valid = { ...recheckedSubscription, service: { ...service, [key]: "😀".repeat(256) } };
+    const invalid = { ...valid, service: { ...service, [key]: "😀".repeat(257) } };
+    const { port } = scriptedDestination(valid, invalid);
+    expect(await port.recheck(context, subscriptionCheck)).toStrictEqual(valid);
+    await expectInfrastructure(port.recheck(context, subscriptionCheck));
+  }
+});

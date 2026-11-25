@@ -130,7 +130,7 @@ type OriginalAddress = Omit<NativeAddress, "country" | "subdivision"> & { countr
 const contactKeys = ["recipientName", "contactEmail", "contactPhone", "companyName", "label", "taxId", "deliveryNotes", "courierInstructions"] as const;
 type Contact = { [Key in typeof contactKeys[number]]?: string };
 
-/** @experimental Host-authorized customer and checkout scope. */
+/** @experimental Host-authorized customer and destination scope. */
 export type DestinationContextV2 = {
   clientId: UUID; scopeRef: UUID;
   owner: { installationRef: string; principalKind: "customer"; principalRef: UUID; customerOrSessionRef: UUID };
@@ -141,7 +141,7 @@ export type DestinationBindingV2 = {
 };
 /** @experimental A sealed checkout selection. */
 export type DestinationSelectionV2 = { kind: "checkout"; scopeRef: UUID; selectionRevision: UUID };
-/** @experimental The service coordinates sealed with a checkout selection. */
+/** @experimental The service coordinates sealed with a destination selection. */
 export type DestinationServicePinV2 = {
   deliverySelectionRef: string; providerRef: string; carrierRef: string; serviceRef: string;
   servicePolicyRevision: string; adapterRevision: string;
@@ -168,13 +168,21 @@ type SnapshotCommand = {
   purpose: "checkout"; scopeRef: UUID; original: { address: OriginalAddress; contact: Contact }; validated?: JsonValue;
 };
 type Rechecked = { binding: DestinationBindingV2; selection: DestinationSelectionV2; service: DestinationServicePinV2 };
+type SubscriptionSelection = Omit<DestinationSelectionV2, "kind"> & { kind: "subscription" };
+type SubscriptionRechecked = Omit<Rechecked, "selection"> & { selection: SubscriptionSelection };
+type CurrentSubscriptionDestination = Pick<Rechecked, "binding" | "service"> & { selectionRevision: UUID };
+type SubscriptionRead = Omit<DestinationVerifiedReadV2, "evidenceExpiresAt"> & SubscriptionRechecked & { evidenceExpiresAt: null };
+type SubscriptionCheck = Omit<Check, "kind"> & { kind: "subscription" };
 type Erased = { evidenceDisposition: "erased" };
 
 /** @experimental Native operations on the host's supplied executor. */
 export interface DestinationPortV2 {
   snapshot(ctx: DestinationContextV2, command: SnapshotCommand, now: UtcMillis): Promise<Decision<DestinationIssueResultV2 | Erased>>;
+  read(ctx: DestinationContextV2, kind: "subscription", id: UUID, expectedBinding: null): Promise<SubscriptionDecision<CurrentSubscriptionDestination>>;
+  read(ctx: DestinationContextV2, kind: "subscription", id: UUID, expectedBinding: DestinationBindingV2): Promise<SubscriptionDecision<SubscriptionRead>>;
   read(ctx: DestinationContextV2, kind: "snapshot" | "order" | "shipment", id: UUID,
     expectedBinding: DestinationBindingV2): Promise<Decision<DestinationVerifiedReadV2>>;
+  recheck(ctx: DestinationContextV2, check: SubscriptionCheck): Promise<SubscriptionDecision<SubscriptionRechecked>>;
   recheck(ctx: DestinationContextV2, check: Check): Promise<Decision<Rechecked>>;
   registerOrder(ctx: DestinationContextV2, orderId: UUID, check: Check): Promise<Decision<DestinationBindingV2>>;
 }
@@ -200,13 +208,23 @@ const refusalFields = {
   destination_idempotency_conflict: ["idempotencyKey"],
   destination_isolation_unsupported: ["isolation"],
 } as const;
+const subscriptionRefusalFields = {
+  address_invalid_input: ["subscriptionId"],
+  destination_evidence_unavailable: ["subscriptionId"],
+  destination_v2_selection_required: ["subscriptionId"],
+  destination_version_changed: ["selectedDelivery"],
+} as const;
 type Refusal<Code, Field> = {
   outcome: "refused"; code: Code; field: Field; observed: string; cause: string; fix: string; recheck: string;
 };
 type OwnerRefusal = { [Code in keyof typeof refusalFields]: Refusal<Code, typeof refusalFields[Code][number]> }[keyof typeof refusalFields];
+type SubscriptionRefusal = {
+  [Code in keyof typeof subscriptionRefusalFields]: Refusal<Code, typeof subscriptionRefusalFields[Code][number]>
+}[keyof typeof subscriptionRefusalFields];
 type TransportField = "owner" | "command" | "destination" | "selectedDelivery" | "check";
 type TransportRefusal = Refusal<"address_invalid_input", TransportField>;
 type Decision<T> = T | OwnerRefusal | TransportRefusal;
+type SubscriptionDecision<T> = Decision<T> | SubscriptionRefusal;
 type BindValue = string | null | TransportRefusal;
 
 function transportRefusal(field: TransportField): TransportRefusal {
@@ -277,8 +295,9 @@ function checkArguments(value: unknown): BindValue[] {
     const revision = uuidArgument(fields.get("expectedSelectionRevision"));
     const binding = fields.has("expectedBinding") ? jsonArgument(fields.get("expectedBinding"), "destination") : null;
     const service = fields.has("expectedService") ? jsonArgument(fields.get("expectedService"), "selectedDelivery") : null;
-    // The check envelope is split over SQL parameters. Extra properties still have to be plain data.
+    // The envelope is split over SQL parameters. Checkout retains its plain-data extension rule.
     for (const key of ["kind", "scopeRef", "expectedSelectionRevision", "expectedBinding", "expectedService"]) fields.delete(key);
+    if (kind === "subscription" && fields.size > 0) return [transportRefusal("check")];
     for (const extra of fields.values()) snapshotJson(extra);
     return [kind, scope, revision, binding, service];
   } catch { return [transportRefusal("check")]; }
@@ -308,17 +327,21 @@ const readResult = z.strictObject({
     contact: z.strictObject(Object.fromEntries(contactKeys.map(key => [key, z.string().optional()]))),
   }),
 });
-const recheckResult = z.strictObject({
-  binding: bindingSchema, selection: selectionSchema, service: z.strictObject({
-    deliverySelectionRef: serviceRef, providerRef: serviceRef, carrierRef: serviceRef, serviceRef,
-    servicePolicyRevision: serviceRef, adapterRevision: serviceRef,
-  }),
+const serviceSchema = z.strictObject({
+  deliverySelectionRef: serviceRef, providerRef: serviceRef, carrierRef: serviceRef, serviceRef,
+  servicePolicyRevision: serviceRef, adapterRevision: serviceRef,
 });
+const recheckResult = z.strictObject({ binding: bindingSchema, selection: selectionSchema, service: serviceSchema });
+const subscriptionRecheck = recheckResult.extend({ selection: selectionSchema.extend({ kind: z.literal("subscription") }) });
+const subscriptionCurrent = z.strictObject({ binding: bindingSchema, selectionRevision: uuid, service: serviceSchema });
+const subscriptionRead = readResult.extend({ ...subscriptionRecheck.shape, evidenceExpiresAt: z.null() });
 const ownerRefusal = z.strictObject({
   outcome: z.literal("refused"), code: z.string(), field: z.string(),
   observed: z.string(), cause: z.string(), fix: z.string(), recheck: z.string(),
-}).refine(({ code, field }) => Object.hasOwn(refusalFields, code)
-  && (refusalFields[code as keyof typeof refusalFields] as readonly string[]).includes(field));
+});
+function hasRefusalPair(table: Readonly<Record<string, readonly string[]>>, code: string, field: string): boolean {
+  return Object.hasOwn(table, code) && table[code]!.includes(field);
+}
 
 const infrastructureMessage = [
   "OPENLUP_E_DESTINATION_INFRASTRUCTURE",
@@ -330,7 +353,9 @@ const infrastructureMessage = [
 
 /** @experimental Use the supplied executor. The native host owns transaction and session lifetime. */
 export function createPostgresDestinationPortV2(db: DestinationQueryExecutor): DestinationPortV2 {
-  async function invoke<T>(sql: string, values: BindValue[], success: z.ZodType<T>): Promise<Decision<T>> {
+  function invoke<T>(sql: string, values: BindValue[], success: z.ZodType<T>, subscription: true): Promise<SubscriptionDecision<T>>;
+  function invoke<T>(sql: string, values: BindValue[], success: z.ZodType<T>): Promise<Decision<T>>;
+  async function invoke<T>(sql: string, values: BindValue[], success: z.ZodType<T>, subscription = false): Promise<SubscriptionDecision<T>> {
     const refusal = values.find(value => value !== null && typeof value === "object");
     if (refusal) return refusal;
     let response: Awaited<ReturnType<DestinationQueryExecutor["query"]>>;
@@ -349,7 +374,12 @@ export function createPostgresDestinationPortV2(db: DestinationQueryExecutor): D
         const fields = plainRecord(row) ? dataEntries(row) : [];
         if (fields.length === 1 && fields[0]?.[0] === "result") {
           const result = snapshotJson(fields[0][1]);
-          if (ownerRefusal.safeParse(result).success) return result as OwnerRefusal;
+          const refusal = ownerRefusal.safeParse(result);
+          if (refusal.success) {
+            const { code, field } = refusal.data;
+            if (hasRefusalPair(refusalFields, code, field) ||
+              (subscription && hasRefusalPair(subscriptionRefusalFields, code, field))) return result as OwnerRefusal | SubscriptionRefusal;
+          }
           const decoded = success.safeParse(result);
           if (decoded.success) return decoded.data;
         }
@@ -360,19 +390,33 @@ export function createPostgresDestinationPortV2(db: DestinationQueryExecutor): D
     throw new Error(infrastructureMessage, { cause: { reason: "malformed_response", rowCount } });
   }
 
+  function read(ctx: DestinationContextV2, kind: "subscription", id: UUID, binding: null): Promise<SubscriptionDecision<CurrentSubscriptionDestination>>;
+  function read(ctx: DestinationContextV2, kind: "subscription", id: UUID, binding: DestinationBindingV2): Promise<SubscriptionDecision<SubscriptionRead>>;
+  function read(ctx: DestinationContextV2, kind: "snapshot" | "order" | "shipment", id: UUID,
+    binding: DestinationBindingV2): Promise<Decision<DestinationVerifiedReadV2>>;
+  function read(ctx: DestinationContextV2, kind: string, id: UUID, binding: DestinationBindingV2 | null) {
+    const sql = "SELECT public.commerce_read_destination_v2($1::jsonb, $2::text, $3::uuid, $4::jsonb) AS result";
+    const current = kind === "subscription" && binding === null;
+    const args = [jsonArgument(ctx, "owner"), kindArgument(kind), uuidArgument(id), current ? null : jsonArgument(binding, "destination")];
+    if (kind !== "subscription") return invoke(sql, args, readResult);
+    return current ? invoke(sql, args, subscriptionCurrent, true) : invoke(sql, args, subscriptionRead, true);
+  }
+
+  function recheck(ctx: DestinationContextV2, check: SubscriptionCheck): Promise<SubscriptionDecision<SubscriptionRechecked>>;
+  function recheck(ctx: DestinationContextV2, check: Check): Promise<Decision<Rechecked>>;
+  function recheck(ctx: DestinationContextV2, check: Check | SubscriptionCheck) {
+    const sql = "SELECT public.commerce_recheck_destination_v2($1::jsonb, $2::text, $3::uuid, $4::uuid, $5::jsonb, $6::jsonb) AS result";
+    const args = [jsonArgument(ctx, "owner"), ...checkArguments(check)];
+    return args[1] === "subscription" ? invoke(sql, args, subscriptionRecheck, true) : invoke(sql, args, recheckResult);
+  }
+
   return {
     snapshot(ctx, command, now) {
       return invoke("SELECT public.commerce_snapshot_destination_v2($1::jsonb, $2::jsonb, $3::timestamptz) AS result",
         [jsonArgument(ctx, "owner"), jsonArgument(command, "command"), typeof now === "string" && utcMillis(now) ? now : null], snapshotResult);
     },
-    read(ctx, kind, id, binding) {
-      return invoke("SELECT public.commerce_read_destination_v2($1::jsonb, $2::text, $3::uuid, $4::jsonb) AS result",
-        [jsonArgument(ctx, "owner"), kindArgument(kind), uuidArgument(id), jsonArgument(binding, "destination")], readResult);
-    },
-    recheck(ctx, check) {
-      return invoke("SELECT public.commerce_recheck_destination_v2($1::jsonb, $2::text, $3::uuid, $4::uuid, $5::jsonb, $6::jsonb) AS result",
-        [jsonArgument(ctx, "owner"), ...checkArguments(check)], recheckResult);
-    },
+    read,
+    recheck,
     registerOrder(ctx, orderId, check) {
       return invoke("SELECT public.commerce_register_order_destination_v2($1::jsonb, $2::uuid, $3::text, $4::uuid, $5::uuid, $6::jsonb, $7::jsonb) AS result",
         [jsonArgument(ctx, "owner"), uuidArgument(orderId), ...checkArguments(check)], bindingSchema);
