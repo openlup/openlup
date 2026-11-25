@@ -9,7 +9,9 @@ import { fileURLToPath } from "node:url";
 type InstalledPackage = { name: string; version: string; root: string; manifest: string };
 type ScanSummary = { scope: "declarations" | "application" | "package-source"; packageName?: string; scannedFiles: number; fileLimit: number; limitReached: boolean };
 type ScanResult = { hits: Hit[]; summary?: ScanSummary };
-type Hit = { title: string; file: string; start: number; end: number; owner?: string; packageName: string; score: number; reason: string };
+export type SymbolMaturity = "stable" | "experimental" | "testing";
+// maturity and deprecated appear only on an export hit for a symbol whose declaration was found inside the package.
+type Hit = { title: string; file: string; start: number; end: number; owner?: string; packageName: string; score: number; reason: string; maturity?: SymbolMaturity; deprecated?: true };
 export type SearchContextOptions = {
   limit?: number;
   scanLimits?: {
@@ -29,7 +31,7 @@ const applicationFileLimit = 2500;
 const defaultHitLimit = 8;
 const maxHitLimit = 50;
 const apiReportHeading = /^`?packages\/[^/]+\/api\/[^/]+\.api\.md`?$/u;
-const usage = "Usage: openlup-context search <task> [--code] [--package-code] [--limit <1..50>] [--json]\n       openlup-context mcp\nRun from the application root after installing @openlup/core.\nDeclaration occurrences are unverified import leads; read installed exports and examples for public specifiers and type/value usage.\n";
+const usage = "Usage: openlup-context search <task> [--code] [--package-code] [--limit <1..50>] [--json]\n       openlup-context mcp\nRun from the application root after installing @openlup/core.\nDeclaration occurrences are unverified import leads; read installed exports and examples for public specifiers and type/value usage.\nIn a symbol's export hit, maturity is the declared maturity (stable, experimental or testing) and deprecated: true marks a deprecated symbol; maturity is absent when the declaration is not found or when no subpath maturity is known and no `@experimental` tag applies, so read the declaration.\n";
 
 function readSortedEntries(directory: string) {
   return readdirSync(directory, { withFileTypes: true }).sort((left, right) =>
@@ -236,7 +238,8 @@ function querySymbol(query: string): string | undefined {
     (exact && word === trimmed) || /[A-Z_]/u.test(word.slice(1)));
 }
 
-function stripDeclarationComments(source: string): string {
+// onBlock receives each /* ... */ comment, delimiters included, and the offset in the result where its blank stands.
+function stripDeclarationComments(source: string, onBlock?: (block: string, offset: number) => void): string {
   let out = "";
   let index = 0;
   const length = source.length;
@@ -262,11 +265,12 @@ function stripDeclarationComments(source: string): string {
     }
     if (ch === "/" && next === "/") {
       index += 2;
-      while (index < length && source[index] !== "\n") index++;
+      while (index < length && !/[\n\r\u2028\u2029]/u.test(source[index]!)) index++;
       out += " ";
       continue;
     }
     if (ch === "/" && next === "*") {
+      const blockStart = index;
       index += 2;
       let sawNewline = false;
       while (index < length) {
@@ -277,6 +281,7 @@ function stripDeclarationComments(source: string): string {
         if (source[index] === "\n") sawNewline = true;
         index++;
       }
+      onBlock?.(source.slice(blockStart, index), out.length);
       out += sawNewline ? "\n" : " ";
       continue;
     }
@@ -320,7 +325,7 @@ function resolveDeclarationFile(packageRoot: string, realRoot: string, fromFile:
   return undefined;
 }
 
-function collectExportedSymbols(packageRoot: string, realRoot: string, entrypoint: string): Set<string> {
+export function collectExportedSymbols(packageRoot: string, realRoot: string, entrypoint: string): Set<string> {
   const symbols = new Set<string>();
   const visited = new Set<string>();
   const queued = new Set<string>([entrypoint]);
@@ -358,6 +363,249 @@ function collectExportedSymbols(packageRoot: string, realRoot: string, entrypoin
     }
   }
   return symbols;
+}
+
+type Tags = { experimental: boolean; deprecated: boolean };
+const noTags: Tags = { experimental: false, deprecated: false };
+const singleLineSpace = /[ \t\v\f\u0085\u00a0\u1680\u2000-\u200b\u202f\u205f\u3000\ufeff]/u;
+// At a line start the scanner knows four blanks and two line ends; elsewhere it uses the wider sets.
+const lineStartSpace = /[ \t\v\f]/u;
+const newline = /[\n\r]/u;
+const lineBreak = /[\n\r\u2028\u2029]/u;
+const isBlank = (char: string) => singleLineSpace.test(char) || lineBreak.test(char);
+// Identifier characters, plus the hyphen the comment scanner admits in a tag name.
+const tagNamePart = "(?:[\\p{ID_Continue}$-]|\\u200c|\\u200d)";
+const tagName = new RegExp(`[\\p{ID_Start}$_]${tagNamePart}*`, "uy");
+const linkPrefix = new RegExp(`\\{@(?:link|linkcode|linkplain)(?!${tagNamePart})`, "uy");
+
+/**
+ * The @experimental and @deprecated tags of one doc comment, read as the TypeScript compiler reads the comment it
+ * attaches to a declaration. A tag is `@` followed by a name, where the `@` starts a line (after whitespace and at
+ * most one `*`) or follows a whitespace character and precedes a non-whitespace one, so prose after `@beta` or
+ * text before the tag counts. The name runs over letters, digits, `_`, `$` and `-`: `@experimental-x` and
+ * `@experimentalx` are other tags, `@experimental.` is the tag, and case matters. Inside a `{@link ...}` there is
+ * no tag. Once a tag has started, a backtick opens a code span that ends at the next backtick or at the end of
+ * the line, and `@` inside it starts no tag; before the first tag backticks mean nothing. A tag in an `@example`
+ * fence still counts. Text that is not a doc comment has no tags. Malformed comments are outside the rule: an
+ * unterminated `{@link`, an `@` that names nothing, and the braces of a type after `@param {...}` or `@returns {...}`.
+ */
+export function jsdocTags(block: string): Tags {
+  const tags = { ...noTags };
+  if (block.length < 5 || !block.startsWith("/**") || block.startsWith("/**/") || !block.endsWith("*/")) return tags;
+  const text = block.slice(3, -2);
+  // "bol": at the start of a line; "saw": after the first asterisk of a line, or at the start; "text": in
+  // running text; "tick": in a code span of a tag's text.
+  let state: "bol" | "saw" | "text" | "tick" = "saw";
+  let inTag = false;
+  const readTag = (at: number): number => {
+    tagName.lastIndex = at + 1;
+    const name = tagName.exec(text)?.[0] ?? "";
+    if (name === "experimental") tags.experimental = true;
+    if (name === "deprecated") tags.deprecated = true;
+    inTag = true;
+    // Whitespace, line breaks and the asterisk that opens a following line belong to the tag's header.
+    let index = at + 1 + name.length;
+    let afterBreak = false;
+    for (; index < text.length; index++) {
+      const char = text[index]!;
+      if (newline.test(char)) afterBreak = true;
+      else if (char === "*" && afterBreak) afterBreak = false;
+      else if (!lineStartSpace.test(char)) break;
+    }
+    state = "saw";
+    return index;
+  };
+  const skipLink = (at: number): number => {
+    state = "text";
+    linkPrefix.lastIndex = at;
+    if (!linkPrefix.test(text)) return at + 1;
+    let index = at + 1;
+    while (index < text.length && text[index] !== "}" && !newline.test(text[index]!)) index++;
+    if (text[index] === "\r" && text[index + 1] === "\n") index++;
+    return index + 1;
+  };
+  let index = 0;
+  while (index < text.length) {
+    const char = text[index]!;
+    if (newline.test(char)) { state = "bol"; index++; continue; }
+    if (state === "bol" || state === "saw") {
+      if (lineStartSpace.test(char)) index++;
+      else if (char === "*") { state = state === "saw" ? "text" : "saw"; index++; }
+      else if (char === "@") index = readTag(index);
+      else if (char === "`" && inTag) { state = "tick"; index++; }
+      else if (char === "{") index = skipLink(index);
+      else { state = "text"; index++; }
+      continue;
+    }
+    if (char === "`") {
+      if (inTag) state = state === "tick" ? "text" : "tick";
+      index++;
+    } else if (state === "text" && char === "{") {
+      index = skipLink(index);
+    } else if (state === "text" && char === "@" && index > 0 && singleLineSpace.test(text[index - 1]!)
+      && !(index + 1 < text.length && (singleLineSpace.test(text[index + 1]!) || lineBreak.test(text[index + 1]!)))) {
+      index = readTag(index);
+    } else index++;
+  }
+  return tags;
+}
+
+type FileFacts = {
+  declared: Map<string, Tags[]>;
+  named: Map<string, { local: string; from?: string; tags: Tags }>;
+  namespaces: Map<string, Tags>;
+  stars: { from: string; tags: Tags }[];
+};
+
+// Later declarators of `export declare const A: T, B: U;`: the names after each top-level comma, up to the semicolon.
+function laterDeclarators(text: string, start: number): string[] {
+  const names: string[] = [];
+  let depth = 0;
+  for (let index = start; index < text.length; index++) {
+    const char = text[index]!;
+    if (char === '"' || char === "'" || char === "`") {
+      for (index++; index < text.length && text[index] !== char; index++) if (text[index] === "\\") index++;
+    } else if (char === "(" || char === "[" || char === "{" || char === "<") depth++;
+    else if (char === ")" || char === "]" || char === "}" || (char === ">" && text[index - 1] !== "=")) { if (--depth < 0) break; }
+    else if (depth === 0 && char === ";") break;
+    else if (depth === 0 && char === "\n" && /^\s*(?:export|declare|import)\b/u.test(text.slice(index + 1, index + 40))) break;
+    else if (depth === 0 && char === ",") {
+      const name = /^\s*([A-Za-z_$][A-Za-z0-9_$]*)/u.exec(text.slice(index + 1, index + 200))?.[1];
+      if (name) names.push(name);
+    }
+  }
+  return names;
+}
+
+// Positions of the text that are inside braces or a string literal, so a statement keyword found there is not one.
+function nestedPositions(text: string): Uint8Array {
+  const nested = new Uint8Array(text.length);
+  let depth = 0;
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index]!;
+    if (char === '"' || char === "'" || char === "`") {
+      const start = index;
+      for (index++; index < text.length && text[index] !== char; index++) if (text[index] === "\\") index++;
+      nested.fill(1, start, Math.min(index + 1, text.length));
+    } else if (char === "{") { depth++; nested[index] = 1; }
+    else if (char === "}") { depth = Math.max(0, depth - 1); nested[index] = depth > 0 ? 1 : 0; }
+    else if (depth > 0) nested[index] = 1;
+  }
+  return nested;
+}
+
+// One file's top-level exports and the tags of the statement that makes each one, from declaration text. The
+// patterns are the export collector's, matched where a statement of the file can start rather than only at a line start.
+function fileFacts(source: string): FileFacts {
+  const blocks: { offset: number; text: string }[] = [];
+  const blanks = new Set<number>();
+  const cleaned = stripDeclarationComments(source, (text, offset) => {
+    blanks.add(offset);
+    // `/**/` is an empty comment, not a doc comment.
+    if (text.startsWith("/**") && !text.startsWith("/**/")) blocks.push({ offset, text });
+  });
+  const nested = nestedPositions(cleaned);
+  // The compiler reads the comments between the previous token and the statement, after the first line break that
+  // follows that token (anywhere in the file's first statement), and only the last doc comment among them counts.
+  const leadingTags = (statementStart: number): Tags => {
+    let previousEnd = statementStart;
+    while (previousEnd > 0 && isBlank(cleaned[previousEnd - 1]!)) previousEnd--;
+    let last: string | undefined;
+    for (const { offset, text } of blocks) {
+      if (offset < previousEnd || offset >= statementStart) continue;
+      let broken = previousEnd === 0;
+      for (let at = previousEnd; at < offset && !broken; at++) broken = (cleaned[at] === "\n" || cleaned[at] === "\r") && !blanks.has(at);
+      if (broken) last = text;
+    }
+    return last === undefined ? noTags : jsdocTags(last);
+  };
+  // A statement starts the file, follows a statement that ended with `;` or `}`, or starts a line.
+  const startsStatement = (start: number): boolean => {
+    let previousEnd = start;
+    while (previousEnd > 0 && isBlank(cleaned[previousEnd - 1]!)) previousEnd--;
+    return previousEnd === 0 || cleaned[previousEnd - 1] === ";" || cleaned[previousEnd - 1] === "}" || lineBreak.test(cleaned.slice(previousEnd, start));
+  };
+  const facts: FileFacts = { declared: new Map(), named: new Map(), namespaces: new Map(), stars: [] };
+  const statements = (pattern: RegExp, handle: (match: RegExpExecArray, tags: Tags) => void) => {
+    for (const match of cleaned.matchAll(pattern)) {
+      if (!nested[match.index] && startsStatement(match.index)) handle(match, leadingTags(match.index));
+    }
+  };
+  statements(/\bexport\s+(?:declare\s+)?(?:abstract\s+)?(const\s+enum|enum|function|const|let|var|class|interface|type|namespace)\s+([A-Za-z_$][A-Za-z0-9_$]*)\b/gu, (match, tags) => {
+    const names = [match[2]!];
+    if (/^(?:const|let|var)$/u.test(match[1]!)) names.push(...laterDeclarators(cleaned, match.index + match[0].length));
+    for (const name of names) facts.declared.set(name, [...facts.declared.get(name) ?? [], tags]);
+  });
+  statements(/\bexport\s+(?:type\s+)?\{([^}]*)\}(?:\s*from\s*["']([^"']+)["'])?/gu, (match, tags) => {
+    for (const item of (match[1] ?? "").split(",")) {
+      const specifier = /^([A-Za-z_$][A-Za-z0-9_$]*)(?:\s+as\s+([A-Za-z_$][A-Za-z0-9_$]*))?$/u.exec(item.replace(/^\s*type\s+/u, "").trim());
+      if (specifier) facts.named.set(specifier[2] ?? specifier[1]!, { local: specifier[1]!, ...(match[2] === undefined ? {} : { from: match[2] }), tags });
+    }
+  });
+  statements(/\bexport\s+(?:type\s+)?\*\s+as\s+([A-Za-z_$][A-Za-z0-9_$]*)\s+from\s+["']([^"']+)["']/gu, (match, tags) => {
+    facts.namespaces.set(match[1]!, tags);
+  });
+  statements(/\bexport\s+(?:type\s+)?\*\s+from\s+["']([^"']+)["']/gu, (match, tags) => {
+    facts.stars.push({ from: match[1]!, tags });
+  });
+  return facts;
+}
+
+const hasTag = (tags: Tags) => tags.experimental || tags.deprecated;
+// A statement's tag applies to the names it exports, unless the declaration they reach carries a tag of its own.
+const inherit = (inner: Tags, statement: Tags): Tags => hasTag(inner) || !hasTag(statement) ? inner : statement;
+
+/**
+ * Reads the declared tags of one exported symbol of a subpath from its declaration files, starting at the
+ * subpath's entry file: a declaration there decides, else a named re-export continues in its target, else each
+ * `export *` target is searched in order. Overloads and merged declarations combine. The walk stays inside
+ * the package under the lookup's containment checks and visits at most 256 (file, name) pairs. Undefined means
+ * the declaration was not found inside the package, so nothing is known about the symbol.
+ */
+export function declaredSymbolMaturity(packageRoot: string, entrypoint: string, symbol: string, subpathMaturity?: string): { maturity?: SymbolMaturity; deprecated?: true } | undefined {
+  const realRoot = realpathSync(packageRoot);
+  const cache = new Map<string, FileFacts | undefined>();
+  const facts = (file: string): FileFacts | undefined => {
+    if (!cache.has(file)) cache.set(file, isContainedRegularFile(packageRoot, realRoot, file) ? fileFacts(readFileSync(file, "utf8")) : undefined);
+    return cache.get(file);
+  };
+  let budget = 256;
+  const find = (file: string, name: string): Tags | undefined => {
+    if (budget-- <= 0) return undefined;
+    const known = facts(file);
+    if (!known) return undefined;
+    const declared = known.declared.get(name);
+    if (declared) return { experimental: declared.some((tags) => tags.experimental), deprecated: declared.some((tags) => tags.deprecated) };
+    const named = known.named.get(name);
+    if (named) {
+      const target = named.from === undefined ? undefined : resolveDeclarationFile(packageRoot, realRoot, file, named.from);
+      const inner = target === undefined ? undefined : find(target, named.local);
+      return inner && inherit(inner, named.tags);
+    }
+    const space = known.namespaces.get(name);
+    if (space) return space;
+    for (const star of known.stars) {
+      const target = resolveDeclarationFile(packageRoot, realRoot, file, star.from);
+      const inner = target === undefined ? undefined : find(target, name);
+      if (inner) return inherit(inner, star.tags);
+    }
+    return undefined;
+  };
+  const tags = find(entrypoint, symbol);
+  if (!tags) return undefined;
+  const maturity = tags.experimental ? "experimental" : subpathMaturity === "stable" || subpathMaturity === "testing" || subpathMaturity === "experimental" ? subpathMaturity : undefined;
+  return { ...(maturity ? { maturity } : {}), ...(tags.deprecated ? { deprecated: true as const } : {}) };
+}
+
+// The maturity the package's release gates declare for a subpath, when it has one the lookup knows.
+function subpathMaturity(item: InstalledPackage, subpath: string): SymbolMaturity | undefined {
+  const file = join(item.root, "release-gates.json");
+  if (!isContainedRegularFile(item.root, realpathSync(item.root), file)) return undefined;
+  try {
+    const surface = (JSON.parse(readFileSync(file, "utf8")) as { packageSurface?: Record<string, { maturity?: unknown }> }).packageSurface;
+    const maturity = surface && Object.hasOwn(surface, subpath) ? surface[subpath]?.maturity : undefined;
+    return maturity === "stable" || maturity === "testing" || maturity === "experimental" ? maturity : undefined;
+  } catch { return undefined; }
 }
 
 function declarationHits(item: InstalledPackage, query: string, fileLimit: number): ScanResult {
@@ -426,6 +674,7 @@ function exportHits(item: InstalledPackage, query: string, terms: string[], rawT
               packageName: item.name,
               score: 26,
               reason: "declared public export",
+              ...declaredSymbolMaturity(item.root, entrypoint, symbol, subpathMaturity(item, subpath)),
             });
           }
         }
@@ -564,7 +813,7 @@ export function formatContextResult(cwd: string, result: ReturnType<typeof searc
   if (!result.hits.length) lines.push("No indexed match. This does not prove a public seam is absent; inspect installed exports and declarations.");
   for (const [index, hit] of result.hits.entries()) {
     const path = relative(cwd, hit.file);
-    lines.push(`${index + 1}. ${hit.title} [${hit.packageName}]\n   ${path}:${hit.start}-${hit.end} (${hit.reason})${hit.owner ? `; source ${hit.owner}` : ""}`);
+    lines.push(`${index + 1}. ${hit.title} [${hit.packageName}]\n   ${path}:${hit.start}-${hit.end} (${hit.reason})${hit.owner ? `; source ${hit.owner}` : ""}${hit.maturity ? `; maturity ${hit.maturity}` : ""}${hit.deprecated ? "; deprecated" : ""}`);
   }
   return `${lines.join("\n")}\n`;
 }
