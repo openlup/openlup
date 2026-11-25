@@ -669,9 +669,13 @@ it("verifies replaced bases only in their historical interval with same-key succ
   expect(await verifyDerived(owner, disabled.snapshot, at)).toEqual([null]);
   const active = await addPrice(owner, disabled.subject, 125);
   expect(await verifyDerived(owner, derivedSnapshot(disabled.subject, active, 125, disabled.policy, at, 110), at)).toEqual([110]);
+});
 
+it("uses only the successor key and boundary for retired-base evidence", async () => {
+  const { owner } = env;
   const { rows: [finite] } = await owner.query(`SELECT (now()-interval '12 hours')::text AS start,
-    (now()-interval '9 hours')::text AS at,(now()-interval '6 hours')::text AS cutoff`);
+    (now()-interval '9 hours')::text AS at,(now()-interval '6 hours')::text AS cutoff,
+    (now()-interval '3 hours')::text AS successor_end`);
   for (const [currency, competes] of [["XBC", false], ["XBD", true]] as const) {
     const seeded = await seedDerived(owner, currency);
     if (!competes) await owner.query("DELETE FROM public.price_entries WHERE id=$1", [seeded.baseId]);
@@ -681,8 +685,12 @@ it("verifies replaced bases only in their historical interval with same-key succ
     [seeded.subject.listId, seeded.subject.skuId, finite.start, finite.cutoff])).rows[0]!;
     const claim = competes ? seeded.snapshot : derivedSnapshot(seeded.subject, id, 125, seeded.policy, finite.at, 110);
     expect(await verifyDerived(owner, claim, finite.at)).toEqual([competes ? 110 : null]);
-    await addPrice(owner, seeded.subject, 230, "one_time", 1, "gross", finite.cutoff);
-    expect(await verifyDerived(owner, claim, finite.at)).toEqual([competes ? null : 110]);
+    await owner.query(`INSERT INTO public.price_entries
+      (price_list_id,variant_id,mode,min_qty,unit_price_minor,amount_kind,active,valid_from,valid_to)
+      VALUES($1,$2,'one_time',1,230,'net',false,$3,$4)`,
+    [seeded.subject.listId, seeded.subject.skuId, finite.cutoff, finite.successor_end]);
+    expect(await verifyDerived(owner, claim, finite.at), competes ? "retired competitor" : "retired claim")
+      .toEqual([competes ? null : 110]);
   }
 });
 
@@ -722,10 +730,12 @@ it("still refuses an in-flight native draft after another transaction replaces i
   const { owner, runtime } = env;
   const { subject, baseId, policy, snapshot } = await seedDerived(owner, "XBG");
   const db = await runtime.connect();
+  let originalPricingAt: string;
   let replacement: Awaited<ReturnType<typeof replaceBase>>;
   try {
     await db.query("BEGIN ISOLATION LEVEL READ COMMITTED");
-    const at = await dbInstant(db), before = await counts();
+    originalPricingAt = await dbInstant(db);
+    const before = await counts();
     replacement = await replaceBase(owner, subject, baseId, 230);
     expect((await db.query(`SELECT old.active,old.valid_to::text AS cutoff,old.valid_to>now() AS after_start,
       next.active AS successor_active,next.valid_from=old.valid_to AS same_boundary
@@ -733,15 +743,23 @@ it("still refuses an in-flight native draft after another transaction replaces i
     [baseId, replacement.successor])).rows).toEqual([
       { active: false, cutoff: replacement.cutoff, after_start: true, successor_active: true, same_boundary: true },
     ]);
-    expect(await verifyDerived(db, snapshot, at)).toEqual([null]);
+    expect(await verifyDerived(db, snapshot, originalPricingAt)).toEqual([null]);
     await db.query("SAVEPOINT stale_draft");
     await expect(writePriceDraft(db, snapshot)).rejects.toMatchObject(priceChanged);
     await db.query("ROLLBACK TO SAVEPOINT stale_draft");
     expect(await counts()).toEqual(before);
   } finally { await db.query("ROLLBACK"); db.release(); }
+  await expect.poll(async () => {
+    const { rows: [clock] } = await owner.query<{ ready: boolean; observed: string }>(`WITH clock AS (SELECT clock_timestamp() AS observed)
+      SELECT date_trunc('milliseconds',observed) >= $1::timestamptz AS ready,observed::text FROM clock`, [replacement.cutoff]);
+    return clock!.ready ? "ready" : `cutoff ${replacement.cutoff}, database clock ${clock!.observed}`;
+  }, { interval: 5, timeout: 1000 }).toBe("ready");
   await transaction(runtime, async current => {
-    const snapshot = derivedSnapshot(subject, replacement.successor, 230, policy, await dbInstant(current), 210);
-    await expect(writePriceDraft(current, snapshot)).resolves.toMatchObject({ orderDraft: { replayed: false } });
+    const successor = derivedSnapshot(subject, replacement.successor, 230, policy, await dbInstant(current), 210);
+    await expect(writePriceDraft(current, successor)).resolves.toMatchObject({ orderDraft: { replayed: false } });
+    expect((await current.query("SELECT date_trunc('milliseconds',now()) >= $1::timestamptz AS ready",
+      [replacement.cutoff])).rows).toEqual([{ ready: true }]);
+    expect(await verifyDerived(current, snapshot, originalPricingAt), "original price after the cutoff").toEqual([110]);
   });
 });
 
