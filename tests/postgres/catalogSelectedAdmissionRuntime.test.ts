@@ -133,6 +133,7 @@ function signed(request = original, patch: Record<string, unknown> = {}, overrid
 
 function trace(overrides?: (index: number, sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] } | undefined>) {
   const statements: Array<{ index: number; sql: string; values?: unknown[] }> = [];
+  const releases: Array<{ index: number; discard: boolean }> = [];
   let connection = 0;
   const pool = { async connect() {
     const index = connection++, db = await installation.runtime.connect();
@@ -142,10 +143,14 @@ function trace(overrides?: (index: number, sql: string, values?: unknown[]) => P
         statements.push({ index, sql, values });
         return await overrides?.(index, sql, values) ?? (typeof query === "string" ? db.query(query, values) : db.query(query));
       },
-      on: db.on.bind(db), removeListener: db.removeListener.bind(db), release: db.release.bind(db),
+      on: db.on.bind(db), removeListener: db.removeListener.bind(db),
+      release(discard?: boolean) {
+        releases.push({ index, discard: discard === true });
+        db.release(discard);
+      },
     };
   } };
-  return { pool: pool as unknown as Parameters<typeof submitSelectedCatalogAdmission>[0], statements,
+  return { pool: pool as unknown as Parameters<typeof submitSelectedCatalogAdmission>[0], statements, releases,
     writes: () => statements.filter(entry => entry.sql === runtimeSql && entry.values?.[0] === "write"),
     guards: () => statements.filter(entry => entry.sql === runtimeSql && entry.values?.[0] === "prelock") };
 }
@@ -279,6 +284,21 @@ it("separates signed money and digest motion and checks each signed section", as
   expect(await effectRows()).toEqual(before);
 });
 
+it("refuses an expected total different from the authenticated payable before reading owner evidence", async () => {
+  const input = prepare(), before = await effectRows();
+  const observed = trace();
+  evaluatePromotion.mockClear();
+  const expectedTotal = { ...input.expectedTotal, amountMinor: input.expectedTotal.amountMinor + 1 };
+  await expect(submitSelectedCatalogAdmission(observed.pool, { ...input, expectedTotal }, options())).rejects.toMatchObject({
+    ...integrity, message: "Recover the original purchase evidence with its owner and replay the original request.",
+  });
+  expect(observed.guards()).toHaveLength(1);
+  expect(observed.statements.some(row => row.sql.includes("catalog_offer_memberships_page"))).toBe(false);
+  expect(evaluatePromotion).not.toHaveBeenCalled();
+  expect(observed.writes()).toHaveLength(0);
+  expect(await effectRows()).toEqual(before);
+});
+
 it("makes a cluster visibility retry explicit on the same immutable request", async () => {
   const input = prepare(), before = await effectRows();
   let advanced = false;
@@ -294,6 +314,10 @@ it("makes a cluster visibility retry explicit on the same immutable request", as
     message: "catalog_admission_visibility_changed", code: "40001", hint: "Retry the same request with the same idempotency key.",
   });
   expect(observed.statements.filter(row => row.sql.startsWith("BEGIN"))).toHaveLength(1);
+  const rolledBack = observed.statements.some(row => row.index === 0 && row.sql === "ROLLBACK");
+  const discarded = observed.releases.some(release => release.index === 0 && release.discard);
+  expect(rolledBack || discarded).toBe(true);
+  expect(observed.statements.some(row => row.sql.includes("catalog_offer_memberships_page"))).toBe(false);
   expect(observed.writes()).toHaveLength(0);
   expect(evaluatePromotion).not.toHaveBeenCalled();
   await expect(submitSelectedCatalogAdmission(observed.pool, input, options())).rejects.toMatchObject(dark);
@@ -377,19 +401,24 @@ it("accepts only an exact governed fixture transcript and classifies owned expir
   }
 });
 
-it("refuses locally contradictory reader results and forwards an exact successful cursor", async () => {
+function issueReaderFixture() {
   const source = profile.skuIds[0], declaring = profile.skuRevisionId, productId = randomUUID();
   const head = { productId, publicationId: randomUUID(), revision: 1, documentDigest: "a".repeat(64) };
   const cursor = { selectedSkuId: source, offerVersion: offer.version, mode: "admission_issue", limit: 1, offset: 1,
     headDigest: "a".repeat(64), binding: "b".repeat(64) };
-  const page = (kind: string, revision: string, nextCursor: unknown) => ({ kind: "page", value: {
-    issues: [{ ...head, kind, skuRevisionId: revision }], consultedHeads: [head], rosterCount: 2, nextCursor,
+  const page = (kind: string, revision: string, nextCursor: unknown, rosterCount = 2) => ({ kind: "page", value: {
+    issues: [{ ...head, kind, skuRevisionId: revision }], consultedHeads: [head], rosterCount, nextCursor,
   } });
   const first = page("compared", randomUUID(), cursor), second = page("declaring", declaring, null);
   function consume(...results: unknown[]) {
     const query = vi.fn(async (_sql: string, _values?: unknown[]) => ({ rows: [{ result: results.shift() }] }));
     return { query, result: readAdmissionIssues({ query }, offer.version, source, declaring, 1, 1) };
   }
+  return { source, declaring, head, cursor, page, first, second, consume };
+}
+
+it("refuses locally contradictory reader results and forwards an exact successful cursor", async () => {
+  const { source, head, cursor, page, first, second, consume } = issueReaderFixture();
   const exact = consume(first, second);
   await expect(exact.result).resolves.toEqual({ issues: [first, second].map(result => ({ ...result.value.issues[0], sourceOrdinal: 1 })),
     consultedHeads: [head] });
@@ -400,6 +429,40 @@ it("refuses locally contradictory reader results and forwards an exact successfu
     page("compared", first.value.issues[0]!.skuRevisionId, null), page("compared", randomUUID(), { ...cursor, offset: 2 }),
   ]) await expect(consume(invalid, second).result).rejects.toMatchObject({ label: "catalog_admission_membership_authority_unavailable" });
 });
+
+it.each([
+  ["zero declaring issues", ({ first, page }) => [first, page("compared", randomUUID(), null)]],
+  ["two declaring issues", ({ declaring, cursor, page }) => [page("declaring", declaring, cursor), page("declaring", randomUUID(), null)]],
+  ["a declaring SKU revision different from the guarded revision", ({ first, page }) => [first, page("declaring", randomUUID(), null)]],
+  ["a duplicate revision across pages", ({ declaring, cursor, page, second }) => [page("compared", declaring, cursor), second]],
+  ["a consulted head for a different product", ({ first, second, head }) => [first,
+    { ...second, value: { ...second.value, consultedHeads: [{ ...head, productId: randomUUID() }] } }]],
+  ["a consulted head publication change", ({ first, second, head }) => [first,
+    { ...second, value: { ...second.value, consultedHeads: [{ ...head, publicationId: randomUUID() }] } }]],
+  ["a consulted head revision change", ({ first, second, head }) => [first,
+    { ...second, value: { ...second.value, consultedHeads: [{ ...head, revision: head.revision + 1 }] } }]],
+  ["a consulted head document digest change", ({ first, second, head }) => [first,
+    { ...second, value: { ...second.value, consultedHeads: [{ ...head, documentDigest: "b".repeat(64) }] } }]],
+  ["a consulted head count mismatch", ({ first, second }) => [first,
+    { ...second, value: { ...second.value, consultedHeads: [] } }]],
+  ["a roster count change", ({ first, declaring, page }) => [first, page("declaring", declaring, null, 3)]],
+  ["a chain head digest change", ({ first, declaring, cursor, page }) => [
+    { ...first, value: { ...first.value, rosterCount: 3 } },
+    page("compared", randomUUID(), { ...cursor, offset: 2, headDigest: "b".repeat(64) }, 3),
+    page("declaring", declaring, null, 3),
+  ]],
+  ["a cursor selected SKU mismatch", ({ cursor, page, second }) => [page("compared", randomUUID(), { ...cursor, selectedSkuId: randomUUID() }), second]],
+  ["a cursor offer version mismatch", ({ cursor, page, second }) => [page("compared", randomUUID(), { ...cursor, offerVersion: "example:other" }), second]],
+  ["a cursor limit mismatch", ({ cursor, page, second }) => [page("compared", randomUUID(), { ...cursor, limit: 2 }), second]],
+] satisfies [string, (fixture: ReturnType<typeof issueReaderFixture>) => unknown[]][])(
+  "refuses contradictory reader evidence with %s", async (_name, pages) => {
+    const fixture = issueReaderFixture();
+    await expect(fixture.consume(...pages(fixture)).result).rejects.toMatchObject({
+      label: "catalog_admission_membership_authority_unavailable",
+      message: "Have the catalogue owner verify the installed reader and restart from page one.",
+    });
+  },
+);
 
 function reviewCopy<T>(value: T): T {
   return JSON.parse(JSON.stringify(value, (key, field: unknown) => {
