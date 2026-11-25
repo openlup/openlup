@@ -1,5 +1,15 @@
 import type { ActionInput, ActionResult, AppConfigurationResponse, Operation } from '../shared/api.ts';
 import { isRecord } from '../shared/offer.ts';
+import type { StarterCatalogueItem } from '../shared/catalogue-products.ts';
+
+export async function storefrontCatalogue() {
+  const result = await act('storefront.catalogue', {}, crypto.randomUUID());
+  if (!result.ok) return result;
+  const value = result.value;
+  return isRecord(value) && Array.isArray(value.products)
+    ? { ok: true as const, products: value.products as StarterCatalogueItem[] }
+    : { ok: false as const, code: 'starter_response_invalid' };
+}
 
 export async function configuration(): Promise<AppConfigurationResponse> {
   const response = await fetch('/api/config', { credentials: 'same-origin', cache: 'no-store' });

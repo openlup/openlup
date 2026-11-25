@@ -1,0 +1,1 @@
+- Added experimental `projectPublishedCatalogOfferPage` and `PublishedCatalogOfferPage` to `@openlup/platform/catalog`. The projection carries public presentation, filters attributes against exact installed definition evidence and flags primary identifiers for local use. The raw storefront read distinguishes an unpublished offer with a typed issue.

@@ -6,6 +6,8 @@ import { evaluateOffer, parseCart, validateCart } from '../shared/offer.ts';
 import type { PersonalDataContributorRegistry } from '@openlup/platform/identity';
 import type { PgQueryExecutor } from '@openlup/platform/data';
 import type { installationFinding } from '../shared/refusals.ts';
+import type { StarterCatalogueItem } from '../shared/catalogue-products.ts';
+import type { composeCatalogueStorefront } from './catalogue-storefront.ts';
 
 export interface VerifiedActor {
   customerRef: string | null;
@@ -25,6 +27,7 @@ export interface ActionContext {
   requestCookie?: string;
   actor: VerifiedActor;
   config: StoreConfig;
+  quoteProducts?: readonly StarterCatalogueItem[];
   setCookie?: (cookie: string) => void;
   accept?: () => Promise<void>;
   registerCatalogueBuildCheck?: (check: () => ReturnType<typeof installationFinding>) => void;
@@ -36,6 +39,7 @@ export interface ApplicationBindings {
   /** Programmatic owner composition only; never serialized as an HTTP action. */
   personalData?: PersonalDataContributorRegistry<PgQueryExecutor>;
   actions: Partial<Record<Operation, ActionBinding>>;
+  resolveCatalogue?: ReturnType<typeof composeCatalogueStorefront>['resolveCatalogue'];
   authenticate(request: IncomingMessage): Promise<VerifiedActor>;
   close(): Promise<void>;
 }
@@ -72,8 +76,18 @@ export async function dispatchAction(
   const limit = operationLimits[operation];
   if (limit) return { ok: false, code: limit.code };
   if (operation === 'offer.validate' || operation === 'checkout.create') {
+    if (operation === 'offer.validate' && bindings.actions[operation] && bindings.resolveCatalogue) {
+      const parsed = parseCart(context.config.id, input.cart);
+      if (parsed.ok && parsed.cart.lines.some(({ sku }) => !context.config.offer.products.some(item => item.sku === sku)
+        && !context.config.subscriptionEditing.catalogue.some(item => item.sku === sku))) {
+        const result = await bindings.resolveCatalogue(context.config);
+        if (!result.ok) return result;
+        context = { ...context, quoteProducts: result.value.products };
+        input = { ...input, cart: parsed.cart };
+      }
+    }
     const selected = operation === 'checkout.create' && bindings.actions[operation]
-      ? parseCart(context.config.id,input.cart) : validateCart(context.config,input.cart);
+      ? parseCart(context.config.id,input.cart) : validateCart(context.config,input.cart,'checkout',context.quoteProducts);
     if (!selected.ok) return { ok: false,code: selected.issues[0]!.code };
     if (selected.cart.mode === 'subscription' && (operation === 'offer.validate' || !bindings.actions[operation])
       && input.acquisitionCapability !== 'subscription-acquisition.v1') return { ok: false,code: 'acquisition_terms_capability_required' };
