@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { createHash } from "node:crypto";
+
+import { describe, expect, it, vi } from "vitest";
 import {
   BUDGET_FACTOR,
   FLAT_COVERAGE_TEST_TIMEOUT_MS,
@@ -12,6 +14,8 @@ import {
   pinnedFileDurationMs,
   type DurationSections,
 } from "./ci-vitest-duration-keys.ts";
+
+vi.mock("node:crypto", { spy: true });
 
 describe("ci-vitest-duration-keys", () => {
   it("returns flat timeout floors for plain and coverage runs", () => {
@@ -46,20 +50,12 @@ describe("ci-vitest-duration-keys", () => {
     expect(pinnedDurationMs(undefined, plain)).toBeUndefined();
   });
 
-  it("reads a plain path without asking for the digest fallback", () => {
-    const plain = "tests/plain.test.ts";
-    const section = new Proxy<Record<string, number>>(
-      { [plain]: 4_200 },
-      {
-        get(target, key, receiver) {
-          if (typeof key === "string" && key.startsWith("sha256:")) {
-            throw new Error("plain-path hit must not read the digest key");
-          }
-          return Reflect.get(target, key, receiver);
-        },
-      },
-    );
-    expect(pinnedDurationMs(section, plain)).toBe(4_200);
+  it("does not hash a path with a valid direct pin", () => {
+    const path = "tests/plain.test.ts";
+    vi.mocked(createHash).mockClear();
+
+    expect(pinnedDurationMs({ [path]: 4_200 }, path)).toBe(4_200);
+    expect(createHash).not.toHaveBeenCalled();
   });
 
   it("derives per-test timeouts as max(flat, ceil(pinned * BUDGET_FACTOR))", () => {
