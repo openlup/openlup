@@ -70,6 +70,10 @@
       "class": "public-output"
     },
     {
+      "path": ".github/workflows/merge-queue-supersede.yml",
+      "class": "public-output"
+    },
+    {
       "path": ".github/workflows/mirror-ci-images.yml",
       "class": "public-output"
     },
