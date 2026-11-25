@@ -1,5 +1,6 @@
 import { randomInt } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
+import { types } from "node:util";
 
 interface FenceLockWriter {
   query<Row extends Record<string, unknown>>(sql: string, values?: unknown[]): Promise<{ rows: Row[] }>;
@@ -317,7 +318,13 @@ async function runFence<T, Connection extends FenceConnection>(
         await dispatch("SELECT public.catalog_admission_lock_checkout_price($1,$2)", [mode.priceListId, mode.skuIds]);
       } else if (!receiptPresent) {
         activeRemaining();
-        try { mode.authorizeFresh(); } catch (error) { authorizationFailure = { error }; }
+        try {
+          const result: unknown = mode.authorizeFresh();
+          if (result !== undefined) {
+            if (types.isPromise(result)) void Promise.prototype.then.call(result, undefined, () => {});
+            throw new TypeError("authorizeFresh must return undefined");
+          }
+        } catch (error) { authorizationFailure = { error }; }
         if (!authorizationFailure && mode.payload) {
           const { rows } = await dispatch<{ result: unknown }>(dispatchSelected, ["prelock", key, clientId, mode.payload]);
           const result = rows[0]?.result;

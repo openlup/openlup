@@ -220,6 +220,24 @@ function authenticateSelectedEnvelope(token: string, keyring: PromotionAcceptanc
   return envelope.authenticated ? { ...envelope, originalTokenDigest } : envelope;
 }
 
+/** @internal Staged, offer-review-only authentication for the selected submit fence. */
+export function authenticateSelectedOfferReview(token: string, keyring: PromotionAcceptanceKeyring, request: unknown) {
+  const envelope = authenticateSelectedEnvelope(token, keyring, true);
+  if (!envelope.authenticated || verifyScope(envelope, request, [])) return undefined;
+  return {
+    payable: { amountMinor: envelope.payload.totalMinor, currency: envelope.payload.currency },
+    ownerQuoteDigest: envelope.payload.ownerQuoteDigest, tokenDigest: envelope.originalTokenDigest,
+    timing: (now: Date) => verifyTiming(envelope, now),
+    matches(input: QuoteVerificationInput) {
+      if (!verifyQuote(envelope, { accepted: true, reason: "accepted", keySlot: envelope.keySlot, expiryBucket: "none" }, input, true).accepted) return false;
+      const issued = envelope.payload.sectionBindings;
+      if (!issued) return true;
+      const current = sectionBindings(input.quote, envelope.secret, input.acquisitionTerms, input.shippingTerms);
+      return PROMOTION_QUOTE_MONEY_SECTIONS.every(section => safeEqual(issued[section], current[section]));
+    },
+  };
+}
+
 /** @experimental Package-internal verifier. Callers supply a server-owned scope and owner quote digest. */
 export function verifySelectedPromotionQuoteAcceptance(input: QuoteVerificationInput & {
   token: string;

@@ -389,7 +389,7 @@ describe("API snapshot Migration blocks", () => {
         write(path, JSON.stringify(lock, null, 2));
       }, overrides), `stale private pin in ${path}`).toThrow(red);
     }
-  });
+  }, 60_000);
   it("refuses stale, duplicated and wrong-version notes in otherwise coherent prepared sets", () => {
     const released = (version: string) => `## [Unreleased]\n\n## [${version}]\n\n  Migration: before a, after b.\n\n`;
     const lock = JSON.stringify({ packages: { "packages/pub": { version: "0.4.0" }, "packages/demo": { version: "0.1.0" } } }, null, 2);

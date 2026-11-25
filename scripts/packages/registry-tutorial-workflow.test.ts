@@ -482,7 +482,9 @@ describe("qualified image publication", () => {
     expect(publish).toContain("needs: exact-set-qualification");
     expect(publish).toContain("if: ${{ needs.exact-set-qualification.result == 'success' && (github.event_name == 'workflow_run' || inputs.publish_image) }}");
     expect(permissionBlocks(publish)).toEqual(["    permissions: {packages: write, attestations: write, id-token: write}\n"]);
-    expect(publish).not.toMatch(/checkout@|setup-node@|npm |timeout|sleep|retry/u);
+    // The job-level limit bounds the runner; no step may add a wait, retry or its own deadline.
+    expect(publish).toContain("    runs-on: ubuntu-24.04\n    timeout-minutes: 5\n");
+    expect(publish.replace("    timeout-minutes: 5\n", "")).not.toMatch(/checkout@|setup-node@|npm |timeout|sleep|retry/u);
     expect(workflow).toContain("type: boolean\n        default: false");
     expect(publish).toContain("github.event_name == 'workflow_run' || inputs.publish_image == true");
     expect(body).toContain('skopeo copy --preserve-digests');

@@ -2,13 +2,21 @@
   "current": {
     "profiles": {
       "legacy": {
-        "count": 216,
-        "exactTailCount": 106,
-        "objectInventorySha256": "8cfc62b1bf961888f096c8270871aabcd796a4f744645dbbadfde819d53a3d99",
+        "count": 218,
+        "exactTailCount": 108,
+        "objectInventorySha256": "7d3c4dfbfa75a1e9ef42cbe9c98e29b04d02b1792b0d525ea095a8f19b43dd60",
         "tail": [
           {
             "file": "db/platform/migrations/20261128060000_subscription_destination_read.sql",
             "sha256": "556b324707b7cb6365f5e72c741303f1bf795cb38768508b680cf770225258af"
+          },
+          {
+            "file": "db/platform/migrations/20261128030000_fulfillment_destination_v2_legacy_ledger_fence.sql",
+            "sha256": "47c1163855d8fc24e3040a3971db4e00f1be9299ff6d968e5abe522567040ddb"
+          },
+          {
+            "file": "db/platform/migrations/20261128010000_catalog_order_checkout_protection.sql",
+            "sha256": "e841077d82c09a11979c552737025a332bd5d351ee7192b6f4cc8e112fc7423c"
           },
           {
             "file": "db/platform/migrations/20261128000000_native_derived_subscription_price.sql",
@@ -873,13 +881,21 @@
         ]
       },
       "bootstrap": {
-        "count": 222,
-        "exactTailCount": 107,
-        "objectInventorySha256": "4ea59b40574b9225f11cc1fa314a3fbd50156cce36e489bdb2b7fc36b5dbda2a",
+        "count": 224,
+        "exactTailCount": 109,
+        "objectInventorySha256": "5e7b07c7fe1399873ae8a3c13c76f711c1fd5a70c5fdaeac418e34a26b8613b6",
         "tail": [
           {
             "file": "db/platform/migrations/20261128060000_subscription_destination_read.sql",
             "sha256": "556b324707b7cb6365f5e72c741303f1bf795cb38768508b680cf770225258af"
+          },
+          {
+            "file": "db/platform/migrations/20261128030000_fulfillment_destination_v2_legacy_ledger_fence.sql",
+            "sha256": "47c1163855d8fc24e3040a3971db4e00f1be9299ff6d968e5abe522567040ddb"
+          },
+          {
+            "file": "db/platform/migrations/20261128010000_catalog_order_checkout_protection.sql",
+            "sha256": "e841077d82c09a11979c552737025a332bd5d351ee7192b6f4cc8e112fc7423c"
           },
           {
             "file": "db/platform/migrations/20261128000000_native_derived_subscription_price.sql",
@@ -1768,13 +1784,21 @@
         ]
       },
       "separate": {
-        "count": 222,
-        "exactTailCount": 107,
-        "objectInventorySha256": "c3ccea4d19d802b70552d804fca16fc6f0b1bbd62ab3f8c3bb234c9187746362",
+        "count": 224,
+        "exactTailCount": 109,
+        "objectInventorySha256": "9e88f5037597022571abc4bbf0611d6203f4ecad59edec78bd7b39b01b62ebcd",
         "tail": [
           {
             "file": "db/platform/migrations/20261128060000_subscription_destination_read.sql",
             "sha256": "556b324707b7cb6365f5e72c741303f1bf795cb38768508b680cf770225258af"
+          },
+          {
+            "file": "db/platform/migrations/20261128030000_fulfillment_destination_v2_legacy_ledger_fence.sql",
+            "sha256": "47c1163855d8fc24e3040a3971db4e00f1be9299ff6d968e5abe522567040ddb"
+          },
+          {
+            "file": "db/platform/migrations/20261128010000_catalog_order_checkout_protection.sql",
+            "sha256": "e841077d82c09a11979c552737025a332bd5d351ee7192b6f4cc8e112fc7423c"
           },
           {
             "file": "db/platform/migrations/20261128000000_native_derived_subscription_price.sql",
@@ -2663,13 +2687,21 @@
         ]
       },
       "admin-managed": {
-        "count": 220,
-        "exactTailCount": 106,
-        "objectInventorySha256": "4f496402bed6c3285665acff31ff60180c0c75989f359fd5bacacf0ea7cde75f",
+        "count": 222,
+        "exactTailCount": 108,
+        "objectInventorySha256": "87e2320e6ee7e5ccdf0aef52e754ce4c46d21e47227ed035f5be3b1525c70e73",
         "tail": [
           {
             "file": "db/platform/migrations/20261128060000_subscription_destination_read.sql",
             "sha256": "556b324707b7cb6365f5e72c741303f1bf795cb38768508b680cf770225258af"
+          },
+          {
+            "file": "db/platform/migrations/20261128030000_fulfillment_destination_v2_legacy_ledger_fence.sql",
+            "sha256": "47c1163855d8fc24e3040a3971db4e00f1be9299ff6d968e5abe522567040ddb"
+          },
+          {
+            "file": "db/platform/migrations/20261128010000_catalog_order_checkout_protection.sql",
+            "sha256": "e841077d82c09a11979c552737025a332bd5d351ee7192b6f4cc8e112fc7423c"
           },
           {
             "file": "db/platform/migrations/20261128000000_native_derived_subscription_price.sql",
@@ -3550,13 +3582,21 @@
         ]
       },
       "admin-operator": {
-        "count": 220,
-        "exactTailCount": 106,
-        "objectInventorySha256": "b0859d298593e2074c635d5b95f4d79bc00553dcd7bbe75523b8ed2079df7e5b",
+        "count": 222,
+        "exactTailCount": 108,
+        "objectInventorySha256": "720f032aa7172e6458e66f0c4ffd573783d99f1f97b56095d7d0438d79247ab2",
         "tail": [
           {
             "file": "db/platform/migrations/20261128060000_subscription_destination_read.sql",
             "sha256": "556b324707b7cb6365f5e72c741303f1bf795cb38768508b680cf770225258af"
+          },
+          {
+            "file": "db/platform/migrations/20261128030000_fulfillment_destination_v2_legacy_ledger_fence.sql",
+            "sha256": "47c1163855d8fc24e3040a3971db4e00f1be9299ff6d968e5abe522567040ddb"
+          },
+          {
+            "file": "db/platform/migrations/20261128010000_catalog_order_checkout_protection.sql",
+            "sha256": "e841077d82c09a11979c552737025a332bd5d351ee7192b6f4cc8e112fc7423c"
           },
           {
             "file": "db/platform/migrations/20261128000000_native_derived_subscription_price.sql",

@@ -73,11 +73,12 @@ export declare function createAcquisitionQuoteSchemas<Request extends z.ZodObjec
 
 ```ts
 export { createCommerceQuotePrimitives } from "../quotePrimitives.js";
-export { acquisitionCapabilitySchema, acquisitionTermsExpectationSchema } from "../acquisitionTermsSchemas.js";
+export { acquisitionCapabilitySchema, acquisitionTermsExpectationSchema, acquisitionTermsSchema } from "../acquisitionTermsSchemas.js";
 /** @consumer src/domains/commerce/quoteContracts.ts */
 export { resolvedAcquisitionTermsSchema } from "../acquisitionTermsSchemas.js";
 /** @consumer src/domains/commerce/quoteContracts.ts */
 export { shippingTermsSchema } from "../../shipping/thresholdPolicy.js";
+export { deriveSubscriptionUnitPrice } from "../subscriptionPricePolicy.js";
 ```
 ## dist/pricing/quotePrimitives.d.ts
 
@@ -95,6 +96,64 @@ export declare function createCommerceQuotePrimitives(commerceCurrencySchema: z.
         currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
     }, z.core.$strip>;
 };
+```
+## dist/pricing/subscriptionPricePolicy.d.ts
+
+```ts
+import { type SubscriptionPricePolicySemantics, type SubscriptionPricePolicyCanonicalInput, type SubscriptionPricePolicyRevision, type SubscriptionPricePolicyDigestRefusal } from "./contracts/index.js";
+import { z } from "./validation.js";
+export declare const subscriptionPricePolicySemanticsSchema: z.ZodObject<{
+    discountBps: z.ZodNumber;
+    roundingQuantumMinor: z.ZodNumber;
+    roundingRule: z.ZodEnum<{
+        FLOOR_TO_QUANTUM: "FLOOR_TO_QUANTUM";
+    }>;
+}, z.core.$strict>;
+export declare const subscriptionPricePolicyCanonicalInputSchema: z.ZodObject<{
+    discountBps: z.ZodNumber;
+    roundingQuantumMinor: z.ZodNumber;
+    roundingRule: z.ZodEnum<{
+        FLOOR_TO_QUANTUM: "FLOOR_TO_QUANTUM";
+    }>;
+    id: z.ZodGUID;
+    revisionNo: z.ZodNumber;
+    priceListId: z.ZodGUID;
+    regionCode: z.ZodString;
+    currency: z.ZodString;
+    channel: z.ZodString;
+    effectiveFrom: z.ZodString;
+    effectiveTo: z.ZodNullable<z.ZodString>;
+}, z.core.$strict>;
+export declare const subscriptionPricePolicyRevisionSchema: z.ZodObject<{
+    discountBps: z.ZodNumber;
+    roundingQuantumMinor: z.ZodNumber;
+    roundingRule: z.ZodEnum<{
+        FLOOR_TO_QUANTUM: "FLOOR_TO_QUANTUM";
+    }>;
+    id: z.ZodGUID;
+    revisionNo: z.ZodNumber;
+    priceListId: z.ZodGUID;
+    regionCode: z.ZodString;
+    currency: z.ZodString;
+    channel: z.ZodString;
+    effectiveFrom: z.ZodString;
+    effectiveTo: z.ZodNullable<z.ZodString>;
+    digest: z.ZodString;
+    /** @experimental */
+    closedFromOpen: z.ZodOptional<z.ZodBoolean>;
+}, z.core.$strict>;
+export declare class SubscriptionPricePolicyDigestError extends Error {
+    readonly code: SubscriptionPricePolicyDigestRefusal;
+    constructor(code: SubscriptionPricePolicyDigestRefusal);
+}
+/** The exact tuple whose canonical digest is persisted with a policy revision. */
+export declare function canonicalSubscriptionPricePolicyTuple(policy: SubscriptionPricePolicyCanonicalInput | SubscriptionPricePolicyRevision): string;
+/** Hashes application-owned canonical UTF-8 bytes; never a database JSON rendering. */
+export declare function digestSubscriptionPricePolicy(policy: SubscriptionPricePolicyCanonicalInput | SubscriptionPricePolicyRevision): Promise<string>;
+/** Parses a persisted revision and refuses a digest outside its canonical UTF-8 tuple. */
+export declare function assertSubscriptionPricePolicyDigest(value: unknown): Promise<SubscriptionPricePolicyRevision>;
+/** Resolves a subscription unit price from a base unit price and a policy revision. An estimate for display; the quote is the amount charged. */
+export declare function deriveSubscriptionUnitPrice(baseUnitAmountMinor: number, semantics: SubscriptionPricePolicySemantics | SubscriptionPricePolicyCanonicalInput | SubscriptionPricePolicyRevision): number;
 ```
 ## dist/shipping/thresholdPolicy.d.ts
 
