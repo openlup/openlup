@@ -11,7 +11,7 @@ import { digest, explainSession, protectedCoveragePath, carryOver, cumulativeRep
 import { REGISTRY_PATHS, registryUnion } from './agent-review-registry.mjs';
 import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryOnlyCurrent, migrationRegistryUnion, reslotRegistryJson } from './agent-review-derived.mjs';
 import { MATURITY_REFERENCE, generatedCarrier, ownerOutputCarrier, runDerivedOutputGenerators, runLandingGenerators, withPredictedTree } from './agent-review-generators.mjs';
-import { isUtcMigrationSlot, migrationIdentity } from './migration-slots.mjs';
+import { isUtcMigrationSlot, MIGRATION_RAILS, migrationIdentity } from './migration-slots.mjs';
 import { join as joinPath } from 'node:path';
 
 const execute = promisify(execFile);
@@ -137,21 +137,24 @@ async function blobOid(cwd, revision, path) {
   const match = /^100644 blob ([a-f0-9]{40})\t/u.exec(line);
   return match ? match[1] : null;
 }
+async function pathExists(cwd, revision, path) {
+  return (await git(cwd, 'ls-tree', revision, '--', path)).trim().length > 0;
+}
 
 async function detectByteIdenticalReslot(cwd, previous, current, prediction) {
   const prAdded = (await git(cwd, 'diff', '--name-only', '--diff-filter=A', '--no-renames', '-z', previous.base, previous.head))
-    .split('\0').filter(path => PORTABLE_FORWARD_PATH.test(path));
+    .split('\0').filter(path => PORTABLE_FORWARD_PATH.test(path)).sort();
   if (!prAdded.length) return { changes: [], addBlobs: new Map(), removePaths: new Set() };
   const missing = [];
   for (const oldPath of prAdded) {
-    if (!(await blobOid(cwd, current.tree, oldPath))) missing.push(oldPath);
+    if (!(await pathExists(cwd, current.tree, oldPath))) missing.push(oldPath);
   }
   if (!missing.length) return { changes: [], addBlobs: new Map(), removePaths: new Set() };
   const predAdded = (await git(cwd, 'diff', '--name-only', '--diff-filter=A', '--no-renames', '-z', prediction, current.tree))
     .split('\0').filter(path => PORTABLE_FORWARD_PATH.test(path));
   demand(predAdded.length === missing.length, 'reslot count differs');
-  const mainPaths = (await git(cwd, 'ls-tree', '-r', '--name-only', '-z', current.base, '--', 'db/platform/migrations'))
-    .split('\0').filter(path => PORTABLE_FORWARD_PATH.test(path));
+  const mainPaths = (await git(cwd, 'ls-tree', '-r', '--name-only', '-z', current.base, '--', ...MIGRATION_RAILS))
+    .split('\0').filter(Boolean);
   const maxMainSlot = mainPaths.map(p => migrationIdentity(p)?.version ?? '').filter(Boolean).sort().at(-1) ?? '00000000000000';
   const slugOf = p => PORTABLE_FORWARD_PATH.exec(p)?.[2];
   const bySlug = new Map();
@@ -162,35 +165,46 @@ async function detectByteIdenticalReslot(cwd, previous, current, prediction) {
     bySlug.get(slug).push(p);
   }
   const changes = [];
+  const reslotMap = new Map();
   const addBlobs = new Map();
   const removePaths = new Set();
   const sortedMissing = [...missing].sort();
   let lastNewSlot = maxMainSlot;
   for (const oldPath of sortedMissing) {
+    const oldId = migrationIdentity(oldPath);
     const targets = bySlug.get(slugOf(oldPath));
     const target = targets?.shift();
     demand(target && target !== oldPath, 'reslot target missing');
     const newId = migrationIdentity(target);
-    demand(newId && isUtcMigrationSlot(newId.version) && newId.version > lastNewSlot, 'reslot target slot must be strictly increasing valid UTC above main');
+    demand(oldId && newId && isUtcMigrationSlot(newId.version) && newId.version > oldId.version && newId.version > lastNewSlot,
+      'reslot target slot must be strictly later valid UTC above main and original slot');
     lastNewSlot = newId.version;
     const oldOid = await blobOid(cwd, previous.head, oldPath);
     const newOid = await blobOid(cwd, current.tree, target);
     demand(oldOid && newOid && oldOid === newOid, 'reslot SQL bytes differ');
-    demand(!(await blobOid(cwd, current.base, oldPath)), 'reslot old path exists on main');
-    demand(!(await blobOid(cwd, current.base, target)), 'reslot target exists on main');
+    demand(!(await pathExists(cwd, current.base, oldPath)), 'reslot old path exists on main');
+    demand(!(await pathExists(cwd, current.base, target)), 'reslot target exists on main');
     changes.push({ path: oldPath, target });
+    reslotMap.set(oldPath, target);
     removePaths.add(oldPath);
     addBlobs.set(target, newOid);
     const oldMirror = `packages/platform/sql/${oldPath.split('/').at(-1)}`;
     const newMirror = `packages/platform/sql/${target.split('/').at(-1)}`;
     const oldMirrorOid = await blobOid(cwd, previous.head, oldMirror);
     if (oldMirrorOid) {
-      demand(!(await blobOid(cwd, current.tree, oldMirror)), 'old SQL mirror still present');
+      demand(!(await pathExists(cwd, current.tree, oldMirror)), 'old SQL mirror still present');
+      demand(!(await pathExists(cwd, current.base, oldMirror)), 'reslot old mirror exists on main');
+      demand(!(await pathExists(cwd, current.base, newMirror)), 'reslot target mirror exists on main');
       const newMirrorOid = await blobOid(cwd, current.tree, newMirror);
       demand(newMirrorOid === newOid, 'reslot SQL mirror bytes differ');
       removePaths.add(oldMirror);
       addBlobs.set(newMirror, newMirrorOid);
     }
+  }
+  // Preserve reviewed relative execution order across ALL PR forwards (kept + reslotted).
+  const finalVersions = prAdded.map(p => migrationIdentity(reslotMap.get(p) ?? p)?.version ?? '');
+  for (let i = 1; i < finalVersions.length; i += 1) {
+    demand(finalVersions[i] > finalVersions[i - 1], 'reslot inverted reviewed PR migration order');
   }
   return { changes, addBlobs, removePaths };
 }
@@ -461,6 +475,7 @@ const SESSION_HELP = `Usage:
   node scripts/agent-review-session.mjs prepare [--new] [intent.json]
   node scripts/agent-review-session.mjs status [--explain]
   node scripts/agent-review-session.mjs record <report.json>
+  node scripts/agent-review-session.mjs defer <findingId> --to <target> --decision <ref> --reason <text>
   node scripts/agent-review-session.mjs verify
   node scripts/agent-review-session.mjs receipt <PR>
   node scripts/agent-review-session.mjs verify-command [--resource PROFILE] -- <command> [args...]
@@ -474,10 +489,10 @@ export async function sessionMain(argv = process.argv.slice(2), { cwd = process.
     demand(args.length === 0, 'use --help without extra arguments');
     console.log(SESSION_HELP); return 0;
   }
-  demand(['prepare', 'record', 'verify', 'status', 'receipt', 'verify-command'].includes(verb), 'use prepare [--new] <intent.json>, record <report.json>, verify, status [--explain], receipt <PR>, verify-command or --help');
+  demand(['prepare', 'record', 'defer', 'verify', 'status', 'receipt', 'verify-command'].includes(verb), 'use prepare [--new] <intent.json>, record <report.json>, defer <findingId> --to <target> --decision <ref> --reason <text>, verify, status [--explain], receipt <PR>, verify-command or --help');
   const directory = join(cwd, '.context', 'scratch', 'agent-review'); const path = join(directory, 'session.json');
   let lock;
-  if (['prepare', 'record'].includes(verb)) {
+  if (['prepare', 'record', 'defer'].includes(verb)) {
     await mkdir(directory, { recursive: true });
     try { lock = await open(join(directory, '.session.lock'), 'wx', 0o600); }
     catch (error) { if (error.code === 'EEXIST') throw new Error('invalid: session is busy; retry after the active transaction finishes'); throw error; }

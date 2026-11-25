@@ -857,7 +857,9 @@ describe('native review decisions', () => {
 
     // Deferring the open finding clears it from openFindings and surfaces it in the receipt.
     session = deferFinding(session, { findingId: 'R1A-1', target: 'S3f-A2', decision: 'CM-155', reason: 'owned by successor slice' }, time + 1);
-    expect(explainSession(session, observed, time + 1).openFindings).toEqual([]);
+    const explained = explainSession(session, observed, time + 1);
+    expect(explained.openFindings).toEqual([]);
+    expect(explained.regroupAdvisory).toEqual({ triggered: false, nonConvergingCycles: 0, reason: null });
     session = recordReport(session, report({ reviewer: 'r2', verdict: 'PASS' }), time + 2);
     expect(verdict(session, observed, time + 2)).toEqual({ ok: true, code: 'reviewed', reason: 'reviewed' });
     const summary = receiptSummary(session, 42, time + 2);

@@ -57,8 +57,9 @@ function unionRows(base, left, right) {
 export function reslotRegistryJson(path, source, changes) {
   const isCatalogue = path === 'config/openlup-publication-catalog.json';
   check(MIGRATION_REGISTRIES.includes(path) || isCatalogue, 'unknown registry');
+  const remap = new Map(changes.map(({ path: oldPath, target }) => [oldPath, target]));
   const replace = value => {
-    if (typeof value === 'string') return changes.reduce((text, { path: oldPath, target }) => text === oldPath ? target : text, value);
+    if (typeof value === 'string') return remap.get(value) ?? value;
     if (Array.isArray(value)) return value.map(replace);
     if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k, item]) => [k, replace(item)]));
     return value;

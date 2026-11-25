@@ -93,6 +93,8 @@ function computeRegroupAdvisory(session, trailingFloor = 1) {
       current.reports += 1;
       for (const finding of event.report.findings) if (finding.material) open.add(finding.id);
       for (const id of event.report.closes) open.delete(id);
+    } else if (event.type === 'defer') {
+      open.delete(event.findingId);
     }
   }
   if (current && current.reports >= Math.max(1, trailingFloor)) {
