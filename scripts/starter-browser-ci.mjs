@@ -397,7 +397,9 @@ export async function runStarterBrowser(options) {
                 return { first, repeat };
               });
               console.log(`Starter ${configuration} migrations: ${first.applied.length}; repeat: ${repeat.applied.length}; elapsed: ${Math.round(performance.now() - started)} ms`);
-              const publicationPasswordFile = join(scratch, `${groupIndex}-${configuration}-publication-password`);
+              const state = join(app, '.context/care-browser', String(groupIndex), configuration);
+              await mkdir(state, { recursive: true, mode: 0o700 });
+              const publicationPasswordFile = join(state, 'publication-password');
               const installer = guard(new pg.Client({ connectionString: installUrl, connectionTimeoutMillis: 5000 }));
               await installer.connect();
               try {
@@ -421,8 +423,6 @@ export async function runStarterBrowser(options) {
               privateValues.push(key);
               const keyFile = join(scratch, `${groupIndex}-${configuration}-key.json`);
               await writeFile(keyFile, JSON.stringify({ current: key }), { mode: 0o600 });
-              const state = join(app, '.context/care-browser', String(groupIndex), configuration);
-              await mkdir(state, { recursive: true, mode: 0o700 });
               const port = await freePort(), baseURL = `http://127.0.0.1:${port}`;
               phase = `host_${configuration}`;
               const child = spawn(process.execPath, ['--experimental-strip-types', join(app, 'host/server.ts'), '--configuration', configuration,
