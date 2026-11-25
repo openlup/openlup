@@ -20,6 +20,13 @@ timing) and `owned/quote.config.ts`. Follow the reader guide's
 receives `PageContext` from `client/context.ts`; the product method also receives
 its product and the summary receives its quote.
 
+Set `offer.products[].physical` in `owned/store.config.ts`. Use a mass
+`netContent` in `openlup:g` at scale zero and a primary `gs1:gtin` identifier
+with its verified issuer and exact digit string. For synthetic editor rows,
+set the numeric whole-gram `physicalSize` in `owned/subscription-editing.ts`.
+Both sizes range from 1 through 2147483647 grams. Startup checks these inputs
+before it starts Docker or connects to the database.
+
 ## Change identity, layout and one commercial rule
 
 The builder and checkout host both call `evaluateOffer` from `shared/offer.ts`.

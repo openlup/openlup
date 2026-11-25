@@ -2,7 +2,7 @@ import { starterDiagnostic } from '../shared/refusals.ts';
 import { CheckoutRecoveryScheduleChangeBlockedError, installCheckoutRecoveryReminderSchedule } from '@openlup/platform/commerce/server';
 import { FulfillmentStockReplayConflictError } from '@openlup/platform/fulfillment';
 import { installRenewalStockProtectionPolicy } from '@openlup/platform/inventory';
-import type { StoreConfig } from '../shared/config.ts';
+import { assertConfig, type StoreConfig } from '../shared/config.ts';
 import { acquisitionAddresses } from '../owned/acquisition-addresses.ts';
 import type { FulfillmentStockSyncPort } from '@openlup/platform/fulfillment/contracts';
 import * as ownedCatalogue from '../owned/catalogue.ts';
@@ -226,6 +226,7 @@ async function withInstallationCleanup<T>(work: () => Promise<T>, cleanup: () =>
 
 /** Called only by lifecycle up, once per installation invocation, before the HTTP host starts. */
 export async function installDemonstration(config: StoreConfig, bootstrap: InstallationBootstrap, progress?: NodeJS.WritableStream) {
+  assertConfig(config);
   let installation;
   try { installation = await bootstrap(config, progress); }
   catch (error) { throw installationFailure(error); }
@@ -237,6 +238,7 @@ export async function installDemonstration(config: StoreConfig, bootstrap: Insta
 /** Idempotent demo composition; stock uses its native writer. No schema, clients or subscription truth. */
 export async function applyDemoSeed(config: StoreConfig, installation: DemonstrationInstallation,
   rulesFor = () => installation.catalogueRules) {
+  assertConfig(config);
   let admitted;
   try { admitted = admitPacks(rulesFor); }
   catch (error) {

@@ -1126,24 +1126,31 @@ file with `renderNativeStoreSettingsOwnerWindow` in
 differing line. If admission rejects its order or a target, check the
 introduction base for the first available slot and the exact function signature.
 A later ordinary slot treats a landed settings-only slot's exact pinned
-`ALTER FUNCTION` statements as known DDL, so it can still replace a hardened
-function or grant privileges on it. A replacement may tighten a single
-top-level `SET search_path` list of unquoted ASCII identifiers, using `=` or
-`TO`. It must append exactly one final `pg_temp` to a list with no `pg_temp` or
-`pg_temp_<N>` entry. The rest of the header must match with whitespace between
-tokens normalized and literal and quoted identifier tokens kept byte-exact.
+`ALTER FUNCTION` statements as known DDL for `public` signatures. It can still
+replace a hardened `public` function or grant privileges on it. A replacement
+may tighten a single top-level `SET search_path` list of unquoted ASCII
+identifiers, using `=` or `TO`. It must append exactly one final `pg_temp` to a
+list with no `pg_temp` or `pg_temp_<N>` entry. The rest of the header must match
+with whitespace between tokens normalized and literal and quoted identifier
+tokens kept byte-exact.
+
 The standing [definer search-path check](../../tests/postgres/definerSearchPath.test.ts)
-requires `pg_temp` last, with no earlier temporary schema (`pg_temp`, or a name
-starting with `pg_temp_` or `pg_toast_temp_`), for every
-installed non-system, non-extension definer and for every such function that sets its own
-search path. It splits each path as PostgreSQL does. Its `SEARCH_PATH_PENDING` list
-names the five remaining functions outside `public`. The check fails when a listed
-function pins `pg_temp` last on all five profiles, so the list can only shrink.
-Preserve the intended trusted schemas when moving `pg_temp` to the end. The check
-prints an exact `ALTER FUNCTION` statement only when the path parses and every
-remaining schema is a concrete name. For `"$user"`, an unparseable list, or a
-missing or empty path, review and set the trusted schema list before appending
-`pg_temp`. Eleven acquisition and partner
+covers all five native PostgreSQL profiles. It checks every installed non-system,
+non-extension function that is a definer or sets its own search path. Each path
+must parse as a nonempty list of nonempty names, with `pg_temp` last and no
+earlier `pg_temp` or name beginning with `pg_temp_` or `pg_toast_temp_`. The
+diagnostic names the function and shows how to update an unissued definition or
+add a reviewed settings-only forward. Preserve the intended trusted schemas and
+end with `pg_temp`. If the check cannot parse a concrete trusted name, review
+the function and set an explicit trusted schema list ending in `pg_temp`.
+
+The latest settings-only pin sets `search_path` to `pg_catalog, pg_temp` for
+four `acquisition_private` functions and OpenLup's `auth.uid()`. The native
+plans each install this `auth.uid()` through their self-host actor-auth
+migration. On the managed Supabase chain, `auth.uid()` remains provider-owned
+and outside the standing check.
+
+Eleven acquisition and partner
 acquisition definer functions now pin `pg_temp` last on their search path.
 The [function search-path forward](../../db/platform/migrations/20261125310000_function_search_path_pg_temp.sql)
 appends `pg_temp` to the search path of 392 installer-owned `public` functions

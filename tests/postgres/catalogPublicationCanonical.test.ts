@@ -130,7 +130,7 @@ it("pins the legacy function's search path after applying the forward", async ()
 });
 
 it("keeps pg_temp last through the qualified-v2 publication login", async () => {
-  const { owner, close } = await installAccountMutations("bootstrap", false, "catalog-canonical");
+  const { owner, close } = await installAccountMutations("bootstrap", false, "catalog-canonical", undefined, undefined, { isolatedCluster: true });
   const password = randomUUID();
   const url = new URL(owner.options.connectionString!);
   url.username = "openlup_catalog_publication";

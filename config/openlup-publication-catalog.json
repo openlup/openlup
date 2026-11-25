@@ -70,6 +70,10 @@
       "class": "public-output"
     },
     {
+      "path": ".github/workflows/merge-queue-supersede.yml",
+      "class": "public-output"
+    },
+    {
       "path": ".github/workflows/mirror-ci-images.yml",
       "class": "public-output"
     },
@@ -2171,6 +2175,10 @@
     },
     {
       "path": "examples/neutral-store/shared/routes.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/shared/seed-physical.ts",
       "class": "public-output"
     },
     {
@@ -29858,6 +29866,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/helpers/packWorkspaceTarball.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/helpers/pgTemplateBroker.ts",
       "class": "public-output"
     },
@@ -30018,6 +30030,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/platform/packWorkspaceTarball.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/platform/partners/partnerAcquisitionParity.test.ts",
       "class": "public-output"
     },
@@ -30155,6 +30171,14 @@
     },
     {
       "path": "tests/postgres/catalogPriceListBasis.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogPricePublicationV2.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogPricePublicationV2Pgtap.test.ts",
       "class": "public-output"
     },
     {
@@ -30467,6 +30491,10 @@
     },
     {
       "path": "tests/postgres/feedbackMediaAuthority.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/catalogPricePublicationV2/grants.sql",
       "class": "public-output"
     },
     {

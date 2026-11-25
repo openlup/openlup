@@ -40,7 +40,9 @@ import { bindDestinationOrder, insertDestinationOrder, orderBindingTable, snapsh
 import { awaitReceiptWait, backendPid, idempotencyConflict, receiptArgs, receiptCall, receiptClient, receiptOutcome,
   receiptTable } from "./destinationReceiptFixture.js";
 
-const resources = storeJourneyResources();
+// This file runs cluster-wide CREATE/GRANT/DROP ROLE in its filtered-reader witness,
+// so keep it on its own isolated per-suite template container instead of the shared broker.
+const resources = storeJourneyResources({ isolatedCluster: true });
 const ports: { close(): Promise<void> }[] = [];
 const selection: QualifiedPostgresInstallation = { generation: "qualified-v2", roleMode: "installer-managed",
   migrationLogin: "transfer_owner", bootstrapLogin: "postgres", runtimeLogin: "transfer_runtime", restoreLogin: "transfer_restore" };
