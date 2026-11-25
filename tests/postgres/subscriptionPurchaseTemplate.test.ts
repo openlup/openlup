@@ -39,11 +39,12 @@ async function accountLines(f: Awaited<ReturnType<typeof activate>>) {
     additional: { readExtension: async () => null, readNextCharges: async () => new Map() }, now: () => at });
   return (await sources.readSubscriptionLines([f.subscriptionId])).get(f.subscriptionId);
 }
-async function edit(f: Awaited<ReturnType<typeof activate>>) {
+async function edit(f: Pick<Awaited<ReturnType<typeof activate>>, "clientId" | "subscriptionId">,
+  variantId = variant, editNow = days(at, 1)) {
   const store = api.createPostgresSubscriptionCommandStore({ withTransaction: transaction });
   const input = { actorId: randomUUID(), clientId: f.clientId, subscriptionId: f.subscriptionId,
-    idempotencyKey: randomUUID(), action: "resize_bundle", now: days(at, 1),
-    payload: { expectedTemplateVersion: 1, cadenceDays: 28, coreLines: [{ variantId: variant, qty: 3 }], compositionConstraint: { kind: "units", value: 3 } } };
+    idempotencyKey: randomUUID(), action: "resize_bundle", now: editNow,
+    payload: { expectedTemplateVersion: 1, cadenceDays: 28, coreLines: [{ variantId, qty: 3 }], compositionConstraint: { kind: "units", value: 3 } } };
   const preview = await store.preview(input);
   if (preview.status !== "previewed") return preview;
   return store.apply({ ...input, payload: { ...input.payload, acceptedQuoteHash: preview.quoteHash } });
@@ -307,6 +308,56 @@ describe("derived renewal price context in PostgreSQL", () => {
   let baseId: string, policy: { id: string; digest: string };
   const clock = async () => (await admin.query<{ at: Date }>("SELECT clock_timestamp() AS at")).rows[0]!.at.toISOString();
 
+  async function recordStock(skuRef: string) {
+    const { collected, stale } = (await admin.query<{ collected: Date; stale: Date }>(
+      "SELECT now() AS collected,now()+interval '90 days' AS stale")).rows[0]!;
+    const stock = fulfillment.createPostgresFulfillmentStockSyncPort(executor, { sourceKey: facts.stockSourceKey, readLocalInventoryStock: async () => [] });
+    await stock.recordProviderStockCurrent({ requestKey: `derived-stock:${skuRef}`, snapshot: { providerRef: "sandbox-stock",
+      collectedAt: collected.toISOString(), sourceRevision: null, revisionSource: "collection", quantityKind: "snapshot", skuRef,
+      totalQuantity: 1000, forSaleQuantity: 1000, reservedOrUnavailableQuantity: 0, syncRunId: "derived-renewal" },
+    inventoryClass: "sellable", lastSyncedAt: collected.toISOString(), staleAfter: stale.toISOString() });
+  }
+
+  async function newDerivedPurchase(editPrice?: number) {
+    const id = randomUUID(), code = `Example-${id}`, quantity = 1;
+    await admin.query(`INSERT INTO public.catalog_skus(id,product_id,sku,title,sellable_in_subscription)
+      SELECT $2,product_id,$3,'Refill',true FROM public.catalog_skus WHERE id=$1`, [variant, id, code]);
+    const { id: entryId } = (await admin.query<{ id: string }>(`INSERT INTO public.price_entries
+      (price_list_id,variant_id,mode,unit_price_minor,valid_from) VALUES($1,$2,'one_time',$3,now()) RETURNING id`,
+    [list, id, base])).rows[0]!;
+    if (editPrice !== undefined) await admin.query(`INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from)
+      VALUES($1,$2,'subscription',$3,now())`, [list, id, editPrice]);
+    await recordStock(code);
+    const p = await draftedPurchase("subscription", 0, [{ sku: code, quantity, unitPrice: derived, catalogFacts: {
+      version: "catalog_facts_v2", skuId: id, documentRevisionId: randomUUID(), documentDigest: "a".repeat(64),
+      basePriceEntryId: entryId, baseUnitAmountMinor: base, policyRevisionId: policy.id, policyDigest: policy.digest,
+      resolvedUnitAmountMinor: derived, resolvedLineAmountMinor: derived * quantity, currency: "XXX", mode: "subscription", atTime: await clock(),
+    } }], clock);
+    return { p, id, code, entryId, lines: [{ lineOrdinal: 1, sku: code, quantity, unitAmountMinor: derived }] };
+  }
+
+  async function replaceBase(id: string, entryId: string) {
+    const db = await admin.connect();
+    try {
+      await db.query("BEGIN");
+      const { cutoff } = (await db.query<{ cutoff: string }>("SELECT clock_timestamp()::text AS cutoff")).rows[0]!;
+      await db.query("UPDATE public.price_entries SET active=false,valid_to=$2,updated_at=$2 WHERE id=$1", [entryId, cutoff]);
+      await db.query(`INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from)
+        VALUES($1,$2,'one_time',230,$3)`, [list, id, cutoff]);
+      await db.query("COMMIT");
+      return cutoff;
+    } catch (error) { await db.query("ROLLBACK"); throw error; }
+    finally { db.release(); }
+  }
+
+  async function waitForCutoff(cutoff: string) {
+    await expect.poll(async () => {
+      const { rows: [check] } = await admin.query(`SELECT date_trunc('milliseconds',clock_timestamp()) >= $1::timestamptz AS ready,
+        clock_timestamp()::text AS observed`, [cutoff]);
+      return check.ready ? "ready" : `cutoff ${cutoff}, database clock ${check.observed}`;
+    }, { interval: 5, timeout: 1000 }).toBe("ready");
+  }
+
   beforeAll(async () => {
     await admin.query(`INSERT INTO public.catalog_skus(id,product_id,sku,title,sellable_in_subscription)
       SELECT position.id,k.product_id,position.sku,'Refill',true FROM public.catalog_skus k
@@ -322,15 +373,80 @@ describe("derived renewal price context in PostgreSQL", () => {
       SELECT r.id,l.id,l.region_code,l.currency,'D2C',1,500,10,'FLOOR_TO_QUANTUM',r.starts,
         public.catalog_price_setup_policy_digest(r.id,1,l.id,l.region_code,l.currency,'D2C',r.starts,NULL,500,10,'FLOOR_TO_QUANTUM')
       FROM revision r JOIN public.price_lists l ON l.id=$1 RETURNING id,digest`, [list])).rows[0]!;
-    const { collected, stale } = (await admin.query<{ collected: Date; stale: Date }>(
-      "SELECT now() AS collected,now()+interval '90 days' AS stale")).rows[0]!;
-    const stock = fulfillment.createPostgresFulfillmentStockSyncPort(executor, { sourceKey: facts.stockSourceKey, readLocalInventoryStock: async () => [] });
-    for (const skuRef of [storedSku, sku]) {
-      await stock.recordProviderStockCurrent({ requestKey: `derived-stock:${skuRef}`, snapshot: { providerRef: "sandbox-stock",
-        collectedAt: collected.toISOString(), sourceRevision: null, revisionSource: "collection", quantityKind: "snapshot", skuRef,
-        totalQuantity: 1000, forSaleQuantity: 1000, reservedOrUnavailableQuantity: 0, syncRunId: "derived-renewal" },
-      inventoryClass: "sellable", lastSyncedAt: collected.toISOString(), staleAfter: stale.toISOString() });
-    }
+    for (const skuRef of [storedSku, sku]) await recordStock(skuRef);
+  });
+
+  it("attaches the historical derived price and admits edits at the current stored price", async () => {
+    const { p, id, code, entryId, lines } = await newDerivedPurchase(105);
+    await waitForCutoff(await replaceBase(id, entryId));
+    const log = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const result = await api.activateNativePurchaseWithRenewal(executor, { ...p,
+      facts: { ...facts, lines, unattendedChargeAuthorizedAt: p.purchaseAt } });
+    expect(result.renewalAttachment).toBe("complete");
+    const subscriptionId = String(result.activation.subscriptionId);
+    const before = await state(subscriptionId);
+    expect(before).toMatchObject({ price_list_id: list, currency_code: "XXX", template_version: 1 });
+    expect(log.mock.calls).toEqual([]);
+    expect((await runtime.query(`SELECT sku,quantity,unit_amount_minor::int FROM public.subscription_renewal_term_lines
+      WHERE subscription_id=$1`, [subscriptionId])).rows).toEqual([{ sku: code, quantity: 1, unit_amount_minor: 110 }]);
+    const editNow = await clock();
+    expect((await admin.query(`SELECT $2::timestamptz < next_cycle_at-make_interval(hours=>edit_window_hours) AS in_window
+      FROM public.subscriptions WHERE id=$1`, [subscriptionId, editNow])).rows).toEqual([{ in_window: true }]);
+    expect((await runtime.query("SELECT health_state FROM public.subscription_method_states WHERE subscription_id=$1", [subscriptionId])).rows)
+      .toEqual([{ health_state: "healthy" }]);
+    const principal = (await admin.query("SELECT principal_id FROM public.clients WHERE id=$1", [p.clientId])).rows[0].principal_id;
+    const db = await admin.connect();
+    try {
+      await db.query("BEGIN");
+      await db.query("SET LOCAL ROLE authenticated");
+      await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: principal, role: "authenticated" })]);
+      const { rows: [preview] } = await db.query("SELECT public.customer_subscription_preview_bundle_as_actor($1,$2,$3) AS result",
+        [subscriptionId, randomUUID(), JSON.stringify([{ variantId: id, qty: 3 }])]);
+      expect(preview.result.preview).toMatchObject({ canApply: true });
+      await db.query("COMMIT");
+    } catch (error) { await db.query("ROLLBACK"); throw error; }
+    finally { db.release(); }
+    expect(await edit({ clientId: p.clientId, subscriptionId }, id, editNow)).toMatchObject({ status: "applied", templateVersion: 2 });
+    expect(await state(subscriptionId)).toMatchObject({ next_cycle_at: before.next_cycle_at, template_version: 2 });
+  });
+
+  it("recovers historical derived context at delivery-three graduation without shifting the due anchor", async () => {
+    const { p, id, code, entryId, lines } = await newDerivedPurchase();
+    const terms = retainedTerms();
+    terms.starterPack!.delivery2.basisSubtotalMinor = derived;
+    terms.starterPack!.graduation.lines = [{ sku: code, qty: 1, sortOrder: 0, isAddon: false,
+      quoteLine: { unitPriceGross: { amountMinor: derived }, lineSubtotalGross: { amountMinor: derived } } }];
+    const result = await api.activateNativePurchaseWithRenewal(executor, { ...p,
+      facts: { ...facts, lines, renewalTerms: terms, unattendedChargeAuthorizedAt: p.purchaseAt } });
+    expect(result.renewalAttachment).toBe("complete");
+    const subscriptionId = String(result.activation.subscriptionId);
+    const bound = { price_list_id: list, currency_code: "XXX" };
+    expect(await state(subscriptionId)).toMatchObject({ ...bound, template_version: 1 });
+    const paidCycles = async () => (await admin.query(`SELECT c.id=o.subscription_cycle_id AS initial,c.status
+      FROM public.subscription_cycles c JOIN public.subscription_activations a ON a.subscription_id=c.subscription_id
+      JOIN public.commerce_orders o ON o.id=a.order_id
+      WHERE c.subscription_id=$1 AND o.id=$2 ORDER BY c.scheduled_at`, [subscriptionId, p.orderId])).rows;
+    expect(await paidCycles()).toEqual([{ initial: true, status: "paid" }]);
+    const cutoff = await replaceBase(id, entryId);
+    const asOf = (await admin.query<{ as_of: Date }>("SELECT next_cycle_at+interval '1 minute' AS as_of FROM public.subscriptions WHERE id=$1",
+      [subscriptionId])).rows[0]!.as_of.toISOString();
+    const renewal = await deps(subscriptionId, "succeeded", asOf);
+    renewal.input.settlement = api.createPostgresRenewalSettlementPort(executor, renewal.codec, transaction);
+    expect(await api.runOneAutomaticSubscriptionRenewal(renewal.input, renewal.due, asOf)).toMatchObject({ status: "succeeded" });
+    expect(await paidCycles()).toEqual([{ initial: true, status: "paid" }, { initial: false, status: "paid" }]);
+    expect(await state(subscriptionId)).toMatchObject(bound);
+    await admin.query("UPDATE public.subscriptions SET price_list_id=NULL,currency_code=NULL WHERE id=$1", [subscriptionId]);
+    const { rows: [anchor] } = await admin.query(`SELECT price_list_id,currency_code,next_cycle_at::text,
+      to_char(next_cycle_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS scheduled
+      FROM public.subscriptions WHERE id=$1`, [subscriptionId]);
+    expect(anchor).toMatchObject({ price_list_id: null, currency_code: null });
+    await waitForCutoff(cutoff);
+    const log = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const snapshot = await renewal.input.store.buildCycleSnapshots({ subscriptionId, scheduledAt: anchor.scheduled,
+      scheduledInstant: Date.parse(anchor.scheduled) });
+    expect(snapshot.templateSnapshot).toMatchObject({ cadenceDays: 30, lines: [{ sku: code, quantity: 1, unitAmountMinor: 110 }] });
+    expect(await state(subscriptionId)).toMatchObject({ ...bound, template_version: 2, next_cycle_at: anchor.next_cycle_at });
+    expect(log.mock.calls).toEqual([]);
   });
 
   it.each([
