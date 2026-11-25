@@ -2,9 +2,15 @@ import { createPostgresCommerceOmsPort } from "@openlup/platform/commerce/server
 import { createPostgresRenewalSettlementPort as mainSettlement } from "../../server/adapters/postgres/commerce/renewalSettlement.js";
 import { connectedNativeStoreTables, readPrivacyDeclarationCensus, requiredPrivacyDeclarationTable } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { Pool } from "pg";
+import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
+import { closePostgres, postgresSetupTimeoutMs, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
+import { expectSqlError, rejected } from "./orderMoneyV2Storage.fixture.js";
+import { expectFrozenGenerationShape, frozenGenerationSignature, frozenGenerationSql, generationForward } from "./subscriptionFrozenGenerationFixture.js";
 import { beforeEach, expect, it, vi } from "vitest";
 import { allPublicRows } from "./subscriptionStockWaitCases.js";
-import { api, active, purchase, admin, at, composition, payments, destinations, inventory, captureStore, withRestoredStore, days, deps, executor, facts, fulfillment, later, now, retire, requireIsolatedRenewalContainer, restartDatabase, freshRetryReadback, normalRenewalWorkerPopulation, rpc, runtime, settlement, stock, transaction, withNormalRenewalWorker } from "./subscriptionPublicRenewalFixture.js";
+import { api, active, purchase, admin, at, composition, payments, destinations, inventory, captureStore, withRestoredStore, days, deps, executor, facts, fulfillment, later, now, retire, requireIsolatedRenewalContainer, restartDatabase, freshRetryReadback, normalRenewalWorkerPopulation, rpc, runtime, settlement, stock, transaction, withNormalRenewalWorker, loginConnection, runtimeLogin, runtimeUrl, withOccupiedRenewalPrefix } from "./subscriptionPublicRenewalFixture.js";
 requireIsolatedRenewalContainer();
 import type { NativeRetryDriverOptions, NativeRenewalPurchaseFacts } from "@openlup/platform/subscriptions";
 import type { RenewalReadback } from "@openlup/platform/subscriptions/contracts";
@@ -1069,3 +1075,229 @@ it("drains normal due renewals concurrently with zero duplicate dispatch and mon
   expect(await native.services.run()).toMatchObject({ renewals: [] });
   expect([...executedByOrder]).toEqual(dispatches);
 }, 30_000);
+
+const generationText = `${frozenGenerationSql}::text AS projection`;
+const rawClaim = "SELECT public.subscription_claim_due_renewal($1::text,$2::text,$3::jsonb,'renewal-witness',300,$4::timestamptz)::text AS result";
+const rawPrepare = "SELECT public.commerce_prepare_subscription_renewal($1::uuid,$2::uuid,$3::timestamptz)::text AS result";
+const rawReadback = "SELECT public.subscription_read_renewal($1::text)::text AS result";
+
+it("reads the original frozen generation under the inherited login through takeover and late delivery", async () => {
+  const paidAt = at.replace(/\.\d{3}Z$/, ".123456Z"), f = await purchase(true, true, paidAt);
+  const activated = await api.activateNativePurchaseWithRenewal(executor, { ...f, facts });
+  const d = await deps(String(activated.activation.subscriptionId), "succeeded");
+  await admin.query("SELECT public.subscription_delivery_alignment_set_mode('auto_align')");
+  const shipmentId = await parcel(f.orderId);
+  const aligned = api.withNativeDeliveryAlignmentRenewalAdmission(d.input.store, executor);
+  expect(await aligned.admitDeliveryAlignment({ ...d.due, occurredAt: now })).toMatchObject({ allowed: false, state: "protected" });
+  const snapshot = await d.input.store.buildCycleSnapshots(d.due);
+  const claim = await d.input.store.claimDue({ snapshot, workerId: "original", now });
+  expect(claim.acquired).toBe(true);
+  const pair = [claim.operationId, claim.operationId], absent = randomUUID();
+  const inherited = new Pool({ connectionString: loginConnection(runtimeUrl, runtimeLogin()) });
+  try {
+    expect((await inherited.query("SELECT current_user,session_user")).rows).toEqual([
+      { current_user: runtimeLogin(), session_user: runtimeLogin() },
+    ]);
+    const initial = (await inherited.query(generationText, pair)).rows[0].projection;
+    const legacy = JSON.parse((await inherited.query(rawReadback, [claim.identityKey])).rows[0].result);
+    expect(legacy).toMatchObject({ cycleNumber: 1, cycleSnapshot: { frozenRevision: "native.purchase-renewal.v1",
+      cycle: { nativeRenewalCounter: 1, logicalCycleNumber: 2 } } });
+    const projection = JSON.parse(initial);
+    expect(projection).toMatchObject({ operationId: claim.operationId, commercialGenerationId: claim.operationId,
+      scheduledAt: d.due.scheduledAt, operationFingerprint: claim.operationFingerprint,
+      logicalCycle: { activationCycleId: legacy.cycleSnapshot.cycle.activationCycleId, evidenceRef: legacy.cycleSnapshot.cycle.evidenceRef },
+      discountTerms: null, shippingTerms: null, linePricing: [] });
+    expect(projection.scheduledAt).toMatch(/\.123456Z$/);
+    expect(expectFrozenGenerationShape(projection)).toEqual(["lines[].unitAmountMinor"]);
+    const noWrites = await allPublicRows(admin);
+    for (const [ids, code, message, hint] of [
+      [[null, absent], "22023", "subscription_renewal_generation_invalid_input", "Recover both coordinates from the operation owner and recheck the lookup."],
+      [[absent, null], "22023", "subscription_renewal_generation_invalid_input", "Recover both coordinates from the operation owner and recheck the lookup."],
+      [[absent, claim.operationId], "22023", "subscription_renewal_generation_mismatch", "Recover the original operation and generation binding through its owner and recheck it."],
+      [[absent, absent], "22023", "commerce_renewal_operation_not_found", "Verify the selected installation and recover the stored operation through its owner. Recheck the original pair."],
+      [["malformed", absent], "22P02", 'invalid input syntax for type uuid: "malformed"', undefined],
+    ] as const) {
+      const error = await rejected(inherited.query(generationText, [...ids]));
+      expectSqlError(error, code, message);
+      expect(error).toHaveProperty("hint", hint);
+      expect(await allPublicRows(admin)).toEqual(noWrites);
+    }
+    const peer = await admin.connect();
+    try {
+      await peer.query("BEGIN");
+      await peer.query("SELECT id FROM public.subscription_renewal_operations WHERE id=$1 FOR UPDATE", [claim.operationId]);
+      const underLock = await transaction(async db => {
+        await db.query("SET TRANSACTION READ ONLY");
+        await db.query("SET LOCAL lock_timeout='750ms'");
+        await db.query("SET LOCAL TIME ZONE 'Etc/GMT-9'");
+        return (await db.query(generationText, [claim.operationId.toUpperCase(), claim.operationId])).rows[0].projection;
+      }, inherited);
+      expect(underLock).toBe(initial);
+    } finally { await peer.query("ROLLBACK"); peer.release(); }
+    expect(await allPublicRows(admin)).toEqual(noWrites);
+
+    const takeover = await d.input.store.claimDue({ snapshot, workerId: "takeover", now: later });
+    expect(takeover).toMatchObject({ operationId: claim.operationId, claimGeneration: 2, acquired: true });
+    expect(takeover.claimToken).not.toBe(claim.claimToken);
+    expect((await inherited.query(generationText, pair)).rows[0].projection).toBe(initial);
+    const deliveredAt = days(d.due.scheduledAt, 7);
+    const arrival = fulfillment.createPostgresDeliveryAlignmentPort(executor);
+    expect(await arrival.recordArrival({ requestKey: `delivery:${shipmentId}`, parcelRef: shipmentId, deliveredAt,
+      evidenceRef: `evidence:${shipmentId}` })).toMatchObject({ disposition: "aligned", nextCycleAt: days(deliveredAt, 28) });
+    const moved = await allPublicRows(admin);
+    expect((await inherited.query(generationText, pair)).rows[0].projection).toBe(initial);
+    expect(JSON.parse((await inherited.query(rawReadback, [claim.identityKey])).rows[0].result))
+      .toMatchObject({ operationId: claim.operationId, identityKey: claim.identityKey, claimGeneration: 2, cycleSnapshot: { scheduledAt: d.due.scheduledAt } });
+    expect(await allPublicRows(admin)).toEqual(moved);
+  } finally { await inherited.end(); }
+}, 30_000);
+
+async function generationAcl(owner: Pool) {
+  const info = (await owner.query(`SELECT p.proowner::regrole::text AS owner, p.prosecdef AS definer,
+    p.provolatile AS volatility, p.proconfig AS config,
+    (SELECT jsonb_agg(jsonb_build_array(grantee::regrole::text,privilege_type,is_grantable) ORDER BY grantee::regrole::text)
+      FROM aclexplode(p.proacl)) AS acl
+    FROM pg_proc p WHERE p.oid=to_regprocedure($1)`, [frozenGenerationSignature])).rows;
+  return info;
+}
+
+it("checks exact generation ACLs on a native installation without the service role", async () => {
+  const container = await runPostgresContainer({ name: `renewal-bare-${process.pid}`, password: randomUUID() });
+  const owner = new Pool({ connectionString: container.connectionString });
+  try {
+    expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
+    const { baseline, forward } = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")), "legacy");
+    const boundary = forward.findIndex(unit => unit.file === generationForward);
+    expect(boundary).toBeGreaterThan(0);
+    for (const { file } of [baseline, ...forward.slice(0, boundary + 1)]) await owner.query(readFileSync(file, "utf8"));
+    await owner.query("CREATE ROLE renewal_unrelated NOLOGIN");
+    expect((await owner.query("SELECT to_regrole('service_role') AS service")).rows).toEqual([{ service: null }]);
+    expect(await generationAcl(owner)).toEqual([{ owner: "postgres", definer: false, volatility: "s",
+      config: ["search_path=pg_catalog, pg_temp"], acl: [["postgres", "EXECUTE", false]] }]);
+    expect((await owner.query(`SELECT rolname FROM pg_roles WHERE NOT rolsuper AND has_function_privilege(oid,$1,'EXECUTE')`,
+      [frozenGenerationSignature])).rows).toEqual([]);
+    const id = randomUUID();
+    await expect(owner.query(generationText, [id, id])).rejects.toMatchObject({ code: "22023", message: "commerce_renewal_operation_not_found" });
+  } finally { await closePostgres(container, owner); }
+}, postgresSetupTimeoutMs);
+
+it("upgrades occupied v1 and retained v2 roots with exact legacy bytes and one private signature", async () => {
+  await withOccupiedRenewalPrefix(async target => {
+    const { owner, db, applyForward } = target;
+    const withTransaction: typeof transaction = work => transaction(work, db);
+    const codec = api.createNativeRenewalCodec(), store = api.createPostgresRenewalStore(db, codec, withTransaction);
+    const graphs: { claim: RenewalReadback; wire: Record<string, unknown>; retained: boolean }[] = [];
+    for (const retained of [false, true]) {
+      const f = await purchase(true, true, at, target);
+      const activation = await api.activateNativePurchaseWithRenewal(db, { ...f, facts: { ...facts,
+        ...(retained ? { renewalTerms: { version: "native.renewal-terms.v1" as const, minimumPayableMinor: 23, normalCadenceDays: [30],
+          shippingTerms: { version: "shipping-threshold.v1" as const, currency: "XXX", flatMinor: 37, freeThresholdMinor: 150 },
+          starterPack: { schemaVersion: "1" as const, starterIntervalDays: 28, basisTemplateVersion: 777,
+            delivery2: { discountBps: 2500, discountMinor: 51, basisSubtotalMinor: 200 }, graduation: { cadenceDays: 30,
+              lines: [{ sku: facts.lines[0]!.sku, qty: 2, sortOrder: 0, isAddon: false,
+                quoteLine: { unitPriceGross: { amountMinor: 100 }, lineSubtotalGross: { amountMinor: 200 } } }] } } } } : {}) } });
+      const due = (await store.listDue(100, now)).find(row => row.subscriptionId === String(activation.activation.subscriptionId))!;
+      expect(due).toBeDefined();
+      const snapshot = await store.buildCycleSnapshots(due);
+      const claim = await store.claimDue({ snapshot, now, workerId: "renewal-witness" });
+      expect(claim.acquired).toBe(true);
+      expect(await inventory.createPostgresRenewalReservationPort(db).reserve({ operationId: claim.operationId,
+        claimToken: claim.claimToken, now })).toMatchObject({ reserved: true });
+      let firstPrepare: string | undefined;
+      const incumbentSettlement = api.createPostgresRenewalSettlementPort(db, codec, work => withTransaction(tx => work({
+        async query(sql, values) {
+          if (!sql.includes("public.commerce_prepare_subscription_renewal(")) return tx.query(sql, values);
+          await tx.query("SET LOCAL TIME ZONE 'UTC'");
+          const result = await tx.query(`WITH result AS MATERIALIZED (${sql}) SELECT response,response::text AS raw FROM result`, values);
+          firstPrepare = String(result.rows[0]?.raw);
+          return result;
+        },
+      })));
+      const prepared = await incumbentSettlement.prepareRenewal({ operationId: claim.operationId, claimToken: claim.claimToken, now });
+      expect(firstPrepare).toBeDefined();
+      expect(JSON.parse(firstPrepare!)).toMatchObject({ replayed: false, orderId: prepared.orderId, operationId: claim.operationId });
+      expect((await owner.query(`SELECT o.total_amount_minor::int AS total,
+        (SELECT sum(promotion_discount_allocated_minor)::int FROM public.commerce_order_items WHERE order_id=o.id) AS discount,
+        (SELECT sum(amount_minor)::int FROM public.commerce_order_adjustments WHERE order_id=o.id) AS shipping
+        FROM public.commerce_orders o WHERE id=$1`, [prepared.orderId])).rows)
+        .toEqual([{ total: retained ? 186 : 200, discount: retained ? 51 : null, shipping: retained ? 37 : null }]);
+      graphs.push({ claim, wire: codec.encode(claim.cycleSnapshot), retained });
+    }
+
+    const replay = () => withTransaction(async tx => {
+      await tx.query("SET LOCAL TIME ZONE 'UTC'");
+      async function raw(sql: string, values: unknown[]) {
+        const value = (await tx.query(sql, values)).rows[0]?.result;
+        if (typeof value !== "string") throw new Error("Expected raw PostgreSQL JSONB text");
+        return value;
+      }
+      const results: { stored: string; claimReplay: string; prepareReplay: string; readback: string }[] = [];
+      for (const { claim, wire } of graphs) {
+        const stored = await raw("SELECT cycle_snapshot::text AS result FROM public.subscription_renewal_operations WHERE id=$1", [claim.operationId]);
+        const claimReplay = await raw(rawClaim, [claim.identityKey, claim.operationFingerprint, JSON.stringify(wire), now]);
+        const prepareReplay = await raw(rawPrepare, [claim.operationId, claim.claimToken, now]);
+        const readback = await raw(rawReadback, [claim.identityKey]);
+        expect(JSON.parse(claimReplay)).toMatchObject({ claimToken: claim.claimToken, replayed: true, reason: "lease_active" });
+        expect(JSON.parse(prepareReplay)).toMatchObject({ replayed: true, operationId: claim.operationId });
+        expect(JSON.parse(readback).cycleSnapshot).toEqual(wire);
+        expect(JSON.parse(stored)).toEqual(wire);
+        results.push({ stored, claimReplay, prepareReplay, readback });
+      }
+      return results;
+    });
+    const definitions = async () => (await owner.query(`SELECT p.oid::regprocedure::text AS name,pg_get_functiondef(p.oid) AS definition,p.proacl::text AS acl
+      FROM pg_proc p WHERE p.pronamespace='public'::regnamespace AND p.prokind IN ('f','p') ORDER BY 1`)).rows;
+    const relationAcl = async () => (await owner.query(`SELECT relname,relacl::text,relrowsecurity,relforcerowsecurity
+      FROM pg_class WHERE relnamespace='public'::regnamespace ORDER BY relname`)).rows;
+    const applicationRows = async () => {
+      const rows = await allPublicRows(owner);
+      delete rows.platform_schema_migrations;
+      return rows;
+    };
+    const rows = await applicationRows(), routines = await definitions(), relations = await relationAcl();
+    const before = await replay();
+    expect(await applicationRows()).toEqual(rows);
+    expect(await generationAcl(owner)).toEqual([]);
+    expect(await applyForward()).toEqual({ applied: [generationForward] });
+    expect(await applyForward()).toEqual({ applied: [] });
+    expect(await replay()).toEqual(before);
+    const after = await definitions();
+    expect(after.filter(row => row.name.startsWith("subscription_read_frozen_renewal_generation("))).toHaveLength(1);
+    expect(after.filter(row => !row.name.startsWith("subscription_read_frozen_renewal_generation("))).toEqual(routines);
+    expect(await relationAcl()).toEqual(relations);
+    expect(await generationAcl(owner)).toEqual([{ owner: "postgres", definer: false, volatility: "s", config: ["search_path=pg_catalog, pg_temp"],
+      acl: [["postgres", "EXECUTE", false], ["service_role", "EXECUTE", false]] }]);
+    for (const { claim, retained } of graphs) {
+      const pair = [claim.operationId, claim.operationId];
+      const result = (await db.query(generationText, pair)).rows[0].projection;
+      expect(JSON.parse(result)).toMatchObject({ operationId: claim.operationId, operationFingerprint: claim.operationFingerprint,
+        shippingTerms: retained ? { version: "shipping-threshold.v1", currency: "XXX", flatMinor: 37, freeThresholdMinor: 150 } : null });
+      expect(await withTransaction(async tx => {
+        await tx.query("SET LOCAL ROLE service_role");
+        expect((await tx.query("SELECT current_user")).rows).toEqual([{ current_user: "service_role" }]);
+        return (await tx.query(generationText, pair)).rows[0].projection;
+      })).toBe(result);
+    }
+    const { operationId } = graphs[0]!.claim, pair = [operationId, operationId];
+    for (const role of ["anon", "authenticated"]) {
+      await expect(withTransaction(async tx => {
+        await tx.query(`SET LOCAL ROLE ${role}`);
+        await tx.query(generationText, pair);
+      })).rejects.toMatchObject({ code: "42501", message: "permission denied for function subscription_read_frozen_renewal_generation" });
+    }
+    const loginPassword = randomUUID();
+    await owner.query(`CREATE ROLE renewal_unrelated LOGIN PASSWORD '${loginPassword}';
+      ALTER ROLE openlup_catalog_publication PASSWORD '${loginPassword}'`);
+    for (const role of ["openlup_catalog_publication", "renewal_unrelated"]) {
+      const url = new URL(target.connectionString); url.username = role; url.password = loginPassword;
+      const restricted = new Pool({ connectionString: url.toString() });
+      try {
+        expect((await restricted.query("SELECT current_user,session_user")).rows).toEqual([{ current_user: role, session_user: role }]);
+        await expect(restricted.query(generationText, pair)).rejects.toMatchObject({
+          code: "42501", message: "permission denied for function subscription_read_frozen_renewal_generation",
+        });
+      } finally { await restricted.end(); }
+    }
+    expect(await applicationRows()).toEqual(rows);
+  });
+}, postgresSetupTimeoutMs);

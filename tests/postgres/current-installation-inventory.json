@@ -2,10 +2,14 @@
   "current": {
     "profiles": {
       "legacy": {
-        "count": 220,
-        "exactTailCount": 110,
-        "objectInventorySha256": "720893e7e2ba4ef0ec3d63ca1f6146f5c903d17bf7782c9fcca40d34ee3e1192",
+        "count": 221,
+        "exactTailCount": 111,
+        "objectInventorySha256": "b151a0f810de5ef0cb9d28be787f1fc830a010d211fd88a06f20ef031b8a56c0",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261129120000_subscription_renewal_generation_seam.sql",
+            "sha256": "688b5f2db9db04e2eef243b16757890c12283dd9ab85c9e70b8eddfc4cbec543"
+          },
           {
             "file": "db/platform/migrations/20261128230000_derived_subscription_price_retired_base.sql",
             "sha256": "8447cb5d1a56d254860a2b0b11b496e80fe64f6da3cba9b5d0615cd421a367fb"
@@ -889,10 +893,14 @@
         ]
       },
       "bootstrap": {
-        "count": 226,
-        "exactTailCount": 111,
-        "objectInventorySha256": "ec6b879883cdf1053a6b8f75afae8525443f1e0525341fae589b6821c6b037f9",
+        "count": 227,
+        "exactTailCount": 112,
+        "objectInventorySha256": "740e39aecd9e03e08e4a0a87ca96908899bb070cd7ba510031815f9f858886e2",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261129120000_subscription_renewal_generation_seam.sql",
+            "sha256": "688b5f2db9db04e2eef243b16757890c12283dd9ab85c9e70b8eddfc4cbec543"
+          },
           {
             "file": "db/platform/migrations/20261128230000_derived_subscription_price_retired_base.sql",
             "sha256": "8447cb5d1a56d254860a2b0b11b496e80fe64f6da3cba9b5d0615cd421a367fb"
@@ -1800,10 +1808,14 @@
         ]
       },
       "separate": {
-        "count": 226,
-        "exactTailCount": 111,
-        "objectInventorySha256": "7f6b3b721395d44d0df613387ad4ba733661a2f1972a623828a2fd8e368811cb",
+        "count": 227,
+        "exactTailCount": 112,
+        "objectInventorySha256": "04bfb1f6e285e9aa75cd2b273855deb17a0a6453cd29cacd83dfb1f58d2bc4d0",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261129120000_subscription_renewal_generation_seam.sql",
+            "sha256": "688b5f2db9db04e2eef243b16757890c12283dd9ab85c9e70b8eddfc4cbec543"
+          },
           {
             "file": "db/platform/migrations/20261128230000_derived_subscription_price_retired_base.sql",
             "sha256": "8447cb5d1a56d254860a2b0b11b496e80fe64f6da3cba9b5d0615cd421a367fb"
@@ -2711,10 +2723,14 @@
         ]
       },
       "admin-managed": {
-        "count": 224,
-        "exactTailCount": 110,
-        "objectInventorySha256": "f338673e9a16595d37ab024a21e97b37c110cec0b756bba0fb9f221053f95b17",
+        "count": 225,
+        "exactTailCount": 111,
+        "objectInventorySha256": "6b8e0cdbd1651ab3c270ac92fe8723fb2908e7e6a53b3271499a6fb04adb59ab",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261129120000_subscription_renewal_generation_seam.sql",
+            "sha256": "688b5f2db9db04e2eef243b16757890c12283dd9ab85c9e70b8eddfc4cbec543"
+          },
           {
             "file": "db/platform/migrations/20261128230000_derived_subscription_price_retired_base.sql",
             "sha256": "8447cb5d1a56d254860a2b0b11b496e80fe64f6da3cba9b5d0615cd421a367fb"
@@ -3614,10 +3630,14 @@
         ]
       },
       "admin-operator": {
-        "count": 224,
-        "exactTailCount": 110,
-        "objectInventorySha256": "a08eda24f0022ea09808d89ecb6790bff6ff0405aa3b2f795efe4ae34eeada1e",
+        "count": 225,
+        "exactTailCount": 111,
+        "objectInventorySha256": "f02c846775c766291d0e96e31f909c53f5432b5238fd5ec1e1e2ac572c353f17",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261129120000_subscription_renewal_generation_seam.sql",
+            "sha256": "688b5f2db9db04e2eef243b16757890c12283dd9ab85c9e70b8eddfc4cbec543"
+          },
           {
             "file": "db/platform/migrations/20261128230000_derived_subscription_price_retired_base.sql",
             "sha256": "8447cb5d1a56d254860a2b0b11b496e80fe64f6da3cba9b5d0615cd421a367fb"

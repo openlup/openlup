@@ -218,6 +218,19 @@ Frozen historical record (2026-11-13) archived in [Data and migrations evidence]
 
 ## Retained renewal storage
 
+`public.subscription_read_frozen_renewal_generation(uuid,uuid)` reads the original UTC anchor
+and frozen agreement by operation and commercial generation. Existing operations use their
+row UUID for both coordinates. The [projection contract](../../tests/postgres/subscriptionFrozenGenerationFixture.ts)
+pins the exact keys, types and optional members. Unavailable scalar fields and singular
+objects are null. A missing required line member makes `lines` null, and missing retained
+line provenance yields an empty array. The roster requires the stored acceptance fingerprint
+to match the operation fingerprint. Only line unit amount, flat shipping and free shipping
+threshold are JSON numbers. Treat returned strings as opaque in money calculations and
+resolve retained provenance through its owners. Use the persisted claim identity key for
+legacy readback. Recover both coordinates after an invalid or mismatched pair. For an absent
+root, check the installation and recover the original pair. Use the installed server role for
+permission refusals.
+
 The subscription-notice forward preserves the reminder ledger's renewal-day
 identity and stores new queued charge facts in `subscription_reminder_ledger.renewal_at`;
 subscription events supply only the legacy fallback. New pause reminders and

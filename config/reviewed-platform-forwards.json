@@ -9619,6 +9619,19 @@
         "createdFunctions": [],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "subscription-renewal-generation",
+        "path": "db/platform/migrations/20261129120000_subscription_renewal_generation_seam.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.subscription_read_frozen_renewal_generation(uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -13896,6 +13909,17 @@
           "signature": "public.catalog_admission_derived_subscription_prices(text,jsonb,jsonb,timestamptz)",
           "beforeSha256": "46951df895d85576f91fc662bf12bdad4d65e0c96d142220404825c6a6154e37",
           "afterSha256": "00084e9310c923ed26f0a58a2b42ec66b4b7d822c4cd47352ba8c121564b4537"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261129120000_subscription_renewal_generation_seam.sql",
+      "sha256": "688b5f2db9db04e2eef243b16757890c12283dd9ab85c9e70b8eddfc4cbec543",
+      "functions": [
+        {
+          "signature": "public.subscription_read_frozen_renewal_generation(uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "3b598a00577be18f9e4f6f778d38412c27c7320dd91b2821e741913e11cbf781"
         }
       ]
     }
