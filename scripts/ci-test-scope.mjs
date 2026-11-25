@@ -409,6 +409,18 @@ const postgresSuiteInputs = (testPath, extras = []) => [
   testPath,
   ...extras.flatMap(entry => PG_AXES[entry] ?? [entry]),
 ];
+const safeFileProbe = isFile => testPath => {
+  try {
+    return isFile(testPath);
+  } catch {
+    return false;
+  }
+};
+export function governedDraftSuiteInputs(isFile) {
+  return Object.fromEntries(GOVERNED_DRAFT_SUITE_PATHS
+    .filter(safeFileProbe(isFile))
+    .map(testPath => [testPath, postgresSuiteInputs(testPath, GOVERNED_DRAFT_SUITE_INPUTS)]));
+}
 export const TOOLING_INPUTS = {
   'scripts/agent-review-derived-inventory.test.ts': [
     'db/platform/migrations/',
@@ -482,9 +494,8 @@ export const TOOLING_INPUTS = {
   ...Object.fromEntries(
     Object.entries(POSTGRES_SUITE_CLOSURES).map(([testPath, extras]) => [testPath, postgresSuiteInputs(testPath, extras)]),
   ),
-  ...Object.fromEntries(GOVERNED_DRAFT_SUITE_PATHS
-    .filter(testPath => statSync(new URL(`../${testPath}`, import.meta.url), { throwIfNoEntry: false })?.isFile())
-    .map(testPath => [testPath, postgresSuiteInputs(testPath, GOVERNED_DRAFT_SUITE_INPUTS)])),
+  ...governedDraftSuiteInputs(safeFileProbe(testPath =>
+    statSync(new URL(`../${testPath}`, import.meta.url), { throwIfNoEntry: false })?.isFile() ?? false)),
 };
 
 const WORKFLOW_PGTAP_INPUTS = [
@@ -541,10 +552,10 @@ const hasGlobalBailout = changedPaths => changedPaths.some(path => (!path.includ
   || isGlobalBailoutScript(path)
   || SHARED_INPUTS.some(input => coversInput(input, path)));
 
-export function excludedToolingTests(changedPaths) {
+export function excludedToolingTests(changedPaths, toolingInputs = TOOLING_INPUTS) {
   if (hasInvalidPath(changedPaths) || hasGlobalBailout(changedPaths)) return [];
   const touched = inputs => changedPaths.some(path => inputs.some(input => coversInput(input, path)));
-  return Object.entries(TOOLING_INPUTS)
+  return Object.entries(toolingInputs)
     .filter(([test, inputs]) => !touched([test, ...inputs]))
     .map(([test]) => test).sort();
 }

@@ -5,7 +5,7 @@ import { env as processEnvironment } from 'node:process';
 import { delimiter, extname, join, posix, resolve } from 'node:path';
 import ts from 'typescript';
 import { afterEach, describe, expect, it } from 'vitest';
-import { ALL_WORKFLOW_SCOPES_TRUE, excludedToolingTests, isGlobalBailoutScript, NON_BAILOUT_SCRIPTS, resolveGitExecutable, ROOT_DOC_FILES, scopeFromEvent, scopeFromLocal, SHARED_INPUTS, TOOLING_INPUTS, workflowScopeFromEvent, workflowScopeFromPaths, writeTestScope, writeWorkflowScope } from './ci-test-scope.mjs';
+import { ALL_WORKFLOW_SCOPES_TRUE, excludedToolingTests, governedDraftSuiteInputs, isGlobalBailoutScript, NON_BAILOUT_SCRIPTS, resolveGitExecutable, ROOT_DOC_FILES, scopeFromEvent, scopeFromLocal, SHARED_INPUTS, TOOLING_INPUTS, workflowScopeFromEvent, workflowScopeFromPaths, writeTestScope, writeWorkflowScope } from './ci-test-scope.mjs';
 
 const base = 'a'.repeat(40);
 const all = Object.keys(TOOLING_INPUTS).sort();
@@ -266,23 +266,45 @@ describe('conservative tooling scope', () => {
     expect(excludedToolingTests(['tests/postgres/managed-compat/supabase.sql'])).not.toContain('tests/postgres/reviewedBatchForwards.test.ts');
     expect(excludedToolingTests(['config/ci-postgres-packages.json'])).not.toContain('tests/postgres/reviewedBatchForwards.test.ts');
   });
-  it('activates each governed draft suite when its own file exists and retains restore for fixture changes', () => {
-    const fixture = 'tests/postgres/catalogAdmissionOwnerWrite.fixture.ts';
-    const fixtureExclusions = excludedToolingTests([fixture]);
-    expect(TOOLING_INPUTS['tests/postgres/m14RestrictedConnectedRestore.test.ts']).toContain(fixture);
-    expect(fixtureExclusions).not.toContain('tests/postgres/m14RestrictedConnectedRestore.test.ts');
+  const ownerWriteSuite = 'tests/postgres/catalogAdmissionOwnerWrite.test.ts';
+  const runtimeCommitSuite = 'tests/postgres/catalogAdmissionRuntimeCommit.test.ts';
+  const unrelatedChange = ['docs/platform/README.md'];
+  const ownerWriteFixture = 'tests/postgres/catalogAdmissionOwnerWrite.fixture.ts';
+  const publicationFixture = 'tests/postgres/catalogPublicationFixture.ts';
 
-    const unrelatedExclusions = excludedToolingTests(['docs/platform/README.md']);
-    for (const testPath of [
-      'tests/postgres/catalogAdmissionOwnerWrite.test.ts',
-      'tests/postgres/catalogAdmissionRuntimeCommit.test.ts',
+  it.each([
+    { present: [ownerWriteSuite] },
+    { present: [runtimeCommitSuite] },
+    { present: [ownerWriteSuite, runtimeCommitSuite] },
+    { present: [] },
+  ])('registers exactly the governed draft suites present: $present', ({ present }) => {
+    const inputs = governedDraftSuiteInputs(testPath => present.includes(testPath));
+    expect(Object.keys(inputs).sort()).toEqual([...present].sort());
+    expect(excludedToolingTests(unrelatedChange, inputs)).toEqual([...present].sort());
+    for (const input of [
+      ownerWriteFixture,
+      publicationFixture,
+      'tests/postgres/subscriptionLifecycleClosureFixture.ts',
+      'tests/postgres/subscriptionNativeFixture.ts',
+      'examples/neutral-store/host/server.ts',
     ]) {
-      const present = existsSync(resolve(testPath));
-      expect(Object.hasOwn(TOOLING_INPUTS, testPath)).toBe(present);
-      expect(unrelatedExclusions.includes(testPath)).toBe(present);
-      if (present) expect(TOOLING_INPUTS[testPath]).toContain(fixture);
-      expect(fixtureExclusions).not.toContain(testPath);
+      expect(excludedToolingTests([input], inputs), input).toEqual([]);
     }
+  });
+
+  it.each(['EACCES', 'ELOOP'])('keeps the unlisted-test default (always runs) when a suite probe throws %s', code => {
+    const inputs = governedDraftSuiteInputs(testPath => {
+      if (testPath === ownerWriteSuite) throw Object.assign(new Error('suite probe failed'), { code });
+      return testPath === runtimeCommitSuite;
+    });
+    expect(Object.keys(inputs)).toEqual([runtimeCommitSuite]);
+    expect(excludedToolingTests(unrelatedChange, inputs)).toEqual([runtimeCommitSuite]);
+  });
+
+  it.each([ownerWriteFixture, publicationFixture])('retains restricted restore when only %s changes', fixture => {
+    const restoreSuite = 'tests/postgres/m14RestrictedConnectedRestore.test.ts';
+    expect(excludedToolingTests(unrelatedChange)).toContain(restoreSuite);
+    expect(excludedToolingTests([fixture])).not.toContain(restoreSuite);
   });
   it('scopes all tests/postgres suites per-file and per-axis without broad tests/postgres/ prefixes', () => {
     const purePgSuites = [
