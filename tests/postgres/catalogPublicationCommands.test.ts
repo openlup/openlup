@@ -1587,8 +1587,9 @@ publicationTest("issues verified v2 effects and rolls them back on a deferred pu
     const operation = { schemaVersion: 2, commandKey: childKey, variantId: data.skuId, priceListId, mode: "one_time",
       minQty: 1, amountKind: "gross", unitPriceMinor: 2032, expectedListAmountBasis: "tax_inclusive",
       expected: { entryId: null as string | null, unitPriceMinor: null as number | null, amountKind: null as string | null } };
-    const seedSource = (draft: CatalogDraftPayloadV4, head: CatalogHeadRef | null, edits: (typeof operation)[]) => {
-      const source = { ...draft, publication: { ...draft.publication, evidence: { ...draft.publication.evidence, priceContext: context } },
+    const seedSource = (draft: CatalogDraftPayloadV4, head: CatalogHeadRef | null, edits: (typeof operation)[],
+      priceContext: Omit<typeof context, "tax"> & { tax: unknown } = context) => {
+      const source = { ...draft, publication: { ...draft.publication, evidence: { ...draft.publication.evidence, priceContext } },
         skus: [{ ...draft.skus[0]!, priceOperations: edits }] };
       const digest = hash(`["catalog-candidate",1,${canonicalCatalogDraftJson(source)},${canonicalCatalogDraftJson([
         { ...draft.product.type, definitionDigest: catalogDefinitionDigest(installed) },
@@ -1814,11 +1815,11 @@ publicationTest("issues verified v2 effects and rolls them back on a deferred pu
       constraint: "catalog_publication_approval_wrong" });
 
     const revised = structuredClone(membershipOnly);
-    revised.product.sharedContent.requestedModes = [{ skuCode: data.code, modes: ["one_time"] }];
+    revised.product.sharedContent.requestedModes = [{ skuCode: data.code, modes: ["one_time", "subscription"] }];
     revised.publication.operations = [
       { op: "set_product_lifecycle", productSlug: data.slug, expectedState: "draft", state: "active", children: [] },
       { op: "set_sku_lifecycle", skuCode: data.code, expectedState: "draft", state: "active" },
-      { op: "set_eligibility", skuCode: data.code, sellableStandalone: true, sellableInSubscription: false },
+      { op: "set_eligibility", skuCode: data.code, sellableStandalone: true, sellableInSubscription: true },
       { op: "set_offer_membership", ...membership },
     ];
     await pool.query(`INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from)
@@ -1858,10 +1859,171 @@ publicationTest("issues verified v2 effects and rolls them back on a deferred pu
     expect(await effects()).toEqual(beforeActivation);
     const activated = await issue(false, publish, activation.approve, revised, 3, [edit]);
     expect(activated, String(recorderError)).toMatchObject({ outcome: "committed", receipt: { head: { revision: 2 } } });
+    if (!("receipt" in activated && "head" in activated.receipt)) throw new Error("Missing activated head");
     expect(await effects()).toMatchObject({ skus: 1, activation: ["active", true], prices: 3, child_receipts: 2, receipts: 2, heads: 1, outbox: 2 });
     expect((await pool.query(`SELECT previous.valid_to=live.valid_from AS shared_instant
       FROM public.price_entries previous JOIN public.price_entries live USING(variant_id,price_list_id,mode)
       WHERE previous.id=$1 AND live.active`, [current.id])).rows).toEqual([{ shared_instant: true }]);
+
+    // Exercise the installed SQL entry points with a saved price-only candidate.
+    // The released host still compiles material catalogue changes before calling the recorder.
+    const priceOnly = structuredClone(revised);
+    priceOnly.publication.operations = [];
+    priceOnly.product.sharedContent.requestedModes = [];
+    const { draftId, revision, commandKey, fingerprint } = await save(data, 4, priceOnly);
+    const head = activated.receipt.head;
+    const last = stagedPacket as { product: Record<string, unknown>; skus: { id: string }[] } | undefined;
+    if (!last) throw new Error("Missing activation packet");
+    const product = { ...last.product, source: { draftId, revision, commandKey, fingerprint } };
+    const postStateText = canonicalCatalogDraftJson({ schemaVersion: 3, product,
+      skus: last.skus.map(s => ({ skuId: s.id, digest: hash(canonicalCatalogDraftJson(s)) })) });
+    const approvalPacket = { action: "approve", productId: data.productId, reason: null,
+      candidateRef: `v1:${draftId}@${revision}/${head.publicationId}@${head.revision}`,
+      postStateText, postStateDigest: hash(postStateText) };
+    const bindPriceOnly = async (db: PgQueryExecutor, candidate: ReturnType<typeof seedSource>) => {
+      const decisionKey = randomUUID(), publishKey = randomUUID();
+      const candidateDigest = candidate.digest;
+      await saveSource(db, candidate.source, revision);
+      await db.query("SELECT set_config('request.jwt.claims',$1,true)", [claims]);
+      await db.query(recordSql, [{ ...approvalPacket, commandKey: decisionKey, candidateDigest }]);
+      const { rows: [{ id: approvalId }] } = await db.query(`SELECT id FROM public.catalog_publication_decisions
+        WHERE product_id=$1 AND command_key=$2`, [data.productId, decisionKey]);
+      const packet = { action: "publish", productId: data.productId, candidateRef: approvalPacket.candidateRef,
+        candidateDigest, commandKey: publishKey, expectedHead: head, changes: [] };
+      return { ...packet, fingerprint: hash(canonicalCatalogDraftJson([{ schemaVersion: 2, ...packet }, actor])),
+        product, skus: last.skus, approvalId };
+    };
+    const priceChanged = { code: "40001", message: "catalog_publication_price_changed" };
+    const contextMismatch = { code: "23514", message: "catalog_publication_price_context_mismatch",
+      constraint: "catalog_publication_price_context_mismatch" };
+    const savedAmount = edit.unitPriceMinor;
+    const completed = seedSource(priceOnly, head, [edit]);
+    const completedPacket = await transaction(pool, db => bindPriceOnly(db, completed));
+    const asPublisher = async (db: PgQueryExecutor) => {
+      await db.query("SET LOCAL SESSION AUTHORIZATION openlup_catalog_publication");
+      await db.query("SELECT set_config('request.jwt.claims',$1,true)", [claims]);
+    };
+    const rollbackProbe = new Error("Roll back the successful probe");
+    await expect(transaction(pool, async db => {
+      await asPublisher(db);
+      expect((await readPrice(db, completedPacket.approvalId)).rows).toEqual([
+        { id: expect.any(String), unit_price_minor: savedAmount, amount_kind: "gross" },
+      ]);
+      expect(JSON.parse((await db.query(recordSql, [completedPacket])).rows[0].result)).toMatchObject({ head: { revision: 3 } });
+      throw rollbackProbe;
+    })).rejects.toBe(rollbackProbe);
+
+    const receiptField = (path: string, value: string | number | null) => async (db: PoolClient) => {
+      const field = path.split(".");
+      const { rowCount } = await db.query(`UPDATE public.catalog_price_setup_receipts
+        SET response_payload=CASE WHEN $3::jsonb IS NULL THEN response_payload #- $2::text[]
+          ELSE jsonb_set(response_payload,$2::text[],$3::jsonb,false) END
+        WHERE idempotency_key=$1 AND response_payload #> $2::text[] IS NOT NULL`,
+      [edit.commandKey, field, value === null ? null : JSON.stringify(value)]);
+      expect(rowCount).toBe(1);
+    };
+    const moveSettlement = (field: "currency" | "region_code", setting: string, value: string) => async (db: PoolClient) => {
+      await db.query(`UPDATE public.price_lists SET ${field}=$2 WHERE id=$1`, [priceListId, value]);
+      await db.query("UPDATE public.commerce_settings SET value_text=$2 WHERE key=$1", [setting, value]);
+    };
+    const oldStart = "2001-01-01T00:00:00Z";
+    const inactiveList = { code: "23514", message: "active_price_list_not_found", constraint: "active_price_list_not_found" };
+    const priceNotReady = { code: "23514", message: "catalog_publication_sku_price_not_ready",
+      constraint: "catalog_publication_sku_price_not_ready" };
+    const candidateCases = [
+      ["priceContext.priceListId", seedSource(priceOnly, head, [edit], { ...context, priceListId: randomUUID() })],
+      ["priceContext.amountBasis", seedSource(priceOnly, head, [edit], { ...context, amountBasis: "tax_exclusive" })],
+      ["priceContext.tax", seedSource(priceOnly, head, [edit], { ...context, tax: {} })],
+    ] as const;
+    const evidenceCases = [
+      ["outcome", receiptField("outcome", "replayed")],
+      ["actorId", receiptField("receipt.actorId", randomUUID())],
+      ["commandKey", receiptField("receipt.commandKey", randomUUID())],
+      ["variantId", receiptField("receipt.variantId", randomUUID())],
+      ["priceListId", receiptField("receipt.priceListId", randomUUID())],
+      ["amountBasis", receiptField("receipt.amountBasis", "tax_exclusive")],
+      ["previous", receiptField("receipt.previous", null)],
+      ["previous.entryId", receiptField("receipt.previous.entryId", randomUUID())],
+      ["previous.unitPriceMinor", receiptField("receipt.previous.unitPriceMinor", operation.unitPriceMinor + 1)],
+      ["previous.amountKind", receiptField("receipt.previous.amountKind", "net")],
+      ["previous.validFrom", receiptField("receipt.previous.validFrom", oldStart)],
+      ["previous.validFrom malformed", receiptField("receipt.previous.validFrom", "2026-02-30T00:00:00Z")],
+      ["current", receiptField("receipt.current", null)],
+      ["current.entryId", receiptField("receipt.current.entryId", randomUUID())],
+      ["current.unitPriceMinor", receiptField("receipt.current.unitPriceMinor", savedAmount + 1)],
+      ["current.unitPriceMinor has the wrong type", receiptField("receipt.current.unitPriceMinor", String(savedAmount))],
+      ["current.amountKind", receiptField("receipt.current.amountKind", "net")],
+      ["current.validFrom", receiptField("receipt.current.validFrom", oldStart)],
+      ["current.validFrom missing", receiptField("receipt.current.validFrom", null)],
+      ["current.validFrom malformed", receiptField("receipt.current.validFrom", "tomorrow")],
+      ["effective row timestamp only", (db: PoolClient) => db.query(`UPDATE public.price_entries SET valid_from=valid_from-interval '1 microsecond'
+        WHERE variant_id=$1 AND mode='one_time' AND active`, [data.skuId])],
+      ["predecessor row timestamp only", (db: PoolClient) => db.query(`UPDATE public.price_entries SET valid_from=valid_from-interval '1 microsecond'
+        WHERE id=$1`, [edit.expected.entryId])],
+      ["current receipt entry is no longer effective", (db: PoolClient) => db.query(`UPDATE public.price_entries SET active=false
+        WHERE variant_id=$1 AND mode='one_time' AND active`, [data.skuId])],
+      ["inherited subscription price is no longer ready", (db: PoolClient) => db.query(`UPDATE public.price_entries SET active=false
+        WHERE variant_id=$1 AND mode='subscription' AND active`, [data.skuId]), priceNotReady],
+      ["approved list is no longer effective", (db: PoolClient) => db.query("UPDATE public.price_lists SET status='draft' WHERE id=$1",
+        [priceListId]), inactiveList],
+      ["priceContext.currency with the same list", moveSettlement("currency", "settlement_currency", "EUR"), contextMismatch],
+      ["priceContext.regionCode with the same list", moveSettlement("region_code", "settlement_region", "QZ"), contextMismatch],
+    ] as const;
+    for (const [path, probe] of [
+      ["issuance replay", (db: PoolClient, packet: typeof completedPacket) => db.query(recordSql, [packet])],
+      ["locked reader", (db: PoolClient, packet: typeof completedPacket) => readPrice(db, packet.approvalId)],
+    ] as const) {
+      for (const [field, mutate, expected = priceChanged] of evidenceCases) {
+        await expect.soft(transaction(pool, async db => {
+          await mutate(db);
+          await asPublisher(db);
+          await probe(db, completedPacket);
+          throw rollbackProbe;
+        }), `${path} refuses ${field}`).rejects.toMatchObject(expected);
+      }
+      for (const [field, candidate] of candidateCases) {
+        await expect.soft(transaction(pool, async db => {
+          const packet = await bindPriceOnly(db, candidate);
+          await asPublisher(db);
+          await probe(db, packet);
+          throw rollbackProbe;
+        }), `${path} refuses ${field}`).rejects.toMatchObject(contextMismatch);
+      }
+    }
+    const duplicate = { ...edit, commandKey: randomUUID() };
+    await expect(transaction(pool, async db => {
+      const packet = await bindPriceOnly(db, seedSource(priceOnly, head, [edit, duplicate]));
+      expect((await db.query(`SELECT idempotency_key FROM public.catalog_price_setup_receipts
+        WHERE idempotency_key=ANY($1::text[]) AND status='completed'`, [[edit.commandKey, duplicate.commandKey]])).rows)
+        .toEqual([{ idempotency_key: edit.commandKey }]);
+      await asPublisher(db);
+      await readPrice(db, packet.approvalId);
+      throw rollbackProbe;
+    }), "locked reader refuses duplicate targets with one completed receipt").rejects.toMatchObject({ code: "23514",
+      message: "catalog_publication_price_target_duplicate", constraint: "catalog_publication_price_target_duplicate",
+      hint: "Split or consolidate the edits." });
+
+    const live = (await pool.query(`SELECT id FROM public.price_entries
+      WHERE variant_id=$1 AND mode='one_time' AND active`, [data.skuId])).rows[0].id as string;
+    const tinyEdit = { ...edit, commandKey: randomUUID(), unitPriceMinor: 1,
+      expected: { entryId: live, unitPriceMinor: savedAmount, amountKind: "gross" } };
+    const tinyCandidate = seedSource(priceOnly, head, [tinyEdit]);
+    await expect(transaction(pool, async db => {
+      await db.query("UPDATE public.price_entries SET active=false WHERE variant_id=$1 AND mode='subscription'", [data.skuId]);
+      await db.query(`INSERT INTO public.subscription_price_policy_revisions
+        (id,revision_no,price_list_id,region_code,currency,channel,effective_from,discount_bps,rounding_quantum_minor,rounding_rule,digest)
+        SELECT id,1,$1,'ZZ','XXX','D2C',at,1000,10,'FLOOR_TO_QUANTUM',
+          public.catalog_price_setup_policy_digest(id,1,$1,'ZZ','XXX','D2C',at,NULL,1000,10,'FLOOR_TO_QUANTUM')
+        FROM (SELECT gen_random_uuid() AS id,date_trunc('milliseconds',clock_timestamp()-interval '1 hour') AS at) timing`, [priceListId]);
+      const packet = await bindPriceOnly(db, tinyCandidate);
+      await asPublisher(db);
+      const result = await db.query(recordSql, [{ action: "assess_price_v2", productId: data.productId,
+        candidateRef: packet.candidateRef, candidateDigest: packet.candidateDigest }]);
+      expect(JSON.parse(result.rows[0].result)).toMatchObject({ targets: [{ skuId: data.skuId,
+        reason: "catalog_publication_sku_price_not_ready" }] });
+      await db.query(recordSql, [packet]);
+      throw rollbackProbe;
+    }), "assessment and issuance refuse zero-rounded pricing with inherited subscription eligibility").rejects.toMatchObject(priceNotReady);
   } finally {
     await pool.query("UPDATE public.price_lists SET status='draft' WHERE id=$1", [priceListId]);
     await pool.query("UPDATE public.price_lists SET status='active' WHERE id=ANY($1::uuid[])", [priorLists.map(row => row.id)]);
