@@ -8,7 +8,9 @@ A refreshed quote acceptance for the same stored terms is the same purchase.
 Under a version 4 UUID key, changed details answer `starter_checkout_changed`,
 `starter_checkout_paid` or `starter_checkout_not_payable` instead of
 `starter_command_conflict`, and are never applied. Other key formats keep
-`starter_command_conflict`.
+`starter_command_conflict`. Under a version 4 key, a create whose draft receipt
+was invalidated now answers `starter_checkout_not_payable` instead of
+`commerce_order_draft_expired`.
 
 The new `checkout.continuation` operation resumes or abandons the order under
 a version 4 UUID key without its details, adding one starter operation. An abandoned order carries the reason `checkout_started_over`. An
@@ -43,7 +45,7 @@ Apply the application file upgrade to replace pristine managed files:
 `host/bindings.ts`, `host/native-composition.ts`, `host/quote-composition.ts`
 and `shared/api.ts`. If it reports a conflict, reconcile your customised files
 with the target starter before retrying. Apply the platform forward
-`20261128180001_checkout_abandonment_safety_execute_grant.sql` before starting
+`20261128230001_checkout_abandonment_safety_execute_grant.sql` before starting
 the updated host: without it, `abandon` of an unpaid order answers
 `starter_purchase_unavailable` and nothing is cancelled.
 
@@ -56,5 +58,6 @@ seconds. A guest key does not survive sign-in or sign-out.
 Guest orders created before the upgrade keep the raw key value in
 `lastIntentIdempotencyKey` until a later checkout of that contact overwrites
 it. Until those orders are paid or expire, that value could address them
-through `checkout.continuation`. To remove it sooner, clear that metadata field
-for unpaid guest orders.
+through `checkout.continuation`. To remove it sooner, clear
+`clients.metadata.checkout.lastIntentIdempotencyKey` for clients with unpaid
+guest orders created before the upgrade.

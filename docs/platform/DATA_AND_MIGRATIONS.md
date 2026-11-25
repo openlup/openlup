@@ -139,7 +139,7 @@ review before applying the ACL forward.
 
 ## Checkout abandonment predicate grant
 
-The [grant forward](../../db/platform/migrations/20261128180001_checkout_abandonment_safety_execute_grant.sql)
+The [grant forward](../../db/platform/migrations/20261128230001_checkout_abandonment_safety_execute_grant.sql)
 creates `public.commerce_checkout_abandonment_safe_runtime(uuid)`, a
 `SECURITY DEFINER` entry with a pinned `search_path` that returns
 `public.commerce_initial_checkout_abandonment_safe(uuid)` unchanged. It revokes
@@ -525,6 +525,13 @@ verifies fresh subscription lines that carry `catalog_facts_v2`. It matches the
 quote and draft by line position and checks the claimed gross base and D2C
 policy against their shared market and effective windows. Lines without this
 claim keep the existing stored-price selection and tier order.
+
+A base closed by a price-writer replacement still verifies a purchase inside
+its closed interval when a same-key successor starts at the closing instant.
+Historical verification requires that instant to be at or before the lookup
+transaction’s millisecond floor, and draft writers continue to require an
+active base. A base closed without that successor stays unverifiable for
+historical purchases.
 
 The writer uses PostgreSQL transaction time. The host quote's `atTime` records
 when it was priced. If the host and database clocks straddle a price or policy

@@ -48,12 +48,21 @@ it.each([false, true])("installs the abandonment safety entry on a legacy chain 
     const before: Record<string, string> = {};
     // Without service_role every conditional block is a no-op and the chain completes.
     for (const unit of [manifest.baseline, ...manifest.forward]) {
-      if (unit.file === grant!.file) before.predicate = (await privileges(bootstrap, predicate)).acl;
+      if (unit.file === grant!.file) {
+        before.predicate = (await privileges(bootstrap, predicate)).acl;
+        // Default privileges that would hand every new function to the API roles: the entry must still refuse them.
+        await bootstrap.query(`DO $$ BEGIN
+          IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN CREATE ROLE anon NOLOGIN; END IF;
+          IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF;
+        END $$; ALTER DEFAULT PRIVILEGES GRANT EXECUTE ON FUNCTIONS TO anon, authenticated;`);
+      }
       await bootstrap.query(readFileSync(unit.file, "utf8"));
     }
     await bootstrap.query("CREATE ROLE abandonment_plain NOLOGIN");
     const installed = await privileges(bootstrap, entry);
     expect(installed.execute.abandonment_plain).toBe(false);
+    expect(installed.execute.anon).toBe(false);
+    expect(installed.execute.authenticated).toBe(false);
     if (service) expect(installed.execute.service_role).toBe(true);
     else expect(installed.execute.service_role).toBeUndefined();
     // No PUBLIC entry: an ACL item that starts with "=".

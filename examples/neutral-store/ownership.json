@@ -166,6 +166,7 @@
     "browser/acquisition.spec.ts",
     "browser/lost-response.spec.ts",
     "browser/catalogue-products.spec.ts",
+    "browser/checkout-expected-total.spec.ts",
     "client/quote-acceptance.ts",
     "host/quote-secret.ts",
     "test/acquisition-quote.test.ts",

@@ -9607,8 +9607,22 @@
         "dataStatements": []
       },
       {
+        "row": "derived-subscription-price-retired-base",
+        "path": "db/platform/migrations/20261128230000_derived_subscription_price_retired_base.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.catalog_admission_derived_subscription_prices(text,jsonb,jsonb,timestamptz)",
+            "beforeSha256": "46951df895d85576f91fc662bf12bdad4d65e0c96d142220404825c6a6154e37",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "checkout-abandonment-safety-execute-grant",
-        "path": "db/platform/migrations/20261128180001_checkout_abandonment_safety_execute_grant.sql",
+        "path": "db/platform/migrations/20261128230001_checkout_abandonment_safety_execute_grant.sql",
         "replacedFunctions": [],
         "createdFunctions": [
           {
@@ -13888,7 +13902,18 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261128180001_checkout_abandonment_safety_execute_grant.sql",
+      "path": "db/platform/migrations/20261128230000_derived_subscription_price_retired_base.sql",
+      "sha256": "8447cb5d1a56d254860a2b0b11b496e80fe64f6da3cba9b5d0615cd421a367fb",
+      "functions": [
+        {
+          "signature": "public.catalog_admission_derived_subscription_prices(text,jsonb,jsonb,timestamptz)",
+          "beforeSha256": "46951df895d85576f91fc662bf12bdad4d65e0c96d142220404825c6a6154e37",
+          "afterSha256": "00084e9310c923ed26f0a58a2b42ec66b4b7d822c4cd47352ba8c121564b4537"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261128230001_checkout_abandonment_safety_execute_grant.sql",
       "sha256": "841d3a42b322ff0d515f5c642320f56a10abbc8076f7a6170983bd6457302fa7",
       "functions": [
         {

@@ -414,12 +414,17 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     return (await exchange(operation, payload, signedIn, key)).body;
   }
 
-  async function quotedSubscription(payload: Record<string, unknown>) {
-    const capable = { ...payload, acquisitionCapability: 'subscription-acquisition.v1' };
-    const quoted = await call('offer.validate', capable);
+  async function review(payload: Record<string, unknown>, signedIn = false) {
+    const quoted = await call('offer.validate', payload, signedIn);
     expect(quoted.ok).toBe(true);
     if (!quoted.ok || !isRecord(quoted.value)) throw new Error('host_server_quote_required');
-    return { ...capable, quoteAcceptance: quoted.value.quoteAcceptance, expectedTotal: quoted.value.expectedTotal };
+    return quoted.value;
+  }
+
+  async function quotedSubscription(payload: Record<string, unknown>) {
+    const capable = { ...payload, acquisitionCapability: 'subscription-acquisition.v1' };
+    const quote = await review(capable);
+    return { ...capable, quoteAcceptance: quote.quoteAcceptance, expectedTotal: quote.expectedTotal };
   }
 
   async function control(permissive: boolean | null, emailLimit?: number, subscriptionOffers?: SubscriptionOffers,
@@ -444,15 +449,14 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
       lines: [{ sku: config.offer.products[0]!.sku, quantity: 1 }] },
   });
 
+  async function reviewedCheckout(address: string, signedIn = false) {
+    const input = checkout(address);
+    const quote = await review(input, signedIn);
+    return { ...input, expectedTotal: quote.expectedTotal };
+  }
+
   async function createOrder(signedIn = false) {
-    const result = await call('checkout.create', {
-      locale: 'en', email, configuration: config.id, country: config.market.country,
-      termsAccepted: true, termsRevision: config.legal.revision,
-      firstName: 'Example', lastName: 'Buyer', phone: '000000000',
-      line1: '1 Example Lane', city: 'Example City', postalCode: '00000',
-      cart: { schemaVersion: 1, configuration: config.id, mode: 'one_time', cadenceDays: null,
-        lines: [{ sku: config.offer.products[0]!.sku, quantity: 1 }] },
-    }, signedIn);
+    const result = await call('checkout.create', await reviewedCheckout(email, signedIn), signedIn);
     if (!result.ok || !isRecord(result.value)
       || typeof result.value.orderRef !== 'string' || typeof result.value.token !== 'string') {
       throw new Error('uuid_host_checkout_required');
@@ -667,11 +671,12 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
         [sku, rules.map(rule => ({ ...rule, days: set(...choices(rule.days), 89) }))]));
       await control(null, undefined, offers);
       const input = checkout(`cadence-${config.id}@example.test`);
-      const refused = await call('checkout.create', { ...input, acquisitionCapability: 'subscription-acquisition.v1', cart: { ...input.cart, mode: 'subscription', cadenceDays: 90 } });
+      const reviewed = await quotedSubscription({ ...input, cart: { ...input.cart, mode: 'subscription', cadenceDays: 89 } });
+      const refused = await call('checkout.create', { ...reviewed, cart: { ...input.cart, mode: 'subscription', cadenceDays: 90 } });
       expect(refused).toEqual({ ok: false, code: 'cadence_unavailable' });
       expect(Number((await owner!.query('SELECT count(*) AS count FROM public.clients')).rows[0].count)).toBe(before);
       expect((await control(null)).registrations).toBe(registrations);
-      const accepted = await call('checkout.create', await quotedSubscription({ ...input, cart: { ...input.cart, mode: 'subscription', cadenceDays: 89 } }));
+      const accepted = await call('checkout.create', reviewed);
       expect(accepted.ok).toBe(true);
       if (!accepted.ok || !isRecord(accepted.value)) throw new Error('cadence_purchase_required');
       const read = await call('checkout.read', { orderRef: accepted.value.orderRef, token: accepted.value.token });
@@ -681,7 +686,7 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
 
   it('padded customer challenge email preserves the normalized address, public shape and floor', async () => {
     const address = `padded-${email}`;
-    expect((await call('checkout.create', checkout(address))).ok).toBe(true);
+    expect((await call('checkout.create', await reviewedCheckout(address))).ok).toBe(true);
     const padded = await exchange('auth.request', { email: `  ${address}  ` });
     const plain = await exchange('auth.request', { email: address });
     expect(plain.status).toBe(200);
@@ -698,7 +703,7 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
   it('shared email boundary preserves purchase, payment and later native sign-in', async () => {
     const address = 'a'.repeat(60) + '@' + 'b'.repeat(49) + '.' + 'c'.repeat(44) + '.test';
     expect(address.length).toBe(160);
-    const created = await call('checkout.create', checkout(address));
+    const created = await call('checkout.create', await reviewedCheckout(address));
     expect(created.ok).toBe(true);
     if (!created.ok || !isRecord(created.value)) throw new Error('boundary_purchase_required');
     expect((await call('payment.simulate', { orderRef: created.value.orderRef, token: created.value.token, outcome: 'captured' })).ok).toBe(true);
@@ -758,7 +763,7 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     expect((await owner!.query('SELECT principal_id FROM public.clients WHERE email=$1', [email])).rows[0].principal_id).not.toBeNull();
     const results: ActionResult[] = [];
     for (const address of [`new-${config.id}@example.test`, unlinked, email]) {
-      const result = await exchange('checkout.create', checkout(address));
+      const result = await exchange('checkout.create', await reviewedCheckout(address));
       expect(result.status).toBe(200);
       expect(result.body.ok).toBe(true);
       expect(result.elapsed).toBeGreaterThanOrEqual(config.purchase.responseFloorMs - 5);
@@ -782,7 +787,7 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     await startHost();
     const previous = new Set((await ledger()).map(row => row.attempt_digest));
     const key = randomUUID();
-    expect((await call('checkout.create', checkout(`native-ledger-${config.id}@example.test`), false, key)).ok).toBe(true);
+    expect((await call('checkout.create', await reviewedCheckout(`native-ledger-${config.id}@example.test`), false, key)).ok).toBe(true);
     const recorded = await ledger();
     expect(recorded.filter(row => !previous.has(row.attempt_digest)).map(row => row.attempt_digest))
       // The limiter receives the derived key, never the header value.
@@ -792,7 +797,7 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     // The restricted runtime inherits this grant through service_role.
     await owner!.query(`REVOKE EXECUTE ON FUNCTION ${ledgerSignature} FROM service_role`);
     try {
-      expect(await call('checkout.create', checkout(`native-ledger-refused-${config.id}@example.test`)))
+      expect(await call('checkout.create', await reviewedCheckout(`native-ledger-refused-${config.id}@example.test`)))
         .toEqual({ ok: false, code: 'starter_attempt_limited' });
       expect(await purchaseCounts()).toEqual(before);
       expect(await ledger()).toEqual(recorded);
@@ -805,7 +810,7 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     await stopHost();
     await startHost(true);
     const before = await purchaseCounts();
-    const input = checkout(`restart-${config.id}@example.test`);
+    const input = await reviewedCheckout(`restart-${config.id}@example.test`);
     const key = randomUUID();
     const digest = createHash('sha256').update(`${derivedKey(key)}\0${0}`).digest('hex');
     const stopped = { ok: false, code: 'starter_purchase_unavailable' };
@@ -850,7 +855,8 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     const before = await count();
     const key = randomUUID();
     const address = `bound-${permissive}-${config.id}@example.test`;
-    const first = await call('checkout.create', checkout(address), false, key);
+    const input = await reviewedCheckout(address);
+    const first = await call('checkout.create', input, false, key);
     expect(first.ok).toBe(true);
     if (!first.ok || !isRecord(first.value)) throw new Error('bound_checkout_required');
     expect(await count()).toBe(before + 1);
@@ -859,7 +865,7 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     expect(afterFirst).toHaveLength(permissive ? 0 : 1);
     const changedResults: Array<Awaited<ReturnType<typeof exchange>>> = [];
     for (let index = 0; index < 5; index++) {
-      const changed = await exchange('checkout.create', checkout(`changed-${permissive}-${index}-${config.id}@example.test`), false, key);
+      const changed = await exchange('checkout.create', { ...input, email: `changed-${permissive}-${index}-${config.id}@example.test` }, false, key);
       changedResults.push(changed);
     }
     expect(await count()).toBe(before + 1);
@@ -871,7 +877,7 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
       expect(changed.elapsed).toBeGreaterThanOrEqual(config.purchase.responseFloorMs - 5);
     }
     expect((await control(null)).registrations).toBe(1);
-    const repeated = await call('checkout.create', checkout(address.toUpperCase()), false, key);
+    const repeated = await call('checkout.create', { ...input, email: address.toUpperCase() }, false, key);
     if (permissive) {
       // The exact repeat is admitted and returns a new way to pay.
       expect(repeated.ok && isRecord(repeated.value) && typeof repeated.value.token).toBe('string');
@@ -885,12 +891,12 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     expect(await ledger()).toHaveLength(permissive ? 0 : 3);
     await owner!.query('TRUNCATE public.commerce_checkout_attempt_ledger');
     // A fresh second key still fits the native requester quota after all refusals.
-    expect((await call('checkout.create', checkout(`second-${permissive}-${config.id}@example.test`))).ok).toBe(true);
+    expect((await call('checkout.create', await reviewedCheckout(`second-${permissive}-${config.id}@example.test`))).ok).toBe(true);
     await control(permissive);
     const concurrentBefore = await count();
     const concurrentKey = randomUUID();
     const results = await Promise.all([0, 1].map(index => call('checkout.create',
-      checkout(`race-${permissive}-${index}-${config.id}@example.test`), false, concurrentKey)));
+      { ...input, email: `race-${permissive}-${index}-${config.id}@example.test` }, false, concurrentKey)));
     expect(results.filter(result => result.ok)).toHaveLength(1);
     expect(results.filter(result => !result.ok)).toEqual([{ ok: false, code: 'starter_checkout_changed' }]);
     expect(await count()).toBe(concurrentBefore + 1);
@@ -909,18 +915,29 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     .filter(name => name.endsWith('.json')).length;
   const repeatLimits = { maxPerEmail: 4, maxPerRequester: 12, maxEntries: 50 };
   // Host restarts in earlier cases drop in-memory sessions, so each case signs in again.
+  const mailbox = async () => (await readFile(resolve(state, '.context/captured-messages/identity.jsonl'), 'utf8').catch(() => ''))
+    .trim().split('\n').filter(Boolean).map(line => JSON.parse(line) as { email: string; token: string });
+  /** Requests a challenge and waits for its delivery: acceptance can precede the private mailbox write. */
+  async function freshChallenge(operation: 'auth.request' | 'auth.operator', address: string) {
+    const prior = new Set((await mailbox()).filter(row => row.email === address).map(row => row.token));
+    expect((await call(operation, { email: address })).ok).toBe(true);
+    const deadline = Date.now() + 5_000;
+    for (;;) {
+      const message = (await mailbox()).filter(row => row.email === address && !prior.has(row.token)).at(-1);
+      if (message) return message.token;
+      if (Date.now() > deadline) throw new Error(`${operation}_challenge_missing`);
+      await new Promise(done => setTimeout(done, 25));
+    }
+  }
   async function signIn(address: string) {
-    expect((await call('auth.request', { email: address })).ok).toBe(true);
-    const messages = (await readFile(resolve(state, '.context/captured-messages/identity.jsonl'), 'utf8'))
-      .trim().split('\n').map(line => JSON.parse(line) as { email: string; token: string });
-    const challenge = messages.filter(message => message.email === address).at(-1);
-    if (!challenge) throw new Error('continuation_challenge_required');
-    expect((await call('auth.verify', { token: challenge.token })).ok).toBe(true);
+    const token = await freshChallenge('auth.request', address);
+    expect((await call('auth.verify', { token })).ok).toBe(true);
   }
   async function guestOrder(label: string, key = randomUUID()) {
-    const created = await call('checkout.create', checkout(`${label}-${config.id}@example.test`), false, key);
+    const input = await reviewedCheckout(`${label}-${config.id}@example.test`);
+    const created = await call('checkout.create', input, false, key);
     if (!created.ok || !isRecord(created.value) || typeof created.value.token !== 'string') throw new Error(`${label}_checkout_required`);
-    return { key, orderRef: String(created.value.orderRef), token: created.value.token, value: created.value };
+    return { key, input, orderRef: String(created.value.orderRef), token: created.value.token, value: created.value };
   }
 
   it('a repeat of a completed guest checkout is counted and returns a new token', async () => {
@@ -935,7 +952,7 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     expect(captured).toBeGreaterThan(0);
     const tokens = new Set([first.token]);
     for (let index = 1; index <= 2; index++) {
-      const repeated = await call('checkout.create', checkout(`repeat-${config.id}@example.test`), false, first.key);
+      const repeated = await call('checkout.create', first.input, false, first.key);
       if (!repeated.ok || !isRecord(repeated.value) || typeof repeated.value.token !== 'string') throw new Error('repeat_token_required');
       expect(repeated.replayed).toBe(true);
       expect(repeated.value.orderRef).toBe(first.orderRef);
@@ -962,18 +979,18 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     await owner!.query('TRUNCATE public.commerce_checkout_attempt_ledger');
     const first = await guestOrder('quota');
     for (let index = 0; index < 2; index++) {
-      const repeated = await call('checkout.create', checkout(`quota-${config.id}@example.test`), false, first.key);
+      const repeated = await call('checkout.create', first.input, false, first.key);
       expect(repeated.ok && isRecord(repeated.value) && typeof repeated.value.token).toBe('string');
     }
     const issued = await tokenCount(first.orderRef);
     const rows = await ledger();
-    const limited = await call('checkout.create', checkout(`quota-${config.id}@example.test`), false, first.key);
+    const limited = await call('checkout.create', first.input, false, first.key);
     const { token: _token, ...value } = first.value;
     expect(limited).toEqual({ ok: true, value, replayed: true });
     expect(await tokenCount(first.orderRef)).toBe(issued);
     expect(await ledger()).toEqual(rows);
     // The buyer's e-mail quota was not consumed by the repeats.
-    expect((await call('checkout.create', checkout(`quota-${config.id}@example.test`))).ok).toBe(true);
+    expect((await call('checkout.create', await reviewedCheckout(`quota-${config.id}@example.test`))).ok).toBe(true);
   }, 30_000);
 
   it('checkout.continuation resumes by key', async () => {
@@ -1077,13 +1094,14 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     } finally { holder.release(); }
     // More calls than pooled connections all complete, each issuing a token while it holds a session and its key lock.
     const orders: Awaited<ReturnType<typeof guestOrder>>[] = [];
-    for (let index = 0; index < 6; index++) orders.push(await guestOrder(`pool-${index}`));
+    // Five callers against four pooled connections.
+    for (let index = 0; index < 5; index++) orders.push(await guestOrder(`pool-${index}`));
     const answers = await Promise.all(orders.map(known => call('checkout.continuation', { action: 'resume', locale: 'en' }, false, known.key)));
     for (const [index, answer] of answers.entries()) {
       expect(answer.ok && isRecord(answer.value) && answer.value.orderRef).toBe(orders[index]!.orderRef);
       expect(answer.ok && isRecord(answer.value) && typeof answer.value.token).toBe('string');
     }
-  }, 30_000);
+  }, 60_000);
 
 
   const held = async (orderRef: string) => Number((await owner!.query(`SELECT count(*) AS n FROM public.fulfillment_inventory_reservations
@@ -1102,7 +1120,7 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     expect((await owner!.query('SELECT failure_reason FROM public.commerce_settlement_intents WHERE order_id=$1', [order.orderRef])).rows)
       .toEqual([{ failure_reason: 'checkout_started_over' }]);
     expect(await abandon(order.key)).toEqual({ ok: true, value: { abandoned: false, orderRef: order.orderRef, status: 'cancelled' } });
-    expect(await call('checkout.create', checkout(`abandon-${config.id}@example.test`), false, order.key))
+    expect(await call('checkout.create', order.input, false, order.key))
       .toEqual({ ok: false, code: 'starter_checkout_not_payable' });
     expect(await abandon(randomUUID())).toEqual({ ok: true, value: { abandoned: false } });
     const paidOrder = await guestOrder('abandon-paid');
@@ -1144,7 +1162,7 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
       expect(abandoned).toEqual({ ok: true, value: { abandoned: true, orderRef: order.orderRef } });
       expect(captured.ok).toBe(false);
       expect(await held(order.orderRef)).toBe(0);
-      expect(await call('checkout.create', checkout(`race-${config.id}@example.test`), false, order.key))
+      expect(await call('checkout.create', order.input, false, order.key))
         .toEqual({ ok: false, code: 'starter_checkout_not_payable' });
     } else {
       expect(captured.ok).toBe(true);
@@ -1158,23 +1176,22 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
 
   // The store's operator path: a provisioned human administrator with a Commerce operator row.
   let operatorCookie: string | undefined;
+  let operatorId: string | undefined;
   async function operatorCall(operation: Operation, payload: Record<string, unknown>) {
-    if (!operatorCookie) {
-      const address = `operator-${config.id}@example.test`;
+    const address = `operator-${config.id}@example.test`;
+    if (!operatorId) {
+      // Bootstrapping happens once per installation; a later sign-in failure must not try it again.
       const connection = new URL(runtimeConnection); connection.password = 'synthetic-conformance';
       const operators = createPostgresOperatorIdentityStore({ connectionString: connection.toString() });
-      let operatorId: string;
       try { operatorId = (await operators.bootstrapFirstAdministrator({ email: address })).principalId; }
       finally { await operators.close(); }
-      await owner!.query('INSERT INTO public.commerce_operators(id,label) VALUES($1,$2)', [operatorId, 'Synthetic operator']);
-      expect((await call('auth.operator', { email: address })).ok).toBe(true);
-      const messages = (await readFile(resolve(state, '.context/captured-messages/identity.jsonl'), 'utf8'))
-        .trim().split('\n').map(line => JSON.parse(line) as { email: string; token: string });
-      const challenge = messages.filter(message => message.email === address).at(-1);
-      if (!challenge) throw new Error('operator_challenge_required');
+      await owner!.query('INSERT INTO public.commerce_operators(id,label) VALUES($1,$2) ON CONFLICT DO NOTHING', [operatorId, 'Synthetic operator']);
+    }
+    if (!operatorCookie) {
+      const token = await freshChallenge('auth.operator', address);
       const verified = await fetch(`${base}/api/actions/auth.operator`, { method: 'POST', headers: { Origin: base,
         'Content-Type': 'application/json', 'X-Starter-Request': '1', 'Idempotency-Key': randomUUID() },
-        body: JSON.stringify({ token: challenge.token }), signal: fixture.signal });
+        body: JSON.stringify({ token }), signal: fixture.signal });
       expect(((await verified.json()) as ActionResult).ok).toBe(true);
       operatorCookie = verified.headers.get('set-cookie')!.split(';')[0];
     }
@@ -1231,7 +1248,7 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     const key = randomUUID();
     expect(await abandon(key)).toEqual({ ok: true, value: { abandoned: false } });
     const first = await guestOrder('late', key);
-    expect(await call('checkout.create', { ...checkout(`late-${config.id}@example.test`), line1: '2 Example Lane' }, false, key))
+    expect(await call('checkout.create', { ...first.input, line1: '2 Example Lane' }, false, key))
       .toEqual({ ok: false, code: 'starter_checkout_changed' });
     expect((await owner!.query('SELECT order_id FROM public.commerce_order_draft_receipts WHERE idempotency_key=$1', [derivedKey(key)])).rows)
       .toEqual([{ order_id: first.orderRef }]);
@@ -1243,7 +1260,7 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     const reserve = 'public.fulfillment_reserve_purchase_order_items(text,uuid,text,jsonb,text,timestamptz,jsonb,timestamptz)';
     const cancel = 'public.commerce_cancel_abandoned_purchase_checkout(text,uuid,text,timestamptz)';
     const key = randomUUID();
-    const input = checkout(`incomplete-${config.id}@example.test`);
+    const input = await reviewedCheckout(`incomplete-${config.id}@example.test`);
     // A host that stops after the draft commit: the hold fails and so does its compensation.
     await owner!.query(`REVOKE EXECUTE ON FUNCTION ${reserve}, ${cancel} FROM service_role`);
     try { expect((await call('checkout.create', input, false, key)).ok).toBe(false); }
