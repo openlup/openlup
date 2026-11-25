@@ -81,6 +81,7 @@ export const privacyExportResponseSchema: OperatorSchema<PrivacyExport> = schema
   return { format: choice(row.format, ["personal-data.v1"]), generatedAt: timestamp(row.generatedAt), subject: privacySubjectSchema.parse(row.subject), documents: list(row.documents, personalDataDocumentSchema.parse), missingContributors: list(row.missingContributors, text), erasure: row.erasure === null ? null : erasureReceiptSchema.parse(row.erasure) };
 });
 export const privacyEraseResponseSchema = erasureReceiptSchema;
-const refusalCodes = ["PRIVACY_SUBJECT_NOT_FOUND", "PRIVACY_CONTRIBUTOR_DUPLICATE", "PRIVACY_CONTRIBUTOR_MISSING", "PRIVACY_ASSESSMENT_UNAVAILABLE", "PRIVACY_OWNERSHIP_UNDECLARED", "PRIVACY_ACTIVE_SUBSCRIPTION", "PRIVACY_RESUMABLE_SUBSCRIPTION", "PRIVACY_PROTECTED_OPERATOR", "PRIVACY_IDEMPOTENCY_CONFLICT", "PRIVACY_SUBJECT_ERASED", "PRIVACY_STORE_PRIVILEGES_UNSAFE", "MANAGED_PRIVACY_ERASURE_UNAVAILABLE"] as const;
+const refusalCodes = ["PRIVACY_SUBJECT_NOT_FOUND", "PRIVACY_CONTRIBUTOR_DUPLICATE", "PRIVACY_CONTRIBUTOR_MISSING", "PRIVACY_ASSESSMENT_UNAVAILABLE", "PRIVACY_OWNERSHIP_UNDECLARED", "PRIVACY_ACTIVE_SUBSCRIPTION", "PRIVACY_RESUMABLE_SUBSCRIPTION", "PRIVACY_PROTECTED_OPERATOR", "PRIVACY_IDEMPOTENCY_CONFLICT", "PRIVACY_SUBJECT_ERASED", "PRIVACY_STORE_PRIVILEGES_UNSAFE", "PRIVACY_RECEIPT_COVERAGE_INCOMPLETE",
+  "PRIVACY_RECONCILIATION_APPROVAL_UNVERIFIED", "MANAGED_PRIVACY_ERASURE_UNAVAILABLE"] as const;
 export type PrivacyRefusalCode = typeof refusalCodes[number];
 export const privacyRefusalCodeSchema: OperatorSchema<PrivacyRefusalCode> = schema(value => choice(value, refusalCodes));

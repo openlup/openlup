@@ -16,6 +16,7 @@ import { readPlatformMigrationManifest, readPlatformMigrations, selectPlatformMi
 import { captureConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { qualifiedPostgresStartupOptions, type QualifiedPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { captureSandboxPurchase } from "./captureSandboxPurchase.js";
+import { hasPgTemplateBroker, tryLeaseTemplateDatabase, type PgTemplateLease } from "./pgTemplateBroker.js";
 import { closePostgres, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "./postgresContainer.js";
 
 export const journeyPaidAt = "2026-09-01T12:00:00.123456Z";
@@ -71,14 +72,30 @@ async function readJourneyClusterRoleDigest(bootstrap: Pool): Promise<string> {
   return createHash("sha256").update(rows[0]!.snapshot).digest("hex");
 }
 
-/** Own resources per suite; no ambient database, owner fallback or extra runtime grants. */
-export function storeJourneyResources() {
+/**
+ * Own resources per suite; no ambient database, owner fallback or extra runtime grants.
+ * Pass `{ isolatedCluster: true }` for suites that mutate cluster-wide roles, restart Docker,
+ * or invoke cluster-wide snapshot checks such as `withCatalogAdmissionFence` (`pg_current_snapshot()`).
+ */
+export function storeJourneyResources(options?: { isolatedCluster?: boolean }) {
   const containers: PostgresContainer[] = [], pools: Pool[] = [];
+  const activeLeases = new Set<PgTemplateLease>();
   // The standard runner TZ selects only the two explicit fixture zones.
   // Every other runner zone preserves PostgreSQL's permanent default.
   const runnerZone = new Intl.DateTimeFormat().resolvedOptions().timeZone;
   const zone = ["Etc/GMT-9", "Etc/GMT+5"].includes(runnerZone) ? runnerZone : undefined;
   const pool = (connectionString: string) => { const value = new Pool({ connectionString }); pools.push(value); return value; };
+  const withJourneyMigrationOptions = (connectionString: string) => {
+    const value = new URL(connectionString);
+    value.searchParams.set("options", qualifiedPostgresStartupOptions(journeySelection));
+    return value.toString();
+  };
+  let brokerEnabledPromise: Promise<boolean> | undefined;
+  const useBroker = () => {
+    if (zone || options?.isolatedCluster) return Promise.resolve(false);
+    if (!brokerEnabledPromise) brokerEnabledPromise = hasPgTemplateBroker();
+    return brokerEnabledPromise;
+  };
   type SharedCluster = {
     container: PostgresContainer;
     bootstrap: Pool;
@@ -169,15 +186,39 @@ export function storeJourneyResources() {
       runtimeUrl,
     };
   });
+  const openBrokerClone = async (prefix: "install" | "target", dbLabel?: string) => {
+    if (closed) throw new Error("store_journey_resources_closed");
+    const lease = await tryLeaseTemplateDatabase("qualified-v2-separate", dbLabel ?? prefix);
+    if (!lease) throw new Error("store_journey_broker_unavailable");
+    if (closed) {
+      await lease.release().catch(() => {});
+      throw new Error("store_journey_resources_closed");
+    }
+    activeLeases.add(lease);
+    const ownerUrl = withJourneyMigrationOptions(lease.migrationUrl);
+    const runtimeUrl = lease.runtimeUrl;
+    const restoreUrl = lease.restoreUrl;
+    return {
+      dbName: lease.dbName,
+      lease,
+      owner: pool(ownerUrl),
+      ownerUrl,
+      runtime: pool(runtimeUrl),
+      restore: prefix === "target" ? pool(restoreUrl) : undefined,
+      runtimeUrl,
+    };
+  };
   return {
     async installation(label: string): Promise<JourneyInstallation> {
-      const cluster = await ensureCluster(label);
-      const clone = await openClone(cluster, "install", label);
+      const clone = await useBroker()
+        ? await openBrokerClone("install", label)
+        : await openClone(await ensureCluster(label), "install", label);
       return { owner: clone.owner, runtime: clone.runtime, runtimeUrl: clone.runtimeUrl };
     },
     async targetTemplate(label: string): Promise<JourneyTargetTemplate> {
-      const cluster = await ensureCluster(label);
-      let active: { dbName: string; owner: Pool; runtime: Pool; restore: Pool } | undefined;
+      const brokerBacked = await useBroker();
+      const cluster = brokerBacked ? undefined : await ensureCluster(label);
+      let active: { dbName: string; lease?: PgTemplateLease; owner: Pool; runtime: Pool; restore: Pool } | undefined;
       return {
         async nextTarget(dbLabel?: string): Promise<JourneyTargetInstallation> {
           if (active) {
@@ -192,18 +233,33 @@ export function storeJourneyResources() {
               const index = pools.indexOf(value);
               if (index >= 0) pools.splice(index, 1);
             }
-            await enqueueDdl(async () => {
-              if (!closed && !cluster.bootstrap.ended) {
-                await cluster.bootstrap.query(`DROP DATABASE IF EXISTS "${previous.dbName}" WITH (FORCE)`);
-              }
-            });
+            if (previous.lease) {
+              activeLeases.delete(previous.lease);
+              await previous.lease.release();
+            } else if (cluster) {
+              await enqueueDdl(async () => {
+                if (!closed && !cluster.bootstrap.ended) {
+                  await cluster.bootstrap.query(`DROP DATABASE IF EXISTS "${previous.dbName}" WITH (FORCE)`);
+                }
+              });
+            }
           }
-          const next = await openClone(cluster, "target", dbLabel);
-          active = { dbName: next.dbName, owner: next.owner, runtime: next.runtime, restore: next.restore! };
+          const next = brokerBacked
+            ? await openBrokerClone("target", dbLabel ?? label)
+            : await openClone(cluster!, "target", dbLabel);
+          active = {
+            dbName: next.dbName,
+            lease: "lease" in next ? (next.lease as PgTemplateLease) : undefined,
+            owner: next.owner,
+            runtime: next.runtime,
+            restore: next.restore!,
+          };
           return { owner: next.owner, ownerUrl: next.ownerUrl, runtime: next.runtime, restore: next.restore!, runtimeUrl: next.runtimeUrl };
         },
         async clone(dbLabel?: string): Promise<JourneyTargetInstallation> {
-          const next = await openClone(cluster, "target", dbLabel);
+          const next = brokerBacked
+            ? await openBrokerClone("target", dbLabel ?? label)
+            : await openClone(cluster!, "target", dbLabel);
           return { owner: next.owner, ownerUrl: next.ownerUrl, runtime: next.runtime, restore: next.restore!, runtimeUrl: next.runtimeUrl };
         },
       };
@@ -222,7 +278,19 @@ export function storeJourneyResources() {
           }
         }
       } finally {
-        await closePostgres(containers, pools, additionalClosers);
+        try {
+          await closePostgres(containers, pools, additionalClosers);
+        } finally {
+          const pendingLeases = [...activeLeases];
+          activeLeases.clear();
+          if (pendingLeases.length) {
+            const settled = await Promise.allSettled(pendingLeases.map(lease => lease.release()));
+            const failed = settled.find((item): item is PromiseRejectedResult => item.status === "rejected");
+            if (failed && !roleMismatchError) {
+              roleMismatchError = failed.reason instanceof Error ? failed.reason : new Error(String(failed.reason));
+            }
+          }
+        }
       }
       if (roleMismatchError) throw roleMismatchError;
     },

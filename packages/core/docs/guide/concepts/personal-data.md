@@ -53,7 +53,10 @@ preferences and tax evaluations in the reference composition. Keep an ID declare
 scoped evidence remains.
 
 Native store wrappers implement `NativePrivacyStore` and forward
-`readRequiredContributorIds` on the held transaction. Inject the instance
+`readRequiredContributorIds` and `findErasureReplay` on the held transaction.
+Forward the original receipt and its covered contributor IDs. Receipt coverage
+includes recognized IDs regardless of their historical versions and approvals
+bound to that receipt. Inject the instance
 returned by the serving module's `createPrivacyOperations` into the reference
 host. Use `decoratePrivacyRoute` to wrap each guarded handler with host request
 scope or lifecycle logic. Probe both operations on the exact serving build
@@ -68,7 +71,9 @@ Before reopening ordinary native privacy traffic, verify all three conditions.
 Installing the first slice alone leaves the fence in place.
 
 Native export and erasure return HTTP 503 when a declared owner is absent or
-the binding or declaration cannot be verified. Update strict clients to accept
+the binding, declaration or authoritative receipt evidence cannot be verified.
+A matching erasure receipt that lacks required coverage returns HTTP 503 with
+`PRIVACY_RECEIPT_COVERAGE_INCOMPLETE`. Update strict clients to accept
 `observed`, `cause`, `fix` and `recheck` alongside `privacyCode` in `error.details`.
 Direct callers receive the same four strings in `PrivacyRefusal.facts`. Follow
 the fix and retry the original request. Keep new owner writers dormant through
@@ -174,6 +179,28 @@ coverage, obligations, refusals and receipts, and requires erasure confirmation.
 Documents, confirmation and retry keys stay in component memory and clear on
 subject/session change, including late responses. Exports never enter browser
 storage.
+
+### Reconcile coverage of a native erasure receipt
+
+The installation owner verifies the contributor owner's approval against the
+selected store, original receipt subject and missing contributor. Keep the
+original approval under local custody and assign it one UUID. Open a separate
+owner session using the selected installation's owner login, including on a
+single-login store. For a restricted installation, use the authorized migrator.
+If the contributor needs additional owner privileges, use the host's existing
+owner window and verify the sealed role graph after closing the window.
+
+From the owner session, call `reconcilePostgresPrivacyErasure` from
+`@openlup/platform/identity` with the store's owner `unitOfWork`, native
+contributor `registry` and current human administrator `actor`. Pass
+`{ erasure_id, contributor_id, evidence_ref }` as the second argument. The
+operation commits the selected contributor's disposition with the approval
+binding. Repeating the same binding returns `null`. If the binding is refused
+as `PRIVACY_RECONCILIATION_APPROVAL_UNVERIFIED`, verify the original approval
+in owner custody. Close the owner session and retry the original erasure
+request once its required coverage is complete. Keep retained obligations
+from reconciliation with the owner approval, while replay preserves the
+original receipt and its obligations.
 
 ### Native coverage gaps
 

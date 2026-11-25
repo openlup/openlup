@@ -791,10 +791,13 @@ export function selectConfiguration(id: string = defaultConfigurationId): StoreC
 }
 `;
     await writeFile(resolve(target, 'owned/store.config.ts'), owned);
-    const tests = execFileSync(process.execPath, ['--experimental-strip-types', '--test'], {
+    const tests = spawnSync(process.execPath, ['--experimental-strip-types', '--test'], {
       cwd: target, encoding: 'utf8', stdio: 'pipe', env: {},
     });
-    assert.match(tests, /fail 0/);
+    assert.ifError(tests.error);
+    const failureReport = tests.stdout.indexOf('✖ failing tests:');
+    assert.equal(tests.status, 0, tests.stdout.slice(Math.max(0, failureReport)) + tests.stderr);
+    assert.match(tests.stdout, /fail 0/);
     const probe = createServer();
     probe.listen(0, '127.0.0.1');
     await once(probe, 'listening');
@@ -818,6 +821,7 @@ export function selectConfiguration(id: string = defaultConfigurationId): StoreC
     const body = await response.json() as { config: typeof config };
     assert.equal(body.config.id, config.id);
     assert.equal(body.config.brand.name, 'Harbor Objects');
+    assert.deepEqual(body.config.offer.products.map(product => product.physical), config.offer.products.map(product => product.physical));
     assert.deepEqual(body.config.offer.cadenceDays,[21,42]);
     assert.deepEqual(body.config.subscriptionEditing.planDays,[21,42]);
     assert.deepEqual(body.config.subscriptionEditing.sized.allowedCadences,[21,42]);

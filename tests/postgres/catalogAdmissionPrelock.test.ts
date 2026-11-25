@@ -2,18 +2,20 @@ import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { createConnection, createServer, type Socket } from "node:net";
 import { setImmediate as yieldTurn, setTimeout as delay } from "node:timers/promises";
-import { Client, Pool, type PoolClient, type QueryConfig } from "pg";
+import { Client, Pool, type PoolClient, type QueryConfig, type QueryResult } from "pg";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { catalogDefinitionDigest, createCatalogProductTypeRegistry, createPostgresCatalogDraftStoreV4,
   createPostgresCatalogPublicationCommands, withCatalogPublicationRules } from "@openlup/platform/catalog";
 import { canonicalCatalogDraftJson, type CatalogDraftPayloadV3 } from "@openlup/platform/catalog/contracts";
 import { withCatalogAdmissionFence } from "@openlup/platform/catalog/testing";
+// eslint-disable-next-line no-restricted-imports -- exercise the selected fence without exposing an installed entry point
+import { withSelectedCatalogAdmissionFence } from "../../packages/platform/src/catalog/catalogAdmissionFence.js";
 import { createPostgresNativeCheckoutPersistence } from "@openlup/platform/commerce/server/native-checkout";
 import { createCatalogPriceSetupHandler, createPostgresCatalogPriceSetupStore, type CreateQuoteResponse } from "@openlup/platform/pricing";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
-import { actorId, authoredPublicationDocument, hash, installPublicationActors, transaction } from "./catalogPublicationFixture.js";
+import { actorId, authoredPublicationDocument, fixture, graph, hash, insertGraph, installPublicationActors, transaction } from "./catalogPublicationFixture.js";
 import { destinationContext, documentTable, readSnapshot, reachDestinationCutoff, selectionTable, snapshot } from "./destinationDocumentFixture.js";
-import { receiptArgs, receiptCall, receiptClient } from "./destinationReceiptFixture.js";
+import { markReceiptClientErased, receiptArgs, receiptCall, receiptClient } from "./destinationReceiptFixture.js";
 import { lifecycleInstallation, type LifecycleInstallation } from "./subscriptionLifecycleClosureFixture.js";
 
 let installation: LifecycleInstallation;
@@ -76,10 +78,11 @@ afterAll(async () => {
 }, postgresTeardownTimeoutMs);
 
 type ClientObserver = (index: number, db: PoolClient) => Promise<void> | void;
-type QueryObserver = (index: number, text: string, request: string | QueryConfig, values?: unknown[]) => Promise<void> | void;
+type ObservedQuery = string | (QueryConfig & { query_timeout?: number });
+type QueryObserver = (index: number, text: string, request: ObservedQuery, values?: unknown[]) => Promise<void> | void;
 function pair(observeClient: ClientObserver = () => {}, observeQuery: QueryObserver = () => {},
   pool: { connect(): Promise<PoolClient> } = installation.owner, observeError?: (error: unknown) => void,
-  observeResult?: (text: string, index: number) => Promise<void> | void,
+  observeResult?: (text: string, index: number, result: QueryResult) => Promise<void> | void,
   observeSettlement?: (text: string, index: number) => void) {
   let index = 0;
   return { async connect() {
@@ -87,12 +90,12 @@ function pair(observeClient: ClientObserver = () => {}, observeQuery: QueryObser
     const db = await pool.connect();
     try { await observeClient(number, db); } catch (error) { db.release(true); throw error; }
     return {
-      query: async (request: string | QueryConfig, values?: unknown[]) => {
+      query: async (request: ObservedQuery, values?: unknown[]) => {
         const text = typeof request === "string" ? request : request.text;
         await observeQuery(number, text, request, values);
         try {
           const result = await (typeof request === "string" ? db.query(request, values) : db.query(request));
-          await observeResult?.(text, number);
+          await observeResult?.(text, number, result);
           return result;
         }
         catch (error) { observeError?.(error); throw error; }
@@ -1307,22 +1310,28 @@ it("authenticates stored submit replay before checking an expired document and r
   expect(checkFresh).not.toHaveBeenCalled();
 });
 
-it.each([true, false])("orders real base price apply and checkout, checkout first=%s", async checkoutFirst => {
+it.each([true, false].flatMap(checkoutFirst => [true, false].map(selected => ({ checkoutFirst, selected }))))(
+  "orders real base price apply and checkout, checkout first=$checkoutFirst selected=$selected", async ({ checkoutFirst, selected }) => {
   const owner = installation.owner;
+  const selection = selected ? await selectedFixture() : undefined;
   const db = await orderingPool.connect(), atRead = latch(), finish = latch(), buyerAssigned = latch();
-  const list = (await owner.query("INSERT INTO public.price_lists(name,region_code,currency) VALUES('Price apply','ZZ','XXX') RETURNING id")).rows[0]!.id;
+  const list = selection?.guards.priceListId ??
+    (await owner.query("INSERT INTO public.price_lists(name,region_code,currency) VALUES('Price apply','ZZ','XXX') RETURNING id")).rows[0]!.id;
+  const variantId = selection?.guards.skuIds[1] ?? skuId;
   const input = { ...scope(), priceListId: list };
   const price = await db.query(`INSERT INTO public.price_entries(price_list_id,variant_id,unit_price_minor,mode,valid_from)
-    VALUES($1,$2,125,'one_time',clock_timestamp()-interval '1 hour') RETURNING id`, [list, skuId]);
-  const command = { schemaVersion: 1, commandKey: randomUUID(), variantId: skuId, priceListId: list,
+    VALUES($1,$2,125,'one_time',clock_timestamp()-interval '1 hour') RETURNING id`, [list, variantId]);
+  const command = { schemaVersion: 1, commandKey: randomUUID(), variantId, priceListId: list,
     mode: "one_time", minQty: 1, amountKind: "gross", unitPriceMinor: 130, expected: { entryId: price.rows[0]!.id, unitPriceMinor: 125 } };
   const handler = createCatalogPriceSetupHandler({ store: createPostgresCatalogPriceSetupStore(db),
     authorizeOperator: async () => ({ actorId }) });
   let writerPid = 0;
   const read = vi.fn(async () => { atRead.resolve(); await finish.wait(); return "checkout committed"; });
-  const checkout = () => withCatalogAdmissionFence(pair(async (index, writer) => {
+  const pool = pair(async (index, writer) => {
     if (index === 0) { writerPid = await pid(writer); buyerAssigned.resolve(); }
-  }, undefined, orderingPool), input, read, { prelock: guard });
+  }, undefined, selected ? installation.runtime : orderingPool);
+  const checkout = () => selection ? withSelectedCatalogAdmissionFence(pool, selection.request, selection.guards, read, noAuthorizationRefusal)
+    : withCatalogAdmissionFence(pool, input, read, { prelock: guard });
   let purchase: Promise<string> | undefined;
   let apply: ReturnType<typeof handler.apply> | undefined;
   try {
@@ -1351,6 +1360,7 @@ it.each([true, false])("orders real base price apply and checkout, checkout firs
       await expect(purchase).rejects.toMatchObject({ code: "40001", message: visibility });
       expect(read).not.toHaveBeenCalled();
     }
+    // COMMIT was acknowledged on the price writer before this fresh owner read.
     expect((await owner.query("SELECT unit_price_minor FROM public.price_entries WHERE price_list_id=$1 AND active", [list])).rows)
       .toEqual([{ unit_price_minor: 130 }]);
   } finally {
@@ -1395,7 +1405,7 @@ function publisher(afterRelation: (db: PoolClient) => Promise<void> = async () =
   });
 }
 
-async function approvedPublication(checkoutFirst: boolean) {
+async function approvedPublication(checkoutFirst: boolean, gtin?: string) {
   const owner = installation.owner, api = publisher(), who = (await api.authorize(actorId))!;
   await owner.query(`INSERT INTO public.catalog_type_versions(type_key,version,definition,definition_digest,validator_ref)
     VALUES($1,1,'{}',$2,$3) ON CONFLICT DO NOTHING`, [typeKey, catalogDefinitionDigest(definition), definition.validatorRef]);
@@ -1406,7 +1416,7 @@ async function approvedPublication(checkoutFirst: boolean) {
   const reference = { id: documentId, productId: id, revisionNo: 1, schemaId: "example:document.v1", sourceRef: "example:source",
     documentRef: doc.id, digest };
   const sku = { skuCode: code, title: doc.name, minQuantity: 1, isAddon: false, facts: { derived: 12 } };
-  const identifier = { scheme: "gs1:gtin", issuer: "example", value: checkoutFirst ? "4006381333931" : "5901234123457",
+  const identifier = { scheme: "gs1:gtin", issuer: "example", value: gtin ?? (checkoutFirst ? "4006381333931" : "5901234123457"),
     packagingLevel: "unit" as const };
   const payload: CatalogDraftPayloadV3 = { schemaVersion: 3,
     product: { id, type: { key: typeKey, version: 1 }, dimensions: ["finish"], slug, primarySkuId: variantId, documentRevision: reference,
@@ -1491,3 +1501,622 @@ it.each([true, false])("orders the real Stage B publisher and checkout, checkout
     await purchase?.catch(() => {});
   }
 }, setupTimeout * 2);
+
+const selectedSql = "SELECT public.catalog_admission_runtime_checkout($1::text,$2::text,$3::uuid,$4::jsonb) AS result";
+const dark = { code: "55000", message: "catalog_admission_quote_authority_required",
+  hint: "Governed checkout is unavailable for this selection. Use a supported offer or replay the original request." };
+const noAuthorizationRefusal = () => {};
+const orderInsert = `INSERT INTO public.commerce_orders(client_id,status,currency_code,total_amount_minor)
+  SELECT $1,'pending_payment','XXX',0 FROM generate_series(1,$2) RETURNING id`;
+
+async function observeBefore(check: () => Promise<boolean>, deadline: number) {
+  await expect.poll(async () => await check() && performance.now() <= deadline,
+    { timeout: Math.max(1, deadline - performance.now()), interval: 2 }).toBe(true);
+}
+
+function trackedSelectedWriter(observeQuery?: QueryObserver, onWriter?: (db: PoolClient) => Promise<void> | void) {
+  let backend: number | undefined, xid: string | undefined;
+  const pool = pair(async (index, db) => {
+    if (index === 0) {
+      backend = await pid(db);
+      await onWriter?.(db);
+    }
+  }, observeQuery, installation.runtime, undefined, (sql, index, { rows }) => {
+    if (index !== 0 || !sql.startsWith("SELECT pg_current_xact_id()")) return;
+    const value: unknown = rows[0]?.xid;
+    if (typeof value === "string") xid = value;
+  });
+  return { pool, get pid() { return backend; }, waitUntil: (deadline: number) => observeBefore(async () => {
+    // The backend check also covers a nonce sent before the deadline without a returned XID.
+    const { rows: [result] } = await installation.owner.query<{ settled: boolean }>(`SELECT
+      NOT EXISTS (SELECT 1 FROM pg_stat_activity WHERE pid=$1 AND state IS DISTINCT FROM 'idle')
+      AND COALESCE(pg_visible_in_snapshot($2::xid8, pg_current_snapshot()), true) AS settled`,
+    [backend ?? null, xid ?? null]);
+    return result?.settled === true;
+  }, deadline) };
+}
+
+async function selectedFixture() {
+  const seed = fixture();
+  const skuRevisionId = await transaction(installation.owner, async db => {
+    const issue = await graph(db, seed, null, true, { lifecycle: "active", subscriptionEligible: true });
+    issue.facts.memberships = [{ offerVersion: "example:subscription", admitted: true }];
+    await insertGraph(db, issue);
+    return issue.skuRevisionId;
+  });
+  const legacy = randomUUID();
+  const owner = installation.owner;
+  await owner.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1,$2,'Example')", [legacy, legacy]);
+  await owner.query("INSERT INTO public.catalog_skus(id,product_id,sku,title,sellable_in_subscription) VALUES($1,$1,$2,'Example',true)", [legacy, legacy]);
+  const { rows: [list] } = await owner.query("INSERT INTO public.price_lists(name,region_code,currency) VALUES($1,'ZZ','XXX') RETURNING id", [legacy]);
+  const { rows: [client] } = await owner.query("INSERT INTO public.clients(email) VALUES($1) RETURNING id", [`${legacy}@example.invalid`]);
+  return { request: { key: randomUUID(), clientId: String(client!.id), timeoutMs: setupTimeout },
+    guards: { skuIds: [seed.skuId, legacy] as const, skuRevisionId, priceListId: String(list!.id) }, productId: seed.productId, emailLocalPart: legacy };
+}
+
+async function selectedRaw<T>(work: (db: PoolClient) => Promise<T>, begin = "BEGIN ISOLATION LEVEL REPEATABLE READ") {
+  const db = await installation.runtime.connect();
+  try {
+    await db.query(begin);
+    await db.query("SET LOCAL lock_timeout='500ms'; SET LOCAL statement_timeout='3s'");
+    return await work(db);
+  } finally { await db.query("ROLLBACK"); db.release(); }
+}
+
+it("checks exact selected input, transaction and advisory layout before fresh locks", async () => {
+  const { request, guards } = await selectedFixture();
+  const input = ["prelock", request.key, request.clientId, guards];
+  const peer = await installation.owner.connect();
+  try {
+    await peer.query("BEGIN");
+    await peer.query(keySql, [request.key]);
+    await selectedRaw(db => expect(db.query(selectedSql, input)).rejects.toMatchObject(dark));
+    await peer.query("ROLLBACK");
+  } finally { peer.release(); }
+
+  for (const lock of [undefined, "SELECT pg_advisory_xact_lock_shared(hashtextextended($1::text,0))",
+    `SELECT pg_advisory_xact_lock((h>>32)::int4,(h<<32>>32)::int4) FROM hashtextextended($1::text,0) h`]) {
+    await selectedRaw(async db => {
+      if (lock) await db.query(lock, [request.key]);
+      await expect(db.query(selectedSql, input)).rejects.toMatchObject(dark);
+    });
+  }
+  for (const begin of ["BEGIN", "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY", "BEGIN ISOLATION LEVEL SERIALIZABLE"]) {
+    await selectedRaw(async db => {
+      await db.query(keySql, [request.key]);
+      await expect(db.query(selectedSql, input)).rejects.toMatchObject(dark);
+    }, begin);
+  }
+  await selectedRaw(async db => {
+    await db.query(keySql, ["unrelated-key"]);
+    await expect(db.query(selectedSql, input)).rejects.toMatchObject(dark);
+  });
+  for (const timeout of ["lock_timeout", "statement_timeout"]) {
+    await selectedRaw(async db => {
+      await db.query(keySql, [request.key]);
+      await db.query("SELECT set_config($1,'0',true)", [timeout]);
+      await expect(db.query(selectedSql, input)).rejects.toMatchObject(dark);
+    });
+  }
+
+  await selectedRaw(async db => {
+    await db.query(keySql, [request.key]);
+    const cases = [
+      ["write", request.key, request.clientId, guards], ["PRELOCK", ...input.slice(1)], ["prelock ", ...input.slice(1)], [null, ...input.slice(1)],
+      ...[null, "1234567", "x".repeat(121), "with space", "newline\n", "key-é-ascii"].map(key => ["prelock", key, request.clientId, guards]),
+      ["prelock", request.key, null, guards],
+      ...[null, [], {}, { ...guards, extra: true }, { ...guards, skuIds: null },
+        { ...guards, skuIds: [guards.skuIds[0]] }, { ...guards, skuIds: [...guards.skuIds, randomUUID()] },
+        { ...guards, skuIds: [guards.skuIds[0], guards.skuIds[0]] }, { ...guards, skuIds: [null, guards.skuIds[1]] },
+        { ...guards, skuRevisionId: guards.skuRevisionId.toUpperCase() }, { ...guards, priceListId: 123 },
+        ...Object.keys(guards).flatMap(key => [{ ...guards, [key]: undefined }, { ...guards, [key]: null }]),
+      ].map(payload => ["prelock", request.key, request.clientId, JSON.stringify(payload)]),
+    ];
+    for (const values of cases) {
+      await db.query("SAVEPOINT invalid_selected");
+      await expect(db.query(selectedSql, values)).rejects.toMatchObject(dark);
+      await db.query("ROLLBACK TO SAVEPOINT invalid_selected");
+      await db.query("RELEASE SAVEPOINT invalid_selected");
+    }
+    // Acknowledged savepoint rollbacks complete on this same backend before the lock read.
+    expect((await db.query(`SELECT 1 FROM pg_locks WHERE pid=pg_backend_pid()
+      AND relation IN ('public.clients'::regclass,'public.catalog_products'::regclass,'public.commerce_orders'::regclass)`)).rows).toEqual([]);
+    await db.query("SET LOCAL search_path=pg_temp,public,pg_catalog");
+    await db.query("CREATE TEMP TABLE clients(id uuid) ON COMMIT DROP");
+    await db.query("CREATE TEMP TABLE catalog_skus(id uuid) ON COMMIT DROP");
+    expect((await db.query(selectedSql, input)).rows).toEqual([{ result: { kind: "locked" } }]);
+  });
+  await selectedRaw(db => expect(db.query(selectedSql, ["prelock", request.key, "invalid", guards])).rejects.toMatchObject({ code: "22P02" }));
+});
+
+it("checks the guarded owner coordinates and uses the runtime login for the probe", async () => {
+  const { request, guards } = await selectedFixture();
+  const other = await selectedFixture();
+  for (const [scope, message] of [
+    [{ ...guards, skuRevisionId: other.guards.skuRevisionId }, "catalog_admission_line_ineligible"],
+    [{ ...guards, priceListId: randomUUID() }, "catalog_admission_price_context_required"],
+  ] as const) {
+    await expect(withSelectedCatalogAdmissionFence(installation.runtime, request, scope, async () => "unexpected", noAuthorizationRefusal))
+      .rejects.toMatchObject({ message });
+  }
+  let index = 0;
+  const read = vi.fn(async () => "unexpected");
+  await expect(withSelectedCatalogAdmissionFence({ connect: () => (index++ ? installation.owner : installation.runtime).connect() },
+    request, guards, read, noAuthorizationRefusal)).rejects.toMatchObject({ message: unavailable, hint: checklist });
+  expect(read).not.toHaveBeenCalled();
+});
+
+it("takes the transaction key before dispatch even if the writer already holds the session key", async () => {
+  const { request, guards } = await selectedFixture();
+  const statements: string[] = [];
+  const pool = pair(async (index, db) => {
+    if (index === 0) await db.query("SELECT pg_advisory_lock(hashtextextended($1::text,0))", [request.key]);
+  }, (index, sql) => { if (index === 0) statements.push(sql); }, installation.runtime);
+  try {
+    await withSelectedCatalogAdmissionFence(pool, request, guards, async db => {
+      expect((await db.query("SELECT pg_advisory_unlock(hashtextextended($1::text,0)) AS unlocked", [request.key])).rows)
+        .toEqual([{ unlocked: true }]);
+      // The session unlock is acknowledged while the writer transaction is still held here.
+      const check = "SELECT pg_try_advisory_xact_lock(hashtextextended($1::text,0)) AS acquired";
+      expect((await installation.owner.query(check, [request.key])).rows).toEqual([{ acquired: false }]);
+    }, noAuthorizationRefusal);
+    expect(statements.filter(sql => sql === keySql || sql === selectedSql)).toEqual([keySql, selectedSql]);
+    // A successful fence result follows the writer's acknowledged COMMIT.
+    expect((await installation.owner.query("SELECT pg_try_advisory_xact_lock(hashtextextended($1::text,0)) AS acquired", [request.key])).rows)
+      .toEqual([{ acquired: true }]);
+  } finally {
+    // An assertion before the unlock must not leave a session lock in the pool.
+    const clients = await Promise.all([installation.runtime.connect(), installation.runtime.connect()]);
+    try { await Promise.all(clients.map(db => db.query("SELECT pg_advisory_unlock_all()"))); }
+    finally { clients.forEach(db => db.release()); }
+  }
+});
+
+it("authorizes only after an absent receipt and skips fresh guards for a saved receipt", async () => {
+  const { request, guards } = await selectedFixture();
+  const trace: string[] = [];
+  const pool = pair(undefined, (_index, sql) => { trace.push(traceName(sql)); }, installation.runtime);
+  const read = vi.fn(async () => "unexpected");
+  const refusal = Object.assign(new Error("starter_quote_refresh_required"), { label: "unauthenticated" });
+  await expect(withSelectedCatalogAdmissionFence(pool, request, guards, read, () => { trace.push("authorize"); throw refusal; }))
+    .rejects.toBe(refusal);
+  expect(trace).toContain(lockTrace[3]);
+  expect(trace.indexOf(lockTrace[3]!)).toBeLessThan(trace.indexOf("authorize"));
+  expect(trace).not.toContain(selectedSql);
+  expect(trace.filter(sql => sql === "WITH snap AS MATERIALIZED")).toHaveLength(2);
+  expect(read).not.toHaveBeenCalled();
+
+  const { rows: [order] } = await installation.owner.query(orderInsert, [request.clientId, 1]);
+  await installation.owner.query(`INSERT INTO public.commerce_order_draft_receipts(idempotency_key,request_fingerprint,order_id,response_payload)
+    VALUES($1,$2,$3,'{}')`, [request.key, "a".repeat(32), order.id]);
+  trace.length = 0;
+  await expect(withSelectedCatalogAdmissionFence(pool, request, undefined, async (db, instant, present) => {
+    // The order and receipt inserts were acknowledged as autocommit statements before the fence started.
+    expect(present).toBe(true);
+    expect(Number.isFinite(Date.parse(instant))).toBe(true);
+    expect((await db.query("SELECT id FROM public.commerce_orders WHERE id=$1", [order.id])).rows).toEqual([{ id: order.id }]);
+    return "saved";
+  }, () => { throw refusal; })).resolves.toBe("saved");
+  expect(trace.filter(sql => sql === "WITH snap AS MATERIALIZED")).toHaveLength(2);
+  expect(trace).not.toContain(selectedSql);
+});
+
+it("holds compatible selected guards through two concurrent order inserts and releases both keys", async () => {
+  const [first, second] = [await selectedFixture(), await selectedFixture()];
+  const atFirst = latch(), atSecond = latch(), insert = latch();
+  const rollback = new Error("discard fixture orders");
+  async function cross(entry: typeof first, ready: ReturnType<typeof latch<void>>, writer: ReturnType<typeof trackedSelectedWriter>) {
+    return withSelectedCatalogAdmissionFence(writer.pool, entry.request, entry.guards, async db => {
+      ready.resolve();
+      await insert.wait();
+      expect(await db.query(orderInsert, [entry.request.clientId, 1])).toMatchObject({ rows: [expect.objectContaining({ id: expect.any(String) })] });
+      throw rollback;
+    }, noAuthorizationRefusal).catch(error => error);
+  }
+  const started = performance.now();
+  const writers = [trackedSelectedWriter(), trackedSelectedWriter()] as const;
+  const leader = cross(first, atFirst, writers[0]);
+  let follower: Promise<unknown> | undefined;
+  try {
+    await atFirst.wait(leader);
+    follower = cross(second, atSecond, writers[1]);
+    await atSecond.wait(follower);
+    insert.resolve();
+    expect(await Promise.all([leader, follower])).toEqual([rollback, rollback]);
+    expect(performance.now() - started).toBeLessThan(setupTimeout);
+    await Promise.all(writers.map(writer => writer.waitUntil(started + setupTimeout + wallMarginMs)));
+    expect((await installation.owner.query("SELECT 1 FROM public.commerce_orders WHERE client_id=ANY($1::uuid[])",
+      [[first.request.clientId, second.request.clientId]])).rows).toEqual([]);
+  } finally { insert.resolve(); await Promise.all([leader, follower]); }
+}, setupTimeout * 2);
+
+it("bounds the shared client wait and retries the original key", async () => {
+  const { request, guards } = await selectedFixture();
+  const ready = latch(), release = latch();
+  const contender = trackedSelectedWriter();
+  const first = withSelectedCatalogAdmissionFence(installation.runtime, request, guards, async () => {
+    ready.resolve();
+    await release.wait();
+  }, noAuthorizationRefusal);
+  const second = { ...request, key: randomUUID(), timeoutMs: 300 };
+  try {
+    await ready.wait(first);
+    const started = performance.now();
+    await expect(withSelectedCatalogAdmissionFence(contender.pool, second, guards, async () => "unexpected", noAuthorizationRefusal))
+      .rejects.toMatchObject({ message: unavailable, hint: sameKey });
+    // Prove the contender's rollback while the client row is still held. The holder then acknowledges COMMIT.
+    await contender.waitUntil(started + second.timeoutMs + wallMarginMs);
+  } finally { release.resolve(); await first; }
+  await expect(withSelectedCatalogAdmissionFence(installation.runtime, second, guards, async () => "retried", noAuthorizationRefusal))
+    .resolves.toBe("retried");
+});
+
+it("guards 500 existing orders for the qualified client and refuses 501", async () => {
+  const { request, guards } = await selectedFixture();
+  await installation.owner.query(orderInsert, [request.clientId, 500]);
+  await installation.owner.query(orderInsert, [clientId, 501]);
+  // The seed inserts and the extra order below are acknowledged autocommit statements.
+  await expect(withSelectedCatalogAdmissionFence(installation.runtime, request, guards, async db => {
+    const { rows } = await db.query("SELECT count(*)::int AS count FROM public.commerce_orders WHERE client_id=$1", [request.clientId]);
+    return rows[0]?.count;
+  }, noAuthorizationRefusal)).resolves.toBe(500);
+  await installation.owner.query(orderInsert, [request.clientId, 1]);
+  await selectedRaw(async db => {
+    await db.query(keySql, [request.key]);
+    await expect(db.query(selectedSql, ["prelock", request.key, request.clientId, guards])).rejects.toMatchObject(dark);
+  });
+  const read = vi.fn(async () => {});
+  await expect(withSelectedCatalogAdmissionFence(installation.runtime, request, guards, read, noAuthorizationRefusal))
+    .rejects.toMatchObject({ message: dark.message });
+  expect(read).not.toHaveBeenCalled();
+});
+
+it.each(["promotion roster", "email family"] as const)("refuses a selection requiring the open %s", async predicate => {
+  const { request, guards, emailLocalPart } = await selectedFixture();
+  const owner = installation.owner;
+  const promotion = { status: "active", trigger_type: "automatic", discount_type: "percentage", applies_to_kind: "order_total",
+    stacking_rule: "exclusive", eligibility: { first_subscription_purchase: true }, applies_to_payload: {}, region_availability: ["ZZ"],
+    redemption_limit_per_customer: 1, redemption_limit_global: 1 };
+  const addPromotion = (id: string) => owner.query("INSERT INTO public.commerce_promotion_definitions(promotion_id,definition,active) VALUES($1,$2,true)",
+    [id, { ...promotion, id }]);
+  const roster = predicate === "promotion roster";
+  const names = [`fixture:${request.key}:existing`, `fixture:${request.key}:entrant`];
+  if (roster) await addPromotion(names[0]!);
+  const count = roster
+    ? `SELECT count(*)::int AS count FROM jsonb_array_elements(public.commerce_promotion_active_definitions()) p WHERE p->>'id'=ANY($1::text[])`
+    : `SELECT count(*)::int AS count FROM public.clients WHERE regexp_replace(lower(btrim(email)), '\\+[^@]*@', '@')=$1`;
+  const parameters: [string | string[]] = [roster ? names : `${emailLocalPart}@example.invalid`];
+  await withSelectedCatalogAdmissionFence(installation.runtime, request, guards, async db => {
+    expect((await db.query(count, parameters)).rows).toEqual([{ count: 1 }]);
+    if (roster) await addPromotion(names[1]!);
+    else await installation.runtime.query("INSERT INTO public.clients(email) VALUES($1)", [`${emailLocalPart}+entrant@example.invalid`]);
+    // The insert is committed before these reads. The writer retains its pinned snapshot.
+    expect((await db.query(count, parameters)).rows).toEqual([{ count: 1 }]);
+    expect((await installation.runtime.query(count, parameters)).rows).toEqual([{ count: 2 }]);
+  }, noAuthorizationRefusal);
+
+  const effects = `SELECT
+    (SELECT count(*) FROM public.commerce_orders WHERE client_id=$1),
+    (SELECT count(*) FROM public.commerce_order_draft_receipts WHERE idempotency_key=$2),
+    (SELECT count(*) FROM public.outbox_events) AS outbox`;
+  const before = (await owner.query(effects, [request.clientId, request.key])).rows;
+  const trace: string[] = [];
+  const read = vi.fn(async () => {});
+  // The server has no qualified scope for an evaluator that uses this predicate.
+  await expect(withSelectedCatalogAdmissionFence(pair(undefined, (_index, sql) => { trace.push(sql); }, installation.runtime),
+    request, undefined, read, noAuthorizationRefusal)).rejects.toThrow("catalog_admission_line_ineligible");
+  expect(read).not.toHaveBeenCalled();
+  expect(trace).not.toContain(selectedSql);
+  // The completed refusal never invoked a write path.
+  expect((await owner.query(effects, [request.clientId, request.key])).rows).toEqual(before);
+});
+
+it.each([false, true])("bounds a stalled selected read and prevents late SQL on the released writer (blocked SQL: %s)", async busy => {
+  const { request, guards } = await selectedFixture();
+  const ready = latch(), resume = latch(), settled = latch<{ blocked: boolean | undefined; late: boolean }>();
+  const statements: string[] = [], releases: boolean[] = [];
+  const writer = trackedSelectedWriter((_index, sql) => { statements.push(sql); }, db => {
+    const release = db.release.bind(db);
+    db.release = discard => { releases.push(discard === true); release(discard); };
+  });
+  const owner = installation.owner;
+  const blocker = busy ? await owner.connect() : undefined;
+  const blockedKey = randomUUID();
+  const input = { ...request, timeoutMs: 500 };
+  let attempt: Promise<unknown> | undefined;
+  try {
+    if (blocker) {
+      await blocker.query("BEGIN");
+      await blocker.query(keySql, [blockedKey]);
+    }
+    const blockerPid = blocker && await pid(blocker);
+    const deadline = performance.now() + input.timeoutMs + wallMarginMs;
+    attempt = withSelectedCatalogAdmissionFence(writer.pool, input, guards, async db => {
+      const blocked = blocker && db.query(keySql, [blockedKey]).then(() => false, () => true);
+      ready.resolve();
+      await resume.wait();
+      const late = await db.query(selectedSql, ["write", request.key, request.clientId, {}]).then(() => false, () => true);
+      settled.resolve({ blocked: await blocked, late });
+    }, noAuthorizationRefusal).catch(error => error);
+    await ready.wait(attempt);
+    if (blockerPid !== undefined) await waitForBlock(writer.pid!, blockerPid, "advisory");
+    // The peer must take both locks by the original budget plus 50 ms, while read is still stalled.
+    await observeBefore(async () => {
+      const { rows: [result] } = await owner.query<{ released: boolean }>(`SELECT
+        pg_try_advisory_xact_lock(hashtextextended($1::text,0)) AND EXISTS (
+          SELECT 1 FROM public.clients WHERE id=$2 FOR UPDATE SKIP LOCKED
+        ) AS released`, [input.key, input.clientId]);
+      return result?.released === true;
+    }, deadline);
+    expectFenceError(await attempt, { message: unavailable, hint: sameKey });
+    expect(releases).toEqual([true]);
+    await writer.waitUntil(deadline);
+    resume.resolve();
+    await settled.wait();
+    const outcome = await settled.promise;
+    if (busy) expect(outcome.blocked).toBe(true);
+    expect(outcome.late).toBe(true);
+    expect(statements.filter(sql => sql === selectedSql)).toHaveLength(1);
+    expect(statements).not.toContain("COMMIT");
+    await expect(withSelectedCatalogAdmissionFence(installation.runtime, request, guards, async () => "retried", noAuthorizationRefusal))
+      .resolves.toBe("retried");
+  } finally {
+    resume.resolve();
+    await attempt;
+    if (blocker) await blocker.query("ROLLBACK").finally(() => blocker.release());
+  }
+});
+
+it("snapshots selected input and handles deadline limits and guarded read transport", async () => {
+  const fixture = await selectedFixture();
+  const { clientId } = fixture.request;
+  const connect = vi.fn(async () => { throw new Error("reserved"); });
+  const read = vi.fn(async () => {});
+  for (const input of [
+    { key: "x".repeat(7) }, { key: "x".repeat(121) }, { key: "has space" }, { key: "valid-key\n" },
+    { clientId: clientId.toUpperCase() }, { clientId: null }, { clientId: undefined },
+    { timeoutMs: 0 }, { timeoutMs: 1.5 }, { timeoutMs: 2_147_483_648 }, { timeoutMs: undefined },
+  ]) {
+    await expect(withSelectedCatalogAdmissionFence({ connect }, { ...fixture.request, ...input } as typeof fixture.request,
+      fixture.guards, read, noAuthorizationRefusal)).rejects.toBeInstanceOf(TypeError);
+  }
+  const invalidScopes = [null, { ...fixture.guards, extra: true }, { ...fixture.guards, skuIds: [clientId, clientId] },
+    ...Object.keys(fixture.guards).map(key => ({ ...fixture.guards, [key]: undefined }))];
+  for (const scope of invalidScopes) {
+    await expect(withSelectedCatalogAdmissionFence({ connect }, fixture.request, scope as typeof fixture.guards, read, noAuthorizationRefusal))
+      .rejects.toBeInstanceOf(TypeError);
+  }
+  expect(connect).not.toHaveBeenCalled();
+
+  const readSql = "SELECT 123 AS value";
+  for (const [key, timeoutMs] of [["12345678", 2_147_483_647], ["k".repeat(120), setupTimeout]] as const) {
+    const input = { ...fixture.request, key, timeoutMs };
+    const guards = { ...fixture.guards, skuIds: [...fixture.guards.skuIds] as [string, string] };
+    const trade = pair(index => {
+      if (index !== 0) return;
+      input.key = "replacement";
+      guards.skuIds[0] = randomUUID();
+    }, (_index, sql, request, values) => {
+      if (sql === keySql) expect((request as QueryConfig).values).toEqual([key]);
+      if (sql === selectedSql) expect(JSON.parse((request as QueryConfig).values![3])).toEqual(fixture.guards);
+      if (sql === readSql) expect(typeof request === "string" ? undefined : request.query_timeout).toBeGreaterThan(0);
+      expect(values).toBeUndefined();
+    }, installation.runtime);
+    await expect(withSelectedCatalogAdmissionFence(trade, input, guards, async db => (await db.query(readSql)).rows,
+      noAuthorizationRefusal)).resolves.toEqual([{ value: 123 }]);
+  }
+
+  const tiny = { ...fixture.request, timeoutMs: 1 };
+  await expect(withSelectedCatalogAdmissionFence({ async connect() { await delay(20); return installation.runtime.connect(); } },
+    tiny, fixture.guards, read, noAuthorizationRefusal)).rejects.toMatchObject({ message: unavailable, hint: sameKey });
+  expect(read).not.toHaveBeenCalled();
+});
+
+type SelectedFixture = Awaited<ReturnType<typeof selectedFixture>>;
+type CompetingWrite = (writer: PoolClient) => Promise<unknown>;
+type GuardCase = { name: string; wait?: { type: string; relation?: string }; writer(entry: SelectedFixture): Promise<CompetingWrite> };
+const tupleWait = { type: "transactionid" };
+const relationWait = (relation: string) => ({ type: "relation", relation: `public.${relation}` });
+const simpleWrite = (sql: string, values: (entry: SelectedFixture) => unknown[]) =>
+  async (entry: SelectedFixture): Promise<CompetingWrite> => async db => db.query(sql, values(entry));
+const componentGuards: GuardCase[] = [
+  { name: "receipt", wait: tupleWait, async writer({ request }) {
+    const { rows: [order] } = await installation.owner.query(orderInsert, [request.clientId, 1]);
+    await installation.owner.query(`INSERT INTO public.commerce_order_draft_receipts(idempotency_key,request_fingerprint,order_id,response_payload)
+      VALUES($1,$2,$3,'{}')`, [request.key, "a".repeat(32), order.id]);
+    return db => db.query("UPDATE public.commerce_order_draft_receipts SET request_fingerprint=$2 WHERE idempotency_key=$1",
+      [request.key, "b".repeat(32)]);
+  } },
+  { name: "erasure ledger", wait: relationWait("identity_privacy_erasures"), async writer({ request }) {
+    return async db => {
+      await db.query("LOCK TABLE public.identity_privacy_erasures IN SHARE ROW EXCLUSIVE MODE");
+      await markReceiptClientErased(db, request.clientId);
+    };
+  } },
+  { name: "exact client", wait: tupleWait, writer: simpleWrite("UPDATE public.clients SET first_name='Changed' WHERE id=$1",
+    ({ request }) => [request.clientId]) },
+  { name: "order insert via client foreign key", wait: tupleWait, writer: simpleWrite(orderInsert, ({ request }) => [request.clientId, 1]) },
+  { name: "existing order status", async writer({ request }) {
+    const { rows: [order] } = await installation.owner.query(orderInsert, [request.clientId, 1]);
+    return db => db.query("UPDATE public.commerce_orders SET status='paid',paid_at=clock_timestamp() WHERE id=$1", [order.id]);
+  } },
+  { name: "selected SKU", wait: tupleWait, writer: simpleWrite("UPDATE public.catalog_skus SET sku=$2 WHERE id=$1",
+    ({ guards }) => [guards.skuIds[1], randomUUID()]) },
+  { name: "catalogue products", wait: relationWait("catalog_products"), writer: simpleWrite(
+    "UPDATE public.catalog_products SET name='Changed' WHERE id=$1", ({ guards }) => [guards.skuIds[1]]) },
+  { name: "catalogue projection", writer: simpleWrite(`INSERT INTO public.catalog_sku_identifiers
+      (catalog_sku_id,issuer,identifier_kind,normalized_value,pack_kind,quantity) VALUES($1,'example','other',$2,'unit',1)`,
+    ({ guards }) => [guards.skuIds[1], randomUUID()]) },
+  { name: "price list", wait: relationWait("price_lists"), writer: simpleWrite("UPDATE public.price_lists SET name='Changed' WHERE id=$1",
+    ({ guards }) => [guards.priceListId]) },
+  { name: "base-price advisory", wait: { type: "advisory" }, async writer({ guards }) {
+    return async db => {
+      await db.query("SELECT public.catalog_price_setup_lock_context($1,$2)", [guards.priceListId, guards.skuIds[0]]);
+      return db.query(`INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor)
+        VALUES($1,$2,'one_time',100)`, [guards.priceListId, guards.skuIds[0]]);
+    };
+  } },
+  { name: "direct price entry", wait: relationWait("price_entries"), writer: simpleWrite(
+    "INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor) VALUES($1,$2,'subscription',100)",
+    ({ guards }) => [guards.priceListId, guards.skuIds[1]]) },
+  { name: "policy history", writer: simpleWrite(`INSERT INTO public.subscription_price_policy_revisions
+      (id,revision_no,price_list_id,region_code,currency,channel,effective_from,discount_bps,rounding_quantum_minor,rounding_rule,digest)
+      SELECT id,1,$1,'ZZ','XXX','D2C',at,1000,10,'FLOOR_TO_QUANTUM',
+        public.catalog_price_setup_policy_digest(id,1,$1,'ZZ','XXX','D2C',at,NULL,1000,10,'FLOOR_TO_QUANTUM')
+      FROM (SELECT gen_random_uuid() AS id,date_trunc('milliseconds',statement_timestamp()-interval '1 hour') AS at) v`,
+    ({ guards }) => [guards.priceListId]) },
+];
+
+const phases = ["writer first", "before probe", "after probe"] as const;
+it.each(componentGuards.flatMap(guard => phases.map(phase => ({ ...guard, phase }))))(
+  "holds the selected $name guard with a competing writer $phase", async scenario => {
+    const entry = await selectedFixture();
+    const mutate = await scenario.writer(entry);
+    const { request, guards } = entry;
+    const runtime = installation.runtime;
+
+    if (scenario.phase === "writer first") {
+      const competing = await installation.owner.connect();
+      let attempt: Promise<unknown> | undefined;
+      const assigned = latch();
+      const writer = trackedSelectedWriter(undefined, () => { assigned.resolve(); });
+      try {
+        await competing.query("BEGIN");
+        await mutate(competing);
+        const read = vi.fn(async () => "unexpected");
+        const deadline = performance.now() + request.timeoutMs + wallMarginMs;
+        attempt = withSelectedCatalogAdmissionFence(writer.pool, request, guards, read, noAuthorizationRefusal).catch(error => error);
+        if (scenario.wait) {
+          await assigned.wait(attempt);
+          await waitForBlock(writer.pid!, await pid(competing), scenario.wait.type, scenario.wait.relation);
+          await competing.query("COMMIT");
+          expectFenceError(await attempt, { message: visibility, code: "40001", hint: sameKey });
+        } else {
+          expectFenceError(await attempt, { message: unavailable, hint: sameKey });
+          await competing.query("COMMIT");
+        }
+        expect(read).not.toHaveBeenCalled();
+        await writer.waitUntil(deadline);
+      } finally { await competing.query("ROLLBACK"); competing.release(); await attempt; }
+      await expect(withSelectedCatalogAdmissionFence(runtime, request, guards, async () => "retried", noAuthorizationRefusal)).resolves.toBe("retried");
+      return;
+    }
+
+    const conflict = vi.fn(async () => {
+      await expect(transaction(installation.owner, async db => {
+        await db.query("SET LOCAL lock_timeout='150ms'");
+        await mutate(db);
+      })).rejects.toMatchObject({ code: "55P03" });
+    });
+    const writer = trackedSelectedWriter(async (index, sql) => {
+      if (scenario.phase === "before probe" && index === 1 && sql.startsWith("WITH snap")) await conflict();
+    });
+    const deadline = performance.now() + request.timeoutMs + wallMarginMs;
+    const outcome = await withSelectedCatalogAdmissionFence(writer.pool, request, guards, async () => {
+      if (scenario.phase === "after probe") await conflict();
+    }, noAuthorizationRefusal).catch(error => error);
+    if (outcome !== undefined) {
+      expect(scenario.phase).toBe("before probe");
+      expectFenceError(outcome, { message: visibility, code: "40001", hint: sameKey });
+    }
+    expect(conflict).toHaveBeenCalledTimes(1);
+    // The competing transaction helper has acknowledged ROLLBACK. Verify the fence writer has settled too.
+    await writer.waitUntil(deadline);
+    await transaction(installation.owner, mutate);
+  }, setupTimeout * 2);
+
+it("holds the complete catalogue projection and issue guards at the probe", async () => {
+  const { request, guards } = await selectedFixture();
+  const tables = [
+    "catalog_products", "catalog_skus", "catalog_sku_identifiers", "catalog_product_document_revisions", "catalog_attribute_projection",
+    "catalog_publication_heads", "catalog_publications", "catalog_sku_revisions", "catalog_operator_receipts", "catalog_publication_decisions",
+    "catalog_publication_pointer_capabilities", "catalog_draft_heads", "catalog_draft_revisions", "catalog_draft_command_receipts",
+    "price_lists", "price_entries", "subscription_price_policy_revisions", "identity_privacy_erasures",
+  ].sort();
+  let writerPid = 0;
+  const pool = pair(async (index, db) => { if (index === 0) writerPid = await pid(db); }, async (index, sql) => {
+    if (index !== 1 || !sql.startsWith("WITH snap")) return;
+    // The writer acknowledged the guard query and cannot finish while this probe hook is pending.
+    const { rows } = await installation.owner.query(`SELECT c.relname FROM pg_locks l JOIN pg_class c ON c.oid=l.relation
+      JOIN pg_namespace n ON n.oid=c.relnamespace WHERE l.pid=$1 AND l.mode='ShareLock' AND l.granted AND n.nspname='public'
+      ORDER BY c.relname COLLATE "C"`, [writerPid]);
+    expect(rows.map(row => row.relname)).toEqual(tables);
+  }, installation.runtime);
+  await withSelectedCatalogAdmissionFence(pool, request, guards, async () => {}, noAuthorizationRefusal);
+});
+
+it("keeps a real Stage B revision out until the selected crossing releases its catalogue guards", async () => {
+  const { request, guards } = await selectedFixture();
+  const { command } = await approvedPublication(true, "5012345678900");
+  const api = publisher(), actor = (await api.authorize(actorId))!;
+  const attempt = async () => {
+    expect(await api.execute(command, actor)).toMatchObject({ outcome: "conflict", reason: "publication_busy" });
+  };
+  const writer = trackedSelectedWriter(async (index, sql) => {
+    if (index === 1 && sql.startsWith("WITH snap")) await attempt();
+  });
+  const deadline = performance.now() + request.timeoutMs + wallMarginMs;
+  const beforeProbe = await withSelectedCatalogAdmissionFence(writer.pool, request, guards, async () => {}, noAuthorizationRefusal).catch(error => error);
+  if (beforeProbe !== undefined) expectFenceError(beforeProbe, { message: visibility, code: "40001", hint: sameKey });
+  await writer.waitUntil(deadline);
+  await withSelectedCatalogAdmissionFence(installation.runtime, request, guards, attempt, noAuthorizationRefusal);
+  // The selected writer's COMMIT has been acknowledged before the publisher crosses in this third transaction.
+  expect(await api.execute(command, actor)).toMatchObject({ outcome: "committed" });
+});
+
+it("restores selected read settings before commit and preserves an unacknowledged commit error", async () => {
+  const { request, guards } = await selectedFixture();
+  const releases: boolean[] = [];
+  let writer: PoolClient;
+  const commitFailure = new Error("commit transport failed");
+  const tracked = trackedSelectedWriter(async (_index, sql) => {
+    if (sql !== "COMMIT") return;
+    // Read the restored settings on the original backend before sending COMMIT.
+    expect((await writer.query("SELECT current_setting('lock_timeout') AS lock,current_setting('statement_timeout') AS statement")).rows)
+      .toEqual([{ lock: "250ms", statement: "700ms" }]);
+    throw commitFailure;
+  }, async db => {
+    writer = db;
+    await db.query("SET lock_timeout='250ms'; SET statement_timeout='700ms'");
+    const release = db.release.bind(db);
+    db.release = discard => { releases.push(discard === true); release(discard); throw new Error("cleanup failed"); };
+  });
+  await expect(withSelectedCatalogAdmissionFence(tracked.pool, request, guards, async db => {
+    await db.query("SET LOCAL lock_timeout='10ms'");
+  }, noAuthorizationRefusal)).rejects.toBe(commitFailure);
+  expect(releases).toEqual([true]);
+  // COMMIT has no fence deadline. This test fault is before dispatch, so use the fixture's observation bound.
+  await tracked.waitUntil(performance.now() + barrierTimeout);
+  await expect(withSelectedCatalogAdmissionFence(installation.runtime, request, guards, async () => "retried", noAuthorizationRefusal))
+    .resolves.toBe("retried");
+});
+
+it("retries a receipt committed while the selected fence waits on its key", async () => {
+  const { request, guards } = await selectedFixture();
+  const blocker = await installation.owner.connect();
+  const assigned = latch();
+  const trace: string[] = [];
+  let attempt: Promise<unknown> | undefined;
+  const writer = trackedSelectedWriter((_index, sql) => { trace.push(sql); }, () => { assigned.resolve(); });
+  const read = vi.fn(async () => "unexpected");
+  const authorize = vi.fn(() => { throw new Error("starter_quote_refresh_required"); });
+  try {
+    await blocker.query("BEGIN");
+    await blocker.query(keySql, [request.key]);
+    const { rows: [order] } = await blocker.query(orderInsert, [request.clientId, 1]);
+    await blocker.query(`INSERT INTO public.commerce_order_draft_receipts(idempotency_key,request_fingerprint,order_id,response_payload)
+      VALUES($1,$2,$3,'{}')`, [request.key, "a".repeat(32), order.id]);
+    const deadline = performance.now() + request.timeoutMs + wallMarginMs;
+    attempt = withSelectedCatalogAdmissionFence(writer.pool, request, guards, read, authorize).catch(error => error);
+    await assigned.wait(attempt);
+    await waitForBlock(writer.pid!, await pid(blocker), "advisory");
+    await blocker.query("COMMIT");
+    expectFenceError(await attempt, { message: visibility, code: "40001", hint: sameKey });
+    expect(read).not.toHaveBeenCalled();
+    expect(trace).not.toContain(selectedSql);
+    await writer.waitUntil(deadline);
+    await expect(withSelectedCatalogAdmissionFence(installation.runtime, request, undefined, async (_db, _instant, present) => present, authorize))
+      .resolves.toBe(true);
+    expect(authorize).toHaveBeenCalledTimes(1);
+  } finally { await blocker.query("ROLLBACK"); blocker.release(); await attempt; }
+});

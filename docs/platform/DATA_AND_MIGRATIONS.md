@@ -459,10 +459,11 @@ checkout-owner definitions are owned by the migration principal, pin
 `pg_catalog, pg_temp` and grant no application role execution. The private
 draft entry keeps fresh governed purchase unavailable.
 `catalog_admission_runtime_checkout(text,text,uuid,jsonb)` grants EXECUTE only
-to `service_role`, and only when that role exists. Nothing calls the routine
-yet. It refuses every invocation with SQLSTATE `55000` and
-`catalog_admission_quote_authority_required` before reading or writing purchase
-data. The existing checkout-owner controls supply no governed checkout authority.
+to `service_role` when that role exists. Its private `prelock` operation guards
+selected catalogue and exact-client facts. `write` refuses with SQLSTATE
+`55000` and `catalog_admission_quote_authority_required`. A selection that
+consults the promotion roster, normalized email family or claims lacks
+authority until those predicates have guards.
 Draft replay checks the original owner and receipt before fresh admission
 advice. Fresh recovery refuses at the lineage writer when the original order
 retains an acceptance or when live classification finds governed demand in its
@@ -505,12 +506,18 @@ guards before catalogue locks. Catalogue-only writers take no client locks.
    takes the exclusive key advisory lock. The destination `prelock` takes
    ledger `SHARE`, client `FOR KEY SHARE`, checkout selection `FOR SHARE NOWAIT`,
    then the expected document `FOR SHARE NOWAIT`. Use ascending keys per group.
-2. The fence locks the receipt `FOR UPDATE`, then client, sorted SKUs and
+2. The fence locks the receipt `FOR UPDATE`. The incumbent path then takes client, sorted SKUs and
    sorted revisions `FOR KEY SHARE`. The client's mode matches the hook's.
    It locks `catalog_products` and `price_lists` in `SHARE`, takes the exclusive
    transaction advisory lock for each sorted list/SKU pair, then takes
    `price_entries` in `SHARE`. Price apply takes the same advisory lock.
-3. After the visibility probe, the writer's `read` callback authenticates native
+3. The selected component skips fresh guards for a saved receipt. On absence
+   it authorizes before `prelock`. The guard takes erasure ledger `SHARE`, then
+   exact client `FOR UPDATE`, up to 500 of that client's orders in ID order
+   `FOR SHARE NOWAIT`, and the selected SKUs and declaring revision `FOR KEY SHARE`.
+   It takes product `SHARE`, then projection and issue-integrity relations in
+   publication order, followed by the same price guards and policy-history `SHARE NOWAIT`.
+4. After the visibility probe, the writer's `read` callback authenticates native
    replay, then checks fresh owner facts, including the issued policy revision and sealed service-pin shape.
    `catalogAdmissionFence.ts:229–287`,
    `20261125010000_catalog_purchase_admission.sql:2–24,58–94`.
@@ -523,6 +530,8 @@ On fence expiry the writer is discarded. The fence key is released within the
 fence budget plus 50 ms plus two writer round trips. Writer latency delays
 delivery of the timeout settings and the lock request. In the no-injected-latency
 witness the bound is budget plus 50 ms.
+For the selected component the deadline also covers the writer's read callback
+and the restoration of local timeouts before COMMIT.
 
 - **Erasure.** The privacy store takes the ledger in `SHARE ROW EXCLUSIVE`,
   then the identity challenge relation in `EXCLUSIVE` before its subject locks.
@@ -632,6 +641,33 @@ revoke membership to withdraw access. The existing ON DELETE SET NULL on
 fulfillment-exception holds look system-created and eligible for automatic
 release. This forward preserves that FK; see the [owner step](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#provision-operator-rosters).
 The starter binds hold and release with a fresh human-admin and Commerce-operator check on every command and replay.
+
+### First parcel contact from a retained destination
+
+The native opener uses the order's retained destination binding for the first
+parcel. It keeps the original binding, service pin and classification keys and
+projects the address and shipping recipient into contact revision 1. The order
+lock precedes the new parcel. Existing parcel access takes the native dispatch
+advisory lock, then the parcel, order, client and contact guards. Capture checks
+the frozen contact and caller projection against the verified order evidence.
+An existing parcel with missing or invalid contact cannot be backfilled.
+
+Fresh callers supply empty metadata. Paid handoff stores it empty and OMS records
+the authenticated `actorId`. Creation audit payload stores `portKey` and
+`providerType`. Line snapshots retain only opaque `productRef`, `packRef`,
+`lotRef` and a calendar `expirationDate` when present. Routing remains dormant
+for this destination dialect. A failed freeze aborts the shipment, audit and
+reservation writes together. The first parcel leaves subscription scheduling and
+delivery alignment to their existing owners.
+
+`fulfillment-parcel-contacts` (`fulfillment.parcel-contacts.v3`) joins contacts to
+the subject by `fulfillment_parcel_contacts.client_id`. Native export returns
+`shipmentId`, `contact`, `capturedAt` and `erasedAt` for both contact dialects.
+Erasure clears `contact` and retains the shipment and client links and timestamps
+to prevent recapture. Shipment, audit and reservation identifiers, the OMS actor
+ID, port and provider keys and projected line references remain scoped operational
+records for fulfillment and stock reconciliation. They carry no address or
+recipient fields and the parcel contact export omits those operational records.
 
 ## Additive forward release path
 
@@ -1117,24 +1153,31 @@ file with `renderNativeStoreSettingsOwnerWindow` in
 differing line. If admission rejects its order or a target, check the
 introduction base for the first available slot and the exact function signature.
 A later ordinary slot treats a landed settings-only slot's exact pinned
-`ALTER FUNCTION` statements as known DDL, so it can still replace a hardened
-function or grant privileges on it. A replacement may tighten a single
-top-level `SET search_path` list of unquoted ASCII identifiers, using `=` or
-`TO`. It must append exactly one final `pg_temp` to a list with no `pg_temp` or
-`pg_temp_<N>` entry. The rest of the header must match with whitespace between
-tokens normalized and literal and quoted identifier tokens kept byte-exact.
+`ALTER FUNCTION` statements as known DDL for `public` signatures. It can still
+replace a hardened `public` function or grant privileges on it. A replacement
+may tighten a single top-level `SET search_path` list of unquoted ASCII
+identifiers, using `=` or `TO`. It must append exactly one final `pg_temp` to a
+list with no `pg_temp` or `pg_temp_<N>` entry. The rest of the header must match
+with whitespace between tokens normalized and literal and quoted identifier
+tokens kept byte-exact.
+
 The standing [definer search-path check](../../tests/postgres/definerSearchPath.test.ts)
-requires `pg_temp` last, with no earlier temporary schema (`pg_temp`, or a name
-starting with `pg_temp_` or `pg_toast_temp_`), for every
-installed non-system, non-extension definer and for every such function that sets its own
-search path. It splits each path as PostgreSQL does. Its `SEARCH_PATH_PENDING` list
-names the five remaining functions outside `public`. The check fails when a listed
-function pins `pg_temp` last on all five profiles, so the list can only shrink.
-Preserve the intended trusted schemas when moving `pg_temp` to the end. The check
-prints an exact `ALTER FUNCTION` statement only when the path parses and every
-remaining schema is a concrete name. For `"$user"`, an unparseable list, or a
-missing or empty path, review and set the trusted schema list before appending
-`pg_temp`. Eleven acquisition and partner
+covers all five native PostgreSQL profiles. It checks every installed non-system,
+non-extension function that is a definer or sets its own search path. Each path
+must parse as a nonempty list of nonempty names, with `pg_temp` last and no
+earlier `pg_temp` or name beginning with `pg_temp_` or `pg_toast_temp_`. The
+diagnostic names the function and shows how to update an unissued definition or
+add a reviewed settings-only forward. Preserve the intended trusted schemas and
+end with `pg_temp`. If the check cannot parse a concrete trusted name, review
+the function and set an explicit trusted schema list ending in `pg_temp`.
+
+The latest settings-only pin sets `search_path` to `pg_catalog, pg_temp` for
+four `acquisition_private` functions and OpenLup's `auth.uid()`. The native
+plans each install this `auth.uid()` through their self-host actor-auth
+migration. On the managed Supabase chain, `auth.uid()` remains provider-owned
+and outside the standing check.
+
+Eleven acquisition and partner
 acquisition definer functions now pin `pg_temp` last on their search path.
 The [function search-path forward](../../db/platform/migrations/20261125310000_function_search_path_pg_temp.sql)
 appends `pg_temp` to the search path of 392 installer-owned `public` functions

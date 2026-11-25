@@ -525,7 +525,9 @@ it("packs_without_rules_refuse_before_any_write reports dependency loading and t
 
 it("app_with_only_starter_pack_installs_as_today including an empty list with no bundle", async () => {
   const baseline = materialize();
-  for (const path of ["installation/install.ts", "host/editor-catalogue.ts"]) {
+  // Keep the predecessor seed reader, physical admission and owned inputs on the same contract.
+  for (const path of ["installation/install.ts", "host/editor-catalogue.ts", "shared/config.ts",
+    "shared/subscription-edit.ts", "owned/store.config.ts"]) {
     writeFileSync(join(baseline, path), execFileSync("git", ["show", `7b5329459:examples/neutral-store/${path}`]));
   }
   const legacy = await runPostgresContainer({ name: `starter-legacy-packs-${process.pid}`, database: "legacy_template", password: "synthetic-conformance" });
@@ -566,7 +568,19 @@ it("app_with_only_starter_pack_installs_as_today including an empty list with no
       for (const row of definitions[0]!) delete row.receipt.installedAt;
       for (const row of [...definitions[0]!, ...definitions[1]!]) delete row.installed_at;
       const links = readdirSync(builds).map(name => [name, readFileSync(join(builds, name))]);
-      trials.push({ objects, definitions, links });
+      const physical = (await db.query(`SELECT s.id AS sku_id, s.sku, s.net_weight_g, p.id AS product_id,
+        p.primary_sku_id, p.current_document_revision_id, d.document_payload::text AS document_bytes,
+        d.digest, i.issuer, i.normalized_value
+        FROM public.catalog_skus s
+        JOIN public.catalog_products p ON p.id = s.product_id
+        JOIN public.catalog_product_document_revisions d ON d.id = p.current_document_revision_id
+        JOIN public.catalog_sku_identifiers i ON i.catalog_sku_id = s.id AND i.is_primary
+        ORDER BY s.sku`)).rows;
+      expect(physical).toHaveLength(7);
+      expect(physical).toContainEqual(expect.objectContaining({
+        sku: "PEBBLE-LIGHT-250", net_weight_g: 250, issuer: "demo", normalized_value: "0000000000048",
+      }));
+      trials.push({ objects, definitions, links, physical });
     }
     if (empty) expect(trials[0]).toEqual(absent);
     else {
