@@ -228,6 +228,7 @@ export type {
 import type { CommerceQuotePortV2, CommerceQuoteV2Request, DbBackedCommerceQuotePortV2Deps, QuoteOwnerContext } from "./dbBackedCommerceQuotePortV2.js";
 export type { CommerceQuotePortV2, CommerceQuoteV2Request, DbBackedCommerceQuotePortV2Deps, QuoteOwnerContext,
   QuoteOutcome } from "./dbBackedCommerceQuotePortV2.js";
+export { readPublishedSkuTaxAssignments } from "./publishedSkuTaxAssignments.js";
 
 function infrastructure(field: string, cause: unknown) {
   return Object.assign(new Error("commerce_quote_v2_unavailable", { cause }), {

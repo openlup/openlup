@@ -1,9 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { afterAll, beforeAll, expect, it, vi } from "vitest";
-import { canonicalCatalogDraftJson } from "@openlup/platform/catalog";
-import { bindCommerceMoneyLimitsV2Reader, createDbBackedCommerceQuotePortV2, installCommerceMoneyLimitsV2 } from "@openlup/platform/commerce/server";
+import { build } from "esbuild";
+import { afterAll, beforeAll, expect, expectTypeOf, it, vi } from "vitest";
+import { canonicalCatalogDraftJson, createCatalogProductTypeRegistry, createPostgresCatalogDraftStoreV3,
+  createPostgresCatalogPublicationCommands, installCatalogDefinitions, withCatalogPublicationRules, type CatalogDraftPayloadV3 } from "@openlup/platform/catalog";
+import { bindCommerceMoneyLimitsV2Reader, createDbBackedCommerceQuotePortV2, installCommerceMoneyLimitsV2, readPublishedSkuTaxAssignments } from "@openlup/platform/commerce/server";
 import type { CommerceQuoteV2Request, DbBackedCommerceQuotePortV2Deps, QuoteOutcome } from "@openlup/platform/commerce/server";
+import { createPostgresNativeCheckoutPersistence, type NativeCheckoutDraftRequest } from "@openlup/platform/commerce/server/native-checkout";
 import { createPostgresDestinationPortV2 } from "@openlup/platform/commerce/server/destinations";
 import { createPostgresRoleFreeTransactionLane, type PgQueryExecutor } from "@openlup/platform/data";
 import { createPostgresPrivacyStore } from "@openlup/platform/identity";
@@ -15,7 +18,7 @@ import type { TaxQuoteInputV1, TaxQuoteRequestV1, TaxQuoteResultV1 } from "@open
 import { composeNativePrivacy } from "../../server/runtime/auth/privacyBinding.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 import { storeJourneyResources, type JourneyInstallation } from "../helpers/storeJourney.js";
-import { fixture as storageFixture, mutate, terminalCases } from "./commerceQuoteV2StorageFixture.js";
+import { beginSql, claim, completeSql, contaminate, exclusiveKind, fixture as storageFixture, mutate, rejected, seal, terminalCases } from "./commerceQuoteV2StorageFixture.js";
 import { destinationContext, destinationHash, reachDestinationCutoff, snapshotCommand, snapshotPreimage, testServicePin } from "./destinationDocumentFixture.js";
 
 type Deps = DbBackedCommerceQuotePortV2Deps;
@@ -39,7 +42,11 @@ const recipePath = new URL("../../packages/core/docs/guide/how-to/build/quote-pr
 const recipeCode = readFileSync(recipePath, "utf8").split("## Compose native quotes on the server")[1]!.split("```js\n")[1]!.split("```")[0]!;
 const recipe = await import(/* @vite-ignore */ "data:text/javascript," + encodeURIComponent(
   recipeCode.replace("@openlup/platform/commerce/server", import.meta.resolve("@openlup/platform/commerce/server")),
-)) as { bindNativeQuotes(bindings: Bindings): ReturnType<typeof createDbBackedCommerceQuotePortV2> };
+)) as {
+  bindNativeQuotes(bindings: Bindings): ReturnType<typeof createDbBackedCommerceQuotePortV2>;
+  withPublishedTaxClasses(runtime: PgQueryExecutor, readFacts: (...args: Parameters<Deps["readPlan"]>) =>
+    Promise<{ facts: Facts; skuIdsByCode: ReadonlyMap<string, string> }>): Deps["readPlan"];
+};
 
 function exact(actual: unknown, expected: object) {
   expect(Object.getPrototypeOf(actual)).toBe(Object.prototype);
@@ -670,6 +677,415 @@ function exactInfrastructureError(error: unknown, field: string, cause: unknown)
   expect(descriptor?.enumerable).toBe(false);
   expect(descriptor?.value).toBe(cause);
 }
+
+const publishedClassMissing = refusal("tax_class_missing", "/plan/skus",
+  "Choose published merchandise whose product type declares an active tax class, or have the catalogue owner publish replacement merchandise with such a type, then request a fresh quote.");
+const selectionFix = "Supply the documented published SKU selection and its catalogue head digest, then repeat the read.";
+const catalogueRefusals = [
+  refusal("tax_invalid_input", "/plan/skus", selectionFix),
+  refusal("tax_invalid_input", "/plan/expectedHeadDigest", selectionFix),
+  refusal("catalog_tax_assignment_evidence_invalid", "/plan/skus", "Have the catalogue owner reconcile the original selection and publication evidence, then repeat the read."),
+  refusal("catalog_tax_assignment_head_changed", "/plan/expectedHeadDigest", "Read the published selection again and request a fresh quote."),
+  refusal("catalog_tax_assignment_unpublished", "/plan/skus", "Choose published merchandise or have the catalogue owner publish the intended SKU, then request a fresh quote."),
+  publishedClassMissing,
+];
+const pairA = { skuId: "10000000-0000-4000-8000-000000000001", sku: "sku-a" };
+const pairB = { skuId: "10000000-0000-4000-8000-000000000002", sku: "sku-b" };
+const assignmentRevision = "a".repeat(64);
+const replyAssignment = (pair: typeof pairA) => ({ ...pair, classState: "assigned", taxClassKey: "class-0",
+  assignmentRef: `catalog-assignment:${assignmentRevision}:${pairB.skuId}:2147483647:${pair.skuId}` });
+const unavailableReply = (result: unknown): PgQueryExecutor => ({ query: async () => ({ rows: [{ result }] }) });
+const installedServer = await import(/* @vite-ignore */ "data:text/javascript," + encodeURIComponent(
+  `export { readPublishedSkuTaxAssignments, createDbBackedCommerceQuotePortV2 } from ${JSON.stringify(import.meta.resolve("@openlup/platform/commerce/server"))}`,
+)) as {
+  readPublishedSkuTaxAssignments: typeof readPublishedSkuTaxAssignments;
+  createDbBackedCommerceQuotePortV2: typeof createDbBackedCommerceQuotePortV2;
+};
+const moduleHelper = installedServer.readPublishedSkuTaxAssignments;
+
+function noExclusiveWork(f: Installed) {
+  expect(f.fresh.coverage).toBe(0);
+  expect(f.commands.map(({ operation }) => operation)).toStrictEqual(["lookup"]);
+  expect(f.taxInputs).toStrictEqual([]);
+}
+
+it("snapshots the closed helper request before I/O and validates its domain in refusal order", async () => {
+  expectTypeOf<Parameters<typeof readPublishedSkuTaxAssignments>[0]>().toEqualTypeOf<Pick<PgQueryExecutor, "query">>();
+  const input = { expectedHeadDigest: assignmentRevision, skus: [{ ...pairB }, { ...pairA }] };
+  const query = vi.fn(async (_sql: string, args?: unknown[]) => {
+    expect(JSON.parse(String(args?.[0]))).toStrictEqual({ expectedHeadDigest: assignmentRevision, skus: [pairA, pairB] });
+    input.expectedHeadDigest = providerDigest;
+    input.skus[0]!.sku = "replaced";
+    input.skus.pop();
+    return { rows: [{ result: { kind: "published", revision: assignmentRevision, assignments: [replyAssignment(pairA), replyAssignment(pairB)] } }] };
+  });
+  const assigned = await moduleHelper({ query }, input);
+  expect(assigned.assignments).toStrictEqual([replyAssignment(pairA), replyAssignment(pairB)]);
+  const unexpected = { expectedHeadDigest: {}, skus: {}, unknown: true };
+  for (const [invalid, expected] of [[unexpected, catalogueRefusals[0]], [{ skus: {} }, catalogueRefusals[1]],
+    [{ expectedHeadDigest: null, skus: [{ ...pairA, taxClassKey: "provided" }] }, catalogueRefusals[0]]] as const) {
+    const { code, field, remedy } = expected!;
+    await expect(moduleHelper({ query }, invalid as never)).rejects.toMatchObject({ code, field, remedy });
+  }
+  expect(query).toHaveBeenCalledTimes(1);
+});
+
+it("reads only exact reply tuples and complete request-bound batches before interpreting class absence", async () => {
+  const f = await installed({ basis: "exclusive" });
+  const assigned = replyAssignment(pairA), other = replyAssignment(pairB);
+  const none = { ...pairA, classState: "none", taxClassKey: null, assignmentRef: null };
+  const published = { kind: "published", revision: assignmentRevision };
+  const request = { expectedHeadDigest: assignmentRevision, skus: [pairA, pairB] };
+  expect(await moduleHelper(unavailableReply({ ...published, assignments: [assigned, other] }), request)).toStrictEqual({ ...published, assignments: [assigned, other] });
+  expect(await moduleHelper(unavailableReply({ ...published, assignments: [assigned, other] }), { ...request, expectedHeadDigest: null })).toMatchObject(published);
+  const validRefusals = [...catalogueRefusals, { ...published, assignments: [none, other] }];
+  const broken = [
+    { ...published, assignments: [assigned] }, { ...published, assignments: [assigned, other, other] },
+    { ...published, assignments: [other, assigned] }, { ...published, assignments: [assigned, assigned] },
+    { ...published, assignments: [none, { ...other, sku: pairA.sku }] }, { ...published, assignments: [assigned, { ...other, skuId: randomUUID() }] },
+    { ...published, assignments: [assigned, { ...other, classState: undefined }] },
+    { ...published, assignments: [assigned, { ...other, classState: "unknown" }] },
+    { ...published, assignments: [assigned, { ...other, extra: true }] },
+    { ...published, assignments: [assigned, { ...other, taxClassKey: "𐀀".repeat(61) }] },
+    { ...published, assignments: [assigned, { ...other, assignmentRef: {} }] },
+    { ...published, assignments: [assigned, { ...other, assignmentRef: other.assignmentRef.replace(":2147483647:", ":2147483648:") }] },
+    { ...published, assignments: [none, { ...other, assignmentRef: other.assignmentRef.replace(assignmentRevision, providerDigest) }] },
+    { ...published, assignments: [{ ...none, assignmentRef: assigned.assignmentRef }, other] },
+    { ...published, revision: null, assignments: [assigned, other] },
+    { ...published, revision: providerDigest, assignments: [assigned, other] },
+    { ...publishedClassMissing, field: "/input/lines" }, { ...publishedClassMissing, remedy: "changed" },
+    { ...publishedClassMissing, extra: true },
+  ];
+  for (const [index, payload] of validRefusals.entries()) {
+    f.commands.length = 0;
+    f.deps.readPlan = async () => { await moduleHelper(unavailableReply(payload), request); throw new Error("Expected a catalogue refusal"); };
+    exact(await f.bind().createQuote(f.owner, { ...f.request, key: randomUUID() }), catalogueRefusals[index] ?? publishedClassMissing);
+    noExclusiveWork(f);
+  }
+  for (const payload of broken) {
+    f.commands.length = 0;
+    let cause: unknown;
+    f.deps.readPlan = async () => {
+      await moduleHelper(unavailableReply(payload), request).catch((error: unknown) => { cause = error; throw error; });
+      throw new Error("Expected an unreadable catalogue reply");
+    };
+    const error: unknown = await f.bind().createQuote(f.owner, { ...f.request, key: randomUUID() }).catch((failure: unknown) => failure);
+    expect(cause).toBeInstanceOf(Error);
+    exactInfrastructureError(error, "/plan", cause);
+    noExclusiveWork(f);
+  }
+});
+
+it("recognizes the original private refusal only when it propagates through readPlan", async () => {
+  const f = await installed();
+  const cause: unknown = await moduleHelper(unavailableReply(publishedClassMissing), { expectedHeadDigest: null, skus: [pairA] }).catch((failure: unknown) => failure);
+  if (!(cause instanceof Error)) throw new Error("Expected a private refusal");
+  expect(Object.getPrototypeOf(cause)).not.toBe(Error.prototype);
+  expect(Object.getPrototypeOf(Object.getPrototypeOf(cause))).toBe(Error.prototype);
+  expect(Reflect.ownKeys(cause).filter(key => key !== "stack").sort()).toStrictEqual(["code", "field", "message", "remedy"]);
+  expect(cause.message).toBe("tax_class_missing");
+  expect({ ...cause }).toStrictEqual({ code: publishedClassMissing.code, field: publishedClassMissing.field, remedy: publishedClassMissing.remedy });
+  const lookalike = Object.assign(new Error(cause.message), cause);
+  const wrapped = new Error(cause.message, { cause });
+  const readPlan = f.deps.readPlan, snapshot = f.deps.snapshotCommand;
+  for (const other of [lookalike, wrapped, cause]) {
+    f.deps.readPlan = async () => { throw other; };
+    const res = f.bind().createQuote(f.owner, { ...f.request, key: randomUUID() });
+    if (other === cause) exact(await res, publishedClassMissing);
+    else exactInfrastructureError(await res.catch((failure: unknown) => failure), "/plan", other);
+  }
+  f.deps.readPlan = readPlan;
+  f.deps.snapshotCommand = async () => { throw cause; };
+  const call = (port = f.bind()) => port.createQuote(f.owner, { ...f.request, key: randomUUID() }).catch((failure: unknown) => failure);
+  exactInfrastructureError(await call(), "/destination/snapshot", cause);
+  f.deps.snapshotCommand = snapshot;
+  exactInfrastructureError(await call(installedServer.createDbBackedCommerceQuotePortV2({ ...f.deps, readLimits: async () => { throw cause; } })), "/read", cause);
+});
+
+it("keeps the published assignment helper outside the pricing import graph", async () => {
+  const result = await build({ entryPoints: ["packages/platform/src/pricing/**/*.ts"], outdir: "pricing-proof",
+    bundle: true, platform: "node", packages: "external", metafile: true, write: false });
+  const inputs = Object.keys(result.metafile.inputs);
+  expect(inputs).toContain("packages/platform/src/pricing/index.ts");
+  expect(inputs.some(path => path.endsWith("/publishedSkuTaxAssignments.ts"))).toBe(false);
+});
+
+it("rejects object substitutions for merchandise assignments at the runtime claim and seal entries", async () => {
+  const fixture = await storageFixture(store);
+  for (const [planKey, inputKey] of [["taxClassKey", "taxClass"], ["assignmentRef", "assignmentRef"]] as const) {
+    const input = fixture.begin(exclusiveKind, true);
+    for (const [root, key] of [[[
+      "pin", "composition", "planInput", "lines", 0,
+    ], planKey], [["pin", "request", "input", "lines", 0], inputKey]] as const) {
+      const malformed = contaminate(input, [...root], { path: [key], object: false }, "value");
+      expect(await rejected(store.runtime, beginSql, malformed)).toMatchObject({ code: "22023", message: "tax_invalid_input" });
+    }
+    const grant = await claim(input, store.runtime);
+    const completion = seal(fixture, input, grant);
+    const malformed = contaminate(completion, ["seal", "outcome", "quote", "lines", 0], { path: [planKey], object: false }, "value");
+    expect(await rejected(store.runtime, completeSql, malformed)).toMatchObject({ code: "22023", message: "tax_invalid_input" });
+  }
+});
+
+async function publicationWriter(classes: readonly (string | null)[]) {
+  const typeKey = "example:article";
+  const rules = Buffer.from(`
+    const wire = value => JSON.stringify(Object.fromEntries(Object.entries(value).sort(([a],[b]) => a < b ? -1 : 1)));
+    module.exports = {
+      validateContent: () => [], validateProduct: () => [],
+      identifyDocument: ({ id, productSlug, revisionNo, name }) => ({ schemaId: "example:document.v1", documentRef: id, productSlug, revisionNo, name }),
+      inspectDocument(text) { return { ...this.identifyDocument(JSON.parse(text)), canonicallyEncoded: wire(JSON.parse(text)) === text }; },
+      matchesDocument: (document, text) => wire(document) === text,
+      deriveSkuFacts: () => ({}), classifySkuChange: () => "compatible",
+    };
+  `);
+  const pack = withCatalogPublicationRules({ id: "example:quotes", namespace: "example", version: 1, openlupRange: "1.x",
+    capabilities: {}, taxClasses: classes.flatMap(key => key === null ? [] : [{ key }]),
+    types: classes.map((taxClass, index) => ({ key: typeKey, version: index + 1,
+      ...(taxClass === null ? {} : { taxClass }), units: [{ code: "openlup:g", dimension: "mass", integral: false }],
+      netContentUnits: ["openlup:g"], dimensions: [{ key: "finish", kind: "choice", values: ["matte"] }],
+      axes: [{ key: "finish", attributeKey: "finish" }], attributes: [{ key: "finish", scope: "variant",
+        valueType: { kind: "enum", values: [{ id: "matte" }] }, required: false, cardinality: { min: 0, max: 1 },
+        filterable: false, facetable: false, public: true, displayOrder: 0, labels: {} }],
+    })) }, () => rules);
+  await installCatalogDefinitions(store.owner, pack);
+  const actorId = randomUUID();
+  await store.owner.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,$2)", [actorId, `${actorId}@example.invalid`]);
+  await store.owner.query(`INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at)
+    VALUES($1,'admin','active','legacy',clock_timestamp())`, [actorId]);
+  const api = createPostgresCatalogPublicationCommands({ registry: createCatalogProductTypeRegistry(pack.types),
+    authorizeHuman: async (_context: null) => ({ ok: true, userId: actorId, role: "admin", isMachineActor: false }),
+    catalogPublicationOwner: { async run<T>(work: (db: PgQueryExecutor) => Promise<T>) {
+      const db = await store.owner.connect();
+      try {
+        await db.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+        const value = await work(db);
+        await db.query("COMMIT");
+        return value;
+      } catch (error) { await db.query("ROLLBACK"); throw error; }
+      finally { db.release(); }
+    } },
+  });
+  const who = (await api.authorize(null))!;
+  return async (version: number) => {
+    const productId = randomUUID(), skuId = randomUUID(), draftId = randomUUID(), documentId = randomUUID();
+    const slug = `article-${version}`, sku = `item-${version}`, prefix = String(590123412340 + version);
+    const barcode = prefix + String((10 - [...prefix].reduce((sum, digit, index) => sum + Number(digit) * (index % 2 === 0 ? 1 : 3), 0) % 10) % 10);
+    const document = { schemaVersion: 1, id: "example:document", productSlug: slug, revisionNo: 1, name: "Example article" };
+    const canonicalText = canonicalCatalogDraftJson(document);
+    const ref = { id: documentId, productId, revisionNo: 1, schemaId: "example:document.v1", sourceRef: "example:source",
+      documentRef: document.id, digest: destinationHash(canonicalText) };
+    const facts = { skuCode: sku, title: "Example article", minQuantity: 1, isAddon: false, facts: {} };
+    const identifier = { scheme: "gs1:gtin", issuer: "example", value: barcode, packagingLevel: "unit" as const };
+    const payload: CatalogDraftPayloadV3 = { schemaVersion: 3, product: { id: productId, slug, type: { key: typeKey, version },
+      dimensions: ["finish"], primarySkuId: skuId, documentRevision: ref, sharedContent: { schemaVersion: 1, catalogAction: "create", document,
+        presentation: {}, publicationSkus: [facts], requestedModes: [{ skuCode: sku, modes: [] }], offerMemberships: [] } },
+      skus: [{ id: skuId, productId, code: sku, options: { finish: { kind: "choice", value: "matte" } }, identifiers: [identifier],
+        netContent: { dimension: "mass", unit: "openlup:g", unscaled: "100", scale: 0 } }],
+      publication: { kind: "release", evidence: {}, operations: [
+        { op: "create_product", productId, productSlug: slug, name: document.name },
+        { op: "register_document_revision", productSlug: slug, revisionId: documentId, revisionNo: 1, documentRef: ref.documentRef,
+          sourceRef: ref.sourceRef, canonicalText, digest: ref.digest, provenance: { source: "current_draft" } },
+        { op: "move_document_pointer", productSlug: slug, documentRevisionNo: 1 },
+        { op: "create_sku", productSlug: slug, documentRevisionNo: 1, skuId, ...facts },
+        { op: "create_identifier", skuCode: sku, ...identifier, quantity: 1, isPrimary: true, label: null, sourceRef: null },
+        { op: "set_primary_sku", productSlug: slug, skuCode: sku },
+        { op: "set_product_presentation", productSlug: slug, presentation: {} },
+      ] },
+    };
+    let head: { publicationId: string; revision: number; documentDigest: string } | null = null;
+    const publish = async () => {
+      const expectedHead = head, draftRevision = (expectedHead?.revision ?? 0) + 1;
+      if (expectedHead) {
+        const presentation = { routePath: { en: `/${slug}-${draftRevision}` } };
+        payload.product.sharedContent.catalogAction = "revise";
+        payload.product.sharedContent.presentation = presentation;
+        payload.publication.operations = [{ op: "set_product_presentation", productSlug: slug, presentation }];
+      }
+      const canonicalCommand = canonicalCatalogDraftJson({ schemaVersion: 3, action: expectedHead ? "revise" : "create",
+        draftId, commandKey: randomUUID(), expectedRevision: draftRevision - 1, payload });
+      const draft = await createPostgresCatalogDraftStoreV3(store.owner).apply({ canonicalCommand, fingerprint: destinationHash(canonicalCommand), actorId });
+      if (!("record" in draft)) throw new Error(JSON.stringify(draft));
+      const candidate = await api.prepareCandidate({ draftId, draftRevision, expectedHead }, who);
+      if (!("candidateRef" in candidate) || !candidate.preparation?.postStateDigest) throw new Error(JSON.stringify(candidate));
+      const fields = { productId, candidateRef: candidate.candidateRef, candidateDigest: candidate.candidateDigest };
+      expect(await api.execute({ ...fields, action: "approve", reason: null, postStateDigest: candidate.preparation.postStateDigest, commandKey: randomUUID() }, who))
+        .toMatchObject({ outcome: "committed" });
+      const result = await api.execute({ ...fields, action: "publish", expectedHead, changes: [], commandKey: randomUUID() }, who);
+      if (!("receipt" in result) || !("head" in result.receipt)) throw new Error(JSON.stringify(result));
+      head = result.receipt.head;
+      return head;
+    };
+    await publish();
+    return { sku, skuId, productId, publish };
+  };
+}
+
+type PublishedSelection = Awaited<ReturnType<Awaited<ReturnType<typeof publicationWriter>>>>;
+function guideSelection(f: Installed, selected: readonly PublishedSelection[]) {
+  const original = f.deps.readPlan;
+  const skuIdsByCode = new Map(selected.map(({ sku, skuId }) => [sku, skuId]));
+  const query = vi.fn((text: string, values?: unknown[]) => store.runtime.query(text, values));
+  f.now.planInput = { ...f.now.planInput, lines: f.now.planInput.lines.map((line, index) => ({ ...line, sku: selected[index]!.sku })) };
+  const request = { ...f.request, lines: f.request.lines.map((line, index) => ({ ...line, sku: selected[index]!.sku })) };
+  f.deps.readPlan = recipe.withPublishedTaxClasses({ query }, async (...args) => ({ facts: await original(...args), skuIdsByCode }));
+  return { request, query, original };
+}
+
+async function expectedTaxLine(selection: PublishedSelection, taxClassKey: string) {
+  const { rows: [data] } = await store.owner.query<{ head: string; publication: string; revision: number; sku: string }>(`
+    SELECT public.catalog_publication_read_head()->>'headDigest' AS head, h.publication_id AS publication, h.revision,
+      p.canonical_state::jsonb #>> '{skus,0,revisionId}' AS sku
+    FROM public.catalog_publication_heads h JOIN public.catalog_publications p ON p.id=h.publication_id WHERE h.product_id=$1`, [selection.productId]);
+  if (!data) throw new Error("Missing fixture publication");
+  return { sku: selection.sku, taxClassKey, assignmentRef: `catalog-assignment:${data.head}:${data.publication}:${data.revision}:${data.sku}` };
+}
+
+it("executes the published tax recipe, pins repeated merchandise and replays across publication changes", async () => {
+  const create = await publicationWriter(["class-0", "class-1", null]);
+  const first = await create(1), second = await create(2), classless = await create(3);
+  const f = await installed({ basis: "exclusive", units: [120, 150, 170], shipping: 100, cutoff: "long" });
+  const { request, query } = guideSelection(f, [first, second, first]);
+  const a = await expectedTaxLine(first, "class-0"), b = await expectedTaxLine(second, "class-1");
+  f.now.onAdapter = async () => { expect((await row(f)).state).toBe("pending"); await first.publish(); };
+  const original = quote(await f.bind().createQuote(f.owner, request));
+  expect(query).toHaveBeenCalledTimes(1);
+  expect(JSON.parse(String(query.mock.calls[0]?.[1]?.[0]))).toMatchObject({ expectedHeadDigest: null, skus: expect.arrayContaining([
+    { sku: first.sku, skuId: first.skuId }, { sku: second.sku, skuId: second.skuId },
+  ]) });
+  expect(JSON.parse(String(query.mock.calls[0]?.[1]?.[0])).skus).toHaveLength(2);
+  const stored = await row(f);
+  const pin = stored.pin;
+  expect(pin.composition.catalogueEvidenceRef).toBe(f.now.catalogueEvidenceRef);
+  expect(pin.composition.planInput.lines).toMatchObject([a, b, a]);
+  expect(pin.request.input.lines).toMatchObject([a, b, a].map(({ taxClassKey, ...line }) => ({ ...line, taxClass: taxClassKey })));
+  expect(pin.request.input.delivery).toMatchObject([{ taxClass: "ship-class", assignmentRef: "ship-assignment" }]);
+  expect(pin.request.input.classMapRevision).toBe(f.now.planInput.price.classMapRevision);
+  expect(JSON.parse(stored.outcome_text)[1].outcome.quote.lines).toMatchObject([a, b, a]);
+  expect(original.lines).toMatchObject([a, b, a]);
+  await first.publish();
+  f.now.onAdapter = undefined;
+  const replay = quote(await f.bind().createQuote(f.owner, request));
+  expect(replay).toStrictEqual(original);
+  expect((await row(f)).outcome_text).toBe(stored.outcome_text);
+  expect(query).toHaveBeenCalledTimes(1);
+  const newA = await expectedTaxLine(first, "class-0"), newB = await expectedTaxLine(second, "class-1");
+  const fresh = quote(await f.bind().createQuote(f.owner, { ...request, key: randomUUID() }));
+  expect(fresh.lines).toMatchObject([newA, newB, newA]);
+  expect(newA.assignmentRef).not.toBe(a.assignmentRef);
+  expect(newA.assignmentRef.split(":").at(-1)).toBe(a.assignmentRef.split(":").at(-1));
+  expect(query).toHaveBeenCalledTimes(2);
+  const draftIO = vi.fn((text: string, values?: unknown[]) => store.runtime.query(text, values));
+  await expect(createPostgresNativeCheckoutPersistence({ query: draftIO }).createOrderDraft({
+    idempotencyKey: randomUUID(), quoteSnapshot: original as unknown as NativeCheckoutDraftRequest["quoteSnapshot"],
+  })).rejects.toBeInstanceOf(Error);
+  expect(draftIO).not.toHaveBeenCalled();
+
+  const noClass = await installed({ basis: "exclusive", units: [100] });
+  const excluded = guideSelection(noClass, [classless]);
+  exact(await noClass.bind().createQuote(noClass.owner, excluded.request), publishedClassMissing);
+  expect(excluded.query).toHaveBeenCalledTimes(1);
+  noExclusiveWork(noClass);
+  const adapter = await installed({ basis: "exclusive", units: [100] });
+  const withClass = guideSelection(adapter, [first]);
+  adapter.now.taxFailure = { kind: "refused", code: "tax_class_missing", field: "/input/lines/0/taxClass", remedy: "Fixture adapter refusal" };
+  exact(await adapter.bind().createQuote(adapter.owner, withClass.request), refusal("tax_class_missing", "/input/lines",
+    "Have the coverage owner supply the required tax class mapping for /input/lines, then obtain a fresh quote."));
+});
+
+it("quotes a published fiscal selection with an empty tax class table and no projection calls", async () => {
+  const original = store;
+  store = await resources.installation("published-fiscal-quotes");
+  try {
+    const create = await publicationWriter([null]);
+    const selected = await create(1);
+    expect((await store.owner.query("SELECT key FROM public.catalog_tax_classes")).rows).toStrictEqual([]);
+    const f = await installed({ units: [100] });
+    const { request, query } = guideSelection(f, [selected]);
+    expect(quote(await f.bind().createQuote(f.owner, request)).taxEvidence.kind).toBe("fiscal_profile");
+    expect(query).not.toHaveBeenCalled();
+    expect(f.taxInputs).toStrictEqual([]);
+  } finally { store = original; }
+});
+
+it("preserves complete incumbent and fresh fiscal quote bytes across the native forward", async () => {
+  const original = store;
+  store = await resources.installation("published-quote-compatibility");
+  try {
+    const create = await publicationWriter([null]);
+    const selected = await create(1);
+    const f = await installed({ units: [100], adjust: true });
+    const { request, original: readPlan, query } = guideSelection(f, [selected]);
+    f.deps.readPlan = readPlan;
+    const time = new Date().toISOString(), statements: string[] = [];
+    const taxProfile = { included: true as const, country: "XA", category: "standard", vatRateBps: 2300, legalBasis: "rules-a" };
+    const legacy = createIncumbentQuotePort({
+      quoteCatalogReadPort: { async listQuoteCatalogItems() {
+        const sql = `SELECT p.canonical_state::jsonb #>> '{product,slug}' AS slug,
+            p.canonical_state::jsonb #>> '{product,document,id}' AS document,
+            p.canonical_state::jsonb #>> '{product,document,digest}' AS digest,
+            public.catalog_publication_read_sku_revision(h.product_id,p.canonical_state::jsonb #> '{skus,0}')->>'code' AS code
+          FROM public.catalog_publication_heads h JOIN public.catalog_publications p ON p.id=h.publication_id WHERE h.product_id=$1`;
+        statements.push(sql);
+        const { rows: [published] } = await store.owner.query<{ slug: string; document: string; digest: string; code: string }>(sql, [selected.productId]);
+        if (!published) throw new Error("Missing legacy fixture publication");
+        return [{ skuId: selected.skuId, skuCode: published.code, variantId: selected.skuId, productSlug: published.slug,
+          netWeightG: 100, isAddon: false, sellability: { oneTime: true, subscription: true },
+          documentRevision: { id: published.document, digest: published.digest } }];
+      } },
+      isStrictD1Quote: false, taxProfile, supportedTaxProfiles: [taxProfile], regionCode: "XA", currency, now: () => time,
+      pricingResolverPort: { async resolvePrice({ variantId, mode }) {
+        return { variantId, mode, amountKind: "gross", unitPriceMinor: 100, matchedMinQty: 1,
+          priceListId: "list-a", priceEntryId: "entry-a", resolvedAt: time };
+      } },
+      hasPromotionCodePort: false, lineContext: () => ({}),
+      quoteContext: input => () => ({ mode: input.mode, cadenceDays: input.mode === "subscription" ? 28 : null,
+        usageCoverageDays: null, promoCodes: [], subjectId: null }),
+      resolveAutomaticQuotePromotions: async () => ({ discounts: [], codeRejections: [] }),
+      applyPromotionCodesV2: async input => ({ discounts: input.discounts, codeRejections: [], codeRejectionDetails: [] }),
+    });
+    const forward = readFileSync("db/platform/migrations/20261129060000_catalog_publication_tax_assignments.sql", "utf8");
+    const run = async () => {
+      const incumbent = await Promise.all((["one_time", "subscription"] as const).map(mode => legacy.createQuote({
+        mode, lines: [{ sku: selected.sku, quantity: 1 }], promoCodes: [], ...(mode === "subscription" ? { cadenceDays: 28 } : {}),
+      })));
+      const marker = "const { pin, calculationId, generation, claimToken, dispatchDeadlineMs, cutoffDeadlineMs } = claim;";
+      const fixed = `let sequence = 0;
+        const randomUUID = () => "c0000000-0000-4000-8000-" + String(++sequence).padStart(12, "0");
+        ${marker}`;
+      const port = await mutant(f, marker, fixed);
+      f.commands.length = 0;
+      const fiscal = quote(await port.createQuote(f.owner, request));
+      expect(f.commands.map(({ operation }) => operation)).toStrictEqual(["lookup", "claim", "complete"]);
+      expect(fiscal.lines[0]!.discountAllocations).toHaveLength(1);
+      const { rows: [stored] } = await store.owner.query<{ pin: string; outcome_text: string }>(
+        "SELECT pin::text,outcome_text FROM public.tax_calculations WHERE identity->>'evaluationKey'=$1", [request.key]);
+      if (!stored) throw new Error("Fiscal quote was not retained");
+      return { incumbent: incumbent.map(value => JSON.stringify(value)), fiscal: JSON.stringify(fiscal), ...stored };
+    };
+    await store.owner.query("DROP FUNCTION public.catalog_publication_tax_assignments(jsonb), public.catalog_publication_read_head_manifests()");
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(time));
+    try {
+      await mutate(store, "public.tax_calculation_transition_v1(jsonb,boolean)", "VALUES (gen_random_uuid(),'pending',locator_key,identity",
+        "VALUES ('f0000000-0000-4000-8000-000000000001','pending',locator_key,identity", async () => {
+          const before = await run();
+          const db = await store.owner.connect();
+          try {
+            await db.query("BEGIN; SET LOCAL session_replication_role=replica");
+            await db.query("DELETE FROM public.tax_calculations WHERE identity->>'evaluationKey'=$1", [request.key]);
+            await db.query("COMMIT");
+          } finally { await db.query("ROLLBACK"); db.release(); }
+          await store.owner.query(forward);
+          expect(await run()).toStrictEqual(before);
+        });
+    } finally { vi.useRealTimers(); }
+    expect(query).not.toHaveBeenCalled();
+    expect(statements).toHaveLength(4);
+    expect(new Set(statements).size).toBe(1);
+    expect(statements.every(sql => !sql.includes("catalog_publication_tax_assignments"))).toBe(true);
+  } finally { store = original; }
+});
 
 it("uses the single infrastructure checklist with the original non-enumerable cause", async () => {
   const f = await installed();

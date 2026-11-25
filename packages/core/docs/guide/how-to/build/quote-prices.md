@@ -247,7 +247,7 @@ basis-aware plan for the ordered basket, its delivery and catalogue evidence,
 the selected rail and bounds, and the applicable fiscal profile or tax adapter.
 
 ```js
-import { bindCommerceMoneyLimitsV2Reader, createDbBackedCommerceQuotePortV2 } from "@openlup/platform/commerce/server";
+import { bindCommerceMoneyLimitsV2Reader, createDbBackedCommerceQuotePortV2, readPublishedSkuTaxAssignments } from "@openlup/platform/commerce/server";
 
 export function bindNativeQuotes({ runtime, ...bindings }) {
   return createDbBackedCommerceQuotePortV2({
@@ -255,7 +255,34 @@ export function bindNativeQuotes({ runtime, ...bindings }) {
     readLimits: rail => bindCommerceMoneyLimitsV2Reader(runtime, rail)(),
   });
 }
+
+export function withPublishedTaxClasses(runtime, readFacts) {
+  return async (owner, request, document) => {
+    const { facts, skuIdsByCode } = await readFacts(owner, request, document);
+    if ((facts.planInput.listBasis ?? "inclusive") !== "exclusive") return facts;
+
+    const pairs = new Map();
+    for (const { sku } of facts.planInput.lines) {
+      pairs.set(sku, { skuId: skuIdsByCode.get(sku), sku });
+    }
+    const { assignments } = await readPublishedSkuTaxAssignments(runtime, {
+      expectedHeadDigest: null, skus: [...pairs.values()],
+    });
+    const bySku = new Map(assignments.map(row => [row.sku, row]));
+    const lines = facts.planInput.lines.map(line => {
+      const { taxClassKey, assignmentRef } = bySku.get(line.sku);
+      return { ...line, taxClassKey, assignmentRef };
+    });
+    return { ...facts, planInput: { ...facts.planInput, lines } };
+  };
+}
 ```
+
+On the exclusive route, pass `withPublishedTaxClasses(runtime, readFacts)` as
+`readPlan`. Return the plan `facts` and a `skuIdsByCode` map from the host's
+trusted selection in `readFacts`. Use the restricted native runtime connection.
+The helper binds the current verified catalogue head in each merchandise
+assignment reference. The host supplies delivery assignments and fiscal facts.
 
 Call `createQuote` with the trusted linked customer and checkout scope. Reuse the
 same key and invocation to read the original evaluation. A pending result directs

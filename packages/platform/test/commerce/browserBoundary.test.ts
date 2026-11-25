@@ -40,9 +40,12 @@ it("exposes checkout compensation only through the server entry", () => {
 });
 
 it("exposes native quote composition only through the server entry", async () => {
-  expect(server.createDbBackedCommerceQuotePortV2).toBeTypeOf("function");
-  expect(commerce).not.toHaveProperty("createDbBackedCommerceQuotePortV2");
-  expect(await import("@openlup/platform/commerce/contracts")).not.toHaveProperty("createDbBackedCommerceQuotePortV2");
+  const contracts = await import("@openlup/platform/commerce/contracts");
+  for (const name of ["createDbBackedCommerceQuotePortV2", "readPublishedSkuTaxAssignments"] as const) {
+    expect(server[name]).toBeTypeOf("function");
+    expect(commerce).not.toHaveProperty(name);
+    expect(contracts).not.toHaveProperty(name);
+  }
 });
 
 it("exposes the checkout engine only through the server entry", () => {

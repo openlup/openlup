@@ -5653,6 +5653,7 @@ export { bindCommerceMoneyLimitsV2Reader, describeCommerceMoneyLimitsV2Setting, 
 export type { CommerceMoneyLimitsQueryExecutor, CommerceMoneyLimitsV2, InstallLimitsInput, InstallLimitsResult, LimitsInspectionResult, LimitsReadResult, LimitsTuple, } from "./commerceMoneyLimitsV2.js";
 import type { CommerceQuotePortV2, DbBackedCommerceQuotePortV2Deps } from "./dbBackedCommerceQuotePortV2.js";
 export type { CommerceQuotePortV2, CommerceQuoteV2Request, DbBackedCommerceQuotePortV2Deps, QuoteOwnerContext, QuoteOutcome } from "./dbBackedCommerceQuotePortV2.js";
+export { readPublishedSkuTaxAssignments } from "./publishedSkuTaxAssignments.js";
 /** @experimental Construct the native quote port with the same registry the host uses for privacy. */
 export declare function createDbBackedCommerceQuotePortV2(deps: DbBackedCommerceQuotePortV2Deps): CommerceQuotePortV2;
 ```
@@ -6579,6 +6580,38 @@ export declare function createPostgresPaymentRecoveryGuidancePort(db: CheckoutRe
     provider: string;
     evidence: unknown[];
 }) => PaymentRecoveryEvidence | null): PaymentRecoverySnapshotPort;
+```
+## dist/commerce/server/publishedSkuTaxAssignments.d.ts
+
+```ts
+import type { CommerceMoneyLimitsQueryExecutor } from "./commerceMoneyLimitsV2.js";
+type SkuPair = Readonly<{
+    skuId: string;
+    sku: string;
+}>;
+type AssignmentRequest = Readonly<{
+    expectedHeadDigest: string | null;
+    skus: readonly SkuPair[];
+}>;
+type AssignedSku = SkuPair & Readonly<{
+    classState: "assigned";
+    taxClassKey: string;
+    assignmentRef: string;
+}>;
+type PublishedAssignments = Readonly<{
+    kind: "published";
+    revision: string;
+    assignments: readonly AssignedSku[];
+}>;
+type Refusal = Readonly<{
+    code: string;
+    field: string;
+    remedy: string;
+}>;
+export declare function lookupPublishedSkuTaxAssignmentRefusal(cause: unknown): Refusal | undefined;
+/** @experimental Resolve selected merchandise tax assignments from one verified catalogue head. */
+export declare function readPublishedSkuTaxAssignments(db: Pick<CommerceMoneyLimitsQueryExecutor, "query">, input: AssignmentRequest): Promise<PublishedAssignments>;
+export {};
 ```
 ## dist/commerce/server/referenceCheckoutHandler.d.ts
 
