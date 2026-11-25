@@ -5,7 +5,7 @@ import { env as processEnvironment } from 'node:process';
 import { delimiter, extname, join, posix, resolve } from 'node:path';
 import ts from 'typescript';
 import { afterEach, describe, expect, it } from 'vitest';
-import { excludedToolingTests, isGlobalBailoutScript, NON_BAILOUT_SCRIPTS, resolveGitExecutable, ROOT_DOC_FILES, scopeFromEvent, scopeFromLocal, SHARED_INPUTS, TOOLING_INPUTS, writeTestScope } from './ci-test-scope.mjs';
+import { ALL_WORKFLOW_SCOPES_TRUE, excludedToolingTests, isGlobalBailoutScript, NON_BAILOUT_SCRIPTS, resolveGitExecutable, ROOT_DOC_FILES, scopeFromEvent, scopeFromLocal, SHARED_INPUTS, TOOLING_INPUTS, workflowScopeFromEvent, workflowScopeFromPaths, writeTestScope, writeWorkflowScope } from './ci-test-scope.mjs';
 
 const base = 'a'.repeat(40);
 const all = Object.keys(TOOLING_INPUTS).sort();
@@ -913,5 +913,246 @@ describe('PostgreSQL AST closure soundness', () => {
     expect(deps).toContain('scripts/helper-bailout.mjs');
     expect(deps).toContain('scripts/public-ci-reuse.mjs');
     expect(isGlobalBailoutScript('scripts/public-ci-reuse.mjs')).toBe(false);
+  });
+});
+
+describe('workflow scope gate (--workflow-outputs)', () => {
+  const allFalse = {
+    run_pgtap: false,
+    run_reference_build: false,
+    run_package_gates: false,
+    run_install_browser: false,
+    run_install_pack: false,
+  };
+
+  it('skips all gated lanes on unrelated docs, mcp, isolated PG tests, and allowlisted scripts', () => {
+    for (const path of [
+      'docs/platform/README.md',
+      'CONTRIBUTING.md',
+      'mcp/server.ts',
+      'tests/postgres/catalogPublication.test.ts',
+      'scripts/ci-vitest-shard.test.ts',
+      'scripts/public-ci-reuse.mjs',
+      'scripts/ast-grep/rules/bff-database-through-ports.yml',
+    ]) {
+      expect(workflowScopeFromPaths([path]), path).toEqual(allFalse);
+    }
+  });
+
+  it('triggers exact workflow lanes per dependency axis', () => {
+    for (const path of [
+      'supabase/migrations/20990101000000_example.sql',
+      'supabase/tests/example.sql',
+      'tests/postgres/managed-compat/supabase.sql',
+    ]) {
+      expect(workflowScopeFromPaths([path]), path).toEqual({ ...allFalse, run_pgtap: true });
+    }
+    expect(workflowScopeFromPaths(['config/ci-postgres-packages.json'])).toEqual({
+      ...allFalse,
+      run_pgtap: true,
+      run_reference_build: true,
+    });
+    expect(workflowScopeFromPaths(['config/ci-images.json'])).toEqual(ALL_WORKFLOW_SCOPES_TRUE);
+
+    for (const path of ['src/pages/Home.tsx', 'api/bff/example.ts', 'public/favicon.ico', 'config/site-routes.json']) {
+      expect(workflowScopeFromPaths([path]), path).toEqual({ ...allFalse, run_reference_build: true });
+    }
+
+    expect(workflowScopeFromPaths(['server/domains/commerce/example.ts'])).toEqual({
+      ...allFalse,
+      run_reference_build: true,
+      run_package_gates: true,
+      run_install_pack: true,
+    });
+    for (const path of [
+      'db/platform/migrations/20990101000000_example.sql',
+      'docs/platform/communications-conformance.mjs',
+      'AGENTS.md',
+    ]) {
+      expect(workflowScopeFromPaths([path]), path).toEqual({
+        ...allFalse,
+        run_package_gates: true,
+        run_install_pack: true,
+      });
+    }
+    for (const path of ['config/documentation-guide-allowlist.json', 'config/platform-migration-manifest.json']) {
+      expect(workflowScopeFromPaths([path]), path).toEqual({
+        ...allFalse,
+        run_reference_build: true,
+        run_package_gates: true,
+        run_install_pack: true,
+      });
+    }
+
+    expect(workflowScopeFromPaths(['packages/core/src/index.ts'])).toEqual({
+      run_pgtap: false,
+      run_reference_build: true,
+      run_package_gates: true,
+      run_install_browser: true,
+      run_install_pack: true,
+    });
+    for (const path of ['examples/neutral-store/host/server.ts', 'tests/helpers/postgresContainer.ts']) {
+      expect(workflowScopeFromPaths([path]), path).toEqual({
+        run_pgtap: false,
+        run_reference_build: false,
+        run_package_gates: true,
+        run_install_browser: true,
+        run_install_pack: true,
+      });
+    }
+    for (const path of ['tests/postgres/m14ReleasedSchemaUpgrade.proof.ts', 'tests/postgres/m14ReleasedSchemaUpgradeChild.ts']) {
+      expect(workflowScopeFromPaths([path]), path).toEqual({
+        ...allFalse,
+        run_install_browser: true,
+        run_install_pack: true,
+      });
+    }
+  });
+
+  it('fails closed to ALL_WORKFLOW_SCOPES_TRUE on empty, malformed, root non-doc, dot-segment, shared, and bailout script paths', () => {
+    expect(workflowScopeFromPaths([])).toEqual(ALL_WORKFLOW_SCOPES_TRUE);
+    expect(workflowScopeFromPaths(null as unknown as string[])).toEqual(ALL_WORKFLOW_SCOPES_TRUE);
+    for (const path of [
+      '',
+      '/etc/passwd',
+      '../escape.ts',
+      'src\\windows.ts',
+      'package.json',
+      'package-lock.json',
+      'vite.config.ts',
+      'index.html',
+      '.github/workflows/published-tree-ci.yml',
+      'src/.env',
+      'tests/setup/vitest.setup.ts',
+      'scripts/public-ci-pgtap.mjs',
+      'scripts/starter-browser-ci.mjs',
+      'scripts/packages/required-package-gates.ts',
+      'scripts/ci-test-scope.mjs',
+      'scripts/new-unknown-helper.mjs',
+    ]) {
+      expect(workflowScopeFromPaths([path]), path).toEqual(ALL_WORKFLOW_SCOPES_TRUE);
+    }
+  });
+
+  it('fails closed on push/unknown events, invalid SHAs, and Git errors while scoping pull_request and merge_group', () => {
+    for (const eventName of ['push', 'workflow_dispatch', 'unknown', undefined]) {
+      expect(workflowScopeFromEvent({
+        eventName,
+        event: { pull_request: { base: { sha: base } } },
+        git: () => { throw new Error('must not run'); },
+      }), String(eventName)).toEqual(ALL_WORKFLOW_SCOPES_TRUE);
+    }
+    expect(workflowScopeFromEvent({
+      eventName: 'pull_request',
+      event: { pull_request: { base: { sha: 'not-a-sha' } } },
+    })).toEqual(ALL_WORKFLOW_SCOPES_TRUE);
+    expect(workflowScopeFromEvent({
+      eventName: 'pull_request',
+      event: { pull_request: { base: { sha: base } } },
+      git: () => { throw new Error('missing history'); },
+    })).toEqual(ALL_WORKFLOW_SCOPES_TRUE);
+    expect(workflowScopeFromEvent({
+      eventName: 'pull_request',
+      event: { pull_request: { base: { sha: base } } },
+      git: args => args[0] === 'merge-base' ? base : 'M\0docs/platform/README.md',
+    })).toEqual(ALL_WORKFLOW_SCOPES_TRUE);
+    expect(workflowScopeFromEvent({
+      eventName: 'pull_request',
+      event: { pull_request: { base: { sha: base } } },
+      git: args => args[0] === 'merge-base' ? base : 'M\0',
+    })).toEqual(ALL_WORKFLOW_SCOPES_TRUE);
+    expect(workflowScopeFromEvent({
+      eventName: 'pull_request',
+      event: { pull_request: { base: { sha: base } } },
+      git: args => args[0] === 'merge-base' ? base : 'R100\0docs/a.md\0docs/b.md\0',
+    })).toEqual(ALL_WORKFLOW_SCOPES_TRUE);
+    expect(workflowScopeFromEvent({
+      eventName: 'merge_group',
+      event: { merge_group: { base_sha: base } },
+      git: args => args[0] === 'merge-base' ? base : 'M\0docs/platform/README.md\0',
+    })).toEqual(allFalse);
+    expect(workflowScopeFromEvent({
+      eventName: 'merge_group',
+      event: { merge_group: { base_sha: base } },
+      git: args => args[0] === 'merge-base' ? base : 'D\0docs/platform/DATA_AND_MIGRATIONS.md\0',
+    })).toEqual({
+      ...allFalse,
+      run_package_gates: true,
+      run_install_pack: true,
+    });
+    expect(workflowScopeFromPaths(['docs/platform/README.md'], { hasDeletion: true })).toEqual({
+      ...allFalse,
+      run_package_gates: true,
+      run_install_pack: true,
+    });
+  });
+
+  it('writes GITHUB_OUTPUT lines via --workflow-outputs CLI, runs package gates on file deletions/renames, and fails closed on unreadable event metadata', () => {
+    const cwd = scratch();
+    const git = (...args: string[]) => execFileSync('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { cwd, encoding: 'utf8' }).trim();
+    git('init', '-q');
+    mkdirSync(join(cwd, 'docs/platform'), { recursive: true });
+    writeFileSync(join(cwd, 'docs/platform/README.md'), 'before\n');
+    git('add', '.'); git('commit', '-qm', 'base');
+    const baseSha = git('rev-parse', 'HEAD');
+    writeFileSync(join(cwd, 'docs/platform/README.md'), 'after\n');
+    git('add', '.'); git('commit', '-qm', 'docs edit');
+
+    const eventPath = join(cwd, 'event.json');
+    const outputPath = join(cwd, 'github-output.txt');
+    writeFileSync(eventPath, JSON.stringify({ pull_request: { base: { sha: baseSha } } }));
+    writeFileSync(outputPath, 'existing=1\n');
+    execFileSync(process.execPath, [resolve(process.cwd(), 'scripts/ci-test-scope.mjs'), '--workflow-outputs'], {
+      cwd,
+      env: { ...processEnvironment, GITHUB_EVENT_NAME: 'pull_request', GITHUB_EVENT_PATH: eventPath, GITHUB_OUTPUT: outputPath },
+      encoding: 'utf8',
+    });
+    expect(readFileSync(outputPath, 'utf8')).toBe([
+      'existing=1',
+      'run_pgtap=false',
+      'run_reference_build=false',
+      'run_package_gates=false',
+      'run_install_browser=false',
+      'run_install_pack=false',
+      '',
+    ].join('\n'));
+
+    // Renaming or deleting any tracked file triggers run_package_gates and run_install_pack.
+    const editHead = git('rev-parse', 'HEAD');
+    git('mv', 'docs/platform/README.md', 'docs/platform/MOVED.md');
+    git('commit', '-qm', 'rename doc');
+    const renameEventPath = join(cwd, 'rename-event.json');
+    const renameOutputPath = join(cwd, 'rename-output.txt');
+    writeFileSync(renameEventPath, JSON.stringify({ pull_request: { base: { sha: editHead } } }));
+    execFileSync(process.execPath, [resolve(process.cwd(), 'scripts/ci-test-scope.mjs'), '--workflow-outputs'], {
+      cwd,
+      env: { ...processEnvironment, GITHUB_EVENT_NAME: 'pull_request', GITHUB_EVENT_PATH: renameEventPath, GITHUB_OUTPUT: renameOutputPath },
+      encoding: 'utf8',
+    });
+    expect(readFileSync(renameOutputPath, 'utf8')).toBe([
+      'run_pgtap=false',
+      'run_reference_build=false',
+      'run_package_gates=true',
+      'run_install_browser=false',
+      'run_install_pack=true',
+      '',
+    ].join('\n'));
+
+    const fallbackOutput = join(cwd, 'fallback-output.txt');
+    writeWorkflowScope({ output: fallbackOutput, eventName: 'pull_request', eventPath: join(cwd, 'missing.json'), cwd });
+    expect(readFileSync(fallbackOutput, 'utf8')).toBe([
+      'run_pgtap=true',
+      'run_reference_build=true',
+      'run_package_gates=true',
+      'run_install_browser=true',
+      'run_install_pack=true',
+      '',
+    ].join('\n'));
+
+    expect(() => execFileSync(process.execPath, [resolve(process.cwd(), 'scripts/ci-test-scope.mjs'), '--workflow-outputs', 'extra'], {
+      cwd,
+      encoding: 'utf8',
+      stdio: 'pipe',
+    })).toThrow();
   });
 });
