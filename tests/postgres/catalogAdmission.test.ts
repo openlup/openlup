@@ -33,7 +33,8 @@ const levels = ["READ COMMITTED", "REPEATABLE READ"] as const;
 const money = (amountMinor: number) => ({ amountMinor, currency: "XXX" });
 
 beforeAll(async () => {
-  env = await lifecycleInstallation("qualified-v2");
+  // Fresh cluster: withCatalogAdmissionFence compares cluster-wide pg_current_snapshot() xmax/xip.
+  env = await lifecycleInstallation("qualified-v2", { freshCluster: true });
   await installPublicationActors(env.owner);
   issued = await transaction(env.owner, async db => {
     const value = await graph(db, fixture(), null, true, { lifecycle: "active" });

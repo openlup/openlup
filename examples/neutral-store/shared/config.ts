@@ -14,6 +14,7 @@ import { assertEditorConfig, type SubscriptionEditorConfig } from './subscriptio
 import { assertSubscriptionOffer, type SubscriptionOffers } from './subscription-offer.ts';
 import { assertLocaleMarket, type Localized, type LocaleMarket } from './locales.ts';
 import { assertStarterCopy } from './locale-copy.ts';
+import { configuredSeedPhysical, type SeedPhysical } from './seed-physical.ts';
 export type { Locale, Localized } from './locales.ts';
 
 // Starter cart representation bound; owned offers may choose a lower maximum.
@@ -22,7 +23,7 @@ const MAX_STARTER_OFFER_UNITS = 100;
 export type PurchaseMode = 'one_time' | 'subscription';
 
 export interface Product extends SellableCatalogItem {
-  physical: { netWeightG: number; unitGtin: string; issuer: string };
+  physical: SeedPhysical;
   slug: string;
   name: Localized;
   description: Localized;
@@ -226,8 +227,8 @@ export function assertConfig(config: StoreConfig): void {
   const slugs = new Set<string>();
   if (offer.products.length === 0) throw starterDiagnostic('starter_catalog_empty');
   for (const product of offer.products) {
-    if (!product.physical || !Number.isSafeInteger(product.physical.netWeightG) || product.physical.netWeightG < 1
-      || !isValidGtin(product.physical.unitGtin) || !product.physical.issuer.trim() || seen.has(product.sku) || slugs.has(product.slug)
+    configuredSeedPhysical(product.physical, product.sku, isValidGtin);
+    if (seen.has(product.sku) || slugs.has(product.slug)
       || !/^[A-Z0-9-]{1,80}$/.test(product.sku)
       || !/^[a-z0-9-]{1,80}$/.test(product.slug)
       || !Number.isSafeInteger(product.unitPrice.amountMinor)

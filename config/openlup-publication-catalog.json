@@ -70,6 +70,10 @@
       "class": "public-output"
     },
     {
+      "path": ".github/workflows/merge-queue-supersede.yml",
+      "class": "public-output"
+    },
+    {
       "path": ".github/workflows/mirror-ci-images.yml",
       "class": "public-output"
     },
@@ -2171,6 +2175,10 @@
     },
     {
       "path": "examples/neutral-store/shared/routes.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/shared/seed-physical.ts",
       "class": "public-output"
     },
     {

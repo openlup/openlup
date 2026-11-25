@@ -13,7 +13,8 @@ import { bindDestinationOrder, deferred, destinationContext, destinationFence, d
   selectionTable, snapshot, testServicePin } from "./destinationDocumentFixture.js";
 import { awaitReceiptWait, backendPid } from "./destinationReceiptFixture.js";
 
-const resources = storeJourneyResources();
+// Isolated cluster: destinationDocumentFixture.snapshot uses withCatalogAdmissionFence (cluster-wide pg_current_snapshot).
+const resources = storeJourneyResources({ isolatedCluster: true });
 let store: JourneyInstallation;
 beforeAll(async () => { store = await resources.installation("destination-order-binding"); }, postgresSetupTimeoutMs);
 afterAll(() => resources.close(), postgresTeardownTimeoutMs);

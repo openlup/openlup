@@ -89,7 +89,7 @@ it("transfers one purchased store to a pristine database and continues its open 
 }, 60_000);
 
 it("isolates shared-template installations and targets, drops rotated target databases and detects leaked cluster roles", async () => {
-  const isolated = storeJourneyResources();
+  const isolated = storeJourneyResources({ isolatedCluster: true });
   let closedByAssertion = false;
   try {
     const [installA, template] = await Promise.all([isolated.installation("alpha"), isolated.targetTemplate("beta")]);
