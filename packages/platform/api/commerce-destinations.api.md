@@ -160,7 +160,7 @@ declare const contactKeys: readonly ["recipientName", "contactEmail", "contactPh
 type Contact = {
     [Key in typeof contactKeys[number]]?: string;
 };
-/** @experimental Host-authorized customer and checkout scope. */
+/** @experimental Host-authorized customer and destination scope. */
 export type DestinationContextV2 = {
     clientId: UUID;
     scopeRef: UUID;
@@ -184,7 +184,7 @@ export type DestinationSelectionV2 = {
     scopeRef: UUID;
     selectionRevision: UUID;
 };
-/** @experimental The service coordinates sealed with a checkout selection. */
+/** @experimental The service coordinates sealed with a destination selection. */
 export type DestinationServicePinV2 = {
     deliverySelectionRef: string;
     providerRef: string;
@@ -240,13 +240,31 @@ type Rechecked = {
     selection: DestinationSelectionV2;
     service: DestinationServicePinV2;
 };
+type SubscriptionSelection = Omit<DestinationSelectionV2, "kind"> & {
+    kind: "subscription";
+};
+type SubscriptionRechecked = Omit<Rechecked, "selection"> & {
+    selection: SubscriptionSelection;
+};
+type CurrentSubscriptionDestination = Pick<Rechecked, "binding" | "service"> & {
+    selectionRevision: UUID;
+};
+type SubscriptionRead = Omit<DestinationVerifiedReadV2, "evidenceExpiresAt"> & SubscriptionRechecked & {
+    evidenceExpiresAt: null;
+};
+type SubscriptionCheck = Omit<Check, "kind"> & {
+    kind: "subscription";
+};
 type Erased = {
     evidenceDisposition: "erased";
 };
 /** @experimental Native operations on the host's supplied executor. */
 export interface DestinationPortV2 {
     snapshot(ctx: DestinationContextV2, command: SnapshotCommand, now: UtcMillis): Promise<Decision<DestinationIssueResultV2 | Erased>>;
+    read(ctx: DestinationContextV2, kind: "subscription", id: UUID, expectedBinding: null): Promise<SubscriptionDecision<CurrentSubscriptionDestination>>;
+    read(ctx: DestinationContextV2, kind: "subscription", id: UUID, expectedBinding: DestinationBindingV2): Promise<SubscriptionDecision<SubscriptionRead>>;
     read(ctx: DestinationContextV2, kind: "snapshot" | "order" | "shipment", id: UUID, expectedBinding: DestinationBindingV2): Promise<Decision<DestinationVerifiedReadV2>>;
+    recheck(ctx: DestinationContextV2, check: SubscriptionCheck): Promise<SubscriptionDecision<SubscriptionRechecked>>;
     recheck(ctx: DestinationContextV2, check: Check): Promise<Decision<Rechecked>>;
     registerOrder(ctx: DestinationContextV2, orderId: UUID, check: Check): Promise<Decision<DestinationBindingV2>>;
 }
@@ -265,6 +283,12 @@ declare const refusalFields: {
     readonly destination_idempotency_conflict: readonly ["idempotencyKey"];
     readonly destination_isolation_unsupported: readonly ["isolation"];
 };
+declare const subscriptionRefusalFields: {
+    readonly address_invalid_input: readonly ["subscriptionId"];
+    readonly destination_evidence_unavailable: readonly ["subscriptionId"];
+    readonly destination_v2_selection_required: readonly ["subscriptionId"];
+    readonly destination_version_changed: readonly ["selectedDelivery"];
+};
 type Refusal<Code, Field> = {
     outcome: "refused";
     code: Code;
@@ -277,9 +301,13 @@ type Refusal<Code, Field> = {
 type OwnerRefusal = {
     [Code in keyof typeof refusalFields]: Refusal<Code, typeof refusalFields[Code][number]>;
 }[keyof typeof refusalFields];
+type SubscriptionRefusal = {
+    [Code in keyof typeof subscriptionRefusalFields]: Refusal<Code, typeof subscriptionRefusalFields[Code][number]>;
+}[keyof typeof subscriptionRefusalFields];
 type TransportField = "owner" | "command" | "destination" | "selectedDelivery" | "check";
 type TransportRefusal = Refusal<"address_invalid_input", TransportField>;
 type Decision<T> = T | OwnerRefusal | TransportRefusal;
+type SubscriptionDecision<T> = Decision<T> | SubscriptionRefusal;
 /** @experimental Use the supplied executor. The native host owns transaction and session lifetime. */
 export declare function createPostgresDestinationPortV2(db: DestinationQueryExecutor): DestinationPortV2;
 export {};
