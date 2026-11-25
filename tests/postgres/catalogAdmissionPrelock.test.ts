@@ -402,7 +402,11 @@ it.each(stageCases)("bounds $stage with prelock=$hooked", async ({ stage, prefix
       expect(Number(statement) - Number(lock)).toBe(wallMarginMs);
       const expectedMs = input.timeoutMs - (setting.at - start);
       expect(Number(lock)).toBeGreaterThanOrEqual(expectedMs - 2);
-      expect(Number(lock)).toBeLessThanOrEqual(expectedMs + 3);
+      // The fence computes the remaining budget after its previous writer statement was sent and before this
+      // setting is recorded, so bound it by that earlier send time rather than by the recording time.
+      let prior = start;
+      for (const entry of trace.slice(0, offset - 1)) if (entry.index === 0) prior = entry.at;
+      expect(Number(lock)).toBeLessThanOrEqual(Math.ceil(input.timeoutMs - (prior - start)) + 1);
     }
 
     if (stage === "reservation") expect(releases).toEqual([[0, false], [1, false]]);
