@@ -13850,7 +13850,7 @@
     },
     {
       "path": "db/platform/migrations/20261128180000_subscription_destination_read.sql",
-      "sha256": "556b324707b7cb6365f5e72c741303f1bf795cb38768508b680cf770225258af",
+      "sha256": "d22b061b0f7250890fda0e5c11f48efc1265d755be696ccec0b49bd4f368b3e6",
       "functions": [
         {
           "signature": "public.commerce_destination_v2_refusal(text,text)",
@@ -13870,7 +13870,7 @@
         {
           "signature": "public.subscription_destination_v2_read(jsonb,uuid,jsonb,uuid,jsonb,boolean)",
           "beforeSha256": null,
-          "afterSha256": "28293a3a2d39298418dbd197bb81dab9dcbf15288e27fde57a059b9072d84621"
+          "afterSha256": "402822e5e623d65660e1385cdae6bddfb30fbc383dc5adc8c19dc7136918a4a9"
         }
       ]
     }

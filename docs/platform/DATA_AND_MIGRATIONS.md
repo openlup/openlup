@@ -578,9 +578,12 @@ and the restoration of local timeouts before COMMIT.
   `FOR UPDATE`, probes the origin, then takes client `FOR UPDATE NOWAIT` before
   selection and document guards. [Read and recheck](../../db/platform/migrations/20261128180000_subscription_destination_read.sql)
   borrow a writable `READ COMMITTED` transaction and take ledger `SHARE`, then
-  subscription and client `FOR SHARE`. An explicit selection takes precedence.
-  When inheriting, the reader takes order, activation and binding `FOR SHARE`
-  in that order before the document. It resolves evidence under those guards.
+  subscription and client `FOR SHARE`. A ledger entry for the matched
+  subscription's client takes precedence over missing live linkage. An explicit
+  selection takes precedence over inherited evidence. The reader takes order,
+  activation and binding `FOR SHARE` in that order before the inherited document,
+  including when verifying prior inherited evidence after an explicit selection.
+  It resolves the lineage under those guards.
 - **Stage B publication.** It takes candidate and command advisory guards, then
   sorted draft heads `FOR NO KEY UPDATE`. Publish takes `SHARE ROW EXCLUSIVE
   NOWAIT` on `catalog_products`, `catalog_skus`, `catalog_sku_identifiers`,

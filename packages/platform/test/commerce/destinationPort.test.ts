@@ -525,6 +525,20 @@ it("binds the three subscription arms with the incumbent casts and only current 
   ]);
 });
 
+it.each(["exact read", "recheck"] as const)("rejects a foreign subscription scope on %s", async arm => {
+  const response = arm === "exact read" ? verifiedSubscription : recheckedSubscription;
+  const { port } = scriptedDestination({ ...response, selection: { ...response.selection, scopeRef: orderId } });
+  const decision = arm === "exact read" ? port.read(context, "subscription", scopeRef, binding) : port.recheck(context, subscriptionCheck);
+  await expect(decision).rejects.toThrow("OPENLUP_E_DESTINATION_INFRASTRUCTURE");
+});
+
+it("accepts canonical subscription scope results for equivalent PostgreSQL UUID spellings", async () => {
+  const requested = `{${scopeRef.replaceAll("-", "")}}`;
+  const { port } = scriptedDestination(verifiedSubscription, recheckedSubscription);
+  await expect(port.read(context, "subscription", requested, binding)).resolves.toStrictEqual(verifiedSubscription);
+  await expect(port.recheck(context, { ...subscriptionCheck, scopeRef: requested })).resolves.toStrictEqual(recheckedSubscription);
+});
+
 it("accepts the four new refusal pairs only on subscription routing", async () => {
   const decisions = [
     malformed("subscriptionId"),

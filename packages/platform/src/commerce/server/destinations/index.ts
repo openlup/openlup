@@ -279,6 +279,9 @@ function uuidArgument(value: unknown): string | null {
   const inner = value.startsWith("{") && value.endsWith("}") ? value.slice(1, -1) : value;
   return postgresUuid.test(inner) ? value : null;
 }
+function matchesSubscriptionScope(scopeRef: string, requested: BindValue | undefined): boolean {
+  return typeof requested === "string" && scopeRef.replaceAll("-", "") === requested.replace(/[-{}]/gu, "").toLowerCase();
+}
 const kindArgument = (value: unknown) => typeof value === "string" && jsonText(value) ? value : null;
 const utcMillis = (value: string) => value.length === 24 && !value.startsWith("0000")
   && Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value;
@@ -397,9 +400,11 @@ export function createPostgresDestinationPortV2(db: DestinationQueryExecutor): D
   function read(ctx: DestinationContextV2, kind: string, id: UUID, binding: DestinationBindingV2 | null) {
     const sql = "SELECT public.commerce_read_destination_v2($1::jsonb, $2::text, $3::uuid, $4::jsonb) AS result";
     const current = kind === "subscription" && binding === null;
-    const args = [jsonArgument(ctx, "owner"), kindArgument(kind), uuidArgument(id), current ? null : jsonArgument(binding, "destination")];
+    const scope = uuidArgument(id);
+    const args = [jsonArgument(ctx, "owner"), kindArgument(kind), scope, current ? null : jsonArgument(binding, "destination")];
     if (kind !== "subscription") return invoke(sql, args, readResult);
-    return current ? invoke(sql, args, subscriptionCurrent, true) : invoke(sql, args, subscriptionRead, true);
+    return current ? invoke(sql, args, subscriptionCurrent, true)
+      : invoke(sql, args, subscriptionRead.refine(result => matchesSubscriptionScope(result.selection.scopeRef, scope)), true);
   }
 
   function recheck(ctx: DestinationContextV2, check: SubscriptionCheck): Promise<SubscriptionDecision<SubscriptionRechecked>>;
@@ -407,7 +412,10 @@ export function createPostgresDestinationPortV2(db: DestinationQueryExecutor): D
   function recheck(ctx: DestinationContextV2, check: Check | SubscriptionCheck) {
     const sql = "SELECT public.commerce_recheck_destination_v2($1::jsonb, $2::text, $3::uuid, $4::uuid, $5::jsonb, $6::jsonb) AS result";
     const args = [jsonArgument(ctx, "owner"), ...checkArguments(check)];
-    return args[1] === "subscription" ? invoke(sql, args, subscriptionRecheck, true) : invoke(sql, args, recheckResult);
+    const [, kind, scope] = args;
+    return kind === "subscription"
+      ? invoke(sql, args, subscriptionRecheck.refine(result => matchesSubscriptionScope(result.selection.scopeRef, scope)), true)
+      : invoke(sql, args, recheckResult);
   }
 
   return {

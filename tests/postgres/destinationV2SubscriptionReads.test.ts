@@ -82,6 +82,9 @@ const unlinked = ["Authorized linkage or scope is missing.", "The operation requ
   "Establish authorized linkage or use authorized support.", "Sign in to the linked account and restart selection."];
 const bindingInvalid = ["The supplied tuple is malformed.", "The operation requires an authoritative binding and sealed pins.",
   "Re-obtain authoritative evidence.", "Obtain the original owned tuple."];
+const storedBindingInvalid = ["Stored evidence failed verification.", "The stored binding and pins must match the issued evidence and scope.",
+  "Send the retained evidence to the destination owner for review.",
+  "After authorized resolution recheck retained evidence, or start a fresh selection where available."];
 const badDigest = ["The supplied digest differs from the verified digest.", "The supplied digest must identify the original document.",
   "Replay the original document and its digest.", "Replay the authentic pair."];
 function refusal(actual: unknown, code: string, field: string, [observed, cause, fix, recheck]: string[]) {
@@ -170,6 +173,34 @@ it("separates authorized absence from missing, foreign, ambiguous, scrubbed and 
   unavailableRead(await read(runtime, erased, erasedPins.binding));
 });
 
+it("refuses completed erasure before checking live linkage on all subscription reads", async () => {
+  const { owner, runtime } = store, ctx = await subject(), pins = await issueDirect(owner, ctx);
+  const eraser = await owner.connect();
+  try {
+    await eraser.query("BEGIN");
+    await markReceiptClientErased(eraser, ctx.clientId);
+    await eraser.query("UPDATE public.clients SET principal_id=NULL WHERE id=$1", [ctx.clientId]);
+    await eraser.query("COMMIT");
+  } finally {
+    await eraser.query("ROLLBACK");
+    eraser.release();
+  }
+  const before = await journeyCensus(owner);
+  const decisions = await Promise.all([read(runtime, ctx), read(runtime, ctx, pins.binding), recheck(runtime, ctx, pins)]);
+  expect(await journeyCensus(owner)).toStrictEqual(before);
+  for (const decision of decisions) unavailableRead(decision);
+});
+
+it.each(["missing", "foreign"] as const)("rejects a %s inherited binding scope at the issued scope without writes", async scope => {
+  const { owner, runtime } = store, ctx = await subject(), { order, pins } = await inherited(ctx);
+  await owner.query(`UPDATE ${orderBindingTable} SET selection = CASE WHEN $2::uuid IS NULL THEN selection - 'scopeRef'
+    ELSE jsonb_set(selection, '{scopeRef}', to_jsonb($2::uuid)) END WHERE order_id=$1`, [order, scope === "missing" ? null : randomUUID()]);
+  const before = await journeyCensus(owner);
+  const decisions = await Promise.all([read(runtime, ctx), read(runtime, ctx, pins.binding), recheck(runtime, ctx, pins)]);
+  expect(await journeyCensus(owner)).toStrictEqual(before);
+  for (const decision of decisions) refusal(decision, "destination_binding_invalid", "orderBindings", storedBindingInvalid);
+});
+
 it("refuses forbidden keys at each raw JSON level and rejects unavailable stored projections without effects", async () => {
   const { owner, runtime } = store, ctx = await subject(), pins = await issueDirect(owner, ctx);
   const before = await journeyCensus(owner);
@@ -201,12 +232,7 @@ it("refuses forbidden keys at each raw JSON level and rejects unavailable stored
   }
   const otherCtx = await subject(), other = await inherited(otherCtx);
   await owner.query(`UPDATE ${orderBindingTable} SET selection=selection||'{"forbidden":{}}'::jsonb WHERE order_id=$1`, [other.order]);
-  refusal(await read(runtime, otherCtx),
-    "destination_binding_invalid", "orderBindings", [
-      "Stored evidence failed verification.", "The stored binding and pins must match the issued evidence and scope.",
-      "Send the retained evidence to the destination owner for review.",
-      "After authorized resolution recheck retained evidence, or start a fresh selection where available.",
-    ]);
+  refusal(await read(runtime, otherCtx), "destination_binding_invalid", "orderBindings", storedBindingInvalid);
 });
 
 it("holds the borrowed parent guard and resolves fresh pointers after both acquisition orders", async () => {
@@ -254,6 +280,41 @@ it("waits for incumbent renewal registration's order before its activation and r
     await writer.query("COMMIT");
     unavailableRead(await reading);
     absentRead(await read(reader, ctx));
+  } finally {
+    await Promise.all([reader, writer].map(async db => {
+      try { await db.query("ROLLBACK"); }
+      finally { db.release(); }
+    }));
+  }
+});
+
+it.each(["activation", "binding"] as const)("withholds prior inherited advice when the %s changes during a wait", async change => {
+  const { owner, runtime } = store, ctx = await subject(), { order, origin, pins } = await inherited(ctx);
+  const direct = await issueDirect(owner, ctx, pins.selectionRevision);
+  const reader = await runtime.connect(), writer = await owner.connect();
+  try {
+    const [r, w] = await Promise.all([backendPid(reader), backendPid(writer)]);
+    await writer.query("BEGIN; SET LOCAL statement_timeout='8s'");
+    if (change === "activation") {
+      await writer.query("SELECT id FROM public.commerce_orders WHERE id=$1 FOR UPDATE", [order]);
+    } else {
+      await writer.query(`SELECT order_id FROM ${orderBindingTable} WHERE order_id=$1 FOR UPDATE`, [order]);
+    }
+    // Also block a reader that reaches the document without guarding its lineage.
+    await writer.query(`SELECT snapshot_ref FROM ${documentTable} WHERE snapshot_ref=$1 FOR UPDATE`, [pins.binding.snapshotRef]);
+    const reading = change === "activation" ? read(reader, ctx, pins.binding) :
+      recheck(reader, ctx, { ...pins, binding: { ...pins.binding, destinationDigest: "f".repeat(64) } });
+    void reading.catch(() => undefined);
+    await waitFor(owner, r, w);
+    if (change === "activation") {
+      await writer.query(`UPDATE public.subscription_activations SET subscription_id=NULL,state='compensated',
+        activated_at=NULL,payment_fingerprint=NULL,activation_idempotency_key=NULL,compensated_at=clock_timestamp() WHERE id=$1`, [origin]);
+    } else {
+      await writer.query(`UPDATE ${orderBindingTable} SET selection=NULL, service=NULL WHERE order_id=$1`, [order]);
+    }
+    await writer.query("COMMIT");
+    unavailableRead(await reading);
+    expect(await read(reader, ctx)).toStrictEqual(direct);
   } finally {
     await Promise.all([reader, writer].map(async db => {
       try { await db.query("ROLLBACK"); }

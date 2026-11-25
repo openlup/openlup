@@ -54,7 +54,6 @@ DECLARE
   v_origin public.subscription_activations;
   v_bound public.commerce_destination_v2_order_bindings;
   v_snapshot uuid;
-  v_scope jsonb;
   v_inherited boolean;
   v_doc public.commerce_destination_v2_documents;
   v_current jsonb;
@@ -79,15 +78,14 @@ BEGIN
   LOCK TABLE public.identity_privacy_erasures IN SHARE MODE;
   PERFORM 1 FROM public.subscriptions WHERE id = p_id AND client_id = v_client FOR SHARE;
   IF NOT FOUND THEN RETURN v_unavailable; END IF;
+  IF EXISTS (SELECT 1 FROM public.identity_privacy_erasures WHERE client_id = v_client) THEN RETURN v_unavailable; END IF;
   PERFORM 1 FROM public.clients WHERE id = v_client AND principal_id = (p_ctx#>>'{owner,principalRef}')::uuid
     AND NOT metadata ? 'absorption' FOR SHARE;
   IF NOT FOUND THEN RETURN public.commerce_destination_v2_refusal('owner', 'owner'); END IF;
-  IF EXISTS (SELECT 1 FROM public.identity_privacy_erasures WHERE client_id = v_client) THEN RETURN v_unavailable; END IF;
 
   SELECT snapshot_ref INTO v_snapshot FROM public.subscription_destination_v2_selections
     WHERE subscription_id = p_id FOR SHARE;
   v_inherited := NOT FOUND;
-  v_scope := to_jsonb(p_id);
   IF v_inherited THEN
     v_origins := public.subscription_destination_v2_origins(p_id);
     IF cardinality(v_origins) = 0 THEN RETURN v_absent; END IF;
@@ -105,15 +103,14 @@ BEGIN
       WHERE order_id = v_origin.order_id FOR SHARE;
     IF NOT FOUND THEN RETURN v_absent; END IF;
     IF v_bound.selection IS NULL AND v_bound.service IS NULL THEN RETURN v_unavailable; END IF;
-    v_scope := v_bound.selection->'scopeRef';
-    IF NOT public.commerce_destination_v2_is_uuid(v_scope) THEN RETURN v_unavailable; END IF;
     v_snapshot := v_bound.snapshot_ref;
   END IF;
 
+  -- The retained verifier compares binding pins with the document's issued scope.
   SELECT * INTO v_doc FROM public.commerce_destination_v2_documents
     WHERE snapshot_ref = v_snapshot AND client_id = v_client AND owner_scope = p_ctx->'owner'
-      AND scope_ref = (v_scope #>> '{}')::uuid AND evidence_disposition = 'available'
-      AND CASE WHEN v_inherited THEN purpose = 'checkout' ELSE purpose IS NULL END FOR SHARE;
+      AND evidence_disposition = 'available'
+      AND CASE WHEN v_inherited THEN purpose = 'checkout' ELSE scope_ref = p_id AND purpose IS NULL END FOR SHARE;
   IF NOT FOUND THEN RETURN v_unavailable; END IF;
   v_current := public.subscription_destination_v2_current(p_ctx, p_id, v_origins);
   IF v_current->>'field' = 'orderBindings' THEN RETURN v_current; END IF;
@@ -147,20 +144,34 @@ BEGIN
       )) IS NOT NULL THEN RETURN v_unavailable; END IF;
     EXIT WHEN v_doc.snapshot_ref = v_expected;
 
-    -- A superseded document can yield stale advice only within this subscription's lineage.
-    -- The prior inherited order is only evidence of lineage once a direct pointer exists.
-    SELECT d.* INTO v_doc FROM public.commerce_destination_v2_documents d
-      WHERE d.snapshot_ref = v_expected AND d.client_id = v_client AND d.owner_scope = p_ctx->'owner'
-        AND d.evidence_disposition = 'available' AND (
-          (d.scope_ref = p_id AND d.purpose IS NULL) OR (d.purpose = 'checkout' AND EXISTS (
-            SELECT 1 FROM (SELECT public.subscription_destination_v2_origins(p_id) AS origins) probe
-            CROSS JOIN LATERAL unnest(probe.origins) a
-            JOIN public.commerce_orders o ON o.id = a.order_id AND o.client_id = v_client
-            JOIN public.commerce_destination_v2_order_bindings b ON b.order_id = o.id AND b.snapshot_ref = d.snapshot_ref
-            WHERE a.client_id = v_client AND public.commerce_destination_v2_valid_pins(b.selection, b.service, d.scope_ref)
-              AND cardinality(probe.origins) = 1
-          ))) FOR SHARE;
+    -- A superseded direct document must still belong to this subscription.
+    SELECT * INTO v_doc FROM public.commerce_destination_v2_documents
+      WHERE snapshot_ref = v_expected AND client_id = v_client AND owner_scope = p_ctx->'owner'
+        AND scope_ref = p_id AND purpose IS NULL AND evidence_disposition = 'available' FOR SHARE;
+    IF FOUND THEN CONTINUE; END IF;
+    IF v_inherited THEN RETURN v_unavailable; END IF;
+
+    -- A direct pointer can supersede inherited evidence. Guard the prior order lineage before its document.
+    v_origins := public.subscription_destination_v2_origins(p_id);
+    IF cardinality(v_origins) <> 1 OR (v_origins[1]).client_id IS DISTINCT FROM v_client THEN RETURN v_unavailable; END IF;
+    v_origin := v_origins[1];
+    PERFORM 1 FROM public.commerce_orders WHERE id = v_origin.order_id AND client_id = v_client FOR SHARE;
     IF NOT FOUND THEN RETURN v_unavailable; END IF;
+    PERFORM 1 FROM public.subscription_activations WHERE id = v_origin.id AND order_id = v_origin.order_id
+      AND subscription_id = p_id AND client_id = v_client AND state = 'active' FOR SHARE;
+    IF NOT FOUND THEN RETURN v_unavailable; END IF;
+    SELECT * INTO v_bound FROM public.commerce_destination_v2_order_bindings
+      WHERE order_id = v_origin.order_id AND snapshot_ref = v_expected FOR SHARE;
+    IF NOT FOUND THEN RETURN v_unavailable; END IF;
+    SELECT * INTO v_doc FROM public.commerce_destination_v2_documents
+      WHERE snapshot_ref = v_expected AND client_id = v_client AND owner_scope = p_ctx->'owner'
+        AND purpose = 'checkout' AND evidence_disposition = 'available' FOR SHARE;
+    IF NOT FOUND THEN RETURN v_unavailable; END IF;
+    v_origins := public.subscription_destination_v2_origins(p_id);
+    IF cardinality(v_origins) <> 1 OR (v_origins[1]).id IS DISTINCT FROM v_origin.id
+      OR NOT public.commerce_destination_v2_valid_pins(v_bound.selection, v_bound.service, v_doc.scope_ref) THEN
+      RETURN v_unavailable;
+    END IF;
   END LOOP;
 
   IF NOT p_recheck AND p_binding IS NULL THEN RETURN v_current; END IF;
