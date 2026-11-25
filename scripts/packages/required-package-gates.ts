@@ -12,12 +12,19 @@ function runAsync(args: string[], cwd: string, env: NodeJS.ProcessEnv): Promise<
     const child = spawn("npm", args, { cwd, env, stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
-    child.stdout?.on("data", chunk => { stdout += String(chunk); });
-    child.stderr?.on("data", chunk => { stderr += String(chunk); });
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk: string) => { stdout += chunk; });
+    child.stderr?.on("data", (chunk: string) => { stderr += chunk; });
+    let settled = false;
     child.once("error", error => {
+      if (settled) return;
+      settled = true;
       rejectPromise(Object.assign(error, { stdout, stderr }));
     });
-    child.once("exit", (code, signal) => {
+    child.once("close", (code, signal) => {
+      if (settled) return;
+      settled = true;
       if (code === 0) resolvePromise({ stdout, stderr });
       else rejectPromise(Object.assign(new Error(`npm ${args.join(" ")} exited with ${signal ?? code}`), { status: code, signal, stdout, stderr }));
     });
@@ -80,11 +87,18 @@ export function runRequiredPackageGates(
         const failure = error as Error & { stdout?: string; stderr?: string };
         if (failure.stdout) process.stdout.write(failure.stdout);
         if (failure.stderr) process.stderr.write(failure.stderr);
+        console.error(`Package proof ${name} FAILED (${Math.round(performance.now() - phase)} ms): ${failure.message}`);
         throw failure;
       }
     }));
-    const firstFailure = results.find((entry): entry is PromiseRejectedResult => entry.status === "rejected");
-    if (firstFailure) throw firstFailure.reason;
+    const failures = results.filter((entry): entry is PromiseRejectedResult => entry.status === "rejected");
+    if (failures.length === 1) throw failures[0]!.reason;
+    if (failures.length > 1) {
+      throw new AggregateError(
+        failures.map(entry => entry.reason),
+        `package-gates: ${failures.length} package proofs failed`,
+      );
+    }
   })();
 }
 

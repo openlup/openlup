@@ -319,4 +319,25 @@ describe("inventory-driven required package gates", () => {
     );
     expect(refused.status).not.toBe(0);
   }, 60_000);
+
+  it("settles concurrent sibling package proofs and flushes failure diagnostics when one package fails", () => {
+    const input = fixture({ names: ["alpha", "beta"] });
+    const betaManifestPath = join(input.root, "packages/beta/package.json");
+    const betaManifest = JSON.parse(readFileSync(betaManifestPath, "utf8")) as { scripts: Record<string, string> };
+    betaManifest.scripts["test:consumer"] = "node -e \"console.error('synthetic-beta-consumer-failure'); process.exit(1)\"";
+    writeFileSync(betaManifestPath, JSON.stringify(betaManifest));
+    git(input.root, "add", "-A");
+    git(input.root, "commit", "-qm", "Break beta consumer");
+    const commit = git(input.root, "rev-parse", "HEAD").trim();
+
+    const result = invoke(input, commit);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("synthetic-beta-consumer-failure");
+    expect(result.stderr).toContain("Package proof @openlup/beta FAILED");
+    const phases = observations(input.root).map(({ phase, name }) => `${phase}:${name}`);
+    expect(phases.slice(0, 2)).toEqual(["api:alpha", "api:beta"]);
+    expect(phases).toContain("required:alpha");
+    expect(phases).toContain("consumer:alpha");
+    expect(phases).toContain("required:beta");
+  }, 60_000);
 });

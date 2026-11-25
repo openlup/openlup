@@ -2597,10 +2597,18 @@ export function platformConsumerInstallArgs(packages: string[], sdkPresent = fal
   return ["install", ...(sdkPresent ? ["--prefer-offline", "--min-release-age=3"] : ["--offline"]), "--ignore-scripts", "--omit=optional", "--legacy-peer-deps", "--no-audit", "--fund=false", ...packages];
 }
 
+function killProcessGroup(child: ChildProcess, signal: NodeJS.Signals): void {
+  if (process.platform !== "win32" && child.pid) {
+    try { process.kill(-child.pid, signal); return; } catch { /* process group may already have exited */ }
+  }
+  child.kill(signal);
+}
+
 function spawnNeutralStarterConsumer(
   checkout: string,
   manifestPath: string,
   commit: string,
+  starterTmp: string,
 ): { child: ChildProcess; done: Promise<{ stdout: string; stderr: string }> } {
   const qualificationUrl = pathToFileURL(join(dirname(fileURLToPath(import.meta.url)), "exact-set-qualification.mjs")).href;
   const packInputUrl = pathToFileURL(join(dirname(fileURLToPath(import.meta.url)), "pack-manifest-input.ts")).href;
@@ -2620,6 +2628,7 @@ const locked = (name) => {
   return name + "@" + version;
 };
 const artifacts = mkdtempSync(join(tmpdir(), "openlup-starter-packs-"));
+const packEnv = { ...isolatedConsumerEnv(), npm_config_cache: join(artifacts, ".npm-cache") };
 try {
   const packInstalled = (name) => {
     const directory = join(checkout, "node_modules", name);
@@ -2627,7 +2636,7 @@ try {
     const version = JSON.parse(readFileSync(join(directory, "package.json"), "utf8")).version;
     if (name + "@" + version !== locked(name)) throw new Error("Consumer input " + name + " differs from the lockfile");
     const [info] = JSON.parse(execFileSync("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", artifacts], {
-      cwd: directory, env: isolatedConsumerEnv(), encoding: "utf8", timeout: 120_000, maxBuffer: 8 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"],
+      cwd: directory, env: packEnv, encoding: "utf8", timeout: 120_000, maxBuffer: 8 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"],
     }));
     return join(artifacts, info.filename);
   };
@@ -2639,17 +2648,29 @@ try {
   const child = spawn(
     process.execPath,
     ["--experimental-strip-types", "--input-type=module", "-e", script, checkout, manifestPath, commit],
-    { cwd: checkout, env: isolatedConsumerEnv(), stdio: ["ignore", "pipe", "pipe"] },
+    {
+      cwd: checkout,
+      env: { ...isolatedConsumerEnv(), TMPDIR: starterTmp, TMP: starterTmp, TEMP: starterTmp },
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: process.platform !== "win32",
+    },
   );
   const done = new Promise<{ stdout: string; stderr: string }>((resolvePromise, rejectPromise) => {
     let stdout = "";
     let stderr = "";
-    child.stdout?.on("data", chunk => { stdout += String(chunk); });
-    child.stderr?.on("data", chunk => { stderr += String(chunk); });
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk: string) => { stdout += chunk; });
+    child.stderr?.on("data", (chunk: string) => { stderr += chunk; });
+    let settled = false;
     child.once("error", error => {
+      if (settled) return;
+      settled = true;
       rejectPromise(Object.assign(error, { stdout, stderr }));
     });
-    child.once("exit", (code, signal) => {
+    child.once("close", (code, signal) => {
+      if (settled) return;
+      settled = true;
       if (code === 0) resolvePromise({ stdout, stderr });
       else rejectPromise(Object.assign(new Error(`Neutral starter consumer proof exited with ${signal ?? code}`), { status: code, signal, stdout, stderr }));
     });
@@ -2672,13 +2693,24 @@ export function runPlatformColdConsumer(checkout = root, environment = processEn
   });
   return (async () => {
     const consumer = mkdtempSync(join(tmpdir(), "openlup-platform-consumer-"));
-    // Run the independent neutral starter cold-consumer proof in parallel in its own temp/packs directory.
-    const starter = spawnNeutralStarterConsumer(checkout, resolvedManifest, commit);
+    const starterTmp = mkdtempSync(join(tmpdir(), "openlup-starter-tmp-"));
+    // Run the independent neutral starter cold-consumer proof in parallel in its own parent-owned temp root.
+    const starter = spawnNeutralStarterConsumer(checkout, resolvedManifest, commit, starterTmp);
     let starterSettled = false;
     const starterDone = starter.done.then(
       output => ({ ok: true as const, ...output }),
       error => ({ ok: false as const, error }),
     ).finally(() => { starterSettled = true; });
+    const onSignal = (signal: NodeJS.Signals) => {
+      if (!starterSettled) killProcessGroup(starter.child, signal);
+      rmSync(consumer, { recursive: true, force: true });
+      rmSync(starterTmp, { recursive: true, force: true });
+      process.exit(signal === "SIGINT" ? 130 : 143);
+    };
+    const onSigterm = () => onSignal("SIGTERM");
+    const onSigint = () => onSignal("SIGINT");
+    process.once("SIGTERM", onSigterm);
+    process.once("SIGINT", onSigint);
     try {
       const lock = JSON.parse(readFileSync(join(checkout, "package-lock.json"), "utf8"));
       const locked = (name: string): string => {
@@ -2964,14 +2996,17 @@ assert.equal(typeof (await import("@openlup/platform/tax")).compareTaxRecalculat
     }
     console.log("Platform cold consumer PASS; verified tarballs, isolated optional peers, no live provider");
     } finally {
+      process.removeListener("SIGTERM", onSigterm);
+      process.removeListener("SIGINT", onSigint);
       if (!starterSettled) {
-        starter.child.kill("SIGTERM");
-        const killTimer = setTimeout(() => { starter.child.kill("SIGKILL"); }, 5_000);
+        killProcessGroup(starter.child, "SIGTERM");
+        const killTimer = setTimeout(() => { killProcessGroup(starter.child, "SIGKILL"); }, 5_000);
         killTimer.unref();
         await starterDone;
         clearTimeout(killTimer);
       }
       rmSync(consumer, { recursive: true, force: true });
+      rmSync(starterTmp, { recursive: true, force: true });
     }
   })();
 }
