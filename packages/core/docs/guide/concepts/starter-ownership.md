@@ -198,8 +198,9 @@ and never reuse it for another operation.
 | Paid | `{ orderRef, status, total }`, `replayed: true` | `starter_checkout_paid` |
 | Cancelled, expired or closed | `starter_checkout_not_payable` | `{ abandoned: false, orderRef, status }` |
 
-Abandon refuses with `starter_checkout_not_abandonable` once a payment attempt
-was ever made or a payment is recorded. A cancelled order carries the reason
+Abandon of an unpaid order refuses with `starter_checkout_not_abandonable` once
+a payment attempt was ever made, including one still in flight. A paid order
+answers `starter_checkout_paid`. A cancelled order carries the reason
 `checkout_started_over`. A limited `resume` returns the order without a token; a
 limited `abandon` answers `starter_attempt_limited`. An unknown key is answered
 before metering. Refusals use HTTP 409. A missing or malformed header answers

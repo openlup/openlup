@@ -236,9 +236,13 @@ test('a dispatched attempt makes the order not abandonable', async () => {
 });
 
 test('the safety predicate refuses before the compensation port', async () => {
-  const host = continuation(order(), { safe: false });
-  assert.deepEqual(await host.call('abandon'), { ok: false, code: 'starter_checkout_not_abandonable' });
-  assert.ok(host.log.includes('predicate') && !host.log.includes('cancel'));
+  for (const [status, code] of [['pending_payment', 'starter_checkout_not_abandonable'], ['paid', 'starter_checkout_paid'],
+    ['cancelled', 'starter_checkout_not_payable']] as const) {
+    // A capture that lands before the predicate makes it false; the re-read names the order's state.
+    const host = continuation(order(), { safe: false, current: { status } });
+    assert.deepEqual(await host.call('abandon'), { ok: false, code });
+    assert.deepEqual(host.log.slice(-4), ['predicate', 'reread', 'unlock', 'release']);
+  }
 });
 
 test('abandon answers without a cancel for no, paid, closed or limited orders', async () => {

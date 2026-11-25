@@ -411,14 +411,16 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
     }
     // The expiry sweep's predicate: no provider attempt ever and no external reference.
     const { rows: [safety] } = await session.query<{ safe: boolean }>('SELECT public.commerce_initial_checkout_abandonment_safe($1::uuid) AS safe', [order.id]);
-    if (safety?.safe !== true) return refused('starter_checkout_not_abandonable');
+    // A refused predicate and a port that cancels nothing share one answer, read from the order's current state.
     let cancelled = false;
-    try {
-      // A stalled incomplete creation is cancelled too: a later tail cannot hold stock on a cancelled order.
-      cancelled = (await createPostgresAbandonedCheckoutCompensationPort(session).cancelAbandonedOrder({
-        idempotencyKey: `${key}:start-over`, orderId: order.id, reason: 'checkout_started_over' })).cancelled;
-    } catch (error) {
-      if (!isRecord(error) || !['55000', '22023', '23505'].includes(String(error.code))) throw error;
+    if (safety?.safe === true) {
+      try {
+        // A stalled incomplete creation is cancelled too: a later tail cannot hold stock on a cancelled order.
+        cancelled = (await createPostgresAbandonedCheckoutCompensationPort(session).cancelAbandonedOrder({
+          idempotencyKey: `${key}:start-over`, orderId: order.id, reason: 'checkout_started_over' })).cancelled;
+      } catch (error) {
+        if (!isRecord(error) || !['55000', '22023', '23505'].includes(String(error.code))) throw error;
+      }
     }
     if (cancelled) return success({ abandoned: true, orderRef: order.id });
     const { rows: [current] } = await session.query<{ status: string }>('SELECT status FROM public.commerce_orders WHERE id=$1', [order.id]);

@@ -1128,7 +1128,8 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
         .toEqual({ ok: false, code: 'starter_checkout_not_payable' });
     } else {
       expect(captured.ok).toBe(true);
-      expect(abandoned.ok).toBe(false);
+      // A capture recorded before abandon decides answers paid. A capture still in flight when the
+      // compensation port runs leaves the order unpaid at that moment, so abandon names it not abandonable.
       expect(['starter_checkout_paid', 'starter_checkout_not_abandonable']).toContain(!abandoned.ok && abandoned.code);
     }
     expect((await owner!.query(`SELECT count(*) AS n FROM public.outbox_events WHERE event_type='commerce.checkout.expired'
