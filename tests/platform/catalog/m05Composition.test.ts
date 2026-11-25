@@ -1,8 +1,9 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { expect, it } from "vitest";
+import { packWorkspaceTarballsSync } from "../../helpers/packWorkspaceTarball.js";
 import type { HttpRequest } from "@openlup/platform/http";
 import { checkReadiness, type ReadinessInput } from "@openlup/core/readiness";
 import { createCatalogProductTypeRegistry } from "@openlup/platform/catalog";
@@ -61,13 +62,7 @@ it("selected readiness / cold-consumer refusal", async () => {
   const scratch = mkdtempSync(join(tmpdir(), "m05-packed-"));
   const npm = (args: string[], cwd: string) => execFileSync("npm", args, { cwd, stdio: "pipe", timeout: 120_000 }).toString();
   try {
-    const tarballs: string[] = [];
-    for (const name of ["core", "platform"]) {
-      const packed = JSON.parse(npm(["pack", "--json", "--ignore-scripts", "--pack-destination", scratch], resolve(`packages/${name}`)));
-      tarballs.push(join(scratch, packed[0].filename));
-    }
-    const packed = JSON.parse(npm(["pack", "--json", "--ignore-scripts", "--pack-destination", scratch], resolve("node_modules/zod")));
-    tarballs.push(join(scratch, packed[0].filename));
+    const tarballs = packWorkspaceTarballsSync(["packages/core", "packages/platform", "node_modules/zod"], scratch);
     const consumer = join(scratch, "consumer"); mkdirSync(consumer);
     writeFileSync(join(consumer, "package.json"), '{"type":"module","private":true}');
     npm(["install", "--ignore-scripts", "--legacy-peer-deps", "--omit=optional", "--no-audit", "--no-fund", ...tarballs], consumer);

@@ -15,6 +15,7 @@ import { qualifiedPostgresStartupOptions, type QualifiedPostgresInstallation } f
 import { assertConsumerIsolation, platformConsumerInstallArgs } from "../../scripts/packages/platform-cold-consumer.js";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
   runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+import { packWorkspaceTarballs } from "../helpers/packWorkspaceTarball.js";
 
 const principalId = "b1100000-0000-4000-8000-000000000001", clientId = "b1100000-0000-4000-8000-000000000002";
 const otherPrincipal = "b1100000-0000-4000-8000-000000000003", otherClient = "b1100000-0000-4000-8000-000000000004";
@@ -71,10 +72,7 @@ async function state() {
 beforeAll(async () => {
   if (!await dockerAvailable()) throw new Error("native account reads require Docker; mandatory qualified-v2 proof missing");
   scratch = mkdtempSync(join(tmpdir(), "native-account-packed-"));
-  const tarballs = ["packages/core", "packages/platform", "node_modules/zod"].map(directory => {
-    const packed = JSON.parse(npm(["pack", "--ignore-scripts", "--json", "--pack-destination", scratch], resolve(directory)));
-    return join(scratch, packed[0].filename);
-  });
+  const tarballs = await packWorkspaceTarballs(["packages/core", "packages/platform", "node_modules/zod"], scratch);
   consumer = join(scratch, "consumer"); mkdirSync(consumer);
   writeFileSync(join(consumer, "package.json"), '{"type":"module","private":true}');
   npm(platformConsumerInstallArgs(tarballs), consumer);

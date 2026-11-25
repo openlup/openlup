@@ -1,0 +1,1 @@
+- Fresh native gross base-price edits require an inclusive price list. Use an effective inclusive list for v1 and replay previously completed edits with their original command keys. There is no application or configuration migration for existing gross lists.
