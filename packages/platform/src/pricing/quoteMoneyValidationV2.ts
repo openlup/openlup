@@ -7,12 +7,18 @@ import { PROMOTION_ENGINE_V1, PROMOTION_ENGINE_V2 } from "./contracts/offerPolic
 import type { CommerceQuoteMoneyV2, CommerceQuoteV2, MoneyLineV2 } from "./contracts/quoteV2.js";
 
 const jsonText = (value: string) => !value.includes("\u0000") && !/[\uD800-\uDFFF]/u.test(value);
+/** @experimental */
 export const ref = z.string().min(1).max(256).refine(jsonText);
 export const moneyRef = ref.refine(value => value.length <= 128);
+/** @experimental */
 export const minor = z.number().int().nonnegative().refine(value => !Object.is(value, -0));
+/** @experimental */
 export const currency = z.string().length(3).regex(/^[A-Z]{3}$/u);
+/** @experimental */
 export const uuid = z.string().length(36).regex(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/u);
+/** @experimental */
 export const digest = z.string().length(64).regex(/^[0-9a-f]+$/u);
+/** @experimental */
 export const engine = z.enum([PROMOTION_ENGINE_V1, PROMOTION_ENGINE_V2]);
 export const mode = z.enum(["one_time", "subscription"]);
 const instant = z.string().length(24).refine(value => Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value);
@@ -48,17 +54,23 @@ const component = {
   preDiscountMinor: minor, effectiveMinor: minor, discountAllocations: z.array(allocation).max(20),
   taxPositions, netMinor: minor, taxMinor: minor, lineTotalMinor: minor,
 };
-const line = lineSource.extend(component);
+/** @experimental */
+export const line = lineSource.extend(component);
 const part = z.strictObject({ ...component, sourceOrdinal: ordinal.optional() });
-const bucket = bucketSource.extend({ parts: z.array(part).min(1).max(50) });
+/** @experimental */
+export const bucket = bucketSource.extend({ parts: z.array(part).min(1).max(50) });
+/** @experimental */
 export const feeLine = z.strictObject({
   feeKey: moneyRef, jurisdictionRef: ref, feeKind: ref, amountMinor: minor,
   scope: z.discriminatedUnion("kind", [z.strictObject({ kind: z.literal("order") }),
     z.strictObject({ kind: z.literal("delivery"), bucketKey: moneyRef })]),
   refundRule: z.strictObject({ ref, revision: ref }), providerPositionRef: ref.optional(),
 });
+/** @experimental */
 export const price = z.strictObject({ priceListRef: ref, priceContextDigest: digest, priceEvidenceRef: ref, classMapRevision: ref });
+/** @experimental */
 export const evidence = { calculationId: uuid, evidenceDigest: digest, taxDate: instant, expiresAt: instant };
+/** @experimental */
 export const factsShape = z.strictObject({
   catalogueEvidenceRef: ref, mode,
   cadence: z.strictObject({ schemaVersion: z.literal(1), kind: z.literal("fixed_days"),

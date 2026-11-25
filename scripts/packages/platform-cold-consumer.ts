@@ -2829,6 +2829,17 @@ assert.equal("createAdminBundleHandlers" in contracts, false);
 import assert from "node:assert/strict";
 import * as pricing from "@openlup/platform/pricing";
 import * as contracts from "@openlup/platform/pricing/contracts";
+import * as browser from "@openlup/platform/pricing/browser";
+assert.deepEqual(Object.keys(pricing).filter(key => key.startsWith("commerceMoneyV2")).sort(), [
+  "commerceMoneyV2CurrencySchema", "commerceMoneyV2DeliveryBucketSchema", "commerceMoneyV2DigestSchema",
+  "commerceMoneyV2FactsSchema", "commerceMoneyV2FeeLineSchema", "commerceMoneyV2LineSchema",
+  "commerceMoneyV2MinorSchema", "commerceMoneyV2PriceSchema", "commerceMoneyV2PromotionEngineSchema",
+  "commerceMoneyV2ReferenceSchema", "commerceMoneyV2TaxEvidenceShape", "commerceMoneyV2UuidSchema",
+]);
+for (const key of Object.keys(pricing).filter(key => key.startsWith("commerceMoneyV2"))) {
+  assert.equal(key in contracts || key in browser, false);
+}
+assert.equal(pricing.commerceMoneyV2FactsSchema.shape.destination.safeParse({ schemaVersion: 2 }).success, false);
 assert.equal(pricing.OFFER_POLICY_V2, contracts.OFFER_POLICY_V2);
 assert.equal(contracts.ACQUISITION_TERMS_CAPABILITY, "subscription-acquisition.v1");
 assert.equal(contracts.COMMERCE_OFFER_PRICING_V3_CONTRACT_VERSION, "commerce.offer-pricing.v3");
