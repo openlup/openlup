@@ -9,6 +9,7 @@ import {
   createPostgresDestinationPort, createPostgresDestinationPortV2,
   type DestinationContextV2, type DestinationDocument, type DestinationPortV2, type DestinationReadDocument,
 } from "../../src/commerce/server/destinations/index.js";
+import { subscriptionSuccessDecoders, type SubscriptionSuccessComparison } from "../../src/commerce/server/destinations/destinationV2Prelock.js";
 import { ref } from "../../src/pricing/quoteMoneyValidationV2.js";
 
 it("preserves the destination routine contract and refuses invalid responses", async () => {
@@ -525,41 +526,95 @@ it("binds the three subscription arms with the incumbent casts and only current 
   ]);
 });
 
-it.each(["exact read", "recheck"] as const)("rejects a foreign subscription scope on %s", async arm => {
-  const response = arm === "exact read" ? verifiedSubscription : recheckedSubscription;
-  const { port } = scriptedDestination({ ...response, selection: { ...response.selection, scopeRef: orderId } });
-  const decision = arm === "exact read" ? port.read(context, "subscription", scopeRef, binding) : port.recheck(context, subscriptionCheck);
-  await expect(decision).rejects.toThrow("OPENLUP_E_DESTINATION_INFRASTRUCTURE");
-});
-
-const otherBindings = [
-  { ...binding, snapshotRef: orderId },
-  { ...binding, destinationDigest: "f".repeat(64) },
-  { ...binding, policyRevision: "other" },
+const unpinnedServicePaths = [
+  "service.deliverySelectionRef", "service.providerRef", "service.carrierRef", "service.serviceRef",
+  "service.servicePolicyRevision", "service.adapterRevision",
 ];
-it.each(["exact read", "recheck"] as const)("rejects a mismatched subscription binding on %s", async arm => {
-  const results = otherBindings.map(otherBinding => arm === "exact read"
-    ? { ...verifiedSubscription, binding: otherBinding, document: { ...verifiedSubscription.document, ...otherBinding } }
-    : { ...recheckedSubscription, binding: otherBinding });
-  const { port } = scriptedDestination(...results);
-  for (const _result of results) {
-    const decision = arm === "exact read" ? port.read(context, "subscription", scopeRef, binding) : port.recheck(context, subscriptionCheck);
-    await expectInfrastructure(decision);
+const unpinnedSubscriptionPaths = {
+  current: [
+    "binding.snapshotRef", "binding.schemaVersion", "binding.destinationDigest", "binding.policyRevision",
+    "selectionRevision", ...unpinnedServicePaths,
+  ],
+  exact: [
+    "selection.selectionRevision", ...unpinnedServicePaths, "documentDigest", "evidenceExpiresAt",
+    "document.revision", "document.policyRef", "document.classificationKeys[]",
+    "document.address.line1", "document.address.line2", "document.address.city", "document.address.postalCode",
+    "document.address.country", "document.address.subdivision",
+    "document.contact.recipientName", "document.contact.contactEmail", "document.contact.contactPhone",
+    "document.contact.companyName", "document.contact.label", "document.contact.taxId",
+    "document.contact.deliveryNotes", "document.contact.courierInstructions",
+  ],
+  recheck: [],
+};
+
+function schemaLeafPaths(schema: z.ZodType, path = ""): string[] {
+  if (schema instanceof z.ZodOptional) return schemaLeafPaths(schema.unwrap(), path);
+  if (schema instanceof z.ZodArray) return schemaLeafPaths(schema.element, `${path}[]`);
+  if (schema instanceof z.ZodObject) {
+    return Object.entries<z.ZodType>(schema.shape).flatMap(([key, child]) => schemaLeafPaths(child, path ? `${path}.${key}` : key));
   }
-});
+  return [path];
+}
 
-it("rejects a subscription document whose snapshot disagrees with its outer binding", async () => {
-  const { port } = scriptedDestination({
-    ...verifiedSubscription, document: { ...verifiedSubscription.document, snapshotRef: orderId },
-  });
-  await expectInfrastructure(port.read(context, "subscription", scopeRef, binding));
-});
+const subscriptionFieldChanges: Readonly<Record<string, string | number>> = {
+  snapshotRef: orderId, schemaVersion: 3, destinationDigest: "f".repeat(64), kind: "checkout",
+  scopeRef: orderId, selectionRevision: eventId, clientId: orderId, principalKind: "session",
+  principalRef: shipmentId, customerOrSessionRef: orderId,
+};
 
-it.each([
-  ["service pins", { ...recheckedSubscription, service: { ...service, adapterRevision: "other" } }],
-  ["selection revision", { ...recheckedSubscription, selection: { ...recheckedSubscription.selection, selectionRevision: eventId } }],
-] as const)("rejects changed subscription %s on recheck", async (_key, response) => {
-  await expectInfrastructure(scriptedDestination(response).port.recheck(context, subscriptionCheck));
+function changeSubscriptionField(result: object, path: string): Record<string, unknown> {
+  const copy = structuredClone(result) as Record<string, unknown>;
+  const steps = path.split(".");
+  const key = steps.pop()!;
+  const parent = steps.reduce((record, step) => record[step] as Record<string, unknown>, copy);
+  expect(Object.hasOwn(parent, key), path).toBe(true);
+  parent[key] = subscriptionFieldChanges[key] ?? `${String(parent[key])}-other`;
+  return copy;
+}
+
+it("audits every request-bound and sibling field in subscription successes", async () => {
+  type Arm = keyof typeof subscriptionSuccessDecoders;
+  const cases: Record<Arm, {
+    result: object;
+    run: (port: DestinationPortV2, id: string, ctx: DestinationContextV2) => Promise<unknown>;
+  }> = {
+    current: { result: currentSubscription, run: (port, id, ctx) => port.read(ctx, "subscription", id, null) },
+    exact: { result: verifiedSubscription, run: (port, id, ctx) => port.read(ctx, "subscription", id, binding) },
+    recheck: { result: recheckedSubscription, run: (port, id, ctx) => port.recheck(ctx, { ...subscriptionCheck, scopeRef: id }) },
+  };
+  for (const arm of Object.keys(cases) as Arm[]) {
+    const { result, run } = cases[arm];
+    const { schema } = subscriptionSuccessDecoders[arm];
+    const comparisons: readonly SubscriptionSuccessComparison[] = subscriptionSuccessDecoders[arm].comparisons;
+    const rows = comparisons.flatMap(({ field, expected, keys }) =>
+      (keys?.map(key => `${field}.${key}`) ?? [field]).map(path => ({ path, expected })));
+    expect([...new Set(rows.map(({ path }) => path)), ...unpinnedSubscriptionPaths[arm]].sort(), arm)
+      .toEqual(schemaLeafPaths(schema).sort());
+    await expect(run(scriptedDestination(result).port, scopeRef, context)).resolves.toStrictEqual(result);
+
+    for (const { path, expected } of rows) {
+      const changed = changeSubscriptionField(result, path);
+      const ctx = expected === "result.document.clientId"
+        ? { ...context, owner: { ...owner, customerOrSessionRef: orderId } }
+        : context;
+      expect(changed, `${arm}: ${path}`).not.toStrictEqual(result);
+      expectMalformedCause(await expectInfrastructure(run(scriptedDestination(changed).port, scopeRef, ctx)), 1);
+    }
+
+    for (const id of ["uncastable", null]) {
+      const input = malformed("subscriptionId");
+      const { port, calls } = scriptedDestination(result, input);
+      expectMalformedCause(await expectInfrastructure(run(port, id as string, context)), 1);
+      expectRefusal(await run(port, id as string, context), input);
+      expect(calls.map(([, values]) => values?.[2])).toEqual([null, null]);
+    }
+  }
+
+  for (const key of ["snapshotRef", "destinationDigest", "policyRevision"] as const) {
+    const changed = { ...binding, [key]: subscriptionFieldChanges[key] ?? "other" };
+    const { port } = scriptedDestination(verifiedSubscription);
+    expectMalformedCause(await expectInfrastructure(port.read(context, "subscription", scopeRef, changed)), 1);
+  }
 });
 
 it("accepts canonical subscription scope results for equivalent PostgreSQL UUID spellings", async () => {

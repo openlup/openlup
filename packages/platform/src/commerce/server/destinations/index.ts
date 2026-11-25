@@ -2,6 +2,10 @@ import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { createCheckoutCommandSchemas } from "../../checkoutCommandSchemas.js";
 import type { CheckoutCommandV2 } from "../../contracts/index.js";
+import {
+  bindingSchema, contactKeys as destinationContactKeys, jsonText, readResult, recheckResult, snapshotResult, subscriptionSuccessDecoders,
+  type SubscriptionSuccessComparison, utcMillis,
+} from "./destinationV2Prelock.js";
 
 /** Private native destination authority; the host authenticates actors and owns connection lifetime. */
 export interface DestinationAddress {
@@ -128,7 +132,7 @@ type UtcMillis = string;
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 type NativeAddress = { line1: string; line2?: string; city: string; postalCode: string; country: string; subdivision?: string };
 type OriginalAddress = Omit<NativeAddress, "country" | "subdivision"> & { countryCode: string; subdivisionCode?: string };
-const contactKeys = ["recipientName", "contactEmail", "contactPhone", "companyName", "label", "taxId", "deliveryNotes", "courierInstructions"] as const;
+const contactKeys = [...destinationContactKeys] as const;
 type Contact = { [Key in typeof contactKeys[number]]?: string };
 
 /** @experimental Host-authorized customer and destination scope. */
@@ -238,7 +242,6 @@ function transportRefusal(field: TransportField): TransportRefusal {
   };
 }
 
-const jsonText = (value: string) => !value.includes("\u0000") && !/[\uD800-\uDFFF]/u.test(value);
 const plainRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object"
   && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
 
@@ -280,15 +283,15 @@ function uuidArgument(value: unknown): string | null {
   const inner = value.startsWith("{") && value.endsWith("}") ? value.slice(1, -1) : value;
   return postgresUuid.test(inner) ? value : null;
 }
-function matchesUuidArgument(value: string, requested: BindValue | undefined): boolean {
-  return typeof requested === "string" && value.replaceAll("-", "") === requested.replace(/[-{}]/gu, "").toLowerCase();
+function canonicalUuidArgument(value: BindValue | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const hex = value.replace(/[-{}]/gu, "").toLowerCase();
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
-function matchesJsonArgument(value: unknown, requested: BindValue | undefined): boolean {
-  return typeof requested === "string" && isDeepStrictEqual(value, JSON.parse(requested));
+function parseJsonArgument(argument: BindValue | undefined): unknown {
+  return typeof argument === "string" ? JSON.parse(argument) : null;
 }
 const kindArgument = (value: unknown) => typeof value === "string" && jsonText(value) ? value : null;
-const utcMillis = (value: string) => value.length === 24 && !value.startsWith("0000")
-  && Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value;
 
 function checkArguments(value: unknown): BindValue[] {
   try {
@@ -310,39 +313,32 @@ function checkArguments(value: unknown): BindValue[] {
   } catch { return [transportRefusal("check")]; }
 }
 
-const uuid = z.string().regex(/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u);
-const digest = z.string().regex(/^[a-f0-9]{64}$/u);
-const utc = z.string().refine(utcMillis);
-const serviceRef = z.string().refine(value => value.length > 0 && [...value].length <= 256 && jsonText(value));
-const bindingShape = {
-  snapshotRef: uuid, schemaVersion: z.literal(2), destinationDigest: digest,
-  policyRevision: z.string().refine(value => /[^ ]/u.test(value) && Buffer.byteLength(value, "utf8") <= 720),
-};
-const bindingKeys = Object.keys(bindingShape) as (keyof DestinationBindingV2)[];
-const bindingSchema = z.strictObject(bindingShape);
-const selectionSchema = z.strictObject({ kind: z.literal("checkout"), scopeRef: uuid, selectionRevision: uuid });
-const snapshotResult = z.union([
-  z.strictObject({ binding: bindingSchema, selection: selectionSchema, evidenceExpiresAt: utc, eventId: uuid, replayed: z.boolean() }),
-  z.strictObject({ evidenceDisposition: z.literal("erased") }),
-]);
-const readResult = z.strictObject({
-  binding: bindingSchema, documentDigest: digest, evidenceExpiresAt: utc,
-  document: z.strictObject({
-    ...bindingShape, revision: z.literal(1), clientId: uuid, policyRef: z.string(), classificationKeys: z.array(z.string()),
-    owner: z.strictObject({ installationRef: z.string(), principalKind: z.literal("customer"), principalRef: uuid, customerOrSessionRef: uuid }),
-    address: z.strictObject({ line1: z.string(), line2: z.string().optional(), city: z.string(), postalCode: z.string(),
-      country: z.string(), subdivision: z.string().optional() }),
-    contact: z.strictObject(Object.fromEntries(contactKeys.map(key => [key, z.string().optional()]))),
-  }),
-});
-const serviceSchema = z.strictObject({
-  deliverySelectionRef: serviceRef, providerRef: serviceRef, carrierRef: serviceRef, serviceRef,
-  servicePolicyRevision: serviceRef, adapterRevision: serviceRef,
-});
-const recheckResult = z.strictObject({ binding: bindingSchema, selection: selectionSchema, service: serviceSchema });
-const subscriptionRecheck = recheckResult.extend({ selection: selectionSchema.extend({ kind: z.literal("subscription") }) });
-const subscriptionCurrent = z.strictObject({ binding: bindingSchema, selectionRevision: uuid, service: serviceSchema });
-const subscriptionRead = readResult.extend({ ...subscriptionRecheck.shape, evidenceExpiresAt: z.null() });
+function valueAtPath(root: unknown, path: string): unknown {
+  return path.split(".").reduce<unknown>((value, key) => plainRecord(value) && Object.hasOwn(value, key) ? value[key] : undefined, root);
+}
+
+function subscriptionSuccessDecoder<T>(
+  decoder: { schema: z.ZodType<T>; comparisons: readonly SubscriptionSuccessComparison[] },
+  args: { context: BindValue; kind: "subscription"; scope: BindValue | undefined;
+    selectionRevision?: BindValue | undefined; binding?: BindValue | undefined; service?: BindValue | undefined },
+): z.ZodType<T> {
+  return decoder.schema.refine(result => {
+    const scopeRef = canonicalUuidArgument(args.scope);
+    if (scopeRef === null) return false;
+    const values = {
+      result,
+      request: {
+        kind: args.kind, scopeRef, selectionRevision: canonicalUuidArgument(args.selectionRevision),
+        context: parseJsonArgument(args.context), binding: parseJsonArgument(args.binding), service: parseJsonArgument(args.service),
+      },
+    };
+    return decoder.comparisons.every(({ field, expected }) => {
+      const actual = valueAtPath(result, field);
+      return actual !== undefined && isDeepStrictEqual(actual, valueAtPath(values, expected));
+    });
+  });
+}
+
 const ownerRefusal = z.strictObject({
   outcome: z.literal("refused"), code: z.string(), field: z.string(),
   observed: z.string(), cause: z.string(), fix: z.string(), recheck: z.string(),
@@ -407,27 +403,25 @@ export function createPostgresDestinationPortV2(db: DestinationQueryExecutor): D
     const current = kind === "subscription" && binding === null;
     const scope = uuidArgument(id);
     const requestedBinding = current ? null : jsonArgument(binding, "destination");
-    const args = [jsonArgument(ctx, "owner"), kindArgument(kind), scope, requestedBinding];
+    const context = jsonArgument(ctx, "owner");
+    const args = [context, kindArgument(kind), scope, requestedBinding];
     if (kind !== "subscription") return invoke(sql, args, readResult);
-    return current ? invoke(sql, args, subscriptionCurrent, true)
-      : invoke(sql, args, subscriptionRead.refine(result =>
-        matchesUuidArgument(result.selection.scopeRef, scope)
-        && matchesJsonArgument(result.binding, requestedBinding)
-        && bindingKeys.every(key => result.document[key] === result.binding[key])), true);
+    const request = { context, kind, scope, binding: requestedBinding } as const;
+    return current ? invoke(sql, args, subscriptionSuccessDecoder(subscriptionSuccessDecoders.current, request), true)
+      : invoke(sql, args, subscriptionSuccessDecoder(subscriptionSuccessDecoders.exact, request), true);
   }
 
   function recheck(ctx: DestinationContextV2, check: SubscriptionCheck): Promise<SubscriptionDecision<SubscriptionRechecked>>;
   function recheck(ctx: DestinationContextV2, check: Check): Promise<Decision<Rechecked>>;
   function recheck(ctx: DestinationContextV2, check: Check | SubscriptionCheck) {
     const sql = "SELECT public.commerce_recheck_destination_v2($1::jsonb, $2::text, $3::uuid, $4::uuid, $5::jsonb, $6::jsonb) AS result";
-    const args = [jsonArgument(ctx, "owner"), ...checkArguments(check)];
+    const context = jsonArgument(ctx, "owner");
+    const args = [context, ...checkArguments(check)];
     const [, kind, scope, requestedRevision, requestedBinding, requestedService] = args;
     return kind === "subscription"
-      ? invoke(sql, args, subscriptionRecheck.refine(result =>
-        matchesUuidArgument(result.selection.scopeRef, scope)
-        && matchesUuidArgument(result.selection.selectionRevision, requestedRevision)
-        && matchesJsonArgument(result.binding, requestedBinding)
-        && matchesJsonArgument(result.service, requestedService)), true)
+      ? invoke(sql, args, subscriptionSuccessDecoder(subscriptionSuccessDecoders.recheck, {
+        context, kind, scope, selectionRevision: requestedRevision, binding: requestedBinding, service: requestedService,
+      }), true)
       : invoke(sql, args, recheckResult);
   }
 
