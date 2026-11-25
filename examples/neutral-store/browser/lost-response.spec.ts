@@ -1,3 +1,8 @@
+// Witness of one checkout key per purchase in a tab, against installed PostgreSQL hosts.
+// CI: titles start "lost response:", so the file runs in the remainder browser group (shard 6). Locally it adds
+// about 20 s of Playwright time for its 16 tests in both projects; the case-independent cases run in one project.
+// Quota: each case makes at most 3 metered creates and 4 repeats under keys of its own, well inside the 36 creates and
+// 36 repeats per requester per 180 s (12 repeats per key); beforeAll truncates the attempt ledger once per project.
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -7,6 +12,7 @@ import { createPostgresAccountLinkStore } from '@openlup/platform/identity';
 import { copy } from '../owned/copy.ts';
 import { market } from '../owned/market.config.ts';
 import { configurations } from '../owned/store.config.ts';
+import { buildDemoSeed } from '../owned/demo-seed.ts';
 import { routes } from '../shared/routes.ts';
 import * as limits from '../shared/limits.ts';
 
@@ -185,7 +191,8 @@ test('lost response: a create lost before the host waits for finality, then star
   await expect(panel(page)).toContainText('starter_checkout_in_progress');
   await expect(panel(page)).toContainText(managed('starter_checkout_in_progress'));
   expect((await record(page))?.id).toBe(firstKey);
-  await page.clock.fastForward(15_000);
+  // A create lost in transport may still reach the host until the browser's request timeout, then 15 s more.
+  await page.clock.fastForward(35_000);
   await abandon({ ok: true, value: { abandoned: false } });
   await expect(panel(page)).toContainText(managed('starter_checkout_not_found'));
   expect(await record(page)).toBeNull();
@@ -214,6 +221,7 @@ test('lost response: corrected details are refused and completing payment pays t
   const resumed = page.waitForResponse(row => row.url().endsWith('/api/actions/checkout.continuation'));
   await choice(page, 'resume').click();
   expect(await (await resumed).json()).toMatchObject({ ok: true, value: { orderRef, status: 'pending_payment', token: expect.any(String) } });
+  await expect(panel(page)).toBeFocused();
   const status = panel(page).getByRole('status');
   await expect(status).toContainText(orderRef!);
   const total = status.locator('[data-order-total]');
@@ -292,6 +300,7 @@ test('lost response: an edited cart is refused and starting over leaves one orde
   await choice(page, 'abandon').click();
   expect(await (await abandoned).json()).toEqual({ ok: true, value: { abandoned: true, orderRef: firstOrder } });
   await expect(panel(page)).toContainText(managed('abandoned'));
+  await expect(panel(page)).toBeFocused();
   await expect(completionLink(page)).toHaveCount(0);
   expect(await record(page)).toBeNull();
   expect(await orders(email)).toEqual([{ id: firstOrder, status: 'cancelled' }]);
@@ -355,6 +364,45 @@ test('lost response: blocked tab storage falls back to one in-memory key with a 
   expect(keyOf(retry.request)).toBe(keyOf(first.request));
   expect(retry.answer).toMatchObject({ ok: true, replayed: true });
   await oneOrderAndOneHold(email);
+});
+
+test('lost response: blocked tab storage keeps the key after a refused total', async ({ page }) => {
+  onlySupplements();
+  await page.addInitScript(() => {
+    const setItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (this: Storage, key: string, value: string) {
+      if (this === window.sessionStorage) throw new DOMException('blocked', 'QuotaExceededError');
+      return setItem.call(this, key, value);
+    };
+  });
+  const config = configurations[material.id]!;
+  const seed = buildDemoSeed(config);
+  const sku = seed.skus.find(row => row.sku === config.offer.products[0]!.sku)!;
+  const price = seed.prices.find(row => row.variant_id === sku.id && row.mode === 'one_time')!;
+  const reprice = async (delta: number) => {
+    const result = await owner.query('UPDATE public.price_entries SET unit_price_minor=unit_price_minor+$2 WHERE id=$1', [price.id, delta]);
+    expect(result.rowCount).toBe(1);
+  };
+  const email = buyer('storage-total');
+  await openCheckout(page, 'one_time');
+  await details(page, email);
+  await expect(page.locator('main')).toContainText('starter_storage_unavailable');
+  await reprice(137);
+  try {
+    const reviewed = page.waitForResponse(row => row.url().endsWith('/api/actions/offer.validate') && row.request().postDataJSON().email === email);
+    const refused = await submit(page);
+    expect(refused.answer).toEqual({ ok: false, code: 'starter_quote_price_changed' });
+    const review = await (await reviewed).json();
+    await page.evaluate(() => new Promise<void>(done => requestAnimationFrame(() => done())));
+    await expect(page.getByLabel(t.termsAccept)).not.toBeChecked();
+    await page.getByLabel(t.termsAccept).check();
+    const reconfirmed = await submit(page);
+    // The refusal wrote nothing, so the in-memory key stays although the reviewed total changed.
+    expect(keyOf(reconfirmed.request)).toBe(keyOf(refused.request));
+    expect(reconfirmed.request.postDataJSON().expectedTotal).toEqual(review.value.expectedTotal);
+    expect(reconfirmed.answer).toMatchObject({ ok: true, value: { total: review.value.expectedTotal } });
+    await oneOrderAndOneHold(email);
+  } finally { await reprice(-137); }
 });
 
 test('lost response: the panel is labelled, described and sends one request per choice', async ({ page }) => {
@@ -482,6 +530,12 @@ test('lost response: an ordinary refusal keeps the key and opens no panel', asyn
   expect(first.answer).toEqual({ ok: false, code: 'starter_command_conflict' });
   await expect(output(page)).toContainText(managed('starter_command_conflict'));
   await expect(panel(page)).toHaveCount(0);
+  // The refusal wrote nothing: the key stays, but nothing asks for the panel on load.
+  expect(await record(page)).toEqual({ v: 1, id: keyOf(first.request) });
+  await page.reload();
+  await expect(placeOrder(page)).toBeVisible();
+  await expect(panel(page)).toHaveCount(0);
+  await details(page, email);
   const next = await submit(page);
   expect(keyOf(next.request)).toBe(keyOf(first.request));
   expect(next.answer).toMatchObject({ ok: true });

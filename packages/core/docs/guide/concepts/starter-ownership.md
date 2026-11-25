@@ -266,7 +266,8 @@ the earlier order stays open until the store settles it, and a payment already
 started for it may still complete. The page raises `starter_checkout_in_progress`
 itself while "no order" is not yet final, and `starter_checkout_session_changed`
 when an answer belongs to another sign-in state. A browser that blocks tab
-storage keeps a key only until a reload and shows `starter_storage_unavailable`.
+storage shows `starter_storage_unavailable`; its form keeps the key in the page
+across retries and refused totals, until a reload or changed details.
 
 The key is derived from the principal, so a guest key does not survive sign-in
 or sign-out. Resolve the purchase before either; a retry after sign-in finds no

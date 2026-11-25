@@ -52,7 +52,7 @@ const lost = (): Response => { throw new TypeError('network'); };
 async function create(controller: Controller, reply: () => Response) {
   const { key } = controller.dispatch();
   const result = await withFetch(reply, () => act('checkout.create', {}, key));
-  controller.settled(key);
+  controller.settled(key, result);
   return { key, result, outcome: controller.answer(key, result) };
 }
 async function proceed(controller: Controller, action: 'resume' | 'abandon', reply: () => Response) {
@@ -95,6 +95,8 @@ interface Row {
   code?: string;
   text?: string;
   copy?: string;
+  /** A definite refusal of the only create clears its dispatch time; the key stays. */
+  cleared?: true;
 }
 
 const pending = (token?: string) => ({ orderRef: orderA, status: 'pending_payment', total, ...(token ? { token } : {}) });
@@ -106,11 +108,11 @@ const rows: Row[] = [
   { name: 'create expired', operation: 'create', reply: refusedWith('starter_checkout_expired'), kind: 'open', record: 'ordered', panel: 'open', different: true, link: 'keep', code: 'starter_checkout_expired', text: 'starter_checkout_expired' },
   { name: 'create paid', operation: 'create', reply: refusedWith('starter_checkout_paid'), kind: 'closed', record: 'cleared', panel: 'close', link: 'remove', code: 'starter_checkout_paid', text: 'starter_checkout_paid' },
   { name: 'create not payable', operation: 'create', reply: refusedWith('starter_checkout_not_payable'), kind: 'closed', record: 'cleared', panel: 'close', link: 'remove', code: 'starter_checkout_not_payable', text: 'starter_checkout_not_payable' },
-  { name: 'create stale', operation: 'create', reply: refusedWith('starter_checkout_request_stale'), kind: 'other', record: 'unchanged', panel: 'keep', link: 'keep', code: 'starter_checkout_request_stale', text: 'starter_checkout_request_stale' },
-  { name: 'create limited', operation: 'create', reply: refusedWith('starter_attempt_limited'), kind: 'other', record: 'unchanged', panel: 'keep', link: 'keep', code: 'starter_attempt_limited', text: 'starter_attempt_limited' },
-  { name: 'create conflict', operation: 'create', reply: refusedWith('starter_command_conflict'), kind: 'other', record: 'unchanged', panel: 'keep', link: 'keep', code: 'starter_command_conflict', text: 'starter_command_conflict' },
+  { name: 'create stale', cleared: true, operation: 'create', reply: refusedWith('starter_checkout_request_stale'), kind: 'other', record: 'unchanged', panel: 'keep', link: 'keep', code: 'starter_checkout_request_stale', text: 'starter_checkout_request_stale' },
+  { name: 'create limited', cleared: true, operation: 'create', reply: refusedWith('starter_attempt_limited'), kind: 'other', record: 'unchanged', panel: 'keep', link: 'keep', code: 'starter_attempt_limited', text: 'starter_attempt_limited' },
+  { name: 'create conflict', cleared: true, operation: 'create', reply: refusedWith('starter_command_conflict'), kind: 'other', record: 'unchanged', panel: 'keep', link: 'keep', code: 'starter_command_conflict', text: 'starter_command_conflict' },
   ...['starter_input_invalid', 'starter_email_invalid', 'starter_terms_required', 'starter_purchase_unavailable', 'starter_quote_refresh_required', 'starter_quote_price_changed', 'starter_expected_total_required', 'starter_cart_invalid'].map(code =>
-    ({ name: `create ${code}`, operation: 'create' as const, reply: refusedWith(code), kind: 'other' as const, record: 'unchanged' as const, panel: 'keep' as const, link: 'keep' as const, code })),
+    ({ name: `create ${code}`, cleared: true as const, operation: 'create' as const, reply: refusedWith(code), kind: 'other' as const, record: 'unchanged' as const, panel: 'keep' as const, link: 'keep' as const, code })),
   { name: 'create dependency unavailable', operation: 'create', reply: refusedWith('starter_dependency_unavailable', 503), kind: 'noAnswer', record: 'unchanged', panel: 'open', link: 'keep', code: 'starter_dependency_unavailable' },
   { name: 'create lost', operation: 'create', reply: lost, kind: 'noAnswer', record: 'unchanged', panel: 'open', link: 'keep', code: 'starter_transport_unavailable' },
   { name: 'create unreadable', operation: 'create', reply: json({ ok: 'maybe' }), kind: 'noAnswer', record: 'unchanged', panel: 'open', link: 'keep', code: 'starter_response_invalid' },
@@ -146,10 +148,10 @@ test('each answer class updates the record as the table says', async () => {
     let key: string, outcome: Outcome;
     if (row.operation === 'create') ({ key, outcome } = await create(controller, row.reply));
     else {
-      // An uncertain create, then a continuation once "none" could be final.
+      // A create lost in transport, then a continuation once "none" could be final: its request timeout plus the bound.
       ({ key } = await create(controller, lost));
       if (row.name === 'abandon cancelled it') purchase.rememberPurchase(configuration, { orderRef: orderA, token: 'rcv_remembered' });
-      time.now += 15_000;
+      time.now += 35_000;
       const sent = await proceed(controller, row.operation, row.reply);
       outcome = sent.outcome;
       assert.deepEqual(sent.sent, [{ url: '/api/actions/checkout.continuation', key, body: { action: row.operation, locale: 'en' } }], row.name);
@@ -172,7 +174,8 @@ test('each answer class updates the record as the table says', async () => {
       assert.notEqual(controller.dispatch().key, key, `${row.name}: a closed or final answer lets the next submit use a new key`);
     } else {
       assert.equal(record.id, key, row.name);
-      assert.equal(typeof record.sentAt, 'number', row.name);
+      assert.equal(typeof record.sentAt, row.cleared ? 'undefined' : 'number', row.name);
+      assert.equal(controller.pending(), row.record === 'ordered' || !row.cleared, `${row.name}: the panel on load`);
       assert.equal(record.ordered, row.record === 'ordered' ? true : undefined, row.name);
       assert.equal(record.orderRef, row.orderRef, row.name);
       assert.deepEqual(controller.current(), record, row.name);
@@ -258,7 +261,7 @@ test('contradictions keep the record', async () => {
     assert.deepEqual(stored(), before, action);
   }
   for (const operation of ['create', 'resume', 'abandon'] as const) {
-    const { controller, stored } = setup(purchase);
+    const { controller, stored, configuration } = setup(purchase);
     await create(controller, succeeded(pending('rcv_first')));
     const before = stored();
     assert.equal(before.orderRef, orderA);
@@ -267,7 +270,16 @@ test('contradictions keep the record', async () => {
     const outcome = operation === 'create' ? (await create(controller, other)).outcome : (await proceed(controller, operation, other)).outcome;
     assert.equal(outcome.kind, 'contradiction', operation);
     assert.equal(outcome.code, 'starter_checkout_session_changed', operation);
-    assert.equal(outcome.link, 'keep', operation);
+    assert.equal(outcome.text, 'starter_checkout_session_changed', operation);
+    // The host answered with another order: it is shown, and the record keeps the earlier one.
+    assert.equal(outcome.value?.orderRef, orderB, operation);
+    if (operation === 'abandon') {
+      assert.equal(outcome.copy, 'recoveryCancelled', 'the shown order was cancelled');
+      assert.equal(outcome.link, 'keep');
+    } else {
+      assert.equal(outcome.link, 'show', operation);
+      assert.deepEqual(purchase.currentPurchase(configuration), { orderRef: orderB, token: 'rcv_other' }, operation);
+    }
     assert.deepEqual({ ...stored(), sentAt: before.sentAt }, before, operation);
   }
 });
@@ -368,4 +380,47 @@ test('completion clears only the order under the key', async () => {
   await create(controller, refusedWith('starter_checkout_changed'));
   assert.equal(controller.completed({ orderRef: orderA, status: 'paid' }), false, 'an order of unknown reference is kept');
   assert.equal(stored().ordered, true);
+});
+
+test('a create lost in transport is final only after its request timeout plus the bound', async () => {
+  const { noneIsFinal } = await freshDocument();
+  const T = 1_000_000, S = T + 100;
+  const early = { inFlight: 0, settledAt: S, lostUntil: T + 20_000 };
+  assert.equal(noneIsFinal({ sentAt: T, create: early, documentStartedAt: T, continuationAt: S + 15_000 }), false, 'an early transport error');
+  assert.equal(noneIsFinal({ sentAt: T, create: early, documentStartedAt: T, continuationAt: T + 34_999 }), false);
+  assert.equal(noneIsFinal({ sentAt: T, create: early, documentStartedAt: T, continuationAt: T + 35_000 }), true);
+
+  const purchase = await freshDocument();
+  const { controller, time, stored } = setup(purchase);
+  const start = time.now;
+  const { key } = await create(controller, () => { time.now += 100; return lost(); });
+  time.now = start + 100 + 15_000;
+  assert.equal((await proceed(controller, 'resume', refusedWith('starter_checkout_not_found'))).outcome.code, 'starter_checkout_in_progress');
+  time.now = start + 34_999;
+  assert.equal((await proceed(controller, 'resume', refusedWith('starter_checkout_not_found'))).outcome.code, 'starter_checkout_in_progress');
+  assert.equal(stored().id, key);
+  time.now = start + 35_000;
+  assert.equal((await proceed(controller, 'resume', refusedWith('starter_checkout_not_found'))).outcome.code, 'starter_checkout_not_found');
+  assert.equal(stored(), null);
+});
+
+test('a definite refusal of every create clears the dispatch time but keeps the key', async () => {
+  const purchase = await freshDocument();
+  const only = setup(purchase);
+  const { key } = await create(only.controller, refusedWith('starter_terms_required'));
+  assert.deepEqual(only.stored(), { v: 1, id: key });
+  assert.equal(only.controller.pending(), false, 'no panel on load after an ordinary refusal');
+  assert.equal(only.controller.dispatch().key, key);
+
+  const afterLoss = setup(purchase);
+  const first = await create(afterLoss.controller, lost);
+  await create(afterLoss.controller, refusedWith('starter_command_conflict'));
+  assert.equal(typeof afterLoss.stored().sentAt, 'number', 'an earlier lost create may still arrive');
+  assert.equal(afterLoss.stored().id, first.key);
+
+  const data = new Map<string, string>();
+  const inherited = setup(await freshDocument(), data);
+  data.set(storageKey(inherited.configuration), JSON.stringify({ v: 1, id: key, sentAt: 1 }));
+  await create(inherited.controller, refusedWith('starter_terms_required'));
+  assert.equal(typeof inherited.stored().sentAt, 'number', 'a create of an earlier document may still arrive');
 });

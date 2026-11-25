@@ -126,8 +126,7 @@ export function createQuoteAcceptance(context: PageContext, summary: HTMLElement
       queueMicrotask(() => { if (attached === form && form.isConnected) void refresh(values()); });
     },
     // A total refusal writes nothing, so the command keeps its key: a repeat under it cannot create a second order.
-    // The form's retire callback is therefore never called here.
-    refused(code: string, _retireCommand?: () => void) {
+    refused(code: string) {
       const totalRefused = code === 'starter_expected_total_required' || code === 'starter_quote_price_changed';
       if (totalRefused || (code === 'starter_quote_refresh_required' && context.getCart().mode === 'one_time')) {
         ++generation;

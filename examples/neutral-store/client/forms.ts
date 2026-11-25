@@ -27,7 +27,7 @@ export interface ActionFormOptions {
   input?: () => ActionInput;
   transform?: (values: ActionInput) => ActionInput;
   prepare?: (values: ActionInput) => Promise<ActionInput | null>;
-  onRefusal?: (code: string, retireCommand: () => void) => void;
+  onRefusal?: (code: string) => void;
   onSuccess?: (value: unknown) => void;
   onFailure?: (code: string) => void;
   display?: (value: unknown) => unknown;
@@ -40,7 +40,7 @@ export interface FormContinuation {
   /** Called right before the request is sent; returns its key. */
   dispatch(): string;
   /** Called after every request returned, even when the form view is gone. */
-  settled(key: string): void;
+  settled(key: string, result: ActionResult): void;
   /** Called only while the view is current; returns the output to show instead of the default. */
   answer(key: string, result: ActionResult): HTMLElement | undefined;
 }
@@ -90,17 +90,14 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
   let uncertain: { input: string; prepared: ActionInput } | undefined;
   let inFlight = false;
   let generation = 0;
-  const retireCommand = () => {
-    commandKey = crypto.randomUUID();
-    priorInput = null;
-  };
   form.addEventListener('input', () => { ++generation; });
   form.addEventListener('change', () => { ++generation; });
   const continuation = options.continuation;
   const reset = continuation ? undefined : button(context.t('newAction'), () => {
     if (inFlight) return;
     ++generation;
-    retireCommand();
+    commandKey = crypto.randomUUID();
+    priorInput = null;
     uncertain = undefined;
     output.replaceChildren();
   }, 'secondary');
@@ -137,20 +134,19 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
         } finally { busy(false); }
       }
       if (!current()) return;
-      const serialized = JSON.stringify(values);
-      if (!continuation && priorInput !== null && priorInput !== serialized) commandKey = crypto.randomUUID();
-      priorInput = serialized;
+      // A changed input is a new command. What prepare adds, such as a refreshed reviewed total, is not.
+      if (!continuation && priorInput !== null && priorInput !== input) commandKey = crypto.randomUUID();
+      priorInput = input;
       busy(true);
       form.setAttribute('aria-busy', 'true');
       output.replaceChildren(el('p', {}, context.t('loading')));
       try {
         const key = continuation ? continuation.dispatch() : commandKey;
         const result = await act(options.operation, values, key);
-        continuation?.settled(key);
+        continuation?.settled(key, result);
         uncertain = uncertainAction(result)
           ? { input, prepared: values } : undefined;
-        // Under a continuation the page owns the key, so retiring the form's key leaves it unchanged.
-        if (!result.ok && !uncertain) options.onRefusal?.(result.code, retireCommand);
+        if (!result.ok && !uncertain) options.onRefusal?.(result.code);
         if (!current()) return;
         output.replaceChildren(continuation?.answer(key, result) ?? (result.ok
           ? el('section', {}, el('h4', {}, context.t('response')),

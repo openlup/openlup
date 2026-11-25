@@ -219,9 +219,9 @@ test('checkout limits document the kept key after a total refusal and exact unce
   assert.match(limits, /a refusal still counts toward the attempt limit/u);
 });
 
-test('one-time quote refresh refusal clears consent without retiring the command', async t => {
+test('one-time quote refresh refusal clears consent and refreshes review', async t => {
   const { controller, consent, reply, requests } = await fixture(t, { initial: oneTime });
-  controller.refused('starter_quote_refresh_required', () => assert.fail('The command must keep its key'));
+  controller.refused('starter_quote_refresh_required');
   assert.equal(consent.checked, false);
   assert.ok(requests[1]!.url.endsWith('offer.validate'));
   reply(1, oneTime);
@@ -230,10 +230,10 @@ test('one-time quote refresh refusal clears consent without retiring the command
 });
 
 for (const code of ['starter_expected_total_required', 'starter_quote_price_changed']) {
-  test(`a definitive ${code} refreshes review without retiring the command`, async t => {
+  test(`a definitive ${code} clears consent and refreshes review`, async t => {
     const { controller, consent, requests } = await fixture(t, { initial: oneTime });
     consent.checked = true;
-    controller.refused(code, () => assert.fail('A refusal that wrote nothing keeps the key'));
+    controller.refused(code);
     assert.equal(consent.checked, false);
     assert.ok(requests.at(-1)!.url.endsWith('offer.validate'));
   });
@@ -279,5 +279,31 @@ for (const code of ['starter_expected_total_required', 'starter_quote_price_chan
     // The refusal wrote nothing, so the reconfirmed create keeps the purchase's key.
     assert.equal(renewed.key, requests[1]!.key);
     renewed.resolve(Response.json({ ok: true, value: null }));
+  });
+}
+
+for (const code of ['starter_expected_total_required', 'starter_quote_price_changed']) {
+  test(`a form without a continuation reconfirms a changed total after ${code} under the same key`, async t => {
+    const { consent, reply, requests, submit } = await fixture(t, { initial: oneTime, integrated: true });
+    await submit();
+    const refused = requests[1]!;
+    assert.ok(refused.url.endsWith('checkout.create'));
+    refused.resolve(Response.json({ ok: false, code }, { status: 409 }));
+    await setImmediate();
+    assert.equal(consent.checked, false);
+    assert.ok(requests[2]!.url.endsWith('offer.validate'));
+    const changed = { ...oneTime, lines: [{ ...oneTime.lines[0]!, unitMinor: 130, lineMinor: 130 }], subtotalMinor: 130, totalMinor: 120,
+      expectedTotal: { amountMinor: 120, currency: config.market.currency } };
+    reply(2, changed);
+    await setImmediate();
+    await setImmediate();
+    consent.checked = true;
+    await submit();
+    const reconfirmed = requests.at(-1)!;
+    assert.ok(reconfirmed.url.endsWith('checkout.create'));
+    assert.deepEqual(JSON.parse(reconfirmed.body).expectedTotal, changed.expectedTotal);
+    // The prepared payload changed only by its reviewed total; the purchase, and so its key, is the same.
+    assert.equal(reconfirmed.key, refused.key);
+    reconfirmed.resolve(Response.json({ ok: true, value: null }));
   });
 }

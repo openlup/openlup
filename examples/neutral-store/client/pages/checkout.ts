@@ -59,9 +59,10 @@ function continuationPanel(context: PageContext, continuation: Continuation, lin
   const section = el('section', { class: 'panel', tabindex: -1, 'aria-labelledby': `${id}-heading`, 'data-checkout-continuation': '' },
     el('h2', { id: `${id}-heading` }, text('heading')), el('p', {}, text('intro')), choices, status);
   const host = el('div', {});
-  let busy = false;
+  let busy = false, creating = false;
+  // Choices act on the stored key, so none is offered once the record is gone.
   function offer(open: boolean, withDifferent: boolean) {
-    choices.replaceChildren(...(open ? [el('div', { class: 'actions' }, resume, abandon),
+    choices.replaceChildren(...(open && continuation.current() ? [el('div', { class: 'actions' }, resume, abandon),
       el('p', { id: `${id}-abandon`, class: 'small' }, text('abandonDetail')),
       ...(withDifferent ? [different, el('p', { id: `${id}-different`, class: 'small' }, text('differentDetail'))] : [])] : []));
   }
@@ -70,9 +71,11 @@ function continuationPanel(context: PageContext, continuation: Continuation, lin
     if (!section.isConnected) host.replaceChildren(section);
     if (focus) section.focus();
   }
+  // While a choice or a create is in flight, the choices wait for its answer.
+  function disable() { for (const control of [resume, abandon, different]) control.disabled = busy || creating; }
   function setBusy(value: boolean) {
     busy = value;
-    for (const control of [resume, abandon, different]) control.disabled = value;
+    disable();
     if (value) section.setAttribute('aria-busy', 'true'); else section.removeAttribute('aria-busy');
   }
   async function run(action: 'resume' | 'abandon') {
@@ -86,12 +89,16 @@ function continuationPanel(context: PageContext, continuation: Continuation, lin
       if (outcome.link === 'remove') links.replaceChildren();
       offer(outcome.choices, outcome.different);
       status.replaceChildren(message(context, outcome, text, true));
+      // The pressed button may be gone; focus stays in the panel that holds the answer.
+      section.focus();
     } finally { setBusy(false); }
   }
   return {
     node: host,
     /** Opens the panel on load, without moving focus, when the record shows an order or an uncertain create. */
     restore() { if (continuation.pending()) { offer(true, false); status.replaceChildren(); show(true); } },
+    /** A create of this purchase is in flight, or has returned. */
+    creating(value: boolean) { creating = value; disable(); },
     /** Applies a create answer: the panel opens, closes or stays. */
     created(outcome: CheckoutOutcome) {
       if (outcome.panel === 'keep') return;
@@ -107,7 +114,9 @@ function continuationPanel(context: PageContext, continuation: Continuation, lin
 function message(context: PageContext, outcome: CheckoutOutcome, text: (key: CheckoutContinuationText) => string, continued: boolean): HTMLElement {
   const value = outcome.value;
   if (outcome.kind === 'noAnswer' || (outcome.kind === 'other' && !value)) {
-    return refusal(context, outcome.code ?? 'starter_response_invalid', outcome.text ? text(outcome.text) : undefined);
+    // The panel's own status region announces it; no nested status and no "No success has been recorded."
+    return el('div', { class: 'refusal' }, el('strong', {}, context.t('refusal')), el('code', {}, outcome.code ?? 'starter_response_invalid'),
+      outcome.text ? el('p', {}, text(outcome.text)) : null);
   }
   const lines: HTMLElement[] = [];
   if (outcome.code) lines.push(el('code', {}, outcome.code));
@@ -148,8 +157,8 @@ export function checkoutPage(context: PageContext): HTMLElement {
   if (!available) storageFailed();
   const panel = available ? continuationPanel(context, durable, continuation, storageFailed) : undefined;
   const hooks: FormContinuation | undefined = panel && {
-    dispatch() { const { key, stored } = durable.dispatch(); if (!stored) storageFailed(); return key; },
-    settled: key => { durable.settled(key); },
+    dispatch() { const { key, stored } = durable.dispatch(); if (!stored) storageFailed(); panel.creating(true); return key; },
+    settled: (key, result) => { durable.settled(key, result); panel.creating(false); },
     answer(key, result) {
       const outcome = durable.answer(key, result);
       if (!outcome.stored) storageFailed();

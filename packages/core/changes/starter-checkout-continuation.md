@@ -7,9 +7,11 @@ request leaves the browser. After a lost response, a reload or a retry
 continues the same order instead of creating a second order and a second stock
 hold. The page starts a new key only after the host confirmed that the earlier
 order is closed, or that no order exists and none can still arrive. "No order"
-counts as final only 15 seconds after the last create settled. For a record
+counts as final only 15 seconds after the last create settled; when the browser
+lost that create in transport, only 35 seconds after it was sent. For a record
 from an earlier page load, it counts as final no earlier than 15 seconds after
-the reload and 35 seconds after the create was sent.
+the reload and 35 seconds after the create was sent. A refusal that wrote
+nothing keeps the key, and the panel does not appear on load after it.
 
 Changed details, or a later purchase in the same tab while an unpaid order
 exists, answer `starter_checkout_changed` and open a panel. The panel also
@@ -24,16 +26,19 @@ checkout form no longer has the "Start a new action" button; other forms keep
 it. The completion page ends the key when it shows the order under it as paid,
 cancelled or expired.
 
-A browser that blocks tab storage sees `starter_storage_unavailable` and keeps
-the earlier protection, which covers a retry without a reload only. The page
-raises `starter_checkout_session_changed` when an answer belongs to another
-sign-in state: sign in or out as when the order was placed. It raises
+A browser that blocks tab storage sees `starter_storage_unavailable`. Its form
+keeps the key in the page across retries and refused totals, until a reload or
+changed details. The page raises `starter_checkout_session_changed` when an
+answer belongs to another sign-in state: sign in or out as when the order was
+placed. If the host answered with an order of the current sign-in state, the
+page also shows that order, and says when it was cancelled. It raises
 `starter_checkout_in_progress` when an earlier create may still be running. An
 order cancelled from the panel carries `checkout_started_over`.
 
 Apply the application file upgrade to replace pristine managed files:
 `client/forms.ts`, `client/purchase.ts`, `client/pages/checkout.ts`,
-`client/api.ts`, `shared/api.ts` and `shared/limits.ts`. If it reports a
+`client/quote-acceptance.ts`, `client/api.ts`, `shared/api.ts` and
+`shared/limits.ts`. If it reports a
 conflict, reconcile your customised files with the target starter. The buyer
 texts of the panel and its answers are the managed `checkoutContinuationCopy`
 export in `shared/limits.ts`; re-apply any customised text after the upgrade.

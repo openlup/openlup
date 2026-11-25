@@ -66,11 +66,12 @@ export function visiblePurchase(value: unknown): unknown {
   return visible;
 }
 
-/** Forget the reload convenience when it is the given order. */
-export function forgetPurchase(configuration: string, orderRef: string): void {
-  if (currentPurchase(configuration)?.orderRef !== orderRef) return;
+/** Forget the reload convenience when it is the given order; true when it was. */
+export function forgetPurchase(configuration: string, orderRef: string): boolean {
+  if (currentPurchase(configuration)?.orderRef !== orderRef) return false;
   memory.delete(configuration);
   try { sessionStorage.removeItem(key(configuration)); } catch { /* Memory no longer serves it. */ }
+  return true;
 }
 
 /** How each checkout answer acts on the continuation record. */
@@ -88,7 +89,16 @@ export const checkoutAnswerCodes: Readonly<Record<string, CheckoutAnswerClass>> 
 });
 
 export interface CheckoutContinuationRecord { v: 1; id: string; sentAt?: number; ordered?: true; orderRef?: string }
-export interface CheckoutCreateState { inFlight: number; settledAt?: number }
+export interface CheckoutCreateState {
+  inFlight: number;
+  settledAt?: number;
+  /** The dispatch time of the latest create of this key in this document. */
+  sentAt?: number;
+  /** A create the browser lost in transport may still reach the host until its request timeout. */
+  lostUntil?: number;
+  /** A create of this key got no definite answer, or the key came from an earlier document. */
+  uncertain?: boolean;
+}
 type ContinuationStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 export type CheckoutContinuationText = keyof typeof checkoutContinuationCopy;
 export interface CheckoutOutcome {
@@ -126,7 +136,7 @@ export function noneIsFinal(state: { sentAt?: number | undefined; create?: Check
   if (state.sentAt === undefined) return true;
   if (state.create) {
     return state.create.inFlight === 0 && state.create.settledAt !== undefined
-      && state.continuationAt >= state.create.settledAt + checkoutLateCreateMs;
+      && state.continuationAt >= Math.max(state.create.settledAt, state.create.lostUntil ?? state.create.settledAt) + checkoutLateCreateMs;
   }
   return state.continuationAt >= Math.max(state.documentStartedAt + checkoutLateCreateMs,
     state.sentAt + actionRequestTimeoutMs + checkoutLateCreateMs);
@@ -182,15 +192,18 @@ export function checkoutContinuation(configuration: string, options: { storage?:
     const record = read();
     const own = record?.id === key ? record : null;
     const value = result.ok && isRecord(result.value) ? result.value : undefined;
-    const contradiction = () => outcome('contradiction', { code: 'starter_checkout_session_changed', text: 'starter_checkout_session_changed', panel: 'open' });
+    // The answer belongs to another sign-in state: the record keeps the earlier order, and the page still shows the order the host answered with.
+    const contradiction = (fields: Partial<CheckoutOutcome> = {}) => outcome('contradiction', { ...fields,
+      code: 'starter_checkout_session_changed', text: 'starter_checkout_session_changed', panel: 'open', choices: true, different: false });
+    const otherOrder = () => own?.orderRef !== undefined && typeof value?.orderRef === 'string' && own.orderRef !== value.orderRef;
     const closed = (fields: Partial<CheckoutOutcome>) => {
-      if (own && typeof value?.orderRef === 'string' && own.orderRef !== undefined && own.orderRef !== value.orderRef) return contradiction();
+      if (otherOrder()) return contradiction(fields);
       const stored = own ? clear() : true;
       return outcome('closed', { panel: created ? 'close' : 'open', choices: false, link: 'remove', stored, ...fields });
     };
     const open = (fields: Partial<CheckoutOutcome>) => {
       const orderRef = typeof value?.orderRef === 'string' ? value.orderRef : undefined;
-      if (own && orderRef !== undefined && own.orderRef !== undefined && own.orderRef !== orderRef) return contradiction();
+      if (otherOrder()) return contradiction(fields.value ? { value: fields.value } : {});
       const stored = own ? write({ ...own, ordered: true, ...(orderRef ? { orderRef } : {}) }) : true;
       return outcome('open', { panel: 'open', stored, ...fields });
     };
@@ -202,14 +215,14 @@ export function checkoutContinuation(configuration: string, options: { storage?:
       if (kind === 'open') return open({ code, ...(text ? { text } : {}), different: code === 'starter_checkout_not_abandonable' || code === 'starter_checkout_expired' });
       if (kind === 'closed') return closed({ code, ...(code === 'starter_checkout_paid' && operation === 'abandon' ? { copy: 'recoveryPaid' as const } : text ? { text } : {}) });
       if (kind === 'none') return none();
-      return outcome('other', { code, ...(text ? { text } : {}) });
+      return outcome('other', { code, ...(text ? { text } : {}), stored: created ? settleRefusal() : true });
     }
     if (!value) return outcome('other');
     if (operation === 'abandon' && typeof value.abandoned === 'boolean') {
       if (value.abandoned === true && typeof value.orderRef === 'string') {
-        const result = closed({ text: 'abandoned', value });
-        if (result.kind === 'closed') forgetPurchase(configuration, value.orderRef);
-        return result;
+        const result = otherOrder() ? contradiction({ copy: 'recoveryCancelled', value }) : closed({ text: 'abandoned', value });
+        const forgotten = forgetPurchase(configuration, value.orderRef);
+        return result.kind === 'contradiction' && forgotten ? { ...result, link: 'remove' } : result;
       }
       if (value.orderRef === undefined) return none();
       if (closedPaid.includes(String(value.status))) return closed({ copy: 'recoveryPaid', value });
@@ -222,11 +235,19 @@ export function checkoutContinuation(configuration: string, options: { storage?:
       const token = typeof value.token === 'string';
       const fields: Partial<CheckoutOutcome> = { value, ...(token ? {} : { text: 'limited' as const }) };
       const result = open(fields);
-      if (result.kind !== 'open') return result;
       rememberPurchase(configuration, value);
-      return { ...result, link: tokenKnown(value.orderRef) ? 'show' : 'remove', panel: created && token ? 'close' : 'open' };
+      const link = tokenKnown(value.orderRef) ? 'show' as const : 'remove' as const;
+      if (result.kind !== 'open') return { ...result, link: link === 'show' ? 'show' : 'keep' };
+      return { ...result, link, panel: created && token ? 'close' : 'open' };
     }
     return outcome('other', { value });
+
+    /** A definite refusal of every create of this key leaves no order behind, so the record no longer asks for the panel. */
+    function settleRefusal(): boolean {
+      const state = own ? creates.get(own.id) : undefined;
+      if (!own || own.ordered || own.sentAt === undefined || !state || state.inFlight > 0 || state.uncertain) return true;
+      return write({ v: 1, id: own.id });
+    }
 
     function none(): CheckoutOutcome {
       if (own?.ordered) return contradiction();
@@ -256,19 +277,27 @@ export function checkoutContinuation(configuration: string, options: { storage?:
     /** Right before a create is sent: the record and its dispatch time are stored first. */
     dispatch(): { key: string; stored: boolean } {
       begin();
-      const record = { ...(read() ?? { v: 1 as const, id: crypto.randomUUID() }), sentAt: now() };
+      const previous = read();
+      const record = { ...(previous ?? { v: 1 as const, id: crypto.randomUUID() }), sentAt: now() };
       const stored = write(record);
-      const state = creates.get(record.id) ?? { inFlight: 0 };
+      // A key from an earlier document may have a create this document never saw settle.
+      const state = creates.get(record.id) ?? { inFlight: 0, ...(previous?.sentAt !== undefined ? { uncertain: true } : {}) };
       state.inFlight += 1;
+      state.sentAt = record.sentAt;
       creates.set(record.id, state);
       return { key: record.id, stored };
     },
     /** Always after a create returned, even when its view is gone. */
-    settled(key: string): void {
+    settled(key: string, result?: ActionResult): void {
       const state = creates.get(key);
       if (!state) return;
       state.inFlight = Math.max(0, state.inFlight - 1);
       state.settledAt = now();
+      if (!result || uncertainAction(result)) state.uncertain = true;
+      // An early transport error does not end the request on the wire: it may reach the host until the request timeout.
+      if (result && !result.ok && result.code === 'starter_transport_unavailable' && state.sentAt !== undefined) {
+        state.lostUntil = Math.max(state.lostUntil ?? 0, state.sentAt + actionRequestTimeoutMs);
+      }
     },
     /** Applies a create answer to the record. */
     answer(key: string, result: ActionResult): CheckoutOutcome { begin(); return apply('create', key, result); },
