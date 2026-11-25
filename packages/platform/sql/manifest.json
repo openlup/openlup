@@ -858,9 +858,13 @@
       {
         "file": "db/platform/migrations/20261127120004_commerce_money_limits_v2.sql",
         "sha256": "8bd6651c07dd37457ccc548adedc2ae073b7be5973c7de8facddd65b776c8ce5"
+      },
+      {
+        "file": "db/platform/migrations/20261128070000_catalog_price_publication_recorder_v2.sql",
+        "sha256": "626a13497c7d32f8077ecb6ae7c16e3144350ed5d8e0c8cfefd6288853bcf74f"
       }
     ],
-    "objectInventorySha256": "5426ac0088398098cca3c79ca2057e9f565bcb55fd19d92dfc1e97ede06ab627",
+    "objectInventorySha256": "767655d4fe4b5a81148208b2e5a650a5706bb9db83ce3fb338ebf138abdcec1c",
     "qualified": {
       "baseline": {
         "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1742,14 +1746,18 @@
         {
           "file": "db/platform/migrations/20261127120004_commerce_money_limits_v2.sql",
           "sha256": "8bd6651c07dd37457ccc548adedc2ae073b7be5973c7de8facddd65b776c8ce5"
+        },
+        {
+          "file": "db/platform/migrations/20261128070000_catalog_price_publication_recorder_v2.sql",
+          "sha256": "626a13497c7d32f8077ecb6ae7c16e3144350ed5d8e0c8cfefd6288853bcf74f"
         }
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "9bbbf44403727580da1deda972ae10511865e5532a58810d03052aaddf1a1a11"
+          "withRestore": "9a5b8e4b491e4a514ebf6d145a388c3ede52019d0072a6d70e628fb27c2c3cf9"
         },
         "separateMigrator": {
-          "withRestore": "8769eb0339abd46d19aade42652440d6f949a310e6e32516c5d97934f73833c8"
+          "withRestore": "d1f19e8e80b9189993d2ccf1fa3afd9ef58eaf2ebfa12433bc9c3cc5c4333b90"
         }
       }
     },
@@ -2626,11 +2634,15 @@
         {
           "file": "db/platform/migrations/20261127120004_commerce_money_limits_v2.sql",
           "sha256": "8bd6651c07dd37457ccc548adedc2ae073b7be5973c7de8facddd65b776c8ce5"
+        },
+        {
+          "file": "db/platform/migrations/20261128070000_catalog_price_publication_recorder_v2.sql",
+          "sha256": "626a13497c7d32f8077ecb6ae7c16e3144350ed5d8e0c8cfefd6288853bcf74f"
         }
       ],
       "objectInventorySha256": {
-        "installerManaged": "271f4a6adfb5eb027793e2e3629ad6d7036bd1169ef894214344366b876f3ff9",
-        "operatorProvisioned": "1e164c219d52ad4b2631e880d7e8afb70723600ac417d7f57f625e331b129d7c"
+        "installerManaged": "d8567a62e860a72ee9564f43256424f1f28968308bf6b9ef1e6ef6f7f44a51a5",
+        "operatorProvisioned": "20143acdf3732394a88fec18091329abbf8f09e69459dad27b9930ff771c4157"
       }
     }
   },
@@ -3704,6 +3716,11 @@
       "file": "20261127120004_commerce_money_limits_v2.sql",
       "source": "db/platform/migrations/20261127120004_commerce_money_limits_v2.sql",
       "sha256": "8bd6651c07dd37457ccc548adedc2ae073b7be5973c7de8facddd65b776c8ce5"
+    },
+    {
+      "file": "20261128070000_catalog_price_publication_recorder_v2.sql",
+      "source": "db/platform/migrations/20261128070000_catalog_price_publication_recorder_v2.sql",
+      "sha256": "626a13497c7d32f8077ecb6ae7c16e3144350ed5d8e0c8cfefd6288853bcf74f"
     },
     {
       "file": "q2_00000000000000_platform_baseline.sql",

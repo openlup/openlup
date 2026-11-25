@@ -10,19 +10,20 @@ import { installAccountMutations, type AccountMutationsStore } from "./customerA
 const catalogPath = "config/platform-migration-manifest.json";
 const current = () => JSON.parse(readFileSync(catalogPath, "utf8")) as Parameters<typeof withPlatformCatalog>[0];
 const listForward = /_catalog_price_list_basis_select\.sql$/u;
-const writerForward = /_catalog_price_writer_v2\.sql$/u;
-const isOwnForward = (path: string) => listForward.test(path) || writerForward.test(path);
+const recorderForward = /_catalog_price_publication_recorder_v2\.sql$/u;
 const basisGate = "public.catalog_price_basis_gate(text)";
 const validator = "public.catalog_price_setup_v2_command_valid(jsonb)";
 const apply = "public.catalog_price_setup_apply(text,text)";
 const applyV2 = "public.catalog_price_setup_apply_v2(text,text,uuid)";
 const lockedV2 = "public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid)";
-const replaced = [apply, "public.catalog_price_setup_claim(text,text)", "public.catalog_price_setup_apply_claimed(jsonb,timestamptz)"];
+const recorder = "public.catalog_publication_record_command(jsonb)";
+const mutation = "public.catalog_price_setup_mutate_claimed(jsonb,timestamptz,jsonb)";
+const replaced = [recorder, "public.catalog_price_setup_apply_claimed(jsonb,timestamptz)"];
 const refusal = '{"reason": "command_invalid", "outcome": "validation_issue"}';
 const before = () => {
   const manifest = current();
   for (const plan of [manifest, manifest.qualified, manifest.qualifiedAdmin]) {
-    const boundary = plan.forward.findIndex(unit => listForward.test(unit.file));
+    const boundary = plan.forward.findIndex(unit => recorderForward.test(unit.file));
     expect(boundary).toBeGreaterThanOrEqual(0);
     plan.forward = plan.forward.slice(0, boundary);
   }
@@ -60,10 +61,14 @@ async function assertDormant(store: AccountMutationsStore) {
     has_column_privilege('openlup_catalog_publication','public.price_lists','name','SELECT') AS other_column,
     has_table_privilege('openlup_catalog_publication','public.price_lists','SELECT') AS whole_table,
     has_function_privilege('openlup_catalog_publication',to_regprocedure($1),'EXECUTE') AS first_execute,
-    to_regprocedure($2)::text AS second_function`, [applyV2, lockedV2])).rows[0];
+    has_function_privilege('openlup_catalog_publication',to_regprocedure($2),'EXECUTE') AS second_execute`, [applyV2, lockedV2])).rows[0];
   expect(facts).toEqual({ basis: installation.generation === "qualified-v2", write_basis: false, delegation: false,
-    other_column: false, whole_table: false, first_execute: false, second_function: null });
-  const [entry, gate, valid] = await routineAttributes(owner, [apply, basisGate, validator]);
+    other_column: false, whole_table: false, first_execute: false, second_execute: false });
+  const [entry, gate, valid, record, reader, mutate] = await routineAttributes(owner, [apply, basisGate, validator, recorder, lockedV2, mutation]);
+  expect(record).toMatchObject({ owner: entry.owner, definer: installation.generation === "qualified-v2",
+    settings: ["search_path=pg_catalog, public, pg_temp"] });
+  expect(reader).toMatchObject({ owner: entry.owner, definer: true, settings: ["search_path=pg_catalog, pg_temp"] });
+  expect(mutate).toMatchObject({ owner: entry.owner, definer: false, settings: ["search_path=pg_catalog, pg_temp"] });
   for (const helper of [gate, valid]) expect(helper).toMatchObject({
     owner: entry.owner, definer: false, settings: ["search_path=pg_catalog, pg_temp"],
   });
@@ -88,8 +93,8 @@ it.each(["legacy", "admin-managed", "bootstrap"] as const)("preserves the releas
       const released = await dormant(store);
       expect(released).toBe(refusal);
       const original = await routineAttributes(store.owner, replaced);
-      const expected = current().forward.map(unit => unit.file).filter(isOwnForward);
-      expect(expected).toHaveLength(2);
+      const expected = current().forward.map(unit => unit.file).filter(path => recorderForward.test(path));
+      expect(expected).toHaveLength(1);
       expect((await store.runner.apply()).applied.slice(0, expected.length)).toEqual(expected);
       expect(await routineAttributes(store.owner, replaced)).toEqual(original);
       expect(await dormant(store)).toBe(released);
@@ -97,7 +102,8 @@ it.each(["legacy", "admin-managed", "bootstrap"] as const)("preserves the releas
         // The legacy inventory includes cluster roles. Verify the exact grant
         // again with the sibling role after the runner has checked the inventory.
         await store.owner.query("CREATE ROLE openlup_catalog_publication LOGIN NOINHERIT");
-        await store.owner.query(readFileSync(expected[0]!, "utf8"));
+        const columnGrant = current().forward.find(unit => listForward.test(unit.file))!;
+        await store.owner.query(readFileSync(columnGrant.file, "utf8"));
       }
       await assertDormant(store);
     } finally { await store.close(); }
@@ -119,6 +125,25 @@ it("keeps fresh qualified-v2 dormant until both controlled EXECUTEs are effectiv
   } finally { await store.close(); }
 }, postgresSetupTimeoutMs);
 
+it("revokes browser default EXECUTE on the installed private price routines", async () => {
+  const store = await installAccountMutations("bootstrap", false, "price-recorder-acl");
+  const signatures = [mutation, lockedV2];
+  try {
+    const forward = current().forward.find(unit => recorderForward.test(unit.file))!;
+    const db = await store.owner.connect();
+    try {
+      await db.query("BEGIN");
+      await db.query(`DROP FUNCTION ${signatures.join(", ")};
+        ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role;`);
+      await db.query(readFileSync(forward.file, "utf8"));
+      expect((await db.query(`SELECT role, signature FROM unnest($1::text[]) r(role)
+        CROSS JOIN unnest($2::text[]) f(signature)
+        WHERE has_function_privilege(role,signature::regprocedure,'EXECUTE')`,
+      [["anon", "authenticated", "service_role", "openlup_catalog_publication"], signatures])).rows).toEqual([]);
+    } finally { await db.query("ROLLBACK"); db.release(); }
+  } finally { await store.close(); }
+}, postgresSetupTimeoutMs);
+
 it("finds no native v2 writer or gate on the managed rail", async () => {
   const managed = await runManagedCompatPostgres({ name: `price-basis-managed-${process.pid}`, password: "synthetic-managed-basis" });
   const owner = new Pool({ connectionString: managed.connectionString.replace("postgres://postgres:", "postgres://supabase_admin:") });
@@ -130,7 +155,7 @@ it("finds no native v2 writer or gate on the managed rail", async () => {
       for (const file of readdirSync("supabase/migrations").filter(name => name.endsWith(".sql")).sort()) {
         await db.query(readFileSync(`supabase/migrations/${file}`, "utf8").replace(/^\\(?:un)?restrict .*$/gmu,""));
       }
-      expect(await routineAttributes(owner, [apply, applyV2, lockedV2, basisGate, validator])).toEqual([]);
+      expect(await routineAttributes(owner, [apply, applyV2, lockedV2, mutation, recorder, basisGate, validator])).toEqual([]);
       expect((await db.query("SELECT to_regclass('public.catalog_price_setup_receipts') AS receipts")).rows).toEqual([{ receipts: null }]);
     } finally { db.release(); }
   } finally { await closePostgres(managed, owner); }

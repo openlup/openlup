@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { Pool } from "pg";
+import { DatabaseError, Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPostgresCatalogDraftStoreV4,
   createPostgresCatalogPublicationCommands, createPostgresCommerceQuoteCatalogReadPort, createCatalogProductTypeRegistry, withCatalogPublicationRules,
@@ -19,10 +19,10 @@ import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresS
 
 let pool: Pool, quotePool: Pool, authorPool: Pool, legacyPool: Pool, upgradePool: Pool, container: PostgresContainer;
 const actor = randomUUID(), otherActor = randomUUID();
-const writerForwards = (file: string) => /_catalog_price_(list_basis_select|writer_v2)\.sql$/u.test(file);
+const writerForwards = (file: string) => /_catalog_price_(list_basis_select|writer_v2|publication_recorder_v2)\.sql$/u.test(file);
 const candidateWriterMigrations: string[] = [];
 async function installWriterForwards(db: Pool) {
-  expect(candidateWriterMigrations).toHaveLength(2);
+  expect(candidateWriterMigrations).toHaveLength(3);
   for (const file of candidateWriterMigrations) await db.query(readFileSync(file, "utf8"));
 }
 function latch() {
@@ -198,7 +198,7 @@ it("commits the sealed plan, refuses revocation after issuance and replays witho
     .toEqual([{ event_type: "catalog.publication.committed" }]);
 });
 
-it("keeps the issued publication receipt byte-identical after installing the price writer", async () => {
+it("keeps the v1 replay and issued publication receipt byte-identical after the writer and recorder upgrade", async () => {
   const data = authored(199);
   await save(data, 1, data.payload, upgradePool);
   const command = await prepare(data, 1, null, upgradePool);
@@ -209,8 +209,26 @@ it("keeps the issued publication receipt byte-identical after installing the pri
     WHERE scope_id=$1 AND command_key=$2`, [data.productId, command.publish.commandKey])).rows.map(row => Buffer.from(row.result, "utf8"));
   const original = await receipts();
   expect(original).toHaveLength(1);
+  const priceListId = randomUUID();
+  await upgradePool.query(`INSERT INTO public.price_lists(id,name,region_code,currency,valid_from)
+    VALUES($1,'Gross upgrade list','ZZ','XXX',clock_timestamp()-interval '1 hour')`, [priceListId]);
+  const price = pricing.canonicalCatalogPriceSetupCommand({ schemaVersion: 1, commandKey: randomUUID(),
+    variantId: data.skuId, priceListId, mode: "one_time", minQty: 1, amountKind: "gross", unitPriceMinor: 1200,
+    expected: { entryId: null, unitPriceMinor: null } });
+  const rawPrice = () => transaction(upgradePool, async db => {
+    await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: actor, role: "authenticated" })]);
+    return Buffer.from((await db.query("SELECT public.catalog_price_setup_apply($1,$2)::text AS bytes",
+      [price, hash(price)])).rows[0].bytes, "utf8");
+  });
+  expect(JSON.parse((await rawPrice()).toString("utf8"))).toHaveProperty("outcome", "committed");
+  const originalReplay = await rawPrice();
+  expect(JSON.parse(originalReplay.toString("utf8"))).toHaveProperty("outcome", "replayed");
   await installWriterForwards(upgradePool);
   await upgradePool.query("UPDATE public.catalog_skus SET title='Live drift' WHERE id=$1", [data.skuId]);
+  await upgradePool.query("UPDATE public.price_lists SET amount_basis='tax_exclusive' WHERE id=$1", [priceListId]);
+  expect(await rawPrice()).toEqual(originalReplay);
+  expect((await upgradePool.query("SELECT count(*)::int AS prices FROM public.price_entries WHERE variant_id=$1", [data.skuId])).rows)
+    .toEqual([{ prices: 1 }]);
   api.disableRules();
   expect(await api.execute(command.publish, who)).toMatchObject({ outcome: "replayed" });
   expect(await receipts()).toEqual(original);
@@ -1461,4 +1479,168 @@ it("requires explicit adoption before a legacy issued head can carry v4 effects"
   ]) } } });
   expect(preview).not.toHaveProperty("preparation.postStateDigest");
   expect(await api.execute(initial.publish, who)).toEqual({ ...issued, outcome: "replayed" });
+});
+
+publicationTest("issues verified v2 effects and rolls them back on a deferred publication failure", async ({ publicationUrl }) => {
+  const data = authored(221);
+  const publisher = new Pool({ connectionString: publicationUrl, max: 1 });
+  const priceListId = randomUUID(), childKey = randomUUID(), unrelated = randomUUID();
+  const payload: CatalogDraftPayloadV4 = { ...data.payload, schemaVersion: 4 };
+  const sku = payload.skus[0]!;
+  sku.grossMass = { ...sku.netContent!, unscaled: "110" };
+  sku.logisticsRef = "example:logistics";
+  payload.publication.operations.push({ op: "set_sku_metadata", skuCode: data.code, logisticsRef: sku.logisticsRef });
+  await save(data, 1, payload);
+  const next = await prepare(data, 1, null);
+  await pool.query(readFileSync("tests/postgres/fixtures/catalogPricePublicationV2/grants.sql", "utf8"));
+  const { rows: priorLists } = await pool.query(`UPDATE public.price_lists SET status='draft'
+    WHERE status='active' AND region_code='ZZ' AND currency='XXX' RETURNING id`);
+  try {
+    await pool.query(`INSERT INTO public.price_lists(id,name,region_code,currency,amount_basis,valid_from)
+      VALUES($1,'Recorder list','ZZ','XXX','tax_inclusive',clock_timestamp()-interval '1 hour')`, [priceListId]);
+    await pool.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1,'writer-unrelated','Original')", [unrelated]);
+    const control = native();
+    expect(await control.execute(next.approve, (await control.authorize(actor))!)).toMatchObject({ outcome: "committed" });
+    const context = { priceListId, regionCode: "ZZ", currency: "XXX", amountBasis: "tax_inclusive", tax: null };
+    const operation = { schemaVersion: 2, commandKey: childKey, variantId: data.skuId, priceListId, mode: "one_time",
+      minQty: 1, amountKind: "gross", unitPriceMinor: 2032, expectedListAmountBasis: "tax_inclusive",
+      expected: { entryId: null as string | null, unitPriceMinor: null as number | null, amountKind: null as string | null } };
+    const seedSource = (draft: CatalogDraftPayloadV4, head: CatalogHeadRef | null, edit: typeof operation) => {
+      const source = { ...draft, publication: { ...draft.publication, evidence: { ...draft.publication.evidence, priceContext: context } },
+        skus: [{ ...draft.skus[0]!, priceOperations: [edit] }] };
+      const digest = hash(`["catalog-candidate",1,${canonicalCatalogDraftJson(source)},${canonicalCatalogDraftJson([
+        { ...draft.product.type, definitionDigest: catalogDefinitionDigest(installed) },
+      ])},${canonicalCatalogDraftJson(head)}]`);
+      return { source, digest };
+    };
+    const first = seedSource(payload, null, operation);
+    const assessment = { action: "assess_price_v2", productId: data.productId, candidateRef: next.publish.candidateRef, candidateDigest: first.digest };
+    const effects = async () => (await pool.query(`SELECT
+      (SELECT count(*)::int FROM public.catalog_skus WHERE id=$2) AS skus,
+      (SELECT jsonb_build_array(s.status,s.sellable_standalone) FROM public.catalog_skus s WHERE id=$2) AS activation,
+      (SELECT publication_id FROM public.catalog_publication_heads WHERE product_id=$1) AS head,
+      (SELECT jsonb_agg(to_jsonb(e) ORDER BY id) FROM public.price_entries e WHERE variant_id=$2) AS price_rows,
+      (SELECT count(*)::int FROM public.price_entries WHERE variant_id=$2) AS prices,
+      (SELECT count(*)::int FROM public.catalog_price_setup_receipts WHERE metadata->>'variantId'=$2::uuid::text) AS child_receipts,
+      (SELECT count(*)::int FROM public.catalog_operator_receipts WHERE scope_id=$1 AND kind='publish') AS receipts,
+      (SELECT count(*)::int FROM public.catalog_publication_heads WHERE product_id=$1) AS heads,
+      (SELECT count(*)::int FROM public.outbox_events WHERE aggregate_id=$1) AS outbox`, [data.productId, data.skuId])).rows[0];
+    function refusal(error: unknown, message: string) {
+      expect(error).toBeInstanceOf(DatabaseError);
+      expect(Object.getPrototypeOf(error)).toBe(DatabaseError.prototype);
+      expect(error).toMatchObject({ code: "23514", message, constraint: message });
+      expect(Reflect.ownKeys(error as DatabaseError).filter(key => key !== "stack" && key !== "message").sort()).toEqual([
+        "code", "column", "constraint", "dataType", "detail", "file", "hint", "internalPosition", "internalQuery", "length",
+        "line", "name", "position", "routine", "schema", "severity", "table", "where",
+      ].sort());
+    }
+    let rawIssue: string | undefined, approvalId: string | undefined, recorderError: unknown;
+    const issue = async (forceRollback: boolean, release: CatalogPublishCommand & { action: "publish" } = next.publish,
+      approvalCommand = next.approve, draft = payload, revision = 1, edit = operation) => {
+      recorderError = undefined;
+      const { source, digest: candidateDigest } = seedSource(draft, release.expectedHead, edit);
+      const api = native(async (db, sql, args) => {
+        // PR 5 routes v2 around the legacy host gate. The SQL recorder still
+        // runs its installed readiness checks for the actual price mutation.
+        if (sql === "SELECT public.commerce_offer_policy_v2_readiness() AS result") return { rows: [{ result: { ready: true } }] };
+        if (!sql.startsWith("SELECT public.catalog_publication_record_command")) return db.query(sql, args);
+        // The released host stages the fixture. Replace just the current draft's
+        // owner-seeded payload before calling the installed PB-1 recorder.
+        const packet = JSON.parse(String(args?.[0]));
+        const approval = (await db.query(`SELECT post_state_canonical_text,post_state_digest FROM public.catalog_publication_decisions
+          WHERE product_id=$1 AND command_key=$2`, [data.productId, approvalCommand.commandKey])).rows[0];
+        await db.query("ALTER TABLE public.catalog_draft_revisions DISABLE TRIGGER catalog_draft_revisions_immutable");
+        await db.query("UPDATE public.catalog_draft_revisions SET payload=$1 WHERE draft_id=$2 AND revision=$3", [source, data.draftId, revision]);
+        await db.query("ALTER TABLE public.catalog_draft_revisions ENABLE TRIGGER catalog_draft_revisions_immutable");
+        await db.query("SET LOCAL SESSION AUTHORIZATION openlup_catalog_publication");
+        const record = (body: unknown) => db.query(sql, [JSON.stringify(body)]);
+        try {
+          await record({ ...approvalCommand, candidateDigest, commandKey: randomUUID(),
+            postStateText: approval.post_state_canonical_text, postStateDigest: approval.post_state_digest });
+          const storedId = (await db.query("SELECT id FROM public.catalog_publication_decisions WHERE product_id=$1 AND candidate_digest=$2",
+            [data.productId, candidateDigest])).rows[0].id;
+          if (typeof storedId !== "string") throw new Error("Missing approval ID");
+          approvalId = storedId;
+          const publish = { ...packet, candidateDigest, approvalId, fingerprint: hash(canonicalCatalogDraftJson([
+            { schemaVersion: 2, ...release, candidateDigest }, actor,
+          ])) };
+          if (!forceRollback && revision === 1) {
+            await db.query("SAVEPOINT wrong_seal");
+            const error = await record({ ...publish, skus: [{ ...packet.skus[0], title: "Unapproved facts" }] }).catch(reason => reason);
+            refusal(error, "catalog_publication_post_state_changed");
+            await db.query("ROLLBACK TO SAVEPOINT wrong_seal; RELEASE SAVEPOINT wrong_seal");
+          }
+          const result = await record(publish);
+          const storedIssue = result.rows[0].result;
+          if (typeof storedIssue !== "string") throw new Error("Missing raw issue receipt");
+          rawIssue = storedIssue;
+          if (forceRollback) expect((await db.query("UPDATE public.catalog_products SET name='Unbound' WHERE id=$1 RETURNING id",
+            [unrelated])).rows).toEqual([{ id: unrelated }]);
+          return result;
+        } catch (error) { recorderError = error; throw error; }
+      });
+      return api.execute(release, (await api.authorize(actor))!);
+    };
+    const before = await effects();
+    expect(await issue(true)).not.toMatchObject({ outcome: "committed" });
+    expect(rawIssue, String(recorderError)).toEqual(expect.any(String));
+    expect(recorderError).toBeUndefined();
+    expect(await effects()).toEqual(before);
+    expect((await pool.query("SELECT name FROM public.catalog_products WHERE id=$1", [unrelated])).rows)
+      .toEqual([{ name: "Original" }]);
+    const issued = await issue(false);
+    expect(issued, String(recorderError)).toMatchObject({ outcome: "committed", receipt: { schemaVersion: 3 } });
+    if (!("receipt" in issued && "head" in issued.receipt)) throw new Error("Missing governed head");
+    expect(await effects()).toMatchObject({ skus: 1, prices: 1, child_receipts: 1, receipts: 1, heads: 1, outbox: 1 });
+    await transaction(publisher, async db => {
+      await db.query("SET TRANSACTION READ ONLY");
+      await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: actor, role: "authenticated" })]);
+      const { rows } = await db.query("SELECT public.catalog_publication_record_command($1) AS verdict", [assessment]);
+      expect(rows[0].verdict).toBe(canonicalCatalogDraftJson(JSON.parse(rows[0].verdict)));
+      expect(JSON.parse(rows[0].verdict)).toMatchObject({ priceListId, regionCode: "ZZ", currency: "XXX",
+        amountBasis: "tax_inclusive", targets: [{ skuId: data.skuId, reason: "expected_state_mismatch" }] });
+    });
+    await transaction(publisher, async db => {
+      await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: actor, role: "authenticated" })]);
+      const { rows } = await db.query("SELECT * FROM public.catalog_publication_lock_effective_base_price_v2($1,$2,$3)",
+        [data.skuId, priceListId, approvalId]);
+      expect(rows).toEqual([{ id: expect.any(String), unit_price_minor: operation.unitPriceMinor, amount_kind: "gross" }]);
+      expect((await db.query("SELECT public.catalog_publication_assert_receipt($1,$2) AS receipt",
+        [data.productId, next.publish.commandKey])).rows[0].receipt).toBe(rawIssue);
+    });
+    const revised = structuredClone(payload);
+    const membership = { skuCode: data.code, admitted: true, offerVersion: "example:open" };
+    revised.product.sharedContent.catalogAction = "revise";
+    revised.product.sharedContent.requestedModes = [{ skuCode: data.code, modes: ["one_time"] }];
+    revised.product.sharedContent.offerMemberships = [membership];
+    revised.publication.operations = [
+      { op: "set_product_lifecycle", productSlug: data.slug, expectedState: "draft", state: "active", children: [] },
+      { op: "set_sku_lifecycle", skuCode: data.code, expectedState: "draft", state: "active" },
+      { op: "set_eligibility", skuCode: data.code, sellableStandalone: true, sellableInSubscription: false },
+      { op: "set_offer_membership", ...membership },
+    ];
+    await pool.query(`INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from)
+      VALUES($1,$2,'subscription',1800,clock_timestamp()-interval '1 hour')`, [priceListId, data.skuId]);
+    await save(data, 2, revised);
+    const activation = await prepare(data, 2, issued.receipt.head);
+    expect(await control.execute(activation.approve, (await control.authorize(actor))!)).toMatchObject({ outcome: "committed" });
+    const publish = { ...activation.publish, changes: [{ variantId: data.skuId, expectedRevision: 1, state: "active" }] } as const;
+    const beforeActivation = await effects();
+    await issue(false, publish, activation.approve, revised, 2);
+    refusal(recorderError, "catalog_publication_price_edit_required");
+    expect(await effects()).toEqual(beforeActivation);
+    const { rows: [current] } = await pool.query("SELECT id FROM public.price_entries WHERE variant_id=$1 AND mode='one_time' AND active", [data.skuId]);
+    const edit = { ...operation, unitPriceMinor: 2100, commandKey: randomUUID(),
+      expected: { entryId: current.id, unitPriceMinor: operation.unitPriceMinor, amountKind: operation.amountKind } };
+    const activated = await issue(false, publish, activation.approve, revised, 2, edit);
+    expect(activated, String(recorderError)).toMatchObject({ outcome: "committed", receipt: { head: { revision: 2 } } });
+    expect(await effects()).toMatchObject({ skus: 1, activation: ["active", true], prices: 3, child_receipts: 2, receipts: 2, heads: 1, outbox: 2 });
+    expect((await pool.query(`SELECT previous.valid_to=live.valid_from AS shared_instant
+      FROM public.price_entries previous JOIN public.price_entries live USING(variant_id,price_list_id,mode)
+      WHERE previous.id=$1 AND live.active`, [current.id])).rows).toEqual([{ shared_instant: true }]);
+  } finally {
+    await pool.query("UPDATE public.price_lists SET status='draft' WHERE id=$1", [priceListId]);
+    await pool.query("UPDATE public.price_lists SET status='active' WHERE id=ANY($1::uuid[])", [priorLists.map(row => row.id)]);
+    await publisher.end();
+  }
 });
