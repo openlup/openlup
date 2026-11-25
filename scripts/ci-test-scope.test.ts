@@ -678,8 +678,8 @@ describe('PostgreSQL AST closure soundness', () => {
             if (segs.length > 0) {
               addRepoPath(posix.normalize(segs.join('/')), true);
               const selfDir = posix.dirname(rel);
-              const fromSelf = posix.normalize(posix.join(selfDir, ...segs));
-              if (!fromSelf.startsWith('..') && !fromSelf.startsWith('/') && fromSelf !== '.' && fromSelf !== 'tests' && fromSelf !== selfDir) {
+              const fromSelf = posix.normalize(posix.join(selfDir, ...segs)).replace(/\/+$/u, '');
+              if (fromSelf && !fromSelf.startsWith('..') && !fromSelf.startsWith('/') && fromSelf !== '.' && fromSelf !== 'tests' && fromSelf !== selfDir) {
                 if (isFile(fromSelf)) pathLiterals.add(fromSelf);
                 else if (isDir(fromSelf)) pathLiterals.add(`${fromSelf}/`);
               }
@@ -753,6 +753,9 @@ describe('PostgreSQL AST closure soundness', () => {
         violations.push(`${testPath}: listed in TOOLING_INPUTS but missing on disk`);
         continue;
       }
+      if (declaredInputs.some(input => input.includes('//'))) {
+        violations.push(`${testPath}: contains unnormalized '//' path entry`);
+      }
       if (declaredInputs.includes('tests/postgres/')) {
         violations.push(`${testPath}: must not use broad 'tests/postgres/' prefix`);
       }
@@ -761,6 +764,9 @@ describe('PostgreSQL AST closure soundness', () => {
       }
       const closureDeps = collectClosure(testPath, { stopAtPackages: declaredInputs.includes('packages/') });
       for (const dep of closureDeps) {
+        if (dep.includes('//')) {
+          violations.push(`${testPath}: AST closure emitted unnormalized '//' path ${dep}`);
+        }
         if (isGlobalBailout(dep)) continue;
         if (!declaredInputs.some(input => covers(input, dep))) {
           violations.push(`${testPath}: missing declared input covering ${dep}`);
@@ -799,6 +805,8 @@ describe('PostgreSQL AST closure soundness', () => {
       'const fixture = new URL("./sameDirFixture.sql", import.meta.url);',
       'const mod = await tsImport("./sameDirHelper.ts", import.meta.url);',
       'const sub = resolve(__dirname, "sub", "data.sql");',
+      'const subDir = resolve(__dirname, "sub/");',
+      'const joined = ["a", "b"].join("/");',
     ].join('\n'));
     const { collectClosure } = createAstClosureScanner(dir);
     const deps = collectClosure('tests/postgres/falsifier.test.ts', { stopAtPackages: false });
@@ -806,6 +814,9 @@ describe('PostgreSQL AST closure soundness', () => {
     expect(deps).toContain('tests/postgres/sameDirHelper.ts');
     expect(deps).toContain('tests/postgres/sameDirFixture.sql');
     expect(deps).toContain('tests/postgres/sub/data.sql');
+    expect(deps).toContain('tests/postgres/sub/');
+    expect(deps.some(dep => dep.includes('//'))).toBe(false);
+    expect(deps).not.toContain('tests/postgres/');
     expect(deps).toContain('packages/demo/src/index.ts');
     expect(deps).toContain('packages/demo/src/impl.ts');
     expect(deps).toContain('docs/platform/DATA_AND_MIGRATIONS.md');
