@@ -929,3 +929,83 @@ it("attaches acceptance to a customer quote through the service owner and binds 
   expect(await retainedAcceptance(owner.id)).toEqual([{ catalog_acceptance: owner.issued,
     catalog_sku_revision_id: owner.issued.lines[0].skuRevisionId }]);
 });
+
+function plantExcludedCatalogueFields(node: unknown): void {
+  if (Array.isArray(node)) {
+    node.forEach(plantExcludedCatalogueFields);
+  } else if (node && typeof node === "object") {
+    Object.values(node).forEach(plantExcludedCatalogueFields);
+    Object.assign(node, { excluded: { payload: [{ Total: "opaque", subtotal: 18 }] },
+      "tax-net": "18", PayableValue: 19, flatMinor: 301, freeThresholdMinor: 302 });
+  }
+}
+
+it("projects bound catalogue acceptance with all admission branches and rejects a damaged roster", async () => {
+  const reference = acceptance.lines[0]!, { publicationHead, typeRef, netContent } = reference;
+  const digest = "a".repeat(64), priceEvidenceRef = `price.v1:${digest}`, policyEvidenceRef = `policy.v1:${digest}`;
+  const binding = { sourceOrdinal: 1, lineKey: "original-line", skuId: reference.skuId, skuCode: reference.skuCode,
+    mode: "subscription", quantity: 1, role: "core", source: "retained", skuRevisionId: reference.skuRevisionId } as const;
+  const { skuRevisionId: _legacyRevision, ...legacyBinding } = binding;
+  const admission = { quoteRef: '{"totalMinor":253}', quoteDigest: digest, moneyVersion: "v0",
+    priceEvidenceRef, policyEvidenceRef, acceptanceTokenDigest: digest,
+    consultedHeads: [{ productId: data.productId, ...publicationHead }], offer: { ref: "offer:fixture", version: "v1" },
+    lineBindings: [binding], legacyReviewEvidence: { identityComparison: "equal", priceEvidenceRef, policyEvidenceRef,
+      priorPriceEvidenceRef: priceEvidenceRef, priorPolicyEvidenceRef: policyEvidenceRef },
+    destinationRef: "destination:fixture", destinationDigest: digest, graduation: { phaseDigest: digest, lineBindings: [
+      { ...legacyBinding, source: "legacy" },
+    ] } } satisfies NonNullable<CatalogAcceptanceV2["admission"]>;
+  const issued = { ...acceptance, admission };
+  const owner = await acceptedPurchase({ issued });
+  const store = createPostgresRenewalStore(runtime, codec);
+  const claim = await store.claimDue({ snapshot: await store.buildCycleSnapshots(owner.schedule), workerId: "catalog-reader", now: new Date().toISOString() });
+  expect(claim).toMatchObject({ acquired: true, catalogAcceptance: issued });
+  const pair = [claim.operationId, claim.operationId], sql = "SELECT public.subscription_read_frozen_renewal_generation($1::uuid,$2::uuid) AS projection";
+  const positive = (await runtime.query(sql, pair)).rows[0].projection;
+  const expectedBinding = { lineKey: binding.lineKey, skuId: binding.skuId, skuCode: binding.skuCode,
+    mode: binding.mode, role: binding.role, source: binding.source, skuRevisionId: binding.skuRevisionId };
+  const { skuRevisionId: _revision, ...legacyExpected } = expectedBinding;
+  expect(positive.catalogAcceptance).toEqual({
+    lines: [{ skuId: reference.skuId, skuCode: reference.skuCode, skuRevisionId: reference.skuRevisionId,
+      publicationHead: { publicationId: publicationHead.publicationId, documentDigest: publicationHead.documentDigest },
+      typeRef: { key: typeRef.key }, netContent: { dimension: netContent.dimension, unscaled: netContent.unscaled, unit: netContent.unit },
+      definitionDigest: reference.definitionDigest, optionDigest: reference.optionDigest,
+      ...(reference.demandPolicyRef === undefined ? {} : { demandPolicyRef: reference.demandPolicyRef }) }],
+    admission: { ...admission, consultedHeads: [{ productId: data.productId, publicationId: publicationHead.publicationId, documentDigest: publicationHead.documentDigest }],
+      lineBindings: [expectedBinding], graduation: { phaseDigest: digest, lineBindings: [{ ...legacyExpected, source: "legacy" }] } },
+  });
+
+  await rolledBack(async db => {
+    await db.query("ALTER TABLE public.subscription_renewal_operations DISABLE TRIGGER subscription_renewal_operations_catalog_acceptance_admit");
+    const change = async (statement: string, value: string) => {
+      await db.query("RESET ROLE");
+      expect((await db.query(statement, [claim.operationId, value])).rowCount).toBe(1);
+      await db.query("SET LOCAL ROLE catalog_runtime");
+      return (await db.query(sql, pair)).rows[0].projection;
+    };
+    const fingerprint = "b".repeat(64);
+    expect(claim.operationFingerprint).not.toBe(fingerprint);
+    expect(await change("UPDATE public.subscription_renewal_operations SET catalog_acceptance_fingerprint=$2 WHERE id=$1", fingerprint))
+      .toEqual({ ...positive, catalogAcceptance: null });
+    await db.query("RESET ROLE");
+    await db.query("UPDATE public.subscription_renewal_operations SET catalog_acceptance_fingerprint=operation_fingerprint WHERE id=$1", [claim.operationId]);
+    const planted = structuredClone(issued);
+    plantExcludedCatalogueFields(planted);
+    const replace = "UPDATE public.subscription_renewal_operations SET catalog_acceptance=$2 WHERE id=$1";
+    expect(await change(replace, JSON.stringify(planted))).toEqual(positive);
+    const optional = structuredClone(planted);
+    Object.assign(optional.admission, { destinationDigest: [248] });
+    Object.assign(optional.admission.legacyReviewEvidence, { identityComparison: "unavailable" });
+    Object.assign(optional.admission.graduation.lineBindings[0]!, { skuRevisionId: reference.skuRevisionId });
+    const expectedOptional = structuredClone(positive);
+    delete expectedOptional.catalogAcceptance.admission.destinationRef;
+    delete expectedOptional.catalogAcceptance.admission.destinationDigest;
+    const review = expectedOptional.catalogAcceptance.admission.legacyReviewEvidence;
+    review.identityComparison = "unavailable";
+    delete review.priorPriceEvidenceRef;
+    delete review.priorPolicyEvidenceRef;
+    expect(await change(replace, JSON.stringify(optional))).toEqual(expectedOptional);
+    Object.assign(planted.lines[0]!.publicationHead, { documentDigest: { planted: 349 } });
+    expect(await change(replace, JSON.stringify(planted))).toEqual({ ...positive, catalogAcceptance: null });
+  });
+  expect((await runtime.query(sql, pair)).rows[0].projection).toEqual(positive);
+});

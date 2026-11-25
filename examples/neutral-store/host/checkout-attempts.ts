@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { NativeCheckoutQuery } from '@openlup/platform/commerce/server/native-checkout';
 import { isRecord } from '../shared/offer.ts';
 import type { StoreConfig } from '../shared/config.ts';
@@ -49,6 +49,18 @@ export async function admitCheckoutAttempt(check: CheckoutRateLimit, ...input: P
     return result?.allowed === true && result.reason === undefined
       && Object.keys(result).every(key => key === 'allowed' || key === 'reason');
   } catch { return false; }
+}
+
+/** One ledger entry per repeat of an existing checkout, counted in a separate
+ * requester bucket and for the derived checkout key; never for the buyer's e-mail.
+ * `key` is the host-derived key, never the header value. Fails closed like
+ * {@link admitCheckoutAttempt}. */
+export function admitCheckoutReplay(check: CheckoutRateLimit, request: Parameters<CheckoutRateLimit>[0],
+  key: string): Promise<boolean> {
+  const { requesterKey } = request;
+  return admitCheckoutAttempt(check, { ...request,
+    ...(typeof requesterKey === 'string' && hex(requesterKey) ? { requesterKey: hash(`replay:${requesterKey}`) } : {}) },
+  { idempotencyKey: `${key}:replay:${randomUUID()}`, contact: { email: `replay:${key}` } }, 0);
 }
 
 /** Host identity binding remains in force when the quota callback is replaced.

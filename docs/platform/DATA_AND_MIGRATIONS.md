@@ -137,6 +137,27 @@ These forwards use the reviewed default-ACL preimage for the two base functions.
 An installation with an explicit ACL on either base function requires separate
 review before applying the ACL forward.
 
+## Checkout abandonment predicate grant
+
+The [grant forward](../../db/platform/migrations/20261128230001_checkout_abandonment_safety_execute_grant.sql)
+creates `public.commerce_checkout_abandonment_safe_runtime(uuid)`, a
+`SECURITY DEFINER` entry with a pinned `search_path` that returns
+`public.commerce_initial_checkout_abandonment_safe(uuid)` unchanged. It revokes
+the entry from PUBLIC, `anon` and `authenticated` and grants EXECUTE to
+`service_role` where that role exists. The predicate keeps its definition and
+ACL: it was created inside the native store class, by
+`20261110100000_checkout_recovery_waves.sql`, so the grant-only rail, which
+admits only base-chain functions, does not apply, and the catalog boundary
+refuses an ACL change on a replaced function. A created function may carry the
+closed `service_role` grant. A qualified runtime login inherits that grant and
+evaluates the sweep's predicate before it asks for a buyer-requested
+cancellation; calling the predicate directly still refuses. The migration
+ledger applies the forward once. Repeating its grant blocks, applying it
+without `service_role`, or replacing the predicate later leaves the entry and
+its grants as they were; the
+[grant witness](../../tests/postgres/checkoutAbandonmentSafetyGrant.test.ts)
+covers each case.
+
 ## Native renewal stock protection
 
 The [renewal credit aggregation forward](../../db/platform/migrations/20261123147000_inventory_atp_aggregate_renewal_credits.sql)
@@ -217,6 +238,20 @@ before enabling database adapters. It is not evidence of schema compatibility.
 Frozen historical record (2026-11-13) archived in [Data and migrations evidence](history/data-and-migrations-evidence-2026-11-13.md#data-ownership-archived-evidence).
 
 ## Retained renewal storage
+
+`public.subscription_read_frozen_renewal_generation(uuid,uuid)` reads the original UTC anchor
+and frozen agreement by operation and commercial generation. Existing operations use their
+row UUID for both coordinates. The [projection contract](../../tests/postgres/subscriptionPublicRenewalFixture.ts)
+pins the exact keys, types and optional members. Unavailable scalar fields and singular
+objects are null. A missing required line member makes `lines` null, and missing retained
+line provenance yields an empty array. The roster requires the stored acceptance fingerprint
+to match the operation fingerprint. `cycleNumber` is the persisted operation counter as a
+JSON string. Only line unit amount, flat shipping and free shipping threshold are JSON
+numbers. Treat returned strings as opaque in money calculations and resolve retained provenance
+through its owners. Use the persisted claim identity key for
+legacy readback. Recover both coordinates after an invalid or mismatched pair. For an absent
+root, check the installation and recover the original pair. Use the installed server role for
+permission refusals.
 
 The subscription-notice forward preserves the reminder ledger's renewal-day
 identity and stores new queued charge facts in `subscription_reminder_ledger.renewal_at`;

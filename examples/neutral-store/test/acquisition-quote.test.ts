@@ -15,7 +15,7 @@ import { composePurchaseCapabilities } from '../host/purchase-composition.ts';
 import { createNativeQuoteService, quoteDocumentVerifier, quoteFailure } from '../host/quote-composition.ts';
 import { quoteRefusalCopy, isQuoteRefusalCode } from '../owned/quote-copy.ts';
 import { createAcquisitionRenewalBinding, type AcquisitionPredecessors } from '../host/acquisition-predecessors.ts';
-import { validateCart } from '../shared/offer.ts';
+import { isRecord, validateCart } from '../shared/offer.ts';
 import { assertConfig } from '../shared/config.ts';
 import { range } from '../shared/policy.ts';
 
@@ -272,13 +272,15 @@ test(`authenticated completed order read and receipt replay survive ${narrowing}
 }
 
 test('expired stamped checkout replays the saved pending and completed purchase', async () => {
-  const { createHash } = await import('node:crypto');
+  const { createHash, randomUUID } = await import('node:crypto');
   const { canonicalCatalogDraftJson } = await import('@openlup/platform/catalog');
   const { pricingPolicy } = await import('../host/quote-composition.ts');
   const digest = (value: unknown) => createHash('sha256').update(canonicalCatalogDraftJson(value)).digest('hex');
   const actor = { ...context.actor, principalRef: '00000000-0000-4000-8000-000000000001',
     customerRef: '00000000-0000-4000-8000-000000000002', requesterKey: 'a'.repeat(64) };
-  const key = 'checkout:' + createHash('sha256').update(JSON.stringify([actor.principalRef, context.commandKey])).digest('hex');
+  // A version 4 key has a continuation, so a changed payload is named instead of conflicting.
+  const keyed = { ...context, actor, commandKey: randomUUID() as string };
+  const key = 'checkout:' + createHash('sha256').update(JSON.stringify([actor.principalRef, keyed.commandKey])).digest('hex');
   const checkout = { configuration: payload.configuration, country: payload.country, termsRevision: payload.termsRevision,
     firstName: payload.firstName, lastName: payload.lastName, phone: payload.phone, line1: payload.line1, line2: null,
     city: payload.city, postalCode: payload.postalCode, email: payload.email, purchaser: actor.customerRef };
@@ -292,8 +294,9 @@ test('expired stamped checkout replays the saved pending and completed purchase'
     lines: [{ ...cart.lines[0]!, productSlug: config.offer.products[0]!.slug, unitPriceGross: money, lineSubtotalGross: money, tax }],
     subtotalGross: money, netTotal: money, taxTotal: tax.vatAmount, discountTotalGross: tax.vatAmount, totalGross: money,
     context: { mode: 'subscription' as const, cadenceDays: cart.cadenceDays, promoCodes: [], starterRequest: digest(request), acquisitionTerms } } };
-  const issuer = createPromotionQuoteAcceptance<typeof request>({ projectRequest: value => value });
-  const signed = { request, quote: snapshot.quote, acquisitionTerms, keyring: { current: 'fixture-only-acceptance-key-00000000000000' } };
+  const issuer = createPromotionQuoteAcceptance<typeof request & { pricePolicyBasis?: null[] }>({ projectRequest: value => value });
+  const keyring = { current: 'fixture-only-acceptance-key-00000000000000' };
+  const signed = { request, quote: snapshot.quote, acquisitionTerms, keyring };
   const token = issuer.issuePromotionQuoteAcceptance({ ...signed, now: new Date('2026-01-01T00:00:00.000Z') })!;
   assert.equal(issuer.verifyPromotionQuoteAcceptanceWithOutcome({
     ...signed, token, expectedTotal: money, now: new Date('2026-01-05T00:00:00.000Z'),
@@ -311,6 +314,8 @@ test('expired stamped checkout replays the saved pending and completed purchase'
     'subscription_declare_provisional_activation','commerce_open_settlement_intent'];
   const effects: string[] = [], unexpected: string[] = [], receiptCalls: unknown[][] = [];
   let stockFailure: unknown;
+  let receiptMismatch = false;
+  let receiptExpired = false;
   let savedQuoteChecks = 0;
   const query = async (sql: string, args: unknown[] = []) => {
     if (sql.includes('SELECT email')) return { rows: [{ email: payload.email }] };
@@ -318,7 +323,8 @@ test('expired stamped checkout replays the saved pending and completed purchase'
     if (sql.includes('commerce_order_draft_receipts')) return { rows: [stored] };
     if (sql.includes('catalog_admission_replay_order_draft')) {
       receiptCalls.push(args);
-      if (args[3] !== stored.submit.submitDigest) throw Object.assign(new Error('receipt conflict'), { code: '23505' });
+      if (receiptExpired) throw Object.assign(new Error('commerce_order_draft_expired'), { code: '40001' });
+      if (receiptMismatch || args[3] !== stored.submit.submitDigest) throw Object.assign(new Error('receipt conflict'), { code: '23505' });
       return { rows: [] };
     }
     if (sql.includes('initial_checkout')) return { rows: [{ initial_checkout: true }] };
@@ -334,28 +340,73 @@ test('expired stamped checkout replays the saved pending and completed purchase'
   const predecessors = { ...unavailable, checkout: () => ({ async createOrderDraft() { assert.fail('Draft already exists'); } }) };
   const renewal = { assertAvailable(saved: unknown) { savedQuoteChecks++; assert.equal(saved,snapshot); },
     async activate() { assert.fail('Purchase has not been paid'); } };
-  const actions = composePurchaseCapabilities(db,{} as never,async () => ({ allowed: true }),{} as never,{ predecessors, renewal });
-  const replay = (input: Record<string, unknown>) => actions['checkout.create']!(input,{ ...context, actor });
+  const issued: string[] = [];
+  let issueFailure = false;
+  const recovery = { tokens: { async issue(input: { rawToken: string }) {
+    if (issueFailure) throw new Error('checkout_recovery_storage_failed');
+    issued.push(input.rawToken); return '00000000-0000-4000-8000-000000000009';
+  },
+    async readExpiry() { return '2099-01-02T00:00:00.000Z'; } }, async deliver() { assert.fail('A repeat never sends mail'); } };
+  const metered: unknown[][] = [];
+  const limiter = async (...input: unknown[]) => { metered.push(input); return { allowed: true }; };
+  const actions = composePurchaseCapabilities(db,{} as never,limiter,recovery as never,{ predecessors, renewal, keyring });
+  const replay = (input: Record<string, unknown>, at = keyed) => actions['checkout.create']!(input,at);
   const input = { ...original, quoteAcceptance: token };
+  // A repeat without the reviewed total is a changed payload under a continuable key.
   const { expectedTotal: _expectedTotal, ...withoutTotal } = input;
-  assert.deepEqual(await replay(withoutTotal), { ok: false, code: 'starter_command_conflict' });
-  for (const changed of [{ termsAccepted: false }, { quoteAcceptance: token + 'a' }, { expectedTotal: { ...money, amountMinor: 1001 } },
+  assert.deepEqual(await replay(withoutTotal), { ok: false, code: 'starter_checkout_changed' });
+  // A validly signed acceptance for different terms is a changed payload, not a corrupted one.
+  const otherTerms = issuer.issuePromotionQuoteAcceptance({ ...signed, request: { ...request, pricePolicyBasis: [null] },
+    quote: { ...snapshot.quote, totalGross: { ...money, amountMinor: money.amountMinor + 1 } } })!;
+  for (const changed of [{ termsAccepted: false }, { quoteAcceptance: token + 'a' }, { quoteAcceptance: otherTerms }, { expectedTotal: { ...money, amountMinor: 1001 } },
     { cart: { ...cart, cadenceDays: cart.cadenceDays! + 1 } }, { termsRevision: 'different-terms' }]) {
-    assert.deepEqual(await replay({ ...input, ...changed }),{ ok: false,code: 'starter_command_conflict' });
+    assert.deepEqual(await replay({ ...input, ...changed }),{ ok: false,code: 'starter_checkout_changed' });
   }
   assert.deepEqual(effects,[]);
   assert.equal(savedQuoteChecks,0);
-  assert.equal(receiptCalls.length,6);
-  assert.ok(receiptCalls.every(args => args[0] === key && args[1] === actor.customerRef && args[2] === scope.lane
-    && args[3] !== submit.submitDigest && args[3] !== stored.fingerprint));
+  assert.equal(receiptCalls.length,0);
+  assert.equal(metered.length,7);
+  assert.ok(metered.every(([, intent]) => (intent as { contact: { email: string } }).contact.email === `replay:${key}`));
+  // A key that is not a version 4 UUID has no continuation and keeps the released conflict.
+  assert.deepEqual(await replay(input,{ ...keyed, commandKey: 'fictional-command-0001' }),{ ok: false,code: 'starter_command_conflict' });
+  assert.equal(receiptCalls.length,1);
+  receiptCalls.length = 0;
+  // An equal digest still checks receipt integrity.
+  receiptMismatch = true;
+  assert.deepEqual(await replay(input),{ ok: false,code: 'starter_command_conflict' });
+  receiptMismatch = false;
+  // An invalidated draft receipt is a closed order under a continuable key; other keys keep the released code.
+  receiptExpired = true;
+  assert.deepEqual(await replay(input),{ ok: false,code: 'starter_checkout_not_payable' });
+  assert.deepEqual(await replay(input,{ ...keyed, commandKey: 'fictional-command-0001' }),{ ok: false,code: 'commerce_order_draft_expired' });
+  receiptExpired = false;
+  receiptCalls.length = 0;
+  assert.equal(issued.length,0);
+  const withToken = (result: Awaited<ReturnType<typeof replay>>) => {
+    assert.ok(result.ok && isRecord(result.value) && typeof result.value.token === 'string', JSON.stringify(result));
+    assert.equal(result.value.token, issued.at(-1));
+    const { token: _token, ...value } = result.value;
+    return { ...result, value };
+  };
   const response = { ok: true,value: { orderRef: stored.id,status: stored.status,total: money },replayed: true };
-  assert.deepEqual(await replay(input),response);
+  assert.deepEqual(withToken(await replay(input)),response);
   assert.deepEqual(effects,resumable);
   stored.completed = true;
-  assert.deepEqual(await replay(input),response);
+  assert.deepEqual(withToken(await replay(input)),response);
   assert.deepEqual(effects,resumable);
-  assert.deepEqual(receiptCalls.slice(-2),Array.from({ length: 2 }, () => [key, actor.customerRef, scope.lane, submit.submitDigest]));
+  // A refreshed acceptance for the same stored terms is the same intent.
+  const refreshed = issuer.issuePromotionQuoteAcceptance({ ...signed, request: { ...request, pricePolicyBasis: [null] } })!;
+  assert.notEqual(refreshed, token);
+  assert.deepEqual(withToken(await replay({ ...input, quoteAcceptance: refreshed })),response);
+  assert.deepEqual(effects,resumable);
+  assert.equal(issued.length,3);
+  assert.deepEqual(receiptCalls,Array.from({ length: 3 }, () => [key, actor.customerRef, scope.lane, submit.submitDigest]));
   assert.equal(savedQuoteChecks,1);
+  // A repeat whose link cannot be issued re-reads the order once and changes nothing.
+  issueFailure = true;
+  assert.deepEqual(await replay(input),{ ok: false,code: 'starter_purchase_unavailable' });
+  issueFailure = false;
+  assert.deepEqual(effects,resumable);
   stored.completed = false;
   const message = 'fulfillment_stock_current_idempotency_conflict';
   const outcomes = [];
@@ -384,12 +435,15 @@ test('expired stamped checkout replays the saved pending and completed purchase'
   stored.snapshot = { ...snapshot, quote: { ...snapshot.quote, context: legacyQuoteContext } };
   effects.length = 0;
   stockFailure = undefined;
-  assert.deepEqual(await replay({ ...legacy, expectedTotal: money }), { ok: false, code: 'starter_command_conflict' });
-  assert.deepEqual(await replay(legacy), response);
+  // Adding a total to a draft stored without one changes the payload: named under a continuable key.
+  assert.deepEqual(await replay({ ...legacy, expectedTotal: money }), { ok: false, code: 'starter_checkout_changed' });
+  assert.deepEqual(await replay({ ...legacy, expectedTotal: money }, { ...keyed, commandKey: 'fictional-command-0001' }),
+    { ok: false, code: 'starter_command_conflict' });
+  assert.deepEqual(withToken(await replay(legacy)), response);
   assert.deepEqual(effects, resumable.filter(step => step !== 'subscription_declare_provisional_activation'));
   stored.completed = true;
   effects.length = 0;
-  assert.deepEqual(await replay(legacy), response);
+  assert.deepEqual(withToken(await replay(legacy)), response);
   assert.deepEqual(effects, []);
   assert.deepEqual(unexpected,[]);
 });
