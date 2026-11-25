@@ -101,10 +101,10 @@ export async function bindDestinationOrder(pool: Pool, ctx: Context, issued: Iss
     expect(await registerDestination(db, ctx, order, issued)).toEqual(issued.binding);
     return order;
   }, key);
-  // The fence refuses a visibility change before the read runs, and its retry hint asks the caller to repeat the
-  // same key once; this file's own concurrent writers can move the probed snapshot under load.
+  // The fence compares cluster-wide snapshots before the read runs, so any concurrent transaction can produce this
+  // refusal; its hint asks the caller to retry with the same idempotency key, and this fixture retries once.
   return bind().catch((error: unknown) => {
-    if ((error as { code?: unknown } | null)?.code !== "40001") throw error;
+    if (!(error instanceof Error) || error.message !== "catalog_admission_visibility_changed") throw error;
     return bind();
   });
 }
