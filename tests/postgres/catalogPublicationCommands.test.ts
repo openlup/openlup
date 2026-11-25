@@ -1888,6 +1888,7 @@ publicationTest("issues verified v2 effects and rolls them back on a deferred pu
       await db.query(recordSql, [{ ...approvalPacket, commandKey: decisionKey, candidateDigest }]);
       const { rows: [{ id: approvalId }] } = await db.query(`SELECT id FROM public.catalog_publication_decisions
         WHERE product_id=$1 AND command_key=$2`, [data.productId, decisionKey]);
+      if (typeof approvalId !== "string") throw new Error("Missing saved price-only approval ID");
       const packet = { action: "publish", productId: data.productId, candidateRef: approvalPacket.candidateRef,
         candidateDigest, commandKey: publishKey, expectedHead: head, changes: [] };
       return { ...packet, fingerprint: hash(canonicalCatalogDraftJson([{ schemaVersion: 2, ...packet }, actor])),

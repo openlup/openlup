@@ -117,9 +117,9 @@ it.each(["legacy", "admin-managed", "bootstrap"] as const)("preserves the releas
 
 it("replays populated v1 receipts byte for byte through runtime logins after the runner applies the recorder forward", async () => {
   const predecessor = before();
-  // Measured on the installed qualified predecessor before introducing the recorder forward.
+  // The installed qualified predecessor ends at the renewal generation seam.
   predecessor.qualified.objectInventorySha256.bootstrapMigrator.withRestore =
-    "6ffc2de73b50852f70c99fb1529521d753e2859a7d1f6e8f618a4aae33f967fb";
+    "705a544980f4094cec2a093b1287c76acb71ad79386596387adc7833d3acf794";
   const forward = current().qualified.forward.find(unit => recorderForward.test(unit.file))!;
   await withPlatformCatalog(predecessor, async root => {
     const store = await installAccountMutations("bootstrap", false, "populated-price-recorder-upgrade", root);
