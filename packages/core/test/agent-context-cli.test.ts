@@ -908,6 +908,18 @@ describe("symbol maturity in export hits", () => {
     expect(declaredSymbolMaturity(core, join(core, "dist/feature/index.d.ts"), "OnlyStar", "stable")).toEqual({ maturity: "experimental" });
   });
 
+  it("states the limit: the export collector lists neither a later declarator nor a declaration after a comment on its line", () => {
+    const { root, core } = maturityFixture({
+      "index.d.ts": 'export * from "./more.js";\nexport { Named } from "./more.js";\n',
+      "more.d.ts": "/** @experimental */\nexport declare const First: number, Later: string;\n/**\n * @experimental\n */ export declare const Named: number;\n",
+    });
+    expect(exportHit(root, "First")).toMatchObject({ maturity: "experimental" });
+    expect(exportHit(root, "Later")).toBeUndefined();
+    // The walk reads both, and a named re-export lists the second.
+    expect(declaredSymbolMaturity(core, join(core, "dist/feature/index.d.ts"), "Later", "stable")).toEqual({ maturity: "experimental" });
+    expect(exportHit(root, "Named")).toMatchObject({ maturity: "experimental" });
+  });
+
   it("is bounded: a re-export cycle terminates without a maturity", () => {
     const { root, core } = maturityFixture({
       "index.d.ts": 'export { Loop } from "./a.js";\n',
@@ -970,6 +982,15 @@ const tagRule: [string, string, { maturity: string; deprecated: boolean } | unde
   ["const enum", "/** @experimental */\nexport declare const enum X { A = 0 }", { maturity: "experimental", deprecated: false }],
   ["abstract class", "/** @deprecated */\nexport declare abstract class X {}", { maturity: "stable", deprecated: true }],
   ["namespace", "/** @experimental */\nexport declare namespace X { const a: number; }", { maturity: "experimental", deprecated: false }],
+  ["an empty comment between is not a doc comment", "/** @experimental */\n/**/\nexport declare const X: number;", { maturity: "experimental", deprecated: false }],
+  ["next-line character before the at sign", "/** a\u0085@experimental */\nexport declare const X: number;", { maturity: "experimental", deprecated: false }],
+  ["lone carriage return ends the previous statement's line", "export declare const Y: number;\r/** @experimental */\rexport declare const X: number;", { maturity: "experimental", deprecated: false }],
+  ["lone carriage return ends a line comment", "export declare const Y: number; // note\r/** @experimental */\rexport declare const X: number;", { maturity: "experimental", deprecated: false }],
+  ["comment before a lone carriage return stays on the previous line", "export declare const Y: number; /** @experimental */\rexport declare const X: number;", { maturity: "stable", deprecated: false }],
+  ["later declarator of a variable statement", "/** @deprecated */\nexport declare const W: Record<string, number>, X: (a: 1, b: 2) => void;", { maturity: "stable", deprecated: true }],
+  ["later declarator after an object type", "/** @experimental */\nexport declare const W: { a: 1; b: [2, 3] }, X: Map<string, number>;", { maturity: "experimental", deprecated: false }],
+  ["multi-line doc comment closing on the declaration's line", "/**\n * @experimental\n */ export declare const X: number;", { maturity: "experimental", deprecated: false }],
+  ["multi-line plain comment closing on the declaration's line", "/** @experimental */\n/* a\n b */ export declare const X: number;", { maturity: "experimental", deprecated: false }],
 ];
 
 function compilerReads(source: string) {
@@ -1009,6 +1030,46 @@ describe("the declared-tag rule follows the TypeScript compiler's", () => {
     }
     expect(disagreements.slice(0, 10)).toEqual([]);
   });
+
+  it("reads the trivia before a statement as the compiler does, over generated files", () => {
+    // Comments, line ends and earlier statements placed before the statements X and Y, in every order.
+    const comments = ["/** @experimental */", "/** @deprecated */", "/** other */", "/**\n * @experimental\n */", "/**/", "/***/", "/* */", "/* @experimental */", "/*\n @deprecated\n */", "// @experimental", "// note"];
+    const lineEnds = ["\n", "\r", "\r\n", "\n\n"];
+    const separators = ["", " ", ...lineEnds, "\t", "\u0085"];
+    const statements = ["export declare const Y: number;", "export declare const Y: number, X: string;", "export {};", 'export { Z } from "./gone.js";'];
+    let seed = 20_260_002;
+    const next = (limit: number) => { seed = (Math.imul(seed, 1_103_515_245) + 12_345) >>> 0; return seed % limit; };
+    const pick = <T,>(items: readonly T[]) => items[next(items.length)]!;
+    const root = mkdtempSync(join(tmpdir(), "openlup-trivia-"));
+    roots.push(root);
+    mkdirSync(join(root, "dist"));
+    const entry = join(root, "dist/index.d.ts");
+    const disagreements: string[] = [];
+    for (let index = 0; index < 3000; index++) {
+      let source = "";
+      for (let part = 0, count = 1 + next(3); part < count; part++) {
+        if (next(2)) {
+          for (let item = 0, items = 1 + next(3); item < items; item++) {
+            const comment = pick(comments);
+            // A line comment swallows the rest of its line, so a line end must follow it.
+            source += comment + pick(comment.startsWith("//") ? lineEnds : separators);
+          }
+        }
+        if (part + 1 < count) source += pick(statements) + pick(separators);
+      }
+      source += `${source.trimEnd().includes("//") && /\/\/[^\n\r]*$/u.test(source) ? pick(lineEnds) : pick(separators)}export declare const X: number;`;
+      const files = new Map([["dist/index.d.ts", source]]);
+      const oracle = declaredSymbolMaturities(files, "dist/index.d.ts", "stable").symbols;
+      writeFileSync(entry, source);
+      for (const name of ["X", "Y"]) {
+        const expected = oracle.get(name);
+        const found = declaredSymbolMaturity(root, entry, name, "stable");
+        const actual = found === undefined ? undefined : { maturity: found.maturity, deprecated: found.deprecated === true };
+        if (JSON.stringify(actual) !== JSON.stringify(expected === undefined ? undefined : { maturity: expected.maturity, deprecated: expected.deprecated })) disagreements.push(`${name} in ${JSON.stringify(source)}: lookup ${JSON.stringify(actual)}, compiler ${JSON.stringify(expected)}`);
+      }
+    }
+    expect(disagreements.slice(0, 10)).toEqual([]);
+  }, 120_000);
 
   it("refuses to treat text that is not a doc comment as one", () => {
     for (const block of ["/* @experimental */", "/**/", "// @experimental", "@experimental", ""]) {

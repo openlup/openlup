@@ -31,7 +31,7 @@ const applicationFileLimit = 2500;
 const defaultHitLimit = 8;
 const maxHitLimit = 50;
 const apiReportHeading = /^`?packages\/[^/]+\/api\/[^/]+\.api\.md`?$/u;
-const usage = "Usage: openlup-context search <task> [--code] [--package-code] [--limit <1..50>] [--json]\n       openlup-context mcp\nRun from the application root after installing @openlup/core.\nDeclaration occurrences are unverified import leads; read installed exports and examples for public specifiers and type/value usage.\nIn a symbol's export hit, maturity is the declared maturity (stable, experimental or testing) and deprecated: true marks a deprecated symbol; when maturity is absent, read the declaration.\n";
+const usage = "Usage: openlup-context search <task> [--code] [--package-code] [--limit <1..50>] [--json]\n       openlup-context mcp\nRun from the application root after installing @openlup/core.\nDeclaration occurrences are unverified import leads; read installed exports and examples for public specifiers and type/value usage.\nIn a symbol's export hit, maturity is the declared maturity (stable, experimental or testing) and deprecated: true marks a deprecated symbol; maturity is absent when the declaration is not found or when no subpath maturity is known and no tag applies, so read the declaration.\n";
 
 function readSortedEntries(directory: string) {
   return readdirSync(directory, { withFileTypes: true }).sort((left, right) =>
@@ -265,7 +265,7 @@ function stripDeclarationComments(source: string, onBlock?: (block: string, offs
     }
     if (ch === "/" && next === "/") {
       index += 2;
-      while (index < length && source[index] !== "\n") index++;
+      while (index < length && !/[\n\r\u2028\u2029]/u.test(source[index]!)) index++;
       out += " ";
       continue;
     }
@@ -367,11 +367,12 @@ export function collectExportedSymbols(packageRoot: string, realRoot: string, en
 
 type Tags = { experimental: boolean; deprecated: boolean };
 const noTags: Tags = { experimental: false, deprecated: false };
-const singleLineSpace = /[ \t\v\f\u00a0\u1680\u2000-\u200b\u202f\u205f\u3000\ufeff]/u;
+const singleLineSpace = /[ \t\v\f\u0085\u00a0\u1680\u2000-\u200b\u202f\u205f\u3000\ufeff]/u;
 // At a line start the scanner knows four blanks and two line ends; elsewhere it uses the wider sets.
 const lineStartSpace = /[ \t\v\f]/u;
 const newline = /[\n\r]/u;
 const lineBreak = /[\n\r\u2028\u2029]/u;
+const isBlank = (char: string) => singleLineSpace.test(char) || lineBreak.test(char);
 // Identifier characters, plus the hyphen the comment scanner admits in a tag name.
 const tagNamePart = "(?:[\\p{ID_Continue}$-]|\\u200c|\\u200d)";
 const tagName = new RegExp(`[\\p{ID_Start}$_]${tagNamePart}*`, "uy");
@@ -456,53 +457,96 @@ type FileFacts = {
   stars: { from: string; tags: Tags }[];
 };
 
+// Later declarators of `export declare const A: T, B: U;`: the names after each top-level comma, up to the semicolon.
+function laterDeclarators(text: string, start: number): string[] {
+  const names: string[] = [];
+  let depth = 0;
+  for (let index = start; index < text.length; index++) {
+    const char = text[index]!;
+    if (char === '"' || char === "'" || char === "`") {
+      for (index++; index < text.length && text[index] !== char; index++) if (text[index] === "\\") index++;
+    } else if (char === "(" || char === "[" || char === "{" || char === "<") depth++;
+    else if (char === ")" || char === "]" || char === "}" || (char === ">" && text[index - 1] !== "=")) { if (--depth < 0) break; }
+    else if (depth === 0 && char === ";") break;
+    else if (depth === 0 && char === "\n" && /^\s*(?:export|declare|import)\b/u.test(text.slice(index + 1, index + 40))) break;
+    else if (depth === 0 && char === ",") {
+      const name = /^\s*([A-Za-z_$][A-Za-z0-9_$]*)/u.exec(text.slice(index + 1, index + 200))?.[1];
+      if (name) names.push(name);
+    }
+  }
+  return names;
+}
+
+// Positions of the text that are inside braces or a string literal, so a statement keyword found there is not one.
+function nestedPositions(text: string): Uint8Array {
+  const nested = new Uint8Array(text.length);
+  let depth = 0;
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index]!;
+    if (char === '"' || char === "'" || char === "`") {
+      const start = index;
+      for (index++; index < text.length && text[index] !== char; index++) if (text[index] === "\\") index++;
+      nested.fill(1, start, Math.min(index + 1, text.length));
+    } else if (char === "{") { depth++; nested[index] = 1; }
+    else if (char === "}") { depth = Math.max(0, depth - 1); nested[index] = depth > 0 ? 1 : 0; }
+    else if (depth > 0) nested[index] = 1;
+  }
+  return nested;
+}
+
 // One file's top-level exports and the tags of the statement that makes each one, from declaration text. The
-// patterns are the export collector's, anchored at the start of a line or at a comment that starts it.
+// patterns are the export collector's, matched where a statement of the file can start rather than only at a line start.
 function fileFacts(source: string): FileFacts {
   const blocks: { offset: number; text: string }[] = [];
   const blanks = new Set<number>();
   const cleaned = stripDeclarationComments(source, (text, offset) => {
     blanks.add(offset);
-    if (text.startsWith("/**")) blocks.push({ offset, text });
+    // `/**/` is an empty comment, not a doc comment.
+    if (text.startsWith("/**") && !text.startsWith("/**/")) blocks.push({ offset, text });
   });
+  const nested = nestedPositions(cleaned);
   // The compiler reads the comments between the previous token and the statement, after the first line break that
   // follows that token (anywhere in the file's first statement), and only the last doc comment among them counts.
   const leadingTags = (statementStart: number): Tags => {
     let previousEnd = statementStart;
-    while (previousEnd > 0 && /\s/u.test(cleaned[previousEnd - 1]!)) previousEnd--;
+    while (previousEnd > 0 && isBlank(cleaned[previousEnd - 1]!)) previousEnd--;
     let last: string | undefined;
     for (const { offset, text } of blocks) {
       if (offset < previousEnd || offset >= statementStart) continue;
       let broken = previousEnd === 0;
-      for (let at = previousEnd; at < offset && !broken; at++) broken = cleaned[at] === "\n" && !blanks.has(at);
+      for (let at = previousEnd; at < offset && !broken; at++) broken = (cleaned[at] === "\n" || cleaned[at] === "\r") && !blanks.has(at);
       if (broken) last = text;
     }
     return last === undefined ? noTags : jsdocTags(last);
   };
+  // A statement starts the file, follows a statement that ended with `;` or `}`, or starts a line.
+  const startsStatement = (start: number): boolean => {
+    let previousEnd = start;
+    while (previousEnd > 0 && isBlank(cleaned[previousEnd - 1]!)) previousEnd--;
+    return previousEnd === 0 || cleaned[previousEnd - 1] === ";" || cleaned[previousEnd - 1] === "}" || /[\n\r]/u.test(cleaned.slice(previousEnd, start));
+  };
   const facts: FileFacts = { declared: new Map(), named: new Map(), namespaces: new Map(), stars: [] };
   const statements = (pattern: RegExp, handle: (match: RegExpExecArray, tags: Tags) => void) => {
     for (const match of cleaned.matchAll(pattern)) {
-      const indent = match[1]!.length;
-      // A statement of the file starts its line, or follows a comment that does; an indented one is a member.
-      if (indent > 0 && !blanks.has(match.index)) continue;
-      handle(match, leadingTags(match.index + indent));
+      if (!nested[match.index] && startsStatement(match.index)) handle(match, leadingTags(match.index));
     }
   };
-  statements(/^([ \t]*)export\s+(?:declare\s+)?(?:abstract\s+)?(?:const\s+enum|enum|function|const|let|var|class|interface|type|namespace)\s+([A-Za-z_$][A-Za-z0-9_$]*)\b/gmu, (match, tags) => {
-    const name = match[2]!;
-    facts.declared.set(name, [...facts.declared.get(name) ?? [], tags]);
+  statements(/\bexport\s+(?:declare\s+)?(?:abstract\s+)?(const\s+enum|enum|function|const|let|var|class|interface|type|namespace)\s+([A-Za-z_$][A-Za-z0-9_$]*)\b/gu, (match, tags) => {
+    const names = [match[2]!];
+    if (/^(?:const|let|var)$/u.test(match[1]!)) names.push(...laterDeclarators(cleaned, match.index + match[0].length));
+    for (const name of names) facts.declared.set(name, [...facts.declared.get(name) ?? [], tags]);
   });
-  statements(/^([ \t]*)export\s+(?:type\s+)?\{([^}]*)\}(?:\s*from\s*["']([^"']+)["'])?/gmu, (match, tags) => {
-    for (const item of (match[2] ?? "").split(",")) {
+  statements(/\bexport\s+(?:type\s+)?\{([^}]*)\}(?:\s*from\s*["']([^"']+)["'])?/gu, (match, tags) => {
+    for (const item of (match[1] ?? "").split(",")) {
       const specifier = /^([A-Za-z_$][A-Za-z0-9_$]*)(?:\s+as\s+([A-Za-z_$][A-Za-z0-9_$]*))?$/u.exec(item.replace(/^\s*type\s+/u, "").trim());
-      if (specifier) facts.named.set(specifier[2] ?? specifier[1]!, { local: specifier[1]!, ...(match[3] === undefined ? {} : { from: match[3] }), tags });
+      if (specifier) facts.named.set(specifier[2] ?? specifier[1]!, { local: specifier[1]!, ...(match[2] === undefined ? {} : { from: match[2] }), tags });
     }
   });
-  statements(/^([ \t]*)export\s+(?:type\s+)?\*\s+as\s+([A-Za-z_$][A-Za-z0-9_$]*)\s+from\s+["']([^"']+)["']/gmu, (match, tags) => {
-    facts.namespaces.set(match[2]!, tags);
+  statements(/\bexport\s+(?:type\s+)?\*\s+as\s+([A-Za-z_$][A-Za-z0-9_$]*)\s+from\s+["']([^"']+)["']/gu, (match, tags) => {
+    facts.namespaces.set(match[1]!, tags);
   });
-  statements(/^([ \t]*)export\s+(?:type\s+)?\*\s+from\s+["']([^"']+)["']/gmu, (match, tags) => {
-    facts.stars.push({ from: match[2]!, tags });
+  statements(/\bexport\s+(?:type\s+)?\*\s+from\s+["']([^"']+)["']/gu, (match, tags) => {
+    facts.stars.push({ from: match[1]!, tags });
   });
   return facts;
 }
