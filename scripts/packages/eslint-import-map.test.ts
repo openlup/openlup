@@ -595,7 +595,7 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
   it("admits only declared Node-entry edges and refuses reverse commerce imports", async () => {
     const config = await loadConfig();
     const { PLATFORM_MODULE_GRAPH: graph } = await import("../../eslint.config.js");
-    expect(graph["commerce/server"]).toEqual({ values: ["commerce", "fulfillment", "pricing", "shipping", "promotions", "pricing/contracts"], types: ["http", "bff", "commerce/contracts", "data"] });
+    expect(graph["commerce/server"]).toEqual({ values: ["commerce", "fulfillment", "pricing", "shipping", "promotions", "pricing/contracts", "tax"], types: ["http", "bff", "commerce/contracts", "data"] });
     expect(graph.commerce.values).not.toContain("commerce/server");
     expect(graph.commerce.values).toEqual(["pricing/contracts", "shipping"]);
     for (const depth of [0, 1]) {
@@ -604,7 +604,7 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
       const source = (specifier: string) => `import * as value from ${JSON.stringify(specifier)}; export { value };`;
       for (const specifier of ["./own.js", `${up}../index.js`, "node:crypto",
         ...["commerceReturnsPort", "orderReviewContracts", "orderReviewPorts", "orderFeedbackContracts"].map((file) => `${up}../${file}.js`),
-        `${up}../../commerce/index.js`]) {
+        `${up}../../commerce/index.js`, `${up}../../tax/index.js`]) {
         expect(await moduleMessages(config, source(specifier), file), specifier).toEqual([]);
       }
       for (const entry of ["http", "bff"]) {
@@ -614,7 +614,7 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
           else expect(messages).toContainEqual(expect.stringContaining('packages/platform module "commerce/server"'));
         }
       }
-      for (const specifier of [`${up}../../data/index.js`, `${up}../../blob/index.js`, `${up}../../data/private.js`, `${up}../../identity/index.js`]) {
+      for (const specifier of [`${up}../../data/index.js`, `${up}../../blob/index.js`, `${up}../../data/private.js`, `${up}../../identity/index.js`, `${up}../../tax/digest.js`]) {
         expect(await moduleMessages(config, source(specifier), file), specifier).toContainEqual(expect.stringContaining('packages/platform module "commerce/server"'));
       }
       const browserFile = `packages/platform/src/commerce/${"nested/".repeat(depth)}probe.ts`;

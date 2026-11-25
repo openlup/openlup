@@ -200,7 +200,7 @@ export const PLATFORM_MODULE_GRAPH = {
   marketing: { contracts: true, values: [], types: [] },
   "marketing/server": { values: ["marketing", "identity/contracts"], types: ["http", "bff", "marketing/contracts", "communications/contracts"] },
   commerce: { contracts: true, values: ["pricing/contracts", "shipping"], types: [] },
-  "commerce/server": { values: ["commerce", "fulfillment", "pricing", "shipping", "promotions", "pricing/contracts"], types: ["http", "bff", "commerce/contracts", "data"] },
+  "commerce/server": { values: ["commerce", "fulfillment", "pricing", "shipping", "promotions", "pricing/contracts", "tax"], types: ["http", "bff", "commerce/contracts", "data"] },
   invoicing: { contracts: true, values: [], types: [] },
   fulfillment: { contracts: true, values: [], types: [] },
   subscriptions: { contracts: true, values: [], types: [] },

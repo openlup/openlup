@@ -883,6 +883,7 @@ export declare function createCommerceQuoteHandler<Request extends CreateQuoteRe
 
 ```ts
 import type { CatalogueMoneyV2ComponentRef, CatalogueMoneyV2Input, CatalogueMoneyV2Plan, CatalogueMoneyV2Result, CatalogueMoneyV2Tax } from "@openlup/core/pricing";
+import { z } from "zod";
 import type { CommerceCodeRejectionDetail } from "./contracts/evidence.js";
 import type { PromotionEngineVersion } from "./contracts/offerPolicy.js";
 import type { CommerceCodeRejection, CommerceQuoteDiscount } from "./contracts/quote.js";
@@ -985,6 +986,8 @@ export type CommerceQuoteMoneyV2Refusal = Readonly<{
     field: string;
     remedy: string;
 }>;
+/** @internal Shared with the retained planning-schema parity witness. */
+export declare const planningShape: z.ZodType;
 /** @experimental For exclusive tax, derive the request from the unmodified plan for one immutable planning input and call verifyTaxQuoteResult on that exact request and result before composition. */
 export declare function planCommerceQuoteMoneyV2(input: PlanCommerceQuoteMoneyV2Input): CommerceQuoteMoneyV2Plan | CommerceQuoteMoneyV2Refusal;
 /** @experimental For exclusive tax, reuse the immutable planning input and pass the result verified by verifyTaxQuoteResult against the exact request derived from the unmodified plan. */

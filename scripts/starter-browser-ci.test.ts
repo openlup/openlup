@@ -125,9 +125,10 @@ describe('installed starter browser CI', () => {
     const resolved = await resolveBrowserImage(io, options.localImage);
     expect(resolved).toBe(reference);
     const prove = vi.fn();
-    await runCatalogueUpgrade({ ...options, groups: [0, 6] }, resolved, prove);
+    await runCatalogueUpgrade({ ...options, groups: [0] }, resolved, prove);
+    await runCatalogueUpgrade({ ...options, groups: [6] }, resolved, prove);
     expect(prove).not.toHaveBeenCalled();
-    await runCatalogueUpgrade({ ...options, groups: [1, 6] }, resolved, prove);
+    await runCatalogueUpgrade({ ...options, groups: [1, 2] }, resolved, prove);
     const expected = [[args[1], args[3], { reference, localImage, containerArguments: browserContainerArguments }]];
     expect(prove.mock.calls).toEqual(expected);
     prove.mockClear();
@@ -280,7 +281,7 @@ describe('installed starter browser CI', () => {
     const workflow = readFileSync('.github/workflows/published-tree-ci.yml', 'utf8');
     const install = workflow.split('  install-browser:')[1]!.split('  install-proof:')[0]!;
     expect(install).toContain('packages: read');
-    expect(install).toContain('timeout-minutes: 8');
+    expect(install).toContain('timeout-minutes: 12');
     expect(install).toContain('docker login ghcr.io');
     expect(install.indexOf('docker login')).toBeLessThan(install.indexOf('scripts/starter-browser-ci.mjs'));
     expect(install).toContain('scripts/starter-browser-ci.mjs --manifest "$RUNNER_TEMP/package-gates/packages-manifest.json" --expected-commit "$(git rev-parse HEAD)" --groups "$BROWSER_GROUPS"');

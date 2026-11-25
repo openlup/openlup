@@ -874,7 +874,24 @@ assert.throws(()=>{throw new commerce.CommerceOrderDraftUnsupportedMoneyError("z
 export function proveCommerceServerConsumer(consumer: string): void {
   consumerNode(consumer, `
 import assert from "node:assert/strict";
-import * as server from "@openlup/platform/commerce/server";
+import { registerHooks } from "node:module";
+const quoteModules = new Set();
+registerHooks({ load(url, context, nextLoad) {
+  if (url.includes("/@openlup/platform/dist/tax/") ||
+    url.endsWith("/dbBackedCommerceQuotePortV2.js") || url.endsWith("/commerceQuoteV2Refusals.js")) quoteModules.add(url);
+  return nextLoad(url, context);
+} });
+const server = await import("@openlup/platform/commerce/server");
+assert.deepEqual([...quoteModules], [], "the server entry must leave native quote composition unloaded");
+const quotePort = server.createDbBackedCommerceQuotePortV2({ clockToleranceMs: 0, privacyRegistry: {
+  contributors: ["destination-receipts", "destination-documents", "tax-calculations"].map(id => ({ id })), missingContributors: [],
+} });
+assert.deepEqual([...quoteModules], [], "constructing the quote port must leave composition unloaded");
+const request = { mode: "one_time" };
+const quote = quotePort.createQuote({}, request);
+request.mode = "subscription";
+assert.deepEqual(await quote, { kind: "refused", code: "tax_invalid_input", field: "/", remedy: "Supply the documented input." });
+assert([...quoteModules].some(url => url.endsWith("/tax/index.js")), "first quote must load the tax owner");
 for (const name of ["tryCompensate", "createCommerceRuntimeService", "createPaidOrderOrchestration", "createCommerceCheckoutHandler", "createCheckoutQuoteGuard", "createStarterOfferGuard", "resolveCheckoutOffer"]) assert.equal(typeof server[name], "function");
 for (const name of ["createOrderDraftRpcPayload", "createCommerceOrderDraftRpcPort", "createManagedCommerceRuntimeOrderPort", "createConfiguratorIntentPersistenceRpcPort", "createCommerceCheckoutResumeQueryPort", "createManagedReservationSweepPort", "createCheckoutCompensationRpcAdapter", "createExpiredCheckoutRecoveryPolicy", "quotesMatchForRecovery", "hashCheckoutRecoveryToken", "generateCheckoutRecoveryToken"]) assert.equal(typeof server[name], "function");
 const stockQueries=[];
@@ -1191,10 +1208,13 @@ export function compileConsumer(consumer: string, entries: readonly string[], co
     'captureCompatiblePostgresRows({source,sourceId:"source",catalogueId:"catalogue",tables:["platform_schema_migrations"],maximumRows:10,maximumBytes:1024});',
   ].join("\n"));
   if (entries.includes("commerce/server")) surfaces.push([
-    'import { tryCompensate } from "@openlup/platform/commerce/server";',
-    'import type { CheckoutCompensationPort } from "@openlup/platform/commerce/server";',
+    'import { tryCompensate, createDbBackedCommerceQuotePortV2 } from "@openlup/platform/commerce/server";',
+    'import type { CheckoutCompensationPort, CommerceQuotePortV2, CommerceQuoteV2Request, DbBackedCommerceQuotePortV2Deps, QuoteOwnerContext, QuoteOutcome } from "@openlup/platform/commerce/server";',
     'declare const compensationPort: CheckoutCompensationPort;',
     'export const compensationResult: Promise<void> = tryCompensate(compensationPort, "intent-key", "order-1");',
+    'declare const deps: DbBackedCommerceQuotePortV2Deps, owner: QuoteOwnerContext, request: CommerceQuoteV2Request;',
+    'const quotes: CommerceQuotePortV2 = createDbBackedCommerceQuotePortV2(deps);',
+    'export const nativeQuote: Promise<QuoteOutcome> = quotes.createQuote(owner, request);',
   ].join("\n"));
   if (entries.includes("commerce/server/destinations")) surfaces.push([
     'import { createPostgresDestinationPort } from "@openlup/platform/commerce/server/destinations";',

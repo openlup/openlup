@@ -64,11 +64,11 @@ through isolated candidate routing.
 
 Before reopening ordinary native privacy traffic, verify all three conditions.
 
-1. Both slices are present on every serving revision.
-2. The second slice's catalogue is installed.
+1. Every serving revision includes the installed-owner gate and both parts of the receipt-coverage release.
+2. The complete selected catalogue includes `20261127120002_identity_privacy_erasure_reconciliations.sql`.
 3. The per-store cutover is verified.
 
-Installing the first slice alone leaves the fence in place.
+Keep the fence in place whenever a serving revision lacks either receipt-coverage part.
 
 Native export and erasure return HTTP 503 when a declared owner is absent or
 the binding, declaration or authoritative receipt evidence cannot be verified.
@@ -89,6 +89,78 @@ replacement resolution refuses them as invalid frozen contacts. The explicit aut
 customer reads and dispatch evidence do not expose those private snapshots. A risk contributor declares assessment/evidence/hash, blocklist, review/hold,
 case-event and replay obligations through supplied read/policy ports; it adds
 no retention period or remote-provider operation.
+
+### Rehearse native privacy cutover for each store
+
+1. List every public and private ingress for export and erasure, including the
+   catch-all dispatcher, direct route wrappers, package callers, adopter jobs
+   and retry intake. Record which revisions and runtime logins serve each path.
+   Deny both HTTP routes in the host's deployment route policy, pause direct
+   intake and retries, and keep new owner writers dormant.
+   The reference wrappers are `api/bff/[...path].ts` and the two routes under
+   `server/bff/admin/identity/privacy/`.
+   See [the reference runtime policy](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/docs/platform/RUNTIME_AND_SELF_HOSTING.md#runtime-model)
+   and the `#deployment-route-policy` binding.
+2. Drain admitted requests and retry work. Check the admission counters and
+   database sessions and transactions against the ingress census. Record zero
+   outstanding work on old revisions, retire those revisions and verify routing
+   excludes them. Keep the fence engaged through verification.
+3. Apply the complete selected catalogue, including
+   `db/platform/migrations/20261127120002_identity_privacy_erasure_reconciliations.sql`.
+   Take a read-only, repeatable-read capture and restore it to a pristine
+   disposable installation of the same profile and exact current catalogue.
+   Use connected-store transfer where admitted. Its restore takes the migration
+   advisory lock and locks the relation census before copying retained rows.
+   For capture, the authorized restricted migrator uses the host's owner window
+   when needed. Verify the sealed role graph after the window closes.
+   See [connected-store transfer](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/docs/platform/migrations/compatible-data-transfer.md#compatible-data-transfer).
+   The source entry points are `captureConnectedNativeStore` in
+   `server/adapters/postgres/connectedStoreCapture.ts` and
+   `restoreConnectedNativeStore` in `server/adapters/postgres/connectedStoreRestore.ts`.
+   For qualified-admin installations, restore opens the restricted owner window itself.
+
+   For a legacy installation or any profile where connected capture refuses,
+   use an owner-managed PostgreSQL backup and restore to an isolated target.
+   If a logical schema restore changes catalogue metadata, prepare the exact
+   installed catalogue on the target and restore the complete backed-up data into it.
+   Verify the same profile, exact catalogue inventory and runtime roles,
+   including grants. Keep the fence engaged if neither path can produce an
+   exact isolated copy. Disconnect the target from live routing, workers,
+   dispatch and provider I/O.
+4. On the isolated restore, use the exact proposed artifact and runtime role
+   for each serving revision. Exercise both operations through every applicable
+   ingress. Verify export and fresh erasure, a missing declared owner, and an
+   unavailable prerequisite. Use a synthetic subject with an uncovered
+   historical receipt. Supply fault inputs through the isolated composition
+   or role grants. Keep the installed tax contributor key if fixture seeding
+   goes through the fresh-receipt insert guard. Record redacted results.
+
+   The uncovered request passes only with HTTP 503 and
+   `error.details.privacyCode = PRIVACY_RECEIPT_COVERAGE_INCOMPLETE`, or the
+   equivalent typed refusal for direct package intake. HTTP 200 with
+   `ALREADY_ERASED` and all other results block reopening. Follow
+   [the owner reconciliation procedure](#reconcile-coverage-of-a-native-erasure-receipt)
+   on the restore. Retry the original subject and key and require HTTP 200
+   with `ALREADY_ERASED` for the same receipt and obligations, or the same
+   result from the package operation. Dispose of the target and temporary
+   capture under the installation owner's custody.
+5. On the live store, compare the artifact digest of every serving revision
+   with the tested digest. Run read-only checks for the route and retry census,
+   runtime role, catalogue identity, readiness and drain. Record the store and
+   profile, applied forward and catalogue, capture and restore evidence,
+   tested and live digests, runtime role, ingress and worker census, drain
+   observations, redacted probe results and owner approval. Issue the reopen
+   record only after every check and probe passes. Keep new owner features
+   dormant until their own activation checks also pass.
+
+#### Roll back native privacy serving
+
+Refence and drain every ingress before routing to older revisions, and before
+appending a declared owner while an older snapshot can survive. Retain the
+installed declaration and required evidence. Keep newer owner writers dormant.
+Verify the rollback routing and remain fenced while any serving revision lacks
+the installed-owner gate or either receipt-coverage part. Repeat the cutover
+checks and renew the store's approval before reopening.
 
 ## Export and erasure
 
@@ -176,9 +248,13 @@ provider erasure must disable the identity only after local cleanup commits.
 
 The reference Settings privacy panel accepts a contact/principal UUID, shows
 coverage, obligations, refusals and receipts, and requires erasure confirmation.
-Documents, confirmation and retry keys stay in component memory and clear on
-subject/session change, including late responses. Exports never enter browser
-storage.
+Starting an export clears the previous report, its heading and the last error.
+Only a fresh success for the current subject and session displays a report.
+Governed refusals show Observed, Cause, Fix and Recheck. Recognized code-only
+refusals show their code. Other failures show “Privacy operation unavailable”.
+Reports, receipts, confirmation and retry keys stay in component memory and
+clear on subject or session change. Late responses from an earlier subject or
+session are discarded. Exports never enter browser storage.
 
 ### Reconcile coverage of a native erasure receipt
 
@@ -189,6 +265,9 @@ owner session using the selected installation's owner login, including on a
 single-login store. For a restricted installation, use the authorized migrator.
 If the contributor needs additional owner privileges, use the host's existing
 owner window and verify the sealed role graph after closing the window.
+
+Hosts must call `reconcilePostgresPrivacyErasure` only from an owner session
+and never expose it through an HTTP handler or adopter `PrivacyOperations`.
 
 From the owner session, call `reconcilePostgresPrivacyErasure` from
 `@openlup/platform/identity` with the store's owner `unitOfWork`, native

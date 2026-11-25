@@ -158,6 +158,7 @@ export const TOOLING_INPUTS = {
   'tests/postgres/fulfillmentProviderIntake.test.ts': POSTGRES_STARTER_SUITE_INPUTS,
   'tests/postgres/m14QualifiedAdminComposition.test.ts': POSTGRES_SERVER_SUITE_INPUTS,
   'tests/postgres/m14RestrictedConnectedRestore.test.ts': POSTGRES_SERVER_SUITE_INPUTS,
+  'tests/postgres/m14RestrictedConnectedRestoreMatrix.test.ts': POSTGRES_SERVER_SUITE_INPUTS,
   'tests/postgres/neutralStarterE4.test.ts': POSTGRES_STARTER_SUITE_INPUTS,
   'tests/postgres/neutralStoreQuote.test.ts': POSTGRES_STARTER_SUITE_INPUTS,
   'tests/postgres/neutralStoreRecovery.test.ts': POSTGRES_STARTER_SUITE_INPUTS,
