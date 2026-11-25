@@ -533,7 +533,7 @@ if (!env[workerFlag]) {
       noWrites(resume, release.state);
     }
     for (const state of [undefined, release.state]) {
-      const unpublished = invoke({ args: repriceArgs, state });
+      const unpublished = invoke({ args: repriceArgs, ...(state && { state }) });
       const row = finding(unpublished, 'starter_catalogue_copy_requires_published', /without --copy or --reprice first/u);
       assert.equal(row.recheck, 'Check that Activation is published before using --copy or --reprice.');
       assert.deepEqual(writes(unpublished), []);
@@ -638,7 +638,7 @@ if (!env[workerFlag]) {
     complete(initial);
     const options = { args: repriceArgs, state: initial.state, declaration: replacement };
     for (const refresh of [undefined, 'same'] as const) {
-      const result = invoke({ ...options, rollover: true, refresh });
+      const result = invoke({ ...options, rollover: true, ...(refresh && { refresh }) });
       complete(result);
       assert.deepEqual(result.trace.slice(refresh ? -7 : -2), ['price-apply:FIRST',
         ...(refresh ? ['email', 'challenge', 'token', 'redeem', 'price-target'] : []), 'price-preview:FIRST']);

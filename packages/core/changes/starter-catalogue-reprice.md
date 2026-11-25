@@ -1,7 +1,8 @@
 ### Change a live base price in the demonstration starter
 
 After Activation, an active administrator can edit `basePrices` in
-`owned/catalogue.ts` and run `npm run catalogue:apply -- --reprice`.
+`owned/catalogue.ts` and run the starter's `catalogue:apply` script with
+`--reprice`.
 Approval covers gross base amounts. Each receipt reports the effective
 subscription figure and policy revision after the write. Default apply verifies
 the publication receipts and live prices after Activation.
