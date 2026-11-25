@@ -12,7 +12,8 @@ import { catalogueApplyRefusal, operatorChallengeGuidance, repriceRecovery, repr
 import { installationFailure, installationFinding, installationReport, refusal } from './installation/refusals.ts';
 
 const root = dirname(fileURLToPath(import.meta.url));
-const [command, ...args] = process.argv.slice(2);
+const npmSilent = process.argv[2] === '--npm-silent';
+const [command, ...args] = process.argv.slice(npmSilent ? 3 : 2);
 const packageNames = ['core', 'outbox', 'platform'];
 const installationHintLimit = 240;
 const json = args.includes('--json');
@@ -377,7 +378,7 @@ async function catalogueApply(argv) {
     const sharedFlags = options.filter(option => option !== mode);
     const config = ownedConfiguration(await import('./owned/store.config.ts'), lifecycleOptions(sharedFlags));
     (await import('./shared/config.ts')).assertConfig(config);
-    const npmApply = process.env.npm_config_loglevel === 'silent' ? 'npm run --silent catalogue:apply' : 'npm run catalogue:apply';
+    const npmApply = npmSilent ? 'npm run --silent catalogue:apply' : 'npm run catalogue:apply';
     const applyCommand = flags => [npmApply, ...(flags.length ? ['--', ...flags.map(flag =>
       /^[a-z0-9_-]+$/iu.test(flag) ? flag : "'" + flag.replaceAll("'", "'\\''") + "'")] : [])].join(' ');
     freshReprice = applyCommand(mode === '--reprice' ? options : [...sharedFlags, '--reprice']);
