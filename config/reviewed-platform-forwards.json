@@ -9634,8 +9634,21 @@
         "dataStatements": []
       },
       {
+        "row": "subscription-renewal-generation",
+        "path": "db/platform/migrations/20261129120000_subscription_renewal_generation_seam.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.subscription_read_frozen_renewal_generation(uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "catalog-price-publication-recorder-v2",
-        "path": "db/platform/migrations/20261129040000_catalog_price_publication_recorder_v2.sql",
+        "path": "db/platform/migrations/20261129120001_catalog_price_publication_recorder_v2.sql",
         "replacedFunctions": [
           {
             "signature": "public.catalog_price_setup_apply_claimed(jsonb,timestamptz)",
@@ -13957,7 +13970,18 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261129040000_catalog_price_publication_recorder_v2.sql",
+      "path": "db/platform/migrations/20261129120000_subscription_renewal_generation_seam.sql",
+      "sha256": "e406e902de4a22b627866af1306a7b6cad82d768b46a5a7596c03b9a45d6aeed",
+      "functions": [
+        {
+          "signature": "public.subscription_read_frozen_renewal_generation(uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "5665822c59370bbfcca08b6d5dcb2722e755fec20fbf2788252cf9fa1bde27f2"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261129120001_catalog_price_publication_recorder_v2.sql",
       "sha256": "45b2c181b5ccb33c3270a9f3dcc8e82dd369eb745906a18ab0e9452f31c6a236",
       "functions": [
         {

@@ -340,12 +340,13 @@ export async function enqueueAfterChecks({ event, env, api, enqueue, cwd = proce
   // Partial reruns replace only selected jobs. Read every attempt, then select
   // each required job's latest attempt without recovering an older success.
   const jobs = []; let total;
+  const JOBS_PER_PAGE = 50;
   for (let page = 1; total === undefined || jobs.length < total; page += 1) {
-    const result = await api.get(`${root}/actions/runs/${source.id}/jobs?filter=all&per_page=100&page=${page}`);
-    demand(Array.isArray(result.jobs) && result.jobs.length <= 100 && Number.isSafeInteger(result.total_count) && result.total_count >= 0
+    const result = await api.get(`${root}/actions/runs/${source.id}/jobs?filter=all&per_page=${JOBS_PER_PAGE}&page=${page}`);
+    demand(Array.isArray(result.jobs) && result.jobs.length <= JOBS_PER_PAGE && Number.isSafeInteger(result.total_count) && result.total_count >= 0
       && (total === undefined || total === result.total_count), 'source jobs response is incomplete or invalid');
     total = result.total_count;
-    demand(result.jobs.length === Math.min(100, total - jobs.length), 'source jobs pagination is incomplete');
+    demand(result.jobs.length === Math.min(JOBS_PER_PAGE, total - jobs.length), 'source jobs pagination is incomplete');
     jobs.push(...result.jobs);
   }
   for (const job of readLatestSourceJobs(source, jobs)) {
