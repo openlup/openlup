@@ -386,8 +386,8 @@ describe("derived renewal price context in PostgreSQL", () => {
     return { ...f, principal, commandActor: randomUUID() };
   }
 
-  async function editSku(priceList = list, base?: number) {
-    const id = randomUUID(), code = `Example-${id}`;
+  async function editSku(priceList = list, base?: number, id: string = randomUUID()) {
+    const code = `Example-${id}`;
     await admin.query(`INSERT INTO public.catalog_skus(id,product_id,sku,title,sellable_in_subscription)
       SELECT $2,product_id,$3,'Refill',true FROM public.catalog_skus WHERE id=$1`, [variant, id, code]);
     const entry = base === undefined ? undefined : (await admin.query(`INSERT INTO public.price_entries
@@ -552,7 +552,41 @@ describe("derived renewal price context in PostgreSQL", () => {
     expect(await fallback.commandPreview()).toMatchObject({ canApply: true, newTotalMinor: 275, lines: [{ unitPriceMinor: 55 }, { unitPriceMinor: 110 }] });
   });
 
-  it("replays and applies frozen quotes after catalogue replacement and prices after a lock wait", async () => {
+  it.each(["derived-only", "legacy stored"] as const)("keeps the saved quote and refuses a deleted %s SKU", async source => {
+    const f = await editFixture(), subject = await editSku(list, source === "derived-only" ? 125 : undefined);
+    if (source === "legacy stored") {
+      await admin.query(`INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor)
+        VALUES($1,$2,'subscription',150)`, [list, subject.id]);
+    }
+    const edit = request(f, [{ variantId: subject.id, qty: 2 }]);
+    const original = await edit.actorPreview();
+    expect(original).toMatchObject({ canApply: true, newTotal: money(source === "derived-only" ? 220 : 300) });
+    const before = await editRows(f);
+    expect(before.quotes).toHaveLength(1);
+    expect(before.template).toMatchObject([{ variant_id: storedId }]);
+    expect((await admin.query("DELETE FROM public.catalog_skus WHERE id=$1 RETURNING id", [subject.id])).rows)
+      .toEqual([{ id: subject.id }]);
+
+    const preview = await edit.actorPreview();
+    const [apply] = await Promise.allSettled([edit.actorApply(original.quoteHash)]);
+    expect.soft(preview).toEqual({ ...original, canApply: false });
+    expect.soft(apply).toMatchObject({ status: "rejected", reason: catalogRefusal });
+    expect(await editRows(f)).toEqual(before);
+  });
+
+  it("refuses case-equivalent variant IDs across core and add-on lines without saving a quote", async () => {
+    const f = await editFixture();
+    const { id } = await editSku(list, 125, randomUUID().replace(/^./u, "a"));
+    const edit = request(f, [{ variantId: id, qty: 2 }], [{ variantId: id.toUpperCase(), qty: 1 }]);
+    const before = await editRows(f);
+    const [actor] = await Promise.allSettled([edit.actorPreview()]);
+    expect.soft(actor).toMatchObject({ status: "rejected",
+      reason: { code: "22023", message: "subscription_edit_duplicate_variant" } });
+    expect(await edit.commandPreview()).toMatchObject({ status: "refused", canApply: false, reason: "subscription_edit_invalid_lines" });
+    expect(await editRows(f)).toEqual(before);
+  });
+
+  it("replays and applies frozen quotes after catalogue replacement", async () => {
     for (const path of ["actor", "command"] as const) {
       const f = await editFixture(), subject = await editSku(list, 125);
       const core = [{ variantId: subject.id, qty: 2 }], edit = request(f, core);
@@ -586,53 +620,58 @@ describe("derived renewal price context in PostgreSQL", () => {
       expect(appliedRows.quotes).toContainEqual(expect.objectContaining({ id: saved.quotes[0].id, accepted_event_id: applied.eventId }));
       expect(appliedRows.events).toHaveLength(saved.events.length + 1);
     }
+  });
 
-    for (const path of ["actor", "command"] as const) {
-      const f = await editFixture(), subject = await editSku(list, 125), core = [{ variantId: subject.id, qty: 2 }];
-      const blocker = await admin.connect(), waiter = await (path === "actor" ? admin : runtime).connect();
-      let pending: Promise<{ rows: Record<string, unknown>[] }> | undefined;
-      try {
-        await blocker.query("BEGIN");
-        await blocker.query("SELECT id FROM public.subscriptions WHERE id=$1 FOR UPDATE", [f.subscriptionId]);
-        await waiter.query("BEGIN ISOLATION LEVEL READ COMMITTED");
-        await waiter.query("SET LOCAL statement_timeout='10s'");
-        if (path === "actor") {
-          await waiter.query("SET LOCAL ROLE authenticated");
-          await waiter.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: f.principal, role: "authenticated" })]);
-        }
-        const { rows: [waiterRow] } = await waiter.query("SELECT pg_backend_pid() AS pid,(now()-interval '1 minute')::text AS at");
-        const { rows: [blockerRow] } = await blocker.query("SELECT pg_backend_pid() AS pid");
-        pending = path === "actor"
-          ? waiter.query(`SELECT public.customer_subscription_preview_bundle_as_actor($1,$2,$3)->'preview' AS result`,
-            [f.subscriptionId, randomUUID(), JSON.stringify(core)])
-          : waiter.query(`SELECT public.subscription_command_preview($1,$2,$3,$4,'update_package_template',$5,$6) AS result`,
-            [f.commandActor, f.clientId, randomUUID(), f.subscriptionId,
-              { coreLines: core, expectedTemplateVersion: 1, compositionConstraint: {} }, waiterRow.at]);
-        void pending.catch(() => {});
-        await expect.poll(async () => (await blocker.query("SELECT $1::int=ANY(pg_blocking_pids($2::int)) AS blocked",
-          [blockerRow.pid, waiterRow.pid])).rows[0].blocked, { timeout: 4000, interval: 20 }).toBe(true);
-        const { rows: [cutover] } = await blocker.query(`SELECT stamp.at::text,stamp.at>a.query_start AS after_start
-          FROM (SELECT clock_timestamp() AS at) stamp,pg_stat_activity a WHERE a.pid=$1`, [waiterRow.pid]);
-        expect(cutover.after_start).toBe(true);
-        await blocker.query("UPDATE public.price_entries SET active=false,valid_to=$2 WHERE id=$1", [subject.entry, cutover.at]);
-        await blocker.query(`INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from)
-          VALUES($1,$2,'one_time',230,$3)`, [list, subject.id, cutover.at]);
-        await blocker.query("COMMIT");
-        const result = (await pending).rows[0].result;
-        if (path === "actor") expect(result).toMatchObject({ canApply: true, newTotal: money(420) });
-        else {
-          expect(result).toMatchObject({ canApply: true, newTotalMinor: 420 });
-          expect((await blocker.query(`SELECT ($1::jsonb->>'quoteExpiresAt')::timestamptz=$2::timestamptz+interval '15 minutes' AS same
-            FROM pg_catalog.pg_stat_activity WHERE pid=$3`, [result, waiterRow.at, waiterRow.pid])).rows).toEqual([{ same: true }]);
-        }
-        await waiter.query("COMMIT");
-      } finally {
-        await blocker.query("ROLLBACK");
-        await pending?.catch(() => {});
-        await waiter.query("ROLLBACK");
-        blocker.release();
-        waiter.release();
+  it.each(["actor", "command"] as const)("prices stored and derived lines at the same instant after a lock wait (%s)", async path => {
+    const f = await editFixture(), subject = await editSku(list, 125), stored = await editSku(list, 125);
+    const before = await editRows(f), core = [{ variantId: subject.id, qty: 2 }, { variantId: stored.id, qty: 3 }];
+    const blocker = await admin.connect(), waiter = await (path === "actor" ? admin : runtime).connect();
+    let pending: Promise<{ rows: Record<string, unknown>[] }> | undefined;
+    try {
+      await blocker.query("BEGIN");
+      await blocker.query("SELECT id FROM public.subscriptions WHERE id=$1 FOR UPDATE", [f.subscriptionId]);
+      await waiter.query("BEGIN ISOLATION LEVEL READ COMMITTED");
+      await waiter.query("SET LOCAL statement_timeout='10s'");
+      if (path === "actor") {
+        await waiter.query("SET LOCAL ROLE authenticated");
+        await waiter.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: f.principal, role: "authenticated" })]);
       }
+      const { rows: [waiterRow] } = await waiter.query("SELECT pg_backend_pid() AS pid,(now()-interval '1 minute')::text AS at");
+      const { rows: [blockerRow] } = await blocker.query("SELECT pg_backend_pid() AS pid");
+      pending = path === "actor"
+        ? waiter.query(`SELECT public.customer_subscription_preview_bundle_as_actor($1,$2,$3)->'preview' AS result, statement_timestamp()::text AS statement_at`,
+          [f.subscriptionId, randomUUID(), JSON.stringify(core)])
+        : waiter.query(`SELECT public.subscription_command_preview($1,$2,$3,$4,'update_package_template',$5,$6) AS result`,
+          [f.commandActor, f.clientId, randomUUID(), f.subscriptionId,
+            { coreLines: core, expectedTemplateVersion: 1, compositionConstraint: {} }, waiterRow.at]);
+      void pending.catch(() => {});
+      await expect.poll(async () => (await blocker.query("SELECT $1::int=ANY(pg_blocking_pids($2::int)) AS blocked",
+        [blockerRow.pid, waiterRow.pid])).rows[0].blocked, { timeout: 4000, interval: 20 }).toBe(true);
+      const { rows: [cutover] } = await blocker.query(`SELECT stamp.at::text,stamp.at>a.query_start AS after_start
+        FROM (SELECT clock_timestamp() AS at) stamp,pg_stat_activity a WHERE a.pid=$1`, [waiterRow.pid]);
+      expect(cutover.after_start).toBe(true);
+      await blocker.query("UPDATE public.price_entries SET active=false,valid_to=$2 WHERE id=$1", [subject.entry, cutover.at]);
+      await blocker.query(`INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from)
+        VALUES($1,$2,'one_time',230,$3),($1,$4,'subscription',77,$3)`, [list, subject.id, cutover.at, stored.id]);
+      await blocker.query("COMMIT");
+      const { result, statement_at } = (await pending).rows[0];
+      const expiryClock = path === "actor" ? statement_at : waiterRow.at;
+      expect((await blocker.query(`SELECT ($1::jsonb->>'quoteExpiresAt')::timestamptz=$2::timestamptz+interval '15 minutes' AS same`,
+        [result, expiryClock])).rows).toEqual([{ same: true }]);
+      await waiter.query("COMMIT");
+      const after = await editRows(f);
+      expect.soft(result).toMatchObject(path === "actor"
+        ? { canApply: true, newTotal: money(651) } : { canApply: true, newTotalMinor: 651 });
+      expect.soft(after.quotes).toMatchObject([{ proposed_lines: [
+        { variantId: subject.id, unitPriceMinor: 210 }, { variantId: stored.id, unitPriceMinor: 77 },
+      ] }]);
+      expect({ ...after, quotes: before.quotes }).toEqual(before);
+    } finally {
+      await blocker.query("ROLLBACK");
+      await pending?.catch(() => {});
+      await waiter.query("ROLLBACK");
+      blocker.release();
+      waiter.release();
     }
   });
 

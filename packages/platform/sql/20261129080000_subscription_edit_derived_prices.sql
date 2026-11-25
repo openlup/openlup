@@ -295,7 +295,7 @@ BEGIN
       SELECT value->>'variantId' AS variant_id FROM jsonb_array_elements(p_core_lines)
       UNION ALL
       SELECT value->>'variantId' FROM jsonb_array_elements(COALESCE(p_addon_lines, '[]'::jsonb))
-    ) AS requested GROUP BY variant_id HAVING count(*) > 1
+    ) AS requested GROUP BY variant_id::uuid HAVING count(*) > 1
   ) THEN
     RAISE EXCEPTION 'subscription_edit_duplicate_variant' USING ERRCODE = '22023';
   END IF;
@@ -320,13 +320,16 @@ BEGIN
     IF v_quote.request_fingerprint <> v_fingerprint THEN
       RAISE EXCEPTION 'subscription_edit_idempotency_conflict' USING ERRCODE = '23505';
     END IF;
-    -- First acceptance uses the saved currency and merchandise subtotal.
+    -- First acceptance checks the saved terms and SKU identities.
     v_can_apply := CASE WHEN v_existing.id IS NOT NULL THEN v_quote.accepted_event_id IS NOT DISTINCT FROM v_existing.id
       ELSE v_quote.status = 'previewed' AND v_quote.expires_at > statement_timestamp()
         AND v_quote.expected_template_version = v_subscription.template_version
         AND v_quote.new_total_minor > 0 AND EXISTS (
           SELECT 1 FROM public.subscription_renewal_terms
           WHERE subscription_id = v_subscription.id AND currency_code = v_quote.currency_code
+        ) AND NOT EXISTS (
+          SELECT 1 FROM jsonb_array_elements(v_quote.proposed_lines) AS line
+          WHERE NOT EXISTS (SELECT 1 FROM public.catalog_skus AS sku WHERE sku.id = (line->>'variantId')::uuid)
         ) END;
   ELSE
     IF NOT EXISTS (
@@ -358,8 +361,8 @@ BEGIN
             AND price.mode IN ('subscription', 'any')
             AND price.active = true
             AND price.min_qty <= parsed.quantity
-            AND price.valid_from <= statement_timestamp()
-            AND (price.valid_to IS NULL OR price.valid_to > statement_timestamp())
+            AND price.valid_from <= pricing_clock.at
+            AND (price.valid_to IS NULL OR price.valid_to > pricing_clock.at)
           ORDER BY CASE price.mode WHEN 'subscription' THEN 0 ELSE 1 END,
             price.min_qty DESC, price.valid_from DESC, price.id
           LIMIT 1),
@@ -590,7 +593,8 @@ BEGIN
     SELECT COALESCE(
      (SELECT pe.unit_price_minor FROM public.price_entries pe WHERE pe.variant_id=sku.id
     AND pe.price_list_id=s.price_list_id AND pe.mode IN ('subscription','any') AND pe.active
-    AND pe.min_qty<=(v->>'qty')::integer AND pe.valid_from<=p_now AND (pe.valid_to IS NULL OR pe.valid_to>p_now)
+    AND pe.min_qty<=(v->>'qty')::integer AND pe.valid_from<=pricing_clock.at
+    AND (pe.valid_to IS NULL OR pe.valid_to>pricing_clock.at)
     ORDER BY CASE pe.mode WHEN 'subscription' THEN 0 ELSE 1 END,pe.min_qty DESC,pe.valid_from DESC,pe.id LIMIT 1),
      (SELECT unit_price_minor FROM public.catalog_admission_derived_subscription_prices(
        s.price_list_id, s.currency_code, sku.id, (v->>'qty')::integer, pricing_clock.at
@@ -790,7 +794,13 @@ BEGIN
   IF NOT FOUND THEN
     RAISE EXCEPTION 'subscription_edit_price_context_missing' USING ERRCODE = '22023';
   END IF;
-  IF v_quote.new_total_minor <= 0 THEN
+  -- Hold the saved SKUs through the template insert so deletion cannot race acceptance.
+  IF v_quote.new_total_minor <= 0 OR EXISTS (
+    SELECT 1 FROM jsonb_array_elements(v_quote.proposed_lines) AS line
+    WHERE NOT EXISTS (
+      SELECT 1 FROM public.catalog_skus AS sku WHERE sku.id = (line->>'variantId')::uuid FOR KEY SHARE
+    )
+  ) THEN
     RAISE EXCEPTION 'subscription_edit_catalog_unavailable' USING ERRCODE = '22023';
   END IF;
 
