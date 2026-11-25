@@ -281,6 +281,7 @@ test('lists and quotes the exact published SKU across browser widths', async ({ 
     const image = page.getByRole('img', { name: imageName });
     await expect(image).toBeVisible();
     await expect(image).toHaveAttribute('src', imageRef);
+    await image.scrollIntoViewIfNeeded();
     await expect.poll(() => image.evaluate(element => (element as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
     await firstLink.click();
     await page.getByRole('link', { name: wanted.title, exact: true }).click();
