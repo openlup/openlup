@@ -10,6 +10,11 @@ import { expect, it } from "vitest";
  * entry. Parsing with the compiler, rather than matching text, leaves comments
  * out of the scan. Browser globals are refused separately by the entry's ESLint
  * rule.
+ *
+ * A template substitution counts as one name segment, and one that ends the
+ * template may also stand for the version (`v1`) or its number (`1`). Known
+ * limit: a name assembled by concatenation, or held in a constant that only a
+ * substitution reads, is not found; review covers those.
  */
 const STORAGE_NAME = /^[a-z0-9-]+(?::[a-z0-9-]+)+:v\d+$/i;
 const directory = fileURLToPath(new URL("../../src/storefront/", import.meta.url));
@@ -29,9 +34,13 @@ function findings(fileName: string, text: string): string[] {
       found.push(`${at(node)} storage name ${JSON.stringify(node.text)}`);
     }
     if (ts.isTemplateExpression(node)) {
-      // Each substitution stands for one name segment.
-      const joined = node.head.text + node.templateSpans.map(span => `x${span.literal.text}`).join("");
-      if (STORAGE_NAME.test(joined)) found.push(`${at(node)} storage name template ${JSON.stringify(joined)}`);
+      const spans = node.templateSpans;
+      const endsInSubstitution = spans[spans.length - 1]?.literal.text === "";
+      const fills = endsInSubstitution ? ["x", "v1", "1"] : ["x"];
+      const joined = fills
+        .map(last => node.head.text + spans.map((span, index) => `${index === spans.length - 1 ? last : "x"}${span.literal.text}`).join(""))
+        .find(candidate => STORAGE_NAME.test(candidate));
+      if (joined !== undefined) found.push(`${at(node)} storage name template ${JSON.stringify(joined)}`);
     }
     ts.forEachChild(node, visit);
   };
@@ -57,12 +66,19 @@ it("reports each refused shape and ignores comments", () => {
     "const e = `store:${a}:v1`;",
     "const f = \"data-openlup-action\";",
     "const g = \"store:record\";",
+    "const h = `store:record:${a}`;",
+    "const i = `store:record:v${a}`;",
+    "const j = `prefix:${a}`;",
+    "const k = \"store:\" + \"record:v1\";",
   ].join("\n");
+  // `k` is the documented limit: concatenation is not reported.
   expect(findings("probe.ts", probe)).toEqual([
     "probe.ts:3 JSON.stringify",
     "probe.ts:4 JSON[...]",
     "probe.ts:5 storage name \"store:record:v1\"",
     "probe.ts:6 storage name \"store:record:v12\"",
     "probe.ts:7 storage name template \"store:x:v1\"",
+    "probe.ts:10 storage name template \"store:record:v1\"",
+    "probe.ts:11 storage name template \"store:record:v1\"",
   ]);
 });

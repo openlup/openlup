@@ -141,6 +141,7 @@ function toContinuationRecord(stored: StoredCheckoutAttempt): ContinuationRecord
   return {
     continuationId: toContinuationId(stored.key),
     fingerprint: stored.fingerprint,
+    // readStoredAttempt always yields a paymentAttempt, so the absent branch is defensive.
     ...(stored.paymentAttempt === undefined ? {} : { attempt: toAttemptNumber(stored.paymentAttempt) }),
   };
 }

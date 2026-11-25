@@ -150,8 +150,8 @@ export interface SubmitTransportBinding<TRequest = unknown, TOptions = unknown, 
  *
  * No function reads this policy yet: `getOrCreateContinuationId` continues
  * with an identity that was not persisted when its storage binding drops a
- * write. A later release adds the parameter, with `refuse` as its default, as a
- * declared behaviour change.
+ * write. A later release is planned to add the storage-failure policy
+ * parameter (default `refuse`) as a declared behaviour change.
  *
  * @experimental
  */
