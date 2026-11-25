@@ -837,6 +837,27 @@ test('installed_catalogue_operator_workflow', { skip: !recipeApp, timeout: 600_0
       assert.equal((await send(operator, replacement, key)).code, 'operator_mismatch');
       replay((await read(replacement, key)).value, result.value);
       assert.equal(snapshot(), afterPrice);
+      const rolledRevisionId = randomUUID();
+      sql(`BEGIN;
+        UPDATE public.subscription_price_policy_revisions SET effective_to=date_trunc('milliseconds',statement_timestamp())
+        WHERE id='${policy.revisionId}';
+        INSERT INTO public.subscription_price_policy_revisions (id, price_list_id, region_code, currency, channel, revision_no,
+          effective_from, discount_bps, rounding_quantum_minor, rounding_rule, digest)
+        SELECT '${rolledRevisionId}', price_list_id, region_code, currency, channel, revision_no+1,
+          effective_to, discount_bps, rounding_quantum_minor, rounding_rule,
+          public.catalog_price_setup_policy_digest('${rolledRevisionId}',revision_no+1,price_list_id,region_code,currency,channel,
+            effective_to,NULL,discount_bps,rounding_quantum_minor,rounding_rule)
+        FROM public.subscription_price_policy_revisions WHERE id='${policy.revisionId}'; COMMIT`);
+      assert.equal((await read({ action: 'price-target' })).value.policy.revisionId, rolledRevisionId);
+      const blocked = await read(replacement, key);
+      assert.equal(blocked.code, 'starter_catalogue_d2c_policy_required');
+      assert.equal(snapshot(), afterPrice);
+      const verified = (await read({ action: 'price-preview', ...prices })).value;
+      assert.equal(verified.listEffective, true);
+      assert.deepEqual(verified.priceSetup.current, receipt.current);
+      assert.equal(verified.priceSetup.subscription.derivedUnitPriceMinor, 20);
+      assert.equal(verified.priceSetup.subscription.revisionId, rolledRevisionId);
+      assert.equal(snapshot(), afterPrice);
     });
     const authorized = snapshot();
     async function denied() {

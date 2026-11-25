@@ -635,8 +635,26 @@ async function catalogueApply(argv) {
       for (const { code, skuId, from: expected, to: { unitPriceMinor } } of changes) {
         path = 'basePrices';
         const key = hash(['reprice', actorId, priceListId, skuId, unitPriceMinor, expected]);
-        const apply = () => publish(() => ({ action: 'price-apply', variantId: skuId, priceListId,
-          policyRevisionId: writeRevisionId, unitPriceMinor, expected }), key, code);
+        let sent;
+        async function apply(exact = false) {
+          const previous = sent;
+          let dispatched = false;
+          try {
+            return await publish(() => {
+              dispatched = true;
+              if (!exact) sent = { action: 'price-apply', variantId: skuId, priceListId,
+                policyRevisionId: writeRevisionId, unitPriceMinor, expected };
+              return sent;
+            }, key, code);
+          } catch (error) {
+            if (dispatched && previous && ['starter_catalogue_d2c_policy_required', 'starter_catalogue_reprice_requires_active',
+              'starter_catalogue_derived_price_zero', 'price_list_not_active'].includes(error.hostCode))
+              deny('starter_catalogue_reprice_retry_unverified', { subject: code, reason: error.hostCode, issues: error.finding.issues });
+            if (dispatched && !previous && error.finding?.code === unavailable && error.hostCode === undefined)
+              return apply(true);
+            throw error;
+          }
+        }
         const result = await apply().catch(async error => {
           if (error.finding?.code !== 'starter_catalogue_d2c_policy_required') throw error;
           const { listEffective, priceSetup } = await pricePreview(skuId, code);

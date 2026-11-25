@@ -80,7 +80,7 @@ type Options = { declaration?: unknown; args?: string[]; noTerminal?: boolean; m
   missingProduct?: boolean; wrongTarget?: boolean; closeAt?: 'email' | 'token'; declineAt?: number;
   failAt?: number; refusal?: Partial<Finding>; failRetry?: boolean; state?: State; actor?: string; approveAfter?: Options;
   pending?: string[]; pendingAfterReview?: string; refreshBeforeApply?: boolean; ambiguous?: string[]; ineligible?: string[]; stale?: string;
-  rollover?: boolean; rolloverBeforeApply?: string; refresh?: 'same' | 'actor' | 'list'; readback?: 'list' | 'missing' | 'entry' | 'amount' | 'figure' | 'policy' };
+  rollover?: boolean; rolledPolicy?: boolean; rolloverBeforeApply?: string; loseRepriceReply?: 'unchanged' | 'policy' | 'eligibility'; refresh?: 'same' | 'actor' | 'list'; readback?: 'list' | 'missing' | 'entry' | 'amount' | 'figure' | 'policy' };
 type Observation = { trace: string[]; state: State; retry: { key: string; body: unknown }[];
   prompts: string[]; changes: { actor: string; key: string; code: string; expected: Price }[] };
 type PriceItem = Price & { skuId: string; currency: string; policyRevisionId?: string; subscriptionUnitPriceMinor?: number; previous?: Price };
@@ -95,7 +95,7 @@ if (env[workerFlag] === '1') {
   const actor = options.actor ?? actorId;
   const pending = new Set(options.pending);
   let refreshed = false, signIns = 0, now = Date.now();
-  let effectivePolicy = policy as typeof policy | typeof nextPolicy;
+  let effectivePolicy = options.rolledPolicy ? nextPolicy : policy;
   let readbackSku: string | undefined;
   if (options.refresh) Date.now = () => now;
   const fixture = new URL('../lifecycle.mjs', import.meta.url).href;
@@ -248,9 +248,12 @@ if (env[workerFlag] === '1') {
         if (expected) {
           assert.equal(key, hash(['reprice', actor, priceListId, fields.variantId, fields.unitPriceMinor, expected]));
           changes.push({ actor, key, code: skuCode, expected });
+          if (options.loseRepriceReply) retry.push({ key, body: { action, ...fields } });
         }
         if (options.rolloverBeforeApply === skuCode) effectivePolicy = nextPolicy;
-        if (!state.priceReceipts[key] && fields.policyRevisionId !== effectivePolicy.revisionId)
+        if (expected && options.loseRepriceReply === 'eligibility' && state.priceReceipts[key])
+          return refused({ code: 'starter_catalogue_reprice_requires_active' });
+        if (fields.policyRevisionId !== effectivePolicy.revisionId)
           return refused({ code: 'starter_catalogue_d2c_policy_required' });
         if ((options.stale === skuCode || pending.has(skuCode)) && !state.priceReceipts[key])
           return refused({ code: 'expected_state_mismatch' });
@@ -260,6 +263,10 @@ if (env[workerFlag] === '1') {
           readbackSku = skuCode;
           if (options.rollover) effectivePolicy = nextPolicy;
           if (options.refresh) now += 1000;
+          if (options.loseRepriceReply && result.outcome === 'committed') {
+            if (options.loseRepriceReply === 'policy') effectivePolicy = nextPolicy;
+            throw new Error('fixture lost price reply after commit');
+          }
         }
         return response({ currency, ...result });
       }
@@ -706,6 +713,40 @@ if (!env[workerFlag]) {
       'price-preview:SECOND', 'price-apply:SECOND', 'price-preview:SECOND']);
     assert.deepEqual(committed(result).map(row => row.prices[0]?.policyRevisionId), [policy.revisionId, nextPolicy.revisionId]);
     assert.equal(Object.keys(result.state.priceReceipts).length, Object.keys(initial.state.priceReceipts).length + 2);
+  });
+
+  test('a refused exact retry after commit points to read-only default verification', { skip: nestedSkip }, () => {
+    const initial = invoke();
+    complete(initial);
+    for (const loseRepriceReply of ['unchanged', 'policy', 'eligibility'] as const) {
+      const result = invoke({ args: repriceArgs, state: initial.state, declaration: replacement, loseRepriceReply });
+      assert.equal(result.retry.length, 2);
+      assert.deepEqual(result.retry[0], result.retry[1]);
+      const saved = result.state.priceReceipts[result.retry[0]!.key]!;
+      assert.deepEqual(price(result.state), saved.current);
+      assert.equal(saved.current.unitPriceMinor, 2200);
+      assert.equal(Object.keys(result.state.priceReceipts).length, Object.keys(initial.state.priceReceipts).length + 1);
+      if (loseRepriceReply === 'unchanged') {
+        complete(result);
+        assert.equal(committed(result)[0]?.outcome, 'replayed');
+        continue;
+      }
+      const row = finding(result, 'starter_catalogue_reprice_retry_unverified',
+        /default mode to verify the committed price.*committed entry and subscription figure read-only/u);
+      assert.equal(row.reason, loseRepriceReply === 'policy'
+        ? 'starter_catalogue_d2c_policy_required' : 'starter_catalogue_reprice_requires_active');
+      assert.equal(row.subject, 'FIRST');
+      assert.deepEqual(committed(result), []);
+      assert.deepEqual(result.trace.slice(-2), ['price-apply:FIRST', 'price-apply:FIRST']);
+      const rolledPolicy = loseRepriceReply === 'policy';
+      const verified = invoke({ state: result.state, declaration: replacement, rolledPolicy });
+      complete(verified);
+      noWrites(verified, result.state);
+      assert.deepEqual(verified.trace, observed);
+      const entry = verified.report.receipts.find(row => row.stage === 'price.apply')?.prices[0];
+      assert.deepEqual(entry, { ...saved.current, skuId: initial.state.drafts[1]!.payload.skus[0]!.id, currency,
+        policyRevisionId: (rolledPolicy ? nextPolicy : policy).revisionId, subscriptionUnitPriceMinor: rolledPolicy ? 1980 : 2090 });
+    }
   });
 
   test('native price evidence refusals retain the owner code and give a repair', { skip: nestedSkip }, () => {
