@@ -8598,6 +8598,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/storefront/ambiguousSubmit.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/storefront/anchor.ts",
       "class": "public-output"
     },
@@ -11427,6 +11431,10 @@
     },
     {
       "path": "packages/platform/test/shipping/thresholdPresentation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/ambiguousSubmit.test.ts",
       "class": "public-output"
     },
     {
