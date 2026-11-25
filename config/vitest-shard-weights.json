@@ -558,6 +558,7 @@
     "packages/platform/test/shipping/savedAddressSchemas.test.ts": 45,
     "packages/platform/test/shipping/shippingRateConformance.test.ts": 12,
     "packages/platform/test/shipping/thresholdPresentation.test.ts": 8,
+    "packages/platform/test/storefront/types.test.ts": 865,
     "packages/platform/test/subscriptions/activationEditWindow.test.ts": 14,
     "packages/platform/test/subscriptions/autoResume.test.ts": 11,
     "packages/platform/test/subscriptions/catalogProfiles.test.ts": 30,

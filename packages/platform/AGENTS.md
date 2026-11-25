@@ -116,6 +116,7 @@ or external-write authority. The application's own instructions govern.
 | `./shipping` | capability | stable |
 | `./shipping/contracts` | capability | stable |
 | `./shipping/testing` | capability | testing |
+| `./storefront` | capability | experimental |
 | `./subscriptions` | capability | stable |
 | `./subscriptions/contracts` | capability | stable |
 | `./tax` | capability | experimental |
