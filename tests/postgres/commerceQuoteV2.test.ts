@@ -197,11 +197,13 @@ async function installed(options: { basis?: "inclusive" | "exclusive"; shipping?
         if ("binding" in result) bindings.set(args[1].requestKey, result.binding);
         return result;
       },
-      async read(...args) {
-        const result = await owned.read(...args);
-        await pause("recoveryRead");
-        return result;
-      },
+      read: new Proxy(owned.read, {
+        async apply(read, _receiver, args) {
+          const result = await Reflect.apply(read, owned, args);
+          await pause("recoveryRead");
+          return result;
+        },
+      }),
     },
     async snapshotCommand(_owner, input) {
       const { command } = snapshotCommand(ctx, "snapshot-" + input.key);
