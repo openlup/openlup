@@ -380,7 +380,8 @@ it.each(stageCases)("bounds $stage with prelock=$hooked", async ({ stage, prefix
       const minRemainingProbe = input.timeoutMs - (hit.at - start);
       const { query_timeout: allowance } = hit.request as QueryConfig & { query_timeout: number };
       expect(allowance).toBeGreaterThanOrEqual(minRemainingProbe - 2);
-      expect(allowance).toBeLessThanOrEqual(minRemainingProbe + 3);
+      // hit.at is recorded after withCatalogAdmissionFence computes remaining(), so CI event-loop jitter can shift hit.at later.
+      expect(allowance).toBeLessThanOrEqual(Math.min(input.timeoutMs, minRemainingProbe + 25));
       expect(allowance).toBeLessThanOrEqual(input.timeoutMs - 40);
     }
     if (stage === "rollback") {
@@ -402,7 +403,8 @@ it.each(stageCases)("bounds $stage with prelock=$hooked", async ({ stage, prefix
       expect(Number(statement) - Number(lock)).toBe(wallMarginMs);
       const expectedMs = input.timeoutMs - (setting.at - start);
       expect(Number(lock)).toBeGreaterThanOrEqual(expectedMs - 2);
-      expect(Number(lock)).toBeLessThanOrEqual(expectedMs + 3);
+      // setting.at is recorded after withCatalogAdmissionFence computes remaining(), so CI event-loop jitter can shift setting.at later.
+      expect(Number(lock)).toBeLessThanOrEqual(Math.min(input.timeoutMs, expectedMs + 25));
     }
 
     if (stage === "reservation") expect(releases).toEqual([[0, false], [1, false]]);
