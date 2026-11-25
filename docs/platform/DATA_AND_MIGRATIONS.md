@@ -2475,13 +2475,13 @@ transfer remains outside the runtime catalogue lock order.
 
 Promotion projection validates consumed scalar, nullable, range, coupling,
 reference and uniqueness facts before casts or selection. Financial predicates
-retain their acquisition and bundle semantics. Current order metadata or a
-current publication head cannot prove historical admission or frozen money
-protection. Order-backed agreement quotes, including retained renewal lines,
-validate their governing policy pair regardless of age and refuse unproved
-historical admission before projecting quote lines. Graduation and sized edit
-events can copy or merge retained purchase quotes, so their event identity does
-not establish independence. Only complete fresh package quotes and classic
+retain their acquisition and bundle semantics. For order-backed agreement
+evidence, current order metadata or a current publication head cannot prove
+historical admission or frozen money protection. Order-backed agreement quotes,
+including retained renewal lines, validate their governing policy pair regardless
+of age and refuse unproved historical admission before projecting quote lines.
+Graduation and sized edit events can copy or merge retained purchase quotes, so
+their event identity does not establish independence. Only complete fresh package quotes and classic
 base-line swaps supply independent event evidence; their amounts must still
 match the current template and renewal bindings. Unproved order contexts raise
 hard refusals before the ordinary readiness reasons. Readiness calls no capture or commerce writer
@@ -2494,7 +2494,9 @@ Price Setup and Publish can evaluate readiness with recent one-time orders and
 activated initial V2 acquisition subscription orders. Each needs a bound native
 draft and direct sandbox capture. The check includes undiscounted one-time
 orders with free shipping. It evaluates shipping after non-shipping discounts.
-The governed server runtime is trusted by design because it already holds write authority over orders and evidence, and readiness checks the durable facts it produces to catch ungoverned or legacy writes, partial writes and later drift.
+The governed server runtime is trusted by design because it already holds write
+authority over orders and evidence, and readiness checks the durable facts it
+produces to catch ungoverned or legacy writes, partial writes and later drift.
 
 For subscription acquisition, the quote must carry the acquisition capability
 and standalone V2 terms. The submit has a non-null 64-hex

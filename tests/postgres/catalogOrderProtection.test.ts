@@ -68,6 +68,7 @@ beforeEach(async () => {
 interface PurchaseOptions {
   mode?: "subscription" | "one_time";
   discount?: string;
+  extraDiscount?: string;
   threshold?: number;
   shipping?: number;
   terms?: Record<string, unknown>;
@@ -80,7 +81,8 @@ interface PurchaseOptions {
 }
 async function startPurchase(store: typeof f, options: PurchaseOptions = {}) {
   const { mode = "one_time", threshold = 500, shipping = 0 } = options;
-  const orderDiscount = options.discount ? 240 : 0;
+  const promotionIds = [options.discount, options.extraDiscount].filter(id => id !== undefined);
+  const orderDiscount = 240 * promotionIds.length;
   const clientId = options.clientId ?? await store.client();
   const quote = (await store.request("unused", false)).quoteSnapshot.quote;
   quote.context = {
@@ -90,7 +92,7 @@ async function startPurchase(store: typeof f, options: PurchaseOptions = {}) {
     shippingTerms: { version: "shipping-threshold.v1", currency: "XXX", flatMinor: 50, freeThresholdMinor: threshold },
     ...(options.terms && { acquisitionTerms: options.terms, acquisitionCapability: "subscription-acquisition.v1" }),
   };
-  quote.discounts = options.discount ? [{ promotionId: options.discount, appliesTo: "order_total", amountOffMinor: orderDiscount, reasonCode: "example" }] : [];
+  quote.discounts = promotionIds.map(promotionId => ({ promotionId, appliesTo: "order_total", amountOffMinor: 240, reasonCode: "example" }));
   quote.discountTotalGross = money(orderDiscount);
   quote.shippingGross = money(shipping);
   quote.netTotal = quote.totalGross = money(1000 - orderDiscount + shipping);
@@ -207,6 +209,7 @@ it("rejects a zero-amount discount entry despite zero adjustments", async () => 
   await edit(async db => { await replaceSnapshot(db,order.id,["discounts"],entries); await evaluateEdited(db,guardRefusal); });
 });
 
+// The activation test is the revert-failing A1 proof. The standalone parity test checks selector agreement.
 it("admits the captured subscription only after activation and sees only committed evidence", async () => {
   const row = await promotion(f.owner, v2("example:activation", await fromYesterday(f.owner)));
   const selected = f.pricing.selectAcquisitionTerms([row], await clock(f.owner), "ZZ", fixturePolicy)!;
@@ -215,15 +218,21 @@ it("admits the captured subscription only after activation and sees only committ
   await order.activate();
   await assertReadyOrder();
   const peer = await f.owner.connect();
+  const reader = await read.connect();
   try {
     await f.owner.query("UPDATE public.subscription_activations SET activated_at=activated_at-interval '1 microsecond' WHERE order_id=$1",[order.id]);
     await peer.query("BEGIN");
     await peer.query("UPDATE public.subscription_activations SET activated_at=(SELECT paid_at FROM public.commerce_orders WHERE id=$1) WHERE order_id=$1",[order.id]);
-    await read.query("SET statement_timeout='1s'");
-    await refuses(readiness(read));
+    await reader.query("SET statement_timeout='1s'");
+    await refuses(readiness(reader));
     await peer.query("COMMIT");
-    await assertReadyOrder();
-  } finally { await peer.query("ROLLBACK"); peer.release(); await read.query("RESET statement_timeout"); }
+    await assertReadyOrder(reader);
+  } finally {
+    try { await peer.query("ROLLBACK"); } finally {
+      peer.release();
+      try { await reader.query("RESET statement_timeout"); } finally { reader.release(); }
+    }
+  }
   await f.owner.query("UPDATE public.subscription_activations SET repaired=true WHERE order_id=$1", [order.id]);
   await assertReadyOrder();
 });
@@ -346,6 +355,62 @@ async function replaceSnapshot(db: PoolClient, id: string, path: string[], repla
     FROM public.commerce_orders o WHERE r.order_id=o.id AND o.id=$1`,[id]);
 }
 
+it.each([
+  { label: "shipping contradicts the free threshold", path: ["context","shippingTerms","freeThresholdMinor"], value: 2000, both: true },
+  { label: "quote lines differ from draft", path: ["lines","0","productSlug"], value: "different-product", both: false },
+  { label: "quote discounts differ from draft", path: ["discounts","0","reasonCode"], value: "different-reason", both: false },
+  { label: "quote context differs from draft", path: ["context","promoCodes"], value: ["example"], both: false },
+  ...["acquisitionTerms","starterPack","starterRenewalTerms","renewalTerms"].map(key => ({
+    label: `one-time has ${key}`, path: ["context",key], value: {}, both: true,
+  })),
+])("refuses $label", async ({ path,value,both }) => {
+  const discount = path[0] === "discounts"
+    ? (await promotion(f.owner,v2("example:quote-discount",await fromYesterday(f.owner)))).id : undefined;
+  const { id } = await startPurchase(f,{discount});
+  await assertReadyOrder();
+  await edit(async db => {
+    await replaceSnapshot(db,id,path,value,both);
+    await evaluateEdited(db,discount ? claimRefusal : guardRefusal);
+  });
+});
+
+it.each([
+  ["one-time submit has an acceptance digest", `UPDATE public.commerce_orders SET metadata=jsonb_set(
+    metadata,'{catalogAdmissionSubmit,acceptanceTokenDigest}',to_jsonb(repeat('a',64))) WHERE id=$1`],
+  ["one-time order has a subscription cycle", "UPDATE public.commerce_orders SET subscription_cycle_id=gen_random_uuid() WHERE id=$1"],
+  ["undiscounted order has allocation columns", `UPDATE public.commerce_order_items SET
+    source_line_ordinal=line_ordinal, catalog_unit_amount_minor=unit_amount_minor, catalog_line_amount_minor=line_amount_minor,
+    promotion_discount_allocated_minor=0, promotion_allocation_fingerprint=repeat('a',64) WHERE order_id=$1`],
+  ["duplicate succeeded settlement transition", `INSERT INTO public.commerce_settlement_transitions
+    (intent_id,from_status,to_status,outcome,idempotency_key,payload,occurred_at)
+    SELECT intent_id,from_status,to_status,outcome,idempotency_key||':copy',payload,occurred_at
+    FROM public.commerce_settlement_transitions WHERE intent_id=${intentLookup} AND outcome='succeeded'`],
+])("refuses %s", async (_label,sql) => {
+  const { id } = await startPurchase(f);
+  await assertReadyOrder();
+  await edit(async db => {
+    await db.query("SET LOCAL session_replication_role='replica'");
+    expect((await db.query(sql,[id])).rowCount).toBe(1);
+    await evaluateEdited(db,guardRefusal);
+  });
+});
+
+it("refuses duplicate discount promotion IDs even when the counts and money agree", async () => {
+  const from = await fromYesterday(f.owner);
+  const first = await promotion(f.owner,v2("example:first-discount",from));
+  const second = await promotion(f.owner,v2("example:second-discount",from));
+  const { id } = await startPurchase(f,{ discount:first.id,extraDiscount:second.id });
+  await assertReadyOrder();
+  await edit(async db => {
+    await replaceSnapshot(db,id,["discounts","1","promotionId"],first.id);
+    // Keep the allocation bound to the edited draft so it cannot mask the duplicate.
+    await db.query(`UPDATE public.commerce_order_items i SET promotion_allocation_fingerprint=encode(
+      sha256(convert_to((o.metadata->'orderDraftSnapshot')::text||'|effective-line-allocation.v1','UTF8')),'hex')
+      FROM public.commerce_orders o WHERE i.order_id=o.id AND o.id=$1`,[id]);
+    await evaluateEdited(db,claimRefusal);
+  });
+});
+
 it("checks malformed persisted JSON and preserves hard refusal precedence", async () => {
   const row = await promotion(f.owner, v2("example:json", await fromYesterday(f.owner)));
   const { id } = await startPurchase(f,{discount:row.id});
@@ -437,6 +502,28 @@ it("refuses acquisition changes independently after a real activation", async ()
   ]) await edit(async db => {
     await db.query("SET LOCAL session_replication_role='replica'");
     await db.query(sql,[order.id]);
+    await evaluateEdited(db,claimRefusal);
+  });
+});
+
+it.each(["ambiguous","invalid","missing region"] as const)("refuses an activated acquisition with %s", async problem => {
+  const from = await fromYesterday(f.owner);
+  const source = await promotion(f.owner,v2(`example:active-acquisition-${problem.replace(" ","-")}`,from));
+  const selected = f.pricing.selectAcquisitionTerms([source],await clock(f.owner),"ZZ",fixturePolicy)!;
+  const order = await startPurchase(f,{ mode:"subscription",discount:source.id,terms:{...selected.terms} });
+  await order.activate();
+  await assertReadyOrder();
+  await edit(async db => {
+    if (problem === "missing region") {
+      await db.query("DELETE FROM public.commerce_settings WHERE key='settlement_region'");
+      // Call the order guard directly so the outer readiness region check cannot mask propagation here.
+      await refuses(db.query("SELECT public.catalog_price_setup_assert_order_guards(statement_timestamp())"),
+        "catalog_price_setup_settlement_context_unverified");
+      return;
+    }
+    const extra = v2("example:conflicting-acquisition",from);
+    if (problem === "invalid") extra.applies_to_payload.acquisitionTerms.delivery2DiscountBps = -1;
+    await promotion(db,extra);
     await evaluateEdited(db,claimRefusal);
   });
 });
