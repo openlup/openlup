@@ -11386,6 +11386,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/subscriptions/nativePurchasePriceList.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/subscriptions/nativeRenewalTerms.test.ts",
       "class": "public-output"
     },

@@ -137,6 +137,11 @@ it.each([
 // Exercise the store's strict Node profile and real native purchase/editor ports.
 // Only catalogue/configuration is seeded; orders, templates and cycles use native writers.
 it('paid sized renewal receipts include the frozen parcel note while classic receipts omit it', async () => {
+  expect((await runtime.query(`SELECT current_user::text AS executor, current_user=session_user AS direct_login,
+    has_function_privilege(current_user,'public.catalog_derive_subscription_unit_price(integer,integer,integer)','EXECUTE') AS arithmetic,
+    has_function_privilege(current_user,'public.catalog_admission_derived_subscription_prices(text,jsonb,jsonb,timestamptz)','EXECUTE') AS verifier,
+    has_table_privilege(current_user,'public.subscription_price_policy_revisions','SELECT') AS policy_read`)).rows)
+    .toEqual([{ executor: 'starter_runtime', direct_login: true, arithmetic: false, verifier: true, policy_read: true }]);
   await local(async directory => {
     const host = new URL('../../examples/neutral-store/host/', import.meta.url);
     const script = `import assert from 'node:assert/strict';
@@ -173,6 +178,15 @@ it('paid sized renewal receipts include the frozen parcel note while classic rec
           const quote=await call('offer.validate',purchase);
           const bought=await call('checkout.create',{...purchase,quoteAcceptance:quote.quoteAcceptance,expectedTotal:quote.expectedTotal});
           await call('payment.simulate',{orderRef:bought.orderRef,outcome:'captured'});
+          const [initial]=await readEditorSubscriptions(pool,actor);
+          const context=async()=>(await pool.query(
+            'SELECT price_list_id,currency_code FROM public.subscriptions WHERE id=$1',[initial.subscriptionId])).rows[0];
+          const expectedContext=(await pool.query(\`SELECT base.price_list_id,o.currency_code FROM public.commerce_orders o
+            JOIN public.price_entries base ON base.id=(o.metadata#>>'{orderDraftSnapshot,lines,0,catalogFacts,basePriceEntryId}')::uuid
+            WHERE o.id=$1\`,[bought.orderRef])).rows[0];
+          assert.ok(expectedContext?.price_list_id);
+          assert.deepEqual(await context(),expectedContext);
+          assert.equal((await pool.query("SELECT id FROM public.price_entries WHERE active AND mode IN ('subscription','any')")).rowCount,0);
           const renew=async()=>{
             const current=(await readEditorSubscriptions(pool,actor))[0];
             const at=new Date(Date.parse(current.nextCycleAt)+60000).toISOString();
@@ -193,7 +207,13 @@ it('paid sized renewal receipts include the frozen parcel note while classic rec
             assert.equal(renewed.status,'succeeded',JSON.stringify(renewed));
             return (await pool.query('SELECT id AS order_id FROM public.commerce_orders WHERE renewal_operation_id=$1',[renewed.operationId])).rows[0];
           };
-          const introductoryOrders=[(await renew()).order_id,(await renew()).order_id];
+          const first=(await renew()).order_id;
+          // Exercise the graduation retry for a subscription whose attachment predates the fix.
+          if (!sized) await pool.query('UPDATE public.subscriptions SET price_list_id=NULL,currency_code=NULL WHERE id=$1',[initial.subscriptionId]);
+          const introductoryOrders=[first,(await renew()).order_id];
+          assert.deepEqual(await context(),expectedContext);
+          assert.equal((await pool.query("SELECT id FROM public.subscription_events WHERE subscription_id=$1 AND event_type='subscription.starter_graduated'",
+            [initial.subscriptionId])).rowCount,1);
           const [subscription]=await readEditorSubscriptions(pool,actor);
           assert.ok(subscription.lines.length>0);
           if(sized) {
@@ -204,7 +224,8 @@ it('paid sized renewal receipts include the frozen parcel note while classic rec
               compositionConstraint:{...catalog.context.compositionConstraint,value:8},
               resizeLever:{kind:'subscription.sized.parcel',value:{coreLines,optInToSized:true}}};
             const preview=await call('subscription.preview',{request}); assert.equal(preview.preview.canApply,true);
-            await call('subscription.command',{request:{...request,acceptedQuoteHash:preview.quoteHash}});
+            const applied=await call('subscription.command',{request:{...request,acceptedQuoteHash:preview.quoteHash}});
+            assert.equal(applied.status,'applied');
           }
           const order=await renew();
           results.push({sized,orderId:order.order_id,acquisitionOrderId:bought.orderRef,introductoryOrders,email});

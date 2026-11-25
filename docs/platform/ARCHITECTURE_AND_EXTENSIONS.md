@@ -2174,7 +2174,11 @@ from retained `renewalTerms.linePricing`, read through the existing completed
 purchase terms reader, with false when no retained role exists. Effective order
 positions split by promotion allocation are never the template or price source.
 The resolver evaluates each original draft line using admission's currency,
-validity, mode-dependent sellable flags and entry precedence. Exactly one matching
+validity, mode-dependent sellable flags and entry precedence. For a derived
+subscription line, it uses the native draft verifier on the stored quote and
+draft at the order's creation time. It takes the list from the verified base
+entry. A derived line that fails verification leaves the price context missing.
+Exactly one matching
 list sets a still-NULL list/currency pair; missing or ambiguous lists leave it NULL
 and log a neutral reason while the template can still be materialized.
 The optional unit catches only SQLSTATE classes 42 (access), 22 (data) and 23
