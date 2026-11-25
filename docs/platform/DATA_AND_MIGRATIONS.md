@@ -543,7 +543,7 @@ guards before catalogue locks. Catalogue-only writers take no client locks.
    publication order, followed by the same price guards and policy-history `SHARE NOWAIT`.
 4. After the visibility probe, the writer's `read` callback authenticates native
    replay, then checks fresh owner facts, including the issued policy revision and sealed service-pin shape.
-   `catalogAdmissionFence.ts:229–287`,
+   `catalogAdmissionFence.ts:335–382`,
    `20261125010000_catalog_purchase_admission.sql:2–24,58–94`.
 
 The [legacy draft forward](../../db/platform/migrations/20261125120000_catalog_legacy_draft_fixed_locks.sql)

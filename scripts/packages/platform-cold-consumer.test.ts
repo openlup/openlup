@@ -169,6 +169,9 @@ function fixture() {
     'export type * from "./contracts/contactLegal.js";',
 
     'export { tryCompensate, type CheckoutCompensationPort } from "./commerceCheckoutCompensation.js";',
+    'export type DbBackedCommerceQuotePortV2Deps = Synthetic; export type QuoteOwnerContext = Synthetic; export type CommerceQuoteV2Request = Synthetic; export type QuoteOutcome = Synthetic;',
+    'export interface CommerceQuotePortV2 { createQuote(owner: QuoteOwnerContext, request: CommerceQuoteV2Request): Promise<QuoteOutcome> }',
+    'export declare function createDbBackedCommerceQuotePortV2(deps: DbBackedCommerceQuotePortV2Deps): CommerceQuotePortV2;',
     "export type NativeOperatorSubscriptionResult = { outcome: 'refused'; refusalCode: 'operator_subscription_authority_unavailable' };",
     "export interface AccountReadPort<A,L,D> { getAccount(userId: string): Promise<A|null>; listOrders(userId: string, input: {limit:number}): Promise<L|null>; getOrderDetail(userId: string, orderId: string): Promise<D|null> }",
     "export declare function createAccountReadFacade<A,L,D>(ports: { account: Pick<AccountReadPort<A,L,D>, 'getAccount'>; orders: Pick<AccountReadPort<A,L,D>, 'listOrders'|'getOrderDetail'> }): AccountReadPort<A,L,D>;",
@@ -874,6 +877,7 @@ process.stdout.write(JSON.stringify(Object.fromEntries(Object.entries(entry).map
     ORDER_DRAFT_RPC_NAME: "string",
     ORDER_DRAFT_SUPERSEDE_RPC_NAME: "string",
     bindCommerceMoneyLimitsV2Reader: "function",
+    createDbBackedCommerceQuotePortV2: "function",
     describeCommerceMoneyLimitsV2Setting: "function",
     inspectCommerceMoneyLimitsV2: "function",
     installCommerceMoneyLimitsV2: "function",

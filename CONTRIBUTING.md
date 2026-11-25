@@ -515,7 +515,7 @@ each of which must fail. It is not a required context of its own; the required
 See [Test scope and diagnostics](#test-scope-and-diagnostics) for selection,
 sharding, discovery and test-author guidance.
 
-The required `install-proof` context aggregates `install-packages` and all four
+The required `install-proof` context aggregates `install-packages` and all five
 `install-browser` shards. It requires actual success from both dependencies; failed,
 cancelled or skipped jobs refuse admission. On main pushes, `install-packages`
 checks `scripts/public-ci-reuse.mjs`; browser shards share its decision so a
@@ -547,13 +547,13 @@ for trust, evidence and support limits. The workflow adds no required PR check,
 does not hold publication open and does not delay the next dispatch.
 
 After package proof succeeds, `install-browser` runs the starter's installed
-PostgreSQL browser journeys in four parallel shards through
+PostgreSQL browser journeys in five parallel shards through
 [`starter-browser-ci.mjs`](scripts/starter-browser-ci.mjs). Pinned official artifact
 actions transfer only the verified manifest and public tarballs from the package
 job, retained for one day; private browser output is never uploaded. Each shard
 verifies all manifest hashes, the package inventory and the exact checkout commit
 before installing, then checks installed-package confinement. The zero-based
-`--groups` selections are `0`, `1,6`, `2,4` and `3,5`, covering every group once.
+`--groups` selections are `0`, `6`, `1,2`, `3,5` and `4`, covering every group once.
 Each shard acquires an isolated disposable
 PostgreSQL 16 per configuration through the shared test helper and `test-postgres`
 inventory pin. The package job's PostgreSQL 17 service retains its package proofs. The runner
@@ -578,7 +578,12 @@ prints the public image identity, counts, timings and bounded failure diagnostic
 Current deadlines are 12 minutes for packages, 8 per browser shard and 2 for
 the aggregate. Set each job deadline to at least 1.3 times its slowest observed
 hosted run.
-Browser journeys retain zero retries. See the
+Playwright retries nothing. In hosted CI only, a group whose journeys fail
+reruns once, with fresh databases, hosts and state, in the same shard, after the
+first attempt's cleanup completed. A setup or cleanup failure is never rerun, nor
+is a first attempt that used more than 45% of `OPENLUP_STARTER_BROWSER_RETRY_BUDGET_MS`
+(default 300000), which prints `retry skipped: budget`. A group that passed only on the rerun is reported the same
+way as a flaky Vitest file (`flaky-retry-passed: starter browser group <n>`). See the
 [starter proof recipe](examples/neutral-store/docs/proof.md#database-backed-purchase-acceptance-recipe)
 for the selected journeys and the separate local proofs.
 
@@ -844,7 +849,11 @@ the subpaths its `exports` declare, and domain code under `src/domains` and
 `server/domains` imports no configured provider SDK and no adapter,
 infrastructure, runtime or route code; the config exempts domain tests.
 Non-test production source under `packages/core/src` and `packages/ui/src`
-also imports none of the provider SDKs listed in the config. Package tests
+also imports none of the provider SDKs listed in the config. In the neutral
+starter, `client/` and `shared/` source takes runtime values from
+`@openlup/platform` only through an entry the config lists as browser-safe;
+`import type` declarations and `host/` code are unaffected. An inline
+`import { type A }` is refused; its fix is `import type`. Package tests
 retain their package isolation even when composing with a provider.
 Provider composition exemptions use `*.test.<extension>` and
 `*.testFixtures.ts`, matching the existing test convention.
@@ -1094,6 +1103,8 @@ witness rather than skipping it; this focused run does not replace the required
 package, coverage or full verification gates.
 
 Hosted `test-prep` runs `node scripts/ci-test-scope.mjs` and `node scripts/build-packages-incremental.mjs` once and uploads the exclusion list and built workspace `dist/` outputs as the `test-prep` artifact. Hosted `test-full-shard` jobs download that artifact and run `node scripts/ci-vitest-shard.mjs --shard N --total 8 --skip-pretest` (deterministic weighted LPT sharding over `config/vitest-shard-weights.json`, bypassing redundant per-shard `pretest` builds) in eight independent installations. Required `test` accepts only success from the whole matrix and from the `pgtap` job; failure, cancellation or a skipped dependency job refuses. There is no `test:required` script or separate `test-full` job. A successful shard can still report individually skipped cases; record missing proof.
+
+Vitest keeps `retry: 0`. In hosted CI (`CI=true`) only, each shard reruns its failed test files once in the same job, before the check reports, because a merge-queue entry is ejected on its first failing check. The shard passes only if every file passed on the first run or appears as passed in the rerun's report; a file missing, skipped or not run on the rerun fails it. More than 10 failed files, or any first-run error no test file accounts for (an unhandled error or rejection, an interrupted run, or a non-zero exit whose report shows no failed file), is not treated as transient: the shard fails without a rerun. Local runs never retry. Every file that passed only on the rerun prints `flaky-retry-passed: <file>`, emits a `Flaky test retried` warning annotation and is listed in the job summary; the retry is not acceptance. A file that repeatedly reports `flaky-retry-passed` is a defect to fix, for example a test that depends on order or on shared state.
 
 Channel preservation tests live in `packages/platform/test/channels` and are
 discovered by the existing root Node project. The reference's adjacent guard

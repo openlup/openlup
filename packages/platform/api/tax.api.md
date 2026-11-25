@@ -618,6 +618,8 @@ type BeginTaxCalculationResult = CompleteTaxCalculationResult | {
     calculationId: string;
     generation: number;
     claimToken: string;
+    dispatchDeadlineMs: number;
+    cutoffDeadlineMs: number;
     pin: EvaluationPin & {
         requestDigest: string;
         invocationDigest: string;
