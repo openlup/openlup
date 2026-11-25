@@ -29,8 +29,8 @@ interface or class does not change the symbol that contains it.
 `openlup-context search` reports the same facts for a symbol: `maturity` is the
 declared maturity, and `deprecated` is true for a deprecated symbol. A hit has no
 `maturity` when the lookup did not find the declaration inside the installed package,
-or when no subpath maturity is known and no tag applies. In either case, read the
-declaration.
+or when no subpath maturity is known and no `@experimental` tag applies. In either
+case, read the declaration.
 
 ## `@openlup/core`
 

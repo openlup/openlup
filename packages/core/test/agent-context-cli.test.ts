@@ -1035,7 +1035,7 @@ describe("the declared-tag rule follows the TypeScript compiler's", () => {
     // Comments, line ends and earlier statements placed before the statements X and Y, in every order.
     const comments = ["/** @experimental */", "/** @deprecated */", "/** other */", "/**\n * @experimental\n */", "/**/", "/***/", "/* */", "/* @experimental */", "/*\n @deprecated\n */", "// @experimental", "// note"];
     const lineEnds = ["\n", "\r", "\r\n", "\n\n"];
-    const separators = ["", " ", ...lineEnds, "\t", "\u0085"];
+    const separators = ["", " ", ...lineEnds, "\t", "\u0085", "\u2028", "\u2029"];
     const statements = ["export declare const Y: number;", "export declare const Y: number, X: string;", "export {};", 'export { Z } from "./gone.js";'];
     let seed = 20_260_002;
     const next = (limit: number) => { seed = (Math.imul(seed, 1_103_515_245) + 12_345) >>> 0; return seed % limit; };

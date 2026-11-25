@@ -1920,8 +1920,10 @@ Integration proof classifies an exact merge of the reviewed head and a commit
 on `origin/main` as `derived` only for a closed carrier set: migration registry
 unions, package SQL projections, publication catalogue, generated source map,
 SQL reference, API snapshots, the maturity reference, settings catalogue outputs,
-and current installation data. Trusted owner generators run on a temporary prediction; API scripts and
-their helpers must match main byte-for-byte before execution. Candidate-only
+and current installation data. Trusted owner generators run on a temporary
+prediction. API scripts and their helpers must match main byte-for-byte before
+execution; so must `packages/core/scripts/documentation-contract.ts` and
+`packages/ui/smoke/neutrality.ts` for the maturity reference. Candidate-only
 tooling is never executed. Output must equal committed
 bytes. Every SQL byte and mode must equal the mechanical merge; other changes
 remain a `resolution` delta with its existing review floor. Size caps and release

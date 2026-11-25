@@ -49,6 +49,6 @@ Usage: openlup-context search <task> [--code] [--package-code] [--limit <1..50>]
        openlup-context mcp
 Run from the application root after installing @openlup/core.
 Declaration occurrences are unverified import leads; read installed exports and examples for public specifiers and type/value usage.
-In a symbol's export hit, maturity is the declared maturity (stable, experimental or testing) and deprecated: true marks a deprecated symbol; maturity is absent when the declaration is not found or when no subpath maturity is known and no tag applies, so read the declaration.
+In a symbol's export hit, maturity is the declared maturity (stable, experimental or testing) and deprecated: true marks a deprecated symbol; maturity is absent when the declaration is not found or when no subpath maturity is known and no `@experimental` tag applies, so read the declaration.
 ```
 <!-- /generated:cli:openlup-context -->

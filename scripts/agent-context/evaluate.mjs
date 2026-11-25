@@ -1,12 +1,12 @@
 // Frozen static query smoke matrix, 2026-10-29, plus one per-symbol maturity row. This is not an agent-outcome benchmark.
 // The maturity row is the one deliberate exception to a frozen matrix: it names no symbol in advance. It takes the first
 // symbol declared experimental inside a stable subpath of the installed core, so promoting a symbol never breaks the matrix.
-// The row is skipped (and passes) only when no stable subpath declares @experimental anywhere; if one does and no symbol can
-// be picked, the row fails, so a blind picker is never mistaken for a clean core.
+// The row is skipped (and passes) only when no `.d.ts` file under a stable subpath's directory mentions @experimental; if one does
+// and no symbol can be picked, the row fails, so a blind picker is never mistaken for a clean core.
 // Usage: node scripts/agent-context/evaluate.mjs /absolute/cold-consumer-root
 // Reads installed artifacts only. No writes, network or package installation. Only the maturity row needs a dependency:
 // the repository's own TypeScript compiler, which reads its tag.
-import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { resolve, join } from 'node:path';
 import { performance } from 'node:perf_hooks';
@@ -34,11 +34,14 @@ const scope = join(root, 'node_modules/@openlup');
 for (const name of ['core', 'outbox', 'platform']) {
   if (!existsSync(join(scope, name, 'package.json'))) throw new Error(`The frozen matrix requires the selected ${name} artifact; use a full-set consumer`);
 }
+const mentionsExperimental = (text) => /@experimental(?![\w$-])/u.test(text);
+const declarationFiles = (directory) => readdirSync(directory, { withFileTypes: true }).flatMap((entry) =>
+  entry.isDirectory() ? declarationFiles(join(directory, entry.name)) : entry.name.endsWith('.d.ts') ? [join(directory, entry.name)] : []);
 // Walks each stable subpath's entry file and the files it re-exports with `export *`. The first top-level declaration
 // that starts its line (as the lookup's export collector requires) and carries `@experimental` is the row's symbol.
 // The tag is read with the repository's TypeScript compiler, the reference the lookup's own reader is held to, so
-// a match inside a code span or an inline link does not count. Returns the symbol, or `sawTag: true` when the files
-// it walked mention `@experimental` but no symbol qualified (the picker is blind there), or neither.
+// a match inside a code span or an inline link does not count. Returns the symbol, or `sawTag: true` when a `.d.ts` file
+// under a stable subpath's directory mentions `@experimental` but no symbol qualified (the picker is blind there), or neither.
 function experimentalInStableSubpath() {
   let ts;
   try { ts = createRequire(import.meta.url)('typescript'); }
@@ -48,14 +51,18 @@ function experimentalInStableSubpath() {
   let sawTag = false;
   for (const subpath of Object.keys(surface).sort()) {
     if (surface[subpath].maturity !== 'stable' || typeof surface[subpath].entrypoint !== 'string') continue;
-    const queue = [join(core, surface[subpath].entrypoint)];
+    const entry = join(core, surface[subpath].entrypoint);
+    // A subpath that owns a directory of declarations is scanned whole for the tag, reached or not; one whose entry file
+    // sits directly in dist is scanned only through its own entry file.
+    const directory = resolve(entry, '..');
+    sawTag ||= directory !== join(core, 'dist') ? declarationFiles(directory).some((file) => mentionsExperimental(readFileSync(file, 'utf8'))) : mentionsExperimental(readFileSync(entry, 'utf8'));
+    const queue = [entry];
     const seen = new Set();
     while (queue.length) {
       const file = queue.shift();
       if (seen.has(file) || !existsSync(file)) continue;
       seen.add(file);
       const text = readFileSync(file, 'utf8');
-      sawTag ||= /@experimental(?![\w$-])/u.test(text);
       const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
       for (const statement of source.statements) {
         if (ts.isExportDeclaration(statement)) {
@@ -85,7 +92,7 @@ for (const row of tasks) {
       // No stable subpath carries the tag at all: nothing to check. A tag the walk could not turn into a symbol fails.
       results.push(found.sawTag
         ? { id: row.id, query: null, exploratory: false, pass: false, failure: 'a stable subpath declares @experimental but the picker found no symbol to look up' }
-        : { id: row.id, query: null, exploratory: false, pass: true, skipped: 'no stable subpath of the installed core declares @experimental' });
+        : { id: row.id, query: null, exploratory: false, pass: true, skipped: 'no declaration file under a stable subpath of the installed core mentions @experimental' });
       continue;
     }
     // The target matches the package.json line that an export hit for the subpath cites.

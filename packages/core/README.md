@@ -222,10 +222,10 @@ maturity from `release-gates.json` (`stable`, `experimental` or `testing`).
 the doc comment before a declaration; a tag on a member does not count. `maturity` is
 absent when the declaration is not found inside the installed package, for example a
 re-export from another `@openlup` package, or when no subpath maturity is known and no
-tag applies. In either case, read the declaration. A one-line `/** ... */ export
-declare ...` reached only through `export *`, a declaration that follows a comment on
-its line, and a later declarator of `export declare const A: T, B: U` yield no export
-hit.
+`@experimental` tag applies. In either case, read the declaration. A one-line
+`/** ... */ export declare ...`, a declaration that follows a comment on its line, and a
+later declarator of `export declare const A: T, B: U` yield an export hit only when a
+named re-export reaches them, in any scanned declaration file including the entry file.
 
 Run from the selected application's `package.json` directory. Lookup selects its
 reachable declared OpenLup dependencies plus required Core through Node's normal

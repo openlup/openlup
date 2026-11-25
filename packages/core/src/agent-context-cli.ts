@@ -31,7 +31,7 @@ const applicationFileLimit = 2500;
 const defaultHitLimit = 8;
 const maxHitLimit = 50;
 const apiReportHeading = /^`?packages\/[^/]+\/api\/[^/]+\.api\.md`?$/u;
-const usage = "Usage: openlup-context search <task> [--code] [--package-code] [--limit <1..50>] [--json]\n       openlup-context mcp\nRun from the application root after installing @openlup/core.\nDeclaration occurrences are unverified import leads; read installed exports and examples for public specifiers and type/value usage.\nIn a symbol's export hit, maturity is the declared maturity (stable, experimental or testing) and deprecated: true marks a deprecated symbol; maturity is absent when the declaration is not found or when no subpath maturity is known and no tag applies, so read the declaration.\n";
+const usage = "Usage: openlup-context search <task> [--code] [--package-code] [--limit <1..50>] [--json]\n       openlup-context mcp\nRun from the application root after installing @openlup/core.\nDeclaration occurrences are unverified import leads; read installed exports and examples for public specifiers and type/value usage.\nIn a symbol's export hit, maturity is the declared maturity (stable, experimental or testing) and deprecated: true marks a deprecated symbol; maturity is absent when the declaration is not found or when no subpath maturity is known and no `@experimental` tag applies, so read the declaration.\n";
 
 function readSortedEntries(directory: string) {
   return readdirSync(directory, { withFileTypes: true }).sort((left, right) =>
@@ -523,7 +523,7 @@ function fileFacts(source: string): FileFacts {
   const startsStatement = (start: number): boolean => {
     let previousEnd = start;
     while (previousEnd > 0 && isBlank(cleaned[previousEnd - 1]!)) previousEnd--;
-    return previousEnd === 0 || cleaned[previousEnd - 1] === ";" || cleaned[previousEnd - 1] === "}" || /[\n\r]/u.test(cleaned.slice(previousEnd, start));
+    return previousEnd === 0 || cleaned[previousEnd - 1] === ";" || cleaned[previousEnd - 1] === "}" || lineBreak.test(cleaned.slice(previousEnd, start));
   };
   const facts: FileFacts = { declared: new Map(), named: new Map(), namespaces: new Map(), stars: [] };
   const statements = (pattern: RegExp, handle: (match: RegExpExecArray, tags: Tags) => void) => {
