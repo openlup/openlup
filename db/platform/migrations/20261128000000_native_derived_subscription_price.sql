@@ -201,7 +201,10 @@ BEGIN
     END IF;
 
     IF v_mode = 'subscription' THEN
-      IF v_line_ordinal = 1 THEN
+      IF v_line_ordinal = 1 AND (
+        (p_order_draft_snapshot->'lines') @> '[{"catalogFacts":{"version":"catalog_facts_v2"}}]'::jsonb
+        OR (p_quote_snapshot#>'{quote,lines}') @> '[{"catalogFacts":{"version":"catalog_facts_v2"}}]'::jsonb
+      ) THEN
         v_derived_prices := public.catalog_admission_derived_subscription_prices(
           v_currency, p_quote_snapshot, p_order_draft_snapshot, v_pricing_at
         );

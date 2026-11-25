@@ -512,7 +512,9 @@ equal-amount revision change also returns
 `commerce_order_draft_catalog_price_changed` (`22023`). Generate a fresh server
 quote for the basket and retry checkout.
 
-The invoker writer calls the service-only resolver after line money validation.
+For a fresh subscription draft with `catalog_facts_v2` on a line in either
+snapshot, the invoker writer calls the service-only resolver after the first
+line's money validation, before any per-line price decision.
 The resolver reads the claimed rows in one statement without taking catalogue
 write locks. Policy arithmetic runs with the function owner's privileges.
 The [PostgreSQL parity witness](../../tests/postgres/catalogAdmission.test.ts)

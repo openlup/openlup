@@ -13572,12 +13572,12 @@
     },
     {
       "path": "db/platform/migrations/20261128000000_native_derived_subscription_price.sql",
-      "sha256": "a53e213a6e20204d61b5c550cd251d2983d8a546d4a77ff8dc3e5c679bc453cf",
+      "sha256": "5c32d2c07ce1be7753eee381ddced60192936d2dec50505f485285483efad5d0",
       "functions": [
         {
           "signature": "public.commerce_create_order_draft_with_outbox(text,jsonb,jsonb,uuid)",
           "beforeSha256": "e2437bfb0e3e2822d6a8a5fb169453f3d7cd5601e6239511be227e6bd42c9c59",
-          "afterSha256": "fa69ae385856b2524051c5c323b11f044a3904b7305cc66c91e584aab822790c"
+          "afterSha256": "2faf14328ace0d82d09891e7f3e4ec17d67d7267164861a9365eb6acb67192a6"
         },
         {
           "signature": "public.catalog_derive_subscription_unit_price(integer,integer,integer)",

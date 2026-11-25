@@ -700,8 +700,14 @@ it.each([
   if (outcome === "accepts") {
     await expect(writePriceDraft(env.runtime, snapshot)).resolves.toMatchObject({ orderDraft: { replayed: false } });
   } else {
+    const submitted = writerDraft(snapshot);
+    const { rows } = await env.owner.query(
+      "SELECT public.catalog_admission_derived_subscription_prices($1,$2,$3,now()) AS units",
+      [currency, snapshot, submitted],
+    );
+    expect(rows).toEqual([{ units: [null] }]);
     const before = await counts();
-    await expect(writePriceDraft(env.runtime, snapshot)).rejects.toMatchObject(priceChanged);
+    await expect(writePriceDraft(env.runtime, snapshot, randomUUID(), submitted)).rejects.toMatchObject(priceChanged);
     expect(await counts()).toEqual(before);
   }
   if (base === 2147483647) {
@@ -731,6 +737,39 @@ it("keeps subscription-mode priority and tiers during a policy gap", async () =>
     idempotencyKey: key, status: "draft", paymentStatus: "not_started", replayed: false, quoteSnapshot: stored } };
   const canonical = (await runtime.query("SELECT $1::jsonb AS receipt", [expected])).rows[0]!.receipt;
   expect(JSON.stringify(result)).toBe(JSON.stringify(canonical));
+});
+
+it("accepts a stored subscription draft from a writer role without resolver execution", async () => {
+  const { owner } = env;
+  const subject = await priceSubject(owner, "XAT");
+  await addPrice(owner, subject, 125, "subscription");
+  const db = await owner.connect();
+  try {
+    await db.query("BEGIN");
+    await db.query(`CREATE ROLE stored_price_writer NOLOGIN NOINHERIT;
+      GRANT USAGE ON SCHEMA public TO stored_price_writer;
+      GRANT SELECT ON public.clients, public.catalog_products, public.catalog_skus, public.price_entries,
+        public.price_lists, public.commerce_orders, public.commerce_order_items,
+        public.commerce_order_draft_receipts, public.commerce_order_adjustments TO stored_price_writer;
+      GRANT INSERT ON public.commerce_orders, public.commerce_order_items,
+        public.commerce_order_draft_receipts, public.outbox_events TO stored_price_writer;
+      GRANT UPDATE ON public.commerce_order_draft_receipts TO stored_price_writer;
+      GRANT EXECUTE ON FUNCTION ${draftWriter}, public.catalog_admission_check_legacy_draft(text,jsonb,uuid,boolean),
+        public.catalog_admission_replay_order_draft(text,uuid,text,text),
+        public.catalog_order_line_sum_acceptance(uuid,uuid,public.commerce_orders,public.commerce_orders),
+        public.catalog_admission_guard_purchase_item(public.commerce_order_items) TO stored_price_writer;
+      SET LOCAL ROLE stored_price_writer`);
+    const { rows } = await db.query(`SELECT pg_has_role(current_user,'service_role','MEMBER') AS service_member,
+      has_function_privilege(current_user,$1::text,'EXECUTE') AS writer,
+      has_function_privilege(current_user,$2::text,'EXECUTE') AS resolver`, [draftWriter, derivedResolver]);
+    expect(rows).toEqual([{ service_member: false, writer: true, resolver: false }]);
+    await expect(writePriceDraft(db, moneySnapshot(subject, 125))).resolves.toMatchObject({
+      orderDraft: { status: "draft", replayed: false },
+    });
+    await db.query("SET CONSTRAINTS ALL IMMEDIATE");
+  } finally {
+    try { await db.query("ROLLBACK"); } finally { db.release(); }
+  }
 });
 
 it("keeps one-time pricing and effects alongside an effective subscription policy", async () => {
