@@ -42,13 +42,18 @@ async function expectMismatch(result: Promise<unknown>, field: string, hint?: st
   expect(error).toMatchObject({ column: field, detail: undefined, ...(hint === undefined ? {} : { hint }) });
 }
 
+const definition = async (db: PoolClient, signature: string) => (await db.query<{ sql: string }>(
+  "SELECT pg_get_functiondef($1::regprocedure) AS sql", [signature])).rows[0]!.sql;
+
 async function mutateRoutine(db: PoolClient, signature: string, edits: readonly (readonly [string, string])[]) {
-  let source = (await db.query<{ sql: string }>("SELECT pg_get_functiondef($1::regprocedure) AS sql", [signature])).rows[0]!.sql;
+  const original = await definition(db, signature);
+  let source = original;
   for (const [before, after] of edits) {
     expect(source).toContain(before);
     source = source.replace(before, after);
   }
   await db.query(source);
+  return original;
 }
 
 async function queueHeaderCheck(db: PoolClient, id: string) {
@@ -220,6 +225,29 @@ it.each([true, false])("checks fresh evidence when the snapshot is inserted firs
   await transaction(store.owner, db => flush(db));
 });
 
+it("refuses an item when both line-sum constraints flush before its source is inserted", async () => {
+  const evidence = await issue(store, sku, false);
+  const id = randomUUID();
+  const insertItemFirst = (db: PoolClient) => write(db, evidence, sku, {
+    orderId: id, item: { unit_amount_minor: 0, line_amount_minor: 0 }, beforeSource: () =>
+      db.query("SET CONSTRAINTS trg_commerce_order_items_line_sum, trg_commerce_orders_line_sum IMMEDIATE"),
+  });
+  const error = await rejected(transaction(store.owner, insertItemFirst));
+  expectSqlError(error, "23503", foreignKeyMessage(itemTable, itemFk), itemFk);
+  expect(error).toMatchObject({ schema: "public", table: itemTable });
+  expect((await store.owner.query(`SELECT FROM public.${orderTable} WHERE id=$1`, [id])).rowCount).toBe(0);
+
+  // Temporarily disabled the missing-source refusal in a disposable database transaction.
+  await transaction(store.owner, async db => {
+    await mutateRoutine(db, routine, [[
+      `IF FOUND THEN\n    RAISE EXCEPTION '${foreignKeyMessage(itemTable, itemFk)}'`,
+      `IF FOUND THEN RETURN; ELSIF false THEN\n    RAISE EXCEPTION '${foreignKeyMessage(itemTable, itemFk)}'`,
+    ]]);
+    await insertItemFirst(db);
+    await db.query("SET CONSTRAINTS ALL IMMEDIATE");
+  }, "ROLLBACK");
+});
+
 it.each(["header", "item"])("refuses an absent snapshot when the %s constraint fires before the foreign key", async event => {
   const evidence = await issue(store, sku, false);
   const id = randomUUID();
@@ -242,7 +270,7 @@ it.each(["header", "item"])("refuses an absent snapshot when the %s constraint f
   expect((await store.owner.query("SELECT FROM public.commerce_orders WHERE id=$1", [id])).rowCount).toBe(0);
   // Temporarily disabled the missing-snapshot refusal in a disposable database transaction.
   await transaction(store.owner, async db => {
-    await mutateRoutine(db, routine, [["IF snapshot.order_id IS NULL THEN", "IF snapshot.order_id IS NULL THEN RETURN; ELSIF false THEN"]]);
+    await mutateRoutine(db, routine, [["  SELECT state.fresh,", "  IF snapshot.order_id IS NULL THEN RETURN; END IF;\n  SELECT state.fresh,"]]);
     await flushWithoutSnapshot(db, event === "header" ? { accepted_quote_id: randomUUID() } : undefined);
     if (event === "header") await db.query("SET CONSTRAINTS ALL IMMEDIATE");
   }, "ROLLBACK");
@@ -664,6 +692,57 @@ async function timeCommit(evidence: Evidence, basis: string, maximumMs = flatTes
   expect(elapsed).toBeLessThan(maximumMs);
 }
 
+async function countCombinedCommit(evidence: Evidence, expected: number) {
+  const db = await store.owner.connect();
+  let original: string | undefined;
+  const count = async () => (await db.query<{ validations: number; reconciliations: number }>(`SELECT
+    (SELECT CASE WHEN is_called THEN last_value ELSE 0 END FROM pg_temp.money_validation_calls)::int AS validations,
+    (SELECT CASE WHEN is_called THEN last_value ELSE 0 END FROM pg_temp.money_reconciliation_calls)::int AS reconciliations`)).rows[0]!;
+  try {
+    await db.query("CREATE TEMP SEQUENCE money_validation_calls; CREATE TEMP SEQUENCE money_reconciliation_calls");
+    original = await mutateRoutine(db, routine, [
+      ["  IF snapshot.order_id IS NULL THEN", "  PERFORM nextval('pg_temp.money_validation_calls');\n  IF snapshot.order_id IS NULL THEN"],
+      ["  WITH lines AS (", "  PERFORM nextval('pg_temp.money_reconciliation_calls');\n  WITH lines AS ("],
+    ]);
+    if (expected === 1) {
+      // Temporarily disabled the early skip in a disposable database transaction.
+      await db.query("BEGIN");
+      const skip = "IF NOT check_seal AND NOT check_projection AND p_before IS NULL THEN RETURN; END IF;";
+      await mutateRoutine(db, routine, [[skip, ""]]);
+      await write(db, evidence, sku);
+      await db.query("SET CONSTRAINTS ALL IMMEDIATE");
+      const calls = await count();
+      expect(calls).toEqual({ validations: 51, reconciliations: 1 });
+      console.info(`Combined order mutation: ${calls.validations} validations, ${calls.reconciliations} reconciliations`);
+      await db.query("ROLLBACK");
+      await db.query("ALTER SEQUENCE pg_temp.money_validation_calls RESTART; ALTER SEQUENCE pg_temp.money_reconciliation_calls RESTART");
+    }
+    await db.query("BEGIN");
+    const { id, itemIds } = await write(db, evidence, sku);
+    expect(itemIds).toHaveLength(50);
+    if (expected === 2) {
+      await db.query("SET CONSTRAINTS trg_commerce_order_items_line_sum IMMEDIATE");
+      expect(await count()).toEqual({ validations: 1, reconciliations: 1 });
+      // Only a private row changes. The queued header check sees its new version.
+      const changed = await db.query(`UPDATE public.${sources} SET assignment_ref=assignment_ref WHERE order_id=$1 AND source_ordinal=1`, [id]);
+      expect(changed.rowCount).toBe(1);
+    }
+    const started = performance.now();
+    await db.query("COMMIT");
+    const elapsed = performance.now() - started;
+    const calls = await count();
+    console.info(`Combined order commit: ${calls.validations} validations, ${calls.reconciliations} reconciliations, ${elapsed.toFixed(1)} ms`);
+    expect(calls).toEqual({ validations: expected, reconciliations: expected });
+    expect(elapsed).toBeLessThan(10_000);
+  } finally {
+    try {
+      await db.query("ROLLBACK");
+      if (original) await db.query(original);
+      await db.query("DROP SEQUENCE IF EXISTS pg_temp.money_validation_calls, pg_temp.money_reconciliation_calls");
+    } finally { db.release(); }
+  }
+}
+
 const boundedHandling = (): Evidence["quote"]["deliveryBuckets"] => Array.from({ length: 256 }, (_, index) => ({
   bucketKey: `handling-${index}`, kind: "handling", carrierRef: "carrier", serviceRef: "service",
   taxClassKey: "class-a", assignmentRef: "assignment-a", cost: { ref: "fee", currency: "XXX", amountMinor: 0 },
@@ -707,7 +786,7 @@ it("matches supplementary Unicode boundaries and records the bounded exclusive c
   } }))).rejects.toMatchObject({ code: "23514", table: snapshots });
 }, postgresSetupTimeoutMs);
 
-it("times a combined commit with allocation-state positions near both wire caps", async () => {
+it.each([1, 2])("checks a combined order near both wire caps exactly %i times", async expected => {
   const lineKey = "dense-source";
   const promotions = Array.from({ length: 20 }, () => ({ id: `offer-${randomUUID()}`, lineKey }));
   const positionCount = 32 * (promotions.length * 2 + 1);
@@ -755,7 +834,7 @@ it("times a combined commit with allocation-state positions near both wire caps"
   expect(seal!.bytes).toBeLessThanOrEqual(sealWireCap);
   expect(evidence.quote.lines).toHaveLength(50);
   console.info(`Combined order fixture: 50 items and sources, ${promotions.length} allocations, ${positionCount} positions, ${quoteBytes} quote bytes, ${seal!.bytes} seal bytes`);
-  await timeCommit(evidence, "combined wire", 10_000);
+  await countCombinedCommit(evidence, expected);
 }, postgresSetupTimeoutMs);
 
 it("records the bounded inclusive commit with fifty apportioned shipping parts", async () => {
@@ -804,8 +883,6 @@ it("keeps the installed source and snapshot scalar bounds at their edges", async
 it("detects removing the header mutation and digest checks in a disposable transaction", async () => {
   const evidence = await issue(store, sku, false);
   const { id } = await writeChecked(evidence);
-  const definition = async (db: PoolClient, signature: string) => (await db.query<{ sql: string }>(
-    "SELECT pg_get_functiondef($1::regprocedure) AS sql", [signature])).rows[0]!.sql;
   // Temporarily disabled the marker-change refusal in a disposable database transaction.
   await transaction(store.owner, async db => {
     const source = await definition(db, "public.commerce_order_assert_line_sum()");

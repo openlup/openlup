@@ -83,7 +83,7 @@ function amounts(value: Pick<Component, "preDiscountMinor" | "effectiveMinor" | 
 export async function write(db: PoolClient, evidence: Evidence, sku: Sku,
   opts: { orderId?: string; snapshot?: Record<string, unknown>; item?: Record<string, unknown>; source?: Record<string, unknown>;
     erased?: boolean; clientId?: string; bucketErased?: boolean; snapshotFirst?: boolean;
-    beforeSnapshot?: () => Promise<unknown> } = {}) {
+    beforeSnapshot?: () => Promise<unknown>; beforeSource?: () => Promise<unknown> } = {}) {
   const { quote, clientId, selection, service } = evidence;
   const id = opts.orderId ?? randomUUID();
   const erased = opts.erased ?? false;
@@ -158,11 +158,14 @@ export async function write(db: PoolClient, evidence: Evidence, sku: Sku,
   let ordinal = 0;
   const itemIds: string[] = [];
   for (const [index, row] of quote.lines.entries()) {
-    await insert(db, sources, { order_id: id, sku_id: sku.id, sku_code: row.sku, line_key: row.lineKey,
-      tax_class_key: row.taxClassKey, assignment_ref: row.assignmentRef, mode: row.mode,
-      source_ordinal: row.sourceOrdinal, source_rank: index + 1, quantity: row.quantity, unit_basis_minor: row.unitBasisMinor,
-      ...amounts(row), ...(index === 0 ? opts.source : {}) });
-    await addComponent(row, { line_key: row.lineKey });
+    const writeSource = async () => {
+      await insert(db, sources, { order_id: id, sku_id: sku.id, sku_code: row.sku, line_key: row.lineKey,
+        tax_class_key: row.taxClassKey, assignment_ref: row.assignmentRef, mode: row.mode,
+        source_ordinal: row.sourceOrdinal, source_rank: index + 1, quantity: row.quantity, unit_basis_minor: row.unitBasisMinor,
+        ...amounts(row), ...(index === 0 ? opts.source : {}) });
+      await addComponent(row, { line_key: row.lineKey });
+    };
+    if (!opts.beforeSource) await writeSource();
     const unit = Math.floor(row.effectiveMinor / row.quantity);
     const extras = row.effectiveMinor % row.quantity;
     const split = [[row.quantity - extras, unit], ...(extras ? [[extras, unit + 1]] : [])];
@@ -177,6 +180,10 @@ export async function write(db: PoolClient, evidence: Evidence, sku: Sku,
           catalog_line_amount_minor: row.unitBasisMinor * quantity, promotion_discount_allocated_minor: (row.unitBasisMinor - price) * quantity,
           promotion_allocation_fingerprint: digest } : {}), ...(itemIds.length === 0 ? opts.item : {}) });
       itemIds.push(itemId);
+    }
+    if (opts.beforeSource) {
+      await opts.beforeSource();
+      await writeSource();
     }
   }
   for (const [index, bucket] of quote.deliveryBuckets.entries()) {

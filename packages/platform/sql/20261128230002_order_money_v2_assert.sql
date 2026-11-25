@@ -179,6 +179,31 @@ BEGIN
     END IF;
     RETURN;
   END IF;
+  -- Compare visible tuple identities and creating transactions, with a boundary
+  -- between relations. Including xmin detects a slot reused by another writer.
+  -- Skip unchanged events before validating or hashing the projection. A later
+  -- write changes the stamp even after a named IMMEDIATE flush.
+  SELECT state.fresh,state.check_seal,state.check_projection INTO p_fresh,check_seal,check_projection
+  FROM public.commerce_order_money_v2_check_state(p_order_id,p_fresh,invoking_role||':'||p_owner,
+    (ARRAY[
+      (SELECT ctid::text||'@'||xmin FROM public.commerce_orders WHERE id=p_order_id),
+      (SELECT ctid::text||'@'||xmin FROM public.commerce_order_tax_snapshots WHERE order_id=p_order_id),
+      (SELECT ctid::text||'@'||xmin FROM public.commerce_destination_v2_order_bindings WHERE order_id=p_order_id),
+      (SELECT ctid::text||'@'||xmin FROM public.commerce_destination_v2_documents WHERE snapshot_ref=snapshot.destination_snapshot_ref),
+      (SELECT ctid::text||'@'||xmin FROM public.tax_calculations WHERE calculation_id=snapshot.calculation_id),
+      (SELECT ctid::text||'@'||xmin FROM public.identity_privacy_erasures WHERE client_id=header.client_id)]
+    || ARRAY(SELECT ctid::text||'@'||xmin FROM public.commerce_order_items WHERE order_id=p_order_id ORDER BY ctid) || NULL::text
+    || ARRAY(SELECT ctid::text||'@'||xmin FROM public.commerce_order_line_sources WHERE order_id=p_order_id ORDER BY ctid) || NULL::text
+    || ARRAY(SELECT ctid::text||'@'||xmin FROM public.commerce_order_delivery_buckets WHERE order_id=p_order_id ORDER BY ctid) || NULL::text
+    || ARRAY(SELECT ctid::text||'@'||xmin FROM public.commerce_order_line_allocations WHERE order_id=p_order_id ORDER BY ctid) || NULL::text
+    || ARRAY(SELECT ctid::text||'@'||xmin FROM public.commerce_order_tax_positions WHERE order_id=p_order_id ORDER BY ctid) || NULL::text
+    || ARRAY(SELECT ctid::text||'@'||xmin FROM public.commerce_order_fee_lines WHERE order_id=p_order_id ORDER BY ctid) || NULL::text
+    || ARRAY(SELECT ctid::text||'@'||xmin FROM public.commerce_order_adjustments WHERE order_id=p_order_id ORDER BY ctid) || NULL::text
+    || ARRAY(SELECT sku.ctid::text||'@'||sku.xmin FROM public.catalog_skus sku WHERE sku.id IN (
+      SELECT sku_id FROM public.commerce_order_line_sources WHERE order_id=p_order_id) ORDER BY sku.ctid))::text) state;
+  -- OLD/NEW guards still run for each event, even with an unchanged projection.
+  IF NOT check_seal AND NOT check_projection AND p_before IS NULL THEN RETURN; END IF;
+
   -- A caller can flush either line-sum constraint ahead of the foreign keys.
   -- Refuse the missing snapshot now with the same named foreign-key diagnostic.
   IF snapshot.order_id IS NULL THEN
@@ -216,6 +241,7 @@ BEGIN
   IF EXISTS (SELECT FROM public.commerce_order_items i WHERE i.order_id=p_order_id AND i.line_key IS NULL) THEN
     RAISE EXCEPTION 'commerce_order_money_v2_mismatch' USING ERRCODE='23514', COLUMN='/lines', HINT=remedy;
   END IF;
+  -- A later source insert has no assertion trigger in this forward.
   SELECT i.line_key INTO orphan_key FROM public.commerce_order_items i WHERE i.order_id=p_order_id AND NOT EXISTS (
     SELECT FROM public.commerce_order_line_sources s WHERE (s.order_id,s.line_key)=(i.order_id,i.line_key)
   ) LIMIT 1;
@@ -224,31 +250,6 @@ BEGIN
       USING ERRCODE='23503', SCHEMA='public', TABLE='commerce_order_items', CONSTRAINT='commerce_order_items_money_source_fkey',
       DETAIL=format('Key (order_id, line_key)=(%s, %s) is not present in table "commerce_order_line_sources".',p_order_id,orphan_key);
   END IF;
-
-  -- Compare visible tuple identities and creating transactions, with a boundary
-  -- between relations. Including xmin detects a slot reused by another writer.
-  -- This bypasses reconciliation and canonical hashing on unchanged deferred
-  -- events. A later write changes the stamp even after a named IMMEDIATE flush.
-  SELECT state.fresh,state.check_seal,state.check_projection INTO p_fresh,check_seal,check_projection
-  FROM public.commerce_order_money_v2_check_state(p_order_id,p_fresh,invoking_role||':'||p_owner,
-    (ARRAY[
-      (SELECT ctid::text||'@'||xmin FROM public.commerce_orders WHERE id=p_order_id),
-      (SELECT ctid::text||'@'||xmin FROM public.commerce_order_tax_snapshots WHERE order_id=p_order_id),
-      (SELECT ctid::text||'@'||xmin FROM public.commerce_destination_v2_order_bindings WHERE order_id=p_order_id),
-      (SELECT ctid::text||'@'||xmin FROM public.commerce_destination_v2_documents WHERE snapshot_ref=snapshot.destination_snapshot_ref),
-      (SELECT ctid::text||'@'||xmin FROM public.tax_calculations WHERE calculation_id=snapshot.calculation_id),
-      (SELECT ctid::text||'@'||xmin FROM public.identity_privacy_erasures WHERE client_id=header.client_id)]
-    || ARRAY(SELECT ctid::text||'@'||xmin FROM public.commerce_order_items WHERE order_id=p_order_id ORDER BY ctid) || NULL::text
-    || ARRAY(SELECT ctid::text||'@'||xmin FROM public.commerce_order_line_sources WHERE order_id=p_order_id ORDER BY ctid) || NULL::text
-    || ARRAY(SELECT ctid::text||'@'||xmin FROM public.commerce_order_delivery_buckets WHERE order_id=p_order_id ORDER BY ctid) || NULL::text
-    || ARRAY(SELECT ctid::text||'@'||xmin FROM public.commerce_order_line_allocations WHERE order_id=p_order_id ORDER BY ctid) || NULL::text
-    || ARRAY(SELECT ctid::text||'@'||xmin FROM public.commerce_order_tax_positions WHERE order_id=p_order_id ORDER BY ctid) || NULL::text
-    || ARRAY(SELECT ctid::text||'@'||xmin FROM public.commerce_order_fee_lines WHERE order_id=p_order_id ORDER BY ctid) || NULL::text
-    || ARRAY(SELECT ctid::text||'@'||xmin FROM public.commerce_order_adjustments WHERE order_id=p_order_id ORDER BY ctid) || NULL::text
-    || ARRAY(SELECT sku.ctid::text||'@'||sku.xmin FROM public.catalog_skus sku WHERE sku.id IN (
-      SELECT sku_id FROM public.commerce_order_line_sources WHERE order_id=p_order_id) ORDER BY sku.ctid))::text) state;
-  -- OLD/NEW guards still run for each event, even with an unchanged projection.
-  IF NOT check_seal AND NOT check_projection AND p_before IS NULL THEN RETURN; END IF;
 
   IF p_fresh OR p_before IS NOT NULL OR snapshot.destination_erased THEN
     SELECT EXISTS (SELECT FROM pg_locks WHERE pid=pg_backend_pid() AND granted
