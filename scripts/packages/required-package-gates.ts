@@ -1,15 +1,17 @@
 /** The common premerge route; package manifests own their semantic proof, not a second registry. */
 import { execFileSync, spawn } from "node:child_process";
 import { readFileSync, realpathSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parsePackagesConfig } from "./package-manifest-policy.ts";
 import { preparePackages } from "./package-build.ts";
 import { isolatedConsumerEnv, readCurrentPackManifest } from "./pack-manifest-input.ts";
 
+const NPM = join(dirname(process.execPath), process.platform === "win32" ? "npm.cmd" : "npm");
+
 function runAsync(args: string[], cwd: string, env: NodeJS.ProcessEnv): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolvePromise, rejectPromise) => {
-    const child = spawn("npm", args, { cwd, env, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(NPM, args, { cwd, env, stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
     child.stdout?.setEncoding("utf8");
