@@ -139,7 +139,7 @@ review before applying the ACL forward.
 
 ## Checkout abandonment predicate grant
 
-The [grant forward](../../db/platform/migrations/20261128130000_checkout_abandonment_safety_execute_grant.sql)
+The [grant forward](../../db/platform/migrations/20261128180001_checkout_abandonment_safety_execute_grant.sql)
 re-creates `public.commerce_initial_checkout_abandonment_safe(uuid)` with its
 existing definition and grants EXECUTE to `service_role` where that role
 exists. The predicate was created inside the native store class, by

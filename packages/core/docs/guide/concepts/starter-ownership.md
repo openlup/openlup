@@ -217,7 +217,7 @@ answers `starter_checkout_not_payable`, and a new key works, including for the
 same first subscription. While the unpaid draft exists, a new first
 subscription for the same contact answers `starter_command_conflict`. An
 abandon that cancels nothing because the host was busy, or because the platform
-forward `20261128130000_checkout_abandonment_safety_execute_grant.sql` is
+forward `20261128180001_checkout_abandonment_safety_execute_grant.sql` is
 missing, answers `starter_purchase_unavailable`; repeat it, and apply the
 forward if it persists. An unknown key is answered before metering. Refusals use HTTP 409. A missing or malformed header answers
 HTTP 400 with `starter_command_identity_required`.
