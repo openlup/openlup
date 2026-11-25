@@ -12570,6 +12570,10 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/fixtures/preflight-integration-fixture.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/fixtures/reviewed-m10/db/platform/migrations/20261022160000_subscription_retry_lifecycle.sql",
       "class": "public-output"
     },
@@ -13267,6 +13271,14 @@
     },
     {
       "path": "scripts/post-order-control-schema.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/preflight-integration-cold-api.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/preflight-integration-settings.test.ts",
       "class": "public-output"
     },
     {
