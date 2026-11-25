@@ -33,7 +33,7 @@ async function tap(db: PoolClient, roles: boolean) {
   const checks = await db.query(`SELECT plan(4);
     CREATE TEMP VIEW renewal_storage AS SELECT * FROM pg_class
       WHERE relnamespace='public'::regnamespace AND relkind='r' AND starts_with(relname::text,'subscription_cycle_');
-    SELECT ok((SELECT count(*)=11 AND bool_and(relrowsecurity AND NOT relforcerowsecurity AND relowner=current_user::regrole) FROM renewal_storage), 'ordinary owner relations enforce RLS');
+    SELECT ok((SELECT count(*)=12 AND bool_and(relrowsecurity AND NOT relforcerowsecurity AND relowner=current_user::regrole) FROM renewal_storage), 'ordinary owner relations enforce RLS');
     SELECT ok(NOT EXISTS (SELECT FROM renewal_storage c, LATERAL aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) x
       WHERE x.grantee<>c.relowner), 'no direct table privilege escapes the owner');
     SELECT is((SELECT count(*)::int FROM pg_attribute a JOIN renewal_storage c ON c.oid=a.attrelid WHERE a.attacl IS NOT NULL), ${roles ? 1 : 0}, 'only installed census has column privileges');

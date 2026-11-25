@@ -62,7 +62,7 @@ export const connectedStoreOwnedTables = [
   ...subscriptionsDomain.owned.renewalPreparations,
   ...paymentsDomain.owned.renewalAttemptsAndGrants,
   ...taxAndMoneyDomain.owned.renewalRebinds,
-  ...fulfillmentDomain.owned.renewalDeliveryAssignments,
+  ...fulfillmentDomain.owned.renewalDelivery,
 ] as const;
 
 export const connectedStoreSettingsTables = [
@@ -125,9 +125,9 @@ export const connectedStoreRestoreOrder = [
   ...taxAndMoneyDomain.owned.renewalRebinds,
   ...subscriptionsDomain.restore.supportCommands,
   ...fulfillmentDomain.restore.dispatchParcelsAndEvidence,
+  ...fulfillmentDomain.owned.renewalDelivery,
   ...commerceDomain.restore.holdsAndOperations,
   ...subscriptionsDomain.restore.deliveryAlignment,
-  ...fulfillmentDomain.owned.renewalDeliveryAssignments,
   ...subscriptionsDomain.restore.dunning,
   ...commerceDomain.restore.recoveryAndReminders,
   ...paymentsDomain.restore.recoveryAuthorities,

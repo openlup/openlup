@@ -34,13 +34,28 @@ CREATE TABLE public.subscription_cycle_occurrences (
 CREATE UNIQUE INDEX subscription_cycle_occurrences_current_idx ON public.subscription_cycle_occurrences (subscription_id) WHERE is_current;
 
 CREATE TABLE public.subscription_cycle_delivery_assignments (
-  obligation_ref uuid PRIMARY KEY REFERENCES public.subscription_delivery_alignment_cases(id),
+  obligation_ref uuid PRIMARY KEY REFERENCES public.commerce_orders(id),
   assigned_cycle_key uuid NOT NULL REFERENCES public.subscription_cycle_occurrences(cycle_key),
   marker_cycle_key uuid REFERENCES public.subscription_cycle_occurrences(cycle_key),
   qualifying_actual_arrival_at timestamptz,
   applied_due_at timestamptz
 );
 CREATE INDEX subscription_cycle_delivery_assignments_cycle_idx ON public.subscription_cycle_delivery_assignments (assigned_cycle_key);
+
+-- Retain the owner-verified delivery coordinates alongside the original observation.
+CREATE TABLE public.subscription_cycle_delivery_evidence (
+  observation_event_key text PRIMARY KEY REFERENCES public.fulfillment_observations(event_key),
+  obligation_ref uuid NOT NULL REFERENCES public.subscription_cycle_delivery_assignments(obligation_ref),
+  shipment_id uuid NOT NULL REFERENCES public.fulfillment_shipments(id),
+  dispatch_ref_id uuid NOT NULL REFERENCES public.fulfillment_dispatch_refs(id),
+  provider_ref text NOT NULL CHECK (NOT (btrim(provider_ref) = '')),
+  actual_arrival_at timestamptz NOT NULL CHECK (NOT (actual_arrival_at IN ('-infinity', 'infinity'))),
+  evidence_digest text NOT NULL,
+  CONSTRAINT cycle_delivery_evidence_digest_check CHECK (length(evidence_digest) = 64
+    AND translate(evidence_digest, '0123456789abcdef', '') = '')
+);
+CREATE INDEX subscription_cycle_delivery_evidence_obligation_idx
+  ON public.subscription_cycle_delivery_evidence (obligation_ref, shipment_id);
 
 CREATE TABLE public.subscription_cycle_generations (
   operation_id uuid NOT NULL REFERENCES public.subscription_renewal_operations(id),
@@ -159,7 +174,7 @@ CREATE UNIQUE INDEX subscription_cycle_cases_open_idx ON public.subscription_cyc
 CREATE TABLE public.subscription_cycle_preparations (
   preparation_id uuid PRIMARY KEY,
   cycle_key uuid NOT NULL,
-  cycle_id uuid NOT NULL UNIQUE REFERENCES public.subscription_cycles(id) DEFERRABLE INITIALLY DEFERRED,
+  cycle_id uuid NOT NULL UNIQUE REFERENCES public.subscription_cycles(id),
   operation_id uuid NOT NULL,
   commercial_generation_id uuid NOT NULL,
   binding_ref uuid NOT NULL UNIQUE,
@@ -240,6 +255,7 @@ CREATE TABLE public.subscription_cycle_calculation_rebinds (
 
 ALTER TABLE public.subscription_cycle_occurrences ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.subscription_cycle_delivery_assignments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.subscription_cycle_delivery_evidence ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.subscription_cycle_generations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.subscription_cycle_stock_holds ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.subscription_cycle_tax_issuances ENABLE ROW LEVEL SECURITY;
@@ -252,6 +268,7 @@ ALTER TABLE public.subscription_cycle_calculation_rebinds ENABLE ROW LEVEL SECUR
 
 REVOKE ALL ON TABLE public.subscription_cycle_occurrences FROM PUBLIC;
 REVOKE ALL ON TABLE public.subscription_cycle_delivery_assignments FROM PUBLIC;
+REVOKE ALL ON TABLE public.subscription_cycle_delivery_evidence FROM PUBLIC;
 REVOKE ALL ON TABLE public.subscription_cycle_generations FROM PUBLIC;
 REVOKE ALL ON TABLE public.subscription_cycle_stock_holds FROM PUBLIC;
 REVOKE ALL ON TABLE public.subscription_cycle_tax_issuances FROM PUBLIC;
@@ -264,18 +281,21 @@ REVOKE ALL ON TABLE public.subscription_cycle_calculation_rebinds FROM PUBLIC;
 
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN
   EXECUTE 'REVOKE ALL ON TABLE public.subscription_cycle_occurrences, public.subscription_cycle_delivery_assignments,
+    public.subscription_cycle_delivery_evidence,
     public.subscription_cycle_generations, public.subscription_cycle_stock_holds, public.subscription_cycle_tax_issuances,
     public.subscription_cycle_tax_bindings, public.subscription_cycle_cases, public.subscription_cycle_preparations,
     public.subscription_cycle_payment_attempts, public.subscription_cycle_dispatch_grants, public.subscription_cycle_calculation_rebinds FROM anon;';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN
   EXECUTE 'REVOKE ALL ON TABLE public.subscription_cycle_occurrences, public.subscription_cycle_delivery_assignments,
+    public.subscription_cycle_delivery_evidence,
     public.subscription_cycle_generations, public.subscription_cycle_stock_holds, public.subscription_cycle_tax_issuances,
     public.subscription_cycle_tax_bindings, public.subscription_cycle_cases, public.subscription_cycle_preparations,
     public.subscription_cycle_payment_attempts, public.subscription_cycle_dispatch_grants, public.subscription_cycle_calculation_rebinds FROM authenticated;';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
   EXECUTE 'REVOKE ALL ON TABLE public.subscription_cycle_occurrences, public.subscription_cycle_delivery_assignments,
+    public.subscription_cycle_delivery_evidence,
     public.subscription_cycle_generations, public.subscription_cycle_stock_holds, public.subscription_cycle_tax_issuances,
     public.subscription_cycle_tax_bindings, public.subscription_cycle_cases, public.subscription_cycle_preparations,
     public.subscription_cycle_payment_attempts, public.subscription_cycle_dispatch_grants, public.subscription_cycle_calculation_rebinds FROM service_role;';
