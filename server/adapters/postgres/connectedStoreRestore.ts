@@ -774,6 +774,8 @@ async function assertInsertTriggers(client: PoolClient): Promise<void> {
     commerce_orders: ["trg_commerce_orders_line_sum"], commerce_order_items: ["trg_commerce_order_items_line_sum"],
     commerce_order_holds: ["trg_fulfillment_emit_shipment_exception", "trg_subscription_delivery_alignment_exception_case"],
     fulfillment_shipments: ["trg_subscription_delivery_alignment_on_delivery"],
+    // The guard only refuses fresh v2 commands, which an exact-current source cannot contain.
+    commerce_fulfillment_provider_commands: ["commerce_fulfillment_provider_command_destination_v2_guard"],
     shipment_external_refs: ["trg_fulfillment_emit_shipment_reference_notice"],
     outbox_events: ["channel_purchase_outbox_guard", "communication_event_source_guard"],
     // The guard admits only classic inserts. The binder acts only on opt-in

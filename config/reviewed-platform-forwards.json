@@ -9524,6 +9524,46 @@
         "dataStatements": []
       },
       {
+        "row": "fulfillment-destination-v2-legacy-ledger-fence",
+        "path": "db/platform/migrations/20261128030000_fulfillment_destination_v2_legacy_ledger_fence.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.commerce_fulfillment_enqueue_provider_command(uuid,text,text,text,text,text,text,text,text,text,text,integer)",
+            "beforeSha256": "e0254efe05aaf7cbfcc6a9e65dc592bd82fe298760e8f08db6bdc2fa25e1e270",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_fulfillment_claim_provider_commands(text,text,integer,text,integer)",
+            "beforeSha256": "57ccd76aa3ce81c7b6c0862287d3cabc7dd9849f30f5d852af8fdfdacefeb83f",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_fulfillment_mark_command_submitting(uuid,uuid,bigint,bigint,uuid)",
+            "beforeSha256": "cd9a1b3e73ed04619f8d1b0df1606e1f9735b2ba4d093350c21bf19ce4463f22",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.fulfillment_order_has_destination_v2(uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_fulfillment_provider_command_destination_v2_guard()",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "createdTriggers": [
+          {
+            "name": "commerce_fulfillment_provider_command_destination_v2_guard",
+            "table": "public.commerce_fulfillment_provider_commands",
+            "sha256": "4298e012982fb58cce068c18a3f86494e1281b61f33e819211071ba14ab7417a"
+          }
+        ]
+      },
+      {
         "row": "order-money-v2-storage",
         "path": "db/platform/migrations/20261128120000_order_money_v2_storage.sql",
         "replacedFunctions": [],
@@ -13740,6 +13780,37 @@
           "signature": "public.catalog_price_setup_order_protection_verified(uuid,jsonb,jsonb,jsonb)",
           "beforeSha256": null,
           "afterSha256": "052f26d5fb397049ab48f68fbabe639494824c5144be80a95d8ef5ceab95ef62"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261128030000_fulfillment_destination_v2_legacy_ledger_fence.sql",
+      "sha256": "47c1163855d8fc24e3040a3971db4e00f1be9299ff6d968e5abe522567040ddb",
+      "functions": [
+        {
+          "signature": "public.commerce_fulfillment_enqueue_provider_command(uuid,text,text,text,text,text,text,text,text,text,text,integer)",
+          "beforeSha256": "e0254efe05aaf7cbfcc6a9e65dc592bd82fe298760e8f08db6bdc2fa25e1e270",
+          "afterSha256": "8caccff56602024eff7121fbdc00e23466bcbb78e9c70a6f00371f7b0d29091f"
+        },
+        {
+          "signature": "public.commerce_fulfillment_claim_provider_commands(text,text,integer,text,integer)",
+          "beforeSha256": "57ccd76aa3ce81c7b6c0862287d3cabc7dd9849f30f5d852af8fdfdacefeb83f",
+          "afterSha256": "935c588036e58434b56a620157a2f85b6ca46c69875c5e2c7cf942b98d03111d"
+        },
+        {
+          "signature": "public.commerce_fulfillment_mark_command_submitting(uuid,uuid,bigint,bigint,uuid)",
+          "beforeSha256": "cd9a1b3e73ed04619f8d1b0df1606e1f9735b2ba4d093350c21bf19ce4463f22",
+          "afterSha256": "6283f516b5a35130ee13503b9499e75beef37bdf536686c31c1a1b54505995c4"
+        },
+        {
+          "signature": "public.fulfillment_order_has_destination_v2(uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "ce6bf3523cc7f220fc97f9241c2125ce1a3054e2095f00755b8f3a732a596fee"
+        },
+        {
+          "signature": "public.commerce_fulfillment_provider_command_destination_v2_guard()",
+          "beforeSha256": null,
+          "afterSha256": "fc7c9ff356e6876ecb995a3ff8517fdee4799587d2b9643e04ca8e041ba42350"
         }
       ]
     },

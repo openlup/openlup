@@ -73,6 +73,7 @@ export const PUBLIC_PACKAGE_COMMANDS: PublicPackageCommand[] = [
   publicCommand("sql:admit", "node --experimental-strip-types scripts/sql-admit.ts"),
   publicCommand("pretest", "node scripts/build-packages-incremental.mjs"),
   publicCommand("test", PUBLIC_TEST_COMMAND),
+  publicCommand("test:affected", "node scripts/affected-tests.mjs --run"),
   publicCommand("test:hosted", "node scripts/test-hosted.mjs"),
   publicCommand("test:scoped", "scope_file=$(mktemp) && trap 'rm -f \"$scope_file\"' EXIT && export OPENLUP_VITEST_EXCLUDE_FILE=\"$scope_file\" && node scripts/ci-test-scope.mjs && npm test"),
 ];

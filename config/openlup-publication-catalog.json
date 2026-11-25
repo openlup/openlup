@@ -11414,6 +11414,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/subscriptions/nativePurchasePriceList.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/subscriptions/nativeRenewalTerms.test.ts",
       "class": "public-output"
     },
@@ -30618,6 +30622,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/destinationV2DispatchLedger.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/destinationV2OrderBinding.test.ts",
       "class": "public-output"
     },
@@ -31958,6 +31966,16 @@
       "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
     },
     {
+      "name": "test:affected",
+      "command": "node scripts/affected-tests.mjs --run",
+      "publicDocs": [
+        "CONTRIBUTING.md",
+        "README.md"
+      ],
+      "publicCiEntrypoint": ".github/workflows/published-tree-ci.yml",
+      "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
+    },
+    {
       "name": "test:hosted",
       "command": "node scripts/test-hosted.mjs",
       "publicDocs": [
@@ -31985,7 +32003,7 @@
     },
     {
       "path": "package.json",
-      "digest": "sha256-0cd642ad073a0d7f96d8b54b992079a85e9f75017d1237bc255885c9546c5c5f"
+      "digest": "sha256-85f22d834d55ab426c59fb240b5ae13bc169419d59d42e2834814ef8199c8ff6"
     },
     {
       "path": "packages/core/package.json",

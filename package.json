@@ -52,6 +52,7 @@
     "release:docs-pass": "node --experimental-strip-types scripts/packages/release-docs-pass.ts",
     "pretest": "node scripts/build-packages-incremental.mjs",
     "test": "node scripts/run-vitest.mjs run",
+    "test:affected": "node scripts/affected-tests.mjs --run",
     "test:scoped": "scope_file=$(mktemp) && trap 'rm -f \"$scope_file\"' EXIT && export OPENLUP_VITEST_EXCLUDE_FILE=\"$scope_file\" && node scripts/ci-test-scope.mjs && npm test",
     "inventory:refresh": "node --import tsx scripts/installation-inventory-refresh.ts",
     "landing:merge": "node scripts/agent-review-landing.mjs",

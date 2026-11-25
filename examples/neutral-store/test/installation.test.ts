@@ -153,6 +153,7 @@ function installation(identity = { login: 'demo_install', role: 'demo_install', 
       if (text.startsWith('SELECT definition,active')) return { rows: [promotions.get(String(values?.[0]))!] };
       if (text.startsWith('INSERT INTO public.price_entries') && values) prices.set(String(values[0]),
         Object.fromEntries(['id','price_list_id','variant_id','mode','min_qty','unit_price_minor','amount_kind','active','valid_from'].map((key,i) => [key, values[i]])));
+      if (text.startsWith('SELECT id,price_list_id')) return { rows: [] };
       if (text.startsWith('SELECT id, price_list_id')) return { rows: [prices.get(String(values?.[0]))!] };
       return { rows: text.startsWith('SELECT provenance')
         ? [{ provenance: acquisitionAddresses[0]!.addressReference.provenance, active: true }]
@@ -364,7 +365,11 @@ for (const config of Object.values(configurations)) {
     const inserts = first.calls.slice(0, seedCommit).filter(call => !protection.includes(call) && !reminders.includes(call)
       && !settlement.includes(call) && call.text.startsWith('INSERT INTO public.'));
     const seed = buildDemoSeed(config);
-    assert.equal(inserts.length, seed.products.length + seed.skus.length * 2 + seed.documents.length + seed.settings.length + seed.prices.length + 4);
+    assert.equal(inserts.length, seed.products.length + seed.skus.length * 2 + seed.documents.length + seed.settings.length + seed.skus.length + 4);
+    assert.deepEqual(inserts.filter(call => call.text.startsWith('INSERT INTO public.price_entries')).map(call => call.values?.[3]),
+      seed.skus.map(() => 'one_time'));
+    const locks = first.calls.filter(call => call.text.startsWith('SELECT public.catalog_price_setup_lock_context'));
+    assert.deepEqual(locks.map(call => call.values), seed.skus.map(sku => sku.id).sort().map(id => [seed.priceLists[0]!.id, id]));
     for (const call of inserts) {
       assert.match(call.text, /ON CONFLICT/);
       assert.match(call.text, /INSERT INTO public\.(catalog_products|catalog_skus|price_lists|price_entries|catalog_product_document_revisions|catalog_sku_identifiers|commerce_settings|subscription_price_policy_revisions|commerce_promotion_definitions)\b/);
@@ -681,6 +686,19 @@ test('install uses the native stock writer for every exact editor SKU and seeds 
   assert.equal(fixture.calls.some(call => /INSERT INTO public\.(subscription_lines|subscription_renewal_terms|subscription_renewal_term_lines|subscription_method_states|clients)\b/.test(call.text)),false);
   const settings = fixture.calls.filter(call => call.text.startsWith('INSERT INTO public.commerce_settings'));
   assert.equal(settings.find(call => call.values?.[0] === 'subscription_minimum_base_units')?.values?.[1],String(config.subscriptionEditing.minimumBaseUnits));
+});
+
+test('a subscription-only seed SKU gets an undiscounted base and keeps its purchase modes', async () => {
+  const config = structuredClone(Object.values(configurations)[0]!);
+  const product = config.offer.products[0]!;
+  product.permittedPurchaseModes = ['subscription'];
+  const fixture = installation();
+  await applyDemoSeed(config, fixture.binding);
+  const sku = fixture.calls.find(call => call.text.startsWith('INSERT INTO public.catalog_skus') && call.values?.[2] === product.sku);
+  assert.ok(sku);
+  assert.deepEqual(sku.values?.slice(7, 9), [false, true]);
+  const price = fixture.calls.find(call => call.text.startsWith('INSERT INTO public.price_entries') && call.values?.[2] === sku.values?.[0]);
+  assert.deepEqual(price?.values?.slice(3, 7), ['one_time', 1, product.unitPrice.amountMinor, 'gross']);
 });
 
 test('a changed installed document refuses instead of reusing an incompatible revision', async () => {

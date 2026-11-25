@@ -83,6 +83,19 @@ describe('full local verification command ownership', () => {
     expect(full.phases.find((step: { name: string }) => step.name === 'tests').command)
       .toEqual(['env', '-u', 'OPENLUP_STACK_BASE', 'npm', 'run', 'test:scoped']);
   });
+  it('excludes non-root-Vitest files (packages/core/test/* and Playwright specs) from layered npm test', async () => {
+    const f = await fixture(false, process.versions.node, false, [
+      'packages/core/test/bundle.test.ts',
+      'tests/preview/checkout/journey.spec.ts',
+      'scripts/local.test.ts',
+    ]);
+    const cli = resolve('scripts/verify-local.mjs');
+    const layered = spawnSync(process.execPath, [cli, '--layered', '--plan', '--json'], { cwd: f.cwd, env: f.env, encoding: 'utf8' });
+    expect(layered.status).toBe(0);
+    const selected = JSON.parse(layered.stdout);
+    expect(selected.phases.find((step: { name: string }) => step.name === 'tests').command)
+      .toEqual(['env', '-u', 'OPENLUP_STACK_BASE', 'npm', 'test', '--', 'scripts/local.test.ts']);
+  });
   it('reports a clean layered skip when no Vitest file is affected', async () => {
     const f = await fixture();
     const logs: string[] = [];
