@@ -503,10 +503,12 @@ describe('starter browser single journeys retry', () => {
     expect(starterBrowserRetryBudgetMs({})).toBe(300000);
     expect(starterBrowserRetryBudgetMs({ OPENLUP_STARTER_BROWSER_RETRY_BUDGET_MS: '600000' })).toBe(600000);
     expect(starterBrowserRetryBudgetMs({ OPENLUP_STARTER_BROWSER_RETRY_BUDGET_MS: 'soon' })).toBe(300000);
-    // A single 280 s group with the catalogue reserve fits 660 s; a second later group does not.
+    // A single 280 s group plus a 100 s tail fits 660 s by exactly the reserve; 1 ms more does not.
     expect(decideBrowserGroupRetry('journeys', 1, true, { usedMs: 280000, attemptMs: 280000, reserveMs: 100000, budgetMs: 660000 })).toBe('retry');
     expect(decideBrowserGroupRetry('journeys', 1, true, { usedMs: 280000, attemptMs: 280000, reserveMs: 100001, budgetMs: 660000 })).toBe('budget');
-    expect(decideBrowserGroupRetry('journeys', 1, true, { usedMs: 140000, attemptMs: 140000, laterGroups: 1, reserveMs: 210000, budgetMs: 660000 })).toBe('budget');
+    expect(decideBrowserGroupRetry('journeys', 1, true, { usedMs: 140000, attemptMs: 140000, laterGroups: 1, reserveMs: 210000, budgetMs: 660000 })).toBe('retry');
+    // A later group and the catalogue reserve leave no room for a 160 s rerun.
+    expect(decideBrowserGroupRetry('journeys', 1, true, { usedMs: 160000, attemptMs: 160000, laterGroups: 1, reserveMs: 210000, budgetMs: 660000 })).toBe('budget');
     // Time an earlier group already used counts against the rerun.
     expect(decideBrowserGroupRetry('journeys', 1, true, { usedMs: 400000, attemptMs: 120000, reserveMs: 30000, budgetMs: 660000 })).toBe('retry');
     expect(decideBrowserGroupRetry('journeys', 1, true, { usedMs: 520000, attemptMs: 120000, reserveMs: 30000, budgetMs: 660000 })).toBe('budget');
