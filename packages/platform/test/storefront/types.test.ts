@@ -50,7 +50,7 @@ const other: StatusReading = { kind: "active", action: { kind: "other" } };
 const statusTransport: StatusTransportBinding = { read: async () => terminal };
 const changedPolicies: ChangedPayloadPolicy[] = ["update_in_place", "refuse_changed"];
 const storagePolicies: StorageFailurePolicy[] = ["refuse", "continue_unpersisted"];
-const outcomes: SubmitOutcomeClass[] = ["settled", "needs_client_action", "awaiting_authority", "refused", "unknown"];
+const outcomes: SubmitOutcomeClass[] = ["settled", "needs_client_action", "awaiting_authority", "declined", "refused", "closed", "unknown"];
 const classifyOutcome: SubmitOutcomeClassifier<{ status: string }> = (result) => result.status === "paid" ? "settled" : "unknown";
 const facts: PaymentProviderFacts = { providers: ["provider"], reopenableEmbeddedProviders: ["provider"], retryableAttemptStatuses: ["failed", "expired"] };
 const report: ClientEventReporter = (event) => { void event; };
