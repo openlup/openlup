@@ -726,7 +726,8 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
     const storefrontMessage = "packages/platform storefront";
     const lint = async (source: string, file = "packages/platform/src/storefront/usesGlobal.ts") =>
       (await linterFor(config).lintText(source, { filePath: resolve(root, file), warnIgnored: true }))[0]!.messages;
-    for (const name of ["window", "document", "sessionStorage", "localStorage", "crypto", "fetch", "performance", "Date", "setTimeout", "process", "globalThis"]) {
+    for (const name of ["window", "document", "sessionStorage", "localStorage", "crypto", "fetch", "performance", "Date", "setTimeout",
+      "setInterval", "queueMicrotask", "navigator", "location", "process", "Buffer", "require", "globalThis", "global", "self"]) {
       const messages = await lint(`export const read = () => ${name};\n`);
       expect(messages.filter(({ fatal, ruleId }) => fatal || ruleId === null)).toEqual([]);
       expect(messages.filter(({ ruleId }) => ruleId === "no-restricted-globals").map(({ message }) => message), name)

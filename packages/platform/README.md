@@ -3881,10 +3881,12 @@ verifiers (`verifyHmacSha256`, `verifyHardenedStandardWebhook`,
 
 ## Storefront continuation contracts
 
+Status: current contract (experimental).
+
 `@openlup/platform/storefront` is the browser-side home for the logic that keeps
-a buyer's purchase safe across a lost response, a reload and a decline. In this
-release it holds types, three identity constructors and one constant of markup
-anchor names. It reads no storage, sends no request and names no provider.
+a buyer's purchase safe across a lost response, a reload and a decline. It holds
+types, three identity constructors and one constant of markup anchor names. It
+reads no storage, sends no request and names no provider.
 
 - **Identity roles.** A continuation identity names one purchase, a command key
   is the replay identity of one command and an attempt number counts payment

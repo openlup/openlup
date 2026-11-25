@@ -2,26 +2,27 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { expect, it } from "vitest";
 
-// One probe per line: each `@ts-expect-error` names the line after it.
+// One probe per line: each `@ts-expect-error` names the line after it and the one
+// diagnostic code that line must raise without the suppression.
 const probes = `import { storefrontAnchor, toAttemptNumber, toCommandKey, toContinuationId } from "@openlup/platform/storefront";
 import type { AttemptNumber, ChangedPayloadPolicy, ClientEventReporter, CommandKey, ContinuationId, ContinuationRecord, ContinuationRecordStorageBinding, IdentifierBinding, PaymentProviderFacts, PendingAction, PendingActionStorageBinding, StatusReading, StatusTransportBinding, StorageFailurePolicy, StorefrontAnchor, SubmitFailureClass, SubmitFailureClassifier, SubmitOutcomeClass, SubmitOutcomeClassifier, SubmitTransportBinding } from "@openlup/platform/storefront";
 declare const continuationId: ContinuationId;
 declare const commandKey: CommandKey;
-// @ts-expect-error 01 a plain string is not a continuation identity
+// @ts-expect-error 01 TS2322 a plain string is not a continuation identity
 const plainContinuation: ContinuationId = "continuation";
-// @ts-expect-error 02 a plain string is not a command key
+// @ts-expect-error 02 TS2322 a plain string is not a command key
 const plainCommand: CommandKey = "command";
-// @ts-expect-error 03 a plain number is not an attempt number
+// @ts-expect-error 03 TS2322 a plain number is not an attempt number
 const plainAttempt: AttemptNumber = 1;
-// @ts-expect-error 04 a continuation identity is not a command key
+// @ts-expect-error 04 TS2322 a continuation identity is not a command key
 const crossedCommand: CommandKey = continuationId;
-// @ts-expect-error 05 a command key is not a continuation identity
+// @ts-expect-error 05 TS2322 a command key is not a continuation identity
 const crossedContinuation: ContinuationId = commandKey;
-// @ts-expect-error 06 a record names its purchase by continuation identity, not by command key
+// @ts-expect-error 06 TS2322 a record names its purchase by continuation identity, not by command key
 const crossedRecord: ContinuationRecord = { continuationId: commandKey, fingerprint: "f" };
-// @ts-expect-error 07 an attempt number is branded from a number only
+// @ts-expect-error 07 TS2345 an attempt number is branded from a number only
 const textAttempt = toAttemptNumber("1");
-// @ts-expect-error 08 a transport's command key is branded, never a plain string
+// @ts-expect-error 08 TS2322 a transport's command key is branded, never a plain string
 const plainKeyTransport: SubmitTransportBinding = { commandKey: (): string => "plain", replay: async () => undefined };
 // Positive controls: object literals, using the constructors for branded members.
 const record: ContinuationRecord = { continuationId: toContinuationId("c"), fingerprint: "f", attempt: toAttemptNumber(0) };
@@ -74,9 +75,15 @@ it("keeps the identity roles apart and accepts every binding shape", () => {
     return ts.getPreEmitDiagnostics(ts.createProgram([filename], options, host));
   }
   expect(compile(probes).map(d => ts.flattenDiagnosticMessageText(d.messageText, "\n"))).toEqual([]);
-  const expected = probes.split("\n").flatMap((line, index) => line.includes("@ts-expect-error") ? [index + 2] : []);
+  // Each rejection is matched by line and code, so a probe failing for an unrelated reason stays red.
+  const expected = probes.split("\n").flatMap((line, index) => {
+    const marker = /@ts-expect-error \d+ TS(\d+) /.exec(line);
+    return line.includes("@ts-expect-error") ? [`${index + 2}:TS${marker?.[1] ?? "missing code"}`] : [];
+  });
   expect(expected).toHaveLength(8);
   const rejected = compile(probes.replace(/@ts-expect-error/g, "probe-without-suppression"));
-  const lines = [...new Set(rejected.map(d => d.file?.fileName === filename && d.start !== undefined ? d.file.getLineAndCharacterOfPosition(d.start).line + 1 : -1))].sort((a, b) => a - b);
-  expect(lines).toEqual(expected);
+  const found = [...new Set(rejected.map(d => d.file?.fileName === filename && d.start !== undefined
+    ? `${d.file.getLineAndCharacterOfPosition(d.start).line + 1}:TS${d.code}` : `outside:TS${d.code}`))];
+  const byLine = (a: string, b: string) => Number.parseInt(a, 10) - Number.parseInt(b, 10) || a.localeCompare(b);
+  expect(found.sort(byLine)).toEqual(expected.sort(byLine));
 }, 45_000);

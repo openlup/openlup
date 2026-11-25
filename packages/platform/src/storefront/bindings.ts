@@ -82,7 +82,8 @@ export interface SubmitTransportBinding<TRequest = unknown, TOptions = unknown, 
  * - `continue_unpersisted`: deprecated from its first release. Submit with an
  *   identity that was not persisted, so a reload cannot find it again.
  *
- * The union is open: members may be added in a minor release.
+ * The union is open: members may be added in a minor release. The package reads
+ * a member it does not know as `refuse`.
  *
  * @experimental
  */
@@ -105,6 +106,11 @@ export type ClientEventReporter = (event: "submit_refused_in_flight") => void;
  * and `expiresAt` the time after which the marker no longer describes a live
  * action, in epoch seconds. A marker without `phase` is read as
  * `confirm_dispatched`; a marker without `expiresAt` does not expire.
+ *
+ * Both unions are open: members may be added in a minor release. The package
+ * reads an `actionKind` it does not know as `none`, so it reopens or follows no
+ * action, and a `phase` it does not know as `confirm_dispatched`, so it keeps
+ * waiting on a charge that may be live.
  *
  * @experimental
  */
@@ -136,8 +142,12 @@ export interface PendingActionStorageBinding<C extends PendingAction = PendingAc
  *
  * The provider fields are opaque strings the host supplies; the package names
  * no provider. A host maps a payment attempt status it does not recognize to
- * `null`, which the package reads as "not known to admit a new attempt". The
- * union is open: the package reads a kind it does not know as `checking`.
+ * `null`, which the package reads as "not known to admit a new attempt".
+ *
+ * The union and the `action.kind` union are open: members may be added in a
+ * minor release. The package reads a reading kind it does not know as
+ * `checking`, and an action kind it does not know as `other`, which it does
+ * not act on.
  *
  * @experimental
  */
@@ -187,7 +197,8 @@ export interface PaymentProviderFacts {
  * What the server does with a changed payload sent under the same command key:
  * `update_in_place` updates the existing record, `refuse_changed` refuses it.
  * It configures no replay. The union is open: members may be added in a minor
- * release.
+ * release. The package reads a member it does not know as `refuse_changed`: it
+ * never assumes that the server applied a changed payload.
  *
  * @experimental
  */

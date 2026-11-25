@@ -23,7 +23,7 @@ const tsconfigRootDir = path.dirname(fileURLToPath(import.meta.url));
 //      module graph below;
 //   6. the starter's client and shared source: additionally browser-safe platform entries;
 //   7. packages/platform/src/storefront/ production source: additionally no Node built-in
-//      (and, through `no-restricted-globals`, no browser or Node global).
+//      (and, through `no-restricted-globals`, none of STOREFRONT_RESTRICTED_GLOBALS).
 const SOURCE_EXTENSIONS = "{ts,tsx,js,mjs,cjs}";
 const MAX_PACKAGE_DEPTH = 12;
 const PORTABLE_PACKAGE_DIRECTORIES = ["core", "ui", "outbox"];
@@ -238,8 +238,9 @@ const PLATFORM_SOURCE = "packages/platform/src";
 // The storefront module is bundled into a store's browser code and receives
 // storage, time, identifiers and transport only through host bindings
 // (packages/platform/test/storefront/browserBoundary.test.ts proves the bundle).
-// Its production files therefore import no Node built-in and read none of these
-// globals; `globalThis` is listed because it reaches every other one.
+// Its production files therefore import no Node built-in and read none of the
+// browser or Node globals below; `globalThis`, `global` and `self` are listed
+// because they reach every other one, and `require` because it loads a module.
 const STOREFRONT_MESSAGE = "packages/platform storefront source runs in a store's browser and receives storage, "
   + "time, identifiers and transport through host bindings: pass the value in through a binding instead.";
 const storefrontNodeBuiltins = {
@@ -247,7 +248,8 @@ const storefrontNodeBuiltins = {
   regexes: [`^(?:node:|(?:${builtinModules.filter((name) => !name.startsWith("node:")).map(escapeRegex).join("|")})(?:/|$))`],
 };
 const STOREFRONT_RESTRICTED_GLOBALS = ["window", "document", "sessionStorage", "localStorage", "crypto", "fetch",
-  "performance", "Date", "setTimeout", "process", "globalThis"];
+  "performance", "Date", "setTimeout", "setInterval", "queueMicrotask", "navigator", "location", "process", "Buffer",
+  "require", "globalThis", "global", "self"];
 
 // Specifiers that would reach a module around its entry, at any depth: a relative path not in
 // canonical form (an optional leading `./`, then `../` climbs, then named segments that are not
