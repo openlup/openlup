@@ -444,13 +444,22 @@ describe('starter browser failure reporting', () => {
     [{ status: 'failed', errors: [{ message: 'Error: expect(received).toHaveText(expected)\n\nExpected: "secret"' }] }, 'expect.toHaveText'],
     [{ status: 'failed', errors: [{ message: 'Error: expect(page).not.toHaveURL(expected) failed' }] }, 'expect.toHaveURL'],
     [{ status: 'failed', errors: [{ message: 'locator.click: Timeout 10000ms exceeded.\nCall log: value' }] }, 'locator.click timeout'],
-    [{ status: 'failed', errors: [{ message: 'Error: starter_care_fixture_missing for value' }] }, 'starter_care_fixture_missing'],
+    [{ status: 'failed', errors: [{ message: 'Error: starter_care_fixture_missing\nat value' }] }, 'starter_care_fixture_missing'],
     [{ status: 'failed', errors: [{ message: 'TypeError: Cannot read properties of undefined (reading "secret")' }] }, 'TypeError'],
     [{ status: 'failed', errors: [{ message: 'something private happened' }] }, 'unclassified'],
     [{ status: 'interrupted' }, 'Interrupted'],
     [undefined, 'unclassified'],
   ])('classifies a failure without its message body', (result, expected) => {
     expect(classifyTestFailure(result)).toBe(expected);
+  });
+
+  it.each([
+    'password authentication failed for user "starter_runtime"',
+    'Received: {"note":"acquisition_private_customer_note"}',
+    'Error: connect postgres://starter_alice_secret:pw@db failed',
+    'Error: starter_care_fixture_missing for value',
+  ])('never takes a code-like fragment of a value as the class', message => {
+    expect(classifyTestFailure({ status: 'failed', errors: [{ message }] })).not.toMatch(/starter_|acquisition_/u);
   });
 
   it('withholds details that match private output and reports a missing report', async () => {

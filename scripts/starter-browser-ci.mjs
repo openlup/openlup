@@ -207,7 +207,8 @@ export function classifyTestFailure(result) {
   if (matcher) return `expect.${matcher}`;
   const action = /^(?:Error: )?([a-z][A-Za-z]*\.[a-z][A-Za-z]*): Timeout\b/u.exec(message)?.[1];
   if (action) return `${action} timeout`;
-  const code = /\b((?:starter|acquisition)_[a-z_]+)\b/u.exec(message)?.[1];
+  // Only a whole first line that is a code counts; a code-like fragment of a value never does.
+  const code = /^(?:[A-Za-z]*Error: )?((?:starter|acquisition)_[a-z_]+)$/u.exec(String(message).split('\n', 1)[0].trim())?.[1];
   if (code) return code;
   return /^([A-Z][A-Za-z]*Error)\b/u.exec(message)?.[1] ?? 'unclassified';
 }
