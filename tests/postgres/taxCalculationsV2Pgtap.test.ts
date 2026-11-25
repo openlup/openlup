@@ -21,10 +21,10 @@ beforeAll(async () => {
   await pool.query("DROP SCHEMA auth CASCADE; DROP OWNED BY anon,authenticated,service_role CASCADE; DROP ROLE anon,authenticated,service_role;     CREATE ROLE service_role; CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions");
   const client = await pool.connect();
   try {
-    // These later forwards depend on routines the two evaluation forwards create.
+    // The later forwards depend on tables or routines the two evaluation forwards create.
     for (const unit of [manifest.baseline, ...manifest.forward]) {
       if (unit.file !== forward && unit.file !== claimSeal
-        && !/_(?:function_search_path_pg_temp|tax_calculation_composition)\.sql$/u.test(unit.file)) {
+        && !/_(?:function_search_path_pg_temp|tax_calculation_composition|order_money_v2_storage)\.sql$/u.test(unit.file)) {
         await client.query(readFileSync(unit.file, "utf8"));
       }
     }

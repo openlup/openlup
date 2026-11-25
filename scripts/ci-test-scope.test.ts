@@ -1,10 +1,11 @@
 import { execFileSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { env as processEnvironment } from 'node:process';
-import { delimiter, join } from 'node:path';
+import { delimiter, extname, join, posix, resolve } from 'node:path';
+import ts from 'typescript';
 import { afterEach, describe, expect, it } from 'vitest';
-import { excludedToolingTests, resolveGitExecutable, ROOT_DOC_FILES, scopeFromEvent, scopeFromLocal, TOOLING_INPUTS, writeTestScope } from './ci-test-scope.mjs';
+import { excludedToolingTests, resolveGitExecutable, ROOT_DOC_FILES, scopeFromEvent, scopeFromLocal, SHARED_INPUTS, TOOLING_INPUTS, writeTestScope } from './ci-test-scope.mjs';
 
 const base = 'a'.repeat(40);
 const all = Object.keys(TOOLING_INPUTS).sort();
@@ -13,9 +14,12 @@ afterEach(() => { for (const path of directories.splice(0)) rmSync(path, { recur
 function scratch() { const path = mkdtempSync(join(tmpdir(), 'ci-test-scope-')); directories.push(path); return path; }
 
 describe('conservative tooling scope', () => {
-  it('excludes only declared fixtures on a product change, retaining tree scanners and lint inputs', () => {
+  it('excludes only declared fixtures on a product change, retaining tree scanners, src-axis PG suites, and lint inputs', () => {
     const excluded = excludedToolingTests(['src/pages/account/example.tsx']);
-    expect(excluded).toEqual(all.filter(test => !test.endsWith('eslint-import-map.test.ts')));
+    expect(excluded).toEqual(Object.entries(TOOLING_INPUTS)
+      .filter(([, inputs]) => !inputs.includes('src/'))
+      .map(([test]) => test).sort());
+    expect(excluded).not.toContain('scripts/packages/eslint-import-map.test.ts');
     for (const file of ['agent-review-session', 'source-preview-release', 'public-ci-neutrality', 'oss-published-tree-check']) {
       expect(excluded).not.toContain(`scripts/${file}.test.ts`);
     }
@@ -79,17 +83,9 @@ describe('conservative tooling scope', () => {
   });
   it('retains distribution-cli-proof, distribution-cli-settings, guide-tutorial and pgtap-parity for their actual dependency closures', () => {
     expect(excludedToolingTests(['examples/neutral-store/extract.mjs']))
-      .toEqual(all.filter(test => ![
-        'scripts/packages/distribution-cli-proof.test.ts',
-        'scripts/packages/distribution-cli-settings.test.ts',
-        'tests/postgres/customerCheckoutLinks.test.ts',
-        'tests/postgres/fulfillmentOperatorJourneys.test.ts',
-        'tests/postgres/fulfillmentProviderIntake.test.ts',
-        'tests/postgres/neutralStarterE4.test.ts',
-        'tests/postgres/neutralStoreQuote.test.ts',
-        'tests/postgres/neutralStoreRecovery.test.ts',
-        'tests/postgres/neutralStoreUuid.test.ts',
-      ].includes(test)));
+      .toEqual(Object.entries(TOOLING_INPUTS)
+        .filter(([, inputs]) => !inputs.includes('examples/neutral-store/') && !inputs.includes('examples/'))
+        .map(([test]) => test).sort());
     expect(excludedToolingTests(['examples/neutral-store/owned/catalogue.ts']))
       .not.toContain('scripts/packages/distribution-cli-proof.test.ts');
     expect(excludedToolingTests(['examples/neutral-store/owned/settings-host.ts']))
@@ -233,7 +229,7 @@ describe('conservative tooling scope', () => {
     expect(excludedToolingTests(['tests/postgres/managed-compat/supabase.sql'])).not.toContain('tests/postgres/reviewedBatchForwards.test.ts');
     expect(excludedToolingTests(['config/ci-postgres-packages.json'])).not.toContain('tests/postgres/reviewedBatchForwards.test.ts');
   });
-  it('excludes pure PostgreSQL suites on src/api/mcp/unrelated-doc edits and retains them on backend/migration/starter/doc triggers', () => {
+  it('scopes all tests/postgres suites per-file and per-axis without broad tests/postgres/ prefixes', () => {
     const purePgSuites = [
       'tests/postgres/catalogPublication.test.ts',
       'tests/postgres/connectedStoreCatalogRevisions.test.ts',
@@ -257,20 +253,50 @@ describe('conservative tooling scope', () => {
       'tests/postgres/neutralStoreRecovery.test.ts',
       'tests/postgres/neutralStoreUuid.test.ts',
     ];
-    for (const unrelated of ['src/pages/Home.tsx', 'api/bff/example.ts', 'mcp/server.ts', 'docs/platform/README.md']) {
-      const excluded = excludedToolingTests([unrelated]);
-      for (const suite of [...purePgSuites, ...starterPgSuites]) expect(excluded).toContain(suite);
-      for (const srcDependent of [
-        'tests/postgres/connectedStoreTransfer.test.ts',
-        'tests/postgres/customerAccountMutations.test.ts',
-        'tests/postgres/customerSavedAddresses.test.ts',
-        'tests/postgres/m14QualifiedComposition.test.ts',
-        'tests/postgres/subscriptionPublicRenewal.test.ts',
-        'tests/postgres/policyCloseDigest.test.ts',
-      ]) {
-        expect(excluded).not.toContain(srcDependent);
-      }
+    const srcPgSuites = [
+      'tests/postgres/accountSupportComposition.test.ts',
+      'tests/postgres/acquisitionAdmission.test.ts',
+      'tests/postgres/connectedStoreTransfer.test.ts',
+      'tests/postgres/customerAccountMutations.test.ts',
+      'tests/postgres/customerSavedAddresses.test.ts',
+      'tests/postgres/subscriptionPublicRenewal.test.ts',
+    ];
+    const scopedPgSuites = all.filter(test => test.startsWith('tests/postgres/'));
+    expect(scopedPgSuites.length).toBeGreaterThanOrEqual(261);
+
+    // Unrelated docs exclude every scoped PostgreSQL suite.
+    const docsExcluded = excludedToolingTests(['docs/platform/README.md']);
+    for (const suite of scopedPgSuites) expect(docsExcluded).toContain(suite);
+
+    // Frontend src/ excludes pure-server and starter suites while retaining src-axis suites.
+    const srcExcluded = excludedToolingTests(['src/pages/Home.tsx']);
+    for (const suite of [...purePgSuites, ...starterPgSuites]) expect(srcExcluded).toContain(suite);
+    for (const suite of srcPgSuites) expect(srcExcluded).not.toContain(suite);
+
+    // API-only edits retain api-axis suites and exclude pure/starter PG suites.
+    const apiExcluded = excludedToolingTests(['api/bff/example.ts']);
+    for (const suite of ['tests/postgres/acquisitionAdmission.test.ts', 'tests/postgres/communicationsNative.test.ts', 'tests/postgres/invoicingContinuity.test.ts']) {
+      expect(apiExcluded).not.toContain(suite);
     }
+    for (const suite of [...purePgSuites, ...starterPgSuites]) expect(apiExcluded).toContain(suite);
+
+    // MCP-only edits retain acquisitionAdmission (which scans mcp/) and exclude pure/starter PG suites.
+    const mcpExcluded = excludedToolingTests(['mcp/server.ts']);
+    expect(mcpExcluded).not.toContain('tests/postgres/acquisitionAdmission.test.ts');
+    for (const suite of [...purePgSuites, ...starterPgSuites]) expect(mcpExcluded).toContain(suite);
+
+    // Editing a single PG test file retains ONLY that test and excludes other PG suites.
+    const singlePgEdit = excludedToolingTests(['tests/postgres/catalogPublication.test.ts']);
+    expect(singlePgEdit).not.toContain('tests/postgres/catalogPublication.test.ts');
+    expect(singlePgEdit).toContain('tests/postgres/customerBillingProfiles.test.ts');
+    expect(singlePgEdit).toContain('tests/postgres/neutralStoreQuote.test.ts');
+
+    // Editing a shared PG helper retains only suites that depend on that helper.
+    const helperEdit = excludedToolingTests(['tests/postgres/catalogPublicationFixture.ts']);
+    expect(helperEdit).not.toContain('tests/postgres/catalogPublication.test.ts');
+    expect(helperEdit).toContain('tests/postgres/customerBillingProfiles.test.ts');
+
+    // Backend/migration/package/helper triggers retain all base PG suites.
     for (const trigger of [
       'db/platform/migrations/20261124000000_example.sql',
       'config/ci-images.json',
@@ -279,25 +305,33 @@ describe('conservative tooling scope', () => {
       'packages/platform/src/index.ts',
       'server/adapters/postgres/connectedStoreRestore.ts',
       'tests/helpers/pgTemplateBroker.ts',
-      'tests/postgres/storeJourney.ts',
     ]) {
       const excluded = excludedToolingTests([trigger]);
-      for (const suite of [...purePgSuites, ...starterPgSuites]) expect(excluded).not.toContain(suite);
+      for (const suite of [...purePgSuites, ...starterPgSuites]) expect(excluded, trigger).not.toContain(suite);
     }
+
     const starterTrigger = excludedToolingTests(['examples/neutral-store/host/server.ts']);
     for (const suite of starterPgSuites) expect(starterTrigger).not.toContain(suite);
     for (const suite of purePgSuites) expect(starterTrigger).toContain(suite);
 
     const dataDocTrigger = excludedToolingTests(['docs/platform/DATA_AND_MIGRATIONS.md']);
-    expect(dataDocTrigger).not.toContain('tests/postgres/customerNewsletterWithdrawal.test.ts');
-    expect(dataDocTrigger).not.toContain('tests/postgres/customerAccountConsents.test.ts');
+    for (const suite of [
+      'tests/postgres/customerAccountConsents.test.ts',
+      'tests/postgres/customerNewsletterWithdrawal.test.ts',
+      'tests/postgres/m19NoticeIsolation.test.ts',
+      'tests/postgres/m19PaymentCancellation.test.ts',
+    ]) {
+      expect(dataDocTrigger).not.toContain(suite);
+    }
     expect(dataDocTrigger).toContain('tests/postgres/catalogPublication.test.ts');
   });
-  it.each(Object.entries(TOOLING_INPUTS).flatMap(([test, inputs]) => inputs.map(input => [test, input] as const)))(
-    'runs %s when its declared input %s changes', (test, input) => {
-      expect(excludedToolingTests([input.endsWith('/') ? `${input}scope-witness.ts` : input])).not.toContain(test);
-    },
-  );
+  it('runs every declared test when any of its declared inputs changes', () => {
+    for (const [test, inputs] of Object.entries(TOOLING_INPUTS)) {
+      for (const input of inputs) {
+        expect(excludedToolingTests([input.endsWith('/') ? `${input}scope-witness.ts` : input]), `${test} <- ${input}`).not.toContain(test);
+      }
+    }
+  });
   it.each(['push', 'workflow_dispatch', 'unknown', undefined])('runs everything for event %s', eventName => {
     expect(scopeFromEvent({ eventName, event: { pull_request: { base: { sha: base } } }, git: () => { throw new Error('must not run'); } })).toEqual([]);
   });
@@ -434,5 +468,360 @@ describe('git executable resolution', () => {
     const empty = scratch();
     expect(resolveGitExecutable({ preferred: join(empty, 'missing-git'), pathValue: empty }))
       .toEqual({ binary: 'git', path: empty });
+  });
+});
+
+describe('PostgreSQL AST closure soundness', () => {
+  const BARE_ROOT_DIRS = new Set(['src', 'api', 'mcp', 'examples', 'supabase', 'docs']);
+  const KNOWN_PREFIXES = ['src/', 'api/', 'mcp/', 'examples/', 'supabase/', 'docs/', 'config/', 'tests/', 'db/', 'packages/', 'server/'];
+  const VITEST_MOCK_METHODS = new Set(['mock', 'doMock', 'importActual', 'importMock']);
+  const covers = (input: string, target: string) => (input.endsWith('/') ? target === input || target.startsWith(input) : target === input);
+
+  function createAstClosureScanner(rootDir: string) {
+    const pkgExports = new Map<string, { dir: string; exports: Record<string, unknown> }>();
+    const pkgImports = new Map<string, Record<string, unknown>>();
+    const rootPkgPath = resolve(rootDir, 'package.json');
+    if (existsSync(rootPkgPath)) {
+      const rootPkg = JSON.parse(readFileSync(rootPkgPath, 'utf8')) as { imports?: Record<string, unknown> };
+      if (rootPkg.imports) pkgImports.set('', rootPkg.imports);
+    }
+    const packagesDir = resolve(rootDir, 'packages');
+    if (existsSync(packagesDir)) {
+      for (const entry of readdirSync(packagesDir, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const manifestPath = resolve(packagesDir, entry.name, 'package.json');
+        if (!existsSync(manifestPath)) continue;
+        const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+          name?: string; exports?: Record<string, unknown>; imports?: Record<string, unknown>;
+        };
+        if (manifest.name) pkgExports.set(manifest.name, { dir: `packages/${entry.name}`, exports: manifest.exports ?? {} });
+        if (manifest.imports) pkgImports.set(`packages/${entry.name}`, manifest.imports);
+      }
+    }
+
+    const fileCache = new Map<string, boolean>();
+    const dirCache = new Map<string, boolean>();
+    const isFile = (rel: string): boolean => {
+      const cached = fileCache.get(rel);
+      if (cached !== undefined) return cached;
+      let ok = false;
+      try { ok = statSync(resolve(rootDir, rel)).isFile(); } catch { ok = false; }
+      fileCache.set(rel, ok);
+      return ok;
+    };
+    const isDir = (rel: string): boolean => {
+      const cached = dirCache.get(rel);
+      if (cached !== undefined) return cached;
+      let ok = false;
+      try { ok = statSync(resolve(rootDir, rel)).isDirectory(); } catch { ok = false; }
+      dirCache.set(rel, ok);
+      return ok;
+    };
+
+    const resolveCandidate = (candidate: string): string | null => {
+      const normalized = posix.normalize(candidate);
+      if (!normalized || normalized.startsWith('..') || normalized.startsWith('/')) return null;
+      const ext = extname(normalized);
+      const tries: string[] = [];
+      if (ext === '.js') { const s = normalized.slice(0, -3); tries.push(normalized, `${s}.ts`, `${s}.tsx`, `${s}.mts`, `${s}.mjs`); }
+      else if (ext === '.jsx') { const s = normalized.slice(0, -4); tries.push(normalized, `${s}.tsx`, `${s}.ts`, `${s}.js`); }
+      else if (ext === '.mjs') { const s = normalized.slice(0, -4); tries.push(normalized, `${s}.mts`, `${s}.ts`); }
+      else if (ext === '.cjs') { const s = normalized.slice(0, -4); tries.push(normalized, `${s}.cts`, `${s}.ts`); }
+      else if (ext) { tries.push(normalized); }
+      else { tries.push(`${normalized}.ts`, `${normalized}.tsx`, `${normalized}.js`, `${normalized}.mjs`, `${normalized}.cjs`, `${normalized}/index.ts`, `${normalized}/index.tsx`, `${normalized}/index.js`, `${normalized}/index.mjs`); }
+      return tries.find(isFile) ?? null;
+    };
+
+    const pickTarget = (value: unknown): string | null => {
+      if (typeof value === 'string') return value;
+      if (Array.isArray(value)) { for (const item of value) { const picked = pickTarget(item); if (picked) return picked; } return null; }
+      if (value && typeof value === 'object') {
+        const record = value as Record<string, unknown>;
+        for (const key of ['core-source', 'import', 'default', 'module', 'node', 'types']) {
+          if (key in record) { const picked = pickTarget(record[key]); if (picked) return picked; }
+        }
+        for (const nested of Object.values(record)) { const picked = pickTarget(nested); if (picked) return picked; }
+      }
+      return null;
+    };
+
+    const resolveSpecifier = (spec: string, fromFile: string): string | null => {
+      if (!spec || spec.startsWith('node:')) return null;
+      if (spec.startsWith('./') || spec.startsWith('../')) return resolveCandidate(posix.join(posix.dirname(fromFile), spec));
+      if (spec.startsWith('@/')) return resolveCandidate(`src/${spec.slice(2)}`);
+      if (spec.startsWith('#')) {
+        const pkgMatch = /^(packages\/[^/]+)\//u.exec(fromFile);
+        const dirs = pkgMatch ? [pkgMatch[1], ''] : [''];
+        for (const dir of dirs) {
+          const map = pkgImports.get(dir);
+          if (!map) continue;
+          let target = pickTarget(map[spec]);
+          if (!target) {
+            for (const [pattern, importValue] of Object.entries(map)) {
+              if (!pattern.includes('*')) continue;
+              const [prefix, suffix] = pattern.split('*');
+              if (spec.startsWith(prefix) && spec.endsWith(suffix) && spec.length >= prefix.length + suffix.length) {
+                const raw = pickTarget(importValue);
+                if (raw) { target = raw.replaceAll('*', () => spec.slice(prefix.length, spec.length - suffix.length)); break; }
+              }
+            }
+          }
+          if (target) {
+            const clean = target.replace(/^\.\//u, '');
+            const srcTarget = clean.startsWith('dist/') ? `src/${clean.slice(5)}` : clean;
+            const resolved = resolveCandidate(dir ? posix.join(dir, srcTarget) : srcTarget)
+              ?? resolveCandidate(dir ? posix.join(dir, clean) : clean);
+            if (resolved) return resolved;
+          }
+        }
+        return null;
+      }
+      if (spec.startsWith('@openlup/')) {
+        for (const [name, info] of pkgExports.entries()) {
+          if (spec !== name && !spec.startsWith(`${name}/`)) continue;
+          const subpath = spec === name ? '.' : `./${spec.slice(name.length + 1)}`;
+          let target = pickTarget(info.exports[subpath]);
+          if (!target) {
+            for (const [pattern, exportValue] of Object.entries(info.exports)) {
+              if (!pattern.includes('*')) continue;
+              const [prefix, suffix] = pattern.split('*');
+              if (subpath.startsWith(prefix) && subpath.endsWith(suffix) && subpath.length >= prefix.length + suffix.length) {
+                const raw = pickTarget(exportValue);
+                if (raw) { target = raw.replaceAll('*', () => subpath.slice(prefix.length, subpath.length - suffix.length)); break; }
+              }
+            }
+          }
+          if (target) {
+            const clean = target.replace(/^\.\//u, '');
+            const srcTarget = clean.startsWith('dist/') ? `src/${clean.slice(5)}` : clean;
+            return resolveCandidate(posix.join(info.dir, srcTarget)) ?? resolveCandidate(posix.join(info.dir, clean));
+          }
+        }
+      }
+      return null;
+    };
+
+    const parseCache = new Map<string, { imports: string[]; pathLiterals: string[] }>();
+    const analyzeFile = (rel: string) => {
+      const cached = parseCache.get(rel);
+      if (cached) return cached;
+      const source = readFileSync(resolve(rootDir, rel), 'utf8');
+      const sourceFile = ts.createSourceFile(
+        rel,
+        source,
+        ts.ScriptTarget.Latest,
+        false,
+        rel.endsWith('.tsx') || rel.endsWith('.jsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+      );
+      const imports = new Set<string>();
+      const pathLiterals = new Set<string>();
+      const checkBareDirs = rel.startsWith('tests/postgres/') || rel.startsWith('tests/helpers/');
+
+      const addRepoPath = (raw: string, allowDirPrefix = false) => {
+        const trimmed = raw.trim();
+        if (!trimmed || trimmed.includes('\n') || trimmed.length > 200) return;
+        if (checkBareDirs && BARE_ROOT_DIRS.has(trimmed)) {
+          pathLiterals.add(`${trimmed}/`);
+          return;
+        }
+        if (/^(?:\.\.?\/)+/u.test(trimmed) && !/^(?:\.\.?\/)*\.\.?$/u.test(trimmed)) {
+          const selfDir = posix.dirname(rel);
+          const joined = posix.normalize(posix.join(selfDir, trimmed));
+          if (!joined.startsWith('..') && !joined.startsWith('/') && joined !== '.' && joined !== 'tests' && joined !== selfDir) {
+            const stripped = joined.replace(/\/$/u, '');
+            if (isFile(stripped)) pathLiterals.add(stripped);
+            else if (stripped !== selfDir && isDir(stripped)) pathLiterals.add(`${stripped}/`);
+            else if (allowDirPrefix) {
+              const dirPart = posix.dirname(joined);
+              if (!dirPart.startsWith('..') && dirPart !== '.' && dirPart !== 'tests' && dirPart !== selfDir && isDir(dirPart)) pathLiterals.add(`${dirPart}/`);
+            }
+          }
+        }
+        const clean = trimmed.replace(/^\.\//u, '');
+        if (KNOWN_PREFIXES.some(prefix => clean.startsWith(prefix))) {
+          const stripped = clean.replace(/\/$/u, '');
+          if (isFile(stripped)) pathLiterals.add(stripped);
+          else if (isDir(stripped)) pathLiterals.add(`${stripped}/`);
+          else if (allowDirPrefix) {
+            const dirPart = posix.dirname(clean);
+            if (KNOWN_PREFIXES.some(prefix => `${dirPart}/`.startsWith(prefix)) && isDir(dirPart)) pathLiterals.add(`${dirPart}/`);
+          }
+        }
+      };
+
+      const visit = (node: ts.Node) => {
+        if (ts.isImportDeclaration(node) && ts.isStringLiteralLike(node.moduleSpecifier)) imports.add(node.moduleSpecifier.text);
+        else if (ts.isExportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteralLike(node.moduleSpecifier)) imports.add(node.moduleSpecifier.text);
+        else if (ts.isCallExpression(node)) {
+          if (node.expression.kind === ts.SyntaxKind.ImportKeyword && node.arguments[0] && ts.isStringLiteralLike(node.arguments[0])) {
+            imports.add(node.arguments[0].text);
+          } else if (ts.isIdentifier(node.expression) && node.expression.text === 'tsImport' && node.arguments[0] && ts.isStringLiteralLike(node.arguments[0])) {
+            imports.add(node.arguments[0].text);
+          } else if (
+            ts.isPropertyAccessExpression(node.expression)
+            && ts.isIdentifier(node.expression.expression)
+            && node.expression.expression.text === 'vi'
+            && VITEST_MOCK_METHODS.has(node.expression.name.text)
+            && node.arguments[0]
+            && ts.isStringLiteralLike(node.arguments[0])
+          ) {
+            imports.add(node.arguments[0].text);
+          }
+          const fnName = ts.isIdentifier(node.expression) ? node.expression.text
+            : ts.isPropertyAccessExpression(node.expression) ? node.expression.name.text : null;
+          if (fnName === 'join' || fnName === 'resolve') {
+            const segs: string[] = [];
+            for (const arg of node.arguments) {
+              if (ts.isStringLiteralLike(arg)) segs.push(arg.text);
+              else if (segs.length > 0) break;
+            }
+            if (segs.length > 0) {
+              addRepoPath(posix.normalize(segs.join('/')), true);
+              const selfDir = posix.dirname(rel);
+              const fromSelf = posix.normalize(posix.join(selfDir, ...segs)).replace(/\/+$/u, '');
+              if (fromSelf && !fromSelf.startsWith('..') && !fromSelf.startsWith('/') && fromSelf !== '.' && fromSelf !== 'tests' && fromSelf !== selfDir) {
+                if (isFile(fromSelf)) pathLiterals.add(fromSelf);
+                else if (isDir(fromSelf)) pathLiterals.add(`${fromSelf}/`);
+              }
+            }
+          }
+        }
+        if (ts.isStringLiteralLike(node)) addRepoPath(node.text, false);
+        else if (ts.isTemplateHead(node)) addRepoPath(node.text, true);
+        ts.forEachChild(node, visit);
+      };
+      visit(sourceFile);
+
+      const resolvedImports = new Set<string>();
+      for (const spec of imports) {
+        const resolved = resolveSpecifier(spec, rel);
+        if (resolved) resolvedImports.add(resolved);
+      }
+      const entry = { imports: [...resolvedImports], pathLiterals: [...pathLiterals] };
+      parseCache.set(rel, entry);
+      return entry;
+    };
+
+    const collectClosure = (entryTest: string, { stopAtPackages = true } = {}): string[] => {
+      const visited = new Set<string>([entryTest]);
+      const queue = [entryTest];
+      const deps = new Set<string>([entryTest]);
+      while (queue.length > 0) {
+        const cur = queue.shift()!;
+        if (!/\.(?:ts|tsx|js|mjs|mts|cjs)$/u.test(cur)) continue;
+        const { imports, pathLiterals } = analyzeFile(cur);
+        for (const target of imports) {
+          deps.add(target);
+          if (isFile(target) && !visited.has(target) && /\.(?:ts|tsx|js|mjs|mts|cjs)$/u.test(target)
+            && !(stopAtPackages && target.startsWith('packages/')) && !target.startsWith('scripts/')) {
+            visited.add(target);
+            queue.push(target);
+          }
+        }
+        if (cur.startsWith('packages/')) continue;
+        for (const lit of pathLiterals) {
+          deps.add(lit);
+          if ((lit.startsWith('tests/helpers/') || lit.startsWith('tests/postgres/'))
+            && isFile(lit) && !visited.has(lit) && /\.(?:ts|tsx|js|mjs|mts|cjs)$/u.test(lit)) {
+            visited.add(lit);
+            queue.push(lit);
+          }
+        }
+      }
+      return [...deps].sort();
+    };
+
+    return { collectClosure };
+  }
+
+  it('proves every scoped tests/postgres suite covers its full TypeScript AST import and filesystem closure without broad tests/postgres/ prefixes', () => {
+    const rootDir = process.cwd();
+    const { collectClosure } = createAstClosureScanner(rootDir);
+    const rootDocSet = new Set(ROOT_DOC_FILES);
+    const isGlobalBailout = (dep: string) => {
+      if (!dep.endsWith('/') && !dep.includes('/') && !rootDocSet.has(dep)) return true;
+      if (dep.split('/').some(seg => seg.startsWith('.'))) return true;
+      return SHARED_INPUTS.some(shared => covers(shared, dep));
+    };
+
+    const pgEntries = Object.entries(TOOLING_INPUTS).filter(([test]) => test.startsWith('tests/postgres/'));
+    expect(pgEntries.length).toBeGreaterThanOrEqual(261);
+
+    const violations: string[] = [];
+    for (const [testPath, declaredInputs] of pgEntries) {
+      if (!existsSync(resolve(rootDir, testPath))) {
+        violations.push(`${testPath}: listed in TOOLING_INPUTS but missing on disk`);
+        continue;
+      }
+      if (declaredInputs.some(input => input.includes('//'))) {
+        violations.push(`${testPath}: contains unnormalized '//' path entry`);
+      }
+      if (declaredInputs.includes('tests/postgres/')) {
+        violations.push(`${testPath}: must not use broad 'tests/postgres/' prefix`);
+      }
+      if (!declaredInputs.some(input => covers(input, testPath))) {
+        violations.push(`${testPath}: does not cover its own file path`);
+      }
+      const closureDeps = collectClosure(testPath, { stopAtPackages: declaredInputs.includes('packages/') });
+      for (const dep of closureDeps) {
+        if (dep.includes('//')) {
+          violations.push(`${testPath}: AST closure emitted unnormalized '//' path ${dep}`);
+        }
+        if (isGlobalBailout(dep)) continue;
+        if (!declaredInputs.some(input => covers(input, dep))) {
+          violations.push(`${testPath}: missing declared input covering ${dep}`);
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  it('seeded falsifier: detects odd-quote regex doc reads, bare root directory scans, TemplateHead SQL reads, same-dir ./ URL/tsImport/resolve paths, and narrowed package barrel re-exports', () => {
+    const dir = scratch();
+    mkdirSync(join(dir, 'tests/postgres/sub'), { recursive: true });
+    mkdirSync(join(dir, 'docs/platform'), { recursive: true });
+    mkdirSync(join(dir, 'supabase/migrations'), { recursive: true });
+    mkdirSync(join(dir, 'src'), { recursive: true });
+    mkdirSync(join(dir, 'api'), { recursive: true });
+    mkdirSync(join(dir, 'packages/demo/src'), { recursive: true });
+    writeFileSync(join(dir, 'packages/demo/package.json'), JSON.stringify({
+      name: '@openlup/demo',
+      exports: { '.': { import: './dist/index.js' } },
+    }));
+    writeFileSync(join(dir, 'packages/demo/src/index.ts'), 'export { impl } from "./impl.js";\n');
+    writeFileSync(join(dir, 'packages/demo/src/impl.ts'), 'export const impl = 1;\n');
+    writeFileSync(join(dir, 'docs/platform/DATA_AND_MIGRATIONS.md'), '# doc\n');
+    writeFileSync(join(dir, 'tests/postgres/hiddenHelper.ts'), 'export const h = 1;\n');
+    writeFileSync(join(dir, 'tests/postgres/sameDirHelper.ts'), 'export const s = 2;\n');
+    writeFileSync(join(dir, 'tests/postgres/sameDirFixture.sql'), 'SELECT 1;\n');
+    writeFileSync(join(dir, 'tests/postgres/sub/data.sql'), 'SELECT 2;\n');
+    writeFileSync(join(dir, 'tests/postgres/falsifier.test.ts'), [
+      'import { h } from "./hiddenHelper.js";',
+      'import { impl } from "@openlup/demo";',
+      'const oddQuote = /lower\\(btrim\\(client\\.email(?:, E\'[^\']*\')?\\)\\)/u;',
+      'const doc = readFileSync("docs/platform/DATA_AND_MIGRATIONS.md", "utf8");',
+      'const roots = ["src", "api"];',
+      'const sql = readFileSync(`supabase/migrations/${h}.sql`, "utf8");',
+      'const fixture = new URL("./sameDirFixture.sql", import.meta.url);',
+      'const mod = await tsImport("./sameDirHelper.ts", import.meta.url);',
+      'const sub = resolve(__dirname, "sub", "data.sql");',
+      'const subDir = resolve(__dirname, "sub/");',
+      'const joined = ["a", "b"].join("/");',
+    ].join('\n'));
+    const { collectClosure } = createAstClosureScanner(dir);
+    const deps = collectClosure('tests/postgres/falsifier.test.ts', { stopAtPackages: false });
+    expect(deps).toContain('tests/postgres/hiddenHelper.ts');
+    expect(deps).toContain('tests/postgres/sameDirHelper.ts');
+    expect(deps).toContain('tests/postgres/sameDirFixture.sql');
+    expect(deps).toContain('tests/postgres/sub/data.sql');
+    expect(deps).toContain('tests/postgres/sub/');
+    expect(deps.some(dep => dep.includes('//'))).toBe(false);
+    expect(deps).not.toContain('tests/postgres/');
+    expect(deps).toContain('packages/demo/src/index.ts');
+    expect(deps).toContain('packages/demo/src/impl.ts');
+    expect(deps).toContain('docs/platform/DATA_AND_MIGRATIONS.md');
+    expect(deps).toContain('src/');
+    expect(deps).toContain('api/');
+    expect(deps).toContain('supabase/migrations/');
   });
 });
