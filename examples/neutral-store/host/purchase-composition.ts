@@ -252,7 +252,10 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
     } catch (error) {
       const reason = catalogAdmissionRefusal(error);
       if (reason) return refused(reason);
-      if (error instanceof Error && error.message === 'commerce_order_draft_expired') return refused(error.message);
+      // Under a continuable key an invalidated draft is a closed order, as for checkout.continuation.
+      if (error instanceof Error && error.message === 'commerce_order_draft_expired') {
+        return refused(continuable(context.commandKey) ? 'starter_checkout_not_payable' : error.message);
+      }
       if (isRecord(error) && (error.code === '23505' || error.message === 'starter_command_conflict')) return refused('starter_command_conflict');
       return refused(quoteFailure(error));
     }

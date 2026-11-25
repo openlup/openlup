@@ -309,6 +309,7 @@ test('expired stamped checkout replays the saved pending and completed purchase'
   const effects: string[] = [], unexpected: string[] = [], receiptCalls: unknown[][] = [];
   let stockFailure: unknown;
   let receiptMismatch = false;
+  let receiptExpired = false;
   let savedQuoteChecks = 0;
   const query = async (sql: string, args: unknown[] = []) => {
     if (sql.includes('SELECT email')) return { rows: [{ email: payload.email }] };
@@ -316,6 +317,7 @@ test('expired stamped checkout replays the saved pending and completed purchase'
     if (sql.includes('commerce_order_draft_receipts')) return { rows: [stored] };
     if (sql.includes('catalog_admission_replay_order_draft')) {
       receiptCalls.push(args);
+      if (receiptExpired) throw Object.assign(new Error('commerce_order_draft_expired'), { code: '40001' });
       if (receiptMismatch || args[3] !== submit.submitDigest) throw Object.assign(new Error('receipt conflict'), { code: '23505' });
       return { rows: [] };
     }
@@ -364,6 +366,11 @@ test('expired stamped checkout replays the saved pending and completed purchase'
   receiptMismatch = true;
   assert.deepEqual(await replay(input),{ ok: false,code: 'starter_command_conflict' });
   receiptMismatch = false;
+  // An invalidated draft receipt is a closed order under a continuable key; other keys keep the released code.
+  receiptExpired = true;
+  assert.deepEqual(await replay(input),{ ok: false,code: 'starter_checkout_not_payable' });
+  assert.deepEqual(await replay(input,{ ...keyed, commandKey: 'fictional-command-0001' }),{ ok: false,code: 'commerce_order_draft_expired' });
+  receiptExpired = false;
   receiptCalls.length = 0;
   assert.equal(issued.length,0);
   const withToken = (result: Awaited<ReturnType<typeof replay>>) => {

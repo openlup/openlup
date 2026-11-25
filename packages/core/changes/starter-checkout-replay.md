@@ -32,8 +32,11 @@ repeat, and the order is returned without a token. The host now stores the
 derived key, `checkout:<64 hex>`, in `clients.metadata.checkout.lastIntentIdempotencyKey`.
 `composeNativeBindings` accepts an optional `requesterKey` function that
 replaces the socket-peer digest for every quota consumer. It must return a
-lowercase 64-hex SHA-256 digest, or `undefined` when the requester is unknown;
-anything else is refused with `OPENLUP_E_STARTER_REQUESTER_KEY_INVALID`.
+lowercase 64-hex SHA-256 digest, or `undefined` when the requester is unknown.
+A value that is not a function is refused at composition with
+`OPENLUP_E_STARTER_REQUESTER_KEY_INVALID`. A returned value that is not such a
+digest makes every request answer 503 `starter_dependency_unavailable`, and the
+host logs that code to stderr.
 
 Apply the application file upgrade to replace pristine managed files:
 `host/purchase-composition.ts`, `host/checkout-attempts.ts`, `host/server.ts`,

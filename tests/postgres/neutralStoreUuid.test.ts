@@ -1156,6 +1156,33 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
       AND idempotency_key=$1`, [`checkout_expired:${order.orderRef}`])).rows[0].n).toBe('0');
   }, 45_000);
 
+  it('an attempted subscription order past its link lifetime is expired for resume and not abandonable', async () => {
+    await control(false, undefined, undefined, repeatLimits);
+    await owner!.query('TRUNCATE public.commerce_checkout_attempt_ledger');
+    const key = randomUUID();
+    const payload = checkout(`aged-${config.id}@example.test`);
+    const subscription = await quotedSubscription({ ...payload,
+      cart: { ...payload.cart, mode: 'subscription', cadenceDays: config.offer.defaultCadenceDays } });
+    const created = await call('checkout.create', subscription, false, key);
+    if (!created.ok || !isRecord(created.value) || typeof created.value.token !== 'string') throw new Error('aged_subscription_required');
+    const orderRef = String(created.value.orderRef);
+    // A refused sandbox attempt leaves the order unpaid and the abandonment predicate false.
+    expect((await call('payment.simulate', { orderRef, token: created.value.token, outcome: 'refused' })).ok).toBe(true);
+    await owner!.query("UPDATE public.commerce_orders SET created_at=created_at - interval '25 hours' WHERE id=$1", [orderRef]);
+    expect(await call('checkout.continuation', { action: 'resume', locale: 'en' }, false, key))
+      .toEqual({ ok: false, code: 'starter_checkout_expired' });
+    expect(await abandon(key)).toEqual({ ok: false, code: 'starter_checkout_not_abandonable' });
+    expect(await orderStatus(orderRef)).toBe('pending_payment');
+    // The documented fix: a new key starts a new purchase.
+    const fresh = await call('checkout.create', payload, false, randomUUID());
+    expect(fresh.ok, JSON.stringify(fresh)).toBe(true);
+    expect(fresh.ok && isRecord(fresh.value) && fresh.value.orderRef).not.toBe(orderRef);
+    // Recorded limit: the unpaid acquisition draft still holds this contact's first subscription until an operator cancels it.
+    expect(await call('checkout.create', await quotedSubscription({ ...payload,
+      cart: { ...payload.cart, mode: 'subscription', cadenceDays: config.offer.defaultCadenceDays } }), false, randomUUID()))
+      .toEqual({ ok: false, code: 'starter_command_conflict' });
+  }, 45_000);
+
   it('abandon with no order, then the first create, then a changed create leave one order', async () => {
     await control(false, undefined, undefined, repeatLimits);
     await owner!.query('TRUNCATE public.commerce_checkout_attempt_ledger');

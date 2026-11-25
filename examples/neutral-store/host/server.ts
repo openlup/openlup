@@ -27,7 +27,9 @@ const contentTypes: Record<string, string> = {
 
 export function createApplication(bindings: ApplicationBindings = pendingBindings()) {
   return createServer((request, response) => {
-    void handle(request, response, bindings).catch(() => {
+    void handle(request, response, bindings).catch((error: unknown) => {
+      // Actionable host refusals reach the operator's log; the buyer only sees the dependency code.
+      if (error instanceof Error && error.message.startsWith('OPENLUP_E_')) process.stderr.write(`${error.message}\n`);
       if (!response.headersSent) sendJson(response, 503, { ok: false, code: 'starter_dependency_unavailable' });
       else response.end();
     });

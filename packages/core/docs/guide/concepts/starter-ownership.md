@@ -207,9 +207,12 @@ answers `starter_checkout_paid`. A cancelled order carries the reason
 `checkout_started_over`. A limited `resume` returns the order without a token; a
 limited `abandon` answers `starter_attempt_limited`. An unpaid order older than
 its 24-hour link lifetime gets no new token: `resume` answers
-`starter_checkout_expired`. Abandon it if no payment attempt was made;
-otherwise pay through an earlier recovery link, or wait until the order expires
-and the key answers `starter_checkout_not_payable`, then start a new key. An
+`starter_checkout_expired`. Abandon it if no payment attempt was made.
+Otherwise start a new key now: the unpaid order takes no money and holds no
+stock beyond its reservation, the earlier key keeps answering
+`starter_checkout_expired`, and an operator can cancel the order. A new first
+subscription for the same email answers `starter_command_conflict` until that
+order is cancelled. An
 abandon that cancels nothing because the host was busy, or because the platform
 forward `20261128130000_checkout_abandonment_safety_execute_grant.sql` is
 missing, answers `starter_purchase_unavailable`; repeat it, and apply the
