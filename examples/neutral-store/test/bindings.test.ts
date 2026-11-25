@@ -2,7 +2,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { configurations } from '../owned/store.config.ts';
 import type { StoreConfig } from '../shared/config.ts';
-import { dispatchAction, pendingBindings, type ActionContext } from '../host/bindings.ts';
+import { checkedRequesterKey, dispatchAction, pendingBindings, requesterKeyFor, type ActionContext } from '../host/bindings.ts';
+import { createApplication } from '../host/server.ts';
+import { once } from 'node:events';
+import { request as httpRequest } from 'node:http';
+import { createHash } from 'node:crypto';
+import { composeNativeBindings } from '../host/native-composition.ts';
+import type { IncomingMessage } from 'node:http';
 
 const context: ActionContext = {
   commandKey: 'test-command-123456', actor: { customerRef: null, operatorRef: null }, config: Object.values(configurations)[0]!,
@@ -91,4 +97,60 @@ test('only a structured published quote request resolves a fresh private catalog
   assert.equal(walks, 1);
   assert.equal(context.quoteProducts, undefined);
   assert.deepEqual(await dispatchAction(bindings, 'storefront.catalogue', {}, context), { ok: false, code: 'host_binding_required' });
+});
+
+test('the requester key is the socket peer digest unless replaced', () => {
+  const peer = (remoteAddress: string | undefined) => ({ socket: { remoteAddress } }) as IncomingMessage;
+  const digest = (value: string) => createHash('sha256').update(value).digest('hex');
+  assert.equal(requesterKeyFor(peer('127.0.0.1')), digest('127.0.0.1'));
+  assert.equal(requesterKeyFor(peer('::FFFF:127.0.0.1')), digest('::ffff:127.0.0.1'));
+  assert.equal(requesterKeyFor(peer('2001:DB8::1')), digest('2001:db8::1'));
+  assert.equal(requesterKeyFor(peer(undefined)), undefined);
+  // The replacement reaching the limiter is proved against PostgreSQL, where the native host is composed.
+});
+
+test('a requester key replacement that is not a function refuses at composition with a fix', async () => {
+  await assert.rejects(composeNativeBindings('postgresql://unused.invalid/none', {} as never, context.config, undefined, undefined,
+    { requesterKey: 'peer' as never }), /OPENLUP_E_STARTER_REQUESTER_KEY_INVALID[\s\S]*Fix: /);
+});
+
+test('a requester key replacement that returns a non-digest answers 503 and logs its code', async t => {
+  const written: string[] = [];
+  const write = process.stderr.write.bind(process.stderr);
+  t.mock.method(process.stderr, 'write', (chunk: unknown, ...rest: unknown[]) => {
+    if (String(chunk).startsWith('OPENLUP_E_')) { written.push(String(chunk)); return true; }
+    return write(chunk as string, ...(rest as []));
+  });
+  for (const value of ['A'.repeat(64), '127.0.0.1']) {
+    const requesterKey = checkedRequesterKey(() => value);
+    const bindings = pendingBindings();
+    bindings.authenticate = async request => {
+      const key = requesterKey(request);
+      return { customerRef: null, operatorRef: null, ...(key ? { requesterKey: key } : {}) };
+    };
+    const server = createApplication(bindings).listen(0, '127.0.0.1');
+    try {
+      await once(server, 'listening');
+      const address = server.address();
+      assert.ok(address && typeof address !== 'string');
+      const response = await new Promise<{ status: number; value: unknown }>((resolve, reject) => {
+        const outgoing = httpRequest({ host: '127.0.0.1', port: address.port, path: '/api/actions/checkout.read', method: 'POST',
+          headers: { Host: '127.0.0.1:4319', Origin: 'http://127.0.0.1:4319', 'X-Starter-Request': '1', 'Content-Type': 'application/json',
+            'Idempotency-Key': 'requester-key-check-0001' } }, incoming => {
+          let body = '';
+          incoming.on('data', chunk => { body += String(chunk); });
+          incoming.on('end', () => resolve({ status: incoming.statusCode!, value: JSON.parse(body) }));
+        });
+        outgoing.on('error', reject);
+        outgoing.end('{}');
+      });
+      assert.deepEqual(response, { status: 503, value: { ok: false, code: 'starter_dependency_unavailable' } });
+    } finally { server.close(); }
+  }
+  assert.equal(written.length, 2);
+  assert.ok(written.every(line => line.startsWith('OPENLUP_E_STARTER_REQUESTER_KEY_INVALID\n')));
+  // A digest or no key passes through unchanged.
+  const digest = 'a'.repeat(64);
+  assert.equal(checkedRequesterKey(() => digest)({} as IncomingMessage), digest);
+  assert.equal(checkedRequesterKey(() => undefined)({} as IncomingMessage), undefined);
 });
