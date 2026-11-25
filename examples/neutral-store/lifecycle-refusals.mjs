@@ -20,16 +20,16 @@ const unchanged = 'Retry the unchanged original request. For a separate proposal
 export const operatorChallengeGuidance = 'Verify the invited email. If a challenge was requested recently, wait until the minute and hourly limits allow another request, then check the private mailbox.';
 const applyRefusals = {
   OPENLUP_E_CATALOGUE_PRODUCT_REQUIRED: ['The owned catalogue has no product declaration for apply.', 'The command needs a catalogueProduct export.', 'Add the documented product declaration to the owned catalogue.', 'Repeat apply and check that the product is loaded.'],
-  OPENLUP_E_CATALOGUE_BASE_PRICES_MISMATCH: ['Declared price keys differ from the authored SKU codes.', 'Initial setup requires exactly one amount per authored SKU.', 'Match the price keys to the SKU codes and remove unrelated entries.', 'Repeat preflight and check that every SKU has one price.'],
-  OPENLUP_E_CATALOGUE_TERMINAL_REQUIRED: ['Apply cannot open an interactive terminal.', 'This mode requires direct operator confirmation.', 'Start the command in an interactive terminal.', 'Check that the approval prompt appears after preparation.'],
-  OPENLUP_E_CATALOGUE_CONFIRMATION_INVALID: ['The terminal did not receive the required confirmation.', 'Approval requires explicit confirmation of the displayed candidate.', 'Review the proposed effects and confirm only if you intend to publish.', 'Resume and verify the approval receipt before checking publication.'],
+  OPENLUP_E_CATALOGUE_BASE_PRICES_MISMATCH: ['Declared price keys differ from the authored SKU codes.', 'Base prices require exactly one amount per authored SKU.', 'Match the price keys to the SKU codes and remove unrelated entries.', 'Repeat preflight and check that every SKU has one price.'],
+  OPENLUP_E_CATALOGUE_TERMINAL_REQUIRED: ['Apply cannot open an interactive terminal.', 'This mode requires direct operator confirmation.', 'Start the command in an interactive terminal.', 'Rerun in an interactive terminal and check that the review prompt appears.'],
+  OPENLUP_E_CATALOGUE_CONFIRMATION_INVALID: ['The terminal did not receive the required confirmation.', 'Approval requires explicit confirmation of the displayed proposal.', 'Review the displayed proposal and type approve only if you intend it.', 'Rerun in an interactive terminal and check that the review prompt appears.'],
   starter_catalogue_sign_in_incomplete: ['The sign-in prompt closed before receiving input.', 'The command needs an operator email and token.', 'Restart catalogue apply in an interactive terminal and complete operator sign-in.', 'Check the private mailbox for the latest token.'],
   OPENLUP_E_CATALOGUE_APPLY_UNAVAILABLE: ['The starter operation is unavailable.', infrastructure.cause, 'Check the running demo, installed packages and migrations, connection and TLS, and scoped routine access.', applyAgain],
   starter_seed_demonstration_database_required: ['The database or configuration did not match the marked demo.', 'Apply requires an admitted demonstration store.', 'Select the intended marked demo. Use the normal human operator workflow for another store.'],
   starter_auth_invalid: ['The sign-in token was refused.', 'The token may be expired, used or invalid.', 'Request a fresh challenge and enter the newest unused token within ten minutes.', 'Recheck by signing in.'],
   operator_required: ['The session lacks active administrator authority.', 'Apply needs an active human administrator.', 'Have an active human store administrator sign in and review the saved proposal.'],
   starter_catalogue_currency_mismatch: ['The effective list currency differs from the configured market currency.', 'The selected list must price this market.', 'Restore a market and effective list that use the same currency.', 'Recheck the authenticated price target.'],
-  starter_catalogue_d2c_policy_required: ['The effective D2C policy is missing, invalid or changed.', 'The initial base requires a verified derived subscription price.', 'Restore one valid effective D2C policy.', 'Recheck the authenticated price target.'],
+  starter_catalogue_d2c_policy_required: ['The effective D2C policy is missing, invalid or changed.', 'The base price requires a verified derived subscription price.', 'Restore one valid effective D2C policy.', 'Recheck the authenticated price target.'],
   starter_catalogue_derived_price_zero: ['The proposed base derives a zero subscription price.', 'The effective policy discounts and rounds the proposed base.', 'Choose a base that derives a positive subscription price under the effective policy.', 'Repeat validation.'],
   starter_catalogue_price_invalid: ['A base amount is outside the supported range.', 'Prices use integer minor units.', 'Enter a whole minor-unit amount from 1 to 2147483647.'],
   starter_catalogue_save_too_large: ['The serialized draft action exceeds 65536 UTF-8 bytes.', 'The host bounds the complete action body.', 'Shorten optional content or reduce the number of SKUs in the proposal.'],
@@ -37,12 +37,19 @@ const applyRefusals = {
   starter_catalogue_media_invalid: ['The referenced image could not be used.', 'Apply requires a nonempty regular file within the image limit.', 'Put the image under public/media and match the filename case in the presentation reference.'],
   catalog_publication_media_validation_unavailable: ['The image verification did not finish.', 'The local media file could not be read.', 'Check the starter’s local media directory and file access, then retry.'],
   starter_catalogue_copy_unchanged: ['The copy matches the issued presentation.', 'A presentation successor needs a change to the saved copy.', 'Edit the intended presentation in copyPresentation.'],
-  starter_catalogue_copy_requires_published: ['The original product publication is incomplete.', 'Copy requires both the Release and Activation receipts.', 'Run npm run catalogue:apply without --copy first.', 'Check that Activation is published before running with --copy.'],
+  starter_catalogue_copy_requires_published: ['The original product publication is incomplete.', 'This mode requires both the Release and Activation receipts.', 'Run npm run catalogue:apply without --copy or --reprice first.', 'Check that Activation is published before using --copy or --reprice.'],
+  starter_catalogue_reprice_stale: ['The reviewed base is stale.', 'The owner refused the reviewed entry and amount.', 'The live price changed after your review. Run catalogue apply with --reprice again, review the current amounts and approve again.'],
+  starter_catalogue_reprice_required: ['The declared amount differs from the live base.', 'This mode requires matching live prices.', 'To change the live price, run catalogue apply with --reprice. To keep it, set the declared amount to the live price.'],
+  starter_catalogue_reprice_base_missing: ['The SKU has no effective base price.', 'The published prices require a live base for every SKU.', 'Set the missing positive gross base through the authorized price action with no prior entry, then rerun.'],
+  starter_catalogue_price_scheduled: ['The SKU has a scheduled base price.', 'The price writer cannot replace a scheduled base.', 'Ask the pricing owner to clear the scheduled base price first, then rerun.'],
+  starter_catalogue_reprice_readback_unverified: ['committed; figure not verified', 'The effective price and subscription figure could not be verified.', 'Run npm run catalogue:apply in default mode to verify the current price and subscription figure.'],
+  starter_catalogue_reprice_requires_active: ['The SKU is ineligible for reprice.', 'A live replacement requires an active sellable SKU on the effective list.', 'Publish Activation for a draft product. Ask the pricing owner to review other SKU eligibility or list issues.'],
+  base_price_ambiguous: ['The SKU has multiple effective base prices.', 'The price writer needs a single effective base.', 'Two effective base prices exist for this SKU. Route the duplicate to the pricing owner, then rerun.'],
   publication_sku_price_not_ready: ['An SKU does not have a ready price.', 'Publish requires a positive gross base and ready subscription pricing.', 'Set the missing positive gross base through the authorized action and verify the derived price. Route existing-base corrections to the pricing owner.', 'Retry the same Publish once the intended price is ready.'],
   publication_price_readiness: ['The native readiness check refused publication.', 'A readiness prerequisite remains open.', 'Use the native readiness remedy to repair the prerequisite.', 'Retry the unchanged Publish request with its original key.'],
-  expected_state_mismatch: ['An effective or pending base differs from the expected state.', 'Initial setup requires an absent base, or a matching receipt and live price on replay.', 'Review the effective price. Leave it as recorded and route any correction to the pricing owner.'],
+  expected_state_mismatch: ['An effective or pending base differs from the expected state.', 'Initial setup requires an absent base, or a matching receipt and live price on replay.', "If this command's earlier run set the live price, restore the declared amount to it and resume. Otherwise route the price to the pricing owner. After Activation, change prices with --reprice."],
   readiness_would_fail: ['The owner refused a price write.', 'The write would introduce a readiness finding.', 'Review the typed readiness findings, restore eligibility and repeat the failed step.'],
-  sku_archived: ['The selected SKU is archived.', 'Archived SKUs cannot receive an initial base.', 'Select an eligible SKU.'],
+  sku_archived: ['The selected SKU is archived.', 'Archived SKUs cannot receive a base price.', 'Select an eligible SKU.'],
   price_list_not_active: ['The requested or resolved list is ineffective for this market.', 'Price setup is scoped to the effective settlement list.', 'Restore the effective list for the selected market and recheck.'],
   catalog_price_setup_basis_mismatch: ['The effective list does not use gross prices.', 'This workflow uses the V1 gross price contract.', 'Select an effective gross list or use the pricing owner workflow for an exclusive list.'],
   publisher_not_authorized: ['The publication receipt is bound to another administrator.', 'Only the issuing administrator can replay the command.', original],
@@ -53,15 +60,18 @@ const applyRefusals = {
     'head_conflict', 'catalog_publication_receipt_invalid'].map(code => [code,
     ['The saved revision, receipt or publication head does not match the proposal.', 'This action requires the same saved evidence reviewed by the administrator.', review]])),
 };
+const nativePriceRefusal = ['The native price check was refused.', 'The owner could not verify the required evidence.',
+  'The price check could not verify the native records named by the reason. Have the store owner verify them. Recent paid orders count for 24 hours. Rerun when the check passes.'];
 
 export function catalogueApplyRefusal({ code, path, subject, reason, issues, message, guidance }, error) {
-  const hasApplyGuidance = Object.hasOwn(applyRefusals, code);
-  const [observed, cause, fix, recheck = applyAgain] = hasApplyGuidance ? applyRefusals[code] :
+  const applyGuidance = Object.hasOwn(applyRefusals, code) ? applyRefusals[code]
+    : /^(?:native_[a-z_]+|settlement_context)_unverified$/u.test(code) ? nativePriceRefusal : undefined;
+  const [observed, cause, fix, recheck = applyAgain] = applyGuidance ??
     ['An installed owner refused the action.', 'The action did not meet the installed contract.',
       'Review the indicated input and the installed owner guidance.'];
   const readiness = path === 'pricing.readiness' &&
     /^Observed: (.+?) Cause: (.+?) Fix: (.+?) Recheck: (.+)$/u.exec(message ?? '');
-  const owner = guidance ?? (hasApplyGuidance ? undefined : starterGuidance(code));
+  const owner = guidance ?? (applyGuidance ? undefined : starterGuidance(code));
   const finding = { code, path, ...(subject !== undefined && { subject }), ...(reason !== undefined && { reason }),
     ...(issues !== undefined && { issues }), observed: readiness?.[1] ?? owner?.observed ?? observed,
     cause: readiness?.[2] ?? owner?.cause ?? cause, fix: readiness?.[3] ?? owner?.fix ?? fix,

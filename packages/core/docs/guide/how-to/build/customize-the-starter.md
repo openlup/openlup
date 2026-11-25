@@ -979,6 +979,8 @@ Release and again when you intend to publish Activation. The command verifies
 the initial prices between the two publications. Each SKU preview checks
 `listEffective` for the selected list. The owner's `priceSetup.inGate`
 reports whether the SKU is already active and sellable on that list.
+After Activation, the default command verifies the publication receipts and
+live prices and reports the effective subscription figures.
 Run the command with
 `--copy` to review and publish the first presentation-only successor. Use
 `npm run --silent catalogue:apply -- --json` for a single machine-readable
@@ -991,10 +993,31 @@ Publish request once if either promotion job reports that it is unready.
 The report preserves any refusal from that retry.
 A missing initial price can
 be supplied through the authorized price action. Retry the same approved
-Publish body and key once the intended price is ready. Existing-base
-corrections belong to the pricing owner. If a challenge arrives late or has
+Publish body and key once the intended price is ready. For a live base after
+Activation, use the price-change recipe below. If a challenge arrives late or has
 expired, check the invitation and request a fresh token after the minute and
 hourly limits allow it.
+
+### Change a product's price
+
+Any active administrator can change an eligible SKU's live gross base price
+after Release and Activation, including for SKUs sold by subscription.
+
+1. In `owned/catalogue.ts`, edit the SKU's amount in `catalogueProduct.basePrices`.
+   Use whole minor units.
+2. From the extracted application directory, run
+   `npm run catalogue:apply -- --reprice` in a terminal and sign in to the
+   marked demo. Use the same `--configuration` as the running host.
+3. Review the live bases, replacement amounts and labelled subscription
+   estimates. Type `approve` to authorize the base amounts.
+4. Check the report for the effective subscription figure and policy revision
+   on each price receipt. Run `npm run catalogue:apply` to verify the current
+   figures again.
+
+If a review is stale, run with `--reprice` again and review the current amounts.
+If the report says “committed; figure not verified”, run the default command to
+verify the current price and subscription figure. The report retains any
+committed receipts if a later SKU or its verification fails.
 
 ### Publish a saved catalogue draft
 

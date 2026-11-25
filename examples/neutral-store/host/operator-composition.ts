@@ -6,7 +6,7 @@ import { createPostgresBundleCatalogStore, createPostgresBundleAdminWriteStore,
   buildCatalogReleaseDraftV3, evaluateBundleComposition, createPostgresCatalogPublicationCommands, createPostgresCatalogPublicationReads,
   type CatalogHeadRef, type CatalogPublicationCommand, type CatalogPublicationFailure, type CatalogDraftPayloadV3, type CatalogProductTypeRef } from '@openlup/platform/catalog';
 import type { PgQueryExecutor, PostgresRoleFreeTransactionLane } from '@openlup/platform/data';
-import { CATALOG_PRICE_SETUP_MAX_MINOR, createCatalogPriceSetupHandler, createPostgresCatalogPriceSetupStore,
+import { CATALOG_PRICE_SETUP_MAX_MINOR, catalogPriceSetupExpectedSchema, createCatalogPriceSetupHandler, createPostgresCatalogPriceSetupStore,
   deriveSubscriptionUnitPrice } from '@openlup/platform/pricing';
 import { installationFinding } from '../shared/refusals.ts';
 import { isRecord } from '../shared/offer.ts';
@@ -70,11 +70,12 @@ type OperatorTransaction = <T>(actorId: string, work: (db: PgQueryExecutor) => P
 const policySchema = z.object({ revisionId: publicationProductId, discountBps: z.int().min(0).max(10_000),
   roundingQuantumMinor: z.int().min(1).max(CATALOG_PRICE_SETUP_MAX_MINOR), roundingRule: z.literal('FLOOR_TO_QUANTUM') });
 const priceIdentifiers = { variantId: publicationProductId, priceListId: publicationProductId };
+const priceAmount = z.int().min(1).max(CATALOG_PRICE_SETUP_MAX_MINOR);
 const priceAction = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('price-target') }),
-  z.strictObject({ action: z.literal('price-preview'), ...priceIdentifiers }),
+  z.strictObject({ action: z.literal('price-preview'), ...priceIdentifiers, unitPriceMinor: priceAmount.optional() }),
   z.strictObject({ action: z.literal('price-apply'), ...priceIdentifiers,
-    policyRevisionId: publicationProductId, unitPriceMinor: z.int().min(1).max(CATALOG_PRICE_SETUP_MAX_MINOR) }),
+    policyRevisionId: publicationProductId, unitPriceMinor: priceAmount, expected: catalogPriceSetupExpectedSchema.optional() }),
 ]);
 
 async function effectivePriceTarget(lane: PublicationLane, marketCurrency: string) {
@@ -122,11 +123,14 @@ async function cataloguePrice(payload: Record<string, unknown>, context: ActionC
   return asOperator(actorId, async db => {
     const handler = createCatalogPriceSetupHandler({ store: createPostgresCatalogPriceSetupStore(db),
       authorizeOperator: async () => ({ actorId }) });
-    const priceSetup = await handler.preview(query, context);
+    const priceSetup = await handler.preview(input.action === 'price-preview' && input.unitPriceMinor !== undefined
+      ? { ...query, unitPriceMinor: input.unitPriceMinor } : query, context);
     if ('reason' in priceSetup) return { ...refused(priceSetup.reason), ...(priceSetup.reasons && {
       issues: priceSetup.reasons.map(code => ({ code, path: 'basePrices' })),
     }) };
     if (input.action === 'price-preview') return success({ listEffective: query.priceListId === priceListId, currency, priceSetup });
+    if (typeof input.expected?.entryId === 'string' && priceSetup.inGate !== true)
+      return refused('starter_catalogue_reprice_requires_active');
     const subscription = priceSetup.subscription;
     if (subscription.kind !== 'derived' || subscription.revisionId !== input.policyRevisionId)
       return refused('starter_catalogue_d2c_policy_required');
@@ -134,7 +138,7 @@ async function cataloguePrice(payload: Record<string, unknown>, context: ActionC
       return refused('starter_catalogue_derived_price_zero');
     const result = await handler.apply({ ...query, schemaVersion: 1, commandKey: context.commandKey,
       mode: 'one_time', minQty: 1, amountKind: 'gross', unitPriceMinor: input.unitPriceMinor,
-      expected: { entryId: null, unitPriceMinor: null } }, context);
+      expected: input.expected ?? { entryId: null, unitPriceMinor: null } }, context);
     if ('reason' in result) return { ...refused(result.reason), ...(result.reasons && {
       issues: result.reasons.map(code => ({ code, path: 'basePrices' })),
     }) };
