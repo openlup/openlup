@@ -2,10 +2,14 @@
   "current": {
     "profiles": {
       "legacy": {
-        "count": 211,
-        "exactTailCount": 101,
-        "objectInventorySha256": "51618fe2d3509686ca7b4ec7478ea9f49029d13c388f4620aa8e861fa65a4875",
+        "count": 212,
+        "exactTailCount": 102,
+        "objectInventorySha256": "447399e01682be3027a5562cfc4dd4400e45da5dcd1101292e02c4e3b86083d5",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261128000000_native_derived_subscription_price.sql",
+            "sha256": "a53e213a6e20204d61b5c550cd251d2983d8a546d4a77ff8dc3e5c679bc453cf"
+          },
           {
             "file": "db/platform/migrations/20261127120001_catalog_runtime_checkout_prelock.sql",
             "sha256": "cc2927bfd2dec5f9a1df9da880458eb26d5733858652c12be52c47e7716d9143"
@@ -853,10 +857,14 @@
         ]
       },
       "bootstrap": {
-        "count": 217,
-        "exactTailCount": 102,
-        "objectInventorySha256": "f1a37a602516a60c001724d2bec91c26563a9472001cb7e013b6208a023989b8",
+        "count": 218,
+        "exactTailCount": 103,
+        "objectInventorySha256": "5e2abd0527d66d67759cbe5938389e53084a8ed8edc8cabf58466cf4f64f6fcf",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261128000000_native_derived_subscription_price.sql",
+            "sha256": "a53e213a6e20204d61b5c550cd251d2983d8a546d4a77ff8dc3e5c679bc453cf"
+          },
           {
             "file": "db/platform/migrations/20261127120001_catalog_runtime_checkout_prelock.sql",
             "sha256": "cc2927bfd2dec5f9a1df9da880458eb26d5733858652c12be52c47e7716d9143"
@@ -1728,10 +1736,14 @@
         ]
       },
       "separate": {
-        "count": 217,
-        "exactTailCount": 102,
-        "objectInventorySha256": "49f2cdd3eba41bec5ada1349a2862972f7fe78cb56452474715d772c22a06cae",
+        "count": 218,
+        "exactTailCount": 103,
+        "objectInventorySha256": "04eb05fee298fddeeb32a9cba798bebcf747e5e73a74bb35b7241e75bb08dc58",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261128000000_native_derived_subscription_price.sql",
+            "sha256": "a53e213a6e20204d61b5c550cd251d2983d8a546d4a77ff8dc3e5c679bc453cf"
+          },
           {
             "file": "db/platform/migrations/20261127120001_catalog_runtime_checkout_prelock.sql",
             "sha256": "cc2927bfd2dec5f9a1df9da880458eb26d5733858652c12be52c47e7716d9143"
@@ -2603,10 +2615,14 @@
         ]
       },
       "admin-managed": {
-        "count": 215,
-        "exactTailCount": 101,
-        "objectInventorySha256": "af96243fea632973038daa24c4f602527d307a61d682692ce58828151bc15392",
+        "count": 216,
+        "exactTailCount": 102,
+        "objectInventorySha256": "e0b7a9d7130cd6a3a3cdc5c48789f5925c4314319c12f477213af5fb88c93af6",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261128000000_native_derived_subscription_price.sql",
+            "sha256": "a53e213a6e20204d61b5c550cd251d2983d8a546d4a77ff8dc3e5c679bc453cf"
+          },
           {
             "file": "db/platform/migrations/20261127120001_catalog_runtime_checkout_prelock.sql",
             "sha256": "cc2927bfd2dec5f9a1df9da880458eb26d5733858652c12be52c47e7716d9143"
@@ -3470,10 +3486,14 @@
         ]
       },
       "admin-operator": {
-        "count": 215,
-        "exactTailCount": 101,
-        "objectInventorySha256": "e734b99dd9b83df1461275f1875099debf03b559385e6050a80fb871670b06c0",
+        "count": 216,
+        "exactTailCount": 102,
+        "objectInventorySha256": "c5f7ac23b3924e6f7638811362125b815a6bda4a5b1b34db83eb8e0239ffad3b",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261128000000_native_derived_subscription_price.sql",
+            "sha256": "a53e213a6e20204d61b5c550cd251d2983d8a546d4a77ff8dc3e5c679bc453cf"
+          },
           {
             "file": "db/platform/migrations/20261127120001_catalog_runtime_checkout_prelock.sql",
             "sha256": "cc2927bfd2dec5f9a1df9da880458eb26d5733858652c12be52c47e7716d9143"

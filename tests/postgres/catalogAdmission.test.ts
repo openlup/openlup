@@ -10,9 +10,11 @@ import { buildCatalogOwnerQuote, withCatalogAdmissionFence } from "@openlup/plat
 import { actorId, fixture, graph, hash, insertGraph, installPublicationActors, projectOfferOnlyMembership, stageProductRows, transaction, type Graph } from "./catalogPublicationFixture.js";
 import { lifecycleInstallation, type LifecycleInstallation } from "./subscriptionLifecycleClosureFixture.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
-import { checkoutOwnerRoutines, selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
+import { checkoutOwnerRoutines, selectPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { proveRuntimeCheckout, watchRuntimeCheckoutAclDelta } from "./catalogRuntimeCheckout.proof.js";
+import { withPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
+import { installAccountMutations } from "./customerAccountMutations.fixture.js";
 
 let env: LifecycleInstallation;
 let issued: Graph;
@@ -516,5 +518,340 @@ it.each(levels.flatMap(level => entries.map(routine => [routine, level] as const
     await Promise.all([buyer.query("ROLLBACK"), publisher.query("ROLLBACK")]);
     buyer.release();
     publisher.release();
+  }
+});
+
+const derivedForward = "db/platform/migrations/20261128000000_native_derived_subscription_price.sql";
+const draftWriter = "public.commerce_create_order_draft_with_outbox(text,jsonb,jsonb,uuid)";
+const promotedWriter = "public.commerce_create_promoted_order_draft_with_outbox(text,jsonb,jsonb,uuid)";
+const derivedResolver = "public.catalog_admission_derived_subscription_prices(text,jsonb,jsonb,timestamptz)";
+const deriveArithmetic = "public.catalog_derive_subscription_unit_price(integer,integer,integer)";
+const priceChanged = { code: "22023", message: "commerce_order_draft_catalog_price_changed" };
+const roundingRule = "FLOOR_TO_QUANTUM" as const;
+
+async function addPrice(db: Pool, subject: { listId: string; skuId: string }, base: number,
+  mode = "one_time", min = 1, kind = "gross", from: string | null = null, to: string | null = null) {
+  return (await db.query<{ id: string }>(`INSERT INTO public.price_entries
+    (price_list_id,variant_id,unit_price_minor,mode,min_qty,amount_kind,valid_from,valid_to)
+    VALUES($1,$2,$3,$4,$5,$6,coalesce($7::timestamptz,now()-interval '1 day'),$8) RETURNING id`,
+  [subject.listId, subject.skuId, base, mode, min, kind, from, to])).rows[0]!.id;
+}
+
+async function addPolicy(db: Pool, listId: string, discountBps: number, quantum: number,
+  revision = 1, start: string | null = null, end: string | null = null) {
+  return (await db.query<{ id: string; digest: string }>(`WITH revision AS (
+    SELECT gen_random_uuid() AS id, coalesce($5::timestamptz,now()-interval '1 day') AS starts
+  )
+  INSERT INTO public.subscription_price_policy_revisions
+    (id,price_list_id,region_code,currency,channel,revision_no,discount_bps,rounding_quantum_minor,rounding_rule,effective_from,effective_to,digest)
+  SELECT r.id,l.id,l.region_code,l.currency,'D2C',$4,$2,$3,'FLOOR_TO_QUANTUM',r.starts,$6,
+    public.catalog_price_setup_policy_digest(r.id,$4,l.id,l.region_code,l.currency,'D2C',r.starts,$6,$2,$3,'FLOOR_TO_QUANTUM')
+  FROM revision r JOIN public.price_lists l ON l.id=$1 RETURNING id,digest`,
+  [listId, discountBps, quantum, revision, start, end])).rows[0]!;
+}
+
+async function priceSubject(db: Pool, currency: string, skuId: string = randomUUID()) {
+  const sku = `Article-${skuId}`;
+  await db.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1,$2,'Article') ON CONFLICT DO NOTHING", [skuId, sku.toLowerCase()]);
+  await db.query(`INSERT INTO public.catalog_skus(id,product_id,sku,title,sellable_in_subscription)
+    VALUES($1,$1,$2,'Article',true) ON CONFLICT DO NOTHING`, [skuId, sku]);
+  const listId = (await db.query<{ id: string }>(`INSERT INTO public.price_lists(name,region_code,currency,valid_from)
+    VALUES('Test market','ZZ',$1,now()-interval '1 day') RETURNING id`, [currency])).rows[0]!.id;
+  return { skuId, sku, listId, currency };
+}
+type PriceSubject = Awaited<ReturnType<typeof priceSubject>>;
+
+function moneySnapshot(subject: PriceSubject, unit: number, quantity = 1, mode: "one_time" | "subscription" = "subscription") {
+  const result = quote(subject.sku);
+  const amount = (amountMinor: number) => ({ amountMinor, currency: subject.currency });
+  const total = amount(unit * quantity);
+  Object.assign(result.quote, { currency: subject.currency, context: { mode, promoCodes: [] },
+    subtotalGross: total, totalGross: total, netTotal: total, discountTotalGross: amount(0), taxTotal: amount(0) });
+  const line = result.quote.lines[0]!;
+  Object.assign(line, { quantity, unitPriceGross: amount(unit), lineSubtotalGross: total });
+  Object.assign(line.tax, { grossAmount: total, netAmount: total, vatAmount: amount(0) });
+  return result;
+}
+
+function derivedSnapshot(subject: PriceSubject, baseId: string, base: number,
+  policy: { id: string; digest: string }, atTime: string, unit: number, quantity = 1) {
+  const snapshot = moneySnapshot(subject, unit, quantity);
+  snapshot.quote.lines[0]!.catalogFacts = {
+    version: "catalog_facts_v2", skuId: subject.skuId, documentRevisionId: randomUUID(), documentDigest: "a".repeat(64),
+    basePriceEntryId: baseId, baseUnitAmountMinor: base, policyRevisionId: policy.id, policyDigest: policy.digest,
+    resolvedUnitAmountMinor: unit, resolvedLineAmountMinor: unit * quantity, currency: subject.currency, mode: "subscription", atTime,
+  };
+  return snapshot;
+}
+
+async function dbInstant(db: Pool | PoolClient) {
+  return (await db.query<{ instant: string }>("SELECT now()::text AS instant")).rows[0]!.instant;
+}
+
+const writerDraft = (snapshot: pricing.CreateQuoteResponse) => ({ ...draft(snapshot), currency: snapshot.quote.currency,
+  lines: structuredClone(snapshot.quote.lines) });
+async function writePriceDraft(db: Pool | PoolClient, snapshot: pricing.CreateQuoteResponse, key = randomUUID(),
+  submitted = writerDraft(snapshot)) {
+  return (await db.query<{ response: { orderDraft: { orderId: string; replayed: boolean }; contractVersion: string } }>(
+    "SELECT public.commerce_create_order_draft_with_outbox($1,$2,$3,NULL) AS response", [key, snapshot, submitted]
+  )).rows[0]!.response;
+}
+
+async function seedDerived(db: Pool, currency: string, base = 125, discount = 500, quantum = 10) {
+  const subject = await priceSubject(db, currency);
+  const policy = await addPolicy(db, subject.listId, discount, quantum);
+  const baseId = await addPrice(db, subject, base);
+  const unit = pricing.deriveSubscriptionUnitPrice(base, { discountBps: discount, roundingQuantumMinor: quantum, roundingRule });
+  return { subject, baseId, policy, snapshot: derivedSnapshot(subject, baseId, base, policy, await dbInstant(db), unit) };
+}
+
+it("accepts derived units at a half-open base and policy boundary with exactly one set of effects", async () => {
+  const { owner, runtime } = env;
+  const subject = await priceSubject(owner, "XAA");
+  const { key, saved, snapshot } = await transaction(runtime, async db => {
+    const boundary = await dbInstant(db);
+    const oldPolicy = await addPolicy(owner, subject.listId, 500, 10);
+    const oldBase = await addPrice(owner, subject, 125, "one_time", 1, "gross", null, boundary);
+    await owner.query(`UPDATE public.subscription_price_policy_revisions
+      SET effective_to=$2 WHERE id=$1`, [oldPolicy.id, boundary]);
+    const policy = await addPolicy(owner, subject.listId, 500, 10, 2, boundary);
+    const baseId = await addPrice(owner, subject, 125, "one_time", 1, "gross", boundary);
+    const stale = derivedSnapshot(subject, oldBase, 125, oldPolicy, boundary, 110, 3);
+    const snapshot = derivedSnapshot(subject, baseId, 125, policy, boundary, 110, 3);
+    const before = await counts();
+    const resolver = "SELECT public.catalog_admission_derived_subscription_prices($1,$2,$3,$4::timestamptz) AS units";
+    expect((await db.query(resolver, [subject.currency, snapshot, writerDraft(snapshot), boundary])).rows).toEqual([{ units: [110] }]);
+    expect((await db.query(resolver, [subject.currency, stale, writerDraft(stale), boundary])).rows).toEqual([{ units: [null] }]);
+    const earlier = (await db.query<{ instant: string }>("SELECT ($1::timestamptz-interval '1 microsecond')::text AS instant", [boundary])).rows[0]!.instant;
+    expect((await db.query(resolver, [subject.currency, stale, writerDraft(stale), earlier])).rows).toEqual([{ units: [110] }]);
+    await db.query("SAVEPOINT stale_price");
+    await expect(writePriceDraft(db, stale)).rejects.toMatchObject(priceChanged);
+    await db.query("ROLLBACK TO SAVEPOINT stale_price");
+    expect(await counts()).toEqual(before);
+    const key = randomUUID();
+    return { key, saved: await writePriceDraft(db, snapshot, key), snapshot };
+  });
+  const orderId = saved.orderDraft.orderId.slice(6);
+  expect((await owner.query(`SELECT i.quantity,i.unit_amount_minor::integer,i.line_amount_minor::integer,
+    o.metadata->'quoteSnapshot' AS quote,r.response_payload AS receipt,e.payload->'quoteSnapshot' AS emitted
+    FROM public.commerce_orders o JOIN public.commerce_order_items i ON i.order_id=o.id
+    JOIN public.commerce_order_draft_receipts r ON r.order_id=o.id AND r.idempotency_key=$2
+    JOIN public.outbox_events e ON e.aggregate_id=o.id AND e.idempotency_key=$2 WHERE o.id=$1`, [orderId, key])).rows)
+    .toEqual([{ quantity: 3, unit_amount_minor: 110, line_amount_minor: 330, quote: snapshot, receipt: saved, emitted: snapshot }]);
+});
+
+it("refuses mismatched or ambiguous derived authority even when a stored price matches", async () => {
+  const { owner, runtime } = env;
+  const { subject, snapshot } = await seedDerived(owner, "XAB");
+  await addPrice(owner, subject, 105, "subscription");
+  const wrong = moneySnapshot(subject, 105);
+  const facts = snapshot.quote.lines[0]!.catalogFacts!;
+  wrong.quote.lines[0]!.catalogFacts = { ...facts, resolvedUnitAmountMinor: 105, resolvedLineAmountMinor: 105 };
+  const before = await counts();
+  await expect(writePriceDraft(runtime, wrong)).rejects.toMatchObject(priceChanged);
+  const invalidLine = writerDraft(snapshot);
+  invalidLine.lines[0]!.quantity = 0;
+  await expect(writePriceDraft(runtime, wrong, randomUUID(), invalidLine))
+    .rejects.toMatchObject({ code: "22023", message: "commerce_order_draft_invalid_line" });
+  for (const [field, value] of [
+    ["policyRevisionId", randomUUID()], ["policyRevisionId", []], ["policyRevisionId", undefined], ["policyDigest", undefined],
+    ["policyDigest", "b".repeat(64)], ["basePriceEntryId", randomUUID()], ["basePriceEntryId", undefined],
+    ["skuId", randomUUID()], ["baseUnitAmountMinor", 126], ["resolvedUnitAmountMinor", "110"],
+    ["resolvedLineAmountMinor", 111], ["currency", "USD"], ["mode", "one_time"],
+  ] as const) {
+    const submitted = writerDraft(snapshot);
+    const altered = { ...facts, [field]: value } as typeof facts;
+    submitted.lines[0]!.catalogFacts = altered;
+    await expect(writePriceDraft(runtime, snapshot, randomUUID(), submitted), field).rejects.toMatchObject(priceChanged);
+    const quoted = structuredClone(snapshot);
+    quoted.quote.lines[0]!.catalogFacts = altered;
+    await expect(writePriceDraft(runtime, quoted, randomUUID(), submitted), field).rejects.toMatchObject(priceChanged);
+  }
+  const missing = writerDraft(snapshot);
+  delete missing.lines[0]!.catalogFacts;
+  await expect(writePriceDraft(runtime, snapshot, randomUUID(), missing)).rejects.toMatchObject(priceChanged);
+  const noQuoteLine = structuredClone(snapshot);
+  noQuoteLine.quote.lines = [];
+  await expect(writePriceDraft(runtime, noQuoteLine, randomUUID(), writerDraft(snapshot))).rejects.toMatchObject(priceChanged);
+  const otherList = (await owner.query<{ id: string }>(`INSERT INTO public.price_lists(name,region_code,currency)
+    VALUES('Competing list','ZZ',$1) RETURNING id`, [subject.currency])).rows[0]!.id;
+  await expect(writePriceDraft(runtime, snapshot)).rejects.toMatchObject(priceChanged);
+  await owner.query("DELETE FROM public.price_lists WHERE id=$1", [otherList]);
+  const net = await addPrice(owner, subject, 125, "one_time", 1, "net", await dbInstant(owner));
+  await expect(writePriceDraft(runtime, snapshot)).rejects.toMatchObject(priceChanged);
+  await owner.query("UPDATE public.price_entries SET active=false WHERE id<>$1 AND price_list_id=$2 AND mode='one_time'", [net, subject.listId]);
+  const netClaim = structuredClone(snapshot);
+  netClaim.quote.lines[0]!.catalogFacts!.basePriceEntryId = net;
+  await expect(writePriceDraft(runtime, netClaim)).rejects.toMatchObject(priceChanged);
+  expect(await counts()).toEqual(before);
+  await owner.query("UPDATE public.price_entries SET active=(id<>$1) WHERE price_list_id=$2 AND mode='one_time'", [net, subject.listId]);
+  await expect(writePriceDraft(runtime, snapshot)).resolves.toMatchObject({ orderDraft: { replayed: false } });
+});
+
+it.each([
+  { currency: "XAC", base: 10, bps: 0, quantum: 10, expected: 10, outcome: "accepts" },
+  { currency: "XAD", base: 125, bps: 10000, quantum: 10, expected: 0, outcome: "refuses" },
+  { currency: "XAE", base: 11, bps: 900, quantum: 10, expected: 10, outcome: "accepts" },
+  { currency: "XAF", base: 10, bps: 1, quantum: 10, expected: 0, outcome: "refuses" },
+  { currency: "XAG", base: 2147483647, bps: 0, quantum: 1, expected: 2147483647, outcome: "accepts" },
+])("$outcome the derived price $expected from base $base at $bps basis points", async ({ currency, base, bps, quantum, expected, outcome }) => {
+  const { snapshot, subject } = await seedDerived(env.owner, currency, base, bps, quantum);
+  expect(snapshot.quote.lines[0]!.unitPriceGross.amountMinor).toBe(expected);
+  if (outcome === "accepts") {
+    await expect(writePriceDraft(env.runtime, snapshot)).resolves.toMatchObject({ orderDraft: { replayed: false } });
+  } else {
+    const before = await counts();
+    await expect(writePriceDraft(env.runtime, snapshot)).rejects.toMatchObject(priceChanged);
+    expect(await counts()).toEqual(before);
+  }
+  if (base === 2147483647) {
+    const overflowing = moneySnapshot(subject, expected, 2);
+    overflowing.quote.lines[0]!.catalogFacts = snapshot.quote.lines[0]!.catalogFacts;
+    const submitted = writerDraft(overflowing);
+    submitted.lines[0]!.lineSubtotalGross = { amountMinor: expected, currency };
+    await expect(writePriceDraft(env.runtime, overflowing, randomUUID(), submitted)).rejects.toMatchObject({ code: "22003" });
+  }
+});
+
+it("keeps subscription-mode priority and tiers during a policy gap", async () => {
+  const { owner, runtime } = env;
+  const { subject, snapshot } = await seedDerived(owner, "XAH");
+  await expect(writePriceDraft(runtime, snapshot)).resolves.toMatchObject({ orderDraft: { replayed: false } });
+  await owner.query(`UPDATE public.subscription_price_policy_revisions
+    SET effective_to=now() WHERE price_list_id=$1 AND effective_to IS NULL`, [subject.listId]);
+  await addPrice(owner, subject, 105, "subscription");
+  await addPrice(owner, subject, 95, "subscription", 2);
+  await addPrice(owner, subject, 80, "any", 3);
+  await expect(writePriceDraft(runtime, snapshot)).rejects.toMatchObject(priceChanged);
+  await expect(writePriceDraft(runtime, moneySnapshot(subject, 80, 3))).rejects.toMatchObject(priceChanged);
+  const stored = moneySnapshot(subject, 95, 3);
+  const key = randomUUID();
+  const result = await writePriceDraft(runtime, stored, key);
+  const expected = { contractVersion: "commerce.v0", orderDraft: { orderId: result.orderDraft.orderId,
+    idempotencyKey: key, status: "draft", paymentStatus: "not_started", replayed: false, quoteSnapshot: stored } };
+  const canonical = (await runtime.query("SELECT $1::jsonb AS receipt", [expected])).rows[0]!.receipt;
+  expect(JSON.stringify(result)).toBe(JSON.stringify(canonical));
+});
+
+it("keeps one-time pricing and effects alongside an effective subscription policy", async () => {
+  const { subject, snapshot } = await seedDerived(env.owner, "XAI");
+  await expect(writePriceDraft(env.runtime, snapshot)).resolves.toMatchObject({ orderDraft: { replayed: false } });
+  const oneTime = moneySnapshot(subject, 125, 2, "one_time");
+  const key = randomUUID();
+  const saved = await writePriceDraft(env.runtime, oneTime, key);
+  expect((await env.owner.query(`SELECT i.unit_amount_minor::integer,i.line_amount_minor::integer,e.payload->'quoteSnapshot' AS quote
+    FROM public.commerce_order_items i JOIN public.outbox_events e ON e.aggregate_id=i.order_id
+    WHERE i.order_id=$1 AND e.idempotency_key=$2`, [saved.orderDraft.orderId.slice(6), key])).rows)
+    .toEqual([{ unit_amount_minor: 125, line_amount_minor: 250, quote: oneTime }]);
+});
+
+it("keeps the stored any fallback and wrong-price refusal without settlement settings", async () => {
+  const { owner, runtime } = env;
+  const { snapshot } = await seedDerived(owner, "XAJ");
+  const stored = await priceSubject(owner, "XAK");
+  await addPrice(owner, stored, 125, "any");
+  await owner.query("DELETE FROM public.commerce_settings WHERE key IN ('settlement_region','settlement_currency')");
+  try {
+    await expect(writePriceDraft(runtime, snapshot)).resolves.toMatchObject({ orderDraft: { replayed: false } });
+    await expect(writePriceDraft(runtime, moneySnapshot(stored, 125))).resolves.toMatchObject({ orderDraft: { replayed: false } });
+    const before = await counts();
+    await expect(writePriceDraft(runtime, moneySnapshot(stored, 124))).rejects.toMatchObject(priceChanged);
+    expect(await counts()).toEqual(before);
+  } finally {
+    await owner.query("INSERT INTO public.commerce_settings(key,value_text) VALUES('settlement_region','ZZ'),('settlement_currency','XXX')");
+  }
+});
+
+it("upgrades writer authority in place and replays a completed pre-upgrade draft", async () => {
+  const prefix = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as PlatformMigrationManifest;
+  if (prefix.schemaVersion !== 3) throw new Error("Expected the complete platform migration catalogue");
+  for (const plan of [prefix, prefix.qualified, prefix.qualifiedAdmin]) {
+    const end = plan.forward.findIndex(unit => unit.file === derivedForward);
+    expect(end).toBeGreaterThan(0);
+    plan.forward = plan.forward.slice(0, end);
+  }
+  const store = await withPlatformCatalog(prefix, root => installAccountMutations("bootstrap", true, "derived-price", root));
+  const { owner, runtime } = store;
+  const privilegesSql = `SELECT named.signature,p.oid,p.proowner,p.prosecdef,p.proconfig,p.provolatile,p.proacl::text,
+    pg_catalog.has_function_privilege(p.proowner,p.oid,'EXECUTE') AS owner,
+    pg_catalog.has_function_privilege('anon',p.oid,'EXECUTE') AS anon,
+    pg_catalog.has_function_privilege('authenticated',p.oid,'EXECUTE') AS authenticated,
+    pg_catalog.has_function_privilege('service_role',p.oid,'EXECUTE') AS service,
+    pg_catalog.has_function_privilege(0::oid,p.oid,'EXECUTE') AS public
+    FROM unnest($1::text[]) WITH ORDINALITY AS named(signature,position)
+    JOIN pg_catalog.pg_proc p ON p.oid=to_regprocedure(named.signature) ORDER BY named.position`;
+  const facts = async (names: string[]) => (await owner.query(privilegesSql, [names])).rows;
+  const effects = async () => (await owner.query(`SELECT (SELECT count(*) FROM public.commerce_orders) AS orders,
+    (SELECT count(*) FROM public.commerce_order_items) AS items,
+    (SELECT count(*) FROM public.commerce_order_draft_receipts) AS receipts,
+    (SELECT count(*) FROM public.outbox_events) AS events`)).rows;
+  try {
+    const { subject, snapshot } = await seedDerived(owner, "XAL");
+    const entry = await addPrice(owner, subject, 125, "subscription");
+    const stored = moneySnapshot(subject, 125);
+    const key = randomUUID();
+    const saved = await writePriceDraft(runtime, stored, key);
+    const beforeEffects = await effects();
+    const beforeWriters = await facts([draftWriter, promotedWriter]);
+    const promotedSource = async () => (await owner.query("SELECT prosrc FROM pg_catalog.pg_proc WHERE oid=$1::regprocedure", [promotedWriter])).rows;
+    const beforePromoted = await promotedSource();
+    expect((await store.runner.apply()).applied.slice(0, 1)).toEqual([derivedForward]);
+    expect(await facts([draftWriter, promotedWriter])).toEqual(beforeWriters);
+    expect(await promotedSource()).toEqual(beforePromoted);
+    expect(beforeWriters).toEqual([draftWriter, promotedWriter].map(signature => expect.objectContaining({
+      signature, prosecdef: false, proconfig: ["search_path=pg_catalog, pg_temp"], service: true,
+    })));
+    expect(await facts([deriveArithmetic, derivedResolver])).toEqual([
+      expect.objectContaining({ signature: deriveArithmetic, prosecdef: false, proconfig: ["search_path=pg_catalog, pg_temp"],
+        provolatile: "i", owner: true, anon: false, authenticated: false, service: false, public: false }),
+      expect.objectContaining({ signature: derivedResolver, prosecdef: true, proconfig: ["search_path=pg_catalog, pg_temp"],
+        provolatile: "s", owner: true, anon: false, authenticated: false, service: true, public: false }),
+    ]);
+    await owner.query("UPDATE public.price_entries SET unit_price_minor=150 WHERE id=$1", [entry]);
+    expect(JSON.stringify(await writePriceDraft(runtime, stored, key)))
+      .toBe(JSON.stringify({ ...saved, orderDraft: { ...saved.orderDraft, replayed: true } }));
+    await expect(writePriceDraft(runtime, stored)).rejects.toMatchObject(priceChanged);
+    expect(await effects()).toEqual(beforeEffects);
+    await expect(writePriceDraft(runtime, snapshot)).resolves.toMatchObject({ orderDraft: { replayed: false } });
+  } finally {
+    await store.close();
+  }
+}, postgresSetupTimeoutMs);
+
+it("keeps rounding parity with quote and preview amounts and readiness signs", async () => {
+  const { owner } = env;
+  const vectors = [
+    { currency: "XAM", base: 10, bps: 0, quantum: 10, unit: 10 },
+    { currency: "XAN", base: 125, bps: 10000, quantum: 10, unit: 0 },
+    { currency: "XAO", base: 10, bps: 1, quantum: 10, unit: 0 },
+    { currency: "XAP", base: 11, bps: 900, quantum: 10, unit: 10 },
+    { currency: "XAQ", base: 19, bps: 0, quantum: 10, unit: 10 },
+    { currency: "XAR", base: 20, bps: 0, quantum: 10, unit: 20 },
+    { currency: "XAS", base: 2147483647, bps: 1, quantum: 1, unit: 2147268898 },
+  ];
+  const skuId = randomUUID();
+  try {
+    for (const { currency, base, bps, quantum, unit } of vectors) {
+      const subject = await priceSubject(owner, currency, skuId);
+      await addPolicy(owner, subject.listId, bps, quantum);
+      await addPrice(owner, subject, base);
+      await owner.query("UPDATE public.commerce_settings SET value_text=$1 WHERE key='settlement_currency'", [currency]);
+      expect(pricing.deriveSubscriptionUnitPrice(base, { discountBps: bps, roundingQuantumMinor: quantum, roundingRule })).toBe(unit);
+      const preview = await env.actor(actorId, db => db.query(
+        "SELECT public.catalog_price_setup_preview($1,$2,NULL)->'subscription' AS price", [skuId, subject.listId]));
+      expect(preview.rows).toEqual([{ price: expect.objectContaining({ kind: "derived", derivedUnitPriceMinor: unit }) }]);
+      const sign = unit > 0;
+      const target = JSON.stringify([{ skuId, requiredModes: ["subscription"] }]);
+      expect((await owner.query(`SELECT public.catalog_derive_subscription_unit_price($1,$2,$3) AS unit,
+        (public.commerce_offer_policy_v2_readiness()#>>'{evidence,subscriptionPricePolicyDerivesBand}')::boolean AS offer,
+        public.catalog_publication_price_reasons(ARRAY[$4::uuid],now())#>'{0,reasons}' AS publication,
+        public.catalog_publication_target_price_verdict($5,now())#>>'{targets,0,reason}' AS writer`,
+      [base, bps, quantum, skuId, target])).rows).toEqual([{
+        unit, offer: sign, publication: sign ? [] : ["price_readiness_missing"],
+        writer: sign ? null : "catalog_publication_sku_price_not_ready",
+      }]);
+    }
+  } finally {
+    await owner.query("UPDATE public.commerce_settings SET value_text='XXX' WHERE key='settlement_currency'");
   }
 });
