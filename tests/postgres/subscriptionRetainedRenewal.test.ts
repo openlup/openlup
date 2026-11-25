@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { beforeEach, expect, it, vi } from "vitest";
-import { api, purchase, admin, at, days, deps, executor, facts, inventory, now, rpc, runtime, transaction, checkout, destinations, fulfillment, identity, payments, runtimeUrl, captureStore, withRestoredStore } from "./subscriptionPublicRenewalFixture.js";
+import { api, purchase, admin, at, days, deps, executor, facts, inventory, now, rpc, runtime, runtimeLogin, transaction, checkout, destinations, fulfillment, identity, payments, runtimeUrl, captureStore, withRestoredStore } from "./subscriptionPublicRenewalFixture.js";
 import { allPublicRows } from "./subscriptionStockWaitCases.js";
 import { captureSandboxPurchase } from "../helpers/captureSandboxPurchase.js";
 import type { RenewalRetainedTerms } from "@openlup/platform/subscriptions/contracts";
@@ -163,7 +163,7 @@ it.each([null, "identity_privacy_erasures", "subscription_command_receipts", "su
     const key = `absorption:${randomUUID()}`;
     const before = await allPublicRows(admin);
     expect((await runtime.query("SELECT current_user,session_user,rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user")).rows)
-      .toEqual([{ current_user: "service_role", session_user: "g7_runtime", rolsuper: false, rolbypassrls: false }]);
+      .toEqual([{ current_user: "service_role", session_user: runtimeLogin(), rolsuper: false, rolbypassrls: false }]);
     expect((await runtime.query("SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=session_user")).rows)
       .toEqual([{ rolsuper: false, rolbypassrls: false }]);
     const absorb = () => rpc<{ outcome: string; blockingTables?: string[] }>("customer_support_absorb_lead_v1", [operator, customer, lead, email, key, at]);

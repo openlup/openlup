@@ -676,7 +676,7 @@ it.each(profiles)("upgrades and serves admission issues on the installed %s rail
   const prefix = structuredClone(manifest);
   for (const plan of [prefix, prefix.qualified, prefix.qualifiedAdmin]) plan.forward = plan.forward.slice(0, plan.forward.findIndex(unit => unit.file === forward));
   const store = await withPlatformCatalog(prefix, root => installAccountMutations(profile, true, "admission-issue", root));
-  const fresh = await installAccountMutations(profile, false, "admission-issue-fresh").catch(async error => { await store.close(); throw error; });
+  const fresh = await installAccountMutations(profile, false, "admission-issue-fresh", undefined, undefined, { isolatedCluster: true }).catch(async error => { await store.close(); throw error; });
   const local: Pool[] = [];
   try {
     const offer = "test:rail";

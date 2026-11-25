@@ -18,7 +18,8 @@ import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPo
 import { captureStoreJourney, journeySelection, storeJourneyResources, type JourneyInstallation } from "../helpers/storeJourney.js";
 import { destinationContext, destinationHash, reachDestinationCutoff, snapshot, snapshotCommand, snapshotPreimage } from "./destinationDocumentFixture.js";
 
-const resources = storeJourneyResources();
+// Isolated cluster: destinationDocumentFixture.snapshot uses withCatalogAdmissionFence (cluster-wide pg_current_snapshot).
+const resources = storeJourneyResources({ isolatedCluster: true });
 let store: JourneyInstallation;
 beforeAll(async () => { store = await resources.installation("tax-calculations"); }, postgresSetupTimeoutMs);
 afterAll(() => resources.close(), postgresTeardownTimeoutMs);
