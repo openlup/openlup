@@ -78,7 +78,7 @@ test('every host checkout code has a class', async () => {
   }
   const counts: Record<string, number> = {};
   for (const kind of Object.values(purchase.checkoutAnswerCodes)) counts[kind] = (counts[kind] ?? 0) + 1;
-  assert.deepEqual(counts, { noAnswer: 3, open: 4, closed: 2, none: 1, other: 9 });
+  assert.deepEqual(counts, { noAnswer: 3, open: 4, closed: 2, none: 1, other: 10 });
 });
 
 interface Row {
@@ -109,7 +109,7 @@ const rows: Row[] = [
   { name: 'create stale', operation: 'create', reply: refusedWith('starter_checkout_request_stale'), kind: 'other', record: 'unchanged', panel: 'keep', link: 'keep', code: 'starter_checkout_request_stale', text: 'starter_checkout_request_stale' },
   { name: 'create limited', operation: 'create', reply: refusedWith('starter_attempt_limited'), kind: 'other', record: 'unchanged', panel: 'keep', link: 'keep', code: 'starter_attempt_limited', text: 'starter_attempt_limited' },
   { name: 'create conflict', operation: 'create', reply: refusedWith('starter_command_conflict'), kind: 'other', record: 'unchanged', panel: 'keep', link: 'keep', code: 'starter_command_conflict', text: 'starter_command_conflict' },
-  ...['starter_input_invalid', 'starter_email_invalid', 'starter_terms_required', 'starter_purchase_unavailable', 'starter_quote_refresh_required', 'starter_quote_price_changed', 'starter_cart_invalid'].map(code =>
+  ...['starter_input_invalid', 'starter_email_invalid', 'starter_terms_required', 'starter_purchase_unavailable', 'starter_quote_refresh_required', 'starter_quote_price_changed', 'starter_expected_total_required', 'starter_cart_invalid'].map(code =>
     ({ name: `create ${code}`, operation: 'create' as const, reply: refusedWith(code), kind: 'other' as const, record: 'unchanged' as const, panel: 'keep' as const, link: 'keep' as const, code })),
   { name: 'create dependency unavailable', operation: 'create', reply: refusedWith('starter_dependency_unavailable', 503), kind: 'noAnswer', record: 'unchanged', panel: 'open', link: 'keep', code: 'starter_dependency_unavailable' },
   { name: 'create lost', operation: 'create', reply: lost, kind: 'noAnswer', record: 'unchanged', panel: 'open', link: 'keep', code: 'starter_transport_unavailable' },

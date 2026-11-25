@@ -84,6 +84,7 @@ export const checkoutAnswerCodes: Readonly<Record<string, CheckoutAnswerClass>> 
   starter_checkout_request_stale: 'other', starter_attempt_limited: 'other', starter_command_conflict: 'other',
   starter_input_invalid: 'other', starter_email_invalid: 'other', starter_terms_required: 'other',
   starter_purchase_unavailable: 'other', starter_quote_refresh_required: 'other', starter_quote_price_changed: 'other',
+  starter_expected_total_required: 'other',
 });
 
 export interface CheckoutContinuationRecord { v: 1; id: string; sentAt?: number; ordered?: true; orderRef?: string }
