@@ -350,6 +350,22 @@ export function platformModuleRules(pkg, module, graph = PLATFORM_MODULE_GRAPH) 
   ];
 }
 
+// The starter's client and shared source is bundled for the browser. A runtime
+// import from a platform entry is allowed only from an entry that bundles for a
+// browser without Node built-ins, each proved by its own test: every `/contracts`
+// entry (the contracts boundary rules above), account-support/read-contracts
+// (packages/platform/test/account-support/readContractsBrowserSafety.test.ts),
+// pricing/browser and commerce (packages/platform/test/commerce/browserBoundary.test.ts),
+// marketing (packages/platform/test/marketing/browserBoundary.test.ts) and operations
+// (packages/platform/test/operations/browserSafety.test.ts). An entry without such a
+// test is not listed. Type-only imports are erased and stay allowed.
+const starterBrowserEntries = {
+  message: "Starter client and shared code must import @openlup/platform values only from a browser-safe entry "
+    + "(…/contracts, account-support/read-contracts, pricing/browser, commerce, marketing, operations); "
+    + "use `import type` for types, or move a host-only module to host/.",
+  regexes: ["^@openlup/platform(?!/(?:(?:[a-z-]+/)*contracts|account-support/read-contracts|pricing/browser|commerce|marketing|operations)$)"],
+};
+
 export const TYPE_AWARE_RULES = {
   "@typescript-eslint/no-floating-promises": "error",
   "@typescript-eslint/no-misused-promises": ["error", { checksVoidReturn: { attributes: false } }],
@@ -392,6 +408,18 @@ export default tseslint.config(
     files: sourceFiles(),
     ignores: ["packages/**"],
     rules: boundaryRules([packageExports]),
+  },
+  {
+    // Core rule options replace earlier ones, so this block repeats packageExports.
+    // Under verbatimModuleSyntax `import { type A } from` keeps a runtime import.
+    files: ["examples/neutral-store/client/**/*.ts", "examples/neutral-store/shared/**/*.ts"],
+    rules: {
+      ...boundaryRules([packageExports], [starterBrowserEntries]),
+      "@typescript-eslint/no-restricted-imports": ["error", {
+        patterns: starterBrowserEntries.regexes.map((regex) => ({ regex, message: starterBrowserEntries.message, caseSensitive: true, allowTypeImports: true })),
+      }],
+      "@typescript-eslint/no-import-type-side-effects": "error",
+    },
   },
   {
     files: DOMAIN_ROOTS.flatMap((root) => sourceFiles(`${root}/`)),
