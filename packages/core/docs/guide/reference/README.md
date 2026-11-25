@@ -3,7 +3,7 @@
 Find package exports, configuration, SQL, commands and refusal codes, or read the release and compatibility policies.
 
 - [Exports](exports.md) — package subpaths and their API reports.
-- [Maturity](maturity.md) — compatibility policies for package subpaths.
+- [Maturity](maturity.md) — compatibility policies for package subpaths and the experimental or deprecated symbols inside them.
 - [Configuration](configuration.md) — configuration keys read by packages.
 - [SQL](sql.md) — the SQL files each package ships.
 - [Command line](cli.md) — command syntax and help.

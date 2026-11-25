@@ -1,13 +1,16 @@
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
-import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { createPostgresSandboxPaymentSimulator } from "@openlup/platform/payments";
 import { createPostgresDestinationPort } from "@openlup/platform/commerce/server/destinations";
 import { createPostgresFulfillmentStockSyncPort } from "@openlup/platform/fulfillment";
 import { applyDemoSeed, demonstrationMarker } from "../../examples/neutral-store/installation/install.ts";
 import { configurations } from "../../examples/neutral-store/owned/store.config.ts";
-import { createPostgresPurchaseRenewalWriter } from "@openlup/platform/subscriptions";
+import { createPostgresPurchaseRenewalWriter, createPostgresSubscriptionCommandStore } from "@openlup/platform/subscriptions";
+import { createPostgresCommercePriceAuthorityReadPort } from "@openlup/platform/commerce/server/postgres";
+import { createCatalogPriceSetupHandler, createPostgresCatalogPriceSetupStore } from "@openlup/platform/pricing";
+import type { CatalogFactsProvenance } from "@openlup/platform/pricing/contracts";
 import type { NativeCheckoutDraftRequest } from "@openlup/platform/commerce/server/native-checkout";
 import { createAcquisitionFinancialPolicy } from "../../examples/neutral-store/owned/acquisition-policy.ts";
 import { acquisitionFixture, configured } from "./acquisitionAdmissionFixture.js";
@@ -78,11 +81,13 @@ interface PurchaseOptions {
   clientId?: string;
   useAcquisitionAdapter?: boolean;
   coSettle?: boolean;
+  derived?: { quantity: number; unit: number; discount: number; facts: CatalogFactsProvenance };
 }
 async function startPurchase(store: typeof f, options: PurchaseOptions = {}) {
   const { mode = "one_time", threshold = 500, shipping = 0 } = options;
   const promotionIds = [options.discount, options.extraDiscount].filter(id => id !== undefined);
-  const orderDiscount = 240 * promotionIds.length;
+  const discount = options.derived?.discount ?? 240;
+  const orderDiscount = discount * promotionIds.length;
   const clientId = options.clientId ?? await store.client();
   const quote = (await store.request("unused", false)).quoteSnapshot.quote;
   quote.context = {
@@ -92,13 +97,22 @@ async function startPurchase(store: typeof f, options: PurchaseOptions = {}) {
     shippingTerms: { version: "shipping-threshold.v1", currency: "XXX", flatMinor: 50, freeThresholdMinor: threshold },
     ...(options.terms && { acquisitionTerms: options.terms, acquisitionCapability: "subscription-acquisition.v1" }),
   };
-  quote.discounts = promotionIds.map(promotionId => ({ promotionId, appliesTo: "order_total", amountOffMinor: 240, reasonCode: "example" }));
+  const line = quote.lines[0]!;
+  if (options.derived) {
+    const { quantity, unit, facts } = options.derived;
+    const subtotal = money(unit * quantity);
+    Object.assign(line, { quantity, unitPriceGross: money(unit), lineSubtotalGross: subtotal, catalogFacts: facts });
+    Object.assign(line.tax, { netAmount: subtotal, grossAmount: subtotal });
+    quote.subtotalGross = subtotal;
+  }
+  quote.discounts = promotionIds.map(promotionId => ({ promotionId, appliesTo: "order_total", amountOffMinor: discount, reasonCode: "example" }));
   quote.discountTotalGross = money(orderDiscount);
   quote.shippingGross = money(shipping);
-  quote.netTotal = quote.totalGross = money(1000 - orderDiscount + shipping);
+  quote.netTotal = quote.totalGross = money(quote.subtotalGross.amountMinor - orderDiscount + shipping);
   const input: NativeCheckoutDraftRequest = { idempotencyKey: `purchase:${randomUUID()}`, quoteSnapshot: { contractVersion: "commerce.v0", quote } };
   const submit = { schemaVersion: 1, ownerNamespace: "example:checkout", clientId, lane: "example-checkout", requestKey: input.idempotencyKey,
-    acceptanceTokenDigest: options.terms ? digest(input.idempotencyKey) : null, submitDigest: digest(clientId) };
+    acceptanceTokenDigest: options.terms ? digest(input.idempotencyKey) : null,
+    submitDigest: digest(options.derived ? JSON.stringify({ clientId, requestKey: input.idempotencyKey }) : clientId) };
   const session = await store.runtime.connect();
   let result;
   try {
@@ -149,17 +163,17 @@ async function startPurchase(store: typeof f, options: PurchaseOptions = {}) {
   } else {
     expect((await captureSandboxPurchase(simulator, { settlementIntentId: intentId, key: id, at: await clock(store.runtime) })).status).toBe(200);
   }
-  async function activate() {
-    const line = quote.lines[0]!;
+  async function activate({ complete = true } = {}) {
+    const unitAmountMinor = line.unitPriceGross.amountMinor;
     const writer = createPostgresPurchaseRenewalWriter(store.runtime);
     await writer.register(id, { settlementChannelKey: "sandbox", authorizationRef: "example:authorization", unattendedChargeAuthorizedAt: at,
       payerAccountRef: "example:payer", methodRef: "example:method", methodEvidenceRef: "example:evidence", stockSourceKey: "example:stock",
-      templateId: "example:template", cadenceDays: 28, currency: "XXX", lines: [{ lineOrdinal: 1, sku: line.sku, quantity: line.quantity, unitAmountMinor: 1000 }],
+      templateId: "example:template", cadenceDays: 28, currency: "XXX", lines: [{ lineOrdinal: 1, sku: line.sku, quantity: line.quantity, unitAmountMinor }],
       shippingAmountMinor: shipping, acquisitionRef: options.discount ?? "example:acquisition",
-      renewalTerms: { version: "native.renewal-terms.v1", linePricing: [{ sku: line.sku, quantity: line.quantity, unitAmountMinor: 1000, isAddon: false, quoteLine: { ...line } }] } });
+      renewalTerms: { version: "native.renewal-terms.v1", linePricing: [{ sku: line.sku, quantity: line.quantity, unitAmountMinor, isAddon: false, quoteLine: { ...line } }] } });
     await store.runtime.query("SELECT public.subscription_activate_from_captured_payment_with_edit_window($1,$2,$3,72)",
       [`activate:${id}`,id,digest(intentId)]);
-    await writer.complete(id);
+    if (complete) await writer.complete(id);
   }
   return { id, intentId, clientId, input, submit, result, activate };
 }
@@ -236,6 +250,172 @@ it("admits the captured subscription only after activation and sees only committ
   await f.owner.query("UPDATE public.subscription_activations SET repaired=true WHERE order_id=$1", [order.id]);
   await assertReadyOrder();
 });
+
+it("keeps a derived acquisition in the reprice census and attaches its original price context", async () => {
+  const store = await acquisitionFixture();
+  const { owner, runtime, list, product: skuId, sku } = store;
+  const admin = randomUUID(), buyer = randomUUID();
+  async function asActor<T>(principal: string, work: (db: PoolClient) => Promise<T>) {
+    const db = await owner.connect();
+    try {
+      await db.query("BEGIN ISOLATION LEVEL READ COMMITTED");
+      await db.query("SET LOCAL ROLE authenticated");
+      await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: principal, role: "authenticated" })]);
+      const result = await work(db);
+      await db.query("COMMIT");
+      return result;
+    } catch (error) {
+      await db.query("ROLLBACK");
+      throw error;
+    } finally { db.release(); }
+  }
+  try {
+    const baseId = await val(owner, `UPDATE public.price_entries SET mode='one_time',unit_price_minor=125,min_qty=1,amount_kind='gross'
+      WHERE price_list_id=$1 AND variant_id=$2 RETURNING id AS value`, [list, skuId]);
+    const policyId = await val(owner, `WITH revision AS (SELECT gen_random_uuid() AS id,date_trunc('milliseconds',now()) AS starts)
+      INSERT INTO public.subscription_price_policy_revisions
+        (id,price_list_id,region_code,currency,channel,revision_no,discount_bps,rounding_quantum_minor,rounding_rule,effective_from,digest)
+      SELECT id,$1,'ZZ','XXX','D2C',1,500,10,'FLOOR_TO_QUANTUM',starts,
+        public.catalog_price_setup_policy_digest(id,1,$1,'ZZ','XXX','D2C',starts,NULL,500,10,'FLOOR_TO_QUANTUM')
+      FROM revision RETURNING id AS value`, [list]);
+    expect(await val(owner, `SELECT count(*)::int AS value FROM public.price_entries
+      WHERE price_list_id=$1 AND variant_id=$2 AND mode IN ('subscription','any')`, [list, skuId])).toBe(0);
+    const collectedAt = await clock(owner);
+    const stock = createPostgresFulfillmentStockSyncPort(runtime, { sourceKey: "example:stock", readLocalInventoryStock: async () => [] });
+    await stock.recordProviderStockCurrent({ requestKey: `stock:${sku}`, snapshot: { providerRef: "sandbox-stock",
+      collectedAt, sourceRevision: null, revisionSource: "collection", quantityKind: "snapshot", skuRef: sku,
+      totalQuantity: 100, forSaleQuantity: 100, reservedOrUnavailableQuantity: 0, syncRunId: "example-stock" },
+    inventoryClass: "sellable", lastSyncedAt: collectedAt,
+    staleAfter: await val(owner, "SELECT (clock_timestamp()+interval '1 day') AS value").then((value: Date) => value.toISOString()) });
+    await configure(owner);
+    await owner.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,$2)", [admin, `${admin}@example.invalid`]);
+    await owner.query(`INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at)
+      VALUES($1,'admin','active','legacy',clock_timestamp())`, [admin]);
+    const clientId = String(await val(owner, "INSERT INTO public.clients(email,principal_id) VALUES($1,$2) RETURNING id AS value",
+      [`${buyer}@example.invalid`, buyer]));
+    const promotionRow = await promotion(owner, v2("example:derived-acquisition", await fromYesterday(owner)));
+    const publication = await store.publication();
+    const census = (at: string) => owner.query(`SELECT id,created_at::text FROM public.commerce_orders
+      WHERE created_at BETWEEN $1::timestamptz-interval '24 hours' AND $1 AND status IN ('paid','fulfillment_pending','fulfilled','refunded')`, [at]);
+    expect((await census(await clock(owner))).rows).toEqual([]);
+
+    const atTime = await clock(owner);
+    const query = { variantId: skuId, regionCode: "ZZ", currency: "XXX", channel: "D2C", mode: "subscription" } as const;
+    const priceAt = (atTime: string) => store.pricing.createCommercePriceAuthorityPort(createPostgresCommercePriceAuthorityReadPort(runtime))
+      .resolvePrice({ ...query, atTime });
+    const price = await priceAt(atTime);
+    expect(price).toMatchObject({ kind: "subscription_policy", base: { priceEntryId: baseId, unitPriceMinor: 125 },
+      policy: { id: policyId }, unitPriceMinor: 110 });
+    if (price.kind !== "subscription_policy") throw new Error("Expected a derived subscription price");
+    const quantity = 5, unit = price.unitPriceMinor;
+    const catalogFacts: CatalogFactsProvenance = { version: "catalog_facts_v2", skuId, documentRevisionId: randomUUID(),
+      documentDigest: "a".repeat(64), basePriceEntryId: price.base.priceEntryId, baseUnitAmountMinor: price.base.unitPriceMinor,
+      policyRevisionId: price.policy.id, policyDigest: price.policy.digest, resolvedUnitAmountMinor: unit,
+      resolvedLineAmountMinor: quantity * unit, currency: "XXX", mode: "subscription", atTime };
+    const selected = store.pricing.selectAcquisitionTerms([promotionRow], atTime, "ZZ", fixturePolicy)!;
+    expect(selected.kind).toBe("v2_standalone");
+    const discount = quantity * unit * promotionRow.benefit_value_bps / 10000;
+    const order = await startPurchase(store, { clientId, mode: "subscription", discount: promotionRow.id, terms: { ...selected.terms },
+      threshold: 400, derived: { quantity, unit, discount, facts: catalogFacts } });
+    expect(order.result.orderDraft.quoteSnapshot.quote).toMatchObject({ subtotalGross: money(550), totalGross: money(418),
+      lines: [{ quantity, unitPriceGross: money(110), catalogFacts }] });
+    const { rows: [paid] } = await owner.query(`SELECT id,created_at::text,status,catalog_acceptance,
+      metadata->'catalogAdmissionSubmit' AS submit, metadata#>'{orderDraftSnapshot,lines,0}' AS line
+      FROM public.commerce_orders WHERE id=$1`, [order.id]);
+    expect(paid).toMatchObject({ status: "paid", catalog_acceptance: null, submit: order.submit,
+      line: { quantity, unitPriceGross: money(110), catalogFacts } });
+    expect((await owner.query(`SELECT promotion_id,status,amount_off_minor::int FROM public.commerce_promotion_claims WHERE order_id=$1`, [order.id])).rows)
+      .toEqual([{ promotion_id: promotionRow.id, status: "redeemed", amount_off_minor: 132 }]);
+    expect((await owner.query(`SELECT state,outcome FROM public.payment_truth_events
+      WHERE settlement_intent_id=$1 AND outcome='captured'`, [order.intentId])).rows).toEqual([{ state: "settled", outcome: "captured" }]);
+    await order.activate({ complete: false });
+    const writer = createPostgresPurchaseRenewalWriter(runtime);
+    const { rows: [activation] } = await owner.query(`SELECT a.subscription_id,a.client_id,a.state,c.status AS cycle_status,
+      a.activated_at=i.settled_at AS activation_matches_settlement
+      FROM public.subscription_activations a JOIN public.commerce_orders o ON o.id=a.order_id
+      JOIN public.subscription_cycles c ON c.id=o.subscription_cycle_id AND c.subscription_id=a.subscription_id
+      JOIN public.commerce_settlement_intents i ON i.id=$2 WHERE a.order_id=$1`, [order.id, order.intentId]);
+    expect(activation).toMatchObject({ client_id: clientId, state: "active", cycle_status: "paid", activation_matches_settlement: true });
+    const subscriptionId = String(activation.subscription_id);
+    expect(await writer.pending()).toContainEqual(expect.objectContaining({ orderId: order.id }));
+    const subscription = async () => (await owner.query(`SELECT price_list_id,currency_code,template_version,next_cycle_at::text
+      FROM public.subscriptions WHERE id=$1`, [subscriptionId])).rows[0];
+    expect(await subscription()).toMatchObject({ price_list_id: null, currency_code: null });
+    const verifyCensus = async () => {
+      const reader = await publication.connect();
+      try {
+        const ready = await assertReadyOrder(reader);
+        expect(ready.evidence).toMatchObject({ legacyFrozenBaselineMatches: true, legacyFrozenBaselineCount: 0,
+          acquisition: { kind: selected.kind, standaloneCount: 1, delivery2DiscountBps: selected.terms.delivery2DiscountBps } });
+        expect((await census(ready.checkedAt)).rows).toEqual([{ id: order.id, created_at: paid.created_at }]);
+      } finally { reader.release(true); }
+    };
+    await verifyCensus();
+
+    const committed = await asActor(admin, async db => {
+      const preview = await val(db, "SELECT public.catalog_price_setup_preview($1,$2,230) AS value", [skuId, list]);
+      expect(preview).toMatchObject({ outcome: "preview", inGate: true, current: { entryId: baseId, unitPriceMinor: 125 } });
+      expect(preview.proposed.readiness.reasons.filter((code: string) => !preview.readiness.reasons.includes(code))).toEqual([]);
+      const handler = createCatalogPriceSetupHandler({ store: createPostgresCatalogPriceSetupStore(db), authorizeOperator: async () => ({ actorId: admin }) });
+      const result = await handler.apply({ schemaVersion: 1, commandKey: randomUUID(), variantId: skuId, priceListId: list,
+        mode: "one_time", minQty: 1, amountKind: "gross", unitPriceMinor: 230, expected: { entryId: baseId, unitPriceMinor: 125 } }, undefined);
+      expect(result).toMatchObject({ outcome: "committed", receipt: { previous: { entryId: baseId, unitPriceMinor: 125 }, current: { unitPriceMinor: 230 } } });
+      if (result.outcome !== "committed") throw new Error("Expected a committed base price replacement");
+      return result.receipt;
+    });
+    const { rows: [replacement] } = await owner.query(`SELECT base.active,base.valid_to::text AS cutoff,
+      successor.active AS successor_active,successor.unit_price_minor AS successor_unit,
+      base.valid_from<=o.created_at AND o.created_at<base.valid_to AS order_in_interval,
+      (SELECT bool_and(occurred_at<base.valid_to) FROM public.payment_truth_events WHERE settlement_intent_id=$5 AND state='settled') AS settled_before
+      FROM public.price_entries base JOIN public.price_entries successor ON successor.price_list_id=base.price_list_id
+        AND successor.variant_id=base.variant_id AND successor.mode=base.mode AND successor.min_qty=base.min_qty
+        AND successor.valid_from=base.valid_to
+      JOIN public.commerce_orders o ON o.id=$3 WHERE base.id=$1 AND successor.id=$2 AND o.created_at=$4`,
+    [baseId, committed.current.entryId, order.id, paid.created_at, order.intentId]);
+    expect(replacement).toMatchObject({ active: false, successor_active: true, successor_unit: 230, order_in_interval: true, settled_before: true });
+    await verifyCensus();
+
+    await expect.poll(async () => {
+      const { rows: [check] } = await owner.query(`SELECT date_trunc('milliseconds',clock_timestamp()) >= $1::timestamptz AS ready,
+        clock_timestamp()::text AS observed`, [replacement.cutoff]);
+      return check.ready ? "ready" : `cutoff ${replacement.cutoff}, database clock ${check.observed}`;
+    }, { interval: 5, timeout: 1000 }).toBe("ready");
+    expect(await priceAt(await clock(owner))).toMatchObject({ unitPriceMinor: 210 });
+    const log = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(await writer.complete(order.id)).toEqual({ subscriptionId, replayed: false });
+      expect(await writer.pending()).not.toContainEqual(expect.objectContaining({ orderId: order.id }));
+      expect(log.mock.calls).toEqual([]);
+    } finally { log.mockRestore(); }
+    const bound = await subscription();
+    expect(bound).toMatchObject({ price_list_id: list, currency_code: "XXX", template_version: 1 });
+    expect((await owner.query(`SELECT sku,quantity,unit_amount_minor::int FROM public.subscription_renewal_term_lines WHERE subscription_id=$1`, [subscriptionId])).rows)
+      .toEqual([{ sku, quantity, unit_amount_minor: 110 }]);
+    expect((await owner.query(`SELECT variant_id,quantity,unit_price_minor::int FROM public.subscription_lines WHERE subscription_id=$1`, [subscriptionId])).rows)
+      .toEqual([{ variant_id: skuId, quantity, unit_price_minor: 110 }]);
+    const editNow = await clock(owner);
+    expect(await val(owner, `SELECT $2::timestamptz < next_cycle_at-make_interval(hours=>edit_window_hours) AS value
+      FROM public.subscriptions WHERE id=$1`, [subscriptionId, editNow])).toBe(true);
+    expect(await val(owner, "SELECT health_state AS value FROM public.subscription_method_states WHERE subscription_id=$1", [subscriptionId])).toBe("healthy");
+    const coreLines = [{ variantId: skuId, qty: 6 }];
+    const commands = createPostgresSubscriptionCommandStore({ async withTransaction(work) {
+      const db = await runtime.connect();
+      try {
+        await db.query("BEGIN");
+        const result = await work(db);
+        await db.query("COMMIT");
+        return result;
+      } catch (error) { await db.query("ROLLBACK"); throw error; }
+      finally { db.release(); }
+    } });
+    expect(await commands.preview({ actorId: buyer, clientId, subscriptionId, idempotencyKey: randomUUID(), action: "resize_bundle", now: editNow,
+      payload: { expectedTemplateVersion: 1, cadenceDays: 28, coreLines, compositionConstraint: { kind: "units", value: 6 } } }))
+      .toMatchObject({ status: "refused", reason: "subscription_edit_catalog_unavailable" });
+    await refuses(asActor(buyer, db => val(db, "SELECT public.customer_subscription_preview_bundle_as_actor($1,$2,$3) AS value",
+      [subscriptionId, randomUUID(), JSON.stringify(coreLines)])), "subscription_edit_catalog_unavailable", "22023");
+    expect(await subscription()).toEqual(bound);
+  } finally { await store.close(); }
+}, postgresSetupTimeoutMs);
 
 const orderMutations = [
   ["receipt digest", "UPDATE public.commerce_order_draft_receipts SET request_fingerprint=repeat('f',32) WHERE order_id=$1"],

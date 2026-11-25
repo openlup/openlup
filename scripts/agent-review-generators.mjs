@@ -13,6 +13,7 @@ import { createPublicPublicationCatalog, isManifestPinnedSqlArea } from './oss-p
 import { buildPackagesIncremental } from './build-packages-incremental.mjs';
 
 export const SQL_REFERENCE = 'packages/core/docs/guide/reference/sql.md';
+export const MATURITY_REFERENCE = 'packages/core/docs/guide/reference/maturity.md';
 const PUBLICATION_OWNER = 'scripts/oss-publication-policy.ts';
 const trustedPublicationOwner = readFileSync(new URL('./oss-publication-policy.ts', import.meta.url), 'utf8');
 
@@ -39,9 +40,37 @@ export function syncSqlReference(root) {
   return result;
 }
 
+// The maturity reference mixes prose with regions that the documentation contract generates from the committed
+// API reports, so it is a derived output of the three report sets. The contract runs from `ownerRoot`
+// (the trusted tree during review, the merged tree during landing) over the reports of `root`. Conflict markers
+// inside a region are replaced with it; markers anywhere else are authored work and stop the landing.
+export function syncMaturityReference(root, ownerRoot = root) {
+  const owner = pathToFileURL(join(ownerRoot, 'packages/core/scripts/documentation-contract.ts')).href;
+  const script = `import { readFileSync } from 'node:fs';
+    const { syncGeneratedRegions } = await import(${JSON.stringify(owner)});
+    const violations = [];
+    const result = syncGeneratedRegions(readFileSync(0, 'utf8'), ${JSON.stringify(MATURITY_REFERENCE)}, ${JSON.stringify(root)}, true, violations);
+    process.stdout.write(JSON.stringify({ result, violations }));`;
+  let output;
+  try {
+    output = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', script], {
+      cwd: ownerRoot, input: readFileSync(join(root, MATURITY_REFERENCE), 'utf8'), encoding: 'utf8',
+      timeout: 120000, maxBuffer: 16 * 1024 * 1024, stdio: ['pipe', 'pipe', 'pipe'],
+    }));
+  } catch (error) { throw new Error(error.stderr?.toString().trim() || error.message, { cause: error }); }
+  if (/^(?:<<<<<<< |\|{7} |>>>>>>> |=======$)/mu.test(output.result)) {
+    throw new Error(`landing: authored conflicts remain: ${MATURITY_REFERENCE}`);
+  }
+  if (output.violations.length) throw new Error(output.violations.join('; '));
+  return output.result;
+}
+export function refreshMaturityReference(root, ownerRoot = root) {
+  writeFileSync(join(root, MATURITY_REFERENCE), syncMaturityReference(root, ownerRoot));
+}
+
 export function generatedCarrier(path) {
   return ['packages/platform/sql/manifest.json', 'packages/platform/src/migrations/catalog.ts',
-    'config/openlup-publication-catalog.json', 'docs/platform/SOURCE_MAP.md', SQL_REFERENCE,
+    'config/openlup-publication-catalog.json', 'docs/platform/SOURCE_MAP.md', SQL_REFERENCE, MATURITY_REFERENCE,
     'packages/platform/settings-catalog.json', 'packages/platform/settings-refusals.json',
     'packages/core/docs/guide/how-to/operate/settings-catalogue.md'].includes(path) ||
     /^packages\/[^/]+\/api\/[^/]+\.api\.md$/u.test(path) ||
@@ -49,14 +78,15 @@ export function generatedCarrier(path) {
 }
 
 export const ownerOutputCarrier = path => /^packages\/[^/]+\/api\/[^/]+\.api\.md$/u.test(path) ||
-  ['packages/platform/settings-catalog.json', 'packages/platform/settings-refusals.json',
+  [MATURITY_REFERENCE, 'packages/platform/settings-catalog.json', 'packages/platform/settings-refusals.json',
     'packages/core/docs/guide/how-to/operate/settings-catalogue.md'].includes(path);
 export function runDerivedOutputGenerators(root, source, installationRoot, carriers, trusted) {
   const reports = [...new Set(carriers.filter(path => /^packages\/[^/]+\/api\/[^/]+\.api\.md$/u.test(path))
     .map(path => path.split('/')[1]))];
   const settings = carriers.some(path => ['packages/platform/settings-catalog.json', 'packages/platform/settings-refusals.json',
     'packages/core/docs/guide/how-to/operate/settings-catalogue.md'].includes(path));
-  if (!reports.length && !settings) return;
+  const maturity = carriers.includes(MATURITY_REFERENCE);
+  if (!reports.length && !settings && !maturity) return;
   if (!existsSync(join(source, 'scripts/build-packages-incremental.mjs'))) throw new Error('derived: package builder is absent');
   const catalog = JSON.parse(readFileSync(join(root, 'config/openlup-publication-catalog.json'), 'utf8'));
   for (const path of carriers.filter(path => /^packages\/[^/]+\/api\/[^/]+\.api\.md$/u.test(path))) {
@@ -82,6 +112,8 @@ export function runDerivedOutputGenerators(root, source, installationRoot, carri
       symlinkSync(join(tree, directory), join(target, '@openlup', name.slice(9)), 'dir');
     }
   };
+  let sourceLinked = false;
+  const linkSource = () => { if (!sourceLinked) linkInstallation(source); sourceLinked = true; };
   // TypeScript reads the candidate as source data. No candidate package script
   // or settings function runs in the review process.
   if (reports.length) {
@@ -99,7 +131,7 @@ export function runDerivedOutputGenerators(root, source, installationRoot, carri
     }
   }
   if (settings) {
-    linkInstallation(source);
+    linkSource();
     buildPackagesIncremental({ rootDir: source, tscBin: join(installed, 'typescript/bin/tsc'), stdio: 'pipe' });
     const renderer = pathToFileURL(join(source, 'scripts/settings-catalogue.ts')).href;
     const script = `import { writeFileSync } from 'node:fs';
@@ -108,6 +140,14 @@ export function runDerivedOutputGenerators(root, source, installationRoot, carri
       for (const [path, content] of Object.entries(renderSettingsCatalogue(${JSON.stringify(root)})))
         writeFileSync(join(${JSON.stringify(root)}, path), content);`;
     execFileSync(process.execPath, ['--input-type=module', '-e', script], { cwd: source, timeout: 120000, stdio: 'pipe' });
+  }
+  if (maturity) {
+    // The regions read the reports regenerated above. The documentation contract runs from main's tree, and so
+    // does the name scanner it executes: the candidate's copy must be the same bytes.
+    const scanner = 'packages/ui/smoke/neutrality.ts';
+    if (trusted[scanner] !== readFileSync(join(root, scanner), 'utf8')) throw new Error(`derived: changed generator ${scanner}`);
+    linkSource();
+    refreshMaturityReference(root, source);
   }
 }
 export function runLandingGenerators(root, paths) {
