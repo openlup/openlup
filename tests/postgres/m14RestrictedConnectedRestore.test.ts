@@ -2,14 +2,13 @@ import { captureCompatiblePostgresRows, restoreCompatiblePostgresRows, type Comp
 import { createPostgresSubscriptionCommands } from "@openlup/platform/subscriptions";
 import type { SubscriptionCommand } from "@openlup/platform/subscriptions/contracts";
 import { createHash, randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import ts from "typescript";
 import { aroundEach, expect, it } from "vitest";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { closePostgres, postgresSetupTimeoutMs } from "../helpers/postgresContainer.js";
-import { findPlatformMigration } from "../helpers/platformMigrationPath.js";
 import { draftEffectCounts, ownerDraft, seedGovernedDraft } from "./catalogAdmissionOwnerWrite.fixture.js";
 import {
   captureRestrictedStore,
@@ -403,6 +402,18 @@ function restoreInsertAllowlist(): string[] {
   }).sort();
 }
 
+function findGovernedDraftOwnerForward(): string {
+  const directory = "db/platform/migrations";
+  const suffix = "_catalog_governed_draft_owner.sql";
+  const matches = readdirSync(directory, { withFileTypes: true })
+    .filter(entry => entry.isFile() && entry.name.endsWith(suffix));
+  const [match] = matches;
+  if (!match || matches.length !== 1) {
+    throw new Error(`Expected exactly one migration ending in ${suffix} under ${directory}, found ${matches.length}`);
+  }
+  return `${directory}/${match.name}`;
+}
+
 restoreTest("restores unstamped rows with exactly the installed INSERT triggers", async () => {
   const [source, target] = await installRestrictedRestorePair("neon", "installer-managed", "unstamped-source", "unstamped-target");
   try {
@@ -412,7 +423,7 @@ restoreTest("restores unstamped rows with exactly the installed INSERT triggers"
     const packet = await captureRestrictedStore(source, "unstamped-order");
     const freshTarget = await captureRestrictedStore(target, "unstamped-pristine");
     const tables = [...packet.compatible.tables, ...packet.owned].map(table => table.table);
-    const forward = findPlatformMigration("_catalog_governed_draft_owner.sql");
+    const forward = findGovernedDraftOwnerForward();
     // The runner commits each forward and its ledger row in the same transaction.
     const { rows: triggers } = await target.owner.query<{ name: string; carried: boolean; installed: boolean }>(`
       SELECT c.relname || '.' || t.tgname AS name, c.relname=ANY($2::text[]) AS carried, t.xmin=m.xmin AS installed
