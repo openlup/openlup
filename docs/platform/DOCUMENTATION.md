@@ -187,8 +187,10 @@ and exports, with `CHANGELOG.md` included for upgrade questions. Nested headings
 produce disjoint spans. The optional `--package-code` scan provides bounded
 installed `src/` leads; results never prove application composition or database
 state. The [lookup smoke matrix](../../scripts/agent-context/evaluate.mjs) is frozen
-except for one per-symbol maturity row, which picks its symbol at run time; it
-checks static query targets in installed core, outbox and platform artifacts.
+except for one per-symbol maturity row, which picks its symbol at run time with the
+repository's TypeScript compiler; that row is skipped only when no stable subpath
+declares `@experimental`, and fails when one does but no symbol can be picked. The
+matrix checks static query targets in installed core, outbox and platform artifacts.
 Both pack checkers enforce a separate `guide` sub-budget from core's
 `release-gates.json` (`pack.guide`), measured like the code and docs classes;
 the total tarball limits also apply.

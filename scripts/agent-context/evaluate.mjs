@@ -1,9 +1,13 @@
 // Frozen static query smoke matrix, 2026-10-29, plus one per-symbol maturity row. This is not an agent-outcome benchmark.
 // The maturity row is the one deliberate exception to a frozen matrix: it names no symbol in advance. It takes the first
 // symbol declared experimental inside a stable subpath of the installed core, so promoting a symbol never breaks the matrix.
+// The row is skipped (and passes) only when no stable subpath declares @experimental anywhere; if one does and no symbol can
+// be picked, the row fails, so a blind picker is never mistaken for a clean core.
 // Usage: node scripts/agent-context/evaluate.mjs /absolute/cold-consumer-root
-// Reads installed artifacts only. No writes, network, package installation or dependencies.
+// Reads installed artifacts only. No writes, network or package installation. Only the maturity row needs a dependency:
+// the repository's own TypeScript compiler, which reads its tag.
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { resolve, join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { spawnSync } from 'node:child_process';
@@ -30,12 +34,18 @@ const scope = join(root, 'node_modules/@openlup');
 for (const name of ['core', 'outbox', 'platform']) {
   if (!existsSync(join(scope, name, 'package.json'))) throw new Error(`The frozen matrix requires the selected ${name} artifact; use a full-set consumer`);
 }
-// Walks each stable subpath's entry file and the files it re-exports with `export *`; a declaration written at the start
-// of a line in those files is exported by the subpath. Returns undefined when the installed core has no such symbol.
+// Walks each stable subpath's entry file and the files it re-exports with `export *`. The first top-level declaration
+// that starts its line (as the lookup's export collector requires) and carries `@experimental` is the row's symbol.
+// The tag is read with the repository's TypeScript compiler, the reference the lookup's own reader is held to, so
+// a match inside a code span or an inline link does not count. Returns the symbol, or `sawTag: true` when the files
+// it walked mention `@experimental` but no symbol qualified (the picker is blind there), or neither.
 function experimentalInStableSubpath() {
+  let ts;
+  try { ts = createRequire(import.meta.url)('typescript'); }
+  catch { throw new Error('symbol-maturity reads declaration tags with the repository TypeScript compiler; run the matrix from a repository checkout after npm ci'); }
   const core = join(scope, 'core');
   const surface = JSON.parse(readFileSync(join(core, 'release-gates.json'), 'utf8')).packageSurface;
-  const declaration = /\/\*\*((?:(?!\*\/)[\s\S])*?)\*\/\s*\nexport declare (?:function|const|class|interface|type|enum|namespace) ([A-Za-z_$][\w$]*)/gu;
+  let sawTag = false;
   for (const subpath of Object.keys(surface).sort()) {
     if (surface[subpath].maturity !== 'stable' || typeof surface[subpath].entrypoint !== 'string') continue;
     const queue = [join(core, surface[subpath].entrypoint)];
@@ -45,14 +55,24 @@ function experimentalInStableSubpath() {
       if (seen.has(file) || !existsSync(file)) continue;
       seen.add(file);
       const text = readFileSync(file, 'utf8');
-      for (const match of text.matchAll(declaration)) {
-        if (/(?:^|\s)@experimental(?![\w$-])/u.test(match[1])) return { subpath, symbol: match[2] };
-      }
-      for (const match of text.matchAll(/^export (?:type )?\* from ["'](\.[^"']+)["']/gmu)) {
-        queue.push(resolve(file, '..', match[1].replace(/\.js$/u, '.d.ts')));
+      sawTag ||= /@experimental(?![\w$-])/u.test(text);
+      const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+      for (const statement of source.statements) {
+        if (ts.isExportDeclaration(statement)) {
+          if (!statement.exportClause && statement.moduleSpecifier && ts.isStringLiteral(statement.moduleSpecifier) && statement.moduleSpecifier.text.startsWith('.')) {
+            queue.push(resolve(file, '..', statement.moduleSpecifier.text.replace(/\.js$/u, '.d.ts')));
+          }
+          continue;
+        }
+        const modifiers = ts.canHaveModifiers(statement) ? ts.getModifiers(statement) ?? [] : [];
+        if (!modifiers.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword) || modifiers.some((modifier) => modifier.kind === ts.SyntaxKind.DefaultKeyword)) continue;
+        const name = ts.isVariableStatement(statement) ? statement.declarationList.declarations[0]?.name : statement.name;
+        if (!name || !ts.isIdentifier(name) || source.getLineAndCharacterOfPosition(statement.getStart(source)).character !== 0) continue;
+        if (ts.getJSDocTags(statement).some((tag) => tag.tagName.text === 'experimental')) return { subpath, symbol: name.text };
       }
     }
   }
+  return { sawTag };
 }
 const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\/]/gu, '\\$&');
 
@@ -61,8 +81,11 @@ for (const row of tasks) {
   let task = row;
   if (row.maturity) {
     const found = experimentalInStableSubpath();
-    if (!found) {
-      results.push({ id: row.id, query: null, exploratory: false, pass: true, skipped: 'the installed core declares no experimental symbol inside a stable subpath' });
+    if (!found.symbol) {
+      // No stable subpath carries the tag at all: nothing to check. A tag the walk could not turn into a symbol fails.
+      results.push(found.sawTag
+        ? { id: row.id, query: null, exploratory: false, pass: false, failure: 'a stable subpath declares @experimental but the picker found no symbol to look up' }
+        : { id: row.id, query: null, exploratory: false, pass: true, skipped: 'no stable subpath of the installed core declares @experimental' });
       continue;
     }
     // The target matches the package.json line that an export hit for the subpath cites.

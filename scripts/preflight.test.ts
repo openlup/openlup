@@ -20,7 +20,7 @@ import {
 import {
   assertCarrierBuildOutputs, assertCarrierToolchain, assertLockedInstall, carrierPlan, readReportOwners, runUnselectedBuild,
 } from "./agent-review-landing.mjs";
-import { MATURITY_REFERENCE, generatedCarrier, ownerOutputCarrier, syncMaturityReference } from "./agent-review-generators.mjs";
+import { MATURITY_REFERENCE, generatedCarrier, ownerOutputCarrier, runDerivedOutputGenerators, syncMaturityReference } from "./agent-review-generators.mjs";
 import { localFixtureEnvironment } from "./fixtures/landing-test-environment.ts";
 
 type FakeSpawnResult = { status: number | null; stdout?: string; stderr?: string; error?: NodeJS.ErrnoException };
@@ -194,6 +194,32 @@ it("registers the maturity reference as a derived output that its owner reproduc
     expect(() => syncMaturityReference(root, process.cwd())).toThrow(`landing: authored conflicts remain: ${MATURITY_REFERENCE}`);
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 60_000);
+
+it("refuses to derive the maturity reference from a candidate whose name scanner differs from main's", () => {
+  // The contract executes the scanner it finds under the candidate's root, so those bytes must be main's.
+  const scanner = "packages/ui/smoke/neutrality.ts";
+  const catalogue = "config/openlup-publication-catalog.json";
+  const read = (path: string) => readFileSync(join(process.cwd(), path), "utf8");
+  const trusted = { "config/openlup-packages.json": read("config/openlup-packages.json"), [scanner]: read(scanner) };
+  const root = mkdtempSync(join(tmpdir(), "maturity-scanner-"));
+  const source = mkdtempSync(join(tmpdir(), "maturity-owner-"));
+  try {
+    mkdirSync(join(root, "config"), { recursive: true });
+    mkdirSync(join(root, "packages/ui/smoke"), { recursive: true });
+    mkdirSync(join(source, "scripts"), { recursive: true });
+    writeFileSync(join(source, "scripts/build-packages-incremental.mjs"), "");
+    writeFileSync(join(root, catalogue), read(catalogue));
+    const derive = () => runDerivedOutputGenerators(root, source, process.cwd(), [MATURITY_REFERENCE], trusted);
+    writeFileSync(join(root, scanner), `${read(scanner)}\n// edited by the candidate\n`);
+    expect(derive).toThrow(`derived: changed generator ${scanner}`);
+    // Control: the same bytes pass the refusal and stop later, at the owner that this fixture does not provide.
+    writeFileSync(join(root, scanner), read(scanner));
+    expect(derive).toThrow(/^(?!derived: changed generator)/u);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(source, { recursive: true, force: true });
+  }
+});
 
 describe("fast preflight", () => {
   const npmCli = join(process.cwd(), "fixture-npm-cli.js");
