@@ -555,7 +555,17 @@ describe('PostgreSQL AST closure soundness', () => {
         for (const dir of dirs) {
           const map = pkgImports.get(dir);
           if (!map) continue;
-          const target = pickTarget(map[spec]);
+          let target = pickTarget(map[spec]);
+          if (!target) {
+            for (const [pattern, importValue] of Object.entries(map)) {
+              if (!pattern.includes('*')) continue;
+              const [prefix, suffix] = pattern.split('*');
+              if (spec.startsWith(prefix) && spec.endsWith(suffix) && spec.length >= prefix.length + suffix.length) {
+                const raw = pickTarget(importValue);
+                if (raw) { target = raw.replaceAll('*', () => spec.slice(prefix.length, spec.length - suffix.length)); break; }
+              }
+            }
+          }
           if (target) {
             const clean = target.replace(/^\.\//u, '');
             const srcTarget = clean.startsWith('dist/') ? `src/${clean.slice(5)}` : clean;
@@ -608,12 +618,26 @@ describe('PostgreSQL AST closure soundness', () => {
       const checkBareDirs = rel.startsWith('tests/postgres/') || rel.startsWith('tests/helpers/');
 
       const addRepoPath = (raw: string, allowDirPrefix = false) => {
-        const clean = raw.trim().replace(/^\.\//u, '');
-        if (!clean || clean.includes('\n') || clean.length > 200) return;
-        if (checkBareDirs && BARE_ROOT_DIRS.has(clean)) {
-          pathLiterals.add(`${clean}/`);
+        const trimmed = raw.trim();
+        if (!trimmed || trimmed.includes('\n') || trimmed.length > 200) return;
+        if (checkBareDirs && BARE_ROOT_DIRS.has(trimmed)) {
+          pathLiterals.add(`${trimmed}/`);
           return;
         }
+        if (/^(?:\.\.?\/)+/u.test(trimmed) && !/^(?:\.\.?\/)*\.\.?$/u.test(trimmed)) {
+          const selfDir = posix.dirname(rel);
+          const joined = posix.normalize(posix.join(selfDir, trimmed));
+          if (!joined.startsWith('..') && !joined.startsWith('/') && joined !== '.' && joined !== 'tests' && joined !== selfDir) {
+            const stripped = joined.replace(/\/$/u, '');
+            if (isFile(stripped)) pathLiterals.add(stripped);
+            else if (stripped !== selfDir && isDir(stripped)) pathLiterals.add(`${stripped}/`);
+            else if (allowDirPrefix) {
+              const dirPart = posix.dirname(joined);
+              if (!dirPart.startsWith('..') && dirPart !== '.' && dirPart !== 'tests' && dirPart !== selfDir && isDir(dirPart)) pathLiterals.add(`${dirPart}/`);
+            }
+          }
+        }
+        const clean = trimmed.replace(/^\.\//u, '');
         if (KNOWN_PREFIXES.some(prefix => clean.startsWith(prefix))) {
           const stripped = clean.replace(/\/$/u, '');
           if (isFile(stripped)) pathLiterals.add(stripped);
@@ -621,17 +645,6 @@ describe('PostgreSQL AST closure soundness', () => {
           else if (allowDirPrefix) {
             const dirPart = posix.dirname(clean);
             if (KNOWN_PREFIXES.some(prefix => `${dirPart}/`.startsWith(prefix)) && isDir(dirPart)) pathLiterals.add(`${dirPart}/`);
-          }
-        } else if (/^(?:\.\.?\/)+/u.test(clean) && !/^(?:\.\.?\/)*\.\.?$/u.test(clean)) {
-          const joined = posix.normalize(posix.join(posix.dirname(rel), clean));
-          if (!joined.startsWith('..') && !joined.startsWith('/') && joined !== '.' && joined !== 'tests') {
-            const stripped = joined.replace(/\/$/u, '');
-            if (isFile(stripped)) pathLiterals.add(stripped);
-            else if (isDir(stripped)) pathLiterals.add(`${stripped}/`);
-            else if (allowDirPrefix) {
-              const dirPart = posix.dirname(joined);
-              if (!dirPart.startsWith('..') && dirPart !== '.' && dirPart !== 'tests' && isDir(dirPart)) pathLiterals.add(`${dirPart}/`);
-            }
           }
         }
       };
@@ -641,6 +654,8 @@ describe('PostgreSQL AST closure soundness', () => {
         else if (ts.isExportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteralLike(node.moduleSpecifier)) imports.add(node.moduleSpecifier.text);
         else if (ts.isCallExpression(node)) {
           if (node.expression.kind === ts.SyntaxKind.ImportKeyword && node.arguments[0] && ts.isStringLiteralLike(node.arguments[0])) {
+            imports.add(node.arguments[0].text);
+          } else if (ts.isIdentifier(node.expression) && node.expression.text === 'tsImport' && node.arguments[0] && ts.isStringLiteralLike(node.arguments[0])) {
             imports.add(node.arguments[0].text);
           } else if (
             ts.isPropertyAccessExpression(node.expression)
@@ -662,12 +677,11 @@ describe('PostgreSQL AST closure soundness', () => {
             }
             if (segs.length > 0) {
               addRepoPath(posix.normalize(segs.join('/')), true);
-              if (segs[0].startsWith('..')) {
-                const fromSelf = posix.normalize(posix.join(posix.dirname(rel), ...segs));
-                if (!fromSelf.startsWith('..') && fromSelf !== '.' && fromSelf !== 'tests') {
-                  if (isFile(fromSelf)) pathLiterals.add(fromSelf);
-                  else if (isDir(fromSelf)) pathLiterals.add(`${fromSelf}/`);
-                }
+              const selfDir = posix.dirname(rel);
+              const fromSelf = posix.normalize(posix.join(selfDir, ...segs));
+              if (!fromSelf.startsWith('..') && !fromSelf.startsWith('/') && fromSelf !== '.' && fromSelf !== 'tests' && fromSelf !== selfDir) {
+                if (isFile(fromSelf)) pathLiterals.add(fromSelf);
+                else if (isDir(fromSelf)) pathLiterals.add(`${fromSelf}/`);
               }
             }
           }
@@ -688,7 +702,7 @@ describe('PostgreSQL AST closure soundness', () => {
       return entry;
     };
 
-    const collectClosure = (entryTest: string): string[] => {
+    const collectClosure = (entryTest: string, { stopAtPackages = true } = {}): string[] => {
       const visited = new Set<string>([entryTest]);
       const queue = [entryTest];
       const deps = new Set<string>([entryTest]);
@@ -699,11 +713,12 @@ describe('PostgreSQL AST closure soundness', () => {
         for (const target of imports) {
           deps.add(target);
           if (isFile(target) && !visited.has(target) && /\.(?:ts|tsx|js|mjs|mts|cjs)$/u.test(target)
-            && !target.startsWith('packages/') && !target.startsWith('scripts/')) {
+            && !(stopAtPackages && target.startsWith('packages/')) && !target.startsWith('scripts/')) {
             visited.add(target);
             queue.push(target);
           }
         }
+        if (cur.startsWith('packages/')) continue;
         for (const lit of pathLiterals) {
           deps.add(lit);
           if ((lit.startsWith('tests/helpers/') || lit.startsWith('tests/postgres/'))
@@ -744,7 +759,7 @@ describe('PostgreSQL AST closure soundness', () => {
       if (!declaredInputs.some(input => covers(input, testPath))) {
         violations.push(`${testPath}: does not cover its own file path`);
       }
-      const closureDeps = collectClosure(testPath);
+      const closureDeps = collectClosure(testPath, { stopAtPackages: declaredInputs.includes('packages/') });
       for (const dep of closureDeps) {
         if (isGlobalBailout(dep)) continue;
         if (!declaredInputs.some(input => covers(input, dep))) {
@@ -755,25 +770,44 @@ describe('PostgreSQL AST closure soundness', () => {
     expect(violations).toEqual([]);
   });
 
-  it('seeded falsifier: detects odd-quote regex doc reads, bare root directory scans, TemplateHead SQL reads, and undeclared PG helper imports', () => {
+  it('seeded falsifier: detects odd-quote regex doc reads, bare root directory scans, TemplateHead SQL reads, same-dir ./ URL/tsImport/resolve paths, and narrowed package barrel re-exports', () => {
     const dir = scratch();
-    mkdirSync(join(dir, 'tests/postgres'), { recursive: true });
+    mkdirSync(join(dir, 'tests/postgres/sub'), { recursive: true });
     mkdirSync(join(dir, 'docs/platform'), { recursive: true });
     mkdirSync(join(dir, 'supabase/migrations'), { recursive: true });
     mkdirSync(join(dir, 'src'), { recursive: true });
     mkdirSync(join(dir, 'api'), { recursive: true });
+    mkdirSync(join(dir, 'packages/demo/src'), { recursive: true });
+    writeFileSync(join(dir, 'packages/demo/package.json'), JSON.stringify({
+      name: '@openlup/demo',
+      exports: { '.': { import: './dist/index.js' } },
+    }));
+    writeFileSync(join(dir, 'packages/demo/src/index.ts'), 'export { impl } from "./impl.js";\n');
+    writeFileSync(join(dir, 'packages/demo/src/impl.ts'), 'export const impl = 1;\n');
     writeFileSync(join(dir, 'docs/platform/DATA_AND_MIGRATIONS.md'), '# doc\n');
     writeFileSync(join(dir, 'tests/postgres/hiddenHelper.ts'), 'export const h = 1;\n');
+    writeFileSync(join(dir, 'tests/postgres/sameDirHelper.ts'), 'export const s = 2;\n');
+    writeFileSync(join(dir, 'tests/postgres/sameDirFixture.sql'), 'SELECT 1;\n');
+    writeFileSync(join(dir, 'tests/postgres/sub/data.sql'), 'SELECT 2;\n');
     writeFileSync(join(dir, 'tests/postgres/falsifier.test.ts'), [
       'import { h } from "./hiddenHelper.js";',
+      'import { impl } from "@openlup/demo";',
       'const oddQuote = /lower\\(btrim\\(client\\.email(?:, E\'[^\']*\')?\\)\\)/u;',
       'const doc = readFileSync("docs/platform/DATA_AND_MIGRATIONS.md", "utf8");',
       'const roots = ["src", "api"];',
       'const sql = readFileSync(`supabase/migrations/${h}.sql`, "utf8");',
+      'const fixture = new URL("./sameDirFixture.sql", import.meta.url);',
+      'const mod = await tsImport("./sameDirHelper.ts", import.meta.url);',
+      'const sub = resolve(__dirname, "sub", "data.sql");',
     ].join('\n'));
     const { collectClosure } = createAstClosureScanner(dir);
-    const deps = collectClosure('tests/postgres/falsifier.test.ts');
+    const deps = collectClosure('tests/postgres/falsifier.test.ts', { stopAtPackages: false });
     expect(deps).toContain('tests/postgres/hiddenHelper.ts');
+    expect(deps).toContain('tests/postgres/sameDirHelper.ts');
+    expect(deps).toContain('tests/postgres/sameDirFixture.sql');
+    expect(deps).toContain('tests/postgres/sub/data.sql');
+    expect(deps).toContain('packages/demo/src/index.ts');
+    expect(deps).toContain('packages/demo/src/impl.ts');
     expect(deps).toContain('docs/platform/DATA_AND_MIGRATIONS.md');
     expect(deps).toContain('src/');
     expect(deps).toContain('api/');
