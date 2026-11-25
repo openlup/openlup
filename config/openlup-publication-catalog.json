@@ -31290,6 +31290,14 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/nativeRenewalV3Storage.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/nativeRenewalV3StoragePgtap.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/nativeStoreForwardCatalog.noServiceRole.test.ts",
       "class": "public-output"
     },

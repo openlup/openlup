@@ -1,5 +1,7 @@
 export const fulfillmentDomain = {
   owned: {
+    renewalStockHolds: ["subscription_cycle_stock_holds"],
+    renewalDeliveryAssignments: ["subscription_cycle_delivery_assignments"],
     stockOperations: [
       "fulfillment_stock_operations",
     ],
