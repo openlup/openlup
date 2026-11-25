@@ -4,11 +4,12 @@ import type { PageContext } from '../context.ts';
 import { validateCart, isRecord } from '../../shared/offer.ts';
 import { routes } from '../../shared/routes.ts';
 import { append, el, link, button } from '../dom.ts';
-import { actionForm, nativeActions } from '../forms.ts';
+import { actionForm, nativeActions, refusal, type FormContinuation } from '../forms.ts';
 import { act } from '../api.ts';
 import { renderValue } from '../dom.ts';
 import { offerIssues } from './storefront.ts';
-import { currentPurchase, rememberPurchase, visiblePurchase } from '../purchase.ts';
+import { checkoutContinuation, continuationMessage, currentPurchase, rememberPurchase, visiblePurchase,
+  type CheckoutContinuationText, type CheckoutOutcome } from '../purchase.ts';
 import { embeddedCheckoutBrowserMarkers } from '../../owned/quote-copy.ts';
 
 // Confirmation survives panel remounts; it never suppresses the send-again control.
@@ -36,6 +37,93 @@ function buyerLinkControl(context: PageContext, orderRef: string): HTMLElement {
   return section;
 }
 
+let panelCounter = 0;
+type Continuation = ReturnType<typeof checkoutContinuation>;
+
+/** The earlier order of this purchase: complete its payment, cancel it, or (after some answers) start a different purchase. */
+function continuationPanel(context: PageContext, continuation: Continuation, links: HTMLElement, storageFailed: () => void) {
+  const text = (key: CheckoutContinuationText) => continuationMessage(key, context.locale, context.config.purchase.attemptLimits.windowMs);
+  const id = `continuation-${++panelCounter}`;
+  const status = el('div', { role: 'status', 'aria-live': 'polite' });
+  const choose = (key: 'resume' | 'abandon') => button(text(key), () => run(key), key === 'resume' ? undefined : 'secondary');
+  const resume = choose('resume'), abandon = choose('abandon');
+  abandon.setAttribute('aria-describedby', `${id}-abandon`);
+  const different = button(text('different'), () => {
+    if (busy) return;
+    if (!continuation.startDifferent()) storageFailed();
+    links.replaceChildren();
+    show(false);
+  }, 'secondary');
+  different.setAttribute('aria-describedby', `${id}-different`);
+  const choices = el('div', {});
+  const section = el('section', { class: 'panel', tabindex: -1, 'aria-labelledby': `${id}-heading`, 'data-checkout-continuation': '' },
+    el('h2', { id: `${id}-heading` }, text('heading')), el('p', {}, text('intro')), choices, status);
+  const host = el('div', {});
+  let busy = false;
+  function offer(open: boolean, withDifferent: boolean) {
+    choices.replaceChildren(...(open ? [el('div', { class: 'actions' }, resume, abandon),
+      el('p', { id: `${id}-abandon`, class: 'small' }, text('abandonDetail')),
+      ...(withDifferent ? [different, el('p', { id: `${id}-different`, class: 'small' }, text('differentDetail'))] : [])] : []));
+  }
+  function show(open: boolean, focus = false) {
+    if (!open) { host.replaceChildren(); return; }
+    if (!section.isConnected) host.replaceChildren(section);
+    if (focus) section.focus();
+  }
+  function setBusy(value: boolean) {
+    busy = value;
+    for (const control of [resume, abandon, different]) control.disabled = value;
+    if (value) section.setAttribute('aria-busy', 'true'); else section.removeAttribute('aria-busy');
+  }
+  async function run(action: 'resume' | 'abandon') {
+    if (busy) return;
+    setBusy(true);
+    status.replaceChildren(el('p', {}, context.t('loading')));
+    try {
+      const outcome = await continuation.continue(action, context.locale);
+      if (!section.isConnected) return;
+      if (!outcome.stored) storageFailed();
+      if (outcome.link === 'remove') links.replaceChildren();
+      offer(outcome.choices, outcome.different);
+      status.replaceChildren(message(context, outcome, text, true));
+    } finally { setBusy(false); }
+  }
+  return {
+    node: host,
+    /** Opens the panel on load, without moving focus, when the record shows an order or an uncertain create. */
+    restore() { if (continuation.pending()) { offer(true, false); status.replaceChildren(); show(true); } },
+    /** Applies a create answer: the panel opens, closes or stays. */
+    created(outcome: CheckoutOutcome) {
+      if (outcome.panel === 'keep') return;
+      if (outcome.panel === 'close') { show(false); return; }
+      offer(outcome.choices, outcome.different);
+      status.replaceChildren();
+      show(true, true);
+    },
+  };
+}
+
+/** Order-open and closed answers name their code and managed text, never "No success has been recorded." */
+function message(context: PageContext, outcome: CheckoutOutcome, text: (key: CheckoutContinuationText) => string, continued: boolean): HTMLElement {
+  const value = outcome.value;
+  if (outcome.kind === 'noAnswer' || (outcome.kind === 'other' && !value)) {
+    return refusal(context, outcome.code ?? 'starter_response_invalid', outcome.text ? text(outcome.text) : undefined);
+  }
+  const lines: HTMLElement[] = [];
+  if (outcome.code) lines.push(el('code', {}, outcome.code));
+  if (outcome.copy) lines.push(el('p', {}, context.t(outcome.copy)));
+  if (outcome.text) lines.push(el('p', {}, text(outcome.text)));
+  if (value && typeof value.orderRef === 'string') {
+    lines.push(el('p', { 'data-order-ref': '' }, value.orderRef));
+    if (typeof value.status === 'string') lines.push(el('p', {}, value.status));
+    const total = isRecord(value.total) && typeof value.total.amountMinor === 'number' ? value.total.amountMinor : undefined;
+    if (total !== undefined) lines.push(el('p', { 'data-order-total': '' }, context.money(total)));
+    // The order's own total comes before the way to pay it.
+    if (continued && outcome.link === 'show') lines.push(link(context.t('completion'), routes.completion[context.locale], 'button-link'));
+  }
+  return el('div', { class: 'continuation-answer' }, ...lines);
+}
+
 export function checkoutPage(context: PageContext): HTMLElement {
   const result = validateCart(context.config, context.getCart());
   const page = el('div', {}, el('h1', {}, context.t('checkout')),
@@ -48,7 +136,35 @@ export function checkoutPage(context: PageContext): HTMLElement {
   const continuation = el('div', { 'aria-live': 'polite' });
   const summary = el('div', { 'aria-live': 'polite' });
   const quote = createQuoteAcceptance(context, summary);
-  append(page, el('div', { class: 'checkout-layout' },
+  // One checkout key per purchase in this tab; without tab storage the form keeps today's in-memory key.
+  const durable = checkoutContinuation(context.config.id);
+  const notice = el('div', {});
+  const storageFailed = () => {
+    if (notice.childElementCount) return;
+    notice.replaceChildren(el('p', { class: 'notice', 'data-storage-notice': '' }, el('code', {}, 'starter_storage_unavailable'), ' ',
+      continuationMessage('starter_storage_unavailable', context.locale, context.config.purchase.attemptLimits.windowMs)));
+  };
+  const available = durable.available();
+  if (!available) storageFailed();
+  const panel = available ? continuationPanel(context, durable, continuation, storageFailed) : undefined;
+  const hooks: FormContinuation | undefined = panel && {
+    dispatch() { const { key, stored } = durable.dispatch(); if (!stored) storageFailed(); return key; },
+    settled: key => { durable.settled(key); },
+    answer(key, result) {
+      const outcome = durable.answer(key, result);
+      if (!outcome.stored) storageFailed();
+      if (outcome.link === 'remove') continuation.replaceChildren();
+      if (outcome.link === 'show') continuation.replaceChildren(link(context.t('completion'), routes.completion[context.locale], 'button-link'));
+      panel.created(outcome);
+      // A create success with a token renders as before.
+      if (outcome.kind === 'open' && result.ok && outcome.link === 'show' && outcome.panel === 'close') return undefined;
+      const text = (name: CheckoutContinuationText) => continuationMessage(name, context.locale, context.config.purchase.attemptLimits.windowMs);
+      if (outcome.kind === 'other' && !result.ok) return refusal(context, result.code, outcome.text ? text(outcome.text) : undefined);
+      if (outcome.kind === 'noAnswer' || (outcome.kind === 'other' && result.ok)) return undefined;
+      return message(context, outcome, text, false);
+    },
+  };
+  append(page, notice, el('div', { class: 'checkout-layout' },
     (() => { const form = actionForm(context, {
       operation: 'checkout.create', submit: 'placeOrder',
       fields: [
@@ -66,16 +182,17 @@ export function checkoutPage(context: PageContext): HTMLElement {
       prepare: quote.prepare,
       onFailure: quote.refused,
       display: visiblePurchase,
-      onSuccess: value => {
+      ...(hooks ? { continuation: hooks } : { onSuccess: (value: unknown) => {
         if (!isRecord(value) || typeof value.orderRef !== 'string') return;
         rememberPurchase(context.config.id, value);
         continuation.replaceChildren(link(context.t('completion'),
           routes.completion[context.locale], 'button-link'));
-      },
+      } }),
     }); quote.attach(form); return form; })(), summary),
-    continuation,
+    continuation, panel?.node,
     el('section', { class: 'panel' }, link(context.t('terms'), routes.terms[context.locale])),
     nativeActions(context, ['N1', 'N6']));
+  panel?.restore();
   return page;
 }
 
@@ -84,6 +201,8 @@ export function completionPage(context: PageContext): HTMLElement {
   const page = el('div', {}, el('h1', {}, context.t('completion')), state,
     link(context.t('account'), routes.account[context.locale]));
   const credential = Object.freeze({ ...currentPurchase(context.config.id) });
+  // Only a host status for the order under the checkout key ends that key; a browser return settles nothing.
+  const settled = (value: unknown) => { checkoutContinuation(context.config.id).completed(value); };
   const showStarted = (result: unknown) => {
     if (!isRecord(result) || typeof result.latestOrderRef !== 'string' || typeof result.attemptRef !== 'string') return;
     if (result.state === 'captured') { state.replaceChildren(el('p', {}, context.t('loading'))); void inspect(); return; }
@@ -132,6 +251,7 @@ export function completionPage(context: PageContext): HTMLElement {
     if (recovered?.ok && isRecord(recovered.value)) {
       const value = recovered.value;
       if (value.terminalStatus === 'paid') {
+        settled(value);
         state.replaceChildren(el('p', {}, context.t('recoveryPaid')), renderValue(value)); return;
       }
       let execution: Record<string,unknown> | null = null;
@@ -153,6 +273,7 @@ export function completionPage(context: PageContext): HTMLElement {
         state.replaceChildren(renderValue(value), pay); return;
       }
       if (value.terminalStatus === 'order_changed' || value.terminalStatus === 'cancelled') {
+        if (value.terminalStatus === 'cancelled') settled(value);
         state.replaceChildren(el('p', {}, context.t(value.terminalStatus === 'cancelled' ? 'recoveryCancelled' : 'recoveryChanged')), renderValue(value),
           link(context.t('builder'), routes.builder[context.locale])); return;
       }
@@ -166,10 +287,12 @@ export function completionPage(context: PageContext): HTMLElement {
       return;
     }
     if (result.value.status === 'paid') {
+      settled(result.value);
       state.replaceChildren(el('p', {}, context.t('recoveryPaid')), renderValue(result.value));
       return;
     }
     if (result.value.status !== 'pending_payment') {
+      if (result.value.status === 'cancelled' || result.value.status === 'expired') settled(result.value);
       state.replaceChildren(el('p', {}, context.t(result.value.status === 'cancelled' ? 'recoveryCancelled' : result.value.status === 'expired' ? 'recoveryExpired' : 'recoveryUnavailable')), renderValue({ orderRef: result.value.orderRef, status: result.value.status }));
       return;
     }

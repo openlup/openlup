@@ -209,8 +209,9 @@ limited `abandon` answers `starter_attempt_limited`. An unpaid order older than
 its 24-hour link lifetime gets no new token: `resume` answers
 `starter_checkout_expired`. If no payment attempt was made, `abandon` it,
 then start a new key. Otherwise the order has a payment attempt that the store
-must settle. Do not start a new key. Ask the store to check the payment and
-cancel the order (`operator.cancelUnpaid`). The store can cancel only once no
+must settle. Do not start a new key on your own. The managed checkout page
+leaves that choice to the buyer, as described below. Ask the store to check the
+payment and cancel the order (`operator.cancelUnpaid`). The store can cancel only once no
 payment is in flight; until then the order may still be paid, and the cancel
 answers `starter_order_transition_conflict`. After the store cancels, this key
 answers `starter_checkout_not_payable`, and a new key works, including for the
@@ -237,6 +238,23 @@ A client that owns its checkout page follows three rules:
    create that obtains the key lock later than 15 seconds after the host
    received it answers `starter_checkout_request_stale` and writes nothing.
    This refusal can also reach the managed pages when the host is busy.
+
+The managed checkout page follows these rules. It stores one key per purchase
+in tab storage, under `neutral-store:checkout-continuation:v1:<configuration>`,
+before the first create leaves the browser, and reuses it after a reload or a
+lost response. It starts a new key only after the host confirmed that the
+earlier order is closed, or that no order exists and none can still arrive.
+Changed details, or a later purchase in the same tab while that order is
+unpaid, answer `starter_checkout_changed` and open a panel. The panel also
+appears on load. It offers "Complete payment for the earlier order" (`resume`)
+and "Cancel the earlier order and start over" (`abandon`). After
+`starter_checkout_not_abandonable` or `starter_checkout_expired`, it also offers
+"Start a different purchase". That explicit buyer choice starts a new key while
+the earlier order stays open until the store settles it, and a payment already
+started for it may still complete. The page raises `starter_checkout_in_progress`
+itself while "no order" is not yet final, and `starter_checkout_session_changed`
+when an answer belongs to another sign-in state. A browser that blocks tab
+storage keeps a key only until a reload and shows `starter_storage_unavailable`.
 
 The key is derived from the principal, so a guest key does not survive sign-in
 or sign-out. Resolve the purchase before either; a retry after sign-in finds no

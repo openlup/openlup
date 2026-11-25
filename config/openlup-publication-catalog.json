@@ -1618,6 +1618,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/browser/lost-response.spec.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/browser/native-acquisition.proof.ts",
       "class": "public-output"
     },
@@ -2259,6 +2263,10 @@
     },
     {
       "path": "examples/neutral-store/test/checkout-continuation-host.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/checkout-continuation.test.ts",
       "class": "public-output"
     },
     {
