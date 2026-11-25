@@ -8,7 +8,7 @@ import { readStarterDiagnostic, starterDiagnostic } from './shared/refusals.ts';
 import { seedPhysicalGuidance } from './shared/seed-physical.ts';
 import { applicationHealthcheck } from './host/healthcheck.ts';
 import { browserJourneyGroups } from './browser-groups.mjs';
-import { catalogueApplyRefusal, operatorChallengeGuidance, starterGuidance, starterRefusals } from './lifecycle-refusals.mjs';
+import { catalogueApplyRefusal, operatorChallengeGuidance, repriceRecovery, starterGuidance, starterRefusals } from './lifecycle-refusals.mjs';
 import { installationFailure, installationFinding, installationReport, refusal } from './installation/refusals.ts';
 
 const root = dirname(fileURLToPath(import.meta.url));
@@ -345,14 +345,15 @@ function safePrompt(value) {
 
 async function catalogueApply(argv) {
   const receipts = [];
-  let terminal;
+  let terminal, repriceStarted;
   let path = '/arguments';
   const unavailable = 'OPENLUP_E_CATALOGUE_APPLY_UNAVAILABLE';
   const deny = (code, details = {}, cause, hostCode) => {
     throw Object.assign(catalogueApplyRefusal({ code, path, ...details }, cause), { hostCode });
   };
   const report = finding => ({ formatVersion: 1, command: 'catalogue apply', state: finding ? 'violated' : 'satisfied',
-    exitCode: finding ? 2 : 0, receipts, findings: finding ? [finding] : [] });
+    exitCode: finding ? 2 : 0, receipts, findings: finding ? [repriceStarted ? { ...finding,
+      fix: repriceRecovery, recheck: 'Check the default report for the entry and subscription figure.' } : finding] : [] });
   try {
     const [verb, ...options] = argv;
     const modes = options.filter(option => ['--prepare-only', '--copy', '--reprice'].includes(option));
@@ -411,7 +412,7 @@ async function catalogueApply(argv) {
     makeStage('activation', activation, null);
     if (!process.stdin.isTTY || !process.stderr.isTTY) deny('OPENLUP_E_CATALOGUE_TERMINAL_REQUIRED', { path: '/terminal' });
     const origin = config.publicOrigin ?? 'http://127.0.0.1:4319';
-    let cookie, expiresAt, operator, writeRevisionId;
+    let cookie, expiresAt, operator;
     async function request(operation, body, key = hash([operation, body]), authenticated = false, sku) {
       const unavailableCodes = ['host_binding_required', 'starter_dependency_unavailable', 'starter_operation_unknown',
         'price_setup_dependency_unavailable', 'store_unavailable'];
@@ -471,20 +472,23 @@ async function catalogueApply(argv) {
       if (operator && operator.actorId !== value.actorId) deny('publisher_not_authorized');
       if (operator && mode !== '--reprice' && !same(operator, value)) deny('starter_catalogue_d2c_policy_required');
       operator ??= value;
-      writeRevisionId = value.policy.revisionId;
       path = priorPath;
     }
     async function action(operation, body, key, sku) {
       if (Date.now() >= expiresAt) await signIn();
-      return (await request(operation, typeof body === 'function' ? body() : body, key, true, sku)).value;
+      return (await request(operation, body, key, true, sku)).value;
     }
     const publish = (body, key, sku) => action('operator.catalogPublication', body, key, sku);
     const drafts = (body, key) => action('operator.catalogDrafts', body, key);
     await signIn();
     const { currency, priceListId, policy, actorId } = operator;
-    path = 'basePrices';
-    for (const { code } of skus)
-      if (pricing.deriveSubscriptionUnitPrice(basePrices[code], policy) <= 0) deny('starter_catalogue_derived_price_zero', { subject: code });
+    function requirePositivePrices(rows) {
+      path = 'basePrices';
+      for (const { code } of rows)
+        if (pricing.deriveSubscriptionUnitPrice(basePrices[code], policy) <= 0)
+          deny('starter_catalogue_derived_price_zero', { subject: code });
+    }
+    if (mode) requirePositivePrices(skus);
     const prices = [];
     const record = (stage, outcome, draftRevision, head, items = prices) => receipts.push({ stage, outcome, productId, draftId,
       draftRevision, head, currency, prices: [...items] });
@@ -560,18 +564,19 @@ async function catalogueApply(argv) {
       note('publish', resultOfPublish.outcome, next);
       return next;
     }
-    function pricePreview(variantId, code, unitPriceMinor) {
+    async function pricePreview(variantId, code, unitPriceMinor) {
       path = 'basePrices';
-      return publish({ action: 'price-preview', variantId, priceListId, ...(unitPriceMinor !== undefined && { unitPriceMinor }) }, undefined, code);
+      const result = await publish({ action: 'price-preview', variantId, priceListId,
+        ...(unitPriceMinor !== undefined && { unitPriceMinor }) }, undefined, code);
+      if (typeof result.priceSetup?.hasPending !== 'boolean') deny(unavailable, { subject: code });
+      if (result.priceSetup.hasPending) deny('starter_catalogue_price_scheduled', { subject: code });
+      return result;
     }
     function reviewPreview({ listEffective, priceSetup }, code) {
       if (!listEffective) deny('price_list_not_active', { subject: code });
       const subscription = priceSetup.subscription;
       if (subscription.kind !== 'derived' || subscription.revisionId !== policy.revisionId)
         deny('starter_catalogue_d2c_policy_required', { subject: code });
-      const unitPriceMinor = basePrices[code];
-      if (pricing.deriveSubscriptionUnitPrice(unitPriceMinor, { ...subscription, roundingRule: 'FLOOR_TO_QUANTUM' }) <= 0)
-        deny('starter_catalogue_derived_price_zero', { subject: code });
       return priceSetup;
     }
     async function preview(sku) {
@@ -590,10 +595,6 @@ async function catalogueApply(argv) {
       if (subscription?.kind === 'derived' && subscription.revisionId && subscription.derivedUnitPriceMinor > 0)
         return { policyRevisionId: subscription.revisionId, subscriptionUnitPriceMinor: subscription.derivedUnitPriceMinor };
     }
-    function hasPending(priceSetup, subject) {
-      if (typeof priceSetup?.hasPending !== 'boolean') deny(unavailable, { subject });
-      return priceSetup.hasPending;
-    }
     async function reviewPublishedPrices(active) {
       const changes = [];
       for (const sku of skus) {
@@ -601,7 +602,6 @@ async function catalogueApply(argv) {
         const declared = basePrices[code];
         let reviewed = reviewPreview(await pricePreview(skuId, code), code);
         if (reviewed.currentCount > 1) deny('base_price_ambiguous', { subject: code });
-        if (hasPending(reviewed, code)) deny('starter_catalogue_price_scheduled', { subject: code });
         if (mode === '--reprice' && reviewed.current?.unitPriceMinor !== declared) {
           const proposed = await pricePreview(skuId, code, declared)
             .catch(error => remapPriceMismatch(error, 'starter_catalogue_price_scheduled', code));
@@ -624,6 +624,7 @@ async function catalogueApply(argv) {
         changes.push({ code, skuId, from: { entryId, unitPriceMinor }, to: { unitPriceMinor: declared },
           subscriptionEstimate: { from: estimate(unitPriceMinor), to: estimate(declared) } });
       }
+      if (!mode) requirePositivePrices(changes);
       if (changes.length && mode !== '--reprice') deny('starter_catalogue_reprice_required', { subject: changes[0].code });
       return changes;
     }
@@ -634,39 +635,10 @@ async function catalogueApply(argv) {
         deny('OPENLUP_E_CATALOGUE_CONFIRMATION_INVALID');
       for (const { code, skuId, from: expected, to: { unitPriceMinor } } of changes) {
         path = 'basePrices';
-        const key = hash(['reprice', actorId, priceListId, skuId, unitPriceMinor, expected]);
-        let sent;
-        async function apply(exact = false) {
-          const previous = sent;
-          let dispatched = false;
-          try {
-            return await publish(() => {
-              dispatched = true;
-              if (!exact) sent = { action: 'price-apply', variantId: skuId, priceListId,
-                policyRevisionId: writeRevisionId, unitPriceMinor, expected };
-              return sent;
-            }, key, code);
-          } catch (error) {
-            if (dispatched && previous && ['starter_catalogue_d2c_policy_required', 'starter_catalogue_reprice_requires_active',
-              'starter_catalogue_derived_price_zero', 'price_list_not_active'].includes(error.hostCode))
-              deny('starter_catalogue_reprice_retry_unverified', { subject: code, reason: error.hostCode, issues: error.finding.issues });
-            if (dispatched && !previous && error.finding?.code === unavailable && error.hostCode === undefined)
-              return apply(true);
-            throw error;
-          }
-        }
-        const result = await apply().catch(async error => {
-          if (error.finding?.code !== 'starter_catalogue_d2c_policy_required') throw error;
-          const { listEffective, priceSetup } = await pricePreview(skuId, code);
-          const revisionId = subscriptionFigure(priceSetup?.subscription)?.policyRevisionId;
-          if (listEffective !== true || !revisionId || revisionId === writeRevisionId) throw error;
-          writeRevisionId = revisionId;
-          return apply();
-        }).catch(async error => {
-          if (error.finding?.code !== 'expected_state_mismatch') throw error;
-          const { priceSetup } = await pricePreview(skuId, code);
-          remapPriceMismatch(error, hasPending(priceSetup, code) ? 'starter_catalogue_price_scheduled' : 'starter_catalogue_reprice_stale', code);
-        });
+        repriceStarted = true;
+        const result = await publish({ action: 'price-apply', variantId: skuId, priceListId,
+          policyRevisionId: policy.revisionId, unitPriceMinor, expected },
+          hash(['reprice', actorId, priceListId, skuId, unitPriceMinor, expected]), code);
         const { current, previous } = result.receipt;
         const item = { skuId, entryId: current.entryId, unitPriceMinor: current.unitPriceMinor, currency: result.currency,
           previous: { entryId: previous.entryId, unitPriceMinor: previous.unitPriceMinor } };
@@ -684,7 +656,6 @@ async function catalogueApply(argv) {
         if (!figure) deny('starter_catalogue_reprice_readback_unverified',
           { path: 'basePrices', subject: code, reason, issues });
         Object.assign(item, figure);
-        writeRevisionId = figure.policyRevisionId;
       }
     }
     async function requireHead(expected) {
@@ -720,6 +691,7 @@ async function catalogueApply(argv) {
       await reviewPublishedPrices();
       await runStage(third, copied);
     } else {
+      if (!mode) requirePositivePrices(skus);
       if (releaseReceipt) { path = 'release.publish'; requireIssuer(releaseReceipt); }
       if (!released) await requireHead(null);
       const head = await runStage(first, released, mode === '--prepare-only');

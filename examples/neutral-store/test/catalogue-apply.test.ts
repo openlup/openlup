@@ -28,6 +28,7 @@ const priceListId = '22222222-2222-4222-8222-222222222222';
 const policy = { revisionId: '33333333-3333-4333-8333-333333333333', discountBps: 500,
   roundingQuantumMinor: 10, roundingRule: 'FLOOR_TO_QUANTUM' } as const;
 const nextPolicy = { ...policy, revisionId: '55555555-5555-4555-8555-555555555555', discountBps: 1000 };
+const coarsePolicy = { ...nextPolicy, discountBps: 0, roundingQuantumMinor: 3000 };
 const hash = (value: unknown) => createHash('sha256').update(canonicalCatalogDraftJson(value)).digest('hex');
 const digest = 'a'.repeat(64);
 const grams = (unscaled: string) => ({ dimension: 'mass', unit: 'openlup:g', unscaled, scale: 0 } as const);
@@ -79,8 +80,10 @@ function writeBase(state: State, actor: string, key: string, skuCode: string, bo
 type Options = { declaration?: unknown; args?: string[]; noTerminal?: boolean; mediaIoError?: boolean;
   missingProduct?: boolean; wrongTarget?: boolean; closeAt?: 'email' | 'token'; declineAt?: number;
   failAt?: number; refusal?: Partial<Finding>; failRetry?: boolean; state?: State; actor?: string; approveAfter?: Options;
-  pending?: string[]; pendingAfterReview?: string; refreshBeforeApply?: boolean; ambiguous?: string[]; ineligible?: string[]; stale?: string;
-  rollover?: boolean; rolledPolicy?: boolean; rolloverBeforeApply?: string; loseRepriceReply?: 'unchanged' | 'policy' | 'eligibility'; refresh?: 'same' | 'actor' | 'list'; readback?: 'list' | 'missing' | 'entry' | 'amount' | 'figure' | 'policy' };
+  pending?: string[]; pendingAfterReview?: string; pendingOnAmount?: string; refreshBeforeApply?: boolean;
+  ambiguous?: string[]; ineligible?: string[]; stale?: string; rolledPolicy?: boolean; loseRepriceReply?: boolean;
+  stopSecond?: 'policy' | 'expired' | 'zero-old' | 'derived-zero' | 'list';
+  refresh?: 'same' | 'actor' | 'list'; readback?: 'list' | 'missing' | 'entry' | 'amount' | 'figure' | 'policy' | 'pending' };
 type Observation = { trace: string[]; state: State; retry: { key: string; body: unknown }[];
   prompts: string[]; changes: { actor: string; key: string; code: string; expected: Price }[] };
 type PriceItem = Price & { skuId: string; currency: string; policyRevisionId?: string; subscriptionUnitPriceMinor?: number; previous?: Price };
@@ -95,9 +98,9 @@ if (env[workerFlag] === '1') {
   const actor = options.actor ?? actorId;
   const pending = new Set(options.pending);
   let refreshed = false, signIns = 0, now = Date.now();
-  let effectivePolicy = options.rolledPolicy ? nextPolicy : policy;
+  let effectivePolicy = options.rolledPolicy ? coarsePolicy : policy;
   let readbackSku: string | undefined;
-  if (options.refresh) Date.now = () => now;
+  if (options.refresh || options.stopSecond === 'expired') Date.now = () => now;
   const fixture = new URL('../lifecycle.mjs', import.meta.url).href;
   registerHooks({ resolve(specifier, context, next) {
     if (specifier === './owned/catalogue.ts' && context.parentURL === fixture) {
@@ -166,7 +169,8 @@ if (env[workerFlag] === '1') {
     if (step === 'challenge') return response({ accepted: true });
     if (step === 'redeem') {
       refreshed = ++signIns > 1;
-      const expiresAt = options.refresh ? new Date(now + 1000).toISOString() : '2099-01-01T00:00:00Z';
+      const expiresAt = options.refresh || options.stopSecond === 'expired'
+        ? new Date(now + 1000).toISOString() : '2099-01-01T00:00:00Z';
       return response({ expiresAt }, { 'Set-Cookie': 'starter_session=' + 'x'.repeat(43) });
     }
     assert.equal(new Headers(init?.headers).get('cookie'), 'starter_session=' + 'x'.repeat(43));
@@ -236,7 +240,9 @@ if (env[workerFlag] === '1') {
           ? deriveSubscriptionUnitPrice(current.unitPriceMinor, effectivePolicy) : null;
         return response({ listEffective: readback !== 'list', currency, priceSetup: {
           inGate: (state.head?.revision ?? 0) >= 2 && !options.ineligible?.includes(skuCode),
-          current, currentCount: ambiguous ? 2 : Number(!!current), hasPending: pending.has(skuCode),
+          current, currentCount: ambiguous ? 2 : Number(!!current),
+          hasPending: pending.has(skuCode) || readback === 'pending' ||
+            (fields.unitPriceMinor !== undefined && options.pendingOnAmount === skuCode),
           subscription: { ...effectivePolicy, kind: 'derived', derivedUnitPriceMinor },
           ...(fields.unitPriceMinor !== undefined && { proposed: { unitPriceMinor: fields.unitPriceMinor } }),
         } });
@@ -248,11 +254,13 @@ if (env[workerFlag] === '1') {
         if (expected) {
           assert.equal(key, hash(['reprice', actor, priceListId, fields.variantId, fields.unitPriceMinor, expected]));
           changes.push({ actor, key, code: skuCode, expected });
-          if (options.loseRepriceReply) retry.push({ key, body: { action, ...fields } });
         }
-        if (options.rolloverBeforeApply === skuCode) effectivePolicy = nextPolicy;
-        if (expected && options.loseRepriceReply === 'eligibility' && state.priceReceipts[key])
-          return refused({ code: 'starter_catalogue_reprice_requires_active' });
+        if (expected && skuCode === 'SECOND' && options.stopSecond) {
+          if (options.stopSecond === 'list') return refused({ code: 'price_list_not_active' });
+          if (options.stopSecond === 'derived-zero') return refused({ code: 'starter_catalogue_derived_price_zero' });
+          if (options.stopSecond === 'expired') now += 1000;
+          effectivePolicy = options.stopSecond === 'zero-old' ? coarsePolicy : nextPolicy;
+        }
         if (fields.policyRevisionId !== effectivePolicy.revisionId)
           return refused({ code: 'starter_catalogue_d2c_policy_required' });
         if ((options.stale === skuCode || pending.has(skuCode)) && !state.priceReceipts[key])
@@ -261,12 +269,8 @@ if (env[workerFlag] === '1') {
         if (result.code) return refused({ code: result.code });
         if (expected) {
           readbackSku = skuCode;
-          if (options.rollover) effectivePolicy = nextPolicy;
           if (options.refresh) now += 1000;
-          if (options.loseRepriceReply && result.outcome === 'committed') {
-            if (options.loseRepriceReply === 'policy') effectivePolicy = nextPolicy;
-            throw new Error('fixture lost price reply after commit');
-          }
+          if (options.loseRepriceReply) throw new Error('fixture lost price reply after commit');
         }
         return response({ currency, ...result });
       }
@@ -308,6 +312,7 @@ const ordered = ['marker', 'email', 'challenge', 'token', 'redeem', 'price-targe
   'price-preview:FIRST', 'price-preview:SECOND', 'price-apply:FIRST', 'price-preview:FIRST',
   'price-apply:SECOND', 'price-preview:SECOND', 'save:2', 'prepare:2', 'approval', 'approve:2', 'publish:2', 'exact:2'];
 const repriceArgs = ['--reprice'];
+const recovery = /verify committed prices read-only, then rerun with --reprice to review any remaining change/u;
 const replacement = { ...authored, basePrices: { ...authored.basePrices, FIRST: 2200 } };
 const observed = [...ordered.slice(0, 7), 'exact:1', 'lookup:2', 'exact:2', 'price-preview:FIRST', 'price-preview:SECOND'];
 const committed = (out: Output) => out.report.receipts.filter(row => row.stage === 'price.reprice');
@@ -318,7 +323,7 @@ const noWrites = (out: Output, state: State) => {
   assert.deepEqual(out.state, state);
 };
 function unverified(out: Output) {
-  const row = finding(out, 'starter_catalogue_reprice_readback_unverified', /Run npm run catalogue:apply in default mode/u);
+  const row = finding(out, 'starter_catalogue_reprice_readback_unverified', recovery);
   assert.equal(row.observed, 'committed; figure not verified');
   assert.equal(row.subject, 'FIRST');
   assert.equal(row.path, 'basePrices');
@@ -341,7 +346,7 @@ if (!env[workerFlag]) {
         'starter_catalogue_price_invalid', /whole minor-unit amount from 1 to 2147483647/u, [],
       ]),
       [{ declaration: { ...authored, basePrices: { ...authored.basePrices, FIRST: 1 } } },
-        'starter_catalogue_derived_price_zero', /Choose a base that derives a positive/u, ordered.slice(0, 6)],
+        'starter_catalogue_derived_price_zero', /Choose a base that derives a positive/u, ordered.slice(0, 7)],
       [{ args: ['--reprice', '--copy'] }, 'starter_argument_unknown', /documented options/u, []],
       [{ args: ['--reprice', '--prepare-only'] }, 'starter_argument_unknown', /documented options/u, []],
       [{ declaration: { ...authored, product: { ...authored.product, document: { content: 'é'.repeat(34_000) } } } },
@@ -558,11 +563,11 @@ if (!env[workerFlag]) {
     complete(initial);
     const options = { args: repriceArgs, declaration: replacement, state: initial.state };
     const raced = invoke({ ...options, actor: alternate, approveAfter: options });
-    const row = finding(raced, 'starter_catalogue_reprice_stale', /Run catalogue apply with --reprice again/u);
+    const row = finding(raced, 'expected_state_mismatch', recovery);
     assert.equal(row.reason, 'expected_state_mismatch');
     assert.equal(row.subject, 'FIRST');
     assert.deepEqual(committed(raced), []);
-    assert.deepEqual(raced.trace.slice(-2), ['price-apply:FIRST', 'price-preview:FIRST']);
+    assert.equal(raced.trace.at(-1), 'price-apply:FIRST');
     assert.equal(price(raced.state).unitPriceMinor, 2200);
     const receipts = Object.values(raced.state.priceReceipts);
     assert.equal(receipts.length, Object.keys(initial.state.priceReceipts).length + 1);
@@ -639,9 +644,9 @@ if (!env[workerFlag]) {
     complete(initial);
     const result = invoke({ args: repriceArgs, state: initial.state, stale: 'SECOND',
       declaration: { ...replacement, basePrices: { ...replacement.basePrices, SECOND: 3000 } } });
-    const row = finding(result, 'starter_catalogue_reprice_stale', /review the current amounts and approve again/u);
+    const row = finding(result, 'expected_state_mismatch', recovery);
     assert.equal(row.subject, 'SECOND');
-    assert.deepEqual(result.trace.slice(-5), ['approval', 'price-apply:FIRST', 'price-preview:FIRST', 'price-apply:SECOND', 'price-preview:SECOND']);
+    assert.deepEqual(result.trace.slice(-4), ['approval', 'price-apply:FIRST', 'price-preview:FIRST', 'price-apply:SECOND']);
     assert.equal(committed(result).length, 1);
     assert.equal(committed(result)[0]!.prices[0]!.policyRevisionId, policy.revisionId);
     assert.equal(committed(result)[0]!.prices[0]!.subscriptionUnitPriceMinor, 2090);
@@ -649,46 +654,41 @@ if (!env[workerFlag]) {
     assert.equal(Object.keys(result.state.priceReceipts).length, Object.keys(initial.state.priceReceipts).length + 1);
   });
 
-  test('a schedule added after approval is diagnosed by a read-only preview', { skip: nestedSkip }, () => {
+  test('a schedule reported in the amount review or added after approval prevents a write', { skip: nestedSkip }, () => {
     const initial = invoke();
     complete(initial);
-    const result = invoke({ args: repriceArgs, state: initial.state, declaration: replacement, pendingAfterReview: 'FIRST' });
-    const row = finding(result, 'starter_catalogue_price_scheduled', /clear the scheduled base price first/u);
-    assert.equal(row.reason, 'expected_state_mismatch');
-    assert.deepEqual(result.trace.slice(-3), ['approval', 'price-apply:FIRST', 'price-preview:FIRST']);
-    assert.deepEqual(result.state, initial.state);
+    const options = { args: repriceArgs, state: initial.state, declaration: replacement };
+    const reviewed = invoke({ ...options, pendingOnAmount: 'FIRST' });
+    finding(reviewed, 'starter_catalogue_price_scheduled', /clear the scheduled base price first/u);
+    assert.equal(reviewed.trace.at(-1), 'price-preview:FIRST:amount');
+    assert.deepEqual(reviewed.prompts, []);
+    noWrites(reviewed, initial.state);
+    const refused = invoke({ ...options, pendingAfterReview: 'FIRST' });
+    finding(refused, 'expected_state_mismatch', recovery);
+    assert.deepEqual(refused.trace.slice(-2), ['approval', 'price-apply:FIRST']);
+    assert.deepEqual(refused.state, initial.state);
   });
 
-  test('reprice verifies a new effective policy and preserves the receipt when readback cannot verify', { skip: nestedSkip }, () => {
+  test('reprice preserves its receipt and stops when readback cannot verify', { skip: nestedSkip }, () => {
     const initial = invoke();
     complete(initial);
     const options = { args: repriceArgs, state: initial.state, declaration: replacement };
     const declaration = { ...replacement, basePrices: { ...replacement.basePrices, SECOND: 3000 } };
-    for (const refresh of [undefined, 'same'] as const) {
-      const result = invoke({ ...options, declaration, rollover: true, ...(refresh && { refresh }) });
-      complete(result);
-      const afterApproval = result.trace.slice(result.trace.indexOf('approval') + 1);
-      assert.deepEqual(afterApproval, ['price-apply:FIRST',
-        ...(refresh ? ['email', 'challenge', 'token', 'redeem', 'price-target'] : []), 'price-preview:FIRST', 'price-apply:SECOND',
-        ...(refresh ? ['email', 'challenge', 'token', 'redeem', 'price-target'] : []), 'price-preview:SECOND']);
-      assert.equal(committed(result)[1]!.prices[0]!.policyRevisionId, nextPolicy.revisionId);
-      assert.equal(committed(result)[0]!.prices[0]!.policyRevisionId, nextPolicy.revisionId);
-      assert.equal(committed(result)[0]!.prices[0]!.subscriptionUnitPriceMinor, 1980);
-    }
     for (const refresh of ['actor', 'list'] as const) {
       const refused = invoke({ ...options, refresh, refreshBeforeApply: true });
-      finding(refused, 'starter_catalogue_reprice_review_required', /A fresh review by the reviewing administrator is required/u);
+      finding(refused, 'starter_catalogue_reprice_review_required', recovery);
       noWrites(refused, initial.state);
-      const result = invoke({ ...options, rollover: true, refresh });
+      const result = invoke({ ...options, refresh });
       const row = unverified(result);
       assert.equal(row.reason, 'starter_catalogue_reprice_review_required');
-      assert.match(row.recheck, /A fresh review by the reviewing administrator is required/u);
+      assert.match(row.recheck, /Check the default report/u);
       assert.equal(result.trace.at(-1), 'price-target');
     }
-    for (const readback of ['list', 'missing', 'entry', 'amount', 'figure', 'policy'] as const) {
+    for (const readback of ['list', 'missing', 'entry', 'amount', 'figure', 'policy', 'pending'] as const) {
       const result = invoke({ ...options, readback, declaration });
       const row = unverified(result);
-      assert.equal(row.reason, readback === 'policy' ? 'starter_catalogue_d2c_policy_required' : undefined);
+      assert.equal(row.reason, readback === 'policy' ? 'starter_catalogue_d2c_policy_required' :
+        readback === 'pending' ? 'starter_catalogue_price_scheduled' : undefined);
       assert.deepEqual(row.issues, readback === 'policy' ? [{ code: 'policy_changed' }] : undefined);
       assert.equal(result.trace.at(-1), 'price-preview:FIRST');
       assert.deepEqual(writes(result), ['price-apply:FIRST']);
@@ -703,60 +703,56 @@ if (!env[workerFlag]) {
     }
   });
 
-  test('a policy rollover after the first readback can retry the next approved base amount', { skip: nestedSkip }, () => {
+  test('a policy, list or amount refusal stops on the second SKU with only the first receipt', { skip: nestedSkip }, () => {
     const initial = invoke();
     complete(initial);
     const declaration = { ...replacement, basePrices: { ...replacement.basePrices, SECOND: 3000 } };
-    const result = invoke({ args: repriceArgs, state: initial.state, declaration, rolloverBeforeApply: 'SECOND' });
-    complete(result);
-    assert.deepEqual(result.trace.slice(-6), ['price-apply:FIRST', 'price-preview:FIRST', 'price-apply:SECOND',
-      'price-preview:SECOND', 'price-apply:SECOND', 'price-preview:SECOND']);
-    assert.deepEqual(committed(result).map(row => row.prices[0]?.policyRevisionId), [policy.revisionId, nextPolicy.revisionId]);
-    assert.equal(Object.keys(result.state.priceReceipts).length, Object.keys(initial.state.priceReceipts).length + 2);
-  });
-
-  test('a refused exact retry after commit points to read-only default verification', { skip: nestedSkip }, () => {
-    const initial = invoke();
-    complete(initial);
-    for (const loseRepriceReply of ['unchanged', 'policy', 'eligibility'] as const) {
-      const result = invoke({ args: repriceArgs, state: initial.state, declaration: replacement, loseRepriceReply });
-      assert.equal(result.retry.length, 2);
-      assert.deepEqual(result.retry[0], result.retry[1]);
-      const saved = result.state.priceReceipts[result.retry[0]!.key]!;
-      assert.deepEqual(price(result.state), saved.current);
-      assert.equal(saved.current.unitPriceMinor, 2200);
+    assert.equal(deriveSubscriptionUnitPrice(price(initial.state, 1).unitPriceMinor, coarsePolicy), 0);
+    assert.ok(deriveSubscriptionUnitPrice(declaration.basePrices.SECOND, coarsePolicy) > 0);
+    for (const stopSecond of ['policy', 'expired', 'zero-old', 'derived-zero', 'list'] as const) {
+      const result = invoke({ args: repriceArgs, state: initial.state, declaration, stopSecond });
+      const code = stopSecond === 'list' ? 'price_list_not_active' : stopSecond === 'derived-zero'
+        ? 'starter_catalogue_derived_price_zero' : 'starter_catalogue_d2c_policy_required';
+      const row = finding(result, code, recovery);
+      assert.equal(row.subject, 'SECOND');
+      assert.notEqual(row.observed, 'committed; figure not verified');
+      assert.deepEqual(result.trace.slice(-4), ['approval', 'price-apply:FIRST', 'price-preview:FIRST', 'price-apply:SECOND']);
+      assert.equal(committed(result).length, 1);
+      assert.equal(committed(result)[0]!.prices[0]!.subscriptionUnitPriceMinor, 2090);
+      assert.deepEqual(price(result.state, 1), price(initial.state, 1));
       assert.equal(Object.keys(result.state.priceReceipts).length, Object.keys(initial.state.priceReceipts).length + 1);
-      if (loseRepriceReply === 'unchanged') {
-        complete(result);
-        assert.equal(committed(result)[0]?.outcome, 'replayed');
-        continue;
-      }
-      const row = finding(result, 'starter_catalogue_reprice_retry_unverified',
-        /default mode to verify the committed price.*committed entry and subscription figure read-only/u);
-      assert.equal(row.reason, loseRepriceReply === 'policy'
-        ? 'starter_catalogue_d2c_policy_required' : 'starter_catalogue_reprice_requires_active');
-      assert.equal(row.subject, 'FIRST');
-      assert.deepEqual(committed(result), []);
-      assert.deepEqual(result.trace.slice(-2), ['price-apply:FIRST', 'price-apply:FIRST']);
-      const rolledPolicy = loseRepriceReply === 'policy';
-      const verified = invoke({ state: result.state, declaration: replacement, rolledPolicy });
-      complete(verified);
-      noWrites(verified, result.state);
-      assert.deepEqual(verified.trace, observed);
-      const entry = verified.report.receipts.find(row => row.stage === 'price.apply')?.prices[0];
-      assert.deepEqual(entry, { ...saved.current, skuId: initial.state.drafts[1]!.payload.skus[0]!.id, currency,
-        policyRevisionId: (rolledPolicy ? nextPolicy : policy).revisionId, subscriptionUnitPriceMinor: rolledPolicy ? 1980 : 2090 });
     }
   });
 
-  test('native price evidence refusals retain the owner code and give a repair', { skip: nestedSkip }, () => {
+  test('default observes a committed entry before refusing an unapplied amount after policy rollover', { skip: nestedSkip }, () => {
+    const initial = invoke();
+    complete(initial);
+    const declaration = { ...replacement, basePrices: { FIRST: 3200, SECOND: 2900 } };
+    const result = invoke({ args: repriceArgs, state: initial.state, declaration, loseRepriceReply: true });
+    const lost = finding(result, 'OPENLUP_E_CATALOGUE_APPLY_UNAVAILABLE', recovery);
+    assert.notEqual(lost.observed, 'committed; figure not verified');
+    assert.deepEqual(result.trace.slice(-2), ['approval', 'price-apply:FIRST']);
+    assert.deepEqual(committed(result), []);
+    assert.equal(price(result.state).unitPriceMinor, 3200);
+    assert.deepEqual(price(result.state, 1), price(initial.state, 1));
+    const verified = invoke({ state: result.state, declaration, rolledPolicy: true });
+    const rejected = finding(verified, 'starter_catalogue_derived_price_zero', /Choose a base that derives a positive/u);
+    assert.equal(rejected.subject, 'SECOND');
+    noWrites(verified, result.state);
+    assert.deepEqual(verified.trace, observed);
+    assert.deepEqual(verified.report.receipts[2]?.prices[0], { ...price(result.state),
+      skuId: initial.state.drafts[1]!.payload.skus[0]!.id, currency,
+      policyRevisionId: coarsePolicy.revisionId, subscriptionUnitPriceMinor: 3000 });
+  });
+
+  test('native price evidence refusals retain the owner code and use the batch recovery', { skip: nestedSkip }, () => {
     const initial = invoke();
     complete(initial);
     const options = { args: repriceArgs, state: initial.state, declaration: replacement };
     const failAt = observed.length + 3;
     for (const code of CATALOG_PRICE_SETUP_HARD_REFUSALS) {
       const result = invoke({ ...options, failAt, refusal: { code } });
-      const row = finding(result, code, /Recent paid orders count for 24 hours/u);
+      const row = finding(result, code, recovery);
       assert.equal(row.reason, code);
       assert.equal(row.subject, 'FIRST');
       assert.equal(result.trace.at(-1), 'price-apply:FIRST');

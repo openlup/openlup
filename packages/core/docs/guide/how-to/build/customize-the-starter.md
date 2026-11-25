@@ -1014,10 +1014,10 @@ after Release and Activation, including for SKUs sold by subscription.
    on each price receipt. Run `npm run catalogue:apply` to verify the current
    figures again.
 
-If a review is stale, run with `--reprice` again and review the current amounts.
-If the report says “committed; figure not verified”, run the default command to
-verify the current price and subscription figure. The report retains any
-committed receipts if a later SKU or its verification fails.
+The batch stops at the first refusal and retains its confirmed receipts.
+If an apply or its readback fails, run `npm run catalogue:apply` to verify
+committed prices read-only, then rerun with `--reprice` to review any remaining
+change. A receipt marked “committed; figure not verified” needs this readback.
 
 ### Publish a saved catalogue draft
 

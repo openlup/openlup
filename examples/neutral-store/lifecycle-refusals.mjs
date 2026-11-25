@@ -13,6 +13,7 @@ const argumentsForUp = {
 };
 const candidate = { fix: 'Supply one matching Core, Outbox and Platform tarball from the same candidate set.', recheck: 'Repeat `./lifecycle candidate` with the three qualified tarballs.' };
 
+export const repriceRecovery = 'Run npm run catalogue:apply in default mode to verify committed prices read-only, then rerun with --reprice to review any remaining change.';
 const repriceReview = 'A fresh review by the reviewing administrator is required. Run catalogue apply with --reprice, review the current amounts and approve again.';
 const applyAgain = 'Repeat catalogue apply after correcting the prerequisite.';
 const review = 'Reload the current draft and head. Prepare the current revision and obtain its own approval.';
@@ -40,12 +41,10 @@ const applyRefusals = {
   starter_catalogue_copy_unchanged: ['The copy matches the issued presentation.', 'A presentation successor needs a change to the saved copy.', 'Edit the intended presentation in copyPresentation.'],
   starter_catalogue_copy_requires_published: ['The original product publication is incomplete.', 'This mode requires both the Release and Activation receipts.', 'Run npm run catalogue:apply without --copy or --reprice first.', 'Check that Activation is published before using --copy or --reprice.'],
   starter_catalogue_reprice_review_required: ['The signed-in administrator or effective price list changed.', 'The approval belongs to the reviewing administrator and price list.', repriceReview],
-  starter_catalogue_reprice_stale: ['The reviewed base is stale.', 'The owner refused the reviewed entry and amount.', 'The live price changed after your review. Run catalogue apply with --reprice again, review the current amounts and approve again.'],
   starter_catalogue_reprice_required: ['The declared amount differs from the live base.', 'This mode requires matching live prices.', 'To change the live price, run catalogue apply with --reprice. To keep it, set the declared amount to the live price.'],
   starter_catalogue_reprice_base_missing: ['The SKU has no effective base price.', 'The published prices require a live base for every SKU.', 'Set the missing positive gross base through the authorized price action with no prior entry, then rerun.'],
   starter_catalogue_price_scheduled: ['The SKU has a scheduled base price.', 'The price writer cannot replace a scheduled base.', 'Ask the pricing owner to clear the scheduled base price first, then rerun.'],
-  starter_catalogue_reprice_retry_unverified: ['The retry was refused after the same price key was sent earlier.', 'Current price prerequisites prevented receipt replay.', 'Run npm run catalogue:apply in default mode to verify the committed price. It reports the committed entry and subscription figure read-only.'],
-  starter_catalogue_reprice_readback_unverified: ['committed; figure not verified', 'The effective price and subscription figure could not be verified.', 'Run npm run catalogue:apply in default mode to verify the current price and subscription figure.'],
+  starter_catalogue_reprice_readback_unverified: ['committed; figure not verified', 'The effective price and subscription figure could not be verified.', repriceRecovery],
   starter_catalogue_reprice_requires_active: ['The SKU is ineligible for reprice.', 'A live replacement requires an active sellable SKU on the effective list.', 'Publish Activation for a draft product. Ask the pricing owner to review other SKU eligibility or list issues.'],
   base_price_ambiguous: ['The SKU has multiple effective base prices.', 'The price writer needs a single effective base.', 'Two effective base prices exist for this SKU. Route the duplicate to the pricing owner, then rerun.'],
   publication_sku_price_not_ready: ['An SKU does not have a ready price.', 'Publish requires a positive gross base and ready subscription pricing.', 'Set the missing positive gross base through the authorized action and verify the derived price. Route existing-base corrections to the pricing owner.', 'Retry the same Publish once the intended price is ready.'],
@@ -78,8 +77,7 @@ export function catalogueApplyRefusal({ code, path, subject, reason, issues, mes
   const finding = { code, path, ...(subject !== undefined && { subject }), ...(reason !== undefined && { reason }),
     ...(issues !== undefined && { issues }), observed: readiness?.[1] ?? owner?.observed ?? observed,
     cause: readiness?.[2] ?? owner?.cause ?? cause, fix: readiness?.[3] ?? owner?.fix ?? fix,
-    recheck: readiness?.[4] ?? owner?.recheck ??
-      (code === 'starter_catalogue_reprice_readback_unverified' && reason === 'starter_catalogue_reprice_review_required' ? repriceReview : recheck) };
+    recheck: readiness?.[4] ?? owner?.recheck ?? recheck };
   return Object.assign(error === undefined ? new Error(code) : new Error(code, { cause: error }), { finding });
 }
 
