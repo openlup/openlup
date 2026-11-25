@@ -13995,7 +13995,7 @@
     },
     {
       "path": "db/platform/migrations/20261128230002_catalog_governed_draft_owner.sql",
-      "sha256": "41ba7bd6b2f3bf64cb99fc221134eb5d59cab4d9fd61f889634228c110725956",
+      "sha256": "987a6b663fb5a627f2dfe120e29a89b6e0818f781699f26fc25524cd8e3e4d0e",
       "functions": [
         {
           "signature": "public.catalog_order_acceptance_final(uuid)",

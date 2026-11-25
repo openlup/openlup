@@ -41,6 +41,7 @@ LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS
 $$;
 REVOKE ALL ON FUNCTION public.catalog_admission_governed_companions(jsonb,jsonb) FROM PUBLIC;
 
+-- Pure immutable predicate over its arguments, with no table or catalog reads.
 CREATE FUNCTION public.catalog_admission_is_governed(p_origin jsonb,p_acceptance jsonb) RETURNS boolean
 LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
  SELECT p_origin IS NOT NULL AND p_acceptance->'admission' IS NOT NULL
@@ -448,6 +449,9 @@ BEGIN
 END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_admission_write_governed_draft(text,uuid,jsonb) FROM PUBLIC;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN
+ EXECUTE 'GRANT EXECUTE ON FUNCTION public.catalog_admission_is_governed(jsonb,jsonb) TO authenticated';
+END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
  EXECUTE 'GRANT EXECUTE ON FUNCTION public.catalog_admission_is_governed(jsonb,jsonb) TO service_role';
 END IF; END; $$;
