@@ -18,6 +18,7 @@ export const FLAT_HOSTED_TEST_TIMEOUT_MS = 30_000;
 export const BUDGET_FACTOR = 1.5;
 export const DIGEST_KEY_PREFIX = "sha256:";
 const DIGEST_KEY_HEX_LENGTH = 16;
+const DIGEST_KEY_PATTERN = new RegExp(`^${DIGEST_KEY_PREFIX}[0-9a-f]{${DIGEST_KEY_HEX_LENGTH}}$`);
 
 /** Shape consumed by the optional public timeout reader and weighted sharder. */
 export type DurationSections = {
@@ -41,7 +42,7 @@ export function digestKeyForPath(path: string): string {
 }
 
 export function isDigestKey(key: string): boolean {
-  return new RegExp(`^${DIGEST_KEY_PREFIX}[0-9a-f]{${DIGEST_KEY_HEX_LENGTH}}$`).test(key);
+  return DIGEST_KEY_PATTERN.test(key);
 }
 
 /** Both key forms of one file, in the order a reader should try them. */
@@ -54,10 +55,10 @@ export function pinnedDurationMs(
   path: string,
 ): number | undefined {
   if (!section) return undefined;
-  for (const key of manifestKeyCandidates(path)) {
-    const value = section[key];
-    if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
-  }
+  const direct = section[path];
+  if (typeof direct === "number" && Number.isFinite(direct) && direct > 0) return direct;
+  const digested = section[digestKeyForPath(path)];
+  if (typeof digested === "number" && Number.isFinite(digested) && digested > 0) return digested;
   return undefined;
 }
 

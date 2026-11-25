@@ -3814,6 +3814,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/storefront.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/subscriptions-contracts.api.md",
       "class": "public-output"
     },
@@ -8594,6 +8598,22 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/storefront/anchor.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/bindings.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/identity.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/index.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/agreedPlanQuote.ts",
       "class": "public-output"
     },
@@ -11403,6 +11423,18 @@
     },
     {
       "path": "packages/platform/test/shipping/thresholdPresentation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/browserBoundary.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/exports.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/types.test.ts",
       "class": "public-output"
     },
     {
@@ -30663,6 +30695,10 @@
     },
     {
       "path": "tests/postgres/destinationV2SubscriptionEdit.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/destinationV2SubscriptionReads.test.ts",
       "class": "public-output"
     },
     {

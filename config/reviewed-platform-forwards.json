@@ -9578,6 +9578,35 @@
         ]
       },
       {
+        "row": "subscription-destination-read",
+        "path": "db/platform/migrations/20261128180000_subscription_destination_read.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.commerce_destination_v2_refusal(text,text)",
+            "beforeSha256": "2036af7daf998c57852ff16a3ca60791f843f9f6f4f43636934be1ab26399eb9",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_read_destination_v2(jsonb,text,uuid,jsonb)",
+            "beforeSha256": "7cc9214ea7f37f99e73d8f868787edd2419f6a47f63bc7871dfd34a838ec7362",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_recheck_destination_v2(jsonb,text,uuid,uuid,jsonb,jsonb)",
+            "beforeSha256": "3431010f18a1986397d9f78ccfd01dc8b368016ec5aa7640297f32b0cdb4003b",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.subscription_destination_v2_read(jsonb,uuid,jsonb,uuid,jsonb,boolean)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "derived-subscription-price-retired-base",
         "path": "db/platform/migrations/20261128230000_derived_subscription_price_retired_base.sql",
         "replacedFunctions": [
@@ -13832,6 +13861,32 @@
       "path": "db/platform/migrations/20261128120000_order_money_v2_storage.sql",
       "sha256": "02be68382a7a0e2c62010ef2bca993deaa756f0c860357d6be13d7dd2d5fb45b",
       "functions": []
+    },
+    {
+      "path": "db/platform/migrations/20261128180000_subscription_destination_read.sql",
+      "sha256": "f76078e8a637c6f597d6997ed2d1960f025ce99c474e5f85faf42287ca8a4158",
+      "functions": [
+        {
+          "signature": "public.commerce_destination_v2_refusal(text,text)",
+          "beforeSha256": "2036af7daf998c57852ff16a3ca60791f843f9f6f4f43636934be1ab26399eb9",
+          "afterSha256": "08200c13acce332da264044b17081d26c3819a59cc4f68fc05f420b34ca0f024"
+        },
+        {
+          "signature": "public.commerce_read_destination_v2(jsonb,text,uuid,jsonb)",
+          "beforeSha256": "7cc9214ea7f37f99e73d8f868787edd2419f6a47f63bc7871dfd34a838ec7362",
+          "afterSha256": "d6a7e161fbe9c3af1b82c18e5a57b41713b1c2de02df983dbfa39bf230f78a34"
+        },
+        {
+          "signature": "public.commerce_recheck_destination_v2(jsonb,text,uuid,uuid,jsonb,jsonb)",
+          "beforeSha256": "3431010f18a1986397d9f78ccfd01dc8b368016ec5aa7640297f32b0cdb4003b",
+          "afterSha256": "6808346df08d17069519684aa3ea49c07f8534c5054d9b9be365d1c05c861558"
+        },
+        {
+          "signature": "public.subscription_destination_v2_read(jsonb,uuid,jsonb,uuid,jsonb,boolean)",
+          "beforeSha256": null,
+          "afterSha256": "d90fea71c0138e1fff197a910ed379df53ca3fb1d93d80fcba791eca1d31c99d"
+        }
+      ]
     },
     {
       "path": "db/platform/migrations/20261128230000_derived_subscription_price_retired_base.sql",

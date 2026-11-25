@@ -4,6 +4,7 @@ Use these definitions when reading the guide.
 
 - **Adapter:** An implementation that binds a port to infrastructure and translates its external data into the port's contract.
 - **Application-owned:** Supplied and maintained by your application, including its composition, policies, host bindings and integrations.
+- **Binding:** A browser-side input that a store's client supplies to a storefront function, such as storage, a transport call or an identifier generator. It is not a server port: a port is implemented on the server and consumed by an engine.
 - **Cycle:** A scheduled subscription occurrence with its own template and pricing snapshots, payment status and retry state.
 - **Stable API:** A public contract covered by the [stability policy](reference/stability.md#public-api) and the subpath’s declared classification.
 - **Dunning:** The payment-retry ladder for a failed subscription cycle; exhaustion ends automatic retries without pausing the subscription.
