@@ -15,7 +15,8 @@ const forward = (signal: NodeJS.Signals) => {
   child.kill(signal);
 };
 const terminate = () => forward("SIGTERM"), interrupt = () => forward("SIGINT");
+const detach = () => { process.removeListener("SIGTERM", terminate); process.removeListener("SIGINT", interrupt); };
 process.on("SIGTERM", terminate);
 process.on("SIGINT", interrupt);
-child.once("error", error => { console.error(error); process.exitCode = 1; });
-child.once("close", code => { process.removeListener("SIGTERM", terminate); process.removeListener("SIGINT", interrupt); process.exitCode = code ?? 1; });
+child.once("error", error => { detach(); console.error(error); process.exitCode = 1; });
+child.once("close", code => { detach(); process.exitCode = code ?? 1; });

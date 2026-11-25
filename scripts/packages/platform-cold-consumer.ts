@@ -2701,11 +2701,28 @@ export function runPlatformColdConsumer(checkout = root, environment = processEn
       output => ({ ok: true as const, ...output }),
       error => ({ ok: false as const, error }),
     ).finally(() => { starterSettled = true; });
+    let shuttingDownBySignal = false;
+    const stopStarter = async (signal: NodeJS.Signals) => {
+      if (!starterSettled) {
+        killProcessGroup(starter.child, signal);
+        const killTimer = setTimeout(() => { killProcessGroup(starter.child, "SIGKILL"); }, 5_000);
+        killTimer.unref();
+        try { await starterDone; } finally { clearTimeout(killTimer); }
+      }
+    };
+    const removeTempRoots = () => {
+      rmSync(consumer, { recursive: true, force: true, maxRetries: 3 });
+      rmSync(starterTmp, { recursive: true, force: true, maxRetries: 3 });
+    };
     const onSignal = (signal: NodeJS.Signals) => {
-      if (!starterSettled) killProcessGroup(starter.child, signal);
-      rmSync(consumer, { recursive: true, force: true });
-      rmSync(starterTmp, { recursive: true, force: true });
-      process.exit(signal === "SIGINT" ? 130 : 143);
+      if (shuttingDownBySignal) return;
+      shuttingDownBySignal = true;
+      process.removeListener("SIGTERM", onSigterm);
+      process.removeListener("SIGINT", onSigint);
+      void stopStarter(signal).finally(() => {
+        removeTempRoots();
+        process.exit(signal === "SIGINT" ? 130 : 143);
+      });
     };
     const onSigterm = () => onSignal("SIGTERM");
     const onSigint = () => onSignal("SIGINT");
@@ -2985,6 +3002,7 @@ assert.equal(typeof (await import("@openlup/platform/tax")).compareTaxRecalculat
     proveInstalledAdapters(consumer);
     proveDockerPostgres(consumer, environment);
     const starterOutcome = await starterDone;
+    if (shuttingDownBySignal) return;
     if (starterOutcome.ok) {
       if (starterOutcome.stdout) process.stdout.write(starterOutcome.stdout);
       if (starterOutcome.stderr) process.stderr.write(starterOutcome.stderr);
@@ -2998,15 +3016,10 @@ assert.equal(typeof (await import("@openlup/platform/tax")).compareTaxRecalculat
     } finally {
       process.removeListener("SIGTERM", onSigterm);
       process.removeListener("SIGINT", onSigint);
-      if (!starterSettled) {
-        killProcessGroup(starter.child, "SIGTERM");
-        const killTimer = setTimeout(() => { killProcessGroup(starter.child, "SIGKILL"); }, 5_000);
-        killTimer.unref();
-        await starterDone;
-        clearTimeout(killTimer);
+      if (!shuttingDownBySignal) {
+        await stopStarter("SIGTERM");
+        removeTempRoots();
       }
-      rmSync(consumer, { recursive: true, force: true });
-      rmSync(starterTmp, { recursive: true, force: true });
     }
   })();
 }
