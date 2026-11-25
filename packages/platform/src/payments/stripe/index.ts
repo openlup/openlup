@@ -260,7 +260,10 @@ function mapVerifiedStripeEvent(raw: Record<string, unknown>): VerificationResul
     ...(historicalCaptureFingerprint ? { historicalCaptureFingerprint } : {}),
     ...(result.kind === "money" && result.outcome === "succeeded" && result.money
       ? { capturedAmountBasis: "provider_capture_v1" as const } : {}),
-    providerAuditPayload: normalized.rawPayload };
+    providerAuditPayload: raw.type === "payment_intent.succeeded" && occurred !== null
+      ? { ...normalized.rawPayload, captureTimeBasis: typeof raw.created === "number" && Number.isSafeInteger(raw.created)
+        ? "signed_event_v1" : "invalid_event_time" }
+      : normalized.rawPayload };
 }
 
 /**

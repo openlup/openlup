@@ -1,7 +1,9 @@
 -- Installation-local attestation. The migration owner qualifies and revokes it.
 CREATE TABLE public.payment_capture_time_test_qualification (
   singleton boolean PRIMARY KEY CHECK (singleton),
-  qualified_at timestamptz NOT NULL
+  qualified_at timestamptz NOT NULL,
+  provider_ref text NOT NULL CHECK (NOT (btrim(provider_ref) = '')),
+  source_path text NOT NULL CHECK (NOT (btrim(source_path) = ''))
 );
 
 CREATE FUNCTION public.payment_read_capture_time(p_order_id uuid, p_intent_id uuid)
@@ -26,6 +28,7 @@ DECLARE
   source_id uuid;
   attempt_id uuid;
   source_kind text;
+  capture_basis jsonb;
   apply_key text;
   money jsonb;
   clock_value jsonb;
@@ -137,7 +140,8 @@ BEGIN
       ELSE EXIT classify;
     END CASE;
     provider := evidence.provider;
-    IF provider = 'stripe' AND route = 'signed_webhook' AND evidence.payload->>'eventType' = 'payment_intent.succeeded' THEN
+    capture_basis := evidence.payload->'captureTimeBasis';
+    IF route = 'signed_webhook' AND capture_basis IN ('"signed_event_v1"'::jsonb, '"invalid_event_time"'::jsonb) THEN
       payment_mode := CASE evidence.payload->'livemode' WHEN 'false'::jsonb THEN 'test' WHEN 'true'::jsonb THEN 'live' ELSE 'unknown' END;
     END IF;
     IF route = 'reconciliation_read' OR evidence.captured_amount_basis IS NOT NULL THEN
@@ -158,17 +162,17 @@ BEGIN
       OR evidence.event_fingerprint IS DISTINCT FROM source->>'payloadFingerprint' THEN
       EXIT classify;
     END IF;
-    IF provider <> 'stripe' AND route = 'signed_webhook' THEN
+    IF route = 'signed_webhook' AND capture_basis IS NULL THEN
       kind := 'unqualified';
       EXIT classify;
     END IF;
 
-    IF NOT isfinite(evidence.created_at) OR (provider = 'stripe' AND (SELECT count(*) FROM public.payment_truth_events t
-      WHERE t.settlement_intent_id = intent.id AND t.state = 'settled' AND t.outcome = 'captured') <> 1) THEN
+    IF NOT isfinite(evidence.created_at) OR (SELECT count(*) FROM public.payment_truth_events t
+      WHERE t.settlement_intent_id = intent.id AND t.state = 'settled' AND t.outcome = 'captured') <> 1 THEN
       EXIT classify;
     END IF;
     IF route = 'signed_webhook' THEN
-      IF evidence.payload->>'eventType' IS DISTINCT FROM 'payment_intent.succeeded' THEN EXIT classify; END IF;
+      IF capture_basis IS DISTINCT FROM '"signed_event_v1"'::jsonb THEN EXIT classify; END IF;
       -- These clocks arrive through the signed ingress audit projection.
       FOREACH clock_value IN ARRAY ARRAY[evidence.payload #> '{openlupReceipt,receivedAt}', evidence.payload #> '{openlupReceipt,recordedAt}',
         evidence.payload #> '{openlupEvidence,providerOccurredAt}'] LOOP
@@ -177,11 +181,11 @@ BEGIN
           OR NOT pg_input_is_valid(clock_value #>> '{}', 'timestamptz') THEN EXIT classify; END IF;
         clocks := array_append(clocks, (clock_value #>> '{}')::timestamptz);
       END LOOP;
-      IF clocks[2] IS DISTINCT FROM evidence.created_at
-        OR clocks[3] IS DISTINCT FROM truth.occurred_at OR clocks[3] <> date_trunc('second', clocks[3]) THEN
+      IF clocks[2] IS DISTINCT FROM evidence.created_at OR clocks[3] IS DISTINCT FROM truth.occurred_at THEN
         EXIT classify;
       END IF;
-      IF payment_mode <> 'test' OR NOT EXISTS (SELECT 1 FROM public.payment_capture_time_test_qualification q WHERE q.singleton) THEN
+      IF payment_mode <> 'test' OR NOT EXISTS (SELECT 1 FROM public.payment_capture_time_test_qualification q
+        WHERE q.singleton AND q.provider_ref = evidence.provider AND q.source_path = route) THEN
         kind := 'unqualified';
         EXIT classify;
       END IF;
@@ -225,10 +229,6 @@ BEGIN
       END LOOP;
       IF clocks[1] IS DISTINCT FROM run.checked_at
         OR (clocks[2] IS NOT NULL AND clocks[2] IS DISTINCT FROM truth.occurred_at) THEN
-        EXIT classify;
-      END IF;
-      IF provider <> 'stripe' THEN
-        kind := 'unqualified';
         EXIT classify;
       END IF;
       kind := 'fallback';

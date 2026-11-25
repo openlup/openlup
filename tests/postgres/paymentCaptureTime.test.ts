@@ -1,14 +1,14 @@
-import { createHmac, randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { Pool, PoolClient } from "pg";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import {
   createPostgresPaymentProviderReconciliationPort, createPostgresPaymentWebhookControlPort,
   createPostgresProviderPaymentControlPort, createPostgresProviderPaymentRail,
-  createPostgresSandboxPaymentSimulator, createVerifiedPaymentIngress,
+  createPostgresSandboxPaymentSimulator,
   runPaymentProviderReconciliationWorker, verifyPaymentAttemptNow,
 } from "@openlup/platform/payments";
-import { createStripePaymentAdapter, createStripePaymentReconciliationProvider } from "@openlup/platform/payments/stripe";
+import type { PaymentAdapter, VerifiedPaymentEvidence } from "@openlup/platform/payments/contracts";
 import {
   createNativeRenewalCodec, createPostgresProviderRenewalBinding, createPostgresRenewalSettlementPort,
   type SubscriptionQueryExecutor,
@@ -21,13 +21,14 @@ import { lifecycleInstallation, type LifecycleInstallation } from "./subscriptio
 import { AT, call, renewal } from "./subscriptionNativeFixture.js";
 
 const options = { dunningTemplateSlug: "dunning", recoveryUrlPath: "/recover", recoveryTemplateSlug: "recovered" };
-const secret = "synthetic-payment-signature";
+const primaryProvider = "fixture-card";
+const otherProvider = "fixture-other";
 const amount = 200;
 const currency = "XXX";
 const scope = "public.payment_capture_time_test_qualification";
 const forward = "_payment_capture_time_read.sql";
 type Db = Pool | PoolClient;
-type Clock = { created: number; observed: string; occurred: string; precise: string };
+type Clock = { observed: string; occurred: string; precise: string };
 type Subject = {
   order: string; client: string; intent: string; attempt: string;
   remote: string; paymentId: string; provider: string; time: Clock;
@@ -47,7 +48,7 @@ let env: LifecycleInstallation;
 
 async function clock(db: Db): Promise<Clock> {
   const { rows: [row] } = await db.query(`SELECT
-    extract(epoch FROM t)::int AS created, to_char(t,'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS occurred,
+    to_char(t,'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS occurred,
     to_char(t + interval '3 seconds','YYYY-MM-DD"T"HH24:MI:SS"Z"') AS observed,
     to_char(t + interval '0.123456 seconds','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS precise
     FROM (SELECT date_trunc('second', now() AT TIME ZONE 'UTC') - interval '1 hour' AS t) clock`);
@@ -67,7 +68,7 @@ async function draft(db: Db, status = "pending_payment") {
   return { order, client };
 }
 
-async function prepared(owner: Db, runtime: Db, provider = "stripe"): Promise<Subject> {
+async function prepared(owner: Db, runtime: Db, provider = primaryProvider): Promise<Subject> {
   const { order, client } = await draft(owner);
   const time = await clock(owner);
   const control = createPostgresProviderPaymentControlPort(runtime, options);
@@ -80,7 +81,7 @@ async function prepared(owner: Db, runtime: Db, provider = "stripe"): Promise<Su
   };
   const { paymentAttemptId: attempt } = await control.prepareProviderAttempt({
     ...request, idempotencyKey: `prepare:${order}`, provider,
-    providerFlow: provider === "tpay" ? "blik_one_time" : "one_time_payment", paymentMethodRef: null, requestPayload: {},
+    providerFlow: "one_time_payment", paymentMethodRef: null, requestPayload: {},
   });
   const remote = `pi_${attempt}`;
   await control.finalizeProviderAttempt({
@@ -91,31 +92,51 @@ async function prepared(owner: Db, runtime: Db, provider = "stripe"): Promise<Su
   return { order, client, intent, attempt, remote, paymentId, provider, time };
 }
 
-function stripe(db: Db, f: Subject, mode: "test" | "live" = "test") {
-  const unused = async (): Promise<never> => { throw new Error("unexpected provider call"); };
-  const adapter = createStripePaymentAdapter({
-    mode, supportedCurrencies: [currency], webhookSigningSecrets: [secret], clock: () => f.time.created + 3,
-    client: {
-      createPaymentIntent: unused, createSetupIntent: unused, ensureCustomer: unused,
-      async retrievePaymentIntent() {
-        return { id: f.remote, status: "succeeded", amount, amount_received: amount, currency: currency.toLowerCase() };
-      },
+function signed(f: Subject, livemode: boolean | string | null = false, occurredAt: string | null = f.time.occurred,
+  basis: "signed_event_v1" | "invalid_event_time" | null = "signed_event_v1"): VerifiedPaymentEvidence {
+  const identity = {
+    provider: f.provider, providerEventId: `evt_${f.attempt}`, providerPaymentRef: f.remote,
+    intentRef: f.intent, attemptRef: null, providerOccurredAt: occurredAt,
+  };
+  return {
+    ...identity, kind: "money", outcome: "succeeded", money: { amountMinor: amount, currency },
+    capturedAmountBasis: "provider_capture_v1",
+    fingerprint: createHash("sha256").update(JSON.stringify(identity)).digest("hex"),
+    providerAuditPayload: {
+      ...(livemode === null ? {} : { livemode }),
+      ...(basis === null ? {} : { captureTimeBasis: basis }),
     },
-  });
-  return createPostgresProviderPaymentRail({ executor: db, adapter, mode, truth: options,
+  };
+}
+
+function rail(db: Db, f: Subject, recorded = signed(f)) {
+  const unused = (): never => { throw new Error("unexpected provider dispatch"); };
+  const adapter: PaymentAdapter = {
+    capabilities: {
+      providerKind: f.provider, captureFlows: [], requiresStoredMandateEvidence: false,
+      assessMandate: () => ({ chargeable: true }), unattendedChargeFlow: "off_session_payment",
+      payerContext: { requiresPayerBlock: false, customerRefFallsBackToContactEmail: false },
+      methodHealth: { requiresCustomerRef: false, requiredMethodKind: null, requiresPayerContact: false },
+      terminalOutcomeReporting: { kind: "status_field", silenceBecomesSuspectAfterMinutes: 360 },
+      mandateUpsertIsSubscriptionScoped: false, supportedCurrencies: [currency], unattended: "supported",
+      readback: "supported", close: "unsupported", exactAbsence: "unsupported", refundObservation: "supported",
+      refundCreate: "unsupported", authorizationCaptureSplit: "unsupported",
+    },
+    attemptPort: { validateInput: unused, execute: unused },
+    verifyPort: { async verifyAndNormalize() { return recorded; } },
+    readbackPort: { async readPayment(input) {
+      expect(input.identity.providerPaymentRef).toBe(f.remote);
+      return { ...input, kind: "succeeded", observedMoney: { amountMinor: amount, currency },
+        providerOccurredAt: null, capturedAmountBasis: "provider_capture_v1" };
+    } },
+  };
+  return createPostgresProviderPaymentRail({ executor: db, adapter, mode: "test", truth: options,
     resolveSavedMethodOwner: async () => null, resolveMethodOwner: async () => null });
 }
 
-function signed(f: Subject, livemode: boolean | string | null = false, created: number | null = f.time.created,
-  type = "payment_intent.succeeded", object: Record<string, unknown> = {}, eventId = `evt_${f.attempt}`) {
-  const payload = { id: eventId, type, ...(livemode === null ? {} : { livemode }), ...(created === null ? {} : { created }),
-    data: { object: { id: f.remote, status: "succeeded", amount, amount_received: amount, currency: currency.toLowerCase(),
-      metadata: { paymentIntentId: f.intent }, ...object } } };
-  const rawBody = Buffer.from(JSON.stringify(payload));
-  const stamp = f.time.created + 3;
-  const digest = createHmac("sha256", secret).update(`${stamp}.`).update(rawBody).digest("hex");
-  return { rawBody, headers: { "stripe-signature": `t=${stamp},v1=${digest}` }, receivedAt: f.time.observed };
-}
+const receive = (db: Db, f: Subject, recorded = signed(f)) => rail(db, f, recorded).ingress.receive({
+  rawBody: new Uint8Array(), headers: {}, receivedAt: f.time.observed,
+});
 
 async function read(db: Db, order: string | null, intent: string | null = null) {
   const { rows } = await db.query(`SELECT to_jsonb(p) capture FROM public.payment_read_capture_time($1::uuid,$2::uuid) p`, [order, intent]);
@@ -123,7 +144,8 @@ async function read(db: Db, order: string | null, intent: string | null = null) 
   return rows[0].capture;
 }
 
-const qualify = (db: Db) => db.query(`INSERT INTO ${scope} (singleton,qualified_at) VALUES (true,now())`);
+const qualify = (db: Db, provider = primaryProvider, sourcePath = "signed_webhook") =>
+  db.query(`INSERT INTO ${scope} (singleton,qualified_at,provider_ref,source_path) VALUES (true,now(),$1,$2)`, [provider, sourcePath]);
 const timeEq = (db: Db, actual: string, expected: string) =>
   db.query("SELECT $1::timestamptz = $2::timestamptz AS equal", [actual, expected]).then(r => expect(r.rows[0].equal).toBe(true));
 const prepare = (provider?: string) => prepared(env.owner, env.runtime, provider);
@@ -146,12 +168,12 @@ it("reads the signed success instant by either selector in the apply transaction
   let applied: Awaited<ReturnType<typeof read>>;
   try {
     await db.query("BEGIN");
-    const delivery = await stripe(db, f).ingress.receive(signed(f));
+    const delivery = await receive(db, f);
     expect(delivery.status).toBe(200);
     applied = await read(db, f.order);
     expect(applied).toMatchObject({
       kind: "authoritative", code: null, order_id: f.order, intent_id: f.intent, evidence_id: delivery.data.paymentEventId,
-      provider: "stripe", payment_mode: "test", route: "signed_webhook", fallback_at: null,
+      provider: primaryProvider, payment_mode: "test", route: "signed_webhook", fallback_at: null,
     });
     expect(await read(env.owner, f.order)).toMatchObject(hold("pending"));
     await db.query("COMMIT");
@@ -164,7 +186,7 @@ it("reads the signed success instant by either selector in the apply transaction
     JOIN public.payment_truth_events t ON t.source_evidence->>'sourceReference'=e.id::text WHERE e.id=$1`,
   [applied.evidence_id])).rows[0];
   expect(applied).toMatchObject({ truth_id: bound.truth_id, settlement_transition_id: bound.settlement_transition_id });
-  expect(bound.payload).toMatchObject({ livemode: false, eventType: "payment_intent.succeeded" });
+  expect(bound.payload).toMatchObject({ livemode: false, captureTimeBasis: "signed_event_v1" });
   await timeEq(env.owner, applied.captured_at, f.time.occurred);
   await timeEq(env.owner, applied.provider_occurred_at, f.time.occurred);
   await timeEq(env.owner, applied.truth_occurred_at, bound.truth_time);
@@ -175,29 +197,38 @@ it("reads the signed success instant by either selector in the apply transaction
     date_trunc('second',$1::timestamptz + offset_seconds * interval '1 second' + interval '0.25 seconds','UTC')
     FROM unnest(ARRAY[1,0,-1]) AS offset_seconds) AS expired`, [applied.captured_at])).rows[0].expired)
     .toEqual([false, true, true]);
-  expect(await stripe(env.runtime, f).ingress.receive(signed(f))).toMatchObject({ status: 200, data: { replayed: true } });
+  expect(await receive(env.runtime, f)).toMatchObject({ status: 200, data: { replayed: true } });
   expect(await read(env.owner, f.order)).toEqual(applied);
-  const refund = signed(f, false, f.time.created + 1, "charge.refunded", {
-    id: `ch_${f.attempt}`, payment_intent: f.remote, amount_refunded: amount, refunded: true,
-  }, `refund_${f.attempt}`);
-  expect(await stripe(env.runtime, f).ingress.receive(refund)).toMatchObject({ status: 200 });
+  const refund = { ...signed(f), outcome: "refunded" as const, providerEventId: `refund_${f.attempt}`,
+    fingerprint: "c".repeat(64), providerOccurredAt: f.time.observed, capturedAmountBasis: undefined, providerAuditPayload: {},
+    refund: { kind: "event-delta" as const, operationId: `refund_${f.attempt}`,
+      originalPaymentMoney: { amountMinor: amount, currency }, refundedMoney: { amountMinor: amount, currency } },
+  };
+  expect(await receive(env.runtime, f, refund)).toMatchObject({ status: 200 });
   expect((await env.owner.query("SELECT status FROM public.commerce_orders WHERE id=$1", [f.order])).rows[0].status).toBe("refunded");
   expect(await read(env.owner, f.order)).toEqual(applied);
 });
 
 it.each([
   [false, false, "test"], [null, true, "unknown"], ["false", true, "unknown"], [true, true, "live"],
-] as const)("holds an applied Stripe mode %s with qualification present=%s", async (mode, qualified, expected) => {
+] as const)("holds an applied signed mode %s with qualification present=%s", async (mode, qualified, expected) => {
   const f = await prepare();
   const db = await env.owner.connect();
   try {
     await db.query("BEGIN");
     if (qualified) await qualify(db);
-    expect(await stripe(db, f, mode === true ? "live" : "test").ingress.receive(signed(f, mode))).toMatchObject({ status: 200 });
+    expect(await receive(db, f, signed(f, mode))).toMatchObject({ status: 200 });
     expect(await read(db, f.order)).toMatchObject({
-      ...hold("unqualified"), provider: "stripe", route: "signed_webhook", payment_mode: expected,
+      ...hold("unqualified"), provider: primaryProvider, route: "signed_webhook", payment_mode: expected,
     });
   } finally { await db.query("ROLLBACK"); db.release(); }
+});
+
+it("holds an applied capture missing the normalized signed time basis", async () => {
+  const f = await prepare();
+  await qualify(env.migration);
+  expect(await receive(env.runtime, f, signed(f, false, f.time.occurred, null))).toMatchObject({ status: 200 });
+  expect(await read(env.owner, f.order)).toMatchObject({ ...hold("unqualified"), payment_mode: "unknown" });
 });
 
 it("keeps a mixed installed population unqualified and holds a bound fractional signed clock", async () => {
@@ -205,15 +236,15 @@ it("keeps a mixed installed population unqualified and holds a bound fractional 
   const db = await env.owner.connect();
   try {
     await db.query("BEGIN");
-    expect(await stripe(db, test).ingress.receive(signed(test))).toMatchObject({ status: 200 });
-    expect(await stripe(db, live, "live").ingress.receive(signed(live, true))).toMatchObject({ status: 200 });
+    expect(await receive(db, test)).toMatchObject({ status: 200 });
+    expect(await receive(db, live, signed(live, true))).toMatchObject({ status: 200 });
     expect((await db.query(`SELECT count(*)::int AS qualification FROM ${scope}`)).rows).toEqual([{ qualification: 0 }]);
     expect(await read(db, test.order)).toMatchObject({ ...hold("unqualified"), payment_mode: "test" });
     expect(await read(db, live.order)).toMatchObject({ ...hold("unqualified"), payment_mode: "live" });
   } finally { await db.query("ROLLBACK"); db.release(); }
   const fractional = await prepare();
   await qualify(env.migration);
-  expect(await stripe(env.runtime, fractional).ingress.receive(signed(fractional, false, fractional.time.created + 0.125)))
+  expect(await receive(env.runtime, fractional, signed(fractional, false, fractional.time.precise, "invalid_event_time")))
     .toMatchObject({ status: 200 });
   expect((await env.owner.query("SELECT status FROM public.commerce_settlement_intents WHERE id=$1", [fractional.intent])).rows)
     .toEqual([{ status: "settled" }]);
@@ -228,13 +259,13 @@ it("keeps missing selectors, absent orders, unpaid attempts and recorded-only de
   expect(await read(env.owner, (await draft(env.owner)).order)).toMatchObject(hold("pending"));
   const f = await prepare();
   expect(await read(env.owner, f.order)).toMatchObject(hold("pending"));
-  expect(await stripe(env.runtime, f).ingress.receive(signed(f, false, null))).toMatchObject({ status: 200 });
+  expect(await receive(env.runtime, f, signed(f, false, null, null))).toMatchObject({ status: 200 });
   expect(await read(env.owner, f.order)).toMatchObject(hold("pending"));
   expect((await env.owner.query("SELECT processing_status FROM public.payment_provider_attempt_evidence WHERE settlement_intent_id=$1", [f.intent])).rows)
     .toEqual([{ processing_status: "received" }]);
   const review = await prepare();
   await env.owner.query("UPDATE public.commerce_orders SET status='cancelled' WHERE id=$1", [review.order]);
-  expect(await stripe(env.runtime, review).ingress.receive(signed(review))).toMatchObject({
+  expect(await receive(env.runtime, review)).toMatchObject({
     status: 200, data: { skipped: "result_manual_review" },
   });
   expect(await read(env.owner, review.order)).toMatchObject(hold("pending"));
@@ -246,7 +277,7 @@ it("does not expose a capture rolled back by its applying transaction", async ()
   const db = await env.owner.connect();
   try {
     await db.query("BEGIN");
-    expect(await stripe(db, f).ingress.receive(signed(f))).toMatchObject({ status: 200 });
+    expect(await receive(db, f)).toMatchObject({ status: 200 });
     expect(await read(db, f.order)).toMatchObject({ kind: "authoritative" });
   } finally { await db.query("ROLLBACK"); db.release(); }
   expect(await read(env.owner, f.order)).toMatchObject(hold("pending"));
@@ -266,19 +297,24 @@ function readbackRequest(f: Subject, precise = false) {
 }
 
 const fallback = {
-  kind: "fallback", code: "capture_time_provider_time_unproven", provider: "stripe",
+  kind: "fallback", code: "capture_time_provider_time_unproven",
   route: "reconciliation_read", payment_mode: "unknown", captured_at: null,
 };
-const readbackProvider = (f: Subject) => createStripePaymentReconciliationProvider({
-  async retrievePaymentIntent() {
-    return { id: f.remote, status: "succeeded", amount, amount_received: amount, currency: currency.toLowerCase() };
+const readbackProvider = (f: Subject) => ({
+  async readPayment({ providerPaymentId }: { providerPaymentId: string }) {
+    expect(providerPaymentId).toBe(f.remote);
+    return { status: "succeeded" as const, providerStatus: "succeeded", amountMinor: amount, currency,
+      capturedAmountBasis: "provider_capture_v1" as const, occurredAt: null, failureReason: null, rawPayload: {} };
   },
 });
 
 it.each(["worker", "verify-now"] as const)("retains the %s observer clock as a diagnostic fallback", async path => {
-  const f = await prepare();
-  const providers = { stripe: readbackProvider(f) };
-  await qualify(env.migration);
+  // The installed claim policy decides which profile the worker can pick up.
+  const { rows: [claimable] } = await env.owner.query<{ provider: string }>(
+    "SELECT provider FROM public.payment_provider_profile(NULL) WHERE claim_stale AND one_time_flow='one_time_payment'");
+  const f = await prepare(path === "worker" ? claimable!.provider : primaryProvider);
+  const providers = { [f.provider]: readbackProvider(f) };
+  await qualify(env.migration, f.provider);
   if (path === "worker") {
     await env.owner.query(`UPDATE public.payment_provider_attempts
       SET updated_at=$2::timestamptz-interval '1 hour',created_at=$2::timestamptz-interval '1 hour' WHERE id=$1`,
@@ -289,7 +325,7 @@ it.each(["worker", "verify-now"] as const)("retains the %s observer clock as a d
       port: recovery(), providers, now: f.time.observed, claimKey: `capture-clock:${f.intent}`,
     })).toMatchObject({ ok: true, corrected: 1 });
   } else {
-    const stored = await stripe(env.runtime, f).readAttempt(f.intent);
+    const stored = await rail(env.runtime, f).readAttempt(f.intent);
     expect(stored).not.toBeNull();
     const snapshot = {
       orderId: f.order, orderClientId: f.client, orderMode: "one_time", paymentIntentId: f.intent,
@@ -302,19 +338,19 @@ it.each(["worker", "verify-now"] as const)("retains the %s observer clock as a d
       now: () => new Date(f.time.observed) })).toMatchObject({ status: "succeeded", applied: true });
   }
   const before = await read(env.owner, f.order);
-  expect(before).toMatchObject({ ...fallback, order_id: f.order, intent_id: f.intent, provider_occurred_at: null });
+  expect(before).toMatchObject({ ...fallback, provider: f.provider, order_id: f.order, intent_id: f.intent, provider_occurred_at: null });
   for (const key of ["fallback_at", "observed_at", "truth_occurred_at"]) await timeEq(env.owner, before[key], f.time.observed);
-  expect(await stripe(env.runtime, f).ingress.receive(signed(f))).toMatchObject({ status: 200 });
+  expect(await receive(env.runtime, f)).toMatchObject({ status: 200 });
   expect(await read(env.owner, f.order)).toEqual(before);
 });
 
 it.each([false, true])("binds the typed renewal carrier with provider time present=%s", async timed => {
   const time = await clock(env.owner);
-  const source = await renewal(env.owner, 10, 1, undefined, false, "stripe");
+  const source = await renewal(env.owner, 10, 1, undefined, false, primaryProvider);
   const codec = createNativeRenewalCodec();
   const frozen = codec.freeze({
     subscription_id: source.subscription, client_id: source.client, cadence_days: 28, template_version: 1,
-    currency_code: currency, stock_source_key: source.source, settlement_channel_key: "stripe", authorization_ref: "frozen-mandate",
+    currency_code: currency, stock_source_key: source.source, settlement_channel_key: primaryProvider, authorization_ref: "frozen-mandate",
     payer_account_ref: null, unattended_charge_authorized_at: AT, next_cycle_number: 2, paid_cycle_count: 2,
     activation_cycle_id: randomUUID(), activation_cycle_paid: true, delivery_admission: "allowed",
     purchase_facts: { templateId: "fixture", shippingAmountMinor: 0, acquisitionRef: null }, lines: source.snapshot.lines,
@@ -331,11 +367,11 @@ it.each([false, true])("binds the typed renewal carrier with provider time prese
   expect(await control.createIntent({
     idempotencyKey: `renewal-intent:${intent}`, targetKind: "subscription_cycle", orderId: order.orderId,
     subscriptionId: source.subscription, subscriptionCycleId: cycle.subscription_cycle_id,
-    amountMinor: amount, currency, channelKey: "stripe", metadata: {}, at: AT,
+    amountMinor: amount, currency, channelKey: primaryProvider, metadata: {}, at: AT,
   })).toMatchObject({ id: intent });
   const request = { paymentIntentId: intent, providerIdempotencyKey: `provider:${intent}`, providerRequestFingerprint: "a".repeat(64) };
   const { paymentAttemptId: attempt } = await control.prepareProviderAttempt({
-    ...request, idempotencyKey: `prepare:${intent}`, provider: "stripe", providerFlow: "off_session_payment", paymentMethodRef: null, requestPayload: {},
+    ...request, idempotencyKey: `prepare:${intent}`, provider: primaryProvider, providerFlow: "off_session_payment", paymentMethodRef: null, requestPayload: {},
   });
   const remote = `pi_${attempt}`;
   const finalized = await control.finalizeProviderAttempt({
@@ -344,12 +380,12 @@ it.each([false, true])("binds the typed renewal carrier with provider time prese
   });
   const readAttempt = (await env.owner.query("SELECT payment_id FROM public.payment_provider_attempts WHERE id=$1", [attempt])).rows[0];
   const f = { order: order.orderId as string, client: source.client, intent, attempt, remote,
-    paymentId: readAttempt.payment_id as string, provider: "stripe", time };
+    paymentId: readAttempt.payment_id as string, provider: primaryProvider, time };
   expect(finalized.paymentAttemptId).toBe(attempt);
 
-  const rail = stripe(env.runtime, f);
-  const base = rail.adapter.readbackPort;
-  if (timed) rail.adapter.readbackPort = {
+  const paymentRail = rail(env.runtime, f);
+  const base = paymentRail.adapter.readbackPort;
+  if (timed) paymentRail.adapter.readbackPort = {
     async readPayment(input) {
       const result = await base.readPayment(input);
       expect(result.kind).toBe("succeeded");
@@ -362,7 +398,7 @@ it.each([false, true])("binds the typed renewal carrier with provider time prese
     catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
   };
   const binding = createPostgresProviderRenewalBinding({
-    enabled: true, channelKey: "stripe", executor: env.runtime, withTransaction, codec, paymentRail: rail, truth: options,
+    enabled: true, channelKey: primaryProvider, executor: env.runtime, withTransaction, codec, paymentRail, truth: options,
     now: () => time.observed, settlement: db => createPostgresRenewalSettlementPort(db, codec, withTransaction), search: async () => [],
   });
   await binding.lifecycle.settlement.acknowledgeExternalAttempt({
@@ -399,7 +435,7 @@ const corruptions = [
   ["truth occurrence", "UPDATE public.payment_truth_events SET occurred_at=occurred_at+interval '1 second' WHERE settlement_intent_id=$1"],
   ["wrong evidence intent", "UPDATE public.payment_provider_attempt_evidence SET settlement_intent_id=NULL WHERE settlement_intent_id=$1"],
   ["wrong evidence attempt", "UPDATE public.payment_provider_attempt_evidence SET payment_attempt_id=NULL WHERE settlement_intent_id=$1"],
-  ["wrong evidence provider", "UPDATE public.payment_provider_attempt_evidence SET provider='tpay' WHERE settlement_intent_id=$1"],
+  ["wrong evidence provider", "UPDATE public.payment_provider_attempt_evidence SET provider='fixture-other' WHERE settlement_intent_id=$1"],
   ["wrong evidence remote reference", "UPDATE public.payment_provider_attempt_evidence SET provider_payment_id='foreign' WHERE settlement_intent_id=$1"],
   ["wrong evidence fingerprint", "UPDATE public.payment_provider_attempt_evidence SET event_fingerprint=repeat('b',64) WHERE settlement_intent_id=$1"],
   ["missing clock", "UPDATE public.payment_provider_attempt_evidence SET payload=payload-'openlupReceipt' WHERE settlement_intent_id=$1"],
@@ -419,12 +455,12 @@ const corruptions = [
 it.each(corruptions)("holds a settled capture with a %s", async (label, mutation) => {
   const f = await prepare();
   await qualify(env.migration);
-  expect(await stripe(env.runtime, f).ingress.receive(signed(f))).toMatchObject({ status: 200 });
+  expect(await receive(env.runtime, f)).toMatchObject({ status: 200 });
   expect(await read(env.owner, f.order)).toMatchObject({ kind: "authoritative" });
   await env.owner.query(mutation, mutation.includes("$2") ? [f.intent, f.time.precise] : [f.intent]);
   expect(await read(env.owner, f.order)).toMatchObject(hold("ambiguous"));
   const replayStatus = ["wrong evidence provider", "wrong evidence fingerprint"].includes(label) ? 503 : 200;
-  expect(await stripe(env.runtime, f).ingress.receive(signed(f))).toMatchObject({ status: replayStatus });
+  expect(await receive(env.runtime, f)).toMatchObject({ status: replayStatus });
   expect(await read(env.owner, f.order)).toMatchObject(hold("ambiguous"));
 });
 
@@ -437,7 +473,7 @@ it.each(["missing", "foreign"] as const)("holds a readback whose winning run is 
     ? "DELETE FROM public.payment_provider_reconciliation_runs WHERE idempotency_key=$1"
     : "UPDATE public.payment_provider_reconciliation_runs SET payment_attempt_id=NULL WHERE idempotency_key=$1",
   [`${request.idempotencyKey}:evidence`]);
-  await recovery().recordEvidence({ idempotencyKey: `later:${f.intent}`, provider: "stripe", providerPaymentId: f.remote,
+  await recovery().recordEvidence({ idempotencyKey: `later:${f.intent}`, provider: primaryProvider, providerPaymentId: f.remote,
     paymentIntentId: f.intent, paymentAttemptId: f.attempt, localStatus: "succeeded", providerStatus: "succeeded",
     checkedAt: f.time.observed, correctionStatus: "observed", payload: request.payload });
   expect(await read(env.owner, f.order)).toMatchObject(hold("ambiguous"));
@@ -451,12 +487,12 @@ it.each(["signed_webhook", "reconciliation_read"] as const)("keeps %s as the win
   try {
     await race.query("BEGIN");
     if (winner === "signed_webhook") {
-      expect(await stripe(race, f).ingress.receive(signed(f))).toMatchObject({ status: 200 });
+      expect(await receive(race, f)).toMatchObject({ status: 200 });
       other = recovery().applyTerminalResult(readbackRequest(f));
     } else {
       const port = createPostgresPaymentProviderReconciliationPort(race, options);
       expect(await port.applyTerminalResult(readbackRequest(f))).toMatchObject({ correctionStatus: "corrected" });
-      other = stripe(env.runtime, f).ingress.receive(signed(f)).then(result => expect(result.status).toBe(200));
+      other = receive(env.runtime, f).then(result => expect(result.status).toBe(200));
     }
     // The committed view cannot see the route while the aggregate lock is held.
     expect(await read(env.owner, f.order)).toMatchObject(hold("pending"));
@@ -471,37 +507,21 @@ it.each(["signed_webhook", "reconciliation_read"] as const)("keeps %s as the win
     WHERE settlement_intent_id=$1 AND state='settled' AND outcome='captured'`, [f.intent])).rows).toEqual([{ settled: 1 }]);
 });
 
-function tpay(db: Db, f: Subject) {
-  const providerEventId = `${f.remote}:succeeded`;
-  const delivery = { rawBody: Buffer.from("recorded tpay test delivery"), headers: {}, receivedAt: f.time.observed };
-  return {
-    providerEventId,
-    deliver: () => createVerifiedPaymentIngress({
-      provider: "tpay", paymentControlPort: createPostgresPaymentWebhookControlPort(db, options),
-      verifyPort: { async verifyAndNormalize(input) {
-        expect(input).toEqual(delivery);
-        return {
-          kind: "money", provider: "tpay", providerEventId, providerPaymentRef: f.remote,
-          intentRef: f.intent, attemptRef: null, providerOccurredAt: f.time.occurred,
-          outcome: "succeeded", money: { amountMinor: amount, currency }, capturedAmountBasis: "provider_capture_v1",
-          fingerprint: "b".repeat(64),
-        };
-      } },
-    }).receive(delivery),
-  };
-}
-
-it("classifies a current bound Tpay capture as unsupported", async () => {
-  const f = await prepare("tpay");
-  expect(await tpay(env.runtime, f).deliver()).toMatchObject({ status: 200 });
+it("holds a bound signed capture whose provider or source differs from the owner record", async () => {
+  const f = await prepare(otherProvider);
+  expect(await receive(env.runtime, f)).toMatchObject({ status: 200 });
   expect((await env.owner.query("SELECT captured_amount_basis FROM public.payment_provider_attempt_evidence WHERE settlement_intent_id=$1", [f.intent])).rows)
     .toEqual([{ captured_amount_basis: "provider_capture_v1" }]);
-  expect(await read(env.owner, f.order)).toMatchObject({
-    ...hold("unqualified"), provider: "tpay", route: "signed_webhook", payment_mode: "unknown",
-  });
+  await qualify(env.migration);
+  const expected = { ...hold("unqualified"), provider: f.provider, route: "signed_webhook", payment_mode: "test" };
+  expect(await read(env.owner, f.order)).toMatchObject(expected);
+  await env.migration.query(`UPDATE ${scope} SET provider_ref=$1,source_path=$2`, [f.provider, "reconciliation_read"]);
+  expect(await read(env.owner, f.order)).toMatchObject(expected);
+  await env.migration.query(`UPDATE ${scope} SET source_path=$1`, ["signed_webhook"]);
+  expect(await read(env.owner, f.order)).toMatchObject({ kind: "authoritative", provider: f.provider, payment_mode: "test" });
 });
 
-it("retains predecessor captures and classifies Tpay identically after verified fingerprint enrichment", async () => {
+it("retains predecessor captures and classifies excluded evidence identically after verified fingerprint enrichment", async () => {
   const container = await runPostgresContainer({ name: `capture-predecessor-${process.pid}`, password: "synthetic-conformance" });
   const { Pool } = await import("pg");
   const db = new Pool({ connectionString: container.connectionString, options: "-c timezone=UTC" });
@@ -512,9 +532,9 @@ it("retains predecessor captures and classifies Tpay identically after verified 
     expect(beforeEvidence).toBeGreaterThan(0);
     for (const unit of [manifest.baseline, ...manifest.forward.slice(0, beforeEvidence)]) await db.query(readFileSync(unit.file, "utf8"));
     const staged: { f: Subject; id: string }[] = [];
-    for (const provider of ["tpay", "stripe"]) {
+    for (const provider of [otherProvider, primaryProvider]) {
       const f = await prepared(db, db, provider);
-      const event = provider === "tpay" ? tpay(db, f).providerEventId : `evt_${f.attempt}`;
+      const event = signed(f).providerEventId;
       const { paymentEvent: { id } } = await call(db, "payment_provider_event_ingest", [
         provider, event, "payment.succeeded", f.remote, f.intent, f.attempt, null, null, true, { eventType: "recorded_success" },
       ]);
@@ -536,9 +556,10 @@ it("retains predecessor captures and classifies Tpay identically after verified 
     }
     const { f, id } = staged[0]!;
     const before = await evidence(id);
-    expect(await tpay(db, f).deliver()).toMatchObject({ status: 200, data: { paymentEventId: id, replayed: true } });
-    expect(await evidence(id)).toEqual({ ...before, event_fingerprint: "b".repeat(64) });
-    expect(await read(db, f.order)).toMatchObject({ ...hold("unqualified"), provider: "tpay", route: "signed_webhook" });
+    const delivery = signed(f, null, f.time.occurred, null);
+    expect(await receive(db, f, delivery)).toMatchObject({ status: 200, data: { paymentEventId: id, replayed: true } });
+    expect(await evidence(id)).toEqual({ ...before, event_fingerprint: delivery.fingerprint });
+    expect(await read(db, f.order)).toMatchObject({ ...hold("unqualified"), provider: f.provider, route: "signed_webhook" });
     await db.query("UPDATE public.payment_provider_attempt_evidence SET provider_payment_id='foreign' WHERE id=$1", [id]);
     expect(await read(db, f.order)).toMatchObject(hold("ambiguous"));
   } finally { await closePostgres(container, db); }
@@ -569,7 +590,7 @@ it("carries signed evidence through same-profile restore and requires target-loc
     const source = await resources.installation("capture-clock-source");
     const target = await resources.installation("capture-clock-target");
     const f = await prepared(source.owner, source.runtime);
-    expect(await stripe(source.runtime, f).ingress.receive(signed(f))).toMatchObject({ status: 200 });
+    expect(await receive(source.runtime, f)).toMatchObject({ status: 200 });
     await qualify(source.owner);
     const captured = await read(source.owner, f.order);
     expect(captured).toMatchObject({ kind: "authoritative" });
@@ -584,7 +605,7 @@ it("carries signed evidence through same-profile restore and requires target-loc
     await target.owner.query(`DELETE FROM ${scope}`);
     expect(await restore()).toMatchObject({ replayed: false, captureSha256: packet.sha256 });
     expect(await read(target.owner, f.order)).toMatchObject({
-      ...hold("unqualified"), provider: "stripe", payment_mode: "test", route: "signed_webhook",
+      ...hold("unqualified"), provider: primaryProvider, payment_mode: "test", route: "signed_webhook",
     });
     expect((await target.owner.query(`SELECT * FROM ${scope}`)).rows).toEqual([]);
     await qualify(target.owner);

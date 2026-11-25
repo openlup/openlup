@@ -101,6 +101,29 @@ describe("opt-in payment factory", () => {
     expect(await adapter.verifyPort.verifyAndNormalize(signed(event("payment_intent.succeeded", {}, { livemode: true })))).toEqual({ kind: "refusal", reason: "unsupported-event" });
     expect(() => createStripePaymentAdapter({ ...config, toleranceSeconds: NaN })).toThrow();
   });
+  it("projects capture time from a verified whole-second success event outside event identity", async () => {
+    const { adapter, config } = subject();
+    const success = (extra: Record<string, unknown>) => signed(event("payment_intent.succeeded", {}, extra));
+    const verify = (extra: Record<string, unknown>) => adapter.verifyPort.verifyAndNormalize(success(extra));
+    const instant = new Date(timestamp * 1000).toISOString();
+    const verified = await verify({ livemode: false });
+    expect(verified).toMatchObject({
+      kind: "money", providerOccurredAt: instant, capturedAmountBasis: "provider_capture_v1",
+      providerAuditPayload: { livemode: false, captureTimeBasis: "signed_event_v1" },
+    });
+    expect(await verify({ livemode: "false" })).toMatchObject({
+      fingerprint: "fingerprint" in verified ? verified.fingerprint : undefined,
+      providerAuditPayload: { captureTimeBasis: "signed_event_v1" },
+    });
+    for (const created of [timestamp + 0.0001, timestamp + 0.125, instant]) {
+      expect(await verify({ livemode: false, created })).toMatchObject({
+        kind: "money", capturedAmountBasis: "provider_capture_v1", providerAuditPayload: { captureTimeBasis: "invalid_event_time" },
+      });
+    }
+    expect(await verify({ livemode: false, created: undefined })).toMatchObject({ kind: "money", providerOccurredAt: null });
+    expect(await createStripePaymentAdapter({ ...config, mode: "live" }).verifyPort.verifyAndNormalize(success({ livemode: true })))
+      .toMatchObject({ providerAuditPayload: { livemode: true, captureTimeBasis: "signed_event_v1" } });
+  });
   it("preserves dispute outcome, payment linkage and original money", async () => {
     const { adapter } = subject();
     expect(await adapter.verifyPort.verifyAndNormalize(signed(event("charge.dispute.created", { id: "dp_fixture", payment_intent: "pi_fixture" })))).toMatchObject({

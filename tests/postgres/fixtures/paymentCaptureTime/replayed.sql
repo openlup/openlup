@@ -1,4 +1,4 @@
-SELECT plan(8);
+SELECT plan(10);
 SELECT has_function('public','payment_read_capture_time',ARRAY['uuid','uuid'],'exact selector signature');
 SELECT is(
   pg_get_function_result('public.payment_read_capture_time(uuid,uuid)'::regprocedure),
@@ -16,6 +16,10 @@ SELECT is_empty($q$SELECT a.grantee FROM pg_class c, aclexplode(coalesce(c.relac
   WHERE c.oid='public.payment_capture_time_test_qualification'::regclass AND a.grantee<>c.relowner$q$,
   'qualification table ACL is owner-only');
 SELECT is_empty($q$SELECT * FROM public.payment_capture_time_test_qualification$q$,'forward leaves qualification empty');
-SELECT throws_ok($q$INSERT INTO public.payment_capture_time_test_qualification(singleton,qualified_at) VALUES(false,now())$q$,
+SELECT columns_are('public','payment_capture_time_test_qualification',
+  ARRAY['singleton','qualified_at','provider_ref','source_path'],'exact qualification columns');
+SELECT throws_ok($q$INSERT INTO public.payment_capture_time_test_qualification VALUES(false,now(),'fixture-card','signed_webhook')$q$,
   '23514',NULL,'qualification key is checked');
+SELECT throws_ok($q$INSERT INTO public.payment_capture_time_test_qualification VALUES(true,now(),'  ','signed_webhook')$q$,
+  '23514',NULL,'qualified provider reference is nonblank');
 SELECT * FROM finish();
