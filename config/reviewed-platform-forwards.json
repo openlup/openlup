@@ -9576,6 +9576,29 @@
           "ALTER TABLE public.commerce_order_items ADD COLUMN line_key text;",
           "ALTER TABLE public.commerce_order_items ADD CONSTRAINT commerce_order_items_money_source_fkey\n  FOREIGN KEY (order_id, line_key) REFERENCES public.commerce_order_line_sources(order_id, line_key) DEFERRABLE INITIALLY DEFERRED;"
         ]
+      },
+      {
+        "row": "order-money-v2-assert",
+        "path": "db/platform/migrations/20261128130000_order_money_v2_assert.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.commerce_order_assert_line_sum()",
+            "beforeSha256": "6a15c3f2873f5b1799dedb1ff1ce81ef843251e4a292a18f71df64aa492dede7",
+            "searchPath": "public, pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.commerce_order_money_v2_assert(uuid,boolean,boolean,jsonb,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_order_money_v2_live_body(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -13818,6 +13841,27 @@
       "path": "db/platform/migrations/20261128120000_order_money_v2_storage.sql",
       "sha256": "02be68382a7a0e2c62010ef2bca993deaa756f0c860357d6be13d7dd2d5fb45b",
       "functions": []
+    },
+    {
+      "path": "db/platform/migrations/20261128130000_order_money_v2_assert.sql",
+      "sha256": "b85ebbf994c809e56091d41bb93f7a2ee9ec79d8d892b91bb1b3bfec325207b6",
+      "functions": [
+        {
+          "signature": "public.commerce_order_assert_line_sum()",
+          "beforeSha256": "6a15c3f2873f5b1799dedb1ff1ce81ef843251e4a292a18f71df64aa492dede7",
+          "afterSha256": "07c1782a1b27e52d47a7a9824b51af6a8db5a2fdb7cef43c27d89b6d80db8603"
+        },
+        {
+          "signature": "public.commerce_order_money_v2_assert(uuid,boolean,boolean,jsonb,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "40e5774558e951f8d58def53e445a99d8d390fc1f889b685451b9359deaadd07"
+        },
+        {
+          "signature": "public.commerce_order_money_v2_live_body(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "8d9d402e1f1b887b2cdd26f8222b133d3d5a4e680b659a03291ae626e509b854"
+        }
+      ]
     }
   ],
   "managedExactForwards": [

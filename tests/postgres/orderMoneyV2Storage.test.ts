@@ -4,7 +4,7 @@ import { isCatalogueMoneyV2RateDecimal } from "@openlup/core/pricing";
 import { captureCompatiblePostgresRows, PostgresTransferError } from "@openlup/platform/portability";
 import { commerceQuoteV2Schema, quoteDigest, type CommerceQuoteMoneyV2 } from "@openlup/platform/pricing";
 import type { Pool, PoolClient } from "pg";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { readPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import type { ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
@@ -17,11 +17,27 @@ import {
   seedSku, snapshots, sources, storageTables, transaction, uniqueMessage, version,
 } from "./orderMoneyV2Storage.fixture.js";
 
+const restoreFixture = vi.hoisted(() => ({ root: undefined as string | undefined }));
+vi.mock(import("../../scripts/platform-migration-manifest.js"), async original => {
+  const catalogue = await original();
+  return {
+    ...catalogue,
+    readPlatformMigrationManifest: (root: string) => catalogue.readPlatformMigrationManifest(restoreFixture.root ?? root),
+    readPlatformMigrations: (root: string) => catalogue.readPlatformMigrations(restoreFixture.root ?? root),
+  };
+});
+
 const manifest = readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest | null;
 if (manifest?.schemaVersion !== 3) throw new Error("Complete native catalogue required");
 const unit = manifest.forward.find(entry => entry.file.endsWith("_order_money_v2_storage.sql"));
 if (!unit) throw new Error("Order money storage forward missing");
 const position = manifest.qualified.forward.indexOf(manifest.qualified.forward.find(entry => entry.file === unit.file)!);
+const storageBoundary = structuredClone(manifest);
+for (const plan of [storageBoundary, storageBoundary.qualified, storageBoundary.qualifiedAdmin]) {
+  plan.forward = plan.forward.slice(0, plan.forward.findIndex(entry => entry.file === unit.file) + 1);
+}
+storageBoundary.qualified.objectInventorySha256.bootstrapMigrator.withRestore =
+  "4f145336f360df45e2e00cc705582ea4c264f1c4658b8342e94efe2bf04520ab";
 const precedingInventory = "f0fb77762e832f9ef629e5c9e4b87f5a07f6794d391150b739577cb836c93755";
 const functions = [
   "public.commerce_order_assert_line_sum()",
@@ -67,22 +83,25 @@ async function nativeDraft(db: Pool) {
 }
 
 beforeAll(async () => {
-  const predecessor = structuredClone(manifest);
+  const predecessor = structuredClone(storageBoundary);
   for (const plan of [predecessor, predecessor.qualified, predecessor.qualifiedAdmin]) {
     const own = plan.forward.findIndex(entry => entry.file === unit.file);
     expect(own).toBeGreaterThan(0);
     plan.forward = plan.forward.slice(0, own);
   }
   predecessor.qualified.objectInventorySha256.bootstrapMigrator.withRestore = precedingInventory;
-  store = await withPlatformCatalog(predecessor, root => installAccountMutations("bootstrap", false, "order-storage-prefix", root));
-  expect(store.inventory).toBe(precedingInventory);
-  sku = await seedSku(store.owner);
-  predecessorOrder = await nativeDraft(store.runtime);
-  predecessorRows = await priorOrderRows();
-  beforeDefinitions = await definitions(store.owner);
-  const sql = "SELECT catalog_path,sha256,position FROM public.platform_schema_migrations WHERE position=$1";
-  expect((await store.owner.query(sql, [position + 1])).rows).toEqual([]);
-  applied = (await store.runner.apply()).applied;
+  await withPlatformCatalog(storageBoundary, async current => {
+    store = await withPlatformCatalog(predecessor, root =>
+      installAccountMutations("bootstrap", false, "order-storage-prefix", root, current));
+    expect(store.inventory).toBe(precedingInventory);
+    sku = await seedSku(store.owner);
+    predecessorOrder = await nativeDraft(store.runtime);
+    predecessorRows = await priorOrderRows();
+    beforeDefinitions = await definitions(store.owner);
+    const sql = "SELECT catalog_path,sha256,position FROM public.platform_schema_migrations WHERE position=$1";
+    expect((await store.owner.query(sql, [position + 1])).rows).toEqual([]);
+    applied = (await store.runner.apply()).applied;
+  });
   priorSource = priorPacket(await capture(store.owner, store.inventory, "prior-order-store"));
   live = await transaction(store.owner, db => seedPrivateFacts(db, sku));
   erased = await transaction(store.owner, db => seedPrivateFacts(db, sku, true));
@@ -325,31 +344,38 @@ function priorPacket(current: ConnectedNativeStoreCapture): ConnectedNativeStore
 }
 
 it("refuses the predecessor packet and restores the current six-table graph with row-text equality and replay", async () => {
-  const target = await installAccountMutations("bootstrap", false, "order-storage-target");
-  try {
-    if (target.installation.generation === "legacy") throw new Error("Qualified owner restore required");
-    // Preserve the incumbent graph in the predecessor packet. Its order and item bytes came from the prior installation.
-    const packet = await capture(store.owner, store.inventory, "current-order-store");
-    expect(packet.owned.filter(row => storageTables.some(name => name === row.table)).map(row => [row.table, row.rows.length]))
-      .toEqual(storageTables.map((name, index) => [name, [2, 2, 4, 4, 6, 2][index]]));
-    const taxIndex = packet.owned.findIndex(row => row.table === "tax_calculations");
-    expect(packet.owned.slice(taxIndex + 1, taxIndex + 7).map(row => row.table)).toEqual(storageTables);
-    const freshTarget = await capture(target.migrator, target.inventory, "empty-target");
-    const input = { owner: target.migrator, installation: target.installation, freshTarget };
-    const remedy = "capture the source and restore it with the same OpenLup version on a pristine target of the same profile; upgrade the source within its installed profile first if it is older";
-    const error = await rejected(restoreConnectedNativeStore({ ...input, packet: priorSource }));
-    expect(Object.getPrototypeOf(error)).toBe(PostgresTransferError.prototype);
-    expect(Reflect.ownKeys(error as object).filter(key => key !== "stack").sort())
-      .toStrictEqual(["code", "message", "name", "remedy", "table"]);
-    expect(error).toMatchObject({ code: "schema_conflict", table: undefined, remedy,
-      message: `postgres_transfer_schema_conflict (${remedy})` });
-    expect((await capture(target.migrator, target.inventory, "post-refusal")).owned).toStrictEqual(freshTarget.owned);
-    await expect(restoreConnectedNativeStore({ ...input, packet })).resolves.toMatchObject({ captureSha256: packet.sha256, replayed: false });
-    await expect(restoreConnectedNativeStore({ ...input, packet })).resolves.toMatchObject({ captureSha256: packet.sha256, replayed: true });
-    const restored = await capture(target.migrator, target.inventory, "restored-target");
-    expect(restored.owned).toStrictEqual(packet.owned);
-    expect(restored.compatible.tables).toStrictEqual(packet.compatible.tables);
-  } finally { await target.close(); }
+  await withPlatformCatalog(storageBoundary, async root => {
+    const target = await installAccountMutations("bootstrap", false, "order-storage-target", root);
+    // The adapter must read the same exact-current catalogue as these storage-only fixtures.
+    restoreFixture.root = root;
+    try {
+      if (target.installation.generation === "legacy") throw new Error("Qualified owner restore required");
+      // Preserve the incumbent graph in the predecessor packet. Its order and item bytes came from the prior installation.
+      const packet = await capture(store.owner, store.inventory, "current-order-store");
+      expect(packet.owned.filter(row => storageTables.some(name => name === row.table)).map(row => [row.table, row.rows.length]))
+        .toEqual(storageTables.map((name, index) => [name, [2, 2, 4, 4, 6, 2][index]]));
+      const taxIndex = packet.owned.findIndex(row => row.table === "tax_calculations");
+      expect(packet.owned.slice(taxIndex + 1, taxIndex + 7).map(row => row.table)).toEqual(storageTables);
+      const freshTarget = await capture(target.migrator, target.inventory, "empty-target");
+      const input = { owner: target.migrator, installation: target.installation, freshTarget };
+      const remedy = "capture the source and restore it with the same OpenLup version on a pristine target of the same profile; upgrade the source within its installed profile first if it is older";
+      const error = await rejected(restoreConnectedNativeStore({ ...input, packet: priorSource }));
+      expect(Object.getPrototypeOf(error)).toBe(PostgresTransferError.prototype);
+      expect(Reflect.ownKeys(error as object).filter(key => key !== "stack").sort())
+        .toStrictEqual(["code", "message", "name", "remedy", "table"]);
+      expect(error).toMatchObject({ code: "schema_conflict", table: undefined, remedy,
+        message: `postgres_transfer_schema_conflict (${remedy})` });
+      expect((await capture(target.migrator, target.inventory, "post-refusal")).owned).toStrictEqual(freshTarget.owned);
+      await expect(restoreConnectedNativeStore({ ...input, packet })).resolves.toMatchObject({ captureSha256: packet.sha256, replayed: false });
+      await expect(restoreConnectedNativeStore({ ...input, packet })).resolves.toMatchObject({ captureSha256: packet.sha256, replayed: true });
+      const restored = await capture(target.migrator, target.inventory, "restored-target");
+      expect(restored.owned).toStrictEqual(packet.owned);
+      expect(restored.compatible.tables).toStrictEqual(packet.compatible.tables);
+    } finally {
+      restoreFixture.root = undefined;
+      await target.close();
+    }
+  });
 }, postgresSetupTimeoutMs);
 
 it("detects disabled dormancy and orphan constraints with the same failing writes", async () => {

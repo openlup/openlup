@@ -1,0 +1,436 @@
+import { createHash, randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { performance } from "node:perf_hooks";
+import type { PoolClient } from "pg";
+import { afterAll, beforeAll, expect, it } from "vitest";
+import { flatTestTimeoutMs } from "../../scripts/ci-vitest-duration-keys.js";
+import { readPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
+import { withPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
+import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
+import { installAccountMutations, type AccountMutationsStore } from "./customerAccountMutations.fixture.js";
+import { issue, type Evidence, write } from "./orderMoneyV2Guards.fixture.js";
+import {
+  calculationKey, checkMessage, expectSqlError, foreignKeyMessage, insert, itemFk, itemTable, orderFk, orderTable, quoteKey,
+  rejected, seedSku, snapshots, sources, transaction, uniqueMessage, version,
+} from "./orderMoneyV2Storage.fixture.js";
+
+const manifest = readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest | null;
+if (manifest?.schemaVersion !== 3) throw new Error("Expected native catalogue");
+const unit = manifest.forward.find(entry => entry.file.endsWith("_order_money_v2_assert.sql"));
+if (!unit) throw new Error("Expected order money assertion forward");
+const position = manifest.qualified.forward.findIndex(entry => entry.file === unit.file);
+const prefixInventory = "4f145336f360df45e2e00cc705582ea4c264f1c4658b8342e94efe2bf04520ab";
+const routine = "public.commerce_order_money_v2_assert(uuid,boolean,boolean,jsonb,jsonb)";
+const liveBody = "public.commerce_order_money_v2_live_body";
+const path = "db/platform/migrations/20261125010000_catalog_purchase_admission.sql";
+const message = "commerce_order_money_v2_mismatch";
+const restoreTables = ["commerce_order_tax_snapshots", "commerce_order_line_sources", "commerce_order_delivery_buckets",
+  "commerce_order_line_allocations", "commerce_order_tax_positions", "commerce_order_fee_lines", "identity_privacy_erasures"];
+let store: AccountMutationsStore;
+let sku: Awaited<ReturnType<typeof seedSku>>;
+let applied: string[];
+
+const writeChecked = (evidence: Evidence, options?: Parameters<typeof write>[3]) =>
+  transaction(store.owner, db => write(db, evidence, sku, options));
+
+async function expectMismatch(result: Promise<unknown>, field: string) {
+  const error = await rejected(result);
+  expectSqlError(error, "23514", message);
+  expect(error).toMatchObject({ column: field, detail: undefined });
+}
+
+async function defs() {
+  return (await store.owner.query<{ source: string }>(`SELECT pg_get_functiondef(p.oid) as source
+    FROM pg_proc p WHERE p.oid IN ('public.catalog_order_acceptance_final(uuid)'::regprocedure,
+    'public.catalog_order_line_sum_acceptance(uuid,uuid,public.commerce_orders,public.commerce_orders)'::regprocedure,
+    'public.commerce_create_order_draft_with_outbox(text,jsonb,jsonb,uuid)'::regprocedure) ORDER BY p.proname`)).rows;
+}
+let predecessorDefinitions: Awaited<ReturnType<typeof defs>>;
+
+beforeAll(async () => {
+  const prefix = structuredClone(manifest);
+  for (const plan of [prefix, prefix.qualified, prefix.qualifiedAdmin]) {
+    const index = plan.forward.findIndex(entry => entry.file === unit.file);
+    plan.forward = plan.forward.slice(0, index);
+  }
+  prefix.qualified.objectInventorySha256.bootstrapMigrator.withRestore = prefixInventory;
+  await withPlatformCatalog(prefix, async root => {
+    store = await installAccountMutations("bootstrap", false, "order-guards-prefix", root);
+    predecessorDefinitions = await defs();
+    sku = await seedSku(store.owner);
+    applied = (await store.runner.apply()).applied;
+  });
+}, postgresSetupTimeoutMs);
+
+afterAll(() => store?.close(), postgresTeardownTimeoutMs);
+
+it("applies its own forward and preserves the other checkout definitions", async () => {
+  expect(applied.slice(0, 1)).toEqual([unit.file]);
+  expect((await store.owner.query("SELECT catalog_path,sha256,position FROM public.platform_schema_migrations WHERE position=$1",
+    [position + 1])).rows).toEqual([{ catalog_path: unit.file, sha256: unit.sha256, position: position + 1 }]);
+  expect(await defs()).toStrictEqual(predecessorDefinitions);
+});
+
+it("order_money_legacy_block_byte_identity", async () => {
+  const { rows: [row] } = await store.owner.query<{ prosrc: string }>(
+    "SELECT prosrc FROM pg_proc WHERE oid='public.commerce_order_assert_line_sum()'::regprocedure");
+  const block = row!.prosrc.slice(row!.prosrc.indexOf("  SELECT total_amount_minor"),
+    row!.prosrc.lastIndexOf("\n\n  PERFORM public.catalog_order_line_sum_acceptance(v_order_id);") + 1);
+  expect(Buffer.from(block)).toEqual(Buffer.from(readFileSync(path, "utf8").split("\n").slice(931, 955).join("\n") + "\n"));
+  expect(Buffer.byteLength(block)).toBe(939);
+  expect(createHash("sha256").update(block).digest("hex")).toBe("c1b997aff2e805edd7496b8714cdc66ad554c00c81766e88c6bf37fbd6fa2b5c");
+
+  const amount = { currency: "XXX", amountMinor: 100 };
+  const line = { sku: sku.sku, quantity: 1, unitPriceGross: amount, lineSubtotalGross: amount };
+  const context = { mode: "one_time", promoCodes: [] };
+  const quote = { contractVersion: "commerce.v0", quote: { currency: "XXX", context, lines: [line], totalGross: amount } };
+  const draft = { contractVersion: "commerce.v0", source: "commerce.order_draft.bff.v0", status: "draft",
+    paymentStatus: "not_started", currency: "XXX", context, lines: [line], totals: { totalGross: amount } };
+  const { rows: [response] } = await store.runtime.query<{ value: { orderDraft: { orderId: string } } }>(
+    "SELECT public.commerce_create_order_draft_with_outbox($1,$2,$3,NULL) AS value", [randomUUID(), quote, draft]);
+  const id = response!.value.orderDraft.orderId.slice("order_".length);
+  expect((await store.runtime.query(`SELECT o.money_version,i.line_key FROM public.commerce_orders o
+    JOIN public.commerce_order_items i ON i.order_id=o.id WHERE o.id=$1`, [id])).rows)
+    .toEqual([{ money_version: null, line_key: null }]);
+  expectSqlError(await rejected(store.runtime.query("UPDATE public.commerce_orders SET total_amount_minor=101 WHERE id=$1", [id])),
+    "23514", "commerce_order_line_sum_mismatch");
+});
+
+it("reconstructs the accepted money digest for the owner and refuses direct runtime access", async () => {
+  const evidence = await issue(store, sku, false);
+  const { id } = await writeChecked(evidence);
+  const { rows } = await store.owner.query(`
+    SELECT accepted_money_digest AS accepted,
+      encode(sha256(convert_to(public.catalog_publication_canonical(
+        jsonb_build_array('commerce.quote-money.v2',${liveBody}(order_id)),0),'UTF8')),'hex') AS replayed
+    FROM public.commerce_order_tax_snapshots WHERE order_id=$1`, [id]);
+  expect(rows).toEqual([{ accepted: evidence.quote.moneyDigest, replayed: evidence.quote.moneyDigest }]);
+  expectSqlError(await rejected(store.runtime.query(`SELECT ${liveBody}($1)`, [id])), "42501",
+    "permission denied for function commerce_order_money_v2_live_body");
+});
+
+it.each([true, false])("checks a fresh composition seal and commits valid money with inclusive=%s", async inclusive => {
+  const evidence = await issue(store, sku, inclusive);
+  const { id, itemIds } = await writeChecked(evidence);
+  await expect(store.runtime.query("UPDATE public.commerce_orders SET updated_at=now() WHERE id=$1", [id])).resolves.toBeDefined();
+  await expectMismatch(store.runtime.query("UPDATE public.commerce_orders SET money_version=NULL WHERE id=$1", [id]), "/moneyVersion");
+  await expectMismatch(store.runtime.query("UPDATE public.commerce_orders SET total_amount_minor=101 WHERE id=$1", [id]), "/payableMinor");
+  await expectMismatch(store.runtime.query("UPDATE public.commerce_orders SET currency_code='ZZZ' WHERE id=$1", [id]), "/payableMinor");
+  await expectMismatch(transaction(store.runtime, db => insert(db, itemTable, {
+    order_id: id, sku_id: sku.id, line_ordinal: 2, quantity: 1, unit_amount_minor: 0, line_amount_minor: 0,
+  })), "/lines");
+  await expectMismatch(transaction(store.runtime, db => insert(db, itemTable, {
+    order_id: id, sku_id: sku.id, line_ordinal: 2, quantity: 1, unit_amount_minor: 0, line_amount_minor: 0,
+    line_key: evidence.quote.lines[0]!.lineKey,
+  })), "/lines");
+  await expectMismatch(store.runtime.query("DELETE FROM public.commerce_order_items WHERE id=$1", [itemIds[0]]), "/lines");
+  await expect(store.runtime.query(`SELECT ${routine.split("(")[0]}($1,true,true)`, [id])).resolves.toBeDefined();
+  await expect(store.runtime.query("SELECT 1 FROM public.commerce_order_tax_snapshots")).rejects.toMatchObject({ code: "42501" });
+});
+
+it("preserves the named foreign-key refusals at runtime", async () => {
+  const bad = randomUUID(), legacy = randomUUID();
+  expectSqlError(await rejected(transaction(store.runtime, db => insert(db, orderTable, {
+    id: bad, money_version: version, currency_code: "XXX", total_amount_minor: 100,
+  }))), "23503", foreignKeyMessage(orderTable, orderFk), orderFk);
+  await transaction(store.runtime, db => insert(db, orderTable, { id: legacy, currency_code: "XXX", total_amount_minor: 0 }));
+  expectSqlError(await rejected(transaction(store.runtime, db => insert(db, itemTable, {
+    order_id: legacy, sku_id: sku.id, line_ordinal: 1, quantity: 1, unit_amount_minor: 0, line_amount_minor: 0, line_key: "missing",
+  }))), "23503", foreignKeyMessage(itemTable, itemFk), itemFk);
+});
+
+it("refuses both sides of a move across legacy and versioned orders", async () => {
+  const evidence = await issue(store, sku, false);
+  const v2 = await writeChecked(evidence);
+  const legacy = randomUUID(), item = randomUUID();
+  await transaction(store.owner, async db => {
+    await insert(db, orderTable, { id: legacy, currency_code: "XXX", total_amount_minor: 0 });
+    await insert(db, itemTable, { id: item, order_id: legacy, sku_id: sku.id, line_ordinal: 2, quantity: 1,
+      unit_amount_minor: 0, line_amount_minor: 0 });
+  });
+  await expectMismatch(store.owner.query("UPDATE public.commerce_order_items SET order_id=$2,line_key=NULL WHERE id=$1", [v2.itemIds[0], legacy]), "/lines");
+  await expectMismatch(store.owner.query("UPDATE public.commerce_order_items SET order_id=$2,line_key=$3 WHERE id=$1", [item, v2.id, evidence.quote.lines[0]!.lineKey]), "/lines");
+  await expectMismatch(store.owner.query("DELETE FROM public.commerce_order_items WHERE id=$1", [v2.itemIds[0]]), "/lines");
+  expect((await store.owner.query("SELECT id,order_id FROM public.commerce_order_items WHERE id=ANY($1::uuid[]) ORDER BY id",
+    [[item,v2.itemIds[0]]])).rows).toEqual([{ id: item, order_id: legacy }, { id: v2.itemIds[0], order_id: v2.id }]
+      .sort((a,b) => a.id.localeCompare(b.id)));
+});
+
+it("refuses reserved cycle, borrowed evidence, wrong SKU, and equal-payable substitutions", async () => {
+  const evidence = await issue(store, sku, false);
+  const other = await seedSku(store.owner);
+  await expectMismatch(writeChecked(evidence, { snapshot: { accepted_quote_id: null, accepted_quote_digest: null,
+    token_digest: null, acceptance_ref: null, cycle_binding_ref: randomUUID() } }), "/cycleBindingRef");
+  const alien = (await store.owner.query<{ id: string }>("INSERT INTO public.clients(email) VALUES ($1) RETURNING id",
+    [randomUUID() + "@example.invalid"])).rows[0]!.id;
+  await expectMismatch(writeChecked(evidence, { clientId: alien }), "/taxEvidence");
+  await expectMismatch(writeChecked(evidence, { source: { sku_id: other.id }, item: { sku_id: other.id } }), "/lines");
+  await expectMismatch(writeChecked(evidence, { source: { assignment_ref: "alternate" } }), "/acceptedMoneyDigest");
+  await expect(writeChecked(evidence)).resolves.toBeDefined();
+});
+
+it("requires a final composition and independently enforces consumption keys", async () => {
+  const pendingEvidence = await issue(store, sku, false, undefined, { pending: true });
+  await expectMismatch(writeChecked(pendingEvidence), "/taxEvidence");
+  const legacyEvidence = await issue(store, sku, true, undefined, { legacySeal: true });
+  await expectMismatch(writeChecked(legacyEvidence), "/taxEvidence");
+
+  const original = await issue(store, sku, false);
+  await writeChecked(original);
+  const distinct = await issue(store, sku, false);
+  const byQuote = await rejected(writeChecked(distinct, { snapshot: { accepted_quote_id: original.quote.quoteId } }));
+  expectSqlError(byQuote, "23505", uniqueMessage(quoteKey), quoteKey);
+  const byCalculation = await rejected(writeChecked(distinct, { snapshot: { calculation_id: original.quote.taxEvidence.calculationId } }));
+  expectSqlError(byCalculation, "23505", uniqueMessage(calculationKey), calculationKey);
+  await expect(writeChecked(distinct)).resolves.toBeDefined();
+});
+
+async function eraseEvidence(db: PoolClient, clientId: string) {
+  await db.query("LOCK TABLE public.identity_privacy_erasures IN SHARE ROW EXCLUSIVE MODE");
+  await db.query("SELECT public.commerce_destination_v2_erase($1)", [clientId]);
+  await db.query("SELECT public.tax_calculation_erase_v1($1)", [clientId]);
+}
+
+async function recordErasure(db: PoolClient, clientId: string) {
+  const actor = randomUUID();
+  await insert(db, "platform_human_principals", { principal_id: actor, email: `${actor}@example.invalid` });
+  await db.query(`INSERT INTO public.identity_privacy_erasures
+    (erasure_id,idempotency_key,client_id,actor_principal_id,contract_version,completed_at,
+      contributor_versions,dispositions,retained_obligations)
+    VALUES(gen_random_uuid(),gen_random_uuid(),$1,$2,'identity.erasure.v1',clock_timestamp(),$3,$4,'[]')`,
+  [clientId, actor, { "destination-documents": "commerce.destination-documents.v1", "tax-calculations": "platform.tax-calculations.v1" },
+    JSON.stringify([{ contributorId: "destination-documents", version: "commerce.destination-documents.v1", obligations: [
+      { owner: "destination-documents", resource: "commerce.order-money-destination-pins", disposition: "erase", remote: false },
+      { owner: "destination-documents", resource: "commerce.order-money-retained-facts", disposition: "retain", remote: false },
+    ] }])]);
+}
+
+it("allows only the named, same-transaction erasure with immutable accepted facts", async () => {
+  const evidence = await issue(store, sku, false);
+  const { id } = await writeChecked(evidence);
+  // Supply the queued row images via a disposable witness trigger. The
+  // assertion forward has no storage-trigger registration.
+  const attempt = (substituteDigest: boolean) => transaction(store.owner, async db => {
+    await db.query(`CREATE FUNCTION public.fixture_check_redaction() RETURNS trigger
+      LANGUAGE plpgsql AS $$ BEGIN
+        PERFORM public.commerce_order_money_v2_assert(NEW.order_id,false,false,to_jsonb(OLD),to_jsonb(NEW));
+        RETURN NULL;
+      END; $$;
+      CREATE CONSTRAINT TRIGGER fixture_check_redaction AFTER UPDATE ON public.commerce_order_tax_snapshots
+        DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.fixture_check_redaction()`);
+    await eraseEvidence(db, evidence.clientId);
+    await recordErasure(db, evidence.clientId);
+    await db.query(`UPDATE public.commerce_order_tax_snapshots SET destination_erased=true,
+      destination_digest=NULL,destination_policy_revision=NULL,delivery_selection_ref=NULL,
+      accepted_money_digest=CASE WHEN $2::boolean THEN repeat('b',64) ELSE accepted_money_digest END WHERE order_id=$1`,
+    [id, substituteDigest]);
+    await db.query("SET CONSTRAINTS ALL IMMEDIATE");
+  }, "ROLLBACK");
+  await expectMismatch(attempt(true), "/taxEvidence");
+  await expect(attempt(false)).resolves.toBeUndefined();
+});
+
+async function ownerRestore(db: PoolClient) {
+  await db.query("LOCK TABLE " + restoreTables.map(table => "public." + table).join(",") + " IN SHARE ROW EXCLUSIVE MODE");
+}
+
+it("honors the owner restore fence, skips live provenance at restore, and checks the retained digest", async () => {
+  const evidence = await issue(store, sku, false);
+  await expect(transaction(store.owner, async db => {
+    await ownerRestore(db);
+    await write(db, evidence, sku);
+  })).resolves.toBeUndefined();
+  const erasedFresh = await issue(store, sku, false);
+  await expectMismatch(writeChecked(erasedFresh, { erased: true }), "/taxEvidence");
+});
+
+it("split_items_map_to_source retains a one-cent tax reduction and the unpromoted source", async () => {
+  const promotion = "offer-" + randomUUID();
+  const evidence = await issue(store, sku, true, body => {
+    const source = body.lines[0]!;
+    const position = source.taxPositions[0]!;
+    const before = { basisMinor: 200, netMinor: 199, taxMinor: 1,
+      taxPositions: [{ ...position, taxableMinor: 199, taxMinor: 1 }] };
+    const after = { basisMinor: 199, netMinor: 199, taxMinor: 0,
+      taxPositions: [{ ...position, taxableMinor: 199, taxMinor: 0 }] };
+    return { ...body, lines: [{
+      ...source, lineKey: "source-z", quantity: 2, unitBasisMinor: 100, sourceOrdinal: 1,
+      preDiscountMinor: 200, effectiveMinor: 199, netMinor: 199, taxMinor: 0, lineTotalMinor: 199,
+      taxPositions: after.taxPositions,
+      discountAllocations: [{ allocationId: randomUUID(), adjustmentRef: promotion, sequence: 1, source: "legacy_promotion",
+        basisReductionMinor: 1, netReductionMinor: 0, taxReductionMinor: 1, evidenceRef: "b".repeat(64), before, after }],
+    }, {
+      ...source, lineKey: "source-a", sourceOrdinal: 3, taxPositions: [{ ...position, positionRef: "second-position" }],
+    }], netTotal: 299, payableMinor: 299 };
+  }, { promotions: [{ id: promotion, lineKey: "source-z" }] });
+  await expectMismatch(writeChecked(evidence, { item: { promotion_allocation_fingerprint: null } }), "/lines");
+  await expectMismatch(writeChecked(evidence, { item: { source_line_ordinal: 3 } }), "/lines");
+  await expectMismatch(writeChecked(evidence, { source: { source_rank: 2 } }), "/lines");
+  // Temporarily disabled per-item positional fingerprint presence in a disposable database transaction.
+  await transaction(store.owner, async db => {
+    const source = (await db.query<{ sql: string }>("SELECT pg_get_functiondef($1::regprocedure) AS sql", [routine])).rows[0]!.sql;
+    const mutant = source.replace("AND i.promotion_allocation_fingerprint IS NOT NULL END", "END");
+    expect(mutant).not.toBe(source);
+    await db.query(mutant);
+    await write(db, evidence, sku, { item: { promotion_allocation_fingerprint: null } });
+    await db.query("SET CONSTRAINTS ALL IMMEDIATE");
+  }, "ROLLBACK");
+  const { id } = await writeChecked(evidence);
+  expect((await store.owner.query(`SELECT line_ordinal,source_line_ordinal,line_key,promotion_allocation_fingerprint
+    FROM public.commerce_order_items WHERE order_id=$1 ORDER BY line_ordinal`, [id])).rows).toMatchObject([
+    { line_ordinal: 1, source_line_ordinal: 1, line_key: "source-z", promotion_allocation_fingerprint: "a".repeat(64) },
+    { line_ordinal: 2, source_line_ordinal: 1, line_key: "source-z", promotion_allocation_fingerprint: "a".repeat(64) },
+    { line_ordinal: 3, source_line_ordinal: null, line_key: "source-a", promotion_allocation_fingerprint: null },
+  ]);
+});
+
+it("requires the same-order tombstone and receipt on the erased restore arm", async () => {
+  const evidence = await issue(store, sku, false, body => ({
+    ...body,
+    deliveryBuckets: [{ bucketKey: "handling", kind: "handling", carrierRef: "carrier", serviceRef: "service",
+      taxClassKey: "class-a", assignmentRef: "assignment-a", cost: { ref: "fee", currency: "XXX", amountMinor: 0 },
+      separatelyStated: true, parts: [{ preDiscountMinor: 0, effectiveMinor: 0, netMinor: 0, taxMinor: 0,
+        lineTotalMinor: 0, taxPositions: [], discountAllocations: [] }] }],
+  }));
+  await expectMismatch(transaction(store.owner, async db => {
+    await ownerRestore(db);
+    await write(db, evidence, sku, { bucketErased: true });
+  }), "/deliveryBuckets");
+  await transaction(store.owner, db => eraseEvidence(db, evidence.clientId));
+  await expectMismatch(transaction(store.owner, async db => {
+    await ownerRestore(db);
+    await write(db, evidence, sku, { erased: true });
+  }), "/taxEvidence");
+  await transaction(store.owner, db => recordErasure(db, evidence.clientId));
+  await expectMismatch(transaction(store.owner, async db => {
+    await ownerRestore(db);
+    await write(db, evidence, sku, { erased: true, bucketErased: false });
+  }), "/deliveryBuckets");
+  let id = "";
+  await transaction(store.owner, async db => {
+    await ownerRestore(db);
+    ({ id } = await write(db, evidence, sku, { erased: true }));
+  });
+  await expect(store.runtime.query("UPDATE public.commerce_orders SET updated_at=now() WHERE id=$1", [id])).resolves.toBeDefined();
+});
+
+async function timeCommit(evidence: Evidence, basis: string) {
+  let commitStarted = 0;
+  await transaction(store.owner, async db => {
+    await write(db, evidence, sku);
+    commitStarted = performance.now();
+  });
+  const elapsed = performance.now() - commitStarted;
+  console.info(`Bounded order commit (${basis}) took ${elapsed.toFixed(1)} ms`);
+  expect(elapsed).toBeLessThan(flatTestTimeoutMs(false, true));
+}
+
+it("matches supplementary Unicode boundaries and records the bounded exclusive commit", async () => {
+  const promotions = Array.from({ length: 20 }, () => ({ id: `offer-${randomUUID()}`, lineKey: "source-2" }));
+  const state = (amount: number) => ({ basisMinor: amount, netMinor: amount, taxMinor: 0, taxPositions: [] });
+  const evidence = await issue(store, sku, false, body => ({
+    ...body, catalogueEvidenceRef: "😀".repeat(256),
+    lines: Array.from({ length: 50 }, (_, index) => ({
+      ...body.lines[0]!, lineKey: index ? `source-${index}` : "😀".repeat(64), sourceOrdinal: index + 1,
+      unitBasisMinor: index === 2 ? 21 : 1, preDiscountMinor: index === 2 ? 21 : 1,
+      effectiveMinor: 1, netMinor: 1, lineTotalMinor: 1,
+      taxPositions: index === 0 ? Array.from({ length: 32 }, (_, position) => ({
+        ...body.lines[0]!.taxPositions[0]!, positionRef: `position-${position}`, taxableMinor: 1,
+      })) : [],
+      discountAllocations: index === 2 ? promotions.map(({ id }, slot) => ({
+        allocationId: randomUUID(), adjustmentRef: id, sequence: slot + 1, source: "legacy_promotion" as const,
+        basisReductionMinor: 1, netReductionMinor: 1, taxReductionMinor: 0, evidenceRef: "b".repeat(64),
+        before: state(21 - slot), after: state(20 - slot),
+      })) : [],
+    })),
+    deliveryBuckets: Array.from({ length: 256 }, (_, index) => ({
+      bucketKey: `handling-${index}`, kind: "handling", carrierRef: "carrier", serviceRef: "service",
+      taxClassKey: "class-a", assignmentRef: "assignment-a", cost: { ref: "fee", currency: "XXX", amountMinor: 0 },
+      separatelyStated: false, parts: [{ preDiscountMinor: 0, effectiveMinor: 0, netMinor: 0, taxMinor: 0,
+        lineTotalMinor: 0, taxPositions: [], discountAllocations: [] }],
+    })),
+    feeLines: Array.from({ length: 256 }, (_, index) => ({
+      feeKey: `fee-${index}`, jurisdictionRef: "region", feeKind: "service", amountMinor: 1,
+      scope: { kind: "order" as const }, refundRule: { ref: "rule", revision: "1" },
+    })),
+    netTotal: 50, feeTotal: 256, payableMinor: 306,
+  }), { promotions });
+  await timeCommit(evidence, "exclusive");
+
+  const control = await issue(store, sku, false);
+  await expectMismatch(writeChecked(control, { source: { line_key: "😀".repeat(65) }, item: { line_key: "😀".repeat(65) } }), "/lines");
+  await expect(transaction(store.owner, db => write(db, control, sku, { snapshot: {
+    catalogue_evidence_ref: "😀".repeat(257),
+  } }))).rejects.toMatchObject({ code: "23514", table: snapshots });
+}, postgresSetupTimeoutMs);
+
+it("records the bounded inclusive commit with fifty apportioned shipping parts", async () => {
+  const evidence = await issue(store, sku, true, body => {
+    const source = body.lines[0]!;
+    const position = source.taxPositions[0]!;
+    const component = (index: number, kind: string) => ({
+      sourceOrdinal: index + 1, preDiscountMinor: 1, effectiveMinor: 1, netMinor: 1, taxMinor: 0, lineTotalMinor: 1,
+      taxPositions: [{ ...position, positionRef: `${kind}-${index}`, taxableMinor: 1 }], discountAllocations: [],
+    });
+    return {
+      ...body, lines: Array.from({ length: 50 }, (_, index) => ({
+        ...source, ...component(index, "item"), lineKey: `item-${index}`, unitBasisMinor: 1,
+      })),
+      deliveryBuckets: [{
+        bucketKey: "shipping", kind: "shipping", carrierRef: "carrier", serviceRef: "service",
+        taxClassKey: "class-a", assignmentRef: "assignment-a", cost: { ref: "cost", currency: "XXX", amountMinor: 50 },
+        separatelyStated: true, parts: Array.from({ length: 50 }, (_, index) => component(index, "shipping")),
+      }],
+      netTotal: 100, payableMinor: 100,
+    };
+  });
+  await timeCommit(evidence, "inclusive");
+}, postgresSetupTimeoutMs);
+
+it("keeps the installed source and snapshot scalar bounds at their edges", async () => {
+  const evidence = await issue(store, sku, false, body => ({
+    ...body, netTotal: 99, payableMinor: 99,
+    lines: [{ ...body.lines[0]!, quantity: 99, unitBasisMinor: 1, preDiscountMinor: 99,
+      effectiveMinor: 99, netMinor: 99, lineTotalMinor: 99, taxPositions: [] }],
+  }));
+  const invalid = [
+    [sources, "quantity", 0], [sources, "quantity", 100], [sources, "source_rank", 0],
+    [sources, "source_rank", 51], [sources, "unit_basis_minor", -1], [sources, "unit_basis_minor", 2147483648],
+    [snapshots, "payable_minor", 0], [snapshots, "payable_minor", 2147483648],
+    [snapshots, "net_total", -1], [snapshots, "net_total", "9007199254740992"],
+  ] as const;
+  for (const [table, column, value] of invalid) {
+    const key = `${table}_${column}_check`;
+    const options = table === sources ? { source: { [column]: value } } : { snapshot: { [column]: value } };
+    expectSqlError(await rejected(writeChecked(evidence, options)), "23514", checkMessage(table, key), key);
+  }
+  await expect(writeChecked(evidence)).resolves.toBeDefined();
+});
+
+it("detects removing the header mutation and digest checks in a disposable transaction", async () => {
+  const evidence = await issue(store, sku, false);
+  const { id } = await writeChecked(evidence);
+  const definition = async (db: PoolClient, signature: string) => (await db.query<{ sql: string }>(
+    "SELECT pg_get_functiondef($1::regprocedure) AS sql", [signature])).rows[0]!.sql;
+  // Temporarily disabled the marker-change refusal in a disposable database transaction.
+  await transaction(store.owner, async db => {
+    const source = await definition(db, "public.commerce_order_assert_line_sum()");
+    const mutated = source.replace("IF TG_OP='UPDATE' AND (OLD.id,OLD.client_id,OLD.money_version)", "IF false AND (OLD.id,OLD.client_id,OLD.money_version)")
+      .replace("v_event_marker OR v_version IS NOT NULL OR v_other_version IS NOT NULL", "v_version IS NOT NULL");
+    expect(mutated).not.toBe(source);
+    await db.query(mutated);
+    await db.query("UPDATE public.commerce_orders SET money_version=NULL WHERE id=$1", [id]);
+    await db.query("SET CONSTRAINTS ALL IMMEDIATE");
+  }, "ROLLBACK");
+
+  // Temporarily disabled the accepted digest comparison in a disposable database transaction.
+  const fresh = await issue(store, sku, false);
+  await transaction(store.owner, async db => {
+    const source = await definition(db, routine);
+    const mutated = source.replace("IF NOT snapshot.destination_erased AND snapshot.accepted_money_digest", "IF false AND snapshot.accepted_money_digest");
+    expect(mutated).not.toBe(source);
+    await db.query(mutated);
+    await write(db, fresh, sku, { source: { assignment_ref: "alternate" } });
+    await db.query("SET CONSTRAINTS ALL IMMEDIATE");
+  }, "ROLLBACK");
+});
