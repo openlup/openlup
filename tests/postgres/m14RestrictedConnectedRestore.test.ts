@@ -3,7 +3,7 @@ import { createPostgresSubscriptionCommands } from "@openlup/platform/subscripti
 import type { SubscriptionCommand } from "@openlup/platform/subscriptions/contracts";
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { Pool, type PoolClient, type QueryConfig } from "pg";
+import { Pool, type PoolClient } from "pg";
 import { aroundEach, expect, it } from "vitest";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
@@ -382,187 +382,68 @@ restoreTest("refuses populated outside-profile relations before the dirty-target
   }
 }, postgresSetupTimeoutMs);
 
-restoreTest("requires source custody and validates the retained governed graph before committing", async () => {
+restoreTest("refuses stamped drafts and their marked events before connecting while preserving legacy restore", async () => {
   const [source, target] = await installRestrictedRestorePair("neon", "installer-managed", "governed-source", "governed-target");
   try {
     const fixture = await seedGovernedDraft(source.owner, { product: 3, shipping: 7 });
-    const governed = await ownerDraft(source.owner, fixture);
-    await source.owner.query("UPDATE public.commerce_order_draft_receipts SET invalidated_at=clock_timestamp(),invalidation_reason='expired' WHERE order_id=$1", [governed.id]);
-    await source.owner.query("INSERT INTO public.commerce_orders(status,currency_code,total_amount_minor) VALUES('pending_payment','XTS',0)");
-    await source.owner.query("INSERT INTO public.subscriptions(client_id,cadence_days) VALUES($1,28)", [fixture.original.clientId]);
-    const packet = await captureRestrictedStore(source, "governed-source");
-    const sourceCustody = packet.sha256;
+    // A scalar or array containing the spelling of the key has no object key.
+    await source.owner.query(`INSERT INTO public.commerce_orders(status,currency_code,total_amount_minor,metadata)
+      VALUES('pending_payment','XTS',0,jsonb_build_array('catalogAdmissionOwnerOrigin'::text))`);
+    const legacy = await captureRestrictedStore(source, "legacy-source");
     const freshTarget = await captureRestrictedStore(target, "governed-pristine");
-    const input = { owner: target.owner, installation: target.selection, packet, freshTarget, trustedSourceCaptureSha256: sourceCustody };
-    const rehash = (changed: typeof packet) => {
-      const { sha256: _old, ...body } = changed;
+    await ownerDraft(source.owner, fixture);
+    const stamped = await captureRestrictedStore(source, "governed-source");
+    const input = { owner: target.owner, installation: target.selection, freshTarget };
+    const before = await draftEffectCounts(target.owner);
+    const table = (capture: typeof legacy, name: "commerce_orders" | "outbox_events") =>
+      capture.compatible.tables.find(entry => entry.table === name)!;
+    const reseal = ({ sha256: _outer, compatible, ...rest }: typeof legacy) => {
+      const { sha256: _inner, ...rows } = compatible;
+      const body = { ...rest, compatible: { ...rows, sha256: packetDigest(rows) } };
       return { ...body, sha256: packetDigest(body) };
     };
-    const checkedRestore = (changed: typeof packet) => {
-      const candidate = rehash(changed);
-      return restoreConnectedNativeStore({ ...input, packet: candidate, trustedSourceCaptureSha256: candidate.sha256 });
-    };
-    const before = await draftEffectCounts(target.owner);
-    const targetFacts = async () => ({
-      ledger: (await target.owner.query("SELECT * FROM public.platform_schema_migrations ORDER BY position")).rows,
-      acl: (await target.owner.query(`SELECT proname,prosecdef,proacl::text,proconfig FROM pg_proc JOIN pg_namespace n ON n.oid=pronamespace
-        WHERE n.nspname='public' AND proname IN ('catalog_order_acceptance_final','catalog_admission_owner_origin_guard',
-          'catalog_admission_write_governed_draft','catalog_admission_runtime_checkout') ORDER BY proname`)).rows,
-    });
-    const installed = await targetFacts();
-    const remedy = "Ask the source installation owner to verify the stamped draft and its companions, then recapture the source and retry on the verified target.";
-    const stampedConflict = { code: "target_conflict", name: "PostgresTransferError", message: "postgres_transfer_target_conflict", remedy };
-    const noConnect = { async connect() { throw new Error("Target connection was attempted"); } } as unknown as Pool;
-    const rehashed = rehash({ ...packet, observation: { ...packet.observation, snapshot: "changed" } });
-    for (const trustedSourceCaptureSha256 of [undefined, sourceCustody, "A".repeat(64)]) {
-      await expect(restoreConnectedNativeStore({ ...input, owner: noConnect, packet: rehashed, trustedSourceCaptureSha256 }))
-        .rejects.toMatchObject({ code: "invalid_input" });
-    }
-    await expect(restoreConnectedNativeStore({ ...input, owner: noConnect, packet: { ...packet, sha256: "a".repeat(64) } }))
-      .rejects.toMatchObject({ code: "invalid_input" });
-    const sourceSchema = structuredClone(packet);
-    sourceSchema.compatible.catalogueId = "a".repeat(64);
-    await expect(checkedRestore(sourceSchema)).rejects.toMatchObject({ code: "schema_conflict" });
-    const sized = structuredClone(packet);
-    const subscription = sized.compatible.tables.find(table => table.table === "subscriptions")!;
-    subscription.rows[0] = JSON.stringify({ ...JSON.parse(subscription.rows[0]!), configured_offer_version: "sized.v1" });
-    await expect(checkedRestore(sized)).rejects.toMatchObject({ code: "unsupported_table", table: "subscriptions" });
-    const oversized = structuredClone(packet);
-    const receipts = oversized.owned.find(table => table.table === "commerce_order_draft_receipts")!;
-    receipts.rows = Array<string>(10_001).fill(receipts.rows[0]!);
-    await expect(checkedRestore(oversized)).rejects.toMatchObject({ code: "limit_exceeded" });
+    const nullMarker = structuredClone(legacy);
+    const orderRows = table(nullMarker, "commerce_orders").rows;
+    orderRows[0] = JSON.stringify({ ...JSON.parse(orderRows[0]!), metadata: { catalogAdmissionOwnerOrigin: null } });
+    const markedEventOnly = structuredClone(legacy);
+    const markedEvent = table(stamped, "outbox_events").rows.find(row =>
+      JSON.parse(row).metadata?.boundary === "catalog_admission_write_governed_draft");
+    expect(markedEvent).toBeDefined();
+    table(markedEventOnly, "outbox_events").rows.push(markedEvent!);
 
-    const badPublication = structuredClone(packet);
-    const publications = badPublication.owned.find(table => table.table === "catalog_publications")!;
-    publications.rows[0] = JSON.stringify({ ...JSON.parse(publications.rows[0]!), canonical_state: "{}" });
-    const malformed = rehash(badPublication);
-    await expect(restoreConnectedNativeStore({ ...input, owner: noConnect, packet: malformed, trustedSourceCaptureSha256: malformed.sha256 }))
-      .rejects.toMatchObject({ code: "target_conflict", cause: expect.anything() });
-    const fakeCensus = { table: "commerce_orders", name: "unknown_insert_guard" };
-    let censusHits = 0;
-    const withUnknownTrigger = { async connect() {
-      const client = await target.owner.connect();
-      return {
-        async query(sql: string | QueryConfig, values?: unknown[]) {
-          const result = typeof sql === "string" ? await client.query(sql, values) : await client.query(sql);
-          const text = typeof sql === "string" ? sql : sql.text;
-          if (text.includes("t.tgname AS name FROM pg_catalog.pg_trigger")) {
-            censusHits++;
-            result.rows.push(fakeCensus);
-          }
-          return result;
-        },
-        release: (destroy?: boolean) => client.release(destroy),
-      };
-    } } as unknown as Pool;
-    for (const gate of ["privacy", "columns"] as const) {
-      const changed = structuredClone(packet);
-      if (gate === "privacy") changed.requiredPrivacyContributorIds = [...changed.requiredPrivacyContributorIds, "synthetic-extra"].sort();
-      else changed.owned.find(table => table.table === "commerce_order_draft_receipts")!.columns[0]!.type = "uuid";
-      const candidate = rehash(changed);
-      await expect(restoreConnectedNativeStore({ ...input, owner: withUnknownTrigger, packet: candidate, trustedSourceCaptureSha256: candidate.sha256 }))
-        .rejects.toMatchObject({ code: gate === "privacy" ? "target_conflict" : "schema_conflict" });
-      expect(censusHits).toBe(0);
+    let connections = 0;
+    const unopened = { async connect() { connections++; throw new Error("Unexpected target connection"); } } as unknown as Pool;
+    const remedy = "This version cannot restore stamped governed drafts. Keep the capture for a version that supports their restore.";
+    for (const [packet, relation] of [
+      [stamped, "commerce_orders"],
+      [reseal(nullMarker), "commerce_orders"],
+      [reseal(markedEventOnly), "outbox_events"],
+    ] as const) {
+      await expect(restoreConnectedNativeStore({ ...input, owner: unopened, packet }))
+        .rejects.toMatchObject({ name: "PostgresTransferError", code: "unsupported_table", table: relation, remedy });
     }
-    await expect(restoreConnectedNativeStore({ ...input, owner: withUnknownTrigger }))
-      .rejects.toMatchObject({ code: "insert_trigger_requires_owner", table: "commerce_orders" });
-    expect(censusHits).toBe(1);
-    await target.owner.query("INSERT INTO public.commerce_settings(key,value_minor) VALUES('transfer_conflict',1)");
-    await expect(restoreConnectedNativeStore(input)).rejects.toMatchObject({ code: "target_conflict" });
-    await target.owner.query("DELETE FROM public.commerce_settings WHERE key='transfer_conflict'");
-    const root = target.pools[0]!;
-    await root.query("UPDATE public.platform_schema_migrations SET sha256=repeat('a',64) WHERE position=0");
-    try { await expect(restoreConnectedNativeStore(input)).rejects.toMatchObject({ code: "schema_conflict" }); }
-    finally { await root.query("UPDATE public.platform_schema_migrations SET sha256=$1 WHERE position=0", [installed.ledger[0]!.sha256]); }
+    expect(connections).toBe(0);
+    expect(await draftEffectCounts(target.owner)).toEqual(before);
 
-    const changeOrder = (stamped: boolean, edit: (row: Record<string, unknown>) => void) => {
-      const changed = structuredClone(packet);
-      const orders = changed.compatible.tables.find(table => table.table === "commerce_orders")!.rows;
-      const index = orders.findIndex(row => (JSON.parse(row).id === governed.id) === stamped);
-      const row = JSON.parse(orders[index]!);
-      edit(row);
-      orders[index] = JSON.stringify(row);
-      return changed;
-    };
-    const acceptance = JSON.parse(packet.compatible.tables.find(table => table.table === "commerce_orders")!.rows
-      .find(row => JSON.parse(row).id === governed.id)!).catalog_acceptance;
-    const legacyError = await checkedRestore(changeOrder(false, row => { row.catalog_acceptance = acceptance; })).catch((error: unknown) => error);
-    expect(legacyError).toMatchObject({ code: "target_conflict", cause: {
+    const invalidLegacy = structuredClone(legacy);
+    const legacyRows = table(invalidLegacy, "commerce_orders").rows;
+    const accepted = table(stamped, "commerce_orders").rows.map(row => JSON.parse(row)).find(row => row.catalog_acceptance !== null);
+    legacyRows[0] = JSON.stringify({ ...JSON.parse(legacyRows[0]!), catalog_acceptance: accepted.catalog_acceptance });
+    const failure = await restoreConnectedNativeStore({ ...input, packet: reseal(invalidLegacy) }).catch((error: unknown) => error);
+    expect(failure).toMatchObject({ code: "target_conflict", cause: {
       outcome: "validation_issue", reason: "catalog_acceptance_receipt_mismatch",
       message: "Supply the persisted draft receipt for this order and retry with its original key.",
     } });
-    expect(legacyError).not.toHaveProperty("remedy");
-
-    for (const candidate of [
-      changeOrder(false, row => { row.metadata = { catalogAdmissionOwnerOrigin: { schemaVersion: 1 } }; }),
-      changeOrder(true, row => { row.catalog_acceptance = null; }),
-      changeOrder(true, row => { delete (row.metadata as Record<string, unknown>).catalogAdmissionSubmit; }),
-    ]) {
-      await expect(checkedRestore(candidate)).rejects.toMatchObject(stampedConflict);
-      expect(await draftEffectCounts(target.owner)).toEqual(before);
-    }
-    const sums: Array<{ code: unknown; message: unknown }> = [];
-    const sumTarget = { async connect() {
-      const client = await target.owner.connect();
-      return {
-        async query(sql: string | QueryConfig, values?: unknown[]) {
-          try { return typeof sql === "string" ? await client.query(sql, values) : await client.query(sql); }
-          catch (error) {
-            if (sql === "SET CONSTRAINTS ALL IMMEDIATE" && error instanceof Error && "code" in error) {
-              sums.push({ code: error.code, message: error.message });
-            }
-            throw error;
-          }
-        },
-        release: (destroy?: boolean) => client.release(destroy),
-      };
-    } } as unknown as Pool;
-    const badSum = rehash(changeOrder(true, row => { row.total_amount_minor = Number(row.total_amount_minor) + 1; }));
-    await expect(restoreConnectedNativeStore({ ...input, owner: sumTarget, packet: badSum, trustedSourceCaptureSha256: badSum.sha256 }))
-      .rejects.toMatchObject(stampedConflict);
-    expect(sums).toEqual([{ code: "23514", message: "commerce_order_line_sum_mismatch" }]);
+    expect(failure).not.toHaveProperty("remedy");
     expect(await draftEffectCounts(target.owner)).toEqual(before);
-    for (const name of ["commerce_order_draft_receipts", "commerce_order_items"] as const) {
-      const incomplete = structuredClone(packet);
-      const table = [...incomplete.owned, ...incomplete.compatible.tables].find(table => table.table === name)!;
-      table.rows.splice(0);
-      await expect(checkedRestore(incomplete)).rejects.toMatchObject(stampedConflict);
-      expect(await draftEffectCounts(target.owner)).toEqual(before);
-    }
 
-    // Only this source fixture can record a damaged reverse receipt. Re-enable
-    // both definitions before capture so the target sees the installed graph.
-    const mutation = await source.owner.connect();
-    try {
-      await mutation.query("BEGIN");
-      await mutation.query(`ALTER TABLE public.commerce_order_draft_receipts DISABLE TRIGGER commerce_order_draft_receipts_catalog_owner_origin_guard;
-        ALTER TABLE public.commerce_order_draft_receipts DISABLE TRIGGER commerce_order_draft_receipts_catalog_final`);
-      expect((await mutation.query("UPDATE public.commerce_order_draft_receipts SET request_fingerprint=repeat('a',32) WHERE order_id=$1", [governed.id])).rowCount).toBe(1);
-      await mutation.query(`ALTER TABLE public.commerce_order_draft_receipts ENABLE TRIGGER commerce_order_draft_receipts_catalog_final;
-        ALTER TABLE public.commerce_order_draft_receipts ENABLE TRIGGER commerce_order_draft_receipts_catalog_owner_origin_guard`);
-      await mutation.query("COMMIT");
-    } finally {
-      await mutation.query("ROLLBACK");
-      mutation.release();
-    }
-    const damaged = await captureRestrictedStore(source, "governed-damaged");
-    const damagedSourceCustody = damaged.sha256;
-    await expect(restoreConnectedNativeStore({ ...input, packet: damaged, trustedSourceCaptureSha256: damagedSourceCustody }))
-      .rejects.toMatchObject(stampedConflict);
-    expect(await draftEffectCounts(target.owner)).toEqual(before);
-    expect(await targetFacts()).toEqual(installed);
-
-    await expect(restoreConnectedNativeStore(input)).resolves.toMatchObject({ captureSha256: sourceCustody, replayed: false });
-    const retained = await captureRestrictedStore(target, "governed-restored");
-    expect(retained.owned).toEqual(packet.owned);
-    expect(retained.compatible.tables).toEqual(packet.compatible.tables);
-    expect((await target.owner.query(`SELECT count(*) FILTER (WHERE metadata ? 'catalogAdmissionOwnerOrigin')::integer AS stamped,
-      count(*) FILTER (WHERE NOT metadata ? 'catalogAdmissionOwnerOrigin')::integer AS historical FROM public.commerce_orders`)).rows)
-      .toEqual([{ stamped: 1, historical: 1 }]);
-    await expect(restoreConnectedNativeStore({ ...input, trustedSourceCaptureSha256: undefined })).rejects.toMatchObject({ code: "invalid_input" });
-    await expect(restoreConnectedNativeStore({ ...input, packet: rehashed })).rejects.toMatchObject({ code: "invalid_input" });
-    await expect(restoreConnectedNativeStore(input)).resolves.toMatchObject({ captureSha256: sourceCustody, replayed: true });
-    expect(await targetFacts()).toEqual(installed);
+    await expect(restoreConnectedNativeStore({ ...input, packet: legacy }))
+      .resolves.toMatchObject({ captureSha256: legacy.sha256, replayed: false });
+    const retained = await captureRestrictedStore(target, "legacy-restored");
+    expect(retained.owned).toStrictEqual(legacy.owned);
+    expect(retained.compatible.tables).toStrictEqual(legacy.compatible.tables);
+    await expect(restoreConnectedNativeStore({ ...input, packet: legacy }))
+      .resolves.toMatchObject({ captureSha256: legacy.sha256, replayed: true });
   } finally {
     await Promise.all([source, target].map(store => closePostgres(store.container, store.pools)));
   }

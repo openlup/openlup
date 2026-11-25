@@ -321,7 +321,6 @@ export async function restoreConnectedNativeStore(input: {
   installation: QualifiedPostgresInstallation | QualifiedAdminPostgresInstallation;
   packet: ConnectedNativeStoreCapture;
   freshTarget: ConnectedNativeStoreCapture;
-  trustedSourceCaptureSha256?: string;
 }): Promise<{ captureSha256: string; replayed: boolean; neutralizedHistoricalHoldNotifications: number }> {
   const installation = structuredClone(input.installation);
   if (installation?.generation !== "qualified-admin"
@@ -332,13 +331,22 @@ export async function restoreConnectedNativeStore(input: {
   const manifest = expectedManifest(installation);
   const shape = connectedStoreSourceShape(profile, input.packet?.compatible?.catalogueId, manifest.objectInventorySha256);
   const packet = copyCapture(input.packet, shape), fresh = copyCapture(input.freshTarget);
-  const source = tables(packet), baseline = tables(fresh);
-  const stampedOrders = new Set(source.get("commerce_orders")!.rows.map(row => JSON.parse(row) as { id: string; metadata: unknown })
-    .filter(({ metadata }) => metadata !== null && typeof metadata === "object" && Object.hasOwn(metadata, "catalogAdmissionOwnerOrigin"))
-    .map(({ id }) => id));
-  if (stampedOrders.size && input.trustedSourceCaptureSha256 !== packet.sha256) fail("invalid_input");
   if (packet.observation.cluster === fresh.observation.cluster
     && packet.observation.database === fresh.observation.database) fail("invalid_input");
+  const source = tables(packet), baseline = tables(fresh);
+  for (const capture of [source, baseline]) {
+    for (const table of ["commerce_orders", "outbox_events"] as const) {
+      const stamped = capture.get(table)!.rows.some(row => {
+        const { metadata } = JSON.parse(row) as { metadata?: { boundary?: unknown } | null };
+        return metadata !== null && typeof metadata === "object"
+          && (Object.hasOwn(metadata, "catalogAdmissionOwnerOrigin")
+            || (table === "outbox_events" && metadata.boundary === "catalog_admission_write_governed_draft"));
+      });
+      if (stamped) throw Object.assign(new PostgresTransferError("unsupported_table", table), {
+        remedy: "This version cannot restore stamped governed drafts. Keep the capture for a version that supports their restore.",
+      });
+    }
+  }
   try {
     requireDecodedPublication(decodePublicationPacket({
       publications: source.get("catalog_publications")!.rows, skuRevisions: source.get("catalog_sku_revisions")!.rows,
@@ -566,14 +574,6 @@ export async function restoreConnectedNativeStore(input: {
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);
     if (error instanceof PostgresTransferError) throw error;
-    const sql = error as { code?: unknown; message?: unknown; constraint?: unknown; detail?: string } | null;
-    const stampedSum = sql?.code === "23514" && sql.message === "commerce_order_line_sum_mismatch"
-      && stampedOrders.has(/^order ([a-f0-9-]{36}) declares /u.exec(sql.detail ?? "")?.[1] ?? "");
-    if (((sql?.code === "22023" || sql?.code === "55000") && sql.constraint === "catalog_owner_origin") || stampedSum) {
-      throw Object.assign(new PostgresTransferError("target_conflict"), {
-        remedy: "Ask the source installation owner to verify the stamped draft and its companions, then recapture the source and retry on the verified target.",
-      });
-    }
     const refusal = catalogPublicationAdmissionRefusal(error);
     if (refusal) throw Object.assign(new PostgresTransferError("target_conflict"), { cause: refusal });
     if (typeof (error as { code?: unknown })?.code === "string" && /^23/.test((error as { code: string }).code)) fail("target_conflict");
