@@ -1,5 +1,6 @@
 export type { AttemptNumber, CommandKey, ContinuationId } from "./identity.js";
 export { toAttemptNumber, toCommandKey, toContinuationId } from "./identity.js";
+export { advanceAttempt, clearContinuationRecord, getOrCreateContinuationId, readContinuationRecord } from "./continuationRecord.js";
 export type {
   ChangedPayloadPolicy,
   ClientEventReporter,

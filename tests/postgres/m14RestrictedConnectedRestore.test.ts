@@ -4,9 +4,9 @@ import type { SubscriptionCommand } from "@openlup/platform/subscriptions/contra
 import { createHash, randomUUID } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
-import ts from "typescript";
 import { aroundEach, expect, it } from "vitest";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
+import { connectedStoreAllowedInsertTriggers } from "../../server/adapters/postgres/connectedStoreDomains/index.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { closePostgres, postgresSetupTimeoutMs } from "../helpers/postgresContainer.js";
 import { draftEffectCounts, ownerDraft, seedGovernedDraft } from "./catalogAdmissionOwnerWrite.fixture.js";
@@ -383,25 +383,6 @@ restoreTest("refuses populated outside-profile relations before the dirty-target
   }
 }, postgresSetupTimeoutMs);
 
-function restoreInsertAllowlist(): string[] {
-  const path = "server/adapters/postgres/connectedStoreRestore.ts";
-  const source = ts.createSourceFile(path, readFileSync(path, "utf8"), ts.ScriptTarget.Latest);
-  const census = source.statements.filter(ts.isFunctionDeclaration).find(statement => statement.name?.text === "assertInsertTriggers");
-  const allowed = census?.body?.statements.filter(ts.isVariableStatement)
-    .flatMap(statement => [...statement.declarationList.declarations])
-    .find(declaration => ts.isIdentifier(declaration.name) && declaration.name.text === "allowed")?.initializer;
-  if (!allowed || !ts.isObjectLiteralExpression(allowed)) throw new Error("Restore INSERT trigger allowlist missing");
-  return allowed.properties.flatMap(property => {
-    if (!ts.isPropertyAssignment(property) || !ts.isArrayLiteralExpression(property.initializer)
-      || !(ts.isIdentifier(property.name) || ts.isStringLiteral(property.name))) throw new Error("Expected literal trigger allowlist entries");
-    const table = property.name.text;
-    return property.initializer.elements.map(name => {
-      if (!ts.isStringLiteral(name)) throw new Error("Expected a literal trigger name");
-      return `${table}.${name.text}`;
-    });
-  }).sort();
-}
-
 function findGovernedDraftOwnerForward(): string {
   const directory = "db/platform/migrations";
   const suffix = "_catalog_governed_draft_owner.sql";
@@ -442,7 +423,9 @@ restoreTest("restores unstamped rows with exactly the installed INSERT triggers"
     publicationAuthority.push("catalog_publications.catalog_publication_record_write_binding",
       "catalog_publications.catalog_publications_open_draft");
     expect(installed).toHaveLength(5);
-    expect(restoreInsertAllowlist()).toStrictEqual([...new Set([...incumbent, ...publicationAuthority]), ...installed].sort());
+    const allowed = Object.entries(connectedStoreAllowedInsertTriggers)
+      .flatMap(([table, names]) => names.map(name => `${table}.${name}`)).sort();
+    expect(allowed).toStrictEqual([...new Set([...incumbent, ...publicationAuthority]), ...installed].sort());
 
     await expect(restoreConnectedNativeStore({ owner: target.owner, installation: target.selection, packet, freshTarget }))
       .resolves.toMatchObject({ captureSha256: packet.sha256, replayed: false });

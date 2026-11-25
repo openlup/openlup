@@ -399,7 +399,8 @@ export function isInventoryInputPath(path) {
   return INVENTORY_INPUT_PATHS.has(path) ||
     /^(?:db|supabase)\/.*\.sql$/u.test(path) ||
     /^packages\/[^/]+\/sql\//u.test(path) ||
-    /^packages\/platform\/src\/migrations\//u.test(path);
+    /^packages\/platform\/src\/migrations\//u.test(path) ||
+    /^server\/adapters\/postgres\/connectedStoreDomains\//u.test(path);
 }
 
 export function landingSlotPlan(prAddedPaths, mainMigrationPaths) {

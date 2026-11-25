@@ -1110,7 +1110,7 @@
     },
     {
       "id": "platform-storefront",
-      "when": "Browser-safe storefront purchase-continuation types, host bindings and markup anchor names",
+      "when": "Browser-safe storefront purchase-continuation types, recovery functions, host bindings and markup anchor names",
       "paths": [
         "packages/platform/src/storefront/**",
         "packages/platform/test/storefront/**",
