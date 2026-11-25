@@ -17,6 +17,8 @@ const STOREFRONT_EXPORTS = {
   readContinuationRecord: { kind: "value", experimental: false },
   advanceAttempt: { kind: "value", experimental: false },
   clearContinuationRecord: { kind: "value", experimental: false },
+  recoverAmbiguousSubmit: { kind: "value", experimental: false },
+  AmbiguousSubmitRecovery: { kind: "type", experimental: false },
   ContinuationRecord: { kind: "type", experimental: false },
   ContinuationRecordStorageBinding: { kind: "type", experimental: false },
   SubmitTransportBinding: { kind: "type", experimental: false },
