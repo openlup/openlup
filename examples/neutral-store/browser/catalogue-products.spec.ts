@@ -194,6 +194,9 @@ async function stopHost(child: ChildProcess | undefined) {
 
 let fixture: Fixture, wanted: Selection, first: Selection;
 let closeFixture: (() => Promise<void>) | undefined;
+// Give each test an empty cart even if the project supplies saved browser state.
+test.use({ storageState: { cookies: [], origins: [] } });
+
 test.beforeAll(async ({ request, baseURL }, info) => {
   test.setTimeout(60_000);
   const entries = JSON.parse(readFileSync('.context/care-browser/fixtures.json', 'utf8')) as Fixture[];
@@ -289,17 +292,17 @@ for (const width of [320, 1280]) {
     await expect(page.locator('.product-detail img')).toHaveCount(0);
     const money = new Intl.NumberFormat(locale, { style: 'currency', currency }).format(wanted.price / 100);
     await expect(page.locator('.product-detail .price')).toHaveText(money);
-    await page.getByRole('spinbutton').fill(String(item.minQuantity));
+    await expect(page.getByRole('spinbutton')).toHaveValue(String(item.minQuantity));
     await page.locator('.product-detail button').click();
-    await page.goto(base + routes.cart[locale]);
+    // A fresh cart document reads the saved selection and requests its native quote.
+    const [quoted] = await Promise.all([
+      page.waitForResponse(response => response.url().endsWith('/api/actions/offer.validate')
+        && response.request().postDataJSON()?.cart?.lines?.[0]?.sku === wanted.sku),
+      page.goto(base + routes.cart[locale]),
+    ]);
     await expect(page.getByRole('heading', { name: wanted.title + ' · ' + wanted.sku })).toBeVisible();
     await expect(page.getByRole('spinbutton')).toHaveValue(String(item.minQuantity));
-    const quoted = page.waitForResponse(response => response.url().endsWith('/api/actions/offer.validate')
-      && response.request().postDataJSON().cart.lines[0].sku === wanted.sku);
-    await page.reload();
-    await expect(page.getByRole('heading', { name: wanted.title + ' · ' + wanted.sku })).toBeVisible();
-    const quote = await (await quoted).json();
-    assertQuote(quote, wanted);
+    assertQuote(await quoted.json(), wanted);
     await expect(page.getByRole('complementary', { name: copy[locale].boxSummary })).toContainText(money);
 
     if (width === 320) return;
