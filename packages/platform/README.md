@@ -3899,8 +3899,9 @@ provider facts only through the host bindings a store passes in.
   identifier generator and a failure classifier as plain objects and functions
   (see [Binding](../core/docs/guide/glossary.md) in the glossary). The store keeps its storage
   names, serialization, wire spelling and provider facts.
-- **Functions.** These keep the continuation record through the storage and
-  identifier bindings:
+- **Functions.** The first four keep the continuation record through the
+  storage and identifier bindings; the last recovers a failed submit through
+  the transport and classifier bindings:
   - `getOrCreateContinuationId` reuses the stored identity when the identifier
     binding accepts it, and otherwise mints one and stores it with the
     payload's fingerprint;
@@ -3908,7 +3909,11 @@ provider facts only through the host bindings a store passes in.
     check;
   - `advanceAttempt` moves the stored record to its next payment attempt;
   - `clearContinuationRecord` clears the record, so the next purchase gets a
-    new identity.
+    new identity;
+  - `recoverAmbiguousSubmit` replays the retained request once, unchanged,
+    after a timeout or a transport failure, sends nothing after an in-flight
+    refusal or an unrecognized failure, and returns an
+    `AmbiguousSubmitRecovery` saying which happened.
 - **Markup anchors.** Production markup reads its `data-openlup-*` attribute
   names and the action, state and field names from the constant instead of
   string literals. Names are only added; a wrong one is superseded, not renamed.

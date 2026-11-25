@@ -68,7 +68,9 @@ export function createNativeQuoteService(db: NativeCheckoutQuery, predecessors: 
     const requestIdentity = digest(request);
     if (replay) {
       if ((replay.quote.context as { starterRequest?: string } | undefined)?.starterRequest !== requestIdentity) throw new Error('starter_command_conflict');
-      return { request, snapshot: replay, token: null, terms: (replay.quote.context as { acquisitionTerms?: ResolvedAcquisitionTerms }).acquisitionTerms,
+      // The accepted request is rebuilt from the stored snapshot, so a refreshed
+      // acceptance can be verified against the first order's terms.
+      return { request: acceptedRequest(request, replay), snapshot: replay, token: null, terms: (replay.quote.context as { acquisitionTerms?: ResolvedAcquisitionTerms }).acquisitionTerms,
         projection: projectQuote(replay, config.quote.acquisition.minimumProductPayableMinor) };
     }
     if (selected.cart.mode === 'subscription' && payload.acquisitionCapability !== ACQUISITION_TERMS_CAPABILITY) {
@@ -121,17 +123,11 @@ export function createNativeQuoteService(db: NativeCheckoutQuery, predecessors: 
             lines: linePricing.map((line, index) => ({ sku: line.sku, qty: line.quantity, sortOrder: index,
               isAddon: line.isAddon, quoteLine: line.quoteLine })) } } };
     }
-    const retained = snapshot.quote.context.starterRenewalTerms;
-    const acceptedRequest = { ...request, ...(retained ? { renewalPolicy: { minimumPayableMinor: retained.minimumPayableMinor,
-      normalCadenceDays: retained.normalCadenceDays, starterIntervalDays: retained.starterPack!.starterIntervalDays,
-      graduationCadenceDays: retained.starterPack!.graduation.cadenceDays, delivery2: retained.starterPack!.delivery2 } } : {}), pricePolicyBasis: snapshot.quote.lines.map(line => {
-      const facts = line.catalogFacts;
-      return facts?.version === 'catalog_facts_v2' ? { sku: line.sku, policyRevisionId: facts.policyRevisionId, policyDigest: facts.policyDigest } : null;
-    }) };
-    const token = terms ? acceptance.issuePromotionQuoteAcceptance({ request: acceptedRequest, quote: snapshot.quote, acquisitionTerms: terms,
+    const accepted = acceptedRequest(request, snapshot);
+    const token = terms ? acceptance.issuePromotionQuoteAcceptance({ request: accepted, quote: snapshot.quote, acquisitionTerms: terms,
       ...(snapshot.quote.context.shippingTerms ? { shippingTerms: snapshot.quote.context.shippingTerms } : {}),
       keyring: requireKeyring(keyring) }) : null;
-    return { request: acceptedRequest, snapshot, token, terms, projection: projectQuote(snapshot, config.quote.acquisition.minimumProductPayableMinor) };
+    return { request: accepted, snapshot, token, terms, projection: projectQuote(snapshot, config.quote.acquisition.minimumProductPayableMinor) };
   }
   return { quote, verify(observed: Awaited<ReturnType<typeof quote>>, payload: Record<string, unknown>) {
     if (!observed.terms) return;
@@ -155,6 +151,17 @@ export function createNativeQuoteService(db: NativeCheckoutQuery, predecessors: 
       ...(observed.terms ? acquisitionProjectionFreshness(projectAcquisitionTerms(observed.terms),new Date().toISOString()) : {}),
       expectedTotal: observed.snapshot.quote.totalGross };
   } };
+}
+
+/** The request an acceptance signs: the quote request plus the retained renewal and price-policy facts. */
+function acceptedRequest(request: Request, snapshot: CreateQuoteResponse): Request {
+  const retained = (snapshot.quote.context as { starterRenewalTerms?: RenewalRetainedTerms } | undefined)?.starterRenewalTerms;
+  return { ...request, ...(retained ? { renewalPolicy: { minimumPayableMinor: retained.minimumPayableMinor,
+    normalCadenceDays: retained.normalCadenceDays, starterIntervalDays: retained.starterPack!.starterIntervalDays,
+    graduationCadenceDays: retained.starterPack!.graduation.cadenceDays, delivery2: retained.starterPack!.delivery2 } } : {}), pricePolicyBasis: snapshot.quote.lines.map(line => {
+    const facts = line.catalogFacts;
+    return facts?.version === 'catalog_facts_v2' ? { sku: line.sku, policyRevisionId: facts.policyRevisionId, policyDigest: facts.policyDigest } : null;
+  }) };
 }
 
 function requireKeyring(keyring?: PromotionAcceptanceKeyring) {

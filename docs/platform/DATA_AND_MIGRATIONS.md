@@ -137,6 +137,27 @@ These forwards use the reviewed default-ACL preimage for the two base functions.
 An installation with an explicit ACL on either base function requires separate
 review before applying the ACL forward.
 
+## Checkout abandonment predicate grant
+
+The [grant forward](../../db/platform/migrations/20261128230001_checkout_abandonment_safety_execute_grant.sql)
+creates `public.commerce_checkout_abandonment_safe_runtime(uuid)`, a
+`SECURITY DEFINER` entry with a pinned `search_path` that returns
+`public.commerce_initial_checkout_abandonment_safe(uuid)` unchanged. It revokes
+the entry from PUBLIC, `anon` and `authenticated` and grants EXECUTE to
+`service_role` where that role exists. The predicate keeps its definition and
+ACL: it was created inside the native store class, by
+`20261110100000_checkout_recovery_waves.sql`, so the grant-only rail, which
+admits only base-chain functions, does not apply, and the catalog boundary
+refuses an ACL change on a replaced function. A created function may carry the
+closed `service_role` grant. A qualified runtime login inherits that grant and
+evaluates the sweep's predicate before it asks for a buyer-requested
+cancellation; calling the predicate directly still refuses. The migration
+ledger applies the forward once. Repeating its grant blocks, applying it
+without `service_role`, or replacing the predicate later leaves the entry and
+its grants as they were; the
+[grant witness](../../tests/postgres/checkoutAbandonmentSafetyGrant.test.ts)
+covers each case.
+
 ## Native renewal stock protection
 
 The [renewal credit aggregation forward](../../db/platform/migrations/20261123147000_inventory_atp_aggregate_renewal_credits.sql)

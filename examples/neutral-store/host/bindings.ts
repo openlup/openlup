@@ -1,4 +1,5 @@
 import type { IncomingMessage } from 'node:http';
+import { createHash } from 'node:crypto';
 import type { StoreConfig } from '../shared/config.ts';
 import type { ActionInput, ActionResult, Operation } from '../shared/api.ts';
 import { operationLimits } from '../shared/limits.ts';
@@ -23,6 +24,8 @@ export interface VerifiedActor {
 
 export interface ActionContext {
   commandKey: string;
+  /** `performance.now()` when the HTTP host received the request, before body and authentication. */
+  receivedAt?: number;
   /** Actual transport cookie; never supplied by an action body. */
   requestCookie?: string;
   actor: VerifiedActor;
@@ -42,6 +45,36 @@ export interface ApplicationBindings {
   resolveCatalogue?: ReturnType<typeof composeCatalogueStorefront>['resolveCatalogue'];
   authenticate(request: IncomingMessage): Promise<VerifiedActor>;
   close(): Promise<void>;
+}
+
+/** The default per-requester quota key: a digest of the socket peer address.
+ * This local host trusts its socket peer only, never forwarding headers or a
+ * contact supplied by the caller, so requests behind one proxy share its quota.
+ * A host behind a trusted proxy replaces this function in one place. A
+ * replacement returns a lowercase 64-hex SHA-256 digest, or `undefined` when it
+ * cannot identify the requester; quotas then fail closed. */
+export function requesterKeyFor(request: IncomingMessage): string | undefined {
+  const peer = request.socket.remoteAddress;
+  return peer ? createHash('sha256').update(peer.toLowerCase()).digest('hex') : undefined;
+}
+
+export const requesterKeyRefusal = () => new Error('OPENLUP_E_STARTER_REQUESTER_KEY_INVALID\n'
+  + 'Observed: The requesterKey option of composeNativeBindings is not a function or returned a value that is not a digest.\n'
+  + 'Cause: Quotas are keyed on a lowercase 64-hex SHA-256 digest of the requester, or on no key at all.\n'
+  + 'Fix: Pass a function that returns such a digest, for example of a verified client address, or undefined.\n'
+  + 'Recheck: Restart the host and repeat the request.');
+
+/** Checks a requester key replacement. A value that is not a function is refused
+ * at once, at composition. A returned value that is not a digest throws the same
+ * refusal on that request: the HTTP host logs its code to stderr and answers 503
+ * `starter_dependency_unavailable`, so every request fails until it is fixed. */
+export function checkedRequesterKey(replacement: unknown): (request: IncomingMessage) => string | undefined {
+  if (typeof replacement !== 'function') throw requesterKeyRefusal();
+  return request => {
+    const value: unknown = replacement(request);
+    if (value !== undefined && (typeof value !== 'string' || !/^[0-9a-f]{64}$/u.test(value))) throw requesterKeyRefusal();
+    return value;
+  };
 }
 
 /** Pending native dependencies remain visibly unbound. Never use browser fixtures as a store. */
