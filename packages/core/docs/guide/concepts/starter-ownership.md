@@ -194,7 +194,7 @@ and never reuse it for another operation.
 | --- | --- | --- |
 | None | `starter_checkout_not_found` | `{ abandoned: false }` |
 | Unpaid, creation complete | `{ orderRef, status, total, token }`, `replayed: true` | Cancels it: `{ abandoned: true, orderRef }` |
-| Unpaid, creation not complete | `starter_checkout_in_progress` | Cancels it, as above |
+| Unpaid, creation not complete | `starter_checkout_in_progress` | `starter_checkout_in_progress` for a minute after the order was created; then cancels it, as above |
 | Paid | `{ orderRef, status, total }`, `replayed: true` | `starter_checkout_paid` |
 | Cancelled, expired or closed | `starter_checkout_not_payable` | `{ abandoned: false, orderRef, status }` |
 

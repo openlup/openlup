@@ -12,7 +12,12 @@ Under a version 4 UUID key, changed details answer `starter_checkout_changed`,
 
 The new `checkout.continuation` operation resumes or abandons the order under
 a version 4 UUID key without its details; the starter now declares 76
-operations. An abandoned order carries the reason `checkout_started_over`. A
+operations. An abandoned order carries the reason `checkout_started_over`. An
+order whose creation has not completed can be abandoned only once it is a
+minute old; before that the answer is `starter_checkout_in_progress`. A
+creation that is still running after that minute can leave a stray provisional
+activation on the cancelled order, with no stock hold and no settlement intent,
+so nothing is payable. A
 fresh create that obtains its key lock more than 15 seconds after the host
 received it answers `starter_checkout_request_stale` and writes nothing.
 

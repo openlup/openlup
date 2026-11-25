@@ -40,6 +40,9 @@ const present = (order: { id: string; status: string; total_amount_minor: number
   total: { amountMinor: Number(order.total_amount_minor), currency: order.currency_code } });
 
 const checkoutLane = 'starter-checkout';
+/** Creation tails run after the key lock is released. An incomplete order younger than
+ * this may still be creating, so abandon waits for it to stall. A code constant. */
+export const checkoutIncompleteAbandonMs = 60_000;
 const checkoutDigest = (document: unknown) => createHash('sha256').update(canonicalCatalogDraftJson(document), 'utf8').digest('hex');
 /** A repeat passes the acceptance digest stored with the first order; a fresh create hashes the presented one. */
 function originalSubmit(payload: Record<string, unknown>, context: ActionContext, clientId: string, key: string, email: string,
@@ -401,12 +404,17 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
       return issued.refusal ?? { ...success({ ...present(order), token: issued.token }), replayed: true };
     }
     if (!payable) return success({ abandoned: false, orderRef: order.id, status: order.status });
+    if (!order.completed) {
+      const { rows: [age] } = await session.query<{ young: boolean }>(`SELECT created_at + $2 * interval '1 millisecond' > clock_timestamp()
+        AS young FROM public.commerce_orders WHERE id=$1`, [order.id, checkoutIncompleteAbandonMs]);
+      if (age?.young !== false) return refused('starter_checkout_in_progress');
+    }
     // The expiry sweep's predicate: no provider attempt ever and no external reference.
     const { rows: [safety] } = await session.query<{ safe: boolean }>('SELECT public.commerce_initial_checkout_abandonment_safe($1::uuid) AS safe', [order.id]);
     if (safety?.safe !== true) return refused('starter_checkout_not_abandonable');
     let cancelled = false;
     try {
-      // An incomplete creation is cancelled too: a later creation tail cannot hold stock on a cancelled order.
+      // A stalled incomplete creation is cancelled too: a later tail cannot hold stock on a cancelled order.
       cancelled = (await createPostgresAbandonedCheckoutCompensationPort(session).cancelAbandonedOrder({
         idempotencyKey: `${key}:start-over`, orderId: order.id, reason: 'checkout_started_over' })).cancelled;
     } catch (error) {

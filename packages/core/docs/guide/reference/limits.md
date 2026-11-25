@@ -344,7 +344,7 @@ means an in-flight parcel keeps its current destination.
 | Repeat or continue the key of a cancelled, expired or closed order | Check the recovery link for this order before starting a new key. | `starter_checkout_not_payable` |
 | Send a fresh create that obtains its key lock more than 15 seconds after the host received it | No order, contact or attempt is written. Send the same request again under the same key. | `starter_checkout_request_stale` |
 | `resume` a key with no order | Submit the order; start a new key only after the [finality wait](../concepts/starter-ownership.md#checkout-key-continuation). | `starter_checkout_not_found` |
-| `resume` an order whose creation has not finished | Try again shortly, or abandon it to start over. | `starter_checkout_in_progress` |
+| `resume` an order whose creation has not finished, or `abandon` it within a minute of its creation | Try again shortly, or abandon it to start over once the creation has been stalled for a minute. | `starter_checkout_in_progress` |
 | `abandon` an order with a payment attempt ever made, an external reference, or a payment in flight or recorded | The order is not cancelled. `resume` and follow its status. | `starter_checkout_not_abandonable` |
 | Repeat or `resume` an unpaid order older than its 24-hour recovery link lifetime | No token is issued. | `starter_checkout_expired` |
 | Sign in or out between a guest create and its retry | The key is derived from the principal, so the retry finds no order and creates a second one. Resolve the purchase first. | —; key bound to the principal |

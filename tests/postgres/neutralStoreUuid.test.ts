@@ -1163,6 +1163,10 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     expect(draft.status).toBe('pending_payment');
     expect(await call('checkout.continuation', { action: 'resume', locale: 'en' }, false, key))
       .toEqual({ ok: false, code: 'starter_checkout_in_progress' });
+    // A young incomplete order may still be creating; abandon waits until creation has stalled.
+    expect(await abandon(key)).toEqual({ ok: false, code: 'starter_checkout_in_progress' });
+    expect(await orderStatus(draft.id)).toBe('pending_payment');
+    await owner!.query("UPDATE public.commerce_orders SET created_at=created_at - interval '61 seconds' WHERE id=$1", [draft.id]);
     expect(await abandon(key)).toEqual({ ok: true, value: { abandoned: true, orderRef: draft.id } });
     expect(await call('checkout.create', input, false, key)).toEqual({ ok: false, code: 'starter_checkout_not_payable' });
     expect(await held(draft.id)).toBe(0);

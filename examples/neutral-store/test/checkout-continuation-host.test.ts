@@ -4,7 +4,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { request } from 'node:http';
 import type { Pool } from 'pg';
-import { composePurchaseCapabilities } from '../host/purchase-composition.ts';
+import { checkoutIncompleteAbandonMs, composePurchaseCapabilities } from '../host/purchase-composition.ts';
 import { createApplication } from '../host/server.ts';
 import type { ActionContext, VerifiedActor } from '../host/bindings.ts';
 import type { AcquisitionPredecessors } from '../host/acquisition-predecessors.ts';
@@ -33,13 +33,13 @@ const presented = (stored: Stored) => ({ orderRef: stored.id, status: stored.sta
 
 /** A fake held session in the style of the acquisition tests: every statement is named in `log`. */
 function continuation(stored: Stored | undefined, options: { admitted?: boolean; integrity?: unknown; issue?: unknown;
-  current?: { status: string; elapsed?: boolean }; safe?: boolean; cancel?: unknown } = {}) {
+  current?: { status: string; elapsed?: boolean }; safe?: boolean; cancel?: unknown; young?: boolean } = {}) {
   const log: string[] = [];
   const args: Record<string, unknown[]> = {};
   const query = async (sql: string, values: unknown[] = []) => {
     const step = [['pg_advisory_lock', 'lock'], ['pg_advisory_unlock', 'unlock'], ['commerce_order_draft_receipts', 'lookup'],
       ['catalog_admission_replay_order_draft', 'integrity'], ['abandonment_safe', 'predicate'], ['initial_checkout', 'initial'],
-      ['commerce_cancel_abandoned_purchase_checkout', 'cancel'], ['FROM public.commerce_orders WHERE id=$1', 'reread']]
+      ['commerce_cancel_abandoned_purchase_checkout', 'cancel'], ['AS young', 'age'], ['FROM public.commerce_orders WHERE id=$1', 'reread']]
       .find(([text]) => sql.includes(text!))?.[1];
     if (!step) throw new Error(`unexpected statement: ${sql}`);
     log.push(step);
@@ -52,6 +52,7 @@ function continuation(stored: Stored | undefined, options: { admitted?: boolean;
       if (options.cancel instanceof Error) throw options.cancel;
       return { rows: [{ result: options.cancel ?? { cancelled: true } }] };
     }
+    if (step === 'age') return { rows: [{ young: options.young ?? false }] };
     if (step === 'reread') return { rows: [options.current ?? stored] };
     return { rows: [] };
   };
@@ -217,7 +218,8 @@ test('the bound is measured from request receipt', async t => {
 test('an incomplete order can be abandoned to start over', async () => {
   const host = continuation(order({ completed: false }));
   assert.deepEqual(await host.call('abandon'), { ok: true, value: { abandoned: true, orderRef: orderId } });
-  assert.deepEqual(host.log, ['connect', 'lock', 'lookup', 'meter', 'integrity', 'initial', 'predicate', 'cancel', 'unlock', 'release']);
+  assert.deepEqual(host.log, ['connect', 'lock', 'lookup', 'meter', 'integrity', 'initial', 'age', 'predicate', 'cancel', 'unlock', 'release']);
+  assert.deepEqual(host.args.age, [orderId, checkoutIncompleteAbandonMs]);
   assert.deepEqual(host.args.cancel!.slice(0, 3), [`${derived(guest)}:start-over`, orderId, 'checkout_started_over']);
   assert.ok(!host.log.includes('issue'));
 });
@@ -249,4 +251,15 @@ test('abandon answers without a cancel for no, paid, closed or limited orders', 
   const limited = continuation(order(), { admitted: false });
   assert.deepEqual(await limited.call('abandon'), { ok: false, code: 'starter_attempt_limited' });
   assert.ok(!limited.log.includes('integrity') && !limited.log.includes('cancel'));
+});
+
+test('an incomplete order younger than the stall bound is in progress for abandon', async () => {
+  assert.equal(checkoutIncompleteAbandonMs, 60_000);
+  const host = continuation(order({ completed: false }), { young: true });
+  assert.deepEqual(await host.call('abandon'), { ok: false, code: 'starter_checkout_in_progress' });
+  assert.ok(host.log.includes('age') && !host.log.includes('predicate') && !host.log.includes('cancel'));
+  // A complete order never waits for the bound.
+  const complete = continuation(order(), { young: true });
+  assert.deepEqual(await complete.call('abandon'), { ok: true, value: { abandoned: true, orderRef: orderId } });
+  assert.ok(!complete.log.includes('age'));
 });
