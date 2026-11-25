@@ -5,7 +5,7 @@ import { env as processEnvironment } from 'node:process';
 import { delimiter, extname, join, posix, resolve } from 'node:path';
 import ts from 'typescript';
 import { afterEach, describe, expect, it } from 'vitest';
-import { excludedToolingTests, resolveGitExecutable, ROOT_DOC_FILES, scopeFromEvent, scopeFromLocal, SHARED_INPUTS, TOOLING_INPUTS, writeTestScope } from './ci-test-scope.mjs';
+import { ALL_WORKFLOW_SCOPES_TRUE, excludedToolingTests, isGlobalBailoutScript, NON_BAILOUT_SCRIPTS, resolveGitExecutable, ROOT_DOC_FILES, scopeFromEvent, scopeFromLocal, SHARED_INPUTS, TOOLING_INPUTS, workflowScopeFromEvent, workflowScopeFromPaths, writeTestScope, writeWorkflowScope } from './ci-test-scope.mjs';
 
 const base = 'a'.repeat(40);
 const all = Object.keys(TOOLING_INPUTS).sort();
@@ -35,8 +35,10 @@ describe('conservative tooling scope', () => {
         .map(([test]) => test).sort());
   });
   it.each(['package.json', 'package-lock.json', 'vitest.config.ts', 'tsconfig.json', 'tsconfig.app.json',
-    'LICENSE', 'UNKNOWN.md', 'scripts/run-vitest.mjs',
-    'scripts/ci-test-scope.mjs', 'scripts/ci-test-scope.test.ts', '.github/workflows/any.yml',
+    'LICENSE', 'UNKNOWN.md', 'scripts/run-vitest.mjs', 'scripts/ci-vitest-shard.mjs',
+    'scripts/ci-test-scope.mjs', 'scripts/disposable-docker.mjs', 'scripts/build-packages-incremental.mjs',
+    'scripts/fixtures/example.json', 'scripts/brand-new-unknown.mjs', 'scripts/ast-grep/.hidden',
+    '.github/workflows/any.yml',
     '.github/actions/example/action.yml',
     'eslint.config.js', '.nvmrc', 'scripts/packages/new-helper.ts', 'tests/setup/scrub-git-env.ts',
     'src/test/setup.ts', 'src/checkout/machine/commerceRequestCache.ts',
@@ -45,6 +47,41 @@ describe('conservative tooling scope', () => {
     'packages/platform/src/.npmignore', 'packages/core/.github/workflows/ci.yml'])(
     'runs everything for shared input %s', path => { expect(excludedToolingTests([path])).toEqual([]); },
   );
+  it('avoids global bailout for script tests (Tier A) and allowlisted NON_BAILOUT_SCRIPTS (Tier B) while retaining self and owning tests', () => {
+    // Tier A: unlisted script test excludes all bounded tooling and PG suites.
+    const unlistedScriptTest = excludedToolingTests(['scripts/ci-test-scope.test.ts']);
+    expect(unlistedScriptTest).toEqual(all);
+    expect(unlistedScriptTest).not.toContain('scripts/ci-test-scope.test.ts');
+
+    // Tier A: listed empty-input script test retains itself via self-retention!
+    const emptyInputListed = excludedToolingTests(['scripts/pgtap-parity.test.ts']);
+    expect(emptyInputListed).not.toContain('scripts/pgtap-parity.test.ts');
+    expect(emptyInputListed).toEqual(all.filter(test => test !== 'scripts/pgtap-parity.test.ts'));
+
+    // Tier A: listed script test with inputs retains itself and excludes unrelated PG suites.
+    const listedScriptTest = excludedToolingTests(['scripts/public-ci-reuse.test.ts']);
+    expect(listedScriptTest).not.toContain('scripts/public-ci-reuse.test.ts');
+    expect(listedScriptTest).toContain('tests/postgres/catalogPublication.test.ts');
+
+    // Tier B: allowlisted leaf/guard scripts retain their owning TOOLING_INPUTS tests and skip unrelated PG suites.
+    const reuseScript = excludedToolingTests(['scripts/public-ci-reuse.mjs']);
+    expect(reuseScript).not.toContain('scripts/public-ci-reuse.test.ts');
+    expect(reuseScript).toContain('tests/postgres/catalogPublication.test.ts');
+
+    const queueScript = excludedToolingTests(['scripts/agent-review-queue.mjs']);
+    expect(queueScript).not.toContain('scripts/agent-review-queue.test.ts');
+    expect(queueScript).not.toContain('scripts/agent-review-gate.test.ts');
+    expect(queueScript).toContain('tests/postgres/catalogPublication.test.ts');
+
+    const astGrepRule = excludedToolingTests(['scripts/ast-grep/rules/domain-no-environment-reads.yml']);
+    expect(astGrepRule).not.toContain('scripts/ast-grep/check-filewide-ignore.test.ts');
+    expect(astGrepRule).not.toContain('scripts/ast-grep/rule-tests/portable-no-industry-contracts.test.ts');
+    expect(astGrepRule).toContain('tests/postgres/catalogPublication.test.ts');
+
+    const affectedScript = excludedToolingTests(['scripts/affected-tests.mjs']);
+    expect(affectedScript).toEqual(all);
+    expect(affectedScript).not.toContain('scripts/affected-tests.test.ts');
+  });
   it('excludes bounded tooling tests for docs and unrelated config changes', () => {
     expect(excludedToolingTests(['docs/platform/README.md'])).toEqual(all);
     expect(excludedToolingTests(['config/doc-routing.json'])).toEqual(all.filter(test =>
@@ -473,7 +510,7 @@ describe('git executable resolution', () => {
 
 describe('PostgreSQL AST closure soundness', () => {
   const BARE_ROOT_DIRS = new Set(['src', 'api', 'mcp', 'examples', 'supabase', 'docs']);
-  const KNOWN_PREFIXES = ['src/', 'api/', 'mcp/', 'examples/', 'supabase/', 'docs/', 'config/', 'tests/', 'db/', 'packages/', 'server/'];
+  const KNOWN_PREFIXES = ['src/', 'api/', 'mcp/', 'examples/', 'supabase/', 'docs/', 'config/', 'tests/', 'db/', 'packages/', 'server/', 'scripts/'];
   const VITEST_MOCK_METHODS = new Set(['mock', 'doMock', 'importActual', 'importMock']);
   const covers = (input: string, target: string) => (input.endsWith('/') ? target === input || target.startsWith(input) : target === input);
 
@@ -702,7 +739,7 @@ describe('PostgreSQL AST closure soundness', () => {
       return entry;
     };
 
-    const collectClosure = (entryTest: string, { stopAtPackages = true } = {}): string[] => {
+    const collectClosure = (entryTest: string, { stopAtPackages = true, followScripts = false } = {}): string[] => {
       const visited = new Set<string>([entryTest]);
       const queue = [entryTest];
       const deps = new Set<string>([entryTest]);
@@ -713,16 +750,18 @@ describe('PostgreSQL AST closure soundness', () => {
         for (const target of imports) {
           deps.add(target);
           if (isFile(target) && !visited.has(target) && /\.(?:ts|tsx|js|mjs|mts|cjs)$/u.test(target)
-            && !(stopAtPackages && target.startsWith('packages/')) && !target.startsWith('scripts/')) {
+            && !(stopAtPackages && target.startsWith('packages/'))
+            && (followScripts || !target.startsWith('scripts/'))) {
             visited.add(target);
             queue.push(target);
           }
         }
         if (cur.startsWith('packages/')) continue;
+        if (cur.startsWith('scripts/') && cur !== entryTest) continue;
         for (const lit of pathLiterals) {
           deps.add(lit);
-          if ((lit.startsWith('tests/helpers/') || lit.startsWith('tests/postgres/'))
-            && isFile(lit) && !visited.has(lit) && /\.(?:ts|tsx|js|mjs|mts|cjs)$/u.test(lit)) {
+          const followLit = lit.startsWith('tests/helpers/') || lit.startsWith('tests/postgres/');
+          if (followLit && isFile(lit) && !visited.has(lit) && /\.(?:ts|tsx|js|mjs|mts|cjs)$/u.test(lit)) {
             visited.add(lit);
             queue.push(lit);
           }
@@ -741,6 +780,7 @@ describe('PostgreSQL AST closure soundness', () => {
     const isGlobalBailout = (dep: string) => {
       if (!dep.endsWith('/') && !dep.includes('/') && !rootDocSet.has(dep)) return true;
       if (dep.split('/').some(seg => seg.startsWith('.'))) return true;
+      if (isGlobalBailoutScript(dep)) return true;
       return SHARED_INPUTS.some(shared => covers(shared, dep));
     };
 
@@ -823,5 +863,296 @@ describe('PostgreSQL AST closure soundness', () => {
     expect(deps).toContain('src/');
     expect(deps).toContain('api/');
     expect(deps).toContain('supabase/migrations/');
+  });
+
+  it('proves every exempted scripts/ path is safe and declared by every TOOLING_INPUTS consumer across full transitive closures', () => {
+    const rootDir = process.cwd();
+    const { collectClosure } = createAstClosureScanner(rootDir);
+    const forbiddenAllowlistPrefixes = [
+      'scripts/run-vitest',
+      'scripts/ci-vitest-shard',
+      'scripts/ci-test-scope',
+      'scripts/build-packages-incremental',
+      'scripts/disposable-docker',
+      'scripts/fixtures/',
+      'scripts/packages/',
+      'scripts/preflight',
+      'scripts/oss-',
+    ];
+    for (const entry of NON_BAILOUT_SCRIPTS) {
+      expect(entry.startsWith('scripts/'), entry).toBe(true);
+      expect(entry.includes('//'), entry).toBe(false);
+      expect(existsSync(resolve(rootDir, entry.replace(/\/$/u, ''))), entry).toBe(true);
+      for (const forbidden of forbiddenAllowlistPrefixes) {
+        expect(entry.startsWith(forbidden), `${entry} must not exempt ${forbidden}`).toBe(false);
+      }
+    }
+
+    const violations: string[] = [];
+    for (const [testPath, declaredInputs] of Object.entries(TOOLING_INPUTS)) {
+      const effectiveInputs = [testPath, ...declaredInputs];
+      const closureDeps = collectClosure(testPath, { stopAtPackages: true, followScripts: true });
+      for (const dep of closureDeps) {
+        if (!dep.startsWith('scripts/') || isGlobalBailoutScript(dep)) continue;
+        if (!effectiveInputs.some(input => covers(input, dep))) {
+          violations.push(`${testPath}: transitive dependency on exempted script ${dep} is not covered by TOOLING_INPUTS`);
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  it('seeded falsifier: catches transitive dependency from a bailout script to an exempted script', () => {
+    const dir = scratch();
+    mkdirSync(join(dir, 'scripts'), { recursive: true });
+    writeFileSync(join(dir, 'scripts/public-ci-reuse.mjs'), 'export const reuse = true;\n');
+    writeFileSync(join(dir, 'scripts/helper-bailout.mjs'), 'export { reuse } from "./public-ci-reuse.mjs";\n');
+    writeFileSync(join(dir, 'scripts/consumer.test.ts'), 'import { reuse } from "./helper-bailout.mjs";\nexport const x = reuse;\n');
+    const { collectClosure } = createAstClosureScanner(dir);
+    const deps = collectClosure('scripts/consumer.test.ts', { stopAtPackages: true, followScripts: true });
+    expect(deps).toContain('scripts/helper-bailout.mjs');
+    expect(deps).toContain('scripts/public-ci-reuse.mjs');
+    expect(isGlobalBailoutScript('scripts/public-ci-reuse.mjs')).toBe(false);
+  });
+});
+
+describe('workflow scope gate (--workflow-outputs)', () => {
+  const allFalse = {
+    run_pgtap: false,
+    run_reference_build: false,
+    run_package_gates: false,
+    run_install_browser: false,
+    run_install_pack: false,
+  };
+
+  it('skips all gated lanes on unrelated docs, mcp, isolated PG tests, and allowlisted scripts', () => {
+    for (const path of [
+      'docs/platform/README.md',
+      'CONTRIBUTING.md',
+      'mcp/server.ts',
+      'tests/postgres/catalogPublication.test.ts',
+      'scripts/ci-vitest-shard.test.ts',
+      'scripts/public-ci-reuse.mjs',
+      'scripts/ast-grep/rules/bff-database-through-ports.yml',
+    ]) {
+      expect(workflowScopeFromPaths([path]), path).toEqual(allFalse);
+    }
+  });
+
+  it('triggers exact workflow lanes per dependency axis', () => {
+    for (const path of [
+      'supabase/migrations/20990101000000_example.sql',
+      'supabase/tests/example.sql',
+      'tests/postgres/managed-compat/supabase.sql',
+    ]) {
+      expect(workflowScopeFromPaths([path]), path).toEqual({ ...allFalse, run_pgtap: true });
+    }
+    expect(workflowScopeFromPaths(['config/ci-postgres-packages.json'])).toEqual({
+      ...allFalse,
+      run_pgtap: true,
+      run_reference_build: true,
+    });
+    expect(workflowScopeFromPaths(['config/ci-images.json'])).toEqual(ALL_WORKFLOW_SCOPES_TRUE);
+
+    for (const path of ['src/pages/Home.tsx', 'api/bff/example.ts', 'public/favicon.ico', 'config/site-routes.json']) {
+      expect(workflowScopeFromPaths([path]), path).toEqual({ ...allFalse, run_reference_build: true });
+    }
+
+    expect(workflowScopeFromPaths(['server/domains/commerce/example.ts'])).toEqual({
+      ...allFalse,
+      run_reference_build: true,
+      run_package_gates: true,
+      run_install_pack: true,
+    });
+    for (const path of [
+      'db/platform/migrations/20990101000000_example.sql',
+      'docs/platform/communications-conformance.mjs',
+      'AGENTS.md',
+    ]) {
+      expect(workflowScopeFromPaths([path]), path).toEqual({
+        ...allFalse,
+        run_package_gates: true,
+        run_install_pack: true,
+      });
+    }
+    for (const path of ['config/documentation-guide-allowlist.json', 'config/platform-migration-manifest.json']) {
+      expect(workflowScopeFromPaths([path]), path).toEqual({
+        ...allFalse,
+        run_reference_build: true,
+        run_package_gates: true,
+        run_install_pack: true,
+      });
+    }
+
+    expect(workflowScopeFromPaths(['packages/core/src/index.ts'])).toEqual({
+      run_pgtap: false,
+      run_reference_build: true,
+      run_package_gates: true,
+      run_install_browser: true,
+      run_install_pack: true,
+    });
+    for (const path of ['examples/neutral-store/host/server.ts', 'tests/helpers/postgresContainer.ts']) {
+      expect(workflowScopeFromPaths([path]), path).toEqual({
+        run_pgtap: false,
+        run_reference_build: false,
+        run_package_gates: true,
+        run_install_browser: true,
+        run_install_pack: true,
+      });
+    }
+    for (const path of ['tests/postgres/m14ReleasedSchemaUpgrade.proof.ts', 'tests/postgres/m14ReleasedSchemaUpgradeChild.ts']) {
+      expect(workflowScopeFromPaths([path]), path).toEqual({
+        ...allFalse,
+        run_install_browser: true,
+        run_install_pack: true,
+      });
+    }
+  });
+
+  it('fails closed to ALL_WORKFLOW_SCOPES_TRUE on empty, malformed, root non-doc, dot-segment, shared, and bailout script paths', () => {
+    expect(workflowScopeFromPaths([])).toEqual(ALL_WORKFLOW_SCOPES_TRUE);
+    expect(workflowScopeFromPaths(null as unknown as string[])).toEqual(ALL_WORKFLOW_SCOPES_TRUE);
+    for (const path of [
+      '',
+      '/etc/passwd',
+      '../escape.ts',
+      'src\\windows.ts',
+      'package.json',
+      'package-lock.json',
+      'vite.config.ts',
+      'index.html',
+      '.github/workflows/published-tree-ci.yml',
+      'src/.env',
+      'tests/setup/vitest.setup.ts',
+      'scripts/public-ci-pgtap.mjs',
+      'scripts/starter-browser-ci.mjs',
+      'scripts/packages/required-package-gates.ts',
+      'scripts/ci-test-scope.mjs',
+      'scripts/new-unknown-helper.mjs',
+    ]) {
+      expect(workflowScopeFromPaths([path]), path).toEqual(ALL_WORKFLOW_SCOPES_TRUE);
+    }
+  });
+
+  it('fails closed on push/unknown events, invalid SHAs, and Git errors while scoping pull_request and merge_group', () => {
+    for (const eventName of ['push', 'workflow_dispatch', 'unknown', undefined]) {
+      expect(workflowScopeFromEvent({
+        eventName,
+        event: { pull_request: { base: { sha: base } } },
+        git: () => { throw new Error('must not run'); },
+      }), String(eventName)).toEqual(ALL_WORKFLOW_SCOPES_TRUE);
+    }
+    expect(workflowScopeFromEvent({
+      eventName: 'pull_request',
+      event: { pull_request: { base: { sha: 'not-a-sha' } } },
+    })).toEqual(ALL_WORKFLOW_SCOPES_TRUE);
+    expect(workflowScopeFromEvent({
+      eventName: 'pull_request',
+      event: { pull_request: { base: { sha: base } } },
+      git: () => { throw new Error('missing history'); },
+    })).toEqual(ALL_WORKFLOW_SCOPES_TRUE);
+    expect(workflowScopeFromEvent({
+      eventName: 'pull_request',
+      event: { pull_request: { base: { sha: base } } },
+      git: args => args[0] === 'merge-base' ? base : 'M\0docs/platform/README.md',
+    })).toEqual(ALL_WORKFLOW_SCOPES_TRUE);
+    expect(workflowScopeFromEvent({
+      eventName: 'pull_request',
+      event: { pull_request: { base: { sha: base } } },
+      git: args => args[0] === 'merge-base' ? base : 'M\0',
+    })).toEqual(ALL_WORKFLOW_SCOPES_TRUE);
+    expect(workflowScopeFromEvent({
+      eventName: 'pull_request',
+      event: { pull_request: { base: { sha: base } } },
+      git: args => args[0] === 'merge-base' ? base : 'R100\0docs/a.md\0docs/b.md\0',
+    })).toEqual(ALL_WORKFLOW_SCOPES_TRUE);
+    expect(workflowScopeFromEvent({
+      eventName: 'merge_group',
+      event: { merge_group: { base_sha: base } },
+      git: args => args[0] === 'merge-base' ? base : 'M\0docs/platform/README.md\0',
+    })).toEqual(allFalse);
+    expect(workflowScopeFromEvent({
+      eventName: 'merge_group',
+      event: { merge_group: { base_sha: base } },
+      git: args => args[0] === 'merge-base' ? base : 'D\0docs/platform/DATA_AND_MIGRATIONS.md\0',
+    })).toEqual({
+      ...allFalse,
+      run_package_gates: true,
+      run_install_pack: true,
+    });
+    expect(workflowScopeFromPaths(['docs/platform/README.md'], { hasDeletion: true })).toEqual({
+      ...allFalse,
+      run_package_gates: true,
+      run_install_pack: true,
+    });
+  });
+
+  it('writes GITHUB_OUTPUT lines via --workflow-outputs CLI, runs package gates on file deletions/renames, and fails closed on unreadable event metadata', () => {
+    const cwd = scratch();
+    const git = (...args: string[]) => execFileSync('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { cwd, encoding: 'utf8' }).trim();
+    git('init', '-q');
+    mkdirSync(join(cwd, 'docs/platform'), { recursive: true });
+    writeFileSync(join(cwd, 'docs/platform/README.md'), 'before\n');
+    git('add', '.'); git('commit', '-qm', 'base');
+    const baseSha = git('rev-parse', 'HEAD');
+    writeFileSync(join(cwd, 'docs/platform/README.md'), 'after\n');
+    git('add', '.'); git('commit', '-qm', 'docs edit');
+
+    const eventPath = join(cwd, 'event.json');
+    const outputPath = join(cwd, 'github-output.txt');
+    writeFileSync(eventPath, JSON.stringify({ pull_request: { base: { sha: baseSha } } }));
+    writeFileSync(outputPath, 'existing=1\n');
+    execFileSync(process.execPath, [resolve(process.cwd(), 'scripts/ci-test-scope.mjs'), '--workflow-outputs'], {
+      cwd,
+      env: { ...processEnvironment, GITHUB_EVENT_NAME: 'pull_request', GITHUB_EVENT_PATH: eventPath, GITHUB_OUTPUT: outputPath },
+      encoding: 'utf8',
+    });
+    expect(readFileSync(outputPath, 'utf8')).toBe([
+      'existing=1',
+      'run_pgtap=false',
+      'run_reference_build=false',
+      'run_package_gates=false',
+      'run_install_browser=false',
+      'run_install_pack=false',
+      '',
+    ].join('\n'));
+
+    // Renaming or deleting any tracked file triggers run_package_gates and run_install_pack.
+    const editHead = git('rev-parse', 'HEAD');
+    git('mv', 'docs/platform/README.md', 'docs/platform/MOVED.md');
+    git('commit', '-qm', 'rename doc');
+    const renameEventPath = join(cwd, 'rename-event.json');
+    const renameOutputPath = join(cwd, 'rename-output.txt');
+    writeFileSync(renameEventPath, JSON.stringify({ pull_request: { base: { sha: editHead } } }));
+    execFileSync(process.execPath, [resolve(process.cwd(), 'scripts/ci-test-scope.mjs'), '--workflow-outputs'], {
+      cwd,
+      env: { ...processEnvironment, GITHUB_EVENT_NAME: 'pull_request', GITHUB_EVENT_PATH: renameEventPath, GITHUB_OUTPUT: renameOutputPath },
+      encoding: 'utf8',
+    });
+    expect(readFileSync(renameOutputPath, 'utf8')).toBe([
+      'run_pgtap=false',
+      'run_reference_build=false',
+      'run_package_gates=true',
+      'run_install_browser=false',
+      'run_install_pack=true',
+      '',
+    ].join('\n'));
+
+    const fallbackOutput = join(cwd, 'fallback-output.txt');
+    writeWorkflowScope({ output: fallbackOutput, eventName: 'pull_request', eventPath: join(cwd, 'missing.json'), cwd });
+    expect(readFileSync(fallbackOutput, 'utf8')).toBe([
+      'run_pgtap=true',
+      'run_reference_build=true',
+      'run_package_gates=true',
+      'run_install_browser=true',
+      'run_install_pack=true',
+      '',
+    ].join('\n'));
+
+    expect(() => execFileSync(process.execPath, [resolve(process.cwd(), 'scripts/ci-test-scope.mjs'), '--workflow-outputs', 'extra'], {
+      cwd,
+      encoding: 'utf8',
+      stdio: 'pipe',
+    })).toThrow();
   });
 });

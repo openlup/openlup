@@ -47,6 +47,13 @@ it("pins the canonical Unicode quote money and final quote digests", () => {
   expect(quoteDigest("commerce.quote.v2", { status: final.status, ...Object.fromEntries(Object.entries(final).filter(([key]) => key !== "status").reverse()) } as typeof final)).toBe(_digest);
 });
 
+it("pins the quote presentation dialect and its nested canonical frame", () => {
+  expect(quoteDigest("commerce.quote-presentation.v2", [
+    "098959dbaccb5a6becc8f01f11478ce47ab2384f7ca793232e73051e8855c0f4",
+    ["service-a", "service-b"], { currency: TEST_CURRENCY, amountMinor: 8 },
+  ])).toBe("ba689fa625a12af4916b475311099d5e50723368b732af0eb2989f00158ff501");
+});
+
 it("commits status, allocations and destination even at equal payable", () => {
   const original = sealQuote();
   const { quoteDigest: digest, ...final } = original;

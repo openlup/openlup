@@ -8,6 +8,9 @@ export * from "./promotionCodeQuotePort.js";
 export * from "./promotionCodePreview.js";
 export * from "./promotionQuoteBinding.js";
 export * from "./promotionQuoteAcceptance.js";
+export { issueQuoteAcceptanceTokenV2, verifyQuoteAcceptanceTokenV2 } from "./quoteAcceptanceTokenV2.js";
+export type { QuoteAcceptanceTokenV2, QuoteAcceptanceScopeV2, QuoteAcceptancePresentationV2,
+  QuoteAcceptanceRefusalV2 } from "./quoteAcceptanceTokenV2.js";
 export * from "./promotionAcceptanceTelemetry.js";
 export * from "./adminBindings.js";
 export * from "./adminPromotionsContracts.js";
