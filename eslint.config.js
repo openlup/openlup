@@ -336,8 +336,8 @@ export function platformModuleRules(pkg, module, graph = PLATFORM_MODULE_GRAPH) 
     ...(module === "pricing" ? [{
       files: [`${PLATFORM_SOURCE}/pricing/browser/index.ts`],
       rules: boundaryRules([packageIsolation(pkg, 3), packageExports, {
-        message: "packages/platform pricing browser entry imports only its existing quote/acquisition definitions and the pure shipping terms owner.",
-        regexes: ["^(?!(?:\\.\\./quotePrimitives\\.js|\\.\\./acquisitionTermsSchemas\\.js|\\.\\./\\.\\./shipping/thresholdPolicy\\.js)$)"],
+        message: "packages/platform pricing browser entry imports only its existing quote/acquisition definitions, the browser-safe subscription price policy and the pure shipping terms owner.",
+        regexes: ["^(?!(?:\\.\\./quotePrimitives\\.js|\\.\\./acquisitionTermsSchemas\\.js|\\.\\./subscriptionPricePolicy\\.js|\\.\\./\\.\\./shipping/thresholdPolicy\\.js)$)"],
       }]),
     }] : []),
     // These complete allowlists replace the server rules, including type-only
