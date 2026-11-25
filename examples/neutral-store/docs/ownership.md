@@ -127,7 +127,7 @@ The token is returned only in the creating response and a separate private
 captured checkout-recovery message, never an authentication challenge or event.
 The completion page reads the URL token once and replaces history synchronously
 before configuration fetch or rendering. Request bodies carry the token; memory
-and session storage preserve reload convenience but grant no authority. An unchanged repeated submit for the same order keeps its existing token when the replay response omits it. A different order never inherits that token. A new token replaces the token stored in this tab; this storage update does not revoke other links. Operator issuance revokes them through the native issuer.
+and session storage preserve reload convenience but grant no authority. An unchanged repeated submit for the same unpaid order returns a further token; when a limited or paid repeat omits it, the tab keeps its existing token for that order. A different order never inherits that token. A new token replaces the token stored in this tab; this storage update does not revoke other links. Operator issuance revokes them through the native issuer.
 Live pending-order links support sandbox continuation payment of the original
 order, including retry after a decline. Dedicated token pay and exact cookie-authorized
 inline retry are also bound for the explicit synthetic sandbox choices. Real-provider

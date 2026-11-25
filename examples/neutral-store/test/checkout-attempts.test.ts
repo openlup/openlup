@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import type { NativeCheckoutQuery } from '@openlup/platform/commerce/server/native-checkout';
 import type { createCheckoutAdmission } from '@openlup/platform/commerce/server';
-import { createPostgresCheckoutRateLimit, createCheckoutAttemptBindings, admitCheckoutAttempt } from '../host/checkout-attempts.ts';
+import { createPostgresCheckoutRateLimit, createCheckoutAttemptBindings, admitCheckoutAttempt, admitCheckoutReplay } from '../host/checkout-attempts.ts';
 import { configurations } from '../owned/store.config.ts';
 import { assertConfig } from '../shared/config.ts';
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -73,6 +73,35 @@ test('exceptions, absent and malformed callback replies fail closed without leak
   for (const check of [async () => { throw new Error('private'); }, async () => undefined, async () => ({ allowed: 'yes' }), async () => ({ allowed: true, unexpected: 'private' }), async () => ({ allowed: true, reason: 'invalid' })]) {
     assert.equal(await admitCheckoutAttempt(check as Parameters<typeof admitCheckoutAttempt>[0], request, intent('secret'), 0), false);
   }
+});
+
+test('a repeat is a distinct ledger attempt for the requester and the key', async () => {
+  const calls: unknown[][] = [];
+  const check = createPostgresCheckoutRateLimit({ async query(...args) {
+    calls.push(args[1] as unknown[]);
+    return { rows: [{ result: { allowed: true } }] };
+  } }, settings);
+  const key = `checkout:${hash('derived')}`;
+  assert.equal(await admitCheckoutReplay(check, request, key), true);
+  assert.equal(await admitCheckoutReplay(check, request, key), true);
+  const [first, second] = calls as [unknown[], unknown[]];
+  assert.notEqual(first[0], second[0]);
+  // A separate requester bucket, and one contact bucket per derived key that no e-mail can produce.
+  assert.deepEqual([first[1], first[2]], [hash(`replay:${request.requesterKey}`), hash(`replay:${key}`)]);
+  assert.deepEqual([second[1], second[2]], [first[1], first[2]]);
+  assert.notEqual(first[1], request.requesterKey);
+  const seen: Parameters<Parameters<typeof admitCheckoutReplay>[0]>[] = [];
+  await admitCheckoutReplay(async (...input) => { seen.push(input); return { allowed: true }; }, request, key);
+  assert.match(seen[0]![1].idempotencyKey, new RegExp(`^${key}:replay:[0-9a-f-]{36}$`));
+  assert.deepEqual([seen[0]![1].contact, seen[0]![2]], [{ email: `replay:${key}` }, 0]);
+  for (const reply of [async () => { throw new Error('private'); }, async () => ({ allowed: false }), async () => ({ allowed: true, extra: 1 })]) {
+    assert.equal(await admitCheckoutReplay(reply as Parameters<typeof admitCheckoutReplay>[0], request, key), false);
+  }
+  // A missing or malformed requester stays malformed, so the default limiter still refuses it.
+  calls.length = 0;
+  assert.equal(await admitCheckoutReplay(check, { headers: {} }, key), false);
+  assert.equal(await admitCheckoutReplay(check, { ...request, requesterKey: 'raw-peer' }, key), false);
+  assert.equal(calls.length, 0);
 });
 
 for (const original of Object.values(configurations)) test(`${original.id}: each attempt bound and contact default changes through owned inputs`, () => {
