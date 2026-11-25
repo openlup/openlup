@@ -24,7 +24,7 @@ beforeAll(async () => {
     // The later forwards depend on tables or routines the two evaluation forwards create.
     for (const unit of [manifest.baseline, ...manifest.forward]) {
       if (unit.file !== forward && unit.file !== claimSeal
-        && !/_(?:function_search_path_pg_temp|tax_calculation_composition|order_money_v2_storage)\.sql$/u.test(unit.file)) {
+        && !/_(?:function_search_path_pg_temp|tax_calculation_composition|order_money_v2_storage|tax_calculation_adapter_money_v1)\.sql$/u.test(unit.file)) {
         await client.query(readFileSync(unit.file, "utf8"));
       }
     }

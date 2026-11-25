@@ -2,8 +2,11 @@ import { randomUUID } from "node:crypto";
 import { DatabaseError, type Pool, type PoolClient } from "pg";
 import { expect } from "vitest";
 import { canonicalCatalogDraftJson } from "@openlup/platform/catalog";
-import { applyTaxCoverageRevision, evaluationDigest, makeTaxQuoteRequest } from "@openlup/platform/tax";
+import { applyTaxCoverageRevision, evaluationDigest, localRateTable, makeTaxQuoteRequest } from "@openlup/platform/tax";
 import type { TaxQuoteInputV1 } from "@openlup/platform/tax/contracts";
+import { composeCommerceQuoteMoneyV2, planCommerceQuoteMoneyV2, type PlanCommerceQuoteMoneyV2Input } from "@openlup/platform/pricing";
+// eslint-disable-next-line no-restricted-imports -- compare SQL with the reporting verifier's private accepted snapshot
+import { checkedQuoteResult, taxDigest, taxFiscalDigest } from "../../packages/platform/src/tax/digest.js";
 import type { JourneyInstallation } from "../helpers/storeJourney.js";
 import { destinationContext, destinationHash, snapshot, snapshotCommand, testServicePin } from "./destinationDocumentFixture.js";
 
@@ -122,6 +125,115 @@ async function fixture(store: JourneyInstallation) {
 
 type Fixture = Awaited<ReturnType<typeof fixture>>;
 type Begin = ReturnType<Fixture["begin"]>;
+
+async function verifiedAdapterMoney(value: Fixture, purpose: "final" | "estimate", extended: boolean) {
+  const command = value.begin(exclusiveKind, true);
+  const composition = command.pin.composition!;
+  const [shippingPlan] = composition.planInput.baseline.delivery;
+  const handling = { ...shipping, kind: "handling", bucketKey: "handling-a", amountMinor: 20, cost: { ...cost, amountMinor: 20 } } as const;
+  const { threshold: _threshold, ...deliveryPlan } = shippingPlan;
+  const candidate = { amountBasis: "exclusive", deliverySelectionRef: testServicePin.deliverySelectionRef, feeLines: [],
+    delivery: [{ ...deliveryPlan, kind: "shipping", cost: { ...cost, amountMinor: 30 }, amountMinor: 30 }, handling] } as const;
+  const planInput: PlanCommerceQuoteMoneyV2Input = {
+    currency: "XXX", listBasis: "exclusive", price, engine: "promotion-engine.v1", baseline: candidate,
+    lines: [{ ...line, mode: "subscription", amountKind: "net", lineKey: "item-b", sourceOrdinal: 2 },
+      { ...line, mode: "subscription", amountKind: "net" }],
+    selected: { ...candidate, adjustments: [
+      { amountOffMinor: 4, adjustmentRef: "discount-a", evidenceRef: "rule-a", appliesTo: "line", target: { lineKeys: [line.lineKey] } },
+      { amountOffMinor: 5, adjustmentRef: "discount-b", evidenceRef: "rule-b", appliesTo: "line", target: { lineKeys: [line.lineKey, "item-b"] } },
+      { amountOffMinor: 3, adjustmentRef: "discount-c", evidenceRef: "rule-c", appliesTo: "shipping", target: { bucketKey: shipping.bucketKey } },
+    ] },
+  };
+  const planned = planCommerceQuoteMoneyV2(planInput);
+  if (planned.kind !== "planned") throw new Error(JSON.stringify(planned));
+  const effective = { from: taxDate };
+  const jurisdictions = ["district-a", "district-b"];
+  const required: TaxQuoteInputV1["required"] = [
+    ...jurisdictions.map(jurisdiction => ({ ...value.fullInput.required[0], jurisdiction })),
+    { ...value.fullInput.required[0], target: { kind: "line", key: "item-b" } },
+    ...candidate.delivery.map(bucket => ({ ...value.fullInput.required[0], target: { kind: "delivery" as const, key: bucket.bucketKey } })),
+    ...["fee-order", "fee-delivery"].map(key => ({
+      ...value.fullInput.required[0], taxKind: "fee-kind", target: { kind: "fee" as const, key, taxClass: "fee-class",
+        assignmentRef: refs.assignmentRef, ...(key === "fee-delivery" ? { deliveryKey: shipping.bucketKey } : {}) },
+    })),
+  ];
+  const declarations = [...jurisdictions.map(jurisdiction => ({ jurisdiction, taxKind: "sale" })),
+    { jurisdiction: "district-a", taxKind: "fee-kind" }].map(row => ({
+    ...row, status: "registered" as const, actorRef: "actor-a", recordedAt: taxDate, effective,
+  }));
+  const input: TaxQuoteInputV1 = { ...value.fullInput, purpose, required, money: { ...planned.moneyInput, amountBasis: "exclusive" },
+    coverage: { ...value.fullInput.coverage, declarations },
+    lines: planInput.lines.map(row => ({ ...value.fullInput.lines[0], lineKey: row.lineKey })),
+    delivery: candidate.delivery.map(bucket => ({ ...value.fullInput.delivery[0], bucketKey: bucket.bucketKey, cost: bucket.cost })),
+  };
+  const request = makeTaxQuoteRequest(command.identity.evaluationKey, input);
+  const rule = { ruleRef: "rule-a", legalBasisRef: "source-a", effective };
+  const adapter = localRateTable({ scope: input.scope, market: input.market, currency: input.currency, now: () => taxDate,
+    rounding: "half_up_largest_remainder", calculationLifetimeMs: 60_000, validityWindowMs: 10_000,
+    registrations: declarations.map(({ jurisdiction, taxKind }) => ({ jurisdiction, taxKind, effective, state: "active", evidenceRef: "registration-a" })),
+    rules: [...jurisdictions.map((jurisdiction, i) => ({
+      ...rule, kind: "rate" as const, jurisdiction, taxClass: refs.taxClassKey, taxKind: "sale", ratePercent: i === 0 ? "7.2500" : "2",
+    })), { ...rule, kind: "fee", jurisdiction: "district-a", taxClass: "fee-class", taxKind: "fee-kind", amountMinor: 3, refundRule: fee.refundRule }],
+  });
+  const raw = await adapter.quote(request);
+  if (raw.kind !== purpose) throw new Error(JSON.stringify(raw));
+
+  // Some adapters supply position amounts without a rate. Keep the original amounts and bind the omitted field in evidence.
+  type State = typeof raw.money.components[number]["initial"];
+  const omitRate = (state: State): State => ({ ...state, taxPositions: state.taxPositions.map(position => {
+    const { rateDecimal: _rate, ...withoutRate } = position;
+    return position.jurisdictionRef === "district-b" ? withoutRate : position;
+  }) });
+  const money = { ...raw.money, components: raw.money.components.map(component => ({
+    ...component, initial: omitRate(component.initial), final: omitRate(component.final),
+    allocations: component.allocations.map(step => ({ ...step, before: omitRate(step.before), after: omitRate(step.after) })),
+  })) };
+  const evidence = { ...raw.evidence, positions: { ...raw.evidence.positions, tax: raw.evidence.positions.tax.map(row => {
+    const { ratePercent: _rate, ...withoutRate } = row;
+    return row.cell.jurisdiction === "district-b" ? withoutRate : row;
+  }) } };
+  evidence.fiscalDigest = taxFiscalDigest(evidence);
+  const bound = { money, evidenceDigest: taxDigest("evidence", evidence) };
+  const checked = checkedQuoteResult(request, raw.kind === "final"
+    ? { ...bound, kind: "final", evidence: { ...evidence, status: "final" } }
+    : { ...bound, kind: "estimate", evidence: { ...evidence, status: "estimate" } });
+  if ("kind" in checked || !checked.result) throw new Error(JSON.stringify(checked));
+  const result = checked.result;
+  const { address: _address, ...destination } = request.input.destination;
+  const pin = { ...command.pin, request: { ...request, input: { ...request.input, destination } },
+    requestDigest: evaluationDigest("evaluation-request", request),
+    ...(extended ? { composition: { ...composition, planInput } } : { composition: undefined }) };
+  const { profileRef, revision, channelKey, currency, effective: limits } = composition.limits;
+  const calculationId = randomUUID(), taxEvidence = { kind: exclusiveKind, calculationId, taxDate, expiresAt: evidence.expiresAt,
+    evidenceDigest: result.evidenceDigest } as const;
+  const amounts = new Map(result.money.fees.map(row => [row.feeKey, row.amountMinor]));
+  const composed = composeCommerceQuoteMoneyV2({
+    planInput, taxEvidence, verifiedMoney: result.money,
+    allocationIds: result.money.components.flatMap(({ ref, allocations }) =>
+      allocations.map(({ sequence }) => ({ ref, sequence, allocationId: randomUUID() }))),
+    facts: { catalogueEvidenceRef: composition.catalogueEvidenceRef, mode: "subscription",
+      cadence: { schemaVersion: 1, kind: "fixed_days", days: 30 }, destination: command.pin.destination,
+      coverageDigest: result.evidence.coverage.digest, paymentLimits: { profileRef, revision: String(revision), channelKey, currency, ...limits } },
+    positions: result.evidence.positions.tax.map(({ cell, ratePercent: _rate, ...meta }) =>
+      ({ ...meta, jurisdictionRef: cell.jurisdiction, level: cell.level, taxKind: cell.taxKind })),
+    feeLines: result.evidence.positions.fees.map(({ jurisdiction, scope, ...feeRow }) => ({
+      ...feeRow, jurisdictionRef: jurisdiction, amountMinor: amounts.get(feeRow.feeKey)!,
+      scope: scope.kind === "order" ? scope : { kind: "delivery", bucketKey: scope.key },
+    })),
+  });
+  if (composed.kind !== "composed") throw new Error(JSON.stringify(composed));
+  const adapterEvidence = { adapterEvidence: result.evidence, adapterDigest: result.evidenceDigest,
+    ...(extended ? { compositionDigest: evaluationDigest("evaluation-composition", pin.composition) } : {}) };
+  const envelope = { calculationId, invocationDigest: digest, generation: 1, destination: pin.destination, kind: pin.kind,
+    requestDigest: pin.requestDigest, validUntil: evidence.expiresAt, disposition: "required", evidence: adapterEvidence };
+  const quoteMoney = { ...composed.money, taxEvidence: { ...taxEvidence, evidenceDigest: evaluationDigest("evaluation-evidence", envelope) } };
+  const quote = { ...quoteMoney, status: purpose, quoteId: randomUUID(), schemaVersion: 2, contractVersion: "commerce.v1",
+    moneyDigest: quoteDigest("commerce.quote-money.v2", quoteMoney) };
+  const body = { ...envelope, contradiction: false,
+    outcome: { kind: purpose, quote: { ...quote, quoteDigest: quoteDigest("commerce.quote.v2", quote) } } };
+  return { request, result, pin, body };
+}
+
 const beginSql = "SELECT public.tax_calculation_begin_v1($1::jsonb) AS value";
 const completeSql = "SELECT public.tax_calculation_complete_v1($1::jsonb) AS value";
 
@@ -302,5 +414,5 @@ export const terminalCases = [
 ] as const;
 
 export { beginSql, bindEditedSeal, contaminate, paths, claim, completeSql, digest, domainRoutine, exclusiveKind, expectError, fiscalFacts, fiscalKind,
-  fixture, invoke, mutate, quoteDigest, refusal, rejected, rollback, rowFor, seal, terminalRoutine };
+  fixture, invoke, mutate, quoteDigest, refusal, rejected, rollback, rowFor, seal, terminalRoutine, verifiedAdapterMoney };
 export type { Begin, Claim, Completion, Fixture, JsonPath, Refusal };

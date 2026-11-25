@@ -9619,6 +9619,19 @@
         "createdFunctions": [],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "tax-calculation-adapter-money",
+        "path": "db/platform/migrations/20261129160000_tax_calculation_adapter_money_v1.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.tax_calculation_adapter_money_v1(jsonb,jsonb,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -13896,6 +13909,17 @@
           "signature": "public.catalog_admission_derived_subscription_prices(text,jsonb,jsonb,timestamptz)",
           "beforeSha256": "46951df895d85576f91fc662bf12bdad4d65e0c96d142220404825c6a6154e37",
           "afterSha256": "00084e9310c923ed26f0a58a2b42ec66b4b7d822c4cd47352ba8c121564b4537"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261129160000_tax_calculation_adapter_money_v1.sql",
+      "sha256": "5c49e73ff93e41cb33e6d34ebf8165e1c7c891ae3dddfee2b76841f1cd64afa8",
+      "functions": [
+        {
+          "signature": "public.tax_calculation_adapter_money_v1(jsonb,jsonb,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "831e130040a898ea4c84c5ea439a95ef63c15a29f9e618c4b26b4eab050a90c1"
         }
       ]
     }

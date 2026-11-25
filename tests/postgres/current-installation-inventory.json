@@ -2,10 +2,14 @@
   "current": {
     "profiles": {
       "legacy": {
-        "count": 220,
-        "exactTailCount": 110,
-        "objectInventorySha256": "720893e7e2ba4ef0ec3d63ca1f6146f5c903d17bf7782c9fcca40d34ee3e1192",
+        "count": 221,
+        "exactTailCount": 111,
+        "objectInventorySha256": "bbffc9b61b7b3bdb9d12e34dd82d56caaae83759342129d117648f36095b7601",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261129160000_tax_calculation_adapter_money_v1.sql",
+            "sha256": "5c49e73ff93e41cb33e6d34ebf8165e1c7c891ae3dddfee2b76841f1cd64afa8"
+          },
           {
             "file": "db/platform/migrations/20261128230000_derived_subscription_price_retired_base.sql",
             "sha256": "8447cb5d1a56d254860a2b0b11b496e80fe64f6da3cba9b5d0615cd421a367fb"
@@ -889,10 +893,14 @@
         ]
       },
       "bootstrap": {
-        "count": 226,
-        "exactTailCount": 111,
-        "objectInventorySha256": "ec6b879883cdf1053a6b8f75afae8525443f1e0525341fae589b6821c6b037f9",
+        "count": 227,
+        "exactTailCount": 112,
+        "objectInventorySha256": "f4b890b333708e38eb1c4169cb3f80d781b647ae0c6c42c3e3a1ece386b8091c",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261129160000_tax_calculation_adapter_money_v1.sql",
+            "sha256": "5c49e73ff93e41cb33e6d34ebf8165e1c7c891ae3dddfee2b76841f1cd64afa8"
+          },
           {
             "file": "db/platform/migrations/20261128230000_derived_subscription_price_retired_base.sql",
             "sha256": "8447cb5d1a56d254860a2b0b11b496e80fe64f6da3cba9b5d0615cd421a367fb"
@@ -1800,10 +1808,14 @@
         ]
       },
       "separate": {
-        "count": 226,
-        "exactTailCount": 111,
-        "objectInventorySha256": "7f6b3b721395d44d0df613387ad4ba733661a2f1972a623828a2fd8e368811cb",
+        "count": 227,
+        "exactTailCount": 112,
+        "objectInventorySha256": "f3312309b3774fc8458d7e282b51a1d01ea550afcdfd47d224087d492e85a6bf",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261129160000_tax_calculation_adapter_money_v1.sql",
+            "sha256": "5c49e73ff93e41cb33e6d34ebf8165e1c7c891ae3dddfee2b76841f1cd64afa8"
+          },
           {
             "file": "db/platform/migrations/20261128230000_derived_subscription_price_retired_base.sql",
             "sha256": "8447cb5d1a56d254860a2b0b11b496e80fe64f6da3cba9b5d0615cd421a367fb"
@@ -2711,10 +2723,14 @@
         ]
       },
       "admin-managed": {
-        "count": 224,
-        "exactTailCount": 110,
-        "objectInventorySha256": "f338673e9a16595d37ab024a21e97b37c110cec0b756bba0fb9f221053f95b17",
+        "count": 225,
+        "exactTailCount": 111,
+        "objectInventorySha256": "aacf29e403ab891e7c6b90ace56bcef950358eab1dfa3584d4c04fadcb9b7c2c",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261129160000_tax_calculation_adapter_money_v1.sql",
+            "sha256": "5c49e73ff93e41cb33e6d34ebf8165e1c7c891ae3dddfee2b76841f1cd64afa8"
+          },
           {
             "file": "db/platform/migrations/20261128230000_derived_subscription_price_retired_base.sql",
             "sha256": "8447cb5d1a56d254860a2b0b11b496e80fe64f6da3cba9b5d0615cd421a367fb"
@@ -3614,10 +3630,14 @@
         ]
       },
       "admin-operator": {
-        "count": 224,
-        "exactTailCount": 110,
-        "objectInventorySha256": "a08eda24f0022ea09808d89ecb6790bff6ff0405aa3b2f795efe4ae34eeada1e",
+        "count": 225,
+        "exactTailCount": 111,
+        "objectInventorySha256": "0ad6fdd868635490579f26bdeadffc403b49585dbd8676db8b4631997ee67a5b",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261129160000_tax_calculation_adapter_money_v1.sql",
+            "sha256": "5c49e73ff93e41cb33e6d34ebf8165e1c7c891ae3dddfee2b76841f1cd64afa8"
+          },
           {
             "file": "db/platform/migrations/20261128230000_derived_subscription_price_retired_base.sql",
             "sha256": "8447cb5d1a56d254860a2b0b11b496e80fe64f6da3cba9b5d0615cd421a367fb"
