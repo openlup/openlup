@@ -420,7 +420,7 @@ it("projects typed managed obligations and leaves source history in the operator
   const sourcePaidIntent = await sourceRow("commerce_payment_intents", paidIntentId), sourceIntent = await sourceRow("commerce_payment_intents", intentId);
   const noOrderLinks = { subscription_cycle_id: null, cancelled_at: null, refunded_at: null, source_channel_id: null, source_order_ref: null,
     renewal_operation_id: null, renewal_operation_fingerprint: null, recovery_root_order_id: null, recreated_from_order_id: null,
-    catalog_acceptance: null, catalog_receipt_key: null, catalog_basket: null,
+    catalog_acceptance: null, catalog_receipt_key: null, catalog_basket: null, money_version: null,
     currency_code: "XXX", source_kind: "storefront", client_id: clientId };
   expect(await typed("SELECT * FROM public.commerce_orders WHERE id=$1", paidOrderId))
     .toEqual([{ ...noOrderLinks, id: paidOrderId, status: "paid", created_at: sourcePaidOrder.created_at, updated_at: sourcePaidOrder.updated_at,
@@ -432,7 +432,7 @@ it("projects typed managed obligations and leaves source history in the operator
   expect(await typed("SELECT * FROM public.commerce_order_items WHERE order_id=$1", paidOrderId))
     .toEqual([{ id: sourcePaidItem.id, order_id: paidOrderId, sku_id: skuId, line_ordinal: 2, quantity: 2, unit_amount_minor: "450", line_amount_minor: "900",
       created_at: sourcePaidItem.created_at, source_line_ordinal: null, catalog_unit_amount_minor: null, catalog_line_amount_minor: null,
-      promotion_discount_allocated_minor: null, promotion_allocation_fingerprint: null }]);
+      promotion_discount_allocated_minor: null, promotion_allocation_fingerprint: null, line_key: null }]);
   const managedKey = (kind: string, id: string) => `managed-transfer-${kind}:${createHash("sha256").update(JSON.stringify([sourceId, id])).digest("hex")}`;
   const noIntentLinks = { channel_key: "synthetic-provider", amount_minor: "900", currency_code: "XXX", renewal_operation_id: null, renewal_operation_fingerprint: null };
   expect(await typed("SELECT * FROM public.commerce_settlement_intents WHERE id=$1", paidIntentId))

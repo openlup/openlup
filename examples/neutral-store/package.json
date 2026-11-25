@@ -16,6 +16,7 @@
     "test:browser": "playwright test",
     "settings": "openlup settings --app ./owned/settings-host.ts",
     "catalogue:check:source": "openlup catalogue project --trusted-packs ./owned/catalogue.ts --json",
+    "catalogue:apply": "./lifecycle catalogue apply",
     "provider:qualify": "node --experimental-strip-types host/provider-qualification.ts"
   },
   "dependencies": {

@@ -366,6 +366,9 @@ export function proveStarterCatalogueWrappers(app: string, scratch: string,
     assert.equal(report.command, script.endsWith(":source") ? "catalogue project" : "catalogue check");
     assert.equal(report.exitCode, 0);
   }
+  const apply = "catalogue:apply";
+  if (Object.hasOwn(expectedScripts, apply)) assert.equal(scripts[apply], "./lifecycle catalogue apply");
+  else assert(!Object.hasOwn(scripts, apply), "unexpected starter catalogue apply wrapper");
 }
 
 export function retiresStarterCatalogue(from: string | undefined, to: string | undefined): boolean {
@@ -904,6 +907,16 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     });
     if (to.files["package.json"]?.includes('"catalogue:check:source"'))
       proveStarterCatalogueWrappers(app, dirname(app), to.files["package.json"]);
+    if (readStarterScripts(to.files["package.json"])["catalogue:apply"]) {
+      const result = spawnSync(process.execPath, [starterLifecycle, "catalogue", "apply", "--approve", "--json"],
+        { cwd: app, env: isolatedConsumerEnv(), encoding: "utf8", timeout: 30_000 });
+      assert.ifError(result.error);
+      assert.equal(result.status, 2);
+      const report = JSON.parse(result.stdout);
+      assert.equal(report.command, "catalogue apply");
+      assert.equal(report.findings[0].code, "starter_argument_unknown");
+      assert.deepEqual(report.receipts, []);
+    }
     if (Object.hasOwn(to.files, "lifecycle-refusals.mjs")) {
       assert(!Object.keys(to.files).some(path => path.startsWith(".context/catalogue-builds/")));
       const table = JSON.parse(execFileSync(process.execPath, [starterLifecycle, "refusals", "--json"],

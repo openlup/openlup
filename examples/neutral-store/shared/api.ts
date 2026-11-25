@@ -19,7 +19,7 @@ export const operations = [
   'operator.reviews', 'operator.reviewModerate', 'operator.partners', 'operator.partnerTransition',
   'review.read', 'review.submit', 'unsubscribe.apply',
   'tracking.read', 'acquisition.submit', 'research.submit', 'partners.submit',
-  'ingest.submit', 'application.status', 'offer.validate', 'storefront.catalogue',
+  'ingest.submit', 'application.status', 'offer.validate', 'storefront.catalogue', 'catalogue.demoTarget',
 ] as const;
 
 export type Operation = typeof operations[number];
