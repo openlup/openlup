@@ -140,18 +140,21 @@ review before applying the ACL forward.
 ## Checkout abandonment predicate grant
 
 The [grant forward](../../db/platform/migrations/20261128180001_checkout_abandonment_safety_execute_grant.sql)
-re-creates `public.commerce_initial_checkout_abandonment_safe(uuid)` with its
-existing definition and grants EXECUTE to `service_role` where that role
-exists. The predicate was created inside the native store class, by
+creates `public.commerce_checkout_abandonment_safe_runtime(uuid)`, a
+`SECURITY DEFINER` entry with a pinned `search_path` that returns
+`public.commerce_initial_checkout_abandonment_safe(uuid)` unchanged. It revokes
+the entry from PUBLIC, `anon` and `authenticated` and grants EXECUTE to
+`service_role` where that role exists. The predicate keeps its definition and
+ACL: it was created inside the native store class, by
 `20261110100000_checkout_recovery_waves.sql`, so the grant-only rail, which
-admits only functions from the base chain before that class, does not apply.
-The forward therefore restates the definition and grants on the replaced
-function.
-PUBLIC, `anon` and `authenticated` remain without EXECUTE. A qualified runtime
-login inherits the grant and can evaluate the predicate the expiry sweep uses
-before it asks for a buyer-requested cancellation. Applying the forward again,
-applying it without `service_role`, or replacing the function later leaves the
-grants as they were; the
+admits only base-chain functions, does not apply, and the catalog boundary
+refuses an ACL change on a replaced function. A created function may carry the
+closed `service_role` grant. A qualified runtime login inherits that grant and
+evaluates the sweep's predicate before it asks for a buyer-requested
+cancellation; calling the predicate directly still refuses. The migration
+ledger applies the forward once. Repeating its grant blocks, applying it
+without `service_role`, or replacing the predicate later leaves the entry and
+its grants as they were; the
 [grant witness](../../tests/postgres/checkoutAbandonmentSafetyGrant.test.ts)
 covers each case.
 

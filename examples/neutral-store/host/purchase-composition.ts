@@ -414,8 +414,8 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
         AS young FROM public.commerce_orders WHERE id=$1`, [order.id, checkoutIncompleteAbandonMs]);
       if (age?.young !== false) return refused('starter_checkout_in_progress');
     }
-    // The expiry sweep's predicate: no provider attempt ever and no external reference.
-    const { rows: [safety] } = await session.query<{ safe: boolean }>('SELECT public.commerce_initial_checkout_abandonment_safe($1::uuid) AS safe', [order.id]);
+    // The expiry sweep's predicate, through its runtime entry: no provider attempt ever and no external reference.
+    const { rows: [safety] } = await session.query<{ safe: boolean }>('SELECT public.commerce_checkout_abandonment_safe_runtime($1::uuid) AS safe', [order.id]);
     // A refused predicate and a port that cancels nothing share one answer, read from the order's current state.
     let cancelled = false;
     if (safety?.safe === true) {
