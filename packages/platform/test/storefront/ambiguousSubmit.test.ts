@@ -98,6 +98,17 @@ describe("recoverAmbiguousSubmit", () => {
     expect(calls.map(call => call.binding)).toEqual(["classify"]);
   });
 
+  it.each(["timeout", "transport_uncertain"])("returns no_stable_identity for %s with a run-time undefined request and calls neither commandKey nor replay", async (failureClass) => {
+    const { bindings, calls } = harness();
+    // An untyped caller may pass `undefined`; it counts as no request.
+    const request = undefined as unknown as null;
+
+    await expect(recoverAmbiguousSubmit(bindings, { error: new Failure(failureClass), request, options: null }))
+      .resolves.toStrictEqual({ kind: "no_stable_identity" });
+
+    expect(calls.map(call => call.binding)).toEqual(["classify"]);
+  });
+
   it.each([
     ["no key", null],
     ["an empty key", ""],

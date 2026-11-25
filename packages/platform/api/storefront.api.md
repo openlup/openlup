@@ -39,20 +39,20 @@ export type AmbiguousSubmitRecovery<TResponse> = {
  * - `attempt_in_flight`: calls `report("submit_refused_in_flight")` once when
  *   `report` is bound, sends nothing and returns `in_flight`, with or without a
  *   request.
- * - `timeout` or `transport_uncertain`: with no `request`, returns
- *   `no_stable_identity` without calling `transport.commandKey`. When
- *   `commandKey(request)` is falsy, returns `no_stable_identity` and sends
- *   nothing. Otherwise calls `transport.replay` once with the same `request`
- *   object, unmodified, the caller's `options` and a deadline of 10 000 ms,
- *   and returns `recovered` with its response. When the replay fails, it
- *   classifies that error once and returns `in_flight` for
- *   `attempt_in_flight` and `unknown` for any other class, reporting nothing
- *   and sending nothing more.
+ * - `timeout` or `transport_uncertain`: with no `request` (`null`, or
+ *   `undefined` at run time), returns `no_stable_identity` without calling
+ *   `transport.commandKey`. When `commandKey(request)` is falsy, returns
+ *   `no_stable_identity` and sends nothing. Otherwise calls `transport.replay`
+ *   once with the same `request` object, unmodified, the caller's `options`
+ *   and a deadline of 10 000 ms, and returns `recovered` with its response.
+ *   When the replay fails, it classifies that error once and returns
+ *   `in_flight` for `attempt_in_flight` and `unknown` for any other class,
+ *   reporting nothing and sending nothing more.
  * - `other`, or a class this version does not know: returns `null` and sends
  *   nothing. An unrecognized class is never replayed.
  *
- * `deadlineMs` is a duration the package asks for; whether it is enforced is
- * the transport's. An error that the classifier, `commandKey` or the reporter
+ * The package passes `deadlineMs` to the transport; enforcing it is the
+ * transport's job. An error that the classifier, `commandKey` or the reporter
  * raises propagates unchanged.
  */
 export declare function recoverAmbiguousSubmit<TRequest, TOptions, TResponse>(bindings: {
@@ -196,7 +196,8 @@ export type SubmitFailureClassifier = (error: unknown) => SubmitFailureClass;
  * `commandKey` returns the request's `CommandKey`, or `null` or `undefined`
  * when the request carries none; a request without a key is never replayed.
  * `replay` sends the retained request and options again. `deadlineMs` is a
- * duration in milliseconds after which the replay gives up.
+ * duration in milliseconds that the package passes to the transport; the
+ * package does not enforce it, and enforcing it is the transport's job.
  */
 export interface SubmitTransportBinding<TRequest = unknown, TOptions = unknown, TResponse = unknown> {
     commandKey(request: TRequest): CommandKey | null | undefined;
