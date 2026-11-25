@@ -217,7 +217,7 @@ describe('installed starter browser CI', () => {
     expect(command).not.toContain('install');
     expect(() => browserArguments('/tmp/starter', 'mcr.microsoft.com/playwright:latest', 'proof')).toThrow('starter_browser_mirror_required');
     const config = readFileSync('examples/neutral-store/playwright.database.config.ts', 'utf8');
-    for (const setting of ["trace: 'off'", "screenshot: 'off'", "video: 'off'", "'journey.spec.ts'", "'acquisition.spec.ts'"]) expect(config).toContain(setting);
+    for (const setting of ["trace: 'off'", "screenshot: 'off'", "video: 'off'", "'journey.spec.ts'", "'acquisition.spec.ts'", "'lost-response.spec.ts'"]) expect(config).toContain(setting);
   });
   it('writes both private care fixtures and credential-free UI origins inside cleanup', async () => {
     const app = await mkdtemp(join(tmpdir(), 'starter-care-fixtures-'));
