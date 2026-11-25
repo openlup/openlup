@@ -239,6 +239,21 @@ Frozen historical record (2026-11-13) archived in [Data and migrations evidence]
 
 ## Retained renewal storage
 
+Native renewal occurrence evidence has a durable key distinct from a booked
+cycle ID. The private owner lock reads the current occurrence and its pinned
+deadline rule under the parent fence. The scoped history reader also exposes
+retired keys. Changing the due instant on the same obligation preserves its
+key and original anchor. The deadline uses elapsed seconds and UTC microsecond
+precision. An unavailable key or rule confers no renewal authority.
+
+The native legacy worker and its SQL write guards refuse fresh work for a v3
+occurrence. The installed renewal writer can already observe rail or absence
+through a permitted write that is rolled back. The definer check exposes that
+same classification to the writer. Narrower callers receive a uniform scope
+refusal. The Subscriptions privacy contributor exports and declares retention
+of occurrence evidence. Connected-store transfer copies guarded history before
+the occurrence records and preserves the keys and evidence on qualified profiles.
+
 The subscription-notice forward preserves the reminder ledger's renewal-day
 identity and stores new queued charge facts in `subscription_reminder_ledger.renewal_at`;
 subscription events supply only the legacy fallback. New pause reminders and

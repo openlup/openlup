@@ -77,7 +77,7 @@ export const commerceDomain = {
     ],
   },
   allowedInsertTriggers: {
-    commerce_orders: ["trg_commerce_orders_line_sum"],
+    commerce_orders: ["trg_commerce_orders_line_sum", "subscriptions_guard_renewal_orders"],
     commerce_order_items: ["trg_commerce_order_items_line_sum"],
     commerce_order_holds: ["trg_fulfillment_emit_shipment_exception", "trg_subscription_delivery_alignment_exception_case"],
     commerce_order_draft_receipts: ["commerce_order_draft_receipts_catalog_final"],

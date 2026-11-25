@@ -31290,6 +31290,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/nativeRenewalOccurrence.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/nativeRenewalV3Storage.test.ts",
       "class": "public-output"
     },
