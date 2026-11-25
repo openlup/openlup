@@ -128,7 +128,7 @@ test('up_json_reports_four_fields_for_installer_refusal and verifies the real on
     assert.deepEqual(up('success', ['--configuration', 'coffee', '--json']).report.packs, [summary]);
     for (const [mode, code, fix] of [
       ['legacy-conflict', 'starter_catalogue_build_conflict', /Restore the original declaration and rules.*new pack version/u],
-      ['price-conflict', 'starter_price_seed_conflict', /Restore the original demonstration inputs/u],
+      ['price-conflict', 'starter_price_seed_conflict', /reconcile divergent seed rows with the original demo inputs.*close other active or open explicit subscription rows or withdraw pending rows.*rebuild a disposable demo/u],
       ['driver', 'starter_installation_failed', /Compose availability/u],
     ] as const) {
       const { report, calls } = up(mode);
