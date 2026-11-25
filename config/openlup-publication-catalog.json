@@ -30334,6 +30334,14 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/commerceQuoteV2Storage.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/commerceQuoteV2StoragePgtap.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/communicationEcommerceErasure.test.ts",
       "class": "public-output"
     },
@@ -30499,6 +30507,10 @@
     },
     {
       "path": "tests/postgres/fixtures/catalogPricePublicationV2/grants.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/commerceQuoteV2Storage/replayed.sql",
       "class": "public-output"
     },
     {
