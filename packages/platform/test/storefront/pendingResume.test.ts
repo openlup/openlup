@@ -78,6 +78,17 @@ describe("decidePendingResume", () => {
       .toStrictEqual({ kind: "follow_redirect", url: REDIRECT.url });
   });
 
+  it("takes no open rail from a redirect action even when one carries a provider", () => {
+    const named = outside<ActiveReading["action"]>({ ...REDIRECT, provider: SECOND });
+    expect(decidePendingResume(bindings, { actionKind: "redirect", phase: "action_issued" }, active(named), FIRST))
+      .toStrictEqual({ kind: "follow_redirect", url: REDIRECT.url });
+  });
+
+  it("compares the payment's provider with the listed providers exactly", () => {
+    expect(decidePendingResume(bindings, ISSUED, active(null, { provider: FIRST.toUpperCase(), attemptStatus: null }), SECOND))
+      .toBe("no_action_keep_marker");
+  });
+
   it("does not block when the attempt status admits a new attempt", () => {
     for (const attemptStatus of RETRYABLE) {
       expect(decidePendingResume(bindings, ISSUED, active(EMBEDDED, { provider: FIRST, attemptStatus }), SECOND), attemptStatus)
@@ -214,6 +225,8 @@ describe("checkPendingResume", () => {
   it("reads a marker before its stamped second, and one without a numeric expiry", async () => {
     const pendings = [
       { ...DISPATCHED, expiresAt: NOW_SECONDS + 1 },
+      // Before the clock's exact time but after its whole second: the clock is floored first.
+      { ...DISPATCHED, expiresAt: NOW_SECONDS + 0.5 },
       DISPATCHED,
       outside<PendingAction>({ ...DISPATCHED, expiresAt: String(NOW_SECONDS - 1) }),
     ];
