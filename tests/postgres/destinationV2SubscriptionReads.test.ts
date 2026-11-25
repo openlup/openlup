@@ -19,7 +19,7 @@ let store: JourneyInstallation;
 beforeAll(async () => { store = await resources.installation("subscription-destination-reads"); }, postgresSetupTimeoutMs);
 afterAll(() => resources.close(), postgresTeardownTimeoutMs);
 
-const forward = "db/platform/migrations/20261128060000_subscription_destination_read.sql";
+const forward = "db/platform/migrations/20261128180000_subscription_destination_read.sql";
 const issuance = "db/platform/migrations/20261127030000_subscription_destination_v2.sql";
 const table = "public.subscription_destination_v2_selections";
 const rawRead = "SELECT public.commerce_read_destination_v2($1::jsonb,$2::text,$3::uuid,$4::jsonb) AS result";

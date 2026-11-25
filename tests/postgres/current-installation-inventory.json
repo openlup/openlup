@@ -7,7 +7,7 @@
         "objectInventorySha256": "7d3c4dfbfa75a1e9ef42cbe9c98e29b04d02b1792b0d525ea095a8f19b43dd60",
         "tail": [
           {
-            "file": "db/platform/migrations/20261128060000_subscription_destination_read.sql",
+            "file": "db/platform/migrations/20261128180000_subscription_destination_read.sql",
             "sha256": "556b324707b7cb6365f5e72c741303f1bf795cb38768508b680cf770225258af"
           },
           {
@@ -886,7 +886,7 @@
         "objectInventorySha256": "5e7b07c7fe1399873ae8a3c13c76f711c1fd5a70c5fdaeac418e34a26b8613b6",
         "tail": [
           {
-            "file": "db/platform/migrations/20261128060000_subscription_destination_read.sql",
+            "file": "db/platform/migrations/20261128180000_subscription_destination_read.sql",
             "sha256": "556b324707b7cb6365f5e72c741303f1bf795cb38768508b680cf770225258af"
           },
           {
@@ -1789,7 +1789,7 @@
         "objectInventorySha256": "9e88f5037597022571abc4bbf0611d6203f4ecad59edec78bd7b39b01b62ebcd",
         "tail": [
           {
-            "file": "db/platform/migrations/20261128060000_subscription_destination_read.sql",
+            "file": "db/platform/migrations/20261128180000_subscription_destination_read.sql",
             "sha256": "556b324707b7cb6365f5e72c741303f1bf795cb38768508b680cf770225258af"
           },
           {
@@ -2692,7 +2692,7 @@
         "objectInventorySha256": "87e2320e6ee7e5ccdf0aef52e754ce4c46d21e47227ed035f5be3b1525c70e73",
         "tail": [
           {
-            "file": "db/platform/migrations/20261128060000_subscription_destination_read.sql",
+            "file": "db/platform/migrations/20261128180000_subscription_destination_read.sql",
             "sha256": "556b324707b7cb6365f5e72c741303f1bf795cb38768508b680cf770225258af"
           },
           {
@@ -3587,7 +3587,7 @@
         "objectInventorySha256": "720f032aa7172e6458e66f0c4ffd573783d99f1f97b56095d7d0438d79247ab2",
         "tail": [
           {
-            "file": "db/platform/migrations/20261128060000_subscription_destination_read.sql",
+            "file": "db/platform/migrations/20261128180000_subscription_destination_read.sql",
             "sha256": "556b324707b7cb6365f5e72c741303f1bf795cb38768508b680cf770225258af"
           },
           {

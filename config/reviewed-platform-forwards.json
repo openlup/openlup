@@ -9565,7 +9565,7 @@
       },
       {
         "row": "subscription-destination-read",
-        "path": "db/platform/migrations/20261128060000_subscription_destination_read.sql",
+        "path": "db/platform/migrations/20261128180000_subscription_destination_read.sql",
         "replacedFunctions": [
           {
             "signature": "public.commerce_destination_v2_refusal(text,text)",
@@ -13830,7 +13830,7 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261128060000_subscription_destination_read.sql",
+      "path": "db/platform/migrations/20261128180000_subscription_destination_read.sql",
       "sha256": "556b324707b7cb6365f5e72c741303f1bf795cb38768508b680cf770225258af",
       "functions": [
         {

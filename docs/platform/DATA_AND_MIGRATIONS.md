@@ -576,7 +576,7 @@ and the restoration of local timeouts before COMMIT.
 - **Subscription destination.** Owner-only issuance takes the scoped advisory
   lock and ledger `SHARE` before replay. On a miss it takes subscription
   `FOR UPDATE`, probes the origin, then takes client `FOR UPDATE NOWAIT` before
-  selection and document guards. [Read and recheck](../../db/platform/migrations/20261128060000_subscription_destination_read.sql)
+  selection and document guards. [Read and recheck](../../db/platform/migrations/20261128180000_subscription_destination_read.sql)
   borrow a writable `READ COMMITTED` transaction and take ledger `SHARE`, then
   subscription and client `FOR SHARE`. An explicit selection takes precedence.
   When inheriting, the reader takes order, activation and binding `FOR SHARE`
