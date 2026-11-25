@@ -972,6 +972,125 @@ describe.sequential('installed quote proofs', () => {
     } finally { await database.teardown(); }
   }, postgresSetupTimeoutMs);
 
+  it('keeps one checkout key across a refused total and a lost create without a second order', async () => {
+    const database = quoteCaseFixture('supplements', false);
+    try {
+      const fixture = await database.setup();
+      const script = String.raw`
+        import assert from 'node:assert/strict';
+        import pg from 'pg';
+        import {bindScenarioServer} from ${JSON.stringify(scenarioHelper)};
+        import {selectConfiguration} from './application/owned/store.config.ts';
+        import {applyDemoSeed} from './application/installation/install.ts';
+        import {buildDemoSeed} from './application/owned/demo-seed.ts';
+        import {readStarterCatalogueRules} from './application/host/editor-catalogue.ts';
+        import {composeNativeBindings} from './application/host/native-composition.ts';
+        import {createOriginPolicy} from './application/host/origin-policy.ts';
+        const config = selectConfiguration(fixture.configuration);
+        const {server,base,port} = await bindScenarioServer();
+        const {createApplication} = await import('./application/host/server.ts');
+        const owner = new pg.Pool({connectionString:fixture.ownerUrl});
+        let bindings;
+        const query = pg.Client.prototype.query;
+        try {
+          const db = await owner.connect();
+          try {
+            await applyDemoSeed(config,{connection:db,installRole:'postgres',runtimeRole:'starter_runtime',
+              catalogueRules:readStarterCatalogueRules(),close:async()=>{}});
+          } finally {db.release();}
+          bindings = await composeNativeBindings(fixture.runtimeUrl,createOriginPolicy(config,port),config);
+          server.on('request',createApplication(bindings).listeners('request')[0]);
+          const seed = buildDemoSeed(config);
+          const sku = seed.skus.find(row=>row.sku===config.offer.products[0].sku);
+          const price = seed.prices.find(row=>row.variant_id===sku.id && row.mode==='one_time');
+          const input = email => ({locale:'en',configuration:config.id,country:config.market.country,
+            termsAccepted:true,termsRevision:config.legal.revision,email,
+            firstName:'Example',lastName:'Buyer',phone:'00000',line1:'1 Example Lane',city:'Example',postalCode:'00000',
+            cart:{schemaVersion:1,configuration:config.id,mode:'one_time',cadenceDays:null,
+              lines:[{sku:sku.sku,quantity:config.offer.minUnits}]}});
+          const action = async (operation,body,key=crypto.randomUUID()) => {
+            const response=await fetch(base+'/api/actions/'+operation,{method:'POST',
+              headers:{Origin:base,'Content-Type':'application/json','X-Starter-Request':'1','Idempotency-Key':key},
+              body:JSON.stringify(body)});
+            return {status:response.status,body:await response.json()};
+          };
+          const review = async email => {
+            const {body} = await action('offer.validate',input(email));
+            assert.equal(body.ok,true,body.code);
+            return body.value.expectedTotal;
+          };
+          const reprice = async delta => {
+            const result = await owner.query('UPDATE public.price_entries SET unit_price_minor=unit_price_minor+$2 WHERE id=$1',[price.id,delta]);
+            assert.equal(result.rowCount,1);
+          };
+          const orders = async email => (await owner.query('SELECT o.id FROM public.commerce_orders o JOIN public.clients c ON c.id=o.client_id WHERE lower(c.email)=lower($1)',[email])).rows.map(row=>row.id);
+          // The managed checkout page keeps one key per purchase: each reconfirmation below reuses the refused or lost key.
+          const reconfirm = key => key;
+
+          // (a) The exact-total check refuses before anything is written; the same key then creates the only order.
+          const exact = 'kept-key-exact@example.test', exactKey = crypto.randomUUID();
+          const stale = await review(exact);
+          await reprice(137);
+          assert.deepEqual(await action('checkout.create',{...input(exact),expectedTotal:stale},exactKey),
+            {status:409,body:{ok:false,code:'starter_quote_price_changed'}});
+          assert.deepEqual(await orders(exact),[]);
+          const current = await review(exact);
+          assert.notDeepEqual(current,stale);
+          const {body:exactCreated} = await action('checkout.create',{...input(exact),expectedTotal:current},reconfirm(exactKey));
+          assert.equal(exactCreated.ok,true,exactCreated.code);
+          assert.deepEqual(await orders(exact),[exactCreated.value.orderRef]);
+          await reprice(-137);
+
+          // (b) The draft writer's price race refuses after admission and creates no order; the same key then creates the only order.
+          const raced = 'kept-key-race@example.test', raceKey = crypto.randomUUID();
+          const before = await review(raced);
+          let writerCalls = 0;
+          pg.Client.prototype.query = function (sql,...args) {
+            if (typeof sql === 'string' && sql.includes('SELECT public.commerce_create_promoted_order_draft_with_outbox(') && ++writerCalls === 1) {
+              return owner.query('UPDATE public.price_entries SET unit_price_minor=unit_price_minor+211 WHERE id=$1',[price.id])
+                .then(result=>{assert.equal(result.rowCount,1);return query.call(this,sql,...args);});
+            }
+            return query.call(this,sql,...args);
+          };
+          assert.deepEqual(await action('checkout.create',{...input(raced),expectedTotal:before},raceKey),
+            {status:409,body:{ok:false,code:'starter_quote_price_changed'}});
+          assert.equal(writerCalls,1);
+          assert.deepEqual(await orders(raced),[]);
+          const after = await review(raced);
+          assert.notDeepEqual(after,before);
+          const {body:raceCreated} = await action('checkout.create',{...input(raced),expectedTotal:after},reconfirm(raceKey));
+          assert.equal(raceCreated.ok,true,raceCreated.code);
+          assert.equal(writerCalls,2);
+          assert.deepEqual(await orders(raced),[raceCreated.value.orderRef]);
+          pg.Client.prototype.query = query;
+          await reprice(-211);
+
+          // (c) A create whose answer was lost, then a reconfirmation under the same key, finds that order.
+          const lost = 'kept-key-lost@example.test', lostKey = crypto.randomUUID();
+          const total = await review(lost);
+          const {body:first} = await action('checkout.create',{...input(lost),expectedTotal:total},lostKey);
+          assert.equal(first.ok,true,first.code);
+          const {body:repeat} = await action('checkout.create',{...input(lost),expectedTotal:total},reconfirm(lostKey));
+          assert.equal(repeat.ok,true,repeat.code);
+          assert.equal(repeat.value.orderRef,first.value.orderRef);
+          const {body:changed} = await action('checkout.create',{...input(lost),city:'Changed',expectedTotal:total},reconfirm(lostKey));
+          assert.deepEqual(changed,{ok:false,code:'starter_checkout_changed'});
+          assert.deepEqual(await orders(lost),[first.value.orderRef],'a reconfirmation must not create a second order');
+        } finally {
+          pg.Client.prototype.query = query;
+          server.close();
+          await Promise.all([bindings?.close(),owner.end()]);
+        }
+      `;
+      writeFileSync(join(consumer,'kept-key.mjs'), `const fixture = ${JSON.stringify(fixture)};\n${script}`);
+      try {
+        execFileSync(process.execPath, ['kept-key.mjs'], { cwd: consumer, timeout: 30_000, stdio: 'pipe' });
+      } catch (error) {
+        throw new Error((error as { stderr?: Buffer }).stderr?.toString() ?? 'Kept key child failed', { cause: error });
+      }
+    } finally { await database.teardown(); }
+  }, postgresSetupTimeoutMs);
+
   for (const configuration of ['coffee', 'supplements']) describe(`${configuration} shipped bundle`, () => {
     const database = quoteCaseFixture(configuration, false);
     let fixture: Awaited<ReturnType<typeof provisionQuoteCase>>;
