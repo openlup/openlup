@@ -219,6 +219,7 @@ COMMIT;
 SQL
 else
   printf '%s\n' 'Could not resolve the watchdog principal. Check the configuration ID.' >&2
+  false
 fi
 ```
 
