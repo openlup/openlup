@@ -2,6 +2,8 @@
   and currency on every fresh submit in either purchase mode. Keep the exact
   payload and command key when retrying an uncertain response. On a definitive
   `starter_expected_total_required` or `starter_quote_price_changed` refusal,
-  retire the key, clear consent and fetch a new `offer.validate` review.
-  After the buyer reconfirms the rendered review, use a new key even if the
-  amount and currency are unchanged. Managed checkout pages handle these steps.
+  clear consent and fetch a new `offer.validate` review. A custom page may
+  retire the key after these refusals. The managed checkout page keeps its
+  per-purchase key, because the refusal wrote nothing and a repeat under the
+  same key cannot create a second order. Managed checkout pages handle these
+  steps.
