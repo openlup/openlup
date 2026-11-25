@@ -800,6 +800,8 @@ async function assertInsertTriggers(client: PoolClient): Promise<void> {
     subscription_edit_quotes: ["subscription_edit_quotes_catalog_final"],
     subscription_quote_previews: ["subscription_quote_previews_catalog_final"],
     commerce_order_draft_receipts: ["commerce_order_draft_receipts_catalog_final", "commerce_order_draft_receipts_catalog_owner_origin_guard"],
+    commerce_order_adjustments: ["commerce_order_adjustments_catalog_final"],
+    commerce_promotion_claims: ["commerce_promotion_claims_catalog_final"],
     subscription_renewal_terms: ["subscription_renewal_terms_catalog_acceptance_admit"],
     subscription_renewal_operations: ["subscription_renewal_operations_catalog_acceptance_admit"],
     commerce_order_operations: ["communication_refund_subject"],
