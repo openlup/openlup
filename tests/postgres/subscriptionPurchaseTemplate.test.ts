@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import type { PoolClient } from "pg";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createPostgresAccountReadSources, createPostgresCustomerOrderHistoryReadStore } from "@openlup/platform/account-support";
 import type { CatalogFactsProvenance } from "@openlup/platform/pricing/contracts";
@@ -374,6 +375,342 @@ describe("derived renewal price context in PostgreSQL", () => {
         public.catalog_price_setup_policy_digest(r.id,1,l.id,l.region_code,l.currency,'D2C',r.starts,NULL,500,10,'FLOOR_TO_QUANTUM')
       FROM revision r JOIN public.price_lists l ON l.id=$1 RETURNING id,digest`, [list])).rows[0]!;
     for (const skuRef of [storedSku, sku]) await recordStock(skuRef);
+  });
+
+  type EditLine = { variantId: string; qty: number };
+  type EditFixture = Awaited<ReturnType<typeof editFixture>>;
+  async function editFixture() {
+    const f = await activate(await draftedPurchase("subscription", 0, [{ sku: storedSku, quantity: 2, unitPrice: 100 }], clock),
+      undefined, [{ lineOrdinal: 1, sku: storedSku, quantity: 2, unitAmountMinor: 100 }]);
+    const principal = (await admin.query("SELECT principal_id FROM public.clients WHERE id=$1", [f.clientId])).rows[0].principal_id;
+    return { ...f, principal, commandActor: randomUUID() };
+  }
+
+  async function editSku(priceList = list, base?: number) {
+    const id = randomUUID(), code = `Example-${id}`;
+    await admin.query(`INSERT INTO public.catalog_skus(id,product_id,sku,title,sellable_in_subscription)
+      SELECT $2,product_id,$3,'Refill',true FROM public.catalog_skus WHERE id=$1`, [variant, id, code]);
+    const entry = base === undefined ? undefined : (await admin.query(`INSERT INTO public.price_entries
+      (price_list_id,variant_id,mode,unit_price_minor) VALUES($1,$2,'one_time',$3) RETURNING id`, [priceList, id, base])).rows[0].id;
+    return { id, code, entry };
+  }
+
+  async function editList(region: string, currency = "XXX", discount = 500, quantum = 10) {
+    const id = randomUUID();
+    extraLists.push(id);
+    await admin.query("INSERT INTO public.price_lists(id,name,region_code,currency) VALUES($1,'Fixture',$2,$3)", [id, region, currency]);
+    await admin.query(`WITH revision AS (SELECT gen_random_uuid() AS id,now() AS starts)
+      INSERT INTO public.subscription_price_policy_revisions
+        (id,price_list_id,region_code,currency,channel,revision_no,discount_bps,rounding_quantum_minor,rounding_rule,effective_from,digest)
+      SELECT r.id,l.id,l.region_code,l.currency,'D2C',1,$2,$3,'FLOOR_TO_QUANTUM',r.starts,
+        public.catalog_price_setup_policy_digest(r.id,1,l.id,l.region_code,l.currency,'D2C',r.starts,NULL,$2,$3,'FLOOR_TO_QUANTUM')
+      FROM revision r JOIN public.price_lists l ON l.id=$1`, [id, discount, quantum]);
+    return id;
+  }
+
+  async function asEditActor<T>(f: EditFixture, run: (db: PoolClient) => Promise<T>) {
+    const db = await admin.connect();
+    try {
+      await db.query("BEGIN");
+      await db.query("SET LOCAL ROLE authenticated");
+      await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: f.principal, role: "authenticated" })]);
+      const answer = await run(db);
+      await db.query("COMMIT");
+      return answer;
+    } catch (error) { await db.query("ROLLBACK"); throw error; }
+    finally { db.release(); }
+  }
+
+  function request(f: EditFixture, core: EditLine[], addons: EditLine[] = [], key = randomUUID()) {
+    const actorParams = [f.subscriptionId, key, JSON.stringify(core), JSON.stringify(addons), "{}", 28, 1];
+    const payload = { expectedTemplateVersion: 1, cadenceDays: 28, coreLines: core, addonLines: addons, compositionConstraint: {} };
+    return {
+      key,
+      actorPreview: () => asEditActor(f, async db => (await db.query(`SELECT
+        public.customer_subscription_preview_bundle_as_actor($1,$2,$3,$4,$5,$6,$7)->'preview' AS result`, actorParams)).rows[0].result),
+      actorApply: (hash: string) => asEditActor(f, async db => (await db.query(`SELECT
+        public.customer_subscription_apply_bundle_as_actor($1,$2,$3,$4,$5,$6,$7,$8)->'subscriptionAction' AS result`,
+      [...actorParams.slice(0, 2), hash, ...actorParams.slice(2)])).rows[0].result),
+      commandPreview: async () => (await runtime.query(`SELECT
+        public.subscription_command_preview($1,$2,$3,$4,'update_package_template',$5,$6) AS result`,
+      [f.commandActor, f.clientId, key, f.subscriptionId, payload, await clock()])).rows[0].result,
+      commandApply: async (hash: string) => rpc("subscription_command_apply", [f.commandActor, f.clientId, key, f.subscriptionId,
+        "update_package_template", { ...payload, acceptedQuoteHash: hash }, await clock()]),
+    };
+  }
+
+  async function editRows(f: EditFixture) {
+    const { rows: [row] } = await admin.query(`SELECT s.next_cycle_at::text AS anchor,s.template_version AS version,
+      (SELECT to_jsonb(t) FROM public.subscription_renewal_terms t WHERE t.subscription_id=s.id) AS header,
+      ARRAY(SELECT to_jsonb(l) FROM public.subscription_renewal_term_lines l WHERE l.subscription_id=s.id ORDER BY line_ordinal) AS terms,
+      ARRAY(SELECT to_jsonb(l) FROM public.subscription_lines l WHERE l.subscription_id=s.id ORDER BY sort_order) AS template,
+      ARRAY(SELECT to_jsonb(q) FROM public.subscription_edit_quotes q WHERE q.subscription_id=s.id ORDER BY id) AS quotes,
+      ARRAY(SELECT to_jsonb(e) FROM public.subscription_events e WHERE e.subscription_id=s.id ORDER BY id) AS events
+      FROM public.subscriptions s WHERE id=$1`, [f.subscriptionId]);
+    return row;
+  }
+
+  async function setContext(f: EditFixture, priceList: string, currency: string) {
+    await admin.query("UPDATE public.subscriptions SET price_list_id=$2,currency_code=$3 WHERE id=$1", [f.subscriptionId, priceList, currency]);
+    await admin.query("UPDATE public.subscription_renewal_terms SET currency_code=$2 WHERE subscription_id=$1", [f.subscriptionId, currency]);
+  }
+
+  async function renewalSnapshot(f: EditFixture) {
+    const { rows: [schedule] } = await admin.query(`SELECT to_char(next_cycle_at AT TIME ZONE 'UTC',
+      'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS at FROM public.subscriptions WHERE id=$1`, [f.subscriptionId]);
+    const store = api.createPostgresRenewalStore(executor, api.createNativeRenewalCodec(), transaction);
+    const snapshot = await store.buildCycleSnapshots({ subscriptionId: f.subscriptionId, scheduledAt: schedule.at, scheduledInstant: Date.parse(schedule.at) });
+    return { snapshot, claim: () => store.claimDue({ snapshot, workerId: "fixture-renewal", now: schedule.at }) };
+  }
+
+  const catalogRefusal = { code: "22023", message: "subscription_edit_catalog_unavailable" };
+  const contextRefusal = { code: "22023", message: "subscription_edit_price_context_missing" };
+  const commandCatalogRefusal = { status: "refused", canApply: false, reason: catalogRefusal.message };
+  const money = (amountMinor: number, currency = "XXX") => ({ amountMinor, currency });
+
+  it("prices mixed bundle lines independently and scopes derivation to the subscription context", async () => {
+    const otherList = await editList("ZY");
+    const other = await editSku(otherList, 125);
+    const mixed = [{ variantId: storedId, qty: 3 }], addons = [{ variantId: skuId, qty: 2 }];
+    const expected = [
+      { variantId: storedId, quantity: 3, unitPriceMinor: 100, sortOrder: 0, currency: "XXX", isAddon: false },
+      { variantId: skuId, quantity: 2, unitPriceMinor: 110, sortOrder: 1, currency: "XXX", isAddon: true },
+    ];
+    for (const path of ["actor", "command"] as const) {
+      const f = await editFixture(), edit = request(f, mixed, addons);
+      const absent = request(f, [{ variantId: other.id, qty: 2 }]);
+      const wrongCurrency = request(f, [{ variantId: skuId, qty: 2 }]);
+      if (path === "actor") await expect(absent.actorPreview()).rejects.toMatchObject(catalogRefusal);
+      else expect(await absent.commandPreview()).toEqual(commandCatalogRefusal);
+      await setContext(f, otherList, "XXX");
+      const rightList = request(f, [{ variantId: other.id, qty: 2 }]);
+      if (path === "actor") expect(await rightList.actorPreview()).toMatchObject({ canApply: true, newTotal: money(220) });
+      else expect(await rightList.commandPreview()).toMatchObject({ canApply: true, newTotalMinor: 220 });
+      await setContext(f, list, "XYY");
+      if (path === "actor") await expect(wrongCurrency.actorPreview()).rejects.toMatchObject(catalogRefusal);
+      else expect(await wrongCurrency.commandPreview()).toEqual(commandCatalogRefusal);
+      await setContext(f, list, "XXX");
+      const preview = path === "actor" ? await edit.actorPreview() : await edit.commandPreview();
+      expect(preview).toMatchObject(path === "actor" ? { canApply: true, newTotal: money(520) }
+        : { canApply: true, newTotalMinor: 520, lines: expected });
+      const result = path === "actor" ? await edit.actorApply(preview.quoteHash) : await edit.commandApply(preview.quoteHash);
+      expect(result).toMatchObject({ status: "applied", templateVersion: 2 });
+      const saved = await editRows(f);
+      expect(saved.quotes).toContainEqual(expect.objectContaining({ status: "accepted", proposed_lines: expected }));
+      expect(saved.template).toMatchObject(expected.map(line => ({ variant_id: line.variantId, quantity: line.quantity,
+        unit_price_minor: line.unitPriceMinor, currency_code: line.currency, sort_order: line.sortOrder, is_addon: line.isAddon })));
+      expect(saved.terms).toMatchObject([{ line_ordinal: 1, sku: storedSku, quantity: 3, unit_amount_minor: 100 },
+        { line_ordinal: 2, sku, quantity: 2, unit_amount_minor: 110 }]);
+      expect(saved.header.currency_code).toBe("XXX");
+    }
+  });
+
+  it("ranks stored entries and keeps actor renewals payable", async () => {
+    const ranked = await editSku(list, 125);
+    const ids = Array.from({ length: 6 }, () => randomUUID()).sort();
+    await admin.query(`INSERT INTO public.price_entries(id,price_list_id,variant_id,mode,min_qty,unit_price_minor,valid_from)
+      VALUES ($3,$1,$2,'subscription',3,11,now()-interval '1 hour'),
+        ($4,$1,$2,'subscription',3,0,now()-interval '1 hour'),
+        ($5,$1,$2,'subscription',3,22,now()-interval '2 hours'),
+        ($6,$1,$2,'subscription',1,33,now()-interval '1 minute'),
+        ($7,$1,$2,'subscription',4,44,now()-interval '1 minute'),
+        ($8,$1,$2,'any',3,55,now()-interval '1 minute')`, [list, ranked.id, ids[2], ids[1], ids[0], ...ids.slice(3)]);
+    const f = await editFixture(), core = [{ variantId: ranked.id, qty: 3 }], addons = [{ variantId: skuId, qty: 1 }];
+    const q = request(f, core, addons);
+    const command = await q.commandPreview();
+    expect(command).toMatchObject({ canApply: true, newTotalMinor: 110, lines: [{ unitPriceMinor: 0 }, { unitPriceMinor: 110 }] });
+    const actor = request(f, core, addons);
+    const preview = await actor.actorPreview();
+    expect(preview).toMatchObject({ canApply: true, newTotal: money(110) });
+    const payable = await editFixture(), initial = await renewalSnapshot(payable), before = await editRows(payable);
+    expect(initial.snapshot.pricingSnapshot).toMatchObject({ totalAmountMinor: 200, shippingAmountMinor: 0, currency: "XXX" });
+    await expect(request(payable, core).actorPreview()).rejects.toMatchObject(catalogRefusal);
+    expect(await editRows(payable)).toEqual(before);
+    const original = await renewalSnapshot(payable);
+    expect(original.snapshot).toEqual(initial.snapshot);
+    await original.claim();
+    expect((await editRows(payable)).anchor).toBe(before.anchor);
+    expect(await actor.actorApply(preview.quoteHash)).toMatchObject({ status: "applied" });
+    const persisted = await editRows(f);
+    expect(persisted.quotes).toContainEqual(expect.objectContaining({ status: "accepted",
+      proposed_lines: [expect.objectContaining({ unitPriceMinor: 0 }), expect.objectContaining({ unitPriceMinor: 110 })] }));
+    expect(persisted.template).toMatchObject([{ variant_id: ranked.id, unit_price_minor: 0 }, { unit_price_minor: 110 }]);
+    expect(persisted.terms).toMatchObject([{ sku: ranked.code, unit_amount_minor: 0 }, { unit_amount_minor: 110 }]);
+    const mixed = await renewalSnapshot(f);
+    expect(mixed.snapshot).toMatchObject({ templateSnapshot: { lines: [{ sku: ranked.code, unitAmountMinor: 0 }, { sku, unitAmountMinor: 110 }] },
+      pricingSnapshot: { totalAmountMinor: 110, currency: "XXX" } });
+    await mixed.claim();
+    for (const [fixture, snapshot] of [[payable, original.snapshot], [f, mixed.snapshot]] as const) {
+      const { rows: [operation] } = await admin.query(`SELECT scheduled_at=(SELECT next_cycle_at FROM public.subscriptions WHERE id=$1) AS same_schedule,
+        cycle_snapshot FROM public.subscription_renewal_operations WHERE subscription_id=$1`, [fixture.subscriptionId]);
+      expect(operation).toMatchObject({ same_schedule: true, cycle_snapshot: { templateSnapshot: snapshot.templateSnapshot,
+        pricingSnapshot: snapshot.pricingSnapshot, scheduledAt: snapshot.scheduledAt } });
+    }
+    await admin.query("UPDATE public.price_entries SET active=false WHERE variant_id=$1 AND mode='subscription'", [ranked.id]);
+    const fallback = request(await editFixture(), core, addons);
+    expect(await fallback.actorPreview()).toMatchObject({ canApply: true, newTotal: money(275) });
+    expect(await fallback.commandPreview()).toMatchObject({ canApply: true, newTotalMinor: 275, lines: [{ unitPriceMinor: 55 }, { unitPriceMinor: 110 }] });
+  });
+
+  it("replays and applies frozen quotes after catalogue replacement and prices after a lock wait", async () => {
+    for (const path of ["actor", "command"] as const) {
+      const f = await editFixture(), subject = await editSku(list, 125);
+      const core = [{ variantId: subject.id, qty: 2 }], edit = request(f, core);
+      const preview = (candidate: typeof edit) => path === "actor" ? candidate.actorPreview() : candidate.commandPreview();
+      const original = await preview(edit);
+      expect(original).toMatchObject(path === "actor" ? { canApply: true, newTotal: money(220) }
+        : { canApply: true, newTotalMinor: 220 });
+      const saved = await editRows(f);
+      await replaceBase(subject.id, subject.entry);
+      const fresh = await preview(request(f, core));
+      expect(fresh).toMatchObject(path === "actor" ? { canApply: true, newTotal: money(420) }
+        : { canApply: true, newTotalMinor: 420 });
+      await admin.query("UPDATE public.price_entries SET active=false WHERE variant_id=$1", [subject.id]);
+      if (path === "actor") await expect(preview(request(f, core))).rejects.toMatchObject(catalogRefusal);
+      else expect(await preview(request(f, core))).toEqual(commandCatalogRefusal);
+      expect(await preview(edit)).toEqual(original);
+      expect((await editRows(f)).quotes).toContainEqual(saved.quotes[0]);
+      const apply = () => path === "actor" ? edit.actorApply(original.quoteHash) : edit.commandApply(original.quoteHash);
+      const applied = await apply(), appliedRows = await editRows(f);
+      expect(applied).toMatchObject({ status: "applied", templateVersion: 2, eventId: expect.any(String) });
+      const receipts = async () => (await admin.query(`SELECT to_jsonb(r) AS row FROM public.subscription_command_receipts r
+        WHERE subscription_id=$1 AND idempotency_key=$2`, [f.subscriptionId, edit.key])).rows;
+      const firstReceipt = await receipts();
+      expect(firstReceipt).toHaveLength(path === "actor" ? 0 : 1);
+      expect(await apply()).toMatchObject({ status: "replayed", templateVersion: 2, eventId: applied.eventId });
+      expect(await editRows(f)).toEqual(appliedRows);
+      expect(await receipts()).toEqual(firstReceipt);
+      expect(appliedRows).toMatchObject({ anchor: saved.anchor, version: 2,
+        template: [{ quantity: 2, unit_price_minor: 110, currency_code: "XXX" }],
+        terms: [{ sku: subject.code, quantity: 2, unit_amount_minor: 110 }] });
+      expect(appliedRows.quotes).toContainEqual(expect.objectContaining({ id: saved.quotes[0].id, accepted_event_id: applied.eventId }));
+      expect(appliedRows.events).toHaveLength(saved.events.length + 1);
+    }
+
+    for (const path of ["actor", "command"] as const) {
+      const f = await editFixture(), subject = await editSku(list, 125), core = [{ variantId: subject.id, qty: 2 }];
+      const blocker = await admin.connect(), waiter = await (path === "actor" ? admin : runtime).connect();
+      let pending: Promise<{ rows: Record<string, unknown>[] }> | undefined;
+      try {
+        await blocker.query("BEGIN");
+        await blocker.query("SELECT id FROM public.subscriptions WHERE id=$1 FOR UPDATE", [f.subscriptionId]);
+        await waiter.query("BEGIN ISOLATION LEVEL READ COMMITTED");
+        await waiter.query("SET LOCAL statement_timeout='10s'");
+        if (path === "actor") {
+          await waiter.query("SET LOCAL ROLE authenticated");
+          await waiter.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: f.principal, role: "authenticated" })]);
+        }
+        const { rows: [waiterRow] } = await waiter.query("SELECT pg_backend_pid() AS pid,(now()-interval '1 minute')::text AS at");
+        const { rows: [blockerRow] } = await blocker.query("SELECT pg_backend_pid() AS pid");
+        pending = path === "actor"
+          ? waiter.query(`SELECT public.customer_subscription_preview_bundle_as_actor($1,$2,$3)->'preview' AS result`,
+            [f.subscriptionId, randomUUID(), JSON.stringify(core)])
+          : waiter.query(`SELECT public.subscription_command_preview($1,$2,$3,$4,'update_package_template',$5,$6) AS result`,
+            [f.commandActor, f.clientId, randomUUID(), f.subscriptionId,
+              { coreLines: core, expectedTemplateVersion: 1, compositionConstraint: {} }, waiterRow.at]);
+        void pending.catch(() => {});
+        await expect.poll(async () => (await blocker.query("SELECT $1::int=ANY(pg_blocking_pids($2::int)) AS blocked",
+          [blockerRow.pid, waiterRow.pid])).rows[0].blocked, { timeout: 4000, interval: 20 }).toBe(true);
+        const { rows: [cutover] } = await blocker.query(`SELECT stamp.at::text,stamp.at>a.query_start AS after_start
+          FROM (SELECT clock_timestamp() AS at) stamp,pg_stat_activity a WHERE a.pid=$1`, [waiterRow.pid]);
+        expect(cutover.after_start).toBe(true);
+        await blocker.query("UPDATE public.price_entries SET active=false,valid_to=$2 WHERE id=$1", [subject.entry, cutover.at]);
+        await blocker.query(`INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from)
+          VALUES($1,$2,'one_time',230,$3)`, [list, subject.id, cutover.at]);
+        await blocker.query("COMMIT");
+        const result = (await pending).rows[0].result;
+        if (path === "actor") expect(result).toMatchObject({ canApply: true, newTotal: money(420) });
+        else {
+          expect(result).toMatchObject({ canApply: true, newTotalMinor: 420 });
+          expect((await blocker.query(`SELECT ($1::jsonb->>'quoteExpiresAt')::timestamptz=$2::timestamptz+interval '15 minutes' AS same
+            FROM pg_catalog.pg_stat_activity WHERE pid=$3`, [result, waiterRow.at, waiterRow.pid])).rows).toEqual([{ same: true }]);
+        }
+        await waiter.query("COMMIT");
+      } finally {
+        await blocker.query("ROLLBACK");
+        await pending?.catch(() => {});
+        await waiter.query("ROLLBACK");
+        blocker.release();
+        waiter.release();
+      }
+    }
+  });
+
+  it("refuses incomplete pricing and checks actor renewal context at preview and apply", async () => {
+    const f = await editFixture(), missing = await editSku(), core = [{ variantId: skuId, qty: 1 }, { variantId: missing.id, qty: 1 }];
+    const edit = request(f, core), before = await editRows(f);
+    await expect(edit.actorPreview()).rejects.toMatchObject(catalogRefusal);
+    expect(await edit.commandPreview()).toEqual(commandCatalogRefusal);
+    expect(await editRows(f)).toEqual(before);
+    await admin.query("INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor) VALUES($1,$2,'one_time',125)", [list, missing.id]);
+    expect(await edit.commandPreview()).toEqual(commandCatalogRefusal);
+    const repaired = request(f, core), preview = await repaired.commandPreview();
+    expect(preview).toMatchObject({ canApply: true, newTotalMinor: 220 });
+    expect(await repaired.commandApply(preview.quoteHash)).toMatchObject({ status: "applied", templateVersion: 2 });
+
+    const limits = await editFixture(), exactList = await editList("ZW", "XXX", 0, 1);
+    await setContext(limits, exactList, "XXX");
+    const exact = await editSku(exactList, 2_147_483_647), minimum = await editSku(exactList, 1);
+    await admin.query("UPDATE public.catalog_skus SET min_order_qty=2 WHERE id=$1", [minimum.id]);
+    const both = async (core: EditLine[], addons: EditLine[] = [], total?: number) => {
+      const q = request(limits, core, addons);
+      if (total === undefined) {
+        await expect(q.actorPreview()).rejects.toMatchObject(catalogRefusal);
+        expect(await q.commandPreview()).toEqual(commandCatalogRefusal);
+      } else {
+        expect(await q.actorPreview()).toMatchObject({ canApply: true, newTotal: money(total) });
+        expect(await q.commandPreview()).toMatchObject({ canApply: true, newTotalMinor: total });
+      }
+    };
+    await both([{ variantId: minimum.id, qty: 1 }]);
+    await both([{ variantId: minimum.id, qty: 2 }], [], 2);
+    await both([{ variantId: exact.id, qty: 1 }], [], 2_147_483_647);
+    await both([{ variantId: exact.id, qty: 2 }]);
+    await admin.query(`INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,amount_kind)
+      VALUES($1,$2,'one_time',2,'net')`, [exactList, minimum.id]);
+    await both([{ variantId: minimum.id, qty: 2 }]);
+    const endpoints: EditLine[] = [];
+    for (let index = 0; index <= 18; index++) endpoints.push({ variantId: (await editSku(exactList, 1)).id, qty: 99 });
+    await both(endpoints.slice(0, 6), endpoints.slice(6, 18), 18 * 99);
+    for (const [core, addons] of [
+      [[], []], [endpoints.slice(0, 7), []], [endpoints.slice(0, 6), endpoints.slice(6)],
+      [[{ ...endpoints[0], qty: 0 }], []], [[{ ...endpoints[0], qty: 100 }], []],
+    ]) {
+      const q = request(limits, core, addons);
+      await expect(q.actorPreview()).rejects.toMatchObject({ code: "22023", message: "subscription_edit_invalid_lines" });
+      expect(await q.commandPreview()).toMatchObject({ status: "refused", reason: "subscription_edit_invalid_lines" });
+    }
+
+    for (const invalid of ["absent", "other currency"] as const) {
+      const invalidate = async (f: EditFixture) => {
+        if (invalid === "absent") {
+          await admin.query("DELETE FROM public.subscription_renewal_terms WHERE subscription_id=$1", [f.subscriptionId]);
+        } else {
+          await admin.query("UPDATE public.subscription_renewal_terms SET currency_code='XYY' WHERE subscription_id=$1", [f.subscriptionId]);
+        }
+      };
+      const lines = [{ variantId: skuId, qty: 2 }];
+      const fresh = await editFixture(), attempt = request(fresh, lines), header = (await editRows(fresh)).header;
+      await invalidate(fresh);
+      const withoutHeader = await editRows(fresh);
+      await expect(attempt.actorPreview()).rejects.toMatchObject(contextRefusal);
+      expect(await editRows(fresh)).toEqual(withoutHeader);
+      if (invalid === "absent") {
+        await admin.query(`INSERT INTO public.subscription_renewal_terms
+          SELECT * FROM jsonb_populate_record(NULL::public.subscription_renewal_terms,$1)`, [header]);
+      } else {
+        await admin.query("UPDATE public.subscription_renewal_terms SET currency_code='XXX' WHERE subscription_id=$1", [fresh.subscriptionId]);
+      }
+      expect(await attempt.actorPreview()).toMatchObject({ canApply: true, newTotal: money(220) });
+      const quoted = await editFixture(), acceptance = request(quoted, lines);
+      const original = await acceptance.actorPreview();
+      expect(original).toMatchObject({ canApply: true, newTotal: money(220) });
+      await invalidate(quoted);
+      const baseline = await editRows(quoted);
+      expect(await acceptance.actorPreview()).toEqual({ ...original, canApply: false });
+      await expect(acceptance.actorApply(original.quoteHash)).rejects.toMatchObject(contextRefusal);
+      expect(await editRows(quoted)).toEqual(baseline);
+    }
   });
 
   it("attaches the historical derived price and admits edits at the current stored price", async () => {
