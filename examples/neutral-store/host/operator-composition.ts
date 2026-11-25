@@ -6,11 +6,12 @@ import { createPostgresBundleCatalogStore, createPostgresBundleAdminWriteStore,
   buildCatalogReleaseDraftV3, evaluateBundleComposition, createPostgresCatalogPublicationCommands, createPostgresCatalogPublicationReads,
   type CatalogHeadRef, type CatalogPublicationCommand, type CatalogPublicationFailure, type CatalogDraftPayloadV3, type CatalogProductTypeRef } from '@openlup/platform/catalog';
 import type { PgQueryExecutor, PostgresRoleFreeTransactionLane } from '@openlup/platform/data';
-import { missingPackBuild, starterCatalogue, starterCatalogueType } from './editor-catalogue.ts';
+import { CATALOG_PRICE_SETUP_MAX_MINOR, createCatalogPriceSetupHandler, createPostgresCatalogPriceSetupStore,
+  deriveSubscriptionUnitPrice } from '@openlup/platform/pricing';
 import { installationFinding } from '../shared/refusals.ts';
 import { isRecord } from '../shared/offer.ts';
-import { catalogueFailedJobFilter } from './catalogue-readiness-jobs.ts';
 import type { ActionBinding, ActionContext, ApplicationBindings } from './bindings.ts';
+import type * as CatalogueEditor from './editor-catalogue.ts';
 
 const refused = (code: string) => ({ ok: false as const, code });
 const success = (value: unknown) => ({ ok: true as const, value });
@@ -21,7 +22,7 @@ function publicationRefused({ reason: code, message, path, subject }: CatalogPub
     ...(path === undefined ? {} : { issues: [{ code, path, message, subject, ...(failedJobs?.length ? { failedJobs } : {}) }] }) };
 }
 
-async function watchdogFailureEvidence(db: PgQueryExecutor, filter: ReturnType<typeof catalogueFailedJobFilter>) {
+async function watchdogFailureEvidence(db: PgQueryExecutor, filter: (jobs: unknown) => string[]) {
   let cancelTimer = () => {};
   try {
     return await Promise.race([
@@ -48,8 +49,93 @@ const text = (value: unknown, max = 200): value is string => typeof value === 's
 const uuid = (value: unknown): value is string => typeof value === 'string'
   && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 const publicationProductId = z.guid().refine(value => value === value.toLowerCase());
+const revision = z.int().min(1).max(2_147_483_647);
+const headPin = z.strictObject({ publicationId: publicationProductId, revision,
+  documentDigest: z.string().regex(/^[0-9a-f]{64}$/u) }).nullable();
 const only = (payload: Record<string, unknown>, keys: string[]) =>
   Object.keys(payload).every(key => key === 'locale' || keys.includes(key));
+
+export const demonstrationMarker = 'openlup-neutral-store-demo-v1';
+export const isDemonstrationMarker = (value: unknown) => value === demonstrationMarker;
+export const demonstrationMarkerQuery = `SELECT pg_catalog.shobj_description(oid, 'pg_database') AS marker
+  FROM pg_catalog.pg_database WHERE datname = pg_catalog.current_database()`;
+
+type PublicationLane = PostgresRoleFreeTransactionLane<PgQueryExecutor>;
+type OperatorTransaction = <T>(actorId: string, work: (db: PgQueryExecutor) => Promise<T>) => Promise<T>;
+const policySchema = z.object({ revisionId: publicationProductId, discountBps: z.int().min(0).max(10_000),
+  roundingQuantumMinor: z.int().min(1).max(CATALOG_PRICE_SETUP_MAX_MINOR), roundingRule: z.literal('FLOOR_TO_QUANTUM') });
+const priceIdentifiers = { variantId: publicationProductId, priceListId: publicationProductId };
+const priceAction = z.discriminatedUnion('action', [
+  z.strictObject({ action: z.literal('price-target') }),
+  z.strictObject({ action: z.literal('price-preview'), ...priceIdentifiers }),
+  z.strictObject({ action: z.literal('price-apply'), ...priceIdentifiers,
+    policyRevisionId: publicationProductId, unitPriceMinor: z.int().min(1).max(CATALOG_PRICE_SETUP_MAX_MINOR) }),
+]);
+
+async function effectivePriceTarget(lane: PublicationLane, marketCurrency: string) {
+  const { rows: [target] } = await lane.run(async db => {
+    await db.query('SET TRANSACTION READ ONLY');
+    return db.query(`WITH list AS (
+      SELECT id, region_code, currency, amount_basis FROM public.price_lists
+      WHERE region_code=public.catalog_price_setup_region_code() AND currency=public.catalog_price_setup_settlement_currency()
+        AND status='active' AND valid_from<=statement_timestamp() AND (valid_to IS NULL OR valid_to>statement_timestamp())
+      ORDER BY created_at DESC,id DESC LIMIT 1
+    ) SELECT l.id AS "priceListId", l.currency, l.amount_basis AS basis, p.policies, p.valid FROM list l
+    CROSS JOIN LATERAL (
+      SELECT jsonb_agg(jsonb_build_object('revisionId', p.id, 'discountBps', p.discount_bps,
+        'roundingQuantumMinor', p.rounding_quantum_minor, 'roundingRule', p.rounding_rule))
+        AS policies, bool_and(p.digest=public.catalog_price_setup_policy_digest(
+          p.id,p.revision_no,p.price_list_id,p.region_code,p.currency,p.channel,p.effective_from,
+          CASE WHEN p.closed_from_open THEN NULL ELSE p.effective_to END,p.discount_bps,p.rounding_quantum_minor,p.rounding_rule)) AS valid
+      FROM public.subscription_price_policy_revisions p
+      WHERE (p.price_list_id,p.region_code,p.currency)=(l.id,l.region_code,l.currency) AND p.channel='D2C'
+        AND p.effective_from<=statement_timestamp() AND (p.effective_to IS NULL OR p.effective_to>statement_timestamp())
+    ) p`);
+  });
+  const priceListId = publicationProductId.safeParse(target?.priceListId).data;
+  if (!priceListId || typeof target?.currency !== 'string') return refused('price_list_not_active');
+  if (target.currency !== marketCurrency) return refused('starter_catalogue_currency_mismatch');
+  if (target.basis === 'tax_exclusive') return refused('catalog_price_setup_basis_mismatch');
+  const policies = z.array(policySchema).length(1).safeParse(target.policies).data;
+  if (!policies || target.valid !== true) return refused('starter_catalogue_d2c_policy_required');
+  return { ok: true as const, priceListId, currency: target.currency, policy: policies[0]! };
+}
+
+async function cataloguePrice(payload: Record<string, unknown>, context: ActionContext, actorId: string,
+  lane: PublicationLane, asOperator?: OperatorTransaction): Promise<Awaited<ReturnType<ActionBinding>>> {
+  const { locale: _locale, ...request } = payload;
+  const parsed = priceAction.safeParse(request);
+  if (!parsed.success) return refused('starter_input_invalid');
+  if (!asOperator) return refused('host_binding_required');
+  const input = parsed.data;
+  const target = await effectivePriceTarget(lane, context.config.market.currency);
+  if (!target.ok) return target;
+  const { priceListId, currency, policy } = target;
+  if (input.action === 'price-target') return success({ actorId, priceListId, currency, policy });
+  const query = { variantId: input.variantId, priceListId: input.priceListId };
+  if (input.action === 'price-apply' && query.priceListId !== priceListId) return refused('price_list_not_active');
+  return asOperator(actorId, async db => {
+    const handler = createCatalogPriceSetupHandler({ store: createPostgresCatalogPriceSetupStore(db),
+      authorizeOperator: async () => ({ actorId }) });
+    const priceSetup = await handler.preview(query, context);
+    if ('reason' in priceSetup) return { ...refused(priceSetup.reason), ...(priceSetup.reasons && {
+      issues: priceSetup.reasons.map(code => ({ code, path: 'basePrices' })),
+    }) };
+    if (input.action === 'price-preview') return success({ inGate: query.priceListId === priceListId, currency, priceSetup });
+    const subscription = priceSetup.subscription;
+    if (subscription.kind !== 'derived' || subscription.revisionId !== input.policyRevisionId)
+      return refused('starter_catalogue_d2c_policy_required');
+    if (deriveSubscriptionUnitPrice(input.unitPriceMinor, { ...subscription, roundingRule: 'FLOOR_TO_QUANTUM' }) <= 0)
+      return refused('starter_catalogue_derived_price_zero');
+    const result = await handler.apply({ ...query, schemaVersion: 1, commandKey: context.commandKey,
+      mode: 'one_time', minQty: 1, amountKind: 'gross', unitPriceMinor: input.unitPriceMinor,
+      expected: { entryId: null, unitPriceMinor: null } }, context);
+    if ('reason' in result) return { ...refused(result.reason), ...(result.reasons && {
+      issues: result.reasons.map(code => ({ code, path: 'basePrices' })),
+    }) };
+    return { ...success({ currency, ...result }), ...(result.outcome === 'replayed' ? { replayed: true } : {}) };
+  });
+}
 
 function publicationExample(type: CatalogProductTypeRef): CatalogDraftPayloadV3 {
   const title = 'Fictional item';
@@ -63,9 +149,13 @@ function publicationExample(type: CatalogProductTypeRef): CatalogDraftPayloadV3 
 
 /** Operator identity is established by native request authentication before dispatch. */
 export function composeOperatorCapabilities(input: {
-  executor: PgQueryExecutor; connectionString: string; publication?: PostgresRoleFreeTransactionLane<PgQueryExecutor> | undefined;
+  executor: PgQueryExecutor; connectionString: string; publication?: PublicationLane | undefined;
+  asOperator?: OperatorTransaction;
+  editor: Pick<typeof CatalogueEditor, 'missingPackBuild' | 'starterCatalogue' | 'starterCatalogueType'>;
+  filterFailedJobs?: (jobs: unknown) => string[];
 }):
 Pick<ApplicationBindings, 'actions' | 'close'> {
+  const { missingPackBuild, starterCatalogue, starterCatalogueType } = input.editor;
   const catalogue = starterCatalogue();
   function registerBuildCheck(context: ActionContext, ref: unknown) {
     context.registerCatalogueBuildCheck?.(() => {
@@ -93,9 +183,21 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
     catalogPublicationOwner: publicationLane, authorizeHuman, registry: catalogue.registry,
   });
   const publication = input.publication && createPostgresCatalogPublicationReads({ transactions: input.publication, authorizeHuman });
-  const filterFailedJobs = catalogueFailedJobFilter();
-  if (commands && publication) actions['operator.catalogPublication'] = async (payload, context) => {
-    if (!(await authorizeHuman(context)).ok) return refused('operator_required');
+  const filterFailedJobs = input.filterFailedJobs ?? (() => []);
+  if (publicationLane) actions['catalogue.demoTarget'] = (payload, context) => {
+    if (Object.keys(payload).length !== 0) return Promise.resolve(refused('starter_input_invalid'));
+    return publicationLane.run(async db => {
+      await db.query('SET TRANSACTION READ ONLY');
+      await db.query("SET LOCAL statement_timeout = '1s'");
+      const { rows: [result] } = await db.query(demonstrationMarkerQuery);
+      return success({ marked: isDemonstrationMarker(result?.marker), configurationId: context.config.id });
+    });
+  };
+  if (commands && publication && publicationLane) actions['operator.catalogPublication'] = async (payload, context) => {
+    const human = await authorizeHuman(context);
+    if (!human.ok) return refused('operator_required');
+    if (typeof payload.action === 'string' && payload.action.startsWith('price-'))
+      return cataloguePrice(payload, context, human.userId, publicationLane, input.asOperator);
     if (payload.action === 'approve' || payload.action === 'publish') {
       const { locale: _locale, ...command } = payload;
       if (Object.hasOwn(command, 'commandKey')) return refused('starter_input_invalid');
@@ -212,21 +314,23 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
   };
   actions['operator.catalogDrafts'] = async (payload, context) => {
     if (!context.actor.operatorRef) return refused('operator_required');
-    const fields = payload.action === undefined ? [] : payload.action === 'example' ? ['action'] : payload.action === 'get' ? ['action', 'draftId']
-      : ['action', 'draftId', 'expectedRevision', 'payload'];
+    const fields = payload.action === undefined ? [] : payload.action === 'example' ? ['action'] : payload.action === 'get'
+      ? ['action', 'draftId', 'revision'] : ['action', 'draftId', 'expectedRevision', payload.action === 'prepare' ? 'expectedHead' : 'payload'];
     if (!only(payload, fields)) return refused('starter_input_invalid');
     if (payload.action === 'example') {
       if (installed) return success(publicationExample(installed));
       return { ...refused('starter_catalogue_rules_required'), ...(current ? { issues: [rulesVersionIssue(current.version)] } : {}) };
     }
     if (payload.action === 'prepare') {
-      if (!uuid(payload.draftId) || !Number.isSafeInteger(payload.expectedRevision) || Number(payload.expectedRevision) < 1 || 'payload' in payload)
+      const draftId = publicationProductId.safeParse(payload.draftId).data;
+      const draftRevision = revision.safeParse(payload.expectedRevision).data;
+      const pin = Object.hasOwn(payload, 'expectedHead') ? headPin.safeParse(payload.expectedHead) : undefined;
+      if (!draftId || draftRevision === undefined || pin?.success === false)
         return refused('starter_input_invalid');
       if (commands && publicationLane) {
         const capability = await commands.authorize(context);
         if (!capability) return refused('operator_required');
-        const draftRevision = Number(payload.expectedRevision);
-        const saved = await drafts.get({ draftId: payload.draftId, revision: draftRevision }, context);
+        const saved = await drafts.get({ draftId, revision: draftRevision }, context);
         if ('reason' in saved) return publicationRefused(saved);
         if (!saved.record) return refused('draft_not_found');
         registerBuildCheck(context, saved.record.payload.product.type);
@@ -238,10 +342,11 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
           EXISTS (SELECT 1 FROM public.catalog_products WHERE id=$1) AS live,
           public.catalog_publication_assert_head($1,false)`, [productId]));
         if (!lineage || (lineage.head === null && lineage.live !== false)) return refused('catalog_publication_lineage_unknown');
-        const expectedHead = lineage.head as CatalogHeadRef | null;
-        const preview = await commands.prepareCandidate({ draftId: payload.draftId, draftRevision, expectedHead }, capability);
+        const expectedHead = pin ? pin.data : lineage.head as CatalogHeadRef | null;
+        const preview = await commands.prepareCandidate({ draftId, draftRevision, expectedHead }, capability);
         return 'reason' in preview ? publicationRefused(preview) : success({ ...preview, expectedHead });
       }
+      if (pin) return refused('host_binding_required');
       let rulesVersion: number | undefined;
       const service = createCatalogCandidateServiceWithPublication({ registry: catalogue.registry,
         async readDraft(draftId, revision) {
@@ -257,7 +362,7 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
         async resolveHead() { return null; },
       }, { async readEvidence() { return null; } });
       try {
-        const preview = await service.prepareCandidate({ draftId: payload.draftId, draftRevision: Number(payload.expectedRevision), expectedHead: null });
+        const preview = await service.prepareCandidate({ draftId, draftRevision, expectedHead: null });
         return success(preview.preparation ?? { structural: { outcome: 'unknown', issues: preview.issues } });
       } catch (error) {
         if (error instanceof CatalogCandidateError)
@@ -278,7 +383,8 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
       authored = { ...authored, product: { ...authored.product, type: { ...authored.product.type, version: pin?.version ?? current.version } } };
     }
     const result = payload.action === undefined ? await drafts.list({ limit: 30 }, context)
-      : payload.action === 'get' ? await drafts.get({ draftId: payload.draftId }, context)
+      : payload.action === 'get' ? await drafts.get({ draftId: payload.draftId,
+        ...(Object.hasOwn(payload, 'revision') && { revision: payload.revision }) }, context)
         : await drafts.execute({ schemaVersion: isRecord(authored) && [2, 3].includes(Number(authored.schemaVersion)) ? authored.schemaVersion : 1,
           action: payload.action, draftId: payload.draftId,
           expectedRevision: payload.expectedRevision, ...(authored === undefined ? {} : { payload: authored }),

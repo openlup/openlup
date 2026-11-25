@@ -31789,7 +31789,7 @@
   "packageExecutionSurfaces": [
     {
       "path": "examples/neutral-store/package.json",
-      "digest": "sha256-f13fb832ebc96fc06a087c8932f84194d5f51cf3b629a6a731f5410504611d45"
+      "digest": "sha256-6beae26df400ee4ac52815e4d82b51245a4e9adc5e4dbb850889c62c269afc30"
     },
     {
       "path": "package.json",

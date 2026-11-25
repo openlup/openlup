@@ -381,6 +381,20 @@ Run `npm run --silent catalogue:check:source` to check the packs and fixtures in
 The installed recipes in `node_modules/@openlup/core/docs/guide/how-to/extend/catalogue-extension.md`
 describe the evidence each check supplies.
 
+For a marked demonstration store, follow [Release, price and activate a demo product](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#release-price-and-activate-a-demo-product).
+`catalogue:check:source` is offline. `catalogue:apply` signs in a human operator and can write drafts, prices and publications.
+
+### Read the private demonstration mailbox
+
+Use a separate private terminal in the same Compose project to find the newest
+operator sign-in message for the invited administrator.
+
+```sh
+docker compose exec -T --user node application cat /application/.context/captured-messages/identity.jsonl
+```
+
+Enter only the matching token at the hidden prompt.
+
 ## Install-only fictional catalogue
 
 `./lifecycle up` calls `installation/install.ts` in a one-shot container before

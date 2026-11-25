@@ -40,7 +40,8 @@ import { portalResponder, composePortalCapabilities, composeE4Capabilities } fro
 import { composeExistingCapabilities } from './e-composition.ts';
 import { composeSubscriptionEditors, readEditorSubscriptions } from './subscription-editors.ts';
 import { composeCatalogueStorefront } from './catalogue-storefront.ts';
-import { catalogueWatchdogPrincipalId, startCatalogueReadinessJobs } from './catalogue-readiness-jobs.ts';
+import { catalogueFailedJobFilter, catalogueWatchdogPrincipalId, startCatalogueReadinessJobs } from './catalogue-readiness-jobs.ts';
+import * as catalogueEditor from './editor-catalogue.ts';
 
 const nobody = (): VerifiedActor => ({ customerRef: null, operatorRef: null });
 const refused = (code: string) => ({ ok: false as const, code });
@@ -148,7 +149,10 @@ export async function composeNativeBindings(connectionString: string, origin: Or
         ? { principalId: found.session.principalId, email: null, emailVerified: false } : null;
     },
   } });
-  const capabilities = composeExistingCapabilities({ executor: pool, connectionString, publication });
+  const asCustomer = <T>(principalId: string, work: (db: PgGatewayClient) => Promise<T>) =>
+    gateway.asActor({ role: 'authenticated', sub: principalId }, db => work(db as PgGatewayClient));
+  const capabilities = composeExistingCapabilities({ executor: pool, connectionString, publication, asOperator: asCustomer,
+    editor: catalogueEditor, filterFailedJobs: catalogueFailedJobFilter() });
   const contacts = createPostgresContactClientRegistrar({ connectionString });
   const checkoutRecoveryTokenLane = createPostgresRoleFreeTransactionLane({ connectionString });
   const storefront = composeCatalogueStorefront(createPostgresRoleFreeTransactionLane<PgQueryExecutor>({ connectionString }, { pool }));
@@ -185,8 +189,6 @@ export async function composeNativeBindings(connectionString: string, origin: Or
     const auth = await operatorAuth.authorize(context.actor.sessionToken ?? '', { allowedRoles: ['admin'] });
     return auth.ok && auth.principalId.toLowerCase() === context.actor.operatorRef?.toLowerCase();
   }, quoteAcceptanceKeyring));
-  const asCustomer = <T>(principalId: string, work: (db: PgGatewayClient) => Promise<T>) =>
-    gateway.asActor({ role: 'authenticated', sub: principalId }, db => work(db as PgGatewayClient));
   Object.assign(actions, composeExpiredRecovery(pool, checkoutRecoveryTokenLane, recovery.tokens, quoteAcceptanceKeyring));
   Object.assign(actions, composeSandboxRecoveryPayments(pool, checkoutRecoveryTokenLane, recovery.tokens, quoteAcceptanceKeyring));
   actions['checkout.recoveryStart'] = async (payload, context) => {

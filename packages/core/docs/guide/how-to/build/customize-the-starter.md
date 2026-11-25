@@ -897,6 +897,50 @@ in the JSON and choose **Save**. Expect `title_required` at that field. Restore
 the title, save, and choose **Prepare saved draft** with the saved draft ID and
 revision. Earlier saved drafts keep their installed rule version.
 
+### Release, price and activate a demo product
+
+Start the marked demonstration with `./lifecycle up`. In `owned/catalogue.ts`,
+keep the installed pack declaration and export the product you want to publish.
+Use the [product input recipe](../extend/catalogue-extension.md#author-a-product)
+to define `product`, with the exact installed type version, the presentation
+title and each SKU's physical and fulfilment facts. Keep the draft UUID stable.
+
+```ts
+export const catalogueProduct = {
+  draftId: 'd9176a9d-274b-4a4a-90d8-2a0db738f181',
+  product,
+  basePrices: { 'NOTEBOOK-MATTE': 1900, 'NOTEBOOK-GLOSS': 2700 },
+  copyPresentation: { title: 'Field notebook, second edition' },
+};
+```
+
+Give each authored SKU exactly one initial gross one-time price in minor units.
+Run `npm run --silent catalogue:check:source` to check the pack fixtures offline.
+`npm run catalogue:apply -- --prepare-only` saves the Release draft and prepares
+it. Save + Prepare is a draft write.
+
+Run `npm run catalogue:apply -- --json` in a terminal. Select the same
+`--configuration` used for the running host if you started a nondefault
+configuration. The command checks the database marker before requesting a
+challenge. Enter the invited administrator's email. Use the
+[private demonstration mailbox](https://github.com/openlup/openlup/blob/main/examples/neutral-store/README.md#read-the-private-demonstration-mailbox)
+in a separate terminal in the same Compose project to read the fresh operator
+token. Enter it at the hidden prompt. Review the saved revision, expected head,
+verified currency and SKU prices. Type `approve` when you intend to publish
+Release and again when you intend to publish Activation. The command verifies
+the initial prices between the two publications. Run the command with
+`--copy` to review and publish the first presentation-only successor. Use
+`npm run --silent catalogue:apply -- --json` for a single machine-readable
+report on stdout.
+
+After a readiness refusal, follow its Fix and Recheck and resume as the
+original administrator with the same declaration. A missing initial price can
+be supplied through the authorized price action. Retry the same approved
+Publish body and key once the intended price is ready. Existing-base
+corrections belong to the pricing owner. If a challenge arrives late or has
+expired, check the invitation and request a fresh token after the minute and
+hourly limits allow it.
+
 ### Publish a saved catalogue draft
 
 If you change an input, follow [Change a product rule](#change-a-product-rule)
