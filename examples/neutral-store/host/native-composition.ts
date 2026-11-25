@@ -148,7 +148,8 @@ export async function composeNativeBindings(connectionString: string, origin: Or
         ? { principalId: found.session.principalId, email: null, emailVerified: false } : null;
     },
   } });
-  const capabilities = composeExistingCapabilities({ executor: pool, connectionString, publication });
+  const watchdogEvidence = publication && createPostgresRoleFreeTransactionLane<PgQueryExecutor>({ connectionString }, { pool });
+  const capabilities = composeExistingCapabilities({ executor: pool, connectionString, publication, watchdogEvidence });
   const contacts = createPostgresContactClientRegistrar({ connectionString });
   const checkoutRecoveryTokenLane = createPostgresRoleFreeTransactionLane({ connectionString });
   const storefront = composeCatalogueStorefront(createPostgresRoleFreeTransactionLane<PgQueryExecutor>({ connectionString }, { pool }));

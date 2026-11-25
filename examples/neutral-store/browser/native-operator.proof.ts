@@ -463,19 +463,25 @@ test('authenticated Publish discloses only owned degraded jobs and supports exac
     expect(await wire()).toMatchObject({ reason: 'promotion_watchdog_not_ready', issues: [{ failedJobs: [ownedJob] }] });
     const watchdogRun = (await control()).last_run_id;
     await owner.query("UPDATE public.platform_job_controls SET last_success_at=statement_timestamp()-interval '7 hours' WHERE job_name='platform-watchdog'");
-    expect((await wire()).issues[0]).not.toHaveProperty('failedJobs');
+    const withoutEvidence = await wire();
+    expect(withoutEvidence.issues[0]).not.toHaveProperty('failedJobs');
     await owner.query(`UPDATE public.platform_job_controls SET last_success_at=(SELECT finished_at FROM public.platform_job_runs WHERE id=$1)
       WHERE job_name='platform-watchdog'`, [watchdogRun]);
     const blocker = await owner.connect();
     try {
       await blocker.query('BEGIN');
       await blocker.query('LOCK TABLE public.platform_job_runs IN ACCESS EXCLUSIVE MODE');
+      const { rows: [{ pid }] } = await blocker.query('SELECT pg_backend_pid() AS pid');
+      const blockedReads = async () => (await owner.query(`SELECT pid FROM pg_stat_activity
+        WHERE datname = current_database() AND $1 = ANY(pg_blocking_pids(pid))
+          AND query LIKE 'SELECT r.metadata%'`, [pid])).rowCount;
       const started = performance.now();
-      const same = await wire();
+      const [same] = await Promise.all([wire(), expect.poll(blockedReads, { intervals: [25], timeout: 1000 }).toBe(1)]);
       expect(Math.round(performance.now() - started)).toBeGreaterThanOrEqual(450);
       expect(Math.round(performance.now() - started)).toBeLessThan(1200);
-      expect(same.reason).toBe('promotion_watchdog_not_ready');
-      expect(same.issues[0]).not.toHaveProperty('failedJobs');
+      expect(same).toEqual(withoutEvidence);
+      // Keep the lock held until PostgreSQL has stopped the optional query.
+      await expect.poll(blockedReads, { timeout: 1200 }).toBe(0);
     } finally { await blocker.query('ROLLBACK'); blocker.release(); }
     const core = findPackageJSON('@openlup/core/catalog', import.meta.url)!;
     const guide = readFileSync(join(dirname(core), 'docs/guide/how-to/build/customize-the-starter.md'), 'utf8');

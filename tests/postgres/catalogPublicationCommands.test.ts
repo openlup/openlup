@@ -870,12 +870,18 @@ describe("publication activation prices", () => {
     const probe = (sql: string) => sql.startsWith("SELECT public.commerce_offer_policy_v2_readiness()");
     const writer = (sql: string) => sql.startsWith("SELECT public.catalog_price_setup_apply_claimed");
     const project = (sql: string) => sql.includes("list.id AS list_id, price.invalid_shape");
+    const remedies: Record<string, string> = {
+      bundle_5_policy_invalid: "Fix: Restore exactly one qualifying automatic one-time bundle with the promotion owner.",
+      promotion_claim_sweep_not_ready: "Fix: Ask the operations owner to enable the promotion claim sweep and verify its configured driver can run it. Recheck: Wait for the next run or have the owner trigger one. Verify successful evidence from the past 15 minutes.",
+      promotion_watchdog_not_ready: "Fix: Ask the operations owner to enable the watchdog, verify its operations principal is active, and resolve any enabled failed jobs. Recheck: Wait for the next run or have the owner trigger one. Verify a healthy, successful watchdog run from the past six hours.",
+    };
     const refuse = async (subject: string, hard = false) => {
       const result = await api.execute(command, who);
       expect(result).toEqual({ outcome: hard ? "dependency_unavailable" : "validation_issue",
         reason: hard ? "publication_authority_unavailable" : "publication_price_readiness", path: "pricing.readiness", subject,
         message: expect.stringMatching(/^Observed: .+ Cause: .+ Fix: .+ Recheck: .+$/u) });
       expect(JSON.stringify(result)).not.toContain("unapproved_input");
+      if (Object.hasOwn(remedies, subject)) expect(result).toHaveProperty("message", expect.stringContaining(remedies[subject]!));
       expect((await pool.query("SELECT publication_id FROM public.catalog_publication_heads WHERE product_id=$1", [productId])).rows)
         .toEqual([{ publication_id: head.publicationId }]);
       expect((await pool.query("SELECT id FROM public.price_entries WHERE variant_id=$1", [skuId])).rows).toEqual([]);
