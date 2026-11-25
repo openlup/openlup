@@ -355,7 +355,7 @@ it("D7 dispatch locks the SAME renewal order while leased accounting work is in 
   expect((await h.pool.query("SELECT (SELECT to_jsonb(s) FROM public.subscriptions s WHERE id=$1) subscription,(SELECT to_jsonb(c) FROM public.subscription_cycles c WHERE id=$2) cycle,(SELECT coalesce(jsonb_agg(to_jsonb(x)),'[]') FROM public.commerce_order_holds x WHERE order_id=$3) holds",[f.subscription,f.cycle,f.order])).rows).toEqual(before);
 });
 
-it("B1 keyed cutover excludes 20000 historic paid AND handoff sources and collects only post-cutover sources below two seconds",async()=>{
+it("B1 keyed cutover excludes 20000 historic paid AND handoff sources and collects only post-cutover sources",async()=>{
   expect((await h.pool.query("SELECT source_kind,count(*)::integer n FROM public.invoicing_cutover GROUP BY source_kind ORDER BY source_kind")).rows)
     .toEqual([{source_kind:"handoff",n:20000},{source_kind:"paid",n:expect.toSatisfy((n:number)=>n>=20000)}]);
   const paid=await paymentFixture(), handoff=await shipmentFixture(h.pool);

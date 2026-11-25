@@ -215,7 +215,7 @@ export function classifyTestFailure(result) {
 export function failedTestSummaries(report) {
   const failures = [];
   const visit = (suite, titles) => {
-    for (const spec of suite.specs ?? []) {
+    for (const spec of Array.isArray(suite?.specs) ? suite.specs : []) {
       for (const test of spec.tests ?? []) {
         if (test.status !== 'unexpected' && test.status !== 'flaky') continue;
         const result = test.results?.at(-1);
@@ -229,9 +229,9 @@ export function failedTestSummaries(report) {
       }
     }
     // The top-level suite title is the file, which the location already names.
-    for (const child of suite.suites ?? []) visit(child, [...titles, child.title]);
+    for (const child of Array.isArray(suite?.suites) ? suite.suites : []) visit(child, [...titles, child.title]);
   };
-  for (const suite of report?.suites ?? []) visit(suite, []);
+  for (const suite of Array.isArray(report?.suites) ? report.suites : []) visit(suite, []);
   return failures;
 }
 
