@@ -7,8 +7,11 @@ import {
   isContinuationExpired,
   type PendingResumeDecision,
   type PendingResumeEffects,
+  readPendingContinuation,
   resolvePendingResume,
 } from "./checkoutResumeGuard";
+import { persistCheckoutContinuation, readCheckoutContinuation } from "./checkoutNavigation";
+import { BffClientError } from "@/lib/bff/client";
 import { PSP_PROVIDER_KINDS } from "@/domains/payment/pspIntegrationPlan";
 import { CHECKOUT_PAYMENT_CONTINUATION_TTL_SECONDS } from "@/domains/commerce/paymentContinuationContracts";
 
@@ -428,5 +431,120 @@ describe("applyPendingResume", () => {
     ] as PendingResumeDecision[]) {
       expect(acted(decision), JSON.stringify(decision)).toBe(true);
     }
+  });
+});
+
+/**
+ * Characterization of the resume decision against a status that cannot be read.
+ * Existing cases above pin "answers unknown, never discard", the expired marker
+ * with no status request, and the one-effect-per-decision mapping; these cover
+ * what they do not. Each test sets its own mock result, because the shared setup
+ * does not reset a `vi.fn()` mock between tests.
+ */
+describe("a status that cannot be read", () => {
+  const bffFailure = (code: ConstructorParameters<typeof BffClientError>[0]["code"], status: number) =>
+    new BffClientError({ code, message: "synthetic failure" }, status);
+
+  const NO_PHASE = {} as const;
+  const ACTION_ISSUED = { phase: "action_issued" } as const;
+  const CONFIRM_DISPATCHED = { phase: "confirm_dispatched" } as const;
+
+  it.each([
+    ["a TypeError", () => new TypeError("Failed to fetch")],
+    ["a typed 503", () => bffFailure("UPSTREAM_UNAVAILABLE", 503)],
+    ["a typed 500", () => bffFailure("INTERNAL", 500)],
+  ])("a transport error never yields discard, for either phase: %s", async (_label, makeError) => {
+    for (const [phaseLabel, phase, expected] of [
+      ["action_issued", ACTION_ISSUED, "unknown"],
+      ["confirm_dispatched", CONFIRM_DISPATCHED, "wait_on_status"],
+      ["no phase", NO_PHASE, "wait_on_status"],
+    ] as const) {
+      const marker = { ...PENDING, ...phase };
+      getCommercePaymentStatus.mockReset();
+      getCommercePaymentStatus.mockRejectedValue(makeError());
+
+      await expect(readPendingContinuation(marker), phaseLabel).resolves.toEqual({ kind: "checking" });
+      const decision = await resolvePendingResume(marker);
+
+      expect(decision, phaseLabel).not.toBe("discard");
+      expect(decision, phaseLabel).toBe(expected);
+    }
+  });
+
+  it.each([
+    ["NOT_FOUND", 404],
+    ["FORBIDDEN", 403],
+  ] as const)("only a definitive not-found or forbidden answer is read as terminal: %s", async (code, status) => {
+    getCommercePaymentStatus.mockReset();
+    getCommercePaymentStatus.mockRejectedValue(bffFailure(code, status));
+
+    await expect(readPendingContinuation(PENDING)).resolves.toEqual({ kind: "terminal" });
+    await expect(resolvePendingResume(PENDING)).resolves.toBe("discard");
+    await expect(resolvePendingResume({ ...PENDING, ...ACTION_ISSUED })).resolves.toBe("discard");
+  });
+
+  it.each([
+    ["BAD_REQUEST", 400],
+    ["UNAUTHORIZED", 401],
+    ["METHOD_NOT_ALLOWED", 405],
+    ["CONFLICT", 409],
+    ["RATE_LIMITED", 429],
+    ["INTERNAL", 500],
+    ["INVALID_RESPONSE", 200],
+    ["UPSTREAM_UNAVAILABLE", 503],
+  ] as const)("only a definitive not-found or forbidden answer is read as terminal: %s is not", async (code, status) => {
+    getCommercePaymentStatus.mockReset();
+    getCommercePaymentStatus.mockRejectedValue(bffFailure(code, status));
+
+    await expect(readPendingContinuation(PENDING)).resolves.toEqual({ kind: "checking" });
+  });
+
+  it("does not read a not-found-looking plain Error as terminal", async () => {
+    // Only a typed client error carries a code; a plain Error with the same word
+    // is a transport blip.
+    getCommercePaymentStatus.mockReset();
+    getCommercePaymentStatus.mockRejectedValue(new Error("NOT_FOUND"));
+
+    await expect(readPendingContinuation(PENDING)).resolves.toEqual({ kind: "checking" });
+  });
+});
+
+describe("a reload", () => {
+  it.each([
+    [
+      "an action_issued marker whose status still carries the embedded action",
+      "action_issued",
+      { status: "pending_provider_action", nextAction: EMBEDDED_ACTION },
+      { kind: "reopen_embedded", clientSecret: "pi_secret" },
+    ],
+    [
+      "an action_issued marker whose status carries no action",
+      "action_issued",
+      { status: "processing" },
+      "no_action_keep_marker",
+    ],
+    [
+      "a confirm_dispatched marker whose status carries no action",
+      "confirm_dispatched",
+      { status: "processing" },
+      "wait_on_status",
+    ],
+  ] as const)("reaches the same decision from the stored marker: %s", async (_label, phase, status, expected) => {
+    getCommercePaymentStatus.mockReset();
+    getCommercePaymentStatus.mockResolvedValue(status);
+    persistCheckoutContinuation({ ...PENDING, phase });
+    const markerBefore = readCheckoutContinuation();
+    expect(markerBefore).not.toBeNull();
+    const decisionBefore = await resolvePendingResume(markerBefore!);
+    expect(decisionBefore).toEqual(expected);
+
+    // A reload drops every module; only the stored marker survives it.
+    vi.resetModules();
+    const navigation = await import("./checkoutNavigation");
+    const guard = await import("./checkoutResumeGuard");
+    const markerAfter = navigation.readCheckoutContinuation();
+
+    expect(markerAfter).toEqual(markerBefore);
+    await expect(guard.resolvePendingResume(markerAfter!)).resolves.toEqual(decisionBefore);
   });
 });

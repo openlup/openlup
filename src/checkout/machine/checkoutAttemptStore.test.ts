@@ -11,9 +11,15 @@ import {
   // a substring of these identifiers, so each spelled-out use costs a token.
   bumpCheckoutPaymentAttempt as bumpAttempt,
   clearCheckoutAttemptKey,
+  fingerprintCheckoutIntent,
   getOrCreateCheckoutAttemptKey,
   readCheckoutPaymentAttempt as readAttempt,
 } from "./checkoutAttemptStore";
+import { persistCheckoutContinuation } from "./checkoutNavigation";
+import { checkoutContinuationJourneyIdSchema } from "@/domains/commerce/paymentContinuationContracts";
+import type { CheckoutQuoteExpectation } from "@/checkout/composer/configuratorFormStore";
+import type { ConfiguratorIntent } from "@/domains/commerce/configuratorIntentContracts";
+import { createHash } from "node:crypto";
 
 /**
  * Line γ seam fixture: the composition vocabulary the composition root supplies in
@@ -201,6 +207,324 @@ describe("checkout attempt store", () => {
 
     expect(sessionStorage.getItem(CHECKOUT_ATTEMPT_STORAGE_KEY)).toBeNull();
     expect(readAttempt()).toBe(0);
+  });
+});
+
+/**
+ * Characterization of the attempt record: the bytes it stores, when it reuses a
+ * key, how the sequence moves, what it does when storage refuses, and which
+ * identities the browser reader accepts. Every case states what the code does
+ * today; a case marked "pinned" names behaviour that is a known gap, not an
+ * endorsement.
+ */
+describe("checkout attempt record", () => {
+  const MINIMAL_INTENT = {
+    idempotencyKey: "checkout:ignored",
+    zeta: 1,
+    alpha: { nested: [3, { b: 2, a: 1 }] },
+  } as unknown as ConfiguratorIntent;
+  const EDITED_INTENT = { ...MINIMAL_INTENT, zeta: 2 } as unknown as ConfiguratorIntent;
+
+  const mintedKey = (sequence: number) =>
+    `checkout:11111111-1111-4111-8111-${String(sequence).padStart(12, "0")}`;
+  const ATTEMPT_KEY_PATTERN =
+    /^checkout:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+  const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
+  const storedRecord = () => JSON.parse(sessionStorage.getItem(CHECKOUT_ATTEMPT_STORAGE_KEY) ?? "null");
+  const storeRaw = (raw: string) => sessionStorage.setItem(CHECKOUT_ATTEMPT_STORAGE_KEY, raw);
+  const throwingStorage = (method: "getItem" | "setItem" | "removeItem") => {
+    const refusal = new Error(`storage refused ${method}`);
+    vi.spyOn(sessionStorage, method).mockImplementation(() => {
+      throw refusal;
+    });
+    return refusal;
+  };
+
+  beforeEach(() => {
+    let counter = 0;
+    vi.spyOn(crypto, "randomUUID").mockImplementation(() => {
+      counter += 1;
+      return `11111111-1111-4111-8111-${String(counter).padStart(12, "0")}`;
+    });
+  });
+
+  describe("stored bytes", () => {
+    it("stores exactly a fingerprint and a key when a journey starts", () => {
+      const built = intent();
+      const key = getOrCreateCheckoutAttemptKey(built);
+
+      const stored = storedRecord();
+      expect(Object.keys(stored)).toEqual(["fingerprint", "key"]);
+      expect(stored.key).toBe(key);
+      expect(stored.key).toMatch(ATTEMPT_KEY_PATTERN);
+      expect(stored.fingerprint).toBe(fingerprintCheckoutIntent(built));
+    });
+
+    it("pins the fingerprint as a golden string, ignoring the key and sorting every object", () => {
+      const quote = {
+        totalGross: { amountMinor: 1000 },
+        pricingPolicy: {
+          promotionEngineVersion: "promotion-v1",
+          offerPolicyVersion: "offer-v1",
+          pricingPolicyToken: "left-out-of-the-fingerprint",
+        },
+      } as unknown as CheckoutQuoteExpectation;
+      const bareQuote = { totalGross: { amountMinor: 1000 } } as unknown as CheckoutQuoteExpectation;
+
+      expect(fingerprintCheckoutIntent(MINIMAL_INTENT)).toBe(
+        '{"expectedQuote":null,"intent":{"alpha":{"nested":[3,{"a":1,"b":2}]},"zeta":1}}',
+      );
+      expect(fingerprintCheckoutIntent(MINIMAL_INTENT, bareQuote)).toBe(
+        '{"expectedQuote":{"totalGross":{"amountMinor":1000}},"intent":{"alpha":{"nested":[3,{"a":1,"b":2}]},"zeta":1}}',
+      );
+      expect(fingerprintCheckoutIntent(MINIMAL_INTENT, quote)).toBe(
+        '{"expectedQuote":{"pricingPolicy":{"offerPolicyVersion":"offer-v1","promotionEngineVersion":"promotion-v1"},"totalGross":{"amountMinor":1000}},"intent":{"alpha":{"nested":[3,{"a":1,"b":2}]},"zeta":1}}',
+      );
+
+      getOrCreateCheckoutAttemptKey(MINIMAL_INTENT);
+      expect(storedRecord().fingerprint).toBe(
+        '{"expectedQuote":null,"intent":{"alpha":{"nested":[3,{"a":1,"b":2}]},"zeta":1}}',
+      );
+    });
+
+    it("stores the attempt sequence after the key once bumped", () => {
+      const key = getOrCreateCheckoutAttemptKey(MINIMAL_INTENT);
+
+      bumpAttempt();
+      expect(Object.keys(storedRecord())).toEqual(["fingerprint", "key", "paymentAttempt"]);
+      expect(storedRecord().paymentAttempt).toBe(1);
+
+      // Only a bump moves the sequence: creating again, reading, and a changed
+      // payload all leave the stored bytes exactly as they were.
+      const afterFirstBump = sessionStorage.getItem(CHECKOUT_ATTEMPT_STORAGE_KEY);
+      expect(getOrCreateCheckoutAttemptKey(MINIMAL_INTENT)).toBe(key);
+      expect(getOrCreateCheckoutAttemptKey(EDITED_INTENT)).toBe(key);
+      expect(readAttempt()).toBe(1);
+      expect(sessionStorage.getItem(CHECKOUT_ATTEMPT_STORAGE_KEY)).toBe(afterFirstBump);
+
+      bumpAttempt();
+      expect(Object.keys(storedRecord())).toEqual(["fingerprint", "key", "paymentAttempt"]);
+      expect(storedRecord().paymentAttempt).toBe(2);
+      expect(storedRecord().key).toBe(key);
+    });
+
+    it("keeps the first fingerprint when the payload changes", () => {
+      const key = getOrCreateCheckoutAttemptKey(MINIMAL_INTENT);
+      const firstFingerprint = storedRecord().fingerprint;
+      const setItem = vi.spyOn(sessionStorage, "setItem");
+
+      expect(getOrCreateCheckoutAttemptKey(EDITED_INTENT)).toBe(key);
+
+      expect(setItem).not.toHaveBeenCalled();
+      expect(storedRecord().fingerprint).toBe(firstFingerprint);
+      expect(fingerprintCheckoutIntent(EDITED_INTENT)).not.toBe(firstFingerprint);
+    });
+
+    it("keeps its storage name", () => {
+      // Pinned by digest: a browser may still hold a record written by the
+      // previous deployment under this exact name.
+      expect(sha256(CHECKOUT_ATTEMPT_STORAGE_KEY)).toBe(
+        "719c00b65b09f1e16de79f86e20c5b5420891b3e15a4fa034aabc79dfe18b920",
+      );
+
+      getOrCreateCheckoutAttemptKey(MINIMAL_INTENT);
+      const names = Array.from({ length: sessionStorage.length }, (_, index) => sessionStorage.key(index) ?? "");
+      expect(names.map(sha256)).toEqual(["719c00b65b09f1e16de79f86e20c5b5420891b3e15a4fa034aabc79dfe18b920"]);
+    });
+  });
+
+  describe("reading", () => {
+    it("has no journey in a fresh storage and reading does not start one", () => {
+      const setItem = vi.spyOn(sessionStorage, "setItem");
+
+      expect(readAttempt()).toBe(0);
+
+      expect(sessionStorage.length).toBe(0);
+      expect(setItem).not.toHaveBeenCalled();
+    });
+
+    it("reads a stored record without an attempt sequence as attempt zero", () => {
+      storeRaw(JSON.stringify({ fingerprint: "f", key: mintedKey(9) }));
+      expect(readAttempt()).toBe(0);
+
+      // A bump from that record writes the first sequence and keeps the rest.
+      bumpAttempt();
+      expect(storedRecord()).toEqual({ fingerprint: "f", key: mintedKey(9), paymentAttempt: 1 });
+    });
+
+    it.each([
+      ["a number", 3, 3],
+      ["a string", "3", 0],
+      ["null", null, 0],
+    ])("reads a hand-written attempt sequence that is %s", (_label, value, expected) => {
+      storeRaw(JSON.stringify({ fingerprint: "f", key: mintedKey(9), paymentAttempt: value }));
+      expect(readAttempt()).toBe(expected);
+    });
+
+    it.each([
+      ["text that is not JSON", "not json"],
+      ["a JSON array", "[]"],
+      ["JSON null", "null"],
+      ["a non-string key", JSON.stringify({ fingerprint: "f", key: 5 })],
+      ["a non-string fingerprint", JSON.stringify({ fingerprint: 5, key: mintedKey(9) })],
+      ["a missing key", JSON.stringify({ fingerprint: "f" })],
+    ])("ignores a stored record of the wrong shape: %s", (_label, raw) => {
+      storeRaw(raw);
+      expect(readAttempt()).toBe(0);
+
+      const key = getOrCreateCheckoutAttemptKey(MINIMAL_INTENT);
+
+      expect(key).toBe(mintedKey(1));
+      expect(storedRecord()).toEqual({ fingerprint: fingerprintCheckoutIntent(MINIMAL_INTENT), key });
+    });
+  });
+
+  describe("clearing", () => {
+    it("clears only its own storage name and may be called twice", () => {
+      sessionStorage.setItem("unrelated", "kept");
+      persistCheckoutContinuation({
+        orderId: "o", orderRef: "r", paymentIntentId: "p", clientId: "c", journeyId: mintedKey(9), actionKind: "none",
+      });
+      getOrCreateCheckoutAttemptKey(MINIMAL_INTENT);
+
+      clearCheckoutAttemptKey();
+
+      expect(sessionStorage.getItem(CHECKOUT_ATTEMPT_STORAGE_KEY)).toBeNull();
+      expect(sessionStorage.getItem("unrelated")).toBe("kept");
+      expect(sessionStorage.getItem("openlup:payment-continuation:v1")).not.toBeNull();
+      expect(() => clearCheckoutAttemptKey()).not.toThrow();
+      expect(sessionStorage.getItem("unrelated")).toBe("kept");
+    });
+  });
+
+  describe("storage that is unreachable or refuses a call", () => {
+    it("continues with an unpersisted identity when the storage accessor throws (pinned)", () => {
+      // PINNED AS IT IS TODAY, and a known gap: when the browser refuses the
+      // accessor itself, the journey key is minted but never kept, so every call
+      // mints a new one and the one-identity-per-purchase invariant does not hold.
+      // Pinning it keeps a later refactor behaviour-preserving; changing it is a
+      // separate, declared behaviour change.
+      const descriptor = Object.getOwnPropertyDescriptor(window, "sessionStorage");
+      Object.defineProperty(window, "sessionStorage", {
+        configurable: true,
+        get() {
+          throw new Error("storage denied");
+        },
+      });
+      try {
+        const first = getOrCreateCheckoutAttemptKey(MINIMAL_INTENT);
+        const second = getOrCreateCheckoutAttemptKey(MINIMAL_INTENT);
+
+        expect(first).toMatch(ATTEMPT_KEY_PATTERN);
+        expect(second).toMatch(ATTEMPT_KEY_PATTERN);
+        expect(second).not.toBe(first);
+        expect(readAttempt()).toBe(0);
+        expect(() => bumpAttempt()).not.toThrow();
+        expect(() => clearCheckoutAttemptKey()).not.toThrow();
+        expect(readAttempt()).toBe(0);
+      } finally {
+        if (descriptor) Object.defineProperty(window, "sessionStorage", descriptor);
+      }
+    });
+
+    it("throws from create and from bump when a write is refused", () => {
+      getOrCreateCheckoutAttemptKey(MINIMAL_INTENT);
+      const stored = sessionStorage.getItem(CHECKOUT_ATTEMPT_STORAGE_KEY);
+      const refusal = throwingStorage("setItem");
+
+      expect(() => bumpAttempt()).toThrow(refusal);
+      expect(sessionStorage.getItem(CHECKOUT_ATTEMPT_STORAGE_KEY)).toBe(stored);
+      expect(readAttempt()).toBe(0);
+
+      // With no journey stored, create must write, so it throws too, on every call.
+      sessionStorage.clear();
+      expect(() => getOrCreateCheckoutAttemptKey(MINIMAL_INTENT)).toThrow(refusal);
+      expect(() => getOrCreateCheckoutAttemptKey(MINIMAL_INTENT)).toThrow(refusal);
+    });
+
+    it("throws from create and from read when a read is refused", () => {
+      const refusal = throwingStorage("getItem");
+
+      expect(() => getOrCreateCheckoutAttemptKey(MINIMAL_INTENT)).toThrow(refusal);
+      expect(() => readAttempt()).toThrow(refusal);
+    });
+
+    it("throws from clear when removal is refused and keeps the record", () => {
+      getOrCreateCheckoutAttemptKey(MINIMAL_INTENT);
+      const stored = sessionStorage.getItem(CHECKOUT_ATTEMPT_STORAGE_KEY);
+      const refusal = throwingStorage("removeItem");
+
+      expect(() => clearCheckoutAttemptKey()).toThrow(refusal);
+      expect(sessionStorage.getItem(CHECKOUT_ATTEMPT_STORAGE_KEY)).toBe(stored);
+    });
+  });
+
+  describe("accepted identity format", () => {
+    const keyOfVersion = (nibble: string) => `checkout:11111111-1111-${nibble}111-8111-111111111111`;
+
+    it.each(["0", "1", "2", "3", "4", "5", "6", "7", "8"])(
+      "accepts stored keys of UUID versions 1 to 5 and replaces versions 0, 6, 7 and 8: version %s",
+      (nibble) => {
+        const stored = keyOfVersion(nibble);
+        storeRaw(JSON.stringify({ fingerprint: "f", key: stored }));
+        const accepted = nibble >= "1" && nibble <= "5";
+
+        const result = getOrCreateCheckoutAttemptKey(MINIMAL_INTENT);
+
+        if (accepted) {
+          expect(result).toBe(stored);
+          expect(storedRecord().key).toBe(stored);
+        } else {
+          expect(result).toBe(mintedKey(1));
+          expect(storedRecord().key).toBe(mintedKey(1));
+        }
+      },
+    );
+
+    it.each([
+      ["upper-case hex digits", "checkout:AAAAAAAA-BBBB-4CCC-9DDD-EEEEEEEEEEEE", true],
+      ["a variant digit of 8", "checkout:11111111-1111-4111-8111-111111111111", true],
+      ["a variant digit of b", "checkout:11111111-1111-4111-b111-111111111111", true],
+      ["a variant digit outside 8 to b, c", "checkout:11111111-1111-4111-c111-111111111111", false],
+      ["a variant digit outside 8 to b, 7", "checkout:11111111-1111-4111-7111-111111111111", false],
+      ["no checkout prefix", "11111111-1111-4111-8111-111111111111", false],
+      ["another prefix", "journey:11111111-1111-4111-8111-111111111111", false],
+      ["trailing text", "checkout:11111111-1111-4111-8111-111111111111x", false],
+      ["leading text", "x-checkout:11111111-1111-4111-8111-111111111111", false],
+      ["a short last group", "checkout:11111111-1111-4111-8111-11111111111", false],
+    ])("reads a stored key with %s", (_label, stored, accepted) => {
+      storeRaw(JSON.stringify({ fingerprint: "f", key: stored }));
+
+      const result = getOrCreateCheckoutAttemptKey(MINIMAL_INTENT);
+
+      expect(result).toBe(accepted ? stored : mintedKey(1));
+    });
+
+    it("mints a key the platform schema accepts", () => {
+      // The default setup spy would hand back a fixed shape; mint a real one.
+      vi.restoreAllMocks();
+
+      const key = getOrCreateCheckoutAttemptKey(MINIMAL_INTENT);
+
+      expect(key).toMatch(ATTEMPT_KEY_PATTERN);
+      expect(checkoutContinuationJourneyIdSchema.safeParse(key).success).toBe(true);
+    });
+
+    it("the platform schema accepts versions 6 to 8 that the browser reader replaces (pinned)", () => {
+      // PINNED AS IT IS TODAY: the two definitions differ. The platform schema
+      // takes versions 1 to 8; the browser reader keeps 1 to 5 and replaces the
+      // rest. Aligning them is a separate, declared behaviour change.
+      for (const nibble of ["6", "7", "8"]) {
+        const stored = keyOfVersion(nibble);
+        expect(checkoutContinuationJourneyIdSchema.safeParse(stored).success).toBe(true);
+
+        storeRaw(JSON.stringify({ fingerprint: "f", key: stored }));
+        expect(getOrCreateCheckoutAttemptKey(MINIMAL_INTENT)).not.toBe(stored);
+      }
+      for (const nibble of ["0", "9"]) {
+        expect(checkoutContinuationJourneyIdSchema.safeParse(keyOfVersion(nibble)).success).toBe(false);
+      }
+    });
   });
 });
 
