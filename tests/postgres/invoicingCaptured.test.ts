@@ -15,6 +15,7 @@ import type * as Native from "@openlup/platform/invoicing/postgres";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { qualifiedPostgresStartupOptions, type QualifiedPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+import { packWorkspaceTarballs } from "../helpers/packWorkspaceTarball.js";
 
 let container: PostgresContainer | undefined;
 let admin: Pool, runtime: Pool, migration: Pool;
@@ -53,12 +54,13 @@ beforeAll(async () => {
   mkdirSync(".context/scratch", { recursive: true });
   scratch = mkdtempSync(resolve(".context/scratch/invoice-consumer-"));
   const packs = join(scratch, "packs"); mkdirSync(packs);
-  const npm = (args: string[], cwd: string) => execFileSync("npm", args, { cwd, encoding: "utf8", timeout: 120_000, env: { ...processEnvironment, NODE_PATH: "" } });
-  const pack = (directory: string) => {
-    const [info] = JSON.parse(npm(["pack", "--json", "--ignore-scripts", "--pack-destination", packs], directory));
-    return join(packs, info.filename);
-  };
-  const artifacts = [pack(resolve("packages/core")), pack(resolve("packages/platform")), pack(resolve("node_modules/zod"))];
+  const packEnv = { ...processEnvironment, NODE_PATH: "" };
+  const npm = (args: string[], cwd: string) => execFileSync("npm", args, { cwd, encoding: "utf8", timeout: 120_000, env: packEnv });
+  const artifacts = await packWorkspaceTarballs(
+    ["packages/core", "packages/platform", "node_modules/zod"],
+    packs,
+    { env: packEnv },
+  );
   const consumer = join(scratch, "consumer"); mkdirSync(consumer);
   writeFileSync(join(consumer, "package.json"), JSON.stringify({ name: "invoice-installed-consumer", private: true, type: "module" }));
   npm(["install", "--offline", "--ignore-scripts", "--legacy-peer-deps", "--no-audit", "--no-fund", "--package-lock=false", ...artifacts], consumer);

@@ -11,6 +11,7 @@ import { assertConsumerIsolation, platformConsumerInstallArgs } from "../../scri
 import { evaluateSelectedPlatformMigrationManifest, readPlatformMigrationManifest, readPlatformMigrations, selectPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from "../../server/adapters/postgres/selectedCatalogProjection.js";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+import { packWorkspaceTarballs } from "../helpers/packWorkspaceTarball.js";
 
 // Frozen R1 behavior witness. R2 keeps these expectations unchanged. These are
 // synthetic public cases authored here, without an adopter fixture or SQL copy.
@@ -65,10 +66,7 @@ async function asRuntime(sql: string, args: unknown[] = []) {
 beforeAll(async () => {
   if (!await dockerAvailable()) throw new Error("partner acquisition: Docker unavailable; mandatory PostgreSQL proof missing");
   scratch = mkdtempSync(join(tmpdir(), "partner-packed-"));
-  const tarballs = ["packages/core", "packages/platform", "node_modules/zod"].map(directory => {
-    const packed = JSON.parse(npm(["pack", "--json", "--ignore-scripts", "--pack-destination", scratch], resolve(directory)));
-    return join(scratch, packed[0].filename);
-  });
+  const tarballs = await packWorkspaceTarballs(["packages/core", "packages/platform", "node_modules/zod"], scratch);
   consumer = join(scratch, "consumer"); mkdirSync(consumer);
   writeFileSync(join(consumer, "package.json"), '{"type":"module","private":true}');
   npm(platformConsumerInstallArgs(tarballs), consumer);

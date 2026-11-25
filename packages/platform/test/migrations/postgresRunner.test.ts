@@ -9,6 +9,7 @@ import {
   type PlatformMigrationSource,
   type PostgresMigrationRunnerOptions,
 } from "../../src/migrations/postgresRunner.js";
+import { createPlatformPostgresMigrationRunner } from "../../src/migrations/platformRunner.js";
 
 const lockName = "synthetic-schema-update";
 const acquireSql = "SELECT pg_catalog.pg_advisory_lock(pg_catalog.hashtextextended($1::pg_catalog.text, 0::pg_catalog.int8))";
@@ -60,7 +61,13 @@ function scenario(input: {
     if (failure !== undefined) throw failure;
     if (sql === acquireSql) return { rows: [{}] };
     if (sql === releaseSql) return { rows: input.unlockRows ?? [{ unlocked: true }] };
-    if (isIdentitySql(sql)) return { rows: present ? [{ ledger_oid: "20001", ledger_safe: true }] : [] };
+    if (isIdentitySql(sql)) {
+      return {
+        rows: present
+          ? [{ ledger_oid: "20001", ledger_safe: true, ...(sql.includes("AS ledger_locked") ? { ledger_locked: true } : {}) }]
+          : [],
+      };
+    }
     if (sql === readBeginSql || sql === readLockSql || sql === writeLockSql) return { rows: [] };
     if (sql === ledgerSql) return { rows: rows.map((row) => ({ ...row })) };
     if (sql === writeBeginSql) snapshot = { present, rows: rows.map((row) => ({ ...row })) };
@@ -195,8 +202,9 @@ describe("PostgreSQL migration runner", () => {
       [acquireSql, [lockName]], ...readQueries(false),
       ...bodies.flatMap((sql, index) => [
         [writeBeginSql],
-        ...(index === 0 ? [] : [[writeLockSql], [identitySql], [writeLockSql], [identitySql], [ledgerSql]]),
-        [sql], [identitySql], [writeLockSql], [identitySql], [ledgerSql],
+        ...(index === 0 ? [] : [[writeLockSql], [identitySql], [ledgerSql]]),
+        [sql],
+        ...(index === 0 ? [[identitySql], [writeLockSql], [identitySql], [ledgerSql]] : [[identitySql], [ledgerSql]]),
         [insertSql, [files[index], entries[index]!.sha256, index]], ["COMMIT"],
       ]),
       ...readQueries(), [releaseSql, [lockName]],
@@ -490,5 +498,89 @@ describe("PostgreSQL migration runner", () => {
     );
     await expect(runner.status()).rejects.toThrow("platform migration catalog rejected");
     expect(end).not.toHaveBeenCalled();
+  });
+
+  it("reads the platform catalog once per status() call and re-reads fresh disk state on subsequent calls", async () => {
+    const canonicalMigrations = [
+      { file: "db/platform/migrations/00000000000000_platform_baseline.sql", content: "CREATE TABLE a(id int);" },
+      { file: "db/platform/migrations/20260401000001_first.sql", content: "CREATE TABLE b(id int);" },
+    ];
+    const secondMigration = { file: "db/platform/migrations/20260401000002_second.sql", content: "CREATE TABLE c(id int);" };
+    const canonicalEntries = canonicalMigrations.map(({ file, content }) => ({
+      file,
+      sha256: createHash("sha256").update(content).digest("hex"),
+    }));
+    const secondEntry = {
+      file: secondMigration.file,
+      sha256: createHash("sha256").update(secondMigration.content).digest("hex"),
+    };
+    const canonicalRows = canonicalEntries.map((entry, position) => ({
+      catalog_path: entry.file,
+      sha256: entry.sha256,
+      position,
+    }));
+    const s = scenario({ rows: canonicalRows });
+    const manifestV1 = {
+      schemaVersion: 1 as const,
+      baseline: canonicalEntries[0]!,
+      forward: canonicalEntries.slice(1),
+      objectInventorySha256: createHash("sha256").update(inventory).digest("hex"),
+    };
+    const manifestV2 = {
+      ...manifestV1,
+      forward: [...manifestV1.forward, secondEntry],
+    };
+    let currentMigrations = canonicalMigrations;
+    let currentManifest = manifestV1;
+    const readMigrations = vi.fn(() => ({ migrations: currentMigrations, errors: [] as string[] }));
+    const readManifest = vi.fn(() => currentManifest);
+    const runner = createPlatformPostgresMigrationRunner(env, {
+      installation: { generation: "legacy" },
+      root: "/fixture/platform-catalog",
+      catalog: { readMigrations, readManifest },
+      catalogProjectionPayload: async () => inventory,
+      poolFactory: s.poolFactory,
+    });
+    await expect(runner.status()).resolves.toEqual({
+      applied: canonicalEntries.map(({ file }) => file),
+      pending: [],
+    });
+    expect(readMigrations).toHaveBeenCalledTimes(1);
+    expect(readManifest).toHaveBeenCalledTimes(1);
+
+    currentMigrations = [...canonicalMigrations, secondMigration];
+    currentManifest = manifestV2;
+    await expect(runner.status()).resolves.toEqual({
+      applied: canonicalEntries.map(({ file }) => file),
+      pending: [secondMigration.file],
+    });
+    expect(readMigrations).toHaveBeenCalledTimes(2);
+    expect(readManifest).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ["unsafe shape", { ledger_oid: "20001", ledger_safe: false, ledger_locked: true }, "platform migration ledger relation is not safe to read"],
+    ["swapped oid", { ledger_oid: "99999", ledger_safe: true, ledger_locked: true }, "platform migration ledger changed before write"],
+    ["released lock", { ledger_oid: "20001", ledger_safe: true, ledger_locked: false }, "platform migration ledger changed before write"],
+  ] as const)("refuses forward unit ledger tampering (%s) after unit SQL before reading rows or inserting", async (_label, tamperedIdentity, expectedMessage) => {
+    const s = scenario({ rows: expectedRows().slice(0, 1) });
+    let unitSqlRan = false;
+    const postSqlQueries: string[] = [];
+    const baseQuery = s.query.getMockImplementation()!;
+    s.query.mockImplementation(async (sql: string, params?: unknown[]) => {
+      if (sql === bodies[1]) {
+        unitSqlRan = true;
+        return baseQuery(sql, params);
+      }
+      if (unitSqlRan) {
+        postSqlQueries.push(sql);
+        if (isIdentitySql(sql)) return { rows: [tamperedIdentity] };
+      }
+      return baseQuery(sql, params);
+    });
+    await expect(s.makeRunner().apply()).rejects.toThrow(`platform migration ${files[1]} failed: ${expectedMessage}`);
+    expect(postSqlQueries).not.toContain(ledgerSql);
+    expect(postSqlQueries).not.toContain(insertSql);
+    expect(s.query).toHaveBeenCalledWith("ROLLBACK");
   });
 });
