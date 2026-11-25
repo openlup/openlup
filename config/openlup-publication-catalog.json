@@ -12998,6 +12998,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/migration-sync.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/migration-sync.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/mint-customer-session-with-retry.test.ts",
       "class": "public-output"
     },
@@ -31938,6 +31946,16 @@
       "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
     },
     {
+      "name": "migration:sync",
+      "command": "node --experimental-strip-types scripts/migration-sync.ts",
+      "publicDocs": [
+        "CONTRIBUTING.md",
+        "README.md"
+      ],
+      "publicCiEntrypoint": ".github/workflows/published-tree-ci.yml",
+      "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
+    },
+    {
       "name": "lint",
       "command": "node scripts/ast-grep/check-filewide-ignore.mjs && ast-grep scan --error=no-suppress-all --error=unused-suppression && ast-grep test --skip-snapshot-tests && eslint --concurrency auto .",
       "publicDocs": [
@@ -32075,7 +32093,7 @@
     },
     {
       "path": "package.json",
-      "digest": "sha256-85f22d834d55ab426c59fb240b5ae13bc169419d59d42e2834814ef8199c8ff6"
+      "digest": "sha256-35edf4fd78acf8ec6636041b87b619d0e7a0fc7d8552ea5e4ac684427e5ac442"
     },
     {
       "path": "packages/core/package.json",
