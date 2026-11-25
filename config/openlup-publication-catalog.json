@@ -13010,6 +13010,30 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/migrations/historical-classes.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/migrations/native-store-admission.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/migrations/registry.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/migrations/security-definer.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/migrations/sql-tokenizer.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/migrations/types.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/mint-customer-session-with-retry.test.ts",
       "class": "public-output"
     },
