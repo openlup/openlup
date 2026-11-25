@@ -1,0 +1,1 @@
+`@openlup/platform/storefront` also exports `getOrCreateContinuationId`, `readContinuationRecord`, `advanceAttempt` and `clearContinuationRecord`, which keep the continuation record's reuse rule and payment-attempt sequence through the host's storage and identifier bindings.

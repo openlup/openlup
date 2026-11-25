@@ -8606,6 +8606,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/storefront/continuationRecord.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/storefront/identity.ts",
       "class": "public-output"
     },
@@ -11430,7 +11434,15 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/storefront/continuationRecord.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/storefront/exports.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/neutralSource.test.ts",
       "class": "public-output"
     },
     {
