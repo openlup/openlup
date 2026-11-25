@@ -2,10 +2,14 @@
   "current": {
     "profiles": {
       "legacy": {
-        "count": 212,
-        "exactTailCount": 102,
-        "objectInventorySha256": "a1fa7ebef22cb5c28577680eb05dc728505b3b8262519ce2c07190a249667c5d",
+        "count": 213,
+        "exactTailCount": 103,
+        "objectInventorySha256": "68b325c4650b72184a3ca46aee534cfba9ae9d54765aae8adec693ea02f06d91",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261127120003_tax_calculation_composition.sql",
+            "sha256": "9aaf9b6dba3e05dbdfc85bda6b020079044d2c68ff21259255f221ecf950f150"
+          },
           {
             "file": "db/platform/migrations/20261127120002_identity_privacy_erasure_reconciliations.sql",
             "sha256": "c608c9f9ad0b06fde6239c3efad21e9b97c827653aa85855c1b265d691110efa"
@@ -857,10 +861,14 @@
         ]
       },
       "bootstrap": {
-        "count": 218,
-        "exactTailCount": 103,
-        "objectInventorySha256": "af03cf6e922ac52b21c779d15687cfe4bb9c5625e5212db2e67fbf96a5e88aa0",
+        "count": 219,
+        "exactTailCount": 104,
+        "objectInventorySha256": "492471ff55ce5ec277d38fbef4c6b5b2b1d989e6e2fe2c95863d57a46bdfa760",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261127120003_tax_calculation_composition.sql",
+            "sha256": "9aaf9b6dba3e05dbdfc85bda6b020079044d2c68ff21259255f221ecf950f150"
+          },
           {
             "file": "db/platform/migrations/20261127120002_identity_privacy_erasure_reconciliations.sql",
             "sha256": "c608c9f9ad0b06fde6239c3efad21e9b97c827653aa85855c1b265d691110efa"
@@ -1736,10 +1744,14 @@
         ]
       },
       "separate": {
-        "count": 218,
-        "exactTailCount": 103,
-        "objectInventorySha256": "04be6eff6c03e8703f230a28fb1e8baf4030660cf47b73086e1c2e32d925659d",
+        "count": 219,
+        "exactTailCount": 104,
+        "objectInventorySha256": "360541dfb1232c31e5ef2fc0f46642b2ea54d79e293ecf324f036f8cd427f77d",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261127120003_tax_calculation_composition.sql",
+            "sha256": "9aaf9b6dba3e05dbdfc85bda6b020079044d2c68ff21259255f221ecf950f150"
+          },
           {
             "file": "db/platform/migrations/20261127120002_identity_privacy_erasure_reconciliations.sql",
             "sha256": "c608c9f9ad0b06fde6239c3efad21e9b97c827653aa85855c1b265d691110efa"
@@ -2615,10 +2627,14 @@
         ]
       },
       "admin-managed": {
-        "count": 216,
-        "exactTailCount": 102,
-        "objectInventorySha256": "0726932fda70626bb90664225e0f28e7ca4f17586c307eb2efd1663195cdbd56",
+        "count": 217,
+        "exactTailCount": 103,
+        "objectInventorySha256": "b16a14693aa38dd5fca243479e5a1b6204fe3582638ab986f9decafaec669060",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261127120003_tax_calculation_composition.sql",
+            "sha256": "9aaf9b6dba3e05dbdfc85bda6b020079044d2c68ff21259255f221ecf950f150"
+          },
           {
             "file": "db/platform/migrations/20261127120002_identity_privacy_erasure_reconciliations.sql",
             "sha256": "c608c9f9ad0b06fde6239c3efad21e9b97c827653aa85855c1b265d691110efa"
@@ -3486,10 +3502,14 @@
         ]
       },
       "admin-operator": {
-        "count": 216,
-        "exactTailCount": 102,
-        "objectInventorySha256": "93241486294010c8272f43eb11e66d3aa4b3bcc53bc20dc3acca35c05c03e36c",
+        "count": 217,
+        "exactTailCount": 103,
+        "objectInventorySha256": "50fc56f1b87ea218e045c5496ecc78da635d41088f0d6d10897e4e9fbb63bc21",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261127120003_tax_calculation_composition.sql",
+            "sha256": "9aaf9b6dba3e05dbdfc85bda6b020079044d2c68ff21259255f221ecf950f150"
+          },
           {
             "file": "db/platform/migrations/20261127120002_identity_privacy_erasure_reconciliations.sql",
             "sha256": "c608c9f9ad0b06fde6239c3efad21e9b97c827653aa85855c1b265d691110efa"

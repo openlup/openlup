@@ -9424,6 +9424,25 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "tax-calculation-composition",
+        "path": "db/platform/migrations/20261127120003_tax_calculation_composition.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.tax_calculation_check_domain_v1(jsonb,jsonb,jsonb,boolean)",
+            "beforeSha256": "f95c49e87e4a0f5c12a3a1969a3593f0b006bac3c9ad8d9909981de79b003df0",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.tax_calculation_terminal_v1(public.tax_calculations)",
+            "beforeSha256": "056b90df67611981eb6bb88079d0c8293e162ad3b8711a77abcee3d3b0bc87e4",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -13544,6 +13563,22 @@
           "signature": "public.identity_privacy_reconciled_contributor_ids(uuid)",
           "beforeSha256": null,
           "afterSha256": "80358032219301e920febd271dd8ed14e884cd845be8d2250b5d8b916d9b9115"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261127120003_tax_calculation_composition.sql",
+      "sha256": "9aaf9b6dba3e05dbdfc85bda6b020079044d2c68ff21259255f221ecf950f150",
+      "functions": [
+        {
+          "signature": "public.tax_calculation_check_domain_v1(jsonb,jsonb,jsonb,boolean)",
+          "beforeSha256": "f95c49e87e4a0f5c12a3a1969a3593f0b006bac3c9ad8d9909981de79b003df0",
+          "afterSha256": "4c9c7716b4a8a4f615594c4972bc4444384d391dbc108f41454be5608e068490"
+        },
+        {
+          "signature": "public.tax_calculation_terminal_v1(public.tax_calculations)",
+          "beforeSha256": "056b90df67611981eb6bb88079d0c8293e162ad3b8711a77abcee3d3b0bc87e4",
+          "afterSha256": "adea5d5634f110f574f4a5852b3e8706ae8ef7680b7f24eeb56c855986c805f2"
         }
       ]
     }

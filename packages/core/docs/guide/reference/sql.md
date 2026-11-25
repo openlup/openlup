@@ -231,6 +231,7 @@ in [Upgrade the database](../upgrade/database-migrations.md).
 | [`20261127120000_fulfillment_destination_contact_v2.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261127120000_fulfillment_destination_contact_v2.sql) |
 | [`20261127120001_catalog_runtime_checkout_prelock.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261127120001_catalog_runtime_checkout_prelock.sql) |
 | [`20261127120002_identity_privacy_erasure_reconciliations.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261127120002_identity_privacy_erasure_reconciliations.sql) |
+| [`20261127120003_tax_calculation_composition.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261127120003_tax_calculation_composition.sql) |
 | [`q2_00000000000000_platform_baseline.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_00000000000000_platform_baseline.sql) |
 | [`q2_20260810180001_self_host_actor_auth.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20260810180001_self_host_actor_auth.sql) |
 | [`q2_20260816140000_acquisition_case_foundation.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20260816140000_acquisition_case_foundation.sql) |
