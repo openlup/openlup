@@ -330,6 +330,56 @@ it("passes the sampled instant into the derived-price verifier", async () => {
   }
 });
 
+it.each([
+  ["acquisition", mismatch],
+  ["promotion", { code: "40001", message: "commerce_promotion_definition_not_active" }],
+] as const)("refuses an expired %s window at the sampled instant", async (window, refusal) => {
+  const db = await store.owner.connect();
+  try {
+    await db.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+    const current = { ...fixture, original: { ...fixture.original, key: randomUUID() } };
+    await prelockDraft(db, current);
+    const { rows: [timing] } = await db.query<{ expiry: Date }>(`
+      SELECT date_trunc('milliseconds',clock_timestamp())+interval '1 millisecond' AS expiry`);
+    const expiry = timing!.expiry.toISOString();
+    const authority = current.profile.authority!;
+    const expiring = window === "acquisition" ? { ...current, profile: { ...current.profile, authority: {
+      ...authority, async evaluate(input: Parameters<typeof authority.evaluate>[0]) {
+        const evaluation = await authority.evaluate(input);
+        return { ...evaluation, result: { ...evaluation.result,
+          acquisitionTerms: { ...evaluation.result.acquisitionTerms, effectiveTo: expiry } } };
+      },
+    } } } : current;
+    const setPromotionExpiry = (validTo: string | null) => db.query(`UPDATE public.commerce_promotion_definitions
+      SET definition=jsonb_set(definition,'{valid_to}',coalesce(to_jsonb($2::text),'null'::jsonb)) WHERE promotion_id=$1`,
+    [productPromotion, validTo]);
+    if (window === "promotion") expect((await setPromotionExpiry(expiry)).rowCount).toBe(1);
+
+    await db.query("SELECT pg_sleep(greatest(0,extract(epoch FROM $1::timestamptz-clock_timestamp())))", [expiry]);
+    const atTime = await sampleDraftTime(db);
+    const expired = await draftHandoff(db, expiring, atTime);
+    expect((await db.query(`SELECT transaction_timestamp()<$1::timestamptz AND $1::timestamptz<=$2::timestamptz AS crossed`,
+      [expiry, expired.quoteSnapshot.quote.context.atTime])).rows).toEqual([{ crossed: true }]);
+    const before = await draftEffectCounts(db);
+    const write = (payload: typeof expired) => db.query(ownerSql, [current.original.key, current.original.clientId, payload]);
+    await db.query("SAVEPOINT expired_window");
+    await expect(write(expired)).rejects.toMatchObject(refusal);
+    await db.query("ROLLBACK TO SAVEPOINT expired_window");
+    expect(await draftEffectCounts(db)).toEqual(before);
+
+    if (window === "promotion") expect((await setPromotionExpiry(null)).rowCount).toBe(1);
+    const active = window === "acquisition" ? await draftHandoff(db, current, atTime) : expired;
+    const { rows } = await write(active);
+    const id = String(rows[0]!.result.orderDraft.orderId).slice(6);
+    await db.query("SET CONSTRAINTS ALL IMMEDIATE");
+    expect((await db.query("SELECT created_at FROM public.commerce_orders WHERE id=$1", [id])).rows)
+      .toEqual([{ created_at: new Date(atTime) }]);
+  } finally {
+    await db.query("ROLLBACK");
+    db.release();
+  }
+});
+
 it("rejects late adjustment inserts and claim money changes at ordinary COMMIT", async () => {
   const { rows: [definition] } = await store.owner.query(`INSERT INTO public.commerce_promotion_definitions(promotion_id,definition,active)
     SELECT 'example:late',jsonb_set(definition,'{id}','"example:late"'),active

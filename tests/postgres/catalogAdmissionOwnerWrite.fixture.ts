@@ -120,7 +120,7 @@ export async function ownerDraft(owner: Pool, fixture: GovernedFixture) {
   });
 }
 
-export async function draftEffectCounts(db: Pool) {
+export async function draftEffectCounts(db: Pool | PoolClient) {
   return (await db.query(`SELECT
     (SELECT count(*)::integer FROM public.commerce_orders) orders,
     (SELECT count(*)::integer FROM public.commerce_order_items) items,
