@@ -111,13 +111,13 @@ no retention period or remote-provider operation.
    disposable installation of the same profile and exact current catalogue.
    Use connected-store transfer where admitted. Its restore takes the migration
    advisory lock and locks the relation census before copying retained rows.
-   The authorized restricted migrator uses the host's owner window when
-   needed. Verify the sealed role graph after the window closes.
+   For capture, the authorized restricted migrator uses the host's owner window
+   when needed. Verify the sealed role graph after the window closes.
    See [connected-store transfer](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/docs/platform/migrations/compatible-data-transfer.md#compatible-data-transfer).
    The source entry points are `captureConnectedNativeStore` in
    `server/adapters/postgres/connectedStoreCapture.ts` and
-   `restoreConnectedNativeStore` and `openRestrictedOwnerWindow` in
-   `server/adapters/postgres/connectedStoreRestore.ts`.
+   `restoreConnectedNativeStore` in `server/adapters/postgres/connectedStoreRestore.ts`.
+   For qualified-admin installations, restore opens the restricted owner window itself.
 
    For a legacy installation or any profile where connected capture refuses,
    use an owner-managed PostgreSQL backup and restore to an isolated target.
