@@ -224,9 +224,10 @@ row UUID for both coordinates. The [projection contract](../../tests/postgres/su
 pins the exact keys, types and optional members. Unavailable scalar fields and singular
 objects are null. A missing required line member makes `lines` null, and missing retained
 line provenance yields an empty array. The roster requires the stored acceptance fingerprint
-to match the operation fingerprint. Only line unit amount, flat shipping and free shipping
-threshold are JSON numbers. Treat returned strings as opaque in money calculations and
-resolve retained provenance through its owners. Use the persisted claim identity key for
+to match the operation fingerprint. `cycleNumber` is the persisted operation counter as a
+JSON string. Only line unit amount, flat shipping and free shipping threshold are JSON
+numbers. Treat returned strings as opaque in money calculations and resolve retained provenance
+through its owners. Use the persisted claim identity key for
 legacy readback. Recover both coordinates after an invalid or mismatched pair. For an absent
 root, check the installation and recover the original pair. Use the installed server role for
 permission refusals.

@@ -8,7 +8,7 @@ const amountName = /(?:amount|minor|subtotal|total|fee|payable)|(?:price|tax|dis
 const numericPaths = ["lines[].unitAmountMinor", "shippingTerms.flatMinor", "shippingTerms.freeThresholdMinor"];
 const binding = "lineKey? skuId skuCode mode role source skuRevisionId?";
 const keys: Record<string, string> = {
-  "": "operationId commercialGenerationId subscriptionId scheduledAt logicalCycle clientId template operationFingerprint lines currency catalogAcceptance linePricing discountTerms shippingTerms shippingAddressRef stockSourceKey settlementChannelKey authorizationRef payerAccountRef unattendedChargeAuthorizedAt",
+  "": "operationId commercialGenerationId subscriptionId scheduledAt cycleNumber logicalCycle clientId template operationFingerprint lines currency catalogAcceptance linePricing discountTerms shippingTerms shippingAddressRef stockSourceKey settlementChannelKey authorizationRef payerAccountRef unattendedChargeAuthorizedAt",
   logicalCycle: "activationCycleId evidenceRef",
   template: "id",
   "lines[]": "sku unitAmountMinor",

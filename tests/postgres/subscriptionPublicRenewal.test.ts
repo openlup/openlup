@@ -1081,9 +1081,11 @@ const rawClaim = "SELECT public.subscription_claim_due_renewal($1::text,$2::text
 const rawPrepare = "SELECT public.commerce_prepare_subscription_renewal($1::uuid,$2::uuid,$3::timestamptz)::text AS result";
 const rawReadback = "SELECT public.subscription_read_renewal($1::text)::text AS result";
 
-it("reads the original frozen generation under the inherited login through takeover and late delivery", async () => {
+it.each(["v1", "v2"] as const)("reads the original frozen generation for %s through takeover and late delivery", async revision => {
   const paidAt = at.replace(/\.\d{3}Z$/, ".123456Z"), f = await purchase(true, true, paidAt);
-  const activated = await api.activateNativePurchaseWithRenewal(executor, { ...f, facts });
+  const purchaseFacts: NativeRenewalPurchaseFacts = revision === "v2"
+    ? { ...facts, renewalTerms: { version: "native.renewal-terms.v1" } } : facts;
+  const activated = await api.activateNativePurchaseWithRenewal(executor, { ...f, facts: purchaseFacts });
   const d = await deps(String(activated.activation.subscriptionId), "succeeded");
   await admin.query("SELECT public.subscription_delivery_alignment_set_mode('auto_align')");
   const shipmentId = await parcel(f.orderId);
@@ -1092,6 +1094,10 @@ it("reads the original frozen generation under the inherited login through takeo
   const snapshot = await d.input.store.buildCycleSnapshots(d.due);
   const claim = await d.input.store.claimDue({ snapshot, workerId: "original", now });
   expect(claim.acquired).toBe(true);
+  // Distinguish the persisted root counter from both counters in the frozen wire.
+  const storedCycle = (await admin.query<{ cycle_number: number }>(`UPDATE public.subscription_renewal_operations
+    SET cycle_number=17 WHERE id=$1 RETURNING cycle_number`, [claim.operationId])).rows[0]!.cycle_number;
+  expect(storedCycle).toBe(17);
   const pair = [claim.operationId, claim.operationId], absent = randomUUID();
   const inherited = new Pool({ connectionString: loginConnection(runtimeUrl, runtimeLogin()) });
   try {
@@ -1100,11 +1106,11 @@ it("reads the original frozen generation under the inherited login through takeo
     ]);
     const initial = (await inherited.query(generationText, pair)).rows[0].projection;
     const legacy = JSON.parse((await inherited.query(rawReadback, [claim.identityKey])).rows[0].result);
-    expect(legacy).toMatchObject({ cycleNumber: 1, cycleSnapshot: { frozenRevision: "native.purchase-renewal.v1",
+    expect(legacy).toMatchObject({ cycleNumber: storedCycle, cycleSnapshot: { frozenRevision: `native.purchase-renewal.${revision}`,
       cycle: { nativeRenewalCounter: 1, logicalCycleNumber: 2 } } });
     const projection = JSON.parse(initial);
     expect(projection).toMatchObject({ operationId: claim.operationId, commercialGenerationId: claim.operationId,
-      scheduledAt: d.due.scheduledAt, operationFingerprint: claim.operationFingerprint,
+      scheduledAt: d.due.scheduledAt, cycleNumber: String(storedCycle), operationFingerprint: claim.operationFingerprint,
       logicalCycle: { activationCycleId: legacy.cycleSnapshot.cycle.activationCycleId, evidenceRef: legacy.cycleSnapshot.cycle.evidenceRef },
       discountTerms: null, shippingTerms: null, linePricing: [] });
     expect(projection.scheduledAt).toMatch(/\.123456Z$/);
@@ -1139,7 +1145,9 @@ it("reads the original frozen generation under the inherited login through takeo
     const takeover = await d.input.store.claimDue({ snapshot, workerId: "takeover", now: later });
     expect(takeover).toMatchObject({ operationId: claim.operationId, claimGeneration: 2, acquired: true });
     expect(takeover.claimToken).not.toBe(claim.claimToken);
-    expect((await inherited.query(generationText, pair)).rows[0].projection).toBe(initial);
+    const afterTakeover = (await inherited.query(generationText, pair)).rows[0].projection;
+    expect(JSON.parse(afterTakeover).cycleNumber).toBe(String(storedCycle));
+    expect(afterTakeover).toBe(initial);
     const deliveredAt = days(d.due.scheduledAt, 7);
     const arrival = fulfillment.createPostgresDeliveryAlignmentPort(executor);
     expect(await arrival.recordArrival({ requestKey: `delivery:${shipmentId}`, parcelRef: shipmentId, deliveredAt,

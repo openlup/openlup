@@ -109,7 +109,8 @@ BEGIN
   RETURN jsonb_build_object(
     'operationId', operation.id, 'commercialGenerationId', operation.id, 'subscriptionId', operation.subscription_id,
     'scheduledAt', to_char(operation.scheduled_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
-    'operationFingerprint', operation.operation_fingerprint, 'logicalCycle', projected->'cycle',
+    'cycleNumber', operation.cycle_number::text, 'operationFingerprint', operation.operation_fingerprint,
+    'logicalCycle', projected->'cycle',
     'template', CASE WHEN projected ? 'template' THEN jsonb_build_object('id', projected#>'{template,templateId}') END,
     'lines', CASE WHEN wire->'lines' = '[]'::jsonb THEN '[]'::jsonb ELSE projected->'line' END,
     'catalogAcceptance', CASE WHEN projected ? 'roster' THEN jsonb_build_object('lines', projected->'roster')

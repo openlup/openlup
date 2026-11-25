@@ -544,6 +544,7 @@ it("projects only the frozen renewal terms and opaque retained provenance", asyn
   const projection = JSON.parse(wire);
   expect(projection).toMatchObject({ lines: frozen.lines.map(({ sku, unitAmountMinor }: { sku: string; unitAmountMinor: number }) => ({ sku, unitAmountMinor })),
     discountTerms: { reasonCode: frozen.pricingSnapshot.acquisition.reasonCode, acquisitionRef: frozen.orderSnapshot.acquisitionRef } });
+  expect(projection.cycleNumber).toBe(String(cycleNumber));
   expect(projection.shippingTerms).toEqual(frozen.pricingSnapshot.shippingTerms);
   expect(projection.shippingTerms).toEqual({ version: "shipping-threshold.v1", currency: "XXX", flatMinor: 37, freeThresholdMinor: 150 });
   expect(projection.linePricing).toEqual([
