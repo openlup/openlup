@@ -156,19 +156,24 @@ for (const outcome of ['changed total', 'same total', 'stale refusal', 'uncertai
       }
       const refresh = page.waitForResponse(isCheckoutReview);
       release.resolve();
-      const refreshed = await (await refresh).json();
+      const automatic = await refresh;
+      let refreshed = await automatic.json();
       await expect(consent).not.toBeChecked();
       await expect(submit).toBeEnabled();
       if (outcome === 'failed refresh') {
         expect(refreshed).toEqual({ ok: false, code: 'base_price_not_found' });
         await expect(page.getByText(quoteCopy[locale].unavailable)).toBeVisible();
         await expect(page.locator('.summary')).toHaveCount(0);
-        await consent.check();
+        await page.unroute(reviewPath);
+        const retry = page.waitForResponse(isCheckoutReview);
         await submit.click();
-        await expect(page.getByText(quoteCopy[locale].refresh)).toBeVisible();
+        const retried = await retry;
+        expect(retried.request().postDataJSON()).toEqual(automatic.request().postDataJSON());
+        refreshed = await retried.json();
+        await expect(city).toHaveValue(originalCity);
+        await expect(consent).not.toBeChecked();
         expect(sent).toHaveLength(refusedAttempt);
         expect(await effects()).toEqual(before);
-        return;
       }
 
       expect(refreshed.ok).toBe(true);

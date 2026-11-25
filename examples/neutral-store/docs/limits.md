@@ -46,4 +46,9 @@ Each fresh checkout in either purchase mode must send the reviewed
 minor units and its uppercase three-letter currency. For
 `starter_expected_total_required` or `starter_quote_price_changed`, refresh
 the review and confirm the displayed price before placing the order again.
-If the review cannot refresh, wait for a current price before confirming.
+If refresh fails, submit again to retry the review with your current details,
+then reconfirm once the price renders.
+
+A definitive total refusal retires the command key. After reconfirmation,
+use a new key even if the refreshed amount and currency are unchanged.
+An uncertain retry keeps the exact payload and command key.

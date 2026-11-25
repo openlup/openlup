@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { test, type TestContext } from 'node:test';
 import { setImmediate } from 'node:timers/promises';
 import { createQuoteAcceptance } from '../client/quote-acceptance.ts';
 import { actionForm } from '../client/forms.ts';
 import type { PageContext } from '../client/context.ts';
 import { configurations } from '../owned/store.config.ts';
+import { dispatchAction, pendingBindings } from '../host/bindings.ts';
 
 const config = Object.values(configurations)[0]!;
 const now = Date.parse('2026-01-01T10:00:00Z');
@@ -61,8 +63,10 @@ async function fixture(t: TestContext, { initial = quote, render = true, integra
   t.mock.method(globalThis, 'fetch', (url: string, input: { body: string; headers: Record<string, string> }) =>
     new Promise<Response>((resolve, reject) => requests.push({ url, body: input.body, key: input.headers['Idempotency-Key']!, resolve, reject })));
   const summary = new Element();
+  const displayed: unknown[] = [];
   const context = { config, locale: config.market.defaultLocale, getCart: () => cart,
-    fragments: { checkoutSummary: () => new Element() }, money: String, t: String } as unknown as PageContext;
+    fragments: { checkoutSummary: (_context: PageContext, value: unknown) => { displayed.push(value); return new Element(); } },
+    money: String, t: String } as unknown as PageContext;
   const controller = createQuoteAcceptance(context, summary as unknown as HTMLElement);
   if (integrated) email = 'buyer@example.test';
   const form = integrated ? actionForm(context, {
@@ -79,7 +83,7 @@ async function fixture(t: TestContext, { initial = quote, render = true, integra
     await setImmediate();
     consent.checked = true;
   }
-  return { form, controller, consent, input, reply, requests,
+  return { form, controller, consent, input, reply, requests, displayed,
     editEmail(value: string) {
       email = value;
       const field = form.control('email');
@@ -174,6 +178,32 @@ test('term-less subscriptions submit the displayed payable and null signed accep
   assert.deepEqual(await prepared, { ...input, quoteAcceptance: null, expectedTotal: unsigned.expectedTotal });
 });
 
+test('the database-free checkout displays its estimate without submitting a purchase', async t => {
+  const { consent, displayed, reply, requests, submit } = await fixture(t, { initial: oneTime, render: false, integrated: true });
+  const estimate = await dispatchAction(pendingBindings(), 'offer.validate', {
+    cart: { schemaVersion: 1, configuration: config.id, mode: 'one_time', cadenceDays: null,
+      lines: [{ sku: config.offer.products[0]!.sku, quantity: config.offer.minUnits }] },
+  }, { config, actor: { customerRef: null, operatorRef: null }, commandKey: 'preview-fixture' });
+  assert.ok(estimate.ok);
+  reply(0, estimate.value);
+  await setImmediate();
+  assert.deepEqual(displayed, [estimate.value]);
+  assert.equal(consent.checked, false);
+  consent.checked = true;
+  await submit();
+  assert.ok(requests[1]!.url.endsWith('offer.validate'));
+  reply(1, estimate.value);
+  await setImmediate();
+  assert.equal(consent.checked, false);
+  assert.equal(requests.length, 2);
+});
+
+test('checkout limits document definitive retirement and exact uncertain retry', async () => {
+  const limits = (await readFile(new URL('../docs/limits.md', import.meta.url), 'utf8')).replace(/\s+/gu, ' ');
+  assert.match(limits, /definitive total refusal retires the command key\. After reconfirmation, use a new key even if the refreshed amount and currency are unchanged/u);
+  assert.match(limits, /uncertain retry keeps the exact payload and command key/u);
+});
+
 test('one-time quote refresh refusal clears consent without retiring the command', async t => {
   const { controller, consent, reply, requests } = await fixture(t, { initial: oneTime });
   controller.refused('starter_quote_refresh_required', () => assert.fail('The command must keep its key'));
@@ -208,10 +238,9 @@ for (const code of ['starter_expected_total_required', 'starter_quote_price_chan
     if (code === 'starter_expected_total_required') {
       requests[7]!.resolve(Response.json({ ok: false, code: 'base_price_not_found' }, { status: 409 }));
       await setImmediate();
-      consent.checked = true;
       await submit();
-      assert.equal(requests.length, 8);
-      editEmail('buyer@example.test');
+      assert.ok(requests[8]?.url.endsWith('offer.validate'));
+      assert.equal(requests[8]!.body, requests[7]!.body);
       reply(8, oneTime);
     } else {
       reply(7, oneTime);

@@ -34,6 +34,7 @@ export function createQuoteAcceptance(context: PageContext, summary: HTMLElement
   let generation = 0;
   let current: ReturnType<typeof observe>;
   let rendered = false;
+  let reviewPending = false;
   let expiry: ReturnType<typeof setTimeout> | undefined;
   const copy = quoteCopy[context.locale];
   const base = () => ({ cart: context.getCart(), configuration: context.config.id, country: context.config.market.country,
@@ -48,6 +49,7 @@ export function createQuoteAcceptance(context: PageContext, summary: HTMLElement
     clearTimeout(expiry);
     current = undefined;
     rendered = false;
+    reviewPending = false;
     consent().checked = false;
   }
   async function refresh(input: ActionInput) {
@@ -57,9 +59,11 @@ export function createQuoteAcceptance(context: PageContext, summary: HTMLElement
     if (current && (current.binding !== scope || current.validUntil <= Date.now())) clear();
     const reviewed = consent().checked ? current : undefined;
     rendered = false;
+    reviewPending = true;
     summary.replaceChildren(el('p', {}, copy.loading));
     const result = await act('offer.validate',review,crypto.randomUUID());
     if (ownGeneration !== generation) return false;
+    reviewPending = false;
     if (!form.isConnected) { clear(); return false; }
     const quote = result.ok && isOfferQuoteView(result.value) ? result.value : undefined;
     if (!quote || quote.currency !== context.config.market.currency) {
@@ -70,7 +74,9 @@ export function createQuoteAcceptance(context: PageContext, summary: HTMLElement
     const next = observe(quote, scope);
     if (!next) {
       clear();
-      summary.replaceChildren(el('p', {},copy.unavailable));
+      const estimate = quote.mode === 'one_time' && quote.expectedTotal === undefined
+        && quote.quoteAcceptance === undefined && quote.acquisitionTerms === undefined;
+      summary.replaceChildren(estimate ? context.fragments.checkoutSummary(context,quote) : el('p', {},copy.unavailable));
       return false;
     }
     if (!reviewed || reviewed !== current || reviewed.terms !== next.terms ||
@@ -112,9 +118,11 @@ export function createQuoteAcceptance(context: PageContext, summary: HTMLElement
       }
     },
     async prepare(input: ActionInput): Promise<ActionInput | null> {
-      const reviewed = current?.binding === JSON.stringify(binding(input)) && consent().checked ? current : undefined;
+      const matching = current?.binding === JSON.stringify(binding(input)) ? current : undefined;
+      const reviewed = consent().checked ? matching : undefined;
       if (context.getCart().mode === 'one_time') {
         if (rendered && reviewed && form.isConnected) return { ...input, expectedTotal: reviewed.total };
+        if (!matching && !reviewPending) await refresh(input);
         summary.append(el('p', {}, copy.refresh));
         return null;
       }

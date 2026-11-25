@@ -850,6 +850,108 @@ describe.sequential('installed quote proofs', () => {
   beforeAll(prepareQuoteConsumer, postgresSetupTimeoutMs);
   afterAll(removeQuoteConsumer, postgresTeardownTimeoutMs);
 
+  it('rolls back a writer-side price refusal without charging the reconfirmed checkout', async () => {
+    const database = quoteCaseFixture('supplements', false);
+    try {
+      const fixture = await database.setup();
+      const script = String.raw`
+        import assert from 'node:assert/strict';
+        import {createHash} from 'node:crypto';
+        import pg from 'pg';
+        import {bindScenarioServer} from ${JSON.stringify(scenarioHelper)};
+        import {selectConfiguration} from './application/owned/store.config.ts';
+        import {applyDemoSeed} from './application/installation/install.ts';
+        import {buildDemoSeed} from './application/owned/demo-seed.ts';
+        import {readStarterCatalogueRules} from './application/host/editor-catalogue.ts';
+        import {composeNativeBindings} from './application/host/native-composition.ts';
+        import {createOriginPolicy} from './application/host/origin-policy.ts';
+        const config = selectConfiguration(fixture.configuration);
+        config.purchase.attemptLimits = { ...config.purchase.attemptLimits, maxPerEmail: 1, maxPerRequester: 1, maxEntries: 1 };
+        const {server,base,port} = await bindScenarioServer();
+        const {createApplication} = await import('./application/host/server.ts');
+        const owner = new pg.Pool({connectionString:fixture.ownerUrl});
+        let bindings;
+        const query = pg.Client.prototype.query;
+        try {
+          const db = await owner.connect();
+          try {
+            await applyDemoSeed(config,{connection:db,installRole:'postgres',runtimeRole:'starter_runtime',
+              catalogueRules:readStarterCatalogueRules(),close:async()=>{}});
+          } finally {db.release();}
+          bindings = await composeNativeBindings(fixture.runtimeUrl,createOriginPolicy(config,port),config);
+          server.on('request',createApplication(bindings).listeners('request')[0]);
+          const seed = buildDemoSeed(config);
+          const sku = seed.skus.find(row=>row.sku===config.offer.products[0].sku);
+          const price = seed.prices.find(row=>row.variant_id===sku.id && row.mode==='one_time');
+          const input = {locale:'en',configuration:config.id,country:config.market.country,
+            termsAccepted:true,termsRevision:config.legal.revision,email:'writer-race@example.test',
+            firstName:'Example',lastName:'Buyer',phone:'00000',line1:'1 Example Lane',city:'Example',postalCode:'00000',
+            cart:{schemaVersion:1,configuration:config.id,mode:'one_time',cadenceDays:null,
+              lines:[{sku:sku.sku,quantity:config.offer.minUnits}]}};
+          const action = async (operation,body,key=crypto.randomUUID()) => {
+            const response=await fetch(base+'/api/actions/'+operation,{method:'POST',
+              headers:{Origin:base,'Content-Type':'application/json','X-Starter-Request':'1','Idempotency-Key':key},
+              body:JSON.stringify(body)});
+            return {status:response.status,body:await response.json()};
+          };
+          const review = async () => {
+            const {body} = await action('offer.validate',input);
+            assert.equal(body.ok,true,body.code);
+            return body.value.expectedTotal;
+          };
+          const census = async () => Object.fromEntries(await Promise.all([
+            'clients','commerce_checkout_attempt_ledger','commerce_orders','commerce_order_items',
+            'commerce_order_draft_receipts','commerce_settlement_intents','commerce_destination_bindings',
+            'fulfillment_inventory_reservations','commerce_promotion_claims','outbox_events',
+          ].map(async table=>[table,(await owner.query('SELECT count(*)::int AS rows FROM public.'+table)).rows[0].rows])));
+          const before = await census();
+          const expectedTotal = await review();
+          let writerCalls = 0;
+          pg.Client.prototype.query = function (sql,...args) {
+            if (typeof sql === 'string' && sql.includes('SELECT public.commerce_create_promoted_order_draft_with_outbox(')) {
+              ++writerCalls;
+              if (writerCalls === 1) {
+                assert.deepEqual(JSON.parse(args[0][1]).quote.totalGross, expectedTotal);
+                return owner.query('UPDATE public.price_entries SET unit_price_minor=unit_price_minor+137 WHERE id=$1',[price.id])
+                  .then(result=>{assert.equal(result.rowCount,1);return query.call(this,sql,...args);});
+              }
+            }
+            return query.call(this,sql,...args);
+          };
+          const refusedKey = crypto.randomUUID();
+          assert.deepEqual(await action('checkout.create',{...input,expectedTotal},refusedKey),
+            {status:409,body:{ok:false,code:'starter_quote_price_changed'}});
+          assert.equal(writerCalls,1);
+          assert.deepEqual(await census(),before,'writer refusal left purchase effects');
+          const refreshed = await review();
+          assert.notDeepEqual(refreshed,expectedTotal);
+          const reconfirmedKey = crypto.randomUUID();
+          const {body:created} = await action('checkout.create',{...input,expectedTotal:refreshed},reconfirmedKey);
+          assert.equal(created.ok,true,created.code);
+          assert.deepEqual(created.value.total,refreshed);
+          assert.equal(writerCalls,2);
+          const after = await census();
+          assert.equal(after.commerce_orders,before.commerce_orders+1);
+          assert.equal(after.commerce_order_draft_receipts,before.commerce_order_draft_receipts+1);
+          assert.equal(after.commerce_checkout_attempt_ledger,before.commerce_checkout_attempt_ledger+1);
+          const attempt = createHash('sha256').update(reconfirmedKey+'\0'+0).digest('hex');
+          assert.deepEqual((await owner.query('SELECT attempt_digest FROM public.commerce_checkout_attempt_ledger')).rows,
+            [{attempt_digest:attempt}]);
+        } finally {
+          pg.Client.prototype.query = query;
+          server.close();
+          await Promise.all([bindings?.close(),owner.end()]);
+        }
+      `;
+      writeFileSync(join(consumer,'writer-race.mjs'), `const fixture = ${JSON.stringify(fixture)};\n${script}`);
+      try {
+        execFileSync(process.execPath, ['writer-race.mjs'], { cwd: consumer, timeout: 20_000, stdio: 'pipe' });
+      } catch (error) {
+        throw new Error((error as { stderr?: Buffer }).stderr?.toString() ?? 'Writer race child failed', { cause: error });
+      }
+    } finally { await database.teardown(); }
+  }, postgresSetupTimeoutMs);
+
   for (const configuration of ['coffee', 'supplements']) describe(`${configuration} shipped bundle`, () => {
     const database = quoteCaseFixture(configuration, false);
     let fixture: Awaited<ReturnType<typeof provisionQuoteCase>>;

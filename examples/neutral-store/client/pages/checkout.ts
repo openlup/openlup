@@ -60,7 +60,7 @@ export function checkoutPage(context: PageContext): HTMLElement {
         { name: 'line2', maxLength: context.config.purchase.inputLimits.text, label: 'address2', required: false },
         { name: 'city', maxLength: context.config.purchase.inputLimits.text, label: 'city', value: context.t('demoCity') },
         { name: 'postalCode', maxLength: context.config.purchase.inputLimits.postalCode, label: 'postalCode', value: '00-001' },
-        { name: 'termsAccepted', label: 'termsAccept', type: 'checkbox' },
+        { name: 'termsAccepted', label: 'termsAccept', type: 'checkbox', required: false },
       ],
       input: quote.input,
       prepare: quote.prepare,
