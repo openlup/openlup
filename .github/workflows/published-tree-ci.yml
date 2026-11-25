@@ -198,7 +198,7 @@ jobs:
     needs: [install-pack]
     if: ${{ always() && needs.install-pack.result == 'success' && github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 20
     permissions:
       contents: read
       actions: read
@@ -389,7 +389,7 @@ jobs:
     needs: [reuse-gate, test-prep]
     if: ${{ always() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && (needs.test-prep.result == 'success' || (needs.reuse-gate.outputs.reuse == 'true' && needs.test-prep.result == 'skipped')) && github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     permissions:
       contents: read
       actions: read
