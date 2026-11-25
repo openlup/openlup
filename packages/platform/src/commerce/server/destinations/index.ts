@@ -324,12 +324,13 @@ function subscriptionSuccessDecoder<T>(
 ): z.ZodType<T> {
   return decoder.schema.refine(result => {
     const scopeRef = canonicalUuidArgument(args.scope);
-    if (scopeRef === null) return false;
+    const context = parseJsonArgument(args.context);
+    if (scopeRef === null || valueAtPath(context, "scopeRef") !== scopeRef) return false;
     const values = {
       result,
       request: {
         kind: args.kind, scopeRef, selectionRevision: canonicalUuidArgument(args.selectionRevision),
-        context: parseJsonArgument(args.context), binding: parseJsonArgument(args.binding), service: parseJsonArgument(args.service),
+        context, binding: parseJsonArgument(args.binding), service: parseJsonArgument(args.service),
       },
     };
     return decoder.comparisons.every(({ field, expected }) => {

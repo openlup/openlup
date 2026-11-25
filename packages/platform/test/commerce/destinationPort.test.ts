@@ -509,6 +509,16 @@ const currentSubscription = { binding, selectionRevision, service };
 const recheckedSubscription = { ...selected, selection: { ...selection, kind: "subscription" } };
 const verifiedSubscription = { ...verified, ...recheckedSubscription, evidenceExpiresAt: null };
 
+type SubscriptionArm = keyof typeof subscriptionSuccessDecoders;
+const subscriptionSuccessCases: Record<SubscriptionArm, {
+  result: object;
+  run: (port: DestinationPortV2, id: string, ctx: DestinationContextV2) => Promise<unknown>;
+}> = {
+  current: { result: currentSubscription, run: (port, id, ctx) => port.read(ctx, "subscription", id, null) },
+  exact: { result: verifiedSubscription, run: (port, id, ctx) => port.read(ctx, "subscription", id, binding) },
+  recheck: { result: recheckedSubscription, run: (port, id, ctx) => port.recheck(ctx, { ...subscriptionCheck, scopeRef: id }) },
+};
+
 it("binds the three subscription arms with the incumbent casts and only current read uses SQL NULL", async () => {
   const input = malformed("subscriptionId");
   const { port, calls } = scriptedDestination(currentSubscription, verifiedSubscription, recheckedSubscription, input, invalidBinding);
@@ -524,6 +534,40 @@ it("binds the three subscription arms with the incumbent casts and only current 
     [sql.read, [contextJson, "subscription", null, null]],
     [sql.read, [contextJson, "snapshot", scopeRef, "null"]],
   ]);
+});
+
+const auditedRequestContextPaths = {
+  clientId: "The exact read matches the document client to the requested client.",
+  scopeRef: "Every subscription success requires the context scope to equal the canonical bound subscription ID.",
+  owner: "The exact read compares the full document owner to the request owner.",
+  "owner.installationRef": "The document owner must belong to the requested installation.",
+  "owner.principalKind": "The document owner must have the requested principal kind.",
+  "owner.principalRef": "The document owner must identify the requested principal.",
+  "owner.customerOrSessionRef": "The document owner must identify the requested customer and match the document client.",
+};
+const requestContextPathsNotEchoedByDefiner: Readonly<Record<string, string>> = {};
+
+function serializedFieldPaths(value: unknown, prefix = ""): string[] {
+  if (value === null || typeof value !== "object") return [];
+  return Object.entries(value).flatMap(([key, child]: [string, unknown]) => {
+    const path = `${prefix}${key}`;
+    return [path, ...serializedFieldPaths(child, `${path}.`)];
+  });
+}
+
+it("accounts for every serialized subscription request context field", async () => {
+  const classifications = [...Object.entries(auditedRequestContextPaths), ...Object.entries(requestContextPathsNotEchoedByDefiner)];
+  for (const [path, reason] of classifications) expect(reason.trim(), path).not.toBe("");
+  const classifiedPaths = classifications.map(([path]) => path).sort();
+
+  for (const [arm, { result, run }] of Object.entries(subscriptionSuccessCases)) {
+    const { port, calls } = scriptedDestination(result);
+    await expect(run(port, scopeRef, context)).resolves.toStrictEqual(result);
+    const serialized: unknown = calls[0]?.[1]?.[0];
+    expect(typeof serialized, arm).toBe("string");
+    const fields = serializedFieldPaths(JSON.parse(serialized as string));
+    expect(fields.sort(), arm).toEqual(classifiedPaths);
+  }
 });
 
 const unpinnedServicePaths = [
@@ -573,17 +617,8 @@ function changeSubscriptionField(result: object, path: string): Record<string, u
 }
 
 it("audits every request-bound and sibling field in subscription successes", async () => {
-  type Arm = keyof typeof subscriptionSuccessDecoders;
-  const cases: Record<Arm, {
-    result: object;
-    run: (port: DestinationPortV2, id: string, ctx: DestinationContextV2) => Promise<unknown>;
-  }> = {
-    current: { result: currentSubscription, run: (port, id, ctx) => port.read(ctx, "subscription", id, null) },
-    exact: { result: verifiedSubscription, run: (port, id, ctx) => port.read(ctx, "subscription", id, binding) },
-    recheck: { result: recheckedSubscription, run: (port, id, ctx) => port.recheck(ctx, { ...subscriptionCheck, scopeRef: id }) },
-  };
-  for (const arm of Object.keys(cases) as Arm[]) {
-    const { result, run } = cases[arm];
+  for (const arm of Object.keys(subscriptionSuccessCases) as SubscriptionArm[]) {
+    const { result, run } = subscriptionSuccessCases[arm];
     const { schema } = subscriptionSuccessDecoders[arm];
     const comparisons: readonly SubscriptionSuccessComparison[] = subscriptionSuccessDecoders[arm].comparisons;
     const rows = comparisons.flatMap(({ field, expected, keys }) =>
@@ -617,9 +652,38 @@ it("audits every request-bound and sibling field in subscription successes", asy
   }
 });
 
+const otherCustomer = { ...owner, customerOrSessionRef: shipmentId };
+it.each([
+  {
+    field: "document.clientId",
+    request: { ...context, owner: otherCustomer },
+    document: { ...verifiedSubscription.document, clientId: shipmentId, owner: otherCustomer },
+  },
+  {
+    field: "document.owner.customerOrSessionRef",
+    request: { ...context, owner: otherCustomer },
+    document: verifiedSubscription.document,
+  },
+])("rejects an exact subscription read with only $field mismatched", async ({ request, document }) => {
+  const { port } = scriptedDestination({ ...verifiedSubscription, document });
+  expectMalformedCause(await expectInfrastructure(port.read(request, "subscription", scopeRef, binding)), 1);
+});
+
+it.each(Object.entries(subscriptionSuccessCases))("requires the bound subscription scope in the %s request context", async (_arm, { result, run }) => {
+  const refusalResult = refusal("destination_owner_unlinked", "owner", [
+    "Authorized linkage or scope is missing.", "The operation requires a linked customer and authorized scope.",
+    "Establish authorized linkage or use authorized support.", "Sign in to the linked account and restart selection.",
+  ]);
+  const wrongContext = { ...context, scopeRef: orderId };
+  const { port } = scriptedDestination(result, refusalResult);
+  expectMalformedCause(await expectInfrastructure(run(port, scopeRef, wrongContext)), 1);
+  expectRefusal(await run(port, scopeRef, wrongContext), refusalResult);
+});
+
 it("accepts canonical subscription scope results for equivalent PostgreSQL UUID spellings", async () => {
   const requested = `{${scopeRef.replaceAll("-", "")}}`;
-  const { port } = scriptedDestination(verifiedSubscription, recheckedSubscription);
+  const { port } = scriptedDestination(currentSubscription, verifiedSubscription, recheckedSubscription);
+  await expect(port.read(context, "subscription", requested, null)).resolves.toStrictEqual(currentSubscription);
   await expect(port.read(context, "subscription", requested, binding)).resolves.toStrictEqual(verifiedSubscription);
   await expect(port.recheck(context, {
     ...subscriptionCheck, scopeRef: requested, expectedSelectionRevision: `{${selectionRevision.replaceAll("-", "")}}`,
