@@ -14,6 +14,7 @@ import { createM06InventoryReferenceBinding } from "../../../server/runtime/publ
 import { createPostgresMigrationRunner } from "../../../server/adapters/postgres/migrationRunner.js";
 import { assertConsumerIsolation } from "../../../scripts/packages/platform-cold-consumer.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../../helpers/postgresContainer.js";
+import { packWorkspaceTarballs } from "../../helpers/packWorkspaceTarball.js";
 
 let installedResolve: (name: string) => string;
 let scratch: string, container: PostgresContainer | undefined, pool: Pool;
@@ -21,10 +22,7 @@ let inventory: typeof import("@openlup/platform/inventory"), composition: typeof
 const npm = (args: string[], cwd: string) => execFileSync("npm", args, { cwd, stdio: "pipe", timeout: 120_000 }).toString();
 beforeAll(async () => {
   scratch = mkdtempSync(join(tmpdir(), "m06-packed-"));
-  const tarballs = ["packages/core", "packages/platform", "node_modules/zod"].map(directory => {
-    const packed = JSON.parse(npm(["pack", "--json", "--ignore-scripts", "--pack-destination", scratch], resolve(directory)));
-    return join(scratch, packed[0].filename);
-  });
+  const tarballs = await packWorkspaceTarballs(["packages/core", "packages/platform", "node_modules/zod"], scratch);
   const consumer = join(scratch, "consumer"); mkdirSync(consumer);
   writeFileSync(join(consumer, "package.json"), '{"type":"module","private":true}');
   npm(["install", "--offline", "--ignore-scripts", "--legacy-peer-deps", "--omit=optional", "--no-audit", "--no-fund", ...tarballs], consumer);

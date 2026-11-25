@@ -13,7 +13,7 @@ const workflowId = 361484090;
 const execute = promisify(execFile);
 const observedGaps = new WeakMap();
 const queueStates = new Set(['QUEUED', 'AWAITING_CHECKS', 'MERGEABLE', 'LOCKED', 'UNMERGEABLE']);
-const workflowJobs = new Set(['dco', 'reuse-gate', 'typecheck', 'install-packages', 'install-proof', 'test-prep',
+const workflowJobs = new Set(['dco', 'reuse-gate', 'typecheck', 'install-pack', 'install-packages', 'install-proof', 'test-prep',
   'test', 'self-check', 'gitleaks', 'pgtap', 'native-review']);
 const sha = value => typeof value === 'string' && /^[a-f0-9]{40}$/u.test(value) ? value : null;
 const outcomeByReason = new Map([

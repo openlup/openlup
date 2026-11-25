@@ -1311,3 +1311,35 @@ it.each(["claimed", "wrapper"] as const)("serializes distinct keys when %s owns 
     leader.release(); follower.release();
   }
 });
+
+it("replays the original v1 bytes after writer upgrade and refuses a fresh v1 edit of the exclusive list", async () => {
+  const db = await owner.connect();
+  try {
+    const fresh = async () => {
+      await db.query("BEGIN");
+      await session(db);
+    };
+    await fresh();
+    const legacy = await command(db), canonical = canonicalCatalogPriceSetupCommand(legacy);
+    const fingerprint = createHash("sha256").update(canonical).digest("hex");
+    const raw = async () => (await db.query("SELECT public.catalog_price_setup_apply($1,$2)::text AS bytes",
+      [canonical, fingerprint])).rows[0].bytes as string;
+    expect(JSON.parse(await raw())).toHaveProperty("outcome", "committed");
+    await db.query("COMMIT");
+    await fresh();
+    const beforeUpgrade = Buffer.from(await raw(), "utf8");
+    expect(JSON.parse(beforeUpgrade.toString("utf8"))).toHaveProperty("outcome", "replayed");
+    await db.query("COMMIT");
+    for (const suffix of ["_catalog_price_list_basis.sql", "_catalog_price_writer_v2.sql"]) {
+      const file = manifest.forward.find((unit: { file: string }) => unit.file.endsWith(suffix)).file;
+      await db.query(readFileSync(file, "utf8"));
+    }
+    await db.query("UPDATE public.price_lists SET amount_basis='tax_exclusive' WHERE id=$1", [legacy.priceListId]);
+    await fresh();
+    const beforeReplay = await priceSnapshot(db);
+    expect(Buffer.from(await raw(), "utf8")).toEqual(beforeUpgrade);
+    expect(await apply(db, await command(db))).toEqual({ outcome: "validation_issue", reason: "catalog_price_setup_basis_mismatch" });
+    expect(await priceSnapshot(db)).toEqual(beforeReplay);
+    await db.query("COMMIT");
+  } finally { await db.query("ROLLBACK"); db.release(); }
+});

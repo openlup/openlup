@@ -779,3 +779,40 @@ it("holds the admitted ledger lock through the qualified session catalog read", 
     await pool.end();
   }
 });
+
+it.each([
+  ["COMMIT", "SELECT 1; COMMIT;"],
+  ["ROLLBACK", "SELECT 1; ROLLBACK;"],
+  ["COMMIT; BEGIN", "SELECT 1; COMMIT; BEGIN;"],
+] as const)("refuses a forward unit that drops SHARE ROW EXCLUSIVE via %s before recording the ledger row", async (_label, txControlSql) => {
+  await resetLedger(ledgerDefinition);
+  await admin.query("INSERT INTO public.platform_schema_migrations (catalog_path,sha256,position) VALUES ($1,$2,0)",
+    [entries[0]!.file, entries[0]!.sha256]);
+  const forwardFile = files[1]!;
+  const forwardEntry = { file: forwardFile, sha256: createHash("sha256").update(txControlSql).digest("hex") };
+  const txMigrations = [migrations[0]!, { file: forwardFile, content: txControlSql }];
+  const txManifest = {
+    schemaVersion: 1 as const,
+    baseline: entries[0]!,
+    forward: [forwardEntry],
+    objectInventorySha256: createHash("sha256").update(inventory).digest("hex"),
+  };
+  const pool = probePool();
+  try {
+    const runner = createPostgresMigrationRunner({ connectionString: container!.connectionString }, {
+      lockName: "m14-session-admission-tx-control",
+      poolFactory: () => pool,
+      catalogProjectionPayload: async () => inventory,
+      source: {
+        readMigrations: () => ({ migrations: txMigrations, errors: [] }),
+        readManifest: () => txManifest,
+        evaluate: () => [],
+      },
+    });
+    await expect(runner.apply()).rejects.toThrow(`platform migration ${forwardFile} failed: platform migration ledger changed before write`);
+    expect((await admin.query("SELECT pg_catalog.count(*)::pg_catalog.int4 AS count FROM public.platform_schema_migrations")).rows)
+      .toEqual([{ count: 1 }]);
+  } finally {
+    await pool.end();
+  }
+});

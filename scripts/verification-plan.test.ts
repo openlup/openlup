@@ -107,8 +107,9 @@ describe('local obligation contract', () => {
     expect(job('self-check')).toContain('run: node --experimental-strip-types packages/ui/smoke/neutrality.ts');
     expect(job('self-check')).toContain('github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before');
     expect(job('self-check')).toContain('run: node scripts/public-ci-neutrality.mjs --base-commit "$NEUTRALITY_BASE_COMMIT"');
-    expect(job('install-packages')).toContain('scripts/packages/required-package-gates.ts --out "$RUNNER_TEMP/package-gates" --expected-commit "$(git rev-parse HEAD)"');
-    expect(job('install-proof')).toContain('needs: [install-packages, install-browser]');
+    expect(job('install-pack')).toContain('npm run packages:check -- --cold --out "$RUNNER_TEMP/package-gates"');
+    expect(job('install-packages')).toContain('scripts/packages/required-package-gates.ts --packages "$RUNNER_TEMP/package-gates" --expected-commit "$(git rev-parse HEAD)"');
+    expect(job('install-proof')).toContain('needs: [install-pack, install-packages, install-browser]');
     expect(job('test-full-shard')).toContain('node scripts/ci-vitest-shard.mjs --shard ${{ matrix.shard }} --total 8 --skip-pretest');
     expect(job('test')).toContain('test "$SHARD_RESULT" = "success"');
     expect(plan().hostedOnly.map(item => item.context)).toEqual(['test', 'install-proof', 'native-review']);
