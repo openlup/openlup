@@ -828,9 +828,10 @@ The complete projected root command inventory is `build`,
 `build:public-reference:prerender`, `build:public-reference:ssr`,
 `check:dco-signoff`, `guard:client-secret-boundary`,
 `guard:public-reference-site-routes`, `inventory:refresh`, `landing:merge`, `migration:finalize`, `lint`, `preflight`, `prelint`,
-`oss:published-tree`, `packages:check`, `release:bump`, `release:docs-pass`, `sql:admit`, `pretest`, `test`, `test:hosted`, and `test:scoped`.
+`oss:published-tree`, `packages:check`, `release:bump`, `release:docs-pass`, `sql:admit`, `pretest`, `test`, `test:affected`, `test:hosted`, and `test:scoped`.
 This reclassifies the complete current root script inventory; all commands are
-public, with `test:scoped` as the local wrapper around the unchanged `test` command.
+public, with `test:affected` as the local targeted wrapper and `test:scoped` as
+the local wrapper around the unchanged `test` command.
 `npm run build` is the public build truth; its public-reference subcommands and
 guards are internal links in that bounded chain. Published Tree CI invokes the
 build, sharded required root tests, DCO check, and publication checks from this inventory.
@@ -976,6 +977,11 @@ After `npm ci`, use:
 ```sh
 # Builds Core, Outbox and Platform, then runs the affected root tests.
 npm test -- server/domains/subscription
+
+# Auto-discover affected root tests (reverse imports, #imports, contract pins) and run them.
+npm run test:affected
+npm run test:affected -- --dry-run
+npm run test:affected -- --hosted --no-postgres
 
 # The same, the way a hosted test shard runs them; at least one file is required.
 npm run test:hosted -- scripts/ci-test-scope.test.ts

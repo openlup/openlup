@@ -111,7 +111,7 @@ export function validateVerificationSteps(steps, pgtap = false) {
 export function verificationSteps(candidate, build, packs, pgtap = false, { layered = false, rootDir = process.cwd() } = {}) {
   const inputs = { candidate, build, packs };
   const affectedPaths = layered ? findAffectedTests({ changedFiles: candidate.changedPaths ?? [], rootDir })
-    .affectedTests.map(({ path }) => path) : [];
+    .runners.rootVitest : [];
   const steps = Object.entries(definitions).filter(([name]) => name !== 'pgtap' || pgtap)
     .map(([name, { command, env, ...definition }]) => ({ name, ...definition,
       requires: [...definition.requires], command: command(inputs), env: env ? env(inputs) : {} }));
