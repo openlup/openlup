@@ -1,4 +1,5 @@
 import type { IncomingMessage } from 'node:http';
+import { createHash } from 'node:crypto';
 import type { StoreConfig } from '../shared/config.ts';
 import type { ActionInput, ActionResult, Operation } from '../shared/api.ts';
 import { operationLimits } from '../shared/limits.ts';
@@ -23,6 +24,8 @@ export interface VerifiedActor {
 
 export interface ActionContext {
   commandKey: string;
+  /** `performance.now()` when the HTTP host received the request, before body and authentication. */
+  receivedAt?: number;
   /** Actual transport cookie; never supplied by an action body. */
   requestCookie?: string;
   actor: VerifiedActor;
@@ -42,6 +45,15 @@ export interface ApplicationBindings {
   resolveCatalogue?: ReturnType<typeof composeCatalogueStorefront>['resolveCatalogue'];
   authenticate(request: IncomingMessage): Promise<VerifiedActor>;
   close(): Promise<void>;
+}
+
+/** The default per-requester quota key: a digest of the socket peer address.
+ * This local host trusts its socket peer only, never forwarding headers or a
+ * contact supplied by the caller, so requests behind one proxy share its quota.
+ * A host behind a trusted proxy replaces this function in one place. */
+export function requesterKeyFor(request: IncomingMessage): string | undefined {
+  const peer = request.socket.remoteAddress;
+  return peer ? createHash('sha256').update(peer.toLowerCase()).digest('hex') : undefined;
 }
 
 /** Pending native dependencies remain visibly unbound. Never use browser fixtures as a store. */

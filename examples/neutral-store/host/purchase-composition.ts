@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import { setTimeout } from 'node:timers/promises';
 import type { PostgresContactClientRegistrar } from '@openlup/platform/identity';
-import { createPostgresCheckoutRateLimit, createCheckoutAttemptBindings, admitCheckoutAttempt, type CheckoutRateLimit } from './checkout-attempts.ts';
+import { createPostgresCheckoutRateLimit, createCheckoutAttemptBindings, admitCheckoutAttempt, admitCheckoutReplay, type CheckoutRateLimit } from './checkout-attempts.ts';
 import { installedAcquisitionPredecessors, createInitialPurchaseActivation, createAcquisitionRenewalBinding, type AcquisitionPredecessors, type AcquisitionRenewalBinding } from './acquisition-predecessors.ts';
 import { createNativeQuoteService, governedCheckoutRefusal, quoteFailure } from './quote-composition.ts';
 import { createAcquisitionFinancialPolicy } from '../owned/acquisition-policy.ts';
@@ -23,12 +23,15 @@ import { catalogAdmissionRefusal, generateCheckoutRecoveryToken } from '@openlup
 import { readCheckoutGuidance } from './checkout-recovery.ts';
 import type { PurchaseRecovery } from './checkout-recovery.ts';
 import { canonicalCatalogDraftJson } from '@openlup/platform/catalog';
+import { checkoutLateCreateMs } from '../shared/api.ts';
 
 const refused = (code: string) => code === governedCheckoutRefusal.code ? governedCheckoutRefusal : { ok: false as const, code };
 const success = (value: unknown) => ({ ok: true as const, value });
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const uuid = (value: unknown): value is string => typeof value === 'string'
   && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+/** Only a version 4 UUID key has a continuation; other released key formats keep their earlier answers. */
+const continuable = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 const only = (payload: Record<string, unknown>, fields: string[]) => Object.keys(payload).every(key => key === 'locale' || fields.includes(key));
 const text = (value: unknown, max: number): value is string => typeof value === 'string' && value.trim() === value && value.length > 0 && value.length <= max;
 const command = (context: ActionContext, operation: string) => `${operation}:${hash([context.actor.principalRef, context.commandKey])}`;
@@ -38,12 +41,15 @@ const present = (order: { id: string; status: string; total_amount_minor: number
 
 const checkoutLane = 'starter-checkout';
 const checkoutDigest = (document: unknown) => createHash('sha256').update(canonicalCatalogDraftJson(document), 'utf8').digest('hex');
-function originalSubmit(payload: Record<string, unknown>, context: ActionContext, clientId: string, key: string, email: string) {
+/** A repeat passes the acceptance digest stored with the first order; a fresh create hashes the presented one. */
+function originalSubmit(payload: Record<string, unknown>, context: ActionContext, clientId: string, key: string, email: string,
+  acceptanceTokenDigest?: string | null) {
   const { quoteAcceptance, ...selection } = payload;
   const scope = {
     schemaVersion: 1, ownerNamespace: source(context), clientId, lane: checkoutLane, requestKey: key,
     ...(context.actor.principalRef ? { actorRef: context.actor.principalRef } : {}),
-    acceptanceTokenDigest: typeof quoteAcceptance === 'string' ? checkoutDigest(quoteAcceptance) : null,
+    acceptanceTokenDigest: acceptanceTokenDigest !== undefined ? acceptanceTokenDigest
+      : typeof quoteAcceptance === 'string' ? checkoutDigest(quoteAcceptance) : null,
   };
   return { ...scope, submitDigest: checkoutDigest(['catalog.checkout-submit.v1', scope, { ...selection, email }]) };
 }
@@ -89,6 +95,24 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
     return checkoutHost.readOrder(id);
   };
   const token = (value: unknown): value is string => typeof value === 'string' && /^rcv_(?:[A-Za-z0-9_-]{43}|[a-f0-9]{64})$/.test(value);
+  const requester = (context: ActionContext) => ({ headers: {}, ...(context.actor.requesterKey ? { requesterKey: context.actor.requesterKey } : {}) });
+  /** Every repeat under an existing key is metered in the repeat bucket before it has any effect. */
+  const admitRepeat = (session: PoolClient, context: ActionContext, key: string) => admitCheckoutReplay(
+    checkRateLimit ?? createPostgresCheckoutRateLimit(session, context.config.purchase.attemptLimits), requester(context), key);
+  /** A further continuation link for an unpaid order. Earlier links stay valid; no mail is sent. */
+  async function continuationToken(executor: Pick<PoolClient, 'query'>, orderId: string):
+    Promise<{ token: string; refusal?: undefined } | { token?: undefined; refusal: ReturnType<typeof refused> }> {
+    try {
+      const rawToken = generateCheckoutRecoveryToken();
+      await recovery.tokens.issue({ orderId, rawToken, expiresAt: '' });
+      return { token: rawToken };
+    } catch {
+      const { rows: [order] } = await executor.query<{ status: string; elapsed: boolean }>(`SELECT status,
+        created_at + interval '24 hours' <= clock_timestamp() AS elapsed FROM public.commerce_orders WHERE id=$1`, [orderId]);
+      return { refusal: refused(order?.status !== 'pending_payment' ? 'starter_checkout_not_payable'
+        : order.elapsed ? 'starter_checkout_expired' : 'starter_purchase_unavailable') };
+    }
+  }
   const authorizedOrder = async (payload: Record<string, unknown>, context: ActionContext) => {
     if (context.actor.customerRef) {
       let orderId = payload.orderRef;
@@ -123,6 +147,7 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
   };
   actions['checkout.create'] = async (payload, context) => {
     const started = performance.now();
+    const received = context.receivedAt ?? started;
     let draftSession: PoolClient | undefined;
     let key: string | undefined;
     let draftTransaction = false;
@@ -155,7 +180,15 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
     await draftSession.query('SELECT pg_advisory_lock(hashtextextended($1,0))', [key]);
     const boundQuotes = createNativeQuoteService(draftSession, predecessors, quoteOptions.keyring);
     const priorOrder = await readOwnedDraft(draftSession, key, context.actor.customerRef, email);
+    // A late fresh create could otherwise follow a caller that has already moved on.
+    if (!priorOrder && performance.now() - received > checkoutLateCreateMs) return refused('starter_checkout_request_stale');
+    const heldSession = draftSession, heldKey = key;
+    // A changed payload under a continuable key is metered, never applied, and named by the order's state.
+    const changed = async (order: { status: string }) => !await admitRepeat(heldSession, context, heldKey)
+      ? refused('starter_attempt_limited') : refused(order.status === 'pending_payment' ? 'starter_checkout_changed'
+        : order.status === 'paid' ? 'starter_checkout_paid' : 'starter_checkout_not_payable');
     if (priorOrder && !priorOrder.owned) {
+      if (continuable(context.commandKey)) return await changed(priorOrder);
       return refused(attemptBindings?.conflicts(context.commandKey, email, context.actor.requesterKey)
         ? 'starter_attempt_limited' : 'starter_command_conflict');
     }
@@ -174,7 +207,20 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
           }
           observed = await boundQuotes.quote(payload, context, prior);
         }
-        const { submitDigest } = originalSubmit(payload, context, priorOrder.client_id, key, email);
+        // A repeat admits nothing and never re-prices, so the stored acceptance stands for the same terms.
+        // A different acceptance counts as the same intent only if it verifies against the stored snapshot.
+        let acceptanceDigest: string | null | undefined;
+        const stored = isRecord(priorOrder.submit) ? priorOrder.submit : undefined;
+        if (stored && (typeof stored.acceptanceTokenDigest === 'string' || stored.acceptanceTokenDigest === null)) {
+          acceptanceDigest = stored.acceptanceTokenDigest;
+          const presented = typeof payload.quoteAcceptance === 'string' ? checkoutDigest(payload.quoteAcceptance) : null;
+          if (presented !== acceptanceDigest) {
+            try { boundQuotes.verify(await boundQuotes.quote(payload, context, prior), payload); }
+            catch { acceptanceDigest = presented; }
+          }
+        }
+        const { submitDigest } = originalSubmit(payload, context, priorOrder.client_id, key, email, acceptanceDigest);
+        if (stored && continuable(context.commandKey) && submitDigest !== stored.submitDigest) return await changed(priorOrder);
         await draftSession.query('SELECT public.catalog_admission_replay_order_draft($1,$2,$3,$4)',
           [key, priorOrder.client_id, checkoutLane, priorOrder.submit === null ? priorOrder.fingerprint : submitDigest]);
       } else {
@@ -188,8 +234,12 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
       // The intent is opened after destination, stock hold and provisional activation.
       // Only a completed checkout can bypass resuming those installation-bound steps.
       if (prior && priorOrder?.completed === true) {
+        const admitted = await admitRepeat(draftSession, context, key);
         if (!['pending_payment','paid'].includes(priorOrder.status) || !await isInitialCheckoutOrder(draftSession,priorOrder.id)) return refused('starter_checkout_not_payable');
-        return { ...success(present(priorOrder)),replayed: true };
+        // A limited repeat still learns that its order exists, without a new link.
+        if (!admitted || priorOrder.status !== 'pending_payment') return { ...success(present(priorOrder)),replayed: true };
+        const issued = await continuationToken(draftSession, priorOrder.id);
+        return issued.refusal ?? { ...success({ ...present(priorOrder), token: issued.token }), replayed: true };
       }
       observed ??= await boundQuotes.quote(payload, context, prior, undefined, offerContext);
       if (!prior && payload.termsRevision !== context.config.legal.revision) return refused('starter_terms_required');
@@ -222,7 +272,8 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
       : registrar.ensureContactClient({ email, ...context.config.purchase.contact,
         profileDefaults: { firstName: String(payload.firstName), lastName: String(payload.lastName),
           phone: String(payload.phone), country: context.config.market.country },
-        journey: { idempotencyKey: context.commandKey, locale: payload.locale, mode: offer.cart.mode } }));
+        // The derived key: the header value can address an unpaid order and is never stored.
+        journey: { idempotencyKey: key, locale: payload.locale, mode: offer.cart.mode } }));
     if (!contact.ok) return refused('starter_purchase_unavailable');
     const quoteSnapshot = observed.snapshot;
     const quote = observed.projection;
@@ -276,6 +327,11 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
         if (!expiresAt) throw new Error('checkout_recovery_storage_failed');
         await recovery.deliver({ email, rawToken: recoveryToken, orderRef: orderId,
           expiresAt, context, locale: payload.locale });
+      } else if (current.status === 'pending_payment') {
+        // A repeat that completed an interrupted creation also gets a way to pay, never a mail.
+        const issued = await continuationToken(db, orderId);
+        if (issued.refusal) return issued.refusal;
+        recoveryToken = issued.token;
       }
       return { ...success({ ...present(current), ...(recoveryToken ? { token: recoveryToken } : {}) }),
         replayed: !created.fresh };
@@ -296,6 +352,52 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
       await setTimeout(Math.max(0, context.config.purchase.responseFloorMs - (performance.now() - started)));
     }
   };
+  /** Continue the order under a checkout key without re-sending its details.
+   * A guest is authorised by the key value alone; a signed-in key is derived from the principal. */
+  actions['checkout.continuation'] = async (payload, context) => {
+    const started = performance.now();
+    let session: PoolClient | undefined;
+    let locked = false;
+    const key = command(context, 'checkout');
+    try {
+      if (!only(payload, ['action']) || payload.action !== 'resume'
+        || !isConfiguredLocale(payload.locale, context.config.market) || !continuable(context.commandKey)) return refused('starter_input_invalid');
+      // Every step runs on the session holding the key lock, so the answer agrees with a create holding it.
+      session = await db.connect();
+      await session.query('SELECT pg_advisory_lock(hashtextextended($1,0))', [key]);
+      locked = true;
+      return await resumeCheckout(session, key, context);
+    } catch (error) { return failure(error); }
+    finally {
+      if (session) {
+        try { if (locked) await session.query('SELECT pg_advisory_unlock(hashtextextended($1,0))', [key]); session.release(); }
+        catch { session.release(true); }
+      }
+      await setTimeout(Math.max(0, context.config.purchase.responseFloorMs - (performance.now() - started)));
+    }
+  };
+  async function resumeCheckout(session: PoolClient, key: string, context: ActionContext) {
+    const order = await readOwnedDraft(session, key, context.actor.customerRef, '');
+    // An unknown key is answered before metering: guessing a key needs no meter, fresh creates need the budget.
+    if (!order || (context.actor.customerRef && !order.owned)) return refused('starter_checkout_not_found');
+    const admitted = await admitRepeat(session, context, key);
+    try {
+      await session.query('SELECT public.catalog_admission_replay_order_draft($1,$2,$3,$4)', [key, order.client_id, checkoutLane,
+        isRecord(order.submit) && typeof order.submit.submitDigest === 'string' ? order.submit.submitDigest : order.fingerprint]);
+    } catch (error) {
+      if (error instanceof Error && error.message === 'commerce_order_draft_expired') return refused(error.message);
+      if (isRecord(error) && error.code === '23505') return refused('starter_command_conflict');
+      throw error;
+    }
+    const initial = await isInitialCheckoutOrder(session, order.id);
+    if (initial && order.status === 'paid') return { ...success(present(order)), replayed: true };
+    if (!initial || order.status !== 'pending_payment') return refused('starter_checkout_not_payable');
+    if (!order.completed) return refused('starter_checkout_in_progress');
+    // A limited resume still learns that its order exists, without a new link.
+    if (!admitted) return { ...success(present(order)), replayed: true };
+    const issued = await continuationToken(session, order.id);
+    return issued.refusal ?? { ...success({ ...present(order), token: issued.token }), replayed: true };
+  }
   actions['checkout.read'] = async (payload, context) => {
     if (!only(payload, ['orderRef', 'token'])) return refused('starter_input_invalid');
     if (context.actor.customerRef && payload.token === undefined) {

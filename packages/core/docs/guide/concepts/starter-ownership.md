@@ -147,13 +147,14 @@ export or erasure workflow; implement your privacy policy around those files.
 The default attempt quotas survive restarts on the same PostgreSQL database.
 Command-identity bindings remain process-local and reset on restart. Before
 resolving a contact, checkout checks configured email and requester quotas,
-retention and capacity. Exact replay keeps the same command key, normalized
-email and requester without another quota count. Changing the identity under
-a retained binding refuses even with a replacement quota callback. Denied quota
-attempts add no quota count. Your host owns retention of unpurchased contacts.
+retention and capacity. A repeat under an existing checkout key counts once
+more: in a separate requester bucket and against `maxPerEmail` for that one
+key, never against the buyer's email. Changing the identity under a retained
+binding refuses even with a replacement quota callback. Denied quota attempts
+add no quota count. Your host owns retention of unpurchased contacts.
 
 For `starter_attempt_limited`, wait for the quota window or retained attempts
-to age out, or replay a bound key with its original contact and requester. For
+to age out. A limited repeat still returns its order, without a new token. For
 invalid input, use the normal checkout submit path. Correct invalid deployed
 limits and restart. If the database could not admit an attempt, verify the
 [database forward](../upgrade/database-migrations.md#check-application-compatibility)
@@ -165,6 +166,60 @@ refuses with `starter_email_invalid` before contact resolution. Checkout and
 subscription-address fields use the configured phone and postal limits within
 native destination bounds. The [configuration validator](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/examples/neutral-store/docs/ownership.md#application-ownership)
 owns the exact limits. Browser field limits do not replace host validation.
+
+## Checkout key continuation
+
+One checkout key addresses one order for its whole life. The key is the
+`Idempotency-Key` header value of `checkout.create`. The host stores only a
+digest derived from it and the signed-in principal, never the value itself.
+
+Repeat `checkout.create` with the same key and the same details after a lost
+response. The host returns the first order with `replayed: true`. While the
+order is unpaid, the response also carries a further continuation `token`.
+Earlier tokens stay valid, and a repeat never sends mail. A refreshed quote
+acceptance for the same stored terms counts as the same purchase. Changed
+details are never applied: under a version 4 UUID key the host answers
+`starter_checkout_changed`, `starter_checkout_paid` or
+`starter_checkout_not_payable`. Other released key formats keep
+`starter_command_conflict`, because they have no continuation.
+
+`checkout.continuation` continues the order under a key without the original
+details. Send the same header with a version 4 UUID value and the body
+`{ "action": "resume", "locale": "<locale>" }`. Any other
+field or key format answers `starter_input_invalid`. A guest is authorised by
+the key value alone, so treat it as a credential: make it random, never log it
+and never reuse it for another operation.
+
+| Order under the key | `resume` |
+| --- | --- |
+| None | `starter_checkout_not_found` |
+| Unpaid, creation complete | `{ orderRef, status, total, token }`, `replayed: true` |
+| Unpaid, creation not complete | `starter_checkout_in_progress` |
+| Paid | `{ orderRef, status, total }`, `replayed: true` |
+| Cancelled, expired or closed | `starter_checkout_not_payable` |
+
+A limited `resume` returns the order without a token. An unknown key is
+answered before metering. Refusals use HTTP 409. A missing or malformed header answers
+HTTP 400 with `starter_command_identity_required`.
+
+The token from `resume` authorises the same operations as the creating
+response: `checkout.read`, `checkout.recovery` `inspect` and `pay`,
+`checkout.payment` `inspect` and `simulate`, `checkout.tokenPay` and
+`payment.simulate`. A key holder can therefore also start a payment attempt.
+
+A client that owns its checkout page follows three rules:
+
+1. Keep one key for the whole purchase, including reloads and retries.
+2. Never start a new key after a transport error; repeat or `resume` instead.
+3. Treat "no order under this key" as final only after your own request
+   timeout plus 15 seconds have passed since the last unanswered create. A
+   create that obtains the key lock later than 15 seconds after the host
+   received it answers `starter_checkout_request_stale` and writes nothing.
+   This refusal can also reach the managed pages when the host is busy.
+
+The key is derived from the principal, so a guest key does not survive sign-in
+or sign-out. Resolve the purchase before either; a retry after sign-in finds no
+order and creates a second one. See the [refusal rows](../reference/limits.md#subscription-mode-price).
 
 ## Paid-order messages and shipping
 

@@ -604,10 +604,13 @@ Acceptance binds the request, money,
 policy, second promise and delivery terms. An equivalent refresh keeps the
 customer's reviewed token, payable amount and original deadline. Changed terms
 or an expired deadline require fresh review and consent.
-After an uncertain checkout response, an unchanged retry retains the submitted
-acceptance proof and command key so the host can recover the saved receipt.
-Changing the input or explicitly starting a new action prepares a fresh quote;
-the server still validates acceptance before any new draft is admitted.
+After an uncertain checkout response, an unchanged retry under the same command
+key returns the saved order and, while it is unpaid, a further continuation
+token. A refreshed acceptance for the same stored terms is the same purchase;
+changed details are refused, never applied. `checkout.continuation` resumes
+that order by its key. Changing the input or explicitly starting a new
+action prepares a fresh quote and key; the server still validates acceptance
+before any new draft is admitted.
 
 Before enabling governed quote issuance, verify the compatible v1 reader and
 checkout controller on every serving and replay replica and each rollback
