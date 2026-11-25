@@ -12174,7 +12174,19 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/agent-review-derived-carriers.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/agent-review-derived-inventory.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/agent-review-derived-notes.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/agent-review-derived-slots.test.ts",
       "class": "public-output"
     },
     {
@@ -12563,6 +12575,10 @@
     },
     {
       "path": "scripts/fixtures/20261022195100_invoicing_seller_revision.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/agent-review-derived-fixture.ts",
       "class": "public-output"
     },
     {
