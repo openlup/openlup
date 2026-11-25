@@ -281,7 +281,7 @@ describe('installed starter browser CI', () => {
     const workflow = readFileSync('.github/workflows/published-tree-ci.yml', 'utf8');
     const install = workflow.split('  install-browser:')[1]!.split('  install-proof:')[0]!;
     expect(install).toContain('packages: read');
-    expect(install).toContain('timeout-minutes: 8');
+    expect(install).toContain('timeout-minutes: 12');
     expect(install).toContain('docker login ghcr.io');
     expect(install.indexOf('docker login')).toBeLessThan(install.indexOf('scripts/starter-browser-ci.mjs'));
     expect(install).toContain('scripts/starter-browser-ci.mjs --manifest "$RUNNER_TEMP/package-gates/packages-manifest.json" --expected-commit "$(git rev-parse HEAD)" --groups "$BROWSER_GROUPS"');
