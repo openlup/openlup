@@ -584,7 +584,7 @@ it("classifies sandbox co-settlement using the primary observation", async () =>
   expect(await read(env.owner, order)).toMatchObject({ ...hold("unqualified"), provider: "sandbox", route: null, payment_mode: "unknown" });
 });
 
-it("carries signed evidence through same-profile restore and requires target-local qualification", async () => {
+it("carries signed evidence and preserves the target's independent qualification through restore and replay", async () => {
   const resources = storeJourneyResources();
   try {
     const source = await resources.installation("capture-clock-source");
@@ -596,18 +596,31 @@ it("carries signed evidence through same-profile restore and requires target-loc
     expect(captured).toMatchObject({ kind: "authoritative" });
     const packet = await captureStoreJourney(source.owner, "capture-clock-source");
     expect(packet.outsideProfileCensus).toContainEqual({
-      relation: scope, owner: journeySelection.migrationLogin, rows: "1", disposition: "intentionally-not-carried",
+      relation: scope, owner: journeySelection.migrationLogin, rows: "1", disposition: "target-payment-qualification",
     });
+    expect(packet.emptyOutsideProfile).not.toContain(scope);
+    expect([...packet.compatible.tables, ...packet.owned].map(table => String(table.table)))
+      .not.toContain("payment_capture_time_test_qualification");
+    await qualify(target.owner, otherProvider);
     const freshTarget = await captureStoreJourney(target.owner, "capture-clock-target");
+    expect(freshTarget.outsideProfileCensus.find(entry => entry.relation === scope)).toMatchObject({
+      rows: "1", disposition: "target-payment-qualification",
+    });
+    const targetQualification = async () => (await target.owner.query(`SELECT to_jsonb(q) AS value,
+      tableoid::text,ctid::text,xmin::text FROM ${scope} q`)).rows;
+    const before = await targetQualification();
+    expect(before).toMatchObject([{ value: { provider_ref: otherProvider, source_path: "signed_webhook" } }]);
     const restore = () => restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet, freshTarget });
-    await qualify(target.owner);
-    await expect(restore()).rejects.toThrow(/unsupported_table/u);
-    await target.owner.query(`DELETE FROM ${scope}`);
     expect(await restore()).toMatchObject({ replayed: false, captureSha256: packet.sha256 });
+    expect(await targetQualification()).toEqual(before);
     expect(await read(target.owner, f.order)).toMatchObject({
       ...hold("unqualified"), provider: primaryProvider, payment_mode: "test", route: "signed_webhook",
     });
-    expect((await target.owner.query(`SELECT * FROM ${scope}`)).rows).toEqual([]);
+    expect(await restore()).toMatchObject({ replayed: true });
+    expect(await targetQualification()).toEqual(before);
+    await target.owner.query(`DELETE FROM ${scope}`);
+    expect(await restore()).toMatchObject({ replayed: true });
+    expect(await targetQualification()).toEqual([]);
     await qualify(target.owner);
     expect(await read(target.owner, f.order)).toEqual(captured);
   } finally { await resources.close(); }

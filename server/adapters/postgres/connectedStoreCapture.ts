@@ -6,7 +6,8 @@ import {
   captureCompatiblePostgresRows, PostgresTransferError,
   type CompatiblePostgresPacket, type CompatiblePostgresSnapshot, type CompatiblePostgresTable,
 } from "@openlup/platform/portability";
-import { connectedStoreOwnedTables as owned } from "./connectedStoreDomains/index.js";
+import { connectedStoreOutsideProfileRelations, connectedStoreOwnedTables as owned,
+  type ConnectedStoreOutsideProfileDisposition } from "./connectedStoreDomains/index.js";
 
 const { catalogPublicationAdmissionRefusal, assertPublishedSkuIdentity, decodePublicationPacket, requireDecodedPublication } = nativeCatalogPublication;
 
@@ -42,14 +43,6 @@ const compatible = [
   "invoicing_effect_receipts", "invoicing_capture_faults",
 ] as const satisfies readonly CompatiblePostgresTable[];
 
-// Single-use authorization state and installation qualification stay local.
-export const connectedNativeStoreCountOnlyRelations: readonly string[] = [
-  "public.customer_identity_challenges",
-  "public.payment_capture_time_test_qualification",
-];
-
-// REBUILDABLE: count only, never transport stale attribute rows as authority.
-const rebuildableRelation = "public.catalog_attribute_projection";
 export const requiredPrivacyDeclarationTable = "identity_privacy_required_contributors";
 
 export async function readPrivacyDeclarationCensus(db: PgQueryExecutor): Promise<readonly string[]> {
@@ -88,7 +81,7 @@ export interface ConnectedNativeStoreCapture {
   observation: { cluster: string; database: string; login: string; snapshot: string };
   emptyOutsideProfile: string[];
   outsideProfileCensus: { relation: string; owner: string; rows: string;
-    disposition: "unsupported-empty" | "new-target-installation-key" | "target-migration-history" | "target-address-references" | "intentionally-not-carried" | "rebuildable" }[];
+    disposition: "unsupported-empty" | ConnectedStoreOutsideProfileDisposition }[];
   sha256: string;
 }
 
@@ -161,28 +154,19 @@ export async function captureConnectedNativeStore(input: {
       for (const relation of relations) {
         if (relation.schema === "public" && (allowed.has(relation.table) || relation.table === requiredPrivacyDeclarationTable)) continue;
         const qualified = `${identifier(relation.schema)}.${identifier(relation.table)}`;
-        if (relation.schema === "acquisition_private" && (relation.table === "installation_key" || relation.table === "address_references")
-          || relation.schema === "public" && relation.table === "platform_schema_migrations"
-          || connectedNativeStoreCountOnlyRelations.includes(`${relation.schema}.${relation.table}`)
-          || `${relation.schema}.${relation.table}` === rebuildableRelation) {
-          // Count/ownership only. Never read, hash or transport installation key
-          // payloads, target-owned address-reference registry rows or any challenge
-          // column. Rebuildable projection contents are also excluded.
-          // Private acquisition business rows below are NOT secrets by
-          // naming convention: nonempty cases/history still refuse capture.
+        const relationName = `${relation.schema}.${relation.table}`;
+        const census = connectedStoreOutsideProfileRelations.get(relationName);
+        if (census) {
+          // Registered outside-profile relations contribute count and ownership only.
           const rows = (await db.query<{ count: string }>(`SELECT count(*)::pg_catalog.text AS count FROM ${qualified}`)).rows[0]!.count;
-          outsideProfileCensus.push({ relation: `${relation.schema}.${relation.table}`, owner: relation.owner, rows,
-            disposition: relation.table === "installation_key" ? "new-target-installation-key"
-              : relation.table === "address_references" ? "target-address-references"
-                : relation.table === "platform_schema_migrations" ? "target-migration-history"
-                  : `${relation.schema}.${relation.table}` === rebuildableRelation ? "rebuildable" : "intentionally-not-carried" });
+          outsideProfileCensus.push({ relation: relationName, owner: relation.owner, rows, disposition: census.disposition });
           continue;
         }
         if ((await db.query(`SELECT 1 FROM ${qualified} LIMIT 1`)).rows.length) {
-          throw new PostgresTransferError("unsupported_table", `${relation.schema}.${relation.table}`);
+          throw new PostgresTransferError("unsupported_table", relationName);
         }
-        emptyOutsideProfile.push(`${relation.schema}.${relation.table}`);
-        outsideProfileCensus.push({ relation: `${relation.schema}.${relation.table}`, owner: relation.owner, rows: "0", disposition: "unsupported-empty" });
+        emptyOutsideProfile.push(relationName);
+        outsideProfileCensus.push({ relation: relationName, owner: relation.owner, rows: "0", disposition: "unsupported-empty" });
       }
       let count = packet.tables.reduce((sum, table) => sum + table.rows.length, 0);
       let bytes = packet.tables.reduce((sum, table) => sum + table.rows.reduce((total, row) => total + Buffer.byteLength(row), 0), 0);

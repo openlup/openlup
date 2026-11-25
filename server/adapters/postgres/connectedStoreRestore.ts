@@ -9,11 +9,12 @@ import { deriveOidcPrincipalId, validateRequiredPrivacyContributorIds } from "@o
 import { evaluatePlatformMigrationManifest, readPlatformMigrationManifest, readPlatformMigrations, selectPlatformMigrationManifest, type PlatformMigrationManifest } from "../../../scripts/platform-migration-manifest.js";
 import { qualifiedAdminPostgresCatalogPayload, qualifiedPostgresCatalogPayload,
   assertQualifiedAdminPostgresSelection, type QualifiedAdminPostgresInstallation, type QualifiedPostgresInstallation } from "./qualifiedInstall.js";
-import { assertConnectedCatalogPublications, connectedNativeStoreCountOnlyRelations, connectedNativeStoreTables,
+import { assertConnectedCatalogPublications, connectedNativeStoreTables,
   connectedStoreClusterIdentitySql, connectedStoreRowSource, readPrivacyDeclarationCensus,
   requiredPrivacyDeclarationTable, type ConnectedNativeStoreCapture } from "./connectedStoreCapture.js";
 import {
   connectedStoreAllowedInsertTriggers,
+  connectedStoreOutsideProfileRelations,
   connectedStoreRestoreOrder,
   connectedStoreSettingsTables,
 } from "./connectedStoreDomains/index.js";
@@ -538,11 +539,7 @@ function copyCapture(input: ConnectedNativeStoreCapture, shape: SourceShape = "c
         || Object.keys(entry).sort().join("\0") !== "disposition\0owner\0relation\0rows"
         || typeof entry.relation !== "string" || !entry.relation || typeof entry.owner !== "string" || !entry.owner
         || typeof entry.rows !== "string" || !entry.rows || /[^0-9]/.test(entry.rows)) fail("invalid_input");
-      const disposition = entry.relation === "acquisition_private.installation_key" ? "new-target-installation-key"
-        : entry.relation === "public.platform_schema_migrations" ? "target-migration-history"
-          : entry.relation === "acquisition_private.address_references" ? "target-address-references"
-            : connectedNativeStoreCountOnlyRelations.includes(entry.relation) ? "intentionally-not-carried"
-              : entry.relation === "public.catalog_attribute_projection" ? "rebuildable" : "unsupported-empty";
+      const disposition = connectedStoreOutsideProfileRelations.get(entry.relation)?.disposition ?? "unsupported-empty";
       if (entry.disposition !== disposition || disposition === "unsupported-empty" && entry.rows !== "0") fail("invalid_input");
     }
     if (shape === "unsupported") refuseSourceSchema();
@@ -630,8 +627,8 @@ async function equalCensus(client: PoolClient, expected: Map<TableName, Rows>): 
 async function assertOutsideEmpty(client: PoolClient, relations: readonly { schema: string; table: string }[]): Promise<void> {
   const outside = relations.filter(relation =>
     !(relation.schema === "public" && (connectedNativeStoreTables.includes(relation.table as TableName)
-      || relation.table === "platform_schema_migrations" || relation.table === requiredPrivacyDeclarationTable))
-    && !(relation.schema === "acquisition_private" && (relation.table === "installation_key" || relation.table === "address_references")));
+      || relation.table === requiredPrivacyDeclarationTable))
+    && !connectedStoreOutsideProfileRelations.get(`${relation.schema}.${relation.table}`)?.preserveTarget);
   for (let start = 0; start < outside.length; start += existsCheckBatchSize) {
     const batch = outside.slice(start, start + existsCheckBatchSize);
     const probes = batch.map((relation, index) =>
