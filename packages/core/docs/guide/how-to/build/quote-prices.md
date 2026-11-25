@@ -182,6 +182,38 @@ identity. Redemption counts group by promotion identifier and do not combine
 related promotion families. Treat these reads as advisory; a false device
 result does not establish first-order eligibility.
 
+## Compose native quotes on the server
+
+Bind the experimental quote port in a native app after installing and
+inspecting the qualified payment rail. Use the same privacy contributor registry
+as the app's privacy handlers, including during issuance rollback. Bind the
+destination port and a restricted tax transaction lane. The host supplies a
+basis-aware plan for the ordered basket, its delivery and catalogue evidence,
+the selected rail and bounds, and the applicable fiscal profile or tax adapter.
+
+```js
+import { bindCommerceMoneyLimitsV2Reader, createDbBackedCommerceQuotePortV2 } from "@openlup/platform/commerce/server";
+
+export function bindNativeQuotes({ runtime, ...bindings }) {
+  return createDbBackedCommerceQuotePortV2({
+    ...bindings,
+    readLimits: rail => bindCommerceMoneyLimitsV2Reader(runtime, rail)(),
+  });
+}
+```
+
+Call `createQuote` with the trusted linked customer and checkout scope. Reuse the
+same key and invocation to read the original evaluation. A pending result directs
+you to read that evaluation again. Only a qualified adapter can recover an
+interrupted exclusive calculation. A historical quote retains its sealed terms.
+
+For `destination_contact_incomplete` at `/destination/contact`, collect the
+recipient name and phone, then issue a new destination snapshot. This applies to
+physical delivery even when shipping is free. If the destination has expired,
+issue a fresh snapshot and use a new quote key. If verified payment limits
+exclude the payable, choose a supported amount within the returned range and
+request a fresh quote.
+
 ## Install and inspect payment limits
 
 This experimental setting is available on native PostgreSQL after applying the
@@ -253,35 +285,3 @@ the inactive revision as the expectation. On conflict, inspect the owner
 revision and resubmit deliberately. If no tuple exists, retry the initial
 insert. For an exhausted revision, have the installation owner qualify a
 replacement rail. Sealed quotes keep their original terms.
-
-## Compose native quotes on the server
-
-Bind the experimental quote port in a native app after installing and
-inspecting the qualified payment rail. Use the same privacy contributor registry
-as the app's privacy handlers, including during issuance rollback. Bind the
-destination port and a restricted tax transaction lane. The host supplies a
-basis-aware plan for the ordered basket, its delivery and catalogue evidence,
-the selected rail and bounds, and the applicable fiscal profile or tax adapter.
-
-```js
-import { bindCommerceMoneyLimitsV2Reader, createDbBackedCommerceQuotePortV2 } from "@openlup/platform/commerce/server";
-
-export function bindNativeQuotes({ runtime, ...bindings }) {
-  return createDbBackedCommerceQuotePortV2({
-    ...bindings,
-    readLimits: rail => bindCommerceMoneyLimitsV2Reader(runtime, rail)(),
-  });
-}
-```
-
-Call `createQuote` with the trusted linked customer and checkout scope. Reuse the
-same key and invocation to read the original evaluation. A pending result directs
-you to read that evaluation again. Only a qualified adapter can recover an
-interrupted exclusive calculation. A historical quote retains its sealed terms.
-
-For `destination_contact_incomplete` at `/destination/contact`, collect the
-recipient name and phone, then issue a new destination snapshot. This applies to
-physical delivery even when shipping is free. If the destination has expired,
-issue a fresh snapshot and use a new quote key. If verified payment limits
-exclude the payable, choose a supported amount within the returned range and
-request a fresh quote.
