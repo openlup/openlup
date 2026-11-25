@@ -526,6 +526,13 @@ quote and draft by line position and checks the claimed gross base and D2C
 policy against their shared market and effective windows. Lines without this
 claim keep the existing stored-price selection and tier order.
 
+A base closed by a price-writer replacement still verifies a purchase inside
+its closed interval when a same-key successor starts at the closing instant.
+Historical verification requires that instant to be at or before the lookup
+transaction’s millisecond floor, and draft writers continue to require an
+active base. A base closed without that successor stays unverifiable for
+historical purchases.
+
 The writer uses PostgreSQL transaction time. The host quote's `atTime` records
 when it was priced. If the host and database clocks straddle a price or policy
 boundary, the claim can refuse until both clocks have crossed it. An
