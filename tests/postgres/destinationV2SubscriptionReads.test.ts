@@ -7,7 +7,7 @@ import { canonicalCatalogDraftJson } from "@openlup/platform/catalog";
 import { createPostgresDestinationPortV2, type DestinationBindingV2, type DestinationContextV2 } from "@openlup/platform/commerce/server/destinations";
 import { DatabaseError, type Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { readPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
+import { readPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 import { journeyCensus, journeySelection, storeJourneyResources, type JourneyInstallation } from "../helpers/storeJourney.js";
 import { installAccountMutations } from "./customerAccountMutations.fixture.js";
@@ -32,19 +32,20 @@ const read = (db: Db, ctx: DestinationContextV2, binding: unknown = null) =>
 const service = testServicePin;
 type Pins = { binding: DestinationBindingV2; selectionRevision: string; service: typeof service };
 
-async function subject(owner = store.owner): Promise<DestinationContextV2> {
+async function subject(owner = store.owner) {
   const ctx = await destinationContext(owner);
   await owner.query(`INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at,status,template_version)
     VALUES($1,$2,28,clock_timestamp()+interval '28 days','active',7)`, [ctx.scopeRef, ctx.clientId]);
-  return { ...ctx, owner: { ...ctx.owner, principalKind: "customer" } };
+  return { ...ctx, owner: { ...ctx.owner, principalKind: "customer" as const } };
 }
+type Subject = Awaited<ReturnType<typeof subject>>;
 async function activation(ctx: DestinationContextV2, order: string, clientId = ctx.clientId) {
   return result(store.owner, `INSERT INTO public.subscription_activations
     (order_id,client_id,subscription_id,cadence_days,state,payment_fingerprint,activation_idempotency_key,declare_idempotency_key,activated_at)
     VALUES($1,$2,$3,28,'active',repeat('a',64),$4,$5,clock_timestamp()) RETURNING id AS result`,
   [order, clientId, ctx.scopeRef, randomUUID(), randomUUID()]);
 }
-async function inherited(ctx: DestinationContextV2) {
+async function inherited(ctx: Subject) {
   const checkout = { ...ctx, scopeRef: randomUUID() };
   const issued = await snapshot(store.runtime, checkout);
   const order = await bindDestinationOrder(store.owner, checkout, issued);
@@ -320,7 +321,7 @@ it("preserves effective attributes, denies private calls and closes function and
 it("upgrades the actual ordered predecessor prefix while keeping read and recheck ACLs and edit denial", async () => {
   const root = mkdtempSync(join(tmpdir(), "subscription-destination-prefix-"));
   try {
-    const manifest = readPlatformMigrationManifest(process.cwd());
+    const manifest = readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest | null;
     if (manifest?.schemaVersion !== 3) throw new Error("Expected a complete platform migration manifest");
     for (const plan of [manifest, manifest.qualified, manifest.qualifiedAdmin]) {
       const boundary = plan.forward.findIndex(unit => unit.file === forward);
