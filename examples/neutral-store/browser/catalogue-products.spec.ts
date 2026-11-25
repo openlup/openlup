@@ -20,6 +20,7 @@ import { quoteCopy } from '../owned/quote-copy.ts';
 import { configurations } from '../owned/store.config.ts';
 import { productPath, routes } from '../shared/routes.ts';
 import type { StarterCatalogueItem } from '../shared/catalogue-products.ts';
+import type { OfferQuote } from '../shared/offer.ts';
 
 const slug = 'published-article';
 const title = 'Published article';
@@ -48,9 +49,12 @@ function assertSelection(body: unknown, wanted: Selection): StarterCatalogueItem
   return product;
 }
 
-function assertQuote(body: { ok: boolean; value: { currency: string; lines: unknown } }, wanted: Selection) {
+function assertQuote(body: { ok: boolean; value: OfferQuote }, wanted: Selection) {
   assert.equal(body.ok, true);
   assert.equal(body.value.currency, currency);
+  assert.equal(body.value.mode, 'one_time');
+  assert.equal(body.value.subtotalMinor, wanted.price);
+  assert.equal(body.value.discountMinor, 0);
   assert.deepEqual(body.value.lines, [{ sku: wanted.sku, quantity: 1, baseUnitMinor: wanted.price,
     unitMinor: wanted.price, lineMinor: wanted.price }]);
 }
@@ -282,20 +286,18 @@ for (const width of [320, 1280]) {
     await expect(page.locator('.product-detail img')).toHaveCount(0);
     const money = new Intl.NumberFormat(locale, { style: 'currency', currency }).format(wanted.price / 100);
     await expect(page.locator('.product-detail .price')).toHaveText(money);
-    await page.getByRole('spinbutton').fill(String(item.minQuantity));
+    await expect(page.getByRole('spinbutton')).toHaveValue(String(item.minQuantity));
     await page.locator('.product-detail button').click();
-    await page.goto(base + routes.cart[locale]);
+    // A fresh cart document reads the saved selection and requests its native quote.
+    const [quoted] = await Promise.all([
+      page.waitForResponse(response => response.url().endsWith('/api/actions/offer.validate')
+        && response.request().postDataJSON().cart.lines[0].sku === wanted.sku),
+      page.goto(base + routes.cart[locale]),
+    ]);
     await expect(page.getByRole('heading', { name: wanted.title + ' · ' + wanted.sku })).toBeVisible();
     await expect(page.getByRole('spinbutton')).toHaveValue(String(item.minQuantity));
     const summary = page.getByRole('complementary', { name: copy[locale].boxSummary });
-    // Settle the first cart quote before arming the listener for the reload.
-    await expect(summary).toContainText(money);
-    const quoted = page.waitForResponse(response => response.url().endsWith('/api/actions/offer.validate')
-      && response.request().postDataJSON().cart.lines[0].sku === wanted.sku);
-    await page.reload();
-    await expect(page.getByRole('heading', { name: wanted.title + ' · ' + wanted.sku })).toBeVisible();
-    const quote = await (await quoted).json();
-    assertQuote(quote, wanted);
+    assertQuote(await quoted.json(), wanted);
     await expect(summary).toContainText(money);
 
     if (width === 320) return;
