@@ -230,7 +230,15 @@ test('one-time quote refresh refusal clears consent without retiring the command
 });
 
 for (const code of ['starter_expected_total_required', 'starter_quote_price_changed']) {
-  test(`a stale definitive ${code} retires the exact uncertain retry and refreshes review`, async t => {
+  test(`a definitive ${code} refreshes review without retiring the command`, async t => {
+    const { controller, consent, requests } = await fixture(t, { initial: oneTime });
+    consent.checked = true;
+    controller.refused(code, () => assert.fail('A refusal that wrote nothing keeps the key'));
+    assert.equal(consent.checked, false);
+    assert.ok(requests.at(-1)!.url.endsWith('offer.validate'));
+  });
+
+  test(`a stale definitive ${code} keeps the key of the exact uncertain retry and refreshes review`, async t => {
     const { consent, editEmail, reply, requests, submit } = await fixture(t, { initial: oneTime, integrated: true });
     await submit();
     editEmail('another@example.test');
@@ -268,7 +276,8 @@ for (const code of ['starter_expected_total_required', 'starter_quote_price_chan
     const renewed = requests.at(-1)!;
     assert.ok(renewed.url.endsWith('checkout.create'));
     assert.equal(renewed.body, requests[1]!.body);
-    assert.notEqual(renewed.key, requests[1]!.key);
+    // The refusal wrote nothing, so the reconfirmed create keeps the purchase's key.
+    assert.equal(renewed.key, requests[1]!.key);
     renewed.resolve(Response.json({ ok: true, value: null }));
   });
 }
