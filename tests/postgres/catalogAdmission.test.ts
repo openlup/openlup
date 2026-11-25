@@ -894,3 +894,36 @@ it("keeps rounding parity with quote and preview amounts and readiness signs", a
     await owner.query("UPDATE public.commerce_settings SET value_text='XXX' WHERE key='settlement_currency'");
   }
 });
+
+it("appends governed draft finality in place and preserves the installed runtime boundary", async () => {
+  const forward = "db/platform/migrations/20261128220000_catalog_governed_draft_owner.sql";
+  const prefix = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as PlatformMigrationManifest;
+  if (prefix.schemaVersion !== 3) throw new Error("Expected the complete platform migration catalogue");
+  for (const plan of [prefix, prefix.qualified, prefix.qualifiedAdmin]) {
+    const start = plan.forward.findIndex(unit => unit.file === forward);
+    expect(start).toBeGreaterThan(0);
+    plan.forward = plan.forward.slice(0, start);
+  }
+  const store = await withPlatformCatalog(prefix, root => installAccountMutations("bootstrap", true, "governed-draft", root));
+  const final = "public.catalog_order_acceptance_final(uuid)";
+  const dispatch = "public.catalog_admission_runtime_checkout(text,text,uuid,jsonb)";
+  const fingerprints = async () => (await store.owner.query(`SELECT oid,proname,proowner,prosecdef,proconfig,provolatile,proacl::text
+    FROM pg_proc WHERE oid=ANY($1::regprocedure[]) ORDER BY proname`, [[final, dispatch]])).rows;
+  try {
+    const before = await fingerprints();
+    const legacy = (await store.owner.query("INSERT INTO public.commerce_orders(status,currency_code,total_amount_minor) VALUES('pending_payment','XTS',0) RETURNING id")).rows[0]!.id;
+    expect((await store.runner.apply()).applied.slice(0, 1)).toEqual([forward]);
+    expect(await fingerprints()).toEqual(before);
+    expect((await store.owner.query("SELECT metadata ? 'catalogAdmissionOwnerOrigin' AS stamped FROM public.commerce_orders WHERE id=$1", [legacy])).rows)
+      .toEqual([{ stamped: false }]);
+    const privileges = (await store.owner.query(`SELECT p.proconfig,p.prosecdef,p.proowner=t.relowner AS table_owner,
+      has_function_privilege('service_role',p.oid,'EXECUTE') AS runtime,
+      has_function_privilege(0::oid,p.oid,'EXECUTE') AS public
+      FROM pg_proc p CROSS JOIN pg_class t WHERE p.oid=$1::regprocedure AND t.oid='public.commerce_orders'::regclass`,
+    ["public.catalog_admission_write_governed_draft(text,uuid,jsonb)"])).rows;
+    expect(privileges).toEqual([{ proconfig: ["search_path=pg_catalog, pg_temp"], prosecdef: false,
+      table_owner: true, runtime: false, public: false }]);
+    await expect(store.runtime.query("SELECT public.catalog_admission_runtime_checkout('write',$1,NULL,'{}')", [randomUUID()]))
+      .rejects.toMatchObject(closed);
+  } finally { await store.close(); }
+}, postgresSetupTimeoutMs);

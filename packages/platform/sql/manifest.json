@@ -870,9 +870,13 @@
       {
         "file": "db/platform/migrations/20261128030000_fulfillment_destination_v2_legacy_ledger_fence.sql",
         "sha256": "47c1163855d8fc24e3040a3971db4e00f1be9299ff6d968e5abe522567040ddb"
+      },
+      {
+        "file": "db/platform/migrations/20261128220000_catalog_governed_draft_owner.sql",
+        "sha256": "027965748d91681fab00651bf2b4b2e388be3758717ef7c61b45f4476278d6fe"
       }
     ],
-    "objectInventorySha256": "8a56e73bce2f7892da18ea42b8f74a9f2832e4e07647077dde29a1c8217da46f",
+    "objectInventorySha256": "7f4659f31ce3053a15245d84277d507914808df6ae4270a36c5d5230486c078a",
     "qualified": {
       "baseline": {
         "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1766,14 +1770,18 @@
         {
           "file": "db/platform/migrations/20261128030000_fulfillment_destination_v2_legacy_ledger_fence.sql",
           "sha256": "47c1163855d8fc24e3040a3971db4e00f1be9299ff6d968e5abe522567040ddb"
+        },
+        {
+          "file": "db/platform/migrations/20261128220000_catalog_governed_draft_owner.sql",
+          "sha256": "027965748d91681fab00651bf2b4b2e388be3758717ef7c61b45f4476278d6fe"
         }
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "f0fb77762e832f9ef629e5c9e4b87f5a07f6794d391150b739577cb836c93755"
+          "withRestore": "92638b7fe1e531480348f7a25d14fc17239c25e0171bca1bf34c4932dc9d91c4"
         },
         "separateMigrator": {
-          "withRestore": "1b0b59a32b3d94bff456fe4ff93246b92279885ea314f4b8be799709fb272c68"
+          "withRestore": "4f9821f3644552cce3c57f46b2077c87a919e73f4bfc272266dcbcbbd753a9a8"
         }
       }
     },
@@ -2662,11 +2670,15 @@
         {
           "file": "db/platform/migrations/20261128030000_fulfillment_destination_v2_legacy_ledger_fence.sql",
           "sha256": "47c1163855d8fc24e3040a3971db4e00f1be9299ff6d968e5abe522567040ddb"
+        },
+        {
+          "file": "db/platform/migrations/20261128220000_catalog_governed_draft_owner.sql",
+          "sha256": "027965748d91681fab00651bf2b4b2e388be3758717ef7c61b45f4476278d6fe"
         }
       ],
       "objectInventorySha256": {
-        "installerManaged": "8feebb3a7d6f07f6aa1a594d2b7186ac2ba403828982cbf08eca91fc2eb3b85c",
-        "operatorProvisioned": "6038c18966dffbeeb5968681d962f276e992b50ebc3f50af3bb6cf44a224c272"
+        "installerManaged": "456bb9a8d04280a3b18ca2444001190dd7d897c30b0a4eaf2470738ca63a5314",
+        "operatorProvisioned": "99a726e48b6164df6c106551ae5966543342cce85972d395157abef0009b1e9d"
       }
     }
   },
@@ -3755,6 +3767,11 @@
       "file": "20261128030000_fulfillment_destination_v2_legacy_ledger_fence.sql",
       "source": "db/platform/migrations/20261128030000_fulfillment_destination_v2_legacy_ledger_fence.sql",
       "sha256": "47c1163855d8fc24e3040a3971db4e00f1be9299ff6d968e5abe522567040ddb"
+    },
+    {
+      "file": "20261128220000_catalog_governed_draft_owner.sql",
+      "source": "db/platform/migrations/20261128220000_catalog_governed_draft_owner.sql",
+      "sha256": "027965748d91681fab00651bf2b4b2e388be3758717ef7c61b45f4476278d6fe"
     },
     {
       "file": "q2_00000000000000_platform_baseline.sql",

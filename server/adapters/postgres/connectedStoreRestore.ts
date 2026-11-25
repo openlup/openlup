@@ -309,12 +309,14 @@ const order = [
  * writer/dispatcher. A supplied capture binds expected data; it does not certify
  * that host prerequisite. No user route, role grant or target activation exists.
  * Source and target must use the same current qualified inventory.
+ * For owner-stamped drafts the host must obtain the source digest independently.
  */
 export async function restoreConnectedNativeStore(input: {
   owner: Pool;
   installation: QualifiedPostgresInstallation | QualifiedAdminPostgresInstallation;
   packet: ConnectedNativeStoreCapture;
   freshTarget: ConnectedNativeStoreCapture;
+  trustedSourceCaptureSha256?: string;
 }): Promise<{ captureSha256: string; replayed: boolean; neutralizedHistoricalHoldNotifications: number }> {
   const installation = structuredClone(input.installation);
   if (installation?.generation !== "qualified-admin"
@@ -325,6 +327,11 @@ export async function restoreConnectedNativeStore(input: {
   const manifest = expectedManifest(installation);
   const shape = connectedStoreSourceShape(profile, input.packet?.compatible?.catalogueId, manifest.objectInventorySha256);
   const packet = copyCapture(input.packet, shape), fresh = copyCapture(input.freshTarget);
+  if (tables(packet).get("commerce_orders")!.rows.some(row => {
+    const { metadata } = JSON.parse(row) as { metadata: unknown };
+    return metadata !== null && typeof metadata === "object" && Object.hasOwn(metadata, "catalogAdmissionOwnerOrigin");
+  }) && (typeof input.trustedSourceCaptureSha256 !== "string" || !/^[0-9a-f]{64}$/u.test(input.trustedSourceCaptureSha256)
+    || input.trustedSourceCaptureSha256 !== packet.sha256)) fail("invalid_input");
   if (packet.observation.cluster === fresh.observation.cluster
     && packet.observation.database === fresh.observation.database) fail("invalid_input");
   const source = tables(packet), baseline = tables(fresh);
@@ -555,6 +562,14 @@ export async function restoreConnectedNativeStore(input: {
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);
     if (error instanceof PostgresTransferError) throw error;
+    const sql = error as { code?: unknown; message?: unknown } | null;
+    if ((sql?.code === "22023" && ["catalog_acceptance_invalid", "catalog_acceptance_snapshot_mismatch",
+      "catalog_acceptance_receipt_mismatch", "catalog_acceptance_line_mismatch"].some(message => message === sql.message))
+      || (sql?.code === "55000" && sql.message === "catalog_acceptance_immutable")) {
+      throw Object.assign(new PostgresTransferError("target_conflict"), {
+        remedy: "Ask the source installation owner to verify the stamped draft and its companions, then recapture the source and retry on the verified target.",
+      });
+    }
     const refusal = catalogPublicationAdmissionRefusal(error);
     if (refusal) throw Object.assign(new PostgresTransferError("target_conflict"), { cause: refusal });
     if (typeof (error as { code?: unknown })?.code === "string" && /^23/.test((error as { code: string }).code)) fail("target_conflict");
