@@ -1802,6 +1802,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/host/catalogue-readiness-jobs.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/host/catalogue-storefront.ts",
       "class": "public-output"
     },
@@ -22722,6 +22726,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/checkout/machine/checkoutAmbiguousSubmit.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "src/checkout/machine/checkoutAmbiguousSubmit.ts",
       "class": "public-output"
     },
@@ -22759,6 +22767,10 @@
     },
     {
       "path": "src/checkout/machine/checkoutNavigation.accountReturn.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/checkout/machine/checkoutNavigation.continuation.test.ts",
       "class": "public-output"
     },
     {

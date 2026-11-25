@@ -13,10 +13,12 @@ import { isValidGtin } from "./foundationSchemas.js";
 import { readPublicationDraftRecord } from "./publicationIntent.js";
 import type { parseCatalogCandidateReference } from "./candidateService.js";
 import type { compileCatalogPublication } from "./publicationValidation.js";
-import { CatalogPublicationError, publicationIssue, publicationPriceRefusalReason, refusePublicationCommand, publicationRemedy,
+import { CatalogPublicationError, publicationIssue, publicationPriceRefusalReason, refusePublicationCommand,
+  refusePublicationReadiness, publicationRemedy,
   type AdmissionDiagnostic } from "./publicationError.js";
 import { assertPublishedSkuIdentity } from "./publicationSkuIdentity.js";
-import { canonicalCatalogPriceSetupCommand, catalogPriceSetupApplyResultSchema } from "../pricing/index.js";
+import { canonicalCatalogPriceSetupCommand, catalogPriceSetupApplyResultSchema,
+  CATALOG_PRICE_SETUP_HARD_REFUSALS, catalogPriceSetupRefusal } from "../pricing/index.js";
 
 type Plan = Awaited<ReturnType<typeof compileCatalogPublication>>;
 type Reference = NonNullable<ReturnType<typeof parseCatalogCandidateReference>>;
@@ -26,6 +28,16 @@ function requireProjection(condition: unknown, code: AdmissionDiagnostic,
   if (!condition) refusePublicationCommand(code, outcome);
 }
 const same = (a: unknown, b: unknown) => publicationJson(a) === publicationJson(b);
+
+function decodePublicationReadinessRefusal(error: unknown, bundled: boolean): void {
+  if (!error || typeof error !== "object" || !("code" in error) || error.code !== "55000" || !("message" in error)) return;
+  if (CATALOG_PRICE_SETUP_HARD_REFUSALS.some(reason => error.message === `catalog_price_setup_${reason}`)) {
+    refusePublicationReadiness([catalogPriceSetupRefusal(error).reason], true);
+  }
+  if (bundled && error.message === "catalog_price_setup_readiness_would_fail") {
+    refusePublicationReadiness(catalogPriceSetupRefusal(error).reasons);
+  }
+}
 
 export async function readNativeDraftEvidence(db: PgQueryExecutor, reference: Reference) {
   const current = readPublicationDraftRecord((await db.query("SELECT public.catalog_draft_record($1,$2) AS record",
@@ -256,7 +268,7 @@ async function assertSkuPrices(db: PgQueryExecutor, priced: CatalogPublishedSku[
   const codes = new Map<unknown, string>(priced.map(sku => [sku.id, sku.code]));
   for (const row of rows) {
     requireProjection(row.list_id, "price_list_not_active", "validation_issue");
-    requireProjection(row.list_id === reservedList, "catalog_publication_price_readiness", "validation_issue");
+    if (row.list_id !== reservedList) refusePublicationReadiness(["effective_price_list_changed"]);
     if (row.ready && !row.invalid_shape) continue;
     const code = row.ready ? "catalog_publication_sku_price_shape_invalid" : "catalog_publication_sku_price_not_ready";
     throw new CatalogPublicationError(publicationIssue(code, "activation", "skus", codes.get(row.id)));
@@ -460,13 +472,16 @@ export async function stagePublication(db: PgQueryExecutor, previous: Awaited<Re
     if (error instanceof CatalogPublicationError) throw error;
     const sql = error as { message?: string } | null;
     if (sql?.message === "catalog_price_setup_expected_state_mismatch") refusePublicationCommand("catalog_publication_price_changed", "conflict");
-    if (sql?.message === "catalog_price_setup_readiness_would_fail") refusePublicationCommand("catalog_publication_price_readiness", "validation_issue");
+    decodePublicationReadinessRefusal(error, true);
     throw error;
   }
   await assertSkuPrices(db, priced, restricted ? await lockPriceContexts(db, plan.priceOperations, priced) : listId);
   if (plan.activating || priced.length) {
-    const { rows } = await db.query("SELECT public.commerce_offer_policy_v2_readiness() AS result");
-    const result = rows[0]?.result as { ready?: boolean } | undefined;
-    requireProjection(result?.ready === true, "catalog_publication_price_readiness", "validation_issue");
+    const { rows } = await db.query("SELECT public.commerce_offer_policy_v2_readiness() AS result").catch(error => {
+      decodePublicationReadinessRefusal(error, false);
+      throw error;
+    });
+    const result = rows[0]?.result as { ready?: boolean; reasons?: unknown } | undefined;
+    if (result?.ready !== true) refusePublicationReadiness(result?.reasons);
   }
 }

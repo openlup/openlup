@@ -366,7 +366,7 @@ describe("CI image mirror workflow controls", () => {
     // run forms; shell allowlists cannot prove that candidate code stays inert.
     // Canonical workflow keys precede jobs, so this also seals inherited env,
     // permissions, triggers and concurrency. Defaults are refused above.
-    expect(createHash("sha256").update(source.split("\njobs:\n")[0]! + writer).digest("hex")).toBe("e2f36008bb459cf6d3320924331e2432881b7c0f3be13bf134213df0699bb61f");
+    expect(createHash("sha256").update(source.split("\njobs:\n")[0]! + writer).digest("hex")).toBe("1f4fb541901e45cf07c0b2822bb3690905b89a4aba3a6d267ee924efa3cb554e");
   };
   it("publishes only successful qualification data without executing candidate code", () => assertPublisherControls(qualification));
   it.each([
@@ -613,7 +613,7 @@ describe("complete public CI", () => {
     expect(workflowJob("test").split("\n").find(line => line.startsWith("    if:"))).toBe(eventFence.replace("${{ ", "${{ always() && "));
     expect(shard).toContain("    strategy:\n      fail-fast: ${{ github.event_name == 'merge_group' }}\n      max-parallel: 8\n      matrix:\n        shard: [1, 2, 3, 4, 5, 6, 7, 8]\n");
     expect(shard).not.toMatch(/include:|exclude:|continue-on-error|--(?:maxWorkers|pool|retry|testTimeout|hookTimeout|bail)/u);
-    expect(shard).toContain("    runs-on: ubuntu-latest\n    timeout-minutes: 25\n");
+    expect(shard).toContain("    runs-on: ubuntu-latest\n    timeout-minutes: 35\n");
     expect(shard).toContain("          fetch-depth: 0\n");
     expect(shard).toContain("          cache: npm\n");
     expect(shard).toContain("uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c");
@@ -693,7 +693,7 @@ describe("complete public CI", () => {
     for (const name of ["install-pack", "test-prep", "pgtap"]) expect(workflowJob(name)).toContain("    needs: [reuse-gate]\n");
     for (const name of ["install-packages", "install-browser"]) expect(workflowJob(name)).toContain("    needs: [install-pack]\n");
     expect(workflowJob("test-full-shard")).toContain("    needs: [reuse-gate, test-prep]\n");
-    for (const [name, timeoutMinutes] of [["install-pack", 5], ["install-packages", 12], ["install-browser", 12], ["test-prep", 10], ["test-full-shard", 25]] as const) {
+    for (const [name, timeoutMinutes] of [["install-pack", 5], ["install-packages", 20], ["install-browser", 12], ["test-prep", 10], ["test-full-shard", 35]] as const) {
       const job = workflowJob(name);
       expect(job).toContain(`    runs-on: ubuntu-latest\n    timeout-minutes: ${timeoutMinutes}\n`);
       expect(job).toContain("      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\n        with:\n          persist-credentials: false\n");

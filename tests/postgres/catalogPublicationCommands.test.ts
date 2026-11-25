@@ -794,8 +794,8 @@ describe("publication activation prices", () => {
   });
 
   async function approvedActivation(sequence: number, isAddon: boolean, missing?: "logistics" | "purchase mode",
-    { grams = 100, governed = false, db = pool, internalIdentifier }: {
-      grams?: number; governed?: boolean; db?: Pool; internalIdentifier?: DraftIdentifier;
+    { grams = 100, governed = false, db = pool, internalIdentifier, bundledPrice = false }: {
+      grams?: number; governed?: boolean; db?: Pool; internalIdentifier?: DraftIdentifier; bundledPrice?: boolean;
     } = {}) {
     const data = authored(sequence, internalIdentifier), api = native(undefined, db), who = (await api.authorize(actor))!;
     const sku = data.payload.skus[0]!;
@@ -828,6 +828,9 @@ describe("publication activation prices", () => {
     if (!("receipt" in issue) || !("head" in issue.receipt)) throw new Error(JSON.stringify(issue));
 
     const payload = structuredClone(draft);
+    if (bundledPrice) payload.skus[0]!.priceOperations = [{ schemaVersion: 1, commandKey: randomUUID(), variantId: data.skuId,
+      priceListId: listId, mode: "one_time", minQty: 1, amountKind: "gross", unitPriceMinor: 1000,
+      expected: { entryId: null, unitPriceMinor: null } }];
     const membership = { skuCode: data.code, admitted: true, offerVersion: "example:open" };
     const content = payload.product.sharedContent;
     content.catalogAction = "revise";
@@ -859,6 +862,79 @@ describe("publication activation prices", () => {
     } as const : next.publish;
     return { ...data, api, who, command, head: issue.receipt.head };
   }
+
+  it("projects only recognized readiness evidence and rolls back the staged Publish until exact retry", async () => {
+    const { command, productId, skuId, head } = await approvedActivation(71, false, undefined, { bundledPrice: true });
+    let inject: (sql: string, result: Awaited<ReturnType<PgQueryExecutor["query"]>>) => Awaited<ReturnType<PgQueryExecutor["query"]>>;
+    const api = native(async (db, sql, args) => inject(sql, await db.query(sql, args)));
+    const who = (await api.authorize(actor))!;
+    const probe = (sql: string) => sql.startsWith("SELECT public.commerce_offer_policy_v2_readiness()");
+    const writer = (sql: string) => sql.startsWith("SELECT public.catalog_price_setup_apply_claimed");
+    const project = (sql: string) => sql.includes("list.id AS list_id, price.invalid_shape");
+    const remedies: Record<string, string> = {
+      bundle_5_policy_invalid: "Fix: Restore exactly one qualifying automatic one-time bundle with the promotion owner.",
+      promotion_claim_sweep_not_ready: "Fix: Ask the operations owner to enable the promotion claim sweep and verify its configured driver can run it. Recheck: Wait for the next run or have the owner trigger one. Verify successful evidence from the past 15 minutes.",
+      promotion_watchdog_not_ready: "Fix: Ask the operations owner to enable the watchdog, verify its operations principal is active, and resolve any enabled failed jobs. Recheck: Wait for the next run or have the owner trigger one. Verify a healthy, successful watchdog run from the past six hours.",
+    };
+    const refuse = async (subject: string, hard = false) => {
+      const result = await api.execute(command, who);
+      expect(result).toEqual({ outcome: hard ? "dependency_unavailable" : "validation_issue",
+        reason: hard ? "publication_authority_unavailable" : "publication_price_readiness", path: "pricing.readiness", subject,
+        message: expect.stringMatching(/^Observed: .+ Cause: .+ Fix: .+ Recheck: .+$/u) });
+      expect(JSON.stringify(result)).not.toContain("unapproved_input");
+      if (Object.hasOwn(remedies, subject)) expect(result).toHaveProperty("message", expect.stringContaining(remedies[subject]!));
+      expect((await pool.query("SELECT publication_id FROM public.catalog_publication_heads WHERE product_id=$1", [productId])).rows)
+        .toEqual([{ publication_id: head.publicationId }]);
+      expect((await pool.query("SELECT id FROM public.price_entries WHERE variant_id=$1", [skuId])).rows).toEqual([]);
+    };
+    inject = (sql, result) => project(sql) ? { rows: result.rows.map(row => ({ ...row, list_id: randomUUID() })) } : result;
+    await refuse("effective_price_list_changed");
+    inject = (sql, result) => project(sql) ? { rows: result.rows.map(row => ({ ...row, list_id: null })) } : result;
+    expect(await api.execute(command, who)).toMatchObject({ reason: "price_list_not_active" });
+    const raise = (site: typeof probe, code: string, message: string, detail?: string) => {
+      inject = (sql, result) => {
+        if (site(sql)) throw Object.assign(new Error(message), { code, detail });
+        return result;
+      };
+    };
+    for (const reason of pricing.CATALOG_PRICE_SETUP_HARD_REFUSALS) {
+      for (const site of [probe, writer]) {
+        raise(site, "55000", "catalog_price_setup_" + reason, "unapproved_input");
+        await refuse(reason, true);
+      }
+    }
+    for (const reason of ["first_subscription_pair_invalid", "first_subscription_mirror_not_ready", "bundle_5_policy_invalid",
+      "catalog_1490_legacy_1340_invalid", "promotion_claim_sweep_not_ready", "promotion_watchdog_not_ready",
+      "legacy_frozen_records_invalid", "automatic_v2_money_invalid"]) {
+      inject = (sql, result) => probe(sql) ? { rows: [{ result: { ready: false, reasons: ["unapproved_input", reason] } }] } : result;
+      await refuse(reason);
+    }
+    inject = (sql, result) => probe(sql) ? { rows: [{ result: { ready: false, reasons: Array(33).fill("bundle_5_policy_invalid") } }] } : result;
+    await refuse("readiness_unverified");
+    inject = (sql, result) => probe(sql) ? { rows: [] } : result;
+    await refuse("readiness_unverified");
+    raise(writer, "55000", "catalog_price_setup_readiness_would_fail", '["unapproved_input","bundle_5_policy_invalid"]');
+    await refuse("bundle_5_policy_invalid");
+    raise(writer, "55000", "catalog_price_setup_readiness_would_fail", "unapproved_input");
+    await refuse("readiness_unverified");
+    for (const [site, code, message] of [
+      [writer, "22023", "catalog_price_setup_readiness_would_fail"],
+      [probe, "55000", "catalog_price_setup_readiness_would_fail"],
+      [probe, "55000", "catalog_price_setup_unapproved_input"],
+      [writer, "22023", "catalog_price_setup_settlement_context_unverified"],
+    ] as const) {
+      raise(site, code, message);
+      const result = await api.execute(command, who);
+      expect(result).toMatchObject({ outcome: "dependency_unavailable", reason: "publication_authority_unavailable" });
+      expect(result).not.toHaveProperty("subject");
+    }
+    raise(writer, "40001", "catalog_price_setup_expected_state_mismatch");
+    expect(await api.execute(command, who)).toMatchObject({ outcome: "conflict", reason: "publication_price_changed" });
+    inject = (_sql, result) => result;
+    expect(await api.execute(command, who)).toMatchObject({ outcome: "committed" });
+    expect(await api.execute(command, who)).toMatchObject({ outcome: "replayed" });
+    expect((await pool.query("SELECT id FROM public.price_entries WHERE variant_id=$1", [skuId])).rows).toHaveLength(1);
+  });
 
   it.each(["restore first", "enable first"] as const)("commits governed withdrawal, parent-only restore and %s", async order => {
     const data = authored(order === "restore first" ? 81 : 82), api = native(), who = (await api.authorize(actor))!;
