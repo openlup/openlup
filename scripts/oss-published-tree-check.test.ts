@@ -653,8 +653,8 @@ describe("complete public CI", () => {
     expect(browser).toContain("needs: [install-pack]");
     expect(browser).toContain("if: needs.install-pack.outputs.reuse != 'true'");
     expect(browser).not.toContain("scripts/public-ci-reuse.mjs");
-    expect(browser).toContain("fail-fast: false\n      max-parallel: 4");
-    expect(browser).toContain("groups: ['0', '1,6', '2,4', '3,5']");
+    expect(browser).toContain("fail-fast: false\n      max-parallel: 5");
+    expect(browser).toContain("groups: ['0', '6', '1,2', '3,5', '4']");
     expect(aggregate).toContain("name: install-proof\n");
     expect(aggregate).toContain("needs: [install-pack, install-packages, install-browser]");
     expect(aggregate).toContain("\n    timeout-minutes: 2\n");

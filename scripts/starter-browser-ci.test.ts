@@ -125,9 +125,10 @@ describe('installed starter browser CI', () => {
     const resolved = await resolveBrowserImage(io, options.localImage);
     expect(resolved).toBe(reference);
     const prove = vi.fn();
-    await runCatalogueUpgrade({ ...options, groups: [0, 6] }, resolved, prove);
+    await runCatalogueUpgrade({ ...options, groups: [0] }, resolved, prove);
+    await runCatalogueUpgrade({ ...options, groups: [6] }, resolved, prove);
     expect(prove).not.toHaveBeenCalled();
-    await runCatalogueUpgrade({ ...options, groups: [1, 6] }, resolved, prove);
+    await runCatalogueUpgrade({ ...options, groups: [1, 2] }, resolved, prove);
     const expected = [[args[1], args[3], { reference, localImage, containerArguments: browserContainerArguments }]];
     expect(prove.mock.calls).toEqual(expected);
     prove.mockClear();

@@ -282,12 +282,12 @@ jobs:
       contents: read
       actions: read
       packages: read
-    # Four balanced shards avoid three duplicate installs, builds and image pulls compared with one job per group.
+    # Five balanced shards isolate the heavy remainder journeys (group 6) while keeping group 1 (catalogue upgrade) paired with light group 2.
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 5
       matrix:
-        groups: ['0', '1,6', '2,4', '3,5']
+        groups: ['0', '6', '1,2', '3,5', '4']
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
