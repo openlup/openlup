@@ -864,9 +864,13 @@
     {
       "file": "db/platform/migrations/20261128010000_catalog_order_checkout_protection.sql",
       "sha256": "e841077d82c09a11979c552737025a332bd5d351ee7192b6f4cc8e112fc7423c"
+    },
+    {
+      "file": "db/platform/migrations/20261128030000_fulfillment_destination_v2_legacy_ledger_fence.sql",
+      "sha256": "47c1163855d8fc24e3040a3971db4e00f1be9299ff6d968e5abe522567040ddb"
     }
   ],
-  "objectInventorySha256": "5ff51a9f159730496582d625a6341a619835b381751e87925bda7f93c01df19f",
+  "objectInventorySha256": "8a56e73bce2f7892da18ea42b8f74a9f2832e4e07647077dde29a1c8217da46f",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1756,14 +1760,18 @@
       {
         "file": "db/platform/migrations/20261128010000_catalog_order_checkout_protection.sql",
         "sha256": "e841077d82c09a11979c552737025a332bd5d351ee7192b6f4cc8e112fc7423c"
+      },
+      {
+        "file": "db/platform/migrations/20261128030000_fulfillment_destination_v2_legacy_ledger_fence.sql",
+        "sha256": "47c1163855d8fc24e3040a3971db4e00f1be9299ff6d968e5abe522567040ddb"
       }
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "11221bfafc1893f507158dc0fe67b16d32d79250277e0e840460bed874beb17f"
+        "withRestore": "f0fb77762e832f9ef629e5c9e4b87f5a07f6794d391150b739577cb836c93755"
       },
       "separateMigrator": {
-        "withRestore": "d86f252f21c0334b699d50757f6b049ae78a83dd6be94c0a491280a291cba334"
+        "withRestore": "1b0b59a32b3d94bff456fe4ff93246b92279885ea314f4b8be799709fb272c68"
       }
     }
   },
@@ -2648,11 +2656,15 @@
       {
         "file": "db/platform/migrations/20261128010000_catalog_order_checkout_protection.sql",
         "sha256": "e841077d82c09a11979c552737025a332bd5d351ee7192b6f4cc8e112fc7423c"
+      },
+      {
+        "file": "db/platform/migrations/20261128030000_fulfillment_destination_v2_legacy_ledger_fence.sql",
+        "sha256": "47c1163855d8fc24e3040a3971db4e00f1be9299ff6d968e5abe522567040ddb"
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "8d078337996ae2fda73202a88b16a4fd2d076d3e1f2abb11619850ea9cd0018c",
-      "operatorProvisioned": "d163e2cd0b1d6a1223a933f45aa684575ae9a14d369d608d498bcbd69772b14d"
+      "installerManaged": "8feebb3a7d6f07f6aa1a594d2b7186ac2ba403828982cbf08eca91fc2eb3b85c",
+      "operatorProvisioned": "6038c18966dffbeeb5968681d962f276e992b50ebc3f50af3bb6cf44a224c272"
     }
   }
 }

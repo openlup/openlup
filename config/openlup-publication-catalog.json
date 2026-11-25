@@ -30622,6 +30622,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/destinationV2DispatchLedger.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/destinationV2OrderBinding.test.ts",
       "class": "public-output"
     },
