@@ -13,6 +13,7 @@ import type { CatalogPublishedSku } from "@openlup/platform/catalog";
 import * as pricing from "@openlup/platform/pricing";
 import { createPostgresCommercePriceAuthorityReadPort } from "@openlup/platform/commerce/server/postgres";
 import { createPostgresCatalogPublicationReads } from "../../server/adapters/postgres/catalogPublicationReads.js";
+import { acquisitionFixture, boundOneTimePurchase } from "./acquisitionAdmissionFixture.js";
 import { authoredPublicationDocument, createCharacterizationQuote, hash, transaction, malformedPublicationPackets, sealedPublicationRemedy } from "./catalogPublicationFixture.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
   type PostgresContainer } from "../helpers/postgresContainer.js";
@@ -992,6 +993,42 @@ describe("publication activation prices", () => {
     await pool.query("DELETE FROM public.price_entries WHERE id=$1", [override]);
     expect(await api.execute(command, who)).toMatchObject({ outcome: "committed" });
   });
+
+  it("publishes a zero-price-operation activation on an occupied store and rolls back on incomplete proof", async () => {
+    const store = await acquisitionFixture();
+    const db = store.owner;
+    try {
+      const publicationList = randomUUID();
+      await db.query("DELETE FROM public.price_entries WHERE price_list_id=$1", [store.list]);
+      await db.query("DELETE FROM public.catalog_skus WHERE id=$1", [store.product]);
+      await db.query("INSERT INTO public.commerce_settings(key,value_text) VALUES('settlement_region','ZZ'),('settlement_currency','XXX') ON CONFLICT(key) DO UPDATE SET value_text=excluded.value_text");
+      await db.query("SELECT public.commerce_capture_offer_policy_v2_legacy_baseline()");
+      await db.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,'publisher@example.invalid')", [actor]);
+      await db.query(`INSERT INTO public.platform_human_memberships
+        (principal_id,role,membership_state,membership_provenance,membership_accepted_at)
+        VALUES($1,'admin','active','legacy',statement_timestamp())`, [actor]);
+      await db.query(`INSERT INTO public.catalog_type_versions(type_key,version,definition,definition_digest,validator_ref)
+        VALUES($1,1,'{}',$2,$3)`, [installed.key,catalogDefinitionDigest(installed),installed.validatorRef]);
+      await installActivationPrices(db, publicationList);
+      const eligible = await approvedActivation(211,false,undefined,{db});
+      const blocked = await approvedActivation(212,false,undefined,{db});
+      await seedBasePrice(eligible.skuId,db,publicationList);
+      await seedBasePrice(blocked.skuId,db,publicationList);
+      const id = await boundOneTimePurchase(store.runtime,"PRICED-CORE",1000,"XXX","priced-core");
+      const publisher = native(undefined,await store.publication());
+      const who = (await publisher.authorize(actor))!;
+      expect(await publisher.execute(eligible.command,who)).toMatchObject({outcome:"committed"});
+      await db.query("UPDATE public.outbox_events SET metadata=metadata-'boundary' WHERE aggregate_id=$1 AND event_type='commerce.order_draft.created'",[id]);
+      const state = async () => (await db.query(`SELECT p.status,s.sellable_standalone,h.publication_id FROM public.catalog_products p
+        JOIN public.catalog_skus s ON s.product_id=p.id JOIN public.catalog_publication_heads h USING(product_id) WHERE s.id=$1`,
+      [blocked.skuId])).rows;
+      const before = await state();
+      expect(await publisher.execute(blocked.command,who)).toMatchObject({outcome:"dependency_unavailable"});
+      expect(await state()).toEqual(before);
+      expect((await db.query("SELECT 1 FROM public.catalog_operator_receipts WHERE scope_id=$1 AND command_key=$2",
+        [blocked.productId,blocked.command.commandKey])).rows).toEqual([]);
+    } finally { await store.close(); }
+  }, postgresSetupTimeoutMs);
 
   it("sku_with_internal_identifier_publishes_and_quotes", async () => {
     const identifier = { scheme: "gs1:gtin", issuer: "example:internal", value: catalogInternalGtin(202), packagingLevel: "unit" } as const;
