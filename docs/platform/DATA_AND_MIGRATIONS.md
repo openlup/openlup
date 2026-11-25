@@ -139,7 +139,7 @@ review before applying the ACL forward.
 
 ## Checkout abandonment predicate grant
 
-The [grant forward](../../db/platform/migrations/20261128180001_checkout_abandonment_safety_execute_grant.sql)
+The [grant forward](../../db/platform/migrations/20261128230001_checkout_abandonment_safety_execute_grant.sql)
 creates `public.commerce_checkout_abandonment_safe_runtime(uuid)`, a
 `SECURITY DEFINER` entry with a pinned `search_path` that returns
 `public.commerce_initial_checkout_abandonment_safe(uuid)` unchanged. It revokes

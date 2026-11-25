@@ -45,7 +45,7 @@ Apply the application file upgrade to replace pristine managed files:
 `host/bindings.ts`, `host/native-composition.ts`, `host/quote-composition.ts`
 and `shared/api.ts`. If it reports a conflict, reconcile your customised files
 with the target starter before retrying. Apply the platform forward
-`20261128180001_checkout_abandonment_safety_execute_grant.sql` before starting
+`20261128230001_checkout_abandonment_safety_execute_grant.sql` before starting
 the updated host: without it, `abandon` of an unpaid order answers
 `starter_purchase_unavailable` and nothing is cancelled.
 
