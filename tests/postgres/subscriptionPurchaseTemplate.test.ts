@@ -5,6 +5,7 @@ import { createPostgresAccountReadSources, createPostgresCustomerOrderHistoryRea
 import type { CatalogFactsProvenance } from "@openlup/platform/pricing/contracts";
 import { api, purchase, admin, at, checkout, days, deps, executor, facts, fulfillment, identity, now, payments, destinations, rpc, runtime, runtimeUrl, transaction } from "./subscriptionPublicRenewalFixture.js";
 import { createPostgresCustomerSubscriptionControlPort } from "../../server/adapters/postgres/customerSubscriptionControl.js";
+import { PLATFORM_DEFAULT_CURRENCY } from "../../src/lib/currency/settlementProfile.js";
 import { captureSandboxPurchase } from "../helpers/captureSandboxPurchase.js";
 import { allPublicRows } from "./subscriptionStockWaitCases.js";
 import type { RenewalRetainedTerms } from "@openlup/platform/subscriptions/contracts";
@@ -554,9 +555,9 @@ describe("derived renewal price context in PostgreSQL", () => {
   });
 
   it.each(["derived-only", "legacy stored"] as const)("keeps the saved quote and refuses a deleted %s SKU", async source => {
-    const f = await editFixture(), priceList = await editList("ZY", "PLN");
+    const f = await editFixture(), priceList = await editList("ZY", PLATFORM_DEFAULT_CURRENCY);
     const subject = await editSku(priceList, source === "derived-only" ? 125 : undefined);
-    await setContext(f, priceList, "PLN");
+    await setContext(f, priceList, PLATFORM_DEFAULT_CURRENCY);
     if (source === "legacy stored") {
       await admin.query(`INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor)
         VALUES($1,$2,'subscription',150)`, [priceList, subject.id]);
@@ -578,7 +579,7 @@ describe("derived renewal price context in PostgreSQL", () => {
       coreLines, addonLines: [], compositionConstraint: {}, cadenceDays: 28, expectedTemplateVersion: 1,
     } });
     const original = (await rePreview())?.preview;
-    expect(original).toMatchObject({ canApply: true, newTotal: money(source === "derived-only" ? 220 : 300, "PLN"),
+    expect(original).toMatchObject({ canApply: true, newTotal: money(source === "derived-only" ? 220 : 300, PLATFORM_DEFAULT_CURRENCY),
       catalogAvailability: { status: "available", blockedReason: null } });
     if (!original?.quoteHash) throw new Error("Expected a saved actor quote");
     const before = await editRows(f);
