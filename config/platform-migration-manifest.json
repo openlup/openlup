@@ -882,11 +882,15 @@
       "sha256": "8447cb5d1a56d254860a2b0b11b496e80fe64f6da3cba9b5d0615cd421a367fb"
     },
     {
+      "file": "db/platform/migrations/20261128230001_checkout_abandonment_safety_execute_grant.sql",
+      "sha256": "841d3a42b322ff0d515f5c642320f56a10abbc8076f7a6170983bd6457302fa7"
+    },
+    {
       "file": "db/platform/migrations/20261129130000_payment_capture_time_read.sql",
       "sha256": "9718f0f8bbecc08b0ce1ad2548a773b2444001db8cda340369a7f56ee4db367d"
     }
   ],
-  "objectInventorySha256": "f52757dbe5ab5bb80618a3f3811b68880e097cf71b28c2d5d7f1e618363f6b22",
+  "objectInventorySha256": "59c901f0a5f1141504ca4a8aef1e1d68a59c4661cedcf2c8882ff274ae83e74a",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1794,16 +1798,20 @@
         "sha256": "8447cb5d1a56d254860a2b0b11b496e80fe64f6da3cba9b5d0615cd421a367fb"
       },
       {
+        "file": "db/platform/migrations/20261128230001_checkout_abandonment_safety_execute_grant.sql",
+        "sha256": "841d3a42b322ff0d515f5c642320f56a10abbc8076f7a6170983bd6457302fa7"
+      },
+      {
         "file": "db/platform/migrations/20261129130000_payment_capture_time_read.sql",
         "sha256": "9718f0f8bbecc08b0ce1ad2548a773b2444001db8cda340369a7f56ee4db367d"
       }
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "b69eeb99d012854283b945aa072614ebce8771084577b456322993fa45317ece"
+        "withRestore": "a54482c33dd880731369048da7d199d2f8678c709222743bcd1b7ed332714fbe"
       },
       "separateMigrator": {
-        "withRestore": "ed63717d99172b57995689c6052b8b5aab5f7b063ab13d8619a70a4766d614d5"
+        "withRestore": "34b68692937cf5816175a5a0363101e02d6bf5f2fd3cde1859b6f3e96a11eebc"
       }
     }
   },
@@ -2706,13 +2714,17 @@
         "sha256": "8447cb5d1a56d254860a2b0b11b496e80fe64f6da3cba9b5d0615cd421a367fb"
       },
       {
+        "file": "db/platform/migrations/20261128230001_checkout_abandonment_safety_execute_grant.sql",
+        "sha256": "841d3a42b322ff0d515f5c642320f56a10abbc8076f7a6170983bd6457302fa7"
+      },
+      {
         "file": "db/platform/migrations/20261129130000_payment_capture_time_read.sql",
         "sha256": "9718f0f8bbecc08b0ce1ad2548a773b2444001db8cda340369a7f56ee4db367d"
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "f0adeb6c89127bcd92dfd0f4d5ae37dda02d6f3194cccdeb814ea6fa8b5b0596",
-      "operatorProvisioned": "ad22c6f046551df3271f3013259dd76318365298445ec9964e8523143c7ea993"
+      "installerManaged": "28dae25d9c380a075ef603835ed76fc9f6d024d446b2d37656b6407f4d913ca5",
+      "operatorProvisioned": "6f85f21716bfd7f2656e6be41b7b25866429950d41f412c38e5b6fab81843bec"
     }
   }
 }

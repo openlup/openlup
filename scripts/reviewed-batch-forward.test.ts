@@ -508,7 +508,7 @@ describe("co-located SQL and pins under an existing policy", () => {
     } finally { f.cleanup(); }
   });
 
-  it.each(["scripts/reviewed-platform-forward.ts", "scripts/platform-migration-manifest.ts", "scripts/documentation-git.ts", "scripts/documentation-routing.ts", "scripts/oss-source-release-contract.ts", "scripts/oss-published-tree-check.ts", "scripts/source-preview-release.ts", "scripts/source-release-preparation.ts", "scripts/oss-publication-policy.ts", "scripts/packages/release-gate.ts", "scripts/agent-review-queue.mjs", "package.json", "package-lock.json", ".github/workflows/published-tree-ci.yml"])("trusted invocation refuses co-changing %s", path => {
+  it.each(["scripts/reviewed-platform-forward.ts", "scripts/migrations/native-store-admission.ts", "scripts/platform-migration-manifest.ts", "scripts/documentation-git.ts", "scripts/documentation-routing.ts", "scripts/oss-source-release-contract.ts", "scripts/oss-published-tree-check.ts", "scripts/source-preview-release.ts", "scripts/source-release-preparation.ts", "scripts/oss-publication-policy.ts", "scripts/packages/release-gate.ts", "scripts/agent-review-queue.mjs", "package.json", "package-lock.json", ".github/workflows/published-tree-ci.yml"])("trusted invocation refuses co-changing %s", path => {
     const f = correctionFixture();
     try {
       f.install(); f.put(path, "candidate-controlled machinery"); const head = f.commit();

@@ -9621,6 +9621,19 @@
         "dataStatements": []
       },
       {
+        "row": "checkout-abandonment-safety-execute-grant",
+        "path": "db/platform/migrations/20261128230001_checkout_abandonment_safety_execute_grant.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.commerce_checkout_abandonment_safe_runtime(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "payment-capture-time-read",
         "path": "db/platform/migrations/20261129130000_payment_capture_time_read.sql",
         "replacedFunctions": [],
@@ -13909,6 +13922,17 @@
           "signature": "public.catalog_admission_derived_subscription_prices(text,jsonb,jsonb,timestamptz)",
           "beforeSha256": "46951df895d85576f91fc662bf12bdad4d65e0c96d142220404825c6a6154e37",
           "afterSha256": "00084e9310c923ed26f0a58a2b42ec66b4b7d822c4cd47352ba8c121564b4537"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261128230001_checkout_abandonment_safety_execute_grant.sql",
+      "sha256": "841d3a42b322ff0d515f5c642320f56a10abbc8076f7a6170983bd6457302fa7",
+      "functions": [
+        {
+          "signature": "public.commerce_checkout_abandonment_safe_runtime(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "1a26936930aec052a80248300467c6db1e75a223f855cab3500d54bdf39807f5"
         }
       ]
     },

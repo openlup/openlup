@@ -631,9 +631,18 @@ function runQuoteProof({ configuration, multiSize, ownerUrl, runtimeUrl }: Await
         const saved=original.quoteSnapshot;
         assert.equal(saved.quote.lines[0].unitPriceGross.amountMinor,1420);
         assert.equal(saved.quote.context.starterRenewalTerms.linePricing[0].quoteLine.catalogFacts.version,'catalog_facts_v2');
+        // A repeat is metered and issues a further link; nothing else changes.
+        const settled=row=>!['clients','commerce_checkout_attempt_ledger','commerce_checkout_recovery_tokens'].includes(row.name);
         const beforeReplay=await graph();const replay=(await call('checkout.create',accepted,key)).body;
-        assert.equal(replay.ok,true,replay.code);assert.equal(replay.replayed,true);assert.equal(replay.value.orderRef,made.value.orderRef);assert.deepEqual((await graph()).filter(row=>row.name!=='clients'),beforeReplay.filter(row=>row.name!=='clients'));
-        await refused('checkout.create',{...accepted,cart:{...cart,lines:[{...cart.lines[0],quantity:4}]}},'starter_command_conflict',key);
+        assert.equal(replay.ok,true,replay.code);assert.equal(replay.replayed,true);assert.equal(replay.value.orderRef,made.value.orderRef);assert.equal(typeof replay.value.token,'string');assert.deepEqual((await graph()).filter(settled),beforeReplay.filter(settled));
+        // A refreshed acceptance for the same stored terms is the same intent.
+        const refreshed=await quote(input);assert.notEqual(refreshed.quoteAcceptance,observed.quoteAcceptance);
+        const again=(await call('checkout.create',{...accepted,quoteAcceptance:refreshed.quoteAcceptance},key)).body;
+        assert.equal(again.ok,true,again.code);assert.equal(again.replayed,true);assert.equal(again.value.orderRef,made.value.orderRef);assert.deepEqual((await graph()).filter(settled),beforeReplay.filter(settled));
+        const beforeChanged=await graph();
+        assert.deepEqual((await call('checkout.create',{...accepted,cart:{...cart,lines:[{...cart.lines[0],quantity:4}]}},key)).body,{ok:false,code:'starter_checkout_changed'});
+        const unmetered=row=>row.name!=='commerce_checkout_attempt_ledger';
+        assert.deepEqual((await graph()).filter(unmetered),beforeChanged.filter(unmetered));
         await refused('payment.simulate',{orderRef:crypto.randomUUID(),token:made.value.token,outcome:'captured'},'starter_order_not_found');
         const corrupt=structuredClone(original);delete corrupt.quoteSnapshot.quote.context.starterRenewalTerms.linePricing[0].quoteLine;
         await owner.query('UPDATE public.commerce_orders SET metadata=$2::jsonb WHERE id=$1',[made.value.orderRef,JSON.stringify(corrupt)]);
@@ -906,7 +915,8 @@ describe.sequential('installed quote proofs', () => {
             'payment_simulator_attempts','payment_truth_events','outbox_events',
           ].map(async table=>[table,(await owner.query('SELECT count(*)::int AS rows FROM public.'+table)).rows[0].rows])));
           const attemptRows = async () => (await owner.query('SELECT attempt_digest FROM public.commerce_checkout_attempt_ledger ORDER BY attempt_digest')).rows;
-          const digest = key => createHash('sha256').update(key+'\0'+0).digest('hex');
+          // The limiter receives the derived guest key, never the header value.
+          const digest = key => createHash('sha256').update('checkout:'+createHash('sha256').update(JSON.stringify([null,key])).digest('hex')+'\0'+0).digest('hex');
           const stock = async () => (await owner.query('SELECT to_jsonb(s) AS row FROM public.fulfillment_stock_current s ORDER BY to_jsonb(s)::text')).rows;
           const before = await census();
           const beforeStock = await stock();

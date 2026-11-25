@@ -72,7 +72,8 @@ export type SubmitFailureClassifier = (error: unknown) => SubmitFailureClass;
  * `commandKey` returns the request's `CommandKey`, or `null` or `undefined`
  * when the request carries none; a request without a key is never replayed.
  * `replay` sends the retained request and options again. `deadlineMs` is a
- * duration in milliseconds after which the replay gives up.
+ * duration in milliseconds that the package passes to the transport; the
+ * package does not enforce it, and enforcing it is the transport's job.
  */
 export interface SubmitTransportBinding<TRequest = unknown, TOptions = unknown, TResponse = unknown> {
   commandKey(request: TRequest): CommandKey | null | undefined;

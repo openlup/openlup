@@ -147,13 +147,24 @@ export or erasure workflow; implement your privacy policy around those files.
 The default attempt quotas survive restarts on the same PostgreSQL database.
 Command-identity bindings remain process-local and reset on restart. Before
 resolving a contact, checkout checks configured email and requester quotas,
-retention and capacity. Exact replay keeps the same command key, normalized
-email and requester without another quota count. Changing the identity under
-a retained binding refuses even with a replacement quota callback. Denied quota
-attempts add no quota count. Your host owns retention of unpurchased contacts.
+retention and capacity. A repeat under an existing checkout key counts once
+more: in a separate requester bucket and against `maxPerEmail` for that one
+key, never against the buyer's email. Changing the identity under a retained
+binding refuses even with a replacement quota callback. Denied quota attempts
+add no quota count. Your host owns retention of unpurchased contacts.
+
+A host behind a trusted proxy can pass `requesterKey` to
+`composeNativeBindings`: a function that returns a lowercase 64-hex SHA-256
+digest of the verified client, or `undefined`. A value that is not a function is
+refused at composition; a returned value that is not such a digest makes every
+request answer 503 `starter_dependency_unavailable`, and the host logs
+`OPENLUP_E_STARTER_REQUESTER_KEY_INVALID` to stderr.
 
 For `starter_attempt_limited`, wait for the quota window or retained attempts
-to age out, or replay a bound key with its original contact and requester. For
+to age out. A limited repeat of a completed order still returns the order,
+without a new token. A repeat that completes an interrupted creation passes the
+same first-attempt limiter and requester binding as a fresh create, so it can
+answer `starter_attempt_limited`. For
 invalid input, use the normal checkout submit path. Correct invalid deployed
 limits and restart. If the database could not admit an attempt, verify the
 [database forward](../upgrade/database-migrations.md#check-application-compatibility)
@@ -165,6 +176,83 @@ refuses with `starter_email_invalid` before contact resolution. Checkout and
 subscription-address fields use the configured phone and postal limits within
 native destination bounds. The [configuration validator](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/examples/neutral-store/docs/ownership.md#application-ownership)
 owns the exact limits. Browser field limits do not replace host validation.
+
+## Checkout key continuation
+
+One checkout key addresses one order for its whole life. The key is the
+`Idempotency-Key` header value of `checkout.create`. The host stores only a
+digest derived from it and the signed-in principal, never the value itself.
+
+Repeat `checkout.create` with the same key and the same details after a lost
+response. The host returns the first order with `replayed: true`. While the
+order is unpaid, the response also carries a further continuation `token`.
+Earlier tokens stay valid, and a repeat never sends mail. A refreshed quote
+acceptance for the same stored terms counts as the same purchase. Changed
+details are never applied: under a version 4 UUID key the host answers
+`starter_checkout_changed`, `starter_checkout_paid` or
+`starter_checkout_not_payable`. Other released key formats keep
+`starter_command_conflict`, because they have no continuation.
+
+`checkout.continuation` continues or abandons the order under a key without
+the original details. Send the same header with a version 4 UUID value and the
+body `{ "action": "resume" | "abandon", "locale": "<locale>" }`. Any other
+field or key format answers `starter_input_invalid`. A guest is authorised by
+the key value alone, so treat it as a credential: make it random, never log it
+and never reuse it for another operation.
+
+| Order under the key | `resume` | `abandon` |
+| --- | --- | --- |
+| None | `starter_checkout_not_found` | `{ abandoned: false }` |
+| Unpaid, creation complete | `{ orderRef, status, total, token }`, `replayed: true` | Cancels it: `{ abandoned: true, orderRef }` |
+| Unpaid, creation not complete | `starter_checkout_in_progress` | `starter_checkout_in_progress` for a minute after the order was created; then cancels it, as above |
+| Paid | `{ orderRef, status, total }`, `replayed: true` | `starter_checkout_paid` |
+| Cancelled, expired or closed | `starter_checkout_not_payable` | `{ abandoned: false, orderRef, status }` |
+
+Abandon of an unpaid order refuses with `starter_checkout_not_abandonable` once
+a payment attempt was ever made, including one still in flight. A paid order
+answers `starter_checkout_paid`. A cancelled order carries the reason
+`checkout_started_over`. A limited `resume` returns the order without a token; a
+limited `abandon` answers `starter_attempt_limited`. An unpaid order older than
+its 24-hour link lifetime gets no new token: `resume` answers
+`starter_checkout_expired`. If no payment attempt was made, `abandon` it,
+then start a new key. Otherwise the order has a payment attempt that the store
+must settle. Do not start a new key. Ask the store to check the payment and
+cancel the order (`operator.cancelUnpaid`). The store can cancel only once no
+payment is in flight; until then the order may still be paid, and the cancel
+answers `starter_order_transition_conflict`. After the store cancels, this key
+answers `starter_checkout_not_payable`, and a new key works, including for the
+same first subscription. While the unpaid draft exists, a new first
+subscription for the same contact answers `starter_command_conflict`. An
+abandon that cancels nothing because the host was busy, because the order
+changed while it was being cancelled, or because the platform
+forward `20261128230001_checkout_abandonment_safety_execute_grant.sql` is
+missing, answers `starter_purchase_unavailable`; repeat it, and apply the
+forward if it persists. An unknown key is answered before metering. Refusals
+use HTTP 409. A missing or malformed header answers HTTP 400 with
+`starter_command_identity_required`, and a body that is not a JSON object
+answers HTTP 400 with `starter_input_invalid`.
+
+The token from `resume` authorises the same operations as the creating
+response: `checkout.read`, `checkout.recovery` `inspect` and `pay`,
+`checkout.payment` `inspect` and `simulate`, `checkout.tokenPay` and
+`payment.simulate`. A key holder can therefore start a payment attempt, which
+makes the order not abandonable.
+
+A client that owns its checkout page follows three rules:
+
+1. Keep one key for the whole purchase, including reloads and retries.
+2. Never start a new key after a transport error; repeat or `resume` instead.
+3. Treat "no order under this key" as final only after your own request
+   timeout plus 15 seconds have passed since the last unanswered create. A
+   create that obtains the key lock later than 15 seconds after the host
+   received it answers `starter_checkout_request_stale` and writes nothing.
+   The bound starts when the host receives the request, so a client behind a
+   buffering proxy adds that proxy's own timeout to its wait. This refusal can
+   also reach the managed pages when the host is busy.
+
+The key is derived from the principal, so a guest key does not survive sign-in
+or sign-out. Resolve the purchase before either; a retry after sign-in finds no
+order and creates a second one. See the [refusal rows](../reference/limits.md#subscription-mode-price).
 
 ## Paid-order messages and shipping
 
