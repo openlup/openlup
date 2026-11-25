@@ -2,13 +2,17 @@
   "current": {
     "profiles": {
       "legacy": {
-        "count": 219,
-        "exactTailCount": 109,
-        "objectInventorySha256": "12d990dffc86b6ffe252980a50a363a01a5d5e1ecd369943b8ec2439af231aa0",
+        "count": 220,
+        "exactTailCount": 110,
+        "objectInventorySha256": "2617614051127ed19a0fd34bad798224a3510a88ad9a28f9e60cc482c03d0d2f",
         "tail": [
           {
-            "file": "db/platform/migrations/20261128130000_checkout_abandonment_safety_execute_grant.sql",
+            "file": "db/platform/migrations/20261128180001_checkout_abandonment_safety_execute_grant.sql",
             "sha256": "29747730378cd297f2747d96a0edb7e90f061f537e45acc1eab0358b41f02b7a"
+          },
+          {
+            "file": "db/platform/migrations/20261128180000_subscription_destination_read.sql",
+            "sha256": "f76078e8a637c6f597d6997ed2d1960f025ce99c474e5f85faf42287ca8a4158"
           },
           {
             "file": "db/platform/migrations/20261128120000_order_money_v2_storage.sql",
@@ -885,13 +889,17 @@
         ]
       },
       "bootstrap": {
-        "count": 225,
-        "exactTailCount": 110,
-        "objectInventorySha256": "b05ac0de4408646e052cd6fcff5c75a16911c84f1d0a964ee06ed977d45b61a8",
+        "count": 226,
+        "exactTailCount": 111,
+        "objectInventorySha256": "ee3567c6e0d8b72494c90d284f363b88bf53e4d96678acb1c84bf7a641cbac60",
         "tail": [
           {
-            "file": "db/platform/migrations/20261128130000_checkout_abandonment_safety_execute_grant.sql",
+            "file": "db/platform/migrations/20261128180001_checkout_abandonment_safety_execute_grant.sql",
             "sha256": "29747730378cd297f2747d96a0edb7e90f061f537e45acc1eab0358b41f02b7a"
+          },
+          {
+            "file": "db/platform/migrations/20261128180000_subscription_destination_read.sql",
+            "sha256": "f76078e8a637c6f597d6997ed2d1960f025ce99c474e5f85faf42287ca8a4158"
           },
           {
             "file": "db/platform/migrations/20261128120000_order_money_v2_storage.sql",
@@ -1792,13 +1800,17 @@
         ]
       },
       "separate": {
-        "count": 225,
-        "exactTailCount": 110,
-        "objectInventorySha256": "56f4612c1dcabd1d9c2f2af88a5c0bcaa51722b408c0e54b330452d1c8c575ea",
+        "count": 226,
+        "exactTailCount": 111,
+        "objectInventorySha256": "f6cdd813394cffba6d6bc82f309febb8514c1c076dcd0e699b60a1aad155d253",
         "tail": [
           {
-            "file": "db/platform/migrations/20261128130000_checkout_abandonment_safety_execute_grant.sql",
+            "file": "db/platform/migrations/20261128180001_checkout_abandonment_safety_execute_grant.sql",
             "sha256": "29747730378cd297f2747d96a0edb7e90f061f537e45acc1eab0358b41f02b7a"
+          },
+          {
+            "file": "db/platform/migrations/20261128180000_subscription_destination_read.sql",
+            "sha256": "f76078e8a637c6f597d6997ed2d1960f025ce99c474e5f85faf42287ca8a4158"
           },
           {
             "file": "db/platform/migrations/20261128120000_order_money_v2_storage.sql",
@@ -2699,13 +2711,17 @@
         ]
       },
       "admin-managed": {
-        "count": 223,
-        "exactTailCount": 109,
-        "objectInventorySha256": "7e53aecd8c1b55571fa0f2c8d76ecf5e19fc626818bf5a127f167810c0073a79",
+        "count": 224,
+        "exactTailCount": 110,
+        "objectInventorySha256": "36f9123fa639140b5987a794ae20b74a0f8fa1d86a00ae140dcd54b86cf48246",
         "tail": [
           {
-            "file": "db/platform/migrations/20261128130000_checkout_abandonment_safety_execute_grant.sql",
+            "file": "db/platform/migrations/20261128180001_checkout_abandonment_safety_execute_grant.sql",
             "sha256": "29747730378cd297f2747d96a0edb7e90f061f537e45acc1eab0358b41f02b7a"
+          },
+          {
+            "file": "db/platform/migrations/20261128180000_subscription_destination_read.sql",
+            "sha256": "f76078e8a637c6f597d6997ed2d1960f025ce99c474e5f85faf42287ca8a4158"
           },
           {
             "file": "db/platform/migrations/20261128120000_order_money_v2_storage.sql",
@@ -3598,13 +3614,17 @@
         ]
       },
       "admin-operator": {
-        "count": 223,
-        "exactTailCount": 109,
-        "objectInventorySha256": "2065fc5e168b877c20b489f7ebea3061f97363b80128f9d9b02c7a7f6037865a",
+        "count": 224,
+        "exactTailCount": 110,
+        "objectInventorySha256": "0800e35b5a2b04cd0289ab9c04a814fa345b90ac61172762e5fe0e35edf8f72c",
         "tail": [
           {
-            "file": "db/platform/migrations/20261128130000_checkout_abandonment_safety_execute_grant.sql",
+            "file": "db/platform/migrations/20261128180001_checkout_abandonment_safety_execute_grant.sql",
             "sha256": "29747730378cd297f2747d96a0edb7e90f061f537e45acc1eab0358b41f02b7a"
+          },
+          {
+            "file": "db/platform/migrations/20261128180000_subscription_destination_read.sql",
+            "sha256": "f76078e8a637c6f597d6997ed2d1960f025ce99c474e5f85faf42287ca8a4158"
           },
           {
             "file": "db/platform/migrations/20261128120000_order_money_v2_storage.sql",

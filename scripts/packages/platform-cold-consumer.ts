@@ -92,6 +92,7 @@ export const NON_ADAPTER_ENTRIES = [
   "scheduler",
   "shipping",
   "shipping/contracts",
+  "storefront",
 ] as const;
 // identity, communications, promotions and catalog are adapter entries: their declarations reach data/pg types.
 // Its cold runtime import/refusal is below; declarations compile after selecting peers.

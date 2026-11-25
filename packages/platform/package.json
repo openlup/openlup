@@ -302,6 +302,11 @@
       "import": "./dist/shipping/testing/index.js",
       "default": "./dist/shipping/testing/index.js"
     },
+    "./storefront": {
+      "types": "./dist/storefront/index.d.ts",
+      "import": "./dist/storefront/index.js",
+      "default": "./dist/storefront/index.js"
+    },
     "./payments": {
       "types": "./dist/payments/index.d.ts",
       "import": "./dist/payments/index.js",

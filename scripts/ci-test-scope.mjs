@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { accessSync, constants, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { accessSync, appendFileSync, constants, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import { env as processEnvironment } from 'node:process';
 import { pathToFileURL } from 'node:url';
@@ -8,11 +8,48 @@ import { pathToFileURL } from 'node:url';
 // everything below it (dot files included); any other entry is one exact file.
 // Glob matching is deliberately avoided: its '*' and '**' skip dot segments.
 // Broad shared triggers: every non-doc root file, every dot-prefixed segment
-// anywhere (.github, .npmignore, .env...), the tooling/import closure and test
-// setup. That includes both manifests, Vitest, run-vitest, this table and all
-// workflows.
-export const SHARED_INPUTS = ['scripts/', 'tests/setup/', 'src/test/',
+// anywhere (.github, .npmignore, .env...), every non-allowlisted file under
+// scripts/ (fail-closed: runners, Docker, builds, fixtures, package scripts,
+// migration helpers, preflight, oss-* and unknown scripts all bail out), and
+// test setup.
+export const SHARED_INPUTS = ['tests/setup/', 'src/test/',
   'src/checkout/machine/commerceRequestCache.ts'];
+
+// Explicit fail-closed allowlist for files under scripts/ that do NOT trigger
+// the global bailout:
+// - Tier A: scripts/**/*.test.* and scripts/**/*.spec.* (script test files).
+// - Tier B: NON_BAILOUT_SCRIPTS below — leaf/CLI/guard scripts proven by the
+//   AST exemption-safety guard in scripts/ci-test-scope.test.ts to have every
+//   TOOLING_INPUTS consumer declare them explicitly.
+// Any other path under scripts/ (including every new/unknown script) fails
+// closed and runs the complete suite.
+const SCRIPT_TEST_FILE = /^scripts\/.+\.(?:test|spec)\.[cm]?[jt]sx?$/u;
+export const NON_BAILOUT_SCRIPTS = [
+  'scripts/ast-grep/',
+  'scripts/public-ci-reuse.mjs',
+  'scripts/merge-queue-check-arm.mjs',
+  'scripts/ci-receipt-rerun.mjs',
+  'scripts/agent-review-queue.mjs',
+  'scripts/agent-review-queue-planner.mjs',
+  'scripts/merge-queue-churn.mjs',
+  'scripts/public-ci-dependencies.mjs',
+  'scripts/public-ci-neutrality.mjs',
+  'scripts/public-claims.mjs',
+  'scripts/dco-signoff-check.ts',
+  'scripts/affected-tests.mjs',
+  'scripts/verification-plan.mjs',
+  'scripts/verify-local.mjs',
+  'scripts/test-hosted.mjs',
+  'scripts/workflow-jobs.ts',
+  'scripts/agent-ci-queued-diagnose.ts',
+  'scripts/agent-context/evaluate.mjs',
+];
+const coversInput = (input, path) => (input.endsWith('/') ? path === input || path.startsWith(input) : path === input);
+export function isGlobalBailoutScript(path) {
+  if (!path.startsWith('scripts/')) return false;
+  if (SCRIPT_TEST_FILE.test(path)) return false;
+  return !NON_BAILOUT_SCRIPTS.some(entry => coversInput(entry, path));
+}
 
 // Root-level documentation files that do not affect build/test configuration
 // and therefore do not trigger the global root-file bailout. Unlisted doc and
@@ -52,6 +89,10 @@ const NATIVE_STORE_CATALOG_SHARED_INPUTS = [
   'server/adapters/postgres/migrationRunner.ts',
   'server/adapters/postgres/qualifiedInstall.ts',
   'server/adapters/postgres/selectedCatalogProjection.ts',
+];
+const AGENT_REVIEW_QUEUE_SCRIPTS = [
+  'scripts/agent-review-queue.mjs',
+  'scripts/ci-receipt-rerun.mjs',
 ];
 const PACKAGE_MANIFESTS = [
   'packages/core/package.json',
@@ -372,18 +413,18 @@ export const TOOLING_INPUTS = {
     'tests/helpers/postgresContainer.ts',
     'server/adapters/postgres/',
   ], // Real Docker landing:merge + installation-inventory-refresh.ts witness (builds core/outbox/platform, syncs SQL/source-map, refreshes 5 PG inventories).
-  'scripts/agent-review-queue.test.ts': [], // Synthetic Git repositories and recorded transport.
-  'scripts/agent-review-gate.test.ts': [], // Real-Git witnesses of the session CLI and hosted admission.
-  'scripts/agent-review-registry.test.ts': ['config/openlup-publication-catalog.json', 'packages/platform/test/packageBoundary.test.ts'], // Closed-registry union and review-economy fixtures reading REGISTRY_PATHS.
-  'scripts/public-ci-reuse.test.ts': [], // Recorded workflow/job responses.
+  'scripts/agent-review-queue.test.ts': [...AGENT_REVIEW_QUEUE_SCRIPTS, 'scripts/agent-review-queue-planner.mjs', 'scripts/merge-queue-check-arm.mjs', 'scripts/dco-signoff-check.ts', 'scripts/merge-queue-churn.mjs'], // Synthetic Git repositories and recorded transport.
+  'scripts/agent-review-gate.test.ts': [...AGENT_REVIEW_QUEUE_SCRIPTS], // Real-Git witnesses of the session CLI and hosted admission.
+  'scripts/agent-review-registry.test.ts': ['config/openlup-publication-catalog.json', 'packages/platform/test/packageBoundary.test.ts', ...AGENT_REVIEW_QUEUE_SCRIPTS], // Closed-registry union and review-economy fixtures reading REGISTRY_PATHS.
+  'scripts/public-ci-reuse.test.ts': ['scripts/public-ci-reuse.mjs'], // Recorded workflow/job responses.
   'scripts/documentation-cli.test.ts': ['examples/neutral-store/package.json', ...PACKAGE_MANIFESTS, 'packages/core/scripts/', ...ROOT_DOC_FILES], // Copies CLI closure, package execution surfaces and validates root docs.
   'scripts/pgtap-parity.test.ts': [], // Pure TAP/row-diff/sabotage/executable unit fixtures.
-  'scripts/qualified-migration-admission.test.ts': ['config/reviewed-platform-forwards.json', 'db/platform/migrations/'], // Qualified installation admission pins and issued SQL preimages.
-  'scripts/reviewed-batch-forward.test.ts': ['config/reviewed-platform-forwards.json', 'config/platform-migration-manifest.json', 'db/platform/migrations/', 'supabase/migrations/', 'packages/platform/sql/'], // Historical batch/M09-M12 forward pinning and co-located admission checks.
-  'scripts/reviewed-native-store-forward.test.ts': ['config/reviewed-platform-forwards.json', 'config/platform-migration-manifest.json', 'db/platform/migrations/', 'docs/platform/DATA_AND_MIGRATIONS.md', 'tests/helpers/issuedPlatformCatalog.ts'], // Native-store forward classifier, issued prefix pins and control/guard-catalog doc checks.
-  'scripts/sql-admit.test.ts': ['config/reviewed-platform-forwards.json'], // Synthetic Git fixtures reading the committed forward registry and scripts/ admission rules.
-  'scripts/ast-grep/check-filewide-ignore.test.ts': [], // Fixture source; actual rules under scripts/.
-  'scripts/ast-grep/rule-tests/portable-no-industry-contracts.test.ts': [], // Fixture source and rules.
+  'scripts/qualified-migration-admission.test.ts': ['config/reviewed-platform-forwards.json', 'db/platform/migrations/', ...AGENT_REVIEW_QUEUE_SCRIPTS], // Qualified installation admission pins and issued SQL preimages.
+  'scripts/reviewed-batch-forward.test.ts': ['config/reviewed-platform-forwards.json', 'config/platform-migration-manifest.json', 'db/platform/migrations/', 'supabase/migrations/', 'packages/platform/sql/', ...AGENT_REVIEW_QUEUE_SCRIPTS, 'scripts/source-preview-release.test.ts'], // Historical batch/M09-M12 forward pinning and co-located admission checks.
+  'scripts/reviewed-native-store-forward.test.ts': ['config/reviewed-platform-forwards.json', 'config/platform-migration-manifest.json', 'db/platform/migrations/', 'docs/platform/DATA_AND_MIGRATIONS.md', 'tests/helpers/issuedPlatformCatalog.ts', ...AGENT_REVIEW_QUEUE_SCRIPTS], // Native-store forward classifier, issued prefix pins and control/guard-catalog doc checks.
+  'scripts/sql-admit.test.ts': ['config/reviewed-platform-forwards.json', ...AGENT_REVIEW_QUEUE_SCRIPTS], // Synthetic Git fixtures reading the committed forward registry and scripts/ admission rules.
+  'scripts/ast-grep/check-filewide-ignore.test.ts': ['scripts/ast-grep/'], // Fixture source; actual rules under scripts/ast-grep/.
+  'scripts/ast-grep/rule-tests/portable-no-industry-contracts.test.ts': ['scripts/ast-grep/'], // Fixture source and rules.
   'scripts/packages/distribution-cli-proof.test.ts': ['packages/', 'examples/neutral-store/', 'config/openlup-packages.json', 'config/ci-images.json'], // Starter upgrade/extraction proof, CLI and candidate packs.
   'scripts/packages/distribution-cli-settings.test.ts': ['packages/', 'examples/neutral-store/', 'config/openlup-packages.json', 'config/ci-images.json'], // Starter settings discovery/upgrade/MCP proofs and packed platform binary.
   'scripts/packages/eslint-import-map.test.ts': [...PACKAGE_MANIFESTS, ...PACKAGE_SRC_DIRS, 'src/', 'server/'], // Config reads workspace exports and domain directories.
@@ -431,17 +472,81 @@ export const TOOLING_INPUTS = {
   ),
 };
 
+const WORKFLOW_PGTAP_INPUTS = [
+  'supabase/migrations/',
+  'supabase/tests/',
+  'tests/postgres/managed-compat/',
+  'config/ci-postgres-packages.json',
+  'config/ci-images.json',
+];
+const WORKFLOW_REFERENCE_BUILD_INPUTS = [
+  'src/',
+  'server/',
+  'api/',
+  'packages/',
+  'public/',
+  'config/',
+];
+const WORKFLOW_PACKAGE_GATES_INPUTS = [
+  'packages/',
+  'examples/neutral-store/',
+  'db/platform/migrations/',
+  'server/',
+  'docs/platform/communications-conformance.mjs',
+  'config/openlup-packages.json',
+  'config/ci-images.json',
+  'config/platform-migration-manifest.json',
+  'config/reviewed-platform-forwards.json',
+  'config/environment-variables.json',
+  'config/documentation-guide-allowlist.json',
+  'tests/helpers/postgresContainer.ts',
+  'AGENTS.md',
+];
+const WORKFLOW_INSTALL_BROWSER_INPUTS = [
+  'packages/',
+  'examples/neutral-store/',
+  'config/openlup-packages.json',
+  'config/ci-images.json',
+  'tests/helpers/postgresContainer.ts',
+  'tests/postgres/m14ReleasedSchemaUpgrade.proof.ts',
+  'tests/postgres/m14ReleasedSchemaUpgradeChild.ts',
+];
+export const ALL_WORKFLOW_SCOPES_TRUE = Object.freeze({
+  run_pgtap: true,
+  run_reference_build: true,
+  run_package_gates: true,
+  run_install_browser: true,
+  run_install_pack: true,
+});
+
+const hasInvalidPath = changedPaths => !Array.isArray(changedPaths) || changedPaths.some(path => typeof path !== 'string'
+  || !path || path.startsWith('/') || path.split('/').includes('..') || path.includes('\\'));
+const hasGlobalBailout = changedPaths => changedPaths.some(path => (!path.includes('/') && !ROOT_DOC_SET.has(path))
+  || path.split('/').some(segment => segment.startsWith('.'))
+  || isGlobalBailoutScript(path)
+  || SHARED_INPUTS.some(input => coversInput(input, path)));
+
 export function excludedToolingTests(changedPaths) {
-  if (!Array.isArray(changedPaths) || changedPaths.some(path => typeof path !== 'string'
-    || !path || path.startsWith('/') || path.split('/').includes('..') || path.includes('\\'))) return [];
-  const covers = (input, path) => input.endsWith('/') ? path.startsWith(input) : path === input;
-  const touched = inputs => changedPaths.some(path => inputs.some(input => covers(input, path)));
-  if (changedPaths.some(path => (!path.includes('/') && !ROOT_DOC_SET.has(path))
-    || path.split('/').some(segment => segment.startsWith('.')))
-    || touched(SHARED_INPUTS)) return [];
+  if (hasInvalidPath(changedPaths) || hasGlobalBailout(changedPaths)) return [];
+  const touched = inputs => changedPaths.some(path => inputs.some(input => coversInput(input, path)));
   return Object.entries(TOOLING_INPUTS)
-    .filter(([, inputs]) => !touched(inputs))
+    .filter(([test, inputs]) => !touched([test, ...inputs]))
     .map(([test]) => test).sort();
+}
+
+export function workflowScopeFromPaths(changedPaths, { hasDeletion = false } = {}) {
+  if (hasInvalidPath(changedPaths) || changedPaths.length === 0 || hasGlobalBailout(changedPaths)) {
+    return { ...ALL_WORKFLOW_SCOPES_TRUE };
+  }
+  const touched = inputs => changedPaths.some(path => inputs.some(input => coversInput(input, path)));
+  const run_pgtap = touched(WORKFLOW_PGTAP_INPUTS);
+  const run_reference_build = touched(WORKFLOW_REFERENCE_BUILD_INPUTS);
+  // Deleting or renaming any tracked file (reported as D under --no-renames) can
+  // break repository-link existence checks in packages/core docs:check.
+  const run_package_gates = hasDeletion || touched(WORKFLOW_PACKAGE_GATES_INPUTS);
+  const run_install_browser = touched(WORKFLOW_INSTALL_BROWSER_INPUTS);
+  const run_install_pack = run_package_gates || run_install_browser;
+  return { run_pgtap, run_reference_build, run_package_gates, run_install_browser, run_install_pack };
 }
 
 const isExecutableFile = candidate => {
@@ -475,23 +580,62 @@ const runGit = (cwd, args) => {
     timeout: 30_000, maxBuffer: 16 * 1024 * 1024, env: { ...processEnvironment, PATH: path } });
 };
 
+function resolveEventMergeBase({ eventName, event, cwd = process.cwd(), git = args => runGit(cwd, args) }) {
+  const base = eventName === 'pull_request' ? event?.pull_request?.base?.sha
+    : eventName === 'merge_group' ? event?.merge_group?.base_sha : undefined;
+  if (!/^[a-f0-9]{40}$/u.test(base ?? '')) return null;
+  const fork = git(['merge-base', 'HEAD', base]).trim();
+  if (!/^[a-f0-9]{40}$/u.test(fork)) return null;
+  return { fork, git };
+}
+
+function readEventDiffPaths(options) {
+  try {
+    const resolved = resolveEventMergeBase(options);
+    if (!resolved) return null;
+    const diff = resolved.git(['diff', '--no-renames', '--name-only', '-z', resolved.fork, 'HEAD', '--']);
+    if (diff && !diff.endsWith('\0')) return null;
+    return diff.split('\0').filter(Boolean);
+  } catch {
+    return null; // Missing history, malformed metadata and Git errors fail closed.
+  }
+}
+
+function readEventDiffWithStatus(options) {
+  try {
+    const resolved = resolveEventMergeBase(options);
+    if (!resolved) return null;
+    const diff = resolved.git(['diff', '--no-renames', '--name-status', '-z', resolved.fork, 'HEAD', '--']);
+    if (!diff) return { paths: [], hasDeletion: false };
+    if (!diff.endsWith('\0')) return null;
+    const tokens = diff.slice(0, -1).split('\0');
+    if (tokens.length % 2 !== 0) return null;
+    const paths = [];
+    let hasDeletion = false;
+    for (let index = 0; index < tokens.length; index += 2) {
+      const status = tokens[index];
+      const path = tokens[index + 1];
+      if (!/^[AMDT]$/u.test(status) || !path) return null;
+      if (status === 'D') hasDeletion = true;
+      paths.push(path);
+    }
+    return { paths, hasDeletion };
+  } catch {
+    return null; // Missing history, malformed metadata and Git errors fail closed.
+  }
+}
+
 // HEAD is the checked-out candidate, including GitHub's PR merge commit. Diff
 // against its merge-base with the event's exact base, never a moving branch.
 // --no-renames reports both old and new names, so moving an input triggers it.
-export function scopeFromEvent({ eventName, event, cwd = process.cwd(), git = args =>
-  runGit(cwd, args) }) {
-  try {
-    const base = eventName === 'pull_request' ? event?.pull_request?.base?.sha
-      : eventName === 'merge_group' ? event?.merge_group?.base_sha : undefined;
-    if (!/^[a-f0-9]{40}$/u.test(base ?? '')) return [];
-    const fork = git(['merge-base', 'HEAD', base]).trim();
-    if (!/^[a-f0-9]{40}$/u.test(fork)) return [];
-    const diff = git(['diff', '--no-renames', '--name-only', '-z', fork, 'HEAD', '--']);
-    if (diff && !diff.endsWith('\0')) return [];
-    return excludedToolingTests(diff.split('\0').filter(Boolean));
-  } catch {
-    return []; // Missing history, malformed metadata and Git errors run everything.
-  }
+export function scopeFromEvent(options) {
+  const paths = readEventDiffPaths(options ?? {});
+  return paths ? excludedToolingTests(paths) : [];
+}
+
+export function workflowScopeFromEvent(options) {
+  const diff = readEventDiffWithStatus(options ?? {});
+  return diff ? workflowScopeFromPaths(diff.paths, { hasDeletion: diff.hasDeletion }) : { ...ALL_WORKFLOW_SCOPES_TRUE };
 }
 
 // Include staged and unstaged paths separately: an index change can be undone
@@ -528,13 +672,42 @@ export function writeTestScope({ output, eventName, eventPath, base, cwd } = {})
   return excluded;
 }
 
+export function writeWorkflowScope({ output, eventName, eventPath, cwd } = {}) {
+  let scope = { ...ALL_WORKFLOW_SCOPES_TRUE };
+  try {
+    if (eventName && eventPath) {
+      scope = workflowScopeFromEvent({ eventName, event: JSON.parse(readFileSync(eventPath, 'utf8')), cwd });
+    }
+  } catch { /* Fail closed to running every workflow lane on any read/selection error. */ }
+  const lines = [
+    `run_pgtap=${scope.run_pgtap}`,
+    `run_reference_build=${scope.run_reference_build}`,
+    `run_package_gates=${scope.run_package_gates}`,
+    `run_install_browser=${scope.run_install_browser}`,
+    `run_install_pack=${scope.run_install_pack}`,
+  ].join('\n');
+  if (output) appendFileSync(output, `${lines}\n`);
+  console.log(`Workflow scope (${eventName ?? 'unknown'}): ${lines.replaceAll('\n', ', ')}`);
+  return scope;
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const args = process.argv.slice(2);
-  const valid = args.length === 0 || (args.length === 2 && args[0] === '--base' && args[1] && !args[1].startsWith('-'));
-  if (!valid) {
-    writeFileSync(processEnvironment.OPENLUP_VITEST_EXCLUDE_FILE, '');
-    throw new Error('Usage: node scripts/ci-test-scope.mjs [--base <ref>]');
+  if (args.length === 1 && args[0] === '--workflow-outputs') {
+    writeWorkflowScope({
+      output: processEnvironment.GITHUB_OUTPUT,
+      eventName: processEnvironment.GITHUB_EVENT_NAME,
+      eventPath: processEnvironment.GITHUB_EVENT_PATH,
+    });
+  } else {
+    const valid = args.length === 0 || (args.length === 2 && args[0] === '--base' && args[1] && !args[1].startsWith('-'));
+    if (!valid) {
+      if (processEnvironment.OPENLUP_VITEST_EXCLUDE_FILE) {
+        writeFileSync(processEnvironment.OPENLUP_VITEST_EXCLUDE_FILE, '');
+      }
+      throw new Error('Usage: node scripts/ci-test-scope.mjs [--base <ref> | --workflow-outputs]');
+    }
+    writeTestScope({ output: processEnvironment.OPENLUP_VITEST_EXCLUDE_FILE, base: args[1],
+      eventName: processEnvironment.GITHUB_EVENT_NAME, eventPath: processEnvironment.GITHUB_EVENT_PATH });
   }
-  writeTestScope({ output: processEnvironment.OPENLUP_VITEST_EXCLUDE_FILE, base: args[1],
-    eventName: processEnvironment.GITHUB_EVENT_NAME, eventPath: processEnvironment.GITHUB_EVENT_PATH });
 }

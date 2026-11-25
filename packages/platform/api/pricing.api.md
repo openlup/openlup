@@ -2286,6 +2286,11 @@ export declare function quoteDigest(dialect: "catalog.owner-quote.v0", document:
 export declare function quoteDigest(dialect: "commerce.quote.v2", document: Omit<CommerceQuoteV2, "quoteDigest">): string;
 /** @experimental Hash the shared money before composing the full quote. */
 export declare function quoteDigest(dialect: "commerce.quote-money.v2", document: CommerceQuoteMoneyV2): string;
+/** @experimental Hash a final quote's digest, sorted fee keys and all-in payable. */
+export declare function quoteDigest(dialect: "commerce.quote-presentation.v2", document: readonly [string, readonly string[], Readonly<{
+    currency: string;
+    amountMinor: number;
+}>]): string;
 ```
 ## dist/pricing/quotePorts.d.ts
 

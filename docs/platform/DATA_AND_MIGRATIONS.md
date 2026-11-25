@@ -577,17 +577,32 @@ and the restoration of local timeouts before COMMIT.
 
 - **Erasure.** The privacy store takes the ledger in `SHARE ROW EXCLUSIVE`,
   then the identity challenge relation in `EXCLUSIVE` before its subject locks.
-  [Destination erasure](../../db/platform/migrations/20261125130000_commerce_destination_v2_order_bindings.sql)
-  locks the client `FOR UPDATE`, scrubs binding pins and documents, and removes selections.
+  [Destination erasure](../../db/platform/migrations/20261127030000_subscription_destination_v2.sql)
+  locks the client `FOR UPDATE`, scrubs binding pins and documents, removes checkout
+  selections, and clears subscription selection pins while keeping the pointer.
   `postgresPrivacy.ts:10–24,46–52`.
 - **Destination receipt and issuance.** The receipt takes its scoped exclusive
   advisory lock, ledger `SHARE`, and, for a fresh receipt, client `FOR UPDATE`.
   Issuance takes those guards before inserting the fresh document, upserting the
   selection and committing the scoped receipt.
-  [Expiry](../../db/platform/migrations/20261125130000_commerce_destination_v2_order_bindings.sql) takes ledger `SHARE`, then
-  client, selection and document `FOR UPDATE`, in client and snapshot order.
+  [Expiry](../../db/platform/migrations/20261127030000_subscription_destination_v2.sql)
+  takes ledger `SHARE`, then client, checkout selection, subscription selection and
+  document `FOR UPDATE`. It excludes order-bound and current subscription evidence
+  before limiting candidates and rechecks references under the guards.
   `20261125080000_commerce_destination_v2_receipts.sql:102–132,136–195`,
   `20261125100000_commerce_destination_v2_checkout.sql:139–148,220–231`.
+- **Subscription destination.** Owner-only issuance takes the scoped advisory
+  lock and ledger `SHARE` before replay. On a miss it takes subscription
+  `FOR UPDATE`, probes the origin, then takes client `FOR UPDATE NOWAIT` before
+  selection and document guards. [Read and recheck](../../db/platform/migrations/20261128180000_subscription_destination_read.sql)
+  borrow a writable `READ COMMITTED` transaction and take ledger `SHARE`, then
+  subscription and client `FOR SHARE`. A ledger entry for the matched
+  subscription's client takes precedence over missing live linkage. An explicit
+  selection takes precedence over inherited evidence. The reader takes order,
+  activation and binding `FOR SHARE` in that order before the inherited document,
+  including when verifying prior inherited evidence after an explicit selection.
+  It rechecks that the same-client origin is still unique after the document
+  guard and before returning selection-required advice after a binding wait.
 - **Stage B publication.** It takes candidate and command advisory guards, then
   sorted draft heads `FOR NO KEY UPDATE`. Publish takes `SHARE ROW EXCLUSIVE
   NOWAIT` on `catalog_products`, `catalog_skus`, `catalog_sku_identifiers`,

@@ -38,6 +38,30 @@ it("refuses a stale supplied second-delivery marker on a legacy pair without any
 }, 30_000);
 
 it.each([
+  { label: "alone", withTopLevel: false },
+  { label: "alongside a matching top-level marker", withTopLevel: true },
+])("refuses a stale nested second-delivery marker $label without any public-table effects", async ({ withTopLevel }) => {
+  const pair = await f.legacyPair(), clientId = await f.client();
+  const context = pair.input.quoteSnapshot.quote.context;
+  if (withTopLevel) context.starterPack = { delivery2: { discountBps: pair.terms.delivery2DiscountBps } };
+  context.starterRenewalTerms = { starterPack: { delivery2: { discountBps: pair.terms.delivery2DiscountBps + 1 } } };
+  const before = await f.publicTableDigests();
+  await expect(pair.port().createOrderDraft(pair.input, { clientId })).rejects.toMatchObject({ message: "acquisition_terms_changed" });
+  expect(await f.publicTableDigests()).toEqual(before);
+}, 30_000);
+
+it("admits a matching nested-only second-delivery marker on a legacy pair and preserves it in the receipt", async () => {
+  const pair = await f.legacyPair(), clientId = await f.client();
+  const renewalTerms = { starterPack: { delivery2: { discountBps: pair.terms.delivery2DiscountBps } } };
+  pair.input.quoteSnapshot.quote.context.starterRenewalTerms = renewalTerms;
+  const result = await pair.port().createOrderDraft(pair.input, { clientId });
+  expect(result.orderDraft.replayed).toBe(false);
+  const receipt = await f.owner.query(`SELECT response_payload #> '{orderDraft,quoteSnapshot,quote,context}' AS context
+    FROM public.commerce_order_draft_receipts WHERE idempotency_key=$1`, [pair.input.idempotencyKey]);
+  expect(receipt.rows[0]?.context.starterRenewalTerms).toEqual(renewalTerms);
+}, 30_000);
+
+it.each([
   { label: "without a second-delivery marker", supplied: false },
   { label: "with a matching supplied second-delivery marker", supplied: true },
 ])("admits a valid legacy pair quote $label", async ({ supplied }) => {
