@@ -31719,7 +31719,7 @@
     },
     {
       "name": "lint",
-      "command": "node scripts/ast-grep/check-filewide-ignore.mjs && ast-grep scan --error=no-suppress-all --error=unused-suppression && ast-grep test --skip-snapshot-tests && eslint .",
+      "command": "node scripts/ast-grep/check-filewide-ignore.mjs && ast-grep scan --error=no-suppress-all --error=unused-suppression && ast-grep test --skip-snapshot-tests && eslint --concurrency auto .",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -31845,7 +31845,7 @@
     },
     {
       "path": "package.json",
-      "digest": "sha256-a1261ab69f3cc09b8fb4ab34cdc3b553d88756a682e8a5b4d568160cfb54e7fe"
+      "digest": "sha256-0cd642ad073a0d7f96d8b54b992079a85e9f75017d1237bc255885c9546c5c5f"
     },
     {
       "path": "packages/core/package.json",
