@@ -8,6 +8,12 @@ import { createHash } from "node:crypto";
 /** `vitest.config.ts` flat ceilings; a derived budget can only raise them. */
 export const FLAT_TEST_TIMEOUT_MS = 10_000;
 export const FLAT_COVERAGE_TEST_TIMEOUT_MS = 30_000;
+/**
+ * Hosted runners share CPU across parallel jobs; tooling tests that take 5-7 s
+ * locally were measured at 10.1-13.7 s there. The hosted floor keeps a hung test
+ * failing in seconds while absorbing that contention without per-test bounds.
+ */
+export const FLAT_HOSTED_TEST_TIMEOUT_MS = 30_000;
 /** RR-L4: a file's ceiling is 1.5x what the manifest says the whole file costs. */
 export const BUDGET_FACTOR = 1.5;
 export const DIGEST_KEY_PREFIX = "sha256:";
@@ -20,8 +26,9 @@ export type DurationSections = {
   toolingDurationsMs?: Record<string, number>;
 };
 
-export function flatTestTimeoutMs(coverageRun: boolean): number {
-  return coverageRun ? FLAT_COVERAGE_TEST_TIMEOUT_MS : FLAT_TEST_TIMEOUT_MS;
+export function flatTestTimeoutMs(coverageRun: boolean, hostedCi = false): number {
+  if (coverageRun) return FLAT_COVERAGE_TEST_TIMEOUT_MS;
+  return hostedCi ? FLAT_HOSTED_TEST_TIMEOUT_MS : FLAT_TEST_TIMEOUT_MS;
 }
 
 /**

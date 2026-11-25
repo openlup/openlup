@@ -104,8 +104,8 @@ export default defineConfig({
     // the duration manifest; a file the manifest does not weigh keeps
     // exactly these values. The constants moved to the module both readers share so
     // the floor a budget is computed against cannot drift from the one set here.
-    testTimeout: flatTestTimeoutMs(isCoverageRun),
-    hookTimeout: flatTestTimeoutMs(isCoverageRun),
+    testTimeout: flatTestTimeoutMs(isCoverageRun, process.env.CI === "true"),
+    hookTimeout: flatTestTimeoutMs(isCoverageRun, process.env.CI === "true"),
     // Product-test failures are deterministic evidence and are never retried.
     // The public wrapper/workflow adds no automatic infrastructure retry.
     retry: 0,
