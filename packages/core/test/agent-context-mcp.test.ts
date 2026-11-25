@@ -269,6 +269,38 @@ describe("MCP installed context search", () => {
     expect(listed.tools[0].description).toContain("Declaration occurrences are unverified import leads");
   });
 
+  it.each([true, false])("returns maturity in structured search hits (release gates present: %s)", async (gates) => {
+    const root = fixture();
+    const core = join(root, prefix);
+    mkdirSync(join(core, "dist/feature"), { recursive: true });
+    writeFileSync(join(core, "package.json"), JSON.stringify({ name: "@openlup/core", version: "0.37.0", exports: { "./feature": { types: "./dist/feature/index.d.ts", default: "./dist/feature/index.js" } } }));
+    if (gates) writeFileSync(join(core, "release-gates.json"), JSON.stringify({ packageSurface: { "./feature": { role: "kernel", maturity: "stable", entrypoint: "dist/feature/index.d.ts" } } }));
+    writeFileSync(join(core, "dist/feature/index.d.ts"), "/** @beta @experimental */\nexport declare const ProbeTagged: number;\n/** @deprecated */\nexport declare const ProbeRetired: number;\nexport declare const ProbePlain: number;\n");
+    const find = async (task: string) => {
+      const response = (await result(root, search({ task }))).result;
+      const hit = response.structuredContent.hits.find((item: { reason: string }) => item.reason === "declared public export");
+      expect(hit, task).toBeDefined();
+      return { hit, text: response.content[0].text as string };
+    };
+    const tagged = await find("ProbeTagged");
+    expect(tagged.hit).toMatchObject({ title: "@openlup/core/feature (ProbeTagged)", maturity: "experimental" });
+    expect(tagged.text).toContain("(declared public export); maturity experimental\n");
+    const retired = await find("ProbeRetired");
+    expect(retired.hit.deprecated).toBe(true);
+    expect(retired.text).toContain(gates ? "; maturity stable; deprecated\n" : "(declared public export); deprecated\n");
+    const plain = await find("ProbePlain");
+    expect(Object.keys(plain.hit).includes("maturity")).toBe(gates);
+    expect(Object.keys(plain.hit)).not.toContain("deprecated");
+    expect(plain.text.includes("maturity stable")).toBe(gates);
+  });
+
+  it("tells agents what maturity means and what its absence means", async () => {
+    const root = fixture();
+    const listed = (await result(root, request("tools/list"))).result;
+    expect(listed.tools[0].description).toContain("maturity is the declared maturity");
+    expect(listed.tools[0].description).toContain("read the declaration");
+  });
+
   it("returns CLI text and JSON with reusable application-relative file paths", async () => {
     const root = fixture();
     const { result: response } = await result(root, search());
