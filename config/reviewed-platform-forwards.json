@@ -9474,7 +9474,7 @@
       },
       {
         "row": "fulfillment-destination-v2-legacy-ledger-fence",
-        "path": "db/platform/migrations/20261127120005_fulfillment_destination_v2_legacy_ledger_fence.sql",
+        "path": "db/platform/migrations/20261128030000_fulfillment_destination_v2_legacy_ledger_fence.sql",
         "replacedFunctions": [
           {
             "signature": "public.commerce_fulfillment_enqueue_provider_command(uuid,text,text,text,text,text,text,text,text,text,text,integer)",
@@ -13672,7 +13672,7 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261127120005_fulfillment_destination_v2_legacy_ledger_fence.sql",
+      "path": "db/platform/migrations/20261128030000_fulfillment_destination_v2_legacy_ledger_fence.sql",
       "sha256": "47c1163855d8fc24e3040a3971db4e00f1be9299ff6d968e5abe522567040ddb",
       "functions": [
         {

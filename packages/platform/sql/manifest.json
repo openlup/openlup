@@ -860,7 +860,7 @@
         "sha256": "8bd6651c07dd37457ccc548adedc2ae073b7be5973c7de8facddd65b776c8ce5"
       },
       {
-        "file": "db/platform/migrations/20261127120005_fulfillment_destination_v2_legacy_ledger_fence.sql",
+        "file": "db/platform/migrations/20261128030000_fulfillment_destination_v2_legacy_ledger_fence.sql",
         "sha256": "47c1163855d8fc24e3040a3971db4e00f1be9299ff6d968e5abe522567040ddb"
       }
     ],
@@ -1748,7 +1748,7 @@
           "sha256": "8bd6651c07dd37457ccc548adedc2ae073b7be5973c7de8facddd65b776c8ce5"
         },
         {
-          "file": "db/platform/migrations/20261127120005_fulfillment_destination_v2_legacy_ledger_fence.sql",
+          "file": "db/platform/migrations/20261128030000_fulfillment_destination_v2_legacy_ledger_fence.sql",
           "sha256": "47c1163855d8fc24e3040a3971db4e00f1be9299ff6d968e5abe522567040ddb"
         }
       ],
@@ -2636,7 +2636,7 @@
           "sha256": "8bd6651c07dd37457ccc548adedc2ae073b7be5973c7de8facddd65b776c8ce5"
         },
         {
-          "file": "db/platform/migrations/20261127120005_fulfillment_destination_v2_legacy_ledger_fence.sql",
+          "file": "db/platform/migrations/20261128030000_fulfillment_destination_v2_legacy_ledger_fence.sql",
           "sha256": "47c1163855d8fc24e3040a3971db4e00f1be9299ff6d968e5abe522567040ddb"
         }
       ],
@@ -3718,8 +3718,8 @@
       "sha256": "8bd6651c07dd37457ccc548adedc2ae073b7be5973c7de8facddd65b776c8ce5"
     },
     {
-      "file": "20261127120005_fulfillment_destination_v2_legacy_ledger_fence.sql",
-      "source": "db/platform/migrations/20261127120005_fulfillment_destination_v2_legacy_ledger_fence.sql",
+      "file": "20261128030000_fulfillment_destination_v2_legacy_ledger_fence.sql",
+      "source": "db/platform/migrations/20261128030000_fulfillment_destination_v2_legacy_ledger_fence.sql",
       "sha256": "47c1163855d8fc24e3040a3971db4e00f1be9299ff6d968e5abe522567040ddb"
     },
     {
