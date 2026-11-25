@@ -2,13 +2,14 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 // eslint-disable-next-line no-restricted-imports -- landing needs the trusted SQL inventory owner before workspace packages are installed
 import { renderSqlInventory } from '../packages/core/scripts/documentation-sql-inventory.ts';
 import { checkPlatformMigrationProjection } from './packages/platform-migration-projection.ts';
-import { readDocumentationState } from './documentation-routing.ts';
+import { assertDocumentationPath, documentationGit, readDocumentationState } from './documentation-routing.ts';
 import { renderDocumentationSourceMap } from './documentation-navigation.ts';
-import { createPublicPublicationCatalog } from './oss-publication-policy.ts';
+import { createPublicPublicationCatalog, isManifestPinnedSqlArea } from './oss-publication-policy.ts';
 import { buildPackagesIncremental } from './build-packages-incremental.mjs';
 
 export const SQL_REFERENCE = 'packages/core/docs/guide/reference/sql.md';
@@ -46,11 +47,6 @@ export function generatedCarrier(path) {
     /^packages\/[^/]+\/api\/[^/]+\.api\.md$/u.test(path) ||
     /^packages\/platform\/sql\/[A-Za-z0-9_-]+\.sql$/u.test(path);
 }
-const mirrorManifest = root => JSON.parse(readFileSync(join(root, 'packages/platform/sql/manifest.json'), 'utf8'))
-  .migrations.map(({ file }) => {
-    if (!/^(?:(?:q2|qa|qb)_)?\d{14}_[A-Za-z0-9_-]+\.sql$/u.test(file)) throw new Error(`invalid projected SQL mirror: ${file}`);
-    return `packages/platform/sql/${file}`;
-  });
 
 export const ownerOutputCarrier = path => /^packages\/[^/]+\/api\/[^/]+\.api\.md$/u.test(path) ||
   ['packages/platform/settings-catalog.json', 'packages/platform/settings-refusals.json',
@@ -119,10 +115,7 @@ export function runLandingGenerators(root, paths) {
   if (errors.length) throw new Error(errors.join('; '));
   const catalogPath = join(root, 'config/openlup-publication-catalog.json');
   const catalog = JSON.parse(readFileSync(catalogPath, 'utf8'));
-  const mirrors = new Set(mirrorManifest(root));
-  const mirrorShape = /^packages\/platform\/sql\/(?:(?:q2|qa|qb)_)?\d{14}_[A-Za-z0-9_-]+\.sql$/u;
-  const rows = catalog.publicPaths.filter(row => !mirrorShape.test(row.path) || mirrors.has(row.path) || existsSync(join(root, row.path)));
-  for (const path of mirrors) if (!rows.some(row => row.path === path)) rows.push({ path, class: 'public-output' });
+  const rows = catalog.publicPaths.filter(row => !isManifestPinnedSqlArea(row.path));
   rows.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
   const generated = createPublicPublicationCatalog(rows, catalog.guardViability).contents;
   if (existsSync(join(root, PUBLICATION_OWNER)) && readFileSync(join(root, PUBLICATION_OWNER), 'utf8') === trustedPublicationOwner) {
@@ -130,7 +123,7 @@ export function runLandingGenerators(root, paths) {
   } else {
     // Main may have changed this owner and already regenerated its policy metadata.
     // Compact replay trees may omit the owner. Keep their reviewed metadata while
-    // this process refreshes only the mirror rows.
+    // this process strips any manifest-pinned SQL rows.
     const merged = JSON.parse(generated);
     merged.packageCommands = catalog.packageCommands;
     merged.packageExecutionSurfaces = catalog.packageExecutionSurfaces;
@@ -140,26 +133,22 @@ export function runLandingGenerators(root, paths) {
   writeFileSync(join(root, SQL_REFERENCE), syncSqlReference(root));
 }
 export function withPredictedTree(cwd, tree, action) {
-  const git = args => execFileSync('/usr/bin/git', ['--no-replace-objects', '-C', cwd, '-c', 'core.hooksPath=/dev/null', ...args],
-    { encoding: 'utf8', timeout: 30000, maxBuffer: 128 * 1024 * 1024, env: { PATH: '/usr/bin:/bin' } });
-  const rows = git(['ls-tree', '-rz', '--full-tree', tree]).split('\0').filter(Boolean);
+  const rows = documentationGit(cwd, ['ls-tree', '-rz', '--full-tree', tree]).toString('utf8').split('\0').filter(Boolean);
   if (rows.some(row => !row.startsWith('100644 blob ') && !row.startsWith('100755 blob '))) throw new Error('derived: non-regular predicted tree');
   const paths = rows.map(row => row.slice(row.indexOf('\t') + 1));
-  mkdirSync(join(cwd, '.context/scratch'), { recursive: true });
-  const root = mkdtempSync(join(cwd, '.context/scratch/derived-tree-'));
+  const root = mkdtempSync(join(tmpdir(), 'openlup-derived-tree-'));
   try {
     const ids = rows.map(row => row.split(' ')[2].split('\t')[0]);
-    const blobs = execFileSync('/usr/bin/git', ['--no-replace-objects', '-C', cwd, 'cat-file', '--batch'], {
-      input: ids.join('\n') + '\n', timeout: 30000, maxBuffer: 128 * 1024 * 1024,
-    });
+    const blobs = documentationGit(cwd, ['cat-file', '--batch'], ids.join('\n') + '\n', 128 * 1024 * 1024);
     let offset = 0;
     for (let index = 0; index < paths.length; index++) {
       const newline = blobs.indexOf(10, offset);
       const header = blobs.subarray(offset, newline).toString('utf8').split(' ');
       if (header[0] !== ids[index] || header[1] !== 'blob' || !/^\d+$/u.test(header[2])) throw new Error('derived: unreadable blob');
       const size = Number(header[2]); offset = newline + 1;
+      assertDocumentationPath(paths[index]);
       const target = join(root, paths[index]);
-      if (paths[index].split('/').some(part => part === '..' || part === '.' || part === '.git') || !target.startsWith(root + '/')) throw new Error('derived: unsafe tree path');
+      if (paths[index].split('/').some(part => part.toLowerCase() === '.git') || !target.startsWith(root + '/')) throw new Error('derived: unsafe tree path');
       mkdirSync(dirname(target), { recursive: true });
       writeFileSync(target, blobs.subarray(offset, offset + size)); offset += size + 1;
     }

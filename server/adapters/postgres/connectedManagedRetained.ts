@@ -655,7 +655,7 @@ export async function mapManagedRetainedBusiness(input: {
     attribute_values: null, net_content_dimension: null, net_content_unscaled: null, net_content_scale: null, net_content_unit: null,
     gross_mass_dimension: null, gross_mass_unscaled: null, gross_mass_scale: null, gross_mass_unit: null, ...row,
   }));
-  for (const row of priceLists) projected.price_lists!.push(project("price_lists", row));
+  for (const row of priceLists) projected.price_lists!.push(project("price_lists", { amount_basis: null, ...row }));
   for (const row of priceEntries) projected.price_entries!.push(project("price_entries", row));
   const skuById = byId(skus), subscriptionById = byId(subscriptions);
   for (const row of subscriptions) {
@@ -772,7 +772,8 @@ export async function mapManagedRetainedBusiness(input: {
       cancelled_at: null, refunded_at: null, metadata: row.metadata,
       currency_code: row.currency, total_amount_minor: row.total_cents, source_kind: row.source_kind,
       source_channel_id: null, source_order_ref: null, renewal_operation_id: null, renewal_operation_fingerprint: null,
-      recovery_root_order_id: null, recreated_from_order_id: null, catalog_acceptance: null, catalog_receipt_key: null, catalog_basket: null });
+      recovery_root_order_id: null, recreated_from_order_id: null, catalog_acceptance: null, catalog_receipt_key: null, catalog_basket: null,
+      money_version: null });
   }
   for (const row of items) {
     if (!orderById.has(row.order_id) || typeof row.allocation_ordinal !== "number" || row.sku_id === null
@@ -782,7 +783,7 @@ export async function mapManagedRetainedBusiness(input: {
       line_ordinal: row.allocation_ordinal, quantity: row.quantity, unit_amount_minor: row.unit_price_cents,
       line_amount_minor: row.total_cents, created_at: row.created_at, source_line_ordinal: null,
       catalog_unit_amount_minor: null, catalog_line_amount_minor: null,
-      promotion_discount_allocated_minor: null, promotion_allocation_fingerprint: null });
+      promotion_discount_allocated_minor: null, promotion_allocation_fingerprint: null, line_key: null });
   }
   const intentById = byId(intents);
   const targetTransitionKey = (rowId: unknown) =>

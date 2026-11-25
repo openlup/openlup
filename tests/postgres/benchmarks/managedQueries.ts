@@ -240,7 +240,7 @@ async function main() {
   if (!values.output?.trim()) throw new Error("--output must name a new JSON report");
   const rows = integerOption(values.rows!, 100, 100_000, "rows");
   const samples = integerOption(values.samples!, 3, 25, "samples");
-  const container = await runManagedCompatPostgres({ name: `managed-query-bench-${process.pid}`, password: "synthetic-benchmark" });
+  const container = await runManagedCompatPostgres({ name: `managed-query-bench-${process.pid}`, password: "synthetic-benchmark", durability: "default" });
   const pool = new Pool({
     connectionString: container.connectionString.replace("postgres://postgres:", "postgres://supabase_admin:"),
     max: 3, connectionTimeoutMillis: 5_000, statement_timeout: 120_000, query_timeout: 125_000,

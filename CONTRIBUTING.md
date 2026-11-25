@@ -217,7 +217,7 @@ Start from the question you need to answer during implementation:
 | Change | Contributor files |
 | --- | --- |
 | Edit existing behavior | Edit the owning source and its nearest behavior tests. Update reader guidance if the public contract changes. |
-| Add or remove a tracked public file | Update the [publication inventory](config/openlup-publication-catalog.json) unless the [publication policy](docs/platform/DOCUMENTATION.md) already admits the file by pattern (`packages/{core,outbox,platform}/changes/*.md` or `packages/core/docs/guide/**/*.md`). |
+| Add or remove a tracked public file | Update the [publication inventory](config/openlup-publication-catalog.json) unless the [publication policy](docs/platform/DOCUMENTATION.md) already admits the file by pattern (`packages/{core,outbox,platform}/changes/*.md`, `packages/core/docs/guide/**/*.md`, or manifest-pinned `db/platform/migrations/*.sql` and `packages/platform/sql/*.sql`). |
 | Change an exported contract or add a migration | Follow the owning [package checks](#package-policy-and-release-checks) or [migration workflow](docs/platform/DATA_AND_MIGRATIONS.md) to regenerate affected files. |
 | Prepare a release or change repository controls | See [release and repository controls](docs/platform/DEVELOPMENT_AND_RELEASE.md). These are maintainer tasks. |
 
@@ -515,7 +515,7 @@ each of which must fail. It is not a required context of its own; the required
 See [Test scope and diagnostics](#test-scope-and-diagnostics) for selection,
 sharding, discovery and test-author guidance.
 
-The required `install-proof` context aggregates `install-packages` and all four
+The required `install-proof` context aggregates `install-packages` and all five
 `install-browser` shards. It requires actual success from both dependencies; failed,
 cancelled or skipped jobs refuse admission. On main pushes, `install-packages`
 checks `scripts/public-ci-reuse.mjs`; browser shards share its decision so a
@@ -547,13 +547,13 @@ for trust, evidence and support limits. The workflow adds no required PR check,
 does not hold publication open and does not delay the next dispatch.
 
 After package proof succeeds, `install-browser` runs the starter's installed
-PostgreSQL browser journeys in four parallel shards through
+PostgreSQL browser journeys in five parallel shards through
 [`starter-browser-ci.mjs`](scripts/starter-browser-ci.mjs). Pinned official artifact
 actions transfer only the verified manifest and public tarballs from the package
 job, retained for one day; private browser output is never uploaded. Each shard
 verifies all manifest hashes, the package inventory and the exact checkout commit
 before installing, then checks installed-package confinement. The zero-based
-`--groups` selections are `0`, `1,6`, `2,4` and `3,5`, covering every group once.
+`--groups` selections are `0`, `6`, `1,2`, `3,5` and `4`, covering every group once.
 Each shard acquires an isolated disposable
 PostgreSQL 16 per configuration through the shared test helper and `test-postgres`
 inventory pin. The package job's PostgreSQL 17 service retains its package proofs. The runner
@@ -575,10 +575,17 @@ runs with the host user identity to preserve private capture permissions.
 The script captures output privately, scans it for credentials, removes its
 hosts, containers, databases, roles and scratch files on success or failure, and
 prints the public image identity, counts, timings and bounded failure diagnostics. It uploads no artifacts.
-Current deadlines are 12 minutes for packages, 8 per browser shard and 2 for
+Current deadlines are 20 minutes for packages, 12 per browser shard and 2 for
 the aggregate. Set each job deadline to at least 1.3 times its slowest observed
 hosted run.
-Browser journeys retain zero retries. See the
+Playwright retries nothing. In hosted CI only, a group whose journeys fail
+reruns once, with fresh databases, hosts and state, in the same shard, after the
+first attempt's cleanup completed. A setup or cleanup failure is never rerun, nor
+is a rerun that would not fit `OPENLUP_STARTER_BROWSER_RETRY_BUDGET_MS` (default 300000;
+the workflow sets the job deadline less setup): the time already used, one more attempt
+as long as the failed one, an equal estimate per later group and a reserve for the
+catalogue upgrade or cleanup must fit, otherwise it prints `retry skipped: budget`. A group that passed only on the rerun is reported the same
+way as a flaky Vitest file (`flaky-retry-passed: starter browser group <n>`). See the
 [starter proof recipe](examples/neutral-store/docs/proof.md#database-backed-purchase-acceptance-recipe)
 for the selected journeys and the separate local proofs.
 
@@ -776,18 +783,21 @@ For the managed pgTAP runner, prerequisites and proof limits, follow
 [Test scope and diagnostics](#separate-db-package-and-coverage-proof).
 
 The four `oss:published-tree` modes are distinct checks. `--policy` verifies
-the public policy, catalogue, documentation ownership, generated navigation and
-source-map freshness; `--inventory` verifies the selected tree; `--self-check`
-runs both `--policy` and `--inventory` in a single pass over the tracked tree
-and source-release snapshot; and `--typecheck` compares the preview's
+the public policy, catalogue, documentation ownership, generated navigation,
+source-map freshness, and (when comparing committed `HEAD` against a distinct
+PR, merge-group, explicit `--docs-base`, or local merge-base commit) append-only
+migration history plus package API `Migration:` blocks; `--inventory` verifies
+the selected tree; `--self-check` runs both `--policy` and `--inventory` in a
+single pass over the tracked tree and source-release snapshot; and `--typecheck`
+compares the preview's
 diagnostics with its tracked compatibility debt. The source repository's
 aggregate typechecker is not part of the projected command inventory and is not
 a substitute for `--typecheck`.
 `npm run oss:published-tree -- --sync-catalog` updates the catalogue from tracked
 Git paths: it removes deleted rows and admits new safe files as `public-output`.
-Pattern-admitted fragments and guide pages remain outside per-file rows; policy
-paths, withheld files, untracked files, private coordinates, and unknown direct
-execution entrypoints are refused. Stage the current file, publication catalogue
+Pattern-admitted fragments, guide pages and manifest-pinned platform SQL
+migrations remain outside per-file rows; policy paths, withheld files, untracked
+files, private coordinates, and unknown direct execution entrypoints are refused. Stage the current file, publication catalogue
 and policy registry before admitting a new output. Review any new class before
 publishing.
 `check:dco-signoff` takes both range ends as full 40-character commit SHAs,
@@ -819,10 +829,11 @@ The complete projected root command inventory is `build`,
 `build:public-reference`, `build:public-reference:client`,
 `build:public-reference:prerender`, `build:public-reference:ssr`,
 `check:dco-signoff`, `guard:client-secret-boundary`,
-`guard:public-reference-site-routes`, `inventory:refresh`, `landing:merge`, `lint`, `preflight`, `prelint`,
-`oss:published-tree`, `packages:check`, `release:bump`, `release:docs-pass`, `sql:admit`, `pretest`, `test`, `test:hosted`, and `test:scoped`.
+`guard:public-reference-site-routes`, `inventory:refresh`, `landing:merge`, `migration:finalize`, `lint`, `preflight`, `prelint`,
+`oss:published-tree`, `packages:check`, `release:bump`, `release:docs-pass`, `sql:admit`, `pretest`, `test`, `test:affected`, `test:hosted`, and `test:scoped`.
 This reclassifies the complete current root script inventory; all commands are
-public, with `test:scoped` as the local wrapper around the unchanged `test` command.
+public, with `test:affected` as the local targeted wrapper and `test:scoped` as
+the local wrapper around the unchanged `test` command.
 `npm run build` is the public build truth; its public-reference subcommands and
 guards are internal links in that bounded chain. Published Tree CI invokes the
 build, sharded required root tests, DCO check, and publication checks from this inventory.
@@ -841,7 +852,11 @@ the subpaths its `exports` declare, and domain code under `src/domains` and
 `server/domains` imports no configured provider SDK and no adapter,
 infrastructure, runtime or route code; the config exempts domain tests.
 Non-test production source under `packages/core/src` and `packages/ui/src`
-also imports none of the provider SDKs listed in the config. Package tests
+also imports none of the provider SDKs listed in the config. In the neutral
+starter, `client/` and `shared/` source takes runtime values from
+`@openlup/platform` only through an entry the config lists as browser-safe;
+`import type` declarations and `host/` code are unaffected. An inline
+`import { type A }` is refused; its fix is `import type`. Package tests
 retain their package isolation even when composing with a provider.
 Provider composition exemptions use `*.test.<extension>` and
 `*.testFixtures.ts`, matching the existing test convention.
@@ -965,6 +980,11 @@ After `npm ci`, use:
 # Builds Core, Outbox and Platform, then runs the affected root tests.
 npm test -- server/domains/subscription
 
+# Auto-discover affected root tests (reverse imports, #imports, contract pins) and run them.
+npm run test:affected
+npm run test:affected -- --dry-run
+npm run test:affected -- --hosted --no-postgres
+
 # The same, the way a hosted test shard runs them; at least one file is required.
 npm run test:hosted -- scripts/ci-test-scope.test.ts
 
@@ -1010,8 +1030,10 @@ removed; other local environment variables pass through unchanged.
 
 Run `npm run preflight -- --fast` before reporting a change ready and before starting reviewers.
 It checks worktree cleanliness, mergeability against `origin/main` (skipped when `OPENLUP_STACK_BASE`
-points to an unlanded stack base), both neutrality gates, ast-grep scan and hygiene, the
-published-tree self-check (`oss:published-tree -- --self-check`), changelog fragments, added
+points to an unlanded stack base), both neutrality gates, ast-grep scan and hygiene, `eslint-changed`
+on changed non-deleted JS/TS files, conditional `client-secret-boundary` and `site-routes` guards, the
+published-tree self-check (`oss:published-tree -- --self-check`, including committed-tree append-only
+migration history and package API `Migration:` blocks when `HEAD` differs from its base), changelog fragments, added
 test-line date/expiry warnings, `gitleaks`, conditional guide-contract and package-manifest checks,
 and DCO sign-off across all commits (merge commits included). `WARN` and `SKIP` statuses surface
 without failing `--fast`. If fetch fails, it uses the local `origin/main`.
@@ -1021,8 +1043,12 @@ Run `npm run preflight -- --area` for a Docker-free, area-scoped check over chan
 `git merge-base HEAD origin/main` plus uncommitted and untracked files: it runs `eslint changed`,
 triggered Docker-free, consumer-pack-free tooling guard tests from `scripts/ci-test-scope.mjs` (plus
 `scripts/catalog-document-boundary.test.ts` on catalog, script or doc edits) through `test:hosted`,
-and `sql admit` when SQL under `db/` or `packages/*/sql/` changed. `--fast` and `--area` are
-mutually exclusive.
+and `sql admit` when SQL under `db/` or `packages/*/sql/` changed.
+
+Run `npm run preflight -- --affected` to run default preflight with test discovery expanded via
+`scripts/affected-tests.mjs` (reverse-import graph and contract-pin rules) so source-only edits
+also run their affected root Vitest suites through `test:hosted`. `--fast`, `--area`, and `--affected`
+are mutually exclusive.
 
 Without flags, `npm run preflight` is advisory and exits non-zero
 only when a check reports `FAIL`. It reads the change since
@@ -1034,6 +1060,10 @@ one `PASS`, `WARN`, `SKIP` or `FAIL` line per check:
 - `ast-grep hygiene`: the first-line file-wide `ast-grep-ignore` check and
   `ast-grep` rule tests (`ast-grep test --skip-snapshot-tests`);
 - `eslint changed`: ESLint on changed non-deleted JS/TS files before package builds;
+- `client-secret-boundary`: `node --experimental-strip-types scripts/check-client-secret-boundary.ts`
+  when `src/`, `server/`, `api/`, `config/environment-variables.json`, or the guard script changed;
+- `site-routes`: `node scripts/site-routes.mjs --public-reference` when `config/site-routes.json`,
+  `config/public-reference-site-routes.json`, or `scripts/site-routes*` changed;
 - `sql admit`: `npm run sql:admit` when SQL under `db/` or `packages/*/sql/`
   changed; reports `WARN` when the working tree has uncommitted or untracked
   changes;
@@ -1081,6 +1111,8 @@ witness rather than skipping it; this focused run does not replace the required
 package, coverage or full verification gates.
 
 Hosted `test-prep` runs `node scripts/ci-test-scope.mjs` and `node scripts/build-packages-incremental.mjs` once and uploads the exclusion list and built workspace `dist/` outputs as the `test-prep` artifact. Hosted `test-full-shard` jobs download that artifact and run `node scripts/ci-vitest-shard.mjs --shard N --total 8 --skip-pretest` (deterministic weighted LPT sharding over `config/vitest-shard-weights.json`, bypassing redundant per-shard `pretest` builds) in eight independent installations. Required `test` accepts only success from the whole matrix and from the `pgtap` job; failure, cancellation or a skipped dependency job refuses. There is no `test:required` script or separate `test-full` job. A successful shard can still report individually skipped cases; record missing proof.
+
+Vitest keeps `retry: 0`. In hosted CI (`CI=true`) only, each shard reruns its failed test files once in the same job, before the check reports, because a merge-queue entry is ejected on its first failing check. The shard passes only if every file passed on the first run or appears as passed in the rerun's report; a file missing, skipped or not run on the rerun fails it. More than 10 failed files, or any first-run error no test file accounts for (an unhandled error or rejection, an interrupted run, or a non-zero exit whose report shows no failed file), is not treated as transient: the shard fails without a rerun. Local runs never retry. Every file that passed only on the rerun prints `flaky-retry-passed: <file>`, emits a `Flaky test retried` warning annotation and is listed in the job summary; the retry is not acceptance. A file that repeatedly reports `flaky-retry-passed` is a defect to fix, for example a test that depends on order or on shared state.
 
 Channel preservation tests live in `packages/platform/test/channels` and are
 discovered by the existing root Node project. The reference's adjacent guard
@@ -1199,7 +1231,7 @@ retry and other startup errors, and preserves a named volume and another
 container. Cross-run reclamation is limited to the labelled dead-owner contract
 above; it never authorizes pruning unlabeled resources or a live owner's stack.
 
-Root test/hook defaults are 10 seconds, or 30 with coverage; externally supplied duration pins may raise them. Tests under `tests/postgres/` have a 60-second test floor, preserving any larger derived or explicit per-test budget; their hook budgets are unchanged. These are deadlines, not expected runtimes or whole-file budgets. Process spawning, repeated tree copies, compilers, npm packs/installs, containers and intentional deadline waits are likely costs. Measure expensive additions and record command, revision, environment, workers and observed duration in existing task evidence. Simplify repeated setup or decision matrices before raising a timeout; give necessary integration work an explicit bounded deadline sized for hosted runners. Preserve `retry: 0` and required proof.
+Root test/hook defaults are 10 seconds locally, or 30 with coverage or in hosted CI (`CI=true`), where shared runners slow tooling tests about twofold; externally supplied duration pins may raise them. Tests and hooks under `tests/postgres/` have a 60-second floor, preserving any larger derived or explicit per-test budget. These are deadlines, not expected runtimes or whole-file budgets. Process spawning, repeated tree copies, compilers, npm packs/installs, containers and intentional deadline waits are likely costs. Measure expensive additions and record command, revision, environment, workers and observed duration in existing task evidence. Simplify repeated setup or decision matrices before raising a timeout; give necessary integration work an explicit bounded deadline sized for hosted runners. Preserve `retry: 0` and required proof.
 
 To find optimisation targets, read the per-file durations Vitest prints in a hosted shard log (`✓ <file> (<n> tests) <ms>`) or locally with `npm test -- <path>`, and rank by file time. On 2026-10-19 the slowest root files were repository-tooling tests (`scripts/packages/outbox-consumer-proof.test.ts`, `scripts/source-preview-release.test.ts`, `scripts/public-ci-neutrality.test.ts`), each 40–80 s; slim one by moving decisions into table-driven cases and keeping only the real-process witnesses its requirement needs.
 
@@ -1238,7 +1270,7 @@ The Outbox companion reads `config/ci-images.json` through its image helper;
 image-pin-only changes therefore retain its real interruption and refusal
 witnesses even when unrelated bounded tooling fixtures are excluded.
 
-All rows already share `scripts/`, `tests/setup/`, `src/test/` and `src/checkout/machine/commerceRequestCache.ts`. Every root file outside the allowlisted root documentation files (`README.md`, `AGENTS.md`, `CONTRIBUTING.md`, `SECURITY.md`, `GOVERNANCE.md`, `CHANGELOG.md`) and every dot-prefixed segment anywhere also runs everything; root documentation edits still run `scripts/documentation-cli.test.ts` and all unlisted doc/policy checks. Package rows conservatively include `packages/`. Repository-wide inventory/policy/neutrality/removal scans stay unlisted. When a row gains a new read, extend it; when its closure becomes uncertain or tree-wide, remove it.
+All rows already share `tests/setup/`, `src/test/`, `src/checkout/machine/commerceRequestCache.ts`, and every non-allowlisted path under `scripts/` (fail-closed: runners, Docker, builds, fixtures, package scripts, migration helpers, `preflight.ts`, `oss-*.ts`, and any new or unknown script trigger the complete suite; only `scripts/**/*.test.*` / `*.spec.*` and the explicit `NON_BAILOUT_SCRIPTS` allowlist — guarded by the AST exemption-safety test in [ci-test-scope.test.ts](scripts/ci-test-scope.test.ts) — avoid the global bailout, and every listed test always retains itself). Every root file outside the allowlisted root documentation files (`README.md`, `AGENTS.md`, `CONTRIBUTING.md`, `SECURITY.md`, `GOVERNANCE.md`, `CHANGELOG.md`) and every dot-prefixed segment anywhere also runs everything; root documentation edits still run `scripts/documentation-cli.test.ts` and all unlisted doc/policy checks. Package rows conservatively include `packages/`. Repository-wide inventory/policy/neutrality/removal scans stay unlisted. When a row gains a new read, extend it; when its closure becomes uncertain or tree-wide, remove it.
 
 Review input completeness against the actual test/import closure. Extend [scope falsifiers](scripts/ci-test-scope.test.ts) for the new dependency behavior; row-derived tests alone cannot discover an omitted input. Preserve shared triggers, rename/deletion coverage, identical shard selection and errors selecting everything.
 
@@ -1255,6 +1287,8 @@ PR/group scope uses the merge-base with the event's exact base. Local scope uses
 ```
 
 Unknown events, malformed metadata or unavailable Git history exclude nothing. Selection is an optimization, never a failure waiver. Keep the project-level exact-path seam; root `--exclude` cannot replace it.
+
+In hosted CI (`.github/workflows/published-tree-ci.yml`), `scope-gate` runs `node scripts/ci-test-scope.mjs --workflow-outputs` without installing workspace dependencies and emits five fail-closed outputs (`run_pgtap`, `run_reference_build`, `run_package_gates`, `run_install_browser`, `run_install_pack`). Every output defaults to `true` on `push`, missing/malformed base SHAs, Git errors, root non-doc files, dot-segments, shared setup inputs, or non-allowlisted `scripts/` changes; any file deletion or rename also triggers `run_package_gates=true` (and `run_install_pack=true`) so `packages/core` `docs:check` repository-link existence checks run. `pgtap`, `install-pack`, and `install-packages` use step-level pass-through (keeping `public-ci-dependencies.mjs` active on non-reused runs and preserving `success` job conclusions for `public-ci-reuse.mjs`), while `install-browser` skips its 5 matrix runners when `run_browser == 'false'` and `install-proof` requires either `BROWSER_RESULT=success` or the explicit pair `RUN_BROWSER=false` with `BROWSER_RESULT=skipped`.
 
 #### Separate DB, package and coverage proof
 
@@ -1602,13 +1636,19 @@ OIDC with `--tag latest`, without another approval.
 check and the maintainer setup.
 
 A new or renamed path needs its authored row in
-`config/openlup-publication-catalog.json`, except two patterns: the fragment
-pattern `packages/{core,outbox,platform}/changes/*.md` and the reader guide
-`packages/core/docs/guide/**/*.md`. Both are admitted as `public-output` only
-after content and regular, non-executable mode validation. Fragment nesting,
-guide directories that are not lowercase, other extensions and per-file rows for
-either pattern refuse. The catalogue remains an explicit classification and
-execution inventory, not a generated list. A guide page keeps a review floor of
+`config/openlup-publication-catalog.json`, except three patterns: the fragment
+pattern `packages/{core,outbox,platform}/changes/*.md`, the reader guide
+`packages/core/docs/guide/**/*.md`, and manifest-pinned platform SQL migrations
+`db/platform/migrations/*.sql` together with their projected package mirrors
+`packages/platform/sql/*.sql` (excluding the hand-authored
+`packages/platform/sql/20260809150001_job_run_ledger_v3.sql`,
+`packages/platform/sql/manifest.json`, and `supabase/migrations/*.sql`, which
+retain explicit rows). All three are admitted as `public-output` only after
+content and regular, non-executable mode validation (and exact SHA-256 pinning
+against `config/platform-migration-manifest.json` for platform SQL). Fragment
+nesting, guide directories that are not lowercase, unmanifested SQL, other
+extensions and per-file rows for any of the three patterns refuse. The catalogue
+remains an explicit classification and execution inventory, not a generated list. A guide page keeps a review floor of
 one, like a rule file, because it ships to npm and the website unchanged.
 
 For a notable package change, add a uniquely named
@@ -1813,6 +1853,19 @@ fresh main. The review commands use `origin/main` as the local main reference.
 
 ### Derived landing carriers
 
+Use `npm run migration:finalize -- plan --base <main-sha> --head <draft-sha>`
+to preview the ordered mapping for committed, unlanded ordinary forwards.
+The plan is read-only. Run local `apply` from a dedicated worktree and supply
+`--pr <number> --repository-id <id> --pr-node-id <id>` with the same `--base`
+and `--head` arguments. From that worktree, run
+`git rev-parse --git-path openlup-migration-grant.json` to find the fixture
+location. Copy the grant JSON there as an owned regular file, then remove it
+when finished. Obtain the repository and PR node IDs independently of the
+grant fixture. Apply returns the SHA-256 of the
+exact inventory bytes it measured. Keep this value with the grant, base and
+finalized head for independent verification. Hosted reservation remains inactive.
+A renamed SQL identity retains its existing review obligations.
+
 From a clean committed task checkout, refresh the remote reference, then run:
 
 ```sh
@@ -1975,7 +2028,8 @@ and floor using trusted main's tooling.
 
 ```sh
 node scripts/agent-review-session.mjs receipt "$PR" | gh pr comment "$PR" --body-file -
-gh pr merge "$PR" --auto --match-head-commit "$REVIEWED_HEAD" --author-email "$AUTHOR_EMAIL"
+node scripts/merge-queue-check-arm.mjs "$PR" "$REVIEWED_HEAD" &&
+  gh pr merge "$PR" --auto --match-head-commit "$REVIEWED_HEAD" --author-email "$AUTHOR_EMAIL"
 ```
 
 Set `PR` to the PR number, `REVIEWED_HEAD` to the reviewed head SHA and
@@ -1993,6 +2047,9 @@ The summary table is a convenience; admission verifies only the machine block.
 
 ### Merge queue
 
+Queue Handoff serializes its admission jobs from the occupancy check through
+exact-head readback. GitHub's UI and CLI retain their existing entry behavior.
+
 The queue builds and tests the integration tree. A source review carries over
 when its base is on main and the group tree is the reviewed tree or the clean
 `git merge-tree` result on the queue base. A clean registry-carrier union or verified derived landing also
@@ -2007,6 +2064,15 @@ use `--admin` for this route.
 A non-null `autoMergeRequest` means armed; only `mergeQueueEntry` confirms queue
 entry. Observe an existing request instead of repeatedly arming it.
 
+Run the read-only `merge-queue-check-arm.mjs` preflight before the manual
+exact-head merge command. It checks GitHub's live PR title and description for
+the DCO sign-off that will appear in the synthetic queue merge commit. Add a
+`Signed-off-by: Your Name <your.email@example.com>` line to the PR description
+and keep the sign-offs on the source commits. A migration PR waits while
+another migration PR is active in the queue. The preflight reports `ready`
+only with complete evidence. Keep the head match and recheck authority,
+required checks and the receipt before the separate write.
+
 Where activated, trusted `Queue Handoff` can insert a still-armed exact head once
 after the required source successes and current native proof. At each of its two
 mergeability checks, it re-reads `UNKNOWN` up to twelve times, 15 seconds apart.
@@ -2020,6 +2086,15 @@ to this repository with no bypass; its private key stays in the main-only
 `openlup-merge-queue` environment, separate from release credentials. Queue
 Handoff's built-in workflow token is read-only. Activation and settings remain
 maintainer actions.
+
+For read-only queue diagnostics, run
+`node scripts/merge-queue-churn.mjs --github <since-UTC> <until-UTC> markdown`.
+It reports elapsed job time and exits with status 2 for partial evidence.
+Use `--offline [json|markdown] < evidence.json` for a saved sanitized
+evidence object. Add `--stdin < envelope.json` to the live command to supply
+an object with optional `priorSnapshot`, `subjects` and `attestations`.
+Both modes read at most 8 MiB from standard input. The report labels
+independently attested links and leaves unsupported historical links unknown.
 
 On `pull_request`, when no receipt comment exists for the current head (and no
 malformed receipt comment is present), `native-review` fails fast after the six
@@ -2036,9 +2111,11 @@ queue: whether Queue Handoff fires for an attempt requested with the built-in to
 is unwitnessed until the first hosted rerun. In any other state, after a PR
 `native-review` failure or receipt timeout, submit or check the receipt and rerun
 the failed `native-review` job within rerun authority. A group timeout needs a
-requeue under merge authority. Queue recovery is bounded at two retries; a second
-timeout or removal of the same head stops for diagnosis. A flake requires a
-passing rerun on the same tree; missing or late receipts are not flakes. A timely
+requeue under merge authority. After a same-head failed-check or timeout removal,
+the preflight requires a passing rerun of the removed merge-group commit with
+all required checks successful. A second removal of the same head stops routine
+re-arming. Diagnose any hold before considering further action. Missing or late
+receipts require a receipt fix. A timely
 valid receipt rejected without a conflict is a defect to diagnose.
 
 The admission script comes from trusted main, but the job YAML comes from the

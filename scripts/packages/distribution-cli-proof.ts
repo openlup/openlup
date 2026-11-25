@@ -100,8 +100,21 @@ export const starterOptionalOwnedFiles: ReadonlySet<string> = new Set([
 ]);
 
 export const starterSettingsHost = "owned/settings-host.ts";
+const starterStoreConfig = "owned/store.config.ts";
+const legacyStarterPhysical = /\{ netWeightG: (\d+), unitGtin: '([0-9]+)', issuer: '([^'\r\n]+)' \}/gu;
 const settingsHeading = "\n## Change a business setting\n";
 const starterAgentGuide = "AGENTS.md";
+
+export function migrateStarterPhysical(app: string, target: string, pristine: boolean): Buffer {
+  const path = join(app, starterStoreConfig);
+  const previous = readFileSync(path, "utf8");
+  const next = pristine ? readFileSync(join(target, starterStoreConfig), "utf8") : previous.replaceAll(legacyStarterPhysical,
+    (_, grams, gtin, issuer) => `{ netContent: { dimension: 'mass', unit: 'openlup:g', unscaled: '${grams}', scale: 0 }, primaryUnitIdentifier: { scheme: 'gs1:gtin', issuer: '${issuer}', value: '${gtin}' } }`);
+  assert(next !== previous && !/\bnetWeightG:/u.test(next), "starter_physical_upgrade_manual_reconciliation_required");
+  const bytes = Buffer.from(next);
+  writeFileSync(path, bytes);
+  return bytes;
+}
 
 export function includeSettingsHost(app: string, target: string, to: ReturnType<typeof starterUpgradeSnapshot>): void {
   if (!existsSync(join(target, starterSettingsHost))) return;
@@ -353,6 +366,9 @@ export function proveStarterCatalogueWrappers(app: string, scratch: string,
     assert.equal(report.command, script.endsWith(":source") ? "catalogue project" : "catalogue check");
     assert.equal(report.exitCode, 0);
   }
+  const apply = "catalogue:apply";
+  if (Object.hasOwn(expectedScripts, apply)) assert.equal(scripts[apply], "./lifecycle catalogue apply");
+  else assert(!Object.hasOwn(scripts, apply), "unexpected starter catalogue apply wrapper");
 }
 
 export function retiresStarterCatalogue(from: string | undefined, to: string | undefined): boolean {
@@ -584,6 +600,8 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   const predecessorSettings = careUpgrade ? owned[starterSettingsHost] : undefined;
   const predecessorCopy = careUpgrade ? readFileSync(join(app, careCopy)) : undefined;
   phase("migrate-owned-contracts", () => { migrateStarterOwned(app, pair.to, from, to); });
+  const physicalUpgrade = !Object.hasOwn(from.files, "shared/seed-physical.ts") && Object.hasOwn(to.files, "shared/seed-physical.ts")
+    && /\bnetWeightG:/u.test(readFileSync(join(app, starterStoreConfig), "utf8"));
   if (!pair.pristine) phase("customize-owned", () => {
     for (const [path, before, after] of [
       ["owned/store.config.ts", "#3d6657", "#663d57"],
@@ -592,6 +610,12 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
       assert(ownership.owned.includes(path) && !Object.hasOwn(from.files, path) && !Object.hasOwn(to.files, path));
       const original = readFileSync(join(app, path), "utf8"); assert(original.includes(before));
       writeFileSync(join(app, path), original.replaceAll(before, after)); owned[path] = readFileSync(join(app, path));
+    }
+    if (physicalUpgrade) {
+      const local = owned[starterStoreConfig]!.toString().replace("netWeightG: 250, unitGtin: '0000000000017', issuer: 'demo'",
+        "netWeightG: 275, unitGtin: '0000000000109', issuer: 'example:local'");
+      assert.notEqual(local, owned[starterStoreConfig]!.toString());
+      writeFileSync(join(app, starterStoreConfig), owned[starterStoreConfig] = Buffer.from(local));
     }
     if (previousQuotaCopy !== undefined || predecessorCopy) {
       assert(ownership.owned.includes(starterCheckoutCopy));
@@ -864,6 +888,12 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     if (!pair.pristine) pair.evidence.customizations![careCopy] = hash(copy);
     assert.deepEqual(run("apply").applied, []); checkUpgradeFiles();
   });
+  if (physicalUpgrade) phase("starter-owned-physical-reconciliation", () => {
+    owned[starterStoreConfig] = migrateStarterPhysical(app, pair.to, pair.pristine === true);
+    if (!pair.pristine) pair.evidence.customizations![starterStoreConfig] = hash(owned[starterStoreConfig]);
+    assert.deepEqual(run("apply").applied, []);
+    checkUpgradeFiles();
+  });
   if (catalogue130) {
     checkUpgradeFiles();
     if (!catalogueUpgrade) convertCatalogue();
@@ -877,6 +907,16 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     });
     if (to.files["package.json"]?.includes('"catalogue:check:source"'))
       proveStarterCatalogueWrappers(app, dirname(app), to.files["package.json"]);
+    if (readStarterScripts(to.files["package.json"])["catalogue:apply"]) {
+      const result = spawnSync(process.execPath, [starterLifecycle, "catalogue", "apply", "--approve", "--json"],
+        { cwd: app, env: isolatedConsumerEnv(), encoding: "utf8", timeout: 30_000 });
+      assert.ifError(result.error);
+      assert.equal(result.status, 2);
+      const report = JSON.parse(result.stdout);
+      assert.equal(report.command, "catalogue apply");
+      assert.equal(report.findings[0].code, "starter_argument_unknown");
+      assert.deepEqual(report.receipts, []);
+    }
     if (Object.hasOwn(to.files, "lifecycle-refusals.mjs")) {
       assert(!Object.keys(to.files).some(path => path.startsWith(".context/catalogue-builds/")));
       const table = JSON.parse(execFileSync(process.execPath, [starterLifecycle, "refusals", "--json"],

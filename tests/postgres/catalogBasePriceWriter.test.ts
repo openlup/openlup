@@ -1,11 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { Pool, type PoolClient } from "pg";
+import { DatabaseError, Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { canonicalCatalogPriceSetupCommand, createPostgresCatalogPriceSetupStore } from "@openlup/platform/pricing";
 import { createPostgresSandboxPaymentSimulator } from "@openlup/platform/payments";
 import { createPostgresDestinationPort } from "@openlup/platform/commerce/server/destinations";
 import { createPostgresPurchaseRenewalWriter, createPostgresRenewalStore, createNativeRenewalCodec, createPostgresPackageEditReadPort } from "@openlup/platform/subscriptions";
+import { boundOneTimePurchase } from "./acquisitionAdmissionFixture.js";
 import { captureSandboxPurchase, createHistoricalPurchaseDraft } from "../helpers/captureSandboxPurchase.js";
 import { journeyCensus } from "../helpers/storeJourney.js";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
@@ -1310,4 +1311,99 @@ it.each(["claimed", "wrapper"] as const)("serializes distinct keys when %s owns 
     await Promise.all([leader.query("ROLLBACK"), follower.query("ROLLBACK")]);
     leader.release(); follower.release();
   }
+});
+
+it("opens both previews on an occupied store and exposes the existing readiness remedies", async () => transaction(async db => {
+  const start = manifest.forward.findIndex((unit: {file:string}) => unit.file === writerPath);
+  for (const unit of manifest.forward.slice(start + 1)) {
+    if (unit.file === commandsPath || unit.file.endsWith("_catalog_publication.sql")) continue;
+    await db.query(readFileSync(unit.file,"utf8"));
+  }
+  await db.query(successfulControls);
+  const order = await boundOneTimePurchase(db,"READINESS-AGREED",(await current(db)).unit_price_minor,"XXX","readiness-agreed");
+  const reader = "price_setup_preview_witness";
+  await db.query(`CREATE ROLE ${reader} NOLOGIN NOSUPERUSER NOBYPASSRLS;
+    GRANT EXECUTE ON FUNCTION public.commerce_offer_policy_v2_readiness(), public.catalog_price_setup_preview(uuid,uuid,integer) TO ${reader}`);
+  const read = async (proposed?: number) => {
+    await db.query(`SET LOCAL ROLE ${reader}`);
+    try {
+      const verdict = await rpc(db,"commerce_offer_policy_v2_readiness");
+      const preview = await rpc(db,"catalog_price_setup_preview",[genuine.sku,genuine.list,proposed ?? null]);
+      return {verdict,preview};
+    } finally { await db.query("RESET ROLE"); }
+  };
+  const observed = await read();
+  expect(observed.verdict).toMatchObject({ready:true,evidence:{automaticV2MoneyCheckedCount:1}});
+  expect(observed.preview.readiness.reasons).toEqual([]);
+  const comparison = await read(1);
+  expect(comparison.preview.proposed.readiness.reasons).toContain("catalog_1490_legacy_1340_invalid");
+  const cases: [string,string[]][] = [
+    ["UPDATE public.commerce_promotion_definitions SET active=false WHERE promotion_id='example:acquisition'",["first_subscription_pair_invalid"]],
+    [pairedAcquisition + "UPDATE public.commerce_promotion_definitions SET active=false WHERE promotion_id='example:mirror'",["first_subscription_mirror_not_ready"]],
+    ["UPDATE public.commerce_promotion_definitions SET active=false WHERE promotion_id='example:bundle'",["bundle_5_policy_invalid"]],
+    ["UPDATE public.price_entries SET unit_price_minor=1 WHERE mode='one_time'",["catalog_1490_legacy_1340_invalid"]],
+    ["UPDATE public.platform_job_controls SET enabled=false WHERE job_name='platform-watchdog'",["promotion_watchdog_not_ready"]],
+    ["UPDATE public.platform_job_controls SET enabled=false WHERE job_name='promotion-claim-sweep'",["promotion_claim_sweep_not_ready"]],
+    ["UPDATE public.commerce_settings SET value_text='XTS' WHERE key='settlement_currency'",
+      ["catalog_1490_legacy_1340_invalid","legacy_frozen_records_invalid","automatic_v2_money_invalid"]],
+  ];
+  for (const [sql,reasons] of cases) {
+    await db.query("SAVEPOINT remedy");
+    await db.query(sql);
+    expect((await read()).verdict.reasons).toEqual(reasons);
+    await db.query("ROLLBACK TO SAVEPOINT remedy");
+    expect((await read()).verdict.reasons).toEqual([]);
+  }
+  await db.query(`UPDATE public.outbox_events SET metadata=metadata-'boundary'
+    WHERE aggregate_id=$1 AND event_type='commerce.order_draft.created'`,[order]);
+  await db.query("SAVEPOINT future_read");
+  await db.query(`SET LOCAL ROLE ${reader}`);
+  for (const proposed of [null,1200]) {
+    await db.query("SAVEPOINT preview_attempt");
+    const error: unknown = await rpc(db,"catalog_price_setup_preview",[genuine.sku,genuine.list,proposed])
+      .catch((failure:unknown) => failure);
+    expect(error).toBeInstanceOf(DatabaseError);
+    expect(Object.getPrototypeOf(error as DatabaseError)).toBe(DatabaseError.prototype);
+    expect(error).toMatchObject({code:"55000",message:"catalog_price_setup_native_order_guard_unverified"});
+    expect(Reflect.ownKeys(error as DatabaseError).filter(key => key !== "stack" && key !== "message").sort()).toEqual([
+      "code","column","constraint","dataType","detail","file","hint","internalPosition","internalQuery","length",
+      "line","name","position","routine","schema","severity","table","where",
+    ].sort());
+    await db.query("ROLLBACK TO SAVEPOINT preview_attempt");
+  }
+  await db.query("ROLLBACK TO SAVEPOINT future_read");
+  await db.query("UPDATE public.commerce_orders SET created_at=statement_timestamp()-interval '24 hours 1 microsecond' WHERE id=$1",[order]);
+  expect((await read(1200)).verdict.ready).toBe(true);
+}), postgresSetupTimeoutMs);
+
+it("replays the original v1 bytes after writer upgrade and refuses a fresh v1 edit of the exclusive list", async () => {
+  const db = await owner.connect();
+  try {
+    const fresh = async () => {
+      await db.query("BEGIN");
+      await session(db);
+    };
+    await fresh();
+    const legacy = await command(db), canonical = canonicalCatalogPriceSetupCommand(legacy);
+    const fingerprint = createHash("sha256").update(canonical).digest("hex");
+    const raw = async () => (await db.query("SELECT public.catalog_price_setup_apply($1,$2)::text AS bytes",
+      [canonical, fingerprint])).rows[0].bytes as string;
+    expect(JSON.parse(await raw())).toHaveProperty("outcome", "committed");
+    await db.query("COMMIT");
+    await fresh();
+    const beforeUpgrade = Buffer.from(await raw(), "utf8");
+    expect(JSON.parse(beforeUpgrade.toString("utf8"))).toHaveProperty("outcome", "replayed");
+    await db.query("COMMIT");
+    for (const suffix of ["_catalog_price_list_basis.sql", "_catalog_price_writer_v2.sql"]) {
+      const file = manifest.forward.find((unit: { file: string }) => unit.file.endsWith(suffix)).file;
+      await db.query(readFileSync(file, "utf8"));
+    }
+    await db.query("UPDATE public.price_lists SET amount_basis='tax_exclusive' WHERE id=$1", [legacy.priceListId]);
+    await fresh();
+    const beforeReplay = await priceSnapshot(db);
+    expect(Buffer.from(await raw(), "utf8")).toEqual(beforeUpgrade);
+    expect(await apply(db, await command(db))).toEqual({ outcome: "validation_issue", reason: "catalog_price_setup_basis_mismatch" });
+    expect(await priceSnapshot(db)).toEqual(beforeReplay);
+    await db.query("COMMIT");
+  } finally { await db.query("ROLLBACK"); db.release(); }
 });

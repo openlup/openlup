@@ -42,7 +42,14 @@ const compatible = [
 ] as const satisfies readonly CompatiblePostgresTable[];
 
 const owned = [
+  "commerce_money_limits_v2",
   "tax_calculations",
+  "commerce_order_tax_snapshots",
+  "commerce_order_line_sources",
+  "commerce_order_delivery_buckets",
+  "commerce_order_line_allocations",
+  "commerce_order_tax_positions",
+  "commerce_order_fee_lines",
   "subscription_cancel_feedback",
   // Authoritative installation configuration with operator audit references.
   "tax_coverage_revisions",
@@ -62,6 +69,7 @@ const owned = [
   "payment_dunning_case_attribution", "payment_refund_evidence",
   "commerce_destinations", "commerce_destination_bindings", "commerce_destination_v2_receipts",
   "commerce_destination_v2_documents", "commerce_destination_v2_checkout_selections", "commerce_destination_v2_order_bindings",
+  "subscription_destination_v2_selections",
   "fulfillment_parcel_contacts", "fulfillment_order_contacts", "fulfillment_contact_correction_receipts", "subscription_command_receipts", "subscription_quote_previews", "subscription_edit_quotes",
   "customer_support_subscription_commands", "customer_support_subscription_audit_events",
   "platform_human_principals", "platform_human_memberships", "platform_human_membership_audit_events",
@@ -80,6 +88,7 @@ const owned = [
   "communication_recipient_consents", "communication_native_sends", "communication_native_observations", "communication_native_sync_state",
   "customer_account_consent_events", "customer_account_consent_sync_targets",
   "identity_operator_invitations", "identity_operator_invitation_events", "identity_privacy_erasures",
+  "identity_privacy_erasure_reconciliations",
   "customer_subject_lifecycle_events", "customer_communication_preferences", "customer_communication_preference_events",
   "customer_account_events", "customer_saved_addresses", "customer_payment_preferences", "customer_delivery_preferences", "customer_orderer_profiles", "invoicing_buyer_snapshots",
   "commerce_operators", "commerce_order_holds", "commerce_order_operations",
@@ -248,12 +257,22 @@ export async function captureConnectedNativeStore(input: {
       }
       let count = packet.tables.reduce((sum, table) => sum + table.rows.length, 0);
       let bytes = packet.tables.reduce((sum, table) => sum + table.rows.reduce((total, row) => total + Buffer.byteLength(row), 0), 0);
+      const columnsByTable = new Map<string, Column[]>();
+      const { rows: attributeRows } = await db.query<{ table: string; name: string | null; type: string | null }>(`SELECT c.relname AS table,a.attname AS name,pg_catalog.format_type(a.atttypid,a.atttypmod) AS type
+        FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+        LEFT JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid AND c.relkind='r' AND a.attnum>0 AND NOT a.attisdropped
+        WHERE n.nspname='public' AND c.relname=ANY($1::pg_catalog.text[])
+        ORDER BY c.relname,a.attnum`, [owned]);
+      for (const row of attributeRows) {
+        const columns = columnsByTable.get(row.table) ?? [];
+        if (row.name !== null && row.type !== null) columns.push({ name: row.name, type: row.type });
+        columnsByTable.set(row.table, columns);
+      }
       const tables: ConnectedStoreOwnedRows[] = [];
       for (const table of owned) {
-        const columns = (await db.query<Column>(`SELECT a.attname AS name,pg_catalog.format_type(a.atttypid,a.atttypmod) AS type
-          FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_class c ON c.oid=a.attrelid
-          WHERE a.attrelid=$1::pg_catalog.regclass AND c.relkind='r' AND a.attnum>0 AND NOT a.attisdropped
-          ORDER BY a.attnum`, [`public.${table}`])).rows;
+        const columns = columnsByTable.get(table);
+        // Preserve the redacted failure from the previous regclass lookup.
+        if (!columns) throw new PostgresTransferError("database_unavailable");
         if (!columns.length || columns.some(column => !/^[a-z][a-z0-9_]{0,62}$/.test(column.name))) {
           throw new PostgresTransferError("schema_conflict", table);
         }

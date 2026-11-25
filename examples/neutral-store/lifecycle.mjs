@@ -5,10 +5,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { readStarterDiagnostic, starterDiagnostic } from './shared/refusals.ts';
+import { seedPhysicalGuidance } from './shared/seed-physical.ts';
 import { applicationHealthcheck } from './host/healthcheck.ts';
 import { browserJourneyGroups } from './browser-groups.mjs';
-import { starterGuidance, starterRefusals } from './lifecycle-refusals.mjs';
-import { installationFailure, installationFinding, refusal } from './installation/refusals.ts';
+import { catalogueApplyRefusal, operatorChallengeGuidance, starterGuidance, starterRefusals } from './lifecycle-refusals.mjs';
+import { installationFailure, installationFinding, installationReport, refusal } from './installation/refusals.ts';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const [command, ...args] = process.argv.slice(2);
@@ -58,8 +59,17 @@ const argumentObserved = {
   starter_argument_duplicate: 'The lifecycle command received the same option more than once.',
   starter_argument_value_required: 'The configuration option has no value.',
 };
+function physicalFinding(error) {
+  const diagnostic = readStarterDiagnostic(error);
+  if (diagnostic?.guidance && Object.hasOwn(seedPhysicalGuidance, diagnostic.code))
+    return { code: diagnostic.code, ...seedPhysicalGuidance[diagnostic.code], subject: diagnostic.guidance.subject };
+}
+function physicalReport({ code, path, observed, cause, fix, recheck, subject }) {
+  const safeSubject = subject.replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, char => `\\u{${char.codePointAt(0).toString(16)}}`);
+  return installationReport(refusal(code, path, observed, cause, fix, recheck)) + `Subject: ${safeSubject}\n`;
+}
 function commandRefusal(error, stage, allowLegacy = false) {
-  const known = installationFinding(error);
+  const known = installationFinding(error) ?? physicalFinding(error);
   if (known) return known;
   const diagnostic = json ? readStarterDiagnostic(error) : undefined;
   const code = json ? diagnostic?.code : (allowLegacy && error instanceof Error ? error.message : undefined);
@@ -109,6 +119,7 @@ async function readInstallReport(argv, configuration) {
     && Array.isArray(pack.taxClasses) && pack.taxClasses.every(key => typeof key === 'string'))) return report;
   const findingFields = ['code', 'path', 'observed', 'cause', 'fix', 'recheck'];
   const finding = report.findings[0];
+  if (Object.hasOwn(seedPhysicalGuidance, finding?.code)) findingFields.push('subject');
   if (report.state === 'violated' && status === 2 && report.packs.length === 0 && report.findings.length === 1
     && fields(finding, findingFields) && findingFields.every(key => typeof finding[key] === 'string')
     && starterGuidance(finding.code)) return report;
@@ -150,6 +161,15 @@ if (command === 'refusals') {
   }, null, 2) + '\n');
   run('npm', ['install', '--package-lock-only', '--ignore-scripts']);
   process.stdout.write('next: npm ci\n');
+} else if (command === 'catalogue') {
+  const report = await catalogueApply(args);
+  if (json) await emit(report);
+  else {
+    process.exitCode = report.exitCode;
+    for (const finding of report.findings)
+      process.stderr.write(`${finding.code}\nObserved: ${safePrompt(finding.observed)}\nCause: ${finding.cause}\nFix: ${finding.fix}\nRecheck: ${finding.recheck}\n`);
+    for (const receipt of report.receipts) process.stdout.write(JSON.stringify(receipt) + '\n');
+  }
 } else if (command === 'up') {
   let configuration = '', packs = [], stage = '/arguments';
   let final;
@@ -193,7 +213,7 @@ if (command === 'refusals') {
     const finding = commandRefusal(error, stage, stage !== '/installation');
     if (json) final = installReport(configuration, packs, finding);
     else {
-      process.stderr.write(`${finding.code}\nFix: ${finding.fix}\n`);
+      process.stderr.write(Object.hasOwn(finding, 'subject') ? physicalReport(finding) : `${finding.code}\nFix: ${finding.fix}\n`);
       process.exitCode = 2;
     }
   }
@@ -201,10 +221,12 @@ if (command === 'refusals') {
 } else if (command === 'serve-demo') {
   // Internal container entry: private runtime state never enters the image or Compose values.
   try {
-    const { parseHostArguments } = await import('./shared/config.ts');
+    const { assertConfig, parseHostArguments } = await import('./shared/config.ts');
+    const { selectConfiguration } = await import('./owned/store.config.ts');
+    const options = parseHostArguments(args);
+    assertConfig(selectConfiguration(options.configuration));
     const { prepareDemonstrationQuoteKey } = await import('./installation/install.ts');
     const { default: pg } = await import('pg');
-    const options = parseHostArguments(args);
     if (!options.databaseUrl) throw new Error('starter_runtime_connection_required');
     const connection = new pg.Client({ connectionString: options.databaseUrl });
     let keyFile;
@@ -218,12 +240,12 @@ if (command === 'refusals') {
   } catch (error) {
     const code = error instanceof Error && starterGuidance(error.message)
       ? error.message : 'starter_demo_start_failed';
-    process.stderr.write(`${code}\n`);
+    const finding = physicalFinding(error);
+    process.stderr.write(finding ? physicalReport(finding) : `${code}\n`);
     process.exitCode = 2;
   }
 } else if (command === 'install') {
   // Internal one-shot Compose entry; no install connection reaches the HTTP host.
-  const { installationReport } = await import('./installation/refusals.ts');
   const installEntry = Symbol.for('openlup.neutral-store.install-entry');
   // This one-shot process has its own catalogue admission before the host import.
   Reflect.set(globalThis, installEntry, true);
@@ -251,7 +273,8 @@ if (command === 'refusals') {
   } catch (error) {
     if (json) final = installReport(configuration, [], commandRefusal(error, stage, stage !== '/installation'));
     else {
-      let report = installationReport(error);
+      const finding = physicalFinding(error);
+      let report = finding ? physicalReport(finding) : installationReport(error);
       if (!report) {
         const code = error instanceof Error ? error.message : 'starter_installation_failed';
         const hint = [error?.hint, error?.cause?.hint].find(value => typeof value === 'string' && value.trim());
@@ -312,14 +335,296 @@ if (command === 'refusals') {
 } else if (command === 'ownership') {
   process.stdout.write(await readFile(resolve(root, 'ownership.json'), 'utf8'));
 } else {
-  process.stderr.write('Usage: ./lifecycle candidate <core.tgz> <outbox.tgz> <platform.tgz> | up [--configuration <id>] [--json] | refusals [--json] | browser [Playwright selection flags] | checkout-recovery --configuration <id> --database-url <runtime-url> | care --configuration <id> --database-url <runtime-url> | renewal --configuration <id> --database-url <runtime-url> | down | verify | upgrade <args> | ownership\n');
+  process.stderr.write('Usage: ./lifecycle candidate <core.tgz> <outbox.tgz> <platform.tgz> | up [--configuration <id>] [--json] | catalogue apply [--configuration <id>] [--prepare-only | --copy] [--json] | refusals [--json] | browser [Playwright selection flags] | checkout-recovery --configuration <id> --database-url <runtime-url> | care --configuration <id> --database-url <runtime-url> | renewal --configuration <id> --database-url <runtime-url> | down | verify | upgrade <args> | ownership\n');
   process.exitCode = 2;
 }
 
+function safePrompt(value) {
+  return value.replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, ' ');
+}
+
+async function catalogueApply(argv) {
+  const receipts = [];
+  let terminal;
+  let path = '/arguments';
+  const unavailable = 'OPENLUP_E_CATALOGUE_APPLY_UNAVAILABLE';
+  const deny = (code, details = {}, cause) => { throw catalogueApplyRefusal({ code, path, ...details }, cause); };
+  const report = finding => ({ formatVersion: 1, command: 'catalogue apply', state: finding ? 'violated' : 'satisfied',
+    exitCode: finding ? 2 : 0, receipts, findings: finding ? [finding] : [] });
+  try {
+    const [verb, ...options] = argv;
+    const modes = options.filter(option => option === '--prepare-only' || option === '--copy');
+    if (verb !== 'apply' || modes.length > 1) deny('starter_argument_unknown');
+    const [mode] = modes;
+    const config = ownedConfiguration(await import('./owned/store.config.ts'), lifecycleOptions(options.filter(option => option !== mode)));
+    (await import('./shared/config.ts')).assertConfig(config);
+    const [owned, { buildCatalogReleaseDraftV3 }, { canonicalCatalogDraftJson }, pricing, { mapStarterPresentation }, { digestStarterMedia }] = await Promise.all([
+      import('./owned/catalogue.ts'), import('@openlup/platform/catalog'), import('@openlup/platform/catalog/contracts'),
+      import('@openlup/platform/pricing'), import('./shared/catalogue-presentation.ts'), import('./host/catalogue-media.ts'),
+    ]);
+    const hash = value => createHash('sha256').update(canonicalCatalogDraftJson(value)).digest('hex');
+    const same = (left, right) => canonicalCatalogDraftJson(left) === canonicalCatalogDraftJson(right);
+    const uuid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/u;
+    path = 'catalogueProduct';
+    if (!Object.hasOwn(owned, 'catalogueProduct')) deny('OPENLUP_E_CATALOGUE_PRODUCT_REQUIRED');
+    const { draftId, product, basePrices, copyPresentation } = JSON.parse(canonicalCatalogDraftJson(owned.catalogueProduct));
+    if (typeof draftId !== 'string' || !uuid.test(draftId)) deny('starter_input_invalid', { path: 'draftId' });
+    const { release, activation } = buildCatalogReleaseDraftV3(product);
+    const skus = release.payload.skus;
+    const productId = release.payload.product.id;
+    const presentation = mapStarterPresentation(release.payload.product.sharedContent.presentation);
+    const copy = mode === '--copy' ? mapStarterPresentation(copyPresentation) : undefined;
+    if (!presentation || (mode === '--copy' && !copy))
+      deny('starter_catalogue_presentation_invalid', { path: mode === '--copy' ? 'copyPresentation' : 'product.presentation' });
+    async function bindMedia(payload, mediaRef, path) {
+      if (!mediaRef) { delete payload.publication.evidence.media; return; }
+      const revisionDigest = await digestStarterMedia(mediaRef);
+      if (!revisionDigest) deny(revisionDigest === null ? 'catalog_publication_media_validation_unavailable' : 'starter_catalogue_media_invalid', { path });
+      payload.publication.evidence.media = payload.skus.map(({ code, assetRefs }) => ({
+        skuCode: code, mediaRef, assetRefs: assetRefs ?? [], revisionDigest,
+      }));
+    }
+    if (presentation.media) {
+      await bindMedia(activation.payload, presentation.media, 'product.presentation.mediaRef');
+      activation.digest = hash(activation.payload);
+    }
+    path = 'basePrices';
+    if (!basePrices || typeof basePrices !== 'object' || Array.isArray(basePrices)
+      || Object.keys(basePrices).length !== skus.length || !skus.every(({ code }) => Object.hasOwn(basePrices, code)))
+      deny('OPENLUP_E_CATALOGUE_BASE_PRICES_MISMATCH');
+    for (const { code } of skus) {
+      const amount = basePrices[code];
+      if (!Number.isInteger(amount) || amount < 1 || amount > pricing.CATALOG_PRICE_SETUP_MAX_MINOR)
+        deny('starter_catalogue_price_invalid', { subject: code });
+    }
+    const stages = ['release', 'activation', 'copy'];
+    function makeStage(stage, artifact, head) {
+      const index = stages.indexOf(stage);
+      const save = { action: index === 0 ? 'create' : 'revise', draftId, expectedRevision: index, payload: artifact.payload };
+      if (Buffer.byteLength(JSON.stringify(save)) > 65_536) deny('starter_catalogue_save_too_large', { path: `${stage}.save` });
+      return { stage, revision: index + 1, save, head, saveKey: hash([stage, 'save', draftId, index, artifact.digest]),
+        key: action => hash([stage, action, draftId, artifact.digest, head]) };
+    }
+    const first = makeStage('release', release, null);
+    makeStage('activation', activation, null);
+    if (!process.stdin.isTTY || !process.stderr.isTTY) deny('OPENLUP_E_CATALOGUE_TERMINAL_REQUIRED', { path: '/terminal' });
+    const origin = config.publicOrigin ?? 'http://127.0.0.1:4319';
+    let cookie, expiresAt, operator;
+    async function request(operation, body, key = hash([operation, body]), authenticated = false, sku) {
+      const unavailableCodes = ['host_binding_required', 'starter_dependency_unavailable', 'starter_operation_unknown',
+        'price_setup_dependency_unavailable', 'store_unavailable'];
+      let response, result;
+      try {
+        response = await fetch(new URL(`/api/actions/${operation}`, origin), { method: 'POST', redirect: 'error',
+          headers: { Origin: origin, 'X-Starter-Request': '1', 'Content-Type': 'application/json', 'Idempotency-Key': key,
+            ...(authenticated && cookie ? { Cookie: cookie } : {}) }, body: JSON.stringify(body) });
+        result = await response.json();
+      } catch (error) { deny(unavailable, { subject: sku }, error); }
+      if (result?.ok === true && response.ok) return { value: result.value, cookie: response.headers.get('set-cookie') };
+      const code = result?.code;
+      const guidance = ['observed', 'cause', 'fix', 'recheck'].every(field => typeof result?.[field] === 'string') ? result : undefined;
+      const details = { ...(result?.path && { path: result.path }), subject: sku ?? result?.subject, reason: result?.reason ?? (sku && code),
+        issues: result?.issues, message: result?.message, guidance };
+      deny(typeof code === 'string' && !unavailableCodes.includes(code) ? code : unavailable, details);
+    }
+    path = 'catalogue.demoTarget';
+    const { value: demo } = await request('catalogue.demoTarget', {});
+    if (!demo?.marked || demo.configurationId !== config.id) deny('starter_seed_demonstration_database_required');
+    const [{ createInterface }, { Writable }] = await Promise.all([import('node:readline/promises'), import('node:stream')]);
+    let privateInput = false;
+    const output = new Writable({ write(chunk, _encoding, done) {
+      if (privateInput) done();
+      else process.stderr.write(chunk, done);
+    } });
+    terminal = createInterface({ input: process.stdin, output, terminal: true, historySize: 0 });
+    const stopped = new AbortController();
+    terminal.on('close', () => stopped.abort());
+    async function ask(prompt, hidden = false) {
+      privateInput = hidden;
+      if (hidden) process.stderr.write(prompt);
+      try { return await terminal.question(hidden ? '' : prompt, { signal: stopped.signal }); }
+      catch { deny(path === 'auth.operator' ? 'starter_catalogue_sign_in_incomplete' : 'OPENLUP_E_CATALOGUE_CONFIRMATION_INVALID'); }
+      finally {
+        privateInput = false;
+        if (hidden) process.stderr.write('\n');
+      }
+    }
+    async function signIn() {
+      const priorPath = path;
+      path = 'auth.operator';
+      cookie = undefined;
+      const email = await ask(`Invited operator email (configured currency ${config.market.currency}): `);
+      await request('auth.operator', { email }, hash(['challenge', Date.now()]));
+      process.stderr.write(`${operatorChallengeGuidance}\nRead the matching message in the private demo mailbox.\n`);
+      const token = await ask('Operator token (hidden): ', true);
+      const login = await request('auth.operator', { token }, hash(['redeem', Date.now()]));
+      cookie = login.cookie?.split(';', 1)[0];
+      expiresAt = Date.parse(login.value?.expiresAt);
+      if (!/^starter_session=[A-Za-z0-9_-]{43}$/u.test(cookie ?? '') || !Number.isFinite(expiresAt)) deny(unavailable);
+      path = 'price-target';
+      const { value } = await request('operator.catalogPublication', { action: 'price-target' }, undefined, true);
+      if (operator && !same(operator, value)) deny(operator.actorId !== value.actorId
+        ? 'publisher_not_authorized' : 'starter_catalogue_d2c_policy_required');
+      operator = value;
+      path = priorPath;
+    }
+    async function action(operation, body, key, sku) {
+      if (Date.now() >= expiresAt) await signIn();
+      return (await request(operation, body, key, true, sku)).value;
+    }
+    const publish = (body, key, sku) => action('operator.catalogPublication', body, key, sku);
+    const drafts = (body, key) => action('operator.catalogDrafts', body, key);
+    await signIn();
+    const { currency, priceListId, policy, actorId } = operator;
+    path = 'basePrices';
+    for (const { code } of skus)
+      if (pricing.deriveSubscriptionUnitPrice(basePrices[code], policy) <= 0) deny('starter_catalogue_derived_price_zero', { subject: code });
+    const prices = [];
+    const record = (stage, outcome, draftRevision, head) => receipts.push({ stage, outcome, productId, draftId,
+      draftRevision, head, currency, prices: [...prices] });
+    function verifyDraft(saved, step) {
+      if (!saved || saved.draftId !== draftId || saved.productId !== productId || saved.revision !== step.revision
+        || saved.actorId !== actorId || saved.commandKey !== step.saveKey || !same(saved.payload, step.save.payload))
+        deny('publication_draft_advanced');
+    }
+    async function issued(step, receipt) {
+      if (receipt.actorId !== actorId) deny('publisher_not_authorized');
+      if (receipt.productId !== productId || receipt.commandKey !== step.key('publish')
+        || !same(receipt.previousHead, step.head) || receipt.head.revision !== step.revision
+        || receipt.head.documentDigest !== step.save.payload.product.documentRevision.digest) deny('catalog_publication_receipt_invalid');
+      const exact = await publish({ action: 'exact', head: receipt.head });
+      if (exact.product?.id !== productId || !same(exact.head, receipt.head)) deny('catalog_publication_receipt_invalid');
+      return receipt.head;
+    }
+    async function lookup(step) {
+      path = `${step.stage}.publish`;
+      const result = await publish({ action: 'receipt', productId, commandKey: step.key('publish') });
+      return result.outcome === 'found' ? issued(step, result.receipt) : null;
+    }
+    async function runStage(step, observed, prepareOnly = false) {
+      const { stage, revision, head, save, saveKey, key } = step;
+      const note = (name, outcome, next = head) => record(`${stage}.${name}`, outcome, revision, next);
+      path = `${stage}.save`;
+      if (prepareOnly && !observed) process.stderr.write('Save + Prepare writes a catalogue draft.\n');
+      const result = await drafts(save, saveKey);
+      verifyDraft(result.record, step);
+      note('save', result.outcome);
+      if (observed) { note('publish', 'observed', observed); return observed; }
+      path = `${stage}.prepare`;
+      const prepared = await drafts({ action: 'prepare', draftId, expectedRevision: revision, expectedHead: head });
+      const { candidateRef, candidateDigest, preparation, impact } = prepared;
+      if (!same(prepared.expectedHead, head)) deny('head_conflict');
+      if (!preparation?.postStateDigest || impact?.productId !== productId) {
+        const issues = preparation?.structural?.issues ?? prepared.issues;
+        deny(issues?.[0]?.code ?? 'publication_preparation_unavailable', { ...issues?.[0], issues });
+      }
+      note('prepare', 'observed');
+      if (prepareOnly) return null;
+      path = `${stage}.approve`;
+      const display = stage === 'copy' ? copy : presentation;
+      const shownPrices = prices.length ? prices : skus.map(({ code, id: skuId }) => ({ code, skuId, unitPriceMinor: basePrices[code], currency }));
+      const effect = { release: 'Release the product and its draft SKUs', activation: 'Activate the priced product and SKUs', copy: 'Publish presentation only' };
+      const context = { product: display.title, productId, draftId, revision, expectedHead: head, currency,
+        [prices.length ? 'confirmedPrices' : 'plannedPrices']: shownPrices };
+      if (await ask(`${effect[stage]}.\n${safePrompt(JSON.stringify(context))}\nType approve: `) !== 'approve')
+        deny('OPENLUP_E_CATALOGUE_CONFIRMATION_INVALID');
+      const candidate = { productId: impact.productId, candidateRef, candidateDigest };
+      const decision = await publish({ action: 'approve', ...candidate, postStateDigest: preparation.postStateDigest }, key('approve'));
+      const decisionReceipt = decision.receipt;
+      if (decisionReceipt?.actorId !== actorId || decisionReceipt.productId !== productId
+        || decisionReceipt.candidateRef !== candidateRef || decisionReceipt.commandKey !== key('approve')
+        || decisionReceipt.candidateDigest !== candidateDigest || decisionReceipt.postStateDigest !== preparation.postStateDigest)
+        deny('catalog_publication_receipt_invalid');
+      note('approve', decision.outcome);
+      path = `${stage}.publish`;
+      const body = { action: 'publish', ...candidate, expectedHead: head, changes: [] };
+      const resultOfPublish = await publish(body, key('publish')).catch(async error => {
+        if (error.finding?.code !== 'publication_price_readiness'
+          || !['promotion_claim_sweep_not_ready', 'promotion_watchdog_not_ready'].includes(error.finding.reason)) throw error;
+        // Give the first demo job pair one chance to finish, then surface any refusal from the unchanged request.
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        return publish(body, key('publish'));
+      });
+      const next = await issued(step, resultOfPublish.receipt);
+      note('publish', resultOfPublish.outcome, next);
+      return next;
+    }
+    async function preview({ id: variantId, code }) {
+      path = 'basePrices';
+      const { listEffective, priceSetup } = await publish({ action: 'price-preview', variantId, priceListId });
+      if (!listEffective) deny('price_list_not_active', { subject: code });
+      const subscription = priceSetup.subscription;
+      if (subscription.kind !== 'derived' || subscription.revisionId !== policy.revisionId)
+        deny('starter_catalogue_d2c_policy_required', { subject: code });
+      const unitPriceMinor = basePrices[code];
+      if (pricing.deriveSubscriptionUnitPrice(unitPriceMinor, { ...subscription, roundingRule: 'FLOOR_TO_QUANTUM' }) <= 0)
+        deny('starter_catalogue_derived_price_zero', { subject: code });
+      if (priceSetup.currentCount > 1 || (priceSetup.current && priceSetup.current.unitPriceMinor !== unitPriceMinor))
+        deny('expected_state_mismatch', { subject: code });
+      return priceSetup.current;
+    }
+    async function requireHead(expected) {
+      const current = await publish({ action: 'current', productId });
+      if (!same(current.head ?? null, expected)) deny('head_conflict', { path: 'expectedHead' });
+    }
+    const released = await lookup(first);
+    if (mode === '--copy') {
+      if (!released) deny('starter_catalogue_copy_requires_published');
+      const second = makeStage('activation', activation, released);
+      const active = await lookup(second);
+      if (!active) deny('starter_catalogue_copy_requires_published');
+      const { record: saved } = await drafts({ action: 'get', draftId, revision: 2 });
+      verifyDraft(saved, second);
+      const payload = saved.payload;
+      if (same(payload.product.sharedContent.presentation, copyPresentation)) deny('starter_catalogue_copy_unchanged', { path: 'copyPresentation' });
+      Object.assign(payload.product.sharedContent, { catalogAction: 'revise', presentation: copyPresentation });
+      payload.publication.operations = [{ op: 'set_product_presentation', productSlug: payload.product.slug, presentation: copyPresentation }];
+      await bindMedia(payload, copy.media, 'copyPresentation.mediaRef');
+      const third = makeStage('copy', { payload, digest: hash(payload) }, active);
+      const copied = await lookup(third);
+      await requireHead(copied ?? active);
+      for (const sku of skus) {
+        const entry = await preview(sku);
+        if (!entry) deny('expected_state_mismatch', { subject: sku.code });
+        prices.push({ skuId: sku.id, entryId: entry.entryId, unitPriceMinor: entry.unitPriceMinor, currency });
+      }
+      await runStage(third, copied);
+    } else {
+      if (!released) await requireHead(null);
+      const head = await runStage(first, released, mode === '--prepare-only');
+      if (mode === '--prepare-only') return report();
+      const second = makeStage('activation', activation, head);
+      const active = await lookup(second);
+      await requireHead(active ?? head);
+      for (const sku of skus) await preview(sku);
+      for (const { id: variantId, code } of skus) {
+        path = 'basePrices';
+        const unitPriceMinor = basePrices[code];
+        const result = await publish({ action: 'price-apply', variantId, priceListId, policyRevisionId: policy.revisionId, unitPriceMinor },
+          hash(['initial-base', priceListId, variantId, unitPriceMinor, null]), code);
+        const current = await preview({ id: variantId, code });
+        if (result.currency !== currency || !current || !same(result.receipt?.current, current))
+          deny('expected_state_mismatch', { subject: code });
+        prices.push({ skuId: variantId, entryId: current.entryId, unitPriceMinor, currency });
+        record('price.apply', result.outcome, 1, head);
+      }
+      await runStage(second, active);
+    }
+    return report();
+  } catch (error) {
+    if (error.finding) return report(error.finding);
+    if (error.code === 'release_draft_invalid') {
+      const [observed, cause, fix, recheck] = error.message.split('\n').map(line => line.slice(line.indexOf(': ') + 2));
+      return report({ code: error.code, path: error.path, observed, cause, fix, recheck });
+    }
+    return report(catalogueApplyRefusal({ code: readStarterDiagnostic(error)?.code ?? unavailable, path }, error).finding);
+  } finally { terminal?.close(); }
+}
+
 /** Disposable installed-PostgreSQL recipe; never a production or customer database. */
-async function databaseBrowserRecipe(argv) {
+async function databaseBrowserRecipe(argv, prepareCatalogueTemplate = true) {
   if (argv.length === 0) {
-    for (const selection of browserJourneyGroups) await databaseBrowserRecipe(selection);
+    for (const selection of browserJourneyGroups) await databaseBrowserRecipe(selection, selection === browserJourneyGroups.at(-1));
     return;
   }
   const { spawn } = await import('node:child_process');
@@ -340,7 +645,7 @@ async function databaseBrowserRecipe(argv) {
   const previous = upgrade && createRequire(resolve(upgrade.predecessor, 'package.json'));
   const previousMigrations = previous && await import(pathToFileURL(previous.resolve('@openlup/platform/migrations')).href);
   const previousSubscriptions = previous && await import(pathToFileURL(previous.resolve('@openlup/platform/subscriptions')).href);
-  const containers = [], hosts = [], pools = [];
+  const containers = [], hosts = [], pools = new Set();
   const docker = (...args) => execFileSync('docker', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
   const delay = (ms) => new Promise(done => setTimeout(done, ms));
   async function child(command, args) {
@@ -389,7 +694,7 @@ async function databaseBrowserRecipe(argv) {
       const endpoint = docker('port', name, '5432/tcp');
       const ownerUrl = `postgresql://postgres@${endpoint}/neutral_store`;
       const owner = new pg.Pool({ connectionString: ownerUrl });
-      pools.push(owner);
+      pools.add(owner);
       let ready = false;
       for (let attempt = 0; attempt < 100; attempt++) {
         try {
@@ -407,7 +712,7 @@ async function databaseBrowserRecipe(argv) {
         await owner.query(`CREATE ROLE ${role} LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS`);
       const selection = { generation: 'qualified-v2', roleMode: 'installer-managed', bootstrapLogin: 'postgres', migrationLogin: 'postgres', runtimeLogin: 'starter_runtime', restoreLogin: 'starter_restore' };
       const migration = new pg.Pool({ connectionString: ownerUrl, options: qualifiedPostgresStartupOptions(selection) });
-      pools.push(migration);
+      pools.add(migration);
       const runner = createPlatformPostgresMigrationRunner({ connectionString: ownerUrl }, { installation: selection, poolFactory: () => migration });
       const runtimeUrl = ownerUrl.replace('postgres@', 'starter_runtime@');
       let legacy;
@@ -434,6 +739,15 @@ async function databaseBrowserRecipe(argv) {
       await provisionDemonstrationPublicationPassword(owner, publicationPasswordFile);
       const keyring = resolve(state, 'quote-key.json');
       await writeFile(keyring, JSON.stringify({ current: randomBytes(32).toString('base64url') }), { mode: 0o600 });
+      if (prepareCatalogueTemplate) {
+        for (const pool of [migration, owner]) {
+          pools.delete(pool);
+          await pool.end();
+        }
+        const control = new pg.Pool({ connectionString: new URL('/postgres', ownerUrl).href });
+        try { await control.query('CREATE DATABASE catalogue_browser_template TEMPLATE neutral_store'); }
+        finally { await control.end(); }
+      }
       const probe = createServer().listen(0, '127.0.0.1');
       await once(probe, 'listening');
       const address = probe.address();

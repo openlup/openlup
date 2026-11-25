@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   BUDGET_FACTOR,
   FLAT_COVERAGE_TEST_TIMEOUT_MS,
+  FLAT_HOSTED_TEST_TIMEOUT_MS,
   FLAT_TEST_TIMEOUT_MS,
   deriveTestTimeoutMs,
   digestKeyForPath,
@@ -21,6 +22,8 @@ describe("ci-vitest-duration-keys", () => {
   it("returns flat timeout floors for plain and coverage runs", () => {
     expect(flatTestTimeoutMs(false)).toBe(FLAT_TEST_TIMEOUT_MS);
     expect(flatTestTimeoutMs(true)).toBe(FLAT_COVERAGE_TEST_TIMEOUT_MS);
+    expect(flatTestTimeoutMs(false, true)).toBe(FLAT_HOSTED_TEST_TIMEOUT_MS);
+    expect(flatTestTimeoutMs(true, true)).toBe(FLAT_COVERAGE_TEST_TIMEOUT_MS);
   });
 
   it("produces deterministic sha256 digest keys and recognizes them", () => {

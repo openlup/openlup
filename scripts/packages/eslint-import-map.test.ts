@@ -595,7 +595,7 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
   it("admits only declared Node-entry edges and refuses reverse commerce imports", async () => {
     const config = await loadConfig();
     const { PLATFORM_MODULE_GRAPH: graph } = await import("../../eslint.config.js");
-    expect(graph["commerce/server"]).toEqual({ values: ["commerce", "fulfillment", "pricing", "shipping", "promotions", "pricing/contracts"], types: ["http", "bff", "commerce/contracts", "data"] });
+    expect(graph["commerce/server"]).toEqual({ values: ["commerce", "fulfillment", "pricing", "shipping", "promotions", "pricing/contracts", "tax"], types: ["http", "bff", "commerce/contracts", "data"] });
     expect(graph.commerce.values).not.toContain("commerce/server");
     expect(graph.commerce.values).toEqual(["pricing/contracts", "shipping"]);
     for (const depth of [0, 1]) {
@@ -604,7 +604,7 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
       const source = (specifier: string) => `import * as value from ${JSON.stringify(specifier)}; export { value };`;
       for (const specifier of ["./own.js", `${up}../index.js`, "node:crypto",
         ...["commerceReturnsPort", "orderReviewContracts", "orderReviewPorts", "orderFeedbackContracts"].map((file) => `${up}../${file}.js`),
-        `${up}../../commerce/index.js`]) {
+        `${up}../../commerce/index.js`, `${up}../../tax/index.js`]) {
         expect(await moduleMessages(config, source(specifier), file), specifier).toEqual([]);
       }
       for (const entry of ["http", "bff"]) {
@@ -614,7 +614,7 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
           else expect(messages).toContainEqual(expect.stringContaining('packages/platform module "commerce/server"'));
         }
       }
-      for (const specifier of [`${up}../../data/index.js`, `${up}../../blob/index.js`, `${up}../../data/private.js`, `${up}../../identity/index.js`]) {
+      for (const specifier of [`${up}../../data/index.js`, `${up}../../blob/index.js`, `${up}../../data/private.js`, `${up}../../identity/index.js`, `${up}../../tax/digest.js`]) {
         expect(await moduleMessages(config, source(specifier), file), specifier).toContainEqual(expect.stringContaining('packages/platform module "commerce/server"'));
       }
       const browserFile = `packages/platform/src/commerce/${"nested/".repeat(depth)}probe.ts`;
@@ -701,7 +701,7 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
   it("admits only the existing pure validator owners at the pricing browser entry", async () => {
     const config = await loadConfig();
     const filename = "packages/platform/src/pricing/browser/index.ts";
-    for (const target of ["../quotePrimitives.js", "../acquisitionTermsSchemas.js", "../../shipping/thresholdPolicy.js"]) {
+    for (const target of ["../quotePrimitives.js", "../acquisitionTermsSchemas.js", "../subscriptionPricePolicy.js", "../../shipping/thresholdPolicy.js"]) {
       for (const source of loadSources(target, "ts")) expect(await moduleMessages(config, source, filename)).toEqual([]);
     }
     for (const target of ["../../shipping/index.js", "../../shipping/deliverySelectionHandler.js", "../../http/index.js", "../index.js", "node:crypto", "pg"]) {
@@ -772,6 +772,93 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
         continue;
       }
       expect({ module, values: [...values].sort(), types: typesOnly }).toEqual({ module, values: [...graph[module]!.values].sort(), types: [...graph[module]!.types].sort() });
+    }
+  });
+});
+
+describe("eslint starter browser-bundled source boundary", { timeout: 60_000 }, () => {
+  const entryMessage = "Starter client and shared code must import @openlup/platform values only from a browser-safe entry";
+  const exportsMessage = "Import a workspace package only through a subpath";
+  const sideEffectMessage = "leave behind a side effect import at runtime";
+  const inlineTypeOnly = /^import \{ type /;
+  const typeErased = /^(?:import type |export type |type Value = import\()/;
+  const clientFile = "examples/neutral-store/client/x.ts";
+  const sharedFile = "examples/neutral-store/shared/x.ts";
+  const hostFile = "examples/neutral-store/host/x.ts";
+
+  // The shared helper reads only the core rules, so it would pass these rows vacuously.
+  async function starterMessages(config: Linter.Config[], source: string, filename: string): Promise<string[]> {
+    const messages = (await linterFor(config).lintText(source, { filePath: resolve(root, filename), warnIgnored: true }))[0]!.messages;
+    expect(messages.filter(({ fatal, ruleId }) => fatal || ruleId === null)).toEqual([]);
+    return messages
+      .filter(({ ruleId }) => ["no-restricted-imports", "no-restricted-syntax", "@typescript-eslint/no-restricted-imports", "@typescript-eslint/no-import-type-side-effects"].includes(ruleId!))
+      .map(({ message }) => message);
+  }
+
+  const admitted = [
+    "@openlup/platform/catalog/contracts", "@openlup/platform/subscriptions/contracts", "@openlup/platform/account-support/read-contracts",
+    "@openlup/platform/pricing/browser", "@openlup/platform/commerce", "@openlup/platform/marketing", "@openlup/platform/operations",
+    "@openlup/core/subscription", "./dom.ts",
+  ];
+  // The package root and an undeclared subpath such as pricing/browser/internal are refused by the
+  // export boundary even as type imports; the named forms below cover them.
+  const refused = [
+    "@openlup/platform/pricing", "@openlup/platform/subscriptions", "@openlup/platform/payments",
+    "@openlup/platform/commerce/server",
+  ];
+
+  it.each([clientFile, sharedFile])("admits only browser-safe platform entries for runtime imports in %s", async (filename) => {
+    const config = await loadConfig();
+    for (const specifier of admitted) for (const source of loadSources(specifier, "ts")) {
+      const messages = await starterMessages(config, source, filename);
+      // `import { type A }` leaves a runtime import under verbatimModuleSyntax, for every source.
+      if (inlineTypeOnly.test(source)) expect(messages).toEqual([expect.stringContaining(sideEffectMessage)]);
+      else expect(messages).toEqual([]);
+    }
+    for (const specifier of refused) for (const source of loadSources(specifier, "ts")) {
+      const messages = await starterMessages(config, source, filename);
+      if (typeErased.test(source)) expect(messages).toEqual([]);
+      else if (inlineTypeOnly.test(source)) expect(messages).toContainEqual(expect.stringContaining(sideEffectMessage));
+      else expect(messages, `${specifier}: ${source}`).toContainEqual(expect.stringContaining(entryMessage));
+    }
+  });
+
+  it("refuses the starter's named failing forms, mixed inline type imports and namespace imports", async () => {
+    const config = await loadConfig();
+    const forms: Array<[string, string]> = [
+      ["import { acquisitionTermsSchema } from '@openlup/platform/pricing';", entryMessage],
+      ["import { type A, b } from '@openlup/platform/subscriptions';", entryMessage],
+      ["import { type A } from '@openlup/platform/subscriptions';", sideEffectMessage],
+      ["import * as pricing from '@openlup/platform/pricing';", entryMessage],
+      ["import '@openlup/platform/commerce/server';", entryMessage],
+      ["import { z } from '@openlup/platform/pricing/browser/internal';", entryMessage],
+      ["import platform from '@openlup/platform';", entryMessage],
+      ["export { b } from '@openlup/platform/pricing';", entryMessage],
+      ["const payments = await import('@openlup/platform/payments');", entryMessage],
+      ["import { el } from './dom.ts';", ""],
+    ];
+    for (const filename of [clientFile, sharedFile]) for (const [source, message] of forms) {
+      const messages = await starterMessages(config, source, filename);
+      if (message === "") expect(messages).toEqual([]);
+      else expect(messages, source).toContainEqual(expect.stringContaining(message));
+    }
+    for (const source of ["import type { A } from '@openlup/platform/subscriptions';", "export type { A } from '@openlup/platform/payments';"])
+      expect(await starterMessages(config, source, clientFile)).toEqual([]);
+  });
+
+  it("keeps the workspace export boundary for these files and leaves host code and other directories alone", async () => {
+    const config = await loadConfig();
+    for (const filename of [clientFile, sharedFile]) for (const source of loadSources("@openlup/core/not-exported", "ts")) {
+      if (typeErased.test(source)) continue;
+      expect(await starterMessages(config, source, filename), source).toContainEqual(expect.stringContaining(exportsMessage));
+    }
+    for (const filename of [hostFile, "examples/neutral-store/owned/x.ts", "examples/neutral-store/test/x.ts"]) {
+      for (const specifier of refused) {
+        for (const source of loadSources(specifier, "ts")) {
+          expect(await starterMessages(config, source, filename), `${filename}: ${source}`)
+            .not.toContainEqual(expect.stringContaining(entryMessage));
+        }
+      }
     }
   });
 });

@@ -7,7 +7,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it, vi } from "vitest";
 
-import { PUBLIC_PACKAGE_COMMANDS, PUBLIC_PACKAGE_EXECUTION_SURFACES, createPublicPublicationCatalog, packageExecutionDigest } from "./oss-publication-policy.ts";
+import { PUBLIC_PACKAGE_COMMANDS, PUBLIC_PACKAGE_EXECUTION_SURFACES, createPublicPublicationCatalog, isManifestPinnedSqlArea, packageExecutionDigest } from "./oss-publication-policy.ts";
 import { CANONICAL_ACTIVATION_REPOSITORY, CANONICAL_ACTIVATION_SECURITY_ROUTE, assertAdmittedPlatformForward, assertDescendantSourceRelease, assertNoOverdueRemovals, createSourceReleaseContract, deriveSourceReleaseContract, isExpandOnlyPlatformForward, overdueRemovals, removalMarkerLines, removalScanBlobs, splitRemovalScanBatch, type SourceReleaseContractInput } from "./oss-source-release-contract.ts";
 import { annotatedTag, assertDraft, assertNextPreview, checkDraft, preparePreview, previewInputs, previousPreview, verifyPublished, type GithubFetch } from "./source-preview-release.ts";
 import { MANAGED_ALIGNMENT_FORWARD, readManagedForward } from "./public-reference/subscription-alignment.mjs";
@@ -176,17 +176,33 @@ describe("source preview workflow preparation", () => {
     expect(() => assertNoOverdueRemovals(Number(major) > 0 ? Number.MAX_SAFE_INTEGER : Number(minor), "HEAD", process.cwd())).not.toThrow();
   });
 
-  it("runs the removal scan in prepare, after the ordinal check and before any previous-release read", async () => {
-    const fetcher: GithubFetch = async (url) => url.includes("/releases?")
-      ? Response.json([{ tag_name: "openlup-source-preview/6", immutable: true, prerelease: true, draft: false }])
-      : new Response(null, { status: 404 });
-    for (const [preview, expected] of [[7, /^openlup-source-preview\/7 refuses files marked for removal by it: src\/shim\.ts$/u], [8, /source preview API refused \/releases\/tags\//u]] as const) {
-      const sample = markerRepository({ "src/shim.ts": marker(preview) }), out = mkdtempSync(join(tmpdir(), "openlup-prepare-out-"));
-      try {
-        await expect(preparePreview(previewInputs(sample.head, "7", "note"), sample.repo, out, undefined, fetcher)).rejects.toThrow(expected);
-        expect(existsSync(join(out, "notes.md"))).toBe(false);
-      } finally { sample.cleanup(); rmSync(out, { recursive: true, force: true }); }
-    }
+  const releaseInventory = `${root}/releases?per_page=100&page=1`;
+  const nextPreviewRef = `${root}/git/ref/tags/openlup-source-preview%2F7`;
+  const previousPreviewRelease = `${root}/releases/tags/openlup-source-preview%2F6`;
+
+  it.each([
+    { scenario: "refuses a stale ordinal before the removal scan", number: "8", removal: 7,
+      expected: /preview_number must immediately follow the newest immutable preview/u, reads: [releaseInventory] },
+    { scenario: "refuses an overdue removal before the previous-release read", number: "7", removal: 7,
+      expected: /^openlup-source-preview\/7 refuses files marked for removal by it: src\/shim\.ts$/u, reads: [releaseInventory, nextPreviewRef] },
+    { scenario: "reads the previous release after accepting a future removal", number: "7", removal: 8,
+      expected: /source preview API refused \/releases\/tags\//u, reads: [releaseInventory, nextPreviewRef, previousPreviewRelease] },
+  ])("$scenario", async ({ number, removal, expected, reads }) => {
+    const requests: string[] = [];
+    const fetcher: GithubFetch = async (url) => {
+      requests.push(url);
+      if (url === releaseInventory) {
+        return Response.json([{ tag_name: "openlup-source-preview/6", immutable: true, prerelease: true, draft: false }]);
+      }
+      return new Response(null, { status: 404 });
+    };
+    const sample = markerRepository({ "src/shim.ts": marker(removal) });
+    const out = mkdtempSync(join(tmpdir(), "openlup-prepare-out-"));
+    try {
+      await expect(preparePreview(previewInputs(sample.head, number, "note"), sample.repo, out, undefined, fetcher)).rejects.toThrow(expected);
+      expect(requests).toEqual(reads);
+      expect(existsSync(join(out, "notes.md"))).toBe(false);
+    } finally { sample.cleanup(); rmSync(out, { recursive: true, force: true }); }
   });
 
   it("checks the exact draft note and refuses any release asset before publication", () => {
@@ -325,7 +341,7 @@ const SYNTHETIC_TREE: Record<string, string> = {
   "package.json": json({ name: "synthetic-root", private: true, scripts: Object.fromEntries(PUBLIC_PACKAGE_COMMANDS.map(({ name, command }) => [name, command])) }),
   "package-lock.json": json({ name: "synthetic-root", lockfileVersion: 3 }),
   "examples/neutral-store/owned/settings-host.ts": "export {};\n",
-  "examples/neutral-store/package.json": json({ name: "synthetic-starter", private: true, scripts: { dev: "node --experimental-strip-types dev.mjs", build: "vite build", start: "node --experimental-strip-types host/server.ts", typecheck: "tsc --noEmit", test: "node --experimental-strip-types --test", "test:browser": "playwright test", settings: "openlup settings --app ./owned/settings-host.ts", "catalogue:check:source": "openlup catalogue project --trusted-packs ./owned/catalogue.ts --json", "provider:qualify": "node --experimental-strip-types host/provider-qualification.ts" } }),
+  "examples/neutral-store/package.json": json({ name: "synthetic-starter", private: true, scripts: { dev: "node --experimental-strip-types dev.mjs", build: "vite build", start: "node --experimental-strip-types host/server.ts", typecheck: "tsc --noEmit", test: "node --experimental-strip-types --test", "test:browser": "playwright test", settings: "openlup settings --app ./owned/settings-host.ts", "catalogue:check:source": "openlup catalogue project --trusted-packs ./owned/catalogue.ts --json", "catalogue:apply": "./lifecycle catalogue apply", "provider:qualify": "node --experimental-strip-types host/provider-qualification.ts" } }),
   "packages/core/package.json": json({ name: "synthetic-core", scripts: CORE_SCRIPTS, bin: { "openlup-context": "./src/openlup-context.js" } }),
   "packages/core/package-lock.json": json({ name: "synthetic-core", lockfileVersion: 3 }),
   "packages/outbox/package.json": json({ name: "synthetic-outbox", scripts: OUTBOX_SCRIPTS }),
@@ -348,7 +364,7 @@ function syntheticRelease(options: { extraFiles?: Record<string, string | Buffer
   const commit = (message: string, { regenerate = true, classes = {}, omitFromCatalog = [] }: Seal = {}) => {
     run(["add", "--all"]);
     const paths = [...new Set([...run(["ls-files"]).split("\n").filter(Boolean), CATALOG])].filter((path) => !omitFromCatalog.includes(path)).sort();
-    writeFileSync(join(repo, CATALOG), createPublicPublicationCatalog(paths.filter((path) => !isChangelogFragment(path)).map((path) => ({ path, class: classes[path] ?? "public-output" })), []).contents);
+    writeFileSync(join(repo, CATALOG), createPublicPublicationCatalog(paths.filter((path) => !isChangelogFragment(path) && !isManifestPinnedSqlArea(path)).map((path) => ({ path, class: classes[path] ?? "public-output" })), []).contents);
     if (regenerate) writeFileSync(join(repo, CONTRACT), deriveSourceReleaseContract(read, paths.map((path) => ({ path, mode: lstatSync(join(repo, path)).mode & 0o111 ? "100755" : "100644" }))).contents);
     run(["add", "--all"]); run(["commit", "--quiet", "--allow-empty", "-m", `${message}\n\nSigned-off-by: ${OWNER.name} <${OWNER.email}>`]);
     return run(["rev-parse", "HEAD"]);
@@ -780,7 +796,7 @@ CREATE FUNCTION public.zz_body() RETURNS text LANGUAGE sql SET search_path=pg_ca
       const contents = [exact[0]! + "\n" + addition, exact[1]!];
       const sample = creationFixture(contents, true);
       try {
-        sample.append(); const head = sample.commit("Repinned unsupported creation");
+        sample.append(); const head = sample.commit("Repinned unsupported creation", { regenerate: false });
         for (const gate of gates(sample, head)) expect(gate).toThrow(/reviewed portable creation|reviewed replacement|control characters/u);
       } finally { sample.cleanup(); }
     });
@@ -1694,7 +1710,7 @@ describe("PR-base migration history", () => {
   const old = { "supabase/migrations/00000000000000_platform_schema_baseline.sql": "select 1;\n", [managed]: "CREATE TABLE public.existing (id int);\n" };
   const check = (change: TreeChange, extra: Record<string, string> = old) => {
     const sample = syntheticRelease({ extraFiles: extra });
-    try { sample.apply(change); const head = sample.commit("Candidate"); assertAppendOnlyMigrationHistory(sample.repo, sample.rootCommit, head); }
+    try { sample.apply(change); const head = sample.commit("Candidate", { regenerate: false }); assertAppendOnlyMigrationHistory(sample.repo, sample.rootCommit, head); }
     finally { sample.cleanup(); }
   };
 
@@ -1765,10 +1781,10 @@ describe("descendant source release check", () => {
     ["a package change with a stale contract", { "package-lock.json": json({ name: "synthetic-root", lockfileVersion: 3, packages: {} }) }, { regenerate: false }, /does not describe its tree; run scripts\/source-release-preparation\.ts --write at release prep.*packages\.rootLockDigest/u],
     ["a stale class digest", {}, { regenerate: false, classes: { "docs/guide.md": "platform-documentation" } }, /does not describe its tree.*inventory\.classDigest/u],
     ["a changed fixed contract field", editContract((contract) => { contract.repository.owner.name = "Second Owner"; }), {}, /previous release's repository\.owner\.name/u],
-    ["a migration manifest change", { "config/platform-migration-manifest.json": json({ synthetic: "changed" }) }, {}, /platform migration manifest/u],
+    ["a migration manifest change", { "config/platform-migration-manifest.json": json({ synthetic: "changed" }) }, { regenerate: false }, /platform migration manifest/u],
     ["a database types change", { "src/integrations/supabase/types.ts": "export type SyntheticDatabase = unknown;\n" }, {}, /schema-bearing.*supabase\/types\.ts/u],
     ["a policy registry change", { "config/openlup-policy-registry.json": json({ schemaVersion: 1, activePaths: ["README.md"], contracts: [{ id: "synthetic-readme-renamed", owners: ["README.md"] }] }) }, {}, /schema-bearing.*openlup-policy-registry/u],
-    ["an added platform migration", { "db/platform/migrations/0002_synthetic.sql": "select 2;\n" }, {}, /schema-bearing.*0002_synthetic/u],
+    ["an added platform migration", { "db/platform/migrations/0002_synthetic.sql": "select 2;\n" }, { regenerate: false }, /schema-bearing.*0002_synthetic/u],
     ["an added schema migration", { "supabase/migrations/0001_synthetic.sql": "select 1;\n" }, {}, /schema-bearing.*supabase\/migrations/u],
     ["an added bootstrap script", { "db/bootstrap/synthetic/00_synthetic.sql": "select 1;\n" }, {}, /schema-bearing.*db\/bootstrap/u],
     ["an added upper-case bootstrap script", { "db/bootstrap/synthetic/01_SYNTHETIC.SQL": "select 1;\n" }, {}, /schema-bearing.*01_SYNTHETIC\.SQL/u],
@@ -1776,7 +1792,7 @@ describe("descendant source release check", () => {
     ["a deleted policy active path", { "README.md": null }, {}, /policy path is absent from the Git inventory: README\.md/u],
     ["a changed package execution surface", { "packages/ui/package.json": json({ name: "synthetic-ui", scripts: { ...UI_SCRIPTS, postinstall: "node install.js" } }) }, {}, /package execution surface differs from the catalogue: packages\/ui\/package\.json/u],
     ["an uncatalogued package manifest", { "packages/extra/package.json": json({ name: "synthetic-extra", scripts: { postinstall: "node install.js" } }) }, {}, /package manifests differ from the catalogued package execution surfaces/u],
-    ["a migration mode change", (repo: string) => chmodSync(join(repo, "db/platform/migrations/00000000000000_platform_baseline.sql"), 0o755), {}, /schema-bearing.*platform_baseline/u],
+    ["a migration mode change", (repo: string) => chmodSync(join(repo, "db/platform/migrations/00000000000000_platform_baseline.sql"), 0o755), { regenerate: false }, /schema-bearing.*platform_baseline/u],
     ["an unregistered direct execution entrypoint", { "scripts/synthetic-tool.mjs": "#!/usr/bin/env node\n" }, {}, /unregistered direct execution entrypoint/u],
   ] as const)("refuses %s", (_label, change, seal, expected) => {
     const sample = syntheticRelease();
@@ -1831,7 +1847,7 @@ describe("descendant source release check", () => {
     ["adopter schema", { "supabase/migrations/20260927000000_app.sql": "CREATE TABLE app.extension (id int);" }, /non-expand-only/u],
   ] as const)("refuses %s in the descendant check", (_label, change, expected) => {
     const sample = syntheticRelease({ extraFiles: { "supabase/migrations/00000000000000_platform_schema_baseline.sql": "select 1;\n", "supabase/migrations/20260926000000_existing.sql": "CREATE TABLE existing (id int);" } });
-    try { expect(() => sample.release(change)).toThrow(expected); } finally { sample.cleanup(); }
+    try { expect(() => sample.release(change, { regenerate: false })).toThrow(expected); } finally { sample.cleanup(); }
   });
 
   it("refuses a reordered portable manifest even when every file digest is valid", () => {
@@ -1848,9 +1864,9 @@ describe("descendant source release check", () => {
     const manifest = JSON.parse(SYNTHETIC_TREE["config/platform-migration-manifest.json"]!);
     manifest.forward = [{ file: path, sha256: createHash("sha256").update(sql).digest("hex") }];
     const sample = syntheticRelease({ extraFiles: { [path]: sql, "config/platform-migration-manifest.json": json(manifest) } });
-    try { expect(() => sample.release({ "config/platform-migration-manifest.json": SYNTHETIC_TREE["config/platform-migration-manifest.json"]! })).toThrow(/manifest/u); } finally { sample.cleanup(); }
+    try { expect(() => sample.release({ "config/platform-migration-manifest.json": SYNTHETIC_TREE["config/platform-migration-manifest.json"]! }, { regenerate: false })).toThrow(/descendant platform migration manifest refuses:/u); } finally { sample.cleanup(); }
     const missing = syntheticRelease();
-    try { expect(() => missing.release({ "db/platform/migrations/20260927000000_unbound.sql": sql })).toThrow(/unmanifested/u); } finally { missing.cleanup(); }
+    try { expect(() => missing.release({ "db/platform/migrations/20260927000000_unbound.sql": sql }, { regenerate: false })).toThrow(/descendant platform migration manifest refuses:.*unmanifested/u); } finally { missing.cleanup(); }
   });
 
   it("prepares only a target that descends from the previous preview and describes itself", async () => {

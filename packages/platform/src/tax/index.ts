@@ -8,3 +8,5 @@ export type { TaxConformanceCaseV1, TaxConformanceSubjectV1 } from "./adapterCon
 export { compareTaxRecalculationProbe } from "./compareProbe.js";
 export { applyTaxCoverageRevision, bindTaxCoverageReader, describeTaxCoverageSetting } from "./installedCoverage.js";
 export type { TaxCoverageExecutor, TaxCoverageRevision } from "./installedCoverage.js";
+export { beginTaxCalculation, completeTaxCalculation, evaluationDigest } from "./taxCalculationStore.js";
+export type { TaxCalculationTransactionLane } from "./taxCalculationStore.js";

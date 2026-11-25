@@ -142,6 +142,8 @@ export type { TaxConformanceCaseV1, TaxConformanceSubjectV1 } from "./adapterCon
 export { compareTaxRecalculationProbe } from "./compareProbe.js";
 export { applyTaxCoverageRevision, bindTaxCoverageReader, describeTaxCoverageSetting } from "./installedCoverage.js";
 export type { TaxCoverageExecutor, TaxCoverageRevision } from "./installedCoverage.js";
+export { beginTaxCalculation, completeTaxCalculation, evaluationDigest } from "./taxCalculationStore.js";
+export type { TaxCalculationTransactionLane } from "./taxCalculationStore.js";
 ```
 ## dist/tax/installedCoverage.d.ts
 
@@ -321,5 +323,320 @@ export interface LocalRateTableOptionsV1 {
  * Use the result kind from `readFiscalValidity` because it can report `changed` with the same fiscal digest when an effective fee or rate rule is replaced under the same references.
  */
 export declare function localRateTable(options: LocalRateTableOptionsV1): TaxCalculationPort;
+export {};
+```
+## dist/tax/taxCalculationComposition.d.ts
+
+```ts
+import { z } from "zod";
+export declare const uuid: z.ZodString;
+export declare const digest: z.ZodString;
+export declare const currency: z.ZodString;
+export declare const instant: z.ZodString;
+type Basis = "inclusive" | "exclusive";
+type Assignment = {
+    taxClassKey: string;
+    assignmentRef: string;
+};
+type Line = Assignment & {
+    lineKey: string;
+    sourceOrdinal: number;
+    sku: string;
+    mode: "one_time" | "subscription";
+    quantity: number;
+    unitBasisMinor: number;
+    amountKind: "gross" | "net";
+};
+type Delivery = Assignment & {
+    bucketKey: string;
+    kind: "shipping" | "handling";
+    carrierRef: string;
+    serviceRef: string;
+    cost: {
+        ref: string;
+        currency: string;
+        amountMinor: number;
+    };
+    separatelyStated: boolean;
+    amountMinor: number;
+    threshold?: {
+        flatMinor: number;
+        freeThresholdMinor: number;
+    };
+};
+type Fee = {
+    feeKey: string;
+    jurisdictionRef: string;
+    feeKind: string;
+    amountMinor: number;
+    scope: {
+        kind: "order";
+    } | {
+        kind: "delivery";
+        bucketKey: string;
+    };
+    refundRule: {
+        ref: string;
+        revision: string;
+    };
+    providerPositionRef?: string;
+};
+type Adjustment = {
+    amountOffMinor: number;
+    adjustmentRef: string;
+    evidenceRef: string;
+} & ({
+    appliesTo: "line" | "order_total";
+    target: {
+        lineKeys: readonly string[];
+    };
+} | {
+    appliesTo: "shipping";
+    target: {
+        bucketKey: string;
+    };
+});
+type Candidate = {
+    amountBasis: Basis;
+    deliverySelectionRef: string;
+    delivery: readonly Delivery[];
+    feeLines: readonly Fee[];
+};
+type FiscalDetails = {
+    facts: {
+        country: string;
+        category: string;
+        vatRateBps: number;
+        legalBasis: string;
+    };
+    coordinates: {
+        installationRef: string;
+        marketRef: string;
+        packId: string;
+        packVersion: string;
+    };
+};
+export type FiscalSuccessEvidence = FiscalDetails & {
+    policyRevision: string;
+    calculationId: string;
+    coverage: {
+        kind: "not_applicable";
+    };
+    posting: "no_provider_posting";
+};
+export type CheckoutComposition = {
+    planInput: {
+        currency: string;
+        listBasis: Basis | null;
+        engine: "promotion-engine.v1" | "promotion-engine.v2";
+        price: {
+            priceListRef: string;
+            priceContextDigest: string;
+            priceEvidenceRef: string;
+            classMapRevision: string;
+        };
+        lines: readonly Line[];
+        baseline: Candidate;
+        selected?: Candidate & {
+            adjustments: readonly Adjustment[];
+        };
+    };
+    catalogueEvidenceRef: string;
+    evidenceExpiresAt: string;
+    selection: {
+        kind: "checkout";
+        scopeRef: string;
+        selectionRevision: string;
+    };
+    service: {
+        deliverySelectionRef: string;
+        providerRef: string;
+        carrierRef: string;
+        serviceRef: string;
+        servicePolicyRevision: string;
+        adapterRevision: string;
+    };
+    limits: {
+        installationRef: string;
+        channelKey: string;
+        methodKey: string;
+        providerKey: string;
+        accountRef: string;
+        mode: "test" | "live";
+        currency: string;
+        profileRef: string;
+        revision: number;
+        minMinor: number;
+        maxMinor: number;
+        effective: {
+            minMinor: number;
+            maxMinor: number;
+        };
+    };
+};
+export type FiscalCheckoutComposition = CheckoutComposition & {
+    fiscal: FiscalDetails;
+};
+export declare const exclusiveComposition: z.ZodType<CheckoutComposition>;
+export declare const fiscalComposition: z.ZodType<FiscalCheckoutComposition>;
+export declare const fiscalSuccessEvidence: z.ZodType<FiscalSuccessEvidence>;
+export {};
+```
+## dist/tax/taxCalculationStore.d.ts
+
+```ts
+import type { TaxRefusal } from "./contracts/types.js";
+import { type CheckoutComposition, type FiscalCheckoutComposition, type FiscalSuccessEvidence } from "./taxCalculationComposition.js";
+interface TaxCalculationExecutor {
+    query(statement: string, parameters?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+/** A restricted session that resolves only after commit acknowledgment.
+ * @experimental
+ */
+export interface TaxCalculationTransactionLane {
+    run<T>(work: (executor: TaxCalculationExecutor) => Promise<T>): Promise<T>;
+}
+interface EvaluationScope {
+    identity: {
+        installationRef: string;
+        clientId: string;
+        principalRef: string;
+        scopeRef: string;
+        evaluationKey: string;
+    };
+    invocation: {
+        purpose: "final" | "estimate";
+        mode: "one_time" | "subscription";
+        cadence?: {
+            schemaVersion: 1;
+            kind: "fixed_days";
+            days: number;
+        };
+        lines: readonly {
+            sku: string;
+            quantity: number;
+        }[];
+        deliverySelector: string;
+        paymentSelector: string;
+    };
+}
+interface EvaluationEvidence {
+    destination: {
+        snapshotRef: string;
+        destinationDigest: string;
+        schemaVersion: 2;
+        policyRevision: string;
+    };
+    kind: "fiscal_profile" | "tax_calculation";
+    validUntil: string;
+}
+type EvaluationPin = Omit<EvaluationEvidence, "kind"> & {
+    request: unknown;
+    coverage: {
+        accountRef: string;
+        revision: string;
+        digest: string;
+    } | null;
+    recovery: string | null;
+} & ({
+    kind: "fiscal_profile";
+    composition?: FiscalCheckoutComposition;
+} | {
+    kind: "tax_calculation";
+    composition?: CheckoutComposition & {
+        fiscal?: never;
+    };
+});
+type BeginTaxCalculationInput = Uint8Array | (EvaluationScope & ({
+    operation: "lookup";
+} | {
+    operation: "claim";
+    pin?: EvaluationPin;
+    recovery: string | null;
+}));
+type Refusal = Pick<TaxRefusal, "kind" | "field" | "remedy"> & {
+    code: string;
+};
+type QuoteOutcome = {
+    kind: "estimate" | "final";
+    quote: unknown;
+};
+type UnavailableCode = "tax_coverage_evidence_unavailable" | "tax_adapter_unavailable";
+type CompletionOutcome = Refusal | QuoteOutcome | {
+    kind: "indeterminate";
+} | {
+    kind: "unavailable";
+    code: UnavailableCode;
+};
+type EvaluationSeal = EvaluationEvidence & {
+    requestDigest: string;
+    contradiction: boolean;
+} & ({
+    evidence: unknown;
+    outcome: CompletionOutcome;
+    compositionDigest?: never;
+} | {
+    kind: "fiscal_profile";
+    evidence: FiscalSuccessEvidence;
+    outcome: QuoteOutcome;
+    compositionDigest: string;
+} | {
+    kind: "tax_calculation";
+    evidence: unknown;
+    outcome: QuoteOutcome;
+    compositionDigest: string;
+});
+type CompleteTaxCalculationInput = Uint8Array | (EvaluationScope & {
+    calculationId: string;
+    claimToken: string;
+    generation: number;
+    seal: EvaluationSeal;
+    adapter?: {
+        request: unknown;
+        result: unknown;
+    };
+});
+type Terminal = {
+    kind: "terminal";
+    validUntil: string;
+    freshness: "current" | "historical";
+    outcome: Refusal | QuoteOutcome | {
+        kind: "unavailable";
+        code: UnavailableCode;
+        effect: "none";
+        field: string;
+        remedy: string;
+    };
+};
+type CompleteTaxCalculationResult = Terminal | Refusal | {
+    kind: "pending" | "missing";
+};
+type BeginTaxCalculationResult = CompleteTaxCalculationResult | {
+    kind: "claimed";
+    calculationId: string;
+    generation: number;
+    claimToken: string;
+    dispatchDeadlineMs: number;
+    cutoffDeadlineMs: number;
+    pin: EvaluationPin & {
+        requestDigest: string;
+        invocationDigest: string;
+        documentDigest: string;
+    };
+};
+/** Computes a canonical digest for the native evaluation store.
+ * @experimental
+ */
+export declare const evaluationDigest: (tag: string, body: unknown) => string;
+/** Looks up an evaluation or returns a claim after the transaction commits.
+ * @experimental
+ */
+export declare function beginTaxCalculation(lane: TaxCalculationTransactionLane, input: BeginTaxCalculationInput): Promise<BeginTaxCalculationResult>;
+/** Seals an owned evaluation or verifies an exact replay.
+ * @experimental
+ */
+export declare function completeTaxCalculation(lane: TaxCalculationTransactionLane, input: CompleteTaxCalculationInput): Promise<CompleteTaxCalculationResult>;
 export {};
 ```

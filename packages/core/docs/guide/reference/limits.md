@@ -209,6 +209,7 @@ In the tables, “—” means the boundary has no dedicated refusal code.
 | Publish a catalogue draft from the operator UI | The button displays a local refusal. Use the [operator API to prepare, approve and publish a saved version 3 draft](../how-to/build/customize-the-starter.md#publish-a-saved-catalogue-draft). | `starter_catalog_publication_unavailable` |
 | Evaluate a promotion with line targeting | `line_with_variant` and `line_with_category` are stored. The Core promotion evaluator calculates each kind as `order_total`. | — |
 | Purchase an activated bundle | Activation does not make a bundle available to this storefront or checkout. | —; no purchase control |
+| List a published SKU without one-time sellability | The starter lists only SKUs sellable for one-time purchase. Enable that mode through the catalogue workflow, then reread the SKU. | `starter_catalogue_one_time_required` |
 | Use lot traceability, locations or stock movements | The starter supplies none of these inventory facilities. The limits-page action refuses. | `starter_inventory_traceability_unavailable` |
 | Run the starter against a hosted database | The supplied installation is a local demonstration database recipe. It provides no hosted-database setup. | —; no hosted installation recipe |
 | Seed without the installed bootstrap | Seeding stops before application startup. | `starter_installation_binding_required` |
@@ -336,7 +337,7 @@ means an in-flight parcel keeps its current destination.
 | --- | --- | --- |
 | Quote subscription acquisition without a private acceptance key | The host refuses a subscription quote that needs signed acceptance. One-time checkout remains available. | `starter_quote_acceptance_key_required` |
 | Reuse a subscription quote after acceptance-key rotation or changed terms | Refresh the quote and accept its current terms. | `starter_quote_refresh_required` |
-| Reseed a different price under an existing price identity | The installation rolls back instead of overwriting that price. | `starter_price_seed_conflict` |
+| Reseed a changed price under an existing identity, retain a divergent subscription seed row, or keep another active, open or pending explicit subscription row on the demo list | The installation rolls back. Ask the pricing owner to reconcile changed seed rows with the original demo amounts, identities and validity. Have the owner close other active or open rows or withdraw pending rows while preserving price history. Then rerun the installer. | `starter_price_seed_conflict` |
 | Exceed checkout attempt limits or reuse a command key with a different contact/requester | Admission stops before contact resolution. Default quotas persist in PostgreSQL across restarts. Command-identity bindings remain process-local and reset on restart. | `starter_attempt_limited` |
 | Submit an invalid or overlong purchase email | The configured input bound is checked before contact resolution. | `starter_email_invalid` |
 | Treat demonstration market inputs as real tax or compliance certification | The starter uses fictional market and test-currency inputs. Subscription quotes use the installed pricing and acquisition rules; demonstration prices are not a real-market certification. | —; demonstration inputs only |
@@ -630,3 +631,20 @@ private-capture cleanup.
 Native intake composes existing commands and the job ledger; it installs no
 scheduler. Public tracking access, label create/void, independent split shipments,
 provider activation and hosted qualification retain their existing limits.
+
+## Published starter catalogue limits
+
+Published products display a title or localized short name and an optional
+local image. Long descriptions, product details and pack contents display as
+empty copy.
+
+The starter reserves part of its 500 active sellable SKU quote capacity for
+seeded storefront and editor SKUs. Active sellable SKUs across offers also
+count. If capacity is exhausted, reduce the active sellable catalogue through
+the supported lifecycle, then reread and quote.
+
+Publish new products under a document schema distinct from the configured
+`quote.document.schemaId`. For an existing collision, withdraw the colliding
+product through governed catalogue commands and repeat the original quote.
+Supported published documents use canonical draft JSON. Recover damaged
+revisions from a verified backup and repeat the affected quote.

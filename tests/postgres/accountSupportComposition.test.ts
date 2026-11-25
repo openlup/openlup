@@ -39,13 +39,13 @@ it("P1 probes the full installed catalogue and delegates the R5 API route to R4'
   const api = createOperatorRecovery({ graph: "native", authority });
   const execute = vi.spyOn(api, "execute");
   const operatorRoute = createM12OperatorSubscriptionActionRoute(execute);
-  // Full identity comes from all ordered migration bytes and the runner's checked ledger.
   const version = createHash("sha256").update(JSON.stringify(units)).digest("hex");
   const catalogue = { version, migration: units.at(-1)!.file };
-  const probe = createSchemaProbe({ query: (text, values) => h.pool.query(text, values ? [...values] : undefined) }, async () => {
-    const status = await h.runner().status();
-    return { database: "m12-disposable", version: status.pending.length === 0 && status.applied.length === units.length ? version : null };
-  });
+  const status = await h.runner().status();
+  expect(status).toEqual({ applied: units.map(({ file }) => file), pending: [] });
+  // The fixture applies no migrations after setup. The guard probes live objects each time.
+  const observedIdentity = { database: "m12-disposable", version };
+  const probe = createSchemaProbe({ query: (text, values) => h.pool.query(text, values ? [...values] : undefined) }, async () => observedIdentity);
   const objects: RequiredSchema["objects"] = [
     ...["subscriptions", "subscription_command_receipts", "customer_support_subscription_commands", "customer_support_subscription_audit_events"].map(name => ({ kind: "table" as const, name: `public.${name}` })),
     { kind: "function", name: "public.customer_support_apply_subscription_action_v1", signature: "uuid,uuid,text,jsonb,integer,text,timestamp with time zone" },
@@ -120,17 +120,40 @@ it("P2 selected commerce recovery reaches native persistence once through R5 and
   expect(before.alignment.length).toBeGreaterThan(0);
   const version = createHash("sha256").update(JSON.stringify(units)).digest("hex");
   const catalogue = { version, migration: units.at(-1)!.file };
-  const probe = createSchemaProbe({ query: (text, values) => h.pool.query(text, values ? [...values] : undefined) }, async () => {
-    const status = await h.runner().status();
-    return { database: "m12-disposable", version: status.pending.length === 0 && status.applied.length === units.length ? version : null };
-  });
+  const ledgerStarted = performance.now();
+  const status = await h.runner().status();
+  console.info(`account-support P2 phase=migration-status ms=${Math.round(performance.now() - ledgerStarted)}`);
+  expect(status).toEqual({ applied: units.map(({ file }) => file), pending: [] });
+  // This fixture applies no migrations after setup. Keep the verified ledger
+  // identity for the guard while querying the objects from PostgreSQL each time.
+  const observedIdentity = { database: "m12-disposable", version };
+  const queryObjects = { async query(text: string, values?: readonly unknown[]) {
+    const started = performance.now();
+    try {
+      return await h.pool.query(text, values ? [...values] : undefined);
+    } finally {
+      console.info(`account-support P2 phase=object-probe ms=${Math.round(performance.now() - started)}`);
+    }
+  } };
+  const probe = createSchemaProbe(queryObjects, async () => observedIdentity);
+  let schemaProbe = probe;
+  const observations: string[] = [];
   const executor = { query: vi.fn((text: string, values?: unknown[]) => h.pool.query(text, values)) };
-  const readiness = async (schema: RequiredSchema): Promise<ReadinessReport> => checkReadiness({
+  const readiness = async (schema: RequiredSchema): Promise<ReadinessReport> => {
+    const report = await checkReadiness({
       candidate: { artifact: "r5b", configuration: "native", environment: "local", database: "m12-disposable", schema: version }, inventoryComplete: true,
       loadedPackages: [{ name: "@openlup/core", version: "0.27.0", kind: "kernel" }, { name: "@openlup/platform", version: "0.27.0", kind: "rail", modules: ["account-support", "commerce"] }],
       contributions: binding.contributions.map(contribution => ({ ...contribution, manifest: { ...contribution.manifest, requiredSchema: schema } })),
-      vocabulary: [], exemptions: [], bindings: { ports: binding.ports, routes: binding.routes, triggers: binding.triggers, env: {} }, schemaProbe: probe,
+      vocabulary: [], exemptions: [], bindings: { ports: binding.ports, routes: binding.routes, triggers: binding.triggers, env: {} }, schemaProbe,
     });
+    for (const issue of report.issues) {
+      if (issue.observation) {
+        observations.push(issue.observation);
+        console.info(`account-support P2 state=${report.state} observation=${issue.observation}`);
+      }
+    }
+    return report;
+  };
   const commerceOwner = createM11CommerceReferenceBinding({ enabled: true, executor, commerce: {}, version: "0.27.0", catalogue,
     requiredObjects: [{ kind: "function", name: "public.inventory_new_purchase_stock_read", signature: "text,jsonb,timestamp with time zone" }],
     readiness });
@@ -140,6 +163,34 @@ it("P2 selected commerce recovery reaches native persistence once through R5 and
   expect(executor.query).not.toHaveBeenCalled(); expect(await binding.readiness()).toEqual({ kind: "ready" });
   const enqueue = binding.commerceOwner!.services.recoveryReminders;
   expect(binding.ports["@openlup/platform/commerce:recoveryReminders"]).toBe(enqueue);
+  // An uncached observation delayed past the default readiness deadline
+  // reproduces the historic guard refusal without allowing an enqueue.
+  let releaseStatus!: () => void;
+  const heldStatus = new Promise<void>(resolve => { releaseStatus = resolve; });
+  const outstanding: Promise<unknown>[] = [];
+  const uncached = createSchemaProbe(queryObjects, async () => {
+    const started = performance.now();
+    await heldStatus;
+    const observed = await h.runner().status();
+    console.info(`account-support P2 phase=held-migration-status ms=${Math.round(performance.now() - started)}`);
+    return { database: observedIdentity.database,
+      version: observed.pending.length === 0 && observed.applied.length === units.length ? version : null };
+  });
+  schemaProbe = { observe(requirement) {
+    const observing = uncached.observe(requirement);
+    outstanding.push(observing);
+    return observing;
+  } };
+  try {
+    expect(await enqueue(10)).toEqual({ kind: "refused", code: "schema_unknown" });
+    expect(observations).toContain("probe_unavailable");
+    expect(executor.query).not.toHaveBeenCalled();
+    expect(await snapshot()).toEqual(before);
+  } finally {
+    releaseStatus();
+    await Promise.allSettled(outstanding);
+    schemaProbe = probe;
+  }
   expect(await enqueue(10)).toEqual({ enqueued1h: 1, enqueued20h: 0 });
   const reminders = async () => (await h.pool.query(`SELECT id,aggregate_id,idempotency_key,payload,xmin::text AS row_version
     FROM public.outbox_events WHERE event_type='commerce.checkout_recovery' ORDER BY id`)).rows;

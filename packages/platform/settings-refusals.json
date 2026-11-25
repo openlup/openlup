@@ -52,6 +52,30 @@
       }
     },
     {
+      "code": "money_limits_reader_unbound",
+      "path": [
+        "paymentLimits"
+      ],
+      "rule": "Connected show requires owner inspection for the intended installation and rail.",
+      "hint": "Supply the native owner inspection under reader key commerce.money_limits.v2.owner in the app's settings binding.",
+      "remediation": {
+        "retry": true,
+        "action": "Bind the native owner inspection to the intended installation and rail, then retry connected show."
+      }
+    },
+    {
+      "code": "money_limits_operation_unavailable",
+      "path": [
+        "inspection"
+      ],
+      "rule": "The native payment limits inspection could not complete.",
+      "hint": "Check the installation and its owner connection.",
+      "remediation": {
+        "retry": true,
+        "action": "Check the native app binding, driver setup, database connection and TLS, operation-role privileges, and installed migrations. Then retry the same operation."
+      }
+    },
+    {
       "code": "commerce_setting_runtime_not_ready",
       "path": [
         "key"
@@ -208,6 +232,17 @@
         "retry": true,
         "action": "Check the schema and correct the rejected value.",
         "command": "npm --silent run settings -- show tax.coverage --json"
+      }
+    },
+    {
+      "code": "money_limits_invalid_input",
+      "path": [],
+      "rule": "Correct the indicated field using the documented payment limits input.",
+      "hint": "Check the value schema and examples for commerce.money_limits.v2.",
+      "remediation": {
+        "retry": true,
+        "action": "Check the schema and correct the rejected value.",
+        "command": "npm --silent run settings -- show commerce.money_limits.v2 --json"
       }
     },
     {

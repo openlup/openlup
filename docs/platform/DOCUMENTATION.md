@@ -134,8 +134,9 @@ responsibility splits and boundary limits across shared surfaces:
   evidence-class identity, and the validator admits the transition from historic
   preview to stable posture. Author exact publication-catalogue rows for moved
   tests and new package sources. Validated, regular, non-executable package
-  changelog fragments and reader guide Markdown follow
-  [the two pattern admissions](../../CONTRIBUTING.md#package-policy-and-release-checks).
+  changelog fragments, reader guide Markdown, and manifest-pinned platform SQL
+  migrations/mirrors follow
+  [the three pattern admissions](../../CONTRIBUTING.md#package-policy-and-release-checks).
   Policy and inventory checks derive live source-release bindings, validate
   authored fields and structure, and report a stale committed snapshot without
   failure. Refresh that snapshot only in a reviewed release-preparation change
@@ -194,6 +195,12 @@ The `docs:check` script of each publishable package runs the
 [documentation contract](../../packages/core/scripts/documentation-contract.ts).
 Guide Markdown pages link relatively to one another; non-Markdown assets use
 repository URLs pinned to the Core release, with target existence still checked.
+The publication self-check applies the same page rules to the rendered next
+upgrade page in memory. It reads the packed file set with one Core npm pack
+dry run. Generated-region markers are refused on upgrade pages at preflight.
+TypeScript fence compilation runs in the installed Core check. Preflight names
+the source fragment when available. Run `npm run preflight -- --fast` to
+check fragments before release preparation.
 Core runs it inside its `ci:required`; the root test suite runs it for outbox and
 platform, so a required check covers all three. This root-suite enforcement of
 outbox and platform `docs:check` depends on

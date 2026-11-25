@@ -15,14 +15,24 @@ SELECT ok(NOT EXISTS(SELECT FROM (VALUES
     ('public.tax_calculation_guard_v1()','v',false,'pg_catalog'),
     ('public.tax_calculation_terminal_v1(public.tax_calculations)','s',false,'pg_catalog, pg_temp'),
     ('public.tax_calculation_export_v1(uuid)','s',true,'pg_catalog, pg_temp'),
-    ('public.tax_calculation_erase_v1(uuid)','v',true,'pg_catalog, pg_temp')
+    ('public.tax_calculation_erase_v1(uuid)','v',true,'pg_catalog, pg_temp'),
+    ('public.tax_calculation_begin_v1(jsonb)','v',true,'pg_catalog, pg_temp'),
+    ('public.tax_calculation_complete_v1(jsonb)','v',true,'pg_catalog, pg_temp'),
+    ('public.tax_calculation_check_domain_v1(jsonb,jsonb,jsonb,boolean)','s',false,'pg_catalog, pg_temp'),
+    ('public.tax_calculation_transition_v1(jsonb,boolean)','v',false,'pg_catalog, pg_temp')
   ) expected(signature,volatility,definer,path)
   LEFT JOIN pg_proc p ON p.oid=to_regprocedure(expected.signature)
   WHERE (pg_get_userbyid(p.proowner)::text,p.provolatile::text,p.prosecdef,p.proconfig)
     IS DISTINCT FROM (current_user::text,expected.volatility,expected.definer,ARRAY['search_path='||expected.path])
-), 'all six exact routines have the required attribute tuple');
+), 'all ten exact routines have the required attribute tuple');
 SELECT is((SELECT count(*) FROM pg_proc p CROSS JOIN LATERAL aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
   WHERE p.pronamespace='public'::regnamespace AND p.proname LIKE 'tax_calculation_%' AND a.grantee=0), 0::bigint, 'PUBLIC execute is revoked');
-SELECT ok(to_regprocedure('public.tax_calculation_begin_v1(jsonb)') IS NULL, 'claim routine is absent');
-SELECT ok(to_regprocedure('public.tax_calculation_complete_v1(jsonb)') IS NULL, 'seal routine is absent');
+SELECT ok(NOT EXISTS(SELECT FROM pg_roles WHERE rolname IN ('anon','authenticated') AND (
+  has_function_privilege(oid,'public.tax_calculation_begin_v1(jsonb)','EXECUTE')
+  OR has_function_privilege(oid,'public.tax_calculation_complete_v1(jsonb)','EXECUTE'))), 'browser roles cannot claim or seal');
+SELECT ok(NOT EXISTS(SELECT FROM pg_roles WHERE rolname='service_role' AND NOT (
+  has_function_privilege(oid,'public.tax_calculation_begin_v1(jsonb)','EXECUTE')
+  AND has_function_privilege(oid,'public.tax_calculation_complete_v1(jsonb)','EXECUTE')
+  AND NOT has_function_privilege(oid,'public.tax_calculation_check_domain_v1(jsonb,jsonb,jsonb,boolean)','EXECUTE')
+  AND NOT has_function_privilege(oid,'public.tax_calculation_transition_v1(jsonb,boolean)','EXECUTE'))), 'service role can claim and seal through the two entry points');
 SELECT * FROM finish();

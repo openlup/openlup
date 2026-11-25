@@ -13,7 +13,9 @@ import { createSettingsBindings } from '../owned/settings-host.ts';
 import { configurations } from '../owned/store.config.ts';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
+import { env } from 'node:process';
 import { proveStarterCatalogueWrappers } from '../../../scripts/packages/distribution-cli-proof.ts';
+import { readCurrentPackManifest } from '../../../scripts/packages/pack-manifest-input.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 // Source-release tests keep scratch inside this application.
@@ -276,6 +278,7 @@ test('extract creates an independent repository and refuses to overwrite an exis
     const manifest = JSON.parse(await readFile(resolve(target, 'package.json'), 'utf8'));
     assert.equal(manifest.private, true);
     assert.equal(manifest.workspaces, undefined);
+    assert.equal(manifest.scripts['catalogue:apply'], './lifecycle catalogue apply');
     assert.ok((await readFile(resolve(target, 'AGENTS.md'), 'utf8')).includes('owned/store.config.ts'));
     const ownership = JSON.parse(await readFile(resolve(root, 'ownership.json'), 'utf8'));
     assert.equal(ownership.schemaVersion, 1);
@@ -314,7 +317,7 @@ test('extract creates an independent repository and refuses to overwrite an exis
         assert.deepEqual(bytes.subarray(0, annotation.length), annotation, file);
         bytes = Buffer.concat([Buffer.from(prefix), bytes.subarray(annotation.length)]);
       } else assert.ok(!bytes.includes('Managed by OpenLup.'), file);
-      if (file === 'package.json') assert.equal(sha256(bytes), 'e062d0bdf9f553293f8f18627126a68ea9431996bab21e69c6219604fed1cfc5');
+      if (file === 'package.json') assert.equal(sha256(bytes), '53229293322d161f27b783879c9ed31b8e464a7edb0dde89e591f7b0f3985c40');
       else if (file === 'ownership.json') {
         const { providerQualification: _profile, ...projected } = ownership;
         assert.deepEqual(JSON.parse(bytes.toString()), projected);
@@ -789,10 +792,13 @@ export function selectConfiguration(id: string = defaultConfigurationId): StoreC
 }
 `;
     await writeFile(resolve(target, 'owned/store.config.ts'), owned);
-    const tests = execFileSync(process.execPath, ['--experimental-strip-types', '--test'], {
+    const tests = spawnSync(process.execPath, ['--experimental-strip-types', '--test'], {
       cwd: target, encoding: 'utf8', stdio: 'pipe', env: {},
     });
-    assert.match(tests, /fail 0/);
+    assert.ifError(tests.error);
+    const failureReport = tests.stdout.indexOf('✖ failing tests:');
+    assert.equal(tests.status, 0, tests.stdout.slice(Math.max(0, failureReport)) + tests.stderr);
+    assert.match(tests.stdout, /fail 0/);
     const probe = createServer();
     probe.listen(0, '127.0.0.1');
     await once(probe, 'listening');
@@ -816,6 +822,7 @@ export function selectConfiguration(id: string = defaultConfigurationId): StoreC
     const body = await response.json() as { config: typeof config };
     assert.equal(body.config.id, config.id);
     assert.equal(body.config.brand.name, 'Harbor Objects');
+    assert.deepEqual(body.config.offer.products.map(product => product.physical), config.offer.products.map(product => product.physical));
     assert.deepEqual(body.config.offer.cadenceDays,[21,42]);
     assert.deepEqual(body.config.subscriptionEditing.planDays,[21,42]);
     assert.deepEqual(body.config.subscriptionEditing.sized.allowedCadences,[21,42]);
@@ -859,12 +866,32 @@ test('RP2 source wrapper checks the independent registry from packed dependencie
   try {
     execFileSync(process.execPath, ['extract.mjs', target], { cwd: root, stdio: 'pipe' });
     await mkdir(bin, { recursive: true });
+    const { OPENLUP_PACK_MANIFEST: packManifest, OPENLUP_PACK_COMMIT: commit } = env;
+    assert.equal(packManifest !== undefined, commit !== undefined, 'Expected both candidate pack inputs');
+    if (packManifest !== undefined) {
+      assert.equal(commit, execFileSync('git', ['rev-parse', 'HEAD'], { cwd: checkout, encoding: 'utf8' }).trim(),
+        'Starter candidate packages must match checkout HEAD');
+    }
+    const candidatePacks = packManifest !== undefined && commit !== undefined
+      ? readCurrentPackManifest(checkout, packManifest, commit) : undefined;
     for (const name of ['core', 'platform']) {
-      const [pack] = JSON.parse(execFileSync('npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', directory],
-        { cwd: resolve(checkout, 'packages', name), encoding: 'utf8', stdio: 'pipe' }));
+      let archive: string;
+      if (candidatePacks) {
+        const pack = candidatePacks.get(`@openlup/${name}`);
+        assert(pack, `Missing candidate pack for @openlup/${name}`);
+        const bytes = await readFile(pack.path);
+        assert.equal(sha256(bytes), pack.sha256, `Candidate pack changed for @openlup/${name}`);
+        archive = resolve(directory, `${name}.tgz`);
+        await writeFile(archive, bytes);
+      } else {
+        // Direct source-suite runs have no pack producer. Build the same local fixture inputs.
+        const [pack] = JSON.parse(execFileSync('npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', directory],
+          { cwd: resolve(checkout, 'packages', name), encoding: 'utf8', stdio: 'pipe' }));
+        archive = resolve(directory, pack.filename);
+      }
       const installed = resolve(scoped, name);
       await mkdir(installed, { recursive: true });
-      execFileSync('tar', ['-xzf', resolve(directory, pack.filename), '-C', installed, '--strip-components=1']);
+      execFileSync('tar', ['-xzf', archive, '-C', installed, '--strip-components=1']);
     }
     await cp(resolve(checkout, 'node_modules/zod'), resolve(target, 'node_modules/zod'), { recursive: true });
     await symlink('../@openlup/platform/src/lifecycle/openlup.mjs', resolve(bin, 'openlup'));

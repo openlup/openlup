@@ -498,7 +498,7 @@ reader refuses at the cutoff. Run `commerce_destination_v2_expire` as the
 migration owner with a batch size of 1–1,000. It uses database time and retires
 a matching current pointer in the same transaction as its payload. Expired
 rows keep owner, scope and binding for exact stale refusals. Erasure clears
-those fields as well as payload and full digest and removes the subject's
+those fields, the payload and full digest, and removes the subject's checkout
 selections. Expired and erased exports expose the snapshot ref, issuance
 time and disposition. Verified available rows also export the document,
 scope, digest and cutoff, including after cutoff until cleanup. An available
@@ -516,6 +516,17 @@ The owner expiry batch and direct erasure require `READ COMMITTED`. Expiry skips
 bound documents. Erasure clears the two pins and keeps the order and snapshot refs.
 Privacy export includes only verified same-subject order bindings.
 
+Subscription edits by the migration owner apply to future selections. A subscription
+document has NULL `purpose` and `evidence_expires_at` equal to its database issuance
+time. Current selections and order bindings protect documents regardless of age.
+Superseded, unbound documents are eligible for cleanup. Subscription receipts keep
+JSON null for `evidenceExpiresAt` and survive supersession and cleanup.
+
+`destination-documents` (`commerce.destination-documents.v1`) joins the subscription
+and document by subject, exports verified pins and erases them. It retains parent
+refs as an erasure fence. `destination-receipts` (`commerce.destination-receipts.v1`)
+joins by client ID, exports the receipt and erases the outcome.
+
 Require `destination-receipts` and `destination-documents` in the same
 registry used for native privacy operations. Assemble the two experimental
 factories from `@openlup/platform/identity` and keep the registry installed
@@ -524,8 +535,8 @@ when issuance is disabled. Pass that same registry as `privacyRegistry` to
 before entering the privacy transaction. An authorized historical replay
 of erased evidence returns the erased disposition alone.
 
-Documents, checkout selections and order bindings carry through exact-current connected-store capture and
-restore. The restricted runtime has only the document client-ID column for
+Documents, checkout selections, order bindings and subscription selections
+carry through exact-current connected-store capture and restore. The restricted runtime has only the document client-ID column for
 lead absorption, which counts every disposition. Discard or recapture any
 private transfer packet containing evidence erased after capture.
 
@@ -586,6 +597,15 @@ These permissions can express native owner-only writes without a native-only
 role assumption. No food-column relaxation applies to this policy-only change.
 The compatibility criterion is unchanged historical digests, the same shortened
 window and named refusal for unverifiable legacy originals on both rails.
+
+### Native erasure approvals
+
+Connected capture carries the three scalar fields of each owner approval:
+`erasure_id`, `contributor_id` and `evidence_ref`. Restore applies the ledger
+immediately after the original receipts and verifies the installed contributor
+declaration. Upgrade an older source within its profile before recapturing it
+for an exact-current target. Approval evidence and reconciled obligations stay
+in local owner custody.
 
 ### Installed tax coverage history
 

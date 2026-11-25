@@ -13,6 +13,7 @@ import pg from 'pg';
 import { runPostgresContainer, waitForPostgresTcpReady } from '../tests/helpers/postgresContainer.ts';
 import { imageIo, imageReference, pullWithRetry, readCiImage } from './ci-image-pull.mjs';
 import { browserJourneyGroups } from '../examples/neutral-store/browser-groups.mjs';
+import { isHostedCi, reportFlakyRetries } from './ci-flaky-retry.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const execute = promisify(execFile);
@@ -131,15 +132,23 @@ export async function resolveBrowserImage(io = imageIo, localImage) {
 }
 
 // Reverse acquisition order, attempting every release even after a cleanup error.
+// Errors thrown by a withCleanup whose releases did not all succeed, including a work error.
+const cleanupFailures = new WeakSet();
+export const isCleanupFailure = error => typeof error === 'object' && error !== null && cleanupFailures.has(error);
+
 export async function withCleanup(work) {
   const releases = [];
   let failure;
   let value;
+  let releaseFailed = false;
   try { value = await work(release => releases.push(release)); } catch (error) { failure = error; }
   for (const release of releases.reverse()) {
-    try { await release(); } catch { failure ??= new Error('starter_browser_cleanup_failed'); }
+    try { await release(); } catch { releaseFailed = true; failure ??= new Error('starter_browser_cleanup_failed'); }
   }
-  if (failure) throw failure;
+  if (failure) {
+    if (releaseFailed && typeof failure === 'object' && failure !== null) cleanupFailures.add(failure);
+    throw failure;
+  }
   return value;
 }
 
@@ -193,6 +202,79 @@ export function scanPrivateOutput(output, privateValues = []) {
   }
 }
 
+// Playwright writes its JSON report into the writable fixture mount; only derived fields are printed.
+export const browserReportName = 'playwright-report.json';
+
+// The class is built only from matched identifiers, never from message text or values.
+// The printed class is always one of these names, never text from a message.
+const knownMatchers = new Set(['toBe', 'toEqual', 'toStrictEqual', 'toMatch', 'toMatchObject', 'toContain', 'toContainText', 'toHaveText',
+  'toHaveValue', 'toHaveURL', 'toHaveAttribute', 'toHaveCount', 'toHaveLength', 'toBeVisible', 'toBeHidden', 'toBeEnabled', 'toBeDisabled',
+  'toBeChecked', 'toBeTruthy', 'toBeFalsy', 'toBeNull', 'toBeDefined', 'toBeUndefined', 'toBeGreaterThan', 'toBeLessThan', 'toThrow']);
+const knownReceivers = new Set(['locator', 'page', 'frame', 'request', 'apiRequestContext']);
+const knownActions = new Set(['click', 'dblclick', 'fill', 'press', 'type', 'check', 'uncheck', 'selectOption', 'hover', 'focus',
+  'setInputFiles', 'goto', 'reload', 'waitFor', 'waitForURL', 'waitForResponse', 'waitForRequest', 'waitForSelector', 'textContent',
+  'innerText', 'inputValue', 'evaluate', 'get', 'post', 'fetch']);
+const knownErrors = new Set(['Error', 'TypeError', 'RangeError', 'ReferenceError', 'SyntaxError', 'AssertionError', 'TimeoutError']);
+
+export function classifyTestFailure(result) {
+  if (result?.status === 'timedOut') return 'Test timeout';
+  if (result?.status === 'interrupted') return 'Interrupted';
+  // Reporter messages carry terminal colour codes inside matcher names.
+  const message = String(result?.errors?.[0]?.message ?? result?.error?.message ?? '')
+    .replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'gu'), '');
+  const firstLine = message.split('\n', 1)[0].trim();
+  const matcher = /^(?:Error: )?expect(?:\.soft|\.poll)?\((?:locator|page|received|value)?\)(?:\.not)?\.(to[A-Za-z]+)\(/u.exec(firstLine)?.[1];
+  if (matcher) return knownMatchers.has(matcher) ? `expect.${matcher}` : 'expect.other';
+  const action = /^(?:Error: )?([a-z][A-Za-z]*)\.([a-z][A-Za-z]*): Timeout\b/u.exec(firstLine);
+  if (action) return knownReceivers.has(action[1]) && knownActions.has(action[2]) ? `${action[1]}.${action[2]} timeout` : 'action timeout';
+  // Only a whole first line that is a code counts; a code-like fragment of a value never does.
+  const code = /^(?:(?:Type|Range|Reference|Syntax)?Error: )?((?:starter|acquisition)_[a-z_]+)$/u.exec(firstLine)?.[1];
+  if (code) return code;
+  const name = /^([A-Z][A-Za-z]*)(?::|$)/u.exec(firstLine)?.[1];
+  return name && knownErrors.has(name) ? name : 'unclassified';
+}
+
+export function failedTestSummaries(report) {
+  const failures = [];
+  const visit = (suite, titles) => {
+    for (const spec of Array.isArray(suite?.specs) ? suite.specs : []) {
+      for (const test of spec.tests ?? []) {
+        if (test.status !== 'unexpected' && test.status !== 'flaky') continue;
+        const result = test.results?.at(-1);
+        failures.push({
+          title: [...titles, spec.title].filter(Boolean).join(' › '),
+          project: test.projectName ?? '',
+          location: `${spec.file ?? suite.file ?? 'unknown'}:${spec.line ?? 0}`,
+          durationMs: Math.round(Number(result?.duration ?? 0)),
+          errorClass: classifyTestFailure(result),
+        });
+      }
+    }
+    // The top-level suite title is the file, which the location already names.
+    for (const child of Array.isArray(suite?.suites) ? suite.suites : []) visit(child, [...titles, child.title]);
+  };
+  for (const suite of Array.isArray(report?.suites) ? report.suites : []) visit(suite, []);
+  return failures;
+}
+
+export function formatFailedTests(failures, privateValues = []) {
+  const lines = failures.map(({ title, project, location, durationMs, errorClass }) =>
+    `Starter browser failed test: ${project ? `[${project}] ` : ''}${title} (${location}, ${durationMs} ms): ${errorClass}`);
+  try { scanPrivateOutput(lines.join('\n'), privateValues); }
+  catch { return [`Starter browser failed tests: ${failures.length}; details withheld because they matched private output`]; }
+  return lines.length ? lines : ['Starter browser failed tests: none recorded in the report'];
+}
+
+export async function reportFailedTests(reportPath, privateValues = [], log = console.error) {
+  let report;
+  try { report = JSON.parse(await readFile(reportPath, 'utf8')); }
+  catch { log('Starter browser failed tests: report unavailable'); return; }
+  let failures;
+  try { failures = failedTestSummaries(report); }
+  catch { log('Starter browser failed tests: report unreadable'); return; }
+  for (const line of formatFailedTests(failures, privateValues)) log(line);
+}
+
 export function capturePrivateValues(message) {
   const record = message.record ?? message;
   const values = ['token', 'rawToken', 'email', 'recipient', 'recoveryUrl', 'completionUrl', 'orderRef']
@@ -209,6 +291,7 @@ export function capturePrivateValues(message) {
 export async function writeBrowserFixtures(app, entries) {
   const directory = join(app, '.context/care-browser');
   await mkdir(directory, { recursive: true, mode: 0o700 });
+  await mkdir(join(app, '.context/catalogue-builds'), { recursive: true, mode: 0o700 });
   await writeFile(join(directory, 'fixtures.json'), JSON.stringify(entries), { mode: 0o600 });
   await writeFile(join(app, '.context/database-ui-hosts.json'),
     JSON.stringify(entries.map(({ id, baseURL }) => ({ id, baseURL }))), { mode: 0o600 });
@@ -225,9 +308,13 @@ export function browserContainerArguments(app, reference, name, localImage, moun
 
 export function browserArguments(app, reference, name, localImage) {
   const fixtures = `type=bind,src=${join(app, '.context/care-browser')},dst=/app/.context/care-browser`;
-  return [...browserContainerArguments(app, reference, name, localImage, ['--mount', fixtures]),
+  // The catalogue proof stages the installed receipt for the host to verify.
+  const builds = `type=bind,src=${join(app, '.context/catalogue-builds')},dst=/app/.context/catalogue-builds`;
+  // The JSON report lands in the writable fixture mount so a failed group can name its failed tests.
+  const report = ['-e', `PLAYWRIGHT_JSON_OUTPUT_FILE=/app/.context/care-browser/${browserReportName}`];
+  return [...browserContainerArguments(app, reference, name, localImage, ['--mount', fixtures, '--mount', builds, ...report]),
     'node', 'node_modules/@playwright/test/cli.js', 'test', '--config', 'playwright.database.config.ts',
-    '--workers=1', '--retries=0', '--reporter=dot', '--output=/tmp/test-results'];
+    '--workers=1', '--retries=0', '--reporter=dot,json', '--output=/tmp/test-results'];
 }
 
 export async function acquireStarterPostgres(defer, io = { start: runPostgresContainer, ready: waitForPostgresTcpReady }) {
@@ -248,17 +335,56 @@ async function freePort() {
   return port;
 }
 
+export const defaultRetryBudgetMs = 300_000;
+// The catalogue upgrade runs after the groups (about 143 s hosted); cleanup alone needs far less.
+export const catalogueUpgradeReserveMs = 210_000;
+export const groupCleanupReserveMs = 30_000;
+
+/** The job budget against which a group's first attempt is measured before a rerun. */
+export function starterBrowserRetryBudgetMs(env = processEnvironment) {
+  const value = Number(env.OPENLUP_STARTER_BROWSER_RETRY_BUDGET_MS);
+  return Number.isSafeInteger(value) && value > 0 ? value : defaultRetryBudgetMs;
+}
+
+/**
+ * Only a journeys failure on the first attempt, with hosted-CI retry enabled and a
+ * completed cleanup, reruns the group, and only when the rerun still fits: the time
+ * this run has used, one more attempt as long as the failed one, an equal estimate
+ * for every later group and the reserved tail must all fit inside the budget.
+ */
+export function decideBrowserGroupRetry(phase, attempt, retryEnabled,
+  { cleanupFailed = false, usedMs = 0, attemptMs = 0, laterGroups = 0, reserveMs = 0, budgetMs = defaultRetryBudgetMs } = {}) {
+  if (phase !== 'journeys') return 'abort';
+  if (!retryEnabled || attempt !== 1 || cleanupFailed) return 'fail';
+  return usedMs + attemptMs * (1 + laterGroups) + reserveMs > budgetMs ? 'budget' : 'retry';
+}
+
 // Preserve later test diagnostics, but do not repeat a failed infrastructure setup.
-export async function runBrowserGroups(runGroup, currentPhase, groups = browserJourneyGroups.map((_, index) => index)) {
+// A journeys failure in hosted CI reruns the whole group once on fresh disposable state.
+export async function runBrowserGroups(runGroup, currentPhase, groups = browserJourneyGroups.map((_, index) => index),
+  { retryJourneys = false, reportFlaky = reportFlakyRetries, budgetMs = defaultRetryBudgetMs, reserveMs = 0, now = () => performance.now() } = {}) {
   let failure;
-  for (const index of groups) {
+  const runStarted = now();
+  for (const [position, index] of groups.entries()) {
     const selection = browserJourneyGroups[index];
-    try { await runGroup(index, selection); }
-    catch (error) {
-      const phase = currentPhase();
-      console.error(`Starter browser group ${index + 1} failed during ${phase}`);
-      if (phase !== 'journeys') throw error;
-      failure ??= error;
+    for (let attempt = 1; ; attempt += 1) {
+      const started = now();
+      try {
+        await runGroup(index, selection, attempt);
+        if (attempt > 1) reportFlaky([`starter browser group ${index + 1}`]);
+        break;
+      } catch (error) {
+        const phase = currentPhase();
+        console.error(`Starter browser group ${index + 1} failed during ${phase}${attempt > 1 ? ' on retry' : ''}`);
+        const decision = decideBrowserGroupRetry(phase, attempt, retryJourneys,
+          { cleanupFailed: isCleanupFailure(error), usedMs: now() - runStarted, attemptMs: now() - started,
+            laterGroups: groups.length - position - 1, reserveMs, budgetMs });
+        if (decision === 'abort') throw error;
+        if (decision === 'budget') console.error(`Starter browser group ${index + 1} retry skipped: budget`);
+        if (decision === 'retry') { console.error(`Retrying starter browser group ${index + 1} once`); continue; }
+        failure ??= error;
+        break;
+      }
     }
   }
   if (failure) throw failure;
@@ -282,8 +408,10 @@ export function starterBrowserFailure(error, phase) {
     }
     return new Error('starter_browser_catalogue_upgrade_failed');
   }
+  // A Node system error code (ENOENT, EPERM...) is checked first: no SQLSTATE class starts with E.
+  const code = typeof error?.code === 'string' ? error.code : '';
   const refusal = /qualified PostgreSQL installation refused: ([a-z0-9_]+)/u.exec(error.message)?.[1]
-    ?? (/^[A-Z0-9]{5}$/u.test(error.code ?? '') ? `sqlstate_${error.code}` : undefined);
+    ?? (/^E[A-Z]+$/u.test(code) ? `node_${code}` : /^[A-Z0-9]{5}$/u.test(code) ? `sqlstate_${code}` : undefined);
   return new Error(/^starter_[A-Za-z_]+$/u.test(error.message) ? error.message : `starter_browser_${phase}_failed${refusal ? `_${refusal}` : ''}`);
 }
 
@@ -303,7 +431,7 @@ export async function runStarterBrowser(options) {
       outputs.push(error.stdout ?? '', error.stderr ?? '');
       if (phase === 'journeys') {
         const output = `${error.stdout ?? ''}\n${error.stderr ?? ''}`;
-        const locations = [...new Set(output.match(/\[(?:supplements|coffee)\] › (?:browser\/)?(?:journey|acquisition)\.spec\.ts:\d+:\d+/gu) ?? [])];
+        const locations = [...new Set(output.match(/\[(?:supplements|coffee)\] › (?:browser\/)?(?:journey|acquisition|catalogue-products)\.spec\.ts:\d+:\d+/gu) ?? [])];
         const codes = [...new Set(output.match(/\b(?:starter|acquisition)_[a-z_]+\b/gu) ?? [])];
         const counts = output.match(/\b\d+ (?:passed|skipped|failed|did not run)\b/gu) ?? [];
         console.error(`Starter browser failures: ${locations.join('; ') || 'see selected specs'}; codes: ${codes.join(', ') || 'none'}; counts: ${counts.join(', ') || 'incomplete'}`);
@@ -328,8 +456,8 @@ export async function runStarterBrowser(options) {
       const app = join(scratch, 'app');
       defer(async () => {
         // Scan credentials from failed journeys too, before deleting the private fixture.
-        for (const state of [app, ...browserJourneyGroups.flatMap((_, index) =>
-          ['supplements', 'coffee'].map(id => join(app, '.context/care-browser', String(index), id)))]) {
+        for (const state of [app, ...browserJourneyGroups.flatMap((_, index) => [String(index), `${index}-retry`].flatMap(directory =>
+          ['supplements', 'coffee'].map(id => join(app, '.context/care-browser', directory, id))))]) {
           const capture = join(state, '.context/captured-messages');
           try {
             for (const file of await readdir(capture)) {
@@ -361,9 +489,11 @@ export async function runStarterBrowser(options) {
       const catalogueRules = readStarterCatalogueRules();
       const { selectConfiguration } = await import(pathToFileURL(join(app, 'owned/store.config.ts')).href);
       await mkdir(join(app, '.context'), { mode: 0o700 });
-      await runBrowserGroups((groupIndex, selection) =>
+      await runBrowserGroups((groupIndex, selection, attempt) =>
           withCleanup(async defer => {
             const suffix = randomBytes(6).toString('hex'), hosts = [];
+            // A retry starts from fresh host state so no earlier capture can satisfy it.
+            const stateDirectory = attempt > 1 ? `${groupIndex}-retry` : String(groupIndex);
             for (const configuration of ['supplements', 'coffee']) {
               phase = `postgres_${configuration}`;
               const postgres = await acquireStarterPostgres(defer);
@@ -384,14 +514,19 @@ export async function runStarterBrowser(options) {
               await bootstrap.query(`COMMENT ON DATABASE ${database} IS '${demonstrationMarker}'`);
               const installUrl = `postgresql://${installRole}:${password}@127.0.0.1:${postgres.port}/${database}`;
               const selection = { generation: 'qualified-v2', roleMode: 'installer-managed', bootstrapLogin: 'postgres', migrationLogin: installRole, runtimeLogin: runtimeRole, restoreLogin: restoreRole };
-              const migrationPool = guard(new pg.Pool({ connectionString: installUrl,
-                options: migrations.qualifiedPostgresStartupOptions(selection), connectionTimeoutMillis: 5000 }));
-              defer(() => migrationPool.end());
-              const runner = migrations.createPlatformPostgresMigrationRunner({ connectionString: installUrl }, { installation: selection, poolFactory: () => migrationPool });
-              const first = await runner.apply(), repeat = await runner.apply(), status = await runner.status();
-              if (repeat.applied.length || status.pending.length) throw new Error('starter_browser_migration_replay_failed');
+              const { first, repeat } = await withCleanup(async release => {
+                const migrationPool = guard(new pg.Pool({ connectionString: installUrl,
+                  options: migrations.qualifiedPostgresStartupOptions(selection), connectionTimeoutMillis: 5000 }));
+                release(() => migrationPool.end());
+                const runner = migrations.createPlatformPostgresMigrationRunner({ connectionString: installUrl }, { installation: selection, poolFactory: () => migrationPool });
+                const first = await runner.apply(), repeat = await runner.apply(), status = await runner.status();
+                if (repeat.applied.length || status.pending.length) throw new Error('starter_browser_migration_replay_failed');
+                return { first, repeat };
+              });
               console.log(`Starter ${configuration} migrations: ${first.applied.length}; repeat: ${repeat.applied.length}; elapsed: ${Math.round(performance.now() - started)} ms`);
-              const publicationPasswordFile = join(scratch, `${groupIndex}-${configuration}-publication-password`);
+              const state = join(app, '.context/care-browser', stateDirectory, configuration);
+              await mkdir(state, { recursive: true, mode: 0o700 });
+              const publicationPasswordFile = join(state, 'publication-password');
               const installer = guard(new pg.Client({ connectionString: installUrl, connectionTimeoutMillis: 5000 }));
               await installer.connect();
               try {
@@ -401,6 +536,8 @@ export async function runStarterBrowser(options) {
                 await applyDemoSeed(selectConfiguration(configuration), seed);
                 await applyDemoSeed(selectConfiguration(configuration), seed);
               } finally { await installer.end(); }
+              if (groupIndex === browserJourneyGroups.length - 1)
+                await bootstrap.query(`CREATE DATABASE catalogue_browser_template TEMPLATE ${database} OWNER ${installRole}`);
               phase = 'runtime';
               const runtimeUrl = `postgresql://${runtimeRole}@127.0.0.1:${postgres.port}/${database}`;
               const runtime = guard(new pg.Client({ host: '127.0.0.1', port: postgres.port, database, user: runtimeRole, password, connectionTimeoutMillis: 5000 }));
@@ -413,8 +550,6 @@ export async function runStarterBrowser(options) {
               privateValues.push(key);
               const keyFile = join(scratch, `${groupIndex}-${configuration}-key.json`);
               await writeFile(keyFile, JSON.stringify({ current: key }), { mode: 0o600 });
-              const state = join(app, '.context/care-browser', String(groupIndex), configuration);
-              await mkdir(state, { recursive: true, mode: 0o700 });
               const port = await freePort(), baseURL = `http://127.0.0.1:${port}`;
               phase = `host_${configuration}`;
               const child = spawn(process.execPath, ['--experimental-strip-types', join(app, 'host/server.ts'), '--configuration', configuration,
@@ -441,7 +576,7 @@ export async function runStarterBrowser(options) {
               const browserRuntime = new URL(runtimeUrl);
               browserRuntime.password = password;
               hosts.push({ id: configuration, baseURL, ownerUrl: installUrl, runtimeUrl: browserRuntime.href,
-                state: `/app/.context/care-browser/${groupIndex}/${configuration}` });
+                state: `/app/.context/care-browser/${stateDirectory}/${configuration}` });
             }
             await writeBrowserFixtures(app, hosts);
             phase = 'journeys';
@@ -451,11 +586,16 @@ export async function runStarterBrowser(options) {
               try { await execute('docker', ['rm', '-f', '-v', name], { timeout: 30000 }); }
               catch (error) { if (!/No such container/iu.test(error.stderr ?? '')) throw new Error('starter_browser_container_cleanup_failed'); }
             });
-            const output = await command('docker', [...browserArguments(app, image, name, options.localImage), ...selection]);
+            const report = join(app, '.context/care-browser', browserReportName);
+            await rm(report, { force: true });
+            let output;
+            try { output = await command('docker', [...browserArguments(app, image, name, options.localImage), ...selection]); }
+            catch (error) { await reportFailedTests(report, privateValues); throw error; }
             const counts = output.match(/\b\d+ (?:passed|skipped|failed|did not run)\b/gu) ?? [];
             if (!counts.some(count => count.endsWith(' passed'))) throw new Error('starter_browser_results_missing');
             console.log(`Starter database journeys: ${counts.join(', ')}; group ${groupIndex + 1}`);
-          }), () => cancellation.signal.aborted ? 'cancelled' : phase, options.groups);
+          }), () => cancellation.signal.aborted ? 'cancelled' : phase, options.groups, { retryJourneys: isHostedCi(processEnvironment), budgetMs: starterBrowserRetryBudgetMs(),
+            reserveMs: !options.groups || options.groups.includes(catalogueUpgradeGroupIndex) ? catalogueUpgradeReserveMs : groupCleanupReserveMs });
     });
     await runCatalogueUpgrade(options, image, async (manifest, commit, browser) => {
       cancellation.signal.throwIfAborted();

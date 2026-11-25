@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { env as processEnvironment } from 'node:process';
@@ -8,7 +8,9 @@ import ts from 'typescript';
 import { describe, expect, it, vi } from 'vitest';
 import { admit, carryOver, COMPRESSED_RECEIPT_MARKER, digest, ECONOMY_RECEIPT_MARKER, prepareCandidate, receiptBody, RECEIPT_DETAILS_HEADER, RECEIPT_MARKER, receiptSummary, recordReport } from './agent-review-decide.mjs';
 import { carryOverSourceReview, diagnoseReceipt, enqueueAfterChecks, isMigrationQueueSerializedPath, parseReceipt, readReceipts, waitNativeAdmission } from './agent-review-queue.mjs';
+import { createLocalQueueReadAdapter, observeQueueAdmission, parseQueueCommand, verifyQueueReview } from './agent-review-queue-planner.mjs';
 import { REQUIRED_CONTEXTS } from './packages/release-gate.ts';
+import { checkQueueArm } from './merge-queue-check-arm.mjs';
 
 function collectImportClosure(entry: string) {
   const visited = new Set<string>();
@@ -74,19 +76,19 @@ const observed = { ...receipt, baseValid: true, changedPaths: ['source.txt'] };
 const body = (value = receipt) => `${RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(value)}\n\`\`\``;
 const comment = (patch = {}) => ({ id: 1, body: body(), author_association: 'OWNER', user: { login: 'review-owner', type: 'User' }, created_at: '2026-10-19T00:00:00Z', ...patch });
 
-function handoffFixture() {
+function handoffFixture(candidate = receipt) {
   const repository = { id: 1376035358, full_name: 'openlup/openlup', private: false, owner: { login: 'openlup' } };
-  const run = { id: 100, workflow_id: 42, run_attempt: 1, event: 'pull_request', path: '.github/workflows/published-tree-ci.yml', repository,
-    head_repository: structuredClone(repository), head_sha: receipt.head, head_branch: 'task/queue', status: 'completed', conclusion: 'success', pull_requests: [] };
-  const pr = { number: receipt.pr, state: 'open', draft: false, merged: false, base: { ref: 'main', repo: repository },
-    head: { sha: receipt.head, ref: run.head_branch, repo: structuredClone(repository) } };
-  const queuePr = { id: 'PR_12', number: receipt.pr, state: 'OPEN', isDraft: false, merged: false, baseRefName: 'main', headRefOid: receipt.head,
+  const run = { id: 88 + candidate.pr, workflow_id: 42, run_attempt: 1, event: 'pull_request', path: '.github/workflows/published-tree-ci.yml', repository,
+    head_repository: structuredClone(repository), head_sha: candidate.head, head_branch: candidate.pr === receipt.pr ? 'task/queue' : `task/queue-${candidate.pr}`, status: 'completed', conclusion: 'success', pull_requests: [] };
+  const pr = { number: candidate.pr, state: 'open', draft: false, merged: false, base: { ref: 'main', repo: repository },
+    head: { sha: candidate.head, ref: run.head_branch, repo: structuredClone(repository) } };
+  const queuePr = { id: `PR_${candidate.pr}`, number: candidate.pr, state: 'OPEN', isDraft: false, merged: false, baseRefName: 'main', headRefOid: candidate.head,
     mergeable: 'MERGEABLE', autoMergeRequest: { enabledAt: '2026-10-24T12:00:00Z', enabledBy: { login: 'merge-owner' } }, mergeQueueEntry: null as null | { id: string },
     timelineItems: { nodes: [] as { createdAt: string }[] } };
-  const jobs = [...REQUIRED_CONTEXTS, 'native-review'].map((name, index) => ({ id: index + 1, name, run_id: run.id, run_attempt: 1, head_sha: receipt.head, status: 'completed', conclusion: 'success' }));
+  const jobs = [...REQUIRED_CONTEXTS, 'native-review'].map((name, index) => ({ id: index + 1, name, run_id: run.id, run_attempt: 1, head_sha: candidate.head, status: 'completed', conclusion: 'success' }));
   const f = { event: { action: 'completed', repository, workflow_run: structuredClone(run) },
     env: { GITHUB_EVENT_NAME: 'workflow_run', GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_REF: 'refs/heads/main' }, run, pr, queuePr,
-    pulls: [pr], listing: { total_count: 1, workflow_runs: [run] }, result: { total_count: jobs.length, jobs }, comments: [comment()],
+    pulls: [pr], listing: { total_count: 1, workflow_runs: [run] }, result: { total_count: jobs.length, jobs }, comments: [comment({ body: body(candidate) })],
     permission: 'write', clock: time, getHook: (_path: string) => {} };
   const api = { get: vi.fn(async (path: string) => {
     f.getHook(path);
@@ -101,12 +103,12 @@ function handoffFixture() {
     if (path.includes('/pulls?')) return structuredClone(f.pulls);
     if (path.includes('/pulls/')) return structuredClone(f.pr);
     if (path.includes('/issues/')) return structuredClone(f.comments);
-    if (path.includes('/git/ref/')) return { object: { sha: receipt.base } };
+    if (path.includes('/git/ref/')) return { object: { sha: candidate.base } };
     throw new Error(`unexpected read ${path}`);
   }) };
   const runGit = vi.fn(async (_cwd: string, ...args: string[]) => {
-    if (args[0] === 'rev-parse') return receipt.tree;
-    if (args[0] === 'merge-base' && args[1] === '--all') return receipt.base;
+    if (args[0] === 'rev-parse') return candidate.tree;
+    if (args[0] === 'merge-base' && args[1] === '--all') return candidate.base;
     if (args[0] === 'diff') return `:100644 100644 ${'a'.repeat(40)} ${'b'.repeat(40)} M\0source.txt\0`;
     return '';
   });
@@ -865,6 +867,7 @@ describe('carry-over adapter', () => {
 
 describe('migration merge-queue serialization', () => {
   function migrationHandoffFixture({
+    candidate = receipt,
     changedPath = 'tests/postgres/current-installation-inventory.json',
     queueNodes = [] as { state: string; pullRequest: { number: number } }[],
     hasNextPage = false,
@@ -872,9 +875,9 @@ describe('migration merge-queue serialization', () => {
     mergeQueueNull = false,
     peerFiles = {} as Record<number, unknown>,
   } = {}) {
-    const f = handoffFixture();
+    const f = handoffFixture(candidate);
     f.comments.splice(0, f.comments.length, comment({
-      body: body({ ...receipt, risk: 'behavior', reviewers: ['reviewer-a', 'reviewer-b'] }),
+      body: body({ ...candidate, risk: 'behavior', reviewers: ['reviewer-a', 'reviewer-b'] }),
     }));
     f.runGit.mockImplementation(async (_cwd: string, ...args: string[]) => {
       if (args[0] === 'rev-parse') return receipt.tree;
@@ -902,6 +905,65 @@ describe('migration merge-queue serialization', () => {
     });
     return f;
   }
+
+  function simultaneousCompletions({ interleave = false, disjoint = false } = {}) {
+    const queueNodes: { state: string; pullRequest: { number: number } }[] = [];
+    const firstPaths = 'tests/postgres/current-installation-inventory.json';
+    const secondPaths = 'config/platform-migration-manifest.json';
+    const secondReceipt = { ...receipt, pr: 13, head: 'e'.repeat(40) };
+    const peerFiles = { 12: [{ filename: firstPaths }], 13: [{ filename: secondPaths }] };
+    const first = migrationHandoffFixture({ queueNodes, peerFiles, changedPath: firstPaths });
+    const second = disjoint
+      ? handoffFixture(secondReceipt)
+      : migrationHandoffFixture({ queueNodes, peerFiles, changedPath: secondPaths, candidate: secondReceipt });
+    let releaseBoth!: () => void;
+    const bothReady = new Promise<void>(resolve => { releaseBoth = resolve; });
+    let ready = 0;
+    for (const candidate of [first, second]) {
+      candidate.enqueue.mockImplementation(async () => {
+        if (interleave) {
+          ready += 1;
+          if (ready === 2) releaseBoth();
+          await bothReady;
+        }
+        const number = candidate.pr.number;
+        const id = `QUEUE_${number}`;
+        queueNodes.push({ state: 'QUEUED', pullRequest: { number } });
+        candidate.queuePr.mergeQueueEntry = { id };
+        return { id };
+      });
+    }
+    return { first, second, queueNodes };
+  }
+
+  it('exposes two enqueue attempts when both completions read an empty queue', async () => {
+    const { first, second } = simultaneousCompletions({ interleave: true });
+    const results = await Promise.all([first.execute(), second.execute()]);
+    expect(results.map(result => result.status)).toEqual(['enqueued', 'enqueued']);
+    expect(first.enqueue).toHaveBeenCalledTimes(1);
+    expect(second.enqueue).toHaveBeenCalledTimes(1);
+  });
+
+  it('defers the second serialized completion and preserves its intent until the lane clears', async () => {
+    const { first, second, queueNodes } = simultaneousCompletions();
+    await expect(first.execute()).resolves.toMatchObject({ status: 'enqueued', pr: 12 });
+    await expect(second.execute()).resolves.toMatchObject({
+      status: 'deferred', pr: 13, head: second.pr.head.sha, blockingPrs: [12],
+    });
+    expect(first.enqueue).toHaveBeenCalledTimes(1);
+    expect(second.enqueue).not.toHaveBeenCalled();
+    queueNodes.length = 0;
+    first.queuePr.mergeQueueEntry = null;
+    await expect(second.execute()).resolves.toMatchObject({ status: 'enqueued', pr: 13, head: second.pr.head.sha });
+    expect(second.enqueue).toHaveBeenCalledTimes(1);
+  });
+
+  it('admits a disjoint non-migration completion while the first migration is active', async () => {
+    const { first, second, queueNodes } = simultaneousCompletions({ disjoint: true });
+    await expect(first.execute()).resolves.toMatchObject({ status: 'enqueued', pr: 12 });
+    await expect(second.execute()).resolves.toMatchObject({ status: 'enqueued', pr: 13 });
+    expect(queueNodes.map(entry => entry.pullRequest.number)).toEqual([12, 13]);
+  });
 
   it('classifies migration-serialized paths narrowly', () => {
     for (const serialized of [
@@ -1045,4 +1107,436 @@ describe('migration merge-queue serialization', () => {
     await expect(f.execute()).rejects.toThrow('queued PR files response is invalid');
     expect(f.enqueue).not.toHaveBeenCalled();
   });
+});
+
+describe('read-only exact-head queue planning', () => {
+  const observedAt = Date.parse('2099-11-24T14:00:00Z');
+  const issuedAt = '2099-11-24T13:00:00.000Z';
+  const expiresAt = '2099-11-24T15:00:00.000Z';
+  const grantId = '5c01d021-405e-4beb-80fc-e78bc65cfa28';
+  const repositoryId = 1376035358;
+  const baseRef = 'refs/heads/main';
+
+  function fixture() {
+    type Entry = { id: string; pr: number; head: string; state: string; position: number };
+    type Timeline = { id: number; type: string; head: string; commentId?: number; at?: string };
+    const main = { repositoryId, repository: 'openlup/openlup', ref: baseRef, sha: 'a'.repeat(40), workflowId: 42 };
+    const pulls = [3, 2, 1].map(number => ({
+      number, head: String(number).repeat(40), nodeId: `PR_${number}`, repositoryId, baseRef, state: 'open',
+      sourceRepositoryId: number === 3 ? 202 : repositoryId, sourceBranch: `branch-${number}`,
+      armed: false, draft: false, commandHistoryComplete: true,
+    }));
+    const first = pulls[2]; const second = pulls[1]; const disjoint = pulls[0];
+    type Pull = typeof first;
+    const commands = new Map(pulls.map(pr => [pr.number, [command(pr, pr.number, 'request', pr.number)]]));
+    function command(pr: Pull, number: number, verb: string, minute: number, grant?: string) {
+      const createdAt = `2099-11-24T13:${String(minute).padStart(2, '0')}:00Z`;
+      return { id: number, body: `/openlup-queue ${verb} ${pr.head}${grant ? ` ${grant}` : ''}`,
+        repositoryId, pr: pr.number, association: 'MEMBER', author: { type: 'User', id: pr.number, login: `author-${pr.number}` },
+        createdAt, updatedAt: createdAt, edited: false as boolean | undefined, minimized: false };
+    }
+    const files = new Map(pulls.map(pr => [pr.number, [{
+      filename: pr.number === 3 ? 'unrelated.txt' : `db/platform/migrations/2099112610000${pr.number}_example.sql`,
+      head: pr.head, status: 'added', previousFilename: undefined as string | undefined,
+    }]]));
+    const runs = new Map(pulls.map(pr => [pr.number, { id: pr.number, workflow_id: 42, run_attempt: 1,
+      event: 'pull_request', path: '.github/workflows/published-tree-ci.yml', repository: { id: repositoryId },
+      head_sha: pr.head, head_branch: pr.sourceBranch, head_repository: { id: pr.sourceRepositoryId },
+      status: 'completed', conclusion: 'success',
+    }]));
+    const jobs = new Map(pulls.map(pr => [pr.number, [...REQUIRED_CONTEXTS, 'native-review'].map((name, index) => ({
+      id: 100 + index, name, run_id: pr.number, run_attempt: 1, head_sha: pr.head, status: 'completed', conclusion: 'success',
+    }))]));
+    const entries: Entry[] = [];
+    const grants: { grantId: string; appId: number; envelope: string; state: string; occupancy: string }[] = [];
+    const finalization = new Map<number, { requiresGrant: boolean; status: string; grantId?: string; orderingDigest?: string; moves?: object[] }>();
+    const history = new Map<number, Timeline[]>();
+    const proposedMove = {
+      sourcePath: 'db/platform/migrations/20991126100001_example.sql', sourceVersion: '20991126100001',
+      targetPath: 'db/platform/migrations/20991126100001_example.sql', targetVersion: '20991126100001',
+      blobOid: 'e'.repeat(40), mode: '100644',
+    };
+    const grant = ({ state = 'active', occupancy = 'none', expires = expiresAt } = {}) => ({
+      grantId, appId: 7, state, occupancy,
+      envelope: JSON.stringify({
+        schemaVersion: 1, grantId, prNumber: first.number, prNodeId: first.nodeId, draftHead: 'b'.repeat(40),
+        baseRef, repositoryId, observedMain: main.sha, orderingDigest: 'c'.repeat(64),
+        issuedAt, expiresAt: expires, moves: [proposedMove],
+      }),
+    });
+    const page = <T>(items: T[]) => ({ items: structuredClone(items), next: null as string | null, count: items.length });
+    const adapter = {
+      main: vi.fn(() => structuredClone(main)),
+      queue: vi.fn((_main: unknown, _cursor: string | null) => page(entries)),
+      grants: vi.fn(() => page(grants)),
+      pulls: vi.fn(() => page(pulls)),
+      comments: vi.fn((pr: Pull) => page(commands.get(pr.number) ?? [])),
+      timeline: vi.fn((pr: Pull) => page(history.get(pr.number) ?? [])),
+      permission: vi.fn((actor: { id: number }) => ({ userId: actor.id, permission: 'write' })),
+      files: vi.fn((pr: Pull) => page((files.get(pr.number) ?? []).map(file => {
+        const { previousFilename, ...entry } = file;
+        return previousFilename ? { ...entry, previousFilename } : entry;
+      }))),
+      sourceRuns: vi.fn((pr: Pull) => page([runs.get(pr.number)!])),
+      sourceJobs: vi.fn((run: { id: number }) => page(jobs.get(run.id)!)),
+      review: vi.fn((pr: Pull, current: typeof main) => ({
+        review: { status: 'verified', head: pr.head, main: current.sha, receiptId: `receipt-${pr.number}` },
+        integration: { status: 'clean', head: pr.head, main: current.sha, tree: 'd'.repeat(40) },
+      })),
+      finalization: vi.fn((pr: Pull, current: typeof main) => ({
+        head: pr.head, main: current.sha, ...(finalization.get(pr.number) ?? { requiresGrant: false, status: 'not_required' }),
+      })),
+    };
+    const execute = () => observeQueueAdmission({ adapter, observedAt, appId: 7 });
+    return { main, first, second, disjoint, commands, command, files, runs, jobs, entries, grants, history, grant, proposedMove, finalization, adapter, execute };
+  }
+
+  it.each([
+    '/openlup-queue request SHA\n\n', '/openlup-queue  request SHA', 'x\n/openlup-queue request SHA',
+    '/openlup-queue request SHA\r\n', '/openlup-queue request SHA ', '/openlup-queue reserve SHA GRANT',
+    '/openlup-queue cancel SHA GRANT', '/openlup-queue request SHA 5c01d021-405e-5beb-80fc-e78bc65cfa28',
+    '/openlup-queue request SHA 5C01D021-405E-4BEB-80FC-E78BC65CFA28',
+  ])('rejects noncanonical command %j', example => {
+    expect(parseQueueCommand(example.replace('SHA', receipt.head).replace('GRANT', grantId))).toBeNull();
+  });
+
+  it('accepts an exact request, cancel, reserve, and migration grant', () => {
+    for (const verb of ['request', 'cancel', 'reserve']) {
+      expect(parseQueueCommand(`/openlup-queue ${verb} ${receipt.head}\n`)).toMatchObject({ verb, head: receipt.head });
+    }
+    expect(parseQueueCommand(`/openlup-queue request ${receipt.head} ${grantId}`)).toMatchObject({ grantId });
+  });
+
+  it('replays immediate, duplicate and skipped wakes without write capability and preserves request order', async () => {
+    vi.stubEnv('OPENLUP_NATIVE_QUEUE', 'enabled');
+    try {
+      const f = fixture();
+      f.commands.get(1)!.push(f.command(f.first, 10, 'request', 10));
+      const observed = await f.execute();
+      expect(observed).toMatchObject({ status: 'observed',
+        proposed: [{ pr: 1, status: 'proposal', commandId: 1 }, { pr: 3, status: 'proposal' }],
+        held: [{ pr: 2, reason: 'migration_reserved', blockingPrs: [1] }],
+      });
+      expect(await f.execute()).toEqual(observed);
+      f.entries.push({ id: 'entry-1', pr: 1, head: f.first.head, state: 'LOCKED', position: 1 });
+      expect((await f.execute()).proposed.map(row => row.pr)).toEqual([3]);
+      f.entries.length = 0;
+      f.commands.delete(1);
+      expect((await f.execute()).proposed.map(row => row.pr)).toEqual([2, 3]);
+      expect(JSON.stringify(observed)).not.toContain('/openlup-queue');
+      expect(f.adapter).not.toHaveProperty('enqueue');
+      expect(f.adapter).not.toHaveProperty('token');
+    } finally { vi.unstubAllEnvs(); }
+  });
+
+  it('keeps a finalized head and grant across disjoint main advancement', async () => {
+    const f = fixture();
+    const grant = f.grant();
+    f.grants.push(grant);
+    f.commands.set(1, [f.command(f.first, 1, 'request', 1, grant.grantId)]);
+    f.finalization.set(1, { requiresGrant: true, status: 'verified', grantId: grant.grantId, orderingDigest: 'c'.repeat(64), moves: [f.proposedMove] });
+    const before = await f.execute();
+    f.main.sha = 'b'.repeat(40);
+    await expect(f.execute()).resolves.toEqual({ ...before, main: f.main.sha });
+    expect(before.proposed[0]).toMatchObject({ pr: 1, head: f.first.head, grantId });
+  });
+
+  it('keeps the lane occupied after a grant expires with ambiguous release', async () => {
+    const f = fixture();
+    f.grants.push(f.grant({ state: 'expired', occupancy: 'unknown', expires: '2099-11-24T13:30:00.000Z' }));
+    expect((await f.execute()).proposed.map(row => row.pr)).toEqual([3]);
+    expect((await f.execute()).held).toEqual(expect.arrayContaining([expect.objectContaining({ pr: 2, reason: 'migration_reserved', blockingPrs: [1] })]));
+    f.grants[0].occupancy = 'released';
+    expect((await f.execute()).proposed.map(row => row.pr)).toEqual([1, 3]);
+  });
+
+  it('checks the next queue page and both sides of renames, then refuses a missing page', async () => {
+    const f = fixture();
+    const firstHead = 'e'.repeat(40); const secondHead = 'f'.repeat(40);
+    f.entries.push({ id: 'queue-1', pr: 4, head: firstHead, state: 'QUEUED', position: 1 },
+      { id: 'queue-2', pr: 5, head: secondHead, state: 'QUEUED', position: 2 });
+    f.files.set(4, [{ filename: 'other.txt', status: 'modified', head: firstHead, previousFilename: undefined }]);
+    f.files.set(5, [{ filename: 'new.txt', status: 'renamed', head: secondHead, previousFilename: 'unrelated.txt' }]);
+    f.adapter.queue.mockImplementation((_main, cursor) => cursor
+      ? { items: [f.entries[1]], next: null, count: 2 }
+      : { items: [f.entries[0]], next: 'cursor-2', count: 2 });
+    expect((await f.execute()).held).toEqual(expect.arrayContaining([expect.objectContaining({ pr: 3, reason: 'overlapping_paths', blockingPrs: [5] })]));
+    f.adapter.queue.mockImplementation((_main, cursor) => cursor
+      ? { items: [], next: null, count: 2 }
+      : { items: [f.entries[0]], next: 'cursor-2', count: 2 });
+    await expect(f.execute()).resolves.toMatchObject({ status: 'held', proposed: [], reason: 'evidence_unknown' });
+  });
+
+  it('holds failed latest check attempts and accepts an exact fork source', async () => {
+    const f = fixture();
+    f.runs.get(1)!.run_attempt = 2;
+    const old = f.jobs.get(1)![0];
+    f.jobs.get(1)!.push({ ...old, id: 999, run_attempt: 2, conclusion: 'failure' });
+    expect((await f.execute()).proposed.map(row => row.pr)).toEqual([2, 3]);
+    expect((await f.execute()).held).toEqual([
+      expect.objectContaining({ pr: 1, reason: 'operator_diagnosis', checks: [old.name] }),
+    ]);
+    f.runs.get(3)!.head_repository.id = 303;
+    expect((await f.execute()).proposed.map(row => row.pr)).toEqual([2]);
+  });
+
+  it('checks reserve intent separately and never lets malformed newer evidence recover an older success', async () => {
+    const f = fixture();
+    f.commands.get(1)!.push(f.command(f.first, 10, 'reserve', 10));
+    const latest = { ...f.runs.get(2)!, id: 42, workflow_id: 999 };
+    f.adapter.sourceRuns.mockImplementation(pr => ({
+      items: [f.runs.get(pr.number)!, ...(pr.number === 2 ? [latest] : [])],
+      next: null, count: pr.number === 2 ? 2 : 1,
+    }));
+    expect((await f.execute()).held).toEqual([
+      expect.objectContaining({ pr: 1, reason: 'reserve_requested', commandId: 10 }),
+      expect.objectContaining({ pr: 2, reason: 'evidence_unknown' }),
+    ]);
+  });
+
+  it.each(['permission', 'edited', 'deleted', 'pushed', 'missing-history', 'unrequested'])('holds %s exact-head authority', async action => {
+    const f = fixture();
+    if (action === 'permission') f.adapter.permission.mockImplementation(actor => ({ userId: actor.id === 1 ? 77 : actor.id, permission: actor.id === 1 ? 'read' : 'write' }));
+    if (action === 'edited') f.commands.get(1)!.push({ ...f.command(f.first, 10, 'cancel', 10), edited: undefined });
+    if (action === 'deleted') f.history.set(1, [{ id: 10, type: 'command_deleted', commentId: 15, head: f.first.head, at: '2099-11-24T13:10:00Z' }]);
+    if (action === 'pushed') f.first.head = 'e'.repeat(40);
+    if (action === 'missing-history') f.first.commandHistoryComplete = false;
+    if (action === 'unrequested') f.commands.delete(1);
+    expect((await f.execute()).proposed.map(row => row.pr)).toEqual([2, 3]);
+    expect((await f.execute()).held).toEqual([expect.objectContaining({
+      pr: 1, reason: ['pushed', 'unrequested'].includes(action) ? 'request_required' : 'evidence_unknown',
+    })]);
+  });
+
+  it('holds overlapping native arming and identifies same-head terminal queue history', async () => {
+    const f = fixture();
+    f.first.armed = true;
+    f.history.set(3, [{ id: 77, type: 'queue_manual_removal', head: f.disjoint.head }]);
+    expect((await f.execute()).held).toEqual([
+      expect.objectContaining({ pr: 1, reason: 'already_armed' }),
+      expect.objectContaining({ pr: 2, reason: 'migration_reserved', blockingPrs: [1] }),
+      expect.objectContaining({ pr: 3, reason: 'operator_diagnosis', history: ['queue_manual_removal'] }),
+    ]);
+  });
+
+  it('retries a transient read once and discards changed reconciliation inputs', async () => {
+    const f = fixture();
+    f.adapter.queue.mockImplementationOnce(() => { throw Object.assign(new Error('temporary'), { transient: true }); });
+    expect((await f.execute()).status).toBe('observed');
+    expect(f.adapter.queue).toHaveBeenCalledTimes(3);
+    f.adapter.main.mockImplementationOnce(() => ({ ...f.main, sha: 'b'.repeat(40) }));
+    await expect(f.execute()).resolves.toMatchObject({ status: 'held', proposed: [], reason: 'evidence_unknown' });
+  });
+
+  it('holds when main changes after the second sweep has started reading candidates', async () => {
+    const f = fixture();
+    const review = f.adapter.review.getMockImplementation()!;
+    f.adapter.review.mockImplementation((pr, current) => {
+      if (f.adapter.main.mock.calls.length === 2) f.main.sha = 'b'.repeat(40);
+      return review(pr, current);
+    });
+    await expect(f.execute()).resolves.toMatchObject({ status: 'held', proposed: [], reason: 'evidence_unknown' });
+    expect(f.adapter.main).toHaveBeenCalledTimes(3);
+  });
+
+  it('reuses native review and merge preflight without fetching or updating refs', async () => {
+    const f = handoffFixture();
+    const reviewGit = f.runGit.getMockImplementation()!;
+    f.runGit.mockImplementation(async (cwd, ...args) => {
+      if (['fetch', 'update-ref'].includes(args[0])) throw new Error('observer cannot update object sources');
+      if (args[0] === 'merge-base' && args[1] === '--is-ancestor') return '';
+      if (args[0] === 'merge-tree') return receipt.tree;
+      return reviewGit(cwd, ...args);
+    });
+    await expect(verifyQueueReview({
+      api: f.api, cwd: process.cwd(), pr: { number: receipt.pr, head: receipt.head },
+      main: { sha: receipt.base }, observedAt: f.clock, runGit: f.runGit, readComments: async () => f.comments,
+    })).resolves.toMatchObject({
+      review: { status: 'verified', head: receipt.head, receiptId: '1' },
+      integration: { status: 'clean', main: receipt.base, tree: receipt.tree },
+    });
+  });
+
+  it('classifies an ordinary new SQL file from committed objects before it can ask for finalization evidence', async () => {
+    const f = fixture();
+    const cwd = mkdtempSync(join(tmpdir(), 'openlup-queue-local-read-'));
+    const git = (...args: string[]) => execFileSync('git', [
+      '-C', cwd, '-c', 'user.name=Queue Fixture', '-c', 'user.email=queue@example.invalid',
+      '-c', 'commit.gpgsign=false', ...args,
+    ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+    const put = (path: string, bytes: string) => {
+      const destination = join(cwd, path);
+      mkdirSync(dirname(destination), { recursive: true });
+      writeFileSync(destination, bytes);
+    };
+    try {
+      git('init', '-q');
+      put('config/reviewed-platform-forwards.json', '{}');
+      git('add', '.');
+      git('commit', '-qm', 'Base');
+      const base = git('rev-parse', 'HEAD');
+      put('db/platform/migrations/20991126100001_example.sql', 'select 1;\n');
+      git('add', '.');
+      git('commit', '-qm', 'Add forward');
+      const head = git('rev-parse', 'HEAD');
+      const grant = { grantId: 'grant-1' };
+      const source = { ...f.adapter, finalizationRecord: vi.fn(() => ({ grantId: grant.grantId, head, base })) };
+      const adapter = createLocalQueueReadAdapter({ reads: source, cwd });
+      await expect(adapter.finalization({ head }, { sha: base }, undefined, observedAt, undefined))
+        .resolves.toEqual({ head, main: base, requiresGrant: true });
+      expect(source.finalizationRecord).not.toHaveBeenCalled();
+      await expect(adapter.finalization({ head }, { sha: base }, grant, observedAt, undefined))
+        .resolves.toEqual({ head, main: base, requiresGrant: true });
+      expect(source.finalizationRecord).toHaveBeenCalledOnce();
+      expect(git('status', '--porcelain')).toBe('');
+    } finally { rmSync(cwd, { recursive: true, force: true }); }
+  });
+});
+
+function armFixture() {
+  const number = 38;
+  const head = 'a'.repeat(40);
+  const base = 'b'.repeat(40);
+  const group = 'c'.repeat(40);
+  const olderHead = 'd'.repeat(40);
+  const repository = { id: 1376035358, private: false };
+  const pr = { id: 'PR_38', number, state: 'OPEN', isDraft: false, merged: false, baseRefName: 'main',
+    headRefOid: head, mergeable: 'MERGEABLE', autoMergeRequest: null, mergeQueueEntry: null,
+    title: 'Prepare release notes', body: 'Summary\n\nSigned-off-by: Example Maintainer <maintainer@example.com>' };
+  const removal = { __typename: 'RemovedFromMergeQueueEvent', id: 'R_1', createdAt: '2099-11-20T10:00:00Z',
+    reason: 'failed_checks', beforeCommit: { oid: group, signature: { isValid: true, wasSignedByGitHub: true } } };
+  const f = {
+    pr, removals: [] as typeof removal[], historyComplete: true, groupParent: head, groupVerified: true, mergeMethod: 'MERGE',
+    run: { id: 1001, run_attempt: 2, event: 'merge_group', path: '.github/workflows/published-tree-ci.yml',
+      workflow_id: 361484090, repository, head_sha: group, head_branch: `gh-readonly-queue/main/pr-${number}-${base}`,
+      status: 'completed', conclusion: 'success', run_started_at: '2099-11-20T10:10:00Z' },
+    jobs: [...REQUIRED_CONTEXTS, 'native-review'].map((name, index) => ({ name, id: index + 1, run_id: 1001,
+      run_attempt: 2, head_sha: group, status: 'completed', conclusion: 'success' })),
+    main: base, migration: false, peer: false, onLive: (_readCount: number) => {},
+  };
+  let liveReads = 0;
+  const read = vi.fn(async (args: string[]) => {
+    const path = args.at(-1) ?? '';
+    if (args[0] === 'graphql') {
+      let evidence;
+      if (path.includes('timelineItems')) {
+        evidence = { pullRequest: { number, baseRefName: 'main', timelineItems: {
+          totalCount: f.removals.length, nodes: f.removals, pageInfo: { hasPreviousPage: !f.historyComplete },
+        } } };
+      } else if (path.includes('entries(first:')) {
+        evidence = { mergeQueue: { entries: { pageInfo: { hasNextPage: false },
+          nodes: f.peer ? [{ state: 'QUEUED', pullRequest: { number: 39 } }] : [] } } };
+      } else {
+        f.onLive(++liveReads);
+        evidence = { isPrivate: false, mergeCommitTitle: 'PR_TITLE', mergeCommitMessage: 'PR_BODY',
+          mergeQueue: { configuration: { mergeMethod: f.mergeMethod } }, ref: { target: { oid: f.main } }, pullRequest: f.pr };
+      }
+      return structuredClone({ data: { repository: { nameWithOwner: 'openlup/openlup', databaseId: repository.id, ...evidence } } });
+    }
+    if (path.includes('/files?')) return [{ filename: path.includes('/39/') || f.migration
+      ? 'db/platform/migrations/new.sql' : 'scripts/ordinary.mjs', status: 'modified' }];
+    if (path.includes('/commits/')) return { sha: path.split('/').at(-1), parents: [{ sha: base }, { sha: f.groupParent }],
+      commit: { message: `${f.pr.title} (#${number})\n\n${f.pr.body}`, verification: { verified: f.groupVerified } } };
+    if (path.includes('/jobs?')) return structuredClone([{ total_count: f.jobs.length, jobs: f.jobs }]);
+    if (path.includes('/runs?')) return structuredClone({ total_count: 1, workflow_runs: [f.run] });
+    if (path.includes('/attempts/')) return structuredClone(f.run);
+    throw new Error('unexpected read');
+  });
+  return { f, head, removal, olderHead, read, check: (expected = head) => checkQueueArm({ number, head: expected, read }) };
+}
+
+describe('manual queue arm preflight', () => {
+  it('accepts a first exact-head arm only with a synthetic DCO trailer', async () => {
+    const { check, f } = armFixture();
+    await expect(check()).resolves.toMatchObject({ status: 'ready', reason: 'preflight_passed' });
+    f.pr.body = 'Approval received';
+    await expect(check()).resolves.toMatchObject({ status: 'held', reason: 'missing_synthetic_dco' });
+    f.pr.title = 'Signed-off-by: Example Maintainer <maintainer@example.com>';
+    await expect(check()).resolves.toMatchObject({ status: 'held', reason: 'missing_synthetic_dco' });
+  });
+
+  it.each(['failed_checks', 'checks_timed_out'])('requires a passing, exact later rerun after %s', async reason => {
+    const { check, f, head, removal } = armFixture();
+    f.removals = [{ ...removal, reason }];
+    f.run.run_attempt = 1;
+    await expect(check()).resolves.toMatchObject({ status: 'held', reason: 'operator_diagnosis' });
+    f.run.run_attempt = 2;
+    f.run.run_started_at = '2099-11-20T09:50:00Z';
+    await expect(check()).resolves.toMatchObject({ status: 'held', reason: 'operator_diagnosis' });
+    f.run.run_started_at = 'unavailable';
+    await expect(check()).resolves.toMatchObject({ status: 'held', reason: 'evidence_unknown' });
+    f.run.run_started_at = '2099-11-20T10:10:00Z';
+    f.jobs[0].conclusion = 'failure';
+    await expect(check()).resolves.toMatchObject({ status: 'held', reason: 'operator_diagnosis' });
+    f.jobs[0].conclusion = 'success';
+    f.run.head_sha = head;
+    await expect(check()).resolves.toMatchObject({ status: 'held', reason: 'evidence_unknown' });
+    f.run.head_sha = removal.beforeCommit.oid;
+    await expect(check()).resolves.toMatchObject({ status: 'ready', retest: { group: removal.beforeCommit.oid, runId: 1001, attempt: 2 } });
+  });
+
+  it('holds a second same-head removal before looking for a passing retest', async () => {
+    const { check, f, read, removal } = armFixture();
+    f.removals = [removal, { ...removal, id: 'R_2', reason: 'roll_back', beforeCommit: { oid: 'e'.repeat(40), signature: removal.beforeCommit.signature } }];
+    await expect(check()).resolves.toMatchObject({ status: 'held', reason: 'repeated_same_head_removal' });
+    expect(read.mock.calls.some(([args]) => args.some(path => path.includes('/actions/')))).toBe(false);
+  });
+
+  it('distinguishes a prior exact source head from the current head', async () => {
+    const { check, f, olderHead, removal } = armFixture();
+    f.groupParent = olderHead;
+    f.removals = [removal];
+    await expect(check()).resolves.toMatchObject({ status: 'ready' });
+    f.groupVerified = false;
+    await expect(check()).resolves.toMatchObject({ status: 'held', reason: 'evidence_unknown' });
+  });
+
+  it('refuses a REST-verified removal commit without a valid GitHub signature', async () => {
+    const { check, f, removal } = armFixture();
+    removal.beforeCommit.signature.wasSignedByGitHub = false;
+    f.removals = [removal];
+    expect(f.groupVerified).toBe(true);
+    await expect(check()).resolves.toMatchObject({ status: 'held', reason: 'evidence_unknown',
+      detail: expect.stringContaining('queue removal commit lacks a valid GitHub signature') });
+  });
+
+  it('holds if a successful required job identity changes between retest reads', async () => {
+    const { check, f, removal } = armFixture();
+    f.removals = [removal];
+    f.onLive = reads => { if (reads === 2) f.jobs[0].id = 9001; };
+    await expect(check()).resolves.toMatchObject({ status: 'held', reason: 'evidence_unknown' });
+  });
+
+  it('defers migration overlap but lets ordinary candidates pass', async () => {
+    const { check, f } = armFixture();
+    f.peer = true;
+    await expect(check()).resolves.toMatchObject({ status: 'ready' });
+    f.migration = true;
+    await expect(check()).resolves.toMatchObject({ status: 'deferred', reason: 'migration_peer_active', blockingPrs: [39] });
+    f.peer = false;
+    await expect(check()).resolves.toMatchObject({ status: 'ready' });
+  });
+
+  it('fails closed on incomplete history, an unexpected queue strategy and a changed head', async () => {
+    const { check, f, olderHead } = armFixture();
+    f.historyComplete = false;
+    await expect(check()).resolves.toMatchObject({ status: 'held', reason: 'evidence_unknown' });
+    f.historyComplete = true;
+    f.mergeMethod = 'SQUASH';
+    await expect(check()).resolves.toMatchObject({ status: 'held', reason: 'evidence_unknown' });
+    f.mergeMethod = 'MERGE';
+    await expect(check(olderHead)).resolves.toMatchObject({ status: 'held', reason: 'evidence_unknown' });
+  });
+
+  it('refuses a metadata change during a ready observation even if the head stays current', async () => {
+    const { check, f } = armFixture();
+    f.onLive = reads => { if (reads === 3) f.pr.body += '\nUpdated copy'; };
+    await expect(check()).resolves.toMatchObject({ status: 'held', reason: 'evidence_unknown' });
+  });
+});
+
+it('holds when main moves during an otherwise unchanged arm preflight', async () => {
+  const { check, f } = armFixture();
+  f.onLive = reads => { if (reads === 2) f.main = 'e'.repeat(40); };
+  await expect(check()).resolves.toMatchObject({ status: 'held', reason: 'evidence_unknown' });
 });

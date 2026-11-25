@@ -4151,6 +4151,153 @@ export declare function checkoutOrchestrationFailureDetails(reason: string | nul
     diagnosticReason?: string;
 };
 ```
+## dist/commerce/server/commerceMoneyLimitsV2.d.ts
+
+```ts
+/** @experimental Host query interface for installed payment limits. */
+export interface CommerceMoneyLimitsQueryExecutor {
+    query(sql: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+/** @experimental Coordinates of one installed payment rail. */
+export interface LimitsTuple {
+    installationRef: string;
+    channelKey: string;
+    methodKey: string;
+    providerKey: string;
+    accountRef: string;
+    mode: string;
+    currency: string;
+}
+/** @experimental Installation-owned terms in currency minor units. */
+export interface CommerceMoneyLimitsV2 extends LimitsTuple {
+    schemaVersion: 2;
+    profileRef: string;
+    minMinor: number;
+    maxMinor: number;
+    active: boolean;
+}
+/** @experimental Use null for the initial insert or the inspected revision to update. */
+export interface InstallLimitsInput {
+    value: CommerceMoneyLimitsV2;
+    expectedRevision: number | null;
+}
+declare const remedies: {
+    readonly money_limits_invalid_input: "Correct the indicated field using the documented payment limits input.";
+    readonly money_limits_revision_conflict: "Inspect the tuple with the owner binding. Retry the initial insert if absent, or deliberately resubmit the intended change with the observed revision.";
+    readonly money_limits_revision_exhausted: "Have the installation owner qualify a replacement rail.";
+};
+type InstallLimitsRefusal = {
+    kind: "refused";
+    code: keyof typeof remedies;
+    field: string;
+    remedy: (typeof remedies)[keyof typeof remedies];
+};
+/** @experimental An installed revision or a refusal without a repair value. */
+export type InstallLimitsResult = {
+    kind: "installed";
+    value: CommerceMoneyLimitsV2;
+    revision: number;
+} | InstallLimitsRefusal;
+/** @experimental Runtime observation of active terms for the bound rail. */
+export type LimitsReadResult = {
+    present: false;
+} | {
+    present: true;
+    value: CommerceMoneyLimitsV2 & {
+        active: true;
+    };
+    revision: number;
+};
+/** @experimental Owner observation, including inactive terms and their revision. */
+export type LimitsInspectionResult = {
+    present: false;
+    active: null;
+    revision: null;
+    value: null;
+} | {
+    present: true;
+    active: boolean;
+    revision: number;
+    value: CommerceMoneyLimitsV2;
+};
+/** @experimental Install one set of payment limits with the migration-owner executor. */
+export declare function installCommerceMoneyLimitsV2(owner: CommerceMoneyLimitsQueryExecutor, input: InstallLimitsInput): Promise<InstallLimitsResult>;
+/** @experimental Inspect the active or inactive revision using the migration owner. */
+export declare function inspectCommerceMoneyLimitsV2(owner: CommerceMoneyLimitsQueryExecutor, scope: LimitsTuple): Promise<LimitsInspectionResult>;
+/** @experimental Bind a restricted reader to the intended installation and rail. */
+export declare function bindCommerceMoneyLimitsV2Reader(db: CommerceMoneyLimitsQueryExecutor, scope: LimitsTuple): () => Promise<LimitsReadResult>;
+/** @experimental Describe the installed limits for settings discovery. */
+export declare function describeCommerceMoneyLimitsV2Setting(): {
+    readonly schemaVersion: 1;
+    readonly key: "commerce.money_limits.v2";
+    readonly domain: "pricing";
+    readonly kind: "installed";
+    readonly goal: "Install and inspect payment amount limits for a qualified rail.";
+    readonly schema: Record<string, unknown>;
+    readonly rules: readonly [{
+        readonly code: "money_limits_invalid_input";
+        readonly path: readonly [];
+        readonly description: "Correct the indicated field using the documented payment limits input.";
+    }];
+    readonly examples: readonly [{
+        readonly value: {
+            readonly schemaVersion: 2;
+            readonly installationRef: "store-a";
+            readonly channelKey: "online";
+            readonly methodKey: "card";
+            readonly providerKey: "processor-a";
+            readonly accountRef: "merchant-a";
+            readonly mode: "test";
+            readonly currency: "EUR";
+            readonly profileRef: "standard";
+            readonly minMinor: 1;
+            readonly maxMinor: 10000;
+            readonly active: true;
+        };
+    }, {
+        readonly value: {
+            readonly maxMinor: 0;
+            readonly schemaVersion: 2;
+            readonly installationRef: "store-a";
+            readonly channelKey: "online";
+            readonly methodKey: "card";
+            readonly providerKey: "processor-a";
+            readonly accountRef: "merchant-a";
+            readonly mode: "test";
+            readonly currency: "EUR";
+            readonly profileRef: "standard";
+            readonly minMinor: 1;
+            readonly active: true;
+        };
+        readonly code: "money_limits_invalid_input";
+    }];
+    readonly fallback: null;
+    readonly defaultBasis: {
+        readonly kind: "neutral";
+    };
+    readonly whyThisDefault: "The installation owner supplies the allowed interval for an opted-in rail.";
+    readonly absentMeans: {
+        readonly description: "No payment limits are installed for the selected rail.";
+        readonly source: "Native owner inspection";
+        readonly value: null;
+    };
+    readonly runtime: {
+        readonly level: "read-only";
+        readonly reason: "Connected show requires a native owner inspection binding.";
+    };
+    readonly change: {
+        readonly reference: "OpenLup guide, Quote prices, Install and inspect payment limits";
+    };
+    readonly effect: {
+        readonly appliesTo: "Fresh opted-in quotes for the selected rail";
+        readonly frozenOn: readonly ["Sealed quotes retain their terms."];
+        readonly impact: "money";
+    };
+};
+export {};
+```
 ## dist/commerce/server/commerceOmsCancelOrderHandler.d.ts
 
 ```ts
@@ -4976,6 +5123,112 @@ export declare function createCheckoutPaymentLinkHandler<Response>(deps: {
     };
 }, res: Response) => Promise<void>;
 ```
+## dist/commerce/server/dbBackedCommerceQuotePortV2.d.ts
+
+```ts
+import type { CommerceQuoteV2, PlanCommerceQuoteMoneyV2Input, CommerceQuoteMoneyV2Plan } from "../../pricing/index.js";
+import { beginTaxCalculation, makeTaxQuoteRequest } from "../../tax/index.js";
+import type { TaxCalculationPortV1, TaxCalculationTransactionLane, TaxCoverageRevision } from "../../tax/index.js";
+import type { DestinationPortV2, DestinationServicePinV2, DestinationVerifiedReadV2 } from "./destinations/index.js";
+import type { LimitsReadResult, LimitsTuple } from "./commerceMoneyLimitsV2.js";
+type Begin = Exclude<Parameters<typeof beginTaxCalculation>[1], Uint8Array>;
+type QuoteFrames = {
+    snapshot<T>(value: T, omit?: string): T;
+    invalid(field: string): Refusal;
+    dependency<T>(field: string, work: () => Promise<T>): Promise<T>;
+    infrastructure(field: string, cause: unknown): Error;
+};
+type Pin = NonNullable<Extract<Begin, {
+    operation: "claim";
+}>["pin"]>;
+type Fiscal = NonNullable<Extract<Pin, {
+    kind: "fiscal_profile";
+}>["composition"]>["fiscal"];
+type TaxRequest = ReturnType<typeof makeTaxQuoteRequest>;
+type TaxInput = TaxRequest["input"];
+type AdapterResult = Awaited<ReturnType<TaxCalculationPortV1["quote"]>>;
+type Refusal = {
+    kind: "refused";
+    code: string;
+    field: string;
+    remedy: string;
+};
+type Interval = {
+    minMinor: number;
+    maxMinor: number;
+};
+type Rail = LimitsTuple & {
+    mode: "test" | "live";
+};
+type FreshFacts = {
+    planInput: PlanCommerceQuoteMoneyV2Input;
+    catalogueEvidenceRef: string;
+    service: DestinationServicePinV2;
+    rail: Rail;
+    bounds: {
+        rail: Interval;
+        wire: Interval;
+        order: Interval;
+        intent: Interval;
+        attempt: Interval;
+        capture: Interval;
+    };
+    taxDate: string;
+    quoteCutoff: string;
+};
+type ExclusiveBinding = {
+    adapter: TaxCalculationPortV1;
+    scope: TaxInput["scope"];
+    recovery: string | null;
+    isDefinitive: (result: Extract<AdapterResult, {
+        kind: "refused";
+    }>) => boolean;
+    readCoverage: (installationRef: string, accountRef: string) => Promise<TaxCoverageRevision | null>;
+    readTaxFacts: (owner: QuoteOwnerContext, plan: CommerceQuoteMoneyV2Plan, service: DestinationServicePinV2, document: DestinationVerifiedReadV2) => Promise<Pick<TaxInput, "market" | "shipFromRef" | "policyRevision" | "required">>;
+};
+/** @experimental Trusted host-authorized checkout owner. */
+export type QuoteOwnerContext = Omit<Begin["identity"], "evaluationKey">;
+/** @experimental Ordered quote invocation and its evaluation key. */
+export type CommerceQuoteV2Request = Begin["invocation"] & {
+    key: string;
+};
+/** @experimental Terminal quote or actionable result without private evidence. */
+export type QuoteOutcome = {
+    kind: "quoted";
+    quote: CommerceQuoteV2;
+    freshness: "current" | "historical";
+} | (Refusal & {
+    amountAdvice?: Interval & {
+        currency: string;
+    };
+}) | (Omit<Refusal, "kind"> & {
+    kind: "unavailable";
+    effect: "none";
+});
+/** @experimental Installed owner bindings used only by the opt-in quote port. */
+export interface DbBackedCommerceQuotePortV2Deps {
+    lane: TaxCalculationTransactionLane;
+    privacyRegistry: {
+        readonly contributors: readonly {
+            readonly id: string;
+        }[];
+        readonly missingContributors: readonly string[];
+    };
+    destination: Pick<DestinationPortV2, "snapshot" | "read">;
+    snapshotCommand: (owner: QuoteOwnerContext, request: CommerceQuoteV2Request) => Promise<Parameters<DestinationPortV2["snapshot"]>[1]>;
+    readPlan: (owner: QuoteOwnerContext, request: CommerceQuoteV2Request, document: DestinationVerifiedReadV2) => Promise<FreshFacts>;
+    readLimits: (rail: Rail) => Promise<LimitsReadResult>;
+    clockToleranceMs: number;
+    readFiscal?: (owner: QuoteOwnerContext) => Promise<Fiscal>;
+    exclusive?: ExclusiveBinding;
+}
+/** @experimental Server quote entry for the opt-in native installation. */
+export interface CommerceQuotePortV2 {
+    createQuote(context: QuoteOwnerContext, request: CommerceQuoteV2Request): Promise<QuoteOutcome>;
+}
+export declare function createQuote(deps: DbBackedCommerceQuotePortV2Deps, owner: QuoteOwnerContext, admitted: CommerceQuoteV2Request, frames: QuoteFrames): Promise<QuoteOutcome>;
+export {};
+```
 ## dist/commerce/server/emailRuntime.d.ts
 
 ```ts
@@ -5396,6 +5649,12 @@ export type { CheckoutInlineRecoveryRequest, CheckoutInlineRecoveryAdmission, Ch
 export { installCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderObservation } from "./checkoutRecoveryReminderSchedule.js";
 export { CheckoutRecoveryScheduleChangeBlockedError } from "./checkoutRecoveryReminderSchedule.js";
 export { catalogAdmissionRefusal } from "./catalogAdmissionRefusal.js";
+export { bindCommerceMoneyLimitsV2Reader, describeCommerceMoneyLimitsV2Setting, inspectCommerceMoneyLimitsV2, installCommerceMoneyLimitsV2, } from "./commerceMoneyLimitsV2.js";
+export type { CommerceMoneyLimitsQueryExecutor, CommerceMoneyLimitsV2, InstallLimitsInput, InstallLimitsResult, LimitsInspectionResult, LimitsReadResult, LimitsTuple, } from "./commerceMoneyLimitsV2.js";
+import type { CommerceQuotePortV2, DbBackedCommerceQuotePortV2Deps } from "./dbBackedCommerceQuotePortV2.js";
+export type { CommerceQuotePortV2, CommerceQuoteV2Request, DbBackedCommerceQuotePortV2Deps, QuoteOwnerContext, QuoteOutcome } from "./dbBackedCommerceQuotePortV2.js";
+/** @experimental Construct the native quote port with the same registry the host uses for privacy. */
+export declare function createDbBackedCommerceQuotePortV2(deps: DbBackedCommerceQuotePortV2Deps): CommerceQuotePortV2;
 ```
 ## dist/commerce/server/nativeExpiredCheckoutRecovery.d.ts
 
@@ -7919,5 +8178,1071 @@ export declare function verifyAndNormalizeFulfillmentObservation(input: {
         annotateStockContention?(eventKey: string, fulfillmentRef: string): Promise<void>;
     };
 }): Promise<FulfillmentIngressResult>;
+export {};
+```
+## dist/tax/adapterConformance.d.ts
+
+```ts
+import type { TaxCalculationPort, TaxQuoteInputV1, TaxQuoteRequestV1 } from "./contracts/index.js";
+declare const cases: readonly ["missing_class", "missing_rule", "tax_coverage_undeclared_refuses", "exempt_in_scope", "out_of_scope", "mixed_coverage", "inconsistent_coverage_refuses_charge", "fee_on_free_delivery", "rate_change", "expiry", "foreign_validity_scope", "local_close", "reference_conflict", "unavailable", "duplicate_commit", "partial_then_full"];
+export type TaxConformanceCaseV1 = typeof cases[number];
+export interface TaxConformanceSubjectV1 {
+    /**
+     * Open an isolated offline fixture. Clock cases supply the next charge instant and current input through advance.
+     * The fee fixture uses a free delivery bucket and a 25-minor-unit fee with refund rule ref "refund-a", revision "1".
+     * Posting fixtures use one taxable position on 100 minor units with zero tax and no fee, fully eligible for reversal.
+     * Positive reversal scenarios use declared modes. The partial-then-full scenario uses lines or amount together with full.
+     * Report cumulative side effect counts, including unsuccessful calls that dispatched an effect.
+     */
+    open(caseId: TaxConformanceCaseV1): Promise<{
+        port: TaxCalculationPort;
+        request: TaxQuoteRequestV1;
+        advance?: () => {
+            chargeAt: string;
+            current: TaxQuoteInputV1;
+        };
+        effects: () => {
+            commits: number;
+            reversals: number;
+            providerCloses: number;
+        };
+    }>;
+}
+/** Run isolated synthetic scenarios and throw a case-specific error on the first broken guarantee. */
+export declare function runTaxAdapterConformance(subject: TaxConformanceSubjectV1): Promise<readonly TaxConformanceCaseV1[]>;
+export {};
+```
+## dist/tax/compareProbe.d.ts
+
+```ts
+import type { TaxQuoteRequestV1, TaxQuoteResultV1, TaxRefusal } from "./contracts/index.js";
+type Field = "positions" | "fees" | "payableMinor" | "currency";
+/**
+ * Compare a bound final quote with a fresh quote for the same logical key and frozen input
+ * at a later tax instant. Both request/result pairs must pass the quote verifier.
+ * The caller owns the renewal dispatch fence, append-only rebind and operator case.
+ * Invoke the probe only after a definitive non-capturing outcome with no pending attempt.
+ * @beta
+ * @experimental
+ */
+export declare function compareTaxRecalculationProbe(boundRequest: TaxQuoteRequestV1, bound: TaxQuoteResultV1, probeRequest: TaxQuoteRequestV1, probe: TaxQuoteResultV1): {
+    kind: "equal";
+} | {
+    kind: "different";
+    field: Field;
+} | TaxRefusal;
+export {};
+```
+## dist/tax/contracts/decode.d.ts
+
+```ts
+import type { TaxRefusalCode } from "./types.js";
+export type Decode<T> = (value: unknown, field: string) => T;
+type Fields = Record<string, Decode<unknown>>;
+type Decoded<F extends Fields> = {
+    [K in keyof F]: ReturnType<F[K]>;
+};
+declare class ParseError extends Error {
+    readonly field: string;
+    readonly code: TaxRefusalCode;
+    constructor(message: string, field: string, code: TaxRefusalCode);
+}
+export declare const taxReferenceRemedy = "Replay the intended original request under its original key with its original digest and, where applicable, its matching calculation evidence and original digests. For fiscal validity, obtain fresh charge-time input from the original scope without copying or relabelling scope members.";
+export declare const exclusiveTaxRemedy = "Use the existing inclusive quote path for inclusive-tax quotes. This port version calculates exclusive tax.";
+export declare function invalid(field: string, remedy?: string, code?: TaxRefusalCode): never;
+export declare function object<R extends Fields, O extends Fields = Record<never, never>>(required: R, optional?: O): Decode<Decoded<R> & Partial<Decoded<O>>>;
+export declare function variant<T>(key: string, cases: Record<string, Decode<T>>): Decode<T>;
+export declare function array<T>(item: Decode<T>, max?: number): Decode<T[]>;
+export declare function checked<T>(predicate: (value: unknown) => value is T, remedy: string): Decode<T>;
+export declare function oneOf<const T extends readonly (string | number)[]>(...allowed: T): Decode<T[number]>;
+export declare function unique<T>(items: readonly T[], key: (item: T) => string, field: string, code?: TaxRefusalCode): void;
+export interface Schema<T> {
+    parse(value: unknown): T;
+    safeParse(value: unknown): {
+        success: true;
+        data: T;
+    } | {
+        success: false;
+        error: ParseError;
+    };
+}
+export declare function bounded<T>(result: T): T;
+export declare function schema<T>(decode: Decode<T>): Schema<T>;
+export {};
+```
+## dist/tax/contracts/index.d.ts
+
+```ts
+export { TAX_CALCULATION_CONTRACT_VERSION } from "./port.js";
+export type { TaxCalculationPort, TaxCalculationPortV1 } from "./port.js";
+export type * from "./types.js";
+export { taxCalculationEvidenceV1Schema, taxCloseInputV1Schema, taxCommitRequestV1Schema, taxCoverageV1Schema, taxFiscalValidityRequestV1Schema, taxQuoteRequestV1Schema, taxReverseRequestV1Schema, } from "./schemas.js";
+```
+## dist/tax/contracts/port.d.ts
+
+```ts
+import type { TaxCalculationRefV1, TaxCapabilitiesV1, TaxCloseReasonV1, TaxCloseResultV1, TaxCommitRequestV1, TaxCommitResultV1, TaxFiscalValidityRequestV1, TaxFiscalValidityResultV1, TaxQuoteRequestV1, TaxQuoteResultV1, TaxReverseRequestV1, TaxReverseResultV1 } from "./types.js";
+export declare const TAX_CALCULATION_CONTRACT_VERSION = "platform.tax-calculation.v1";
+export interface TaxCalculationPortV1 {
+    readonly contractVersion: typeof TAX_CALCULATION_CONTRACT_VERSION;
+    capabilities(): TaxCapabilitiesV1;
+    /**
+     * Call `verifyTaxQuoteRequest` from `@openlup/platform/tax` before using a quote.
+     * Verify successful outputs with `verifyTaxQuoteResult`. Adapter conformance will check this binding.
+     */
+    quote(request: TaxQuoteRequestV1): Promise<TaxQuoteResultV1>;
+    /**
+     * Call `verifyTaxQuoteRequest` for typed diagnostics before evaluating validity.
+     * A verifier refusal maps to effect-free `tax_fiscal_validity_unavailable`.
+     */
+    readFiscalValidity(request: TaxFiscalValidityRequestV1): Promise<TaxFiscalValidityResultV1>;
+    /**
+     * The caller records a local, idempotent close for affirmatively unused or verified-unpaid evidence.
+     * Never void, delete or otherwise mutate a provider calculation. Leave indeterminate payments open for reconciliation.
+     */
+    closeCalculation(ref: TaxCalculationRefV1, reason: TaxCloseReasonV1, key: string): Promise<TaxCloseResultV1>;
+    commit(request: TaxCommitRequestV1): Promise<TaxCommitResultV1>;
+    reverse(request: TaxReverseRequestV1): Promise<TaxReverseResultV1>;
+}
+export type TaxCalculationPort = TaxCalculationPortV1;
+```
+## dist/tax/contracts/schemas.d.ts
+
+```ts
+import type { Decode, Schema } from "./decode.js";
+import type { TaxCalculationEvidenceV1, TaxCalculationRefV1, TaxCloseReasonV1, TaxCommitRequestV1, TaxCoverageInputV1, TaxCoverageV1, TaxFiscalValidityRequestV1, TaxQuoteInputV1, TaxQuoteRequestV1, TaxReverseRequestV1, TaxScopeV1 } from "./types.js";
+export declare const ref: Decode<string>;
+export declare const moneyRef: Decode<string>;
+export declare const isTaxDigest: (v: unknown) => v is string;
+export declare const instant: Decode<string>;
+export declare const unsigned: Decode<number>;
+export declare const rate: Decode<string>;
+declare const intervalFields: Decode<{
+    from: string;
+} & Partial<{
+    until: string;
+}>>;
+export declare const interval: Decode<ReturnType<typeof intervalFields>>;
+export declare const scope: Decode<TaxScopeV1>;
+export declare const taxCoverageV1Schema: Schema<TaxCoverageV1>;
+export declare const coverageInputSchema: Schema<TaxCoverageInputV1>;
+export declare const coverageAccountRemedy = "Supply coverage evidence for the selected account";
+export declare function coverageAccountMatches(input: Pick<TaxQuoteInputV1, "scope" | "coverage">): boolean;
+export declare const taxQuoteRequestV1Schema: Schema<TaxQuoteRequestV1>;
+export declare const quoteInputSchema: Schema<TaxQuoteInputV1>;
+export declare const parseQuoteKey: (key: unknown) => string;
+export declare const taxCalculationEvidenceV1Schema: Schema<TaxCalculationEvidenceV1>;
+export declare const quoteEvidenceSchema: Schema<TaxCalculationEvidenceV1>;
+export declare const taxFiscalValidityRequestV1Schema: Schema<TaxFiscalValidityRequestV1>;
+export declare const taxCloseInputV1Schema: Schema<{
+    ref: TaxCalculationRefV1;
+    reason: TaxCloseReasonV1;
+    key: string;
+}>;
+export declare const taxCommitRequestV1Schema: Schema<TaxCommitRequestV1>;
+export declare const taxReverseRequestV1Schema: Schema<TaxReverseRequestV1>;
+export {};
+```
+## dist/tax/contracts/types.d.ts
+
+```ts
+import type { CatalogueMoneyV2Input, CatalogueMoneyV2Result } from "@openlup/core/pricing";
+type List<T> = readonly T[];
+type Interval = Readonly<{
+    from: string;
+    until?: string;
+}>;
+type Sourcing = "destination" | "ship_from";
+type Target = Readonly<{
+    kind: "line" | "delivery";
+    key: string;
+}> | Readonly<{
+    kind: "fee";
+    key: string;
+    taxClass: string;
+    assignmentRef: string;
+    deliveryKey?: string;
+}>;
+type Cell = Readonly<{
+    target: Target;
+    jurisdiction: string;
+    level: string;
+    taxKind: string;
+    sourcing: Sourcing;
+}>;
+type ClassAssignment = Readonly<{
+    taxClass: string;
+    assignmentRef: string;
+}>;
+type Line = ClassAssignment & Readonly<{
+    lineKey: string;
+    sku: string;
+    mode: "one_time" | "subscription";
+}>;
+type Delivery = ClassAssignment & Readonly<{
+    bucketKey: string;
+    carrierRef: string;
+    serviceRef: string;
+    separatelyStated: boolean;
+    cost: Readonly<{
+        ref: string;
+        currency: string;
+        amountMinor: number;
+    }>;
+}>;
+type Destination = Readonly<{
+    snapshotRef: string;
+    digest: string;
+    policyRevision: string;
+    address: Readonly<{
+        line1: string;
+        line2?: string;
+        city: string;
+        subdivisionCode?: string;
+        postalCode: string;
+        countryCode: string;
+    }>;
+}>;
+type Declaration = Readonly<{
+    jurisdiction: string;
+    taxKind: string;
+    effective: Interval;
+    actorRef: string;
+    recordedAt: string;
+}> & (Readonly<{
+    status: "registered";
+}> | Readonly<{
+    status: "not_registered_acknowledged";
+    acknowledgementRef: string;
+}>);
+type Registration = Readonly<{
+    state: "active" | "inactive";
+    effective: Interval;
+    evidenceRef: string;
+}>;
+type Treatment = Readonly<{
+    kind: "taxable" | "exempt" | "not_applicable";
+    reason: string;
+    ruleRef: string;
+}>;
+type Observation = Readonly<{
+    cell: Cell;
+    registration?: Registration;
+    treatment?: Treatment;
+    assessedMinor?: number;
+}>;
+type Resolution = Readonly<{
+    assignmentRef: string;
+    policyRevision: string;
+    sourceRef: string;
+    sourceDigest?: string;
+    effective: Interval;
+}>;
+type Assessed = Readonly<{
+    positionRef: string;
+    cell: Cell;
+    ratePercent?: string;
+    taxabilityReason: string;
+    ruleRef: string;
+    resolution: Resolution;
+    resolutionDigest: string;
+    providerLineRef?: string;
+}>;
+type Fee = Readonly<{
+    feeKey: string;
+    jurisdiction: string;
+    feeKind: string;
+    scope: Readonly<{
+        kind: "order";
+    }> | Readonly<{
+        kind: "delivery";
+        key: string;
+    }>;
+    refundRule: Readonly<{
+        ref: string;
+        revision: string;
+    }>;
+    providerPositionRef?: string;
+}>;
+export type TaxScopeV1 = Readonly<{
+    adapter: string;
+    adapterVersion: string;
+    accountRef: string;
+    mode: "test" | "live";
+}>;
+export type TaxCoverageV1 = Readonly<{
+    schemaVersion: 1;
+    accountRef: string;
+    revision: string;
+    declarations: List<Declaration>;
+}>;
+type CoverageDecision = "undeclared" | "in_scope_taxed" | "in_scope_exempt" | "out_of_scope" | "inconsistent" | "unavailable_evidence";
+export type TaxCoverageInputV1 = Readonly<{
+    scope: TaxScopeV1;
+    taxDate: string;
+    coverage: TaxCoverageV1;
+    required: List<Cell>;
+    observations: List<Observation>;
+}>;
+type CoverageRow = Readonly<{
+    cell: Cell;
+    decision: CoverageDecision;
+    declaration?: Declaration;
+    registration?: Registration;
+    treatment?: Treatment;
+}>;
+type CoverageEvidence = Readonly<{
+    vector: List<CoverageRow>;
+    digest: string;
+}>;
+export type TaxCoverageResultV1 = CoverageEvidence & (Readonly<{
+    kind: "resolved";
+    posting: "required" | "skip";
+}> | TaxRefusal | TaxUnavailable);
+export type TaxQuoteInputV1 = Readonly<{
+    scope: TaxScopeV1;
+    market: string;
+    currency: string;
+    money: CatalogueMoneyV2Input & {
+        readonly amountBasis: "exclusive";
+    };
+    purpose: "final" | "estimate";
+    taxDate: string;
+    destination: Destination;
+    shipFromRef: string;
+    policyRevision: string;
+    classMapRevision: string;
+    lines: List<Line>;
+    delivery: List<Delivery>;
+    required: List<Cell>;
+    coverage: TaxCoverageV1;
+}>;
+export type TaxQuoteRequestV1 = Readonly<{
+    key: string;
+    inputDigest: string;
+    input: TaxQuoteInputV1;
+}>;
+/**
+ * Hash digests as lowercase SHA-256 hex over the UTF-8 bytes of
+ * `canonicalCatalogDraftJson([tag, payload])` from `@openlup/platform/catalog/contracts`.
+ * Use these tags and payloads.
+ *
+ * - `platform.tax.input.v1` binds the quote input, with required cells and
+ *   declarations sorted by identity as in `makeTaxQuoteRequest`.
+ * - `platform.tax.coverage.v1` binds `coverage.vector` as returned by `reconcileTaxCoverage`.
+ * - `platform.tax.resolution.v1` binds each tax row's `resolution`.
+ * - `platform.tax.fiscal.v1` binds `{ scope, destinationDigest, shipFromRef,
+ *   policyRevision, classMapRevision, coverage, tax, fees }`. Use the coverage
+ *   vector for `coverage`, the tax rows with `resolutionDigest` and
+ *   `providerLineRef` omitted for `tax`, and the fee rows for `fees`.
+ *   This payload excludes the request key, calculation ref, provider line IDs, times and expiry.
+ * - `platform.tax.evidence.v1` binds this whole evidence object.
+ *
+ * Supply one metadata row per emitted assessment, including zero amounts.
+ * A taxed coverage cell may have no emitted position.
+ */
+export type TaxCalculationEvidenceV1 = Readonly<{
+    /** The key of the quote request this calculation answers; adapters copy `request.key`. */
+    requestKey: string;
+    scope: TaxScopeV1;
+    calculationRef: string;
+    status: "final" | "estimate";
+    calculatedAt: string;
+    expiresAt: string;
+    taxDate: string;
+    destinationDigest: string;
+    shipFromRef: string;
+    inputDigest: string;
+    policyRevision: string;
+    classMapRevision: string;
+    coverage: CoverageEvidence;
+    fiscalDigest: string;
+    /** Complete verified merchandise line IDs for reporting, including lines without assessments. */
+    providerLines?: List<Readonly<{
+        lineKey: string;
+        providerLineRef: string;
+    }>>;
+    positions: Readonly<{
+        tax: List<Assessed>;
+        fees: List<Fee>;
+    }>;
+}>;
+type QuoteSuccess<K extends TaxCalculationEvidenceV1["status"]> = Readonly<{
+    kind: K;
+    money: CatalogueMoneyV2Result;
+    evidence: TaxCalculationEvidenceV1 & {
+        readonly status: K;
+    };
+    evidenceDigest: string;
+}>;
+export type TaxQuoteResultV1 = QuoteSuccess<"final"> | QuoteSuccess<"estimate"> | ((TaxRefusal | TaxUnavailable) & Readonly<{
+    coverage?: CoverageEvidence;
+}>);
+export type TaxFiscalValidityRequestV1 = Readonly<{
+    original: TaxQuoteRequestV1;
+    evidence: TaxCalculationEvidenceV1;
+    evidenceDigest: string;
+    chargeAt: string;
+    current: TaxQuoteInputV1;
+}>;
+type FiscalProof = Readonly<{
+    calculationRef: string;
+    evidenceDigest: string;
+    observedAt: string;
+    effective: Interval;
+    fiscalDigest: string;
+    dispatchBefore: string;
+}>;
+export type TaxFiscalValidityResultV1 = Readonly<{
+    kind: "unchanged" | "changed";
+    proof: FiscalProof;
+}> | TaxUnavailable;
+export type TaxCalculationRefV1 = Readonly<{
+    scope: TaxScopeV1;
+    ref: string;
+    evidenceDigest: string;
+}>;
+export type TaxCloseReasonV1 = Readonly<{
+    kind: "affirmatively_unused" | "verified_unpaid";
+    evidenceRef: string;
+}>;
+export type TaxCloseResultV1 = Readonly<{
+    kind: "closed";
+    ref: TaxCalculationRefV1;
+    key: string;
+}> | TaxRefusal | TaxUnavailable;
+export type TaxCommitRequestV1 = Readonly<{
+    calculationRef: TaxCalculationRefV1;
+    transactionRef: string;
+    postedAt: string;
+    capturedAt: string;
+    captureEvidenceRef: string;
+    intent: "apply" | "recover";
+}>;
+type PositionMapping = Readonly<{
+    originalPositionRef: string;
+    postedPositionRef: string;
+}>;
+export type TaxCommitResultV1 = Readonly<{
+    kind: "committed";
+    providerTransactionRef: string;
+    positions: List<PositionMapping>;
+}> | TaxRefusal | TaxUnavailable;
+type Delta = Readonly<{
+    originalPositionRef: string;
+    netDeltaMinor: number;
+    taxDeltaMinor: number;
+    feeDeltaMinor: number;
+}>;
+/** The refund-reservation ledger owner verifies per-original-position caps and cumulative balances under its lock. */
+export type TaxReverseRequestV1 = Readonly<{
+    scope: TaxScopeV1;
+    originalRef: string;
+    reversalRef: string;
+    refundEvidenceRef: string;
+    currency: string;
+    fromMinor: number;
+    toMinor: number;
+    intent: "apply" | "recover";
+    positions: List<Delta>;
+    feeEvidenceRef?: string;
+}> & (Readonly<{
+    mode: "full" | "lines";
+}> | Readonly<{
+    mode: "amount";
+    amountMinor: number;
+}>);
+export type TaxReverseResultV1 = Readonly<{
+    kind: "reversed";
+    providerReversalRef: string;
+    positions: List<Delta>;
+}> | TaxRefusal | TaxUnavailable;
+export type TaxCapabilitiesV1 = Readonly<{
+    scope: TaxScopeV1;
+    markets: List<string>;
+    currencies: List<string>;
+    /** Inclusive bases are not supported by this contract version. */
+    bases: readonly ["exclusive"];
+    sourcing: List<Sourcing>;
+    evidence: Readonly<{
+        lines: boolean;
+        delivery: boolean;
+        fees: boolean;
+    }>;
+    registrations: "effective_intervals" | "unsupported";
+    /** Recalculation uses a fresh quote and leaves the validity read effect-free. */
+    validity: "read_only" | "unsupported" | "probe_by_recalculation";
+    calculationLifetimeMs: number;
+    posting: "provider" | "unsupported";
+    reversals: List<"full" | "lines" | "amount">;
+    recovery: List<"commit" | "reverse">;
+}>;
+export type TaxRefusalCode = "tax_invalid_input" | "tax_scope_mismatch" | "tax_class_missing" | "tax_rule_missing" | "tax_coverage_undeclared" | "tax_coverage_inconsistent" | "tax_breakdown_incomplete" | "tax_amount_out_of_range" | "tax_reference_conflict" | "tax_calculation_unusable" | "tax_calculation_expired" | "tax_calculation_closed" | "tax_close_not_eligible" | "tax_operation_unsupported" | "tax_reversal_unsubstantiated";
+export interface TaxRefusal {
+    readonly kind: "refused";
+    readonly code: TaxRefusalCode;
+    readonly field: string;
+    readonly remedy: string;
+    readonly jurisdiction?: string;
+    readonly taxKind?: string;
+}
+export interface TaxUnavailable {
+    readonly kind: "unavailable";
+    readonly code: "tax_coverage_evidence_unavailable" | "tax_fiscal_validity_unavailable" | "tax_adapter_unavailable";
+    readonly effect: "none" | "unknown";
+}
+export {};
+```
+## dist/tax/coverage.d.ts
+
+```ts
+import type { TaxCoverageInputV1, TaxCoverageResultV1 } from "./contracts/index.js";
+export declare function reconcileTaxCoverage(input: TaxCoverageInputV1): TaxCoverageResultV1;
+```
+## dist/tax/digest.d.ts
+
+```ts
+import type { TaxCalculationEvidenceV1, TaxFiscalValidityRequestV1, TaxQuoteInputV1, TaxQuoteRequestV1, TaxQuoteResultV1, TaxRefusal } from "./contracts/index.js";
+type DigestTag = "input" | "coverage" | "fiscal" | "resolution" | "evidence" | "rate-table" | "close" | "commit" | "reverse";
+export declare function taxDigest(tag: DigestTag, payload: unknown): string;
+export declare function makeTaxQuoteRequest(key: string, input: TaxQuoteInputV1): TaxQuoteRequestV1;
+declare const remedies: {
+    readonly tax_reference_conflict: "Replay the intended original request under its original key with its original digest and, where applicable, its matching calculation evidence and original digests. For fiscal validity, obtain fresh charge-time input from the original scope without copying or relabelling scope members.";
+    readonly tax_invalid_input: "Supply the documented value at the indicated field.";
+    readonly tax_amount_out_of_range: "Supply amounts within the supported safe-integer range, including the combined basis of all components.";
+    readonly tax_scope_mismatch: "Use the existing inclusive quote path for inclusive-tax quotes. This port version calculates exclusive tax.";
+    readonly tax_calculation_unusable: "Obtain calculation evidence for the original request with coverage supported by effective observations.";
+    readonly tax_breakdown_incomplete: "Recover and replay the complete original calculation breakdown for the intended request and key.";
+};
+type VerifierCode = keyof typeof remedies;
+export declare function refuseVerification(code: VerifierCode, field: string): TaxRefusal;
+type FiscalEvidence = Pick<TaxCalculationEvidenceV1, "scope" | "destinationDigest" | "shipFromRef" | "policyRevision" | "classMapRevision" | "coverage" | "positions">;
+export declare const taxFiscalDigest: (evidence: FiscalEvidence) => string;
+export declare function checkedQuoteRequest(request: TaxQuoteRequestV1): TaxQuoteRequestV1 | TaxRefusal;
+export declare function checkedFiscalValidity(request: TaxFiscalValidityRequestV1): TaxFiscalValidityRequestV1 | TaxRefusal;
+/** Verify quote or fiscal-validity integrity before input validation and reconciliation. */
+export declare function verifyTaxQuoteRequest(request: TaxQuoteRequestV1 | TaxFiscalValidityRequestV1): TaxRefusal | undefined;
+type CheckedQuoteResult = {
+    original: TaxQuoteRequestV1;
+    result?: Omit<Extract<TaxQuoteResultV1, {
+        kind: "final" | "estimate";
+    }>, "evidence"> & {
+        evidence: TaxCalculationEvidenceV1;
+    };
+};
+export declare function checkedQuoteResult(request: TaxQuoteRequestV1, result: TaxQuoteResultV1): CheckedQuoteResult | TaxRefusal;
+/** Verify quote and evidence integrity before validating and reconciling a successful result. */
+export declare function verifyTaxQuoteResult(request: TaxQuoteRequestV1, result: TaxQuoteResultV1): TaxRefusal | undefined;
+export {};
+```
+## dist/tax/index.d.ts
+
+```ts
+export type { TaxCalculationPort, TaxCalculationPortV1 } from "./contracts/port.js";
+export { reconcileTaxCoverage } from "./coverage.js";
+export { makeTaxQuoteRequest, verifyTaxQuoteRequest, verifyTaxQuoteResult } from "./digest.js";
+export { localRateTable } from "./localRateTable.js";
+export type { LocalRateTableOptionsV1 } from "./localRateTable.js";
+export { runTaxAdapterConformance } from "./adapterConformance.js";
+export type { TaxConformanceCaseV1, TaxConformanceSubjectV1 } from "./adapterConformance.js";
+export { compareTaxRecalculationProbe } from "./compareProbe.js";
+export { applyTaxCoverageRevision, bindTaxCoverageReader, describeTaxCoverageSetting } from "./installedCoverage.js";
+export type { TaxCoverageExecutor, TaxCoverageRevision } from "./installedCoverage.js";
+export { beginTaxCalculation, completeTaxCalculation, evaluationDigest } from "./taxCalculationStore.js";
+export type { TaxCalculationTransactionLane } from "./taxCalculationStore.js";
+```
+## dist/tax/installedCoverage.d.ts
+
+```ts
+import type { TaxCoverageV1 } from "./contracts/index.js";
+/** @experimental Query surface for a host-owned tax coverage connection. */
+export interface TaxCoverageExecutor {
+    query(text: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+type Scope = Readonly<{
+    installationRef: string;
+    accountRef: string;
+}>;
+/** @experimental Stored coverage revision. The timestamp is UTC with microsecond precision. */
+export interface TaxCoverageRevision {
+    readonly installationRef: string;
+    readonly accountRef: string;
+    readonly revision: string;
+    readonly sequenceNo: number;
+    readonly previousRevision: string | null;
+    readonly coverage: TaxCoverageV1;
+    readonly coverageDigest: string;
+    readonly actorRef: string;
+    readonly recordedAt: string;
+}
+type ApplyInput = Readonly<{
+    expectedHead: string | null;
+    document: Scope & Readonly<{
+        actorRef: string;
+        coverage: TaxCoverageV1;
+    }>;
+}>;
+type ApplyRefusal = Readonly<{
+    kind: "refused";
+    code: "tax_invalid_input" | "tax_coverage_revision_conflict";
+    field: string;
+    remedy: string;
+}>;
+/** @experimental Append or replay one revision using a migration-owner executor in READ COMMITTED. */
+export declare function applyTaxCoverageRevision(ownerExecutor: TaxCoverageExecutor, input: ApplyInput): Promise<TaxCoverageRevision | ApplyRefusal>;
+/** @experimental Bind the connected settings reader to a host-selected native installation and account. */
+export declare function bindTaxCoverageReader(db: TaxCoverageExecutor, scope: Scope): () => Promise<{
+    readonly present: false;
+    value?: undefined;
+    revision?: undefined;
+} | {
+    readonly present: true;
+    readonly value: {
+        declarations: (Readonly<{
+            jurisdiction: string;
+            taxKind: string;
+            effective: Readonly<{
+                from: string;
+                until?: string;
+            }>;
+            actorRef: string;
+            recordedAt: string;
+        }> & (Readonly<{
+            status: "registered";
+        }> | Readonly<{
+            status: "not_registered_acknowledged";
+            acknowledgementRef: string;
+        }>))[];
+        schemaVersion: 1;
+        accountRef: string;
+        revision: string;
+    };
+    readonly revision: string;
+}>;
+/** @experimental Discovery and validation for merchant tax coverage declarations. */
+export declare function describeTaxCoverageSetting(): {
+    readonly key: "tax.coverage";
+    readonly domain: "tax";
+    readonly kind: "installed";
+    readonly goal: "Record and inspect merchant tax coverage declarations by jurisdiction, tax kind and effective dates.";
+    readonly schemaVersion: 1;
+    readonly schema: {
+        type: string;
+        additionalProperties: boolean;
+        required: string[];
+        properties: Record<string, unknown>;
+    };
+    readonly rules: readonly [{
+        readonly code: "tax_invalid_input";
+        readonly path: readonly [];
+        readonly description: "Supply the documented declaration or request shape. Use nonoverlapping intervals for each jurisdiction and tax kind, and include an acknowledgement reference for declarations of non-registration.";
+        readonly check: (value: unknown) => boolean;
+    }];
+    readonly examples: readonly [{
+        readonly value: {
+            readonly schemaVersion: 1;
+            readonly accountRef: "account-a";
+            readonly revision: "coverage-1";
+            readonly declarations: readonly [];
+        };
+    }, {
+        readonly value: {
+            readonly revision: "";
+            readonly schemaVersion: 1;
+            readonly accountRef: "account-a";
+            readonly declarations: readonly [];
+        };
+        readonly code: "tax_invalid_input";
+    }];
+    readonly fallback: null;
+    readonly absentMeans: {
+        readonly description: "No coverage revisions have been installed for the selected account.";
+        readonly source: "Native tax coverage history";
+        readonly value: null;
+    };
+    readonly defaultBasis: {
+        readonly kind: "neutral";
+    };
+    readonly whyThisDefault: "The merchant declares its coverage explicitly.";
+    readonly effect: {
+        readonly appliesTo: "The installed history records the merchant's coverage for the selected account.";
+        readonly frozenOn: readonly ["Previous declarations retain their original revisions and operator references."];
+        readonly impact: "operations";
+    };
+    readonly runtime: {
+        readonly level: "read-only";
+        readonly reason: "Tax coverage history is available on qualified native PostgreSQL installations through a host-bound reader. Managed installations do not supply this capability. Applying the native forward makes history available for installation and inspection. Tax checkout consumption is qualified separately.";
+    };
+    readonly change: {
+        readonly reference: "@openlup/platform README, Install and inspect tax coverage";
+    };
+};
+export {};
+```
+## dist/tax/localRateTable.d.ts
+
+```ts
+import type { TaxCalculationPort, TaxCoverageInputV1, TaxScopeV1 } from "./contracts/index.js";
+type Observation = TaxCoverageInputV1["observations"][number];
+type Effective = NonNullable<Observation["registration"]>["effective"];
+type Registration = NonNullable<Observation["registration"]> & Readonly<{
+    jurisdiction: string;
+    taxKind: string;
+}>;
+type Rule = Readonly<{
+    jurisdiction: string;
+    taxKind: string;
+    taxClass: string;
+    effective: Effective;
+    ruleRef: string;
+    legalBasisRef: string;
+}> & (Readonly<{
+    kind: "rate";
+    ratePercent: string;
+}> | Readonly<{
+    kind: "exempt";
+    reason: string;
+}> | Readonly<{
+    kind: "fee";
+    amountMinor: number;
+    refundRule: Readonly<{
+        ref: string;
+        revision: string;
+    }>;
+}>);
+/** Application-owned rules, registration evidence and clocks for one exclusive tax binding. */
+export interface LocalRateTableOptionsV1 {
+    readonly scope: TaxScopeV1;
+    readonly market: string;
+    readonly currency: string;
+    readonly rounding: "half_up_largest_remainder";
+    readonly now: () => string;
+    readonly calculationLifetimeMs: number;
+    readonly validityWindowMs: number;
+    readonly registrations: readonly Registration[];
+    readonly rules: readonly Rule[];
+}
+/**
+ * Calculate exclusive tax from an immutable local table with no posting effects.
+ * Use the result kind from `readFiscalValidity` because it can report `changed` with the same fiscal digest when an effective fee or rate rule is replaced under the same references.
+ */
+export declare function localRateTable(options: LocalRateTableOptionsV1): TaxCalculationPort;
+export {};
+```
+## dist/tax/taxCalculationComposition.d.ts
+
+```ts
+import { z } from "zod";
+export declare const uuid: z.ZodString;
+export declare const digest: z.ZodString;
+export declare const currency: z.ZodString;
+export declare const instant: z.ZodString;
+type Basis = "inclusive" | "exclusive";
+type Assignment = {
+    taxClassKey: string;
+    assignmentRef: string;
+};
+type Line = Assignment & {
+    lineKey: string;
+    sourceOrdinal: number;
+    sku: string;
+    mode: "one_time" | "subscription";
+    quantity: number;
+    unitBasisMinor: number;
+    amountKind: "gross" | "net";
+};
+type Delivery = Assignment & {
+    bucketKey: string;
+    kind: "shipping" | "handling";
+    carrierRef: string;
+    serviceRef: string;
+    cost: {
+        ref: string;
+        currency: string;
+        amountMinor: number;
+    };
+    separatelyStated: boolean;
+    amountMinor: number;
+    threshold?: {
+        flatMinor: number;
+        freeThresholdMinor: number;
+    };
+};
+type Fee = {
+    feeKey: string;
+    jurisdictionRef: string;
+    feeKind: string;
+    amountMinor: number;
+    scope: {
+        kind: "order";
+    } | {
+        kind: "delivery";
+        bucketKey: string;
+    };
+    refundRule: {
+        ref: string;
+        revision: string;
+    };
+    providerPositionRef?: string;
+};
+type Adjustment = {
+    amountOffMinor: number;
+    adjustmentRef: string;
+    evidenceRef: string;
+} & ({
+    appliesTo: "line" | "order_total";
+    target: {
+        lineKeys: readonly string[];
+    };
+} | {
+    appliesTo: "shipping";
+    target: {
+        bucketKey: string;
+    };
+});
+type Candidate = {
+    amountBasis: Basis;
+    deliverySelectionRef: string;
+    delivery: readonly Delivery[];
+    feeLines: readonly Fee[];
+};
+type FiscalDetails = {
+    facts: {
+        country: string;
+        category: string;
+        vatRateBps: number;
+        legalBasis: string;
+    };
+    coordinates: {
+        installationRef: string;
+        marketRef: string;
+        packId: string;
+        packVersion: string;
+    };
+};
+export type FiscalSuccessEvidence = FiscalDetails & {
+    policyRevision: string;
+    calculationId: string;
+    coverage: {
+        kind: "not_applicable";
+    };
+    posting: "no_provider_posting";
+};
+export type CheckoutComposition = {
+    planInput: {
+        currency: string;
+        listBasis: Basis | null;
+        engine: "promotion-engine.v1" | "promotion-engine.v2";
+        price: {
+            priceListRef: string;
+            priceContextDigest: string;
+            priceEvidenceRef: string;
+            classMapRevision: string;
+        };
+        lines: readonly Line[];
+        baseline: Candidate;
+        selected?: Candidate & {
+            adjustments: readonly Adjustment[];
+        };
+    };
+    catalogueEvidenceRef: string;
+    evidenceExpiresAt: string;
+    selection: {
+        kind: "checkout";
+        scopeRef: string;
+        selectionRevision: string;
+    };
+    service: {
+        deliverySelectionRef: string;
+        providerRef: string;
+        carrierRef: string;
+        serviceRef: string;
+        servicePolicyRevision: string;
+        adapterRevision: string;
+    };
+    limits: {
+        installationRef: string;
+        channelKey: string;
+        methodKey: string;
+        providerKey: string;
+        accountRef: string;
+        mode: "test" | "live";
+        currency: string;
+        profileRef: string;
+        revision: number;
+        minMinor: number;
+        maxMinor: number;
+        effective: {
+            minMinor: number;
+            maxMinor: number;
+        };
+    };
+};
+export type FiscalCheckoutComposition = CheckoutComposition & {
+    fiscal: FiscalDetails;
+};
+export declare const exclusiveComposition: z.ZodType<CheckoutComposition>;
+export declare const fiscalComposition: z.ZodType<FiscalCheckoutComposition>;
+export declare const fiscalSuccessEvidence: z.ZodType<FiscalSuccessEvidence>;
+export {};
+```
+## dist/tax/taxCalculationStore.d.ts
+
+```ts
+import type { TaxRefusal } from "./contracts/types.js";
+import { type CheckoutComposition, type FiscalCheckoutComposition, type FiscalSuccessEvidence } from "./taxCalculationComposition.js";
+interface TaxCalculationExecutor {
+    query(statement: string, parameters?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+/** A restricted session that resolves only after commit acknowledgment.
+ * @experimental
+ */
+export interface TaxCalculationTransactionLane {
+    run<T>(work: (executor: TaxCalculationExecutor) => Promise<T>): Promise<T>;
+}
+interface EvaluationScope {
+    identity: {
+        installationRef: string;
+        clientId: string;
+        principalRef: string;
+        scopeRef: string;
+        evaluationKey: string;
+    };
+    invocation: {
+        purpose: "final" | "estimate";
+        mode: "one_time" | "subscription";
+        cadence?: {
+            schemaVersion: 1;
+            kind: "fixed_days";
+            days: number;
+        };
+        lines: readonly {
+            sku: string;
+            quantity: number;
+        }[];
+        deliverySelector: string;
+        paymentSelector: string;
+    };
+}
+interface EvaluationEvidence {
+    destination: {
+        snapshotRef: string;
+        destinationDigest: string;
+        schemaVersion: 2;
+        policyRevision: string;
+    };
+    kind: "fiscal_profile" | "tax_calculation";
+    validUntil: string;
+}
+type EvaluationPin = Omit<EvaluationEvidence, "kind"> & {
+    request: unknown;
+    coverage: {
+        accountRef: string;
+        revision: string;
+        digest: string;
+    } | null;
+    recovery: string | null;
+} & ({
+    kind: "fiscal_profile";
+    composition?: FiscalCheckoutComposition;
+} | {
+    kind: "tax_calculation";
+    composition?: CheckoutComposition & {
+        fiscal?: never;
+    };
+});
+type BeginTaxCalculationInput = Uint8Array | (EvaluationScope & ({
+    operation: "lookup";
+} | {
+    operation: "claim";
+    pin?: EvaluationPin;
+    recovery: string | null;
+}));
+type Refusal = Pick<TaxRefusal, "kind" | "field" | "remedy"> & {
+    code: string;
+};
+type QuoteOutcome = {
+    kind: "estimate" | "final";
+    quote: unknown;
+};
+type UnavailableCode = "tax_coverage_evidence_unavailable" | "tax_adapter_unavailable";
+type CompletionOutcome = Refusal | QuoteOutcome | {
+    kind: "indeterminate";
+} | {
+    kind: "unavailable";
+    code: UnavailableCode;
+};
+type EvaluationSeal = EvaluationEvidence & {
+    requestDigest: string;
+    contradiction: boolean;
+} & ({
+    evidence: unknown;
+    outcome: CompletionOutcome;
+    compositionDigest?: never;
+} | {
+    kind: "fiscal_profile";
+    evidence: FiscalSuccessEvidence;
+    outcome: QuoteOutcome;
+    compositionDigest: string;
+} | {
+    kind: "tax_calculation";
+    evidence: unknown;
+    outcome: QuoteOutcome;
+    compositionDigest: string;
+});
+type CompleteTaxCalculationInput = Uint8Array | (EvaluationScope & {
+    calculationId: string;
+    claimToken: string;
+    generation: number;
+    seal: EvaluationSeal;
+    adapter?: {
+        request: unknown;
+        result: unknown;
+    };
+});
+type Terminal = {
+    kind: "terminal";
+    validUntil: string;
+    freshness: "current" | "historical";
+    outcome: Refusal | QuoteOutcome | {
+        kind: "unavailable";
+        code: UnavailableCode;
+        effect: "none";
+        field: string;
+        remedy: string;
+    };
+};
+type CompleteTaxCalculationResult = Terminal | Refusal | {
+    kind: "pending" | "missing";
+};
+type BeginTaxCalculationResult = CompleteTaxCalculationResult | {
+    kind: "claimed";
+    calculationId: string;
+    generation: number;
+    claimToken: string;
+    dispatchDeadlineMs: number;
+    cutoffDeadlineMs: number;
+    pin: EvaluationPin & {
+        requestDigest: string;
+        invocationDigest: string;
+        documentDigest: string;
+    };
+};
+/** Computes a canonical digest for the native evaluation store.
+ * @experimental
+ */
+export declare const evaluationDigest: (tag: string, body: unknown) => string;
+/** Looks up an evaluation or returns a claim after the transaction commits.
+ * @experimental
+ */
+export declare function beginTaxCalculation(lane: TaxCalculationTransactionLane, input: BeginTaxCalculationInput): Promise<BeginTaxCalculationResult>;
+/** Seals an owned evaluation or verifies an exact replay.
+ * @experimental
+ */
+export declare function completeTaxCalculation(lane: TaxCalculationTransactionLane, input: CompleteTaxCalculationInput): Promise<CompleteTaxCalculationResult>;
 export {};
 ```

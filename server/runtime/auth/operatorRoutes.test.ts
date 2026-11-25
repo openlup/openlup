@@ -380,7 +380,7 @@ it.each([
     code: 'UPSTREAM_UNAVAILABLE',
     message: 'Privacy operation refused',
     details: { privacyCode: 'PRIVACY_ASSESSMENT_UNAVAILABLE', observed: 'Native privacy prerequisites could not be verified.',
-      cause: 'The native store or its installed declaration is unavailable or invalid.', fix: expect.stringContaining('CONNECT'),
+      cause: 'The native store or its installed declaration or receipt evidence is unavailable or invalid.', fix: expect.stringContaining('CONNECT'),
       recheck: 'Retry the original request.' },
   }) }));
   expect(JSON.stringify(res.json.mock.calls)).not.toContain('synthetic private driver context');
@@ -436,9 +436,14 @@ it('native export succeeds with the withheld-document notice instead of the chec
         disposition: 'erase', reasonCode: 'PRIVATE_DESTINATION_DOCUMENT_EVIDENCE', remote: false },
       { owner: 'destination-documents', resource: 'commerce.destination-order-binding-markers',
         disposition: 'retain', reasonCode: 'PSEUDONYMOUS_ERASURE_FENCE', remote: false },
+      { owner: 'destination-documents', resource: 'subscription.destination-selection-pins',
+        disposition: 'erase', reasonCode: 'PRIVATE_DESTINATION_DOCUMENT_EVIDENCE', remote: false },
+      { owner: 'destination-documents', resource: 'subscription.destination-selection-markers',
+        disposition: 'retain', reasonCode: 'PSEUDONYMOUS_ERASURE_FENCE', remote: false },
     ],
     coverage: { complete: false, included: ['private checkout destination documents', 'destination document expiry and erasure metadata',
-      'verified order binding pins', 'order binding erasure markers'],
+      'verified order binding pins', 'order binding erasure markers',
+      'verified subscription selection pins', 'subscription selection erasure markers'],
     unavailable: ['Review withheld destination evidence with the destination owner. After cutoff, run commerce_destination_v2_expire for unbound documents and export again.'] },
   }]) }) });
   expect(JSON.stringify(res.json.mock.calls)).not.toContain('Check the native app binding');

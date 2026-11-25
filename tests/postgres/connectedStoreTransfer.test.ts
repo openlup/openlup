@@ -14,7 +14,7 @@ import type { RenewalPreparedSettlement, RenewalReservationResult, RenewalSettle
 import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { createCapturedTransactionalDelivery, createPostgresTransactionalDeliveryStore, createTransactionalDelivery, createPostgresDeliveryReconciliationPort } from "@openlup/platform/communications";
 import { refusedNoticeSources, noticeSessionWithRecipientFault } from "./m19NoticeFixture.js";
-import { createPersonalDataContributorRegistry, createPostgresPrivacyStore, createPrivacyOperations, createOidcIdentityVerifier, createPostgresAccountLinkStore, createPostgresCustomerMePort, deriveOidcPrincipalId } from "@openlup/platform/identity";
+import { createPersonalDataContributorRegistry, createPostgresPrivacyStore, createPostgresPrivacyUnitOfWork, createPrivacyOperations, createOidcIdentityVerifier, createPostgresAccountLinkStore, createPostgresCustomerMePort, deriveOidcPrincipalId } from "@openlup/platform/identity";
 import { createPostgresPaymentTruthPort, createPostgresSandboxPaymentSimulator } from "@openlup/platform/payments";
 import type { SandboxPaymentAttempt, SandboxPaymentOutcome } from "@openlup/platform/payments/contracts";
 import { createPostgresDataGateway, type PgGatewayClient, type PgQueryExecutor } from "@openlup/platform/data";
@@ -34,13 +34,15 @@ import { fixture, openCase, replacement } from "../helpers/fulfillmentNative.js"
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 import { captureStoreJourney, storeJourneyResources, type JourneyTargetInstallation, type JourneyTargetTemplate } from "../helpers/storeJourney.js";
 
-import { nativePrivacyContributors } from "../../server/runtime/auth/privacyBinding.js";
+import { composeNativePrivacy, nativePrivacyContributors } from "../../server/runtime/auth/privacyBinding.js";
 import { bindDestinationOrder, insertDestinationOrder, orderBindingTable, snapshotCommand, destinationContext,
   documentTable, reachDestinationCutoff, readSnapshot, selectionTable, snapshot, testServicePin } from "./destinationDocumentFixture.js";
 import { awaitReceiptWait, backendPid, idempotencyConflict, receiptArgs, receiptCall, receiptClient, receiptOutcome,
   receiptTable } from "./destinationReceiptFixture.js";
 
-const resources = storeJourneyResources();
+// This file runs cluster-wide CREATE/GRANT/DROP ROLE in its filtered-reader witness,
+// so keep it on its own isolated per-suite template container instead of the shared broker.
+const resources = storeJourneyResources({ isolatedCluster: true });
 const ports: { close(): Promise<void> }[] = [];
 const selection: QualifiedPostgresInstallation = { generation: "qualified-v2", roleMode: "installer-managed",
   migrationLogin: "transfer_owner", bootstrapLogin: "postgres", runtimeLogin: "transfer_runtime", restoreLogin: "transfer_restore" };
@@ -52,6 +54,7 @@ let source: Installation, target: Installation, pristine: ConnectedNativeStoreCa
 let graph: Awaited<ReturnType<typeof fixture>>, successor: string, prunedHold: string, retainedHold: string, erased: string;
 let historicalReferences: { pruned: string; retained: string };
 let purchaseHold: PurchaseReservationInput, purchaseHoldId: string;
+let retainedErasure: { erasureId: string; key: string; actor: string };
 let retainedCancellation: { idempotencyKey: string; orderId: string; reason: string };
 let identity: Awaited<ReturnType<typeof identityFixture>>;
 let consent: Awaited<ReturnType<typeof consentFixture>>;
@@ -377,8 +380,14 @@ beforeAll(async () => {
     VALUES($1,'admin','active','legacy','2020-01-01')`, [admin]);
   await source.owner.query(`INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at,membership_revoked_at,membership_revoked_by)
     VALUES($1,'distributor','revoked','legacy','2020-01-01','2021-01-01',$2)`, [revoked, admin]);
+  retainedErasure = { erasureId: randomUUID(), key: randomUUID(), actor: admin };
+  const historicalVersions = Object.fromEntries(nativePrivacyContributors(createPostgresPrivacyStore())
+    .filter(owner => owner.id !== "customer-saved-addresses").map(owner => [owner.id, owner.version]));
   await source.owner.query(`INSERT INTO public.identity_privacy_erasures(erasure_id,idempotency_key,principal_id,actor_principal_id,contract_version,contributor_versions,dispositions,retained_obligations,completed_at)
-    VALUES($1,$2,$3,$4,'identity.erasure.v1','{"tax-calculations":"commerce.tax-calculations.v1"}','[]','[]','2022-01-01T03:04:05.123456Z')`, [randomUUID(), randomUUID(), erased, admin]);
+    VALUES($1,$2,$3,$4,'identity.erasure.v1',$5,'[]','[]','2022-01-01T03:04:05.123456Z')`,
+  [retainedErasure.erasureId, retainedErasure.key, erased, admin, historicalVersions]);
+  await source.owner.query("INSERT INTO public.identity_privacy_erasure_reconciliations(erasure_id,contributor_id,evidence_ref) VALUES($1,'customer-saved-addresses',$2)",
+    [retainedErasure.erasureId, randomUUID()]);
   media = await mediaFixture();
   consent = await consentFixture();
 
@@ -495,7 +504,28 @@ async function census(db: Pool): Promise<Record<string, string[]>> {
     await client.query("COMMIT"); return result;
   } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
 }
+function transferredPrivacy() {
+  return composeNativePrivacy({ store: createPostgresPrivacyStore(),
+    unitOfWork: createPostgresPrivacyUnitOfWork({ connectionString: target.runtimeUrl }, { poolFactory: () => target.runtime }),
+  }).operations;
+}
 const restore = (capturePacket = packet) => restoreConnectedNativeStore({ owner: target.owner, installation: selection, packet: capturePacket, freshTarget: pristine });
+
+it("validates the exact retained approval shape after the packet digest", async () => {
+  const table = "identity_privacy_erasure_reconciliations";
+  const entry = packet.owned.find(row => String(row.table) === table);
+  expect(entry?.rows).toHaveLength(1);
+  const original = JSON.parse(entry!.rows[0]!) as Record<string, string>;
+  const before = await census(target.owner);
+  for (const row of [{ ...original, extra: "invalid" }, ...Object.keys(original).map(key => ({ ...original, [key]: { value: original[key] } }))]) {
+    const { sha256, ...body } = structuredClone(packet);
+    body.owned.find(item => String(item.table) === table)!.rows[0] = JSON.stringify(row);
+    const digest = createHash("sha256").update(JSON.stringify(body)).digest("hex");
+    await expect(restore({ ...body, sha256 })).rejects.toMatchObject({ code: "invalid_input", table: undefined });
+    await expect(restore({ ...body, sha256: digest })).rejects.toMatchObject({ code: "invalid_input", table });
+  }
+  expect(await census(target.owner)).toEqual(before);
+});
 
 it("compares declaration authority at capture, copy and replay even when the catalogue matches", async () => {
   const initial = ["communication-events", "customer-billing", "customer-preferences", "customer-saved-addresses",
@@ -662,6 +692,20 @@ it("transfers purchase owners, lines and receipts losslessly and preserves repla
 }, 105_000);
 
 // About 4x the slowest hosted run (12,820 ms), rounded up to 5 s.
+it("keeps an absent owned relation redacted and names an existing non-table relation", async () => {
+  await source.owner.query("ALTER TABLE public.subscription_cancel_feedback RENAME TO capture_feedback_saved");
+  try {
+    await expect(capture(source.owner, "missing-owned-relation"))
+      .rejects.toMatchObject({ code: "database_unavailable", table: undefined });
+    await source.owner.query("CREATE VIEW public.subscription_cancel_feedback AS SELECT 1 AS unused");
+    await expect(capture(source.owner, "non-table-owned-relation"))
+      .rejects.toMatchObject({ code: "schema_conflict", table: "subscription_cancel_feedback" });
+  } finally {
+    await source.owner.query(`DROP VIEW IF EXISTS public.subscription_cancel_feedback;
+      ALTER TABLE public.capture_feedback_saved RENAME TO subscription_cancel_feedback`);
+  }
+});
+
 it("refuses a native capture login that row security would silently filter", async () => {
   const login = "transfer_filtered_reader";
   await source.owner.query(`CREATE ROLE ${login} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'synthetic-transfer';
@@ -1010,6 +1054,9 @@ it("preserves the connected retained graph, pruned history and exact replay unde
   const result = await restore();
   expect(result).toEqual({ captureSha256: packet.sha256, replayed: false, neutralizedHistoricalHoldNotifications: 1 });
   expect(await census(target.owner)).toEqual(sourceBefore);
+  await expect(transferredPrivacy().erase({ principalId: retainedErasure.actor }, {
+    subject: { kind: "principal", principalId: erased }, idempotencyKey: retainedErasure.key,
+  })).resolves.toMatchObject({ outcome: "ALREADY_ERASED", erasureId: retainedErasure.erasureId, obligations: [] });
   expect((await target.owner.query("SELECT to_jsonb(m)::text AS value FROM public.platform_schema_migrations m ORDER BY position")).rows).toEqual(ledger);
   expect((await target.owner.query("SELECT tableoid::text,ctid::text,xmin::text FROM acquisition_private.installation_key")).rows).toEqual(keyIdentity);
   expect((await target.owner.query("SELECT 1 FROM public.outbox_events WHERE idempotency_key=$1", [`shipment_exception:${prunedHold}`])).rows).toEqual([]);
@@ -1249,6 +1296,10 @@ it("checks the identity mapper's erased-subject and conflict branches with synth
   expect((await target.owner.query("SELECT principal_id,client_id,dispositions FROM public.identity_privacy_erasures WHERE erasure_id=$1", [erasureId])).rows)
     .toEqual([{ principal_id: deriveOidcPrincipalId(issuer, erasedManagedId), client_id: erasedClient,
       dispositions: [{ resource: "contact", disposition: "erased" }] }]);
+  await expect(transferredPrivacy().erase({ principalId: deriveOidcPrincipalId(issuer, adminManagedId) }, {
+    subject: { kind: "contact", contactId: erasedClient }, idempotencyKey: sourceRows.erasures[0]!.idempotency_key,
+  })).rejects.toMatchObject({ code: "PRIVACY_RECEIPT_COVERAGE_INCOMPLETE",
+    facts: { observed: expect.stringMatching(/fulfillment-parcel-contacts, identity, subscriptions/u) } });
   expect((await target.owner.query("SELECT email,first_name,last_name,phone,country,metadata,principal_id FROM public.clients WHERE id=$1", [erasedClient])).rows)
     .toEqual([{ email: `erased+${erasedClient}@identity.invalid`, first_name: null, last_name: null,
       phone: null, country: null, metadata: {}, principal_id: null }]);
@@ -1849,7 +1900,8 @@ it("destination_receipt_privacy_round_trip", async () => {
   const withheld = (ref: string) => ({ snapshotRef: ref, issuedAt: expect.stringMatching(/Z$/u), evidenceDisposition: "available",
     verification: { status: "failed", code: "destination_digest_mismatch", field: "documentDigest" } });
   const included = ["private checkout destination documents", "destination document expiry and erasure metadata",
-    "verified order binding pins", "order binding erasure markers"];
+    "verified order binding pins", "order binding erasure markers",
+    "verified subscription selection pins", "subscription selection erasure markers"];
   await alterStoredBytes(firstDocument.binding.snapshotRef);
   const recovery = await documentExport(issued);
   expect(recovery).toEqual({ contributorId: documents.id, version: "commerce.destination-documents.v1",
@@ -2009,3 +2061,26 @@ it("destination_receipt_privacy_round_trip", async () => {
   expect(await receiptCall(target.runtime, "read", issuedArgs)).toEqual(tombstone);
   expect(await restore(transferred)).toMatchObject({ replayed: true, captureSha256: transferred.sha256 });
 }, 30_000);
+
+it("restores subscription destination pointers after both parents with exact live and erased rows", async () => {
+  const native = await sourceTemplates.clone("subscription-destination-transfer");
+  const db = native.owner, ctx = await destinationContext(db);
+  const live = ctx.scopeRef, marker = randomUUID();
+  for (const id of [live, marker]) await db.query(`INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at,status)
+    VALUES($1,$2,28,clock_timestamp()+interval '28 days','active')`, [id, ctx.clientId]);
+  const issued = await snapshot(native.runtime, ctx);
+  await db.query(`DELETE FROM ${selectionTable} WHERE scope_ref=$1`, [live]);
+  await db.query(`UPDATE ${documentTable} SET purpose=NULL,evidence_expires_at=issued_at WHERE snapshot_ref=$1`, [issued.binding.snapshotRef]);
+  const { rows: [erased] } = await db.query(`INSERT INTO ${documentTable}
+    (snapshot_ref,client_id,issued_at,evidence_expires_at,evidence_disposition)
+    VALUES(gen_random_uuid(),$1,statement_timestamp(),statement_timestamp(),'erased') RETURNING snapshot_ref`, [ctx.clientId]);
+  await db.query(`INSERT INTO public.subscription_destination_v2_selections(subscription_id,snapshot_ref,selection_revision,service)
+    VALUES($1,$2,$3,$4),($5,$6,NULL,NULL)`, [live, issued.binding.snapshotRef, issued.selection.selectionRevision,
+    testServicePin, marker, erased!.snapshot_ref]);
+  const carried = await capture(db, "subscription-destination-parent-first");
+  const selectionRows = carried.owned.find(table => table.table === "subscription_destination_v2_selections")!.rows;
+  expect(selectionRows).toHaveLength(2);
+  expect((await restore(carried)).replayed).toBe(false);
+  expect((await census(target.owner)).subscription_destination_v2_selections).toEqual([...selectionRows].sort());
+  expect((await restore(carried)).replayed).toBe(true);
+}, 90_000);

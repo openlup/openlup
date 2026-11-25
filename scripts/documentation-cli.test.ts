@@ -7,7 +7,7 @@ import { dirname, join, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { PUBLIC_EXECUTION_ENTRYPOINTS } from "./oss-publication-contract.ts";
-import { PUBLIC_PACKAGE_COMMANDS, PUBLIC_PACKAGE_EXECUTION_SURFACES, createPublicPublicationCatalog, isGuidePage } from "./oss-publication-policy.ts";
+import { PUBLIC_PACKAGE_COMMANDS, PUBLIC_PACKAGE_EXECUTION_SURFACES, createPublicPublicationCatalog, isGuidePage, isManifestPinnedSqlArea } from "./oss-publication-policy.ts";
 import { readDocumentationState, type DocumentationSurface } from "./documentation-routing.ts";
 import { AGENT_GUIDE_PATH, renderAgentGuide, renderDocumentationSourceMap } from "./documentation-navigation.ts";
 import { resolveDocumentationBase } from "./documentation-git.ts";
@@ -88,7 +88,7 @@ function seed(root: string): string {
   write(root, "config/openlup-publication-catalog.json", "{}");
   git(root, ["add", "."]);
   const paths = execFileSync("git", ["ls-files", "-z"], { cwd: root, encoding: "utf8" }).split("\0").filter(Boolean).sort();
-  write(root, "config/openlup-publication-catalog.json", createPublicPublicationCatalog(paths.filter((path) => !isGuidePage(path)).map((path) => ({ path, class: "public-output" })), []).contents);
+  write(root, "config/openlup-publication-catalog.json", createPublicPublicationCatalog(paths.filter((path) => !isGuidePage(path) && !isManifestPinnedSqlArea(path)).map((path) => ({ path, class: "public-output" })), []).contents);
   return commit(root);
 }
 
@@ -210,6 +210,63 @@ describe("documentation CLI on the bare public runtime", () => {
       expect(execute(["--docs-update"], env).status).toBe(0);
       const mismatch = execute([], { ...env, GITHUB_SHA: base });
       expect(mismatch.status).toBe(1); expect(mismatch.stderr).toContain("checkout identity");
+    } finally { rmSync(temporary, { recursive: true, force: true }); }
+  }, 30_000);
+  it("runs append-only migration history and package API Migration-block checks locally for explicit and merge-base provenance when HEAD differs from base", () => {
+    const temporary = mkdtempSync(join(tmpdir(), "documentation-local-migration-cli-"));
+    try {
+      const checkout = join(temporary, "checkout"); mkdirSync(checkout);
+      const base = seed(checkout);
+      git(checkout, ["update-ref", "refs/remotes/origin/main", base]);
+      const decoy = join(temporary, "decoy"); mkdirSync(decoy); git(decoy, ["init", "-q"]);
+      write(decoy, "decoy.txt", "Decoy repository.\n"); commit(decoy);
+      const redirectedEnv = { GIT_DIR: join(decoy, ".git"), GIT_WORK_TREE: decoy, GIT_INDEX_FILE: join(decoy, ".git/index") };
+      const execute = (args: string[] = [], extraEnv?: Record<string, string>) => spawnSync(
+        process.execPath,
+        ["--experimental-strip-types", ENTRYPOINT, "--policy", ...args],
+        { cwd: checkout, encoding: "utf8", env: { ...localEnvironment, ...extraEnv }, timeout: 30_000 },
+      );
+
+      // 1. Clean HEAD === base skips commit-range checks for both explicit and merge-base provenance.
+      for (const args of [["--docs-base", base], []]) {
+        const same = execute(args);
+        expect(same.stderr).toBe(""); expect(same.status).toBe(0);
+        expect(same.stdout).not.toContain("append-only migration history:");
+      }
+
+      // 2. Ahead of base with a non-UTC forward slot: logs observation without failing (including under redirected GIT_DIR).
+      const forwardPath = "supabase/migrations/20261124000099_local_slot_obs.sql";
+      write(checkout, forwardPath, "CREATE TABLE IF NOT EXISTS public.local_slot_obs (id integer primary key);\n");
+      git(checkout, ["add", "."]);
+      const tracked = execFileSync("git", ["ls-files", "-z"], { cwd: checkout, encoding: "utf8" }).split("\0").filter(Boolean).sort();
+      write(checkout, "config/openlup-publication-catalog.json", createPublicPublicationCatalog(tracked.filter((path) => !isGuidePage(path) && !isManifestPinnedSqlArea(path)).map((path) => ({ path, class: "public-output" })), []).contents);
+      commit(checkout);
+      for (const [args, extraEnv] of [[["--docs-base", base], redirectedEnv], [[], undefined]] as const) {
+        const obs = execute([...args], extraEnv);
+        expect(obs.stderr).toBe(""); expect(obs.status).toBe(0);
+        expect(obs.stdout).toContain(`migration slot observation: migration history requires an exact UTC second: ${forwardPath}`);
+        expect(obs.stdout).toContain("append-only migration history:");
+        expect(obs.stdout).toContain("package API changes carry Migration blocks:");
+      }
+
+      // 3. Committed breaking package API snapshot change without a Migration: block refuses locally (including under redirected GIT_DIR).
+      write(checkout, "packages/core/api/demo.api.md", "# ./demo API declaration snapshot\n\n## dist/demo.d.ts\n\n```ts\nexport declare const a: number;\n```\n");
+      commit(checkout);
+      for (const [args, extraEnv] of [[["--docs-base", base], redirectedEnv], [[], undefined]] as const) {
+        const apiRefused = execute([...args], extraEnv);
+        expect(apiRefused.status).toBe(1);
+        expect(apiRefused.stderr).toContain("migration-block @openlup/core:");
+      }
+
+      // 4. Committed edit to an existing migration refuses locally for both explicit and merge-base provenance.
+      git(checkout, ["reset", "--hard", "-q", base]);
+      write(checkout, "supabase/migrations/00000000000000_platform_schema_baseline.sql", "select 2;\n");
+      commit(checkout);
+      for (const args of [["--docs-base", base], []]) {
+        const migRefused = execute(args);
+        expect(migRefused.status).toBe(1);
+        expect(migRefused.stderr).toContain("migration history");
+      }
     } finally { rmSync(temporary, { recursive: true, force: true }); }
   }, 30_000);
 });

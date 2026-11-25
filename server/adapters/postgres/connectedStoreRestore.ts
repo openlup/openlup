@@ -250,6 +250,7 @@ const order = [
   "platform_human_principals", "platform_control_operators", "commerce_operators", "clients",
   "platform_human_memberships", "platform_human_membership_audit_events", "platform_communication_operators",
   "identity_operator_invitations", "identity_operator_invitation_events", "identity_privacy_erasures",
+  "identity_privacy_erasure_reconciliations",
   "customer_subject_lifecycle_events", "customer_communication_preferences", "customer_communication_preference_events", "customer_account_events", "customer_saved_addresses", "customer_payment_preferences", "customer_delivery_preferences", "customer_orderer_profiles",
   "platform_operational_controls", "platform_control_operations", "platform_alerts", "platform_alert_notifications", "platform_job_runs",
   // AUTHORITATIVE pack metadata; no customer FK or absorption/erasure duty.
@@ -263,7 +264,8 @@ const order = [
   "subscriptions", "commerce_offer_policy_rollout_baselines", "subscription_events", "subscription_cancel_feedback", "subscription_command_receipts",
   "subscription_quote_previews", "subscription_edit_quotes", "subscription_pause_windows", "subscription_renewal_terms", "subscription_renewal_term_lines",
   "payment_method_refs", "payment_method_ref_receipts", "subscription_method_states",
-  "subscription_renewal_operations", "subscription_lines", "subscription_cycles", "commerce_orders", "commerce_order_items",
+  "subscription_renewal_operations", "subscription_lines", "subscription_cycles", "commerce_orders",
+  "commerce_order_line_sources", "commerce_order_items",
   "commerce_order_draft_receipts", "fulfillment_stock_operations",
   "commerce_order_adjustments", "commerce_promotion_claims", "commerce_promotion_claim_events",
   "subscription_activations", "subscription_renewal_attachments", "subscription_method_state_events",
@@ -282,8 +284,15 @@ const order = [
   "commerce_fulfillment_provider_commands", "commerce_fulfillment_provider_command_transitions", "fulfillment_dispatch_contexts",
   "commerce_destinations", "commerce_destination_bindings", "commerce_destination_v2_receipts",
   "commerce_destination_v2_documents", "commerce_destination_v2_checkout_selections", "commerce_destination_v2_order_bindings",
+  "subscription_destination_v2_selections",
   "fulfillment_parcel_contacts", "fulfillment_order_contacts", "fulfillment_contact_correction_receipts",
+  "commerce_money_limits_v2",
   "tax_calculations",
+  "commerce_order_tax_snapshots",
+  "commerce_order_delivery_buckets",
+  "commerce_order_line_allocations",
+  "commerce_order_tax_positions",
+  "commerce_order_fee_lines",
   "customer_support_subscription_commands", "customer_support_subscription_audit_events",
   "fulfillment_dispatch_refs", "fulfillment_paid_handoffs", "fulfillment_observations", "fulfillment_stock_movements",
   "fulfillment_parcel_reservation_sets", "fulfillment_parcel_lines", "fulfillment_parcel_line_reservations",
@@ -368,7 +377,10 @@ export async function restoreConnectedNativeStore(input: {
       FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
       WHERE pg_catalog.left(n.nspname,3)<>'pg_' AND n.nspname<>'information_schema'
       AND c.relkind IN ('r','p') ORDER BY n.nspname,c.relname`)).rows;
-    for (const relation of relations) await client.query(`LOCK TABLE ${quoted(relation.schema)}.${quoted(relation.table)} IN SHARE ROW EXCLUSIVE MODE`);
+    if (relations.length > 0) {
+      const lockedRelations = relations.map(relation => `${quoted(relation.schema)}.${quoted(relation.table)}`).join(",");
+      await client.query(`LOCK TABLE ${lockedRelations} IN SHARE ROW EXCLUSIVE MODE`);
+    }
     // Inspect definitions after table locks, before any retained-data mutation.
     const lockedInventory = inventory ?? await catalogPayload(client, installation);
     if (digest(lockedInventory) !== manifest.objectInventorySha256) fail("schema_conflict");
@@ -379,11 +391,22 @@ export async function restoreConnectedNativeStore(input: {
     };
     if (declared !== JSON.stringify(fresh.requiredPrivacyContributorIds)) fail("target_conflict", requiredPrivacyDeclarationTable);
     await assertPrivacyDeclaration();
+    const actualColumnsByTable = new Map<string, { name: string; type: string }[]>();
+    const { rows: attributeRows } = await client.query<{ table: string; name: string; type: string }>(`SELECT c.relname AS table,
+      a.attname AS name,pg_catalog.format_type(a.atttypid,a.atttypmod) AS type
+      FROM pg_catalog.pg_attribute a
+      JOIN pg_catalog.pg_class c ON c.oid=a.attrelid
+      JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+      WHERE n.nspname='public' AND c.relname=ANY($1::pg_catalog.text[]) AND c.relkind='r'
+      AND a.attnum>0 AND NOT a.attisdropped AND a.attgenerated='' AND a.attidentity=''
+      ORDER BY c.relname,a.attnum`, [[...connectedNativeStoreTables]]);
+    for (const row of attributeRows) {
+      const list = actualColumnsByTable.get(row.table);
+      if (list) list.push({ name: row.name, type: row.type });
+      else actualColumnsByTable.set(row.table, [{ name: row.name, type: row.type }]);
+    }
     for (const table of connectedNativeStoreTables) {
-      const actual = (await client.query<{ name: string; type: string }>(`SELECT a.attname AS name,
-        pg_catalog.format_type(a.atttypid,a.atttypmod) AS type FROM pg_catalog.pg_attribute a
-        WHERE a.attrelid=$1::pg_catalog.regclass AND a.attnum>0 AND NOT a.attisdropped
-        AND a.attgenerated='' AND a.attidentity='' ORDER BY a.attnum`, [`public.${table}`])).rows;
+      const actual = actualColumnsByTable.get(table) ?? [];
       const columns = source.get(table)!.columns.map(({ name, type }) => ({ name, type }));
       if (JSON.stringify(actual) !== JSON.stringify(columns)) refuseSourceSchema(table);
     }
@@ -591,6 +614,7 @@ function copyCapture(input: ConnectedNativeStoreCapture, shape: SourceShape = "c
       if (!table.columns.length || new Set(table.columns.map(column => column.name)).size !== table.columns.length) fail("invalid_input");
       for (const row of table.rows) {
         const value = JSON.parse(row) as Record<string, unknown>;
+        if (table.table === "identity_privacy_erasure_reconciliations" && !isPrivacyApprovalRow(value)) fail("invalid_input", table.table);
         if (!value || Array.isArray(value) || Object.keys(value).sort().join("\0") !== table.columns.map(column => column.name).sort().join("\0")) fail("invalid_input");
         count++; bytes += Buffer.byteLength(row);
       }
@@ -598,6 +622,15 @@ function copyCapture(input: ConnectedNativeStoreCapture, shape: SourceShape = "c
     if (count > 10000 || bytes > 64 * 1024 * 1024) fail("limit_exceeded");
     return copy;
   } catch (error) { if (error instanceof PostgresTransferError) throw error; fail("invalid_input"); }
+}
+
+function isPrivacyApprovalRow(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)
+    || Object.keys(value).sort().join("\0") !== "contributor_id\0erasure_id\0evidence_ref") return false;
+  const { contributor_id, erasure_id, evidence_ref } = value as Record<string, unknown>;
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
+  return typeof contributor_id === "string" && /^[a-z][a-z0-9.-]{0,99}$/u.test(contributor_id)
+    && typeof erasure_id === "string" && uuid.test(erasure_id) && typeof evidence_ref === "string" && uuid.test(evidence_ref);
 }
 
 function tables(packet: ConnectedNativeStoreCapture): Map<TableName, Rows> {
@@ -631,19 +664,41 @@ async function closeRestrictedOwnerWindow(client: PoolClient, installation: Qual
   await client.query(`REVOKE openlup_retained_import_owner FROM ${migrator} GRANTED BY ${migrator}`);
   await client.query(`REVOKE platform_acquisition_owner FROM ${migrator} GRANTED BY ${migrator}`);
 }
+const existsCheckBatchSize = 25;
+
 async function equalCensus(client: PoolClient, expected: Map<TableName, Rows>): Promise<boolean> {
+  const nonEmpty: { sourceSql: string; rows: readonly string[] }[] = [];
+  const emptySources: string[] = [];
   for (const [table, data] of expected) {
-    const actual = (await client.query<{ value: string }>(`SELECT pg_catalog.to_jsonb(t)::pg_catalog.text AS value FROM ${connectedStoreRowSource(table, data.columns)} t`)).rows.map(row => row.value).sort();
-    if (JSON.stringify(actual) !== JSON.stringify([...data.rows].sort())) return false;
+    const sourceSql = connectedStoreRowSource(table, data.columns);
+    if (data.rows.length > 0) nonEmpty.push({ sourceSql, rows: data.rows });
+    else emptySources.push(sourceSql);
+  }
+  for (const entry of nonEmpty) {
+    const actual = (await client.query<{ value: string }>(`SELECT pg_catalog.to_jsonb(t)::pg_catalog.text AS value FROM ${entry.sourceSql} t`)).rows.map(row => row.value).sort();
+    if (JSON.stringify(actual) !== JSON.stringify([...entry.rows].sort())) return false;
+  }
+  for (let start = 0; start < emptySources.length; start += existsCheckBatchSize) {
+    const batch = emptySources.slice(start, start + existsCheckBatchSize);
+    const probes = batch.map((sourceSql, index) => `EXISTS (SELECT 1 FROM ${sourceSql} t LIMIT 1) AS "e${index}"`).join(",");
+    const row = (await client.query<Record<string, boolean>>(`SELECT ${probes}`)).rows[0]!;
+    if (batch.some((_, index) => row[`e${index}`])) return false;
   }
   return true;
 }
 async function assertOutsideEmpty(client: PoolClient, relations: readonly { schema: string; table: string }[]): Promise<void> {
-  for (const relation of relations) {
-    if (relation.schema === "public" && (connectedNativeStoreTables.includes(relation.table as TableName)
-      || relation.table === "platform_schema_migrations" || relation.table === requiredPrivacyDeclarationTable)) continue;
-    if (relation.schema === "acquisition_private" && (relation.table === "installation_key" || relation.table === "address_references")) continue;
-    if ((await client.query(`SELECT 1 FROM ${quoted(relation.schema)}.${quoted(relation.table)} LIMIT 1`)).rows.length) fail("unsupported_table", `${relation.schema}.${relation.table}`);
+  const outside = relations.filter(relation =>
+    !(relation.schema === "public" && (connectedNativeStoreTables.includes(relation.table as TableName)
+      || relation.table === "platform_schema_migrations" || relation.table === requiredPrivacyDeclarationTable))
+    && !(relation.schema === "acquisition_private" && (relation.table === "installation_key" || relation.table === "address_references")));
+  for (let start = 0; start < outside.length; start += existsCheckBatchSize) {
+    const batch = outside.slice(start, start + existsCheckBatchSize);
+    const probes = batch.map((relation, index) =>
+      `EXISTS (SELECT 1 FROM ${quoted(relation.schema)}.${quoted(relation.table)} LIMIT 1) AS "e${index}"`).join(",");
+    const row = (await client.query<Record<string, boolean>>(`SELECT ${probes}`)).rows[0]!;
+    for (let index = 0; index < batch.length; index++) {
+      if (row[`e${index}`]) fail("unsupported_table", `${batch[index]!.schema}.${batch[index]!.table}`);
+    }
   }
 }
 async function insert(client: PoolClient, table: Rows, row: string): Promise<void> {
@@ -719,6 +774,8 @@ async function assertInsertTriggers(client: PoolClient): Promise<void> {
     commerce_orders: ["trg_commerce_orders_line_sum"], commerce_order_items: ["trg_commerce_order_items_line_sum"],
     commerce_order_holds: ["trg_fulfillment_emit_shipment_exception", "trg_subscription_delivery_alignment_exception_case"],
     fulfillment_shipments: ["trg_subscription_delivery_alignment_on_delivery"],
+    // The guard only refuses fresh v2 commands, which an exact-current source cannot contain.
+    commerce_fulfillment_provider_commands: ["commerce_fulfillment_provider_command_destination_v2_guard"],
     shipment_external_refs: ["trg_fulfillment_emit_shipment_reference_notice"],
     outbox_events: ["channel_purchase_outbox_guard", "communication_event_source_guard"],
     // The guard admits only classic inserts. The binder acts only on opt-in

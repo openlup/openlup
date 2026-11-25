@@ -3,10 +3,11 @@ import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { Pool } from "pg";
-import { readPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
+import { readPlatformMigrationManifest, selectPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { qualifiedPostgresCatalogPayload, qualifiedAdminPostgresCatalogPayload, qualifiedPostgresStartupOptions, qualifiedAdminPostgresStartupOptions, type QualifiedPostgresInstallation, type QualifiedAdminPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from "../../server/adapters/postgres/selectedCatalogProjection.js";
+import { hasPgTemplateBroker, tryLeaseTemplateDatabase, type PgTemplateLease, type TemplateProfile } from "../helpers/pgTemplateBroker.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
 export type AccountProfile = "legacy" | "bootstrap" | "separate" | "admin-managed" | "admin-operator";
 // The migration test installs this prefix before applying the search-path forward.
@@ -227,8 +228,104 @@ async function endPoolsSafely(targetPools: Pool[]): Promise<void> {
   await Promise.all(unique.map(value => value.ended ? Promise.resolve() : value.end()));
 }
 
+// Only non-admin profiles share the run-scoped broker: qualified-admin capture/restore
+// helpers temporarily GRANT/REVOKE platform_acquisition_owner cluster-wide, so admin-*
+// suites keep per-suite isolated containers.
+const ACCOUNT_BROKER_PROFILES: Partial<Record<AccountProfile, TemplateProfile>> = {
+  legacy: "legacy",
+  bootstrap: "qualified-v2",
+  separate: "qualified-v2-separate",
+};
+
+function brokerInstallationFor(profile: AccountProfile, lease?: Pick<PgTemplateLease, "migrationLogin" | "runtimeLogin" | "restoreLogin">): AccountMutationsInstallation {
+  if (profile === "legacy") return { generation: "legacy" };
+  if (profile === "separate") {
+    return {
+      generation: "qualified-v2",
+      roleMode: "installer-managed",
+      bootstrapLogin: "postgres",
+      migrationLogin: lease?.migrationLogin ?? "transfer_owner",
+      runtimeLogin: lease?.runtimeLogin ?? "transfer_runtime",
+      restoreLogin: lease?.restoreLogin ?? "transfer_restore",
+    };
+  }
+  return {
+    generation: "qualified-v2",
+    roleMode: "installer-managed",
+    bootstrapLogin: "postgres",
+    migrationLogin: lease?.migrationLogin ?? "postgres",
+    runtimeLogin: lease?.runtimeLogin ?? "lifecycle_r",
+    restoreLogin: lease?.restoreLogin ?? "lifecycle_s",
+  };
+}
+
+function brokerInventoryFor(profile: AccountProfile): string {
+  const manifest = readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest | null;
+  if (!manifest) throw new Error("Expected platform migration manifest for broker profile");
+  const selected = profile === "legacy"
+    ? selectPlatformMigrationManifest(manifest, "legacy")
+    : selectPlatformMigrationManifest(manifest, "qualified-v2", {
+      migrationIsBootstrap: profile === "bootstrap",
+      hasRestore: true,
+    });
+  return selected.objectInventorySha256;
+}
+
+function openBrokerBackedStore(
+  profile: AccountProfile,
+  lease: PgTemplateLease,
+  upgradeRoot?: string,
+): { store: AccountMutationsStore; pools: Pool[]; closed: () => boolean } {
+  const installation = brokerInstallationFor(profile, lease);
+  const pools: Pool[] = [];
+  const openPool = (url: string, options?: string) => {
+    const value = new Pool({ connectionString: url, options });
+    pools.push(value);
+    return value;
+  };
+  const owner = openPool(lease.ownerUrl);
+  const migrator = openPool(lease.migrationUrl, migrationStartupOptions(installation));
+  const runtime = profile === "legacy" ? owner : openPool(lease.runtimeUrl);
+  let inventory = lease.inventory || brokerInventoryFor(profile);
+  const runner = createInventoryRunner(lease.migrationUrl, migrator, installation, sha256 => { inventory = sha256; }, upgradeRoot);
+  let isClosed = false;
+  return {
+    pools,
+    closed: () => isClosed,
+    store: {
+      owner,
+      migrator,
+      installation,
+      runtime,
+      runner,
+      get inventory() { return inventory; },
+      close: async () => {
+        if (isClosed) return;
+        isClosed = true;
+        try {
+          await endPoolsSafely(pools);
+        } finally {
+          await lease.release();
+        }
+      },
+    },
+  };
+}
+
 /** The existing account-consent installation matrix, also used to measure complete-inventory pins. */
-export async function installAccountMutations(profile: AccountProfile, measure = false, label = "source", root?: string, upgradeRoot?: string): Promise<AccountMutationsStore> {
+export async function installAccountMutations(
+  profile: AccountProfile,
+  measure = false,
+  label = "source",
+  root?: string,
+  upgradeRoot?: string,
+  options?: { isolatedCluster?: boolean },
+): Promise<AccountMutationsStore> {
+  const brokerProfile = !measure && !root && !upgradeRoot && !options?.isolatedCluster ? ACCOUNT_BROKER_PROFILES[profile] : undefined;
+  if (brokerProfile) {
+    const lease = await tryLeaseTemplateDatabase(brokerProfile, label);
+    if (lease) return openBrokerBackedStore(profile, lease, upgradeRoot).store;
+  }
   const container = await runPostgresContainer({ name: `account-mutations-${profile}-${label}-${process.pid}`, password: "synthetic-conformance" });
   const pools: Pool[] = [];
   const pool = (url: string, options?: string) => { const value = new Pool({ connectionString: url, options }); pools.push(value); return value; };
@@ -257,7 +354,71 @@ export async function installAccountMutations(profile: AccountProfile, measure =
  * matches the post-migration baseline and bounds every open clone pool through
  * `closePostgres`.
  */
-export async function createAccountMutationsTemplate(profile: AccountProfile, label = "template", root?: string, upgradeRoot?: string): Promise<AccountMutationsTemplate> {
+export async function createAccountMutationsTemplate(
+  profile: AccountProfile,
+  label = "template",
+  root?: string,
+  upgradeRoot?: string,
+  options?: { isolatedCluster?: boolean },
+): Promise<AccountMutationsTemplate> {
+  const brokerProfile = !root && !upgradeRoot && !options?.isolatedCluster ? ACCOUNT_BROKER_PROFILES[profile] : undefined;
+  if (brokerProfile && await hasPgTemplateBroker()) {
+    const installation = brokerInstallationFor(profile);
+    const inventory = brokerInventoryFor(profile);
+    const activeEntries = new Set<{ lease: PgTemplateLease; pools: Pool[]; closed: boolean }>();
+    let templateClosed = false;
+    let closePromise: Promise<void> | undefined;
+    return {
+      installation,
+      get inventory() { return inventory; },
+      async clone(cloneLabel?: string): Promise<AccountMutationsStore> {
+        if (templateClosed) throw new Error("account_mutations_template_closed");
+        const lease = await tryLeaseTemplateDatabase(brokerProfile, cloneLabel ?? label);
+        if (!lease) throw new Error("account_mutations_broker_unavailable");
+        if (templateClosed) {
+          await lease.release().catch(() => {});
+          throw new Error("account_mutations_template_closed");
+        }
+        const opened = openBrokerBackedStore(profile, lease, upgradeRoot);
+        const record = { lease, pools: opened.pools, closed: false };
+        activeEntries.add(record);
+        const rawClose = opened.store.close;
+        return {
+          ...opened.store,
+          get inventory() { return opened.store.inventory; },
+          close: async () => {
+            if (record.closed) return;
+            record.closed = true;
+            activeEntries.delete(record);
+            await rawClose();
+          },
+        };
+      },
+      close: () => {
+        if (closePromise) return closePromise;
+        templateClosed = true;
+        closePromise = (async () => {
+          const openEntries = [...activeEntries];
+          activeEntries.clear();
+          const allPools: Pool[] = [];
+          for (const entry of openEntries) {
+            entry.closed = true;
+            allPools.push(...entry.pools);
+          }
+          let releaseFailure: unknown;
+          try {
+            await endPoolsSafely(allPools);
+          } finally {
+            const settled = await Promise.allSettled(openEntries.map(entry => entry.lease.release()));
+            const failed = settled.find((item): item is PromiseRejectedResult => item.status === "rejected");
+            if (failed) releaseFailure = failed.reason;
+          }
+          if (releaseFailure !== undefined) throw releaseFailure;
+        })();
+        return closePromise;
+      },
+    };
+  }
   const container = await runPostgresContainer({ name: `account-mutations-tpl-${profile}-${label}-${process.pid}`, password: "synthetic-conformance" });
   const bootstrap = new Pool({ connectionString: container.connectionString });
   const activeClones = new Set<{ dbName: string; pools: Pool[]; closed: boolean }>();

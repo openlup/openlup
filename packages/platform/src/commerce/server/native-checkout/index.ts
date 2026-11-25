@@ -185,12 +185,16 @@ export function createPostgresAcquisitionCheckoutPersistence(pool: NativeAcquisi
           if (JSON.stringify(current.map(row => row.promotion_id)) !== JSON.stringify(before.map(row => row.promotion_id))) changed();
           const { discounts } = input.quoteSnapshot.quote;
           const candidate = context.acquisitionTerms;
-          const starter = context.starterPack as { delivery2?: { discountBps?: unknown } } | null | undefined;
+          type StarterMarker = { delivery2?: { discountBps?: unknown } };
+          const renewalTerms = context.starterRenewalTerms as { starterPack?: unknown } | null | undefined;
+          const starterMarkers = ([context.starterPack, renewalTerms?.starterPack] as (StarterMarker | null | undefined)[])
+            .filter(marker => marker != null);
+          const hasStarterMarker = starterMarkers.length > 0;
           const hasGrant = discounts.some(discount => options.isAcquisitionDiscount(discount)
             || current.some(row => row.promotion_id === discount.promotionId));
           const paid = await createPostgresQuoteCustomerEligibility(db).hasPaidSubscription(clientId);
           const configured = current.some(row => policy.facts(row.definition as PromotionRow).metadataPresent);
-          if (!(candidate === undefined && (starter == null && !hasGrant && paid || !configured))) {
+          if (!(candidate === undefined && (!hasStarterMarker && !hasGrant && paid || !configured))) {
             const now = (await db.query("SELECT clock_timestamp()::text AS instant")).rows[0]!.instant;
             const rows = current.map(row => ({ ...(row.definition as PromotionRow),
               status: row.active ? (row.definition as PromotionRow).status : "paused" }));
@@ -207,8 +211,8 @@ export function createPostgresAcquisitionCheckoutPersistence(pool: NativeAcquisi
                 if (!parsed.success) changed();
                 else if (Object.entries(selected.terms).some(([key, value]) => parsed.data[key as keyof typeof parsed.data] !== value)) changed();
               }
-              if (starter != null && starter.delivery2?.discountBps !== selected.terms.delivery2DiscountBps) changed();
-            } else if (candidate !== undefined || starter != null || hasGrant) changed();
+              if (starterMarkers.some(marker => marker.delivery2?.discountBps !== selected.terms.delivery2DiscountBps)) changed();
+            } else if (candidate !== undefined || hasStarterMarker || hasGrant) changed();
           }
         });
         const result = await persistence.createOrderDraft(request, identity);

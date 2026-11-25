@@ -1,0 +1,1 @@
+- Native acquisition checkout now checks the nested starter marker's second-delivery discount against the selected acquisition terms.

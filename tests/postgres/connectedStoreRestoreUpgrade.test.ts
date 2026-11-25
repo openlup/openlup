@@ -54,17 +54,24 @@ const profiles = ["bootstrap", "separate", "admin-managed", "admin-operator"] as
 it.each(profiles)("upgrades a populated %s source before capturing and restores every row byte for byte", async profile => {
   const stores: Store[] = [];
   try {
-    const source = await installAtAcquisitionSearchPathBoundary(profile, "restore-upgrade-source", "before-pin", "current");
-    stores.push(source);
+    const [sourceResult, targetResult] = await Promise.allSettled([
+      installAtAcquisitionSearchPathBoundary(profile, "restore-upgrade-source", "before-pin", "current"),
+      installAccountMutations(profile, false, "restore-upgrade-target"),
+    ]);
+    if (sourceResult.status === "fulfilled") stores.push(sourceResult.value);
+    if (targetResult.status === "fulfilled") stores.push(targetResult.value);
+    if (sourceResult.status === "rejected") throw sourceResult.reason;
+    if (targetResult.status === "rejected") throw targetResult.reason;
+    const source = sourceResult.value;
+    const target = targetResult.value;
     const earlierInventory = source.inventory;
     await seed(source);
     const { applied } = await source.runner.apply();
     expect(applied).toContainEqual(expect.stringMatching(/_acquisition_definer_search_path_pin\.sql$/u));
     expect(applied).toContainEqual(expect.stringMatching(/_function_search_path_pg_temp\.sql$/u));
+    expect(applied).toContainEqual(expect.stringMatching(/_function_search_path_pin_remaining\.sql$/u));
     expect(source.inventory).not.toBe(earlierInventory);
 
-    const target = await installAccountMutations(profile, false, "restore-upgrade-target");
-    stores.push(target);
     if (target.installation.generation === "legacy") throw new Error("Qualified restore target required");
     expect(source.inventory).toBe(target.inventory);
 

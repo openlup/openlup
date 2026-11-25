@@ -1,4 +1,4 @@
-### Add packaged code settings (D1-D3, A16, E12) and multi-row installed readers (B3, B5)
+### Add packaged code settings and multi-row installed readers
 
 Added five packaged `code` settings to the settings catalogue
 (`checkout.resumeWindowMinutes`, `inventory.offerLowStockThreshold`,

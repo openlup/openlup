@@ -352,6 +352,10 @@ Domain inputs include `owned/renewal.config.ts` (account actions, pause presets,
 timing) and `owned/quote.config.ts`, composed in `owned/store.config.ts`. Follow
 [the business-configuration convention](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/customize-the-starter.md#keep-business-configuration-owned).
 
+For each seeded product, set `physical.netContent` to a whole-gram mass and
+provide its primary `gs1:gtin` identifier. Keep the issuer and GTIN spelling
+when [migrating owned physical facts](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/customize-the-starter.md#set-seeded-product-physical-facts).
+
 After installing dependencies, discover platform and starter settings by goal with
 `npm --silent run settings -- list --goal "<goal>"`, validate owned edits offline
 with `npm --silent run settings -- check --configuration <id>`, or expose the
@@ -376,6 +380,20 @@ Run `npm run --silent catalogue:check:source` to check the packs and fixtures in
 `owned/catalogue.ts` with their registered content validators.
 The installed recipes in `node_modules/@openlup/core/docs/guide/how-to/extend/catalogue-extension.md`
 describe the evidence each check supplies.
+
+For a marked demonstration store, follow [Release, price and activate a demo product](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#release-price-and-activate-a-demo-product).
+`catalogue:check:source` is offline. `catalogue:apply` signs in a human operator and can write drafts, prices and publications.
+
+### Read the private demonstration mailbox
+
+Use a separate private terminal in the same Compose project to find the newest
+operator sign-in message for the invited administrator.
+
+```sh
+docker compose exec -T --user node --workdir /application/.context application cat captured-messages/identity.jsonl
+```
+
+Enter only the matching token at the hidden prompt.
 
 ## Install-only fictional catalogue
 
@@ -421,6 +439,15 @@ Subscription renewal terms, term lines and method states belong to the native
 purchase path and must never be hand-written by this application. After the
 catalogue seed, purchase uses zero hand-written business rows. This data step
 is not a schema installer, price editor, promotion engine or customer import.
+
+## Published storefront products
+
+The native host adds active `classic` publication SKUs after the seeded
+catalogue. Keep the `?sku=` selection in product links to reopen the same
+variant. The cart and the server quote use that exact SKU and quantity.
+The [reader guide](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#show-published-products-in-the-starter)
+covers public copy and copied storefront pages. See [starter limits](docs/limits.md#published-catalogue-and-quote)
+for shared capacity, document schemas and governed checkout.
 
 ## Customer subscription editors
 

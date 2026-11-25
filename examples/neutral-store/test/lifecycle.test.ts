@@ -1,12 +1,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { once } from 'node:events';
+import { createServer } from 'node:net';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { findPackageJSON } from 'node:module';
 import { delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { env as processEnv } from 'node:process';
+import { setTimeout as delay } from 'node:timers/promises';
 import { catalogueUpgradeFixture } from './catalogue-upgrade-fixture.ts';
+import { configurations, selectConfiguration } from '../owned/store.config.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const oneLine = (stdout: string) => {
@@ -26,7 +31,7 @@ test('up_json_reports_four_fields_for_installer_refusal and verifies the real on
   const accepted = { formatVersion: 1, configuration: 'coffee', exitCode: 0, state: 'satisfied', packs: [summary], findings: [] };
   try {
     for (const path of ['lifecycle', 'lifecycle.mjs', 'browser-groups.mjs', 'lifecycle-refusals.mjs',
-      'host/healthcheck.ts', 'installation/refusals.ts', 'shared/refusals.ts', 'shared/config.ts']) {
+      'host/healthcheck.ts', 'installation/refusals.ts', 'shared/refusals.ts', 'shared/seed-physical.ts', 'shared/config.ts']) {
       mkdirSync(join(app, path, '..'), { recursive: true });
       cpSync(join(root, path), join(app, path));
     }
@@ -123,7 +128,7 @@ test('up_json_reports_four_fields_for_installer_refusal and verifies the real on
     assert.deepEqual(up('success', ['--configuration', 'coffee', '--json']).report.packs, [summary]);
     for (const [mode, code, fix] of [
       ['legacy-conflict', 'starter_catalogue_build_conflict', /Restore the original declaration and rules.*new pack version/u],
-      ['price-conflict', 'starter_price_seed_conflict', /Restore the original demonstration inputs/u],
+      ['price-conflict', 'starter_price_seed_conflict', /reconcile divergent seed rows with the original demo inputs.*close other active or open explicit subscription rows or withdraw pending rows.*rebuild a disposable demo/u],
       ['driver', 'starter_installation_failed', /Compose availability/u],
     ] as const) {
       const { report, calls } = up(mode);
@@ -229,6 +234,104 @@ test('up_json_reports_four_fields_for_installer_refusal and verifies the real on
   } finally { rmSync(app, { recursive: true, force: true }); }
 });
 
+// Nested extraction checks reuse the checkout's dependencies. The packed consumer installs its own.
+const extractionSharesDependencies = existsSync(join(root, '.starter-origin.json'))
+  && !existsSync(join(root, 'node_modules/@openlup/platform/package.json'));
+test('physical findings precede Docker, bootstrap, runtime connection and key preparation', {
+  skip: extractionSharesDependencies && 'The packed starter suite runs the subprocess witness.',
+}, () => {
+  const scratch = join(root, '.context');
+  mkdirSync(scratch, { recursive: true });
+  const app = mkdtempSync(join(scratch, 'physical-findings-'));
+  const env = { ...processEnv, PATH: [app, dirname(process.execPath), '/usr/bin', '/bin', processEnv.PATH ?? ''].join(delimiter) };
+  try {
+    for (const path of ['lifecycle', 'lifecycle.mjs', 'lifecycle-refusals.mjs', 'browser-groups.mjs', 'host', 'shared', 'owned', 'installation'])
+      cpSync(join(root, path), join(app, path), { recursive: true });
+    writeFileSync(join(app, 'package.json'), '{"type":"module"}');
+    writeFileSync(join(app, 'docker'), '#!/bin/sh\nprintf "docker\\n" >> io\nexit 70\n', { mode: 0o755 });
+    const install = join(app, 'installation/install.ts');
+    const instrumented = readFileSync(install, 'utf8').replace(/^(export async function (prepareDemonstrationQuoteKey|bootstrapDemonstration)\(.*\)[: ].* \{)$/gmu,
+      (_, declaration, name) => declaration + '\n  appendFileSync("io", ' + JSON.stringify(name + '\n') + ');');
+    assert.equal([...instrumented.matchAll(/appendFileSync\("io"/gu)].length, 2);
+    writeFileSync(install, "import { appendFileSync } from 'node:fs';\n" + instrumented);
+    mkdirSync(join(app, 'node_modules/pg'), { recursive: true });
+    writeFileSync(join(app, 'node_modules/pg/package.json'), '{"name":"pg","type":"module","exports":"./index.js"}');
+    writeFileSync(join(app, 'node_modules/pg/index.js'), `
+      import { appendFileSync } from 'node:fs';
+      class Connection {
+        async connect() { appendFileSync('io', 'connect\\n'); }
+        async query() { appendFileSync('io', 'sql\\n'); throw new Error('unexpected SQL'); }
+        async end() {}
+      }
+      export default { Client: Connection, Pool: Connection };
+    `);
+    writeFileSync(join(app, 'host/quote-secret.ts'), `
+      import { appendFileSync } from 'node:fs';
+      export async function readQuoteAcceptanceKeyring() { appendFileSync('io', 'runtime key\\n'); throw new Error('unexpected key'); }
+    `);
+    const owner = join(app, 'owned/store.config.ts'), original = readFileSync(owner, 'utf8');
+    const config = selectConfiguration();
+    const recheck = 'Restart the starter and recheck `/api/config`.';
+    for (const [edit, finding] of [
+      ["selectConfiguration().offer.products[0].physical.primaryUnitIdentifier.issuer = ' demo';", {
+        code: 'OPENLUP_E_STARTER_PRODUCT_PHYSICAL_INVALID', path: 'offer.products[].physical', subject: config.offer.products[0]!.sku,
+        observed: 'The configured product physical facts were refused.',
+        cause: 'Seed products require positive whole grams in the signed 32-bit range, a valid primary gs1:gtin and an unchanged issuer.',
+        fix: 'Apply the owned configuration migration where needed and correct the entry from verified facts. If correcting the issuer changes the retained seed digest, use “Reset an interrupted first install” for an owner-approved rebuild of the disposable demonstration in the same Compose project. That procedure removes all data in the demo volume.',
+        recheck,
+      }],
+      ["selectConfiguration().subscriptionEditing.catalogue[1].physicalSize = 2147483648;", {
+        code: 'OPENLUP_E_STARTER_SYNTHETIC_PHYSICAL_SIZE_INVALID', path: 'subscriptionEditing.catalogue[].physicalSize', subject: config.subscriptionEditing.catalogue[1]!.sku,
+        observed: 'The configured editor catalogue size was refused.',
+        cause: 'The size must be a number of whole grams from 1 through 2147483647.',
+        fix: 'Correct the affected `physicalSize` in `owned/subscription-editing.ts` to the verified supported whole-gram size.',
+        recheck,
+      }],
+    ] as const) {
+      writeFileSync(owner, original + '\n' + edit + '\n');
+      const invoke = (...args: string[]) => spawnSync(process.execPath, args, { cwd: app, env, encoding: 'utf8', timeout: 10_000 });
+      const configured = ['--configuration', config.id];
+      const runtime = ['--database-url', 'postgresql://starter_runtime@database/neutral_store'];
+      const { code, path, subject, observed, cause, fix } = finding;
+      const expectedText = [code, 'Observed: ' + observed, 'Cause: ' + cause, 'Fix: ' + fix,
+        'Recheck: ' + recheck, 'Subject: ' + subject, ''].join('\n');
+      for (const command of ['up', 'install', 'serve-demo']) {
+        writeFileSync(join(app, 'io'), '');
+        const text = invoke('lifecycle.mjs', command, ...configured, ...(command === 'serve-demo' ? runtime : []));
+        assert.ifError(text.error);
+        assert.deepEqual([text.status, text.stdout, text.stderr], [2, '', expectedText]);
+        if (command !== 'serve-demo') {
+          const json = invoke('lifecycle.mjs', command, ...configured, '--json');
+          assert.ifError(json.error);
+          assert.deepEqual([json.status, json.stderr], [2, '']);
+          assert.deepEqual(oneLine(json.stdout), {
+            ...(command === 'up' ? { command } : {}), formatVersion: 1, configuration: config.id,
+            exitCode: 2, state: 'violated', packs: [], findings: [finding],
+          });
+        }
+        assert.equal(readFileSync(join(app, 'io'), 'utf8'), '', command);
+      }
+      const host = invoke('--input-type=module', '--eval', `
+        import assert from 'node:assert/strict';
+        import { resolve } from 'node:path';
+        import { readStarterDiagnostic } from './shared/refusals.ts';
+        process.argv = [process.execPath, resolve('host/server.ts'), ...${JSON.stringify([...configured, ...runtime,
+          '--quote-acceptance-key-file', 'never-read.json'])}];
+        await assert.rejects(import('./host/server.ts'), error => {
+          assert.equal(Object.getPrototypeOf(error), Error.prototype);
+          assert.deepEqual(Reflect.ownKeys(error).filter(key => key !== 'stack'), ['message']);
+          assert.equal(error.message, ${JSON.stringify(code)});
+          assert.deepEqual(readStarterDiagnostic(error), ${JSON.stringify({ code, guidance: { path, fix, subject } })});
+          return true;
+        });
+      `);
+      assert.ifError(host.error);
+      assert.deepEqual([host.status, host.stdout, host.stderr], [0, '', '']);
+      assert.equal(readFileSync(join(app, 'io'), 'utf8'), '', 'host');
+    }
+  } finally { rmSync(app, { recursive: true, force: true }); }
+});
+
 test('every_thrown_starter_code_is_in_the_refusal_table and discovery needs no configuration', () => {
   const invoke = (...args: string[]) => spawnSync('./lifecycle', ['refusals', ...args], { cwd: root, encoding: 'utf8', env: { PATH: [dirname(process.execPath), '/usr/bin', '/bin'].join(delimiter) } });
   const json = invoke('--json'), text = invoke();
@@ -274,6 +377,605 @@ test('every_thrown_starter_code_is_in_the_refusal_table and discovery needs no c
 });
 
 const recipeApp = processEnv.OPENLUP_STARTER_CATALOGUE_RECIPE_APP;
+const catalogueProofOwner = processEnv.OPENLUP_STARTER_CATALOGUE_TEST_OWNER_URL;
+
+test('catalogue_apply_reports_and_bounds', async () => {
+  const launch = (...args: string[]) => spawnSync(process.execPath, ['lifecycle.mjs', 'catalogue', 'apply', '--json', ...args],
+    { cwd: root, encoding: 'utf8', input: 'approve\n' });
+  for (const [args, code] of [[[], 'OPENLUP_E_CATALOGUE_PRODUCT_REQUIRED'], [['--approve'], 'starter_argument_unknown']] as const) {
+    const result = launch(...args);
+    assert.equal(result.status, 2);
+    const report = oneLine(result.stdout);
+    assert.deepEqual(Object.keys(report), ['formatVersion', 'command', 'state', 'exitCode', 'receipts', 'findings']);
+    assert.deepEqual(report.receipts, []);
+    assert.equal(report.findings[0].code, code);
+    assert.equal(result.stderr, '');
+  }
+  // Exercise the real error surface and preserve an infrastructure cause out of JSON.
+  const checked = spawnSync(process.execPath, ['--input-type=module', '-e', `
+    import assert from 'node:assert/strict';
+    import { catalogueApplyRefusal } from './lifecycle-refusals.mjs';
+    const cause = new Error('private transport detail');
+    const code = 'OPENLUP_E_CATALOGUE_APPLY_UNAVAILABLE';
+    const refused = catalogueApplyRefusal({code, path: 'catalogue.demoTarget'}, cause);
+    assert.equal(Object.getPrototypeOf(refused), Error.prototype);
+    assert.equal(refused.message, code);
+    assert.deepEqual(Reflect.ownKeys(refused).filter(key => key !== 'stack'), ['message','cause','finding']);
+    assert.deepEqual(Object.getOwnPropertyDescriptor(refused, 'cause'),
+      {value: cause, writable: true, configurable: true, enumerable: false});
+    assert.doesNotMatch(JSON.stringify(refused), /private transport detail/);
+  `], { cwd: root, encoding: 'utf8' });
+  assert.equal(checked.status, 0, checked.stderr);
+
+  const { composeOperatorCapabilities } = await import('../host/operator-composition.ts');
+  const { demonstrationMarker, demonstrationMarkerQuery } = await import('../host/demonstration-marker.ts');
+  const variantId = randomUUID(), priceListId = randomUUID(), revisionId = randomUUID(), actorId = randomUUID();
+  const config = selectConfiguration();
+  const policy = { revisionId, discountBps: 500, roundingQuantumMinor: 10, roundingRule: 'FLOOR_TO_QUANTUM' };
+  let target = { priceListId, currency: config.market.currency, basis: null, policies: [policy], valid: true };
+  const trace: string[] = [];
+  const publication = {
+    async run<T>(work: (db: { query: typeof query }) => Promise<T>) {
+      trace.push('BEGIN');
+      return work({ query });
+    },
+    async close() {},
+  };
+  async function query(sql: string, values?: unknown[]) {
+    trace.push(sql.split('\n')[0]!);
+    if (sql === demonstrationMarkerQuery) {
+      assert.equal(values, undefined);
+      return { rows: [{ marker: demonstrationMarker }] };
+    }
+    if (sql.startsWith('WITH list')) return { rows: [target] };
+    return { rows: [] };
+  }
+  const operator = composeOperatorCapabilities({ executor: { query }, connectionString: 'postgresql://localhost/demo', publication,
+    asOperator: async (principal, work) => {
+      assert.equal(principal, actorId);
+      trace.push('asActor');
+      return work({ async query(sql, values) {
+        if (sql.includes('catalog_price_setup_preview')) {
+          trace.push('preview');
+          assert.deepEqual(values, [variantId, priceListId, null]);
+          return { rows: [{ result: { outcome: 'preview', variantId, priceListId, inGate: false, current: null, currentCount: 0,
+            subscription: { kind: 'derived', revisionId, discountBps: 500, roundingQuantumMinor: 10, derivedUnitPriceMinor: null },
+            readiness: { ready: true, reasons: [] } } }] };
+        }
+        trace.push('apply');
+        return { rows: [{ result: { outcome: 'validation_issue', reason: 'expected_state_mismatch' } }] };
+      } });
+    } });
+  const context = { commandKey: randomUUID(), config,
+    actor: { customerRef: null, operatorRef: actorId, sessionToken: 'verified fixture' } };
+  try {
+    assert.deepEqual(await operator.actions['catalogue.demoTarget']!({}, context),
+      { ok: true, value: { marked: true, configurationId: config.id } });
+    assert.deepEqual(trace, ['BEGIN', 'SET TRANSACTION READ ONLY', "SET LOCAL statement_timeout = '1s'", demonstrationMarkerQuery.split('\n')[0]]);
+    const price = operator.actions['operator.catalogPublication']!;
+    const input = { action: 'price-apply', variantId, priceListId, policyRevisionId: revisionId };
+    for (const [amount, code] of [[0, 'starter_input_invalid'], [10, 'starter_catalogue_derived_price_zero'],
+      [2_147_483_648, 'starter_input_invalid'], [2_147_483_647, 'expected_state_mismatch']] as const) {
+      trace.length = 0;
+      assert.deepEqual(await price({ ...input, unitPriceMinor: amount }, context), { ok: false, code });
+      assert.equal(trace.includes('apply'), amount === 2_147_483_647);
+      if (trace.includes('apply')) assert.deepEqual(trace.slice(-3), ['asActor', 'preview', 'apply']);
+    }
+    trace.length = 0;
+    assert.deepEqual(await price({ ...input, unitPriceMinor: 11, policyRevisionId: randomUUID() }, context),
+      { ok: false, code: 'starter_catalogue_d2c_policy_required' });
+    assert.deepEqual(trace.slice(-2), ['asActor', 'preview']);
+    for (const [change, code] of [
+      [{ currency: config.market.currency === 'XTS' ? 'XXX' : 'XTS' }, 'starter_catalogue_currency_mismatch'],
+      [{ currency: config.market.currency, valid: false }, 'starter_catalogue_d2c_policy_required'],
+    ] as const) {
+      target = { ...target, ...change };
+      assert.deepEqual(await price({ action: 'price-target' }, context), { ok: false, code });
+    }
+  } finally { await operator.close(); }
+});
+
+test('installed_catalogue_operator_workflow', { skip: !recipeApp, timeout: 600_000 }, async context => {
+  const app = recipeApp!;
+  const existing = processEnv.OPENLUP_STARTER_CATALOGUE_OPERATOR_PROJECT;
+  const project = existing ?? 'catalogue-operator-' + randomUUID().slice(0, 12);
+  assert.match(project, /^[a-z0-9-]+$/u);
+  const manifest = JSON.parse(readFileSync(join(app, '.starter-origin.json'), 'utf8'));
+  assert.ok(['candidate', 'local-candidate', 'released', 'reconstructed'].includes(manifest.mode ?? manifest.kind));
+  const run = (file: string, args: string[], input?: string) => execFileSync(file, args,
+    { cwd: app, env: { ...processEnv, COMPOSE_PROJECT_NAME: project }, encoding: 'utf8', input, stdio: ['pipe', 'pipe', 'pipe'] });
+  const compose = (...args: string[]) => run('docker', ['compose', ...args]);
+  const sql = (statement: string) => compose('exec', '-T', 'database', 'psql', '-XAtq', '-v', 'ON_ERROR_STOP=1', '-v', 'VERBOSITY=verbose',
+    '-U', 'postgres', '-d', 'neutral_store', '-c', statement).trim();
+  const base = processEnv.OPENLUP_STARTER_CATALOGUE_OPERATOR_ORIGIN ?? 'http://127.0.0.1:4319';
+  const headers = { Origin: base, 'X-Starter-Request': '1', 'Content-Type': 'application/json' };
+  async function action(operation: string, body: unknown, key: string = randomUUID(), cookie?: string) {
+    const response = await fetch(base + '/api/actions/' + operation, { method: 'POST',
+      headers: { ...headers, 'Idempotency-Key': key, ...(cookie && { Cookie: cookie }) }, body: JSON.stringify(body) });
+    return { data: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] };
+  }
+  const actor = randomUUID(), alternate = randomUUID(), email = `operator-${actor.slice(0, 8)}@example.test`;
+  const snapshot = () => sql(`SELECT (SELECT count(*) FROM public.catalog_draft_revisions),
+    (SELECT count(*) FROM public.catalog_publication_decisions), (SELECT count(*) FROM public.catalog_publications),
+    (SELECT count(*) FROM public.catalog_publication_heads), (SELECT count(*) FROM public.price_entries),
+    (SELECT count(*) FROM public.catalog_price_setup_receipts)`);
+  function mailbox(address = email) {
+    try {
+      return compose('exec', '-T', '--user', 'node', 'application', 'cat', '/application/.context/captured-messages/identity.jsonl')
+        .trim().split('\n').filter(Boolean).map(line => JSON.parse(line)).filter(row => row.email === address);
+    } catch (error) {
+      if (String((error as { stderr?: string }).stderr).includes('No such file or directory')) return [];
+      throw error;
+    }
+  }
+  let cookie: string | undefined;
+  const operator = 'operator.catalogPublication', drafts = 'operator.catalogDrafts';
+  async function send(operation: string, body: unknown, key?: string) {
+    return (await action(operation, body, key, cookie)).data;
+  }
+  async function askChallenge() {
+    assert.deepEqual((await action('auth.operator', { email })).data, { ok: true, value: { accepted: true } });
+  }
+  async function newestToken(count: number, address = email) {
+    for (let attempt = 0; attempt < 40; attempt++) {
+      const rows = mailbox(address);
+      if (rows.length === count) return rows.at(-1).token as string;
+      await delay(50);
+    }
+    throw new Error('Expected operator challenge delivery');
+  }
+  try {
+    if (!existing) assert.equal(oneLine(run('./lifecycle', ['up', '--configuration', 'coffee', '--json'])).exitCode, 0);
+    assert.deepEqual((await action('catalogue.demoTarget', {})).data, { ok: true, value: { marked: true, configurationId: 'coffee' } });
+    const registry = (await action('application.status', {})).data.value.bindings as { operation: string; bound: boolean }[];
+    assert.deepEqual(registry.map(({ operation }) => operation), (await import('../shared/api.ts')).operations);
+    assert.equal(registry.find(({ operation }) => operation === 'catalogue.demoTarget')?.bound, true);
+    const readOnly = JSON.parse(compose('exec', '-T', '--user', 'node', 'application', 'node', '--input-type=module', '-e', `
+      import { readFileSync } from 'node:fs';
+      import { env } from 'node:process';
+      import { createPostgresRoleFreeTransactionLane } from '@openlup/platform/data';
+      import { composeOperatorCapabilities } from './host/operator-composition.ts';
+      import { demonstrationMarkerQuery } from './host/demonstration-marker.ts';
+      const url = new URL(env.DATABASE_URL);
+      url.username = 'openlup_catalog_publication';
+      url.password = readFileSync('.context/catalogue-builds/.publication-password', 'utf8').trim();
+      const lane = createPostgresRoleFreeTransactionLane({connectionString: url.href});
+      let markerSettings;
+      const publication = { run: work => lane.run(db => work({ async query(statement, values) {
+        if (statement === demonstrationMarkerQuery) {
+          markerSettings = (await db.query("SELECT current_setting('transaction_read_only') AS mode,current_setting('statement_timeout') AS deadline")).rows[0];
+          if (values !== undefined) throw Error('Marker query must be parameterless');
+        }
+        return db.query(statement, values);
+      } })), close: () => lane.close() };
+      const composed = composeOperatorCapabilities({executor: {}, publication, connectionString: env.DATABASE_URL});
+      try {
+        const { ok } = await composed.actions['catalogue.demoTarget']({}, {config: {id:'coffee'}});
+        console.log(JSON.stringify({ ok, ...markerSettings }));
+      } finally { await Promise.all([composed.close(), lane.close()]); }
+    `));
+    assert.deepEqual(readOnly, { ok: true, mode: 'on', deadline: '1s' });
+    const anonymous = await send(operator, { action: 'price-target' });
+    assert.equal(anonymous.code, 'operator_required');
+    sql(`INSERT INTO public.platform_human_principals(principal_id,email) VALUES
+      ('${actor}','${email}'),('${alternate}','alternate-${actor.slice(0, 8)}@example.test');
+      INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at)
+      VALUES ('${actor}','admin','active','legacy',now()),('${alternate}','admin','active','legacy',now())`);
+    const challenges = () => Number(sql(`SELECT count(*) FROM public.operator_identity_challenges WHERE principal_id='${actor}'`));
+    await askChallenge();
+    const expired = await newestToken(1);
+    await askChallenge();
+    assert.equal(challenges(), 1);
+    assert.equal(mailbox().length, 1);
+    sql(`UPDATE public.operator_identity_challenges SET created_at=statement_timestamp()-interval '10 minutes',
+      expires_at=statement_timestamp() WHERE principal_id='${actor}'`);
+    const invalid = await action('auth.operator', { token: expired });
+    assert.equal(invalid.data.code, 'starter_auth_invalid');
+    assert.equal(invalid.cookie, undefined);
+    assert.equal(sql(`SELECT count(*) FROM public.operator_identity_challenges WHERE principal_id='${actor}' AND used_at IS NOT NULL`), '0');
+    sql(`INSERT INTO public.operator_identity_challenges(principal_id,email_fingerprint,token_hash,created_at,expires_at)
+      SELECT principal_id,email_fingerprint,md5((principal_id||'fixture-hour-'||n)::text)||md5((principal_id||'fixture-hour-more-'||n)::text),
+        statement_timestamp()-interval '20 minutes',statement_timestamp()-interval '10 minutes'
+      FROM public.operator_identity_challenges CROSS JOIN generate_series(1,4) n WHERE principal_id='${actor}' AND used_at IS NULL`);
+    await askChallenge();
+    assert.equal(challenges(), 5);
+    assert.equal(mailbox().length, 1);
+    sql(`UPDATE public.operator_identity_challenges SET created_at=statement_timestamp()-interval '2 hours',
+      expires_at=statement_timestamp()-interval '110 minutes' WHERE principal_id='${actor}'`);
+    await askChallenge();
+    const login = await action('auth.operator', { token: await newestToken(2) });
+    assert.ok(login.cookie && login.data.ok && Number.isFinite(Date.parse(login.data.value.expiresAt)));
+    cookie = login.cookie;
+    const target = (await send(operator, { action: 'price-target' })).value;
+    assert.equal(target.actorId, actor);
+    assert.equal(target.currency, 'XTS');
+    const { priceListId, policy } = target;
+    const { buildCatalogReleaseDraftV3, catalogInternalGtin } = await import('@openlup/platform/catalog');
+    const { canonicalCatalogPriceSetupCommand } = await import('@openlup/platform/pricing');
+    const sequence = 100_000 + parseInt(actor.slice(0, 6), 16) % 800_000;
+    const slug = 'proof-notebook-' + actor.slice(0, 8);
+    const type = (await send(drafts, { action: 'example' })).value.product.type;
+    const mass = { dimension: 'mass', unit: 'openlup:g', unscaled: '100', scale: 0 } as const;
+    const { release, activation } = buildCatalogReleaseDraftV3({ namespace: 'starter', type, slug, name: 'Proof notebook',
+      presentation: { title: 'Proof notebook' }, skus: [{ code: slug.toUpperCase(), title: 'Notebook', options: {}, netContent: mass,
+        grossMass: { ...mass, unscaled: '120' }, identifiers: [{ scheme: 'gs1:gtin', issuer: 'starter:proof',
+          value: catalogInternalGtin(sequence), packagingLevel: 'unit' }], sell: { oneTime: true, subscription: false },
+        logisticsRef: 'starter:proof/' + slug }] });
+    const draftId = randomUUID(), productId = release.payload.product.id, variantId = release.payload.skus[0]!.id;
+    const prepare = async (expectedRevision: number, expectedHead: unknown) => {
+      const { value } = await send(drafts, { action: 'prepare', draftId, expectedRevision, expectedHead });
+      assert.ok(value?.preparation?.postStateDigest);
+      assert.deepEqual(value.expectedHead, expectedHead);
+      const candidate = { productId, candidateRef: value.candidateRef, candidateDigest: value.candidateDigest };
+      return { approve: { action: 'approve', ...candidate, postStateDigest: value.preparation.postStateDigest },
+        publish: { action: 'publish', ...candidate, expectedHead, changes: [] } };
+    };
+    const save = (payload: typeof release.payload, expectedRevision: number) => ({ action: expectedRevision ? 'revise' : 'create',
+      draftId, expectedRevision, payload });
+    const replay = (result: Record<string, unknown>, initial: Record<string, unknown>) => {
+      assert.equal(result.outcome, 'replayed');
+      assert.deepEqual(result.receipt ?? result.record, initial.receipt ?? initial.record);
+    };
+    const quote = () => send('offer.validate', { cart: { schemaVersion: 1, configuration: 'coffee', mode: 'one_time',
+      cadenceDays: null, lines: [{ sku: selectConfiguration('coffee').offer.products[0]!.sku, quantity: 1 }] } });
+    const legacy = await quote();
+    assert.equal(legacy.value.totalMinor, 4200);
+    const saveKey = randomUUID(), approvalKey = randomUUID(), releaseKey = randomUUID();
+    const saved = (await send(drafts, save(release.payload, 0), saveKey)).value;
+    assert.equal(saved.record.revision, 1);
+    assert.equal((await send(drafts, { action: 'prepare', draftId, expectedRevision: 1 })).value.expectedHead, null);
+    const first = await prepare(1, null);
+    const approval = (await send(operator, first.approve, approvalKey)).value;
+    const released = (await send(operator, first.publish, releaseKey)).value;
+    const { head } = released.receipt;
+    const prices = { variantId, priceListId };
+    const planned = { action: 'price-apply', ...prices, policyRevisionId: policy.revisionId, unitPriceMinor: 11 };
+    const control = await action(operator, planned);
+    assert.equal(control.data.code, 'operator_required');
+    const customer = `customer-${actor.slice(0, 8)}@example.test`;
+    compose('exec', '-T', '--user', 'node', 'application', 'node', '--input-type=module', '-e', `
+      import { randomUUID } from 'node:crypto';
+      import { env } from 'node:process';
+      import { createPostgresAccountLinkStore } from '@openlup/platform/identity';
+      const accounts = createPostgresAccountLinkStore({ connectionString: env.DATABASE_URL });
+      try { await accounts.createAccount({ principalId: randomUUID(), email: ${JSON.stringify(customer)},
+        acquisitionSource: 'direct', lifecycleStage: 'customer' }); }
+      finally { await accounts.close(); }
+    `);
+    assert.equal((await action('auth.request', { email: customer })).data.ok, true);
+    const signedCustomer = await action('auth.verify', { token: await newestToken(1, customer) });
+    assert.ok(signedCustomer.cookie);
+    assert.equal((await action(operator, planned, undefined, signedCustomer.cookie)).data.code, 'operator_required');
+    const { value: preview } = await send(operator, { action: 'price-preview', ...prices });
+    assert.equal(preview.listEffective, true);
+    assert.equal(preview.priceSetup.inGate, false);
+    assert.equal(preview.priceSetup.current, null);
+    assert.equal(preview.priceSetup.subscription.revisionId, policy.revisionId);
+    const initial = snapshot();
+    assert.equal((await send(operator, { ...planned, priceListId: randomUUID() })).code, 'price_list_not_active');
+    assert.equal((await send(operator, { ...planned, unitPriceMinor: 10 })).code, 'starter_catalogue_derived_price_zero');
+    assert.equal((await send(operator, { ...planned, policyRevisionId: randomUUID() })).code, 'starter_catalogue_d2c_policy_required');
+    assert.equal(snapshot(), initial);
+    const activationSave = await send(drafts, save(activation.payload, 1));
+    assert.equal(activationSave.value.record.revision, 2);
+    for (const badHead of [null, { ...head, documentDigest: 'f'.repeat(64) }]) {
+      const stale = await send(drafts, { action: 'prepare', draftId, expectedRevision: 2, expectedHead: badHead });
+      assert(!stale.ok || !stale.value?.preparation?.postStateDigest);
+    }
+    const next = await prepare(2, head), activationKey = randomUUID();
+    assert.equal((await send(operator, next.approve)).value.outcome, 'committed');
+    const before = snapshot();
+    assert.equal((await send(operator, next.publish, activationKey)).code, 'publication_sku_price_not_ready');
+    assert.equal(snapshot(), before);
+    assert.equal((await send(operator, { action: 'receipt', productId, commandKey: activationKey })).value.outcome, 'absent');
+    assert.equal(sql(`SELECT status FROM public.catalog_skus WHERE id='${variantId}'`), 'draft');
+    const priceKey = randomUUID();
+    const priced = (await send(operator, planned, priceKey)).value;
+    assert.equal(priced.receipt.current.unitPriceMinor, 11);
+    const activated = (await send(operator, next.publish, activationKey)).value;
+    assert.deepEqual(activated.receipt.previousHead, head);
+    const completed = snapshot();
+    replay((await send(drafts, save(release.payload, 0), saveKey)).value, saved);
+    replay((await send(operator, first.approve, approvalKey)).value, approval);
+    replay((await send(operator, first.publish, releaseKey)).value, released);
+    replay((await send(operator, next.publish, activationKey)).value, activated);
+    replay((await send(operator, planned, priceKey)).value, priced);
+    assert.equal(snapshot(), completed);
+    await context.test('installed_catalogue_copy_preserves_history', async () => {
+      const { record } = (await send(drafts, { action: 'get', draftId, revision: 2 })).value;
+      const activeHead = activated.receipt.head;
+      const exact = (expectedHead: unknown) => send(operator, { action: 'exact', head: expectedHead }).then(result => result.value);
+      const original = await exact(activeHead);
+      const payload = record.payload;
+      const presentation = { title: 'Proof notebook revised' };
+      Object.assign(payload.product.sharedContent, { catalogAction: 'revise', presentation });
+      payload.publication.operations = [{ op: 'set_product_presentation', productSlug: slug, presentation }];
+      assert.equal((await send(drafts, save(payload, 2))).value.record.revision, 3);
+      const copy = await prepare(3, activeHead);
+      assert.equal((await send(operator, copy.approve)).ok, true);
+      const copied = (await send(operator, copy.publish)).value.receipt;
+      assert.deepEqual(copied.previousHead, activeHead);
+      const amended = await exact(copied.head);
+      assert.equal(amended.product.id, original.product.id);
+      assert.deepEqual(amended.product.document, original.product.document);
+      assert.deepEqual(amended.product.presentation.title, presentation.title);
+      assert.deepEqual(amended.items, original.items);
+      assert.deepEqual(await exact(activeHead), original);
+      assert.deepEqual(await quote(), legacy);
+      assert.deepEqual((await send(operator, { action: 'price-preview', ...prices })).value.priceSetup.current, priced.receipt.current);
+    });
+    const authorized = snapshot();
+    async function denied() {
+      for (const body of [next.approve, next.publish, { action: 'price-preview', ...prices }, planned])
+        assert.equal((await send(operator, body)).code, 'operator_required');
+      assert.equal(snapshot(), authorized);
+    }
+    sql(`INSERT INTO public.platform_control_operators(principal_id) VALUES ('${actor}')`);
+    await denied();
+    const sqlCommand = canonicalCatalogPriceSetupCommand({ schemaVersion: 1, commandKey: randomUUID(), ...prices, unitPriceMinor: 11,
+      mode: 'one_time', minQty: 1, amountKind: 'gross', expected: { entryId: null, unitPriceMinor: null } });
+    const fingerprint = createHash('sha256').update(sqlCommand).digest('hex');
+    assert.throws(() => sql(`BEGIN; SET LOCAL ROLE authenticated; SET LOCAL request.jwt.claims='{"sub":"${actor}","role":"authenticated"}';
+      SELECT public.catalog_price_setup_apply('${sqlCommand}','${fingerprint}')`),
+    (error: unknown) => /42501:.*catalog_price_setup_operator_required/u.test(String((error as { stderr?: string }).stderr)));
+    sql(`DELETE FROM public.platform_control_operators WHERE principal_id='${actor}';
+      SELECT principal_id FROM public.platform_revoke_human_membership('${alternate}','${actor}')`);
+    await denied();
+  } finally {
+    if (!existing) compose('down', '--volumes');
+  }
+});
+
+test('catalogue job remedies admit owned IDs and omit ambiguous renewal populations', async () => {
+  const { catalogueFailedJobFilter } = await import('../host/catalogue-readiness-jobs.ts');
+  const example = 'store-' + 'x'.repeat(74), tooLong = example + 'x', duplicate = 'other-store';
+  const template = selectConfiguration();
+  const render = (id: string, population: string) => ({ ...template, id, renewal: { ...template.renewal, population } });
+  const population = 'x'.repeat(100);
+  try {
+    configurations[example] = render(example, population);
+    configurations[tooLong] = render(tooLong, 'too-long');
+    configurations.mismatch = render('different', 'different');
+    const names = [`subscription-renewal:${population}`, `starter-checkout:${example}`, `starter-checkout:${tooLong}`,
+      'subscription-care:mismatch', null, `subscription-renewal:${population}`, 'platform-watchdog'];
+    assert.deepEqual(catalogueFailedJobFilter()(names), ['platform-watchdog', `starter-checkout:${example}`, `subscription-renewal:${population}`]);
+    configurations[duplicate] = render(duplicate, population);
+    assert.deepEqual(catalogueFailedJobFilter()(names), ['platform-watchdog', `starter-checkout:${example}`]);
+    configurations[duplicate] = render(duplicate, population + 'x');
+    assert.deepEqual(catalogueFailedJobFilter()([...names, `subscription-renewal:${population}x`]),
+      ['platform-watchdog', `starter-checkout:${example}`, `subscription-renewal:${population}`]);
+  } finally {
+    for (const id of [example, tooLong, duplicate, 'mismatch']) delete configurations[id];
+  }
+});
+
+test('readiness job close discards late acquisitions at the five-second bound', async context => {
+  const { startCatalogueReadinessJobs } = await import('../host/catalogue-readiness-jobs.ts');
+  const { default: pg } = await import('pg');
+  type PoolClient = import('pg').PoolClient;
+  let resolve!: (client: PoolClient) => void;
+  const promise = new Promise<PoolClient>(done => { resolve = done; });
+  const connect = context.mock.method(pg.Pool.prototype, 'connect', () => promise);
+  const late = { release: context.mock.fn(), query: context.mock.fn() };
+  context.mock.timers.enable({ apis: ['setTimeout', 'setImmediate', 'setInterval'] });
+  const close = startCatalogueReadinessJobs('postgresql://starter_runtime@localhost/neutral_store', randomUUID());
+  context.mock.timers.tick(1);
+  assert.equal(connect.mock.callCount(), 1);
+  context.mock.timers.tick(300_000);
+  assert.equal(connect.mock.callCount(), 1, 'overlapping scheduled tick must not acquire another client');
+  let closed = false;
+  const closing = close().then(() => { closed = true; });
+  context.mock.timers.tick(4999);
+  await Promise.resolve();
+  assert.equal(closed, false);
+  context.mock.timers.tick(1);
+  await closing;
+  resolve(late as unknown as PoolClient);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.deepEqual(late.release.mock.calls.map(call => call.arguments), [[true]]);
+  assert.equal(late.query.mock.callCount(), 0);
+});
+
+test('installed catalogue jobs isolate requests, fence heartbeat failures and drain on SIGTERM',
+  { skip: !recipeApp || !catalogueProofOwner, timeout: 45_000 }, async () => {
+    const app = recipeApp!;
+    const { default: pg } = await import('pg');
+    const { applyDemoSeed } = await import('../installation/install.ts');
+    const { catalogueWatchdogPrincipalId } = await import('../host/catalogue-readiness-jobs.ts');
+    const { readStarterCatalogueRules } = await import('../host/editor-catalogue.ts');
+    const config = selectConfiguration('coffee'), principal = catalogueWatchdogPrincipalId(config);
+    const owner = new pg.Pool({ connectionString: catalogueProofOwner });
+    const url = new URL(catalogueProofOwner!);
+    const password = decodeURIComponent(url.password);
+    url.protocol = 'postgresql:';
+    url.username = 'starter_runtime';
+    url.search = '';
+    const runtime = new pg.Pool({ connectionString: url.href });
+    url.password = '';
+    const hosts: (() => Promise<void>)[] = [];
+    const durations: Record<string, number> = {};
+    async function until<T>(read: () => T | Promise<T>) {
+      const start = performance.now();
+      while (performance.now() - start < 8000) {
+        const value = await read();
+        if (value) return value;
+        await delay(25);
+      }
+      throw new Error('catalogue readiness proof timed out');
+    }
+    async function host(db = true) {
+      const probe = createServer().listen(0, '127.0.0.1');
+      await once(probe, 'listening');
+      const address = probe.address();
+      assert.ok(address && typeof address !== 'string');
+      const { port } = address;
+      await new Promise<void>(done => probe.close(() => done()));
+      const base = `http://127.0.0.1:${port}`;
+      const started = performance.now();
+      const child = spawn(process.execPath, ['host/server.ts', '--configuration', config.id, '--port', String(port),
+        ...(db ? ['--database-url', url.href] : [])],
+      { cwd: app, env: { ...processEnv, PGPASSWORD: password }, stdio: ['ignore', 'pipe', 'pipe'] });
+      let diagnostics = '';
+      child.stderr?.on('data', bytes => { diagnostics += String(bytes); });
+      const exited = once(child, 'exit');
+      const close = async () => {
+        if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+        await exited;
+      };
+      hosts.push(close);
+      await until(async () => {
+        assert.equal(child.exitCode, null, diagnostics);
+        try { return (await fetch(base + '/api/config')).ok; } catch { return false; }
+      });
+      durations[db ? 'listenMs' : 'previewListenMs'] = Math.round(performance.now() - started);
+      return { child, exited, diagnostics: () => diagnostics, async request() {
+        const sent = performance.now();
+        const response = await fetch(base + '/api/actions/offer.validate', { method: 'POST',
+          headers: { Origin: base, 'Content-Type': 'application/json', 'X-Starter-Request': '1', 'Idempotency-Key': randomUUID() },
+          body: JSON.stringify({ cart: { schemaVersion: 1, configuration: config.id, mode: 'one_time', cadenceDays: null,
+            lines: [{ sku: config.offer.products[0]!.sku, quantity: 1 }] } }) });
+        durations.requestMs = Math.round(performance.now() - sent);
+        const body = await response.json();
+        assert.equal(body.ok, true, body.code);
+        assert.equal(body.value.totalMinor, 4200);
+      }, async stop() {
+        const began = performance.now();
+        child.kill('SIGTERM');
+        const exit = await Promise.race([exited, delay(5100, [], { ref: false })]);
+        assert.deepEqual(exit, [0, null]);
+        return Math.round(performance.now() - began);
+      } };
+    }
+    const watchdog = () => owner.query(`SELECT c.last_status AS status,c.active_driver AS driver,c.metadata->'promotionReady' AS ready,
+      r.driver AS run_driver,r.metadata->>'invocationSource' AS source,r.error
+      FROM public.platform_job_controls c LEFT JOIN public.platform_job_runs r ON r.id=c.last_run_id
+      WHERE c.job_name='platform-watchdog'`).then(({ rows }) => rows[0]);
+    try {
+      const db = await owner.connect();
+      const catalogueRules = readStarterCatalogueRules();
+      assert.ok(catalogueRules);
+      try { await applyDemoSeed(config, { connection: db, installRole: 'postgres', runtimeRole: 'starter_runtime',
+        catalogueRules, close: async () => {} }); }
+      finally { db.release(); }
+      const customer = randomUUID(), stale = randomUUID(), protectedOrder = randomUUID();
+      await owner.query("INSERT INTO public.clients(id,email) VALUES($1,'catalogue-sweep@example.test')", [customer]);
+      for (const order of [stale, protectedOrder]) {
+        const session = await owner.connect();
+        try {
+          await session.query('BEGIN');
+          await session.query(`INSERT INTO public.commerce_orders(id,client_id,currency_code,total_amount_minor,created_at)
+          VALUES($1,$2,'XTS',11400,now()-interval '1 hour')`, [order, customer]);
+          await session.query(`INSERT INTO public.commerce_order_items(order_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor)
+          VALUES($1,1,1,11400,11400)`, [order]);
+          const adjustment = (await session.query(`INSERT INTO public.commerce_order_adjustments
+          (order_id,kind,scope,amount_minor,promotion_id,definition_fingerprint)
+          SELECT $1,'promotion_discount','order_total',600,promotion_id,definition_fingerprint
+          FROM public.commerce_promotion_definitions WHERE promotion_id='demo-bundle:coffee' RETURNING id`, [order])).rows[0].id;
+          await session.query(`INSERT INTO public.commerce_promotion_claims
+          (promotion_id,definition_fingerprint,adjustment_id,order_id,client_id,amount_off_minor,reserved_at,expires_at)
+          SELECT promotion_id,definition_fingerprint,$1,$2,$3,600,now()-interval '1 hour',now()-interval '45 minutes'
+          FROM public.commerce_promotion_definitions WHERE promotion_id='demo-bundle:coffee'`, [adjustment, order, customer]);
+          await session.query('COMMIT');
+        } catch (error) { await session.query('ROLLBACK'); throw error; }
+        finally { session.release(); }
+      }
+      await owner.query(`INSERT INTO public.commerce_settlement_intents(order_id,channel_key,amount_minor,currency_code,open_idempotency_key)
+        VALUES($1,'sandbox',11400,'XTS','catalogue-sweep-protected')`, [protectedOrder]);
+      await owner.query('DELETE FROM public.platform_control_operators WHERE principal_id=$1', [principal]);
+      const missing = await host();
+      await missing.request();
+      await until(() => missing.diagnostics().includes('OPENLUP_E_STARTER_CATALOGUE_WATCHDOG_PRINCIPAL_MISSING'));
+      assert.equal(await watchdog(), undefined);
+      const { rows } = await owner.query('SELECT public.commerce_offer_policy_v2_readiness() AS verdict');
+      assert.deepEqual(rows[0].verdict.reasons, ['promotion_watchdog_not_ready']);
+      assert.deepEqual((await owner.query(`SELECT o.status,c.status AS claim FROM public.commerce_orders o
+        JOIN public.commerce_promotion_claims c ON c.order_id=o.id WHERE o.id=ANY($1::uuid[]) ORDER BY o.status`,
+        [[stale, protectedOrder]])).rows, [{ status: 'cancelled', claim: 'released' }, { status: 'pending_payment', claim: 'reserved' }]);
+      await missing.stop();
+
+      async function replaySeed() {
+        const session = await owner.connect();
+        try { await applyDemoSeed(config, { connection: session, installRole: 'postgres', runtimeRole: 'starter_runtime',
+          catalogueRules: catalogueRules!, close: async () => {} }); }
+        finally { session.release(); }
+      }
+      await owner.query('INSERT INTO public.platform_control_operators(principal_id,active) VALUES($1,false)', [principal]);
+      await replaySeed();
+      assert.equal((await owner.query('SELECT active FROM public.platform_control_operators WHERE principal_id=$1', [principal])).rows[0]?.active, false);
+      const inactive = await host();
+      await until(() => inactive.diagnostics().includes('OPENLUP_E_STARTER_CATALOGUE_WATCHDOG_PRINCIPAL_INACTIVE'));
+      await inactive.stop();
+      await owner.query('DELETE FROM public.platform_control_operators WHERE principal_id=$1', [principal]);
+      await owner.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,'fixture-conflict@example.test')", [principal]);
+      await replaySeed();
+      assert.deepEqual((await owner.query('SELECT active FROM public.platform_control_operators WHERE principal_id=$1', [principal])).rows, []);
+      const collision = await host();
+      await until(() => collision.diagnostics().includes('OPENLUP_E_STARTER_CATALOGUE_WATCHDOG_PRINCIPAL_CONFLICT'));
+      await collision.stop();
+      await owner.query('DELETE FROM public.platform_human_principals WHERE principal_id=$1', [principal]);
+
+      const blocked = await owner.connect();
+      try {
+        await blocked.query('BEGIN');
+        await blocked.query("SELECT 1 FROM public.platform_job_controls WHERE job_name='promotion-claim-sweep' FOR UPDATE");
+        const stuck = await host();
+        await until(async () => (await owner.query(`SELECT EXISTS(SELECT 1 FROM pg_stat_activity
+          WHERE usename='starter_runtime' AND wait_event_type='Lock' AND query LIKE '%platform_claim_job_run_v3%') AS waiting`)).rows[0]?.waiting);
+        await stuck.request();
+        durations.stuckClaimSigtermMs = await stuck.stop();
+        assert.ok(durations.stuckClaimSigtermMs <= 5000);
+      } finally { await blocked.query('ROLLBACK'); blocked.release(); }
+
+      await owner.query('COMMENT ON DATABASE neutral_store IS NULL');
+      const core = findPackageJSON('@openlup/core/catalog', import.meta.url);
+      assert.ok(core);
+      const guide = readFileSync(join(dirname(core), 'docs/guide/how-to/build/customize-the-starter.md'), 'utf8');
+      const recipe = guide.split('## Make the store ready to publish')[1]?.match(/```sh\n([^]*?)\n```/u)?.[1];
+      assert.ok(recipe);
+      const installUrl = new URL(catalogueProofOwner!);
+      const psql = spawnSync('bash', ['-s'], { cwd: app, input: recipe, encoding: 'utf8',
+        env: { ...processEnv, PGHOST: installUrl.hostname, PGPORT: installUrl.port, PGUSER: installUrl.username,
+          PGDATABASE: 'neutral_store', PGPASSWORD: decodeURIComponent(installUrl.password) } });
+      assert.equal(psql.status, 0, psql.stderr);
+      assert.deepEqual((await owner.query('SELECT principal_id,active FROM public.platform_control_operators')).rows, [{ principal_id: principal, active: true }]);
+
+      await owner.query(`CREATE FUNCTION public.reject_test_heartbeat() RETURNS trigger LANGUAGE plpgsql AS
+        $$ BEGIN RAISE EXCEPTION 'fixture heartbeat failure'; END $$;
+        CREATE TRIGGER reject_test_heartbeat BEFORE INSERT ON public.platform_control_operations
+        FOR EACH ROW EXECUTE FUNCTION public.reject_test_heartbeat()`);
+      const failed = await host();
+      try {
+        await until(async () => (await watchdog())?.status === 'failed');
+        await until(() => failed.diagnostics().includes('OPENLUP_E_STARTER_CATALOGUE_WATCHDOG_UNAVAILABLE'));
+        assert.deepEqual(await watchdog(), { status: 'failed', driver: 'scheduler', ready: null,
+          run_driver: 'scheduler', source: 'starter-catalogue', error: 'starter_catalogue_job_failed' });
+        assert.equal((await owner.query('SELECT count(*)::int AS count FROM public.platform_control_operations')).rows[0].count, 0);
+        assert.equal(failed.diagnostics().includes('fixture heartbeat failure'), false);
+      } finally {
+        await failed.stop();
+        await owner.query('DROP TRIGGER reject_test_heartbeat ON public.platform_control_operations; DROP FUNCTION public.reject_test_heartbeat()');
+      }
+      const began = performance.now();
+      const restarted = await host();
+      await until(async () => (await watchdog())?.ready === true);
+      durations.firstPairMs = Math.round(performance.now() - began);
+      assert.deepEqual(await watchdog(), { status: 'success', driver: 'scheduler', ready: true,
+        run_driver: 'scheduler', source: 'starter-catalogue', error: null });
+      await restarted.stop();
+      const count = async () => (await owner.query('SELECT count(*)::int AS count FROM public.platform_job_runs')).rows[0].count;
+      const before = await count();
+      const preview = await host(false);
+      await preview.stop();
+      assert.equal(await count(), before);
+      assert.deepEqual((await runtime.query('SELECT session_user,current_user')).rows, [{ session_user: 'starter_runtime', current_user: 'starter_runtime' }]);
+      console.log(JSON.stringify({ scenario: 'installed catalogue job lifecycle', ...durations }));
+    } finally {
+      await Promise.all(hosts.map(close => close()));
+      await Promise.all([owner.end(), runtime.end()]);
+    }
+  });
+
 test('up_json_installed_starter_recipe', { skip: !recipeApp, timeout: 600_000 }, () => {
   const app = recipeApp!;
   const origin = JSON.parse(readFileSync(join(app, '.starter-origin.json'), 'utf8'));

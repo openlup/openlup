@@ -149,7 +149,8 @@ const diagnosticsShape = z.strictObject({ appliedCodes: z.array(z.string()),
 });
 
 const sourceLines = byKey(z.array(sourceShape).min(1).max(50), line => line.lineKey, ["lineKey"]);
-const planningShape = z.strictObject({
+/** @internal Shared with the retained planning-schema parity witness. */
+export const planningShape: z.ZodType = z.strictObject({
   currency, engine, price, lines: byKey(sourceLines, line => String(line.sourceOrdinal), ["sourceOrdinal"]), listBasis: basis.nullable(),
   baseline: candidateShape, selected: candidateShape.extend({
     adjustments: byKey(z.array(adjustmentShape).min(1).max(20), row => row.adjustmentRef, ["adjustmentRef"]),

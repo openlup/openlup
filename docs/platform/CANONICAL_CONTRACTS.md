@@ -959,9 +959,10 @@ built `commerce/checkoutCommandSchemas.js`, `commerce/offerEvidenceSchemas.js` a
 `commerce/paymentContinuation.js` files to both subscription and identity profiles,
 for browser-safe validation and continuation lifetime constants. The list grants
 no directory-wide admission: `commerce/server` and the Node-only pricing root
-remain outside it. `pricing/browser` admits only its five-file runtime closure
-for the existing primitive factory, acquisition validators (including resolved
-terms) and the pure shipping-terms owner. Reference quote context accepts the
+remain outside it. `pricing/browser` admits only its thirteen-file runtime closure
+for the existing primitive factory, acquisition validators (including terms and
+resolved terms), the `deriveSubscriptionUnitPrice` display estimate and the pure
+shipping-terms owner. Reference quote context accepts the
 optional shipping/acquisition promises without admitting shipping handlers or
 Node HTTP declarations. A new reference import must have both browser-safe dependency
 closure and an exact inventory entry before that selected profile can build.
@@ -1110,12 +1111,15 @@ module also exposes the additive v3 constant. Money/evidence DTOs erase at build
 or secret configuration. [The pricing package](../../packages/platform/README.md#pricing)
 owns the extracted authority and DTOs. Acquisition DTOs and protocol identities
 are additive. `pricing/browser` directly re-exports the existing
-`createCommerceQuotePrimitives`, `acquisitionCapabilitySchema` and
-`acquisitionTermsExpectationSchema`; the inventories additionally admit only
-`pricing/browser/index.js`, `pricing/quotePrimitives.js` and
-`pricing/acquisitionTermsSchemas.js` plus the already declared acquisition
-constant where needed. Required host financial policy, selector and readiness
-remain in the server entry. The reference's four schema imports bind the same
+`createCommerceQuotePrimitives`, `acquisitionCapabilitySchema`,
+`acquisitionTermsExpectationSchema`, `acquisitionTermsSchema` and
+`deriveSubscriptionUnitPrice`, the same objects as on `pricing`; the inventories
+additionally admit only `pricing/browser/index.js`, `pricing/quotePrimitives.js`,
+`pricing/acquisitionTermsSchemas.js`, `pricing/subscriptionPricePolicy.js`,
+`pricing/validation.js` and the `pricing/contracts` value modules plus the
+already declared acquisition constant where needed. `deriveSubscriptionUnitPrice`
+is a display estimate; the quote is the amount charged. Required host financial
+policy, selector and readiness remain in the server entry. The reference's four schema imports bind the same
 symbols through this browser entry without changing validation. The reference supplies no acquisition
 configuration and its request admission and token envelopes are unchanged.
 

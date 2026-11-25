@@ -114,7 +114,9 @@ docker compose down --volumes
 ```
 
 The volume removal destroys all data in that demonstration project. A fresh
-startup creates and marks a new demonstration database.
+startup creates and marks a new demonstration database. Use this procedure
+only with the owner's approval for a disposable demonstration, including
+when correction of an invalid seed issuer changes its retained digest.
 
 ## Edit and refresh
 
@@ -132,6 +134,174 @@ wait for the host to listen before refreshing. With the starter's `build` and
 after a fragment edit. Changes to public media need a manual refresh; they are
 not watched. The watcher polls even while idle. A restart loses process-local
 sessions, and client and configuration changes do not reload atomically.
+
+## Set seeded product physical facts
+
+In `owned/store.config.ts`, set each seeded product's `physical` field to its
+original gram weight and primary unit identifier.
+
+```ts
+import type { CatalogQuantity } from '@openlup/core/catalog';
+
+const physical = {
+  netContent: { dimension: 'mass', unit: 'openlup:g', unscaled: '250', scale: 0 } satisfies CatalogQuantity,
+  primaryUnitIdentifier: { scheme: 'gs1:gtin', issuer: 'demo', value: '0000000000017' },
+};
+```
+
+Use a decimal digit string for `unscaled`, from `'1'` through `'2147483647'`,
+with no leading zero. Supply a valid GTIN check digit and keep all authored
+digits, including leading zeros. The issuer must contain 1 to 240 UTF-16
+code units with no surrounding whitespace, NUL or unpaired surrogate.
+In `owned/subscription-editing.ts`, use the same gram range as a number for
+each editor catalogue `physicalSize`.
+
+Both physical-fact findings identify the affected SKU as Subject.
+
+During upgrade, replace a pristine `owned/store.config.ts` with the candidate
+copy. In a customized file, convert each old `netWeightG`, `unitGtin` and
+`issuer` in place using the shape above. Keep the weight, GTIN digits and
+issuer exactly as authored where the values satisfy the new domain. The
+installer projects these inputs into the existing product documents, so an
+unchanged entry can replay against the retained document.
+
+For `OPENLUP_E_STARTER_PRODUCT_PHYSICAL_INVALID`, migrate the relevant entry
+and correct its values from verified facts. If correcting the issuer changes
+a retained digest, see [Reset an interrupted first install](#reset-an-interrupted-first-install)
+for an owner-approved rebuild of that disposable demo in the same Compose
+project. The procedure removes all data in the demo volume. For
+`OPENLUP_E_STARTER_SYNTHETIC_PHYSICAL_SIZE_INVALID`, correct the named SKU's
+`physicalSize` from the verified whole-gram size. Restart and recheck
+`/api/config` after either repair.
+
+## Make the store ready to publish
+
+Run `./lifecycle up` for the marked demo. The installer preserves its base
+prices and closes the exact old explicit subscription entries, retaining their
+history. On a fresh demo, it seeds the bases and the subscription policy.
+Checkout derives the same subscription unit prices from that policy. The
+installer also installs the one-time bundle and tries to register the starter
+catalogue watchdog control-plane principal. The database-backed host starts
+the promotion claim sweep and watchdog in the background. It continues serving
+requests when either job is unavailable. Allow the initial pair to finish
+before trying Publish.
+
+A fresh marked demo passes Publish readiness when both jobs provide current
+evidence. A price refusal on a retained demo can mask a sweep or watchdog
+refusal. Recheck after repairing the price list.
+
+For an unmarked installation, the owner can register the non-human watchdog
+principal from the installed starter using the authenticated installer
+`psql` connection. Set `configuration` to the owned configuration ID.
+
+```sh
+configuration=coffee
+if principal_id="$(node --input-type=module -e '
+  import { selectConfiguration } from "./owned/store.config.ts";
+  import { catalogueWatchdogPrincipalId } from "./host/catalogue-readiness-jobs.ts";
+  process.stdout.write(catalogueWatchdogPrincipalId(selectConfiguration(process.argv[1])));
+' "$configuration")"; then
+psql -X -v ON_ERROR_STOP=1 -v principal_id="$principal_id" <<'SQL'
+BEGIN;
+INSERT INTO public.platform_control_operators (principal_id, active)
+SELECT :'principal_id'::uuid, true
+WHERE NOT EXISTS (
+  SELECT 1 FROM public.platform_human_principals WHERE principal_id=:'principal_id'::uuid
+)
+ON CONFLICT (principal_id) DO NOTHING;
+SELECT principal_id AS verified_principal
+FROM public.platform_control_operators
+WHERE principal_id=:'principal_id'::uuid AND active
+  AND NOT EXISTS (
+    SELECT 1 FROM public.platform_human_principals WHERE principal_id=:'principal_id'::uuid
+  )
+\gset
+COMMIT;
+SQL
+else
+  printf '%s\n' 'Could not resolve the watchdog principal. Check the configuration ID.' >&2
+  false
+fi
+```
+
+An inactive principal or a human identity collision stops the recipe. Ask the
+control-plane owner to reconcile that identity before rechecking. For
+`starter_price_seed_conflict` or `starter_promotion_seed_conflict`, ask the
+price or promotion owner to reconcile the retained demo data, then rerun the
+installer.
+
+For a Publish refusal at `pricing.readiness`, follow its fix and recheck.
+Use these steps for the marked demo.
+
+| Reason | Starter step |
+| --- | --- |
+| `bundle_5_policy_invalid` | Run `./lifecycle up` to install the marked demo bundle. Ask the promotion owner to reconcile conflicting retained definitions before rerunning it. |
+| `catalog_1490_legacy_1340_invalid` | Verify the effective list and each eligible SKU’s base and subscription prices with the pricing owner. |
+| `promotion_claim_sweep_not_ready` | Verify `promotion-claim-sweep` is enabled with the `scheduler` driver. Wait for the next scheduled tick on the database-backed host and verify a successful run. |
+| `promotion_watchdog_not_ready` | Verify the starter catalogue watchdog control-plane principal using the recipe above. Repair any failed jobs using the table below and verify a healthy watchdog run. |
+
+For failed job names in `promotion_watchdog_not_ready`, use the matching
+owned ID for `<id>` and your authorized runtime connection for `<runtime-url>`.
+
+| Failed job | Action |
+| --- | --- |
+| `subscription-renewal:<owned-population>` | `./lifecycle renewal --configuration <id> --database-url <runtime-url>` |
+| `subscription-care:<id>` | `./lifecycle care --configuration <id> --database-url <runtime-url>` |
+| `starter-checkout:<id>` | `./lifecycle checkout-recovery --configuration <id> --database-url <runtime-url>` |
+| `promotion-claim-sweep`, `platform-watchdog` | Wait for the next scheduled tick on the database-backed host. A restart starts an initial tick. |
+
+Run an auxiliary job still in use until its latest ledger status is
+`success`. Ask the job owner to identify failures with no reported name or
+an ambiguous renewal population. Only the job owner can disable the exact
+ledger control for a retired job or a job disabled in owned configuration.
+For `job_disabled` or `inactive_driver` on the sweep or watchdog, the job owner
+checks ownership and lease state before restoring enablement or assigning
+`scheduler`.
+
+If a restart interrupted a job, the first tick may skip it while the previous
+lease expires. The lease lasts up to five minutes. Look for fresh evidence
+after the next scheduled run.
+
+After the repair, wait for a successful tick.
+Recheck by sending the same approved Publish body and command key while the
+approval, draft and head still match. Sweep evidence must be successful
+within 15 minutes and watchdog evidence must be healthy within six hours.
+
+## Show published products in the starter
+
+Set `presentation.title` in the builder input or `product.sharedContent.presentation.title`
+in a saved draft to a nonblank product name. Use the optional `shortName` map for
+localized display names. The starter uses the title when
+a locale has no short name. Set `mediaRef` to a local `/media/` filename to
+show an image with the display name as its alt text. Start the filename with
+an ASCII letter or digit and use only letters, digits, dots, underscores and
+hyphens thereafter. Omit `mediaRef` to show the product without an image.
+
+For example, use this presentation for an article with an English short name
+and an existing starter image.
+
+```json
+{
+  "title": "Published article",
+  "shortName": { "en": "Article with image" },
+  "mediaRef": "/media/collection.svg"
+}
+```
+
+The platform also admits `routePath`, `advertisedWeightsG` and `accent`.
+The starter uses its own product routes and display layout. Treat all
+authored presentation fields as public.
+
+After activation into `classic`, open the catalogue and select a SKU. Reload
+its product URL with `?sku=<encoded SKU>`, add it to the cart and check the
+same SKU and currency in the server quote. See the [published catalogue limits](../../reference/limits.md#published-starter-catalogue-limits)
+for capacity and document schema.
+
+If you copied an earlier managed storefront page into application source,
+reconcile its product selection and cart with the installed version. Keep the
+SKU query parameter in localized links, preserve the saved SKU through a failed
+read and verify the server's SKU, quantity and currency before showing amounts.
+Owned `productCard(context, product)` customizations still receive a `Product`.
 
 ## Select your configuration
 
@@ -427,6 +597,51 @@ the binding. For `address_subdivision_required` or
 `address_subdivision_unrecognized`, enter a policy-admitted subdivision. For
 `address_postal_invalid`, correct the full postal code for the destination.
 
+### Read a retained order destination
+
+Use the experimental native destination port in server code after authenticating
+the order owner. Supply the host's executor, the authorized destination context
+and the binding recorded with the original order.
+
+```ts
+import {
+  createPostgresDestinationPortV2,
+  type DestinationBindingV2,
+  type DestinationContextV2,
+  type DestinationQueryExecutor,
+} from "@openlup/platform/commerce/server/destinations";
+
+export async function readRetainedDestination(
+  db: DestinationQueryExecutor,
+  context: DestinationContextV2,
+  orderId: string,
+  originalBinding: DestinationBindingV2,
+) {
+  const port = createPostgresDestinationPortV2(db);
+  const result = await port.read(context, "order", orderId, originalBinding);
+  if ("outcome" in result && result.outcome === "refused") {
+    return { status: "refused", code: result.code, field: result.field, fix: result.fix } as const;
+  }
+  return { status: "verified", evidence: result } as const;
+}
+```
+
+If the binding differs, recover the original binding from the order's sealed
+checkout evidence through the authorized order workflow and repeat the read.
+Keep destination documents, original commands, receipts and infrastructure
+causes server-side. For `OPENLUP_E_DESTINATION_INFRASTRUCTURE`, use the error's
+checklist to verify the native binding, driver, connection and TLS, runtime
+`CONNECT`, schema `USAGE`, function `EXECUTE` and installed migrations. Retry
+the same operation after fixing the cause.
+
+Keep fresh issuance disabled. For exact snapshot replay, submit the original
+command and digest. The validated projection can be omitted, and an authorized
+erased receipt can return only `{ evidenceDisposition: "erased" }`. Run
+`snapshot` and `registerOrder` in the host's own `READ COMMITTED` transaction.
+Use `registerOrder` only to replay an existing order binding. Roll back any
+outer transaction before publishing a refusal. Fresh claim and fresh-order
+binding are unavailable to adopters and stay disabled.
+
 ## Compose post-renewal policy
 
 Since 1.0.0, `owned/renewal-policy.ts` is the second and last
@@ -705,6 +920,81 @@ check the bundled title rule, clear `product.sharedContent.presentation.title`
 in the JSON and choose **Save**. Expect `title_required` at that field. Restore
 the title, save, and choose **Prepare saved draft** with the saved draft ID and
 revision. Earlier saved drafts keep their installed rule version.
+
+### Release, price and activate a demo product
+
+Start the marked demonstration with `./lifecycle up`. In `owned/catalogue.ts`,
+keep the installed pack declaration and export the product you want to publish.
+Use **Load draft example** under **Catalogue drafts** to read the installed
+`product.type.version`. Add the example below to `owned/catalogue.ts`, then add
+`export const catalogueProduct = demoCatalogueProduct(version)` using that
+number. Keep the draft UUID stable and reserve an unused internal GTIN
+sequence. For a product with variants, see [Author a product](../extend/catalogue-extension.md#author-a-product).
+
+```ts
+import { catalogInternalGtin, type CatalogProductInput } from "@openlup/platform/catalog";
+
+export function demoCatalogueProduct(version: number) {
+  const grams = (unscaled: string) => ({ dimension: "mass", unit: "openlup:g", unscaled, scale: 0 } as const);
+  const product = {
+    namespace: "starter", type: { key: "starter:item", version },
+    slug: "field-notebook", name: "Field notebook", presentation: { title: "Field notebook" },
+    skus: [{ code: "FIELD-NOTEBOOK", title: "Field notebook", options: {},
+      netContent: grams("100"), grossMass: grams("120"),
+      identifiers: [{ scheme: "gs1:gtin", issuer: "starter:internal",
+        value: catalogInternalGtin(203), packagingLevel: "unit" }],
+      sell: { oneTime: true, subscription: false }, logisticsRef: "starter:fulfilment/notebook" }],
+  } satisfies CatalogProductInput;
+  return {
+    draftId: "d9176a9d-274b-4a4a-90d8-2a0db738f181",
+    product,
+    basePrices: { "FIELD-NOTEBOOK": 1900 },
+    copyPresentation: { title: "Field notebook, second edition" },
+  };
+}
+```
+
+Give each authored SKU exactly one initial gross one-time price in minor units.
+To include an image, put it in the starter's `public/media` folder and set
+`product.presentation.mediaRef` to its local path, for example
+`/media/field-notebook.png`. Run `./lifecycle up` after adding the file so the
+running demo has the same image when you apply.
+Run `npm run --silent catalogue:check:source` to check the pack fixtures offline.
+`npm run catalogue:apply -- --prepare-only` saves the Release draft and prepares
+it. Save + Prepare is a draft write.
+
+Run `npm run catalogue:apply -- --json` in a terminal. Select the same
+`--configuration` used for the running host if you started a nondefault
+configuration. The command checks the database marker before requesting a
+challenge. Enter the invited administrator's email. Run this command in a
+separate private terminal in the same Compose project to read the fresh token.
+
+```sh
+docker compose exec -T --user node --workdir /application/.context application cat captured-messages/identity.jsonl
+```
+
+Enter the token at the hidden prompt. Review the saved revision, expected head,
+verified currency and SKU prices. Type `approve` when you intend to publish
+Release and again when you intend to publish Activation. The command verifies
+the initial prices between the two publications. Each SKU preview checks
+`listEffective` for the selected list. The owner's `priceSetup.inGate`
+reports whether the SKU is already active and sellable on that list.
+Run the command with
+`--copy` to review and publish the first presentation-only successor. Use
+`npm run --silent catalogue:apply -- --json` for a single machine-readable
+report on stdout.
+
+After a readiness refusal, follow its Fix and Recheck and resume as the
+original administrator with the same declaration. To give the first demo job
+runs time to finish, the command waits one second and retries the exact
+Publish request once if either promotion job reports that it is unready.
+The report preserves any refusal from that retry.
+A missing initial price can
+be supplied through the authorized price action. Retry the same approved
+Publish body and key once the intended price is ready. Existing-base
+corrections belong to the pricing owner. If a challenge arrives late or has
+expired, check the invitation and request a fresh token after the minute and
+hourly limits allow it.
 
 ### Publish a saved catalogue draft
 

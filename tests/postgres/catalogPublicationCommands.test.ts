@@ -13,12 +13,19 @@ import type { CatalogPublishedSku } from "@openlup/platform/catalog";
 import * as pricing from "@openlup/platform/pricing";
 import { createPostgresCommercePriceAuthorityReadPort } from "@openlup/platform/commerce/server/postgres";
 import { createPostgresCatalogPublicationReads } from "../../server/adapters/postgres/catalogPublicationReads.js";
+import { acquisitionFixture, boundOneTimePurchase } from "./acquisitionAdmissionFixture.js";
 import { authoredPublicationDocument, createCharacterizationQuote, hash, transaction, malformedPublicationPackets, sealedPublicationRemedy } from "./catalogPublicationFixture.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
   type PostgresContainer } from "../helpers/postgresContainer.js";
 
-let pool: Pool, quotePool: Pool, authorPool: Pool, legacyPool: Pool, container: PostgresContainer;
+let pool: Pool, quotePool: Pool, authorPool: Pool, legacyPool: Pool, upgradePool: Pool, container: PostgresContainer;
 const actor = randomUUID(), otherActor = randomUUID();
+const writerForwards = (file: string) => /_catalog_price_(list_basis_select|writer_v2)\.sql$/u.test(file);
+const candidateWriterMigrations: string[] = [];
+async function installWriterForwards(db: Pool) {
+  expect(candidateWriterMigrations).toHaveLength(2);
+  for (const file of candidateWriterMigrations) await db.query(readFileSync(file, "utf8"));
+}
 function latch() {
   let resolve!: () => void;
   const promise = new Promise<void>(ready => { resolve = ready; });
@@ -63,7 +70,8 @@ beforeAll(async () => {
   const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as
     { baseline: { file: string }; forward: { file: string }[] };
   for (const unit of [manifest.baseline, ...manifest.forward]) {
-    await pool.query(readFileSync(unit.file, "utf8"));
+    if (writerForwards(unit.file)) candidateWriterMigrations.push(unit.file);
+    else await pool.query(readFileSync(unit.file, "utf8"));
   }
   for (const [index, id] of [actor, otherActor].entries()) {
     await pool.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,$2)", [id, `operator-${index}@example.invalid`]);
@@ -77,6 +85,9 @@ beforeAll(async () => {
   await pool.query(`INSERT INTO public.commerce_settings(key,value_text) VALUES('settlement_region','ZZ'),('settlement_currency','XXX')
     ON CONFLICT(key) DO UPDATE SET value_text=EXCLUDED.value_text`);
   await pool.query("SELECT public.commerce_capture_offer_policy_v2_legacy_baseline()");
+  await pool.query("CREATE DATABASE catalog_publication_upgrade TEMPLATE postgres");
+  upgradePool = new Pool({ connectionString: container.connectionStringFor("catalog_publication_upgrade") });
+  await installWriterForwards(pool);
   // Clone the installation before the command tests introduce other catalogue data.
   await pool.query("CREATE DATABASE catalog_publication_quote TEMPLATE postgres");
   quotePool = new Pool({ connectionString: container.connectionStringFor("catalog_publication_quote") });
@@ -86,7 +97,7 @@ beforeAll(async () => {
   await pool.query("CREATE DATABASE catalog_publication_legacy TEMPLATE postgres");
   legacyPool = new Pool({ connectionString: container.connectionStringFor("catalog_publication_legacy") });
 }, postgresSetupTimeoutMs);
-afterAll(() => closePostgres(container, [pool, quotePool, authorPool, legacyPool]), postgresTeardownTimeoutMs);
+afterAll(() => closePostgres(container, [pool, quotePool, authorPool, legacyPool, upgradePool]), postgresTeardownTimeoutMs);
 
 function native(query?: (db: PgQueryExecutor, sql: string, args?: unknown[]) => ReturnType<PgQueryExecutor["query"]>, connection = pool) {
   let allowed = true;
@@ -186,6 +197,26 @@ it("commits the sealed plan, refuses revocation after issuance and replays witho
   expect(queries.join("\n")).not.toMatch(/catalog_draft_heads|catalog_type_versions|catalog_price_setup_(claim|apply)|\b(INSERT|UPDATE|LOCK TABLE)\b/u);
   expect((await pool.query(`SELECT event_type FROM public.outbox_events WHERE aggregate_id=$1`, [data.productId])).rows)
     .toEqual([{ event_type: "catalog.publication.committed" }]);
+});
+
+it("keeps the issued publication receipt byte-identical after installing the price writer", async () => {
+  const data = authored(199);
+  await save(data, 1, data.payload, upgradePool);
+  const command = await prepare(data, 1, null, upgradePool);
+  const api = native(undefined, upgradePool), who = (await api.authorize(actor))!;
+  expect(await api.execute(command.approve, who)).toMatchObject({ outcome: "committed" });
+  expect(await api.execute(command.publish, who)).toMatchObject({ outcome: "committed" });
+  const receipts = async () => (await upgradePool.query(`SELECT result FROM public.catalog_operator_receipts
+    WHERE scope_id=$1 AND command_key=$2`, [data.productId, command.publish.commandKey])).rows.map(row => Buffer.from(row.result, "utf8"));
+  const original = await receipts();
+  expect(original).toHaveLength(1);
+  await installWriterForwards(upgradePool);
+  await upgradePool.query("UPDATE public.catalog_skus SET title='Live drift' WHERE id=$1", [data.skuId]);
+  api.disableRules();
+  expect(await api.execute(command.publish, who)).toMatchObject({ outcome: "replayed" });
+  expect(await receipts()).toEqual(original);
+  expect((await upgradePool.query("SELECT count(*)::int AS effects FROM public.outbox_events WHERE aggregate_id=$1",
+    [data.productId])).rows).toEqual([{ effects: 1 }]);
 });
 
 it.each([1, 2147483647])("characterizes Prepare, Approve and Publish of factorless %i grams", async grams => {
@@ -685,6 +716,23 @@ describe("publication activation prices", () => {
     sell: { oneTime: true, subscription: false }, facts: { derived: 12 }, logisticsRef: `example:fulfillment/${code}`,
   });
 
+  it("requires a released SKU before changing its eligibility", async () => {
+    const { release, activation } = buildCatalogReleaseDraftV3({ namespace: "example",
+      type: { key: installed.key, version: installed.version }, slug: "new-eligibility", name: "New eligibility",
+      presentation: { title: "New eligibility" }, skus: [{ ...builderSku("NEW-ELIGIBILITY", 209, "100"),
+        options: { finish: { kind: "choice", value: "matte" } }, attributes: { finish: "matte" } }] });
+    const payload = structuredClone(release.payload);
+    payload.product.sharedContent.requestedModes = activation.payload.product.sharedContent.requestedModes;
+    payload.publication.operations.push(...activation.payload.publication.operations.filter(operation => operation.op === "set_eligibility"));
+    const draftId = randomUUID();
+    await save({ draftId, payload }, 1, payload, authorPool);
+    const api = native(undefined, authorPool);
+    const result = await api.prepareCandidate({ draftId, draftRevision: 1, expectedHead: null }, (await api.authorize(actor))!);
+    expect(result).toMatchObject({ preparation: { structural: { outcome: "blocked-input", issues: [
+      { code: "catalog_publication_operation_source_mismatch", path: "publication.operations.7", subject: "NEW-ELIGIBILITY" },
+    ] } } });
+  });
+
   async function publishBuiltProduct(input: CatalogProductInput, pricing: "d2c" | "d2c-recovery" | "legacy") {
     const db = pricing === "legacy" ? legacyPool : authorPool;
     const priceListId = pricing === "legacy" ? legacyListId : authorListId;
@@ -763,8 +811,8 @@ describe("publication activation prices", () => {
   });
 
   async function approvedActivation(sequence: number, isAddon: boolean, missing?: "logistics" | "purchase mode",
-    { grams = 100, governed = false, db = pool, internalIdentifier }: {
-      grams?: number; governed?: boolean; db?: Pool; internalIdentifier?: DraftIdentifier;
+    { grams = 100, governed = false, db = pool, internalIdentifier, bundledPrice = false }: {
+      grams?: number; governed?: boolean; db?: Pool; internalIdentifier?: DraftIdentifier; bundledPrice?: boolean;
     } = {}) {
     const data = authored(sequence, internalIdentifier), api = native(undefined, db), who = (await api.authorize(actor))!;
     const sku = data.payload.skus[0]!;
@@ -797,6 +845,9 @@ describe("publication activation prices", () => {
     if (!("receipt" in issue) || !("head" in issue.receipt)) throw new Error(JSON.stringify(issue));
 
     const payload = structuredClone(draft);
+    if (bundledPrice) payload.skus[0]!.priceOperations = [{ schemaVersion: 1, commandKey: randomUUID(), variantId: data.skuId,
+      priceListId: listId, mode: "one_time", minQty: 1, amountKind: "gross", unitPriceMinor: 1000,
+      expected: { entryId: null, unitPriceMinor: null } }];
     const membership = { skuCode: data.code, admitted: true, offerVersion: "example:open" };
     const content = payload.product.sharedContent;
     content.catalogAction = "revise";
@@ -828,6 +879,79 @@ describe("publication activation prices", () => {
     } as const : next.publish;
     return { ...data, api, who, command, head: issue.receipt.head };
   }
+
+  it("projects only recognized readiness evidence and rolls back the staged Publish until exact retry", async () => {
+    const { command, productId, skuId, head } = await approvedActivation(71, false, undefined, { bundledPrice: true });
+    let inject: (sql: string, result: Awaited<ReturnType<PgQueryExecutor["query"]>>) => Awaited<ReturnType<PgQueryExecutor["query"]>>;
+    const api = native(async (db, sql, args) => inject(sql, await db.query(sql, args)));
+    const who = (await api.authorize(actor))!;
+    const probe = (sql: string) => sql.startsWith("SELECT public.commerce_offer_policy_v2_readiness()");
+    const writer = (sql: string) => sql.startsWith("SELECT public.catalog_price_setup_apply_claimed");
+    const project = (sql: string) => sql.includes("list.id AS list_id, price.invalid_shape");
+    const remedies: Record<string, string> = {
+      bundle_5_policy_invalid: "Fix: Restore exactly one qualifying automatic one-time bundle with the promotion owner.",
+      promotion_claim_sweep_not_ready: "Fix: Ask the operations owner to enable the promotion claim sweep and verify its configured driver can run it. Recheck: Wait for the next run or have the owner trigger one. Verify successful evidence from the past 15 minutes.",
+      promotion_watchdog_not_ready: "Fix: Ask the operations owner to enable the watchdog, verify its operations principal is active, and resolve any enabled failed jobs. Recheck: Wait for the next run or have the owner trigger one. Verify a healthy, successful watchdog run from the past six hours.",
+    };
+    const refuse = async (subject: string, hard = false) => {
+      const result = await api.execute(command, who);
+      expect(result).toEqual({ outcome: hard ? "dependency_unavailable" : "validation_issue",
+        reason: hard ? "publication_authority_unavailable" : "publication_price_readiness", path: "pricing.readiness", subject,
+        message: expect.stringMatching(/^Observed: .+ Cause: .+ Fix: .+ Recheck: .+$/u) });
+      expect(JSON.stringify(result)).not.toContain("unapproved_input");
+      if (Object.hasOwn(remedies, subject)) expect(result).toHaveProperty("message", expect.stringContaining(remedies[subject]!));
+      expect((await pool.query("SELECT publication_id FROM public.catalog_publication_heads WHERE product_id=$1", [productId])).rows)
+        .toEqual([{ publication_id: head.publicationId }]);
+      expect((await pool.query("SELECT id FROM public.price_entries WHERE variant_id=$1", [skuId])).rows).toEqual([]);
+    };
+    inject = (sql, result) => project(sql) ? { rows: result.rows.map(row => ({ ...row, list_id: randomUUID() })) } : result;
+    await refuse("effective_price_list_changed");
+    inject = (sql, result) => project(sql) ? { rows: result.rows.map(row => ({ ...row, list_id: null })) } : result;
+    expect(await api.execute(command, who)).toMatchObject({ reason: "price_list_not_active" });
+    const raise = (site: typeof probe, code: string, message: string, detail?: string) => {
+      inject = (sql, result) => {
+        if (site(sql)) throw Object.assign(new Error(message), { code, detail });
+        return result;
+      };
+    };
+    for (const reason of pricing.CATALOG_PRICE_SETUP_HARD_REFUSALS) {
+      for (const site of [probe, writer]) {
+        raise(site, "55000", "catalog_price_setup_" + reason, "unapproved_input");
+        await refuse(reason, true);
+      }
+    }
+    for (const reason of ["first_subscription_pair_invalid", "first_subscription_mirror_not_ready", "bundle_5_policy_invalid",
+      "catalog_1490_legacy_1340_invalid", "promotion_claim_sweep_not_ready", "promotion_watchdog_not_ready",
+      "legacy_frozen_records_invalid", "automatic_v2_money_invalid"]) {
+      inject = (sql, result) => probe(sql) ? { rows: [{ result: { ready: false, reasons: ["unapproved_input", reason] } }] } : result;
+      await refuse(reason);
+    }
+    inject = (sql, result) => probe(sql) ? { rows: [{ result: { ready: false, reasons: Array(33).fill("bundle_5_policy_invalid") } }] } : result;
+    await refuse("readiness_unverified");
+    inject = (sql, result) => probe(sql) ? { rows: [] } : result;
+    await refuse("readiness_unverified");
+    raise(writer, "55000", "catalog_price_setup_readiness_would_fail", '["unapproved_input","bundle_5_policy_invalid"]');
+    await refuse("bundle_5_policy_invalid");
+    raise(writer, "55000", "catalog_price_setup_readiness_would_fail", "unapproved_input");
+    await refuse("readiness_unverified");
+    for (const [site, code, message] of [
+      [writer, "22023", "catalog_price_setup_readiness_would_fail"],
+      [probe, "55000", "catalog_price_setup_readiness_would_fail"],
+      [probe, "55000", "catalog_price_setup_unapproved_input"],
+      [writer, "22023", "catalog_price_setup_settlement_context_unverified"],
+    ] as const) {
+      raise(site, code, message);
+      const result = await api.execute(command, who);
+      expect(result).toMatchObject({ outcome: "dependency_unavailable", reason: "publication_authority_unavailable" });
+      expect(result).not.toHaveProperty("subject");
+    }
+    raise(writer, "40001", "catalog_price_setup_expected_state_mismatch");
+    expect(await api.execute(command, who)).toMatchObject({ outcome: "conflict", reason: "publication_price_changed" });
+    inject = (_sql, result) => result;
+    expect(await api.execute(command, who)).toMatchObject({ outcome: "committed" });
+    expect(await api.execute(command, who)).toMatchObject({ outcome: "replayed" });
+    expect((await pool.query("SELECT id FROM public.price_entries WHERE variant_id=$1", [skuId])).rows).toHaveLength(1);
+  });
 
   it.each(["restore first", "enable first"] as const)("commits governed withdrawal, parent-only restore and %s", async order => {
     const data = authored(order === "restore first" ? 81 : 82), api = native(), who = (await api.authorize(actor))!;
@@ -962,6 +1086,42 @@ describe("publication activation prices", () => {
     await pool.query("DELETE FROM public.price_entries WHERE id=$1", [override]);
     expect(await api.execute(command, who)).toMatchObject({ outcome: "committed" });
   });
+
+  it("publishes a zero-price-operation activation on an occupied store and rolls back on incomplete proof", async () => {
+    const store = await acquisitionFixture();
+    const db = store.owner;
+    try {
+      const publicationList = randomUUID();
+      await db.query("DELETE FROM public.price_entries WHERE price_list_id=$1", [store.list]);
+      await db.query("DELETE FROM public.catalog_skus WHERE id=$1", [store.product]);
+      await db.query("INSERT INTO public.commerce_settings(key,value_text) VALUES('settlement_region','ZZ'),('settlement_currency','XXX') ON CONFLICT(key) DO UPDATE SET value_text=excluded.value_text");
+      await db.query("SELECT public.commerce_capture_offer_policy_v2_legacy_baseline()");
+      await db.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,'publisher@example.invalid')", [actor]);
+      await db.query(`INSERT INTO public.platform_human_memberships
+        (principal_id,role,membership_state,membership_provenance,membership_accepted_at)
+        VALUES($1,'admin','active','legacy',statement_timestamp())`, [actor]);
+      await db.query(`INSERT INTO public.catalog_type_versions(type_key,version,definition,definition_digest,validator_ref)
+        VALUES($1,1,'{}',$2,$3)`, [installed.key,catalogDefinitionDigest(installed),installed.validatorRef]);
+      await installActivationPrices(db, publicationList);
+      const eligible = await approvedActivation(211,false,undefined,{db});
+      const blocked = await approvedActivation(212,false,undefined,{db});
+      await seedBasePrice(eligible.skuId,db,publicationList);
+      await seedBasePrice(blocked.skuId,db,publicationList);
+      const id = await boundOneTimePurchase(store.runtime,"PRICED-CORE",1000,"XXX","priced-core");
+      const publisher = native(undefined,await store.publication());
+      const who = (await publisher.authorize(actor))!;
+      expect(await publisher.execute(eligible.command,who)).toMatchObject({outcome:"committed"});
+      await db.query("UPDATE public.outbox_events SET metadata=metadata-'boundary' WHERE aggregate_id=$1 AND event_type='commerce.order_draft.created'",[id]);
+      const state = async () => (await db.query(`SELECT p.status,s.sellable_standalone,h.publication_id FROM public.catalog_products p
+        JOIN public.catalog_skus s ON s.product_id=p.id JOIN public.catalog_publication_heads h USING(product_id) WHERE s.id=$1`,
+      [blocked.skuId])).rows;
+      const before = await state();
+      expect(await publisher.execute(blocked.command,who)).toMatchObject({outcome:"dependency_unavailable"});
+      expect(await state()).toEqual(before);
+      expect((await db.query("SELECT 1 FROM public.catalog_operator_receipts WHERE scope_id=$1 AND command_key=$2",
+        [blocked.productId,blocked.command.commandKey])).rows).toEqual([]);
+    } finally { await store.close(); }
+  }, postgresSetupTimeoutMs);
 
   it("sku_with_internal_identifier_publishes_and_quotes", async () => {
     const identifier = { scheme: "gs1:gtin", issuer: "example:internal", value: catalogInternalGtin(202), packagingLevel: "unit" } as const;

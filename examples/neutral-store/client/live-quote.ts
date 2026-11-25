@@ -30,19 +30,27 @@ export async function refreshLiveQuote(context: PageContext, cart: Cart, target:
   target.replaceChildren(el('p', {},quoteCopy[context.locale].loading));
   const result = await act('offer.validate',{ cart,acquisitionCapability: 'subscription-acquisition.v1' },crypto.randomUUID());
   if (generations.get(target) !== own || !target.isConnected) return;
-  if (!result.ok || !isOfferQuoteView(result.value)
-    || result.value.currency !== context.config.market.currency) {
+  const quote = result.ok && isOfferQuoteView(result.value) ? result.value : null;
+  if (!quote || quote.currency !== context.config.market.currency || quote.mode !== cart.mode
+    || quote.lines.length !== cart.lines.length || !cart.lines.every(line =>
+      quote.lines.filter(item => item.sku === line.sku && item.quantity === line.quantity).length === 1)) {
     target.replaceChildren(el('p', {}, !result.ok && isQuoteRefusalCode(result.code)
       ? quoteRefusalCopy[context.locale][result.code] : quoteCopy[context.locale].unavailable)); return;
   }
-  render(result.value as unknown as OfferQuote);
+  render(quote);
 }
 export function nativeUnitPrice(context: PageContext, product: Product): HTMLElement {
   const target = el('div', { class: 'price', 'aria-live': 'polite' });
-  const mode = context.getCart().mode;
+  const published = context.catalogueProducts.find(item => item.sku === product.sku && item.minQuantity !== undefined);
+  const cartMode = context.getCart().mode;
+  const mode = published && !product.permittedPurchaseModes.includes(cartMode) ? product.permittedPurchaseModes[0]! : cartMode;
+  if (published && ['home', 'catalog'].includes(context.route.key)) {
+    target.textContent = context.money(published.unitPrice.amountMinor);
+    return target;
+  }
   const cart: Cart = { schemaVersion: 1,configuration: context.config.id,mode,
     cadenceDays: mode === 'subscription' ? context.config.offer.defaultCadenceDays : null,
-    lines: [{ sku: product.sku,quantity: context.config.offer.minUnits }] };
+    lines: [{ sku: product.sku,quantity: Math.max(published?.minQuantity ?? 1, context.config.offer.minUnits) }] };
   queueMicrotask(() => { if (target.isConnected) void refreshLiveQuote(context,cart,target,quote => {
     const line = quote.lines.find(item => item.sku === product.sku);
     target.replaceChildren(el('span', {},line && Number.isSafeInteger(line.unitMinor)

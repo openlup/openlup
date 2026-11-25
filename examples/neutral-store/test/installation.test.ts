@@ -11,8 +11,9 @@ import { syncBuiltinESMExports } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildCatalogReleaseDraftV3, canonicalCatalogDraftJson, catalogPackManifest, withCatalogPublicationRules,
   type CatalogDefinitionInstallReceipt, type CatalogPackInput } from '@openlup/platform/catalog';
-import { configurations } from '../owned/store.config.ts';
-import { starterDiagnosticCode } from '../shared/refusals.ts';
+import { configurations, selectConfiguration } from '../owned/store.config.ts';
+import { readStarterDiagnostic, starterDiagnosticCode } from '../shared/refusals.ts';
+import { assertConfig } from '../shared/config.ts';
 import { catalogueConformance } from '../owned/catalogue.ts';
 import { buildDemoSeed } from '../owned/demo-seed.ts';
 import { editorProducts, readStarterCatalogueRules, stagePackBuild, starterCatalogue, starterCataloguePack } from '../host/editor-catalogue.ts';
@@ -66,7 +67,7 @@ test('container demo startup privately creates a key once, reuses it, and refuse
     } };`);
     // Observe the actual host handoff without starting HTTP or exposing the private value.
     await writeFile(resolve(directory, 'host/server.ts'), 'console.log(JSON.stringify(process.argv));');
-    const argv = ['lifecycle.mjs', 'serve-demo', '--configuration', 'supplements', '--port', '4319',
+    const argv = ['lifecycle.mjs', 'serve-demo', '--configuration', selectConfiguration().id, '--port', '4319',
       '--listen', '0.0.0.0', '--database-url', 'postgresql://starter_runtime@database/neutral_store'];
     async function start(marker: string) {
       await writeFile(resolve(directory, 'node_modules/pg/marker.json'), JSON.stringify(marker));
@@ -120,7 +121,6 @@ const installReminderSchedule = 'SELECT public.commerce_install_checkout_recover
 const inventoryProtectionStatements = [upsertPolicySetting];
 const reminderScheduleStatements = [upsertPolicySetting, installReminderSchedule];
 
-const seedPriceCount = (config: typeof configurations[string]) => editorProducts(config).reduce((sum, product) => sum + product.permittedPurchaseModes.length, 0);
 
 function installation(identity = { login: 'demo_install', role: 'demo_install', marker: demonstrationMarker }) {
   const calls: Array<{ text: string; values: unknown[] | undefined }> = [];
@@ -153,6 +153,7 @@ function installation(identity = { login: 'demo_install', role: 'demo_install', 
       if (text.startsWith('SELECT definition,active')) return { rows: [promotions.get(String(values?.[0]))!] };
       if (text.startsWith('INSERT INTO public.price_entries') && values) prices.set(String(values[0]),
         Object.fromEntries(['id','price_list_id','variant_id','mode','min_qty','unit_price_minor','amount_kind','active','valid_from'].map((key,i) => [key, values[i]])));
+      if (text.startsWith('SELECT id,price_list_id')) return { rows: [] };
       if (text.startsWith('SELECT id, price_list_id')) return { rows: [prices.get(String(values?.[0]))!] };
       return { rows: text.startsWith('SELECT provenance')
         ? [{ provenance: acquisitionAddresses[0]!.addressReference.provenance, active: true }]
@@ -348,7 +349,11 @@ for (const config of Object.values(configurations)) {
     assert.equal(first.closed(), 1);
     assert.equal(first.calls[0]!.text, 'BEGIN ISOLATION LEVEL READ COMMITTED');
     assert.equal(first.calls.at(-1)!.text, 'COMMIT');
-    for (const { text } of first.calls.slice(1, -1)) {
+    const seedCommit = first.calls.findIndex(call => call.text === 'COMMIT');
+    assert.equal(first.calls[seedCommit + 1]?.text, 'BEGIN');
+    const principalWrite = first.calls.slice(seedCommit).find(call => call.text.startsWith('INSERT INTO public.platform_control_operators'));
+    assert.ok(principalWrite);
+    for (const { text } of first.calls.slice(1, seedCommit)) {
       assert.doesNotMatch(text, /\b(?:BEGIN|COMMIT|ROLLBACK|START\s+TRANSACTION|END|SAVEPOINT|RELEASE|ABORT|PREPARE\s+TRANSACTION)\b/i);
     }
     const protection = first.calls.filter(call => call.values?.[0] === 'inventory_renewal_protection');
@@ -357,9 +362,14 @@ for (const config of Object.values(configurations)) {
     assert.deepEqual(settlement.map(call => call.values), [
       ['settlement_region', config.market.country], ['settlement_currency', config.market.currency],
     ]);
-    const inserts = first.calls.filter(call => !protection.includes(call) && !reminders.includes(call)
+    const inserts = first.calls.slice(0, seedCommit).filter(call => !protection.includes(call) && !reminders.includes(call)
       && !settlement.includes(call) && call.text.startsWith('INSERT INTO public.'));
-    assert.equal(inserts.length, buildDemoSeed(config).products.length + buildDemoSeed(config).skus.length * 2 + buildDemoSeed(config).documents.length + buildDemoSeed(config).settings.length + seedPriceCount(config) + 3);
+    const seed = buildDemoSeed(config);
+    assert.equal(inserts.length, seed.products.length + seed.skus.length * 2 + seed.documents.length + seed.settings.length + seed.skus.length + 4);
+    assert.deepEqual(inserts.filter(call => call.text.startsWith('INSERT INTO public.price_entries')).map(call => call.values?.[3]),
+      seed.skus.map(() => 'one_time'));
+    const locks = first.calls.filter(call => call.text.startsWith('SELECT public.catalog_price_setup_lock_context'));
+    assert.deepEqual(locks.map(call => call.values), seed.skus.map(sku => sku.id).sort().map(id => [seed.priceLists[0]!.id, id]));
     for (const call of inserts) {
       assert.match(call.text, /ON CONFLICT/);
       assert.match(call.text, /INSERT INTO public\.(catalog_products|catalog_skus|price_lists|price_entries|catalog_product_document_revisions|catalog_sku_identifiers|commerce_settings|subscription_price_policy_revisions|commerce_promotion_definitions)\b/);
@@ -385,6 +395,171 @@ for (const config of Object.values(configurations)) {
     assert.deepEqual(second.calls, first.calls);
   });
 }
+
+// Captured from the shipped predecessor before changing the owned physical input.
+type PredecessorVariant = readonly [skuId: string, sku: string,
+  physical: { netWeightG: number; issuer: string; unitGtin: string }, demandPerUnit: number, exclusions: readonly string[]];
+type PredecessorDocument = readonly [revisionId: string, productId: string, slug: string, digest: string,
+  variants: readonly PredecessorVariant[]];
+
+const supplementsDocuments: readonly PredecessorDocument[] = [
+  [
+    '4bb524d2-0029-5bb0-ad59-2683ffd47809', 'f4030056-e764-555d-a6d0-73447dd6b125', 'demo-supplements-dawn',
+    '5f88dbaf973ba18dc89d7a9b3fc3d9e3e29189c80ebfd4414dda2c1c733ec858', [
+      ['abc28ceb-4456-5701-a746-d504acee557a', 'ASTER-DAWN-60', { netWeightG: 250, unitGtin: '0000000000017', issuer: 'demo' }, 40, []],
+      ['02a436dc-112f-598e-a88b-d917f215229e', 'ASTER-DAWN-60-L', { netWeightG: 500, issuer: 'starter:demo', unitGtin: '3511105362001' }, 80, []],
+    ],
+  ],
+  [
+    'c3e02131-3aff-5faf-a283-bedd90ff3c1e', '259a54d5-1152-5f5a-a418-57f4e39d6bf4', 'demo-supplements-noon',
+    'a9e29cac35022c09c5fd1a629da4d4900ed6e13d5c9b4e1139b46e67b7b55221', [
+      ['92a4a977-0457-5d65-aeea-a75ef3256a48', 'ASTER-NOON-60', { netWeightG: 250, unitGtin: '0000000000024', issuer: 'demo' }, 40, []],
+      ['6c7a3072-af43-590b-a8b7-d7193536d09b', 'ASTER-NOON-60-L', { netWeightG: 500, issuer: 'starter:demo', unitGtin: '1441910664033' }, 80, []],
+    ],
+  ],
+  [
+    'f21b01d8-4384-5362-a4ca-404dbf687c8e', 'd5d1c8d6-84e0-529d-ae72-8925b2fddabc', 'demo-supplements-dusk',
+    '0940621d19799179e92bc43da770cb6c7203b17c1b6eb69256a877cdf6a89522', [
+      ['fb38d08c-07fb-5ff7-a133-e359daf206ec', 'ASTER-DUSK-30', { netWeightG: 250, unitGtin: '0000000000031', issuer: 'demo' }, 40, ['demo-restricted']],
+      ['fde3789e-fbba-53da-a25e-8a77646a1a08', 'ASTER-DUSK-30-L', { netWeightG: 500, issuer: 'starter:demo', unitGtin: '3374757808057' }, 80, ['demo-restricted']],
+    ],
+  ],
+  [
+    '0fdd9fef-88f0-5dee-ad31-2c600debc7dd', '94a58685-d89d-561f-a8f7-beea1054cf3d', 'demo-supplements-dawn-extra',
+    '47917635fe1b088a243de89e0bf66bc597055a92fec9b3f6a03028a5df46c59e', [
+      ['65dd6a34-9d9e-5bc3-aad5-80b2f5735575', 'ASTER-DAWN-60-EXTRA', { netWeightG: 100, issuer: 'starter:demo', unitGtin: '1354016792848' }, 10, []],
+    ],
+  ],
+];
+
+const coffeeDocuments: readonly PredecessorDocument[] = [
+  [
+    '4659d826-df86-58b0-ae0d-eeeab9225950', '4645faf2-aa6b-536a-aeb9-4ad9e69c2e75', 'demo-coffee-light-roast',
+    '840ff13d545f84c6932c43ba5eb2cc57f5a173588811c280d2b840d52bbb2dd1', [
+      ['aa97fa15-f04f-5b88-ab0b-26b2633e7e0a', 'PEBBLE-LIGHT-250', { netWeightG: 250, unitGtin: '0000000000048', issuer: 'demo' }, 40, []],
+      ['33469b16-5554-5ff4-adf8-4015e7db1d85', 'PEBBLE-LIGHT-250-L', { netWeightG: 500, issuer: 'starter:demo', unitGtin: '6815723410807' }, 80, []],
+    ],
+  ],
+  [
+    'b16da7cd-cc4d-59bd-ae28-acdec0e1137c', '0f09fde0-8e5e-5bbc-a3b1-12fd17ecd9c8', 'demo-coffee-medium-roast',
+    '0eececab9bb3f78f429a7468d7f756a3833f56eaa5f59c7912d68e33447c184a', [
+      ['8e48f4ff-8ac6-5dab-aef7-30c88e488352', 'PEBBLE-MEDIUM-250', { netWeightG: 250, unitGtin: '0000000000055', issuer: 'demo' }, 40, []],
+      ['fc1eb207-f61b-5a9b-ad58-9cf46890d066', 'PEBBLE-MEDIUM-250-L', { netWeightG: 500, issuer: 'starter:demo', unitGtin: '3351248347431' }, 80, []],
+    ],
+  ],
+  [
+    '5cb40e17-d1af-5df1-a0db-a7334a96effc', '3d136f31-302a-5899-a58d-fb9c66e0236d', 'demo-coffee-dark-roast',
+    '77d1ef008c77a7356e82561246ed63435e3d8d73fd3591bebadf9c01eff65238', [
+      ['eb191375-ad2f-5833-a34c-9d6dab1acc0c', 'PEBBLE-DARK-250', { netWeightG: 250, unitGtin: '0000000000062', issuer: 'demo' }, 40, ['demo-restricted']],
+      ['760bcff5-bfa2-5065-a853-cc69a2f5ca3a', 'PEBBLE-DARK-250-L', { netWeightG: 500, issuer: 'starter:demo', unitGtin: '1569102366975' }, 80, ['demo-restricted']],
+    ],
+  ],
+  [
+    'ad3461b4-211f-51d1-a209-374a11835880', 'cf7d9945-d0b4-5c2f-a128-a3006aff107b', 'demo-coffee-light-roast-extra',
+    'e90df1599814272e89a419412372397a80e67237cb8f042d6691a2944fae3ff8', [
+      ['90ddb9b6-7913-5b54-a0d1-04e0da2e2061', 'PEBBLE-LIGHT-250-EXTRA', { netWeightG: 100, issuer: 'starter:demo', unitGtin: '1925600957013' }, 10, []],
+    ],
+  ],
+];
+
+// The frozen bytes describe the shipped source fixtures. Extracted stores run the
+// general seed contract against their own registry, even when they reuse an ID.
+const extracted = fs.existsSync(new URL('../.starter-origin.json', import.meta.url));
+for (const [id, retained] of [
+  ['supplements', supplementsDocuments],
+  ['coffee', coffeeDocuments],
+] as const) {
+  test(`${id}: installer preserves the predecessor's document payload and physical SQL arguments`, {
+    skip: extracted && 'Frozen predecessor bytes cover the shipped source configuration.',
+  }, async () => {
+    const config = configurations[id]!;
+    const { binding, calls } = installation();
+    await applyDemoSeed(config, binding);
+    const argsFor = (prefix: string) => calls.filter(({ text }) => text.startsWith(prefix)).map(({ values }) => values!);
+    const documentArgs = retained.map(([revisionId, productId, productSlug, digest, rows]) => {
+      const variants = rows.map(([skuId, sku, physical, demandPerUnit, exclusions]) =>
+        ({ skuId, sku, physical, demandPerUnit, exclusions }));
+      const document = { schemaVersion: 'neutral-store-product.v1', productId, productSlug, revisionNo: 1,
+        sourceRef: 'demonstration-catalogue-v1', variants };
+      return [revisionId, productId, 1, document.schemaVersion, `demo-document:${config.id}:${revisionId}`,
+        document, document.sourceRef, digest];
+    });
+    const writes = argsFor('INSERT INTO public.catalog_product_document_revisions');
+    assert.equal(writes.length, documentArgs.length);
+    for (const [index, args] of documentArgs.entries()) {
+      assert.deepEqual(writes[index], args);
+      assert.equal(JSON.stringify(writes[index]![5]), JSON.stringify(args[5]));
+    }
+    assert.deepEqual(argsFor('UPDATE public.catalog_products SET primary_sku_id'),
+      retained.map(([revisionId, productId, , , rows]) => [productId, rows[0]![0], revisionId]));
+    assert.deepEqual(argsFor('UPDATE public.catalog_skus SET net_weight_g'),
+      retained.flatMap(([, , , , rows]) => rows.map(([skuId, , { netWeightG }]) => [skuId, netWeightG])));
+    assert.deepEqual(argsFor('INSERT INTO public.catalog_sku_identifiers'),
+      retained.flatMap(([, , , , rows]) => rows.map(([skuId, , { issuer, unitGtin }]) => [skuId, issuer, unitGtin])));
+  });
+}
+
+test('physical admission preserves canonical gram bounds, issuer bytes and identifier spelling', () => {
+  const largestIssuer = 'a'.repeat(238) + '😀';
+  for (const [grams, gtin] of [['1', '95010939'], ['2147483647', '0000000000017']]) {
+    const config = structuredClone(selectConfiguration());
+    const product = config.offer.products[0]!;
+    product.physical.netContent.unscaled = grams!;
+    product.physical.primaryUnitIdentifier = { scheme: 'gs1:gtin', issuer: largestIssuer, value: gtin! };
+    config.subscriptionEditing.catalogue[1]!.physicalSize = 2_147_483_647;
+    const variant = buildDemoSeed(config).documents[0]!.document.variants[0]!;
+    assert.deepEqual(variant.physical, { netWeightG: Number(grams), unitGtin: gtin, issuer: largestIssuer });
+    assert.equal(buildDemoSeed(config).documents[0]!.document.variants[1]!.physical.netWeightG, 2_147_483_647);
+  }
+});
+
+test('refuses unsupported typed physical inputs before bootstrap, rules access or seed SQL', async () => {
+  const productCode = 'OPENLUP_E_STARTER_PRODUCT_PHYSICAL_INVALID';
+  const syntheticCode = 'OPENLUP_E_STARTER_SYNTHETIC_PHYSICAL_SIZE_INVALID';
+  const fields: readonly [branch: 'netContent' | 'primaryUnitIdentifier', key: string, values: unknown[]][] = [
+    ['netContent', 'unscaled', ['0', '1.5', 1, '2147483648', '01', '+1', '1e0', '1\n']],
+    ['netContent', 'dimension', ['volume', 'count']],
+    ['netContent', 'unit', ['openlup:kg', 'openlup:ml']],
+    ['netContent', 'scale', [1, '0']],
+    ['netContent', 'extra', [true]],
+    ['primaryUnitIdentifier', 'scheme', ['example:gtin']],
+    ['primaryUnitIdentifier', 'value', ['0000000000018', 'abc', 17]],
+    ['primaryUnitIdentifier', 'issuer', ['', ' demo', 'demo ', 'a\u0000b', '\uD800', '\uDC00', 'a'.repeat(239) + '😀', 5]],
+  ];
+  const config = () => structuredClone(selectConfiguration());
+  const cases = fields.flatMap(([branch, key, values]) => values.map(value => {
+    const input = config();
+    Reflect.set(input.offer.products[0]!.physical[branch]!, key, value);
+    return { input, code: productCode, subject: input.offer.products[0]!.sku, path: 'offer.products[].physical' };
+  }));
+  for (const physical of [null, { netWeightG: 1, unitGtin: '0000000000017', issuer: 'demo' },
+    { ...config().offer.products[0]!.physical, primaryUnitIdentifier: null }]) {
+    const input = config();
+    Reflect.set(input.offer.products[0]!, 'physical', physical);
+    cases.push({ input, code: productCode, subject: input.offer.products[0]!.sku, path: 'offer.products[].physical' });
+  }
+  for (const value of [0, 1.5, '1', 2_147_483_648, Infinity, NaN]) {
+    const input = config(), product = input.subscriptionEditing.catalogue[1]!;
+    Reflect.set(product, 'physicalSize', value);
+    cases.push({ input, code: syntheticCode, subject: product.sku, path: 'subscriptionEditing.catalogue[].physicalSize' });
+  }
+  for (const { input, code, subject, path } of cases) {
+    const exact = (error: unknown) => {
+      assert.equal(Object.getPrototypeOf(error), Error.prototype);
+      assert.deepEqual(Reflect.ownKeys(error as object).filter(key => key !== 'stack'), ['message']);
+      assert.equal((error as Error).message, code);
+      const diagnostic = readStarterDiagnostic(error);
+      assert.equal(diagnostic?.code, code);
+      assert.deepEqual(diagnostic?.guidance, { ...diagnostic?.guidance, path, subject });
+      return true;
+    };
+    assert.throws(() => assertConfig(input), exact);
+    await assert.rejects(installDemonstration(input, async () => assert.fail('bootstrap reached')), exact);
+    const { calls, binding } = installation();
+    await assert.rejects(applyDemoSeed(input, binding, () => assert.fail('rules source reached')), exact);
+    assert.deepEqual(calls, []);
+  }
+});
 
 function infrastructureCause(original: unknown) {
   return (error: unknown) => {
@@ -511,6 +686,19 @@ test('install uses the native stock writer for every exact editor SKU and seeds 
   assert.equal(fixture.calls.some(call => /INSERT INTO public\.(subscription_lines|subscription_renewal_terms|subscription_renewal_term_lines|subscription_method_states|clients)\b/.test(call.text)),false);
   const settings = fixture.calls.filter(call => call.text.startsWith('INSERT INTO public.commerce_settings'));
   assert.equal(settings.find(call => call.values?.[0] === 'subscription_minimum_base_units')?.values?.[1],String(config.subscriptionEditing.minimumBaseUnits));
+});
+
+test('a subscription-only seed SKU gets an undiscounted base and keeps its purchase modes', async () => {
+  const config = structuredClone(Object.values(configurations)[0]!);
+  const product = config.offer.products[0]!;
+  product.permittedPurchaseModes = ['subscription'];
+  const fixture = installation();
+  await applyDemoSeed(config, fixture.binding);
+  const sku = fixture.calls.find(call => call.text.startsWith('INSERT INTO public.catalog_skus') && call.values?.[2] === product.sku);
+  assert.ok(sku);
+  assert.deepEqual(sku.values?.slice(7, 9), [false, true]);
+  const price = fixture.calls.find(call => call.text.startsWith('INSERT INTO public.price_entries') && call.values?.[2] === sku.values?.[0]);
+  assert.deepEqual(price?.values?.slice(3, 7), ['one_time', 1, product.unitPrice.amountMinor, 'gross']);
 });
 
 test('a changed installed document refuses instead of reusing an incompatible revision', async () => {

@@ -10,6 +10,7 @@ import { qualifiedAdminPostgresStartupOptions, qualifiedPostgresStartupOptions, 
 import { storeJourneyResources } from "../helpers/storeJourney.js";
 
 const forward = "db/platform/migrations/20261125170000_tax_calculations.sql";
+const claimSeal = "db/platform/migrations/20261126540000_tax_calculation_claim_seal.sql";
 const script = "tests/postgres/fixtures/taxCalculationsV2/replayed.sql";
 const resources = storeJourneyResources();
 let container: PostgresContainer | undefined, pool: Pool;
@@ -20,9 +21,12 @@ beforeAll(async () => {
   await pool.query("DROP SCHEMA auth CASCADE; DROP OWNED BY anon,authenticated,service_role CASCADE; DROP ROLE anon,authenticated,service_role;     CREATE ROLE service_role; CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions");
   const client = await pool.connect();
   try {
-    // The later search-path forward also pins a routine this forward creates, so it stays out of this replay.
+    // The later forwards depend on tables or routines the two evaluation forwards create.
     for (const unit of [manifest.baseline, ...manifest.forward]) {
-      if (unit.file !== forward && !/_function_search_path_pg_temp\.sql$/u.test(unit.file)) await client.query(readFileSync(unit.file, "utf8"));
+      if (unit.file !== forward && unit.file !== claimSeal
+        && !/_(?:function_search_path_pg_temp|tax_calculation_composition|order_money_v2_storage)\.sql$/u.test(unit.file)) {
+        await client.query(readFileSync(unit.file, "utf8"));
+      }
     }
   } finally { client.release(); }
 }, postgresSetupTimeoutMs);
@@ -50,6 +54,16 @@ it.each([true, false])("replays storage constraints and function pins with brows
     if (optionalRoles) await db.query("REVOKE ALL ON TABLE public.tax_calculation_acl_control FROM anon,authenticated,service_role");
     const defaultAcl = (await db.query(otherAcl("public.tax_calculation_acl_control"))).rows;
     await db.query(readFileSync(forward, "utf8"));
+    const projection = async () => (await db.query<{ body: string; acl: string }>(`SELECT
+      pg_get_functiondef(oid) AS body,proacl::text AS acl
+      FROM pg_proc WHERE oid='public.tax_calculation_terminal_v1(public.tax_calculations)'::regprocedure`)).rows[0]!;
+    const previous = await projection();
+    await db.query(readFileSync(claimSeal, "utf8"));
+    expect(await projection()).toStrictEqual({
+      ...previous,
+      body: previous.body.replaceAll("Recover the original evidence through the adapter owner.",
+        "Request a new quote when the tax service is available."),
+    });
     expect((await db.query(otherAcl("public.tax_calculations"))).rows).toStrictEqual(defaultAcl);
     console.info("Managed-image default ACL grantees retained by the replay:", [...new Set(defaultAcl.map(row => row.role))]);
     const fixture = readFileSync(script, "utf8");
@@ -59,12 +73,16 @@ it.each([true, false])("replays storage constraints and function pins with brows
       return results.flatMap(result => result.rows.flatMap((row: Record<string, unknown>) =>
         Object.values(row).filter((value): value is string => typeof value === "string")));
     };
-    if (optionalRoles) for (const routine of ["frame_v1(text,jsonb)", "hash_v1(text,jsonb)", "terminal_v1(public.tax_calculations)"]) {
-      for (const change of ["VOLATILE", "RESET search_path"]) {
+    if (optionalRoles) for (const [routine, volatility] of [
+      ["frame_v1(text,jsonb)", "VOLATILE"], ["hash_v1(text,jsonb)", "VOLATILE"], ["terminal_v1(public.tax_calculations)", "VOLATILE"],
+      ["check_domain_v1(jsonb,jsonb,jsonb,boolean)", "VOLATILE"],
+      ["begin_v1(jsonb)", "STABLE"], ["complete_v1(jsonb)", "STABLE"], ["transition_v1(jsonb,boolean)", "STABLE"],
+    ]) {
+      for (const change of [volatility, "RESET search_path"]) {
         await db.query("SAVEPOINT attributes_mutation");
         await db.query(`ALTER FUNCTION public.tax_calculation_${routine} ${change}`);
         expect((await tap()).filter(line => /^not ok /u.test(line))).toEqual([
-          expect.stringContaining("all six exact routines have the required attribute tuple"),
+          expect.stringContaining("all ten exact routines have the required attribute tuple"),
         ]);
         await db.query("ROLLBACK TO SAVEPOINT attributes_mutation");
       }
@@ -76,7 +94,7 @@ it.each([true, false])("replays storage constraints and function pins with brows
       const { rows } = await db.query(`SELECT rolname, count(*) FILTER (WHERE has_function_privilege(r.oid,p.oid,'execute'))::int AS executable
         FROM pg_proc p CROSS JOIN pg_roles r WHERE p.pronamespace='public'::regnamespace AND p.proname LIKE 'tax_calculation_%'
           AND r.rolname IN ('anon','authenticated','service_role') GROUP BY rolname ORDER BY rolname`);
-      expect(rows).toStrictEqual([{ rolname: "anon", executable: 0 }, { rolname: "authenticated", executable: 0 }, { rolname: "service_role", executable: 2 }]);
+      expect(rows).toStrictEqual([{ rolname: "anon", executable: 0 }, { rolname: "authenticated", executable: 0 }, { rolname: "service_role", executable: 4 }]);
       await db.query("SAVEPOINT acl_mutation");
       await db.query("GRANT SELECT ON public.tax_calculations TO service_role");
       const access = "SELECT has_table_privilege('service_role','public.tax_calculations','SELECT') AS allowed";
@@ -94,7 +112,7 @@ async function assertGrants(runtime: Pool, login: string) {
     ARRAY(SELECT proname::text FROM pg_proc WHERE pronamespace='public'::regnamespace AND proname LIKE 'tax_calculation_%'
       AND has_function_privilege(current_user, oid, 'EXECUTE') ORDER BY proname) AS routines`);
   expect(rows).toStrictEqual([{ login, runtime: login, table_access: false, column_access: false,
-    routines: ["tax_calculation_erase_v1", "tax_calculation_export_v1"] }]);
+    routines: ["tax_calculation_begin_v1", "tax_calculation_complete_v1", "tax_calculation_erase_v1", "tax_calculation_export_v1"] }]);
   const roleAccess = await runtime.query(`SELECT rolname FROM pg_roles WHERE rolname::text=ANY($1)
     AND (has_table_privilege(oid,'public.tax_calculations','SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
       OR has_any_column_privilege(oid,'public.tax_calculations','SELECT,INSERT,UPDATE,REFERENCES'))`,
@@ -104,7 +122,7 @@ async function assertGrants(runtime: Pool, login: string) {
   expect((await runtime.query("SELECT public.tax_calculation_export_v1(gen_random_uuid()) AS result")).rows).toEqual([{ result: [] }]);
 }
 
-it("limits the separate qualified runtime login to the two privacy routines", async () => {
+it("limits the separate qualified runtime login to the two privacy and two evaluation entry points", async () => {
   const native = await resources.installation("tax-grants");
   await assertGrants(native.runtime, "transfer_runtime");
   expect((await native.owner.query(otherAcl("public.tax_calculations"))).rows).toEqual([]);
