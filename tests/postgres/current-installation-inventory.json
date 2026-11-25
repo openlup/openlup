@@ -2,13 +2,17 @@
   "current": {
     "profiles": {
       "legacy": {
-        "count": 209,
-        "exactTailCount": 99,
-        "objectInventorySha256": "a29c2f9b861891d1d2731687d94617452463df531c98a1223a00242be20a066f",
+        "count": 210,
+        "exactTailCount": 100,
+        "objectInventorySha256": "aec9e9abf85e468f3cf6b60a4934859bb6d9971d5a7b1248197d39c8eb3b5f65",
         "tail": [
           {
             "file": "db/platform/migrations/20261127120000_fulfillment_destination_contact_v2.sql",
             "sha256": "441b5d969071cd7d854412eab9c006130bf262df2e6be233218369eaa3aa883c"
+          },
+          {
+            "file": "db/platform/migrations/20261127060000_function_search_path_pin_remaining.sql",
+            "sha256": "b24adae92fb5da6d1a69d5bc963a514a1ce71ee2e7e020747b67d56f3722f833"
           },
           {
             "file": "db/platform/migrations/20261127041000_catalog_price_writer_v2.sql",
@@ -845,13 +849,17 @@
         ]
       },
       "bootstrap": {
-        "count": 215,
-        "exactTailCount": 100,
-        "objectInventorySha256": "160bfbcd8e167c7d4c80161feec002f221a584687066d0a57ce3da035117588f",
+        "count": 216,
+        "exactTailCount": 101,
+        "objectInventorySha256": "c56421a71ee917bee1617fc73ce2e5effa9d0bf26024a27269c7c46fe8b9b053",
         "tail": [
           {
             "file": "db/platform/migrations/20261127120000_fulfillment_destination_contact_v2.sql",
             "sha256": "441b5d969071cd7d854412eab9c006130bf262df2e6be233218369eaa3aa883c"
+          },
+          {
+            "file": "db/platform/migrations/20261127060000_function_search_path_pin_remaining.sql",
+            "sha256": "b24adae92fb5da6d1a69d5bc963a514a1ce71ee2e7e020747b67d56f3722f833"
           },
           {
             "file": "db/platform/migrations/20261127041000_catalog_price_writer_v2.sql",
@@ -1712,13 +1720,17 @@
         ]
       },
       "separate": {
-        "count": 215,
-        "exactTailCount": 100,
-        "objectInventorySha256": "a17e9e02b8e4e49881c0a65a5f2d09a453604451357930d4cc633d65bbb60afa",
+        "count": 216,
+        "exactTailCount": 101,
+        "objectInventorySha256": "a07c9e515b04e5de3df79cd4cfd00b5b89c528f33243468e2d70f7e550ad4334",
         "tail": [
           {
             "file": "db/platform/migrations/20261127120000_fulfillment_destination_contact_v2.sql",
             "sha256": "441b5d969071cd7d854412eab9c006130bf262df2e6be233218369eaa3aa883c"
+          },
+          {
+            "file": "db/platform/migrations/20261127060000_function_search_path_pin_remaining.sql",
+            "sha256": "b24adae92fb5da6d1a69d5bc963a514a1ce71ee2e7e020747b67d56f3722f833"
           },
           {
             "file": "db/platform/migrations/20261127041000_catalog_price_writer_v2.sql",
@@ -2579,13 +2591,17 @@
         ]
       },
       "admin-managed": {
-        "count": 213,
-        "exactTailCount": 99,
-        "objectInventorySha256": "ae088984542d5539728d65c69acd4c43fd188bbe6e849e9cf6b089f116065e82",
+        "count": 214,
+        "exactTailCount": 100,
+        "objectInventorySha256": "35562184c8f1aa9398dbafe1b949fee93dade165ba916395f9d0ea29361bcb74",
         "tail": [
           {
             "file": "db/platform/migrations/20261127120000_fulfillment_destination_contact_v2.sql",
             "sha256": "441b5d969071cd7d854412eab9c006130bf262df2e6be233218369eaa3aa883c"
+          },
+          {
+            "file": "db/platform/migrations/20261127060000_function_search_path_pin_remaining.sql",
+            "sha256": "b24adae92fb5da6d1a69d5bc963a514a1ce71ee2e7e020747b67d56f3722f833"
           },
           {
             "file": "db/platform/migrations/20261127041000_catalog_price_writer_v2.sql",
@@ -3438,13 +3454,17 @@
         ]
       },
       "admin-operator": {
-        "count": 213,
-        "exactTailCount": 99,
-        "objectInventorySha256": "1a8156466e7e34e724578379fdfa46fe63bfe06dbf0f00b87d6dbc7770551c57",
+        "count": 214,
+        "exactTailCount": 100,
+        "objectInventorySha256": "9da11d4d2e6a166de8a59b8282c9d46c636b40655cf1244b9ecf44961cef455a",
         "tail": [
           {
             "file": "db/platform/migrations/20261127120000_fulfillment_destination_contact_v2.sql",
             "sha256": "441b5d969071cd7d854412eab9c006130bf262df2e6be233218369eaa3aa883c"
+          },
+          {
+            "file": "db/platform/migrations/20261127060000_function_search_path_pin_remaining.sql",
+            "sha256": "b24adae92fb5da6d1a69d5bc963a514a1ce71ee2e7e020747b67d56f3722f833"
           },
           {
             "file": "db/platform/migrations/20261127041000_catalog_price_writer_v2.sql",

@@ -2,6 +2,7 @@ import { starterDiagnostic } from './refusals.ts';
 import type { PackageEditMoney, SizedEditPolicy } from '@openlup/platform/subscriptions/contracts';
 import type { SubscriptionOffer } from './subscription-offer.ts';
 import type { Localized, Product } from './config.ts';
+import { isSeedGramSize, seedPhysicalError } from './seed-physical.ts';
 
 /** Values and synthetic subject data belong to this application. */
 export interface SubscriptionEditorConfig {
@@ -61,9 +62,12 @@ export function assertEditorConfig(config: SubscriptionEditorConfig): void {
     || !policy.portionModes.full.mode || !policy.portionModes.reduced.mode
     || !(policy.portionModes.full.factor > policy.portionModes.reduced.factor && policy.portionModes.reduced.factor > 0)
     || !Number.isFinite(policy.portionModes.full.factor)
-    || config.catalogue.some(product => !product.groupKey || !positive(product.physicalSize) || !positive(product.demandPerUnit)
+    || config.catalogue.some(product => !product.groupKey || !positive(product.demandPerUnit)
       || !Number.isSafeInteger(product.stockQuantity) || product.stockQuantity < 0 || product.stockQuantity > 2147483647
       || !Array.isArray(product.exclusions) || product.exclusions.some(key => typeof key !== 'string' || !key))) {
     throw starterDiagnostic('starter_subscription_configuration_invalid');
+  }
+  for (const { physicalSize, sku } of config.catalogue) {
+    if (!isSeedGramSize(physicalSize)) throw seedPhysicalError('OPENLUP_E_STARTER_SYNTHETIC_PHYSICAL_SIZE_INVALID', sku);
   }
 }
