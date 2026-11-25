@@ -277,7 +277,7 @@ jobs:
     if: ${{ always() && needs.install-pack.result == 'success' && github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
     needs: [install-pack]
     runs-on: ubuntu-latest
-    timeout-minutes: 12 # The heaviest group (1,6) takes 6-7 min on hosted runners.
+    timeout-minutes: 12
     permissions:
       contents: read
       actions: read
