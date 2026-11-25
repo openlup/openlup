@@ -40,7 +40,7 @@ import { portalResponder, composePortalCapabilities, composeE4Capabilities } fro
 import { composeExistingCapabilities } from './e-composition.ts';
 import { composeSubscriptionEditors, readEditorSubscriptions } from './subscription-editors.ts';
 import { composeCatalogueStorefront } from './catalogue-storefront.ts';
-import { catalogueFailedJobFilter, catalogueWatchdogPrincipalId, startCatalogueReadinessJobs } from './catalogue-readiness-jobs.ts';
+import { catalogueWatchdogPrincipalId, startCatalogueReadinessJobs } from './catalogue-readiness-jobs.ts';
 
 const nobody = (): VerifiedActor => ({ customerRef: null, operatorRef: null });
 const refused = (code: string) => ({ ok: false as const, code });
@@ -150,8 +150,8 @@ export async function composeNativeBindings(connectionString: string, origin: Or
   } });
   const asCustomer = <T>(principalId: string, work: (db: PgGatewayClient) => Promise<T>) =>
     gateway.asActor({ role: 'authenticated', sub: principalId }, db => work(db as PgGatewayClient));
-  const capabilities = composeExistingCapabilities({ executor: pool, connectionString, publication, asOperator: asCustomer,
-    filterFailedJobs: catalogueFailedJobFilter() });
+  const watchdogEvidence = publication && createPostgresRoleFreeTransactionLane<PgQueryExecutor>({ connectionString }, { pool });
+  const capabilities = composeExistingCapabilities({ executor: pool, connectionString, publication, watchdogEvidence, asOperator: asCustomer });
   const contacts = createPostgresContactClientRegistrar({ connectionString });
   const checkoutRecoveryTokenLane = createPostgresRoleFreeTransactionLane({ connectionString });
   const storefront = composeCatalogueStorefront(createPostgresRoleFreeTransactionLane<PgQueryExecutor>({ connectionString }, { pool }));

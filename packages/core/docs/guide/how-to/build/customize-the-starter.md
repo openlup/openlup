@@ -186,17 +186,21 @@ the promotion claim sweep and watchdog in the background. It continues serving
 requests when either job is unavailable. Allow the initial pair to finish
 before trying Publish.
 
+A fresh marked demo passes Publish readiness when both jobs provide current
+evidence. A price refusal on a retained demo can mask a sweep or watchdog
+refusal. Recheck after repairing the price list.
+
 For an unmarked installation, the owner can register the non-human watchdog
 principal from the installed starter using the authenticated installer
 `psql` connection. Set `configuration` to the owned configuration ID.
 
 ```sh
 configuration=coffee
-principal_id="$(node --input-type=module -e '
+if principal_id="$(node --input-type=module -e '
   import { selectConfiguration } from "./owned/store.config.ts";
   import { catalogueWatchdogPrincipalId } from "./host/catalogue-readiness-jobs.ts";
   process.stdout.write(catalogueWatchdogPrincipalId(selectConfiguration(process.argv[1])));
-' "$configuration")" || exit 1
+' "$configuration")"; then
 psql -X -v ON_ERROR_STOP=1 -v principal_id="$principal_id" <<'SQL'
 BEGIN;
 INSERT INTO public.platform_control_operators (principal_id, active)
@@ -214,6 +218,10 @@ WHERE principal_id=:'principal_id'::uuid AND active
 \gset
 COMMIT;
 SQL
+else
+  printf '%s\n' 'Could not resolve the watchdog principal. Check the configuration ID.' >&2
+  false
+fi
 ```
 
 An inactive principal or a human identity collision stops the recipe. Ask the
@@ -223,18 +231,24 @@ price or promotion owner to reconcile the retained demo data, then rerun the
 installer.
 
 For a Publish refusal at `pricing.readiness`, follow its fix and recheck.
-For `catalog_1490_legacy_1340_invalid`, verify the effective list with the
-pricing owner and review each eligible SKU’s base and subscription prices.
-`promotion_watchdog_not_ready` can include failed job names. Use the
-matching owned ID for `<id>` and your authorized runtime connection for
-`<runtime-url>`.
+Use these steps for the marked demo.
+
+| Reason | Starter step |
+| --- | --- |
+| `bundle_5_policy_invalid` | Run `./lifecycle up` to install the marked demo bundle. Ask the promotion owner to reconcile conflicting retained definitions before rerunning it. |
+| `catalog_1490_legacy_1340_invalid` | Verify the effective list and each eligible SKU’s base and subscription prices with the pricing owner. |
+| `promotion_claim_sweep_not_ready` | Verify `promotion-claim-sweep` is enabled with the `scheduler` driver. Wait for the next scheduled tick on the database-backed host and verify a successful run. |
+| `promotion_watchdog_not_ready` | Verify the starter catalogue watchdog control-plane principal using the recipe above. Repair any failed jobs using the table below and verify a healthy watchdog run. |
+
+For failed job names in `promotion_watchdog_not_ready`, use the matching
+owned ID for `<id>` and your authorized runtime connection for `<runtime-url>`.
 
 | Failed job | Action |
 | --- | --- |
 | `subscription-renewal:<owned-population>` | `./lifecycle renewal --configuration <id> --database-url <runtime-url>` |
 | `subscription-care:<id>` | `./lifecycle care --configuration <id> --database-url <runtime-url>` |
 | `starter-checkout:<id>` | `./lifecycle checkout-recovery --configuration <id> --database-url <runtime-url>` |
-| `promotion-claim-sweep`, `platform-watchdog` | Wait for the next scheduled tick, within five minutes on an active host, or restart the database-backed host to trigger an initial tick. |
+| `promotion-claim-sweep`, `platform-watchdog` | Wait for the next scheduled tick on the database-backed host. A restart starts an initial tick. |
 
 Run an auxiliary job still in use until its latest ledger status is
 `success`. Ask the job owner to identify failures with no reported name or
@@ -244,7 +258,11 @@ For `job_disabled` or `inactive_driver` on the sweep or watchdog, the job owner
 checks ownership and lease state before restoring enablement or assigning
 `scheduler`.
 
-After the repair, wait for the next tick or restart the database-backed host.
+If a restart interrupted a job, the first tick may skip it while the previous
+lease expires. The lease lasts up to five minutes. Look for fresh evidence
+after the next scheduled run.
+
+After the repair, wait for a successful tick.
 Recheck by sending the same approved Publish body and command key while the
 approval, draft and head still match. Sweep evidence must be successful
 within 15 minutes and watchdog evidence must be healthy within six hours.
