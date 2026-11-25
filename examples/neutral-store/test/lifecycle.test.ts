@@ -413,7 +413,7 @@ test('catalogue_apply_reports_and_bounds', async () => {
   const config = selectConfiguration();
   const policy = { revisionId, discountBps: 500, roundingQuantumMinor: 10, roundingRule: 'FLOOR_TO_QUANTUM' };
   const validTarget = { priceListId, currency: config.market.currency, basis: null, policies: [policy], valid: true };
-  let target = validTarget, inGate = false;
+  let target = validTarget, inGate = false, switchListOnPreview = false;
   const commands: unknown[][] = [];
   const previews: unknown[][] = [];
   const trace: string[] = [];
@@ -441,10 +441,17 @@ test('catalogue_apply_reports_and_bounds', async () => {
         if (sql.includes('catalog_price_setup_preview')) {
           trace.push('preview');
           previews.push(values!);
+          if (switchListOnPreview) target = { ...target, priceListId: randomUUID() };
           const readiness = { ready: true, reasons: [] };
           return { rows: [{ result: { outcome: 'preview', variantId, priceListId, inGate, current: null, currentCount: 0,
             subscription: { kind: 'derived', revisionId, discountBps: 500, roundingQuantumMinor: 10, derivedUnitPriceMinor: null },
             readiness, ...(values?.[2] !== null && { proposed: { unitPriceMinor: values?.[2], readiness } }) } }] };
+        }
+        if (sql === 'RESET ROLE') { trace.push('runtime read'); return { rows: [] }; }
+        if (sql.includes('AS "hasPending"')) {
+          assert.deepEqual(values, [variantId, priceListId]);
+          assert.deepEqual(trace.slice(-3), ['asActor', 'preview', 'runtime read']);
+          return { rows: [{ listEffective: target.priceListId === priceListId, hasPending: false }] };
         }
         trace.push('apply');
         commands.push(values!);
@@ -520,7 +527,8 @@ test('catalogue_apply_reports_and_bounds', async () => {
       assert.deepEqual(await price(previewInput, context), { ok: false, code: 'starter_catalogue_d2c_policy_required' });
       assert.equal(trace.includes('asActor'), false);
     }
-    target = { ...validTarget, priceListId: randomUUID() };
+    target = validTarget;
+    switchListOnPreview = true;
     const oldList = await price(previewInput, context);
     assert.ok(oldList.ok && 'value' in oldList);
     assert.deepEqual(previews.at(-1), [variantId, priceListId, null]);

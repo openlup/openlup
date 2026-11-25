@@ -128,7 +128,21 @@ async function cataloguePrice(payload: Record<string, unknown>, context: ActionC
     if ('reason' in priceSetup) return { ...refused(priceSetup.reason), ...(priceSetup.reasons && {
       issues: priceSetup.reasons.map(code => ({ code, path: 'basePrices' })),
     }) };
-    if (input.action === 'price-preview') return success({ listEffective: query.priceListId === priceListId, currency, priceSetup });
+    if (input.action === 'price-preview') {
+      // The actor preview is complete. Use the runtime's existing read grants on this transaction.
+      await db.query('RESET ROLE');
+      const { rows: [state] } = await db.query(`SELECT COALESCE($2::uuid = (
+        SELECT id FROM public.price_lists WHERE status='active' AND valid_from<=statement_timestamp()
+          AND (valid_to IS NULL OR valid_to>statement_timestamp())
+          AND region_code=(SELECT value_text FROM public.commerce_settings WHERE key='settlement_region')
+          AND currency=(SELECT value_text FROM public.commerce_settings WHERE key='settlement_currency')
+        ORDER BY created_at DESC,id DESC LIMIT 1),false) AS "listEffective",
+        EXISTS(SELECT 1 FROM public.price_entries WHERE variant_id=$1 AND price_list_id=$2
+          AND mode='one_time' AND min_qty=1 AND active AND valid_from>=statement_timestamp()
+          AND (valid_to IS NULL OR valid_to>statement_timestamp())) AS "hasPending"`, [query.variantId, query.priceListId]);
+      if (!state) return refused('price_setup_dependency_unavailable');
+      return success({ listEffective: state.listEffective, currency, priceSetup: { ...priceSetup, hasPending: state.hasPending } });
+    }
     if (typeof input.expected?.entryId === 'string' && priceSetup.inGate !== true)
       return refused('starter_catalogue_reprice_requires_active');
     const subscription = priceSetup.subscription;

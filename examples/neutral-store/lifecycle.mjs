@@ -411,7 +411,7 @@ async function catalogueApply(argv) {
     makeStage('activation', activation, null);
     if (!process.stdin.isTTY || !process.stderr.isTTY) deny('OPENLUP_E_CATALOGUE_TERMINAL_REQUIRED', { path: '/terminal' });
     const origin = config.publicOrigin ?? 'http://127.0.0.1:4319';
-    let cookie, expiresAt, operator;
+    let cookie, expiresAt, operator, writeRevisionId;
     async function request(operation, body, key = hash([operation, body]), authenticated = false, sku) {
       const unavailableCodes = ['host_binding_required', 'starter_dependency_unavailable', 'starter_operation_unknown',
         'price_setup_dependency_unavailable', 'store_unavailable'];
@@ -466,15 +466,17 @@ async function catalogueApply(argv) {
       if (!/^starter_session=[A-Za-z0-9_-]{43}$/u.test(cookie ?? '') || !Number.isFinite(expiresAt)) deny(unavailable);
       path = 'price-target';
       const { value } = await request('operator.catalogPublication', { action: 'price-target' }, undefined, true);
+      if (operator && mode === '--reprice' && (operator.actorId !== value.actorId || operator.priceListId !== value.priceListId))
+        deny('starter_catalogue_reprice_review_required');
       if (operator && operator.actorId !== value.actorId) deny('publisher_not_authorized');
-      if (operator && (mode === '--reprice' ? operator.priceListId !== value.priceListId : !same(operator, value)))
-        deny('starter_catalogue_d2c_policy_required');
+      if (operator && mode !== '--reprice' && !same(operator, value)) deny('starter_catalogue_d2c_policy_required');
       operator ??= value;
+      writeRevisionId = value.policy.revisionId;
       path = priorPath;
     }
     async function action(operation, body, key, sku) {
       if (Date.now() >= expiresAt) await signIn();
-      return (await request(operation, body, key, true, sku)).value;
+      return (await request(operation, typeof body === 'function' ? body() : body, key, true, sku)).value;
     }
     const publish = (body, key, sku) => action('operator.catalogPublication', body, key, sku);
     const drafts = (body, key) => action('operator.catalogDrafts', body, key);
@@ -588,14 +590,19 @@ async function catalogueApply(argv) {
       if (subscription?.kind === 'derived' && subscription.revisionId && subscription.derivedUnitPriceMinor > 0)
         return { policyRevisionId: subscription.revisionId, subscriptionUnitPriceMinor: subscription.derivedUnitPriceMinor };
     }
-    async function reviewPublishedPrices() {
+    function hasPending(priceSetup, subject) {
+      if (typeof priceSetup?.hasPending !== 'boolean') deny(unavailable, { subject });
+      return priceSetup.hasPending;
+    }
+    async function reviewPublishedPrices(active) {
       const changes = [];
       for (const sku of skus) {
         const { id: skuId, code } = sku;
         const declared = basePrices[code];
         let reviewed = reviewPreview(await pricePreview(skuId, code), code);
         if (reviewed.currentCount > 1) deny('base_price_ambiguous', { subject: code });
-        if (reviewed.current?.unitPriceMinor !== declared) {
+        if (hasPending(reviewed, code)) deny('starter_catalogue_price_scheduled', { subject: code });
+        if (mode === '--reprice' && reviewed.current?.unitPriceMinor !== declared) {
           const proposed = await pricePreview(skuId, code, declared)
             .catch(error => remapPriceMismatch(error, 'starter_catalogue_price_scheduled', code));
           reviewed = reviewPreview(proposed, code);
@@ -607,7 +614,9 @@ async function catalogueApply(argv) {
         if (unitPriceMinor === declared) {
           const figure = subscriptionFigure(subscription);
           if (!figure) deny('starter_catalogue_derived_price_zero', { subject: code });
-          prices.push({ skuId, entryId, unitPriceMinor, currency, ...figure });
+          const item = { skuId, entryId, unitPriceMinor, currency, ...figure };
+          prices.push(item);
+          if (active) record('price.apply', 'observed', 2, active, [item]);
           continue;
         }
         if (!reviewed.inGate) deny('starter_catalogue_reprice_requires_active', { subject: code });
@@ -625,9 +634,13 @@ async function catalogueApply(argv) {
         deny('OPENLUP_E_CATALOGUE_CONFIRMATION_INVALID');
       for (const { code, skuId, from: expected, to: { unitPriceMinor } } of changes) {
         path = 'basePrices';
-        const result = await publish({ action: 'price-apply', variantId: skuId, priceListId, policyRevisionId: policy.revisionId, unitPriceMinor, expected },
-          hash(['reprice', actorId, priceListId, skuId, unitPriceMinor, expected]), code)
-          .catch(error => remapPriceMismatch(error, 'starter_catalogue_reprice_stale', code));
+        const result = await publish(() => ({ action: 'price-apply', variantId: skuId, priceListId,
+          policyRevisionId: writeRevisionId, unitPriceMinor, expected }),
+        hash(['reprice', actorId, priceListId, skuId, unitPriceMinor, expected]), code).catch(async error => {
+          if (error.finding?.code !== 'expected_state_mismatch') throw error;
+          const { priceSetup } = await pricePreview(skuId, code);
+          remapPriceMismatch(error, hasPending(priceSetup, code) ? 'starter_catalogue_price_scheduled' : 'starter_catalogue_reprice_stale', code);
+        });
         const { current, previous } = result.receipt;
         const item = { skuId, entryId: current.entryId, unitPriceMinor: current.unitPriceMinor, currency: result.currency,
           previous: { entryId: previous.entryId, unitPriceMinor: previous.unitPriceMinor } };
@@ -645,6 +658,7 @@ async function catalogueApply(argv) {
         if (!figure) deny('starter_catalogue_reprice_readback_unverified',
           { path: 'basePrices', subject: code, reason, issues });
         Object.assign(item, figure);
+        writeRevisionId = figure.policyRevisionId;
       }
     }
     async function requireHead(expected) {
@@ -654,8 +668,7 @@ async function catalogueApply(argv) {
     async function verifyPublished(released, active) {
       record('release.publish', 'observed', 1, released);
       record('activation.publish', 'observed', 2, active);
-      const changes = await reviewPublishedPrices();
-      for (const item of prices) record('price.apply', 'observed', 2, active, [item]);
+      const changes = await reviewPublishedPrices(active);
       if (mode === '--reprice') await reprice(changes, active);
       return report();
     }
