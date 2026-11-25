@@ -5132,6 +5132,12 @@ import type { TaxCalculationPortV1, TaxCalculationTransactionLane, TaxCoverageRe
 import type { DestinationPortV2, DestinationServicePinV2, DestinationVerifiedReadV2 } from "./destinations/index.js";
 import type { LimitsReadResult, LimitsTuple } from "./commerceMoneyLimitsV2.js";
 type Begin = Exclude<Parameters<typeof beginTaxCalculation>[1], Uint8Array>;
+type QuoteFrames = {
+    snapshot<T>(value: T, omit?: string): T;
+    invalid(field: string): Refusal;
+    dependency<T>(field: string, work: () => Promise<T>): Promise<T>;
+    infrastructure(field: string, cause: unknown): Error;
+};
 type Pin = NonNullable<Extract<Begin, {
     operation: "claim";
 }>["pin"]>;
@@ -5220,8 +5226,7 @@ export interface DbBackedCommerceQuotePortV2Deps {
 export interface CommerceQuotePortV2 {
     createQuote(context: QuoteOwnerContext, request: CommerceQuoteV2Request): Promise<QuoteOutcome>;
 }
-/** @experimental Construct the native quote port with the same registry the host uses for privacy. */
-export declare function createDbBackedCommerceQuotePortV2(deps: DbBackedCommerceQuotePortV2Deps): CommerceQuotePortV2;
+export declare function createQuote(deps: DbBackedCommerceQuotePortV2Deps, owner: QuoteOwnerContext, admitted: CommerceQuoteV2Request, frames: QuoteFrames): Promise<QuoteOutcome>;
 export {};
 ```
 ## dist/commerce/server/emailRuntime.d.ts
@@ -5646,8 +5651,10 @@ export { CheckoutRecoveryScheduleChangeBlockedError } from "./checkoutRecoveryRe
 export { catalogAdmissionRefusal } from "./catalogAdmissionRefusal.js";
 export { bindCommerceMoneyLimitsV2Reader, describeCommerceMoneyLimitsV2Setting, inspectCommerceMoneyLimitsV2, installCommerceMoneyLimitsV2, } from "./commerceMoneyLimitsV2.js";
 export type { CommerceMoneyLimitsQueryExecutor, CommerceMoneyLimitsV2, InstallLimitsInput, InstallLimitsResult, LimitsInspectionResult, LimitsReadResult, LimitsTuple, } from "./commerceMoneyLimitsV2.js";
-export { createDbBackedCommerceQuotePortV2 } from "./dbBackedCommerceQuotePortV2.js";
+import type { CommerceQuotePortV2, DbBackedCommerceQuotePortV2Deps } from "./dbBackedCommerceQuotePortV2.js";
 export type { CommerceQuotePortV2, CommerceQuoteV2Request, DbBackedCommerceQuotePortV2Deps, QuoteOwnerContext, QuoteOutcome } from "./dbBackedCommerceQuotePortV2.js";
+/** @experimental Construct the native quote port with the same registry the host uses for privacy. */
+export declare function createDbBackedCommerceQuotePortV2(deps: DbBackedCommerceQuotePortV2Deps): CommerceQuotePortV2;
 ```
 ## dist/commerce/server/nativeExpiredCheckoutRecovery.d.ts
 

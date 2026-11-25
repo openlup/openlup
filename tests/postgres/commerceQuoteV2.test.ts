@@ -269,13 +269,20 @@ const takeover = (fixture: Installed) => editOwner("tax_calculations",
 const noDispatch = { kind: "unavailable", code: "tax_adapter_unavailable", effect: "unknown" } as const;
 
 async function mutant(f: Installed, before: string, after: string) {
-  const module = new URL("dbBackedCommerceQuotePortV2.js", import.meta.resolve("@openlup/platform/commerce/server"));
+  const entry = new URL(import.meta.resolve("@openlup/platform/commerce/server"));
+  const module = new URL("dbBackedCommerceQuotePortV2.js", entry);
+  const detach = (source: string, url: URL) => "data:text/javascript," + encodeURIComponent(
+    source.replace(/(from ["'])([^"']+)/gu, (_match, prefix: string, specifier: string) =>
+      prefix + (specifier.startsWith(".") ? new URL(specifier, url).href : import.meta.resolve(specifier))),
+  );
   const installed = readFileSync(module, "utf8");
   expect(installed).toContain(before);
-  const detached = installed.replace(before, after).replace(/(from ")([^"]+)/gu, (_match, prefix: string, specifier: string) =>
-    prefix + (specifier.startsWith(".") ? new URL(specifier, module).href : import.meta.resolve(specifier)));
+  const lazyImport = 'import("./dbBackedCommerceQuotePortV2.js")';
+  const source = readFileSync(entry, "utf8");
+  expect(source).toContain(lazyImport);
+  const detached = detach(source.replace(lazyImport, `import(${JSON.stringify(detach(installed.replace(before, after), module))})`), entry);
   const { createDbBackedCommerceQuotePortV2: factory } = await import(
-    /* @vite-ignore */ "data:text/javascript," + encodeURIComponent(detached),
+    /* @vite-ignore */ detached,
   ) as { createDbBackedCommerceQuotePortV2: typeof createDbBackedCommerceQuotePortV2 };
   return factory({ ...f.deps, readLimits: rail => bindCommerceMoneyLimitsV2Reader(f.deps.runtime, rail)() });
 }

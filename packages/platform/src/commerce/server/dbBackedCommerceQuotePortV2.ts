@@ -6,10 +6,16 @@ import { beginTaxCalculation, completeTaxCalculation, evaluationDigest, makeTaxQ
 import type { TaxCalculationPortV1, TaxCalculationTransactionLane, TaxCoverageRevision } from "../../tax/index.js";
 import type { DestinationContextV2, DestinationPortV2, DestinationServicePinV2, DestinationVerifiedReadV2 } from "./destinations/index.js";
 import type { LimitsReadResult, LimitsTuple } from "./commerceMoneyLimitsV2.js";
-import { destinationRefusal, expired, infrastructure, integrity, missingCoverage, pending, projectAdapterFailure, refused } from "./commerceQuoteV2Refusals.js";
+import { destinationRefusal, expired, integrity, missingCoverage, pending, projectAdapterFailure, refused } from "./commerceQuoteV2Refusals.js";
 
 type Begin = Exclude<Parameters<typeof beginTaxCalculation>[1], Uint8Array>;
 type Complete = Exclude<Parameters<typeof completeTaxCalculation>[1], Uint8Array>;
+type QuoteFrames = {
+  snapshot<T>(value: T, omit?: string): T;
+  invalid(field: string): Refusal;
+  dependency<T>(field: string, work: () => Promise<T>): Promise<T>;
+  infrastructure(field: string, cause: unknown): Error;
+};
 type Claim = Extract<Awaited<ReturnType<typeof beginTaxCalculation>>, { kind: "claimed" }>;
 type Pin = NonNullable<Extract<Begin, { operation: "claim" }>["pin"]>;
 type Composition = NonNullable<Pin["composition"]>;
@@ -74,51 +80,12 @@ const maxMinor = 2_147_483_647;
 const unbound = () => refused("money_limits_unavailable", "/paymentLimits", "Install or select a qualified payment limits tuple.");
 const contactIssue = () => refused("destination_contact_incomplete", "/destination/contact", "Collect the recipient name and phone, then issue a new destination snapshot.");
 const erased = () => refused("destination_evidence_erased", "owner", "Review the privacy disposition through authorized support.");
-const invalid = (field: string) => refused("tax_invalid_input", field, "Supply the documented input.");
 const instant = (value: string) => typeof value === "string" && value.length === 24 && value >= "0001"
   && Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value;
-const digest = (value: string) => value.length === 64 && /^[0-9a-f]+$/u.test(value);
-const jsonText = (value: string) => !value.includes("\u0000") && !/[\uD800-\uDFFF]/u.test(value);
 const tupleKeys = ["installationRef", "channelKey", "methodKey", "providerKey", "accountRef", "mode", "currency"] as const;
 const scopeKeys = ["adapter", "adapterVersion", "accountRef", "mode"] as const;
 const sameScope = (a: TaxInput["scope"], b: TaxInput["scope"]) => scopeKeys.every(key => a[key] === b[key]);
 const coverageTag = { kind: "not_applicable" } as const;
-
-function snapshot<T>(value: T, omit?: string): T {
-  let available = 1_048_576;
-  function charge(text: string) {
-    available -= Buffer.byteLength(text);
-    if (available < 0) throw new TypeError("JSON size");
-  }
-  function copy(input: unknown, depth: number): unknown {
-    if (depth > 48) throw new TypeError("JSON depth");
-    if (input === null || typeof input === "boolean" || (typeof input === "number" && Number.isFinite(input) && !Object.is(input, -0))
-      || (typeof input === "string" && jsonText(input))) {
-      charge(JSON.stringify(input));
-      return input;
-    }
-    if (!input || typeof input !== "object") throw new TypeError("JSON value");
-    const array = Array.isArray(input), prototype: unknown = Object.getPrototypeOf(input);
-    if (array ? prototype !== Array.prototype : prototype !== Object.prototype && prototype !== null) throw new TypeError("JSON prototype");
-    charge("[]");
-    const keys = Reflect.ownKeys(input).filter(key => !(array && key === "length") && !(depth === 0 && key === omit));
-    if (array && keys.length !== input.length) throw new TypeError("JSON array");
-    const entries = keys.map((key, index) => {
-      const descriptor = Object.getOwnPropertyDescriptor(input, key);
-      if (typeof key !== "string" || !jsonText(key) || ["__proto__", "prototype", "constructor"].includes(key)
-        || (array && key !== String(index)) || !descriptor?.enumerable || !("value" in descriptor)) throw new TypeError("JSON property");
-      charge((index === 0 ? "" : ",") + (array ? "" : JSON.stringify(key) + ":"));
-      return [key, copy(descriptor.value, depth + 1)] as const;
-    });
-    return Object.freeze(array ? entries.map(([, item]) => item) : Object.fromEntries(entries));
-  }
-  return copy(value, 0) as T;
-}
-
-async function dependency<T>(field: string, work: () => Promise<T>): Promise<T> {
-  try { return await work(); }
-  catch (cause) { throw infrastructure(field, cause); }
-}
 
 function validateQuote(quote: unknown) {
   const parsed = commerceQuoteV2Schema.safeParse(quote);
@@ -161,7 +128,8 @@ function paymentLimits(read: LimitsReadResult, { rail, bounds, planInput }: Fres
   if (minMinor <= max) return { ...installed, mode: rail.mode, revision: read.revision, effective: { minMinor, maxMinor: max } };
 }
 
-async function freshPin(deps: DbBackedCommerceQuotePortV2Deps, owner: QuoteOwnerContext, request: CommerceQuoteV2Request, ctx: DestinationContextV2) {
+async function freshPin(deps: DbBackedCommerceQuotePortV2Deps, owner: QuoteOwnerContext, request: CommerceQuoteV2Request, ctx: DestinationContextV2,
+  { snapshot, invalid, dependency, infrastructure }: QuoteFrames) {
   const command = await dependency("/destination/snapshot", () => deps.snapshotCommand(owner, request));
   const issued = await dependency("/destination/snapshot", () => deps.destination.snapshot(ctx, command, new Date().toISOString()));
   if ("outcome" in issued) return destinationRefusal(issued);
@@ -235,7 +203,8 @@ async function freshPin(deps: DbBackedCommerceQuotePortV2Deps, owner: QuoteOwner
   }
 }
 
-async function finish(deps: DbBackedCommerceQuotePortV2Deps, context: DestinationContextV2, scope: Pick<Begin, "identity" | "invocation">, claim: Claim): Promise<QuoteOutcome> {
+async function finish(deps: DbBackedCommerceQuotePortV2Deps, context: DestinationContextV2, scope: Pick<Begin, "identity" | "invocation">, claim: Claim,
+  { snapshot, dependency, infrastructure }: QuoteFrames): Promise<QuoteOutcome> {
   const { pin, calculationId, generation, claimToken, dispatchDeadlineMs, cutoffDeadlineMs } = claim;
   const { composition, destination, kind, invocationDigest, requestDigest, documentDigest } = pin;
   if (!composition) return integrity();
@@ -356,35 +325,23 @@ async function finish(deps: DbBackedCommerceQuotePortV2Deps, context: Destinatio
     seal: successSeal as Complete["seal"], ...(adapter ? { adapter } : {}) }));
 }
 
-/** @experimental Construct the native quote port with the same registry the host uses for privacy. */
-export function createDbBackedCommerceQuotePortV2(deps: DbBackedCommerceQuotePortV2Deps): CommerceQuotePortV2 {
-  const registry = deps.privacyRegistry;
-  if (registry?.missingContributors.length !== 0 || !["destination-receipts", "destination-documents", "tax-calculations"]
-    .every(id => registry.contributors.some(contributor => contributor.id === id))) {
-    throw Object.assign(new Error("OPENLUP_E_COMMERCE_QUOTE_V2_PRIVACY"), { code: "OPENLUP_E_COMMERCE_QUOTE_V2_PRIVACY",
-      remedy: "Wire the actual native privacy registry with the required contributors, then reconstruct the quote port." });
-  }
-  if (!Number.isSafeInteger(deps.clockToleranceMs) || deps.clockToleranceMs < 0) throw infrastructure("/clockToleranceMs", new TypeError("Invalid clock tolerance"));
-  if (deps.exclusive?.recovery != null && !digest(deps.exclusive.recovery)) throw infrastructure("/recovery", new TypeError("Invalid recovery qualification"));
-  return { async createQuote(context, request) {
-    let owner: QuoteOwnerContext, admitted: CommerceQuoteV2Request;
-    try { owner = snapshot(context); admitted = snapshot(request); } catch { return invalid("/"); }
-    const { key: evaluationKey, ...invocation } = admitted;
-    if ((invocation.mode === "subscription") !== (invocation.cadence !== undefined)) return invalid("/invocation/cadence");
-    const scope = { identity: { ...owner, evaluationKey }, invocation };
-    const lookup = await beginTaxCalculation(deps.lane, { ...scope, operation: "lookup" });
-    if (lookup.kind !== "missing" && lookup.kind !== "pending") return lookup.kind === "claimed" ? integrity() : outcome(lookup);
-    const ctx: DestinationContextV2 = { clientId: owner.clientId, scopeRef: owner.scopeRef, owner: {
-      installationRef: owner.installationRef, principalKind: "customer", principalRef: owner.principalRef, customerOrSessionRef: owner.clientId,
-    } };
-    const fresh = lookup.kind === "missing" ? await freshPin(deps, owner, admitted, ctx) : undefined;
-    if (fresh && !("pin" in fresh)) return fresh;
-    const recovery = fresh ? fresh.pin.recovery : deps.exclusive?.recovery;
-    if (!fresh && !recovery) return pending();
-    const claim = await beginTaxCalculation(deps.lane, { ...scope, operation: "claim", recovery: recovery ?? null,
-      ...(fresh ? { pin: fresh.pin } : {}) });
-    if (!fresh && claim.kind === "refused" && claim.code === "tax_adapter_unavailable") return pending();
-    if (claim.kind !== "claimed") return outcome(claim);
-    return finish(deps, ctx, scope, claim);
+export async function createQuote(deps: DbBackedCommerceQuotePortV2Deps, owner: QuoteOwnerContext,
+  admitted: CommerceQuoteV2Request, frames: QuoteFrames): Promise<QuoteOutcome> {
+  const { key: evaluationKey, ...invocation } = admitted;
+  if ((invocation.mode === "subscription") !== (invocation.cadence !== undefined)) return frames.invalid("/invocation/cadence");
+  const scope = { identity: { ...owner, evaluationKey }, invocation };
+  const lookup = await beginTaxCalculation(deps.lane, { ...scope, operation: "lookup" });
+  if (lookup.kind !== "missing" && lookup.kind !== "pending") return lookup.kind === "claimed" ? integrity() : outcome(lookup);
+  const ctx: DestinationContextV2 = { clientId: owner.clientId, scopeRef: owner.scopeRef, owner: {
+    installationRef: owner.installationRef, principalKind: "customer", principalRef: owner.principalRef, customerOrSessionRef: owner.clientId,
   } };
+  const fresh = lookup.kind === "missing" ? await freshPin(deps, owner, admitted, ctx, frames) : undefined;
+  if (fresh && !("pin" in fresh)) return fresh;
+  const recovery = fresh ? fresh.pin.recovery : deps.exclusive?.recovery;
+  if (!fresh && !recovery) return pending();
+  const claim = await beginTaxCalculation(deps.lane, { ...scope, operation: "claim", recovery: recovery ?? null,
+    ...(fresh ? { pin: fresh.pin } : {}) });
+  if (!fresh && claim.kind === "refused" && claim.code === "tax_adapter_unavailable") return pending();
+  if (claim.kind !== "claimed") return outcome(claim);
+  return finish(deps, ctx, scope, claim, frames);
 }

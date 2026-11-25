@@ -9,13 +9,6 @@ export const pending = () => refused("tax_claim_pending", "/claim", "Read the or
 export const expired = () => refused("tax_calculation_expired", "/taxEvidence/expiresAt", "Select the destination again and obtain a fresh quote.");
 export const integrity = () => refused("tax_evaluation_integrity_invalid", "/taxEvidence", "Recover the original evaluation from its authoritative owner.");
 
-export function infrastructure(field: string, cause: unknown) {
-  return Object.assign(new Error("commerce_quote_v2_unavailable", { cause }), {
-    code: "commerce_quote_v2_unavailable", field,
-    remedy: "Check the native app binding, driver setup, database connection and TLS, operation-role privileges, and installed migrations. Then retry the same operation.",
-  });
-}
-
 export function destinationRefusal(value: DestinationFailure) {
   const { code, field, fix } = value;
   if (code === "destination_evidence_unavailable" && field === "destination.snapshotRef")

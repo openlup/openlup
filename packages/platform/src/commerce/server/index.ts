@@ -225,6 +225,72 @@ export type {
   LimitsInspectionResult, LimitsReadResult, LimitsTuple,
 } from "./commerceMoneyLimitsV2.js";
 
-export { createDbBackedCommerceQuotePortV2 } from "./dbBackedCommerceQuotePortV2.js";
+import type { CommerceQuotePortV2, CommerceQuoteV2Request, DbBackedCommerceQuotePortV2Deps, QuoteOwnerContext } from "./dbBackedCommerceQuotePortV2.js";
 export type { CommerceQuotePortV2, CommerceQuoteV2Request, DbBackedCommerceQuotePortV2Deps, QuoteOwnerContext,
   QuoteOutcome } from "./dbBackedCommerceQuotePortV2.js";
+
+function infrastructure(field: string, cause: unknown) {
+  return Object.assign(new Error("commerce_quote_v2_unavailable", { cause }), {
+    code: "commerce_quote_v2_unavailable", field,
+    remedy: "Check the native app binding, driver setup, database connection and TLS, operation-role privileges, and installed migrations. Then retry the same operation.",
+  });
+}
+
+const invalid = (field: string) => ({ kind: "refused" as const, code: "tax_invalid_input", field, remedy: "Supply the documented input." });
+const digest = (value: string) => value.length === 64 && /^[0-9a-f]+$/u.test(value);
+const jsonText = (value: string) => !value.includes("\u0000") && !/[\uD800-\uDFFF]/u.test(value);
+
+function snapshot<T>(value: T, omit?: string): T {
+  let available = 1_048_576;
+  function charge(text: string) {
+    available -= Buffer.byteLength(text);
+    if (available < 0) throw new TypeError("JSON size");
+  }
+  function copy(input: unknown, depth: number): unknown {
+    if (depth > 48) throw new TypeError("JSON depth");
+    if (input === null || typeof input === "boolean" || (typeof input === "number" && Number.isFinite(input) && !Object.is(input, -0))
+      || (typeof input === "string" && jsonText(input))) {
+      charge(JSON.stringify(input));
+      return input;
+    }
+    if (!input || typeof input !== "object") throw new TypeError("JSON value");
+    const array = Array.isArray(input), prototype: unknown = Object.getPrototypeOf(input);
+    if (array ? prototype !== Array.prototype : prototype !== Object.prototype && prototype !== null) throw new TypeError("JSON prototype");
+    charge("[]");
+    const keys = Reflect.ownKeys(input).filter(key => !(array && key === "length") && !(depth === 0 && key === omit));
+    if (array && keys.length !== input.length) throw new TypeError("JSON array");
+    const entries = keys.map((key, index) => {
+      const descriptor = Object.getOwnPropertyDescriptor(input, key);
+      if (typeof key !== "string" || !jsonText(key) || ["__proto__", "prototype", "constructor"].includes(key)
+        || (array && key !== String(index)) || !descriptor?.enumerable || !("value" in descriptor)) throw new TypeError("JSON property");
+      charge((index === 0 ? "" : ",") + (array ? "" : JSON.stringify(key) + ":"));
+      return [key, copy(descriptor.value, depth + 1)] as const;
+    });
+    return Object.freeze(array ? entries.map(([, item]) => item) : Object.fromEntries(entries));
+  }
+  return copy(value, 0) as T;
+}
+
+async function dependency<T>(field: string, work: () => Promise<T>): Promise<T> {
+  try { return await work(); }
+  catch (cause) { throw infrastructure(field, cause); }
+}
+
+/** @experimental Construct the native quote port with the same registry the host uses for privacy. */
+export function createDbBackedCommerceQuotePortV2(deps: DbBackedCommerceQuotePortV2Deps): CommerceQuotePortV2 {
+  const registry = deps.privacyRegistry;
+  if (registry?.missingContributors.length !== 0 || !["destination-receipts", "destination-documents", "tax-calculations"]
+    .every(id => registry.contributors.some(contributor => contributor.id === id))) {
+    throw Object.assign(new Error("OPENLUP_E_COMMERCE_QUOTE_V2_PRIVACY"), { code: "OPENLUP_E_COMMERCE_QUOTE_V2_PRIVACY",
+      remedy: "Wire the actual native privacy registry with the required contributors, then reconstruct the quote port." });
+  }
+  if (!Number.isSafeInteger(deps.clockToleranceMs) || deps.clockToleranceMs < 0) throw infrastructure("/clockToleranceMs", new TypeError("Invalid clock tolerance"));
+  if (deps.exclusive?.recovery != null && !digest(deps.exclusive.recovery)) throw infrastructure("/recovery", new TypeError("Invalid recovery qualification"));
+  return { async createQuote(context, request) {
+    // Capture the original invocation before the first asynchronous module load.
+    let owner: QuoteOwnerContext, admitted: CommerceQuoteV2Request;
+    try { owner = snapshot(context); admitted = snapshot(request); } catch { return invalid("/"); }
+    const { createQuote } = await import("./dbBackedCommerceQuotePortV2.js");
+    return createQuote(deps, owner, admitted, { snapshot, invalid, dependency, infrastructure });
+  } };
+}

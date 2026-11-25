@@ -874,7 +874,24 @@ assert.throws(()=>{throw new commerce.CommerceOrderDraftUnsupportedMoneyError("z
 export function proveCommerceServerConsumer(consumer: string): void {
   consumerNode(consumer, `
 import assert from "node:assert/strict";
-import * as server from "@openlup/platform/commerce/server";
+import { registerHooks } from "node:module";
+const quoteModules = new Set();
+registerHooks({ load(url, context, nextLoad) {
+  if (url.includes("/@openlup/platform/dist/tax/") ||
+    url.endsWith("/dbBackedCommerceQuotePortV2.js") || url.endsWith("/commerceQuoteV2Refusals.js")) quoteModules.add(url);
+  return nextLoad(url, context);
+} });
+const server = await import("@openlup/platform/commerce/server");
+assert.deepEqual([...quoteModules], [], "the server entry must leave native quote composition unloaded");
+const quotePort = server.createDbBackedCommerceQuotePortV2({ clockToleranceMs: 0, privacyRegistry: {
+  contributors: ["destination-receipts", "destination-documents", "tax-calculations"].map(id => ({ id })), missingContributors: [],
+} });
+assert.deepEqual([...quoteModules], [], "constructing the quote port must leave composition unloaded");
+const request = { mode: "one_time" };
+const quote = quotePort.createQuote({}, request);
+request.mode = "subscription";
+assert.deepEqual(await quote, { kind: "refused", code: "tax_invalid_input", field: "/", remedy: "Supply the documented input." });
+assert([...quoteModules].some(url => url.endsWith("/tax/index.js")), "first quote must load the tax owner");
 for (const name of ["tryCompensate", "createCommerceRuntimeService", "createPaidOrderOrchestration", "createCommerceCheckoutHandler", "createCheckoutQuoteGuard", "createStarterOfferGuard", "resolveCheckoutOffer"]) assert.equal(typeof server[name], "function");
 for (const name of ["createOrderDraftRpcPayload", "createCommerceOrderDraftRpcPort", "createManagedCommerceRuntimeOrderPort", "createConfiguratorIntentPersistenceRpcPort", "createCommerceCheckoutResumeQueryPort", "createManagedReservationSweepPort", "createCheckoutCompensationRpcAdapter", "createExpiredCheckoutRecoveryPolicy", "quotesMatchForRecovery", "hashCheckoutRecoveryToken", "generateCheckoutRecoveryToken"]) assert.equal(typeof server[name], "function");
 const stockQueries=[];
