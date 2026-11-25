@@ -2262,6 +2262,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/test/checkout-continuation-host.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/test/checkout-recovery-stage.test.ts",
       "class": "public-output"
     },
@@ -30527,6 +30531,10 @@
     },
     {
       "path": "tests/postgres/channelPurchase.conformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/checkoutAbandonmentSafetyGrant.test.ts",
       "class": "public-output"
     },
     {
