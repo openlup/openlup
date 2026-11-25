@@ -315,7 +315,6 @@ const order = [
  * writer/dispatcher. A supplied capture binds expected data; it does not certify
  * that host prerequisite. No user route, role grant or target activation exists.
  * Source and target must use the same current qualified inventory.
- * For owner-stamped drafts the host must obtain the source digest independently.
  */
 export async function restoreConnectedNativeStore(input: {
   owner: Pool;
@@ -333,14 +332,13 @@ export async function restoreConnectedNativeStore(input: {
   const manifest = expectedManifest(installation);
   const shape = connectedStoreSourceShape(profile, input.packet?.compatible?.catalogueId, manifest.objectInventorySha256);
   const packet = copyCapture(input.packet, shape), fresh = copyCapture(input.freshTarget);
-  if (tables(packet).get("commerce_orders")!.rows.some(row => {
-    const { metadata } = JSON.parse(row) as { metadata: unknown };
-    return metadata !== null && typeof metadata === "object" && Object.hasOwn(metadata, "catalogAdmissionOwnerOrigin");
-  }) && (typeof input.trustedSourceCaptureSha256 !== "string" || !/^[0-9a-f]{64}$/u.test(input.trustedSourceCaptureSha256)
-    || input.trustedSourceCaptureSha256 !== packet.sha256)) fail("invalid_input");
+  const source = tables(packet), baseline = tables(fresh);
+  const stampedOrders = new Set(source.get("commerce_orders")!.rows.map(row => JSON.parse(row) as { id: string; metadata: unknown })
+    .filter(({ metadata }) => metadata !== null && typeof metadata === "object" && Object.hasOwn(metadata, "catalogAdmissionOwnerOrigin"))
+    .map(({ id }) => id));
+  if (stampedOrders.size && input.trustedSourceCaptureSha256 !== packet.sha256) fail("invalid_input");
   if (packet.observation.cluster === fresh.observation.cluster
     && packet.observation.database === fresh.observation.database) fail("invalid_input");
-  const source = tables(packet), baseline = tables(fresh);
   try {
     requireDecodedPublication(decodePublicationPacket({
       publications: source.get("catalog_publications")!.rows, skuRevisions: source.get("catalog_sku_revisions")!.rows,
@@ -568,10 +566,10 @@ export async function restoreConnectedNativeStore(input: {
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);
     if (error instanceof PostgresTransferError) throw error;
-    const sql = error as { code?: unknown; message?: unknown } | null;
-    if ((sql?.code === "22023" && ["catalog_acceptance_invalid", "catalog_acceptance_snapshot_mismatch",
-      "catalog_acceptance_receipt_mismatch", "catalog_acceptance_line_mismatch"].some(message => message === sql.message))
-      || (sql?.code === "55000" && sql.message === "catalog_acceptance_immutable")) {
+    const sql = error as { code?: unknown; message?: unknown; constraint?: unknown; detail?: string } | null;
+    const stampedSum = sql?.code === "23514" && sql.message === "commerce_order_line_sum_mismatch"
+      && stampedOrders.has(/^order ([a-f0-9-]{36}) declares /u.exec(sql.detail ?? "")?.[1] ?? "");
+    if (((sql?.code === "22023" || sql?.code === "55000") && sql.constraint === "catalog_owner_origin") || stampedSum) {
       throw Object.assign(new PostgresTransferError("target_conflict"), {
         remedy: "Ask the source installation owner to verify the stamped draft and its companions, then recapture the source and retry on the verified target.",
       });

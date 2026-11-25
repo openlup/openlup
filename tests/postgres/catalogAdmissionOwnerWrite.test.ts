@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { Pool } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 import { draftEffectCounts, draftHandoff, governedCore, ownerDraft, ownerSql, prelockDraft, productPromotion,
@@ -84,9 +85,8 @@ it("refuses forbidden roots, malformed discounts and bad instants before effects
       ...["orderId", "receipt", "nativeFingerprint", "response", "metadata", "token", "destinationId", "paymentStatus", "status"]
         .map(name => ({ ...value, [name]: "override" })),
       changeDiscount({ promotionId: undefined }), changeDiscount({ promotionId: "invalid id" }),
-      changeDiscount({ promotionId: shippingPromotion }), changeDiscount({ appliesTo: "line" }), changeDiscount({ amountOffMinor: 0 }),
+      changeDiscount({ promotionId: shippingPromotion }), changeDiscount({ amountOffMinor: 0 }),
       changeDiscount({ amountOffMinor: 4 }), changeTime(undefined), changeTime("2026-02-31T00:00:00.000Z"),
-      changeTime(new Date(Date.parse(atTime) + 60_000).toISOString()), changeTime(new Date(Date.parse(atTime) - 60_000).toISOString()),
     ]) {
       await db.query("SAVEPOINT before_effect");
       await expect(db.query(ownerSql, [original.key, original.clientId, payload])).rejects.toMatchObject(mismatch);
@@ -100,15 +100,19 @@ it("refuses forbidden roots, malformed discounts and bad instants before effects
   expect(await draftEffectCounts(store.owner)).toEqual(before);
 });
 
-it.each([true, false])("leaves all five allocation columns null without a product discount (shipping discount %s)", async includeShipping => {
+function withoutProductDiscount(includeShipping: boolean): GovernedFixture {
   const authority = fixture.profile.authority!;
-  const current = { original: { ...fixture.original, key: randomUUID() }, profile: { ...fixture.profile,
+  return { original: { ...fixture.original, key: randomUUID() }, profile: { ...fixture.profile,
     authority: { ...authority, async evaluate(input: Parameters<typeof authority.evaluate>[0]) {
       const evaluated = await authority.evaluate(input);
       const discounts = evaluated.result.discounts.filter(row => includeShipping && row.appliesTo === "shipping");
       return { ...evaluated, result: { ...evaluated.result, discounts }, decisions: { ...evaluated.decisions,
         promotions: evaluated.decisions.promotions.filter(row => includeShipping && row.ref === shippingPromotion) } };
     } } } };
+}
+
+it.each([true, false])("leaves all five allocation columns null without a product discount (shipping discount %s)", async includeShipping => {
+  const current = withoutProductDiscount(includeShipping);
   const saved = await ownerDraft(store.owner, current);
   expect((await store.owner.query(`SELECT line_ordinal,source_line_ordinal,catalog_unit_amount_minor,catalog_line_amount_minor,
     promotion_discount_allocated_minor,promotion_allocation_fingerprint FROM public.commerce_order_items WHERE order_id=$1 ORDER BY line_ordinal`,
@@ -119,6 +123,45 @@ it.each([true, false])("leaves all five allocation columns null without a produc
       { kind: "shipping_charge", scope: "shipping", promotion_id: null }]);
   expect((await store.owner.query("SELECT promotion_id FROM public.commerce_promotion_claims WHERE order_id=$1", [saved.id])).rows)
     .toEqual(includeShipping ? [{ promotion_id: shippingPromotion }] : []);
+});
+
+it.each(["lower", "upper"] as const)("refuses a coherent handoff beyond the %s atTime bound", async bound => {
+  const db = await store.owner.connect();
+  try {
+    await db.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+    const current = { ...fixture, original: { ...fixture.original, key: randomUUID() } };
+    await prelockDraft(db, current);
+    const { rows: [times] } = await db.query<{ lower: Date; upper: Date }>(`SELECT
+      date_trunc('milliseconds',transaction_timestamp())-interval '1 millisecond' AS lower,
+      clock_timestamp()+interval '60 seconds' AS upper`);
+    const atTime = times![bound].toISOString();
+    const value = await draftHandoff(db, current, atTime);
+    expect(value.draft.lines.map(line => line.catalogFacts.atTime)).toEqual([atTime, atTime]);
+    await expect(db.query(ownerSql, [current.original.key, current.original.clientId, value])).rejects.toMatchObject(mismatch);
+  } finally {
+    await db.query("ROLLBACK");
+    db.release();
+  }
+});
+
+it("refuses an unsupported discount scope even when payable excludes its amount", async () => {
+  const db = await store.owner.connect();
+  try {
+    await db.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+    const current = withoutProductDiscount(true);
+    await prelockDraft(db, current);
+    const atTime = await sampleDraftTime(db);
+    const unsupported = await draftHandoff(db, current, atTime);
+    const positive = await draftHandoff(db, { ...fixture, original: current.original }, atTime);
+    const discount = { ...positive.draft.discounts.find(row => row.promotionId === productPromotion)!, appliesTo: "line" as const };
+    const discounts = [...unsupported.draft.discounts, discount];
+    unsupported.draft.discounts = unsupported.quoteSnapshot.quote.discounts = discounts;
+    expect(unsupported.draft.totals.discountTotalGross.amountMinor).toBe(0);
+    await expect(db.query(ownerSql, [current.original.key, current.original.clientId, unsupported])).rejects.toMatchObject(mismatch);
+  } finally {
+    await db.query("ROLLBACK");
+    db.release();
+  }
 });
 
 it("blocks stamp and receipt rewrites while admitting one-way invalidation and legacy rows", async () => {
@@ -135,6 +178,54 @@ it("blocks stamp and receipt rewrites while admitting one-way invalidation and l
   const orderId = (await store.owner.query("INSERT INTO public.commerce_orders(status,total_amount_minor,currency_code) VALUES('pending_payment',0,'XTS') RETURNING id")).rows[0]!.id;
   await expect(store.owner.query("UPDATE public.commerce_orders SET metadata=jsonb_build_object('catalogAdmissionOwnerOrigin',null) WHERE id=$1", [orderId]))
     .rejects.toMatchObject(immutable);
+});
+
+it.each(["service_role", "lifecycle_r"] as const)("guards actual owner-origin keys and preserves non-object metadata for %s", async role => {
+  const restricted = role === "lifecycle_r" ? new Pool({ ...store.runtime.options, options: "-c timezone=UTC" }) : undefined;
+  const db = await (restricted ?? store.owner).connect();
+  const marker = "catalogAdmissionOwnerOrigin";
+  const insert = "INSERT INTO public.commerce_orders(status,total_amount_minor,currency_code,metadata) VALUES('pending_payment',0,'XTS',$1::jsonb) RETURNING id";
+  const update = "UPDATE public.commerce_orders SET metadata=$1::jsonb WHERE id=$2";
+  try {
+    await db.query("BEGIN");
+    if (!restricted) await db.query("SET LOCAL ROLE service_role");
+    expect((await db.query(`SELECT current_user,pg_has_role(current_user,'service_role','USAGE') AS runtime,
+      has_function_privilege(current_user,$1,'EXECUTE') AS core,
+      has_function_privilege(current_user,'public.catalog_admission_owner_origin_guard()','EXECUTE') AS guard`, [governedCore])).rows)
+      .toEqual([{ current_user: role, runtime: true, core: false, guard: false }]);
+    const { id } = (await db.query(insert, ["{}"])).rows[0]!;
+    for (const value of [marker, [marker], { schemaVersion: 1 }, 1, null]) {
+      const metadata = JSON.stringify({ [marker]: value });
+      for (const [sql, args] of [[insert, [metadata]], [update, [metadata, id]]] as const) {
+        await db.query("SAVEPOINT owner_marker");
+        await expect(db.query(sql, [...args])).rejects.toMatchObject(immutable);
+        await db.query("ROLLBACK TO SAVEPOINT owner_marker");
+        await db.query("RELEASE SAVEPOINT owner_marker");
+      }
+    }
+    for (const value of [marker, [marker], 1, null]) {
+      const metadata = JSON.stringify(value);
+      await expect(db.query(insert, [metadata])).resolves.toMatchObject({ rowCount: 1 });
+      await expect(db.query(update, [metadata, id])).resolves.toMatchObject({ rowCount: 1 });
+    }
+    await db.query("SET CONSTRAINTS ALL IMMEDIATE");
+  } finally {
+    await db.query("ROLLBACK");
+    db.release();
+    await restricted?.end();
+  }
+});
+
+it("refuses an item insert on a stamped order immediately", async () => {
+  const db = await store.runtime.connect();
+  try {
+    await db.query("BEGIN");
+    await expect(db.query(`INSERT INTO public.commerce_order_items(order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor)
+      VALUES($1,$2,91,1,1,1)`, [order.id, fixture.profile.skuIds[1]])).rejects.toMatchObject(immutable);
+  } finally {
+    await db.query("ROLLBACK");
+    db.release();
+  }
 });
 
 it("admits a sample in the BEGIN millisecond without accepting an older sample", async () => {
@@ -202,6 +293,65 @@ it("uses the sampled half-open boundary for the quote and the SQL price verifier
   } finally {
     await owner.query("DELETE FROM public.price_entries WHERE id=$1", [starting]);
     await owner.query("UPDATE public.price_entries SET valid_to=NULL WHERE id=$1", [ending]);
+  }
+});
+
+it("passes the sampled instant into the derived-price verifier", async () => {
+  const current = { ...fixture, original: { ...fixture.original, key: randomUUID() } };
+  const { rows: [policy] } = await store.owner.query<{ id: string; effective_from: Date }>(`WITH revision AS (
+    SELECT gen_random_uuid() AS id,date_trunc('milliseconds',clock_timestamp())+interval '2 seconds' AS starts
+  )
+  INSERT INTO public.subscription_price_policy_revisions
+    (id,price_list_id,region_code,currency,channel,revision_no,discount_bps,rounding_quantum_minor,rounding_rule,effective_from,digest)
+  SELECT r.id,l.id,l.region_code,l.currency,'D2C',1,2000,1,'FLOOR_TO_QUANTUM',r.starts,
+    public.catalog_price_setup_policy_digest(r.id,1,l.id,l.region_code,l.currency,'D2C',r.starts,NULL,2000,1,'FLOOR_TO_QUANTUM')
+  FROM revision r JOIN public.price_lists l ON l.id=$1 RETURNING id,effective_from`, [current.profile.priceListId]);
+  const boundary = policy!.effective_from;
+  const db = await store.owner.connect();
+  try {
+    await db.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+    await prelockDraft(db, current);
+    expect((await db.query("SELECT transaction_timestamp()<$1::timestamptz AS before", [boundary])).rows[0]!.before).toBe(true);
+    await expect(draftHandoff(db, current, new Date(+boundary - 1).toISOString()))
+      .rejects.toMatchObject({ message: "subscription_price_policy_not_effective" });
+    await db.query("SELECT pg_sleep(greatest(0,extract(epoch FROM $1::timestamptz-clock_timestamp())))", [boundary]);
+    const atTime = await sampleDraftTime(db), currentQuote = await draftHandoff(db, current, atTime);
+    expect(+new Date(atTime)).toBeGreaterThanOrEqual(+boundary);
+    expect(currentQuote.draft.lines.map(line => line.catalogFacts)).toEqual([0, 1].map(() => expect.objectContaining({
+      version: "catalog_facts_v2", policyRevisionId: policy!.id, resolvedUnitAmountMinor: 1192, atTime,
+    })));
+    const { rows } = await db.query(ownerSql, [current.original.key, current.original.clientId, currentQuote]);
+    const id = String(rows[0]!.result.orderDraft.orderId).slice(6);
+    expect((await db.query("SELECT created_at,total_amount_minor::integer AS amount FROM public.commerce_orders WHERE id=$1", [id])).rows)
+      .toEqual([{ created_at: new Date(atTime), amount: currentQuote.submit.reviewedPayable.amountMinor }]);
+  } finally {
+    await db.query("ROLLBACK");
+    db.release();
+  }
+});
+
+it("rejects late adjustment inserts and claim money changes at ordinary COMMIT", async () => {
+  const { rows: [definition] } = await store.owner.query(`INSERT INTO public.commerce_promotion_definitions(promotion_id,definition,active)
+    SELECT 'example:late',jsonb_set(definition,'{id}','"example:late"'),active
+    FROM public.commerce_promotion_definitions WHERE promotion_id=$1 RETURNING definition_fingerprint`, [productPromotion]);
+  const db = await store.runtime.connect();
+  try {
+    for (const [sql, values] of [
+      [`INSERT INTO public.commerce_order_adjustments(order_id,kind,scope,amount_minor,promotion_id,definition_fingerprint)
+        VALUES($1,'promotion_discount','order_total',1,'example:late',$2)`, [order.id, definition!.definition_fingerprint]],
+      ["UPDATE public.commerce_promotion_claims SET amount_off_minor=amount_off_minor+1 WHERE order_id=$1 AND promotion_id=$2", [order.id, productPromotion]],
+    ] as const) {
+      await db.query("BEGIN");
+      expect((await db.query(sql, [...values])).rowCount).toBe(1);
+      await expect(db.query("COMMIT")).rejects.toMatchObject({ code: "22023", message: "catalog_acceptance_line_mismatch" });
+    }
+    expect((await db.query("SELECT count(*)::integer AS extras FROM public.commerce_order_adjustments WHERE promotion_id='example:late'")).rows)
+      .toEqual([{ extras: 0 }]);
+    expect((await db.query("SELECT amount_off_minor::integer AS amount FROM public.commerce_promotion_claims WHERE order_id=$1 AND promotion_id=$2",
+      [order.id, productPromotion])).rows).toEqual([{ amount: 3 }]);
+  } finally {
+    await db.query("ROLLBACK");
+    db.release();
   }
 });
 

@@ -9618,6 +9618,28 @@
             "name": "commerce_order_draft_receipts_catalog_owner_origin_guard",
             "table": "public.commerce_order_draft_receipts",
             "sha256": "8eb17ef494b6c6dd56a000b9cf0b5b16cacb2377294ff35ea2ea6aa7c8ab4b57"
+          },
+          {
+            "name": "commerce_order_adjustments_catalog_final",
+            "relation": "public.commerce_order_adjustments",
+            "events": [
+              "INSERT"
+            ],
+            "function": "public.catalog_order_receipt_acceptance_trigger()",
+            "deferred": true,
+            "sha256": "eb8680890746ccc196e4a71042f508d5c221c5ed904339ec7cbb1cfff47d53f1"
+          },
+          {
+            "name": "commerce_promotion_claims_catalog_final",
+            "relation": "public.commerce_promotion_claims",
+            "events": [
+              "INSERT",
+              "UPDATE",
+              "DELETE"
+            ],
+            "function": "public.catalog_order_receipt_acceptance_trigger()",
+            "deferred": true,
+            "sha256": "a0f8798091510ff967303784423c51749b272d9b291b05b16b1423dffc9f49f8"
           }
         ]
       }
@@ -13865,12 +13887,12 @@
     },
     {
       "path": "db/platform/migrations/20261128220000_catalog_governed_draft_owner.sql",
-      "sha256": "027965748d91681fab00651bf2b4b2e388be3758717ef7c61b45f4476278d6fe",
+      "sha256": "8bc905cf73d6c5211a4edced7b231f41cdfb929fc5aedf9a4fed3240e9ced1c6",
       "functions": [
         {
           "signature": "public.catalog_order_acceptance_final(uuid)",
           "beforeSha256": "c935a9194cb0588d9646606329a9b4653a22b9587cfc3f20bacc760c2c6eb822",
-          "afterSha256": "5e481caaa55ba4f186260c15aadb13a43cd382d1e146c2852b0ec47033ef1d1f"
+          "afterSha256": "5bcb7ed3ada97ccc2c9b765fd4a0f7002a1616e2faa993abf2a36e93dec6aa05"
         },
         {
           "signature": "public.catalog_admission_governed_companions(jsonb,jsonb)",
@@ -13880,7 +13902,7 @@
         {
           "signature": "public.catalog_admission_owner_origin_guard()",
           "beforeSha256": null,
-          "afterSha256": "17bc91168d4106c098ab84c970235eef650b0c36f6559e1e86dfa8d041d2ebfa"
+          "afterSha256": "520ab9a64818403cf36b5a8c80be721e8efb207c1cb53485b5876dfb95c3ee58"
         },
         {
           "signature": "public.catalog_admission_write_governed_draft(text,uuid,jsonb)",

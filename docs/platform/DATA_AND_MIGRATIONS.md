@@ -1212,17 +1212,11 @@ If a retained-store packet has an unknown or mismatched inventory, the remedy is
 `capture the source and restore it with the same OpenLup version on a pristine target of the same profile; upgrade the source within its installed profile first if it is older`.
 If no such target can be provisioned, connected-store restore is unavailable for that pair.
 
-For captures that contain an owner-stamped catalogue draft, obtain the capture
-digest independently from the source installation owner and supply it as
-`trustedSourceCaptureSha256`. Restore checks custody before connecting to the
-target, including on repeat. The stamp records an atomic write by the trusted
-store runtime with the same isolation boundary as legacy native writes.
-Deferred checks compare retained items, adjustments, claims and the reverse
-receipt against the saved draft without re-evaluating current price windows.
-If final validation refuses the graph, ask the source installation owner
-to verify the stamped draft and its companions, then recapture the source
-and retry on the verified target. For an outside-profile target relation with
-data, provision a pristine target of the same profile.
+For stamped drafts, obtain `trustedSourceCaptureSha256` independently from the
+source owner, including on repeat. Custody precedes the target connection. The
+stamp trusts the runtime as on legacy drafts. If frozen companion checks fail,
+ask the source owner to verify the graph, recapture the source and retry.
+For outside-profile data, provision a pristine target of the same profile.
 
 `absorptionCensusTables` may list qualified `public.<table>` names with unquoted
 lowercase ASCII identifiers for new

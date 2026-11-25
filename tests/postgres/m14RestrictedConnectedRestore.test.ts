@@ -367,6 +367,21 @@ for (const outside of ["grantor", "member"] as const) {
   }, postgresSetupTimeoutMs);
 }
 
+restoreTest("refuses populated outside-profile relations before the dirty-target check", async () => {
+  const [source, target] = await installRestrictedRestorePair("neon", "installer-managed", "outside-source", "outside-target");
+  try {
+    const packet = await captureRestrictedStore(source, "outside-source");
+    const freshTarget = await captureRestrictedStore(target, "outside-pristine");
+    await target.owner.query(`WITH buyer AS (INSERT INTO public.clients(email) VALUES('outside@example.invalid') RETURNING id)
+      INSERT INTO public.customer_identity_challenges(client_id,principal_id,email_fingerprint,token_hash,expires_at)
+      SELECT id,gen_random_uuid(),repeat('a',64),repeat('b',64),clock_timestamp()+interval '1 hour' FROM buyer`);
+    await expect(restoreConnectedNativeStore({ owner: target.owner, installation: target.selection, packet, freshTarget }))
+      .rejects.toMatchObject({ code: "unsupported_table", table: "public.customer_identity_challenges" });
+  } finally {
+    await Promise.all([source, target].map(store => closePostgres(store.container, store.pools)));
+  }
+}, postgresSetupTimeoutMs);
+
 restoreTest("requires source custody and validates the retained governed graph before committing", async () => {
   const [source, target] = await installRestrictedRestorePair("neon", "installer-managed", "governed-source", "governed-target");
   try {
@@ -395,6 +410,8 @@ restoreTest("requires source custody and validates the retained governed graph b
           'catalog_admission_write_governed_draft','catalog_admission_runtime_checkout') ORDER BY proname`)).rows,
     });
     const installed = await targetFacts();
+    const remedy = "Ask the source installation owner to verify the stamped draft and its companions, then recapture the source and retry on the verified target.";
+    const stampedConflict = { code: "target_conflict", name: "PostgresTransferError", message: "postgres_transfer_target_conflict", remedy };
     const noConnect = { async connect() { throw new Error("Target connection was attempted"); } } as unknown as Pool;
     const rehashed = rehash({ ...packet, observation: { ...packet.observation, snapshot: "changed" } });
     for (const trustedSourceCaptureSha256 of [undefined, sourceCustody, "A".repeat(64)]) {
@@ -458,6 +475,61 @@ restoreTest("requires source custody and validates the retained governed graph b
     try { await expect(restoreConnectedNativeStore(input)).rejects.toMatchObject({ code: "schema_conflict" }); }
     finally { await root.query("UPDATE public.platform_schema_migrations SET sha256=$1 WHERE position=0", [installed.ledger[0]!.sha256]); }
 
+    const changeOrder = (stamped: boolean, edit: (row: Record<string, unknown>) => void) => {
+      const changed = structuredClone(packet);
+      const orders = changed.compatible.tables.find(table => table.table === "commerce_orders")!.rows;
+      const index = orders.findIndex(row => (JSON.parse(row).id === governed.id) === stamped);
+      const row = JSON.parse(orders[index]!);
+      edit(row);
+      orders[index] = JSON.stringify(row);
+      return changed;
+    };
+    const acceptance = JSON.parse(packet.compatible.tables.find(table => table.table === "commerce_orders")!.rows
+      .find(row => JSON.parse(row).id === governed.id)!).catalog_acceptance;
+    const legacyError = await checkedRestore(changeOrder(false, row => { row.catalog_acceptance = acceptance; })).catch((error: unknown) => error);
+    expect(legacyError).toMatchObject({ code: "target_conflict", cause: {
+      outcome: "validation_issue", reason: "catalog_acceptance_receipt_mismatch",
+      message: "Supply the persisted draft receipt for this order and retry with its original key.",
+    } });
+    expect(legacyError).not.toHaveProperty("remedy");
+
+    for (const candidate of [
+      changeOrder(false, row => { row.metadata = { catalogAdmissionOwnerOrigin: { schemaVersion: 1 } }; }),
+      changeOrder(true, row => { row.catalog_acceptance = null; }),
+      changeOrder(true, row => { delete (row.metadata as Record<string, unknown>).catalogAdmissionSubmit; }),
+    ]) {
+      await expect(checkedRestore(candidate)).rejects.toMatchObject(stampedConflict);
+      expect(await draftEffectCounts(target.owner)).toEqual(before);
+    }
+    const sums: Array<{ code: unknown; message: unknown }> = [];
+    const sumTarget = { async connect() {
+      const client = await target.owner.connect();
+      return {
+        async query(sql: string | QueryConfig, values?: unknown[]) {
+          try { return typeof sql === "string" ? await client.query(sql, values) : await client.query(sql); }
+          catch (error) {
+            if (sql === "SET CONSTRAINTS ALL IMMEDIATE" && error instanceof Error && "code" in error) {
+              sums.push({ code: error.code, message: error.message });
+            }
+            throw error;
+          }
+        },
+        release: (destroy?: boolean) => client.release(destroy),
+      };
+    } } as unknown as Pool;
+    const badSum = rehash(changeOrder(true, row => { row.total_amount_minor = Number(row.total_amount_minor) + 1; }));
+    await expect(restoreConnectedNativeStore({ ...input, owner: sumTarget, packet: badSum, trustedSourceCaptureSha256: badSum.sha256 }))
+      .rejects.toMatchObject(stampedConflict);
+    expect(sums).toEqual([{ code: "23514", message: "commerce_order_line_sum_mismatch" }]);
+    expect(await draftEffectCounts(target.owner)).toEqual(before);
+    for (const name of ["commerce_order_draft_receipts", "commerce_order_items"] as const) {
+      const incomplete = structuredClone(packet);
+      const table = [...incomplete.owned, ...incomplete.compatible.tables].find(table => table.table === name)!;
+      table.rows.splice(0);
+      await expect(checkedRestore(incomplete)).rejects.toMatchObject(stampedConflict);
+      expect(await draftEffectCounts(target.owner)).toEqual(before);
+    }
+
     // Only this source fixture can record a damaged reverse receipt. Re-enable
     // both definitions before capture so the target sees the installed graph.
     const mutation = await source.owner.connect();
@@ -475,9 +547,8 @@ restoreTest("requires source custody and validates the retained governed graph b
     }
     const damaged = await captureRestrictedStore(source, "governed-damaged");
     const damagedSourceCustody = damaged.sha256;
-    const remedy = "Ask the source installation owner to verify the stamped draft and its companions, then recapture the source and retry on the verified target.";
     await expect(restoreConnectedNativeStore({ ...input, packet: damaged, trustedSourceCaptureSha256: damagedSourceCustody }))
-      .rejects.toMatchObject({ code: "target_conflict", name: "PostgresTransferError", message: "postgres_transfer_target_conflict", remedy });
+      .rejects.toMatchObject(stampedConflict);
     expect(await draftEffectCounts(target.owner)).toEqual(before);
     expect(await targetFacts()).toEqual(installed);
 

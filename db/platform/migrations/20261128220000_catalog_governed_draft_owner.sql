@@ -48,9 +48,10 @@ BEGIN
  owned:=pg_catalog.pg_has_role(current_user,(SELECT relowner FROM pg_catalog.pg_class WHERE oid=TG_RELID),'USAGE');
  IF TG_TABLE_NAME='commerce_orders' THEN
   IF TG_OP='INSERT' THEN
-   IF owned OR NOT NEW.metadata ? 'catalogAdmissionOwnerOrigin' THEN RETURN NEW; END IF;
+   IF NEW.metadata->'catalogAdmissionOwnerOrigin' IS NULL OR
+    (owned AND jsonb_typeof(NEW.catalog_acceptance)='object' AND jsonb_typeof(NEW.metadata->'catalogAdmissionSubmit')='object') THEN RETURN NEW; END IF;
   ELSIF TG_OP='UPDATE' THEN
-   IF NOT OLD.metadata ? 'catalogAdmissionOwnerOrigin' AND NOT NEW.metadata ? 'catalogAdmissionOwnerOrigin' THEN RETURN NEW; END IF;
+   IF OLD.metadata->'catalogAdmissionOwnerOrigin' IS NULL AND NEW.metadata->'catalogAdmissionOwnerOrigin' IS NULL THEN RETURN NEW; END IF;
    IF (OLD.id,OLD.client_id,OLD.currency_code,OLD.total_amount_minor,OLD.created_at,OLD.catalog_acceptance,
        OLD.catalog_receipt_key,OLD.catalog_basket,OLD.renewal_operation_id,OLD.renewal_operation_fingerprint,OLD.subscription_cycle_id,
        OLD.metadata->'catalogAdmissionOwnerOrigin',OLD.metadata->'catalogAdmissionSubmit',OLD.metadata->'quoteSnapshot',OLD.metadata->'orderDraftSnapshot')
@@ -58,12 +59,12 @@ BEGIN
       (NEW.id,NEW.client_id,NEW.currency_code,NEW.total_amount_minor,NEW.created_at,NEW.catalog_acceptance,
        NEW.catalog_receipt_key,NEW.catalog_basket,NEW.renewal_operation_id,NEW.renewal_operation_fingerprint,NEW.subscription_cycle_id,
        NEW.metadata->'catalogAdmissionOwnerOrigin',NEW.metadata->'catalogAdmissionSubmit',NEW.metadata->'quoteSnapshot',NEW.metadata->'orderDraftSnapshot') THEN RETURN NEW; END IF;
-  ELSIF NOT OLD.metadata ? 'catalogAdmissionOwnerOrigin' THEN RETURN OLD; END IF;
+  ELSIF OLD.metadata->'catalogAdmissionOwnerOrigin' IS NULL THEN RETURN OLD; END IF;
  ELSE
   IF TG_OP<>'INSERT' THEN previous:=OLD.order_id; END IF;
   IF TG_OP<>'DELETE' THEN upcoming:=NEW.order_id; END IF;
   IF NOT EXISTS (SELECT 1 FROM public.commerce_orders WHERE id IN (previous,upcoming)
-   AND metadata ? 'catalogAdmissionOwnerOrigin') OR (TG_OP='INSERT' AND owned) THEN
+   AND metadata->'catalogAdmissionOwnerOrigin' IS NOT NULL) OR (TG_OP='INSERT' AND owned) THEN
    IF TG_OP='DELETE' THEN RETURN OLD; END IF;
    RETURN NEW;
   END IF;
@@ -74,7 +75,7 @@ BEGIN
    THEN RETURN NEW; END IF;
   END IF;
  END IF;
- RAISE EXCEPTION 'catalog_acceptance_immutable' USING ERRCODE='55000',
+ RAISE EXCEPTION 'catalog_acceptance_immutable' USING ERRCODE='55000', CONSTRAINT='catalog_owner_origin',
   HINT='Replay the owner command with its original acceptance and evidence.';
 END;
 $$;
@@ -83,6 +84,8 @@ REVOKE ALL ON FUNCTION public.catalog_admission_owner_origin_guard() FROM PUBLIC
 CREATE TRIGGER commerce_orders_catalog_owner_origin_guard BEFORE INSERT OR UPDATE OR DELETE ON public.commerce_orders FOR EACH ROW EXECUTE FUNCTION public.catalog_admission_owner_origin_guard();
 CREATE TRIGGER commerce_order_items_catalog_owner_origin_guard BEFORE INSERT OR UPDATE OR DELETE ON public.commerce_order_items FOR EACH ROW EXECUTE FUNCTION public.catalog_admission_owner_origin_guard();
 CREATE TRIGGER commerce_order_draft_receipts_catalog_owner_origin_guard BEFORE INSERT OR UPDATE OR DELETE ON public.commerce_order_draft_receipts FOR EACH ROW EXECUTE FUNCTION public.catalog_admission_owner_origin_guard();
+CREATE CONSTRAINT TRIGGER commerce_order_adjustments_catalog_final AFTER INSERT ON public.commerce_order_adjustments DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_order_receipt_acceptance_trigger();
+CREATE CONSTRAINT TRIGGER commerce_promotion_claims_catalog_final AFTER INSERT OR UPDATE OR DELETE ON public.commerce_promotion_claims DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_order_receipt_acceptance_trigger();
 
 CREATE OR REPLACE FUNCTION public.catalog_order_acceptance_final(p_order_id uuid) RETURNS void
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public, pg_temp AS $$
@@ -104,14 +107,14 @@ BEGIN
    OR draft#>'{totals,totalGross}' IS DISTINCT FROM snapshot#>'{quote,totalGross}'
    OR (draft->'context',draft->'lines',draft->'discounts') IS DISTINCT FROM
       (snapshot#>'{quote,context}',snapshot#>'{quote,lines}',snapshot#>'{quote,discounts}')
-  THEN RAISE EXCEPTION 'catalog_acceptance_snapshot_mismatch' USING ERRCODE='22023',
+  THEN RAISE EXCEPTION 'catalog_acceptance_snapshot_mismatch' USING ERRCODE='22023', CONSTRAINT='catalog_owner_origin',
     HINT='Use the original acceptance and its frozen snapshot.'; END IF;
   IF NOT EXISTS (SELECT 1 FROM public.commerce_order_draft_receipts r WHERE r.order_id=p_order_id
    AND r.idempotency_key=target.catalog_receipt_key AND r.request_fingerprint=fingerprint
    AND r.response_payload=jsonb_build_object('contractVersion','commerce.v0','orderDraft',
      jsonb_build_object('orderId','order_'||p_order_id::text,'status','draft','paymentStatus','not_started',
        'idempotencyKey',target.catalog_receipt_key,'quoteSnapshot',snapshot,'replayed',false)))
-  THEN RAISE EXCEPTION 'catalog_acceptance_receipt_mismatch' USING ERRCODE='22023',
+  THEN RAISE EXCEPTION 'catalog_acceptance_receipt_mismatch' USING ERRCODE='22023', CONSTRAINT='catalog_owner_origin',
     HINT='Supply the persisted draft receipt for this order and retry with its original key.'; END IF;
   IF EXISTS (
    WITH expected AS MATERIALIZED (
@@ -133,10 +136,9 @@ BEGIN
    SELECT 1 FROM (SELECT * FROM actual_adjustments WHERE promotion_id IS NOT NULL) a FULL JOIN claims c ON a.id=c.adjustment_id
    WHERE (a.promotion_id,a.definition_fingerprint,a.amount_minor,target.client_id)
      IS DISTINCT FROM (c.promotion_id,c.definition_fingerprint,c.amount_off_minor,c.client_id)
-  ) THEN RAISE EXCEPTION 'catalog_acceptance_line_mismatch' USING ERRCODE='22023',
+  ) THEN RAISE EXCEPTION 'catalog_acceptance_line_mismatch' USING ERRCODE='22023', CONSTRAINT='catalog_owner_origin',
    HINT='Reconcile the accepted SKU revisions and quantities with the authoritative basket before retrying.'; END IF;
- END IF;
- IF submit IS NOT NULL AND NOT EXISTS (
+ ELSIF submit IS NOT NULL AND NOT EXISTS (
   SELECT 1 FROM public.commerce_order_draft_receipts r WHERE r.order_id=p_order_id
    AND public.catalog_admission_submit_valid(submit,target.client_id,r.idempotency_key)
    AND r.response_payload#>>'{orderDraft,idempotencyKey}'=r.idempotency_key
@@ -163,8 +165,7 @@ BEGIN
   RAISE EXCEPTION 'catalog_acceptance_line_mismatch' USING ERRCODE='22023',
    HINT='Reconcile the accepted SKU revisions and quantities with the authoritative basket before retrying.'; END IF;
  IF target.catalog_acceptance ? 'admission' AND (
-  NOT public.catalog_acceptance_roster_valid_v2(target.catalog_acceptance,basket)
-  OR EXISTS (
+  EXISTS (
    WITH expected AS (
     SELECT (line->>'sourceOrdinal')::integer coordinate,(line->>'skuId')::uuid sku_id,(line->>'quantity')::integer quantity
     FROM jsonb_array_elements(target.catalog_acceptance#>'{admission,lineBindings}') line
