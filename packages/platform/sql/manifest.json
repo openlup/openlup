@@ -840,11 +840,27 @@
         "sha256": "b24adae92fb5da6d1a69d5bc963a514a1ce71ee2e7e020747b67d56f3722f833"
       },
       {
-        "file": "db/platform/migrations/20261127090000_commerce_money_limits_v2.sql",
+        "file": "db/platform/migrations/20261127120000_fulfillment_destination_contact_v2.sql",
+        "sha256": "441b5d969071cd7d854412eab9c006130bf262df2e6be233218369eaa3aa883c"
+      },
+      {
+        "file": "db/platform/migrations/20261127120001_catalog_runtime_checkout_prelock.sql",
+        "sha256": "cc2927bfd2dec5f9a1df9da880458eb26d5733858652c12be52c47e7716d9143"
+      },
+      {
+        "file": "db/platform/migrations/20261127120002_identity_privacy_erasure_reconciliations.sql",
+        "sha256": "c608c9f9ad0b06fde6239c3efad21e9b97c827653aa85855c1b265d691110efa"
+      },
+      {
+        "file": "db/platform/migrations/20261127120003_tax_calculation_composition.sql",
+        "sha256": "9aaf9b6dba3e05dbdfc85bda6b020079044d2c68ff21259255f221ecf950f150"
+      },
+      {
+        "file": "db/platform/migrations/20261127120004_commerce_money_limits_v2.sql",
         "sha256": "8bd6651c07dd37457ccc548adedc2ae073b7be5973c7de8facddd65b776c8ce5"
       }
     ],
-    "objectInventorySha256": "74f02136b854aee595d90f35bd7f58437f6f0e893acbdb000463c8e18b7d875b",
+    "objectInventorySha256": "5426ac0088398098cca3c79ca2057e9f565bcb55fd19d92dfc1e97ede06ab627",
     "qualified": {
       "baseline": {
         "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1708,16 +1724,32 @@
           "sha256": "b24adae92fb5da6d1a69d5bc963a514a1ce71ee2e7e020747b67d56f3722f833"
         },
         {
-          "file": "db/platform/migrations/20261127090000_commerce_money_limits_v2.sql",
+          "file": "db/platform/migrations/20261127120000_fulfillment_destination_contact_v2.sql",
+          "sha256": "441b5d969071cd7d854412eab9c006130bf262df2e6be233218369eaa3aa883c"
+        },
+        {
+          "file": "db/platform/migrations/20261127120001_catalog_runtime_checkout_prelock.sql",
+          "sha256": "cc2927bfd2dec5f9a1df9da880458eb26d5733858652c12be52c47e7716d9143"
+        },
+        {
+          "file": "db/platform/migrations/20261127120002_identity_privacy_erasure_reconciliations.sql",
+          "sha256": "c608c9f9ad0b06fde6239c3efad21e9b97c827653aa85855c1b265d691110efa"
+        },
+        {
+          "file": "db/platform/migrations/20261127120003_tax_calculation_composition.sql",
+          "sha256": "9aaf9b6dba3e05dbdfc85bda6b020079044d2c68ff21259255f221ecf950f150"
+        },
+        {
+          "file": "db/platform/migrations/20261127120004_commerce_money_limits_v2.sql",
           "sha256": "8bd6651c07dd37457ccc548adedc2ae073b7be5973c7de8facddd65b776c8ce5"
         }
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "30de652e4f9a571859e9a6a76a6096c4cf17af1bdb8622bfed7feb7af54a3c5e"
+          "withRestore": "9bbbf44403727580da1deda972ae10511865e5532a58810d03052aaddf1a1a11"
         },
         "separateMigrator": {
-          "withRestore": "563b422727e5bbddf80719f44aef3a67c8c93397abd021deefbc0ab2e0e3b52a"
+          "withRestore": "8769eb0339abd46d19aade42652440d6f949a310e6e32516c5d97934f73833c8"
         }
       }
     },
@@ -2576,13 +2608,29 @@
           "sha256": "b24adae92fb5da6d1a69d5bc963a514a1ce71ee2e7e020747b67d56f3722f833"
         },
         {
-          "file": "db/platform/migrations/20261127090000_commerce_money_limits_v2.sql",
+          "file": "db/platform/migrations/20261127120000_fulfillment_destination_contact_v2.sql",
+          "sha256": "441b5d969071cd7d854412eab9c006130bf262df2e6be233218369eaa3aa883c"
+        },
+        {
+          "file": "db/platform/migrations/20261127120001_catalog_runtime_checkout_prelock.sql",
+          "sha256": "cc2927bfd2dec5f9a1df9da880458eb26d5733858652c12be52c47e7716d9143"
+        },
+        {
+          "file": "db/platform/migrations/20261127120002_identity_privacy_erasure_reconciliations.sql",
+          "sha256": "c608c9f9ad0b06fde6239c3efad21e9b97c827653aa85855c1b265d691110efa"
+        },
+        {
+          "file": "db/platform/migrations/20261127120003_tax_calculation_composition.sql",
+          "sha256": "9aaf9b6dba3e05dbdfc85bda6b020079044d2c68ff21259255f221ecf950f150"
+        },
+        {
+          "file": "db/platform/migrations/20261127120004_commerce_money_limits_v2.sql",
           "sha256": "8bd6651c07dd37457ccc548adedc2ae073b7be5973c7de8facddd65b776c8ce5"
         }
       ],
       "objectInventorySha256": {
-        "installerManaged": "af246e76a110e062b7a55068e2efc2cb0885c9d0bec879b51b77fe316b591c55",
-        "operatorProvisioned": "36899bacd0844d9676fdcd0b63f6c9a530fb3fdd04e331e5390d321d469d7773"
+        "installerManaged": "271f4a6adfb5eb027793e2e3629ad6d7036bd1169ef894214344366b876f3ff9",
+        "operatorProvisioned": "1e164c219d52ad4b2631e880d7e8afb70723600ac417d7f57f625e331b129d7c"
       }
     }
   },
@@ -3633,8 +3681,28 @@
       "sha256": "b24adae92fb5da6d1a69d5bc963a514a1ce71ee2e7e020747b67d56f3722f833"
     },
     {
-      "file": "20261127090000_commerce_money_limits_v2.sql",
-      "source": "db/platform/migrations/20261127090000_commerce_money_limits_v2.sql",
+      "file": "20261127120000_fulfillment_destination_contact_v2.sql",
+      "source": "db/platform/migrations/20261127120000_fulfillment_destination_contact_v2.sql",
+      "sha256": "441b5d969071cd7d854412eab9c006130bf262df2e6be233218369eaa3aa883c"
+    },
+    {
+      "file": "20261127120001_catalog_runtime_checkout_prelock.sql",
+      "source": "db/platform/migrations/20261127120001_catalog_runtime_checkout_prelock.sql",
+      "sha256": "cc2927bfd2dec5f9a1df9da880458eb26d5733858652c12be52c47e7716d9143"
+    },
+    {
+      "file": "20261127120002_identity_privacy_erasure_reconciliations.sql",
+      "source": "db/platform/migrations/20261127120002_identity_privacy_erasure_reconciliations.sql",
+      "sha256": "c608c9f9ad0b06fde6239c3efad21e9b97c827653aa85855c1b265d691110efa"
+    },
+    {
+      "file": "20261127120003_tax_calculation_composition.sql",
+      "source": "db/platform/migrations/20261127120003_tax_calculation_composition.sql",
+      "sha256": "9aaf9b6dba3e05dbdfc85bda6b020079044d2c68ff21259255f221ecf950f150"
+    },
+    {
+      "file": "20261127120004_commerce_money_limits_v2.sql",
+      "source": "db/platform/migrations/20261127120004_commerce_money_limits_v2.sql",
       "sha256": "8bd6651c07dd37457ccc548adedc2ae073b7be5973c7de8facddd65b776c8ce5"
     },
     {

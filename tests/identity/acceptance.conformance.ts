@@ -111,7 +111,7 @@ export function writeIdentityReferenceEntry(entry: string) {
 
 export function syntheticNativePrivacy(factory: typeof createPrivacyOperations, observe: (operation: "export" | "erase") => void) {
   const store = { privacyRail: "native" as const, readRequiredContributorIds: async () => ["identity"], erasureSupported: true,
-    async resolve() { return { contactId: CONTACT, principalId: null, identity: {} }; }, async findReceipt() { return null; },
+    async resolve() { return { contactId: CONTACT, principalId: null, identity: {} }; }, async findReceipt() { return null; }, async findErasureReplay() { return null; },
     async prepareErasure() {}, async authorizeErasure() {}, async eraseIdentity() {}, async saveReceipt() {} };
   const contributor = {
     id: "identity", version: "identity.v1", ownedResources: ["identity"], async prepareErasure() {},

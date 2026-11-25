@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { delimiter, dirname, relative, resolve } from "node:path";
 import { env as processEnvironment } from "node:process";
 import { fileURLToPath } from "node:url";
@@ -15,6 +16,7 @@ import {
 const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const DEFAULT_WEIGHTS_PATH = "config/vitest-shard-weights.json";
 export const DEFAULT_POSTGRES_DURATION_MS = 45_000;
+export const SHARD_PLAN_SCHEMA_VERSION = 1;
 export { DEFAULT_QUARANTINE_PATH };
 const DEFAULT_QUARANTINE_RETRY = 2;
 
@@ -118,11 +120,134 @@ export function listVitestFiles(rootDir = REPOSITORY_ROOT, env = processEnvironm
   return [...new Set(files)].sort(compareCodeUnits);
 }
 
+export function digestFileContents(absolutePath) {
+  return createHash("sha256").update(readFileSync(absolutePath)).digest("hex");
+}
+
+export function resolveExcludeDigest(env = processEnvironment, rootDir = REPOSITORY_ROOT) {
+  const excludeFile = env.OPENLUP_VITEST_EXCLUDE_FILE?.trim();
+  if (!excludeFile) {
+    return "none";
+  }
+  return digestFileContents(resolve(rootDir, excludeFile));
+}
+
+export function buildShardPlan(files, totalShards, manifest, { weightsDigest, excludeDigest }) {
+  if (typeof weightsDigest !== "string" || !weightsDigest) {
+    throw new Error("buildShardPlan requires a non-empty weightsDigest");
+  }
+  if (typeof excludeDigest !== "string" || !excludeDigest) {
+    throw new Error("buildShardPlan requires a non-empty excludeDigest");
+  }
+  const shards = partitionShards(files, totalShards, manifest);
+  if (shards.every((entry) => entry.files.length === 0)) {
+    throw new Error("buildShardPlan requires at least one test file");
+  }
+  return {
+    schemaVersion: SHARD_PLAN_SCHEMA_VERSION,
+    totalShards,
+    weightsDigest,
+    excludeDigest,
+    shards,
+  };
+}
+
+export function writeShardPlan(planOutPath, plan, rootDir = REPOSITORY_ROOT) {
+  const absolutePath = resolve(rootDir, planOutPath);
+  mkdirSync(dirname(absolutePath), { recursive: true });
+  writeFileSync(absolutePath, `${JSON.stringify(plan, null, 2)}\n`, "utf8");
+}
+
+export function loadShardPlan(
+  planPath,
+  expectedTotalShards,
+  { rootDir = REPOSITORY_ROOT, weightsPath = DEFAULT_WEIGHTS_PATH, env = processEnvironment } = {},
+) {
+  if (!Number.isInteger(expectedTotalShards) || expectedTotalShards < 1) {
+    throw new Error(`expectedTotalShards must be a positive integer, received: ${String(expectedTotalShards)}`);
+  }
+  const absolutePath = resolve(rootDir, planPath);
+  const parsed = JSON.parse(readFileSync(absolutePath, "utf8"));
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`Invalid shard plan at ${planPath}: expected JSON object`);
+  }
+  if (parsed.schemaVersion !== SHARD_PLAN_SCHEMA_VERSION) {
+    throw new Error(
+      `Invalid shard plan at ${planPath}: unsupported schemaVersion ${String(parsed.schemaVersion)} (expected ${SHARD_PLAN_SCHEMA_VERSION})`,
+    );
+  }
+  if (parsed.totalShards !== expectedTotalShards) {
+    throw new Error(
+      `Shard plan at ${planPath} was built for ${String(parsed.totalShards)} shards, expected ${expectedTotalShards}`,
+    );
+  }
+  const expectedWeightsDigest = digestFileContents(resolve(rootDir, weightsPath));
+  if (parsed.weightsDigest !== expectedWeightsDigest) {
+    throw new Error(`Shard plan at ${planPath} weightsDigest does not match ${weightsPath}`);
+  }
+  const expectedExcludeDigest = resolveExcludeDigest(env, rootDir);
+  if (parsed.excludeDigest !== expectedExcludeDigest) {
+    throw new Error(`Shard plan at ${planPath} excludeDigest does not match current OPENLUP_VITEST_EXCLUDE_FILE`);
+  }
+  if (!Array.isArray(parsed.shards) || parsed.shards.length !== expectedTotalShards) {
+    throw new Error(`Invalid shard plan at ${planPath}: expected ${expectedTotalShards} shard entries`);
+  }
+
+  const seen = new Set();
+  const normalizedShards = [];
+  for (let index = 0; index < parsed.shards.length; index += 1) {
+    const entry = parsed.shards[index];
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new Error(`Invalid shard plan at ${planPath}: shard entry ${index + 1} must be an object`);
+    }
+    if (entry.shard !== index + 1) {
+      throw new Error(`Invalid shard plan at ${planPath}: expected shard ${index + 1}, received ${String(entry.shard)}`);
+    }
+    if (
+      typeof entry.estimatedDurationMs !== "number"
+      || !Number.isFinite(entry.estimatedDurationMs)
+      || entry.estimatedDurationMs < 0
+    ) {
+      throw new Error(`Invalid shard plan at ${planPath}: shard ${index + 1} has invalid estimatedDurationMs`);
+    }
+    if (!Array.isArray(entry.files)) {
+      throw new Error(`Invalid shard plan at ${planPath}: shard ${index + 1} files must be an array`);
+    }
+    const files = [];
+    for (const file of entry.files) {
+      if (typeof file !== "string" || !file) {
+        throw new Error(`Invalid shard plan at ${planPath}: shard ${index + 1} contains non-string file entry`);
+      }
+      const normalized = normalizeRelativePath(rootDir, file);
+      if (normalized !== file) {
+        throw new Error(`Invalid shard plan at ${planPath}: non-canonical test path ${file}`);
+      }
+      if (seen.has(normalized)) {
+        throw new Error(`Invalid shard plan at ${planPath}: duplicate test path ${normalized}`);
+      }
+      seen.add(normalized);
+      files.push(normalized);
+    }
+    normalizedShards.push({
+      shard: entry.shard,
+      estimatedDurationMs: entry.estimatedDurationMs,
+      files,
+    });
+  }
+
+  if (seen.size === 0) {
+    throw new Error(`Invalid shard plan at ${planPath}: plan contains 0 test files`);
+  }
+  return normalizedShards;
+}
+
 export function parseShardArgs(argv) {
   let shard;
   let total;
   let weightsPath = DEFAULT_WEIGHTS_PATH;
   let quarantinePath = DEFAULT_QUARANTINE_PATH;
+  let planPath = null;
+  let planOutPath = null;
   let printFiles = false;
   let skipPretest = false;
   const extraArgs = [];
@@ -149,6 +274,14 @@ export function parseShardArgs(argv) {
       quarantinePath = argv[++index] ?? "";
     } else if (arg.startsWith("--quarantine=")) {
       quarantinePath = arg.slice("--quarantine=".length);
+    } else if (arg === "--plan") {
+      planPath = argv[++index] ?? "";
+    } else if (arg.startsWith("--plan=")) {
+      planPath = arg.slice("--plan=".length);
+    } else if (arg === "--plan-out") {
+      planOutPath = argv[++index] ?? "";
+    } else if (arg.startsWith("--plan-out=")) {
+      planOutPath = arg.slice("--plan-out=".length);
     } else if (arg === "--print-files") {
       printFiles = true;
     } else if (arg === "--skip-pretest") {
@@ -160,10 +293,26 @@ export function parseShardArgs(argv) {
 
   if (!Number.isInteger(total) || total < 1) {
     throw new Error(
-      "Usage: node scripts/ci-vitest-shard.mjs --shard <1..N> --total <N> [--weights <path>] [--quarantine <path>] [--print-files] [--skip-pretest] [-- <vitest-args...>]",
+      "Usage: node scripts/ci-vitest-shard.mjs (--shard <1..N> --total <N> [--plan <path>] | --total <N> --plan-out <path>) [--weights <path>] [--quarantine <path>] [--print-files] [--skip-pretest] [-- <vitest-args...>]",
     );
   }
-  if (!Number.isInteger(shard) || shard < 1 || shard > total) {
+  if (planPath === "") {
+    throw new Error("--plan requires a non-empty file path");
+  }
+  if (planOutPath === "") {
+    throw new Error("--plan-out requires a non-empty file path");
+  }
+  if (planPath !== null && planOutPath !== null) {
+    throw new Error("--plan and --plan-out are mutually exclusive");
+  }
+  if (planOutPath !== null) {
+    if (shard !== undefined) {
+      throw new Error("--plan-out cannot be combined with --shard");
+    }
+    if (printFiles || skipPretest || extraArgs.length > 0) {
+      throw new Error("--plan-out cannot be combined with --print-files, --skip-pretest, or extra vitest arguments");
+    }
+  } else if (!Number.isInteger(shard) || shard < 1 || shard > total) {
     throw new Error(`--shard must be an integer between 1 and ${total}, received: ${String(shard)}`);
   }
   if (!weightsPath) {
@@ -173,7 +322,7 @@ export function parseShardArgs(argv) {
     throw new Error("--quarantine requires a non-empty file path");
   }
 
-  return { shard, total, weightsPath, quarantinePath, printFiles, skipPretest, extraArgs };
+  return { shard, total, weightsPath, quarantinePath, planPath, planOutPath, printFiles, skipPretest, extraArgs };
 }
 
 export function hasRetryArg(extraArgs = []) {
@@ -298,11 +447,31 @@ function withLocalBinOnPath(env, rootDir = REPOSITORY_ROOT) {
 }
 
 function main(argv = process.argv.slice(2)) {
-  const { shard, total, weightsPath, quarantinePath, printFiles, skipPretest, extraArgs } = parseShardArgs(argv);
-  const manifest = loadShardWeights(weightsPath, REPOSITORY_ROOT);
+  const { shard, total, weightsPath, quarantinePath, planPath, planOutPath, printFiles, skipPretest, extraArgs } = parseShardArgs(argv);
+
+  if (planOutPath !== null) {
+    const manifest = loadShardWeights(weightsPath, REPOSITORY_ROOT);
+    const weightsDigest = digestFileContents(resolve(REPOSITORY_ROOT, weightsPath));
+    const excludeDigest = resolveExcludeDigest(processEnvironment, REPOSITORY_ROOT);
+    const files = listVitestFiles(REPOSITORY_ROOT, processEnvironment);
+    const plan = buildShardPlan(files, total, manifest, { weightsDigest, excludeDigest });
+    writeShardPlan(planOutPath, plan, REPOSITORY_ROOT);
+    process.stderr.write(`Precomputed ${total} Vitest shard(s) across ${files.length} files -> ${planOutPath}\n`);
+    return 0;
+  }
+
   const quarantineManifest = loadCiQuarantine(quarantinePath, REPOSITORY_ROOT);
-  const files = listVitestFiles(REPOSITORY_ROOT, processEnvironment);
-  const shards = partitionShards(files, total, manifest);
+  const shards = planPath !== null
+    ? loadShardPlan(planPath, total, {
+        rootDir: REPOSITORY_ROOT,
+        weightsPath,
+        env: processEnvironment,
+      })
+    : partitionShards(
+        listVitestFiles(REPOSITORY_ROOT, processEnvironment),
+        total,
+        loadShardWeights(weightsPath, REPOSITORY_ROOT),
+      );
   const selected = shards[shard - 1];
 
   if (printFiles) {

@@ -30346,6 +30346,14 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/commerceQuoteV2Storage.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/commerceQuoteV2StoragePgtap.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/communicationEcommerceErasure.test.ts",
       "class": "public-output"
     },
@@ -30478,6 +30486,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/destinationV2ParcelFreeze.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/destinationV2Receipts.test.ts",
       "class": "public-output"
     },
@@ -30511,6 +30523,10 @@
     },
     {
       "path": "tests/postgres/fixtures/commerceMoneyLimitsV2/replayed.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/commerceQuoteV2Storage/replayed.sql",
       "class": "public-output"
     },
     {
@@ -30603,6 +30619,14 @@
     },
     {
       "path": "tests/postgres/fixtures/paymentReconciliation/setup.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/privacyErasureReconciliations.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/privacyReplayRecorded.json",
       "class": "public-output"
     },
     {
@@ -31131,6 +31155,14 @@
     },
     {
       "path": "tests/postgres/postgresContainerCleanup.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/privacyErasureReplay.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/privacyReplayFence.test.ts",
       "class": "public-output"
     },
     {
