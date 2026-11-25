@@ -80,7 +80,7 @@ type Options = { declaration?: unknown; args?: string[]; noTerminal?: boolean; m
   missingProduct?: boolean; wrongTarget?: boolean; closeAt?: 'email' | 'token'; declineAt?: number;
   failAt?: number; refusal?: Partial<Finding>; failRetry?: boolean; state?: State; actor?: string; approveAfter?: Options;
   pending?: string[]; pendingAfterReview?: string; refreshBeforeApply?: boolean; ambiguous?: string[]; ineligible?: string[]; stale?: string;
-  rollover?: boolean; refresh?: 'same' | 'actor' | 'list'; readback?: 'list' | 'missing' | 'entry' | 'amount' | 'figure' | 'policy' };
+  rollover?: boolean; rolloverBeforeApply?: string; refresh?: 'same' | 'actor' | 'list'; readback?: 'list' | 'missing' | 'entry' | 'amount' | 'figure' | 'policy' };
 type Observation = { trace: string[]; state: State; retry: { key: string; body: unknown }[];
   prompts: string[]; changes: { actor: string; key: string; code: string; expected: Price }[] };
 type PriceItem = Price & { skuId: string; currency: string; policyRevisionId?: string; subscriptionUnitPriceMinor?: number; previous?: Price };
@@ -249,6 +249,7 @@ if (env[workerFlag] === '1') {
           assert.equal(key, hash(['reprice', actor, priceListId, fields.variantId, fields.unitPriceMinor, expected]));
           changes.push({ actor, key, code: skuCode, expected });
         }
+        if (options.rolloverBeforeApply === skuCode) effectivePolicy = nextPolicy;
         if (!state.priceReceipts[key] && fields.policyRevisionId !== effectivePolicy.revisionId)
           return refused({ code: 'starter_catalogue_d2c_policy_required' });
         if ((options.stale === skuCode || pending.has(skuCode)) && !state.priceReceipts[key])
@@ -693,6 +694,18 @@ if (!env[workerFlag]) {
       assert.equal(verified.report.receipts[2]!.prices[0]!.subscriptionUnitPriceMinor, 2090);
       assert.equal(verified.report.receipts[2]!.prices[0]!.policyRevisionId, policy.revisionId);
     }
+  });
+
+  test('a policy rollover after the first readback can retry the next approved base amount', { skip: nestedSkip }, () => {
+    const initial = invoke();
+    complete(initial);
+    const declaration = { ...replacement, basePrices: { ...replacement.basePrices, SECOND: 3000 } };
+    const result = invoke({ args: repriceArgs, state: initial.state, declaration, rolloverBeforeApply: 'SECOND' });
+    complete(result);
+    assert.deepEqual(result.trace.slice(-6), ['price-apply:FIRST', 'price-preview:FIRST', 'price-apply:SECOND',
+      'price-preview:SECOND', 'price-apply:SECOND', 'price-preview:SECOND']);
+    assert.deepEqual(committed(result).map(row => row.prices[0]?.policyRevisionId), [policy.revisionId, nextPolicy.revisionId]);
+    assert.equal(Object.keys(result.state.priceReceipts).length, Object.keys(initial.state.priceReceipts).length + 2);
   });
 
   test('native price evidence refusals retain the owner code and give a repair', { skip: nestedSkip }, () => {

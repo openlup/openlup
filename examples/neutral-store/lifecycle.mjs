@@ -634,9 +634,17 @@ async function catalogueApply(argv) {
         deny('OPENLUP_E_CATALOGUE_CONFIRMATION_INVALID');
       for (const { code, skuId, from: expected, to: { unitPriceMinor } } of changes) {
         path = 'basePrices';
-        const result = await publish(() => ({ action: 'price-apply', variantId: skuId, priceListId,
-          policyRevisionId: writeRevisionId, unitPriceMinor, expected }),
-        hash(['reprice', actorId, priceListId, skuId, unitPriceMinor, expected]), code).catch(async error => {
+        const key = hash(['reprice', actorId, priceListId, skuId, unitPriceMinor, expected]);
+        const apply = () => publish(() => ({ action: 'price-apply', variantId: skuId, priceListId,
+          policyRevisionId: writeRevisionId, unitPriceMinor, expected }), key, code);
+        const result = await apply().catch(async error => {
+          if (error.finding?.code !== 'starter_catalogue_d2c_policy_required') throw error;
+          const { listEffective, priceSetup } = await pricePreview(skuId, code);
+          const revisionId = subscriptionFigure(priceSetup?.subscription)?.policyRevisionId;
+          if (listEffective !== true || !revisionId || revisionId === writeRevisionId) throw error;
+          writeRevisionId = revisionId;
+          return apply();
+        }).catch(async error => {
           if (error.finding?.code !== 'expected_state_mismatch') throw error;
           const { priceSetup } = await pricePreview(skuId, code);
           remapPriceMismatch(error, hasPending(priceSetup, code) ? 'starter_catalogue_price_scheduled' : 'starter_catalogue_reprice_stale', code);
