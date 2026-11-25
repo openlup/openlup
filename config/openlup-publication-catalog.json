@@ -12422,6 +12422,10 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/ci-vitest-run-errors-reporter.mjs",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/ci-vitest-sequencer.test.ts",
       "class": "public-output"
     },

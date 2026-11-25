@@ -14,6 +14,7 @@ import {
   splitQuarantinedFiles,
 } from "./ci-quarantine.mjs";
 import { isHostedCi, reportFlakyRetries } from "./ci-flaky-retry.mjs";
+import { RUN_ERRORS_REPORT_ENV } from "./ci-vitest-run-errors-reporter.mjs";
 
 const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const DEFAULT_WEIGHTS_PATH = "config/vitest-shard-weights.json";
@@ -23,6 +24,7 @@ export { DEFAULT_QUARANTINE_PATH };
 const DEFAULT_QUARANTINE_RETRY = 2;
 // More failed files than this in one run is not a transient runner slowdown.
 export const MAX_FLAKY_RETRY_FILES = 10;
+const RUN_ERRORS_REPORTER_PATH = resolve(REPOSITORY_ROOT, "scripts/ci-vitest-run-errors-reporter.mjs");
 
 export function fallbackDurationMs(filePath, defaultDurationMs) {
   return filePath.startsWith("tests/postgres/")
@@ -412,21 +414,29 @@ export function buildShardExecutionPlan(
 }
 
 /**
- * Decides the single hosted-CI file retry. `failedFiles` is null when the run left
- * no readable report, so the failure cannot be attributed to files.
+ * Decides the single hosted-CI file retry for a failed first run. `failedFiles` is
+ * null when the run left no readable JSON report; `runErrors` is null when it left
+ * no readable run-error report. Any error no test file accounts for is never
+ * retried away: unhandled errors or rejections, an interrupted run, a missing
+ * report, or a non-zero exit whose report shows no failed file.
  */
-export function decideFileRetry(failedFiles, { maxFiles = MAX_FLAKY_RETRY_FILES } = {}) {
-  if (failedFiles === null) return { retry: false, files: [], reason: "no readable test report" };
-  if (failedFiles.length === 0) return { retry: false, files: [], reason: "no failed test file" };
+export function decideFileRetry(failedFiles, { runErrors = null, maxFiles = MAX_FLAKY_RETRY_FILES } = {}) {
+  const noRetry = (reason) => ({ retry: false, files: [], reason });
+  if (runErrors === null) return noRetry("no readable run-error report");
+  if (runErrors.unhandledErrors > 0) return noRetry(`${runErrors.unhandledErrors} error(s) not tied to a test file`);
+  if (runErrors.reason === "interrupted") return noRetry("the run was interrupted");
+  if (failedFiles === null) return noRetry("no readable test report");
+  if (failedFiles.length === 0) return noRetry("non-zero exit with no failed test file");
   if (failedFiles.length > maxFiles) {
     return { retry: false, files: [], reason: `${failedFiles.length} failed test files exceed the retry cap of ${maxFiles}` };
   }
   return { retry: true, files: [...failedFiles], reason: null };
 }
 
-/** The shard passes only if the retry exited cleanly and its report shows no failed file. */
-export function settleFileRetry(retriedFiles, { status, failedFiles }) {
+/** The shard passes only if the retry exited cleanly with no failed file and no unattributed error. */
+export function settleFileRetry(retriedFiles, { status, failedFiles, runErrors }) {
   return status === 0 && Array.isArray(failedFiles) && failedFiles.length === 0
+    && runErrors?.unhandledErrors === 0 && runErrors.reason !== "interrupted"
     ? { pass: true, flaky: [...retriedFiles] }
     : { pass: false, flaky: [] };
 }
@@ -452,13 +462,24 @@ export function readFailedFiles(reportPath, rootDir = REPOSITORY_ROOT) {
   return [...new Set(failed)].sort(compareCodeUnits);
 }
 
-/** Adds a JSON report next to the reporters the run would otherwise use. */
+export function readRunErrors(reportPath) {
+  let report;
+  try {
+    report = JSON.parse(readFileSync(reportPath, "utf8"));
+  } catch {
+    return null;
+  }
+  if (!report || !Number.isInteger(report.unhandledErrors) || report.unhandledErrors < 0) return null;
+  return { unhandledErrors: report.unhandledErrors, reason: typeof report.reason === "string" ? report.reason : null };
+}
+
+/** Adds the JSON and run-error reports next to the reporters the run would otherwise use. */
 export function jsonReportArgs(args, reportPath, env = processEnvironment) {
   const explicitReporter = args.some((arg) => arg === "--reporter" || arg.startsWith("--reporter="));
   const reporters = explicitReporter
     ? []
     : ["--reporter=default", ...(env.GITHUB_ACTIONS === "true" ? ["--reporter=github-actions"] : [])];
-  return [...reporters, "--reporter=json", `--outputFile.json=${reportPath}`];
+  return [...reporters, "--reporter=json", `--outputFile.json=${reportPath}`, `--reporter=${RUN_ERRORS_REPORTER_PATH}`];
 }
 
 export function argsForFiles(invocation, files) {
@@ -479,27 +500,34 @@ function spawnStatus(spawnImpl, command, args, cwd, env) {
   return result.status ?? 1;
 }
 
+function runReported(spawnImpl, command, args, { cwd, env, reportDir, label }) {
+  const testReport = join(reportDir, `${label}.json`);
+  const errorReport = join(reportDir, `${label}-run-errors.json`);
+  const status = spawnStatus(spawnImpl, command, [...args, ...jsonReportArgs(args, testReport, env)], cwd,
+    { ...env, [RUN_ERRORS_REPORT_ENV]: errorReport });
+  if (status === null) return { status };
+  return { status, failedFiles: readFailedFiles(testReport, cwd), runErrors: readRunErrors(errorReport) };
+}
+
 function runWithFileRetry(invocation, { cwd, env, spawnImpl, reportDir, reportFlaky, log }) {
-  const firstReport = join(reportDir, `${invocation.kind}-first.json`);
-  const first = spawnStatus(spawnImpl, invocation.command, [...invocation.args, ...jsonReportArgs(invocation.args, firstReport, env)], cwd, env);
-  if (first === null || first === 0) return first;
-  const decision = decideFileRetry(readFailedFiles(firstReport, cwd));
+  const first = runReported(spawnImpl, invocation.command, invocation.args, { cwd, env, reportDir, label: `${invocation.kind}-first` });
+  if (first.status === null || first.status === 0) return first.status;
+  const decision = decideFileRetry(first.failedFiles, { runErrors: first.runErrors });
   if (!decision.retry) {
     log(`[ci-retry] Not retrying: ${decision.reason}.`);
-    return first;
+    return first.status;
   }
   log(`[ci-retry] Retrying ${decision.files.length} failed test file(s) once: ${decision.files.join(", ")}`);
-  const retryReport = join(reportDir, `${invocation.kind}-retry.json`);
   const retryArgs = argsForFiles(invocation, decision.files);
-  const second = spawnStatus(spawnImpl, invocation.command, [...retryArgs, ...jsonReportArgs(retryArgs, retryReport, env)], cwd, env);
-  if (second === null) return null;
-  const settled = settleFileRetry(decision.files, { status: second, failedFiles: readFailedFiles(retryReport, cwd) });
+  const second = runReported(spawnImpl, invocation.command, retryArgs, { cwd, env, reportDir, label: `${invocation.kind}-retry` });
+  if (second.status === null) return null;
+  const settled = settleFileRetry(decision.files, second);
   if (settled.pass) {
     reportFlaky(settled.flaky);
     return 0;
   }
   log("[ci-retry] The retry failed too; the shard fails.");
-  return second !== 0 ? second : first;
+  return second.status !== 0 ? second.status : first.status;
 }
 
 export function runShardInvocations(
