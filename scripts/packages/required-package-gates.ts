@@ -7,11 +7,11 @@ import { parsePackagesConfig } from "./package-manifest-policy.ts";
 import { preparePackages } from "./package-build.ts";
 import { isolatedConsumerEnv, readCurrentPackManifest } from "./pack-manifest-input.ts";
 
-const NPM = join(dirname(process.execPath), process.platform === "win32" ? "npm.cmd" : "npm");
+const NPM_CLI = realpathSync(resolve(dirname(process.execPath), process.platform === "win32" ? "node_modules/npm/bin/npm-cli.js" : "npm"));
 
 function runAsync(args: string[], cwd: string, env: NodeJS.ProcessEnv): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolvePromise, rejectPromise) => {
-    const child = spawn(NPM, args, { cwd, env, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(process.execPath, [NPM_CLI, ...args], { cwd, env, stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
     child.stdout?.setEncoding("utf8");
