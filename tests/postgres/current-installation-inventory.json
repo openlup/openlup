@@ -7,7 +7,7 @@
         "objectInventorySha256": "d406db87878edc7ff412467f0981ab993c93f8f6acbdb4b90565adc0afc92168",
         "tail": [
           {
-            "file": "db/platform/migrations/20261128200000_catalog_price_publication_recorder_v2.sql",
+            "file": "db/platform/migrations/20261129040000_catalog_price_publication_recorder_v2.sql",
             "sha256": "626a13497c7d32f8077ecb6ae7c16e3144350ed5d8e0c8cfefd6288853bcf74f"
           },
           {
@@ -894,7 +894,7 @@
         "objectInventorySha256": "7e4251696ee52cf4a02348c5dc052ea1fd31d3e15117a972bebb91080aef9d49",
         "tail": [
           {
-            "file": "db/platform/migrations/20261128200000_catalog_price_publication_recorder_v2.sql",
+            "file": "db/platform/migrations/20261129040000_catalog_price_publication_recorder_v2.sql",
             "sha256": "626a13497c7d32f8077ecb6ae7c16e3144350ed5d8e0c8cfefd6288853bcf74f"
           },
           {
@@ -1805,7 +1805,7 @@
         "objectInventorySha256": "c8707ecd67ef77c0f469f44e062822a01943f9e8923ffa3b269e9b17e834a283",
         "tail": [
           {
-            "file": "db/platform/migrations/20261128200000_catalog_price_publication_recorder_v2.sql",
+            "file": "db/platform/migrations/20261129040000_catalog_price_publication_recorder_v2.sql",
             "sha256": "626a13497c7d32f8077ecb6ae7c16e3144350ed5d8e0c8cfefd6288853bcf74f"
           },
           {
@@ -2716,7 +2716,7 @@
         "objectInventorySha256": "bd22c307725fde93c96880d7a8a52402b12a46c17fc099cab80c185ea5288e4f",
         "tail": [
           {
-            "file": "db/platform/migrations/20261128200000_catalog_price_publication_recorder_v2.sql",
+            "file": "db/platform/migrations/20261129040000_catalog_price_publication_recorder_v2.sql",
             "sha256": "626a13497c7d32f8077ecb6ae7c16e3144350ed5d8e0c8cfefd6288853bcf74f"
           },
           {
@@ -3619,7 +3619,7 @@
         "objectInventorySha256": "660588b5b17fdc8029e801cac21b51adffa795f246a07acee559b6d355758368",
         "tail": [
           {
-            "file": "db/platform/migrations/20261128200000_catalog_price_publication_recorder_v2.sql",
+            "file": "db/platform/migrations/20261129040000_catalog_price_publication_recorder_v2.sql",
             "sha256": "626a13497c7d32f8077ecb6ae7c16e3144350ed5d8e0c8cfefd6288853bcf74f"
           },
           {

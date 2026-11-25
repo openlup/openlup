@@ -9608,7 +9608,7 @@
       },
       {
         "row": "catalog-price-publication-recorder-v2",
-        "path": "db/platform/migrations/20261128200000_catalog_price_publication_recorder_v2.sql",
+        "path": "db/platform/migrations/20261129040000_catalog_price_publication_recorder_v2.sql",
         "replacedFunctions": [
           {
             "signature": "public.catalog_price_setup_apply_claimed(jsonb,timestamptz)",
@@ -13904,7 +13904,7 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261128200000_catalog_price_publication_recorder_v2.sql",
+      "path": "db/platform/migrations/20261129040000_catalog_price_publication_recorder_v2.sql",
       "sha256": "626a13497c7d32f8077ecb6ae7c16e3144350ed5d8e0c8cfefd6288853bcf74f",
       "functions": [
         {

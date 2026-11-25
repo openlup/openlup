@@ -878,7 +878,7 @@
       "sha256": "f76078e8a637c6f597d6997ed2d1960f025ce99c474e5f85faf42287ca8a4158"
     },
     {
-      "file": "db/platform/migrations/20261128200000_catalog_price_publication_recorder_v2.sql",
+      "file": "db/platform/migrations/20261129040000_catalog_price_publication_recorder_v2.sql",
       "sha256": "626a13497c7d32f8077ecb6ae7c16e3144350ed5d8e0c8cfefd6288853bcf74f"
     }
   ],
@@ -1786,7 +1786,7 @@
         "sha256": "f76078e8a637c6f597d6997ed2d1960f025ce99c474e5f85faf42287ca8a4158"
       },
       {
-        "file": "db/platform/migrations/20261128200000_catalog_price_publication_recorder_v2.sql",
+        "file": "db/platform/migrations/20261129040000_catalog_price_publication_recorder_v2.sql",
         "sha256": "626a13497c7d32f8077ecb6ae7c16e3144350ed5d8e0c8cfefd6288853bcf74f"
       }
     ],
@@ -2694,7 +2694,7 @@
         "sha256": "f76078e8a637c6f597d6997ed2d1960f025ce99c474e5f85faf42287ca8a4158"
       },
       {
-        "file": "db/platform/migrations/20261128200000_catalog_price_publication_recorder_v2.sql",
+        "file": "db/platform/migrations/20261129040000_catalog_price_publication_recorder_v2.sql",
         "sha256": "626a13497c7d32f8077ecb6ae7c16e3144350ed5d8e0c8cfefd6288853bcf74f"
       }
     ],
