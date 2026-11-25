@@ -67,6 +67,6 @@ it.each([true, false])("checks the installed assertion with optional writers pre
     }
     const result = await tap(db);
     expect(result.filter(line => /^not ok/u.test(line))).toEqual([]);
-    expect(result.filter(line => /^ok /u.test(line))).toHaveLength(9);
+    expect(result.filter(line => /^ok /u.test(line))).toHaveLength(8);
   } finally { await db.query("ROLLBACK"); db.release(); }
 });

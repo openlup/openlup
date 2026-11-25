@@ -13924,17 +13924,17 @@
     },
     {
       "path": "db/platform/migrations/20261128230001_order_money_v2_assert.sql",
-      "sha256": "b85ebbf994c809e56091d41bb93f7a2ee9ec79d8d892b91bb1b3bfec325207b6",
+      "sha256": "ee04c7362373052f1eaa713f663e1dd0c10d82c9a47ed1214cde3a739aa076cd",
       "functions": [
         {
           "signature": "public.commerce_order_assert_line_sum()",
           "beforeSha256": "6a15c3f2873f5b1799dedb1ff1ce81ef843251e4a292a18f71df64aa492dede7",
-          "afterSha256": "07c1782a1b27e52d47a7a9824b51af6a8db5a2fdb7cef43c27d89b6d80db8603"
+          "afterSha256": "389aae614a73fa6b8fb1edb7bd65e5723ac107c5ddccad356b0bd61d124c51b4"
         },
         {
           "signature": "public.commerce_order_money_v2_assert(uuid,boolean,boolean,jsonb,jsonb)",
           "beforeSha256": null,
-          "afterSha256": "40e5774558e951f8d58def53e445a99d8d390fc1f889b685451b9359deaadd07"
+          "afterSha256": "28a07063e9d06440796423bb6985711eb4c590ea02dd2038a2d054e4ece77365"
         },
         {
           "signature": "public.commerce_order_money_v2_live_body(uuid)",

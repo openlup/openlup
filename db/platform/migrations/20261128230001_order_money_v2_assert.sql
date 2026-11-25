@@ -135,9 +135,7 @@ BEGIN
   SELECT * INTO snapshot FROM public.commerce_order_tax_snapshots WHERE order_id=p_order_id;
   IF header.money_version IS NULL THEN
     IF snapshot.order_id IS NOT NULL OR EXISTS (
-      SELECT FROM public.commerce_order_items i JOIN public.commerce_order_line_sources s
-        ON (s.order_id,s.line_key)=(i.order_id,i.line_key) WHERE i.order_id=p_order_id
-    ) THEN
+      SELECT FROM public.commerce_order_items WHERE order_id=p_order_id AND line_key IS NOT NULL) THEN
       RAISE EXCEPTION 'commerce_order_money_v2_mismatch' USING ERRCODE='23514', COLUMN='/lines', HINT=remedy;
     END IF;
     RETURN;
@@ -334,7 +332,7 @@ BEGIN
           OR CASE WHEN i.promoted=0 THEN i.size<>1 OR l.pre_discount_minor<>l.effective_minor
              ELSE i.promoted<>i.size OR i.fingerprints<>1 OR i.catalogue<>l.pre_discount_minor
                OR i.reduction<>l.pre_discount_minor-l.effective_minor END
-      ) THEN '/lines'
+      ) OR EXISTS (SELECT FROM lines WHERE NOT public.catalog_publication_text_valid(to_jsonb(line_key),128,false)) THEN '/lines'
     WHEN (SELECT count(*)<>count(DISTINCT bucket_rank) OR coalesce(max(bucket_rank),0)<>count(*) FROM delivery WHERE part_no=0)
       OR EXISTS (
         SELECT FROM delivery h LEFT JOIN delivery p ON (p.bucket_key=h.bucket_key AND p.part_no>0)
@@ -347,12 +345,14 @@ BEGIN
               OR NOT array_agg(p.source_ordinal) <@ ARRAY(SELECT source_ordinal FROM lines)
             ELSE count(p.part_no)<>1 OR count(p.source_ordinal)<>0 END
       )
+      OR EXISTS (SELECT FROM delivery WHERE part_no=0 AND NOT public.catalog_publication_text_valid(to_jsonb(bucket_key),128,false))
       OR (inclusive AND (SELECT count(*) FROM delivery WHERE part_no=0 AND kind='shipping')>1)
       OR (SELECT coalesce(sum(pre_discount_minor),0) FROM components WHERE shipping)
          <> (SELECT coalesce(sum(amount_minor),0) FROM adjustments WHERE kind='shipping_charge')
       THEN '/deliveryBuckets'
     WHEN (SELECT count(*)<>count(DISTINCT fee_rank) OR coalesce(max(fee_rank),0)<>count(*) FROM fees)
-      OR EXISTS (SELECT FROM fees WHERE scope_kind NOT IN ('order','delivery')) THEN '/feeLines'
+      OR EXISTS (SELECT FROM fees WHERE scope_kind NOT IN ('order','delivery')
+        OR NOT public.catalog_publication_text_valid(to_jsonb(fee_key),128,false)) THEN '/feeLines'
     WHEN EXISTS (
         SELECT FROM allocation_steps a JOIN components c USING (ref,part)
         WHERE a.before_basis_minor-a.after_basis_minor<>a.basis_reduction_minor
@@ -366,9 +366,12 @@ BEGIN
           AND NOT EXISTS (SELECT FROM allocation_steps a WHERE (a.ref,a.part)=(c.ref,c.part))
       ) OR EXISTS (
         SELECT FROM allocations a LEFT JOIN adjustments j ON j.id=a.adjustment_id
+        LEFT JOIN delivery h ON h.bucket_key=a.bucket_key AND h.part_no=0
         WHERE j.id IS NULL OR j.kind<>'promotion_discount'
           OR (j.promotion_id,j.definition_fingerprint) IS DISTINCT FROM (a.adjustment_ref,a.evidence_ref)
           OR (j.scope='shipping')<>(a.bucket_key IS NOT NULL)
+          OR (j.scope='shipping' AND h.kind IS DISTINCT FROM 'shipping')
+          OR NOT public.catalog_publication_text_valid(to_jsonb(a.adjustment_ref),128,false)
           OR (p_fresh AND NOT restoring AND NOT EXISTS (
             SELECT FROM jsonb_array_elements(coalesce(calculation.pin#>'{composition,planInput,selected,adjustments}','[]')) pin
             WHERE (pin->>'adjustmentRef',pin->>'evidenceRef',pin->>'appliesTo')=(a.adjustment_ref,a.evidence_ref,j.scope)
@@ -388,19 +391,13 @@ BEGIN
       OR EXISTS (
         SELECT FROM positions p CROSS JOIN LATERAL (VALUES (p.effective_from),(p.effective_until)) AS instant(at)
         WHERE p.state_side NOT IN ('final','before','after') OR p.effective_until<=p.effective_from
+          OR NOT public.catalog_publication_text_valid(to_jsonb(p.position_ref),128,false)
           OR NOT isfinite(at) OR extract(year FROM at AT TIME ZONE 'UTC') NOT BETWEEN -1 AND 9999
           OR at <> date_trunc('milliseconds',at)
           OR CASE WHEN p.rate_decimal IS NULL THEN false
              WHEN p.rate_decimal COLLATE "C" !~ '\A(0|[1-9][0-9]{0,9})(\.[0-9]{1,6})?\Z' THEN true
              ELSE p.rate_decimal::numeric*1000000>9007199254740991 END
       ) THEN '/taxEvidence'
-    WHEN EXISTS (
-      SELECT FROM (
-        SELECT line_key AS key FROM lines UNION ALL SELECT bucket_key FROM delivery WHERE part_no=0
-        UNION ALL SELECT fee_key FROM fees UNION ALL SELECT position_ref FROM positions
-        UNION ALL SELECT adjustment_ref FROM allocations
-      ) AS keys WHERE NOT public.catalog_publication_text_valid(to_jsonb(key),128,false)
-    ) THEN '/lines'
     WHEN (SELECT (coalesce(sum(net_minor),0),coalesce(sum(tax_minor),0)) FROM components)
         IS DISTINCT FROM (snapshot.net_total::numeric,snapshot.tax_total::numeric)
       OR (SELECT coalesce(sum(amount_minor),0) FROM fees)<>snapshot.fee_total
@@ -448,7 +445,8 @@ DECLARE
   v_other_order uuid;
   v_version text;
   v_other_version text;
-  v_event_marker boolean;
+  v_event_marker boolean := false;
+  v_keyed_item boolean := false;
   v_order_event boolean := TG_TABLE_NAME = 'commerce_orders';
   v_owner boolean;
 BEGIN
@@ -479,7 +477,7 @@ BEGIN
   IF v_order_event THEN
     v_event_marker := NEW.money_version IS NOT NULL OR (TG_OP='UPDATE' AND OLD.money_version IS NOT NULL);
   ELSE
-    v_event_marker := (TG_OP<>'DELETE' AND NEW.line_key IS NOT NULL) OR (TG_OP<>'INSERT' AND OLD.line_key IS NOT NULL);
+    v_keyed_item := (TG_OP<>'DELETE' AND NEW.line_key IS NOT NULL) OR (TG_OP<>'INSERT' AND OLD.line_key IS NOT NULL);
     IF TG_OP='UPDATE' AND OLD.order_id<>NEW.order_id THEN
       v_other_order := OLD.order_id;
       SELECT money_version INTO v_other_version FROM public.commerce_orders WHERE id=v_other_order;
@@ -491,7 +489,7 @@ BEGIN
         RAISE EXCEPTION 'commerce_order_money_v2_mismatch' USING ERRCODE='23514', COLUMN='/moneyVersion',
           HINT='Keep the accepted facts and use the owning order lifecycle operation.';
       END IF;
-    ELSIF (v_version IS NOT NULL OR v_other_version IS NOT NULL) AND TG_OP<>'INSERT' AND
+    ELSIF TG_OP<>'INSERT' AND
       (TG_OP='DELETE' OR to_jsonb(OLD)-'created_at' IS DISTINCT FROM to_jsonb(NEW)-'created_at') THEN
       RAISE EXCEPTION 'commerce_order_money_v2_mismatch' USING ERRCODE='23514', COLUMN='/lines',
         HINT='Keep the accepted facts and use the owning order lifecycle operation.';
@@ -531,6 +529,10 @@ BEGIN
   END IF;
 
   PERFORM public.catalog_order_line_sum_acceptance(v_order_id);
+  IF v_keyed_item THEN
+    IF v_other_order IS NOT NULL THEN PERFORM public.commerce_order_money_v2_assert(v_other_order,false,false); END IF;
+    PERFORM public.commerce_order_money_v2_assert(v_order_id,false,false);
+  END IF;
   RETURN NULL;
 END;
 $$;

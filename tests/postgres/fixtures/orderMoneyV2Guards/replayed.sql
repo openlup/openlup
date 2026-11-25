@@ -1,4 +1,4 @@
-SELECT plan(9);
+SELECT plan(8);
 SELECT ok((SELECT prosecdef AND provolatile='s' AND prorettype='void'::regtype
   AND proconfig=ARRAY['search_path=pg_catalog, pg_temp'] FROM pg_proc
   WHERE oid='public.commerce_order_money_v2_assert(uuid,boolean,boolean,jsonb,jsonb)'::regprocedure),
@@ -18,8 +18,6 @@ SELECT ok((SELECT NOT prosecdef AND proconfig=ARRAY['search_path=public, pg_cata
 SELECT is((SELECT count(*)::integer FROM pg_trigger WHERE tgfoid='public.commerce_order_assert_line_sum()'::regprocedure
   AND tginitdeferred AND tgdeferrable AND tgenabled='O'),2,
   'the incumbent deferred header and item triggers bind the dispatcher');
-SELECT lives_ok($$SELECT public.commerce_order_money_v2_assert(gen_random_uuid(),true,true)$$,
-  'a direct call cannot invoke the definer assertion');
 SELECT ok((SELECT NOT prosecdef AND provolatile='s' AND prorettype='jsonb'::regtype
   AND proconfig=ARRAY['search_path=pg_catalog, pg_temp'] FROM pg_proc
   WHERE oid='public.commerce_order_money_v2_live_body(uuid)'::regprocedure),

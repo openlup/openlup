@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { performance } from "node:perf_hooks";
 import type { PoolClient } from "pg";
+import { CATALOG_DRAFT_MAX_BYTES } from "@openlup/platform/catalog/contracts";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { flatTestTimeoutMs } from "../../scripts/ci-vitest-duration-keys.js";
 import { readPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
@@ -10,7 +11,7 @@ import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/po
 import { installAccountMutations, type AccountMutationsStore } from "./customerAccountMutations.fixture.js";
 import { issue, type Evidence, write } from "./orderMoneyV2Guards.fixture.js";
 import {
-  calculationKey, checkMessage, expectSqlError, foreignKeyMessage, insert, itemFk, itemTable, orderFk, orderTable, quoteKey,
+  calculationKey, checkMessage, expectSqlError, fees, foreignKeyMessage, insert, itemFk, itemTable, orderFk, orderTable, positions, quoteKey,
   rejected, seedSku, snapshots, sources, transaction, uniqueMessage, version,
 } from "./orderMoneyV2Storage.fixture.js";
 
@@ -37,6 +38,20 @@ async function expectMismatch(result: Promise<unknown>, field: string) {
   const error = await rejected(result);
   expectSqlError(error, "23514", message);
   expect(error).toMatchObject({ column: field, detail: undefined });
+}
+
+async function mutateRoutine(db: PoolClient, signature: string, edits: readonly (readonly [string, string])[]) {
+  let source = (await db.query<{ sql: string }>("SELECT pg_get_functiondef($1::regprocedure) AS sql", [signature])).rows[0]!.sql;
+  for (const [before, after] of edits) {
+    expect(source).toContain(before);
+    source = source.replace(before, after);
+  }
+  await db.query(source);
+}
+
+async function queueHeaderCheck(db: PoolClient, id: string) {
+  await db.query("UPDATE public.commerce_orders SET updated_at=now() WHERE id=$1", [id]);
+  await db.query("SET CONSTRAINTS trg_commerce_orders_line_sum IMMEDIATE");
 }
 
 async function defs() {
@@ -96,6 +111,38 @@ it("order_money_legacy_block_byte_identity", async () => {
     "23514", "commerce_order_line_sum_mismatch");
 });
 
+it("runs the legacy sum on queued keyed item images and refuses a stored key on a balanced legacy order", async () => {
+  const order = randomUUID();
+  await insert(store.runtime, orderTable, { id: order, currency_code: "XXX", total_amount_minor: 0 });
+  const writeKey = async (db: PoolClient, queuedOnly: boolean) => {
+    const id = randomUUID(), amount = queuedOnly ? 1 : 0;
+    await insert(db, itemTable, { id, order_id: order, sku_id: sku.id, line_ordinal: 1,
+      quantity: 1, unit_amount_minor: amount, line_amount_minor: amount, line_key: "pending-key" });
+    if (queuedOnly) await db.query("UPDATE public.commerce_order_items SET line_key=NULL WHERE id=$1", [id]);
+    // Isolate the order guard from the independently deferred item foreign key.
+    await db.query("SET CONSTRAINTS trg_commerce_order_items_line_sum IMMEDIATE");
+  };
+  expectSqlError(await rejected(transaction(store.owner, db => writeKey(db, true), "ROLLBACK")),
+    "23514", "commerce_order_line_sum_mismatch");
+  await expectMismatch(transaction(store.runtime, db => writeKey(db, false), "ROLLBACK"), "/lines");
+
+  // Temporarily disabled the legacy branch for keyed images in a disposable database transaction.
+  await transaction(store.owner, async db => {
+    await mutateRoutine(db, "public.commerce_order_assert_line_sum()", [
+      ["IF v_event_marker OR", "IF v_keyed_item OR v_event_marker OR"],
+      ["ELSIF TG_OP<>'INSERT' AND", "ELSIF (v_version IS NOT NULL OR v_other_version IS NOT NULL) AND TG_OP<>'INSERT' AND"],
+    ]);
+    await writeKey(db, true);
+  }, "ROLLBACK");
+  // Temporarily disabled legacy key validation in a disposable database transaction.
+  await transaction(store.owner, async db => {
+    await mutateRoutine(db, routine, [
+      ["SELECT FROM public.commerce_order_items WHERE order_id=p_order_id AND line_key IS NOT NULL", "SELECT WHERE false"],
+    ]);
+    await writeKey(db, false);
+  }, "ROLLBACK");
+});
+
 it("reconstructs the accepted money digest for the owner and refuses direct runtime access", async () => {
   const evidence = await issue(store, sku, false);
   const { id } = await writeChecked(evidence);
@@ -107,6 +154,25 @@ it("reconstructs the accepted money digest for the owner and refuses direct runt
   expect(rows).toEqual([{ accepted: evidence.quote.moneyDigest, replayed: evidence.quote.moneyDigest }]);
   expectSqlError(await rejected(store.runtime.query(`SELECT ${liveBody}($1)`, [id])), "42501",
     "permission denied for function commerce_order_money_v2_live_body");
+});
+
+it("uses trigger depth to fence a direct call against an inconsistent order", async () => {
+  const { id } = await writeChecked(await issue(store, sku, false));
+  const direct = `SELECT ${routine.split("(")[0]}($1,false,false)`;
+  const changePayable = (db: PoolClient) =>
+    db.query("UPDATE public.commerce_orders SET total_amount_minor=total_amount_minor+1 WHERE id=$1", [id]);
+  await transaction(store.runtime, async db => {
+    await changePayable(db);
+    await expect(db.query(direct, [id])).resolves.toBeDefined();
+    await expectMismatch(db.query("SET CONSTRAINTS trg_commerce_orders_line_sum IMMEDIATE"), "/payableMinor");
+  }, "ROLLBACK");
+  // Temporarily disabled the trigger-depth gate in a disposable database transaction.
+  await transaction(store.owner, async db => {
+    await mutateRoutine(db, routine, [["IF pg_trigger_depth() = 0 THEN RETURN; END IF;", ""]]);
+    await db.query("SET LOCAL ROLE service_role");
+    await changePayable(db);
+    await expectMismatch(db.query(direct, [id]), "/payableMinor");
+  }, "ROLLBACK");
 });
 
 it.each([true, false])("checks a fresh composition seal and commits valid money with inclusive=%s", async inclusive => {
@@ -124,18 +190,17 @@ it.each([true, false])("checks a fresh composition seal and commits valid money 
     line_key: evidence.quote.lines[0]!.lineKey,
   })), "/lines");
   await expectMismatch(store.runtime.query("DELETE FROM public.commerce_order_items WHERE id=$1", [itemIds[0]]), "/lines");
-  await expect(store.runtime.query(`SELECT ${routine.split("(")[0]}($1,true,true)`, [id])).resolves.toBeDefined();
   await expect(store.runtime.query("SELECT 1 FROM public.commerce_order_tax_snapshots")).rejects.toMatchObject({ code: "42501" });
 });
 
 it("preserves the named foreign-key refusals at runtime", async () => {
-  const bad = randomUUID(), legacy = randomUUID();
+  const bad = randomUUID();
   expectSqlError(await rejected(transaction(store.runtime, db => insert(db, orderTable, {
     id: bad, money_version: version, currency_code: "XXX", total_amount_minor: 100,
   }))), "23503", foreignKeyMessage(orderTable, orderFk), orderFk);
-  await transaction(store.runtime, db => insert(db, orderTable, { id: legacy, currency_code: "XXX", total_amount_minor: 0 }));
+  const { id } = await writeChecked(await issue(store, sku, false));
   expectSqlError(await rejected(transaction(store.runtime, db => insert(db, itemTable, {
-    order_id: legacy, sku_id: sku.id, line_ordinal: 1, quantity: 1, unit_amount_minor: 0, line_amount_minor: 0, line_key: "missing",
+    order_id: id, sku_id: sku.id, line_ordinal: 2, quantity: 1, unit_amount_minor: 0, line_amount_minor: 0, line_key: "missing",
   }))), "23503", foreignKeyMessage(itemTable, itemFk), itemFk);
 });
 
@@ -230,8 +295,8 @@ it("allows only the named, same-transaction erasure with immutable accepted fact
   await expect(attempt(false)).resolves.toBeUndefined();
 });
 
-async function ownerRestore(db: PoolClient) {
-  await db.query("LOCK TABLE " + restoreTables.map(table => "public." + table).join(",") + " IN SHARE ROW EXCLUSIVE MODE");
+async function ownerRestore(db: PoolClient, tables = restoreTables) {
+  await db.query("LOCK TABLE " + tables.map(table => "public." + table).join(",") + " IN SHARE ROW EXCLUSIVE MODE");
 }
 
 it("honors the owner restore fence, skips live provenance at restore, and checks the retained digest", async () => {
@@ -306,12 +371,115 @@ it("requires the same-order tombstone and receipt on the erased restore arm", as
     await ownerRestore(db);
     await write(db, evidence, sku, { erased: true, bucketErased: false });
   }), "/deliveryBuckets");
-  let id = "";
+  const id = randomUUID();
+  const restore = async (db: PoolClient, tables: string[]) => {
+    await ownerRestore(db, tables);
+    await write(db, evidence, sku, { orderId: id, erased: true });
+    await db.query("SET CONSTRAINTS ALL IMMEDIATE");
+  };
+  const partialLocks = restoreTables.filter(table => table !== fees);
+  await expectMismatch(transaction(store.owner, db => restore(db, partialLocks)), "/taxEvidence");
+  // Temporarily disabled the fee relation's restore lock requirement in a disposable database transaction.
   await transaction(store.owner, async db => {
-    await ownerRestore(db);
-    ({ id } = await write(db, evidence, sku, { erased: true }));
-  });
+    await mutateRoutine(db, routine, [[
+      ",'public.commerce_order_fee_lines'::regclass))=6", "))=5",
+    ]]);
+    await restore(db, partialLocks);
+  }, "ROLLBACK");
+  await transaction(store.owner, db => restore(db, restoreTables));
   await expect(store.runtime.query("UPDATE public.commerce_orders SET updated_at=now() WHERE id=$1", [id])).resolves.toBeDefined();
+});
+
+it("refuses a shipping-scoped discount moved to a handling bucket on erased restore", async () => {
+  const promotion = { id: `offer-${randomUUID()}`, bucketKey: "shipping" };
+  const evidence = await issue(store, sku, false, body => {
+    const before = { basisMinor: 2, netMinor: 2, taxMinor: 0, taxPositions: [] };
+    const after = { ...before, basisMinor: 1, netMinor: 1 };
+    return {
+      ...body, netTotal: 101, payableMinor: 101,
+      deliveryBuckets: [{
+        bucketKey: promotion.bucketKey, kind: "shipping", carrierRef: "carrier", serviceRef: "service",
+        taxClassKey: "class-a", assignmentRef: "assignment-a", cost: { ref: "cost", currency: "XXX", amountMinor: 2 },
+        separatelyStated: true, parts: [{
+          preDiscountMinor: 2, effectiveMinor: 1, netMinor: 1, taxMinor: 0, lineTotalMinor: 1, taxPositions: [],
+          discountAllocations: [{ allocationId: randomUUID(), adjustmentRef: promotion.id, evidenceRef: "b".repeat(64),
+            sequence: 1, source: "legacy_promotion", basisReductionMinor: 1, netReductionMinor: 1,
+            taxReductionMinor: 0, before, after }],
+        }],
+      }],
+    };
+  }, { promotions: [promotion] });
+  await transaction(store.owner, db => eraseEvidence(db, evidence.clientId));
+  await transaction(store.owner, db => recordErasure(db, evidence.clientId));
+  const handling: Evidence = { ...evidence, quote: { ...evidence.quote,
+    deliveryBuckets: [{ ...evidence.quote.deliveryBuckets[0]!, kind: "handling" }] } };
+  const restore = async (db: PoolClient, input: Evidence) => {
+    await ownerRestore(db);
+    await write(db, input, sku, { erased: true });
+    await db.query("SET CONSTRAINTS ALL IMMEDIATE");
+  };
+  await expectMismatch(transaction(store.owner, db => restore(db, handling)), "/discountAllocations");
+  // Temporarily disabled the shipping bucket kind check in a disposable database transaction.
+  await transaction(store.owner, async db => {
+    await mutateRoutine(db, routine, [["OR (j.scope='shipping' AND h.kind IS DISTINCT FROM 'shipping')", ""]]);
+    await restore(db, handling);
+  }, "ROLLBACK");
+  await transaction(store.owner, db => restore(db, evidence));
+});
+
+it("reports the fee collection pointer when a fee key exceeds its UTF-16 bound", async () => {
+  const evidence = await issue(store, sku, false, body => ({ ...body, payableMinor: 101, feeTotal: 1, feeLines: [{
+    feeKey: "fee", jurisdictionRef: "region", feeKind: "service", amountMinor: 1,
+    scope: { kind: "order" }, refundRule: { ref: "rule", revision: "1" },
+  }] }));
+  const { id } = await writeChecked(evidence);
+  const changeFee = async (db: PoolClient) => {
+    await db.query("UPDATE public.commerce_order_fee_lines SET fee_key=$2 WHERE order_id=$1", [id, "😀".repeat(65)]);
+    await queueHeaderCheck(db, id);
+  };
+  await expectMismatch(transaction(store.owner, changeFee), "/feeLines");
+  // Temporarily disabled fee key validation in a disposable database transaction.
+  await transaction(store.owner, async db => {
+    await mutateRoutine(db, routine, [["OR NOT public.catalog_publication_text_valid(to_jsonb(fee_key),128,false)", ""]]);
+    await expectMismatch(changeFee(db), "/acceptedMoneyDigest");
+  }, "ROLLBACK");
+});
+
+it("checks rate and timestamp boundaries over typed SQL rows", async () => {
+  const rateLimit = "9007199254.740991";
+  const evidence = await issue(store, sku, false, body => {
+    const line = body.lines[0]!, position = line.taxPositions[0]!, from = position.resolution.effective.from;
+    const effective = { from, until: new Date(Date.parse(from) + 1).toISOString() };
+    return { ...body, lines: [{ ...line, taxPositions: [{
+      ...position, rateDecimal: rateLimit, resolution: { ...position.resolution, effective },
+    }] }] };
+  });
+  const { id } = await writeChecked(evidence);
+  const probes = [
+    [positions, "rate_decimal='01'", "WHEN p.rate_decimal COLLATE", "WHEN false AND p.rate_decimal COLLATE"],
+    [positions, "rate_decimal='0.0000001'", "WHEN p.rate_decimal COLLATE", "WHEN false AND p.rate_decimal COLLATE"],
+    [positions, "rate_decimal='9007199254.740992'", "p.rate_decimal::numeric*1000000>9007199254740991", "false"],
+    [positions, "effective_from=effective_from+interval '1 microsecond'", "OR at <> date_trunc('milliseconds',at)", ""],
+    [positions, "effective_until=effective_from", "OR p.effective_until<=p.effective_from", ""],
+    [snapshots, "tax_date=tax_date+interval '1 microsecond'", "OR at <> date_trunc('milliseconds',at)", ""],
+    [snapshots, "tax_date=evaluation_expires_at", "OR snapshot.tax_date >= snapshot.evaluation_expires_at", ""],
+  ] as const;
+  for (const [table, change, check, disabled] of probes) {
+    const alter = async (db: PoolClient) => {
+      await db.query(`UPDATE public.${table} SET ${change} WHERE order_id=$1`, [id]);
+      await queueHeaderCheck(db, id);
+    };
+    await expectMismatch(transaction(store.owner, alter), "/taxEvidence");
+    // Temporarily disabled the matching typed check and digest backstop in a disposable database transaction.
+    await transaction(store.owner, async db => {
+      await mutateRoutine(db, routine, [
+        [check, disabled],
+        ...(check.startsWith("OR at") && table === positions ? [[check, disabled] as const] : []),
+        ["IF NOT snapshot.destination_erased AND snapshot.accepted_money_digest", "IF false AND snapshot.accepted_money_digest"],
+      ]);
+      await alter(db);
+    }, "ROLLBACK");
+  }
 });
 
 async function timeCommit(evidence: Evidence, basis: string) {
@@ -324,6 +492,18 @@ async function timeCommit(evidence: Evidence, basis: string) {
   console.info(`Bounded order commit (${basis}) took ${elapsed.toFixed(1)} ms`);
   expect(elapsed).toBeLessThan(flatTestTimeoutMs(false, true));
 }
+
+const boundedHandling = (): Evidence["quote"]["deliveryBuckets"] => Array.from({ length: 256 }, (_, index) => ({
+  bucketKey: `handling-${index}`, kind: "handling", carrierRef: "carrier", serviceRef: "service",
+  taxClassKey: "class-a", assignmentRef: "assignment-a", cost: { ref: "fee", currency: "XXX", amountMinor: 0 },
+  separatelyStated: false, parts: [{ preDiscountMinor: 0, effectiveMinor: 0, netMinor: 0, taxMinor: 0,
+    lineTotalMinor: 0, taxPositions: [], discountAllocations: [] }],
+}));
+
+const boundedFees = (): Evidence["quote"]["feeLines"] => Array.from({ length: 256 }, (_, index) => ({
+  feeKey: `fee-${index}`, jurisdictionRef: "region", feeKind: "service", amountMinor: 1,
+  scope: { kind: "order" }, refundRule: { ref: "rule", revision: "1" },
+}));
 
 it("matches supplementary Unicode boundaries and records the bounded exclusive commit", async () => {
   const promotions = Array.from({ length: 20 }, () => ({ id: `offer-${randomUUID()}`, lineKey: "source-2" }));
@@ -343,16 +523,8 @@ it("matches supplementary Unicode boundaries and records the bounded exclusive c
         before: state(21 - slot), after: state(20 - slot),
       })) : [],
     })),
-    deliveryBuckets: Array.from({ length: 256 }, (_, index) => ({
-      bucketKey: `handling-${index}`, kind: "handling", carrierRef: "carrier", serviceRef: "service",
-      taxClassKey: "class-a", assignmentRef: "assignment-a", cost: { ref: "fee", currency: "XXX", amountMinor: 0 },
-      separatelyStated: false, parts: [{ preDiscountMinor: 0, effectiveMinor: 0, netMinor: 0, taxMinor: 0,
-        lineTotalMinor: 0, taxPositions: [], discountAllocations: [] }],
-    })),
-    feeLines: Array.from({ length: 256 }, (_, index) => ({
-      feeKey: `fee-${index}`, jurisdictionRef: "region", feeKind: "service", amountMinor: 1,
-      scope: { kind: "order" as const }, refundRule: { ref: "rule", revision: "1" },
-    })),
+    deliveryBuckets: boundedHandling(),
+    feeLines: boundedFees(),
     netTotal: 50, feeTotal: 256, payableMinor: 306,
   }), { promotions });
   await timeCommit(evidence, "exclusive");
@@ -362,6 +534,53 @@ it("matches supplementary Unicode boundaries and records the bounded exclusive c
   await expect(transaction(store.owner, db => write(db, control, sku, { snapshot: {
     catalogue_evidence_ref: "😀".repeat(257),
   } }))).rejects.toMatchObject({ code: "23514", table: snapshots });
+}, postgresSetupTimeoutMs);
+
+it("times a combined commit with allocation-state positions near both wire caps", async () => {
+  const lineKey = "dense-source";
+  const promotions = Array.from({ length: 20 }, () => ({ id: `offer-${randomUUID()}`, lineKey }));
+  const positionCount = 32 * (promotions.length * 2 + 1);
+  const sealWireCap = 1_048_576;
+  const evidence = await issue(store, sku, false, body => {
+    const line = body.lines[0]!, position = line.taxPositions[0]!;
+    const sized = (refBytes: number) => {
+      const state = (amount: number) => ({
+        basisMinor: amount, netMinor: amount, taxMinor: 0,
+        taxPositions: Array.from({ length: 32 }, (_, index) => ({
+          ...position, positionRef: `dense-position-${index}`, taxableMinor: amount,
+          providerLineRef: "p".repeat(Math.min(256, refBytes - 1)),
+          resolution: { ...position.resolution, sourceRef: "s".repeat(Math.max(1, refBytes - 256)) },
+        })),
+      });
+      return {
+        ...body, deliveryBuckets: boundedHandling(), feeLines: boundedFees(), netTotal: 1, feeTotal: 256, payableMinor: 257,
+        lines: [{ ...line, lineKey, unitBasisMinor: 21, preDiscountMinor: 21, effectiveMinor: 1, netMinor: 1,
+          lineTotalMinor: 1, taxPositions: state(1).taxPositions,
+          discountAllocations: promotions.map(({ id }, slot) => ({
+            allocationId: randomUUID(), adjustmentRef: id, sequence: slot + 1, source: "legacy_promotion" as const,
+            basisReductionMinor: 1, netReductionMinor: 1, taxReductionMinor: 0, evidenceRef: "b".repeat(64),
+            before: state(21 - slot), after: state(20 - slot),
+          })),
+        }],
+      };
+    };
+    // Reserve bytes for the quote and seal envelope, then fill the repeated references.
+    const room = Math.min(CATALOG_DRAFT_MAX_BYTES, sealWireCap) - 8_192 - Buffer.byteLength(JSON.stringify(sized(2)));
+    const refBytes = 2 + Math.floor(room / positionCount);
+    expect(refBytes).toBeGreaterThanOrEqual(2);
+    expect(refBytes).toBeLessThanOrEqual(512);
+    return sized(refBytes);
+  }, { promotions });
+  const quoteBytes = Buffer.byteLength(JSON.stringify(evidence.quote));
+  const { rows: [seal] } = await store.owner.query<{ bytes: number }>(
+    "SELECT octet_length(outcome_text) AS bytes FROM public.tax_calculations WHERE calculation_id=$1",
+    [evidence.quote.taxEvidence.calculationId]);
+  expect(quoteBytes).toBeGreaterThan(CATALOG_DRAFT_MAX_BYTES * 0.99);
+  expect(quoteBytes).toBeLessThanOrEqual(CATALOG_DRAFT_MAX_BYTES);
+  expect(seal!.bytes).toBeGreaterThan(sealWireCap * 0.99);
+  expect(seal!.bytes).toBeLessThanOrEqual(sealWireCap);
+  console.info(`Combined order fixture: ${positionCount} positions, ${quoteBytes} quote bytes, ${seal!.bytes} seal bytes`);
+  await timeCommit(evidence, "combined wire");
 }, postgresSetupTimeoutMs);
 
 it("records the bounded inclusive commit with fifty apportioned shipping parts", async () => {

@@ -4,6 +4,12 @@ Each package lists its SQL files by name. Your selected catalogue determines
 which files apply and in what order. Follow your application's migration chain
 in [Upgrade the database](../upgrade/database-migrations.md).
 
+## Order money foreign-key refusals
+
+| SQLSTATE | Constraint | Remedy |
+| --- | --- | --- |
+| `23503` | `commerce_orders_money_snapshot_fkey`, `commerce_order_items_money_source_fkey` | Write the order money snapshot and its line sources in the same transaction as the order. |
+
 ## `@openlup/outbox`
 
 <!-- generated:sql:outbox -->
