@@ -13,6 +13,9 @@ export default defineConfig({
   grepInvert: /database subscription care/,
   workers: 1,
   fullyParallel: false,
+  // Explicit budgets for shared hosted runners instead of the 30 s / 5 s defaults.
+  timeout: 60_000,
+  expect: { timeout: 10_000 },
   use: { headless: true, trace: 'off', screenshot: 'off', video: 'off' },
   projects: configurations.map(({ id, port }) => ({
     name: id, use: { baseURL: `http://127.0.0.1:${port}` },

@@ -862,11 +862,15 @@
       "sha256": "5c32d2c07ce1be7753eee381ddced60192936d2dec50505f485285483efad5d0"
     },
     {
+      "file": "db/platform/migrations/20261128010000_catalog_order_checkout_protection.sql",
+      "sha256": "e841077d82c09a11979c552737025a332bd5d351ee7192b6f4cc8e112fc7423c"
+    },
+    {
       "file": "db/platform/migrations/20261128120000_order_money_v2_storage.sql",
       "sha256": "02be68382a7a0e2c62010ef2bca993deaa756f0c860357d6be13d7dd2d5fb45b"
     }
   ],
-  "objectInventorySha256": "6052726597b377597f9f3af19be084969bf8527d2b7e2d3398d7395b0fcaa144",
+  "objectInventorySha256": "5407bcdbad1e99a1a94ff007f5c3bb4eb6d82c9bdd4a675b7d920b8086e02848",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1754,16 +1758,20 @@
         "sha256": "5c32d2c07ce1be7753eee381ddced60192936d2dec50505f485285483efad5d0"
       },
       {
+        "file": "db/platform/migrations/20261128010000_catalog_order_checkout_protection.sql",
+        "sha256": "e841077d82c09a11979c552737025a332bd5d351ee7192b6f4cc8e112fc7423c"
+      },
+      {
         "file": "db/platform/migrations/20261128120000_order_money_v2_storage.sql",
         "sha256": "02be68382a7a0e2c62010ef2bca993deaa756f0c860357d6be13d7dd2d5fb45b"
       }
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "4cfcff53c36ee2e08a0a36fa14f1cb6430ac7bcfa59fe55d58f2ec18d85dea7c"
+        "withRestore": "37855c36c8f6a668121f196b5ef697c44a75454cabe84531cec076226dd1c754"
       },
       "separateMigrator": {
-        "withRestore": "21439f7b0befed615117151648f3054f22756f3946b2a19def6be393730a511d"
+        "withRestore": "4fb8d23909c49778f1e8f1ea98ebd50cda16c08780718c834ef1043a030505da"
       }
     }
   },
@@ -2646,13 +2654,17 @@
         "sha256": "5c32d2c07ce1be7753eee381ddced60192936d2dec50505f485285483efad5d0"
       },
       {
+        "file": "db/platform/migrations/20261128010000_catalog_order_checkout_protection.sql",
+        "sha256": "e841077d82c09a11979c552737025a332bd5d351ee7192b6f4cc8e112fc7423c"
+      },
+      {
         "file": "db/platform/migrations/20261128120000_order_money_v2_storage.sql",
         "sha256": "02be68382a7a0e2c62010ef2bca993deaa756f0c860357d6be13d7dd2d5fb45b"
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "8d0023b396610721a8fd5f2572641cb40e515caff97aa40193a287426b53e0f6",
-      "operatorProvisioned": "a4e0c6402b004280f5cb79e3f747c6952d5b3efce2f77d8a4edb46789a45d861"
+      "installerManaged": "1abd757f27c6a98958f29ad40c70c1cdf84edab4b902d946f0015dfd51118dd3",
+      "operatorProvisioned": "712c4108a87d748870fe1aa753609ab66105a54118478316c130ac90b9698192"
     }
   }
 }

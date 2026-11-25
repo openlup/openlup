@@ -543,7 +543,7 @@ guards before catalogue locks. Catalogue-only writers take no client locks.
    publication order, followed by the same price guards and policy-history `SHARE NOWAIT`.
 4. After the visibility probe, the writer's `read` callback authenticates native
    replay, then checks fresh owner facts, including the issued policy revision and sealed service-pin shape.
-   `catalogAdmissionFence.ts:229–287`,
+   `catalogAdmissionFence.ts:335–382`,
    `20261125010000_catalog_purchase_admission.sql:2–24,58–94`.
 
 The [legacy draft forward](../../db/platform/migrations/20261125120000_catalog_legacy_draft_fixed_locks.sql)
@@ -2499,17 +2499,58 @@ transfer remains outside the runtime catalogue lock order.
 
 Promotion projection validates consumed scalar, nullable, range, coupling,
 reference and uniqueness facts before casts or selection. Financial predicates
-retain their acquisition and bundle semantics. Current order metadata or a
-current publication head cannot prove historical admission or frozen money
-protection. Order-backed agreement quotes, including retained renewal lines,
-validate their governing policy pair regardless of age and refuse unproved
-historical admission before projecting quote lines. Graduation and sized edit
-events can copy or merge retained purchase quotes, so their event identity does
-not establish independence. Only complete fresh package quotes and classic
+retain their acquisition and bundle semantics. For order-backed agreement
+evidence, current order metadata or a current publication head cannot prove
+historical admission or frozen money protection. Order-backed agreement quotes,
+including retained renewal lines, validate their governing policy pair regardless
+of age and refuse unproved historical admission before projecting quote lines.
+Graduation and sized edit events can copy or merge retained purchase quotes, so
+their event identity does not establish independence. Only complete fresh package quotes and classic
 base-line swaps supply independent event evidence; their amounts must still
-match the current template and renewal bindings. Order money utilities are not
-called by readiness before admission. Qualifying unestablished contexts raise
-hard refusals independently
-of ordinary readiness reasons. Readiness calls no capture or commerce writer
+match the current template and renewal bindings. Unproved order contexts raise
+hard refusals before the ordinary readiness reasons. Readiness calls no capture or commerce writer
 and takes no commerce row/advisory lock. The managed rail does not supply this
 feature; the migration fragment describes the separate RLS-preserving twin.
+
+### Recent native order protection
+
+Price Setup and Publish can evaluate readiness with recent one-time orders and
+activated initial V2 acquisition subscription orders. Each needs a bound native
+draft and direct sandbox capture. The check includes undiscounted one-time
+orders with free shipping. It evaluates shipping after non-shipping discounts.
+The governed server runtime is trusted by design because it already holds write
+authority over orders and evidence, and readiness checks the durable facts it
+produces to catch ungoverned or legacy writes, partial writes and later drift.
+
+For subscription acquisition, the quote must carry the acquisition capability
+and standalone V2 terms. The submit has a non-null 64-hex
+`acceptanceTokenDigest`. The current terms at draft creation and the redeemed
+source claim must match. A transaction that straddles a terms boundary or a
+host that selects terms in a region different from `settlement_region` can
+receive a refusal. An intervening promotion definition or activity change that
+was reverted leaves no history for the check to inspect. A repaired activation
+qualifies when it links to the paid cycle and records the settlement time.
+
+An unsupported stored policy pair still raises
+`catalog_price_setup_native_order_policy_pair_unverified` first. An
+incomplete order with a claim raises
+`catalog_price_setup_native_order_claim_guard_unverified`. Complete an
+eligible pending activation through its owner and recheck. Restore a valid,
+unambiguous acquisition schedule whose source definition is unchanged, then
+recheck. Other incomplete V2 orders raise
+`catalog_price_setup_native_order_guard_unverified`. Remaining incomplete
+orders raise `catalog_price_setup_native_order_admission_unverified`. Recheck
+after unresolved orders age past the inclusive 24-hour window. Provider
+captures, renewals, recovery replacements, unbound drafts, subscription orders
+without acquisition terms, legacy-pair subscriptions and refunded orders keep
+their hard refusals during that window.
+
+Once the recent orders pass, the read verdict can expose
+`first_subscription_mirror_not_ready`, `first_subscription_pair_invalid`,
+`bundle_5_policy_invalid`, `catalog_1490_legacy_1340_invalid`,
+`legacy_frozen_records_invalid`, `promotion_watchdog_not_ready`,
+`promotion_claim_sweep_not_ready` and `automatic_v2_money_invalid`. The last
+reason can occur when a reconciled V2 order uses a different settlement
+currency. Restore the intended settlement context if it is misconfigured or
+recheck after the order ages out. Apply and Publish retain their existing
+readiness checks and transaction rollback.

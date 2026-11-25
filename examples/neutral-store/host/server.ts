@@ -126,7 +126,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     : undefined;
   const bindings = options.databaseUrl
     ? await (await import('./native-composition.ts')).composeNativeBindings(options.databaseUrl, originPolicy, config, options.quoteAcceptanceKeyFile
-      ? await readQuoteAcceptanceKeyring(options.quoteAcceptanceKeyFile) : undefined, publicationPassword)
+      ? await readQuoteAcceptanceKeyring(options.quoteAcceptanceKeyFile) : undefined, publicationPassword, { readinessJobs: true })
     : pendingBindings();
   const server = createApplication(bindings);
   server.requestTimeout = 25000;

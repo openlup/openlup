@@ -8,10 +8,12 @@ import {
   getCommercePaymentStatus,
   getConfiguratorOfferLayout,
   getTpayPaymentChannels,
+  submitCheckout,
 } from "./commerceClient";
 import { COMMERCE_OFFER_LAYOUT_CONTRACT_VERSION } from "./offerLayoutContracts";
 import { PAYMENT_FAILURE_DISPLAY_HEADER } from "./paymentFailureDisplayContracts";
 import { CHECKOUT_CONTRACT_VERSION } from "./checkoutContracts";
+import type { CheckoutRequest } from "./checkoutContracts";
 import type {
   CreateOrderDraftRequest,
   CreateOrderDraftResponse,
@@ -450,3 +452,52 @@ function createRawFetcher(envelope: unknown) {
     json: () => Promise.resolve(envelope),
   });
 }
+
+describe("checkout submit deadline", () => {
+  /** A transport that never answers and rejects the moment its abort signal fires. */
+  function hangingFetcher() {
+    return vi.fn((_path: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+    }));
+  }
+
+  const request = {} as unknown as CheckoutRequest;
+
+  /** Starts a submit and reports whether it has settled, without awaiting it. */
+  function startSubmit(options: Parameters<typeof submitCheckout>[1]) {
+    const state: { settled: boolean; error?: unknown } = { settled: false };
+    const outcome = submitCheckout(request, options).then(
+      () => { state.settled = true; },
+      (error: unknown) => { state.settled = true; state.error = error; },
+    );
+    return { state, outcome };
+  }
+
+  it("submitCheckout defaults to a 25 second deadline that the caller may override", async () => {
+    vi.useFakeTimers();
+    try {
+      const byDefault = startSubmit({ fetcher: hangingFetcher() });
+      await vi.advanceTimersByTimeAsync(24_999);
+      expect(byDefault.state.settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      await byDefault.outcome;
+      expect(byDefault.state.error).toMatchObject({ code: "UPSTREAM_UNAVAILABLE", details: { reason: "timeout" } });
+
+      const shorter = startSubmit({ fetcher: hangingFetcher(), timeoutMs: 1_000 });
+      await vi.advanceTimersByTimeAsync(999);
+      expect(shorter.state.settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      await shorter.outcome;
+      expect(shorter.state.error).toMatchObject({ code: "UPSTREAM_UNAVAILABLE", details: { reason: "timeout" } });
+
+      const longer = startSubmit({ fetcher: hangingFetcher(), timeoutMs: 60_000 });
+      await vi.advanceTimersByTimeAsync(59_999);
+      expect(longer.state.settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      await longer.outcome;
+      expect(longer.state.error).toMatchObject({ code: "UPSTREAM_UNAVAILABLE", details: { reason: "timeout" } });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

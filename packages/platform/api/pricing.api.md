@@ -883,6 +883,7 @@ export declare function createCommerceQuoteHandler<Request extends CreateQuoteRe
 
 ```ts
 import type { CatalogueMoneyV2ComponentRef, CatalogueMoneyV2Input, CatalogueMoneyV2Plan, CatalogueMoneyV2Result, CatalogueMoneyV2Tax } from "@openlup/core/pricing";
+import { z } from "zod";
 import type { CommerceCodeRejectionDetail } from "./contracts/evidence.js";
 import type { PromotionEngineVersion } from "./contracts/offerPolicy.js";
 import type { CommerceCodeRejection, CommerceQuoteDiscount } from "./contracts/quote.js";
@@ -985,6 +986,8 @@ export type CommerceQuoteMoneyV2Refusal = Readonly<{
     field: string;
     remedy: string;
 }>;
+/** @internal Shared with the retained planning-schema parity witness. */
+export declare const planningShape: z.ZodType;
 /** @experimental For exclusive tax, derive the request from the unmodified plan for one immutable planning input and call verifyTaxQuoteResult on that exact request and result before composition. */
 export declare function planCommerceQuoteMoneyV2(input: PlanCommerceQuoteMoneyV2Input): CommerceQuoteMoneyV2Plan | CommerceQuoteMoneyV2Refusal;
 /** @experimental For exclusive tax, reuse the immutable planning input and pass the result verified by verifyTaxQuoteResult against the exact request derived from the unmodified plan. */
@@ -3726,7 +3729,7 @@ export declare function canonicalSubscriptionPricePolicyTuple(policy: Subscripti
 export declare function digestSubscriptionPricePolicy(policy: SubscriptionPricePolicyCanonicalInput | SubscriptionPricePolicyRevision): Promise<string>;
 /** Parses a persisted revision and refuses a digest outside its canonical UTF-8 tuple. */
 export declare function assertSubscriptionPricePolicyDigest(value: unknown): Promise<SubscriptionPricePolicyRevision>;
-/** Resolves a subscription unit price from a base unit price and a policy revision. */
+/** Resolves a subscription unit price from a base unit price and a policy revision. An estimate for display; the quote is the amount charged. */
 export declare function deriveSubscriptionUnitPrice(baseUnitAmountMinor: number, semantics: SubscriptionPricePolicySemantics | SubscriptionPricePolicyCanonicalInput | SubscriptionPricePolicyRevision): number;
 ```
 ## dist/pricing/taxProfileGuard.d.ts
