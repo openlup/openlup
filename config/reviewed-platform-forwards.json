@@ -13967,7 +13967,7 @@
     },
     {
       "path": "db/platform/migrations/20261128230001_catalog_governed_draft_owner.sql",
-      "sha256": "892439dba7d486a6d33f30c4c49ebe78dcb29ca67ff953f6367d68cfbebc3968",
+      "sha256": "f9c5f6bb7d7fc2a70228d59a33494089352c5bacbe59b1f956f99d7b42aa4731",
       "functions": [
         {
           "signature": "public.catalog_order_acceptance_final(uuid)",
@@ -13987,7 +13987,7 @@
         {
           "signature": "public.catalog_admission_write_governed_draft(text,uuid,jsonb)",
           "beforeSha256": null,
-          "afterSha256": "b305733653becb526e27892d4dbca46a1fa6096d30f4c957d9d47d7a78852893"
+          "afterSha256": "055cbcaa53d7374a42ed7a19c2b09f40806ea318ae5a855af63519a9410c4491"
         }
       ]
     }

@@ -316,13 +316,12 @@ BEGIN
      RAISE EXCEPTION 'commerce_order_draft_catalog_price_changed' USING ERRCODE='22023'; END IF;
    ELSE
     SELECT p.* INTO actual FROM public.price_entries p JOIN public.price_lists l ON l.id=p.price_list_id
-     WHERE p.variant_id=base.variant_id AND p.active AND p.amount_kind='gross' AND p.mode IN ('subscription','any')
-      AND p.price_list_id=list_id
+     WHERE p.id=CASE WHEN pg_input_is_valid(facts->>'resolvedPriceEntryId','uuid') THEN (facts->>'resolvedPriceEntryId')::uuid END
+      AND p.price_list_id=list_id AND p.variant_id=base.variant_id AND p.active AND p.amount_kind='gross' AND p.mode IN ('subscription','any')
       AND p.min_qty<=(line->>'quantity')::integer AND p.valid_from<=at_time AND (p.valid_to IS NULL OR p.valid_to>at_time)
       AND l.status='active' AND l.currency=v_currency AND l.valid_from<=at_time AND (l.valid_to IS NULL OR l.valid_to>at_time)
-     ORDER BY (p.mode='subscription') DESC,p.min_qty DESC,p.id LIMIT 1;
-    IF actual.price_list_id IS DISTINCT FROM list_id OR to_jsonb(actual.id) IS DISTINCT FROM facts->'resolvedPriceEntryId'
-     OR to_jsonb(actual.unit_price_minor) IS DISTINCT FROM facts->'resolvedUnitAmountMinor'
+      AND to_jsonb(p.id)=facts->'resolvedPriceEntryId' AND to_jsonb(p.unit_price_minor)=facts->'resolvedUnitAmountMinor';
+    IF NOT FOUND
      OR EXISTS (SELECT 1 FROM public.subscription_price_policy_revisions r WHERE r.price_list_id=list_id
       AND r.channel='D2C' AND r.effective_from<=at_time AND (r.effective_to IS NULL OR r.effective_to>at_time))
     THEN RAISE EXCEPTION 'commerce_order_draft_catalog_price_changed' USING ERRCODE='22023'; END IF;

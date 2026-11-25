@@ -296,22 +296,25 @@ it("uses the sampled half-open boundary for the quote and the SQL price verifier
   }
 });
 
-it("ignores a higher matching subscription tier on another regional list", async () => {
+it.each(["another regional list", "the chosen list"] as const)("ignores a higher matching subscription tier on %s", async scope => {
   const db = await store.owner.connect();
   try {
     await db.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
     const current = { ...fixture, original: { ...fixture.original, key: randomUUID() } };
     const { skuIds, priceListId } = current.profile;
-    const { rows: [rival] } = await db.query(`WITH other AS (
+    const rivalList = scope === "the chosen list" ? priceListId : (await db.query(`
       INSERT INTO public.price_lists(name,region_code,currency,status,valid_from)
       SELECT 'Other market','XY',currency,'active',clock_timestamp()-interval '1 day'
-      FROM public.price_lists WHERE id=$1 RETURNING id
-    ) INSERT INTO public.price_entries(price_list_id,variant_id,mode,min_qty,unit_price_minor,amount_kind,valid_from)
-      SELECT id,$2,'subscription',2,987,'gross',clock_timestamp()-interval '1 day' FROM other RETURNING id`, [priceListId, skuIds[0]]);
+      FROM public.price_lists WHERE id=$1 RETURNING id`, [priceListId])).rows[0]!.id;
+    const { rows: [quotedEntry] } = await db.query(`SELECT id FROM public.price_entries
+      WHERE price_list_id=$1 AND variant_id=$2 AND mode='subscription' AND min_qty=1`, [priceListId, skuIds[0]]);
+    await db.query(`INSERT INTO public.price_entries(price_list_id,variant_id,mode,min_qty,unit_price_minor,amount_kind,valid_from)
+      VALUES($1,$2,'subscription',2,987,'gross',clock_timestamp()-interval '1 day')`, [rivalList, skuIds[0]]);
     await prelockDraft(db, current);
     const value = await draftHandoff(db, current, await sampleDraftTime(db));
-    expect(value.draft.lines[0]).toMatchObject({ quantity: 2, catalogFacts: { version: "catalog_facts_v1", resolvedUnitAmountMinor: 1340 } });
-    expect(value.draft.lines[0]!.catalogFacts).not.toMatchObject({ resolvedPriceEntryId: rival!.id });
+    expect(value.draft.lines[0]).toMatchObject({ quantity: 2, catalogFacts: {
+      version: "catalog_facts_v1", resolvedPriceEntryId: quotedEntry!.id, resolvedUnitAmountMinor: 1340,
+    } });
     await expect(db.query(ownerSql, [current.original.key, current.original.clientId, value])).resolves.toMatchObject({ rowCount: 1 });
     await db.query("SET CONSTRAINTS ALL IMMEDIATE");
   } finally {
