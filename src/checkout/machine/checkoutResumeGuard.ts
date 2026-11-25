@@ -6,6 +6,15 @@ import type {
   PaymentStatusResponse,
 } from "@/domains/commerce/checkoutContracts";
 import type { PaymentStatusContinuationRequest } from "@/domains/commerce/paymentContinuationContracts";
+import {
+  applyPendingResume as applyStorefrontPendingResume,
+  checkPendingResume,
+  decidePendingResume as decideStorefrontPendingResume,
+  type PaymentProviderFacts,
+  type PendingResumeDecision as StorefrontPendingResumeDecision,
+  type StatusReading,
+  type StatusTransportBinding,
+} from "@openlup/platform/storefront";
 
 import type {
   CheckoutContinuationContext,
@@ -41,9 +50,7 @@ export async function resolvePendingResume(
   // the TTL the cron USUALLY owns the attempt, but the claim window is 15-45 minutes
   // with a batch cap and a pending read re-queues, so the marker survives its own
   // expiry rather than costing a still-open attempt its route back.
-  if (isContinuationExpired(pending)) return "no_action_keep_marker";
-  const result = await readPendingContinuation(pending);
-  const decision = decidePendingResume(pending, result, selectedProvider);
+  //
   // ⛔ "I could not read the status" is not the same answer as "the server said
   // there is nothing here", and only the second one may destroy the marker.
   // `decidePendingResume` collapses both onto `discard` for an `action_issued`
@@ -55,8 +62,14 @@ export async function resolvePendingResume(
   // surfaced as its own outcome and the marker survives it.
   // An unreadable status must still HALT the submit, which the keep-marker answer
   // does not; both collapse in the tail, so both are lifted back here.
-  const keptOrDropped = decision === "discard" || decision === "no_action_keep_marker";
-  return result.kind === "checking" && keptOrDropped ? "unknown" : decision;
+  //
+  // The expiry, the single status read, the decision and the lift live in the
+  // storefront entry's `checkPendingResume`; this binds them to this module.
+  return fromStorefrontDecision(await checkPendingResume(
+    { status: checkoutStatusBinding(), clock: { now: () => Date.now() }, providerFacts: checkoutProviderFacts() },
+    pending,
+    selectedProvider,
+  ));
 }
 
 /**
@@ -165,25 +178,20 @@ export function applyPendingResume(
   decision: PendingResumeDecision,
   effects: PendingResumeEffects,
 ): boolean {
-  if (decision === "discard") { effects.discardMarker(); return false; }
-  // FALSE like `discard` - the submit goes on - without destroying the one artifact
-  // that routes the buyer if the gate then refuses it.
-  if (decision === "no_action_keep_marker") { effects.keepMarker(); return false; }
-  if (decision === "unknown") { effects.cannotCheck(); return true; }
-  if (decision === "wait_on_status") { effects.waitOnStatus(); return true; }
-  // Returns TRUE: the submit STOPS. Letting it through is what spends the buyer's
-  // press on a `provider_attempt_in_flight` refusal, and the marker is retained
-  // because it carries the only ids that reach the action or the status page.
-  if (decision.kind === "blocked_by_prior_attempt") {
-    effects.blockOnPriorAttempt({
-      provider: decision.provider,
-      clientSecret: decision.clientSecret,
-    });
+  // The mapping lives in the storefront entry's `applyPendingResume`. There
+  // `discard` answers FALSE; `no_action_keep_marker` answers FALSE like `discard` -
+  // the submit goes on - without destroying the one artifact that routes the buyer
+  // if the gate then refuses it; `blocked_by_prior_attempt` answers TRUE: the
+  // submit STOPS. Letting it through is what spends the buyer's press on a
+  // `provider_attempt_in_flight` refusal, and the marker is retained because it
+  // carries the only ids that reach the action or the status page.
+  const storefrontDecision = toStorefrontDecision(decision);
+  if (storefrontDecision === null) {
+    // A value outside this module's decision type keeps the path it always took.
+    effects.reopenAction((decision as { clientSecret: string }).clientSecret);
     return true;
   }
-  if (decision.kind === "follow_redirect") { effects.followRedirect(decision.url); return true; }
-  effects.reopenAction(decision.clientSecret);
-  return true;
+  return applyStorefrontPendingResume(storefrontDecision, storefrontEffects(effects));
 }
 
 /**
@@ -220,9 +228,6 @@ export function decidePendingResume(
    */
   selectedProvider?: PspProviderKind | null,
 ): PendingResumeDecision {
-  if (result.kind === "terminal") return "discard";
-  const action = result.kind === "active" ? result.response.nextAction : null;
-  const payment = result.kind === "active" ? result.response.payment : null;
   // The buyer changed rails and this action was never committed to, so nothing can
   // be settling on it: `action_issued` means the intent has no payment method.
   // Reopening it here is what showed a card modal to a buyer who had just picked
@@ -234,35 +239,15 @@ export function decidePendingResume(
   // making every code-entry marker invisible here. RETRYABLE_ATTEMPT_STATUSES is
   // admission gate's OWN set: sitting in it means the server admits the next call,
   // so blocking refuses what the server allows (the 2026-09-02 P0). Fail-closed.
-  const openRail = PSP_PROVIDER_KINDS.find((kind) => kind === payment?.provider)
-    ?? (action && "provider" in action ? action.provider : null);
-  const priorAttemptAdmitted = payment?.attemptStatus != null
-    && (RETRYABLE_ATTEMPT_STATUSES as readonly string[]).includes(payment.attemptStatus);
-  if (
-    openRail
-    && selectedProvider
-    && openRail !== selectedProvider
-    && !priorAttemptAdmitted
-    && continuationPhase(pending) === "action_issued"
-  ) {
-    return {
-      kind: "blocked_by_prior_attempt",
-      provider: openRail,
-      clientSecret: action?.kind === "provider_embedded" ? action.clientSecret ?? null : null,
-    };
-  }
-  if (
-    pending.actionKind === "embedded"
-    && action?.kind === "provider_embedded"
-    && action.provider === PSP_PROVIDER_KINDS[0]
-    && action.clientSecret
-  ) {
-    return { kind: "reopen_embedded", clientSecret: action.clientSecret };
-  }
-  if (pending.actionKind === "redirect" && action?.kind === "redirect") {
-    return { kind: "follow_redirect", url: action.url };
-  }
-  return continuationPhase(pending) === "action_issued" ? "no_action_keep_marker" : "wait_on_status";
+  //
+  // The rules live in the storefront entry's `decidePendingResume`; this module
+  // supplies the provider facts and maps its result shape in and out.
+  return fromStorefrontDecision(decideStorefrontPendingResume(
+    { providerFacts: checkoutProviderFacts() },
+    pending,
+    toStatusReading(result),
+    selectedProvider,
+  ));
 }
 
 export type PendingContinuationResult =
@@ -297,4 +282,78 @@ export async function readPendingContinuation(
     }
     return { kind: "checking" };
   }
+}
+
+// The storefront entry's bindings and shapes over this module. Built per call, so
+// the status read and the provider lists are read when a function runs, never at
+// module load.
+
+function checkoutStatusBinding(): StatusTransportBinding<CheckoutContinuationContext> {
+  return { read: async (pending) => toStatusReading(await readPendingContinuation(pending)) };
+}
+
+function checkoutProviderFacts(): PaymentProviderFacts {
+  return {
+    providers: PSP_PROVIDER_KINDS,
+    reopenableEmbeddedProviders: [PSP_PROVIDER_KINDS[0]],
+    retryableAttemptStatuses: RETRYABLE_ATTEMPT_STATUSES,
+  };
+}
+
+type ReadingAction = Extract<StatusReading, { kind: "active" }>["action"];
+
+function toStatusReading(result: PendingContinuationResult): StatusReading {
+  if (result.kind !== "active") return result;
+  const action = toReadingAction(result.response.nextAction);
+  return { kind: "active", payment: result.response.payment, action };
+}
+
+function toReadingAction(action: PaymentStatusResponse["nextAction"]): ReadingAction {
+  // A value that is not an object passes unchanged, so the rules meet it exactly
+  // where this module's own rules met it.
+  if (typeof action !== "object" || action === null) return action as ReadingAction;
+  if (action.kind === "provider_embedded") {
+    return { kind: "embedded", provider: action.provider, actionToken: action.clientSecret };
+  }
+  if (action.kind === "redirect") return { kind: "redirect", url: action.url };
+  return "provider" in action ? { kind: "other", provider: action.provider } : { kind: "other" };
+}
+
+function fromStorefrontDecision(decision: StorefrontPendingResumeDecision): PendingResumeDecision {
+  if (typeof decision === "string" || decision.kind === "follow_redirect") return decision;
+  if (decision.kind === "reopen_embedded") return { kind: decision.kind, clientSecret: decision.actionToken };
+  // The open rail is one of PSP_PROVIDER_KINDS or the provider of a
+  // schema-validated action, so it is a PspProviderKind without a runtime check.
+  return { kind: decision.kind, provider: decision.provider as PspProviderKind, clientSecret: decision.actionToken };
+}
+
+function toStorefrontDecision(decision: PendingResumeDecision): StorefrontPendingResumeDecision | null {
+  if (
+    decision === "discard"
+    || decision === "no_action_keep_marker"
+    || decision === "unknown"
+    || decision === "wait_on_status"
+  ) {
+    return decision;
+  }
+  if (decision.kind === "blocked_by_prior_attempt") {
+    return { kind: decision.kind, provider: decision.provider, actionToken: decision.clientSecret };
+  }
+  if (decision.kind === "follow_redirect") return decision;
+  if (decision.kind === "reopen_embedded") return { kind: decision.kind, actionToken: decision.clientSecret };
+  return null;
+}
+
+// Each effect is read from the caller's object only when it is called.
+function storefrontEffects(effects: PendingResumeEffects): Parameters<typeof applyStorefrontPendingResume>[1] {
+  return {
+    reopenAction: (actionToken) => effects.reopenAction(actionToken),
+    followRedirect: (url) => effects.followRedirect(url),
+    waitOnStatus: () => effects.waitOnStatus(),
+    discardMarker: () => effects.discardMarker(),
+    keepMarker: () => effects.keepMarker(),
+    blockOnPriorAttempt: ({ provider, actionToken }) =>
+      effects.blockOnPriorAttempt({ provider: provider as PspProviderKind, clientSecret: actionToken }),
+    cannotCheck: () => effects.cannotCheck(),
+  };
 }

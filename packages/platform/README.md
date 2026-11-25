@@ -3900,8 +3900,10 @@ provider facts only through the host bindings a store passes in.
   (see [Binding](../core/docs/guide/glossary.md) in the glossary). The store keeps its storage
   names, serialization, wire spelling and provider facts.
 - **Functions.** The first four keep the continuation record through the
-  storage and identifier bindings; the last recovers a failed submit through
-  the transport and classifier bindings:
+  storage and identifier bindings; the fifth recovers a failed submit through
+  the transport and classifier bindings; the last three, which are
+  experimental, resume a pending provider action through the status binding,
+  a clock and the provider facts:
   - `getOrCreateContinuationId` reuses the stored identity when the identifier
     binding accepts it, and otherwise mints one and stores it with the
     payload's fingerprint;
@@ -3913,7 +3915,17 @@ provider facts only through the host bindings a store passes in.
   - `recoverAmbiguousSubmit` replays the retained request once, unchanged,
     after a timeout or a transport failure, sends nothing after an in-flight
     refusal or an unrecognized failure, and returns an
-    `AmbiguousSubmitRecovery` saying which happened.
+    `AmbiguousSubmitRecovery` saying which happened;
+  - `checkPendingResume` (experimental) keeps an expired marker without a
+    status read, otherwise reads the status once and decides, and answers
+    `unknown` rather than dropping or keeping the marker when the status could
+    not be read;
+  - `decidePendingResume` (experimental) turns one status reading into one
+    `PendingResumeDecision` (experimental): drop the marker, reopen or follow
+    the action, wait, keep the marker, or block a switch to another provider
+    while an attempt that was not sent to its provider is still open;
+  - `applyPendingResume` (experimental) runs exactly one effect for a decision
+    and returns whether the submit must stop.
 - **Markup anchors.** Production markup reads its `data-openlup-*` attribute
   names and the action, state and field names from the constant instead of
   string literals. Names are only added; a wrong one is superseded, not renamed.
