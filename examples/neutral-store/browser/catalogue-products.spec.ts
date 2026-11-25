@@ -97,13 +97,6 @@ async function author(fixture: Fixture) {
       const list = demoIdentifier(config, 'price-list', config.market.currency);
       await db.query(`UPDATE public.price_entries SET active=false,valid_to=statement_timestamp()
         WHERE price_list_id=$1 AND mode='subscription' AND active`, [list]);
-      const bundle = { id: 'fixture:bundle', status: 'active', trigger_type: 'automatic', code: null,
-        discount_type: 'percentage', discount_value: 5, applies_to_kind: 'order_total', applies_to_payload: { cart_mode: 'one_time' },
-        stacking_rule: 'stackable_with_any', eligibility: { min_cart_minor: 12000 }, region_availability: [config.market.country],
-        valid_from: '2000-01-01T00:00:00.000Z', valid_to: null, redemption_limit_global: null, redemption_limit_per_customer: null,
-        promotion_engine_version: 'promotion-engine.v1', benefit_lane: 'product', benefit_kind: 'percentage', benefit_value_bps: 500,
-        benefit_value_minor: null, v2_mirror_of: null };
-      await db.query('INSERT INTO public.commerce_promotion_definitions(promotion_id,definition,active) VALUES($1,$2,true)', [bundle.id, bundle]);
       await db.query(`INSERT INTO public.platform_job_controls(job_name,active_driver,enabled,last_status,last_success_at,metadata)
         VALUES ('platform-watchdog','worker',true,'success',clock_timestamp(),$1),('promotion-claim-sweep','worker',true,'success',clock_timestamp(),'{}')
         ON CONFLICT(job_name) DO UPDATE SET enabled=excluded.enabled,last_status=excluded.last_status,last_success_at=excluded.last_success_at,metadata=excluded.metadata`,
