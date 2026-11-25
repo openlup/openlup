@@ -246,7 +246,7 @@ it("preserves and reconciles an existing value-only host after a manifest refusa
     stdout: defaultCheck.stdout.replace(subscriptionOffersBeforeEffect, subscriptionOffersEffect),
     stderr: "",
   });
-}, 30_000); // Two fixtures and reconciles; 13.7 s under hosted contention.
+});
 
 it("refuses an extracted starter without the settings script", () => {
   const { directory } = fixture();
