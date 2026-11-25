@@ -13,7 +13,7 @@ import {
 import { persistCheckoutContinuation, readCheckoutContinuation } from "./checkoutNavigation";
 import { BffClientError } from "@/lib/bff/client";
 import { PSP_PROVIDER_KINDS } from "@/domains/payment/pspIntegrationPlan";
-import { RETRYABLE_ATTEMPT_STATUSES } from "@/domains/payment/paymentControlTypes";
+import { PAYMENT_ATTEMPT_STATUSES, RETRYABLE_ATTEMPT_STATUSES } from "@/domains/payment/paymentControlTypes";
 import { CHECKOUT_PAYMENT_CONTINUATION_TTL_SECONDS } from "@/domains/commerce/paymentContinuationContracts";
 
 const { getCommercePaymentStatus } = vi.hoisted(() => ({
@@ -609,10 +609,18 @@ describe("the open rail and the reopenable action", () => {
     },
   );
 
-  it.each([
-    ["sent_to_provider", "sent_to_provider"],
-    ["null", null],
-  ] as const)(
+  // Every enum status outside the retryable set, plus an absent one and one the
+  // enum does not know: the gate is fail-closed, so each of them blocks, a
+  // terminal `succeeded` included.
+  const NON_RETRYABLE_STATUSES: readonly (string | null)[] = [
+    ...PAYMENT_ATTEMPT_STATUSES.filter(
+      (status) => !(RETRYABLE_ATTEMPT_STATUSES as readonly string[]).includes(status),
+    ),
+    null,
+    "status_outside_the_enum",
+  ];
+
+  it.each(NON_RETRYABLE_STATUSES.map((status) => [String(status), status] as const))(
     "blocks when the attempt status is not retryable or unknown: %s",
     (_label, attemptStatus) => {
       expect(decidePendingResume(
@@ -639,6 +647,21 @@ describe("the open rail and the reopenable action", () => {
     await expect(resolvePendingResume(ACTION_ISSUED, SECOND)).resolves.toEqual({
       kind: "blocked_by_prior_attempt",
       provider: FIRST,
+      clientSecret: "pi_secret",
+    });
+  });
+
+  it("lets a retryable attempt status through resolvePendingResume", async () => {
+    // The same answer the decision gives, reached through the status read: the
+    // attempt status on the response is what admits the buyer's other rail.
+    getCommercePaymentStatus.mockReset();
+    getCommercePaymentStatus.mockResolvedValue(statusRead(
+      EMBEDDED_ACTION,
+      { provider: FIRST, attemptStatus: RETRYABLE_ATTEMPT_STATUSES[0] },
+    ));
+
+    await expect(resolvePendingResume(ACTION_ISSUED, SECOND)).resolves.toEqual({
+      kind: "reopen_embedded",
       clientSecret: "pi_secret",
     });
   });
