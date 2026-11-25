@@ -908,8 +908,8 @@ revision. Earlier saved drafts keep their installed rule version.
 Start the marked demonstration with `./lifecycle up`. In `owned/catalogue.ts`,
 keep the installed pack declaration and export the product you want to publish.
 Use **Load draft example** under **Catalogue drafts** to read the installed
-`product.type.version`. Add the example below to `owned/catalogue.ts`, then
-export `const catalogueProduct = demoCatalogueProduct(version)` using that
+`product.type.version`. Add the example below to `owned/catalogue.ts`, then add
+`export const catalogueProduct = demoCatalogueProduct(version)` using that
 number. Keep the draft UUID stable and reserve an unused internal GTIN
 sequence. For a product with variants, see [Author a product](../extend/catalogue-extension.md#author-a-product).
 
@@ -967,9 +967,10 @@ Run the command with
 report on stdout.
 
 After a readiness refusal, follow its Fix and Recheck and resume as the
-original administrator with the same declaration. During demo startup, the
-command gives the first promotion job runs one second and retries the exact
-Publish request once if either job reports that it is still unready.
+original administrator with the same declaration. To give the first demo job
+runs time to finish, the command waits one second and retries the exact
+Publish request once if either promotion job reports that it is unready.
+The report preserves any refusal from that retry.
 A missing initial price can
 be supplied through the authorized price action. Retry the same approved
 Publish body and key once the intended price is ready. Existing-base

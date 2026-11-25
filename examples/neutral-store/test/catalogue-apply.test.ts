@@ -5,6 +5,7 @@ import fs from 'node:fs/promises';
 import { registerHooks, stripTypeScriptTypes, syncBuiltinESMExports } from 'node:module';
 import { env } from 'node:process';
 import readline from 'node:readline/promises';
+import { text } from 'node:stream/consumers';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { catalogInternalGtin, type CatalogProductInput } from '@openlup/platform/catalog';
@@ -50,7 +51,7 @@ type Observation = { trace: string[]; state: State; retry: { key: string; body: 
 type Output = Observation & { report: { findings: Finding[]; receipts: { stage: string; outcome: string }[] }; status: number };
 
 if (env[workerFlag] === '1') {
-  const options: Options = JSON.parse(readFileSync(0, 'utf8'));
+  const options: Options = JSON.parse(await text(process.stdin));
   const state: State = options.state ?? { drafts: {}, decisions: {}, publications: {}, prices: {}, head: null };
   const trace: string[] = [], retry: Observation['retry'] = [];
   const fixture = new URL('../lifecycle.mjs', import.meta.url).href;
@@ -77,7 +78,7 @@ if (env[workerFlag] === '1') {
   }) });
   syncBuiltinESMExports();
   process.on('exit', () => process.stderr.write('\nfixture: ' + JSON.stringify({ trace, state, retry }) + '\n'));
-  const response = (value: unknown, headers?: Record<string, string>) => Response.json({ ok: true, value }, { headers });
+  const response = (value: unknown, headers?: Record<string, string>) => Response.json({ ok: true, value }, headers && { headers });
   const refused = (details: Partial<Finding>) => Response.json({ ok: false, ...details }, { status: 409 });
   let lookups = 0, candidateRevision = 0;
   globalThis.fetch = async (url, init) => {
