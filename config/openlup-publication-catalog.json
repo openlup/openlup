@@ -30698,6 +30698,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/destinationV2SubscriptionReads.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/disposableDockerReap.test.ts",
       "class": "public-output"
     },

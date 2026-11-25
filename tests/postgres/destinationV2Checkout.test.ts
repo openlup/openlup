@@ -354,7 +354,7 @@ it("verifies the owned document's stored bytes and exact binding without returni
   for (const [context, ref] of [[other, id], [{ ...ctx, scopeRef: randomUUID() }, id], [ctx, randomUUID()]] as const) {
     await expect(readSnapshot(runtime, context, binding, ref)).resolves.toEqual(unavailable);
   }
-  await expect(readSnapshot(runtime, ctx, binding, id, "subscription")).resolves.toEqual(invalidKind);
+  await expect(readSnapshot(runtime, ctx, binding, id, "unsupported")).resolves.toEqual(invalidKind);
   await expect.soft(readSnapshot(runtime, ctx, { ...binding, snapshotRef: randomUUID() }, id))
     .resolves.toEqual(invalidBinding);
   await expect(readSnapshot(runtime, ctx, { ...binding, destinationDigest: "0".repeat(64) })).resolves.toEqual(digestMismatch("destinationDigest"));
