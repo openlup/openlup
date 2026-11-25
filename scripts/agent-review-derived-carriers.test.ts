@@ -9,6 +9,7 @@ import { landingMerge } from './agent-review-landing.mjs';
 import { localFixtureEnvironment } from './fixtures/landing-test-environment.ts';
 import {
   CATALOGUE,
+  MATURITY_PAGE,
   PORTABILITY_REPORT,
   SETTING_CATALOGUE,
   SETTING_GUIDE,
@@ -98,6 +99,40 @@ describe('registered output conflicts', () => {
       });
       for (const [path, original] of originals) expect(f.read(path)).toBe(original);
       expect(f.git('status', '--porcelain')).toBe('');
+    } finally { f.restoreDerivedFixture(); }
+  }, 60000);
+});
+
+describe('the maturity reference page', () => {
+  beforeAll(() => {
+    f.checkout(f.base);
+    f.coldBuild('core', 'platform');
+  }, 60000);
+
+  const conflict = async (edit: (label: string, page: string) => string) => {
+    const original = f.read(MATURITY_PAGE);
+    const parent = (label: string) => { f.checkout(f.base); f.write(MATURITY_PAGE, edit(label, original)); return f.commit(); };
+    const left = parent('first-parent'), right = parent('main');
+    f.setMain(right); f.checkout(left);
+    const noBuild = { runCommand: (command: string, args: string[]) => { if (args[0] === npmCli && args[1] === 'run' && args[2] === 'build') return; f.fixtureCommand(command, args); } };
+    return { original, land: () => landingMerge(f.root, noBuild) };
+  };
+
+  it('regenerates a conflict that sits inside a generated region and keeps the page prose', async () => {
+    try {
+      const header = '| Export | Symbol | Maturity | Deprecated |';
+      const { original, land } = await conflict((label, page) => page.replace(header, `${header} ${label}`));
+      expect(original).toContain(header);
+      await land();
+      expect(f.read(MATURITY_PAGE)).toBe(original);
+      expect(f.git('status', '--porcelain')).toBe('');
+    } finally { f.restoreDerivedFixture(); }
+  }, 60000);
+
+  it('refuses a conflict in the prose around the regions', async () => {
+    try {
+      const { land } = await conflict((label, page) => page.replace('# Maturity', `# Maturity ${label}`));
+      await expect(land()).rejects.toThrow(`landing: authored conflicts remain: ${MATURITY_PAGE}`);
     } finally { f.restoreDerivedFixture(); }
   }, 60000);
 });

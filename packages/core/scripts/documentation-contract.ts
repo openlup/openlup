@@ -43,7 +43,7 @@ const agentGuideSections = [
 const wiringExamplePath = "smoke/agentsWiringExample.ts";
 const readmeExamplePath = "smoke/readmeExample.ts";
 
-type SurfaceContract = { role?: unknown; maturity?: unknown; packageSmokeEvidence?: unknown; snapshot?: string };
+type SurfaceContract = { role?: unknown; maturity?: unknown; packageSmokeEvidence?: unknown; snapshot?: string; entrypoint?: string };
 
 export function assertDocumentationContract(
   packageRoot = defaultPackageRoot,
@@ -475,6 +475,11 @@ export function renderGeneratedRegion(name: string, repositoryRoot: string, core
       .map(([subpath, contract]) => `| \`${subpath}\` | ${String(contract.role)} | ${String(contract.maturity)} |`);
     return ["| Export | Role | Maturity |", "| --- | --- | --- |", ...rows, ""].join("\n") + omittedSubpaths(maturity, omitted.size, link);
   }
+  const symbolMaturity = /^maturity-symbols:([a-z]+)$/.exec(name)?.[1];
+  if (symbolMaturity) {
+    if (!(publishedPackages as readonly string[]).includes(symbolMaturity)) return undefined;
+    return renderSymbolMaturity(symbolMaturity, repositoryRoot, link);
+  }
   if (name === "configuration-keys") {
     const config = readJson<{ variables: Array<{ name: string; owner: string; category: string; requiredIn: string[]; secret: boolean }> }>(repositoryRoot, "config/environment-variables.json");
     const words = new Set(readdirSync(join(repositoryRoot, "packages")).flatMap((pkg) => sourceFiles(join(repositoryRoot, "packages", pkg, "src")))
@@ -490,6 +495,163 @@ export function renderGeneratedRegion(name: string, repositoryRoot: string, core
 
 function omittedSubpaths(pkg: string, count: number, link: (path: string, label?: string) => string): string {
   return count ? `\n${count} subpaths omitted because their names are provider-specific. Complete list: ${link(`packages/${pkg}/package.json`, "package.json")} and ${link(`packages/${pkg}/AGENTS.md#subpath-maturity`, "Subpath maturity")}.\n` : "";
+}
+
+const byCodePoint = (left: string, right: string) => (left < right ? -1 : left > right ? 1 : 0);
+
+/** An API report's `## dist/...` sections by file, as `api:update` wrote them. */
+function reportSections(report: string): Map<string, string> {
+  const sections = new Map<string, string>();
+  const headings = [...report.matchAll(/^## (dist\/[^\n]+\.d\.ts)\n\n```ts\n/gm)];
+  headings.forEach((heading, index) => {
+    const chunk = report.slice(heading.index + heading[0].length, headings[index + 1]?.index ?? report.length);
+    sections.set(heading[1]!, chunk.slice(0, chunk.lastIndexOf("\n```")));
+  });
+  return sections;
+}
+
+export type SymbolMaturityRead = { maturity: string; deprecated: boolean };
+
+/**
+ * The effective maturity of every symbol a subpath exports, read with the compiler from the declaration files
+ * of its API report: `experimental` for a symbol tagged @experimental, else the subpath's maturity, and whether the
+ * symbol is tagged @deprecated. A tag on `export { ... } from` or `export * from` applies to the names that
+ * statement exports unless their declaration carries a tag of its own, and the declaration's own comment is the last
+ * doc comment before it, as the compiler attaches it. A tag on a member is not read. A name whose declaration is
+ * not among `files`, such as one re-exported from another package, is returned in `unresolved`, never guessed.
+ */
+export function declaredSymbolMaturities(files: ReadonlyMap<string, string>, entrypoint: string, subpathMaturity: string): { symbols: Map<string, SymbolMaturityRead>; unresolved: string[] } {
+  const root = "/declaration-report/";
+  const options: ts.CompilerOptions = { noLib: true, types: [], target: ts.ScriptTarget.Latest, module: ts.ModuleKind.ESNext, moduleResolution: ts.ModuleResolutionKind.Bundler };
+  const key = (path: string) => (path.startsWith(root) ? path.slice(root.length) : undefined);
+  const host: ts.CompilerHost = {
+    getSourceFile: (path, languageVersion) => {
+      const text = key(path) === undefined ? undefined : files.get(key(path)!);
+      return text === undefined ? undefined : ts.createSourceFile(path, text, languageVersion, true, ts.ScriptKind.TS);
+    },
+    getDefaultLibFileName: () => `${root}lib.d.ts`,
+    writeFile: () => undefined,
+    getCurrentDirectory: () => root,
+    getDirectories: () => [],
+    fileExists: (path) => key(path) !== undefined && files.has(key(path)!),
+    directoryExists: (path) => [...files.keys()].some((file) => `${root}${file}`.startsWith(path.endsWith("/") ? path : `${path}/`)),
+    readFile: (path) => (key(path) === undefined ? undefined : files.get(key(path)!)),
+    getCanonicalFileName: (path) => path,
+    useCaseSensitiveFileNames: () => true,
+    getNewLine: () => "\n",
+  };
+  const entry = `${root}${entrypoint}`;
+  const program = ts.createProgram([entry], options, host);
+  const checker = program.getTypeChecker();
+  const entryFile = program.getSourceFile(entry);
+  const moduleSymbol = entryFile && checker.getSymbolAtLocation(entryFile);
+  const symbols = new Map<string, SymbolMaturityRead>();
+  const unresolved: string[] = [];
+  if (!entryFile || !moduleSymbol) return { symbols, unresolved };
+
+  type Found = { experimental: boolean; deprecated: boolean };
+  const tagsOf = (node: ts.Node): Found => {
+    const names = new Set(ts.getJSDocTags(node).map((tag) => tag.tagName.text));
+    return { experimental: names.has("experimental"), deprecated: names.has("deprecated") };
+  };
+  const tagged = (tags: Found) => tags.experimental || tags.deprecated;
+  const merge = (all: Found[]): Found => ({ experimental: all.some((tags) => tags.experimental), deprecated: all.some((tags) => tags.deprecated) });
+  const inherit = (inner: Found, statement: Found): Found => (tagged(inner) || !tagged(statement) ? inner : statement);
+  const exportsName = (statement: ts.Statement): string[] => {
+    const modifiers = ts.canHaveModifiers(statement) ? ts.getModifiers(statement) ?? [] : [];
+    if (!modifiers.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword) || modifiers.some((modifier) => modifier.kind === ts.SyntaxKind.DefaultKeyword)) return [];
+    if (ts.isVariableStatement(statement)) return statement.declarationList.declarations.flatMap((declaration) => (ts.isIdentifier(declaration.name) ? [declaration.name.text] : []));
+    if (ts.isFunctionDeclaration(statement) || ts.isClassDeclaration(statement) || ts.isInterfaceDeclaration(statement) || ts.isTypeAliasDeclaration(statement) || ts.isEnumDeclaration(statement) || ts.isModuleDeclaration(statement)) {
+      return statement.name && ts.isIdentifier(statement.name) ? [statement.name.text] : [];
+    }
+    return [];
+  };
+  const topStatement = (node: ts.Node): ts.Node => {
+    let current = node;
+    while (current.parent && !ts.isSourceFile(current.parent)) current = current.parent;
+    return current;
+  };
+  const targetOf = (from: ts.SourceFile, specifier: ts.Expression | undefined): ts.SourceFile | undefined => {
+    if (!specifier || !ts.isStringLiteral(specifier)) return undefined;
+    const resolved = ts.resolveModuleName(specifier.text, from.fileName, options, host).resolvedModule?.resolvedFileName;
+    return resolved === undefined ? undefined : program.getSourceFile(resolved);
+  };
+  // undefined: the file does not export the name. "unresolved": it does, but the declaration is not among the files.
+  const find = (file: ts.SourceFile, name: string, seen: Set<string>): Found | "unresolved" | undefined => {
+    const visit = `${file.fileName}\0${name}`;
+    if (seen.has(visit)) return "unresolved";
+    seen.add(visit);
+    const declared: Found[] = [];
+    for (const statement of file.statements) if (exportsName(statement).includes(name)) declared.push(tagsOf(statement));
+    if (declared.length) return merge(declared);
+    for (const statement of file.statements) {
+      if (!ts.isExportDeclaration(statement) || !statement.exportClause) continue;
+      if (ts.isNamespaceExport(statement.exportClause)) {
+        if (statement.exportClause.name.text === name) return tagsOf(statement);
+        continue;
+      }
+      for (const element of statement.exportClause.elements) {
+        if (element.name.text !== name) continue;
+        if (statement.moduleSpecifier) {
+          const target = targetOf(file, statement.moduleSpecifier);
+          const inner = target ? find(target, (element.propertyName ?? element.name).text, seen) : "unresolved";
+          return inner === undefined || inner === "unresolved" ? "unresolved" : inherit(inner, tagsOf(statement));
+        }
+        let local = checker.getExportSpecifierLocalTargetSymbol(element);
+        if (local && local.flags & ts.SymbolFlags.Alias) local = checker.getAliasedSymbol(local);
+        const declarations = local?.declarations ?? [];
+        return declarations.length ? merge(declarations.map((declaration) => tagsOf(topStatement(declaration)))) : "unresolved";
+      }
+    }
+    for (const statement of file.statements) {
+      if (!ts.isExportDeclaration(statement) || statement.exportClause || !statement.moduleSpecifier) continue;
+      const target = targetOf(file, statement.moduleSpecifier);
+      const inner = target ? find(target, name, seen) : undefined;
+      if (inner !== undefined && inner !== "unresolved") return inherit(inner, tagsOf(statement));
+    }
+    return undefined;
+  };
+
+  for (const exported of checker.getExportsOfModule(moduleSymbol)) {
+    const name = exported.getName();
+    if (name === "default" || name === "export=") continue;
+    const found = find(entryFile, name, new Set());
+    if (found === undefined || found === "unresolved") unresolved.push(name);
+    else symbols.set(name, { maturity: found.experimental ? "experimental" : subpathMaturity, deprecated: found.deprecated });
+  }
+  return { symbols, unresolved: unresolved.sort(byCodePoint) };
+}
+
+function renderSymbolMaturity(pkg: string, repositoryRoot: string, link: (path: string, label?: string) => string): string {
+  const gatesPath = `packages/${pkg}/release-gates.json`;
+  const surface = readJson<{ packageSurface?: Record<string, SurfaceContract> }>(repositoryRoot, gatesPath).packageSurface ?? {};
+  const omitted = providerSpecificKeys(repositoryRoot, Object.keys(surface));
+  const rows: { subpath: string; symbol: string; maturity: string; deprecated: boolean }[] = [];
+  let unresolved = 0;
+  for (const subpath of Object.keys(surface).filter((candidate) => !omitted.has(candidate)).sort(byCodePoint)) {
+    const contract = surface[subpath]!;
+    if (typeof contract.snapshot !== "string" || typeof contract.entrypoint !== "string") {
+      throw new Error(`${gatesPath}: surface ${subpath} declares no snapshot or no entrypoint; its API report cannot be read for symbol maturity`);
+    }
+    const report = `packages/${pkg}/${contract.snapshot}`;
+    if (!existsSync(join(repositoryRoot, report))) throw new Error(`${report}: missing API report for ${subpath}; run npm run api:update`);
+    const files = reportSections(readFileSync(join(repositoryRoot, report), "utf8"));
+    if (!files.has(contract.entrypoint)) throw new Error(`${report}: no section for ${contract.entrypoint}; run npm run api:update`);
+    const maturity = String(contract.maturity);
+    const read = declaredSymbolMaturities(files, contract.entrypoint, maturity);
+    unresolved += read.unresolved.length;
+    for (const [symbol, value] of read.symbols) if (value.deprecated || value.maturity !== maturity) rows.push({ subpath, symbol, ...value });
+  }
+  const flagged = providerSpecificKeys(repositoryRoot, rows.map((row) => row.symbol));
+  const kept = rows.filter((row) => !flagged.has(row.symbol)).sort((left, right) => byCodePoint(left.subpath, right.subpath) || byCodePoint(left.symbol, right.symbol));
+  const table = kept.length
+    ? markdownTable(["Export", "Symbol", "Maturity", "Deprecated"], kept.map((row) => [`\`${row.subpath}\``, `\`${row.symbol}\``, row.maturity, row.deprecated ? "yes" : "no"]))
+    : "No symbol of this package differs from its subpath's maturity or is deprecated.\n";
+  const notes = [
+    rows.length > kept.length ? `${rows.length - kept.length} symbols omitted because their names are provider-specific.\n` : "",
+    unresolved ? `${unresolved} symbols are not listed because their declarations are not in this package's API reports.\n` : "",
+  ].filter(Boolean).map((note) => `\n${note}`).join("");
+  return table + notes + omittedSubpaths(pkg, omitted.size, link);
 }
 
 function readJson<T>(root: string, path: string): T {
