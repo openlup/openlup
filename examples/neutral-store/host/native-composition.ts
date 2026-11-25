@@ -148,8 +148,10 @@ export async function composeNativeBindings(connectionString: string, origin: Or
         ? { principalId: found.session.principalId, email: null, emailVerified: false } : null;
     },
   } });
+  const asCustomer = <T>(principalId: string, work: (db: PgGatewayClient) => Promise<T>) =>
+    gateway.asActor({ role: 'authenticated', sub: principalId }, db => work(db as PgGatewayClient));
   const watchdogEvidence = publication && createPostgresRoleFreeTransactionLane<PgQueryExecutor>({ connectionString }, { pool });
-  const capabilities = composeExistingCapabilities({ executor: pool, connectionString, publication, watchdogEvidence });
+  const capabilities = composeExistingCapabilities({ executor: pool, connectionString, publication, watchdogEvidence, asOperator: asCustomer });
   const contacts = createPostgresContactClientRegistrar({ connectionString });
   const checkoutRecoveryTokenLane = createPostgresRoleFreeTransactionLane({ connectionString });
   const storefront = composeCatalogueStorefront(createPostgresRoleFreeTransactionLane<PgQueryExecutor>({ connectionString }, { pool }));
@@ -186,8 +188,6 @@ export async function composeNativeBindings(connectionString: string, origin: Or
     const auth = await operatorAuth.authorize(context.actor.sessionToken ?? '', { allowedRoles: ['admin'] });
     return auth.ok && auth.principalId.toLowerCase() === context.actor.operatorRef?.toLowerCase();
   }, quoteAcceptanceKeyring));
-  const asCustomer = <T>(principalId: string, work: (db: PgGatewayClient) => Promise<T>) =>
-    gateway.asActor({ role: 'authenticated', sub: principalId }, db => work(db as PgGatewayClient));
   Object.assign(actions, composeExpiredRecovery(pool, checkoutRecoveryTokenLane, recovery.tokens, quoteAcceptanceKeyring));
   Object.assign(actions, composeSandboxRecoveryPayments(pool, checkoutRecoveryTokenLane, recovery.tokens, quoteAcceptanceKeyring));
   actions['checkout.recoveryStart'] = async (payload, context) => {
