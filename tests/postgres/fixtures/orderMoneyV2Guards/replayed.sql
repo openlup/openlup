@@ -1,4 +1,4 @@
-SELECT plan(8);
+SELECT plan(9);
 SELECT ok((SELECT prosecdef AND provolatile='s' AND prorettype='void'::regtype
   AND proconfig=ARRAY['search_path=pg_catalog, pg_temp'] FROM pg_proc
   WHERE oid='public.commerce_order_money_v2_assert(uuid,boolean,boolean,jsonb,jsonb)'::regprocedure),
@@ -27,6 +27,9 @@ SELECT ok(NOT EXISTS (SELECT FROM pg_proc p, LATERAL aclexplode(coalesce(p.proac
   AND NOT EXISTS (SELECT FROM pg_roles r WHERE r.rolname IN ('anon','authenticated','service_role')
     AND has_function_privilege(r.oid,'public.commerce_order_money_v2_live_body(uuid)','EXECUTE')),
   'the live body reader is owner only');
+SELECT ok(NOT EXISTS (SELECT FROM pg_proc p, LATERAL aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
+  WHERE p.oid='public.commerce_order_money_v2_check_state(uuid,boolean,text,text)'::regprocedure AND a.grantee<>p.proowner),
+  'the transaction check state helper is owner only');
 SELECT is((SELECT count(*)::integer FROM pg_trigger WHERE NOT tgisinternal AND tgname LIKE 'trg_%_money_v2'),
   0,'the assertion forward leaves storage trigger installation to its owner');
 SELECT * FROM finish();

@@ -9651,6 +9651,10 @@
           {
             "signature": "public.commerce_order_money_v2_live_body(uuid)",
             "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_order_money_v2_check_state(uuid,boolean,text,text)",
+            "searchPath": "pg_catalog, pg_temp"
           }
         ],
         "grantOnlyFunctions": [],
@@ -13948,7 +13952,7 @@
     },
     {
       "path": "db/platform/migrations/20261128230002_order_money_v2_assert.sql",
-      "sha256": "ee04c7362373052f1eaa713f663e1dd0c10d82c9a47ed1214cde3a739aa076cd",
+      "sha256": "cbe4ca61d143ae6a4ee55a9e87d1b7ddfdf38048fd439be2008e4aed5a8c1325",
       "functions": [
         {
           "signature": "public.commerce_order_assert_line_sum()",
@@ -13958,12 +13962,17 @@
         {
           "signature": "public.commerce_order_money_v2_assert(uuid,boolean,boolean,jsonb,jsonb)",
           "beforeSha256": null,
-          "afterSha256": "28a07063e9d06440796423bb6985711eb4c590ea02dd2038a2d054e4ece77365"
+          "afterSha256": "dd4ca2d2bcb5e7f06da25ae11fcb2a07375e09ac0f83aec57ed3ea4ae24221cc"
         },
         {
           "signature": "public.commerce_order_money_v2_live_body(uuid)",
           "beforeSha256": null,
           "afterSha256": "8d9d402e1f1b887b2cdd26f8222b133d3d5a4e680b659a03291ae626e509b854"
+        },
+        {
+          "signature": "public.commerce_order_money_v2_check_state(uuid,boolean,text,text)",
+          "beforeSha256": null,
+          "afterSha256": "1cc9249747fce4b21ae668b88cb444fabadfd4bfd1cdb6e1c2f80c8a418beb8a"
         }
       ]
     }

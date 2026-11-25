@@ -82,18 +82,16 @@ function amounts(value: Pick<Component, "preDiscountMinor" | "effectiveMinor" | 
 
 export async function write(db: PoolClient, evidence: Evidence, sku: Sku,
   opts: { orderId?: string; snapshot?: Record<string, unknown>; item?: Record<string, unknown>; source?: Record<string, unknown>;
-    erased?: boolean; clientId?: string; bucketErased?: boolean } = {}) {
+    erased?: boolean; clientId?: string; bucketErased?: boolean; snapshotFirst?: boolean;
+    beforeSnapshot?: () => Promise<unknown> } = {}) {
   const { quote, clientId, selection, service } = evidence;
   const id = opts.orderId ?? randomUUID();
   const erased = opts.erased ?? false;
   await db.query("LOCK TABLE public.identity_privacy_erasures IN SHARE MODE");
   await db.query("SELECT 1 FROM public.clients WHERE id=$1 FOR UPDATE", [opts.clientId ?? clientId]);
-  await insert(db, orderTable, { id, client_id: opts.clientId ?? clientId, status: "pending_payment",
+  const writeHeader = () => insert(db, orderTable, { id, client_id: opts.clientId ?? clientId, status: "pending_payment",
     money_version: version, currency_code: quote.currency, total_amount_minor: quote.payableMinor });
-  await insert(db, "commerce_destination_v2_order_bindings", {
-    order_id: id, snapshot_ref: quote.destination.snapshotRef, selection: erased ? null : selection, service: erased ? null : service,
-  });
-  await insert(db, snapshots, {
+  const writeSnapshot = () => insert(db, snapshots, {
     order_id: id, calculation_id: quote.taxEvidence.calculationId, accepted_quote_id: quote.quoteId,
     accepted_quote_digest: quote.quoteDigest, token_digest: digest, accepted_money_digest: quote.moneyDigest,
     evidence_digest: quote.taxEvidence.evidenceDigest, coverage_digest: quote.coverageDigest,
@@ -110,6 +108,14 @@ export async function write(db: PoolClient, evidence: Evidence, sku: Sku,
     tax_date: quote.taxEvidence.taxDate, evaluation_expires_at: quote.taxEvidence.expiresAt,
     net_total: quote.netTotal, tax_total: quote.taxTotal, fee_total: quote.feeTotal, payable_minor: quote.payableMinor,
     ...opts.snapshot,
+  });
+
+  if (opts.snapshotFirst) await writeSnapshot();
+  await writeHeader();
+  await opts.beforeSnapshot?.();
+  if (!opts.snapshotFirst) await writeSnapshot();
+  await insert(db, "commerce_destination_v2_order_bindings", {
+    order_id: id, snapshot_ref: quote.destination.snapshotRef, selection: erased ? null : selection, service: erased ? null : service,
   });
 
   const adjustments = new Map<string, string>();

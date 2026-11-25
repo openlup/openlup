@@ -22,6 +22,8 @@ if (!unit) throw new Error("Expected order money assertion forward");
 const position = manifest.qualified.forward.findIndex(entry => entry.file === unit.file);
 const prefixInventory = "6ffc2de73b50852f70c99fb1529521d753e2859a7d1f6e8f618a4aae33f967fb";
 const routine = "public.commerce_order_money_v2_assert(uuid,boolean,boolean,jsonb,jsonb)";
+const checkState = "public.commerce_order_money_v2_check_state(uuid,boolean,text,text)";
+const evidenceRemedy = "Recover the original accepted evidence through its owner and retry with its original binding.";
 const liveBody = "public.commerce_order_money_v2_live_body";
 const path = "db/platform/migrations/20261125010000_catalog_purchase_admission.sql";
 const message = "commerce_order_money_v2_mismatch";
@@ -34,10 +36,10 @@ let applied: string[];
 const writeChecked = (evidence: Evidence, options?: Parameters<typeof write>[3]) =>
   transaction(store.owner, db => write(db, evidence, sku, options));
 
-async function expectMismatch(result: Promise<unknown>, field: string) {
+async function expectMismatch(result: Promise<unknown>, field: string, hint?: string) {
   const error = await rejected(result);
   expectSqlError(error, "23514", message);
-  expect(error).toMatchObject({ column: field, detail: undefined });
+  expect(error).toMatchObject({ column: field, detail: undefined, ...(hint === undefined ? {} : { hint }) });
 }
 
 async function mutateRoutine(db: PoolClient, signature: string, edits: readonly (readonly [string, string])[]) {
@@ -204,6 +206,98 @@ it("preserves the named foreign-key refusals at runtime", async () => {
   }))), "23503", foreignKeyMessage(itemTable, itemFk), itemFk);
 });
 
+it.each([true, false])("checks fresh evidence when the snapshot is inserted first=%s", async snapshotFirst => {
+  const evidence = await issue(store, sku, false);
+  const first = snapshotFirst ? "trg_commerce_order_items_line_sum" : "trg_commerce_orders_line_sum";
+  const second = snapshotFirst ? "trg_commerce_orders_line_sum" : "trg_commerce_order_items_line_sum";
+  const flush = async (db: PoolClient, snapshot?: Record<string, unknown>) => {
+    await write(db, evidence, sku, { snapshotFirst, snapshot });
+    await db.query(`SET CONSTRAINTS ${first} IMMEDIATE`);
+    await db.query(`SET CONSTRAINTS ${second} IMMEDIATE`);
+  };
+  await expectMismatch(transaction(store.owner, db => flush(db, { accepted_quote_id: randomUUID() })),
+    "/taxEvidence", evidenceRemedy);
+  await transaction(store.owner, db => flush(db));
+});
+
+it.each(["header", "item"])("refuses an absent snapshot when the %s constraint fires before the foreign key", async event => {
+  const evidence = await issue(store, sku, false);
+  const id = randomUUID();
+  const flushWithoutSnapshot = (db: PoolClient, snapshot?: Record<string, unknown>) =>
+    write(db, evidence, sku, { orderId: id, snapshot, beforeSnapshot: async () => {
+      if (event === "item") await insert(db, itemTable, {
+        order_id: id, sku_id: sku.id, line_ordinal: 2, quantity: 1, unit_amount_minor: 0, line_amount_minor: 0,
+        line_key: evidence.quote.lines[0]!.lineKey,
+      });
+      const name = event === "header" ? "trg_commerce_orders_line_sum" : "trg_commerce_order_items_line_sum";
+      await db.query(`SET CONSTRAINTS ${name} IMMEDIATE`);
+      if (event === "item") {
+        await db.query("SET CONSTRAINTS trg_commerce_order_items_line_sum DEFERRED");
+        await db.query("DELETE FROM public.commerce_order_items WHERE order_id=$1", [id]);
+      }
+    } });
+  const error = await rejected(transaction(store.owner, flushWithoutSnapshot));
+  expectSqlError(error, "23503", foreignKeyMessage(orderTable, orderFk), orderFk);
+  expect(error).toMatchObject({ schema: "public", table: orderTable });
+  expect((await store.owner.query("SELECT FROM public.commerce_orders WHERE id=$1", [id])).rowCount).toBe(0);
+  // Temporarily disabled the missing-snapshot refusal in a disposable database transaction.
+  await transaction(store.owner, async db => {
+    await mutateRoutine(db, routine, [["IF snapshot.order_id IS NULL THEN", "IF snapshot.order_id IS NULL THEN RETURN; ELSIF false THEN"]]);
+    await flushWithoutSnapshot(db, event === "header" ? { accepted_quote_id: randomUUID() } : undefined);
+    if (event === "header") await db.query("SET CONSTRAINTS ALL IMMEDIATE");
+  }, "ROLLBACK");
+});
+
+it("checks an unchanged projection once and rechecks after a constraint flush, including private writes", async () => {
+  const evidence = await issue(store, sku, false);
+  const exercise = async (db: PoolClient, expectedCalls: string, checkLaterWrite: boolean) => {
+    await db.query("CREATE TEMP SEQUENCE money_body_calls");
+    await mutateRoutine(db, `${liveBody}(uuid)`, [["  WITH snapshot AS (", `  WITH calls AS (
+      SELECT nextval('pg_temp.money_body_calls')
+    ), snapshot AS (`], [
+      "FROM public.commerce_order_tax_snapshots WHERE", "FROM calls CROSS JOIN public.commerce_order_tax_snapshots WHERE",
+    ]]);
+    const { id } = await write(db, evidence, sku);
+    await db.query("SET CONSTRAINTS trg_commerce_order_items_line_sum IMMEDIATE");
+    await db.query("SET CONSTRAINTS trg_commerce_orders_line_sum IMMEDIATE");
+    expect((await db.query("SELECT last_value::text AS calls, is_called FROM pg_temp.money_body_calls")).rows)
+      .toEqual([{ calls: expectedCalls, is_called: true }]);
+    await db.query("SET CONSTRAINTS trg_commerce_orders_line_sum DEFERRED");
+    await db.query("UPDATE public.commerce_orders SET updated_at=now() WHERE id=$1", [id]);
+    await db.query(`UPDATE public.${sources} SET assignment_ref='changed' WHERE order_id=$1`, [id]);
+    const flush = db.query("SET CONSTRAINTS trg_commerce_orders_line_sum IMMEDIATE");
+    if (checkLaterWrite) await expectMismatch(flush, "/acceptedMoneyDigest");
+    else await flush;
+  };
+  await transaction(store.owner, db => exercise(db, "1", true), "ROLLBACK");
+  // Temporarily disabled duplicate skipping in a disposable database transaction.
+  await transaction(store.owner, async db => {
+    await mutateRoutine(db, checkState, [["check_projection := last_stamp IS DISTINCT FROM p_stamp;", "check_projection := true;"]]);
+    await exercise(db, "2", true);
+  }, "ROLLBACK");
+  // Temporarily disabled invalidation after the first check in a disposable database transaction.
+  await transaction(store.owner, async db => {
+    await mutateRoutine(db, checkState, [["check_projection := last_stamp IS DISTINCT FROM p_stamp;", "check_projection := last_stamp IS NULL;"]]);
+    await exercise(db, "1", false);
+  }, "ROLLBACK");
+});
+
+it("keeps fresh seal checks after a successful header flush", async () => {
+  const evidence = await issue(store, sku, false);
+  const alterAfterFlush = async (db: PoolClient) => {
+    const { id } = await write(db, evidence, sku);
+    await db.query("SET CONSTRAINTS trg_commerce_orders_line_sum IMMEDIATE");
+    await db.query(`UPDATE public.${snapshots} SET accepted_quote_id=$2 WHERE order_id=$1`, [id, randomUUID()]);
+    await db.query("SET CONSTRAINTS trg_commerce_order_items_line_sum IMMEDIATE");
+  };
+  await expectMismatch(transaction(store.owner, alterAfterFlush), "/taxEvidence", evidenceRemedy);
+  // Temporarily disabled remembered freshness in a disposable database transaction.
+  await transaction(store.owner, async db => {
+    await mutateRoutine(db, checkState, [["fresh := p_fresh OR coalesce(was_fresh,false);", "fresh := p_fresh;"]]);
+    await alterAfterFlush(db);
+  }, "ROLLBACK");
+});
+
 it("refuses both sides of a move across legacy and versioned orders", async () => {
   const evidence = await issue(store, sku, false);
   const v2 = await writeChecked(evidence);
@@ -248,6 +342,72 @@ it("requires a final composition and independently enforces consumption keys", a
   const byCalculation = await rejected(writeChecked(distinct, { snapshot: { calculation_id: original.quote.taxEvidence.calculationId } }));
   expectSqlError(byCalculation, "23505", uniqueMessage(calculationKey), calculationKey);
   await expect(writeChecked(distinct)).resolves.toBeDefined();
+});
+
+it.each([
+  ["accepted_quote_id", "OR verified_quote->'quoteId' IS DISTINCT FROM to_jsonb(snapshot.accepted_quote_id)", randomUUID()],
+  ["accepted_quote_digest", "OR verified_quote->>'quoteDigest' IS DISTINCT FROM snapshot.accepted_quote_digest", "0".repeat(64)],
+])("independently verifies the sealed %s", async (key, comparison, changedValue) => {
+  const evidence = await issue(store, sku, false);
+  const changed = { snapshot: { [key]: changedValue } };
+  await expectMismatch(writeChecked(evidence, changed), "/taxEvidence", evidenceRemedy);
+  // Temporarily disabled just this quote comparison in a disposable database transaction.
+  await transaction(store.owner, async db => {
+    await mutateRoutine(db, routine, [[comparison, ""]]);
+    await write(db, evidence, sku, changed);
+    await db.query("SET CONSTRAINTS ALL IMMEDIATE");
+  }, "ROLLBACK");
+  await writeChecked(evidence);
+});
+
+it.each([
+  ["principalRef", randomUUID()],
+  ["installationRef", "other-installation"],
+])("compares the destination and terminal evaluation %s", async (coordinate, different) => {
+  const evidence = await issue(store, sku, false);
+  const tryMismatch = async (db: PoolClient) => {
+    // Edit a fixture row at its owner boundary while retaining a verifiable evaluation.
+    await db.query("ALTER TABLE public.tax_calculations DISABLE TRIGGER tax_calculation_guard");
+    await db.query(`UPDATE public.tax_calculations t SET
+      identity=jsonb_set(t.identity,ARRAY[$2],to_jsonb($3::text)),
+      locator=public.tax_calculation_hash_v1('evaluation-key',jsonb_set(t.identity,ARRAY[$2],to_jsonb($3::text)))
+      WHERE calculation_id=$1`, [evidence.quote.taxEvidence.calculationId, coordinate, different]);
+    expect((await db.query(`SELECT public.tax_calculation_terminal_v1(t)#>>'{outcome,quote,quoteId}' AS id
+      FROM public.tax_calculations t WHERE calculation_id=$1`, [evidence.quote.taxEvidence.calculationId])).rows)
+      .toEqual([{ id: evidence.quote.quoteId }]);
+    await write(db, evidence, sku);
+    await db.query("SET CONSTRAINTS ALL IMMEDIATE");
+  };
+  await expectMismatch(transaction(store.owner, tryMismatch), "/taxEvidence", evidenceRemedy);
+  // Temporarily disabled just this owner comparison in a disposable database transaction.
+  await transaction(store.owner, async db => {
+    await mutateRoutine(db, routine, [[`AND d.owner_scope->>'${coordinate}'=calculation.identity->>'${coordinate}'`, ""]]);
+    await tryMismatch(db);
+  }, "ROLLBACK");
+  await writeChecked(evidence);
+});
+
+it("refuses an otherwise matching terminal quote with a corrupted seal digest", async () => {
+  const evidence = await issue(store, sku, false);
+  const corrupt = async (db: PoolClient) => {
+    await db.query("ALTER TABLE public.tax_calculations DISABLE TRIGGER tax_calculation_guard");
+    await db.query("UPDATE public.tax_calculations SET outcome_digest=$2 WHERE calculation_id=$1",
+      [evidence.quote.taxEvidence.calculationId, "0".repeat(64)]);
+    expect((await db.query(`SELECT state, pin ? 'composition' AS composed, identity->>'clientId' AS client,
+        public.tax_calculation_terminal_v1(t) IS NULL AS invalid
+      FROM public.tax_calculations t WHERE calculation_id=$1`, [evidence.quote.taxEvidence.calculationId])).rows)
+      .toEqual([{ state: "terminal", composed: true, client: evidence.clientId, invalid: true }]);
+    await write(db, evidence, sku);
+    await db.query("SET CONSTRAINTS ALL IMMEDIATE");
+  };
+  await expectMismatch(transaction(store.owner, corrupt), "/taxEvidence", evidenceRemedy);
+  // Temporarily disabled terminal seal verification in a disposable database transaction.
+  await transaction(store.owner, async db => {
+    await mutateRoutine(db, routine, [[`public.tax_calculation_terminal_v1(calculation)#>'{outcome,quote}'`,
+      `(calculation.outcome_text::jsonb)->1#>'{outcome,quote}'`]]);
+    await corrupt(db);
+  }, "ROLLBACK");
+  await writeChecked(evidence);
 });
 
 async function eraseEvidence(db: PoolClient, clientId: string) {
@@ -306,7 +466,18 @@ it("honors the owner restore fence, skips live provenance at restore, and checks
     await write(db, evidence, sku);
   })).resolves.toBeUndefined();
   const erasedFresh = await issue(store, sku, false);
-  await expectMismatch(writeChecked(erasedFresh, { erased: true }), "/taxEvidence");
+  await expectMismatch(writeChecked(erasedFresh, { erased: true }), "/taxEvidence", evidenceRemedy);
+  // Temporarily disabled the recovery remedy in a disposable database transaction.
+  await transaction(store.owner, async db => {
+    await mutateRoutine(db, routine, [[
+      "COLUMN='/taxEvidence', HINT=evidence_remedy;\n  END IF;\n  IF snapshot.destination_erased",
+      "COLUMN='/taxEvidence', HINT=remedy;\n  END IF;\n  IF snapshot.destination_erased",
+    ]]);
+    await write(db, erasedFresh, sku, { erased: true });
+    const error = await rejected(db.query("SET CONSTRAINTS ALL IMMEDIATE"));
+    expectSqlError(error, "23514", message);
+    expect(error).toMatchObject({ column: "/taxEvidence", hint: "Replay the original accepted document and its digest." });
+  }, "ROLLBACK");
 });
 
 it("split_items_map_to_source retains a one-cent tax reduction and the unpromoted source", async () => {
@@ -482,7 +653,7 @@ it("checks rate and timestamp boundaries over typed SQL rows", async () => {
   }
 });
 
-async function timeCommit(evidence: Evidence, basis: string) {
+async function timeCommit(evidence: Evidence, basis: string, maximumMs = flatTestTimeoutMs(false, true)) {
   let commitStarted = 0;
   await transaction(store.owner, async db => {
     await write(db, evidence, sku);
@@ -490,7 +661,7 @@ async function timeCommit(evidence: Evidence, basis: string) {
   });
   const elapsed = performance.now() - commitStarted;
   console.info(`Bounded order commit (${basis}) took ${elapsed.toFixed(1)} ms`);
-  expect(elapsed).toBeLessThan(flatTestTimeoutMs(false, true));
+  expect(elapsed).toBeLessThan(maximumMs);
 }
 
 const boundedHandling = (): Evidence["quote"]["deliveryBuckets"] => Array.from({ length: 256 }, (_, index) => ({
@@ -553,7 +724,7 @@ it("times a combined commit with allocation-state positions near both wire caps"
         })),
       });
       return {
-        ...body, deliveryBuckets: boundedHandling(), feeLines: boundedFees(), netTotal: 1, feeTotal: 256, payableMinor: 257,
+        ...body, deliveryBuckets: boundedHandling(), feeLines: boundedFees(), netTotal: 50, feeTotal: 256, payableMinor: 306,
         lines: [{ ...line, lineKey, unitBasisMinor: 21, preDiscountMinor: 21, effectiveMinor: 1, netMinor: 1,
           lineTotalMinor: 1, taxPositions: state(1).taxPositions,
           discountAllocations: promotions.map(({ id }, slot) => ({
@@ -561,7 +732,10 @@ it("times a combined commit with allocation-state positions near both wire caps"
             basisReductionMinor: 1, netReductionMinor: 1, taxReductionMinor: 0, evidenceRef: "b".repeat(64),
             before: state(21 - slot), after: state(20 - slot),
           })),
-        }],
+        }, ...Array.from({ length: 49 }, (_, index) => ({
+          ...line, lineKey: `source-${index + 2}`, sourceOrdinal: index + 2, unitBasisMinor: 1,
+          preDiscountMinor: 1, effectiveMinor: 1, netMinor: 1, lineTotalMinor: 1, taxPositions: [], discountAllocations: [],
+        }))],
       };
     };
     // Reserve bytes for the quote and seal envelope, then fill the repeated references.
@@ -579,8 +753,9 @@ it("times a combined commit with allocation-state positions near both wire caps"
   expect(quoteBytes).toBeLessThanOrEqual(CATALOG_DRAFT_MAX_BYTES);
   expect(seal!.bytes).toBeGreaterThan(sealWireCap * 0.99);
   expect(seal!.bytes).toBeLessThanOrEqual(sealWireCap);
-  console.info(`Combined order fixture: ${positionCount} positions, ${quoteBytes} quote bytes, ${seal!.bytes} seal bytes`);
-  await timeCommit(evidence, "combined wire");
+  expect(evidence.quote.lines).toHaveLength(50);
+  console.info(`Combined order fixture: 50 items and sources, ${promotions.length} allocations, ${positionCount} positions, ${quoteBytes} quote bytes, ${seal!.bytes} seal bytes`);
+  await timeCommit(evidence, "combined wire", 10_000);
 }, postgresSetupTimeoutMs);
 
 it("records the bounded inclusive commit with fifty apportioned shipping parts", async () => {
