@@ -3,7 +3,7 @@ import { access, mkdtemp, mkdir, readdir, readFile, rm } from 'node:fs/promises'
 import { spawn, type ChildProcess } from 'node:child_process';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { createPostgresContactClientRegistrar } from '@openlup/platform/identity';
+import { createPostgresContactClientRegistrar, createPostgresOperatorIdentityStore } from '@openlup/platform/identity';
 import { env as processEnvironment } from 'node:process';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -1156,32 +1156,74 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
       AND idempotency_key=$1`, [`checkout_expired:${order.orderRef}`])).rows[0].n).toBe('0');
   }, 45_000);
 
-  it('an attempted subscription order past its link lifetime is expired for resume and not abandonable', async () => {
+  // The store's operator path: a provisioned human administrator with a Commerce operator row.
+  let operatorCookie: string | undefined;
+  async function operatorCall(operation: Operation, payload: Record<string, unknown>) {
+    if (!operatorCookie) {
+      const address = `operator-${config.id}@example.test`;
+      const connection = new URL(runtimeConnection); connection.password = 'synthetic-conformance';
+      const operators = createPostgresOperatorIdentityStore({ connectionString: connection.toString() });
+      let operatorId: string;
+      try { operatorId = (await operators.bootstrapFirstAdministrator({ email: address })).principalId; }
+      finally { await operators.close(); }
+      await owner!.query('INSERT INTO public.commerce_operators(id,label) VALUES($1,$2)', [operatorId, 'Synthetic operator']);
+      expect((await call('auth.operator', { email: address })).ok).toBe(true);
+      const messages = (await readFile(resolve(state, '.context/captured-messages/identity.jsonl'), 'utf8'))
+        .trim().split('\n').map(line => JSON.parse(line) as { email: string; token: string });
+      const challenge = messages.filter(message => message.email === address).at(-1);
+      if (!challenge) throw new Error('operator_challenge_required');
+      const verified = await fetch(`${base}/api/actions/auth.operator`, { method: 'POST', headers: { Origin: base,
+        'Content-Type': 'application/json', 'X-Starter-Request': '1', 'Idempotency-Key': randomUUID() },
+        body: JSON.stringify({ token: challenge.token }), signal: fixture.signal });
+      expect(((await verified.json()) as ActionResult).ok).toBe(true);
+      operatorCookie = verified.headers.get('set-cookie')!.split(';')[0];
+    }
+    const response = await fetch(`${base}/api/actions/${operation}`, { method: 'POST', headers: { Origin: base,
+      'Content-Type': 'application/json', 'X-Starter-Request': '1', 'Idempotency-Key': randomUUID(), Cookie: operatorCookie! },
+      body: JSON.stringify(payload), signal: fixture.signal });
+    return await response.json() as ActionResult;
+  }
+  async function agedSubscription(label: string, outcome: 'refused' | 'indeterminate') {
     await control(false, undefined, undefined, repeatLimits);
     await owner!.query('TRUNCATE public.commerce_checkout_attempt_ledger');
     const key = randomUUID();
-    const payload = checkout(`aged-${config.id}@example.test`);
-    const subscription = await quotedSubscription({ ...payload,
+    const payload = checkout(`${label}-${config.id}@example.test`);
+    const subscription = async () => quotedSubscription({ ...payload,
       cart: { ...payload.cart, mode: 'subscription', cadenceDays: config.offer.defaultCadenceDays } });
-    const created = await call('checkout.create', subscription, false, key);
-    if (!created.ok || !isRecord(created.value) || typeof created.value.token !== 'string') throw new Error('aged_subscription_required');
+    const created = await call('checkout.create', await subscription(), false, key);
+    if (!created.ok || !isRecord(created.value) || typeof created.value.token !== 'string') throw new Error(`${label}_subscription_required`);
     const orderRef = String(created.value.orderRef);
-    // A refused sandbox attempt leaves the order unpaid and the abandonment predicate false.
-    expect((await call('payment.simulate', { orderRef, token: created.value.token, outcome: 'refused' })).ok).toBe(true);
+    expect((await call('payment.simulate', { orderRef, token: created.value.token, outcome })).ok).toBe(true);
     await owner!.query("UPDATE public.commerce_orders SET created_at=created_at - interval '25 hours' WHERE id=$1", [orderRef]);
+    // Past the link lifetime the buyer gets no token and cannot abandon an attempted order.
     expect(await call('checkout.continuation', { action: 'resume', locale: 'en' }, false, key))
       .toEqual({ ok: false, code: 'starter_checkout_expired' });
     expect(await abandon(key)).toEqual({ ok: false, code: 'starter_checkout_not_abandonable' });
     expect(await orderStatus(orderRef)).toBe('pending_payment');
-    // The documented fix: a new key starts a new purchase.
-    const fresh = await call('checkout.create', payload, false, randomUUID());
+    return { key, orderRef, subscription };
+  }
+
+  it('an aged order with a refused attempt is settled by the store, then the key and a new key resolve', async () => {
+    const { key, orderRef, subscription } = await agedSubscription('aged-refused', 'refused');
+    // While the unpaid draft exists, the same contact's first subscription is held.
+    expect(await call('checkout.create', await subscription(), false, randomUUID()))
+      .toEqual({ ok: false, code: 'starter_command_conflict' });
+    const cancelled = await operatorCall('operator.cancelUnpaid', { orderRef, reason: 'buyer_requested_start_over', confirmed: true });
+    expect(cancelled.ok, JSON.stringify(cancelled)).toBe(true);
+    expect(await orderStatus(orderRef)).toBe('cancelled');
+    expect(await call('checkout.continuation', { action: 'resume', locale: 'en' }, false, key))
+      .toEqual({ ok: false, code: 'starter_checkout_not_payable' });
+    const fresh = await call('checkout.create', await subscription(), false, randomUUID());
     expect(fresh.ok, JSON.stringify(fresh)).toBe(true);
     expect(fresh.ok && isRecord(fresh.value) && fresh.value.orderRef).not.toBe(orderRef);
-    // Recorded limit: the unpaid acquisition draft still holds this contact's first subscription until an operator cancels it.
-    expect(await call('checkout.create', await quotedSubscription({ ...payload,
-      cart: { ...payload.cart, mode: 'subscription', cadenceDays: config.offer.defaultCadenceDays } }), false, randomUUID()))
-      .toEqual({ ok: false, code: 'starter_command_conflict' });
-  }, 45_000);
+  }, 60_000);
+
+  it('an aged order with an indeterminate attempt cannot be cancelled by the store', async () => {
+    const { orderRef } = await agedSubscription('aged-indeterminate', 'indeterminate');
+    expect(await operatorCall('operator.cancelUnpaid', { orderRef, reason: 'buyer_requested_start_over', confirmed: true }))
+      .toEqual({ ok: false, code: 'starter_order_transition_conflict' });
+    expect(await orderStatus(orderRef)).toBe('pending_payment');
+  }, 60_000);
 
   it('abandon with no order, then the first create, then a changed create leave one order', async () => {
     await control(false, undefined, undefined, repeatLimits);
