@@ -3,7 +3,7 @@ import { dispatchAction, pendingBindings } from '../host/bindings.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Pool } from 'pg';
-import { ACQUISITION_TERMS_CAPABILITY, selectAcquisitionTerms, AcquisitionTermsError, CommerceQuoteError, CommerceQuoteCatalogReadError } from '@openlup/platform/pricing';
+import { ACQUISITION_TERMS_CAPABILITY, selectAcquisitionTerms, AcquisitionTermsError, CommerceQuoteError, CommerceQuoteCatalogReadError, type CreateQuoteResponse } from '@openlup/platform/pricing';
 import { createPromotionQuoteAcceptance } from '@openlup/platform/promotions';
 import type { PromotionRow } from '@openlup/core/promo';
 import { createHash } from 'node:crypto';
@@ -15,7 +15,7 @@ import { composePurchaseCapabilities } from '../host/purchase-composition.ts';
 import { createNativeQuoteService, quoteDocumentVerifier, quoteFailure } from '../host/quote-composition.ts';
 import { quoteRefusalCopy, isQuoteRefusalCode } from '../owned/quote-copy.ts';
 import { createAcquisitionRenewalBinding, type AcquisitionPredecessors } from '../host/acquisition-predecessors.ts';
-import { validateCart } from '../shared/offer.ts';
+import { isRecord, validateCart } from '../shared/offer.ts';
 import { assertConfig } from '../shared/config.ts';
 import { range } from '../shared/policy.ts';
 
@@ -176,7 +176,8 @@ test('forged fresh cadence/SKU/quantity refuse quote and checkout with zero writ
     [{ ...cart,lines: [{ sku: 'UNKNOWN',quantity: 1 }] },'unknown_sku'],
     [{ ...cart,lines: [{ sku: cart.lines[0]!.sku,quantity: 13 }] },'quantity_invalid'],
   ] as const) {
-    const input = { ...payload,cart: selected,acquisitionCapability: ACQUISITION_TERMS_CAPABILITY };
+    const input = { ...payload,cart: selected,acquisitionCapability: ACQUISITION_TERMS_CAPABILITY,
+      expectedTotal: { amountMinor: 1000, currency: config.market.currency } };
     await assert.rejects(quotes.quote(input,context),{ message: code });
     const result = await dispatchAction(bindings,'checkout.create',input,context);
     assert.deepEqual(result,{ ok: false,code });
@@ -253,12 +254,15 @@ test(`authenticated completed order read and receipt replay survive ${narrowing}
   const bindings = { ...pendingBindings(),actions };
   const result = await dispatchAction(bindings,'checkout.create',input,{ ...context,config: changed,actor });
   assert.deepEqual(result,{ ok: true,value: { orderRef: '00000000-0000-4000-8000-000000000003',status: 'paid',total: money },replayed: true });
+  assert.deepEqual(await dispatchAction(bindings,'checkout.create',{ ...input, expectedTotal: money },
+    { ...context,config: changed,actor }), result);
   const read = await dispatchAction(bindings,'checkout.read',{ orderRef: storedOrder.id },{ ...context,config: changed,actor });
   assert.deepEqual(read,{ ok: true,value: result.ok && result.value });
   const conflict = await dispatchAction(bindings,'checkout.create',{ ...input,cart: { ...acceptedCart,cadenceDays: acceptedCart.cadenceDays! + 1 } },{ ...context,config: changed,actor });
   assert.deepEqual(conflict,{ ok: false,code: 'starter_command_conflict' });
   receiptAvailable = false;
-  const fresh = await dispatchAction(bindings,'checkout.create',input,{ ...context,config: changed,actor,commandKey: 'fresh-after-narrowing' });
+  const fresh = await dispatchAction(bindings,'checkout.create',{ ...input, expectedTotal: money },
+    { ...context,config: changed,actor,commandKey: 'fresh-after-narrowing' });
   assert.deepEqual(fresh,{ ok: false,code: narrowing === 'withdrawn offers' ? 'quantity_invalid' : 'cart_invalid' });
   const terms = { subscriptionId: 'fixture',nominalPlanDays: acceptedCart.cadenceDays!,cadenceDays: acceptedCart.cadenceDays!,
     base: acceptedCart.lines.map(line => ({ sku: line.sku,variantId: demoIdentifier(config,'sku',line.sku),qty: line.quantity })),addons: [] };
@@ -268,13 +272,15 @@ test(`authenticated completed order read and receipt replay survive ${narrowing}
 }
 
 test('expired stamped checkout replays the saved pending and completed purchase', async () => {
-  const { createHash } = await import('node:crypto');
+  const { createHash, randomUUID } = await import('node:crypto');
   const { canonicalCatalogDraftJson } = await import('@openlup/platform/catalog');
   const { pricingPolicy } = await import('../host/quote-composition.ts');
   const digest = (value: unknown) => createHash('sha256').update(canonicalCatalogDraftJson(value)).digest('hex');
   const actor = { ...context.actor, principalRef: '00000000-0000-4000-8000-000000000001',
     customerRef: '00000000-0000-4000-8000-000000000002', requesterKey: 'a'.repeat(64) };
-  const key = 'checkout:' + createHash('sha256').update(JSON.stringify([actor.principalRef, context.commandKey])).digest('hex');
+  // A version 4 key has a continuation, so a changed payload is named instead of conflicting.
+  const keyed = { ...context, actor, commandKey: randomUUID() as string };
+  const key = 'checkout:' + createHash('sha256').update(JSON.stringify([actor.principalRef, keyed.commandKey])).digest('hex');
   const checkout = { configuration: payload.configuration, country: payload.country, termsRevision: payload.termsRevision,
     firstName: payload.firstName, lastName: payload.lastName, phone: payload.phone, line1: payload.line1, line2: null,
     city: payload.city, postalCode: payload.postalCode, email: payload.email, purchaser: actor.customerRef };
@@ -288,8 +294,9 @@ test('expired stamped checkout replays the saved pending and completed purchase'
     lines: [{ ...cart.lines[0]!, productSlug: config.offer.products[0]!.slug, unitPriceGross: money, lineSubtotalGross: money, tax }],
     subtotalGross: money, netTotal: money, taxTotal: tax.vatAmount, discountTotalGross: tax.vatAmount, totalGross: money,
     context: { mode: 'subscription' as const, cadenceDays: cart.cadenceDays, promoCodes: [], starterRequest: digest(request), acquisitionTerms } } };
-  const issuer = createPromotionQuoteAcceptance<typeof request>({ projectRequest: value => value });
-  const signed = { request, quote: snapshot.quote, acquisitionTerms, keyring: { current: 'fixture-only-acceptance-key-00000000000000' } };
+  const issuer = createPromotionQuoteAcceptance<typeof request & { pricePolicyBasis?: null[] }>({ projectRequest: value => value });
+  const keyring = { current: 'fixture-only-acceptance-key-00000000000000' };
+  const signed = { request, quote: snapshot.quote, acquisitionTerms, keyring };
   const token = issuer.issuePromotionQuoteAcceptance({ ...signed, now: new Date('2026-01-01T00:00:00.000Z') })!;
   assert.equal(issuer.verifyPromotionQuoteAcceptanceWithOutcome({
     ...signed, token, expectedTotal: money, now: new Date('2026-01-05T00:00:00.000Z'),
@@ -300,11 +307,15 @@ test('expired stamped checkout replays the saved pending and completed purchase'
   const submit = { ...scope, submitDigest: digest(['catalog.checkout-submit.v1', scope, original]) };
   const stored = { id: '00000000-0000-4000-8000-000000000003', client_id: actor.customerRef, owned: true,
     status: 'pending_payment', total_amount_minor: money.amountMinor, currency_code: money.currency, completed: false,
-    created_at: '2026-01-01T00:00:00.000Z', snapshot, submit, fingerprint: 'b'.repeat(32) };
+    created_at: '2026-01-01T00:00:00.000Z', snapshot: snapshot as CreateQuoteResponse,
+    submit: { ...submit, acceptanceTokenDigest: submit.acceptanceTokenDigest as string | null },
+    fingerprint: 'b'.repeat(32) };
   const resumable = ['commerce_register_order_destination','fulfillment_record_stock_current','fulfillment_reserve_purchase_order_items',
     'subscription_declare_provisional_activation','commerce_open_settlement_intent'];
   const effects: string[] = [], unexpected: string[] = [], receiptCalls: unknown[][] = [];
   let stockFailure: unknown;
+  let receiptMismatch = false;
+  let receiptExpired = false;
   let savedQuoteChecks = 0;
   const query = async (sql: string, args: unknown[] = []) => {
     if (sql.includes('SELECT email')) return { rows: [{ email: payload.email }] };
@@ -312,7 +323,8 @@ test('expired stamped checkout replays the saved pending and completed purchase'
     if (sql.includes('commerce_order_draft_receipts')) return { rows: [stored] };
     if (sql.includes('catalog_admission_replay_order_draft')) {
       receiptCalls.push(args);
-      if (args[3] !== submit.submitDigest) throw Object.assign(new Error('receipt conflict'), { code: '23505' });
+      if (receiptExpired) throw Object.assign(new Error('commerce_order_draft_expired'), { code: '40001' });
+      if (receiptMismatch || args[3] !== stored.submit.submitDigest) throw Object.assign(new Error('receipt conflict'), { code: '23505' });
       return { rows: [] };
     }
     if (sql.includes('initial_checkout')) return { rows: [{ initial_checkout: true }] };
@@ -328,26 +340,73 @@ test('expired stamped checkout replays the saved pending and completed purchase'
   const predecessors = { ...unavailable, checkout: () => ({ async createOrderDraft() { assert.fail('Draft already exists'); } }) };
   const renewal = { assertAvailable(saved: unknown) { savedQuoteChecks++; assert.equal(saved,snapshot); },
     async activate() { assert.fail('Purchase has not been paid'); } };
-  const actions = composePurchaseCapabilities(db,{} as never,async () => ({ allowed: true }),{} as never,{ predecessors, renewal });
-  const replay = (input: Record<string, unknown>) => actions['checkout.create']!(input,{ ...context, actor });
+  const issued: string[] = [];
+  let issueFailure = false;
+  const recovery = { tokens: { async issue(input: { rawToken: string }) {
+    if (issueFailure) throw new Error('checkout_recovery_storage_failed');
+    issued.push(input.rawToken); return '00000000-0000-4000-8000-000000000009';
+  },
+    async readExpiry() { return '2099-01-02T00:00:00.000Z'; } }, async deliver() { assert.fail('A repeat never sends mail'); } };
+  const metered: unknown[][] = [];
+  const limiter = async (...input: unknown[]) => { metered.push(input); return { allowed: true }; };
+  const actions = composePurchaseCapabilities(db,{} as never,limiter,recovery as never,{ predecessors, renewal, keyring });
+  const replay = (input: Record<string, unknown>, at = keyed) => actions['checkout.create']!(input,at);
   const input = { ...original, quoteAcceptance: token };
-  for (const changed of [{ termsAccepted: false }, { quoteAcceptance: token + 'a' }, { expectedTotal: { ...money, amountMinor: 1001 } },
+  // A repeat without the reviewed total is a changed payload under a continuable key.
+  const { expectedTotal: _expectedTotal, ...withoutTotal } = input;
+  assert.deepEqual(await replay(withoutTotal), { ok: false, code: 'starter_checkout_changed' });
+  // A validly signed acceptance for different terms is a changed payload, not a corrupted one.
+  const otherTerms = issuer.issuePromotionQuoteAcceptance({ ...signed, request: { ...request, pricePolicyBasis: [null] },
+    quote: { ...snapshot.quote, totalGross: { ...money, amountMinor: money.amountMinor + 1 } } })!;
+  for (const changed of [{ termsAccepted: false }, { quoteAcceptance: token + 'a' }, { quoteAcceptance: otherTerms }, { expectedTotal: { ...money, amountMinor: 1001 } },
     { cart: { ...cart, cadenceDays: cart.cadenceDays! + 1 } }, { termsRevision: 'different-terms' }]) {
-    assert.deepEqual(await replay({ ...input, ...changed }),{ ok: false,code: 'starter_command_conflict' });
+    assert.deepEqual(await replay({ ...input, ...changed }),{ ok: false,code: 'starter_checkout_changed' });
   }
   assert.deepEqual(effects,[]);
   assert.equal(savedQuoteChecks,0);
-  assert.equal(receiptCalls.length,5);
-  assert.ok(receiptCalls.every(args => args[0] === key && args[1] === actor.customerRef && args[2] === scope.lane
-    && args[3] !== submit.submitDigest && args[3] !== stored.fingerprint));
+  assert.equal(receiptCalls.length,0);
+  assert.equal(metered.length,7);
+  assert.ok(metered.every(([, intent]) => (intent as { contact: { email: string } }).contact.email === `replay:${key}`));
+  // A key that is not a version 4 UUID has no continuation and keeps the released conflict.
+  assert.deepEqual(await replay(input,{ ...keyed, commandKey: 'fictional-command-0001' }),{ ok: false,code: 'starter_command_conflict' });
+  assert.equal(receiptCalls.length,1);
+  receiptCalls.length = 0;
+  // An equal digest still checks receipt integrity.
+  receiptMismatch = true;
+  assert.deepEqual(await replay(input),{ ok: false,code: 'starter_command_conflict' });
+  receiptMismatch = false;
+  // An invalidated draft receipt is a closed order under a continuable key; other keys keep the released code.
+  receiptExpired = true;
+  assert.deepEqual(await replay(input),{ ok: false,code: 'starter_checkout_not_payable' });
+  assert.deepEqual(await replay(input,{ ...keyed, commandKey: 'fictional-command-0001' }),{ ok: false,code: 'commerce_order_draft_expired' });
+  receiptExpired = false;
+  receiptCalls.length = 0;
+  assert.equal(issued.length,0);
+  const withToken = (result: Awaited<ReturnType<typeof replay>>) => {
+    assert.ok(result.ok && isRecord(result.value) && typeof result.value.token === 'string', JSON.stringify(result));
+    assert.equal(result.value.token, issued.at(-1));
+    const { token: _token, ...value } = result.value;
+    return { ...result, value };
+  };
   const response = { ok: true,value: { orderRef: stored.id,status: stored.status,total: money },replayed: true };
-  assert.deepEqual(await replay(input),response);
+  assert.deepEqual(withToken(await replay(input)),response);
   assert.deepEqual(effects,resumable);
   stored.completed = true;
-  assert.deepEqual(await replay(input),response);
+  assert.deepEqual(withToken(await replay(input)),response);
   assert.deepEqual(effects,resumable);
-  assert.deepEqual(receiptCalls.slice(-2),Array.from({ length: 2 }, () => [key, actor.customerRef, scope.lane, submit.submitDigest]));
+  // A refreshed acceptance for the same stored terms is the same intent.
+  const refreshed = issuer.issuePromotionQuoteAcceptance({ ...signed, request: { ...request, pricePolicyBasis: [null] } })!;
+  assert.notEqual(refreshed, token);
+  assert.deepEqual(withToken(await replay({ ...input, quoteAcceptance: refreshed })),response);
+  assert.deepEqual(effects,resumable);
+  assert.equal(issued.length,3);
+  assert.deepEqual(receiptCalls,Array.from({ length: 3 }, () => [key, actor.customerRef, scope.lane, submit.submitDigest]));
   assert.equal(savedQuoteChecks,1);
+  // A repeat whose link cannot be issued re-reads the order once and changes nothing.
+  issueFailure = true;
+  assert.deepEqual(await replay(input),{ ok: false,code: 'starter_purchase_unavailable' });
+  issueFailure = false;
+  assert.deepEqual(effects,resumable);
   stored.completed = false;
   const message = 'fulfillment_stock_current_idempotency_conflict';
   const outcomes = [];
@@ -364,32 +423,53 @@ test('expired stamped checkout replays the saved pending and completed purchase'
     assert.deepEqual(effects, resumable.slice(0, 2));
   }
   assert.deepEqual(outcomes, expected);
+  // A pre-existing one-time order can carry a stamp from before totals were required.
+  const { quoteAcceptance: _acceptance, ...selection } = withoutTotal;
+  const legacy = { ...selection, cart: { ...cart, mode: 'one_time', cadenceDays: null } };
+  const legacyScope = { ...scope, acceptanceTokenDigest: null };
+  stored.submit = { ...legacyScope, submitDigest: digest(['catalog.checkout-submit.v1', legacyScope, legacy]) };
+  const { acquisitionTerms: _terms, ...legacyContext } = snapshot.quote.context;
+  const legacyRequest = { ...request, mode: 'one_time' as const, cadenceDays: null };
+  const legacyQuoteContext = { ...legacyContext, mode: legacyRequest.mode, cadenceDays: legacyRequest.cadenceDays,
+    starterRequest: digest(legacyRequest) };
+  stored.snapshot = { ...snapshot, quote: { ...snapshot.quote, context: legacyQuoteContext } };
+  effects.length = 0;
+  stockFailure = undefined;
+  // Adding a total to a draft stored without one changes the payload: named under a continuable key.
+  assert.deepEqual(await replay({ ...legacy, expectedTotal: money }), { ok: false, code: 'starter_checkout_changed' });
+  assert.deepEqual(await replay({ ...legacy, expectedTotal: money }, { ...keyed, commandKey: 'fictional-command-0001' }),
+    { ok: false, code: 'starter_command_conflict' });
+  assert.deepEqual(withToken(await replay(legacy)), response);
+  assert.deepEqual(effects, resumable.filter(step => step !== 'subscription_declare_provisional_activation'));
+  stored.completed = true;
+  effects.length = 0;
+  assert.deepEqual(withToken(await replay(legacy)), response);
+  assert.deepEqual(effects, []);
   assert.deepEqual(unexpected,[]);
 });
 
-test('fresh checkout compensates a rejected stock write before reading or reserving order items', async () => {
+function freshQuoteFixture(onQuery: (sql: string, values: unknown[]) => unknown = () => assert.fail('unexpected checkout query')) {
   const sku = cart.lines[0]!.sku;
   const item = editorDocuments(config).find(entry => entry.document.variants.some(variant => variant.sku === sku))!;
   const variant = item.document.variants.find(entry => entry.sku === sku)!;
   const clientId = '00000000-0000-4000-8000-000000000002', orderId = '00000000-0000-4000-8000-000000000003';
   const listId = '00000000-0000-4000-8000-000000000004', priceId = '00000000-0000-4000-8000-000000000005';
   const actor = { ...context.actor, customerRef: clientId, principalRef: '00000000-0000-4000-8000-000000000001', requesterKey: 'b'.repeat(64) };
-  const effects: string[] = [];
-  const compensation: unknown[][] = [];
-  const never: string[] = [];
   const validFrom = '2000-01-01T00:00:00Z';
-  const driver = Object.assign(new Error('fulfillment_stock_current_idempotency_conflict'),
-    { code: '23505', detail: 'openlup:stock_current:replay_conflict' });
+  let price = 1000, signed = false, catalogueReads = 0;
   const query = async (sql: string, values: unknown[] = []) => {
     if (sql.includes('SELECT email')) return { rows: [{ email: payload.email }] };
     if (/pg_advisory|commerce_order_draft_receipts|catalog_admission_requires_quote_authority/u.test(sql)) return { rows: [] };
-    if (sql.includes('FROM public.catalog_skus AS sku')) return { rows: [{
-      product_id: item.productId, product_slug: item.document.productSlug, primary_sku_id: variant.skuId, current_document_revision_id: item.id,
-      sku_id: variant.skuId, sku_product_id: item.productId, sku_code: sku, net_content_unscaled: variant.physical.netWeightG,
-      sku_status: 'active', sellable_one_time: true, sellable_subscription: true, is_addon: false, asset_ref: null,
-      document_revision_id: item.id, document_product_id: item.productId, document_revision_no: item.document.revisionNo,
-      document_schema_id: item.document.schemaVersion, document_ref: item.id, document_source_ref: item.document.sourceRef, document_digest: item.digest,
-    }] };
+    if (sql.includes('FROM public.catalog_skus AS sku')) {
+      catalogueReads++;
+      return { rows: [{
+        product_id: item.productId, product_slug: item.document.productSlug, primary_sku_id: variant.skuId, current_document_revision_id: item.id,
+        sku_id: variant.skuId, sku_product_id: item.productId, sku_code: sku, net_content_unscaled: variant.physical.netWeightG,
+        sku_status: 'active', sellable_one_time: true, sellable_subscription: true, is_addon: false, asset_ref: null,
+        document_revision_id: item.id, document_product_id: item.productId, document_revision_no: item.document.revisionNo,
+        document_schema_id: item.document.schemaVersion, document_ref: item.id, document_source_ref: item.document.sourceRef, document_digest: item.digest,
+      }] };
+    }
     if (sql.includes('FROM public.catalog_sku_identifiers')) return { rows: [{
       catalog_sku_id: variant.skuId, issuer: variant.physical.issuer, identifier_kind: 'gtin',
       normalized_value: variant.physical.unitGtin, pack_kind: 'unit', quantity: 1, is_primary: true,
@@ -400,13 +480,81 @@ test('fresh checkout compensates a rejected stock write before reading or reserv
       revision_schema_id: item.document.schemaVersion, revision_document_payload: item.document, revision_digest: item.digest,
     }] };
     if (sql.includes('FROM public.price_lists')) return { rows: [{ id: listId, valid_from: validFrom, valid_to: null }] };
+    if (sql.includes('FROM public.subscription_price_policy_revisions')) return { rows: [] };
     if (sql.includes('FROM public.price_entries')) return { rows: [{
-      id: priceId, price_list_id: listId, variant_id: variant.skuId, mode: 'one_time', min_qty: 1,
-      unit_price_minor: 1000, amount_kind: 'gross', valid_from: validFrom, valid_to: null,
+      id: priceId, price_list_id: listId, variant_id: variant.skuId, mode: values[2], min_qty: 1,
+      unit_price_minor: price, amount_kind: 'gross', valid_from: validFrom, valid_to: null,
     }] };
-    if (sql.includes('commerce_promotion_active_definitions')) return { rows: [{ result: [] }] };
+    if (sql.includes('commerce_promotion_active_definitions')) return { rows: [{ result: signed ? [row()] : [] }] };
     if (sql.includes('commerce_promotion_paid_order_counts')) return { rows: [{ result: { oneTime: 0, subscription: 0 } }] };
     if (sql.includes('commerce_promotion_redemption_counts')) return { rows: [] };
+    return onQuery(sql, values);
+  };
+  const db = { query, async connect() { return { query, release() {} }; } } as unknown as Pool;
+  return { db, actor, clientId, orderId, validFrom, reads: () => catalogueReads,
+    reprice(amount: number) { price = amount; }, enableSignedTerms() { signed = true; } };
+}
+
+test('fresh checkout enforces total shape, signed-verifier precedence and exact money', async t => {
+  const now = Date.parse('2026-01-01T00:00:00Z');
+  t.mock.timers.enable({ apis: ['Date'], now });
+  const { db, actor, clientId, reads, reprice, enableSignedTerms } = freshQuoteFixture();
+  const keyring = { current: 'fixture-only-acceptance-key-00000000000000' };
+  const predecessors = { ...unavailable, eligibility: () => ({ resolve: async () => ({ clientId }) }) };
+  const quotes = createNativeQuoteService(db, predecessors, keyring);
+  let attempts = 0;
+  const actions = composePurchaseCapabilities(db, {} as never, async () => { attempts++; return { allowed: false }; },
+    {} as never, { predecessors, keyring });
+  const actorContext = { ...context, actor };
+  const submit = (input: Record<string, unknown>) => actions['checkout.create']!(input, actorContext);
+  const expectedTotal = { amountMinor: 1000, currency: config.market.currency };
+  const wrongCurrency = expectedTotal.currency === 'USD' ? 'EUR' : 'USD';
+  const priceChanged = { ok: false, code: 'starter_quote_price_changed' };
+  const refreshRequired = { ok: false, code: 'starter_quote_refresh_required' };
+  for (const mode of ['one_time', 'subscription']) {
+    const input = { ...payload, cart: { ...cart, mode, cadenceDays: mode === 'one_time' ? null : cart.cadenceDays },
+      acquisitionCapability: ACQUISITION_TERMS_CAPABILITY, quoteAcceptance: 'invalid' };
+    const before = reads();
+    for (const value of [undefined, null, [], { ...expectedTotal, extra: true },
+      ...[-1, 1.5, 2 ** 53, '1000'].map(amountMinor => ({ ...expectedTotal, amountMinor })),
+      ...['pln', 'PLNX'].map(currency => ({ ...expectedTotal, currency }))]) {
+      assert.deepEqual(await submit({ ...input, ...(value === undefined ? {} : { expectedTotal: value }) }),
+        { ok: false, code: 'starter_expected_total_required' });
+    }
+    assert.equal(reads(), before);
+    const observed = await quotes.quote(input, actorContext);
+    const displayed = observed.snapshot.quote.totalGross;
+    assert.equal(observed.terms, undefined);
+    assert.deepEqual(await submit({ ...input, expectedTotal: { ...displayed, amountMinor: 0 } }), priceChanged);
+    assert.deepEqual(await submit({ ...input, expectedTotal: { ...displayed, currency: wrongCurrency } }), priceChanged);
+    reprice(1137);
+    assert.deepEqual(await submit({ ...input, expectedTotal: displayed }), priceChanged);
+    reprice(1000);
+  }
+  enableSignedTerms();
+  const input = { ...payload, acquisitionCapability: ACQUISITION_TERMS_CAPABILITY };
+  const reviewed = await quotes.quote(input, actorContext);
+  assert.ok(reviewed.token);
+  const money = reviewed.snapshot.quote.totalGross;
+  const signed = { ...input, quoteAcceptance: reviewed.token, expectedTotal: money };
+  assert.deepEqual(await submit({ ...signed, expectedTotal: null, quoteAcceptance: 'invalid' }),
+    { ok: false, code: 'starter_expected_total_required' });
+  assert.deepEqual(await submit({ ...signed, expectedTotal: { ...money, amountMinor: money.amountMinor + 1 } }), refreshRequired);
+  assert.deepEqual(await submit({ ...signed, expectedTotal: { ...money, currency: wrongCurrency } }), refreshRequired);
+  reprice(1137);
+  assert.deepEqual(await submit({ ...signed, quoteAcceptance: 'invalid' }), refreshRequired);
+  t.mock.timers.setTime(now + 3_600_000);
+  assert.deepEqual(await submit(signed), refreshRequired);
+  assert.equal(attempts, 0);
+});
+
+test('fresh checkout compensates a rejected stock write before reading or reserving order items', async () => {
+  const effects: string[] = [];
+  const compensation: unknown[][] = [];
+  const never: string[] = [];
+  const driver = Object.assign(new Error('fulfillment_stock_current_idempotency_conflict'),
+    { code: '23505', detail: 'openlup:stock_current:replay_conflict' });
+  const { db, actor, clientId, orderId, validFrom } = freshQuoteFixture((sql, values) => {
     if (sql.includes('initial_checkout')) return { rows: [{ initial_checkout: true }] };
     if (sql.includes('FROM public.commerce_orders WHERE id=$1')) return { rows: [{
       id: orderId, client_id: clientId, status: 'pending_payment', created_at: validFrom,
@@ -420,8 +568,7 @@ test('fresh checkout compensates a rejected stock write before reading or reserv
     }
     never.push(sql);
     throw new Error('unexpected checkout query');
-  };
-  const db = { query, async connect() { return { query, release() {} }; } } as unknown as Pool;
+  });
   const checkout: AcquisitionPredecessors['checkout'] = () => ({ async createOrderDraft({ idempotencyKey, quoteSnapshot }) {
     effects.push('create');
     return { contractVersion: quoteSnapshot.contractVersion, orderDraft: {
@@ -431,7 +578,9 @@ test('fresh checkout compensates a rejected stock write before reading or reserv
   const actions = composePurchaseCapabilities(db, {} as never, async () => ({ allowed: true }), {} as never,
     { predecessors: { ...unavailable, checkout } });
   const oneTimeCart = { ...cart, mode: 'one_time', cadenceDays: null };
-  const result = await actions['checkout.create']!({ ...payload, cart: oneTimeCart }, { ...context, actor });
+  const input = { ...payload, cart: oneTimeCart };
+  const quote = await createNativeQuoteService(db, unavailable).quote(input, { ...context, actor });
+  const result = await actions['checkout.create']!({ ...input, expectedTotal: quote.snapshot.quote.totalGross }, { ...context, actor });
   assert.deepEqual(never, []);
   assert.deepEqual(result, { ok: false, code: 'starter_command_conflict' });
   assert.deepEqual(effects, ['create', 'destination', 'stock', 'compensation']);

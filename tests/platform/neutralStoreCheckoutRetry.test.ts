@@ -44,7 +44,7 @@ function checkout() {
   const form = actionForm(context, { operation: "checkout.create", submit: "placeOrder",
     fields: [{ name: "email", label: "email", type: "email", value: "buyer@example.test" },
       { name: "termsAccepted", label: "termsAccept", type: "checkbox" }],
-    input: acceptance.input, prepare: acceptance.prepare, onFailure: acceptance.refused });
+    input: acceptance.input, prepare: acceptance.prepare, onRefusal: acceptance.refused });
   document.body.append(form, summary); acceptance.attach(form);
   const submit = async () => { form.dispatchEvent(new Event("submit", { cancelable: true })); await settle(); };
   const consent = form.querySelector<HTMLInputElement>('input[name="termsAccepted"]')!;

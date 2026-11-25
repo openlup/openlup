@@ -1598,6 +1598,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/browser/checkout-expected-total.spec.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/browser/dev-loop.proof.ts",
       "class": "public-output"
     },
@@ -2255,6 +2259,10 @@
     },
     {
       "path": "examples/neutral-store/test/checkout-attempts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/checkout-continuation-host.test.ts",
       "class": "public-output"
     },
     {
@@ -8598,11 +8606,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/storefront/ambiguousSubmit.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/storefront/anchor.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/src/storefront/bindings.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/continuationRecord.ts",
       "class": "public-output"
     },
     {
@@ -11426,11 +11442,23 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/storefront/ambiguousSubmit.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/storefront/browserBoundary.test.ts",
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/storefront/continuationRecord.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/storefront/exports.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/neutralSource.test.ts",
       "class": "public-output"
     },
     {
@@ -12983,6 +13011,38 @@
     },
     {
       "path": "scripts/migration-slots.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/migration-sync.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/migration-sync.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/migrations/historical-classes.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/migrations/native-store-admission.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/migrations/registry.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/migrations/security-definer.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/migrations/sql-tokenizer.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/migrations/types.ts",
       "class": "public-output"
     },
     {
@@ -14771,6 +14831,58 @@
     },
     {
       "path": "server/adapters/postgres/connectedStoreCapture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreDomains.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreDomains/catalog.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreDomains/commerce.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreDomains/communications.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreDomains/fulfillment.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreDomains/identity.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreDomains/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreDomains/invoicing.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreDomains/payments.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreDomains/platformControl.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreDomains/pricingAndPromotions.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreDomains/subscriptions.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreDomains/taxAndMoney.ts",
       "class": "public-output"
     },
     {
@@ -30430,6 +30542,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/checkoutAbandonmentSafetyGrant.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/checkoutAttemptLedger.test.ts",
       "class": "public-output"
     },
@@ -31926,6 +32042,16 @@
       "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
     },
     {
+      "name": "migration:sync",
+      "command": "node --experimental-strip-types scripts/migration-sync.ts",
+      "publicDocs": [
+        "CONTRIBUTING.md",
+        "README.md"
+      ],
+      "publicCiEntrypoint": ".github/workflows/published-tree-ci.yml",
+      "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
+    },
+    {
       "name": "lint",
       "command": "node scripts/ast-grep/check-filewide-ignore.mjs && ast-grep scan --error=no-suppress-all --error=unused-suppression && ast-grep test --skip-snapshot-tests && eslint --concurrency auto .",
       "publicDocs": [
@@ -32063,7 +32189,7 @@
     },
     {
       "path": "package.json",
-      "digest": "sha256-85f22d834d55ab426c59fb240b5ae13bc169419d59d42e2834814ef8199c8ff6"
+      "digest": "sha256-35edf4fd78acf8ec6636041b87b619d0e7a0fc7d8552ea5e4ac684427e5ac442"
     },
     {
       "path": "packages/core/package.json",

@@ -226,7 +226,7 @@ bearer; its local fixture establishes no hosted revocation guarantee.
 | `./tax`, `./tax/contracts` | Experimental tax contracts, local calculation and offline adapter conformance |
 | `./shipping` | Delivery ports, injected-schema handlers, summary/evidence; native flat-rate port + Core schema readiness |
 | `./shipping/contracts` | Type-only address, customer-address, delivery, pickup-point, shipping-rate and threshold contracts, plus selection summary and evidence DTOs |
-| `./storefront` | Experimental, browser-safe purchase-continuation types: identity roles and their constructors, the continuation record, host bindings and declarations, and the markup anchor names; no storage, request or provider |
+| `./storefront` | Experimental, browser-safe purchase continuation: identity roles and their constructors, the continuation record and its recovery functions, host bindings and declarations, and the markup anchor names; storage, requests and provider facts only through host bindings |
 
 ## HTTP runtime and security contract
 
@@ -3885,8 +3885,9 @@ Status: current contract (experimental).
 
 `@openlup/platform/storefront` is the browser-side home for the logic that keeps
 a buyer's purchase safe across a lost response, a reload and a decline. It holds
-types, three identity constructors and one constant of markup anchor names. It
-reads no storage, sends no request and names no provider.
+types, three identity constructors, the recovery functions listed below and one
+constant of markup anchor names. The functions reach storage, requests and
+provider facts only through the host bindings a store passes in.
 
 - **Identity roles.** A continuation identity names one purchase, a command key
   is the replay identity of one command and an attempt number counts payment
@@ -3898,6 +3899,21 @@ reads no storage, sends no request and names no provider.
   identifier generator and a failure classifier as plain objects and functions
   (see [Binding](../core/docs/guide/glossary.md) in the glossary). The store keeps its storage
   names, serialization, wire spelling and provider facts.
+- **Functions.** The first four keep the continuation record through the
+  storage and identifier bindings; the last recovers a failed submit through
+  the transport and classifier bindings:
+  - `getOrCreateContinuationId` reuses the stored identity when the identifier
+    binding accepts it, and otherwise mints one and stores it with the
+    payload's fingerprint;
+  - `readContinuationRecord` returns the stored record without an acceptance
+    check;
+  - `advanceAttempt` moves the stored record to its next payment attempt;
+  - `clearContinuationRecord` clears the record, so the next purchase gets a
+    new identity;
+  - `recoverAmbiguousSubmit` replays the retained request once, unchanged,
+    after a timeout or a transport failure, sends nothing after an in-flight
+    refusal or an unrecognized failure, and returns an
+    `AmbiguousSubmitRecovery` saying which happened.
 - **Markup anchors.** Production markup reads its `data-openlup-*` attribute
   names and the action, state and field names from the constant instead of
   string literals. Names are only added; a wrong one is superseded, not renamed.

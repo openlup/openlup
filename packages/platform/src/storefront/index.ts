@@ -1,5 +1,8 @@
 export type { AttemptNumber, CommandKey, ContinuationId } from "./identity.js";
 export { toAttemptNumber, toCommandKey, toContinuationId } from "./identity.js";
+export { advanceAttempt, clearContinuationRecord, getOrCreateContinuationId, readContinuationRecord } from "./continuationRecord.js";
+export type { AmbiguousSubmitRecovery } from "./ambiguousSubmit.js";
+export { recoverAmbiguousSubmit } from "./ambiguousSubmit.js";
 export type {
   ChangedPayloadPolicy,
   ClientEventReporter,

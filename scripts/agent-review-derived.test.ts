@@ -226,6 +226,7 @@ it('classifies SQL and migration-inventory inputs conservatively', () => {
     'server/adapters/postgres/qualifiedInstall.ts',
     'server/adapters/postgres/selectedCatalogProjection.ts',
     'server/adapters/postgres/connectedStoreCapture.ts',
+    'server/adapters/postgres/connectedStoreDomains/catalog.ts',
   ]) expect(isInventoryInputPath(path), path).toBe(true);
 
   for (const path of [

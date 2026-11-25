@@ -7,15 +7,19 @@ import type {
 } from "@/domains/commerce/checkoutContracts";
 import type { BffRequestOptions } from "@/lib/bff/client";
 import { reportCheckoutClientEvent } from "@/lib/telemetry/checkoutClientEvent";
+import {
+  recoverAmbiguousSubmit,
+  toCommandKey,
+  type AmbiguousSubmitRecovery,
+  type ClientEventReporter,
+  type SubmitFailureClass,
+  type SubmitTransportBinding,
+} from "@openlup/platform/storefront";
 
 import { isProviderAttemptInFlightError } from "./checkoutProviderInFlight";
 import { isCheckoutTimeoutError } from "./checkoutTimeout";
 
-export type AmbiguousCheckoutRecovery =
-  | { kind: "recovered"; response: CheckoutResponse }
-  | { kind: "no_stable_identity" }
-  | { kind: "in_flight" }
-  | { kind: "unknown" };
+export type AmbiguousCheckoutRecovery = AmbiguousSubmitRecovery<CheckoutResponse>;
 
 /**
  * A checkout submit can be accepted server-side even when the browser never gets
@@ -30,38 +34,50 @@ export async function recoverAmbiguousCheckoutSubmit(input: {
   request: CheckoutRequest | null;
   options: BffRequestOptions | null;
 }): Promise<AmbiguousCheckoutRecovery | null> {
-  if (!isAmbiguousCheckoutSubmitError(input.error)) return null;
-  if (isProviderAttemptInFlightError(input.error)) {
-    reportCheckoutClientEvent("payment_form", "submit_rejected_conflict");
-    return { kind: "in_flight" };
-  }
-  const request = input.request;
-  const idempotencyKey = request?.intent?.idempotencyKey;
-  if (!request || !idempotencyKey) return { kind: "no_stable_identity" };
-
-  try {
-    const response = await submitCheckout(request, {
-      ...(input.options ?? {}),
-      timeoutMs: 10_000,
-    });
-    return { kind: "recovered", response };
-  } catch (error) {
-    // The one safe idempotent readback can itself observe the preserved
-    // post-dispatch attempt. Keep that typed result so the caller retains the
-    // established wait/recovery UX rather than flattening it to "unknown".
-    if (isProviderAttemptInFlightError(error)) return { kind: "in_flight" };
-    return { kind: "unknown" };
-  }
+  // The one safe idempotent readback can itself observe the preserved
+  // post-dispatch attempt. Keep that typed result so the caller retains the
+  // established wait/recovery UX rather than flattening it to "unknown".
+  return recoverAmbiguousSubmit(
+    {
+      transport: checkoutSubmitTransport(),
+      classifySubmitFailure: classifyCheckoutSubmitFailure,
+      report: checkoutClientEventReporter(),
+    },
+    input,
+  );
 }
 
-function isAmbiguousCheckoutSubmitError(error: unknown): boolean {
+// The storefront entry's bindings over this module's submit, classifier and
+// telemetry. Built per call so `submitCheckout` and the reporter are read when
+// the function runs, never at module load.
+function checkoutSubmitTransport(): SubmitTransportBinding<CheckoutRequest, BffRequestOptions | null, CheckoutResponse> {
+  return {
+    commandKey: (request) => {
+      const idempotencyKey = request.intent?.idempotencyKey;
+      return idempotencyKey === undefined ? undefined : toCommandKey(idempotencyKey);
+    },
+    replay: (request, options, deadlineMs) =>
+      submitCheckout(request, {
+        ...(options ?? {}),
+        timeoutMs: deadlineMs,
+      }),
+  };
+}
+
+function checkoutClientEventReporter(): ClientEventReporter {
+  return (event) => {
+    if (event === "submit_refused_in_flight") reportCheckoutClientEvent("payment_form", "submit_rejected_conflict");
+  };
+}
+
+function classifyCheckoutSubmitFailure(error: unknown): SubmitFailureClass {
   // Explicit transient timeout from requestBff.
-  if (isCheckoutTimeoutError(error)) return true;
+  if (isCheckoutTimeoutError(error)) return "timeout";
   // A repeated tap while the same journey is already charging must be resolved by
   // readback/resume, never by rotating the attempt key.
-  if (isProviderAttemptInFlightError(error)) return true;
+  if (isProviderAttemptInFlightError(error)) return "attempt_in_flight";
   // Browser transport failures (lost response, offline blip, aborted socket) are
   // ambiguous: the server might have accepted and committed the checkout.
-  if (error instanceof TypeError) return true;
-  return false;
+  if (error instanceof TypeError) return "transport_uncertain";
+  return "other";
 }

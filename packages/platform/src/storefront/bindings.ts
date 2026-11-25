@@ -22,6 +22,8 @@ export interface ContinuationRecord {
  *
  * It is synchronous, matching the synchronous browser storage it is bound to
  * and the functions that read it. An asynchronous variant would be a new name.
+ * A read does not filter by identity format: the identifier binding's
+ * `accepts` is applied only when an identity would be reused.
  */
 export interface ContinuationRecordStorageBinding {
   read(): ContinuationRecord | null;
@@ -36,7 +38,9 @@ export interface ContinuationRecordStorageBinding {
  * be reused. Both use a plain `string`: the identifier format belongs to the
  * host, and the package brands a value with `toContinuationId` only once the
  * host accepts it. A host that wants the server's format applies the commerce
- * entry's `checkoutContinuationJourneyIdSchema` in `accepts`.
+ * entry's `checkoutContinuationJourneyIdSchema` in `accepts`. `accepts` is
+ * applied only when a stored identity would be reused; reading or advancing a
+ * stored record does not filter it by identity format.
  */
 export interface IdentifierBinding {
   next(): string;
@@ -68,7 +72,8 @@ export type SubmitFailureClassifier = (error: unknown) => SubmitFailureClass;
  * `commandKey` returns the request's `CommandKey`, or `null` or `undefined`
  * when the request carries none; a request without a key is never replayed.
  * `replay` sends the retained request and options again. `deadlineMs` is a
- * duration in milliseconds after which the replay gives up.
+ * duration in milliseconds that the package passes to the transport; the
+ * package does not enforce it, and enforcing it is the transport's job.
  */
 export interface SubmitTransportBinding<TRequest = unknown, TOptions = unknown, TResponse = unknown> {
   commandKey(request: TRequest): CommandKey | null | undefined;
@@ -84,6 +89,11 @@ export interface SubmitTransportBinding<TRequest = unknown, TOptions = unknown, 
  *
  * The union is open: members may be added in a minor release. The package reads
  * a member it does not know as `refuse`.
+ *
+ * No function reads this policy yet: `getOrCreateContinuationId` continues
+ * with an identity that was not persisted when its storage binding drops a
+ * write. A later release is planned to add the storage-failure policy
+ * parameter (default `refuse`) as a declared behaviour change.
  *
  * @experimental
  */
