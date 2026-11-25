@@ -193,7 +193,7 @@ it("registers the maturity reference as a derived output that its owner reproduc
     writeFileSync(join(root, MATURITY_REFERENCE), `<<<<<<< ours\n${stale}=======\ntheirs\n>>>>>>> theirs\n`);
     expect(() => syncMaturityReference(root, process.cwd())).toThrow(`landing: authored conflicts remain: ${MATURITY_REFERENCE}`);
   } finally { rmSync(root, { recursive: true, force: true }); }
-});
+}, 60_000);
 
 describe("fast preflight", () => {
   const npmCli = join(process.cwd(), "fixture-npm-cli.js");

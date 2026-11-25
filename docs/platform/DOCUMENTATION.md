@@ -186,7 +186,8 @@ these Markdown pages alongside package `AGENTS.md`, `README.md`, declarations
 and exports, with `CHANGELOG.md` included for upgrade questions. Nested headings
 produce disjoint spans. The optional `--package-code` scan provides bounded
 installed `src/` leads; results never prove application composition or database
-state. The unchanged [lookup smoke matrix](../../scripts/agent-context/evaluate.mjs)
+state. The [lookup smoke matrix](../../scripts/agent-context/evaluate.mjs) is frozen
+except for one per-symbol maturity row, which picks its symbol at run time; it
 checks static query targets in installed core, outbox and platform artifacts.
 Both pack checkers enforce a separate `guide` sub-budget from core's
 `release-gates.json` (`pack.guide`), measured like the code and docs classes;
@@ -218,6 +219,9 @@ in `scripts/ci-test-scope.mjs`: unlisted tests always run. The contract refuses:
   line; JSX is checked with `jsx: preserve`;
 - a stale or unknown `<!-- generated:<name> -->` region. The generators are
   `maturity:<core|outbox|platform>` from that package's `release-gates.json`,
+  `maturity-symbols:<core|outbox|platform>` from the committed API reports of its
+  subpaths, read with the compiler API (a derived landing carrier of the three API
+  reports, so a merge that regenerates them refreshes it),
   `compatibility-policies` from the validator's static `compatibilityByMaturity`
   object in `packages/core/scripts/public-api-config.ts`,
   `exports:<core|outbox|platform>` from its `package.json` and release gates,

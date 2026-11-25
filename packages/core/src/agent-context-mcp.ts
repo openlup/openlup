@@ -11,7 +11,7 @@ const maxTaskCharacters = 1_000;
 const tools = [
   {
     name: "search_openlup_context",
-    description: "Locate installed OpenLup owners, seams and public symbols offline. Search concise English terms when the owner is unclear, then read cited files and follow callers and tests. Declaration occurrences are unverified import leads; read installed exports and examples for public specifiers and type/value usage. Code scans are opt-in and bounded; ranked hits are starting points, not complete contract coverage. Tasks are limited to 1,000 characters; incoming message lines to 1 MiB.",
+    description: "Locate installed OpenLup owners, seams and public symbols offline. Search concise English terms when the owner is unclear, then read cited files and follow callers and tests. Declaration occurrences are unverified import leads; read installed exports and examples for public specifiers and type/value usage. In a symbol's export hit, maturity is the declared maturity (stable, experimental or testing) and deprecated: true marks a deprecated symbol; when maturity is absent, read the declaration. Code scans are opt-in and bounded; ranked hits are starting points, not complete contract coverage. Tasks are limited to 1,000 characters; incoming message lines to 1 MiB.",
     inputSchema: {
       type: "object", properties: {
         task: { type: "string" },

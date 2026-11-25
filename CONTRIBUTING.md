@@ -1917,8 +1917,8 @@ changes for review. An existing review does not cover the rename.
 Integration proof classifies an exact merge of the reviewed head and a commit
 on `origin/main` as `derived` only for a closed carrier set: migration registry
 unions, package SQL projections, publication catalogue, generated source map,
-SQL reference, API snapshots, settings catalogue outputs, and current installation
-data. Trusted owner generators run on a temporary prediction; API scripts and
+SQL reference, API snapshots, the maturity reference, settings catalogue outputs,
+and current installation data. Trusted owner generators run on a temporary prediction; API scripts and
 their helpers must match main byte-for-byte before execution. Candidate-only
 tooling is never executed. Output must equal committed
 bytes. Every SQL byte and mode must equal the mechanical merge; other changes
