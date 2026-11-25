@@ -111,6 +111,7 @@
     "shared/offer.ts",
     "shared/routes.ts",
     "shared/refusals.ts",
+    "shared/seed-physical.ts",
     "starter-release.json",
     "test/bindings.test.ts",
     "test/catalogue-upgrade-fixture.ts",

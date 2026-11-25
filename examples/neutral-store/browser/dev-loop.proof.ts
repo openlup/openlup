@@ -132,7 +132,11 @@ test('local edit loop uses current successful output and cleans up its processes
     assert.equal(await request(port, '/api/config'), false, 'stale dist must not start host');
     assert(!run.output().includes('Neutral store local candidate:'), 'host must not start before a successful build');
     writeFileSync(paths[1]!, fragment);
-    await until(async () => (await request(port, '/api/config')) || false, 'recovery from initial build');
+    const recovered = JSON.parse(await until(() => request(port, '/api/config'), 'recovery from initial build'));
+    const { configurations } = await import('../owned/store.config.ts');
+    assert.deepEqual(recovered.config.offer.products.map((product: { physical: unknown }) => product.physical),
+      configurations.supplements!.offer.products.map(product => product.physical));
+    assert.equal(recovered.config.offer.products[0].physical.netContent.unit, 'openlup:g');
     const config = originals.get(paths[0]!)!;
     writeFileSync(paths[0]!, config.replace("name: 'Aster Goods'", "name: 'Loop Brand Witness'"));
     await until(async () => String(await request(port, '/api/config')).includes('Loop Brand Witness'), 'configuration restart');
@@ -153,7 +157,12 @@ test('local edit loop uses current successful output and cleans up its processes
     await new Promise<void>((done, reject) => rebound.once('error', reject).listen(port, '127.0.0.1', done));
     await new Promise<void>(done => rebound.close(() => done()));
     const second = start(['--configuration', 'coffee', '--port', String(port)]);
-    await until(async () => String(await request(port, '/api/config')).includes('Pebble Coffee'), 'second configuration');
+    const coffee = await until(async () => {
+      const response = await request(port, '/api/config');
+      return response && response.includes('Pebble Coffee') ? JSON.parse(response) : false;
+    }, 'second configuration');
+    assert.deepEqual(coffee.config.offer.products.map((product: { physical: unknown }) => product.physical),
+      configurations.coffee!.offer.products.map(product => product.physical));
     assert(observe(second.child).length >= 2, 'second host descendants must be observable');
     await end(second.child, 'SIGTERM');
     const occupant = await reservePort();

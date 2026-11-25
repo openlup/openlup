@@ -8,7 +8,7 @@ import { leaseFromEndpoint, startPgTemplateBroker } from "../helpers/pgTemplateB
 
 const describeIfDocker = (await dockerAvailable()) ? describe : describe.skip;
 
-it.each(["legacy", "qualified-admin", "qualified-v2"] as const)("uses one control POST per socket for %s", async profile => {
+it.each(["legacy", "qualified-admin", "qualified-v2", "qualified-v2-separate"] as const)("uses one control POST per socket for %s", async profile => {
   const requests: { path: string | undefined; socket: number }[] = [];
   let socketId = 0;
   let responseMode: "ok" | "refuse" | "reset" = "ok";
@@ -172,6 +172,46 @@ describeIfDocker("PostgreSQL template broker (cloning, isolation, ownership & dr
         await drainPool.end();
         await drainLease.release();
         expect(poolErrors).toEqual([]);
+
+        // 4. Qualified-v2-separate profile: transfer_owner owns the DB, exposes restoreUrl + inventory,
+        // and rotates installation_key independently outside the DDL chain across concurrent clones.
+        const [sepA, sepB] = await Promise.all([
+          leaseFromEndpoint(broker, "qualified-v2-separate", "journeyA"),
+          leaseFromEndpoint(broker, "qualified-v2-separate", "journeyB"),
+        ]);
+        expect(broker.activeClusterCount()).toBe(3);
+        expect(sepA.migrationLogin).toBe("transfer_owner");
+        expect(sepA.runtimeLogin).toBe("transfer_runtime");
+        expect(sepA.restoreLogin).toBe("transfer_restore");
+        expect(sepA.restoreUrl).toContain("transfer_restore");
+        expect(sepA.inventory).toMatch(/^[a-f0-9]{64}$/u);
+        const sepOwnerA = new Pool({ connectionString: sepA.ownerUrl });
+        const sepPoolA = new Pool({ connectionString: sepA.migrationUrl });
+        const sepPoolB = new Pool({ connectionString: sepB.migrationUrl });
+        const sepRuntimeA = new Pool({ connectionString: sepA.runtimeUrl });
+        const sepRestoreA = new Pool({ connectionString: sepA.restoreUrl });
+        try {
+          const [bootstrapRow, migrationUserRow, ownerRow, runtimeRow, restoreRow, keySepA, keySepB] = await Promise.all([
+            sepOwnerA.query<{ current_user: string }>("SELECT current_user"),
+            sepPoolA.query<{ current_user: string }>("SELECT current_user"),
+            sepPoolA.query<{ owner: string }>("SELECT pg_get_userbyid(datdba) AS owner FROM pg_database WHERE datname = current_database()"),
+            sepRuntimeA.query<{ current_user: string; rolsuper: boolean }>("SELECT current_user, rolsuper FROM pg_roles WHERE rolname = current_user"),
+            sepRestoreA.query<{ current_user: string; rolsuper: boolean }>("SELECT current_user, rolsuper FROM pg_roles WHERE rolname = current_user"),
+            sepPoolA.query<{ key_hex: string }>("SELECT encode(key_bytes, 'hex') AS key_hex FROM acquisition_private.installation_key WHERE singleton"),
+            sepPoolB.query<{ key_hex: string }>("SELECT encode(key_bytes, 'hex') AS key_hex FROM acquisition_private.installation_key WHERE singleton"),
+          ]);
+          expect(bootstrapRow.rows[0]?.current_user).toBe("postgres");
+          expect(migrationUserRow.rows[0]?.current_user).toBe("transfer_owner");
+          expect(ownerRow.rows[0]?.owner).toBe("transfer_owner");
+          expect(runtimeRow.rows[0]).toEqual({ current_user: "transfer_runtime", rolsuper: false });
+          expect(restoreRow.rows[0]).toEqual({ current_user: "transfer_restore", rolsuper: false });
+          expect(keySepA.rows[0]?.key_hex).toHaveLength(64);
+          expect(keySepB.rows[0]?.key_hex).toHaveLength(64);
+          expect(keySepA.rows[0]?.key_hex).not.toBe(keySepB.rows[0]?.key_hex);
+        } finally {
+          await Promise.all([sepOwnerA.end(), sepPoolA.end(), sepPoolB.end(), sepRuntimeA.end(), sepRestoreA.end()]);
+        }
+        await Promise.all([sepA.release(), sepB.release()]);
       } finally {
         await broker.close();
       }

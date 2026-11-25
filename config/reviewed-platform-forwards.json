@@ -9316,6 +9316,37 @@
         "dataStatements": []
       },
       {
+        "row": "function-search-path-pin-remaining",
+        "path": "db/platform/migrations/20261127060000_function_search_path_pin_remaining.sql",
+        "createdFunctions": [],
+        "replacedFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "ownerWindowRole": "platform_acquisition_owner",
+        "settingsOnlyFunctions": [
+          {
+            "signature": "acquisition_private.case_projection(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "acquisition_private.keyed_digest(text,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "acquisition_private.partner_case_projection(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "acquisition_private.refuse_append_only_mutation()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "auth.uid()",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ]
+      },
+      {
         "row": "tax-calculation-composition",
         "path": "db/platform/migrations/20261127070000_tax_calculation_composition.sql",
         "replacedFunctions": [
@@ -13377,6 +13408,11 @@
           "afterSha256": "caa4865380a434ed529480a40e04e76f77573a7c7b055700f14d531360cf5124"
         }
       ]
+    },
+    {
+      "path": "db/platform/migrations/20261127060000_function_search_path_pin_remaining.sql",
+      "sha256": "b24adae92fb5da6d1a69d5bc963a514a1ce71ee2e7e020747b67d56f3722f833",
+      "functions": []
     },
     {
       "path": "db/platform/migrations/20261127070000_tax_calculation_composition.sql",

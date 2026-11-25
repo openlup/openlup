@@ -1,4 +1,5 @@
 import { buildGuidance, infrastructure, rulesRecheck, up } from './installation/refusals.ts';
+import { seedPhysicalGuidance } from './shared/seed-physical.ts';
 
 const retryBrowser = 'Run `./lifecycle browser` again.';
 const checkConfig = { fix: 'Correct the selected configuration in owned files.', recheck: up };
@@ -13,6 +14,7 @@ const argumentsForUp = {
 const candidate = { fix: 'Supply one matching Core, Outbox and Platform tarball from the same candidate set.', recheck: 'Repeat `./lifecycle candidate` with the three qualified tarballs.' };
 
 export const starterRefusals = Object.freeze(Object.fromEntries(Object.entries({
+  ...seedPhysicalGuidance,
   checkout_recovery_schedule_change_blocked_open_episodes: owner,
   fulfillment_stock_current_idempotency_conflict: owner,
   ...buildGuidance,
