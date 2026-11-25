@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPostgresPaymentWebhookControlPort } from "@openlup/platform/payments";
-import { readPlatformMigrationManifest, sha256 } from "../../scripts/platform-migration-manifest.js";
+import { readPlatformMigrationManifest, sha256, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { runManagedCompatPostgres } from "../helpers/managedCompatPostgres.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type PostgresContainer } from "../helpers/postgresContainer.js";
 import { lifecycleInstallation, type LifecycleInstallation } from "./subscriptionLifecycleClosureFixture.js";
@@ -12,6 +12,7 @@ import { call } from "./subscriptionNativeFixture.js";
 const reader = "public.payment_read_capture_time(uuid,uuid)";
 const scope = "public.payment_capture_time_test_qualification";
 const migration = "_payment_capture_time_read.sql";
+const manifest = readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest;
 const setup = readFileSync("tests/postgres/fixtures/paymentProvider/setup.sql", "utf8");
 const tap = readFileSync("tests/postgres/fixtures/paymentCaptureTime/replayed.sql", "utf8");
 const options = { dunningTemplateSlug: "dunning", recoveryUrlPath: "/recover", recoveryTemplateSlug: "recovered" };
@@ -48,7 +49,6 @@ describe("capture-time forward replay", () => {
     url.pathname = "/capture_time_replay";
     pool = new Pool({ connectionString: url.toString() });
     await pool.query("CREATE SCHEMA extensions; CREATE EXTENSION pgtap WITH SCHEMA extensions");
-    const manifest = readPlatformMigrationManifest(process.cwd())!;
     const slot = manifest.forward.findIndex(unit => unit.file.endsWith(migration));
     for (const unit of [manifest.baseline, ...manifest.forward.slice(0, slot === -1 ? undefined : slot)]) {
       const text = readFileSync(unit.file, "utf8");
@@ -76,7 +76,6 @@ describe("capture-time forward replay", () => {
         WHERE p.pronamespace='public'::regnamespace AND p.oid<>coalesce(to_regprocedure($2),0)
         ORDER BY 1,2`, [scope, reader]).then(result => result.rows);
       const before = await grants();
-      const manifest = readPlatformMigrationManifest(process.cwd())!;
       expect(manifest.forward.at(-2)?.file).toMatch(/^db\/platform\/migrations\//u);
       const candidate = manifest.forward.find(unit => unit.file.endsWith(migration));
       expect(candidate, "capture-time forward is admitted").toBeDefined();

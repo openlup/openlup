@@ -13,7 +13,7 @@ import {
   createNativeRenewalCodec, createPostgresProviderRenewalBinding, createPostgresRenewalSettlementPort,
   type SubscriptionQueryExecutor,
 } from "@openlup/platform/subscriptions";
-import { readPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
+import { readPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { captureStoreJourney, journeySelection, storeJourneyResources } from "../helpers/storeJourney.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
@@ -27,8 +27,11 @@ const currency = "XXX";
 const scope = "public.payment_capture_time_test_qualification";
 const forward = "_payment_capture_time_read.sql";
 type Db = Pool | PoolClient;
-type Subject = Awaited<ReturnType<typeof prepared>>;
 type Clock = { created: number; observed: string; occurred: string; precise: string };
+type Subject = {
+  order: string; client: string; intent: string; attempt: string;
+  remote: string; paymentId: string; provider: string; time: Clock;
+};
 const heldFields = {
   order_id: null, intent_id: null, evidence_id: null, truth_id: null, settlement_transition_id: null,
   captured_at: null, fallback_at: null, truth_occurred_at: null, observed_at: null,
@@ -64,7 +67,7 @@ async function draft(db: Db, status = "pending_payment") {
   return { order, client };
 }
 
-async function prepared(owner: Db, runtime: Db, provider = "stripe") {
+async function prepared(owner: Db, runtime: Db, provider = "stripe"): Promise<Subject> {
   const { order, client } = await draft(owner);
   const time = await clock(owner);
   const control = createPostgresProviderPaymentControlPort(runtime, options);
@@ -504,11 +507,11 @@ it("retains predecessor captures and classifies Tpay identically after verified 
   const db = new Pool({ connectionString: container.connectionString, options: "-c timezone=UTC" });
   try {
     expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
-    const manifest = readPlatformMigrationManifest(process.cwd())!;
+    const manifest = readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest;
     const beforeEvidence = manifest.forward.findIndex(unit => unit.file.endsWith("_native_durable_capture_evidence.sql"));
     expect(beforeEvidence).toBeGreaterThan(0);
     for (const unit of [manifest.baseline, ...manifest.forward.slice(0, beforeEvidence)]) await db.query(readFileSync(unit.file, "utf8"));
-    const staged = [];
+    const staged: { f: Subject; id: string }[] = [];
     for (const provider of ["tpay", "stripe"]) {
       const f = await prepared(db, db, provider);
       const event = provider === "tpay" ? tpay(db, f).providerEventId : `evt_${f.attempt}`;
