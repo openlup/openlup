@@ -449,6 +449,7 @@
         "test/promotions/promotionCodePreview.test.ts",
         "test/promotions/promotionQuoteBinding.test.ts",
         "test/promotions/promotionQuoteAcceptance.test.ts",
+        "test/promotions/quoteAcceptanceTokenV2.test.ts",
         "test/promotions/adminPromotionCodesDataPort.test.ts",
         "test/promotions/adminPromotionCodesContracts.test.ts",
         "test/promotions/promotionClaimSweepPort.test.ts",
