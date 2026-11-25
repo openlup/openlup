@@ -321,6 +321,7 @@ jobs:
         if: needs.install-pack.outputs.reuse != 'true'
         env:
           BROWSER_GROUPS: ${{ matrix.groups }}
+          OPENLUP_STARTER_BROWSER_RETRY_BUDGET_MS: '660000'
         run: node --experimental-strip-types scripts/starter-browser-ci.mjs --manifest "$RUNNER_TEMP/package-gates/packages-manifest.json" --expected-commit "$(git rev-parse HEAD)" --groups "$BROWSER_GROUPS"
 
   install-proof:
