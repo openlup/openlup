@@ -396,6 +396,10 @@ type key and version. The projection exposes own attributes marked
 `public: true` for their exact product or variant scope. Missing, conflicting
 or unverifiable type evidence yields empty attribute maps.
 
+On the first page, the raw reader's `catalog_offer_memberships_page_input_invalid`
+refusal can carry `issue: "offer_unpublished"`. A caller may treat that typed
+case as an empty published list.
+
 Everything authored in `product.presentation` becomes public copy. The
 projection carries it unchanged. The starter chooses the fields it displays
 from that copy. Continue the server read with the returned cursor, even when

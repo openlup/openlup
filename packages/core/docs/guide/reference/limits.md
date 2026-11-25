@@ -209,6 +209,7 @@ In the tables, “—” means the boundary has no dedicated refusal code.
 | Publish a catalogue draft from the operator UI | The button displays a local refusal. Use the [operator API to prepare, approve and publish a saved version 3 draft](../how-to/build/customize-the-starter.md#publish-a-saved-catalogue-draft). | `starter_catalog_publication_unavailable` |
 | Evaluate a promotion with line targeting | `line_with_variant` and `line_with_category` are stored. The Core promotion evaluator calculates each kind as `order_total`. | — |
 | Purchase an activated bundle | Activation does not make a bundle available to this storefront or checkout. | —; no purchase control |
+| List a published SKU without one-time sellability | The starter lists only SKUs sellable for one-time purchase. Enable that mode through the catalogue workflow, then reread the SKU. | `starter_catalogue_one_time_required` |
 | Use lot traceability, locations or stock movements | The starter supplies none of these inventory facilities. The limits-page action refuses. | `starter_inventory_traceability_unavailable` |
 | Run the starter against a hosted database | The supplied installation is a local demonstration database recipe. It provides no hosted-database setup. | —; no hosted installation recipe |
 | Seed without the installed bootstrap | Seeding stops before application startup. | `starter_installation_binding_required` |

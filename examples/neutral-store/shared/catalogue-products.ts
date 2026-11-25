@@ -14,22 +14,21 @@ const positiveInt32 = (value: number) => Number.isInteger(value) && value > 0 &&
 
 export function readStarterProducts(page: PublishedCatalogOfferPage, config: StoreConfig) {
   const products: StarterCatalogueItem[] = [];
-  const exclusions: Array<{ code: 'starter_catalogue_presentation_invalid' | 'starter_catalogue_price_missing'
-    | 'starter_catalogue_price_basis_unsupported'; subject: string }> = [];
+  const exclusions: Array<{ code: 'starter_catalogue_presentation_invalid' | 'starter_catalogue_one_time_required'
+    | 'starter_catalogue_price_missing' | 'starter_catalogue_price_basis_unsupported'; subject: string }> = [];
   for (const { slug, presentation, attributes, skus } of page.products) {
     const copy = mapStarterPresentation(presentation);
     for (const { skuCode: sku, title: variantTitle, price: { oneTime }, netContent, primaryUnitIdentifier, minQuantity,
       attributes: variantAttributes, sell } of skus) {
       if (!copy) { exclusions.push({ code: 'starter_catalogue_presentation_invalid', subject: sku }); continue; }
+      if (!sell.oneTime) { exclusions.push({ code: 'starter_catalogue_one_time_required', subject: sku }); continue; }
       if (!oneTime) { exclusions.push({ code: 'starter_catalogue_price_missing', subject: sku }); continue; }
       if (oneTime.amountBasis !== 'tax_inclusive' || oneTime.currency !== config.market.currency || !positiveInt32(oneTime.amountMinor)) {
         exclusions.push({ code: 'starter_catalogue_price_basis_unsupported', subject: sku }); continue;
       }
       if (!positiveInt32(minQuantity)) continue;
-      const permittedPurchaseModes: PurchaseMode[] = [];
-      if (sell.oneTime) permittedPurchaseModes.push('one_time');
+      const permittedPurchaseModes: PurchaseMode[] = ['one_time'];
       if (sell.subscription && canCheckoutSubscriptionSku(config, sku, minQuantity)) permittedPurchaseModes.push('subscription');
-      if (!permittedPurchaseModes.length) continue;
       products.push({ ...copy, slug, sku, variantTitle, minQuantity, attributes: { ...attributes, ...variantAttributes },
         physical: { netContent, primaryUnitIdentifier }, unitPrice: { amountMinor: oneTime.amountMinor, currency: oneTime.currency },
         permittedPurchaseModes });

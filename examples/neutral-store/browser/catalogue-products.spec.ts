@@ -255,22 +255,20 @@ test.beforeAll(async ({ request, baseURL }, info) => {
 });
 test.afterAll(async () => { await closeFixture?.(); });
 
-test('lists and quotes the exact published SKU across browser widths', async ({ page, request }) => {
-  const config = configurations[fixture.id]!, base = fixture.baseURL, locale = config.market.defaultLocale;
-  const listing = await (await action(request, base, 'storefront.catalogue', {})).json();
-  const item = assertSelection(listing, wanted);
-  expect(item.name[locale]).toBe(title);
-  expect(item.media).toBe('');
-  const candidate = structuredClone(listing);
-  candidate.value.products.find((product: StarterCatalogueItem) => product.sku === wanted.sku).attributes.private_sample = 'forbidden';
-  assert.throws(() => assertSelection(candidate, wanted));
-  const substituted = { ...listing, value: { products: [assertSelection(listing, first)] } };
-  assert.throws(() => assertSelection(substituted, wanted));
-  for (const width of [320, 1280]) {
+for (const width of [320, 1280]) {
+  test(`lists and quotes the exact published SKU at ${width}px`, async ({ page, request }) => {
+    const config = configurations[fixture.id]!, base = fixture.baseURL, locale = config.market.defaultLocale;
+    const listing = await (await action(request, base, 'storefront.catalogue', {})).json();
+    const item = assertSelection(listing, wanted);
+    expect(item.name[locale]).toBe(title);
+    expect(item.media).toBe('');
+    const candidate = structuredClone(listing);
+    candidate.value.products.find((product: StarterCatalogueItem) => product.sku === wanted.sku).attributes.private_sample = 'forbidden';
+    assert.throws(() => assertSelection(candidate, wanted));
+    const substituted = { ...listing, value: { products: [assertSelection(listing, first)] } };
+    assert.throws(() => assertSelection(substituted, wanted));
     await page.setViewportSize({ width, height: 850 });
     await page.goto(base + routes.catalog[locale]);
-    await page.evaluate(configuration => localStorage.removeItem('neutral-store:cart:v1:' + configuration), config.id);
-    await page.reload();
     const path = productPath(slug, locale);
     const firstLink = page.locator(`a[href="${path}?sku=${encodeURIComponent(first.sku)}"]`);
     await expect(firstLink).toBeVisible();
@@ -296,33 +294,35 @@ test('lists and quotes the exact published SKU across browser widths', async ({ 
     const quote = await (await quoted).json();
     assertQuote(quote, wanted);
     await expect(page.getByRole('complementary', { name: copy[locale].boxSummary })).toContainText(money);
-  }
-  const quotePath = '**/api/actions/offer.validate';
-  await page.route(quotePath, async route => {
-    const response = await route.fetch();
-    const quote = await response.json();
-    assertQuote(quote, wanted);
-    quote.value.lines[0].sku = first.sku;
-    assert.throws(() => assertQuote(quote, wanted));
-    await route.fulfill({ response, json: quote });
-  });
-  await page.reload();
-  await expect(page.getByText(quoteCopy[locale].unavailable, { exact: true })).toBeVisible();
-  await expect(page.getByRole('complementary', { name: copy[locale].boxSummary })).toHaveCount(0);
-  await page.unroute(quotePath);
-  const db = new pg.Pool({ connectionString: fixture.runtimeUrl });
-  try {
-    const count = async () => (await db.query('SELECT count(*)::int AS n FROM public.commerce_orders')).rows[0]!.n;
-    const before = await count();
-    const result = await action(request, base, 'checkout.create', { configuration: config.id, country: config.market.country, locale,
-      termsAccepted: true, termsRevision: config.legal.revision, email: 'storefront-checkout@example.invalid',
-      firstName: 'Example', lastName: 'Buyer', phone: '00000', line1: '1 Example Lane', city: 'Example', postalCode: '00000',
-      cart: { schemaVersion: 1, configuration: config.id, mode: 'one_time', cadenceDays: null, lines: [{ sku: wanted.sku, quantity: 1 }] },
+
+    if (width === 320) return;
+    const quotePath = '**/api/actions/offer.validate';
+    await page.route(quotePath, async route => {
+      const response = await route.fetch();
+      const quote = await response.json();
+      assertQuote(quote, wanted);
+      quote.value.lines[0].sku = first.sku;
+      assert.throws(() => assertQuote(quote, wanted));
+      await route.fulfill({ response, json: quote });
     });
-    expect(await result.json()).toMatchObject({ ok: false, code: 'catalog_admission_quote_authority_required' });
-    expect(await count()).toBe(before);
-  } finally { await db.end(); }
-});
+    await page.reload();
+    await expect(page.getByText(quoteCopy[locale].unavailable, { exact: true })).toBeVisible();
+    await expect(page.getByRole('complementary', { name: copy[locale].boxSummary })).toHaveCount(0);
+    await page.unroute(quotePath);
+    const db = new pg.Pool({ connectionString: fixture.runtimeUrl });
+    try {
+      const count = async () => (await db.query('SELECT count(*)::int AS n FROM public.commerce_orders')).rows[0]!.n;
+      const before = await count();
+      const result = await action(request, base, 'checkout.create', { configuration: config.id, country: config.market.country, locale,
+        termsAccepted: true, termsRevision: config.legal.revision, email: 'storefront-checkout@example.invalid',
+        firstName: 'Example', lastName: 'Buyer', phone: '00000', line1: '1 Example Lane', city: 'Example', postalCode: '00000',
+        cart: { schemaVersion: 1, configuration: config.id, mode: 'one_time', cadenceDays: null, lines: [{ sku: wanted.sku, quantity: 1 }] },
+      });
+      expect(await result.json()).toMatchObject({ ok: false, code: 'catalog_admission_quote_authority_required' });
+      expect(await count()).toBe(before);
+    } finally { await db.end(); }
+  });
+}
 
 test('a disconnected mounted reader fails the same published selection', async ({ page, request }) => {
   const port = await loopbackPort();

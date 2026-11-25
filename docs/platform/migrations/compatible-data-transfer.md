@@ -598,6 +598,15 @@ role assumption. No food-column relaxation applies to this policy-only change.
 The compatibility criterion is unchanged historical digests, the same shortened
 window and named refusal for unverifiable legacy originals on both rails.
 
+### Native erasure approvals
+
+Connected capture carries the three scalar fields of each owner approval:
+`erasure_id`, `contributor_id` and `evidence_ref`. Restore applies the ledger
+immediately after the original receipts and verifies the installed contributor
+declaration. Upgrade an older source within its profile before recapturing it
+for an exact-current target. Approval evidence and reconciled obligations stay
+in local owner custody.
+
 ### Installed tax coverage history
 
 `tax_coverage_revisions` is authoritative installation configuration in the
