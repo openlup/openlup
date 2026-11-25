@@ -73,29 +73,35 @@ export function runRequiredPackageGates(
     console.log(`Package API ${name}: ${Math.round(performance.now() - phase)} ms`);
   }
   // Every publishable package's ci:required consumes the immutable prebuilt dist/ and verified
-  // tarballs inside its own isolated temp directory and disposable database, so run them together.
+  // tarballs inside its own isolated temp directory and disposable database; cap at 2 concurrent
+  // package lanes so 4-vCPU hosted runners overlap heavy proofs without 3-way Vitest worker thrashing.
   return (async () => {
-    const results = await Promise.allSettled(packages.map(async ({ name, directory: workspace }) => {
-      const phase = performance.now();
-      const env = { ...isolatedConsumerEnv(), OPENLUP_PACK_MANIFEST: input, OPENLUP_PACK_COMMIT: commit, OPENLUP_DIST_READY: "1" };
-      try {
-        const { stdout, stderr } = await runAsync(["--workspace", `./${workspace}`, "run", "ci:required"], root, env);
-        if (stdout) process.stdout.write(stdout);
-        if (stderr) process.stderr.write(stderr);
-        console.log(`Package proof ${name}: ${Math.round(performance.now() - phase)} ms`);
-      } catch (error) {
-        const failure = error as Error & { stdout?: string; stderr?: string };
-        if (failure.stdout) process.stdout.write(failure.stdout);
-        if (failure.stderr) process.stderr.write(failure.stderr);
-        console.error(`Package proof ${name} FAILED (${Math.round(performance.now() - phase)} ms): ${failure.message}`);
-        throw failure;
+    const queue = [...packages];
+    const failures: unknown[] = [];
+    const workerCount = Math.min(2, queue.length);
+    await Promise.all(Array.from({ length: workerCount }, async () => {
+      for (let entry = queue.shift(); entry; entry = queue.shift()) {
+        const { name, directory: workspace } = entry;
+        const phase = performance.now();
+        const env = { ...isolatedConsumerEnv(), OPENLUP_PACK_MANIFEST: input, OPENLUP_PACK_COMMIT: commit, OPENLUP_DIST_READY: "1" };
+        try {
+          const { stdout, stderr } = await runAsync(["--workspace", `./${workspace}`, "run", "ci:required"], root, env);
+          if (stdout) process.stdout.write(stdout);
+          if (stderr) process.stderr.write(stderr);
+          console.log(`Package proof ${name}: ${Math.round(performance.now() - phase)} ms`);
+        } catch (error) {
+          const failure = error as Error & { stdout?: string; stderr?: string };
+          if (failure.stdout) process.stdout.write(failure.stdout);
+          if (failure.stderr) process.stderr.write(failure.stderr);
+          console.error(`Package proof ${name} FAILED (${Math.round(performance.now() - phase)} ms): ${failure.message}`);
+          failures.push(failure);
+        }
       }
     }));
-    const failures = results.filter((entry): entry is PromiseRejectedResult => entry.status === "rejected");
-    if (failures.length === 1) throw failures[0]!.reason;
+    if (failures.length === 1) throw failures[0];
     if (failures.length > 1) {
       throw new AggregateError(
-        failures.map(entry => entry.reason),
+        failures,
         `package-gates: ${failures.length} package proofs failed`,
       );
     }
