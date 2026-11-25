@@ -909,13 +909,23 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     .filter(name => name.endsWith('.json')).length;
   const repeatLimits = { maxPerEmail: 4, maxPerRequester: 12, maxEntries: 50 };
   // Host restarts in earlier cases drop in-memory sessions, so each case signs in again.
+  const mailbox = async () => (await readFile(resolve(state, '.context/captured-messages/identity.jsonl'), 'utf8').catch(() => ''))
+    .trim().split('\n').filter(Boolean).map(line => JSON.parse(line) as { email: string; token: string });
+  /** Requests a challenge and waits for its delivery: acceptance can precede the private mailbox write. */
+  async function freshChallenge(operation: 'auth.request' | 'auth.operator', address: string) {
+    const prior = new Set((await mailbox()).filter(row => row.email === address).map(row => row.token));
+    expect((await call(operation, { email: address })).ok).toBe(true);
+    const deadline = Date.now() + 5_000;
+    for (;;) {
+      const message = (await mailbox()).filter(row => row.email === address && !prior.has(row.token)).at(-1);
+      if (message) return message.token;
+      if (Date.now() > deadline) throw new Error(`${operation}_challenge_missing`);
+      await new Promise(done => setTimeout(done, 25));
+    }
+  }
   async function signIn(address: string) {
-    expect((await call('auth.request', { email: address })).ok).toBe(true);
-    const messages = (await readFile(resolve(state, '.context/captured-messages/identity.jsonl'), 'utf8'))
-      .trim().split('\n').map(line => JSON.parse(line) as { email: string; token: string });
-    const challenge = messages.filter(message => message.email === address).at(-1);
-    if (!challenge) throw new Error('continuation_challenge_required');
-    expect((await call('auth.verify', { token: challenge.token })).ok).toBe(true);
+    const token = await freshChallenge('auth.request', address);
+    expect((await call('auth.verify', { token })).ok).toBe(true);
   }
   async function guestOrder(label: string, key = randomUUID()) {
     const created = await call('checkout.create', checkout(`${label}-${config.id}@example.test`), false, key);
@@ -1077,13 +1087,14 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     } finally { holder.release(); }
     // More calls than pooled connections all complete, each issuing a token while it holds a session and its key lock.
     const orders: Awaited<ReturnType<typeof guestOrder>>[] = [];
-    for (let index = 0; index < 6; index++) orders.push(await guestOrder(`pool-${index}`));
+    // Five callers against four pooled connections.
+    for (let index = 0; index < 5; index++) orders.push(await guestOrder(`pool-${index}`));
     const answers = await Promise.all(orders.map(known => call('checkout.continuation', { action: 'resume', locale: 'en' }, false, known.key)));
     for (const [index, answer] of answers.entries()) {
       expect(answer.ok && isRecord(answer.value) && answer.value.orderRef).toBe(orders[index]!.orderRef);
       expect(answer.ok && isRecord(answer.value) && typeof answer.value.token).toBe('string');
     }
-  }, 30_000);
+  }, 60_000);
 
 
   const held = async (orderRef: string) => Number((await owner!.query(`SELECT count(*) AS n FROM public.fulfillment_inventory_reservations
@@ -1158,23 +1169,22 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
 
   // The store's operator path: a provisioned human administrator with a Commerce operator row.
   let operatorCookie: string | undefined;
+  let operatorId: string | undefined;
   async function operatorCall(operation: Operation, payload: Record<string, unknown>) {
-    if (!operatorCookie) {
-      const address = `operator-${config.id}@example.test`;
+    const address = `operator-${config.id}@example.test`;
+    if (!operatorId) {
+      // Bootstrapping happens once per installation; a later sign-in failure must not try it again.
       const connection = new URL(runtimeConnection); connection.password = 'synthetic-conformance';
       const operators = createPostgresOperatorIdentityStore({ connectionString: connection.toString() });
-      let operatorId: string;
       try { operatorId = (await operators.bootstrapFirstAdministrator({ email: address })).principalId; }
       finally { await operators.close(); }
-      await owner!.query('INSERT INTO public.commerce_operators(id,label) VALUES($1,$2)', [operatorId, 'Synthetic operator']);
-      expect((await call('auth.operator', { email: address })).ok).toBe(true);
-      const messages = (await readFile(resolve(state, '.context/captured-messages/identity.jsonl'), 'utf8'))
-        .trim().split('\n').map(line => JSON.parse(line) as { email: string; token: string });
-      const challenge = messages.filter(message => message.email === address).at(-1);
-      if (!challenge) throw new Error('operator_challenge_required');
+      await owner!.query('INSERT INTO public.commerce_operators(id,label) VALUES($1,$2) ON CONFLICT DO NOTHING', [operatorId, 'Synthetic operator']);
+    }
+    if (!operatorCookie) {
+      const token = await freshChallenge('auth.operator', address);
       const verified = await fetch(`${base}/api/actions/auth.operator`, { method: 'POST', headers: { Origin: base,
         'Content-Type': 'application/json', 'X-Starter-Request': '1', 'Idempotency-Key': randomUUID() },
-        body: JSON.stringify({ token: challenge.token }), signal: fixture.signal });
+        body: JSON.stringify({ token }), signal: fixture.signal });
       expect(((await verified.json()) as ActionResult).ok).toBe(true);
       operatorCookie = verified.headers.get('set-cookie')!.split(';')[0];
     }

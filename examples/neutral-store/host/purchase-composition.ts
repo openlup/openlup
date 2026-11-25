@@ -424,7 +424,9 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
         cancelled = (await createPostgresAbandonedCheckoutCompensationPort(session).cancelAbandonedOrder({
           idempotencyKey: `${key}:start-over`, orderId: order.id, reason: 'checkout_started_over' })).cancelled;
       } catch (error) {
-        if (!isRecord(error) || !['55000', '22023', '23505'].includes(String(error.code))) throw error;
+        // The order's subscription link changed while it was being cancelled: nothing moved, so repeating is safe.
+        if (isRecord(error) && error.code === '55000') return refused('starter_purchase_unavailable');
+        if (!isRecord(error) || !['22023', '23505'].includes(String(error.code))) throw error;
       }
     }
     if (cancelled) return success({ abandoned: true, orderRef: order.id });

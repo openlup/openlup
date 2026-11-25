@@ -33,12 +33,12 @@ const presented = (stored: Stored) => ({ orderRef: stored.id, status: stored.sta
 
 /** A fake held session in the style of the acquisition tests: every statement is named in `log`. */
 function continuation(stored: Stored | undefined, options: { admitted?: boolean; integrity?: unknown; issue?: unknown;
-  current?: { status: string; elapsed?: boolean }; safe?: boolean; cancel?: unknown; young?: boolean } = {}) {
+  current?: { status: string; elapsed?: boolean }; safe?: boolean; cancel?: unknown; young?: boolean; predicate?: unknown } = {}) {
   const log: string[] = [];
   const args: Record<string, unknown[]> = {};
   const query = async (sql: string, values: unknown[] = []) => {
     const step = [['pg_advisory_lock', 'lock'], ['pg_advisory_unlock', 'unlock'], ['commerce_order_draft_receipts', 'lookup'],
-      ['catalog_admission_replay_order_draft', 'integrity'], ['abandonment_safe', 'predicate'], ['initial_checkout', 'initial'],
+      ['catalog_admission_replay_order_draft', 'integrity'], ['commerce_checkout_abandonment_safe_runtime', 'predicate'], ['initial_checkout', 'initial'],
       ['commerce_cancel_abandoned_purchase_checkout', 'cancel'], ['AS young', 'age'], ['FROM public.commerce_orders WHERE id=$1', 'reread']]
       .find(([text]) => sql.includes(text!))?.[1];
     if (!step) throw new Error(`unexpected statement: ${sql}`);
@@ -47,7 +47,10 @@ function continuation(stored: Stored | undefined, options: { admitted?: boolean;
     if (step === 'lookup') return { rows: stored ? [stored] : [] };
     if (step === 'integrity' && options.integrity) throw options.integrity;
     if (step === 'initial') return { rows: [{ initial_checkout: true }] };
-    if (step === 'predicate') return { rows: [{ safe: options.safe ?? true }] };
+    if (step === 'predicate') {
+      if (options.predicate) throw options.predicate;
+      return { rows: [{ safe: options.safe ?? true }] };
+    }
     if (step === 'cancel') {
       if (options.cancel instanceof Error) throw options.cancel;
       return { rows: [{ result: options.cancel ?? { cancelled: true } }] };
@@ -228,7 +231,7 @@ test('an incomplete order can be abandoned to start over', async () => {
 test('a dispatched attempt makes the order not abandonable', async () => {
   for (const [current, code] of [['pending_payment', 'starter_checkout_not_abandonable'], ['paid', 'starter_checkout_paid'],
     ['cancelled', 'starter_checkout_not_payable']] as const) {
-    for (const cancel of [{ cancelled: false }, Object.assign(new Error('commerce_checkout_compensation_aggregate_changed'), { code: '55000' }),
+    for (const cancel of [{ cancelled: false },
       Object.assign(new Error('commerce_checkout_compensation_renewal_order_unsupported'), { code: '22023' }),
       Object.assign(new Error('fulfillment_purchase_reservation_idempotency_conflict'), { code: '23505' })]) {
       const host = continuation(order(), { cancel, current: { status: current } });
@@ -236,6 +239,12 @@ test('a dispatched attempt makes the order not abandonable', async () => {
       assert.deepEqual(host.log.slice(-4), ['cancel', 'reread', 'unlock', 'release']);
     }
   }
+});
+
+test('a concurrent aggregate change is transient and asks for a repeat', async () => {
+  const host = continuation(order(), { cancel: Object.assign(new Error('commerce_checkout_compensation_aggregate_changed'), { code: '55000' }) });
+  assert.deepEqual(await host.call('abandon'), { ok: false, code: 'starter_purchase_unavailable' });
+  assert.deepEqual(host.log.slice(-3), ['cancel', 'unlock', 'release']);
 });
 
 test('the safety predicate refuses before the compensation port', async () => {
@@ -269,4 +278,11 @@ test('an incomplete order younger than the stall bound is in progress for abando
   const complete = continuation(order(), { young: true });
   assert.deepEqual(await complete.call('abandon'), { ok: true, value: { abandoned: true, orderRef: orderId } });
   assert.ok(!complete.log.includes('age'));
+});
+
+test('a missing runtime entry answers unavailable without a cancel and releases the key lock', async () => {
+  const host = continuation(order(), { predicate: Object.assign(new Error('function does not exist'), { code: '42883' }) });
+  assert.deepEqual(await host.call('abandon'), { ok: false, code: 'starter_purchase_unavailable' });
+  assert.ok(host.log.includes('predicate') && !host.log.includes('cancel'));
+  assert.deepEqual(host.log.slice(-2), ['unlock', 'release']);
 });

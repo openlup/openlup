@@ -153,6 +153,13 @@ key, never against the buyer's email. Changing the identity under a retained
 binding refuses even with a replacement quota callback. Denied quota attempts
 add no quota count. Your host owns retention of unpurchased contacts.
 
+A host behind a trusted proxy can pass `requesterKey` to
+`composeNativeBindings`: a function that returns a lowercase 64-hex SHA-256
+digest of the verified client, or `undefined`. A value that is not a function is
+refused at composition; a returned value that is not such a digest makes every
+request answer 503 `starter_dependency_unavailable`, and the host logs
+`OPENLUP_E_STARTER_REQUESTER_KEY_INVALID` to stderr.
+
 For `starter_attempt_limited`, wait for the quota window or retained attempts
 to age out. A limited repeat of a completed order still returns the order,
 without a new token. A repeat that completes an interrupted creation passes the
@@ -216,11 +223,14 @@ answers `starter_order_transition_conflict`. After the store cancels, this key
 answers `starter_checkout_not_payable`, and a new key works, including for the
 same first subscription. While the unpaid draft exists, a new first
 subscription for the same contact answers `starter_command_conflict`. An
-abandon that cancels nothing because the host was busy, or because the platform
+abandon that cancels nothing because the host was busy, because the order
+changed while it was being cancelled, or because the platform
 forward `20261128180001_checkout_abandonment_safety_execute_grant.sql` is
 missing, answers `starter_purchase_unavailable`; repeat it, and apply the
-forward if it persists. An unknown key is answered before metering. Refusals use HTTP 409. A missing or malformed header answers
-HTTP 400 with `starter_command_identity_required`.
+forward if it persists. An unknown key is answered before metering. Refusals
+use HTTP 409. A missing or malformed header answers HTTP 400 with
+`starter_command_identity_required`, and a body that is not a JSON object
+answers HTTP 400 with `starter_input_invalid`.
 
 The token from `resume` authorises the same operations as the creating
 response: `checkout.read`, `checkout.recovery` `inspect` and `pay`,
@@ -236,7 +246,9 @@ A client that owns its checkout page follows three rules:
    timeout plus 15 seconds have passed since the last unanswered create. A
    create that obtains the key lock later than 15 seconds after the host
    received it answers `starter_checkout_request_stale` and writes nothing.
-   This refusal can also reach the managed pages when the host is busy.
+   The bound starts when the host receives the request, so a client behind a
+   buffering proxy adds that proxy's own timeout to its wait. This refusal can
+   also reach the managed pages when the host is busy.
 
 The key is derived from the principal, so a guest key does not survive sign-in
 or sign-out. Resolve the purchase before either; a retry after sign-in finds no
