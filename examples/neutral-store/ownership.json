@@ -137,6 +137,7 @@
     "test/interim-pricing.test.ts",
     "host/checkout-attempts.ts",
     "test/checkout-attempts.test.ts",
+    "test/checkout-continuation-host.test.ts",
     "test/address-outcomes.test.ts",
     "host/checkout-recovery.ts",
     "test/checkout-recovery.test.ts",

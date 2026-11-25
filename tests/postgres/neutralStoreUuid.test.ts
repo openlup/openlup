@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { access, mkdtemp, mkdir, readFile, rm } from 'node:fs/promises';
+import { access, mkdtemp, mkdir, readdir, readFile, rm } from 'node:fs/promises';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -397,7 +397,7 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
   const paid = new Map<string, Record<string, unknown>>();
   const email = `uuid-${config.id}@example.test`;
 
-  async function exchange(operation: Operation, payload: Record<string, unknown>, signedIn = false, key = randomUUID()) {
+  async function exchange(operation: Operation, payload: Record<string, unknown>, signedIn = false, key: string = randomUUID()) {
     const started = performance.now();
     const response = await fetch(`${base}/api/actions/${operation}`, {
       method: 'POST', headers: {
@@ -410,7 +410,7 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     return { body: await response.json() as ActionResult, status: response.status, elapsed: performance.now() - started };
   }
 
-  async function call(operation: Operation, payload: Record<string, unknown>, signedIn = false, key = randomUUID()) {
+  async function call(operation: Operation, payload: Record<string, unknown>, signedIn = false, key: string = randomUUID()) {
     return (await exchange(operation, payload, signedIn, key)).body;
   }
 
@@ -422,12 +422,13 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     return { ...capable, quoteAcceptance: quoted.value.quoteAcceptance, expectedTotal: quoted.value.expectedTotal };
   }
 
-  async function control(permissive: boolean | null, emailLimit?: number, subscriptionOffers?: SubscriptionOffers) {
+  async function control(permissive: boolean | null, emailLimit?: number, subscriptionOffers?: SubscriptionOffers,
+    attemptLimits?: Partial<typeof config.purchase.attemptLimits>) {
     const host = fixture.child()!;
     return waitForHost<{ registrations: number }>(host, fixture.signal, 5_000, 'host_control_timeout', finish => {
       const onMessage = (message: unknown) => finish(undefined, message as { registrations: number });
       host.once('message', onMessage);
-      host.send({ permissive, emailLimit, subscriptionOffers }, error => {
+      host.send({ permissive, emailLimit, subscriptionOffers, attemptLimits }, error => {
         if (error) finish(new Error('host_control_failed'));
       });
       return () => host.off('message', onMessage);
@@ -484,7 +485,10 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
       const connectionString = ${JSON.stringify(runtimeConnection)};
       process.chdir(${JSON.stringify(state)});
       const keyring = { current: 'fixture-only-acceptance-key-00000000000000' };
-      const bindings = await composeNativeBindings(connectionString, createOriginPolicy(config, port), config, keyring);
+      // The requester key seam: every quota consumer must receive this replacement.
+      const { createHash } = await import('node:crypto');
+      const requesterKey = request => createHash('sha256').update('fixture-requester:' + request.socket.remoteAddress).digest('hex');
+      const bindings = await composeNativeBindings(connectionString, createOriginPolicy(config, port), config, keyring, undefined, { requesterKey });
       const stopAtContact = ${stopAtContact};
       const pool = new Pool({ connectionString, ...(stopAtContact ? { max: 1, connectionTimeoutMillis: 1000 } : {}) });
       const registrar = createPostgresContactClientRegistrar({ connectionString });
@@ -508,6 +512,7 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
         if (message.subscriptionOffers !== undefined) config.subscriptionOffers = message.subscriptionOffers;
         if (message.emailLimit !== undefined) config.purchase.inputLimits.email = message.emailLimit;
         if (message.permissive !== null) configureCheckout(message.permissive);
+        if (message.attemptLimits !== undefined) config.purchase.attemptLimits = { ...config.purchase.attemptLimits, ...message.attemptLimits };
         process.send({ registrations });
       });
       server.on('request', createApplication(bindings).listeners('request')[0]);
@@ -857,15 +862,27 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
       changedResults.push(changed);
     }
     expect(await count()).toBe(before + 1);
+    // A key bound to another e-mail is a changed payload: metered per key, and named until the key's quota is spent.
+    expect(changedResults.map(changed => changed.body)).toEqual(Array.from({ length: 5 }, (_, index) =>
+      ({ ok: false, code: permissive || index < 2 ? 'starter_checkout_changed' : 'starter_attempt_limited' })));
     for (const changed of changedResults) {
-      expect(changed.body).toEqual({ ok: false, code: 'starter_attempt_limited' });
       expect(changed.status).toBe(409);
       expect(changed.elapsed).toBeGreaterThanOrEqual(config.purchase.responseFloorMs - 5);
     }
     expect((await control(null)).registrations).toBe(1);
-    expect(await call('checkout.create', checkout(address.toUpperCase()), false, key))
-      .toEqual({ ok: true, value: original, replayed: true });
-    expect(await ledger()).toEqual(afterFirst);
+    const repeated = await call('checkout.create', checkout(address.toUpperCase()), false, key);
+    if (permissive) {
+      // The exact repeat is admitted and returns a new way to pay.
+      expect(repeated.ok && isRecord(repeated.value) && typeof repeated.value.token).toBe('string');
+      if (!repeated.ok || !isRecord(repeated.value)) throw new Error('bound_repeat_required');
+      const { token: _token, ...value } = repeated.value;
+      expect({ ...repeated, value }).toEqual({ ok: true, value: original, replayed: true });
+    } else {
+      // The key's quota is spent: the order is returned without a token.
+      expect(repeated).toEqual({ ok: true, value: original, replayed: true });
+    }
+    expect(await ledger()).toHaveLength(permissive ? 0 : 3);
+    await owner!.query('TRUNCATE public.commerce_checkout_attempt_ledger');
     // A fresh second key still fits the native requester quota after all refusals.
     expect((await call('checkout.create', checkout(`second-${permissive}-${config.id}@example.test`))).ok).toBe(true);
     await control(permissive);
@@ -874,12 +891,180 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     const results = await Promise.all([0, 1].map(index => call('checkout.create',
       checkout(`race-${permissive}-${index}-${config.id}@example.test`), false, concurrentKey)));
     expect(results.filter(result => result.ok)).toHaveLength(1);
-    expect(results.filter(result => !result.ok)).toEqual([{ ok: false, code: 'starter_attempt_limited' }]);
+    expect(results.filter(result => !result.ok)).toEqual([{ ok: false, code: 'starter_checkout_changed' }]);
     expect(await count()).toBe(concurrentBefore + 1);
     expect((await control(null)).registrations).toBe(1);
     const afterRace = await ledger();
     if (permissive) expect(afterRace).toEqual(ledgerBefore);
     else expect(afterRace).toHaveLength(3);
+  }, 30_000);
+
+  const digest = (value: string) => createHash('sha256').update(value).digest('hex');
+  const derivedKey = (header: string) => `checkout:${digest(JSON.stringify([null, header]))}`;
+  const fixtureRequester = digest('fixture-requester:127.0.0.1');
+  const tokenCount = async (orderRef: string) => Number((await owner!.query(
+    'SELECT count(*) AS n FROM public.commerce_checkout_recovery_tokens WHERE order_id=$1', [orderRef])).rows[0].n);
+  const capturedRecoveries = async () => (await readdir(resolve(state, '.context/captured-messages')).catch(() => [] as string[]))
+    .filter(name => name.endsWith('.json')).length;
+  const repeatLimits = { maxPerEmail: 4, maxPerRequester: 12, maxEntries: 50 };
+  // Host restarts in earlier cases drop in-memory sessions, so each case signs in again.
+  async function signIn(address: string) {
+    expect((await call('auth.request', { email: address })).ok).toBe(true);
+    const messages = (await readFile(resolve(state, '.context/captured-messages/identity.jsonl'), 'utf8'))
+      .trim().split('\n').map(line => JSON.parse(line) as { email: string; token: string });
+    const challenge = messages.filter(message => message.email === address).at(-1);
+    if (!challenge) throw new Error('continuation_challenge_required');
+    expect((await call('auth.verify', { token: challenge.token })).ok).toBe(true);
+  }
+  async function guestOrder(label: string, key = randomUUID()) {
+    const created = await call('checkout.create', checkout(`${label}-${config.id}@example.test`), false, key);
+    if (!created.ok || !isRecord(created.value) || typeof created.value.token !== 'string') throw new Error(`${label}_checkout_required`);
+    return { key, orderRef: String(created.value.orderRef), token: created.value.token, value: created.value };
+  }
+
+  it('a repeat of a completed guest checkout is counted and returns a new token', async () => {
+    await control(false, undefined, undefined, repeatLimits);
+    await owner!.query('TRUNCATE public.commerce_checkout_attempt_ledger');
+    const first = await guestOrder('repeat');
+    const [fresh] = await ledger();
+    // The replaced requester function is the value the limiter receives.
+    expect(fresh.requester_digest).toBe(fixtureRequester);
+    expect(fresh.email_digest).toBe(digest(`repeat-${config.id}@example.test`));
+    const captured = await capturedRecoveries();
+    expect(captured).toBeGreaterThan(0);
+    const tokens = new Set([first.token]);
+    for (let index = 1; index <= 2; index++) {
+      const repeated = await call('checkout.create', checkout(`repeat-${config.id}@example.test`), false, first.key);
+      if (!repeated.ok || !isRecord(repeated.value) || typeof repeated.value.token !== 'string') throw new Error('repeat_token_required');
+      expect(repeated.replayed).toBe(true);
+      expect(repeated.value.orderRef).toBe(first.orderRef);
+      tokens.add(repeated.value.token);
+      const rows = await ledger();
+      expect(rows).toHaveLength(1 + index);
+      for (const row of rows.filter(row => row.attempt_digest !== fresh.attempt_digest)) {
+        expect(row.email_digest).toBe(digest(`replay:${derivedKey(first.key)}`));
+        expect(row.email_digest).not.toBe(fresh.email_digest);
+        expect(row.requester_digest).toBe(digest(`replay:${fixtureRequester}`));
+      }
+      const read = await call('checkout.read', { orderRef: first.orderRef, token: repeated.value.token });
+      expect(read.ok && isRecord(read.value) && read.value.orderRef).toBe(first.orderRef);
+    }
+    expect(tokens.size).toBe(3);
+    expect(await tokenCount(first.orderRef)).toBe(3);
+    // Earlier links stay valid, and no repeat sends mail.
+    expect((await call('checkout.read', { orderRef: first.orderRef, token: first.token })).ok).toBe(true);
+    expect(await capturedRecoveries()).toBe(captured);
+  }, 30_000);
+
+  it('repeats beyond the per-key quota are refused and issue nothing', async () => {
+    await control(false, undefined, undefined, { maxPerEmail: 2, maxPerRequester: 12, maxEntries: 50 });
+    await owner!.query('TRUNCATE public.commerce_checkout_attempt_ledger');
+    const first = await guestOrder('quota');
+    for (let index = 0; index < 2; index++) {
+      const repeated = await call('checkout.create', checkout(`quota-${config.id}@example.test`), false, first.key);
+      expect(repeated.ok && isRecord(repeated.value) && typeof repeated.value.token).toBe('string');
+    }
+    const issued = await tokenCount(first.orderRef);
+    const rows = await ledger();
+    const limited = await call('checkout.create', checkout(`quota-${config.id}@example.test`), false, first.key);
+    const { token: _token, ...value } = first.value;
+    expect(limited).toEqual({ ok: true, value, replayed: true });
+    expect(await tokenCount(first.orderRef)).toBe(issued);
+    expect(await ledger()).toEqual(rows);
+    // The buyer's e-mail quota was not consumed by the repeats.
+    expect((await call('checkout.create', checkout(`quota-${config.id}@example.test`))).ok).toBe(true);
+  }, 30_000);
+
+  it('checkout.continuation resumes by key', async () => {
+    await control(false, undefined, undefined, repeatLimits);
+    await owner!.query('TRUNCATE public.commerce_checkout_attempt_ledger');
+    const pendingOrder = await guestOrder('resume');
+    const resumed = await call('checkout.continuation', { action: 'resume', locale: 'en' }, false, pendingOrder.key);
+    if (!resumed.ok || !isRecord(resumed.value) || typeof resumed.value.token !== 'string') throw new Error('resume_token_required');
+    const { token: _token, ...value } = pendingOrder.value;
+    expect({ ...resumed, value: { ...resumed.value, token: '<token>' } }).toEqual({ ok: true, value: { ...value, token: '<token>' }, replayed: true });
+    const read = await call('checkout.read', { orderRef: pendingOrder.orderRef, token: resumed.value.token });
+    expect(read.ok && isRecord(read.value) && read.value.status).toBe('pending_payment');
+    const paidOrder = await guestOrder('resume-paid');
+    expect((await call('payment.simulate', { orderRef: paidOrder.orderRef, token: paidOrder.token, outcome: 'captured' })).ok).toBe(true);
+    expect(await call('checkout.continuation', { action: 'resume', locale: 'en' }, false, paidOrder.key))
+      .toEqual({ ok: true, value: { ...value, orderRef: paidOrder.orderRef, status: 'paid' }, replayed: true });
+    const closedOrder = await guestOrder('resume-closed');
+    await owner!.query('SELECT public.commerce_cancel_abandoned_purchase_checkout($1,$2::uuid,$3,now())',
+      [`fixture-close:${closedOrder.orderRef}`, closedOrder.orderRef, 'fixture_closed']);
+    expect(await call('checkout.continuation', { action: 'resume', locale: 'en' }, false, closedOrder.key))
+      .toEqual({ ok: false, code: 'starter_checkout_not_payable' });
+    expect(await call('checkout.continuation', { action: 'resume', locale: 'en' }))
+      .toEqual({ ok: false, code: 'starter_checkout_not_found' });
+  }, 30_000);
+
+  it('a guest key works without the contact e-mail and is useless to another principal', async () => {
+    await control(false, undefined, undefined, repeatLimits);
+    await owner!.query('TRUNCATE public.commerce_checkout_attempt_ledger');
+    const order = await guestOrder('bearer');
+    const resumed = await call('checkout.continuation', { action: 'resume', locale: 'en' }, false, order.key);
+    expect(resumed.ok && isRecord(resumed.value) && typeof resumed.value.token).toBe('string');
+    // The buyer's own principal does not address the guest key either.
+    await signIn(`bearer-${config.id}@example.test`);
+    expect(await call('checkout.continuation', { action: 'resume', locale: 'en' }, true, order.key))
+      .toEqual({ ok: false, code: 'starter_checkout_not_found' });
+  }, 30_000);
+
+  it('the stored journey key is the derived key', async () => {
+    await control(false, undefined, undefined, repeatLimits);
+    await owner!.query('TRUNCATE public.commerce_checkout_attempt_ledger');
+    const order = await guestOrder('journey');
+    const { rows: [client] } = await owner!.query(`SELECT c.metadata->'checkout'->>'lastIntentIdempotencyKey' AS key, row_to_json(c)::text AS bytes
+      FROM public.clients c JOIN public.commerce_orders o ON o.client_id=c.id WHERE o.id=$1`, [order.orderRef]);
+    expect(client.key).toBe(derivedKey(order.key));
+    expect(client.bytes).not.toContain(order.key);
+  }, 30_000);
+
+  it('continuation is metered for known keys only and requires a version 4 key', async () => {
+    await control(false, undefined, undefined, { maxPerEmail: 2, maxPerRequester: 12, maxEntries: 50 });
+    await owner!.query('TRUNCATE public.commerce_checkout_attempt_ledger');
+    for (let index = 0; index < 4; index++) {
+      expect(await call('checkout.continuation', { action: 'resume', locale: 'en' }))
+        .toEqual({ ok: false, code: 'starter_checkout_not_found' });
+    }
+    expect(await ledger()).toEqual([]);
+    for (const header of ['fictional-command-0001', randomUUID().replace(/^(.{14})4/, '$11')]) {
+      expect(await call('checkout.continuation', { action: 'resume', locale: 'en' }, false, header))
+        .toEqual({ ok: false, code: 'starter_input_invalid' });
+    }
+    expect(await ledger()).toEqual([]);
+    const order = await guestOrder('probe');
+    for (let index = 0; index < 2; index++) {
+      const resumed = await call('checkout.continuation', { action: 'resume', locale: 'en' }, false, order.key);
+      expect(resumed.ok && isRecord(resumed.value) && typeof resumed.value.token).toBe('string');
+    }
+    expect(await ledger()).toHaveLength(3);
+    const limited = await call('checkout.continuation', { action: 'resume', locale: 'en' }, false, order.key);
+    const { token: _token, ...value } = order.value;
+    expect(limited).toEqual({ ok: true, value, replayed: true });
+    expect(await ledger()).toHaveLength(3);
+  }, 30_000);
+
+  it('checkout.continuation waits for the key lock and many calls complete on the small pool', async () => {
+    await control(false, undefined, undefined, repeatLimits);
+    await owner!.query('TRUNCATE public.commerce_checkout_attempt_ledger');
+    const order = await guestOrder('locked');
+    const holder = await owner!.connect();
+    try {
+      await holder.query('SELECT pg_advisory_lock(hashtextextended($1,0))', [derivedKey(order.key)]);
+      let settled = false;
+      const waiting = call('checkout.continuation', { action: 'resume', locale: 'en' }, false, order.key)
+        .finally(() => { settled = true; });
+      await new Promise(resolve => setTimeout(resolve, 1_000));
+      expect(settled).toBe(false);
+      await holder.query('SELECT pg_advisory_unlock(hashtextextended($1,0))', [derivedKey(order.key)]);
+      const resumed = await waiting;
+      expect(resumed.ok && isRecord(resumed.value) && resumed.value.orderRef).toBe(order.orderRef);
+    } finally { holder.release(); }
+    // More calls than pooled connections all complete; each holds one session and its key lock.
+    const keys = Array.from({ length: 6 }, () => randomUUID());
+    const answers = await Promise.all(keys.map(key => call('checkout.continuation', { action: 'resume', locale: 'en' }, false, key)));
+    expect(answers).toEqual(keys.map(() => ({ ok: false, code: 'starter_checkout_not_found' })));
   }, 30_000);
 
 });

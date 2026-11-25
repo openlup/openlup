@@ -2,7 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { configurations } from '../owned/store.config.ts';
 import type { StoreConfig } from '../shared/config.ts';
-import { dispatchAction, pendingBindings, type ActionContext } from '../host/bindings.ts';
+import { dispatchAction, pendingBindings, requesterKeyFor, type ActionContext } from '../host/bindings.ts';
+import { createHash } from 'node:crypto';
+import type { IncomingMessage } from 'node:http';
 
 const context: ActionContext = {
   commandKey: 'test-command-123456', actor: { customerRef: null, operatorRef: null }, config: Object.values(configurations)[0]!,
@@ -91,4 +93,14 @@ test('only a structured published quote request resolves a fresh private catalog
   assert.equal(walks, 1);
   assert.equal(context.quoteProducts, undefined);
   assert.deepEqual(await dispatchAction(bindings, 'storefront.catalogue', {}, context), { ok: false, code: 'host_binding_required' });
+});
+
+test('the requester key is the socket peer digest unless replaced', () => {
+  const peer = (remoteAddress: string | undefined) => ({ socket: { remoteAddress } }) as IncomingMessage;
+  const digest = (value: string) => createHash('sha256').update(value).digest('hex');
+  assert.equal(requesterKeyFor(peer('127.0.0.1')), digest('127.0.0.1'));
+  assert.equal(requesterKeyFor(peer('::FFFF:127.0.0.1')), digest('::ffff:127.0.0.1'));
+  assert.equal(requesterKeyFor(peer('2001:DB8::1')), digest('2001:db8::1'));
+  assert.equal(requesterKeyFor(peer(undefined)), undefined);
+  // The replacement reaching the limiter is proved against PostgreSQL, where the native host is composed.
 });
