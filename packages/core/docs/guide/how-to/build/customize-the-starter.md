@@ -251,8 +251,9 @@ within 15 minutes and watchdog evidence must be healthy within six hours.
 
 ## Show published products in the starter
 
-Set `product.presentation.title` to a nonblank product name. Use the optional
-`shortName` map for localized display names. The starter uses the title when
+Set `presentation.title` in the builder input or `product.sharedContent.presentation.title`
+in a saved draft to a nonblank product name. Use the optional `shortName` map for
+localized display names. The starter uses the title when
 a locale has no short name. Set `mediaRef` to a local `/media/` filename to
 show an image with the display name as its alt text. Start the filename with
 an ASCII letter or digit and use only letters, digits, dots, underscores and
