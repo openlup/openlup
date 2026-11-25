@@ -563,7 +563,8 @@ compatibility change before a second capability is admitted.
 
 Native OMS and returns PostgreSQL adapters belong to the `commerce/server`
 module; it admits the public `data` entry as types and the pure
-`pricing/contracts` entry as values. The native customer-support journey adapter
+`pricing/contracts` entry as values. Opt-in native quote composition uses the
+public `tax` entry for owned evaluation and adapter verification. The native customer-support journey adapter
 and portable read codecs belong to `account-support`, whose public `data` edge
 is a value dependency. These permissions apply to the enclosing modules, so the
 codec directory has no separate empty-edge graph row. Its browser bundle witness

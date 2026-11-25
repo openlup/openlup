@@ -5262,6 +5262,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/server/commerceQuoteV2Refusals.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/server/commerceReturnsHandlers.ts",
       "class": "public-output"
     },
@@ -5295,6 +5299,10 @@
     },
     {
       "path": "packages/platform/src/commerce/server/customerCheckoutLinks.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/dbBackedCommerceQuotePortV2.ts",
       "class": "public-output"
     },
     {
@@ -11059,6 +11067,10 @@
     },
     {
       "path": "packages/platform/test/pricing/commerceQuoteBatchHandler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/pricing/commerceQuoteCompositionParity.test.ts",
       "class": "public-output"
     },
     {
@@ -30395,6 +30407,10 @@
     },
     {
       "path": "tests/postgres/commerceQuoteCatalogRead.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/commerceQuoteV2.test.ts",
       "class": "public-output"
     },
     {
