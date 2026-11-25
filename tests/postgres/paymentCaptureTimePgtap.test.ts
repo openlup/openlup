@@ -133,18 +133,18 @@ for (const profile of ["qualified-v2", "qualified-admin"] as const) describe(`in
       // The incumbent trusted runtime may supply ingress provenance in the
       // test installation. The owner attestation and signed mode are both required.
       const webhook = createPostgresPaymentWebhookControlPort(runtime, options);
-      const ingest = (subject: Awaited<ReturnType<typeof subject>>, livemode: boolean) => webhook.ingestPaymentEvent({
-        provider: "stripe", providerEventId: `fixture:${subject.intent}`, providerPaymentId: subject.remote,
-        paymentIntentId: subject.intent, paymentAttemptId: subject.attempt, eventType: "payment.succeeded",
-        amountMinor: 200, currency: "XXX", occurredAt: subject.at, capturedAmountBasis: "provider_capture_v1",
+      const ingest = (target: Awaited<ReturnType<typeof subject>>, livemode: boolean) => webhook.ingestPaymentEvent({
+        provider: "stripe", providerEventId: `fixture:${target.intent}`, providerPaymentId: target.remote,
+        paymentIntentId: target.intent, paymentAttemptId: target.attempt, eventType: "payment.succeeded",
+        amountMinor: 200, currency: "XXX", occurredAt: target.at, capturedAmountBasis: "provider_capture_v1",
         rawPayload: {
           eventType: "payment_intent.succeeded", livemode,
-          openlupEvidence: { providerOccurredAt: subject.at }, openlupReceipt: { receivedAt: subject.received },
+          openlupEvidence: { providerOccurredAt: target.at }, openlupReceipt: { receivedAt: target.received },
         },
       });
-      const apply = (subject: Awaited<ReturnType<typeof subject>>, eventId: string) => webhook.applyPaymentResult!({
-        idempotencyKey: `apply:${subject.intent}`, paymentIntentId: subject.intent, paymentEventId: eventId,
-        resultStatus: "succeeded", occurredAt: subject.at, failureReason: null,
+      const apply = (target: Awaited<ReturnType<typeof subject>>, eventId: string) => webhook.applyPaymentResult!({
+        idempotencyKey: `apply:${target.intent}`, paymentIntentId: target.intent, paymentEventId: eventId,
+        resultStatus: "succeeded", occurredAt: target.at, failureReason: null,
       });
       const event = await ingest(f, false);
       expect(await read()).toMatchObject({ kind: "pending" });

@@ -13914,12 +13914,12 @@
     },
     {
       "path": "db/platform/migrations/20261129130000_payment_capture_time_read.sql",
-      "sha256": "7c09ac19ddfb07c9476329b01d061934d3d84d94ed10e206c7aa64d1999a7f56",
+      "sha256": "90f690d197caa725cdd06219cb1bf6238fe3662526a69d05506bed4fd88bb2fb",
       "functions": [
         {
           "signature": "public.payment_read_capture_time(uuid,uuid)",
           "beforeSha256": null,
-          "afterSha256": "ca51b04211dcb574196a010f40b2103dd795be12bc39a1d2b8b0032baecfbff0"
+          "afterSha256": "67c35064cce397ef21af0ab7d9e03f2c1a2f697ee80865da9a30ecc958f216df"
         }
       ]
     }

@@ -30778,11 +30778,11 @@
       "class": "public-output"
     },
     {
-      "path": "tests/postgres/fixtures/paymentMethods/consent_snapshot_merge.sql",
+      "path": "tests/postgres/fixtures/paymentCaptureTime/replayed.sql",
       "class": "public-output"
     },
     {
-      "path": "tests/postgres/fixtures/paymentCaptureTime/replayed.sql",
+      "path": "tests/postgres/fixtures/paymentMethods/consent_snapshot_merge.sql",
       "class": "public-output"
     },
     {

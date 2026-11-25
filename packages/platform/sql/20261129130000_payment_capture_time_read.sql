@@ -13,6 +13,7 @@ RETURNS TABLE (
 )
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
+<<capture_time>>
 DECLARE
   intent public.commerce_settlement_intents%ROWTYPE;
   purchase public.commerce_orders%ROWTYPE;
@@ -92,7 +93,7 @@ BEGIN
         AND source->>'observedStatus' = 'captured'
         AND EXISTS (SELECT 1 FROM public.payment_simulator_attempts a
           JOIN public.payment_simulator_observations o ON o.attempt_id = a.id AND o.id = a.last_observation_id
-          WHERE a.id = attempt_id AND a.settlement_intent_id = intent.id AND a.state = 'captured'
+          WHERE a.id = capture_time.attempt_id AND a.settlement_intent_id = intent.id AND a.state = 'captured'
             AND o.id = source_id AND o.outcome = 'captured' AND o.occurred_at = truth.occurred_at
             AND source->>'payloadFingerprint' = o.event_fingerprint) THEN
         kind := 'unqualified';
@@ -102,7 +103,7 @@ BEGIN
     END IF;
 
     SELECT a.* INTO attempt FROM public.payment_provider_attempts a
-    WHERE a.id = attempt_id AND a.settlement_intent_id = intent.id;
+    WHERE a.id = capture_time.attempt_id AND a.settlement_intent_id = intent.id;
     IF NOT FOUND THEN EXIT classify; END IF;
     IF source_kind = 'execution_response' THEN
       IF source_id = attempt.id AND source->>'observedStatus' = 'succeeded'
@@ -257,7 +258,7 @@ BEGIN
     WHEN 'fallback' THEN 'capture_time_provider_time_unproven'
   END;
   RETURN NEXT;
-END;
+END capture_time;
 $$;
 
 REVOKE ALL ON FUNCTION public.payment_read_capture_time(uuid,uuid) FROM PUBLIC;
