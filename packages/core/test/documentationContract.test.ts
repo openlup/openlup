@@ -113,7 +113,9 @@ function surfaceTable(): string {
 describe("extracted-root documentation contract", () => {
   it("accepts the current package surface from release-gates.json", () => {
     expect(() => assertDocumentationContract(packageRoot)).not.toThrow();
-  }, 30_000);
+    // The real repository contract now also generates the symbol maturity regions from every API report,
+    // which takes several times longer under coverage on a shared CI runner than on a workstation.
+  }, 120_000);
 
   it("keeps downstream documentation identifiers readable in the production contract", () => {
     const source = readFileSync(join(packageRoot, "scripts", "documentation-contract.ts"), "utf8");
