@@ -101,7 +101,12 @@ BEGIN
     IF cardinality(v_origins) <> 1 OR (v_origins[1]).id <> v_origin.id THEN RETURN v_unavailable; END IF;
     SELECT * INTO v_bound FROM public.commerce_destination_v2_order_bindings
       WHERE order_id = v_origin.order_id FOR SHARE;
-    IF NOT FOUND THEN RETURN v_absent; END IF;
+    IF NOT FOUND THEN
+      v_origins := public.subscription_destination_v2_origins(p_id);
+      IF cardinality(v_origins) <> 1 OR (v_origins[1]).id IS DISTINCT FROM v_origin.id
+        OR (v_origins[1]).client_id IS DISTINCT FROM v_client THEN RETURN v_unavailable; END IF;
+      RETURN v_absent;
+    END IF;
     IF v_bound.selection IS NULL AND v_bound.service IS NULL THEN RETURN v_unavailable; END IF;
     v_snapshot := v_bound.snapshot_ref;
   END IF;
@@ -112,6 +117,12 @@ BEGIN
       AND evidence_disposition = 'available'
       AND CASE WHEN v_inherited THEN purpose = 'checkout' ELSE scope_ref = p_id AND purpose IS NULL END FOR SHARE;
   IF NOT FOUND THEN RETURN v_unavailable; END IF;
+  IF v_inherited THEN
+    -- A new activation can commit while the reader waits without changing the locked origin.
+    v_origins := public.subscription_destination_v2_origins(p_id);
+    IF cardinality(v_origins) <> 1 OR (v_origins[1]).id IS DISTINCT FROM v_origin.id
+      OR (v_origins[1]).client_id IS DISTINCT FROM v_client THEN RETURN v_unavailable; END IF;
+  END IF;
   v_current := public.subscription_destination_v2_current(p_ctx, p_id, v_origins);
   IF v_current->>'field' = 'orderBindings' THEN RETURN v_current; END IF;
   IF v_current ? 'outcome' OR v_current = '{}'::jsonb THEN RETURN v_unavailable; END IF;
@@ -148,7 +159,14 @@ BEGIN
     SELECT * INTO v_doc FROM public.commerce_destination_v2_documents
       WHERE snapshot_ref = v_expected AND client_id = v_client AND owner_scope = p_ctx->'owner'
         AND scope_ref = p_id AND purpose IS NULL AND evidence_disposition = 'available' FOR SHARE;
-    IF FOUND THEN CONTINUE; END IF;
+    IF FOUND THEN
+      IF v_inherited THEN
+        v_origins := public.subscription_destination_v2_origins(p_id);
+        IF cardinality(v_origins) <> 1 OR (v_origins[1]).id IS DISTINCT FROM v_origin.id
+          OR (v_origins[1]).client_id IS DISTINCT FROM v_client THEN RETURN v_unavailable; END IF;
+      END IF;
+      CONTINUE;
+    END IF;
     IF v_inherited THEN RETURN v_unavailable; END IF;
 
     -- A direct pointer can supersede inherited evidence. Guard the prior order lineage before its document.
@@ -169,6 +187,7 @@ BEGIN
     IF NOT FOUND THEN RETURN v_unavailable; END IF;
     v_origins := public.subscription_destination_v2_origins(p_id);
     IF cardinality(v_origins) <> 1 OR (v_origins[1]).id IS DISTINCT FROM v_origin.id
+      OR (v_origins[1]).client_id IS DISTINCT FROM v_client
       OR NOT public.commerce_destination_v2_valid_pins(v_bound.selection, v_bound.service, v_doc.scope_ref) THEN
       RETURN v_unavailable;
     END IF;

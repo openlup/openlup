@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { createCheckoutCommandSchemas } from "../../checkoutCommandSchemas.js";
 import type { CheckoutCommandV2 } from "../../contracts/index.js";
@@ -279,8 +280,11 @@ function uuidArgument(value: unknown): string | null {
   const inner = value.startsWith("{") && value.endsWith("}") ? value.slice(1, -1) : value;
   return postgresUuid.test(inner) ? value : null;
 }
-function matchesSubscriptionScope(scopeRef: string, requested: BindValue | undefined): boolean {
-  return typeof requested === "string" && scopeRef.replaceAll("-", "") === requested.replace(/[-{}]/gu, "").toLowerCase();
+function matchesUuidArgument(value: string, requested: BindValue | undefined): boolean {
+  return typeof requested === "string" && value.replaceAll("-", "") === requested.replace(/[-{}]/gu, "").toLowerCase();
+}
+function matchesJsonArgument(value: unknown, requested: BindValue | undefined): boolean {
+  return typeof requested === "string" && isDeepStrictEqual(value, JSON.parse(requested));
 }
 const kindArgument = (value: unknown) => typeof value === "string" && jsonText(value) ? value : null;
 const utcMillis = (value: string) => value.length === 24 && !value.startsWith("0000")
@@ -314,6 +318,7 @@ const bindingShape = {
   snapshotRef: uuid, schemaVersion: z.literal(2), destinationDigest: digest,
   policyRevision: z.string().refine(value => /[^ ]/u.test(value) && Buffer.byteLength(value, "utf8") <= 720),
 };
+const bindingKeys = Object.keys(bindingShape) as (keyof DestinationBindingV2)[];
 const bindingSchema = z.strictObject(bindingShape);
 const selectionSchema = z.strictObject({ kind: z.literal("checkout"), scopeRef: uuid, selectionRevision: uuid });
 const snapshotResult = z.union([
@@ -401,10 +406,14 @@ export function createPostgresDestinationPortV2(db: DestinationQueryExecutor): D
     const sql = "SELECT public.commerce_read_destination_v2($1::jsonb, $2::text, $3::uuid, $4::jsonb) AS result";
     const current = kind === "subscription" && binding === null;
     const scope = uuidArgument(id);
-    const args = [jsonArgument(ctx, "owner"), kindArgument(kind), scope, current ? null : jsonArgument(binding, "destination")];
+    const requestedBinding = current ? null : jsonArgument(binding, "destination");
+    const args = [jsonArgument(ctx, "owner"), kindArgument(kind), scope, requestedBinding];
     if (kind !== "subscription") return invoke(sql, args, readResult);
     return current ? invoke(sql, args, subscriptionCurrent, true)
-      : invoke(sql, args, subscriptionRead.refine(result => matchesSubscriptionScope(result.selection.scopeRef, scope)), true);
+      : invoke(sql, args, subscriptionRead.refine(result =>
+        matchesUuidArgument(result.selection.scopeRef, scope)
+        && matchesJsonArgument(result.binding, requestedBinding)
+        && bindingKeys.every(key => result.document[key] === result.binding[key])), true);
   }
 
   function recheck(ctx: DestinationContextV2, check: SubscriptionCheck): Promise<SubscriptionDecision<SubscriptionRechecked>>;
@@ -412,9 +421,13 @@ export function createPostgresDestinationPortV2(db: DestinationQueryExecutor): D
   function recheck(ctx: DestinationContextV2, check: Check | SubscriptionCheck) {
     const sql = "SELECT public.commerce_recheck_destination_v2($1::jsonb, $2::text, $3::uuid, $4::uuid, $5::jsonb, $6::jsonb) AS result";
     const args = [jsonArgument(ctx, "owner"), ...checkArguments(check)];
-    const [, kind, scope] = args;
+    const [, kind, scope, requestedRevision, requestedBinding, requestedService] = args;
     return kind === "subscription"
-      ? invoke(sql, args, subscriptionRecheck.refine(result => matchesSubscriptionScope(result.selection.scopeRef, scope)), true)
+      ? invoke(sql, args, subscriptionRecheck.refine(result =>
+        matchesUuidArgument(result.selection.scopeRef, scope)
+        && matchesUuidArgument(result.selection.selectionRevision, requestedRevision)
+        && matchesJsonArgument(result.binding, requestedBinding)
+        && matchesJsonArgument(result.service, requestedService)), true)
       : invoke(sql, args, recheckResult);
   }
 

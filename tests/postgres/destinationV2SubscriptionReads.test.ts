@@ -39,11 +39,11 @@ async function subject(owner = store.owner) {
   return { ...ctx, owner: { ...ctx.owner, principalKind: "customer" as const } };
 }
 type Subject = Awaited<ReturnType<typeof subject>>;
-async function activation(ctx: DestinationContextV2, order: string, clientId = ctx.clientId) {
-  return result(store.owner, `INSERT INTO public.subscription_activations
+async function activation(ctx: DestinationContextV2, order: string, owner: Db = store.owner) {
+  return result(owner, `INSERT INTO public.subscription_activations
     (order_id,client_id,subscription_id,cadence_days,state,payment_fingerprint,activation_idempotency_key,declare_idempotency_key,activated_at)
     VALUES($1,$2,$3,28,'active',repeat('a',64),$4,$5,clock_timestamp()) RETURNING id AS result`,
-  [order, clientId, ctx.scopeRef, randomUUID(), randomUUID()]);
+  [order, ctx.clientId, ctx.scopeRef, randomUUID(), randomUUID()]);
 }
 async function inherited(ctx: Subject) {
   const checkout = { ...ctx, scopeRef: randomUUID() };
@@ -287,6 +287,41 @@ it("waits for incumbent renewal registration's order before its activation and r
     }));
   }
 });
+
+it.each(["binding", "document", "deleted binding", "prior document"] as const)(
+  "refuses an ambiguous subscription origin after waiting on the %s", async guard => {
+    const { owner, runtime } = store, ctx = await subject(), { order, pins } = await inherited(ctx);
+    const otherOrder = await insertDestinationOrder(owner, ctx);
+    if (guard === "prior document") await issueDirect(owner, ctx, pins.selectionRevision);
+    const reader = await runtime.connect(), writer = await owner.connect();
+    try {
+      const [r, w] = await Promise.all([backendPid(reader), backendPid(writer)]);
+      await reader.query("BEGIN; SET LOCAL statement_timeout='8s'");
+      await writer.query("BEGIN; SET LOCAL statement_timeout='8s'");
+      if (guard === "binding" || guard === "deleted binding") {
+        await writer.query(`SELECT order_id FROM ${orderBindingTable} WHERE order_id=$1 FOR UPDATE`, [order]);
+      } else {
+        await writer.query(`SELECT snapshot_ref FROM ${documentTable} WHERE snapshot_ref=$1 FOR UPDATE`, [pins.binding.snapshotRef]);
+      }
+      const reading = guard === "document" || guard === "prior document" ? read(reader, ctx, pins.binding) : read(reader, ctx);
+      void reading.catch(() => undefined);
+      await waitFor(owner, r, w);
+      if (guard === "deleted binding") await writer.query(`DELETE FROM ${orderBindingTable} WHERE order_id=$1`, [order]);
+      await activation(ctx, otherOrder, writer);
+      await writer.query("COMMIT");
+      const decision = await reading;
+      const before = await journeyCensus(owner);
+      await reader.query("COMMIT");
+      expect(await journeyCensus(owner)).toStrictEqual(before);
+      unavailableRead(decision);
+    } finally {
+      await Promise.all([reader, writer].map(async db => {
+        try { await db.query("ROLLBACK"); }
+        finally { db.release(); }
+      }));
+    }
+  },
+);
 
 it.each(["activation", "binding"] as const)("withholds prior inherited advice when the %s changes during a wait", async change => {
   const { owner, runtime } = store, ctx = await subject(), { order, origin, pins } = await inherited(ctx);

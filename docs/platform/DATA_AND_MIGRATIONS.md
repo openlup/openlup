@@ -583,7 +583,8 @@ and the restoration of local timeouts before COMMIT.
   selection takes precedence over inherited evidence. The reader takes order,
   activation and binding `FOR SHARE` in that order before the inherited document,
   including when verifying prior inherited evidence after an explicit selection.
-  It resolves the lineage under those guards.
+  It rechecks that the same-client origin is still unique after the document
+  guard and before returning selection-required advice after a binding wait.
 - **Stage B publication.** It takes candidate and command advisory guards, then
   sorted draft heads `FOR NO KEY UPDATE`. Publish takes `SHARE ROW EXCLUSIVE
   NOWAIT` on `catalog_products`, `catalog_skus`, `catalog_sku_identifiers`,

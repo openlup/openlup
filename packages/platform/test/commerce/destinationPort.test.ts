@@ -532,11 +532,43 @@ it.each(["exact read", "recheck"] as const)("rejects a foreign subscription scop
   await expect(decision).rejects.toThrow("OPENLUP_E_DESTINATION_INFRASTRUCTURE");
 });
 
+const otherBindings = [
+  { ...binding, snapshotRef: orderId },
+  { ...binding, destinationDigest: "f".repeat(64) },
+  { ...binding, policyRevision: "other" },
+];
+it.each(["exact read", "recheck"] as const)("rejects a mismatched subscription binding on %s", async arm => {
+  const results = otherBindings.map(otherBinding => arm === "exact read"
+    ? { ...verifiedSubscription, binding: otherBinding, document: { ...verifiedSubscription.document, ...otherBinding } }
+    : { ...recheckedSubscription, binding: otherBinding });
+  const { port } = scriptedDestination(...results);
+  for (const _result of results) {
+    const decision = arm === "exact read" ? port.read(context, "subscription", scopeRef, binding) : port.recheck(context, subscriptionCheck);
+    await expectInfrastructure(decision);
+  }
+});
+
+it("rejects a subscription document whose snapshot disagrees with its outer binding", async () => {
+  const { port } = scriptedDestination({
+    ...verifiedSubscription, document: { ...verifiedSubscription.document, snapshotRef: orderId },
+  });
+  await expectInfrastructure(port.read(context, "subscription", scopeRef, binding));
+});
+
+it.each([
+  ["service pins", { ...recheckedSubscription, service: { ...service, adapterRevision: "other" } }],
+  ["selection revision", { ...recheckedSubscription, selection: { ...recheckedSubscription.selection, selectionRevision: eventId } }],
+] as const)("rejects changed subscription %s on recheck", async (_key, response) => {
+  await expectInfrastructure(scriptedDestination(response).port.recheck(context, subscriptionCheck));
+});
+
 it("accepts canonical subscription scope results for equivalent PostgreSQL UUID spellings", async () => {
   const requested = `{${scopeRef.replaceAll("-", "")}}`;
   const { port } = scriptedDestination(verifiedSubscription, recheckedSubscription);
   await expect(port.read(context, "subscription", requested, binding)).resolves.toStrictEqual(verifiedSubscription);
-  await expect(port.recheck(context, { ...subscriptionCheck, scopeRef: requested })).resolves.toStrictEqual(recheckedSubscription);
+  await expect(port.recheck(context, {
+    ...subscriptionCheck, scopeRef: requested, expectedSelectionRevision: `{${selectionRevision.replaceAll("-", "")}}`,
+  })).resolves.toStrictEqual(recheckedSubscription);
 });
 
 it("accepts the four new refusal pairs only on subscription routing", async () => {
@@ -591,7 +623,7 @@ it("decodes only the closed subscription result shapes and preserves the service
     const valid = { ...recheckedSubscription, service: { ...service, [key]: "😀".repeat(256) } };
     const invalid = { ...valid, service: { ...service, [key]: "😀".repeat(257) } };
     const { port } = scriptedDestination(valid, invalid);
-    expect(await port.recheck(context, subscriptionCheck)).toStrictEqual(valid);
-    await expectInfrastructure(port.recheck(context, subscriptionCheck));
+    expect(await port.recheck(context, { ...subscriptionCheck, expectedService: valid.service })).toStrictEqual(valid);
+    await expectInfrastructure(port.recheck(context, { ...subscriptionCheck, expectedService: invalid.service }));
   }
 });
