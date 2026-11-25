@@ -1,8 +1,25 @@
 import { market } from '../owned/market.config.ts';
 import { test as base, expect } from '@playwright/test';
-import { execFileSync } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
+import { createHash, randomUUID } from 'node:crypto';
+import { once } from 'node:events';
+import { readFileSync } from 'node:fs';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { findPackageJSON } from 'node:module';
+import { createServer } from 'node:net';
+import { dirname, join } from 'node:path';
 import { env } from 'node:process';
+import pg from 'pg';
+import { buildCatalogReleaseDraftV3, canonicalCatalogDraftJson, catalogInternalGtin,
+  createPostgresCatalogDraftStoreV4, createPostgresCatalogPublicationCommands } from '@openlup/platform/catalog';
+import { createPostgresPlatformJobRunLedger } from '@openlup/platform/job-ledger';
+import { createPostgresOperatorIdentityStore } from '@openlup/platform/identity';
+import { catalogueWatchdogPrincipalId, startCatalogueReadinessJobs } from '../host/catalogue-readiness-jobs.ts';
+import { starterCatalogue } from '../host/editor-catalogue.ts';
+import { createPrivateCapture } from '../host/private-capture.ts';
+import { runScheduledCare } from '../host/scheduled-renewal.ts';
+import { buildDemoSeed } from '../owned/demo-seed.ts';
+import { selectConfiguration } from '../owned/store.config.ts';
 import { copy } from '../owned/copy.ts';
 import { routes } from '../shared/routes.ts';
 import { operations as declaredOperations } from '../shared/api.ts';
@@ -12,6 +29,7 @@ const test = base.extend<{ composeProject: string }>({ composeProject: ['', { op
 
 test('native support roster, catalogue administration, replay and operator admission', async ({ page, context, baseURL, composeProject }) => {
   test.setTimeout(120000);
+  test.skip(!composeProject, 'Uses the demonstration Compose fixture.');
   if (!baseURL || !/^[a-z0-9-]+$/.test(composeProject)) throw new Error('native_operator_proof_fixture_required');
   const compose = (...args: string[]) => execFileSync('docker', ['compose', '--project-name', composeProject, ...args],
     { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
@@ -292,6 +310,204 @@ import { env } from 'node:process';
   await action('auth.signOut');
   for (const operation of operations) expect((await action(operation)).code).toBe('operator_required');
   console.log('operation tally', JSON.stringify({ declared: status.length, bound: status.filter((row: { bound: boolean }) => row.bound).length }));
+});
+
+type PublicationFixture = { id: string; baseURL: string; ownerUrl: string; runtimeUrl: string; state: string };
+
+async function isolatePublicationFixture(selected: PublicationFixture) {
+  const admin = new pg.Client({ connectionString: selected.ownerUrl });
+  const database = 'publication_browser_' + randomUUID().replaceAll('-', '');
+  const owner = new URL(selected.ownerUrl), runtime = new URL(selected.runtimeUrl);
+  owner.pathname = runtime.pathname = '/' + database;
+  const state = await mkdtemp(join(selected.state, 'publication-'));
+  let created = false, host: ChildProcess | undefined;
+  async function close() {
+    try {
+      if (host && host.exitCode === null && host.signalCode === null) {
+        const exited = once(host, 'exit');
+        host.kill('SIGTERM');
+        await exited;
+      }
+      if (created) await admin.query(`DROP DATABASE ${database} WITH (FORCE)`);
+    } finally { await Promise.all([admin.end(), rm(state, { recursive: true, force: true })]); }
+  }
+  try {
+    await admin.connect();
+    // Earlier browser journeys create settled orders, and this proof changes demo prices and job controls.
+    await admin.query(`CREATE DATABASE ${database} TEMPLATE catalogue_browser_template`);
+    created = true;
+    const probe = createServer().listen(0, '127.0.0.1');
+    await once(probe, 'listening');
+    const { port } = probe.address() as { port: number };
+    await new Promise<void>(done => probe.close(() => done()));
+    const runtimeUrl = runtime.href;
+    const password = decodeURIComponent(runtime.password);
+    runtime.password = '';
+    host = spawn(process.execPath, ['--experimental-strip-types', '--input-type=module', '-', '--configuration', selected.id, '--port', String(port)],
+      { env: { PGPASSWORD: password }, stdio: ['pipe', 'ignore', 'ignore'] });
+    host.stdin!.end(`
+      import { readFileSync } from 'node:fs';
+      import { createApplication } from './host/server.ts';
+      import { composeNativeBindings } from './host/native-composition.ts';
+      import { createOriginPolicy } from './host/origin-policy.ts';
+      import { selectConfiguration } from './owned/store.config.ts';
+      process.chdir(${JSON.stringify(state)});
+      const config = selectConfiguration(${JSON.stringify(selected.id)});
+      const password = readFileSync(${JSON.stringify(join(selected.state, 'publication-password'))}, 'utf8').trim();
+      const bindings = await composeNativeBindings(${JSON.stringify(runtime.href)}, createOriginPolicy(config, ${port}), config,
+        undefined, password);
+      const server = createApplication(bindings).listen(${port}, '127.0.0.1');
+      process.once('SIGTERM', () => { server.close(() => { void bindings.close(); }); server.closeIdleConnections(); });
+    `);
+    return { baseURL: `http://127.0.0.1:${port}`, ownerUrl: owner.href, runtimeUrl, state, close };
+  } catch (error) { await close(); throw error; }
+}
+
+test('authenticated Publish discloses only owned degraded jobs and supports exact repair', async ({ request, baseURL, composeProject }, info) => {
+  test.skip(!!composeProject, 'Uses the process-hosted installed price fixture.');
+  const entries = JSON.parse(readFileSync('.context/care-browser/fixtures.json', 'utf8')) as PublicationFixture[];
+  const selected = entries.find(row => row.baseURL === baseURL && row.id === info.project.name);
+  if (!selected) throw new Error('native_operator_proof_fixture_required');
+  const fixture = await isolatePublicationFixture(selected);
+  const owner = new pg.Pool({ connectionString: fixture.ownerUrl });
+  const runtime = new pg.Pool({ connectionString: fixture.runtimeUrl });
+  const identities = createPostgresOperatorIdentityStore({ connectionString: fixture.runtimeUrl });
+  const config = selectConfiguration(selected.id);
+  const ownedJob = `subscription-care:${config.id}`, unownedJob = 'external:fixture';
+  const invocation = { triggerKind: 'scheduler' as const, invocationSource: 'operator-proof' };
+  const ledger = createPostgresPlatformJobRunLedger(runtime, { releaseCorrelation: () => ({}), defaultFailureReason: 'fixture_failed' });
+  const send = (operation: string, data: object, key = randomUUID()) => request.post(fixture.baseURL + '/api/actions/' + operation, {
+    data, headers: { Origin: fixture.baseURL, 'X-Starter-Request': '1', 'Idempotency-Key': key },
+  });
+  const control = async () => (await owner.query(`SELECT last_run_id,last_status,metadata FROM public.platform_job_controls
+    WHERE job_name='platform-watchdog'`)).rows[0];
+  async function tick(ready: boolean) {
+    const previous = (await control())?.last_run_id;
+    const close = startCatalogueReadinessJobs(fixture.runtimeUrl, catalogueWatchdogPrincipalId(config));
+    try {
+      await expect.poll(async () => (await control())?.last_run_id).not.toBe(previous);
+      await expect.poll(control).toMatchObject({ last_status: 'success', metadata: { promotionReady: ready } });
+    } finally { await close(); }
+  }
+  try {
+    await expect.poll(async () => (await request.get(fixture.baseURL + '/api/config').catch(() => null))?.status()).toBe(200);
+    await tick(true);
+    const email = 'publication-operator@example.test';
+    const actor = (await identities.bootstrapFirstAdministrator({ email })).principalId;
+    expect((await (await send('auth.operator', { email })).json()).ok).toBe(true);
+    let token: string | undefined;
+    await expect.poll(() => {
+      try {
+        const messages = readFileSync(join(fixture.state, '.context/captured-messages/identity.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line));
+        token = messages.find(row => row.email === email)?.token;
+      } catch { /* The private mailbox is written after request acceptance. */ }
+      return typeof token === 'string' && /^[A-Za-z0-9_-]{43}$/u.test(token);
+    }).toBe(true);
+    expect((await (await send('auth.operator', { token })).json()).ok).toBe(true);
+
+    const catalogue = starterCatalogue(), type = catalogue.current!;
+    const grams = { dimension: 'mass', unit: 'openlup:g', unscaled: '100', scale: 0 } as const;
+    const { release, activation } = buildCatalogReleaseDraftV3({ namespace: 'fixture', type: { key: type.key, version: type.version },
+      slug: 'readiness-article', name: 'Readiness article', presentation: { title: 'Readiness article' }, skus: [{
+        code: 'READINESS-ARTICLE', title: 'Readiness article', options: {}, netContent: grams,
+        grossMass: { ...grams, unscaled: '110' }, logisticsRef: 'fixture:article',
+        identifiers: [{ scheme: 'gs1:gtin', issuer: 'fixture', value: catalogInternalGtin(119), packagingLevel: 'unit' }],
+        sell: { oneTime: true, subscription: false },
+      }] });
+    const commands = createPostgresCatalogPublicationCommands({ authorizeHuman: async () => ({ ok: true, userId: actor, role: 'admin', isMachineActor: false }),
+      catalogPublicationOwner: { async run(work) {
+        const db = await owner.connect();
+        try { await db.query('BEGIN'); const value = await work(db); await db.query('COMMIT'); return value; }
+        catch (error) { await db.query('ROLLBACK'); throw error; }
+        finally { db.release(); }
+      } }, registry: catalogue.registry });
+    const human = (await commands.authorize(null))!;
+    const draftId = randomUUID(), productId = release.payload.product.id;
+    async function approve(payload: typeof release.payload, revision: number, expectedHead: import('@openlup/platform/catalog').CatalogHeadRef | null) {
+      const canonicalCommand = canonicalCatalogDraftJson({ schemaVersion: payload.schemaVersion, action: revision === 1 ? 'create' : 'revise',
+        draftId, commandKey: randomUUID(), expectedRevision: revision - 1, payload });
+      const fingerprint = createHash('sha256').update(canonicalCommand).digest('hex');
+      expect((await createPostgresCatalogDraftStoreV4(owner).apply({ canonicalCommand, fingerprint, actorId: actor })).outcome).toBe('committed');
+      const candidate = await commands.prepareCandidate({ draftId, draftRevision: revision, expectedHead }, human);
+      if (!('candidateRef' in candidate) || !candidate.preparation?.postStateDigest) throw new Error(JSON.stringify(candidate));
+      const target = { productId, candidateRef: candidate.candidateRef, candidateDigest: candidate.candidateDigest };
+      expect((await commands.execute({ ...target, action: 'approve', commandKey: randomUUID(),
+        postStateDigest: candidate.preparation.postStateDigest }, human)).outcome).toBe('committed');
+      return { ...target, action: 'publish' as const, expectedHead, changes: [] };
+    }
+    const released = await commands.execute({ ...await approve(release.payload, 1, null), commandKey: randomUUID() }, human);
+    if (released.outcome !== 'committed' || !('head' in released.receipt)) throw new Error(JSON.stringify(released));
+    const variantId = release.payload.skus[0]!.id;
+    await owner.query(`INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from)
+      SELECT id,$1,'one_time',3400,statement_timestamp() FROM public.price_lists WHERE status='active'`, [variantId]);
+    const publish = await approve(activation.payload, 2, released.receipt.head);
+    const key = randomUUID();
+    const wire = async () => {
+      const response = await send('operator.catalogPublication', publish, key);
+      expect(response.status()).toBe(409);
+      const body = await response.json();
+      expect(body).toEqual({ ok: false, code: 'publication_price_readiness', reason: body.reason, path: 'pricing.readiness',
+        subject: body.reason, message: expect.any(String), issues: [{ code: 'publication_price_readiness', path: 'pricing.readiness',
+          subject: body.reason, message: body.message, ...(body.issues[0].failedJobs ? { failedJobs: body.issues[0].failedJobs } : {}) }] });
+      return body;
+    };
+    const legacy = buildDemoSeed(config).prices.find(entry => entry.mode === 'subscription')!;
+    await owner.query(`INSERT INTO public.price_entries
+      (id,price_list_id,variant_id,mode,min_qty,unit_price_minor,amount_kind,active,valid_from)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [legacy.id,legacy.price_list_id,legacy.variant_id,legacy.mode,
+      legacy.min_qty,legacy.unit_price_minor,legacy.amount_kind,legacy.active,legacy.valid_from]);
+    expect(await wire()).toMatchObject({ reason: 'catalog_1490_legacy_1340_invalid',
+      message: expect.stringContaining('Restore one effective list and verify each eligible SKU’s base and subscription branch with the pricing owner.') });
+    const repair = await owner.query(`UPDATE public.price_entries
+      SET active=false,valid_to=statement_timestamp(),updated_at=statement_timestamp() WHERE id=$1 AND active`, [legacy.id]);
+    expect(repair.rowCount).toBe(1);
+    expect((await owner.query('SELECT public.commerce_offer_policy_v2_readiness() AS verdict')).rows[0].verdict)
+      .toMatchObject({ reasons: [], evidence: { priceMismatchCount: 0 } });
+    for (const name of [ownedJob, unownedJob]) {
+      const run = await ledger.claimJobRun(name, invocation, 300);
+      expect(run.acquired).toBe(true);
+      expect(await ledger.finishJobRun(name, run.runId!, invocation, 'failed',
+        { checked: 0, updated: 0, failures: 1, skipped: false })).toBe(true);
+    }
+    await tick(false);
+    expect(await wire()).toMatchObject({ reason: 'promotion_watchdog_not_ready', issues: [{ failedJobs: [ownedJob] }] });
+    const watchdogRun = (await control()).last_run_id;
+    await owner.query("UPDATE public.platform_job_controls SET last_success_at=statement_timestamp()-interval '7 hours' WHERE job_name='platform-watchdog'");
+    const withoutEvidence = await wire();
+    expect(withoutEvidence.issues[0]).not.toHaveProperty('failedJobs');
+    await owner.query(`UPDATE public.platform_job_controls SET last_success_at=(SELECT finished_at FROM public.platform_job_runs WHERE id=$1)
+      WHERE job_name='platform-watchdog'`, [watchdogRun]);
+    const blocker = await owner.connect();
+    try {
+      await blocker.query('BEGIN');
+      await blocker.query('LOCK TABLE public.platform_job_runs IN ACCESS EXCLUSIVE MODE');
+      const { rows: [{ pid }] } = await blocker.query('SELECT pg_backend_pid() AS pid');
+      const blockedReads = async () => (await owner.query(`SELECT pid FROM pg_stat_activity
+        WHERE datname = current_database() AND $1 = ANY(pg_blocking_pids(pid))
+          AND query LIKE 'SELECT r.metadata%'`, [pid])).rowCount;
+      const started = performance.now();
+      const [same] = await Promise.all([wire(), expect.poll(blockedReads, { intervals: [25], timeout: 1000 }).toBe(1)]);
+      expect(Math.round(performance.now() - started)).toBeGreaterThanOrEqual(450);
+      expect(Math.round(performance.now() - started)).toBeLessThan(1200);
+      expect(same).toEqual(withoutEvidence);
+      // Keep the lock held until PostgreSQL has stopped the optional query.
+      await expect.poll(blockedReads, { timeout: 1200 }).toBe(0);
+    } finally { await blocker.query('ROLLBACK'); blocker.release(); }
+    const core = findPackageJSON('@openlup/core/catalog', import.meta.url)!;
+    const guide = readFileSync(join(dirname(core), 'docs/guide/how-to/build/customize-the-starter.md'), 'utf8');
+    expect(guide).toContain('./lifecycle care --configuration <id> --database-url <runtime-url>');
+    // The CLI pins the demo database name. Run the same care handler against the isolated clone.
+    expect(await runScheduledCare(fixture.runtimeUrl, config, { publicOrigin: fixture.baseURL,
+      capture: createPrivateCapture(join(fixture.state, '.context/captured-messages')) })).toHaveProperty('messages');
+    await owner.query('UPDATE public.platform_job_controls SET enabled=false WHERE job_name=$1', [unownedJob]);
+    await tick(true);
+    const committed = await (await send('operator.catalogPublication', publish, key)).json();
+    expect(committed).toMatchObject({ ok: true, value: { outcome: 'committed' } });
+    expect(await (await send('operator.catalogPublication', publish, key)).json()).toMatchObject({ ok: true, replayed: true });
+  } finally {
+    try { await Promise.all([owner.end(), runtime.end(), identities.close()]); }
+    finally { await fixture.close(); }
+  }
 });
 
 test('installed adopter pack refuses missing builds and resumes exact-pair authoring', async ({ page, baseURL, composeProject }) => {

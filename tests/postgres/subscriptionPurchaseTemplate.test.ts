@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createPostgresAccountReadSources, createPostgresCustomerOrderHistoryReadStore } from "@openlup/platform/account-support";
+import type { CatalogFactsProvenance } from "@openlup/platform/pricing/contracts";
 import { api, purchase, admin, at, checkout, days, deps, executor, facts, fulfillment, identity, now, payments, destinations, rpc, runtime, runtimeUrl, transaction } from "./subscriptionPublicRenewalFixture.js";
 import { captureSandboxPurchase } from "../helpers/captureSandboxPurchase.js";
 import { allPublicRows } from "./subscriptionStockWaitCases.js";
@@ -262,8 +263,10 @@ it.each(["read", "write"])("graduates without the new pair %s grant without bloc
 
 // Same definition/quote fixture shape as m19CheckoutShipping; order positions
 // are produced by the public checkout writer, never inserted by this witness.
+type PurchasePosition = { sku: string; quantity: number; unitPrice: number; catalogFacts?: CatalogFactsProvenance };
 async function draftedPurchase(mode: "subscription" | "one_time", discount = 0,
-  positions = [{ sku: "G7-REFILL", quantity: 2, unitPrice: 100 }]) {
+  positions: PurchasePosition[] = [{ sku: "G7-REFILL", quantity: 2, unitPrice: 100 }],
+  purchaseClock = async () => at) {
   const accounts = identity.createPostgresAccountLinkStore({ connectionString: runtimeUrl });
   let clientId: string;
   try { clientId = (await accounts.createAccount({ email: `${randomUUID()}@example.invalid`, principalId: randomUUID(), acquisitionSource: "fixture", lifecycleStage: "customer" })).id; }
@@ -278,22 +281,112 @@ async function draftedPurchase(mode: "subscription" | "one_time", discount = 0,
     quoteSnapshot: { contractVersion: "commerce.v0", quote: { currency: "XXX", taxIncluded: true,
       lines: positions.map(line => ({ sku: line.sku, productSlug: "g7-refill", quantity: line.quantity,
         unitPriceGross: money(line.unitPrice), lineSubtotalGross: money(line.unitPrice * line.quantity),
+        ...(line.catalogFacts ? { catalogFacts: line.catalogFacts } : {}),
         tax: { included: true, country: "ZZ", category: "standard", vatRateBps: 0, legalBasis: "Synthetic test tax",
           netAmount: money(line.unitPrice * line.quantity), vatAmount: money(0), grossAmount: money(line.unitPrice * line.quantity) } })),
       discounts: discount ? [{ promotionId, appliesTo: "order_total", amountOffMinor: discount, reasonCode: "configured" }] : [],
       context: { mode, cadenceDays: 28, promoCodes: [] }, subtotalGross: money(subtotal), discountTotalGross: money(discount),
       shippingGross: money(0), shippingDiscountGross: money(0), totalGross: money(subtotal - discount), netTotal: money(subtotal - discount), taxTotal: money(0) } } }, { clientId });
   const orderId = String(made.orderDraft.orderId).replace(/^order_/, "");
-  const intent = await rpc<{ settlement: { id: string } }>("commerce_open_settlement_intent", [`open:${key}`, orderId, "sandbox", subtotal - discount, "XXX", "{}", at]);
+  const purchaseAt = await purchaseClock();
+  const intent = await rpc<{ settlement: { id: string } }>("commerce_open_settlement_intent", [`open:${key}`, orderId, "sandbox", subtotal - discount, "XXX", "{}", purchaseAt]);
   expect(await captureSandboxPurchase(payments.createPostgresSandboxPaymentSimulator(executor,
     { dunningTemplateSlug: "failed", recoveryUrlPath: "/recover", recoveryTemplateSlug: "recovered" }),
-    { settlementIntentId: intent.settlement.id, key, at })).toMatchObject({ status: 200 });
+    { settlementIntentId: intent.settlement.id, key, at: purchaseAt })).toMatchObject({ status: 200 });
   await destinations.createPostgresDestinationPort(executor).registerOrder({ idempotencyKey: `destination:${key}`, orderId,
-    address: { recipientName: "Synthetic recipient", line1: "Synthetic street 1", city: "Fixture", postalCode: "00000", country: "ZZ" }, now: at });
-  await rpc("subscription_declare_provisional_activation", [`declare:${key}`, orderId, 28, at]);
+    address: { recipientName: "Synthetic recipient", line1: "Synthetic street 1", city: "Fixture", postalCode: "00000", country: "ZZ" }, now: purchaseAt });
+  await rpc("subscription_declare_provisional_activation", [`declare:${key}`, orderId, 28, purchaseAt]);
   const settled = (await runtime.query("SELECT external_ref,id FROM public.commerce_settlement_intents WHERE id=$1", [intent.settlement.id])).rows[0];
-  return { orderId, clientId, capturedReference: settled.external_ref ?? settled.id, idempotencyKey: `activate:${key}` };
+  return { orderId, clientId, capturedReference: settled.external_ref ?? settled.id, idempotencyKey: `activate:${key}`, purchaseAt };
 }
+
+describe("derived renewal price context in PostgreSQL", () => {
+  const skuId = randomUUID(), sku = "SYNTHETIC-DERIVED-REFILL";
+  const storedId = randomUUID(), storedSku = "SYNTHETIC-STORED-REFILL";
+  const base = 125, derived = 110;
+  let baseId: string, policy: { id: string; digest: string };
+  const clock = async () => (await admin.query<{ at: Date }>("SELECT clock_timestamp() AS at")).rows[0]!.at.toISOString();
+
+  beforeAll(async () => {
+    await admin.query(`INSERT INTO public.catalog_skus(id,product_id,sku,title,sellable_in_subscription)
+      SELECT position.id,k.product_id,position.sku,'Refill',true FROM public.catalog_skus k
+      CROSS JOIN (VALUES ($2::uuid,$3::text),($4::uuid,$5::text)) position(id,sku) WHERE k.id=$1`, [variant, skuId, sku, storedId, storedSku]);
+    baseId = (await admin.query<{ id: string }>(`INSERT INTO public.price_entries
+      (price_list_id,variant_id,mode,unit_price_minor,valid_from) VALUES($1,$2,'one_time',$3,now()) RETURNING id`,
+      [list, skuId, base])).rows[0]!.id;
+    await admin.query(`INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from)
+      VALUES($1,$2,'subscription',100,now())`, [list, storedId]);
+    policy = (await admin.query<{ id: string; digest: string }>(`WITH revision AS (SELECT gen_random_uuid() AS id,now() AS starts)
+      INSERT INTO public.subscription_price_policy_revisions
+        (id,price_list_id,region_code,currency,channel,revision_no,discount_bps,rounding_quantum_minor,rounding_rule,effective_from,digest)
+      SELECT r.id,l.id,l.region_code,l.currency,'D2C',1,500,10,'FLOOR_TO_QUANTUM',r.starts,
+        public.catalog_price_setup_policy_digest(r.id,1,l.id,l.region_code,l.currency,'D2C',r.starts,NULL,500,10,'FLOOR_TO_QUANTUM')
+      FROM revision r JOIN public.price_lists l ON l.id=$1 RETURNING id,digest`, [list])).rows[0]!;
+    const { collected, stale } = (await admin.query<{ collected: Date; stale: Date }>(
+      "SELECT now() AS collected,now()+interval '90 days' AS stale")).rows[0]!;
+    const stock = fulfillment.createPostgresFulfillmentStockSyncPort(executor, { sourceKey: facts.stockSourceKey, readLocalInventoryStock: async () => [] });
+    for (const skuRef of [storedSku, sku]) {
+      await stock.recordProviderStockCurrent({ requestKey: `derived-stock:${skuRef}`, snapshot: { providerRef: "sandbox-stock",
+        collectedAt: collected.toISOString(), sourceRevision: null, revisionSource: "collection", quantityKind: "snapshot", skuRef,
+        totalQuantity: 1000, forSaleQuantity: 1000, reservedOrUnavailableQuantity: 0, syncRunId: "derived-renewal" },
+      inventoryClass: "sellable", lastSyncedAt: collected.toISOString(), staleAfter: stale.toISOString() });
+    }
+  });
+
+  it.each([
+    { name: "rebinds the list for a matching derived purchase", mixed: false, tampered: false },
+    { name: "leaves the price context missing for a tampered derived purchase", mixed: false, tampered: true },
+    { name: "binds a mixed purchase with the derived line second and refuses it after tampering", mixed: true, tampered: true },
+  ])("$name", async ({ mixed, tampered }) => {
+    const derivedLine: PurchasePosition = { sku, quantity: 1, unitPrice: derived, catalogFacts: {
+      version: "catalog_facts_v2", skuId, documentRevisionId: randomUUID(), documentDigest: "a".repeat(64),
+      basePriceEntryId: baseId, baseUnitAmountMinor: base, policyRevisionId: policy.id, policyDigest: policy.digest,
+      resolvedUnitAmountMinor: derived, resolvedLineAmountMinor: derived, currency: "XXX", mode: "subscription", atTime: await clock(),
+    } };
+    const positions = mixed ? [{ sku: storedSku, quantity: 2, unitPrice: 100 }, derivedLine] : [derivedLine];
+    const p = await draftedPurchase("subscription", 0, positions, clock);
+    const { rows: [order] } = await admin.query("SELECT metadata#>'{orderDraftSnapshot,lines}' AS lines FROM public.commerce_orders WHERE id=$1", [p.orderId]);
+    expect(order.lines.map((line: { sku: string; catalogFacts?: CatalogFactsProvenance }) => [line.sku, line.catalogFacts?.version]))
+      .toEqual(mixed ? [[storedSku, undefined], [sku, "catalog_facts_v2"]] : [[sku, "catalog_facts_v2"]]);
+
+    const terms = retainedTerms(), marker = terms.starterPack!;
+    marker.delivery2.basisSubtotalMinor = positions.reduce((total, line) => total + line.quantity * line.unitPrice, 0);
+    marker.graduation.lines = positions.map(({ sku, quantity, unitPrice }, sortOrder) => ({ sku, qty: quantity, sortOrder,
+      isAddon: false, quoteLine: { unitPriceGross: { amountMinor: unitPrice }, lineSubtotalGross: { amountMinor: quantity * unitPrice } } }));
+    const result = await api.activateNativePurchaseWithRenewal(executor, { ...p, facts: { ...facts, renewalTerms: terms,
+      unattendedChargeAuthorizedAt: p.purchaseAt, lines: positions.map(({ sku, quantity, unitPrice }, index) => ({
+        lineOrdinal: index + 1, sku, quantity, unitAmountMinor: unitPrice,
+      })) } });
+    expect(result.renewalAttachment).toBe("complete");
+    const subscriptionId = String(result.activation.subscriptionId);
+    const bound = { price_list_id: list, currency_code: "XXX" };
+    const empty = { price_list_id: null, currency_code: null };
+    expect(await state(subscriptionId)).toMatchObject(bound);
+
+    const { rows: [firstDue] } = await admin.query<{ as_of: Date }>(
+      "SELECT next_cycle_at+interval '1 minute' AS as_of FROM public.subscriptions WHERE id=$1", [subscriptionId]);
+    const asOf = firstDue!.as_of.toISOString();
+    const renewal = await deps(subscriptionId, "succeeded", asOf);
+    renewal.input.settlement = api.createPostgresRenewalSettlementPort(executor, renewal.codec, transaction);
+    expect(await api.runOneAutomaticSubscriptionRenewal(renewal.input, renewal.due, asOf)).toMatchObject({ status: "succeeded" });
+
+    if (tampered) {
+      const path = ["orderDraftSnapshot", "lines", String(positions.length - 1), "unitPriceGross", "amountMinor"];
+      expect((await admin.query(`UPDATE public.commerce_orders SET metadata=jsonb_set(metadata,$2::text[],to_jsonb($3::int),false)
+        WHERE id=$1 AND metadata#>>$2::text[]=$4 RETURNING metadata#>$2::text[] AS amount`,
+      [p.orderId, path, derived + 1, String(derived)])).rows).toEqual([{ amount: derived + 1 }]);
+    }
+    await admin.query("UPDATE public.subscriptions SET price_list_id=NULL,currency_code=NULL WHERE id=$1", [subscriptionId]);
+    expect(await state(subscriptionId)).toMatchObject(empty);
+    const { rows: [next] } = await admin.query<{ next_cycle_at: Date }>("SELECT next_cycle_at FROM public.subscriptions WHERE id=$1", [subscriptionId]);
+    const scheduledAt = next!.next_cycle_at.toISOString();
+    const log = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const snapshot = await renewal.input.store.buildCycleSnapshots({ subscriptionId, scheduledAt, scheduledInstant: Date.parse(scheduledAt) });
+    expect(snapshot.templateSnapshot).toMatchObject({ cadenceDays: 30 });
+    expect(await state(subscriptionId)).toMatchObject({ ...(tampered ? empty : bound), template_version: 2 });
+    expect(log.mock.calls).toEqual(tampered ? [["subscription_price_list_unresolved", "missing"]] : []);
+  });
+});
 
 it("keeps the full admitted quantity and catalogue price when a promoted order splits effective positions", async () => {
   const p = await draftedPurchase("subscription", 1);
@@ -470,6 +563,7 @@ it("completes without any auxiliary function query before the protected work", a
     queries.push(sql);
     if (sql === "SELECT public.subscription_complete_renewal_attachment($1::uuid) AS response"
       || sql === "SAVEPOINT native_purchase_template" || sql.startsWith("SELECT sku.id AS variant_id")
+      || sql.startsWith("SELECT currency_code,created_at::text AS created_at,")
       || sql.startsWith("SELECT list.id,list.currency") || sql.startsWith("WITH locked AS MATERIALIZED")) return executor.query(sql, values);
     throw Object.assign(new Error("synthetic auxiliary function denial"), { code: "42501" });
   } });

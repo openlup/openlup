@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { clearTimeout, setTimeout } from 'node:timers';
 import { createPostgresCustomerSupportJourneyPort } from '@openlup/platform/account-support/postgres';
 import { createPostgresBundleCatalogStore, createPostgresBundleAdminWriteStore,
   createPostgresCatalogDraftStoreV3, createCatalogDraftHandlerV3, createCatalogCandidateServiceWithPublication, CatalogCandidateError, BundleRpcError,
@@ -8,13 +9,46 @@ import type { PgQueryExecutor, PostgresRoleFreeTransactionLane } from '@openlup/
 import { missingPackBuild, starterCatalogue, starterCatalogueType } from './editor-catalogue.ts';
 import { installationFinding } from '../shared/refusals.ts';
 import { isRecord } from '../shared/offer.ts';
+import { catalogueFailedJobFilter } from './catalogue-readiness-jobs.ts';
 import type { ActionBinding, ActionContext, ApplicationBindings } from './bindings.ts';
 
 const refused = (code: string) => ({ ok: false as const, code });
 const success = (value: unknown) => ({ ok: true as const, value });
-function publicationRefused({ reason: code, message, path, subject }: CatalogPublicationFailure) {
+function publicationRefused({ reason: code, message, path, subject }: CatalogPublicationFailure, failedJobs?: string[]) {
   return { ...refused(code), ...(message === undefined ? {} : { message }), ...(path === undefined ? {} : { path }),
-    ...(subject === undefined ? {} : { subject }), ...(path === undefined ? {} : { issues: [{ code, path, message, subject }] }) };
+    ...(subject === undefined ? {} : { subject }),
+    ...(code === 'publication_price_readiness' && subject !== undefined ? { reason: subject } : {}),
+    ...(path === undefined ? {} : { issues: [{ code, path, message, subject, ...(failedJobs?.length ? { failedJobs } : {}) }] }) };
+}
+
+async function watchdogFailureEvidence(
+  lane: PostgresRoleFreeTransactionLane<PgQueryExecutor>, filter: ReturnType<typeof catalogueFailedJobFilter>,
+) {
+  let deadline: NodeJS.Timeout | undefined;
+  let expired = false;
+  try {
+    return await Promise.race([
+      lane.run(async db => {
+        if (expired) return;
+        await db.query("SET LOCAL statement_timeout = '500ms'");
+        await db.query("SET LOCAL lock_timeout = '500ms'");
+        if (expired) return;
+        const { rows } = await db.query(`SELECT r.metadata->'failedJobs' AS jobs FROM public.platform_job_controls c
+          JOIN public.platform_job_runs r ON (r.id,r.job_name)=(c.last_run_id,c.job_name)
+          WHERE c.job_name='platform-watchdog' AND c.enabled AND c.last_status='success'
+            AND c.metadata->>'health'='degraded' AND c.metadata->'promotionReady'='false'::jsonb
+            AND c.last_success_at BETWEEN statement_timestamp()-interval '6 hours' AND statement_timestamp()
+            AND r.status='success' AND r.finished_at=c.last_success_at AND r.driver='scheduler'
+            AND r.metadata->>'invocationSource'='starter-catalogue'`);
+        const jobs = rows[0]?.jobs;
+        return Array.isArray(jobs) && jobs.every(name => typeof name === 'string') ? filter(jobs) : [];
+      }),
+      new Promise<undefined>(resolve => {
+        deadline = setTimeout(() => { expired = true; resolve(undefined); }, 500);
+      }),
+    ]);
+  } catch { return undefined; }
+  finally { clearTimeout(deadline); }
 }
 const text = (value: unknown, max = 200): value is string => typeof value === 'string'
   && value.trim() === value && value.length > 0 && value.length <= max;
@@ -37,6 +71,7 @@ function publicationExample(type: CatalogProductTypeRef): CatalogDraftPayloadV3 
 /** Operator identity is established by native request authentication before dispatch. */
 export function composeOperatorCapabilities(input: {
   executor: PgQueryExecutor; connectionString: string; publication?: PostgresRoleFreeTransactionLane<PgQueryExecutor> | undefined;
+  watchdogEvidence?: PostgresRoleFreeTransactionLane<PgQueryExecutor> | undefined;
 }):
 Pick<ApplicationBindings, 'actions' | 'close'> {
   const catalogue = starterCatalogue();
@@ -66,6 +101,7 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
     catalogPublicationOwner: publicationLane, authorizeHuman, registry: catalogue.registry,
   });
   const publication = input.publication && createPostgresCatalogPublicationReads({ transactions: input.publication, authorizeHuman });
+  const filterFailedJobs = catalogueFailedJobFilter();
   if (commands && publication) actions['operator.catalogPublication'] = async (payload, context) => {
     if (!(await authorizeHuman(context)).ok) return refused('operator_required');
     if (payload.action === 'approve' || payload.action === 'publish') {
@@ -75,7 +111,10 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
       if (!capability) return refused('operator_required');
       // The native runner strictly parses the command after attaching the transport key.
       const result = await commands.execute({ ...command, commandKey: context.commandKey } as CatalogPublicationCommand, capability);
-      return 'reason' in result ? publicationRefused(result) : { ...success(result), ...(result.outcome === 'replayed' ? { replayed: true } : {}) };
+      if ('reason' in result) return publicationRefused(result, payload.action === 'publish'
+        && result.reason === 'publication_price_readiness' && result.subject === 'promotion_watchdog_not_ready' && input.watchdogEvidence
+        ? await watchdogFailureEvidence(input.watchdogEvidence, filterFailedJobs) : undefined);
+      return { ...success(result), ...(result.outcome === 'replayed' ? { replayed: true } : {}) };
     }
     const { action, head, commandKey, cursor = null } = payload;
     if (cursor !== null && typeof cursor !== 'string') return refused('starter_input_invalid');

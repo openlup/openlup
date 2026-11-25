@@ -111,7 +111,7 @@ export async function assertSubscriptionPricePolicyDigest(value: unknown): Promi
   return revision;
 }
 
-/** Resolves a subscription unit price from a base unit price and a policy revision. */
+/** Resolves a subscription unit price from a base unit price and a policy revision. An estimate for display; the quote is the amount charged. */
 export function deriveSubscriptionUnitPrice(
   baseUnitAmountMinor: number,
   semantics: SubscriptionPricePolicySemantics | SubscriptionPricePolicyCanonicalInput | SubscriptionPricePolicyRevision,

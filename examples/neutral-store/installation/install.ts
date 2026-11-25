@@ -14,6 +14,7 @@ import { link, lstat, mkdir, mkdtemp, open, rm, writeFile } from 'node:fs/promis
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readQuoteAcceptanceKeyring } from '../host/quote-secret.ts';
+import type { buildDemoSeed } from '../owned/demo-seed.ts';
 import { buildRefusal, installationFailure, isInstallationRefusal, packBuildFilename, refusal, rulesRecheck, up } from './refusals.ts';
 
 export const demonstrationMarker = 'openlup-neutral-store-demo-v1';
@@ -224,8 +225,49 @@ async function withInstallationCleanup<T>(work: () => Promise<T>, cleanup: () =>
   return result;
 }
 
+async function obsoleteDemoPrices(connection: InstallConnection, seed: ReturnType<typeof buildDemoSeed>) {
+  const list = seed.priceLists[0]!;
+  for (const id of seed.skus.map(sku => sku.id).sort()) {
+    await connection.query('SELECT public.catalog_price_setup_lock_context($1,$2)', [list.id, id]);
+  }
+  const predecessors = new Map(seed.prices.filter(row => row.mode === 'subscription').map(row => [row.id, row]));
+  const { rows } = await connection.query(`SELECT id,price_list_id,variant_id,mode,min_qty,unit_price_minor,amount_kind,active,
+      valid_from=$3::timestamptz AS seed_start, valid_to IS NULL AS open,
+      (isfinite(valid_to) AND valid_to > valid_from AND valid_to <= statement_timestamp()
+        AND valid_to=updated_at) AS closed
+    FROM public.price_entries
+    WHERE id=ANY($2::uuid[]) OR (price_list_id=$1 AND mode='subscription'
+      AND (active OR valid_to IS NULL OR valid_to>statement_timestamp() OR valid_from>statement_timestamp()))
+    ORDER BY id FOR UPDATE`, [list.id, [...predecessors.keys()], list.valid_from]);
+  const close: string[] = [];
+  for (const row of rows) {
+    const prior = predecessors.get(String(row.id));
+    if (!prior || row.price_list_id !== prior.price_list_id || row.variant_id !== prior.variant_id
+      || row.mode !== prior.mode || row.min_qty !== prior.min_qty || row.unit_price_minor !== prior.unit_price_minor
+      || row.amount_kind !== prior.amount_kind || row.seed_start !== true) throw starterDiagnostic('starter_price_seed_conflict');
+    if (row.active === true && row.open === true) close.push(prior.id);
+    else if (row.active !== false || row.closed !== true) throw starterDiagnostic('starter_price_seed_conflict');
+  }
+  return close;
+}
+
+async function provisionCatalogueWatchdog(connection: InstallConnection, principal: string) {
+  try {
+    await connection.query('BEGIN');
+    await connection.query("SET LOCAL lock_timeout = '2s'; SET LOCAL statement_timeout = '4s'");
+    await connection.query('LOCK TABLE public.platform_human_principals IN SHARE MODE');
+    await connection.query(`INSERT INTO public.platform_control_operators(principal_id,active)
+      SELECT $1,true WHERE NOT EXISTS (SELECT 1 FROM public.platform_human_principals WHERE principal_id=$1)
+      ON CONFLICT (principal_id) DO NOTHING`, [principal]);
+    await connection.query('COMMIT');
+  } catch {
+    try { await connection.query('ROLLBACK'); } catch { /* The ordinary seed already committed. */ }
+  }
+}
+
 /** Called only by lifecycle up, once per installation invocation, before the HTTP host starts. */
 export async function installDemonstration(config: StoreConfig, bootstrap: InstallationBootstrap, progress?: NodeJS.WritableStream) {
+  config = structuredClone(config);
   assertConfig(config);
   let installation;
   try { installation = await bootstrap(config, progress); }
@@ -238,6 +280,7 @@ export async function installDemonstration(config: StoreConfig, bootstrap: Insta
 /** Idempotent demo composition; stock uses its native writer. No schema, clients or subscription truth. */
 export async function applyDemoSeed(config: StoreConfig, installation: DemonstrationInstallation,
   rulesFor = () => installation.catalogueRules) {
+  config = structuredClone(config);
   assertConfig(config);
   let admitted;
   try { admitted = admitPacks(rulesFor); }
@@ -245,7 +288,7 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
     throw installationFailure(error);
   }
   const { artifact, fixtures, packs } = admitted;
-  const [{ editorProducts, stagePackBuild, stageStarterCatalogueBuild, starterCataloguePack, starterCatalogueType }, { buildDemoSeed }, { seedQuoteAuthority }] =
+  const [{ demoIdentifier, editorProducts, stagePackBuild, stageStarterCatalogueBuild, starterCataloguePack, starterCatalogueType }, { buildDemoSeed }, { seedQuoteAuthority }] =
     await Promise.all([import('../host/editor-catalogue.ts'), import('../owned/demo-seed.ts'), import('./quote-seed.ts')])
       .catch(error => { throw installationFailure(error); });
   const { installRole, runtimeRole } = installation;
@@ -337,7 +380,8 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
     const stock = installation.stock ?? (await import('@openlup/platform/fulfillment').catch(error => { throw installationFailure(error); }))
       .createPostgresFulfillmentStockSyncPort(installation.connection,
       { sourceKey: `starter-demo:${config.id}`,readLocalInventoryStock: async () => [] });
-    for (const product of editorProducts(config)) {
+    const catalogue = editorProducts(config);
+    for (const product of catalogue) {
       try {
         await stock.recordProviderStockCurrent({ requestKey: `starter-stock:${product.sku}`,snapshot: {
           providerRef: config.purchase.stock.providerRef,collectedAt: config.purchase.stock.collectedAt,sourceRevision: null,revisionSource: 'collection',quantityKind: 'snapshot',
@@ -357,7 +401,18 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
       ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name, region_code=EXCLUDED.region_code,
         currency=EXCLUDED.currency, status=EXCLUDED.status, valid_from=EXCLUDED.valid_from`,
     [row.id, row.name, row.region_code, row.currency, row.status, row.valid_from]);
-    for (const row of seed.prices) {
+    const obsolete = await obsoleteDemoPrices(connection, seed);
+    const bases = seed.prices.filter(row => row.mode === 'one_time');
+    const priced = new Set(bases.map(row => row.variant_id));
+    for (const [index, sku] of seed.skus.entries()) {
+      if (priced.has(sku.id)) continue;
+      const amount = catalogue[index]!.unitPrice.amountMinor;
+      if (!Number.isInteger(amount) || amount < 1 || amount > 2_147_483_647) throw starterDiagnostic('starter_price_seed_conflict');
+      bases.push({ id: demoIdentifier(config, 'price', `${sku.sku}:one_time`), price_list_id: settlement.id,
+        variant_id: sku.id, mode: 'one_time', min_qty: 1, unit_price_minor: amount,
+        amount_kind: 'gross', active: true, valid_from: settlement.valid_from });
+    }
+    for (const row of bases) {
       await connection.query(`INSERT INTO public.price_entries
         (id, price_list_id, variant_id, mode, min_qty, unit_price_minor, amount_kind, active, valid_from)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (id) DO NOTHING`,
@@ -370,6 +425,13 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
         : existing[key] !== value)) throw starterDiagnostic('starter_price_seed_conflict');
     }
     await seedQuoteAuthority(config, seed, connection);
+    if (obsolete.length) {
+      const { rows } = await connection.query(`UPDATE public.price_entries
+        SET active=false,valid_to=statement_timestamp(),updated_at=statement_timestamp()
+        WHERE id=ANY($1::uuid[]) AND isfinite(statement_timestamp()) AND statement_timestamp()>valid_from
+        RETURNING id`, [obsolete]);
+      if (rows.length !== obsolete.length) throw starterDiagnostic('starter_price_seed_conflict');
+    }
     // The demonstration can attest the empty installed cohort for native price checks.
     if (catalogueReceipt) await connection.query(`SELECT public.commerce_capture_offer_policy_v2_legacy_baseline()
       WHERE EXISTS (SELECT 1 FROM public.commerce_offer_policy_cohort_marking WHERE marked_count=0)
@@ -398,6 +460,7 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
     } catch { /* Cleanup cannot replace the installation failure. */ }
     throw error;
   }
+  await provisionCatalogueWatchdog(connection, demoIdentifier(config, 'control-plane-operator', 'platform-watchdog'));
   try {
     try { stagedBuild?.publish(); }
     finally { stagedBuild?.discard(); }

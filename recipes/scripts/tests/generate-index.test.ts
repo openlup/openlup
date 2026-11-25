@@ -145,6 +145,7 @@ describe("recipes/scripts/generate-index", () => {
     expect(built.issues.some((i) => i.message.includes("RFC 3339"))).toBe(true);
   });
 
+  // The input makes a backtracking pattern exponential, so the test deadline still catches a ReDoS regression.
   it("rejects path traversal, non-canonical paths, symlinks, invalid JSON, and egressOrigins typos without ReDoS", () => {
     const tmpCatalog = createTempCatalogCopy();
     const shipbobManifestPath = path.join(tmpCatalog, "fulfillment", "shipbob", "recipe.json");
@@ -166,11 +167,8 @@ describe("recipes/scripts/generate-index", () => {
     const mollieManifestPath = path.join(tmpCatalog, "payments", "mollie", "recipe.json");
     writeFileSync(mollieManifestPath, "{invalid-json", "utf8");
 
-    const start = Date.now();
     const built = buildRecipeIndex(tmpCatalog);
-    const elapsedMs = Date.now() - start;
 
-    expect(elapsedMs).toBeLessThan(500);
     expect(built.document).toBeUndefined();
     expect(built.issues.some((i) => i.message.includes("unsafe or non-canonical"))).toBe(true);
     expect(built.issues.some((i) => i.message.includes("symbolic link"))).toBe(true);

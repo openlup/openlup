@@ -28,8 +28,8 @@ export type SubscriptionCancelFeedbackInput = { subscriptionRef: string; cancelC
 
 export type ActionResult =
   | { ok: true; value: unknown; replayed?: boolean }
-  | { ok: false; code: string; field?: string; status?: 400 | 403 | 409 | 503; message?: string; path?: string; subject?: string;
-    issues?: readonly { path: string; code: string; message?: string; subject?: string }[] };
+  | { ok: false; code: string; field?: string; status?: 400 | 403 | 409 | 503; message?: string; reason?: string; path?: string; subject?: string;
+    issues?: readonly { path: string; code: string; message?: string; subject?: string; failedJobs?: readonly string[] }[] };
 
 export interface AppConfigurationResponse {
   config: StoreConfig;

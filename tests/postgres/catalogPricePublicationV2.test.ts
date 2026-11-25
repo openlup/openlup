@@ -4,6 +4,7 @@ import { DatabaseError, Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { qualifiedPostgresStartupOptions } from "../../server/adapters/postgres/qualifiedInstall.js";
+import { boundOneTimePurchase } from "./acquisitionAdmissionFixture.js";
 import { actorId, hash, installPublicationActors, json, transaction } from "./catalogPublicationFixture.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
   runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
@@ -200,6 +201,7 @@ it.each([
     VALUES('platform-watchdog','worker','success',clock_timestamp(),'{"promotionReady":true}')
     ON CONFLICT(job_name) DO UPDATE SET enabled=true, last_status='success',
       last_success_at=EXCLUDED.last_success_at,metadata=EXCLUDED.metadata`);
+  const occupied = await boundOneTimePurchase(runtime,command.variantId,150);
   const before = await current(command.variantId);
   expect((await owner.query("SELECT public.commerce_offer_policy_v2_readiness()->'reasons' AS reasons")).rows[0].reasons)
     .not.toContain(reason);
@@ -216,6 +218,7 @@ it.each([
       .toEqual([{ enabled: true }]);
   } finally {
     await owner.query("DROP TRIGGER price_test_refuse_edit ON public.price_entries; DROP FUNCTION public.price_test_refuse_edit()");
+    await owner.query("UPDATE public.commerce_orders SET created_at=now()-interval '25 hours' WHERE id=$1",[occupied]);
   }
 });
 
@@ -333,4 +336,22 @@ it("requires issuance for a fresh approval-bound writer call", async () => {
     expect(result).toEqual({ outcome: "validation_issue", reason: "catalog_publication_price_issue_required" });
   });
   expect(await priceEffects(command.variantId)).toEqual(before);
+});
+
+it("applies with a bound captured purchase and preserves the completed receipt under a fresh hard refusal", async () => {
+  const command = await seedSku();
+  const id = await boundOneTimePurchase(runtime,command.variantId,150);
+  try {
+    const first = await apply(command);
+    expect(first).toMatchObject({outcome:"committed",receipt:{current:{unitPriceMinor:180}}});
+    const saved = await receipts(command.commandKey);
+    await owner.query("UPDATE public.outbox_events SET metadata=metadata-'boundary' WHERE aggregate_id=$1 AND event_type='commerce.order_draft.created'",[id]);
+    const fresh = { ...command,commandKey:randomUUID(),expected:{entryId:first.receipt.current.entryId,unitPriceMinor:180,amountKind:"gross"} };
+    await expect(apply(fresh)).rejects.toMatchObject({ code:"55000",message:"catalog_price_setup_native_order_guard_unverified" });
+    expect(await apply(command)).toEqual({ ...first,outcome:"replayed" });
+    expect(await receipts(command.commandKey)).toEqual(saved);
+    expect(await receipts(fresh.commandKey)).toEqual([]);
+  } finally {
+    await owner.query("UPDATE public.commerce_orders SET created_at=now()-interval '25 hours' WHERE id=$1",[id]);
+  }
 });

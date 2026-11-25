@@ -83,9 +83,16 @@ test('J-S2: exact size/count/group edit quotes changed lines and retains the unc
   const before = f.eventPricing() as { sku: string; quoteLine: unknown }[],catalog = await f.catalogue(true);
   const first = catalog.candidates.find(item => item.variantId === f.sub.lines[0]!.variantId)!,sibling = catalog.candidates.find(item => item.groupId === first.groupId && item.variantId !== first.variantId)!;
   const unchangedSku = f.sub.lines[1]!.sku!;
-  const price = f.rows(`SELECT id,unit_price_minor FROM public.price_entries WHERE variant_id='${f.uuid(f.sub.lines[1]!.variantId)}' AND mode='subscription'`)[0]!;
+  const prices = f.rows(`SELECT e.id,e.unit_price_minor FROM public.price_entries e JOIN public.price_lists l ON l.id=e.price_list_id
+    WHERE e.variant_id='${f.uuid(f.sub.lines[1]!.variantId)}' AND e.mode='one_time' AND e.min_qty=1
+      AND e.amount_kind='gross' AND e.active AND e.valid_from<=now() AND (e.valid_to IS NULL OR e.valid_to>now())
+      AND l.status='active' AND l.valid_from<=now() AND (l.valid_to IS NULL OR l.valid_to>now())
+      AND l.region_code=(SELECT value_text FROM public.commerce_settings WHERE key='settlement_region')
+      AND l.currency=(SELECT value_text FROM public.commerce_settings WHERE key='settlement_currency')`);
+  expect(prices).toHaveLength(1);
+  const price = prices[0]!;
   try {
-    f.sql(`UPDATE public.price_entries SET unit_price_minor=unit_price_minor+7 WHERE id='${f.uuid(String(price.id))}'`);
+    f.sql(`UPDATE public.price_entries SET unit_price_minor=unit_price_minor+20 WHERE id='${f.uuid(String(price.id))}'`);
     await f.open(true); await page.getByRole('combobox',{ name: editorText(market.defaultLocale, 'size', { name: first.name[market.defaultLocale] }),exact: true }).selectOption(sibling.variantId);
     await page.getByRole('button',{ name: editorText(market.defaultLocale, 'increase', { name: first.name[market.defaultLocale] }),exact: true }).click();
     const candidate = catalog.candidates.find(item => !item.isAddon && !f.sub.lines.some(line => line.variantId === item.variantId) && item.groupId !== first.groupId && item.groupId !== catalog.candidates.find(row => row.variantId === f.sub.lines[1]!.variantId)!.groupId)!;

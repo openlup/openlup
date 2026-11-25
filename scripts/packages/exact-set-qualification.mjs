@@ -58,7 +58,8 @@ export function proveNeutralStarterConsumer(checkout, input, packInstalled = und
   const extracted = released?.application ?? join(temporary, "application");
   const environment = released?.environment ?? { ...isolatedConsumerEnv(), npm_config_cache: join(temporary, "cache") };
   delete environment.NODE_TEST_CONTEXT;
-  const execute = released?.run ?? ((name, args, cwd) => execFileSync(name, args, { cwd, env: environment, encoding: "utf8", timeout: 120_000, maxBuffer: 8 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] }));
+  // Each consumer command (npm ci, the node test run) is bounded; hosted runners exceeded 120 s, so the bound is doubled.
+  const execute = released?.run ?? ((name, args, cwd) => execFileSync(name, args, { cwd, env: environment, encoding: "utf8", timeout: 240_000, maxBuffer: 8 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] }));
   const run = (name, args, cwd = extracted) => process.stdout.write(execute(name, args, cwd));
   const lockHash = () => sha256(readFileSync(join(extracted, "package-lock.json")));
   try {
