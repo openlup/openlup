@@ -177,17 +177,18 @@ project. The procedure removes all data in the demo volume. For
 ## Make the store ready to publish
 
 Run `./lifecycle up` for the marked demo. The installer preserves its base
-prices and price history, installs the one-time bundle and tries to register
-the starter catalogue watchdog control-plane principal. The database-backed
-host starts the promotion claim sweep and watchdog in the background. It
-continues serving requests when either job is unavailable. Allow the initial
-pair to finish before trying Publish.
+prices and closes the exact old explicit subscription entries, retaining their
+history. On a fresh demo, it seeds the bases and the subscription policy.
+Checkout derives the same subscription unit prices from that policy. The
+installer also installs the one-time bundle and tries to register the starter
+catalogue watchdog control-plane principal. The database-backed host starts
+the promotion claim sweep and watchdog in the background. It continues serving
+requests when either job is unavailable. Allow the initial pair to finish
+before trying Publish.
 
-In this release, a fresh marked demo refuses priced Publish with
-`catalog_1490_legacy_1340_invalid` until a follow-up closes the explicit
-subscription price entries. This refusal can mask
-`promotion_watchdog_not_ready` and `promotion_claim_sweep_not_ready`.
-Keep the explicit entries for the shipped subscription checkout.
+A fresh marked demo passes Publish readiness when both jobs provide current
+evidence. A price refusal on a retained demo can mask a sweep or watchdog
+refusal. Recheck after repairing the price list.
 
 For an unmarked installation, the owner can register the non-human watchdog
 principal from the installed starter using the authenticated installer
@@ -235,7 +236,7 @@ Use these steps for the marked demo.
 | Reason | Starter step |
 | --- | --- |
 | `bundle_5_policy_invalid` | Run `./lifecycle up` to install the marked demo bundle. Ask the promotion owner to reconcile conflicting retained definitions before rerunning it. |
-| `catalog_1490_legacy_1340_invalid` | Verify the effective list and each eligible SKU’s base and subscription prices with the pricing owner. The fresh demo requires the follow-up price closure above. |
+| `catalog_1490_legacy_1340_invalid` | Verify the effective list and each eligible SKU’s base and subscription prices with the pricing owner. |
 | `promotion_claim_sweep_not_ready` | Verify `promotion-claim-sweep` is enabled with the `scheduler` driver. Wait for the next scheduled tick on the database-backed host and verify a successful run. |
 | `promotion_watchdog_not_ready` | Verify the starter catalogue watchdog control-plane principal using the recipe above. Repair any failed jobs using the table below and verify a healthy watchdog run. |
 

@@ -79,7 +79,7 @@ export const starterRefusals = Object.freeze(Object.fromEntries(Object.entries({
   starter_policy_seed_conflict: verifySeed,
   starter_port_invalid: { fix: 'Supply a valid numeric host port.', recheck: up },
   starter_predecessor_cancel_failed: browser('Use the qualified predecessor and verify its seeded subscription and cancellation terms.'),
-  starter_price_seed_conflict: verifySeed,
+  starter_price_seed_conflict: { fix: 'Ask the pricing owner to reconcile divergent seed rows with the original demo inputs. Have the owner close other active or open explicit subscription rows or withdraw pending rows while preserving price history. You can also rebuild a disposable demo using the installed guide.', recheck: up },
   starter_product_invalid: checkConfig,
   starter_promotion_seed_conflict: verifySeed,
   starter_public_origin_flag_invalid: { fix: 'Supply the documented public origin option with a valid origin.', recheck: up },

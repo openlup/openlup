@@ -128,7 +128,7 @@ test('up_json_reports_four_fields_for_installer_refusal and verifies the real on
     assert.deepEqual(up('success', ['--configuration', 'coffee', '--json']).report.packs, [summary]);
     for (const [mode, code, fix] of [
       ['legacy-conflict', 'starter_catalogue_build_conflict', /Restore the original declaration and rules.*new pack version/u],
-      ['price-conflict', 'starter_price_seed_conflict', /Restore the original demonstration inputs/u],
+      ['price-conflict', 'starter_price_seed_conflict', /reconcile divergent seed rows with the original demo inputs.*close other active or open explicit subscription rows or withdraw pending rows.*rebuild a disposable demo/u],
       ['driver', 'starter_installation_failed', /Compose availability/u],
     ] as const) {
       const { report, calls } = up(mode);
@@ -540,7 +540,7 @@ test('installed catalogue jobs isolate requests, fence heartbeat failures and dr
       await until(() => missing.diagnostics().includes('OPENLUP_E_STARTER_CATALOGUE_WATCHDOG_PRINCIPAL_MISSING'));
       assert.equal(await watchdog(), undefined);
       const { rows } = await owner.query('SELECT public.commerce_offer_policy_v2_readiness() AS verdict');
-      assert.deepEqual(rows[0].verdict.reasons, ['catalog_1490_legacy_1340_invalid', 'promotion_watchdog_not_ready']);
+      assert.deepEqual(rows[0].verdict.reasons, ['promotion_watchdog_not_ready']);
       assert.deepEqual((await owner.query(`SELECT o.status,c.status AS claim FROM public.commerce_orders o
         JOIN public.commerce_promotion_claims c ON c.order_id=o.id WHERE o.id=ANY($1::uuid[]) ORDER BY o.status`,
         [[stale, protectedOrder]])).rows, [{ status: 'cancelled', claim: 'released' }, { status: 'pending_payment', claim: 'reserved' }]);
