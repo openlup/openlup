@@ -19,8 +19,12 @@ describe('conservative tooling scope', () => {
     for (const file of ['agent-review-session', 'source-preview-release', 'public-ci-neutrality', 'oss-published-tree-check']) {
       expect(excluded).not.toContain(`scripts/${file}.test.ts`);
     }
-    expect(excludedToolingTests(['server/runtime/outbox/candidateAdmission.ts']))
-      .toEqual(all.filter(test => !test.endsWith('outbox-consumer-proof.test.ts') && !test.endsWith('eslint-import-map.test.ts')));
+    const serverExcluded = excludedToolingTests(['server/runtime/outbox/candidateAdmission.ts']);
+    expect(serverExcluded).not.toContain('scripts/packages/outbox-consumer-proof.test.ts');
+    expect(serverExcluded).not.toContain('scripts/packages/eslint-import-map.test.ts');
+    expect(serverExcluded).toEqual(Object.entries(TOOLING_INPUTS)
+      .filter(([, inputs]) => !inputs.some(input => input === 'server/' || input === 'server/runtime/outbox/'))
+      .map(([test]) => test).sort());
     expect(excludedToolingTests(['packages/core/src/index.ts']))
       .toEqual(Object.entries(TOOLING_INPUTS)
         .filter(([, inputs]) => !inputs.includes('packages/') && !inputs.includes('packages/core/src/'))
@@ -39,7 +43,8 @@ describe('conservative tooling scope', () => {
   );
   it('excludes bounded tooling tests for docs and unrelated config changes', () => {
     expect(excludedToolingTests(['docs/platform/README.md'])).toEqual(all);
-    expect(excludedToolingTests(['config/doc-routing.json'])).toEqual(all.filter(test => test !== 'scripts/agent-review-derived-inventory.test.ts'));
+    expect(excludedToolingTests(['config/doc-routing.json'])).toEqual(all.filter(test =>
+      test !== 'scripts/agent-review-derived-inventory.test.ts'));
     expect(excludedToolingTests(['config/openlup-packages.json'])).toEqual(all.filter(test =>
       !['agent-review-derived-inventory', 'distribution-cli-proof', 'distribution-cli-settings', 'outbox-consumer-proof', 'package-manifest-policy', 'package-size-policy', 'packages-check'].some(name => test.endsWith(`${name}.test.ts`))));
   });
@@ -52,7 +57,7 @@ describe('conservative tooling scope', () => {
       for (const unlisted of ['scripts/oss-published-tree-check.test.ts', 'scripts/dco-signoff-check.test.ts',
         'scripts/check-publishable-gap-enumeration.test.ts', 'scripts/public-ci-neutrality.test.ts',
         'scripts/packages/platform-agent-guide.test.ts', 'scripts/agent-review-derived.test.ts',
-        'scripts/packages/generate-release-bom.test.ts']) {
+        'scripts/preflight-integration.test.ts', 'scripts/packages/generate-release-bom.test.ts']) {
         expect(excluded).not.toContain(unlisted);
       }
       expect(excluded).toContain('scripts/packages/outbox-consumer-proof.test.ts');
@@ -74,7 +79,17 @@ describe('conservative tooling scope', () => {
   });
   it('retains distribution-cli-proof, distribution-cli-settings, guide-tutorial and pgtap-parity for their actual dependency closures', () => {
     expect(excludedToolingTests(['examples/neutral-store/extract.mjs']))
-      .toEqual(all.filter(test => !['scripts/packages/distribution-cli-proof.test.ts', 'scripts/packages/distribution-cli-settings.test.ts'].includes(test)));
+      .toEqual(all.filter(test => ![
+        'scripts/packages/distribution-cli-proof.test.ts',
+        'scripts/packages/distribution-cli-settings.test.ts',
+        'tests/postgres/customerCheckoutLinks.test.ts',
+        'tests/postgres/fulfillmentOperatorJourneys.test.ts',
+        'tests/postgres/fulfillmentProviderIntake.test.ts',
+        'tests/postgres/neutralStarterE4.test.ts',
+        'tests/postgres/neutralStoreQuote.test.ts',
+        'tests/postgres/neutralStoreRecovery.test.ts',
+        'tests/postgres/neutralStoreUuid.test.ts',
+      ].includes(test)));
     expect(excludedToolingTests(['examples/neutral-store/owned/catalogue.ts']))
       .not.toContain('scripts/packages/distribution-cli-proof.test.ts');
     expect(excludedToolingTests(['examples/neutral-store/owned/settings-host.ts']))
@@ -105,6 +120,8 @@ describe('conservative tooling scope', () => {
       expect(excluded).toContain(bounded);
     }
     expect(excluded).not.toContain('scripts/agent-review-derived.test.ts');
+    expect(excluded).not.toContain('scripts/preflight.test.ts');
+    expect(excluded).not.toContain('scripts/preflight-integration.test.ts');
     expect(excluded).not.toContain('scripts/packages/generate-release-bom.test.ts');
   });
   it('retains migration-pinning, registry, package and postgres catalog suites when their declared inputs change', () => {
@@ -215,6 +232,65 @@ describe('conservative tooling scope', () => {
     expect(excludedToolingTests(['src/domains/commerce/offerAvailability.ts'])).not.toContain('tests/postgres/reviewedBatchForwards.test.ts');
     expect(excludedToolingTests(['tests/postgres/managed-compat/supabase.sql'])).not.toContain('tests/postgres/reviewedBatchForwards.test.ts');
     expect(excludedToolingTests(['config/ci-postgres-packages.json'])).not.toContain('tests/postgres/reviewedBatchForwards.test.ts');
+  });
+  it('excludes pure PostgreSQL suites on src/api/mcp/unrelated-doc edits and retains them on backend/migration/starter/doc triggers', () => {
+    const purePgSuites = [
+      'tests/postgres/catalogPublication.test.ts',
+      'tests/postgres/connectedStoreCatalogRevisions.test.ts',
+      'tests/postgres/connectedStorePromotionClaims.test.ts',
+      'tests/postgres/connectedStoreStarterRelations.test.ts',
+      'tests/postgres/customerAccountConsents.test.ts',
+      'tests/postgres/customerBillingProfiles.test.ts',
+      'tests/postgres/customerNewsletterWithdrawal.test.ts',
+      'tests/postgres/m14QualifiedAdminComposition.test.ts',
+      'tests/postgres/m14RestrictedConnectedRestore.test.ts',
+      'tests/postgres/subscriptionNoticeProducers.test.ts',
+      'tests/postgres/subscriptionRetainedRenewal.test.ts',
+    ];
+    const starterPgSuites = [
+      'tests/postgres/customerCheckoutLinks.test.ts',
+      'tests/postgres/fulfillmentOperatorJourneys.test.ts',
+      'tests/postgres/fulfillmentProviderIntake.test.ts',
+      'tests/postgres/neutralStarterE4.test.ts',
+      'tests/postgres/neutralStoreQuote.test.ts',
+      'tests/postgres/neutralStoreRecovery.test.ts',
+      'tests/postgres/neutralStoreUuid.test.ts',
+    ];
+    for (const unrelated of ['src/pages/Home.tsx', 'api/bff/example.ts', 'mcp/server.ts', 'docs/platform/README.md']) {
+      const excluded = excludedToolingTests([unrelated]);
+      for (const suite of [...purePgSuites, ...starterPgSuites]) expect(excluded).toContain(suite);
+      for (const srcDependent of [
+        'tests/postgres/connectedStoreTransfer.test.ts',
+        'tests/postgres/customerAccountMutations.test.ts',
+        'tests/postgres/customerSavedAddresses.test.ts',
+        'tests/postgres/m14QualifiedComposition.test.ts',
+        'tests/postgres/subscriptionPublicRenewal.test.ts',
+        'tests/postgres/policyCloseDigest.test.ts',
+      ]) {
+        expect(excluded).not.toContain(srcDependent);
+      }
+    }
+    for (const trigger of [
+      'db/platform/migrations/20261124000000_example.sql',
+      'config/ci-images.json',
+      'config/platform-migration-manifest.json',
+      'config/reviewed-platform-forwards.json',
+      'packages/platform/src/index.ts',
+      'server/adapters/postgres/connectedStoreRestore.ts',
+      'tests/helpers/pgTemplateBroker.ts',
+      'tests/postgres/storeJourney.ts',
+    ]) {
+      const excluded = excludedToolingTests([trigger]);
+      for (const suite of [...purePgSuites, ...starterPgSuites]) expect(excluded).not.toContain(suite);
+    }
+    const starterTrigger = excludedToolingTests(['examples/neutral-store/host/server.ts']);
+    for (const suite of starterPgSuites) expect(starterTrigger).not.toContain(suite);
+    for (const suite of purePgSuites) expect(starterTrigger).toContain(suite);
+
+    const dataDocTrigger = excludedToolingTests(['docs/platform/DATA_AND_MIGRATIONS.md']);
+    expect(dataDocTrigger).not.toContain('tests/postgres/customerNewsletterWithdrawal.test.ts');
+    expect(dataDocTrigger).not.toContain('tests/postgres/customerAccountConsents.test.ts');
+    expect(dataDocTrigger).toContain('tests/postgres/catalogPublication.test.ts');
   });
   it.each(Object.entries(TOOLING_INPUTS).flatMap(([test, inputs]) => inputs.map(input => [test, input] as const)))(
     'runs %s when its declared input %s changes', (test, input) => {

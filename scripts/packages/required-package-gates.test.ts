@@ -267,4 +267,38 @@ describe("inventory-driven required package gates", () => {
     const requiredCalls = calls.filter(({ phase }) => phase === "required");
     expect(requiredCalls.map(({ distReady }) => distReady)).toEqual(["1", "1", "1"]);
   }, 60_000);
+
+  it("verifies and consumes prepacked tarballs with --packages without re-running cold packages:check", () => {
+    const input = fixture({ names: ["alpha", "beta"], peerDependencies: { beta: { "@openlup/alpha": "0.4.0" } } });
+    // Cold-pack once as install-pack does, then clear dist/ and builds.jsonl to simulate a fresh install-packages runner.
+    execFileSync("npm", ["run", "packages:check", "--", "--cold", "--out", input.output], {
+      cwd: input.root, env: { ...isolatedConsumerEnv(), npm_config_cache: join(input.root, "scratch/npm-cache") }, stdio: "pipe",
+    });
+    for (const name of ["alpha", "beta"]) rmSync(join(input.root, "packages", name, "dist"), { recursive: true, force: true });
+    rmSync(join(input.root, "builds.jsonl"), { force: true });
+
+    const prepacked = spawnSync(
+      process.execPath,
+      ["--experimental-strip-types", join(source, "required-package-gates.ts"), "--packages", input.output, "--expected-commit", input.commit],
+      { cwd: input.root, env: { ...isolatedConsumerEnv(), npm_config_cache: join(input.root, "scratch/npm-cache") }, encoding: "utf8", timeout: 60_000, maxBuffer: 4 * 1024 * 1024 },
+    );
+    expect(prepacked.status, prepacked.stdout + prepacked.stderr).toBe(0);
+    // Only topological preparation builds run (no cold repack).
+    expect(builds(input.root).map(({ name }) => name)).toEqual(["alpha", "beta"]);
+    expect(observations(input.root).map(({ phase, name }) => `${phase}:${name}`)).toEqual([
+      "api:alpha", "api:beta", "required:alpha", "consumer:alpha", "required:beta", "consumer:beta",
+    ]);
+
+    // Fail-closed: tampered manifest digest is rejected before api:check or consumer proofs run.
+    const manifestPath = join(input.output, "packages-manifest.json");
+    const tampered = JSON.parse(readFileSync(manifestPath, "utf8")) as { commit: string };
+    tampered.commit = "0".repeat(40);
+    writeFileSync(manifestPath, JSON.stringify(tampered));
+    const refused = spawnSync(
+      process.execPath,
+      ["--experimental-strip-types", join(source, "required-package-gates.ts"), "--packages", input.output, "--expected-commit", input.commit],
+      { cwd: input.root, env: { ...isolatedConsumerEnv(), npm_config_cache: join(input.root, "scratch/npm-cache") }, encoding: "utf8", timeout: 60_000, maxBuffer: 4 * 1024 * 1024 },
+    );
+    expect(refused.status).not.toBe(0);
+  }, 60_000);
 });

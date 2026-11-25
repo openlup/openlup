@@ -15,6 +15,7 @@ import { applyDemoSeed, demonstrationMarker } from "../../examples/neutral-store
 import { disposableLabelArgs } from "../../scripts/disposable-docker.mjs";
 import { assertConsumerIsolation, platformConsumerInstallArgs } from "../../scripts/packages/platform-cold-consumer.js";
 import { closePostgres, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+import { packWorkspaceTarballs } from "../helpers/packWorkspaceTarball.js";
 
 export const config = structuredClone(configurations.coffee!);
 config.id = "quote-catalog-proof";
@@ -84,10 +85,7 @@ export async function createQuoteCatalogFixture() {
     };
     visit(resolve("node_modules/pg"));
     visit(resolve("node_modules/@types/pg"));
-    const tarballs = [...directories].map(directory => {
-      const result = JSON.parse(npm(["pack", "--ignore-scripts", "--json", "--pack-destination", scratch], directory));
-      return join(scratch, result[0].filename);
-    });
+    const tarballs = await packWorkspaceTarballs([...directories], scratch);
     const consumer = join(scratch, "consumer"); mkdirSync(consumer);
     writeFileSync(join(consumer, "package.json"), '{"type":"module","private":true}');
     cpSync(".npmrc", join(consumer, ".npmrc"));

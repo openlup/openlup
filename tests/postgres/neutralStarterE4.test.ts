@@ -18,6 +18,7 @@ import type { createStarterPersonalDataRegistry } from '../../examples/neutral-s
 import type { composeE4Capabilities } from '../../examples/neutral-store/host/e4-composition.ts';
 import type * as Migrations from '@openlup/platform/migrations';
 import type { InvoiceFacts, InvoiceHostPorts } from '@openlup/platform/invoicing/contracts';
+import { packWorkspaceTarballs } from '../helpers/packWorkspaceTarball.js';
 import { configurations } from '../../examples/neutral-store/owned/store.config.ts';
 import { operationLimits } from '../../examples/neutral-store/shared/limits.ts';
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
@@ -94,9 +95,10 @@ beforeAll(async () => {
   app = join(scratch, 'app');
   command(process.execPath, ['examples/neutral-store/extract.mjs', app], process.cwd());
   const packs = join(scratch, 'packs'); mkdirSync(packs);
-  for (const name of ['core', 'outbox', 'platform']) {
-    const [info] = JSON.parse(command('npm', ['pack', '--json', '--ignore-scripts', '--pack-destination', packs], resolve('packages', name)));
-    writeFileSync(join(app, 'artifacts', `openlup-${name}.tgz`), readFileSync(join(packs, info.filename)));
+  const packedNames = ['core', 'outbox', 'platform'] as const;
+  const packedTarballs = await packWorkspaceTarballs(packedNames.map(name => `packages/${name}`), packs);
+  for (let i = 0; i < packedNames.length; i++) {
+    writeFileSync(join(app, 'artifacts', `openlup-${packedNames[i]}.tgz`), readFileSync(packedTarballs[i]!));
   }
   command('npm', ['install', '--prefer-offline', '--ignore-scripts', '--legacy-peer-deps', '--no-audit', '--fund=false']);
   command('npm', ['test']);

@@ -1699,6 +1699,37 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
     await expect(checkForward(pool, BASELINE_SLOT, forward(CREATED_OK, BASELINE_SQL + grant))).rejects.toThrow(/invalid privilege type .* for column/u);
   });
   it("replays every unbound native chain unit", () => { expect(replay.applied).toBe(chain.length); });
+  it("applies canonical auth.uid() settings and refuses a quoted identity before apply", async () => {
+    const db = new Pool({ connectionString: container!.connectionStringFor("native_chain") });
+    const path = "db/platform/migrations/20990101000000_settings_fixture.sql";
+    const prefix = chain.filter(unit => unit.path === PLATFORM_BASELINE_FILE || unit.path.endsWith("_self_host_actor_auth.sql"));
+    const apply = (signature: string) => {
+      const searchPath = "pg_catalog, pg_temp";
+      const bytes = Buffer.from(`ALTER FUNCTION ${signature} SET search_path = ${searchPath};`);
+      const slot: NativeStoreSlot = {
+        row: "SettingsFixture", path, createdFunctions: [], replacedFunctions: [], grantOnlyFunctions: [], dataStatements: [],
+        settingsOnlyFunctions: [{ signature, searchPath }],
+      };
+      return verifyForward(db, {
+        schemaVersion: 1, baselineSha256: registry.baselineSha256, replacementForwards: [], creationForwards: [],
+        nativeStoreForwardClass: { sealed: true, slots: [slot] },
+        nativeStoreForwards: [{ path, sha256: sqlSha256(bytes), functions: [] }],
+      }, path, bytes, prefix, false, "ALTER FUNCTION auth.uid() SET search_path = pg_catalog;");
+    };
+    const readConfig = async () => (await db.query("SELECT proconfig FROM pg_catalog.pg_proc WHERE oid = $1::regprocedure", ['"auth".uid()'])).rows[0].proconfig;
+    try {
+      const before = await readConfig();
+      let acquisitions = 0;
+      db.on("acquire", () => { acquisitions += 1; });
+      await expect(apply('"auth".uid()')).rejects.toThrow("Use public.<name>(<types>), acquisition_private.<name>(<types>) or exactly auth.uid().");
+      expect(acquisitions).toBe(0);
+      expect(await readConfig()).toEqual(before);
+
+      const applied = await apply("auth.uid()");
+      expect(applied.functions.find(fn => fn.name === "auth.uid()")?.attrs.proconfig).toContain("search_path=pg_catalog, pg_temp");
+      expect(await readConfig()).toEqual(before);
+    } finally { await db.end(); }
+  });
   it("records the legacy grant fixture with zero grants and preserves inventory with the login absent", async () => {
     const db = await pool.connect();
     try {

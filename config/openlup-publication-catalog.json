@@ -70,6 +70,10 @@
       "class": "public-output"
     },
     {
+      "path": ".github/workflows/merge-queue-supersede.yml",
+      "class": "public-output"
+    },
+    {
       "path": ".github/workflows/mirror-ci-images.yml",
       "class": "public-output"
     },
@@ -12826,6 +12830,10 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/merge-queue-check-arm.mjs",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/merge-queue-churn.mjs",
       "class": "public-output"
     },
@@ -13251,6 +13259,10 @@
     },
     {
       "path": "scripts/post-order-control-schema.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/preflight-integration.test.ts",
       "class": "public-output"
     },
     {
@@ -29874,6 +29886,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/helpers/packWorkspaceTarball.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/helpers/pgTemplateBroker.ts",
       "class": "public-output"
     },
@@ -30034,6 +30050,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/platform/packWorkspaceTarball.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/platform/partners/partnerAcquisitionParity.test.ts",
       "class": "public-output"
     },
@@ -30171,6 +30191,14 @@
     },
     {
       "path": "tests/postgres/catalogPriceListBasis.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogPricePublicationV2.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogPricePublicationV2Pgtap.test.ts",
       "class": "public-output"
     },
     {
@@ -30458,7 +30486,15 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/destinationV2ParcelFreeze.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/destinationV2Receipts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/destinationV2SubscriptionEdit.test.ts",
       "class": "public-output"
     },
     {
@@ -30479,6 +30515,10 @@
     },
     {
       "path": "tests/postgres/feedbackMediaAuthority.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/catalogPricePublicationV2/grants.sql",
       "class": "public-output"
     },
     {

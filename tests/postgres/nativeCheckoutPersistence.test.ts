@@ -12,6 +12,7 @@ import { assertConsumerIsolation, assertExportInventory, platformConsumerInstall
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { qualifiedPostgresStartupOptions, type QualifiedPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+import { packWorkspaceTarballs } from "../helpers/packWorkspaceTarball.js";
 
 let container: PostgresContainer | undefined, scratch: string, consumer: string, runtimeUrl: string;
 let owner: Pool, runtime: Pool, untrusted: Pool;
@@ -55,10 +56,7 @@ async function refusesWithoutWrite(action: () => Promise<unknown>, expected: Rec
 beforeAll(async () => {
   if (!await dockerAvailable()) throw new Error("Native checkout requires real PostgreSQL; missing Docker is missing proof");
   scratch = mkdtempSync(join(tmpdir(), "native-checkout-packed-"));
-  const tarballs = ["packages/core", "packages/platform", "node_modules/zod"].map(directory => {
-    const [packed] = JSON.parse(npm(["pack", "--json", "--ignore-scripts", "--pack-destination", scratch], resolve(directory)));
-    return join(scratch, packed.filename);
-  });
+  const tarballs = await packWorkspaceTarballs(["packages/core", "packages/platform", "node_modules/zod"], scratch);
   consumer = join(scratch, "consumer"); mkdirSync(consumer);
   writeFileSync(join(consumer, "package.json"), '{"type":"module","private":true}');
   npm(platformConsumerInstallArgs(tarballs), consumer);
@@ -67,12 +65,13 @@ beforeAll(async () => {
   const installedResolve = createRequire(join(consumer, "package.json")).resolve;
   installed = await import(pathToFileURL(installedResolve("@openlup/platform/commerce/server/native-checkout")).href);
   // Pack the locked runtime/type closure: an empty cache must need no registry metadata.
-  const peers = ["pg", "pg-connection-string", "pg-int8", "pg-pool", "pg-protocol", "pg-types", "pgpass",
-    "postgres-array", "postgres-bytea", "postgres-date", "postgres-interval", "split2", "xtend",
-    "@types/pg", "@types/node", "undici-types"].map(name => {
-    const [packed] = JSON.parse(npm(["pack", "--offline", "--json", "--ignore-scripts", "--pack-destination", scratch], resolve("node_modules", name)));
-    return join(scratch, packed.filename);
-  });
+  const peers = await packWorkspaceTarballs(
+    ["pg", "pg-connection-string", "pg-int8", "pg-pool", "pg-protocol", "pg-types", "pgpass",
+      "postgres-array", "postgres-bytea", "postgres-date", "postgres-interval", "split2", "xtend",
+      "@types/pg", "@types/node", "undici-types"].map(name => `node_modules/${name}`),
+    scratch,
+    { offline: true },
+  );
   npm(platformConsumerInstallArgs(peers), consumer);
   assertConsumerIsolation(consumer, process.cwd(), false);
   const program = `import { createPostgresNativeCheckoutPersistence, type NativeCheckoutQuery, type NativeCheckoutDraftRequest, type NativeCheckoutDraftResponse } from "@openlup/platform/commerce/server/native-checkout";

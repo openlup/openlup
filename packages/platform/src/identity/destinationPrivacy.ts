@@ -26,6 +26,9 @@ function destinationPrivacy({
       { owner: id, resource: "commerce.destination-order-binding-pins", disposition: "erase" as const, reasonCode, remote: false },
       { owner: id, resource: "commerce.destination-order-binding-markers", disposition: "retain" as const,
         reasonCode: "PSEUDONYMOUS_ERASURE_FENCE", remote: false },
+        { owner: id, resource: "subscription.destination-selection-pins", disposition: "erase" as const, reasonCode, remote: false },
+      { owner: id, resource: "subscription.destination-selection-markers", disposition: "retain" as const,
+        reasonCode: "PSEUDONYMOUS_ERASURE_FENCE", remote: false },
     ] : []),
   ];
   return {
@@ -67,7 +70,8 @@ export function createDestinationDocumentPrivacyContributor(): PersonalDataContr
     reasonCode: "PRIVATE_DESTINATION_DOCUMENT_EVIDENCE",
     retainedOrderBindings: true,
     included: ["private checkout destination documents", "destination document expiry and erasure metadata",
-      "verified order binding pins", "order binding erasure markers"],
+      "verified order binding pins", "order binding erasure markers",
+      "verified subscription selection pins", "subscription selection erasure markers"],
     withheldNotice: "Review withheld destination evidence with the destination owner. After cutoff, run commerce_destination_v2_expire for unbound documents and export again.",
     exportSql: "SELECT public.commerce_destination_v2_export($1::uuid) AS data",
     eraseSql: "SELECT public.commerce_destination_v2_erase($1::uuid)",

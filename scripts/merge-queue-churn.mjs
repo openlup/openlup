@@ -13,7 +13,7 @@ const workflowId = 361484090;
 const execute = promisify(execFile);
 const observedGaps = new WeakMap();
 const queueStates = new Set(['QUEUED', 'AWAITING_CHECKS', 'MERGEABLE', 'LOCKED', 'UNMERGEABLE']);
-const workflowJobs = new Set(['dco', 'reuse-gate', 'typecheck', 'install-packages', 'install-proof', 'test-prep',
+const workflowJobs = new Set(['dco', 'reuse-gate', 'typecheck', 'install-pack', 'install-packages', 'install-proof', 'test-prep',
   'test', 'self-check', 'gitleaks', 'pgtap', 'native-review']);
 const sha = value => typeof value === 'string' && /^[a-f0-9]{40}$/u.test(value) ? value : null;
 const outcomeByReason = new Map([
@@ -32,7 +32,7 @@ const numericIdText = value => typeof value === 'string' && /^[1-9][0-9]{0,15}$/
 const jobLabel = value => typeof value === 'string' && (workflowJobs.has(value) ||
   /^test-full-shard \([1-8]\/8\)$/u.test(value) || /^install-browser \((?:0|1,6|2,4|3,5)\)$/u.test(value)) ? value : 'unknown';
 
-function timestamp(value) {
+export function timestamp(value) {
   if (typeof value !== 'string' || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{3})?Z$/u.test(value)) return null;
   const time = Date.parse(value);
   if (!Number.isFinite(time)) return null;
@@ -585,7 +585,7 @@ const workflow = '.github/workflows/published-tree-ci.yml';
 const actorClass = actor => actor?.__typename === 'User' ? 'human'
   : actor?.__typename === 'Bot' && actor.id === 'BOT_kgDOFLVR4A' ? 'app' : 'unknown';
 
-async function githubRead(args, signal) {
+export async function githubRead(args, signal) {
   try {
     const result = await execute('gh', ['api', ...args], { signal, timeout: 30_000, maxBuffer: 16 * 1024 * 1024 });
     return JSON.parse(result.stdout);
@@ -642,7 +642,7 @@ function graphRepository(response) {
   return result;
 }
 
-async function graphRead(read, selection) {
+export async function graphRead(read, selection) {
   return graphRepository(await read(['graphql', '-f',
     `query=query{repository(owner:"openlup",name:"openlup"){nameWithOwner databaseId ${selection}}}`]));
 }
@@ -706,13 +706,13 @@ async function observeCurrentQueue(read, report) {
   return entries.sort((a, b) => a.position - b.position);
 }
 
-async function observeTimeline(read, pr, report) {
+export async function observeTimeline(read, pr, report, { includeSignature = false } = {}) {
   const rows = await graphPages({ read, report, label: `PR #${pr} timeline`, limit: 10, reverse: true, filtered: true,
     selection: cursor => `pullRequest(number:${pr}){number baseRefName
       timelineItems(last:100${cursor},itemTypes:[ADDED_TO_MERGE_QUEUE_EVENT,REMOVED_FROM_MERGE_QUEUE_EVENT,MERGED_EVENT]){
       totalCount pageInfo{hasPreviousPage startCursor} nodes{__typename
         ... on AddedToMergeQueueEvent{id createdAt actor{__typename ... on Bot{id}}}
-        ... on RemovedFromMergeQueueEvent{id createdAt reason beforeCommit{oid}}
+        ... on RemovedFromMergeQueueEvent{id createdAt reason beforeCommit{oid${includeSignature ? ' signature{isValid wasSignedByGitHub}' : ''}}}
         ... on MergedEvent{id createdAt mergeRefName commit{oid}}}}}`,
     field: result => result.pullRequest?.number === pr && result.pullRequest.baseRefName === 'main'
       ? result.pullRequest.timelineItems : null });
@@ -723,7 +723,12 @@ async function observeTimeline(read, pr, report) {
     if (row.__typename === 'AddedToMergeQueueEvent') {
       results.push({ ...event, kind: 'added', actor: actorClass(row.actor) });
     } else if (row.__typename === 'RemovedFromMergeQueueEvent') {
-      results.push({ ...event, kind: 'removed', reason: row.reason, beforeCommit: sha(row.beforeCommit?.oid) });
+      const removal = { ...event, kind: 'removed', reason: row.reason, beforeCommit: sha(row.beforeCommit?.oid) };
+      if (includeSignature) {
+        const signature = row.beforeCommit?.signature;
+        removal.githubSigned = signature?.isValid === true && signature.wasSignedByGitHub === true;
+      }
+      results.push(removal);
     } else if (row.__typename === 'MergedEvent') {
       if (!sha(row.commit?.oid) || !mainRef(row.mergeRefName)) report(`PR #${pr} exact main merge commit unavailable`);
       results.push({ ...event, kind: 'merged', head: sha(row.commit?.oid), mergeRef: mainRef(row.mergeRefName) ? 'refs/heads/main' : null });

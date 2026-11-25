@@ -138,5 +138,149 @@ export declare function destinationV2Capabilities(input: {
         capability: K;
     };
 };
+type UUID = string;
+type Digest = string;
+type UtcMillis = string;
+type JsonValue = null | boolean | number | string | JsonValue[] | {
+    [key: string]: JsonValue;
+};
+type NativeAddress = {
+    line1: string;
+    line2?: string;
+    city: string;
+    postalCode: string;
+    country: string;
+    subdivision?: string;
+};
+type OriginalAddress = Omit<NativeAddress, "country" | "subdivision"> & {
+    countryCode: string;
+    subdivisionCode?: string;
+};
+declare const contactKeys: readonly ["recipientName", "contactEmail", "contactPhone", "companyName", "label", "taxId", "deliveryNotes", "courierInstructions"];
+type Contact = {
+    [Key in typeof contactKeys[number]]?: string;
+};
+/** @experimental Host-authorized customer and checkout scope. */
+export type DestinationContextV2 = {
+    clientId: UUID;
+    scopeRef: UUID;
+    owner: {
+        installationRef: string;
+        principalKind: "customer";
+        principalRef: UUID;
+        customerOrSessionRef: UUID;
+    };
+};
+/** @experimental The binding sealed with destination evidence. */
+export type DestinationBindingV2 = {
+    snapshotRef: UUID;
+    schemaVersion: 2;
+    destinationDigest: Digest;
+    policyRevision: string;
+};
+/** @experimental A sealed checkout selection. */
+export type DestinationSelectionV2 = {
+    kind: "checkout";
+    scopeRef: UUID;
+    selectionRevision: UUID;
+};
+/** @experimental The service coordinates sealed with a checkout selection. */
+export type DestinationServicePinV2 = {
+    deliverySelectionRef: string;
+    providerRef: string;
+    carrierRef: string;
+    serviceRef: string;
+    servicePolicyRevision: string;
+    adapterRevision: string;
+};
+/** @experimental Issued or replayed destination evidence. */
+export type DestinationIssueResultV2 = {
+    binding: DestinationBindingV2;
+    selection: DestinationSelectionV2;
+    evidenceExpiresAt: UtcMillis;
+    eventId: UUID;
+    replayed: boolean;
+};
+/** @experimental Destination evidence verified by the native owner. Keep it server-side. */
+export type DestinationVerifiedReadV2 = {
+    binding: DestinationBindingV2;
+    documentDigest: Digest;
+    evidenceExpiresAt: UtcMillis;
+    document: DestinationBindingV2 & {
+        revision: 1;
+        owner: DestinationContextV2["owner"];
+        clientId: UUID;
+        policyRef: string;
+        classificationKeys: string[];
+        address: NativeAddress;
+        contact: Contact;
+    };
+};
+type Check = {
+    kind: "checkout";
+    scopeRef: UUID;
+    expectedSelectionRevision: UUID;
+    expectedBinding: DestinationBindingV2;
+    expectedService: DestinationServicePinV2;
+};
+type SnapshotCommand = {
+    dialect: "commerce.destination.snapshot.v2";
+    requestKey: string;
+    requestDigest: Digest;
+    purpose: "checkout";
+    scopeRef: UUID;
+    original: {
+        address: OriginalAddress;
+        contact: Contact;
+    };
+    validated?: JsonValue;
+};
+type Rechecked = {
+    binding: DestinationBindingV2;
+    selection: DestinationSelectionV2;
+    service: DestinationServicePinV2;
+};
+type Erased = {
+    evidenceDisposition: "erased";
+};
+/** @experimental Native operations on the host's supplied executor. */
+export interface DestinationPortV2 {
+    snapshot(ctx: DestinationContextV2, command: SnapshotCommand, now: UtcMillis): Promise<Decision<DestinationIssueResultV2 | Erased>>;
+    read(ctx: DestinationContextV2, kind: "snapshot" | "order" | "shipment", id: UUID, expectedBinding: DestinationBindingV2): Promise<Decision<DestinationVerifiedReadV2>>;
+    recheck(ctx: DestinationContextV2, check: Check): Promise<Decision<Rechecked>>;
+    registerOrder(ctx: DestinationContextV2, orderId: UUID, check: Check): Promise<Decision<DestinationBindingV2>>;
+}
+declare const refusalFields: {
+    readonly address_invalid_input: readonly ["command", "now", "requestKey", "requestDigest", "purpose", "scopeRef", "original", "original.address", "original.contact", ...("original.address.line1" | "original.address.line2" | "original.address.city" | "original.address.postalCode" | "original.address.subdivisionCode" | "original.address.countryCode" | "original.contact.recipientName" | "original.contact.contactEmail" | "original.contact.contactPhone" | "original.contact.courierInstructions" | "original.contact.deliveryNotes" | "original.contact.companyName" | "original.contact.taxId" | "original.contact.label")[], "validated", "validated.address", "validated.contact", "line1", "line2", "city", "postalCode", "countryCode", "subdivisionCode", "recipientName", "contactEmail", "contactPhone", "companyName", "label", "taxId", "deliveryNotes", "courierInstructions", "policyRef", "policyRevision", "classificationKeys", "orderId", "shipmentId"];
+    readonly destination_dialect_invalid: readonly ["version"];
+    readonly destination_owner_unlinked: readonly ["owner"];
+    readonly destination_evidence_unavailable: readonly ["destination.snapshotRef", "orderId", "shipmentId"];
+    readonly destination_evidence_erased: readonly ["owner"];
+    readonly destination_binding_invalid: readonly ["destination", "selectedDelivery", "orderBindings"];
+    readonly destination_digest_mismatch: readonly ["destinationDigest", "documentDigest"];
+    readonly destination_version_changed: readonly ["destination.policyRevision", "selectionRevision", "destination.snapshotRef", "destinationDigest"];
+    readonly destination_v2_selection_required: readonly ["destination.snapshotRef"];
+    readonly destination_order_binding_occupied: readonly ["orderId"];
+    readonly destination_busy: readonly ["orderId"];
+    readonly destination_idempotency_conflict: readonly ["idempotencyKey"];
+    readonly destination_isolation_unsupported: readonly ["isolation"];
+};
+type Refusal<Code, Field> = {
+    outcome: "refused";
+    code: Code;
+    field: Field;
+    observed: string;
+    cause: string;
+    fix: string;
+    recheck: string;
+};
+type OwnerRefusal = {
+    [Code in keyof typeof refusalFields]: Refusal<Code, typeof refusalFields[Code][number]>;
+}[keyof typeof refusalFields];
+type TransportField = "owner" | "command" | "destination" | "selectedDelivery" | "check";
+type TransportRefusal = Refusal<"address_invalid_input", TransportField>;
+type Decision<T> = T | OwnerRefusal | TransportRefusal;
+/** @experimental Use the supplied executor. The native host owns transaction and session lifetime. */
+export declare function createPostgresDestinationPortV2(db: DestinationQueryExecutor): DestinationPortV2;
 export {};
 ```

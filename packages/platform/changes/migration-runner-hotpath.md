@@ -1,0 +1,1 @@
+Eliminated a redundant full-catalog SQL read and SHA-256 hash pass in `platformRunner` (`readMigrations` + `readManifest`) and removed redundant re-locking and double `LEDGER_IDENTITY` probes on forward units already holding `SHARE ROW EXCLUSIVE` in `postgresRunner`.

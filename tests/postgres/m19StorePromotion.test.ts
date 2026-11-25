@@ -15,6 +15,7 @@ import {
   closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
   runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer,
 } from "../helpers/postgresContainer.js";
+import { packWorkspaceTarballs } from "../helpers/packWorkspaceTarball.js";
 
 const installation: QualifiedPostgresInstallation = {
   generation: "qualified-v2", roleMode: "installer-managed", bootstrapLogin: "postgres",
@@ -56,10 +57,11 @@ beforeAll(async () => {
   // cannot satisfy registry specs or transitive ranges during an offline install.
   const localDependencies = ["zod", "pg", "pg-connection-string", "pg-pool", "pg-protocol", "pg-types", "pg-int8",
     "postgres-array", "postgres-bytea", "postgres-date", "postgres-interval", "xtend", "pgpass", "split2", "@types/pg", "@types/node", "undici-types"];
-  const tarballs = ["packages/core", "packages/platform", ...localDependencies.map(name => `node_modules/${name}`)].map(directory => {
-    const result = JSON.parse(npm(["pack", "--json", "--ignore-scripts", "--pack-destination", scratch!], resolve(directory)));
-    return join(scratch!, result[0].filename);
-  });
+  const tarballs = await packWorkspaceTarballs(
+    ["packages/core", "packages/platform", ...localDependencies.map(name => `node_modules/${name}`)],
+    scratch!,
+    { env: isolatedConsumerEnv() },
+  );
   consumer = join(scratch, "consumer"); mkdirSync(consumer);
   writeFileSync(join(consumer, "package.json"), '{"type":"module","private":true}');
   npm(platformConsumerInstallArgs(tarballs), consumer);
