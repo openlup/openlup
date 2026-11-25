@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { act } from '../client/api.ts';
+import { market } from '../owned/market.config.ts';
 import type { ActionResult } from '../shared/api.ts';
 
 type Purchase = typeof import('../client/purchase.ts');
@@ -182,10 +183,13 @@ test('each answer class updates the record as the table says', async () => {
   const { key } = controller.dispatch();
   purchase.rememberPurchase(configuration, { orderRef: orderA, token: 'rcv_known' });
   assert.equal(controller.answer(key, { ok: true, value: pending() }).link, 'show', 'a token already known for that order keeps the link');
-  assert.match(purchase.continuationMessage('limited', 'en', 180_000), /\b3 min\b/);
-  assert.match(purchase.continuationMessage('starter_attempt_limited', 'pl', 180_000), /\b3 min\b/);
-  assert.match(purchase.continuationMessage('starter_attempt_limited', 'en', 60_001), /\b2 min\b/);
-  assert.doesNotMatch(purchase.continuationMessage('starter_attempt_limited', 'en', 180_000), /\{minutes\}/);
+  for (const locale of market.locales) {
+    for (const text of ['limited', 'starter_attempt_limited'] as const) {
+      assert.match(purchase.continuationMessage(text, locale, 180_000), /\b3 min\b/, `${text} (${locale})`);
+      assert.doesNotMatch(purchase.continuationMessage(text, locale, 180_000), /\{minutes\}/);
+    }
+    assert.match(purchase.continuationMessage('starter_attempt_limited', locale, 60_001), /\b2 min\b/);
+  }
 });
 
 test('none is final only after the browser gave up plus the bound', async () => {
