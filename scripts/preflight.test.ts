@@ -1,6 +1,6 @@
 import { execFileSync, spawn, spawnSync, type ChildProcess, type SpawnOptions, type SpawnSyncOptions } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { env as processEnvironment } from "node:process";
@@ -20,6 +20,7 @@ import {
 import {
   assertCarrierBuildOutputs, assertCarrierToolchain, assertLockedInstall, carrierPlan, readReportOwners, runUnselectedBuild,
 } from "./agent-review-landing.mjs";
+import { MATURITY_REFERENCE, generatedCarrier, ownerOutputCarrier, syncMaturityReference } from "./agent-review-generators.mjs";
 import { localFixtureEnvironment } from "./fixtures/landing-test-environment.ts";
 
 type FakeSpawnResult = { status: number | null; stdout?: string; stderr?: string; error?: NodeJS.ErrnoException };
@@ -150,6 +151,48 @@ it.each([
   expect(plan.builds.map(({ name }) => name)).toEqual(builds.map(name => `@openlup/${name}`));
   expect(plan.reports.map(({ name }) => name)).toEqual(reports.map(name => `@openlup/${name}`));
   expect(plan.settings).toBe(settings);
+});
+
+it.each([
+  { path: "packages/core/docs/guide/reference/maturity.md", maturity: true },
+  { path: "packages/platform/api/portability.api.md", maturity: true },
+  { path: "packages/outbox/api/index.api.md", maturity: true },
+  { path: "packages/core/scripts/documentation-contract.ts", maturity: true },
+  { path: "packages/core/release-gates.json", maturity: true },
+  { path: "README.md", maturity: false },
+  { path: "packages/platform/settings-catalog.json", maturity: false },
+  { path: "packages/core/docs/guide/how-to/operate/settings-catalogue.md", maturity: false },
+])("refreshes the maturity reference when $path changes: $maturity", ({ path, maturity }) => {
+  expect(carrierPlan(readReportOwners(process.cwd()), [path]).maturity).toBe(maturity);
+});
+
+it("registers the maturity reference as a derived output that its owner reproduces byte for byte", () => {
+  expect(MATURITY_REFERENCE).toBe("packages/core/docs/guide/reference/maturity.md");
+  expect(generatedCarrier(MATURITY_REFERENCE)).toBe(true);
+  expect(ownerOutputCarrier(MATURITY_REFERENCE)).toBe(true);
+  // The committed page equals what the registered owner regenerates from the committed reports.
+  expect(syncMaturityReference(process.cwd())).toBe(readFileSync(join(process.cwd(), MATURITY_REFERENCE), "utf8"));
+  const stale = readFileSync(join(process.cwd(), MATURITY_REFERENCE), "utf8").replace(/(<!-- generated:maturity-symbols:core -->\n)[^\n]*\n/u, "$1stale\n");
+  const root = mkdtempSync(join(tmpdir(), "maturity-reference-"));
+  try {
+    for (const path of ["packages/core/release-gates.json", "packages/outbox/release-gates.json", "packages/platform/release-gates.json"]) {
+      mkdirSync(join(root, path, ".."), { recursive: true });
+      writeFileSync(join(root, path), readFileSync(join(process.cwd(), path)));
+    }
+    // A stale region in a candidate tree is rewritten from that tree's reports, by the owner of the running tree.
+    for (const dir of ["packages/core/api", "packages/outbox/api", "packages/platform/api"]) {
+      cpSync(join(process.cwd(), dir), join(root, dir), { recursive: true });
+    }
+    for (const path of ["packages/core/package.json", "packages/core/scripts", "packages/ui/smoke"]) {
+      cpSync(join(process.cwd(), path), join(root, path), { recursive: true });
+    }
+    mkdirSync(join(root, "packages/core/docs/guide/reference"), { recursive: true });
+    writeFileSync(join(root, MATURITY_REFERENCE), stale);
+    expect(syncMaturityReference(root, process.cwd())).toBe(readFileSync(join(process.cwd(), MATURITY_REFERENCE), "utf8"));
+    // A conflict marker outside a region is authored work, which the owner refuses to overwrite.
+    writeFileSync(join(root, MATURITY_REFERENCE), `<<<<<<< ours\n${stale}=======\ntheirs\n>>>>>>> theirs\n`);
+    expect(() => syncMaturityReference(root, process.cwd())).toThrow(`landing: authored conflicts remain: ${MATURITY_REFERENCE}`);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 describe("fast preflight", () => {

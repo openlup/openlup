@@ -1,4 +1,6 @@
-// Frozen static query smoke matrix, 2026-10-29. This is not an agent-outcome benchmark.
+// Frozen static query smoke matrix, 2026-10-29, plus one per-symbol maturity row. This is not an agent-outcome benchmark.
+// The maturity row is the one deliberate exception to a frozen matrix: it names no symbol in advance. It takes the first
+// symbol declared experimental inside a stable subpath of the installed core, so promoting a symbol never breaks the matrix.
 // Usage: node scripts/agent-context/evaluate.mjs /absolute/cold-consumer-root
 // Reads installed artifacts only. No writes, network, package installation or dependencies.
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
@@ -18,6 +20,7 @@ const tasks = Object.freeze([
   { id: 'catalogue-refusal-fix', query: 'catalogue refusal code fix', direct: 'Catalogue refusal code fixes', target: '^## Catalogue refusal code fixes(?:\\n|$)', guide: 'reference/refusal-codes.md' },
   { id: 'polish-with-symbol', query: 'Gdzie jest nextRetryAttemptAt i retry?', direct: 'nextRetryAttemptAt|retry', target: 'nextRetryAttemptAt' },
   { id: 'polish-freeform', query: 'Czy opóźniona dostawa przesuwa kolejny cykl wcześniej?', direct: 'opóźniona|dostawa|wcześniej', target: 'monotonic|late.payment|late.delivery', exploratory: true },
+  { id: 'symbol-maturity', maturity: 'experimental' },
   { id: 'no-match-not-absence', query: 'quantumBananaSeam', direct: 'quantumBananaSeam', absent: true },
 ]);
 
@@ -27,8 +30,44 @@ const scope = join(root, 'node_modules/@openlup');
 for (const name of ['core', 'outbox', 'platform']) {
   if (!existsSync(join(scope, name, 'package.json'))) throw new Error(`The frozen matrix requires the selected ${name} artifact; use a full-set consumer`);
 }
+// Walks each stable subpath's entry file and the files it re-exports with `export *`; a declaration written at the start
+// of a line in those files is exported by the subpath. Returns undefined when the installed core has no such symbol.
+function experimentalInStableSubpath() {
+  const core = join(scope, 'core');
+  const surface = JSON.parse(readFileSync(join(core, 'release-gates.json'), 'utf8')).packageSurface;
+  const declaration = /\/\*\*((?:(?!\*\/)[\s\S])*?)\*\/\s*\nexport declare (?:function|const|class|interface|type|enum|namespace) ([A-Za-z_$][\w$]*)/gu;
+  for (const subpath of Object.keys(surface).sort()) {
+    if (surface[subpath].maturity !== 'stable' || typeof surface[subpath].entrypoint !== 'string') continue;
+    const queue = [join(core, surface[subpath].entrypoint)];
+    const seen = new Set();
+    while (queue.length) {
+      const file = queue.shift();
+      if (seen.has(file) || !existsSync(file)) continue;
+      seen.add(file);
+      const text = readFileSync(file, 'utf8');
+      for (const match of text.matchAll(declaration)) {
+        if (/(?:^|\s)@experimental(?![\w$-])/u.test(match[1])) return { subpath, symbol: match[2] };
+      }
+      for (const match of text.matchAll(/^export (?:type )?\* from ["'](\.[^"']+)["']/gmu)) {
+        queue.push(resolve(file, '..', match[1].replace(/\.js$/u, '.d.ts')));
+      }
+    }
+  }
+}
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\/]/gu, '\\$&');
+
 const results = [];
-for (const task of tasks) {
+for (const row of tasks) {
+  let task = row;
+  if (row.maturity) {
+    const found = experimentalInStableSubpath();
+    if (!found) {
+      results.push({ id: row.id, query: null, exploratory: false, pass: true, skipped: 'the installed core declares no experimental symbol inside a stable subpath' });
+      continue;
+    }
+    // The target matches the package.json line that an export hit for the subpath cites.
+    task = { ...row, query: found.symbol, direct: found.symbol, target: `"${escapeRegExp(found.subpath)}"`, packageName: '@openlup/core', subpath: found.subpath };
+  }
   const start = performance.now();
   const run = spawnSync(process.execPath, [cli, 'search', task.query, '--json'], { cwd: root, encoding: 'utf8', maxBuffer: 8_000_000 });
   const cliMs = performance.now() - start;
@@ -60,9 +99,11 @@ for (const task of tasks) {
     const heading = /^\d+:(.*)$/u.exec(line.slice(prefix.length))?.[1];
     return heading !== undefined && target.test(heading);
   }).length : 0;
+  // Some declared public export hit for the symbol reports the declared maturity.
+  const maturityHit = task.maturity && output.hits.find((hit) => hit.reason === 'declared public export' && hit.title.endsWith(`(${task.query})`) && hit.maturity === task.maturity);
   const pass = readable && (task.absent ? output.hits.length === 0 : relevant > 0)
-    && (!guide || directRelevant > 0);
-  results.push({ id: task.id, query: task.query, exploratory: task.exploratory ?? false, pass, cli: { ms: +cliMs.toFixed(2), hits: output.hits.length, readable, targetHitFraction: `${relevant}/${output.hits.length}`, citations: output.hits.map(({file,start,end}) => `${file}:${start}-${end}`) }, direct: { ms: +directMs.toFixed(2), matchingLines: directLines.length, firstEightTargetFraction: `${directRelevant}/${topDirect.length}`, expression: task.direct } });
+    && (!guide || directRelevant > 0) && (!task.maturity || Boolean(maturityHit));
+  results.push({ id: task.id, query: task.query, exploratory: task.exploratory ?? false, pass, ...(task.maturity ? { maturity: { subpath: task.subpath, expected: task.maturity, reported: output.hits.find((hit) => hit.reason === 'declared public export' && hit.title.endsWith(`(${task.query})`))?.maturity ?? null } } : {}), cli: { ms: +cliMs.toFixed(2), hits: output.hits.length, readable, targetHitFraction: `${relevant}/${output.hits.length}`, citations: output.hits.map(({file,start,end}) => `${file}:${start}-${end}`) }, direct: { ms: +directMs.toFixed(2), matchingLines: directLines.length, firstEightTargetFraction: `${directRelevant}/${topDirect.length}`, expression: task.direct } });
 }
 console.log(JSON.stringify({ root, node: process.version, limits: ['Static source-target smoke checks; no agent completion/correctness claim.', 'One cold process per CLI query; OS caches are uncontrolled, one sample only.', 'rg uses frozen human-selected expressions and all packed Markdown/declarations; CLI selects its own narrower corpus.', 'Target-hit fractions measure textual relevance, not semantic precision or invariant comprehension.', 'Freeform Polish is exploratory; no translation capability is assumed.', 'An empty result proves no indexed match, never absence of a public seam.'], results }, null, 2));
 if (results.some((result) => !result.exploratory && !result.pass)) process.exitCode = 1;
