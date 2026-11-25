@@ -1018,8 +1018,9 @@ If an apply or its readback fails, follow the commands in the report to verify
 committed prices read-only, then review any remaining change. For example, if
 you used `--configuration coffee`, run `npm run catalogue:apply -- --configuration coffee`
 to verify, then `npm run catalogue:apply -- --configuration coffee --reprice` to
-start a fresh review. Keep any other flags from the original invocation. A
-receipt marked “committed; figure not verified” needs this readback.
+start a fresh review. Keep any other flags from the original invocation. For
+machine-readable output, keep `--silent` on npm and `--json` after `--`. A receipt
+marked “committed; figure not verified” needs this readback.
 
 ### Publish a saved catalogue draft
 

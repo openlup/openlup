@@ -170,8 +170,10 @@ if (command === 'refusals') {
       const observations = report.receipts.map(receipt => JSON.stringify(receipt) + '\n').join('');
       process.stdout.write(observations, error => error ? fail(error) : done());
     });
-    for (const finding of report.findings)
-      process.stderr.write(`${finding.code}\nObserved: ${safePrompt(finding.observed)}\nCause: ${finding.cause}\nFix: ${finding.fix}\nRecheck: ${finding.recheck}\n`);
+    for (const finding of report.findings) {
+      const subject = finding.subject === undefined ? '' : `Subject: ${safePrompt(String(finding.subject))}\n`;
+      process.stderr.write(`${finding.code}\n${subject}Observed: ${safePrompt(finding.observed)}\nCause: ${finding.cause}\nFix: ${finding.fix}\nRecheck: ${finding.recheck}\n`);
+    }
   }
 } else if (command === 'up') {
   let configuration = '', packs = [], stage = '/arguments';
@@ -375,7 +377,8 @@ async function catalogueApply(argv) {
     const sharedFlags = options.filter(option => option !== mode);
     const config = ownedConfiguration(await import('./owned/store.config.ts'), lifecycleOptions(sharedFlags));
     (await import('./shared/config.ts')).assertConfig(config);
-    const applyCommand = flags => ['npm run catalogue:apply', ...(flags.length ? ['--', ...flags.map(flag =>
+    const npmApply = process.env.npm_config_loglevel === 'silent' ? 'npm run --silent catalogue:apply' : 'npm run catalogue:apply';
+    const applyCommand = flags => [npmApply, ...(flags.length ? ['--', ...flags.map(flag =>
       /^[a-z0-9_-]+$/iu.test(flag) ? flag : "'" + flag.replaceAll("'", "'\\''") + "'")] : [])].join(' ');
     freshReprice = applyCommand(mode === '--reprice' ? options : [...sharedFlags, '--reprice']);
     recovery = repriceRecovery(applyCommand(sharedFlags), freshReprice);
@@ -430,15 +433,15 @@ async function catalogueApply(argv) {
     makeStage('activation', activation, null);
     if (!process.stdin.isTTY || !process.stderr.isTTY) deny('OPENLUP_E_CATALOGUE_TERMINAL_REQUIRED', { path: '/terminal' });
     const origin = config.publicOrigin ?? 'http://127.0.0.1:4319';
-    let cookie, expiresAt, operator;
-    async function request(operation, body, key = hash([operation, body]), authenticated = false, sku) {
+    let cookie, expiresAt, operator, actorChanged;
+    async function request(operation, body, key = hash([operation, body]), sessionCookie, sku) {
       const unavailableCodes = ['host_binding_required', 'starter_dependency_unavailable', 'starter_operation_unknown',
         'price_setup_dependency_unavailable', 'store_unavailable'];
       let response, result;
       try {
         response = await fetch(new URL(`/api/actions/${operation}`, origin), { method: 'POST', redirect: 'error',
           headers: { Origin: origin, 'X-Starter-Request': '1', 'Content-Type': 'application/json', 'Idempotency-Key': key,
-            ...(authenticated && cookie ? { Cookie: cookie } : {}) }, body: JSON.stringify(body) });
+            ...(sessionCookie ? { Cookie: sessionCookie } : {}) }, body: JSON.stringify(body) });
         result = await response.json();
       } catch (error) { deny(unavailable, { subject: sku }, error); }
       if (result?.ok === true && response.ok) return { value: result.value, cookie: response.headers.get('set-cookie') };
@@ -474,27 +477,29 @@ async function catalogueApply(argv) {
     async function signIn() {
       const priorPath = path;
       path = 'auth.operator';
-      cookie = undefined;
       const email = await ask(`Invited operator email (configured currency ${config.market.currency}): `);
       await request('auth.operator', { email }, hash(['challenge', Date.now()]));
       process.stderr.write(`${operatorChallengeGuidance}\nRead the matching message in the private demo mailbox.\n`);
       const token = await ask('Operator token (hidden): ', true);
       const login = await request('auth.operator', { token }, hash(['redeem', Date.now()]));
-      cookie = login.cookie?.split(';', 1)[0];
-      expiresAt = Date.parse(login.value?.expiresAt);
-      if (!/^starter_session=[A-Za-z0-9_-]{43}$/u.test(cookie ?? '') || !Number.isFinite(expiresAt)) deny(unavailable);
+      const nextCookie = login.cookie?.split(';', 1)[0];
+      const nextExpiry = Date.parse(login.value?.expiresAt);
+      if (!/^starter_session=[A-Za-z0-9_-]{43}$/u.test(nextCookie ?? '') || !Number.isFinite(nextExpiry)) deny(unavailable);
       path = 'price-target';
-      const { value } = await request('operator.catalogPublication', { action: 'price-target' }, undefined, true);
-      if (operator && mode === '--reprice' && (operator.actorId !== value.actorId || operator.priceListId !== value.priceListId))
+      const { value } = await request('operator.catalogPublication', { action: 'price-target' }, undefined, nextCookie);
+      actorChanged = operator && operator.actorId !== value.actorId;
+      if (operator && mode === '--reprice' && (actorChanged || operator.priceListId !== value.priceListId))
         deny('starter_catalogue_reprice_review_required');
-      if (operator && operator.actorId !== value.actorId) deny('publisher_not_authorized');
+      if (actorChanged) deny('publisher_not_authorized');
       if (operator && mode !== '--reprice' && !same(operator, value)) deny('starter_catalogue_d2c_policy_required');
       operator ??= value;
+      cookie = nextCookie;
+      expiresAt = nextExpiry;
       path = priorPath;
     }
     async function action(operation, body, key, sku) {
       if (Date.now() >= expiresAt) await signIn();
-      return (await request(operation, body, key, true, sku)).value;
+      return (await request(operation, body, key, cookie, sku)).value;
     }
     const publish = (body, key, sku) => action('operator.catalogPublication', body, key, sku);
     const drafts = (body, key) => action('operator.catalogDrafts', body, key);
@@ -607,9 +612,12 @@ async function catalogueApply(argv) {
         deny('expected_state_mismatch', { subject: code });
       return priceSetup.current;
     }
-    function remapPriceMismatch(error, code, subject) {
-      if (error.finding?.code !== 'expected_state_mismatch') throw error;
-      deny(code, { subject, reason: error.finding.reason ?? error.finding.code, issues: error.finding.issues });
+    function amountPreviewRefusal(error, subject) {
+      const reason = error.finding?.code;
+      const code = reason === 'price_list_not_active' ? 'starter_catalogue_reprice_review_required'
+        : reason === 'expected_state_mismatch' ? 'starter_catalogue_price_scheduled' : undefined;
+      if (!code) throw error;
+      deny(code, { subject, reason: error.finding.reason ?? reason, issues: error.finding.issues });
     }
     function subscriptionFigure(subscription) {
       if (subscription?.kind === 'derived' && subscription.revisionId && subscription.derivedUnitPriceMinor > 0)
@@ -624,7 +632,7 @@ async function catalogueApply(argv) {
           if (reviewed.currentCount > 1) deny('base_price_ambiguous', { subject: code });
           if (mode === '--reprice' && reviewed.current?.unitPriceMinor !== declared) {
             const proposed = await pricePreview(skuId, code, declared)
-              .catch(error => remapPriceMismatch(error, 'starter_catalogue_price_scheduled', code));
+              .catch(error => amountPreviewRefusal(error, code));
             reviewed = reviewPreview(proposed, code);
           }
           const { current, subscription } = reviewed;
@@ -644,7 +652,7 @@ async function catalogueApply(argv) {
           changes.push({ code, skuId, from: { entryId, unitPriceMinor }, to: { unitPriceMinor: declared },
             subscriptionEstimate: { from: estimate(unitPriceMinor), to: estimate(declared) } });
         } catch (error) {
-          if (mode) throw error;
+          if (mode || actorChanged) throw error;
           refusals.push(refusalFinding(error, code));
         }
       }

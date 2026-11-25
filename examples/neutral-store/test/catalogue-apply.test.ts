@@ -82,7 +82,7 @@ type Options = { declaration?: unknown; args?: string[]; noTerminal?: boolean; m
   failAt?: number; refusal?: Partial<Finding>; failRetry?: boolean; state?: State; actor?: string; approveAfter?: Options;
   pending?: readonly string[]; pendingAfterReview?: string; pendingOnAmount?: string; refreshBeforeApply?: boolean;
   ambiguous?: string[]; ineligible?: string[]; stale?: string; rolledPolicy?: boolean; loseRepriceReply?: boolean;
-  configurationId?: string; listSwitched?: boolean;
+  configurationId?: string; listSwitched?: boolean; expireAfterPreview?: string; textOutput?: boolean;
   stopSecond?: 'policy' | 'expired' | 'zero-old' | 'derived-zero' | 'list';
   refresh?: 'same' | 'actor' | 'list'; readback?: 'list' | 'missing' | 'entry' | 'amount' | 'figure' | 'policy' | 'pending' };
 type Observation = { trace: string[]; state: State; retry: { key: string; body: unknown }[];
@@ -172,9 +172,9 @@ if (env[workerFlag] === '1') {
       refreshed = ++signIns > 1;
       const expiresAt = options.refresh || options.stopSecond === 'expired'
         ? new Date(now + 1000).toISOString() : '2099-01-01T00:00:00Z';
-      return response({ expiresAt }, { 'Set-Cookie': 'starter_session=' + 'x'.repeat(43) });
+      return response({ expiresAt }, { 'Set-Cookie': 'starter_session=' + (refreshed ? 'y' : 'x').repeat(43) });
     }
-    assert.equal(new Headers(init?.headers).get('cookie'), 'starter_session=' + 'x'.repeat(43));
+    assert.equal(new Headers(init?.headers).get('cookie'), 'starter_session=' + (refreshed ? 'y' : 'x').repeat(43));
     switch (action) {
       case 'price-target': return response({
         actorId: refreshed && options.refresh === 'actor' ? alternate : actor,
@@ -239,6 +239,7 @@ if (env[workerFlag] === '1') {
         if (readback === 'missing') current = null;
         const derivedUnitPriceMinor = current && readback !== 'figure'
           ? deriveSubscriptionUnitPrice(current.unitPriceMinor, effectivePolicy) : null;
+        if (options.expireAfterPreview === skuCode) now += 1000;
         return response({ listEffective: !options.listSwitched && readback !== 'list', currency, priceSetup: {
           inGate: (state.head?.revision ?? 0) >= 2 && !options.ineligible?.includes(skuCode),
           current, currentCount: ambiguous ? 2 : Number(!!current),
@@ -280,14 +281,17 @@ if (env[workerFlag] === '1') {
   };
 }
 
-function invoke(options: Options = {}): Output {
-  const result = spawnSync(process.execPath,
-    ['--import', fileURLToPath(import.meta.url), 'lifecycle.mjs', 'catalogue', 'apply', '--json', ...options.args ?? []],
-    { cwd: root, env: { ...env, [workerFlag]: '1' }, input: JSON.stringify(options), encoding: 'utf8' });
+function invoke(options: Options = {}, npmArgs?: string[]): Output {
+  const preload = '--import=' + import.meta.url;
+  const result = spawnSync(npmArgs ? 'npm' : process.execPath,
+    npmArgs ?? [preload, 'lifecycle.mjs', 'catalogue', 'apply', ...(options.textOutput ? [] : ['--json']), ...options.args ?? []],
+    { cwd: root, env: { ...env, npm_config_loglevel: undefined, [workerFlag]: '1',
+      ...(npmArgs && { npm_config_node_options: preload }) }, input: JSON.stringify(options), encoding: 'utf8' });
   assert.ifError(result.error);
   assert.ok(result.stderr.includes('\nfixture: '), result.stderr);
   const observation: Observation = JSON.parse(result.stderr.split('\nfixture: ').at(-1)!);
-  const report = JSON.parse(result.stdout);
+  const report = options.textOutput ? { exitCode: result.status, findings: [],
+    receipts: result.stdout.trim().split('\n').filter(Boolean).map(line => JSON.parse(line)) } : JSON.parse(result.stdout);
   assert.equal(result.status, report.exitCode);
   assert.ok(!result.stderr.includes('fixture-token'));
   return { ...observation, report, status: result.status!, stderr: result.stderr };
@@ -791,17 +795,65 @@ if (!env[workerFlag]) {
     }
   });
 
-  test('reprice recovery carries the original configuration and output flags', { skip: nestedSkip }, () => {
+  test('amount preview list refusal asks for a fresh reprice with the original flags', { skip: nestedSkip }, () => {
     const args = ['--configuration', 'coffee'];
     const configurationId = 'coffee';
     const initial = invoke({ args, configurationId });
     complete(initial);
-    const result = invoke({ args: [...args, '--reprice'], configurationId, state: initial.state,
-      declaration: replacement, loseRepriceReply: true });
+    const result = invoke({ args: [...args, '--reprice'], configurationId, state: initial.state, declaration: replacement,
+      failAt: observed.indexOf('price-preview:FIRST') + 2, refusal: { code: 'price_list_not_active' } });
+    const row = finding(result, 'starter_catalogue_reprice_review_required', /Start a fresh --reprice/u);
+    assert.match(row.fix, /npm run catalogue:apply -- --json --configuration coffee --reprice/u);
+    assert.doesNotMatch(row.fix, /restore.*list/iu);
+    assert.equal(row.reason, 'price_list_not_active');
+    assert.equal(result.trace.at(-1), 'price-preview:FIRST:amount');
+    assert.deepEqual(result.prompts, []);
+    noWrites(result, initial.state);
+  });
+
+  test('default stops reading SKUs when the refreshed session has a different administrator', { skip: nestedSkip }, () => {
+    const declaration = { ...authored, product: { ...authored.product, skus: [...authored.product.skus, sku('THIRD', 206)] },
+      basePrices: { ...authored.basePrices, THIRD: 3500 } };
+    const initial = invoke({ declaration });
+    complete(initial);
+    const result = invoke({ declaration, state: initial.state, refresh: 'actor', expireAfterPreview: 'FIRST' });
+    finding(result, 'publisher_not_authorized', /original issuing administrator/u);
+    assert.deepEqual(result.trace, [...observed.slice(0, -1), 'email', 'challenge', 'token', 'redeem', 'price-target']);
+    assert.deepEqual(result.report.receipts.flatMap(row => row.prices).map(({ entryId }) => entryId), [price(initial.state).entryId]);
+    noWrites(result, initial.state);
+  });
+
+  test('terminal refusals identify each SKU using the JSON subjects', { skip: nestedSkip }, () => {
+    const initial = invoke();
+    complete(initial);
+    const options = { state: initial.state, pending: ['FIRST'], ambiguous: ['SECOND'] };
+    const jsonResult = invoke(options);
+    const terminal = invoke({ ...options, textOutput: true });
+    assert.equal(terminal.status, 2);
+    assert.deepEqual(terminal.report.receipts, jsonResult.report.receipts);
+    const printed = [...terminal.stderr.matchAll(/^(starter_catalogue_price_scheduled|base_price_ambiguous)\nSubject: (\S+)$/gmu)];
+    assert.deepEqual(printed.map(([, code, subject]) => [code, subject]),
+      jsonResult.report.findings.map(({ code, subject }) => [code, subject]));
+  });
+
+  test('reprice recovery preserves silent npm output and the original catalogue flags', { skip: nestedSkip }, () => {
+    const args = ['--configuration', 'coffee'];
+    const configurationId = 'coffee';
+    const initial = invoke({ args, configurationId });
+    complete(initial);
+    const options = { configurationId, state: initial.state, declaration: replacement, loseRepriceReply: true };
+    const ordinary = invoke({ ...options, args: [...args, '--reprice'] });
+    const ordinaryRow = finding(ordinary, 'OPENLUP_E_CATALOGUE_APPLY_UNAVAILABLE', /verify committed prices read-only/u);
+    assert.match(ordinaryRow.fix, /npm run catalogue:apply -- --json --configuration coffee to verify/u);
+    assert.match(ordinaryRow.fix, /npm run catalogue:apply -- --json --configuration coffee --reprice to review/u);
+    const npmReprice = ['run', '--silent', 'catalogue:apply', '--', '--json', ...args, '--reprice'];
+    const result = invoke(options, npmReprice);
     const row = finding(result, 'OPENLUP_E_CATALOGUE_APPLY_UNAVAILABLE', /verify committed prices read-only/u);
-    assert.match(row.fix, /npm run catalogue:apply -- --json --configuration coffee to verify/u);
-    assert.match(row.fix, /npm run catalogue:apply -- --json --configuration coffee --reprice to review/u);
-    const verified = invoke({ args, configurationId, state: result.state, declaration: replacement });
+    const [verify, review] = [...row.fix.matchAll(/npm (run --silent catalogue:apply -- --json --configuration coffee(?: --reprice)?)/gu)]
+      .map(([, command]) => command);
+    assert.equal(verify, npmReprice.slice(0, -1).join(' '));
+    assert.equal(review, npmReprice.join(' '));
+    const verified = invoke({ configurationId, state: result.state, declaration: replacement }, verify!.split(' '));
     complete(verified);
     noWrites(verified, result.state);
   });
