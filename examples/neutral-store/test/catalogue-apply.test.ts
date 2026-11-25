@@ -338,7 +338,7 @@ if (!env[workerFlag]) {
       [{ declaration: media('/media/missing-proof.svg') }, 'starter_catalogue_media_invalid', /match the filename case/u, []],
       [{ declaration: media('/media/light.svg'), mediaIoError: true },
         'catalog_publication_media_validation_unavailable', /Check the starter.s local media directory/u, []],
-      [{ noTerminal: true }, 'OPENLUP_E_CATALOGUE_TERMINAL_REQUIRED', /interactive terminal/u, []],
+      [{ noTerminal: true }, 'OPENLUP_E_CATALOGUE_TERMINAL_REQUIRED', /type approve only if you intend it/u, []],
       [{ closeAt: 'email' }, 'starter_catalogue_sign_in_incomplete', /complete operator sign-in/u, ordered.slice(0, 2)],
       [{ closeAt: 'token' }, 'starter_catalogue_sign_in_incomplete', /complete operator sign-in/u, ordered.slice(0, 4)],
       [{ declineAt: 1 }, 'OPENLUP_E_CATALOGUE_CONFIRMATION_INVALID', /type approve only if you intend it/u, ordered.slice(0, 11)],
