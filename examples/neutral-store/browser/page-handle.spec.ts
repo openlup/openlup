@@ -200,6 +200,35 @@ for (const [name, markup] of lockedPages) {
   });
 }
 
+// Locked viewports whose anchors are already on screen: an off-canvas drawer that widens the page, and a scroll lock.
+const drawer = (lock: string) => `<!doctype html><html style="${lock === 'html' ? 'overflow-x: hidden' : ''}"><body style="margin: 0; position: relative; ${lock === 'body' ? 'overflow-x: hidden' : ''}">
+  <header style="position: relative; height: 60px">
+    <a data-openlup-action="case_drawer_cart" style="position: absolute; left: 730px; top: 10px; width: 60px; height: 40px; background: #ddd">Cart</a>
+  </header>
+  <nav style="position: absolute; left: 100%; top: 0; width: 300px; height: 400px; background: #eee">Menu</nav>
+  <div style="height: 3000px"></div>
+</body></html>`;
+const inViewLocked = [
+  ['an off-canvas drawer under html overflow-x: hidden', drawer('html'), 'case_drawer_cart', { width: 60, height: 40 }],
+  ['an off-canvas drawer under body overflow-x: hidden', drawer('body'), 'case_drawer_cart', { width: 60, height: 40 }],
+  ['a body scroll lock', `<!doctype html><html><body style="margin: 0; overflow: hidden">
+    <div style="height: 500px"></div><div data-openlup-action="case_locked_in_view" style="width: 120px; height: 40px; background: #ddd"></div><div style="height: 3000px"></div>
+  </body></html>`, 'case_locked_in_view', { width: 120, height: 40 }],
+] as const;
+
+for (const [name, markup, value, size] of inViewLocked) {
+  test(`page handle: an anchor already on screen stays reachable and nothing moves, under ${name}`, async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 600 });
+    await page.setContent(markup);
+    const handle = createPageHandle(page);
+    const scroll = () => page.evaluate(() => [window.scrollX, window.scrollY]);
+    expect(await handle.find({ attribute: 'action', value }, { timeoutMs: 1_000 })).toEqual({ ...size, ...visible });
+    expect(await scroll()).toEqual([0, 0]);
+    expect(await handle.anchors()).toEqual([`action:${value}`]);
+    expect(await scroll()).toEqual([0, 0]);
+  });
+}
+
 test('page handle: a withheld create reaches the server, the page sees a failure, and settling waits for it', async ({ page }) => {
   const handle = createPageHandle(page, { origin });
   await handle.navigate('/purchase');

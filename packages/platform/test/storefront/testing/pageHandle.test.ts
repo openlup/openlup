@@ -313,7 +313,7 @@ describe("createPageHandle over a recording page (H1)", () => {
  * overflow ancestor in the containing-block chain; an element without a box
  * measures 0 × 0. `scrollTo` calls are logged with their behaviour.
  */
-function fakeDocument(styles: { root?: Record<string, string>; body?: Record<string, string> } = {}) {
+function fakeDocument(styles: { root?: Record<string, string>; body?: Record<string, string>; pageWidth?: number } = {}) {
   type Box = { left: number; top: number; width: number; height: number };
   type ScrollOptions = { left?: number; top?: number; behavior?: string };
   type FakeElement = {
@@ -365,10 +365,10 @@ function fakeDocument(styles: { root?: Record<string, string>; body?: Record<str
         .at(-1) ?? null;
     },
   };
-  const element = (box: Box, options: { parent?: FakeElement; style?: Record<string, string>; attributes?: Record<string, string>; scrollHeight?: number; clientHeight?: number } = {}): FakeElement => {
+  const element = (box: Box, options: { parent?: FakeElement; style?: Record<string, string>; attributes?: Record<string, string>; scrollHeight?: number; scrollWidth?: number; clientHeight?: number } = {}): FakeElement => {
     const created: FakeElement = {
       nodeType: 1, style: options.style ?? {}, attributes: options.attributes ?? {}, parentElement: options.parent ?? null, ownerDocument: document, box,
-      scrollTop: 0, scrollLeft: 0, scrollHeight: options.scrollHeight ?? box.height, scrollWidth: box.width,
+      scrollTop: 0, scrollLeft: 0, scrollHeight: options.scrollHeight ?? box.height, scrollWidth: options.scrollWidth ?? box.width,
       clientLeft: 0, clientTop: 0, clientWidth: box.width, clientHeight: options.clientHeight ?? box.height,
       getAttribute: (name) => created.attributes[name] ?? null,
       hasAttribute: (name) => Object.hasOwn(created.attributes, name),
@@ -386,6 +386,7 @@ function fakeDocument(styles: { root?: Record<string, string>; body?: Record<str
           centre -= node.scrollTop;
         }
         view.scrollY = Math.max(0, Math.min(3000 - view.innerHeight, centre - view.innerHeight / 2));
+        view.scrollX = Math.max(0, Math.min(root.scrollWidth - view.innerWidth, box.left + box.width / 2 - view.innerWidth / 2));
       },
       scrollTo(options: ScrollOptions) {
         scrolls.push(`element ${options.behavior ?? "auto"}`);
@@ -395,7 +396,7 @@ function fakeDocument(styles: { root?: Record<string, string>; body?: Record<str
     all.push(created);
     return created;
   };
-  const root = element({ left: 0, top: 0, width: 400, height: 3000 }, { style: styles.root ?? { overflowX: "hidden", overflowY: "auto", overflow: "hidden auto" }, scrollHeight: 3000, clientHeight: 300 });
+  const root = element({ left: 0, top: 0, width: 400, height: 3000 }, { style: styles.root ?? { overflowX: "hidden", overflowY: "auto", overflow: "hidden auto" }, scrollHeight: 3000, scrollWidth: styles.pageWidth ?? 400, clientHeight: 300 });
   const body = element({ left: 0, top: 0, width: 400, height: 3000 }, { parent: root, style: styles.body ?? {} });
   document.documentElement = root; document.scrollingElement = root; document.body = body;
   return { view, element, body, scrolls };
@@ -493,6 +494,18 @@ describe("the visibility function is self-contained (H3)", () => {
     const belowFold = element({ left: 10, top: 2500, width: 120, height: 40 }, { parent: body });
     expect(rebuilt([belowFold as unknown as Element], [])).toEqual([{ ...shown, insideScrollArea: reachable }]);
     expect([view.scrollX, view.scrollY], "the window scroll position is restored").toEqual([0, 0]);
+  });
+
+  it.each([
+    ["an off-canvas drawer widening the page under the root's overflow-x: hidden", { root: { overflowX: "hidden", overflowY: "auto", overflow: "hidden auto" }, pageWidth: 1100 }, { left: 330, top: 20, width: 60, height: 20 }],
+    ["an off-canvas drawer widening the page under body's overflow-x: hidden", { root: {}, body: { overflowX: "hidden", overflowY: "auto", overflow: "hidden auto" }, pageWidth: 1100 }, { left: 330, top: 20, width: 60, height: 20 }],
+    ["a body scroll lock, the anchor already on screen", { root: {}, body: { overflow: "hidden" } }, { left: 10, top: 200, width: 120, height: 40 }],
+  ] as const)("keeps an anchor already in view reachable under %s, moving nothing", (_name, styles, box) => {
+    const { view, element, body, scrolls } = fakeDocument(styles);
+    const anchor = element(box, { parent: body });
+    expect(rebuilt([anchor as unknown as Element], [])).toEqual([{ ...shown, width: box.width, height: box.height }]);
+    expect([view.scrollX, view.scrollY]).toEqual([0, 0]);
+    expect(scrolls.filter((call) => !call.endsWith(" instant"))).toEqual([]);
   });
 
   it("measures a batch in order and reads the requested attributes", () => {
