@@ -29,7 +29,7 @@ services:
         condition: service_healthy
   application:
     build: .
-    command: ['node', '--experimental-strip-types', 'host/server.ts', '--port', '4319', '--listen', '0.0.0.0', '--catalogue-publication-password-file', '/application/.context/catalogue-builds/.publication-password']
+    command: ['node', '--experimental-strip-types', 'host/server.ts', '--port', '${OPENLUP_STARTER_PORT:-4319}', '--listen', '0.0.0.0', '--catalogue-publication-password-file', '/application/.context/catalogue-builds/.publication-password']
     environment:
       DATABASE_URL: postgresql://starter_runtime@database:5432/neutral_store
     volumes:
@@ -38,9 +38,9 @@ services:
       database:
         condition: service_healthy
     ports:
-      - '127.0.0.1:4319:4319'
+      - '127.0.0.1:${OPENLUP_STARTER_PORT:-4319}:${OPENLUP_STARTER_PORT:-4319}'
     healthcheck:
-      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:4319/api/config').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:${OPENLUP_STARTER_PORT:-4319}/api/config').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 1s
       timeout: 3s
       retries: 30

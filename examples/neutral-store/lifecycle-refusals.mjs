@@ -1,4 +1,5 @@
 import { buildGuidance, infrastructure, rulesRecheck, up } from './installation/refusals.ts';
+import { hostPortFix } from './shared/refusals.ts';
 import { seedPhysicalGuidance } from './shared/seed-physical.ts';
 
 const retryBrowser = 'Run `./lifecycle browser` again.';
@@ -25,7 +26,17 @@ const review = 'Reload the current draft and head. Prepare the current revision 
 const originalActor = 'Have the original issuing administrator sign in';
 const original = `${originalActor} and resume the original operation.`;
 const unchanged = 'Retry the unchanged original request. For a separate proposal, prepare it and obtain its own approval.';
-export const operatorChallengeGuidance = 'Verify the invited email. If a challenge was requested recently, wait until the minute and hourly limits allow another request, then check the private mailbox.';
+const operatorChallengeLimits = 'The limits are one issued challenge per minute and five per hour per address.';
+const operatorMailbox = 'After requesting a token, re-read the private mailbox in the same Compose project. If a new matching message appears, use its token within ten minutes.';
+export const operatorChallengeGuidance = `${operatorChallengeLimits} ${operatorMailbox}`;
+const operatorSignIn = [
+  'The starter could not complete operator sign-in.',
+  'The email may not belong to an active administrator account or its current invitation. The token may be wrong, expired or already used.',
+  `Use the email for the active administrator account or its current invitation and request a fresh token once both rolling limits allow it. ${operatorChallengeGuidance}`,
+  'Retry sign-in with the same apply flags. If no new matching message arrives, confirm the address and wait until both limits allow another request.',
+];
+const isOperatorSignIn = (code, path) => path === 'auth.operator' && ['starter_input_invalid', 'starter_auth_invalid'].includes(code);
+export const localPortFix = 'Set OPENLUP_STARTER_PORT to a decimal port from 1024 to 65535, or unset it to use 4319. For the default origin, choose a port that Fetch permits.';
 // Only findings about a single SKU's price state can be collected during review.
 const skuLocalPriceRefusals = new Set([
   'starter_catalogue_reprice_required', 'starter_catalogue_price_scheduled', 'base_price_ambiguous',
@@ -35,6 +46,7 @@ export const isSkuLocalPriceRefusal = code => skuLocalPriceRefusals.has(code);
 
 export function catalogueApplyFix(finding, { activity, invocation, freshReprice, repriceStarted }) {
   const { code, fix } = finding;
+  if (isOperatorSignIn(code, finding.path)) return fix;
   if (['operator_required', 'starter_auth_invalid', 'draft_operator_required', 'catalog_draft_operator_required',
     'catalog_operator_required', 'publisher_not_authorized'].includes(code)) {
     const restart = repriceStarted ? 'Use an active administrator when restarting with the same flags.'
@@ -106,15 +118,18 @@ const nativePriceRefusal = ['The native price check was refused.', 'The owner co
   'The price check could not verify the native records named by the reason. Have the store owner verify them. Recent paid orders count for 24 hours. Rerun when the check passes.'];
 
 export function catalogueApplyRefusal({ code, path, subject, reason, issues, message, guidance }, error) {
-  const applyGuidance = Object.hasOwn(applyRefusals, code) ? applyRefusals[code]
-    : /^(?:native_[a-z_]+|settlement_context)_unverified$/u.test(code) ? nativePriceRefusal : undefined;
+  const localGuidance = isOperatorSignIn(code, path) ? operatorSignIn : code === 'starter_port_invalid' && path === '/arguments'
+    ? ['The command received an invalid OPENLUP_STARTER_PORT.', 'The local starter requires a supported listener port.',
+      `${localPortFix} Rerun the same catalogue apply command.`, 'Repeat `npm run catalogue:apply` with the same flags.'] : undefined;
+  const applyGuidance = localGuidance ?? (Object.hasOwn(applyRefusals, code) ? applyRefusals[code]
+    : /^(?:native_[a-z_]+|settlement_context)_unverified$/u.test(code) ? nativePriceRefusal : undefined);
   const [observed, cause, fix, recheck = applyAgain] = applyGuidance ??
     ['An installed owner refused the action.', 'The action did not meet the installed contract.',
       'Review the reported refusal before restarting catalogue apply.'];
   const known = applyGuidance ?? starterGuidance(code);
   const readiness = known && path === 'pricing.readiness' &&
     /^Observed: (.+?) Cause: (.+?) Fix: (.+?) Recheck: (.+)$/u.exec(message ?? '');
-  const owner = known && (guidance ?? (applyGuidance ? undefined : known));
+  const owner = !localGuidance && known && (guidance ?? (applyGuidance ? undefined : known));
   const finding = { code, path, ...(subject !== undefined && { subject }), ...(reason !== undefined && { reason }),
     ...(issues !== undefined && { issues }), observed: readiness?.[1] ?? owner?.observed ?? observed,
     cause: readiness?.[2] ?? owner?.cause ?? cause, fix: readiness?.[3] ?? owner?.fix ?? fix,
@@ -188,9 +203,9 @@ export const starterRefusals = Object.freeze(Object.fromEntries(Object.entries({
   starter_order_controls_configuration_invalid: checkConfig,
   starter_pause_presets_invalid: checkConfig,
   starter_policy_seed_conflict: verifySeed,
-  starter_port_invalid: { fix: 'Supply a valid numeric host port.', recheck: up },
+  starter_port_invalid: { fix: `Direct host: ${hostPortFix} Lifecycle commands: ${localPortFix}`, recheck: 'Rerun the command that refused the port.' },
   starter_predecessor_cancel_failed: browser('Use the qualified predecessor and verify its seeded subscription and cancellation terms.'),
-  starter_price_seed_conflict: { fix: 'Ask the pricing owner to reconcile divergent seed rows with the original demo inputs. Have the owner close other active or open explicit subscription rows or withdraw pending rows while preserving price history. You can also rebuild a disposable demo using the installed guide.', recheck: up },
+  starter_price_seed_conflict: { fix: 'If you edited the owned price, discount or rounding inputs after seeding, restore the originals before retrying. Ask the pricing owner to reconcile divergent seed rows with the original demo inputs. Have the owner close other active or open explicit subscription rows or withdraw pending rows while preserving price history. You can also rebuild a disposable demo using the installed guide.', recheck: up },
   starter_product_invalid: checkConfig,
   starter_promotion_seed_conflict: verifySeed,
   starter_public_origin_flag_invalid: { fix: 'Supply the documented public origin option with a valid origin.', recheck: up },
