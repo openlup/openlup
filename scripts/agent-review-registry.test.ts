@@ -494,6 +494,14 @@ describe('real Git coverage histories', () => {
     expect(f.git('rev-parse', 'MERGE_HEAD')).toBe(main);
     expect(f.git('diff', '--name-only', '--diff-filter=U')).toBe(weightsPath);
   });
+  it('keeps shard weights in recorded review-rule snapshots', async () => {
+    const f = await fixture(true, [], { [weightsPath]: weights({ 'a.test.ts': 10 }) });
+    const same = await captureReviewRules(f.cwd, { base: f.base, head: f.head });
+    await f.write(weightsPath, weights({ 'a.test.ts': 10, 'b.test.ts': 4 })); const head = f.commit();
+    const changed = await captureReviewRules(f.cwd, { base: f.base, head });
+    expect(same!.head).toBe(same!.base);
+    expect(changed!.head).not.toBe(changed!.base);
+  });
   it('reviews a hand edit made in a clean merge as the resolution', async () => {
     const f = await fixture(); await f.review();
     const main = await f.mainMove(() => f.write('other.ts', 'main delta\n'));

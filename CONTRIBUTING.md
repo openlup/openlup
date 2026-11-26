@@ -2069,6 +2069,15 @@ registry union admits additions and base-entry removals in the named arrays of
 the publication catalogue, package boundary test and cold-consumer script. A
 removal can come from either side or both. Edits to base entries, reorders and
 moves between adapter classes need manual resolution and review.
+The [shard weights](config/vitest-shard-weights.json) are a closed union too:
+the branch contributes only keys main lacks. Main's additions, recalibrations
+and removals stand, and main's value wins for a key both sides added and for
+`defaultDurationMs` and `schemaVersion`. A branch edit or removal of a
+merge-base value, including those two fields, changes its test timeout. That remains an authored conflict
+for manual resolution and review. Output keeps sorted keys, positive finite
+weights and main's two-space JSON layout. GitHub can still remove a queued pull
+request on a text conflict in this file; the union only removes the hand
+resolution.
 
 If `landing:merge` refuses a new migration because its UTC slot is no longer
 later than `origin/main`, rename the new, unlanded migration to a free UTC slot
