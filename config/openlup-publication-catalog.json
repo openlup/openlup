@@ -30814,7 +30814,19 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/connectedStoreTransfer.fixture.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/connectedStoreTransfer.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/connectedStoreTransferRetained.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/connectedStoreTransferScenarios.test.ts",
       "class": "public-output"
     },
     {
