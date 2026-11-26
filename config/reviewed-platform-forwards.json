@@ -14018,12 +14018,12 @@
     },
     {
       "path": "db/platform/migrations/20261129130002_order_money_v2_assert.sql",
-      "sha256": "66c2f9c7c93ea46cd83b93b15dad9c61a351ae6e995eccac7bde8759d0089a19",
+      "sha256": "e8b989a3ac88eabb0c95fe39bd6ae55bab134858ddf56cf98ff20d6ab0aa71d4",
       "functions": [
         {
           "signature": "public.commerce_order_assert_line_sum()",
           "beforeSha256": "6a15c3f2873f5b1799dedb1ff1ce81ef843251e4a292a18f71df64aa492dede7",
-          "afterSha256": "47286da5427f655f9e151beb296f0d31958fbdb57c37784f42acb8cb05cd429a"
+          "afterSha256": "389aae614a73fa6b8fb1edb7bd65e5723ac107c5ddccad356b0bd61d124c51b4"
         },
         {
           "signature": "public.commerce_order_money_v2_assert(uuid,boolean,boolean,jsonb,jsonb)",

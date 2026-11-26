@@ -614,7 +614,9 @@ BEGIN
    WHERE order_id = v_order_id;
 
   IF v_sum IS DISTINCT FROM COALESCE(v_declared, 0) THEN
-    RAISE EXCEPTION 'commerce_order_line_sum_mismatch' USING ERRCODE = '23514';
+    RAISE EXCEPTION 'commerce_order_line_sum_mismatch' USING ERRCODE = '23514',
+      DETAIL = format('order %s declares %s and its lines sum to %s',
+                      v_order_id, COALESCE(v_declared::text, 'nothing'), v_sum);
   END IF;
 
   PERFORM public.catalog_order_line_sum_acceptance(v_order_id);

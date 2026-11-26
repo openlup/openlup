@@ -97,18 +97,14 @@ it("applies its own forward and preserves the other checkout definitions", async
   expect(await defs()).toStrictEqual(predecessorDefinitions);
 });
 
-it("preserves the legacy line-sum block apart from the refusal detail", async () => {
+it("order_money_legacy_block_byte_identity", async () => {
   const { rows: [row] } = await store.owner.query<{ prosrc: string }>(
     "SELECT prosrc FROM pg_proc WHERE oid='public.commerce_order_assert_line_sum()'::regprocedure");
   const block = row!.prosrc.slice(row!.prosrc.indexOf("  SELECT total_amount_minor"),
     row!.prosrc.lastIndexOf("\n\n  PERFORM public.catalog_order_line_sum_acceptance(v_order_id);") + 1);
-  const predecessor = readFileSync(path, "utf8").split("\n").slice(931, 955).join("\n") + "\n";
-  expect(createHash("sha256").update(predecessor).digest("hex")).toBe("c1b997aff2e805edd7496b8714cdc66ad554c00c81766e88c6bf37fbd6fa2b5c");
-  expect(block).toBe(predecessor.replace(
-    ",\n      DETAIL = format('order %s declares %s and its lines sum to %s',\n" +
-      "                      v_order_id, COALESCE(v_declared::text, 'nothing'), v_sum);",
-    ";",
-  ));
+  expect(Buffer.from(block)).toEqual(Buffer.from(readFileSync(path, "utf8").split("\n").slice(931, 955).join("\n") + "\n"));
+  expect(Buffer.byteLength(block)).toBe(939);
+  expect(createHash("sha256").update(block).digest("hex")).toBe("c1b997aff2e805edd7496b8714cdc66ad554c00c81766e88c6bf37fbd6fa2b5c");
 
   const amount = { currency: "XXX", amountMinor: 100 };
   const line = { sku: sku.sku, quantity: 1, unitPriceGross: amount, lineSubtotalGross: amount };
