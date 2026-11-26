@@ -276,8 +276,8 @@ buyer choice starts a new key while the earlier order stays open until the store
 settles it, and a payment already started for it may still complete. The
 payment-status page clears the record only when it shows the order paid or
 cancelled; an expired order keeps it, because a payment under it may still
-settle. The page raises `starter_checkout_in_progress` itself while "no order" is
-not yet final, and `starter_checkout_session_changed` when an answer belongs to
+settle. When "Cancel the earlier order and start over" finds no order before "no
+order" is final, the page raises `starter_checkout_in_progress` itself, and `starter_checkout_session_changed` when an answer belongs to
 another sign-in state. A browser that blocks tab storage, or refuses a write
 after load (`starter_checkout_storage_unavailable`, nothing sent), shows
 `starter_storage_unavailable`: the page keeps the purchase in its own memory
