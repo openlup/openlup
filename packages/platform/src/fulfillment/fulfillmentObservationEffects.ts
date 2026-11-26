@@ -83,16 +83,17 @@ export async function applyFulfillmentObservationEffects<LocalStatus, TrackingSt
     });
     input.onTrackingRecorded?.(tracking);
   }
-  const { observation } = input;
-  if (input.recordDeliveryWithoutTracking && input.trackingRefs.length === 0
-      && observation.fact.canonicalStatus === "delivered"
-      && observation.fact.provenance.source === "provider_webhook"
-      && observation.fact.provenance.authority === "provider_asserted"
-      && observation.trackingRefs.length === 0
-      && !observation.diagnostics?.admission?.rejectedTrackingRefs
-      // Earlier retained envelopes may have dropped a reference without counting it.
-      && !observation.diagnostics?.redactedFieldCount) {
-    await input.recordDeliveryWithoutTracking();
+  if (input.recordDeliveryWithoutTracking && input.trackingRefs.length === 0) {
+    const { observation } = input;
+    if (observation.fact.canonicalStatus === "delivered"
+        && observation.fact.provenance.source === "provider_webhook"
+        && observation.fact.provenance.authority === "provider_asserted"
+        && observation.trackingRefs.length === 0
+        && !observation.diagnostics?.admission?.rejectedTrackingRefs
+        // Earlier retained envelopes may have dropped a reference without counting it.
+        && !observation.diagnostics?.redactedFieldCount) {
+      await input.recordDeliveryWithoutTracking();
+    }
   }
   await input.issueAccountingInvoice?.();
 }

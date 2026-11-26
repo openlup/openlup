@@ -819,20 +819,23 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
     expect(await compose(observation(f, 'delivered', later, ['LATER-REF'])).ingest(verification)).toMatchObject({ kind: 'processed' }); expect((await state(f)).status).toBe('delivered');
     expect((await notices(f)).rows).toHaveLength(0); expect((await notices(f, 'commerce.shipment.delivered')).rows).toHaveLength(1);
   });
-  it.each(['provider parcel identity', 'single recorded dispatch'] as const)('settles delivery and alignment through %s and keeps the first receipt on replay', async identity => {
+  it.each(['provider parcel identity', 'single recorded dispatch', 'uncertain prebound dispatch'] as const)('settles delivery and alignment through %s and keeps the first receipt on replay', async identity => {
     const f = await subject();
     const providerParcel = `parcel:${f.shipment}`;
     await h.owner.query('UPDATE public.fulfillment_shipments SET created_at=$2 WHERE id=$1', [f.shipment, earlier]);
-    await h.owner.query('UPDATE public.fulfillment_dispatch_refs SET parcel_ref=$2,updated_at=$3 WHERE id=$1', [f.dispatch, providerParcel, earlier]);
+    await h.owner.query('UPDATE public.fulfillment_dispatch_refs SET parcel_ref=$2 WHERE id=$1', [f.dispatch, providerParcel]);
     expect(await openCase(h.owner, f)).toMatchObject({ state: 'protected' });
     await compose(observation(f, 'in_transit', earlier)).ingest(verification);
+    if (identity === 'uncertain prebound dispatch') {
+      await h.owner.query("UPDATE public.fulfillment_dispatch_refs SET status='uncertain' WHERE id=$1", [f.dispatch]);
+    }
     const before = await census(f);
     const providerTime = identity === 'provider parcel identity' ? '12:00+02:00' : '12:00+0200';
     const delivered = observation(f, 'delivered', at.replace('10:00:00.000Z', providerTime), [], later);
     if (identity === 'provider parcel identity') {
       delivered.correlation.externalRef = null;
       delivered.correlation.providerFulfillmentRef = providerParcel;
-      delivered.fact.fulfillmentReference = providerParcel;
+      delivered.fact = { ...delivered.fact, fulfillmentReference: providerParcel };
     }
     const invoice = vi.fn(async () => state(f));
     const receipt = { ...verification, receivedAt: later };
@@ -859,13 +862,12 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
     expect(await census(f)).toEqual(after);
     expect((await notices(f, 'commerce.shipment.delivered')).rows).toHaveLength(1);
     expect((await h.owner.query("SELECT * FROM public.fulfillment_operator_receipts WHERE kind='tracking' AND command->>'shipmentId'=$1 AND command#>>'{request,status}'='delivered'", [f.shipment])).rows).toHaveLength(1);
-    expect((await h.owner.query('SELECT observation,outcome FROM public.fulfillment_observations WHERE event_key=$1', [delivered.eventKey])).rows)
-      .toEqual([{ observation: delivered, outcome: { status: 'processed' } }]);
+    expect((await h.owner.query('SELECT observation,outcome,prebound_arrival_dispatch_id FROM public.fulfillment_observations WHERE event_key=$1', [delivered.eventKey])).rows)
+      .toEqual([{ observation: delivered, outcome: { status: 'processed' }, prebound_arrival_dispatch_id: identity === 'provider parcel identity' ? null : f.dispatch }]);
   });
   it.each(['paused', 'cancelled'] as const)('records physical arrival without moving a %s subscription', async status => {
     const f = await subject();
     await h.owner.query('UPDATE public.fulfillment_shipments SET created_at=$2 WHERE id=$1', [f.shipment, earlier]);
-    await h.owner.query('UPDATE public.fulfillment_dispatch_refs SET updated_at=$2 WHERE id=$1', [f.dispatch, earlier]);
     expect(await openCase(h.owner, f)).toMatchObject({ state: 'protected' });
     await compose(observation(f, 'in_transit', earlier)).ingest(verification);
     await h.owner.query('UPDATE public.subscriptions SET status=$2 WHERE id=$1', [f.subscription, status]);
@@ -875,7 +877,7 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
     const beforeCycles = (await cycles()).rows;
     const precise = at.replace('.000Z', '.123456Z');
     const delivered = observation(f, 'delivered', precise, [], later);
-    delivered.fact.occurredAt = precise;
+    delivered.fact = { ...delivered.fact, occurredAt: precise };
 
     expect(await compose(delivered).ingest({ ...verification, receivedAt: later }))
       .toMatchObject({ kind: 'processed', deliveryReadBack: true });
@@ -910,13 +912,14 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
     expect(await census(original)).toEqual(beforeOriginal);
     expect((await notices(f, 'commerce.shipment.delivered')).rows).toEqual([]);
   });
-  it('acknowledges a previously unknown external reference without using it as arrival proof for the same receipt', async () => {
+  it('does not let a webhook with a fast host clock establish its own external dispatch proof', async () => {
     const f = await subject(true, false);
     await h.owner.query('UPDATE public.fulfillment_shipments SET created_at=$2 WHERE id=$1', [f.shipment, earlier]);
     await h.owner.query('UPDATE public.fulfillment_dispatch_refs SET external_ref=NULL WHERE id=$1', [f.dispatch]);
     await h.owner.query("INSERT INTO public.shipment_external_refs(shipment_id,ref_role,external_id,provider_kind) VALUES($1,'tracking',$2,'warehouse-a')", [f.shipment, `TRACK-${f.shipment}`]);
-    const delivered = observation(f, 'delivered', at, [], later);
-    const receipt = { ...verification, receivedAt: later };
+    const receivedAt = (await h.owner.query<{ received_at: Date }>("SELECT now() + interval '1 day' AS received_at")).rows[0]!.received_at.toISOString();
+    const delivered = observation(f, 'delivered', at, [], receivedAt);
+    const receipt = { ...verification, receivedAt };
 
     for (let attempt = 0; attempt < 2; attempt++) {
       const result = await compose(delivered).ingest(receipt);
@@ -926,18 +929,19 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
     }
     expect((await h.owner.query('SELECT status,external_ref FROM public.fulfillment_dispatch_refs WHERE id=$1', [f.dispatch])).rows)
       .toEqual([{ status: 'created', external_ref: f.external }]);
+    expect((await h.owner.query('SELECT prebound_arrival_dispatch_id FROM public.fulfillment_observations WHERE event_key=$1', [delivered.eventKey])).rows)
+      .toEqual([{ prebound_arrival_dispatch_id: null }]);
     expect((await proofs(f)).rows).toEqual([expect.objectContaining({ canonical_status: 'delivered' })]);
   });
   it.each(['unzoned occurrence', 'non-webhook provenance', 'later return', 'later cancellation'] as const)(
     'preserves delivery evidence without recording arrival with %s', async blockedBy => {
       const f = await subject();
       await h.owner.query('UPDATE public.fulfillment_shipments SET created_at=$2 WHERE id=$1', [f.shipment, earlier]);
-      await h.owner.query('UPDATE public.fulfillment_dispatch_refs SET updated_at=$2 WHERE id=$1', [f.dispatch, earlier]);
       await compose(observation(f, 'in_transit', earlier)).ingest(verification);
       const delivered = observation(f, 'delivered', at, [], later);
       const receipt = { ...verification, receivedAt: later };
       if (blockedBy === 'unzoned occurrence') delivered.intake!.occurredAt = at.replace('.000Z', '');
-      if (blockedBy === 'non-webhook provenance') delivered.fact.provenance.source = 'provider_reconciliation';
+      if (blockedBy === 'non-webhook provenance') delivered.fact = { ...delivered.fact, provenance: { source: 'provider_reconciliation', authority: 'provider_asserted' } };
       if (blockedBy === 'later return' || blockedBy === 'later cancellation') {
         const terminal = observation(f, blockedBy === 'later return' ? 'exception' : 'cancelled', later, [], later);
         terminal.eventKind = blockedBy === 'later return' ? 'parcel.exception' : 'parcel.cancelled';

@@ -156,9 +156,10 @@ terminal exceptions, unknown chronology and human holds remain manual cases.
 A verified delivered webhook may omit the tracking number. Native intake can
 commit arrival for an exactly correlated parcel with one existing provider-bound
 tracking reference and a proven occurrence time. The receipt then reports
-`deliveryReadBack: true`. When only the external dispatch identity matches, it
-must already be bound to the order's sole original parcel. An ambiguous association, missing proof or a
-contradictory terminal event leaves the arrival unchanged. Use the authorized
+`deliveryReadBack: true`. When only the external dispatch identity matches, the
+first receipt must pin its existing binding to the order's sole original parcel.
+An ambiguous association, missing proof or a contradictory terminal event leaves
+the arrival unchanged. Use the authorized
 operator tracking/delivery command if the carrier cannot supply sufficient
 evidence. Eligible hold healing remains independent. Delivered evidence
 suppresses a late dispatched notice.

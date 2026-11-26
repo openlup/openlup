@@ -257,7 +257,8 @@ before accounting or receipt completion. An applied effect returns
 checks exact parcel correlation, one existing provider-bound tracking reference
 and explicit delivery chronology in the same transaction as arrival. A
 dispatch-only match requires a single original parcel and a dispatch binding
-established before the first receipt. A host replay affects arrival only when
+pinned by the first receipt before acknowledgement. Older receipts without
+that pin need an exact parcel identity. A host replay affects arrival only when
 the host restores the original observation. Missing or ambiguous evidence
 leaves arrival unchanged. Eligible hold healing stays
 independent. Tracking namespace serialization precedes reference mutation;

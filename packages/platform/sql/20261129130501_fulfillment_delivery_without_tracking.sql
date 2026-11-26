@@ -1,3 +1,37 @@
+-- Pin a dispatch known when the first delivery receipt is admitted, before its ACK.
+ALTER TABLE public.fulfillment_observations ADD COLUMN prebound_arrival_dispatch_id uuid;
+
+CREATE OR REPLACE FUNCTION public.fulfillment_intake_record_observation(p_key text,p_shipment uuid,p_observation jsonb,p_received timestamptz) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE receipt public.fulfillment_observations; inserted boolean; arrival_dispatch uuid; write_result jsonb;
+BEGIN
+ IF nullif(btrim(p_key),'') IS NULL OR p_received IS NULL OR p_observation#>>'{fact,rawEvent,reference}' IS NULL
+  OR p_observation->>'eventKey' IS DISTINCT FROM p_key THEN RAISE EXCEPTION 'observation_evidence_not_recorded' USING ERRCODE='22023'; END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended('intake-receipt|'||p_key,0));
+ SELECT * INTO receipt FROM public.fulfillment_observations WHERE event_key=p_key;
+ inserted:=NOT FOUND;
+ IF inserted THEN
+  IF p_observation#>>'{fact,canonicalStatus}' = 'delivered'
+   AND p_observation#>>'{fact,provenance,source}' = 'provider_webhook'
+   AND p_observation#>>'{fact,provenance,authority}' = 'provider_asserted'
+   AND p_observation->'trackingRefs' = '[]'::jsonb
+  THEN
+   SELECT (array_agg(d.id))[1] INTO arrival_dispatch FROM public.fulfillment_dispatch_refs d
+   WHERE d.evidence->>'providerRef' = p_observation#>>'{fact,providerKind}' AND d.mode <> 'shadow'
+     AND d.external_ref = p_observation#>>'{correlation,externalRef}' AND d.status IN ('uncertain', 'created')
+   HAVING count(*) = 1;
+  END IF;
+  write_result := public.fulfillment_record_observation(p_key,p_shipment,p_observation,p_received);
+  IF arrival_dispatch IS NOT NULL AND write_result->>'replayed' = 'false' THEN
+   UPDATE public.fulfillment_observations SET prebound_arrival_dispatch_id=arrival_dispatch WHERE event_key=p_key;
+  END IF;
+  SELECT * INTO receipt FROM public.fulfillment_observations WHERE event_key=p_key;
+ END IF;
+ IF receipt.observation#>>'{fact,rawEvent,reference}' IS NULL OR receipt.observation->>'eventKey' IS DISTINCT FROM p_key THEN
+  RAISE EXCEPTION 'observation_evidence_not_recorded' USING ERRCODE='22023'; END IF;
+ RETURN jsonb_build_object('replayed',NOT inserted,'receiptId',receipt.event_key,'observation',receipt.observation);
+END;
+$$;
+
 -- Apply a retained verified arrival against the existing, provider-bound parcel.
 CREATE FUNCTION public.fulfillment_intake_record_delivery_without_tracking(
   p_event_key text, p_dispatch uuid, p_shipment uuid
@@ -91,7 +125,7 @@ BEGIN
     OR dispatch.parcel_ref IN (receipt.observation#>>'{correlation,providerFulfillmentRef}',
                                receipt.observation#>>'{correlation,parcelRef}')
     OR (dispatch.external_ref = receipt.observation#>>'{correlation,externalRef}'
-      AND dispatch.updated_at <= receipt.first_received_at
+      AND receipt.prebound_arrival_dispatch_id = p_dispatch
       AND parcel.sequence_no = 0 AND parcel.replaces_shipment_id IS NULL AND NOT EXISTS (
       SELECT 1 FROM public.fulfillment_shipments other
       WHERE other.order_id = parcel.order_id AND other.id <> p_shipment

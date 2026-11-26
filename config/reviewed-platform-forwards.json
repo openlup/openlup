@@ -9675,7 +9675,13 @@
       {
         "row": "fulfillment-delivery-without-tracking",
         "path": "db/platform/migrations/20261129130501_fulfillment_delivery_without_tracking.sql",
-        "replacedFunctions": [],
+        "replacedFunctions": [
+          {
+            "signature": "public.fulfillment_intake_record_observation(text,uuid,jsonb,timestamptz)",
+            "beforeSha256": "8d138fb099bbc511032a68e482f720ebbc065efaf1294c5dad4872a225688691",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
         "createdFunctions": [
           {
             "signature": "public.fulfillment_intake_record_delivery_without_tracking(text,uuid,uuid)",
@@ -9683,7 +9689,10 @@
           }
         ],
         "grantOnlyFunctions": [],
-        "dataStatements": []
+        "dataStatements": [],
+        "existingTableStatements": [
+          "ALTER TABLE public.fulfillment_observations ADD COLUMN prebound_arrival_dispatch_id uuid;"
+        ]
       }
     ]
   },
@@ -14004,12 +14013,17 @@
     },
     {
       "path": "db/platform/migrations/20261129130501_fulfillment_delivery_without_tracking.sql",
-      "sha256": "1181521097228d19f111870df1bf530ef594c5af3dcc7c837a94e183a43c1c0a",
+      "sha256": "8fb338903c87905d493b110134d7b89d8a65ba50db33eab7b4741a2802b898ef",
       "functions": [
+        {
+          "signature": "public.fulfillment_intake_record_observation(text,uuid,jsonb,timestamptz)",
+          "beforeSha256": "8d138fb099bbc511032a68e482f720ebbc065efaf1294c5dad4872a225688691",
+          "afterSha256": "61194e679e9a3ae6440d83e1d4862e23ae75721707432399b703335c67aa9580"
+        },
         {
           "signature": "public.fulfillment_intake_record_delivery_without_tracking(text,uuid,uuid)",
           "beforeSha256": null,
-          "afterSha256": "45b9916900150d2100444681895fa11f7a1d9626a9082bdb3f43e844361599cb"
+          "afterSha256": "307281b2c1cd8b5682fd854b0e72a387cafdf31e0b29bd708053728dbe9f366f"
         }
       ]
     }
