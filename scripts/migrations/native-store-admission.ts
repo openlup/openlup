@@ -920,22 +920,84 @@ export function checkConstraintSha256(checkSql: string): string {
   }
   return sqlSha256(normalizeCheckTokens(tokens));
 }
-function isBoundedFormatPattern(pattern: string): boolean {
-  if (!pattern.startsWith("^") || !pattern.endsWith("$") || pattern.length < 4 || pattern.length > 128) return false;
-  if (/[.|]/u.test(pattern)) return false;
-  try {
-    const regex = new RegExp(pattern, "u");
-    return !regex.test("") && !regex.test(" ") && !regex.test("'; DROP TABLE x; --");
-  } catch {
-    return false;
+export type BoundedFormatAtom = { chars: ReadonlySet<string>; min: number; max: number };
+const MAX_BOUNDED_FORMAT_LENGTH = 256;
+
+function parseBoundedCharClass(pattern: string, start: number): { chars: Set<string>; next: number } | null {
+  if (pattern[start] !== "[" || pattern[start + 1] === "^") return null;
+  const chars = new Set<string>();
+  let index = start + 1;
+  while (index < pattern.length && pattern[index] !== "]") {
+    const ch = pattern[index]!;
+    if (ch === "\\" || ch === "[" || ch < "!" || ch > "~") return null;
+    if (pattern[index + 1] === "-" && index + 2 < pattern.length && pattern[index + 2] !== "]") {
+      const end = pattern[index + 2]!;
+      const validRange = (ch >= "a" && end <= "z" && ch <= end)
+        || (ch >= "A" && end <= "Z" && ch <= end)
+        || (ch >= "0" && end <= "9" && ch <= end);
+      if (!validRange) return null;
+      for (let code = ch.charCodeAt(0); code <= end.charCodeAt(0); code++) chars.add(String.fromCharCode(code));
+      index += 3;
+      continue;
+    }
+    chars.add(ch);
+    index++;
   }
+  return pattern[index] === "]" && chars.size > 0 ? { chars, next: index + 1 } : null;
 }
-function nativeCheckFormat(tokens: readonly PlatformSqlToken[], column: string): { pattern: string; next: number } | null {
+
+function parseBoundedQuantifier(pattern: string, start: number): { min: number; max: number; next: number } | null {
+  if (pattern[start] !== "{") return { min: 1, max: 1, next: start };
+  const close = pattern.indexOf("}", start + 1);
+  if (close < 0) return null;
+  const match = /^([0-9]+)(?:,([0-9]+))?$/u.exec(pattern.slice(start + 1, close));
+  if (!match) return null;
+  const min = Number(match[1]), max = match[2] === undefined ? min : Number(match[2]);
+  if (!Number.isInteger(min) || !Number.isInteger(max) || min < 0 || max < min || max === 0 || max > MAX_BOUNDED_FORMAT_LENGTH) return null;
+  return { min, max, next: close + 1 };
+}
+
+export function parseBoundedFormatPattern(pattern: string): BoundedFormatAtom[] | null {
+  if (!pattern.startsWith("^") || !pattern.endsWith("$") || pattern.length < 4 || pattern.length > 128) return null;
+  const atoms: BoundedFormatAtom[] = [];
+  let index = 1, totalMin = 0, totalMax = 0;
+  const end = pattern.length - 1;
+  while (index < end) {
+    const cls = parseBoundedCharClass(pattern, index);
+    if (!cls) return null;
+    const quant = parseBoundedQuantifier(pattern, cls.next);
+    if (!quant) return null;
+    atoms.push({ chars: cls.chars, min: quant.min, max: quant.max });
+    totalMin += quant.min;
+    totalMax += quant.max;
+    index = quant.next;
+  }
+  return atoms.length > 0 && totalMin >= 1 && totalMax <= MAX_BOUNDED_FORMAT_LENGTH ? atoms : null;
+}
+
+export function matchesBoundedFormatPattern(atoms: readonly BoundedFormatAtom[], value: string): boolean {
+  let reachable = new Set<number>([0]);
+  for (const atom of atoms) {
+    const next = new Set<number>();
+    for (const pos of reachable) {
+      for (let count = 0; count <= atom.max; count++) {
+        if (count >= atom.min) next.add(pos + count);
+        if (count === atom.max || pos + count >= value.length || !atom.chars.has(value[pos + count]!)) break;
+      }
+    }
+    if (!next.size) return false;
+    reachable = next;
+  }
+  return reachable.has(value.length);
+}
+
+function nativeCheckFormat(tokens: readonly PlatformSqlToken[], column: string): { atoms: BoundedFormatAtom[]; next: number } | null {
   if (!nativeWord(tokens, 0, "CHECK") || !nativeSymbol(tokens, 1, "(") || nativeIdentifier(tokens[2]) !== column
     || !nativeSymbol(tokens, 3, "~") || tokens[4]?.kind !== "string" || !nativeSymbol(tokens, 5, ")")) return null;
-  const pattern = tokens[4]!.value;
-  return isBoundedFormatPattern(pattern) ? { pattern, next: 6 } : null;
+  const atoms = parseBoundedFormatPattern(tokens[4]!.value);
+  return atoms ? { atoms, next: 6 } : null;
 }
+
 function findMatchingParen(tokens: readonly PlatformSqlToken[], open: number): number {
   let depth = 0;
   for (let index = open; index < tokens.length; index++) {
@@ -944,83 +1006,109 @@ function findMatchingParen(tokens: readonly PlatformSqlToken[], open: number): n
   }
   return -1;
 }
+
+function splitTopLevelCommaItems(tokens: readonly PlatformSqlToken[], start: number, end: number): PlatformSqlToken[][] {
+  const items: PlatformSqlToken[][] = [];
+  let itemStart = start, depth = 0;
+  for (let index = start; index < end; index++) {
+    if (nativeSymbol(tokens, index, "(")) depth++;
+    else if (nativeSymbol(tokens, index, ")")) depth--;
+    else if (depth === 0 && nativeSymbol(tokens, index, ",")) {
+      items.push(tokens.slice(itemStart, index));
+      itemStart = index + 1;
+    }
+  }
+  if (itemStart < end) items.push(tokens.slice(itemStart, end));
+  return items;
+}
+
+function resolvePrefixTableHead(tokens: readonly PlatformSqlToken[]): { verb: string; table: string; next: number } | null {
+  const verb = tokens[0]?.kind === "word" ? tokens[0].value.toUpperCase() : "";
+  if (!["CREATE", "ALTER", "DROP"].includes(verb) || !nativeWord(tokens, 1, "TABLE")) return null;
+  let index = 2;
+  if (verb === "CREATE" && nativeWord(tokens, index, "IF") && nativeWord(tokens, index + 1, "NOT") && nativeWord(tokens, index + 2, "EXISTS")) index += 3;
+  else if (verb !== "CREATE" && nativeWord(tokens, index, "IF") && nativeWord(tokens, index + 1, "EXISTS")) index += 2;
+  if (verb === "ALTER" && nativeWord(tokens, index, "ONLY")) index++;
+  const target = nativeQualified(tokens, index);
+  return target ? { verb, table: target.name, next: target.next } : null;
+}
+
+function extractColumnChecks(table: string, item: readonly PlatformSqlToken[], priorChecks: Map<string, PlatformSqlToken[]>): void {
+  const column = nativeIdentifier(item[0]);
+  if (!column || ["CONSTRAINT", "PRIMARY", "FOREIGN", "UNIQUE", "CHECK"].some(word => nativeWord(item, 0, word))) return;
+  const tableBare = table.slice("public.".length);
+  for (let index = 1; index < item.length; index++) {
+    if (nativeSymbol(item, index, "(")) {
+      const end = findMatchingParen(item, index);
+      if (end < 0) return;
+      index = end;
+      continue;
+    }
+    const named = nativeWord(item, index, "CONSTRAINT") && nativeIdentifier(item[index + 1]) !== null
+      && nativeWord(item, index + 2, "CHECK") && nativeSymbol(item, index + 3, "(");
+    const unnamed = !named && nativeWord(item, index, "CHECK") && nativeSymbol(item, index + 1, "(");
+    if (!named && !unnamed) continue;
+    const checkStart = named ? index + 2 : index;
+    const end = findMatchingParen(item, checkStart + 1);
+    if (end < 0) return;
+    const name = named ? nativeIdentifier(item[index + 1])! : `${tableBare}_${column}_check`;
+    priorChecks.set(`${table}.${name}`, item.slice(checkStart, end + 1));
+    index = end;
+  }
+}
+
+function trackCreateTableChecks(table: string, tokens: readonly PlatformSqlToken[], open: number, priorChecks: Map<string, PlatformSqlToken[]>): void {
+  const close = findMatchingParen(tokens, open);
+  if (close < 0) return;
+  for (const item of splitTopLevelCommaItems(tokens, open + 1, close)) {
+    if (nativeWord(item, 0, "CONSTRAINT") && nativeIdentifier(item[1]) !== null && nativeWord(item, 2, "CHECK") && nativeSymbol(item, 3, "(")) {
+      const end = findMatchingParen(item, 3);
+      if (end >= 0) priorChecks.set(`${table}.${nativeIdentifier(item[1])!}`, item.slice(2, end + 1));
+    } else {
+      extractColumnChecks(table, item, priorChecks);
+    }
+  }
+}
+
+function trackAlterTableChecks(table: string, statement: string, tokens: readonly PlatformSqlToken[], actionStart: number, priorChecks: Map<string, PlatformSqlToken[]>): void {
+  const last = tokens.at(-1);
+  if (!last || !nativeSymbol(tokens, tokens.length - 1, ";") || actionStart >= tokens.length - 1) return;
+  const actions = nativeStoreArguments(statement.slice(tokens[actionStart]!.start, last.start)).map(nativeStoreTrim);
+  for (const action of actions) {
+    const { tokens: sub, complete } = platformSqlTokens(action, false, true);
+    if (!complete) continue;
+    if (nativeWord(sub, 0, "DROP") && nativeWord(sub, 1, "CONSTRAINT")) {
+      const nameIndex = nativeWord(sub, 2, "IF") && nativeWord(sub, 3, "EXISTS") ? 4 : 2;
+      const name = nativeIdentifier(sub[nameIndex]);
+      if (name) priorChecks.delete(`${table}.${name}`);
+    } else if (nativeWord(sub, 0, "ADD") && nativeWord(sub, 1, "CONSTRAINT") && nativeIdentifier(sub[2]) !== null && nativeWord(sub, 3, "CHECK") && nativeSymbol(sub, 4, "(")) {
+      const end = findMatchingParen(sub, 4);
+      if (end >= 0) priorChecks.set(`${table}.${nativeIdentifier(sub[2])!}`, sub.slice(3, end + 1));
+    } else if (nativeWord(sub, 0, "ADD")) {
+      let colIndex = nativeWord(sub, 1, "COLUMN") ? 2 : 1;
+      if (nativeWord(sub, colIndex, "IF") && nativeWord(sub, colIndex + 1, "NOT") && nativeWord(sub, colIndex + 2, "EXISTS")) colIndex += 3;
+      extractColumnChecks(table, sub.slice(colIndex), priorChecks);
+    }
+  }
+}
+
 function trackPriorCheckConstraints(
   statement: string,
   tokens: readonly PlatformSqlToken[],
+  complete: boolean,
   trackedTables: ReadonlySet<string>,
   priorChecks: Map<string, PlatformSqlToken[]>,
 ): void {
-  const head = nativeTableHead(tokens);
-  if (!head || head.kind !== "TABLE" || !head.table || !trackedTables.has(head.table)) return;
+  if (!complete) return;
+  const head = resolvePrefixTableHead(tokens);
+  if (!head || !trackedTables.has(head.table)) return;
   if (head.verb === "DROP") {
     const prefix = `${head.table}.`;
     for (const key of priorChecks.keys()) if (key.startsWith(prefix)) priorChecks.delete(key);
-    return;
-  }
-  if (head.verb === "CREATE" && nativeSymbol(tokens, head.next, "(")) {
-    const close = findMatchingParen(tokens, head.next);
-    if (close < 0) return;
-    const tableBare = head.table.slice("public.".length);
-    const items: PlatformSqlToken[][] = [];
-    let itemStart = head.next + 1, depth = 0;
-    for (let index = head.next + 1; index < close; index++) {
-      if (nativeSymbol(tokens, index, "(")) depth++;
-      else if (nativeSymbol(tokens, index, ")")) depth--;
-      else if (depth === 0 && nativeSymbol(tokens, index, ",")) {
-        items.push(tokens.slice(itemStart, index));
-        itemStart = index + 1;
-      }
-    }
-    if (itemStart < close) items.push(tokens.slice(itemStart, close));
-    for (const item of items) {
-      if (nativeWord(item, 0, "CONSTRAINT") && nativeIdentifier(item[1]) !== null && nativeWord(item, 2, "CHECK") && nativeSymbol(item, 3, "(")) {
-        const end = findMatchingParen(item, 3);
-        if (end >= 0) priorChecks.set(`${head.table}.${nativeIdentifier(item[1])!}`, item.slice(2, end + 1));
-        continue;
-      }
-      const column = nativeIdentifier(item[0]);
-      if (!column || ["CONSTRAINT", "PRIMARY", "FOREIGN", "UNIQUE", "CHECK"].some(word => nativeWord(item, 0, word))) continue;
-      for (let index = 1; index < item.length; index++) {
-        if (nativeSymbol(item, index, "(")) {
-          const end = findMatchingParen(item, index);
-          if (end < 0) break;
-          index = end;
-          continue;
-        }
-        if (nativeWord(item, index, "CONSTRAINT") && nativeIdentifier(item[index + 1]) !== null && nativeWord(item, index + 2, "CHECK") && nativeSymbol(item, index + 3, "(")) {
-          const end = findMatchingParen(item, index + 3);
-          if (end >= 0) {
-            priorChecks.set(`${head.table}.${nativeIdentifier(item[index + 1])!}`, item.slice(index + 2, end + 1));
-            index = end;
-          }
-          continue;
-        }
-        if (nativeWord(item, index, "CHECK") && nativeSymbol(item, index + 1, "(")) {
-          const end = findMatchingParen(item, index + 1);
-          if (end >= 0) {
-            priorChecks.set(`${head.table}.${tableBare}_${column}_check`, item.slice(index, end + 1));
-            index = end;
-          }
-        }
-      }
-    }
-    return;
-  }
-  if (head.verb === "ALTER") {
-    const alter = nativeStoreAlter(statement);
-    if (!alter) return;
-    for (const action of alter.actions) {
-      const { tokens: sub, complete } = platformSqlTokens(action, false, true);
-      if (!complete) continue;
-      if (nativeWord(sub, 0, "DROP") && nativeWord(sub, 1, "CONSTRAINT")) {
-        const nameIndex = nativeWord(sub, 2, "IF") && nativeWord(sub, 3, "EXISTS") ? 4 : 2;
-        const name = nativeIdentifier(sub[nameIndex]);
-        if (name) priorChecks.delete(`${head.table}.${name}`);
-      } else if (nativeWord(sub, 0, "ADD") && nativeWord(sub, 1, "CONSTRAINT") && nativeIdentifier(sub[2]) !== null && nativeWord(sub, 3, "CHECK") && nativeSymbol(sub, 4, "(")) {
-        const end = findMatchingParen(sub, 4);
-        if (end >= 0) priorChecks.set(`${head.table}.${nativeIdentifier(sub[2])!}`, sub.slice(3, end + 1));
-      }
-    }
+  } else if (head.verb === "CREATE" && nativeSymbol(tokens, head.next, "(")) {
+    trackCreateTableChecks(head.table, tokens, head.next, priorChecks);
+  } else if (head.verb === "ALTER") {
+    trackAlterTableChecks(head.table, statement, tokens, head.next, priorChecks);
   }
 }
 function nativeUniqueValues(tokens: readonly PlatformSqlToken[], start: number): { columns: string[]; nullsNotDistinct: boolean; next: number } | null {
@@ -1628,7 +1716,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     }
     if (slot.purposeCheck && statement.startsWith(`CREATE TABLE ${purposeTable} (`)) checkSource = statement;
     if (slot.purposeCheck && /^(?:ALTER|DROP)\b/iu.test(statement) && /\bTABLE\b/iu.test(statement) && statement.toLowerCase().includes("communication_native_sync_state")) throw new Error("reviewed native store purpose CHECK intervening DDL refused");
-    if (guardedTables.size) trackPriorCheckConstraints(statement, tokens, guardedTables, priorChecks);
+    if (guardedTables.size) trackPriorCheckConstraints(statement, tokens, complete, guardedTables, priorChecks);
   }
   if (definitionSources) {
     for (const [sourcePath, signature] of qualifiedCatalogueReadTargets) {
@@ -1765,8 +1853,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
         const next = parsed && nativeWord(action.tail, parsed.next, "NOT") && nativeWord(action.tail, parsed.next + 1, "VALID") ? parsed.next + 2 : parsed?.next;
         if (!parsed || next !== action.tail.length) throw new Error(`reviewed native store checkToFunctionGuard replacement must be a non-trivial anchored format CHECK on ${guardedPin.column}: ${key}`);
         if (sqlSha256(normalizeCheckTokens(action.tail.slice(0, parsed.next))) !== guardedPin.afterSha256) throw new Error(`reviewed native store checkToFunctionGuard afterSha256 mismatch for ${key}`);
-        const formatRegex = new RegExp(parsed.pattern, "u");
-        if (priorEnumValues.get(key)!.some(value => !formatRegex.test(value))) throw new Error(`reviewed native store checkToFunctionGuard replacement format CHECK must accept all prior enum values for ${key}`);
+        if (priorEnumValues.get(key)!.some(value => !matchesBoundedFormatPattern(parsed.atoms, value))) throw new Error(`reviewed native store checkToFunctionGuard replacement format CHECK must accept all prior enum values for ${key}`);
         pending = undefined; completedConstraints.add(key); continue;
       }
     }

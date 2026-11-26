@@ -4,7 +4,7 @@ import { isDeepStrictEqual } from "node:util";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { PLATFORM_BASELINE_FILE, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
-import { qualifiedCatalogueStorageSelectSql, renderNativeStoreSettingsOwnerWindow, NATIVE_SUCCESSOR_TABLE_SQL, assertNativeStoreForward, checkConstraintSha256, expectedReplacedFunctionAttrs, previewNoopAcceptanceSql, readReviewedForwardRegistry, renderNativeDeferredTrigger, renderQualifiedSecurityDefiner, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, nativeStoreCreatedTable, nativeStoreTriggerDefinition, sqlSha256, sqlStatements, type NativeDeferredTrigger, type NativeStoreSlot, type ReviewedForwardRegistry } from "../../scripts/reviewed-platform-forward.js";
+import { qualifiedCatalogueStorageSelectSql, renderNativeStoreSettingsOwnerWindow, NATIVE_SUCCESSOR_TABLE_SQL, assertNativeStoreForward, checkConstraintSha256, expectedReplacedFunctionAttrs, matchesBoundedFormatPattern, parseBoundedFormatPattern, previewNoopAcceptanceSql, readReviewedForwardRegistry, renderNativeDeferredTrigger, renderQualifiedSecurityDefiner, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, nativeStoreCreatedTable, nativeStoreTriggerDefinition, sqlSha256, sqlStatements, type NativeDeferredTrigger, type NativeStoreSlot, type ReviewedForwardRegistry } from "../../scripts/reviewed-platform-forward.js";
 import { nativeStoreRevokePublicMessages } from "../../scripts/reviewed-platform-forward.js";
 import { definitionPath, definitionSql, grantPath, grantSql, NATIVE_STORE_GUARD_CATALOGS } from "../helpers/issuedPlatformCatalog.js";
 import { readSelectedCatalogProjection } from "../../server/adapters/postgres/selectedCatalogProjection.js";
@@ -583,13 +583,13 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
     if (old.validated !== current.validated) fail(`CHECK changed its validation state: ${entry.table}.${entry.name}`);
     const oldValues = checkValues(old.validated ? old.def : old.def.replace(/ NOT VALID$/u, ""), entry.column);
     const newPattern = checkFormat(current.validated ? current.def : current.def.replace(/ NOT VALID$/u, ""), entry.column);
-    if (!oldValues || !newPattern) fail(`checkToFunctionGuard requires closed enum to anchored format CHECK: ${current.def}`);
+    const compiled = newPattern ? parseBoundedFormatPattern(newPattern) : null;
+    if (!oldValues || !newPattern || !compiled) fail(`checkToFunctionGuard requires closed enum to anchored bounded format CHECK: ${current.def}`);
     const expectedBefore = checkConstraintSha256(`CHECK (${entry.column} IN (${oldValues.map(value => `'${value.replaceAll("'", "''")}'`).join(", ")}))`);
     const expectedAfter = checkConstraintSha256(`CHECK (${entry.column} ~ '${newPattern.replaceAll("'", "''")}')`);
     if (expectedBefore !== entry.beforeSha256) fail(`checkToFunctionGuard beforeSha256 mismatch: ${entry.table}.${entry.name}`);
     if (expectedAfter !== entry.afterSha256) fail(`checkToFunctionGuard afterSha256 mismatch: ${entry.table}.${entry.name}`);
-    const formatRegex = new RegExp(newPattern, "u");
-    if (oldValues.some(value => !formatRegex.test(value))) fail(`checkToFunctionGuard format CHECK rejects prior enum value: ${entry.table}.${entry.name}`);
+    if (oldValues.some(value => !matchesBoundedFormatPattern(compiled, value))) fail(`checkToFunctionGuard format CHECK rejects prior enum value: ${entry.table}.${entry.name}`);
     if (!entry.guardFunctions.length || entry.guardFunctions.some(sig => !slot.replacedFunctions.some(fn => fn.signature === sig))) {
       fail(`checkToFunctionGuard requires every guardFunction in replacedFunctions: ${entry.table}.${entry.name}`);
     }

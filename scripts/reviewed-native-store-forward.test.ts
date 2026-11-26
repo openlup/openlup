@@ -1813,13 +1813,40 @@ describe("native store checkToFunctionGuard admission", () => {
     expect(() => parameterForward(pair.replace(";\n", " CASCADE;\n"), slot => addGuarded(slot))).toThrow(/closed shapes/u);
   });
 
-  it("refuses empty guardFunctions, duplicate guardFunctions, or a guardFunction absent from slot.replacedFunctions", () => {
+  it("refuses empty guardFunctions, duplicate guardFunctions, non-canonical signatures, or a guardFunction absent from slot.replacedFunctions", () => {
     expect(() => parameterForward(guardedPair(), slot => addGuarded(slot, { guardFunctions: [] })))
       .toThrow(/requires at least one guardFunctions entry/u);
     expect(() => parameterForward(guardedPair(), slot => addGuarded(slot, { guardFunctions: ["public.unlisted_guard(uuid)"] })))
       .toThrow(/guardFunction must be listed in slot\.replacedFunctions/u);
     expect(() => parameterForward(guardedPair(), slot => addGuarded(slot, { guardFunctions: [slot.replacedFunctions[0]!.signature, slot.replacedFunctions[0]!.signature] })))
       .toThrow(/guardFunctions must be unique canonical signatures/u);
+    expect(() => parameterForward(guardedPair(), slot => addGuarded(slot, { guardFunctions: [slot.replacedFunctions[0]!.signature.toUpperCase()] })))
+      .toThrow(/guardFunctions must be unique canonical signatures/u);
+    expect(() => parameterForward(guardedPair(), slot => addGuarded(slot, { guardFunctions: ["fixture_replaced_1(uuid)"] })))
+      .toThrow(/guardFunctions must be unique canonical signatures/u);
+  });
+
+  it("admits multiple checkToFunctionGuard entries across two different tables and tracks IF NOT EXISTS / ONLY / ADD COLUMN CHECK in prefix", () => {
+    const twoTables = [
+      "CREATE TABLE IF NOT EXISTS public.fixture_returns (id uuid PRIMARY KEY, reason_code text NOT NULL, CONSTRAINT fixture_returns_reason_check CHECK (reason_code IN ('damaged', 'other')));",
+      "CREATE TABLE IF NOT EXISTS public.fixture_prefs (id uuid PRIMARY KEY);",
+    ].join("\n");
+    const history = [
+      "ALTER TABLE ONLY public.fixture_prefs ADD COLUMN method_kind text NOT NULL CHECK (method_kind IN ('instant', 'card'));",
+    ].join("\n");
+    const rBefore = checkConstraintSha256("CHECK (reason_code IN ('damaged', 'other'))");
+    const rAfterExpr = "CHECK (reason_code ~ '^[a-z][a-z0-9_]{1,63}$')";
+    const rAfter = checkConstraintSha256(rAfterExpr);
+    const mBefore = checkConstraintSha256("CHECK (method_kind IN ('instant', 'card'))");
+    const mAfterExpr = "CHECK (method_kind ~ '^[a-z][a-z0-9_]{1,63}$')";
+    const mAfter = checkConstraintSha256(mAfterExpr);
+    const pair = `${guardedPair(rAfterExpr, "public.fixture_returns", "fixture_returns_reason_check")}\n${guardedPair(mAfterExpr, "public.fixture_prefs", "fixture_prefs_method_kind_check")}`;
+    expect(() => parameterForward(pair, slot => {
+      slot.checkToFunctionGuard = [
+        { table: "public.fixture_returns", name: "fixture_returns_reason_check", column: "reason_code", beforeSha256: rBefore, afterSha256: rAfter, guardFunctions: [slot.replacedFunctions[0]!.signature] },
+        { table: "public.fixture_prefs", name: "fixture_prefs_method_kind_check", column: "method_kind", beforeSha256: mBefore, afterSha256: mAfter, guardFunctions: [slot.replacedFunctions[0]!.signature] },
+      ];
+    }, history, twoTables)).not.toThrow();
   });
 
   it.each([
@@ -1830,10 +1857,15 @@ describe("native store checkToFunctionGuard admission", () => {
     "CHECK (status ~ '^.+$')",
     "CHECK (status ~ '[a-z]+')",
     "CHECK (status ~ '^[a-z]*$')",
+    "CHECK (status ~ '^[a-z]+$')",
     "CHECK (status ~ '^[a-z]+|.*$')",
+    "CHECK (status ~ '^([a-z]+)+$')",
+    "CHECK (status ~ '^[^ ]+$')",
+    "CHECK (status ~ '^[a-z]{0,10}$')",
+    "CHECK (status ~ '^[a-z]{1,300}$')",
     "CHECK (kind ~ '^[a-z][a-z0-9_]{1,63}$')",
     "CHECK (status ~ '^[a-z][a-z0-9_]{1,63}$' OR true)",
-  ])("refuses trivial, unconstrained, or wrong-column replacement: %s", expression => {
+  ])("refuses trivial, unconstrained, ReDoS, negated-class, or wrong-column replacement: %s", expression => {
     const hash = checkConstraintSha256(expression);
     expect(() => parameterForward(guardedPair(expression), slot => addGuarded(slot, { afterSha256: hash })))
       .toThrow(/must be a non-trivial anchored format CHECK/u);
@@ -1845,9 +1877,11 @@ describe("native store checkToFunctionGuard admission", () => {
       .toThrow(/must accept all prior enum values/u);
   });
 
-  it("refuses a missing prior CHECK, a non-enum prior CHECK, overlapping constraint entries, or malformed declarations", () => {
+  it("refuses a missing prior CHECK, column mismatch, non-enum prior CHECK, duplicate/overlapping entries, or malformed declarations", () => {
     expect(() => parameterForward(guardedPair(formatExpr, "public.fixture_parameters", "missing_check"), slot => addGuarded(slot, { name: "missing_check" })))
       .toThrow(/prior CHECK missing from prefix/u);
+    expect(() => parameterForward(guardedPair(), slot => addGuarded(slot, { column: "kind" })))
+      .toThrow(/prior CHECK must be a closed enum on kind/u);
     const nonEnumTable = "CREATE TABLE public.fixture_non_enum (id uuid, status text, CONSTRAINT fixture_status CHECK (status <> ''));";
     expect(() => parameterForward(guardedPair(formatExpr, "public.fixture_non_enum", "fixture_status"), slot => addGuarded(slot, {
       table: "public.fixture_non_enum",
@@ -1855,6 +1889,10 @@ describe("native store checkToFunctionGuard admission", () => {
     }), "", nonEnumTable)).toThrow(/prior CHECK must be a closed enum/u);
     expect(() => parameterForward(guardedPair(), slot => { addCheck(slot); addGuarded(slot); }))
       .toThrow(/duplicate constraint entry/u);
+    expect(() => parameterForward(guardedPair(), slot => {
+      addGuarded(slot);
+      slot.checkToFunctionGuard!.push({ ...slot.checkToFunctionGuard![0]! });
+    })).toThrow(/duplicate constraint entry/u);
     expect(() => parameterForward(guardedPair(), slot => { slot.checkToFunctionGuard = []; }))
       .toThrow(/requires a non-empty array/u);
     expect(() => parameterForward(guardedPair(), slot => addGuarded(slot, { afterSha256: priorStatusSha })))

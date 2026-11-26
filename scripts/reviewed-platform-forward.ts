@@ -4,7 +4,7 @@ import { canonical, closedHistoricalForwardPaths, FORWARD_LISTS, MANAGED_BASELIN
 import { blob, cachedDumpSqlStatements, git, headerAttributes, isExpandOnlyPlatformForward, NATIVE_SUCCESSOR_TABLE_SQL, readPrecedingBlobs, sqlStatements } from "./migrations/sql-tokenizer.ts";
 import { assertSecurityDefinerSearchPath, isGrandfatheredSecurityDefinerForward } from "./migrations/security-definer.ts";
 import { assertBatchedForward, assertChannelIngestForward, assertFunctionStatements, assertManagedCommerceForward, assertManagedInvoicingStatements, assertPortableCreationStatements, assertQualifiedOwnerPathForward, assertSupportAuthorityForward, batchedFunctionDefinitions, channelIngestShapes, functionSignature, identityHeaderSql, identityPrivilegeKeys, reviewedFunctionDefinitions, reviewedPolicyDefinitions, runtimePrivilegeKeys, runtimeReplacements, updatePolicyDefinitions } from "./migrations/historical-classes.ts";
-import { assertExecutePredecessors, assertNativeStoreClassTransition, assertNativeStoreForward, assertNativeStoreSettingsTargets, checkConstraintSha256, checkoutForwardRefusal, checkoutOwnerControls, checkoutPredecessorRefusal, checkoutReplacementRefusal, checkoutSlotRefusal, expectedReplacedFunctionAttrs, isNativeStoreMigrationPath, isQualifiedCatalogueReadGrant, nativeStoreAddedForeignKeys, nativeStoreCreatedTable, nativeStoreFunctionDefinitions, nativeStoreNewSlotTimes, nativeStoreRevokePublicMessages, nativeStoreTriggerDefinition, previewAcceptanceSource, previewAcceptanceSourceSha256, previewNoopAcceptanceSql, qualifiedCatalogueReadTargets, qualifiedCatalogueStorageSelectSql, renderNativeDeferredTrigger, renderNativeStoreSettingsOwnerWindow, renderQualifiedSecurityDefiner, replacesCheckoutRoutine } from "./migrations/native-store-admission.ts";
+import { assertExecutePredecessors, assertNativeStoreClassTransition, assertNativeStoreForward, assertNativeStoreSettingsTargets, checkConstraintSha256, checkoutForwardRefusal, checkoutOwnerControls, checkoutPredecessorRefusal, checkoutReplacementRefusal, checkoutSlotRefusal, expectedReplacedFunctionAttrs, isNativeStoreMigrationPath, isQualifiedCatalogueReadGrant, matchesBoundedFormatPattern, nativeStoreAddedForeignKeys, nativeStoreCreatedTable, nativeStoreFunctionDefinitions, nativeStoreNewSlotTimes, nativeStoreRevokePublicMessages, nativeStoreTriggerDefinition, parseBoundedFormatPattern, previewAcceptanceSource, previewAcceptanceSourceSha256, previewNoopAcceptanceSql, qualifiedCatalogueReadTargets, qualifiedCatalogueStorageSelectSql, renderNativeDeferredTrigger, renderNativeStoreSettingsOwnerWindow, renderQualifiedSecurityDefiner, replacesCheckoutRoutine, type BoundedFormatAtom } from "./migrations/native-store-admission.ts";
 import { approvalBinding, changedForwardApprovals, keepsApprovalOrder, readForwardRegistry, readReviewedForwardRegistry, sharedApproval } from "./migrations/registry.ts";
 
 export {
@@ -19,10 +19,10 @@ export {
   qualifiedCatalogueStorageSelectSql, previewNoopAcceptanceSql, renderQualifiedSecurityDefiner,
   nativeStoreFunctionDefinitions, isNativeStoreMigrationPath, nativeStoreAddedForeignKeys, nativeStoreCreatedTable,
   renderNativeStoreSettingsOwnerWindow, nativeStoreRevokePublicMessages, nativeStoreTriggerDefinition, renderNativeDeferredTrigger,
-  checkConstraintSha256, expectedReplacedFunctionAttrs, assertNativeStoreForward,
+  checkConstraintSha256, parseBoundedFormatPattern, matchesBoundedFormatPattern, expectedReplacedFunctionAttrs, assertNativeStoreForward,
 };
 export type {
-  BatchedForwardBinding, ManagedCommerceForwardBinding, SupportAuthorityForwardBinding,
+  BatchedForwardBinding, BoundedFormatAtom, ManagedCommerceForwardBinding, SupportAuthorityForwardBinding,
   NativeStoreCheck, NativeStoreCheckToFunctionGuard, NativeStoreUnique, NativeDeferredTrigger, NativeStoreSlot, NativeStoreForwardClass, ReviewedForwardRegistry,
 };
 
