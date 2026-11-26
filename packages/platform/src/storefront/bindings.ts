@@ -156,8 +156,8 @@ export interface PendingActionStorageBinding<C extends PendingAction = PendingAc
  *
  * The union and the `action.kind` union are open: members may be added in a
  * minor release. The package reads a reading kind it does not know as
- * `checking`, and an action kind it does not know as `other`, which it does
- * not act on.
+ * `checking`, and an action kind it does not know as `other`, never reopened
+ * or followed, while a provider it names still counts as the open rail.
  *
  * @experimental
  */
@@ -191,9 +191,10 @@ export interface StatusTransportBinding<C extends PendingAction = PendingAction>
  *
  * `providers` lists the providers, `reopenableEmbeddedProviders` those whose
  * embedded action can be opened again, and `retryableAttemptStatuses` the
- * attempt statuses that admit a new attempt. The default for the last is the
- * core payment entry's `RETRYABLE_ATTEMPT_STATUSES`; the statuses are core's
- * `PaymentAttemptStatus`, so this entry adds no second vocabulary.
+ * attempt statuses that admit a new attempt. The reference value of the last
+ * is the core payment entry's `RETRYABLE_ATTEMPT_STATUSES`, which the host
+ * passes in; this entry imports no runtime value from core. The statuses are
+ * core's `PaymentAttemptStatus`, so this entry adds no second vocabulary.
  *
  * @experimental
  */
