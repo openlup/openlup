@@ -55,6 +55,8 @@ const CATALOGUE_VERSION = 1;
 const RUN_ID = /^[A-Za-z0-9-]{8,40}$/;
 const NAME = /^[a-z][a-z0-9_]*$/;
 const ERROR_CODE = /^([a-z][a-z0-9_]*): ([^\n]*?\.)(?: |$)/;
+/** Anything URL-like in a fault message: a scheme and everything up to the next space, credentials and query included. */
+const URL_LIKE = /\b[a-z][a-z0-9+.-]*:\/\/\S*/giu;
 const STEP_KINDS: ReadonlySet<string> = new Set(["arrange", "rearrange", "withhold", "act", "reload", "expect"]);
 const CONTROL_KINDS: ReadonlySet<string> = new Set(["none", "block_read"]);
 /** Outcome kinds a run may need; none can be produced before the runner takes an outcome driver. */
@@ -75,7 +77,6 @@ const JUDGEMENT: Readonly<Record<string, { readonly group: number; readonly rank
   observer_subject_unseen: { group: 2, rank: 0, result: "not_run" },
   stimulus_not_create: { group: 3, rank: 0, result: "not_run" },
   stimulus_not_applied: { group: 3, rank: 0, result: "not_run" },
-  request_budget_exceeded: { group: 4, rank: 0, result: "not_run" },
   duplicate_order: { group: 5, rank: 0, result: "failed" },
   duplicate_hold: { group: 5, rank: 0, result: "failed" },
   duplicate_capture: { group: 5, rank: 0, result: "failed" },
@@ -83,6 +84,9 @@ const JUDGEMENT: Readonly<Record<string, { readonly group: number; readonly rank
   forbidden_state_shown: { group: 5, rank: 0, result: "failed" },
   order_outside_subject: { group: 5, rank: 1, result: "failed" },
   "observer_failed:unattributable": { group: 5, rank: 2, result: "not_run" },
+  // The run stopped before its progress and control were exercised, so it proves nothing either way (missing
+  // evidence, never a pass); a ledger violation observed before the stop is already proof of harm and outranks it.
+  request_budget_exceeded: { group: 5, rank: 3, result: "not_run" },
   adapter_matcher_unmatched: { group: 6, rank: 0, result: "not_run" },
   "adapter_anchor_missing:action": { group: 6, rank: 0, result: "not_run" },
   "adapter_anchor_missing:field": { group: 6, rank: 0, result: "not_run" },
@@ -121,11 +125,39 @@ function resolveScenario(scenario: string | StorefrontScenario): StorefrontScena
     throw refuse("storefront_scenario_unknown", "The scenario is neither a known id nor a scenario object with an id.",
       "the runner runs a scenario by id or a scenario object.", "Pass a scenario id from storefrontScenarios.");
   }
-  for (const step of scenario.steps) {
-    if (!STEP_KINDS.has(step.kind)) throw invalid(`Scenario ${scenario.id} has a step of kind ${step.kind}.`, `Use the step kinds ${[...STEP_KINDS].join(", ")}.`);
-  }
-  if (!CONTROL_KINDS.has(scenario.control.kind)) throw invalid(`Scenario ${scenario.id} has a control of kind ${scenario.control.kind}.`, `Use the control kinds ${[...CONTROL_KINDS].join(", ")}.`);
+  const problem = scenarioProblem(scenario);
+  if (problem !== null) throw invalid(`Scenario object ${scenario.id}: ${problem}.`, "Shape the scenario object as the entries of storefrontScenarios are shaped.");
   return scenario;
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
+const isName = (value: unknown): value is string => typeof value === "string" && NAME.test(value);
+const isCount = (value: unknown): value is number => typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+
+/** The first way a scenario object is malformed, or `null`. Nothing about it is trusted before this check. */
+function scenarioProblem(scenario: StorefrontScenario): string | null {
+  const value = scenario as unknown as Record<string, unknown>;
+  if (typeof value.title !== "string" || !isName(value.purchaseMode)) return "title must be a string and purchaseMode a name";
+  if (!isRecord(value.requires) || !Array.isArray(value.requires.outcomes) || !value.requires.outcomes.every(isName)) return "requires.outcomes must be a list of names";
+  if (!isRecord(value.budget) || !isCount(value.budget.creates)) return "budget.creates must be an integer, 0 or more";
+  if (!isRecord(value.text) || !["stimulus", "safety", "progress", "control"].every((key) => typeof (value.text as Record<string, unknown>)[key] === "string")) return "text must hold the four sentences";
+  if (!Array.isArray(value.steps) || value.steps.length === 0) return "steps must be a non-empty list";
+  for (const [index, step] of (value.steps as unknown[]).entries()) {
+    if (!isRecord(step) || typeof step.kind !== "string" || !STEP_KINDS.has(step.kind)) return `step ${index} must have one of the kinds ${[...STEP_KINDS].join(", ")}`;
+    if (step.kind === "act" && (!isName(step.action) || (step.twice !== undefined && typeof step.twice !== "boolean"))) return `step ${index} (act) needs an action name`;
+    if (step.kind === "expect" && (!isName(step.state) || !Array.isArray(step.offers) || !step.offers.every(isName))) return `step ${index} (expect) needs a state name and a list of offered actions`;
+    if (step.kind === "rearrange" && step.edit !== undefined && !isName(step.edit)) return `step ${index} (rearrange) edit must be a field name`;
+  }
+  if (!isRecord(value.safety) || !Object.entries(value.safety).every(([, limit]) => limit === undefined || isCount(limit))) return "safety limits must be integers, 0 or more";
+  const control = value.control;
+  if (!isRecord(control) || typeof control.kind !== "string" || !CONTROL_KINDS.has(control.kind)) return `control.kind must be one of ${[...CONTROL_KINDS].join(", ")}`;
+  if (control.negates !== null && !isName(control.negates)) return "control.negates must be a state name or null";
+  if (control.kind === "block_read") {
+    if (!Array.isArray(control.commands) || control.commands.length === 0 || !control.commands.every((command) => command === "create" || command === "read")) return "control.commands must list create or read";
+    if (!isCount(control.from) || control.from >= value.steps.length) return "control.from must be the index of one of its steps";
+    if (control.negates === null) return "a block_read control must negate a state";
+  }
+  return null;
 }
 
 function matches(matcher: CommandMatcher, request: { method: string; path: string }): boolean {
@@ -155,10 +187,10 @@ function whyHidden(measurement: Measurement): string {
   return reasons.join(", ");
 }
 
-/** A fault's code and first sentence when it carries one, else its name; never a body or a query. */
+/** A fault's code and first sentence when it carries one, with every URL replaced by `<url>`, else its name; never a body, a credential or a query. */
 function describeError(error: unknown): string {
   if (error instanceof Error) {
-    const coded = ERROR_CODE.exec(error.message);
+    const coded = ERROR_CODE.exec(error.message.replace(URL_LIKE, "<url>"));
     if (coded !== null) return `${coded[1]}: ${coded[2]}`.slice(0, 300);
     return error.name;
   }
@@ -214,14 +246,16 @@ type RunRecord = {
  * Judgement, first failing group decides: 1 page, observer and arrangement
  * worked; 2 no order before the arrangement and one after the first matched
  * create; 3 the first order appeared in a step with a matched create and every
- * withhold applied; 4 the create budget kept; 5 ledger safety in both runs and
- * settle windows (payable orders, orders holding stock, attempts, captures; a
- * paid state needs a capture and no payable order) and, for an exclusive
- * database, no payable order outside the subjects; 6 each matcher used matched
- * and each needed anchor resolved and was visible; 7 the clean run reached its
- * expected state; 8 the control blocked a request and its negated state was not
- * reached. Codes 1–4 and 6 end `not_run`, a harness fault is never `failed` or
- * `passed`; a ledger violation is `failed`; progress under the control is
+ * withhold applied; 4 ledger safety in both runs and settle windows (payable
+ * orders, orders holding stock, attempts, captures; a paid state needs a
+ * capture and no payable order) and, for an exclusive database, no payable
+ * order outside the subjects; 5 the create budget kept (a run over it stopped
+ * before proving anything, but a violation it already caused stands); 6 each
+ * matcher used matched and each needed anchor resolved and was visible; 7 the
+ * clean run reached its expected state; 8 the control blocked a request and its
+ * negated state was not reached, judged over every recorded control step even
+ * when the control run stopped. Codes 1–3, 5 and 6 end `not_run`, a harness
+ * fault is never `failed` or `passed`; a ledger violation is `failed`; progress under the control is
  * `vacuous`. Without a finding the result is `passed`, or `safety_only` for a
  * scenario without a control.
  *
@@ -232,7 +266,13 @@ type RunRecord = {
  * malformed `runId`, a missing or mismatched `width`, a clock outside integer
  * milliseconds 0 to the end of the year 9999) reject with a `TypeError` starting
  * `storefront_scenario_unknown` or `storefront_run_input_invalid`, and nothing
- * is driven. The clean and control runs share the page and its browser storage.
+ * is driven, as does a malformed scenario object. An arrangement that fails
+ * under the control is the control's effect: the remaining steps are skipped
+ * and the settle window still samples the page. Anchors and the ledger are
+ * sampled after each step settles and in the settle window, so a state shown
+ * only inside a step is not seen. A fault's text keeps its code and first
+ * sentence with every URL replaced. The clean and control runs share the page
+ * and its browser storage.
  *
  * @experimental
  */
@@ -361,6 +401,13 @@ export async function runStorefrontScenario(options: StorefrontRunOptions): Prom
       ? `The settle window of the ${run} run`
       : `Step ${index} (${describeStep(scenario.steps[index]!)}) of the ${run} run`;
     const checksAnchors = (index: number) => run === "clean" || index < controlFrom;
+    // Under the control a failed arrangement is the control's effect, not a fault: the rest of the steps is skipped
+    // and the settle window still samples the page. Before the control starts it stops the run.
+    let skipToSettle = false;
+    const stop = (index: number) => {
+      if (run === "control" && index >= controlFrom) skipToSettle = true;
+      else record.stopped = true;
+    };
 
     const fault = (code: "page_failed" | "observer_failed" | "arrange_failed", index: number | null, error: unknown) => {
       add(code, code === "observer_failed" ? "rejected" : "only", run, index, { at: index === null ? `Before the arrangement of the ${run} run` : at(index), detail: describeError(error) });
@@ -499,7 +546,7 @@ export async function runStorefrontScenario(options: StorefrontRunOptions): Prom
                 add("arrange_failed", "only", run, index, { at: at(index), detail: `the adapter's arrange rejected: ${describeError(error)}` }, "arrange");
               }
             }
-            if (!completed) record.stopped = true;
+            if (!completed) stop(index);
           } else if (step?.kind === "rearrange") {
             // With a selection entry the default arrangement runs again; otherwise the details are re-typed on the current page.
             if (entryPath !== undefined) completed = await defaultArrange(index, step.edit);
@@ -507,7 +554,7 @@ export async function runStorefrontScenario(options: StorefrontRunOptions): Prom
             else {
               add("arrange_failed", "only", run, index, { at: at(index), detail: "no selection entry is declared and the adapter has no arrange function" }, "routes.selectionEntry");
             }
-            if (!completed) record.stopped = true;
+            if (!completed) stop(index);
           } else if (step?.kind === "withhold") {
             withhold = "armed";
           } else if (step?.kind === "act") {
@@ -571,6 +618,10 @@ export async function runStorefrontScenario(options: StorefrontRunOptions): Prom
             else add("adapter_anchor_missing", "state", run, index, facts, fieldOf("state", step.state));
           }
         }
+        if (skipToSettle && index < scenario.steps.length) {
+          skipToSettle = false;
+          index = scenario.steps.length - 1;
+        }
         if (exceededAt !== null) {
           add("request_budget_exceeded", "only", run, exceededAt, { at: at(exceededAt), count: record.creates, limit: scenario.budget.creates });
           record.stopped = true;
@@ -613,6 +664,12 @@ export async function runStorefrontScenario(options: StorefrontRunOptions): Prom
         detail: `${paid.ledger!.captures} captures and ${paid.ledger!.payableOrders} payable orders`,
       });
     }
+    if (run === "control") {
+      // Judged over every recorded control step, also when the control run stopped.
+      if (record.blocked === 0) add("control_not_applied", "only", run, null, { at: "The control run" });
+      const reached = steps.find((step) => step.index >= controlFrom && control.negates !== null && step.observedAnchors.includes(`state:${control.negates}`));
+      if (reached !== undefined) add("vacuous_progress", "only", run, reached.index, { at: where(reached), name: `state:${control.negates}` });
+    }
     if (record.stopped) continue;
     const last = steps.at(-1)?.ledger ?? null;
     if (record.databaseBefore !== null && record.databaseAfter !== null && last !== null) {
@@ -631,10 +688,6 @@ export async function runStorefrontScenario(options: StorefrontRunOptions): Prom
       if (blockedSet.length > 0 && record.blockedSetSeen === 0) {
         add("adapter_matcher_unmatched", "blocked_set", run, null, { at: "The clean run", name: `step ${controlFrom}`, detail: blockedSet.join(" or ") }, "commands");
       }
-    } else {
-      if (record.blocked === 0) add("control_not_applied", "only", run, null, { at: "The control run" });
-      const reached = steps.find((step) => step.index >= controlFrom && control.negates !== null && step.observedAnchors.includes(`state:${control.negates}`));
-      if (reached !== undefined) add("vacuous_progress", "only", run, reached.index, { at: where(reached), name: `state:${control.negates}` });
     }
   }
   const controlRun = records.find((record) => record.run === "control");
