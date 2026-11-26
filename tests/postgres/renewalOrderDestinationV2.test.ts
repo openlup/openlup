@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { readPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
+import { readPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { withPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 import { storeJourneyResources, type JourneyInstallation } from "../helpers/storeJourney.js";
@@ -17,7 +17,7 @@ import { AT, call, type Db } from "./subscriptionNativeFixture.js";
 
 const resources = storeJourneyResources({ isolatedCluster: true });
 let store: JourneyInstallation;
-const manifest = readPlatformMigrationManifest(process.cwd());
+const manifest = readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest | null;
 if (manifest?.schemaVersion !== 3) throw new Error("Complete native catalogue required");
 const forward = manifest.forward.find(entry => entry.file.endsWith("_renewal_order_destination_v2.sql"));
 if (!forward) throw new Error("Renewal destination migration missing");
