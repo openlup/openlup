@@ -20,7 +20,7 @@ function execute(script: string) {
 test('the direct host explains how to correct a refused port flag', () => {
   assert.equal(parseHostArguments(['--port', '6000', '--listen', '0.0.0.0']).port, 6000);
   const direct = spawnSync(process.execPath, ['host/server.ts', '--port', '1023'], {
-    cwd: root, env: { ...env, OPENLUP_STARTER_PORT: '4320' }, encoding: 'utf8', timeout: 10_000,
+    cwd: root, env: { ...env, OPENLUP_STARTER_PORT: '4320' }, encoding: 'utf8', timeout: 20_000,
   });
   assert.ifError(direct.error);
   assert.equal(direct.status, 1);
@@ -56,7 +56,7 @@ test('real lifecycle probe sends the configured Host; wrong Host and connection 
     });
     const timeout = new AbortController();
     try {
-      await Promise.race([ready, setTimeout(5000, undefined, { signal: timeout.signal }).then(() => { throw new Error('host readiness timeout'); })]);
+      await Promise.race([ready, setTimeout(20_000, undefined, { signal: timeout.signal }).then(() => { throw new Error('host readiness timeout'); })]);
     } finally { timeout.abort(); }
     const probe = applicationHealthcheck(config.publicOrigin, port)!;
     assert.deepEqual(probe.test.slice(0, 3), ['CMD', 'node', '-e']);

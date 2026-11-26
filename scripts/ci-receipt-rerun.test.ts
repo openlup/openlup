@@ -8,7 +8,7 @@ import { RECEIPT_MARKER_PREFIX, RERUN_JOB, WORKFLOW_PATH, WRITE_PERMISSIONS, has
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const head = "a".repeat(40);
 const previous = "b".repeat(40);
-const NAMES = ["dco", "typecheck", "install-pack", "install-packages", ...["0", "6", "1,2", "3,5", "4"].map((groups) => `install-browser (${groups})`),
+const NAMES = ["dco", "typecheck", "install-pack", "install-packages", ...["0", "6", "1", "2", "3,5", "4"].map((groups) => `install-browser (${groups})`),
   "install-proof", ...[1, 2, 3, 4, 5, 6, 7, 8].map((shard) => `test-full-shard (${shard}/8)`),
   "test", "self-check", "gitleaks", "pgtap", "native-review"];
 const source = { branch: "feature", repositoryId: 77 };

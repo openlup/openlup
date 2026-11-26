@@ -6,6 +6,9 @@ import { copy } from '../owned/copy.ts';
 import { quoteCopy, quoteRefusalCopy } from '../owned/quote-copy.ts';
 import { configurations } from '../owned/store.config.ts';
 import { deriveSubscriptionUnitPrice } from '@openlup/platform/pricing';
+import type { Page } from '@playwright/test';
+import { validateCart, type Cart } from '../shared/offer.ts';
+import { selectionEntryCopy, selectionEntryPath } from '../shared/selection-entry.ts';
 
 test('mixed-store installed quotes retain both purchase modes', async ({ request, baseURL }) => {
   const { config } = await (await request.get('/api/config')).json();
@@ -280,4 +283,277 @@ test('completes sandbox purchase through the installed engine', async ({ page })
   await page.locator('main').getByRole('link', { name: copy[market.defaultLocale].completion, exact: true }).click();
   await page.getByRole('button', { name: copy[market.defaultLocale].simulatePaid, exact: true }).click();
   await expect(page.locator('main')).toContainText('paid');
+});
+
+// Selection entry: the cart route opens with a selection from its query string.
+async function selectionSetup(page: Page) {
+  const { config } = await (await page.request.get('/api/config')).json();
+  const owned = configurations[config.id]!;
+  const product = owned.offer.products[0]!;
+  const key = `neutral-store:cart:v1:${owned.id}`;
+  const draft = () => page.evaluate(name => {
+    const raw = localStorage.getItem(name);
+    return raw === null ? null : JSON.parse(raw) as unknown;
+  }, key);
+  const cart = (mode: Cart['mode'], quantity: number, cadenceDays: number | null = null): Cart => ({ schemaVersion: 1, configuration: owned.id,
+    mode, cadenceDays: mode === 'subscription' ? cadenceDays ?? owned.offer.defaultCadenceDays : null, lines: [{ sku: product.sku, quantity }] });
+  const address = () => { const url = new URL(page.url()); return url.pathname + url.search; };
+  return { config, owned, product, draft, cart, address };
+}
+
+const anchorSelector = '[data-openlup-action="proceed_to_checkout"]';
+
+for (const locale of market.locales) {
+  test(`${locale}: selection entry fills an empty cart and leads to checkout`, async ({ page }) => {
+    const { draft, cart, address } = await selectionSetup(page);
+    const offered = cart('one_time', 2);
+    await page.goto(selectionEntryPath(locale, offered));
+    await expect(page.getByRole('spinbutton').first()).toHaveValue('2');
+    await expect(page.getByLabel(copy[locale].purchaseMode, { exact: true })).toHaveValue('one_time');
+    expect(address()).toBe(routes.cart[locale]);
+    expect(await draft()).toEqual(offered);
+    const proceed = page.locator(anchorSelector);
+    await expect(proceed).toHaveCount(1);
+    await expect(proceed).toBeVisible();
+    await expect(proceed).toBeEnabled();
+    expect(await proceed.evaluate(node => node.tagName)).toBe('BUTTON');
+    await proceed.click();
+    await expect(page.locator('main h1')).toHaveText(copy[locale].checkout);
+  });
+}
+
+test('selection entry fills a subscription with the default and an explicit cadence', async ({ page }) => {
+  const locale = market.defaultLocale;
+  const { owned, draft, cart, address } = await selectionSetup(page);
+  const explicit = owned.offer.cadenceDays.find(days => days !== owned.offer.defaultCadenceDays && validateCart(owned, cart('subscription', 2, days)).ok)
+    ?? owned.offer.defaultCadenceDays;
+  for (const [offered, path] of [
+    [cart('subscription', 2), selectionEntryPath(locale, { mode: 'subscription', lines: cart('subscription', 2).lines })],
+    [cart('subscription', 2, explicit), selectionEntryPath(locale, cart('subscription', 2, explicit))],
+  ] as const) {
+    await page.goto(routes.terms[locale]);
+    await page.evaluate(() => localStorage.clear());
+    await page.goto(path);
+    await expect(page.getByLabel(copy[locale].purchaseMode, { exact: true })).toHaveValue('subscription');
+    await expect(page.getByLabel(copy[locale].cadence, { exact: true })).toHaveValue(String(offered.cadenceDays));
+    expect(address()).toBe(routes.cart[locale]);
+    expect(await draft()).toEqual(offered);
+    await expect(page.locator(anchorSelector)).toHaveCount(1);
+  }
+});
+
+test('selection entry refuses an invalid selection in its own region and writes nothing', async ({ page }) => {
+  const locale = market.defaultLocale;
+  const { owned, product, draft, cart, address } = await selectionSetup(page);
+  const region = page.getByRole('region', { name: selectionEntryCopy.refusalHeading[locale], exact: true });
+  const long = 'Q'.repeat(200);
+  for (const [path, code] of [
+    [`${routes.cart[locale]}?mode=one_time&line=UNKNOWN-SKU-0%3A1`, 'unknown_sku'],
+    [`${routes.cart[locale]}?mode=one_time&line=${encodeURIComponent(product.sku)}%3A${owned.offer.maxUnits + 1}`, 'maximum_units'],
+    [`${routes.cart[locale]}?mode=one_time&line=${long}%3A1`, 'cart_invalid'],
+  ] as const) {
+    await page.goto(path);
+    await expect(region).toBeVisible();
+    await expect(region).toContainText(copy[locale][code]);
+    await expect(page.locator('main')).not.toContainText('QQQQ');
+    expect(await draft()).toBeNull();
+    expect(address()).toBe(routes.cart[locale]);
+  }
+  const held = cart('one_time', 2);
+  await page.goto(selectionEntryPath(locale, held));
+  await expect(page.locator(anchorSelector)).toHaveCount(1);
+  await page.goto(`${routes.cart[locale]}?mode=one_time&line=UNKNOWN-SKU-0%3A1`);
+  await expect(region).toContainText(copy[locale].unknown_sku);
+  await expect(page.getByRole('spinbutton').first()).toHaveValue('2');
+  await expect(region.locator('.validation')).toHaveCount(0);
+  await expect(page.locator('.validation').filter({ hasText: copy[locale].unknown_sku })).toHaveCount(0);
+  expect(await draft()).toEqual(held);
+});
+
+test('selection entry asks before replacing a different cart', async ({ page }) => {
+  const locale = market.defaultLocale, text = copy[locale];
+  const { owned, draft, cart, address } = await selectionSetup(page);
+  const held = cart('one_time', 2), offered = cart('subscription', 2, owned.offer.defaultCadenceDays);
+  const entry = selectionEntryPath(locale, offered);
+  await page.goto(selectionEntryPath(locale, held));
+  await expect(page.locator(anchorSelector)).toHaveCount(1);
+  const question = page.getByRole('region', { name: selectionEntryCopy.questionHeading[locale], exact: true });
+  const asking = async () => {
+    await expect(question).toBeVisible();
+    await expect(question).toBeFocused();
+    await expect(page.locator('[data-openlup-action]')).toHaveCount(0);
+    for (const name of [text.update, text.checkout, text.remove, text.demoReset]) {
+      await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
+    }
+    expect(address()).toBe(entry);
+    expect(await draft()).toEqual(held);
+  };
+  await page.goto(entry);
+  await asking();
+  await page.reload();
+  await asking();
+  await question.getByRole('button', { name: selectionEntryCopy.keepCart[locale], exact: true }).click();
+  await expect(question).toHaveCount(0);
+  expect(address()).toBe(routes.cart[locale]);
+  await expect(page.locator(anchorSelector)).toHaveCount(1);
+  expect(await draft()).toEqual(held);
+  await page.goto(entry);
+  await question.getByRole('button', { name: selectionEntryCopy.useSelection[locale], exact: true }).click();
+  await expect(question).toHaveCount(0);
+  await expect(page.getByLabel(text.purchaseMode, { exact: true })).toHaveValue('subscription');
+  expect(address()).toBe(routes.cart[locale]);
+  expect(await draft()).toEqual(offered);
+  await page.goto(entry);
+  await expect(page.locator(anchorSelector)).toHaveCount(1);
+  await expect(question).toHaveCount(0);
+  expect(address()).toBe(routes.cart[locale]);
+});
+
+test('selection entry keeps price-like parameters in the address without effect', async ({ page }) => {
+  const locale = market.defaultLocale;
+  const { draft, cart, address } = await selectionSetup(page);
+  const offered = cart('one_time', 2);
+  const quoted = async (path: string) => {
+    await page.goto(routes.terms[locale]);
+    await page.evaluate(() => localStorage.clear());
+    const request = page.waitForRequest(request => request.url().endsWith('/api/actions/offer.validate'));
+    await page.goto(path);
+    await expect(page.locator(anchorSelector)).toHaveCount(1);
+    return { body: (await request).postDataJSON().cart as unknown, rows: await page.locator('.cart-lines').innerText(), stored: await draft() };
+  };
+  const bare = await quoted(selectionEntryPath(locale, offered));
+  const priced = await quoted(`${selectionEntryPath(locale, offered)}&price=1&unit_amount=1&utm_source=x`);
+  expect(new URL(page.url()).search).toBe('?price=1&unit_amount=1&utm_source=x');
+  expect(address()).toBe(`${routes.cart[locale]}?price=1&unit_amount=1&utm_source=x`);
+  expect(priced).toEqual(bare);
+  expect(priced.stored).toEqual(offered);
+});
+
+test('selection entry is settled after a reload', async ({ page }) => {
+  const locale = market.defaultLocale;
+  const { draft, cart, address } = await selectionSetup(page);
+  const offered = cart('one_time', 2);
+  await page.goto(selectionEntryPath(locale, offered));
+  await expect(page.locator(anchorSelector)).toHaveCount(1);
+  await page.reload();
+  await expect(page.getByRole('spinbutton').first()).toHaveValue('2');
+  await expect(page.locator(anchorSelector)).toHaveCount(1);
+  await expect(page.getByRole('region', { name: selectionEntryCopy.questionHeading[locale], exact: true })).toHaveCount(0);
+  await expect(page.getByRole('region', { name: selectionEntryCopy.refusalHeading[locale], exact: true })).toHaveCount(0);
+  expect(address()).toBe(routes.cart[locale]);
+  expect(await draft()).toEqual(offered);
+});
+
+test('selection entry waits for the catalogue and keeps the address when it fails', async ({ page }) => {
+  const locale = market.defaultLocale;
+  const { config, draft, address } = await selectionSetup(page);
+  const extra = { ...config.offer.products[0], sku: 'SELECTION-ENTRY-LIVE-1',
+    name: Object.fromEntries(market.locales.map(language => [language, 'Live-only selection product'])) };
+  const entry = `${routes.cart[locale]}?mode=one_time&line=${extra.sku}%3A1`;
+  await page.route('**/api/actions/storefront.catalogue', async route => {
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    await route.fulfill({ json: { ok: true, value: { products: [...config.offer.products, extra] } } });
+  });
+  await page.goto(entry);
+  const loading = page.getByRole('status').filter({ hasText: copy[locale].loading });
+  await expect(loading).toBeVisible();
+  await expect(page.getByRole('region', { name: selectionEntryCopy.refusalHeading[locale], exact: true })).toHaveCount(0);
+  await expect(page.locator('.cart-row h2')).toHaveText('Live-only selection product');
+  await expect(page.getByRole('region', { name: selectionEntryCopy.refusalHeading[locale], exact: true })).toHaveCount(0);
+  expect(address()).toBe(routes.cart[locale]);
+  expect(await draft()).toEqual({ schemaVersion: 1, configuration: config.id, mode: 'one_time', cadenceDays: null, lines: [{ sku: extra.sku, quantity: 1 }] });
+  await page.unroute('**/api/actions/storefront.catalogue');
+  for (const [answer, code] of [['refuse', 'starter_catalogue_unavailable'], ['abort', 'starter_transport_unavailable']] as const) {
+    await page.goto(routes.terms[locale]);
+    await page.evaluate(() => localStorage.clear());
+    await page.route('**/api/actions/storefront.catalogue', route => answer === 'abort'
+      ? route.abort() : route.fulfill({ json: { ok: false, code } }));
+    await page.goto(entry);
+    await expect(page.locator('main .refusal code')).toHaveText(code);
+    await expect(page.locator('main')).toContainText(copy[locale].cartEmpty);
+    expect(await draft()).toBeNull();
+    expect(address()).toBe(entry);
+    await page.unroute('**/api/actions/storefront.catalogue');
+  }
+});
+
+test('selection entry over a placed order cannot create a second order', async ({ page }) => {
+  const locale = market.defaultLocale, text = copy[locale];
+  const { cart } = await selectionSetup(page);
+  const terms = page.getByLabel(text.termsAccept);
+  const place = async () => {
+    await page.locator(anchorSelector).click();
+    await expect(page.locator('.summary')).toBeVisible();
+    // The database-less preview answers with an estimate only: consent stays hidden and the page sends no create.
+    const estimateOnly = page.locator('main form button[type="submit"][aria-disabled="true"]');
+    await expect.poll(async () => await terms.isVisible() || await estimateOnly.isVisible()).toBe(true);
+    test.skip(await terms.isHidden(), 'The database-less preview has no reviewed quote or checkout binding; the installed configuration runs this.');
+    await terms.check();
+    const response = page.waitForResponse(response => response.url().endsWith('/api/actions/checkout.create'));
+    await page.getByRole('button', { name: text.placeOrder, exact: true }).click();
+    return (await response).json() as Promise<{ ok: boolean; code?: string }>;
+  };
+  await page.goto(selectionEntryPath(locale, cart('one_time', 1)));
+  const first = await place();
+  test.skip(first.code === 'host_binding_required', 'The database-less preview has no checkout binding; the installed configuration runs this.');
+  expect(first.ok).toBe(true);
+  await page.goto(routes.cart[locale]);
+  await page.getByRole('button', { name: text.demoReset, exact: true }).click();
+  await expect(page.locator('main')).toContainText(text.cartEmpty);
+  await page.goto(selectionEntryPath(locale, cart('one_time', 2)));
+  await expect(page.getByRole('spinbutton').first()).toHaveValue('2');
+  const second = await place();
+  expect(second).toMatchObject({ ok: false, code: 'starter_checkout_changed' });
+  await expect(page.locator('main')).toContainText('starter_checkout_changed');
+});
+
+test('selection entry answers replace the history entry', async ({ page }) => {
+  const locale = market.defaultLocale;
+  const { owned, cart } = await selectionSetup(page);
+  await page.goto(selectionEntryPath(locale, cart('one_time', 2)));
+  await expect(page.locator(anchorSelector)).toHaveCount(1);
+  await page.goto(routes.catalog[locale]);
+  await page.goto(selectionEntryPath(locale, cart('subscription', 2, owned.offer.defaultCadenceDays)));
+  const question = page.getByRole('region', { name: selectionEntryCopy.questionHeading[locale], exact: true });
+  await question.getByRole('button', { name: selectionEntryCopy.keepCart[locale], exact: true }).click();
+  await expect(question).toHaveCount(0);
+  await page.goBack();
+  await expect(page).toHaveURL(new RegExp(`${routes.catalog[locale]}$`));
+  await expect(page.locator('main h1')).toHaveText(copy[locale].catalog);
+});
+
+test('selection entry never prints a link SKU that no product has', async ({ page }) => {
+  const locale = market.defaultLocale;
+  const { draft, address } = await selectionSetup(page);
+  const crafted = 'Call.555-0100-to-claim.Visit-evil.example';
+  const region = page.getByRole('region', { name: selectionEntryCopy.refusalHeading[locale], exact: true });
+  await page.goto(`${routes.cart[locale]}?mode=one_time&line=${crafted}%3A1`);
+  await expect(region).toContainText(copy[locale].unknown_sku);
+  await expect(page.locator('main')).not.toContainText('evil');
+  await expect(page.locator('main')).not.toContainText('555-0100');
+  // A refusal shown on load is announced through a polite status inside its region.
+  await expect(region.getByRole('status')).toContainText(copy[locale].unknown_sku);
+  expect(await draft()).toBeNull();
+  expect(address()).toBe(routes.cart[locale]);
+});
+
+test('selection entry question keeps focus when it is redrawn', async ({ page }) => {
+  const locale = market.defaultLocale;
+  const { owned, cart } = await selectionSetup(page);
+  const held = cart('one_time', 2);
+  await page.goto(selectionEntryPath(locale, held));
+  await expect(page.locator(anchorSelector)).toHaveCount(1);
+  await page.goto(selectionEntryPath(locale, cart('subscription', 2, owned.offer.defaultCadenceDays)));
+  const question = page.getByRole('region', { name: selectionEntryCopy.questionHeading[locale], exact: true });
+  await expect(question).toBeFocused();
+  // Another tab stores the same cart in another key order: this tab redraws the same question.
+  const other = await page.context().newPage();
+  await other.goto(routes.terms[locale]);
+  await other.evaluate(({ key, value }) => localStorage.setItem(key, value), {
+    key: `neutral-store:cart:v1:${owned.id}`,
+    value: JSON.stringify({ lines: held.lines, cadenceDays: held.cadenceDays, mode: held.mode, configuration: held.configuration, schemaVersion: 1 }),
+  });
+  await expect(page.locator('.notices')).toContainText(copy[locale].storageChanged);
+  await expect(question).toBeFocused();
+  await other.close();
 });

@@ -1120,6 +1120,16 @@
       "anchor": "#storefront-continuation-contracts"
     },
     {
+      "id": "platform-storefront-verification",
+      "when": "Storefront verdict and proof-file contracts and the client-build digest",
+      "paths": [
+        "packages/platform/src/lifecycle/storefront*.ts",
+        "packages/platform/test/lifecycle/storefront*.test.ts"
+      ],
+      "doc": "packages/platform/README.md",
+      "anchor": "#storefront-verdict-and-proof-file-contracts"
+    },
+    {
       "id": "platform-http",
       "when": "Node HTTP runtime, request adaptation and deployment-owned security policy contracts",
       "paths": [
@@ -1276,6 +1286,7 @@
       "when": "Native connected-store capture and restore preparation",
       "paths": [
         "server/adapters/postgres/connectedStore*.ts",
+        "server/adapters/postgres/connectedStoreDomains/**",
         "server/adapters/filesystem/orderReviewMediaTransfer*"
       ],
       "doc": "server/adapters/README.md",

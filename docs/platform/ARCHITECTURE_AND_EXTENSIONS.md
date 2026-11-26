@@ -3006,8 +3006,12 @@ keeps its existing channel enum and persisted values. The maintained public
 [reference binding](../../server/domains/platform/platformWatchdogService.ts)
 supplies the existing domain evaluator. The package retains keyed queue ordering,
 bounded concurrency, draining on failure, serialized alert delivery, persistent
-backoff, escalation and snooze semantics. `checkOnly` evaluates without ledger or
-notification writes. The smaller
+backoff, escalation and snooze semantics. A host can build
+`createBatchedWatchdogAlertUpsert` once per run to group up to four already
+admitted writes. The host prepares detached inputs and applies its existing
+store transition, then returns one zero-based indexed outcome per input. The
+adapter checks the complete reply before settling individual writes. `checkOnly`
+evaluates without ledger or notification writes. The smaller
 [control-plane tick](../../packages/platform/src/operations/server/controlPlaneWatchdog.ts)
 evaluates enabled persisted job failures and records the existing heartbeat key.
 Alert overview uses a stale or absent heartbeat to report unknown health even

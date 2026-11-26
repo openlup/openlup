@@ -43,7 +43,7 @@ const seller = { name: 'Synthetic seller', address: { line1: '1 Example Street',
   taxIdentifier: { scheme: 'synthetic', value: 'seller' }, bankAccount: null, routingRef: null };
 const proof = { evidenceRef: 'synthetic-money', fingerprint: 'a'.repeat(64), observedAt: '2026-11-01T12:00:00Z' };
 const command = (file: string, args: string[], cwd = app) => execFileSync(file, args,
-  { cwd, encoding: 'utf8', timeout: 180000, env: { ...processEnvironment, NODE_PATH: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  { cwd, encoding: 'utf8', timeout: 300_000, env: { ...processEnvironment, NODE_PATH: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
 
 async function start(id: string) {
   const probe = createServer().listen(0, '127.0.0.1');

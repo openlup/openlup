@@ -4,6 +4,12 @@ Each package lists its SQL files by name. Your selected catalogue determines
 which files apply and in what order. Follow your application's migration chain
 in [Upgrade the database](../upgrade/database-migrations.md).
 
+## Order money foreign-key refusals
+
+| SQLSTATE | Constraint | Remedy |
+| --- | --- | --- |
+| `23503` | `commerce_orders_money_snapshot_fkey`, `commerce_order_items_money_source_fkey` | Write the order money snapshot and its line sources in the same transaction as the order. |
+
 ## `@openlup/outbox`
 
 <!-- generated:sql:outbox -->
@@ -243,6 +249,7 @@ in [Upgrade the database](../upgrade/database-migrations.md).
 | [`20261129120000_subscription_renewal_generation_seam.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129120000_subscription_renewal_generation_seam.sql) |
 | [`20261129130000_payment_capture_time_read.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129130000_payment_capture_time_read.sql) |
 | [`20261129130001_native_renewal_v3_storage.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129130001_native_renewal_v3_storage.sql) |
+| [`20261129130002_order_money_v2_assert.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129130002_order_money_v2_assert.sql) |
 | [`20261129130003_renewal_order_destination_v2.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129130003_renewal_order_destination_v2.sql) |
 | [`q2_00000000000000_platform_baseline.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_00000000000000_platform_baseline.sql) |
 | [`q2_20260810180001_self_host_actor_auth.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20260810180001_self_host_actor_auth.sql) |

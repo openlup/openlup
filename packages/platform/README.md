@@ -174,7 +174,7 @@ bearer; its local fixture establishes no hosted revocation guarantee.
 
 | Export | Contents |
 | --- | --- |
-| `./lifecycle` | Experimental Node file-snapshot planning/apply and read-only legacy PostgreSQL role prerequisites; no install-readiness claim, optional SDK or activation |
+| `./lifecycle` | Experimental Node file-snapshot planning/apply, read-only legacy PostgreSQL role prerequisites, and storefront verdict and proof-file contracts; no install-readiness claim, optional SDK or activation |
 | `./portability` | Experimental server object copy/resume, private filesystem transfer store and compatible PostgreSQL row capture/restore; injected handles, explicit refusal and no activation |
 | `./http` | Generic capped raw-body reader, hex HMAC and constant-time token comparison; Node request adaptation, deadlines, security headers and static documents, and `createNodeHttpRuntime` with its fixed request order |
 | `./bff` | `createBffDispatcher`, `lazyBffRoute`, the hosted router URL rewrite, the response envelope (`createBffResponder`), the observed request context and the health route |
@@ -1205,6 +1205,13 @@ reserved for a later command version.
 The existing `./catalog` entry supplies the opt-in PostgreSQL quote catalog
 reader described under [Catalog](#catalog); the quote engine consumes its
 existing `CommerceQuoteCatalogReadPort`.
+
+For an offer projection that builds several quotes, create one
+`memoizeCommerceQuoteCatalogReads` wrapper from `./pricing` per request and
+pass it to the projection and its quote ports. The wrapper shares the first
+catalog promise, including any rejection. If the reader throws before returning
+a promise, the wrapper shares a rejected promise with the same reason. Create a
+fresh wrapper for the next request to read the catalog authority again.
 
 `./pricing` provides the existing OpenLup strict commerce price authority,
 subscription-price-policy schemas, canonical digest and integer math, signed
@@ -3970,3 +3977,40 @@ and provider facts only through the host bindings a store passes in.
 The entry is a leaf: it imports no other platform module and bundles for a
 browser without Node built-ins. The declarations are in the
 [API report](https://github.com/openlup/openlup/blob/main/packages/platform/api/storefront.api.md).
+
+### Storefront verdict and proof-file contracts
+
+Status: current contract (experimental).
+
+A host, a production command and a proof harness read the same storefront
+evidence from `@openlup/platform/lifecycle`, without importing test support:
+
+- **Verdict.** `StorefrontVerdict` (format version 1) records one scenario
+  run: its tier, channel, result, control, steps with the buyer's ledger after
+  each, findings with four texts, the build identity and the harness inputs,
+  including the outcomes the store's driver declared. `parseStorefrontVerdict`
+  returns the typed verdict or a refusal (`storefront_verdict_invalid` naming
+  the failing path, or `storefront_verdict_version_unsupported` naming the
+  version found) and never throws. A `browser_ui` verdict requires `width`.
+  `storefrontVerdictJsonSchema` is the same contract as frozen draft-07 data.
+- **Proof file.** `StorefrontProofFile` (format version 1) names the
+  configurations and widths to prove, local routes, auto-progress actions, the
+  changed-payload policy, buyer overrides other than the e-mail, a recheck
+  command and an optional relative adapter module. `parseStorefrontProofFile`
+  and `storefrontProofFileJsonSchema` follow the verdict's rules; `host` is the
+  one object a host may fill.
+- **Digest.** `digestStorefrontFiles` is the one client-build digest:
+  `sha256:` over a manifest of relative POSIX paths and their SHA-256, sorted
+  by UTF-16 code units (not locale or UTF-8 byte order).
+- **Open sets.** Tiers, channels, results, runs, phases, control, observer,
+  build-source and adapter kinds, and finding codes accept values added later
+  (`^[a-z][a-z0-9_]*$`); a reader keeps a default branch. Unknown fields are
+  kept, except an own `__proto__` key, which is dropped. A result of
+  `not_run` is missing evidence, never a pass.
+- **Compatibility.** Within format version 1 fields are only added. Until the
+  first release that carries the storefront runner, format version 1 may still
+  be amended without a version bump; afterwards a removed field or changed
+  meaning raises `formatVersion`.
+
+Nothing here runs a scenario or reads a file. The declarations are in the
+[API report](https://github.com/openlup/openlup/blob/main/packages/platform/api/lifecycle.api.md).
