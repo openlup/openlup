@@ -1484,6 +1484,23 @@ describe('manual queue arm preflight', () => {
     expect(read.mock.calls.some(([args]) => args.some(path => path.includes('/actions/')))).toBe(false);
   });
 
+  it('skips a conflict removal without a group commit but keeps every other removal check', async () => {
+    const { check, f, read, removal } = armFixture();
+    const conflict = { ...removal, id: 'R_C', reason: 'MERGE_CONFLICT', beforeCommit: null };
+    f.removals = [conflict, { ...conflict, id: 'R_C2', reason: 'merge_conflict' }];
+    await expect(check()).resolves.toMatchObject({ status: 'ready', reason: 'preflight_passed' });
+    expect(read.mock.calls.some(([args]) => args.some(path => path.includes('/commits/')))).toBe(false);
+    f.removals = [{ ...conflict, reason: 'failed_checks' }];
+    await expect(check()).resolves.toMatchObject({ status: 'held', reason: 'evidence_unknown',
+      detail: expect.stringContaining('queue removal lacks a synthetic commit or reason') });
+    f.removals = [{ ...removal, reason: 'merge_conflict' }];
+    await expect(check()).resolves.toMatchObject({ status: 'held', reason: 'operator_diagnosis',
+      removal: 'merge_conflict', group: removal.beforeCommit.oid });
+    f.groupVerified = false;
+    await expect(check()).resolves.toMatchObject({ status: 'held', reason: 'evidence_unknown',
+      detail: expect.stringContaining('queue removal cannot be linked to an exact source head') });
+  });
+
   it('distinguishes a prior exact source head from the current head', async () => {
     const { check, f, olderHead, removal } = armFixture();
     f.groupParent = olderHead;

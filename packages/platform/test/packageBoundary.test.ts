@@ -293,7 +293,7 @@ describe("package source boundary", () => {
       exports: Record<string, unknown>;
     };
     expect(manifest.exports["./package.json"]).toBe("./package.json");
-    assertModuleExports(modules, graph, manifest.exports, (path) => existsSync(join(SOURCE_ROOT, path)), ["account-support/read-contracts", "account-support/postgres", "commerce/server/postgres", "channels/server", "channels/testing", "risk/server", "company-identity/server", "operations/server", "marketing/server", "marketing/server/postgres", "commerce/server", "commerce/server/destinations", "commerce/server/native-checkout", "invoicing/postgres", "pricing/browser", "communications/resend", "communications/klaviyo", "communications/testing", "payments/stripe", "payments/tpay", "payments/testing", "catalog/testing", "tax/stripe", "fulfillment/omnipack", "fulfillment/native", "fulfillment/testing", "shipping/testing", "accounting/testing", "observability/testing"]);
+    assertModuleExports(modules, graph, manifest.exports, (path) => existsSync(join(SOURCE_ROOT, path)), ["account-support/read-contracts", "account-support/postgres", "commerce/server/postgres", "channels/server", "channels/testing", "risk/server", "company-identity/server", "operations/server", "marketing/server", "marketing/server/postgres", "commerce/server", "commerce/server/destinations", "commerce/server/native-checkout", "invoicing/postgres", "pricing/browser", "communications/resend", "communications/klaviyo", "communications/testing", "payments/stripe", "payments/tpay", "payments/testing", "catalog/testing", "tax/stripe", "fulfillment/omnipack", "fulfillment/native", "fulfillment/testing", "shipping/testing", "accounting/testing", "observability/testing", "storefront/testing"]);
   });
 
   it("bundles the marketing server entry without PostgreSQL adapters or the optional pg peer", async () => {
@@ -312,6 +312,14 @@ describe("package source boundary", () => {
   it("refuses to bundle application lifecycle filesystem operations for a browser", async () => {
     await expect(build({
       entryPoints: [join(SOURCE_ROOT, "lifecycle/index.ts")],
+      bundle: true, platform: "browser", format: "esm", write: false,
+      treeShaking: false, logLevel: "silent",
+    })).rejects.toThrow(/node:fs|node:crypto|node:path/);
+  });
+
+  it("refuses to bundle storefront test support for a browser", async () => {
+    await expect(build({
+      entryPoints: [join(SOURCE_ROOT, "storefront/testing/index.ts")],
       bundle: true, platform: "browser", format: "esm", write: false,
       treeShaking: false, logLevel: "silent",
     })).rejects.toThrow(/node:fs|node:crypto|node:path/);

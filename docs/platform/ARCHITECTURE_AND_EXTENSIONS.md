@@ -1384,8 +1384,10 @@ current page snapshot while status evidence deduplicates by occurrence.
 Packing consumes frozen reservations from accepted dispatch commitments without
 manufacturing a label. Provider exceptions hold the order without rewriting the
 parcel FSM; newer eligible status evidence heals only proven machine scope,
-independently of arrival. A delivered observation without tracking records no
-arrival or alignment. Existing operator commands provide the manual path.
+independently of arrival. Verified delivered webhooks without incoming tracking
+can record arrival when the native store proves an exact parcel, one existing
+provider-bound tracking number and an explicit occurrence time. Operator
+commands provide the manual path when that proof is incomplete.
 The [recipe](../../packages/core/docs/guide/how-to/build/fulfillment.md#bind-provider-intake-and-reconciliation)
 owns channel, checkpoint and accounting composition. Construction registers no
 scheduler, changes no unbound fallback and establishes no hosted qualification.

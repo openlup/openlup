@@ -84,3 +84,74 @@ it("retries missing external references before acceptance and effects; either re
     }
   }
 });
+
+it("uses the first verified delivery envelope before accounting and finalization without counting tracking", async () => {
+  const value = observation("delivered");
+  value.trackingRefs = [];
+  const f = ingressFixture(value);
+  const persist = f.input.localPersistence.recordObservation;
+  f.input.localPersistence.recordObservation = async input => {
+    const result = await persist(input);
+    return { ...result, observation: f.inbound.get(input.eventKey)! };
+  };
+  const recordDelivery = vi.fn(async () => { f.trace.push("delivery"); return { readBack: true }; });
+  f.input.lifecycle.recordDeliveryWithoutTracking = recordDelivery;
+
+  expect(await run(f.input)).toMatchObject({ kind: "processed", deliveryReadBack: true, trackingRefs: 0, trackingReadBacks: 0 });
+  expect(f.trace).toEqual(["auth", "parse", "ingest", "find", "ack", "status", "stock", "handoff:true", "delivery", "invoice", "processed"]);
+  const laterReceipt = new Date(Date.parse(at) + 3_600_000).toISOString();
+  f.setObservation({ ...observation("delivered"), firstReceivedAt: laterReceipt });
+  expect(await run(f.input)).toMatchObject({ kind: "processed", replayed: true, deliveryReadBack: true, trackingRefs: 0 });
+  expect(recordDelivery).toHaveBeenNthCalledWith(2, expect.objectContaining({ fulfillmentRef: "fulfillment-a" }),
+    expect.objectContaining({ firstReceivedAt: at, trackingRefs: [] }));
+  expect(f.durableEffects.filter(effect => effect === "invoice")).toHaveLength(1);
+});
+
+it("leaves a failed delivery commit unfinished and permits accounting when proof is unavailable", async () => {
+  const value = observation("delivered");
+  value.trackingRefs = [];
+  const f = ingressFixture(value);
+  const persist = f.input.localPersistence.recordObservation;
+  f.input.localPersistence.recordObservation = async input => ({ ...await persist(input), observation: f.inbound.get(input.eventKey)! });
+  const recordDelivery = vi.fn<NonNullable<typeof f.input.lifecycle.recordDeliveryWithoutTracking>>()
+    .mockRejectedValueOnce(new Error("delivery_store_unavailable")).mockResolvedValueOnce({ readBack: false });
+  f.input.lifecycle.recordDeliveryWithoutTracking = recordDelivery;
+
+  await expect(run(f.input)).rejects.toThrow("delivery_store_unavailable");
+  expect(f.processed.size).toBe(0);
+  expect(f.trace).not.toContain("invoice");
+  const result = await run(f.input);
+  expect(result).toMatchObject({ kind: "processed", replayed: true, trackingRefs: 0, trackingReadBacks: 0 });
+  expect(result).not.toHaveProperty("deliveryReadBack");
+  expect(recordDelivery).toHaveBeenCalledTimes(2);
+  expect(f.trace.slice(-2)).toEqual(["invoice", "processed"]);
+});
+
+it("keeps replay evidence-only when the host cannot return the first envelope", async () => {
+  const value = observation("delivered");
+  value.trackingRefs = [];
+  const f = ingressFixture(value);
+  const persist = f.input.localPersistence.recordObservation;
+  f.input.localPersistence.recordObservation = async input => ({ ...await persist(input), replayed: true });
+  const recordDelivery = vi.fn(async () => ({ readBack: true }));
+  f.input.lifecycle.recordDeliveryWithoutTracking = recordDelivery;
+
+  const result = await run(f.input);
+  expect(result).toMatchObject({ kind: "processed", replayed: true, trackingRefs: 0 });
+  expect(result).not.toHaveProperty("deliveryReadBack");
+  expect(recordDelivery).not.toHaveBeenCalled();
+});
+
+it.each(["present", "redacted", "rejected", "polling"] as const)("does not apply the optional delivery effect with %s tracking evidence", async kind => {
+  const value = observation("delivered");
+  if (kind === "redacted") value.trackingRefs = [{ ...value.trackingRefs[0]!, trackingNumber: "invalid/number" }];
+  if (kind === "rejected" || kind === "polling") value.trackingRefs = [];
+  if (kind === "rejected") value.diagnostics = { admission: { rejectedTrackingRefs: 1, rejectedTrackingUrls: 0 } };
+  if (kind === "polling") value.fact = { ...value.fact, provenance: { source: "provider_reconciliation", authority: "provider_asserted" } };
+  const f = ingressFixture(value);
+  const recordDelivery = vi.fn(async () => ({ readBack: true }));
+  f.input.lifecycle.recordDeliveryWithoutTracking = recordDelivery;
+
+  expect(await run(f.input)).toMatchObject({ kind: "processed", trackingRefs: kind === "present" ? 1 : 0 });
+  expect(recordDelivery).not.toHaveBeenCalled();
+});

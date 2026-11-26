@@ -199,7 +199,7 @@ bearer; its local fixture establishes no hosted revocation guarantee.
 | `./fulfillment/native` (operator transactions) | `createPostgresFulfillmentOperatorPort` for replacement and complete cancellation, with authenticated actor and explicit provider/stock-source binding; `createPostgresParcelReservationConsumption` supplies exact parcel stock consumption. Install the complete catalogue and retain the [legacy cancellation limits](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries). |
 | `./fulfillment/native` (shipment commands) | `createPostgresFulfillmentShipmentCommandPort` records label evidence, handoff and tracking atomically with server actor and durable replay evidence. Handoff consumes only frozen parcel reservation IDs. Compose `withAccountingInvoiceShadowTrigger` from `./invoicing` after the committed command, using host channel policy and fail-soft accounting. [Historical limits](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries). |
 | `./fulfillment/native` (local commerce) | `createPostgresFulfillmentCommerceMutationPort` composes local creation, private operator-attempt audit and cancellation. `createPostgresFulfillmentDispatchComposition` supplies recorded native candidate/preparation reads. Install the complete catalogue through the dispatch-outcome forward; authenticate operators in the host. |
-| `./fulfillment/native` (provider intake) | `createPostgresFulfillmentProviderIntake` composes verified ingress, first-envelope replay, recorded correlation, exact stock, scoped exception recovery and leased reconciliation over existing workers and commands. Supply committed SQL calls, declared channels, durable keys and accounting policy. Empty tracking references write no arrival. See the [native recipe](../core/docs/guide/how-to/build/fulfillment.md#bind-provider-intake-and-reconciliation); offline evidence only. |
+| `./fulfillment/native` (provider intake) | `createPostgresFulfillmentProviderIntake` composes verified ingress, first-envelope replay, recorded correlation, exact stock, scoped exception recovery and leased reconciliation over existing workers and commands. Supply committed SQL calls, declared channels, durable keys and accounting policy. A verified delivery with no incoming tracking can commit arrival from an existing exact parcel reference and a proven occurrence time. See the [native recipe](../core/docs/guide/how-to/build/fulfillment.md#bind-provider-intake-and-reconciliation); offline evidence only. |
 | `./fulfillment/native` (customer alignment) | `createPostgresCustomerAlignmentRowsReader` feeds `readFulfillmentDelay` with protected/aligned rows ordered by update time. Supply authorized subscription IDs and current schedules. Replacement creation queues only; selected native dispatch submits the new parcel independently, and actual arrival settles alignment. Overview remains host-bound. |
 | `./fulfillment/native` (commerce projection) | Reduced `createPostgresFulfillmentCommerceReadPort`; requires the existing eligibility policy and explicit order-mode mapping. Its default destination reader calls the nonmutating shipment view through the supplied executor; an optional injected reader wins. Select `nativeFulfillmentCommerceResponseSchemas` explicitly when composing served commerce handlers; managed schemas remain the default. The preparation reader does not supply that boundary. [Limits](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#native-commerce-read-projection). |
 | `./subscriptions`, `./subscriptions/contracts` | Default-off, incomplete; [subscription contracts and renewal port](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts). |
@@ -227,6 +227,7 @@ bearer; its local fixture establishes no hosted revocation guarantee.
 | `./shipping` | Delivery ports, injected-schema handlers, summary/evidence; native flat-rate port + Core schema readiness |
 | `./shipping/contracts` | Type-only address, customer-address, delivery, pickup-point, shipping-rate and threshold contracts, plus selection summary and evidence DTOs |
 | `./storefront` | Experimental, browser-safe purchase continuation: identity roles and their constructors, the continuation record and its recovery functions, an experimental continuation controller, host bindings and declarations, and the markup anchor names; storage, requests and provider facts only through host bindings |
+| `./storefront/testing` | Test support for storefront proofs, Node only: the scenario, adapter, observer and page-handle contracts, `createPageHandle` over a Playwright page, and the verdict serializer; never in a buyer's bundle |
 
 ## HTTP runtime and security contract
 
@@ -4014,3 +4015,104 @@ evidence from `@openlup/platform/lifecycle`, without importing test support:
 
 Nothing here runs a scenario or reads a file. The declarations are in the
 [API report](https://github.com/openlup/openlup/blob/main/packages/platform/api/lifecycle.api.md).
+
+### Storefront test-support entry
+
+Status: current contract (testing).
+
+`@openlup/platform/storefront/testing` is test support for a storefront proof
+harness. It runs under Node, beside the browser that drives the store's pages,
+and never in a buyer's bundle: a browser bundle of the entry fails, and the
+`storefront` entry cannot import it. The scenario runner that reads these
+contracts follows in a later change.
+
+- **`StorefrontScenario`.** One buyer journey: its steps, the ledger safety it
+  must keep, the progress it must reach and the control that must keep that
+  progress from being reached, a create-request budget, one sentence each on
+  stimulus, safety, progress and control, and `requires.outcomes`, the outcomes
+  a run's outcome driver must declare for the scenario to be admitted. The
+  step, safety and control language is at `testing` maturity, so its shape may
+  change in a minor release with an upgrade note.
+- **`StorefrontAdapter`.** A store's departures from the defaults: an `arrange`
+  function up to the first buyer action, custom locators for actions and
+  states, command matchers for create and read requests and the key header,
+  auto-progress actions, routes and a recheck command. A field here overrides
+  the proof file, which overrides the run's defaults.
+- **`StorefrontObserver`.** Reads one run subject's ledger (orders, payable
+  orders, orders holding stock, payment attempts and captures).
+  `payableOrdersInDatabase` exists only when the observer reads a database
+  exclusive to one run.
+- **`PageHandle` and `createPageHandle(page, options?)`.** Wraps a Playwright
+  page without importing a browser library: navigation, the current path
+  without query, the width, anchor lookup and visibility, the visible
+  `state:` and `action:` anchors, clicking, filling, request interception
+  (`pass`, `withhold`, which delivers the request and fails the page's
+  response, or `block`) and `settled({ quietMs, timeoutMs })`, which resolves
+  once every intercepted request, followed through its redirects, has finished
+  and `quietMs` passed with no new request, and otherwise rejects after
+  `timeoutMs` naming the requests still open. An anchor is visible when its box is
+  non-zero, the buyer can bring it into view, is not hidden (the browser's
+  `checkVisibility` included, so a closed `details` element hides its content),
+  is not fully transparent, and part of it survives clipping by the overflow
+  boxes of the ancestors in its containing-block chain (a fixed or absolute
+  anchor escapes those outside it; the page's root scroller never clips) and
+  by `clip` and `clip-path`, with the element at that part's centre the anchor,
+  a descendant or an ancestor of it. An anchor not already shown in full is
+  scrolled into view before it is measured, and every scroll position is restored afterwards, instantly
+  whatever the page's `scroll-behavior`. The handle reads no clock.
+
+  Whether the buyer can bring an anchor into view is judged per axis before
+  anything moves, walking its scrollers from the anchor outward: the overflow
+  ancestors in its containing-block chain, then the viewport (whose overflow
+  is the root element's, or body's while the root's is visible). A scroller the
+  buyer can scroll (overflow other than `hidden` or `clip`) brings anything in
+  its scrollable content into its range, so from there outward what must be
+  shown is that range. A locked scroller must already show the anchor itself,
+  or, when a scrollable scroller lies inside it, an anchor-sized part of that
+  scroller's range. So an app shell, an `overflow: hidden` page or a body
+  scroll lock hides an anchor below the fold, but not one inside a scrollable
+  `main`, `#app` or modal. A container with nothing to scroll on an axis only
+  clips there; the viewport always counts and does not move a fixed anchor.
+- **`serializeStorefrontVerdict`.** Returns the verdict as two-space JSON with
+  sorted keys and a line feed after `parseStorefrontVerdict` accepts it, so
+  equal verdicts give equal bytes; it refuses a value JSON cannot carry
+  (function, `undefined`, non-finite number, object that is not plain, cycle)
+  instead of coercing it, and throws a `TypeError` with the refusal's four
+  parts. A harness writes one file per run
+  under `.context/storefront-verdicts/`; the entry writes no file.
+
+**Trust.** A verdict produced on a developer's machine is a claim about that
+build, not evidence for a release; only a verdict a CI run records for an equal
+build identity is reused.
+
+**Matching limits.** A command matcher sees only the method and the request
+path, without query string or fragment, so a token in a query never reaches a
+matcher or a verdict. A store whose operations share one endpoint (for example
+a single GraphQL path) cannot tell create from read by matcher; a server-sent
+event stream is one request the handle can pass or block as a whole, but not
+message by message, and WebSocket frames are not requests at all; requests
+answered by a service worker are not routed unless the harness blocks service
+workers in its browser context; a cross-origin request is matched by path
+alone; `settled` follows a redirect to the request the browser reports it
+redirected to, and a hop the browser does not report is covered only by the
+quiet window. An open stream, a long poll or a request in flight when the page
+closes keeps `settled` pending until its `timeoutMs` (default 30,000), when it
+rejects with `storefront_page_settle_timeout` naming each open request's method
+and path. An anchor inside a shadow root is measured as covered: the walk
+stops at the shadow root, so the handle does not yet see such an anchor as
+visible.
+
+**State anchors.** Each `data-openlup-state` value means one thing to the
+runner:
+
+| State | Meaning |
+| --- | --- |
+| `awaiting_payment` | An order exists and the buyer can pay |
+| `details_changed` | The server refused changed details under the same purchase |
+| `awaiting_authority` | Only a later status read can say how a payment ends |
+| `declined` | The attempt was declined and the order stays payable |
+| `paid` | Payment captured |
+| `paid_pending_activation` | Payment captured, subscription activation pending |
+
+The declarations are in the
+[API report](https://github.com/openlup/openlup/blob/main/packages/platform/api/storefront-testing.api.md).

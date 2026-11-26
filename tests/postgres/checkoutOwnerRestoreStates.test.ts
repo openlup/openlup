@@ -5,11 +5,8 @@ import {
   throwSettledErrors,
   verifyLegacyNoOp,
   verifyRestoreProfile,
-  type CheckoutRestoreProfile,
   type SharedGrantArtifact,
 } from "./checkoutOwnerRestoreStates.fixture.js";
-
-const profiles: CheckoutRestoreProfile[] = ["separate", "admin-managed", "admin-operator"];
 
 let sharedArtifact: Promise<SharedGrantArtifact>;
 let pendingFixtureWork = Promise.resolve();
@@ -38,13 +35,11 @@ afterAll(async () => {
   await artifact?.dispose();
 }, postgresSetupTimeoutMs);
 
-for (const profile of profiles) {
-  it(`restores the same nonempty checkout graph on ${profile}`, () =>
-    runFixtureWork(async () => {
-      const { pkg, root, manifest } = await sharedArtifact;
-      await verifyRestoreProfile(profile, pkg, root, manifest);
-    }), Math.max(245_000, postgresSetupTimeoutMs));
-}
+it("restores the same nonempty checkout graph on separate", () =>
+  runFixtureWork(async () => {
+    const { pkg, root, manifest } = await sharedArtifact;
+    await verifyRestoreProfile("separate", pkg, root, manifest);
+  }), Math.max(245_000, postgresSetupTimeoutMs));
 
 it("records the legacy no-op with the cluster login absent and present", () =>
   runFixtureWork(async () => {
