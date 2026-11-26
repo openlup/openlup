@@ -311,8 +311,9 @@ To use another free local port, export `OPENLUP_STARTER_PORT=4320` in the shell
 that runs `./lifecycle up` and `npm run catalogue:apply`. Use a decimal port
 from 1024 to 65535. With the default origin, exclude [ports blocked by Fetch](https://fetch.spec.whatwg.org/#port-blocking).
 An unset or empty value uses 4319, even if Compose has a
-different value in `.env`. Choose a distinct `COMPOSE_PROJECT_NAME` for each
-concurrent demo. A configured `publicOrigin` still governs request authority.
+different value in `.env`. Use a separate application directory,
+`COMPOSE_PROJECT_NAME`, and port for each concurrent demo.
+A configured `publicOrigin` still governs request authority.
 
 ## Host origin and local sessions
 
@@ -323,7 +324,8 @@ loopback-only Compose publication remain separate from origin selection.
 
 The runtime credential file must stay in owner-only configuration. The starter
 validates it at start. `./lifecycle up` records the project in the adopter-owned
-`.context/compose-project` file. `npm start`
+`.context/compose-project` file. `./lifecycle down` stops that project and
+clears the record before this directory can start another project. `npm start`
 without `--database-url` is still the UI-only preview with pending bindings.
 The native runtime composition binds customer challenge request/redemption,
 sign-out, reduced customer profile/subscription-control and owned order reads,

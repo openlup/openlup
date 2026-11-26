@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync, type ExecFileSyncOptionsWithStringEncoding } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { isIPv4 } from "node:net";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -1419,6 +1419,12 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
   const project = "starter-runtime-" + randomBytes(6).toString("hex");
   const scratch = mkdtempSync(join(tmpdir(), project + "-"));
   const env: NodeJS.ProcessEnv = { ...isolatedConsumerEnv(), COMPOSE_PROJECT_NAME: project, OPENLUP_STARTER_PORT: String(port) };
+  const fresh = { ...env };
+  delete fresh.COMPOSE_PROJECT_NAME;
+  const dockerBin = realpathSync("/usr/bin/docker");
+  const alternate = project + "-next";
+  const selectNext = { ...env, COMPOSE_PROJECT_NAME: alternate };
+  const clientEnvironments: string[] = [];
   const compose = (...args: string[]) => run(from, "docker", ["compose", "--project-name", project, ...args]);
   const captures: string[] = [], privateValues: string[] = [];
   const fail = (name: string) => { throw new Error("starter_runtime_proof_" + name); };
@@ -1531,7 +1537,22 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
       writeFileSync(join(from, file), readFileSync(join(to, file)));
     checked("refresh_packages", run(from, "npm", ["ci", "--ignore-scripts", "--no-audit"]));
     if (existsSync(source)) fail("early_runtime_file");
+    const predecessorImage = checked("predecessor_database_image", run(from, dockerBin,
+      ["inspect", "--format", "{{.Config.Image}}", original[0]!]));
+    const liveGuard = run(from, dockerBin, ["compose", "--project-name", project, "run", "--rm", "--no-deps", "-T", "database"],
+      undefined, { ...env, OPENLUP_STARTER_PREFLIGHT_HANDOFF: "/dev/null" });
+    if (liveGuard.status !== 1 || !liveGuard.stderr.includes("PostgreSQL already owns this data directory")
+      || JSON.stringify(identity()) !== JSON.stringify(original)) fail("live_predecessor_lock");
+    mark("live predecessor retains its lock and denies a second postmaster");
+    checked("kill_predecessor_database", run(from, dockerBin, ["kill", "--signal", "KILL", original[0]!]));
+    const volume = original[1]?.split(" ").at(-1);
+    if (!volume) fail("predecessor_volume_missing");
+    checked("stale_predecessor_lock_and_hba", run(from, dockerBin, ["run", "--rm", "--network", "none",
+      "--volume", volume + ":/predecessor:ro", "--entrypoint", "/bin/sh", predecessorImage, "-ec",
+      'test -s /predecessor/postmaster.pid && grep -Eq "^host[[:space:]].*[[:space:]]trust$" /predecessor/pg_hba.conf']));
     up();
+    const recovered = checked("recovery_logs", compose("logs", "--no-color", "database"));
+    if (!/database system was interrupted|automatic recovery in progress/u.test(recovered)) fail("predecessor_recovery_missing");
     const initial = readFileSync(source, "utf8").trim(), verifier = () => sql("select rolpassword from pg_authid where rolname = 'starter_runtime'", "postgres", true);
     privateValues.push(initial, verifier());
     const live = identity();
@@ -1544,6 +1565,9 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
     const committedVerifier = verifier();
     up();
     if (readFileSync(source, "utf8").trim() !== initial || verifier() !== committedVerifier) fail("credential_replay_changed");
+    if (identity()[2] !== original[2] || JSON.stringify(retained()) !== JSON.stringify(before))
+      fail("predecessor_retry_identity");
+    mark("predecessor SIGKILL with stale PID and legacy HBA, hardened recovery and retry");
     mark("ordinary runtime credential and verifier replay");
 
     // Teardown can replace the bridge and its addresses before another fresh connection.
@@ -1554,12 +1578,36 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
       return address;
     };
     const postgresImage = checked("database_image", run(from, "docker", ["inspect", "--format", "{{.Config.Image}}", container("database")]));
-    const peer = (password: string, user = "starter_runtime", db = "neutral_store") => run(from, "docker",
-      ["run", "--rm", "-i", "--network", project + "_default", "--entrypoint", "sh", postgresImage, "-ec",
-        'IFS= read -r PGPASSWORD; export PGPASSWORD; PGPASSFILE=/dev/null exec psql -XAtw -h "$1" -p 5432 -U "$2" -d "$3" -c "select session_user"', "peer", databaseIp(), user, db], password + "\n");
-    const native = (password?: string, user = "starter_runtime", db = "neutral_store") => run(from, "psql",
-      ["-XAtw", "-h", databaseIp(), "-p", "5432", "-U", user, "-d", db, "-c", "select session_user"], undefined,
-      { ...env, PGPASSWORD: password ?? "", PGPASSFILE: "/dev/null", PGCONNECT_TIMEOUT: "4", LC_ALL: "C" });
+    const passfile = join(scratch, "client.pgpass");
+    const peerPassfile = "/run/proof.pgpass";
+    const separator = "\u0000client-diagnostic\n";
+    const probeCommand = 'env -0 >&2; printf "\\000client-diagnostic\\n" >&2; exec /usr/bin/psql "$@"';
+    function tcpClient(peer: boolean, password: string, user: string, db: string, red?: string) {
+      const address = databaseIp();
+      const connect = ["-XAtw", "-h", address, "-p", "5432", "-U", user, "-d", db, "-c", "select session_user"];
+      const clientEnv: NodeJS.ProcessEnv = { ...env, PGCONNECT_TIMEOUT: "4", LC_ALL: "C", PGPASSFILE: passfile };
+      delete clientEnv.PGPASSWORD;
+      if (red) clientEnv.STARTER_PROOF_RED = red;
+      writeFileSync(passfile, password ? `${address}:5432:${db}:${user}:${password}\n` : "", { mode: 0o600, flag: "wx" });
+      try {
+        const probe = ["-ec", probeCommand, "client", ...connect];
+        const result = peer
+          ? run(from, dockerBin, ["run", "--rm", "--network", project + "_default", "--entrypoint", "/bin/sh",
+            "--mount", `type=bind,src=${passfile},dst=${peerPassfile},readonly`,
+            "--env", "PGPASSFILE=" + peerPassfile, "--env", "PGCONNECT_TIMEOUT=4", "--env", "LC_ALL=C",
+            postgresImage, ...probe], undefined, clientEnv, true)
+          : run(from, "/bin/sh", probe, undefined, clientEnv, true);
+        const parts = result.stderr.split(separator);
+        if (parts.length !== 2) fail("client_environment_probe");
+        const [environment, stderr] = parts as [string, string];
+        if (red) return { ...result, stderr, environment };
+        clientEnvironments.push(environment);
+        captures.push(result.stdout, stderr);
+        return { ...result, stderr, environment };
+      } finally { rmSync(passfile); }
+    }
+    const peer = (password: string, user = "starter_runtime", db = "neutral_store") => tcpClient(true, password, user, db);
+    const native = (password: string, user = "starter_runtime", db = "neutral_store") => tcpClient(false, password, user, db);
     for (const client of [peer, native]) {
       const noPassword = client("");
       const wrong = client("refused-fixture-value");
@@ -1721,15 +1769,19 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
     mark("credential replacement, interrupted recreation and fresh runtime read");
 
     const heldSource = source + ".held";
-    renameSync(source, heldSource);
-    try { checked("stop_with_missing_credential", run(from, "./lifecycle", ["down"])); }
-    finally { rmSync(heldSource, { force: true }); }
-    up();
+    const documentedRotation = `test -z "\${COMPOSE_PROJECT_NAME+x}" &&
+      PROJECT=$( (cd .context && cat compose-project) 2>/dev/null) && [ -n "$PROJECT" ] &&
+      COMPOSE_PROJECT_NAME="$PROJECT" ./lifecycle down &&
+      test ! -e .context/compose-project &&
+      rm -- "$HOME/.local/state/openlup/neutral-store/$PROJECT/runtime-password" &&
+      COMPOSE_PROJECT_NAME="$PROJECT" ./lifecycle up --configuration coffee --json`;
+    checked("rotation_from_fresh_shell", run(from, "/bin/sh", ["-ec", documentedRotation], undefined, fresh));
     const current = readFileSync(source, "utf8").trim(), currentVerifier = verifier();
     privateValues.push(current, currentVerifier);
     if (current === afterRotation || checked("stopped_rotation_auth", native(current)) !== "starter_runtime"
-      || !/password authentication failed/u.test(native(afterRotation).stderr)) fail("stopped_rotation");
-    mark("documented stopped-project rotation");
+      || !/password authentication failed/u.test(native(afterRotation).stderr) || identity()[2] !== original[2]
+      || readFileSync(projectFile, "utf8") !== project + "\n") fail("stopped_rotation");
+    mark("documented custom-project rotation from a fresh shell");
 
     function refusal(result: ReturnType<typeof run>, code: string, jsonMode: boolean) {
       let observed: unknown;
@@ -1743,6 +1795,65 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
       }
       if (!jsonMode && !["Cause:", "Fix:", "Recheck:"].every(label => result.stderr.includes(label))) fail("text_refusal_details");
     }
+    const projectBefore = container("application");
+    const wrongProject = run(from, "./lifecycle", ["up", "--configuration", "coffee", "--json"], undefined, selectNext);
+    refusal(wrongProject, "starter_runtime_project_mismatch", true);
+    if (!wrongProject.stdout.includes("./lifecycle down") || readFileSync(projectFile, "utf8") !== project + "\n"
+      || container("application") !== projectBefore || checked("unused_project", run(from, dockerBin,
+        ["ps", "-aq", "--filter", "label=com.docker.compose.project=" + alternate]))) fail("other_project_mutation");
+    renameSync(source, heldSource);
+    try { checked("stop_with_missing_credential", run(from, "./lifecycle", ["down"], undefined, fresh)); }
+    finally { renameSync(heldSource, source); }
+    if (existsSync(projectFile)) fail("down_did_not_clear_project");
+    const alternateSource = join(dirname(dirname(source)), alternate, "runtime-password");
+    try {
+      checked("start_second_project", run(from, "./lifecycle", ["up", "--configuration", "coffee", "--json"], undefined, selectNext));
+      const alternatePassword = readFileSync(alternateSource, "utf8").trim();
+      privateValues.push(alternatePassword);
+      if (readFileSync(projectFile, "utf8") !== alternate + "\n" || alternatePassword === current) fail("second_project_record");
+      checked("stop_second_project", run(from, "./lifecycle", ["down"], undefined, fresh));
+    } finally {
+      run(from, dockerBin, ["compose", "--project-name", alternate, "down", "--volumes", "--remove-orphans"], undefined, selectNext);
+      rmSync(dirname(alternateSource), { recursive: true, force: true });
+    }
+    up();
+    if (identity()[2] !== original[2] || verifier() !== currentVerifier) fail("original_project_changed");
+    mark("one project per directory, down clears record and permits switching");
+
+    const listener = project + "-port-holder";
+    try {
+      checked("occupy_listener_port", run(from, dockerBin, ["run", "-d", "--name", listener,
+        "-p", "127.0.0.1::5432", "--entrypoint", "sleep", postgresImage, "120"]));
+      const portMapping = checked("occupied_port", run(from, dockerBin, ["port", listener, "5432/tcp"]));
+      const occupied = portMapping.match(/^127\.0\.0\.1:([0-9]+)$/u)?.[1];
+      if (!occupied || occupied === "4319") fail("unsafe_occupied_port");
+      const result = run(from, "./lifecycle", ["up", "--configuration", "coffee", "--json"], undefined,
+        { ...env, OPENLUP_STARTER_PORT: occupied });
+      refusal(result, "starter_installation_failed", true);
+      if (!/port is already allocated|address already in use|failed to bind/u.test(result.stderr)) fail("lost_listener_diagnostic");
+    } finally { run(from, dockerBin, ["rm", "-f", listener]); }
+    up();
+    const dockerfile = join(from, "Dockerfile"), originalDockerfile = readFileSync(dockerfile);
+    const redactedFixture = randomBytes(32).toString("hex");
+    privateValues.push(redactedFixture);
+    try {
+      writeFileSync(dockerfile, Buffer.concat([originalDockerfile, Buffer.from(`\nRUN echo '${redactedFixture}' >&2; exit 17\n`)]));
+      const build = run(from, "./lifecycle", ["up", "--configuration", "coffee", "--json"]);
+      refusal(build, "starter_installation_failed", true);
+      if (!build.stderr.includes("exit code: 17") || !build.stderr.includes("[redacted]")
+        || build.stderr.includes(redactedFixture)) fail("lost_or_unsanitized_build_diagnostic");
+    } finally { writeFileSync(dockerfile, originalDockerfile); }
+    mark("occupied listener and failing build retain sanitized Docker diagnostics");
+
+    const alias = source + ".linked";
+    linkSync(source, alias);
+    try {
+      refusal(run(from, "./lifecycle", ["up", "--configuration", "coffee", "--json"]), "starter_runtime_credential_source_invalid", true);
+      const linkedProbe = compose("exec", "-T", "application", "node", "lifecycle.mjs", "runtime-probe");
+      if (linkedProbe.status !== 2 || linkedProbe.stdout.trim() !== "starter_runtime_credential_read_failed") fail("linked_reader_admitted");
+    } finally { rmSync(alias); }
+    mark("host preflight and mounted reader refuse hard links");
+
     // Refuse shape, permissions and special files before Compose build.
     const installedApp = container("application");
     checked("live_model", run(from, "docker", ["compose", "--project-name", project, "config", "--format", "json"], undefined,
@@ -1762,7 +1873,6 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
     }
     mark("invalid sources refused before build");
 
-    const dockerBin = checked("docker_binary", run(from, "sh", ["-c", "command -v docker"]));
     const synthetic = randomBytes(24).toString("hex"), wrongPassword = randomBytes(32).toString("hex");
     privateValues.push(synthetic, wrongPassword);
     const shim = join(scratch, "docker");
@@ -1867,7 +1977,7 @@ esac
     const imagePaths = checked("application_image_file_list", run(from, "docker", ["run", "--rm", "--network", "none", image,
       "find", "/application", "/run", "-name", "runtime-password", "-o", "-name", "starter_runtime_password"]));
     if (imagePaths) fail("credential_path_in_image");
-    const imageFiles = spawn("docker", ["run", "--rm", "--network", "none", image, "tar", "-cf", "-", "/application"],
+    const imageFiles = spawn(dockerBin, ["run", "--rm", "--network", "none", image, "tar", "-cf", "-", "/application"],
       { cwd: from, env, stdio: ["ignore", "pipe", "ignore"] });
     const done = new Promise(resolveDone => imageFiles.once("close", resolveDone));
     let tail = "", imageLeak = false;
@@ -1880,6 +1990,11 @@ esac
     const committed = checked("git_candidate_contents", run(process.cwd(), "git", ["diff", predecessor + "..HEAD"]));
     if (!leaks("private-red:" + initial) || !leaks("private-red:" + synthetic) || captures.some(leaks) || leaks(committed))
       fail("credential_output_scan");
+    const redClient = tcpClient(false, "", "starter_runtime", "neutral_store", synthetic);
+    if (clientEnvironments.length < 10 || clientEnvironments.some(value => leaks(value) || value.split("\0").some(entry => entry.startsWith("PGPASSWORD=")))
+      || !redClient.environment.includes("STARTER_PROOF_RED=") || !leaks(redClient.environment))
+      fail("client_environment_scan");
+    mark("private passfiles; exact client environment scan and synthetic red control");
     mark("captured output and scanner red control");
     mark("occupied proof completed in " + Math.round(performance.now() - started) + " ms");
   } finally {

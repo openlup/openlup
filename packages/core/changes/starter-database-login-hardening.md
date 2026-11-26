@@ -1,3 +1,1 @@
-- Starter hardening. The local demonstration provisions an individual PostgreSQL runtime credential for each Compose project. The runtime credential file must stay in owner-only configuration. The starter validates it at start.
-
-Migration: Stop the application. Follow the adjacent-release starter upgrade and reconcile any locally changed Compose or installation files. Run the updated `./lifecycle up` in the same Compose project to provision its credential and start the application with the existing database volume. Verify application health. If startup reports a credential-source problem, restore access to the private project credential and rerun the updated lifecycle command. Run the local renewal, care and checkout recovery commands through the application container as shown in the starter guide.
+Migration: Run the updated `./lifecycle up` in the same project. [Starter guide](docs/guide/how-to/build/customize-the-starter.md#database-login)

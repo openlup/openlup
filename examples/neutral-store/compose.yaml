@@ -21,27 +21,15 @@ services:
       - /bin/sh
       - -ec
       - |
-        if [ -s "$$PGDATA/PG_VERSION" ]; then
-          umask 077
-          fallback=$$(mktemp "$$PGDATA/.starter-hba.XXXXXX")
-          trap 'rm -f "$$fallback"' EXIT
-          printf '%s\n' 'local all all reject' 'host all all all reject' > "$$fallback"
-          if ! cmp -s "$$fallback" "$$PGDATA/pg_hba.conf"; then
-            if [ -e "$$PGDATA/postmaster.pid" ]; then
-              # A fresh deny-only fallback needs no rewrite before PostgreSQL checks its lock.
-              awk '
-                /^[[:space:]]*(#|$$)/ { next }
-                (($$1 == "local" && NF == 4) || ($$1 == "host" && NF == 5)) && $$NF == "reject" { ++rules; next }
-                { exit 1 }
-                END { if (rules < 2) exit 1 }
-              ' "$$PGDATA/pg_hba.conf"
-            else
-              chown postgres:postgres "$$fallback"
-              mv -f "$$fallback" "$$PGDATA/pg_hba.conf"
-            fi
+        if [ -e "$$PGDATA/postmaster.pid" ]; then
+          status=0
+          pg_isready -q -t 2 -h /var/run/postgresql -U postgres -d postgres || status=$$?
+          if [ "$$status" -ne 2 ]; then
+            printf '%s\n' 'PostgreSQL already owns this data directory. Stop it before retrying.' >&2
+            exit 1
           fi
-          rm -f "$$fallback"
-        else
+        fi
+        if [ ! -s "$$PGDATA/PG_VERSION" ]; then
           POSTGRES_PASSWORD=$$(od -An -v -tx1 -N32 /dev/urandom | tr -d ' \n')
           test "$${#POSTGRES_PASSWORD}" -eq 64
           export POSTGRES_PASSWORD
@@ -59,7 +47,24 @@ services:
       - database:/var/lib/postgresql/data
       - installation-socket:/var/run/postgresql
     healthcheck:
-      test: ['CMD', 'pg_isready', '-h', '127.0.0.1', '-U', 'starter_runtime', '-d', 'neutral_store']
+      test:
+        - CMD-SHELL
+        - |
+          pg_isready -q -h 127.0.0.1 -U starter_runtime -d neutral_store || exit 1
+          # The final postmaster has recovered the lock. Its managed HBA governs every connection.
+          if ! awk '
+            /^[[:space:]]*(#|$$)/ { next }
+            (($$1 == "local" && NF == 4) || ($$1 == "host" && NF == 5)) && $$NF == "reject" { ++rules; next }
+            { exit 1 }
+            END { if (rules < 2) exit 1 }
+          ' "$$PGDATA/pg_hba.conf"; then
+            [ "$$(psql -XAtqw -U postgres -d postgres -c 'show hba_file')" = /etc/postgresql/starter-pg-hba.conf ] || exit 1
+            umask 077
+            fallback=$$(mktemp "$$PGDATA/.starter-hba.XXXXXX") || exit 1
+            trap 'rm -f "$$fallback"' EXIT
+            printf '%s\n' 'local all all reject' 'host all all all reject' > "$$fallback" &&
+              chown postgres:postgres "$$fallback" && mv -f "$$fallback" "$$PGDATA/pg_hba.conf"
+          fi
       interval: 1s
       timeout: 3s
       retries: 30

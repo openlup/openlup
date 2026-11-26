@@ -686,6 +686,11 @@ describe("shift-left simulated upgrade-page audit", () => {
     expect(checkLinkOutcome(contents.replace(before, after))).toContain(`- See ${after}.`);
   });
 
+  it("renders one Core fragment link from both the changelog and the upgrade page", () => {
+    const note = "- See [Change](docs/guide/how-to/change.md).\n";
+    expect(checkLinkOutcome(note, false, coreFragment)).toContain("- See [Change](../how-to/change.md).");
+  });
+
   it("reports the Core CHANGELOG command in the first refusal and after a pin-only edit", () => {
     const source = "./" + "veli";
     const original = `- See [API](${blob}/main/${apiFile}?source=${source}#api).\n`;

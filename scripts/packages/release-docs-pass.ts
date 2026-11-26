@@ -338,6 +338,15 @@ function isUpgradeVersion(version: string): boolean {
   return RELEASE_VERSION.test(version) || /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)-[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*(?:\+[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*)?$/u.test(version);
 }
 
+// Core fragments are copied into CHANGELOG.md at the package root. Rebase
+// package-relative guide links when the same note is placed under guide/upgrade.
+function upgradeNote({ path, contents }: ChangelogFragment): string {
+  const note = contents.trimEnd();
+  return path.startsWith("packages/core/changes/")
+    ? note.replace(/(\]\([ \t]*<?)(?:\.\/)?docs\/guide\//gu, "$1../")
+    : note;
+}
+
 function renderUpgradePageSections({ root, version, since, fragments }: { root: string; version: string; since: string | undefined; fragments: readonly ChangelogFragment[] }) {
   if (!isUpgradeVersion(version)) throw new Error(`${version} is not a MAJOR.MINOR.PATCH release version or prerelease`);
   const guideRoot = join(resolve(root), GUIDE);
@@ -347,7 +356,7 @@ function renderUpgradePageSections({ root, version, since, fragments }: { root: 
   const config = parsePackagesConfig(readFileSync(join(root, PACKAGES_CONFIG_PATH), "utf8"));
   for (const entry of config.packages.filter(({ publish }) => publish)) {
     const notes = fragments.filter(({ path }) => path.startsWith(`${entry.directory}/changes/`)).sort((a, b) => Buffer.compare(Buffer.from(a.path), Buffer.from(b.path)));
-    if (notes.length) notesSections.push(`## ${entry.name}`, ...notes.map(({ contents }) => contents.trimEnd()));
+    if (notes.length) notesSections.push(`## ${entry.name}`, ...notes.map(upgradeNote));
   }
   const api = ["## API changes", ...(since ? apiSections(root, since) : ["The previous release could not be determined: no core release tag is an ancestor of HEAD."])];
   return { text: `${[...intro, ...notesSections, ...api].join("\n\n")}\n`, generated: `${[...intro, ...api].join("\n\n")}\n` };
@@ -447,7 +456,7 @@ function assertUpgradePageDocumentation(
   for (const fragment of fragments) {
     const count = fragmentViolations.length;
     const source = fragment.contents.trimEnd();
-    if (violations.length) assertGuidePage({ ...context, source: normalize(source), fragmentPath: fragment.path }, fragmentViolations);
+    if (violations.length) assertGuidePage({ ...context, source: normalize(upgradeNote(fragment)), fragmentPath: fragment.path }, fragmentViolations);
     if (fragment.path.startsWith("packages/core/changes/")) {
       // Release copies the fragment text verbatim and links resolve from the package root.
       assertPackageMarkdown({ ...changelog, source }, false, fragmentViolations, `${fragment.path} (Core CHANGELOG.md)`);
