@@ -320,7 +320,7 @@ it("computes save-offer reschedule target in the configured IANA time zone acros
   });
   expect(utcOffers.get(f.subscription)).toMatchObject({ kind: "reschedule", newNextCycleAt: "2031-04-05T07:00:00.000000Z" });
 
-  // Europe/Berlin -> 06:00Z (preserves 08:00 local wall-clock time across DST)
+  // Europe/Berlin -> 06:00Z (preserves 08:00 local wall-clock time across spring-forward DST)
   await installSubscriptionRescheduleTimeZonePolicy(owner, { revision: "wave4a-dst", timeZone: "Europe/Berlin" });
   const berlinOffers = await acceptor.readPresentations({
     actor: { kind: "customer", actorId: f.principal, clientId: f.client },
@@ -328,6 +328,47 @@ it("computes save-offer reschedule target in the configured IANA time zone acros
     now,
   });
   expect(berlinOffers.get(f.subscription)).toMatchObject({ kind: "reschedule", newNextCycleAt: "2031-04-05T06:00:00.000000Z" });
+
+  // 25-hour fall-back DST transition (2031-10-26 in Europe/Berlin):
+  // 2031-10-25T06:00:00Z is 08:00 CEST; +7 calendar days -> 2031-11-01 08:00 CET = 2031-11-01T07:00:00.000000Z.
+  const fFall = await createSlideFixture("2031-10-25T06:00:00.000Z");
+  const fallNow = "2031-10-18T12:00:00.000Z";
+  const fallBerlin = await acceptor.readPresentations({
+    actor: { kind: "customer", actorId: fFall.principal, clientId: fFall.client },
+    subscriptionIds: [fFall.subscription],
+    now: fallNow,
+  });
+  expect(fallBerlin.get(fFall.subscription)).toMatchObject({ kind: "reschedule", newNextCycleAt: "2031-11-01T07:00:00.000000Z" });
+
+  // Non-hour offset (+05:30 Asia/Kolkata) and negative offset (-05:00 America/New_York) calendar-day boundaries:
+  const edgeNow = "2031-01-05T12:00:00.000Z";
+  await installSubscriptionRescheduleTimeZonePolicy(owner, { revision: "wave4a-ist", timeZone: "Asia/Kolkata" });
+  // 2031-01-15T18:15Z (23:45 IST) -> 2031-01-15T18:45Z (00:15 IST next day): same UTC day, different IST day -> applied
+  const istDiff = await createSlideFixture("2031-01-15T18:15:00.000Z");
+  expect(await call(runtime, "subscription_command_apply",
+    [istDiff.principal, istDiff.client, `ist-diff-${randomUUID()}`, istDiff.subscription, "slide_next_cycle",
+      { newNextCycleAt: "2031-01-15T18:45:00.000Z" }, edgeNow, TERMS]))
+    .toMatchObject({ status: "applied" });
+  // 2031-01-15T18:45Z (00:15 IST) -> 2031-01-16T00:15Z (05:45 IST): different UTC day, same IST day -> noop
+  const istSame = await createSlideFixture("2031-01-15T18:45:00.000Z");
+  expect(await call(runtime, "subscription_command_apply",
+    [istSame.principal, istSame.client, `ist-same-${randomUUID()}`, istSame.subscription, "slide_next_cycle",
+      { newNextCycleAt: "2031-01-16T00:15:00.000Z" }, edgeNow, TERMS]))
+    .toMatchObject({ status: "noop" });
+
+  await installSubscriptionRescheduleTimeZonePolicy(owner, { revision: "wave4a-est", timeZone: "America/New_York" });
+  // 2031-01-15T23:30Z (18:30 EST) -> 2031-01-16T04:30Z (23:30 EST): different UTC day, same EST day -> noop
+  const estSame = await createSlideFixture("2031-01-15T23:30:00.000Z");
+  expect(await call(runtime, "subscription_command_apply",
+    [estSame.principal, estSame.client, `est-same-${randomUUID()}`, estSame.subscription, "slide_next_cycle",
+      { newNextCycleAt: "2031-01-16T04:30:00.000Z" }, edgeNow, TERMS]))
+    .toMatchObject({ status: "noop" });
+  // 2031-01-16T04:30Z (23:30 EST) -> 2031-01-16T05:30Z (00:30 EST next day): same UTC day, different EST day -> applied
+  const estDiff = await createSlideFixture("2031-01-16T04:30:00.000Z");
+  expect(await call(runtime, "subscription_command_apply",
+    [estDiff.principal, estDiff.client, `est-diff-${randomUUID()}`, estDiff.subscription, "slide_next_cycle",
+      { newNextCycleAt: "2031-01-16T05:30:00.000Z" }, edgeNow, TERMS]))
+    .toMatchObject({ status: "applied" });
 });
 
 it("fails closed with 22023 subscription_reschedule_timezone_policy_invalid on malformed settings across all 4 SQL functions and save-offer store", async () => {

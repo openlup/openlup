@@ -16,9 +16,10 @@ it("defaults only for an absent row and installs exact validated JSON", async ()
     revision: "default",
     timeZone: "UTC",
   });
-  for (const timeZone of ["UTC", "Europe/Berlin", "America/New_York", "Asia/Tokyo"]) {
+  for (const timeZone of ["UTC", "Europe/Berlin", "America/New_York", "Asia/Tokyo", "Asia/Kolkata", "Europe/Kyiv"]) {
     const policy = { revision: "owned-1", timeZone };
     await installSubscriptionRescheduleTimeZonePolicy({ query }, policy);
+    expect(query.mock.lastCall?.[0]).toContain("public.subscription_reschedule_timezone_validate($2::jsonb)");
     expect(query.mock.lastCall?.[1]).toEqual(["subscription_reschedule_timezone", JSON.stringify(policy)]);
     query.mockResolvedValueOnce({ rows: [{ value_text: JSON.stringify(policy) }] });
     expect(await readSubscriptionRescheduleTimeZonePolicy({ query })).toEqual(policy);

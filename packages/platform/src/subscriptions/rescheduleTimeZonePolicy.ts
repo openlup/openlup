@@ -21,10 +21,23 @@ const fallback: SubscriptionRescheduleTimeZonePolicy = {
   timeZone: DEFAULT_SUBSCRIPTION_RESCHEDULE_TIMEZONE,
 };
 
-const supportedIanaTimeZones = new Set<string>([
-  DEFAULT_SUBSCRIPTION_RESCHEDULE_TIMEZONE,
-  ...Intl.supportedValuesOf("timeZone"),
-]);
+const IANA_ZONE_SYNTAX = /^(?:UTC|[A-Z][A-Za-z0-9_+-]*(?:\/[A-Z][A-Za-z0-9_+-]*)+)$/u;
+const ALL_CAPS_SEGMENT = /^[A-Z]{4,}$/u;
+
+function isValidIanaTimeZone(timeZone: string): boolean {
+  if (!IANA_ZONE_SYNTAX.test(timeZone)) return false;
+  if (timeZone !== DEFAULT_SUBSCRIPTION_RESCHEDULE_TIMEZONE
+    && timeZone.split("/").some(segment => ALL_CAPS_SEGMENT.test(segment))) {
+    return false;
+  }
+  try {
+    const resolved = new Intl.DateTimeFormat("en-US", { timeZone }).resolvedOptions().timeZone;
+    if (resolved.toLowerCase() === timeZone.toLowerCase() && resolved !== timeZone) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 const policySchema = z.strictObject({
   revision: z.string(),
@@ -41,7 +54,7 @@ export function validateSubscriptionRescheduleTimeZone(value: unknown): Subscrip
   const parsed = policySchema.safeParse({ revision: fields.revision, timeZone: fields.timeZone });
   if (!parsed.success
     || parsed.data.revision.trim().length === 0
-    || !supportedIanaTimeZones.has(parsed.data.timeZone)) {
+    || !isValidIanaTimeZone(parsed.data.timeZone)) {
     throw new Error(code);
   }
   return parsed.data;
@@ -54,7 +67,8 @@ export async function installSubscriptionRescheduleTimeZonePolicy(
 ): Promise<void> {
   const validated = validateSubscriptionRescheduleTimeZone(policy);
   await db.query(
-    `INSERT INTO public.commerce_settings(key,value_text) VALUES($1,$2)
+    `INSERT INTO public.commerce_settings(key,value_text)
+      VALUES($1, public.subscription_reschedule_timezone_validate($2::jsonb)::text)
       ON CONFLICT(key) DO UPDATE SET value_text=EXCLUDED.value_text`,
     [key, JSON.stringify(validated)],
   );
