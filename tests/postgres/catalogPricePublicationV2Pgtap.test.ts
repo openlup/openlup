@@ -77,6 +77,8 @@ async function assertDormant(store: AccountMutationsStore) {
   expect(record).toMatchObject({ owner: entry.owner, definer: installation.generation === "qualified-v2",
     settings: ["search_path=pg_catalog, public, pg_temp"] });
   expect(reader).toMatchObject({ owner: entry.owner, definer: true, settings: ["search_path=pg_catalog, pg_temp"] });
+  expect((await owner.query(`SELECT a.grantee FROM pg_proc p CROSS JOIN LATERAL aclexplode(p.proacl) a
+    WHERE p.oid=to_regprocedure($1) AND a.grantee<>p.proowner`, [lockedV2])).rows).toEqual([]);
   expect(mutate).toMatchObject({ owner: entry.owner, definer: false, settings: ["search_path=pg_catalog, pg_temp"] });
   for (const helper of [gate, valid, verify, operations, modes, identity, taxLock]) expect(helper).toMatchObject({
     owner: entry.owner, definer: false, settings: ["search_path=pg_catalog, pg_temp"],
@@ -196,18 +198,21 @@ it("replays populated v1 receipts byte for byte through runtime logins after the
   });
 }, postgresSetupTimeoutMs);
 
-it("keeps fresh qualified-v2 dormant until both controlled EXECUTEs are effective", async () => {
+it("denies direct calls to the dormant locked price reader on a fresh qualified-v2 install", async () => {
   const store = await installAccountMutations("bootstrap", false, "price-basis-fresh");
   try {
     await installPublicationActors(store.owner);
     await assertDormant(store);
-    const testPrivileges = readFileSync("tests/postgres/fixtures/catalogPricePublicationV2/grants.sql", "utf8");
     await store.owner.query(`GRANT EXECUTE ON FUNCTION ${applyV2} TO openlup_catalog_publication`);
     expect(await dormant(store)).toBe(refusal);
-    await store.owner.query(testPrivileges);
-    expect((await store.runtime.query("SELECT public.catalog_price_basis_gate('command_invalid') AS gate")).rows).toEqual([{ gate: null }]);
-    await store.owner.query(`REVOKE EXECUTE ON FUNCTION ${applyV2} FROM openlup_catalog_publication`);
-    expect(await dormant(store)).toBe(refusal);
+    for (const [pool, role] of [[store.runtime, "SET LOCAL ROLE authenticated"],
+      [store.owner, "SET LOCAL SESSION AUTHORIZATION openlup_catalog_publication"],
+      [store.owner, "SET LOCAL ROLE service_role"]] as const) {
+      await expect(transaction(pool, async db => {
+        await db.query(role);
+        await db.query("SELECT * FROM public.catalog_publication_lock_effective_base_price_v2(NULL,NULL,NULL)");
+      })).rejects.toMatchObject({ code: "42501", message: "permission denied for function catalog_publication_lock_effective_base_price_v2" });
+    }
   } finally { await store.close(); }
 }, postgresSetupTimeoutMs);
 

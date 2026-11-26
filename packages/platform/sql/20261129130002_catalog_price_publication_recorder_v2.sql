@@ -427,6 +427,7 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_publication_assert_price_receipt_v2(jsonb,jsonb,jsonb,uuid,text[],text) FROM PUBLIC;
 
+-- Dormant and owner-only. A follow-up supplies reader parity and the runtime grant.
 CREATE FUNCTION public.catalog_publication_lock_effective_base_price_v2(p_sku uuid, p_list uuid, p_approval uuid)
 RETURNS TABLE(id uuid, unit_price_minor integer, amount_kind text)
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
