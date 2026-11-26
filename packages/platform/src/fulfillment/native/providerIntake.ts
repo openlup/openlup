@@ -190,6 +190,9 @@ export function createPostgresFulfillmentProviderIntake(input: NativeFulfillment
             if (observation.fact.canonicalStatus === 'exception') await recordProviderException(ref, observation);
             return status;
           },
+          recordDeliveryWithoutTracking: (ref, observation) => call<{ readBack: boolean }>(
+            'fulfillment_intake_record_delivery_without_tracking', [observation.eventKey, ref.dispatchRef, ref.fulfillmentRef],
+          ),
           effects, keys: input.keys, classifyFailure, supersededCause,
           annotateStockContention: (key, ref) => call('fulfillment_intake_annotate_stock_contention', [key, ref]),
           ...(input.accounting ? { issueAccountingInvoice: async (ref: string) => { try { await input.accounting!.issue(ref); } catch { /* Webhook accounting is fail-soft after committed physical effects. */ } } } : {}),
