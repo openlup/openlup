@@ -152,3 +152,14 @@ it.each([[], ["identity", "identity"], ["identity", "first"], ["other"], ["Bad",
     expect(connect).not.toHaveBeenCalled();
   },
 );
+
+it("requires the renewal cohort in a capture for the installed catalogue", async () => {
+  const installation = installations.separate, pin = currentInventory("separate");
+  const { sha256: _hash, ...source } = captureFixture("source", pin, logins.bootstrapLogin);
+  const body = { ...source, owned: source.owned.filter(row => row.table !== "subscription_renewal_upgrade_cohort") };
+  const freshTarget = captureFixture("target", pin, installation.migrationLogin);
+  const connect = vi.fn().mockRejectedValue(new Error("unexpected database connection"));
+  await expect(restoreConnectedNativeStore({ owner: { connect } as unknown as Pool, installation,
+    packet: { ...body, sha256: digest(body) }, freshTarget })).rejects.toMatchObject({ code: "invalid_input" });
+  expect(connect).not.toHaveBeenCalled();
+});

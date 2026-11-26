@@ -135,6 +135,9 @@ const v0Rows = (orderId: string) => store.owner.query(`SELECT o.money_version,i.
 
 it("applies its own prefix, keeps the incumbent definitions, and stores nulls through the native draft writer", async () => {
   expect(applied).toEqual([unit.file]);
+  expect((await store.owner.query("SELECT to_regclass('public.subscription_renewal_upgrade_cohort') AS cohort")).rows)
+    .toEqual([{ cohort: null }]);
+  expect(priorSource.owned.map(row => row.table)).not.toContain("subscription_renewal_upgrade_cohort");
   expect((await store.owner.query("SELECT catalog_path,sha256,position FROM public.platform_schema_migrations WHERE position=$1",
     [position + 1])).rows).toEqual([{ catalog_path: unit.file, sha256: unit.sha256, position: position + 1 }]);
   expect(createHash("sha256").update(readFileSync(unit.file)).digest("hex")).toBe(unit.sha256);
@@ -370,6 +373,7 @@ it("refuses the predecessor packet and restores the current six-table graph with
       if (target.installation.generation === "legacy") throw new Error("Qualified owner restore required");
       // Preserve the incumbent graph in the predecessor packet. Its order and item bytes came from the prior installation.
       const packet = await capture(store.owner, store.inventory, "current-order-store");
+      expect(packet.owned.map(row => row.table)).not.toContain("subscription_renewal_upgrade_cohort");
       expect(packet.owned.filter(row => storageTables.some(name => name === row.table)).map(row => [row.table, row.rows.length]))
         .toEqual(storageTables.map((name, index) => [name, [2, 2, 4, 4, 6, 2][index]]));
       const taxIndex = packet.owned.findIndex(row => row.table === "tax_calculations");
