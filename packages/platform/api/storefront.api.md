@@ -764,13 +764,15 @@ export interface PurchaseContinuation<TPayload, TResult, TOptions = undefined> {
  *    one: a host does not log or report it.
  *
  * An answer is applied once. After a `settled` answer only another `settled`
- * answer changes the status, until `startOver` or until the stored record
- * names another purchase. `settled` and `closed` clear the record and the
- * pending-action marker; `declined` advances the attempt only when the stored
- * record names the declined purchase and `declinedAttempt` names its stored
- * attempt, and clears the marker. Each clear happens only while the stored
- * record names the purchase the answer is for, or, for the marker, while no
- * record is stored. A changed
+ * answer changes the status, until `startOver` or until the next command that
+ * reads the stored record finds another purchase. `settled` and `closed` clear
+ * the record and the pending-action marker; `declined` advances the attempt
+ * only when the stored record names the declined purchase and
+ * `declinedAttempt` names its stored attempt, and clears the marker. A
+ * `terminal` answer to `startOver` and a `discard` decision of the
+ * pending-action check clear them too. Each clear happens only while the
+ * stored record names the purchase the answer is for, or, for the marker,
+ * while no record is stored. A changed
  * payload is sent only under `update_in_place`, or after a `refused` answer to
  * a submit or its replay, until the next payload is sent; any other policy
  * value reads as `refuse_changed`. When a record write throws or does not read
