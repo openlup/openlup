@@ -201,8 +201,7 @@ export type DestinationIssueResultV2 = {
     eventId: UUID;
     replayed: boolean;
 };
-/** @experimental Destination evidence verified by the native owner. Keep it server-side. */
-export type DestinationVerifiedReadV2 = {
+type CheckoutDestinationRead = {
     binding: DestinationBindingV2;
     documentDigest: Digest;
     evidenceExpiresAt: UtcMillis;
@@ -216,6 +215,11 @@ export type DestinationVerifiedReadV2 = {
         contact: Contact;
     };
 };
+/** @experimental Destination evidence verified by the native owner. Keep it server-side. */
+export type DestinationVerifiedReadV2 = CheckoutDestinationRead | (Omit<CheckoutDestinationRead, "evidenceExpiresAt"> & {
+    documentPurpose: "subscription";
+    evidenceExpiresAt: null;
+});
 type Check = {
     kind: "checkout";
     scopeRef: UUID;
@@ -249,7 +253,7 @@ type SubscriptionRechecked = Omit<Rechecked, "selection"> & {
 type CurrentSubscriptionDestination = Pick<Rechecked, "binding" | "service"> & {
     selectionRevision: UUID;
 };
-type SubscriptionRead = Omit<DestinationVerifiedReadV2, "evidenceExpiresAt"> & SubscriptionRechecked & {
+type SubscriptionRead = Omit<CheckoutDestinationRead, "evidenceExpiresAt"> & SubscriptionRechecked & {
     evidenceExpiresAt: null;
 };
 type SubscriptionCheck = Omit<Check, "kind"> & {
@@ -263,13 +267,14 @@ export interface DestinationPortV2 {
     snapshot(ctx: DestinationContextV2, command: SnapshotCommand, now: UtcMillis): Promise<Decision<DestinationIssueResultV2 | Erased>>;
     read(ctx: DestinationContextV2, kind: "subscription", id: UUID, expectedBinding: null): Promise<SubscriptionDecision<CurrentSubscriptionDestination>>;
     read(ctx: DestinationContextV2, kind: "subscription", id: UUID, expectedBinding: DestinationBindingV2): Promise<SubscriptionDecision<SubscriptionRead>>;
+    read(ctx: DestinationContextV2, kind: "snapshot", id: UUID, expectedBinding: DestinationBindingV2): Promise<Decision<CheckoutDestinationRead>>;
     read(ctx: DestinationContextV2, kind: "snapshot" | "order" | "shipment", id: UUID, expectedBinding: DestinationBindingV2): Promise<Decision<DestinationVerifiedReadV2>>;
     recheck(ctx: DestinationContextV2, check: SubscriptionCheck): Promise<SubscriptionDecision<SubscriptionRechecked>>;
     recheck(ctx: DestinationContextV2, check: Check): Promise<Decision<Rechecked>>;
     registerOrder(ctx: DestinationContextV2, orderId: UUID, check: Check): Promise<Decision<DestinationBindingV2>>;
 }
 declare const refusalFields: {
-    readonly address_invalid_input: readonly ["command", "now", "requestKey", "requestDigest", "purpose", "scopeRef", "original", "original.address", "original.contact", ...("original.address.line1" | "original.address.line2" | "original.address.city" | "original.address.postalCode" | "original.address.subdivisionCode" | "original.address.countryCode" | "original.contact.recipientName" | "original.contact.contactEmail" | "original.contact.contactPhone" | "original.contact.courierInstructions" | "original.contact.deliveryNotes" | "original.contact.companyName" | "original.contact.taxId" | "original.contact.label")[], "validated", "validated.address", "validated.contact", "line1", "line2", "city", "postalCode", "countryCode", "subdivisionCode", "recipientName", "contactEmail", "contactPhone", "companyName", "label", "taxId", "deliveryNotes", "courierInstructions", "policyRef", "policyRevision", "classificationKeys", "orderId", "shipmentId"];
+    readonly address_invalid_input: readonly ["command", "now", "requestKey", "requestDigest", "purpose", "scopeRef", "original", "original.address", "original.contact", ...("original.address.line1" | "original.address.line2" | "original.address.city" | "original.address.postalCode" | "original.address.countryCode" | "original.address.subdivisionCode" | "original.contact.recipientName" | "original.contact.contactEmail" | "original.contact.contactPhone" | "original.contact.companyName" | "original.contact.label" | "original.contact.taxId" | "original.contact.deliveryNotes" | "original.contact.courierInstructions")[], "validated", "validated.address", "validated.contact", "line1", "line2", "city", "postalCode", "countryCode", "subdivisionCode", "recipientName", "contactEmail", "contactPhone", "companyName", "label", "taxId", "deliveryNotes", "courierInstructions", "policyRef", "policyRevision", "classificationKeys", "orderId", "shipmentId"];
     readonly destination_dialect_invalid: readonly ["version"];
     readonly destination_owner_unlinked: readonly ["owner"];
     readonly destination_evidence_unavailable: readonly ["destination.snapshotRef", "orderId", "shipmentId"];

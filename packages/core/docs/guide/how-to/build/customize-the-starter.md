@@ -650,8 +650,13 @@ export async function readRetainedDestination(
 }
 ```
 
+Retained order and shipment reads return `documentPurpose: "subscription"`
+and `evidenceExpiresAt: null` for a document issued to a subscription. A
+checkout-issued document, including one inherited by a renewal, returns its
+original `evidenceExpiresAt` timestamp.
+
 If the binding differs, recover the original binding from the order's sealed
-checkout evidence through the authorized order workflow and repeat the read.
+destination evidence through the authorized order workflow and repeat the read.
 Keep destination documents, original commands, receipts and infrastructure
 causes server-side. For `OPENLUP_E_DESTINATION_INFRASTRUCTURE`, use the error's
 checklist to verify the native binding, driver, connection and TLS, runtime

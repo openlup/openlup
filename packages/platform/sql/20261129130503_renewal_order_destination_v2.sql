@@ -272,7 +272,8 @@ BEGIN
     END IF;
     RETURN jsonb_build_object('binding', v_row.binding, 'document', v_result->'document', 'documentDigest', v_row.document_digest,
       'evidenceExpiresAt', CASE WHEN v_row.purpose IS NOT NULL THEN
-        to_char(v_row.evidence_expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') END);
+        to_char(v_row.evidence_expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') END)
+      || CASE WHEN v_row.purpose IS NULL THEN jsonb_build_object('documentPurpose', 'subscription') ELSE '{}'::jsonb END;
   END IF;
   v_row := public.commerce_destination_v2_owned_document(p_ctx, p_bound.snapshot_ref);
   v_result := public.commerce_destination_v2_check_document(v_row, p_field);

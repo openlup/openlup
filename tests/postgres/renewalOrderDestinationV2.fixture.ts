@@ -31,7 +31,8 @@ export async function activate(db: Db, ctx: Context, order: string) {
 
 export async function subject({ owner, runtime }: JourneyInstallation) {
   const root = await sandboxRenewal(owner);
-  const ctx = { ...await destinationContext(owner, root.client), scopeRef: root.subscription };
+  const context = await destinationContext(owner, root.client);
+  const ctx = { ...context, scopeRef: root.subscription, owner: { ...context.owner, principalKind: "customer" as const } };
   await owner.query("UPDATE public.subscriptions SET next_cycle_at=clock_timestamp()+interval '28 days' WHERE id=$1", [root.subscription]);
   await call(owner, "fulfillment_reserve_subscription_renewal", [root.operation, root.token, 900, AT]);
   const reserve = await owner.query<{ id: string }>(`UPDATE public.fulfillment_inventory_reservations

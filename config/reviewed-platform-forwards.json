@@ -14207,12 +14207,12 @@
     },
     {
       "path": "db/platform/migrations/20261129130503_renewal_order_destination_v2.sql",
-      "sha256": "1a42c239dbb3b4cd1db9de564ea1a56876b733ebaa8e2582245251e48b4ac9b4",
+      "sha256": "22cf5b0beee322fd9b72b762c9faa8c7a8d8fdabe4a40a0c61b435d27096d589",
       "functions": [
         {
           "signature": "public.commerce_destination_v2_check_retained(jsonb,public.commerce_destination_v2_order_bindings,text)",
           "beforeSha256": "f5152ba81cbefc2717f81890018c460e8555a34c9fe3893055d21d84115b5001",
-          "afterSha256": "68e714edd38190c7a9bcc80c05a09294daf11ab270598e126a18268e40dc5ecc"
+          "afterSha256": "73c12b03dc87266307b5029279617aebbf5464d54e4b243c1af43f36d50a57e9"
         },
         {
           "signature": "public.commerce_destination_v2_export(uuid)",

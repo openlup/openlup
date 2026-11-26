@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { createPostgresDestinationPortV2 } from "@openlup/platform/commerce/server/destinations";
 import type { Pool, PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { readPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
@@ -61,6 +62,7 @@ async function effects(db: Db, f: Subject) {
     (SELECT array_agg((b.xmin::text, b.*)::text ORDER BY b.order_id) FROM public.commerce_destination_v2_order_bindings b
       JOIN public.commerce_orders o ON o.id=b.order_id WHERE o.client_id=$1) AS destinations,
     (SELECT array_agg((p.xmin::text, p.*)::text ORDER BY preparation_id) FROM public.subscription_cycle_preparations p WHERE cycle_key=$2) AS preparations,
+    (SELECT array_agg((b.xmin::text, b.*)::text ORDER BY binding_seq) FROM public.subscription_cycle_tax_bindings b WHERE cycle_key=$2) AS fiscal,
     (SELECT array_agg((i.xmin::text, i.*)::text ORDER BY i.id) FROM public.commerce_settlement_intents i
       JOIN public.commerce_orders o ON o.id=i.order_id WHERE o.client_id=$1) AS intents,
     (SELECT array_agg((a.xmin::text, a.*)::text ORDER BY a.id) FROM public.payment_provider_attempts a
@@ -180,8 +182,14 @@ it("denies the private writer to installed non-owner roles under permissive defa
   }, false);
 });
 
-it("binds inherited New York and a replacement with explicit California, retaining both frozen carrier contacts and exports", async () => {
+it("reads the checkout and frozen inherited and explicit renewal destinations through the installed port", async () => {
   const { owner, runtime } = store, f = await subject(store);
+  const port = createPostgresDestinationPortV2(runtime);
+  const checkout = await port.read(f.checkout, "snapshot", f.ny.binding.snapshotRef, f.ny.binding);
+  expect(checkout).toMatchObject({ binding: f.ny.binding, document: { address: { subdivision: "NY" } },
+    evidenceExpiresAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T.*\.\d{3}Z$/u) });
+  expect(checkout).not.toHaveProperty("documentPurpose");
+  expect(await port.read(f.checkout, "order", f.origin, f.ny.binding)).toStrictEqual(checkout);
   const booked = await bookCycle(owner, f);
   const before = await invariant(owner, f);
   expect(before[0].alignment).toHaveLength(1);
@@ -202,18 +210,14 @@ it("binds inherited New York and a replacement with explicit California, retaini
     WHERE p.opening_key=$1 AND p.cycle_key=$2`, [prepareOpening(f, 1), f.pair.cycle_key]);
   const east = receipt.rows[0]!;
   expect(receipt.rows).toHaveLength(1);
-  expect(await retained(runtime, f, east, f.ny)).toMatchObject({
-    binding: f.ny.binding, document: { address: { subdivision: "NY" } },
-  });
+  expect(await port.read(f.ctx, "order", east.order, f.ny.binding)).toStrictEqual(checkout);
   expect(await effects(owner, f)).toStrictEqual(beforeReplay);
   expect(beforeReplay[0]).toMatchObject({ grants: 0, commands: 0 });
 
   const firstParcel = await paidHandoff(store, east);
   expect(firstParcel.contact).toMatchObject({ binding: f.ny.binding, service: f.ny.service,
     address: { subdivision: "NY" }, recipient: { recipientName: "Sample Recipient" } });
-  expect(await readSnapshot(runtime, f.ctx, f.ny.binding, firstParcel.shipment, "shipment")).toMatchObject({
-    binding: f.ny.binding, document: { address: { subdivision: "NY" } },
-  });
+  expect(await port.read(f.ctx, "shipment", firstParcel.shipment, f.ny.binding)).toStrictEqual(checkout);
 
   const replacing = await subject(store);
   const originalCycle = await bookCycle(owner, replacing);
@@ -253,8 +257,34 @@ it("binds inherited New York and a replacement with explicit California, retaini
   const replacementParcel = await paidHandoff(store, west);
   expect(replacementParcel.contact).toMatchObject({ binding: westSelection.binding, service: westSelection.service,
     address: { subdivision: "CA" }, recipient: { recipientName: "West Recipient" } });
-  expect(await readSnapshot(runtime, replacing.ctx, westSelection.binding, replacementParcel.shipment, "shipment")).toMatchObject({
+  const frozen = await port.read(replacing.ctx, "order", west.order, westSelection.binding);
+  expect(frozen).toMatchObject({
     binding: westSelection.binding, document: { address: { subdivision: "CA" } },
+    documentPurpose: "subscription", evidenceExpiresAt: null,
+  });
+  expect(await port.read(replacing.ctx, "shipment", replacementParcel.shipment, westSelection.binding)).toStrictEqual(frozen);
+});
+
+it("exports the verified document and withholds renewal order pins that disagree with fiscal evidence", async () => {
+  const { owner, runtime } = store, f = await subject(store);
+  const direct = await edit(owner, f.ctx, f.ny.selectionRevision);
+  expect(direct.outcome).toBe("applied_from_next_parcel");
+  const cycle = await bookCycle(owner, f);
+  const target = await ownerTransaction(owner, db => prepare(db, f, direct, cycle));
+  const exportedDocument = async () => (await call(runtime, "commerce_destination_v2_export", [f.ctx.clientId]))
+    .find(({ snapshotRef }: { snapshotRef: string }) => snapshotRef === direct.binding.snapshotRef);
+  const { orderBindings, ...verifiedDocument } = await exportedDocument();
+  expect(orderBindings).toStrictEqual([{ orderId: target.order, selection: expectedSelection(f, direct), service: direct.service }]);
+  expect(verifiedDocument).toMatchObject({ scopeRef: f.ctx.scopeRef, evidenceDisposition: "available",
+    document: { address: { subdivision: "CA" } }, documentDigest: expect.stringMatching(/^[0-9a-f]{64}$/u) });
+  expect(verifiedDocument).not.toHaveProperty("verification");
+
+  const mismatch = await owner.query(`UPDATE public.subscription_cycle_tax_bindings
+    SET live_evidence=jsonb_set(live_evidence,'{service,adapterRevision}',to_jsonb('other-adapter'::text),false)
+    WHERE cycle_key=$1`, [f.pair.cycle_key]);
+  expect(mismatch.rowCount).toBe(1);
+  expect(await exportedDocument()).toStrictEqual({ ...verifiedDocument,
+    verification: { status: "failed", code: "destination_binding_invalid", field: "orderBindings" },
   });
 });
 
@@ -325,6 +355,58 @@ it("refuses a fiscal issuance with a different operation, generation or sequence
     expect(await bind(db, f.ctx, target.order, f.ny)).toStrictEqual(f.ny.binding);
   });
 });
+
+it("refuses each mismatched live fiscal pin with current destination arguments and leaves rows unchanged", async () => {
+  const { owner } = store, f = await subject(store), target = await stagePreparation(owner, f);
+  const before = await effects(owner, f), delivery = await invariant(owner, f);
+  const mismatches = {
+    binding: { ...f.ny.binding, policyRevision: "other-policy" },
+    selectionRevision: randomUUID(),
+    service: { ...f.ny.service, adapterRevision: "other-adapter" },
+  };
+  await ownerTransaction(owner, async db => {
+    for (const [key, value] of Object.entries(mismatches)) {
+      await db.query("SAVEPOINT fiscal_fixture");
+      const changed = await db.query(`UPDATE public.subscription_cycle_tax_bindings
+        SET live_evidence=jsonb_set(live_evidence,ARRAY[$2::text],$3::jsonb,false) WHERE cycle_key=$1`,
+      [f.pair.cycle_key, key, JSON.stringify(value)]);
+      expect(changed.rowCount, key).toBe(1);
+      await expectBindRefused(db, f, target, unavailable("orderId"), key);
+      expect(await invariant(db, f), key).toStrictEqual(delivery);
+      await db.query("ROLLBACK TO SAVEPOINT fiscal_fixture; RELEASE SAVEPOINT fiscal_fixture");
+    }
+    expect(await effects(db, f)).toStrictEqual(before);
+    expect(await bind(db, f.ctx, target.order, f.ny)).toStrictEqual(f.ny.binding);
+  });
+});
+
+it("refuses fiscal evidence that expires during an observed subscription row wait and leaves rows unchanged", async () => {
+  const { owner } = store, f = await subject(store), target = await stagePreparation(owner, f);
+  const blocker = await owner.connect(), writer = await owner.connect();
+  try {
+    await blocker.query("BEGIN");
+    await blocker.query("SELECT id FROM public.subscriptions WHERE id=$1 FOR UPDATE", [f.ctx.scopeRef]);
+    await writer.query("BEGIN; SET LOCAL lock_timeout='10s'; SET LOCAL statement_timeout='12s'");
+    const wait = await waitFor(owner, writer, blocker);
+    const { rows: [fiscal] } = await owner.query<{ cutoff: string }>(`UPDATE public.subscription_cycle_tax_bindings
+      SET expires_at=clock_timestamp()+interval '5 seconds' WHERE cycle_key=$1 RETURNING expires_at::text AS cutoff`, [f.pair.cycle_key]);
+    const cutoff = fiscal!.cutoff;
+    const before = await effects(owner, f), delivery = await invariant(owner, f);
+    const pending = bind(writer, f.ctx, target.order, f.ny).catch((error: unknown) => error);
+    await wait();
+    expect(await data(owner, "SELECT clock_timestamp() < $1::timestamptz AS fresh", [cutoff])).toEqual([{ fresh: true }]);
+    await blocker.query("SELECT pg_sleep_until($1::timestamptz + interval '10 milliseconds')", [cutoff]);
+    await blocker.query("COMMIT");
+    expect(await pending).toMatchObject(unavailable("orderId"));
+    await writer.query("ROLLBACK");
+    expect(await effects(owner, f)).toStrictEqual(before);
+    expect(await invariant(owner, f)).toStrictEqual(delivery);
+  } finally {
+    await Promise.all([blocker.query("ROLLBACK"), writer.query("ROLLBACK")]);
+    blocker.release();
+    writer.release();
+  }
+}, 18_000);
 
 it("distinguishes malformed prior checkout pins from missing acquisition lineage after an explicit edit", async () => {
   const { owner } = store, f = await subject(store), target = await stagePreparation(owner, f);
