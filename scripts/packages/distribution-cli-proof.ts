@@ -1429,7 +1429,9 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
   const alternate = project + "-next";
   const selectNext = { ...env, COMPOSE_PROJECT_NAME: alternate };
   const clientEnvironments: string[] = [];
-  const compose = (...args: string[]) => run(from, "docker", ["compose", "--project-name", project, ...args]);
+  const composeFor = (activeProject: string, ...args: string[]) =>
+    run(from, "docker", ["compose", "--project-name", activeProject, ...args]);
+  const compose = (...args: string[]) => composeFor(project, ...args);
   const captures: string[] = [], privateValues: string[] = [];
   const fail = (name: string) => { throw new Error("starter_runtime_proof_" + name); };
   function run(cwd: string, command: string, args: string[], input?: string, environment: NodeJS.ProcessEnv = env, privateResult = false) {
@@ -1443,20 +1445,21 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
     if (result.status !== expected) fail(step + "_exit_" + result.status);
     return result.stdout.trim();
   };
-  const sql = (text: string, database = "neutral_store", privateResult = false) => checked("owner_sql",
-    run(from, "docker", ["compose", "--project-name", project, "exec", "-T", "database", "psql", "-XAtq", "-w",
+  const sql = (text: string, database = "neutral_store", privateResult = false, activeProject = project) => checked("owner_sql",
+    run(from, "docker", ["compose", "--project-name", activeProject, "exec", "-T", "database", "psql", "-XAtq", "-w",
       "-v", "ON_ERROR_STOP=1", "-U", database === "postgres" ? "postgres" : "starter_install", "-d", database, "-c", text],
     undefined, env, privateResult));
   const source = join(homedir(), ".local/state/openlup/neutral-store", project, "runtime-password");
   const projectFile = join(from, ".context/compose-project");
   const up = (code = 0) => checked("up", run(from, "./lifecycle", ["up", "--configuration", "coffee", "--json"]), code);
-  const container = (service: string) => checked("container_id", compose("ps", "-q", service));
-  const identity = () => {
-    const id = container("database");
+  const container = (service: string, activeProject = project) => checked("container_id", composeFor(activeProject, "ps", "-q", service));
+  const identity = (activeProject = project) => {
+    const id = container("database", activeProject);
     const format = "{{.State.StartedAt}} {{range .Mounts}}{{if eq .Destination \"/var/lib/postgresql/data\"}}{{.Name}}{{end}}{{end}}";
     return [id, checked("database_identity", run(from, "docker", ["inspect", "--format", format, id])),
-      sql("select oid from pg_database where datname = current_database()") + ":" + sql("select system_identifier from pg_control_system()", "postgres"),
-      sql("show hba_file", "postgres")];
+      sql("select oid from pg_database where datname = current_database()", "neutral_store", false, activeProject)
+        + ":" + sql("select system_identifier from pg_control_system()", "postgres", false, activeProject),
+      sql("show hba_file", "postgres", false, activeProject)];
   };
   const retained = () => [
     sql("select jsonb_agg(to_jsonb(t) order by id) from public.catalog_products t"),
@@ -1481,7 +1484,7 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
     } catch { /* Keep private checkout responses out of diagnostics. */ }
     return fail("checkout_transport_" + action);
   }
-  const settledFacts = (ref: string) => {
+  const settledFacts = (ref: string, activeProject = project) => {
     if (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(ref)) fail("invalid_settled_order_key");
     return sql(`select jsonb_build_object(
       'orders', coalesce((select jsonb_agg(to_jsonb(o) order by o.id) from public.commerce_orders o where o.id = '${ref}'), '[]'),
@@ -1489,7 +1492,7 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
       'payments', coalesce((select jsonb_agg(to_jsonb(p) order by p.id) from public.commerce_settlement_intents p where p.order_id = '${ref}'), '[]'),
       'attempts', coalesce((select jsonb_agg(to_jsonb(a) order by a.id) from public.payment_simulator_attempts a
         join public.commerce_settlement_intents p on p.id = a.settlement_intent_id where p.order_id = '${ref}'), '[]'))`,
-      "neutral_store", true);
+      "neutral_store", true, activeProject);
   };
   async function createSettledReceipt() {
     const response = await fetch(`${origin}/api/config`, { signal: AbortSignal.timeout(15_000) });
@@ -1517,6 +1520,15 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
       || payments[0].status !== "settled" || attempts.length !== 1 || attempts[0].state !== "captured") fail("settled_facts_missing");
     return { reference, facts };
   }
+  async function readSettlementContinuity(
+    witness: Awaited<ReturnType<typeof createSettledReceipt>>, activeProject = project, receiptReference = witness.reference,
+  ) {
+    const records = settledFacts(witness.reference.orderRef, activeProject);
+    const receipt = await checkoutAction("checkout.read", receiptReference);
+    const matches = records === witness.facts && receipt.ok && receipt.value?.status === "paid"
+      && receipt.value.orderRef === witness.reference.orderRef;
+    return { records, receipt, matches };
+  }
   try {
     const predecessor: string = JSON.parse(readFileSync(join(from, ".starter-origin.json"), "utf8")).sourceRevision;
     if (!/^[a-f0-9]{40}$/u.test(predecessor)) fail("predecessor_identity");
@@ -1531,7 +1543,8 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
     const count = JSON.parse(before[3]!).length as number;
     const catalogue = (app: string) => readFileSync(join(app, "node_modules/@openlup/platform/sql/manifest.json"));
     if (!catalogue(from).equals(catalogue(to))) fail("catalogue_mismatch");
-    const socketImage = checked("predecessor_image", run(from, "docker", ["inspect", "--format", "{{.Image}}", container("application")]));
+    const predecessorApp = container("application");
+    const socketImage = checked("predecessor_image", run(from, "docker", ["inspect", "--format", "{{.Image}}", predecessorApp]));
     const statusCode = `import {createPlatformPostgresMigrationRunner} from '@openlup/platform/migrations';
       const runner=createPlatformPostgresMigrationRunner({connectionString:'postgresql://starter_install@localhost/neutral_store?host=/var/run/postgresql'},
         {installation:{generation:'qualified-v2',roleMode:'installer-managed',migrationLogin:'starter_install',bootstrapLogin:'postgres',runtimeLogin:'starter_runtime',restoreLogin:'starter_restore'}});
@@ -1544,6 +1557,10 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
     }
     mark(project + " common installed schema " + count);
     checked("stop_predecessor_application", compose("stop", "application"));
+    const predecessorLog = run(from, dockerBin, ["logs", predecessorApp], undefined, env, true);
+    checked("capture_predecessor_logs", predecessorLog);
+    const predecessorLogs = predecessorLog.stdout + predecessorLog.stderr;
+    if (!predecessorLogs.trim()) fail("empty_predecessor_logs");
     const stoppedApplication = () => {
       const id = checked("all_application_containers", compose("ps", "--all", "-q", "application"));
       if (!id) fail("predecessor_application_missing");
@@ -1744,24 +1761,18 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
         'stat -c "%U:%G %a" "$PGDATA/pg_hba.conf"')) !== "postgres:postgres 600") fail("occupied_fallback");
     mark("installer socket, publication and occupied fallback");
 
-    const { reference, facts } = settled;
-    const matches = (records: string, receipt: CheckoutResult) =>
-      records === facts && receipt.ok && receipt.value?.status === "paid" && receipt.value.orderRef === reference.orderRef;
-    const recoveredFacts = settledFacts(reference.orderRef);
-    const reopened = await checkoutAction("checkout.read", reference);
+    const reopened = await readSettlementContinuity(settled);
     const retainedIdentity = identity();
     if (retainedIdentity[1]?.split(" ").at(-1) !== original[1]?.split(" ").at(-1) || retainedIdentity[2] !== original[2]
-      || JSON.stringify(retained()) !== JSON.stringify(before) || !matches(recoveredFacts, reopened))
-      fail("settled_data_continuity");
+      || JSON.stringify(retained()) !== JSON.stringify(before) || !reopened.matches) fail("settled_data_continuity");
 
-    const differentRef = randomUUID();
-    const missingFacts = settledFacts(differentRef);
-    const absent = JSON.parse(missingFacts) as Record<string, unknown[]>;
-    const substitute = await checkoutAction("checkout.read", { ...reference, orderRef: differentRef });
-    if (Object.values(absent).some(rows => rows.length) || matches(missingFacts, reopened)
-      || matches(recoveredFacts, { ...reopened, value: { ...reopened.value, orderRef: differentRef } })
-      || substitute.ok || substitute.code !== "starter_recovery_unavailable") fail("settled_receipt_red_control");
-    mark("missing settled records and substituted receipt refused");
+    const different = await createSettledReceipt();
+    const substituted = await readSettlementContinuity(settled, project, different.reference);
+    if (different.reference.orderRef === settled.reference.orderRef || substituted.records !== settled.facts
+      || !substituted.receipt.ok || substituted.receipt.value?.status !== "paid"
+      || substituted.receipt.value.orderRef !== different.reference.orderRef || substituted.matches)
+      fail("different_paid_receipt_red_control");
+    mark("different paid receipt refused against the original records");
     mark("settled data continuity and original receipt");
 
     const mounted = ["renewal", "care", "checkout-recovery"];
@@ -1926,10 +1937,23 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
     if (existsSync(projectFile)) fail("down_did_not_clear_project");
     const alternateSource = join(dirname(dirname(source)), alternate, "runtime-password");
     try {
+      if (checked("replacement_volume_inventory", run(from, dockerBin,
+        ["volume", "ls", "-q", "--filter", "label=com.docker.compose.project=" + alternate]))) fail("replacement_volume_not_fresh");
       checked("start_second_project", run(from, "./lifecycle", ["up", "--configuration", "coffee", "--json"], undefined, selectNext));
       const alternatePassword = readFileSync(alternateSource, "utf8").trim();
       privateValues.push(alternatePassword);
       if (readFileSync(projectFile, "utf8") !== alternate + "\n" || alternatePassword === current) fail("second_project_record");
+      const replacement = identity(alternate);
+      if (replacement[1]?.split(" ").at(-1) !== alternate + "_database" || replacement[2] === live[2]
+        || checked("replacement_listener", composeFor(alternate, "port", "application", "4319")) !== `127.0.0.1:${port}`
+        || sql("select count(*) from public.commerce_orders", "neutral_store", true, alternate) !== "0")
+        fail("blank_replacement_volume_identity");
+      const missing = await readSettlementContinuity(settled, alternate);
+      const absent = JSON.parse(missing.records) as Record<string, unknown[]>;
+      if (Object.values(absent).some(rows => rows.length) || missing.receipt.ok
+        || missing.receipt.code !== "starter_recovery_unavailable" || missing.matches)
+        fail("blank_replacement_volume_red_control");
+      mark("blank replacement volume refused the original order and receipt");
       checked("stop_second_project", run(from, "./lifecycle", ["down"], undefined, fresh));
     } finally {
       run(from, dockerBin, ["compose", "--project-name", alternate, "down", "--volumes", "--remove-orphans"], undefined, selectNext);
@@ -2109,8 +2133,14 @@ esac
     }
     if (await done !== 0 || imageLeak) fail("application_image_credential_scan");
     const committed = checked("git_candidate_contents", run(process.cwd(), "git", ["diff", predecessor + "..HEAD"]));
-    if (!leaks("private-red:" + initial) || !leaks("private-red:" + synthetic) || captures.some(leaks) || leaks(committed))
+    const logRed = randomBytes(24).toString("hex") + "/=";
+    privateValues.push(logRed);
+    const outputLeaks = (priorLogs: string) => [priorLogs, ...captures].some(leaks);
+    if (!leaks("private-red:" + initial) || !leaks("private-red:" + synthetic) || outputLeaks(predecessorLogs) || leaks(committed))
       fail("credential_output_scan");
+    if ([logRed, encodeURIComponent(logRed)].some(value => !outputLeaks(predecessorLogs + "\n" + value)))
+      fail("predecessor_log_scanner_red_control");
+    mark("private predecessor logs and planted-value scanner controls");
     const redClient = tcpClient(false, "", "starter_runtime", "neutral_store", synthetic);
     if (clientEnvironments.length < 10 || clientEnvironments.some(value => leaks(value) || value.split("\0").some(entry => entry.startsWith("PGPASSWORD=")))
       || !redClient.environment.includes("STARTER_PROOF_RED=") || !leaks(redClient.environment))

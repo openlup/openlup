@@ -59,7 +59,10 @@ The installed upgrade proof settles a sandbox order on the predecessor. It
 compares the keyed order, line and payment records through the owner socket on
 the retained database and volume. It reopens the original receipt in a fresh
 session before running the mounted renewal, care and checkout recovery commands.
-The proof checks that missing records and a substituted receipt are rejected.
+The same check refuses the original order and receipt on a separately initialized
+empty store and refuses a second paid receipt paired with the original records.
+The credential scan includes private predecessor logs, with planted-value controls
+on a copy of those logs.
 
 ## Published product and quote proof
 
