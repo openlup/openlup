@@ -6,10 +6,13 @@ import { expect, it } from "vitest";
 // exported type and the internal schema module from source.
 const probe = `import type { z } from "zod";
 import type { StorefrontFindingCode, StorefrontVerdict } from "../../src/lifecycle/storefrontVerdict.js";
+import type { StorefrontProofFile } from "../../src/lifecycle/storefrontProofFile.js";
 import type * as schema from "../../src/lifecycle/storefrontVerdictSchema.js";
 type Equals<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
 // Drops the index signature a loose object adds and the undefined zod adds to an optional field.
-type Declared<T> = T extends string | number | boolean | null ? T : T extends readonly (infer E)[] ? Declared<E>[] : T extends object ? { [K in keyof T as string extends K ? (unknown extends T[K] ? never : K) : K]: Declared<Exclude<T[K], undefined>> } : T;
+type NamedKeys<T> = keyof { [K in keyof T as string extends K ? never : number extends K ? never : K]: 0 };
+// A loose object's index signature is dropped; a pure record (no named key) is kept as it is.
+type Declared<T> = T extends string | number | boolean | null ? T : T extends readonly (infer E)[] ? Declared<E>[] : T extends object ? ([NamedKeys<T>] extends [never] ? T : { [K in keyof T as string extends K ? (unknown extends T[K] ? never : K) : K]: Declared<Exclude<T[K], undefined>> }) : T;
 type Known<T> = T extends string ? (string extends T ? never : T) : never;
 type Verdict = StorefrontVerdict;
 type Step = Verdict["steps"][number];
@@ -26,13 +29,16 @@ const adapters: Equals<Known<Verdict["harness"]["adapter"]["kind"]>, (typeof sch
 const observers: Equals<Known<Verdict["harness"]["observer"]>, (typeof schema.knownObserverKinds)[number]> = true;
 const codes: Equals<Known<StorefrontFindingCode>, (typeof schema.knownFindingCodes)[number]> = true;
 const openCode: StorefrontFindingCode = "code_added_later";
+const proofShape: Equals<Declared<z.output<typeof schema.proofFileSchema>>, StorefrontProofFile> = true;
+const policies: Equals<Known<Exclude<StorefrontProofFile["changedPayloadPolicy"], undefined>>, (typeof schema.knownChangedPayloadPolicies)[number]> = true;
+const proofMissingOptional: Equals<Declared<z.output<typeof schema.proofFileSchema>>, Omit<StorefrontProofFile, "recheck">> = false;
 // Negative controls of the probe itself: a missing optional field and a dropped open set fail.
 const missingOptional: Equals<Declared<z.output<typeof schema.verdictSchema>>, Omit<Verdict, "width">> = false;
 const closedResult: Equals<Declared<z.output<typeof schema.verdictSchema>>, Omit<Verdict, "result"> & { result: Known<Verdict["result"]> }> = false;
-export { shape, tiers, channels, results, phases, runs, findingRuns, controls, sources, adapters, observers, codes, openCode, missingOptional, closedResult };
+export { shape, tiers, channels, results, phases, runs, findingRuns, controls, sources, adapters, observers, codes, openCode, proofShape, policies, proofMissingOptional, missingOptional, closedResult };
 `;
 
-it("V9 keeps StorefrontVerdict exactly equal to the internal schema and its open-set members", () => {
+it("V9 and P10 keep StorefrontVerdict and StorefrontProofFile exactly equal to the internal schemas and their open-set members", () => {
   const filename = fileURLToPath(new URL("./storefront-verdict-types-virtual.mts", import.meta.url));
   const options: ts.CompilerOptions = {
     strict: true, exactOptionalPropertyTypes: true, noEmit: true, noUnusedLocals: false, target: ts.ScriptTarget.ES2022,

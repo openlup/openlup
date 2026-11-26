@@ -31,6 +31,7 @@ describe("sameStorefrontBuild", () => {
       { ...a, proofFile: null },
       { ...a, packages: [a.packages[0]!] },
     ];
+    variants.push({ ...a, packages: [{ ...a.packages[0]!, integrity: "sha512-AAAA sha1-CCCC" }, a.packages[1]!] });
     for (const variant of variants) {
       expect(sameStorefrontBuild(a, variant), JSON.stringify(variant)).toBe(false);
       expect(sameStorefrontBuild(variant, a)).toBe(false);
@@ -46,7 +47,12 @@ describe("sameStorefrontBuild", () => {
       durations: { totalMs: 0, byPhase: {} },
     };
     expect(parseStorefrontVerdict(JSON.stringify(verdict)).ok).toBe(true);
-    for (const integrity of ["AAAA", "sha1-AAAA", "sha512-", "sha512-AA AA", "md5-AAAA"]) {
+    // An npm-style list of hash expressions is accepted when it holds at least one SHA-2 hash; it is compared as written.
+    for (const integrity of ["sha512-AAAA", "sha1-AAAA sha512-BBBB==", "sha512-AAAA sha1-BBBB", "sha256-AAAA sha384-BBBB sha512-CCCC", "sha512-AAAA?opt"]) {
+      const build = { ...identity(), packages: [{ name: "@openlup/core", version: "1.0.0", integrity }] };
+      expect(parseStorefrontVerdict(JSON.stringify({ ...verdict, build })).ok, integrity).toBe(true);
+    }
+    for (const integrity of ["AAAA", "sha1-AAAA", "sha1-AAAA sha1-BBBB", "sha512-", "sha512-AA AA", "md5-AAAA", " sha512-AAAA", "sha512-AAAA ", "sha512-AAAA\tsha1-BBBB", "sha512-AAAA,sha1-BBBB"]) {
       const build = { ...identity(), packages: [{ name: "@openlup/core", version: "1.0.0", integrity }] };
       const result = parseStorefrontVerdict(JSON.stringify({ ...verdict, build }));
       expect(result.ok ? null : result.refusal.observed, integrity).toBe("build.packages.0.integrity");

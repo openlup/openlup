@@ -84,6 +84,45 @@ describe("parseStorefrontProofFile", () => {
     }
   });
 
+  it("P8 refuses control characters and lone surrogates in local paths", () => {
+    const bad = ["\u0000", "\n", "\r", "\t", "\u001f", "\u007f", "\ud800", "\udc00", "x\ud800"];
+    for (const character of bad) {
+      for (const [value, path] of [
+        [{ ...completeProofFile(), routes: { surfaces: { cart: `/cart${character}` } } }, "routes.surfaces.cart"],
+        [{ ...completeProofFile(), routes: { surfaces: { cart: `/${character}` } } }, "routes.surfaces.cart"],
+        [{ ...completeProofFile(), routes: { selectionEntry: { one_time: `/start?x=${character}` } } }, "routes.selectionEntry.one_time"],
+        [{ ...completeProofFile(), adapterModule: `a/b${character}.ts` }, "adapterModule"],
+        [{ ...completeProofFile(), adapterModule: `${character}a.ts` }, "adapterModule"],
+        [{ ...completeProofFile(), adapterModule: `.${character}` }, "adapterModule"],
+      ] as [unknown, string][]) {
+        const refusal = refusalOf(value);
+        expect(refusal.observed, JSON.stringify(value)).toBe(path);
+      }
+    }
+    const astral = { ...completeProofFile(), routes: { surfaces: { cart: "/\u00e9/\ud83d\ude00" }, selectionEntry: { one_time: "/\ud83d\ude00?x=\u00e9" } }, adapterModule: "\ud83d\ude00/\u00e9.ts" };
+    expect(parse(astral)).toEqual({ ok: true, proofFile: astral });
+  });
+
+  it("P9 refuses each field outside its rule, naming the path", () => {
+    const refused: [string, unknown][] = [
+      ["configurations", []], ["configurations.0", ""], ["configurations.0", 1],
+      ["widths.0", 0], ["widths.0", 1.5], ["widths.0", -390],
+      ["changedPayloadPolicy", "Refuse Changed"], ["changedPayloadPolicy", ""],
+      ["autoProgress.0", "Continue Payment"], ["recheck", ""],
+      ["routes.surfaces.Cart", "/cart"], ["buyer.city", 1], ["host", []],
+    ];
+    for (const [path, value] of refused) {
+      const proofFile = completeProofFile() as unknown as Record<string, unknown>;
+      const keys = path.split(".");
+      let node = proofFile;
+      for (const key of keys.slice(0, -1)) node = node[key] as Record<string, unknown>;
+      node[keys.at(-1)!] = value;
+      const refusal = refusalOf(proofFile);
+      expect(refusal.code, `${path} = ${JSON.stringify(value)}`).toBe("storefront_proof_file_invalid");
+      expect(path.startsWith(refusal.observed), `${path} = ${JSON.stringify(value)} -> ${refusal.observed}`).toBe(true);
+    }
+  });
+
   it("P7 keeps host fields verbatim and refuses buyer.email", () => {
     const hosted = { ...completeProofFile(), host: { anything: [1], nested: { deep: null } } };
     expect(parse(hosted)).toEqual({ ok: true, proofFile: hosted });

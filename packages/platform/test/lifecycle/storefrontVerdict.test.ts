@@ -145,6 +145,96 @@ describe("parseStorefrontVerdict", () => {
   });
 });
 
+function withValue(path: string, value: unknown): unknown {
+  const verdict = browserVerdict() as unknown as Record<string, unknown>;
+  const keys = path.split(".");
+  let node = verdict as Record<string, unknown>;
+  for (const key of keys.slice(0, -1)) node = node[key] as Record<string, unknown>;
+  node[keys.at(-1)!] = value;
+  return verdict;
+}
+
+describe("parseStorefrontVerdict field rules", () => {
+  // Each row loosens to a test failure if its rule is removed from the schema.
+  const refused: [string, unknown[]][] = [
+    ["completedAt", ["2025-06-01T00:00:00Z", "2025-06-01 00:00:00.000Z", "2025-06-01T00:00:00.000+01:00", "2025-06-01T24:00:00.000Z", "2025-13-01T00:00:00.000Z", "2025-02-31T00:00:00.000Z", "2025-04-31T00:00:00.000Z", "2023-02-29T00:00:00.000Z", "1900-02-29T00:00:00.000Z", "2100-02-29T00:00:00.000Z", ""]],
+    ["runId", [""]],
+    ["scenario", ["", "Lost Response", "1_scenario", "lost-response"]],
+    ["profile", [""]],
+    ["width", [0, -1, 1.5, "390", 2 ** 60]],
+    ["control.negates", ["Awaiting Payment"]],
+    ["control.action", ["Place Order"]],
+    ["stimulus.create", [-1, 1.5]],
+    ["steps.0.path", ["/checkout?token=x", "/checkout#token", "checkout", ""]],
+    ["steps.1.expectedAnchor", ["awaiting_payment", "action:place_order", "state:Awaiting", "state:"]],
+    ["steps.1.observedAnchors.0", ["awaiting_payment", "field:email", "state:Bad"]],
+    ["steps.1.commands.0.ordinal", [-1]],
+    ["steps.1.commands.1.key.sameAs", [-1, 0.5]],
+    ["findings.0.observed", [""]],
+    ["findings.0.cause", [""]],
+    ["findings.0.fix", [""]],
+    ["findings.0.recheck", [""]],
+    ["findings.0.field", [""]],
+    ["findings.0.step", [-1]],
+    ["build.clients.0.digest", [`sha256:${"AB".repeat(32)}`, `sha256:${"ab".repeat(31)}`, `sha512:${"ab".repeat(32)}`, "ab".repeat(32)]],
+    ["build.clients.0.name", [""]],
+    ["build.proofFile", [`sha256:${"AB".repeat(32)}`, "proof.json", ""]],
+    ["build.packages.0.version", [""]],
+    ["harness.catalogueVersion", [0, -1, 1.5]],
+    ["harness.runnerVersion", [""]],
+    ["harness.adapter.digest", [""]],
+    ["harness.autoProgress", [["Continue Payment"]]],
+    ["harness.declaredOutcomes", [["Settled"]]],
+    ["durations.totalMs", [-1, 1.5]],
+    ["durations.byPhase.arrange", [-1]],
+  ];
+
+  it.each(refused)("V12 refuses %s outside its rule and names the path", (path, values) => {
+    for (const value of values) {
+      const result = parse(withValue(path, value));
+      expect(result.ok, `${path} = ${JSON.stringify(value)}`).toBe(false);
+      if (!result.ok) {
+        expect(result.refusal.code).toBe("storefront_verdict_invalid");
+        expect(path.startsWith(result.refusal.observed) || result.refusal.observed.startsWith(path), `${path} = ${JSON.stringify(value)} -> ${result.refusal.observed}`).toBe(true);
+      }
+    }
+  });
+
+  it("V13 accepts exactly the real UTC instants with milliseconds", () => {
+    for (const accepted of ["2024-02-29T23:59:59.999Z", "2000-02-29T00:00:00.000Z", "2400-02-29T12:00:00.000Z", "1999-12-31T00:00:00.000Z"]) {
+      expect(parse(withValue("completedAt", accepted)).ok, accepted).toBe(true);
+    }
+    // Every month/day pair 01–31 over common, leap, century and 400-year years agrees with Date.
+    const pattern = ((storefrontVerdictJsonSchema.anyOf as { properties: { completedAt: { pattern: string } } }[])[0]!.properties.completedAt.pattern);
+    const instant = new RegExp(pattern);
+    const mismatches: string[] = [];
+    for (const year of ["1900", "1999", "2000", "2023", "2024", "2025", "2100", "2400"]) {
+      for (let month = 0; month <= 13; month += 1) {
+        for (let day = 0; day <= 32; day += 1) {
+          const text = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}T00:00:00.000Z`;
+          const real = !Number.isNaN(Date.parse(text)) && new Date(text).toISOString() === text;
+          if (instant.test(text) !== real) mismatches.push(text);
+        }
+      }
+    }
+    expect(mismatches).toEqual([]);
+  });
+
+  it("V14 drops an own __proto__ key at every level and pollutes nothing", () => {
+    const text = JSON.stringify(browserVerdict()).replace('{"formatVersion"', '{"__proto__":{"polluted":true},"formatVersion"').replace('"index":0,', '"__proto__":{"polluted":true},"index":0,');
+    expect(text.match(/__proto__/g)).toHaveLength(2);
+    const result = parseStorefrontVerdict(text);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(Object.prototype.hasOwnProperty.call(result.verdict, "__proto__")).toBe(false);
+      expect(Object.prototype.hasOwnProperty.call(result.verdict.steps[0], "__proto__")).toBe(false);
+      expect(Object.getPrototypeOf(result.verdict)).toBe(Object.prototype);
+      expect((result.verdict as Record<string, unknown>).polluted).toBeUndefined();
+    }
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+  });
+});
+
 describe("storefrontVerdictJsonSchema", () => {
   const jsonValues: unknown[] = [null, true, 0, 1.5, "text", [], {}];
 
