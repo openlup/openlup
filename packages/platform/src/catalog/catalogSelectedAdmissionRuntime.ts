@@ -19,6 +19,9 @@ type InitialOrder = (db: PgQueryExecutor, orderId: string) => Promise<boolean>;
 const sqlIdentity = (error: unknown, code: string, message?: string) => error instanceof Error && !(error instanceof SelectedAdmissionRefusal) && "code" in error
   && error.code === code && (message === undefined || error.message === message);
 const same = (left: unknown, right: unknown) => canonical(left) === canonical(right);
+const hasKey = (value: unknown, key: string) => value !== null && typeof value === "object" && Object.hasOwn(value, key);
+export const isGovernedDraft = (metadata: unknown, acceptance: unknown) =>
+  hasKey(metadata, "catalogAdmissionOwnerOrigin") && hasKey(acceptance, "admission");
 const ownerOrigin = z.object({ schemaVersion: z.literal(1), orderId: selectedUuid, receiptKey: z.string(), nativeFingerprint: z.string().regex(/^[0-9a-f]{32}$/u) });
 const savedRow = z.object({ id: selectedUuid, client_id: selectedUuid, receipt_key: z.string(), status: z.string(),
   currency_code: z.string(), total_amount_minor: z.union([z.string(), z.number()]), snapshot: z.unknown(),
@@ -28,11 +31,12 @@ async function selectSavedCatalogAdmission(db: PgQueryExecutor, original: Select
   const { rows } = await db.query(`SELECT o.id,o.client_id,o.status,o.currency_code,o.total_amount_minor,o.catalog_receipt_key AS receipt_key,
     o.metadata->'quoteSnapshot' AS snapshot,o.metadata->'catalogAdmissionSubmit' AS stamp,
     o.metadata->'catalogAdmissionOwnerOrigin' AS origin,r.request_fingerprint AS fingerprint,
+    o.metadata AS metadata,o.catalog_acceptance AS acceptance,
     o.catalog_acceptance#>>'{admission,quoteDigest}' AS quote_digest,
     EXISTS (SELECT 1 FROM public.commerce_settlement_intents i WHERE i.order_id=o.id AND i.channel_key='sandbox') AS completed
     FROM public.commerce_order_draft_receipts r JOIN public.commerce_orders o ON o.id=r.order_id WHERE r.idempotency_key=$1`, [original.key]);
   const parsed = savedRow.safeParse(rows[0]);
-  if (rows.length !== 1 || !parsed.success) return refuseSelected("conflict");
+  if (rows.length !== 1 || !parsed.success || !isGovernedDraft(rows[0]?.metadata, rows[0]?.acceptance)) return refuseSelected("conflict");
   const order = parsed.data;
   const snapshot = snapshotSchema.safeParse(order.snapshot);
   const stamp = selectedStamp(original, expectedTotal, digestText(token));

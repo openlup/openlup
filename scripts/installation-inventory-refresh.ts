@@ -2,8 +2,8 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { accessSync, constants, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
-import { delimiter, join, resolve } from "node:path";
+import { readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { env as processEnvironment } from "node:process";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -17,6 +17,7 @@ import { closePostgres, runPostgresContainer, waitForPostgresTcpReady } from "..
 import { connectedNativeStoreTables } from "../server/adapters/postgres/connectedStoreCapture.ts";
 import { inventoryEnvelope, INVENTORY_PATH } from "./agent-review-derived.mjs";
 import { isolatedInventoryFile } from "./agent-review-landing.mjs";
+import { isExecutableFile, resolveResourceGateInvocation } from "./resource-gate.mjs";
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 export const INVENTORY_PROFILES = ["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] as const;
 export const DEFAULT_INVENTORY_CONCURRENCY = 3;
@@ -70,12 +71,7 @@ export async function mapWithConcurrency<T, R>(
   return results;
 }
 
-export type ResourceGateInvocation = { command: string; args: string[] };
-
-const isExecutableFile = (candidate: string): boolean => {
-  try { accessSync(candidate, constants.X_OK); return statSync(candidate).isFile(); }
-  catch { return false; }
-};
+export type ResourceGateInvocation = { command: string; args: string[]; key?: string };
 
 export function resolveInventoryResourceGate(
   cwd: string,
@@ -85,21 +81,15 @@ export function resolveInventoryResourceGate(
   env: NodeJS.ProcessEnv = processEnvironment,
   checkExecutable: (candidate: string) => boolean = isExecutableFile,
 ): ResourceGateInvocation | null {
-  if (env.CI === "true" || env.AI_RESOURCE_GATE_ACTIVE === "1" || env.OPENLUP_DISABLE_RESOURCE_GATE === "1") {
-    return null;
-  }
-  const broker = (env.PATH ?? "")
-    .split(delimiter)
-    .filter(Boolean)
-    .map(directory => join(directory, "ai-resource-gate"))
-    .find(checkExecutable);
-  if (!broker) return null;
-  // Numeric worktree suffix prevents lane-keyword collisions inside the broker key.
-  const worktree = createHash("sha256").update(resolve(cwd)).digest().readBigUInt64BE().toString(10);
-  return {
-    command: broker,
-    args: ["run", "--wait", "--lane", "docker-heavy", `openlup:inventory-refresh:wt${worktree}`, "--", execPath, ...execArgv, ...scriptArgv],
-  };
+  return resolveResourceGateInvocation({
+    cwd,
+    profile: "openlup:inventory-refresh",
+    lane: "docker-heavy",
+    command: execPath,
+    args: [...execArgv, ...scriptArgv],
+    env,
+    checkExecutable,
+  });
 }
 
 function runGatedChild(invocation: ResourceGateInvocation, cwd: string, env: NodeJS.ProcessEnv): Promise<number> {

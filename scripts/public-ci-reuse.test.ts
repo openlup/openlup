@@ -18,6 +18,7 @@ function fixture() {
   const calls: string[] = [];
   const input = { eventName: "push", ref: "refs/heads/main", sha, checkout: sha,
     event: { repository, ref: "refs/heads/main", after: sha }, token: "fixture-token",
+    delaysMs: [0, 0],
     fetcher: async (url: string, options: RequestInit) => {
       calls.push(url);
       expect(url.startsWith("https://api.github.com/repos/openlup/openlup/")).toBe(true);
@@ -118,8 +119,72 @@ describe("exact-commit post-merge reuse", () => {
   it.each([new Response("unavailable", { status: 503 }), new Response("{malformed"), new Error("network unavailable")])(
     "falls back when GitHub evidence is unavailable %#", async response => {
       const f = fixture();
-      f.input.fetcher = async () => { if (response instanceof Error) throw response; return response; };
+      f.input.fetcher = async () => { if (response instanceof Error) throw response; return response.clone(); };
       expect(await completedMergeGroup(f.input)).toBe(false);
     },
   );
+  it("succeeds after a transient 502 or empty listing on attempt 1", async () => {
+    const f502 = fixture();
+    const transport502 = f502.input.fetcher;
+    let firstListing = true;
+    f502.input.fetcher = async (url, options) => {
+      if (firstListing && url.includes("/runs?")) {
+        firstListing = false;
+        return new Response("bad gateway", { status: 502 });
+      }
+      return transport502(url, options);
+    };
+    const reasons502: string[] = [];
+    expect(await completedMergeGroup({ ...f502.input, delaysMs: [0, 0], onReason: r => reasons502.push(r) })).toBe(true);
+    expect(reasons502).toEqual([]);
+    expect(f502.calls).toHaveLength(5);
+
+    const fEmpty = fixture();
+    const transportEmpty = fEmpty.input.fetcher;
+    let attemptCount = 0;
+    fEmpty.input.fetcher = async (url, options) => {
+      if (url.includes("/runs?")) {
+        attemptCount++;
+        if (attemptCount === 1) return new Response(JSON.stringify({ total_count: 0, workflow_runs: [] }));
+        if (attemptCount === 2) {
+          return new Response(JSON.stringify({ total_count: 1, workflow_runs: [{ ...fEmpty.run, status: "in_progress", conclusion: "" }] }));
+        }
+      }
+      return transportEmpty(url, options);
+    };
+    expect(await completedMergeGroup({ ...fEmpty.input, delaysMs: [0, 0] })).toBe(true);
+    expect(attemptCount).toBe(4);
+  });
+  it("fails closed after exhausting all attempts and reports a non-sensitive reason", async () => {
+    const f = fixture();
+    const slept: number[] = [];
+    const reasons: string[] = [];
+    let listingCalls = 0;
+    f.input.fetcher = async url => {
+      if (url.includes("/runs?")) listingCalls++;
+      return new Response("bad gateway", { status: 502 });
+    };
+    const inputWithDefaultDelays = { ...f.input, delaysMs: undefined };
+    expect(await completedMergeGroup({
+      ...inputWithDefaultDelays,
+      sleep: async ms => { slept.push(ms); },
+      onReason: reason => { reasons.push(reason); },
+    })).toBe(false);
+    expect(listingCalls).toBe(3);
+    expect(slept).toEqual([2000, 5000]);
+    expect(reasons).toEqual(["GitHub API HTTP 502"]);
+    expect(reasons[0]).not.toContain("fixture-token");
+
+    const fEmpty = fixture();
+    const emptyReasons: string[] = [];
+    fEmpty.listing.workflow_runs = [];
+    fEmpty.listing.total_count = 0;
+    expect(await completedMergeGroup({
+      ...fEmpty.input,
+      delaysMs: [0, 0],
+      onReason: reason => { emptyReasons.push(reason); },
+    })).toBe(false);
+    expect(emptyReasons).toEqual(["no merge_group workflow runs found yet"]);
+    expect(emptyReasons[0]).not.toContain("fixture-token");
+  });
 });
