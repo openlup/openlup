@@ -1,5 +1,6 @@
 /** Installed engine and seed witness for native quotes and subscription checkout. */
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { env as processEnv } from 'node:process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -855,12 +856,171 @@ it('removes a quote container acquired after teardown completed', async () => {
   }
 });
 
+const QUOTE_ROLE_SNAPSHOT_SQL = `SELECT json_build_object(
+  'roles', (SELECT coalesce(json_agg(r ORDER BY r.rolname), '[]'::json) FROM (
+    SELECT rolname, rolsuper, rolinherit, rolcreaterole, rolcreatedb, rolcanlogin, rolreplication, rolbypassrls, rolconfig
+    FROM pg_catalog.pg_roles
+  ) r),
+  'members', (SELECT coalesce(json_agg(m ORDER BY m.role_name, m.member_name, m.grantor_name), '[]'::json) FROM (
+    SELECT r.rolname AS role_name, u.rolname AS member_name, g.rolname AS grantor_name,
+      a.admin_option, a.inherit_option, a.set_option
+    FROM pg_catalog.pg_auth_members a
+    JOIN pg_catalog.pg_roles r ON r.oid = a.roleid
+    JOIN pg_catalog.pg_roles u ON u.oid = a.member
+    JOIN pg_catalog.pg_roles g ON g.oid = a.grantor
+  ) m)
+)::text AS snapshot`;
+
+async function readQuoteClusterRoleDigest(bootstrap: Pool): Promise<string> {
+  const { rows } = await bootstrap.query<{ snapshot: string }>(QUOTE_ROLE_SNAPSHOT_SQL);
+  return createHash('sha256').update(rows[0]!.snapshot).digest('hex');
+}
+
 describe.sequential('installed quote proofs', () => {
-  beforeAll(prepareQuoteConsumer, postgresSetupTimeoutMs);
-  afterAll(removeQuoteConsumer, postgresTeardownTimeoutMs);
+  type QuoteTemplateCluster = {
+    container: PostgresContainer;
+    bootstrap: Pool;
+    baselineRoleDigest: string;
+  };
+  let templateCluster: QuoteTemplateCluster | undefined;
+
+  async function setupQuoteTemplateCluster() {
+    const bootStarted = performance.now();
+    const container = await runPostgresContainer({
+      name: `starter-quote-template-${process.pid}`,
+      password: 'synthetic-conformance',
+      tmpfsSizeMb: 768,
+    });
+    const pools: Pool[] = [];
+    try {
+      const readyStarted = performance.now();
+      if (!await waitForPostgresTcpReady(container.connectionString)) {
+        throw new Error('Starter quote PostgreSQL unavailable');
+      }
+      const migrationStarted = performance.now();
+      const bootstrap = new Pool({ connectionString: container.connectionString });
+      bootstrap.on('error', () => {});
+      pools.push(bootstrap);
+      for (const role of ['starter_runtime', 'starter_restore']) {
+        await quoteDatabase.createRole(bootstrap, role);
+      }
+      await bootstrap.query('CREATE DATABASE template_migrated');
+      const templateUrl = container.connectionStringFor('template_migrated');
+      const selection = {
+        generation: 'qualified-v2',
+        roleMode: 'installer-managed',
+        migrationLogin: 'postgres',
+        bootstrapLogin: 'postgres',
+        runtimeLogin: 'starter_runtime',
+        restoreLogin: 'starter_restore',
+      } as const;
+      const migration = new Pool({
+        connectionString: templateUrl,
+        options: migrations.qualifiedPostgresStartupOptions(selection),
+      });
+      migration.on('error', () => {});
+      pools.push(migration);
+      try {
+        const runner = migrations.createPlatformPostgresMigrationRunner(
+          { connectionString: templateUrl },
+          { installation: selection, poolFactory: () => migration },
+        );
+        await runner.apply();
+        const status = await runner.status();
+        expect(status.pending).toEqual([]);
+      } finally {
+        if (!migration.ended) await migration.end();
+      }
+      await bootstrap.query('ALTER DATABASE template_migrated WITH IS_TEMPLATE = true ALLOW_CONNECTIONS = false');
+      await bootstrap.query("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'template_migrated' AND pid <> pg_backend_pid()");
+      const baselineRoleDigest = await readQuoteClusterRoleDigest(bootstrap);
+      const migrationFinished = performance.now();
+      console.info(JSON.stringify({
+        templateSetupMs: migrationFinished - bootStarted,
+        bootMs: readyStarted - bootStarted,
+        readyMs: migrationStarted - readyStarted,
+        migrationMs: migrationFinished - migrationStarted,
+      }));
+      templateCluster = { container, bootstrap, baselineRoleDigest };
+    } catch (error) {
+      await closePostgres(container, pools);
+      throw error;
+    }
+  }
+
+  async function teardownQuoteTemplateCluster() {
+    const cluster = templateCluster;
+    templateCluster = undefined;
+    if (!cluster) return;
+    let roleError: unknown;
+    try {
+      await cluster.bootstrap.query('DROP DATABASE IF EXISTS "neutral_store" WITH (FORCE)');
+      const finalRoleDigest = await readQuoteClusterRoleDigest(cluster.bootstrap);
+      expect(finalRoleDigest).toBe(cluster.baselineRoleDigest);
+    } catch (error) {
+      roleError = error;
+    } finally {
+      await closePostgres(cluster.container, cluster.bootstrap);
+    }
+    if (roleError) throw roleError;
+  }
+
+  function clonedQuoteCaseFixture(configuration: string, multiSize: boolean) {
+    const dbName = 'neutral_store';
+    return {
+      async setup() {
+        if (!templateCluster) throw new Error('Starter quote template cluster is not initialized');
+        const cloneStarted = performance.now();
+        const { container, bootstrap } = templateCluster;
+        await bootstrap.query(`DROP DATABASE IF EXISTS "${dbName}" WITH (FORCE)`);
+        await bootstrap.query(`CREATE DATABASE "${dbName}" TEMPLATE template_migrated`);
+        await bootstrap.query(`COMMENT ON DATABASE "${dbName}" IS 'openlup-neutral-store-demo-v1'`);
+        const ownerUrl = container.connectionStringFor(dbName);
+        const cloneOwner = new Pool({ connectionString: ownerUrl });
+        cloneOwner.on('error', () => {});
+        try {
+          const hasKey = (await cloneOwner.query<{ exists: boolean }>(
+            "SELECT to_regclass('acquisition_private.installation_key') IS NOT NULL AS exists",
+          )).rows[0]?.exists;
+          if (hasKey) {
+            await cloneOwner.query(`UPDATE acquisition_private.installation_key
+              SET key_bytes = pg_catalog.decode(pg_catalog.replace(pg_catalog.gen_random_uuid()::text, '-', '') || pg_catalog.replace(pg_catalog.gen_random_uuid()::text, '-', ''), 'hex'),
+                  created_at = pg_catalog.clock_timestamp()
+              WHERE singleton`);
+          }
+        } finally {
+          if (!cloneOwner.ended) await cloneOwner.end();
+        }
+        const runtime = new URL(ownerUrl);
+        runtime.username = 'starter_runtime';
+        runtime.password = 'synthetic-conformance';
+        console.info(JSON.stringify({ configuration, multiSize, cloneMs: performance.now() - cloneStarted }));
+        return { configuration, multiSize, ownerUrl, runtimeUrl: runtime.toString() };
+      },
+      async teardown() {
+        if (!templateCluster) return;
+        const { bootstrap, baselineRoleDigest } = templateCluster;
+        await bootstrap.query(`DROP DATABASE IF EXISTS "${dbName}" WITH (FORCE)`);
+        const currentRoleDigest = await readQuoteClusterRoleDigest(bootstrap);
+        expect(currentRoleDigest).toBe(baselineRoleDigest);
+      },
+    };
+  }
+
+  beforeAll(async () => {
+    await prepareQuoteConsumer();
+    await setupQuoteTemplateCluster();
+  }, postgresSetupTimeoutMs);
+  afterAll(async () => {
+    try {
+      await teardownQuoteTemplateCluster();
+    } finally {
+      removeQuoteConsumer();
+    }
+  }, postgresTeardownTimeoutMs);
 
   it('records one writer-side price refusal and allows reconfirmation within quota', async () => {
-    const database = quoteCaseFixture('supplements', false);
+    const database = clonedQuoteCaseFixture('supplements', false);
     try {
       const fixture = await database.setup();
       const script = String.raw`
@@ -973,7 +1133,7 @@ describe.sequential('installed quote proofs', () => {
   }, postgresSetupTimeoutMs);
 
   it('keeps one checkout key across a refused total and a lost create without a second order', async () => {
-    const database = quoteCaseFixture('supplements', false);
+    const database = clonedQuoteCaseFixture('supplements', false);
     try {
       const fixture = await database.setup();
       const script = String.raw`
@@ -1101,7 +1261,7 @@ describe.sequential('installed quote proofs', () => {
   }, postgresSetupTimeoutMs);
 
   for (const configuration of ['coffee', 'supplements']) describe(`${configuration} shipped bundle`, () => {
-    const database = quoteCaseFixture(configuration, false);
+    const database = clonedQuoteCaseFixture(configuration, false);
     let fixture: Awaited<ReturnType<typeof provisionQuoteCase>>;
     beforeAll(async () => { fixture = await database.setup(); }, postgresSetupTimeoutMs);
     afterAll(database.teardown, postgresTeardownTimeoutMs);
@@ -1114,7 +1274,7 @@ describe.sequential('installed quote proofs', () => {
   });
 
   describe('installed catalogue job lifecycle', () => {
-    const database = quoteCaseFixture('coffee', false);
+    const database = clonedQuoteCaseFixture('coffee', false);
     let fixture: Awaited<ReturnType<typeof provisionQuoteCase>>;
     beforeAll(async () => { fixture = await database.setup(); }, postgresSetupTimeoutMs);
     afterAll(database.teardown, postgresTeardownTimeoutMs);
@@ -1137,7 +1297,7 @@ describe.sequential('installed quote proofs', () => {
   });
 
   it('checks out and replays the installed derived quote without a stored subscription price', async () => {
-    const database = quoteCaseFixture('coffee', false);
+    const database = clonedQuoteCaseFixture('coffee', false);
     try {
       const { ownerUrl, runtimeUrl } = await database.setup();
       const script = String.raw`
@@ -1213,7 +1373,7 @@ describe.sequential('installed quote proofs', () => {
   }, postgresSetupTimeoutMs);
 
   describe('active published catalogue', () => {
-    const database = quoteCaseFixture('coffee', false);
+    const database = clonedQuoteCaseFixture('coffee', false);
     let fixture: Awaited<ReturnType<typeof provisionQuoteCase>>;
     beforeAll(async () => { fixture = await database.setup(); }, postgresSetupTimeoutMs);
     afterAll(database.teardown, postgresTeardownTimeoutMs);
@@ -1406,7 +1566,7 @@ describe.sequential('installed quote proofs', () => {
 
   for (const { configuration, multiSize } of [{ configuration: 'supplements', multiSize: false }, { configuration: 'coffee', multiSize: false }, { configuration: 'coffee', multiSize: true }]) {
     describe.sequential(multiSize ? 'multi-size quote' : `${configuration} quote`, () => {
-      const database = quoteCaseFixture(configuration, multiSize);
+      const database = clonedQuoteCaseFixture(configuration, multiSize);
       let fixture: Awaited<ReturnType<typeof provisionQuoteCase>>;
       beforeAll(async () => {
         fixture = await database.setup();
