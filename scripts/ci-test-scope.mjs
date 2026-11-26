@@ -150,7 +150,9 @@ const POSTGRES_SUITE_CLOSURES = {
   'tests/postgres/bundleEffectiveParity.test.ts': [],
   'tests/postgres/bundleNative.test.ts': [],
   'tests/postgres/catalogAdmission.test.ts': ['@starter', 'tests/postgres/catalogPublicationFixture.ts', 'tests/postgres/catalogRuntimeCheckout.proof.ts', 'tests/postgres/customerAccountMutations.fixture.ts', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/catalogAdmissionIssueReader.test.ts': ['tests/postgres/catalogPublicationFixture.ts', 'tests/postgres/customerAccountMutations.fixture.ts'],
+  'tests/postgres/catalogAdmissionIssueReader.test.ts': ['tests/postgres/catalogAdmissionIssueReader.fixture.ts', 'tests/postgres/catalogPublicationFixture.ts', 'tests/postgres/customerAccountMutations.fixture.ts'],
+  'tests/postgres/catalogAdmissionIssueReaderAdminRails.test.ts': ['tests/postgres/catalogAdmissionIssueReader.fixture.ts', 'tests/postgres/catalogPublicationFixture.ts', 'tests/postgres/customerAccountMutations.fixture.ts'],
+  'tests/postgres/catalogAdmissionIssueReaderRails.test.ts': ['tests/postgres/catalogAdmissionIssueReader.fixture.ts', 'tests/postgres/catalogPublicationFixture.ts', 'tests/postgres/customerAccountMutations.fixture.ts'],
   'tests/postgres/catalogAdmissionPrelock.test.ts': ['@starter', 'tests/postgres/catalogPublicationFixture.ts', 'tests/postgres/destinationDocumentFixture.ts', 'tests/postgres/destinationReceiptFixture.ts', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
   'tests/postgres/catalogAttributeProjection.test.ts': [],
   'tests/postgres/catalogBasePriceTransfer.test.ts': [],
@@ -183,8 +185,11 @@ const POSTGRES_SUITE_CLOSURES = {
   'tests/postgres/checkoutAttemptLedger.test.ts': ['@managedCompat'],
   'tests/postgres/checkoutInlineRecovery.test.ts': ['@starter', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
   'tests/postgres/checkoutOwnerRestoreStates.test.ts': ['tests/postgres/checkoutOwnerRestoreStates.fixture.ts'],
+  'tests/postgres/checkoutOwnerRestoreStatesAdminManaged.test.ts': ['tests/postgres/checkoutOwnerRestoreStates.fixture.ts'],
+  'tests/postgres/checkoutOwnerRestoreStatesAdminOperator.test.ts': ['tests/postgres/checkoutOwnerRestoreStates.fixture.ts'],
   'tests/postgres/checkoutOwnerRestoreStatesBootstrapAbsent.test.ts': ['tests/postgres/checkoutOwnerRestoreStates.fixture.ts'],
   'tests/postgres/checkoutOwnerRestoreStatesBootstrapDormant.test.ts': ['tests/postgres/checkoutOwnerRestoreStates.fixture.ts'],
+  'tests/postgres/checkoutOwnerRestoreStatesBootstrapGranted.test.ts': ['tests/postgres/checkoutOwnerRestoreStates.fixture.ts'],
   'tests/postgres/checkoutPaymentGuidance.test.ts': ['@src', '@starter', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
   'tests/postgres/checkoutRecoveryInspection.test.ts': ['@starter', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
   'tests/postgres/checkoutRecoveryInspectionUpgrade.test.ts': [],
@@ -219,7 +224,9 @@ const POSTGRES_SUITE_CLOSURES = {
   'tests/postgres/connectedStorePromotionClaims.test.ts': [],
   'tests/postgres/connectedStoreRestoreUpgrade.test.ts': ['tests/postgres/customerAccountMutations.fixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
   'tests/postgres/connectedStoreStarterRelations.test.ts': [],
-  'tests/postgres/connectedStoreTransfer.test.ts': ['@src', 'tests/postgres/destinationDocumentFixture.ts', 'tests/postgres/destinationReceiptFixture.ts', 'tests/postgres/m19NoticeFixture.ts'],
+  'tests/postgres/connectedStoreTransfer.test.ts': ['@src', 'tests/postgres/connectedStoreTransfer.fixture.ts', 'tests/postgres/m19NoticeFixture.ts'],
+  'tests/postgres/connectedStoreTransferRetained.test.ts': ['@src', 'tests/postgres/connectedStoreTransfer.fixture.ts', 'tests/postgres/m19NoticeFixture.ts'],
+  'tests/postgres/connectedStoreTransferScenarios.test.ts': ['@src', 'tests/postgres/connectedStoreTransfer.fixture.ts', 'tests/postgres/destinationDocumentFixture.ts', 'tests/postgres/destinationReceiptFixture.ts', 'tests/postgres/m19NoticeFixture.ts'],
   'tests/postgres/contactClientRegistrar.test.ts': ['@src'],
   'tests/postgres/customerAccountConsents.test.ts': ['@dataDoc', 'tests/postgres/current-installation-inventory.json'],
   'tests/postgres/customerAccountMutations.test.ts': ['@src', 'tests/postgres/customerAccountMutations.fixture.ts'],
@@ -230,7 +237,9 @@ const POSTGRES_SUITE_CLOSURES = {
   'tests/postgres/customerPreferences.test.ts': ['tests/postgres/customerAccountMutations.fixture.ts', 'tests/postgres/customerPreferences.fixture.ts'],
   'tests/postgres/customerSavedAddresses.test.ts': ['@src', 'tests/postgres/customerAccountMutations.fixture.ts', 'tests/postgres/customerPreferences.fixture.ts', 'tests/postgres/customerSavedAddresses.fixture.ts'],
   'tests/postgres/customer_browser_identity.test.ts': ['@src'],
-  'tests/postgres/definerSearchPath.test.ts': ['tests/postgres/catalogPublicationFixture.ts', 'tests/postgres/customerAccountMutations.fixture.ts'],
+  'tests/postgres/definerSearchPath.test.ts': ['tests/postgres/customerAccountMutations.fixture.ts', 'tests/postgres/definerSearchPath.fixture.ts'],
+  'tests/postgres/definerSearchPathPins.test.ts': ['tests/postgres/customerAccountMutations.fixture.ts', 'tests/postgres/definerSearchPath.fixture.ts'],
+  'tests/postgres/definerSearchPathPrelock.test.ts': ['tests/postgres/catalogPublicationFixture.ts', 'tests/postgres/customerAccountMutations.fixture.ts', 'tests/postgres/definerSearchPath.fixture.ts'],
   'tests/postgres/destinationV2Checkout.test.ts': ['tests/postgres/destinationDocumentFixture.ts', 'tests/postgres/destinationReceiptFixture.ts'],
   'tests/postgres/destinationV2DispatchLedger.test.ts': ['tests/postgres/destinationDocumentFixture.ts', 'tests/postgres/destinationReceiptFixture.ts'],
   'tests/postgres/destinationV2OrderBinding.test.ts': ['tests/postgres/destinationDocumentFixture.ts', 'tests/postgres/destinationReceiptFixture.ts'],
@@ -282,6 +291,9 @@ const POSTGRES_SUITE_CLOSURES = {
   'tests/postgres/m14ReleasedSchemaUpgrade.test.ts': ['tests/postgres/current-installation-inventory.json', 'tests/postgres/m14ReleasedSchemaUpgrade.proof.ts', 'tests/postgres/m14ReleasedSchemaUpgradeChild.ts'],
   'tests/postgres/m14RestrictedConnectedRestore.test.ts': ['tests/postgres/catalogAdmissionOwnerWrite.fixture.ts', 'tests/postgres/catalogPublicationFixture.ts', 'tests/postgres/current-installation-inventory.json', 'tests/postgres/m14RestrictedConnectedRestore.fixture.ts'],
   'tests/postgres/m14RestrictedConnectedRestoreMatrix.test.ts': ['tests/postgres/current-installation-inventory.json', 'tests/postgres/m14RestrictedConnectedRestore.fixture.ts'],
+  'tests/postgres/m14RestrictedConnectedRestoreMatrixNeonOperator.test.ts': ['tests/postgres/current-installation-inventory.json', 'tests/postgres/m14RestrictedConnectedRestore.fixture.ts'],
+  'tests/postgres/m14RestrictedConnectedRestoreMatrixRdsManaged.test.ts': ['tests/postgres/current-installation-inventory.json', 'tests/postgres/m14RestrictedConnectedRestore.fixture.ts'],
+  'tests/postgres/m14RestrictedConnectedRestoreMatrixRdsOperator.test.ts': ['tests/postgres/current-installation-inventory.json', 'tests/postgres/m14RestrictedConnectedRestore.fixture.ts'],
   'tests/postgres/m17ChannelReference.test.ts': ['@managedCompat', '@src'],
   'tests/postgres/m19BundleWriteExport.test.ts': [],
   'tests/postgres/m19BundleWriteIdentity.test.ts': ['@src'],
@@ -458,7 +470,7 @@ export const TOOLING_INPUTS = {
   ], // Real Docker landing:merge + installation-inventory-refresh.ts witness (builds core/outbox/platform, syncs SQL/source-map, refreshes 5 PG inventories).
   'scripts/agent-review-queue.test.ts': [...AGENT_REVIEW_QUEUE_SCRIPTS, 'scripts/agent-review-queue-planner.mjs', 'scripts/merge-queue-check-arm.mjs', 'scripts/dco-signoff-check.ts', 'scripts/merge-queue-churn.mjs'], // Synthetic Git repositories and recorded transport.
   'scripts/agent-review-gate.test.ts': [...AGENT_REVIEW_QUEUE_SCRIPTS], // Real-Git witnesses of the session CLI and hosted admission.
-  'scripts/agent-review-registry.test.ts': ['config/openlup-publication-catalog.json', 'packages/platform/test/packageBoundary.test.ts', ...AGENT_REVIEW_QUEUE_SCRIPTS], // Closed-registry union and review-economy fixtures reading REGISTRY_PATHS.
+  'scripts/agent-review-registry.test.ts': ['config/openlup-publication-catalog.json', 'config/vitest-shard-weights.json', 'packages/platform/test/packageBoundary.test.ts', ...AGENT_REVIEW_QUEUE_SCRIPTS], // Closed-registry union and review-economy fixtures reading REGISTRY_PATHS.
   'scripts/public-ci-reuse.test.ts': ['scripts/public-ci-reuse.mjs'], // Recorded workflow/job responses.
   'scripts/documentation-cli.test.ts': ['examples/neutral-store/package.json', ...PACKAGE_MANIFESTS, 'packages/core/scripts/', ...ROOT_DOC_FILES], // Copies CLI closure, package execution surfaces and validates root docs.
   'scripts/pgtap-parity.test.ts': [], // Pure TAP/row-diff/sabotage/executable unit fixtures.

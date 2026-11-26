@@ -114,13 +114,22 @@ describe("installation-inventory-refresh concurrency and resource gating", () =>
     const invocation = resolveInventoryResourceGate("/tmp/wt-a", "/usr/bin/node", ["--import", "tsx"], argv, baseEnv, hit);
     expect(invocation).not.toBeNull();
     expect(invocation!.command).toBe("/custom/bin/ai-resource-gate");
-    expect(invocation!.args.slice(0, 4)).toEqual(["run", "--wait", "--lane", "docker-heavy"]);
-    expect(invocation!.args[4]).toMatch(/^openlup:inventory-refresh:wt\d+$/u);
-    expect(invocation!.args.slice(5)).toEqual(["--", "/usr/bin/node", "--import", "tsx", "scripts/installation-inventory-refresh.ts"]);
+    expect(invocation!.args.slice(0, 8)).toEqual([
+      "run",
+      "--wait",
+      "--lane",
+      "docker-heavy",
+      "--queue-timeout",
+      "300",
+      "--execution-timeout",
+      "900",
+    ]);
+    expect(invocation!.args[8]).toMatch(/^openlup:inventory-refresh:wt\d+$/u);
+    expect(invocation!.args.slice(9)).toEqual(["--", "/usr/bin/node", "--import", "tsx", "scripts/installation-inventory-refresh.ts"]);
 
     // Distinct worktrees produce distinct numeric suffixes.
     const other = resolveInventoryResourceGate("/tmp/wt-b", "/usr/bin/node", ["--import", "tsx"], argv, baseEnv, hit);
-    expect(other!.args[4]).not.toBe(invocation!.args[4]);
+    expect(other!.args[8]).not.toBe(invocation!.args[8]);
 
     // Bypasses cleanly in CI, inside an already-active gate, with opt-out, or when broker is absent.
     expect(resolveInventoryResourceGate("/tmp/wt-a", "/usr/bin/node", [], argv, { ...baseEnv, CI: "true" }, hit)).toBeNull();

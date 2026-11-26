@@ -1638,11 +1638,19 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/browser/page-handle.spec.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/browser/recovery.proof.ts",
       "class": "public-output"
     },
     {
       "path": "examples/neutral-store/browser/renewal.proof.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/browser/storefront-anchors.spec.ts",
       "class": "public-output"
     },
     {
@@ -2218,11 +2226,23 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/shared/selection-entry.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/shared/storefront-bindings.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/shared/subscription-edit.ts",
       "class": "public-output"
     },
     {
       "path": "examples/neutral-store/shared/subscription-offer.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/shared/transport.ts",
       "class": "public-output"
     },
     {
@@ -2259,6 +2279,10 @@
     },
     {
       "path": "examples/neutral-store/test/catalogue-upgrade-fixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/checkout-anchors.test.ts",
       "class": "public-output"
     },
     {
@@ -2382,7 +2406,15 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/test/selection-entry.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/test/sessions.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/storefront-bindings.test.ts",
       "class": "public-output"
     },
     {
@@ -3827,6 +3859,10 @@
     },
     {
       "path": "packages/platform/api/shipping.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/storefront-testing.api.md",
       "class": "public-output"
     },
     {
@@ -8670,6 +8706,42 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/storefront/testing/anchorVisibility.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/testing/contracts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/testing/findings.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/testing/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/testing/pageHandle.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/testing/runner.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/testing/scenarios.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/testing/serialize.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/testing/utcInstant.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/agreedPlanQuote.ts",
       "class": "public-output"
     },
@@ -11542,6 +11614,38 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/storefront/testing/exports.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/testing/pageHandle.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/testing/runner.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/testing/scenarios.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/testing/serialize.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/testing/sourceScan.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/testing/storeDouble.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/testing/utcInstant.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/storefront/types.test.ts",
       "class": "public-output"
     },
@@ -13635,6 +13739,14 @@
     },
     {
       "path": "scripts/reference-journey-egress-guard.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/resource-gate.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/resource-gate.test.ts",
       "class": "public-output"
     },
     {
@@ -30390,6 +30502,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/platform/neutralStoreCheckoutClassifier.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/platform/neutralStoreCheckoutRetry.test.ts",
       "class": "public-output"
     },
@@ -30502,11 +30618,35 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/catalogAdmissionIssueReader.fixture.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/catalogAdmissionIssueReader.test.ts",
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/catalogAdmissionIssueReaderAdminRails.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogAdmissionIssueReaderRails.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogAdmissionOwnerWrite.fixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogAdmissionOwnerWrite.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/catalogAdmissionPrelock.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogAdmissionRuntimeCommit.test.ts",
       "class": "public-output"
     },
     {
@@ -30646,11 +30786,23 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/checkoutOwnerRestoreStatesAdminManaged.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/checkoutOwnerRestoreStatesAdminOperator.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/checkoutOwnerRestoreStatesBootstrapAbsent.test.ts",
       "class": "public-output"
     },
     {
       "path": "tests/postgres/checkoutOwnerRestoreStatesBootstrapDormant.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/checkoutOwnerRestoreStatesBootstrapGranted.test.ts",
       "class": "public-output"
     },
     {
@@ -30802,7 +30954,19 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/connectedStoreTransfer.fixture.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/connectedStoreTransfer.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/connectedStoreTransferRetained.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/connectedStoreTransferScenarios.test.ts",
       "class": "public-output"
     },
     {
@@ -30862,7 +31026,19 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/definerSearchPath.fixture.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/definerSearchPath.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/definerSearchPathPins.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/definerSearchPathPrelock.test.ts",
       "class": "public-output"
     },
     {
@@ -31295,6 +31471,18 @@
     },
     {
       "path": "tests/postgres/m14RestrictedConnectedRestoreMatrix.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14RestrictedConnectedRestoreMatrixNeonOperator.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14RestrictedConnectedRestoreMatrixRdsManaged.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14RestrictedConnectedRestoreMatrixRdsOperator.test.ts",
       "class": "public-output"
     },
     {

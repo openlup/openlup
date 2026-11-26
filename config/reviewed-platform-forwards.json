@@ -9700,8 +9700,100 @@
         "dataStatements": []
       },
       {
+        "row": "fulfillment-delivery-without-tracking",
+        "path": "db/platform/migrations/20261129130501_fulfillment_delivery_without_tracking.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.fulfillment_intake_record_observation(text,uuid,jsonb,timestamptz)",
+            "beforeSha256": "8d138fb099bbc511032a68e482f720ebbc065efaf1294c5dad4872a225688691",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.fulfillment_intake_record_delivery_without_tracking(text,uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "existingTableStatements": [
+          "ALTER TABLE public.fulfillment_observations ADD COLUMN prebound_arrival_dispatch_id uuid;"
+        ]
+      },
+      {
+        "row": "catalog-governed-draft-owner",
+        "path": "db/platform/migrations/20261129130502_catalog_governed_draft_owner.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.catalog_order_acceptance_final(uuid)",
+            "beforeSha256": "c935a9194cb0588d9646606329a9b4653a22b9587cfc3f20bacc760c2c6eb822",
+            "searchPath": "pg_catalog, public, pg_temp"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.catalog_admission_governed_companions(jsonb,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_admission_owner_origin_guard()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_admission_write_governed_draft(text,uuid,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_admission_is_governed(jsonb,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "createdTriggers": [
+          {
+            "name": "commerce_orders_catalog_owner_origin_guard",
+            "table": "public.commerce_orders",
+            "sha256": "3130776904ecdc7fd16b3c1ff4e9235f0bc5b1e8d7946c9ec0ba072c0a88c1e5"
+          },
+          {
+            "name": "commerce_order_items_catalog_owner_origin_guard",
+            "table": "public.commerce_order_items",
+            "sha256": "076730637fecc1e844bb9a75ac80d840b7cdb44562105a13251c4e68b38d338e"
+          },
+          {
+            "name": "commerce_order_draft_receipts_catalog_owner_origin_guard",
+            "table": "public.commerce_order_draft_receipts",
+            "sha256": "8eb17ef494b6c6dd56a000b9cf0b5b16cacb2377294ff35ea2ea6aa7c8ab4b57"
+          },
+          {
+            "name": "commerce_order_adjustments_catalog_final",
+            "relation": "public.commerce_order_adjustments",
+            "events": [
+              "INSERT"
+            ],
+            "function": "public.catalog_order_receipt_acceptance_trigger()",
+            "deferred": true,
+            "sha256": "eb8680890746ccc196e4a71042f508d5c221c5ed904339ec7cbb1cfff47d53f1"
+          },
+          {
+            "name": "commerce_promotion_claims_catalog_final",
+            "relation": "public.commerce_promotion_claims",
+            "events": [
+              "INSERT",
+              "UPDATE",
+              "DELETE"
+            ],
+            "function": "public.catalog_order_receipt_acceptance_trigger()",
+            "deferred": true,
+            "sha256": "a0f8798091510ff967303784423c51749b272d9b291b05b16b1423dffc9f49f8"
+          }
+        ]
+      },
+      {
         "row": "subscription-edit-derived-prices",
-        "path": "db/platform/migrations/20261129130003_subscription_edit_derived_prices.sql",
+        "path": "db/platform/migrations/20261129130503_subscription_edit_derived_prices.sql",
         "replacedFunctions": [
           {
             "signature": "public.catalog_admission_derived_subscription_prices(text,jsonb,jsonb,timestamptz)",
@@ -14077,7 +14169,54 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261129130003_subscription_edit_derived_prices.sql",
+      "path": "db/platform/migrations/20261129130501_fulfillment_delivery_without_tracking.sql",
+      "sha256": "8fb338903c87905d493b110134d7b89d8a65ba50db33eab7b4741a2802b898ef",
+      "functions": [
+        {
+          "signature": "public.fulfillment_intake_record_observation(text,uuid,jsonb,timestamptz)",
+          "beforeSha256": "8d138fb099bbc511032a68e482f720ebbc065efaf1294c5dad4872a225688691",
+          "afterSha256": "61194e679e9a3ae6440d83e1d4862e23ae75721707432399b703335c67aa9580"
+        },
+        {
+          "signature": "public.fulfillment_intake_record_delivery_without_tracking(text,uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "307281b2c1cd8b5682fd854b0e72a387cafdf31e0b29bd708053728dbe9f366f"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261129130502_catalog_governed_draft_owner.sql",
+      "sha256": "33869ed7310f1bf994228a211d20803420ca8aba634ae99891fbc9b2f9ad9ace",
+      "functions": [
+        {
+          "signature": "public.catalog_order_acceptance_final(uuid)",
+          "beforeSha256": "c935a9194cb0588d9646606329a9b4653a22b9587cfc3f20bacc760c2c6eb822",
+          "afterSha256": "4a430a2fc48c2f13888f6c4f33b5e0d11bbaf5a01e83dd1d37e76aa1226af709"
+        },
+        {
+          "signature": "public.catalog_admission_governed_companions(jsonb,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "8b1e43cf85b8f49e73eb62a5ebb8cb6f98157ef6421764151368dc47c19d1827"
+        },
+        {
+          "signature": "public.catalog_admission_owner_origin_guard()",
+          "beforeSha256": null,
+          "afterSha256": "7ee06e2cdb159a4cecc239557a43fa3f2c7267ea56aa6b058a3f03d3a2782ecc"
+        },
+        {
+          "signature": "public.catalog_admission_write_governed_draft(text,uuid,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "055cbcaa53d7374a42ed7a19c2b09f40806ea318ae5a855af63519a9410c4491"
+        },
+        {
+          "signature": "public.catalog_admission_is_governed(jsonb,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "98078fe0b0d23125c0801d7b0900363b88d24688428f977b909475200f8f8fff"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261129130503_subscription_edit_derived_prices.sql",
       "sha256": "3739862bf9ebbf8d3f5594a4f437a4e987f6fb612d8d4fc71a7c72c96603a123",
       "functions": [
         {

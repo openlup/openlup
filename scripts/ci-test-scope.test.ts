@@ -337,6 +337,9 @@ describe('conservative tooling scope', () => {
   });
   it('scopes all tests/postgres suites per-file and per-axis without broad tests/postgres/ prefixes', () => {
     const purePgSuites = [
+      'tests/postgres/catalogAdmissionIssueReader.test.ts',
+      'tests/postgres/catalogAdmissionIssueReaderAdminRails.test.ts',
+      'tests/postgres/catalogAdmissionIssueReaderRails.test.ts',
       'tests/postgres/catalogPublication.test.ts',
       'tests/postgres/connectedStoreCatalogRevisions.test.ts',
       'tests/postgres/connectedStorePromotionClaims.test.ts',
@@ -347,6 +350,9 @@ describe('conservative tooling scope', () => {
       'tests/postgres/m14QualifiedAdminComposition.test.ts',
       'tests/postgres/m14RestrictedConnectedRestore.test.ts',
       'tests/postgres/m14RestrictedConnectedRestoreMatrix.test.ts',
+      'tests/postgres/m14RestrictedConnectedRestoreMatrixNeonOperator.test.ts',
+      'tests/postgres/m14RestrictedConnectedRestoreMatrixRdsManaged.test.ts',
+      'tests/postgres/m14RestrictedConnectedRestoreMatrixRdsOperator.test.ts',
       'tests/postgres/subscriptionNoticeProducers.test.ts',
       'tests/postgres/subscriptionRetainedRenewal.test.ts',
     ];

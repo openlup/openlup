@@ -22,8 +22,9 @@ const tsconfigRootDir = path.dirname(fileURLToPath(import.meta.url));
 //   5. packages/platform/src/<module>/ production source: additionally the
 //      module graph below;
 //   6. the starter's client and shared source: additionally browser-safe platform entries;
-//   7. packages/platform/src/storefront/ production source: additionally no Node built-in
-//      (and, through `no-restricted-globals`, none of STOREFRONT_RESTRICTED_GLOBALS).
+//   7. packages/platform/src/storefront/ production source, its testing/ support included:
+//      additionally no Node built-in (and, through `no-restricted-globals`, none of
+//      STOREFRONT_RESTRICTED_GLOBALS).
 const SOURCE_EXTENSIONS = "{ts,tsx,js,mjs,cjs}";
 const MAX_PACKAGE_DEPTH = 12;
 const PORTABLE_PACKAGE_DIRECTORIES = ["core", "ui", "outbox"];
@@ -232,6 +233,8 @@ export const PLATFORM_MODULE_GRAPH = {
   inventory: { contracts: true, values: [], types: [] },
   "account-support": { contracts: true, values: ["commerce", "invoicing", "shipping", "data"], types: ["commerce/contracts", "invoicing/contracts"] },
   storefront: { values: [], types: [] },
+  // Node-only test support for storefront proofs; after `storefront`, because later rules override.
+  "storefront/testing": { values: ["storefront", "lifecycle"], types: [] },
 };
 const PLATFORM_SOURCE = "packages/platform/src";
 
@@ -308,7 +311,7 @@ export function platformModuleRules(pkg, module, graph = PLATFORM_MODULE_GRAPH) 
   if (contracts !== undefined && contracts !== true) throw new Error(`${module}: contracts must be true or omitted`);
   const ignores = testFiles(`${PLATFORM_SOURCE}/`);
   const message = `packages/platform module "${module}" imports other modules only through their entry <module>/index.js.`;
-  const browserOnly = module === "storefront" ? [storefrontNodeBuiltins] : [];
+  const browserOnly = module === "storefront" || module === "storefront/testing" ? [storefrontNodeBuiltins] : [];
   const contractsRules = (depth) => {
     const segment = "[A-Za-z0-9_-][A-Za-z0-9_.-]*";
     const relative = `(?:\\./(?:\\.\\./){0,${depth}}${depth > 0 ? `|(?:\\.\\./){1,${depth}}` : ""})${segment}(?:/${segment})*\\.js`;
