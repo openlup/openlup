@@ -48,7 +48,7 @@ export interface ProviderRenewalPaymentPorts {
     }>;
   adapter: { readbackPort: { readPayment(input: { identity: { provider: string; intentRef: string; attemptRef: string; providerPaymentRef: string };
     expectedMoney: { amountMinor: number; currency: string }; purpose: "recovery" }): Promise<
-      { kind: "succeeded" | "failed" | "pending"; observedMoney: { amountMinor: number; currency: string }; providerOccurredAt: string | null; capturedAmountBasis?: "provider_capture_v1" }
+      { kind: "succeeded" | "failed" | "pending"; observedMoney: { amountMinor: number; currency: string }; providerOccurredAt: string | null; capturedAmountBasis?: "provider_capture_v1"; providerAccountRef?: string }
       | { kind: "unknown" | "unsupported" | "absent" }> } };
   reconciliation: {
     recordEvidence(input: { idempotencyKey: string; provider: string; providerPaymentId: string | null; paymentIntentId: string;
@@ -255,7 +255,8 @@ export function createPostgresProviderRenewalBinding(input: {
     const historicalPayload = { observedMoney: observed.observedMoney, providerOccurredAt: occurredAt };
     const key = `provider-read:${a.id}:${createHash("sha256").update(JSON.stringify({ checkedAt, ...historicalPayload, status: observed.kind })).digest("hex")}`;
     const payload = { ...historicalPayload, ...(observed.kind === "succeeded" && observed.capturedAmountBasis
-      ? { capturedAmountBasis: observed.capturedAmountBasis } : {}) };
+      ? { capturedAmountBasis: observed.capturedAmountBasis,
+          ...(observed.providerAccountRef ? { providerAccountRef: observed.providerAccountRef } : {}) } : {}) };
     const recorded = await payments.reconciliation.recordEvidence({ idempotencyKey: key, provider: payments.provider,
       providerPaymentId: remote, paymentIntentId: intent, paymentAttemptId: a.id, localStatus: a.status,
       providerStatus: observed.kind, correctionStatus: "observed", checkedAt, payload: historicalPayload });

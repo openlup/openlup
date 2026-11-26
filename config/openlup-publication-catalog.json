@@ -1622,6 +1622,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/browser/lost-response.spec.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/browser/native-acquisition.proof.ts",
       "class": "public-output"
     },
@@ -2263,6 +2267,10 @@
     },
     {
       "path": "examples/neutral-store/test/checkout-continuation-host.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/checkout-continuation.test.ts",
       "class": "public-output"
     },
     {
@@ -8630,6 +8638,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/storefront/pendingResume.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/purchaseContinuation.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/agreedPlanQuote.ts",
       "class": "public-output"
     },
@@ -11462,6 +11478,22 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/storefront/outcomeClassifierExamples.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/outcomeClassifiers.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/pendingResume.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/purchaseContinuation.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/storefront/types.test.ts",
       "class": "public-output"
     },
@@ -13011,6 +13043,14 @@
     },
     {
       "path": "scripts/migration-slots.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/migration-sync.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/migration-sync.ts",
       "class": "public-output"
     },
     {
@@ -30162,6 +30202,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/helpers/subscriptionJob.fixture.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/identity/acceptance.conformance.ts",
       "class": "public-output"
     },
@@ -30886,6 +30930,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/fixtures/paymentCaptureTime/replayed.sql",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/fixtures/paymentMethods/consent_snapshot_merge.sql",
       "class": "public-output"
     },
@@ -31302,6 +31350,18 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/nativeRenewalV3Legacy.fixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/nativeRenewalV3Storage.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/nativeRenewalV3StoragePgtap.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/nativeStoreForwardCatalog.noServiceRole.test.ts",
       "class": "public-output"
     },
@@ -31323,6 +31383,10 @@
     },
     {
       "path": "tests/postgres/neutralStorePaidMail.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/neutralStorePurchaseContinuation.test.ts",
       "class": "public-output"
     },
     {
@@ -31439,6 +31503,14 @@
     },
     {
       "path": "tests/postgres/partnerAcquisition.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/paymentCaptureTime.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/paymentCaptureTimePgtap.test.ts",
       "class": "public-output"
     },
     {
@@ -32046,6 +32118,16 @@
       "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
     },
     {
+      "name": "migration:sync",
+      "command": "node --experimental-strip-types scripts/migration-sync.ts",
+      "publicDocs": [
+        "CONTRIBUTING.md",
+        "README.md"
+      ],
+      "publicCiEntrypoint": ".github/workflows/published-tree-ci.yml",
+      "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
+    },
+    {
       "name": "lint",
       "command": "node scripts/ast-grep/check-filewide-ignore.mjs && ast-grep scan --error=no-suppress-all --error=unused-suppression && ast-grep test --skip-snapshot-tests && eslint --concurrency auto .",
       "publicDocs": [
@@ -32183,7 +32265,7 @@
     },
     {
       "path": "package.json",
-      "digest": "sha256-85f22d834d55ab426c59fb240b5ae13bc169419d59d42e2834814ef8199c8ff6"
+      "digest": "sha256-35edf4fd78acf8ec6636041b87b619d0e7a0fc7d8552ea5e4ac684427e5ac442"
     },
     {
       "path": "packages/core/package.json",

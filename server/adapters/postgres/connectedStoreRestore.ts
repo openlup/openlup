@@ -14,15 +14,19 @@ import { assertConnectedCatalogPublications, connectedNativeStoreTables,
   requiredPrivacyDeclarationTable, type ConnectedNativeStoreCapture } from "./connectedStoreCapture.js";
 import {
   connectedStoreAllowedInsertTriggers,
+  connectedStoreOutsideProfileRelations,
   connectedStoreRestoreOrder,
   connectedStoreSettingsTables,
 } from "./connectedStoreDomains/index.js";
+import { paymentsDomain } from "./connectedStoreDomains/payments.js";
 
 const { catalogPublicationAdmissionRefusal, decodePublicationPacket, requireDecodedPublication } = nativeCatalogPublication;
 
 type TableName = typeof connectedNativeStoreTables[number];
 type Rows = { table: TableName; columns: readonly { name: string; type: string }[]; rows: readonly string[] };
 const migrationLock = "openlup:public-platform-migrations:v1";
+const paymentTables = ["commerce_settlement_intents", ...Object.values(paymentsDomain.restore).flat()] as const;
+const paymentQualificationRelation = "public.payment_capture_time_test_qualification";
 type SourceShape = "current" | "unsupported";
 
 export function connectedStoreSourceShape(
@@ -365,12 +369,16 @@ export async function restoreConnectedNativeStore(input: {
       if (JSON.stringify(actual) !== JSON.stringify(columns)) refuseSourceSchema(table);
     }
     await assertInsertTriggers(client);
-    await assertOutsideEmpty(client, relations);
+    const replayed = await equalCensus(client, source);
+    if (!replayed && paymentTables.some(table => source.get(table)!.rows.length > 0)) {
+      await client.query(`DELETE FROM ${paymentQualificationRelation}`);
+    }
+    await assertOutsideEmpty(client, relations, replayed);
     // Sized bindings cannot be replayed as final rows through the insert guard.
     // Refuse before restoring settings or inserting any retained source data.
     if (source.get("subscriptions")!.rows.some(row =>
       (JSON.parse(row) as Record<string, unknown>).configured_offer_version !== "classic")) fail("unsupported_table", "subscriptions");
-    if (await equalCensus(client, source)) {
+    if (replayed) {
       await assertConnectedCatalogPublications(client);
       if (JSON.stringify((await client.query("SELECT tableoid::pg_catalog.text,ctid::pg_catalog.text,xmin::pg_catalog.text FROM acquisition_private.installation_key")).rows) !== JSON.stringify(keyIdentity.rows)) fail("target_conflict", "acquisition_private.installation_key");
       if (installation.generation === "qualified-admin") await closeRestrictedOwnerWindow(client, installation);
@@ -551,11 +559,7 @@ function copyCapture(input: ConnectedNativeStoreCapture, shape: SourceShape = "c
         || Object.keys(entry).sort().join("\0") !== "disposition\0owner\0relation\0rows"
         || typeof entry.relation !== "string" || !entry.relation || typeof entry.owner !== "string" || !entry.owner
         || typeof entry.rows !== "string" || !entry.rows || /[^0-9]/.test(entry.rows)) fail("invalid_input");
-      const disposition = entry.relation === "acquisition_private.installation_key" ? "new-target-installation-key"
-        : entry.relation === "public.platform_schema_migrations" ? "target-migration-history"
-          : entry.relation === "acquisition_private.address_references" ? "target-address-references"
-            : entry.relation === "public.customer_identity_challenges" ? "intentionally-not-carried"
-              : entry.relation === "public.catalog_attribute_projection" ? "rebuildable" : "unsupported-empty";
+      const disposition = connectedStoreOutsideProfileRelations.get(entry.relation)?.disposition ?? "unsupported-empty";
       if (entry.disposition !== disposition || disposition === "unsupported-empty" && entry.rows !== "0") fail("invalid_input");
     }
     if (shape === "unsupported") refuseSourceSchema();
@@ -640,11 +644,13 @@ async function equalCensus(client: PoolClient, expected: Map<TableName, Rows>): 
   }
   return true;
 }
-async function assertOutsideEmpty(client: PoolClient, relations: readonly { schema: string; table: string }[]): Promise<void> {
-  const outside = relations.filter(relation =>
-    !(relation.schema === "public" && (connectedNativeStoreTables.includes(relation.table as TableName)
-      || relation.table === "platform_schema_migrations" || relation.table === requiredPrivacyDeclarationTable))
-    && !(relation.schema === "acquisition_private" && (relation.table === "installation_key" || relation.table === "address_references")));
+async function assertOutsideEmpty(client: PoolClient, relations: readonly { schema: string; table: string }[], replayed = false): Promise<void> {
+  const outside = relations.filter(({ schema, table }) => {
+    const name = `${schema}.${table}`;
+    return !(schema === "public" && (connectedNativeStoreTables.includes(table as TableName) || table === requiredPrivacyDeclarationTable))
+      && !connectedStoreOutsideProfileRelations.get(name)?.preserveTarget
+      && (!replayed || name !== paymentQualificationRelation);
+  });
   for (let start = 0; start < outside.length; start += existsCheckBatchSize) {
     const batch = outside.slice(start, start + existsCheckBatchSize);
     const probes = batch.map((relation, index) =>
