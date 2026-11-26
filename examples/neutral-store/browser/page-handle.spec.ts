@@ -73,7 +73,7 @@ test.beforeAll(async () => {
     if (request.url === '/purchase') { response.writeHead(200, { 'content-type': 'text/html' }).end(purchase); return; }
     if (request.url === '/stream') { response.writeHead(200, { 'content-type': 'text/html' }).end(streamPage); return; }
     // A server-sent event stream that never ends, as an order-status or chat widget keeps open.
-    if (request.url === '/events') {
+    if (request.url?.startsWith('/events')) {
       response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store' });
       response.write('data: open\n\n');
       streams.add(response);
