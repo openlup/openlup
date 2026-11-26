@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { createPostgresDestinationPortV2 } from "@openlup/platform/commerce/server/destinations";
-import { createDestinationDocumentPrivacyContributor, createFulfillmentParcelContactPrivacyContributor, createPostgresPrivacyStore } from "@openlup/platform/identity";
+import { createPostgresPrivacyStore } from "@openlup/platform/identity";
 import type { Pool, PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { readPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
@@ -10,11 +10,11 @@ import { withPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 import { storeJourneyResources, type JourneyInstallation } from "../helpers/storeJourney.js";
 import { installAccountMutations } from "./customerAccountMutations.fixture.js";
-import { destinationHash, insertDestinationOrder, readSnapshot, reachDestinationCutoff, snapshot } from "./destinationDocumentFixture.js";
+import { insertDestinationOrder, readSnapshot } from "./destinationDocumentFixture.js";
 import { backendPid } from "./destinationReceiptFixture.js";
 import {
-  activate, bind, bookCycle, checkoutSignature, edit, insertLocalAttempt, ownerTransaction, paidHandoff, prepareGraph,
-  registerName, registerSignature, subject, type Destination, type Subject, type Target,
+  activate, bind, bookCycle, checkoutSignature, edit, insertLocalAttempt, ownerTransaction, prepareGraph,
+  registerName, registerSignature, seedShipment, subject, type Destination, type Subject, type Target,
 } from "./renewalOrderDestinationV2.fixture.js";
 import { AT, call, type Db } from "./subscriptionNativeFixture.js";
 
@@ -40,8 +40,10 @@ const invalidStoredPins = {
   code: "22023", message: "destination_binding_invalid", detail: "orderBindings",
   hint: "Send the retained evidence to the destination owner for review.",
 };
-const expectedSelection = (f: Subject, selected: Destination) =>
-  ({ kind: "subscription", scopeRef: f.ctx.scopeRef, selectionRevision: selected.selectionRevision });
+const malformedRequestPins = (selected: Destination) => [
+  [{ ...selected, selectionRevision: null }, "destination"],
+  [{ ...selected, service: { ...selected.service, adapterRevision: "" } }, "selectedDelivery"],
+] as const;
 
 async function invariant(db: Db, f: Subject) {
   return data(db, `SELECT
@@ -84,10 +86,11 @@ async function effects(db: Db, f: Subject) {
       ON o.id=c.order_id WHERE o.client_id=$1) AS commands`, [f.ctx.clientId, f.pair.cycle_key]);
 }
 
-async function expectBindRefused(db: PoolClient, f: Subject, target: Target, refusal: Record<string, string>, reason: string) {
+async function expectBindRefused(db: PoolClient, f: Subject, target: Target, refusal: Record<string, string>, reason: string,
+  selected: Parameters<typeof bind>[3] = f.ny) {
   const before = await effects(db, f);
   await db.query("SAVEPOINT writer_call");
-  await expect(bind(db, f.ctx, target.order, f.ny), reason).rejects.toMatchObject(refusal);
+  await expect(bind(db, f.ctx, target.order, selected), reason).rejects.toMatchObject(refusal);
   await db.query("ROLLBACK TO SAVEPOINT writer_call; RELEASE SAVEPOINT writer_call");
   expect(await effects(db, f), reason).toStrictEqual(before);
 }
@@ -122,7 +125,7 @@ async function waitFor(observer: Db, waiting: PoolClient, blocker: PoolClient, r
     ) AS blocked`, [pid, blocking, relation]))[0]?.blocked, { timeout: 4_000 }).toBe(true);
 }
 
-it("measures the native predecessor, applies the destination forward first and preserves checkout registration bytes and ACL", async () => {
+it("upgrades in place with byte-identical checkout export and retained reads, including a cycle without acquisition activation", async () => {
   const prefix = structuredClone(manifest);
   for (const plan of [prefix, prefix.qualified, prefix.qualifiedAdmin]) {
     const index = plan.forward.findIndex(entry => entry.file === migration.file);
@@ -133,21 +136,51 @@ it("measures the native predecessor, applies the destination forward first and p
   prefix.qualified.objectInventorySha256.bootstrapMigrator.withRestore = predecessorPin;
   const previousUnits = [prefix.qualified.baseline, ...prefix.qualified.forward].map(unit => unit.file);
   const suffix = manifest.qualified.forward.slice(prefix.qualified.forward.length).map(unit => unit.file);
-  const checkout = (db: Db) => data(db, `SELECT pg_get_functiondef(p.oid) AS definition, proacl, proowner, proconfig
-    FROM pg_proc p WHERE p.oid=$1::regprocedure`, [checkoutSignature]);
+  const predecessorRoutines = [checkoutSignature.split("(")[0]!.slice("public.".length),
+    "commerce_destination_v2_check_retained", "commerce_destination_v2_export", "commerce_destination_v2_erase",
+    "subscription_destination_v2_current", "subscription_destination_v2_read", "fulfillment_ensure_paid_handoff",
+    "fulfillment_destination_contact_v2", "fulfillment_freeze_destination_contact_v2", "fulfillment_capture_parcel_contact",
+    "fulfillment_capture_order_contact_for_shipment", "fulfillment_resolve_parcel_contact"];
+  const definitions = (db: Db) => data(db, `SELECT proname::text, pg_get_functiondef(oid) AS definition, proacl, proowner, proconfig
+    FROM pg_proc WHERE pronamespace='public'::regnamespace AND proname=ANY($1::text[]) ORDER BY oid`, [predecessorRoutines]);
   await withPlatformCatalog(prefix, async root => {
     const installation = await installAccountMutations("bootstrap", true, "renewal-destination-upgrade", root, process.cwd());
     try {
       expect(installation.inventory).toBe(predecessorPin);
-      const previous = await checkout(installation.owner);
-      expect(previous).toHaveLength(1);
+      const previous = await definitions(installation.owner);
+      expect(new Set(previous.map(row => row.proname))).toEqual(new Set(predecessorRoutines));
+      const acquired = await subject(installation), historical = await subject(installation);
+      expect((await installation.owner.query("DELETE FROM public.subscription_activations WHERE order_id=$1", [historical.origin])).rowCount).toBe(1);
+      expect(await data(installation.owner, `SELECT o.subscription_cycle_id IS NOT NULL AS cycle,
+        NOT EXISTS (SELECT 1 FROM public.subscription_activations a WHERE a.order_id=o.id) AS no_activation,
+        public.commerce_destination_v2_valid_pins(b.selection,b.service,d.scope_ref) AS valid,
+        (public.commerce_destination_v2_check_document(d,'orderId')->>'verified')::boolean AS verified
+        FROM public.commerce_orders o JOIN public.commerce_destination_v2_order_bindings b ON b.order_id=o.id
+        JOIN public.commerce_destination_v2_documents d USING (snapshot_ref) WHERE o.id=$1`, [historical.origin]))
+        .toEqual([{ cycle: true, no_activation: true, valid: true, verified: true }]);
+      const checkoutBytes = (f: Subject) => data(installation.runtime, `SELECT
+        convert_to(public.commerce_destination_v2_export($1)::text,'UTF8') AS exported,
+        convert_to(public.commerce_read_destination_v2($2,'order',$3,$4)::text,'UTF8') AS retained,
+        convert_to(public.commerce_read_destination_v2($2,'order',$3,$4::jsonb || '{"policyRevision":"old"}')::text,'UTF8') AS mismatch`,
+      [f.ctx.clientId, f.checkout, f.origin, f.ny.binding]);
+      const subjects = [acquired, historical];
+      const before = await Promise.all(subjects.map(checkoutBytes));
+      for (const [index, f] of subjects.entries()) {
+        const [{ exported, retained, mismatch }] = before[index]!;
+        expect(JSON.parse(exported.toString("utf8"))).toEqual([expect.objectContaining({
+          document: expect.any(Object), orderBindings: [expect.objectContaining({ orderId: f.origin })],
+        })]);
+        expect(JSON.parse(retained.toString("utf8"))).toMatchObject({ binding: f.ny.binding });
+        expect(JSON.parse(mismatch.toString("utf8"))).toMatchObject({ code: "destination_version_changed", field: "destination.policyRevision" });
+      }
       const status = await installation.runner.status();
       expect(status.applied).toStrictEqual(previousUnits);
       expect(status.pending[0]).toBe(migration.file);
       expect(status.pending).toStrictEqual(suffix);
       expect(await installation.runner.apply()).toStrictEqual({ applied: suffix });
       expect(installation.inventory).toBe(manifest.qualified.objectInventorySha256.bootstrapMigrator.withRestore);
-      expect(await checkout(installation.owner)).toStrictEqual(previous);
+      expect(await definitions(installation.owner)).toStrictEqual(previous);
+      expect(await Promise.all(subjects.map(checkoutBytes))).toStrictEqual(before);
     } finally {
       await installation.close();
     }
@@ -185,23 +218,14 @@ it("keeps the private destination writer dormant and both routines owner-only un
   }
   const definitions = new Map((await data(owner, `SELECT proname, string_agg(prosrc, ' ') AS body FROM pg_proc
     WHERE pronamespace='public'::regnamespace GROUP BY proname`)).map(({ proname, body }) => [proname, body]));
-  for (const [callee, callers] of [
-    [classifier, [registerName, "commerce_destination_v2_check_retained", "commerce_destination_v2_export"]],
-    ["commerce_destination_v2_check_retained", ["commerce_destination_v2_read_retained", "commerce_register_order_destination_v2",
-      "subscription_destination_v2_current", "fulfillment_destination_contact_v2", registerName]],
-    ["fulfillment_open_shipment", ["fulfillment_create_shipment", "fulfillment_route_order"]],
-    ["fulfillment_create_shipment", ["fulfillment_ensure_paid_handoff", "fulfillment_operator_create_order"]],
-    ["fulfillment_resolve_parcel_contact", ["fulfillment_read_replacement_preparation", "commerce_oms_request_replacement_shipment",
-      "fulfillment_native_dispatch_read_candidate", "fulfillment_native_dispatch_refusal"]],
-    ["fulfillment_native_dispatch_refusal", ["fulfillment_native_dispatch_read_candidate", "fulfillment_native_dispatch_begin"]],
-    ["fulfillment_native_dispatch_read_candidate", ["fulfillment_native_dispatch_candidate_ids"]],
-    ["commerce_destination_v2_read_retained", ["commerce_read_destination_v2"]],
-    ["fulfillment_destination_contact_v2", ["fulfillment_freeze_destination_contact_v2"]],
-    ["fulfillment_freeze_destination_contact_v2", ["fulfillment_resolve_parcel_contact", "fulfillment_capture_parcel_contact", "fulfillment_capture_order_contact_for_shipment"]],
-  ] as const) for (const caller of callers) expect(definitions.get(caller), caller).toContain(callee);
-  for (const name of ["commerce_destination_v2_check_retained", "commerce_destination_v2_export"]) {
-    expect(definitions.get(name)).not.toMatch(/selection\s*->>?\s*'kind'/u);
-  }
+  const retainedRead = "commerce_destination_v2_read_retained";
+  expect([...definitions].filter(([, body]) => body.includes(classifier)).map(([name]) => name).sort())
+    .toEqual([registerName, retainedRead].sort());
+  expect(definitions.get(registerName)).toContain(`${classifier}(p_order_id, v_document, 'prepare')`);
+  expect(definitions.get(registerName)).toContain(`${classifier}(v_origin.order_id, v_document, 'acquisition')`);
+  expect(definitions.get(retainedRead)).toContain(`${classifier}(v_bound.order_id, v_row, 'retained')`);
+  expect(definitions.get(retainedRead)).not.toMatch(/selection\s*->>?\s*'kind'/u);
+  expect(definitions.get("commerce_read_destination_v2")).toContain(retainedRead);
   await ownerTransaction(owner, async db => {
     const roles = (await data(db, `SELECT rolname::text AS role FROM pg_roles
       WHERE NOT rolsuper AND rolname !~ '^pg_' ORDER BY role`)).map(({ role }) => role as string);
@@ -229,7 +253,7 @@ it("reads the checkout and frozen inherited and explicit renewal destinations th
   expect(checkout).toMatchObject({ binding: f.ny.binding, document: { address: { subdivision: "NY" } },
     evidenceExpiresAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T.*\.\d{3}Z$/u) });
   expect(checkout).not.toHaveProperty("documentPurpose");
-  const checkoutParcel = await paidHandoff(store, { order: f.origin });
+
   expect(await port.read(f.ctx, "subscription", f.ctx.scopeRef, f.ny.binding)).toMatchObject({ binding: f.ny.binding, evidenceExpiresAt: null });
   expect(await port.recheck(f.ctx, { kind: "subscription", scopeRef: f.ctx.scopeRef, expectedSelectionRevision: f.ny.selectionRevision,
     expectedBinding: f.ny.binding, expectedService: f.ny.service })).toMatchObject({ binding: f.ny.binding });
@@ -242,7 +266,6 @@ it("reads the checkout and frozen inherited and explicit renewal destinations th
   });
   expect(await invariant(owner, f)).toStrictEqual(before);
   expect(await edit(owner, f.ctx, f.ny.selectionRevision)).toMatchObject({ outcome: "applied_from_next_parcel" });
-  const firstParcel = await paidHandoff(store, east);
 
   const replacing = await subject(store);
   const originalCycle = await bookCycle(owner, replacing);
@@ -268,22 +291,22 @@ it("reads the checkout and frozen inherited and explicit renewal destinations th
     ...westSelection.service, adapterRevision: "later-adapter",
   })).toMatchObject({ outcome: "applied_from_next_parcel" });
   await call(owner, "commerce_destination_v2_expire", [new Date(), 1000]);
-  const replacementParcel = await paidHandoff(store, west);
   const frozen = await port.read(replacing.ctx, "order", west.order, westSelection.binding);
   expect(frozen).toMatchObject({
     binding: westSelection.binding, document: { address: { subdivision: "CA" } },
     documentPurpose: "subscription", evidenceExpiresAt: null,
   });
 
-  for (const [subject, ctx, order, parcel, selected, expected, origin] of [
-    [f, f.checkout, f.origin, checkoutParcel, f.ny, checkout, "checkout"],
-    [f, f.ctx, east.order, firstParcel, f.ny, checkout, "renewal"],
-    [replacing, replacing.ctx, west.order, replacementParcel, westSelection, frozen, "renewal"],
+  // Part 1 seeds shipments owner-side. Replace the renewal seeds with installed paid handoff in the follow-up.
+  const [checkoutShipment, inheritedShipment, explicitShipment] = await Promise.all(
+    [f.origin, east.order, west.order].map(order => seedShipment(owner, order)),
+  );
+  for (const [subject, ctx, order, shipment, selected, expected, origin] of [
+    [f, f.checkout, f.origin, checkoutShipment, f.ny, checkout, "checkout"],
+    [f, f.ctx, east.order, inheritedShipment, f.ny, checkout, "renewal"],
+    [replacing, replacing.ctx, west.order, explicitShipment, westSelection, frozen, "renewal"],
   ] as const) {
-    expect(parcel.contact).toMatchObject({ binding: selected.binding, service: selected.service,
-      address: { subdivision: selected === westSelection ? "CA" : "NY" },
-      recipient: { recipientName: selected === westSelection ? "West Recipient" : "Sample Recipient" } });
-    for (const [kind, id] of [["order", order], ["shipment", parcel.shipment]] as const) {
+    for (const [kind, id] of [["order", order], ["shipment", shipment]] as const) {
       expect(await port.read(ctx, kind, id, selected.binding)).toStrictEqual(expected);
       for (const [key, value] of Object.entries({ snapshotRef: randomUUID(), destinationDigest: "0".repeat(64), policyRevision: "old" })) {
         const remedy = origin === "checkout" ? "sealed checkout evidence through the authorized order workflow, then repeat the read; never"
@@ -295,58 +318,38 @@ it("reads the checkout and frozen inherited and explicit renewal destinations th
         });
       }
     }
-    const check = { kind: "checkout", scopeRef: ctx.scopeRef, expectedSelectionRevision: selected.selectionRevision,
-      expectedBinding: selected.binding, expectedService: selected.service } as const;
-    expect(await port.registerOrder(ctx, order, check)).toMatchObject(origin === "checkout" ? selected.binding : {
-      code: "destination_order_binding_occupied", field: "orderId", fix: "Resolve the existing binding without moving it.",
-      recheck: "Replay with the original authenticated evidence or resolve through the order owner.",
-    });
-    const issuedScope = selected === westSelection ? ctx.scopeRef : subject.checkout.scopeRef;
-    const selection = origin === "checkout" ? { ...expectedSelection(subject, selected), kind: "checkout", scopeRef: issuedScope }
-      : expectedSelection(subject, selected);
-    expect(await exportDestinations(runtime, subject)).toMatchObject({ coverage: { complete: true }, data: expect.arrayContaining([
-      expect.objectContaining({ snapshotRef: selected.binding.snapshotRef, scopeRef: issuedScope,
-        orderBindings: expect.arrayContaining([{ orderId: order, selection, service: selected.service }]) }),
-    ]) });
-    expect((await exportParcels(runtime, subject)).data).toContainEqual(expect.objectContaining({ shipmentId: parcel.shipment, contact: parcel.contact }));
     if (origin === "checkout") continue;
     await ownerTransaction(owner, async db => {
-      await db.query("DELETE FROM public.subscription_destination_v2_selections WHERE subscription_id=$1", [ctx.scopeRef]);
-      await db.query("UPDATE public.subscription_activations SET order_id=$1 WHERE order_id=$2", [order, subject.origin]);
+      await db.query(`UPDATE public.subscription_cycle_tax_bindings
+        SET live_evidence=jsonb_set(live_evidence,'{service,adapterRevision}','"different"') WHERE cycle_key=$1`,
+      [subject.pair.cycle_key]);
       const reader = createPostgresDestinationPortV2(db);
-      expect(await reader.read(subject.checkout, "order", subject.origin, subject.ny.binding))
-        .toMatchObject({ code: "destination_binding_invalid", field: "orderBindings" });
-      expect(await reader.read(ctx, "subscription", ctx.scopeRef, null)).toMatchObject({
-        code: "destination_evidence_unavailable", field: "subscriptionId", recheck: "Repeat the authorized subscription lookup.",
-      });
+      for (const [kind, id] of [["order", order], ["shipment", shipment]] as const) {
+        expect(await reader.read(ctx, kind, id, selected.binding)).toMatchObject({
+          code: "destination_binding_invalid", field: "orderBindings",
+        });
+      }
     }, false);
-    for (const mutation of [
-      ["subscription_cycle_tax_bindings", "live_evidence=jsonb_set(live_evidence,'{service,adapterRevision}','\"different\"')", "cycle_key", subject.pair.cycle_key],
-      ["commerce_destination_v2_order_bindings", "selection=jsonb_set(jsonb_set(selection,'{kind}','\"checkout\"'),'{scopeRef}',to_jsonb($2::uuid))", "order_id", order],
-    ]) await ownerTransaction(owner, async db => {
-      await db.query(`UPDATE public.${mutation[0]} SET ${mutation[1]} WHERE ${mutation[2]}=$1`,
-        mutation[0] === "commerce_destination_v2_order_bindings" ? [order, subject.checkout.scopeRef] : [mutation[3]]);
-      expect(await createPostgresDestinationPortV2(db).read(ctx, "order", order, selected.binding)).toMatchObject({
-        code: "destination_binding_invalid", field: "orderBindings",
-      });
-      const { data: exported, coverage } = await exportDestinations(db, subject);
-      expect(coverage).toMatchObject({ complete: false, unavailable: [expect.stringContaining("Review withheld destination evidence")] });
-      const retained = (exported as Record<string, unknown>[]).find(row => row.snapshotRef === selected.binding.snapshotRef);
-      expect(retained).toMatchObject({ document: expect.any(Object), verification: { status: "failed", code: "destination_binding_invalid", field: "orderBindings" } });
-      expect(retained?.orderBindings ?? []).not.toContainEqual(expect.objectContaining({ orderId: order }));
-      await expect(call(db, "fulfillment_resolve_parcel_contact", [parcel.shipment])).rejects.toMatchObject(invalidStoredPins);
+    await ownerTransaction(owner, async db => {
+      expect(await data(db, `UPDATE public.commerce_destination_v2_order_bindings b
+        SET selection=jsonb_set(jsonb_set(b.selection,'{kind}','"checkout"'),'{scopeRef}',to_jsonb(d.scope_ref))
+        FROM public.commerce_destination_v2_documents d WHERE b.order_id=$1 AND d.snapshot_ref=b.snapshot_ref
+        RETURNING public.commerce_destination_v2_valid_pins(b.selection,b.service,d.scope_ref) AS valid,
+          (public.commerce_destination_v2_check_document(d,'orderId')->>'verified')::boolean AS verified`, [order]))
+        .toEqual([{ valid: true, verified: true }]);
+      const reader = createPostgresDestinationPortV2(db);
+      for (const [kind, id] of [["order", order], ["shipment", shipment]] as const) {
+        expect(await reader.read(ctx, kind, id, selected.binding)).toMatchObject({
+          code: "destination_binding_invalid", field: "orderBindings",
+        });
+      }
     }, false);
   }
 });
 
-const documents = createDestinationDocumentPrivacyContributor(), parcels = createFulfillmentParcelContactPrivacyContributor();
-const privacySubject = (f: Subject) => ({ contactId: f.ctx.clientId, principalId: f.ctx.owner.principalRef, identity: {} });
-const exportDestinations = (db: Db, f: Subject) => documents.export(db, privacySubject(f));
-const exportParcels = (db: Db, f: Subject) => parcels.export(db, privacySubject(f));
-
-it("rolls back the destination with preparation before creating the local attempt and leaves delivery state byte-identical", async () => {
+it("preserves outstanding delivery obligations on commit and forced rollback without confirming a replacement", async () => {
   const { owner } = store, f = await subject(store), cycle = await bookCycle(owner, f);
-  await paidHandoff(store, { order: f.origin });
+  await seedShipment(owner, f.origin);
   const before = await effects(owner, f), delivery = await assignedInvariant(owner, f);
   await ownerTransaction(owner, async db => {
     await db.query("SET LOCAL track_functions='pl'");
@@ -354,9 +357,16 @@ it("rolls back the destination with preparation before creating the local attemp
     expect(await bind(db, f.ctx, target.order, f.ny)).toStrictEqual(f.ny.binding);
     expect(await data(db, "SELECT 1 FROM public.commerce_destination_v2_order_bindings WHERE order_id=$1", [target.order])).toHaveLength(1);
     expect(await data(db, "SELECT 1 FROM public.payment_provider_attempts WHERE id=$1", [target.attempt])).toEqual([]);
+    expect(await invariant(db, f)).toStrictEqual(delivery);
     await noReplacementConfirmation(db);
   }, false);
   expect(await effects(owner, f)).toStrictEqual(before);
+  expect(await invariant(owner, f)).toStrictEqual(delivery);
+  await ownerTransaction(owner, async db => {
+    await db.query("SET LOCAL track_functions='pl'");
+    await prepare(db, f, f.ny, cycle);
+    await noReplacementConfirmation(db);
+  });
   expect(await invariant(owner, f)).toStrictEqual(delivery);
 });
 
@@ -474,30 +484,62 @@ it.each(["subscriptions", "commerce_destination_v2_documents"])("checks all four
   }
 }, 25_000);
 
-it("distinguishes malformed prior checkout pins from missing acquisition lineage after an explicit edit", async () => {
+it("prioritizes superseded acquisition availability over malformed request pins and distinguishes malformed stored pins", async () => {
   const { owner } = store, f = await subject(store), target = await stagePreparation(owner, f);
   expect(await edit(owner, f.ctx, f.ny.selectionRevision)).toMatchObject({ outcome: "applied_from_next_parcel" });
   const before = await effects(owner, f);
+  const badPins = malformedRequestPins(f.ny);
   await ownerTransaction(owner, async db => {
     await expectBindRefused(db, f, target, stale("destination.snapshotRef"), "valid prior pins");
+    for (const [selected, detail] of badPins) {
+      await expectBindRefused(db, f, target, {
+        code: "22023", message: "destination_binding_invalid", detail,
+      }, `valid prior evidence with malformed ${detail}`, selected);
+    }
     for (const [pin, change] of [
       ["selection", "selection=selection-'selectionRevision'"],
       ["service", "service=service-'adapterRevision'"],
-      ["corrupt document", "service=service-'adapterRevision'"],
+      ["corrupt document", null],
     ] as const) {
       await db.query("SAVEPOINT checkout_fixture");
-      expect((await db.query(`UPDATE public.commerce_destination_v2_order_bindings SET ${change} WHERE order_id=$1`, [f.origin])).rowCount).toBe(1);
-      if (pin === "corrupt document") await db.query("UPDATE public.commerce_destination_v2_documents SET document_digest=repeat('1',64) WHERE snapshot_ref=$1",
-        [f.ny.binding.snapshotRef]);
+      const updated = change === null
+        ? await db.query("UPDATE public.commerce_destination_v2_documents SET document_digest=repeat('1',64) WHERE snapshot_ref=$1", [f.ny.binding.snapshotRef])
+        : await db.query(`UPDATE public.commerce_destination_v2_order_bindings SET ${change} WHERE order_id=$1`, [f.origin]);
+      expect(updated.rowCount).toBe(1);
       const read = await readSnapshot(db, f.ctx, f.ny.binding, f.ctx.scopeRef, "subscription");
       expect(read).toMatchObject({ outcome: "refused", code: "destination_evidence_unavailable", field: "subscriptionId" });
-      await expectBindRefused(db, f, target, pin === "corrupt document" ? unavailable() : invalidStoredPins, pin);
+      for (const selected of [f.ny, ...badPins.map(([selected]) => selected)]) {
+        await expectBindRefused(db, f, target, pin === "corrupt document" ? unavailable() : invalidStoredPins, pin, selected);
+      }
       await db.query("ROLLBACK TO SAVEPOINT checkout_fixture; RELEASE SAVEPOINT checkout_fixture");
     }
     await db.query("DELETE FROM public.commerce_destination_v2_order_bindings WHERE order_id=$1", [f.origin]);
     await expectBindRefused(db, f, target, unavailable(), "missing acquisition binding");
   }, false);
   expect(await effects(owner, f)).toStrictEqual(before);
+});
+
+it("refuses a renewal as an acquisition origin even with a verified checkout document and valid checkout pins", async () => {
+  const { owner } = store, f = await subject(store), target = await stagePreparation(owner, f);
+  await ownerTransaction(owner, async db => {
+    const impostor = await insertDestinationOrder(db, f.ctx);
+    await db.query(`UPDATE public.commerce_orders SET renewal_operation_id=$2,renewal_operation_fingerprint=$3 WHERE id=$1`,
+      [impostor, f.pair.operation_id, f.root.fingerprint]);
+    await db.query(`INSERT INTO public.commerce_destination_v2_order_bindings(order_id,snapshot_ref,selection,service)
+      SELECT $1,snapshot_ref,selection,service FROM public.commerce_destination_v2_order_bindings WHERE order_id=$2`,
+    [impostor, f.origin]);
+    await db.query("UPDATE public.subscription_activations SET order_id=$1 WHERE order_id=$2", [impostor, f.origin]);
+    expect(await call(db, "subscription_destination_v2_read", [f.ctx, f.ctx.scopeRef, f.ny.binding, f.ny.selectionRevision, f.ny.service, true]))
+      .toMatchObject({ binding: f.ny.binding });
+    await expectBindRefused(db, f, target, unavailable(), "renewal presented as inherited acquisition");
+    expect(await edit(db, f.ctx, f.ny.selectionRevision)).toMatchObject({ outcome: "applied_from_next_parcel" });
+    for (const [selected, field] of malformedRequestPins(f.ny)) {
+      expect(await call(db, "subscription_destination_v2_read", [f.ctx, f.ctx.scopeRef, selected.binding,
+        selected.selectionRevision, selected.service, true])).toMatchObject({ code: "destination_binding_invalid", field });
+      await expectBindRefused(db, f, target, unavailable(), `superseded renewal with malformed ${field}`, selected);
+    }
+    expect(await data(db, "SELECT 1 FROM public.commerce_destination_v2_order_bindings WHERE order_id=$1", [target.order])).toEqual([]);
+  }, false);
 });
 
 it.each(["inherited", "explicit"])("replays the %s binding with zero writes and refuses a different incumbent", async kind => {
@@ -542,29 +584,13 @@ it("checks completed erasure before missing live linkage and rejects ambiguous a
   const { owner, runtime } = store;
   const erased = await subject(store), erasedCycle = await bookCycle(owner, erased);
   const erasedOrder = await ownerTransaction(owner, db => prepare(db, erased, erased.ny, erasedCycle));
-  const { shipment } = await paidHandoff(store, erasedOrder);
-  const assertLegacyRefusal = () => expect(call(runtime, "commerce_fulfillment_enqueue_provider_command", [
-    shipment, "offline", "dispatch_create", "1", randomUUID(), ...Array(2).fill(destinationHash("command")), null,
-    ...Array(3).fill(destinationHash("configuration")), 3,
-  ])).rejects.toMatchObject({
-    code: "22023", message: "destination_adapter_unsupported", detail: "selectedDelivery.providerRef",
-    hint: "Use the qualified native dispatch workflow for the original order.",
-  });
-  await assertLegacyRefusal();
-  const unbound = await snapshot(runtime, { ...erased.checkout, scopeRef: randomUUID() });
-  await reachDestinationCutoff(owner, unbound.binding);
-  await call(owner, "commerce_destination_v2_expire", [new Date(), 1000]);
-  expect((await exportDestinations(runtime, erased)).data).toEqual(expect.arrayContaining([
-    expect.objectContaining({ snapshotRef: unbound.binding.snapshotRef, evidenceDisposition: "expired" }),
-    expect.objectContaining({ snapshotRef: erased.ny.binding.snapshotRef, evidenceDisposition: "available", document: expect.any(Object) }),
-  ]));
   await call(runtime, "commerce_destination_v2_erase", [erased.ctx.clientId]);
-  const resolve = () => call(owner, "fulfillment_resolve_parcel_contact", [shipment]);
-  await expect(resolve()).rejects.toMatchObject(unavailable("shipmentId"));
-  expect((await exportParcels(runtime, erased)).data).toContainEqual(expect.objectContaining({ shipmentId: shipment, contact: expect.any(Object) }));
-  const markers = (await exportDestinations(runtime, erased)).data;
-  expect(markers).toEqual(expect.arrayContaining([expect.objectContaining({ evidenceDisposition: "erased" })]));
-  expect(JSON.stringify(markers)).not.toMatch(/"document"|"orderBindings"|"subscriptionSelections"/u);
+  expect(await data(owner, `SELECT evidence_disposition, owner_scope, scope_ref, binding, document_text, document_digest
+    FROM public.commerce_destination_v2_documents WHERE snapshot_ref=$1`, [erased.ny.binding.snapshotRef]))
+    .toEqual([{ evidence_disposition: "erased", owner_scope: null, scope_ref: null, binding: null, document_text: null, document_digest: null }]);
+  expect(await data(owner, "SELECT selection, service FROM public.commerce_destination_v2_order_bindings WHERE order_id=$1",
+    [erasedOrder.order])).toEqual([{ selection: null, service: null }]);
+  await expect(bind(owner, erased.ctx, erasedOrder.order, erased.ny)).rejects.toMatchObject(unavailable());
   const actor = randomUUID(), id = erased.ctx.clientId;
   await owner.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,'privacy-admin@example.invalid')", [actor]);
   await owner.query(`INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at)
@@ -573,14 +599,8 @@ it("checks completed erasure before missing live linkage and rejects ambiguous a
   const { operations } = composeNativePrivacy({ store: createPostgresPrivacyStore(), unitOfWork: { run: work => ownerTransaction(runtime, work) } });
   expect(await operations.erase({ principalId: actor }, { subject: { kind: "contact", contactId: id }, idempotencyKey: randomUUID() }))
     .toMatchObject({ outcome: "ERASED" });
-  expect((await exportParcels(runtime, erased)).data).toEqual([expect.objectContaining({ shipmentId: shipment, contact: {}, erasedAt: expect.any(String) })]);
-  expect((await exportDestinations(runtime, erased)).data).toStrictEqual(markers);
   const beforeErased = await effects(owner, erased);
-  await assertLegacyRefusal();
   await expect(bind(owner, erased.ctx, erasedOrder.order, erased.ny)).rejects.toMatchObject(unavailable());
-  expect(await readSnapshot(runtime, erased.ctx, erased.ny.binding, erasedOrder.order, "order")).toMatchObject({ code: "destination_evidence_unavailable" });
-  expect(await data(owner, "SELECT selection, service FROM public.commerce_destination_v2_order_bindings WHERE order_id=$1",
-    [erasedOrder.order])).toEqual([{ selection: null, service: null }]);
   expect(await effects(owner, erased)).toStrictEqual(beforeErased);
 
   const ambiguous = await subject(store), ambiguousCycle = await bookCycle(owner, ambiguous);

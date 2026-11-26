@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { canonicalCatalogDraftJson } from "@openlup/platform/catalog";
-import { createPostgresPaidFulfillmentHandoffStore } from "@openlup/platform/fulfillment";
 import type { Pool, PoolClient } from "pg";
 import type { JourneyInstallation } from "../helpers/storeJourney.js";
 import {
@@ -21,7 +20,7 @@ export type Destination = {
 const digest = "a".repeat(64);
 const expires = "2099-01-01T00:00:00Z";
 const port = "renewal-destination-carrier";
-export const amount = 200;
+const amount = 200;
 
 export async function activate(db: Db, ctx: Context, order: string) {
   await insert(db, "subscription_activations", {
@@ -30,7 +29,7 @@ export async function activate(db: Db, ctx: Context, order: string) {
   });
 }
 
-export async function subject({ owner, runtime }: JourneyInstallation) {
+export async function subject({ owner, runtime }: Pick<JourneyInstallation, "owner" | "runtime">) {
   const root = await sandboxRenewal(owner);
   const context = await destinationContext(owner, root.client);
   const ctx = { ...context, scopeRef: root.subscription, owner: { ...context.owner, principalKind: "customer" as const } };
@@ -164,7 +163,8 @@ export async function insertLocalAttempt(db: PoolClient, f: Subject, prepared: T
   });
 }
 
-export const bind = (db: Db, ctx: Context, order: string | null, selected: Destination, id: string | null = ctx.scopeRef) =>
+export const bind = (db: Db, ctx: Context, order: string | null,
+  selected: Omit<Destination, "selectionRevision"> & { selectionRevision: string | null }, id: string | null = ctx.scopeRef) =>
   call(db, registerName, [ctx, order, id, selected.selectionRevision, selected.binding, selected.service]);
 
 export async function ownerTransaction<T>(owner: Pool, work: (db: PoolClient) => Promise<T>, commit = true) {
@@ -182,32 +182,11 @@ export async function ownerTransaction<T>(owner: Pool, work: (db: PoolClient) =>
   }
 }
 
-export async function paidHandoff({ owner, runtime }: JourneyInstallation, prepared: Pick<Target, "order"> & Partial<Pick<Target, "intent">>) {
-  const sku = randomUUID(), item = randomUUID();
-  await ownerTransaction(owner, async db => {
-    await db.query("INSERT INTO public.fulfillment_ports(port_key,provider_type,routable) VALUES($1,'3pl',true) ON CONFLICT DO NOTHING", [port]);
-    await db.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1::uuid,$1::text,'Sample item')", [sku]);
-    await db.query("INSERT INTO public.catalog_skus(id,product_id,sku,title) VALUES($1,$1,$1::uuid::text,'Sample item')", [sku]);
-    await db.query(`UPDATE public.commerce_orders SET total_amount_minor=$2,status='paid',paid_at=clock_timestamp(),
-      metadata='{"orderDraftSnapshot":{"context":{"mode":"subscription"},"lines":[{"productRef":"sample-item"}]}}' WHERE id=$1`,
-    [prepared.order, amount]);
-    await db.query(`INSERT INTO public.commerce_order_items(id,order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor)
-      VALUES($1,$2,$3,1,1,$4,$4)`, [item, prepared.order, sku, amount]);
-    if (prepared.intent) {
-      await db.query("UPDATE public.commerce_settlement_intents SET status='settled',settled_at=clock_timestamp() WHERE id=$1", [prepared.intent]);
-    } else {
-      await db.query(`INSERT INTO public.commerce_settlement_intents(order_id,channel_key,status,amount_minor,currency_code,open_idempotency_key,settled_at)
-        VALUES($1,'sandbox','settled',$2,'XXX',$1::uuid::text,clock_timestamp())`, [prepared.order, amount]);
-    }
-    await db.query(`INSERT INTO public.fulfillment_stock_current(source_key,sku,total_quantity,for_sale_quantity,reserved_unavailable_quantity,
-      inventory_class,last_synced_at,stale_after,sync_run_id,idempotency_key,operation_fingerprint)
-      VALUES($1,$1,10,10,0,'sellable',clock_timestamp(),clock_timestamp()+interval '1 day',$1,$1,repeat('a',64))`, [sku]);
+export async function seedShipment(owner: Pool, order: string) {
+  const shipment = randomUUID();
+  await owner.query("INSERT INTO public.fulfillment_ports(port_key,provider_type,routable) VALUES($1,'3pl',true) ON CONFLICT DO NOTHING", [port]);
+  await insert(owner, "fulfillment_shipments", {
+    id: shipment, order_id: order, port_key: port, provider_type: "3pl", create_idempotency_key: shipment,
   });
-  await runtime.query(`SELECT public.fulfillment_reserve_purchase_order_items($1,$2,$3,$4,'succeeded',
-    clock_timestamp()+interval '1 hour','{}',clock_timestamp())`,
-  [`reserve:${prepared.order}`, prepared.order, sku, JSON.stringify([{ orderItemId: item, skuId: sku, quantity: 1 }])]);
-  const { fulfillmentRef } = await createPostgresPaidFulfillmentHandoffStore(runtime, port)
-    .ensureObligation({ requestKey: `handoff:${prepared.order}`, orderRef: prepared.order, paidFactRef: "paid-fact" });
-  const { rows } = await owner.query("SELECT contact FROM public.fulfillment_parcel_contacts WHERE shipment_id=$1", [fulfillmentRef]);
-  return { shipment: fulfillmentRef as string, contact: rows[0]?.contact };
+  return shipment;
 }

@@ -4,11 +4,11 @@
       "legacy": {
         "count": 228,
         "exactTailCount": 118,
-        "objectInventorySha256": "559ef9ec0c50610849509a01cffb29d7ba6817eab45f5092eae4785e301e4142",
+        "objectInventorySha256": "ceeace83ec6e015ec35df5646e94b15047032c504b73909a799c5893670f1b3e",
         "tail": [
           {
             "file": "db/platform/migrations/20261129130503_renewal_order_destination_v2.sql",
-            "sha256": "3aa1dd061742a2bc1c18818ce49abcc883eaa3dade8aa990c72e2bab2fd821fb"
+            "sha256": "cf9f42b785b31b6849da83b46101568e61fd5e4a89500574067602e5f376931f"
           },
           {
             "file": "db/platform/migrations/20261129130502_catalog_governed_draft_owner.sql",
@@ -923,11 +923,11 @@
       "bootstrap": {
         "count": 234,
         "exactTailCount": 119,
-        "objectInventorySha256": "dd27debf951a9b7273991a47446c766d20b5e5fcdafc7240e2299fcaba90b26e",
+        "objectInventorySha256": "7e31c4b4778343708f78e937b6594e8bffaf9de2e3751be38ed272dcc3c984a2",
         "tail": [
           {
             "file": "db/platform/migrations/20261129130503_renewal_order_destination_v2.sql",
-            "sha256": "3aa1dd061742a2bc1c18818ce49abcc883eaa3dade8aa990c72e2bab2fd821fb"
+            "sha256": "cf9f42b785b31b6849da83b46101568e61fd5e4a89500574067602e5f376931f"
           },
           {
             "file": "db/platform/migrations/20261129130502_catalog_governed_draft_owner.sql",
@@ -1866,11 +1866,11 @@
       "separate": {
         "count": 234,
         "exactTailCount": 119,
-        "objectInventorySha256": "e0dfbaa5b631f9c84ae8e8d163c286933d9c018802db34ee9250fa6753a439f6",
+        "objectInventorySha256": "c8f752d687fd75949bb6d84340718ea9826af0530996450020eabf08c6cf55f8",
         "tail": [
           {
             "file": "db/platform/migrations/20261129130503_renewal_order_destination_v2.sql",
-            "sha256": "3aa1dd061742a2bc1c18818ce49abcc883eaa3dade8aa990c72e2bab2fd821fb"
+            "sha256": "cf9f42b785b31b6849da83b46101568e61fd5e4a89500574067602e5f376931f"
           },
           {
             "file": "db/platform/migrations/20261129130502_catalog_governed_draft_owner.sql",
@@ -2809,11 +2809,11 @@
       "admin-managed": {
         "count": 232,
         "exactTailCount": 118,
-        "objectInventorySha256": "c210daeb3ebd2f54c334229f127327453d0ca777cbdabbb1dd565bcb8c1a2ce8",
+        "objectInventorySha256": "77e499a203854b0159a631db8da0355f54238b67b12834ec05df0d8bc7cd9911",
         "tail": [
           {
             "file": "db/platform/migrations/20261129130503_renewal_order_destination_v2.sql",
-            "sha256": "3aa1dd061742a2bc1c18818ce49abcc883eaa3dade8aa990c72e2bab2fd821fb"
+            "sha256": "cf9f42b785b31b6849da83b46101568e61fd5e4a89500574067602e5f376931f"
           },
           {
             "file": "db/platform/migrations/20261129130502_catalog_governed_draft_owner.sql",
@@ -3744,11 +3744,11 @@
       "admin-operator": {
         "count": 232,
         "exactTailCount": 118,
-        "objectInventorySha256": "72713375e4fc6de9cbdcbd44349ca8a15c5f16390d403867344af2ec0f97e5c9",
+        "objectInventorySha256": "bae5c9ae542976a38d771ed0d21c907438619a99996141b2c2ad7e08d9a488d8",
         "tail": [
           {
             "file": "db/platform/migrations/20261129130503_renewal_order_destination_v2.sql",
-            "sha256": "3aa1dd061742a2bc1c18818ce49abcc883eaa3dade8aa990c72e2bab2fd821fb"
+            "sha256": "cf9f42b785b31b6849da83b46101568e61fd5e4a89500574067602e5f376931f"
           },
           {
             "file": "db/platform/migrations/20261129130502_catalog_governed_draft_owner.sql",

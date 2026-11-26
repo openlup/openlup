@@ -12,14 +12,19 @@ BEGIN
   IF NOT FOUND OR p_document.evidence_disposition IS DISTINCT FROM 'available'
     OR p_use IS NULL OR p_use NOT IN ('prepare', 'retained', 'acquisition') THEN RETURN v_invalid; END IF;
   SELECT * INTO v_bound FROM public.commerce_destination_v2_order_bindings WHERE order_id = p_order_id;
-  IF p_use <> 'prepare' AND v_order.renewal_operation_id IS NULL AND (v_order.subscription_cycle_id IS NULL OR EXISTS (
-    SELECT 1 FROM public.subscription_cycles c JOIN public.subscriptions s ON s.id = c.subscription_id
-    JOIN public.subscription_activations a ON a.order_id = v_order.id AND a.subscription_id = s.id AND a.client_id = s.client_id
-    WHERE c.id = v_order.subscription_cycle_id AND s.client_id = v_order.client_id AND c.renewal_operation_id IS NULL
-  )) AND NOT EXISTS (
+  IF p_use <> 'prepare' AND v_order.renewal_operation_id IS NULL AND NOT EXISTS (
+    SELECT 1 FROM public.subscription_cycles WHERE id = v_order.subscription_cycle_id AND renewal_operation_id IS NOT NULL
+  ) AND NOT EXISTS (
     SELECT 1 FROM public.subscription_cycle_preparations WHERE order_id = p_order_id OR cycle_id = v_order.subscription_cycle_id
   ) THEN
-    IF v_issuer <> 'checkout' OR v_bound.snapshot_ref IS DISTINCT FROM p_document.snapshot_ref OR
+    -- A cycle link alone is compatible with a historical checkout binding. An
+    -- acquisition origin also needs the activation that owns that cycle.
+    IF p_use = 'acquisition' AND (v_issuer <> 'checkout' OR (v_order.subscription_cycle_id IS NOT NULL AND NOT EXISTS (
+      SELECT 1 FROM public.subscription_cycles c JOIN public.subscriptions s ON s.id = c.subscription_id
+      JOIN public.subscription_activations a ON a.order_id = v_order.id AND a.subscription_id = s.id AND a.client_id = s.client_id
+      WHERE c.id = v_order.subscription_cycle_id AND s.client_id = v_order.client_id
+    ))) THEN RETURN public.commerce_destination_v2_refusal('subscription_unavailable', 'subscriptionId'); END IF;
+    IF v_bound.snapshot_ref IS DISTINCT FROM p_document.snapshot_ref OR
       NOT public.commerce_destination_v2_valid_pins(v_bound.selection, v_bound.service, p_document.scope_ref) THEN RETURN v_invalid; END IF;
     RETURN jsonb_build_object('document_issuer', v_issuer, 'binding_origin', 'checkout');
   END IF;
@@ -219,9 +224,11 @@ BEGIN
 
     v_result := public.subscription_destination_v2_read(p_ctx, p_subscription_id, p_expected_binding,
       p_expected_selection_revision, p_expected_service, true);
-    IF v_direct IS NOT NULL AND v_origin_guarded AND v_prior.snapshot_ref = v_expected THEN
+    -- The shared reader keeps its checkout contract. Verify the guarded
+    -- acquisition here before reporting a problem with the caller's pins.
+    IF v_origin_guarded AND (v_direct IS NULL OR v_prior.snapshot_ref = v_expected) THEN
       SELECT * INTO v_document FROM public.commerce_destination_v2_documents
-        WHERE snapshot_ref = v_expected AND client_id = v_client AND owner_scope = p_ctx->'owner'
+        WHERE snapshot_ref = v_prior.snapshot_ref AND client_id = v_client AND owner_scope = p_ctx->'owner'
           AND purpose = 'checkout' AND evidence_disposition = 'available' FOR SHARE;
       v_origins := public.subscription_destination_v2_origins(p_subscription_id);
       IF cardinality(v_origins) <> 1 OR (v_origins[1]).id IS DISTINCT FROM v_origin.id THEN
@@ -229,17 +236,19 @@ BEGIN
         EXIT recheck;
       END IF;
       BEGIN
-        v_prior_result := public.commerce_destination_v2_check_retained(
-          p_ctx || jsonb_build_object('scopeRef', v_document.scope_ref), v_prior, 'subscriptionId');
+        v_prior_result := public.commerce_destination_v2_check_document(v_document, 'subscriptionId');
+        IF v_prior_result->>'verified' = 'true' THEN
+          v_prior_result := public.classify_order_destination(v_origin.order_id, v_document, 'acquisition');
+        END IF;
       EXCEPTION WHEN numeric_value_out_of_range THEN v_prior_result := v_unavailable;
       END;
-      IF v_prior_result ? 'outcome' THEN
-        IF v_prior_result->>'field' = 'orderBindings'
-          AND NOT (public.subscription_destination_v2_read(p_ctx, p_subscription_id, NULL, NULL, NULL, false) ? 'outcome') THEN
-          v_result := v_prior_result;
-        ELSIF v_result->>'code' IN ('destination_version_changed', 'destination_digest_mismatch') THEN
-          v_result := v_unavailable;
+      IF v_prior_result->>'binding_origin' IS DISTINCT FROM 'checkout' THEN
+        IF v_direct IS NOT NULL THEN
+          v_result := public.subscription_destination_v2_read(p_ctx, p_subscription_id, NULL, NULL, NULL, false);
+          IF v_result ? 'outcome' THEN EXIT recheck; END IF;
         END IF;
+        v_result := CASE WHEN v_prior_result->>'field' = 'orderBindings' THEN v_prior_result ELSE v_unavailable END;
+        EXIT recheck;
       END IF;
     END IF;
     IF v_result ? 'outcome' THEN EXIT recheck; END IF;
@@ -286,49 +295,14 @@ DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
   EXECUTE 'REVOKE ALL ON FUNCTION public.classify_order_destination(uuid,public.commerce_destination_v2_documents,text), public.commerce_register_renewal_order_destination_v2(jsonb,uuid,uuid,uuid,jsonb,jsonb) FROM service_role;';
 END IF; END; $$;
 
-CREATE OR REPLACE FUNCTION public.commerce_destination_v2_check_retained(p_ctx jsonb, p_bound public.commerce_destination_v2_order_bindings, p_field text)
-RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
-DECLARE
-  v_row public.commerce_destination_v2_documents;
-  v_result jsonb;
-  v_classification jsonb;
-BEGIN
-  IF p_bound.selection IS NULL AND p_bound.service IS NULL THEN
-    RETURN public.commerce_destination_v2_refusal('unavailable', p_field);
-  END IF;
-  SELECT scope_ref INTO v_row.scope_ref FROM public.commerce_destination_v2_documents WHERE snapshot_ref = p_bound.snapshot_ref;
-  IF p_ctx->'scopeRef' IS DISTINCT FROM to_jsonb(v_row.scope_ref) AND (p_field = 'subscriptionId' OR NOT EXISTS (
-    SELECT 1 FROM public.subscription_cycle_preparations p
-    JOIN public.commerce_orders o ON o.id = p.order_id AND o.subscription_cycle_id = p.cycle_id
-    JOIN public.subscription_cycles c ON c.id = p.cycle_id
-    JOIN public.subscription_cycle_occurrences x ON x.cycle_key = p.cycle_key
-      AND x.subscription_id = c.subscription_id AND x.client_id = o.client_id AND x.rail = 'v3'
-    JOIN public.subscriptions s ON s.id = x.subscription_id AND s.client_id = x.client_id
-    WHERE p.order_id = p_bound.order_id AND to_jsonb(x.subscription_id) = p_ctx->'scopeRef'
-      AND to_jsonb(o.client_id) = p_ctx->'clientId'
-  )) THEN RETURN public.commerce_destination_v2_refusal('unavailable', p_field); END IF;
-  v_row := public.commerce_destination_v2_owned_document(
-    p_ctx || jsonb_build_object('scopeRef', v_row.scope_ref), p_bound.snapshot_ref);
-  v_result := public.commerce_destination_v2_check_document(v_row, p_field);
-  IF v_result ? 'outcome' THEN RETURN v_result; END IF;
-  v_classification := public.classify_order_destination(p_bound.order_id, v_row,
-    CASE WHEN p_field = 'subscriptionId' THEN 'acquisition' ELSE 'retained' END);
-  IF v_classification ? 'outcome' THEN RETURN v_classification; END IF;
-  RETURN jsonb_build_object('binding', v_row.binding, 'document', v_result->'document', 'documentDigest', v_row.document_digest,
-    'binding_origin', v_classification->'binding_origin',
-    'evidenceExpiresAt', CASE WHEN v_classification->>'document_issuer' = 'checkout' THEN
-      to_char(v_row.evidence_expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') END)
-    || CASE WHEN v_classification->>'document_issuer' = 'subscription' THEN
-      jsonb_build_object('documentPurpose', 'subscription') ELSE '{}'::jsonb END;
-END;
-$$;
-
 CREATE OR REPLACE FUNCTION public.commerce_destination_v2_read_retained(p_ctx jsonb, p_kind text, p_id uuid, p_expected_binding jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
   v_field text := CASE WHEN p_kind = 'shipment' THEN 'shipmentId' ELSE 'orderId' END;
   v_bound public.commerce_destination_v2_order_bindings;
+  v_row public.commerce_destination_v2_documents;
   v_result jsonb;
+  v_classification jsonb;
   v_coordinate text;
 BEGIN
   IF p_id IS NULL THEN RETURN public.commerce_destination_v2_refusal('input', v_field); END IF;
@@ -342,65 +316,43 @@ BEGIN
     JOIN public.commerce_orders o ON o.id = b.order_id
     WHERE o.client_id = (p_ctx->>'clientId')::uuid AND (CASE p_kind WHEN 'order' THEN o.id = p_id ELSE EXISTS (
       SELECT 1 FROM public.fulfillment_shipments s WHERE s.id = p_id AND s.order_id = o.id) END);
-  v_result := public.commerce_destination_v2_check_retained(p_ctx, v_bound, v_field);
+  IF v_bound.selection IS NULL AND v_bound.service IS NULL THEN
+    RETURN public.commerce_destination_v2_refusal('unavailable', v_field);
+  END IF;
+  SELECT scope_ref INTO v_row.scope_ref FROM public.commerce_destination_v2_documents WHERE snapshot_ref = v_bound.snapshot_ref;
+  IF p_ctx->'scopeRef' IS DISTINCT FROM to_jsonb(v_row.scope_ref) AND NOT EXISTS (
+    SELECT 1 FROM public.subscription_cycle_preparations p
+    JOIN public.commerce_orders o ON o.id = p.order_id AND o.subscription_cycle_id = p.cycle_id
+    JOIN public.subscription_cycles c ON c.id = p.cycle_id
+    JOIN public.subscription_cycle_occurrences x ON x.cycle_key = p.cycle_key
+      AND x.subscription_id = c.subscription_id AND x.client_id = o.client_id AND x.rail = 'v3'
+    JOIN public.subscriptions s ON s.id = x.subscription_id AND s.client_id = x.client_id
+    WHERE p.order_id = v_bound.order_id AND to_jsonb(x.subscription_id) = p_ctx->'scopeRef'
+      AND to_jsonb(o.client_id) = p_ctx->'clientId'
+  ) THEN RETURN public.commerce_destination_v2_refusal('unavailable', v_field); END IF;
+  v_row := public.commerce_destination_v2_owned_document(
+    p_ctx || jsonb_build_object('scopeRef', v_row.scope_ref), v_bound.snapshot_ref);
+  v_result := public.commerce_destination_v2_check_document(v_row, v_field);
   IF v_result ? 'outcome' THEN RETURN v_result; END IF;
+  v_classification := public.classify_order_destination(v_bound.order_id, v_row, 'retained');
+  IF v_classification ? 'outcome' THEN RETURN v_classification; END IF;
   IF NOT public.commerce_destination_v2_valid_binding(p_expected_binding) THEN
     RETURN public.commerce_destination_v2_refusal('binding', 'destination');
   END IF;
   FOREACH v_coordinate IN ARRAY ARRAY['snapshotRef','destinationDigest','policyRevision'] LOOP
-    IF p_expected_binding->v_coordinate IS DISTINCT FROM v_result->'binding'->v_coordinate THEN
+    IF p_expected_binding->v_coordinate IS DISTINCT FROM v_row.binding->v_coordinate THEN
       RETURN public.commerce_destination_v2_refusal('retained',
         CASE WHEN v_coordinate = 'destinationDigest' THEN v_coordinate ELSE 'destination.' || v_coordinate END) ||
-        CASE WHEN v_result->>'binding_origin' = 'renewal' THEN jsonb_build_object('recheck',
+        CASE WHEN v_classification->>'binding_origin' = 'renewal' THEN jsonb_build_object('recheck',
           'Take the order''s binding from its retained preparation evidence through the authorized order workflow, then repeat the read. Never reselect for a placed order.')
         ELSE '{}'::jsonb END;
     END IF;
   END LOOP;
-  RETURN v_result - 'binding_origin';
-END;
-$$;
-
-CREATE OR REPLACE FUNCTION public.commerce_destination_v2_export(p_client_id uuid)
-RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
-BEGIN
-  RETURN (WITH verified AS MATERIALIZED (
-    SELECT d AS document_row, snapshot_ref, client_id, issued_at, purpose, evidence_disposition, scope_ref, document_digest, evidence_expires_at,
-      CASE WHEN evidence_disposition = 'available' THEN public.commerce_destination_v2_check_document(d, 'destination.snapshotRef') END AS result
-    FROM public.commerce_destination_v2_documents AS d WHERE client_id = p_client_id
-  )
-  SELECT coalesce(jsonb_agg(
-    jsonb_build_object('snapshotRef', snapshot_ref, 'issuedAt',
-      to_char(issued_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 'evidenceDisposition', evidence_disposition)
-    || CASE WHEN (result->>'verified')::boolean THEN
-      jsonb_build_object('document', result->'document', 'scopeRef', scope_ref, 'documentDigest', document_digest,
-        'evidenceExpiresAt', CASE WHEN purpose IS NOT NULL THEN
-          to_char(evidence_expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') END)
-    WHEN result IS NOT NULL THEN
-      jsonb_build_object('verification', jsonb_build_object('status', 'failed', 'code', result->'code', 'field', result->'field'))
-    ELSE '{}'::jsonb END
-    || CASE WHEN pins.valid IS NOT NULL THEN jsonb_build_object('orderBindings', pins.valid) ELSE '{}'::jsonb END
-    || CASE WHEN selections.valid IS NOT NULL THEN jsonb_build_object('subscriptionSelections', selections.valid) ELSE '{}'::jsonb END
-    || CASE WHEN selections.withheld AND (result IS NULL OR (result->>'verified')::boolean) THEN
-      jsonb_build_object('verification', jsonb_build_object('status','failed','code','destination_binding_invalid','field','subscriptionSelections'))
-      ELSE '{}'::jsonb END
-    || CASE WHEN pins.withheld AND (result IS NULL OR (result->>'verified')::boolean) THEN
-      jsonb_build_object('verification', jsonb_build_object('status', 'failed', 'code', 'destination_binding_invalid', 'field', 'orderBindings'))
-      ELSE '{}'::jsonb END ORDER BY snapshot_ref), '[]'::jsonb)
-    FROM verified v CROSS JOIN LATERAL (
-      SELECT jsonb_agg(jsonb_build_object('orderId', b.order_id, 'selection', b.selection, 'service', b.service)
-        ORDER BY b.order_id) FILTER (WHERE pin.valid) AS valid, bool_or(NOT pin.valid) AS withheld
-      FROM public.commerce_destination_v2_order_bindings b JOIN public.commerce_orders o ON o.id = b.order_id
-      CROSS JOIN LATERAL (SELECT coalesce(o.client_id = v.client_id AND (v.result->>'verified')::boolean AND
-        (public.classify_order_destination(b.order_id, v.document_row, 'retained')) ? 'binding_origin', false) AS valid) pin
-      WHERE b.snapshot_ref = v.snapshot_ref AND NOT (v.evidence_disposition = 'erased' AND b.selection IS NULL AND b.service IS NULL)
-    ) pins CROSS JOIN LATERAL (
-      SELECT jsonb_agg(jsonb_build_object('subscriptionId', s.subscription_id, 'selectionRevision', s.selection_revision, 'service', s.service)
-        ORDER BY s.subscription_id) FILTER (WHERE pin.valid) AS valid, bool_or(NOT pin.valid) AS withheld
-      FROM public.subscription_destination_v2_selections s JOIN public.subscriptions sub ON sub.id = s.subscription_id
-      CROSS JOIN LATERAL (SELECT coalesce(sub.client_id = v.client_id AND s.subscription_id = v.scope_ref AND v.purpose IS NULL
-        AND (v.result->>'verified')::boolean AND s.selection_revision IS NOT NULL
-        AND public.subscription_destination_v2_service_valid(s.service), false) AS valid) pin
-      WHERE s.snapshot_ref = v.snapshot_ref AND NOT (v.evidence_disposition = 'erased' AND s.selection_revision IS NULL AND s.service IS NULL)
-    ) selections);
+  IF v_classification->>'binding_origin' = 'renewal' AND v_classification->>'document_issuer' = 'subscription' THEN
+    RETURN jsonb_build_object('binding', v_row.binding, 'document', v_result->'document', 'documentDigest', v_row.document_digest,
+      'evidenceExpiresAt', NULL, 'documentPurpose', 'subscription');
+  END IF;
+  RETURN jsonb_build_object('binding', v_row.binding, 'document', v_result->'document', 'documentDigest', v_row.document_digest,
+    'evidenceExpiresAt', to_char(v_row.evidence_expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'));
 END;
 $$;

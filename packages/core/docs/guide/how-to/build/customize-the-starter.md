@@ -656,7 +656,8 @@ checkout-issued document, including one inherited by a renewal, returns its
 original `evidenceExpiresAt` timestamp.
 
 If the binding differs, recover the original binding from the order's sealed
-destination evidence through the authorized order workflow and repeat the read.
+checkout evidence or retained renewal preparation through the authorized order
+workflow and repeat the read.
 Keep destination documents, original commands, receipts and infrastructure
 causes server-side. For `OPENLUP_E_DESTINATION_INFRASTRUCTURE`, use the error's
 checklist to verify the native binding, driver, connection and TLS, runtime
