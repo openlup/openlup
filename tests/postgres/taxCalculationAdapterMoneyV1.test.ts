@@ -2,12 +2,15 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { createPlatformPostgresMigrationRunner, qualifiedPostgresStartupOptions,
+  type QualifiedPostgresInstallation } from "@openlup/platform/migrations";
 import { canonicalCatalogDraftJson } from "@openlup/platform/catalog";
 import { applyTaxCoverageRevision, evaluationDigest } from "@openlup/platform/tax";
 // eslint-disable-next-line no-restricted-imports -- witness the reporting verifier's private result for a refusal
 import { checkedQuoteResult } from "../../packages/platform/src/tax/digest.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer,
   waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+import { readPlatformMigrationManifest, readPlatformMigrations, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { storeJourneyResources, type JourneyInstallation } from "../helpers/storeJourney.js";
 import { beginSql, claim, completeSql, exclusiveKind, fixture, invoke, quoteDigest, seal, verifiedAdapterMoney,
   type Claim, type JsonPath } from "./commerceQuoteV2StorageFixture.js";
@@ -37,21 +40,61 @@ beforeAll(async () => {
   sample = await verifiedAdapterMoney(await fixture(store), "final", true);
 }, postgresSetupTimeoutMs);
 
-it("upgrades the exact dormant prefix while preserving original frames and replay for both pin variants", async () => {
-  const activation = catalog.forward[forwardIndex + 1]!;
-  expect(activation.file).toMatch(/_tax_calculation_adapter_money_activation\.sql$/u);
-  const sql = readFileSync(activation.file, "utf8");
-  let instance: PostgresContainer | undefined, owner: Pool | undefined, runtime: Pool | undefined;
-  const supplementRefusal = { code: "22023", message: "tax_invalid_input", detail: "/seal/adapterMoneyResult" };
+it("upgrades the populated installed predecessor in ledger order and preserves stored frames and replay", async () => {
+  const predecessor = structuredClone(catalog);
+  const predecessorTail = "db/platform/migrations/20261129130001_native_renewal_v3_storage.sql";
+  for (const plan of [predecessor, predecessor.qualified, predecessor.qualifiedAdmin]) {
+    const end = plan.forward.findIndex(unit => unit.file === predecessorTail);
+    expect(end).toBeGreaterThanOrEqual(0);
+    plan.forward = plan.forward.slice(0, end + 1);
+  }
+  predecessor.objectInventorySha256 = "7bc42d7e26931120bfb3a4c7397f58c1a154c947eb6f6458b0e06e5830794474";
+  predecessor.qualified.objectInventorySha256 = {
+    bootstrapMigrator: { withRestore: "a9d0f834ca62b1bf4341a522fdc8dcda2219c2ee97eb80583027610779c27acd" },
+    separateMigrator: { withRestore: "a490cb3e8df3a606f90d0e6705805b1018d38e52d001e5f7c01f21a4d15e6a7c" },
+  };
+  predecessor.qualifiedAdmin.objectInventorySha256 = {
+    installerManaged: "111e894f2e5009a6018ceaca36304442aea81d017a8efd6e7fdb1406a0fcbc23",
+    operatorProvisioned: "9462c5087cbba2fca2e9381d2d3fcad1ad19df6b88ce4009a6cb8c6711ab42f4",
+  };
+  const paths = new Set([predecessor, predecessor.qualified, predecessor.qualifiedAdmin]
+    .flatMap(plan => [plan.baseline, ...plan.forward]).map(unit => unit.file));
+  const sourceCatalog = readPlatformMigrations(process.cwd());
+  const before = [predecessor.qualified.baseline, ...predecessor.qualified.forward];
+  const suffix = catalog.qualified.forward.slice(before.length - 1);
+  const expectedPaths = [unit!.file, "db/platform/migrations/20261129160001_tax_calculation_adapter_money_activation.sql"];
+  const ledger = "SELECT catalog_path,sha256,position,executed_at::text FROM public.platform_schema_migrations ORDER BY position";
+
+  const installation: QualifiedPostgresInstallation = {
+    generation: "qualified-v2", roleMode: "installer-managed", bootstrapLogin: "postgres",
+    migrationLogin: "postgres", runtimeLogin: "adapter_money_runtime", restoreLogin: "adapter_money_restore",
+  };
+  let instance: PostgresContainer | undefined, owner: Pool | undefined, runtime: Pool | undefined, migrator: Pool | undefined;
+  const supplementRefusal = { code: "22023", message: "tax_invalid_input", detail: "/seal/adapterMoneyResult",
+    hint: "Supply the original verified adapter money through the native tax completion adapter." };
   try {
     instance = await runPostgresContainer({ name: `adapter-money-upgrade-${process.pid}`, password: "synthetic-adapter-upgrade" });
     expect(await waitForPostgresTcpReady(instance.connectionString)).toBe(true);
     owner = new Pool({ connectionString: instance.connectionString });
-    runtime = new Pool({ connectionString: instance.connectionString, options: "-c role=service_role" });
-    await owner.query("CREATE ROLE service_role");
-    for (const migration of [catalog.baseline, ...catalog.forward.slice(0, forwardIndex + 1)])
-      await owner.query(readFileSync(migration.file, "utf8"));
-    const source = { owner, runtime, runtimeUrl: instance.connectionString };
+    await owner.query(`CREATE ROLE adapter_money_runtime LOGIN NOINHERIT PASSWORD 'synthetic-adapter-upgrade';
+      CREATE ROLE adapter_money_restore LOGIN NOINHERIT PASSWORD 'synthetic-adapter-upgrade'`);
+    const runtimeUrl = new URL(instance.connectionString);
+    runtimeUrl.username = installation.runtimeLogin;
+    runtime = new Pool({ connectionString: runtimeUrl.href });
+    const source = { owner, runtime, runtimeUrl: runtimeUrl.href };
+    const binding = { connectionString: instance.connectionString };
+    const migrationPool = new Pool({ ...binding, options: qualifiedPostgresStartupOptions(installation) });
+    migrator = migrationPool;
+    const options = { installation, poolFactory: () => migrationPool };
+    const prior = createPlatformPostgresMigrationRunner(binding, { ...options, catalog: {
+      readManifest: () => predecessor,
+      readMigrations: () => ({ ...sourceCatalog, migrations: sourceCatalog.migrations.filter(unit => paths.has(unit.file)) }),
+    } });
+    expect(await prior.apply()).toStrictEqual({ applied: before.map(unit => unit.file) });
+    const history = (await owner.query(ledger)).rows;
+    expect(history).toHaveLength(before.length);
+    expect((await owner.query("SELECT to_regprocedure($1) AS validator,to_regprocedure($2) AS reader", [signature, reader])).rows)
+      .toStrictEqual([{ validator: null, reader: null }]);
     const createCase = async (extended: boolean) => {
       const value = await fixture(source);
       const { request, result, pin, body, invocation, identity } = await verifiedAdapterMoney(value, "final", extended, new Date().toISOString());
@@ -72,108 +115,102 @@ it("upgrades the exact dormant prefix while preserving original frames and repla
         outcome: { kind: "final", quote: { ...quote, quoteDigest: quoteDigest("commerce.quote.v2", quote) } } };
       const base = { identity, invocation, calculationId, generation, claimToken, operation: "complete", seal };
       const full = { ...base, seal: { ...seal, adapterMoneyResult: result.money } };
-      await expect(invoke(source.runtime, completeSql, full)).rejects.toMatchObject({ ...supplementRefusal, detail: "/seal" });
+      await expect(invoke(source.runtime, completeSql, full)).rejects.toMatchObject({ code: "22023", message: "tax_invalid_input",
+        detail: "/seal", hint: "Supply the documented input." });
       return { base, full, expected: { kind: "terminal", outcome: seal.outcome, validUntil: seal.validUntil } };
     };
-    const cases = [await createCase(false), await createCase(true)];
-    const db = await owner.connect();
+    const pending = [await createCase(false), await createCase(true)];
+    const historical = [await createCase(false), await createCase(true)];
+    const collisions = [await createCase(false), await createCase(true)];
+    const complete = (wire: object) => invoke(source.runtime, completeSql, wire);
+    for (const { base, expected } of historical) expect(await complete(base)).toStrictEqual(expected);
+    const erasedIds: string[] = [];
+    for (const { base } of collisions) {
+      const evidence = base.seal.evidence.adapterEvidence;
+      const { adapter, accountRef, mode } = evidence.scope;
+      const digest = evaluationDigest("provider-calculation", {
+        installationRef: base.identity.installationRef, adapter, accountRef, mode, providerRef: evidence.calculationRef,
+      });
+      const id = randomUUID();
+      erasedIds.push(id);
+      await owner.query("INSERT INTO public.tax_calculations(calculation_id,state,provider_digest) VALUES($1,'erased',$2)", [id, digest]);
+    }
+    const collision = { kind: "terminal", outcome: { kind: "refused", code: "tax_provider_reference_conflict", field: "/taxEvidence",
+      remedy: "Reconcile the original calculation with the tax adapter owner before further work." } };
     type StoredRow = { xmin: string; ctid: string; incumbent: unknown; money: string | null; digest: string | null };
-    const read = (id: string) => db.query<StoredRow>(`SELECT xmin::text, ctid::text, to_jsonb(r) - ARRAY['adapter_money_text','adapter_result_digest'] AS incumbent,
+    const read = (db: Pool | PoolClient, id: string) => db.query<StoredRow>(`SELECT xmin::text, ctid::text,
+      to_jsonb(r) - ARRAY['adapter_money_text','adapter_result_digest'] AS incumbent,
       to_jsonb(r)->>'adapter_money_text' AS money, to_jsonb(r)->>'adapter_result_digest' AS digest
-      FROM public.tax_calculations r WHERE calculation_id=$1`, [id]).then(result => result.rows[0]);
-    const complete = async (wire: object) => {
-      await db.query("SET LOCAL ROLE service_role");
-      const reply = await invoke(db, completeSql, wire);
-      await db.query("RESET ROLE");
-      return reply;
-    };
-    const attachments = () => db.query(`SELECT tgname, oid::text, tgfoid::text, pg_get_triggerdef(oid) AS definition
-      FROM pg_trigger WHERE tgname IN ('tax_calculation_guard','tax_calculation_privacy_guard') ORDER BY tgname`).then(result => result.rows);
-    const routine = (signature: string) => db.query(`SELECT oid::text, proowner::text, proacl, provolatile, prosecdef, proconfig
-      FROM pg_proc WHERE oid=$1::regprocedure`, [signature]).then(result => result.rows[0]);
-    const reader = "public.tax_calculation_read_adapter_money_v1(uuid)";
+      FROM public.tax_calculations r WHERE calculation_id=$1`, [id]).then(result => result.rows[0]!);
+    const ids = [...pending, ...historical, ...collisions].map(({ base }) => base.calculationId).concat(erasedIds);
+    const storedBefore = await Promise.all(ids.map(id => read(source.owner, id)));
+    const expectedRows = new Map<string, StoredRow>();
+    const db = await owner.connect();
     try {
-      await db.query("BEGIN; SAVEPOINT dormant");
-      const originalTriggers = await attachments();
-      const replaced = ["public.tax_calculation_guard_v1()", "public.tax_calculation_transition_v1(jsonb,boolean)"];
-      const originalRoutines = await Promise.all(replaced.map(routine));
-      const eraseDefinition = () => db.query("SELECT pg_get_functiondef('public.tax_calculation_erase_v1(uuid)'::regprocedure) AS definition")
-        .then(result => result.rows[0].definition);
-      const erase = await eraseDefinition();
-      const incumbent: StoredRow[] = [];
-      for (const { base, expected } of cases) {
-        expect(await complete(base)).toStrictEqual(expected);
-        incumbent.push(await read(base.calculationId));
+      await db.query("BEGIN");
+      for (const { base, expected } of [...pending, ...collisions]) {
+        await db.query("SET LOCAL ROLE service_role");
+        const reply = await invoke(db, completeSql, base);
+        await db.query("RESET ROLE");
+        if (collisions.some(candidate => candidate.base.calculationId === base.calculationId)) expect(reply).toMatchObject(collision);
+        else expect(reply).toStrictEqual(expected);
+        expectedRows.set(base.calculationId, await read(db, base.calculationId));
       }
-      await db.query(`ROLLBACK TO SAVEPOINT dormant; SAVEPOINT upgrade_trial;
-        ALTER DEFAULT PRIVILEGES GRANT EXECUTE ON FUNCTIONS TO anon,authenticated,service_role`);
-      await db.query(sql);
-      expect(await attachments()).toStrictEqual(originalTriggers);
-      expect(await Promise.all(replaced.map(routine))).toStrictEqual(originalRoutines);
-      expect(await eraseDefinition()).toBe(erase);
-      expect(await routine(reader)).toMatchObject({ proowner: originalRoutines[0].proowner, provolatile: "v",
-        prosecdef: true, proconfig: ["search_path=pg_catalog, pg_temp"] });
-      await db.query("CREATE ROLE adapter_money_reader_observer");
-      expect((await db.query(`SELECT rolname, has_function_privilege(oid,$1,'EXECUTE') AS execute
-        FROM pg_roles WHERE rolname=ANY($2) ORDER BY rolname`, [reader, [...roles, "adapter_money_reader_observer"]])).rows).toEqual([
-        { rolname: "adapter_money_reader_observer", execute: false }, { rolname: "anon", execute: false },
-        { rolname: "authenticated", execute: false }, { rolname: "service_role", execute: true },
-      ]);
-      for (const [index, { base, full, expected }] of cases.entries()) {
-        await db.query("SAVEPOINT old_writer");
-        await expect(complete(base)).rejects.toMatchObject(supplementRefusal);
-        await db.query("ROLLBACK TO SAVEPOINT old_writer");
-        expect(await complete(full)).toStrictEqual(expected);
-        const newRow = await read(base.calculationId);
-        expect(newRow.incumbent).toStrictEqual(incumbent[index]!.incumbent);
-        expect(newRow).toMatchObject({ money: canonicalCatalogDraftJson(full.seal.adapterMoneyResult), digest: expect.stringMatching(/^[0-9a-f]{64}$/u) });
-        expect(await complete(full)).toStrictEqual(expected);
-        expect(await read(base.calculationId)).toStrictEqual(newRow);
-      }
-      await db.query("ROLLBACK TO SAVEPOINT upgrade_trial");
-      for (const { base } of cases) await complete(base);
-      await db.query(sql);
-      for (const { base, full, expected } of cases) {
-        const historical = await read(base.calculationId);
-        expect(historical).toMatchObject({ money: null, digest: null });
-        expect(await complete(base)).toStrictEqual(expected);
-        expect(await complete(full)).toStrictEqual(expected);
-        expect(await read(base.calculationId)).toStrictEqual(historical);
-      }
-      // An erased calculation still holds the scoped provider marker on both prefixes.
-      await db.query("ROLLBACK TO SAVEPOINT dormant");
-      for (const { base } of cases) {
-        const evidence = base.seal.evidence.adapterEvidence;
-        const { adapter, accountRef, mode } = evidence.scope;
-        const digest = evaluationDigest("provider-calculation", {
-          installationRef: base.identity.installationRef, adapter, accountRef, mode, providerRef: evidence.calculationRef,
-        });
-        await db.query("INSERT INTO public.tax_calculations(calculation_id,state,provider_digest) VALUES($1,'erased',$2)",
-          [randomUUID(), digest]);
-      }
-      await db.query("SAVEPOINT collision");
-      const losingRows: StoredRow[] = [];
-      for (const { base } of cases) {
-        expect(await complete(base)).toMatchObject({ kind: "terminal", outcome: { code: "tax_provider_reference_conflict" } });
-        losingRows.push(await read(base.calculationId));
-      }
-      await db.query("ROLLBACK TO SAVEPOINT collision");
-      await db.query(sql);
-      for (const [index, { base, full }] of cases.entries()) {
-        const reply = await complete(full);
-        expect(reply).toMatchObject({ kind: "terminal", outcome: { code: "tax_provider_reference_conflict" } });
-        const stored = await read(base.calculationId);
-        expect(stored.incumbent).toStrictEqual(losingRows[index]!.incumbent);
-        expect(stored).toMatchObject({ money: null, digest: null });
-        expect(await complete(full)).toStrictEqual(reply);
-        expect(await read(base.calculationId)).toStrictEqual(stored);
-      }
-      await db.query("ROLLBACK TO SAVEPOINT dormant; DROP OWNED BY anon,authenticated,service_role; DROP ROLE anon,authenticated,service_role");
-      await db.query(sql);
-      expect((await db.query(`SELECT NOT EXISTS(SELECT FROM aclexplode(proacl) WHERE grantee<>proowner) AS owner_only
-        FROM pg_proc WHERE oid=$1::regprocedure`, [reader])).rows[0]).toStrictEqual({ owner_only: true });
     } finally { await db.query("ROLLBACK"); db.release(); }
-  } finally { await closePostgres(instance, [owner, runtime].filter((pool): pool is Pool => pool !== undefined)); }
+    const attachments = () => source.owner.query(`SELECT tgname, oid::text, tgfoid::text, pg_get_triggerdef(oid) AS definition
+      FROM pg_trigger WHERE tgname IN ('tax_calculation_guard','tax_calculation_privacy_guard') ORDER BY tgname`).then(result => result.rows);
+    const routine = (signature: string) => source.owner.query(`SELECT oid::text, proowner::text, proacl, provolatile, prosecdef, proconfig
+      FROM pg_proc WHERE oid=$1::regprocedure`, [signature]).then(result => result.rows[0]);
+    const eraseDefinition = () => source.owner.query("SELECT pg_get_functiondef('public.tax_calculation_erase_v1(uuid)'::regprocedure) AS definition")
+      .then(result => result.rows[0].definition);
+    const replaced = ["public.tax_calculation_guard_v1()", "public.tax_calculation_transition_v1(jsonb,boolean)"];
+    const originalTriggers = await attachments();
+    const originalRoutines = await Promise.all(replaced.map(routine));
+    const originalErase = await eraseDefinition();
+
+    const upgrade = createPlatformPostgresMigrationRunner(binding, options);
+    expect(await upgrade.status()).toStrictEqual({ applied: before.map(unit => unit.file), pending: suffix.map(unit => unit.file) });
+    const { applied } = await upgrade.apply();
+    expect(applied.slice(0, 2)).toStrictEqual(expectedPaths);
+    expect(applied).toStrictEqual(suffix.map(unit => unit.file));
+    const historyAfter = (await owner.query(ledger)).rows;
+    expect(historyAfter.slice(0, history.length)).toStrictEqual(history);
+    expect(historyAfter.slice(history.length).map(({ catalog_path, sha256, position }) => [catalog_path, sha256, position]))
+      .toStrictEqual(suffix.map((unit, index) => [unit.file, unit.sha256, before.length + index]));
+    expect(await upgrade.apply()).toStrictEqual({ applied: [] });
+    expect(await Promise.all(ids.map(id => read(source.owner, id)))).toStrictEqual(storedBefore);
+    expect(await attachments()).toStrictEqual(originalTriggers);
+    expect(await Promise.all(replaced.map(routine))).toStrictEqual(originalRoutines);
+    expect(await eraseDefinition()).toBe(originalErase);
+    expect(await routine(reader)).toMatchObject({ proowner: originalRoutines[0].proowner, provolatile: "v",
+      prosecdef: true, proconfig: ["search_path=pg_catalog, pg_temp"] });
+
+    for (const { base, full, expected } of pending) {
+      await expect(complete(base)).rejects.toMatchObject(supplementRefusal);
+      expect(await complete(full)).toStrictEqual(expected);
+      const stored = await read(source.owner, base.calculationId);
+      expect(stored.incumbent).toStrictEqual(expectedRows.get(base.calculationId)!.incumbent);
+      expect(stored).toMatchObject({ money: canonicalCatalogDraftJson(full.seal.adapterMoneyResult), digest: expect.stringMatching(/^[0-9a-f]{64}$/u) });
+      expect(await complete(full)).toStrictEqual(expected);
+      expect(await read(source.owner, base.calculationId)).toStrictEqual(stored);
+    }
+    for (const { base, full, expected } of historical) {
+      const stored = await read(source.owner, base.calculationId);
+      expect(stored).toMatchObject({ money: null, digest: null });
+      expect(await complete(base)).toStrictEqual(expected);
+      expect(await complete(full)).toStrictEqual(expected);
+      expect(await read(source.owner, base.calculationId)).toStrictEqual(stored);
+    }
+    for (const { base, full } of collisions) {
+      const reply = await complete(full);
+      expect(reply).toMatchObject(collision);
+      const stored = await read(source.owner, base.calculationId);
+      expect(stored.incumbent).toStrictEqual(expectedRows.get(base.calculationId)!.incumbent);
+      expect(stored).toMatchObject({ money: null, digest: null });
+      expect(await complete(full)).toStrictEqual(reply);
+      expect(await read(source.owner, base.calculationId)).toStrictEqual(stored);
+    }
+  } finally { await closePostgres(instance, [owner, runtime, migrator].filter((pool): pool is Pool => pool !== undefined)); }
 }, postgresSetupTimeoutMs);
 afterAll(() => resources.close(), postgresTeardownTimeoutMs);
 
@@ -331,6 +368,67 @@ it("refuses independent component, allocation, position and fee mismatches", asy
   }
 });
 
+it("refuses a duplicate in each keyed array and keeps repeated positions across states", async () => {
+  const { result: { money }, pin, body } = sample;
+  const quote = body.outcome.quote;
+  const evidence = body.evidence.adapterEvidence;
+  const [first, , shipping, handling] = money.components;
+  const [one, two] = first!.allocations;
+  const [fee, otherFee] = money.fees;
+  const [quotedFee] = quote.feeLines;
+  const feeDuplicate = { ...fee, amountMinor: 0 };
+  const quoteFeeDuplicate = { ...quotedFee, amountMinor: 0 };
+  const taxPositions = (positions: readonly { taxMinor: number }[]) => [...positions, { ...positions[0]!, taxMinor: 0 }];
+  const paths = [
+    ["initial and first before", ["initial"], ["allocations", 0, "before"], ["discountAllocations", 0, "before"]],
+    ["an intermediate allocation state", ["allocations", 1, "before"], ["allocations", 0, "after"], ["discountAllocations", 0, "after"]],
+    ["final and last after", ["final"], ["allocations", 1, "after"], ["discountAllocations", 1, "after"]],
+  ] as const;
+  const stateCases = paths.map(([label, firstState, secondState, projectedAllocation], index) => {
+    const projectedStates: JsonPath[] = [[...projectedAllocation]];
+    if (index === 1) projectedStates.push(["discountAllocations", 1, "before"]);
+    if (index === 2) projectedStates.push([]);
+    let candidate = structuredClone(money);
+    let projection = structuredClone(body);
+    type WithPositions = { taxPositions: readonly { taxMinor: number }[] };
+    const positionsAt = (object: unknown, path: readonly (string | number)[]) => (path.reduce<unknown>((node, key) =>
+      (node as Record<string | number, unknown>)[key], object) as WithPositions).taxPositions;
+    for (const state of [firstState, secondState])
+      candidate = edit(candidate, ["components", 0, ...state, "taxPositions"], taxPositions(positionsAt(first, state)));
+    for (const state of projectedStates)
+      projection = edit(projection, ["outcome", "quote", "lines", 0, ...state, "taxPositions"],
+        taxPositions(positionsAt(quote.lines[0], state)));
+    return ["tax position ID in " + label, candidate, pin, projection] as const;
+  });
+  const planPath = ["request", "input", "money"];
+  const quotePath = ["outcome", "quote"];
+  const withEvidence = (adapterEvidence: typeof evidence) => ({ ...body, evidence: { ...body.evidence, adapterEvidence,
+    adapterDigest: evaluationDigest("evidence", adapterEvidence) } });
+  const cases = [
+    ["fee key with matched quote and unchanged totals", { ...money, fees: [fee, otherFee, feeDuplicate] }, pin,
+      edit(body, [...quotePath, "feeLines"], [...quote.feeLines, quoteFeeDuplicate])],
+    ["component reference", { ...money, components: [first, first, shipping, handling] }, pin, body],
+    ["line key with distinct source ordinals", edit(money, ["components", 1, "ref", "lineKey"], "item-a"),
+      edit(pin, [...planPath, "sources", pin.request.input.money.sources.findIndex(source => source.lineKey === "item-b"), "lineKey"], "item-a"), edit(body, [...quotePath, "lines", 1, "lineKey"], "item-a")],
+    ["source ordinal with distinct line keys", edit(money, ["components", 1, "ref", "sourceOrdinal"], 1), pin, body],
+    ["delivery bucket key", edit(money, ["components", 3, "ref", "bucketKey"], "shipping-a"), pin, body],
+    ["allocation sequence", edit(money, ["components", 0, "allocations", 1, "sequence"], one!.sequence), pin, body],
+    ["allocation adjustment key", edit(money, ["components", 0, "allocations", 1, "adjustmentRef"], one!.adjustmentRef), pin, body],
+    ["projected allocation ID", money, pin, edit(body, [...quotePath, "lines", 0, "discountAllocations", 1, "allocationId"],
+      quote.lines[0]!.discountAllocations[0]!.allocationId)],
+    ["pinned adjustment key", money, edit(pin, [...planPath, "adjustments", 2, "adjustmentRef"], one!.adjustmentRef), body],
+    ["pinned adjustment sequence", money, edit(pin, [...planPath, "adjustments", 2, "sequence"], two!.sequence), body],
+    ["pinned adjustment target key", money, edit(pin, [...planPath, "adjustments", 0, "target", "lineKeys"], ["item-a", "item-a"]), body],
+    ["required cell identity", money, edit(pin, ["request", "input", "required"], [...pin.request.input.required, pin.request.input.required[0]]), body],
+    ["evidence tax position ID", money, pin, withEvidence(edit(evidence, ["positions", "tax"], [...evidence.positions.tax, evidence.positions.tax[0]]))],
+    ["evidence fee key", money, pin, withEvidence(edit(evidence, ["positions", "fees"], [...evidence.positions.fees, evidence.positions.fees[0]]))],
+    ...stateCases,
+  ] as const;
+  expect(await validate(store.owner, money, pin, body)).not.toBeNull();
+  for (const [label, candidate, context, seal] of cases)
+    expect(await validate(store.owner, candidate, context, seal), label).toBeNull();
+});
+
 it("binds ordered projections to pin targets and hashed evidence, and checks derived totals", async () => {
   const { result: { money }, pin, body } = sample;
   const quote = body.outcome.quote;
@@ -376,11 +474,15 @@ it("binds ordered projections to pin targets and hashed evidence, and checks der
     { ...body, outcome: { ...body.outcome, quote: { ...quote, netTotal, payableMinor } } })).toBeNull();
 });
 
-const catalog = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as {
-  baseline: { file: string }; forward: { file: string }[];
-};
+const catalog = (() => {
+  const manifest = readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest | null;
+  if (manifest?.schemaVersion !== 3) throw new Error("Adapter money witness requires all three installed migration plans");
+  return manifest;
+})();
 const forwardIndex = catalog.forward.findIndex(unit => unit.file.endsWith("_tax_calculation_adapter_money_v1.sql"));
 const unit = catalog.forward[forwardIndex];
+const activation = catalog.forward[forwardIndex + 1]!;
+const reader = "public.tax_calculation_read_adapter_money_v1(uuid)";
 const schema = `SELECT jsonb_build_object(
   'relation', (SELECT to_jsonb(c)-'relpages'-'reltuples'-'relallvisible'-'relallfrozen' FROM pg_class c WHERE oid='public.tax_calculations'::regclass),
   'columns', (SELECT jsonb_agg(to_jsonb(a) ORDER BY attnum) FROM pg_attribute a WHERE attrelid='public.tax_calculations'::regclass AND attnum>0),
@@ -401,7 +503,7 @@ const privateAcl = `SELECT p.provolatile AS volatility,p.prosecdef AS definer,p.
 const expectedAcl = { volatility: "s", definer: false, strict: false, settings: ["search_path=pg_catalog, pg_temp"],
   migration_owner: true, completion_owner: true, table_owner: true, guard_owner: true, owner_only: true };
 
-it("preserves the exact predecessor lifecycle and installs only owner execution with optional roles present and absent", async () => {
+it("isolates the dormant validator lifecycle and proves both forwards’ ACLs with optional roles present and absent", async () => {
   expect(unit).toBeDefined();
   let instance: PostgresContainer | undefined, owner: Pool | undefined, runtime: Pool | undefined;
   try {
@@ -463,12 +565,22 @@ it("preserves the exact predecessor lifecycle and installs only owner execution 
         await expect(validate(db, emptyMoney)).rejects.toMatchObject({ code: "42501" });
         await db.query("ROLLBACK TO SAVEPOINT attempt");
       }
+      const activationSql = readFileSync(activation.file, "utf8");
+      await db.query(activationSql);
+      expect((await db.query(`SELECT rolname, has_function_privilege(oid,$1,'EXECUTE') AS execute
+        FROM pg_roles WHERE rolname=ANY($2) ORDER BY rolname`, [reader, [...roles, "adapter_money_observer"]])).rows).toStrictEqual([
+        { rolname: "adapter_money_observer", execute: false }, { rolname: "anon", execute: false },
+        { rolname: "authenticated", execute: false }, { rolname: "service_role", execute: true },
+      ]);
       await db.query("ROLLBACK TO SAVEPOINT optional_roles");
       await db.query("DROP OWNED BY anon,authenticated,service_role; DROP ROLE anon,authenticated,service_role");
       expect((await db.query("SELECT rolname FROM pg_roles WHERE rolname=ANY($1)", [roles])).rows).toEqual([]);
       await db.query(sql);
       expect((await db.query(privateAcl, [signature])).rows).toStrictEqual([expectedAcl]);
       expect(await validate(db, emptyMoney)).toStrictEqual({ moneyText: canonicalCatalogDraftJson(emptyMoney), resultDigest: null });
+      await db.query(activationSql);
+      expect((await db.query(`SELECT NOT EXISTS(SELECT FROM aclexplode(proacl) WHERE grantee<>proowner) AS owner_only
+        FROM pg_proc WHERE oid=$1::regprocedure`, [reader])).rows).toStrictEqual([{ owner_only: true }]);
     } finally { await db.query("ROLLBACK"); db.release(); }
   } finally { await closePostgres(instance, [owner, runtime].filter((pool): pool is Pool => pool !== undefined)); }
 }, postgresSetupTimeoutMs);

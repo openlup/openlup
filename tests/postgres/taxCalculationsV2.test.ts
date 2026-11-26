@@ -735,11 +735,11 @@ describe("native evaluation claim and seal", () => {
     const { address, ...destination } = request.input.destination;
     const pin = rawPin(claim, { ...request, input: { ...request.input, destination } }, request);
     const extra = { contactEmail: "synthetic@example.invalid", line1: "1 Example Lane" };
-    const conflict = "tax_reference_conflict /taxEvidence";
+    const conflict = "tax_reference_conflict /taxEvidence Replay the original invocation and evidence.";
     const paths = [
       ["", "claimed"],
       ["coverage", "claimed"],
-      ["destination", "destination_binding_invalid destination"],
+      ["destination", "destination_binding_invalid destination Recover the original binding."],
       ["request", "claimed"],
       ["request.input", "claimed"],
       ["request.input.destination", "claimed"],
@@ -1389,7 +1389,7 @@ describe("native evaluation claim and seal", () => {
     for (const input of [exclusiveWire, fiscalWire])
       expect(commerceQuoteV2Schema.parse(input.seal.outcome.quote)).toStrictEqual(input.seal.outcome.quote);
     await expect(db.runtime.query(witnessSql, [exclusiveWire])).rejects.toMatchObject({ ...refusal,
-      detail: "/seal/adapterMoneyResult", hint: undefined });
+      detail: "/seal/adapterMoneyResult", hint: "Supply the original verified adapter money through the native tax completion adapter." });
     await expect(db.runtime.query(witnessSql, [fiscalWire])).resolves.toMatchObject({
       rows: [{ result: { kind: "terminal", outcome: fiscalWire.seal.outcome } }],
     });
@@ -1461,7 +1461,7 @@ describe("native evaluation claim and seal", () => {
   }
 
   it("rolls back a seal that crossed cutoff in a provider uniqueness wait", async () => {
-    const check = "IF clock_timestamp() >= cutoff THEN RAISE EXCEPTION 'tax_calculation_expired' USING ERRCODE='55000', DETAIL='/taxEvidence/expiresAt'; END IF;";
+    const check = "IF clock_timestamp() >= cutoff THEN RAISE EXCEPTION 'tax_calculation_expired' USING ERRCODE='55000', DETAIL='/taxEvidence/expiresAt', HINT='Select the destination again and obtain a fresh quote.'; END IF;";
     await mutateTransition("END LOOP;\n  " + check, "END LOOP;", async () => {
       expect(await providerCutoffRace()).toMatchObject({ reply: { kind: "terminal", outcome: { code: "tax_provider_reference_conflict" } },
         lookup: { kind: "terminal" } });
@@ -1593,6 +1593,9 @@ describe("native evaluation claim and seal", () => {
     const current = JSON.parse(rows[position]!);
     const different = structuredClone(money);
     different.components[0].final.taxPositions[0].taxableMinor--;
+    const duplicate = structuredClone(money);
+    const positions = duplicate.components[0].final.taxPositions;
+    positions.push({ ...positions[0], taxMinor: 0 });
     const firstId = money.components[0].final.taxPositions[0].positionRef;
     const renamePosition = (text: string) => text.replaceAll(JSON.stringify(firstId), '"alternate-position"');
     const [, changedBody] = JSON.parse(renamePosition(current.outcome_text));
@@ -1610,7 +1613,8 @@ describe("native evaluation claim and seal", () => {
     expect(rebound).toMatchObject({ moneyText: changedMoney, resultDigest: expect.stringMatching(/^[0-9a-f]{64}$/u) });
     expect(rebound.resultDigest).not.toBe(original.sealDigest);
     for (const patch of [{ adapter_money_text: "{" }, { adapter_money_text: " " + original.adapterMoneyText },
-      { adapter_money_text: canonicalCatalogDraftJson(different) }, { adapter_result_digest: "0".repeat(64) },
+      { adapter_money_text: canonicalCatalogDraftJson(different) }, { adapter_money_text: canonicalCatalogDraftJson(duplicate) },
+      { adapter_result_digest: "0".repeat(64) },
       { adapter_money_text: changedMoney, outcome_text: changedOutcome, outcome_digest: destinationHash(changedOutcome) }]) {
       const invalid = { ...current, ...patch };
       await expect(insertStored(source.owner, invalid)).rejects.toMatchObject(frameRefusal);

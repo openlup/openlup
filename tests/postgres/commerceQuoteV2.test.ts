@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { DatabaseError } from "pg";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { calculateCatalogueMoneyV2, planCatalogueMoneyV2 } from "@openlup/core/pricing";
 import { canonicalCatalogDraftJson } from "@openlup/platform/catalog";
@@ -459,15 +460,116 @@ function changeAssessmentId(reply: TaxQuoteResultV1, replacement: string): TaxQu
   return { ...changed, evidence, evidenceDigest: evaluationDigest("evidence", evidence) } as typeof reply;
 }
 
-it("refuses a non-token assessment ID from an otherwise verified adapter result", async () => {
-  const f = await installed({ basis: "exclusive", vector: 1660, adjust: true });
-  let planted: TaxQuoteResultV1 | undefined;
-  f.now.alterReply = reply => (planted = changeAssessmentId(reply, "foreign@example.invalid"));
-  exact(await f.bind().createQuote(f.owner, f.request), refusal("tax_invalid_input", "/seal/adapterMoneyResult",
-    "Supply the original verified adapter money through the native tax completion adapter."));
-  expect(verifyTaxQuoteResult(f.taxInputs[0]!, planted!)).toBeUndefined();
-  expect(f.commands.map(command => command.operation)).toEqual(["lookup", "claim"]);
-  expect(await row(f)).toMatchObject({ state: "pending", adapter_money_text: null, adapter_result_digest: null });
+it("reports the full adapter-money refusal table at its native call sites", async () => {
+  const supplementRemedy = "Supply the original verified adapter money through the native tax completion adapter.";
+  const purchase = { basis: "exclusive", vector: 1660, adjust: true } as const;
+  const prepare = async () => {
+    const fixture = await installed(purchase);
+    fixture.now.deferSeal = true;
+    await fixture.bind().createQuote(fixture.owner, fixture.request);
+    const wire = JSON.parse(JSON.stringify(fixture.commands.find(command => command.operation === "complete")));
+    const { adapterMoneyResult: money, ...seal } = wire.seal;
+    return { fixture, wire, money, seal, base: { ...wire, seal } };
+  };
+  const pending = await prepare();
+  const { wire, money, seal, base } = pending;
+  const supplement = (value: unknown) => ({ ...base, seal: { ...seal, adapterMoneyResult: value } });
+  const call = (value: object) => store.runtime.query("SELECT public.tax_calculation_complete_v1($1::jsonb) AS result", [value])
+    .then(({ rows }) => rows[0].result);
+  const replay = await prepare();
+  expect(await call(replay.wire)).toMatchObject({ kind: "terminal", outcome: { kind: "final" } });
+  const erasure = await prepare();
+  const actor = { principalId: randomUUID() };
+  await store.owner.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,$2)",
+    [actor.principalId, actor.principalId + "@example.invalid"]);
+  await store.owner.query(`INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at)
+    VALUES($1,'admin','active','legacy',clock_timestamp())`, [actor.principalId]);
+  expect(await erasure.fixture.privacy(true).operations.erase(actor, { subject: { kind: "contact", contactId: erasure.fixture.ctx.clientId },
+    idempotencyKey: randomUUID() })).toMatchObject({ outcome: "ERASED" });
+  const collision = await prepare();
+  const { scope: { adapter, accountRef, mode }, calculationRef: providerRef } = collision.wire.seal.evidence.adapterEvidence;
+  const providerKey = evaluationDigest("provider-calculation", {
+    installationRef: collision.wire.identity.installationRef, adapter, accountRef, mode, providerRef,
+  });
+  await store.owner.query("INSERT INTO public.tax_calculations(calculation_id,state,provider_digest) VALUES($1,'erased',$2)",
+    [randomUUID(), providerKey]);
+
+  const read = async (id: string | null, isolation: "READ COMMITTED" | "REPEATABLE READ") => {
+    const session = await store.runtime.connect();
+    try {
+      await session.query("BEGIN ISOLATION LEVEL " + isolation);
+      await session.query("SET LOCAL ROLE service_role");
+      return await session.query("SELECT public.tax_calculation_read_adapter_money_v1($1::uuid)", [id]);
+    } finally { await session.query("ROLLBACK"); session.release(); }
+  };
+  const { calculationId } = replay.wire;
+  const invalidFrame = () => store.owner.query(`INSERT INTO public.tax_calculations
+    SELECT (jsonb_populate_record(NULL::public.tax_calculations, to_jsonb(r) || '{"adapter_money_text":"{}"}'::jsonb)).*
+    FROM public.tax_calculations r WHERE calculation_id=$1`, [calculationId]);
+  const clear = () => store.owner.query("UPDATE public.tax_calculations SET adapter_money_text=NULL,adapter_result_digest=NULL WHERE calculation_id=$1",
+    [calculationId]);
+  const writerRefusal = async () => {
+    const f = await installed(purchase);
+    let planted: TaxQuoteResultV1 | undefined;
+    f.now.alterReply = reply => (planted = changeAssessmentId(reply, "foreign@example.invalid"));
+    const reply = await f.bind().createQuote(f.owner, f.request);
+    expect(verifyTaxQuoteResult(f.taxInputs[0]!, planted!)).toBeUndefined();
+    expect(f.commands.map(command => command.operation)).toEqual(["lookup", "claim"]);
+    expect(await row(f)).toMatchObject({ state: "pending", adapter_money_text: null, adapter_result_digest: null });
+    return reply;
+  };
+  const observe = async (run: () => Promise<unknown>) => {
+    try {
+      const result = await run();
+      const reply = result as { kind?: string; outcome?: unknown };
+      const refused = (reply.kind === "terminal" ? reply.outcome : reply) as { kind?: string; code?: string; field?: string; remedy?: string };
+      expect(refused.kind).toBe("refused");
+      return [refused.code, undefined, refused.field, refused.remedy];
+    } catch (error) {
+      if (!(error instanceof DatabaseError)) throw error;
+      return [error.message, error.code, error.detail, error.hint];
+    }
+  };
+  const badSupplement = ["tax_invalid_input", "22023", "/seal/adapterMoneyResult", supplementRemedy];
+  const replayConflict = ["tax_reference_conflict", "22023", "/taxEvidence", "Replay the original invocation and evidence."];
+  const wrongMoney = structuredClone(money);
+  wrongMoney.components[0].final.taxMinor++;
+  const duplicateMoney = structuredClone(money);
+  const positions = duplicateMoney.components[0].final.taxPositions;
+  positions.push({ ...positions[0], taxMinor: 0 });
+  const changedMoney = structuredClone(replay.money);
+  changedMoney.components[0].initial.taxPositions[0].positionRef += "-other";
+  const cases = [
+    ["missing fresh money", () => call(base), badSupplement],
+    ["JSON null money", () => call(supplement(null)), badSupplement],
+    ["supplement on an indeterminate outcome", () => call({ ...wire, seal: { ...wire.seal, evidence: null, disposition: "indeterminate",
+      outcome: { kind: "indeterminate" }, contradiction: true } }), badSupplement],
+    ["failed full money validation", () => call(supplement(wrongMoney)), badSupplement],
+    ["duplicate tax position in one state", () => call(supplement(duplicateMoney)), badSupplement],
+    ["writer assessment-token refusal", writerRefusal, ["tax_invalid_input", undefined, "/seal/adapterMoneyResult", supplementRemedy]],
+    ["changed terminal submission", () => call({ ...replay.wire, seal: { ...replay.wire.seal, contradiction: true } }), replayConflict],
+    ["populated replay missing money", () => call(replay.base), replayConflict],
+    ["populated replay with different canonical money", () => call({ ...replay.base, seal: { ...replay.seal, adapterMoneyResult: changedMoney } }),
+      replayConflict],
+    ["stale claim grant", () => call({ ...wire, claimToken: randomUUID() }),
+      ["tax_claim_stale", "55000", "/claim", "Read the original evaluation outcome."]],
+    ["erasure fence", () => call(erasure.wire),
+      ["destination_evidence_erased", "55000", "/destination/snapshotRef", "Review the privacy disposition through authorized support."]],
+    ["completion cutoff", () => call({ ...wire, seal: { ...wire.seal, validUntil: at(-1000) } }),
+      ["tax_calculation_expired", "55000", "/taxEvidence/expiresAt", "Select the destination again and obtain a fresh quote."]],
+    ["scoped provider reference collision", () => call(collision.wire),
+      ["tax_provider_reference_conflict", undefined, "/taxEvidence", "Reconcile the original calculation with the tax adapter owner before further work."]],
+    ["invalid pair at guarded insert", invalidFrame, ["tax_evaluation_frame_invalid", "23514", "/taxEvidence", undefined]],
+    ["standalone clear of a terminal pair", clear,
+      ["tax_evaluation_integrity_invalid", "55000", "/taxEvidence", "Recover the original evaluation from its authoritative owner."]],
+    ["NULL service read ID", () => read(null, "READ COMMITTED"),
+      ["tax_invalid_input", "22023", "/calculationId", "Supply the documented input."]],
+    ["unsupported service read isolation", () => read(calculationId, "REPEATABLE READ"),
+      ["destination_isolation_unsupported", "22023", "/transaction", "Use READ COMMITTED."]],
+  ] as const;
+  for (const [label, run, expected] of cases) expect(await observe(run), label).toStrictEqual(expected);
+  expect(await row(pending.fixture)).toMatchObject({ state: "pending", contradiction: false });
+  expect(await row(collision.fixture)).toMatchObject({ state: "terminal", adapter_money_text: null, adapter_result_digest: null });
 });
 
 it("commits only the winning claim generation when both grants carry valid money", async () => {

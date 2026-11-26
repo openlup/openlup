@@ -311,8 +311,13 @@ const rawErrorKeys = ["length", "name", "message", "severity", "code", "detail",
 function expectError(error: unknown, message: string, detail: string | undefined, code = "22023") {
   expect(Object.getPrototypeOf(error)).toBe(DatabaseError.prototype);
   expect(Reflect.ownKeys(error as object).filter(key => key !== "stack").sort()).toStrictEqual(rawErrorKeys);
-  expect(error).toMatchObject({ message, detail, code,
-    hint: message === "tax_invalid_input" && detail && ["/pin", "/seal", "/identity"].includes(detail) ? "Supply the documented input." : undefined });
+  const remedies = new Map([
+    ["tax_invalid_input", "Supply the documented input."],
+    ["tax_reference_conflict", "Replay the original invocation and evidence."],
+    ["tax_claim_stale", "Read the original evaluation outcome."],
+    ["tax_evaluation_integrity_invalid", "Recover the original evaluation from its authoritative owner."],
+  ]);
+  expect(error).toMatchObject({ message, detail, code, hint: remedies.get(message) });
 }
 
 const rejected = (db: Db, sql: string, wire: object) =>

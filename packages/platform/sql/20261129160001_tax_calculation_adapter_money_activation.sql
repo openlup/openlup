@@ -84,7 +84,7 @@ BEGIN
           OR (NEW.generation = OLD.generation AND NEW.claim_token = OLD.claim_token
             AND NEW.lease_until = OLD.lease_until AND NOT OLD.contradiction AND NEW.contradiction)))) THEN RETURN NEW; END IF;
   END IF;
-  RAISE EXCEPTION 'tax_evaluation_integrity_invalid' USING ERRCODE='55000', DETAIL='/taxEvidence';
+  RAISE EXCEPTION 'tax_evaluation_integrity_invalid' USING ERRCODE='55000', DETAIL='/taxEvidence', HINT='Recover the original evaluation from its authoritative owner.';
 END;
 $$;
 CREATE OR REPLACE FUNCTION public.tax_calculation_transition_v1(p_request jsonb, p_complete boolean) RETURNS jsonb
@@ -128,7 +128,7 @@ BEGIN
   END IF;
   IF jsonb_typeof(p_request) IS DISTINCT FROM 'object'
     OR octet_length(convert_to(public.catalog_publication_canonical(p_request,0),'UTF8')) > 1048576 THEN
-    RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL='/';
+    RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL='/', HINT='Supply the documented input.';
   END IF;
   IF NOT coalesce((p_complete AND operation='complete') OR (NOT p_complete AND operation IN ('lookup','claim')),false)
     OR jsonb_typeof(identity) IS DISTINCT FROM 'object'
@@ -141,7 +141,7 @@ BEGIN
   FOREACH field IN ARRAY ARRAY['clientId','principalRef','scopeRef'] LOOP
     IF NOT coalesce(jsonb_typeof(identity->field)='string'
       AND identity->>field COLLATE "C" ~ '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$',false) THEN
-      RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL='/identity/' || field;
+      RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL='/identity/' || field, HINT='Supply the documented input.';
     END IF;
   END LOOP;
   IF p_complete AND (jsonb_typeof(p_request->'generation') IS DISTINCT FROM 'number'
@@ -157,23 +157,23 @@ BEGIN
   invocation := public.tax_calculation_hash_v1('evaluation-invocation',jsonb_build_object('identity',identity,'request',p_request->'invocation'));
   locator_key := public.tax_calculation_hash_v1('evaluation-key',identity);
   IF current_setting('transaction_isolation') <> 'read committed' THEN
-    RAISE EXCEPTION 'destination_isolation_unsupported' USING ERRCODE='22023', DETAIL='/transaction';
+    RAISE EXCEPTION 'destination_isolation_unsupported' USING ERRCODE='22023', DETAIL='/transaction', HINT='Use READ COMMITTED.';
   END IF;
   LOCK TABLE public.identity_privacy_erasures IN SHARE MODE;
   IF EXISTS (SELECT FROM public.identity_privacy_erasures WHERE client_id=client OR principal_id=principal) THEN
-    RAISE EXCEPTION 'destination_evidence_erased' USING ERRCODE='55000', DETAIL='/destination/snapshotRef';
+    RAISE EXCEPTION 'destination_evidence_erased' USING ERRCODE='55000', DETAIL='/destination/snapshotRef', HINT='Review the privacy disposition through authorized support.';
   END IF;
   IF operation <> 'lookup' THEN
     PERFORM FROM public.clients WHERE id=client AND principal_id=principal AND NOT (metadata ? 'absorption') FOR UPDATE;
   ELSE
     PERFORM FROM public.clients WHERE id=client AND principal_id=principal AND NOT (metadata ? 'absorption');
   END IF;
-  IF NOT FOUND THEN RAISE EXCEPTION 'tax_scope_mismatch' USING ERRCODE='22023', DETAIL='/destination/snapshotRef'; END IF;
+  IF NOT FOUND THEN RAISE EXCEPTION 'tax_scope_mismatch' USING ERRCODE='22023', DETAIL='/destination/snapshotRef', HINT='Re-obtain evidence in the authorized scope.'; END IF;
   -- Read the original pin under the client fence. Historical replay needs no live destination read.
   SELECT * INTO r FROM public.tax_calculations WHERE locator=locator_key;
   IF r.calculation_id IS NOT NULL THEN
     IF r.identity IS DISTINCT FROM identity OR r.pin->>'invocationDigest' IS DISTINCT FROM invocation THEN
-      RAISE EXCEPTION 'tax_reference_conflict' USING ERRCODE='22023', DETAIL='/requestKey';
+      RAISE EXCEPTION 'tax_reference_conflict' USING ERRCODE='22023', DETAIL='/requestKey', HINT='Replay the original invocation and evidence.';
     END IF;
     BEGIN
       IF r.pin_digest IS DISTINCT FROM public.tax_calculation_hash_v1('evaluation-pin',r.pin)
@@ -183,20 +183,20 @@ BEGIN
         RAISE EXCEPTION 'invalid pin' USING ERRCODE='22023';
       END IF;
     EXCEPTION WHEN data_exception OR check_violation THEN
-      RAISE EXCEPTION 'tax_evaluation_integrity_invalid' USING ERRCODE='55000', DETAIL='/taxEvidence';
+      RAISE EXCEPTION 'tax_evaluation_integrity_invalid' USING ERRCODE='55000', DETAIL='/taxEvidence', HINT='Recover the original evaluation from its authoritative owner.';
     END;
     IF p_complete AND (r.calculation_id::text IS DISTINCT FROM p_request->>'calculationId'
       OR r.generation::text IS DISTINCT FROM p_request->>'generation' OR r.claim_token::text IS DISTINCT FROM p_request->>'claimToken') THEN
-      RAISE EXCEPTION 'tax_claim_stale' USING ERRCODE='55000', DETAIL='/claim';
+      RAISE EXCEPTION 'tax_claim_stale' USING ERRCODE='55000', DETAIL='/claim', HINT='Read the original evaluation outcome.';
     END IF;
   ELSIF p_complete THEN
-    RAISE EXCEPTION 'tax_claim_stale' USING ERRCODE='55000', DETAIL='/claim';
+    RAISE EXCEPTION 'tax_claim_stale' USING ERRCODE='55000', DETAIL='/claim', HINT='Read the original evaluation outcome.';
   END IF;
   IF operation = 'lookup' AND r.state IS DISTINCT FROM 'terminal' THEN
     RETURN jsonb_build_object('kind',CASE WHEN r.calculation_id IS NULL THEN 'missing' ELSE 'pending' END);
   END IF;
   IF NOT p_complete AND r.state = 'pending' AND clock_timestamp() < r.lease_until THEN
-    RAISE EXCEPTION 'tax_claim_pending' USING ERRCODE='55000', DETAIL='/claim';
+    RAISE EXCEPTION 'tax_claim_pending' USING ERRCODE='55000', DETAIL='/claim', HINT='Read the original evaluation outcome.';
   END IF;
   pinned := coalesce(r.pin,p_request->'pin');
   original := pinned->'request';
@@ -208,18 +208,18 @@ BEGIN
     IF field IN ('/pin','/seal') THEN
       RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL=field, HINT='Supply the documented input.';
     END IF;
-    IF field IS NOT NULL THEN RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL=field; END IF;
+    IF field IS NOT NULL THEN RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL=field, HINT='Supply the documented input.'; END IF;
   END IF;
   IF r.state = 'terminal' THEN
     terminal := public.tax_calculation_terminal_v1(r);
-    IF terminal IS NULL THEN RAISE EXCEPTION 'tax_evaluation_integrity_invalid' USING ERRCODE='55000', DETAIL='/taxEvidence'; END IF;
+    IF terminal IS NULL THEN RAISE EXCEPTION 'tax_evaluation_integrity_invalid' USING ERRCODE='55000', DETAIL='/taxEvidence', HINT='Recover the original evaluation from its authoritative owner.'; END IF;
     IF p_complete AND terminal->>'submissionDigest' IS DISTINCT FROM public.tax_calculation_hash_v1('evaluation-submission',submission) THEN
-      RAISE EXCEPTION 'tax_reference_conflict' USING ERRCODE='22023', DETAIL='/taxEvidence';
+      RAISE EXCEPTION 'tax_reference_conflict' USING ERRCODE='22023', DETAIL='/taxEvidence', HINT='Replay the original invocation and evidence.';
     END IF;
     IF p_complete THEN
       IF r.adapter_money_text IS NOT NULL AND
         NOT coalesce(r.adapter_result_digest COLLATE "C" ~ '^[0-9a-f]{64}$',false) THEN
-        RAISE EXCEPTION 'tax_evaluation_integrity_invalid' USING ERRCODE='55000', DETAIL='/taxEvidence';
+        RAISE EXCEPTION 'tax_evaluation_integrity_invalid' USING ERRCODE='55000', DETAIL='/taxEvidence', HINT='Recover the original evaluation from its authoritative owner.';
       END IF;
       IF adapter_money IS NOT NULL THEN
         -- Historical provider-conflict rows retain the original success submission digest.
@@ -227,11 +227,11 @@ BEGIN
           CASE WHEN r.adapter_money_text IS NULL THEN pinned END,
           CASE WHEN r.adapter_money_text IS NULL THEN submission END);
         IF validated_money IS NULL THEN
-          RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL='/seal/adapterMoneyResult';
+          RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL='/seal/adapterMoneyResult', HINT='Supply the original verified adapter money through the native tax completion adapter.';
         END IF;
       END IF;
       IF r.adapter_money_text IS NOT NULL AND validated_money->>'moneyText' IS DISTINCT FROM r.adapter_money_text THEN
-        RAISE EXCEPTION 'tax_reference_conflict' USING ERRCODE='22023', DETAIL='/taxEvidence';
+        RAISE EXCEPTION 'tax_reference_conflict' USING ERRCODE='22023', DETAIL='/taxEvidence', HINT='Replay the original invocation and evidence.';
       END IF;
     END IF;
     RETURN jsonb_build_object('kind','terminal','outcome',terminal->'outcome','validUntil',terminal->'validUntil');
@@ -239,7 +239,7 @@ BEGIN
   destination := pinned->'destination';
   pinned_coverage := pinned->'coverage';
   IF NOT coalesce(pinned->>'requestDigest' COLLATE "C" ~ '^[0-9a-f]{64}$',false) THEN
-    RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL='/pin';
+    RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL='/pin', HINT='Supply the documented input.';
   END IF;
   cutoff := (pinned->>'validUntil')::timestamptz;
   owned := public.commerce_read_destination_v2(ctx,'snapshot',(destination->>'snapshotRef')::uuid,destination);
@@ -247,13 +247,20 @@ BEGIN
     field := owned->>'field';
     code := CASE WHEN owned->>'code' = 'destination_evidence_unavailable' AND field = 'destination.snapshotRef'
       THEN 'commerce_destination_owner_mismatch' ELSE owned->>'code' END;
-    RAISE EXCEPTION '%', code USING ERRCODE='22023', DETAIL=CASE WHEN code='commerce_destination_owner_mismatch' THEN '/destination/snapshotRef' ELSE field END;
+    RAISE EXCEPTION '%', code USING ERRCODE='22023',
+      DETAIL=CASE WHEN code='commerce_destination_owner_mismatch' THEN '/destination/snapshotRef' ELSE field END,
+      HINT=CASE code
+        WHEN 'commerce_destination_owner_mismatch' THEN 'Re-obtain evidence through the authenticated owner.'
+        WHEN 'destination_binding_invalid' THEN 'Recover the original binding.'
+        WHEN 'destination_version_changed' THEN 'Select the destination again and obtain a fresh quote.'
+        WHEN 'address_invalid_input' THEN 'Correct caller-authored input or re-obtain authoritative evidence as applicable.'
+        ELSE owned->>'fix' END;
   END IF;
   IF pinned_coverage IS NOT NULL AND pinned_coverage <> 'null'::jsonb THEN
     BEGIN
       SELECT c.coverage INTO history FROM public.tax_coverage_read_v1(installation,pinned_coverage->>'accountRef') c
         WHERE c.revision=pinned_coverage->>'revision' AND c.coverage_digest=pinned_coverage->>'digest';
-      IF NOT FOUND THEN RAISE EXCEPTION 'tax_reference_conflict' USING ERRCODE='22023', DETAIL='/coverage'; END IF;
+      IF NOT FOUND THEN RAISE EXCEPTION 'tax_reference_conflict' USING ERRCODE='22023', DETAIL='/coverage', HINT='Recover the verified original history through its owner.'; END IF;
     EXCEPTION WHEN data_exception OR check_violation THEN
       GET STACKED DIAGNOSTICS code=MESSAGE_TEXT, field=PG_EXCEPTION_DETAIL;
       IF code NOT IN ('catalog_publication_wire_invalid','tax_reference_conflict','tax_invalid_input') THEN RAISE; END IF;
@@ -276,7 +283,7 @@ BEGIN
       OR history - 'declarations' IS DISTINCT FROM (original#>'{input,coverage}') - 'declarations'
       OR (SELECT jsonb_agg(value ORDER BY value) FROM jsonb_array_elements(history->'declarations')) IS DISTINCT FROM
         (SELECT jsonb_agg(value ORDER BY value) FROM jsonb_array_elements(original#>'{input,coverage,declarations}')) THEN
-      RAISE EXCEPTION 'tax_reference_conflict' USING ERRCODE='22023', DETAIL='/taxEvidence';
+      RAISE EXCEPTION 'tax_reference_conflict' USING ERRCODE='22023', DETAIL='/taxEvidence', HINT='Replay the original invocation and evidence.';
     END IF;
     original := jsonb_set(original,'{input,destination,address}',address);
   END IF;
@@ -284,11 +291,11 @@ BEGIN
     OR (r.calculation_id IS NOT NULL AND (owned->'documentDigest' IS DISTINCT FROM pinned->'documentDigest'
       OR (r.coverage_installation_ref,r.coverage_account_ref,r.coverage_revision) IS DISTINCT FROM
         (CASE WHEN history IS NOT NULL THEN installation END,pinned_coverage->>'accountRef',pinned_coverage->>'revision'))) THEN
-    RAISE EXCEPTION 'tax_reference_conflict' USING ERRCODE='22023', DETAIL='/taxEvidence';
+    RAISE EXCEPTION 'tax_reference_conflict' USING ERRCODE='22023', DETAIL='/taxEvidence', HINT='Replay the original invocation and evidence.';
   END IF;
   now_at := date_trunc('milliseconds',clock_timestamp());
   IF cutoff IS NULL OR cutoff > (owned->>'evidenceExpiresAt')::timestamptz OR clock_timestamp() >= cutoff THEN
-    RAISE EXCEPTION 'tax_calculation_expired' USING ERRCODE='55000', DETAIL='/taxEvidence/expiresAt';
+    RAISE EXCEPTION 'tax_calculation_expired' USING ERRCODE='55000', DETAIL='/taxEvidence/expiresAt', HINT='Select the destination again and obtain a fresh quote.';
   END IF;
   IF NOT p_complete THEN
     IF r.calculation_id IS NULL THEN
@@ -300,28 +307,28 @@ BEGIN
         pinned,public.tax_calculation_hash_v1('evaluation-pin',pinned),now_at,now_at+interval '300 seconds',1,gen_random_uuid(),false)
       RETURNING * INTO r;
     ELSE
-      IF r.generation = 2147483647 THEN RAISE EXCEPTION 'tax_claim_generation_exhausted' USING ERRCODE='55000', DETAIL='/claim'; END IF;
+      IF r.generation = 2147483647 THEN RAISE EXCEPTION 'tax_claim_generation_exhausted' USING ERRCODE='55000', DETAIL='/claim', HINT='Reconcile the original evaluation with its owner.'; END IF;
       IF pinned->'recovery' IS NULL OR pinned->'recovery' = 'null'::jsonb OR pinned->'recovery' IS DISTINCT FROM p_request->'recovery' THEN
-        RAISE EXCEPTION 'tax_adapter_unavailable' USING ERRCODE='55000', DETAIL='/taxEvidence';
+        RAISE EXCEPTION 'tax_adapter_unavailable' USING ERRCODE='55000', DETAIL='/taxEvidence', HINT='Recover the original evidence through the adapter owner.';
       END IF;
       UPDATE public.tax_calculations SET generation=generation+1,claim_token=gen_random_uuid(),lease_until=now_at+interval '300 seconds'
         WHERE calculation_id=r.calculation_id RETURNING * INTO r;
     END IF;
-    IF clock_timestamp() >= cutoff THEN RAISE EXCEPTION 'tax_calculation_expired' USING ERRCODE='55000', DETAIL='/taxEvidence/expiresAt'; END IF;
+    IF clock_timestamp() >= cutoff THEN RAISE EXCEPTION 'tax_calculation_expired' USING ERRCODE='55000', DETAIL='/taxEvidence/expiresAt', HINT='Select the destination again and obtain a fresh quote.'; END IF;
     RETURN jsonb_build_object('kind','claimed','calculationId',r.calculation_id,'generation',r.generation,'claimToken',r.claim_token,'pin',pinned,'sampledAtMs',extract(epoch FROM clock_timestamp()) * 1000);
   END IF;
   IF submission->'requestDigest' IS DISTINCT FROM pinned->'requestDigest' OR submission->'kind' IS DISTINCT FROM pinned->'kind'
     OR submission->'destination' IS DISTINCT FROM destination THEN
-    RAISE EXCEPTION 'tax_reference_conflict' USING ERRCODE='22023', DETAIL='/taxEvidence';
+    RAISE EXCEPTION 'tax_reference_conflict' USING ERRCODE='22023', DETAIL='/taxEvidence', HINT='Replay the original invocation and evidence.';
   END IF;
   submitted_digest := public.tax_calculation_hash_v1('evaluation-submission',submission);
   result := submission->'outcome';
   IF NOT coalesce(result->>'kind' IN ('indeterminate','refused','unavailable','final','estimate'),false) THEN
-    RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL='/seal/outcome';
+    RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL='/seal/outcome', HINT='Supply the documented input.';
   END IF;
   IF result->>'kind' = 'indeterminate' THEN
     IF adapter_money IS NOT NULL THEN
-      RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL='/seal/adapterMoneyResult';
+      RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL='/seal/adapterMoneyResult', HINT='Supply the original verified adapter money through the native tax completion adapter.';
     END IF;
     IF (submission->>'contradiction')::boolean AND NOT r.contradiction THEN
       UPDATE public.tax_calculations SET contradiction=true WHERE calculation_id=r.calculation_id;
@@ -329,10 +336,10 @@ BEGIN
     RETURN jsonb_build_object('kind','pending');
   END IF;
   IF (submission->>'validUntil')::timestamptz > cutoff THEN
-    RAISE EXCEPTION 'tax_reference_conflict' USING ERRCODE='22023', DETAIL='/taxEvidence/expiresAt';
+    RAISE EXCEPTION 'tax_reference_conflict' USING ERRCODE='22023', DETAIL='/taxEvidence/expiresAt', HINT='Replay the original invocation and evidence.';
   END IF;
   cutoff := (submission->>'validUntil')::timestamptz;
-  IF cutoff IS NULL OR clock_timestamp() >= cutoff THEN RAISE EXCEPTION 'tax_calculation_expired' USING ERRCODE='55000', DETAIL='/taxEvidence/expiresAt'; END IF;
+  IF cutoff IS NULL OR clock_timestamp() >= cutoff THEN RAISE EXCEPTION 'tax_calculation_expired' USING ERRCODE='55000', DETAIL='/taxEvidence/expiresAt', HINT='Select the destination again and obtain a fresh quote.'; END IF;
   envelope := jsonb_build_object('calculationId',r.calculation_id,'invocationDigest',invocation,'requestDigest',pinned->'requestDigest',
     'generation',r.generation,'destination',destination,'kind',pinned->'kind','evidence',submission->'evidence',
     'disposition',submission->'disposition','validUntil',submission->'validUntil');
@@ -343,7 +350,7 @@ BEGIN
         submission->>'disposition' IN ('skip','required') AND jsonb_typeof(submission#>'{evidence,adapterEvidence,calculationRef}')='string'
         AND submission#>>'{evidence,adapterDigest}' COLLATE "C" ~ '^[0-9a-f]{64}$'
         ELSE submission->>'disposition'='no_provider_posting' END,false) THEN
-      RAISE EXCEPTION 'tax_reference_conflict' USING ERRCODE='22023', DETAIL='/taxEvidence';
+      RAISE EXCEPTION 'tax_reference_conflict' USING ERRCODE='22023', DETAIL='/taxEvidence', HINT='Replay the original invocation and evidence.';
     END IF;
     IF pinned->>'kind' = 'tax_calculation' THEN
       provider_key := public.tax_calculation_hash_v1('provider-calculation',jsonb_build_object('installationRef',installation,
@@ -353,7 +360,7 @@ BEGIN
   ELSIF submission->'evidence' IS DISTINCT FROM 'null'::jsonb
     OR submission->'disposition' IS DISTINCT FROM result->'kind'
     OR (result->>'kind'='unavailable' AND result->'effect' IS DISTINCT FROM '"none"'::jsonb) THEN
-    RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL='/seal/outcome';
+    RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL='/seal/outcome', HINT='Supply the documented input.';
   END IF;
   LOOP
     terminal := envelope || jsonb_build_object('outcome',result,'submissionDigest',submitted_digest,'providerDigest',provider_key,
@@ -366,12 +373,12 @@ BEGIN
     sealed.contradiction := (terminal->>'contradiction')::boolean;
     terminal := public.tax_calculation_terminal_v1(sealed);
     IF terminal IS NULL OR terminal->'outcome' IS DISTINCT FROM result THEN
-      RAISE EXCEPTION 'tax_reference_conflict' USING ERRCODE='22023', DETAIL='/taxEvidence';
+      RAISE EXCEPTION 'tax_reference_conflict' USING ERRCODE='22023', DETAIL='/taxEvidence', HINT='Replay the original invocation and evidence.';
     END IF;
     IF provider_key IS NOT NULL OR adapter_money IS NOT NULL THEN
       validated_money := public.tax_calculation_adapter_money_v1(adapter_money,pinned,terminal);
       IF NOT coalesce(validated_money->>'resultDigest' COLLATE "C" ~ '^[0-9a-f]{64}$',false) THEN
-        RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL='/seal/adapterMoneyResult';
+        RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL='/seal/adapterMoneyResult', HINT='Supply the original verified adapter money through the native tax completion adapter.';
       END IF;
       sealed.adapter_money_text := validated_money->>'moneyText';
       sealed.adapter_result_digest := validated_money->>'resultDigest';
@@ -390,7 +397,7 @@ BEGIN
       result := '{"kind":"refused","code":"tax_provider_reference_conflict","field":"/taxEvidence","remedy":"Reconcile the original calculation with the tax adapter owner before further work."}'::jsonb;
     END;
   END LOOP;
-  IF clock_timestamp() >= cutoff THEN RAISE EXCEPTION 'tax_calculation_expired' USING ERRCODE='55000', DETAIL='/taxEvidence/expiresAt'; END IF;
+  IF clock_timestamp() >= cutoff THEN RAISE EXCEPTION 'tax_calculation_expired' USING ERRCODE='55000', DETAIL='/taxEvidence/expiresAt', HINT='Select the destination again and obtain a fresh quote.'; END IF;
   RETURN jsonb_build_object('kind','terminal','outcome',result,'validUntil',submission->'validUntil');
 END;
 $$;
@@ -402,7 +409,7 @@ DECLARE
   verified jsonb;
 BEGIN
   IF p_calculation_id IS NULL THEN
-    RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL='/calculationId';
+    RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL='/calculationId', HINT='Supply the documented input.';
   END IF;
   IF current_setting('transaction_isolation') <> 'read committed' THEN
     RAISE EXCEPTION 'destination_isolation_unsupported' USING ERRCODE='22023', DETAIL='/transaction', HINT='Use READ COMMITTED.';

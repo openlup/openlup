@@ -92,6 +92,15 @@ BEGIN
       WHERE jsonb_typeof(value) IS DISTINCT FROM 'array')
   THEN RETURN NULL; END IF;
 
+  IF EXISTS (SELECT FROM jsonb_array_elements(plan->'adjustments') adjustment
+      GROUP BY GROUPING SETS ((adjustment->'adjustmentRef'),(adjustment->'sequence')) HAVING count(*) > 1)
+    OR EXISTS (SELECT FROM jsonb_array_elements(plan->'adjustments') adjustment
+      WHERE EXISTS (SELECT FROM jsonb_array_elements(CASE WHEN jsonb_typeof(adjustment#>'{target,lineKeys}')='array'
+        THEN adjustment#>'{target,lineKeys}' END) target GROUP BY target.value HAVING count(*) > 1))
+    OR EXISTS (SELECT FROM jsonb_array_elements(required_cells) cell
+      GROUP BY cell#>'{target,kind}',cell#>'{target,key}',cell->'jurisdiction',cell->'taxKind' HAVING count(*) > 1)
+  THEN RETURN NULL; END IF;
+
   -- Index the evidence once and reject ambiguous assessment identities.
   SELECT coalesce(jsonb_object_agg(row->>'positionRef',row),'{}'::jsonb) INTO tax_evidence
   FROM jsonb_array_elements(evidence#>'{positions,tax}') row WHERE jsonb_typeof(row->'positionRef')='string';
@@ -157,6 +166,14 @@ BEGIN
     AND jsonb_array_length(p_money->'fees') = jsonb_array_length(quote->'feeLines')
     AND (SELECT count(DISTINCT value->>'positionRef') FROM positions) = jsonb_array_length(evidence#>'{positions,tax}')
     AND (SELECT count(DISTINCT fee->>'feeKey') FROM fees) = jsonb_array_length(evidence#>'{positions,fees}')
+    -- The projection joins bind the same unique line, ordinal and bucket keys to both context arrays.
+    AND NOT EXISTS (SELECT FROM components WHERE ref->>'kind'='merchandise'
+      GROUP BY GROUPING SETS ((ref->'lineKey'),(ref->'sourceOrdinal')) HAVING count(*) > 1)
+    AND NOT EXISTS (SELECT FROM components WHERE ref->>'kind'='delivery' GROUP BY ref->'bucketKey' HAVING count(*) > 1)
+    AND NOT EXISTS (SELECT FROM allocations GROUP BY ordinal,allocation->'adjustmentRef' HAVING count(*) > 1)
+    AND NOT EXISTS (SELECT FROM allocations GROUP BY projected->'allocationId' HAVING count(*) > 1)
+    AND NOT EXISTS (SELECT FROM positions GROUP BY value->'positionRef' HAVING count(DISTINCT ref) > 1)
+    AND NOT EXISTS (SELECT FROM fees GROUP BY fee->'feeKey' HAVING count(*) > 1)
     AND NOT EXISTS (SELECT FROM components WHERE valid IS DISTINCT FROM true
       OR ref IS DISTINCT FROM pinned_ref OR ref IS DISTINCT FROM quoted_ref
       OR component#>'{initial,amountMinor}' IS DISTINCT FROM part->'preDiscountMinor'
@@ -183,6 +200,7 @@ BEGIN
       OR state->'amountMinor' <> state->'netMinor'
       OR (state->>'totalMinor')::numeric <> (state->>'netMinor')::numeric + (state->>'taxMinor')::numeric
       OR (state->>'taxMinor')::numeric <> (SELECT coalesce(sum((value->>'taxMinor')::numeric),0) FROM jsonb_array_elements(state->'taxPositions'))
+      OR EXISTS (SELECT FROM jsonb_array_elements(state->'taxPositions') position GROUP BY position->'positionRef' HAVING count(*) > 1)
       OR jsonb_array_length(state->'taxPositions') IS DISTINCT FROM CASE
         WHEN jsonb_typeof(projected->'taxPositions')='array' THEN jsonb_array_length(projected->'taxPositions') END)
     AND NOT EXISTS (SELECT FROM positions WHERE assessment IS NULL
