@@ -57,14 +57,20 @@ async function oneSubmit(page: Page, name: string): Promise<Locator> {
   const control = action(page, name).first();
   await expect(control).toBeVisible();
   await expect(control).toHaveAttribute('type', 'submit');
+  await expect(control.locator('xpath=ancestor::form')).toHaveCount(1);
   return control;
 }
 
 /** Clicks a control and waits until the page has replaced it, so the next step never acts on the previous view. */
 async function advance(control: Locator): Promise<void> {
   const before = await control.elementHandle();
-  await control.click();
-  await expect.poll(() => before!.evaluate(element => element.isConnected)).toBe(false);
+  if (before === null) throw new Error('storefront anchors: the control to click is not on the page');
+  try {
+    await control.click();
+    await expect.poll(() => before.evaluate(element => element.isConnected), { message: 'the clicked view is replaced' }).toBe(false);
+  } finally {
+    await before.dispose();
+  }
 }
 
 test('storefront anchors: the checkout form names its nine fields and place_order', async ({ page }) => {
@@ -136,11 +142,58 @@ test('storefront anchors: the payment-status page names its state and offers ret
   await oneStateLine(page, storefrontAnchor.state.awaiting_authority);
   await expect(anyAction(page)).toHaveCount(0);
 
-  // A capture ends the payment; the page names no state while it shows the attempt as no longer payable.
+  // A capture ends the payment. The page's next inspection shows the paid view, or, when it reads the attempt
+  // before the host has marked the order paid (seen under load), the attempt as no longer payable. Each view
+  // names its own state: `paid`, or none on the blocked view.
   await advance(page.getByRole('button', { name: t.simulatePaid, exact: true }));
-  await expect(page.getByRole('button', { name: t.simulatePaid, exact: true })).toHaveCount(0);
+  const paidView = page.locator('main p', { hasText: t.recoveryPaid });
+  const blockedView = page.locator('main p', { hasText: t.recoveryUnavailable });
+  await expect(paidView.or(blockedView)).toHaveCount(1);
+  await oneStateLine(page, await paidView.count() ? storefrontAnchor.state.paid : null);
   await expect(anyAction(page)).toHaveCount(0);
   await page.reload();
   await expect(page.locator('main')).toContainText(t.recoveryPaid);
   await oneStateLine(page, storefrontAnchor.state.paid);
+});
+
+test('storefront anchors: the blocked view after a capture names no state and offers no action', async ({ page }) => {
+  // The blocked view appears when the page reads the order and its captured attempt before the host has marked the
+  // order paid, which happens only under load. This case makes it certain: after the capture, the order read answers
+  // with the host's own last answer from before it, and the attempt read with the host's own last answer for this
+  // attempt, changed only to the captured, blocked state the host reports during that window.
+  await openCheckout(page);
+  const email = page.locator(`[${attribute.field}="${storefrontAnchor.field.email}"]`);
+  const quoted = page.waitForResponse(row => row.url().endsWith('/api/actions/offer.validate'));
+  await email.fill(`anchors-blocked-${randomUUID()}@example.test`);
+  await email.blur();
+  await (await quoted).finished();
+  await page.locator(`[${attribute.field}="${storefrontAnchor.field.terms_accepted}"]`).check();
+  await action(page, storefrontAnchor.action.place_order).click();
+  await page.locator('main').getByRole('link', { name: t.completion, exact: true }).click();
+  // The host's latest order and attempt answers for this order, read as the page reads them.
+  let live: Record<string, unknown> | undefined;
+  let order: unknown;
+  page.on('response', async response => {
+    const inspect = response.request().postDataJSON()?.action === 'inspect';
+    if (!inspect) return;
+    const body = await response.json().catch(() => null) as { ok?: boolean; value?: Record<string, unknown> } | null;
+    if (body?.ok !== true) return;
+    if (response.url().endsWith('/api/actions/checkout.recovery')) order = body;
+    if (response.url().endsWith('/api/actions/checkout.payment') && typeof body.value?.attemptRef === 'string') live = body.value;
+  });
+  await advance(page.getByRole('button', { name: t.recoveryPay, exact: true }));
+  await oneStateLine(page, storefrontAnchor.state.awaiting_authority);
+  await expect.poll(() => live?.state, { message: 'the host answered the dispatched attempt' }).toBe('dispatched');
+  const dispatched = live, earlier = order;
+  if (dispatched === undefined || earlier === undefined) throw new Error('storefront anchors: no order or attempt answer was recorded');
+  await page.route('**/api/actions/checkout.recovery', route => route.fulfill({ json: earlier }), { times: 1 });
+  await page.route('**/api/actions/checkout.payment', async route => {
+    if (route.request().postDataJSON().action !== 'inspect') return route.fallback();
+    await route.fulfill({ json: { ok: true, value: { ...dispatched, state: 'captured', paymentBlocked: true,
+      canTokenPay: false, continuationAvailable: false } } });
+  });
+  await advance(page.getByRole('button', { name: t.simulatePaid, exact: true }));
+  await expect(page.locator('main p', { hasText: t.recoveryUnavailable })).toHaveCount(1);
+  await oneStateLine(page, null);
+  await expect(anyAction(page)).toHaveCount(0);
 });
