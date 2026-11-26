@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { IncomingMessage, ServerResponse } from "node:http";
+import { Socket } from "node:net";
 import { Pool } from "pg";
 import { expect, it } from "vitest";
 import type { PgQueryExecutor } from "@openlup/platform/data";
@@ -301,14 +303,22 @@ it("commits the occurrence retention obligation through mounted legacy erasure w
     const handler = createPrivacyEraseHandler({ operations, authorizeAdmin: async () => ({ ok: true, principalId, role: "admin", isMachineActor: false }) });
     const erase = async (contactId: string) => {
       const idempotencyKey = randomUUID();
-      let status = 0, body: { ok: boolean; data?: ErasureReceipt } | undefined;
-      const res = { setHeader() {}, status(code: number) { status = code; return res; },
-        json(value: typeof body) { body = value; } } as HttpResponse;
-      await handler({ method: "POST", body: { subject: { kind: "contact", contactId }, idempotencyKey } } as HttpRequest, res);
+      const req: HttpRequest = Object.assign(new IncomingMessage(new Socket()), {
+        method: "POST", query: {}, body: { subject: { kind: "contact", contactId }, idempotencyKey },
+      });
+      let status = 0, body: unknown;
+      const res: HttpResponse = Object.assign(new ServerResponse(req), {
+        status(code: number) { status = code; res.statusCode = code; return res; },
+        json(value: unknown) { body = value; return res; },
+        send() { throw new Error("Expected a JSON erasure response"); },
+        redirect() { throw new Error("Expected a JSON erasure response"); },
+      });
+      await handler(req, res);
       expect({ status, body }, failures.join("\n")).toMatchObject({ status: 200, body: { ok: true, data: { outcome: "ERASED" } } });
+      const { data } = body as { data: ErasureReceipt };
       const { rows } = await owner.query("SELECT retained_obligations FROM public.identity_privacy_erasures WHERE idempotency_key=$1", [idempotencyKey]);
-      expect(rows).toEqual([{ retained_obligations: body?.data?.obligations }]);
-      return body!.data!.obligations;
+      expect(rows).toEqual([{ retained_obligations: data.obligations }]);
+      return data.obligations;
     };
     const seed = async () => {
       const client = randomUUID(), subscription = randomUUID();
