@@ -8630,6 +8630,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/storefront/pendingResume.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/agreedPlanQuote.ts",
       "class": "public-output"
     },
@@ -11459,6 +11463,10 @@
     },
     {
       "path": "packages/platform/test/storefront/neutralSource.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/pendingResume.test.ts",
       "class": "public-output"
     },
     {
