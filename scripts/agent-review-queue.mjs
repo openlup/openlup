@@ -1,6 +1,7 @@
 // Run trusted main's copy; candidate commits are read as objects, never executed.
 import { execFile } from 'node:child_process';
 import { appendFile, readFile } from 'node:fs/promises';
+import { env as processEnvironment } from 'node:process';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -185,7 +186,7 @@ export function createGitHubReadApi({
   };
 }
 
-export async function probeToolchainNeeded({ event, env = process.env, api, now = Date.now, readComments = undefined }) {
+export async function probeToolchainNeeded({ event, env = processEnvironment, api, now = Date.now, readComments = undefined }) {
   let needed = true;
   try {
     demand(/^[\w.-]+\/[\w.-]+$/u.test(env.GITHUB_REPOSITORY ?? '') && event?.repository?.private === false, 'use a public repository GitHub event');
@@ -251,7 +252,7 @@ export async function readReceipts(api, root, pr, head, now, permissions = new M
   }
   return receipts;
 }
-export async function waitNativeAdmission({ event, env = process.env, api, cwd = process.cwd(), now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), deadlineMs = 3 * 60 * 1000, runGit = git, fastFail = undefined, onCandidate = undefined, committedObjectsOnly = false, readComments = undefined, expectedMain = undefined }) {
+export async function waitNativeAdmission({ event, env = processEnvironment, api, cwd = process.cwd(), now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), deadlineMs = 3 * 60 * 1000, runGit = git, fastFail = undefined, onCandidate = undefined, committedObjectsOnly = false, readComments = undefined, expectedMain = undefined }) {
   demand(/^[\w.-]+\/[\w.-]+$/u.test(env.GITHUB_REPOSITORY ?? '') && event.repository?.private === false, 'use a public repository GitHub event');
   const root = `/repos/${env.GITHUB_REPOSITORY}`; const group = env.GITHUB_EVENT_NAME === 'merge_group' ? event.merge_group : null;
   const shouldFastFail = fastFail ?? !group;
@@ -456,7 +457,7 @@ export async function enqueueAfterChecks({ event, env, api, enqueue, cwd = proce
   demand(after.headRefOid === source.head_sha && (after.mergeQueueEntry?.id === queued.id || after.merged === true), 'enqueue read-back did not confirm the exact head queue entry or completed merge');
   return { status: 'enqueued', pr: number, head: source.head_sha, entry: queued.id };
 }
-export async function reportQueueCliError(error, env = process.env) {
+export async function reportQueueCliError(error, env = processEnvironment) {
   const message = error?.message ?? String(error);
   if (error?.code === 'awaiting_receipt') {
     const prLabel = Number.isSafeInteger(error.pr) ? `PR #${error.pr}` : 'this PR';
@@ -477,7 +478,7 @@ export async function reportQueueCliError(error, env = process.env) {
 }
 async function main() {
   demand(['wait', 'enqueue', 'probe-toolchain'].includes(process.argv[2]) && process.argv.length === 3, 'use wait, enqueue or probe-toolchain');
-  const env = process.env;
+  const env = processEnvironment;
   const api = createGitHubReadApi();
   const event = JSON.parse(await readFile(env.GITHUB_EVENT_PATH, 'utf8'));
   if (process.argv[2] === 'probe-toolchain') {
