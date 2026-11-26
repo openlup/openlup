@@ -1,5 +1,11 @@
 export const subscriptionsDomain = {
   owned: {
+    renewalOccurrences: [
+      "subscription_cycle_occurrences",
+      "subscription_cycle_generations",
+    ],
+    renewalCases: ["subscription_cycle_cases"],
+    renewalPreparations: ["subscription_cycle_preparations"],
     cancelFeedback: [
       "subscription_cancel_feedback",
     ],

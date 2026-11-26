@@ -35,10 +35,18 @@ export function getOrCreateCheckoutAttemptKey(
   // The server now treats a same-key / changed-payload submit as an idempotent
   // update-in-place, so a stable key means one journey => exactly one pet + order +
   // subscription.
-  return getOrCreateContinuationId(
+  //
+  // The browser may refuse storage; this journey then continues with a key that
+  // was not kept, as it always has. Adopting the package's refusal instead is a
+  // separate, declared change.
+  const key = getOrCreateContinuationId(
     { storage: attemptRecordStorage(), identifier: attemptKeyIdentifier() },
-    { fingerprint: () => fingerprintCheckoutIntent(intent, expectedQuote) },
+    { fingerprint: () => fingerprintCheckoutIntent(intent, expectedQuote), storageFailure: "continue_unpersisted" },
   );
+  if (key === null) {
+    throw new Error("getOrCreateContinuationId returned no identity under continue_unpersisted, which always returns one");
+  }
+  return key;
 }
 
 /**

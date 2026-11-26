@@ -22,6 +22,12 @@ Published products display a title or localized short name and an optional
 local image. Long descriptions, product details and pack contents display as
 empty copy.
 
+A published SKU needs one-time selling enabled and a positive tax-inclusive
+one-time price in the configured market currency to appear. The starter excludes
+a SKU without one-time selling and reports `starter_catalogue_one_time_required`.
+The home and catalogue cards show the one-time amount in either cart mode.
+The product and cart use the server quote for the selected mode.
+
 The native storefront and strict quote share a ceiling of 500 active sellable
 SKUs. Seeded catalogue and synthetic editor rows consume that capacity.
 Active sellable SKUs in other offers count too. If the storefront refuses with
@@ -49,9 +55,11 @@ the review and confirm the displayed price before placing the order again.
 If refresh fails, submit again to retry the review with your current details,
 then reconfirm once the price renders.
 
-A definitive total refusal retires the command key. After reconfirmation,
-use a new key even if the refreshed amount and currency are unchanged.
-An uncertain retry keeps the exact payload and command key.
+Keep the command key after a definitive total refusal and reconfirm under it:
+the refusal created no order, and a create under the same key cannot create a
+second one. A page that retires the key accepts that an earlier create still in
+flight under the old key can place a second order. An uncertain retry keeps the
+exact payload and command key.
 
 Once checkout admits an attempt, a refusal still counts toward the attempt
 limit. This includes a price change detected by the draft writer.

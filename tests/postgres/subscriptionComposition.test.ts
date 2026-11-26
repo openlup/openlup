@@ -1,22 +1,20 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
-import { createPostgresRenewalReservationPort } from "@openlup/platform/inventory";
 import { createPostgresRetryStore } from "@openlup/platform/subscriptions";
 import * as subscriptions from "@openlup/platform/subscriptions";
-import type { AutomaticRenewalRunResult, NativeRenewalCodec, SubscriptionQueryExecutor } from "@openlup/platform/subscriptions";
-import type { RenewalDue, RenewalExecutionRequest, RenewalFrozenSnapshot, RenewalReadback, RenewalSettlementPort } from "@openlup/platform/subscriptions/contracts";
-import { createM10SubscriptionReferenceBinding } from "../../server/runtime/public-reference/m10SubscriptionBinding.js";
+import type { AutomaticRenewalRunResult } from "@openlup/platform/subscriptions";
 import { createM10RetryDriver } from "../../server/runtime/public-reference/m10RetryDriver.js";
-import { createPostgresRenewalSettlementPort } from "../../server/adapters/postgres/commerce/renewalSettlement.js";
 import { createPostgresCustomerSubscriptionControlPort } from "../../server/adapters/postgres/customerSubscriptionControl.js";
 import { PLATFORM_DEFAULT_CURRENCY } from "../../src/lib/currency/settlementProfile.js";
 import { nativeHarness, openCase } from "../helpers/fulfillmentNative.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
+import { bindSubscriptionJob, transaction } from "../helpers/subscriptionJob.fixture.js";
 import { AT, call, failure, later, prepareOriginal, renewal as nativeRenewal, recordRenewalMethod, request, unchangedIdentity, type Renewal } from "./subscriptionNativeFixture.js";
+import { allPublicRows } from "./subscriptionStockWaitCases.js";
+
 async function renewal(...args:Parameters<typeof nativeRenewal>) {
  const f=await nativeRenewal(...args); await recordRenewalMethod(args[0],f,'frozen-method'); return f;
 }
-import { allPublicRows } from "./subscriptionStockWaitCases.js";
 
 const h = nativeHarness("m10-composition");
 beforeAll(() => h.start(), postgresSetupTimeoutMs);
@@ -25,12 +23,6 @@ beforeEach(async () => {
   // Retire prior synthetic fixtures in this owned disposable database only.
   await h.pool.query("UPDATE public.subscriptions SET status='cancelled'");
 });
-const transaction = async <T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T> => {
-  const db = await h.pool.connect();
-  try { await db.query("BEGIN"); const result = await work(db); await db.query("COMMIT"); return result; }
-  catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
-};
-
 it.each([
   { source: "derived-only", mode: "one_time", price: 125, total: 220 },
   { source: "legacy stored", mode: "subscription", price: 150, total: 300 },
@@ -59,7 +51,7 @@ it.each([
   }
 
   const port = createPostgresCustomerSubscriptionControlPort({
-    rpc: (name, args) => transaction(async db => {
+    rpc: (name, args) => transaction(h.pool, async db => {
       expect(name).toBe("customer_subscription_preview_bundle_as_actor");
       await db.query("SET LOCAL ROLE authenticated");
       await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: f.client, role: "authenticated" })]);
@@ -86,79 +78,14 @@ it.each([
     catalogAvailability: { status: "blocked", blockedReason: null } });
 });
 
-function bind(f: Renewal, enabled = true, ambiguous?: Renewal, beforeQuery?: (sql: string) => Promise<void>) {
-  let now = later(1), method = "frozen-method", declined = false, ready = true;
-  const snapshot: RenewalFrozenSnapshot = {
-    contractVersion: "platform.subscription.renewal.v1", subscriptionId: f.subscription, clientId: f.client,
-    scheduledAt: AT, scheduledInstant: Date.parse(AT), frozenRevision: "original", frozenFingerprint: f.fingerprint,
-    cycle: { status: "correlated", logicalCycleNumber: 3, nativeRenewalCounter: 2, activationCycleId: null, evidenceRef: "fixture-known-activation" },
-    retryAttempt: 0, externalAttemptSequence: 0,
-    templateSnapshot: { templateId: "original", version: 1, cadenceDays: 28, lines: f.snapshot.lines },
-    pricingSnapshot: { currency: "XXX", totalAmountMinor: f.snapshot.totalAmountMinor, shippingAmountMinor: 0, agreementPolicy: "lock_until_edit", proration: "none" },
-    orderSnapshot: { shippingAddressRef: null, shippingQuoteRef: null, acquisitionRef: null, lines: f.snapshot.lines },
-    stockSourceKey: f.source, settlementChannelKey: "fixture", authorizationRef: "frozen-mandate", payerAccountRef: null, unattendedChargeAuthorizedAt: AT,
-  };
-  const due: RenewalDue = { ...snapshot, cadenceDays: 28, currency: "XXX", deliveryAdmission: "allowed", deliveryBlockReason: null };
-  const codec: NativeRenewalCodec = {
-    due: raw => ({ ...due, scheduledAt: String(raw.scheduled_at), scheduledInstant: Date.parse(String(raw.scheduled_at)), subscriptionId: String(raw.subscription_id) }),
-    freeze: () => { throw new Error("must_resume_original_snapshot"); }, encode: () => f.snapshot,
-    decode: wire => {
-      if (ambiguous && wire.subscriptionId === ambiguous.subscription) return { ...snapshot, subscriptionId: ambiguous.subscription,
-        cycle: { status: "ambiguous", logicalCycleNumber: null, nativeRenewalCounter: 2, activationCycleId: null, reason: "unknown_activation" } };
-      expect(wire).toEqual(f.snapshot); return snapshot;
-    },
-    identity: () => f.identity, fingerprint: () => f.fingerprint,
-    readback: raw => ({ ...raw, scheduledInstant: Date.parse(String(raw.scheduledAt)), cycle: snapshot.cycle, cycleSnapshot: snapshot }) as unknown as RenewalReadback,
-  };
-  const execution = (intent: string, order: string, key: string): RenewalExecutionRequest => ({
-    cycleIdempotencyKey: f.identity, executionIdempotencyKey: key, externalIdempotencyKey: `${key}:provider`, requestFingerprint: "f".repeat(64),
-    paymentIntentId: intent, amountMinor: f.snapshot.totalAmountMinor, currency: "XXX", mode: "subscription", orderRef: order, orderId: order,
-    flow: "off_session", customerRef: null, paymentMethodRef: method, recurringModel: null, clientId: f.client, payer: null,
-  });
-  const execute = vi.fn(async () => ({ status: "pending" as const, externalAttemptRef: "original-ack" }));
-  const evidence = (external: string, event: string) => ({
-    status: declined ? "failed" as const : "succeeded" as const, disposition: "observed" as const,
-    operationId: f.operation, eventKey: event, requestFingerprint: f.fingerprint, verifiedEvidenceRef: `${event}:verified`,
-    externalAttemptRef: external, occurredAt: now, observedAt: now, firstRecordedAt: now,
-    amountMinor: f.snapshot.totalAmountMinor, currency: "XXX", reason: declined ? "declined" : null,
-  });
-  const queries: string[] = [];
-  const executor = { async query(sql: string, values?: unknown[]) { queries.push(sql); await beforeQuery?.(sql); return h.pool.query(sql, values); } };
-  const retryOptions = { executor, withTransaction: transaction, decode: codec.decode,
-    readFrozenMandate: async () => ({ authorized: true, authorizationRef: "frozen-mandate", paymentMethodRef: "frozen-method" }),
-    retryInput: (_snapshot: RenewalFrozenSnapshot, row: { settlementIntentId: string; orderId: string; retryAttempt: number }) => execution(row.settlementIntentId, row.orderId, `${f.identity}:retry:${row.retryAttempt}`),
-    validateInput: () => {}, payments: { execute, readOutcome: async (prepared: { attemptSequence: number }) => evidence(`retry-${prepared.attemptSequence}`, `${f.identity}:retry-outcome:${prepared.attemptSequence}`) },
-    failureTemplate: "failed", recoveredTemplate: "recovered", recoveryPath: "/repair", classifyFailure: () => "temporary",
-  };
-  const lease = vi.fn();
-  const withRunLease = async <T>(population: string, work: () => Promise<T>): Promise<T | null> => {
-    lease(population);
-    const db = await h.pool.connect();
-    try {
-      const result = await db.query("SELECT pg_try_advisory_lock(hashtextextended($1,0)) AS acquired", [population]);
-      if (!result.rows[0].acquired) return null;
-      try { return await work(); } finally { await db.query("SELECT pg_advisory_unlock(hashtextextended($1,0))", [population]); }
-    } finally { db.release(); }
-  };
-  const readiness = vi.fn(async () => ({ state: ready ? "ready" as const : "unknown" as const, candidate: { artifact: "fixture", configuration: "fixture", environment: "disposable", database: "fixture", schema: "complete" }, loadedPackages: [], issues: [] }));
-  const binding = createM10SubscriptionReferenceBinding({
-    enabled, population: `fixture:${f.subscription}`, executor, withTransaction: transaction, withRunLease, codec,
-    settlement: db => createPostgresRenewalSettlementPort(db) as unknown as RenewalSettlementPort,
-    inventory: createPostgresRenewalReservationPort(h.pool),
-    paymentRails: { resolve: () => ({ execute, findExternalAttempt: async () => "original-ack", readOutcome: async () => evidence("original-ack", `${f.identity}:original-evidence`) }) },
-    policy: { executionInput: (_due, _operation, prepared) => execution(prepared.settlementIntentId, prepared.orderId, `${f.identity}:original`), validateInput: () => {}, classifyFailure: () => "temporary", identityKey: row => row.subscriptionId === ambiguous?.subscription ? ambiguous.identity : f.identity },
-    retry: retryOptions, failureTemplate: "failed", recoveryPath: "/repair", workerId: "composed", now: () => now,
-    version: "0.24.0", catalogue: { version: "complete-test-catalogue", migration: "native-test-catalogue" }, readiness, cadenceSeconds: 60,
-  });
-  return { binding, codec, snapshot, queries, execute, lease, readiness, retryOptions,
-    time: (value: string) => { now = value; }, method: (value: string) => { method = value; }, decline: () => { declined = true; }, unready: () => { ready = false; } };
-}
+const bind = (f: Renewal, enabled?: boolean, ambiguous?: Renewal, beforeQuery?: (sql: string) => Promise<void>) =>
+  bindSubscriptionJob(h.pool, f, enabled, ambiguous, beforeQuery);
 async function predecessor(f: Renewal, mode: string) {
   const cycle = randomUUID(), order = randomUUID(), shipment = randomUUID(), operation = randomUUID();
   await h.pool.query(`INSERT INTO public.subscription_renewal_operations(id,subscription_id,scheduled_at,cycle_number,identity_key,operation_fingerprint,cycle_snapshot,state,claim_token,claimed_by,claimed_at,lease_expires_at,terminal_outcome,terminal_at)
     VALUES($1,$2,'2026-08-04T12:00:00Z',1,public.subscription_renewal_identity($2,'2026-08-04T12:00:00Z'),$3,'{}','succeeded',$4,'fixture',$5,$5::timestamptz+interval '5 minutes','succeeded',$5)`, [operation, f.subscription, "a".repeat(64), randomUUID(), AT]);
   await h.pool.query("INSERT INTO public.subscription_cycles(id,subscription_id,scheduled_at,status,renewal_operation_id,renewal_operation_fingerprint) VALUES($1,$2,'2026-08-04T12:00:00Z','paid',$3,$4)", [cycle, f.subscription, operation, "a".repeat(64)]);
-  await transaction(async db => {
+  await transaction(h.pool, async db => {
     await db.query("INSERT INTO public.commerce_orders(id,client_id,subscription_cycle_id,status,currency_code,total_amount_minor) VALUES($1,$2,$3,'paid','XXX',200)", [order, f.client, cycle]);
     await db.query("INSERT INTO public.commerce_order_items(order_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor) VALUES($1,1,2,100,200)", [order]);
   });
