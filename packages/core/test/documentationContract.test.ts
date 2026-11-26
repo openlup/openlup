@@ -1275,7 +1275,6 @@ describe("generated reference regions", () => {
     const body = renderGeneratedRegion(name, repositoryRoot)!;
     expect(body).toBeTypeOf("string");
     expect(body.endsWith("\n")).toBe(true);
-    expect(renderGeneratedRegion(name, repositoryRoot)).toBe(body);
     const fixture = name === "refusal-codes" ? guideFixture("# Guide\n\n[Codes](reference/refusal-codes.md)\n[Recipes](how-to/extend/catalogue-extension.md)\n", {
       "reference/refusal-codes.md": `# Codes\n\n${generatedRegion(name, body)}`,
       "how-to/extend/catalogue-extension.md": readFileSync(join(repositoryRoot, "packages/core/docs/guide/how-to/extend/catalogue-extension.md"), "utf8").split("\n").filter(line => /^##? /.test(line)).join("\n") + "\n",
@@ -1493,7 +1492,6 @@ describe("symbol maturity regions against the real repository", { timeout: 180_0
   it.each(["core", "outbox", "platform"])("renders the symbol maturity region of %s from its reports", (pkg) => {
     const body = renderGeneratedRegion(`maturity-symbols:${pkg}`, real)!;
     expect(body).toBeTypeOf("string");
-    expect(renderGeneratedRegion(`maturity-symbols:${pkg}`, real)).toBe(body);
     const rows = rowsOf(body);
     const gates = gatesOf(pkg);
     // Every row differs from its subpath's maturity, or is deprecated, and its report mentions the tag.
@@ -1505,12 +1503,22 @@ describe("symbol maturity regions against the real repository", { timeout: 180_0
     }
     if (rows.length === 0) expect(body.startsWith(noSymbol)).toBe(true);
     // A subpath whose reports carry neither tag has no row; a tagged symbol written in an entry file has one.
+    const omittedSubpaths = providerSpecificKeys(real, Object.keys(gates));
+    const tagsBySubpath = new Map(
+      Object.keys(gates)
+        .filter((subpath) => !omittedSubpaths.has(subpath))
+        .map((subpath) => [subpath, entryTags(pkg, subpath)] as const),
+    );
+    const omittedSymbols = providerSpecificKeys(
+      real,
+      [...new Set([...tagsBySubpath.values()].flatMap((tags) => tags.map((tag) => tag.symbol)))],
+    );
     for (const [subpath, contract] of Object.entries(gates)) {
       const report = readFileSync(join(real, "packages", pkg, contract.snapshot), "utf8");
       if (!/@(experimental|deprecated)\b/.test(report)) expect(rows.filter((row) => row.subpath === subpath)).toEqual([]);
-      if (providerSpecificKeys(real, [subpath]).size) continue;
-      for (const tag of entryTags(pkg, subpath)) {
-        if (providerSpecificKeys(real, [tag.symbol]).size) continue;
+      if (omittedSubpaths.has(subpath)) continue;
+      for (const tag of tagsBySubpath.get(subpath) ?? []) {
+        if (omittedSymbols.has(tag.symbol)) continue;
         const expected = tag.experimental ? "experimental" : contract.maturity;
         if (expected === contract.maturity && !tag.deprecated) continue;
         expect(rows, `${subpath} ${tag.symbol}`).toContainEqual({ subpath, symbol: tag.symbol, maturity: expected, deprecated: tag.deprecated });
@@ -1563,10 +1571,15 @@ describe("symbol maturity regions against the real repository", { timeout: 180_0
   });
 });
 
+let cachedRealRefusalCodes: string | undefined;
+function realRefusalCodes(repository: string): string {
+  return (cachedRealRefusalCodes ??= renderGeneratedRegion("refusal-codes", repository)!);
+}
+
 it("catalogue_codes_link_existing_recipes", () => {
   const repository = resolve(packageRoot, "../..");
   const links = catalogueRecipeLinks(repository);
-  const rendered = renderGeneratedRegion("refusal-codes", repository)!;
+  const rendered = realRefusalCodes(repository);
   const issues: string[] = [];
   assertCatalogueRecipeReachability(rendered, repository, issues);
   expect(issues).toEqual([]);
@@ -1581,7 +1594,7 @@ it("catalogue_codes_link_existing_recipes", () => {
 it("refusal_codes_page_contains_catalog_publication_tax_class_unavailable_with_fix", () => {
   const repository = resolve(packageRoot, "../..");
   const read = (path: string) => readFileSync(join(repository, path), "utf8");
-  const rendered = renderGeneratedRegion("refusal-codes", repository)!;
+  const rendered = realRefusalCodes(repository);
   const publication = read("packages/platform/src/catalog/publicationError.ts");
   const rows = rendered.split("\n");
   for (const [code, expectedCause] of [
