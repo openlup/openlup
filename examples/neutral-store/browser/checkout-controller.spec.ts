@@ -254,6 +254,45 @@ test('checkout controller: changed details after the payment-status page showed 
   expect(sent).toHaveLength(1);
 });
 
+test('checkout controller: the payment-status page reading an earlier order sets no state for a newer purchase', async ({ page }) => {
+  const email = buyer('other-order');
+  await openCheckout(page);
+  await details(page, email);
+  const sent = creates(page);
+  const first = await placed(page);
+  // The earlier order is paid on the payment-status page, which ends its purchase; its reload convenience stays.
+  await page.locator('main').getByRole('link', { name: t.completion, exact: true }).click();
+  await page.getByRole('button', { name: t.simulatePaid, exact: true }).click();
+  await expect(page.locator('main')).toContainText(t.recoveryPaid);
+  await expect.poll(() => record(page)).toBeNull();
+  // A newer purchase whose create is lost before the host: its record names no order.
+  await openCheckout(page);
+  await details(page, email);
+  let newer: string | undefined;
+  await page.route('**/api/actions/checkout.create', async route => {
+    newer ??= keyOf(route.request());
+    if (keyOf(route.request()) === newer) return route.abort();
+    return route.continue();
+  });
+  await placeOrder(page).click();
+  await expect(panel(page)).toBeVisible();
+  await expect(placeOrder(page)).toBeEnabled();
+  expect(await record(page)).not.toHaveProperty('orderRef');
+  // The payment-status page reads the earlier, paid order through the reload convenience.
+  await page.goto(routes.completion[locale]);
+  await expect(page.locator('main')).toContainText(t.recoveryPaid);
+  await expect(page.locator('main')).toContainText(first);
+  await openCheckout(page);
+  await details(page, email, '7 Newer Lane');
+  await placeOrder(page).click();
+  await expect(output(page)).toContainText(managed('changedUnconfirmed'));
+  await expect(page.locator('main')).not.toContainText(managed('starter_checkout_paid'));
+  await expect(choice(page, 'abandon')).toBeVisible();
+  await expect(choice(page, 'different')).toBeVisible();
+  expect((await record(page)).id).toBe(newer);
+  expect(sent.filter(request => keyOf(request) !== newer)).toHaveLength(1);
+});
+
 test('checkout controller: starting over on a fulfilled order shows it paid, clears the record, and places one new order', async ({ page }) => {
   const email = buyer('fulfilled');
   await openCheckout(page);

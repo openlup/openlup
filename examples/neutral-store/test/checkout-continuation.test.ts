@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { StatusReading } from '@openlup/platform/storefront';
-import { changedDetailsView, continuationView, orderStateOf, type ContinuationView } from '../client/pages/checkout.ts';
+import { changedDetailsView, continuationView, orderStateFor, orderStateOf, type ContinuationView } from '../client/pages/checkout.ts';
 import { continuationMessage } from '../client/purchase.ts';
 import { market } from '../owned/market.config.ts';
 import type { ActionResult } from '../shared/api.ts';
@@ -107,6 +107,24 @@ test('each answer naming the order sets the known order state', () => {
     // A refusal names the state of the order under the key; a value names its order too.
     if (state !== null) assert.equal(orderStateOf(result)?.orderRef, result.ok ? orderA : undefined, name);
   }
+});
+
+// An answer that names an order sets the state only for a record that names the same order; an answer that names no
+// order (a refusal of the record's own command) sets it for the record.
+test('the known order state is set only for the order the record names', () => {
+  const orderB = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  const paidA = value({ originalOrderRef: orderA, terminalStatus: 'paid' });
+  const expiredA = value({ orderRef: orderA, status: 'expired' });
+  const rows: Array<[string, { orderRef?: string }, ActionResult, string | null]> = [
+    ['same order', { orderRef: orderA }, paidA, 'starter_checkout_paid'],
+    ['same order, read', { orderRef: orderA }, expiredA, 'starter_checkout_not_payable'],
+    ['another order', { orderRef: orderB }, paidA, null],
+    ['record without an order', {}, paidA, null],
+    ['record without an order, read', {}, expiredA, null],
+    ['refusal of the record\'s own command, record without an order', {}, refused('starter_checkout_not_payable'), 'starter_checkout_not_payable'],
+    ['refusal, record with an order', { orderRef: orderB }, refused('starter_checkout_changed'), 'payable'],
+  ];
+  for (const [name, record, answer, state] of rows) assert.equal(orderStateFor(record, answer), state, name);
 });
 
 // Changed details name what is known about the recorded order: unpaid only when it is known payable.
