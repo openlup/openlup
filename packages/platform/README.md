@@ -4043,8 +4043,9 @@ contracts follows in a later change.
   response, or `block`) and `settled({ quietMs })`, which resolves once every
   intercepted request, followed through its redirects, has finished and
   `quietMs` passed with no new request. An anchor is visible when its box is
-  non-zero, lies inside the scrollable area without a container the buyer
-  cannot scroll (`overflow: hidden` or `clip`) having to move, is not hidden,
+  non-zero, lies inside the scrollable area without a container or viewport
+  the buyer cannot scroll (`overflow: hidden` or `clip`, such as an app shell
+  or a body scroll lock) having to move, is not hidden,
   is not fully transparent, and part of it survives clipping by the overflow
   boxes of the ancestors in its containing-block chain (a fixed or absolute
   anchor escapes those outside it; the page's root scroller never clips) and

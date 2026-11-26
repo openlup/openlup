@@ -8,8 +8,9 @@
  *
  * - its box;
  * - `insideScrollArea`: the box lies inside the page's scrollable area, and
- *   bringing it into view did not need a container the buyer cannot scroll
- *   (`overflow: hidden` or `clip`) to move;
+ *   bringing it into view did not need a container or a viewport the buyer
+ *   cannot scroll (`overflow: hidden` or `clip`; the viewport's overflow is the
+ *   root element's, or body's while the root's is visible) to move;
  * - `hidden`: `display: none` or a `hidden` attribute up the tree, or an
  *   inherited `visibility` other than `visible`;
  * - `transparent`: the product of its and its ancestors' opacity is 0;
@@ -80,11 +81,16 @@ export function anchorVisibility(elements: readonly Element[], attributes: reado
     const windowScroll = { x: view.scrollX, y: view.scrollY };
     const saved = chain.map((node) => ({ node, left: node.scrollLeft, top: node.scrollTop }));
     element.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
-    // A container the buyer cannot scroll moved to reveal the anchor: the buyer could not do that.
-    const unreachable = saved.some(({ node, left, top }) => {
+    // A container or viewport the buyer cannot scroll moved to reveal the anchor: the buyer could not do that.
+    const locked = (overflow: string) => overflow === "hidden" || overflow === "clip";
+    // The viewport's overflow is the root element's, or body's while the root's is visible.
+    const viewportStyle = rootStyle.overflowX === "visible" && rootStyle.overflowY === "visible" && owner.body !== null
+      ? view.getComputedStyle(owner.body) : rootStyle;
+    const viewportLocked = (view.scrollY !== windowScroll.y && locked(viewportStyle.overflowY))
+      || (view.scrollX !== windowScroll.x && locked(viewportStyle.overflowX));
+    const unreachable = viewportLocked || saved.some(({ node, left, top }) => {
       if (isRootScroller(node)) return false;
       const style = view.getComputedStyle(node);
-      const locked = (overflow: string) => overflow === "hidden" || overflow === "clip";
       return (node.scrollTop !== top && locked(style.overflowY)) || (node.scrollLeft !== left && locked(style.overflowX));
     });
 
