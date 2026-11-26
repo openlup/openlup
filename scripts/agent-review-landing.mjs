@@ -292,10 +292,16 @@ function checkLandingSqlReference(runGenerators) {
   }
 }
 
+export function parseLandingCliOptions(argv = []) {
+  return {
+    reSlot: argv.includes('--re-slot'),
+    verify: !argv.includes('--no-verify'),
+  };
+}
+
 function runLandingCli() {
   const diagnostics = {};
-  const reSlot = process.argv.includes('--re-slot');
-  const verify = !process.argv.includes('--no-verify');
+  const { reSlot, verify } = parseLandingCliOptions(process.argv.slice(2));
   runLanding(process.cwd(), undefined, diagnostics, reSlot, verify).then(result => console.log(JSON.stringify(result))).catch(error => {
     console.error(diagnostics.aborted ?? error.message);
     process.exitCode = 1;

@@ -8,6 +8,7 @@ export const DEFAULT_QUEUE_TIMEOUT_SECONDS = 300;
 export const DEFAULT_EXECUTION_TIMEOUT_SECONDS = 900;
 
 const RESOURCE_PROFILE = /^[a-z][a-z0-9:-]{0,127}$/u;
+const RESOURCE_LANE = /^[a-z][a-z0-9-]{0,63}$/u;
 
 /** @param {string} candidate */
 export function isExecutableFile(candidate) {
@@ -78,6 +79,15 @@ export function resolveResourceGateInvocation({
 }) {
   if (typeof profile !== 'string' || !RESOURCE_PROFILE.test(profile)) {
     throw new Error('resource profile is invalid');
+  }
+  if (lane !== undefined && (typeof lane !== 'string' || !RESOURCE_LANE.test(lane))) {
+    throw new Error('resource lane is invalid');
+  }
+  if (queueTimeout != null && (!Number.isSafeInteger(queueTimeout) || queueTimeout <= 0)) {
+    throw new Error('resource queueTimeout must be a positive safe integer');
+  }
+  if (executionTimeout != null && (!Number.isSafeInteger(executionTimeout) || executionTimeout <= 0)) {
+    throw new Error('resource executionTimeout must be a positive safe integer');
   }
   if (!requireBroker && isResourceGateBypassed(env)) {
     return null;

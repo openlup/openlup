@@ -195,4 +195,47 @@ describe("resource-gate shared helper", () => {
       ).toThrow("resource profile is invalid");
     }
   });
+
+  it("refuses invalid lanes and non-positive or non-integer timeouts", () => {
+    const env = { PATH: "/custom/bin" };
+    const hit = () => true;
+
+    for (const invalidLane of ["", "--foo", "Docker-Heavy", "0lane", "bad_lane", "bad:lane", "a".repeat(65), 123 as unknown as string]) {
+      expect(() =>
+        resolveResourceGateInvocation({
+          cwd: "/tmp/wt-1",
+          profile: "openlup:build",
+          lane: invalidLane,
+          command: "stub",
+          env,
+          checkExecutable: hit,
+        }),
+      ).toThrow("resource lane is invalid");
+    }
+
+    const invalidTimeouts = [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1, "300" as unknown as number, "--foo" as unknown as number];
+    for (const invalidTimeout of invalidTimeouts) {
+      expect(() =>
+        resolveResourceGateInvocation({
+          cwd: "/tmp/wt-1",
+          profile: "openlup:build",
+          queueTimeout: invalidTimeout,
+          command: "stub",
+          env,
+          checkExecutable: hit,
+        }),
+      ).toThrow("resource queueTimeout must be a positive safe integer");
+
+      expect(() =>
+        resolveResourceGateInvocation({
+          cwd: "/tmp/wt-1",
+          profile: "openlup:build",
+          executionTimeout: invalidTimeout,
+          command: "stub",
+          env,
+          checkExecutable: hit,
+        }),
+      ).toThrow("resource executionTimeout must be a positive safe integer");
+    }
+  });
 });

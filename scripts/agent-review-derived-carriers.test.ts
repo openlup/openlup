@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { INVENTORY_PATH } from './agent-review-derived.mjs';
-import { landingMerge } from './agent-review-landing.mjs';
+import { landingMerge, parseLandingCliOptions } from './agent-review-landing.mjs';
 import { worktreeGateSuffix } from './resource-gate.mjs';
 import { localFixtureEnvironment } from './fixtures/landing-test-environment.ts';
 import {
@@ -520,3 +520,10 @@ it('preserves the merge commit without rolling back when post-commit verify fail
     f.restoreDerivedFixture();
   }
 }, 60000);
+
+it('parses landing CLI flags with verify enabled by default and --no-verify opt-out', () => {
+  expect(parseLandingCliOptions([])).toEqual({ reSlot: false, verify: true });
+  expect(parseLandingCliOptions(['--no-verify'])).toEqual({ reSlot: false, verify: false });
+  expect(parseLandingCliOptions(['--re-slot'])).toEqual({ reSlot: true, verify: true });
+  expect(parseLandingCliOptions(['--re-slot', '--no-verify'])).toEqual({ reSlot: true, verify: false });
+});
