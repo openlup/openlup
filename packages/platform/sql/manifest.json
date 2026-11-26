@@ -916,11 +916,15 @@
         "sha256": "871b648d426739e13c67478dafb4c3e99476b22d543eb7d91da6a782237cb89d"
       },
       {
-        "file": "db/platform/migrations/20261129130504_commerce_destination_v2_export_ownership.sql",
+        "file": "db/platform/migrations/20261129130504_catalog_price_publication_recorder_v2.sql",
+        "sha256": "bdec86e74f6015efdd7ab595e409647bb8adc923606ff80604bf8ca82c8277de"
+      },
+      {
+        "file": "db/platform/migrations/20261129130505_commerce_destination_v2_export_ownership.sql",
         "sha256": "452df0d2a5e3f18d6f0f80f5f332188d8f6f9f402abda88f0f3c788dba1807e6"
       }
     ],
-    "objectInventorySha256": "025097d9d7508e5dd4292671e0ef9b10675fa3e53aea398d12c801da99022eea",
+    "objectInventorySha256": "23d5ebc8f2823df91f149b56da225465398fcfc2d400d32d24a01dfcf676a2bb",
     "qualified": {
       "baseline": {
         "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1860,16 +1864,20 @@
           "sha256": "871b648d426739e13c67478dafb4c3e99476b22d543eb7d91da6a782237cb89d"
         },
         {
-          "file": "db/platform/migrations/20261129130504_commerce_destination_v2_export_ownership.sql",
+          "file": "db/platform/migrations/20261129130504_catalog_price_publication_recorder_v2.sql",
+          "sha256": "bdec86e74f6015efdd7ab595e409647bb8adc923606ff80604bf8ca82c8277de"
+        },
+        {
+          "file": "db/platform/migrations/20261129130505_commerce_destination_v2_export_ownership.sql",
           "sha256": "452df0d2a5e3f18d6f0f80f5f332188d8f6f9f402abda88f0f3c788dba1807e6"
         }
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "83e5e3699489c919996f6b1eaa327a1117817cb6ee9288e1237933b2eff0f02f"
+          "withRestore": "57dd6c019e7a158ef8941b11d010fd0af1b048cc1edb566cabffa12b94385dad"
         },
         "separateMigrator": {
-          "withRestore": "c90b43e179ab8c582ed61275d6484e78fd94b18402a32e301db96d8e41688f2b"
+          "withRestore": "9bbb1ba09e8dd5a1d1bd6e193da3a264dddc0956127b6fc74f11d6d58bff8874"
         }
       }
     },
@@ -2804,13 +2812,17 @@
           "sha256": "871b648d426739e13c67478dafb4c3e99476b22d543eb7d91da6a782237cb89d"
         },
         {
-          "file": "db/platform/migrations/20261129130504_commerce_destination_v2_export_ownership.sql",
+          "file": "db/platform/migrations/20261129130504_catalog_price_publication_recorder_v2.sql",
+          "sha256": "bdec86e74f6015efdd7ab595e409647bb8adc923606ff80604bf8ca82c8277de"
+        },
+        {
+          "file": "db/platform/migrations/20261129130505_commerce_destination_v2_export_ownership.sql",
           "sha256": "452df0d2a5e3f18d6f0f80f5f332188d8f6f9f402abda88f0f3c788dba1807e6"
         }
       ],
       "objectInventorySha256": {
-        "installerManaged": "3d530871c00b5cee3053e8285100fa27b1de3ffd1fcd5255f075743e93528695",
-        "operatorProvisioned": "0845227473fe7b42176bbb7a0d9b9b30deb8c0115b7c17835acb68a409cbeea0"
+        "installerManaged": "533fab76896662b52df6361c14048fe5e38a6d36fd702433057ab2532837c3fd",
+        "operatorProvisioned": "25bb0bab4d5fa008779da98668a71abf7df3ab70e9885348424193923f2005f6"
       }
     }
   },
@@ -3956,8 +3968,13 @@
       "sha256": "871b648d426739e13c67478dafb4c3e99476b22d543eb7d91da6a782237cb89d"
     },
     {
-      "file": "20261129130504_commerce_destination_v2_export_ownership.sql",
-      "source": "db/platform/migrations/20261129130504_commerce_destination_v2_export_ownership.sql",
+      "file": "20261129130504_catalog_price_publication_recorder_v2.sql",
+      "source": "db/platform/migrations/20261129130504_catalog_price_publication_recorder_v2.sql",
+      "sha256": "bdec86e74f6015efdd7ab595e409647bb8adc923606ff80604bf8ca82c8277de"
+    },
+    {
+      "file": "20261129130505_commerce_destination_v2_export_ownership.sql",
+      "source": "db/platform/migrations/20261129130505_commerce_destination_v2_export_ownership.sql",
       "sha256": "452df0d2a5e3f18d6f0f80f5f332188d8f6f9f402abda88f0f3c788dba1807e6"
     },
     {
