@@ -1206,6 +1206,12 @@ The existing `./catalog` entry supplies the opt-in PostgreSQL quote catalog
 reader described under [Catalog](#catalog); the quote engine consumes its
 existing `CommerceQuoteCatalogReadPort`.
 
+For an offer projection that builds several quotes, create one
+`memoizeCommerceQuoteCatalogReads` wrapper from `./pricing` per request and
+pass it to the projection and its quote ports. The wrapper shares the first
+catalog read and its outcome, including any rejection. Create a fresh wrapper
+for the next request to read the catalog authority again.
+
 `./pricing` provides the existing OpenLup strict commerce price authority,
 subscription-price-policy schemas, canonical digest and integer math, signed
 pricing-policy assignment tokens and safe refusal mapping. Hosts inject exact
