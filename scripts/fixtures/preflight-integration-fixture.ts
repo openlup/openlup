@@ -33,6 +33,7 @@ export function createPreflightIntegrationFixture() {
     directory = mkdtempSync(join(tmpdir(), "openlup-fast-preflight-"));
     root = join(directory, "fixture");
     execFileSync("git", ["clone", "--shared", "--no-hardlinks", "-q", source, root], { env, timeout: 30000 });
+    git("checkout", "-q", "--detach");
     for (const file of [
       "scripts/preflight.ts",
       "scripts/settings-candidate-guard.ts",
