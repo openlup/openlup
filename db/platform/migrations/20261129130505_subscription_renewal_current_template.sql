@@ -1,5 +1,3 @@
-ALTER TABLE public.subscription_renewal_operations ADD COLUMN claimed_before_rnw_1 boolean NOT NULL DEFAULT false;
-
 CREATE FUNCTION public.subscription_renewal_snapshot_is_billing(p_wire jsonb, p_has_build_evidence boolean)
 RETURNS boolean
 LANGUAGE sql STABLE SECURITY INVOKER
@@ -62,11 +60,29 @@ DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
   EXECUTE 'GRANT EXECUTE ON FUNCTION public.subscription_renewal_snapshot_is_billing(jsonb,boolean), public.subscription_renewal_snapshot_is_stale(integer,jsonb,integer) TO service_role;';
 END IF; END; $$;
 
--- Read the accepted version under the row lock shared with template edits.
--- Capture the whole historical cohort. Chargeability is evaluated at report time.
-UPDATE public.subscription_renewal_operations o
-   SET claimed_before_rnw_1 = true
-  FROM (
+-- Historical membership is private to the installation owner. The operation
+-- ID deliberately has no foreign key: capture only reads the operations table
+-- while verified provider intake may be updating it.
+CREATE TABLE public.subscription_renewal_upgrade_cohort (
+  renewal_operation_id uuid PRIMARY KEY
+);
+
+ALTER TABLE public.subscription_renewal_upgrade_cohort ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.subscription_renewal_upgrade_cohort FROM PUBLIC;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN
+  EXECUTE 'REVOKE ALL ON TABLE public.subscription_renewal_upgrade_cohort FROM anon;';
+END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN
+  EXECUTE 'REVOKE ALL ON TABLE public.subscription_renewal_upgrade_cohort FROM authenticated;';
+END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
+  EXECUTE 'REVOKE ALL ON TABLE public.subscription_renewal_upgrade_cohort FROM service_role;';
+END IF; END; $$;
+
+-- Lock billing candidates before evaluating staleness. A concurrent accepted
+-- edit can change the locked row's version while capture is waiting.
+INSERT INTO public.subscription_renewal_upgrade_cohort (renewal_operation_id)
+WITH locked_subscriptions AS MATERIALIZED (
   SELECT s.id, s.template_version
     FROM public.subscriptions s
    WHERE EXISTS (
@@ -76,11 +92,13 @@ UPDATE public.subscription_renewal_operations o
    )
    ORDER BY s.id
    FOR SHARE OF s
-) s
- WHERE s.id = o.subscription_id
-   AND (public.subscription_renewal_snapshot_is_stale(s.template_version, o.cycle_snapshot, NULL)
-     OR (NOT (o.cycle_snapshot ?| ARRAY['frozenRevision', 'templateSnapshot'])
-       AND public.subscription_renewal_snapshot_is_billing(o.cycle_snapshot, false)));
+)
+SELECT o.id
+  FROM public.subscription_renewal_operations o
+  JOIN locked_subscriptions s ON s.id = o.subscription_id
+ WHERE public.subscription_renewal_snapshot_is_stale(s.template_version, o.cycle_snapshot, NULL)
+    OR (NOT (o.cycle_snapshot ?| ARRAY['frozenRevision', 'templateSnapshot'])
+      AND public.subscription_renewal_snapshot_is_billing(o.cycle_snapshot, false));
 
 CREATE OR REPLACE FUNCTION public.subscription_claim_due_renewal(
   p_identity_key text,

@@ -6,6 +6,7 @@ export const subscriptionsDomain = {
     ],
     renewalCases: ["subscription_cycle_cases"],
     renewalPreparations: ["subscription_cycle_preparations"],
+    renewalUpgradeCohort: ["subscription_renewal_upgrade_cohort"],
     cancelFeedback: [
       "subscription_cancel_feedback",
     ],

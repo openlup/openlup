@@ -267,8 +267,8 @@ it("prepares a post-forward claim at its frozen amount after an accepted edit", 
   const claim = await d.input.store.claimDue({ snapshot, workerId: "first", leaseSeconds: 30, now });
   expect(claim.acquired).toBe(true);
   await resizeForRenewal(f);
-  expect((await runtime.query("SELECT claimed_before_rnw_1 FROM public.subscription_renewal_operations WHERE id=$1",
-    [claim.operationId])).rows).toEqual([{ claimed_before_rnw_1: false }]);
+  expect((await admin.query("SELECT renewal_operation_id FROM public.subscription_renewal_upgrade_cohort WHERE renewal_operation_id=$1",
+    [claim.operationId])).rows).toEqual([]);
   expect((await renewalUpgradeReport(admin)).some(row => row.operation_id === claim.operationId)).toBe(false);
 
   const result = await api.runOneAutomaticSubscriptionRenewal(d.input, d.due, days(now, 1 / 1440));
@@ -503,7 +503,7 @@ it("aligns a verified final replacement after a stale claim with only shadow evi
   const input = (parcelRef: string, deliveredAt: string) =>
     ({ requestKey: `arrival:${parcelRef}`, parcelRef, deliveredAt, evidenceRef: `evidence:${parcelRef}` as const });
   await arrival.recordArrival(input(original, days(deliveredAt, -1)));
-  expect(await due()).toBe(held.scheduledAt);
+  expect(await due()).toBe(new Date(held.scheduledAt).toISOString());
   expect(await cases()).toEqual(shadow);
   expect((await runtime.query("SELECT delivered_at FROM public.fulfillment_shipments WHERE id=$1", [replacement])).rows)
     .toEqual([{ delivered_at: null }]);
@@ -1494,8 +1494,8 @@ it("bills a fresh pre-forward claim exactly once at its frozen price after a lat
     expect(d.execute.mock.calls.map(([charge]) => charge.amountMinor)).toEqual([200]);
     const bill = (await d.input.store.readRenewal(operation.identityKey))!;
     expect(await renewalAmounts(db, bill.orderId!)).toEqual([{ order: 200, intent: 200 }]);
-    expect((await db.query("SELECT claimed_before_rnw_1 FROM public.subscription_renewal_operations WHERE id=$1",
-      [operation.operationId])).rows).toEqual([{ claimed_before_rnw_1: false }]);
+    expect((await target.owner.query("SELECT renewal_operation_id FROM public.subscription_renewal_upgrade_cohort WHERE renewal_operation_id=$1",
+      [operation.operationId])).rows).toEqual([]);
     expect(await renewalUpgradeReport(target.owner)).toEqual([]);
     const next = (await d.input.store.listDue(100, days(later, 30))).find(row => row.subscriptionId === f.subscriptionId)!;
     expect(await d.input.store.buildCycleSnapshots(next)).toMatchObject({
@@ -1522,11 +1522,12 @@ it("captures stale terminal history but excludes its settled graph from the repo
     expect(entry.d.execute.mock.calls.map(([request]) => request.amountMinor)).toEqual([200]);
     expect(await renewalAmounts(db, settled.orderId!)).toEqual([{ order: 200, intent: 200 }]);
     await applyForward();
-    expect((await db.query(`SELECT state,claimed_before_rnw_1,
+    expect((await target.owner.query(`SELECT state,
       public.subscription_renewal_snapshot_is_stale(s.template_version, o.cycle_snapshot, NULL) AS stale
       FROM public.subscription_renewal_operations o JOIN public.subscriptions s ON s.id=o.subscription_id
+      JOIN public.subscription_renewal_upgrade_cohort cohort ON cohort.renewal_operation_id=o.id
       WHERE o.id=$1`, [settled.operationId])).rows)
-      .toEqual([{ state: "succeeded", claimed_before_rnw_1: true, stale: true }]);
+      .toEqual([{ state: "succeeded", stale: true }]);
     expect(await renewalUpgradeReport(target.owner)).toEqual([]);
   });
 }, postgresSetupTimeoutMs);
@@ -1633,9 +1634,14 @@ it("lists the claimed, reserved, and unknown legacy cohort until reconciled", as
       expect(await generationAcl(owner, signature)).toEqual([{ owner: "postgres", definer: false, volatility: "s",
         config: ["search_path=pg_catalog, pg_temp"], acl: [["postgres", "EXECUTE", false], ["service_role", "EXECUTE", false]] }]);
     }
-    expect((await owner.query(`SELECT data_type,is_nullable,column_default FROM information_schema.columns
-      WHERE table_schema='public' AND table_name='subscription_renewal_operations' AND column_name='claimed_before_rnw_1'`)).rows)
-      .toEqual([{ data_type: "boolean", is_nullable: "NO", column_default: "false" }]);
+    expect((await owner.query(`SELECT data_type, is_nullable FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='subscription_renewal_upgrade_cohort' AND column_name='renewal_operation_id'`)).rows)
+      .toEqual([{ data_type: "uuid", is_nullable: "NO" }]);
+    expect((await owner.query(`SELECT contype FROM pg_constraint
+      WHERE conrelid='public.subscription_renewal_upgrade_cohort'::regclass AND contype IN ('p','f')`)).rows)
+      .toEqual([{ contype: "p" }]);
+    await expect(db.query("SELECT renewal_operation_id FROM public.subscription_renewal_upgrade_cohort"))
+      .rejects.toMatchObject({ code: "42501" });
     const before = await allPublicRows(owner);
     const rows = await renewalUpgradeReport(owner);
     expect(rows.map(row => row.operation_id)).toEqual([claim.operationId, reservation.operationId, legacyId].sort());
@@ -1649,8 +1655,8 @@ it("lists the claimed, reserved, and unknown legacy cohort until reconciled", as
     const takeover = JSON.parse((await db.query(rawClaim, claimWire(ordinary.d, ordinary.snapshot, undefined, later))).rows[0].result);
     expect(takeover).toMatchObject({ operationId: claim.operationId, acquired: true, claimGeneration: 2 });
     expect(await frozenOperation(db, claim.operationId)).toEqual(bytes);
-    expect((await db.query("SELECT claimed_before_rnw_1 FROM public.subscription_renewal_operations WHERE id=$1",
-      [claim.operationId])).rows).toEqual([{ claimed_before_rnw_1: true }]);
+    expect((await owner.query("SELECT renewal_operation_id FROM public.subscription_renewal_upgrade_cohort WHERE renewal_operation_id=$1",
+      [claim.operationId])).rows).toEqual([{ renewal_operation_id: claim.operationId }]);
     const packet = await captureStore(owner, "renewal-upgrade-source");
     await withRestoredStore(packet, async restored => {
       expect(await renewalUpgradeReport(restored.owner)).toEqual(await renewalUpgradeReport(owner));
@@ -1689,9 +1695,11 @@ it("captures an accepted edit that commits while the forward is waiting on its s
       const { rows: [{ pid }] } = await editor.query("SELECT pg_backend_pid() AS pid");
       forward = applyForward();
       void forward.catch(() => {});
-      await expect.poll(async () => (await owner.query(`SELECT pid FROM pg_stat_activity
-        WHERE $1 = ANY(pg_blocking_pids(pid)) AND query LIKE '%claimed_before_rnw_1%'`, [pid])).rowCount,
-        { timeout: 20_000 }).toBe(1);
+      await expect.poll(async () => (await owner.query(`SELECT EXISTS (
+        SELECT 1 FROM pg_stat_activity a JOIN pg_locks l ON l.pid = a.pid
+        WHERE a.datname = current_database() AND $1 = ANY(pg_blocking_pids(a.pid))
+          AND l.relation = 'public.subscriptions'::regclass AND l.mode = 'RowShareLock' AND l.granted
+      ) AS waiting`, [pid])).rows, { timeout: 20_000 }).toEqual([{ waiting: true }]);
       release.resolve();
       await edit;
       expect((await forward).applied).toEqual([expect.stringMatching(renewalTemplateForward)]);
@@ -1761,14 +1769,15 @@ it("lists captured and allocator-refused frozen stock waits through recovery and
 }, postgresSetupTimeoutMs);
 
 async function prepareWebhookRenewal(target: UpgradeTarget, outcome: "succeeded" | "failed" = "succeeded",
-  stage: "unbound" | "intent" | "dispatched" = "dispatched", provider = webhookProvider) {
-  const { db } = target, transact = upgradeTransaction(db);
+  stage: "unbound" | "intent" | "dispatched" = "dispatched", provider = webhookProvider,
+  withTransaction = upgradeTransaction(target.db)) {
+  const { db } = target;
   const entry = await prepareIncumbent(await upgradeRenewal(target, { providerBacked: provider }));
   const { f, d, op, prepared } = entry;
   const intentId = prepared.settlementIntentId, providerPaymentId = `pi_${op.operationId}`;
   const event = { provider, providerEventId: `evt_${op.operationId}`, providerPaymentRef: providerPaymentId,
     intentRef: intentId, providerOccurredAt: later, outcome, money: { amountMinor: 200, currency: "XXX" } };
-  const body = Buffer.from(JSON.stringify(event));
+  const deliveries = new Map<string, typeof event>();
   const sign = (raw: Uint8Array) => createHmac("sha256", "synthetic-renewal-signature").update(raw).digest("hex");
   const unexpected = async (): Promise<never> => { throw new Error("unexpected_provider_request"); };
   const execute = vi.fn<Parameters<typeof payments.createPostgresProviderPaymentRail>[0]["adapter"]["attemptPort"]["execute"]>(unexpected);
@@ -1784,16 +1793,15 @@ async function prepareWebhookRenewal(target: UpgradeTarget, outcome: "succeeded"
     attemptPort: { validateInput() {}, execute },
     readbackPort: { readPayment: unexpected },
     verifyPort: { async verifyAndNormalize({ rawBody, headers }) {
-      if (rawBody.length !== body.length || !body.equals(rawBody) || headers["x-fixture-signature"] !== sign(rawBody)) {
-        return { kind: "refusal", reason: "malformed" };
-      }
-      return { ...event, kind: "money", attemptRef: null, fingerprint: sign(rawBody), capturedAmountBasis: "provider_capture_v1",
-        ...(outcome === "failed" ? { refusal: { code: "soft_retryable", hints: [] } } : {}),
+      const delivery = deliveries.get(Buffer.from(rawBody).toString("utf8"));
+      if (!delivery || headers["x-fixture-signature"] !== sign(rawBody)) return { kind: "refusal", reason: "malformed" };
+      return { ...delivery, kind: "money", attemptRef: null, fingerprint: sign(rawBody), capturedAmountBasis: "provider_capture_v1",
+        ...(delivery.outcome === "failed" ? { refusal: { code: "soft_retryable", hints: [] } } : {}),
         providerAuditPayload: { livemode: false, captureTimeBasis: "signed_event_v1", providerAccountRef: "acct_fixture" } };
     } },
   };
   const truth = { dunningTemplateSlug: "failed", recoveryUrlPath: "/recover", recoveryTemplateSlug: "recovered" };
-  const bindingOptions = { enabled: true, channelKey: provider, executor: db, withTransaction: transact,
+  const bindingOptions = { enabled: true, channelKey: provider, executor: db, withTransaction,
     codec: d.codec, truth, settlement: (tx: Parameters<typeof settlement>[1]) => settlement(d.codec, tx),
     now: () => later, search: async () => [] };
   const rail = payments.createPostgresProviderPaymentRail({ executor: db, adapter, mode: "test", truth,
@@ -1817,20 +1825,81 @@ async function prepareWebhookRenewal(target: UpgradeTarget, outcome: "succeeded"
     externalAttemptRef: providerPaymentId, acknowledgedAt: now });
   }
   return { ...entry, id: op.operationId, methodRef: f.methodRef, execute, rail, preparation, paymentAttemptId, attachIntent,
-    retryPayments: bindingForWebhook.retryPayments,
+    retryPayments: bindingForWebhook.retryPayments, paymentRails: bindingForWebhook.paymentRails,
     recoverDunning: () => bindingForWebhook.lifecycle.failureHandoff.handoffFailure({
       idempotencyKey: `${op.identityKey}:handoff`, subscriptionId: f.subscriptionId, clientId: f.clientId,
       cycleId: prepared.cycleId, orderId: prepared.orderId, paymentIntentId: intentId, retryAttempt: 1,
       failureClass: "soft_retryable", failureReason: "declined", nextRetryAt: null, occurredAt: later,
       amountMinor: 200, currency: "XXX",
     }),
-    async deliver() {
-    expect(await rail.ingress.receive({ rawBody: body, headers: { "x-fixture-signature": sign(body) }, receivedAt: later }))
-      .toMatchObject({ status: 200 });
-    expect((await db.query("SELECT state FROM public.subscription_renewal_operations WHERE id=$1", [op.operationId])).rows)
-      .toEqual([{ state: outcome === "succeeded" ? "succeeded" : "refused" }]);
-  } };
+    async deliver(input: Partial<Pick<typeof event, "providerPaymentRef" | "providerOccurredAt" | "providerEventId" | "outcome">> = {}) {
+      const delivery = { ...event, ...input };
+      const payload = JSON.stringify(delivery);
+      deliveries.set(payload, delivery);
+      const body = Buffer.from(payload);
+      expect(await rail.ingress.receive({
+        rawBody: body, headers: { "x-fixture-signature": sign(body) }, receivedAt: delivery.providerOccurredAt,
+      })).toMatchObject({ status: 200 });
+      if (input.providerPaymentRef === undefined) {
+        expect((await db.query("SELECT state FROM public.subscription_renewal_operations WHERE id=$1", [op.operationId])).rows)
+          .toEqual([{ state: delivery.outcome === "succeeded" ? "succeeded" : "refused" }]);
+      }
+    },
+  };
 }
+
+it("lets verified provider intake finish while cohort capture only reads the operations table", async () => {
+  await withTemplateUpgrade(async target => {
+    const { owner, db, applyForward } = target;
+    const intake = await db.connect(), entered = signal(), release = signal();
+    let subscriptionId: string;
+    let delivery: Promise<void> | undefined, forward: ReturnType<typeof applyForward> | undefined;
+    try {
+      const entry = await prepareWebhookRenewal(target, "succeeded", "dispatched", webhookProvider, async work => {
+        await intake.query("BEGIN");
+        try {
+          await intake.query("SELECT id FROM public.subscriptions WHERE id=$1 FOR UPDATE", [subscriptionId]);
+          entered.resolve();
+          await release.promise;
+          const outcome = await work(intake);
+          await intake.query("COMMIT");
+          return outcome;
+        } catch (error) {
+          entered.reject(error);
+          await intake.query("ROLLBACK");
+          throw error;
+        }
+      });
+      subscriptionId = entry.f.subscriptionId;
+      const { rows: [{ pid }] } = await intake.query("SELECT pg_backend_pid() AS pid");
+      delivery = entry.deliver();
+      void delivery.catch(entered.reject);
+      await entered.promise;
+      forward = applyForward();
+      void forward.catch(() => {});
+      await expect.poll(async () => (await owner.query(`SELECT EXISTS (
+        SELECT 1 FROM pg_stat_activity a
+        WHERE a.datname = current_database() AND $1 = ANY(pg_blocking_pids(a.pid))
+          AND EXISTS (SELECT 1 FROM pg_locks l WHERE l.pid = a.pid AND l.granted
+            AND l.relation = 'public.subscription_renewal_operations'::regclass AND l.mode = 'AccessShareLock')
+          AND NOT EXISTS (SELECT 1 FROM pg_locks l WHERE l.pid = a.pid AND l.granted
+            AND l.relation = 'public.subscription_renewal_operations'::regclass AND l.mode <> 'AccessShareLock')
+      ) AS waiting_with_read_lock`, [pid])).rows, { timeout: 20_000 }).toEqual([{ waiting_with_read_lock: true }]);
+      release.resolve();
+      await delivery;
+      expect((await forward).applied).toEqual([expect.stringMatching(renewalTemplateForward)]);
+      expect((await owner.query(`SELECT o.state FROM public.subscription_renewal_operations o
+        JOIN public.subscription_renewal_upgrade_cohort cohort ON cohort.renewal_operation_id=o.id WHERE o.id=$1`,
+        [entry.id])).rows).toEqual([{ state: "succeeded" }]);
+      expect(await renewalUpgradeReport(owner)).toEqual([]);
+    } finally {
+      release.resolve();
+      await delivery?.catch(() => {});
+      await forward?.catch(() => {});
+      intake.release();
+    }
+  });
+}, postgresSetupTimeoutMs);
 
 async function interruptProviderHandoff(owner: Pool, deliver: () => Promise<unknown>) {
   const definition = (await owner.query(`SELECT pg_get_functiondef(
@@ -1870,10 +1939,8 @@ it("reports unpaid intents before provider attachment and takes one read-only cu
     expect((await replay()).rows).toEqual(originalReplay);
     const newOperation = await future.claim();
     await resizeForRenewal(future.f, upgradeTransaction(db));
-    const ledger = (await owner.query(`SELECT id,claimed_before_rnw_1 FROM public.subscription_renewal_operations WHERE id=ANY($1)
-      ORDER BY id`, [[fresh.op.operationId, tagged.operationId, newOperation.operationId]])).rows;
-    expect(ledger).toHaveLength(3);
-    expect(ledger.every(row => !row.claimed_before_rnw_1)).toBe(true);
+    expect((await owner.query("SELECT renewal_operation_id FROM public.subscription_renewal_upgrade_cohort WHERE renewal_operation_id=ANY($1)",
+      [[fresh.op.operationId, tagged.operationId, newOperation.operationId]])).rows).toEqual([]);
     const before = await allPublicRows(owner);
     const first = await renewalUpgradeReport(owner);
     expect(first.map(row => row.operation_id)).toEqual([unsent.id, beforeCut.id, afterCut.id].sort());
@@ -1901,6 +1968,25 @@ it("reports unpaid intents before provider attachment and takes one read-only cu
   });
 }, postgresSetupTimeoutMs);
 
+async function reopenAbsentAttempt(owner: Pool, entry: Awaited<ReturnType<typeof prepareWebhookRenewal>>, paymentAttemptId: string) {
+  // Fixture the age, then use PostgreSQL's current clock for the verified absence.
+  await owner.query(`UPDATE public.payment_provider_attempts
+    SET created_at=now()-interval '1 hour',updated_at=now()-interval '1 hour' WHERE id=$1`, [paymentAttemptId]);
+  const { settlementIntentId, cycleId } = entry.prepared;
+  await owner.query(`UPDATE public.payment_provider_states
+    SET created_at=now()-interval '1 hour',updated_at=now()-interval '1 hour' WHERE id=$1`, [settlementIntentId]);
+  const checkedAt = (await owner.query("SELECT now()::text AS t")).rows[0].t;
+  await entry.rail.reconciliation.recordEvidence({ idempotencyKey: `probe:${paymentAttemptId}`, provider: entry.rail.provider,
+    providerPaymentId: null, paymentIntentId: settlementIntentId, paymentAttemptId,
+    localStatus: "created", providerStatus: "prepared_without_provider_ack", correctionStatus: "observed",
+    checkedAt, payload: {} });
+  expect(await entry.rail.reconciliation.reopenPreparedAttemptAfterAbsence({ idempotencyKey: `reopen:${paymentAttemptId}`,
+    paymentAttemptId, expectedPaymentIntentId: settlementIntentId, expectedSubscriptionCycleId: cycleId,
+    operatorRef: "operator.fixture", absenceCheckedAt: checkedAt, nextRetryAt: checkedAt,
+    absenceEvidence: { providerAbsenceConfirmed: true },
+  })).toEqual({ replayed: false });
+}
+
 it("reports local provider preparation through verified absence and fresh preparation", async () => {
   await withTemplateUpgrade(async target => {
     const { owner, db, applyForward } = target;
@@ -1919,19 +2005,7 @@ it("reports local provider preparation through verified absence and fresh prepar
       payment_artifacts: [expect.objectContaining({ provider_attempt_id: saved.id,
         provider_attempt_state: "created", provider_has_remote_reference: false })],
     })]);
-    const checkedAt = (await owner.query("SELECT (now() + interval '1 day')::text AS t")).rows[0].t;
-    async function reopen(attemptId: string, suffix: string) {
-      await local.rail.reconciliation.recordEvidence({ idempotencyKey: `probe:${suffix}:${local.id}`, provider: local.rail.provider,
-        providerPaymentId: null, paymentIntentId: local.prepared.settlementIntentId, paymentAttemptId: attemptId,
-        localStatus: "created", providerStatus: "prepared_without_provider_ack", correctionStatus: "observed",
-        checkedAt, payload: {} });
-      expect(await local.rail.reconciliation.reopenPreparedAttemptAfterAbsence({ idempotencyKey: `reopen:${suffix}:${local.id}`,
-        paymentAttemptId: attemptId, expectedPaymentIntentId: local.prepared.settlementIntentId,
-        expectedSubscriptionCycleId: local.prepared.cycleId, operatorRef: "operator.fixture",
-        absenceCheckedAt: checkedAt, nextRetryAt: checkedAt, absenceEvidence: { providerAbsenceConfirmed: true },
-      })).toEqual({ replayed: false });
-    }
-    await reopen(saved.id, "first");
+    await reopenAbsentAttempt(owner, local, saved.id);
     expect(await renewalUpgradeReport(owner)).toEqual([reportRow(local.id, ["provider_attempt", "record_attempt"], {
       payment_artifacts: [expect.objectContaining({ provider_attempt_id: saved.id, provider_attempt_state: "cancelled" })],
     })]);
@@ -1939,25 +2013,23 @@ it("reports local provider preparation through verified absence and fresh prepar
       idempotencyKey: `fresh:${local.id}`, providerIdempotencyKey: `fresh-provider:${local.id}` });
     expect(next).toMatchObject({ replayed: false });
     expect(next.paymentAttemptId).not.toBe(saved.id);
-    await reopen(next.paymentAttemptId, "second");
+    await reopenAbsentAttempt(owner, local, next.paymentAttemptId);
     await closeUnsent(local, target);
     expect(await renewalUpgradeReport(owner)).toEqual([]);
   });
 }, postgresSetupTimeoutMs);
 
-it("reports independent recordAttempt even when settlement alone would omit the refused operation", async () => {
+it("reports independent recordAttempt for a refused renewal with no retry", async () => {
   await withTemplateUpgrade(async target => {
     const { owner, db, applyForward } = target;
     const entry = await prepareWebhookRenewal(target, "succeeded", "intent");
     await applyForward();
     await entry.d.input.settlement.recordTerminalOutcome({ operationId: entry.id, operationFingerprint: entry.op.operationFingerprint,
       outcome: "refused", eventKey: `locally-refused:${entry.id}`, reason: "verified_no_dispatch", occurredAt: later, externalRef: null });
-    // Model historical divergence between the settlement and provider owners.
-    await owner.query("UPDATE public.commerce_settlement_intents SET status='cancelled' WHERE id=$1", [entry.prepared.settlementIntentId]);
-    expect(await renewalUpgradeReport(owner)).toEqual([expect.objectContaining({
-      operation_id: entry.id, operation_state: "refused", reasons: ["record_attempt"],
-      payment_artifacts: [expect.objectContaining({ intent_state: "cancelled", retry_id: null })],
-    })]);
+    const unresolved = reportRow(entry.id, ["record_attempt"], {
+      operation_state: "refused", payment_artifacts: [expect.objectContaining({ retry_id: null })],
+    });
+    expect(await renewalUpgradeReport(owner)).toEqual([unresolved]);
     const record = { idempotencyKey: `record:${entry.id}`, paymentIntentId: entry.prepared.settlementIntentId, provider: webhookProvider,
       providerAttemptId: null, providerSessionId: null, attemptStatus: "blocked_preflight" as const, nextActionKind: null,
       requestPayload: {}, responsePayload: { providerCall: false } };
@@ -1966,10 +2038,92 @@ it("reports independent recordAttempt even when settlement alone would omit the 
     expect(await entry.rail.control.recordAttempt(record)).toEqual({ ...result, replayed: true });
     expect((await owner.query("SELECT count(*)::int AS n FROM public.outbox_events WHERE event_type='commerce.payment_attempt.requested' AND idempotency_key=$1",
       [record.idempotencyKey])).rows).toEqual([{ n: 1 }]);
-    expect(await renewalUpgradeReport(owner)).toEqual([reportRow(entry.id, ["record_attempt"])]);
+    expect(await renewalUpgradeReport(owner)).toEqual([unresolved]);
     // The OMS owner closes the open provider state on an unpaid order.
     await closeOrder(target, entry.prepared.orderId);
     expect(await renewalUpgradeReport(owner)).toEqual([]);
+  });
+}, postgresSetupTimeoutMs);
+
+it("reports an older provider attempt behind the active pointer until its verified closure", async () => {
+  await withTemplateUpgrade(async target => {
+    const { owner, db, applyForward } = target;
+    const profile = (await db.query("SELECT provider FROM public.payment_provider_profile(NULL) WHERE renewal_absence ORDER BY provider LIMIT 1")).rows[0];
+    const open = await prepareWebhookRenewal(target, "succeeded", "intent", String(profile.provider));
+    const settled = await prepareWebhookRenewal(target, "succeeded", "intent");
+    const older = await open.rail.control.prepareProviderAttempt(open.preparation);
+    const olderSettled = await settled.rail.control.prepareProviderAttempt(settled.preparation);
+    const record = (entry: typeof open, remote: string | null) => entry.rail.control.recordAttempt({
+      idempotencyKey: `newer-attempt:${entry.id}`, paymentIntentId: entry.prepared.settlementIntentId,
+      provider: entry.rail.provider, providerAttemptId: remote, providerSessionId: null,
+      attemptStatus: remote ? "processing" : "blocked_preflight", nextActionKind: null,
+      requestPayload: {}, responsePayload: { providerCall: remote !== null },
+    });
+    const newer = await record(open, null), remote = `pi_newer_${settled.id}`;
+    const newerSettled = await record(settled, remote);
+    await settled.d.input.settlement.acknowledgeExternalAttempt({ operationId: settled.id,
+      operationFingerprint: settled.op.operationFingerprint, externalAttemptRef: remote, acknowledgedAt: now });
+    await settled.deliver({ providerPaymentRef: remote });
+    await applyForward();
+    const expected = [
+      { entry: open, prior: older.paymentAttemptId, active: newer.id, paid: false },
+      { entry: settled, prior: olderSettled.paymentAttemptId, active: newerSettled.id, paid: true },
+    ].sort((a, b) => a.entry.id.localeCompare(b.entry.id));
+    expect(await renewalUpgradeReport(owner)).toEqual(expected.map(({ entry, prior, active, paid }) =>
+      reportRow(entry.id, ["provider_attempt"], {
+        ...(paid ? { operation_state: "succeeded", reasons: ["provider_attempt"] } : {}),
+        payment_artifacts: [expect.objectContaining({ provider_attempt_id: active,
+          unresolved_provider_attempts: [{ id: prior, status: "created", has_remote_reference: false }],
+        })],
+      })));
+
+    // The installed absence owner works on the active attempt. Stage that
+    // pointer in this disposable fixture and use the real verified-absence writer.
+    await owner.query("UPDATE public.payment_provider_states SET active_attempt_id=$2 WHERE id=$1",
+      [open.prepared.settlementIntentId, older.paymentAttemptId]);
+    await reopenAbsentAttempt(owner, open, older.paymentAttemptId);
+    await closeUnsent(open, target);
+    expect(await renewalUpgradeReport(owner)).toEqual([reportRow(settled.id, ["provider_attempt"])]);
+    // The earlier case proves the installed closure. Model the same terminal
+    // attempt fact on the already-paid graph to verify report selection there.
+    await owner.query("UPDATE public.payment_provider_attempts SET status='cancelled' WHERE id=$1", [olderSettled.paymentAttemptId]);
+    expect(await renewalUpgradeReport(owner)).toEqual([]);
+  });
+}, postgresSetupTimeoutMs);
+
+it("keeps the open provider state listed after actual native lifecycle cancellation", async () => {
+  await withTemplateUpgrade(async target => {
+    const { owner, db, applyForward } = target;
+    const entry = await prepareWebhookRenewal(target, "failed");
+    await applyForward();
+    await entry.deliver();
+    const store = api.createPostgresSubscriptionCommandStore({ withTransaction: upgradeTransaction(db) });
+    expect(await store.apply({ actorId: randomUUID(), clientId: entry.f.clientId, subscriptionId: entry.f.subscriptionId,
+      idempotencyKey: `cancel-native:${entry.id}`, action: "cancel", payload: {}, now: later }))
+      .toMatchObject({ status: "applied", subscriptionStatus: "cancelled" });
+    const unresolved = () => renewalUpgradeReport(owner);
+    const expected = expect.objectContaining({ operation_id: entry.id, reasons: ["provider_state_open_after_cancellation"],
+      operation_state: "refused", payment_artifacts: [expect.objectContaining({
+        order_state: "cancelled", intent_state: "cancelled", cycle_state: "cancelled",
+      })],
+    });
+    expect(await unresolved()).toEqual([expected]);
+    await expect(entry.rail.control.prepareProviderAttempt({ ...entry.preparation,
+      idempotencyKey: `prepare-cancelled:${entry.id}`, providerIdempotencyKey: `provider-cancelled:${entry.id}`,
+    })).rejects.toMatchObject({ code: "22023", message: "payment_control_provider_attempt_prepare_intent_not_retryable" });
+    const mounted = binding({ ...entry.d, input: { ...entry.d.input, paymentRails: entry.paymentRails } },
+      () => later, upgradeTransaction(db), db);
+    expect(await mounted.services.run()).toMatchObject({ renewals: [], retries: [] });
+    expect(entry.execute).not.toHaveBeenCalled();
+    expect(await unresolved()).toEqual([expected]);
+    const record = { idempotencyKey: `record-cancelled:${entry.id}`, paymentIntentId: entry.prepared.settlementIntentId,
+      provider: webhookProvider, providerAttemptId: null, providerSessionId: null, attemptStatus: "blocked_preflight" as const,
+      nextActionKind: null, requestPayload: {}, responsePayload: { providerCall: false } };
+    const saved = await entry.rail.control.recordAttempt(record);
+    expect(saved).toMatchObject({ replayed: false });
+    expect(await entry.rail.control.recordAttempt(record)).toEqual({ ...saved, replayed: true });
+    await closeOrder(target, entry.prepared.orderId);
+    expect(await unresolved()).toEqual([expected]);
   });
 }, postgresSetupTimeoutMs);
 
@@ -2033,17 +2187,18 @@ async function retryOutcome(entry: Awaited<ReturnType<typeof prepareWebhookRenew
   });
   if (remote) await finalize();
   return {
-    paymentAttemptId, at, finalize, async apply(status: "failed" | "succeeded") {
+    paymentAttemptId, at, finalize, async applyFailure() {
       const attempt = (await entry.rail.readAttempt(waiting.settlementIntentId, paymentAttemptId))!;
       return entry.rail.reconciliation.applyTerminalResult({
         idempotencyKey: `observed:${paymentAttemptId}`, expectedOrderId: waiting.orderId,
         expectedPaymentIntentId: waiting.settlementIntentId, expectedPaymentAttemptId: paymentAttemptId,
         expectedPaymentId: attempt.paymentAttempt.paymentId, provider: webhookProvider, providerPaymentId,
-        localStatus: "processing", providerStatus: status, resultStatus: status, occurredAt: at, checkedAt: at,
-        failureReason: status === "failed" ? "declined" : null,
-        ...(status === "failed" ? { failureClassification: { failureClass: "soft_retryable", decidedBy: "fixture" } } : {}), payload: {},
+        localStatus: "processing", providerStatus: "failed", resultStatus: "failed", occurredAt: at, checkedAt: at,
+        failureReason: "declined", failureClassification: { failureClass: "soft_retryable", decidedBy: "fixture" }, payload: {},
       });
     },
+    deliverCapture: () => entry.deliver({ providerPaymentRef: providerPaymentId, providerEventId: `capture:${paymentAttemptId}`,
+      providerOccurredAt: at, outcome: "succeeded" }),
   };
 }
 
@@ -2077,9 +2232,10 @@ it("reports receipt-only and both provider-prepared retries by the exact current
     await owner.query("UPDATE public.payment_provider_states SET active_attempt_id=$2 WHERE id=$1",
       [local.prepared.settlementIntentId, savedLocal.paymentAttemptId]);
     await savedLocal.finalize();
-    expect(await savedLocal.apply("failed")).toMatchObject({ correctionStatus: "corrected" });
+    expect(await savedLocal.applyFailure()).toMatchObject({ correctionStatus: "corrected" });
     await closeOrder(target, local.prepared.orderId);
-    expect(await savedRemote.apply("succeeded")).toMatchObject({ correctionStatus: "corrected" });
+    await savedRemote.deliverCapture();
+    expect(await store.read(remote.id)).toMatchObject({ state: "recovered" });
     expect(await renewalUpgradeReport(owner)).toEqual([]);
   });
 }, postgresSetupTimeoutMs);
@@ -2138,7 +2294,7 @@ it.each(["missing", "behind", "conflict"] as const)("reports a provider failure 
     } else {
       await entry.deliver();
       const retry = await retryOutcome(entry, db, true);
-      expect(await interruptProviderHandoff(owner, () => retry.apply("failed")))
+      expect(await interruptProviderHandoff(owner, () => retry.applyFailure()))
         .toMatchObject({ correctionStatus: "corrected", subscriptionWebhookDunning: { opened: false } });
       if (shape === "conflict") {
         // Advance the existing case through the native failure owner. Its original provider attribution remains.
@@ -2171,14 +2327,28 @@ it("reports a committed driver failure while separate case propagation is interr
     const entry = await upgradeRenewal(target, { scenario: "declined" });
     const root = await runPreForwardRenewal(entry), store = api.createPostgresRetryStore(db);
     const wait = (await store.read(root.operationId))!, retryAt = wait.nextRetryAt!;
-    const options = retryDriver(entry.d, "declined", retryAt, undefined, predecessorRetryTarget(db)).options;
-    const interrupted = api.createNativeRetryDriver({ ...options, withTransaction: work => transaction(async tx => work({
+    const retry = retryDriver(entry.d, "ambiguous", retryAt, undefined, predecessorRetryTarget(db));
+    expect(await retry.driver.run(retryAt, 1)).toEqual([{ operationId: root.operationId, status: "awaiting_provider" }]);
+    const sandbox = payments.createPostgresSandboxPaymentSimulator(db,
+      { dunningTemplateSlug: "failed", recoveryUrlPath: "/recover", recoveryTemplateSlug: "recovered" });
+    const attempt = (await sandbox.readAttempt({ settlementIntentId: wait.settlementIntentId }))!;
+    const observation = await sandbox.recordObservation({ attemptId: attempt.id, idempotencyKey: `failed:${attempt.id}`,
+      outcome: "refused", occurredAt: retryAt });
+    const failure = { attemptSequence: 1, logicalCycleNumber: wait.logicalCycleNumber, occurredAt: retryAt,
+      failureClass: "temporary", reason: "declined", externalRef: attempt.id,
+      evidenceKey: `sandbox:${observation.id}`, firstRecordedAt: retryAt };
+    const failureKey = `failure:${observation.id}`;
+    // A previously committed driver receipt can survive an interrupted case handoff.
+    expect(await store.applyFailure(root.operationId, failureKey, failure))
+      .toMatchObject({ state: "waiting", retryAttempt: 2 });
+    const interrupted = api.createNativeRetryDriver({ ...retry.options, withTransaction: work => transaction(async tx => work({
       query(sql, values) {
         if (sql.includes("subscription_retry_open_case")) throw new Error("case_propagation_interrupted");
         return tx.query(sql, values);
       },
     }), db) });
-    expect(await interrupted.run(retryAt, 1)).toEqual([{ operationId: root.operationId, status: "error" }]);
+    await expect(interrupted.propagateFailure(root.operationId, failureKey, failure)).rejects.toThrow("case_propagation_interrupted");
+    expect(await store.read(root.operationId)).toMatchObject({ state: "waiting", retryAttempt: 2 });
     await applyForward();
     expect(await renewalUpgradeReport(owner)).toEqual([reportRow(root.operationId, ["failure_handoff", "retry"], {
       payment_artifacts: [expect.objectContaining({ failure_handoff: "case_behind", case_rung: 1, retry_attempt: 2 })],

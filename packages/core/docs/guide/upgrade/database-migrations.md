@@ -102,11 +102,15 @@ throughout this procedure.
    closure for existing payment work. Preserve the original amount, fingerprint,
    and artifact IDs for money already dispatched. Use the payment recovery owner
    for retries and incomplete handoffs. An operator reopen or a completed handoff
-   can leave the item chargeable. Keep dispatch paused while an item remains unresolved.
-5. Repeat the report after reconciliation until it returns **zero rows immediately
-   before resuming dispatch**. Resume through the ordinary scheduler.
+   can leave the item chargeable. Keep dispatch paused until every item with a
+   reason other than `provider_state_open_after_cancellation` is resolved. Follow
+   the [known issue for cancelled renewals](#cancelled-renewals-with-open-provider-state)
+   for rows that list only that reason.
+5. Repeat the report after reconciliation. **Immediately before resuming
+   dispatch**, confirm that no row lists a reason other than
+   `provider_state_open_after_cancellation`. Resume through the ordinary scheduler.
 
-**Known limitation.** The final empty result describes its database snapshot.
+**Known limitation.** The final report describes its database snapshot.
 A provider observation or other owner transaction can commit between that snapshot
 and dispatch resumption. Changes in that interval fall outside the final cut.
 
@@ -125,9 +129,9 @@ SELECT pg_current_snapshot()::text AS cut_snapshot,
 WITH roots AS MATERIALIZED (
   SELECT o.*, s.status AS subscription_status, s.next_cycle_at,
          NOT (o.cycle_snapshot ?| ARRAY['frozenRevision', 'templateSnapshot']) AS unknown_provenance
-  FROM public.subscription_renewal_operations o
+  FROM public.subscription_renewal_upgrade_cohort cohort
+  JOIN public.subscription_renewal_operations o ON o.id = cohort.renewal_operation_id
   JOIN public.subscriptions s ON s.id = o.subscription_id
-  WHERE o.claimed_before_rnw_1
 ), financial AS (
   SELECT o.id, o.state, o.attempt_prepared_at, o.external_attempt_acknowledged_at,
          o.cycle_snapshot->>'settlementChannelKey' AS channel, i.channel_key AS intent_channel,
@@ -139,6 +143,7 @@ WITH roots AS MATERIALIZED (
          i.id AS intent_id, i.status AS intent_state, ps.status AS provider_state,
          pa.id AS provider_attempt_id, pa.status AS provider_attempt_state,
          COALESCE(pa.provider_attempt_id, pa.provider_session_id) IS NOT NULL AS provider_has_remote_reference,
+         open_attempts.unresolved_provider_attempts,
          sim.id AS simulator_attempt_id, sim.state AS simulator_attempt_state,
          COALESCE(exact_provider.id, exact_sim.id) AS retry_attempt_id,
          COALESCE(exact_provider.status, exact_sim.state) AS retry_attempt_state,
@@ -166,6 +171,13 @@ WITH roots AS MATERIALIZED (
   LEFT JOIN public.commerce_settlement_intents i ON i.order_id = ord.id
   LEFT JOIN public.payment_provider_states ps ON ps.id = i.id
   LEFT JOIN public.payment_provider_attempts pa ON pa.id = ps.active_attempt_id
+  LEFT JOIN LATERAL (
+    SELECT jsonb_agg(jsonb_build_object('id', a.id, 'status', a.status,
+      'has_remote_reference', COALESCE(a.provider_attempt_id, a.provider_session_id) IS NOT NULL)
+      ORDER BY a.id) AS unresolved_provider_attempts
+    FROM public.payment_provider_attempts a
+    WHERE a.settlement_intent_id = i.id AND a.status IN ('created','sent_to_provider','requires_action','processing')
+  ) open_attempts ON true
   LEFT JOIN public.payment_simulator_attempts sim ON sim.settlement_intent_id = i.id AND sim.is_active
   LEFT JOIN public.subscription_retry_receipts prep ON prep.obligation_id = r.id
     AND prep.kind = 'prepare' AND prep.attempt_sequence = r.attempt_sequence AND r.state = 'prepared'
@@ -219,9 +231,9 @@ WITH roots AS MATERIALIZED (
   CROSS JOIN LATERAL (VALUES
     ('prepared_first_charge', f.state = 'attempt_prepared' AND f.unsettled AND f.payable),
     ('unpaid_intent', f.intent_id IS NOT NULL AND f.unsettled AND f.payable),
-    ('provider_attempt', f.provider_open AND f.unsettled
-      AND (f.payable OR f.provider_attempt_state IN ('created','sent_to_provider','requires_action','processing'))),
-    ('record_attempt', f.provider_open),
+    ('provider_attempt', f.unresolved_provider_attempts IS NOT NULL OR (f.provider_open AND f.unsettled AND f.payable)),
+    ('record_attempt', f.provider_open AND f.intent_state <> 'cancelled'),
+    ('provider_state_open_after_cancellation', f.intent_state = 'cancelled' AND f.provider_open),
     ('sandbox_attempt', f.intent_channel = 'sandbox' AND f.payable
       AND f.intent_state <> 'settled'),
     ('sandbox_ack', f.channel = 'sandbox' AND f.state = 'attempt_prepared'
@@ -237,7 +249,8 @@ WITH roots AS MATERIALIZED (
 SELECT o.id AS operation_id, o.subscription_id, o.scheduled_at, o.state AS operation_state,
        o.subscription_status, o.next_cycle_at, o.terminal_reason,
        o.cycle_snapshot->'totalAmountMinor' AS frozen_amount_minor, o.cycle_snapshot->>'currency' AS currency,
-       CASE WHEN o.unknown_provenance THEN l.reasons || ARRAY['unknown_provenance'] ELSE l.reasons END AS reasons,
+       CASE WHEN o.unknown_provenance AND l.reasons <> ARRAY['provider_state_open_after_cancellation']
+         THEN l.reasons || ARRAY['unknown_provenance'] ELSE l.reasons END AS reasons,
        s.stock_wait_id,
        CASE WHEN s.recoverable_wait AND s.stock_wait_id IS NULL THEN 'uncaptured' ELSE s.stock_wait_state END AS stock_wait_state,
        s.reservation_id, s.reservation_state,
@@ -253,6 +266,16 @@ COMMIT;
 Retry attempt identifiers refer to the current prepare receipt. A remote-reference
 flag records presence. Use the payment owner's readback or closure procedure to
 resolve the attempt.
+
+### Cancelled renewals with open provider state
+
+Lifecycle cancellation can close the settlement intent, cycle, and order while
+leaving the provider state open. Automatic provider preparation refuses a fresh
+attempt against the cancelled intent. The exported `recordAttempt` operation can
+still record an attempt against the open provider state. Do not call
+`recordAttempt` for a renewal listed under `provider_state_open_after_cancellation`.
+Keep the operation ID in the restricted upgrade record so the payment owner can
+follow up. A later release refuses such attempts.
 
 ## Prepare the optional checkout owner
 
