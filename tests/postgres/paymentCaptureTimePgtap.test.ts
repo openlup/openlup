@@ -37,8 +37,12 @@ async function subject(owner: PoolClient) {
 }
 
 describe("capture-time forward replay", () => {
+  const slot = manifest.forward.findIndex(unit => unit.file.endsWith(migration));
+  const candidate = manifest.forward[slot];
+  if (!candidate) throw new Error("Capture-time forward missing from the platform migration manifest");
   let container: PostgresContainer | undefined, pool: Pool | undefined;
   beforeAll(async () => {
+    expect(manifest.forward[slot - 1]?.file).toMatch(/^db\/platform\/migrations\//u);
     container = await runManagedCompatPostgres({ name: `capture-time-pgtap-${process.pid}`, password: "synthetic-conformance" });
     const url = new URL(container.connectionString);
     url.username = "supabase_admin";
@@ -51,8 +55,7 @@ describe("capture-time forward replay", () => {
     url.pathname = "/capture_time_replay";
     pool = new Pool({ connectionString: url.toString() });
     await pool.query("CREATE SCHEMA extensions; CREATE EXTENSION pgtap WITH SCHEMA extensions");
-    const slot = manifest.forward.findIndex(unit => unit.file.endsWith(migration));
-    for (const unit of [manifest.baseline, ...manifest.forward.slice(0, slot === -1 ? undefined : slot)]) {
+    for (const unit of [manifest.baseline, ...manifest.forward.slice(0, slot)]) {
       const text = readFileSync(unit.file, "utf8");
       expect(sha256(text)).toBe(unit.sha256);
       await pool.query(text);
@@ -78,13 +81,9 @@ describe("capture-time forward replay", () => {
         WHERE p.pronamespace='public'::regnamespace AND p.oid<>coalesce(to_regprocedure($2),0)
         ORDER BY 1,2`, [scope, reader]).then(result => result.rows);
       const before = await grants();
-      expect(manifest.forward.at(-2)?.file).toMatch(/^db\/platform\/migrations\//u);
-      const candidate = manifest.forward.find(unit => unit.file.endsWith(migration));
-      expect(candidate, "capture-time forward is admitted").toBeDefined();
-      expect(manifest.forward.at(-1)).toEqual(candidate);
-      const path = candidate!.file;
+      const path = candidate.file;
       const sql = readFileSync(path, "utf8");
-      expect(sha256(sql)).toBe(candidate!.sha256);
+      expect(sha256(sql)).toBe(candidate.sha256);
       expect(readFileSync(path.replace("db/platform/migrations/", "packages/platform/sql/"), "utf8")).toBe(sql);
       await db.query(sql);
       expect(await grants()).toEqual(before);
