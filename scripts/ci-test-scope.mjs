@@ -147,12 +147,11 @@ const PENDING_POSTGRES_SUITE_CLOSURES = {
   'tests/postgres/catalogAdmissionOwnerWrite.test.ts': GOVERNED_DRAFT_SUITE_INPUTS,
   'tests/postgres/catalogAdmissionRuntimeCommit.test.ts': GOVERNED_DRAFT_SUITE_INPUTS,
   'tests/postgres/renewalOrderDestinationV2.test.ts': [
-    '@src',
+    'tests/postgres/renewalOrderDestinationV2.fixture.ts',
     'tests/postgres/customerAccountMutations.fixture.ts',
     'tests/postgres/destinationDocumentFixture.ts',
     'tests/postgres/destinationReceiptFixture.ts',
     'tests/postgres/orderMoneyV2Storage.fixture.ts',
-    'tests/postgres/renewalOrderDestinationV2.fixture.ts',
     'tests/postgres/subscriptionNativeFixture.ts',
   ],
 };
