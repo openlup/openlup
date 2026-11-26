@@ -352,7 +352,7 @@ describe('conservative tooling scope', () => {
       'tests/postgres/subscriptionPublicRenewal.test.ts',
     ];
     const scopedPgSuites = all.filter(test => test.startsWith('tests/postgres/'));
-    expect(scopedPgSuites.length).toBeGreaterThanOrEqual(261);
+    expect(scopedPgSuites.length).toBeGreaterThanOrEqual(272);
 
     // Unrelated docs exclude every scoped PostgreSQL suite.
     const docsExcluded = excludedToolingTests(['docs/platform/README.md']);
@@ -838,7 +838,7 @@ describe('PostgreSQL AST closure soundness', () => {
     };
 
     const pgEntries = Object.entries(TOOLING_INPUTS).filter(([test]) => test.startsWith('tests/postgres/'));
-    expect(pgEntries.length).toBeGreaterThanOrEqual(261);
+    expect(pgEntries.length).toBeGreaterThanOrEqual(272);
 
     const violations: string[] = [];
     for (const [testPath, declaredInputs] of pgEntries) {
