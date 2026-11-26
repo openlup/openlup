@@ -274,6 +274,8 @@ export {};
 ```ts
 export type { PageHandle, StorefrontAdapter, StorefrontObserver, StorefrontScenario } from "./contracts.js";
 export { createPageHandle } from "./pageHandle.js";
+export { runStorefrontScenario } from "./runner.js";
+export { storefrontScenarios } from "./scenarios.js";
 export { serializeStorefrontVerdict } from "./serialize.js";
 ```
 ## dist/storefront/testing/pageHandle.d.ts
@@ -357,6 +359,133 @@ export declare function createPageHandle(page: StructuralPage, options?: {
     readonly origin?: string;
 }): PageHandle;
 export {};
+```
+## dist/storefront/testing/runner.d.ts
+
+```ts
+import { type StorefrontProofFile, type StorefrontVerdict } from "../../lifecycle/index.js";
+import type { PageHandle, StorefrontAdapter, StorefrontObserver, StorefrontScenario } from "./contracts.js";
+type CommandMatcher = NonNullable<NonNullable<StorefrontAdapter["commands"]>["create"]>;
+/**
+ * Options of one scenario run. `page` is a `PageHandle` (from
+ * `createPageHandle`); `commands` are the host proof kit's create and read
+ * matchers and the command key header (default `idempotency-key`), each
+ * overridden by the adapter's. `width` is required for `browser_ui` and must
+ * equal `page.width()` when that is known. `clock.now()` returns integer epoch
+ * milliseconds; it times the steps and gives `completedAt`. `runId` matches
+ * `^[A-Za-z0-9-]{8,40}$`; the run subjects are
+ * `storefront-<runId>-clean@example.test` and `…-control@example.test`.
+ * `timeoutMs` (default 10,000) bounds each anchor wait; `quietMs` (default
+ * 3,000) is the quiet window that ends every step. An observer with
+ * `payableOrdersInDatabase` declares that its database is exclusive to this
+ * run; the harness must not share it.
+ */
+type StorefrontRunOptions = {
+    readonly scenario: string | StorefrontScenario;
+    readonly page: PageHandle;
+    readonly observer: StorefrontObserver;
+    readonly tier: StorefrontVerdict["tier"];
+    readonly profile: string;
+    readonly width?: number;
+    readonly channel?: StorefrontVerdict["channel"];
+    readonly commands?: {
+        readonly create?: CommandMatcher;
+        readonly read?: CommandMatcher;
+        readonly keyHeader?: string;
+    };
+    readonly proofFile?: StorefrontProofFile;
+    readonly adapter?: StorefrontAdapter;
+    readonly build: Omit<StorefrontVerdict["build"], "source"> & {
+        readonly source?: StorefrontVerdict["build"]["source"];
+    };
+    readonly harness: {
+        readonly runnerVersion: string;
+        readonly adapterDigest?: string;
+    };
+    readonly runId: string;
+    readonly clock: {
+        now(): number;
+    };
+    readonly timeoutMs?: number;
+    readonly quietMs?: number;
+};
+/**
+ * Runs one storefront scenario and resolves `{ kind: "verdict", verdict }`, a
+ * format-1 verdict that `parseStorefrontVerdict` accepts.
+ *
+ * The clean run reads the subject's ledger (an earlier order ends `not_run`),
+ * installs one interceptor that classifies requests by the create and read
+ * matchers, records each command's key reuse (key values are compared in
+ * memory, never stored) and applies the armed withhold or hold, then runs the
+ * steps. Every step ends only when the page has settled: every request the
+ * interceptor saw finished and `quietMs` passed with no new request. Then the
+ * runner reads the ledger, the visible anchors and the path. After the last
+ * step a settle window waits once more and reads them again. The control run
+ * repeats the steps under the other subject, blocking from the control's step
+ * every request of its commands; a `safety_only` scenario has none.
+ *
+ * Judgement, first failing group decides: 1 page, observer and arrangement
+ * worked; 2 no order before the arrangement and one after the first matched
+ * create; 3 the first order appeared in a step with a matched create and every
+ * withhold applied; 4 ledger safety in both runs and settle windows (payable
+ * orders, orders holding stock, attempts, captures; a paid state needs a
+ * capture and no payable order) and, for an exclusive database, no payable
+ * order outside the subjects; 5 the create budget kept (a run over it stopped
+ * before proving anything, but a violation it already caused stands); 6 each
+ * matcher used matched and each needed anchor resolved and was visible; 7 the
+ * clean run reached its expected state; 8 the control blocked a request and its
+ * negated state was not reached, judged over every recorded control step even
+ * when the control run stopped. Codes 1–3, 5 and 6 end `not_run`, a harness
+ * fault is never `failed` or `passed`; a ledger violation is `failed`; progress under the control is
+ * `vacuous`. Without a finding the result is `passed`, or `safety_only` for a
+ * scenario without a control.
+ *
+ * A scenario whose `requires.outcomes` names an outcome the run's outcome
+ * driver does not declare ends `not_run` with `tier_unreachable` before any page
+ * or observer call; this runner takes no outcome driver yet, so
+ * `harness.declaredOutcomes` is empty. Invalid options (an unknown scenario, a
+ * malformed `runId`, a missing or mismatched `width`, a clock outside integer
+ * milliseconds 0 to the end of the year 9999) reject with a `TypeError` starting
+ * `storefront_scenario_unknown` or `storefront_run_input_invalid`, and nothing
+ * is driven, as does a malformed scenario object. An arrangement that fails
+ * under the control is the control's effect: the remaining steps are skipped
+ * and the settle window still samples the page. Anchors and the ledger are
+ * sampled after each step settles and in the settle window, so a state shown
+ * only inside a step is not seen. A fault's text keeps its code and first
+ * sentence with every URL replaced. The clean and control runs share the page
+ * and its browser storage.
+ *
+ * @experimental
+ */
+export declare function runStorefrontScenario(options: StorefrontRunOptions): Promise<{
+    kind: "verdict";
+    verdict: StorefrontVerdict;
+}>;
+export {};
+```
+## dist/storefront/testing/scenarios.d.ts
+
+```ts
+import type { StorefrontScenario } from "./contracts.js";
+/**
+ * The storefront proof scenarios this runner knows, frozen. Scenario ids are
+ * read by stores and reports and are never renamed; a wrong scenario is
+ * superseded by a new id. `runStorefrontScenario` runs one of them by id.
+ *
+ * - `lost_response_reload`: the response to the first place-order request is
+ *   lost after the server received it; the buyer reloads and places the order
+ *   again. At most one payable order, one order holding stock and one capture;
+ *   progress is `awaiting_payment` offering `continue_payment`; the control
+ *   blocks status reads and creates from the reload on and must keep
+ *   `awaiting_payment` from being shown.
+ * - `duplicate_submit`: the buyer places the order twice before the first
+ *   request is answered. At most one payable order, one order holding stock,
+ *   one payment attempt and one capture; no progress is judged and there is no
+ *   control run, so a clean run ends `safety_only`.
+ *
+ * @experimental
+ */
+export declare const storefrontScenarios: readonly StorefrontScenario[];
 ```
 ## dist/storefront/testing/serialize.d.ts
 

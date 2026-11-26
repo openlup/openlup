@@ -658,6 +658,10 @@
       "class": "public-output"
     },
     {
+      "path": "config/ci-postgres-suite-closures.json",
+      "class": "public-output"
+    },
+    {
       "path": "config/ci-quarantine.json",
       "class": "public-output"
     },
@@ -1650,6 +1654,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/browser/storefront-anchors.spec.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/browser/subscription-api.spec.ts",
       "class": "public-output"
     },
@@ -2275,6 +2283,10 @@
     },
     {
       "path": "examples/neutral-store/test/catalogue-upgrade-fixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/checkout-anchors.test.ts",
       "class": "public-output"
     },
     {
@@ -8714,6 +8726,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/storefront/testing/findings.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/storefront/testing/index.ts",
       "class": "public-output"
     },
@@ -8722,7 +8738,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/storefront/testing/runner.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/testing/scenarios.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/storefront/testing/serialize.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/testing/utcInstant.ts",
       "class": "public-output"
     },
     {
@@ -11618,11 +11646,27 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/storefront/testing/runner.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/testing/scenarios.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/storefront/testing/serialize.test.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/test/storefront/testing/sourceScan.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/testing/storeDouble.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/testing/utcInstant.test.ts",
       "class": "public-output"
     },
     {
@@ -13722,6 +13766,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/resource-gate.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/resource-gate.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/retry-ladder-terminating-classes.test.ts",
       "class": "public-output"
     },
@@ -13743,6 +13795,14 @@
     },
     {
       "path": "scripts/run-cancellable-process-group.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/run-eslint.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/run-eslint.test.ts",
       "class": "public-output"
     },
     {
@@ -30606,7 +30666,19 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/catalogAdmissionOwnerWrite.fixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogAdmissionOwnerWrite.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/catalogAdmissionPrelock.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogAdmissionRuntimeCommit.test.ts",
       "class": "public-output"
     },
     {
@@ -32345,7 +32417,7 @@
     },
     {
       "name": "lint",
-      "command": "node scripts/ast-grep/check-filewide-ignore.mjs && ast-grep scan --error=no-suppress-all --error=unused-suppression && ast-grep test --skip-snapshot-tests && eslint --concurrency auto .",
+      "command": "node scripts/ast-grep/check-filewide-ignore.mjs && ast-grep scan --error=no-suppress-all --error=unused-suppression && ast-grep test --skip-snapshot-tests && node scripts/run-eslint.mjs .",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -32481,7 +32553,7 @@
     },
     {
       "path": "package.json",
-      "digest": "sha256-35edf4fd78acf8ec6636041b87b619d0e7a0fc7d8552ea5e4ac684427e5ac442"
+      "digest": "sha256-940b21b311fcc3de840233167b919602c75aa71ac582b879558bdd4ce0a97f51"
     },
     {
       "path": "packages/core/package.json",

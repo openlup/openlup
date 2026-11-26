@@ -317,6 +317,7 @@ describe("affected-tests", () => {
       "packages/core/docs/guide/how-to/run.md": "# guide\n",
       "config/openlup-publication-catalog.json": "{}\n",
       "config/vitest-shard-weights.json": "{}\n",
+      "config/ci-postgres-suite-closures.json": "{}\n",
       "config/ci-quarantine.json": "{}\n",
       "config/doc-routing.json": "{}\n",
       "supabase/migrations/20261123000000_init.sql": "-- sql\n",
@@ -328,6 +329,7 @@ describe("affected-tests", () => {
       "scripts/oss-published-tree-check.test.ts": "// exists\n",
       "scripts/platform-migration-manifest.test.ts": "// exists\n",
       "scripts/ci-vitest-shard.test.ts": "// exists\n",
+      "scripts/ci-test-scope.test.ts": "// exists\n",
       "scripts/ci-quarantine.test.ts": "// exists\n",
       "scripts/documentation-cli.test.ts": "// exists\n",
       "scripts/starter-browser-ci.test.ts": "// exists\n",
@@ -358,6 +360,12 @@ describe("affected-tests", () => {
       findAffectedTests({ changedFiles: ["config/vitest-shard-weights.json"], rootDir: dir }).affectedTests,
     ).toEqual([
       { path: "scripts/ci-vitest-shard.test.ts", reasons: ["contract-pin"] },
+    ]);
+
+    expect(
+      findAffectedTests({ changedFiles: ["config/ci-postgres-suite-closures.json"], rootDir: dir }).affectedTests,
+    ).toEqual([
+      { path: "scripts/ci-test-scope.test.ts", reasons: ["contract-pin"] },
     ]);
 
     expect(
@@ -513,6 +521,14 @@ describe("affected-tests", () => {
     });
     expect(catalogResult.affectedTests).toContainEqual({
       path: "scripts/oss-published-tree-check.test.ts",
+      reasons: ["contract-pin"],
+    });
+
+    const closuresResult = findAffectedTests({
+      changedFiles: ["config/ci-postgres-suite-closures.json"],
+    });
+    expect(closuresResult.affectedTests).toContainEqual({
+      path: "scripts/ci-test-scope.test.ts",
       reasons: ["contract-pin"],
     });
   });

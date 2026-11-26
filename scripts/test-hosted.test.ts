@@ -3,7 +3,7 @@ import { devNull } from "node:os";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { HOSTED_VITEST_WORKERS, hostedTestRun } from "./test-hosted.mjs";
+import { HOSTED_VITEST_WORKERS, hostedTestRun, resolveHostedPostgresGate } from "./test-hosted.mjs";
 
 const contributor = {
   PATH: "/usr/bin",
@@ -78,5 +78,31 @@ describe("hosted-parity test runs", () => {
     expect(run.args).toEqual(["test", "--", "a.test.ts", "b.test.ts", "--testNamePattern=keeps"]);
     expect(run.files).toEqual(["a.test.ts", "b.test.ts"]);
     expect(run.ignored).toEqual(["--coverage", "--coverage.enabled=true", "--coverage.reporter=text", "--coverage=true"]);
+  });
+
+  it("gates local tests/postgres runs through ai-resource-gate on supabase-db without mutating hostedTestRun", () => {
+    const run = hostedTestRun(["tests/postgres/example.test.ts"], contributor);
+    const gated = resolveHostedPostgresGate(
+      run,
+      { PATH: "/custom/bin" },
+      "/workspace/openlup",
+      (candidate) => candidate === "/custom/bin/ai-resource-gate",
+    );
+    expect(gated?.command).toBe("/custom/bin/ai-resource-gate");
+    expect(gated?.key).toMatch(/^openlup:postgres:wt\d+$/u);
+    expect(gated?.args.slice(0, 9)).toEqual([
+      "run", "--wait", "--lane", "supabase-db", "--queue-timeout", "600", "--execution-timeout", "1800", gated?.key,
+    ]);
+    expect(gated?.args.slice(9)).toEqual(["--", "npm", "test", "--", "tests/postgres/example.test.ts"]);
+  });
+
+  it("skips broker wrapping for non-postgres files, CI, nested gates, or opt-out", () => {
+    const nonPg = hostedTestRun(["scripts/example.test.ts"], contributor);
+    const pg = hostedTestRun(["tests/postgres/example.test.ts"], contributor);
+    const alwaysExe = () => true;
+    expect(resolveHostedPostgresGate(nonPg, { PATH: "/custom/bin" }, "/workspace", alwaysExe)).toBeNull();
+    expect(resolveHostedPostgresGate(pg, { PATH: "/custom/bin", CI: "true" }, "/workspace", alwaysExe)).toBeNull();
+    expect(resolveHostedPostgresGate(pg, { PATH: "/custom/bin", AI_RESOURCE_GATE_ACTIVE: "1" }, "/workspace", alwaysExe)).toBeNull();
+    expect(resolveHostedPostgresGate(pg, { PATH: "/custom/bin", OPENLUP_DISABLE_RESOURCE_GATE: "1" }, "/workspace", alwaysExe)).toBeNull();
   });
 });

@@ -279,6 +279,19 @@ export async function restoreConnectedNativeStore(input: {
   if (packet.observation.cluster === fresh.observation.cluster
     && packet.observation.database === fresh.observation.database) fail("invalid_input");
   const source = tables(packet), baseline = tables(fresh);
+  for (const capture of [source, baseline]) {
+    for (const table of ["commerce_orders", "outbox_events"] as const) {
+      const stamped = capture.get(table)!.rows.some(row => {
+        const { metadata } = JSON.parse(row) as { metadata?: { boundary?: unknown } | null };
+        return metadata !== null && typeof metadata === "object"
+          && (Object.hasOwn(metadata, "catalogAdmissionOwnerOrigin")
+            || (table === "outbox_events" && metadata.boundary === "catalog_admission_write_governed_draft"));
+      });
+      if (stamped) throw Object.assign(new PostgresTransferError("unsupported_table", table), {
+        remedy: "This version cannot restore stamped governed drafts. Keep the capture for a version that supports their restore.",
+      });
+    }
+  }
   try {
     requireDecodedPublication(decodePublicationPacket({
       publications: source.get("catalog_publications")!.rows, skuRevisions: source.get("catalog_sku_revisions")!.rows,

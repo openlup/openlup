@@ -41,7 +41,9 @@ describe('six real Git witnesses', () => {
     for (const resource of ['openlup:build', 'openlup:typecheck', 'openlup:coverage', 'openlup:pgtap', 'openlup:build']) {
       await verifyCandidateCommand({ cwd: f.cwd, session, command: 'stub', resource, env: { PATH: f.scratch }, run,
         snapshot: (cwd, base) => captureSessionCandidate(cwd, base, { env: {} }) });
-      const key = run.mock.calls.at(-1)![1][2];
+      const args = run.mock.calls.at(-1)![1];
+      expect(args.slice(0, 6)).toEqual(['run', '--wait', '--queue-timeout', '300', '--execution-timeout', '900']);
+      const key = args[6];
       expect(key.startsWith(`${resource}:wt`)).toBe(true);
       expect(key.slice(resource.length)).toMatch(/^:wt[0-9]+$/u); keys.push(key);
     }
@@ -49,7 +51,7 @@ describe('six real Git witnesses', () => {
     const other = await fixture('coverage-pgtap-build-e2e-'); const otherSession = await other.review();
     await verifyCandidateCommand({ cwd: other.cwd, session: otherSession, command: 'stub', resource: 'openlup:build',
       env: { PATH: f.scratch }, run, snapshot: (cwd, base) => captureSessionCandidate(cwd, base, { env: {} }) });
-    expect(run.mock.calls.at(-1)![1][2]).not.toBe(keys[0]);
+    expect(run.mock.calls.at(-1)![1][6]).not.toBe(keys[0]);
   });
   it('uses system Git and a fixed search path despite an injected git executable', async () => {
     const f = await fixture();
@@ -375,7 +377,7 @@ describe('six real Git witnesses', () => {
     const frozen = async () => candidate;
     const broker = join(f.scratch, 'ai-resource-gate'); await writeFile(broker, 'stub'); await chmod(broker, 0o700);
     await expect(verifyCandidateCommand({ cwd: f.cwd, session, command: 'stub', resource: 'openlup:coverage', env: { PATH: f.scratch }, run, snapshot: frozen })).resolves.toBe(0);
-    expect(run).toHaveBeenLastCalledWith(broker, ['run', '--wait', expect.stringMatching(/^openlup:coverage:wt[0-9]+$/u), '--', 'stub'], f.cwd, expect.any(Object));
+    expect(run).toHaveBeenLastCalledWith(broker, ['run', '--wait', '--queue-timeout', '300', '--execution-timeout', '900', expect.stringMatching(/^openlup:coverage:wt[0-9]+$/u), '--', 'stub'], f.cwd, expect.any(Object));
     const untouched = vi.fn();
     await expect(verifyCandidateCommand({ cwd: f.cwd, session, command: 'stub', env: {}, run: untouched, snapshot: async () => ({ ...candidate, clean: false }) })).rejects.toThrow('dirty');
     expect(untouched).not.toHaveBeenCalled();
