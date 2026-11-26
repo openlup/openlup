@@ -953,7 +953,7 @@ describe("the workflow stays in step with what it claims to run", () => {
     expect(admission).toContain("timeout-minutes: 15");
     expect(admission).not.toContain("Require six actual mechanical successes");
     expect(admission).toContain("id: toolchain");
-    expect(admission).toContain("run: node scripts/agent-review-queue.mjs probe-toolchain");
+    expect(admission).toContain('run: node scripts/agent-review-queue.mjs probe-toolchain || echo "needs_install=true" >> "$GITHUB_OUTPUT"');
     expect(admission).toContain("if: steps.toolchain.outputs.needs_install == 'true'");
     expect(admission).toContain("npm ci --ignore-scripts --prefer-offline --no-audit --no-fund");
     expect(admission).toContain("issues: read\n      contents: read\n      pull-requests: read");

@@ -652,7 +652,7 @@ jobs:
         id: toolchain
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/agent-review-queue.mjs probe-toolchain
+        run: node scripts/agent-review-queue.mjs probe-toolchain || echo "needs_install=true" >> "$GITHUB_OUTPUT"
       - name: Install trusted review toolchain
         if: steps.toolchain.outputs.needs_install == 'true'
         run: npm ci --ignore-scripts --prefer-offline --no-audit --no-fund
