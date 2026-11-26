@@ -1189,6 +1189,7 @@
       "packageSmokeEvidence": [
         "test/storefront/testing/exports.test.ts",
         "test/storefront/testing/pageHandle.test.ts",
+        "test/storefront/testing/postgresObserver.test.ts",
         "test/storefront/testing/runner.test.ts",
         "test/storefront/testing/scenarios.test.ts",
         "test/storefront/testing/serialize.test.ts",

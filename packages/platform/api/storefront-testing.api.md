@@ -52,7 +52,7 @@ type StorefrontRequestDecision = "pass" | "withhold" | "block";
  * - `budget.creates` is the number of create requests one run may send.
  * - `text` holds one sentence each on the stimulus, the safety rule, the
  *   progress and the control.
- * - Step, `noAttemptAfter`, `forbiddenStates.after` and `control.from` indices
+ * - Step, `noAttemptAfter` and `control.from` indices
  *   count from 0 within `steps`.
  *
  * @experimental
@@ -110,14 +110,28 @@ export type StorefrontScenario = {
         readonly maxHolds?: number;
         readonly maxAttempts?: number;
         readonly maxCaptures?: number;
-        /** No payment attempt after the step at this index. */
+        /** No payment attempt after the step at this index: every later ledger read shows the attempts read when that step ended. */
         readonly noAttemptAfter?: number;
-        /** Attempts never exceed declines plus one. */
+        /** Attempts never exceed the declines the outcome driver produced so far plus one. */
         readonly attemptsPerDecline?: boolean;
-        /** States that must not be shown after the step at index `after`. */
+        /**
+         * States that must not be shown, per run. `control`: forbidden in the control
+         * run from its first sample on: outcomes a page whose status reads are blocked
+         * cannot know (awaiting states stay allowed; the state the control negates is
+         * left to `vacuous_progress`). `clean.ruledOut`: forbidden in
+         * the clean run from its first sample on: outcomes the scenario rules out.
+         * `clean.afterShowing`: once the clean run has shown `state`, each of
+         * `regressions` (a pre-outcome state) is forbidden too.
+         */
         readonly forbiddenStates?: {
-            readonly after: number;
-            readonly states: readonly string[];
+            readonly control: readonly string[];
+            readonly clean: {
+                readonly ruledOut: readonly string[];
+                readonly afterShowing?: {
+                    readonly state: string;
+                    readonly regressions: readonly string[];
+                };
+            };
         };
     };
     readonly control: {
@@ -129,7 +143,7 @@ export type StorefrontScenario = {
         readonly from?: number;
         /** `omit_action`: the omitted action. */
         readonly action?: string;
-        /** Whether outcome steps after the control's start run (`kept`) or not (`skipped`). */
+        /** Whether outcome steps from the control's start run (`kept`, the default) or not (`skipped`); an `omit_action` control starts at the omitted action. */
         readonly outcomes?: "kept" | "skipped";
     };
 };
@@ -274,6 +288,7 @@ export {};
 ```ts
 export type { PageHandle, StorefrontAdapter, StorefrontObserver, StorefrontScenario } from "./contracts.js";
 export { createPageHandle } from "./pageHandle.js";
+export { createPostgresStorefrontObserver } from "./postgresObserver.js";
 export { runStorefrontScenario } from "./runner.js";
 export { storefrontScenarios } from "./scenarios.js";
 export { serializeStorefrontVerdict } from "./serialize.js";
@@ -360,6 +375,64 @@ export declare function createPageHandle(page: StructuralPage, options?: {
 }): PageHandle;
 export {};
 ```
+## dist/storefront/testing/postgresObserver.d.ts
+
+```ts
+import type { StorefrontObserver } from "./contracts.js";
+type Executor = {
+    query(text: string, values?: readonly unknown[]): Promise<{
+        readonly rows: readonly Record<string, unknown>[];
+    }>;
+};
+/**
+ * A storefront observer over the platform's own PostgreSQL tables, so a
+ * PostgreSQL-tier proof needs no store-written observer. `executor` is any
+ * object with `query(text, values)` resolving `{ rows }` over one database
+ * session, for example `asPostgresSqlExecutor(await pool.connect())` from
+ * `@openlup/platform/data`; this entry imports no database client.
+ *
+ * `ledger(subject)` finds the subject's orders through the client whose e-mail
+ * equals the subject case-insensitively: `orders` in any status;
+ * `payableOrders` in `pending_payment`; `holds` orders with at least one
+ * `held` stock reservation; `attempts` simulator attempts and provider attempts
+ * on their settlement intents, except provider attempts `blocked_preflight`
+ * (refused before reaching the provider; a `created` one counts); `captures`
+ * captured simulator attempts and succeeded provider attempts, one per
+ * capture. Each count is its own subquery, so no join multiplies another. The
+ * subject is the run's e-mail as given and must carry no surrounding
+ * whitespace; otherwise the read rejects `storefront_observer_input_invalid`.
+ *
+ * Every read is one statement in its own `BEGIN READ ONLY` transaction with
+ * `SET LOCAL row_security = off`, ended by `COMMIT`, or `ROLLBACK` after any
+ * failure, so call the observer outside a transaction. With row security off a
+ * role subject to a row-level security policy is refused by PostgreSQL instead
+ * of reading filtered rows; the observer rejects that as
+ * `storefront_observer_row_security`. The reading role therefore needs `SELECT`
+ * on `commerce_orders`, `clients`, `fulfillment_inventory_reservations`,
+ * `commerce_settlement_intents`, `payment_simulator_attempts` and
+ * `payment_provider_attempts` and must own those tables or have `BYPASSRLS`;
+ * the grants alone are not sufficient. A read that did not run in its own
+ * transaction (an executor over several sessions) rejects
+ * `storefront_observer_session_invalid`.
+ *
+ * With `exclusive: true` it adds `payableOrdersInDatabase()`, every payable
+ * order in the database. Set it only when the database is exclusive to one
+ * run: the runner then requires that the payable orders added in the database
+ * equal those added for the run's subjects. Each call is its own transaction,
+ * so `ledger` and `payableOrdersInDatabase` read separate snapshots.
+ *
+ * A count that is not a non-negative safe integer, or an answer that is not
+ * one row, rejects `storefront_observer_count_invalid`, never zero; any other
+ * executor rejection is passed through. A host whose records live elsewhere
+ * supplies its own observer.
+ *
+ * @experimental
+ */
+export declare function createPostgresStorefrontObserver(executor: Executor, options?: {
+    readonly exclusive?: boolean;
+}): StorefrontObserver;
+export {};
+```
 ## dist/storefront/testing/runner.d.ts
 
 ```ts
@@ -378,7 +451,10 @@ type CommandMatcher = NonNullable<NonNullable<StorefrontAdapter["commands"]>["cr
  * `timeoutMs` (default 10,000) bounds each anchor wait; `quietMs` (default
  * 3,000) is the quiet window that ends every step. An observer with
  * `payableOrdersInDatabase` declares that its database is exclusive to this
- * run; the harness must not share it.
+ * run; the harness must not share it. `outcomes` is the outcome driver:
+ * `capabilities` declares the outcome kinds it can produce, `produce` produces
+ * one for the run's subject. `stopAt` (`checkout.<state>` for a state the
+ * scenario expects) drives the clean run until that state is visible.
  */
 type StorefrontRunOptions = {
     readonly scenario: string | StorefrontScenario;
@@ -408,10 +484,27 @@ type StorefrontRunOptions = {
     };
     readonly timeoutMs?: number;
     readonly quietMs?: number;
+    readonly outcomes?: {
+        readonly capabilities: readonly string[];
+        produce(outcome: string, context: {
+            readonly subject: string;
+        }): Promise<void>;
+    };
+    readonly stopAt?: string;
+};
+/** A full run's verdict, or with `stopAt` the clean run's steps up to the state it stopped at. */
+type StorefrontRunResult = {
+    kind: "verdict";
+    verdict: StorefrontVerdict;
+} | {
+    kind: "stopped";
+    stoppedAt: string;
+    steps: StorefrontVerdict["steps"];
 };
 /**
  * Runs one storefront scenario and resolves `{ kind: "verdict", verdict }`, a
- * format-1 verdict that `parseStorefrontVerdict` accepts.
+ * format-1 verdict that `parseStorefrontVerdict` accepts, or with `stopAt`
+ * `{ kind: "stopped", stoppedAt, steps }`.
  *
  * The clean run reads the subject's ledger (an earlier order ends `not_run`),
  * installs one interceptor that classifies requests by the create and read
@@ -421,46 +514,80 @@ type StorefrontRunOptions = {
  * interceptor saw finished and `quietMs` passed with no new request. Then the
  * runner reads the ledger, the visible anchors and the path. After the last
  * step a settle window waits once more and reads them again. The control run
- * repeats the steps under the other subject, blocking from the control's step
- * every request of its commands; a `safety_only` scenario has none.
+ * repeats the steps under the other subject with the scenario's control: a
+ * `block_read` control blocks every request of its commands from its step; an
+ * `omit_action` control omits its action and, when the scenario says so, the
+ * outcomes after it; an `other_policy` control changes nothing and must not
+ * show the progress of the changed-payload policy the proof file does not
+ * declare. A `safety_only` scenario has no control run. When the UI performs
+ * the omitted action by itself, as the effective `autoProgress` declares,
+ * neither run performs it and the control becomes a `block_read` of status
+ * reads from the step before it, with the outcomes after it skipped; when the
+ * clean run still offers that action at the end of the following step and the
+ * next expected state is not shown, the declaration is wrong:
+ * `auto_progress_not_performed` (`not_run`).
  *
- * Judgement, first failing group decides: 1 page, observer and arrangement
- * worked; 2 no order before the arrangement and one after the first matched
- * create; 3 the first order appeared in a step with a matched create and every
- * withhold applied; 4 ledger safety in both runs and settle windows (payable
- * orders, orders holding stock, attempts, captures; a paid state needs a
- * capture and no payable order) and, for an exclusive database, no payable
- * order outside the subjects; 5 the create budget kept (a run over it stopped
- * before proving anything, but a violation it already caused stands); 6 each
- * matcher used matched and each needed anchor resolved and was visible; 7 the
- * clean run reached its expected state; 8 the control blocked a request and its
- * negated state was not reached, judged over every recorded control step even
- * when the control run stopped. Codes 1–3, 5 and 6 end `not_run`, a harness
- * fault is never `failed` or `passed`; a ledger violation is `failed`; progress under the control is
- * `vacuous`. Without a finding the result is `passed`, or `safety_only` for a
+ * Outcomes: an `outcome` step asks the `outcomes` driver for one outcome
+ * (`declined`, `pending`, `settled`, `settled_after_pending`,
+ * `activation_pending`). A scenario runs only when every outcome in its
+ * `requires.outcomes` is one this runner knows and the driver declares; else
+ * it ends `not_run` with `tier_unreachable` naming each missing outcome before
+ * any page, observer or driver call. Tier names do not decide admission.
+ * Every capability must be a name; one the runner does not know is ignored.
+ * Each outcome has a ledger effect, compared with the ledger at the end of the
+ * previous outcome step (zero before the first): every outcome but
+ * `settled_after_pending` acts on a new attempt (more attempts), a settling
+ * outcome (`settled`, `settled_after_pending`, `activation_pending`) adds a
+ * capture, and `declined` or `pending` adds none. A rejected `produce`, or an
+ * outcome whose effect the ledger does not show, is `outcome_failed` and stops
+ * the run.
+ *
+ * Judgement, first failing group decides: 0 admitted; 1 page, observer,
+ * arrangement and outcome driver worked; 2 no order before the arrangement and
+ * one after the first matched create; 3 the first order appeared in a step with
+ * a matched create, every withhold applied, every outcome shows its ledger
+ * effect and declared auto-progress was performed; 4 ledger safety in both
+ * runs and settle windows (payable orders, orders holding stock, attempts, captures, no attempt after its step, attempts per
+ * decline, forbidden states per run; a paid state needs a capture
+ * and no payable order) and, for an exclusive database, no payable order
+ * outside the subjects; 5 the create budget kept (a run over it stopped before
+ * proving anything, but a violation it already caused stands); 6 each matcher
+ * used matched and each needed anchor resolved and was visible; 7 the clean run
+ * reached its expected state (the other policy's state is `policy_mismatch`);
+ * 8 a `block_read` control blocked a request and the negated state was not
+ * reached, judged over every recorded control step even when the control run
+ * stopped; under an `omit_action` control a negated state reached after a
+ * status read is `auto_progress_undeclared`. Codes 0–3, 5 and 6 end `not_run`,
+ * as do `control_not_applied` and `auto_progress_undeclared`; a harness fault
+ * is never `failed` or `passed`; a ledger violation is
+ * `failed`; progress under the control is `vacuous`. Ledger harm a run proved
+ * before a fault or a stimulus check that ends `not_run` (in the clean run
+ * before one in the control run, or at or before its step in the same run)
+ * outranks it, so the result is
+ * `failed`. Without a finding the result is `passed`, or `safety_only` for a
  * scenario without a control.
  *
- * A scenario whose `requires.outcomes` names an outcome the run's outcome
- * driver does not declare ends `not_run` with `tier_unreachable` before any page
- * or observer call; this runner takes no outcome driver yet, so
- * `harness.declaredOutcomes` is empty. Invalid options (an unknown scenario, a
- * malformed `runId`, a missing or mismatched `width`, a clock outside integer
- * milliseconds 0 to the end of the year 9999) reject with a `TypeError` starting
+ * Invalid options (an unknown scenario, a malformed `runId`, a missing or
+ * mismatched `width`, a clock outside integer milliseconds 0 to the end of the
+ * year 9999, a malformed outcome driver or a capability that is not a name) reject with a `TypeError` starting
  * `storefront_scenario_unknown` or `storefront_run_input_invalid`, and nothing
- * is driven, as does a malformed scenario object. An arrangement that fails
- * under the control is the control's effect: the remaining steps are skipped
- * and the settle window still samples the page. Anchors and the ledger are
- * sampled after each step settles and in the settle window, so a state shown
- * only inside a step is not seen. A fault's text keeps its code and first
- * sentence with every URL replaced. The clean and control runs share the page
- * and its browser storage.
+ * is driven, as does a malformed scenario object; a `stopAt` that is not
+ * `checkout.<state>` for a state the scenario expects rejects
+ * `storefront_stop_state_unknown`. With `stopAt` the runner runs the clean
+ * steps until that state is visible, removes its interceptor and leaves the
+ * page there: no control run and no verdict; a state not reached rejects
+ * `storefront_stop_state_unreached` naming the last step, as does a scenario
+ * that is not admitted, before any call. An arrangement that
+ * fails under a control is the control's effect: the remaining steps are
+ * skipped and the settle window still samples the page. Anchors and the ledger
+ * are sampled after each step settles and in the settle window, so a state
+ * shown only inside a step is not seen. A fault's text keeps its code and
+ * first sentence with every URL replaced. The clean and control runs share the
+ * page and its browser storage.
  *
  * @experimental
  */
-export declare function runStorefrontScenario(options: StorefrontRunOptions): Promise<{
-    kind: "verdict";
-    verdict: StorefrontVerdict;
-}>;
+export declare function runStorefrontScenario(options: StorefrontRunOptions): Promise<StorefrontRunResult>;
 export {};
 ```
 ## dist/storefront/testing/scenarios.d.ts
@@ -482,6 +609,34 @@ import type { StorefrontScenario } from "./contracts.js";
  *   request is answered. At most one payable order, one order holding stock,
  *   one payment attempt and one capture; no progress is judged and there is no
  *   control run, so a clean run ends `safety_only`.
+ * - `lost_response_edited_payload`: as `lost_response_reload`, but the buyer
+ *   changes the first name before placing the order again. Progress follows the
+ *   proof file's `changedPayloadPolicy`: `update_in_place` shows
+ *   `awaiting_payment` offering `continue_payment`, `refuse_changed` (also when
+ *   absent or unknown) shows `details_changed` offering `continue_payment` and
+ *   `start_over`. The `other_policy` control runs the steps again and must not
+ *   show the other policy's progress.
+ * - `reload_pending_attempt`: a payment attempt left pending is reloaded, then
+ *   settled. No new payment attempt from the reload on and at most one capture;
+ *   progress is `paid`; the control blocks status reads and creates from the
+ *   reload on, keeps the outcomes and must keep `paid` from being shown (it may
+ *   still show `awaiting_authority`). Requires the `pending` and
+ *   `settled_after_pending` outcomes.
+ * - `decline_retry`: a declined payment is retried and settled. At most one
+ *   payable order, attempts never more than declines plus one, at most one
+ *   capture; progress is `paid`; the `omit_action` control omits
+ *   `retry_payment`, skips the outcomes after it and must keep `paid` from
+ *   being shown. Requires the `declined` and `settled` outcomes.
+ * - `paid_pending_activation`: a subscription's payment settles while its
+ *   activation stays pending. The clean run never shows `paid` or `declined`
+ *   and, once it showed `paid_pending_activation`, never `awaiting_payment`
+ *   again; the control run, whose status reads are blocked, never shows `paid`
+ *   or `declined` (awaiting states stay allowed, and showing the negated
+ *   `paid_pending_activation` is `vacuous_progress`); at most one capture;
+ *   progress
+ *   is `paid_pending_activation`; the control blocks status reads and creates
+ *   from the outcome on, keeps the outcomes and must keep that state from being
+ *   shown. Requires the `activation_pending` outcome.
  *
  * @experimental
  */

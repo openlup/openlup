@@ -9,7 +9,7 @@ import { env as processEnvironment } from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { isDeepStrictEqual, promisify } from 'node:util';
 import { git as ordinaryGit } from './agent-review-session.mjs';
-import { REGISTRY_PATHS, SHARD_WEIGHTS_PATH, registryUnion } from './agent-review-registry.mjs';
+import { PG_SUITE_CLOSURES_PATH, REGISTRY_PATHS, SHARD_WEIGHTS_PATH, registryUnion } from './agent-review-registry.mjs';
 import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryEnvelope, migrationRegistryUnion } from './agent-review-derived.mjs';
 import * as carrierGenerators from './agent-review-generators.mjs';
 import { DEFAULT_INCREMENTAL_PACKAGES, TSBUILDINFO_FILENAME } from './build-packages-incremental.mjs';
@@ -666,11 +666,18 @@ async function landMergedCheckout(cwd, { head, main, base, run, carrierEnv, diag
     refuseAuthoredConflicts(registryConflicts);
   }
   const readUnion = async path => registryUnion(path, await read(base, path), reslottedHead.get(path) ?? await read(head, path), await read(main, path));
-  // A refused shard-weights union stays an authored conflict: a branch edit of a base weight changes its timeout.
-  const weightsUnion = registryConflicts.includes(SHARD_WEIGHTS_PATH) ? await readUnion(SHARD_WEIGHTS_PATH).catch(error => {
-    if (!error.message.startsWith('registry: ')) throw error;
-    refuseAuthoredConflicts([SHARD_WEIGHTS_PATH]);
-  }) : undefined;
+  // A refused shard-weights or PostgreSQL-closures union stays an authored conflict.
+  const preUnioned = new Map();
+  const refusedRegistries = [];
+  for (const path of [SHARD_WEIGHTS_PATH, PG_SUITE_CLOSURES_PATH]) {
+    if (!registryConflicts.includes(path)) continue;
+    try { preUnioned.set(path, await readUnion(path)); }
+    catch (error) {
+      if (!error.message.startsWith('registry: ')) throw error;
+      refusedRegistries.push(path);
+    }
+  }
+  refuseAuthoredConflicts(refusedRegistries);
   const index = await trackedIndex(cwd);
   const legacyConflict = path => [...REGISTRY_PATHS, ...MIGRATION_REGISTRIES, INVENTORY_PATH].includes(path) ||
     (generatedCarrier(path) && !path.endsWith('.sql') && !/^packages\/[^/]+\/api\/[^/]+\.api\.md$/u.test(path));
@@ -713,7 +720,7 @@ async function landMergedCheckout(cwd, { head, main, base, run, carrierEnv, diag
   if (conflicts.includes(MATURITY_REFERENCE)) await guarded({}, () => checkLandingMaturityReference(runGenerators));
   for (const path of new Set([...registryConflicts, ...(reslotsCatalogue ? [PUBLICATION_CATALOGUE] : [])])) {
     writes.paths.add(path);
-    const contents = path === PUBLICATION_CATALOGUE ? catalogueUnion : path === SHARD_WEIGHTS_PATH ? weightsUnion : await readUnion(path);
+    const contents = path === PUBLICATION_CATALOGUE ? catalogueUnion : preUnioned.has(path) ? preUnioned.get(path) : await readUnion(path);
     await guarded({ files: [path], index: [path] }, async () => {
       writeFileSync(resolve(cwd, path), contents);
       await git(cwd, 'add', '--', path);

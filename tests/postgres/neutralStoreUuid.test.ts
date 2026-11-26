@@ -10,6 +10,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createPlatformPostgresMigrationRunner, qualifiedPostgresStartupOptions } from '@openlup/platform/migrations';
 import { configurations } from '../../examples/neutral-store/owned/store.config.ts';
 import { createPostgresFulfillmentStockSyncPort } from '@openlup/platform/fulfillment';
+import { asPostgresSqlExecutor } from '@openlup/platform/data';
+import { createPostgresStorefrontObserver } from '@openlup/platform/storefront/testing';
 import { applyDemoSeed, demonstrationMarker } from '../../examples/neutral-store/installation/install.ts';
 import type { ActionResult, Operation } from '../../examples/neutral-store/shared/api.ts';
 import { isRecord } from '../../examples/neutral-store/shared/offer.ts';
@@ -1295,6 +1297,89 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
         expect(await abandon(orders[index]!.key)).toMatchObject(abandoned);
       } else expect(answer).toMatchObject(abandoned);
       expect(await orderStatus(orders[index]!.orderRef)).toBe('cancelled');
+    }
+  }, 45_000);
+
+  it('the package storefront observer reports each subject ledger read-only', async () => {
+    await control(false, undefined, undefined, repeatLimits);
+    await owner!.query('TRUNCATE public.commerce_checkout_attempt_ledger');
+    const subjectA = `observer-a-${config.id}@example.test`;
+    const subjectB = `observer-b-${config.id}@example.test`;
+    const ledgerOf = (orders: number, payableOrders: number, holds: number, attempts: number, captures: number) =>
+      ({ orders, payableOrders, holds, attempts, captures });
+    const reader = await owner!.connect();
+    try {
+      const observer = createPostgresStorefrontObserver(asPostgresSqlExecutor(reader), { exclusive: true });
+      // The observer opens and ends its own READ ONLY transaction on this session, with row security off;
+      // afterwards the session is outside any transaction and its settings are back to their defaults.
+      const sessionAfter = async () => (await reader.query(
+        "SELECT current_setting('transaction_read_only') AS read_only, current_setting('row_security') AS row_security")).rows[0];
+      const observe = async () => {
+        const seen = { a: await observer.ledger(subjectA), upperA: await observer.ledger(subjectA.toUpperCase()),
+          b: await observer.ledger(subjectB), database: await observer.payableOrdersInDatabase!() };
+        expect(seen.upperA).toEqual(seen.a);
+        expect(await sessionAfter()).toEqual({ read_only: 'off', row_security: 'on' });
+        return seen;
+      };
+      const start = await observe();
+      expect([start.a, start.b]).toEqual([ledgerOf(0, 0, 0, 0, 0), ledgerOf(0, 0, 0, 0, 0)]);
+      // The exclusive-database rule: payable orders added in the database are exactly the subjects'.
+      const expectObserved = async (a: ReturnType<typeof ledgerOf>, b: ReturnType<typeof ledgerOf>) => {
+        const seen = await observe();
+        expect({ a: seen.a, b: seen.b }).toEqual({ a, b });
+        expect(seen.database - start.database).toBe(a.payableOrders + b.payableOrders);
+        return seen;
+      };
+      // (1) A one-line order abandoned by key: cancelled, its reservation released.
+      const abandoned = await guestOrder('observer-a');
+      expect(await abandon(abandoned.key)).toEqual({ ok: true, value: { abandoned: true, orderRef: abandoned.orderRef } });
+      await expectObserved(ledgerOf(1, 0, 0, 0, 0), ledgerOf(0, 0, 0, 0, 0));
+      // (2) A two-line order: one order holding stock, whatever its reservation lines.
+      const twoLines = checkout(subjectA);
+      twoLines.cart = { ...twoLines.cart, lines: config.offer.products.slice(0, 2).map(product => ({ sku: product.sku, quantity: 1 })) };
+      const quote = await review(twoLines);
+      const created = await call('checkout.create', { ...twoLines, expectedTotal: quote.expectedTotal });
+      if (!created.ok || !isRecord(created.value) || typeof created.value.token !== 'string') throw new Error('observer_two_line_order_required');
+      const order = { orderRef: String(created.value.orderRef), token: created.value.token };
+      expect(Number((await owner!.query(`SELECT count(*) AS n FROM public.fulfillment_inventory_reservation_lines l
+        JOIN public.fulfillment_inventory_reservations r ON r.id=l.reservation_id WHERE r.purchase_order_id=$1 AND r.status='held'`,
+      [order.orderRef])).rows[0].n)).toBe(2);
+      await expectObserved(ledgerOf(2, 1, 1, 0, 0), ledgerOf(0, 0, 0, 0, 0));
+      // (3) A refused attempt.
+      expect((await call('payment.simulate', { ...order, outcome: 'refused' })).ok).toBe(true);
+      await expectObserved(ledgerOf(2, 1, 1, 1, 0), ledgerOf(0, 0, 0, 0, 0));
+      // (4) A captured attempt; held reservations after capture are read independently.
+      expect((await call('payment.simulate', { ...order, outcome: 'captured' })).ok).toBe(true);
+      const holdsA = (await held(abandoned.orderRef) > 0 ? 1 : 0) + (await held(order.orderRef) > 0 ? 1 : 0);
+      await expectObserved(ledgerOf(2, 0, holdsA, 2, 1), ledgerOf(0, 0, 0, 0, 0));
+      // (5) B's one-line order with a provider attempt planted as a fixture bypass of the provider rail.
+      const orderB = await guestOrder('observer-b');
+      const { rows: [intent] } = await owner!.query(
+        'SELECT id, amount_minor, currency_code FROM public.commerce_settlement_intents WHERE order_id=$1', [orderB.orderRef]);
+      const { rows: [providerState] } = await owner!.query(
+        "INSERT INTO public.payment_provider_states(id, target_kind) VALUES ($1, 'one_time_order') RETURNING payment_id", [intent.id]);
+      await owner!.query(`INSERT INTO public.payment_provider_attempts(settlement_intent_id, payment_id, provider, idempotency_key,
+        status, amount_minor, currency) VALUES ($1, $2, 'fixture', 'fixture-observer-attempt', 'succeeded', $3, $4)`,
+      [intent.id, providerState.payment_id, intent.amount_minor, intent.currency_code]);
+      // A provider attempt refused in preflight never reached the provider and is not an attempt.
+      await owner!.query(`INSERT INTO public.payment_provider_attempts(settlement_intent_id, payment_id, provider, idempotency_key,
+        status, amount_minor, currency) VALUES ($1, $2, 'fixture', 'fixture-observer-preflight', 'blocked_preflight', $3, $4)`,
+      [intent.id, providerState.payment_id, intent.amount_minor, intent.currency_code]);
+      await expectObserved(ledgerOf(2, 0, holdsA, 2, 1), ledgerOf(1, 1, 1, 1, 1));
+      // (6) A role with only USAGE and SELECT on the six tables is subject to row-level security on
+      // public.clients and public.payment_provider_attempts: the observer refuses instead of reading zeros.
+      const restricted = `storefront_observer_reader_${config.id}`;
+      await owner!.query(`CREATE ROLE ${restricted} NOLOGIN NOSUPERUSER NOBYPASSRLS`);
+      await owner!.query(`GRANT USAGE ON SCHEMA public TO ${restricted}`);
+      await owner!.query(`GRANT SELECT ON public.commerce_orders, public.clients, public.fulfillment_inventory_reservations,
+        public.commerce_settlement_intents, public.payment_simulator_attempts, public.payment_provider_attempts TO ${restricted}`);
+      await reader.query(`SET ROLE ${restricted}`);
+      try {
+        await expect(observer.ledger(subjectB)).rejects.toThrow(/^storefront_observer_row_security: /);
+        expect(await sessionAfter()).toEqual({ read_only: 'off', row_security: 'on' });
+      } finally { await reader.query('RESET ROLE'); }
+    } finally {
+      reader.release();
     }
   }, 45_000);
 

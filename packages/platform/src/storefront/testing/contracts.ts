@@ -39,7 +39,7 @@ type StorefrontRequestDecision = "pass" | "withhold" | "block";
  * - `budget.creates` is the number of create requests one run may send.
  * - `text` holds one sentence each on the stimulus, the safety rule, the
  *   progress and the control.
- * - Step, `noAttemptAfter`, `forbiddenStates.after` and `control.from` indices
+ * - Step, `noAttemptAfter` and `control.from` indices
  *   count from 0 within `steps`.
  *
  * @experimental
@@ -71,12 +71,26 @@ export type StorefrontScenario = {
     readonly maxHolds?: number;
     readonly maxAttempts?: number;
     readonly maxCaptures?: number;
-    /** No payment attempt after the step at this index. */
+    /** No payment attempt after the step at this index: every later ledger read shows the attempts read when that step ended. */
     readonly noAttemptAfter?: number;
-    /** Attempts never exceed declines plus one. */
+    /** Attempts never exceed the declines the outcome driver produced so far plus one. */
     readonly attemptsPerDecline?: boolean;
-    /** States that must not be shown after the step at index `after`. */
-    readonly forbiddenStates?: { readonly after: number; readonly states: readonly string[] };
+    /**
+     * States that must not be shown, per run. `control`: forbidden in the control
+     * run from its first sample on: outcomes a page whose status reads are blocked
+     * cannot know (awaiting states stay allowed; the state the control negates is
+     * left to `vacuous_progress`). `clean.ruledOut`: forbidden in
+     * the clean run from its first sample on: outcomes the scenario rules out.
+     * `clean.afterShowing`: once the clean run has shown `state`, each of
+     * `regressions` (a pre-outcome state) is forbidden too.
+     */
+    readonly forbiddenStates?: {
+      readonly control: readonly string[];
+      readonly clean: {
+        readonly ruledOut: readonly string[];
+        readonly afterShowing?: { readonly state: string; readonly regressions: readonly string[] };
+      };
+    };
   };
   readonly control: {
     readonly kind: "none" | "block_read" | "omit_action" | "other_policy" | (string & {});
@@ -87,7 +101,7 @@ export type StorefrontScenario = {
     readonly from?: number;
     /** `omit_action`: the omitted action. */
     readonly action?: string;
-    /** Whether outcome steps after the control's start run (`kept`) or not (`skipped`). */
+    /** Whether outcome steps from the control's start run (`kept`, the default) or not (`skipped`); an `omit_action` control starts at the omitted action. */
     readonly outcomes?: "kept" | "skipped";
   };
 };

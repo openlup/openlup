@@ -102,7 +102,9 @@ test('one-time checkout retries a committed command after an unchecked submit', 
     let committedOrderRef: string | undefined;
     await page.route(createPath, async route => {
       sent.push({ body: route.request().postData()!, key: route.request().headers()['idempotency-key']! });
-      if (sent.length > 1) return route.continue();
+      // The page repeats a lost create once by itself; that repeat is lost before the host.
+      if (sent.length === 2) return route.abort();
+      if (sent.length > 2) return route.continue();
       const upstream = await route.fetch();
       const body = await upstream.json();
       if (body.ok) committedOrderRef = body.value.orderRef;
@@ -130,7 +132,8 @@ test('one-time checkout retries a committed command after an unchecked submit', 
     await expect(consent).not.toBeChecked();
     await submit.click();
     await expect(page.getByText(quoteCopy[locale].refresh)).toBeVisible();
-    expect(sent).toHaveLength(1);
+    expect(sent).toHaveLength(2);
+    expect(sent[1]).toEqual(sent[0]);
     expect(await orders()).toEqual(committed);
 
     await consent.check();
@@ -138,7 +141,7 @@ test('one-time checkout retries a committed command after an unchecked submit', 
     await submit.click();
     const { ok, replayed, value } = await (await retried).json();
     expect(await orders()).toEqual(committed);
-    expect(sent).toEqual([sent[0], sent[0]]);
+    expect(sent).toEqual([sent[0], sent[0], sent[0]]);
     expect({ ok, replayed, orderRef: value?.orderRef }).toEqual({ ok: true, replayed: true, orderRef: committedOrderRef });
   } finally {
     try { await reprice(price.unit_price_minor); }
@@ -206,10 +209,7 @@ for (const outcome of ['changed total', 'same total', 'stale refusal', 'uncertai
       await reprice(price.unit_price_minor + 137);
       await consent.check();
       await submit.click();
-      if (outcome === 'uncertain retry') {
-        await expect(form.getByText('starter_transport_unavailable')).toBeVisible();
-        await submit.click();
-      }
+      // After an uncertain retry's lost create, the page's automatic repeat is the held, refused attempt.
       expect(await response.promise).toEqual({ status: 409, body: priceChanged });
       expect(JSON.parse(sent[0]!.body).expectedTotal).toEqual(original);
       expect(await effects()).toEqual(before);

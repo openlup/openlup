@@ -175,6 +175,7 @@
     "browser/catalogue-products.spec.ts",
     "browser/checkout-expected-total.spec.ts",
     "browser/storefront-anchors.spec.ts",
+    "browser/checkout-controller.spec.ts",
     "test/checkout-anchors.test.ts",
     "client/quote-acceptance.ts",
     "host/quote-secret.ts",

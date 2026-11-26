@@ -7,6 +7,7 @@ import { delimiter, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { INVENTORY_PATH } from './agent-review-derived.mjs';
 import { landingMerge, parseLandingCliOptions } from './agent-review-landing.mjs';
+import { PG_SUITE_CLOSURES_PATH } from './agent-review-registry.mjs';
 import { worktreeGateSuffix } from './resource-gate.mjs';
 import { localFixtureEnvironment } from './fixtures/landing-test-environment.ts';
 import {
@@ -448,6 +449,37 @@ it('refuses an inventory-only landing with a mismatched installed dependency bef
     f.restoreDerivedFixture();
   }
 }, 30000);
+
+it('resolves a clean pg-suite-closures union during landingMerge while refusing divergent additions', async () => {
+  try {
+    f.checkout(f.base);
+    const original = JSON.parse(f.read(PG_SUITE_CLOSURES_PATH)) as { schemaVersion: number; suites: Record<string, string[]> };
+    const firstKey = Object.keys(original.suites)[0]!;
+    const branchKey = firstKey.replace(/\.test\.ts$/u, 'ZzzBranch.test.ts');
+    const mainKey = firstKey.replace(/\.test\.ts$/u, 'ZzzMain.test.ts');
+    const sorted = (suites: Record<string, string[]>) =>
+      Object.fromEntries(Object.entries(suites).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0));
+    const render = (suites: Record<string, string[]>) =>
+      `${JSON.stringify({ schemaVersion: original.schemaVersion, suites: sorted(suites) }, null, 2)}\n`;
+
+    f.write(PG_SUITE_CLOSURES_PATH, render({ ...original.suites, [branchKey]: ['@api'] }));
+    const left = f.commit();
+    f.checkout(f.base);
+    f.write(PG_SUITE_CLOSURES_PATH, render({ ...original.suites, [mainKey]: ['@starter'] }));
+    const right = f.commit();
+    f.setMain(right);
+    f.checkout(left);
+    const landed = await landingMerge(f.root, {
+      runCommand: (command, args) => {
+        if (args[0] === npmCli && args[1] === 'run' && args[2] === 'build') return;
+        f.fixtureCommand(command, args);
+      },
+    });
+    expect(landed.main).toBe(right);
+    expect(f.read(PG_SUITE_CLOSURES_PATH)).toBe(render({ ...original.suites, [branchKey]: ['@api'], [mainKey]: ['@starter'] }));
+    expect(f.status()).toBe('');
+  } finally { f.restoreDerivedFixture(); }
+}, 60000);
 
 it('runs post-commit build and typecheck after the merge commit when verify is enabled', async () => {
   try {
