@@ -1,4 +1,4 @@
-import { starterDiagnostic } from '../shared/refusals.ts';
+import { readStarterDiagnostic, starterDiagnostic } from '../shared/refusals.ts';
 import { CheckoutRecoveryScheduleChangeBlockedError, installCheckoutRecoveryReminderSchedule } from '@openlup/platform/commerce/server';
 import { FulfillmentStockReplayConflictError } from '@openlup/platform/fulfillment';
 import { installRenewalStockProtectionPolicy } from '@openlup/platform/inventory';
@@ -14,6 +14,7 @@ import { link, lstat, mkdir, mkdtemp, open, rm, writeFile } from 'node:fs/promis
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readQuoteAcceptanceKeyring } from '../host/quote-secret.ts';
+import { mountedRuntimeLine, runtimeMounted } from '../host/runtime-database.ts';
 import { demonstrationMarker, demonstrationMarkerQuery, isDemonstrationMarker } from '../host/demonstration-marker.ts';
 import type { buildDemoSeed } from '../owned/demo-seed.ts';
 import { buildRefusal, installationFailure, isInstallationRefusal, packBuildFilename, refusal, rulesRecheck, up } from './refusals.ts';
@@ -67,14 +68,38 @@ export async function provisionDemonstrationPublicationPassword(connection: Inst
     password = (await handle.readFile('utf8')).trim();
     if (!/^[a-f0-9]{64}$/u.test(password)) throw new Error('starter_catalogue_publication_password_invalid');
   } finally { await handle.close(); }
-  const salt = randomBytes(16);
+  await connection.query(`ALTER ROLE openlup_catalog_publication PASSWORD '${scramVerifier(password, randomBytes(16))}'`);
+  return password;
+}
+
+function scramVerifier(password: string, salt: Buffer) {
   const salted = pbkdf2Sync(password, salt, 4096, 32, 'sha256');
   const clientKey = createHmac('sha256', salted).update('Client Key').digest();
   const storedKey = createHash('sha256').update(clientKey).digest('base64');
   const serverKey = createHmac('sha256', salted).update('Server Key').digest('base64');
-  const verifier = `SCRAM-SHA-256$4096:${salt.toString('base64')}$${storedKey}:${serverKey}`;
-  await connection.query(`ALTER ROLE openlup_catalog_publication PASSWORD '${verifier}'`);
-  return password;
+  return `SCRAM-SHA-256$4096:${salt.toString('base64')}$${storedKey}:${serverKey}`;
+}
+
+async function provisionRuntimeVerifier(connection: InstallConnection, password: string) {
+  const { rows: [roles] } = await connection.query(`SELECT
+    (SELECT CASE WHEN length(rolpassword) = 133 THEN rolpassword END FROM pg_authid WHERE rolname = 'starter_runtime') AS verifier,
+    (SELECT rolpassword IS NOT NULL FROM pg_authid WHERE rolname = 'postgres') AS bootstrap_password`);
+  const current = typeof roles?.verifier === 'string' ? roles.verifier : '';
+  const salt = /^SCRAM-SHA-256\$4096:([A-Za-z0-9+/]{22}==)\$[A-Za-z0-9+/]{43}=:[A-Za-z0-9+/]{43}=$/u.exec(current)?.[1];
+  const matches = salt && scramVerifier(password, Buffer.from(salt, 'base64')) === current;
+  if (matches && !roles?.bootstrap_password) return;
+  await connection.query('BEGIN');
+  try {
+    await connection.query(`SET LOCAL lock_timeout = '2s'; SET LOCAL statement_timeout = '4s';
+      SET LOCAL log_statement = 'none'; SET LOCAL log_duration = off; SET LOCAL log_min_duration_statement = -1;
+      SET LOCAL log_min_duration_sample = -1; SET LOCAL log_transaction_sample_rate = 0; SET LOCAL log_min_error_statement = panic`);
+    if (!matches) await connection.query(`ALTER ROLE starter_runtime PASSWORD '${scramVerifier(password, randomBytes(16))}'`);
+    if (roles?.bootstrap_password) await connection.query('ALTER ROLE postgres PASSWORD NULL');
+    await connection.query('COMMIT');
+  } catch {
+    await connection.query('ROLLBACK').catch(() => {});
+    throw new Error('starter_installation_failed');
+  }
 }
 
 export interface DemonstrationInstallation {
@@ -271,7 +296,7 @@ export async function installDemonstration(config: StoreConfig, bootstrap: Insta
   assertConfig(config);
   let installation;
   try { installation = await bootstrap(config, progress); }
-  catch (error) { throw installationFailure(error); }
+  catch (error) { throw readStarterDiagnostic(error) ? error : installationFailure(error); }
   return withInstallationCleanup(
     () => applyDemoSeed(config, installation, bootstrap === bootstrapDemonstration ? readRules : undefined),
     () => installation.close());
@@ -482,6 +507,7 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
 
 /** Local demo only. Socket access is the install capability; the application never mounts it. */
 export async function bootstrapDemonstration(config: StoreConfig, progress: NodeJS.WritableStream = process.stdout): Promise<DemonstrationInstallation> {
+  const runtimePassword = runtimeMounted() ? mountedRuntimeLine().slice(0, -1) : undefined;
   const migrations = await import('@openlup/platform/migrations');
   if (typeof migrations.createPlatformPostgresMigrationRunner !== 'function')
     throw refusal('starter_installation_binding_required', 'installation/install.ts',
@@ -523,6 +549,7 @@ export async function bootstrapDemonstration(config: StoreConfig, progress: Node
     const applied = await runner.apply();
     const status = await runner.status();
     if (status.pending.length) throw new Error('starter_installation_incomplete');
+    if (runtimePassword) await provisionRuntimeVerifier(bootstrap, runtimePassword);
     await provisionDemonstrationPublicationPassword(bootstrap,
       fileURLToPath(new URL('../.context/catalogue-builds/.publication-password', import.meta.url)));
     progress.write(JSON.stringify({ migrations: status.applied.length, newlyApplied: applied.applied.length }) + '\n');

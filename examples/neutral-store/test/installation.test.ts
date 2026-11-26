@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { tmpdir } from 'node:os';
+import { env as processEnv } from 'node:process';
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { once } from 'node:events';
@@ -832,13 +833,22 @@ test('lifecycle up, serve-demo, checkout-recovery and CLI delegation preserve na
       async connect() {} async end() {}
       async query() { return { rows: [{ marker: ${JSON.stringify(demonstrationMarker)} }] }; }
     }, Pool: class { async end() {} } };`);
-    async function invoke(argv: string[]) {
-      const child = spawn(process.execPath, ['--experimental-strip-types', 'lifecycle.mjs', ...argv], { cwd: directory, stdio: 'pipe' });
+    const reader = resolve(directory, 'host/runtime-database.ts');
+    await writeFile(reader, (await readFile(reader, 'utf8')).replace("'/run/secrets/starter_runtime_password'",
+      JSON.stringify(resolve(directory, 'absent-password'))));
+    async function invoke(argv: string[], mounted = false) {
+      const child = spawn(process.execPath, ['--experimental-strip-types', 'lifecycle.mjs', ...argv],
+        { cwd: directory, stdio: 'pipe', env: { ...processEnv, OPENLUP_STARTER_RUNTIME_CREDENTIAL: mounted ? '1' : '0' } });
       let stdout = '', stderr = '';
       child.stdout.on('data', bytes => { stdout += String(bytes); });
       child.stderr.on('data', bytes => { stderr += String(bytes); });
       return { code: (await once(child, 'exit'))[0], stdout, stderr };
     }
+    const missing = await invoke(['runtime-probe'], true);
+    assert.equal(missing.code, 2);
+    assert.equal(missing.stdout.trim(), 'starter_runtime_credential_read_failed');
+    assert.equal(missing.stderr, '');
+
     const usage = await invoke(['unknown-command']);
     assert.equal(usage.code, 2);
     assert.ok(usage.stderr.includes('checkout-recovery --configuration <id> --database-url <runtime-url>'));

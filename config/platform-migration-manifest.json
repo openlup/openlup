@@ -918,11 +918,15 @@
       "sha256": "bdec86e74f6015efdd7ab595e409647bb8adc923606ff80604bf8ca82c8277de"
     },
     {
-      "file": "db/platform/migrations/20261129130505_renewal_order_destination_v2.sql",
+      "file": "db/platform/migrations/20261129130505_settings_wave4a_reschedule_timezone.sql",
+      "sha256": "8fdc4dffe112ddd7dad2765b921fbbf3556db874e21b20318568c1dfb1f76225"
+    },
+    {
+      "file": "db/platform/migrations/20261129130506_renewal_order_destination_v2.sql",
       "sha256": "cf9f42b785b31b6849da83b46101568e61fd5e4a89500574067602e5f376931f"
     }
   ],
-  "objectInventorySha256": "1e855c4129f5b47ba02a04c651acd75d81acb9284aaa94e0ea309d7e774d3103",
+  "objectInventorySha256": "dda8143a5837bf20dbf8b82cfdf05142428bc64332d8c9a9bfdb07667fef3de1",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1866,16 +1870,20 @@
         "sha256": "bdec86e74f6015efdd7ab595e409647bb8adc923606ff80604bf8ca82c8277de"
       },
       {
-        "file": "db/platform/migrations/20261129130505_renewal_order_destination_v2.sql",
+        "file": "db/platform/migrations/20261129130505_settings_wave4a_reschedule_timezone.sql",
+        "sha256": "8fdc4dffe112ddd7dad2765b921fbbf3556db874e21b20318568c1dfb1f76225"
+      },
+      {
+        "file": "db/platform/migrations/20261129130506_renewal_order_destination_v2.sql",
         "sha256": "cf9f42b785b31b6849da83b46101568e61fd5e4a89500574067602e5f376931f"
       }
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "d011ad92c3266c63508ad312ae37d526ffc215b3054c8d892d1e28f1ee56b13e"
+        "withRestore": "ca2acb2a4fc28a7e88e504e1bb98fc0553253468a0a259da84aeb7d188ecace7"
       },
       "separateMigrator": {
-        "withRestore": "b544854cb5c82a4e2e2e44d17fb56adf9219ddc5e5637840ce286e22ae657dc5"
+        "withRestore": "e9442efb539935501f4d75249d73ebdd127b30092cb4ebf7cb3bad2f0b70a7c3"
       }
     }
   },
@@ -2814,13 +2822,17 @@
         "sha256": "bdec86e74f6015efdd7ab595e409647bb8adc923606ff80604bf8ca82c8277de"
       },
       {
-        "file": "db/platform/migrations/20261129130505_renewal_order_destination_v2.sql",
+        "file": "db/platform/migrations/20261129130505_settings_wave4a_reschedule_timezone.sql",
+        "sha256": "8fdc4dffe112ddd7dad2765b921fbbf3556db874e21b20318568c1dfb1f76225"
+      },
+      {
+        "file": "db/platform/migrations/20261129130506_renewal_order_destination_v2.sql",
         "sha256": "cf9f42b785b31b6849da83b46101568e61fd5e4a89500574067602e5f376931f"
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "71d29dbe37e725bd6b2936c752276c126918631064ae1da006a79480eff3cacc",
-      "operatorProvisioned": "61fb3579a249f465a7e4d7a5c9d4792eeb02469c285b3bfe2abfd4be6f2c511e"
+      "installerManaged": "1397115bbedfe470550ab20dbdee2327cf9b05dfc101071452cd86c8c31d6c72",
+      "operatorProvisioned": "4536fb67602bc88e594a9fedd557621115872e3715cba50ab576daa71f6125e1"
     }
   }
 }
