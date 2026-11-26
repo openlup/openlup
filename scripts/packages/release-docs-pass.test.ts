@@ -687,7 +687,7 @@ describe("shift-left simulated upgrade-page audit", () => {
   });
 
   it("renders one Core fragment link from both the changelog and the upgrade page", () => {
-    const note = "- See [Change](docs/guide/how-to/change.md).\n";
+    const note = "- See [Change](../docs/guide/how-to/change.md).\n";
     expect(checkLinkOutcome(note, false, coreFragment)).toContain("- See [Change](../how-to/change.md).");
   });
 

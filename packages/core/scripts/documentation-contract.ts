@@ -78,10 +78,8 @@ export function assertDocumentationContract(
     if (fences.has(file)) continue;
     const source = readFileSync(file, "utf8");
     const label = relative(packageRoot, file).split(sep).join("/");
-    // Changelog fragments keep their links when copied to the package root.
-    const linkFile = /^changes\/[^/]+\.md$/u.test(label) ? join(packageRoot, "CHANGELOG.md") : file;
     assertPackageMarkdown({
-      packageRoot, file: linkFile, label, source, packed, scripts: scriptsForPage(label, manifest.scripts, starterScripts),
+      packageRoot, file, label, source, packed, scripts: scriptsForPage(label, manifest.scripts, starterScripts),
     }, guideFiles.includes(file), violations);
   }
 

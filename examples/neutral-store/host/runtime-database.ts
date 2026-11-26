@@ -17,8 +17,8 @@ function readCredential(path: string, uid?: number) {
   const fd = openSync(path, constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW);
   try {
     const stat = fstatSync(fd, { bigint: true }), bytes = Buffer.alloc(66);
-    if (!stat.isFile() || stat.nlink !== 1n || (stat.mode & 0o7777n) !== 0o444n || stat.size !== 65n
-      || (uid !== undefined && stat.uid !== BigInt(uid))) throw starterDiagnostic(runtimeReadFailed);
+    if (!stat.isFile() || stat.nlink > 1n || (stat.mode & 0o7777n) !== 0o444n || stat.size !== 65n
+      || (uid !== undefined && (stat.uid !== BigInt(uid) || stat.nlink !== 1n))) throw starterDiagnostic(runtimeReadFailed);
     let size = 0;
     while (size < bytes.length) {
       const read = readSync(fd, bytes, size, bytes.length - size, null);
