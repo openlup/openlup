@@ -36,10 +36,15 @@ export const isSkuLocalPriceRefusal = code => skuLocalPriceRefusals.has(code);
 export function catalogueApplyFix(finding, { activity, invocation, freshReprice, repriceStarted }) {
   const { code, fix } = finding;
   if (['operator_required', 'starter_auth_invalid', 'draft_operator_required', 'catalog_draft_operator_required',
-    'catalog_operator_required'].includes(code)) return repriceStarted
-    ? 'Use an active administrator when restarting with the same flags.'
-    : `Restart ${activity} with the same flags under an active administrator. Run ${invocation}.`;
-  if (['publisher_not_authorized', 'operator_mismatch', 'catalog_operator_mismatch',
+    'catalog_operator_required', 'publisher_not_authorized'].includes(code)) {
+    const restart = repriceStarted ? 'Use an active administrator when restarting with the same flags.'
+      : `Restart ${activity} with the same flags under an active administrator. Run ${invocation}.`;
+    // The owner also uses this code for command refusals without exposing a receipt actor.
+    return code === 'publisher_not_authorized'
+      ? `${restart} If replaying a receipt known to belong to another administrator, use its original issuing administrator.`
+      : restart;
+  }
+  if (['starter_catalogue_publication_actor_mismatch', 'operator_mismatch', 'catalog_operator_mismatch',
     'catalog_draft_command_actor_mismatch'].includes(code))
     return repriceStarted ? `${originalActor}.` : `${original} Run ${invocation}.`;
   if (code === 'starter_catalogue_reprice_review_required') return repriceStarted
@@ -87,7 +92,9 @@ const applyRefusals = {
   sku_archived: ['The selected SKU is archived.', 'Archived SKUs cannot receive a base price.', 'Select an eligible SKU.'],
   price_list_not_active: ['The requested or resolved list is ineffective for this market.', 'Price setup is scoped to the effective settlement list.', 'Restore the effective list for the selected market and recheck.'],
   catalog_price_setup_basis_mismatch: ['The effective list does not use gross prices.', 'This workflow uses the V1 gross price contract.', 'Select an effective gross list or use the pricing owner workflow for an exclusive list.'],
-  publisher_not_authorized: ['The publication receipt is bound to another administrator.', 'Only the issuing administrator can replay the command.', original],
+  publisher_not_authorized: ['Publication authority could not be verified for this administrator.', 'Publication actions require active administrator authority.', 'Sign in as an active store administrator and try again.'],
+  starter_catalogue_publication_actor_mismatch: ['The verified publication receipt belongs to another administrator.', 'Only the issuing administrator can replay the command.', original],
+  publication_authority_unavailable: ['The publication operation could not verify its required authority or evidence.', 'The publication owner could not confirm a prerequisite.', 'Ask the publication owner to verify the required authority and evidence, then retry once they are available.'],
   operator_mismatch: ['The price receipt is bound to another administrator.', 'Only the issuing administrator can replay the price command.', original],
   publication_command_key_reused: ['The publication key binds different bytes.', 'Exact replay requires the original action and fingerprint.', unchanged],
   command_key_reused: ['The price key binds different bytes.', 'Exact replay requires the original price request.', unchanged],

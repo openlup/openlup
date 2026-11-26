@@ -528,15 +528,15 @@ async function catalogueApply(argv) {
         deny('publication_draft_advanced');
     }
     function requireIssuer(receipt) {
-      if (receipt.actorId !== actorId) deny('publisher_not_authorized');
+      if (receipt.actorId !== actorId) deny('starter_catalogue_publication_actor_mismatch');
     }
     async function issued(step, receipt, verifyIssuer = true) {
-      if (verifyIssuer) requireIssuer(receipt);
-      if (receipt.productId !== productId || receipt.commandKey !== step.key('publish')
+      if (!uuid.test(receipt.actorId ?? '') || receipt.productId !== productId || receipt.commandKey !== step.key('publish')
         || !same(receipt.previousHead, step.head) || receipt.head.revision !== step.revision
         || receipt.head.documentDigest !== step.save.payload.product.documentRevision.digest) deny('catalog_publication_receipt_invalid');
       const exact = await publish({ action: 'exact', head: receipt.head });
       if (exact.product?.id !== productId || !same(exact.head, receipt.head)) deny('catalog_publication_receipt_invalid');
+      if (verifyIssuer) requireIssuer(receipt);
       return receipt.head;
     }
     async function lookup(step, verifyIssuer = true) {
@@ -596,18 +596,15 @@ async function catalogueApply(argv) {
       if (listEffective === false) deny(mode === '--reprice' && !repriceStarted
         ? 'starter_catalogue_reprice_review_required' : 'price_list_not_active', { subject: code });
       if (listEffective !== true || typeof priceSetup?.hasPending !== 'boolean') deny(unavailable, { subject: code });
-      if (priceSetup.hasPending) deny('starter_catalogue_price_scheduled', { subject: code });
-      return priceSetup;
-    }
-    function reviewPreview(priceSetup, code) {
-      const subscription = priceSetup.subscription;
-      if (subscription.kind !== 'derived' || subscription.revisionId !== policy.revisionId)
+      const { subscription } = priceSetup;
+      if (subscription?.kind !== 'derived' || subscription.revisionId !== policy.revisionId)
         deny('starter_catalogue_d2c_policy_required', { subject: code });
+      if (priceSetup.hasPending) deny('starter_catalogue_price_scheduled', { subject: code });
       return priceSetup;
     }
     async function preview(sku) {
       const { code } = sku;
-      const priceSetup = reviewPreview(await pricePreview(sku.id, code), code);
+      const priceSetup = await pricePreview(sku.id, code);
       const unitPriceMinor = basePrices[code];
       if (priceSetup.currentCount > 1 || (priceSetup.current && priceSetup.current.unitPriceMinor !== unitPriceMinor))
         deny('expected_state_mismatch', { subject: code });
@@ -629,14 +626,12 @@ async function catalogueApply(argv) {
       for (const { id: skuId, code } of skus) {
         try {
           const declared = basePrices[code];
-          let reviewed = reviewPreview(await pricePreview(skuId, code), code);
+          let reviewed = await pricePreview(skuId, code);
           if (reviewed.currentCount > 1) deny('base_price_ambiguous', { subject: code });
           if (!reviewed.current) deny('starter_catalogue_reprice_base_missing', { subject: code });
           if (mode === '--reprice' && reviewed.current.unitPriceMinor !== declared) {
             if (!positivePrice(code)) deny('starter_catalogue_derived_price_zero', { subject: code });
-            const proposed = await pricePreview(skuId, code, declared)
-              .catch(error => amountPreviewRefusal(error, code));
-            reviewed = reviewPreview(proposed, code);
+            reviewed = await pricePreview(skuId, code, declared).catch(error => amountPreviewRefusal(error, code));
           }
           const { current, subscription } = reviewed;
           if (reviewed.currentCount > 1) deny('base_price_ambiguous', { subject: code });

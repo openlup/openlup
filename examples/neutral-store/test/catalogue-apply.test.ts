@@ -81,10 +81,10 @@ type Options = { declaration?: unknown; args?: string[]; noTerminal?: boolean; m
   missingProduct?: boolean; wrongTarget?: boolean; closeAt?: 'email' | 'token'; declineAt?: number;
   failAt?: number; refusal?: Partial<Finding>; state?: State; actor?: string; approveAfter?: Options;
   pending?: readonly string[]; pendingAfterReview?: string; pendingOnAmount?: string; refreshBeforeApply?: boolean;
-  ambiguous?: string[]; ineligible?: string[]; stale?: string; rolledPolicy?: boolean; loseRepriceReply?: boolean;
+  ambiguous?: string[]; ineligible?: string[]; stale?: string; rolledPolicy?: boolean; rollPolicyAtPreview?: string; loseRepriceReply?: boolean;
   configurationId?: string; listSwitched?: boolean; expireAfterPreview?: string; textOutput?: boolean;
   stopSecond?: 'policy' | 'expired' | 'zero-old' | 'derived-zero' | 'list';
-  refresh?: 'same' | 'actor' | 'list'; readback?: 'list' | 'missing' | 'entry' | 'amount' | 'figure' | 'policy' | 'pending' };
+  refresh?: 'same' | 'actor' | 'list'; readback?: 'list' | 'missing' | 'entry' | 'amount' | 'figure' | 'policy' | 'pending' | 'rolled-policy' };
 type Observation = { trace: string[]; state: State;
   prompts: string[]; changes: { actor: string; key: string; code: string; expected: Price }[] };
 type PriceItem = Price & { skuId: string; currency: string; policyRevisionId?: string; subscriptionUnitPriceMinor?: number; previous?: Price };
@@ -231,6 +231,7 @@ if (env[workerFlag] === '1') {
         const readback = readbackSku === skuCode ? options.readback : undefined;
         if (readback === 'policy') return refused({ code: 'starter_catalogue_d2c_policy_required',
           reason: 'policy_changed', issues: [{ code: 'policy_changed' }] });
+        if (step === options.rollPolicyAtPreview || readback === 'rolled-policy') effectivePolicy = nextPolicy;
         let current = ambiguous ? null : state.prices[fields.variantId]?.current ?? null;
         if (current && readback === 'entry') current = { ...current, entryId: 'other-entry' };
         if (current && readback === 'amount') current = { ...current, unitPriceMinor: current.unitPriceMinor + 10 };
@@ -398,7 +399,7 @@ if (!env[workerFlag]) {
       ['redeem', 'starter_auth_invalid', /Restart catalogue apply with the same flags under an active administrator/u],
       ['price-target', 'starter_catalogue_currency_mismatch', /use the same currency/u],
       ['price-target', 'catalog_price_setup_basis_mismatch', /effective gross list/u],
-      ['lookup:1', 'publisher_not_authorized', /original issuing administrator/u],
+      ['lookup:1', 'publisher_not_authorized', /^Restart catalogue apply with the same flags under an active administrator/u],
       ['current', 'head_conflict', /Reload the current draft and head/u],
       ['current', 'head_conflict', /Reload the current draft and head/u, 'last'],
       ['save:1', 'publication_draft_advanced', /Reload the current draft and head/u],
@@ -474,6 +475,25 @@ if (!env[workerFlag]) {
     complete(invoke({ state: refused.state }));
   });
 
+  test('catalogue apply stops at a hard publication authority refusal and preserves owner guidance', { skip: nestedSkip }, () => {
+    const failAt = ordered.indexOf('publish:2') + 1;
+    const code = 'publication_authority_unavailable';
+    const path = 'pricing.readiness';
+    const subject = 'native_policy_domain_unverified';
+    const observed = 'Publish could not verify price and offer readiness.';
+    const cause = 'The retained policy digest did not match.';
+    const fix = 'Have the policy owner verify the revision and provenance.';
+    const recheck = 'Retry the same approved request only while its draft and head still match.';
+    const message = `Observed: ${observed} Cause: ${cause} Fix: ${fix} Recheck: ${recheck}`;
+    const issues = [{ code, path, message, subject }];
+    const refusal = { code, path, subject, message, issues };
+    const result = invoke({ failAt, refusal });
+    assert.deepEqual(finding(result, code, /verify the revision and provenance/u),
+      { code, path, subject, issues, observed, cause, fix, recheck });
+    assert.deepEqual(result.trace, ordered.slice(0, failAt));
+    assert.equal(result.state.head?.revision, 1);
+  });
+
   test('catalogue copy requires Release and Activation, then refuses unchanged presentation with a recoverable remedy', { skip: nestedSkip }, () => {
     const args = ['--copy'];
     const beforeRelease = invoke({ args });
@@ -547,12 +567,14 @@ if (!env[workerFlag]) {
       assert.equal(verified.report.receipts[2]!.prices[0]!.subscriptionUnitPriceMinor, 2090);
     }
     const copy = invoke({ args: ['--copy'], actor: alternate, state: changed.state, declaration: replacement });
-    finding(copy, 'publisher_not_authorized', /original issuing administrator/u);
+    const mismatch = finding(copy, 'starter_catalogue_publication_actor_mismatch', /^Have the original issuing administrator sign in/u);
+    assert.match(mismatch.fix, /npm run catalogue:apply -- --json --copy/u);
+    assert.equal(copy.trace.at(-1), 'exact:1');
     noWrites(copy, changed.state);
     const release = invoke({ failAt: ordered.indexOf('lookup:2') + 1 });
     for (const args of [[], ['--prepare-only']]) {
       const resume = invoke({ args, actor: alternate, state: release.state });
-      finding(resume, 'publisher_not_authorized', /original issuing administrator/u);
+      finding(resume, 'starter_catalogue_publication_actor_mismatch', /^Have the original issuing administrator sign in/u);
       noWrites(resume, release.state);
     }
     for (const state of [undefined, release.state]) {
@@ -675,6 +697,24 @@ if (!env[workerFlag]) {
     assert.deepEqual(refused.state, initial.state);
   });
 
+  test('a preview policy rollover stops every mode before a schedule can continue the scan', { skip: nestedSkip }, () => {
+    const initial = invoke();
+    complete(initial);
+    const cases: Options[] = [
+      ...[[], ['--copy'], repriceArgs].map(args => ({ args, pending: ['FIRST'], rollPolicyAtPreview: 'price-preview:FIRST' })),
+      { args: repriceArgs, declaration: replacement, pendingOnAmount: 'FIRST', rollPolicyAtPreview: 'price-preview:FIRST:amount' },
+    ];
+    for (const options of cases) {
+      const result = invoke({ ...options, state: initial.state });
+      const row = finding(result, 'starter_catalogue_d2c_policy_required', /Restore one valid effective D2C policy/u);
+      assert.equal(row.subject, 'FIRST');
+      assert.equal(result.trace.at(-1), options.rollPolicyAtPreview);
+      assert.ok(!result.trace.includes('price-preview:SECOND'));
+      assert.deepEqual(result.prompts, []);
+      noWrites(result, initial.state);
+    }
+  });
+
   test('reprice preserves its receipt and stops when readback cannot verify', { skip: nestedSkip }, () => {
     const initial = invoke();
     complete(initial);
@@ -693,10 +733,10 @@ if (!env[workerFlag]) {
       assert.match(row.recheck, /Check the default report/u);
       assert.equal(result.trace.at(-1), 'price-target');
     }
-    for (const readback of ['list', 'missing', 'entry', 'amount', 'figure', 'policy', 'pending'] as const) {
+    for (const readback of ['list', 'missing', 'entry', 'amount', 'figure', 'policy', 'pending', 'rolled-policy'] as const) {
       const result = invoke({ ...options, readback, declaration });
       const row = unverified(result);
-      assert.equal(row.reason, readback === 'policy' ? 'starter_catalogue_d2c_policy_required' :
+      assert.equal(row.reason, readback === 'policy' || readback === 'rolled-policy' ? 'starter_catalogue_d2c_policy_required' :
         readback === 'pending' ? 'starter_catalogue_price_scheduled' : readback === 'list' ? 'price_list_not_active' : undefined);
       assert.deepEqual(row.issues, readback === 'policy' ? [{ code: 'policy_changed' }] : undefined);
       assert.equal(result.trace.at(-1), 'price-preview:FIRST');
@@ -875,8 +915,12 @@ if (!env[workerFlag]) {
       });
       for (const step of ['lookup:2', 'exact:2']) await context.test(label + ' Activation ' + step, () => {
         const failAt = trace.indexOf(step) + 1;
-        const stopped = invoke({ ...options, args, failAt, refusal: { code: 'operator_required' } });
-        finding(stopped, 'operator_required', /same flags under an active administrator/u);
+        const code = step === 'lookup:2' ? 'publisher_not_authorized' : 'operator_required';
+        const stopped = invoke({ ...options, args, failAt, refusal: { code } });
+        const row = finding(stopped, code, /^Restart .* with the same flags under an active administrator/u);
+        assert.ok(row.fix.includes('npm run catalogue:apply -- --json ' + args.join(' ')), row.fix);
+        assert.doesNotMatch(row.observed, /belongs to|bound to/u);
+        if (code === 'publisher_not_authorized') assert.match(row.fix, /If replaying a receipt known to belong/u);
         assert.deepEqual(stopped.trace, trace.slice(0, failAt));
         assert.deepEqual(stopped.report.receipts, [{
           stage: 'release.publish', outcome: 'observed', productId: state.drafts[1]!.productId, draftId: declaration.draftId,
