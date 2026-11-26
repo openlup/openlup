@@ -14225,12 +14225,12 @@
     },
     {
       "path": "db/platform/migrations/20261129140000_native_renewal_occurrence_guards.sql",
-      "sha256": "cd1abe047198c896e022b84c733f0825f345d935e145c425ad502b8b9c7aeda8",
+      "sha256": "0e7281d34dc99ddf0304827e3889edb5c617c6fb56613c8cc7dc1ff1d82270fb",
       "functions": [
         {
           "signature": "public.subscriptions__read_renewal_occurrence(uuid,uuid,uuid)",
           "beforeSha256": null,
-          "afterSha256": "044b816464cdb4708355102f7f5ec609096f1192458cd1fc29946bb4629f958c"
+          "afterSha256": "5b3072d2f80fa22c9fe1ba86b836aaa87d8963a2070d4eb100d926b7797647f6"
         },
         {
           "signature": "public.subscriptions__lock_renewal_occurrence(uuid,uuid,uuid)",

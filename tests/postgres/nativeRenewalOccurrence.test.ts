@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { expect, it } from "vitest";
+import type { CatalogAcceptanceV2 } from "@openlup/core/catalog";
 import { closePostgres, postgresSetupTimeoutMs, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { readPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
@@ -79,22 +80,60 @@ function expectUnavailable(db: Pool, scope: string[], field: string) {
 }
 
 async function seedV3Subscription(owner: Pool) {
-  const seed = await seedRenewal(owner, 10, 1, randomUUID(), false, "sandbox");
+  const seed = await seedRenewal(owner, 10, 1, randomUUID(), true, "sandbox");
   await owner.query("UPDATE public.subscriptions SET cadence_days=7 WHERE id=$1", [seed.subscription]);
   return seed;
 }
 
 async function insertV3Root(db: PoolClient, seed: RenewalSeed, cycleKey: string, operation: string) {
+  const { cycle, currency } = seed.snapshot;
+  if (!cycle) throw new Error("The synthetic v3 agreement requires activation evidence");
+  const priceEvidenceRef = "fixture:accepted-price:1";
+  const digest = createHash("sha256").update(cycleKey).digest("hex");
+  const lines = seed.snapshot.lines.map(({ lineOrdinal, sku, quantity, unitAmountMinor }) => ({
+    lineKey: `line:${lineOrdinal}`, sourceOrdinal: lineOrdinal, sku, quantity, unitBasisMinor: unitAmountMinor,
+    taxClassKey: "merchandise", assignmentRef: "fixture:merchandise-class:1",
+  }));
+  const roster = await Promise.all(lines.map(async line => {
+    const { rows: [sku] } = await db.query<{ id: string; product_id: string }>(
+      "SELECT id, product_id FROM public.catalog_skus WHERE sku=$1", [line.sku]);
+    if (!sku) throw new Error("The synthetic catalogue roster requires a seeded SKU");
+    const publicationHead = { publicationId: randomUUID(), revision: 1, documentDigest: digest };
+    return { line, productId: sku.product_id, accepted: {
+      schemaVersion: 2 as const, skuId: sku.id, skuCode: line.sku, skuRevisionId: randomUUID(), publicationHead,
+      typeRef: { key: "fixture:article", version: 1 }, definitionDigest: digest, optionDigest: digest,
+      netContent: { dimension: "count" as const, unscaled: "1", scale: 0, unit: "openlup:piece" },
+    } };
+  }));
+  const catalogAcceptance = {
+    schemaVersion: 2, lines: roster.map(({ accepted }) => accepted),
+    admission: {
+      quoteRef: `fixture:accepted-quote:${cycleKey}`, quoteDigest: digest, moneyVersion: "v0",
+      priceEvidenceRef, policyEvidenceRef: "fixture:catalogue-policy:1",
+      consultedHeads: roster.map(({ productId, accepted }) => ({ productId, ...accepted.publicationHead })),
+      lineBindings: roster.map(({ line, accepted }) => ({
+        source: "retained", mode: "subscription", role: "core", lineKey: line.lineKey, sourceOrdinal: line.sourceOrdinal,
+        skuId: accepted.skuId, skuCode: accepted.skuCode, skuRevisionId: accepted.skuRevisionId, quantity: line.quantity,
+      })),
+    },
+  } satisfies CatalogAcceptanceV2;
   const agreement = {
     frozenRevision: "native.purchase-renewal.v3", contractVersion: "platform.subscription.renewal.v3",
     clientId: seed.client, subscriptionId: seed.subscription, cycleKey, originalAnchorAt: original,
     operationId: operation, commercialGenerationId: operation, cadenceSeconds, cycleNumber: seed.snapshot.cycleNumber,
-    templateSnapshot: { version: 1, templateId: seed.subscription },
-    catalogAcceptance: { lines: seed.snapshot.lines.map(({ sku, quantity }) => ({ sku, quantity })) },
-    terms: { version: "native.renewal-terms.v3", currency: seed.snapshot.currency, amountBasis: "gross_fixed" },
-    lines: seed.snapshot.lines.map(({ lineOrdinal, sku, quantity, unitAmountMinor }) => ({
-      lineKey: `line:${lineOrdinal}`, sourceOrdinal: lineOrdinal, sku, quantity, unitBasisMinor: unitAmountMinor,
-    })),
+    cycle, templateSnapshot: { version: 1, templateId: seed.subscription, cadenceDays: cadenceSeconds / 86400 },
+    catalogAcceptance, lines,
+    terms: { version: "native.renewal-terms.v3", currency, amountBasis: "gross_fixed",
+      priceListRef: "fixture:list:1", priceEvidenceRef, priceContextDigest: digest, classMapRevision: "fixture:classes:1" },
+    discountTerms: { kind: "none", evidenceRef: priceEvidenceRef },
+    acquisitionEvidenceRef: cycle.evidenceRef,
+    shippingTerms: { version: "shipping-threshold.v1", currency, flatMinor: 15, freeThresholdMinor: 500,
+      assignmentRef: "fixture:shipping-class:1", taxClassKey: "shipping" },
+    handlingTerms: { currency, flatMinor: 5, separatelyStated: true, assignmentRef: "fixture:handling-class:1", taxClassKey: "handling" },
+    destinationSelectionPolicy: { kind: "current_validated", policyRevision: "fixture:destination-policy:1",
+      deliverySelectionRef: "fixture:delivery:1", providerRef: "fixture:delivery-provider", carrierRef: "fixture:carrier",
+      serviceRef: "fixture:service", servicePolicyRevision: "1", adapterRevision: "1" },
+    unattendedChargeAuthorizedAt: original,
     stockSourceKey: seed.source, settlementChannelKey: seed.snapshot.settlementChannelKey,
     payerAccountRef: seed.snapshot.payerAccountRef, authorizationRef: seed.snapshot.authorizationRef,
   };
@@ -118,8 +157,8 @@ async function insertV3Root(db: PoolClient, seed: RenewalSeed, cycleKey: string,
   };
 }
 
-async function retainSelection(owner: Pool, root: RenewalSeed | Renewal, anchor: string, due: string, rail: "v3" | "legacy" = "v3"): Promise<[string, string, string]> {
-  const cycleKey = randomUUID(), history = rail === "legacy";
+async function retainSelection(owner: Pool, root: RenewalSeed | Renewal, anchor: string, due: string, rail: "v3" | "legacy" = "v3", history = false): Promise<[string, string, string]> {
+  const cycleKey = randomUUID();
   await transaction(owner, async db => {
     await insert(db, occurrence, {
       cycle_key: cycleKey, subscription_id: root.subscription, client_id: root.client,
@@ -239,16 +278,21 @@ it.each(["legacy", "legacy-with-service", "bootstrap", "separate", "admin-manage
       await expectUnavailable(owner, shortened, "/effectiveDueAt");
 
       const historicalRoot = await sandboxRenewal(owner);
-      const legacyHistory = await retainSelection(owner, historicalRoot, original, original, "legacy");
+      const legacyHistory = await retainSelection(owner, historicalRoot, original, original, "legacy", true);
       const historyView = await call(owner, read, legacyHistory);
       expect(historyView).toMatchObject({ cycleKey: legacyHistory[2], rail: "legacy", lifecycle: "retired",
         originalAnchorAt: original, operationId: historicalRoot.operation, commercialGenerationId: historicalRoot.operation });
-      const mismatchedRail = await retainSelection(owner, legacy, original, original);
-      await expectUnavailable(owner, mismatchedRail, "/cycleKey");
-      for (const hours of [72, 24, 72]) {
-        const { rows } = await applyArrival(owner, mismatchedRail[2], later(hours).replace(".000Z", ".123456Z"));
-        expect(rows).toEqual([{ due: later(240).replace(".000Z", ".123456Z") }]);
-        await expectUnavailable(owner, mismatchedRail, "/cycleKey");
+      const mismatchedRails = [
+        await retainSelection(owner, legacy, original, original),
+        await retainSelection(owner, await seedV3Subscription(owner), original, original, "legacy"),
+      ];
+      for (const mismatch of mismatchedRails) {
+        await expectUnavailable(owner, mismatch, "/cycleKey");
+        for (const hours of [72, 24, 72]) {
+          const { rows } = await applyArrival(owner, mismatch[2], later(hours).replace(".000Z", ".123456Z"));
+          expect(rows).toEqual([{ due: later(240).replace(".000Z", ".123456Z") }]);
+          await expectUnavailable(owner, mismatch, "/cycleKey");
+        }
       }
 
       const receipt = randomUUID(), cancellationEffectiveAt = "2040-03-10T11:58:58.765432Z";
@@ -284,7 +328,7 @@ it.each(["legacy", "legacy-with-service", "bootstrap", "separate", "admin-manage
             await expectUnavailable(target.migrator, ambiguous, "/cycleKey");
             await expectUnavailable(target.migrator, shortened, "/effectiveDueAt");
             expect(await call(target.migrator, read, legacyHistory)).toEqual(historyView);
-            await expectUnavailable(target.migrator, mismatchedRail, "/cycleKey");
+            for (const mismatch of mismatchedRails) await expectUnavailable(target.migrator, mismatch, "/cycleKey");
             expect((await capture(target.owner, target.inventory, "renewal-occurrence-restored")).owned).toEqual(packet.owned);
           }
         } finally { await target.close(); }

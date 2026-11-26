@@ -17,7 +17,7 @@ BEGIN
       AND generation.commercial_generation_id=occurrence.commercial_generation_id
     WHERE op.id=occurrence.operation_id AND op.subscription_id=p_subscription
       AND op.scheduled_at=occurrence.original_anchor_at
-      AND (occurrence.rail<>'v3' OR op.cycle_snapshot->>'contractVersion'='platform.subscription.renewal.v3')
+      AND (occurrence.rail='v3')=coalesce(op.cycle_snapshot->>'contractVersion'='platform.subscription.renewal.v3',false)
   ) THEN
     RETURN jsonb_build_object('kind','unavailable','code','renewal_cycle_unavailable','field','/cycleKey');
   END IF;
