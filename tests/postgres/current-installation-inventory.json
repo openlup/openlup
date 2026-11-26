@@ -2,13 +2,17 @@
   "current": {
     "profiles": {
       "legacy": {
-        "count": 229,
-        "exactTailCount": 119,
-        "objectInventorySha256": "d324b9aa0a48bba7938a49e7fdc058aebab068efe14ce9974e8faf8a19add008",
+        "count": 230,
+        "exactTailCount": 120,
+        "objectInventorySha256": "1e855c4129f5b47ba02a04c651acd75d81acb9284aaa94e0ea309d7e774d3103",
         "tail": [
           {
-            "file": "db/platform/migrations/20261129130504_renewal_order_destination_v2.sql",
+            "file": "db/platform/migrations/20261129130505_renewal_order_destination_v2.sql",
             "sha256": "cf9f42b785b31b6849da83b46101568e61fd5e4a89500574067602e5f376931f"
+          },
+          {
+            "file": "db/platform/migrations/20261129130504_catalog_price_publication_recorder_v2.sql",
+            "sha256": "bdec86e74f6015efdd7ab595e409647bb8adc923606ff80604bf8ca82c8277de"
           },
           {
             "file": "db/platform/migrations/20261129130503_order_money_v2_restore_no_temp.sql",
@@ -925,13 +929,17 @@
         ]
       },
       "bootstrap": {
-        "count": 235,
-        "exactTailCount": 120,
-        "objectInventorySha256": "827989fe1c37bbb2bd6d13bf9e6b2a69f0efa731775978c078a5620b3fd4caaf",
+        "count": 236,
+        "exactTailCount": 121,
+        "objectInventorySha256": "d011ad92c3266c63508ad312ae37d526ffc215b3054c8d892d1e28f1ee56b13e",
         "tail": [
           {
-            "file": "db/platform/migrations/20261129130504_renewal_order_destination_v2.sql",
+            "file": "db/platform/migrations/20261129130505_renewal_order_destination_v2.sql",
             "sha256": "cf9f42b785b31b6849da83b46101568e61fd5e4a89500574067602e5f376931f"
+          },
+          {
+            "file": "db/platform/migrations/20261129130504_catalog_price_publication_recorder_v2.sql",
+            "sha256": "bdec86e74f6015efdd7ab595e409647bb8adc923606ff80604bf8ca82c8277de"
           },
           {
             "file": "db/platform/migrations/20261129130503_order_money_v2_restore_no_temp.sql",
@@ -1872,13 +1880,17 @@
         ]
       },
       "separate": {
-        "count": 235,
-        "exactTailCount": 120,
-        "objectInventorySha256": "34637eca49126e6e70fe2fb2f6b18dbae103b4e19c9009f489ef19b4ca794a38",
+        "count": 236,
+        "exactTailCount": 121,
+        "objectInventorySha256": "b544854cb5c82a4e2e2e44d17fb56adf9219ddc5e5637840ce286e22ae657dc5",
         "tail": [
           {
-            "file": "db/platform/migrations/20261129130504_renewal_order_destination_v2.sql",
+            "file": "db/platform/migrations/20261129130505_renewal_order_destination_v2.sql",
             "sha256": "cf9f42b785b31b6849da83b46101568e61fd5e4a89500574067602e5f376931f"
+          },
+          {
+            "file": "db/platform/migrations/20261129130504_catalog_price_publication_recorder_v2.sql",
+            "sha256": "bdec86e74f6015efdd7ab595e409647bb8adc923606ff80604bf8ca82c8277de"
           },
           {
             "file": "db/platform/migrations/20261129130503_order_money_v2_restore_no_temp.sql",
@@ -2819,13 +2831,17 @@
         ]
       },
       "admin-managed": {
-        "count": 233,
-        "exactTailCount": 119,
-        "objectInventorySha256": "0aa1c9efc13643ec88b88b07b2126839209a056e480ec85a7a2ae3138da905ce",
+        "count": 234,
+        "exactTailCount": 120,
+        "objectInventorySha256": "71d29dbe37e725bd6b2936c752276c126918631064ae1da006a79480eff3cacc",
         "tail": [
           {
-            "file": "db/platform/migrations/20261129130504_renewal_order_destination_v2.sql",
+            "file": "db/platform/migrations/20261129130505_renewal_order_destination_v2.sql",
             "sha256": "cf9f42b785b31b6849da83b46101568e61fd5e4a89500574067602e5f376931f"
+          },
+          {
+            "file": "db/platform/migrations/20261129130504_catalog_price_publication_recorder_v2.sql",
+            "sha256": "bdec86e74f6015efdd7ab595e409647bb8adc923606ff80604bf8ca82c8277de"
           },
           {
             "file": "db/platform/migrations/20261129130503_order_money_v2_restore_no_temp.sql",
@@ -3758,13 +3774,17 @@
         ]
       },
       "admin-operator": {
-        "count": 233,
-        "exactTailCount": 119,
-        "objectInventorySha256": "cdafd2aafa1347c7c3940f32f69bb8f94b400b3357eee0e0b40fb77faedede92",
+        "count": 234,
+        "exactTailCount": 120,
+        "objectInventorySha256": "61fb3579a249f465a7e4d7a5c9d4792eeb02469c285b3bfe2abfd4be6f2c511e",
         "tail": [
           {
-            "file": "db/platform/migrations/20261129130504_renewal_order_destination_v2.sql",
+            "file": "db/platform/migrations/20261129130505_renewal_order_destination_v2.sql",
             "sha256": "cf9f42b785b31b6849da83b46101568e61fd5e4a89500574067602e5f376931f"
+          },
+          {
+            "file": "db/platform/migrations/20261129130504_catalog_price_publication_recorder_v2.sql",
+            "sha256": "bdec86e74f6015efdd7ab595e409647bb8adc923606ff80604bf8ca82c8277de"
           },
           {
             "file": "db/platform/migrations/20261129130503_order_money_v2_restore_no_temp.sql",

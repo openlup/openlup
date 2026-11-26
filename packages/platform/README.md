@@ -4083,18 +4083,22 @@ and never in a buyer's bundle: a browser bundle of the entry fails, and the
   never renamed.
 - **`runStorefrontScenario(options)`.** Runs one scenario, given by id or as a
   scenario object shaped like the catalogue's entries, against a
-  `PageHandle` and an observer and resolves `{ kind: "verdict", verdict }`.
+  `PageHandle` and an observer and resolves `{ kind: "verdict", verdict }`,
+  or with `stopAt` `{ kind: "stopped", stoppedAt, steps }`.
   Options: `scenario`, `page`, `observer`, `tier`, `profile`, `width`
   (required for `browser_ui` and equal to the page's width), `channel`
   (default `browser_ui`), `commands` (`create`, `read` and `keyHeader`, default
   `idempotency-key`), `proofFile`, `adapter`, `build` (`source` default
   `claimed`), `harness` (`runnerVersion`, the caller's claim, and
   `adapterDigest`), `runId` (8 to 40 letters, digits and hyphens), `clock`
-  (`now()` in integer epoch milliseconds), `timeoutMs` (default 10,000) and
-  `quietMs` (default 3,000). Invalid options, including a malformed scenario
-  object, reject with a `TypeError` starting `storefront_scenario_unknown` or
-  `storefront_run_input_invalid` and its cause, fix and recheck, before
-  anything is driven.
+  (`now()` in integer epoch milliseconds), `timeoutMs` (default 10,000),
+  `quietMs` (default 3,000), `outcomes` (the outcome driver:
+  `capabilities`, the outcome kinds it can produce, and
+  `produce(outcome, { subject })`) and `stopAt`. Invalid options, including a
+  malformed scenario object or outcome driver, reject with a `TypeError`
+  starting `storefront_scenario_unknown` or `storefront_run_input_invalid` and
+  its cause, fix and recheck, before anything is driven; a `stopAt` the
+  scenario does not expect rejects `storefront_stop_state_unknown`.
 - **`createPostgresStorefrontObserver(executor, options?)`.** An observer of
   `kind: "package"` over the platform's own tables, so a PostgreSQL-tier proof
   needs no store-written observer. `executor` is any object with
@@ -4141,22 +4145,80 @@ whether each command reused an earlier key (the key value is compared, never
 stored). A step ends only when the page has settled, and the runner then reads
 the ledger, the visible anchors and the path; after the last step a settle
 window waits once more and reads them again. The control run repeats the steps
-under its own subject, blocking from the control's step every request of its
-commands. An arrangement that fails under the control is the control's effect:
-the remaining steps are skipped and the settle window still samples the page.
-The clean and control runs share the page and its browser storage.
+under its own subject with the scenario's control: `block_read` blocks every
+request of its commands from its step; `omit_action` omits its action and,
+where the scenario says so, the outcomes after it; `other_policy` changes
+nothing and must not show the progress of the changed-payload policy the proof
+file does not declare. An arrangement that fails under the control is the
+control's effect: the remaining steps are skipped and the settle window still
+samples the page. The clean and control runs share the page and its browser
+storage.
 
-| Scenario | Stimulus | Safety | Progress | Control |
-| --- | --- | --- | --- | --- |
-| `lost_response_reload` | The first place-order response is withheld after the server received it; reload; arrange again; place the order again | At most one payable order, one order holding stock, one capture | `awaiting_payment` offering `continue_payment` | `block_read` of `read` and `create` from the reload; negates `awaiting_payment` |
-| `duplicate_submit` | Place the order twice while the first create is held | At most one payable order, one order holding stock, one attempt, one capture | None | None: `safety_only` |
+| Scenario | Stimulus | Safety | Progress | Control | Requires |
+| --- | --- | --- | --- | --- | --- |
+| `lost_response_reload` | The first place-order response is withheld after the server received it; reload; arrange again; place the order again | At most one payable order, one order holding stock, one capture | `awaiting_payment` offering `continue_payment` | `block_read` of `read` and `create` from the reload; negates `awaiting_payment` | — |
+| `duplicate_submit` | Place the order twice while the first create is held | At most one payable order, one order holding stock, one attempt, one capture | None | None: `safety_only` | — |
+| `lost_response_edited_payload` | As `lost_response_reload`, with the first name changed before placing the order again | At most one payable order, one order holding stock, one capture | `update_in_place`: `awaiting_payment` offering `continue_payment`; `refuse_changed`: `details_changed` offering `continue_payment` and `start_over` | `other_policy`; negates the other policy's state | — |
+| `reload_pending_attempt` | Continue to payment; the attempt stays pending (`awaiting_authority`); reload; the pending attempt settles | No payment attempt after the step before the reload; one capture | `awaiting_authority` after the reload, then `paid` | `block_read` of `read` and `create` from the reload, outcomes kept; negates `paid` only | `pending`, `settled_after_pending` |
+| `decline_retry` | Continue to payment; declined (`declined` offering `retry_payment`); retry; settled | At most one payable order, attempts at most declines plus one, one capture | `paid` | `omit_action` of `retry_payment`, the outcomes after it skipped; negates `paid` | `declined`, `settled` |
+| `paid_pending_activation` | A subscription; continue to payment; the payment settles while activation stays pending | Clean run: never `paid` or `declined`, and no `awaiting_payment` once it showed `paid_pending_activation`. Control run: never `paid` or `declined` (awaiting states allowed). One capture | `paid_pending_activation` | `block_read` of `read` and `create` from the outcome, outcomes kept; negates `paid_pending_activation` | `activation_pending` |
 
-Each scenario also has a create budget (3 and 2 creates per run); a run that
-sends more stops with `request_budget_exceeded`. Whenever `state:paid` or
+The edited-payload progress follows the proof file's `changedPayloadPolicy`;
+an absent or unknown policy reads as `refuse_changed`, and a clean run that
+shows the other policy's progress is `policy_mismatch`. Each scenario also has
+a create budget (3, 2, 3, 1, 1 and 1 creates per run); a run that sends more
+stops with `request_budget_exceeded`. Whenever `state:paid` or
 `state:paid_pending_activation` shows, the ledger must hold a capture and no
 payable order. Anchors and the ledger are sampled when a step has settled and
 in the settle window, so a state shown only for a moment inside a step and
 gone before it settles is not seen.
+
+**Outcomes and admission.** An `outcome` step asks the run's outcome driver
+for one outcome: `declined`, `pending`, `settled`, `settled_after_pending`
+(settles an attempt the driver left pending) or `activation_pending` (the
+payment settles while subscription activation stays pending). A scenario runs
+only when every kind in its `requires.outcomes` is one the runner knows and the
+driver's `capabilities` declare; otherwise it ends `not_run` with
+`tier_unreachable`, naming each missing outcome, before any page, observer or
+driver call. Tier names do not decide admission. Every capability must be a
+name (`^[a-z][a-z0-9_]*$`; another value is refused as invalid input), and one
+the runner does not know is ignored; the verdict's `harness.declaredOutcomes`
+records the declaration, so a store that declares fewer outcomes is visible to
+every reader; a store's proof harness pins the declaration it requires.
+
+Each outcome has a ledger effect, compared with the ledger at the end of the
+previous outcome step (zero before the first): every outcome except
+`settled_after_pending` acts on a new payment attempt, so attempts grow;
+`settled_after_pending` needs at least one; a settling outcome (`settled`,
+`settled_after_pending`, `activation_pending`) adds a capture, while
+`declined` and `pending` add none. A rejected `produce` is `outcome_failed`
+(cause `rejected`), and so is an outcome whose effect the ledger does not show
+(`no_attempt`, `no_effect`): the run stops, and such an outcome never counts
+as stimulus. The ledger has no decline or pending status, so a driver that
+answers `declined` or `pending` without acting on a fresh attempt is not told
+from a store that ignores the outcome (a stated limit).
+
+**Auto-progress.** When the UI performs a scenario's omitted action by itself
+and the effective `autoProgress` (adapter, else proof file) declares it,
+neither run performs it: the clean run waits for the next expected state, and
+the control becomes a `block_read` of status reads from the step before the
+action, with the outcomes after it skipped. When the clean run still offers
+the action at the end of the step after it and the next expected state is not
+shown, the declaration is wrong: `auto_progress_not_performed` (`not_run`,
+field `autoProgress`). Under an `omit_action` control, a
+negated state reached after a status read was matched from the omitted action
+on is `auto_progress_undeclared` (`not_run`; declare the action); reached
+without one, it is `vacuous_progress`.
+
+**Stop-at.** `stopAt: "checkout.<state>"`, for a state an expect step of the
+scenario names (`checkout.awaiting_payment`, `checkout.details_changed`,
+`checkout.awaiting_authority`, `checkout.declined`, `checkout.paid`,
+`checkout.paid_pending_activation`), runs the clean steps until that state is
+visible after a step, removes the interceptor and resolves
+`{ kind: "stopped", stoppedAt, steps }` with the page left there: no control
+run and no verdict. A state not reached rejects
+`storefront_stop_state_unreached` naming the last step, as does a scenario that
+is not admitted, before any call.
 
 **Judgement.** Every failed check adds a finding with its run, step, the field
 at fault where there is one, and texts saying what was observed, why and how
@@ -4165,26 +4227,35 @@ to fix it, and the recheck command (`recheck` from the adapter or proof file,
 
 | Order | Check | Codes | Result |
 | --- | --- | --- | --- |
-| 1 | Page, observer and arrangement worked | `page_failed`, `observer_failed`, `arrange_failed` | `not_run` |
+| 0 | Admitted: every required outcome known and declared | `tier_unreachable` | `not_run` |
+| 1 | Page, observer, arrangement and outcome driver worked | `page_failed`, `observer_failed`, `arrange_failed`, `outcome_failed` | `not_run` |
 | 2 | No order before the arrangement; one after the first matched create | `observer_subject_unseen` | `not_run` |
-| 3 | The first order appeared in a step with a matched create; every withhold applied | `stimulus_not_create`, `stimulus_not_applied` | `not_run` |
-| 4 | Ledger safety in both runs and settle windows; with an exclusive database, payable orders added equal those of the subjects | `duplicate_order`, `duplicate_hold`, `duplicate_capture`, `second_attempt`, `forbidden_state_shown`, `order_outside_subject`; `observer_failed` when fewer were added | `failed`; `not_run` |
+| 3 | The first order appeared in a step with a matched create; every withhold applied; declared auto-progress was performed; every outcome shows its ledger effect | `stimulus_not_create`, `stimulus_not_applied`, `auto_progress_not_performed`, `outcome_failed` | `not_run` |
+| 4 | Ledger safety in both runs and settle windows (also no attempt after its step, attempts per decline, forbidden states per run); with an exclusive database, payable orders added equal those of the subjects | `duplicate_order`, `duplicate_hold`, `duplicate_capture`, `second_attempt`, `forbidden_state_shown`, `order_outside_subject`; `observer_failed` when fewer were added | `failed`; `not_run` |
 | 5 | The create budget kept | `request_budget_exceeded` | `not_run` |
 | 6 | Each matcher used matched in the clean run, and for `block_read` a request of the blocked set after its start; each needed anchor resolved and was visible | `adapter_matcher_unmatched`, `adapter_anchor_missing`, `anchor_hidden` | `not_run` |
-| 7 | The clean run reached its expected state | `progress_not_reached` (another state shown), `adapter_anchor_missing` (none) | `failed`; `not_run` |
-| 8 | The control blocked a request; its negated state was not reached within `quietMs` | `control_not_applied`, `vacuous_progress` | `not_run`, `vacuous` |
+| 7 | The clean run reached its expected state | `policy_mismatch` (the other policy's state), `progress_not_reached` (another state shown), `adapter_anchor_missing` (none) | `failed`; `not_run` |
+| 8 | A `block_read` control blocked a request; its negated state was not reached (within `quietMs` at the expect), also where the scenario forbids other states in the control run | `control_not_applied`, `auto_progress_undeclared`, `vacuous_progress` | `not_run`, `vacuous` |
 | 9 | All hold | — | `passed`, or `safety_only` without a control |
 
 A harness fault is never `failed` or `passed`. A run that exceeds its budget
 stops before its progress and control are exercised, so it proves nothing
 either way; a ledger violation seen before the stop still makes it `failed`.
+Likewise, ledger harm a run proved before a fault or a stimulus check that
+ends `not_run` (in the clean run before one in the control run, or at or
+before its step in the same run) outranks it, so the result is `failed`.
+Forbidden states are set per run in the scenario's `forbiddenStates`:
+`control` lists the states the control run must never show, from its first
+sample on (outcomes a page whose status reads are blocked cannot know; an
+awaiting state stays allowed there, and the state the control negates is left
+to `vacuous_progress`, as in every `block_read` scenario); `clean.ruledOut` lists the outcomes the
+clean run must never show; and once the clean run has shown
+`clean.afterShowing.state`, each state in `clean.afterShowing.regressions` is
+forbidden too (cause `regression`). Each finding names its cause
+(`unknowable`, `ruled_out`, `regression`).
 The control's checks run over every recorded control step, also when the
 control run stopped. A fault's text keeps its code and first sentence with
-every URL replaced by `<url>`. A scenario whose
-`requires.outcomes` names an outcome the run's outcome driver does not declare
-ends `not_run` with `tier_unreachable` before any page or observer call; the
-runner takes no outcome driver yet, so `harness.declaredOutcomes` is empty and
-`not_run` is missing evidence, never a pass.
+every URL replaced by `<url>`. `not_run` is missing evidence, never a pass.
 
 **Trust.** A verdict produced on a developer's machine is a claim about that
 build, not evidence for a release; only a verdict a CI run records for an equal

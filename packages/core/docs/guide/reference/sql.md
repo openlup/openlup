@@ -253,7 +253,8 @@ in [Upgrade the database](../upgrade/database-migrations.md).
 | [`20261129130501_fulfillment_delivery_without_tracking.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129130501_fulfillment_delivery_without_tracking.sql) |
 | [`20261129130502_catalog_governed_draft_owner.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129130502_catalog_governed_draft_owner.sql) |
 | [`20261129130503_order_money_v2_restore_no_temp.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129130503_order_money_v2_restore_no_temp.sql) |
-| [`20261129130504_renewal_order_destination_v2.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129130504_renewal_order_destination_v2.sql) |
+| [`20261129130504_catalog_price_publication_recorder_v2.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129130504_catalog_price_publication_recorder_v2.sql) |
+| [`20261129130505_renewal_order_destination_v2.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129130505_renewal_order_destination_v2.sql) |
 | [`q2_00000000000000_platform_baseline.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_00000000000000_platform_baseline.sql) |
 | [`q2_20260810180001_self_host_actor_auth.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20260810180001_self_host_actor_auth.sql) |
 | [`q2_20260816140000_acquisition_case_foundation.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20260816140000_acquisition_case_foundation.sql) |
