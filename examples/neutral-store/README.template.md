@@ -21,6 +21,14 @@ packaged PostgreSQL history and fictional catalogue, then serves
 Keep this passwordless demonstration isolated; deployment needs your own
 composition and authority. Both one-time and subscription purchases are included.
 
+To use another free local port, export `OPENLUP_STARTER_PORT=4320` in the shell
+that runs `./lifecycle up` and `npm run catalogue:apply`. Use a decimal port
+from 1024 to 65535. With the default origin, exclude [ports blocked by Fetch](https://fetch.spec.whatwg.org/#port-blocking).
+An unset or empty value uses 4319. A Compose-only `.env`
+value does not configure either lifecycle command. Use a distinct
+`COMPOSE_PROJECT_NAME` for each concurrent demo. A configured `publicOrigin`
+still governs request authority.
+
 Read `node_modules/@openlup/core/docs/guide/README.md` after installation.
 `how-to/build/customize-the-starter.md` explains the local demonstration, edit
 loop, owned configuration and application-file upgrades. `docs/proof.md` gives the current verification recipe and links the extraction
