@@ -631,11 +631,15 @@ After an uncertain checkout response, an unchanged retry under the same command
 key returns the saved order and, while it is unpaid, a further continuation
 token. A refreshed acceptance for the same stored terms is the same purchase;
 changed details are refused, never applied. `checkout.continuation` resumes or
-abandons that order by its key. The managed checkout page keeps one key per
-purchase in tab storage, across reloads and changed details; changed details
-answer `starter_checkout_changed` and a panel offers to pay or cancel the
-earlier order. It starts a new key only after that order is closed or no order
-can still arrive, or the buyer explicitly starts a different purchase. Other forms prepare a fresh key when the input changes or the
+abandons that order by its key. The managed checkout page runs on
+`createPurchaseContinuation` through `shared/storefront-bindings.ts`: it keeps
+one key per purchase in tab storage, across reloads and changed details, and
+repeats a create whose answer was lost once by itself. Changed details send
+nothing; the page shows `starter_checkout_changed` and a panel offers to pay or
+cancel the earlier order. It starts a new key only after that order is closed
+or no order can still arrive, or the buyer explicitly starts a different
+purchase, which it offers whenever an answer names the earlier order as not
+payable. An expired order keeps the key. Other forms prepare a fresh key when the input changes or the
 buyer starts a new action. The server still validates acceptance before any new
 draft is admitted.
 

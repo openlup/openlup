@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -10,6 +10,16 @@ import { prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER } from "
 import { definitionPath, definitionPin, definitionSlot, definitionSql, grantPath, grantSlot, grantSql, NATIVE_STORE_GUARD_CATALOGS } from "../tests/helpers/issuedPlatformCatalog.ts";
 import { nativeStoreRevokePublicMessages } from "./reviewed-platform-forward.ts";
 import { assertAppendOnlyPostgresSuiteClosures, PG_SUITE_CLOSURES_PATH, renderCheckoutOwnerGrant, renderNativeStoreSettingsOwnerWindow, NATIVE_SUCCESSOR_TABLE_SQL, NATIVE_CATALOG_CONTROLS, isNativeStoreMigrationPath, assertCoLocatedForwardApproval, assertNativeStoreForward, assertReviewedPlatformForward, assertSecurityDefinerSearchPath, assertUnchangedForwardApproval, checkConstraintSha256, expectedReplacedFunctionAttrs, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, reviewedFunctionDefinitions, renderQualifiedSecurityDefiner, qualifiedCatalogueStorageSelectSql, sqlStatements, isExpandOnlyPlatformForward, changedForwardApprovals, readReviewedForwardRegistry, sqlSha256, type NativeStoreForwardClass, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
+
+it("keeps dormant publication pricing out of package and host code", () => {
+  const result = spawnSync("git", ["grep", "--ignore-case", "--files-with-matches", "-e", "catalog_publication_lock_effective_base_price_v2", "-e", "catalog_publication_assess_prices_v2",
+    "-e", "assess_price_v2", "--",
+    ...["api", "examples", "mcp", "packages", "server", "src"].flatMap(root =>
+      ["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"].map(ext => `:(glob)${root}/**/*.${ext}`)),
+  ], { encoding: "utf8" });
+  if (result.error) throw result.error;
+  expect(result.status, result.stdout || result.stderr).toBe(1);
+});
 
 const fixture = (path: string) => readFileSync(`scripts/fixtures/reviewed-native-store/${path}`);
 const control = JSON.parse(fixture("registry.json").toString()) as NativeStoreForwardClass;

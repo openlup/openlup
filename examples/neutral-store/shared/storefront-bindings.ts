@@ -120,8 +120,8 @@ export const checkoutCreates = createBookkeeping();
 
 /**
  * The class of every refusal code the starter's checkout create, continuation and read actions answer, and of the
- * codes the browser raises. `refused` means the create was refused before anything was created, so the buyer may
- * correct the details under the same key; every other refusal, listed or not, is `unknown`.
+ * codes the browser raises. `refused` means the host answers the code only when this create wrote no order, so the
+ * buyer may correct the details under the same key; every other refusal, listed or not, is `unknown`.
  */
 const cartIssueCodes: Record<OfferIssue['code'], 'refused'> = {
   cart_invalid: 'refused', cart_configuration_changed: 'refused', cart_empty: 'refused', unknown_sku: 'refused',
@@ -132,9 +132,12 @@ export const checkoutRefusalClasses: Readonly<Record<string, 'refused' | 'unknow
   starter_input_invalid: 'refused', starter_email_invalid: 'refused', starter_terms_required: 'refused',
   starter_expected_total_required: 'refused', starter_quote_price_changed: 'refused', starter_quote_refresh_required: 'refused',
   acquisition_terms_capability_required: 'refused', catalog_admission_quote_authority_required: 'refused', ...cartIssueCodes,
+  // The host answers a late fresh create only while no order exists under the key, before writing anything.
+  starter_checkout_request_stale: 'refused',
   starter_checkout_changed: 'unknown', starter_checkout_in_progress: 'unknown', starter_checkout_not_abandonable: 'unknown',
   starter_checkout_expired: 'unknown', starter_checkout_paid: 'unknown', starter_checkout_not_payable: 'unknown',
-  starter_checkout_not_found: 'unknown', starter_checkout_request_stale: 'unknown', starter_attempt_limited: 'unknown',
+  // These are also answered while an order exists under the key, or after this create wrote one.
+  starter_checkout_not_found: 'unknown', starter_attempt_limited: 'unknown',
   starter_command_conflict: 'unknown', starter_purchase_unavailable: 'unknown', starter_quote_unavailable: 'unknown',
   starter_order_not_found: 'unknown', starter_recovery_unavailable: 'unknown', starter_recovery_expired: 'unknown',
   starter_dependency_unavailable: 'unknown', starter_transport_unavailable: 'unknown', starter_response_invalid: 'unknown',

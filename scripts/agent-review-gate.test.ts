@@ -544,4 +544,223 @@ describe('six real Git witnesses', () => {
     await writeReport({ reviewer: 'reviewer-i', tree: round3.candidate.tree, closes: ['A-1'] });
     await expect(f.cli('record', reportPath)).rejects.toThrow('closes must name open material findings');
   });
+
+  it('enforces REGROUP_REQUIRED in prepare after two non-converging cycles, unblocks via regroup --summary even when dirty/stale, and never blocks --new, main merges, or admission', async () => {
+    const f = await fixture('native-review-regroup-');
+    f.git('checkout', '-q', '--detach', f.base);
+    await mkdir(join(f.cwd, 'scripts'), { recursive: true });
+    await writeFile(join(f.cwd, 'scripts/agent-review-decide.mjs'), 'export const REVIEW_RULES_VERSION = 3;\n');
+    f.git('add', 'scripts/agent-review-decide.mjs');
+    f.git('commit', '-qm', 'enable v3 rules on main');
+    const v3Base = f.git('rev-parse', 'HEAD');
+    f.git('update-ref', 'refs/remotes/origin/main', v3Base);
+    await writeFile(join(f.cwd, 'source.txt'), 'v3 branch start\n');
+    f.commit();
+
+    const request = join(f.scratch, 'regroup-intent.json');
+    await writeFile(request, JSON.stringify({ intent: { risk: 'routine', criteria: 'Exercise hard regroup gate' } }));
+    const reportPath = join(f.scratch, 'report.json');
+    const writeReport = (payload: Record<string, unknown>) => writeFile(reportPath, JSON.stringify({
+      cold: true, verdict: 'PASS', findings: [], closes: [],
+      documentation: 'Fixture assessment: reviewed canonical guidance and secondary examples; no impact.',
+      ...payload,
+    }));
+
+    // Cycle 0: opens F1 (0 -> 1).
+    await f.cli('prepare', request);
+    let session = JSON.parse(await readFile(f.statePath, 'utf8'));
+    await writeReport({ reviewer: 'rg-r0', verdict: 'FAIL', tree: session.candidate.tree, findings: [{ id: 'F1', summary: 'invariant missing', material: true }] });
+    await f.cli('record', reportPath);
+
+    // Cycle 1: F1 persists (1 -> 1) -> 1 non-converging cycle.
+    await writeFile(join(f.cwd, 'source.txt'), 'attempt 1\n');
+    f.commit();
+    await f.cli('prepare', request);
+    session = JSON.parse(await readFile(f.statePath, 'utf8'));
+    await writeReport({ reviewer: 'rg-r1', verdict: 'FAIL', tree: session.candidate.tree });
+    await f.cli('record', reportPath);
+
+    // Cycle 2: F1 persists and F2 opens (1 -> 2) -> 2 non-converging cycles -> triggers!
+    await writeFile(join(f.cwd, 'source.txt'), 'attempt 2\n');
+    f.commit();
+    await f.cli('prepare', request);
+    session = JSON.parse(await readFile(f.statePath, 'utf8'));
+    await writeReport({ reviewer: 'rg-r2', verdict: 'FAIL', tree: session.candidate.tree, findings: [{ id: 'F2', summary: 'second defect', material: true }] });
+    await f.cli('record', reportPath);
+
+    // Committing a 3rd repair triggers REGROUP_REQUIRED on prepare.
+    await writeFile(join(f.cwd, 'source.txt'), 'attempt 3\n');
+    f.commit();
+    await expect(f.cli('prepare', request)).rejects.toThrow('REGROUP_REQUIRED');
+
+    // --new is never blocked by REGROUP_REQUIRED (test on a disposable session copy or check main merge).
+    // Verify regroup validation refuses bad arguments, and succeeds even when the checkout is both stale (new commit) and dirty.
+    await writeFile(join(f.cwd, 'source.txt'), 'dirty uncommitted edit\n');
+    await expect(f.cli('regroup')).rejects.toThrow('use regroup --summary <note>');
+    await expect(f.cli('regroup', '--summary', '   ')).rejects.toThrow('use regroup --summary <note>');
+    await expect(f.cli('regroup', '--summary', 'root cause', '--extra')).rejects.toThrow('use regroup --summary <note>');
+    await expect(f.cli('regroup', '--summary', 'Identified root cause; unifying clamp boundary')).resolves.toBe(0);
+
+    // Restore clean committed state and confirm prepare now succeeds and completes review + receipt + hosted admission.
+    f.git('checkout', '--', 'source.txt');
+    await expect(f.cli('prepare', request)).resolves.toBe(0);
+    session = JSON.parse(await readFile(f.statePath, 'utf8'));
+    await writeReport({ reviewer: 'rg-r3', verdict: 'PASS', tree: session.candidate.tree, closes: ['F1', 'F2'] });
+    await f.cli('record', reportPath);
+    await expect(f.cli('verify')).resolves.toBe(0);
+    await expect(f.cli('receipt', '12')).resolves.toBe(0);
+    const body = vi.mocked(console.log).mock.calls.at(-1)![0];
+    const parsed = parseReceipt(body);
+    expect(admit({ receipt: parsed, observed: { ...session.candidate, pr: 12, baseValid: true }, now: Date.now() })).toEqual({
+      ok: true, code: 'reviewed', reason: 'reviewed',
+    });
+
+    // Also prove prepare --new and landing/main base moves are never blocked even when regroupAdvisory is triggered.
+    await writeReport({ reviewer: 'rg-r4', verdict: 'FAIL', tree: session.candidate.tree, findings: [{ id: 'F3', summary: 'new issue', material: true }] });
+    // Note: cannot record on same tree after PASS without new commit; advance 2 non-converging cycles cleanly.
+    for (const [idx, text] of ['loop a', 'loop b'].entries()) {
+      await writeFile(join(f.cwd, 'source.txt'), text + '\n');
+      f.commit();
+      await f.cli('prepare', request);
+      session = JSON.parse(await readFile(f.statePath, 'utf8'));
+      await writeReport({
+        reviewer: `rg-loop-${idx}`, verdict: 'FAIL', tree: session.candidate.tree,
+        findings: idx === 0 ? [{ id: 'F3', summary: 'persist 3', material: true }] : [{ id: 'F4', summary: 'persist 4', material: true }],
+      });
+      await f.cli('record', reportPath);
+    }
+    await writeFile(join(f.cwd, 'source.txt'), 'loop c\n');
+    f.commit();
+    await f.cli('prepare', request);
+    session = JSON.parse(await readFile(f.statePath, 'utf8'));
+    await writeReport({ reviewer: 'rg-loop-2', verdict: 'FAIL', tree: session.candidate.tree });
+    await f.cli('record', reportPath);
+    // Now triggered again; verify base move (merge main) is NOT blocked on prepare!
+    const headBeforeMerge = f.git('rev-parse', 'HEAD');
+    f.git('checkout', '-q', '--detach', v3Base);
+    await writeFile(join(f.cwd, 'main-extra.txt'), 'main move\n');
+    f.git('add', 'main-extra.txt');
+    f.git('commit', '-qm', 'main move');
+    const newMain = f.git('rev-parse', 'HEAD');
+    f.git('update-ref', 'refs/remotes/origin/main', newMain);
+    f.git('checkout', '-q', '--detach', headBeforeMerge);
+    f.git('merge', '--no-ff', '-qm', 'merge main', newMain);
+    await expect(f.cli('prepare', request)).resolves.toBe(0);
+    // And prepare --new works too.
+    await writeFile(join(f.cwd, 'source.txt'), 'fresh start\n');
+    f.commit();
+    await expect(f.cli('prepare', '--new', request)).resolves.toBe(0);
+
+    // On a floor-2 session, abandoning two consecutive partial 1-FAIL rounds triggers REGROUP_REQUIRED on the 3rd prepare,
+    // while status --explain keeps waiting for the 2nd reviewer on the trailing partial round before prepare is called.
+    const f2 = await fixture('native-review-regroup-f2-');
+    f2.git('checkout', '-q', '--detach', f2.base);
+    await mkdir(join(f2.cwd, 'scripts'), { recursive: true });
+    await writeFile(join(f2.cwd, 'scripts/agent-review-decide.mjs'), 'export const REVIEW_RULES_VERSION = 3;\n');
+    f2.git('add', 'scripts/agent-review-decide.mjs');
+    f2.git('commit', '-qm', 'enable v3 rules on main');
+    f2.git('update-ref', 'refs/remotes/origin/main', f2.git('rev-parse', 'HEAD'));
+    const f2Request = join(f2.scratch, 'f2-intent.json');
+    await writeFile(f2Request, JSON.stringify({ intent: { risk: 'behavior', criteria: 'Exercise partial floor-2 regroup guard' } }));
+    const f2Report = join(f2.scratch, 'f2-report.json');
+    const writeF2Report = (payload: Record<string, unknown>) => writeFile(f2Report, JSON.stringify({
+      cold: true, verdict: 'PASS', findings: [], closes: [],
+      documentation: 'Fixture assessment: reviewed canonical guidance; no impact.',
+      ...payload,
+    }));
+
+    await writeFile(join(f2.cwd, 'source.txt'), 'floor2 start\n');
+    f2.commit();
+    await f2.cli('prepare', f2Request);
+    let f2Session = JSON.parse(await readFile(f2.statePath, 'utf8'));
+    await writeF2Report({ reviewer: 'f2-0a', verdict: 'FAIL', tree: f2Session.candidate.tree, findings: [{ id: 'F2-1', summary: 'floor2 defect', material: true }] });
+    await f2.cli('record', f2Report);
+    await writeF2Report({ reviewer: 'f2-0b', verdict: 'FAIL', tree: f2Session.candidate.tree });
+    await f2.cli('record', f2Report);
+
+    await writeFile(join(f2.cwd, 'source.txt'), 'floor2 cycle 1\n');
+    f2.commit();
+    await f2.cli('prepare', f2Request);
+    f2Session = JSON.parse(await readFile(f2.statePath, 'utf8'));
+    await writeF2Report({ reviewer: 'f2-1a', verdict: 'FAIL', tree: f2Session.candidate.tree });
+    await f2.cli('record', f2Report);
+
+    await writeFile(join(f2.cwd, 'source.txt'), 'floor2 cycle 2\n');
+    f2.commit();
+    await f2.cli('prepare', f2Request);
+    f2Session = JSON.parse(await readFile(f2.statePath, 'utf8'));
+    await writeF2Report({ reviewer: 'f2-2a', verdict: 'FAIL', tree: f2Session.candidate.tree });
+    await f2.cli('record', f2Report);
+    await f2.cli('status', '--explain');
+    expect(JSON.parse(vi.mocked(console.log).mock.lastCall![0]).regroupAdvisory).toMatchObject({
+      triggered: false, nonConvergingCycles: 1,
+    });
+
+    await writeFile(join(f2.cwd, 'source.txt'), 'floor2 cycle 3\n');
+    f2.commit();
+    await expect(f2.cli('prepare', f2Request)).rejects.toThrow('REGROUP_REQUIRED');
+  });
+
+  it('hardens CLI defer --to targets and requires cold PASS acceptsDefer confirmation before verify', async () => {
+    const f = await fixture('native-review-defer-');
+    f.git('checkout', '-q', '--detach', f.base);
+    await mkdir(join(f.cwd, 'scripts'), { recursive: true });
+    await writeFile(join(f.cwd, 'scripts/agent-review-decide.mjs'), 'export const REVIEW_RULES_VERSION = 3;\n');
+    f.git('add', 'scripts/agent-review-decide.mjs');
+    f.git('commit', '-qm', 'enable v3 rules on main');
+    const v3Base = f.git('rev-parse', 'HEAD');
+    f.git('update-ref', 'refs/remotes/origin/main', v3Base);
+    await writeFile(join(f.cwd, 'source.txt'), 'defer v3\n');
+    f.commit();
+
+    const request = join(f.scratch, 'intent.json');
+    await writeFile(request, JSON.stringify({ intent: { risk: 'routine', criteria: 'Exercise defer hardening' } }));
+    await f.cli('prepare', request);
+    const session = JSON.parse(await readFile(f.statePath, 'utf8'));
+    const reportPath = join(f.scratch, 'report.json');
+    await writeFile(reportPath, JSON.stringify({
+      reviewer: 'def-r1', cold: true, verdict: 'FAIL', tree: session.candidate.tree,
+      findings: [{ id: 'DF-1', summary: 'deferrable follow-up', material: true }], closes: [],
+      documentation: 'Fixture assessment: reviewed canonical guidance; no impact.',
+    }));
+    await f.cli('record', reportPath);
+
+    await expect(f.cli('defer', 'DF-1', '--to', 'later', '--decision', 'OPT-09', '--reason', 'vague target'))
+      .rejects.toThrow('defer target must reference a structured issue');
+    await expect(f.cli('defer', 'DF-1', '--to', '#123', '--decision', 'OPT-09', '--reason', 'tracked in #123'))
+      .resolves.toBe(0);
+
+    await f.cli('status', '--explain');
+    expect(JSON.parse(vi.mocked(console.log).mock.calls.at(-1)![0])).toMatchObject({
+      status: 'needs_agent_review',
+      openFindings: [],
+      unconfirmedDefers: [{ id: 'DF-1', target: '#123', decision: 'OPT-09' }],
+    });
+
+    await writeFile(reportPath, JSON.stringify({
+      reviewer: 'def-r2', cold: true, verdict: 'PASS', tree: session.candidate.tree,
+      findings: [], closes: [],
+      documentation: 'Fixture assessment: reviewed canonical guidance; no impact.',
+    }));
+    await f.cli('record', reportPath);
+    await expect(f.cli('verify')).rejects.toThrow('confirm every deferred material finding in a cold PASS report (acceptsDefer)');
+
+    await writeFile(reportPath, JSON.stringify({
+      reviewer: 'def-r3', cold: true, verdict: 'PASS', tree: session.candidate.tree,
+      findings: [], closes: [], acceptsDefer: ['DF-1'],
+      documentation: 'Fixture assessment: reviewed canonical guidance; confirmed deferral DF-1.',
+    }));
+    await f.cli('record', reportPath);
+    await expect(f.cli('verify')).resolves.toBe(0);
+    await expect(f.cli('receipt', '12')).resolves.toBe(0);
+    const deferReceiptBody = vi.mocked(console.log).mock.calls.at(-1)![0];
+    expect(deferReceiptBody).toContain('Deferred cards: DF-1 to ?123 · OPT-09');
+    const parsedDeferReceipt = parseReceipt(deferReceiptBody);
+    expect(admit({ receipt: parsedDeferReceipt, observed: { ...session.candidate, pr: 12, baseValid: true }, now: Date.now() })).toEqual({
+      ok: true, code: 'reviewed', reason: 'reviewed',
+    });
+    expect(parsedDeferReceipt.session.history.find((e: { type: string }) => e.type === 'defer')).toMatchObject({
+      findingId: 'DF-1', target: '#123', decision: 'OPT-09',
+    });
+  });
 });
