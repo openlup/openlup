@@ -9,7 +9,7 @@ import { captureCommittedReviewCandidate, git as reviewGit } from "./agent-revie
 import { prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER } from "./agent-review-decide.mjs";
 import { definitionPath, definitionPin, definitionSlot, definitionSql, grantPath, grantSlot, grantSql, NATIVE_STORE_GUARD_CATALOGS } from "../tests/helpers/issuedPlatformCatalog.ts";
 import { nativeStoreRevokePublicMessages } from "./reviewed-platform-forward.ts";
-import { renderCheckoutOwnerGrant, renderNativeStoreSettingsOwnerWindow, NATIVE_SUCCESSOR_TABLE_SQL, NATIVE_CATALOG_CONTROLS, isNativeStoreMigrationPath, assertCoLocatedForwardApproval, assertNativeStoreForward, assertReviewedPlatformForward, assertSecurityDefinerSearchPath, assertUnchangedForwardApproval, expectedReplacedFunctionAttrs, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, reviewedFunctionDefinitions, renderQualifiedSecurityDefiner, qualifiedCatalogueStorageSelectSql, sqlStatements, isExpandOnlyPlatformForward, changedForwardApprovals, readReviewedForwardRegistry, sqlSha256, type NativeStoreForwardClass, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
+import { renderCheckoutOwnerGrant, renderNativeStoreSettingsOwnerWindow, NATIVE_SUCCESSOR_TABLE_SQL, NATIVE_CATALOG_CONTROLS, isNativeStoreMigrationPath, assertCoLocatedForwardApproval, assertNativeStoreForward, assertReviewedPlatformForward, assertSecurityDefinerSearchPath, assertUnchangedForwardApproval, checkConstraintSha256, expectedReplacedFunctionAttrs, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, reviewedFunctionDefinitions, renderQualifiedSecurityDefiner, qualifiedCatalogueStorageSelectSql, sqlStatements, isExpandOnlyPlatformForward, changedForwardApprovals, readReviewedForwardRegistry, sqlSha256, type NativeStoreForwardClass, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
 
 const fixture = (path: string) => readFileSync(`scripts/fixtures/reviewed-native-store/${path}`);
 const control = JSON.parse(fixture("registry.json").toString()) as NativeStoreForwardClass;
@@ -1737,6 +1737,128 @@ describe("integer range CHECK admission", () => {
     { beforeSha256: undefined }, { beforeSha256: "wrong" }, { values: ["open"] },
   ])("refuses malformed range declarations or a missing preimage pin: %j", fields => {
     expect(() => parameterForward(rangeCheck(), slot => { addRange(slot); Object.assign(slot.checkSupersets![0]!, fields); })).toThrow(/invalid CHECK superset entry/u);
+  });
+});
+
+describe("native store checkToFunctionGuard admission", () => {
+  const formatExpr = "CHECK (status ~ '^[a-z][a-z0-9_]{1,63}$')";
+  const priorStatusSha = checkConstraintSha256("CHECK (status IN ('open', 'closed'))");
+  const afterStatusSha = checkConstraintSha256(formatExpr);
+  const guardedPair = (expression = formatExpr, table = "public.fixture_parameters", name = "fixture_status", tail = "") =>
+    `ALTER TABLE ${table} DROP CONSTRAINT ${name};\nALTER TABLE ${table} ADD CONSTRAINT ${name} ${expression}${tail};`;
+  const addGuarded = (slot: NativeStoreSlot, overrides: Partial<NonNullable<NativeStoreSlot["checkToFunctionGuard"]>[number]> = {}) => {
+    slot.checkToFunctionGuard = [{
+      table: "public.fixture_parameters",
+      name: "fixture_status",
+      column: "status",
+      beforeSha256: priorStatusSha,
+      afterSha256: afterStatusSha,
+      guardFunctions: [slot.replacedFunctions[0]!.signature],
+      ...overrides,
+    }];
+  };
+
+  it("admits a pinned named closed-enum CHECK to format CHECK transition with a replaced guard function", () => {
+    expect(() => parameterForward(guardedPair(), slot => addGuarded(slot))).not.toThrow();
+    expect(() => parameterForward(guardedPair(formatExpr, "public.fixture_parameters", "fixture_status", " NOT VALID"), slot => addGuarded(slot))).not.toThrow();
+  });
+
+  it("admits a pinned inline unnamed column CHECK transition (default <table>_<column>_check name)", () => {
+    const inlineTable = "CREATE TABLE public.fixture_inline_prefs (id uuid PRIMARY KEY, method_kind text NOT NULL CHECK (method_kind IN ('instant','card','transfer')));";
+    const beforeSha = checkConstraintSha256("CHECK (method_kind IN ('instant', 'card', 'transfer'))");
+    const afterExpr = "CHECK (method_kind ~ '^[a-z][a-z0-9_]{1,63}$')";
+    const afterSha = checkConstraintSha256(afterExpr);
+    const pair = guardedPair(afterExpr, "public.fixture_inline_prefs", "fixture_inline_prefs_method_kind_check");
+    expect(() => parameterForward(pair, slot => addGuarded(slot, {
+      table: "public.fixture_inline_prefs",
+      name: "fixture_inline_prefs_method_kind_check",
+      column: "method_kind",
+      beforeSha256: beforeSha,
+      afterSha256: afterSha,
+    }), "", inlineTable)).not.toThrow();
+  });
+
+  it("tracks prior ALTER TABLE CHECK replacements in the prefix and admits multiple entries in one slot", () => {
+    const history = "ALTER TABLE public.fixture_parameters DROP CONSTRAINT fixture_status;\nALTER TABLE public.fixture_parameters ADD CONSTRAINT fixture_status CHECK (status IN ('open','closed','paused'));";
+    const widenedBeforeSha = checkConstraintSha256("CHECK (status IN ('open','closed','paused'))");
+    const kindBeforeSha = checkConstraintSha256("CHECK (kind IN ('first','second'))");
+    const kindAfterExpr = "CHECK (kind ~ '^[a-z][a-z0-9_]{1,63}$')";
+    const kindAfterSha = checkConstraintSha256(kindAfterExpr);
+    const pair = `${guardedPair()}\n${guardedPair(kindAfterExpr, "public.fixture_parameters", "fixture_kind")}`;
+    expect(() => parameterForward(pair, slot => {
+      slot.checkToFunctionGuard = [
+        { table: "public.fixture_parameters", name: "fixture_status", column: "status", beforeSha256: widenedBeforeSha, afterSha256: afterStatusSha, guardFunctions: [slot.replacedFunctions[0]!.signature] },
+        { table: "public.fixture_parameters", name: "fixture_kind", column: "kind", beforeSha256: kindBeforeSha, afterSha256: kindAfterSha, guardFunctions: [slot.replacedFunctions[0]!.signature] },
+      ];
+    }, history)).not.toThrow();
+  });
+
+  it("refuses mismatched beforeSha256 and mismatched afterSha256", () => {
+    expect(() => parameterForward(guardedPair(), slot => addGuarded(slot, { beforeSha256: "0".repeat(64) })))
+      .toThrow(/checkToFunctionGuard beforeSha256 mismatch/u);
+    expect(() => parameterForward(guardedPair(), slot => addGuarded(slot, { afterSha256: "f".repeat(64) })))
+      .toThrow(/checkToFunctionGuard afterSha256 mismatch/u);
+  });
+
+  it("refuses missing DROP, missing ADD, intervening statements, missing pair, and unpinned DROP CONSTRAINT", () => {
+    const pair = guardedPair();
+    const [drop, add] = pair.split("\n");
+    expect(() => parameterForward(drop!, slot => addGuarded(slot))).toThrow(/complete named CHECK replacement/u);
+    expect(() => parameterForward(add!, slot => addGuarded(slot))).toThrow(/adjacent named constraint replacement/u);
+    expect(() => parameterForward("", slot => addGuarded(slot))).toThrow(/complete named CHECK replacement/u);
+    expect(() => parameterForward(pair.replace(";\n", ";\nCREATE TABLE public.gap (id uuid);\n"), slot => addGuarded(slot))).toThrow(/adjacent named constraint replacement/u);
+    expect(() => parameterForward(`${pair}\n${pair}`, slot => addGuarded(slot))).toThrow(/duplicate CHECK replacement/u);
+    expect(() => parameterForward(pair, () => {})).toThrow(/closed shapes/u);
+    expect(() => parameterForward(pair.replace("DROP CONSTRAINT", "DROP CONSTRAINT IF EXISTS"), slot => addGuarded(slot))).toThrow(/closed shapes/u);
+    expect(() => parameterForward(pair.replace(";\n", " CASCADE;\n"), slot => addGuarded(slot))).toThrow(/closed shapes/u);
+  });
+
+  it("refuses empty guardFunctions, duplicate guardFunctions, or a guardFunction absent from slot.replacedFunctions", () => {
+    expect(() => parameterForward(guardedPair(), slot => addGuarded(slot, { guardFunctions: [] })))
+      .toThrow(/requires at least one guardFunctions entry/u);
+    expect(() => parameterForward(guardedPair(), slot => addGuarded(slot, { guardFunctions: ["public.unlisted_guard(uuid)"] })))
+      .toThrow(/guardFunction must be listed in slot\.replacedFunctions/u);
+    expect(() => parameterForward(guardedPair(), slot => addGuarded(slot, { guardFunctions: [slot.replacedFunctions[0]!.signature, slot.replacedFunctions[0]!.signature] })))
+      .toThrow(/guardFunctions must be unique canonical signatures/u);
+  });
+
+  it.each([
+    "CHECK (true)",
+    "CHECK (status <> '')",
+    "CHECK (status IS NOT NULL)",
+    "CHECK (status ~ '^.*$')",
+    "CHECK (status ~ '^.+$')",
+    "CHECK (status ~ '[a-z]+')",
+    "CHECK (status ~ '^[a-z]*$')",
+    "CHECK (status ~ '^[a-z]+|.*$')",
+    "CHECK (kind ~ '^[a-z][a-z0-9_]{1,63}$')",
+    "CHECK (status ~ '^[a-z][a-z0-9_]{1,63}$' OR true)",
+  ])("refuses trivial, unconstrained, or wrong-column replacement: %s", expression => {
+    const hash = checkConstraintSha256(expression);
+    expect(() => parameterForward(guardedPair(expression), slot => addGuarded(slot, { afterSha256: hash })))
+      .toThrow(/must be a non-trivial anchored format CHECK/u);
+  });
+
+  it("refuses a format CHECK that does not accept all prior enum values", () => {
+    const narrowExpr = "CHECK (status ~ '^[0-9]{1,8}$')";
+    expect(() => parameterForward(guardedPair(narrowExpr), slot => addGuarded(slot, { afterSha256: checkConstraintSha256(narrowExpr) })))
+      .toThrow(/must accept all prior enum values/u);
+  });
+
+  it("refuses a missing prior CHECK, a non-enum prior CHECK, overlapping constraint entries, or malformed declarations", () => {
+    expect(() => parameterForward(guardedPair(formatExpr, "public.fixture_parameters", "missing_check"), slot => addGuarded(slot, { name: "missing_check" })))
+      .toThrow(/prior CHECK missing from prefix/u);
+    const nonEnumTable = "CREATE TABLE public.fixture_non_enum (id uuid, status text, CONSTRAINT fixture_status CHECK (status <> ''));";
+    expect(() => parameterForward(guardedPair(formatExpr, "public.fixture_non_enum", "fixture_status"), slot => addGuarded(slot, {
+      table: "public.fixture_non_enum",
+      beforeSha256: checkConstraintSha256("CHECK (status <> '')"),
+    }), "", nonEnumTable)).toThrow(/prior CHECK must be a closed enum/u);
+    expect(() => parameterForward(guardedPair(), slot => { addCheck(slot); addGuarded(slot); }))
+      .toThrow(/duplicate constraint entry/u);
+    expect(() => parameterForward(guardedPair(), slot => { slot.checkToFunctionGuard = []; }))
+      .toThrow(/requires a non-empty array/u);
+    expect(() => parameterForward(guardedPair(), slot => addGuarded(slot, { afterSha256: priorStatusSha })))
+      .toThrow(/invalid checkToFunctionGuard entry/u);
   });
 });
 
