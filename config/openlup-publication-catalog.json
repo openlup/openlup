@@ -658,6 +658,10 @@
       "class": "public-output"
     },
     {
+      "path": "config/ci-postgres-suite-closures.json",
+      "class": "public-output"
+    },
+    {
       "path": "config/ci-quarantine.json",
       "class": "public-output"
     },
@@ -8726,6 +8730,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/storefront/testing/postgresObserver.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/storefront/testing/runner.ts",
       "class": "public-output"
     },
@@ -11622,6 +11630,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/storefront/testing/postgresObserver.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/storefront/testing/runner.test.ts",
       "class": "public-output"
     },
@@ -13771,6 +13783,14 @@
     },
     {
       "path": "scripts/run-cancellable-process-group.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/run-eslint.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/run-eslint.test.ts",
       "class": "public-output"
     },
     {
@@ -32373,7 +32393,7 @@
     },
     {
       "name": "lint",
-      "command": "node scripts/ast-grep/check-filewide-ignore.mjs && ast-grep scan --error=no-suppress-all --error=unused-suppression && ast-grep test --skip-snapshot-tests && eslint --concurrency auto .",
+      "command": "node scripts/ast-grep/check-filewide-ignore.mjs && ast-grep scan --error=no-suppress-all --error=unused-suppression && ast-grep test --skip-snapshot-tests && node scripts/run-eslint.mjs .",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -32509,7 +32529,7 @@
     },
     {
       "path": "package.json",
-      "digest": "sha256-35edf4fd78acf8ec6636041b87b619d0e7a0fc7d8552ea5e4ac684427e5ac442"
+      "digest": "sha256-940b21b311fcc3de840233167b919602c75aa71ac582b879558bdd4ce0a97f51"
     },
     {
       "path": "packages/core/package.json",

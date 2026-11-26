@@ -6,7 +6,8 @@ import { delimiter, extname, join, posix, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ALL_WORKFLOW_SCOPES_TRUE, excludedToolingTests, isGlobalBailoutScript, NON_BAILOUT_SCRIPTS, resolveGitExecutable, ROOT_DOC_FILES, scopeFromEvent, scopeFromLocal, SHARED_INPUTS, TOOLING_INPUTS, workflowScopeFromEvent, workflowScopeFromPaths, writeTestScope, writeWorkflowScope } from './ci-test-scope.mjs';
+import { PG_CLOSURE_AXES } from './agent-review-registry.mjs';
+import { ALL_WORKFLOW_SCOPES_TRUE, CONTROL_POSTGRES_SUITES, excludedToolingTests, isGlobalBailoutScript, loadPostgresSuiteClosures, NON_BAILOUT_SCRIPTS, parsePostgresSuiteClosures, PG_AXES, POSTGRES_SUITE_CLOSURES_PATH, resolveGitExecutable, ROOT_DOC_FILES, scopeFromEvent, scopeFromLocal, SHARED_INPUTS, TOOLING_INPUTS, workflowScopeFromEvent, workflowScopeFromPaths, writeTestScope, writeWorkflowScope } from './ci-test-scope.mjs';
 
 const base = 'a'.repeat(40);
 const all = Object.keys(TOOLING_INPUTS).sort();
@@ -1229,5 +1230,83 @@ describe('workflow scope gate (--workflow-outputs)', () => {
       encoding: 'utf8',
       stdio: 'pipe',
     })).toThrow();
+  });
+});
+
+describe('PostgreSQL suite closures registry', () => {
+  const canon = (obj: unknown) => `${JSON.stringify(obj, null, 2)}\n`;
+
+  it('stores valid canonical JSON, keeps control suites hardcoded, and retains agent-review-registry.test.ts on edits', () => {
+    expect(POSTGRES_SUITE_CLOSURES_PATH).toBe('config/ci-postgres-suite-closures.json');
+    const raw = readFileSync(POSTGRES_SUITE_CLOSURES_PATH, 'utf8');
+    const parsed = JSON.parse(raw) as { schemaVersion: number; suites: Record<string, string[]> };
+    expect(parsed.schemaVersion).toBe(1);
+    expect(raw).toBe(canon(parsed));
+    expect(loadPostgresSuiteClosures()).toEqual(parsed.suites);
+
+    expect(CONTROL_POSTGRES_SUITES).toEqual([
+      'tests/postgres/nativeStoreForwardCatalog.noServiceRole.test.ts',
+      'tests/postgres/nativeStoreForwardCatalog.serviceRole.test.ts',
+      'tests/postgres/reviewedBatchForwards.test.ts',
+      'tests/postgres/subscriptionExactInstallation.test.ts',
+    ]);
+    for (const control of CONTROL_POSTGRES_SUITES) {
+      expect(Object.hasOwn(parsed.suites, control), control).toBe(false);
+    }
+    expect(TOOLING_INPUTS['tests/postgres/subscriptionExactInstallation.test.ts']).toContain('tests/postgres/current-installation-inventory.json');
+    expect(TOOLING_INPUTS['tests/postgres/subscriptionExactInstallation.test.ts']).toContain('tests/postgres/nativeStoreForwardCatalog.shared.ts');
+    expect(excludedToolingTests([POSTGRES_SUITE_CLOSURES_PATH])).not.toContain('scripts/agent-review-registry.test.ts');
+    expect(excludedToolingTests([POSTGRES_SUITE_CLOSURES_PATH])).not.toContain('scripts/ci-test-scope.test.ts');
+  });
+
+  it('maintains 1-to-1 axis parity with agent-review-registry.mjs and triggers suites per @axis', () => {
+    expect(PG_CLOSURE_AXES).toEqual(Object.keys(PG_AXES).sort());
+    const closures = loadPostgresSuiteClosures();
+    for (const [axis, prefixes] of Object.entries(PG_AXES)) {
+      const suitesUsingAxis = Object.entries(closures)
+        .filter(([, extras]) => extras.includes(axis))
+        .map(([suite]) => suite);
+      for (const prefix of prefixes) {
+        const excluded = excludedToolingTests([prefix.endsWith('/') ? `${prefix}axis-witness.ts` : prefix]);
+        for (const suite of suitesUsingAxis) {
+          expect(excluded, `${axis} via ${prefix} must retain ${suite}`).not.toContain(suite);
+        }
+      }
+    }
+  });
+
+  it.each<[string, string]>([
+    ['syntax error', '{not json'],
+    ['duplicate suite key', '{"schemaVersion":1,"suites":{"tests/postgres/a.test.ts":[],"tests/postgres/a.test.ts":[]}}'],
+    ['duplicate top-level key', '{"schemaVersion":1,"schemaVersion":1,"suites":{}}'],
+    ['bad schemaVersion', canon({ schemaVersion: 2, suites: {} })],
+    ['extra top-level key', canon({ schemaVersion: 1, suites: {}, extra: true })],
+    ['wrong top-level key order', canon({ suites: {}, schemaVersion: 1 })],
+    ['non-canonical 4-space indentation', `${JSON.stringify({ schemaVersion: 1, suites: { 'tests/postgres/a.test.ts': [] } }, null, 4)}\n`],
+    ['missing trailing newline', canon({ schemaVersion: 1, suites: {} }).trimEnd()],
+    ['unsorted suite keys', canon({ schemaVersion: 1, suites: { 'tests/postgres/z.test.ts': [], 'tests/postgres/a.test.ts': [] } })],
+    ['unsorted inputs', canon({ schemaVersion: 1, suites: { 'tests/postgres/a.test.ts': ['tests/postgres/b.fixture.ts', '@api'] } })],
+    ['invalid suite key outside tests/postgres/', canon({ schemaVersion: 1, suites: { 'src/a.test.ts': [] } })],
+    ['suite key with ..', canon({ schemaVersion: 1, suites: { 'tests/postgres/../a.test.ts': [] } })],
+    ['suite key with //', canon({ schemaVersion: 1, suites: { 'tests/postgres//a.test.ts': [] } })],
+    ['suite key with backslash', canon({ schemaVersion: 1, suites: { 'tests/postgres/sub\\a.test.ts': [] } })],
+    ['suite key with hidden dot segment', canon({ schemaVersion: 1, suites: { 'tests/postgres/.a.test.ts': [] } })],
+    ['non-test suite key', canon({ schemaVersion: 1, suites: { 'tests/postgres/a.ts': [] } })],
+    ['control suite collision (subscriptionExactInstallation)', canon({ schemaVersion: 1, suites: { 'tests/postgres/subscriptionExactInstallation.test.ts': [] } })],
+    ['control suite collision (reviewedBatchForwards)', canon({ schemaVersion: 1, suites: { 'tests/postgres/reviewedBatchForwards.test.ts': [] } })],
+    ['pending suite collision', canon({ schemaVersion: 1, suites: { 'tests/postgres/catalogAdmissionOwnerWrite.test.ts': [] } })],
+    ['unknown @axis', canon({ schemaVersion: 1, suites: { 'tests/postgres/a.test.ts': ['@doesNotExist'] } })],
+    ['broad tests/postgres/ prefix', canon({ schemaVersion: 1, suites: { 'tests/postgres/a.test.ts': ['tests/postgres/'] } })],
+    ['parent traversal input path', canon({ schemaVersion: 1, suites: { 'tests/postgres/a.test.ts': ['../escape.ts'] } })],
+  ])('fails closed in parsePostgresSuiteClosures on %s', (_label, source) => {
+    expect(() => parsePostgresSuiteClosures(source)).toThrow();
+  });
+
+  it('fails closed in loadPostgresSuiteClosures when file is missing or malformed', () => {
+    const dir = scratch();
+    expect(() => loadPostgresSuiteClosures(join(dir, 'missing.json'))).toThrow();
+    const badPath = join(dir, 'bad.json');
+    writeFileSync(badPath, canon({ schemaVersion: 1, suites: { 'tests/postgres/a.test.ts': ['tests/postgres/'] } }));
+    expect(() => loadPostgresSuiteClosures(badPath)).toThrow();
   });
 });

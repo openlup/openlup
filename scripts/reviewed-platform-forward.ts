@@ -6,10 +6,13 @@ import { assertSecurityDefinerSearchPath, isGrandfatheredSecurityDefinerForward 
 import { assertBatchedForward, assertChannelIngestForward, assertFunctionStatements, assertManagedCommerceForward, assertManagedInvoicingStatements, assertPortableCreationStatements, assertQualifiedOwnerPathForward, assertSupportAuthorityForward, batchedFunctionDefinitions, channelIngestShapes, functionSignature, identityHeaderSql, identityPrivilegeKeys, reviewedFunctionDefinitions, reviewedPolicyDefinitions, runtimePrivilegeKeys, runtimeReplacements, updatePolicyDefinitions } from "./migrations/historical-classes.ts";
 import { assertExecutePredecessors, assertNativeStoreClassTransition, assertNativeStoreForward, assertNativeStoreSettingsTargets, checkConstraintSha256, checkoutForwardRefusal, checkoutOwnerControls, checkoutPredecessorRefusal, checkoutReplacementRefusal, checkoutSlotRefusal, expectedReplacedFunctionAttrs, isNativeStoreMigrationPath, isQualifiedCatalogueReadGrant, matchesBoundedFormatPattern, nativeStoreAddedForeignKeys, nativeStoreCreatedTable, nativeStoreFunctionDefinitions, nativeStoreNewSlotTimes, nativeStoreRevokePublicMessages, nativeStoreTriggerDefinition, parseBoundedFormatPattern, previewAcceptanceSource, previewAcceptanceSourceSha256, previewNoopAcceptanceSql, qualifiedCatalogueReadTargets, qualifiedCatalogueStorageSelectSql, renderNativeDeferredTrigger, renderNativeStoreSettingsOwnerWindow, renderQualifiedSecurityDefiner, replacesCheckoutRoutine, type BoundedFormatAtom } from "./migrations/native-store-admission.ts";
 import { approvalBinding, changedForwardApprovals, keepsApprovalOrder, readForwardRegistry, readReviewedForwardRegistry, sharedApproval } from "./migrations/registry.ts";
+import { PG_SUITE_CLOSURES_PATH, readPgSuiteClosures } from "./agent-review-registry.mjs";
+
+type PgSuiteClosures = { schemaVersion: number; suites: Record<string, string[]> };
 
 export {
   checkoutOwnerLogin, checkoutOwnerRoutines, renderCheckoutOwnerGrant,
-  REVIEWED_FORWARD_PATH, MANAGED_BASELINE, sqlSha256,
+  PG_SUITE_CLOSURES_PATH, REVIEWED_FORWARD_PATH, MANAGED_BASELINE, sqlSha256,
   sqlStatements, isExpandOnlyPlatformForward, NATIVE_SUCCESSOR_TABLE_SQL,
   assertSecurityDefinerSearchPath,
   readReviewedForwardRegistry, changedForwardApprovals,
@@ -87,6 +90,29 @@ export const NATIVE_CATALOG_CONTROLS = [
   "scripts/ci-image-pull.mjs", "scripts/ci-image-mirror.mjs", "scripts/disposable-docker.mjs", "scripts/ci-vitest-duration-keys.ts", "scripts/coverage-summary-protocol.ts",
   "src/test/setup.ts", "src/checkout/machine/commerceRequestCache.ts", "config/ci-images.json", ".npmrc",
 ];
+export function assertAppendOnlyPostgresSuiteClosures(root: string, base: string, head: string, addedSql?: readonly string[]): void {
+  const added = addedSql ?? git(root, ["diff", "--name-only", "--no-renames", "--diff-filter=A", "-z", base, head, "--", "db/platform/migrations/", "supabase/migrations/"])
+    .toString("utf8").split("\0").filter((path) => path.endsWith(".sql"));
+  if (added.length === 0) return;
+  const before = blob(root, base, PG_SUITE_CLOSURES_PATH);
+  const after = blob(root, head, PG_SUITE_CLOSURES_PATH);
+  if (!before && !after) return;
+  if (!after) throw new Error(`cannot delete ${PG_SUITE_CLOSURES_PATH} while introducing SQL`);
+  const next = readPgSuiteClosures(after.toString("utf8")).closures as PgSuiteClosures;
+  if (!before) return;
+  const prior = readPgSuiteClosures(before.toString("utf8")).closures as PgSuiteClosures;
+  for (const [suite, inputs] of Object.entries(prior.suites)) {
+    if (!Object.hasOwn(next.suites, suite)) {
+      throw new Error(`${PG_SUITE_CLOSURES_PATH} is append-only while introducing SQL: removed suite ${suite}`);
+    }
+    const nextInputs = new Set(next.suites[suite]);
+    for (const input of inputs) {
+      if (!nextInputs.has(input)) {
+        throw new Error(`${PG_SUITE_CLOSURES_PATH} is append-only while introducing SQL: removed input ${input} from ${suite}`);
+      }
+    }
+  }
+}
 export function assertCoLocatedForwardApproval(root: string, base: string, head: string): void {
   const before = blob(root, base, REVIEWED_FORWARD_PATH), after = blob(root, head, REVIEWED_FORWARD_PATH);
   const prior = before ? readForwardRegistry(before, true) : undefined;
@@ -125,6 +151,7 @@ export function assertCoLocatedForwardApproval(root: string, base: string, head:
     }
   }
   const added = git(root, ["diff", "--name-only", "--no-renames", "--diff-filter=A", "-z", base, head, "--", "db/platform/migrations/", "supabase/migrations/"]).toString("utf8").split("\0").filter((path) => path.endsWith(".sql"));
+  if (added.length > 0) assertAppendOnlyPostgresSuiteClosures(root, base, head, added);
   const checkAddedSecurityDefiner = (registry: ReviewedForwardRegistry) => {
     const closed = closedHistoricalForwardPaths(registry);
     for (const path of added) {
