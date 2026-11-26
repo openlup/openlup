@@ -900,7 +900,7 @@
         "sha256": "03cddadfb849aa09d4e2eb9fc2e36165a2bdef65ce943f06f04396c6ec009263"
       },
       {
-        "file": "db/platform/migrations/20261129130002_native_renewal_occurrence_guards.sql",
+        "file": "db/platform/migrations/20261129140000_native_renewal_occurrence_guards.sql",
         "sha256": "2a42c4187c3cb1d231da3a71ab6b8fae3cb06486f4789b87e207d532cf03ea90"
       }
     ],
@@ -1828,7 +1828,7 @@
           "sha256": "03cddadfb849aa09d4e2eb9fc2e36165a2bdef65ce943f06f04396c6ec009263"
         },
         {
-          "file": "db/platform/migrations/20261129130002_native_renewal_occurrence_guards.sql",
+          "file": "db/platform/migrations/20261129140000_native_renewal_occurrence_guards.sql",
           "sha256": "2a42c4187c3cb1d231da3a71ab6b8fae3cb06486f4789b87e207d532cf03ea90"
         }
       ],
@@ -2756,7 +2756,7 @@
           "sha256": "03cddadfb849aa09d4e2eb9fc2e36165a2bdef65ce943f06f04396c6ec009263"
         },
         {
-          "file": "db/platform/migrations/20261129130002_native_renewal_occurrence_guards.sql",
+          "file": "db/platform/migrations/20261129140000_native_renewal_occurrence_guards.sql",
           "sha256": "2a42c4187c3cb1d231da3a71ab6b8fae3cb06486f4789b87e207d532cf03ea90"
         }
       ],
@@ -3888,8 +3888,8 @@
       "sha256": "03cddadfb849aa09d4e2eb9fc2e36165a2bdef65ce943f06f04396c6ec009263"
     },
     {
-      "file": "20261129130002_native_renewal_occurrence_guards.sql",
-      "source": "db/platform/migrations/20261129130002_native_renewal_occurrence_guards.sql",
+      "file": "20261129140000_native_renewal_occurrence_guards.sql",
+      "source": "db/platform/migrations/20261129140000_native_renewal_occurrence_guards.sql",
       "sha256": "2a42c4187c3cb1d231da3a71ab6b8fae3cb06486f4789b87e207d532cf03ea90"
     },
     {

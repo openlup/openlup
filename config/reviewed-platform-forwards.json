@@ -9674,7 +9674,7 @@
       },
       {
         "row": "native-renewal-occurrence-guards",
-        "path": "db/platform/migrations/20261129130002_native_renewal_occurrence_guards.sql",
+        "path": "db/platform/migrations/20261129140000_native_renewal_occurrence_guards.sql",
         "replacedFunctions": [
           {
             "signature": "public.fulfillment_reserve_subscription_renewal(uuid,uuid,integer,timestamptz)",
@@ -14089,7 +14089,7 @@
       "functions": []
     },
     {
-      "path": "db/platform/migrations/20261129130002_native_renewal_occurrence_guards.sql",
+      "path": "db/platform/migrations/20261129140000_native_renewal_occurrence_guards.sql",
       "sha256": "2a42c4187c3cb1d231da3a71ab6b8fae3cb06486f4789b87e207d532cf03ea90",
       "functions": [
         {
