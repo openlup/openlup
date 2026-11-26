@@ -212,6 +212,28 @@ test('checkout controller: an order expired by the sweep offers a different purc
   expect((await orders(email)).map(row => row.status)).toEqual(['expired', 'pending_payment']);
 });
 
+test('checkout controller: changed details after an expired order was refused as not payable keep that answer', async ({ page }) => {
+  const email = buyer('expired-changed');
+  await openCheckout(page);
+  await details(page, email);
+  const sent = creates(page);
+  const first = await placed(page);
+  await sweepExpired(page, first);
+  await openCheckout(page);
+  await details(page, email);
+  const refused = page.waitForResponse(row => isCreate(row.request()));
+  await placeOrder(page).click();
+  expect(await (await refused).json()).toEqual({ ok: false, code: 'starter_checkout_not_payable' });
+  await expect(output(page)).toContainText(managed('starter_checkout_not_payable'));
+  await details(page, email, '2 Fixed Lane');
+  await placeOrder(page).click();
+  await expect(output(page)).toContainText(managed('starter_checkout_not_payable'));
+  await expect(output(page)).toContainText('starter_checkout_not_payable');
+  await expect(page.locator('main')).not.toContainText(managed('starter_checkout_changed'));
+  await expect(choice(page, 'different')).toBeVisible();
+  expect(sent).toHaveLength(2);
+});
+
 test('checkout controller: starting over on a fulfilled order shows it paid, clears the record, and places one new order', async ({ page }) => {
   const email = buyer('fulfilled');
   await openCheckout(page);
@@ -559,4 +581,35 @@ test('checkout controller: a start-over answer is shown when tab storage refuses
   expect(sent).toHaveLength(2);
   expect(keyOf(sent[1]!)).not.toBe(keyOf(sent[0]!));
   expect((await orders(email)).map(row => row.id === first ? 'first ' + row.status : row.status)).toEqual(['first cancelled', 'pending_payment']);
+});
+
+test('checkout controller: a paid resume whose record cannot be cleared shows it paid and offers only a different purchase', async ({ page }) => {
+  const email = buyer('paid-clear');
+  await openCheckout(page);
+  await details(page, email);
+  const sent = creates(page);
+  const first = await placed(page);
+  const { token } = await purchase(page);
+  expect((await call(page, 'payment.simulate', { orderRef: first, token, outcome: 'captured' })).ok).toBe(true);
+  await page.reload();
+  await expect(panel(page)).toBeVisible();
+  await page.evaluate(() => {
+    const removeItem = Storage.prototype.removeItem;
+    Storage.prototype.removeItem = function (this: Storage, name: string) {
+      if (this === window.sessionStorage) throw new DOMException('blocked', 'SecurityError');
+      return removeItem.call(this, name);
+    };
+  });
+  await choice(page, 'resume').click();
+  await expect(panel(page)).toContainText(t.recoveryPaid);
+  await expect(page.locator('[data-storage-notice]')).toBeVisible();
+  await expect(choice(page, 'resume')).toHaveCount(0);
+  await expect(choice(page, 'abandon')).toHaveCount(0);
+  await expect(choice(page, 'different')).toBeVisible();
+  await choice(page, 'different').click();
+  await details(page, email);
+  await placed(page);
+  expect(sent).toHaveLength(2);
+  expect(keyOf(sent[1]!)).not.toBe(keyOf(sent[0]!));
+  expect((await orders(email)).map(row => row.status)).toEqual(['paid', 'pending_payment']);
 });

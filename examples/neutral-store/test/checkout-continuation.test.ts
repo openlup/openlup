@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { StatusReading } from '@openlup/platform/storefront';
-import { continuationView, type ContinuationView } from '../client/pages/checkout.ts';
+import { changedDetailsView, continuationView, type ContinuationView } from '../client/pages/checkout.ts';
 import { continuationMessage } from '../client/purchase.ts';
 import { market } from '../owned/market.config.ts';
 import type { ActionResult } from '../shared/api.ts';
@@ -57,6 +57,10 @@ const rows: Row[] = [
   ...(['create', 'resume', 'abandon'] as const).map(operation => ({ name: `${operation} session changed`, operation,
     answer: refused('starter_checkout_session_changed'), reading: checking, view: { ...both, ...coded('starter_checkout_session_changed') } })),
   // The record stays: the buyer can submit the same details, cancel, or start a different purchase for other details.
+  ...['paid', 'fulfillment_pending', 'fulfilled'].map(status => ({ name: `resume read ${status}`, operation: 'resume' as const,
+    answer: value({ orderRef: orderA, status }), view: { ...gone, different: true, copy: 'recoveryPaid' as const } })),
+  ...['cancelled', 'refunded'].map(status => ({ name: `resume read ${status}`, operation: 'resume' as const,
+    answer: value({ orderRef: orderA, status }), view: { ...gone, different: true, copy: 'recoveryCancelled' as const } })),
   { name: 'resume found none', operation: 'resume', answer: refused('starter_checkout_not_found'),
     view: { choices: 'both', different: true, link: 'remove', code: 'starter_checkout_not_found', text: 'resumeNotFound' } },
   { name: 'resume limited', operation: 'resume', answer: refused('starter_attempt_limited'), view: { ...both, ...coded('starter_attempt_limited') } },
@@ -75,10 +79,21 @@ test('each earlier-order answer shows its code, texts, choices and link as the t
   }
 });
 
+// Changed details name what is known about the recorded order: unpaid only when it is known payable.
+test('changed details show the view of what is known about the recorded order', () => {
+  const changed = { choices: 'both', different: false, link: 'keep', ...coded('starter_checkout_changed') };
+  assert.deepEqual(changedDetailsView('payable'), changed);
+  for (const code of ['starter_checkout_not_payable', 'starter_checkout_paid', 'starter_checkout_not_abandonable'] as const) {
+    assert.deepEqual(changedDetailsView(code), { choices: 'resume', different: true, link: 'keep', ...coded(code) }, code);
+  }
+  assert.deepEqual(changedDetailsView('starter_checkout_expired'), { ...both, different: true, ...coded('starter_checkout_expired') });
+  assert.deepEqual(changedDetailsView(null), { ...both, different: true, code: 'starter_checkout_changed', text: 'changedUnconfirmed' });
+});
+
 test('"Start a different purchase" is offered on every answer that names the earlier order not payable', () => {
-  const offered = rows.filter(row => row.view.different).map(row => row.view.code ?? row.view.text);
-  assert.deepEqual([...new Set(offered)].sort(), ['starter_checkout_expired', 'starter_checkout_not_abandonable', 'starter_checkout_not_found',
-    'starter_checkout_not_payable', 'starter_checkout_paid']);
+  const offered = rows.filter(row => row.view.different).map(row => row.view.code ?? row.view.text ?? row.view.copy);
+  assert.deepEqual([...new Set(offered)].sort(), ['recoveryCancelled', 'recoveryPaid', 'starter_checkout_expired', 'starter_checkout_not_abandonable',
+    'starter_checkout_not_found', 'starter_checkout_not_payable', 'starter_checkout_paid']);
   for (const locale of market.locales) {
     const label = checkoutContinuationCopy.different[locale];
     for (const code of ['starter_checkout_not_payable', 'starter_checkout_paid', 'starter_checkout_expired'] as const) {
