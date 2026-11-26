@@ -34,7 +34,14 @@ test.beforeAll(async ({ baseURL }, info) => {
   // No case depends on the quota that earlier specs left in this installation.
   await owner.query('TRUNCATE public.commerce_checkout_attempt_ledger');
 });
-test.afterAll(async () => { await owner?.end(); await runtime?.end(); });
+// The specs after this one in the same installation share the requester's checkout quota (36 metered attempts per
+// 180 s from one address); this spec spends about 40, so it leaves none of them behind.
+test.afterAll(async () => {
+  try {
+    const { rows: [left] } = await owner.query<{ n: number }>('SELECT count(*)::int AS n FROM public.commerce_checkout_attempt_ledger');
+    expect(left!.n, 'metered checkout attempts this spec leaves for later specs').toBe(0);
+  } finally { await owner?.end(); await runtime?.end(); }
+});
 test.beforeEach(({ browserName: _browser }, info) => {
   test.skip(info.project.name !== 'supplements', 'configuration-independent');
 });
