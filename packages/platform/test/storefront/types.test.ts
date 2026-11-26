@@ -4,7 +4,7 @@ import { expect, it } from "vitest";
 
 // One probe per line: each `@ts-expect-error` names the line after it and the one
 // diagnostic code that line must raise without the suppression.
-const probes = `import { createPurchaseContinuation, storefrontAnchor, toAttemptNumber, toCommandKey, toContinuationId } from "@openlup/platform/storefront";
+const probes = `import { createPurchaseContinuation, getOrCreateContinuationId, storefrontAnchor, toAttemptNumber, toCommandKey, toContinuationId } from "@openlup/platform/storefront";
 import type { AttemptNumber, ChangedPayloadPolicy, ClientEventReporter, CommandKey, ContinuationId, ContinuationRecord, ContinuationRecordStorageBinding, IdentifierBinding, PaymentProviderFacts, PendingAction, PendingActionStorageBinding, PurchaseContinuation, PurchaseContinuationSnapshot, StatusReading, StatusTransportBinding, StorageFailurePolicy, StorefrontAnchor, SubmitFailureClass, SubmitFailureClassifier, SubmitOutcomeClass, SubmitOutcomeClassifier, SubmitTransportBinding } from "@openlup/platform/storefront";
 declare const continuationId: ContinuationId;
 declare const commandKey: CommandKey;
@@ -27,12 +27,19 @@ const plainKeyTransport: SubmitTransportBinding = { commandKey: (): string => "p
 declare const continuation: PurchaseContinuation<{ item: string }, { status: string }>;
 // @ts-expect-error 09 TS2554 a return carries no argument: only a later read can settle
 continuation.recordReturn({ status: "paid" });
+declare const probeBindings: { storage: ContinuationRecordStorageBinding; identifier: IdentifierBinding };
+// @ts-expect-error 10 TS2322 a call under the default may refuse, so its result is not a plain identity
+const defaultIdentity: ContinuationId = getOrCreateContinuationId(probeBindings, { fingerprint: () => "f" });
+// @ts-expect-error 11 TS2322 the deprecated member narrows too
+const unpersistedIdentity: ContinuationId = getOrCreateContinuationId(probeBindings, { fingerprint: () => "f", storageFailure: "continue_unpersisted" });
 // Positive controls: object literals, using the constructors for branded members.
 const record: ContinuationRecord = { continuationId: toContinuationId("c"), fingerprint: "f", attempt: toAttemptNumber(0) };
 const firstRecord: ContinuationRecord = { continuationId: toContinuationId("c"), fingerprint: "f" };
 let stored: ContinuationRecord | null = null;
 const recordStorage: ContinuationRecordStorageBinding = { read: () => stored, write: (next) => { stored = next; }, clear: () => { stored = null; } };
 const identifiers: IdentifierBinding = { next: () => "generated", accepts: (value) => value.length > 0 };
+const refusing: ContinuationId | null = getOrCreateContinuationId({ storage: recordStorage, identifier: identifiers }, { fingerprint: () => "f", storageFailure: "refuse" });
+const unpersisted: ContinuationId | null = getOrCreateContinuationId({ storage: recordStorage, identifier: identifiers }, { fingerprint: () => "f", storageFailure: "continue_unpersisted" });
 type Request = { key: CommandKey | null };
 const transport: SubmitTransportBinding<Request, { signal?: AbortSignal }, { ok: true }> = { commandKey: (request) => request.key, replay: async () => ({ ok: true }) };
 const brandedKeyTransport: SubmitTransportBinding = { commandKey: () => toCommandKey("k"), replay: async () => undefined };
@@ -102,7 +109,7 @@ it("keeps the identity roles apart and accepts every binding shape", () => {
     const marker = /@ts-expect-error \d+ TS(\d+) /.exec(line);
     return line.includes("@ts-expect-error") ? [`${index + 2}:TS${marker?.[1] ?? "missing code"}`] : [];
   });
-  expect(expected).toHaveLength(9);
+  expect(expected).toHaveLength(11);
   const rejected = compile(probes.replace(/@ts-expect-error/g, "probe-without-suppression"));
   const found = [...new Set(rejected.map(d => d.file?.fileName === filename && d.start !== undefined
     ? `${d.file.getLineAndCharacterOfPosition(d.start).line + 1}:TS${d.code}` : `outside:TS${d.code}`))];

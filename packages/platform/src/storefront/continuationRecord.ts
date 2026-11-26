@@ -1,32 +1,53 @@
-import type { ContinuationRecord, ContinuationRecordStorageBinding, IdentifierBinding } from "./bindings.js";
+import type { ContinuationRecord, ContinuationRecordStorageBinding, IdentifierBinding, StorageFailurePolicy } from "./bindings.js";
 import { toAttemptNumber, toContinuationId, type ContinuationId } from "./identity.js";
 
 /**
- * Returns the continuation identity of the current purchase.
+ * Returns the continuation identity of the current purchase, or `null` when
+ * its storage did not keep a new identity: `null` means nothing may be sent.
  *
- * It reuses the stored record's identity when `identifier.accepts` accepts it;
- * reuse writes nothing and does not call `fingerprint`. Otherwise it calls
- * `identifier.next()`, then `fingerprint()`, writes a new record with that
- * fingerprint and identity and no attempt, replacing any stored record, and
- * returns the new identity. One purchase therefore keeps one identity across
- * payload changes until `clearContinuationRecord` runs.
+ * 1. It reads the record. When one is stored and `identifier.accepts` accepts
+ *    its identity, it returns that identity. Reuse writes nothing, does not
+ *    call `fingerprint` and reads nothing back, under every policy.
+ * 2. Otherwise it calls `identifier.next()`, then `fingerprint()`, and writes
+ *    a new record with that fingerprint and identity and no attempt, replacing
+ *    any stored record.
+ * 3. Under `storageFailure: "continue_unpersisted"` it returns the new
+ *    identity without reading it back, whether or not it was kept.
+ * 4. Under any other value (absent, `"refuse"`, or a member this version does
+ *    not know) it reads the record once more and returns the new identity only
+ *    when that record names it and the fingerprint just written; `attempt` is
+ *    not compared, so a codec may read an absent attempt as `0`. Otherwise it
+ *    returns `null`.
+ * 5. A refusal has no other effect: no second identity, no clear, no retry,
+ *    no event.
+ * 6. It catches nothing: an error a binding or `fingerprint` raises propagates
+ *    as the same object, and a write that throws is not read back.
  *
- * It reads no storage-failure policy. A storage binding that cannot reach its
- * storage returns `null` from `read` and drops `write`, so each call returns a
- * new identity that is not kept. An error a binding or `fingerprint` raises
- * propagates unchanged.
+ * One purchase therefore keeps one identity across payload changes until
+ * `clearContinuationRecord` runs. The result type includes `null` under every
+ * policy, so a `continue_unpersisted` caller narrows it too.
+ *
+ * On `null`, send nothing and let the buyer try again once storage is
+ * available. The cause is a storage binding that did not keep the record it
+ * was given: the browser refused or dropped the write, or the binding's codec
+ * reads back another identity or fingerprint than it was written. A codec
+ * reads back the `continuationId` and `fingerprint` it wrote. Passing the
+ * deprecated `continue_unpersisted` restores the earlier behaviour, which can
+ * create a second order.
  */
 export function getOrCreateContinuationId(
   bindings: { storage: ContinuationRecordStorageBinding; identifier: IdentifierBinding },
-  input: { fingerprint: () => string },
-): ContinuationId {
+  input: { fingerprint: () => string; storageFailure?: StorageFailurePolicy },
+): ContinuationId | null {
   const record = bindings.storage.read();
   if (record && bindings.identifier.accepts(record.continuationId)) return record.continuationId;
 
   const continuationId = toContinuationId(bindings.identifier.next());
   const fingerprint = input.fingerprint();
   bindings.storage.write({ fingerprint, continuationId });
-  return continuationId;
+  if (input.storageFailure === "continue_unpersisted") return continuationId;
+  const kept = bindings.storage.read();
+  return kept && kept.continuationId === continuationId && kept.fingerprint === fingerprint ? continuationId : null;
 }
 
 /**

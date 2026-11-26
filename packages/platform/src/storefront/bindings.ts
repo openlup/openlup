@@ -90,13 +90,12 @@ export interface SubmitTransportBinding<TRequest = unknown, TOptions = unknown, 
  * The union is open: members may be added in a minor release. The package reads
  * a member it does not know as `refuse`.
  *
- * No function reads this policy yet: `getOrCreateContinuationId` continues
- * with an identity that was not persisted when its storage binding drops a
- * write. `createPurchaseContinuation` takes no policy: it reads the record
- * back and always refuses to send when a write throws or does not read back.
- * A later change makes `getOrCreateContinuationId` this policy's reader, with
- * the storage-failure policy parameter (default `refuse`) as a declared
- * behaviour change.
+ * `getOrCreateContinuationId` reads it from its per-call `storageFailure`:
+ * absent, `refuse` or an unknown member, it returns `null` (nothing may be
+ * sent) when a new identity does not read back with the identity and
+ * fingerprint it wrote. `createPurchaseContinuation` takes no policy: it calls
+ * that function with `refuse`, and refuses to send when a write throws or the
+ * record read back names no identity or another one.
  *
  * @experimental
  */
