@@ -250,11 +250,7 @@ export function createPostgresCatalogPublicationCommands<Context>(deps: Postgres
         const seal = publicationApprovalState(plan.product, plan.skus);
         if (action === "approve") {
           requireCommand(seal.digest === command.postStateDigest, "catalog_publication_post_state_changed");
-          const priorSkus = new Map(previous.evidence.skus.map(sku => [sku.id, sku]));
-          const postStateSkus = plan.product.schemaVersion === 3
-            ? plan.skus.filter(sku => !priorSkus.has(sku.id) || !same(priorSkus.get(sku.id), sku))
-            : undefined;
-          return commit({ ...command, postStateText: seal.canonicalText, postStateSkus });
+          return commit({ ...command, postStateText: seal.canonicalText });
         }
         requireCommand(seal.digest === active?.post_state_digest && seal.canonicalText === active.post_state_canonical_text,
           "catalog_publication_post_state_changed");

@@ -10,58 +10,6 @@ import { prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER } from "
 import { definitionPath, definitionPin, definitionSlot, definitionSql, grantPath, grantSlot, grantSql, NATIVE_STORE_GUARD_CATALOGS } from "../tests/helpers/issuedPlatformCatalog.ts";
 import { nativeStoreRevokePublicMessages } from "./reviewed-platform-forward.ts";
 import { renderCheckoutOwnerGrant, renderNativeStoreSettingsOwnerWindow, NATIVE_SUCCESSOR_TABLE_SQL, NATIVE_CATALOG_CONTROLS, isNativeStoreMigrationPath, assertCoLocatedForwardApproval, assertNativeStoreForward, assertReviewedPlatformForward, assertSecurityDefinerSearchPath, assertUnchangedForwardApproval, expectedReplacedFunctionAttrs, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, reviewedFunctionDefinitions, renderQualifiedSecurityDefiner, qualifiedCatalogueStorageSelectSql, sqlStatements, isExpandOnlyPlatformForward, changedForwardApprovals, readReviewedForwardRegistry, sqlSha256, type NativeStoreForwardClass, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
-import { tokenizeSecurityDefinerStatements, type SecurityDefinerToken } from "./migrations/security-definer.ts";
-
-it("builds the first-offer input at every publication price modes call", () => {
-  const path = "db/platform/migrations/20261129130002_catalog_price_publication_recorder_v2.sql";
-  const modes = "catalog_publication_price_modes_v2";
-  const builder = "catalog_publication_first_offer_input_v2";
-  const sql = readFileSync(path, "utf8");
-  const symbol = (token: SecurityDefinerToken | undefined, value: string) => token?.kind === "symbol" && token.value === value;
-  const identifier = (token: SecurityDefinerToken | undefined) => token?.kind === "word" ? token.value.toLowerCase()
-    : token?.kind === "quoted" ? token.value : undefined;
-  const callers: string[] = [];
-  for (const statement of tokenizeSecurityDefinerStatements(sql, path, { requireComplete: true })) {
-    if (identifier(statement[0]) === "revoke") continue;
-    const body = statement.find(token => token.kind === "dollar-string");
-    const tokens = body ? tokenizeSecurityDefinerStatements(body.value, path).flat() : statement;
-    for (const [index, token] of tokens.entries()) {
-      if (identifier(token) !== modes || !symbol(tokens[index + 1], "(")) continue;
-      callers.push(identifier(statement[statement.findIndex(part => identifier(part) === "function") + 3]) ?? "");
-      const argumentsAtTopLevel: SecurityDefinerToken[][] = [[]];
-      let depth = 0;
-      for (const part of tokens.slice(index + 2)) {
-        if (depth === 0 && symbol(part, ")")) break;
-        if (depth === 0 && symbol(part, ",")) {
-          argumentsAtTopLevel.push([]);
-          continue;
-        }
-        if (symbol(part, "(") || symbol(part, "[")) depth++;
-        if (symbol(part, ")") || symbol(part, "]")) depth--;
-        argumentsAtTopLevel.at(-1)!.push(part);
-      }
-      expect(argumentsAtTopLevel).toHaveLength(4);
-      const firstOffer = argumentsAtTopLevel[3]!;
-      expect(identifier(firstOffer[0])).toBe("public");
-      expect(symbol(firstOffer[1], ".")).toBe(true);
-      expect(identifier(firstOffer[2])).toBe(builder);
-      expect(symbol(firstOffer[3], "(")).toBe(true);
-      let builderDepth = 1;
-      const end = firstOffer.findIndex((part, position) => {
-        if (position < 4) return false;
-        if (symbol(part, "(")) builderDepth++;
-        if (symbol(part, ")")) builderDepth--;
-        return builderDepth === 0;
-      });
-      expect(end).toBe(firstOffer.length - 1);
-    }
-  }
-  expect(callers).toEqual([
-    "catalog_publication_lock_effective_base_price_v2",
-    "catalog_publication_record_command",
-    "catalog_publication_record_command",
-  ]);
-});
 
 const fixture = (path: string) => readFileSync(`scripts/fixtures/reviewed-native-store/${path}`);
 const control = JSON.parse(fixture("registry.json").toString()) as NativeStoreForwardClass;

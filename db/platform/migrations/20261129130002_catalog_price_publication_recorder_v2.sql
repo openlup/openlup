@@ -238,68 +238,8 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_publication_price_operations_v2(jsonb,uuid,boolean) FROM PUBLIC;
 
--- Keep the changed SKU facts available for verification before issuance creates their revisions.
-ALTER TABLE public.catalog_publication_decisions ADD COLUMN post_state_sku_facts jsonb;
-
-CREATE FUNCTION public.catalog_publication_first_offer_input_v2(p_product uuid, p_previous uuid,
-  p_approval public.catalog_publication_decisions, p_skus jsonb, p_sku uuid) RETURNS jsonb
-LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
-DECLARE
-  approved jsonb;
-  previous jsonb;
-  issued jsonb;
-  first_offers jsonb;
-  valid boolean;
-BEGIN
-  IF p_approval.action IS DISTINCT FROM 'approve' THEN RETURN '[]'::jsonb; END IF;
-  approved := public.catalog_publication_manifest_text(p_product,
-    p_approval.post_state_canonical_text,p_approval.post_state_digest,true)::jsonb;
-  SELECT public.catalog_publication_read_manifest(p_product,p.canonical_state,p.digest) INTO previous
-  FROM public.catalog_publications p WHERE (p.product_id,p.id)=(p_product,p_previous);
-  SELECT public.catalog_publication_read_manifest(p_product,p.canonical_state,p.digest) INTO issued
-  FROM public.catalog_publications p WHERE p.product_id=p_product AND p.approval_id=p_approval.id;
-
-  WITH supplied AS (
-    SELECT facts->'id' AS id,facts
-    FROM jsonb_array_elements(coalesce(p_skus,
-      CASE WHEN issued IS NULL THEN p_approval.post_state_sku_facts END,'[]'::jsonb)) facts
-  ), prior AS (
-    SELECT ref->'skuId' AS id,ref,public.catalog_publication_read_sku_revision(p_product,ref) AS facts
-    FROM jsonb_array_elements(previous->'skus') ref
-    WHERE p_sku IS NULL OR ref->'skuId'=to_jsonb(p_sku)
-  ), sealed AS (
-    SELECT approved_ref.ref,prior.ref AS prior_ref,prior.facts AS prior_facts,
-      coalesce(supplied.facts,public.catalog_publication_read_sku_revision(p_product,retained.ref),
-        CASE WHEN prior.ref->'digest'=approved_ref.ref->'digest' THEN prior.facts END) AS facts
-    FROM jsonb_array_elements(approved->'skus') approved_ref(ref)
-    LEFT JOIN supplied ON supplied.id=approved_ref.ref->'skuId'
-    LEFT JOIN prior ON prior.id=approved_ref.ref->'skuId'
-    LEFT JOIN jsonb_array_elements(issued->'skus') retained(ref) ON retained.ref->'skuId'=approved_ref.ref->'skuId'
-    WHERE p_sku IS NULL OR approved_ref.ref->'skuId'=to_jsonb(p_sku)
-  ), verified AS (
-    SELECT ref->'skuId' AS id,prior_facts,facts,
-      (prior_ref IS NULL OR prior_facts IS NOT NULL)
-        AND facts->'productId'=to_jsonb(p_product)
-        AND facts->>'id'=ref->>'skuId'
-        AND jsonb_typeof(facts->'memberships')='array'
-        AND encode(sha256(convert_to(public.catalog_publication_canonical(facts,0),'UTF8')),'hex')=ref->>'digest' AS matches
-    FROM sealed
-  )
-  SELECT coalesce(jsonb_agg(id) FILTER (
-      WHERE NOT coalesce(prior_facts->'memberships' @> '[{"admitted":true}]',false)
-        AND facts->'memberships' @> '[{"admitted":true}]'), '[]'::jsonb),
-    count(*)>0 AND bool_and(matches IS TRUE)
-  INTO first_offers,valid FROM verified;
-  IF (p_previous IS NOT NULL AND previous IS NULL) OR valid IS DISTINCT FROM true THEN
-    RAISE EXCEPTION 'catalog_publication_post_state_changed' USING ERRCODE='23514', CONSTRAINT='catalog_publication_post_state_changed';
-  END IF;
-  RETURN first_offers;
-END;
-$$;
-REVOKE ALL ON FUNCTION public.catalog_publication_first_offer_input_v2(uuid,uuid,public.catalog_publication_decisions,jsonb,uuid) FROM PUBLIC;
-
 CREATE FUNCTION public.catalog_publication_price_modes_v2(p_authored jsonb, p_previous uuid, p_skus jsonb,
-  p_first_offers jsonb) RETURNS TABLE(sku jsonb, modes jsonb)
+  p_sealed_memberships jsonb DEFAULT NULL) RETURNS TABLE(sku jsonb, modes jsonb)
 LANGUAGE sql STABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
   WITH prior AS (
     SELECT ref->'skuId' AS id, r.full_facts::jsonb AS facts,
@@ -332,7 +272,10 @@ LANGUAGE sql STABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
   FROM jsonb_array_elements(p_skus) s LEFT JOIN prior ON prior.id=s->'id'
   LEFT JOIN eligibility ON eligibility.code=s->'code'
   CROSS JOIN product_withdrawal
-  CROSS JOIN LATERAL (SELECT p_first_offers @> jsonb_build_array(s->'id') AS first_offer) admission
+  CROSS JOIN LATERAL (SELECT NOT coalesce(prior.facts->'memberships' @> '[{"admitted":true}]',false)
+    AND CASE WHEN s ? 'memberships' THEN s->'memberships' @> '[{"admitted":true}]'
+      ELSE coalesce(p_sealed_memberships, '[]')
+        @> jsonb_build_array(jsonb_build_object('skuCode',s->'code','admitted',true)) END AS first_offer) admission
   CROSS JOIN LATERAL (SELECT
     CASE WHEN product_withdrawal.n>coalesce(eligibility.n,0) THEN false
       ELSE coalesce(eligibility.standalone,prior.facts->'sellableStandalone'='true'::jsonb,false) END AS standalone,
@@ -490,7 +433,6 @@ LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 DECLARE
   actor uuid := public.catalog_price_setup_require_human_admin();
   approval public.catalog_publication_decisions%ROWTYPE;
-  previous_id uuid;
   fenced_candidate text;
   authored jsonb;
   operations jsonb;
@@ -519,12 +461,12 @@ BEGIN
   PERFORM public.catalog_publication_assert_receipt(approval.product_id,approval.command_key);
   authored := public.catalog_publication_candidate_source(approval.product_id,approval.candidate_ref,approval.candidate_digest);
   operations := public.catalog_publication_price_operations_v2(authored,approval.product_id,false);
-  previous_id := nullif(split_part(split_part(approval.candidate_ref,'/',2),'@',1),'unpublished')::uuid;
   SELECT item->'operation', modes INTO operation,target
   FROM jsonb_array_elements(operations) item
   JOIN jsonb_array_elements(authored->'skus') s ON s->'id'=item->'skuId'
-  CROSS JOIN LATERAL public.catalog_publication_price_modes_v2(authored,previous_id,jsonb_build_array(s),
-    public.catalog_publication_first_offer_input_v2(approval.product_id,previous_id,approval,NULL,p_sku))
+  CROSS JOIN LATERAL public.catalog_publication_price_modes_v2(authored,
+    nullif(split_part(split_part(approval.candidate_ref,'/',2),'@',1),'unpublished')::uuid,jsonb_build_array(s),
+    approval.post_state_canonical_text::jsonb #> '{product,content,offerMemberships}')
   WHERE item->'skuId'=to_jsonb(p_sku) AND item #> '{operation,priceListId}'=to_jsonb(p_list)
     AND item #> '{operation,schemaVersion}'='2'::jsonb;
   IF NOT FOUND THEN
@@ -552,13 +494,13 @@ $$;
 REVOKE ALL ON FUNCTION public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid) FROM PUBLIC;
 
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.catalog_price_setup_mutate_claimed(jsonb,timestamptz,jsonb), public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid), public.catalog_publication_price_operations_v2(jsonb,uuid,boolean), public.catalog_publication_price_modes_v2(jsonb,uuid,jsonb,jsonb), public.catalog_publication_assert_price_receipt_v2(jsonb,jsonb,jsonb,uuid,text[],text), public.catalog_publication_completed_price_receipt_v2(jsonb,uuid), public.catalog_publication_lock_tax_class_v2(jsonb), public.catalog_publication_first_offer_input_v2(uuid,uuid,public.catalog_publication_decisions,jsonb,uuid) FROM anon;';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.catalog_price_setup_mutate_claimed(jsonb,timestamptz,jsonb), public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid), public.catalog_publication_price_operations_v2(jsonb,uuid,boolean), public.catalog_publication_price_modes_v2(jsonb,uuid,jsonb,jsonb), public.catalog_publication_assert_price_receipt_v2(jsonb,jsonb,jsonb,uuid,text[],text), public.catalog_publication_completed_price_receipt_v2(jsonb,uuid), public.catalog_publication_lock_tax_class_v2(jsonb) FROM anon;';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.catalog_price_setup_mutate_claimed(jsonb,timestamptz,jsonb), public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid), public.catalog_publication_price_operations_v2(jsonb,uuid,boolean), public.catalog_publication_price_modes_v2(jsonb,uuid,jsonb,jsonb), public.catalog_publication_assert_price_receipt_v2(jsonb,jsonb,jsonb,uuid,text[],text), public.catalog_publication_completed_price_receipt_v2(jsonb,uuid), public.catalog_publication_lock_tax_class_v2(jsonb), public.catalog_publication_first_offer_input_v2(uuid,uuid,public.catalog_publication_decisions,jsonb,uuid) FROM authenticated;';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.catalog_price_setup_mutate_claimed(jsonb,timestamptz,jsonb), public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid), public.catalog_publication_price_operations_v2(jsonb,uuid,boolean), public.catalog_publication_price_modes_v2(jsonb,uuid,jsonb,jsonb), public.catalog_publication_assert_price_receipt_v2(jsonb,jsonb,jsonb,uuid,text[],text), public.catalog_publication_completed_price_receipt_v2(jsonb,uuid), public.catalog_publication_lock_tax_class_v2(jsonb) FROM authenticated;';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.catalog_price_setup_mutate_claimed(jsonb,timestamptz,jsonb), public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid), public.catalog_publication_price_operations_v2(jsonb,uuid,boolean), public.catalog_publication_price_modes_v2(jsonb,uuid,jsonb,jsonb), public.catalog_publication_assert_price_receipt_v2(jsonb,jsonb,jsonb,uuid,text[],text), public.catalog_publication_completed_price_receipt_v2(jsonb,uuid), public.catalog_publication_lock_tax_class_v2(jsonb), public.catalog_publication_first_offer_input_v2(uuid,uuid,public.catalog_publication_decisions,jsonb,uuid) FROM service_role;';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.catalog_price_setup_mutate_claimed(jsonb,timestamptz,jsonb), public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid), public.catalog_publication_price_operations_v2(jsonb,uuid,boolean), public.catalog_publication_price_modes_v2(jsonb,uuid,jsonb,jsonb), public.catalog_publication_assert_price_receipt_v2(jsonb,jsonb,jsonb,uuid,text[],text), public.catalog_publication_completed_price_receipt_v2(jsonb,uuid), public.catalog_publication_lock_tax_class_v2(jsonb) FROM service_role;';
 END IF; END; $$;
 
 CREATE OR REPLACE FUNCTION public.catalog_publication_record_command(p_command jsonb) RETURNS text
@@ -605,6 +547,7 @@ DECLARE
   reason text;
   at_price timestamptz;
   tax_class text;
+  sealed_memberships jsonb;
   assessment_skus jsonb;
   draft public.catalog_draft_heads%ROWTYPE;
   prospective public.catalog_publications%ROWTYPE;
@@ -629,11 +572,10 @@ BEGIN
       'fingerprint',fingerprint,'decidedAt',to_char(stamp AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')),0);
     INSERT INTO public.catalog_publication_decisions
       (id,product_id,candidate_ref,candidate_digest,candidate_reference_digest,action,actor_id,command_key,
-       fingerprint,reason,post_state_canonical_text,post_state_digest,decided_at,post_state_sku_facts)
+       fingerprint,reason,post_state_canonical_text,post_state_digest,decided_at)
     VALUES (new_id,product_id,candidate_ref,candidate_digest,
       encode(sha256(convert_to(public.catalog_publication_canonical(jsonb_build_array(candidate_ref,candidate_digest),0),'UTF8')),'hex'),
-      command_kind,actor_id,command_key,fingerprint,p_command->>'reason',seal,seal_digest,stamp,
-      CASE WHEN command_kind='approve' THEN nullif(p_command->'postStateSkus','null'::jsonb) END);
+      command_kind,actor_id,command_key,fingerprint,p_command->>'reason',seal,seal_digest,stamp);
     INSERT INTO public.catalog_operator_receipts(kind,scope_id,command_key,fingerprint,actor_id,result)
     VALUES(command_kind,product_id,command_key,fingerprint,actor_id,receipt);
     RETURN receipt;
@@ -655,9 +597,11 @@ BEGIN
     SELECT d.* INTO approval FROM public.catalog_publication_decisions d
       WHERE (d.product_id,d.candidate_ref,d.candidate_digest)=(product_id,candidate_ref,candidate_digest)
       ORDER BY d.decided_at DESC,d.id DESC LIMIT 1;
-    previous_id := nullif(split_part(split_part(candidate_ref,'/',2),'@',1),'unpublished')::uuid;
     IF approval.action='approve' THEN
       PERFORM public.catalog_publication_assert_receipt(product_id,approval.command_key);
+      -- An approval seals SKU digests before the full SKU revisions exist.
+      -- Use its sealed membership declarations until the issue supplies those revisions.
+      sealed_memberships := approval.post_state_canonical_text::jsonb #> '{product,content,offerMemberships}';
       SELECT jsonb_agg(public.catalog_publication_read_sku_revision(p.product_id,ref))
         INTO assessment_skus FROM public.catalog_publications p
         CROSS JOIN LATERAL jsonb_array_elements(p.canonical_state::jsonb->'skus') ref
@@ -665,8 +609,8 @@ BEGIN
     END IF;
     SELECT coalesce(jsonb_agg(jsonb_build_object('skuId',s->'id','operation',item->'operation') || modes
       ORDER BY s->>'id' COLLATE "C", item #>> '{operation,commandKey}' COLLATE "C"),'[]')
-    INTO targets FROM public.catalog_publication_price_modes_v2(authored,previous_id,coalesce(assessment_skus,authored->'skus'),
-      public.catalog_publication_first_offer_input_v2(product_id,previous_id,approval,NULL,NULL)) AS priced(s,modes)
+    INTO targets FROM public.catalog_publication_price_modes_v2(authored,
+      nullif(split_part(split_part(candidate_ref,'/',2),'@',1),'unpublished')::uuid,coalesce(assessment_skus,authored->'skus'),sealed_memberships) AS priced(s,modes)
     LEFT JOIN jsonb_array_elements(operations) item ON item->'skuId'=s->'id' AND item #> '{operation,schemaVersion}'='2'::jsonb
     WHERE item IS NOT NULL OR modes->'firstAdmission'='true'::jsonb OR EXISTS (
       SELECT 1 FROM jsonb_array_elements(authored #> '{product,sharedContent,requestedModes}') r
@@ -782,8 +726,7 @@ BEGIN
 
     SELECT coalesce(jsonb_agg(jsonb_build_object('skuId',s->'id','operation',item->'operation') || modes
       ORDER BY s->>'id' COLLATE "C"),'[]')
-    INTO targets FROM public.catalog_publication_price_modes_v2(authored,previous_id,p_command->'skus',
-      public.catalog_publication_first_offer_input_v2(product_id,previous_id,approval,p_command->'skus',NULL)) AS priced(s,modes)
+    INTO targets FROM public.catalog_publication_price_modes_v2(authored,previous_id,p_command->'skus') AS priced(s,modes)
     LEFT JOIN jsonb_array_elements(operations) item ON item->'skuId'=s->'id';
     IF EXISTS (SELECT 1 FROM jsonb_array_elements(targets) t
       JOIN jsonb_array_elements(p_command->'skus') s ON s->'id'=t->'skuId'
