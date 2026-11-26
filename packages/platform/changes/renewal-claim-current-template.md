@@ -1,4 +1,4 @@
-- Fixed a native PostgreSQL renewal defect affecting Platform 1.3.0. An accepted subscription edit could leave a prebuilt snapshot eligible for first claim, allowing renewal at the previous amount. First claim now refuses stale snapshots, and the mounted renewal pass rebuilds the still-due occurrence from accepted terms.
+- Fixed a renewal billing defect in the node-postgres renewal rail. In Platform 1.3.x, when a v1 renewal snapshot was built before an accepted bundle edit and first claimed after that edit, the renewal could charge the pre-edit amount. Platform 1.4.0 refuses the stale snapshot on first claim with `subscription_renewal_snapshot_stale`, and the next renewal pass recovers on the accepted lines and amount.
 
 Migration:
 
