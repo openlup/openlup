@@ -4,8 +4,8 @@ import { expect, it } from "vitest";
 
 // One probe per line: each `@ts-expect-error` names the line after it and the one
 // diagnostic code that line must raise without the suppression.
-const probes = `import { storefrontAnchor, toAttemptNumber, toCommandKey, toContinuationId } from "@openlup/platform/storefront";
-import type { AttemptNumber, ChangedPayloadPolicy, ClientEventReporter, CommandKey, ContinuationId, ContinuationRecord, ContinuationRecordStorageBinding, IdentifierBinding, PaymentProviderFacts, PendingAction, PendingActionStorageBinding, StatusReading, StatusTransportBinding, StorageFailurePolicy, StorefrontAnchor, SubmitFailureClass, SubmitFailureClassifier, SubmitOutcomeClass, SubmitOutcomeClassifier, SubmitTransportBinding } from "@openlup/platform/storefront";
+const probes = `import { createPurchaseContinuation, storefrontAnchor, toAttemptNumber, toCommandKey, toContinuationId } from "@openlup/platform/storefront";
+import type { AttemptNumber, ChangedPayloadPolicy, ClientEventReporter, CommandKey, ContinuationId, ContinuationRecord, ContinuationRecordStorageBinding, IdentifierBinding, PaymentProviderFacts, PendingAction, PendingActionStorageBinding, PurchaseContinuation, PurchaseContinuationSnapshot, StatusReading, StatusTransportBinding, StorageFailurePolicy, StorefrontAnchor, SubmitFailureClass, SubmitFailureClassifier, SubmitOutcomeClass, SubmitOutcomeClassifier, SubmitTransportBinding } from "@openlup/platform/storefront";
 declare const continuationId: ContinuationId;
 declare const commandKey: CommandKey;
 // @ts-expect-error 01 TS2322 a plain string is not a continuation identity
@@ -24,6 +24,9 @@ const crossedRecord: ContinuationRecord = { continuationId: commandKey, fingerpr
 const textAttempt = toAttemptNumber("1");
 // @ts-expect-error 08 TS2322 a transport's command key is branded, never a plain string
 const plainKeyTransport: SubmitTransportBinding = { commandKey: (): string => "plain", replay: async () => undefined };
+declare const continuation: PurchaseContinuation<{ item: string }, { status: string }>;
+// @ts-expect-error 09 TS2554 a return carries no argument: only a later read can settle
+continuation.recordReturn({ status: "paid" });
 // Positive controls: object literals, using the constructors for branded members.
 const record: ContinuationRecord = { continuationId: toContinuationId("c"), fingerprint: "f", attempt: toAttemptNumber(0) };
 const firstRecord: ContinuationRecord = { continuationId: toContinuationId("c"), fingerprint: "f" };
@@ -50,14 +53,33 @@ const other: StatusReading = { kind: "active", action: { kind: "other" } };
 const statusTransport: StatusTransportBinding = { read: async () => terminal };
 const changedPolicies: ChangedPayloadPolicy[] = ["update_in_place", "refuse_changed"];
 const storagePolicies: StorageFailurePolicy[] = ["refuse", "continue_unpersisted"];
-const outcomes: SubmitOutcomeClass[] = ["settled", "needs_client_action", "awaiting_authority", "refused", "unknown"];
+const outcomes: SubmitOutcomeClass[] = ["settled", "needs_client_action", "awaiting_authority", "declined", "refused", "closed", "unknown"];
 const classifyOutcome: SubmitOutcomeClassifier<{ status: string }> = (result) => result.status === "paid" ? "settled" : "unknown";
 const facts: PaymentProviderFacts = { providers: ["provider"], reopenableEmbeddedProviders: ["provider"], retryableAttemptStatuses: ["failed", "expired"] };
 const report: ClientEventReporter = (event) => { void event; };
 const anchor: StorefrontAnchor = storefrontAnchor;
 const attribute: "data-openlup-action" = storefrontAnchor.attribute.action;
 const proceed: "proceed_to_checkout" = anchor.action.proceed_to_checkout;
-export { record, firstRecord, recordStorage, identifiers, transport, brandedKeyTransport, nullKeyTransport, undefinedKeyTransport, failureClasses, classifyFailure, pending, redirectPending, quietPending, pendingStorage, checking, active, embedded, other, statusTransport, changedPolicies, storagePolicies, outcomes, classifyOutcome, facts, report, attribute, proceed };
+type Purchase = { item: string };
+type Sent = { key: CommandKey; attempt: AttemptNumber; item: string };
+type Answer = { status: string; declines?: number };
+const controller = createPurchaseContinuation<Purchase, Sent, Answer, { signal?: AbortSignal }>({
+  storage: recordStorage, identifier: identifiers, changedPayload: "refuse_changed",
+  commandKeyFor: ({ continuationId: id, attempt }) => toCommandKey(id + ":" + attempt),
+  request: { fingerprint: (purchase) => purchase.item, build: (purchase, identity) => ({ key: identity.commandKey, attempt: identity.attempt, item: purchase.item }) },
+  transport: { submit: async () => ({ status: "processing" }), replay: async () => ({ status: "processing" }),
+    read: async () => ({ status: "paid" }), abandon: async () => terminal },
+  classifySubmitFailure: classifyFailure, classifyOutcome: (answer) => answer.status === "paid" ? "settled" : "unknown",
+  activationPending: () => false, declinedAttempt: (answer) => answer.declines ?? null, report,
+  pending: { storage: pendingStorage, toStatusReading: () => checking, clock: { now: () => 0 }, providerFacts: facts },
+});
+type Transport = Parameters<typeof createPurchaseContinuation>[0]["transport"];
+const transportOnly: Transport = { submit: async () => null, replay: async () => null, read: async () => null, abandon: async () => checking };
+declare function useExternal<T>(subscribe: (onChange: () => void) => () => void, getSnapshot: () => T): T;
+const { subscribe, getSnapshot } = controller;
+const rendered: PurchaseContinuationSnapshot<Answer> = useExternal(subscribe, getSnapshot);
+const shown: boolean = rendered.hasContinuation;
+export { controller, transportOnly, shown, record, firstRecord, recordStorage, identifiers, transport, brandedKeyTransport, nullKeyTransport, undefinedKeyTransport, failureClasses, classifyFailure, pending, redirectPending, quietPending, pendingStorage, checking, active, embedded, other, statusTransport, changedPolicies, storagePolicies, outcomes, classifyOutcome, facts, report, attribute, proceed };
 `;
 
 it("keeps the identity roles apart and accepts every binding shape", () => {
@@ -80,7 +102,7 @@ it("keeps the identity roles apart and accepts every binding shape", () => {
     const marker = /@ts-expect-error \d+ TS(\d+) /.exec(line);
     return line.includes("@ts-expect-error") ? [`${index + 2}:TS${marker?.[1] ?? "missing code"}`] : [];
   });
-  expect(expected).toHaveLength(8);
+  expect(expected).toHaveLength(9);
   const rejected = compile(probes.replace(/@ts-expect-error/g, "probe-without-suppression"));
   const found = [...new Set(rejected.map(d => d.file?.fileName === filename && d.start !== undefined
     ? `${d.file.getLineAndCharacterOfPosition(d.start).line + 1}:TS${d.code}` : `outside:TS${d.code}`))];

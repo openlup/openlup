@@ -303,6 +303,8 @@ import type { ProviderReconciliationStatus } from "./donorContracts.js";
 import type { PaymentProviderRecoveryProvider } from "./donorContracts.js";
 import type { StripeIntentLike } from "./stripeSandboxPaymentExecutionAdapter.js";
 export interface StripePaymentIntentReader {
+    /** The host records the account bound to this client's installed credentials. */
+    readonly ownAccountRef?: string;
     retrievePaymentIntent(paymentIntentId: string): Promise<StripeIntentLike>;
     cancelPaymentIntent?(paymentIntentId: string): Promise<StripeIntentLike>;
 }

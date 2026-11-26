@@ -27,7 +27,10 @@ CREATE TABLE public.subscription_cycle_occurrences (
   CONSTRAINT cycle_occurrence_policy_check CHECK (
     (deadline_rule_ref IS NULL AND deadline_rule_revision IS NULL AND lead_seconds IS NULL AND late_cancel_disposition IS NULL)
     OR (deadline_rule_ref IS NOT NULL AND deadline_rule_revision IS NOT NULL AND lead_seconds IS NOT NULL AND late_cancel_disposition IS NOT NULL
-      AND octet_length(deadline_rule_ref) BETWEEN 1 AND 200 AND NOT (btrim(deadline_rule_ref) = '')
+      AND octet_length(deadline_rule_ref) BETWEEN 1 AND 200
+      -- C's POSIX space class covers ASCII whitespace. The literal also covers
+      -- U+0085, U+00A0, U+1680, U+2000–U+200A, U+2028–U+2029, U+202F, U+205F, U+3000 and U+FEFF.
+      AND NOT (deadline_rule_ref COLLATE "C" SIMILAR TO '[[:space:]                 　﻿]*')
       AND deadline_rule_revision BETWEEN 1 AND 9007199254740991 AND lead_seconds BETWEEN 0 AND cadence_seconds - 1
       AND late_cancel_disposition IN ('hold_current', 'allow_current_first_charge_if_authorized')))
 );
@@ -203,10 +206,13 @@ CREATE TABLE public.subscription_cycle_payment_attempts (
   predecessor_attempt_id uuid REFERENCES public.subscription_cycle_payment_attempts(payment_attempt_id) DEFERRABLE INITIALLY DEFERRED,
   retry_key text,
   recovery_authorization_ref uuid,
+  non_capture_proof_ref text,
+  non_capture_verified_at timestamptz,
   UNIQUE (preparation_id, retry_key),
   CONSTRAINT cycle_attempt_kind_check CHECK (
     (attempt_kind = 'initial' AND predecessor_attempt_id IS NULL AND retry_key IS NULL AND recovery_authorization_ref IS NULL)
-    OR (attempt_kind = 'retry' AND predecessor_attempt_id IS NOT NULL AND retry_key IS NOT NULL AND recovery_authorization_ref IS NOT NULL))
+    OR (attempt_kind = 'retry' AND predecessor_attempt_id IS NOT NULL AND retry_key IS NOT NULL AND recovery_authorization_ref IS NOT NULL)),
+  CONSTRAINT cycle_attempt_non_capture_proof_check CHECK ((non_capture_proof_ref IS NULL) = (non_capture_verified_at IS NULL))
 );
 CREATE INDEX subscription_cycle_payment_attempts_preparation_idx ON public.subscription_cycle_payment_attempts (preparation_id);
 

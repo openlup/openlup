@@ -1510,6 +1510,7 @@ export interface ProviderRenewalPaymentPorts {
                 };
                 providerOccurredAt: string | null;
                 capturedAmountBasis?: "provider_capture_v1";
+                providerAccountRef?: string;
             } | {
                 kind: "unknown" | "unsupported" | "absent";
             }>;

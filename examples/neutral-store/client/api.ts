@@ -1,4 +1,4 @@
-import type { ActionInput, ActionResult, AppConfigurationResponse, Operation } from '../shared/api.ts';
+import { actionRequestTimeoutMs, type ActionInput, type ActionResult, type AppConfigurationResponse, type Operation } from '../shared/api.ts';
 import { isRecord } from '../shared/offer.ts';
 import type { StarterCatalogueItem } from '../shared/catalogue-products.ts';
 
@@ -25,7 +25,7 @@ export async function act(operation: Operation, input: ActionInput, commandKey: 
       credentials: 'same-origin',
       cache: 'no-store',
       body: JSON.stringify(input),
-      signal: AbortSignal.timeout(20000),
+      signal: AbortSignal.timeout(actionRequestTimeoutMs),
     });
     const result: unknown = await response.json();
     if (isRecord(result) && result.ok === false && typeof result.code === 'string') {

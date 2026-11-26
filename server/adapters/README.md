@@ -191,6 +191,12 @@ hashed or logged by transfer.
 The `acquisition_private.address_references` registry contributes only its row count to
 the census with disposition `target-address-references`; no registry rows, references or columns are exported. Restore keeps
 the target installation's own registry without comparing its count to the source.
+`public.payment_capture_time_test_qualification` contributes only relation, owner and row count under
+`target-payment-qualification`. The row attests to an installation's payment configuration and contains no customer data.
+A restore that imports payment data clears the target qualification in the import transaction. The Payments owner requalifies
+the target provider, credential account and signed source path after reviewing the imported population. An exact retry preserves
+any target qualification recorded since the first restore. Signed captures require
+the bound event account and source path. Readback diagnostics require the provider and credential account on the bound applied run.
 Before connecting, restore rejects extra census fields, invalid counts and
 dispositions that do not match the relation; unsupported relations must have a zero count.
 Acquisition cases, history and all other nonempty private relations still refuse.
@@ -199,7 +205,7 @@ Acquisition cases, history and all other nonempty private relations still refuse
 short-lived token hashes are live authorization state; customers sign in again after restore.
 Census reports only relation, owner, row count and `intentionally-not-carried`, even when empty.
 Restore accepts any digit count for this relation and validates its disposition before connecting.
-Capture never reads, hashes or transports challenge columns; other nonempty outside-profile
+Capture never reads, hashes or transports challenge columns; unregistered nonempty outside-profile
 relations still refuse, and the carried table set is unchanged. Restore requires a pristine
 target with no challenges and never clears an active target's authorization state.
 The [joined native proofs](../../tests/postgres/storeJourneyTransfer.test.ts) use intake-empty

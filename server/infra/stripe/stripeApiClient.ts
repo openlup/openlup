@@ -4,6 +4,7 @@ import { mapStripeIntent, mapSetupIntent, createStripeSandboxPaymentExecutionAda
 
 type StripeSandboxClient = Parameters<typeof createStripeSandboxPaymentExecutionAdapter>[0]["client"];
 type StripeReader = Parameters<typeof createStripePaymentReconciliationProvider>[0];
+type StripeApiReader = StripeReader & Required<Pick<StripeReader, "cancelPaymentIntent" | "searchPaymentIntentsByMetadata">>;
 type StripeIntentLike = ReturnType<typeof mapStripeIntent>;
 const STRIPE_API_VERSION = "2026-07-29.dahlia" as const;
 const DEFAULT_STRIPE_TIMEOUT_MS = 10_000;
@@ -27,7 +28,7 @@ interface StripePayoutSettlementReader {
   listRecentSettledPayoutItems(limit: number): Promise<StripePayoutSettlementItem[]>;
 }
 
-export interface StripeApiClientOptions {
+export interface StripeApiClientOptions extends Pick<StripeReader, "ownAccountRef"> {
   secretKey: string;
   apiVersion?: typeof STRIPE_API_VERSION;
   timeoutMs?: number;
@@ -36,7 +37,8 @@ export interface StripeApiClientOptions {
 
 export function createStripeApiClient(
   options: StripeApiClientOptions,
-): StripeSandboxClient & Required<StripeReader> & StripePayoutSettlementReader {
+): StripeSandboxClient & StripeApiReader & StripePayoutSettlementReader {
+  const { ownAccountRef } = options;
   const stripe = new Stripe(options.secretKey, {
     apiVersion: (options.apiVersion ?? STRIPE_API_VERSION) as StripeClientConfig["apiVersion"],
     typescript: true,
@@ -45,6 +47,7 @@ export function createStripeApiClient(
   });
 
   return {
+    ...(ownAccountRef === undefined ? {} : { ownAccountRef }),
     async createPaymentIntent(input, { idempotencyKey }): Promise<StripeIntentLike> {
       // Interactive (Payment Element) checkout passes no `paymentMethod`: the FE
       // collects it. For that path we pin the offered methods to `["card"]` —

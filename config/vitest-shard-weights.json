@@ -2490,6 +2490,7 @@
     "tests/postgres/neutralStarterE4.test.ts": 107970,
     "tests/postgres/neutralStoreCataloguePacks.test.ts": 37181,
     "tests/postgres/neutralStorePaidMail.test.ts": 32248,
+    "tests/postgres/neutralStorePurchaseContinuation.test.ts": 8627,
     "tests/postgres/neutralStoreQuote.test.ts": 132006,
     "tests/postgres/neutralStoreRecovery.test.ts": 123486,
     "tests/postgres/neutralStoreRenewal.test.ts": 14680,

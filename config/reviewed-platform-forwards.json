@@ -9634,8 +9634,34 @@
         "dataStatements": []
       },
       {
+        "row": "subscription-renewal-generation",
+        "path": "db/platform/migrations/20261129120000_subscription_renewal_generation_seam.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.subscription_read_frozen_renewal_generation(uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
+        "row": "payment-capture-time-read",
+        "path": "db/platform/migrations/20261129130000_payment_capture_time_read.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.payment_read_capture_time(uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "native-renewal-v3-storage",
-        "path": "db/platform/migrations/20261128230002_native_renewal_v3_storage.sql",
+        "path": "db/platform/migrations/20261129130001_native_renewal_v3_storage.sql",
         "replacedFunctions": [],
         "createdFunctions": [],
         "grantOnlyFunctions": [],
@@ -14036,8 +14062,30 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261128230002_native_renewal_v3_storage.sql",
-      "sha256": "d73bf65a9dd75d3f58ef4ac026d634b7ee9728dcaa4ce976d3a815daba495c76",
+      "path": "db/platform/migrations/20261129120000_subscription_renewal_generation_seam.sql",
+      "sha256": "e406e902de4a22b627866af1306a7b6cad82d768b46a5a7596c03b9a45d6aeed",
+      "functions": [
+        {
+          "signature": "public.subscription_read_frozen_renewal_generation(uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "5665822c59370bbfcca08b6d5dcb2722e755fec20fbf2788252cf9fa1bde27f2"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261129130000_payment_capture_time_read.sql",
+      "sha256": "fa1852c267f8676c23ec8f33d5cdb9d1e531c954ad26ec984139b3800ddd88ff",
+      "functions": [
+        {
+          "signature": "public.payment_read_capture_time(uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "a3d69943184d60fce278cceab5dc85a8bd9d63d55b1dc68ebceffc2e9e8e7083"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261129130001_native_renewal_v3_storage.sql",
+      "sha256": "03cddadfb849aa09d4e2eb9fc2e36165a2bdef65ce943f06f04396c6ec009263",
       "functions": []
     },
     {

@@ -1,4 +1,8 @@
 export const paymentsDomain = {
+  outsideProfile: {
+    // Installation attestation carries no customer data. Export only the count.
+    "public.payment_capture_time_test_qualification": { disposition: "target-payment-qualification", preserveTarget: false },
+  },
   owned: {
     renewalAttemptsAndGrants: [
       "subscription_cycle_payment_attempts",
