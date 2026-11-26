@@ -70,9 +70,11 @@ async function start(): Promise<void> {
     notices.add(kind);
     if (renderReady) render(false);
   }, () => products);
-  function navigate(path: string): void {
+  let catalogueSettled = false;
+  function navigate(path: string, options: { replace?: boolean } = {}): void {
     if (!path.startsWith('/') || path.startsWith('//')) throw new Error('starter_navigation_not_local');
-    history.pushState(null, '', path);
+    if (options.replace) history.replaceState(null, '', path);
+    else history.pushState(null, '', path);
     render(true);
   }
   function render(focus: boolean): void {
@@ -82,7 +84,7 @@ async function start(): Promise<void> {
     const locale = route.locale;
     const context: PageContext = {
       config, locale, route, query: new URLSearchParams(location.search), fragments,
-      catalogueProducts: products ?? config.offer.products, ...(catalogueError ? { catalogueError } : {}),
+      catalogueProducts: products ?? config.offer.products, ...(catalogueError ? { catalogueError } : {}), catalogueSettled,
       t: key => copy[locale][key],
       money: amount => new Intl.NumberFormat(locale, {
         style: 'currency', currency: config.market.currency,
@@ -133,6 +135,9 @@ async function start(): Promise<void> {
       products = config.offer.products;
       cart.reconcile();
     }
+  }).finally(() => {
+    // Every outcome settles the catalogue, so a waiting selection entry is decided at most one action timeout later.
+    catalogueSettled = true;
     if (['home', 'catalog', 'product', 'cart'].includes(resolveRoute(location.pathname, config.market).key)) render(false);
   });
 }

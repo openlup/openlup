@@ -79,6 +79,54 @@ creates verified opaque documents and uses the public stock writer. A real
 application must replace these fictional data and resolvers with its own owned
 facts. Neither a product label nor illustrative coverage is usage advice.
 
+## Open the cart with a selection
+
+The cart route of each locale (`routes.cart` in `shared/routes.ts`) accepts a
+selection in its query string, so a buy link or a verification harness can start
+with a cart without seeding browser storage. `shared/selection-entry.ts` owns the
+grammar; build links with `selectionEntryPath(locale, selection)`:
+
+```text
+/cart?mode=one_time&line=EXAMPLE-SKU-1%3A2
+/cart?mode=subscription&cadence=28&line=EXAMPLE-SKU-1%3A2&line=EXAMPLE%3ASKU.2%3A1
+```
+
+An address is an entry only when it carries at least one `line`. Exactly three
+parameters are read:
+
+- `line=<sku>:<quantity>`, repeated for several lines and split at the last `:`.
+  The SKU matches `^[A-Za-z0-9._:-]{1,128}$`; the quantity is a whole number without
+  sign, fraction or leading zeros. A `+` in a hand-written link decodes to a space
+  and is refused, so encode it as `%2B`. At most 50 lines are read.
+- `mode`: `one_time` (the default when absent) or `subscription`, given at most once.
+- `cadence`: subscription cadence in days, given at most once; absent means
+  `offer.defaultCadenceDays`. It is ignored, and removed, in one-time mode.
+
+The selection is checked with `parseCart` and `validateCart` against the storefront
+catalogue, or against the configured products when the store has no catalogue
+binding. Until the catalogue answers, the cart shows a loading line and writes
+nothing; a catalogue error shows its refusal and leaves the address unchanged.
+
+- An empty cart is replaced by the valid selection.
+- A cart that already holds the same selection is left as it is.
+- A cart that holds anything else shows a question, **Use the selection from the
+  link** or **Keep my cart**. Until the buyer answers, the page offers no other
+  cart control and no checkout. The entry never merges lines.
+- An invalid selection shows the entry's own refusal with the cart's texts and
+  writes nothing. It never prints raw link text.
+
+Once decided, only `line`, `mode` and `cadence` leave the address, with one
+history replacement. Every other parameter, including any price, amount or
+currency, keeps its bytes and has no effect. The cart's checkout button carries
+`storefrontAnchor.action.proceed_to_checkout` from `@openlup/platform/storefront`
+while no question is open.
+
+A store that owns `client/pages/storefront.ts` or `client/main.ts` keeps its copy on
+upgrade. To add the entry, import `decideSelectionEntry` and
+`withoutSelectionEntry` from `shared/selection-entry.ts` in the cart page, and set
+`catalogueSettled` in `PageContext` from the catalogue request. Without it, the
+entry validates before the catalogue answers.
+
 ## Support contact
 
 The `supportEmail` validator beside `assertConfig` admits bounded ASCII email

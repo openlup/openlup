@@ -1,12 +1,15 @@
 import { quantityChoices } from '../../shared/subscription-offer.ts';
 import type { PageContext } from '../context.ts';
-import type { Cart, OfferResult } from '../../shared/offer.ts';
+import type { Cart, OfferIssue, OfferResult } from '../../shared/offer.ts';
 import { emptyCart, validateCart } from '../../shared/offer.ts';
 import { nativeUnitPrice, refreshLiveQuote, clearLiveQuote } from '../live-quote.ts';
 import { productPath, routes } from '../../shared/routes.ts';
 import { selectCatalogueProduct } from '../../shared/catalogue-products.ts';
 import { append, button, el, link } from '../dom.ts';
 import { field, refusal } from '../forms.ts';
+import { storefrontAnchor } from '@openlup/platform/storefront';
+import { decideSelectionEntry, isSelectionEntrySku, parseSelectionEntry, selectionEntryCopy, withoutSelectionEntry,
+  type SelectionEntryCatalogue } from '../../shared/selection-entry.ts';
 
 export function homePage(context: PageContext): HTMLElement {
   const { config, locale } = context;
@@ -155,10 +158,84 @@ export function builderPage(context: PageContext): HTMLElement {
   return form;
 }
 
+/** The offer the question was last focused for; focus moves once per offer, not on every render. */
+let focusedOffer: string | undefined;
+/** A refusal of "Use the selection" after a fresh validation, shown by the render that follows. */
+let pendingRefusal: OfferIssue[] | undefined;
+
+const entryAddress = () => withoutSelectionEntry(location.pathname, location.search, location.hash);
+
+function selectionCatalogue(context: PageContext): SelectionEntryCatalogue {
+  if (context.catalogueError) return 'unavailable';
+  return context.catalogueSettled === false ? 'loading' : 'ready';
+}
+
+/** The entry's own refusal: the cart's texts per code, and a SKU only when it matched the grammar. */
+function selectionRefusal(context: PageContext, issues: readonly OfferIssue[]): HTMLElement {
+  const text = (key: keyof typeof selectionEntryCopy) => selectionEntryCopy[key][context.locale];
+  return el('section', { class: 'panel selection-entry', 'aria-labelledby': 'selection-entry-refusal' },
+    el('h2', { id: 'selection-entry-refusal' }, text('refusalHeading')), el('p', {}, text('refusalIntro')),
+    el('ul', {}, ...issues.map(issue => el('li', {}, context.t(issue.code), issue.limit === undefined ? null : ` (${issue.limit})`,
+      issue.sku !== undefined && isSelectionEntrySku(issue.sku) ? el('span', {}, ' · ', el('code', {}, issue.sku)) : null))));
+}
+
+function selectionSummary(context: PageContext, cart: Cart): HTMLElement {
+  const name = (sku: string) => {
+    const product = context.catalogueProducts.find(item => item.sku === sku);
+    return product?.variantTitle ? `${product.variantTitle} · ${sku}` : product?.name[context.locale] ?? sku;
+  };
+  return el('ul', {}, ...cart.lines.map(line => el('li', {}, `${name(line.sku)} × ${line.quantity}`)),
+    el('li', {}, cart.mode === 'subscription'
+      ? `${context.t('subscription')} · ${cart.cadenceDays} ${context.t('days')}` : context.t('oneTime')));
+}
+
+/** Asks before a link replaces a different cart. Nothing on the page can change or check out the old cart meanwhile. */
+function selectionQuestion(context: PageContext, held: Cart, offered: Cart): HTMLElement {
+  const text = (key: keyof typeof selectionEntryCopy) => selectionEntryCopy[key][context.locale];
+  const use = button(text('useSelection'), () => {
+    const parsed = parseSelectionEntry(context.config, new URLSearchParams(location.search));
+    const validated = parsed.kind === 'read'
+      ? validateCart(context.config, parsed.candidate, 'checkout', context.catalogueProducts) : undefined;
+    if (validated?.ok) context.setCart(validated.cart);
+    else pendingRefusal = parsed.kind === 'refused' ? parsed.issues : validated && !validated.ok ? validated.issues : [{ code: 'cart_invalid' }];
+    context.navigate(entryAddress(), { replace: true });
+  });
+  const keep = button(text('keepCart'), () => context.navigate(entryAddress(), { replace: true }), 'secondary');
+  const section = el('section', { class: 'panel selection-entry', tabindex: -1, 'aria-labelledby': 'selection-entry-question' },
+    el('h2', { id: 'selection-entry-question' }, text('questionHeading')), el('p', {}, text('questionIntro')),
+    el('h3', {}, text('offered')), selectionSummary(context, offered),
+    el('h3', {}, text('current')), selectionSummary(context, held),
+    el('div', { class: 'actions' }, use, keep));
+  const offer = location.search;
+  if (focusedOffer !== offer) {
+    focusedOffer = offer;
+    // After the shell is attached and has placed its own focus.
+    queueMicrotask(() => { if (section.isConnected) section.focus(); });
+  }
+  return section;
+}
+
 export function cartPage(context: PageContext): HTMLElement {
   const page = el('div', {}, el('h1', {}, context.t('cart')));
-  const cart = context.getCart();
+  let cart = context.getCart();
+  const decision = decideSelectionEntry(context.config, { query: context.query, cart,
+    products: context.catalogueProducts, catalogue: selectionCatalogue(context) });
+  if (decision.kind !== 'ask') focusedOffer = undefined;
+  if (decision.kind === 'wait') {
+    append(page, el('p', { role: 'status' }, context.t('loading')));
+    return page;
+  }
+  if (decision.kind === 'ask') {
+    append(page, selectionQuestion(context, cart, decision.cart));
+    return page;
+  }
+  const issues = decision.kind === 'refuse' ? decision.issues : pendingRefusal;
+  pendingRefusal = undefined;
+  if (issues) append(page, selectionRefusal(context, issues));
+  if (decision.kind === 'apply') { context.setCart(decision.cart); cart = decision.cart; }
+  if (decision.kind === 'apply' || decision.kind === 'same' || decision.kind === 'refuse') history.replaceState(null, '', entryAddress());
   if (cart.lines.length === 0) {
+    if (decision.kind === 'catalogue_unavailable') append(page, refusal(context, context.catalogueError!, context.t('applicationUnavailable')));
     append(page, el('p', {}, context.t('cartEmpty')), link(context.t('builder'), routes.builder[context.locale]));
     return page;
   }
@@ -188,9 +265,11 @@ export function cartPage(context: PageContext): HTMLElement {
     context.setCart(value.cart);
     return true;
   }
+  const proceed = button(context.t('checkout'), () => { if (save()) context.navigate(routes.checkout[context.locale]); });
+  proceed.setAttribute(storefrontAnchor.attribute.action, storefrontAnchor.action.proceed_to_checkout);
   append(page, rows, mode.node, el('div', { class: 'actions' },
     button(context.t('update'), () => { save(); }),
-    button(context.t('checkout'), () => { if (save()) context.navigate(routes.checkout[context.locale]); }),
+    proceed,
     button(context.t('demoReset'), () => { context.setCart(emptyCart(context.config)); context.navigate(routes.cart[context.locale]); }, 'secondary')),
     result, context.catalogueError ? refusal(context, context.catalogueError, context.t('applicationUnavailable')) : null,
     link(context.t('builder'), routes.builder[context.locale]));
