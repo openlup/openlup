@@ -40,21 +40,20 @@ BEGIN
     END IF;
     RETURN;
   END IF;
-  IF p_owner OR p_before IS NOT NULL THEN
-    SELECT EXISTS (SELECT FROM pg_locks WHERE pid=pg_backend_pid() AND granted
-      AND mode='ShareRowExclusiveLock' AND relation='public.identity_privacy_erasures'::regclass) INTO ledger_locked;
-    restoring := p_owner AND ledger_locked AND pg_has_role(invoking_role,
-      (SELECT relowner FROM pg_class WHERE oid='public.commerce_orders'::regclass),'USAGE') AND
-      (SELECT count(DISTINCT relation) FROM pg_locks WHERE pid=pg_backend_pid() AND granted
-        AND mode='ShareRowExclusiveLock' AND relation IN (
-          'public.commerce_order_tax_snapshots'::regclass,'public.commerce_order_line_sources'::regclass,
-          'public.commerce_order_delivery_buckets'::regclass,'public.commerce_order_line_allocations'::regclass,
-          'public.commerce_order_tax_positions'::regclass,'public.commerce_order_fee_lines'::regclass))=6;
+  -- Connected restore binds the migration login before taking these locks.
+  IF pg_has_role(session_user,
+    (SELECT relowner FROM pg_class WHERE oid='public.commerce_orders'::regclass),'USAGE') THEN
+    restoring := (SELECT count(DISTINCT relation) FROM pg_locks WHERE pid=pg_backend_pid() AND granted
+      AND mode='ShareRowExclusiveLock' AND relation IN (
+        'public.identity_privacy_erasures'::regclass,
+        'public.commerce_order_tax_snapshots'::regclass,'public.commerce_order_line_sources'::regclass,
+        'public.commerce_order_delivery_buckets'::regclass,'public.commerce_order_line_allocations'::regclass,
+        'public.commerce_order_tax_positions'::regclass,'public.commerce_order_fee_lines'::regclass))=7;
   END IF;
 
   -- Restore re-attests this session after the deferred checks. A temporary
-  -- schema would change its effective search path. Item events also bypass
-  -- the memo, while the header INSERT still supplies the seal check.
+  -- schema would change its effective search path. Reconcile every restore
+  -- event, while the header INSERT still supplies the seal check.
   IF restoring THEN
     check_seal := p_fresh;
     check_projection := true;
@@ -141,6 +140,8 @@ BEGIN
 
   -- The deferred storage guards pass queued OLD and NEW images for redaction.
   IF p_before IS NOT NULL THEN
+    SELECT EXISTS (SELECT FROM pg_locks WHERE pid=pg_backend_pid() AND granted
+      AND mode='ShareRowExclusiveLock' AND relation='public.identity_privacy_erasures'::regclass) INTO ledger_locked;
     copies := CASE WHEN p_before ? 'part_no' THEN ARRAY['carrier_ref','service_ref']
       ELSE ARRAY['destination_digest','destination_policy_revision','delivery_selection_ref'] END;
     IF NOT snapshot.destination_erased OR NOT ledger_locked

@@ -14096,12 +14096,12 @@
     },
     {
       "path": "db/platform/migrations/20261129130502_order_money_v2_restore_no_temp.sql",
-      "sha256": "e2170319f41a441b0ea7868f3148acc4b502d68b412c15b59e8af0bd31da4931",
+      "sha256": "2c7bf5a8de5b2abdc33d4877c35f316398d5fdf7df535661c7b8ace8e05263c8",
       "functions": [
         {
           "signature": "public.commerce_order_money_v2_assert(uuid,boolean,boolean,jsonb,jsonb)",
           "beforeSha256": "ff2ef9c8f64cd957ccbff6f00e2873750be65603ddd0bb8a0b7d1ac0a59cfba5",
-          "afterSha256": "6c04bf0fd094c877ff81213d66e25fa4b39420767df923b4ed347009825a3ed3"
+          "afterSha256": "d7435aa484a35c411c99ed461f2043c3a193b3db2a91f3d51498dde748f5b42b"
         }
       ]
     }
