@@ -182,17 +182,62 @@ export type KnownOrderState = 'payable' | 'starter_checkout_not_payable' | 'star
   | 'starter_checkout_not_abandonable';
 const namedStates: readonly string[] = ['starter_checkout_not_payable', 'starter_checkout_paid', 'starter_checkout_expired', 'starter_checkout_not_abandonable'];
 
-/** The state an answer tells about the order under the key, or `null` when it tells nothing. */
-function stateOf(answer: ActionResult | null): KnownOrderState | null {
+const paidOrder: readonly unknown[] = ['paid', 'fulfillment_pending', 'fulfilled'];
+
+/**
+ * The state an answer names for an order, with that order when the answer names it: a create, read or continuation
+ * answer of the checkout page, or an answer the payment-status page reads. `null` when it names no state.
+ */
+export function orderStateOf(answer: ActionResult | null): { orderRef?: string; state: KnownOrderState } | null {
   if (!answer) return null;
   if (!answer.ok) {
-    if (namedStates.includes(answer.code)) return answer.code as KnownOrderState;
-    return ['starter_checkout_changed', 'starter_checkout_in_progress'].includes(answer.code) ? 'payable' : null;
+    if (namedStates.includes(answer.code)) return { state: answer.code as KnownOrderState };
+    return ['starter_checkout_changed', 'starter_checkout_in_progress'].includes(answer.code) ? { state: 'payable' } : null;
   }
   const value = isRecord(answer.value) ? answer.value : null;
-  if (!value || typeof value.orderRef !== 'string') return null;
-  if (value.status === 'pending_payment') return 'payable';
-  return ['paid', 'fulfillment_pending', 'fulfilled', 'cancelled', 'refunded'].includes(String(value.status)) ? null : 'starter_checkout_not_payable';
+  const orderRef = typeof value?.orderRef === 'string' ? value.orderRef : typeof value?.originalOrderRef === 'string' ? value.originalOrderRef : undefined;
+  if (!value || orderRef === undefined) return null;
+  const named = (state: KnownOrderState) => ({ orderRef, state });
+  if (value.terminalStatus === 'paid') return named('starter_checkout_paid');
+  if (value.terminalStatus === 'cancelled') return named('starter_checkout_not_payable');
+  // The payment-status page offers a replacement only for an expired order.
+  if (value.recoveryKind === 'recreate_expired') return named('starter_checkout_not_payable');
+  if (typeof value.status !== 'string') return null;
+  if (value.status === 'pending_payment') return named('payable');
+  // An order in status `expired`, `cancelled` or `refunded` is closed: it reads as not payable, as a resume of it does.
+  return named(paidOrder.includes(value.status) ? 'starter_checkout_paid' : 'starter_checkout_not_payable');
+}
+
+const orderStateName = (configuration: string) => `neutral-store:checkout-order-state:v1:${configuration}`;
+function storedRecord(storage: CheckoutStorage, configuration: string): { id: string; orderRef?: string } | null {
+  try {
+    const record: unknown = JSON.parse(storage.getItem(checkoutRecordKey(configuration)) ?? 'null');
+    return isRecord(record) && typeof record.id === 'string'
+      ? { id: record.id, ...(typeof record.orderRef === 'string' ? { orderRef: record.orderRef } : {}) } : null;
+  } catch { return null; }
+}
+/** What the page last learned about the order under the stored record, kept beside it in the same storage. */
+function knownOrderState(storage: CheckoutStorage, configuration: string): KnownOrderState | null {
+  const record = storedRecord(storage, configuration);
+  try {
+    const stored: unknown = JSON.parse(storage.getItem(orderStateName(configuration)) ?? 'null');
+    return record && isRecord(stored) && stored.id === record.id && typeof stored.state === 'string' ? stored.state as KnownOrderState : null;
+  } catch { return null; }
+}
+/**
+ * Records the state an answer names for the order under the stored record; an answer about another order changes
+ * nothing. When the write fails, the stale state is removed, so the next read falls back to "unknown"; if the removal
+ * fails too, a later read that also fails still reads "unknown".
+ */
+function rememberOrderState(storage: CheckoutStorage, configuration: string, answer: ActionResult | null): void {
+  const learned = orderStateOf(answer), record = storedRecord(storage, configuration);
+  if (!learned || !record) return;
+  if (learned.orderRef !== undefined && record.orderRef !== undefined && learned.orderRef !== record.orderRef) return;
+  const key = orderStateName(configuration);
+  try { storage.setItem(key, JSON.stringify({ id: record.id, state: learned.state })); }
+  catch {
+    try { storage.removeItem(key); } catch { /* Only the changed-details text depends on it. */ }
+  }
 }
 
 /**
@@ -362,24 +407,9 @@ export function checkoutPage(context: PageContext): HTMLElement {
     storageNotice();
   }
 
-  const stateName = `neutral-store:checkout-order-state:v1:${configuration}`;
-  const recordId = (storage: CheckoutStorage): string | null => {
-    try { const record: unknown = JSON.parse(storage.getItem(name) ?? 'null'); return isRecord(record) && typeof record.id === 'string' ? record.id : null; }
-    catch { return null; }
-  };
-  /** What the page last learned about the order under the stored record, kept beside it in the same storage. */
-  function knownState(storage: CheckoutStorage): KnownOrderState | null {
-    const id = recordId(storage);
-    try {
-      const stored: unknown = JSON.parse(storage.getItem(stateName) ?? 'null');
-      return id && isRecord(stored) && stored.id === id && typeof stored.state === 'string' ? stored.state as KnownOrderState : null;
-    } catch { return null; }
-  }
-  function noteState(storage: CheckoutStorage, answer: ActionResult | null): void {
-    const state = stateOf(answer), id = recordId(storage);
-    if (!state || !id) return;
-    try { storage.setItem(stateName, JSON.stringify({ id, state })); } catch { /* Only the changed-details text depends on it. */ }
-  }
+  const stateName = orderStateName(configuration);
+  const knownState = (storage: CheckoutStorage) => knownOrderState(storage, configuration);
+  const noteState = (storage: CheckoutStorage, answer: ActionResult | null) => { rememberOrderState(storage, configuration, answer); };
 
   /** Whether the stored record had recorded an order, read before a command that may clear it. */
   function ordered(storage: CheckoutStorage): boolean {
@@ -706,10 +736,15 @@ export function completionPage(context: PageContext): HTMLElement {
   const credential = Object.freeze({ ...currentPurchase(context.config.id) });
   // Only a host status naming the order under the checkout key as paid or cancelled ends that key; an expired order
   // keeps it, because a payment under it may still settle. A browser return settles nothing.
+  const tabStorage = (): CheckoutStorage | null => { try { return rememberedTabStorage(sessionStorage); } catch { return null; } };
   const settled = (value: unknown) => {
-    let storage: CheckoutStorage;
-    try { storage = rememberedTabStorage(sessionStorage); } catch { return; }
-    pageBindings(context, storage).completed(value);
+    const storage = tabStorage();
+    if (storage) pageBindings(context, storage).completed(value);
+  };
+  // Every order state this page reads is kept for the checkout page, through the same helper as its own answers.
+  const learned = (value: unknown) => {
+    const storage = tabStorage();
+    if (storage) rememberOrderState(storage, context.config.id, { ok: true, value });
   };
   const showStarted = (result: unknown) => {
     if (!isRecord(result) || typeof result.latestOrderRef !== 'string' || typeof result.attemptRef !== 'string') return;
@@ -760,6 +795,7 @@ export function completionPage(context: PageContext): HTMLElement {
     if (!page.isConnected || generation !== inspectionGeneration) return;
     if (recovered?.ok && isRecord(recovered.value)) {
       const value = recovered.value;
+      learned(value);
       if (value.terminalStatus === 'paid') {
         settled(value);
         showState(storefrontAnchor.state.paid, el('p', {}, context.t('recoveryPaid')), renderValue(value)); return;
@@ -796,6 +832,7 @@ export function completionPage(context: PageContext): HTMLElement {
         : code === 'starter_recovery_cancelled' ? 'recoveryCancelled' : 'recoveryUnavailable')), el('code', {}, code));
       return;
     }
+    learned(result.value);
     if (result.value.status === 'paid') {
       settled(result.value);
       showState(storefrontAnchor.state.paid, el('p', {}, context.t('recoveryPaid')), renderValue(result.value));
