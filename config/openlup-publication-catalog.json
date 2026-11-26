@@ -2218,6 +2218,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/shared/selection-entry.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/shared/subscription-edit.ts",
       "class": "public-output"
     },
@@ -2379,6 +2383,10 @@
     },
     {
       "path": "examples/neutral-store/test/routes.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/selection-entry.test.ts",
       "class": "public-output"
     },
     {
@@ -7618,6 +7626,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/operations/server/watchdogAlertBatch.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/operations/validation.ts",
       "class": "public-output"
     },
@@ -10863,6 +10875,10 @@
     },
     {
       "path": "packages/platform/test/operations/settingsReadToolSchemas.main.json",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/operations/watchdogAlertBatch.test.ts",
       "class": "public-output"
     },
     {
@@ -30494,7 +30510,19 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/catalogAdmissionIssueReader.fixture.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/catalogAdmissionIssueReader.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogAdmissionIssueReaderAdminRails.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogAdmissionIssueReaderRails.test.ts",
       "class": "public-output"
     },
     {
@@ -30650,11 +30678,23 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/checkoutOwnerRestoreStatesAdminManaged.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/checkoutOwnerRestoreStatesAdminOperator.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/checkoutOwnerRestoreStatesBootstrapAbsent.test.ts",
       "class": "public-output"
     },
     {
       "path": "tests/postgres/checkoutOwnerRestoreStatesBootstrapDormant.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/checkoutOwnerRestoreStatesBootstrapGranted.test.ts",
       "class": "public-output"
     },
     {
@@ -30806,7 +30846,19 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/connectedStoreTransfer.fixture.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/connectedStoreTransfer.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/connectedStoreTransferRetained.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/connectedStoreTransferScenarios.test.ts",
       "class": "public-output"
     },
     {
@@ -30866,7 +30918,19 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/definerSearchPath.fixture.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/definerSearchPath.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/definerSearchPathPins.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/definerSearchPathPrelock.test.ts",
       "class": "public-output"
     },
     {
@@ -31299,6 +31363,18 @@
     },
     {
       "path": "tests/postgres/m14RestrictedConnectedRestoreMatrix.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14RestrictedConnectedRestoreMatrixNeonOperator.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14RestrictedConnectedRestoreMatrixRdsManaged.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14RestrictedConnectedRestoreMatrixRdsOperator.test.ts",
       "class": "public-output"
     },
     {

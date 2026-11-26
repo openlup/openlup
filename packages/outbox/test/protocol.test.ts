@@ -1,11 +1,159 @@
 import { describe, expect, it, vi } from "vitest";
-import { runOutboxDispatchWorker, uniqueRegistry, readOutboxDispatchConfig, validateScheduledConfig, withPayloadSchema, OutboxHandlerExecutionTrace, type OutboxHandler, type OutboxStore } from "../src/index.js";
+import { runOutboxDispatchWorker, uniqueRegistry, composeIndependentHandlers, readOutboxDispatchConfig, validateScheduledConfig, withPayloadSchema, OutboxHandlerExecutionTrace, type OutboxHandler, type OutboxHandlerOutcome, type OutboxStore } from "../src/index.js";
 import { syntheticOutboxRow } from "../src/testing.js";
 const config = { batchSize: 3, maxAttempts: 8, visibilitySeconds: 300, backoffBaseSeconds: 60, backoffCapSeconds: 3600, snoozeSeconds: 300, maxSnoozes: 48, softBudgetMs: 40000 };
 function store(batches = [[syntheticOutboxRow()]]) {
   return { claimBatch: vi.fn(async () => batches.shift() ?? []), markProcessed: vi.fn(async () => ({ applied: true })), markFailed: vi.fn(async () => ({ status: "failed" as const })), releaseUnprocessed: vi.fn(async (items) => items.length) } satisfies OutboxStore;
 }
 const processed = (type = "example.created", timeoutMs = 10): OutboxHandler => ({ eventType: type, timeoutMs, handle: vi.fn(async () => ({ kind: "processed", detail: { synthetic: true } })) });
+
+describe("independent same-event handlers", () => {
+  const options = { maxConcurrency: 2, timeoutMs: 100 };
+  const withOutcome = (outcome: OutboxHandlerOutcome): OutboxHandler => ({
+    ...processed(), handle: vi.fn(async () => outcome),
+  });
+
+  it("rejects missing and mixed event handlers and invalid group bounds", () => {
+    expect(() => composeIndependentHandlers([], options)).toThrow("outbox_independent_handlers_require_same_event_type");
+    expect(() => composeIndependentHandlers([processed(), processed("example.other")], options))
+      .toThrow("outbox_independent_handlers_require_same_event_type");
+    expect(() => composeIndependentHandlers([processed()], { ...options, maxConcurrency: 0 }))
+      .toThrow("outbox_independent_handlers_invalid_concurrency");
+    expect(() => composeIndependentHandlers([processed()], { ...options, timeoutMs: 2_147_483_148 }))
+      .toThrow("outbox_independent_handlers_invalid_timeout");
+  });
+
+  it("bounds concurrent work, forwards the invocation and projects in declaration order", async () => {
+    const releases: Array<() => void> = [];
+    const handlers = [0, 1, 2].map(id => ({ ...processed(), handle: vi.fn<OutboxHandler["handle"]>(async () => {
+      await new Promise<void>(resolve => { releases[id] = resolve; });
+      return { kind: "processed", detail: { id, internal: "anonymous@example.invalid" } };
+    }) }));
+    const group = composeIndependentHandlers(handlers, {
+      ...options,
+      projectProcessedDetail: outcomes => ({ ids: outcomes.map(outcome => outcome.kind === "processed" && outcome.detail?.id) }),
+    });
+    const row = syntheticOutboxRow(), signal = new AbortController().signal, execution = new OutboxHandlerExecutionTrace();
+    const result = group.handle(row, signal, execution);
+    expect(group.timeoutMs).toBe(100);
+    expect(handlers[0]!.handle).toHaveBeenCalledExactlyOnceWith(row, signal, execution);
+    expect(handlers[1]!.handle).toHaveBeenCalledExactlyOnceWith(row, signal, execution);
+    expect(handlers[2]!.handle).not.toHaveBeenCalled();
+    releases[1]!();
+    await vi.waitFor(() => expect(handlers[2]!.handle).toHaveBeenCalledExactlyOnceWith(row, signal, execution));
+    releases[2]!();
+    releases[0]!();
+    await expect(result).resolves.toEqual({ kind: "processed", detail: { ids: [0, 1, 2] } });
+  });
+
+  it("keeps independent receipt protection when the worker snoozes and then replays the event", async () => {
+    const row = syntheticOutboxRow();
+    const receipts = new Set<string>();
+    const send = vi.fn();
+    const first = { ...processed(), handle: vi.fn<OutboxHandler["handle"]>(async event => {
+      if (!receipts.has(event.idempotency_key)) {
+        receipts.add(event.idempotency_key);
+        send();
+      }
+      return { kind: "processed", detail: { internal: "anonymous@example.invalid" } };
+    }) };
+    const second = { ...processed(), handle: vi.fn<OutboxHandler["handle"]>()
+      .mockResolvedValueOnce({ kind: "snooze", reason: "delivery_reconciliation_required" })
+      .mockResolvedValueOnce({ kind: "processed" }) };
+    const registry = uniqueRegistry([composeIndependentHandlers([first, second], options)]);
+    const initial = store([[row]]);
+    initial.markFailed.mockResolvedValueOnce({ status: "snoozed" } as never);
+    expect(await runOutboxDispatchWorker({ store: initial, registry, config })).toMatchObject({ snoozed: 1, processed: 0 });
+    expect(initial.markFailed.mock.calls[0]![0]).toMatchObject({ outcome: "snooze", error: "delivery_reconciliation_required" });
+    expect(initial.markProcessed).not.toHaveBeenCalled();
+
+    const replay = store([[row]]);
+    expect(await runOutboxDispatchWorker({ store: replay, registry, config })).toMatchObject({ processed: 1 });
+    expect(replay.markProcessed.mock.calls[0]![0].metadata).toBeUndefined();
+    expect(first.handle).toHaveBeenCalledTimes(2);
+    expect(second.handle).toHaveBeenCalledTimes(2);
+    expect(send).toHaveBeenCalledOnce();
+  });
+
+  it("orders snooze over retry, uses stable ties and redacts thrown explanation", async () => {
+    const throws = { ...processed(), handle: vi.fn(() => { throw new Error("anonymous@example.invalid"); }) };
+    const retry = withOutcome({ kind: "retry", reason: "later_retry" });
+    const extraDetail = { kind: "snooze" as const, reason: "first_snooze", detail: { unapproved: "anonymous@example.invalid" } };
+    const snooze = withOutcome(extraDetail);
+    const last = withOutcome({ kind: "snooze", reason: "last_snooze" });
+    const row = syntheticOutboxRow(), signal = new AbortController().signal;
+    await expect(composeIndependentHandlers([throws, retry, snooze, last], options).handle(row, signal))
+      .resolves.toEqual({ kind: "snooze", reason: "first_snooze" });
+    await expect(composeIndependentHandlers([throws, retry], options).handle(row, signal))
+      .resolves.toEqual({ kind: "retry", reason: "outbox_independent_handler_failed" });
+    expect(last.handle).toHaveBeenCalledOnce();
+  });
+
+  it("supports explicit acknowledgement of discarded destinations with safe metadata", async () => {
+    const handlers = [withOutcome({ kind: "discard", reason: "gone", benign: true }),
+      withOutcome({ kind: "processed", detail: { internal: "anonymous@example.invalid" } }),
+      withOutcome({ kind: "discard", reason: "invalid_payload" })];
+    const row = syntheticOutboxRow(), signal = new AbortController().signal;
+    const refused = store();
+    refused.markFailed.mockResolvedValueOnce({ status: "discarded" } as never);
+    const logger = { warn: vi.fn(), error: vi.fn() };
+    const initialRegistry = uniqueRegistry([composeIndependentHandlers(handlers, options)]);
+    await expect(runOutboxDispatchWorker({ store: refused, registry: initialRegistry, config, logger }))
+      .resolves.toMatchObject({ discarded: 1 });
+    expect(refused.markFailed.mock.calls[0]![0]).toMatchObject({ outcome: "discard", error: "invalid_payload" });
+    expect(refused.markProcessed).not.toHaveBeenCalled();
+    const group = composeIndependentHandlers(handlers, {
+      ...options, acknowledgeDiscardedHandlers: true,
+      projectProcessedDetail: outcomes => ({ destinations: outcomes.map(outcome => outcome.kind) }),
+    });
+    const accepted = store();
+    await expect(runOutboxDispatchWorker({ store: accepted, registry: uniqueRegistry([group]), config }))
+      .resolves.toMatchObject({ processed: 1 });
+    expect(accepted.markProcessed.mock.calls[0]![0]).toMatchObject({
+      metadata: { destinations: ["discard", "processed", "discard"] },
+    });
+    expect(accepted.markFailed).not.toHaveBeenCalled();
+    await expect(composeIndependentHandlers(handlers, {
+      ...options, acknowledgeDiscardedHandlers: true,
+      projectProcessedDetail: () => { throw new Error("anonymous@example.invalid"); },
+    }).handle(row, signal)).resolves.toEqual({ kind: "retry", reason: "outbox_independent_projection_failed" });
+  });
+
+  it.each([
+    { kind: "snooze", expectedReason: "destination_reconciliation_required" },
+    { kind: "retry", expectedReason: "outbox_handler_timeout" },
+  ] as const)("stops admitting queued siblings on abort with a completed $kind", async ({ kind, expectedReason }) => {
+    vi.useFakeTimers();
+    try {
+      const waiting = { ...processed(), handle: vi.fn<OutboxHandler["handle"]>(async (_row, signal) =>
+        new Promise(resolve => signal.addEventListener("abort", () => resolve({ kind, reason: "destination_reconciliation_required" }), { once: true }))) };
+      const queued = processed();
+      const group = composeIndependentHandlers([waiting, queued], { ...options, maxConcurrency: 1 });
+      const db = store();
+      if (kind === "snooze") db.markFailed.mockResolvedValueOnce({ status: "snoozed" } as never);
+      const run = runOutboxDispatchWorker({ store: db, registry: uniqueRegistry([group]), config });
+      await vi.advanceTimersByTimeAsync(options.timeoutMs);
+      await expect(run).resolves.toMatchObject({ processed: 0 });
+      expect(db.markFailed.mock.calls[0]![0]).toMatchObject({ outcome: kind, error: expectedReason });
+      expect(queued.handle).not.toHaveBeenCalled();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("uses the worker backstop for an active sibling that never settles", async () => {
+    vi.useFakeTimers();
+    try {
+      const waiting = { ...processed(), handle: async () => new Promise<OutboxHandlerOutcome>(() => {}) };
+      const snooze = withOutcome({ kind: "snooze", reason: "delivery_reconciliation_required" });
+      const group = composeIndependentHandlers([waiting, snooze], options);
+      const db = store();
+      const run = runOutboxDispatchWorker({ store: db, registry: uniqueRegistry([group]), config });
+      await vi.advanceTimersByTimeAsync(options.timeoutMs + 500);
+      await expect(run).resolves.toMatchObject({ retried: 1, processed: 0 });
+      expect(db.markFailed.mock.calls[0]![0]).toMatchObject({ outcome: "retry", error: "outbox_handler_timeout" });
+      expect(snooze.handle).toHaveBeenCalledOnce();
+    } finally { vi.useRealTimers(); }
+  });
+});
 describe("portable worker protocol", () => {
   it("derives only the claim allowlist, retains explicit known ordering and mark arguments", async () => {
     const db = store(), handler = processed(); const known = ["example.future", "example.created"];
