@@ -3,7 +3,7 @@ import { createPageHandle } from "../../../src/storefront/testing/index.js";
 import { anchorVisibility } from "../../../src/storefront/testing/anchorVisibility.js";
 
 type Decision = "pass" | "withhold" | "block";
-type FakeRequest = { method(): string; url(): string; headers(): Record<string, string> };
+type FakeRequest = { method(): string; url(): string; headers(): Record<string, string>; redirectedFrom(): FakeRequest | null };
 type Measured = { attributes: (string | null)[]; width: number; height: number; insideScrollArea: boolean; hidden: boolean; transparent: boolean; coveredAtCentre: boolean };
 
 const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
@@ -45,12 +45,12 @@ function fakePage(state: { url?: string; viewport?: { width: number; height: num
     url: () => state.url ?? "https://shop.example.test/checkout/pay?token=secret#summary",
     viewportSize: () => state.viewport === undefined ? { width: 390, height: 844 } : state.viewport,
     waitForTimeout(timeout: number) { log.push(`waitForTimeout ${timeout}`); return new Promise<void>((resolve) => waits.push(resolve)); },
-    on(event: "requestfinished" | "requestfailed", listener: (request: FakeRequest) => void) {
+    on(event: "request" | "requestfinished" | "requestfailed", listener: (request: FakeRequest) => void) {
       log.push(`on ${event}`);
       (listeners.get(event) ?? listeners.set(event, new Set()).get(event)!).add(listener);
       return page;
     },
-    off(event: "requestfinished" | "requestfailed", listener: (request: FakeRequest) => void) { log.push(`off ${event}`); listeners.get(event)?.delete(listener); return page; },
+    off(event: "request" | "requestfinished" | "requestfailed", listener: (request: FakeRequest) => void) { log.push(`off ${event}`); listeners.get(event)?.delete(listener); return page; },
     locator: (selector: string) => locator(selector, false),
     async route(url: string, handler: (route: unknown) => Promise<void>) { log.push(`route ${url}`); routes.set(url, handler); },
     async unroute(url: string, handler: (route: unknown) => Promise<void>) { log.push(`unroute ${url}`); expect(routes.get(url)).toBe(handler); routes.delete(url); },
@@ -58,7 +58,7 @@ function fakePage(state: { url?: string; viewport?: { width: number; height: num
   /** Sends one request through the installed route and records what the handler did with it. */
   const send = (method: string, url: string, headers: Record<string, string> = {}) => {
     const calls: string[] = [];
-    const request: FakeRequest = { method: () => method, url: () => url, headers: () => headers };
+    const request: FakeRequest = { method: () => method, url: () => url, headers: () => headers, redirectedFrom: () => null };
     const route = {
       request: () => request,
       async continue() { calls.push("continue"); },
@@ -69,7 +69,7 @@ function fakePage(state: { url?: string; viewport?: { width: number; height: num
     expect(handler, "a route is installed").toBeDefined();
     return { request, calls, handled: handler!(route) };
   };
-  const emit = (event: "requestfinished" | "requestfailed", request: FakeRequest) => {
+  const emit = (event: "request" | "requestfinished" | "requestfailed", request: FakeRequest) => {
     for (const listener of [...(listeners.get(event) ?? [])]) listener(request);
   };
   const release = () => { const next = waits.shift(); expect(next, "a quiet wait is pending").toBeDefined(); next!(); };
@@ -92,7 +92,7 @@ describe("createPageHandle over a recording page (H1)", () => {
       seen.push({ method: request.method, path: request.path, key: request.header("Idempotency-Key"), absent: request.header("x-absent") });
       return decisions[request.path]!;
     });
-    expect(fake.log).toEqual(["on requestfinished", "on requestfailed", "route **/*"]);
+    expect(fake.log).toEqual(["on request", "on requestfinished", "on requestfailed", "route **/*"]);
     const pass = fake.send("GET", "https://shop.example.test/api/pass?token=secret#x");
     const withhold = fake.send("POST", "https://shop.example.test/api/withhold", { "idempotency-key": "k-1" });
     const block = fake.send("POST", "https://shop.example.test/api/block");
@@ -137,7 +137,7 @@ describe("createPageHandle over a recording page (H1)", () => {
     await flush();
     expect(fake.waits, "no quiet window while requests are in flight").toHaveLength(0);
     // An event for a request the interceptor never saw changes nothing.
-    fake.emit("requestfinished", { method: () => "GET", url: () => "https://shop.example.test/other", headers: () => ({}) });
+    fake.emit("requestfinished", { method: () => "GET", url: () => "https://shop.example.test/other", headers: () => ({}), redirectedFrom: () => null });
     fake.emit("requestfinished", first.request);
     await flush();
     expect(fake.waits).toHaveLength(0);
@@ -161,17 +161,24 @@ describe("createPageHandle over a recording page (H1)", () => {
     expect(settled.done).toBe(true);
   });
 
-  it("follows a redirect: settling waits for the hop the routed request was redirected to", async () => {
+  it("follows a redirect: settling waits for the hop the browser reports after the routed request finished", async () => {
     const fake = fakePage();
     const handle = createPageHandle(fake.page);
     await handle.intercept(() => "pass");
     const create = fake.send("POST", "https://shop.example.test/api/create");
     await create.handled;
-    const hop: FakeRequest & { redirectedTo(): null } = { method: () => "GET", url: () => "https://shop.example.test/orders/1", headers: () => ({}), redirectedTo: () => null };
-    const redirected = Object.assign(create.request, { redirectedTo: () => hop });
     const settled = tracked(handle.settled({ quietMs: 5 }));
-    fake.emit("requestfinished", redirected);
+    // As a browser reports it: the redirected request finishes, then its unrouted hop starts.
+    fake.emit("requestfinished", create.request);
     await flush();
+    expect(fake.waits).toHaveLength(1);
+    const hop: FakeRequest = { method: () => "GET", url: () => "https://shop.example.test/orders/1", headers: () => ({}), redirectedFrom: () => create.request };
+    fake.emit("request", hop);
+    // A hop of a request no decide saw is not claimed.
+    fake.emit("request", { ...hop, redirectedFrom: () => ({ ...hop, redirectedFrom: () => null }) });
+    fake.release();
+    await flush();
+    expect(settled.done, "the hop started inside the quiet window").toBe(false);
     expect(fake.waits, "the hop is still in flight").toHaveLength(0);
     fake.emit("requestfinished", hop);
     await flush();
@@ -197,7 +204,7 @@ describe("createPageHandle over a recording page (H1)", () => {
     await remove();
     expect(fake.routes.size).toBe(0);
     expect([...fake.listeners.values()].every((set) => set.size === 0)).toBe(true);
-    expect(fake.log.filter((line) => line.startsWith("unroute") || line.startsWith("off"))).toEqual(["unroute **/*", "off requestfinished", "off requestfailed"]);
+    expect(fake.log.filter((line) => line.startsWith("unroute") || line.startsWith("off"))).toEqual(["unroute **/*", "off request", "off requestfinished", "off requestfailed"]);
     // After removal no request is claimed, so settling waits only for the quiet window.
     const after = tracked(handle.settled({ quietMs: 10 }));
     await flush();
@@ -388,8 +395,8 @@ function visibilityCases() {
   const inList = element({ left: 260, top: 200, width: 60, height: 20 }, { parent: list });
   // Visually hidden text: a 1 × 1 wrapper clipped to nothing inside a sized container.
   const srContainer = element({ left: 250, top: 240, width: 140, height: 40 }, { parent: body });
-  const srWrapper = element({ left: 300, top: 250, width: 1, height: 1 }, { parent: srContainer, style: { position: "absolute", overflow: "hidden", clip: "rect(0px, 0px, 0px, 0px)" } });
-  const srOnly = element({ left: 300, top: 250, width: 106, height: 18 }, { parent: srWrapper });
+  const srWrapper = element({ left: 260, top: 250, width: 1, height: 1 }, { parent: srContainer, style: { position: "absolute", overflow: "hidden", clip: "rect(0px, 0px, 0px, 0px)" } });
+  const srOnly = element({ left: 260, top: 250, width: 106, height: 18 }, { parent: srWrapper });
   // An ancestor clipped to nothing by `clip-path: inset(50%)`.
   const clipPath = element({ left: 250, top: 280, width: 140, height: 20 }, { parent: body, style: { clipPath: "inset(50%)" } });
   const underClipPath = element({ left: 260, top: 282, width: 60, height: 16 }, { parent: clipPath });

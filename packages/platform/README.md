@@ -4041,14 +4041,21 @@ contracts follows in a later change.
   `state:` and `action:` anchors, clicking, filling, request interception
   (`pass`, `withhold`, which delivers the request and fails the page's
   response, or `block`) and `settled({ quietMs })`, which resolves once every
-  intercepted request has finished and `quietMs` passed with no new request.
-  An anchor is visible when its box is non-zero, lies inside the scrollable
-  area, is not hidden, is not fully transparent, and the element at its centre
-  is the anchor, a descendant or an ancestor of it; the anchor is scrolled into
-  view before it is measured. The handle reads no clock.
-- **`serializeStorefrontVerdict`.** Returns the verdict as two-space JSON and a
-  line feed after `parseStorefrontVerdict` accepts it, and otherwise throws a
-  `TypeError` with the refusal's four parts. A harness writes one file per run
+  intercepted request, followed through its redirects, has finished and
+  `quietMs` passed with no new request. An anchor is visible when its box is
+  non-zero, lies inside the scrollable area without a container the buyer
+  cannot scroll (`overflow: hidden` or `clip`) having to move, is not hidden,
+  is not fully transparent, and part of it survives clipping by its ancestors'
+  overflow boxes, `clip` and `clip-path`, with the element at that part's
+  centre the anchor, a descendant or an ancestor of it. The anchor is scrolled
+  into view before it is measured, and every scroll position is restored
+  afterwards. The handle reads no clock.
+- **`serializeStorefrontVerdict`.** Returns the verdict as two-space JSON with
+  sorted keys and a line feed after `parseStorefrontVerdict` accepts it, so
+  equal verdicts give equal bytes; it refuses a value JSON cannot carry
+  (function, `undefined`, non-finite number, object that is not plain, cycle)
+  instead of coercing it, and throws a `TypeError` with the refusal's four
+  parts. A harness writes one file per run
   under `.context/storefront-verdicts/`; the entry writes no file.
 
 **Trust.** A verdict produced on a developer's machine is a claim about that
@@ -4062,7 +4069,9 @@ a single GraphQL path) cannot tell create from read by matcher; status
 delivered over server-sent events or a WebSocket is not a request the handle
 can block; requests answered by a service worker are not routed unless the
 harness blocks service workers in its browser context; a cross-origin request
-is matched by path alone.
+is matched by path alone; `settled` follows a redirect to the request the
+browser reports it redirected to, and a hop the browser does not report is
+covered only by the quiet window.
 
 **State anchors.** Each `data-openlup-state` value means one thing to the
 runner:

@@ -2,7 +2,7 @@ import { storefrontAnchor } from "../index.js";
 import { anchorVisibility } from "./anchorVisibility.js";
 import type { PageHandle } from "./contracts.js";
 
-type StructuralRequest = { method(): string; url(): string; headers(): Record<string, string> };
+type StructuralRequest = { method(): string; url(): string; headers(): Record<string, string>; redirectedFrom(): StructuralRequest | null };
 type StructuralRoute = { request(): StructuralRequest; continue(): Promise<void>; fetch(): Promise<unknown>; abort(): Promise<void> };
 type StructuralLocator = {
   waitFor(options: { state: "attached"; timeout: number }): Promise<void>;
@@ -12,7 +12,7 @@ type StructuralLocator = {
   fill(value: string, options: { timeout: number }): Promise<void>;
   setChecked(checked: boolean, options: { timeout: number }): Promise<void>;
 };
-type RequestEvent = "requestfinished" | "requestfailed";
+type RequestEvent = "request" | "requestfinished" | "requestfailed";
 
 /**
  * The page `createPageHandle` reads: the members of a Playwright page it uses,
@@ -35,7 +35,7 @@ type Target = Parameters<PageHandle["find"]>[0];
 type Measurement = ReturnType<typeof anchorVisibility>[number];
 
 const EVERY_REQUEST = "**/*";
-const EVENTS: readonly RequestEvent[] = ["requestfinished", "requestfailed"];
+const FINISHED: readonly RequestEvent[] = ["requestfinished", "requestfailed"];
 
 function invalid(message: string): TypeError {
   return new TypeError(`storefront_page_input_invalid: ${message}`);
@@ -87,10 +87,13 @@ async function appeared(locator: StructuralLocator, timeout: number): Promise<bo
 /**
  * Wraps a browser page as a storefront `PageHandle`. It accepts a Playwright
  * page today and reads only through the members it uses: `goto`, `reload`,
- * `url`, `viewportSize`, `waitForTimeout`, `on` and `off` (`requestfinished`,
- * `requestfailed`), `locator` with `first`, `waitFor`, `evaluateAll`,
- * `isEnabled`, `click`, `fill`, `setChecked`, and `route` and `unroute` with
- * `request()`, `continue()`, `fetch()` and `abort()`. `options.origin` resolves
+ * `url`, `viewportSize`, `waitForTimeout`, `on` and `off` (`request`,
+ * `requestfinished`, `requestfailed`), `locator` with `first`, `waitFor`,
+ * `evaluateAll`, `isEnabled`, `click`, `fill`, `setChecked`, and `route` and
+ * `unroute` with `request()`, `continue()`, `fetch()` and `abort()`; a request
+ * reads `method()`, `url()`, `headers()` and `redirectedFrom()`, so a redirect
+ * hop, which the browser does not route, is claimed from its own `request`
+ * event. `options.origin` resolves
  * relative paths for `navigate`; without it the page's own base URL does.
  *
  * `withhold` is `fetch()` then `abort()`: the request reaches the server, its
@@ -104,6 +107,19 @@ async function appeared(locator: StructuralLocator, timeout: number): Promise<bo
 export function createPageHandle(page: StructuralPage, options: { readonly origin?: string } = {}): PageHandle {
   // Every request a `decide` saw and has not yet finished, with the function that releases its waiter.
   const pending = new Map<StructuralRequest, { owner: object; finish(): void; done: Promise<void> }>();
+  // Every request a `decide` saw, and every redirect hop of one: the browser routes no hop, so its own request event claims it.
+  const claimed = new WeakSet<StructuralRequest>();
+  const claim = (request: StructuralRequest, owner: object) => {
+    claimed.add(request);
+    seen += 1;
+    const existing = pending.get(request);
+    if (existing !== undefined) return existing;
+    let finish = () => undefined as void;
+    const done = new Promise<void>((resolve) => { finish = resolve; });
+    const entry = { owner, done, finish: () => { pending.delete(request); finish(); } };
+    pending.set(request, entry);
+    return entry;
+  };
   let seen = 0;
 
   const measureFirst = async (target: Target, timeoutMs: number) => {
@@ -160,14 +176,16 @@ export function createPageHandle(page: StructuralPage, options: { readonly origi
     },
     async intercept(decide) {
       const owner = {};
-      const listener = (request: StructuralRequest) => pending.get(request)?.finish();
-      for (const event of EVENTS) page.on(event, listener);
+      const finished = (request: StructuralRequest) => pending.get(request)?.finish();
+      const started = (request: StructuralRequest) => {
+        const from = request.redirectedFrom();
+        if (from !== null && claimed.has(from)) claim(request, owner);
+      };
+      page.on("request", started);
+      for (const event of FINISHED) page.on(event, finished);
       const handler = async (route: StructuralRoute) => {
         const request = route.request();
-        let finish = () => undefined as void;
-        const done = new Promise<void>((resolve) => { finish = resolve; });
-        pending.set(request, { owner, done, finish: () => { pending.delete(request); finish(); } });
-        seen += 1;
+        const entry = claim(request, owner);
         let decision: string;
         try {
           const headers = request.headers();
@@ -187,7 +205,7 @@ export function createPageHandle(page: StructuralPage, options: { readonly origi
           } else await route.abort();
         } catch {
           // The page or request is gone: no event will finish it.
-          pending.get(request)?.finish();
+          entry.finish();
         }
       };
       await page.route(EVERY_REQUEST, handler);
@@ -196,7 +214,8 @@ export function createPageHandle(page: StructuralPage, options: { readonly origi
         if (removed) return;
         removed = true;
         await page.unroute(EVERY_REQUEST, handler);
-        for (const event of EVENTS) page.off(event, listener);
+        page.off("request", started);
+        for (const event of FINISHED) page.off(event, finished);
         // Nothing reports these requests any longer, so no settle waits for them.
         for (const entry of [...pending.values()]) if (entry.owner === owner) entry.finish();
       };

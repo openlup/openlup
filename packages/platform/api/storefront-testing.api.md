@@ -145,7 +145,9 @@ export type StorefrontScenario = {
  * status delivered over server-sent events or a WebSocket is not a request the
  * page handle can block; requests answered by a service worker are not routed
  * unless the harness blocks service workers in its browser context; a
- * cross-origin request is matched by path alone.
+ * cross-origin request is matched by path alone; a redirect is followed to the
+ * request the browser reports it redirected to, and a hop the browser does not
+ * report is covered only by the quiet window.
  *
  * @experimental
  */
@@ -196,12 +198,17 @@ export type StorefrontObserver = {
  * - `path()` is the current path without query string or fragment;
  *   `width()` the viewport width in CSS pixels, or `null`.
  * - `find` scrolls the first match into view and measures it, or resolves
- *   `null` when none appeared within `timeoutMs`. An anchor is visible when its
- *   box is non-zero, lies inside the page's scrollable area, is not hidden
- *   (`display: none`, a `hidden` attribute up the tree, or an inherited
- *   `visibility` other than `visible`), is not fully transparent (the product of
- *   its and its ancestors' computed opacity is 0), and the element hit at its
- *   centre is the anchor, a descendant or an ancestor of it.
+ *   `null` when none appeared within `timeoutMs`; every scroll position is
+ *   restored afterwards. An anchor is visible when its box is non-zero; lies
+ *   inside the page's scrollable area and needs no container the buyer cannot
+ *   scroll (`overflow: hidden` or `clip`) to move to come into view; is not
+ *   hidden (`display: none`, a `hidden` attribute up the tree, or an inherited
+ *   `visibility` other than `visible`); is not fully transparent (the product of
+ *   its and its ancestors' computed opacity is 0); and some part of it survives
+ *   its ancestors' overflow boxes and its own and its ancestors' `clip` and
+ *   `clip-path`, with the element hit at that part's centre being the anchor, a
+ *   descendant or an ancestor of it (an ancestor only when no `clip-path` other
+ *   than `inset()` lies on the way).
  * - `anchors(locators)` lists the visible `state:<value>` and
  *   `action:<value>` anchors, sorted; `locators` maps such a name to a custom
  *   CSS locator that replaces its attribute anchor.
@@ -212,8 +219,8 @@ export type StorefrontObserver = {
  *   path and no query string or fragment; a `decide` that throws blocks the
  *   request. It resolves a removal function.
  * - `settled({ quietMs })` resolves once every request `decide` saw has
- *   finished (its response delivered, or aborted) and `quietMs` passed with no
- *   new request.
+ *   finished (its response delivered, or aborted), following a redirect to the
+ *   request it was redirected to, and `quietMs` passed with no new request.
  *
  * @experimental
  */
@@ -263,6 +270,7 @@ type StructuralRequest = {
     method(): string;
     url(): string;
     headers(): Record<string, string>;
+    redirectedFrom(): StructuralRequest | null;
 };
 type StructuralRoute = {
     request(): StructuralRequest;
@@ -289,7 +297,7 @@ type StructuralLocator = {
         timeout: number;
     }): Promise<void>;
 };
-type RequestEvent = "requestfinished" | "requestfailed";
+type RequestEvent = "request" | "requestfinished" | "requestfailed";
 /**
  * The page `createPageHandle` reads: the members of a Playwright page it uses,
  * typed structurally so this module imports no browser library.
@@ -314,10 +322,13 @@ type StructuralPage = {
 /**
  * Wraps a browser page as a storefront `PageHandle`. It accepts a Playwright
  * page today and reads only through the members it uses: `goto`, `reload`,
- * `url`, `viewportSize`, `waitForTimeout`, `on` and `off` (`requestfinished`,
- * `requestfailed`), `locator` with `first`, `waitFor`, `evaluateAll`,
- * `isEnabled`, `click`, `fill`, `setChecked`, and `route` and `unroute` with
- * `request()`, `continue()`, `fetch()` and `abort()`. `options.origin` resolves
+ * `url`, `viewportSize`, `waitForTimeout`, `on` and `off` (`request`,
+ * `requestfinished`, `requestfailed`), `locator` with `first`, `waitFor`,
+ * `evaluateAll`, `isEnabled`, `click`, `fill`, `setChecked`, and `route` and
+ * `unroute` with `request()`, `continue()`, `fetch()` and `abort()`; a request
+ * reads `method()`, `url()`, `headers()` and `redirectedFrom()`, so a redirect
+ * hop, which the browser does not route, is claimed from its own `request`
+ * event. `options.origin` resolves
  * relative paths for `navigate`; without it the page's own base URL does.
  *
  * `withhold` is `fetch()` then `abort()`: the request reaches the server, its
@@ -338,12 +349,16 @@ export {};
 ```ts
 import { type StorefrontVerdict } from "../../lifecycle/index.js";
 /**
- * Serializes a verdict as `JSON.stringify(verdict, null, 2)` and a line feed,
- * after `parseStorefrontVerdict` accepts that text, so a harness never writes
- * a verdict the package refuses. Otherwise throws a `TypeError` naming the
- * refusal's code, observation, cause, fix and recheck. A harness writes one
- * file per run under `.context/storefront-verdicts/`; this entry reads and
- * writes no file.
+ * Serializes a verdict as two-space JSON with every object's keys sorted by
+ * UTF-16 code units, and a line feed, after `parseStorefrontVerdict` accepts
+ * that text, so a harness never writes a verdict the package refuses and equal
+ * verdicts give equal bytes whatever order they were built in. A value JSON
+ * cannot carry (a function, symbol, bigint, `undefined`, a non-finite number, an
+ * object that is not plain, or a cycle) is refused, never dropped or coerced.
+ * Refusals throw a `TypeError` whose message is the refusal code and the
+ * observation, then `Cause:`, `Fix:` and `Recheck:`. A harness writes one file
+ * per run under `.context/storefront-verdicts/`; this entry reads and writes no
+ * file.
  *
  * @experimental
  */

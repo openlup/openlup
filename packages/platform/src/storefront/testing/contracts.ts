@@ -104,7 +104,9 @@ export type StorefrontScenario = {
  * status delivered over server-sent events or a WebSocket is not a request the
  * page handle can block; requests answered by a service worker are not routed
  * unless the harness blocks service workers in its browser context; a
- * cross-origin request is matched by path alone.
+ * cross-origin request is matched by path alone; a redirect is followed to the
+ * request the browser reports it redirected to, and a hop the browser does not
+ * report is covered only by the quiet window.
  *
  * @experimental
  */
@@ -150,12 +152,17 @@ export type StorefrontObserver = {
  * - `path()` is the current path without query string or fragment;
  *   `width()` the viewport width in CSS pixels, or `null`.
  * - `find` scrolls the first match into view and measures it, or resolves
- *   `null` when none appeared within `timeoutMs`. An anchor is visible when its
- *   box is non-zero, lies inside the page's scrollable area, is not hidden
- *   (`display: none`, a `hidden` attribute up the tree, or an inherited
- *   `visibility` other than `visible`), is not fully transparent (the product of
- *   its and its ancestors' computed opacity is 0), and the element hit at its
- *   centre is the anchor, a descendant or an ancestor of it.
+ *   `null` when none appeared within `timeoutMs`; every scroll position is
+ *   restored afterwards. An anchor is visible when its box is non-zero; lies
+ *   inside the page's scrollable area and needs no container the buyer cannot
+ *   scroll (`overflow: hidden` or `clip`) to move to come into view; is not
+ *   hidden (`display: none`, a `hidden` attribute up the tree, or an inherited
+ *   `visibility` other than `visible`); is not fully transparent (the product of
+ *   its and its ancestors' computed opacity is 0); and some part of it survives
+ *   its ancestors' overflow boxes and its own and its ancestors' `clip` and
+ *   `clip-path`, with the element hit at that part's centre being the anchor, a
+ *   descendant or an ancestor of it (an ancestor only when no `clip-path` other
+ *   than `inset()` lies on the way).
  * - `anchors(locators)` lists the visible `state:<value>` and
  *   `action:<value>` anchors, sorted; `locators` maps such a name to a custom
  *   CSS locator that replaces its attribute anchor.
@@ -166,8 +173,8 @@ export type StorefrontObserver = {
  *   path and no query string or fragment; a `decide` that throws blocks the
  *   request. It resolves a removal function.
  * - `settled({ quietMs })` resolves once every request `decide` saw has
- *   finished (its response delivered, or aborted) and `quietMs` passed with no
- *   new request.
+ *   finished (its response delivered, or aborted), following a redirect to the
+ *   request it was redirected to, and `quietMs` passed with no new request.
  *
  * @experimental
  */
