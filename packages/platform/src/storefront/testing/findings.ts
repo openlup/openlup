@@ -50,10 +50,15 @@ const texts: Readonly<Record<string, Readonly<Record<string, FindingText>>>> = {
     },
   },
   forbidden_state_shown: {
-    only: {
+    paid_without_capture: {
       observed: (f) => `${f.at}: the page shows ${f.name} while the ledger has ${f.detail}.`,
       cause: "The page claims a paid state the ledger does not hold: a paid state needs at least one capture and no payable order.",
       fix: "Show a paid state only from a status read that reports the capture.",
+    },
+    after_step: {
+      observed: (f) => `${f.at}: the page shows ${f.name}, which the scenario forbids from the end of ${f.detail} on.`,
+      cause: "After the outcome the page shows a state that contradicts it: an earlier state, a decline or a paid state the outcome rules out.",
+      fix: "Show the state the server reports after the outcome, and never fall back to an earlier or contradicting state when a status read fails.",
     },
   },
   order_outside_subject: {
@@ -71,10 +76,34 @@ const texts: Readonly<Record<string, Readonly<Record<string, FindingText>>>> = {
     },
   },
   vacuous_progress: {
-    only: {
+    blocked: {
       observed: (f) => `${f.at}: the page shows ${f.name} although the control should keep it from being reached.`,
       cause: "The page shows the state without the requests the control blocked, so the clean run's progress proves nothing about them.",
       fix: "Show the state only from the server's answer to a create or a status read, not from state kept in the page.",
+    },
+    omitted: {
+      observed: (f) => `${f.at}: the page shows ${f.name} although the control omitted ${f.detail} and no status read was matched.`,
+      cause: "The page shows the state without the omitted action and without a status read, so the clean run's progress proves nothing about the action.",
+      fix: "Show the state only after the buyer's action and the server's answer, or declare the action in autoProgress and let the page read the status.",
+    },
+    other_policy: {
+      observed: (f) => `${f.at}: the page shows ${f.name}, the progress of the policy the proof file does not declare.`,
+      cause: "The control run handled the changed details under the policy the proof file does not declare, so the clean run's progress proves nothing about the declared one.",
+      fix: "Apply one changed-payload policy to every purchase, and declare it as changedPayloadPolicy.",
+    },
+  },
+  policy_mismatch: {
+    only: {
+      observed: (f) => `${f.at}: expected ${f.name} under the declared policy ${f.detail}; the page shows ${f.seen}, the other policy's progress.`,
+      cause: "The store handles changed details under the policy the proof file does not declare (an absent or unknown changedPayloadPolicy reads as refuse_changed).",
+      fix: "Declare the policy the store applies as changedPayloadPolicy in the proof file, or make the store apply the declared one.",
+    },
+  },
+  auto_progress_undeclared: {
+    only: {
+      observed: (f) => `${f.at}: the page shows ${f.name} although the control omitted ${f.detail}; ${f.count} status reads were matched before it.`,
+      cause: "The page performed the omitted action by itself and read the status, without the proof file or adapter declaring it.",
+      fix: "Declare the action in autoProgress (proof file or adapter), so the runner leaves it to the page and blocks status reads instead.",
     },
   },
   adapter_matcher_unmatched: {
@@ -163,6 +192,18 @@ const texts: Readonly<Record<string, Readonly<Record<string, FindingText>>>> = {
       observed: (f) => `${f.at}: the run sent ${f.count} create requests; the scenario allows ${f.limit}.`,
       cause: "The page kept sending create requests, so the run stopped before it could exhaust the store's request quota.",
       fix: "Send one create per buyer action and stop retrying a create on its own.",
+    },
+  },
+  outcome_failed: {
+    rejected: {
+      observed: (f) => `${f.at}: the outcome driver rejected ${f.name} (${f.detail}).`,
+      cause: "The outcome driver could not produce the outcome, so the steps after it observe nothing about the store.",
+      fix: "Make the outcome driver's sandbox reachable for the harness, or declare only the outcomes it can produce.",
+    },
+    no_attempt: {
+      observed: (f) => `${f.at}: the outcome driver produced ${f.name}, but the ledger shows no payment attempt.`,
+      cause: "The outcome resolved but the ledger shows no payment attempt, so it did not act on this run's payment.",
+      fix: "Make the page start a payment attempt before the outcome, and the driver act on the run subject's attempt.",
     },
   },
   tier_unreachable: {

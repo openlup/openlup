@@ -71,11 +71,11 @@ export type StorefrontScenario = {
     readonly maxHolds?: number;
     readonly maxAttempts?: number;
     readonly maxCaptures?: number;
-    /** No payment attempt after the step at this index. */
+    /** No payment attempt after the step at this index: every later ledger read shows the attempts read when that step ended. */
     readonly noAttemptAfter?: number;
-    /** Attempts never exceed declines plus one. */
+    /** Attempts never exceed the declines the outcome driver produced so far plus one. */
     readonly attemptsPerDecline?: boolean;
-    /** States that must not be shown after the step at index `after`. */
+    /** States that must not be shown from the end of the step at index `after` on. */
     readonly forbiddenStates?: { readonly after: number; readonly states: readonly string[] };
   };
   readonly control: {
@@ -87,7 +87,7 @@ export type StorefrontScenario = {
     readonly from?: number;
     /** `omit_action`: the omitted action. */
     readonly action?: string;
-    /** Whether outcome steps after the control's start run (`kept`) or not (`skipped`). */
+    /** Whether outcome steps from the control's start run (`kept`, the default) or not (`skipped`); an `omit_action` control starts at the omitted action. */
     readonly outcomes?: "kept" | "skipped";
   };
 };

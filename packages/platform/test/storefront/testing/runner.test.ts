@@ -521,7 +521,8 @@ describe("the changed-payload policy (R24)", () => {
   ] as const)("fails a store that updates in place under %s", async (_name, policy) => {
     const { verdict } = await run("lost_response_edited_payload", { updateInPlace: true }, { proofFile: proofWith(policy) });
     expect(verdict.result).toBe("failed");
-    expect(codes(verdict)).toEqual(["policy_mismatch"]);
+    // The control run handles the changed details the same way, so it shows the other policy's progress too.
+    expect(codes(verdict)).toEqual(["policy_mismatch", "vacuous_progress"]);
     expect(finding(verdict, "policy_mismatch")).toMatchObject({ run: "clean", step: 6 });
     expect(finding(verdict, "policy_mismatch")!.observed).toContain("state:awaiting_payment");
     expect(verdict.control.negates).toBe("awaiting_payment");
@@ -620,7 +621,7 @@ describe("faults of the outcome driver (R29)", () => {
     expect(verdict.result).toBe("not_run");
     expect(codes(verdict)).toEqual(["outcome_failed"]);
     expect(finding(verdict, "outcome_failed")).toMatchObject({ run: "clean", step: 4, field: "outcomes" });
-    expect(finding(verdict, "outcome_failed")!.observed).toContain("outcome_driver_unavailable: the sandbox refused <url>.");
+    expect(finding(verdict, "outcome_failed")!.observed).toContain("(outcome_driver_unavailable: the sandbox at <url> refused.).");
     expect(stepsOf(verdict, "control")).toEqual([]);
   });
 
@@ -656,6 +657,15 @@ describe("stop-at (R30)", () => {
         .rejects.toThrow(/^storefront_stop_state_unknown: .+ Cause: .+ Fix: .+ Recheck: /);
     }
     expect(double.calls).toEqual([]);
+  });
+
+  it("refuses to stop in a scenario that is not admitted, driving nothing", async () => {
+    const double = storeDouble({}, { capabilities: ["settled"] });
+    await expect(runStorefrontScenario({ ...options(double, "decline_retry"), stopAt: "checkout.declined" }))
+      .rejects.toThrow(/^storefront_stop_state_unreached: Scenario decline_retry was not admitted: the outcome driver does not declare declined\. Cause: /);
+    expect(double.calls).toEqual([]);
+    expect(double.events).toEqual([]);
+    expect(double.produced).toEqual([]);
   });
 
   it("refuses a state the run never showed, naming the last step", async () => {

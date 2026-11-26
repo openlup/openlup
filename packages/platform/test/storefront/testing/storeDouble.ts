@@ -461,7 +461,7 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: {
     capabilities: options.capabilities ?? ALL_OUTCOMES,
     async produce(outcome: string, { subject }: { readonly subject: string }) {
       produced.push([subject, outcome]);
-      if (switches.driverRejects === true) throw new Error("outcome_driver_unavailable: the sandbox refused https://sandbox.example.test/pay?key=secret-sandbox-key. Retry later.");
+      if (switches.driverRejects === true) throw new Error("outcome_driver_unavailable: the sandbox at https://sandbox.example.test/pay?key=secret-sandbox-key refused. Retry later.");
       const own = payments.filter((payment) => payment.email === subject);
       const latest = own.at(-1);
       if (latest?.status === "open") {
@@ -470,7 +470,7 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: {
         if (outcome === "settled") settlePayment(latest, "settled");
         if (outcome === "activation_pending") settlePayment(latest, "activation_pending");
       }
-      const pending = own.findLast((payment) => payment.status === "pending");
+      const pending = [...own].reverse().find((payment) => payment.status === "pending");
       if (outcome === "settled_after_pending" && pending !== undefined) settlePayment(pending, "settled");
       if (PAYMENT_VIEWS.has(view) && buyer() === subject) void readStatus(true);
     },
