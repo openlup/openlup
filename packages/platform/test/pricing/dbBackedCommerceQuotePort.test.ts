@@ -77,46 +77,63 @@ describe("db backed commerce quote port", () => {
         policy: subscriptionPolicy(),
       },
     });
-    function project(quoteCatalogReadPort: CommerceQuoteCatalogReadPort) {
+    async function project(quoteCatalogReadPort: CommerceQuoteCatalogReadPort) {
       const quoteDeps = {
         quoteCatalogReadPort,
         commercePriceAuthorityPort: priceAuthority,
         now: () => oneTime.resolvedAt,
       };
-      return projectCommerceOfferPricing({
+      const quoteWithPromotions = createDbBackedCommerceQuotePort(quoteDeps);
+      const quoteWithoutPromotions = createDbBackedCommerceQuotePort(quoteDeps);
+      const promoted = vi.spyOn(quoteWithPromotions, "createQuote");
+      const recurring = vi.spyOn(quoteWithoutPromotions, "createQuote");
+      const offer = await projectCommerceOfferPricing({
         quoteCatalogReadPort,
-        quoteWithPromotions: createDbBackedCommerceQuotePort(quoteDeps),
-        quoteWithoutPromotions: createDbBackedCommerceQuotePort(quoteDeps),
+        quoteWithPromotions,
+        quoteWithoutPromotions,
         pricingPolicy,
       });
+      const quotes = {
+        promoted: await Promise.all(promoted.mock.results.map(({ value }) => value)),
+        recurring: await Promise.all(recurring.mock.results.map(({ value }) => value)),
+      };
+      return { offer, quotes };
     }
 
     const unwrapped = await project(catalog);
+    expect(unwrapped.quotes.promoted).toHaveLength(pricingPolicy ? 3 : 2);
+    expect(unwrapped.quotes.recurring).toHaveLength(1);
     expect(read).toHaveBeenCalledTimes(unwrappedReads);
     read.mockClear();
 
     const wrapped = await project(memoizeCommerceQuoteCatalogReads(catalog));
-    expect(JSON.stringify(wrapped)).toBe(JSON.stringify(unwrapped));
+    expect(JSON.stringify(wrapped.offer)).toBe(JSON.stringify(unwrapped.offer));
+    expect(JSON.stringify(wrapped.quotes)).toBe(JSON.stringify(unwrapped.quotes));
     expect(read).toHaveBeenCalledTimes(1);
 
     read.mockResolvedValueOnce([{ ...item!, productSlug: "item-beta" }]);
     const next = await project(memoizeCommerceQuoteCatalogReads(catalog));
-    expect(next.products.map((product) => product.productSlug)).toEqual(["item-beta"]);
+    expect(next.offer.products.map((product) => product.productSlug)).toEqual(["item-beta"]);
     expect(read).toHaveBeenCalledTimes(2);
   });
 
-  it("shares a lazy catalog refusal only within its quote composition", async () => {
+  it.each(["synchronous throw", "asynchronous rejection"] as const)("shares a catalog %s only within its quote composition", async (failure) => {
     const catalog = quoteCatalogReadPort();
     const items = await catalog.listQuoteCatalogItems();
     const refusal = new CommerceQuoteCatalogReadError("catalog_authority_changed");
     const read = vi.fn(catalog.listQuoteCatalogItems)
-      .mockRejectedValueOnce(refusal)
+      .mockImplementationOnce(() => {
+        if (failure === "synchronous throw") throw refusal;
+        return Promise.reject(refusal);
+      })
       .mockResolvedValueOnce(items);
     const inner = { listQuoteCatalogItems: read };
     const wrapped = memoizeCommerceQuoteCatalogReads(inner);
     expect(read).not.toHaveBeenCalled();
 
     const first = wrapped.listQuoteCatalogItems();
+    expect(read).toHaveBeenCalledTimes(1);
+    if (failure === "asynchronous rejection") expect(first).toBe(read.mock.results[0]?.value);
     const second = wrapped.listQuoteCatalogItems();
     expect(second).toBe(first);
     await Promise.all([
@@ -126,7 +143,9 @@ describe("db backed commerce quote port", () => {
     expect(wrapped.listQuoteCatalogItems()).toBe(first);
     expect(read).toHaveBeenCalledTimes(1);
 
-    await expect(memoizeCommerceQuoteCatalogReads(inner).listQuoteCatalogItems()).resolves.toBe(items);
+    const recovered = memoizeCommerceQuoteCatalogReads(inner).listQuoteCatalogItems();
+    expect(recovered).toBe(read.mock.results[1]?.value);
+    await expect(recovered).resolves.toBe(items);
     expect(read).toHaveBeenCalledTimes(2);
   });
 

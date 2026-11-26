@@ -31,7 +31,13 @@ export function memoizeCommerceQuoteCatalogReads<Item extends CommerceQuoteCatal
   let pending: Promise<Item[]> | undefined;
   return {
     listQuoteCatalogItems() {
-      pending ??= inner.listQuoteCatalogItems();
+      if (!pending) {
+        try {
+          pending = inner.listQuoteCatalogItems();
+        } catch (reason) {
+          pending = Promise.reject(reason);
+        }
+      }
       return pending;
     },
   };
