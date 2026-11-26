@@ -23,7 +23,6 @@ const recorder = "public.catalog_publication_record_command(jsonb)";
 const mutation = "public.catalog_price_setup_mutate_claimed(jsonb,timestamptz,jsonb)";
 const verifyReceipt = "public.catalog_publication_assert_price_receipt_v2(jsonb,jsonb,jsonb,uuid,text[],text)";
 const priceOperations = "public.catalog_publication_price_operations_v2(jsonb,uuid,boolean)";
-const firstOfferInput = "public.catalog_publication_first_offer_input_v2(uuid,uuid,public.catalog_publication_decisions,jsonb,uuid)";
 const priceModes = "public.catalog_publication_price_modes_v2(jsonb,uuid,jsonb,jsonb)";
 const receiptIdentity = "public.catalog_publication_completed_price_receipt_v2(jsonb,uuid)";
 const taxClassLock = "public.catalog_publication_lock_tax_class_v2(jsonb)";
@@ -214,14 +213,13 @@ it("keeps fresh qualified-v2 dormant until both controlled EXECUTEs are effectiv
 
 it("revokes browser default EXECUTE on the installed private price routines", async () => {
   const store = await installAccountMutations("bootstrap", false, "price-recorder-acl");
-  const signatures = [mutation, lockedV2, verifyReceipt, priceOperations, firstOfferInput, priceModes, receiptIdentity, taxClassLock];
+  const signatures = [mutation, lockedV2, verifyReceipt, priceOperations, priceModes, receiptIdentity, taxClassLock];
   try {
     const forward = current().forward.find(unit => recorderForward.test(unit.file))!;
     const db = await store.owner.connect();
     try {
       await db.query("BEGIN");
       await db.query(`DROP FUNCTION ${signatures.join(", ")};
-        ALTER TABLE public.catalog_publication_decisions DROP COLUMN post_state_sku_facts;
         ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role;`);
       await db.query(readFileSync(forward.file, "utf8"));
       expect((await db.query(`SELECT role, signature FROM unnest($1::text[]) r(role)
