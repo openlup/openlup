@@ -97,10 +97,9 @@ has no caller in the managed topology.
 
 ### Dormant native renewal occurrence views and root writer
 
-The migration owner can read the exact scoped key, including history, or lock
-the current active occurrence in READ COMMITTED. Selected roots on either
-rail must match owner, original anchor, exact generation and wire tag. The
-views project the pinned cancellation deadline in UTC.
+The migration owner can read the exact scoped key, including history, or
+lock the current active occurrence in READ COMMITTED. Selected roots on either
+rail must match owner, original anchor, exact generation and wire tag. Views project the pinned cancellation deadline in UTC.
 
 After allocation commits, a later READ COMMITTED claim commits the selected
 pair, root and initial lease together. An exact retry returns the retained

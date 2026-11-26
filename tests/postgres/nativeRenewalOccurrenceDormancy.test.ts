@@ -3,7 +3,6 @@ import { Client, Pool, type QueryConfig } from "pg";
 import { expect, it, vi } from "vitest";
 import { configurations } from "../../examples/neutral-store/owned/store.config.ts";
 import { runScheduledRenewal } from "../../examples/neutral-store/host/scheduled-renewal.ts";
-import { readPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { qualifiedPostgresStartupOptions } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { withPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
@@ -12,14 +11,10 @@ import { installAccountMutations } from "./customerAccountMutations.fixture.js";
 import { exerciseLegacyRenewals } from "./nativeRenewalV3Legacy.fixture.js";
 import { transaction } from "./orderMoneyV2Storage.fixture.js";
 import { activatedRenewal, activation, allocate, occurrenceProducerPath, probe, producer, signature } from "./nativeRenewalOccurrence.fixture.js";
-import { args, lock, occurrence, operations, read, rootFixture, writer, writerParameters } from "./nativeRenewalOccurrenceWriter.fixture.js";
-import { AT, call, later, seedRenewalStock, type Db } from "./subscriptionNativeFixture.js";
+import { args, lock, occurrence, occurrenceCatalogue as current, operations, pinOccurrencePlan, read, rootFixture, writer, writerParameters, writerPath, writerPlan } from "./nativeRenewalOccurrenceWriter.fixture.js";
+import { AT, call, later, sandboxRenewal, seedRenewalStock, type Db } from "./subscriptionNativeFixture.js";
 
-const current = readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest | null;
-if (current?.schemaVersion !== 3) throw new Error("Expected the full native migration catalogue");
 const producerPath = occurrenceProducerPath();
-const writerPath = current.forward.find(({ file }) => file.endsWith("_native_renewal_occurrence_writer.sql"))?.file;
-if (!writerPath) throw new Error("Missing renewal occurrence writer migration");
 const sql = readFileSync(producerPath, "utf8");
 const pins = {
   before: {
@@ -36,26 +31,10 @@ const pins = {
     admin: "7b40ca62f61d4a0bd9eea0a4a8951b9cc0586d77217a4a2d50beae3374662e3f",
     operator: "adba183105b7daa3f3b4de1f27ea0521bcde435f07c97b43596bc9d7fe6e32e4",
   },
-  writer: { legacy: "37ae356e65f2bde6380735c2afd34bf2a11114d411936424c4076e23b5fde4c2", bootstrap: "e128d95b5446fb20878b848650c947bf8b2141b6a8ae9dbf2eb7189114cc60d4", separate: "7f1cb5f1be459b7e205ba4ad335608fd9d0d161e22565a8ff08d5df92dd2a727",
-    admin: "dd8a1e6539bbaf26993fb5ab49b2ddf5e68b7ec0a01b68340087fc35c641f016", operator: "4e19800b9f85031944928d35fd0c75343a9009b949b8bfc13b86817f8782498f" },
 };
 
-function atBoundary(manifest: Extract<PlatformMigrationManifest, { schemaVersion: 3 }>, boundary: keyof typeof pins) {
-  const plan = structuredClone(manifest), inventory = pins[boundary];
-  const path = boundary === "writer" ? writerPath : producerPath;
-  for (const profile of [plan, plan.qualified, plan.qualifiedAdmin]) {
-    const index = profile.forward.findIndex(({ file }) => file === path);
-    if (index < 0) throw new Error(`Missing renewal occurrence migration ${path}`);
-    profile.forward = profile.forward.slice(0, boundary === "before" ? index : index + 1);
-  }
-  plan.objectInventorySha256 = inventory.legacy;
-  plan.qualified.objectInventorySha256 = { bootstrapMigrator: { withRestore: inventory.bootstrap },
-    separateMigrator: { withRestore: inventory.separate } };
-  plan.qualifiedAdmin.objectInventorySha256 = { installerManaged: inventory.admin, operatorProvisioned: inventory.operator };
-  return plan;
-}
-
-const plans = { before: atBoundary(current, "before"), through: atBoundary(current, "through"), writer: atBoundary(current, "writer") };
+const plans = { before: pinOccurrencePlan(current, producerPath, pins.before, false),
+  through: pinOccurrencePlan(current, producerPath, pins.through, true), writer: writerPlan() };
 const { before: predecessor, through: catalogue, writer: writerCatalogue } = plans;
 it("selects the exact pinned prefixes even when every plan has a later forward", () => {
   const extended = structuredClone(current);
@@ -67,22 +46,24 @@ it("selects the exact pinned prefixes even when every plan has a later forward",
   extended.qualified.objectInventorySha256 = { bootstrapMigrator: { withRestore: laterInventory },
     separateMigrator: { withRestore: laterInventory } };
   extended.qualifiedAdmin.objectInventorySha256 = { installerManaged: laterInventory, operatorProvisioned: laterInventory };
-  expect(atBoundary(extended, "before")).toEqual(predecessor);
-  expect(atBoundary(extended, "through")).toEqual(catalogue);
-  expect(atBoundary(extended, "writer")).toEqual(writerCatalogue);
+  expect(pinOccurrencePlan(extended, producerPath, pins.before, false)).toEqual(predecessor);
+  expect(pinOccurrencePlan(extended, producerPath, pins.through, true)).toEqual(catalogue);
+  expect(writerPlan(extended)).toEqual(writerCatalogue);
 });
 const denied = { code: "42501", message: `permission denied for function ${producer}` };
 
-async function assertAcl(db: Db) {
+async function assertAcl(db: Db, sig = signature, args = 4, definer = false) {
   expect((await db.query(`SELECT p.provolatile AS volatility,p.prosecdef AS definer,p.proconfig AS settings,
-    p.proowner=c.relowner AND p.proowner=current_user::regrole AS owns,b.lanname AS language,
+    p.proowner=c.relowner AND p.proowner=current_user::regrole
+      AND p.proowner=(SELECT relowner FROM pg_class WHERE oid='public.subscription_cycle_generations'::regclass) AS owns,b.lanname AS language,
     p.pronargs AS args,p.pronargdefaults AS defaults,p.prorettype='jsonb'::regtype AS returns_json,
     ARRAY(SELECT privilege_type FROM aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) WHERE grantee<>p.proowner) AS grants
     FROM pg_proc p JOIN pg_language b ON b.oid=p.prolang CROSS JOIN pg_class c
-    WHERE p.oid=$1::regprocedure AND c.oid='public.subscription_cycle_occurrences'::regclass`, [signature])).rows)
-    .toEqual([{ volatility: "v", definer: false, settings: ["search_path=pg_catalog, pg_temp"],
-      owns: true, language: "plpgsql", args: 4, defaults: 0, returns_json: true, grants: [] }]);
-  expect((await db.query(`SELECT COUNT(*)::int AS overloads FROM pg_proc WHERE proname=$1 AND pronamespace='public'::regnamespace`, [producer])).rows)
+    WHERE p.oid=$1::regprocedure AND c.oid='public.subscription_cycle_occurrences'::regclass`, [sig])).rows)
+    .toEqual([{ volatility: "v", definer, settings: ["search_path=pg_catalog, pg_temp"],
+      owns: true, language: "plpgsql", args, defaults: 0, returns_json: true, grants: [] }]);
+  expect((await db.query(`SELECT COUNT(*)::int AS overloads FROM pg_proc WHERE proname=(SELECT proname FROM pg_proc WHERE oid=$1::regprocedure)
+    AND pronamespace='public'::regnamespace`, [sig])).rows)
     .toEqual([{ overloads: 1 }]);
 }
 
@@ -107,14 +88,7 @@ const writerSignatures = writerNames.map(name => `public.${name}(${name === writ
 
 async function assertWriterAcl(db: Db) {
   for (const [index, sig] of writerSignatures.entries()) {
-    expect((await db.query(`SELECT p.prosecdef, p.provolatile, p.proconfig,p.pronargdefaults,p.prorettype='jsonb'::regtype AS json,
-      p.proowner=c.relowner AND p.proowner=current_user::regrole
-        AND p.proowner=(SELECT relowner FROM pg_class WHERE oid='public.subscription_cycle_generations'::regclass) AS owns,
-      ARRAY(SELECT privilege_type FROM aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) WHERE grantee<>p.proowner) AS grants,
-      (SELECT count(*)::int FROM pg_proc WHERE proname=p.proname AND pronamespace=p.pronamespace) AS overloads
-      FROM pg_proc p, pg_class c WHERE p.oid=$1::regprocedure AND c.oid='public.${occurrence}'::regclass`, [sig])).rows)
-      .toEqual([{ prosecdef: index === 2, provolatile: "v", proconfig: ["search_path=pg_catalog, pg_temp"], pronargdefaults: 0,
-        json: true, owns: true, grants: [], overloads: 1 }]);
+    await assertAcl(db, sig, index === 2 ? 9 : 3, index === 2);
     expect(await installedCallers(db, sig, writerNames[index]!)).toEqual(index === 2 ? [] : [{ caller: writerNames[index + 1] }]);
   }
 }
@@ -200,7 +174,7 @@ async function dispatchEffects(db: Db) {
 }
 
 it.each([false, true])("preserves the mounted native worker with owner login and service role present=%s", async withService => {
-  async function exercise(boundary: keyof typeof pins) {
+  async function exercise(boundary: keyof typeof plans) {
     const plan = plans[boundary];
     if (!withService) {
       return withPlatformCatalog(plan, async root => {
@@ -218,7 +192,7 @@ it.each([false, true])("preserves the mounted native worker with owner login and
     } finally { await closePostgres(container, owner); }
   }
 
-  async function run(pools: { owner: Pool; runtime: Pool }, boundary: keyof typeof pins) {
+  async function run(pools: { owner: Pool; runtime: Pool }, boundary: keyof typeof plans) {
     const { owner, runtime } = pools, candidate = boundary !== "before";
     const writerProbe = boundary === "writer" ? await probeWriter(owner) : undefined;
     expect((await runtime.query("SELECT session_user,current_user")).rows).toEqual([{ session_user: "postgres", current_user: "postgres" }]);
@@ -277,7 +251,7 @@ it.each([false, true])("preserves the mounted native worker with owner login and
 }, postgresSetupTimeoutMs);
 
 it("compares a paid renewal under the actual starter login with a fixed occurrence on the renewed subscription", async () => {
-  async function exercise(boundary: keyof typeof pins) {
+  async function exercise(boundary: keyof typeof plans) {
     const candidate = boundary !== "before";
     const container = await runPostgresContainer({ name: `occurrence-starter-${process.pid}`, password: "synthetic-occurrence" });
     const owner = new Pool({ connectionString: container.connectionString });
@@ -290,15 +264,24 @@ it("compares a paid renewal under the actual starter login with a fixed occurren
       expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
       await owner.query(`CREATE ROLE starter_runtime LOGIN NOINHERIT PASSWORD 'synthetic-occurrence';
         CREATE ROLE starter_restore LOGIN NOINHERIT PASSWORD 'synthetic-occurrence'`);
-      await withPlatformCatalog(plans[boundary], root => createPostgresMigrationRunner(
+      const apply = (plan: typeof catalogue) => withPlatformCatalog(plan, root => createPostgresMigrationRunner(
         { connectionString: container.connectionString }, { root, installation, poolFactory: () => migration }).apply());
-      const preimages = (await owner.query(`SELECT oid::regprocedure::text,pg_get_functiondef(oid),proacl
+      await apply(boundary === "writer" ? catalogue : plans[boundary]);
+      const definitions = () => owner.query(`SELECT oid::regprocedure::text,pg_get_functiondef(oid),proacl
         FROM pg_proc WHERE pronamespace='public'::regnamespace AND proname IN
         ('subscription_claim_due_renewal','commerce_prepare_subscription_renewal',
         'customer_preferences_export','customer_preferences_prepare_erasure')
         UNION ALL SELECT tgname::text,pg_get_triggerdef(oid),NULL FROM pg_trigger WHERE NOT tgisinternal
         AND tgrelid IN ('public.subscription_renewal_operations'::regclass,'public.subscription_cycle_occurrences'::regclass)
-        ORDER BY 1`)).rows;
+        ORDER BY 1`).then(r => r.rows);
+      const preimages = await definitions();
+      if (boundary === "writer") {
+        expect(await apply(writerCatalogue)).toEqual({ applied: [writerPath] });
+        expect(await definitions()).toEqual(preimages);
+      }
+      const expired = await sandboxRenewal(migration);
+      expect(await call(migration, "fulfillment_reserve_subscription_renewal", [expired.operation, expired.token, 900, AT])).toMatchObject({ reserved: true });
+      await migration.query("UPDATE public.subscriptions SET next_cycle_at='2050-01-01Z' WHERE id=$1", [expired.subscription]);
       const writerProbe = boundary === "writer" ? await probeWriter(migration) : undefined;
       const f = await transaction(migration, async db => {
         await call(db, "subscription_delivery_alignment_set_mode", ["off"]);
@@ -354,6 +337,8 @@ it("compares a paid renewal under the actual starter login with a fixed occurren
           paidMail: { claimed: 0, processed: 0 } });
         if (!("renewals" in run)) throw new Error("Starter renewal did not run");
         expect(run.renewals).toHaveLength(1);
+        expect((await owner.query("SELECT status,terminal_reason FROM public.fulfillment_inventory_reservations WHERE renewal_operation_id=$1",
+          [expired.operation])).rows).toEqual([{ status: "expired", terminal_reason: "reservation_expired" }]);
         const [result] = run.renewals;
         const readback = await call(runtime, "subscription_read_renewal", [result!.identityKey]);
         expect(readback).toMatchObject({ operationId: result!.operationId, state: "succeeded",
@@ -409,8 +394,7 @@ it.each(["bootstrap", "separate", "admin-managed", "admin-operator"] as const)(
     const store = await installAccountMutations(profile, false, "writer-acl", root);
     try {
       const owner = store.migrator, f = await rootFixture(owner);
-      const before = () => owner.query(`SELECT to_jsonb(c),xmin::text FROM public.${occurrence} c`).then(r => r.rows);
-      const pristine = await before();
+      const pristine = await occurrenceRows(owner);
       await assertWriterAcl(owner);
       await assertNoCallers(owner);
       for (const [index, name] of writerNames.entries()) {
@@ -426,7 +410,7 @@ it.each(["bootstrap", "separate", "admin-managed", "admin-operator"] as const)(
             ALTER FUNCTION public.fixture_writer_relay() OWNER TO fixture_writer_other`);
           await expect(call(db, "fixture_writer_relay", [])).rejects.toMatchObject({ code: "42501" });
         }, "ROLLBACK");
-        expect(await before()).toEqual(pristine);
+        expect(await occurrenceRows(owner)).toEqual(pristine);
       }
       const { role } = (await owner.query("SELECT current_user AS role")).rows[0];
       const { login } = (await store.runtime.query("SELECT session_user AS login")).rows[0];
@@ -450,7 +434,7 @@ it.each(["bootstrap", "separate", "admin-managed", "admin-operator"] as const)(
           }
         }
       }, "ROLLBACK");
-      expect(await before()).toEqual(pristine);
+      expect(await occurrenceRows(owner)).toEqual(pristine);
       expect((await store.runtime.query(`SELECT EXISTS(SELECT FROM public.${operations} WHERE subscription_id=$1) AS created`,
         [f.subscriptionId])).rows).toEqual([{ created: false }]);
     } finally { await store.close(); }

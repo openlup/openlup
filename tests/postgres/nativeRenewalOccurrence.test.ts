@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
+import { withPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
 import { postgresSetupTimeoutMs } from "../helpers/postgresContainer.js";
 import { utc } from "./nativeRenewalOccurrence.fixture.js";
 import { args, capturePristine, generations, incumbentRoot, installOccurrenceStore, lock, occurrence,
-  operations, original, read, rootFixture, writer, type RootFixture } from "./nativeRenewalOccurrenceWriter.fixture.js";
+  operations, original, read, rootFixture, writer, writerPlan, type RootFixture } from "./nativeRenewalOccurrenceWriter.fixture.js";
 import { capture, insert, transaction } from "./orderMoneyV2Storage.fixture.js";
 import { call, type Db } from "./subscriptionNativeFixture.js";
 
@@ -84,12 +85,9 @@ it.each(["legacy", "legacy-with-service", "bootstrap", "separate", "admin-manage
         }
       });
       const history = await rootFixture(owner, "legacy");
-      await transaction(owner, async db => {
-        await unavailable(db, { ...f, scope: [f.clientId, f.subscriptionId, history.cycleKey] }, "/cycleKey");
-      }, "ROLLBACK");
-      await transaction(owner, async db => {
-        await unavailable(db, { ...f, scope: [f.clientId, f.subscriptionId, randomUUID()] }, "/cycleKey");
-      }, "ROLLBACK");
+      for (const key of [history.cycleKey, randomUUID()]) {
+        await expectUnavailable(owner, { ...f, scope: [f.clientId, f.subscriptionId, key] }, "/cycleKey");
+      }
       for (const routine of [read, lock]) await expect(call(owner, routine, [history.clientId, f.subscriptionId, f.cycleKey]))
         .rejects.toMatchObject({ code: "22023", message: "subscription_command_forbidden", detail: "/subscriptionId" });
       const legacyId = await transaction(owner, async db => {
@@ -142,7 +140,11 @@ it.each(["legacy", "legacy-with-service", "bootstrap", "separate", "admin-manage
         const freshTarget = await capturePristine(target);
         const restore = { owner: target.migrator, installation: target.installation, packet, freshTarget };
         for (const replayed of [false, true]) {
-          expect(await restoreConnectedNativeStore(restore)).toMatchObject({ replayed });
+          await withPlatformCatalog(writerPlan(), async root => {
+            const cwd = vi.spyOn(process, "cwd").mockReturnValue(root);
+            try { expect(await restoreConnectedNativeStore(restore)).toMatchObject({ replayed }); }
+            finally { cwd.mockRestore(); }
+          });
           const view = await call(target.migrator, read, f.scope);
           expect(view).toEqual(await call(owner, read, f.scope));
           expect(view).toMatchObject({ lifecycle: "stopped", cancellationEffectiveAt, operationId, commercialGenerationId: operationId });

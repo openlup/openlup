@@ -3,24 +3,50 @@ import { catalogAcceptanceV2Schema } from "@openlup/platform/catalog";
 import { readFileSync } from "node:fs";
 import { Pool } from "pg";
 import { expect } from "vitest";
+import { withPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
 import { readPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { installAccountMutations, type AccountMutationsStore, type AccountProfile } from "./customerAccountMutations.fixture.js";
 import { activation, allocate, defaultRule, utc } from "./nativeRenewalOccurrence.fixture.js";
-import { call, type Db, type RenewalSeed } from "./subscriptionNativeFixture.js";
-import { capture, insert } from "./orderMoneyV2Storage.fixture.js";
+import { call, seedRenewalStock, type Db } from "./subscriptionNativeFixture.js";
+import { capture, insert, transaction } from "./orderMoneyV2Storage.fixture.js";
+
+type OccurrenceCatalogue = Extract<PlatformMigrationManifest, { schemaVersion: 3 }>;
+const current = readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest | null;
+if (current?.schemaVersion !== 3) throw new Error("Expected the three native migration plans");
+export const occurrenceCatalogue = current;
+export const writerPath = current.forward.find(({ file }) => file.endsWith("_native_renewal_occurrence_writer.sql"))?.file;
+if (!writerPath) throw new Error("Missing renewal occurrence writer migration");
+const writerPins = { legacy: "37ae356e65f2bde6380735c2afd34bf2a11114d411936424c4076e23b5fde4c2", bootstrap: "e128d95b5446fb20878b848650c947bf8b2141b6a8ae9dbf2eb7189114cc60d4", separate: "7f1cb5f1be459b7e205ba4ad335608fd9d0d161e22565a8ff08d5df92dd2a727",
+    admin: "dd8a1e6539bbaf26993fb5ab49b2ddf5e68b7ec0a01b68340087fc35c641f016", operator: "4e19800b9f85031944928d35fd0c75343a9009b949b8bfc13b86817f8782498f" };
+export function pinOccurrencePlan(manifest: OccurrenceCatalogue, path: string, inventory: typeof writerPins, include: boolean) {
+  const plan = structuredClone(manifest);
+  for (const profile of [plan, plan.qualified, plan.qualifiedAdmin]) {
+    const index = profile.forward.findIndex(({ file }) => file === path);
+    if (index < 0) throw new Error(`Missing renewal occurrence migration ${path}`);
+    profile.forward = profile.forward.slice(0, include ? index + 1 : index);
+  }
+  plan.objectInventorySha256 = inventory.legacy;
+  plan.qualified.objectInventorySha256 = { bootstrapMigrator: { withRestore: inventory.bootstrap },
+    separateMigrator: { withRestore: inventory.separate } };
+  plan.qualifiedAdmin.objectInventorySha256 = { installerManaged: inventory.admin, operatorProvisioned: inventory.operator };
+  return plan;
+}
+
+export const writerPlan = (manifest = occurrenceCatalogue) => pinOccurrencePlan(manifest, writerPath!, writerPins, true);
 
 export type Profile = AccountProfile | "legacy-with-service";
 
 type Store = Pick<AccountMutationsStore, "owner" | "migrator" | "runtime" | "installation" | "inventory" | "close">;
 export async function installOccurrenceStore(profile: Profile, side = "source"): Promise<Store> {
-  if (profile !== "legacy-with-service") return installAccountMutations(profile, false, `renewal-occurrence-${side}`, undefined);
+  const manifest = writerPlan();
+  if (profile !== "legacy-with-service") return withPlatformCatalog(manifest, root =>
+    installAccountMutations(profile, false, `renewal-occurrence-${side}`, root));
   const container = await runPostgresContainer({ name: `renewal-occurrence-service-${process.pid}`, password: "synthetic-occurrence" });
   const owner = new Pool({ connectionString: container.connectionString });
   try {
     expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
     await owner.query("CREATE ROLE service_role NOLOGIN NOINHERIT BYPASSRLS");
-    const manifest = readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest;
     for (const entry of [manifest.baseline, ...manifest.forward]) await owner.query(readFileSync(entry.file, "utf8"));
     return { owner, migrator: owner, runtime: owner, installation: { generation: "legacy" },
       inventory: manifest.objectInventorySha256, close: () => closePostgres(container, [owner]) };
@@ -56,14 +82,8 @@ export async function paidRootFixture(db: Db, due = original) {
     to_char($2::timestamptz AT TIME ZONE 'UTC',${utc}) AS authorized
     FROM public.subscription_cycles WHERE subscription_id=$1 AND status='paid'`, [f.subscriptionId, f.paidAt])).rows[0];
   expect(cycleNumber).toBe(2);
-  const stockSourceKey = "fixture-stock", settlementChannelKey = "fixture-channel", authorizationRef = "fixture-mandate";
-  const currency = "XXX", lines: RenewalSeed["snapshot"]["lines"] = [];
-  for (const lineOrdinal of [1, 2]) {
-    const id = randomUUID(), sku = `item-${id}`;
-    await insert(db, "catalog_products", { id, slug: sku, name: "Fixture" });
-    await insert(db, "catalog_skus", { id, product_id: id, sku, title: "Fixture" });
-    lines.push({ lineOrdinal, sku, quantity: lineOrdinal, unitAmountMinor: 100 });
-  }
+  const { source: stockSourceKey, basket: lines } = await seedRenewalStock(db, 10, 2);
+  const settlementChannelKey = "fixture-channel", authorizationRef = "fixture-mandate", currency = "XXX";
   await db.query("UPDATE public.subscriptions SET next_cycle_at=$2 WHERE id=$1", [f.subscriptionId, due]);
   await insert(db, "subscription_renewal_terms", { subscription_id: f.subscriptionId, next_cycle_number: cycleNumber,
     currency_code: currency, stock_source_key: stockSourceKey, settlement_channel_key: settlementChannelKey,
@@ -76,21 +96,17 @@ const allocationState = (db: Db, cycleKey: string) => db.query(`SELECT is_curren
   to_char(effective_due_at AT TIME ZONE 'UTC',${utc}) AS due FROM public.${occurrence} WHERE cycle_key=$1`, [cycleKey]);
 
 export async function committedAllocation(owner: Pool, f: Awaited<ReturnType<typeof paidRootFixture>>, rail = "v3") {
-  const db = await owner.connect();
-  try {
-    await db.query("BEGIN ISOLATION LEVEL READ COMMITTED");
+  const allocation = await transaction(owner, async db => {
+    await db.query("SET TRANSACTION ISOLATION LEVEL READ COMMITTED");
     expect((await db.query(`SELECT cycle_key FROM public.${occurrence} WHERE subscription_id=$1`, [f.subscriptionId])).rows).toEqual([]);
     const result = await allocate(db, f, rail, { ...defaultRule, leadSeconds: 0 });
     expect(result.outcome).toBe("created");
-    const { cycleKey, originalAnchorAt } = result as { cycleKey: string; originalAnchorAt: string };
-    expect((await allocationState(owner, cycleKey)).rows).toEqual([]);
-    await db.query("COMMIT");
-    expect((await allocationState(owner, cycleKey)).rows).toEqual([{ is_current: true, operation_id: null, commercial_generation_id: null,
-      cancellation_receipt_id: null, cancellation_effective_at: null, anchor: originalAnchorAt, due: originalAnchorAt }]);
-    return { cycleKey, originalAnchorAt };
-  } finally {
-    try { await db.query("ROLLBACK"); } finally { db.release(); }
-  }
+    expect((await allocationState(owner, result.cycleKey)).rows).toEqual([]);
+    return { cycleKey: String(result.cycleKey), originalAnchorAt: String(result.originalAnchorAt) };
+  });
+  expect((await allocationState(owner, allocation.cycleKey)).rows).toEqual([{ is_current: true, operation_id: null, commercial_generation_id: null,
+    cancellation_receipt_id: null, cancellation_effective_at: null, anchor: allocation.originalAnchorAt, due: allocation.originalAnchorAt }]);
+  return allocation;
 }
 
 export async function rootFixture(owner: Pool, rail = "v3", due = original,
@@ -170,7 +186,7 @@ export function args(f: RootFixture, agreement: unknown = f.agreement, lease = 3
 export async function incumbentRoot(db: Db, f: RootFixture) {
   const { clientId, subscriptionId, currency, cycleNumber, originalAnchorAt: scheduledAt, lines } = f;
   const snapshot = { contractVersion: "platform.subscription.renewal.v1", clientId, subscriptionId, scheduledAt,
-    currency, cycleNumber, lines, totalAmountMinor: 300 };
+    currency, cycleNumber, lines, totalAmountMinor: lines.reduce((total, line) => total + line.quantity * line.unitAmountMinor, 0) };
   const fingerprint = sha256(canonical(snapshot));
   const identity = await call(db, "subscription_renewal_identity", [subscriptionId, scheduledAt]);
   const { operationId, claimToken } = await call(db, "subscription_claim_due_renewal", [identity, fingerprint, snapshot, "fixture", 30, scheduledAt]);
