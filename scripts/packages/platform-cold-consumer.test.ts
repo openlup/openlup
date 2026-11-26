@@ -874,6 +874,7 @@ process.stdout.write(JSON.stringify(Object.fromEntries(Object.entries(entry).map
   expect(serverExports).toEqual({
     CHECKOUT_RECOVERY_TOKEN_PREFIX: "string",
     CheckoutRecoveryScheduleChangeBlockedError: "function",
+    DEFAULT_COMMERCE_RETURN_REASONS: "object",
     EXPIRED_CHECKOUT_RECOVERY_WINDOW_MS: "number",
     ORDER_DRAFT_RPC_NAME: "string",
     ORDER_DRAFT_SUPERSEDE_RPC_NAME: "string",
@@ -882,6 +883,10 @@ process.stdout.write(JSON.stringify(Object.fromEntries(Object.entries(entry).map
     describeCommerceMoneyLimitsV2Setting: "function",
     inspectCommerceMoneyLimitsV2: "function",
     installCommerceMoneyLimitsV2: "function",
+    installCommerceReturnReasonsPolicy: "function",
+    readCommerceReturnReasonsOverride: "function",
+    readCommerceReturnReasonsPolicy: "function",
+    validateCommerceReturnReasons: "function",
     installCheckoutRecoveryReminderSchedule: "function",
     readCheckoutRecoveryReminderSchedule: "function",
     readCheckoutRecoveryReminderObservation: "function",
