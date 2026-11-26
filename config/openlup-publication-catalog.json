@@ -8718,6 +8718,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/storefront/testing/postgresObserver.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/storefront/testing/runner.ts",
       "class": "public-output"
     },
@@ -11611,6 +11615,10 @@
     },
     {
       "path": "packages/platform/test/storefront/testing/pageHandle.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/testing/postgresObserver.test.ts",
       "class": "public-output"
     },
     {

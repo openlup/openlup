@@ -274,6 +274,7 @@ export {};
 ```ts
 export type { PageHandle, StorefrontAdapter, StorefrontObserver, StorefrontScenario } from "./contracts.js";
 export { createPageHandle } from "./pageHandle.js";
+export { createPostgresStorefrontObserver } from "./postgresObserver.js";
 export { runStorefrontScenario } from "./runner.js";
 export { storefrontScenarios } from "./scenarios.js";
 export { serializeStorefrontVerdict } from "./serialize.js";
@@ -359,6 +360,50 @@ export declare function createPageHandle(page: StructuralPage, options?: {
     readonly origin?: string;
 }): PageHandle;
 export {};
+```
+## dist/storefront/testing/postgresObserver.d.ts
+
+```ts
+import type { StorefrontObserver } from "./contracts.js";
+/**
+ * A storefront observer over the platform's own PostgreSQL tables, so a
+ * PostgreSQL-tier proof needs no store-written observer. `executor` is any
+ * object with `query(text, values)` resolving `{ rows }`, for example a
+ * `SqlExecutor` from `@openlup/core/readiness` or `asPostgresSqlExecutor(client)`
+ * from `@openlup/platform/data`; this entry imports no database client.
+ *
+ * `ledger(subject)` runs one read-only statement whose only parameter is the
+ * subject, and finds the subject's orders through the client whose e-mail
+ * equals it case-insensitively: `orders` in any status; `payableOrders` in
+ * `pending_payment`; `holds` orders with at least one `held` stock reservation;
+ * `attempts` simulator and provider payment attempts on their settlement
+ * intents; `captures` captured simulator attempts and succeeded provider
+ * attempts, one per capture. Each count is its own subquery, so no join
+ * multiplies another. The observer writes, locks and controls no transaction;
+ * a harness may run it inside `BEGIN READ ONLY`.
+ *
+ * With `exclusive: true` it adds `payableOrdersInDatabase()`, every payable
+ * order in the database. Set it only when the database is exclusive to one
+ * run: the runner then requires that the payable orders added in the database
+ * equal those added for the run's subjects.
+ *
+ * The executor needs `SELECT` on `commerce_orders`, `clients`,
+ * `fulfillment_inventory_reservations`, `commerce_settlement_intents`,
+ * `payment_simulator_attempts` and `payment_provider_attempts`. A count that is
+ * not a non-negative safe integer, or an answer that is not one row, rejects
+ * `storefront_observer_count_invalid`, never zero; an executor's rejection is
+ * passed through. A host whose records live elsewhere supplies its own
+ * observer.
+ *
+ * @experimental
+ */
+export declare function createPostgresStorefrontObserver(executor: {
+    query(text: string, values?: readonly unknown[]): Promise<{
+        readonly rows: readonly Record<string, unknown>[];
+    }>;
+}, options?: {
+    readonly exclusive?: boolean;
+}): StorefrontObserver;
 ```
 ## dist/storefront/testing/runner.d.ts
 
