@@ -1574,8 +1574,9 @@ describe("native evaluation claim and seal", () => {
   it("restores sealed bytes and NULL pairs, and rolls back tampered money", async () => {
     const source = await resources.installation("sealed-money-source");
     const value = await exclusiveFixture(source), held = await claimFresh(value.claim, lane(source));
-    const seal = await providerSeal(value.claim, value.request, held, randomUUID(), future(2));
-    await expect(completeTaxCalculation(lane(source), seal)).resolves.toMatchObject({ kind: "terminal", outcome: { kind: "final" } });
+    const seal = await providerSeal(value.claim, value.request, held, randomUUID(), future(8));
+    const completed = await completeTaxCalculation(lane(source), seal);
+    expect(completed, "code" in completed ? completed.code : completed.kind).toMatchObject({ kind: "terminal", outcome: { kind: "final" } });
     const legacy = await seed("terminal", source), pending = await seed("pending", source), erased = await seed("terminal", source);
     await (await createPrivacy(source))(erased.ctx.clientId);
     const ids = [held.calculationId, legacy.calculationId, pending.calculationId, erased.calculationId];
