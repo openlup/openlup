@@ -114,7 +114,12 @@ export type StorefrontScenario = {
         readonly noAttemptAfter?: number;
         /** Attempts never exceed the declines the outcome driver produced so far plus one. */
         readonly attemptsPerDecline?: boolean;
-        /** States that must not be shown from the end of the step at index `after` on. */
+        /**
+         * States that must not be shown once the run has shown the outcome: from the
+         * first observation, not before the step at index `after` ends, that shows the
+         * state that step expects (for a step that is not an expect, from its end on).
+         * A run that never shows that state is not judged by this rule.
+         */
         readonly forbiddenStates?: {
             readonly after: number;
             readonly states: readonly string[];
@@ -475,7 +480,7 @@ type StorefrontRunResult = {
  * a matched create, every withhold applied, every outcome shows its ledger
  * effect and declared auto-progress was performed; 4 ledger safety in both
  * runs and settle windows (payable orders, orders holding stock, attempts, captures, no attempt after its step, attempts per
- * decline, forbidden states from their step on; a paid state needs a capture
+ * decline, forbidden states once the run has shown the outcome; a paid state needs a capture
  * and no payable order) and, for an exclusive database, no payable order
  * outside the subjects; 5 the create budget kept (a run over it stopped before
  * proving anything, but a violation it already caused stands); 6 each matcher
@@ -488,8 +493,9 @@ type StorefrontRunResult = {
  * as do `control_not_applied` and `auto_progress_undeclared`; a harness fault
  * is never `failed` or `passed`; a ledger violation is
  * `failed`; progress under the control is `vacuous`. Ledger harm a run proved
- * before a fault (in the clean run before a control-run fault, or at or before
- * the fault's step in the same run) outranks that fault, so the result is
+ * before a fault or a stimulus check that ends `not_run` (in the clean run
+ * before one in the control run, or at or before its step in the same run)
+ * outranks it, so the result is
  * `failed`. Without a finding the result is `passed`, or `safety_only` for a
  * scenario without a control.
  *
@@ -554,9 +560,9 @@ import type { StorefrontScenario } from "./contracts.js";
  *   `retry_payment`, skips the outcomes after it and must keep `paid` from
  *   being shown. Requires the `declined` and `settled` outcomes.
  * - `paid_pending_activation`: a subscription's payment settles while its
- *   activation stays pending. From the end of the expect step on,
- *   `awaiting_payment`, `declined` and `paid` must not be shown, and at most
- *   one capture; progress
+ *   activation stays pending. Once the page shows that state (from the end of
+ *   the expect step), `awaiting_payment`, `declined` and `paid` must not be
+ *   shown, and at most one capture; progress
  *   is `paid_pending_activation`; the control blocks status reads and creates
  *   from the outcome on, keeps the outcomes and must keep that state from being
  *   shown. Requires the `activation_pending` outcome.
