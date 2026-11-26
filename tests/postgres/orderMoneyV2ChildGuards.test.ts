@@ -24,7 +24,7 @@ if (manifest?.schemaVersion !== 3) throw new Error("Expected complete native cat
 const unit = manifest.forward.find(entry => entry.file.endsWith("_order_money_v2_child_guards.sql"));
 if (!unit) throw new Error("Expected order money child guard forward");
 const position = manifest.qualified.forward.findIndex(entry => entry.file === unit.file);
-const predecessorInventory = "ee9666bd5182e91b36498443189a4841e8893054fc629052965ed91f9103b791";
+const predecessorInventory = "cbb0de5414b4878ad3bb34ecaeb05438dae1d9f735b0653ba6381fe86ac564af";
 const assertion = "public.commerce_order_money_v2_assert(uuid,boolean,boolean,jsonb,jsonb)";
 const bodyReader = "public.commerce_order_money_v2_live_body(uuid)";
 const memo = "public.commerce_order_money_v2_check_state(uuid,boolean,text,text)";

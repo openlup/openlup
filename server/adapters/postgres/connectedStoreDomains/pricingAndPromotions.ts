@@ -43,6 +43,7 @@ export const pricingAndPromotionsDomain = {
     // These guards retain final intervals and recompute the same definition digest.
     subscription_price_policy_revisions: ["subscription_price_policy_revisions_00_guard_insert", "subscription_price_policy_revisions_10_prevent_overlap"],
     commerce_promotion_definitions: ["commerce_promotion_definition_fingerprint_trigger"],
+    commerce_promotion_claims: ["commerce_promotion_claims_catalog_final"],
     commerce_offer_policy_rollout_baselines: ["commerce_offer_policy_baseline_insert_guard"],
   },
 } as const;

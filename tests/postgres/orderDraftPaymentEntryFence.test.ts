@@ -160,8 +160,8 @@ it.each(["bootstrap", "admin-managed"] as const)("upgrades the qualified %s prof
     expect(rail.forward[index - 1]?.file).toMatch(/_order_draft_receipt_privacy_v2\.sql$/u);
     rail.forward = rail.forward.slice(0, index);
   }
-  prefix.qualified.objectInventorySha256.bootstrapMigrator.withRestore = "753017472efe59148ff5f6a5b99d257261859539f73818e02e69918312acc97f";
-  prefix.qualifiedAdmin.objectInventorySha256.installerManaged = "a23de7dd34562769443b6f7425dbc4d681a8c678d3286e92ab922b9d883f0b14";
+  prefix.qualified.objectInventorySha256.bootstrapMigrator.withRestore = "7a41700d0f61570d77af2659f206f6a636854238627281965b0a74ec9b50df05";
+  prefix.qualifiedAdmin.objectInventorySha256.installerManaged = "8b3b3ccd82dd48690a25575819f8cf769e896f8c991d25cb67f192c43c88c495";
   await withPlatformCatalog(prefix, async root => {
     const store = await installAccountMutations(profile, false, "payment-entry-upgrade", root);
     const { owner, runtime } = store;

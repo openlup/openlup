@@ -2,25 +2,37 @@
   "current": {
     "profiles": {
       "legacy": {
-        "count": 229,
-        "exactTailCount": 119,
-        "objectInventorySha256": "a4a0d21c14b5969490cbaf056fd7008f5fcedbb60649be451fe076780f372843",
+        "count": 232,
+        "exactTailCount": 122,
+        "objectInventorySha256": "99c1b2f54c723bfe40f4a440089d6ce515f1078b425b9ae77dd64e3eaf066829",
         "tail": [
           {
-            "file": "db/platform/migrations/20261129130006_order_draft_payment_entry_fence.sql",
+            "file": "db/platform/migrations/20261129130507_order_draft_payment_entry_fence.sql",
             "sha256": "1f11757213628148547e2d2b500f0e85feced698252e4afdf7dba030b245a174"
           },
           {
-            "file": "db/platform/migrations/20261129130005_order_draft_receipt_privacy_v2.sql",
+            "file": "db/platform/migrations/20261129130506_order_draft_receipt_privacy_v2.sql",
             "sha256": "3a76ddcd16a759b50c0a8e31bbad0dcc11f1b5ec6225df79e147e9d237871b1d"
           },
           {
-            "file": "db/platform/migrations/20261129130004_order_draft_receipts_v2.sql",
+            "file": "db/platform/migrations/20261129130505_order_draft_receipts_v2.sql",
             "sha256": "35a18bef1ee478776914c1800e6e99b9236886a01c7ad639c854e5169fd22edd"
           },
           {
-            "file": "db/platform/migrations/20261129130003_order_money_v2_child_guards.sql",
+            "file": "db/platform/migrations/20261129130504_order_money_v2_child_guards.sql",
             "sha256": "1891e61e846f5358043d180366875bc4119ec8b833151304a8be04fb667d4956"
+          },
+          {
+            "file": "db/platform/migrations/20261129130503_order_money_v2_restore_no_temp.sql",
+            "sha256": "871b648d426739e13c67478dafb4c3e99476b22d543eb7d91da6a782237cb89d"
+          },
+          {
+            "file": "db/platform/migrations/20261129130502_catalog_governed_draft_owner.sql",
+            "sha256": "33869ed7310f1bf994228a211d20803420ca8aba634ae99891fbc9b2f9ad9ace"
+          },
+          {
+            "file": "db/platform/migrations/20261129130501_fulfillment_delivery_without_tracking.sql",
+            "sha256": "8fb338903c87905d493b110134d7b89d8a65ba50db33eab7b4741a2802b898ef"
           },
           {
             "file": "db/platform/migrations/20261129130002_order_money_v2_assert.sql",
@@ -925,25 +937,37 @@
         ]
       },
       "bootstrap": {
-        "count": 235,
-        "exactTailCount": 120,
-        "objectInventorySha256": "c25b236034429834f0c02412065ee3983517766d0ebfefb5fecfe66b65da0263",
+        "count": 238,
+        "exactTailCount": 123,
+        "objectInventorySha256": "bbc6d6df4fe1a9ce4dfb827861e6a8a911279e07d7ec0f528c1905372ed93819",
         "tail": [
           {
-            "file": "db/platform/migrations/20261129130006_order_draft_payment_entry_fence.sql",
+            "file": "db/platform/migrations/20261129130507_order_draft_payment_entry_fence.sql",
             "sha256": "1f11757213628148547e2d2b500f0e85feced698252e4afdf7dba030b245a174"
           },
           {
-            "file": "db/platform/migrations/20261129130005_order_draft_receipt_privacy_v2.sql",
+            "file": "db/platform/migrations/20261129130506_order_draft_receipt_privacy_v2.sql",
             "sha256": "3a76ddcd16a759b50c0a8e31bbad0dcc11f1b5ec6225df79e147e9d237871b1d"
           },
           {
-            "file": "db/platform/migrations/20261129130004_order_draft_receipts_v2.sql",
+            "file": "db/platform/migrations/20261129130505_order_draft_receipts_v2.sql",
             "sha256": "35a18bef1ee478776914c1800e6e99b9236886a01c7ad639c854e5169fd22edd"
           },
           {
-            "file": "db/platform/migrations/20261129130003_order_money_v2_child_guards.sql",
+            "file": "db/platform/migrations/20261129130504_order_money_v2_child_guards.sql",
             "sha256": "1891e61e846f5358043d180366875bc4119ec8b833151304a8be04fb667d4956"
+          },
+          {
+            "file": "db/platform/migrations/20261129130503_order_money_v2_restore_no_temp.sql",
+            "sha256": "871b648d426739e13c67478dafb4c3e99476b22d543eb7d91da6a782237cb89d"
+          },
+          {
+            "file": "db/platform/migrations/20261129130502_catalog_governed_draft_owner.sql",
+            "sha256": "33869ed7310f1bf994228a211d20803420ca8aba634ae99891fbc9b2f9ad9ace"
+          },
+          {
+            "file": "db/platform/migrations/20261129130501_fulfillment_delivery_without_tracking.sql",
+            "sha256": "8fb338903c87905d493b110134d7b89d8a65ba50db33eab7b4741a2802b898ef"
           },
           {
             "file": "db/platform/migrations/20261129130002_order_money_v2_assert.sql",
@@ -1872,25 +1896,37 @@
         ]
       },
       "separate": {
-        "count": 235,
-        "exactTailCount": 120,
-        "objectInventorySha256": "3c4f6255f3a2c9799b34b351e1733c45345a773d42c1f46432373e0933c7c3b6",
+        "count": 238,
+        "exactTailCount": 123,
+        "objectInventorySha256": "9d365f118cf02921e7d8e9a18db5c8b9d149385c62cdab0a36f5814a0160c508",
         "tail": [
           {
-            "file": "db/platform/migrations/20261129130006_order_draft_payment_entry_fence.sql",
+            "file": "db/platform/migrations/20261129130507_order_draft_payment_entry_fence.sql",
             "sha256": "1f11757213628148547e2d2b500f0e85feced698252e4afdf7dba030b245a174"
           },
           {
-            "file": "db/platform/migrations/20261129130005_order_draft_receipt_privacy_v2.sql",
+            "file": "db/platform/migrations/20261129130506_order_draft_receipt_privacy_v2.sql",
             "sha256": "3a76ddcd16a759b50c0a8e31bbad0dcc11f1b5ec6225df79e147e9d237871b1d"
           },
           {
-            "file": "db/platform/migrations/20261129130004_order_draft_receipts_v2.sql",
+            "file": "db/platform/migrations/20261129130505_order_draft_receipts_v2.sql",
             "sha256": "35a18bef1ee478776914c1800e6e99b9236886a01c7ad639c854e5169fd22edd"
           },
           {
-            "file": "db/platform/migrations/20261129130003_order_money_v2_child_guards.sql",
+            "file": "db/platform/migrations/20261129130504_order_money_v2_child_guards.sql",
             "sha256": "1891e61e846f5358043d180366875bc4119ec8b833151304a8be04fb667d4956"
+          },
+          {
+            "file": "db/platform/migrations/20261129130503_order_money_v2_restore_no_temp.sql",
+            "sha256": "871b648d426739e13c67478dafb4c3e99476b22d543eb7d91da6a782237cb89d"
+          },
+          {
+            "file": "db/platform/migrations/20261129130502_catalog_governed_draft_owner.sql",
+            "sha256": "33869ed7310f1bf994228a211d20803420ca8aba634ae99891fbc9b2f9ad9ace"
+          },
+          {
+            "file": "db/platform/migrations/20261129130501_fulfillment_delivery_without_tracking.sql",
+            "sha256": "8fb338903c87905d493b110134d7b89d8a65ba50db33eab7b4741a2802b898ef"
           },
           {
             "file": "db/platform/migrations/20261129130002_order_money_v2_assert.sql",
@@ -2819,25 +2855,37 @@
         ]
       },
       "admin-managed": {
-        "count": 233,
-        "exactTailCount": 119,
-        "objectInventorySha256": "4b5af0b9660be3cdfcba480f74fbb980d04314683cea801d7a93065f2ff01514",
+        "count": 236,
+        "exactTailCount": 122,
+        "objectInventorySha256": "959229fbd7afb404b2242cc1abb84e94d2c553890414e342a0b1c032da2c0894",
         "tail": [
           {
-            "file": "db/platform/migrations/20261129130006_order_draft_payment_entry_fence.sql",
+            "file": "db/platform/migrations/20261129130507_order_draft_payment_entry_fence.sql",
             "sha256": "1f11757213628148547e2d2b500f0e85feced698252e4afdf7dba030b245a174"
           },
           {
-            "file": "db/platform/migrations/20261129130005_order_draft_receipt_privacy_v2.sql",
+            "file": "db/platform/migrations/20261129130506_order_draft_receipt_privacy_v2.sql",
             "sha256": "3a76ddcd16a759b50c0a8e31bbad0dcc11f1b5ec6225df79e147e9d237871b1d"
           },
           {
-            "file": "db/platform/migrations/20261129130004_order_draft_receipts_v2.sql",
+            "file": "db/platform/migrations/20261129130505_order_draft_receipts_v2.sql",
             "sha256": "35a18bef1ee478776914c1800e6e99b9236886a01c7ad639c854e5169fd22edd"
           },
           {
-            "file": "db/platform/migrations/20261129130003_order_money_v2_child_guards.sql",
+            "file": "db/platform/migrations/20261129130504_order_money_v2_child_guards.sql",
             "sha256": "1891e61e846f5358043d180366875bc4119ec8b833151304a8be04fb667d4956"
+          },
+          {
+            "file": "db/platform/migrations/20261129130503_order_money_v2_restore_no_temp.sql",
+            "sha256": "871b648d426739e13c67478dafb4c3e99476b22d543eb7d91da6a782237cb89d"
+          },
+          {
+            "file": "db/platform/migrations/20261129130502_catalog_governed_draft_owner.sql",
+            "sha256": "33869ed7310f1bf994228a211d20803420ca8aba634ae99891fbc9b2f9ad9ace"
+          },
+          {
+            "file": "db/platform/migrations/20261129130501_fulfillment_delivery_without_tracking.sql",
+            "sha256": "8fb338903c87905d493b110134d7b89d8a65ba50db33eab7b4741a2802b898ef"
           },
           {
             "file": "db/platform/migrations/20261129130002_order_money_v2_assert.sql",
@@ -3758,25 +3806,37 @@
         ]
       },
       "admin-operator": {
-        "count": 233,
-        "exactTailCount": 119,
-        "objectInventorySha256": "8ec024b842907ead90acaa77746e0904f3e6886cc50da92570d6aedc7cd8f7b2",
+        "count": 236,
+        "exactTailCount": 122,
+        "objectInventorySha256": "dde1173da87149b6fc95b4b2eb383c4fd0a04f1d2f055652d9a5b93fc9ae4fce",
         "tail": [
           {
-            "file": "db/platform/migrations/20261129130006_order_draft_payment_entry_fence.sql",
+            "file": "db/platform/migrations/20261129130507_order_draft_payment_entry_fence.sql",
             "sha256": "1f11757213628148547e2d2b500f0e85feced698252e4afdf7dba030b245a174"
           },
           {
-            "file": "db/platform/migrations/20261129130005_order_draft_receipt_privacy_v2.sql",
+            "file": "db/platform/migrations/20261129130506_order_draft_receipt_privacy_v2.sql",
             "sha256": "3a76ddcd16a759b50c0a8e31bbad0dcc11f1b5ec6225df79e147e9d237871b1d"
           },
           {
-            "file": "db/platform/migrations/20261129130004_order_draft_receipts_v2.sql",
+            "file": "db/platform/migrations/20261129130505_order_draft_receipts_v2.sql",
             "sha256": "35a18bef1ee478776914c1800e6e99b9236886a01c7ad639c854e5169fd22edd"
           },
           {
-            "file": "db/platform/migrations/20261129130003_order_money_v2_child_guards.sql",
+            "file": "db/platform/migrations/20261129130504_order_money_v2_child_guards.sql",
             "sha256": "1891e61e846f5358043d180366875bc4119ec8b833151304a8be04fb667d4956"
+          },
+          {
+            "file": "db/platform/migrations/20261129130503_order_money_v2_restore_no_temp.sql",
+            "sha256": "871b648d426739e13c67478dafb4c3e99476b22d543eb7d91da6a782237cb89d"
+          },
+          {
+            "file": "db/platform/migrations/20261129130502_catalog_governed_draft_owner.sql",
+            "sha256": "33869ed7310f1bf994228a211d20803420ca8aba634ae99891fbc9b2f9ad9ace"
+          },
+          {
+            "file": "db/platform/migrations/20261129130501_fulfillment_delivery_without_tracking.sql",
+            "sha256": "8fb338903c87905d493b110134d7b89d8a65ba50db33eab7b4741a2802b898ef"
           },
           {
             "file": "db/platform/migrations/20261129130002_order_money_v2_assert.sql",

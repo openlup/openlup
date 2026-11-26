@@ -77,11 +77,11 @@ export const commerceDomain = {
     ],
   },
   allowedInsertTriggers: {
-    commerce_order_adjustments: ["trg_commerce_order_adjustments_money_v2"],
-    commerce_orders: ["trg_commerce_orders_line_sum"],
-    commerce_order_items: ["trg_commerce_order_items_line_sum"],
+    commerce_orders: ["trg_commerce_orders_line_sum", "commerce_orders_catalog_owner_origin_guard"],
+    commerce_order_items: ["trg_commerce_order_items_line_sum", "commerce_order_items_catalog_owner_origin_guard"],
     commerce_order_holds: ["trg_fulfillment_emit_shipment_exception", "trg_subscription_delivery_alignment_exception_case"],
-    commerce_order_draft_receipts: ["commerce_order_draft_receipts_catalog_final"],
+    commerce_order_draft_receipts: ["commerce_order_draft_receipts_catalog_final", "commerce_order_draft_receipts_catalog_owner_origin_guard"],
+    commerce_order_adjustments: ["commerce_order_adjustments_catalog_final", "trg_commerce_order_adjustments_money_v2"],
     commerce_order_operations: ["communication_refund_subject"],
   },
 } as const;

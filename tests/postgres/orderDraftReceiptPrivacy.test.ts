@@ -107,7 +107,7 @@ it("seals the draft projection through mounted erasure, replay and erased restor
 it("mounts safely before the declaration, then requires verified reconciliation for prior coverage", async () => {
   const prefix = structuredClone(manifest);
   for (const plan of [prefix, prefix.qualified, prefix.qualifiedAdmin]) plan.forward = plan.forward.slice(0, plan.forward.findIndex(unit => unit.file === first.file));
-  prefix.qualified.objectInventorySha256.bootstrapMigrator.withRestore = "6ed8079e799ae4a2bd49c3ad67009677641339a0b71d405742461a71d399eaf1";
+  prefix.qualified.objectInventorySha256.bootstrapMigrator.withRestore = "568e25fb57b4c9776db35d11b179cb14668aa8ff1d2f334c941dc78927267a83";
   await withPlatformCatalog(prefix, async root => {
     const prior = await installAccountMutations("bootstrap", false, "before-draft-receipts", root);
     try {

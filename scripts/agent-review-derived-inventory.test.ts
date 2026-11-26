@@ -31,6 +31,7 @@ describe('landing:merge real Docker inventory refresh witness', () => {
     }
     root = realpathSync(mkdtempSync(join(tmpdir(), 'openlup-derived-inventory-')));
     execFileSync('/usr/bin/git', ['clone', '--shared', '--no-hardlinks', '-q', source, root], { env: fixtureEnvironment, timeout: 30000 });
+    execFileSync('/usr/bin/git', ['-C', root, 'checkout', '-q', '--detach'], { env: fixtureEnvironment, timeout: 30000 });
     const sourcePaths = (...args: string[]) => execFileSync('/usr/bin/git', args, { cwd: source, env: fixtureEnvironment, encoding: 'utf8' }).split('\0').filter(Boolean);
     const overlays = new Set([
       ...sourcePaths('diff', '--name-only', '--no-renames', '-z', 'HEAD'),
