@@ -922,7 +922,10 @@ test('installed_catalogue_operator_workflow', { skip: !recipeApp, timeout: 600_0
     await denied();
     directDenied();
   } finally {
-    if (!existing) compose('down', '--volumes');
+    if (!existing) {
+      try { run('./lifecycle', ['down']); }
+      finally { compose('down', '--volumes'); }
+    }
   }
 });
 
@@ -1320,8 +1323,10 @@ test('up_json_installed_starter_recipe', { skip: !recipeApp, timeout: 600_000 },
     run('./lifecycle', ['up']);
     assert.equal(ledger(), '2');
   } finally {
-    try { docker('down', '--volumes'); }
-    finally {
+    try {
+      try { run('./lifecycle', ['down']); }
+      finally { docker('down', '--volumes'); }
+    } finally {
       writeFileSync(packPath, initialPack);
       writeFileSync(rules, initialRules);
       rmSync(scratch, { recursive: true });

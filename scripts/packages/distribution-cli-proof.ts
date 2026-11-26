@@ -613,7 +613,10 @@ export function proveInstalledCatalogueUpgrade(app: string, preservedHashes: Rec
         assert.equal(run("docker", ["compose", "port", "application", migratedPort], migrated).trim(), `127.0.0.1:${migratedPort}`);
         run("curl", ["--fail", "--silent", `http://127.0.0.1:${migratedPort}/api/config`], migrated);
         console.log(`Upgraded starter healthy on migrated port ${migratedPort}`);
-      } finally { run("docker", ["compose", "down", "--volumes", "--rmi", "local"], migrated); }
+      } finally {
+        try { run("./lifecycle", ["down"], migrated); }
+        finally { run("docker", ["compose", "down", "--volumes", "--rmi", "local"], migrated); }
+      }
     }
     if (browser) console.log(`Catalogue replay operator connected to pinned browser image ${browser.reference}`);
   } catch (error) {
