@@ -741,6 +741,8 @@ export { DEFAULT_SUBSCRIPTION_RETRY_BACKOFF_HOURS, validateSubscriptionRetrySche
 export type { SubscriptionRetrySchedulePolicy } from "./retrySchedulePolicy.js";
 export { DEFAULT_SUBSCRIPTION_EDIT_QUOTE_TTL_MINUTES, resolveSubscriptionEditQuoteTtlMinutes, validateSubscriptionEditQuoteTtlMinutes, installSubscriptionEditQuoteTtlMinutesPolicy, readSubscriptionEditQuoteTtlMinutesOverride, readSubscriptionEditQuoteTtlMinutesPolicy, } from "./editQuoteTtlPolicy.js";
 export type { SubscriptionEditQuoteTtlMinutesPolicy } from "./editQuoteTtlPolicy.js";
+export { DEFAULT_SUBSCRIPTION_RESCHEDULE_TIMEZONE, validateSubscriptionRescheduleTimeZone, installSubscriptionRescheduleTimeZonePolicy, readSubscriptionRescheduleTimeZoneOverride, readSubscriptionRescheduleTimeZonePolicy, } from "./rescheduleTimeZonePolicy.js";
+export type { SubscriptionRescheduleTimeZonePolicy } from "./rescheduleTimeZonePolicy.js";
 ```
 ## dist/subscriptions/lifecycleMessages.d.ts
 
@@ -2027,6 +2029,31 @@ export declare function replayRenewalAttempt<D extends HostedRenewalDue>(deps: R
 import type { RenewalIdentity, RenewalSchedule } from "./contracts/renewal.js";
 /** The host's existing dialect owns every byte; no normalization or new prefix. */
 export declare function renewalIdentity(schedule: RenewalSchedule, keys: (schedule: RenewalSchedule) => RenewalIdentity): RenewalIdentity;
+```
+## dist/subscriptions/rescheduleTimeZonePolicy.d.ts
+
+```ts
+/** @experimental Default IANA time zone for subscription reschedule calendar-day boundaries. */
+export declare const DEFAULT_SUBSCRIPTION_RESCHEDULE_TIMEZONE = "UTC";
+/** @experimental Installed policy configuring the IANA time zone for subscription reschedule calendar-day boundaries. */
+export interface SubscriptionRescheduleTimeZonePolicy {
+    revision: string;
+    timeZone: string;
+}
+interface Executor {
+    query(text: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+/** @experimental Validate a `subscription_reschedule_timezone` policy document using SQL-equivalent rules. */
+export declare function validateSubscriptionRescheduleTimeZone(value: unknown): SubscriptionRescheduleTimeZonePolicy;
+/** @experimental Install the subscription reschedule time zone policy on a host-owned write-capable connection. */
+export declare function installSubscriptionRescheduleTimeZonePolicy(db: Executor, policy: SubscriptionRescheduleTimeZonePolicy): Promise<void>;
+/** @experimental Read an explicit `subscription_reschedule_timezone` override, returning `undefined` when absent. */
+export declare function readSubscriptionRescheduleTimeZoneOverride(db: Executor): Promise<SubscriptionRescheduleTimeZonePolicy | undefined>;
+/** @experimental Read the installed `subscription_reschedule_timezone` policy or the UTC absence fallback. */
+export declare function readSubscriptionRescheduleTimeZonePolicy(db: Executor): Promise<SubscriptionRescheduleTimeZonePolicy>;
+export {};
 ```
 ## dist/subscriptions/retrySchedulePolicy.d.ts
 

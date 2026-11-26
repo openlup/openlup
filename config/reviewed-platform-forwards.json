@@ -9868,8 +9868,46 @@
         "dataStatements": []
       },
       {
+        "row": "settings-wave4a-reschedule-timezone",
+        "path": "db/platform/migrations/20261129130505_settings_wave4a_reschedule_timezone.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.subscription_apply_lifecycle_action(uuid,text,uuid,text,jsonb,timestamptz,jsonb)",
+            "beforeSha256": "b29fd0262d579ecb1d6afabe5863bfbe99069f286f193335904e82acd5523bcb",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_command_preview(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
+            "beforeSha256": "21a83ef480b46955bce24590f9cfd10a0262e1fa27332b75c5fa5ec1f6fdcfe8",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_command_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz,jsonb)",
+            "beforeSha256": "b804c7a11b6e7971e2a27b63b4d0cb856336bad371a6fa61d8fe3d47cf1d430e",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_support_apply_subscription_action_v1(uuid,uuid,text,jsonb,integer,text,timestamptz)",
+            "beforeSha256": "ada7aefb623deaa5b28bae2f545b3fee00adca039da4adc955fac2efff3bf0c3",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.subscription_reschedule_timezone_validate(jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_reschedule_timezone_read()",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "native-renewal-occurrence-producer",
-        "path": "db/platform/migrations/20261129130505_native_renewal_occurrence_producer.sql",
+        "path": "db/platform/migrations/20261129130506_native_renewal_occurrence_producer.sql",
         "replacedFunctions": [],
         "createdFunctions": [
           {
@@ -14348,7 +14386,43 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261129130505_native_renewal_occurrence_producer.sql",
+      "path": "db/platform/migrations/20261129130505_settings_wave4a_reschedule_timezone.sql",
+      "sha256": "8fdc4dffe112ddd7dad2765b921fbbf3556db874e21b20318568c1dfb1f76225",
+      "functions": [
+        {
+          "signature": "public.subscription_apply_lifecycle_action(uuid,text,uuid,text,jsonb,timestamptz,jsonb)",
+          "beforeSha256": "b29fd0262d579ecb1d6afabe5863bfbe99069f286f193335904e82acd5523bcb",
+          "afterSha256": "5678ce00da103b296b1920b2d78cb188eccea03fe5e6d7cd559531a76f6b0beb"
+        },
+        {
+          "signature": "public.subscription_command_preview(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
+          "beforeSha256": "21a83ef480b46955bce24590f9cfd10a0262e1fa27332b75c5fa5ec1f6fdcfe8",
+          "afterSha256": "8b0c0c1e7eb2fd8d501118e7feadf55b980996b14f18df0de97f0e4e0d382f1b"
+        },
+        {
+          "signature": "public.subscription_command_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz,jsonb)",
+          "beforeSha256": "b804c7a11b6e7971e2a27b63b4d0cb856336bad371a6fa61d8fe3d47cf1d430e",
+          "afterSha256": "6110a3bddc04cc2b3bf8650b9a8ec9af47dc2b77944dd8a62924b6ab60312e63"
+        },
+        {
+          "signature": "public.customer_support_apply_subscription_action_v1(uuid,uuid,text,jsonb,integer,text,timestamptz)",
+          "beforeSha256": "ada7aefb623deaa5b28bae2f545b3fee00adca039da4adc955fac2efff3bf0c3",
+          "afterSha256": "c4f71ec7bcecd1d489aa5e5e15a08d9aa2daae2d28970541b666ebbc1c1ca149"
+        },
+        {
+          "signature": "public.subscription_reschedule_timezone_validate(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "931733bc53f6a23d17cf9e917a2398f7deb7709dc8ed5b83e013d1de6896a43c"
+        },
+        {
+          "signature": "public.subscription_reschedule_timezone_read()",
+          "beforeSha256": null,
+          "afterSha256": "50b344d21f9deb55c8d173d22ab6a9285c4f98c153d0b92ddfe0763ffdfb9a46"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261129130506_native_renewal_occurrence_producer.sql",
       "sha256": "31a544c3848c94585c4d0959c09edd875cbf781a4fe5d475a0559496cc1a07eb",
       "functions": [
         {

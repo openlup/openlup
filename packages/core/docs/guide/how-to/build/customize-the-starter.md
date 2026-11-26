@@ -10,6 +10,10 @@ Start from the 1.1.0 demo store (`openlup/demo-store` on GitHub) or use
 release-matched starter inputs when available. The starter is separate
 application source that you can customize in your own repository.
 
+The database-login, project-record, and lifecycle settings steps in this
+guide apply to starters extracted from this release or later. For the 1.1.0
+demo store, follow its README.
+
 For the historical **0.43.0 starter recipe** below, use Node 24, npm 11.19.0,
 Git, curl and tar. Start in a directory with no application named `my-store`.
 The extractor refuses a nonempty destination.
@@ -76,9 +80,21 @@ To use another free local port, export `OPENLUP_STARTER_PORT=4320` in the shell
 that runs `./lifecycle up` and `npm run catalogue:apply`. Use a decimal port
 from 1024 to 65535. With the default origin, exclude [ports blocked by Fetch](https://fetch.spec.whatwg.org/#port-blocking).
 An unset or empty value uses 4319. A Compose-only `.env`
-value does not configure either lifecycle command. Set a distinct
-`COMPOSE_PROJECT_NAME` for each concurrent demo. A configured `publicOrigin`
-still governs request authority.
+value does not configure either lifecycle command. Use a separate application
+directory, `COMPOSE_PROJECT_NAME`, and port for each concurrent demo.
+A configured `publicOrigin` still governs request authority.
+
+The runtime credential file must stay in owner-only configuration. The starter
+validates it at start. The adopter-owned `compose-project` file under
+`.context` reserves the selected project for this directory. To switch projects, run
+`./lifecycle down` for the recorded project to clear the record, then start
+the new project. From a running application's directory, load the recorded
+name before running the local Compose commands below.
+
+```sh
+PROJECT=$( (cd .context && cat compose-project) 2>/dev/null) && [ -n "$PROJECT" ] ||
+  { printf '%s\n' 'Run ./lifecycle up first.' >&2; exit 1; }
+```
 
 Use `./lifecycle up --json` for the final installation report on stdout. Progress
 goes to stderr. The report lists adopter packs as `installed` or `unchanged`.
@@ -89,9 +105,8 @@ Restore a missing rules bundle before rerunning the
 [pack installation recipe](../extend/catalogue-extension.md#install-a-pack-in-the-starter).
 For a disposable demonstration with damaged storage, see
 [Reset an interrupted first install](#reset-an-interrupted-first-install).
-`./lifecycle down` stops the project while preserving its data. Keep the
-passwordless demonstration network and its database isolated; do not reuse this
-Compose file or its database authentication rules for a deployed application.
+`./lifecycle down` stops the project while preserving its data. Use the demo’s
+Compose file for local operation only.
 Use fictional contacts and `.test` addresses. A healthy configuration response
 does not establish a completed purchase; read the [starter limits](../../reference/limits.md).
 
@@ -107,18 +122,95 @@ and `--port` to select your configuration and listener; the [host CLI](https://g
 owns their defaults. Stop with Ctrl-C before reusing the port. Use the
 [edit loop](#edit-and-refresh) while changing the presentation.
 
+## Database login
+
+Before stopping the application, save its existing Compose project name,
+active configuration ID, and listener port. Follow the
+[adjacent-release starter upgrade](../../upgrade/README.md#starter-upgrade-order)
+and reconcile locally changed Compose or installation files. Set `PROJECT`,
+`CONFIGURATION`, and `PORT` to the saved values. From the application directory,
+run the updated lifecycle to provision the runtime credential on the existing
+database volume:
+
+```sh
+: "${PROJECT:?Set PROJECT to the existing Compose project name}"
+: "${CONFIGURATION:?Set CONFIGURATION to the active configuration ID}"
+: "${PORT:?Set PORT to the active listener port}"
+COMPOSE_PROJECT_NAME="$PROJECT" OPENLUP_STARTER_PORT="$PORT" \
+  ./lifecycle up --configuration "$CONFIGURATION"
+```
+
+Verify application health. If startup reports a credential-source problem,
+restore access to the private project credential and rerun the same command.
+Run connected settings and the local renewal, care, and checkout recovery jobs
+through the recorded project.
+
+### Rotate the runtime credential
+
+Use an exclusive maintenance window. Set `CONFIGURATION` and `PORT` to the
+active configuration ID and listener port. For a default installation, use
+`supplements` and `4319`. Run these commands from the application directory.
+
+```sh
+PROJECT=$( (cd .context && cat compose-project) 2>/dev/null) && [ -n "$PROJECT" ] ||
+  { printf '%s\n' 'Run ./lifecycle up first.' >&2; exit 1; }
+: "${CONFIGURATION:?Set CONFIGURATION to the active configuration ID}"
+: "${PORT:?Set PORT to the active listener port}"
+COMPOSE_PROJECT_NAME="$PROJECT" OPENLUP_STARTER_PORT="$PORT" ./lifecycle down &&
+  rm -- "$HOME/.local/state/openlup/neutral-store/$PROJECT/runtime-password" &&
+  COMPOSE_PROJECT_NAME="$PROJECT" OPENLUP_STARTER_PORT="$PORT" \
+    ./lifecycle up --configuration "$CONFIGURATION"
+```
+
+Verify application health and a fresh database read. If startup fails after
+updating the database, retry with the updated starter and the same volume.
+
+### Recover a stale database lock
+
+If startup reports that the PostgreSQL lock is held, keep the data volume.
+A server can still own it even when it gives no answer. During an exclusive
+maintenance window, disable anything that could start a container on that volume.
+Set `VOLUME` to the exact name in the refusal. Use
+`docker ps --filter "volume=$VOLUME"` to identify all running owners, including
+paused containers. Unpause any paused owner, then stop every owner normally
+where possible. A normal shutdown clears the lock. If shutdown was unclean and the lock remains, set
+`DATABASE_IMAGE` to the PostgreSQL image configured for the project. Run:
+
+```sh
+: "${VOLUME:?Set VOLUME to the reported data volume name}"
+: "${DATABASE_IMAGE:?Set DATABASE_IMAGE to the project's PostgreSQL image}"
+docker volume inspect "$VOLUME" >/dev/null || exit 1
+OWNERS=$(docker ps --quiet --filter "volume=$VOLUME") || exit 1
+if [ -n "$OWNERS" ]; then
+  printf '%s\n' "A running container still mounts $VOLUME. Stop it before recovering the lock." >&2
+  exit 1
+fi
+docker run --rm --network none \
+  --mount "type=volume,source=$VOLUME,target=/var/lib/postgresql/data" \
+  --entrypoint /bin/sh "$DATABASE_IMAGE" -ec '
+    if ! test -f "$PGDATA/postmaster.pid" || test -L "$PGDATA/postmaster.pid"; then exit 1; fi
+    archive=$(mktemp "$PGDATA/.postmaster.pid.stale.XXXXXX")
+    mv -- "$PGDATA/postmaster.pid" "$archive"
+  '
+```
+
+The command archives only the stale lock. Retry `./lifecycle up` for the same
+project, configuration, port, and volume. PostgreSQL replays its own recovery.
+
 ## Reset an interrupted first install
 
 An interruption after database creation but before its demonstration marker is
 written leaves an unmarked database. Startup refuses with
 `starter_seed_demonstration_database_required` rather than adopting it.
-To discard only that local demonstration, use its application directory and the
-same Compose project selection:
+From its application directory, set `PROJECT` to the exact name selected for
+the failed startup. Read the project record if it exists. The example uses
+the default name. Substitute the name selected for a custom project.
 
 ```sh
-./lifecycle down
-docker compose down --volumes
-./lifecycle up
+PROJECT=neutral-store
+COMPOSE_PROJECT_NAME="$PROJECT" ./lifecycle down
+docker compose --project-name "$PROJECT" down --volumes
+COMPOSE_PROJECT_NAME="$PROJECT" ./lifecycle up
 ```
 
 The volume removal destroys all data in that demonstration project. A fresh
@@ -252,14 +344,14 @@ Use these steps for the marked demo.
 | `promotion_claim_sweep_not_ready` | Verify `promotion-claim-sweep` is enabled with the `scheduler` driver. Wait for the next scheduled tick on the database-backed host and verify a successful run. |
 | `promotion_watchdog_not_ready` | Verify the starter catalogue watchdog control-plane principal using the recipe above. Repair any failed jobs using the table below and verify a healthy watchdog run. |
 
-For failed job names in `promotion_watchdog_not_ready`, use the matching
-owned ID for `<id>` and your authorized runtime connection for `<runtime-url>`.
+For failed job names in `promotion_watchdog_not_ready`, load the recorded
+project name and set `CONFIGURATION` to the matching owned ID.
 
 | Failed job | Action |
 | --- | --- |
-| `subscription-renewal:<owned-population>` | `./lifecycle renewal --configuration <id> --database-url <runtime-url>` |
-| `subscription-care:<id>` | `./lifecycle care --configuration <id> --database-url <runtime-url>` |
-| `starter-checkout:<id>` | `./lifecycle checkout-recovery --configuration <id> --database-url <runtime-url>` |
+| `subscription-renewal:<owned-population>` | `docker compose --project-name "$PROJECT" exec -T application ./lifecycle renewal --configuration "$CONFIGURATION"` |
+| `subscription-care:<id>` | `docker compose --project-name "$PROJECT" exec -T application ./lifecycle care --configuration "$CONFIGURATION"` |
+| `starter-checkout:<id>` | `docker compose --project-name "$PROJECT" exec -T application ./lifecycle checkout-recovery --configuration "$CONFIGURATION"` |
 | `promotion-claim-sweep`, `platform-watchdog` | Wait for the next scheduled tick on the database-backed host. A restart starts an initial tick. |
 
 For a nondefault local port, add `--port "$OPENLUP_STARTER_PORT"` to `care`
@@ -1006,10 +1098,10 @@ demo, use the same Compose project and a trusted terminal to run
 [first-administrator bootstrap](../../concepts/identity.md#first-administrator-bootstrap).
 
 ```sh
-docker compose exec -T --user node application node --input-type=module -e '
-  import { env } from "node:process";
+docker compose --project-name "$PROJECT" exec -T --user node application node --input-type=module -e '
+  import { runtimeConnectionString } from "./host/runtime-database.ts";
   import { createPostgresOperatorIdentityStore } from "@openlup/platform/identity";
-  const operators = createPostgresOperatorIdentityStore({ connectionString: env.DATABASE_URL });
+  const operators = createPostgresOperatorIdentityStore({ connectionString: await runtimeConnectionString() });
   try { await operators.bootstrapFirstAdministrator({ email: process.argv[1] }); }
   finally { await operators.close(); }
 ' operator@example.test
@@ -1026,7 +1118,7 @@ account or its current invitation. After requesting a token, re-read the
 mailbox from a separate private terminal in the same Compose project.
 
 ```sh
-docker compose exec -T --user node --workdir /application/.context application cat captured-messages/identity.jsonl
+docker compose --project-name "$PROJECT" exec -T --user node --workdir /application/.context application cat captured-messages/identity.jsonl
 ```
 
 If a new matching message appears, enter its token at the hidden prompt within
@@ -1197,7 +1289,7 @@ From the extracted demonstration application, open the database owner connection
 never provision rosters through the runtime login:
 
 ```sh
-docker compose exec -T database psql -U starter_install -d neutral_store
+docker compose --project-name "$PROJECT" exec -T database psql -X -U starter_install -d neutral_store
 ```
 
 Find the activated administrator by the normalized invitation email:
@@ -1251,22 +1343,23 @@ these administrator commands.
 
 ## Run a bounded background pass
 
-After installation, set `CONFIGURATION` to the selected owned configuration ID
-and `RUNTIME_URL` to its reachable restricted runtime connection. From the
-application directory, choose the pass you need:
+From the application directory, load the recorded project name and set
+`CONFIGURATION` to the selected owned configuration ID. Choose the pass you need.
 
 | Command | Work selected |
 | --- | --- |
-| `./lifecycle renewal --configuration "$CONFIGURATION" --database-url "$RUNTIME_URL"` | Drain paid-order mail, then attempt a bounded sandbox renewal pass when enabled. |
-| `./lifecycle care --configuration "$CONFIGURATION" --database-url "$RUNTIME_URL"` | Run auto-resume, subscription notices and winback when care is enabled. |
-| `./lifecycle checkout-recovery --configuration "$CONFIGURATION" --database-url "$RUNTIME_URL"` | Reconcile reminders, enqueue eligible waves, expire checkouts and process recovery mail. |
+| `docker compose --project-name "$PROJECT" exec -T application ./lifecycle renewal --configuration "$CONFIGURATION"` | Drain paid-order mail, then attempt a bounded sandbox renewal pass when enabled. |
+| `docker compose --project-name "$PROJECT" exec -T application ./lifecycle care --configuration "$CONFIGURATION"` | Run auto-resume, subscription notices and winback when care is enabled. |
+| `docker compose --project-name "$PROJECT" exec -T application ./lifecycle checkout-recovery --configuration "$CONFIGURATION"` | Reconcile reminders, enqueue eligible waves, expire checkouts and process recovery mail. |
 
 For a nondefault local port, add `--port "$OPENLUP_STARTER_PORT"` to `care`
 and `checkout-recovery` so locally generated links use that port. A configured
 `publicOrigin` takes precedence.
 
-These commands change the demonstration database and private message captures;
-they install no timer or HTTP endpoint. An existing scheduler may invoke them.
+These commands change the demonstration database and private message captures.
+A standalone scheduler can invoke `./lifecycle renewal|care|checkout-recovery`
+with the same `--configuration "$CONFIGURATION"` and its existing restricted
+`--database-url "$RUNTIME_URL"` binding. Select one command per invocation.
 Messages are captured locally, which does not establish delivery to recipients.
 
 `owned/renewal.config.ts` controls renewal enablement, population, retry timing,

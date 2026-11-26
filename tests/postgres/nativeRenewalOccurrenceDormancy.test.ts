@@ -20,18 +20,18 @@ const producerPath = occurrenceProducerPath();
 const sql = readFileSync(producerPath, "utf8");
 const pins = {
   before: {
-    legacy: "e2313b0643586038d25261827855bfe062053d7385f2542de4dea349eae1b47f",
-    bootstrap: "74fe3c59f86dc91724e0abd9c70264a7995cbd225cf92b5f6265fda3a99720f8",
-    separate: "1adb1913d6c767f7050a9284fb0bd371f17e9d4eaaae263c83d3d4719f49530c",
-    admin: "5de9424b5dbc6e75a7fb5f0f16a79b589c0bd3601fbe6020a0e97a2c91d125fb",
-    operator: "9feaa78b89cc3e113a9184b5283bfe580c1152c7b3180da1ebd92593fff35beb",
+    legacy: "df0134e8213f9559a23c56a8a705545ffda2ae1bfc011c1eefe1e3754485c386",
+    bootstrap: "3eb85a770c9ae311ed3e74135efcba055c7c902ae7b55096a570fdcd87f2ec12",
+    separate: "83b8d2ad29efe3b827e73deeae8e26626242ddb0f09df292cef8450293ea9bce",
+    admin: "33babfbe85a1ea2063a6ecc936560d3ac86471a03721aaf9ad992a5bf052c5be",
+    operator: "cb8f34664a537f369529f38e733270b897557bec5523c1e8f849e25f90080cfa",
   },
   through: {
-    legacy: "dfc73621469c362542c149101487bb307bd29b4b071f107ae1eff37c4cc75944",
-    bootstrap: "3eb365d52b4311a57336a8c5f1d672cc75c04fe3967a030bd7649850abed989f",
-    separate: "c0ff414cbdfe90e1fd31b031d9f3e6f436c9e88954e7db373ed5fe04f671a710",
-    admin: "c7b097c6ad7d5d84399278c28ea15d3dddd0b2dee2c4116678e99628e878d112",
-    operator: "4297956ac1ec8814730c4f775f2cc1e1fce0e0ee70be39fc9c728bd988911b98",
+    legacy: "8ff85f95f42d13c0ece64041bb4ff7ada3e7e4a0422aa3effbc8dc693ed4d745",
+    bootstrap: "ff2e4f09fe0e169af732dc8b5d742734bbc455f5cfb79c97a2cec2b1c9311cdc",
+    separate: "c3f6f8015123d494038476b7fdf84756114267d89251c427686e8ff90fbba976",
+    admin: "7b40ca62f61d4a0bd9eea0a4a8951b9cc0586d77217a4a2d50beae3374662e3f",
+    operator: "adba183105b7daa3f3b4de1f27ea0521bcde435f07c97b43596bc9d7fe6e32e4",
   },
 };
 

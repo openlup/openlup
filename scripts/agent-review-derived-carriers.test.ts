@@ -61,7 +61,7 @@ it('lands cold owner bytes after an added Core export and version bump on a warm
     const warmDeclaration = f.read(declaration);
     expect(warmDeclaration).not.toBe(cleanDeclaration);
 
-    f.landingCli();
+    f.fixtureNpm('run', 'landing:merge', '--', '--no-verify');
     expect(f.git('show', '-s', '--format=%P')).toBe(`${left} ${right}`);
     expect(f.git('show', 'HEAD:packages/core/api/subscription.api.md')).toContain('declare const fixtureApi = 1');
     const landedDeclaration = f.read(declaration);
