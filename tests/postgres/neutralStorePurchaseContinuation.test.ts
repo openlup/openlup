@@ -25,7 +25,7 @@ import {
 } from '@openlup/platform/storefront';
 import { applyDemoSeed, demonstrationMarker } from '../../examples/neutral-store/installation/install.ts';
 import { configurations } from '../../examples/neutral-store/owned/store.config.ts';
-import { checkoutLateCreateMs, type ActionResult, type Operation } from '../../examples/neutral-store/shared/api.ts';
+import { actionRequestTimeoutMs, checkoutLateCreateMs, type ActionResult, type Operation } from '../../examples/neutral-store/shared/api.ts';
 import { isRecord } from '../../examples/neutral-store/shared/offer.ts';
 // eslint-disable-next-line no-restricted-imports -- bind the storefront example classifier the unit witness also proves, not a copy
 import { classifyStarterAnswer } from '../../packages/platform/test/storefront/outcomeClassifierExamples.ts';
@@ -188,7 +188,8 @@ describe('the witness host binding', () => {
 
   it('sends with the starter client\'s own request timeout', async () => {
     const client = await readFile(resolve('examples/neutral-store/client/api.ts'), 'utf8');
-    expect([...client.matchAll(/AbortSignal\.timeout\((\d+)\)/g)].map(match => Number(match[1]))).toEqual([starterRequestTimeoutMs]);
+    expect([...client.matchAll(/AbortSignal\.timeout\(([^)]+)\)/g)].map(match => match[1])).toEqual(['actionRequestTimeoutMs']);
+    expect(starterRequestTimeoutMs).toBe(actionRequestTimeoutMs);
   });
 
   it('treats no order under the key as final only after the request timeout plus the late-create bound', () => {
