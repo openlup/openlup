@@ -2,10 +2,14 @@
   "current": {
     "profiles": {
       "legacy": {
-        "count": 230,
-        "exactTailCount": 120,
-        "objectInventorySha256": "dfc73621469c362542c149101487bb307bd29b4b071f107ae1eff37c4cc75944",
+        "count": 231,
+        "exactTailCount": 121,
+        "objectInventorySha256": "de013e7747293a09a2e821f05160fdc1ec26c13144813d07998ed2ccab455e33",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261129130506_native_renewal_occurrence_writer.sql",
+            "sha256": "71b7800a3ccbe5c1344bd260d635c6b376ae842ad0d8924181c408dffeff04e5"
+          },
           {
             "file": "db/platform/migrations/20261129130505_native_renewal_occurrence_producer.sql",
             "sha256": "31a544c3848c94585c4d0959c09edd875cbf781a4fe5d475a0559496cc1a07eb"
@@ -929,10 +933,14 @@
         ]
       },
       "bootstrap": {
-        "count": 236,
-        "exactTailCount": 121,
-        "objectInventorySha256": "3eb365d52b4311a57336a8c5f1d672cc75c04fe3967a030bd7649850abed989f",
+        "count": 237,
+        "exactTailCount": 122,
+        "objectInventorySha256": "acfd498b75bd7b9d48df4f4a33173b5cb4f5ff71b315533beb71dd59ee4c2d0e",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261129130506_native_renewal_occurrence_writer.sql",
+            "sha256": "71b7800a3ccbe5c1344bd260d635c6b376ae842ad0d8924181c408dffeff04e5"
+          },
           {
             "file": "db/platform/migrations/20261129130505_native_renewal_occurrence_producer.sql",
             "sha256": "31a544c3848c94585c4d0959c09edd875cbf781a4fe5d475a0559496cc1a07eb"
@@ -1880,10 +1888,14 @@
         ]
       },
       "separate": {
-        "count": 236,
-        "exactTailCount": 121,
-        "objectInventorySha256": "c0ff414cbdfe90e1fd31b031d9f3e6f436c9e88954e7db373ed5fe04f671a710",
+        "count": 237,
+        "exactTailCount": 122,
+        "objectInventorySha256": "f629fc358604379329feeba805d4e782ef8bfa09a37cc8e6f0b812213a3a0200",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261129130506_native_renewal_occurrence_writer.sql",
+            "sha256": "71b7800a3ccbe5c1344bd260d635c6b376ae842ad0d8924181c408dffeff04e5"
+          },
           {
             "file": "db/platform/migrations/20261129130505_native_renewal_occurrence_producer.sql",
             "sha256": "31a544c3848c94585c4d0959c09edd875cbf781a4fe5d475a0559496cc1a07eb"
@@ -2831,10 +2843,14 @@
         ]
       },
       "admin-managed": {
-        "count": 234,
-        "exactTailCount": 120,
-        "objectInventorySha256": "c7b097c6ad7d5d84399278c28ea15d3dddd0b2dee2c4116678e99628e878d112",
+        "count": 235,
+        "exactTailCount": 121,
+        "objectInventorySha256": "5d128bccd79aff0d6557a5d69c878b62ada29c01e84b72f147fe8eb3bc83d297",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261129130506_native_renewal_occurrence_writer.sql",
+            "sha256": "71b7800a3ccbe5c1344bd260d635c6b376ae842ad0d8924181c408dffeff04e5"
+          },
           {
             "file": "db/platform/migrations/20261129130505_native_renewal_occurrence_producer.sql",
             "sha256": "31a544c3848c94585c4d0959c09edd875cbf781a4fe5d475a0559496cc1a07eb"
@@ -3774,10 +3790,14 @@
         ]
       },
       "admin-operator": {
-        "count": 234,
-        "exactTailCount": 120,
-        "objectInventorySha256": "4297956ac1ec8814730c4f775f2cc1e1fce0e0ee70be39fc9c728bd988911b98",
+        "count": 235,
+        "exactTailCount": 121,
+        "objectInventorySha256": "dd4f83cbe710076e9c609c53f90b411de2a8667491917ebc0a1a5cc8fa9d93ce",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261129130506_native_renewal_occurrence_writer.sql",
+            "sha256": "71b7800a3ccbe5c1344bd260d635c6b376ae842ad0d8924181c408dffeff04e5"
+          },
           {
             "file": "db/platform/migrations/20261129130505_native_renewal_occurrence_producer.sql",
             "sha256": "31a544c3848c94585c4d0959c09edd875cbf781a4fe5d475a0559496cc1a07eb"

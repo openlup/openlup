@@ -95,6 +95,24 @@ to the producer. Incumbent artifacts, conflicting retained facts and changed
 replay inputs require reconciliation by the Subscriptions owner. The producer
 has no caller in the managed topology.
 
+### Dormant native renewal occurrence views and root writer
+
+The migration owner can read the exact scoped key, including history, or lock
+the current active occurrence in READ COMMITTED. A selected root on either
+rail must match its owner, original anchor, exact generation and wire tag.
+The views project the pinned cancellation deadline in UTC.
+
+After allocation commits, the owner can claim a due v3 occurrence in a later
+READ COMMITTED transaction. A first claim commits the selected pair, root and
+initial lease together. An exact retry returns the retained agreement with
+both lease fields null. For a stale selection, re-read the owner's current
+key and retry with the original agreement. For an occupied root UUID, resolve
+the selection first, then rebind both agreement IDs and recompute the digest
+if the occurrence remains unselected.
+
+The routines grant runtime roles no EXECUTE. Mounted renewal paths continue
+to use the incumbent owner contracts.
+
 ## Recover payment
 
 [paymentRecoveryHandler.ts](../../server/domains/subscription/paymentRecoveryHandler.ts)

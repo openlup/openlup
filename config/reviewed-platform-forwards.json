@@ -9879,6 +9879,27 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "native-renewal-occurrence-writer",
+        "path": "db/platform/migrations/20261129130506_native_renewal_occurrence_writer.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.subscriptions__read_renewal_occurrence(uuid,uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscriptions__lock_renewal_occurrence(uuid,uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscriptions__create_renewal_v3_root(uuid,uuid,uuid,uuid,integer,text,text,text,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -14355,6 +14376,27 @@
           "signature": "public.subscriptions__allocate_renewal_occurrence(uuid,uuid,text,jsonb)",
           "beforeSha256": null,
           "afterSha256": "5010069482c117b5d06ae3e653545a8523162a93ba8bad2fce1b93337af0a501"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261129130506_native_renewal_occurrence_writer.sql",
+      "sha256": "71b7800a3ccbe5c1344bd260d635c6b376ae842ad0d8924181c408dffeff04e5",
+      "functions": [
+        {
+          "signature": "public.subscriptions__read_renewal_occurrence(uuid,uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "5b3072d2f80fa22c9fe1ba86b836aaa87d8963a2070d4eb100d926b7797647f6"
+        },
+        {
+          "signature": "public.subscriptions__lock_renewal_occurrence(uuid,uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "3d19e8336fbf63ae4cbd07edfe1efed693ddce9444e9e7087bf3ca536a8e540e"
+        },
+        {
+          "signature": "public.subscriptions__create_renewal_v3_root(uuid,uuid,uuid,uuid,integer,text,text,text,integer)",
+          "beforeSha256": null,
+          "afterSha256": "c0ffca5d1bb26a2c22bab3814682e9dde2ae2ca3a1f595347abc8913d2d67b59"
         }
       ]
     }

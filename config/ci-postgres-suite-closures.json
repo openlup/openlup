@@ -639,6 +639,16 @@
     "tests/postgres/nativeRenewalDueFairness.test.ts": [
       "tests/postgres/subscriptionNativeFixture.ts"
     ],
+    "tests/postgres/nativeRenewalOccurrence.test.ts": [
+      "@src",
+      "tests/postgres/customerAccountMutations.fixture.ts",
+      "tests/postgres/nativeRenewalOccurrence.fixture.ts",
+      "tests/postgres/nativeRenewalOccurrenceWriter.fixture.ts",
+      "tests/postgres/orderMoneyV2Storage.fixture.ts",
+      "tests/postgres/subscriptionActivationFixture.ts",
+      "tests/postgres/subscriptionNativeFixture.ts",
+      "tests/postgres/subscriptionRegistrationFixture.ts"
+    ],
     "tests/postgres/nativeRenewalOccurrenceDormancy.test.ts": [
       "@api",
       "@managedCompat",
@@ -646,6 +656,7 @@
       "@starter",
       "tests/postgres/customerAccountMutations.fixture.ts",
       "tests/postgres/nativeRenewalOccurrence.fixture.ts",
+      "tests/postgres/nativeRenewalOccurrenceWriter.fixture.ts",
       "tests/postgres/nativeRenewalV3Legacy.fixture.ts",
       "tests/postgres/orderMoneyV2Storage.fixture.ts",
       "tests/postgres/subscriptionActivationFixture.ts",
@@ -656,6 +667,16 @@
       "@src",
       "tests/postgres/customerAccountMutations.fixture.ts",
       "tests/postgres/nativeRenewalOccurrence.fixture.ts",
+      "tests/postgres/orderMoneyV2Storage.fixture.ts",
+      "tests/postgres/subscriptionActivationFixture.ts",
+      "tests/postgres/subscriptionNativeFixture.ts",
+      "tests/postgres/subscriptionRegistrationFixture.ts"
+    ],
+    "tests/postgres/nativeRenewalV3Root.test.ts": [
+      "@src",
+      "tests/postgres/customerAccountMutations.fixture.ts",
+      "tests/postgres/nativeRenewalOccurrence.fixture.ts",
+      "tests/postgres/nativeRenewalOccurrenceWriter.fixture.ts",
       "tests/postgres/orderMoneyV2Storage.fixture.ts",
       "tests/postgres/subscriptionActivationFixture.ts",
       "tests/postgres/subscriptionNativeFixture.ts",
