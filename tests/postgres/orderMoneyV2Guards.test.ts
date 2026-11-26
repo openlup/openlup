@@ -7,12 +7,14 @@ import type { CommerceQuoteMoneyV2 } from "@openlup/platform/pricing/contracts";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { flatTestTimeoutMs } from "../../scripts/ci-vitest-duration-keys.js";
 import { readPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
+import type { ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
+import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { withPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
-import { installAccountMutations, type AccountMutationsStore } from "./customerAccountMutations.fixture.js";
+import { createAccountMutationsTemplate, installAccountMutations, type AccountMutationsStore } from "./customerAccountMutations.fixture.js";
 import { issue, reseal, type Evidence, write } from "./orderMoneyV2Guards.fixture.js";
 import {
-  allocations, buckets, calculationKey, checkMessage, expectSqlError, fees, foreignKeyMessage, insert, itemFk, itemTable, orderFk, orderTable, positions, quoteKey,
+  allocations, buckets, calculationKey, capture, checkMessage, expectSqlError, fees, foreignKeyMessage, insert, itemFk, itemTable, orderFk, orderTable, positions, quoteKey,
   rejected, seedSku, snapshots, sources, transaction, uniqueMessage, version,
 } from "./orderMoneyV2Storage.fixture.js";
 
@@ -433,6 +435,46 @@ it("uses actual owner locks for restore even when the assertion argument denies 
     await expectMismatch(db.query(probe, [id]), "/payableMinor", replayRemedy);
   }, "ROLLBACK");
 });
+
+const carriedRows = (packet: ConnectedNativeStoreCapture) => [...packet.compatible.tables, ...packet.owned];
+
+it("attests an exact-current restore of committed versioned orders without a temporary schema", async () => {
+  const template = await createAccountMutationsTemplate("separate", "restore-versioned-orders");
+  try {
+    const source = await template.clone("source");
+    const target = await template.clone("target");
+    if (target.installation.generation === "legacy") throw new Error("Qualified restore target required");
+    const sku = await seedSku(source.owner);
+    const orderIds: string[] = [];
+    for (const inclusive of [true, false]) {
+      const evidence = await issue(source, sku, inclusive);
+      const { id } = await transaction(source.owner, db => write(db, evidence, sku));
+      orderIds.push(id);
+    }
+    const packet = await capture(source.owner, source.inventory, "versioned-orders");
+    const snapshots = packet.owned.find(entry => entry.table === "commerce_order_tax_snapshots");
+    expect(snapshots?.rows).toHaveLength(orderIds.length);
+    const freshTarget = await capture(target.migrator, target.inventory, "pristine-target");
+    const sessionState = () => target.migrator.query(`SELECT pg_catalog.pg_backend_pid() AS pid,
+      pg_catalog.pg_my_temp_schema()::int AS temp_oid,
+      ARRAY(SELECT nspname::text FROM pg_catalog.pg_namespace
+        WHERE oid=pg_catalog.pg_my_temp_schema()) AS temp_schemas`).then(result => result.rows[0]);
+    const before = await sessionState();
+    expect(target.migrator.totalCount).toBe(1);
+    expect(before).toMatchObject({ temp_oid: 0, temp_schemas: [] });
+
+    const input = { owner: target.migrator, installation: target.installation, packet, freshTarget };
+    expect(await restoreConnectedNativeStore(input)).toMatchObject({ captureSha256: packet.sha256, replayed: false });
+    expect(await sessionState()).toEqual(before);
+    expect((await target.owner.query("SELECT id FROM public.commerce_orders WHERE money_version=$1 ORDER BY id", [version])).rows)
+      .toEqual(orderIds.sort().map(id => ({ id })));
+    const restored = await capture(target.owner, target.inventory, "restored-versioned-orders");
+    expect(carriedRows(restored)).toEqual(carriedRows(packet));
+    expect(await restoreConnectedNativeStore(input)).toMatchObject({ captureSha256: packet.sha256, replayed: true });
+  } finally {
+    await template.close();
+  }
+}, postgresSetupTimeoutMs);
 
 it("keeps fresh seal checks after a successful header flush", async () => {
   const evidence = await issue(store, sku, false);
