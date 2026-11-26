@@ -2049,10 +2049,19 @@ it: the merge uses that identity and `-s` for your personal
 The helper checks the installed toolchain against HEAD before merging. If the
 merge changes a toolchain input such as `package-lock.json` or `.npmrc`, it runs
 `npm ci` once in the merged checkout and rechecks the toolchain once before
-refreshing carriers. That install uses the host build broker
-(`ai-resource-gate run --wait openlup:landing-build --`) unless
-`AI_RESOURCE_GATE_ACTIVE` is already set. The broker is required only for an
-unwrapped install. Matching inputs skip the install and the second check.
+refreshing carriers. That install uses the shared `ai-resource-gate` helper
+(`scripts/resource-gate.mjs`: `ai-resource-gate run --wait --queue-timeout 300 --execution-timeout 900 openlup:landing-build:wt<id> --`)
+when `ai-resource-gate` is on `PATH` and not bypassed by `CI=true`,
+`AI_RESOURCE_GATE_ACTIVE=1`, or `OPENLUP_DISABLE_RESOURCE_GATE=1`; otherwise it
+falls back to an unwrapped `npm ci`. Matching inputs skip the install and the
+second check.
+
+After the merge commit is created, the CLI runs post-commit verification
+(`scripts/build-packages-incremental.mjs` and `oss:published-tree -- --typecheck`)
+by default and returns `verified: true` on success. Pass `npm run landing:merge -- --no-verify`
+to skip post-commit verification. If post-commit verification fails, the helper
+reports `OPENLUP_E_LANDING_VERIFY_FAILED` and preserves the merge commit without
+rolling it back.
 
 Authored conflicts leave the merge open for resolution. On other failures the
 helper restores landing writes, aborts its merge and verifies the original HEAD,
