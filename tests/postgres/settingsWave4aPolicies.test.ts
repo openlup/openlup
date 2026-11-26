@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
 import {
@@ -40,7 +40,13 @@ const timeZoneCorpus = JSON.parse(readFileSync(
   "utf8",
 )) as TimeZoneCorpusCase[];
 
-const WAVE4A_MIGRATION = "db/platform/migrations/20261129130002_settings_wave4a_reschedule_timezone.sql";
+const wave4aMigrationFile = readdirSync(
+  new URL("../../db/platform/migrations", import.meta.url),
+).find((name) => name.endsWith("_settings_wave4a_reschedule_timezone.sql"));
+if (!wave4aMigrationFile) {
+  throw new Error("Missing settings_wave4a_reschedule_timezone migration file");
+}
+const WAVE4A_MIGRATION = `db/platform/migrations/${wave4aMigrationFile}`;
 const TIMEZONE_KEY = "subscription_reschedule_timezone";
 const TIMEZONE_ERROR = "subscription_reschedule_timezone_policy_invalid";
 const HISTORICAL_FROM = "2020-01-01T00:00:00.000Z";

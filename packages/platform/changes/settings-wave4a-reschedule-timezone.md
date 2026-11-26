@@ -7,8 +7,8 @@ calculation in `postgresCommandStore` to evaluate calendar days in the
 configured time zone, and exported experimental SQL-parity validation, install,
 and read helpers from `@openlup/platform/subscriptions`.
 
-Migration: Platform SQL migration
-`20261129130002_settings_wave4a_reschedule_timezone.sql` installs strict JSONB
+Migration: The `settings_wave4a_reschedule_timezone` platform SQL migration
+installs strict JSONB
 validator `public.subscription_reschedule_timezone_validate(jsonb)` and
 fail-closed `commerce_settings` reader
 `public.subscription_reschedule_timezone_read()`, updates
