@@ -246,7 +246,9 @@ A client that owns its checkout page follows three rules:
 3. Treat "no order under this key" as final only once more than your own
    request timeout plus 15 seconds have passed since the last unanswered
    create. `shared/storefront-bindings.ts` applies this rule for the starter's
-   tab record and its `createPurchaseContinuation` bindings. A
+   tab record and its `createPurchaseContinuation` bindings. The rule assumes
+   per-tab storage (`sessionStorage`): a record shared across tabs can end a
+   key while another tab's create is still on its way. A
    create that obtains the key lock later than 15 seconds after the host
    received it answers `starter_checkout_request_stale` and writes nothing.
    The bound starts when the host receives the request, so a client behind a

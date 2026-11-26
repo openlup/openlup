@@ -104,7 +104,13 @@ function createBookkeeping() {
     },
     /** `noneIsFinal` for the key `id`, its stored dispatch time and the time its continuation was sent. */
     final(id: string, sentAt: number | undefined, continuationAt: number): boolean {
-      return noneIsFinal({ sentAt, create: creates.get(id), documentStartedAt: documentStartedAt ?? continuationAt, continuationAt });
+      const create = creates.get(id);
+      const startedAt = documentStartedAt ?? continuationAt;
+      const final = noneIsFinal({ sentAt, create, documentStartedAt: startedAt, continuationAt });
+      // A stored dispatch time newer than this document's latest create was written by another document sharing the
+      // storage: its create may still arrive, so its own bound applies as well.
+      if (!final || !create || sentAt === undefined || create.sentAt === undefined || sentAt <= create.sentAt) return final;
+      return noneIsFinal({ sentAt, documentStartedAt: startedAt, continuationAt });
     },
   };
 }
@@ -169,6 +175,17 @@ export class CheckoutAnswerUncertain extends Error {
   }
 }
 
+/**
+ * Tab storage did not keep the dispatch time of a create, so the create was not sent. The record and its key are
+ * kept; the page may retry once storage accepts writes, or move the purchase to page memory.
+ */
+export class CheckoutStorageUnavailable extends Error {
+  constructor(cause: unknown) {
+    super('starter_checkout_storage_unavailable', { cause });
+    this.name = 'CheckoutStorageUnavailable';
+  }
+}
+
 /** The tab record: the package's fields, then the starter's host fields. Version 1 stays; fields are additive. */
 interface StoredRecord {
   v: 1; id: string; fingerprint?: string | undefined; attempt?: number | undefined;
@@ -230,6 +247,20 @@ export interface CheckoutBindingOptions {
  * Binds the controller to the starter's checkout. The key of a purchase is its stored continuation value, sent
  * unchanged in `Idempotency-Key`; nothing is cached, so every read reads tab storage. No body, token or key is
  * logged or reported.
+ *
+ * Limits of the finality rule ("no order under this key" is final only once no create can still arrive):
+ *
+ * - `storage` is per-tab storage (`sessionStorage`), and `now` a wall clock shared by documents (`Date.now`). The
+ *   create bookkeeping lives in one document. With storage shared across tabs, a newer dispatch time another tab
+ *   stored keeps "no order" open until that create's own bound, but a create another tab has not yet stored is
+ *   not seen, so shared storage can still end a key early.
+ * - The bound assumes each create may reach the host until `actionRequestTimeoutMs` after it was sent, the default
+ *   deadline of the shared `act`. A custom `act` with a longer deadline, or one that throws after sending, is not
+ *   covered by that bound.
+ * - A create is sent only after its dispatch time reads back from storage; otherwise the submit rejects with
+ *   `CheckoutStorageUnavailable` and nothing is sent.
+ * - A `getItem` that throws reads as no record. The controller then mints a new identity, and its write may replace
+ *   the unreadable record before its read-back refuses to send.
  */
 export function createCheckoutBindings(options: CheckoutBindingOptions) {
   const name = checkoutRecordKey(options.configuration);
@@ -268,9 +299,13 @@ export function createCheckoutBindings(options: CheckoutBindingOptions) {
 
   async function create(request: CheckoutRequest, timeoutMs?: number): Promise<ActionResult> {
     const id: string = request.key;
-    const sentAt = options.now();
+    // The record keeps whole milliseconds; rounding up keeps the bound on the safe side for a fractional clock.
+    const sentAt = Math.ceil(options.now());
+    // No create leaves without its dispatch time in the record: a reload could otherwise read "no order" as final at once.
     const previous = own(id);
-    amend(id, record => ({ ...record, sentAt }));
+    if (!previous) throw new CheckoutStorageUnavailable(null);
+    try { options.storage.setItem(name, encode({ ...previous, sentAt })); } catch (error) { throw new CheckoutStorageUnavailable(error); }
+    if (own(id)?.sentAt !== sentAt) throw new CheckoutStorageUnavailable(null);
     checkoutCreates.dispatch(id, sentAt, previous?.sentAt);
     let answer: ActionResult;
     try {

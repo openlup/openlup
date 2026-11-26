@@ -11,7 +11,9 @@ the same key. The action transport `act` and `uncertainAction` move from
 `client/api.ts` to `shared/transport.ts`; `client/api.ts` re-exports both, and
 `act` takes an optional request deadline. The checkout page's create
 bookkeeping moves into the new module. A store-owned client can import both
-modules instead of rewriting the wire.
+modules instead of rewriting the wire. The bindings send a create only after
+its dispatch time reads back from the record, and their finality rule assumes
+per-tab storage (`sessionStorage`) and the shared `act`'s request timeout.
 
 The managed pages are unchanged, with one correction: "no order under this
 key" now counts as final strictly after the request timeout plus the late-create

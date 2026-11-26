@@ -142,11 +142,14 @@ function parseRecord(raw: string): CheckoutContinuationRecord | null {
 }
 
 /** The checkout key of one purchase in this tab. Nothing touches storage, crypto or the DOM until a method is called. */
-export function checkoutContinuation(configuration: string, options: { storage?: () => ContinuationStorage; now?: () => number } = {}) {
+export function checkoutContinuation(configuration: string,
+  options: { storage?: () => ContinuationStorage; now?: () => number; creates?: typeof checkoutCreates } = {}) {
+  /** The document's create bookkeeping; a test passes a fresh document's. */
+  const creates = options.creates ?? checkoutCreates;
   const storage = options.storage ?? (() => sessionStorage);
   const now = options.now ?? Date.now;
   const storageKey = checkoutRecordKey(configuration);
-  const begin = () => { checkoutCreates.begin(now()); };
+  const begin = () => { creates.begin(now()); };
   const read = (): CheckoutContinuationRecord | null => {
     if (records.has(configuration)) return records.get(configuration)!;
     let raw: string | null;
@@ -226,14 +229,14 @@ export function checkoutContinuation(configuration: string, options: { storage?:
 
     /** A definite refusal of every create of this key leaves no order behind, so the record no longer asks for the panel. */
     function settleRefusal(): boolean {
-      if (!own || !checkoutCreates.refusedEvery(own.id, own)) return true;
+      if (!own || !creates.refusedEvery(own.id, own)) return true;
       return write({ v: 1, id: own.id });
     }
 
     function none(): CheckoutOutcome {
       if (own?.ordered) return contradiction();
       const at = continuationAt ?? now();
-      const final = own ? checkoutCreates.final(own.id, own.sentAt, at) : true;
+      const final = own ? creates.final(own.id, own.sentAt, at) : true;
       if (!final) return outcome('none', { code: 'starter_checkout_in_progress', text: 'starter_checkout_in_progress' });
       const stored = own ? clear() : true;
       return outcome('none', { code: 'starter_checkout_not_found', text: 'starter_checkout_not_found', choices: false, stored });
@@ -255,17 +258,17 @@ export function checkoutContinuation(configuration: string, options: { storage?:
       const previous = read();
       const record = { ...(previous ?? { v: 1 as const, id: crypto.randomUUID() }), sentAt: now() };
       const stored = write(record);
-      checkoutCreates.dispatch(record.id, record.sentAt, previous?.sentAt);
+      creates.dispatch(record.id, record.sentAt, previous?.sentAt);
       return { key: record.id, stored };
     },
     /** Always after a create returned, even when its view is gone. */
-    settled(key: string, result?: ActionResult): void { checkoutCreates.settled(key, result, now()); },
+    settled(key: string, result?: ActionResult): void { creates.settled(key, result, now()); },
     /** Applies a create answer to the record. `view` is false when the form's view is gone or stale. */
     answer(key: string, result: ActionResult, view = true): CheckoutOutcome { begin(); return apply('create', key, result, undefined, view); },
     /** A create or a continuation of this purchase is in flight in this document. */
     inFlight(): boolean {
       const record = read();
-      return (choicesInFlight.get(configuration) ?? 0) > 0 || (record ? (checkoutCreates.state(record.id)?.inFlight ?? 0) > 0 : false);
+      return (choicesInFlight.get(configuration) ?? 0) > 0 || (record ? (creates.state(record.id)?.inFlight ?? 0) > 0 : false);
     },
     /** Resumes or abandons the order under the stored key. */
     async continue(action: 'resume' | 'abandon', locale: string): Promise<CheckoutOutcome> {
