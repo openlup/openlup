@@ -259,15 +259,12 @@ deadline rule under the parent fence. The scoped history reader also exposes
 retired keys. Changing the due instant on the same obligation preserves its
 key and original anchor. The deadline uses elapsed seconds and UTC microsecond
 precision. A selected operation must belong to that subscription and have the
-same original anchor. Its selected generation must also exist for that cycle
-and operation in the caller's transaction. V3 due instants earlier than the
-original anchor return `renewal_cycle_unavailable` at `/effectiveDueAt`.
+same original anchor. A v3 occurrence can select only a root with the persisted
+v3 contract. The selected generation must exist for that cycle and operation
+in the caller's transaction. V3 due instants earlier than the original anchor
+return `renewal_cycle_unavailable` at `/effectiveDueAt`.
 An unavailable key or rule confers no renewal authority.
 
-The Subscriptions privacy contributor exports occurrence evidence through the
-incumbent privacy export privilege. Erasure assessment uses the incumbent
-erasure preparation privilege to verify retention for the subject. Unavailable
-evidence refuses assessment before the erasure receipt can be committed.
 Qualified connected-store transfer preserves occurrence keys, selected pairs
 and retained cancellation evidence.
 

@@ -194,8 +194,6 @@ async function mountedPrivacyQuery(sql: string) {
     'customer-preferences', 'customer-saved-addresses', 'destination-documents', 'destination-receipts',
     'fulfillment-parcel-contacts', 'identity', 'subscriptions', 'tax-calculations'] }] };
   if (sql.includes("to_regclass('public.tax_calculations')")) return { rows: [{ installed: true }] };
-  if (sql.includes("to_regclass('public.subscription_cycle_occurrences')")) return { rows: [{ installed: true, assessable: true }] };
-  if (sql.startsWith('WITH prior AS MATERIALIZED') && sql.includes('public.customer_preferences_prepare_erasure()')) return { rows: [{ retained: true }] };
   if (sql === 'SELECT public.tax_calculation_export_v1($1::uuid) AS data') return { rows: [{ data: [] }] };
   if (/^SELECT public\.customer_(saved_addresses|preferences)_export/.test(sql)) return { rows: [{ data: [] }] };
   if (sql === 'SELECT public.communication_event_privacy($1::uuid,false) AS value') return { rows: [{ value: [] }] };
@@ -474,7 +472,6 @@ it.each(['export', 'erase'] as const)('adopter policy admits mounted direct %s b
       { owner: 'destination-receipts', resource: 'commerce.destination-receipt-evidence', disposition: 'erase', reasonCode: 'PRIVATE_DESTINATION_RECEIPT_EVIDENCE', remote: false },
       { owner: 'destination-receipts', resource: 'commerce.destination-receipt-tombstones', disposition: 'retain', reasonCode: 'PSEUDONYMOUS_ERASURE_FENCE', remote: false },
       { owner: 'communication-events', resource: 'communication-events.projections', disposition: 'erase', reasonCode: 'FROZEN_RECIPIENT_PROJECTION', remote: false },
-      { owner: 'subscriptions', resource: 'subscriptions.occurrence-evidence', disposition: 'retain', reasonCode: 'RENEWAL_OCCURRENCE_RETENTION', remote: false },
     ]) }) });
   if (operation === 'export') {
     expect(privacy.query).toHaveBeenCalledWith('SELECT public.commerce_destination_v2_receipts_export($1::uuid) AS data', [privacyContact]);
