@@ -9720,6 +9720,20 @@
         "existingTableStatements": [
           "ALTER TABLE public.fulfillment_observations ADD COLUMN prebound_arrival_dispatch_id uuid;"
         ]
+      },
+      {
+        "row": "order-money-v2-restore-no-temp",
+        "path": "db/platform/migrations/20261129130502_order_money_v2_restore_no_temp.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.commerce_order_money_v2_assert(uuid,boolean,boolean,jsonb,jsonb)",
+            "beforeSha256": "ff2ef9c8f64cd957ccbff6f00e2873750be65603ddd0bb8a0b7d1ac0a59cfba5",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -14077,6 +14091,17 @@
           "signature": "public.fulfillment_intake_record_delivery_without_tracking(text,uuid,uuid)",
           "beforeSha256": null,
           "afterSha256": "307281b2c1cd8b5682fd854b0e72a387cafdf31e0b29bd708053728dbe9f366f"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261129130502_order_money_v2_restore_no_temp.sql",
+      "sha256": "e2170319f41a441b0ea7868f3148acc4b502d68b412c15b59e8af0bd31da4931",
+      "functions": [
+        {
+          "signature": "public.commerce_order_money_v2_assert(uuid,boolean,boolean,jsonb,jsonb)",
+          "beforeSha256": "ff2ef9c8f64cd957ccbff6f00e2873750be65603ddd0bb8a0b7d1ac0a59cfba5",
+          "afterSha256": "6c04bf0fd094c877ff81213d66e25fa4b39420767df923b4ed347009825a3ed3"
         }
       ]
     }

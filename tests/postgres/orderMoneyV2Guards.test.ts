@@ -319,6 +319,25 @@ it("checks an unchanged projection once and rechecks after a constraint flush, i
   }, "ROLLBACK");
 });
 
+it("keeps the transaction memo private from the runtime login on the same connection", async () => {
+  const { id } = await writeChecked(await issue(store, sku, false));
+  const db = await store.runtime.connect();
+  try {
+    await db.query("UPDATE public.commerce_orders SET updated_at=now() WHERE id=$1", [id]);
+    expect((await db.query(`SELECT r.rolsuper, c.relowner = r.oid AS runtime_owned, c.relpersistence
+      FROM pg_catalog.pg_roles r CROSS JOIN pg_catalog.pg_class c
+      WHERE r.rolname=session_user AND c.oid='pg_temp.commerce_order_money_v2_checks'::regclass
+        AND c.relnamespace=pg_catalog.pg_my_temp_schema()`)).rows)
+      .toEqual([{ rolsuper: false, runtime_owned: false, relpersistence: "t" }]);
+    for (const sql of ["SELECT *", "DELETE"]) {
+      expectSqlError(await rejected(db.query(`${sql} FROM pg_temp.commerce_order_money_v2_checks`)),
+        "42501", "permission denied for table commerce_order_money_v2_checks");
+    }
+  } finally {
+    db.release();
+  }
+});
+
 it("keeps fresh seal checks after a successful header flush", async () => {
   const evidence = await issue(store, sku, false);
   const alterAfterFlush = async (db: PoolClient) => {
