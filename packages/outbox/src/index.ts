@@ -1,7 +1,7 @@
 export * from "./contracts.js";
 export { runOutboxDispatchWorker } from "./worker.js";
 export { OutboxHandlerExecutionTrace } from "./trace.js";
-export { uniqueRegistry, composeHandlers, claimAllowlist } from "./registry.js";
+export { uniqueRegistry, composeHandlers, composeIndependentHandlers, claimAllowlist } from "./registry.js";
 export { readOutboxDispatchConfig, validateScheduledConfig } from "./config.js";
 export { buildOutboxEnqueue } from "./enqueue.js";
 export type { EnqueueEvent } from "./enqueue.js";

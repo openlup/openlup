@@ -1,8 +1,8 @@
 export { renewalIdentity } from "./renewalIdentity.js";
 export { selectCatalogProfileCadence, type CatalogProfileCadenceInput, type CatalogProfileCadenceResult } from "./catalogProfileBinding.js";
 export { NATIVE_SUBSCRIPTION_CAPABILITIES } from "./services.js";
-export { executeRenewalCycle, prepareRenewalAttempt, checkRenewalDeliveryAdmission, createDefaultRenewalCyclePolicy } from "./renewalCycleMechanism.js";
-export type { RenewalCyclePolicy } from "./renewalCycleMechanism.js";
+export { executeRenewalCycle, prepareRenewalAttempt, checkRenewalDeliveryAdmission, createDefaultRenewalCyclePolicy, classifyManagedRenewalPayment } from "./renewalCycleMechanism.js";
+export type { RenewalCyclePolicy, ManagedRenewalPaymentEvidence, ManagedRenewalPaymentClassification } from "./renewalCycleMechanism.js";
 export { recordRenewalPreflightBlock, replayRenewalAttempt, declinedRenewalOutcome, requiresActionRenewalOutcome, createDefaultRenewalPreflightPolicy } from "./renewalCycleRefusalMechanism.js";
 export type { RenewalPreflightPolicy, RenewalReplayPolicy, RenewalOutcomePolicy } from "./renewalCycleRefusalMechanism.js";
 export { propagateRenewalFailure, createDefaultRenewalFailurePolicy } from "./renewalCycleFailureMechanism.js";
