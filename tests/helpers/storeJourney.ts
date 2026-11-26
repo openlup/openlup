@@ -12,7 +12,7 @@ import { createPostgresDestinationPort } from "@openlup/platform/commerce/server
 import { createPostgresFulfillmentStockSyncPort } from "@openlup/platform/fulfillment";
 import { createPostgresRenewalReservationPort } from "@openlup/platform/inventory";
 import { createPlatformPostgresMigrationRunner } from "@openlup/platform/migrations";
-import { readPlatformMigrationManifest, readPlatformMigrations, selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
+import { readPlatformMigrationManifest, readPlatformMigrations, selectPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { captureConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { qualifiedPostgresStartupOptions, type QualifiedPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { captureSandboxPurchase } from "./captureSandboxPurchase.js";
@@ -77,7 +77,12 @@ async function readJourneyClusterRoleDigest(bootstrap: Pool): Promise<string> {
  * Pass `{ isolatedCluster: true }` for suites that mutate cluster-wide roles, restart Docker,
  * or invoke cluster-wide snapshot checks such as `withCatalogAdmissionFence` (`pg_current_snapshot()`).
  */
-export function storeJourneyResources(options?: { isolatedCluster?: boolean }) {
+export function storeJourneyResources(options?: { isolatedCluster?: boolean; catalogueRoot?: string }) {
+  const catalogueRoot = options?.catalogueRoot;
+  const installedManifest = catalogueRoot
+    ? selectPlatformMigrationManifest(readPlatformMigrationManifest(catalogueRoot) as PlatformMigrationManifest,
+      "qualified-v2", { migrationIsBootstrap: false, hasRestore: true })
+    : manifest;
   const containers: PostgresContainer[] = [], pools: Pool[] = [];
   const activeLeases = new Set<PgTemplateLease>();
   // The standard runner TZ selects only the two explicit fixture zones.
@@ -92,7 +97,7 @@ export function storeJourneyResources(options?: { isolatedCluster?: boolean }) {
   };
   let brokerEnabledPromise: Promise<boolean> | undefined;
   const useBroker = () => {
-    if (zone || options?.isolatedCluster) return Promise.resolve(false);
+    if (zone || options?.isolatedCluster || catalogueRoot) return Promise.resolve(false);
     if (!brokerEnabledPromise) brokerEnabledPromise = hasPgTemplateBroker();
     return brokerEnabledPromise;
   };
@@ -142,12 +147,14 @@ export function storeJourneyResources(options?: { isolatedCluster?: boolean }) {
         try {
           const runner = createPlatformPostgresMigrationRunner({ connectionString: urlFor("template_migrated", journeySelection.migrationLogin) }, {
             installation: journeySelection, poolFactory: () => templateOwner,
+            root: catalogueRoot,
             catalog: { readManifest: readPlatformMigrationManifest, readMigrations: readPlatformMigrations },
           });
-          expect(await runner.apply()).toEqual({ applied: [manifest.baseline, ...manifest.forward].map(unit => unit.file) });
+          const units = [installedManifest.baseline, ...installedManifest.forward];
+          expect(await runner.apply()).toEqual({ applied: units.map(unit => unit.file) });
           expect((await runner.status()).pending).toEqual([]);
           expect((await templateOwner.query("SELECT catalog_path,sha256,position FROM public.platform_schema_migrations ORDER BY position")).rows)
-            .toEqual([manifest.baseline, ...manifest.forward].map((unit, position) => ({ catalog_path: unit.file, sha256: unit.sha256, position })));
+            .toEqual(units.map((unit, position) => ({ catalog_path: unit.file, sha256: unit.sha256, position })));
           await assertJourneyRuntime(templateRuntime);
           if (zone) for (const db of [templateOwner, templateRuntime]) expect((await db.query("SHOW TimeZone")).rows).toEqual([{ TimeZone: zone }]);
         } finally {
@@ -362,10 +369,10 @@ export async function captureAndActivateJourney(store: JourneyInstallation, draf
 export type StoreJourney = Awaited<ReturnType<typeof captureAndActivateJourney>>;
 
 export async function captureStoreJourney(owner: Pool, sourceId: string, options: {
-  maximumRows?: number; maximumBytes?: number; observeQuery?: (sql: string) => void;
+  maximumRows?: number; maximumBytes?: number; observeQuery?: (sql: string) => void; catalogueId?: string;
 } = {}) {
-  const { maximumRows = 10000, maximumBytes = 64 * 1024 * 1024, observeQuery } = options;
-  return captureConnectedNativeStore({ sourceId, catalogueId: manifest.objectInventorySha256, maximumRows, maximumBytes,
+  const { maximumRows = 10000, maximumBytes = 64 * 1024 * 1024, observeQuery, catalogueId = manifest.objectInventorySha256 } = options;
+  return captureConnectedNativeStore({ sourceId, catalogueId, maximumRows, maximumBytes,
     source: { async withSnapshot(work) {
       const client = await owner.connect();
       try {

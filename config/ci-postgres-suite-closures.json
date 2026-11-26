@@ -323,6 +323,8 @@
     ],
     "tests/postgres/connectedStoreTransferScenarios.test.ts": [
       "@src",
+      "tests/helpers/issuedPlatformCatalog.ts",
+      "tests/helpers/storeJourney.ts",
       "tests/postgres/connectedStoreTransfer.fixture.ts",
       "tests/postgres/destinationDocumentFixture.ts",
       "tests/postgres/destinationReceiptFixture.ts",
