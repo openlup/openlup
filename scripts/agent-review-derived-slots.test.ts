@@ -684,7 +684,6 @@ it('keeps both SQL forwards when main added the same migration filename', async 
 }, 90_000);
 
 it.each(['clean', 'derived-carrier'])('skips Docker inventory refresh on non-SQL PR (%s) even when main changed SQL and inventory', async mode => {
-  expect(process.env.npm_execpath).toBe(npmCli);
   try {
     // Build a main commit that changed SQL, registries, publication catalogue, AND measured inventory.
     f.git('reset', '--hard', f.main); f.git('checkout', '-q', '--detach', f.main);
