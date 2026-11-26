@@ -14090,7 +14090,7 @@
     },
     {
       "path": "db/platform/migrations/20261129130002_native_renewal_occurrence_guards.sql",
-      "sha256": "70e8b38d01bf5f6dae3b460bb3134ac70480505e46a6bb864c3760c28183015c",
+      "sha256": "2a42c4187c3cb1d231da3a71ab6b8fae3cb06486f4789b87e207d532cf03ea90",
       "functions": [
         {
           "signature": "public.fulfillment_reserve_subscription_renewal(uuid,uuid,integer,timestamptz)",
@@ -14145,7 +14145,7 @@
         {
           "signature": "public.subscriptions__guard_renewal_write()",
           "beforeSha256": null,
-          "afterSha256": "6d181d2d48bf472e6a7cfae4b813ea03d665aedbd2a5457a1dcbe8f3602dc9b0"
+          "afterSha256": "55e5c19ea0df1d4ce0fb1d8fe82924bb3c30112f6fac2b6c51996eb61436f260"
         },
         {
           "signature": "public.subscriptions__eligible_legacy_renewal_write(uuid)",

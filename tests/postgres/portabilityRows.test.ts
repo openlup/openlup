@@ -5,6 +5,7 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 import { captureCompatiblePostgresRows, restoreCompatiblePostgresRows, type TransferPostgresQuery, type CompatiblePostgresTable } from "@openlup/platform/portability";
+import { AT, sandboxRenewal } from "./subscriptionNativeFixture.js";
 
 let source: Pool, target: Pool;
 const containers: PostgresContainer[] = [];
@@ -134,4 +135,19 @@ it("admits the renewal acceptance trigger at its earlier or pinned search path a
       }
     }
   } finally { await target.query(`ALTER FUNCTION ${admit} ${pinned}`); }
+});
+
+it("restores a legacy operation through the pinned renewal write guard and refuses a changed guard", async () => {
+  const f = await sandboxRenewal(source);
+  await target.query("INSERT INTO public.clients(id,email) VALUES($1,$2)", [f.client, `${f.client}@example.invalid`]);
+  await target.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at) VALUES($1,$2,28,$3)", [f.subscription, f.client, AT]);
+  const packet = await capture(["subscription_renewal_operations"]);
+  const restore = () => restoreCompatiblePostgresRows({ target: destination, catalogueId, packet });
+  expect(await restore()).toEqual({ inserted: 1, replayed: 0, sha256: packet.sha256 });
+  expect(await restore()).toEqual({ inserted: 0, replayed: 1, sha256: packet.sha256 });
+  const guard = "public.subscriptions__guard_renewal_write()";
+  await target.query(`ALTER FUNCTION ${guard} SET search_path = pg_catalog, public, pg_temp`);
+  try {
+    await expect(restore()).rejects.toMatchObject({ code: "insert_trigger_requires_owner", table: "subscription_renewal_operations" });
+  } finally { await target.query(`ALTER FUNCTION ${guard} SET search_path = pg_catalog, pg_temp`); }
 });

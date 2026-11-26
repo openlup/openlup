@@ -197,6 +197,8 @@ it.each(["legacy", "legacy-with-service", "bootstrap", "separate", "admin-manage
         .rejects.toMatchObject(denial);
       await expect(store.runtime.query("UPDATE public.fulfillment_inventory_reservations SET expires_at=$2 WHERE id=$1",
         [originalHold.reservationId, later(2)])).rejects.toMatchObject(denial);
+      await expect(store.runtime.query("UPDATE public.fulfillment_inventory_reservations SET purchase_order_id=$2 WHERE id=$1",
+        [originalHold.reservationId, randomUUID()])).rejects.toMatchObject(denial);
       await expect(insert(store.runtime, "fulfillment_inventory_reservation_lines", {
         reservation_id: originalHold.reservationId, operation_fingerprint: renewal.fingerprint, sku: "extra", quantity: 1,
       })).rejects.toMatchObject(denial);

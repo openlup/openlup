@@ -127,7 +127,7 @@ RETURNS trigger LANGUAGE plpgsql VOLATILE SECURITY INVOKER SET search_path = pg_
 DECLARE
   row_data jsonb; before_row jsonb; after_row jsonb;
   owner_id uuid; order_id uuid; cycle_id uuid; operation_id uuid;
-  owners uuid[]; prior_owners uuid[]; row_owners uuid[]; cleanup boolean:=false;
+  owners uuid[]; prior_owners uuid[]; resolved uuid[]; cleanup boolean:=false;
   linked_operation uuid; linked_cycle uuid;
   migration_owner boolean:=pg_has_role(current_user,
     (SELECT relowner FROM pg_class WHERE oid='public.subscription_cycle_occurrences'::regclass),'USAGE');
@@ -197,33 +197,43 @@ BEGIN
       IF TG_TABLE_NAME='fulfillment_inventory_reservation_lines' THEN
         SELECT r.renewal_operation_id,r.purchase_order_id INTO operation_id,order_id
           FROM public.fulfillment_inventory_reservations r WHERE r.id=(row_data->>'reservation_id')::uuid;
+        IF NOT FOUND AND row_security_active('public.fulfillment_inventory_reservations') THEN
+          RAISE EXCEPTION 'renewal_write_scope_unavailable' USING ERRCODE='42501';
+        END IF;
       END IF;
       linked_operation:=NULL; linked_cycle:=NULL;
       IF order_id IS NOT NULL THEN
         SELECT o.renewal_operation_id,o.subscription_cycle_id INTO linked_operation,linked_cycle
           FROM public.commerce_orders o WHERE o.id=order_id;
-        IF NOT FOUND THEN
-          RAISE EXCEPTION 'renewal_cycle_unavailable' USING ERRCODE='22023', DETAIL='/cycleKey';
+        IF NOT FOUND AND row_security_active('public.commerce_orders') THEN
+          RAISE EXCEPTION 'renewal_write_scope_unavailable' USING ERRCODE='42501';
         END IF;
       END IF;
-      row_owners:=array_remove(ARRAY[owner_id],NULL);
+      -- Native constraints report missing legacy references. Fence every
+      -- existing parent, including when another reference on the row is invalid.
+      owners:=owners||ARRAY[owner_id];
       IF coalesce(operation_id,linked_operation) IS NOT NULL THEN
-        row_owners:=row_owners||ARRAY(SELECT op.subscription_id FROM unnest(ARRAY[operation_id,linked_operation]) ref(id)
+        resolved:=ARRAY(SELECT op.subscription_id FROM unnest(ARRAY[operation_id,linked_operation]) ref(id)
           LEFT JOIN public.subscription_renewal_operations op ON op.id=ref.id WHERE ref.id IS NOT NULL);
+        IF array_position(resolved,NULL) IS NOT NULL AND row_security_active('public.subscription_renewal_operations') THEN
+          RAISE EXCEPTION 'renewal_write_scope_unavailable' USING ERRCODE='42501';
+        END IF;
+        owners:=owners||resolved;
       END IF;
       IF coalesce(cycle_id,linked_cycle) IS NOT NULL THEN
-        row_owners:=row_owners||ARRAY(SELECT c.subscription_id FROM unnest(ARRAY[cycle_id,linked_cycle]) ref(id)
+        resolved:=ARRAY(SELECT c.subscription_id FROM unnest(ARRAY[cycle_id,linked_cycle]) ref(id)
           LEFT JOIN public.subscription_cycles c ON c.id=ref.id WHERE ref.id IS NOT NULL);
+        IF array_position(resolved,NULL) IS NOT NULL AND row_security_active('public.subscription_cycles') THEN
+          RAISE EXCEPTION 'renewal_write_scope_unavailable' USING ERRCODE='42501';
+        END IF;
+        owners:=owners||resolved;
       END IF;
-      row_owners:=ARRAY(SELECT DISTINCT id FROM unnest(row_owners) id ORDER BY id);
-      IF cardinality(row_owners)>1 OR array_position(row_owners,NULL) IS NOT NULL THEN
-        RAISE EXCEPTION 'renewal_cycle_unavailable' USING ERRCODE='22023', DETAIL='/cycleKey';
-      END IF;
-      owners:=owners||row_owners;
     END LOOP;
+    owners:=ARRAY(SELECT DISTINCT id FROM unnest(owners) id WHERE id IS NOT NULL ORDER BY id);
     IF pass=1 THEN
       prior_owners:=owners;
-      FOR owner_id IN SELECT DISTINCT id FROM unnest(owners) id ORDER BY id LOOP
+      cleanup:=cleanup AND cardinality(owners)=1;
+      FOREACH owner_id IN ARRAY owners LOOP
         IF cleanup AND migration_owner THEN
           PERFORM 1 FROM public.subscriptions WHERE id=owner_id FOR UPDATE NOWAIT;
         ELSIF cleanup THEN
