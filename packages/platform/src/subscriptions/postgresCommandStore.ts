@@ -348,9 +348,9 @@ async function readOfferState(executor: SubscriptionQueryExecutor, actor: Subscr
         AND cadence_days BETWEEN 1 AND 36500 AND edit_window_hours BETWEEN 0 AND 876000
     ), offer AS (
       SELECT s.id, to_char(s.next_cycle_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS next_cycle_at,
-        CASE WHEN (target.at AT TIME ZONE 'UTC')
+        CASE WHEN target.at
           BETWEEN s.requested_at + make_interval(days=>$6::integer) AND s.requested_at + make_interval(days=>$7::integer)
-          THEN to_char(target.at,'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') END AS slide_target,
+          THEN to_char(target.at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') END AS slide_target,
         s.requested_at <= s.next_cycle_at - make_interval(hours=>s.edit_window_hours) AS edit_open,
         ${paymentBlockerSql("s.id")} AS payment_blocker,
         CASE WHEN $9::boolean AND $4::text IN ('skip','reschedule') THEN
@@ -363,7 +363,10 @@ async function readOfferState(executor: SubscriptionQueryExecutor, actor: Subscr
               AND (c.status IN ('payment_pending','paid') OR orders.status IN ('paid','fulfillment_pending','fulfilled')))
           ELSE true END AS action_available
       FROM admitted s
-      CROSS JOIN LATERAL (SELECT (s.next_cycle_at AT TIME ZONE 'UTC') + make_interval(days=>$5::integer) AS at) target
+      CROSS JOIN LATERAL (SELECT CASE WHEN $5::integer IS NOT NULL
+        THEN (((s.next_cycle_at AT TIME ZONE tz.name) + make_interval(days=>$5::integer)) AT TIME ZONE tz.name)
+        END AS at
+        FROM (SELECT CASE WHEN $5::integer IS NOT NULL THEN public.subscription_reschedule_timezone_read() ELSE 'UTC' END AS name) tz) target
     ) SELECT owned.id::text, owned.client_id::text, $8::uuid::text AS actor_id,
       owned.status, owned.template_version::text, owned.next_cycle_number::text, owned.marker_key, owned.consumed,
       offer.next_cycle_at, offer.slide_target, offer.edit_open, offer.payment_blocker, offer.action_available

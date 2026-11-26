@@ -46,7 +46,7 @@ the configuration selected by the binding and the value it reports. For
 `payment_method_expiry_warning_days`, `payments.declineNoticeTiming`,
 `promotion_claim_hold_hours`, `subscription_edit_quote_ttl_minutes`,
 `subscription_minimum_base_units`, `subscription_sized_intro_phase`,
-`subscriptions.retrySchedule`, `shipping_flat_minor`,
+`subscriptions.rescheduleTimeZone`, `subscriptions.retrySchedule`, `shipping_flat_minor`,
 `pricing.subscriptionPricePolicy`, `communications.nativeDeliveryControls`, and (with `--app`)
 reminders, a connected `show <key> --database-url <read-capable-url>` also reports the
 observation. Use a connection authorized to read settings from the intended
@@ -56,7 +56,7 @@ row or rows may be an explicit override. An absent
 `account_support_operator_slide_max_days`, `inventory_renewal_protection`,
 `payment_method_expiry_warning_days`, `payments.declineNoticeTiming`,
 `promotion_claim_hold_hours`, `subscription_edit_quote_ttl_minutes`,
-`subscriptions.retrySchedule`, or `shipping_flat_minor` row uses the platform fallback,
+`subscriptions.rescheduleTimeZone`, `subscriptions.retrySchedule`, or `shipping_flat_minor` row uses the platform fallback,
 whereas an absent `subscription_minimum_base_units`, `subscription_sized_intro_phase`,
 `pricing.subscriptionPricePolicy`, or `communications.nativeDeliveryControls`
 row reports `absent` (`subscription_minimum_base_units` and `subscription_sized_intro_phase`
@@ -299,7 +299,7 @@ absent state) for `account_support_operator_slide_max_days`, `inventory_renewal_
 `payment_method_expiry_warning_days`, `payments.declineNoticeTiming`,
 `promotion_claim_hold_hours`, `subscription_edit_quote_ttl_minutes`,
 `subscription_minimum_base_units`, `subscription_sized_intro_phase`,
-`subscriptions.retrySchedule`, `shipping_flat_minor`,
+`subscriptions.rescheduleTimeZone`, `subscriptions.retrySchedule`, `shipping_flat_minor`,
 `pricing.subscriptionPricePolicy`, and `communications.nativeDeliveryControls`
 (requiring an explicit `SELECT` grant on `public.communication_delivery_controls`).
 A stock preview needs the application's stock source. A connected reminder
@@ -402,6 +402,7 @@ and whether retrying can help.
 | `promotion_claim_hold_hours_policy_invalid` | Check the value schema and examples using `show promotion_claim_hold_hours`. |
 | `account_support_operator_slide_max_days_policy_invalid` | Check the value schema and examples using `show account_support_operator_slide_max_days`. |
 | `subscription_edit_quote_ttl_minutes_policy_invalid` | Check the value schema and examples using `show subscription_edit_quote_ttl_minutes`. |
+| `subscription_reschedule_timezone_policy_invalid` | Check the value schema and examples using `show subscriptions.rescheduleTimeZone`. |
 | `subscription_retry_schedule_policy_invalid` | Check the value schema and examples using `show subscriptions.retrySchedule`. |
 | `checkout_recovery_policy_invalid` | Correct the supplied host policy, including offset order after defaults, then repeat the connected read. |
 
