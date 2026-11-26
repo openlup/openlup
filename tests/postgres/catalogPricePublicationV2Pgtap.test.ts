@@ -126,7 +126,7 @@ it.each(["legacy", "admin-managed", "bootstrap"] as const)("preserves the releas
   });
 }, postgresSetupTimeoutMs);
 
-it("replays populated v1 receipts byte for byte through runtime logins after the runner applies the recorder forward", async () => {
+it("preserves v1 publication and refuses direct v2 price issuance after the qualified recorder upgrade", async () => {
   const predecessor = before();
   const forward = current().qualified.forward.find(unit => recorderForward.test(unit.file))!;
   await withPlatformCatalog(predecessor, async root => {
@@ -155,7 +155,7 @@ it("replays populated v1 receipts byte for byte through runtime logins after the
       await installPublicationActors(owner);
       const claims = JSON.stringify({ sub: actorId, role: "authenticated" });
       const recordSql = "SELECT public.catalog_publication_record_command($1) AS bytes";
-      const { issue, publish, originalPublication } = await transaction(owner, async db => {
+      const issueV1 = () => transaction(owner, async db => {
         const draft = await graph(db, fixture());
         const command = { schemaVersion: 2, action: "publish", productId: draft.productId, commandKey: draft.commandKey,
           candidateRef: draft.candidateRef, candidateDigest: draft.candidateDigest, expectedHead: null, changes: [] };
@@ -178,6 +178,7 @@ it("replays populated v1 receipts byte for byte through runtime logins after the
         const { rows: [{ bytes }] } = await db.query(recordSql, [packet]);
         return { issue: draft, publish: packet, originalPublication: Buffer.from(bytes, "utf8") };
       });
+      const { issue, publish, originalPublication } = await issueV1();
       const keys = [issue.productId, issue.commandKey];
       const savedPublication = async () => (await owner.query(`SELECT result FROM public.catalog_operator_receipts
         WHERE scope_id=$1 AND command_key=$2 AND kind='publish'`, keys)).rows.map(row => Buffer.from(row.result, "utf8"));
@@ -193,8 +194,9 @@ it("replays populated v1 receipts byte for byte through runtime logins after the
       const priceListId = randomUUID(), commandKey = randomUUID();
       await owner.query(`INSERT INTO public.price_lists(id,name,region_code,currency,valid_from)
         VALUES($1,'Gross upgrade list','ZZ','XXX',clock_timestamp()-interval '1 hour')`, [priceListId]);
-      const price = json({ schemaVersion: 1, commandKey, variantId: issue.skuId, priceListId,
-        mode: "one_time", minQty: 1, amountKind: "gross", unitPriceMinor: 1200, expected: { entryId: null, unitPriceMinor: null } });
+      const priceCommand = { schemaVersion: 1, commandKey, variantId: issue.skuId, priceListId,
+        mode: "one_time", minQty: 1, amountKind: "gross", unitPriceMinor: 1200, expected: { entryId: null, unitPriceMinor: null } };
+      const price = json(priceCommand);
       const rawPrice = () => transaction(runtime, async db => {
         await db.query("SET LOCAL ROLE authenticated");
         await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: actorId, role: "authenticated" })]);
@@ -240,6 +242,24 @@ it("replays populated v1 receipts byte for byte through runtime logins after the
       expect(JSON.parse(originalVerdicts[2]!.toString()).targets[0].reason).toBe("base_price_amount_kind_invalid");
 
       expect((await store.runner.apply()).applied[0]).toBe(forward.file);
+      const fresh = await issueV1();
+      expect(JSON.parse(fresh.originalPublication.toString("utf8"))).toMatchObject({ productId: fresh.issue.productId, head: { revision: 1 } });
+      // The qualified recorder's basis gate refuses v2 before these private calls.
+      const context = { priceListId, regionCode: "ZZ", currency: "XXX", amountBasis: "tax_inclusive", tax: null };
+      const operation = { ...priceCommand, schemaVersion: 2, commandKey: randomUUID(), variantId: fresh.issue.skuId,
+        expectedListAmountBasis: context.amountBasis, expected: { ...priceCommand.expected, amountKind: null } };
+      const canonicalCommand = json(operation);
+      const claim = { outcome: "claimed", canonicalCommand, fingerprint: hash(canonicalCommand) };
+      const evidence = { lane: "issuance", actor: actorId, issueId: fresh.issue.issueId,
+        plan: [{ skuId: operation.variantId, priceListId, operation, needsFresh: false, requiredModes: [operation.mode] }],
+        claims: { [operation.commandKey]: claim } };
+      for (const [routine, query, args] of [
+        ["catalog_publication_decide_prices_v2", "SELECT public.catalog_publication_decide_prices_v2(NULL,NULL,NULL,$1,$2,NULL)", [context, evidence]],
+        ["catalog_price_setup_mutate_claimed", "SELECT public.catalog_price_setup_mutate_claimed($1,clock_timestamp(),$2)", [claim, { previous: null, publicationId: evidence.issueId }]],
+      ] as const) await expect(transaction(publisher, async db => {
+        await db.query("SELECT set_config('request.jwt.claims',$1,true)", [claims]);
+        await db.query(query, [...args]);
+      })).rejects.toMatchObject({ code: "42501", message: `permission denied for function ${routine}` });
       expect(await arrayVerdicts()).toEqual(originalVerdicts);
       await owner.query("UPDATE public.catalog_skus SET title='Live drift' WHERE id=$1", [issue.skuId]);
       await owner.query("UPDATE public.price_lists SET amount_basis='tax_exclusive' WHERE id=$1", [priceListId]);
@@ -249,7 +269,6 @@ it("replays populated v1 receipts byte for byte through runtime logins after the
       expect((await owner.query("SELECT count(*)::int AS effects FROM public.outbox_events WHERE aggregate_id=$1", [issue.productId])).rows)
         .toEqual([{ effects: 1 }]);
       for (const [routine, query] of [
-        ["catalog_publication_decide_prices_v2", "SELECT public.catalog_publication_decide_prices_v2(NULL,NULL,NULL,NULL,NULL,NULL)"],
         ["catalog_publication_assess_prices_v2", "SELECT public.catalog_publication_assess_prices_v2(NULL)"],
         ["catalog_publication_lock_effective_base_price_v2", "SELECT * FROM public.catalog_publication_lock_effective_base_price_v2(NULL,NULL,NULL)"],
       ]) await expect(publisher.query(query!)).rejects.toMatchObject({ code: "42501", message: `permission denied for function ${routine}` });
