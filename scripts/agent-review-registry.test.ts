@@ -711,6 +711,50 @@ describe('real Git coverage histories', () => {
     const receipt = receiptSummary(await f.state(), 12, Date.now());
     await expect(admitSourceReceipt(f.cwd, f.base, head, receiptBody(receipt))).resolves.toEqual(receipt);
   });
+  it.each(['app.ts', 'README.md'])('retains floor = 2 after an all-FAIL protected anchor even when repair edits %s', async repairPath => {
+    const f = await fixture();
+    await f.write('scripts/agent-review-extra.mjs', 'export const guard = 1;\n');
+    f.commit();
+    await f.cli('prepare', f.request);
+    await f.report({ verdict: 'FAIL', findings: [{ id: 'NP-1', summary: 'protected failure', material: true }] });
+    await f.report({ verdict: 'FAIL' });
+
+    await f.write(repairPath, 'non-protected repair\n');
+    const head = f.commit();
+    await f.cli('prepare', f.request);
+    const next = await f.state();
+    await f.cli('status', '--explain');
+    expect(JSON.parse(vi.mocked(console.log).mock.lastCall?.[0]).requirements.floor).toBe(2);
+    await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
+    await f.report({ ordinary: true, delta: next.candidate.coverage.delta, closes: ['NP-1'] });
+    await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
+    await f.report({ ordinary: true, delta: next.candidate.coverage.delta });
+    await expect(f.cli('verify')).resolves.toBe(0);
+    await validateEconomySession(f.cwd, await f.state());
+    const receipt = receiptSummary(await f.state(), 12, Date.now());
+    await expect(admitSourceReceipt(f.cwd, f.base, head, receiptBody(receipt))).resolves.toEqual(receipt);
+  });
+  it('requires floor = 1 (never 0) when a README.md-only repair follows an all-FAIL routine anchor', async () => {
+    const f = await fixture();
+    const request = JSON.parse(await readFile(f.request, 'utf8'));
+    request.intent.risk = 'routine';
+    await writeFile(f.request, JSON.stringify(request));
+    await f.cli('prepare', f.request);
+    await f.report({ verdict: 'FAIL', findings: [{ id: 'MD-1', summary: 'routine failure', material: true }] });
+
+    await f.write('README.md', 'docs-only repair note\n');
+    const head = f.commit();
+    await f.cli('prepare', f.request);
+    const next = await f.state();
+    await f.cli('status', '--explain');
+    expect(JSON.parse(vi.mocked(console.log).mock.lastCall?.[0]).requirements.floor).toBe(1);
+    await expect(f.cli('verify')).rejects.toThrow('1 independent PASS');
+    await f.report({ ordinary: true, delta: next.candidate.coverage.delta, closes: ['MD-1'] });
+    await expect(f.cli('verify')).resolves.toBe(0);
+    await validateEconomySession(f.cwd, await f.state());
+    const receipt = receiptSummary(await f.state(), 12, Date.now());
+    await expect(admitSourceReceipt(f.cwd, f.base, head, receiptBody(receipt))).resolves.toEqual(receipt);
+  });
   it('retains floor = 2 on cumulative repair of an existing protected path after all-FAIL anchor', async () => {
     const f = await fixture();
     await f.write('scripts/agent-review-extra.mjs', 'export const guard = 1;\n');

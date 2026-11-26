@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { gunzipSync, inflateRawSync } from 'node:zlib';
 import { admit, demand, RECEIPT_MARKER, ECONOMY_RECEIPT_MARKER, COMPRESSED_RECEIPT_MARKER, RECEIPT_DETAILS_HEADER } from './agent-review-decide.mjs';
-import { captureCommittedReviewCandidate, captureReviewRules, carryOverSourceReview, git, validateEconomySession } from './agent-review-session.mjs';
+import { captureCommittedReviewCandidate, captureReviewRules, carryOverSourceReview, git, sessionLegacyDeferOptions, validateEconomySession } from './agent-review-session.mjs';
 import { RECEIPT_MARKER_PREFIX } from './ci-receipt-rerun.mjs';
 import { assertCoLocatedForwardApproval, hasExactManagedForward, isNativeStoreMigrationPath, REVIEWED_FORWARD_PATH } from './reviewed-platform-forward.ts';
 import { isChannelIngestMigrationPath, isQualifiedPlatformMigrationPath } from './platform-migration-manifest.ts';
@@ -168,7 +168,7 @@ export async function readReceipts(api, root, pr, head, now, permissions = new M
     const receipt = parseReceipt(comment.body); const login = comment.user?.login;
     if (receipt === null && typeof comment.body === 'string' && comment.body.startsWith(RECEIPT_MARKER_PREFIX)) invalidComments?.push(comment);
     if (receipt?.pr === pr && receipt.head === head) currentHeadComments?.push(comment);
-    if (receipt?.pr !== pr || receipt.head !== head || !admit({ receipt, observed: { ...receipt, baseValid: true }, now }).ok || comment.user?.type !== 'User' || typeof login !== 'string' || !login) continue;
+    if (receipt?.pr !== pr || receipt.head !== head || !admit({ receipt, observed: { ...receipt, baseValid: true, legacyDefer: true }, now }).ok || comment.user?.type !== 'User' || typeof login !== 'string' || !login) continue;
     const key = login.toLowerCase();
     if (!permissions.has(key)) {
       try {
@@ -209,19 +209,21 @@ export async function waitNativeAdmission({ event, env = process.env, api, cwd =
       const historical = receipt.version === 3 ? receipt.session.history.flatMap(event => event.type === 'prepare' ? [event.candidate.base, event.candidate.head] : event.type === 'renew' ? [event.proof.main] : []) : [];
       const refs = [...new Set([receipt.base, receipt.head, main, ...historical, ...(group ? [group.base_sha, group.head_sha] : [])])];
       demand(refs.every(ref => SHA.test(ref)), 'receipt references invalid source objects');
-      let candidate; let baseValid; let legacyRules;
+      let candidate; let baseValid; let legacyRules; let legacyDeferOptions = {};
       try {
         if (!committedObjectsOnly) {
           await runGit(cwd, '-c', 'transfer.fsckObjects=true', 'fetch', '--no-tags', '--no-write-fetch-head', 'origin', ...refs);
           await runGit(cwd, 'update-ref', 'refs/remotes/origin/main', main);
         }
         candidate = await captureCommittedReviewCandidate(cwd, receipt.base, receipt.head, runGit);
-        if (receipt.version === 3) await validateEconomySession(cwd, receipt.session, runGit);
-        else legacyRules = await captureReviewRules(cwd, candidate, runGit) === undefined;
+        if (receipt.version === 3) {
+          await validateEconomySession(cwd, receipt.session, runGit);
+          legacyDeferOptions = await sessionLegacyDeferOptions(cwd, receipt.session, runGit, [receipt.base]);
+        } else legacyRules = await captureReviewRules(cwd, candidate, runGit) === undefined;
         const forks = (await runGit(cwd, 'merge-base', '--all', receipt.head, committedObjectsOnly ? main : 'origin/main')).trim().split('\n');
         baseValid = forks.length === 1 && SHA.test(forks[0]) && receipt.base === forks[0];
       } catch (error) { reason = `receipt objects could not be verified: ${error.message}; post a corrected receipt`; continue; }
-      let decision = admit({ receipt, observed: { ...candidate, pr: prNumber, baseValid, legacyRules }, now: now() });
+      let decision = admit({ receipt, observed: { ...candidate, pr: prNumber, baseValid, legacyRules, ...legacyDeferOptions }, now: now() });
       if (!decision.ok) { reason = `${decision.code}: ${decision.reason}`; continue; }
       const forwardApproval = needsForwardApproval(candidate.changedPaths, path => hasExactManagedForward(cwd, candidate.base, path));
       // The trusted reader checks each change on its own base; moves on main or ahead in the queue do not refuse it.
@@ -237,7 +239,7 @@ export async function waitNativeAdmission({ event, env = process.env, api, cwd =
       const live = await api.get(`${root}/pulls/${prNumber}`);
       demand(live.head?.sha === pr.head.sha && live.state === 'open' && live.draft === false && !live.merged && live.base?.ref === 'main', 'PR changed during admission; rerun CI', 'stale');
       if (!group) demand((await api.get(`${root}/git/ref/heads/main`)).object?.sha === main, 'main moved during admission; rerun CI', 'stale');
-      const final = admit({ receipt, observed: { ...candidate, pr: prNumber, baseValid, legacyRules }, now: now() }); demand(final.ok, final.reason, final.code);
+      const final = admit({ receipt, observed: { ...candidate, pr: prNumber, baseValid, legacyRules, ...legacyDeferOptions }, now: now() }); demand(final.ok, final.reason, final.code);
       onCandidate?.(candidate, receiptIds.get(receipt));
       if (!committedObjectsOnly) console.log(`Native review admission verified: ${group ? decision.reason : 'reviewed PR head'}.`); return receipt;
     }

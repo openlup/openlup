@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { createHash, randomUUID } from 'node:crypto';
 import { env as processEnvironment } from 'node:process';
-import { computeRegroupAdvisory, digest, explainSession, protectedCoveragePath, carryOver, cumulativeRepairPrefix, fullReviewReports, deferFinding, demand, integrationReviewContext, prepareCandidate, receiptBody, receiptSummary, recordRegroup, recordReport, verdict } from './agent-review-decide.mjs';
+import { computeRegroupAdvisory, DEFER_HARDENING, digest, explainSession, protectedCoveragePath, carryOver, cumulativeRepairPrefix, fullReviewReports, deferFinding, demand, integrationReviewContext, prepareCandidate, receiptBody, receiptSummary, recordRegroup, recordReport, verdict } from './agent-review-decide.mjs';
 import { REGISTRY_PATHS, RULE_SNAPSHOT_REGISTRY_PATHS, registryUnion } from './agent-review-registry.mjs';
 import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryOnlyCurrent, migrationRegistryUnion, reslotRegistryJson } from './agent-review-derived.mjs';
 import { MATURITY_REFERENCE, generatedCarrier, ownerOutputCarrier, runDerivedOutputGenerators, runLandingGenerators, withPredictedTree } from './agent-review-generators.mjs';
@@ -73,6 +73,7 @@ async function integrationParents(cwd, head) {
 // This literal anchors the one-time transition in trusted main's first-parent history.
 const PORTABLE_REVIEW = 'openlup-portable-review-20261103';
 const DERIVED_REVIEW = 'openlup-derived-review-20261110';
+const RESLOT_OVERLAP_GUARD = 'openlup-reslot-overlap-20261126';
 const SESSION_PATH = 'scripts/agent-review-session.mjs';
 
 // Review evidence binds to the candidate's own change: a clean merge onto a later base keeps it.
@@ -168,6 +169,7 @@ function tokenizeSql(sql) {
         if (cur === '\\') {
           if (index + 1 >= sql.length) break;
           const next = sql[index + 1];
+          if (/^[xuU0-7]$/u.test(next)) return { tokens, opaque: true };
           const escaped = { n: '\n', r: '\r', t: '\t', b: '\b', f: '\f' }[next] ?? next;
           value += escaped; index += 2; continue;
         }
@@ -282,6 +284,27 @@ function mergeSqlObjects(target, source) {
   for (const item of source.tableTargets) target.tableTargets.add(item);
   target.opaque ||= source.opaque;
 }
+const SAFE_TOP_LEVEL_NON_DDL = new Set([
+  'BEGIN', 'START', 'COMMIT', 'END', 'SAVEPOINT', 'RELEASE', 'ROLLBACK',
+  'SELECT', 'PERFORM', 'INSERT', 'UPDATE', 'DELETE', 'MERGE', 'WITH',
+  'VALUES', 'SHOW', 'ANALYZE', 'VACUUM', 'EXPLAIN', 'NOTIFY', 'LISTEN', 'UNLISTEN',
+]);
+function addTableReferences(stmt, startPos, result) {
+  for (let i = startPos; i < stmt.length; i += 1) {
+    if (wordAt(stmt, i) !== 'REFERENCES') continue;
+    const refTbl = readQualifiedSqlName(stmt, i + 1, result);
+    if (!refTbl) { result.opaque = true; return; }
+    result.tableTargets.add(refTbl.qual);
+  }
+}
+function isUnsafeSetStatement(tokens, i) {
+  const w1 = wordAt(tokens, i + 1);
+  const w2 = wordAt(tokens, i + 2);
+  return w1 === 'SEARCH_PATH' ||
+    (['LOCAL', 'SESSION'].includes(w1) && w2 === 'SEARCH_PATH') ||
+    w1 === 'ROLE' ||
+    (w1 === 'SESSION' && w2 === 'AUTHORIZATION');
+}
 function extractDoBlock(stmt, result) {
   let pos = 1;
   if (wordAt(stmt, pos) === 'LANGUAGE' && (stmt[pos + 1]?.kind === 'word' || stmt[pos + 1]?.kind === 'quoted')) pos += 2;
@@ -309,7 +332,14 @@ function extractDoBlock(stmt, result) {
       }
       continue;
     }
-    if (DO_DDL_KEYWORDS.has(upper)) result.opaque = true;
+    if (DO_DDL_KEYWORDS.has(upper) ||
+      upper === 'SET_CONFIG' ||
+      (upper === 'SET' && isUnsafeSetStatement(inner.tokens, i)) ||
+      (upper === 'RESET' && ['SEARCH_PATH', 'ALL', 'ROLE'].includes(wordAt(inner.tokens, i + 1))) ||
+      (upper === 'SECURITY' && wordAt(inner.tokens, i + 1) === 'LABEL') ||
+      (upper === 'COMMENT' && wordAt(inner.tokens, i + 1) === 'ON')) {
+      result.opaque = true;
+    }
   }
 }
 function addTableTargetObject(stmt, pos, prefix, result, { rename = false, allowOnly = false } = {}) {
@@ -325,6 +355,7 @@ function addTableTargetObject(stmt, pos, prefix, result, { rename = false, allow
   if (rename && wordAt(stmt, tbl.nextPos) === 'RENAME' && wordAt(stmt, tbl.nextPos + 1) === 'TO') {
     const nextName = normalizeSqlIdent(stmt[tbl.nextPos + 2], result);
     if (nextName) result.objects.add(`${prefix}:${tbl.qual}.${nextName}`);
+    result.opaque = true;
   }
 }
 function extractCreateDdl(stmt, result) {
@@ -373,6 +404,7 @@ function extractCreateDdl(stmt, result) {
       const parent = readQualifiedSqlName(stmt, tbl.nextPos + 2, result);
       if (parent) result.tableTargets.add(parent.qual);
     }
+    addTableReferences(stmt, tbl.nextPos, result);
     return;
   }
   let idxPos = wordAt(stmt, pos) === 'UNIQUE' ? pos + 1 : pos;
@@ -414,11 +446,30 @@ function extractCreateDdl(stmt, result) {
   }
   if (wordAt(stmt, pos) === 'SCHEMA') {
     let schPos = skipWords(stmt, pos + 1, 'IF', 'NOT', 'EXISTS');
-    if (wordAt(stmt, schPos) === 'AUTHORIZATION') schPos += 1;
-    const sch = normalizeSqlIdent(stmt[schPos], result);
-    if (!sch) { result.opaque = true; return; }
-    result.objects.add(`schema:${sch}`);
+    let endPos = schPos;
+    if (wordAt(stmt, schPos) === 'AUTHORIZATION') {
+      schPos += 1;
+      if (['CURRENT_ROLE', 'CURRENT_USER', 'SESSION_USER'].includes(wordAt(stmt, schPos))) {
+        result.opaque = true; return;
+      }
+      const sch = normalizeSqlIdent(stmt[schPos], result);
+      if (!sch) { result.opaque = true; return; }
+      result.objects.add(`schema:${sch}`);
+      endPos = schPos + 1;
+    } else {
+      const sch = normalizeSqlIdent(stmt[schPos], result);
+      if (!sch) { result.opaque = true; return; }
+      result.objects.add(`schema:${sch}`);
+      endPos = schPos + 1;
+      if (wordAt(stmt, endPos) === 'AUTHORIZATION') {
+        if (!stmt[endPos + 1]) { result.opaque = true; return; }
+        endPos += 2;
+      }
+    }
+    if (endPos < stmt.length) result.opaque = true;
+    return;
   }
+  result.opaque = true;
 }
 function extractAlterDdl(stmt, result) {
   let pos = 1;
@@ -435,24 +486,46 @@ function extractAlterDdl(stmt, result) {
     if (wordAt(stmt, pos + 2) === 'RENAME' && wordAt(stmt, pos + 3) === 'TO') {
       const nextSch = normalizeSqlIdent(stmt[pos + 4], result);
       if (nextSch) result.objects.add(`schema:${nextSch}`);
+      result.opaque = true;
     }
     return;
   }
   const prefixes = { FUNCTION: 'function', PROCEDURE: 'function', VIEW: 'view', TABLE: 'table', INDEX: 'index', TYPE: 'type', DOMAIN: 'domain', SEQUENCE: 'sequence' };
   const prefix = prefixes[kind];
-  if (!prefix) return;
+  if (!prefix) { result.opaque = true; return; }
   pos = skipWords(stmt, pos + 1, 'IF', 'EXISTS');
   if (kind === 'TABLE' && wordAt(stmt, pos) === 'ONLY') pos += 1;
   const obj = readQualifiedSqlName(stmt, pos, result);
   if (!obj) { result.opaque = true; return; }
   result.objects.add(`${prefix}:${obj.qual}`);
   if (kind === 'TABLE') result.tablesMutated.add(obj.qual);
-  if (wordAt(stmt, obj.nextPos) === 'RENAME' && wordAt(stmt, obj.nextPos + 1) === 'TO') {
-    const nextName = normalizeSqlIdent(stmt[obj.nextPos + 2], result);
-    if (nextName) {
-      const renamed = `${obj.schema}.${nextName}`;
-      result.objects.add(`${prefix}:${renamed}`);
-      if (kind === 'TABLE') result.tablesMutated.add(renamed);
+  let restPos = obj.nextPos;
+  if (prefix === 'function' && stmt[restPos]?.kind === 'symbol' && stmt[restPos].value === '(') {
+    restPos = skipParenGroup(stmt, restPos);
+  }
+  if (kind === 'TABLE') addTableReferences(stmt, restPos, result);
+  let depth = 0;
+  for (let i = restPos; i < stmt.length; i += 1) {
+    const tok = stmt[i];
+    if (tok.kind === 'symbol' && tok.value === '(') { depth += 1; continue; }
+    if (tok.kind === 'symbol' && tok.value === ')') { depth -= 1; continue; }
+    if (depth !== 0) continue;
+    if (wordAt(stmt, i) === 'RENAME' && wordAt(stmt, i + 1) === 'TO') {
+      const nextName = normalizeSqlIdent(stmt[i + 2], result);
+      if (nextName) {
+        const renamed = `${obj.schema}.${nextName}`;
+        result.objects.add(`${prefix}:${renamed}`);
+        if (kind === 'TABLE') result.tablesMutated.add(renamed);
+      }
+      result.opaque = true;
+    } else if (wordAt(stmt, i) === 'SET' && wordAt(stmt, i + 1) === 'SCHEMA') {
+      const nextSchema = normalizeSqlIdent(stmt[i + 2], result);
+      if (nextSchema) {
+        const moved = `${nextSchema}.${obj.name}`;
+        result.objects.add(`${prefix}:${moved}`);
+        if (kind === 'TABLE') result.tablesMutated.add(moved);
+      }
+      result.opaque = true;
     }
   }
 }
@@ -478,7 +551,7 @@ function extractDropDdl(stmt, result) {
   }
   const prefixes = { FUNCTION: 'function', PROCEDURE: 'function', VIEW: 'view', TABLE: 'table', INDEX: 'index', TYPE: 'type', DOMAIN: 'domain', SEQUENCE: 'sequence' };
   const prefix = prefixes[kind];
-  if (!prefix) return;
+  if (!prefix) { result.opaque = true; return; }
   pos += 1;
   if (kind === 'INDEX' && wordAt(stmt, pos) === 'CONCURRENTLY') pos += 1;
   pos = skipWords(stmt, pos, 'IF', 'EXISTS');
@@ -493,6 +566,48 @@ function extractDropDdl(stmt, result) {
     break;
   }
 }
+function extractGrantOrRevoke(stmt, result) {
+  const onIdx = findTopLevelWord(stmt, 1, 'ON');
+  if (onIdx < 0) { result.opaque = true; return; }
+  let pos = onIdx + 1;
+  const objKind = wordAt(stmt, pos);
+  if (objKind === 'ALL' || ['DATABASE', 'FOREIGN', 'LARGE', 'PARAMETER', 'TABLESPACE', 'SYSTEM'].includes(objKind)) {
+    result.opaque = true;
+    return;
+  }
+  const addParsed = (prefix, { allowParens = false, addTableTarget = false, bareIdent = false } = {}) => {
+    let parsed = 0;
+    while (pos < stmt.length) {
+      if (bareIdent) {
+        const sch = normalizeSqlIdent(stmt[pos], result);
+        if (!sch) { result.opaque = true; return; }
+        result.objects.add(`${prefix}:${sch}`);
+        pos += 1;
+      } else {
+        const obj = readQualifiedSqlName(stmt, pos, result);
+        if (!obj) { result.opaque = true; return; }
+        result.objects.add(`${prefix}:${obj.qual}`);
+        if (addTableTarget) result.tableTargets.add(obj.qual);
+        pos = obj.nextPos;
+        if (allowParens && stmt[pos]?.kind === 'symbol' && stmt[pos].value === '(') pos = skipParenGroup(stmt, pos);
+      }
+      parsed += 1;
+      if (stmt[pos]?.kind === 'symbol' && stmt[pos].value === ',') { pos += 1; continue; }
+      break;
+    }
+    if (parsed === 0 || !['TO', 'FROM'].includes(wordAt(stmt, pos))) result.opaque = true;
+  };
+  if (['FUNCTION', 'PROCEDURE', 'ROUTINE'].includes(objKind)) {
+    pos += 1;
+    addParsed('function', { allowParens: true });
+    return;
+  }
+  if (objKind === 'SEQUENCE') { pos += 1; addParsed('sequence'); return; }
+  if (objKind === 'TYPE' || objKind === 'DOMAIN') { pos += 1; addParsed(objKind.toLowerCase()); return; }
+  if (objKind === 'SCHEMA') { pos += 1; addParsed('schema', { bareIdent: true }); return; }
+  if (objKind === 'TABLE') pos += 1;
+  addParsed('table', { addTableTarget: true });
+}
 export function extractSqlObjects(sql) {
   const result = { objects: new Set(), tablesMutated: new Set(), tableTargets: new Set(), opaque: false };
   const tokenized = tokenizeSql(sql);
@@ -505,18 +620,30 @@ export function extractSqlObjects(sql) {
     else if (head === 'CREATE') extractCreateDdl(stmt, result);
     else if (head === 'ALTER') extractAlterDdl(stmt, result);
     else if (head === 'DROP') extractDropDdl(stmt, result);
+    else if (head === 'GRANT' || head === 'REVOKE') extractGrantOrRevoke(stmt, result);
     else if (head === 'TRUNCATE') {
       let pos = wordAt(stmt, 1) === 'TABLE' ? 2 : 1;
+      let parsed = 0;
       while (pos < stmt.length) {
         if (wordAt(stmt, pos) === 'ONLY') pos += 1;
         const tbl = readQualifiedSqlName(stmt, pos, result);
         if (!tbl) { result.opaque = true; break; }
         result.objects.add(`table:${tbl.qual}`);
         result.tablesMutated.add(tbl.qual);
+        parsed += 1;
         pos = tbl.nextPos;
         if (stmt[pos]?.kind === 'symbol' && stmt[pos].value === ',') { pos += 1; continue; }
         break;
       }
+      if (parsed === 0) result.opaque = true;
+    } else if (head === 'SET') {
+      if (isUnsafeSetStatement(stmt, 0)) result.opaque = true;
+    } else if (head === 'RESET') {
+      if (['SEARCH_PATH', 'ALL', 'ROLE'].includes(wordAt(stmt, 1))) result.opaque = true;
+    } else if (SAFE_TOP_LEVEL_NON_DDL.has(head)) {
+      if (stmt.some(tok => tok.kind === 'word' && tok.value.toUpperCase() === 'SET_CONFIG')) result.opaque = true;
+    } else {
+      result.opaque = true;
     }
   }
   return result;
@@ -525,12 +652,20 @@ function setsIntersect(left, right) {
   for (const item of left) if (right.has(item)) return true;
   return false;
 }
+function viewTargetsIntersect(objects, tableTargets) {
+  for (const item of objects) {
+    if (item.startsWith('view:') && tableTargets.has(item.slice(5))) return true;
+  }
+  return false;
+}
 function sqlObjectsOverlap(moved, reslotted) {
   if (moved.opaque || reslotted.opaque) return true;
   return setsIntersect(moved.objects, reslotted.objects) ||
     setsIntersect(moved.tablesMutated, reslotted.tablesMutated) ||
     setsIntersect(moved.tablesMutated, reslotted.tableTargets) ||
-    setsIntersect(reslotted.tablesMutated, moved.tableTargets);
+    setsIntersect(reslotted.tablesMutated, moved.tableTargets) ||
+    viewTargetsIntersect(moved.objects, reslotted.tableTargets) ||
+    viewTargetsIntersect(reslotted.objects, moved.tableTargets);
 }
 
 const PORTABLE_FORWARD_PATH = /^db\/platform\/migrations\/(\d{14})_([a-z][a-z0-9_]*)\.sql$/u;
@@ -627,7 +762,7 @@ async function detectByteIdenticalReslot(cwd, previous, current, prediction) {
   }
   return { changes, addBlobs, removePaths, overlapPaths };
 }
-export async function proveReviewIntegration(cwd, previous, current, portable = false, { legacy = false, resolvedOwnerOutputs = [] } = {}) {
+export async function proveReviewIntegration(cwd, previous, current, portable = false, { legacy = false, resolvedOwnerOutputs = [], reslotOverlapGuard = true } = {}) {
   const parents = await integrationParents(cwd, current.head);
   demand(parents.length === 2 && parents[0] === previous.head && parents[1] === current.base, 'integration parents differ');
   demand(await ancestor(git, cwd, previous.base, current.base), 'integration base ancestry differs');
@@ -674,6 +809,7 @@ export async function proveReviewIntegration(cwd, previous, current, portable = 
         return git(cwd, 'show', `${revision}:${path}`);
       };
       const reslot = await detectByteIdenticalReslot(cwd, previous, current, prediction);
+      if (!reslotOverlapGuard) reslot.overlapPaths.clear();
       const inventories = await Promise.all([previous.base, previous.head, current.base, current.tree].map(revision => read(revision, INVENTORY_PATH)));
       const currentOnly = inventoryOnlyCurrent(...inventories);
       const inventorySame = inventories.every(source => source === inventories[0]);
@@ -759,13 +895,30 @@ export async function proveReviewIntegration(cwd, previous, current, portable = 
   return { kind: portable ? 'portable-' + kind : kind, tree: current.tree, own, moved, ...(derived ? { derived: true } : {}), ...(reslotOverlap ? { reslotOverlap: true } : {}), ...(resolution.length ? { resolution, prediction, modeChanged } : {}) };
 }
 
+/** Identify pre-hardening prepare bases when defer history exists so legacy v3 defers remain replayable. */
+export async function sessionLegacyDeferOptions(cwd, session, runGit = git, extraBases = []) {
+  if (session?.version !== 3 || !session.history?.some(event => event.type === 'defer')) return {};
+  const bases = [...new Set([
+    ...extraBases,
+    session.candidate?.base,
+    ...session.history.filter(event => event.type === 'prepare').map(event => event.candidate?.base),
+  ].filter(Boolean))];
+  const legacyDeferBases = new Set();
+  for (const base of bases) {
+    let source = '';
+    try { source = await runGit(cwd, 'show', `${base}:scripts/agent-review-decide.mjs`); } catch { source = ''; }
+    if (source.includes('export function deferFinding(') && !source.includes(DEFER_HARDENING)) legacyDeferBases.add(base);
+  }
+  return legacyDeferBases.size ? { legacyDeferBases } : {};
+}
 export async function captureCoverageEdge(cwd, session, observed, now, historicalKind, {
   abbreviatedIndex = false, allowDerived = historicalKind === undefined, resolvedOwnerOutputs = [],
 } = {}) {
   if (!session || !observed.rules ||
     digest(observed.intent) !== digest(session.history.findLast(event => event.type === 'prepare').intent) ||
     observed.authorSessionId !== session.history.findLast(event => event.type === 'prepare').authorSessionId) return undefined;
-  const decision = verdict(session, session.candidate, now);
+  const deferOptions = await sessionLegacyDeferOptions(cwd, session);
+  const decision = verdict(session, session.candidate, now, deferOptions);
   const sameBase = session.candidate.base === observed.base;
   const priorFull = !decision.ok && sameBase && fullReviewReports(session);
   const cumulative = !priorFull && sameBase && decision.code === 'needs_agent_review'
@@ -785,8 +938,9 @@ export async function captureCoverageEdge(cwd, session, observed, now, historica
       // A session from before the version-3 rules can inherit only through the portable proof.
       if ((historicalKind && historicalKind.startsWith('portable-') !== portable) || (!portable && session.candidate.rules?.version !== 3)) return undefined;
       const derivedEnabled = source.includes(`const DERIVED_REVIEW = '${DERIVED_REVIEW}';`);
+      const reslotOverlapGuard = source.includes(`const RESLOT_OVERLAP_GUARD = '${RESLOT_OVERLAP_GUARD}';`);
       const historicalLegacy = !allowDerived && historicalKind && !['derived', 'portable-derived'].includes(historicalKind);
-      proof = await proveReviewIntegration(cwd, session.candidate, observed, portable, { legacy: !derivedEnabled || historicalLegacy, resolvedOwnerOutputs });
+      proof = await proveReviewIntegration(cwd, session.candidate, observed, portable, { legacy: !derivedEnabled || historicalLegacy, resolvedOwnerOutputs, reslotOverlapGuard });
       if (proof.prediction) { from = proof.prediction; to = observed.tree; }
     } catch { return undefined; }
   }
@@ -880,7 +1034,8 @@ export function runReviewCommand(command, args, cwd, env) {
 }
 export async function verifyCandidateCommand({ cwd, session, command, args = [], resource, env = processEnvironment, snapshot = captureSessionCandidate, run = runReviewCommand }) {
   demand(env.AI_RESOURCE_GATE_ACTIVE !== '1' && !env.OPENLUP_HEAVY_ACTIVE, 'nested verification inside the resource broker is refused');
-  const before = await snapshot(cwd, session.candidate.base, { env }); const decision = verdict(session, before, Date.now()); demand(decision.ok, decision.reason, decision.code);
+  const deferOptions = await sessionLegacyDeferOptions(cwd, session);
+  const before = await snapshot(cwd, session.candidate.base, { env }); const decision = verdict(session, before, Date.now(), deferOptions); demand(decision.ok, decision.reason, decision.code);
   await validateEconomySession(cwd, session);
   await assertMergePreflight(cwd, before, { env });
   if (resource) {
@@ -894,7 +1049,7 @@ export async function verifyCandidateCommand({ cwd, session, command, args = [],
   }
   const code = await run(command, args, cwd, { ...env, OPENLUP_HEAVY_ACTIVE: cwd });
   await validateEconomySession(cwd, session);
-  const after = await snapshot(cwd, before.base, { env }); const final = verdict(session, after, Date.now()); demand(final.ok, final.reason, final.code);
+  const after = await snapshot(cwd, before.base, { env }); const final = verdict(session, after, Date.now(), deferOptions); demand(final.ok, final.reason, final.code);
   return code;
 }
 const SESSION_HELP = `Usage:
@@ -952,11 +1107,12 @@ export async function sessionMain(argv = process.argv.slice(2), { cwd = process.
       const now = Date.now();
       const rules = await captureReviewRules(cwd, observed);
       if (rules) observed.rules = rules;
+      const deferOptions = await sessionLegacyDeferOptions(cwd, session);
       if (!fresh && session?.candidate && session.candidate.head !== observed.head) {
         const parents = await integrationParents(cwd, observed.head);
         const baseAncestor = await ancestor(git, cwd, session.candidate.base, observed.base) &&
           await ancestor(git, cwd, observed.base, 'origin/main');
-        const integration = integrationReviewContext(session, observed, { parents, baseAncestor }, now);
+        const integration = integrationReviewContext(session, observed, { parents, baseAncestor }, now, deferOptions);
         if (integration) {
           try {
             integration.mechanical = (await git(cwd, 'merge-tree', '--write-tree', session.candidate.head, observed.base)).trim() === observed.tree;
@@ -969,7 +1125,7 @@ export async function sessionMain(argv = process.argv.slice(2), { cwd = process.
       if (!fresh && session?.candidate.head !== observed.head) {
         const coverage = await captureCoverageEdge(cwd, session, observed, now); if (coverage) observed.coverage = coverage;
       }
-      const next = prepareCandidate(session, observed, now, fresh);
+      const next = prepareCandidate(session, observed, now, fresh, deferOptions);
       await saveState(path, next);
       console.log(JSON.stringify(next, null, 2)); return 0;
     }
@@ -989,7 +1145,8 @@ export async function sessionMain(argv = process.argv.slice(2), { cwd = process.
           env, runGit: (root, ...gitArgs) => git(root, '--no-optional-locks', ...gitArgs),
         });
       } catch (error) { observed = { error: error.message }; }
-      console.log(JSON.stringify(explainSession(session, observed, Date.now()), null, 2));
+      const deferOptions = await sessionLegacyDeferOptions(cwd, session);
+      console.log(JSON.stringify(explainSession(session, observed, Date.now(), deferOptions), null, 2));
       return 0;
     }
     if (verb === 'verify-command') {
@@ -1016,9 +1173,10 @@ export async function sessionMain(argv = process.argv.slice(2), { cwd = process.
       return 0;
     }
     await validateEconomySession(cwd, session);
-    const decision = verdict(session, observed, Date.now()); demand(decision.ok, decision.reason, decision.code);
+    const deferOptions = await sessionLegacyDeferOptions(cwd, session);
+    const decision = verdict(session, observed, Date.now(), deferOptions); demand(decision.ok, decision.reason, decision.code);
     if (verb === 'receipt') await assertMergePreflight(cwd, observed, { env });
-    if (verb === 'receipt') console.log(receiptBody(receiptSummary(session, Number(args[0]), Date.now())));
+    if (verb === 'receipt') console.log(receiptBody(receiptSummary(session, Number(args[0]), Date.now(), deferOptions), deferOptions));
     else console.log('reviewed');
     return 0;
   } finally { if (lock) { await lock.close(); await rm(join(directory, '.session.lock')); } }

@@ -1088,7 +1088,7 @@ describe('native review decisions', () => {
     expect([...extracted.tablesMutated].sort()).toEqual(['public.items']);
     expect([...extracted.tableTargets].sort()).toEqual(['private.items', 'public.Orders', 'public.items', 'public.orders']);
 
-    // Unterminated tokens, dynamic EXECUTE, and non-literal DDL inside DO mark opaque = true.
+    // Unterminated tokens, dynamic EXECUTE, E'...' hex/unicode/octal escapes, global search_path, inline schema DDL, RENAME/SET SCHEMA, and unrecognized DDL mark opaque = true.
     for (const opaqueSql of [
       "CREATE FUNCTION public.f() RETURNS void AS 'unterminated;",
       "/* /* unterminated nested comment */",
@@ -1096,15 +1096,105 @@ describe('native review decisions', () => {
       'CREATE TABLE "unterminated ();',
       "SELECT E'unterminated\\';",
       "DO $$ BEGIN EXECUTE E'unterminated\\'; END $$;",
+      "SELECT E'\\x43';",
+      "SELECT E'\\u0043';",
+      "SELECT E'\\U00000043';",
+      "SELECT E'\\103';",
+      "DO $$ BEGIN EXECUTE E'\\x43REATE OR REPLACE FUNCTION public.shared_fn() RETURNS int AS $b$ SELECT 1; $b$;'; END $$;",
+      "DO $$ BEGIN EXECUTE E'SELECT ''\\x27; DROP TABLE public.orders; -- '''; END $$;",
+      "DO E'BEGIN \\x43REATE TABLE public.orders (id int); END;';",
       'DO $$ BEGIN EXECUTE v_sql; END $$;',
       "DO $$ BEGIN EXECUTE 'CREATE TABLE ' || 'public.x (id int)'; END $$;",
       "DO $$ BEGIN EXECUTE format('DROP TABLE %I', 't'); END $$;",
       'DO $$ BEGIN CREATE TABLE public.direct_ddl (id int); END $$;',
       'DO $$ BEGIN ALTER TABLE public.orders ADD COLUMN x int; END $$;',
       'DO $$ BEGIN GRANT SELECT ON public.orders TO anon; END $$;',
+      'DO $$ BEGIN SET search_path = private, public; END $$;',
+      'DO $$ BEGIN SET LOCAL search_path TO private; END $$;',
+      "DO $$ BEGIN PERFORM set_config('search_path', 'private', true); END $$;",
+      'SET search_path TO private, public; CREATE OR REPLACE FUNCTION calc() RETURNS int LANGUAGE sql AS $$ SELECT 1; $$;',
+      'SET LOCAL search_path = private;',
+      'SET ROLE admin;',
+      'SET SESSION AUTHORIZATION admin;',
+      'RESET search_path;',
+      "SELECT set_config('search_path', 'private', true);",
+      'CREATE SCHEMA analytics CREATE TABLE analytics.events (id int);',
+      'CREATE SCHEMA AUTHORIZATION CURRENT_USER;',
+      'ALTER FUNCTION public.f(int) RENAME TO g;',
+      'ALTER FUNCTION public.f(int) SET SCHEMA private;',
+      'ALTER TABLE public.items RENAME TO items_v2;',
+      'ALTER TABLE public.items SET SCHEMA archive;',
+      'ALTER POLICY p ON public.items RENAME TO p2;',
+      'ALTER SCHEMA analytics RENAME TO archive;',
+      'GRANT SELECT ON ALL TABLES IN SCHEMA public TO app;',
+      'REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC;',
+      'GRANT app_role TO CURRENT_USER;',
+      'GRANT ALL ON DATABASE postgres TO app;',
+      'CREATE EXTENSION pgcrypto;',
+      'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO app;',
+      'DROP EXTENSION pgcrypto;',
+      "SECURITY LABEL ON TABLE public.items IS 'internal';",
+      "COMMENT ON TABLE public.items IS 'note';",
+      'TRUNCATE;',
     ]) {
       expect(extractSqlObjects(opaqueSql).opaque, opaqueSql).toBe(true);
     }
+
+    // GRANT/REVOKE, REFERENCES targets, safe SET, CREATE SCHEMA AUTHORIZATION, and benign DO IF EXISTS EXECUTE patterns parse deterministically (opaque = false).
+    const grantDoSql = `
+      SET LOCAL statement_timeout = '5s';
+      SET row_security = off;
+      CREATE FUNCTION public.pinned_fn() RETURNS int LANGUAGE sql SET search_path = pg_catalog, public AS $$ SELECT 1; $$;
+      CREATE SCHEMA IF NOT EXISTS reporting AUTHORIZATION reporting_owner;
+      CREATE TABLE public.orders (id int PRIMARY KEY, user_id int REFERENCES private.users(id));
+      ALTER TABLE public.items ADD COLUMN owner_id int REFERENCES private.accounts(id);
+      GRANT SELECT, INSERT ON TABLE public.items, private.logs TO app_reader;
+      REVOKE ALL ON public.orders FROM PUBLIC;
+      REVOKE ALL ON FUNCTION public.subscription_activate(text, uuid), public.fn_two(int) FROM PUBLIC;
+      GRANT USAGE ON SEQUENCE public.order_seq TO app_reader;
+      GRANT USAGE ON TYPE public.order_state TO app_reader;
+      GRANT USAGE ON DOMAIN public.email_addr TO app_reader;
+      GRANT USAGE ON SCHEMA reporting TO app_reader;
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+          EXECUTE 'GRANT EXECUTE ON FUNCTION public.catalog_offer(text, integer), public.catalog_ready(text[]) TO service_role;';
+        END IF;
+      END; $$;
+      SELECT E'\\\\x43';
+    `;
+    const parsedGrantDo = extractSqlObjects(grantDoSql);
+    expect(parsedGrantDo.opaque).toBe(false);
+    expect([...parsedGrantDo.objects].sort()).toEqual([
+      'domain:public.email_addr',
+      'function:public.catalog_offer',
+      'function:public.catalog_ready',
+      'function:public.fn_two',
+      'function:public.pinned_fn',
+      'function:public.subscription_activate',
+      'schema:reporting',
+      'sequence:public.order_seq',
+      'table:private.logs',
+      'table:public.items',
+      'table:public.orders',
+      'type:public.order_state',
+    ]);
+    expect([...parsedGrantDo.tablesMutated].sort()).toEqual(['public.items', 'public.orders']);
+    expect([...parsedGrantDo.tableTargets].sort()).toEqual([
+      'private.accounts',
+      'private.logs',
+      'private.users',
+      'public.items',
+      'public.orders',
+    ]);
+
+    // ALTER RENAME/SET SCHEMA still records both old and new qualified object names alongside opaque = true.
+    const renamedFn = extractSqlObjects('ALTER FUNCTION public.f(int) RENAME TO g;');
+    expect(renamedFn.opaque).toBe(true);
+    expect([...renamedFn.objects].sort()).toEqual(['function:public.f', 'function:public.g']);
+    const movedTbl = extractSqlObjects('ALTER TABLE public.items SET SCHEMA archive;');
+    expect(movedTbl.opaque).toBe(true);
+    expect([...movedTbl.objects].sort()).toEqual(['table:archive.items', 'table:public.items']);
+    expect([...movedTbl.tablesMutated].sort()).toEqual(['archive.items', 'public.items']);
   });
 
   it('requires floor = 1 for reslotOverlap derived SQL integrations and retains floor = 2 on all-FAIL repair of a protected path', () => {
@@ -1148,19 +1238,83 @@ describe('native review decisions', () => {
     }, time + 1);
     expect(coverageRequirement(mixedSession).floor).toBe(2);
 
-    // OPT-11: all-FAIL full round on a protected path retains floor = 2 when repair modifies that protected path.
-    let allFail = prepare({ changedPaths: ['config/settings.json'], rules });
-    allFail = recordReport(allFail, report({ reviewer: 'af-1', verdict: 'FAIL', findings: [{ id: 'AF-1', summary: 'bad setting', material: true }] }), time);
-    allFail = recordReport(allFail, report({ reviewer: 'af-2', verdict: 'FAIL' }), time);
-    const repairHead = { ...observed, head: 'b'.repeat(39) + '1', tree: 'c'.repeat(39) + '1', changedPaths: ['config/settings.json'], rules };
-    const repaired = prepareCandidate(allFail, {
-      ...repairHead, intent, authorSessionId: 'author',
+    // OPT-11: all-FAIL full round on a protected path retains floor = 2 across protected, non-protected, and .md-only repairs.
+    let allFailProtected = prepare({ changedPaths: ['config/settings.json'], rules });
+    allFailProtected = recordReport(allFailProtected, report({ reviewer: 'af-1', verdict: 'FAIL', findings: [{ id: 'AF-1', summary: 'bad setting', material: true }] }), time);
+    allFailProtected = recordReport(allFailProtected, report({ reviewer: 'af-2', verdict: 'FAIL' }), time);
+    for (const repairPath of ['config/settings.json', 'app.ts', 'README.md']) {
+      const repairHead = { ...observed, head: 'b'.repeat(39) + '1', tree: 'c'.repeat(39) + '1', changedPaths: ['config/settings.json', repairPath], rules };
+      const repaired = prepareCandidate(allFailProtected, {
+        ...repairHead, intent, authorSessionId: 'author',
+        coverage: {
+          kind: 'repair', previous: digest(allFailProtected.history),
+          from: { base: allFailProtected.candidate.base, head: allFailProtected.candidate.head, tree: allFailProtected.candidate.tree },
+          delta: '6'.repeat(64), proof: { paths: [repairPath], modeChanged: false },
+        },
+      }, time + 1);
+      expect(coverageRequirement(repaired).floor, `protected all-FAIL repaired by ${repairPath}`).toBe(2);
+    }
+
+    // OPT-11: all-FAIL routine round on non-protected app.ts repaired only by README.md requires floor = 1 (never 0).
+    let allFailNonProtected = prepare({ changedPaths: ['app.ts'], rules });
+    allFailNonProtected = recordReport(allFailNonProtected, report({ reviewer: 'np-1', verdict: 'FAIL', findings: [{ id: 'NP-1', summary: 'bad code', material: true }] }), time);
+    const docsRepairHead = { ...observed, head: 'b'.repeat(39) + '2', tree: 'c'.repeat(39) + '2', changedPaths: ['app.ts', 'README.md'], rules };
+    const docsRepaired = prepareCandidate(allFailNonProtected, {
+      ...docsRepairHead, intent, authorSessionId: 'author',
       coverage: {
-        kind: 'repair', previous: digest(allFail.history),
-        from: { base: allFail.candidate.base, head: allFail.candidate.head, tree: allFail.candidate.tree },
-        delta: '6'.repeat(64), proof: { paths: ['config/settings.json'], modeChanged: false },
+        kind: 'repair', previous: digest(allFailNonProtected.history),
+        from: { base: allFailNonProtected.candidate.base, head: allFailNonProtected.candidate.head, tree: allFailNonProtected.candidate.tree },
+        delta: '7'.repeat(64), proof: { paths: ['README.md'], modeChanged: false },
       },
     }, time + 1);
-    expect(coverageRequirement(repaired).floor).toBe(2);
+    expect(coverageRequirement(docsRepaired).floor).toBe(1);
+  });
+
+  it('preserves pre-PR-4 legacy defer receipt compat without relaxing post-hardening defers and trims transition rules in computeRegroupAdvisory', () => {
+    const legacyBase = '4'.repeat(40);
+    const hardenedBase = '5'.repeat(40);
+    const rules = { version: 3, base: '1'.repeat(64), head: '2'.repeat(64) };
+    const preCandidate = { ...observed, base: legacyBase, head: 'a'.repeat(39) + '1', tree: 'c'.repeat(39) + '1', rules };
+    const preSession = {
+      version: 3,
+      authorSessionId: 'author',
+      intent,
+      candidate: preCandidate,
+      preparedAt: time + 2,
+      history: [
+        { type: 'rules', version: 3, at: time },
+        { type: 'prepare', intent, candidate: preCandidate, authorSessionId: 'author', at: time },
+        {
+          type: 'report', at: time,
+          report: { reviewer: 'legacy-r1', cold: true, tree: preCandidate.tree, verdict: 'FAIL', documentation: 'Checked.', findings: [{ id: 'LEG-1', summary: 'legacy issue', material: true }], closes: [], at: time },
+        },
+        { type: 'defer', at: time + 1, findingId: 'LEG-1', target: 'later', decision: 'CM-1', reason: 'pre-pr4 defer' },
+        {
+          type: 'report', at: time + 2,
+          report: { reviewer: 'legacy-r2', cold: true, tree: preCandidate.tree, verdict: 'PASS', documentation: 'Checked.', findings: [], closes: [], at: time + 2 },
+        },
+      ],
+    };
+
+    // Strict by default: refused unless explicitly opted in via verified pre-PR-4 base or legacyDefer.
+    expect(verdict(preSession, preCandidate, time + 2)).toMatchObject({ ok: false, code: 'invalid' });
+    expect(verdict(preSession, preCandidate, time + 2, { legacyDefer: true })).toEqual({ ok: true, code: 'reviewed', reason: 'reviewed' });
+    expect(verdict(preSession, preCandidate, time + 2, { legacyDeferBases: new Set([legacyBase]) })).toEqual({ ok: true, code: 'reviewed', reason: 'reviewed' });
+    expect(verdict(preSession, preCandidate, time + 2, { legacyDeferBases: new Set([hardenedBase]) })).toMatchObject({ ok: false, code: 'invalid' });
+
+    const legacySummary = receiptSummary(preSession, 99, time + 2, { legacyDefer: true });
+    expect(admit({ receipt: legacySummary, observed: { ...preCandidate, pr: 99, baseValid: true }, now: time + 2 })).toMatchObject({ ok: false, code: 'invalid' });
+    expect(admit({ receipt: legacySummary, observed: { ...preCandidate, pr: 99, baseValid: true, legacyDefer: true }, now: time + 2 })).toEqual({ ok: true, code: 'reviewed', reason: 'reviewed' });
+    expect(admit({ receipt: legacySummary, observed: { ...preCandidate, pr: 99, baseValid: true, legacyDeferBases: new Set([legacyBase]) }, now: time + 2 })).toEqual({ ok: true, code: 'reviewed', reason: 'reviewed' });
+
+    // Rules transition event immediately before a v3 prepare is trimmed from the prior v2 round's slice.
+    const v2Session = prepareCandidate(null, { ...observed, intent, authorSessionId: 'author' }, time);
+    const v2WithFail = recordReport(v2Session, report({
+      reviewer: 'v2-r1', verdict: 'FAIL', findings: [{ id: 'V2-1', summary: 'old finding', material: true }],
+    }), time);
+    const v3Candidate = { ...observed, head: '8'.repeat(40), tree: '9'.repeat(40), rules };
+    const transitioned = prepareCandidate(v2WithFail, { ...v3Candidate, intent, authorSessionId: 'author' }, time + 1);
+    expect(transitioned.history.map(event => event.type)).toEqual(['prepare', 'report', 'rules', 'prepare']);
+    expect(computeRegroupAdvisory(transitioned)).toEqual({ triggered: false, nonConvergingCycles: 0, reason: null });
   });
 });
