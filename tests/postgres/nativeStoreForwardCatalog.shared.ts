@@ -579,12 +579,18 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
   for (const entry of guardedChecks) {
     const old = before.constraints.find(row => row.rel === entry.table && row.name === entry.name);
     const current = after.constraints.find(row => row.rel === entry.table && row.name === entry.name);
-    if (!old || !current || old.kind !== "c" || current.kind !== "c") fail(`checkToFunctionGuard constraint missing: ${entry.table}.${entry.name}`);
+    if (!old || !current || old.kind !== "c" || current.kind !== "c") {
+      fail(`checkToFunctionGuard constraint missing: ${entry.table}.${entry.name}`);
+      continue;
+    }
     if (old.validated !== current.validated) fail(`CHECK changed its validation state: ${entry.table}.${entry.name}`);
     const oldValues = checkValues(old.validated ? old.def : old.def.replace(/ NOT VALID$/u, ""), entry.column);
     const newPattern = checkFormat(current.validated ? current.def : current.def.replace(/ NOT VALID$/u, ""), entry.column);
     const compiled = newPattern ? parseBoundedFormatPattern(newPattern) : null;
-    if (!oldValues || !newPattern || !compiled) fail(`checkToFunctionGuard requires closed enum to anchored bounded format CHECK: ${current.def}`);
+    if (!oldValues || !newPattern || !compiled) {
+      fail(`checkToFunctionGuard requires closed enum to anchored bounded format CHECK: ${current.def}`);
+      continue;
+    }
     const expectedBefore = checkConstraintSha256(`CHECK (${entry.column} IN (${oldValues.map(value => `'${value.replaceAll("'", "''")}'`).join(", ")}))`);
     const expectedAfter = checkConstraintSha256(`CHECK (${entry.column} ~ '${newPattern.replaceAll("'", "''")}')`);
     if (expectedBefore !== entry.beforeSha256) fail(`checkToFunctionGuard beforeSha256 mismatch: ${entry.table}.${entry.name}`);
