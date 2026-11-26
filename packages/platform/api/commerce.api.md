@@ -2819,8 +2819,6 @@ export { DEFAULT_LOW_STOCK_THRESHOLD, deriveOfferAvailability, defaultOfferAvail
 export type { DeriveOfferAvailabilityInput } from "./offerAvailability.js";
 export { CHECKOUT_RECOVERY_START_CONTRACT_VERSION, checkoutRecoveryStartRequestSchema, checkoutRecoveryStartResponseSchema } from './checkoutRecoveryStartSchemas.js';
 export type { CheckoutRecoveryStartRequest, CheckoutRecoveryStartResponse } from './checkoutRecoveryStartSchemas.js';
-export { DEFAULT_COMMERCE_RETURN_REASONS, validateCommerceReturnReasons, installCommerceReturnReasonsPolicy, readCommerceReturnReasonsOverride, readCommerceReturnReasonsPolicy, } from "./returnReasonsPolicy.js";
-export type { CommerceReturnReasonsPolicy } from "./returnReasonsPolicy.js";
 ```
 ## dist/commerce/model/customerFulfillmentRecovery.d.ts
 
@@ -8193,31 +8191,6 @@ export interface CommerceQuotePort<Request, Response, Options extends object> {
 import type { RecoveryDestinationPolicyInput, RecoveryDestinationIntent } from "./contracts/index.js";
 export declare function resolveRecoveryDestination(input: RecoveryDestinationPolicyInput): RecoveryDestinationIntent;
 export declare function hasSubscriptionRecoveryContext(input: Pick<RecoveryDestinationPolicyInput, "orderMode" | "hasOrderSubscription" | "requestedSubscriptionContext" | "clientHasLiveOrPendingSubscription">): boolean;
-```
-## dist/commerce/returnReasonsPolicy.d.ts
-
-```ts
-/** @experimental Default allowed return reason codes when no `commerce_return_reasons` setting row is installed. */
-export declare const DEFAULT_COMMERCE_RETURN_REASONS: readonly string[];
-/** @experimental Installed policy configuring the allowed return reason codes for new return requests. */
-export interface CommerceReturnReasonsPolicy {
-    revision: string;
-    reasons: string[];
-}
-interface Executor {
-    query(text: string, values?: unknown[]): Promise<{
-        rows: Record<string, unknown>[];
-    }>;
-}
-/** @experimental Validate a `commerce_return_reasons` policy document using SQL-equivalent rules. */
-export declare function validateCommerceReturnReasons(value: unknown): CommerceReturnReasonsPolicy;
-/** @experimental Install the commerce return reasons policy on a host-owned write-capable connection. */
-export declare function installCommerceReturnReasonsPolicy(db: Executor, policy: CommerceReturnReasonsPolicy): Promise<void>;
-/** @experimental Read an explicit `commerce_return_reasons` override, returning `undefined` when absent. */
-export declare function readCommerceReturnReasonsOverride(db: Executor): Promise<CommerceReturnReasonsPolicy | undefined>;
-/** @experimental Read the installed `commerce_return_reasons` policy or the default absence fallback. */
-export declare function readCommerceReturnReasonsPolicy(db: Executor): Promise<CommerceReturnReasonsPolicy>;
-export {};
 ```
 ## dist/commerce/runtimeErrors.d.ts
 

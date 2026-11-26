@@ -9,7 +9,7 @@ import {
   readCommerceReturnReasonsPolicy,
   validateCommerceReturnReasons,
   type CommerceReturnReasonsPolicy,
-} from "@openlup/platform/commerce";
+} from "@openlup/platform/commerce/server";
 import {
   DEFAULT_SHIPPING_PAYMENT_METHOD_PREFERENCES,
   createPostgresCustomerPreferencePort,

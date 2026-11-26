@@ -460,15 +460,9 @@ Symbols whose maturity differs from their subpath, or that are deprecated:
 | `./catalog/testing` | `runCatalogExtensionConformance` | experimental | no |
 | `./channels/testing` | `ScriptedChannelOutcome` | experimental | no |
 | `./commerce` | `CheckoutCommandV2` | experimental | no |
-| `./commerce` | `CommerceReturnReasonsPolicy` | experimental | no |
-| `./commerce` | `DEFAULT_COMMERCE_RETURN_REASONS` | experimental | no |
 | `./commerce` | `DestinationAddressV2` | experimental | no |
 | `./commerce` | `OrderMoneyV2` | experimental | no |
 | `./commerce` | `PaidOrderMoneyV2` | experimental | no |
-| `./commerce` | `installCommerceReturnReasonsPolicy` | experimental | no |
-| `./commerce` | `readCommerceReturnReasonsOverride` | experimental | no |
-| `./commerce` | `readCommerceReturnReasonsPolicy` | experimental | no |
-| `./commerce` | `validateCommerceReturnReasons` | experimental | no |
 | `./commerce/contracts` | `CheckoutCommandV2` | experimental | no |
 | `./commerce/contracts` | `DestinationAddressV2` | experimental | no |
 | `./commerce/contracts` | `OrderMoneyV2` | experimental | no |
@@ -477,6 +471,8 @@ Symbols whose maturity differs from their subpath, or that are deprecated:
 | `./commerce/server` | `CommerceMoneyLimitsV2` | experimental | no |
 | `./commerce/server` | `CommerceQuotePortV2` | experimental | no |
 | `./commerce/server` | `CommerceQuoteV2Request` | experimental | no |
+| `./commerce/server` | `CommerceReturnReasonsPolicy` | experimental | no |
+| `./commerce/server` | `DEFAULT_COMMERCE_RETURN_REASONS` | experimental | no |
 | `./commerce/server` | `DbBackedCommerceQuotePortV2Deps` | experimental | no |
 | `./commerce/server` | `InstallLimitsInput` | experimental | no |
 | `./commerce/server` | `InstallLimitsResult` | experimental | no |
@@ -491,7 +487,11 @@ Symbols whose maturity differs from their subpath, or that are deprecated:
 | `./commerce/server` | `describeCommerceMoneyLimitsV2Setting` | experimental | no |
 | `./commerce/server` | `inspectCommerceMoneyLimitsV2` | experimental | no |
 | `./commerce/server` | `installCommerceMoneyLimitsV2` | experimental | no |
+| `./commerce/server` | `installCommerceReturnReasonsPolicy` | experimental | no |
 | `./commerce/server` | `readCheckoutRecoveryReminderObservation` | experimental | no |
+| `./commerce/server` | `readCommerceReturnReasonsOverride` | experimental | no |
+| `./commerce/server` | `readCommerceReturnReasonsPolicy` | experimental | no |
+| `./commerce/server` | `validateCommerceReturnReasons` | experimental | no |
 | `./commerce/server/destinations` | `DestinationBindingV2` | experimental | no |
 | `./commerce/server/destinations` | `DestinationContextV2` | experimental | no |
 | `./commerce/server/destinations` | `DestinationIssueResultV2` | experimental | no |

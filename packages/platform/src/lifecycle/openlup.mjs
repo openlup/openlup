@@ -183,7 +183,7 @@ async function bindSettings({ database, app, configuration }) {
     // eslint-disable-next-line no-restricted-syntax -- tool entry composes existing installed capabilities only for connected settings
     const { readAccountSupportOperatorSlideMaxDaysOverride } = await import("@openlup/platform/account-support");
     // eslint-disable-next-line no-restricted-syntax -- tool entry composes existing installed capabilities only for connected settings
-    const { readCommerceReturnReasonsOverride } = await import("@openlup/platform/commerce");
+    const { readCommerceReturnReasonsOverride } = await import("@openlup/platform/commerce/server");
     // eslint-disable-next-line no-restricted-syntax -- tool entry composes existing installed capabilities only for connected settings
     const { describeRenewalStockProtectionSetting, readRenewalStockProtectionOverride, previewRenewalStockProtection } = await import("@openlup/platform/inventory");
     // eslint-disable-next-line no-restricted-syntax -- tool entry composes existing installed capabilities only for connected settings
