@@ -132,6 +132,47 @@ test('page handle: lists only visible anchors, with custom locators replacing at
     'every scroll position is restored').toEqual([0, 0, 0, 0]);
 });
 
+// The root scroller is styled as many stores style it, scrolling is smooth, and two anchors escape an overflow: hidden
+// wrapper through their containing block: a fixed cart bar and an absolute anchor positioned by an outer element.
+const rootMarkup = (rootStyle: string) => `<!doctype html><html style="${rootStyle}"><head><meta charset="utf-8"><style>
+  body { margin: 0; font: 16px sans-serif; } .box { display: block; width: 120px; height: 40px; margin: 4px; background: #ddd; }
+</style></head><body>
+  <div style="overflow: hidden; height: 8px">
+    <div data-openlup-action="case_fixed_bar" style="position: fixed; left: 0; bottom: 0; width: 230px; height: 36px; background: #ccc"></div>
+  </div>
+  <div style="position: relative; height: 100px">
+    <div style="overflow: hidden; height: 20px">
+      <div data-openlup-state="case_escaping" style="position: absolute; top: 60px; left: 10px; width: 60px; height: 20px; background: #bbb"></div>
+    </div>
+  </div>
+  <div style="position: relative; width: 200px; height: 40px">
+    <span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">
+      <span data-openlup-state="case_visually_hidden">Order confirmed</span>
+    </span>
+  </div>
+  <div style="clip-path: inset(50%); width: 200px; height: 40px"><button class="box" data-openlup-action="case_clip_path">Clipped</button></div>
+  <div style="height: 3000px"></div>
+  <div class="box" data-openlup-state="case_root_below_fold"></div>
+</body></html>`;
+
+for (const rootStyle of ['overflow-x: hidden; scroll-behavior: smooth', 'overflow-y: scroll; scroll-behavior: smooth']) {
+  test(`page handle: the root scroller and escaping positioned anchors do not clip, under ${rootStyle}`, async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 600 });
+    await page.setContent(rootMarkup(rootStyle));
+    const handle = createPageHandle(page);
+    const scrollY = () => page.evaluate(() => window.scrollY);
+    expect(await handle.find({ attribute: 'state', value: 'case_root_below_fold' }, { timeoutMs: 1_000 })).toEqual({ width: 120, height: 40, ...visible });
+    expect(await scrollY(), 'restored at once, not animated').toBe(0);
+    expect(await handle.find({ attribute: 'action', value: 'case_fixed_bar' }, { timeoutMs: 1_000 })).toEqual({ width: 230, height: 36, ...visible });
+    expect(await handle.find({ attribute: 'state', value: 'case_escaping' }, { timeoutMs: 1_000 })).toEqual({ width: 60, height: 20, ...visible });
+    // Clipping by the anchor's own containing chain still applies.
+    expect(await handle.find({ attribute: 'state', value: 'case_visually_hidden' }, { timeoutMs: 1_000 })).toMatchObject({ coveredAtCentre: true });
+    expect(await handle.find({ attribute: 'action', value: 'case_clip_path' }, { timeoutMs: 1_000 })).toMatchObject({ coveredAtCentre: true });
+    expect(await handle.anchors()).toEqual(['action:case_fixed_bar', 'state:case_escaping', 'state:case_root_below_fold']);
+    expect(await scrollY(), 'restored at once after a batch, not animated').toBe(0);
+  });
+}
+
 test('page handle: a withheld create reaches the server, the page sees a failure, and settling waits for it', async ({ page }) => {
   const handle = createPageHandle(page, { origin });
   await handle.navigate('/purchase');
