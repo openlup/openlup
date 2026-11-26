@@ -1,4 +1,6 @@
+import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { fileURLToPath } from "node:url";
 import type { Pool, PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import type { CommerceQuoteMoneyV2 } from "@openlup/platform/pricing/contracts";
@@ -167,6 +169,19 @@ it("duplicate_observation_ignored", async () => {
   expect(await bytes(store.runtime, f.id)).toBe(before);
 });
 
+it("round trips a supplementary-plane acceptance reference through storage and the reader", async () => {
+  const acceptanceRef = "𐐷".repeat(256);
+  const accepted = await issue(store, sku, true);
+  const { id } = await transaction(store.owner, db => write(db, accepted, sku, { snapshot: { acceptance_ref: acceptanceRef } }));
+  await signed(await prepare(id, accepted.quote.payableMinor));
+  const result = await read(store.runtime, id);
+  const decoder = fileURLToPath(new URL("../../packages/platform/test/commerce/paidOrderMoneyV2Read.fixture.ts", import.meta.url));
+  const output = execFileSync(process.execPath, ["--import", "tsx", decoder], {
+    input: JSON.stringify({ id, result }), encoding: "utf8",
+  });
+  expect(JSON.parse(output)).toMatchObject({ acceptedQuoteRef: { acceptanceRef } });
+});
+
 it("paid_money_survives_refund", async () => {
   const f = await paid(true);
   const before = await bytes(store.runtime, f.id);
@@ -202,6 +217,16 @@ async function truthEdit(f: Paid, edit: string, args: unknown[] = []) {
       FROM public.${truthTable} t WHERE t.id=$2 AND ${transitionTable}.id=$1`, [f.transition, f.truth]);
   });
 }
+
+it("refuses a bound observation that crosses into UTC year 10000", async () => {
+  const f = await paid(true);
+  const setObservation = (observedAt: string) => truthEdit(f,
+    "occurred_at=($2::text)::timestamptz,source_evidence=jsonb_set(source_evidence,'{observedAt}',to_jsonb($2::text))", [observedAt]);
+  await setObservation("9999-12-31T22:59:59.999999-01:00");
+  expect(await read(store.runtime, f.id)).toMatchObject({ kind: "paid", money: { capturedAt: "9999-12-31T23:59:59.999Z" } });
+  await setObservation("9999-12-31T23:00:00-01:00");
+  await refuse(f.id);
+});
 
 it("capture_binding_refuses", async () => {
   const other = await paid(true);

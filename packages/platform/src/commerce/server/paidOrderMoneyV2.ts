@@ -27,11 +27,13 @@ const captureRemedies = {
 } as const;
 
 const payable = minor.min(1).max(2_147_483_647);
+// The stored acceptance reference is bounded in PostgreSQL characters.
+const acceptanceRef = z.string().refine(value => !value.includes("\u0000") && /^[^\uD800-\uDFFF]{1,256}$/u.test(value));
 const paidFacts = z.strictObject({
   ...factsShape.shape, currency, price, lines: z.array(line).min(1).max(50), feeLines: z.array(feeLine).max(256),
   netTotal: minor, taxTotal: minor, feeTotal: minor, payableMinor: payable,
   orderId: uuid, moneyVersion: z.literal("commerce.order-money.v2"), schemaVersion: z.literal(2), acceptedMoneyDigest: digest,
-  acceptedQuoteRef: z.strictObject({ quoteId: uuid, quoteDigest: digest, acceptanceRef: ref, tokenDigest: digest }),
+  acceptedQuoteRef: z.strictObject({ quoteId: uuid, quoteDigest: digest, acceptanceRef, tokenDigest: digest }),
   intentId: uuid, captureEvidenceRef: uuid, capturedAt: z.iso.datetime({ precision: 3 }), paidMinor: payable,
 });
 const live = paidFacts.extend({ deliverySelectionRef: ref, deliveryBuckets: z.array(bucket).max(256) });

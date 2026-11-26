@@ -9954,6 +9954,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/commerce/paidOrderMoneyV2Read.fixture.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/commerce/paidOrderMoneyV2Reader.test.ts",
       "class": "public-output"
     },

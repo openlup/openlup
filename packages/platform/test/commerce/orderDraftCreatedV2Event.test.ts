@@ -43,6 +43,8 @@ it.each([
   [{ payload: { ...payload, acceptedMoneyDigest: "bad" } }, "/payload/acceptedMoneyDigest"],
   [{ payload: { ...payload, destinationSnapshotRef: null } }, "/payload/destinationSnapshotRef"],
   [{ payload: { ...payload, email: "forbidden" } }, "/payload/email"],
+  [{ payload: Object.defineProperty({ ...payload }, "hidden", { value: true }) }, "/payload/hidden"],
+  [{ payload: Object.defineProperty({ ...payload }, Symbol("hidden"), { value: true }) }, "/payload/Symbol(hidden)"],
   [{ "extra/key~": true }, "/extra~1key~0"],
   [{ created_at: "yesterday" }, "/created_at"],
   [{ available_at: null }, "/available_at"],

@@ -2669,7 +2669,7 @@ export declare const remedies: {
     money_tax_evidence_mismatch: string;
     money_amount_out_of_range: string;
 };
-export type Code = keyof typeof remedies;
+type Code = keyof typeof remedies;
 export declare class MoneyIssue extends Error {
     readonly code: Code;
     readonly path: Path;
@@ -2684,6 +2684,7 @@ export declare const positionsMatchBasis: (basisMinor: number, netMinor: number,
     taxableMinor: number;
 }[], inclusive: boolean, shipping: boolean) => boolean;
 export declare function checkMoney(money: CommerceQuoteMoneyV2): MoneyIssue | undefined;
+export {};
 ```
 ## dist/pricing/quotePorts.d.ts
 

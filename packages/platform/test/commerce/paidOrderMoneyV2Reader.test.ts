@@ -93,6 +93,12 @@ it("retains a driver failure as a non-enumerable cause", async () => {
   expect(Object.getOwnPropertyDescriptor(error, "cause")).toMatchObject({ value: cause, enumerable: false });
 });
 
+it.each(["𐐷".repeat(257), "acceptance\u0000ref", "\uD800"])("rejects an acceptance reference outside the storage text domain", async acceptanceRef => {
+  const value = envelope(false);
+  value.money.acceptedQuoteRef.acceptanceRef = acceptanceRef;
+  exactError(await caught(readPaidOrderMoneyV2(executor(value), orderId)), unavailable, true);
+});
+
 function objects(value: unknown, path: (string | number)[] = []): (string | number)[][] {
   if (Array.isArray(value)) return value.flatMap((item, index) => objects(item, [...path, index]));
   if (value === null || typeof value !== "object") return [];

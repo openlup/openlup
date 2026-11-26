@@ -9,6 +9,7 @@ DECLARE
   successes bigint;
   source_kind text;
   binding record;
+  capture_utc timestamp;
   issued_body jsonb;
   mismatch constant jsonb := '{"kind":"refused","code":"paid_order_money_capture_mismatch"}';
   capture_mismatch constant jsonb := mismatch || '{"field":"/captureEvidenceRef"}';
@@ -78,8 +79,10 @@ BEGIN
     RETURN capture_mismatch;
   END IF;
 
+  -- The wire years 0000 through 9999 must hold after normalizing the bound instant to UTC.
+  capture_utc := truth.occurred_at AT TIME ZONE 'UTC';
   -- JSON observations stay text until both the zoned wire grammar and PostgreSQL input accept them.
-  IF EXISTS (
+  IF capture_utc < timestamp '0001-01-01 BC' OR capture_utc >= timestamp '10000-01-01' OR EXISTS (
     SELECT FROM (
       SELECT truth.source_evidence->>'observedAt' AS at
       UNION ALL
@@ -207,9 +210,9 @@ BEGIN
     'acceptedQuoteRef',pg_catalog.jsonb_build_object('quoteId',snapshot.accepted_quote_id,'quoteDigest',snapshot.accepted_quote_digest,
       'acceptanceRef',snapshot.acceptance_ref,'tokenDigest',snapshot.token_digest),
     'intentId',intent.id,'captureEvidenceRef',binding.id,'paidMinor',truth.amount_minor,
-    'capturedAt',CASE WHEN extract(year FROM truth.occurred_at AT TIME ZONE 'UTC')=-1 THEN '0000'
-      ELSE pg_catalog.to_char(truth.occurred_at AT TIME ZONE 'UTC','YYYY') END
-      || pg_catalog.to_char(truth.occurred_at AT TIME ZONE 'UTC','-MM-DD"T"HH24:MI:SS.MS"Z"')));
+    'capturedAt',CASE WHEN extract(year FROM capture_utc)=-1 THEN '0000'
+      ELSE pg_catalog.to_char(capture_utc,'YYYY') END
+      || pg_catalog.to_char(capture_utc,'-MM-DD"T"HH24:MI:SS.MS"Z"')));
 END;
 $$;
 

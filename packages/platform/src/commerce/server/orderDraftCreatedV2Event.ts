@@ -37,13 +37,24 @@ function invalid(path: readonly PropertyKey[]) {
   });
 }
 
+function snapshotObject(value: object) {
+  return Object.fromEntries(Reflect.ownKeys(value).map(key => [key, Reflect.get(value, key)]));
+}
+
 /** @experimental Read the original references from a claimed v2 draft-created row. */
 export function readCommerceOrderDraftCreatedV2Event(record: unknown) {
   if (record === null || typeof record !== "object" || Array.isArray(record)) return null;
-  const snapshot = Object.fromEntries(Reflect.ownKeys(record).map(key => [key, Reflect.get(record, key)]));
+  const snapshot = snapshotObject(record);
   if (snapshot.event_type !== COMMERCE_ORDER_DRAFT_CREATED_V2_EVENT_TYPE) return null;
   const symbol = Object.getOwnPropertySymbols(snapshot)[0];
   if (symbol) throw invalid([symbol]);
+  const content: unknown = snapshot.payload;
+  if (content !== null && typeof content === "object" && !Array.isArray(content)) {
+    const payloadSnapshot = snapshotObject(content);
+    const extra = Reflect.ownKeys(payloadSnapshot).find(key => !Object.hasOwn(payload.shape, key));
+    if (extra !== undefined) throw invalid(["payload", extra]);
+    snapshot.payload = payloadSnapshot;
+  }
   const parsed = row.safeParse(snapshot);
   if (!parsed.success) {
     const issue = parsed.error.issues[0]!;

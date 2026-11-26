@@ -112,7 +112,7 @@ export const remedies = {
   money_tax_evidence_mismatch: "Replay the original money and its matching tax evidence.",
   money_amount_out_of_range: "Choose a supported amount and obtain a fresh quote.",
 };
-export type Code = keyof typeof remedies;
+type Code = keyof typeof remedies;
 export class MoneyIssue extends Error {
   constructor(readonly code: Code, readonly path: Path, readonly remedy = remedies[code]) { super(remedy); }
 }
