@@ -10,7 +10,8 @@ import { routes } from '../shared/routes.ts';
 import { supportedLocales } from '../shared/locales.ts';
 import type { StarterCatalogueItem } from '../shared/catalogue-products.ts';
 import { decideSelectionEntry, parseSelectionEntry, selectionEntryCopy, selectionEntryParameter, selectionEntryPath,
-  withoutSelectionEntry, type SelectionEntryCatalogue } from '../shared/selection-entry.ts';
+  settleCatalogueRequest, withoutSelectionEntry, type SelectionEntryCatalogue } from '../shared/selection-entry.ts';
+import { range, set } from '../shared/subscription-offer.ts';
 
 const root = new URL('..', import.meta.url).pathname;
 const query = (path: string) => new URLSearchParams(path.slice(path.indexOf('?') + 1));
@@ -185,4 +186,30 @@ test('the checkout action anchor is named only through storefrontAnchor', () => 
     .filter(path => /['"`]proceed_to_checkout['"`]/.test(readFileSync(path, 'utf8')));
   assert.deepEqual(literal, []);
   assert.ok(readFileSync(join(root, 'client/pages/storefront.ts'), 'utf8').includes('storefrontAnchor.action.proceed_to_checkout'));
+});
+
+test('a store that offers a 7-day cadence still refuses a cadence with leading zeros or zero', () => {
+  const config = structuredClone(Object.values(configurations)[0]!);
+  const plan = config.subscriptionOffers.classic;
+  plan.days = set(7, 14, 28); plan.defaultDays = 14; delete plan.checkoutDays;
+  plan.bySku = Object.fromEntries(config.offer.products.map(product => [product.sku, [{ days: plan.days, quantities: range(1, 99, 1) }]]));
+  Object.assign(config.offer, { cadenceDays: [7, 14, 28], defaultCadenceDays: 14 });
+  const sku = encodeURIComponent(config.offer.products[0]!.sku);
+  const seven = parseSelectionEntry(config, query(`?mode=subscription&cadence=7&line=${sku}%3A2`));
+  assert.equal(seven.kind, 'read');
+  if (seven.kind === 'read') assert.equal(validateCart(config, seven.candidate).ok, true);
+  for (const cadence of ['007', '07', '0', '%2B7', '7.0']) {
+    assert.deepEqual(parseSelectionEntry(config, query(`?mode=subscription&cadence=${cadence}&line=${sku}%3A2`)),
+      { kind: 'refused', issues: [{ code: 'cadence_unavailable' }], ignored: [] }, cadence);
+  }
+});
+
+test('a catalogue request that rejects, or whose answer cannot be applied, settles as unavailable', async () => {
+  const applied: unknown[] = [];
+  assert.equal(await settleCatalogueRequest(async () => ({ ok: true as const, products: ['p'] }), result => { applied.push(result); }), undefined);
+  assert.deepEqual(applied, [{ ok: true, products: ['p'] }]);
+  assert.equal(await settleCatalogueRequest(async () => ({ ok: false as const, code: 'host_binding_required' }), () => undefined), undefined);
+  assert.equal(await settleCatalogueRequest(() => Promise.reject(new Error('lost')), () => undefined), 'starter_catalogue_unavailable');
+  assert.equal(await settleCatalogueRequest(async () => ({ ok: true as const, products: [] }), () => { throw new Error('reconcile'); }),
+    'starter_catalogue_unavailable');
 });

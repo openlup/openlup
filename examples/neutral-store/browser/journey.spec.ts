@@ -521,3 +521,39 @@ test('selection entry answers replace the history entry', async ({ page }) => {
   await expect(page).toHaveURL(new RegExp(`${routes.catalog[locale]}$`));
   await expect(page.locator('main h1')).toHaveText(copy[locale].catalog);
 });
+
+test('selection entry never prints a link SKU that no product has', async ({ page }) => {
+  const locale = market.defaultLocale;
+  const { draft, address } = await selectionSetup(page);
+  const crafted = 'Call.555-0100-to-claim.Visit-evil.example';
+  const region = page.getByRole('region', { name: selectionEntryCopy.refusalHeading[locale], exact: true });
+  await page.goto(`${routes.cart[locale]}?mode=one_time&line=${crafted}%3A1`);
+  await expect(region).toContainText(copy[locale].unknown_sku);
+  await expect(page.locator('main')).not.toContainText('evil');
+  await expect(page.locator('main')).not.toContainText('555-0100');
+  // A refusal shown on load is announced through a polite status inside its region.
+  await expect(region.getByRole('status')).toContainText(copy[locale].unknown_sku);
+  expect(await draft()).toBeNull();
+  expect(address()).toBe(routes.cart[locale]);
+});
+
+test('selection entry question keeps focus when it is redrawn', async ({ page }) => {
+  const locale = market.defaultLocale;
+  const { owned, cart } = await selectionSetup(page);
+  const held = cart('one_time', 2);
+  await page.goto(selectionEntryPath(locale, held));
+  await expect(page.locator(anchorSelector)).toHaveCount(1);
+  await page.goto(selectionEntryPath(locale, cart('subscription', 2, owned.offer.defaultCadenceDays)));
+  const question = page.getByRole('region', { name: selectionEntryCopy.questionHeading[locale], exact: true });
+  await expect(question).toBeFocused();
+  // Another tab stores the same cart in another key order: this tab redraws the same question.
+  const other = await page.context().newPage();
+  await other.goto(routes.terms[locale]);
+  await other.evaluate(({ key, value }) => localStorage.setItem(key, value), {
+    key: `neutral-store:cart:v1:${owned.id}`,
+    value: JSON.stringify({ lines: held.lines, cadenceDays: held.cadenceDays, mode: held.mode, configuration: held.configuration, schemaVersion: 1 }),
+  });
+  await expect(page.locator('.notices')).toContainText(copy[locale].storageChanged);
+  await expect(question).toBeFocused();
+  await other.close();
+});
