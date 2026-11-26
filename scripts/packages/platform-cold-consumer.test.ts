@@ -2060,7 +2060,8 @@ it("stages the canonical migration manifest as a consumer file so oversized mani
     writeFileSync(manifestPath, oversized);
     const out = consumerNode(consumer, `
       import { readFileSync } from "node:fs";
-      const parsed = JSON.parse(readFileSync(process.argv[2], "utf8"));
+      import { argv } from "node:process";
+      const parsed = JSON.parse(readFileSync(argv[2], "utf8"));
       console.log(JSON.stringify({ count: parsed.entries.length }));
     `, [manifestPath]);
     expect(JSON.parse(out)).toEqual({ count: 1600 });
