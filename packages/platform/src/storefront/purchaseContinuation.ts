@@ -30,8 +30,11 @@ import { applyPendingResume, checkPendingResume, type PendingResumeDecision } fr
  *   snapshot never carries the continuation identity.
  * - `result` and `outcome`: the last answer applied and its class, computed
  *   once when the answer was applied.
- * - `source`: what produced the current status, or `null` after `begin` and a
- *   reset.
+ * - `source`: what produced the current status: `submit`, `replay` or `read`
+ *   for an answer applied from that command, `submit` also for a submit that
+ *   ended without an answer, and `return` for the buyer's return. It is `null`
+ *   for a status no answer produced, for example `details_changed` or
+ *   `storage_unavailable`, and after `begin` and a reset.
  * - `resumeDecision`: the last pending-action decision, `null` once an answer
  *   is applied.
  * - `error`: the error behind the current status when a binding rejected.
@@ -109,12 +112,18 @@ const FIELDS = Object.keys(FIRST) as (keyof Snapshot<never>)[];
  * only through these bindings. It holds no storage name, wire format,
  * provider, clock of its own or timer, and creating it calls no binding.
  *
+ * The bindings object has no exported type name. A host names it as
+ * `Parameters<typeof createPurchaseContinuation<TPayload, TRequest, TResult, TOptions>>[0]`
+ * and a member as, for example, `…[0]["transport"]`.
+ *
  * Host obligations:
  *
- * 1. `transport.submit`, `transport.replay` and `transport.read` resolve every
- *    typed server answer, refusals included, and reject only on a transport
- *    failure, except the server's in-flight refusal, which rejects so that
+ * 1. `transport.submit` and `transport.replay` resolve every typed server
+ *    answer, refusals included, and reject only on a transport failure or on
+ *    the server's in-flight refusal, which rejects so that
  *    `classifySubmitFailure` returns `attempt_in_flight` for it.
+ *    `transport.read` resolves every typed server answer and rejects only on a
+ *    transport failure.
  * 2. `commandKeyFor` is deterministic across calls, reloads and instances; the
  *    key is the command's replay identity.
  * 3. `read` and `abandon` work from `{ continuationId, attempt }` alone;
@@ -139,16 +148,30 @@ const FIELDS = Object.keys(FIRST) as (keyof Snapshot<never>)[];
  * answer changes the status. `settled` and `closed` clear the record and the
  * pending-action marker; `declined` advances the attempt only when
  * `declinedAttempt` names the stored attempt, and clears the marker. A changed
- * payload is sent only under `update_in_place`, or after a `refused` answer;
- * any other policy value reads as `refuse_changed`. When a record write throws
- * or does not read back, nothing is sent: the controller takes no
- * storage-failure policy. A class, recovery, reading or decision this version
- * does not know sends nothing more and keeps the record.
+ * payload is sent only under `update_in_place`, or after a `refused` answer to
+ * a submit or its replay, until the next payload is sent; any other policy
+ * value reads as `refuse_changed`. When a record write throws or does not read
+ * back with the identity and fingerprint just written, nothing is sent and
+ * `error` holds the write's error: the controller takes no storage-failure
+ * policy. A class, recovery, reading or decision this version does not know
+ * sends nothing more and keeps the record.
  *
- * A rejected `read` or `abandon` keeps the status and sets `error`. Any other
- * binding error, a throwing `storage.write` aside, rejects the command with
- * that error after `busy` is released, and the snapshot keeps its values from
- * before the command.
+ * A stored identity that `identifier.accepts` rejects is never replaced and no
+ * create is sent under it; reads and the pending-action check still address it.
+ *
+ * What an instance learned about a purchase (paid, a refusal that allows a
+ * changed payload, the last answer) belongs to that purchase's identity. When
+ * the stored record names another identity, for example after another tab
+ * started a new purchase, the instance drops it on its next command that
+ * reads the record (a refused command reads nothing), and it clears a record
+ * only while the record still names the identity it read.
+ *
+ * A rejected `read` in `resume` and a rejected `abandon` in `startOver` keep
+ * the status and set `error`; in the pending-action check a rejected read is
+ * the reading `checking`. A throwing `storage.write` is a storage failure: it
+ * sets `error` and, when the attempt was to advance, leaves it where it was.
+ * Any other binding error rejects the command with that error after `busy` is
+ * released, and the snapshot keeps its values from before the command.
  *
  * @experimental
  */
@@ -185,6 +208,8 @@ export function createPurchaseContinuation<TPayload, TRequest, TResult, TOptions
   let settled = false;
   let refusedSeen = false;
   let last: Identity | null = null;
+  /** The identity the snapshot's `result` answers for. */
+  let resultFor: ContinuationId | null = null;
   const listeners: { listener: () => void; active: boolean }[] = [];
 
   const done = (accepted: boolean) => ({ accepted, snapshot });
@@ -203,15 +228,56 @@ export function createPurchaseContinuation<TPayload, TRequest, TResult, TOptions
     }
   }
 
-  /** Reads the record and remembers its identity, so a purchase can still be read after its record is cleared. */
+  /**
+   * Reads the record and remembers its identity, so a purchase can still be
+   * read after its record is cleared. When the record names another identity,
+   * what this instance learned about the earlier purchase no longer applies.
+   */
   function readRecord(): ContinuationRecord | null {
     const record = readContinuationRecord({ storage });
-    if (record) last = { continuationId: record.continuationId, attempt: record.attempt ?? FIRST_ATTEMPT };
+    if (record) {
+      if (last && last.continuationId !== record.continuationId) {
+        settled = false;
+        refusedSeen = false;
+      }
+      last = { continuationId: record.continuationId, attempt: record.attempt ?? FIRST_ATTEMPT };
+    }
     return record;
   }
 
-  const recordFields = (record: ContinuationRecord | null): Patch<TResult> =>
-    ({ hasContinuation: record !== null, attempt: record?.attempt ?? FIRST_ATTEMPT });
+  /** The record's fields of the snapshot; an answer for another identity than the stored one is dropped with its status. */
+  function recordFields(record: ContinuationRecord | null): Patch<TResult> {
+    const fields: Patch<TResult> = { hasContinuation: record !== null, attempt: record?.attempt ?? FIRST_ATTEMPT };
+    if (!record || resultFor === null || resultFor === record.continuationId) return fields;
+    resultFor = null;
+    return { ...fields, status: "unknown", result: null, outcome: null, source: null, resumeDecision: null };
+  }
+
+  /** The last answer, when it answers for this identity. */
+  const resultOf = (continuationId: ContinuationId) => resultFor === continuationId ? snapshot.result : null;
+
+  /** Clears the record only while it still names the identity that was read. */
+  function clearRecordOf(continuationId: ContinuationId): void {
+    if (storage.read()?.continuationId === continuationId) clearContinuationRecord({ storage });
+  }
+
+  /** The host storage with each write's error caught and kept in `errors`. */
+  function guardedStorage(errors: unknown[]): ContinuationRecordStorageBinding & { written: ContinuationRecord | null } {
+    const guarded = {
+      written: null as ContinuationRecord | null,
+      read: () => storage.read(),
+      write: (record: ContinuationRecord) => {
+        guarded.written = record;
+        try {
+          storage.write(record);
+        } catch (error) {
+          errors.push(error);
+        }
+      },
+      clear: () => storage.clear(),
+    };
+    return guarded;
+  }
 
   function identity(): Identity | null {
     readRecord();
@@ -233,15 +299,18 @@ export function createPurchaseContinuation<TPayload, TRequest, TResult, TOptions
     return done(true);
   }
 
-  function applyAnswer(patch: Patch<TResult>, result: TResult, outcome: SubmitOutcomeClass, source: Snapshot<TResult>["source"]): void {
+  function applyAnswer(patch: Patch<TResult>, result: TResult, outcome: SubmitOutcomeClass,
+    source: Snapshot<TResult>["source"], continuationId: ContinuationId): void {
     if (settled && outcome !== "settled") return;
     let status: Snapshot<TResult>["status"];
+    const writeErrors: unknown[] = [];
     switch (outcome) {
       case "settled":
         status = bindings.activationPending(result) ? "paid_pending_activation" : "paid";
-        clearContinuationRecord({ storage });
-        pending?.storage.clear();
+        // Paid before anything is cleared, so a failing clear cannot leave the purchase open to a new submit.
         settled = true;
+        clearRecordOf(continuationId);
+        pending?.storage.clear();
         break;
       case "needs_client_action":
         status = "awaiting_payment";
@@ -252,7 +321,9 @@ export function createPurchaseContinuation<TPayload, TRequest, TResult, TOptions
       case "declined": {
         const declined = bindings.declinedAttempt(result);
         const record = readRecord();
-        if (record && declined === (record.attempt ?? 0)) advanceAttempt({ storage });
+        if (record && record.continuationId === continuationId && declined === (record.attempt ?? 0)) {
+          advanceAttempt({ storage: guardedStorage(writeErrors) });
+        }
         pending?.storage.clear();
         status = "declined";
         break;
@@ -261,7 +332,7 @@ export function createPurchaseContinuation<TPayload, TRequest, TResult, TOptions
         status = "refused";
         break;
       case "closed":
-        clearContinuationRecord({ storage });
+        clearRecordOf(continuationId);
         pending?.storage.clear();
         status = "closed";
         break;
@@ -270,7 +341,8 @@ export function createPurchaseContinuation<TPayload, TRequest, TResult, TOptions
     }
     // Only a refusal of a command this page sent says nothing was created under the key.
     refusedSeen = outcome === "refused" && (source === "submit" || source === "replay");
-    Object.assign(patch, { status, result, outcome, source, resumeDecision: null, error: undefined });
+    resultFor = continuationId;
+    Object.assign(patch, { status, result, outcome, source, resumeDecision: null, error: writeErrors[0] });
   }
 
   /**
@@ -291,7 +363,7 @@ export function createPurchaseContinuation<TPayload, TRequest, TResult, TOptions
         // With no identity nothing can be read: the reading is not an answer.
         if (!purchase) return { kind: "checking" };
         try {
-          read = { answer: await transport.read({ ...purchase, result: snapshot.result, pending: action }) };
+          read = { answer: await transport.read({ ...purchase, result: resultOf(purchase.continuationId), pending: action }) };
         } catch (error) {
           read = { error };
           return { kind: "checking" };
@@ -300,10 +372,10 @@ export function createPurchaseContinuation<TPayload, TRequest, TResult, TOptions
       },
     };
     const decision = await checkPendingResume({ status, clock: pending.clock, providerFacts: pending.providerFacts }, marker, selectedProvider);
-    if (read && "answer" in read) {
+    if (purchase && read && "answer" in read) {
       const outcome = bindings.classifyOutcome(read.answer);
       if (outcome === "settled" || outcome === "declined" || outcome === "closed") {
-        applyAnswer(patch, read.answer, outcome, "read");
+        applyAnswer(patch, read.answer, outcome, "read", purchase.continuationId);
         return true;
       }
     }
@@ -318,45 +390,36 @@ export function createPurchaseContinuation<TPayload, TRequest, TResult, TOptions
       reopenAction: () => { halted = "awaiting_payment"; },
     });
     patch.resumeDecision = decision;
-    if (halted) patch.status = halted;
+    if (halted) Object.assign(patch, { status: halted, source: null });
     if (read && "error" in read) patch.error = read.error;
     return halts;
   }
 
   async function send(patch: Patch<TResult>, payload: TPayload, options: TOptions | undefined): Promise<void> {
-    let writeFailed = false;
-    const guarded: ContinuationRecordStorageBinding = {
-      read: () => storage.read(),
-      write: (record) => {
-        try {
-          storage.write(record);
-        } catch {
-          writeFailed = true;
-        }
-      },
-      clear: () => storage.clear(),
-    };
+    const writeErrors: unknown[] = [];
+    const guarded = guardedStorage(writeErrors);
     const record = readRecord();
     if (record && !identifier.accepts(record.continuationId)) {
       report?.("stored_continuation_rejected");
-      Object.assign(patch, { status: "unknown" }, recordFields(record));
+      Object.assign(patch, recordFields(record), { status: "unknown", source: null });
       return;
     }
     if (record && bindings.changedPayload !== "update_in_place") {
       const fingerprint = bindings.request.fingerprint(payload);
       if (fingerprint !== record.fingerprint) {
         if (!refusedSeen) {
-          Object.assign(patch, { status: "details_changed" }, recordFields(record));
+          Object.assign(patch, recordFields(record), { status: "details_changed", source: null });
           return;
         }
         guarded.write({ ...record, fingerprint });
       }
     }
     const continuationId = getOrCreateContinuationId({ storage: guarded, identifier }, { fingerprint: () => bindings.request.fingerprint(payload) });
-    // The attempt and the key come only from the record read back, so an identity that was not kept is never sent.
+    // The attempt and the key come only from the record read back, so an identity or fingerprint that was not kept is never sent.
     const stored = readRecord();
-    if (writeFailed || !stored || stored.continuationId !== continuationId) {
-      Object.assign(patch, { status: "storage_unavailable" }, recordFields(stored));
+    if (writeErrors.length > 0 || !stored || stored.continuationId !== continuationId
+      || (guarded.written !== null && stored.fingerprint !== guarded.written.fingerprint)) {
+      Object.assign(patch, recordFields(stored), { status: "storage_unavailable", source: null, error: writeErrors[0] });
       return;
     }
     const attempt = stored.attempt ?? FIRST_ATTEMPT;
@@ -373,13 +436,13 @@ export function createPurchaseContinuation<TPayload, TRequest, TResult, TOptions
         classifySubmitFailure: bindings.classifySubmitFailure,
         ...(report ? { report } : {}),
       }, { error, request, options });
-      if (recovery?.kind === "recovered") applyAnswer(patch, recovery.response, bindings.classifyOutcome(recovery.response), "replay");
+      if (recovery?.kind === "recovered") applyAnswer(patch, recovery.response, bindings.classifyOutcome(recovery.response), "replay", continuationId);
       else if (recovery?.kind === "in_flight") Object.assign(patch, { status: "awaiting_authority", source: "submit" });
-      else Object.assign(patch, { status: "unknown", error });
+      else Object.assign(patch, { status: "unknown", source: "submit", error });
       Object.assign(patch, recordFields(readRecord()));
       return;
     }
-    applyAnswer(patch, answer, bindings.classifyOutcome(answer), "submit");
+    applyAnswer(patch, answer, bindings.classifyOutcome(answer), "submit", continuationId);
     Object.assign(patch, recordFields(readRecord()));
   }
 
@@ -396,7 +459,7 @@ export function createPurchaseContinuation<TPayload, TRequest, TResult, TOptions
     },
     begin: async () => {
       if (snapshot.busy || snapshot.status !== "idle") return done(false);
-      const idle: Patch<TResult> = { status: "idle", result: null, outcome: null, source: null, ...recordFields(readRecord()) };
+      const idle: Patch<TResult> = { ...recordFields(readRecord()), status: "idle", result: null, outcome: null, source: null };
       if (!pending?.storage.read()) {
         publish(idle);
         return done(true);
@@ -420,18 +483,18 @@ export function createPurchaseContinuation<TPayload, TRequest, TResult, TOptions
       if (snapshot.busy) return done(false);
       const purchase = identity();
       if (!purchase) {
-        publish({ status: snapshot.status === "idle" ? "idle" : "unknown", ...recordFields(null) });
+        publish({ status: snapshot.status === "idle" ? "idle" : "unknown", source: null, ...recordFields(null) });
         return done(true);
       }
       return await whileBusy(async patch => {
         let answer: TResult;
         try {
-          answer = await transport.read({ ...purchase, result: snapshot.result, pending: pending?.storage.read() ?? null });
+          answer = await transport.read({ ...purchase, result: resultOf(purchase.continuationId), pending: pending?.storage.read() ?? null });
         } catch (error) {
           Object.assign(patch, { error }, recordFields(readRecord()));
           return;
         }
-        applyAnswer(patch, answer, bindings.classifyOutcome(answer), "read");
+        applyAnswer(patch, answer, bindings.classifyOutcome(answer), "read", purchase.continuationId);
         Object.assign(patch, recordFields(readRecord()));
       });
     },
@@ -451,21 +514,23 @@ export function createPurchaseContinuation<TPayload, TRequest, TResult, TOptions
         // Nothing addresses a purchase any more: a marker without any identity cannot be read or abandoned.
         if (marker) pending?.storage.clear();
         last = null;
+        resultFor = null;
         publish(FIRST);
         return done(true);
       }
       return await whileBusy(async patch => {
         let reading: StatusReading;
         try {
-          reading = await transport.abandon({ ...purchase, result: snapshot.result, pending: marker });
+          reading = await transport.abandon({ ...purchase, result: resultOf(purchase.continuationId), pending: marker });
         } catch (error) {
           Object.assign(patch, { error }, recordFields(readRecord()));
           return;
         }
         if (reading.kind === "terminal") {
-          clearContinuationRecord({ storage });
+          clearRecordOf(purchase.continuationId);
           pending?.storage.clear();
           last = null;
+          resultFor = null;
           Object.assign(patch, FIRST);
           return;
         }

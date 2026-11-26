@@ -646,8 +646,11 @@ import { type PendingResumeDecision } from "./pendingResume.js";
  *   snapshot never carries the continuation identity.
  * - `result` and `outcome`: the last answer applied and its class, computed
  *   once when the answer was applied.
- * - `source`: what produced the current status, or `null` after `begin` and a
- *   reset.
+ * - `source`: what produced the current status: `submit`, `replay` or `read`
+ *   for an answer applied from that command, `submit` also for a submit that
+ *   ended without an answer, and `return` for the buyer's return. It is `null`
+ *   for a status no answer produced, for example `details_changed` or
+ *   `storage_unavailable`, and after `begin` and a reset.
  * - `resumeDecision`: the last pending-action decision, `null` once an answer
  *   is applied.
  * - `error`: the error behind the current status when a binding rejected.
@@ -728,12 +731,18 @@ export interface PurchaseContinuation<TPayload, TResult, TOptions = undefined> {
  * only through these bindings. It holds no storage name, wire format,
  * provider, clock of its own or timer, and creating it calls no binding.
  *
+ * The bindings object has no exported type name. A host names it as
+ * `Parameters<typeof createPurchaseContinuation<TPayload, TRequest, TResult, TOptions>>[0]`
+ * and a member as, for example, `…[0]["transport"]`.
+ *
  * Host obligations:
  *
- * 1. `transport.submit`, `transport.replay` and `transport.read` resolve every
- *    typed server answer, refusals included, and reject only on a transport
- *    failure, except the server's in-flight refusal, which rejects so that
+ * 1. `transport.submit` and `transport.replay` resolve every typed server
+ *    answer, refusals included, and reject only on a transport failure or on
+ *    the server's in-flight refusal, which rejects so that
  *    `classifySubmitFailure` returns `attempt_in_flight` for it.
+ *    `transport.read` resolves every typed server answer and rejects only on a
+ *    transport failure.
  * 2. `commandKeyFor` is deterministic across calls, reloads and instances; the
  *    key is the command's replay identity.
  * 3. `read` and `abandon` work from `{ continuationId, attempt }` alone;
@@ -758,16 +767,30 @@ export interface PurchaseContinuation<TPayload, TResult, TOptions = undefined> {
  * answer changes the status. `settled` and `closed` clear the record and the
  * pending-action marker; `declined` advances the attempt only when
  * `declinedAttempt` names the stored attempt, and clears the marker. A changed
- * payload is sent only under `update_in_place`, or after a `refused` answer;
- * any other policy value reads as `refuse_changed`. When a record write throws
- * or does not read back, nothing is sent: the controller takes no
- * storage-failure policy. A class, recovery, reading or decision this version
- * does not know sends nothing more and keeps the record.
+ * payload is sent only under `update_in_place`, or after a `refused` answer to
+ * a submit or its replay, until the next payload is sent; any other policy
+ * value reads as `refuse_changed`. When a record write throws or does not read
+ * back with the identity and fingerprint just written, nothing is sent and
+ * `error` holds the write's error: the controller takes no storage-failure
+ * policy. A class, recovery, reading or decision this version does not know
+ * sends nothing more and keeps the record.
  *
- * A rejected `read` or `abandon` keeps the status and sets `error`. Any other
- * binding error, a throwing `storage.write` aside, rejects the command with
- * that error after `busy` is released, and the snapshot keeps its values from
- * before the command.
+ * A stored identity that `identifier.accepts` rejects is never replaced and no
+ * create is sent under it; reads and the pending-action check still address it.
+ *
+ * What an instance learned about a purchase (paid, a refusal that allows a
+ * changed payload, the last answer) belongs to that purchase's identity. When
+ * the stored record names another identity, for example after another tab
+ * started a new purchase, the instance drops it on its next command that
+ * reads the record (a refused command reads nothing), and it clears a record
+ * only while the record still names the identity it read.
+ *
+ * A rejected `read` in `resume` and a rejected `abandon` in `startOver` keep
+ * the status and set `error`; in the pending-action check a rejected read is
+ * the reading `checking`. A throwing `storage.write` is a storage failure: it
+ * sets `error` and, when the attempt was to advance, leaves it where it was.
+ * Any other binding error rejects the command with that error after `busy` is
+ * released, and the snapshot keeps its values from before the command.
  *
  * @experimental
  */

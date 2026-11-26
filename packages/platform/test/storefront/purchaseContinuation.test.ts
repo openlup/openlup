@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   createPurchaseContinuation,
   toCommandKey,
@@ -49,20 +49,20 @@ const FIRST = "rail-first";
 const SECOND = "rail-second";
 const FACTS: PaymentProviderFacts = { providers: [FIRST, SECOND], reopenableEmbeddedProviders: [FIRST], retryableAttemptStatuses: ["failed"] };
 
-/** Every continuation identity a test minted or stored, and everything the controller handed out, for W17. */
-const IDENTITIES = new Set<string>();
-const HANDED_OUT: string[] = [];
 let minted = 0;
 
+/** Collects every continuation identity a world met and everything its controller handed out (W17). */
+type Sink = { identities: Set<string>; handedOut: string[] };
+
 function storedRecord(id: string, payload: Payload = A, attempt?: number): ContinuationRecord {
-  IDENTITIES.add(id);
   const record: ContinuationRecord = { continuationId: toContinuationId(id), fingerprint: fingerprintOf(payload) };
   return attempt === undefined ? record : { ...record, attempt: attempt as AttemptNumber };
 }
 
 /** Storage shared by every controller instance of one test, as one browser's storage is shared across reloads. */
 function shelf(initial: ContinuationRecord | null = null) {
-  return { record: initial, writes: 0, mode: "ok" as "ok" | "drop" | "throw" | "stale" };
+  // `pin` keeps the stored fingerprint when a write keeps the identity, as a storage that drops a field would.
+  return { record: initial, writes: 0, mode: "ok" as "ok" | "drop" | "throw" | "stale" | "pin" };
 }
 type Shelf = ReturnType<typeof shelf>;
 
@@ -85,8 +85,8 @@ function deferred<T>() {
 }
 
 function world(options: {
-  shelf?: Shelf; server?: Server; policy?: string; marker?: { value: PendingAction | null };
-  accepts?: (value: string) => boolean; overrides?: Partial<Bindings>; report?: boolean;
+  shelf?: Shelf; server?: Server; policy?: string; marker?: { value: PendingAction | null; clearThrows?: Error };
+  accepts?: (value: string) => boolean; overrides?: Partial<Bindings>; report?: boolean; sink?: Sink;
 } = {}) {
   const calls: Call[] = [];
   const log = (binding: string, argument?: unknown, extra: Partial<Call> = {}) => { calls.push({ binding, argument, ...extra }); };
@@ -113,20 +113,27 @@ function world(options: {
   };
   const report: ClientEventReporter = (event) => {
     log("report", event);
-    HANDED_OUT.push(JSON.stringify(event));
+    options.sink?.handedOut.push(JSON.stringify(event));
   };
   const markerShelf = options.marker;
   const bindings: Bindings = {
     storage: {
       read: () => {
         log("storage.read");
-        return store.mode === "stale" && store.writes > 0 ? storedRecord("cid-stale-other") : store.record;
+        const record = store.mode === "stale" && store.writes > 0 ? storedRecord("cid-stale-other") : store.record;
+        if (record) options.sink?.identities.add(record.continuationId);
+        return record;
       },
       write: (record) => {
         log("storage.write", record);
+        options.sink?.identities.add(record.continuationId);
         store.writes++;
         if (store.mode === "throw") throw new Error("storage write refused");
         if (store.mode === "ok") store.record = record;
+        if (store.mode === "pin") {
+          const kept = store.record?.continuationId === record.continuationId ? store.record.fingerprint : record.fingerprint;
+          store.record = { ...record, fingerprint: kept };
+        }
       },
       clear: () => {
         log("storage.clear");
@@ -136,7 +143,7 @@ function world(options: {
     identifier: {
       next: () => {
         const id = `cid-${String(++minted).padStart(4, "0")}-minted`;
-        IDENTITIES.add(id);
+        options.sink?.identities.add(id);
         log("identifier.next", id);
         return id;
       },
@@ -199,7 +206,11 @@ function world(options: {
         storage: {
           read: () => { log("marker.read"); return markerShelf.value; },
           write: (value: PendingAction) => { log("marker.write", value); markerShelf.value = value; },
-          clear: () => { log("marker.clear"); markerShelf.value = null; },
+          clear: () => {
+            log("marker.clear");
+            if (markerShelf.clearThrows) throw markerShelf.clearThrows;
+            markerShelf.value = null;
+          },
         },
         toStatusReading: (result: Answer): StatusReading => result.reading ?? { kind: "checking" },
         clock: { now: () => NOW_MS },
@@ -213,7 +224,7 @@ function world(options: {
   c.subscribe((...args: unknown[]) => {
     expect(args).toEqual([]);
     seen.push(c.getSnapshot());
-    HANDED_OUT.push(JSON.stringify(c.getSnapshot()));
+    options.sink?.handedOut.push(JSON.stringify(c.getSnapshot()));
   });
   const named = (binding: string) => calls.filter(call => call.binding === binding);
   return {
@@ -411,6 +422,17 @@ describe("W7 a decline is bound to its attempt", () => {
     expect(attemptOf(w.shelf)).toBe(1);
   });
 
+  it("(f) keeps a failed advance as the error and does not reject", async () => {
+    const w = world();
+    await w.c.submit({ payload: A });
+    w.shelf.mode = "throw";
+    w.server.reads.push(declineOfFirst);
+    const { snapshot } = await w.c.resume();
+    expect(snapshot).toMatchObject({ status: "declined", attempt: 0, busy: false });
+    expect(snapshot.error).toEqual(new Error("storage write refused"));
+    expect(attemptOf(w.shelf)).toBe(0);
+  });
+
   it("(e) advances once for two instances reading the same decline", async () => {
     const store = shelf(storedRecord("cid-w7-shared")), srv = server();
     srv.reads.push(declineOfFirst, declineOfFirst);
@@ -442,6 +464,19 @@ describe("W8 paid is absorbing", () => {
     await w.c.submit({ payload: A });
     expect(w.count("identifier.next")).toBe(2);
     expect(w.requests("submit")[1]!.commandKey).not.toBe(firstKey);
+  });
+});
+
+describe("W8 paid is absorbing when clearing fails", () => {
+  it("refuses a new submit after a settled answer whose marker clear throws", async () => {
+    const failure = new Error("marker clear failed");
+    const marker = { value: { actionKind: "redirect", phase: "confirm_dispatched" } as PendingAction | null, clearThrows: failure };
+    const w = world({ shelf: shelf(storedRecord("cid-w8-clear")), marker });
+    w.server.reads.push(answer("settled"));
+    await expect(w.c.resume()).rejects.toBe(failure);
+    const before = w.calls.length;
+    expect((await w.c.submit({ payload: A })).accepted).toBe(false);
+    expect(w.calls.length).toBe(before);
   });
 });
 
@@ -562,6 +597,82 @@ describe("W15 storage", () => {
     expect(w.count("submit")).toBe(0);
     expect(w.count("commandKeyFor")).toBe(0);
     expect(w.count("build")).toBe(0);
+    expect(snapshot.error).toEqual(mode === "throw" ? new Error("storage write refused") : undefined);
+  });
+
+  it("sends nothing when a changed fingerprint does not read back", async () => {
+    const store = shelf();
+    store.mode = "pin";
+    const w = world({ shelf: store });
+    w.server.submits.push({ answer: answer("refused") });
+    await w.c.submit({ payload: A });
+    const { snapshot } = await w.c.submit({ payload: B });
+    expect(snapshot).toMatchObject({ status: "storage_unavailable", source: null });
+    expect(w.count("submit")).toBe(1);
+  });
+});
+
+describe("source of a status no answer produced", () => {
+  it("is null for details_changed and storage_unavailable, and submit for a submit without an answer", async () => {
+    const w = world();
+    expect((await w.c.submit({ payload: A })).snapshot.source).toBe("submit");
+    expect((await w.c.submit({ payload: B })).snapshot).toMatchObject({ status: "details_changed", source: null });
+    w.server.reads.push(answer("needs_client_action"));
+    expect((await w.c.resume()).snapshot.source).toBe("read");
+    w.shelf.record = storedRecord("cid-source-stored", B);
+    w.shelf.mode = "throw";
+    w.server.reads.push(answer("refused"));
+    w.server.submits.push({ answer: answer("refused") });
+    await w.c.submit({ payload: B });
+    expect((await w.c.submit({ payload: A })).snapshot).toMatchObject({ status: "storage_unavailable", source: null });
+    w.shelf.mode = "ok";
+    w.server.submits.push({ fail: new Failure("other") });
+    expect((await w.c.submit({ payload: A })).snapshot).toMatchObject({ status: "unknown", source: "submit" });
+  });
+});
+
+describe("W23 state belongs to one identity", () => {
+  it("drops a refusal allowance when another instance replaced the purchase", async () => {
+    const store = shelf(), srv = server();
+    const first = world({ shelf: store, server: srv }), second = world({ shelf: store, server: srv });
+    srv.submits.push({ answer: answer("refused") });
+    expect((await first.c.submit({ payload: A })).snapshot.status).toBe("refused");
+    srv.abandons.push({ kind: "terminal" });
+    await second.c.startOver();
+    await second.c.submit({ payload: B });
+    const replaced = store.record;
+    const { snapshot } = await first.c.submit({ payload: A });
+    expect(snapshot).toMatchObject({ status: "details_changed", hasContinuation: true });
+    expect(first.count("submit")).toBe(1);
+    expect(store.record).toBe(replaced);
+  });
+
+  it("drops paid when another instance started a new purchase, and reads the new one without the old answer", async () => {
+    const store = shelf(), srv = server();
+    const first = world({ shelf: store, server: srv }), second = world({ shelf: store, server: srv });
+    srv.submits.push({ answer: answer("settled", { order: "order-1" }) });
+    expect((await first.c.submit({ payload: A })).snapshot.status).toBe("paid");
+    await second.c.submit({ payload: A });
+    const id = store.record!.continuationId;
+    // A refused command reads nothing; the next command that reads the record learns of the new purchase.
+    expect((await first.c.submit({ payload: A })).accepted).toBe(false);
+    srv.reads.push(answer("awaiting_authority"));
+    expect((await first.c.resume()).snapshot).toMatchObject({ status: "awaiting_authority", hasContinuation: true });
+    expect(first.argsOf<Purchase>("read").at(-1)).toMatchObject({ continuationId: id, result: null });
+    expect((await first.c.submit({ payload: A })).accepted).toBe(true);
+  });
+
+  it("clears only the record that names the identity it read", async () => {
+    const store = shelf(storedRecord("cid-w23-first"));
+    const w = world({ shelf: store });
+    const read = deferred<Answer>();
+    w.server.reads.push(read.promise);
+    const resuming = w.c.resume();
+    const replaced = storedRecord("cid-w23-second", B);
+    store.record = replaced;
+    read.resolve(answer("closed"));
+    expect((await resuming).snapshot).toMatchObject({ status: "unknown", result: null, hasContinuation: true });
+    expect(store.record).toBe(replaced);
   });
 });
 
@@ -789,15 +900,43 @@ describe("W22 pending-action check", () => {
 });
 
 describe("W17 no identifier leaks", () => {
-  it("never hands a continuation identifier to a listener, a snapshot or the reporter", () => {
-    expect(IDENTITIES.size).toBeGreaterThan(10);
-    expect(HANDED_OUT.length).toBeGreaterThan(50);
-    const leaks = HANDED_OUT.filter(text => [...IDENTITIES].some(id => text.includes(id)));
+  it("never hands a continuation identifier to a listener, a snapshot or the reporter", async () => {
+    const sink: Sink = { identities: new Set(), handedOut: [] };
+    // A lost response and its replay, a refusal and a changed payload, a decline read by key.
+    const first = world({ sink });
+    first.server.submits.push({ lose: new Failure("timeout"), answer: answer("refused") }, { answer: answer("needs_client_action") });
+    await first.c.submit({ payload: A });
+    await first.c.submit({ payload: B });
+    first.server.reads.push(answer("declined", { declines: 0 }));
+    await first.c.resume();
+    first.c.recordReturn();
+    // Paid, then a new purchase after startOver, then a closed read.
+    const paid = world({ sink });
+    paid.server.submits.push({ answer: answer("settled") });
+    await paid.c.submit({ payload: A });
+    await paid.c.startOver();
+    await paid.c.submit({ payload: A });
+    paid.server.reads.push(answer("closed"));
+    await paid.c.resume();
+    // A stored identity the host will not reuse, a storage failure, and startOver answers.
+    await world({ sink, shelf: shelf(storedRecord("cid-w17-retired")), accepts: () => false }).c.submit({ payload: A });
+    const broken = shelf();
+    broken.mode = "throw";
+    await world({ sink, shelf: broken }).c.submit({ payload: A });
+    const over = world({ sink, shelf: shelf(storedRecord("cid-w17-over")) });
+    over.server.abandons.push({ kind: "active" }, new Error("abandon failed"), { kind: "terminal" });
+    for (let index = 0; index < 3; index++) await over.c.startOver();
+    // The pending-action check, halting on a switched provider.
+    const marked = world({ sink, shelf: shelf(storedRecord("cid-w17-marked")),
+      marker: { value: { actionKind: "none", phase: "action_issued" } } });
+    marked.server.reads.push(answer("awaiting_authority", { reading: { kind: "active", payment: { provider: FIRST, attemptStatus: null } } }));
+    await marked.c.submit({ payload: A, selectedProvider: SECOND });
+    for (const id of ["cid-w17-retired", "cid-w17-over", "cid-w17-marked"]) sink.identities.add(id);
+
+    expect(sink.identities.size).toBeGreaterThanOrEqual(6);
+    expect(sink.handedOut.some(text => text.includes("stored_continuation_rejected"))).toBe(true);
+    expect(sink.handedOut.length).toBeGreaterThan(20);
+    const leaks = sink.handedOut.filter(text => [...sink.identities].some(id => text.includes(id)));
     expect(leaks).toEqual([]);
   });
-});
-
-afterAll(() => {
-  IDENTITIES.clear();
-  HANDED_OUT.length = 0;
 });

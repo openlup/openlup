@@ -3947,7 +3947,10 @@ and provider facts only through the host bindings a store passes in.
 
   Only a declined answer for the stored attempt advances the attempt. Once
   paid, the snapshot stays paid until `startOver`, and "paid, activation
-  pending" is a status of its own.
+  pending" is a status of its own. The bindings object has no exported type
+  name: a host names it as
+  `Parameters<typeof createPurchaseContinuation<TPayload, TRequest, TResult, TOptions>>[0]`
+  and a member as, for example, `…[0]["transport"]`.
 - **Markup anchors.** Production markup reads its `data-openlup-*` attribute
   names and the action, state and field names from the constant instead of
   string literals. Names are only added; a wrong one is superseded, not renamed.
