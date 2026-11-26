@@ -23,13 +23,14 @@ const recorder = "public.catalog_publication_record_command(jsonb)";
 const mutation = "public.catalog_price_setup_mutate_claimed(jsonb,timestamptz,jsonb)";
 const decision = "public.catalog_publication_decide_prices_v2(jsonb,jsonb,jsonb,jsonb,jsonb,timestamptz)";
 const assessment = "public.catalog_publication_assess_prices_v2(jsonb)";
+const targetVerdict = "public.catalog_publication_target_price_verdict(jsonb,timestamptz)";
 const privateRoutines = [mutation, lockedV2, decision, assessment,
   "public.catalog_publication_price_operations_v2(jsonb)",
   "public.catalog_publication_price_revision_facts_v2(uuid,jsonb)",
   "public.catalog_publication_price_tax_class_v2(jsonb,jsonb,boolean)",
   "public.catalog_publication_lock_price_plan_v2(jsonb,jsonb,jsonb)",
   "public.catalog_publication_price_receipt_facts_v2(public.catalog_price_setup_receipts,jsonb,jsonb,uuid,timestamptz)"];
-const replaced = [recorder, "public.catalog_price_setup_apply_claimed(jsonb,timestamptz)"];
+const replaced = [recorder, "public.catalog_price_setup_apply_claimed(jsonb,timestamptz)", targetVerdict];
 const refusal = '{"reason": "command_invalid", "outcome": "validation_issue"}';
 const before = () => {
   const manifest = current();
@@ -107,6 +108,7 @@ it.each(["legacy", "admin-managed", "bootstrap"] as const)("preserves the releas
       const released = await dormant(store);
       expect(released).toBe(refusal);
       const original = await routineAttributes(store.owner, replaced);
+      expect(original).toHaveLength(replaced.length);
       const expected = current().forward.map(unit => unit.file).filter(path => recorderForward.test(path));
       expect(expected).toHaveLength(1);
       expect((await store.runner.apply()).applied.slice(0, expected.length)).toEqual(expected);
@@ -207,7 +209,38 @@ it("replays populated v1 receipts byte for byte through runtime logins after the
       const originalPriceReplay = await rawPrice();
       expect(JSON.parse(originalPriceReplay.toString("utf8"))).toHaveProperty("outcome", "replayed");
 
+      const { rows: [{ at }] } = await owner.query("SELECT clock_timestamp()::text AS at");
+      const baseTarget = { skuId: issue.skuId, requiredModes: ["one_time"] };
+      const proposal = { ...baseTarget, operation: { priceListId, expectedListAmountBasis: "tax_inclusive", amountKind: "gross" } };
+      const verdictTargets = [
+        baseTarget,
+        { ...baseTarget, requiredModes: ["one_time", "subscription"] },
+        { ...baseTarget, skuId: randomUUID() },
+        { ...proposal, operation: { ...proposal.operation, priceListId: randomUUID() } },
+        { ...proposal, operation: { ...proposal.operation, amountKind: "net" } },
+        proposal,
+        { ...baseTarget, observeReplay: "unused by the landed array contract" },
+      ];
+      const arrayVerdicts = () => transaction(owner, async db => {
+        const query = "SELECT public.catalog_publication_target_price_verdict($1,$2)::text AS bytes";
+        const active = await db.query(query, [json(verdictTargets), at]);
+        const missing = await db.query(query, [json(verdictTargets), "1900-01-01T00:00:00Z"]);
+        await db.query("SAVEPOINT exclusive_price_list");
+        await db.query("UPDATE public.price_lists SET amount_basis='tax_exclusive' WHERE id=$1", [priceListId]);
+        const exclusive = await db.query(query, [json(verdictTargets), at]);
+        await db.query("ROLLBACK TO SAVEPOINT exclusive_price_list");
+        return [active, missing, exclusive].map(result => Buffer.from(result.rows[0].bytes, "utf8"));
+      });
+      const originalVerdicts = await arrayVerdicts();
+      expect(JSON.parse(originalVerdicts[0]!.toString()).targets.map((target: { reason: string | null }) => target.reason)).toEqual([
+        null, "catalog_publication_sku_price_not_ready", "catalog_publication_sku_price_not_ready",
+        "price_list_not_active", "catalog_price_setup_basis_mismatch", "expected_state_mismatch", null,
+      ]);
+      expect(JSON.parse(originalVerdicts[1]!.toString())).toEqual({ reason: "active_price_list_not_found" });
+      expect(JSON.parse(originalVerdicts[2]!.toString()).targets[0].reason).toBe("base_price_amount_kind_invalid");
+
       expect((await store.runner.apply()).applied[0]).toBe(forward.file);
+      expect(await arrayVerdicts()).toEqual(originalVerdicts);
       await owner.query("UPDATE public.catalog_skus SET title='Live drift' WHERE id=$1", [issue.skuId]);
       await owner.query("UPDATE public.price_lists SET amount_basis='tax_exclusive' WHERE id=$1", [priceListId]);
       expect(await rawPrice()).toEqual(originalPriceReplay);
@@ -276,9 +309,7 @@ function installedBody(routine: InstalledRoutine) {
   return body;
 }
 
-function installedCalls(routine: InstalledRoutine, body: string, definitions: InstalledRoutine[]) {
-  if (routine.language === "c" || routine.language === "internal") return [];
-  // Tokenize executable text. Strings and comments cannot masquerade as calls.
+function installedTokens(body: string, identity: string) {
   const lexeme = /--[^\n]*|\/\*|\*\/|'(?:''|[^'])*'|"(?:""|[^"])*"|[a-z_][a-z_0-9$]*|[^\s]/giu;
   let comment = 0;
   const tokens: string[] = [];
@@ -289,7 +320,14 @@ function installedCalls(routine: InstalledRoutine, body: string, definitions: In
       tokens.push(token.startsWith('"') ? token.slice(1, -1).replaceAll('""', '"') : token.toLowerCase());
     }
   }
-  expect(comment, routine.identity).toBe(0);
+  expect(comment, identity).toBe(0);
+  return tokens;
+}
+
+function installedCalls(routine: InstalledRoutine, body: string, definitions: InstalledRoutine[]) {
+  if (routine.language === "c" || routine.language === "internal") return [];
+  // Strings and comments cannot masquerade as calls.
+  const tokens = installedTokens(body, routine.identity);
   expect(tokens, `${routine.identity} must use statically resolved calls`).not.toContain("execute");
   const path = routine.searchPath ?? ["public"];
   const calls = new Set<string>();
@@ -307,7 +345,34 @@ function installedCalls(routine: InstalledRoutine, body: string, definitions: In
   return [...calls].sort();
 }
 
-function assertInstalledPriceGraph(definitions: InstalledRoutine[]) {
+function helperPolicySites(body: string, identity: string, ownerReasons: ReadonlySet<string>) {
+  const tokens = installedTokens(body, identity);
+  const replay: string[] = [];
+  const refusals: string[] = [];
+  for (const [index, token] of tokens.entries()) {
+    const names = token.match(/[a-z_][a-z_0-9]*/gu) ?? [];
+    const jsonLabel = tokens[index + 1] === "," && (tokens[index - 1] === "(" || tokens[index - 1] === ",");
+    if (names.some(name => /replay|receipt[a-z_]*(?:observ|flag|status|state|lock|present|found|seen|exists|completed)|(?:observ|has|is|check)[a-z_]*receipt/iu.test(name))
+      || (!jsonLabel && names.some(name => /^(?:p_|is_|already_)?(?:written|fresh|completed)$/u.test(name)))) {
+      replay.push(tokens.slice(Math.max(0, index - 3), index + 4).join(" "));
+    }
+    if (token.startsWith("'") && names.some(name => ownerReasons.has(name))) {
+      refusals.push(tokens.slice(Math.max(0, index - 1), index + 2).join(" "));
+    }
+  }
+  return { replay, refusals };
+}
+
+type PolicySites = ReturnType<typeof helperPolicySites>;
+
+function assertHelperPolicy(routine: InstalledRoutine, allowed: PolicySites, ownerReasons: ReadonlySet<string>) {
+  const { identity } = routine;
+  const actual = helperPolicySites(installedBody(routine), identity, ownerReasons);
+  expect(actual.replay, `${identity} branches on replay or a receipt observation`).toEqual(allowed.replay);
+  expect(actual.refusals, `${identity} selects or overrides an owner refusal`).toEqual(allowed.refusals);
+}
+
+function assertInstalledPriceGraph(definitions: InstalledRoutine[], predecessor: InstalledRoutine[]) {
   const byIdentity = new Map(definitions.map(routine => [routine.identity, routine]));
   const graph = new Map<string, { calls: string[]; definition: string }>();
   const walk = (identity: string, visited: Set<string>) => {
@@ -325,39 +390,85 @@ function assertInstalledPriceGraph(definitions: InstalledRoutine[]) {
     walk(entry, visited);
     expect(visited.has(decisionIdentity), entry).toBe(true);
   }
-  expect([...graph].filter(([, node]) => node.calls.includes(landedIdentity)).map(([identity]) => identity)).toEqual([decisionIdentity]);
+  const ownerBody = installedBody(byIdentity.get(decisionIdentity)!);
+  const ownerReasons = new Set(["price_operation_invalid", "expected_state_mismatch",
+    ...Array.from(ownerBody.matchAll(/^\s*\('([a-z_]+)',/gmu), match => match[1]!)]);
+  const predecessorByIdentity = new Map(predecessor.map(routine => [routine.identity, routine]));
+  const claimedWriter = installedPriceEntries[3];
+  const mutationIdentity = "public.catalog_price_setup_mutate_claimed(jsonb,timestamp with time zone,jsonb)";
+  // Existing lanes retain their installed predecessors' behavior. The mutation
+  // helper carries the standalone part of the former claimed writer.
+  const helpers = [...graph.keys()].filter(identity => identity !== decisionIdentity
+    && !installedPriceEntries.slice(0, 3).some(entry => identity === entry)).map(identity => {
+    const routine = byIdentity.get(identity)!;
+    const prior = predecessorByIdentity.get(identity === mutationIdentity ? claimedWriter : identity);
+    return { routine, allowed: helperPolicySites(prior && identity !== claimedWriter ? installedBody(prior) : "", identity, ownerReasons) };
+  });
+  for (const { routine, allowed } of helpers) {
+    assertHelperPolicy(routine, allowed, ownerReasons);
+    if (routine.identity === landedIdentity) {
+      expect([...graph].filter(([, node]) => node.calls.includes(routine.identity)).map(([caller]) => caller)).toEqual([decisionIdentity]);
+    }
+  }
   // Seal the reviewed code and its edges, including the decision owner and all
   // application helpers. An extra expression can change decisions without
   // changing any edge or reusing a known variable name.
   const reviewedGraph = [...graph].sort(([left], [right]) => left.localeCompare(right));
-  expect(hash(JSON.stringify(reviewedGraph)), JSON.stringify(reviewedGraph)).toBe("d924b37e33081cce102453fedcb53b9dde886380206393159aa16433b80363a7");
+  expect(hash(JSON.stringify(reviewedGraph)), JSON.stringify(reviewedGraph)).toBe("a281543187a91e756a7251189379571d9e4aaad59f05158b7800fdf5e17ba12b");
+  return { helpers, ownerReasons };
 }
 
 it("uses one installed builder and refusal selector across the publication price call graph", async () => {
-  const store = await installAccountMutations("bootstrap", true, "price-decision-structure");
-  try {
-    const definitions = await installedRoutines(store.owner);
-    assertInstalledPriceGraph(definitions);
-    await transaction(store.owner, async db => {
-      for (const [identity, addedDecision] of [
-        [installedPriceEntries[0], "PERFORM (sku->>'id')::uuid FROM jsonb_array_elements(post_state->'skus') sku WHERE sku->'memberships' @> '[{\"admitted\":true}]';"],
-        [installedPriceEntries[1], "IF child_results #>> '{probe,outcome}' = 'claimed' THEN PERFORM 1; END IF;"],
-        [installedPriceEntries[2], "PERFORM t FROM jsonb_array_elements(plan) t WHERE t->>'skuId' = p_sku::text;"],
-        [installedPriceEntries[3], "IF p_claim->>'outcome' <> 'claimed' THEN RETURN jsonb_build_object('reason','price_operation_invalid'); END IF;"],
-        [decisionIdentity, "plan := jsonb_build_array(jsonb_build_object('operation',p_saved_operations));"],
-        ["public.catalog_publication_read_sku_revision(uuid,jsonb)", "IF p_product IS NULL THEN RETURN NULL; END IF;"],
-      ] as const) {
-        const definition = definitions.find(routine => routine.identity === identity)!.definition;
-        const changed = definition.replace(/\bBEGIN\b/iu, `BEGIN\n  ${addedDecision}`);
-        expect(changed, identity).not.toBe(definition);
-        await db.query("SAVEPOINT installed_decision_probe");
-        await db.query(changed);
-        const mutated = await installedRoutines(db);
-        expect(() => assertInstalledPriceGraph(mutated), identity).toThrow();
-        await db.query("ROLLBACK TO SAVEPOINT installed_decision_probe; RELEASE SAVEPOINT installed_decision_probe");
-      }
-    });
-  } finally { await store.close(); }
+  await withPlatformCatalog(before(), async root => {
+    const store = await installAccountMutations("bootstrap", true, "price-decision-structure", root);
+    try {
+      const predecessor = await installedRoutines(store.owner);
+      await store.runner.apply();
+      const definitions = await installedRoutines(store.owner);
+      const { helpers, ownerReasons } = assertInstalledPriceGraph(definitions, predecessor);
+      await transaction(store.owner, async db => {
+        for (const { routine, allowed } of helpers) {
+          const { identity, definition, language } = routine;
+          expect(["plpgsql", "sql"], identity).toContain(language);
+          for (const [expression, violation] of [
+            ["CASE WHEN ('{}'::jsonb->>'observeReplay')::boolean THEN 1 END", "branches on replay or a receipt observation"],
+            ["CASE WHEN ('{}'::jsonb->>'receiptObservation')::boolean THEN 1 END", "branches on replay or a receipt observation"],
+            ["CASE WHEN true THEN 'catalog_publication_price_changed' END", "selects or overrides an owner refusal"],
+            ["jsonb_set('{}'::jsonb, '{reason}', to_jsonb('catalog_publication_price_changed'::text))", "selects or overrides an owner refusal"],
+          ] as const) {
+            const changed = language === "plpgsql"
+              ? definition.replace(/^([ \t]*BEGIN)\b/imu, `$1\n  PERFORM ${expression};`)
+              : definition.replace(/\nAS \$[a-z_0-9]*\$/iu, `$&\n  SELECT ${expression};`);
+            expect(changed, identity).not.toBe(definition);
+            await db.query("SAVEPOINT installed_helper_probe");
+            await db.query(changed);
+            const { rows: [installed] } = await db.query<{ definition: string }>(
+              "SELECT pg_get_functiondef($1::regprocedure) AS definition", [identity]);
+            expect(() => assertHelperPolicy({ ...routine, definition: installed!.definition }, allowed, ownerReasons), identity)
+              .toThrow(violation);
+            await db.query("ROLLBACK TO SAVEPOINT installed_helper_probe; RELEASE SAVEPOINT installed_helper_probe");
+          }
+        }
+        for (const [identity, addedDecision] of [
+          [installedPriceEntries[0], "PERFORM (sku->>'id')::uuid FROM jsonb_array_elements(post_state->'skus') sku WHERE sku->'memberships' @> '[{\"admitted\":true}]';"],
+          [installedPriceEntries[1], "IF child_results #>> '{probe,outcome}' = 'claimed' THEN PERFORM 1; END IF;"],
+          [installedPriceEntries[2], "PERFORM t FROM jsonb_array_elements(plan) t WHERE t->>'skuId' = p_sku::text;"],
+          [installedPriceEntries[3], "IF p_claim->>'outcome' <> 'claimed' THEN RETURN jsonb_build_object('reason','price_operation_invalid'); END IF;"],
+          [decisionIdentity, "plan := jsonb_build_array(jsonb_build_object('operation',p_saved_operations));"],
+          ["public.catalog_publication_read_sku_revision(uuid,jsonb)", "IF p_product IS NULL THEN RETURN NULL; END IF;"],
+        ] as const) {
+          const definition = definitions.find(routine => routine.identity === identity)!.definition;
+          const changed = definition.replace(/\bBEGIN\b/iu, `BEGIN\n  ${addedDecision}`);
+          expect(changed, identity).not.toBe(definition);
+          await db.query("SAVEPOINT installed_decision_probe");
+          await db.query(changed);
+          const mutated = await installedRoutines(db);
+          expect(() => assertInstalledPriceGraph(mutated, predecessor), identity).toThrow();
+          await db.query("ROLLBACK TO SAVEPOINT installed_decision_probe; RELEASE SAVEPOINT installed_decision_probe");
+        }
+      });
+    } finally { await store.close(); }
+  });
 }, postgresSetupTimeoutMs);
 
 it("revokes browser default EXECUTE on the installed private price routines", async () => {

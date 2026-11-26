@@ -316,7 +316,7 @@ DECLARE
   list_count integer;
   target jsonb;
   operation jsonb;
-  observe_replay boolean;
+  with_observations boolean := jsonb_typeof(p_targets)='object';
   sku_id uuid;
   needs_subscription boolean;
   reason text;
@@ -326,6 +326,7 @@ DECLARE
   base_minor integer;
   subscription_count integer;
   subscription_valid boolean;
+  subscription_ready boolean;
   wrong_kind_count integer;
   wrong_shape boolean;
   history_count integer;
@@ -345,10 +346,10 @@ BEGIN
       ELSE 'active_price_list_ambiguous' END);
   END IF;
   kind := CASE basis WHEN 'tax_exclusive' THEN 'net' ELSE 'gross' END;
-  FOR target IN SELECT value FROM jsonb_array_elements(p_targets) LOOP
+  -- The owner requests a structured observation packet. Array calls keep the landed result shape.
+  FOR target IN SELECT value FROM jsonb_array_elements(CASE WHEN with_observations THEN p_targets->'targets' ELSE p_targets END) LOOP
     sku_id := (target->>'skuId')::uuid;
     operation := nullif(target->'operation','null'::jsonb);
-    observe_replay := coalesce((target->>'observeReplay')::boolean,false);
     needs_subscription := coalesce((target->'requiredModes') ? 'subscription', false);
     SELECT count(*) FILTER (WHERE e.mode='one_time' AND e.min_qty=1),
       min(e.unit_price_minor) FILTER (WHERE e.mode='one_time' AND e.min_qty=1),
@@ -369,7 +370,7 @@ BEGIN
       WHEN operation IS NOT NULL AND operation->>'priceListId' IS DISTINCT FROM list_id::text THEN 'price_list_not_active'
       WHEN operation IS NOT NULL AND (operation->>'expectedListAmountBasis' IS DISTINCT FROM basis
         OR operation->>'amountKind' IS DISTINCT FROM kind) THEN 'catalog_price_setup_basis_mismatch'
-      WHEN wrong_kind_count>0 AND NOT observe_replay THEN 'base_price_amount_kind_invalid'
+      WHEN wrong_kind_count>0 THEN 'base_price_amount_kind_invalid'
       WHEN wrong_shape THEN 'price_shape_invalid'
       WHEN base_count>1 THEN 'base_price_ambiguous'
       WHEN operation IS NOT NULL AND (current_start=p_at OR EXISTS (
@@ -381,7 +382,8 @@ BEGIN
         THEN 'expected_state_mismatch'
       WHEN operation IS NULL AND (base_count=0 OR base_minor<=0) THEN 'catalog_publication_sku_price_not_ready'
     END;
-    IF reason IS NULL AND needs_subscription THEN
+    subscription_ready := NOT needs_subscription;
+    IF needs_subscription AND (reason IS NULL OR with_observations) THEN
       SELECT count(*),count(*) FILTER (WHERE w.effective),bool_and(p.rounding_rule='FLOOR_TO_QUANTUM'
         AND p.rounding_quantum_minor>0 AND p.discount_bps BETWEEN 0 AND 10000
         AND p.digest=public.catalog_price_setup_policy_digest(p.id,p.revision_no,p.price_list_id,p.region_code,p.currency,p.channel,
@@ -391,16 +393,16 @@ BEGIN
       FROM public.subscription_price_policy_revisions p
       CROSS JOIN LATERAL (SELECT p.effective_from<=p_at AND (p.effective_to IS NULL OR p.effective_to>p_at) AS effective) w
       WHERE p.price_list_id=list_id AND p.region_code=region AND p.currency=settlement_currency AND p.channel='D2C';
-      IF NOT coalesce((history_count=0 AND subscription_count=1 AND subscription_valid)
+      subscription_ready := coalesce((history_count=0 AND subscription_count=1 AND subscription_valid)
         OR (history_count>0 AND policy_count=1 AND policy_valid AND subscription_count=0
           AND CASE WHEN quantum>0 THEN coalesce((operation->>'unitPriceMinor')::bigint,base_minor)
-            *(10000-discount)/10000/quantum*quantum END>0),false) THEN
-        reason := 'catalog_publication_sku_price_not_ready';
-      END IF;
+            *(10000-discount)/10000/quantum*quantum END>0),false);
+      IF reason IS NULL AND NOT subscription_ready THEN reason := 'catalog_publication_sku_price_not_ready'; END IF;
     END IF;
     results := results || jsonb_build_array(jsonb_build_object('skuId',sku_id,'reason',reason,'previous',current_entry)
-      || CASE WHEN observe_replay THEN jsonb_build_object('baseRows',jsonb_build_object('count',base_count,'wrongKind',wrong_kind_count))
-        ELSE '{}'::jsonb END);
+      || CASE WHEN with_observations THEN jsonb_build_object('observations',jsonb_build_object(
+        'baseCount',base_count,'wrongKindCount',wrong_kind_count,'wrongShape',wrong_shape,
+        'currentStart',current_start,'subscriptionReady',subscription_ready)) ELSE '{}'::jsonb END);
   END LOOP;
   RETURN jsonb_build_object('priceListId',list_id,'regionCode',region,'currency',settlement_currency,'amountBasis',basis,'targets',results);
 END;
@@ -424,6 +426,7 @@ DECLARE
   target jsonb;
   operation jsonb;
   actual jsonb;
+  observations jsonb;
   verdict jsonb;
   saved public.catalog_price_setup_receipts%ROWTYPE;
   replay jsonb;
@@ -436,6 +439,7 @@ DECLARE
   refusal text;
   price_reason text;
   replay_failed boolean;
+  completed boolean;
   rank integer;
   best_rank integer := 100;
   tax jsonb := p_saved_context->'tax';
@@ -560,10 +564,10 @@ BEGIN
     END LOOP;
     IF p_at IS NULL THEN EXIT decision; END IF;
 
-    SELECT public.catalog_publication_target_price_verdict(coalesce(jsonb_agg(CASE
+    SELECT public.catalog_publication_target_price_verdict(jsonb_build_object('targets',coalesce(jsonb_agg(CASE
       WHEN NOT written AND (lane='assessment' AND r.idempotency_key IS NULL
         OR claims #>> ARRAY[t #>> '{operation,commandKey}','outcome']='claimed') THEN t
-      ELSE (t-'operation') || '{"observeReplay":true}'::jsonb END ORDER BY n),'[]'),p_at)
+      ELSE t-'operation' END ORDER BY n),'[]')),p_at)
     INTO verdict
     FROM jsonb_array_elements(plan) WITH ORDINALITY AS item(t,n)
     LEFT JOIN public.catalog_price_setup_receipts r ON r.scope='catalog.price_setup.base' AND r.idempotency_key=t #>> '{operation,commandKey}';
@@ -597,9 +601,11 @@ BEGIN
       SELECT * INTO saved FROM public.catalog_price_setup_receipts r
         WHERE r.scope='catalog.price_setup.base' AND r.idempotency_key=operation->>'commandKey';
       fresh := coalesce(lane='assessment' AND NOT FOUND OR claims #>> ARRAY[operation->>'commandKey','outcome']='claimed',false);
+      completed := NOT fresh OR written;
       replay_failed := false;
-      wrong_kind := coalesce((actual #>> '{baseRows,wrongKind}')::integer,0)>0;
-      IF fresh AND NOT written THEN
+      observations := actual->'observations';
+      wrong_kind := (observations->>'wrongKindCount')::integer>0;
+      IF NOT completed THEN
         IF lane='issuance' THEN
           mutations := mutations || jsonb_build_array(jsonb_build_object('claim',claims->(operation->>'commandKey'),
             'publication',jsonb_build_object('previous',actual->'previous','publicationId',issue_id)));
@@ -608,7 +614,7 @@ BEGIN
         observed_entry := actual->'previous';
         basis_matches := (operation->>'expectedListAmountBasis'=verdict->>'amountBasis'
           AND operation->>'amountKind'=CASE verdict->>'amountBasis' WHEN 'tax_exclusive' THEN 'net' ELSE 'gross' END) IS TRUE;
-        possible_kind_drift := basis_matches AND coalesce(actual->'baseRows'='{"count":1,"wrongKind":1}'::jsonb,false)
+        possible_kind_drift := basis_matches AND observations->'baseCount'='1'::jsonb AND observations->'wrongKindCount'='1'::jsonb
           AND observed_entry->'amountKind' IS DISTINCT FROM operation->'amountKind';
         -- Prove the sole row's receipt identity with only its observed kind normalized.
         -- A verified difference still fails replay, while another base or other bad evidence leaves the kind conflict ranked.
@@ -626,16 +632,21 @@ BEGIN
           first_replayed := coalesce(first_replayed,target);
         END IF;
       END IF;
-      targets := targets || jsonb_build_array(actual-'baseRows');
-      -- Rank the landed defect and failed receipt proof independently.
+      targets := targets || jsonb_build_array(actual-'observations');
+      -- Completed receipts use row observations and receipt proof to select the refusal.
       SELECT reason,ord INTO price_reason,rank FROM unnest(ARRAY[
         'price_list_not_active','catalog_price_setup_basis_mismatch','base_price_amount_kind_invalid',
         'price_shape_invalid','base_price_ambiguous','catalog_price_setup_pending_entry',
         'catalog_publication_price_changed','catalog_publication_sku_price_not_ready']) WITH ORDINALITY AS ranked(reason,ord)
-      WHERE (reason=actual->>'reason' AND (reason<>'base_price_ambiguous' OR fresh AND NOT written))
-        OR (reason='base_price_amount_kind_invalid' AND wrong_kind)
-        OR (reason='catalog_publication_price_changed' AND (replay_failed OR actual->>'reason'='expected_state_mismatch'
-          OR (actual->>'reason'='base_price_ambiguous' AND (NOT fresh OR written))))
+      WHERE (NOT completed AND (reason=actual->>'reason'
+        OR (reason='catalog_publication_price_changed' AND actual->>'reason'='expected_state_mismatch')))
+        OR (completed AND CASE reason
+          WHEN 'base_price_amount_kind_invalid' THEN wrong_kind
+          WHEN 'price_shape_invalid' THEN (observations->>'wrongShape')::boolean
+          WHEN 'catalog_publication_price_changed' THEN replay_failed OR (observations->>'baseCount')::integer>1
+          WHEN 'catalog_publication_sku_price_not_ready' THEN (observations->>'baseCount')::integer=0
+            OR (actual #>> '{previous,unitPriceMinor}')::integer<=0 OR NOT (observations->>'subscriptionReady')::boolean
+        END)
       ORDER BY ord LIMIT 1;
       IF rank<best_rank THEN
         best_rank := rank;
