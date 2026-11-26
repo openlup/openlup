@@ -44,7 +44,7 @@
     "check:dco-signoff": "node --experimental-strip-types scripts/dco-signoff-check.ts",
     "guard:client-secret-boundary": "node --experimental-strip-types scripts/check-client-secret-boundary.ts",
     "guard:public-reference-site-routes": "node scripts/site-routes.mjs --public-reference",
-    "lint": "node scripts/ast-grep/check-filewide-ignore.mjs && ast-grep scan --error=no-suppress-all --error=unused-suppression && ast-grep test --skip-snapshot-tests && eslint --concurrency auto .",
+    "lint": "node scripts/ast-grep/check-filewide-ignore.mjs && ast-grep scan --error=no-suppress-all --error=unused-suppression && ast-grep test --skip-snapshot-tests && node scripts/run-eslint.mjs .",
     "prelint": "node scripts/build-packages-incremental.mjs",
     "oss:published-tree": "node --experimental-strip-types scripts/oss-published-tree-check.ts",
     "packages:check": "node --experimental-strip-types scripts/packages/packages-check.ts",

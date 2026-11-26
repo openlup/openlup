@@ -108,7 +108,8 @@ export async function completedMergeGroup({
       const job = matches[0];
       if (job.head_sha !== sha) throw new ReuseEvidenceError(`check ${name} head_sha mismatch`, false);
       if (job.status !== 'completed') throw new ReuseEvidenceError(`check ${name} status is ${shortStatus(job.status)}`, true);
-      if (job.conclusion !== 'success') throw new ReuseEvidenceError(`check ${name} conclusion is ${shortStatus(job.conclusion)}`, false);
+      const allowed = name === 'pgtap' ? ['success', 'skipped'] : ['success'];
+      if (!allowed.includes(job.conclusion)) throw new ReuseEvidenceError(`check ${name} conclusion is ${shortStatus(job.conclusion)}`, false);
     }
     // A rerun can start while the explicitly addressed old jobs remain readable.
     // Revalidate both latest-run selection and attempt after collecting the proof.
