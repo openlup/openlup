@@ -12,7 +12,13 @@ export const transaction = async <T>(pool: Pool, work: (db: SubscriptionQueryExe
   try { await db.query("BEGIN"); const result = await work(db); await db.query("COMMIT"); return result; }
   catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
 };
-export function bindSubscriptionJob(pool: Pool, f: RenewalSeed & { operation?: string }, enabled = true, ambiguous?: Renewal, beforeQuery?: (sql: string) => Promise<void>) {
+export function preHoldRetryExecutor(db: SubscriptionQueryExecutor): SubscriptionQueryExecutor {
+  // The historical worker did not have the hold predicate or its column.
+  return { query: (sql, values) => db.query(sql.replace(/\n\s*AND \(NOT op\.claimed_before_rnw_1[^\n]*/u, ""), values) };
+}
+
+export function bindSubscriptionJob(pool: Pool, f: RenewalSeed & { operation?: string }, enabled = true, ambiguous?: Renewal,
+  beforeQuery?: (sql: string) => Promise<void>, retryExecutor?: SubscriptionQueryExecutor) {
   let now = later(1), method = "frozen-method", declined = false, ready = true;
   let operationId = f.operation;
   const withTransaction = <T>(work: (db: SubscriptionQueryExecutor) => Promise<T>) => transaction(pool, work);
@@ -59,7 +65,7 @@ export function bindSubscriptionJob(pool: Pool, f: RenewalSeed & { operation?: s
   };
   const queries: string[] = [];
   const executor = { async query(sql: string, values?: unknown[]) { queries.push(sql); await beforeQuery?.(sql); return pool.query(sql, values); } };
-  const retryOptions = { executor, withTransaction, decode: codec.decode,
+  const retryOptions = { executor: retryExecutor ?? executor, withTransaction, decode: codec.decode,
     readFrozenMandate: async () => ({ authorized: true, authorizationRef: "frozen-mandate", paymentMethodRef: "frozen-method" }),
     retryInput: (_snapshot: RenewalFrozenSnapshot, row: { settlementIntentId: string; orderId: string; retryAttempt: number }) => execution(row.settlementIntentId, row.orderId, `${f.identity}:retry:${row.retryAttempt}`),
     validateInput: () => {}, payments: { execute, readOutcome: async (prepared: { attemptSequence: number }) => evidence(`retry-${prepared.attemptSequence}`, `${f.identity}:retry-outcome:${prepared.attemptSequence}`) },

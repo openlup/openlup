@@ -2,7 +2,7 @@ import { expect } from "vitest";
 import type { Pool, PoolClient } from "pg";
 import { fixture, openCase, schedule } from "../helpers/fulfillmentNative.js";
 import type { AccountMutationsStore } from "./customerAccountMutations.fixture.js";
-import { bindSubscriptionJob } from "../helpers/subscriptionJob.fixture.js";
+import { bindSubscriptionJob, preHoldRetryExecutor } from "../helpers/subscriptionJob.fixture.js";
 import { AT, call, later, recordRenewalMethod, renewal, seedRenewal, type RenewalSeed } from "./subscriptionNativeFixture.js";
 
 export async function observeRenewalWrites({ owner, runtime }: AccountMutationsStore, relations: string[]) {
@@ -49,6 +49,8 @@ async function renewalEffects(db: Pool, f: RenewalSeed) {
 }
 
 export async function exerciseLegacyRenewals({ owner, runtime }: AccountMutationsStore) {
+  const retry = preHoldRetryExecutor(runtime);
+  const bind = (f: RenewalSeed) => bindSubscriptionJob(runtime, f, true, undefined, undefined, retry);
   const expiring = await renewal(owner);
   expect(await call(owner, "fulfillment_reserve_subscription_renewal", [expiring.operation, expiring.token, 900, AT]))
     .toMatchObject({ reserved: true, replayed: false });
@@ -57,7 +59,7 @@ export async function exerciseLegacyRenewals({ owner, runtime }: AccountMutation
   const due = await seedRenewal(owner);
   await recordRenewalMethod(owner, due, "frozen-method");
   expect(await call(runtime, "subscription_read_renewal", [due.identity])).toBeNull();
-  const dueJob = bindSubscriptionJob(runtime, due);
+  const dueJob = bind(due);
   const mounted = async ({ binding }: typeof dueJob) => {
     const [job] = binding.contributions[0]!.schedules;
     expect(job?.id).toBe("subscriptions-renewal");
@@ -83,7 +85,7 @@ export async function exerciseLegacyRenewals({ owner, runtime }: AccountMutation
 
   const stock = await seedRenewal(owner, 0);
   await recordRenewalMethod(owner, stock, "frozen-method");
-  const stockJob = bindSubscriptionJob(runtime, stock);
+  const stockJob = bind(stock);
   const stockRun = await mounted(stockJob);
   expect(stockRun).toMatchObject({ retries: [], renewals: [{ status: "refused", reason: "inventory_unavailable" }] });
   const waiting = await renewalEffects(owner, stock);

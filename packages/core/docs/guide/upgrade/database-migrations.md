@@ -127,13 +127,8 @@ WITH stale_incumbent AS MATERIALIZED (
   SELECT o.id AS operation_id, o.subscription_id, o.scheduled_at,
          o.state AS operation_state, o.terminal_reason,
          o.cycle_snapshot,
-         CASE
-           WHEN w.state IN ('waiting', 'stock_secured') THEN w.state
-           WHEN w.id IS NULL AND o.state = 'refused'
-             AND o.terminal_reason IN ('inventory_unavailable', 'reservation_expired')
-             AND public.subscription_stock_wait_frozen(o.subscription_id, o.scheduled_at) IS NOT NULL
-             THEN 'uncaptured'
-         END AS stock_wait_state,
+         w.id IS NOT NULL AS captured_stock_wait,
+         public.subscription_renewal_unresolved_stock_wait(o.id) AS stock_wait_state,
          r.id AS retry_obligation_id, r.state AS retry_state
   FROM stale_incumbent o
   LEFT JOIN public.subscription_stock_wait_cases w ON w.renewal_operation_id = o.id
@@ -155,7 +150,8 @@ SELECT operation_id, subscription_id, scheduled_at, operation_state,
        cycle_snapshot->>'currency' AS currency,
        'subscription_renewal_snapshot_stale' AS reason
 FROM roots
-WHERE operation_state IN ('claimed', 'reserved', 'attempt_prepared')
+WHERE operation_state IN ('claimed', 'attempt_prepared')
+   OR (operation_state = 'reserved' AND (NOT captured_stock_wait OR stock_wait_state IS NOT NULL))
    OR (operation_state = 'refused' AND (
      retry_obligation_id IS NOT NULL
      OR (stock_wait_state IS NOT NULL

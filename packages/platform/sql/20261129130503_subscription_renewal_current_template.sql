@@ -51,22 +51,49 @@ AS $$
   END, false);
 $$;
 
-REVOKE ALL ON FUNCTION public.subscription_renewal_snapshot_is_billing(jsonb,boolean), public.subscription_renewal_snapshot_is_stale(integer,jsonb,integer) FROM PUBLIC;
+CREATE FUNCTION public.subscription_renewal_unresolved_stock_wait(p_operation_id uuid)
+RETURNS text
+LANGUAGE sql STABLE SECURITY INVOKER
+SET search_path = pg_catalog, pg_temp
+AS $$
+  SELECT CASE
+    WHEN w.id IS NOT NULL THEN CASE
+      -- Match the candidate pass's terminal closure, including for paused subscriptions.
+      WHEN w.state IN ('waiting', 'stock_secured')
+        AND s.status <> 'cancelled' AND s.next_cycle_at = w.scheduled_at THEN w.state
+    END
+    WHEN o.state = 'refused' AND o.terminal_reason IN ('inventory_unavailable', 'reservation_expired')
+      AND public.subscription_stock_wait_frozen(o.subscription_id, o.scheduled_at) IS NOT NULL THEN 'uncaptured'
+  END
+  FROM public.subscription_renewal_operations o
+  JOIN public.subscriptions s ON s.id = o.subscription_id
+  LEFT JOIN public.subscription_stock_wait_cases w ON w.renewal_operation_id = o.id
+  WHERE o.id = p_operation_id;
+$$;
+
+REVOKE ALL ON FUNCTION public.subscription_renewal_snapshot_is_billing(jsonb,boolean), public.subscription_renewal_snapshot_is_stale(integer,jsonb,integer), public.subscription_renewal_unresolved_stock_wait(uuid) FROM PUBLIC;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.subscription_renewal_snapshot_is_billing(jsonb,boolean), public.subscription_renewal_snapshot_is_stale(integer,jsonb,integer) FROM anon;';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.subscription_renewal_snapshot_is_billing(jsonb,boolean), public.subscription_renewal_snapshot_is_stale(integer,jsonb,integer), public.subscription_renewal_unresolved_stock_wait(uuid) FROM anon;';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.subscription_renewal_snapshot_is_billing(jsonb,boolean), public.subscription_renewal_snapshot_is_stale(integer,jsonb,integer) FROM authenticated;';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.subscription_renewal_snapshot_is_billing(jsonb,boolean), public.subscription_renewal_snapshot_is_stale(integer,jsonb,integer), public.subscription_renewal_unresolved_stock_wait(uuid) FROM authenticated;';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
-  EXECUTE 'GRANT EXECUTE ON FUNCTION public.subscription_renewal_snapshot_is_billing(jsonb,boolean), public.subscription_renewal_snapshot_is_stale(integer,jsonb,integer) TO service_role;';
+  EXECUTE 'GRANT EXECUTE ON FUNCTION public.subscription_renewal_snapshot_is_billing(jsonb,boolean), public.subscription_renewal_snapshot_is_stale(integer,jsonb,integer), public.subscription_renewal_unresolved_stock_wait(uuid) TO service_role;';
 END IF; END; $$;
 
 UPDATE public.subscription_renewal_operations o
    SET claimed_before_rnw_1 = true
   FROM public.subscriptions s
  WHERE s.id = o.subscription_id
-   AND (o.state IN ('claimed', 'reserved', 'attempt_prepared')
+   AND (o.state IN ('claimed', 'attempt_prepared')
+     OR (o.state = 'reserved' AND (
+       NOT EXISTS (
+         SELECT 1 FROM public.subscription_stock_wait_cases w
+         WHERE w.renewal_operation_id = o.id
+       )
+       OR public.subscription_renewal_unresolved_stock_wait(o.id) IS NOT NULL
+     ))
      OR (o.state = 'refused' AND (
        EXISTS (
          SELECT 1 FROM public.subscription_retry_obligations r
@@ -74,14 +101,8 @@ UPDATE public.subscription_renewal_operations o
          JOIN public.commerce_settlement_intents i ON i.id = r.settlement_intent_id AND i.status IN ('created', 'failed')
          WHERE r.renewal_operation_id = o.id AND r.state IN ('waiting', 'prepared')
        )
-       OR (o.terminal_reason IN ('inventory_unavailable', 'reservation_expired') AND (
-         EXISTS (
-           SELECT 1 FROM public.subscription_stock_wait_cases w
-           WHERE w.renewal_operation_id = o.id AND w.state IN ('waiting', 'stock_secured')
-         )
-         OR (NOT EXISTS (SELECT 1 FROM public.subscription_stock_wait_cases w WHERE w.renewal_operation_id = o.id)
-           AND public.subscription_stock_wait_frozen(o.subscription_id, o.scheduled_at) IS NOT NULL)
-       ))
+       OR (o.terminal_reason IN ('inventory_unavailable', 'reservation_expired')
+         AND public.subscription_renewal_unresolved_stock_wait(o.id) IS NOT NULL)
      )))
    AND public.subscription_renewal_snapshot_is_stale(s.template_version, o.cycle_snapshot, NULL::integer);
 

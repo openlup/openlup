@@ -9824,11 +9824,15 @@
           {
             "signature": "public.subscription_renewal_snapshot_is_stale(integer,jsonb,integer)",
             "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_renewal_unresolved_stock_wait(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
           }
         ],
         "grantOnlyFunctions": [],
         "dataStatements": [
-          "UPDATE public.subscription_renewal_operations o\n   SET claimed_before_rnw_1 = true\n  FROM public.subscriptions s\n WHERE s.id = o.subscription_id\n   AND (o.state IN ('claimed', 'reserved', 'attempt_prepared')\n     OR (o.state = 'refused' AND (\n       EXISTS (\n         SELECT 1 FROM public.subscription_retry_obligations r\n         JOIN public.subscription_cycles c ON c.id = r.cycle_id AND c.status = 'payment_pending'\n         JOIN public.commerce_settlement_intents i ON i.id = r.settlement_intent_id AND i.status IN ('created', 'failed')\n         WHERE r.renewal_operation_id = o.id AND r.state IN ('waiting', 'prepared')\n       )\n       OR (o.terminal_reason IN ('inventory_unavailable', 'reservation_expired') AND (\n         EXISTS (\n           SELECT 1 FROM public.subscription_stock_wait_cases w\n           WHERE w.renewal_operation_id = o.id AND w.state IN ('waiting', 'stock_secured')\n         )\n         OR (NOT EXISTS (SELECT 1 FROM public.subscription_stock_wait_cases w WHERE w.renewal_operation_id = o.id)\n           AND public.subscription_stock_wait_frozen(o.subscription_id, o.scheduled_at) IS NOT NULL)\n       ))\n     )))\n   AND public.subscription_renewal_snapshot_is_stale(s.template_version, o.cycle_snapshot, NULL::integer);"
+          "UPDATE public.subscription_renewal_operations o\n   SET claimed_before_rnw_1 = true\n  FROM public.subscriptions s\n WHERE s.id = o.subscription_id\n   AND (o.state IN ('claimed', 'attempt_prepared')\n     OR (o.state = 'reserved' AND (\n       NOT EXISTS (\n         SELECT 1 FROM public.subscription_stock_wait_cases w\n         WHERE w.renewal_operation_id = o.id\n       )\n       OR public.subscription_renewal_unresolved_stock_wait(o.id) IS NOT NULL\n     ))\n     OR (o.state = 'refused' AND (\n       EXISTS (\n         SELECT 1 FROM public.subscription_retry_obligations r\n         JOIN public.subscription_cycles c ON c.id = r.cycle_id AND c.status = 'payment_pending'\n         JOIN public.commerce_settlement_intents i ON i.id = r.settlement_intent_id AND i.status IN ('created', 'failed')\n         WHERE r.renewal_operation_id = o.id AND r.state IN ('waiting', 'prepared')\n       )\n       OR (o.terminal_reason IN ('inventory_unavailable', 'reservation_expired')\n         AND public.subscription_renewal_unresolved_stock_wait(o.id) IS NOT NULL)\n     )))\n   AND public.subscription_renewal_snapshot_is_stale(s.template_version, o.cycle_snapshot, NULL::integer);"
         ],
         "existingTableStatements": [
           "ALTER TABLE public.subscription_renewal_operations ADD COLUMN claimed_before_rnw_1 boolean NOT NULL DEFAULT false;"
@@ -14226,7 +14230,7 @@
     },
     {
       "path": "db/platform/migrations/20261129130503_subscription_renewal_current_template.sql",
-      "sha256": "f61d1c2bf8bddd522e04e9f331114c6c4a67c1dce3ead06484188816d200718a",
+      "sha256": "ff45d5eddce72a01a8e98d93aaa4ef38fe1c5082a45ad7eb8194720b9fa72b55",
       "functions": [
         {
           "signature": "public.subscription_claim_due_renewal(text,text,jsonb,text,integer,timestamptz)",
@@ -14257,6 +14261,11 @@
           "signature": "public.subscription_renewal_snapshot_is_stale(integer,jsonb,integer)",
           "beforeSha256": null,
           "afterSha256": "71e4f593465e9cff76cac6f436639e5a1382d4f799951d774032db5006b35d4b"
+        },
+        {
+          "signature": "public.subscription_renewal_unresolved_stock_wait(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "b5c7bbabe1a7f88d8ac6f6848a6071e8c9f52467adfab6c7d8b5be564e0c5089"
         }
       ]
     }

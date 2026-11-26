@@ -68,12 +68,11 @@ export function createNativeRetryDriver(options: NativeRetryDriverOptions) {
     });
   }
   async function run(now: string, limit: number) {
-    // Filter settled rows BEFORE limiting; they cannot starve unpaid obligations.
+    // Filter settled and held rows before limiting so due retries can make progress.
     // Prepared attempts and interrupted failure propagation are reconciliation work.
     const rows = (await options.executor.query(`SELECT o.*,op.cycle_snapshot,
       latest.receipt_key AS failure_key,latest.input AS failure_input,
-      (latest.receipt_key IS NOT NULL
-        AND (c.id IS NULL OR COALESCE(c.retry_attempt<(latest.result->>'retry_attempt')::integer,true))) AS failure_propagation_pending,
+      propagation.pending AS failure_propagation_pending,
       prep.receipt_key AS prepare_key,prep.result AS preparation
       FROM public.subscription_retry_obligations o
       JOIN public.subscriptions s ON s.id=o.subscription_id AND s.status='active'
@@ -85,9 +84,12 @@ export function createNativeRetryDriver(options: NativeRetryDriverOptions) {
         WHERE r.obligation_id=o.id AND r.kind='failure' ORDER BY r.attempt_sequence DESC LIMIT 1) latest ON true
       LEFT JOIN public.subscription_retry_receipts prep ON prep.obligation_id=o.id
         AND prep.kind='prepare' AND prep.attempt_sequence=o.attempt_sequence
+      CROSS JOIN LATERAL (SELECT latest.receipt_key IS NOT NULL
+        AND (c.id IS NULL OR COALESCE(c.retry_attempt<(latest.result->>'retry_attempt')::integer,true)) AS pending) propagation
       WHERE o.state<>'recovered' AND (o.renewal_quarantined_until IS NULL OR o.renewal_quarantined_until<=$1::timestamptz)
         AND (o.state='prepared' OR o.next_retry_at<=$1::timestamptz
         OR c.id IS NULL OR c.retry_attempt<(latest.result->>'retry_attempt')::integer)
+        AND (NOT op.claimed_before_rnw_1 OR o.state='prepared' OR propagation.pending)
       ORDER BY o.next_retry_at NULLS FIRST,o.id LIMIT $2::integer`, [now, limit])).rows;
     const results: { operationId: string; status: string }[] = [];
     for (const raw of rows) {

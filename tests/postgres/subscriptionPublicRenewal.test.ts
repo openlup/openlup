@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import { DatabaseError, Pool } from "pg";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { closePostgres, postgresSetupTimeoutMs, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
+import { preHoldRetryExecutor } from "../helpers/subscriptionJob.fixture.js";
 import { beforeEach, expect, it, vi } from "vitest";
 import { allPublicRows } from "./subscriptionStockWaitCases.js";
 import { api, active, purchase, admin, at, composition, payments, destinations, inventory, captureStore, withRestoredStore, days, deps, executor, facts, fulfillment, later, now, retire, requireIsolatedRenewalContainer, restartDatabase, freshRetryReadback, normalRenewalWorkerPopulation, rpc, runtime, settlement, stock, transaction, withNormalRenewalWorker, loginConnection, runtimeLogin, runtimeUrl, withOccupiedRenewalPrefix, expectFrozenGenerationShape, frozenGenerationSignature, frozenGenerationSql, generationForward } from "./subscriptionPublicRenewalFixture.js";
@@ -49,12 +50,12 @@ it("cancellation refuses new work and nonterminal takeover without changing the 
 });
 
 function binding(d: Awaited<ReturnType<typeof deps>>, clock: () => string, transact = transaction, dbPool = runtime,
-  retry?: ReturnType<typeof retryDriver>["options"]) {
+  retry?: ReturnType<typeof retryDriver>["options"], batchLimit = 7) {
   const unused = async (): Promise<never> => { throw new Error("unexpected_retry_on_stock_fixture"); };
   const queries = vi.fn<typeof executor.query>((sql, values) => dbPool.query(sql, values));
   const prepare = vi.fn(async (db: Parameters<typeof settlement>[1], request: Parameters<ReturnType<typeof settlement>["prepareRenewal"]>[0]) =>
     api.createPostgresRenewalSettlementPort(db ?? dbPool, d.codec, transact).prepareRenewal(request));
-  const native = api.createNativeSubscriptionBinding({ enabled: true, batchLimit: 7, population: `public-renewal:${d.due.subscriptionId}`, executor: { query: queries },
+  const native = api.createNativeSubscriptionBinding({ enabled: true, batchLimit, population: `public-renewal:${d.due.subscriptionId}`, executor: { query: queries },
     withTransaction: transact, withRunLease: async (_population, work) => {
       const db = await dbPool.connect();
       try {
@@ -1412,6 +1413,10 @@ const withTemplateUpgrade = (work: (target: UpgradeTarget) => Promise<void>) =>
   withOccupiedRenewalPrefix(work, file => renewalTemplateForward.test(file));
 const upgradeTransaction = (db: Pool): typeof transaction => work => transaction(work, db);
 
+function predecessorRetryTarget(db: Pool) {
+  return { executor: preHoldRetryExecutor(db), transaction: upgradeTransaction(db) };
+}
+
 async function upgradeRenewal(target: UpgradeTarget, options: {
   retained?: boolean; scenario?: "succeeded" | "declined" | "ambiguous"; edited?: boolean; variantId?: string;
   paidAt?: string; claimAt?: string; providerBacked?: boolean;
@@ -1515,12 +1520,63 @@ async function renewalUpgradeReport(db: Pool, hooks: { beforeCut?: () => Promise
   }
 }
 
+it.each(["cancelled", "superseded"] as const)("excludes %s captured stock waits from the backfill and report", async terminal => {
+  await withTemplateUpgrade(async target => {
+    const { owner, db, applyForward } = target, transact = upgradeTransaction(db);
+    const before = await upgradeRenewal(target), after = await upgradeRenewal(target);
+    const terminalOp = await before.claim(), liveOp = await after.claim();
+    const operations = [terminalOp, liveOp];
+    await stock(0, randomUUID(), db);
+    const store = api.createPostgresStockWaitStore({ executor: db, withTransaction: transact,
+      codec: before.d.codec, workerId: "before-upgrade" });
+    for (const { operationId, claimToken, cycleSnapshot: snapshot } of operations) {
+      expect(await store.admit({ operationId, claimToken, snapshot, now })).toMatchObject({ waiting: true });
+    }
+    if (terminal === "superseded") {
+      await stock(1000, randomUUID(), db);
+      for (const op of operations) {
+        expect(await rpc("subscription_stock_wait_recover_refusal", [op.operationId, op.operationFingerprint, "before-upgrade", later], db))
+          .toMatchObject({ state: "reserved" });
+      }
+    }
+    const waitState = terminal === "cancelled" ? "waiting" : "stock_secured";
+    const endWait = async ({ f }: typeof before) => {
+      if (terminal === "cancelled") {
+        await rpc("subscription_apply_lifecycle_action", [f.clientId, `cancel:${f.subscriptionId}`, f.subscriptionId, "cancel", "{}", later], db);
+      } else {
+        await owner.query("UPDATE public.subscriptions SET next_cycle_at=$2 WHERE id=$1", [f.subscriptionId, days(later, 1)]);
+      }
+    };
+    const savedWait = async (id: string) => (await db.query(`SELECT w.state,o.claimed_before_rnw_1
+      FROM public.subscription_stock_wait_cases w JOIN public.subscription_renewal_operations o ON o.id=w.renewal_operation_id
+      WHERE o.id=$1`, [id])).rows;
+
+    await endWait(before);
+    if (terminal === "cancelled") {
+      await rpc("subscription_apply_lifecycle_action", [after.f.clientId, `pause:${after.f.subscriptionId}`, after.f.subscriptionId, "pause", "{}", later], db);
+    }
+    await applyForward();
+    expect(await savedWait(terminalOp.operationId)).toEqual([{ state: waitState, claimed_before_rnw_1: false }]);
+    expect(await savedWait(liveOp.operationId)).toEqual([{ state: waitState, claimed_before_rnw_1: true }]);
+    expect(await renewalUpgradeReport(db)).toMatchObject([{ operation_id: liveOp.operationId, stock_wait_state: waitState }]);
+
+    // Leave the previously marked case intact so the report has to check liveness itself.
+    await endWait(after);
+    expect(await savedWait(liveOp.operationId)).toEqual([{ state: waitState, claimed_before_rnw_1: true }]);
+    expect(await renewalUpgradeReport(db)).toEqual([]);
+    await rpc("subscription_stock_wait_candidates", [20, days(later, 1)], db);
+    expect(await savedWait(liveOp.operationId)).toEqual([{ state: "closed", claimed_before_rnw_1: true }]);
+    expect(await renewalUpgradeReport(db)).toEqual([]);
+  });
+}, postgresSetupTimeoutMs);
+
 it("upgrades occupied renewal roots, refuses stale preparation without writes, and rebuilds held offers", async () => {
   await withTemplateUpgrade(async target => {
     const { owner, db, applyForward } = target, transact = upgradeTransaction(db);
     const baseline = await upgradeRenewal(target);
     vi.spyOn(baseline.d.codec, "freeze").mockReturnValueOnce(baseline.held);
-    const beforeJob = binding(baseline.d, () => now, transact, db).contributions[0].schedules![0]!;
+    const predecessor = retryDriver(baseline.d, "ambiguous", now, undefined, predecessorRetryTarget(db));
+    const beforeJob = binding(baseline.d, () => now, transact, db, predecessor.options).contributions[0].schedules![0]!;
     expect(await beforeJob.run()).toMatchObject({ renewals: [{ subscriptionId: baseline.f.subscriptionId, status: "succeeded" }] });
     const old = (await baseline.d.input.store.readRenewal(baseline.d.codec.identity(baseline.held)))!;
     expect(await renewalAmounts(db, old.orderId!)).toEqual([{ order: 200, intent: 200 }]);
@@ -1682,7 +1738,7 @@ async function prepareWebhookRenewal(target: UpgradeTarget, outcome: "succeeded"
 it("reports each stale incumbent once at the read-only upgrade cut and preserves prepared payment truth", async () => {
   await withTemplateUpgrade(async target => {
     const { owner, db, applyForward } = target, transact = upgradeTransaction(db);
-    const retryTarget = { executor: db, transaction: transact };
+    const predecessorRetry = predecessorRetryTarget(db);
     const claimed = await (await upgradeRenewal(target)).claim();
     const r = await upgradeRenewal(target, { retained: true });
     const reserved = await r.claim();
@@ -1719,12 +1775,12 @@ it("reports each stale incumbent once at the read-only upgrade cut and preserves
     const unpaid = await declined();
     for (let i = 0; i < 3; i++) {
       const retryAt = (await retryStore.read(unpaid.id))!.nextRetryAt!;
-      expect(await retryDriver(unpaid.d, "declined", retryAt, undefined, retryTarget).driver.run(retryAt, 1))
+      expect(await retryDriver(unpaid.d, "declined", retryAt, undefined, predecessorRetry).driver.run(retryAt, 1))
         .toEqual([{ operationId: unpaid.id, status: "refused" }]);
     }
     expect(await retryStore.read(unpaid.id)).toMatchObject({ state: "waiting", nextRetryAt: null });
     const pending = await declined(), retryAt = (await retryStore.read(pending.id))!.nextRetryAt!;
-    const retry = retryDriver(pending.d, "ambiguous", retryAt, undefined, retryTarget);
+    const retry = retryDriver(pending.d, "ambiguous", retryAt, undefined, predecessorRetry);
     expect(await retry.driver.run(retryAt, 50)).toContainEqual({ operationId: pending.id, status: "awaiting_provider" });
     const waitingRetry = await declined();
     await owner.query("UPDATE public.subscription_retry_obligations SET renewal_quarantined_until=$2 WHERE renewal_operation_id=$1",
@@ -1792,6 +1848,11 @@ it("reports each stale incumbent once at the read-only upgrade cut and preserves
     expect(read).toHaveBeenCalledOnce();
     expect(prepared.d.execute).toHaveBeenCalledTimes(1);
     expect(await frozenOperation(db, original.operationId)).toEqual(originalWire);
+
+    const reconcile = retryDriver(pending.d, "succeeded", retryAt, undefined, { executor: db, transaction: transact });
+    expect(await reconcile.driver.run(retryAt, 50)).toContainEqual({ operationId: pending.id, status: "succeeded" });
+    expect(await retryStore.read(pending.id)).toMatchObject({ state: "recovered", externalAttemptSequence: 1 });
+    expect(reconcile.execute).not.toHaveBeenCalled();
   });
 }, postgresSetupTimeoutMs);
 
@@ -1812,9 +1873,8 @@ it("holds a marked attempt-prepared root whose verified decline arrives after th
     let clock = waiting.nextRetryAt!;
     const supplied = retryDriver(d, "ambiguous", clock, methodRef, { executor: db, transaction: transact }).options;
     const execute = vi.fn<NativeRetryDriverOptions["payments"]["execute"]>();
-    const query = vi.fn<typeof executor.query>((sql, values) => db.query(sql, values));
     const mounted = binding(d, () => clock, transact, db, {
-      ...supplied, executor: { query },
+      ...supplied,
       readFrozenMandate: async snapshot => ({ authorized: true, authorizationRef: snapshot.authorizationRef, paymentMethodRef: methodRef }),
       payments: { ...supplied.payments, execute },
     });
@@ -1822,12 +1882,9 @@ it("holds a marked attempt-prepared root whose verified decline arrives after th
     for (let pass = 0; pass < 2; pass++) {
       const tick = await mounted.services.run();
       expect(execute.mock.calls.map(([charge]) => charge.amountMinor)).toEqual([]);
-      expect(tick).toMatchObject({ retries: [{ operationId: id, status: "error" }], renewals: [] });
+      expect(tick).toMatchObject({ retries: [], renewals: [] });
       clock = days(clock, 1);
     }
-    expect(query.mock.settledResults.filter((_, index) => query.mock.calls[index][0].includes("public.subscription_retry_prepare(")))
-      .toEqual([expect.objectContaining({ type: "rejected", value: expect.objectContaining(stalePreparation) }),
-        expect.objectContaining({ type: "rejected", value: expect.objectContaining(stalePreparation) })]);
     const key = `new-retry:${id}`;
     await expect(db.query("SELECT public.subscription_retry_prepare($1,$2,$3,$4)", [id, key, {
       paymentIntentId: waiting.settlementIntentId, orderRef: waiting.orderId, amountMinor: "unreadable",
@@ -1836,6 +1893,29 @@ it("holds a marked attempt-prepared root whose verified decline arrives after th
     }, clock])).rejects.toMatchObject(stalePreparation);
     expect(await store.read(id)).toEqual(waiting);
     expect(await allPublicRows(owner)).toEqual(before);
+  });
+}, postgresSetupTimeoutMs);
+
+it("attempts the later eligible retry on the first one-row tick without dispatching the older held retry", async () => {
+  await withTemplateUpgrade(async target => {
+    const { db, applyForward } = target, transact = upgradeTransaction(db);
+    const held = await upgradeRenewal(target, { scenario: "declined" });
+    const eligibleAt = days(now, 2);
+    const eligible = await upgradeRenewal(target, { scenario: "declined", claimAt: eligibleAt, edited: false });
+    const older = await runHeldRenewal(held), newer = await runHeldRenewal(eligible, eligibleAt);
+    expect([older.status, newer.status]).toEqual(["refused", "refused"]);
+    const store = api.createPostgresRetryStore(db);
+    const heldRetry = (await store.read(older.operationId))!, eligibleRetry = (await store.read(newer.operationId))!;
+    expect(Date.parse(heldRetry.nextRetryAt!)).toBeLessThan(Date.parse(eligibleRetry.nextRetryAt!));
+    await applyForward();
+    expect(await renewalUpgradeReport(db)).toMatchObject([{ operation_id: older.operationId, retry_state: "waiting" }]);
+
+    const clock = eligibleRetry.nextRetryAt!;
+    const retry = retryDriver(eligible.d, "succeeded", clock, undefined, { executor: db, transaction: transact });
+    expect(await binding(eligible.d, () => clock, transact, db, retry.options, 1).services.run())
+      .toMatchObject({ renewals: [], retries: [{ operationId: newer.operationId, status: "succeeded" }] });
+    expect(retry.execute.mock.calls.map(([input]) => input.paymentIntentId)).toEqual([eligibleRetry.settlementIntentId]);
+    expect(await store.read(older.operationId)).toEqual(heldRetry);
   });
 }, postgresSetupTimeoutMs);
 
@@ -1853,7 +1933,7 @@ it("drains in-flight retry dispatch before the forward and resumes without a sta
     const retryStore = api.createPostgresRetryStore(db);
     const firstRetryAt = (await retryStore.read(firstId))!.nextRetryAt!;
     const heldRetryAt = (await retryStore.read(heldId))!.nextRetryAt!;
-    const retry = retryDriver(first.d, "ambiguous", firstRetryAt, undefined, { executor: db, transaction: transact });
+    const retry = retryDriver(first.d, "ambiguous", firstRetryAt, undefined, predecessorRetryTarget(db));
     const atDispatch = signal(), allowDispatch = signal();
     const cutoverCharges: number[] = [];
     let forwardStarted = false;
