@@ -1,7 +1,7 @@
 // Witness of one checkout key per purchase in a tab, against installed PostgreSQL hosts.
 // CI: titles start "lost response:", so the file runs in the remainder browser group (shard 6). Locally it adds
 // about 20 s of Playwright time for its 16 tests in both projects; the case-independent cases run in one project.
-// Quota: each case makes at most 3 metered creates and 4 repeats under keys of its own, well inside the 36 creates and
+// Quota: each case makes at most 3 metered creates and 5 repeats under keys of its own, well inside the 36 creates and
 // 36 repeats per requester per 180 s (12 repeats per key); beforeAll truncates the attempt ledger once per project.
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -106,6 +106,19 @@ async function submit(page: Page): Promise<{ request: Request; answer: Record<st
   await expect(placeOrder(page)).toBeEnabled();
   return { request, answer };
 }
+/** Changed details: the page sends no create and shows the host's changed-details code and managed text itself. */
+async function changedDetails(page: Page) {
+  const creates: Request[] = [];
+  const count = (request: Request) => { if (request.url().endsWith('/api/actions/checkout.create')) creates.push(request); };
+  page.on('request', count);
+  try {
+    await placeOrder(page).click();
+    // The answer view is written once the command has ended, so no create of this submit can follow it.
+    await expect(output(page)).toContainText(managed('starter_checkout_changed'));
+    await expect(output(page)).toContainText('starter_checkout_changed');
+    expect(creates, 'no create is sent under changed details').toEqual([]);
+  } finally { page.off('request', count); }
+}
 /** The first create reaches the host and completes; its response is lost. Later creates pass. */
 async function loseFirstResponse(page: Page, before?: (route: Route) => Promise<void>) {
   let count = 0;
@@ -149,13 +162,16 @@ test('lost response: a create captured before the host and replayed after a relo
   await openCheckout(page, 'one_time');
   await details(page, email);
   let captured: { key: string; body: unknown } | undefined;
-  await page.route('**/api/actions/checkout.create', async route => {
-    if (captured) return route.continue();
-    captured = { key: keyOf(route.request()), body: route.request().postDataJSON() };
+  // The page repeats a lost create once: every create under the first key is lost before the host.
+  const capture = async (route: Route) => {
+    captured ??= { key: keyOf(route.request()), body: route.request().postDataJSON() };
+    if (keyOf(route.request()) !== captured.key) return route.continue();
     await route.abort();
-  });
+  };
+  await page.route('**/api/actions/checkout.create', capture);
   expect((await submit(page)).answer).toBe('lost');
   expect(await orders(email)).toEqual([]);
+  await page.unroute('**/api/actions/checkout.create', capture);
   await page.reload();
   // The network delivers the captured request late, after the reload.
   const replay = await page.request.post(`${material.baseURL}/api/actions/checkout.create`, { data: captured!.body,
@@ -175,9 +191,10 @@ test('lost response: a create lost before the host waits for finality, then star
   await openCheckout(page, 'one_time');
   await details(page, email);
   let firstKey = '';
+  // The page repeats a lost create once: every create under the first key is lost before the host.
   await page.route('**/api/actions/checkout.create', async route => {
-    if (firstKey) return route.continue();
-    firstKey = keyOf(route.request());
+    firstKey ||= keyOf(route.request());
+    if (keyOf(route.request()) !== firstKey) return route.continue();
     await route.abort();
   });
   expect((await submit(page)).answer).toBe('lost');
@@ -210,10 +227,7 @@ test('lost response: corrected details are refused and completing payment pays t
   await loseFirstResponse(page);
   expect((await submit(page)).answer).toBe('lost');
   await details(page, email, '2 Corrected Lane');
-  const changed = await submit(page);
-  expect(changed.answer).toEqual({ ok: false, code: 'starter_checkout_changed' });
-  await expect(output(page)).toContainText('starter_checkout_changed');
-  await expect(output(page)).toContainText(managed('starter_checkout_changed'));
+  await changedDetails(page);
   await expect(page.locator('main')).not.toContainText(t.notSubmitted);
   await expect(panel(page)).toBeFocused();
   const [orderRef] = (await orders(email)).map(row => row.id);
@@ -248,7 +262,7 @@ test('lost response: a guest who corrects only the e-mail can continue or start 
   await loseFirstResponse(page);
   expect((await submit(page)).answer).toBe('lost');
   await details(page, corrected);
-  expect((await submit(page)).answer).toEqual({ ok: false, code: 'starter_checkout_changed' });
+  await changedDetails(page);
   const resumed = page.waitForResponse(row => row.url().endsWith('/api/actions/checkout.continuation'));
   await choice(page, 'resume').click();
   const firstOrder = await oneOrderAndOneHold(first);
@@ -265,8 +279,8 @@ test('lost response: a guest who corrects only the e-mail can continue or start 
     await loseFirstResponse(tab);
     expect((await submit(tab)).answer).toBe('lost');
     await details(tab, later);
-    const refused = await submit(tab);
-    expect(refused.answer).toEqual({ ok: false, code: 'starter_checkout_changed' });
+    await changedDetails(tab);
+    const refusedKey: string = (await record(tab)).id;
     const [cancelled] = (await orders(earlier)).map(row => row.id);
     const abandoned = tab.waitForResponse(row => row.url().endsWith('/api/actions/checkout.continuation'));
     await choice(tab, 'abandon').click();
@@ -276,7 +290,7 @@ test('lost response: a guest who corrects only the e-mail can continue or start 
     expect(await held(cancelled!)).toBe(0);
     expect(await orders(earlier)).toEqual([{ id: cancelled, status: 'cancelled' }]);
     const next = await submit(tab);
-    expect(keyOf(next.request)).not.toBe(keyOf(refused.request));
+    expect(keyOf(next.request)).not.toBe(refusedKey);
     expect(next.answer).toMatchObject({ ok: true, value: { status: 'pending_payment' } });
     await oneOrderAndOneHold(later);
   } finally { await context.close(); }
@@ -294,7 +308,7 @@ test('lost response: an edited cart is refused and starting over leaves one orde
   const firstOrder = await oneOrderAndOneHold(email);
   // The payment link stays while the order is open and goes when it is cancelled.
   await details(page, email, '3 Edited Lane');
-  expect((await submit(page)).answer).toEqual({ ok: false, code: 'starter_checkout_changed' });
+  await changedDetails(page);
   await expect(completionLink(page)).toBeVisible();
   const abandoned = page.waitForResponse(row => row.url().endsWith('/api/actions/checkout.continuation'));
   await choice(page, 'abandon').click();
@@ -314,9 +328,8 @@ test('lost response: an edited cart is refused and starting over leaves one orde
   expect(second.answer).toMatchObject({ ok: true, value: { status: 'pending_payment' } });
   await openCheckout(page, 'one_time', units);
   await details(page, email);
-  const edited = await submit(page);
-  expect(keyOf(edited.request)).toBe(keyOf(second.request));
-  expect(edited.answer).toEqual({ ok: false, code: 'starter_checkout_changed' });
+  await changedDetails(page);
+  expect((await record(page)).id).toBe(keyOf(second.request));
   await expect(panel(page)).toBeVisible();
   const rows = await orders(email);
   expect(rows).toEqual([{ id: firstOrder, status: 'cancelled' }, { id: expect.any(String), status: 'pending_payment' }]);
@@ -330,10 +343,16 @@ test('lost response: a guest can pay after a retry without a reload', async ({ p
   await openCheckout(page, 'one_time');
   await details(page, email);
   await loseFirstResponse(page);
+  const sent: string[] = [];
+  page.on('request', request => { if (request.url().endsWith('/api/actions/checkout.create')) sent.push(keyOf(request)); });
   const first = await submit(page);
   expect(first.answer).toBe('lost');
+  // The page repeats the lost create once by itself, under the same key, before the buyer's retry.
+  await expect(panel(page).getByRole('link', { name: t.completion, exact: true })).toBeVisible();
+  expect(sent).toEqual([keyOf(first.request), keyOf(first.request)]);
   const retry = await submit(page);
   expect(keyOf(retry.request)).toBe(keyOf(first.request));
+  expect(sent).toEqual([keyOf(first.request), keyOf(first.request), keyOf(first.request)]);
   expect(retry.answer).toMatchObject({ ok: true, replayed: true, value: { status: 'pending_payment', token: expect.any(String) } });
   await completionLink(page).click();
   await page.getByRole('button', { name: t.simulatePaid, exact: true }).click();
@@ -457,7 +476,7 @@ test('lost response: a declined payment cannot be cancelled, and a different pur
   expect((await (await declined).json()).ok).toBe(true);
   await openCheckout(page, 'one_time', units + 1);
   await details(page, email);
-  expect((await submit(page)).answer).toEqual({ ok: false, code: 'starter_checkout_changed' });
+  await changedDetails(page);
   const refused = page.waitForResponse(row => row.url().endsWith('/api/actions/checkout.continuation'));
   await choice(page, 'abandon').click();
   expect(await (await refused).json()).toEqual({ ok: false, code: 'starter_checkout_not_abandonable' });
@@ -535,7 +554,9 @@ test('lost response: an ordinary refusal keeps the key and opens no panel', asyn
   await expect(output(page)).toContainText(managed('starter_command_conflict'));
   await expect(panel(page)).toHaveCount(0);
   // The refusal wrote nothing: the key stays, but nothing asks for the panel on load.
-  expect(await record(page)).toEqual({ v: 1, id: keyOf(first.request) });
+  const kept = await record(page);
+  expect(kept).toMatchObject({ v: 1, id: keyOf(first.request) });
+  expect(kept).not.toHaveProperty('sentAt');
   await page.reload();
   await expect(placeOrder(page)).toBeVisible();
   await expect(panel(page)).toHaveCount(0);
