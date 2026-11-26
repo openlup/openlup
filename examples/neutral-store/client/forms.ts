@@ -41,8 +41,11 @@ export interface FormContinuation {
   dispatch(): string;
   /** Called after every request returned, even when the form view is gone. */
   settled(key: string, result: ActionResult): void;
-  /** Called only while the view is current; returns the output to show instead of the default. */
-  answer(key: string, result: ActionResult): HTMLElement | undefined;
+  /** Called after every request returned. It settles the page's record whatever the view; only while `current`
+   * it may update the page and return the output to show instead of the default. */
+  answer(key: string, result: ActionResult, current: boolean): HTMLElement | undefined;
+  /** True while the page has another request of this key in flight; the form then sends nothing. */
+  busy(): boolean;
 }
 
 let fieldCounter = 0;
@@ -106,7 +109,7 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
     el('div', { class: 'actions' }, submit, reset), output);
   form.addEventListener('submit', event => {
     event.preventDefault();
-    if (inFlight || submit.getAttribute('aria-disabled') === 'true' || !form.isConnected || !form.reportValidity()) return;
+    if (inFlight || options.continuation?.busy() || submit.getAttribute('aria-disabled') === 'true' || !form.isConnected || !form.reportValidity()) return;
     const requestGeneration = ++generation;
     const current = () => form.isConnected && generation === requestGeneration;
     void (async () => {
@@ -147,8 +150,10 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
         uncertain = uncertainAction(result)
           ? { input, prepared: values } : undefined;
         if (!result.ok && !uncertain) options.onRefusal?.(result.code);
-        if (!current()) return;
-        output.replaceChildren(continuation?.answer(key, result) ?? (result.ok
+        const shown = current();
+        const custom = continuation?.answer(key, result, shown);
+        if (!shown) return;
+        output.replaceChildren(custom ?? (result.ok
           ? el('section', {}, el('h4', {}, context.t('response')),
             options.resultMessage?.(result.value) ? el('p', {}, context.t(options.resultMessage(result.value)!)) : null,
             renderValue(options.display ? options.display(result.value) : result.value))

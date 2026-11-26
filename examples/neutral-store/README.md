@@ -626,7 +626,7 @@ abandons that order by its key. The managed checkout page keeps one key per
 purchase in tab storage, across reloads and changed details; changed details
 answer `starter_checkout_changed` and a panel offers to pay or cancel the
 earlier order. It starts a new key only after that order is closed or no order
-can still arrive. Other forms prepare a fresh key when the input changes or the
+can still arrive, or the buyer explicitly starts a different purchase. Other forms prepare a fresh key when the input changes or the
 buyer starts a new action. The server still validates acceptance before any new
 draft is admitted.
 

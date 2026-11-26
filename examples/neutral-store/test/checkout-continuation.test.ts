@@ -189,6 +189,8 @@ test('each answer class updates the record as the table says', async () => {
   for (const locale of market.locales) {
     for (const text of ['limited', 'starter_attempt_limited'] as const) {
       assert.match(purchase.continuationMessage(text, locale, 180_000), /\b3 min\b/, `${text} (${locale})`);
+      // The wait is a point in time, not a deadline.
+      assert.match(purchase.continuationMessage(text, locale, 180_000), /(?:\bin|\bza) 3 min\./u, `${text} (${locale})`);
       assert.doesNotMatch(purchase.continuationMessage(text, locale, 180_000), /\{minutes\}/);
     }
     assert.match(purchase.continuationMessage('starter_attempt_limited', locale, 60_001), /\b2 min\b/);
@@ -423,4 +425,51 @@ test('a definite refusal of every create clears the dispatch time but keeps the 
   data.set(storageKey(inherited.configuration), JSON.stringify({ v: 1, id: key, sentAt: 1 }));
   await create(inherited.controller, refusedWith('starter_terms_required'));
   assert.equal(typeof inherited.stored().sentAt, 'number', 'a create of an earlier document may still arrive');
+});
+
+test('an inherited create keeps its bound through a create of this document', async () => {
+  const T = 5_000_000;
+  for (const reply of [refusedWith('starter_terms_required'), refusedWith('starter_dependency_unavailable', 503)]) {
+    const data = new Map<string, string>();
+    const page = setup(await freshDocument(), data, T + 5_000);
+    const id = '0f8fad5b-d9cb-469f-a165-70867728950e';
+    data.set(storageKey(page.configuration), JSON.stringify({ v: 1, id, sentAt: T }));
+    const { key } = await create(page.controller, () => { page.time.now += 100; return reply(); });
+    assert.equal(key, id);
+    // The earlier document's create may reach the host until T + 20 s, then 15 s more.
+    page.time.now = T + 5_100 + 15_000;
+    assert.equal((await proceed(page.controller, 'resume', refusedWith('starter_checkout_not_found'))).outcome.code, 'starter_checkout_in_progress');
+    page.time.now = T + 34_999;
+    assert.equal((await proceed(page.controller, 'resume', refusedWith('starter_checkout_not_found'))).outcome.code, 'starter_checkout_in_progress');
+    page.time.now = T + 35_000;
+    assert.equal((await proceed(page.controller, 'resume', refusedWith('starter_checkout_not_found'))).outcome.code, 'starter_checkout_not_found');
+  }
+});
+
+test('a stale view settles the record without replacing the shown purchase', async () => {
+  const purchase = await freshDocument();
+  const { controller, stored, configuration } = setup(purchase);
+  purchase.rememberPurchase(configuration, { orderRef: orderB, token: 'rcv_shown' });
+  const { key } = controller.dispatch();
+  controller.settled(key, { ok: true, value: pending('rcv_late') });
+  const outcome = controller.answer(key, { ok: true, value: pending('rcv_late') }, false);
+  assert.equal(outcome.kind, 'open');
+  assert.deepEqual(stored(), { v: 1, id: key, sentAt: stored().sentAt, ordered: true, orderRef: orderA });
+  assert.deepEqual(purchase.currentPurchase(configuration), { orderRef: orderB, token: 'rcv_shown' });
+});
+
+test('in flight covers the creates and choices of this purchase', async () => {
+  const purchase = await freshDocument();
+  const { controller } = setup(purchase);
+  assert.equal(controller.inFlight(), false);
+  const { key } = controller.dispatch();
+  assert.equal(controller.inFlight(), true);
+  controller.settled(key, { ok: false, code: 'starter_transport_unavailable' });
+  assert.equal(controller.inFlight(), false);
+  let release!: (response: Response) => void;
+  const held = withFetch(() => new Promise<Response>(done => { release = done; }), () => controller.continue('resume', 'en'));
+  assert.equal(controller.inFlight(), true);
+  release(refusedWith('starter_checkout_in_progress')());
+  await held;
+  assert.equal(controller.inFlight(), false);
 });

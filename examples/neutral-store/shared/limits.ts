@@ -152,8 +152,12 @@ export const checkoutContinuationCopy = Object.freeze({
     pl: 'Następne wysłanie utworzy nowe zamówienie. Wcześniejsze zamówienie pozostaje otwarte, dopóki sklep go nie rozliczy, a rozpoczęta już płatność za nie może jeszcze zostać zrealizowana.',
   },
   limited: {
-    en: 'The store returned the order without a payment link because of its request limit. Try again within {minutes} min.',
-    pl: 'Sklep zwrócił zamówienie bez linku do płatności z powodu limitu żądań. Spróbuj ponownie w ciągu {minutes} min.',
+    en: 'The store returned the order without a payment link because of its request limit. Try again in {minutes} min.',
+    pl: 'Sklep zwrócił zamówienie bez linku do płatności z powodu limitu żądań. Spróbuj ponownie za {minutes} min.',
+  },
+  differentStarted: {
+    en: 'A different purchase was started. Your next submit places a new order.',
+    pl: 'Rozpoczęto inny zakup. Następne wysłanie formularza złoży nowe zamówienie.',
   },
   abandoned: {
     en: 'The earlier order was cancelled and its stock released. Submit the form to place a new order.',
@@ -196,8 +200,8 @@ export const checkoutContinuationCopy = Object.freeze({
     pl: 'W tej samej chwili zapisywano inne żądanie tego zakupu; nic się nie zmieniło. Wyślij ponownie za chwilę. Jeśli powtarza się to po rozpoczęciu innego zakupu pierwszej subskrypcji, blokuje ją wcześniejsze nieopłacone zamówienie: poproś sklep o jego anulowanie.',
   },
   starter_attempt_limited: {
-    en: 'Too many checkout requests in a short time. Try again within {minutes} min.',
-    pl: 'Zbyt wiele żądań zamówienia w krótkim czasie. Spróbuj ponownie w ciągu {minutes} min.',
+    en: 'Too many checkout requests in a short time. Try again in {minutes} min.',
+    pl: 'Zbyt wiele żądań zamówienia w krótkim czasie. Spróbuj ponownie za {minutes} min.',
   },
   starter_storage_unavailable: {
     en: 'This browser does not let the page keep your purchase in tab storage. A retry without reloading still reaches the same order, but a reload or changed details may create a second order.',

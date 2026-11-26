@@ -258,7 +258,7 @@ lost response. It starts a new key only after the host confirmed that the
 earlier order is closed, or that no order exists and none can still arrive.
 Changed details, or a later purchase in the same tab while that order is
 unpaid, answer `starter_checkout_changed` and open a panel. The panel also
-appears on load. It offers "Complete payment for the earlier order" (`resume`)
+appears on load when the tab holds an earlier order or an uncertain create. It offers "Complete payment for the earlier order" (`resume`)
 and "Cancel the earlier order and start over" (`abandon`). After
 `starter_checkout_not_abandonable` or `starter_checkout_expired`, it also offers
 "Start a different purchase". That explicit buyer choice starts a new key while
@@ -267,7 +267,8 @@ started for it may still complete. The page raises `starter_checkout_in_progress
 itself while "no order" is not yet final, and `starter_checkout_session_changed`
 when an answer belongs to another sign-in state. A browser that blocks tab
 storage shows `starter_storage_unavailable`; its form keeps the key in the page
-across retries and refused totals, until a reload or changed details.
+across retries and refused totals, until a reload or changed details, or the
+buyer chooses "Start a new action".
 
 The key is derived from the principal, so a guest key does not survive sign-in
 or sign-out. Resolve the purchase before either; a retry after sign-in finds no

@@ -130,6 +130,8 @@ const closedOther = ['cancelled', 'refunded', 'expired'];
 const records = new Map<string, CheckoutContinuationRecord | null>();
 const creates = new Map<string, CheckoutCreateState>();
 let documentStartedAt: number | undefined;
+/** Continuation requests in flight, per configuration, across panel remounts in this document. */
+const choicesInFlight = new Map<string, number>();
 
 /** "No order under this key" is final only once no create of this key can still arrive (the guide's rule 3). */
 export function noneIsFinal(state: { sentAt?: number | undefined; create?: CheckoutCreateState | undefined; documentStartedAt: number; continuationAt: number }): boolean {
@@ -185,7 +187,7 @@ export function checkoutContinuation(configuration: string, options: { storage?:
   const tokenKnown = (orderRef: unknown) => typeof orderRef === 'string' && currentPurchase(configuration)?.orderRef === orderRef
     && typeof currentPurchase(configuration)?.token === 'string';
 
-  function apply(operation: 'create' | 'resume' | 'abandon', key: string, result: ActionResult, continuationAt?: number): CheckoutOutcome {
+  function apply(operation: 'create' | 'resume' | 'abandon', key: string, result: ActionResult, continuationAt?: number, view = true): CheckoutOutcome {
     const created = operation === 'create';
     const outcome = (kind: CheckoutOutcome['kind'], fields: Partial<CheckoutOutcome> = {}): CheckoutOutcome => ({
       kind, panel: created ? 'keep' : 'open', choices: true, different: false, link: 'keep', stored: true, ...fields });
@@ -235,7 +237,8 @@ export function checkoutContinuation(configuration: string, options: { storage?:
       const token = typeof value.token === 'string';
       const fields: Partial<CheckoutOutcome> = { value, ...(token ? {} : { text: 'limited' as const }) };
       const result = open(fields);
-      rememberPurchase(configuration, value);
+      // A stale view still settles the record, but never replaces the purchase the page shows.
+      if (view) rememberPurchase(configuration, value);
       const link = tokenKnown(value.orderRef) ? 'show' as const : 'remove' as const;
       if (result.kind !== 'open') return { ...result, link: link === 'show' ? 'show' : 'keep' };
       return { ...result, link, panel: created && token ? 'close' : 'open' };
@@ -280,8 +283,10 @@ export function checkoutContinuation(configuration: string, options: { storage?:
       const previous = read();
       const record = { ...(previous ?? { v: 1 as const, id: crypto.randomUUID() }), sentAt: now() };
       const stored = write(record);
-      // A key from an earlier document may have a create this document never saw settle.
-      const state = creates.get(record.id) ?? { inFlight: 0, ...(previous?.sentAt !== undefined ? { uncertain: true } : {}) };
+      // A key from an earlier document may have a create this document never saw settle: it may reach the host until
+      // its request timeout, so that bound carries over to this document's creates.
+      const state = creates.get(record.id) ?? { inFlight: 0, ...(previous?.sentAt !== undefined
+        ? { uncertain: true, lostUntil: previous.sentAt + actionRequestTimeoutMs } : {}) };
       state.inFlight += 1;
       state.sentAt = record.sentAt;
       creates.set(record.id, state);
@@ -299,16 +304,24 @@ export function checkoutContinuation(configuration: string, options: { storage?:
         state.lostUntil = Math.max(state.lostUntil ?? 0, state.sentAt + actionRequestTimeoutMs);
       }
     },
-    /** Applies a create answer to the record. */
-    answer(key: string, result: ActionResult): CheckoutOutcome { begin(); return apply('create', key, result); },
+    /** Applies a create answer to the record. `view` is false when the form's view is gone or stale. */
+    answer(key: string, result: ActionResult, view = true): CheckoutOutcome { begin(); return apply('create', key, result, undefined, view); },
+    /** A create or a continuation of this purchase is in flight in this document. */
+    inFlight(): boolean {
+      const record = read();
+      return (choicesInFlight.get(configuration) ?? 0) > 0 || (record ? (creates.get(record.id)?.inFlight ?? 0) > 0 : false);
+    },
     /** Resumes or abandons the order under the stored key. */
     async continue(action: 'resume' | 'abandon', locale: string): Promise<CheckoutOutcome> {
       begin();
       const record = read();
       if (!record) return { kind: 'none', code: 'starter_checkout_not_found', text: 'starter_checkout_not_found', panel: 'open', choices: false, different: false, link: 'keep', stored: true };
       const continuationAt = now();
-      const result = await act('checkout.continuation', { action, locale }, record.id);
-      return apply(action, record.id, result, continuationAt);
+      choicesInFlight.set(configuration, (choicesInFlight.get(configuration) ?? 0) + 1);
+      try {
+        const result = await act('checkout.continuation', { action, locale }, record.id);
+        return apply(action, record.id, result, continuationAt);
+      } finally { choicesInFlight.set(configuration, Math.max(0, (choicesInFlight.get(configuration) ?? 1) - 1)); }
     },
     /** The buyer's explicit choice after not abandonable or expired: the next submit uses a new key. */
     startDifferent(): boolean { begin(); return clear(); },

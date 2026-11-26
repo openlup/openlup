@@ -1071,6 +1071,14 @@ describe.sequential('installed quote proofs', () => {
           const total = await review(lost);
           const {body:first} = await action('checkout.create',{...input(lost),expectedTotal:total},lostKey);
           assert.equal(first.ok,true,first.code);
+          // The price then changes and the page reviews again: the reconfirmation carries the refreshed total under the same key.
+          await reprice(97);
+          const refreshed = await review(lost);
+          assert.notDeepEqual(refreshed,total);
+          const {body:reconfirmed} = await action('checkout.create',{...input(lost),expectedTotal:refreshed},reconfirm(lostKey));
+          assert.deepEqual(reconfirmed,{ok:false,code:'starter_checkout_changed'});
+          assert.deepEqual(await orders(lost),[first.value.orderRef]);
+          await reprice(-97);
           const {body:repeat} = await action('checkout.create',{...input(lost),expectedTotal:total},reconfirm(lostKey));
           assert.equal(repeat.ok,true,repeat.code);
           assert.equal(repeat.value.orderRef,first.value.orderRef);

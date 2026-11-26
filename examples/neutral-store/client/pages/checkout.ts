@@ -41,7 +41,8 @@ let panelCounter = 0;
 type Continuation = ReturnType<typeof checkoutContinuation>;
 
 /** The earlier order of this purchase: complete its payment, cancel it, or (after some answers) start a different purchase. */
-function continuationPanel(context: PageContext, continuation: Continuation, links: HTMLElement, storageFailed: () => void) {
+function continuationPanel(context: PageContext, continuation: Continuation, links: HTMLElement, storageFailed: () => void,
+  choosing: (busy: boolean) => void) {
   const text = (key: CheckoutContinuationText) => continuationMessage(key, context.locale, context.config.purchase.attemptLimits.windowMs);
   const id = `continuation-${++panelCounter}`;
   const status = el('div', { role: 'status', 'aria-live': 'polite' });
@@ -49,17 +50,19 @@ function continuationPanel(context: PageContext, continuation: Continuation, lin
   const resume = choose('resume'), abandon = choose('abandon');
   abandon.setAttribute('aria-describedby', `${id}-abandon`);
   const different = button(text('different'), () => {
-    if (busy) return;
+    if (continuation.inFlight()) return;
     if (!continuation.startDifferent()) storageFailed();
     links.replaceChildren();
-    show(false);
+    // The panel stays to say what happens next; the pressed button is gone, so focus stays in the panel.
+    offer(false, false);
+    status.replaceChildren(el('p', {}, text('differentStarted')));
+    section.focus();
   }, 'secondary');
   different.setAttribute('aria-describedby', `${id}-different`);
   const choices = el('div', {});
   const section = el('section', { class: 'panel', tabindex: -1, 'aria-labelledby': `${id}-heading`, 'data-checkout-continuation': '' },
     el('h2', { id: `${id}-heading` }, text('heading')), el('p', {}, text('intro')), choices, status);
   const host = el('div', {});
-  let busy = false, creating = false;
   // Choices act on the stored key, so none is offered once the record is gone.
   function offer(open: boolean, withDifferent: boolean) {
     choices.replaceChildren(...(open && continuation.current() ? [el('div', { class: 'actions' }, resume, abandon),
@@ -71,34 +74,39 @@ function continuationPanel(context: PageContext, continuation: Continuation, lin
     if (!section.isConnected) host.replaceChildren(section);
     if (focus) section.focus();
   }
-  // While a choice or a create is in flight, the choices wait for its answer.
-  function disable() { for (const control of [resume, abandon, different]) control.disabled = busy || creating; }
-  function setBusy(value: boolean) {
-    busy = value;
-    disable();
-    if (value) section.setAttribute('aria-busy', 'true'); else section.removeAttribute('aria-busy');
+  // While a choice or a create of this purchase is in flight in this document, the choices wait for its answer.
+  function refresh() {
+    const busy = continuation.inFlight();
+    for (const control of [resume, abandon, different]) control.disabled = busy;
   }
   async function run(action: 'resume' | 'abandon') {
-    if (busy) return;
-    setBusy(true);
+    if (continuation.inFlight()) return;
+    const pending = continuation.continue(action, context.locale);
+    section.setAttribute('aria-busy', 'true');
+    refresh();
+    choosing(true);
     status.replaceChildren(el('p', {}, context.t('loading')));
     try {
-      const outcome = await continuation.continue(action, context.locale);
-      if (!section.isConnected) return;
+      const outcome = await pending;
       if (!outcome.stored) storageFailed();
       if (outcome.link === 'remove') links.replaceChildren();
+      if (!section.isConnected) return;
       offer(outcome.choices, outcome.different);
       status.replaceChildren(message(context, outcome, text, true));
       // The pressed button may be gone; focus stays in the panel that holds the answer.
       section.focus();
-    } finally { setBusy(false); }
+    } finally {
+      section.removeAttribute('aria-busy');
+      refresh();
+      choosing(false);
+    }
   }
   return {
     node: host,
     /** Opens the panel on load, without moving focus, when the record shows an order or an uncertain create. */
     restore() { if (continuation.pending()) { offer(true, false); status.replaceChildren(); show(true); } },
-    /** A create of this purchase is in flight, or has returned. */
-    creating(value: boolean) { creating = value; disable(); },
+    /** A create of this purchase was sent or has returned. */
+    refresh,
     /** Applies a create answer: the panel opens, closes or stays. */
     created(outcome: CheckoutOutcome) {
       if (outcome.panel === 'keep') return;
@@ -155,13 +163,18 @@ export function checkoutPage(context: PageContext): HTMLElement {
   };
   const available = durable.available();
   if (!available) storageFailed();
-  const panel = available ? continuationPanel(context, durable, continuation, storageFailed) : undefined;
+  let submitButton: HTMLButtonElement | null = null;
+  // While a panel choice is in flight, the form sends nothing.
+  const choosing = (busy: boolean) => { if (submitButton) submitButton.disabled = busy; };
+  const panel = available ? continuationPanel(context, durable, continuation, storageFailed, choosing) : undefined;
   const hooks: FormContinuation | undefined = panel && {
-    dispatch() { const { key, stored } = durable.dispatch(); if (!stored) storageFailed(); panel.creating(true); return key; },
-    settled: (key, result) => { durable.settled(key, result); panel.creating(false); },
-    answer(key, result) {
-      const outcome = durable.answer(key, result);
+    dispatch() { const { key, stored } = durable.dispatch(); if (!stored) storageFailed(); panel.refresh(); return key; },
+    settled: (key, result) => { durable.settled(key, result); panel.refresh(); },
+    busy: () => durable.inFlight(),
+    answer(key, result, current) {
+      const outcome = durable.answer(key, result, current);
       if (!outcome.stored) storageFailed();
+      if (!current) return undefined;
       if (outcome.link === 'remove') continuation.replaceChildren();
       if (outcome.link === 'show') continuation.replaceChildren(link(context.t('completion'), routes.completion[context.locale], 'button-link'));
       panel.created(outcome);
@@ -197,7 +210,7 @@ export function checkoutPage(context: PageContext): HTMLElement {
         continuation.replaceChildren(link(context.t('completion'),
           routes.completion[context.locale], 'button-link'));
       } }),
-    }); quote.attach(form); return form; })(), summary),
+    }); quote.attach(form); submitButton = form.querySelector('button[type="submit"]'); return form; })(), summary),
     continuation, panel?.node,
     el('section', { class: 'panel' }, link(context.t('terms'), routes.terms[context.locale])),
     nativeActions(context, ['N1', 'N6']));

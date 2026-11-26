@@ -431,11 +431,13 @@ test('lost response: the panel is labelled, described and sends one request per 
   await expect.poll(() => requests.length).toBe(1);
   await expect(panel(page)).toHaveAttribute('aria-busy', 'true');
   for (const key of ['resume', 'abandon'] as const) await expect(choice(page, key)).toBeDisabled();
+  await expect(placeOrder(page)).toBeDisabled();
   release();
   expect(await (await answered).json()).toMatchObject({ ok: true, value: { status: 'pending_payment' } });
   await expect(panel(page).getByRole('link', { name: t.completion, exact: true })).toBeVisible();
   await expect(panel(page)).not.toHaveAttribute('aria-busy', 'true');
   await expect(choice(page, 'resume')).toBeEnabled();
+  await expect(placeOrder(page)).toBeEnabled();
   expect(requests).toEqual(['resume']);
   await oneOrderAndOneHold(email);
 });
@@ -463,6 +465,8 @@ test('lost response: a declined payment cannot be cancelled, and a different pur
   await expect(choice(page, 'different')).toBeVisible();
   await expect(choice(page, 'different')).toHaveAccessibleDescription(managed('differentDetail'));
   await choice(page, 'different').click();
+  await expect(panel(page)).toContainText(managed('differentStarted'));
+  await expect(panel(page)).toBeFocused();
   expect(await record(page)).toBeNull();
   const next = await submit(page);
   expect(keyOf(next.request)).not.toBe(keyOf(first.request));

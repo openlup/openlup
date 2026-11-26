@@ -28,7 +28,7 @@ cancelled or expired.
 
 A browser that blocks tab storage sees `starter_storage_unavailable`. Its form
 keeps the key in the page across retries and refused totals, until a reload or
-changed details. The page raises `starter_checkout_session_changed` when an
+changed details, or the buyer chooses "Start a new action". The page raises `starter_checkout_session_changed` when an
 answer belongs to another sign-in state: sign in or out as when the order was
 placed. If the host answered with an order of the current sign-in state, the
 page also shows that order, and says when it was cancelled. It raises
