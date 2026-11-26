@@ -288,6 +288,7 @@ export {};
 ```ts
 export type { PageHandle, StorefrontAdapter, StorefrontObserver, StorefrontScenario } from "./contracts.js";
 export { createPageHandle } from "./pageHandle.js";
+export { createPostgresStorefrontObserver } from "./postgresObserver.js";
 export { runStorefrontScenario } from "./runner.js";
 export { storefrontScenarios } from "./scenarios.js";
 export { serializeStorefrontVerdict } from "./serialize.js";
@@ -372,6 +373,64 @@ type StructuralPage = {
 export declare function createPageHandle(page: StructuralPage, options?: {
     readonly origin?: string;
 }): PageHandle;
+export {};
+```
+## dist/storefront/testing/postgresObserver.d.ts
+
+```ts
+import type { StorefrontObserver } from "./contracts.js";
+type Executor = {
+    query(text: string, values?: readonly unknown[]): Promise<{
+        readonly rows: readonly Record<string, unknown>[];
+    }>;
+};
+/**
+ * A storefront observer over the platform's own PostgreSQL tables, so a
+ * PostgreSQL-tier proof needs no store-written observer. `executor` is any
+ * object with `query(text, values)` resolving `{ rows }` over one database
+ * session, for example `asPostgresSqlExecutor(await pool.connect())` from
+ * `@openlup/platform/data`; this entry imports no database client.
+ *
+ * `ledger(subject)` finds the subject's orders through the client whose e-mail
+ * equals the subject case-insensitively: `orders` in any status;
+ * `payableOrders` in `pending_payment`; `holds` orders with at least one
+ * `held` stock reservation; `attempts` simulator attempts and provider attempts
+ * on their settlement intents, except provider attempts `blocked_preflight`
+ * (refused before reaching the provider; a `created` one counts); `captures`
+ * captured simulator attempts and succeeded provider attempts, one per
+ * capture. Each count is its own subquery, so no join multiplies another. The
+ * subject is the run's e-mail as given and must carry no surrounding
+ * whitespace; otherwise the read rejects `storefront_observer_input_invalid`.
+ *
+ * Every read is one statement in its own `BEGIN READ ONLY` transaction with
+ * `SET LOCAL row_security = off`, ended by `COMMIT`, or `ROLLBACK` after any
+ * failure, so call the observer outside a transaction. With row security off a
+ * role subject to a row-level security policy is refused by PostgreSQL instead
+ * of reading filtered rows; the observer rejects that as
+ * `storefront_observer_row_security`. The reading role therefore needs `SELECT`
+ * on `commerce_orders`, `clients`, `fulfillment_inventory_reservations`,
+ * `commerce_settlement_intents`, `payment_simulator_attempts` and
+ * `payment_provider_attempts` and must own those tables or have `BYPASSRLS`;
+ * the grants alone are not sufficient. A read that did not run in its own
+ * transaction (an executor over several sessions) rejects
+ * `storefront_observer_session_invalid`.
+ *
+ * With `exclusive: true` it adds `payableOrdersInDatabase()`, every payable
+ * order in the database. Set it only when the database is exclusive to one
+ * run: the runner then requires that the payable orders added in the database
+ * equal those added for the run's subjects. Each call is its own transaction,
+ * so `ledger` and `payableOrdersInDatabase` read separate snapshots.
+ *
+ * A count that is not a non-negative safe integer, or an answer that is not
+ * one row, rejects `storefront_observer_count_invalid`, never zero; any other
+ * executor rejection is passed through. A host whose records live elsewhere
+ * supplies its own observer.
+ *
+ * @experimental
+ */
+export declare function createPostgresStorefrontObserver(executor: Executor, options?: {
+    readonly exclusive?: boolean;
+}): StorefrontObserver;
 export {};
 ```
 ## dist/storefront/testing/runner.d.ts

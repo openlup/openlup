@@ -613,6 +613,7 @@ Symbols whose maturity differs from their subpath, or that are deprecated:
 | `./storefront/testing` | `StorefrontObserver` | experimental | no |
 | `./storefront/testing` | `StorefrontScenario` | experimental | no |
 | `./storefront/testing` | `createPageHandle` | experimental | no |
+| `./storefront/testing` | `createPostgresStorefrontObserver` | experimental | no |
 | `./storefront/testing` | `runStorefrontScenario` | experimental | no |
 | `./storefront/testing` | `serializeStorefrontVerdict` | experimental | no |
 | `./storefront/testing` | `storefrontScenarios` | experimental | no |
