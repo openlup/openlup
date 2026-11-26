@@ -1,7 +1,7 @@
 /**
  * The neutral starter's checkout classifier agrees with the storefront example classifier for the starter's
  * action-result envelope. The starter adds two kinds of rows, listed here by name: the paid order statuses, and the
- * refusals its create answers before anything is created.
+ * refusals its create answers before anything is created, including a fresh create that arrived too late.
  */
 import { describe, expect, it } from 'vitest';
 import { classifyCheckoutAnswer } from '../../examples/neutral-store/shared/storefront-bindings.ts';
@@ -29,7 +29,8 @@ const additions: Array<[string, unknown, string]> = [
   ...['starter_terms_required', 'starter_expected_total_required', 'starter_quote_price_changed', 'starter_quote_refresh_required',
     'acquisition_terms_capability_required', 'acquisition_terms_changed', 'catalog_admission_quote_authority_required',
     'cart_invalid', 'cart_configuration_changed', 'cart_empty', 'unknown_sku', 'quantity_invalid', 'duplicate_sku',
-    'purchase_mode_unavailable', 'cadence_unavailable', 'minimum_units', 'maximum_units', 'amount_overflow']
+    'purchase_mode_unavailable', 'cadence_unavailable', 'minimum_units', 'maximum_units', 'amount_overflow',
+    'starter_checkout_request_stale']
     .map((code): [string, unknown, string] => [`refusal before create ${code}`, no(code), 'refused']),
 ];
 

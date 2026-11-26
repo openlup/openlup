@@ -21,6 +21,7 @@ export const knownChangedPayloadPolicies = ["update_in_place", "refuse_changed"]
 export const knownFindingCodes = [
   "duplicate_order", "duplicate_hold", "duplicate_capture", "second_attempt", "forbidden_state_shown",
   "order_outside_subject", "progress_not_reached", "policy_mismatch", "vacuous_progress", "auto_progress_undeclared",
+  "auto_progress_not_performed",
   "adapter_matcher_unmatched", "adapter_anchor_missing", "anchor_hidden", "control_not_applied", "arrange_failed",
   "observer_subject_unseen", "stimulus_not_create", "stimulus_not_applied", "tier_unreachable", "outcome_failed",
   "observer_failed", "page_failed", "request_budget_exceeded",
