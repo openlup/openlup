@@ -153,6 +153,7 @@ const rootMarkup = (rootStyle: string) => `<!doctype html><html style="${rootSty
   <div style="clip-path: inset(50%); width: 200px; height: 40px"><button class="box" data-openlup-action="case_clip_path">Clipped</button></div>
   <div style="height: 3000px"></div>
   <div class="box" data-openlup-state="case_root_below_fold"></div>
+  <div style="height: 1000px"></div>
 </body></html>`;
 
 for (const rootStyle of ['overflow-x: hidden; scroll-behavior: smooth', 'overflow-y: scroll; scroll-behavior: smooth']) {

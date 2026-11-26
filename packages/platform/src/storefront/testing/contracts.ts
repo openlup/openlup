@@ -153,14 +153,15 @@ export type StorefrontObserver = {
  *   `width()` the viewport width in CSS pixels, or `null`.
  * - `find` scrolls the first match into view and measures it, or resolves
  *   `null` when none appeared within `timeoutMs`; every scroll position is
- *   restored afterwards. An anchor is visible when its box is non-zero; lies
+ *   restored afterwards, instantly whatever the page's `scroll-behavior`. An anchor is visible when its box is non-zero; lies
  *   inside the page's scrollable area and needs no container the buyer cannot
  *   scroll (`overflow: hidden` or `clip`) to move to come into view; is not
  *   hidden (`display: none`, a `hidden` attribute up the tree, or an inherited
  *   `visibility` other than `visible`); is not fully transparent (the product of
  *   its and its ancestors' computed opacity is 0); and some part of it survives
- *   its ancestors' overflow boxes and its own and its ancestors' `clip` and
- *   `clip-path`, with the element hit at that part's centre being the anchor, a
+ *   the overflow boxes of the ancestors in its containing-block chain (a fixed
+ *   or absolute box escapes those outside it; the root scroller never clips)
+ *   and its own and its ancestors' `clip` and `clip-path`, with the element hit at that part's centre being the anchor, a
  *   descendant or an ancestor of it (an ancestor only when no `clip-path` other
  *   than `inset()` lies on the way).
  * - `anchors(locators)` lists the visible `state:<value>` and

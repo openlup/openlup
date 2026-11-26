@@ -4045,11 +4045,13 @@ contracts follows in a later change.
   `quietMs` passed with no new request. An anchor is visible when its box is
   non-zero, lies inside the scrollable area without a container the buyer
   cannot scroll (`overflow: hidden` or `clip`) having to move, is not hidden,
-  is not fully transparent, and part of it survives clipping by its ancestors'
-  overflow boxes, `clip` and `clip-path`, with the element at that part's
-  centre the anchor, a descendant or an ancestor of it. The anchor is scrolled
-  into view before it is measured, and every scroll position is restored
-  afterwards. The handle reads no clock.
+  is not fully transparent, and part of it survives clipping by the overflow
+  boxes of the ancestors in its containing-block chain (a fixed or absolute
+  anchor escapes those outside it; the page's root scroller never clips) and
+  by `clip` and `clip-path`, with the element at that part's centre the anchor,
+  a descendant or an ancestor of it. The anchor is scrolled into view before it
+  is measured, and every scroll position is restored afterwards, instantly
+  whatever the page's `scroll-behavior`. The handle reads no clock.
 - **`serializeStorefrontVerdict`.** Returns the verdict as two-space JSON with
   sorted keys and a line feed after `parseStorefrontVerdict` accepts it, so
   equal verdicts give equal bytes; it refuses a value JSON cannot carry
