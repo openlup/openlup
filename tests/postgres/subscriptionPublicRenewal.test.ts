@@ -475,6 +475,40 @@ it.each([
   expect(d.execute.mock.calls.map(([charge]) => charge.amountMinor)).toEqual([300]);
 }, 30_000);
 
+it("returns the persisted alignment for a verified split-parcel arrival with older shadow cases", async () => {
+  const f = await renewalPurchase(), d = await deps(f.subscriptionId, "succeeded");
+  const stale = await bindRenewalDestination(d, await d.input.store.buildCycleSnapshots(d.due));
+  const original = await parcel(f.orderId), first = randomUUID(), last = randomUUID();
+  await admin.query(`INSERT INTO public.fulfillment_shipments(id,order_id,port_key,provider_type,create_idempotency_key,
+    sequence_no,replaces_shipment_id,replacement_reason) VALUES
+    ($1,$3,'g7-parcels','3pl',$4,1,$6,'lost'), ($2,$3,'g7-parcels','3pl',$5,2,$6,'lost')`,
+  [first, last, f.orderId, `split:${first}`, `split:${last}`, original]);
+  await admin.query("SELECT public.subscription_delivery_alignment_set_mode('shadow')");
+  const spine = fulfillment.createPostgresFulfillmentShipmentSpinePort(executor, { portKey: "g7-parcels" });
+  await spine.raiseException({ idempotencyKey: `exception:${original}`, shipmentId: original, reason: "provider_rejected" });
+  // Make the last parcel's shadow younger than the siblings for deterministic readback.
+  await admin.query("UPDATE public.subscription_delivery_alignment_cases SET created_at=created_at+interval '1 second' WHERE shipment_id=$1", [last]);
+  expect((await runtime.query(`SELECT state FROM public.subscription_delivery_alignment_cases
+    WHERE predecessor_order_id=$1 ORDER BY created_at,id`, [f.orderId])).rows)
+    .toEqual([{ state: "shadow" }, { state: "shadow" }, { state: "shadow" }]);
+
+  await resizeForRenewal(f);
+  await admin.query("SELECT public.subscription_delivery_alignment_set_mode('auto_align')");
+  await expect(runtime.query(rawClaim, claimWire(d, stale))).rejects.toMatchObject(staleClaim);
+  const arrival = fulfillment.createPostgresDeliveryAlignmentPort(executor);
+  const deliver = (parcelRef: string, deliveredAt: string) =>
+    arrival.recordArrival({ requestKey: `split-arrival:${parcelRef}`, parcelRef, deliveredAt, evidenceRef: `evidence:${parcelRef}` });
+  const due = async () => (await runtime.query("SELECT next_cycle_at FROM public.subscriptions WHERE id=$1",
+    [f.subscriptionId])).rows[0].next_cycle_at;
+  const latestArrival = days(stale.scheduledAt, 7), shifted = days(latestArrival, facts.cadenceDays);
+  expect(await deliver(first, latestArrival)).toMatchObject({ disposition: "manual_review", nextCycleAt: null });
+  expect(await due()).toEqual(new Date(stale.scheduledAt));
+  const result = await deliver(last, days(latestArrival, -1));
+  expect(await due()).toEqual(new Date(shifted));
+  expect(result).toEqual({ disposition: "aligned", nextCycleAt: shifted, replayed: false });
+  expect(await arrival.read(first)).toEqual({ disposition: "aligned", nextCycleAt: shifted });
+}, 30_000);
+
 it("aligns a verified final replacement after a stale claim with only shadow evidence", async () => {
   const f = await renewalPurchase(), d = await deps(f.subscriptionId, "succeeded");
   const held = await d.input.store.buildCycleSnapshots(d.due);
@@ -1670,6 +1704,33 @@ it("lists the claimed, reserved, and unknown legacy cohort until reconciled", as
   });
 }, postgresSetupTimeoutMs);
 
+it("reports legacy billing with only a shipping reference in the order snapshot", async () => {
+  await withTemplateUpgrade(async target => {
+    const { db, owner, applyForward } = target;
+    const entry = await upgradeRenewal(target, { edited: false });
+    const old = await createPostgresAutomaticRenewalPort(db).buildCycleSnapshots(entry.d.due);
+    const snapshot = { ...old, orderSnapshot: { shippingAddressRef: entry.snapshot.orderSnapshot.shippingAddressRef } };
+    expect(snapshot.orderSnapshot).toEqual({ shippingAddressRef: expect.any(String) });
+    const identity = automaticRenewalIdentity(old.subscriptionId, old.scheduledAt);
+    const op = JSON.parse((await db.query(rawClaim, [identity, automaticRenewalFingerprint(snapshot), snapshot, now])).rows[0].result);
+    expect(op).toMatchObject({ acquired: true });
+    await resizeForRenewal(entry.f, upgradeTransaction(db));
+    await applyForward();
+    expect(await renewalUpgradeReport(owner)).toEqual([reportRow(op.operationId, ["first_charge", "unknown_provenance"], {
+      frozen_amount_minor: 200,
+    })]);
+
+    await reserveIncumbent(entry.d, op);
+    const prepared = await entry.d.input.settlement.prepareRenewal({ operationId: op.operationId, claimToken: op.claimToken, now });
+    expect(await renewalAmounts(db, prepared.orderId)).toEqual([{ order: 200, intent: 200 }]);
+    await mainSettlement(db).recordTerminalOutcome({ operationId: op.operationId,
+      operationFingerprint: op.operationFingerprint, eventKey: `upgrade-refusal:${op.operationId}`,
+      occurredAt: later, outcome: "refused", externalRef: null, reason: "upgrade_reconciled" });
+    await closeOrder(target, prepared.orderId);
+    expect(await renewalUpgradeReport(owner)).toEqual([]);
+  });
+}, postgresSetupTimeoutMs);
+
 it("captures an accepted edit that commits while the forward is waiting on its subscription lock", async () => {
   await withTemplateUpgrade(async target => {
     const { owner, db, applyForward } = target;
@@ -2124,6 +2185,11 @@ it("keeps the open provider state listed after actual native lifecycle cancellat
     expect(await entry.rail.control.recordAttempt(record)).toEqual({ ...saved, replayed: true });
     await closeOrder(target, entry.prepared.orderId);
     expect(await unresolved()).toEqual([expected]);
+    // Stage the terminal provider fact in this disposable fixture.
+    const closed = await owner.query(`UPDATE public.payment_provider_states
+      SET status='cancelled', payment_status='cancelled' WHERE id=$1 RETURNING id`, [entry.prepared.settlementIntentId]);
+    expect(closed.rows).toEqual([{ id: entry.prepared.settlementIntentId }]);
+    expect(await unresolved()).toEqual([]);
   });
 }, postgresSetupTimeoutMs);
 

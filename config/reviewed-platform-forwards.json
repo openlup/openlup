@@ -9932,7 +9932,7 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": [
-          "INSERT INTO public.subscription_renewal_upgrade_cohort (renewal_operation_id)\nWITH locked_subscriptions AS MATERIALIZED (\n  SELECT s.id, s.template_version\n    FROM public.subscriptions s\n   WHERE EXISTS (\n     SELECT 1 FROM public.subscription_renewal_operations o\n      WHERE o.subscription_id = s.id\n        AND public.subscription_renewal_snapshot_is_billing(o.cycle_snapshot, false)\n   )\n   ORDER BY s.id\n   FOR SHARE OF s\n)\nSELECT o.id\n  FROM public.subscription_renewal_operations o\n  JOIN locked_subscriptions s ON s.id = o.subscription_id\n WHERE public.subscription_renewal_snapshot_is_stale(s.template_version, o.cycle_snapshot, NULL)\n    OR (NOT (o.cycle_snapshot ?| ARRAY['frozenRevision', 'templateSnapshot'])\n      AND public.subscription_renewal_snapshot_is_billing(o.cycle_snapshot, false));"
+          "INSERT INTO public.subscription_renewal_upgrade_cohort (renewal_operation_id)\nWITH locked_subscriptions AS MATERIALIZED (\n  SELECT s.id, s.template_version\n    FROM public.subscriptions s\n   WHERE EXISTS (\n     SELECT 1 FROM public.subscription_renewal_operations o\n      WHERE o.subscription_id = s.id\n        AND public.subscription_renewal_snapshot_is_billing(o.cycle_snapshot, true)\n   )\n   ORDER BY s.id\n   FOR SHARE OF s\n)\nSELECT o.id\n  FROM public.subscription_renewal_operations o\n  JOIN locked_subscriptions s ON s.id = o.subscription_id\n WHERE public.subscription_renewal_snapshot_is_stale(s.template_version, o.cycle_snapshot, NULL)\n    OR (NOT (o.cycle_snapshot ?| ARRAY['frozenRevision', 'templateSnapshot'])\n      AND public.subscription_renewal_snapshot_is_billing(o.cycle_snapshot, true));"
         ]
       }
     ]
@@ -14440,7 +14440,7 @@
     },
     {
       "path": "db/platform/migrations/20261129130506_subscription_renewal_current_template.sql",
-      "sha256": "2bb623018bfa91c2fd33806050eafc4ed897ab5d4a3bff2ea8b5091a5d7ab9af",
+      "sha256": "df6118ccfdde6c49c159541ae563b7045cb786c9ff678d44eacd3cdb38d49dad",
       "functions": [
         {
           "signature": "public.subscription_claim_due_renewal(text,text,jsonb,text,integer,timestamptz)",
@@ -14450,7 +14450,7 @@
         {
           "signature": "public.subscription_delivery_alignment_on_delivery()",
           "beforeSha256": "7a7bc2bd0e926b7d4c4be060fc14937cabc4b4b057607dccf54b864502aad21f",
-          "afterSha256": "00483d7664732015a2fe5c64c8ad4afc2dc32fe187678cfb5458e54a413eef84"
+          "afterSha256": "2cf1091a35642f249923afaa7a0b59c89f58afbae80003ac3950a3709464f778"
         },
         {
           "signature": "public.subscription_renewal_snapshot_is_billing(jsonb,boolean)",

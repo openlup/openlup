@@ -81,6 +81,8 @@ END IF; END; $$;
 
 -- Lock billing candidates before evaluating staleness. A concurrent accepted
 -- edit can change the locked row's version while capture is waiting.
+-- The report considers complete billing fields even on a destination-only
+-- order snapshot. Legacy claims still have no accepted version evidence.
 INSERT INTO public.subscription_renewal_upgrade_cohort (renewal_operation_id)
 WITH locked_subscriptions AS MATERIALIZED (
   SELECT s.id, s.template_version
@@ -88,7 +90,7 @@ WITH locked_subscriptions AS MATERIALIZED (
    WHERE EXISTS (
      SELECT 1 FROM public.subscription_renewal_operations o
       WHERE o.subscription_id = s.id
-        AND public.subscription_renewal_snapshot_is_billing(o.cycle_snapshot, false)
+        AND public.subscription_renewal_snapshot_is_billing(o.cycle_snapshot, true)
    )
    ORDER BY s.id
    FOR SHARE OF s
@@ -98,7 +100,7 @@ SELECT o.id
   JOIN locked_subscriptions s ON s.id = o.subscription_id
  WHERE public.subscription_renewal_snapshot_is_stale(s.template_version, o.cycle_snapshot, NULL)
     OR (NOT (o.cycle_snapshot ?| ARRAY['frozenRevision', 'templateSnapshot'])
-      AND public.subscription_renewal_snapshot_is_billing(o.cycle_snapshot, false));
+      AND public.subscription_renewal_snapshot_is_billing(o.cycle_snapshot, true));
 
 CREATE OR REPLACE FUNCTION public.subscription_claim_due_renewal(
   p_identity_key text,
@@ -485,9 +487,10 @@ BEGIN
    RETURNING next_cycle_at INTO v_target;
 
   UPDATE public.subscription_delivery_alignment_cases
-     SET state = CASE WHEN state = 'protected' THEN 'aligned' ELSE state END,
-         aligned_next_cycle_at = CASE WHEN state = 'protected' THEN v_target ELSE aligned_next_cycle_at END,
-         aligned_at = CASE WHEN state = 'protected' THEN now() ELSE aligned_at END,
+     SET state = CASE WHEN state = 'protected' OR (v_qualified_arrival AND state = 'shadow') THEN 'aligned' ELSE state END,
+         aligned_next_cycle_at = CASE WHEN state = 'protected' OR (v_qualified_arrival AND state = 'shadow')
+                                     THEN v_target ELSE aligned_next_cycle_at END,
+         aligned_at = CASE WHEN state = 'protected' OR (v_qualified_arrival AND state = 'shadow') THEN now() ELSE aligned_at END,
          updated_at = now()
    WHERE predecessor_order_id = v_case.predecessor_order_id;
   RETURN NEW;
