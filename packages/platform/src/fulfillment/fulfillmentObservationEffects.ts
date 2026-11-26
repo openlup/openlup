@@ -33,6 +33,7 @@ interface FulfillmentObservationInput<LocalStatus, TrackingStatus> {
   stockIdempotencyKey: string;
   handoffIdempotencyKey: string;
   trackingIdempotencyKey: (trackingNumber: string) => string;
+  recordDeliveryWithoutTracking?: () => Promise<void>;
   issueAccountingInvoice?: () => Promise<void>;
   onReplayed?: () => void;
   onTrackingRecorded?: (result: { replayed: boolean; readBack: boolean }) => void;
@@ -46,7 +47,7 @@ interface FulfillmentObservationStatusPolicy<LocalStatus, TrackingStatus> {
   trackingStatus(status: LocalStatus): TrackingStatus;
 }
 
-/** Stock → durable handover → every tracking reference → optional invoice. No catches or retries. */
+/** Stock → durable handover → tracking or verified arrival → optional invoice. No catches or retries. */
 export async function applyFulfillmentObservationEffects<LocalStatus, TrackingStatus>(
   input: FulfillmentObservationInput<LocalStatus, TrackingStatus>,
   policy: FulfillmentObservationStatusPolicy<LocalStatus, TrackingStatus>,
@@ -81,6 +82,18 @@ export async function applyFulfillmentObservationEffects<LocalStatus, TrackingSt
       observation: input.observation,
     });
     input.onTrackingRecorded?.(tracking);
+  }
+  if (input.recordDeliveryWithoutTracking && input.trackingRefs.length === 0) {
+    const { observation } = input;
+    if (observation.fact.canonicalStatus === "delivered"
+        && observation.fact.provenance.source === "provider_webhook"
+        && observation.fact.provenance.authority === "provider_asserted"
+        && observation.trackingRefs.length === 0
+        && !observation.diagnostics?.admission?.rejectedTrackingRefs
+        // Earlier retained envelopes may have dropped a reference without counting it.
+        && !observation.diagnostics?.redactedFieldCount) {
+      await input.recordDeliveryWithoutTracking();
+    }
   }
   await input.issueAccountingInvoice?.();
 }

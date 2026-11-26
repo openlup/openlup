@@ -1,0 +1,1 @@
+- `@openlup/platform/storefront/testing` adds `runStorefrontScenario`, which runs a storefront proof scenario clean and under its control, checks its own harness and returns a format-1 verdict, and `storefrontScenarios` with `lost_response_reload` and `duplicate_submit`.

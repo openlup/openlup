@@ -1638,11 +1638,19 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/browser/page-handle.spec.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/browser/recovery.proof.ts",
       "class": "public-output"
     },
     {
       "path": "examples/neutral-store/browser/renewal.proof.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/browser/storefront-anchors.spec.ts",
       "class": "public-output"
     },
     {
@@ -2222,11 +2230,19 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/shared/storefront-bindings.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/shared/subscription-edit.ts",
       "class": "public-output"
     },
     {
       "path": "examples/neutral-store/shared/subscription-offer.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/shared/transport.ts",
       "class": "public-output"
     },
     {
@@ -2263,6 +2279,10 @@
     },
     {
       "path": "examples/neutral-store/test/catalogue-upgrade-fixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/checkout-anchors.test.ts",
       "class": "public-output"
     },
     {
@@ -2391,6 +2411,10 @@
     },
     {
       "path": "examples/neutral-store/test/sessions.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/storefront-bindings.test.ts",
       "class": "public-output"
     },
     {
@@ -3835,6 +3859,10 @@
     },
     {
       "path": "packages/platform/api/shipping.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/storefront-testing.api.md",
       "class": "public-output"
     },
     {
@@ -8678,6 +8706,42 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/storefront/testing/anchorVisibility.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/testing/contracts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/testing/findings.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/testing/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/testing/pageHandle.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/testing/runner.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/testing/scenarios.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/testing/serialize.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/testing/utcInstant.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/agreedPlanQuote.ts",
       "class": "public-output"
     },
@@ -11547,6 +11611,38 @@
     },
     {
       "path": "packages/platform/test/storefront/purchaseContinuation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/testing/exports.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/testing/pageHandle.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/testing/runner.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/testing/scenarios.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/testing/serialize.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/testing/sourceScan.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/testing/storeDouble.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/testing/utcInstant.test.ts",
       "class": "public-output"
     },
     {
@@ -30398,6 +30494,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/platform/neutralStoreCheckoutClassifier.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/platform/neutralStoreCheckoutRetry.test.ts",
       "class": "public-output"
     },
@@ -30526,7 +30626,19 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/catalogAdmissionOwnerWrite.fixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogAdmissionOwnerWrite.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/catalogAdmissionPrelock.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogAdmissionRuntimeCommit.test.ts",
       "class": "public-output"
     },
     {

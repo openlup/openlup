@@ -2069,6 +2069,15 @@ registry union admits additions and base-entry removals in the named arrays of
 the publication catalogue, package boundary test and cold-consumer script. A
 removal can come from either side or both. Edits to base entries, reorders and
 moves between adapter classes need manual resolution and review.
+The [shard weights](config/vitest-shard-weights.json) are a closed union too:
+the branch contributes only keys main lacks. Main's additions, recalibrations
+and removals stand, and main's value wins for a key both sides added and for
+`defaultDurationMs` and `schemaVersion`. A branch edit or removal of a
+merge-base value, including those two fields, changes its test timeout. That remains an authored conflict
+for manual resolution and review. Output keeps sorted keys, positive finite
+weights and main's two-space JSON layout. GitHub can still remove a queued pull
+request on a text conflict in this file; the union only removes the hand
+resolution.
 
 If `landing:merge` refuses a new migration because its UTC slot is no longer
 later than `origin/main`, rename the new, unlanded migration to a free UTC slot
@@ -2278,7 +2287,9 @@ the failed `native-review` job within rerun authority. A group timeout needs a
 requeue under merge authority. After a same-head failed-check or timeout removal,
 the preflight requires a passing rerun of the removed merge-group commit with
 all required checks successful. A second removal of the same head stops routine
-re-arming. Diagnose any hold before considering further action. Missing or late
+re-arming. A conflict removal without a merge-group commit is not counted;
+the live mergeability check holds any conflict that remains on the head.
+Diagnose any hold before considering further action. Missing or late
 receipts require a receipt fix. A timely
 valid receipt rejected without a conflict is a defect to diagnose.
 
