@@ -1739,10 +1739,15 @@ publicationTest("issues verified v2 effects across the three installed price ent
       expect(canonicalCatalogDraftJson(verdict)).toBe(result);
       return verdict;
     };
-    type PriceRefusal = { code: string; message: string; constraint?: string };
+    const assessmentTarget = (op: typeof operation, previous = op.expected.entryId === null ? null : op.expected) =>
+      ({ skuId: op.variantId, reason: null, previous });
+    type PriceRefusal = { code: string; message: string; constraint?: string; detail?: string; hint?: string };
     const rollbackProbe = new Error("Roll back the successful probe");
     const missingFreshPrice = "catalog_publication_price_edit_required";
-    const issueRequired = { code: "23514", message: "catalog_publication_price_issue_required" };
+    const issueRequired = {
+      code: "23514", message: "catalog_publication_price_issue_required", constraint: "catalog_publication_price_issue_required",
+      detail: "approvalId, commandKey", hint: "Publish the saved draft through Publish with its active approval.",
+    };
     const editRequired = { code: "23514", message: missingFreshPrice };
     const verifyRefusal = async (db: PgQueryExecutor, execute: () => Promise<unknown>, expected: PriceRefusal) => {
       await db.query("SAVEPOINT refused_price_case");
@@ -1781,8 +1786,7 @@ publicationTest("issues verified v2 effects across the three installed price ent
             }
             if (edits.length === 1 && !probe) {
               expect(advice).toEqual({ outcome: "pass", postStateDigest: approval.post_state_digest,
-                targets: [{ skuId: edits[0].variantId, reason: null,
-                  previous: edits[0].expected.entryId === null ? null : edits[0].expected }] });
+                targets: [assessmentTarget(edits[0])] });
               const badPacket = assessPacket({ ...packet, candidateDigest }, approval.post_state_canonical_text, "0".repeat(64));
               await db.query("SAVEPOINT assessment_digest");
               await expect(db.query(assessmentSql, [badPacket])).rejects.toMatchObject({ code: "23514", message: "catalog_publication_manifest_invalid" });
@@ -1968,7 +1972,7 @@ publicationTest("issues verified v2 effects across the three installed price ent
             await assessor.query("SET LOCAL lock_timeout = '100ms'");
             await assessor.query("SELECT set_config('request.jwt.claims',$1,true)", [claims]);
             expect(await assess(assessor, assessPacket(command, seal.post_state_canonical_text, seal.post_state_digest)))
-              .toMatchObject({ outcome: "pass", postStateDigest: seal.post_state_digest });
+              .toEqual({ outcome: "pass", postStateDigest: seal.post_state_digest, targets: [assessmentTarget(competingEdit)] });
           });
         }, peer => insertBase(peer, scheduled, "1 hour"));
       }).catch((error: unknown) => error);
@@ -2037,7 +2041,10 @@ publicationTest("issues verified v2 effects across the three installed price ent
       return { ...packet, fingerprint: hash(canonicalCatalogDraftJson([{ schemaVersion: 2, ...packet }, actor])),
         product, skus: last.skus, approvalId };
     };
-    const priceChanged = { code: "40001", message: "catalog_publication_price_changed" };
+    const priceChanged = {
+      code: "40001", message: "catalog_publication_price_changed", constraint: "catalog_publication_price_changed",
+      detail: "expected, receipt entries", hint: "Read the current predecessor ID, amount and kind and use them in a fresh edit.",
+    };
     const keyReused = { code: "40001", message: "command_key_reused", constraint: "command_key_reused" };
     const contextMismatch = { code: "23514", message: "catalog_publication_price_context_mismatch",
       constraint: "catalog_publication_price_context_mismatch" };
@@ -2098,6 +2105,11 @@ publicationTest("issues verified v2 effects across the three installed price ent
         WHERE id=$1`, [edit.expected.entryId])],
       ["current receipt entry is no longer effective", (db: PoolClient) => db.query(`UPDATE public.price_entries SET active=false
         WHERE variant_id=$1 AND mode='one_time' AND active`, [data.skuId])],
+      ["completed replay refuses an active price whose validity ended", async (db: PoolClient) => {
+        const { rows } = await db.query(`UPDATE public.price_entries SET valid_to=transaction_timestamp()
+          WHERE id=$1 RETURNING active, valid_from<valid_to AND valid_to<=clock_timestamp() AS expired`, [liveEntryId]);
+        expect(rows).toEqual([{ active: true, expired: true }]);
+      }],
       ["inherited subscription price is no longer ready", (db: PoolClient) => db.query(`UPDATE public.price_entries SET active=false
         WHERE variant_id=$1 AND mode='subscription' AND active`, [data.skuId]), priceNotReady],
       ["approved list is no longer effective", (db: PoolClient) => db.query("UPDATE public.price_lists SET status='draft' WHERE id=$1",
@@ -2113,7 +2125,7 @@ publicationTest("issues verified v2 effects across the three installed price ent
     type PriceCase = { name: string; candidate: ReturnType<typeof seedSource>; listId?: string;
       mutate?: (db: PoolClient) => Promise<unknown>; assessment?: PriceRefusal; issuance?: PriceRefusal; reader?: PriceRefusal; replay?: boolean;
       pair?: { skuId: string; priceListId: string }; wrongSeal?: boolean;
-      requestSkuId?: string; committedEdits?: (typeof operation)[];
+      requestSkuId?: string; committedEdits?: (typeof operation)[]; assessmentTargets?: ReturnType<typeof assessmentTarget>[];
       seedReader?: (db: PoolClient, packet: Awaited<ReturnType<typeof bindPriceOnly>>) => Promise<unknown> };
     const matrix = async (cases: PriceCase[]) => {
       for (const item of cases) {
@@ -2126,19 +2138,18 @@ publicationTest("issues verified v2 effects across the three installed price ent
               changed.postState.skus = last.skus.map(sku => ({ ...sku, title: "Unapproved facts" }));
               await verifyRefusal(db, () => assess(db, changed), changedSeal);
             }
+            const beforeAssessment = await effects(db);
             const evaluated = await assess(db, input);
             if (item.assessment) {
               expect(evaluated).toMatchObject({ outcome: "blocked-input", reason: item.assessment.message, sqlstate: item.assessment.code });
+              if (item.assessment.detail) expect(evaluated.field).toBe(item.assessment.detail);
+              if (item.assessment.hint) expect(evaluated.remedy).toBe(item.assessment.hint);
               expect(evaluated).not.toHaveProperty("postStateDigest");
               expect(evaluated.pair).toEqual(item.pair ?? null);
             } else {
-              expect(evaluated).toMatchObject({ outcome: "pass", postStateDigest: input.postState.digest });
-              if (item.committedEdits) {
-                expect(evaluated.targets).toEqual(item.committedEdits.map(op => ({
-                  skuId: op.variantId, reason: null, previous: op.expected.entryId === null ? null : op.expected,
-                })));
-              }
+              expect(evaluated).toStrictEqual({ outcome: "pass", postStateDigest: input.postState.digest, targets: item.assessmentTargets });
             }
+            expect(await effects(db)).toEqual(beforeAssessment);
           });
           await stagePriceOnlyProduct(db);
           const beforeIssue = await effects(db);
@@ -2217,6 +2228,7 @@ publicationTest("issues verified v2 effects across the three installed price ent
       issuance: contextMismatch, reader: contextMismatch }));
 
     const live = liveEntryId;
+    const replayTarget = assessmentTarget(edit, { entryId: live, unitPriceMinor: savedAmount, amountKind: edit.amountKind });
     const tinyEdit = { ...edit, commandKey: randomUUID(), unitPriceMinor: 1,
       expected: { entryId: live, unitPriceMinor: savedAmount, amountKind: "gross" } };
     const tinyCandidate = seedSource(priceOnly, head, [tinyEdit]);
@@ -2274,9 +2286,10 @@ publicationTest("issues verified v2 effects across the three installed price ent
       FROM public.catalog_price_setup_receipts WHERE idempotency_key=$1`,
     [edit.commandKey, fresh.commandKey, hash(canonicalCatalogDraftJson(fresh))]);
     const grossCases: PriceCase[] = [
-      { name: "eligible replay at PostgreSQL precision", candidate: completed, replay: true },
+      { name: "eligible replay at PostgreSQL precision", candidate: completed, replay: true, assessmentTargets: [replayTarget] },
       { name: "two fresh pairs preserve the ordered assessment targets and both issued price tuples",
         candidate: seedSource(priceOnly, head, [fresh, companionReplacement]), committedEdits: [companionReplacement, fresh],
+        assessmentTargets: [assessmentTarget(companionReplacement), assessmentTarget(fresh)],
         mutate: db => db.query(`INSERT INTO public.price_entries(id,price_list_id,variant_id,mode,unit_price_minor,amount_kind,valid_from)
           VALUES($1,$2,$3,'one_time',$4,$5,'-infinity')`, [companionReplacement.expected.entryId, priceListId, companionSkuId,
           companionReplacement.expected.unitPriceMinor, companionReplacement.expected.amountKind]) },
@@ -2316,14 +2329,14 @@ publicationTest("issues verified v2 effects across the three installed price ent
           await exactStart(db);
           await db.query("UPDATE public.price_entries SET unit_price_minor=unit_price_minor+1 WHERE id=$1", [live]);
         }, assessment: pendingPrice, issuance: pendingPrice, reader: priceChanged, pair: grossPair, seedReader: seedMismatchedReplay },
-      { name: "exact-start receipt reads the actual effective row", candidate: completed, replay: true,
+      { name: "exact-start receipt reads the actual effective row", candidate: completed, replay: true, assessmentTargets: [replayTarget],
         mutate: async db => {
           await exactStart(db);
           await db.query("UPDATE public.price_entries SET valid_to=transaction_timestamp() WHERE id=$1", [edit.expected.entryId]);
           await db.query(`UPDATE public.catalog_price_setup_receipts SET response_payload=jsonb_set(
             response_payload,'{receipt,current,validFrom}',to_jsonb(transaction_timestamp())) WHERE idempotency_key=$1`, [edit.commandKey]);
         } },
-      { name: "compiler facts change after assessment", candidate: completed, wrongSeal: true, issuance: changedSeal,
+      { name: "compiler facts change after assessment", candidate: completed, wrongSeal: true, issuance: changedSeal, assessmentTargets: [replayTarget],
         reader: { code: "23514", message: "catalog_publication_sku_revision_invalid" } },
       ...replayCases, ...contextCases,
       { name: "unbound operation", candidate: seedSource(priceOnly, head, [{ ...fresh, variantId: randomUUID() }]),
@@ -2331,7 +2344,7 @@ publicationTest("issues verified v2 effects across the three installed price ent
       { name: "receipt actor mismatch", candidate: completed, mutate: db => db.query(`UPDATE public.catalog_price_setup_receipts
         SET metadata=jsonb_set(metadata,'{actorId}',to_jsonb($2::text)) WHERE idempotency_key=$1`, [edit.commandKey, otherActor]),
         assessment: operatorMismatch, issuance: operatorMismatch, reader: operatorMismatch, pair: grossPair },
-      { name: "fresh gross", candidate: seedSource(priceOnly, head, [fresh]) },
+      { name: "fresh gross", candidate: seedSource(priceOnly, head, [fresh]), assessmentTargets: [assessmentTarget(fresh)] },
       ...([
         ["fingerprint", "NEW.request_fingerprint := repeat('0',64);", keyReused],
         ["completion status", "NEW.status := 'in_progress'; NEW.response_payload := NULL;", inProgress],
@@ -2345,7 +2358,7 @@ publicationTest("issues verified v2 effects across the three installed price ent
             to_jsonb((NEW.response_payload #>> '{receipt,current,validFrom}')::timestamptz-interval '1 microsecond'));`, priceChanged],
       ] as const).map(([name, alteration, issuance]) => ({
         name: `fresh eligible edit rejects a corrupted post-write ${name}`,
-        candidate: seedSource(priceOnly, head, [fresh]), issuance,
+        candidate: seedSource(priceOnly, head, [fresh]), issuance, assessmentTargets: [assessmentTarget(fresh)],
         mutate: async (db: PoolClient) => {
           await db.query(`CREATE FUNCTION pg_temp.break_price_completion() RETURNS trigger LANGUAGE plpgsql AS
             $$ BEGIN ${alteration} RETURN NEW; END; $$;
@@ -2390,12 +2403,53 @@ publicationTest("issues verified v2 effects across the three installed price ent
 
     const grossReaderApproval = stagedPacket?.approvalId;
     expect(grossReaderApproval).toEqual(expect.any(String));
+    const readerArgs = [data.skuId, priceListId, grossReaderApproval];
+    const { rows: [{ definition: readerDefinition }] } = await pool.query(`SELECT
+      pg_get_functiondef('public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid)'::regprocedure) AS definition`);
+    const afterReceiptLocks = "END LOOP;\n  evidence := evidence || jsonb_build_object('plan',plan";
+    const receiptRaceFence = "test:publication-reader-receipt-locks";
+    // Pause the installed reader after its real row-lock probes, before the owner observes receipts.
+    const pausedReader = readerDefinition.replace(afterReceiptLocks,
+      `END LOOP;\n  PERFORM pg_advisory_xact_lock(hashtextextended('${receiptRaceFence}',0));\n  evidence := evidence || jsonb_build_object('plan',plan`);
+    expect(pausedReader).not.toBe(readerDefinition);
+    const beforeReceiptRace = await effects();
+    const { rows: [removedReceipt] } = await pool.query(`DELETE FROM public.catalog_price_setup_receipts r
+      WHERE r.scope='catalog.price_setup.base' AND r.idempotency_key=$1 RETURNING to_jsonb(r) AS receipt`, [edit.commandKey]);
+    const restoreReceipt = `INSERT INTO public.catalog_price_setup_receipts
+      SELECT * FROM jsonb_populate_record(NULL::public.catalog_price_setup_receipts,$1::jsonb)`;
+    try {
+      expect(removedReceipt?.receipt).toMatchObject({ status: "completed", response_payload: { receipt: { commandKey: edit.commandKey } } });
+      await pool.query(pausedReader);
+      await expect(transaction(pool, async reader => {
+        await reader.query("SET TRANSACTION ISOLATION LEVEL READ COMMITTED READ WRITE");
+        await reader.query("SELECT set_config('request.jwt.claims',$1,true)", [claims]);
+        return commitDuringWait(reader, () => reader.query(readerSql, readerArgs),
+          peer => peer.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [receiptRaceFence]),
+          async peer => {
+            const inserted = await peer.query(restoreReceipt, [removedReceipt.receipt]);
+            expect(inserted.rowCount).toBe(1);
+          });
+      }), "locked readback refuses a matching receipt committed after its row-lock miss").rejects.toMatchObject(issueRequired);
+      expect(await effects()).toEqual(beforeReceiptRace);
+    } finally {
+      await pool.query(readerDefinition);
+      if (removedReceipt) await pool.query(restoreReceipt + " ON CONFLICT (scope,idempotency_key) DO NOTHING", [removedReceipt.receipt]);
+    }
+    await transaction(pool, async db => {
+      await db.query("SELECT set_config('request.jwt.claims',$1,true)", [claims]);
+      expect((await db.query(readerSql, readerArgs)).rows).toEqual([
+        { id: live, unit_price_minor: savedAmount, amount_kind: edit.amountKind },
+      ]);
+    });
+
     const grossRace = await transaction(pool, db => bindPriceOnly(db, seedSource(priceOnly, head, [fresh])));
-    const assessPriceOnly = async (mode: string, packet: typeof grossRace) => transaction(pool, async db => {
+    const assessPriceOnly = async (mode: string, packet: typeof grossRace, op: typeof operation) => transaction(pool, async db => {
       await db.query(`SET TRANSACTION ${mode}`);
       await db.query("SET LOCAL lock_timeout='100ms'");
       await db.query("SELECT set_config('request.jwt.claims',$1,true)", [claims]);
-      expect(await assess(db, assessPacket(packet, postStateText, postStateDigest))).toMatchObject({ outcome: "pass", postStateDigest });
+      expect(await assess(db, assessPacket(packet, postStateText, postStateDigest))).toEqual({
+        outcome: "pass", postStateDigest, targets: [assessmentTarget(op)],
+      });
     });
     const repeatableReadOnly = "ISOLATION LEVEL REPEATABLE READ READ ONLY";
     const advisoryStart = (await pool.query("SELECT valid_from::text AS start FROM public.price_entries WHERE id=$1", [live])).rows[0].start;
@@ -2444,7 +2498,7 @@ publicationTest("issues verified v2 effects across the three installed price ent
     };
     try {
       await sharedWait(holdPrice, async peer => {
-        await assessPriceOnly(repeatableReadOnly, grossRace);
+        await assessPriceOnly(repeatableReadOnly, grossRace, fresh);
         await insertBase(peer, advisoryFuture, "1 hour");
         await peer.query("UPDATE public.price_entries SET valid_from=valid_from-interval '1 microsecond' WHERE id=$1", [live]);
       }, [
@@ -2469,7 +2523,7 @@ publicationTest("issues verified v2 effects across the three installed price ent
     const netEdit = { ...operation, commandKey: randomUUID(), priceListId: netListId, amountKind: "net",
       expectedListAmountBasis: netContext.amountBasis };
     const netCandidate = seedSource(priceOnly, head, [netEdit], netContext);
-    await matrix([{ name: "fresh net", candidate: netCandidate, listId: netListId }]);
+    await matrix([{ name: "fresh net", candidate: netCandidate, listId: netListId, assessmentTargets: [assessmentTarget(netEdit)] }]);
 
     // Complete a price command independently so the next issuance has a real predecessor.
     const netEntryId = await transaction(pool, async db => {
@@ -2523,8 +2577,8 @@ publicationTest("issues verified v2 effects across the three installed price ent
     const { rows: [{ expires }] } = await pool.query(`UPDATE public.price_lists SET valid_to=clock_timestamp()+interval '2 seconds'
       WHERE id=$1 RETURNING valid_to::text AS expires`, [netListId]);
     try {
-      await assessPriceOnly(repeatableReadOnly, packet);
-      await assessPriceOnly("ISOLATION LEVEL READ COMMITTED READ ONLY", packet);
+      await assessPriceOnly(repeatableReadOnly, packet, netReplacement);
+      await assessPriceOnly("ISOLATION LEVEL READ COMMITTED READ ONLY", packet, netReplacement);
       await expect(transaction(publisher, async db => {
         await db.query("SELECT set_config('request.jwt.claims',$1,true)", [claims]);
         return commitDuringWait(db, () => db.query(recordSql, [packet]), holdTaxClass, crossExpiry(expires));
@@ -2533,7 +2587,7 @@ publicationTest("issues verified v2 effects across the three installed price ent
     } finally {
       await pool.query("UPDATE public.price_lists SET valid_to=NULL WHERE id=$1", [netListId]);
     }
-    await assessPriceOnly(repeatableReadOnly, packet);
+    await assessPriceOnly(repeatableReadOnly, packet, netReplacement);
     const candidateFence = (db: PoolClient) => db.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",
       [`catalog-publication-candidate:${canonicalCatalogDraftJson(packet.candidateRef)}`]);
     const revokePending = async (db: PoolClient) => {
@@ -2543,7 +2597,7 @@ publicationTest("issues verified v2 effects across the three installed price ent
     };
     const beforeRevocation = await effects();
     await sharedWait(candidateFence, async peer => {
-      await assessPriceOnly(repeatableReadOnly, packet);
+      await assessPriceOnly(repeatableReadOnly, packet, netReplacement);
       await revokePending(peer);
     }, [
       [publisher, recordSql, [packet], { code: "23514", message: "catalog_publication_approval_missing" }],
@@ -2551,12 +2605,12 @@ publicationTest("issues verified v2 effects across the three installed price ent
     ]);
     expect(await effects()).toMatchObject({ head: beforeRevocation.head, price_rows: beforeRevocation.price_rows,
       child_receipt_rows: beforeRevocation.child_receipt_rows, publication_rows: beforeRevocation.publication_rows });
-    await assessPriceOnly(repeatableReadOnly, packet);
+    await assessPriceOnly(repeatableReadOnly, packet, netReplacement);
     const freshPacket = await transaction(pool, db => bindPriceOnly(db, expiring));
     const { rows: [{ expires: readerExpiry }] } = await pool.query(`UPDATE public.price_lists SET valid_to=clock_timestamp()+interval '2 seconds'
       WHERE id=$1 RETURNING valid_to::text AS expires`, [netListId]);
     try {
-      await assessPriceOnly(repeatableReadOnly, freshPacket);
+      await assessPriceOnly(repeatableReadOnly, freshPacket, netReplacement);
       await transaction(publisher, async db => {
         await db.query("SELECT set_config('request.jwt.claims',$1,true)", [claims]);
         await stagePriceOnlyProduct(db);

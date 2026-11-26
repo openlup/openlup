@@ -417,6 +417,7 @@ DECLARE
   actor uuid := (p_observed_evidence->>'actor')::uuid;
   issue_id uuid := (p_observed_evidence->>'issueId')::uuid;
   claims jsonb := p_observed_evidence->'claims';
+  receipt_locks jsonb := p_observed_evidence->'receiptLocks';
   written boolean := coalesce((p_observed_evidence->>'written')::boolean,false);
   mutations jsonb := '[]';
   targets jsonb := '[]';
@@ -542,7 +543,8 @@ BEGIN
       SELECT * INTO saved FROM public.catalog_price_setup_receipts r
       WHERE r.scope='catalog.price_setup.base' AND r.idempotency_key=operation->>'commandKey';
       refusal := CASE
-        WHEN NOT FOUND AND lane='reader' THEN 'catalog_publication_price_issue_required'
+        WHEN lane='reader' AND (receipt_locks->(operation->>'commandKey') IS DISTINCT FROM 'true'::jsonb OR NOT FOUND)
+          THEN 'catalog_publication_price_issue_required'
         WHEN NOT FOUND AND written THEN 'catalog_publication_price_changed'
         WHEN NOT FOUND AND lane='issuance' THEN 'price_operation_invalid'
         WHEN NOT FOUND THEN NULL
@@ -768,6 +770,7 @@ DECLARE
   evidence jsonb;
   plan jsonb;
   target jsonb;
+  receipt_locks jsonb := '{}';
   price jsonb;
   tax_class text;
   at_price timestamptz;
@@ -806,8 +809,9 @@ BEGIN
   FOR target IN SELECT t FROM jsonb_array_elements(plan) t ORDER BY convert_to(t #>> '{operation,commandKey}','UTF8') LOOP
     PERFORM 1 FROM public.catalog_price_setup_receipts r
       WHERE r.scope='catalog.price_setup.base' AND r.idempotency_key=target #>> '{operation,commandKey}' FOR NO KEY UPDATE NOWAIT;
+    receipt_locks := receipt_locks || jsonb_build_object(target #>> '{operation,commandKey}',FOUND);
   END LOOP;
-  evidence := evidence || jsonb_build_object('plan',plan);
+  evidence := evidence || jsonb_build_object('plan',plan,'receiptLocks',receipt_locks);
   PERFORM public.catalog_publication_decide_prices_v2(NULL,NULL,NULL,context,evidence,NULL);
   tax_class := public.catalog_publication_lock_price_plan_v2(plan,next_manifest->'product',context);
   at_price := clock_timestamp();
