@@ -10,6 +10,20 @@ import { pricingAndPromotionsDomain } from "./pricingAndPromotions.js";
 import { subscriptionsDomain } from "./subscriptions.js";
 import { taxAndMoneyDomain } from "./taxAndMoney.js";
 
+const outsideProfileRelations = {
+  "acquisition_private.installation_key": { disposition: "new-target-installation-key", preserveTarget: true },
+  "acquisition_private.address_references": { disposition: "target-address-references", preserveTarget: true },
+  "public.platform_schema_migrations": { disposition: "target-migration-history", preserveTarget: true },
+  "public.customer_identity_challenges": { disposition: "intentionally-not-carried", preserveTarget: false },
+  "public.catalog_attribute_projection": { disposition: "rebuildable", preserveTarget: false },
+  ...paymentsDomain.outsideProfile,
+} as const;
+
+type OutsideProfileRelation = typeof outsideProfileRelations[keyof typeof outsideProfileRelations];
+export type ConnectedStoreOutsideProfileDisposition = OutsideProfileRelation["disposition"];
+export const connectedStoreOutsideProfileRelations: ReadonlyMap<string, OutsideProfileRelation> =
+  new Map(Object.entries(outsideProfileRelations));
+
 /**
  * Finite native-profile owned table roster, composed from per-domain modules in
  * exact capture order. Adding a table to an existing domain edits only that

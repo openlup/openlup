@@ -8662,6 +8662,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/storefront/purchaseContinuation.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/agreedPlanQuote.ts",
       "class": "public-output"
     },
@@ -11523,6 +11527,10 @@
     },
     {
       "path": "packages/platform/test/storefront/pendingResume.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/purchaseContinuation.test.ts",
       "class": "public-output"
     },
     {
@@ -30946,6 +30954,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/fixtures/paymentCaptureTime/replayed.sql",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/fixtures/paymentMethods/consent_snapshot_merge.sql",
       "class": "public-output"
     },
@@ -31386,6 +31398,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/neutralStorePurchaseContinuation.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/neutralStoreQuote.test.ts",
       "class": "public-output"
     },
@@ -31499,6 +31515,14 @@
     },
     {
       "path": "tests/postgres/partnerAcquisition.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/paymentCaptureTime.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/paymentCaptureTimePgtap.test.ts",
       "class": "public-output"
     },
     {
