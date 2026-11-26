@@ -26,6 +26,7 @@ type TableName = typeof connectedNativeStoreTables[number];
 type Rows = { table: TableName; columns: readonly { name: string; type: string }[]; rows: readonly string[] };
 const migrationLock = "openlup:public-platform-migrations:v1";
 const paymentTables = ["commerce_settlement_intents", ...Object.values(paymentsDomain.restore).flat()] as const;
+const paymentQualificationRelation = "public.payment_capture_time_test_qualification";
 type SourceShape = "current" | "unsupported";
 
 export function connectedStoreSourceShape(
@@ -357,9 +358,9 @@ export async function restoreConnectedNativeStore(input: {
     await assertInsertTriggers(client);
     const replayed = await equalCensus(client, source);
     if (!replayed && paymentTables.some(table => source.get(table)!.rows.length > 0)) {
-      await client.query("DELETE FROM public.payment_capture_time_test_qualification");
+      await client.query(`DELETE FROM ${paymentQualificationRelation}`);
     }
-    await assertOutsideEmpty(client, relations);
+    await assertOutsideEmpty(client, relations, replayed);
     // Sized bindings cannot be replayed as final rows through the insert guard.
     // Refuse before restoring settings or inserting any retained source data.
     if (source.get("subscriptions")!.rows.some(row =>
@@ -630,11 +631,13 @@ async function equalCensus(client: PoolClient, expected: Map<TableName, Rows>): 
   }
   return true;
 }
-async function assertOutsideEmpty(client: PoolClient, relations: readonly { schema: string; table: string }[]): Promise<void> {
-  const outside = relations.filter(relation =>
-    !(relation.schema === "public" && (connectedNativeStoreTables.includes(relation.table as TableName)
-      || relation.table === requiredPrivacyDeclarationTable))
-    && !connectedStoreOutsideProfileRelations.get(`${relation.schema}.${relation.table}`)?.preserveTarget);
+async function assertOutsideEmpty(client: PoolClient, relations: readonly { schema: string; table: string }[], replayed = false): Promise<void> {
+  const outside = relations.filter(({ schema, table }) => {
+    const name = `${schema}.${table}`;
+    return !(schema === "public" && (connectedNativeStoreTables.includes(table as TableName) || table === requiredPrivacyDeclarationTable))
+      && !connectedStoreOutsideProfileRelations.get(name)?.preserveTarget
+      && (!replayed || name !== paymentQualificationRelation);
+  });
   for (let start = 0; start < outside.length; start += existsCheckBatchSize) {
     const batch = outside.slice(start, start + existsCheckBatchSize);
     const probes = batch.map((relation, index) =>

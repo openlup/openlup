@@ -194,7 +194,8 @@ the target installation's own registry without comparing its count to the source
 `public.payment_capture_time_test_qualification` contributes only relation, owner and row count under
 `target-payment-qualification`. The row attests to an installation's payment configuration and contains no customer data.
 A restore that imports payment data clears the target qualification in the import transaction. The Payments owner requalifies
-the target provider, credential account and signed source path after reviewing the imported population. Signed captures require
+the target provider, credential account and signed source path after reviewing the imported population. An exact retry preserves
+any target qualification recorded since the first restore. Signed captures require
 the bound event account and source path. Readback diagnostics require the provider and credential account on the bound applied run.
 Before connecting, restore rejects extra census fields, invalid counts and
 dispositions that do not match the relation; unsupported relations must have a zero count.

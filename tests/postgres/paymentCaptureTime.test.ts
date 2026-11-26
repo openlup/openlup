@@ -649,7 +649,7 @@ it("classifies sandbox co-settlement using the primary observation", async () =>
   expect(await read(env.owner, order)).toMatchObject({ ...hold("unqualified"), provider: "sandbox", route: null, payment_mode: "unknown" });
 });
 
-it("invalidates target qualification on first restore of mixed payment accounts", async () => {
+it("invalidates qualification on payment import and preserves requalification on exact retry", async () => {
   const resources = storeJourneyResources();
   try {
     const source = await resources.installation("capture-clock-source");
@@ -673,20 +673,39 @@ it("invalidates target qualification on first restore of mixed payment accounts"
     expect(freshTarget.outsideProfileCensus.find(entry => entry.relation === scope)).toMatchObject({
       rows: "1", disposition: "target-payment-qualification",
     });
-    const targetQualification = async () => (await target.owner.query(`SELECT provider_account_ref FROM ${scope}`)).rows;
-    expect(await targetQualification()).toEqual([{ provider_account_ref: primaryAccount }]);
+    const qualification = async (db: Db) => (await db.query(`SELECT to_jsonb(q) AS value,
+      tableoid::text,ctid::text,xmin::text FROM ${scope} q`)).rows;
+    expect(await qualification(target.owner)).toMatchObject([{ value: { provider_account_ref: primaryAccount } }]);
     const restore = () => restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet, freshTarget });
     expect(await restore()).toMatchObject({ replayed: false, captureSha256: packet.sha256 });
-    expect(await targetQualification()).toEqual([]);
+    expect(await qualification(target.owner)).toEqual([]);
     for (const capture of [f, foreign]) expect(await read(target.owner, capture.order)).toMatchObject(hold("unqualified"));
     expect(await restore()).toMatchObject({ replayed: true });
-    expect(await targetQualification()).toEqual([]);
+    expect(await qualification(target.owner)).toEqual([]);
     await qualify(target.owner);
     const captured = await read(target.owner, f.order);
     expect(captured).toMatchObject({ kind: "authoritative", intent_id: f.intent, provider: primaryProvider });
     await timeEq(target.owner, captured.captured_at, f.time.occurred);
-    expect(await read(target.owner, foreign.order)).toMatchObject({
+    const held = await read(target.owner, foreign.order);
+    expect(held).toMatchObject({
       ...hold("unqualified"), provider: primaryProvider, payment_mode: "test", route: "signed_webhook",
     });
+    const requalified = await qualification(target.owner);
+    expect(await restore()).toEqual({ replayed: true, captureSha256: packet.sha256, neutralizedHistoricalHoldNotifications: 0 });
+    expect(await qualification(target.owner)).toEqual(requalified);
+    expect(await read(target.owner, f.order)).toEqual(captured);
+    expect(await read(target.owner, foreign.order)).toEqual(held);
+
+    const later = await prepared(source.owner, source.runtime);
+    expect(await receive(source.runtime, later)).toMatchObject({ status: 200 });
+    const different = await captureStoreJourney(source.owner, "capture-clock-source");
+    expect(different.sha256).not.toBe(packet.sha256);
+    const second = await resources.installation("capture-clock-second-target");
+    await qualify(second.owner);
+    const freshSecond = await captureStoreJourney(second.owner, "capture-clock-second-target");
+    expect(await restoreConnectedNativeStore({ owner: second.owner, installation: journeySelection, packet: different, freshTarget: freshSecond }))
+      .toMatchObject({ replayed: false, captureSha256: different.sha256 });
+    expect(await qualification(second.owner)).toEqual([]);
+    expect(await read(second.owner, later.order)).toMatchObject(hold("unqualified"));
   } finally { await resources.close(); }
 }, postgresSetupTimeoutMs);
