@@ -819,6 +819,145 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
     expect(await compose(observation(f, 'delivered', later, ['LATER-REF'])).ingest(verification)).toMatchObject({ kind: 'processed' }); expect((await state(f)).status).toBe('delivered');
     expect((await notices(f)).rows).toHaveLength(0); expect((await notices(f, 'commerce.shipment.delivered')).rows).toHaveLength(1);
   });
+  it.each(['provider parcel identity', 'single recorded dispatch', 'uncertain prebound dispatch'] as const)('settles delivery and alignment through %s and keeps the first receipt on replay', async identity => {
+    const f = await subject();
+    const providerParcel = `parcel:${f.shipment}`;
+    await h.owner.query('UPDATE public.fulfillment_shipments SET created_at=$2 WHERE id=$1', [f.shipment, earlier]);
+    await h.owner.query('UPDATE public.fulfillment_dispatch_refs SET parcel_ref=$2 WHERE id=$1', [f.dispatch, providerParcel]);
+    expect(await openCase(h.owner, f)).toMatchObject({ state: 'protected' });
+    await compose(observation(f, 'in_transit', earlier)).ingest(verification);
+    if (identity === 'uncertain prebound dispatch') {
+      await h.owner.query("UPDATE public.fulfillment_dispatch_refs SET status='uncertain' WHERE id=$1", [f.dispatch]);
+    }
+    const before = await census(f);
+    const providerTime = identity === 'provider parcel identity' ? '12:00+02:00' : '12:00+0200';
+    const delivered = observation(f, 'delivered', at.replace('10:00:00.000Z', providerTime), [], later);
+    if (identity === 'provider parcel identity') {
+      delivered.correlation.externalRef = null;
+      delivered.correlation.providerFulfillmentRef = providerParcel;
+      delivered.fact = { ...delivered.fact, fulfillmentReference: providerParcel };
+    }
+    const invoice = vi.fn(async () => state(f));
+    const receipt = { ...verification, receivedAt: later };
+
+    expect(await compose(delivered, { accounting: { issue: invoice, classify: () => ({ permanent: false, identifier: null, sqlstate: null, benign: false }) } }).ingest(receipt))
+      .toMatchObject({ kind: 'processed', trackingRefs: 0, trackingReadBacks: 0, deliveryReadBack: true, observation: delivered });
+    expect(invoice).toHaveBeenCalledExactlyOnceWith(f.shipment);
+    expect(await invoice.mock.results[0]?.value).toMatchObject({ status: 'delivered', delivered_at: new Date(at) });
+    const after = await census(f);
+    expect(after.refs).toEqual(before.refs);
+    expect(after.arrivals).toEqual([expect.objectContaining({ shipment_id: f.shipment, delivered_at: new Date(at) })]);
+    const nextCycle = new Date(new Date(at).getTime() + 28 * 86400000);
+    expect((await h.owner.query('SELECT next_cycle_at,status FROM public.subscriptions WHERE id=$1', [f.subscription])).rows)
+      .toEqual([{ status: 'active', next_cycle_at: nextCycle }]);
+    expect((await h.owner.query('SELECT state,aligned_next_cycle_at FROM public.subscription_delivery_alignment_cases WHERE subscription_id=$1', [f.subscription])).rows)
+      .toEqual([{ state: 'aligned', aligned_next_cycle_at: nextCycle }]);
+    expect((await h.runtime.query('SELECT public.subscription_delivery_alignment_admit_renewal($1,$2,$2) AS value', [f.subscription, nextCycle])).rows[0].value)
+      .toMatchObject({ allowed: true, reason: 'predecessor_delivered' });
+
+    const replay = observation(f, 'delivered', earlier, ['UNEXPECTED-REPLAY-TRACKING'], later);
+    replay.eventKey = delivered.eventKey;
+    expect(await compose(replay).ingest(receipt))
+      .toMatchObject({ kind: 'processed', replayed: true, trackingRefs: 0, trackingReadBacks: 0, deliveryReadBack: true, observation: delivered });
+    expect(await census(f)).toEqual(after);
+    expect((await notices(f, 'commerce.shipment.delivered')).rows).toHaveLength(1);
+    expect((await h.owner.query("SELECT * FROM public.fulfillment_operator_receipts WHERE kind='tracking' AND command->>'shipmentId'=$1 AND command#>>'{request,status}'='delivered'", [f.shipment])).rows).toHaveLength(1);
+    expect((await h.owner.query('SELECT observation,outcome,prebound_arrival_dispatch_id FROM public.fulfillment_observations WHERE event_key=$1', [delivered.eventKey])).rows)
+      .toEqual([{ observation: delivered, outcome: { status: 'processed' }, prebound_arrival_dispatch_id: identity === 'provider parcel identity' ? null : f.dispatch }]);
+  });
+  it.each(['paused', 'cancelled'] as const)('records physical arrival without moving a %s subscription', async status => {
+    const f = await subject();
+    await h.owner.query('UPDATE public.fulfillment_shipments SET created_at=$2 WHERE id=$1', [f.shipment, earlier]);
+    expect(await openCase(h.owner, f)).toMatchObject({ state: 'protected' });
+    await compose(observation(f, 'in_transit', earlier)).ingest(verification);
+    await h.owner.query('UPDATE public.subscriptions SET status=$2 WHERE id=$1', [f.subscription, status]);
+    const subscription = () => h.owner.query('SELECT status,next_cycle_at FROM public.subscriptions WHERE id=$1', [f.subscription]);
+    const cycles = () => h.owner.query('SELECT id,status FROM public.subscription_cycles WHERE subscription_id=$1 ORDER BY id', [f.subscription]);
+    const before = (await subscription()).rows;
+    const beforeCycles = (await cycles()).rows;
+    const precise = at.replace('.000Z', '.123456Z');
+    const delivered = observation(f, 'delivered', precise, [], later);
+    delivered.fact = { ...delivered.fact, occurredAt: precise };
+
+    expect(await compose(delivered).ingest({ ...verification, receivedAt: later }))
+      .toMatchObject({ kind: 'processed', deliveryReadBack: true });
+    expect((await h.owner.query("SELECT status,to_char(delivered_at AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS arrival FROM public.fulfillment_shipments WHERE id=$1", [f.shipment])).rows)
+      .toEqual([{ status: 'delivered', arrival: precise }]);
+    expect((await subscription()).rows).toEqual(before);
+    expect((await cycles()).rows).toEqual(beforeCycles);
+    expect((await h.runtime.query('SELECT public.subscription_delivery_alignment_admit_renewal($1,$2,$2) AS value', [f.subscription, before[0].next_cycle_at])).rows[0].value)
+      .toMatchObject({ allowed: false, state: 'not_active', reason: 'subscription_not_active' });
+  });
+  it('acknowledges a dispatch on a multi-parcel order without using its sole tracking reference as arrival proof', async () => {
+    const original = await subject();
+    const f = { ...original, shipment: await replacement(h.owner, original), dispatch: randomUUID(), external: `external:${randomUUID()}` };
+    await h.owner.query('UPDATE public.fulfillment_shipments SET created_at=$2 WHERE id=ANY($1::uuid[])', [[original.shipment, f.shipment], earlier]);
+    await h.owner.query("INSERT INTO public.fulfillment_dispatch_refs(id,request_key,shipment_id,order_id,external_ref,mode,status,evidence) SELECT $2::uuid,$2::text,$3::uuid,order_id,$4::text,mode,'submitting',evidence FROM public.fulfillment_dispatch_refs WHERE id=$1", [original.dispatch, f.dispatch, f.shipment, f.external]);
+    await h.owner.query('INSERT INTO public.fulfillment_parcel_reservation_sets(shipment_id,order_id) VALUES($1,$2)', [f.shipment, f.order]);
+    await h.owner.query("INSERT INTO public.shipment_external_refs(shipment_id,ref_role,external_id,provider_kind) VALUES($1,'tracking',$2,'warehouse-a')", [f.shipment, `TRACK-${f.shipment}`]);
+    const beforeOriginal = await census(original);
+    const delivered = observation(f, 'delivered', at, [], later);
+    const invoice = vi.fn(async () => state(f));
+
+    const result = await compose(delivered, { accounting: { issue: invoice, classify: () => ({ permanent: false, identifier: null, sqlstate: null, benign: false }) } })
+      .ingest({ ...verification, receivedAt: later });
+    expect(result).toMatchObject({ kind: 'processed', trackingRefs: 0, trackingReadBacks: 0 });
+    expect(result).not.toHaveProperty('deliveryReadBack');
+    expect(invoice).toHaveBeenCalledExactlyOnceWith(f.shipment);
+    expect(await invoice.mock.results[0]?.value).toMatchObject({ status: 'handed_over', delivered_at: null });
+    expect((await h.owner.query('SELECT status,acceptance FROM public.fulfillment_dispatch_refs WHERE id=$1', [f.dispatch])).rows[0])
+      .toMatchObject({ status: 'created', acceptance: { externalRef: f.external } });
+    expect((await proofs(f)).rows).toEqual([expect.objectContaining({ canonical_status: 'delivered' })]);
+    expect((await census(f)).arrivals).toEqual([]);
+    expect(await census(original)).toEqual(beforeOriginal);
+    expect((await notices(f, 'commerce.shipment.delivered')).rows).toEqual([]);
+  });
+  it('does not let a webhook with a fast host clock establish its own external dispatch proof', async () => {
+    const f = await subject(true, false);
+    await h.owner.query('UPDATE public.fulfillment_shipments SET created_at=$2 WHERE id=$1', [f.shipment, earlier]);
+    await h.owner.query('UPDATE public.fulfillment_dispatch_refs SET external_ref=NULL WHERE id=$1', [f.dispatch]);
+    await h.owner.query("INSERT INTO public.shipment_external_refs(shipment_id,ref_role,external_id,provider_kind) VALUES($1,'tracking',$2,'warehouse-a')", [f.shipment, `TRACK-${f.shipment}`]);
+    const receivedAt = (await h.owner.query<{ received_at: Date }>("SELECT now() + interval '1 day' AS received_at")).rows[0]!.received_at.toISOString();
+    const delivered = observation(f, 'delivered', at, [], receivedAt);
+    const receipt = { ...verification, receivedAt };
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const result = await compose(delivered).ingest(receipt);
+      expect(result).toMatchObject({ kind: 'processed', trackingRefs: 0 });
+      expect(result).not.toHaveProperty('deliveryReadBack');
+      expect(await state(f)).toMatchObject({ status: 'handed_over', delivered_at: null });
+    }
+    expect((await h.owner.query('SELECT status,external_ref FROM public.fulfillment_dispatch_refs WHERE id=$1', [f.dispatch])).rows)
+      .toEqual([{ status: 'created', external_ref: f.external }]);
+    expect((await h.owner.query('SELECT prebound_arrival_dispatch_id FROM public.fulfillment_observations WHERE event_key=$1', [delivered.eventKey])).rows)
+      .toEqual([{ prebound_arrival_dispatch_id: null }]);
+    expect((await proofs(f)).rows).toEqual([expect.objectContaining({ canonical_status: 'delivered' })]);
+  });
+  it.each(['unzoned occurrence', 'non-webhook provenance', 'later return', 'later cancellation'] as const)(
+    'preserves delivery evidence without recording arrival with %s', async blockedBy => {
+      const f = await subject();
+      await h.owner.query('UPDATE public.fulfillment_shipments SET created_at=$2 WHERE id=$1', [f.shipment, earlier]);
+      await compose(observation(f, 'in_transit', earlier)).ingest(verification);
+      const delivered = observation(f, 'delivered', at, [], later);
+      const receipt = { ...verification, receivedAt: later };
+      if (blockedBy === 'unzoned occurrence') delivered.intake!.occurredAt = at.replace('.000Z', '');
+      if (blockedBy === 'non-webhook provenance') delivered.fact = { ...delivered.fact, provenance: { source: 'provider_reconciliation', authority: 'provider_asserted' } };
+      if (blockedBy === 'later return' || blockedBy === 'later cancellation') {
+        const terminal = observation(f, blockedBy === 'later return' ? 'exception' : 'cancelled', later, [], later);
+        terminal.eventKind = blockedBy === 'later return' ? 'parcel.exception' : 'parcel.cancelled';
+        terminal.intake!.recovery = 'manual';
+        expect(await compose(terminal).ingest(receipt)).toMatchObject({ kind: 'processed' });
+      }
+      const before = await census(f);
+      const result = await compose(delivered).ingest(receipt);
+      expect(result).toMatchObject({ kind: 'processed', trackingRefs: 0, trackingReadBacks: 0 });
+      expect(result).not.toHaveProperty('deliveryReadBack');
+      const after = await census(f);
+      expect(after).toMatchObject({ parcel: before.parcel, arrivals: [], refs: before.refs, holds: before.holds });
+      expect(after.parcel.delivered_at).toBeNull();
+      expect(after.proofs).toEqual(expect.arrayContaining([expect.objectContaining({ event_key: delivered.eventKey, canonical_status: 'delivered' })]));
+      expect((await notices(f, 'commerce.shipment.delivered')).rows).toEqual([]);
+    });
   it('multi-reference tracking retains each projection/readback; polling effects use revised snapshots for the same occurrence', async () => {
     const f = await subject(), obs = observation(f, 'in_transit', at, []), request = job();
     expect(await compose(obs).reconcile(request)).toMatchObject({ result: { trackingRefs: 0 } }); expect((await notices(f)).rows).toHaveLength(0);

@@ -302,6 +302,56 @@ export function operatorAuthorityCapabilities(graph: "managed" | "native"): Oper
 export interface OperatorRpcExecutor {
   rpc(name: string, args: Record<string, unknown>): PromiseLike<{ data: unknown; error: unknown }>;
 }
+
+type ManagedOperatorDeadlockRpc = "customer_support_apply_subscription_action_v1" | "customer_support_issue_recovery";
+
+export interface ManagedOperatorDeadlockRetryOptions {
+  /** The host owns the delay between an aborted RPC and the next transaction. */
+  waitBeforeRetry(attempt: 1 | 2): PromiseLike<void>;
+  onDeadlock?(event: {
+    rpc: ManagedOperatorDeadlockRpc; sqlstate: "40P01"; phase: "first" | "exhausted";
+  }): void | PromiseLike<void>;
+}
+
+/** Opt in only when every RPC attempt is its own database transaction. */
+export function withManagedOperatorDeadlockRetry(
+  executor: OperatorRpcExecutor,
+  options: ManagedOperatorDeadlockRetryOptions,
+): OperatorRpcExecutor {
+  function observe(rpc: ManagedOperatorDeadlockRpc, phase: "first" | "exhausted") {
+    try {
+      void Promise.resolve(options.onDeadlock?.({ rpc, sqlstate: "40P01", phase })).catch(() => undefined);
+    } catch { /* Diagnostics do not govern the retry. */ }
+  }
+
+  function isDeadlock(error: unknown): boolean {
+    return (error as { code?: unknown } | null | undefined)?.code === "40P01";
+  }
+
+  async function retry(rpc: ManagedOperatorDeadlockRpc, args: Record<string, unknown>) {
+    let result = await executor.rpc(rpc, args);
+    if (!isDeadlock(result.error)) return result;
+
+    observe(rpc, "first");
+    for (const attempt of [1, 2] as const) {
+      await options.waitBeforeRetry(attempt);
+      result = await executor.rpc(rpc, args);
+      if (!isDeadlock(result.error)) return result;
+    }
+    observe(rpc, "exhausted");
+    return result;
+  }
+
+  return {
+    rpc(name, args) {
+      if (name === "customer_support_apply_subscription_action_v1" || name === "customer_support_issue_recovery") {
+        return retry(name, args);
+      }
+      return executor.rpc(name, args);
+    },
+  };
+}
+
 /** Injected recovery material is private to the adapter; paths belong to the host. */
 export interface OperatorRecoveryMaterial {
   tokenHash: string; payloadFingerprint: string; expiresAt: string; recoveryPath: string;
