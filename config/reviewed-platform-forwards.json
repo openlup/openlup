@@ -9906,8 +9906,21 @@
         "dataStatements": []
       },
       {
+        "row": "paid-order-money-v2-read",
+        "path": "db/platform/migrations/20261129130506_paid_order_money_v2_read.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.commerce_read_paid_order_money_v2(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "settings-wave3b-return-reasons-and-payment-preferences",
-        "path": "db/platform/migrations/20261129130506_settings_wave3b_return_reasons_and_payment_preferences.sql",
+        "path": "db/platform/migrations/20261129130507_settings_wave3b_return_reasons_and_payment_preferences.sql",
         "replacedFunctions": [
           {
             "signature": "public.commerce_return_request_create_owned(text,uuid,jsonb,text,text,uuid)",
@@ -14467,7 +14480,18 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261129130506_settings_wave3b_return_reasons_and_payment_preferences.sql",
+      "path": "db/platform/migrations/20261129130506_paid_order_money_v2_read.sql",
+      "sha256": "38c765551a254c374a04f72e8d1e49b9ac1f835b7359319ce745ecdfc9634466",
+      "functions": [
+        {
+          "signature": "public.commerce_read_paid_order_money_v2(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "c06b4df12b5d2081dc661c1c9bc31df5c73388ab25a995abac2b4e4ba086f028"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261129130507_settings_wave3b_return_reasons_and_payment_preferences.sql",
       "sha256": "0f3a48e4bf37494cc69d46a6dfa11706a1215d1e482fac8f94a948f5ca88e539",
       "functions": [
         {

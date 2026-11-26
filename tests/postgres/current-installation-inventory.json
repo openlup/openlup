@@ -2,13 +2,17 @@
   "current": {
     "profiles": {
       "legacy": {
-        "count": 231,
-        "exactTailCount": 121,
-        "objectInventorySha256": "9507fb7f9b8e44209f6a842051f5be9b943016aba129b264fb979a001e3069ff",
+        "count": 232,
+        "exactTailCount": 122,
+        "objectInventorySha256": "2494b30966120917b8202600dc6714fc8511e16c2cb52f1229d5e5dfef8ea536",
         "tail": [
           {
-            "file": "db/platform/migrations/20261129130506_settings_wave3b_return_reasons_and_payment_preferences.sql",
+            "file": "db/platform/migrations/20261129130507_settings_wave3b_return_reasons_and_payment_preferences.sql",
             "sha256": "0f3a48e4bf37494cc69d46a6dfa11706a1215d1e482fac8f94a948f5ca88e539"
+          },
+          {
+            "file": "db/platform/migrations/20261129130506_paid_order_money_v2_read.sql",
+            "sha256": "38c765551a254c374a04f72e8d1e49b9ac1f835b7359319ce745ecdfc9634466"
           },
           {
             "file": "db/platform/migrations/20261129130505_settings_wave4a_reschedule_timezone.sql",
@@ -933,13 +937,17 @@
         ]
       },
       "bootstrap": {
-        "count": 237,
-        "exactTailCount": 122,
-        "objectInventorySha256": "df5ec24e01135aaa8b66b2cc389a067aab82b9ecd44c0bd34b4da965d249474e",
+        "count": 238,
+        "exactTailCount": 123,
+        "objectInventorySha256": "ef40568d172a252b4d5d534ba7b47468df445d05561835d674fa4aefe411d9eb",
         "tail": [
           {
-            "file": "db/platform/migrations/20261129130506_settings_wave3b_return_reasons_and_payment_preferences.sql",
+            "file": "db/platform/migrations/20261129130507_settings_wave3b_return_reasons_and_payment_preferences.sql",
             "sha256": "0f3a48e4bf37494cc69d46a6dfa11706a1215d1e482fac8f94a948f5ca88e539"
+          },
+          {
+            "file": "db/platform/migrations/20261129130506_paid_order_money_v2_read.sql",
+            "sha256": "38c765551a254c374a04f72e8d1e49b9ac1f835b7359319ce745ecdfc9634466"
           },
           {
             "file": "db/platform/migrations/20261129130505_settings_wave4a_reschedule_timezone.sql",
@@ -1888,13 +1896,17 @@
         ]
       },
       "separate": {
-        "count": 237,
-        "exactTailCount": 122,
-        "objectInventorySha256": "1430e05349aa0a50ad13c4b9d1b9733b53f3f5493c75dd42f709eefa09b360e2",
+        "count": 238,
+        "exactTailCount": 123,
+        "objectInventorySha256": "45ecfd9ba146754510936d48a5ccf8d12863c94b7ca6320e6acbc54d94fdaa91",
         "tail": [
           {
-            "file": "db/platform/migrations/20261129130506_settings_wave3b_return_reasons_and_payment_preferences.sql",
+            "file": "db/platform/migrations/20261129130507_settings_wave3b_return_reasons_and_payment_preferences.sql",
             "sha256": "0f3a48e4bf37494cc69d46a6dfa11706a1215d1e482fac8f94a948f5ca88e539"
+          },
+          {
+            "file": "db/platform/migrations/20261129130506_paid_order_money_v2_read.sql",
+            "sha256": "38c765551a254c374a04f72e8d1e49b9ac1f835b7359319ce745ecdfc9634466"
           },
           {
             "file": "db/platform/migrations/20261129130505_settings_wave4a_reschedule_timezone.sql",
@@ -2843,13 +2855,17 @@
         ]
       },
       "admin-managed": {
-        "count": 235,
-        "exactTailCount": 121,
-        "objectInventorySha256": "62765083e0d909a5901e3b48fe88962cc290afcbb08a0c1a2d57bfa8954be05e",
+        "count": 236,
+        "exactTailCount": 122,
+        "objectInventorySha256": "15e425b49066bc6f38d913d6b3e31a06a0b65b59b5d54583f232606c6d453247",
         "tail": [
           {
-            "file": "db/platform/migrations/20261129130506_settings_wave3b_return_reasons_and_payment_preferences.sql",
+            "file": "db/platform/migrations/20261129130507_settings_wave3b_return_reasons_and_payment_preferences.sql",
             "sha256": "0f3a48e4bf37494cc69d46a6dfa11706a1215d1e482fac8f94a948f5ca88e539"
+          },
+          {
+            "file": "db/platform/migrations/20261129130506_paid_order_money_v2_read.sql",
+            "sha256": "38c765551a254c374a04f72e8d1e49b9ac1f835b7359319ce745ecdfc9634466"
           },
           {
             "file": "db/platform/migrations/20261129130505_settings_wave4a_reschedule_timezone.sql",
@@ -3790,13 +3806,17 @@
         ]
       },
       "admin-operator": {
-        "count": 235,
-        "exactTailCount": 121,
-        "objectInventorySha256": "2d9fe44089ad04bbf8492e5f7b1a16011c3b6fd5567aaa75b7becebbe3712254",
+        "count": 236,
+        "exactTailCount": 122,
+        "objectInventorySha256": "463dc293d3e09fb136252194fed24fb244bfba6fe2f22cffdfb0c4e2adaa783d",
         "tail": [
           {
-            "file": "db/platform/migrations/20261129130506_settings_wave3b_return_reasons_and_payment_preferences.sql",
+            "file": "db/platform/migrations/20261129130507_settings_wave3b_return_reasons_and_payment_preferences.sql",
             "sha256": "0f3a48e4bf37494cc69d46a6dfa11706a1215d1e482fac8f94a948f5ca88e539"
+          },
+          {
+            "file": "db/platform/migrations/20261129130506_paid_order_money_v2_read.sql",
+            "sha256": "38c765551a254c374a04f72e8d1e49b9ac1f835b7359319ce745ecdfc9634466"
           },
           {
             "file": "db/platform/migrations/20261129130505_settings_wave4a_reschedule_timezone.sql",
