@@ -43,7 +43,7 @@ it("uses only storefront anchors, and requires exactly the outcomes its steps us
 it("forbids, per run, the outcomes a paid_pending_activation run must not show", () => {
   const scenario = storefrontScenarios.find((entry) => entry.id === "paid_pending_activation")!;
   expect(scenario.safety.forbiddenStates).toEqual({
-    control: ["paid", "declined", "paid_pending_activation"],
+    control: ["paid", "declined"],
     clean: { ruledOut: ["paid", "declined"], afterShowing: { state: "paid_pending_activation", regressions: ["awaiting_payment"] } },
   });
 });
@@ -76,4 +76,7 @@ it("keys the finding texts by code and cause, with one cause per single-cause co
     for (const part of Object.values(text)) expect(part, `${code} ${cause}`).toMatch(/^[A-Z].+\.$/);
   }
   expect(() => findingText("duplicate_order", "create", { at: "x" })).toThrow(TypeError);
+  // The control list is judged from the control run's first sample, before its control starts too.
+  const unknowable = findingText("forbidden_state_shown", "unknowable", { at: "Step 2 (expect awaiting_payment) of the control run", name: "state:paid" });
+  expect(`${unknowable.observed} ${unknowable.cause}`).not.toMatch(/blocked/);
 });

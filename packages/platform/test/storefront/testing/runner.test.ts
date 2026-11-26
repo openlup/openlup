@@ -576,13 +576,15 @@ describe("paid with activation pending: the forbidden-state matrix (R27)", () =>
   // Per run: the control run (status reads blocked from the outcome on) may never show an outcome it cannot know; the
   // clean run may never show an outcome the scenario rules out, nor regress to a pre-outcome state once it showed the
   // expected one. Awaiting states stay allowed in the control run.
-  const rows: readonly (readonly [string, StoreDoubleSwitches, "passed" | "failed", readonly [string, number, string, string] | null])[] = [
+  // The state the control negates is not in the control list: a page that shows it is judged vacuous, as in every other
+  // block_read scenario, because the runner cannot tell a guess from a page that learned it over an unmatched request.
+  const rows: readonly (readonly [string, StoreDoubleSwitches, "passed" | "failed" | "vacuous", readonly [string, number, string, string] | null])[] = [
     ["a correct store", {}, "passed", null],
     ["an honest polling store (awaiting_payment until its poll answers; the control run keeps it)", { slowPoll: true, awaitingPaymentUntilPoll: true }, "passed", null],
     ["a control run that falls back to awaiting_payment when its read fails", { awaitingPaymentWhenReadFails: true }, "passed", null],
     ["a control run that shows paid when its read fails", { paidWhenReadFails: true }, "failed", ["control", 4, "unknowable", "state:paid"]],
     ["a control run that shows declined when its read fails", { declinedWhenReadFails: true }, "failed", ["control", 4, "unknowable", "state:declined"]],
-    ["a control run that shows the outcome from page state", { activationFromPageState: true }, "failed", ["control", 4, "unknowable", "state:paid_pending_activation"]],
+    ["a control run that shows the negated outcome from page state", { activationFromPageState: true }, "vacuous", ["control", 4, "vacuous_progress", "state:paid_pending_activation"]],
     ["a clean run that shows paid beside the outcome", { showPaidWhilePending: true }, "failed", ["clean", 4, "ruled_out", "state:paid"]],
     ["a clean run that regresses to awaiting_payment after it showed the outcome", { fallsBackAfterShowing: true }, "failed", ["clean", 5, "regression", "state:awaiting_payment"]],
   ];
@@ -594,6 +596,11 @@ describe("paid with activation pending: the forbidden-state matrix (R27)", () =>
       return;
     }
     const [runName, step, cause, state] = expected;
+    if (cause === "vacuous_progress") {
+      expect(codes(verdict)).toEqual(["vacuous_progress"]);
+      expect(finding(verdict, "vacuous_progress")).toMatchObject({ run: runName, step });
+      return;
+    }
     expect(codes(verdict)[0]).toBe("forbidden_state_shown");
     const forbidden = verdict.findings.filter((entry) => entry.code === "forbidden_state_shown");
     expect(forbidden).toHaveLength(1);
