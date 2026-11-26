@@ -1169,6 +1169,7 @@
         "test/storefront/continuationRecord.test.ts",
         "test/storefront/exports.test.ts",
         "test/storefront/neutralSource.test.ts",
+        "test/storefront/outcomeClassifiers.test.ts",
         "test/storefront/pendingResume.test.ts",
         "test/storefront/types.test.ts"
       ],
