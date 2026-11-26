@@ -13734,6 +13734,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/resource-gate.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/resource-gate.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/retry-ladder-terminating-classes.test.ts",
       "class": "public-output"
     },
