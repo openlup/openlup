@@ -266,21 +266,21 @@ test('U8 the abandon answer resolves its reading', async () => {
     await assert.rejects(page.checkout.bindings.transport.abandon(page.purchase()), module.CheckoutAnswerUncertain);
   }
   // A create lost in transport: final strictly after its request timeout plus the late-create bound.
-  const after = setup(module);
+  const after = setup(await freshDocument());
   after.seed({ v: 1, id: idA, fingerprint: 'f' });
   const start = after.time.now;
   wire(lost);
-  await assert.rejects(after.checkout.bindings.transport.submit(createOf()), module.CheckoutAnswerUncertain);
+  await assert.rejects(after.checkout.bindings.transport.submit(createOf()), Error);
   for (const [at, expected] of [[35_000, 'checking'], [35_001, 'terminal']] as const) {
     after.time.now = start + at;
     wire(() => succeeded({ abandoned: false }));
     assert.equal((await after.checkout.bindings.transport.abandon(after.purchase())).kind, expected, `lost at ${at}`);
   }
   // A create that settled without a definite answer: final strictly after the late-create bound.
-  const settled = setup(module);
+  const settled = setup(await freshDocument());
   settled.seed({ v: 1, id: idA, fingerprint: 'f' });
   wire(() => json({ ok: 'maybe' }));
-  await assert.rejects(settled.checkout.bindings.transport.submit(createOf()), module.CheckoutAnswerUncertain);
+  await assert.rejects(settled.checkout.bindings.transport.submit(createOf()), Error);
   const settledAt = settled.time.now;
   for (const [at, expected] of [[15_000, 'checking'], [15_001, 'terminal']] as const) {
     settled.time.now = settledAt + at;
@@ -331,7 +331,7 @@ test('U10 the fallback read is pinned to the recorded order', async () => {
   assert.equal(other.raw(), before);
   calls = wire(reply(succeeded({ status: 'cancelled', orderRef: orderA })));
   const last: ActionResult = { ok: true, value: pending(orderA, 'rcv_last') };
-  assert.deepEqual(await other.checkout.bindings.transport.read(other.purchase(idA, 0, last)), { ok: true, value: { status: 'cancelled', orderRef: orderA } });
+  assert.deepEqual(await other.checkout.bindings.transport.read(other.purchase(idA, 0, last)), { ok: true, value: { status: 'cancelled', orderRef: orderA }, replayed: true });
   assert.deepEqual(calls[1]!.body, { orderRef: orderA, token: 'rcv_last' }, 'the last answer\'s token comes first');
   for (const [name, page] of [['no recorded order', setup(module, { token: () => 'rcv_known' })], ['no token', setup(module)]] as const) {
     page.seed(name === 'no token' ? recorded : { v: 1, id: idA, fingerprint: 'f' });

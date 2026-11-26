@@ -2218,11 +2218,19 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/shared/storefront-bindings.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/shared/subscription-edit.ts",
       "class": "public-output"
     },
     {
       "path": "examples/neutral-store/shared/subscription-offer.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/shared/transport.ts",
       "class": "public-output"
     },
     {
@@ -2383,6 +2391,10 @@
     },
     {
       "path": "examples/neutral-store/test/sessions.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/storefront-bindings.test.ts",
       "class": "public-output"
     },
     {
@@ -30339,6 +30351,10 @@
     },
     {
       "path": "tests/platform/marketingValidation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/neutralStoreCheckoutClassifier.test.ts",
       "class": "public-output"
     },
     {

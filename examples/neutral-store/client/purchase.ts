@@ -1,9 +1,13 @@
 import { isRecord } from '../shared/offer.ts';
 import { resolveRoute } from '../shared/routes.ts';
-import { actionRequestTimeoutMs, checkoutLateCreateMs, type ActionResult } from '../shared/api.ts';
+import type { ActionResult } from '../shared/api.ts';
 import type { Locale } from '../shared/config.ts';
 import { checkoutContinuationCopy } from '../shared/limits.ts';
 import { act, uncertainAction } from './api.ts';
+import { checkoutCreates, checkoutRecordKey, noneIsFinal, storageAvailable, type CheckoutCreateState } from '../shared/storefront-bindings.ts';
+
+export { noneIsFinal };
+export type { CheckoutCreateState };
 
 interface Purchase { orderRef?: string; token?: string }
 const memory = new Map<string, Purchase>();
@@ -89,16 +93,6 @@ export const checkoutAnswerCodes: Readonly<Record<string, CheckoutAnswerClass>> 
 });
 
 export interface CheckoutContinuationRecord { v: 1; id: string; sentAt?: number; ordered?: true; orderRef?: string }
-export interface CheckoutCreateState {
-  inFlight: number;
-  settledAt?: number;
-  /** The dispatch time of the latest create of this key in this document. */
-  sentAt?: number;
-  /** A create the browser lost in transport may still reach the host until its request timeout. */
-  lostUntil?: number;
-  /** A create of this key got no definite answer, or the key came from an earlier document. */
-  uncertain?: boolean;
-}
 type ContinuationStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 export type CheckoutContinuationText = keyof typeof checkoutContinuationCopy;
 export interface CheckoutOutcome {
@@ -122,27 +116,12 @@ export interface CheckoutOutcome {
   value?: Record<string, unknown>;
 }
 
-const continuationKey = (configuration: string) => `neutral-store:checkout-continuation:v1:${configuration}`;
-const continuationProbe = 'neutral-store:checkout-continuation:probe';
 const versionFour = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const closedPaid = ['paid', 'fulfillment_pending', 'fulfilled'];
 const closedOther = ['cancelled', 'refunded', 'expired'];
 const records = new Map<string, CheckoutContinuationRecord | null>();
-const creates = new Map<string, CheckoutCreateState>();
-let documentStartedAt: number | undefined;
 /** Continuation requests in flight, per configuration, across panel remounts in this document. */
 const choicesInFlight = new Map<string, number>();
-
-/** "No order under this key" is final only once no create of this key can still arrive (the guide's rule 3). */
-export function noneIsFinal(state: { sentAt?: number | undefined; create?: CheckoutCreateState | undefined; documentStartedAt: number; continuationAt: number }): boolean {
-  if (state.sentAt === undefined) return true;
-  if (state.create) {
-    return state.create.inFlight === 0 && state.create.settledAt !== undefined
-      && state.continuationAt >= Math.max(state.create.settledAt, state.create.lostUntil ?? state.create.settledAt) + checkoutLateCreateMs;
-  }
-  return state.continuationAt >= Math.max(state.documentStartedAt + checkoutLateCreateMs,
-    state.sentAt + actionRequestTimeoutMs + checkoutLateCreateMs);
-}
 
 /** A managed buyer text with its request-limit wait filled in. */
 export function continuationMessage(text: CheckoutContinuationText, locale: Locale, windowMs: number): string {
@@ -166,8 +145,8 @@ function parseRecord(raw: string): CheckoutContinuationRecord | null {
 export function checkoutContinuation(configuration: string, options: { storage?: () => ContinuationStorage; now?: () => number } = {}) {
   const storage = options.storage ?? (() => sessionStorage);
   const now = options.now ?? Date.now;
-  const storageKey = continuationKey(configuration);
-  const begin = () => { documentStartedAt ??= now(); };
+  const storageKey = checkoutRecordKey(configuration);
+  const begin = () => { checkoutCreates.begin(now()); };
   const read = (): CheckoutContinuationRecord | null => {
     if (records.has(configuration)) return records.get(configuration)!;
     let raw: string | null;
@@ -247,15 +226,14 @@ export function checkoutContinuation(configuration: string, options: { storage?:
 
     /** A definite refusal of every create of this key leaves no order behind, so the record no longer asks for the panel. */
     function settleRefusal(): boolean {
-      const state = own ? creates.get(own.id) : undefined;
-      if (!own || own.ordered || own.sentAt === undefined || !state || state.inFlight > 0 || state.uncertain) return true;
+      if (!own || !checkoutCreates.refusedEvery(own.id, own)) return true;
       return write({ v: 1, id: own.id });
     }
 
     function none(): CheckoutOutcome {
       if (own?.ordered) return contradiction();
-      const final = noneIsFinal({ sentAt: own?.sentAt, create: own ? creates.get(own.id) : undefined,
-        documentStartedAt: documentStartedAt ?? now(), continuationAt: continuationAt ?? now() });
+      const at = continuationAt ?? now();
+      const final = own ? checkoutCreates.final(own.id, own.sentAt, at) : true;
       if (!final) return outcome('none', { code: 'starter_checkout_in_progress', text: 'starter_checkout_in_progress' });
       const stored = own ? clear() : true;
       return outcome('none', { code: 'starter_checkout_not_found', text: 'starter_checkout_not_found', choices: false, stored });
@@ -266,13 +244,7 @@ export function checkoutContinuation(configuration: string, options: { storage?:
     /** Checked at render: the record key can be read and tab storage accepts a write. */
     available(): boolean {
       begin();
-      try {
-        const tab = storage();
-        tab.getItem(storageKey);
-        tab.setItem(continuationProbe, '1');
-        tab.removeItem(continuationProbe);
-        return true;
-      } catch { return false; }
+      try { return storageAvailable(storage()); } catch { return false; }
     },
     current(): CheckoutContinuationRecord | null { begin(); return read(); },
     /** The record shows an order or an uncertain create, so the panel shows on load. */
@@ -283,33 +255,17 @@ export function checkoutContinuation(configuration: string, options: { storage?:
       const previous = read();
       const record = { ...(previous ?? { v: 1 as const, id: crypto.randomUUID() }), sentAt: now() };
       const stored = write(record);
-      // A key from an earlier document may have a create this document never saw settle: it may reach the host until
-      // its request timeout, so that bound carries over to this document's creates.
-      const state = creates.get(record.id) ?? { inFlight: 0, ...(previous?.sentAt !== undefined
-        ? { uncertain: true, lostUntil: previous.sentAt + actionRequestTimeoutMs } : {}) };
-      state.inFlight += 1;
-      state.sentAt = record.sentAt;
-      creates.set(record.id, state);
+      checkoutCreates.dispatch(record.id, record.sentAt, previous?.sentAt);
       return { key: record.id, stored };
     },
     /** Always after a create returned, even when its view is gone. */
-    settled(key: string, result?: ActionResult): void {
-      const state = creates.get(key);
-      if (!state) return;
-      state.inFlight = Math.max(0, state.inFlight - 1);
-      state.settledAt = now();
-      if (!result || uncertainAction(result)) state.uncertain = true;
-      // An early transport error does not end the request on the wire: it may reach the host until the request timeout.
-      if (result && !result.ok && result.code === 'starter_transport_unavailable' && state.sentAt !== undefined) {
-        state.lostUntil = Math.max(state.lostUntil ?? 0, state.sentAt + actionRequestTimeoutMs);
-      }
-    },
+    settled(key: string, result?: ActionResult): void { checkoutCreates.settled(key, result, now()); },
     /** Applies a create answer to the record. `view` is false when the form's view is gone or stale. */
     answer(key: string, result: ActionResult, view = true): CheckoutOutcome { begin(); return apply('create', key, result, undefined, view); },
     /** A create or a continuation of this purchase is in flight in this document. */
     inFlight(): boolean {
       const record = read();
-      return (choicesInFlight.get(configuration) ?? 0) > 0 || (record ? (creates.get(record.id)?.inFlight ?? 0) > 0 : false);
+      return (choicesInFlight.get(configuration) ?? 0) > 0 || (record ? (checkoutCreates.state(record.id)?.inFlight ?? 0) > 0 : false);
     },
     /** Resumes or abandons the order under the stored key. */
     async continue(action: 'resume' | 'abandon', locale: string): Promise<CheckoutOutcome> {
