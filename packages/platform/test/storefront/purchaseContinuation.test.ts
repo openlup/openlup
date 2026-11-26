@@ -286,6 +286,34 @@ describe("W4 changed payload after refused", () => {
     expect(corrected!.payload).toBe(B);
     expect(w.shelf.record?.fingerprint).toBe(fingerprintOf(B));
   });
+
+  const C: Payload = { item: "third", email: "buyer@example.test" };
+  it.each([
+    ["unknown", { fail: new Failure("failure_added_later") }],
+    ["in flight", { fail: new Failure("attempt_in_flight") }],
+  ] as const)("(a) a changed payload sent after a refusal disarms it, so a third payload after %s is refused", async (_name, step) => {
+    const w = world();
+    w.server.submits.push({ answer: answer("refused") }, step);
+    expect((await w.c.submit({ payload: A })).snapshot.status).toBe("refused");
+    await w.c.submit({ payload: B });
+    expect(w.shelf.record?.fingerprint).toBe(fingerprintOf(B));
+    const { snapshot } = await w.c.submit({ payload: C });
+    expect(snapshot.status).toBe("details_changed");
+    expect(w.count("submit")).toBe(2);
+    expect(w.shelf.record?.fingerprint).toBe(fingerprintOf(B));
+  });
+
+  it("(b) a refusal read by key does not allow a changed payload", async () => {
+    const w = world();
+    w.server.submits.push({ answer: answer("unknown") });
+    await w.c.submit({ payload: A });
+    w.server.reads.push(answer("refused"));
+    expect((await w.c.resume()).snapshot.status).toBe("refused");
+    const { snapshot } = await w.c.submit({ payload: B });
+    expect(snapshot.status).toBe("details_changed");
+    expect(w.count("submit")).toBe(1);
+    expect(w.shelf.record?.fingerprint).toBe(fingerprintOf(A));
+  });
 });
 
 describe("W5 update_in_place", () => {

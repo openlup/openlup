@@ -268,7 +268,8 @@ export function createPurchaseContinuation<TPayload, TRequest, TResult, TOptions
       default:
         status = "unknown";
     }
-    refusedSeen = outcome === "refused";
+    // Only a refusal of a command this page sent says nothing was created under the key.
+    refusedSeen = outcome === "refused" && (source === "submit" || source === "replay");
     Object.assign(patch, { status, result, outcome, source, resumeDecision: null, error: undefined });
   }
 
@@ -362,6 +363,8 @@ export function createPurchaseContinuation<TPayload, TRequest, TResult, TOptions
     const commandKey = bindings.commandKeyFor({ continuationId, attempt });
     const request = bindings.request.build(payload, { commandKey, attempt });
     let answer: TResult;
+    // A sent payload is the one the key now carries, whatever the answer: a further change needs a new refusal.
+    refusedSeen = false;
     try {
       answer = await transport.submit(request, options);
     } catch (error) {
