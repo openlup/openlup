@@ -1,0 +1,1 @@
+- The native schema can retain an authorized renewal order's destination and delivery service. Fulfillment and privacy export verify the original document at the scope where it was issued. Later destination edits leave the retained order evidence intact.
