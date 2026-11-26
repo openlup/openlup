@@ -4,6 +4,10 @@ export const paymentsDomain = {
     "public.payment_capture_time_test_qualification": { disposition: "target-payment-qualification", preserveTarget: false },
   },
   owned: {
+    renewalAttemptsAndGrants: [
+      "subscription_cycle_payment_attempts",
+      "subscription_cycle_dispatch_grants",
+    ],
     // Private companion rows of the compatible payment_truth_events above.
     all: [
       "payment_simulator_attempts",
