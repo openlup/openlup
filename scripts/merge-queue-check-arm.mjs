@@ -26,6 +26,12 @@ async function removalGroups(read, number) {
   demand(removals.length <= 20, 'queue removal history exceeded the inspection bound');
   const groups = [];
   for (const event of removals) {
+    // GitHub builds no merge group for a conflict eviction, so it has no
+    // commit to link. Skipping it is safe: a conflict still on the current
+    // head is held by the live `mergeable === CONFLICTING` check, and its
+    // resolution went through landing:merge with its own review and receipt.
+    if (event.beforeCommit === null && typeof event.reason === 'string'
+      && event.reason.toLowerCase() === 'merge_conflict') continue;
     demand(sha(event.beforeCommit) && typeof event.reason === 'string' && event.reason.length > 0,
       'queue removal lacks a synthetic commit or reason');
     demand(event.githubSigned === true, 'queue removal commit lacks a valid GitHub signature');
