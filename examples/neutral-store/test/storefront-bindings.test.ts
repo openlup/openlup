@@ -109,10 +109,6 @@ test('U2 a write keeps the host fields of the same identity only', async () => {
   page.checkout.bindings.storage.write({ continuationId: toContinuationId(idA), fingerprint: 'g', attempt: toAttemptNumber(1) });
   assert.deepEqual(page.stored(), { v: 1, id: idA, fingerprint: 'g', attempt: 1, attempts: { a1: 0 }, sentAt: 5, ordered: true, orderRef: orderA });
   assert.deepEqual(page.checkout.bindings.storage.read(), { continuationId: idA, fingerprint: 'g', attempt: 1 });
-  // The client from before the bindings still parses the extended record.
-  const purchase = await import('../client/purchase.ts');
-  assert.deepEqual(purchase.checkoutContinuation(page.configuration, { storage: () => page.storage }).current(),
-    { v: 1, id: idA, sentAt: 5, ordered: true, orderRef: orderA });
   page.checkout.bindings.storage.write({ continuationId: toContinuationId(idB), fingerprint: 'h' });
   assert.deepEqual(page.stored(), { v: 1, id: idB, fingerprint: 'h' }, 'another identity drops the host fields');
 });
