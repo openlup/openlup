@@ -27,6 +27,23 @@ vi.mock(import("../../scripts/platform-migration-manifest.js"), async original =
   };
 });
 
+vi.mock("../../server/adapters/postgres/connectedStoreDomains/index.js", async original => {
+  const registry = await original<typeof import("../../server/adapters/postgres/connectedStoreDomains/index.js")>();
+  // These relations were introduced by the renewal v3 forward after the storage boundary.
+  const renewalV3Tables = new Set([
+    "subscription_cycle_occurrences", "subscription_cycle_generations",
+    "subscription_cycle_delivery_assignments", "subscription_cycle_delivery_evidence",
+    "subscription_cycle_stock_holds", "subscription_cycle_tax_issuances", "subscription_cycle_tax_bindings",
+    "subscription_cycle_cases", "subscription_cycle_preparations", "subscription_cycle_payment_attempts",
+    "subscription_cycle_dispatch_grants", "subscription_cycle_calculation_rebinds",
+  ]);
+  return {
+    ...registry,
+    connectedStoreOwnedTables: registry.connectedStoreOwnedTables.filter(table => !renewalV3Tables.has(table)),
+    connectedStoreRestoreOrder: registry.connectedStoreRestoreOrder.filter(table => !renewalV3Tables.has(table)),
+  };
+});
+
 const manifest = readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest | null;
 if (manifest?.schemaVersion !== 3) throw new Error("Complete native catalogue required");
 const unit = manifest.forward.find(entry => entry.file.endsWith("_order_money_v2_storage.sql"));
@@ -113,7 +130,7 @@ const v0Rows = (orderId: string) => store.owner.query(`SELECT o.money_version,i.
   FROM public.commerce_orders o JOIN public.commerce_order_items i ON i.order_id=o.id WHERE o.id=$1`, [orderId]);
 
 it("applies its own prefix, keeps the incumbent definitions, and stores nulls through the native draft writer", async () => {
-  expect(applied.slice(0, 1)).toEqual([unit.file]);
+  expect(applied).toEqual([unit.file]);
   expect((await store.owner.query("SELECT catalog_path,sha256,position FROM public.platform_schema_migrations WHERE position=$1",
     [position + 1])).rows).toEqual([{ catalog_path: unit.file, sha256: unit.sha256, position: position + 1 }]);
   expect(createHash("sha256").update(readFileSync(unit.file)).digest("hex")).toBe(unit.sha256);
