@@ -81,8 +81,8 @@ directory, `COMPOSE_PROJECT_NAME`, and port for each concurrent demo.
 A configured `publicOrigin` still governs request authority.
 
 The runtime credential file must stay in owner-only configuration. The starter
-validates it at start. The adopter-owned `.context/compose-project` file
-reserves the selected project for this directory. To switch projects, run
+validates it at start. The adopter-owned `compose-project` file under
+`.context` reserves the selected project for this directory. To switch projects, run
 `./lifecycle down` for the recorded project to clear the record, then start
 the new project. From a running application's directory, load the recorded
 name before running the local Compose commands below.
@@ -130,9 +130,9 @@ project credential and retry with the same project and volume. Run connected
 settings and the local renewal, care, and checkout recovery jobs through the
 recorded project.
 
-To rotate the runtime credential, first load `PROJECT` from
-`.context/compose-project` as shown above. Use an exclusive maintenance window.
-Keep the same port and configuration if you set them for the original startup.
+To rotate the runtime credential, load `PROJECT` from the project record as
+shown above. Use an exclusive maintenance window. Keep the same port and
+configuration if you set them for the original startup.
 
 ```sh
 COMPOSE_PROJECT_NAME="$PROJECT" ./lifecycle down &&
@@ -149,8 +149,8 @@ An interruption after database creation but before its demonstration marker is
 written leaves an unmarked database. Startup refuses with
 `starter_seed_demonstration_database_required` rather than adopting it.
 From its application directory, set `PROJECT` to the exact name selected for
-the failed startup. Read `.context/compose-project` if it exists. The example
-uses the default name. Substitute the name selected for a custom project.
+the failed startup. Read the project record if it exists. The example uses
+the default name. Substitute the name selected for a custom project.
 
 ```sh
 PROJECT=neutral-store
