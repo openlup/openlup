@@ -74,10 +74,12 @@ for (const mode of ['classic','sized'] as const) test(`owned ${mode} offer withd
     (SELECT count(*) FROM public.subscription_command_receipts WHERE subscription_id='${f.id}') AS receipts`);
   const counts = writes();
   // Execute the actual starter binding with an owned configuration change on the same installed database.
-  const code = `import assert from 'node:assert/strict';import pg from 'pg';
+  const code = `
+    import { runtimeConnectionString } from './host/runtime-database.ts';
+import assert from 'node:assert/strict';import pg from 'pg';
     import {selectConfiguration} from './owned/store.config.ts';import {subscriptionEditing} from './owned/subscription-editing.ts';
     import {composeSubscriptionEditors} from './host/subscription-editors.ts';
-    const pool=new pg.Pool({connectionString:'postgresql://starter_runtime@database/neutral_store'});
+    const pool=new pg.Pool({connectionString:runtimeConnectionString()});
     try { const config=selectConfiguration(${JSON.stringify(f.config.id)}),offer=config.subscriptionOffers[${JSON.stringify(mode)}];
       offer.bySku=Object.fromEntries(Object.entries(offer.bySku).filter(([sku])=>sku!==${JSON.stringify(unchangedSku)}));
       config.subscriptionEditing=subscriptionEditing(config.offer.products,config.subscriptionOffers);

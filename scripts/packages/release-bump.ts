@@ -35,7 +35,7 @@ import { PACKAGES_CONFIG_PATH, RELEASE_VERSION, SET_VERSION, parsePackagesConfig
 
 import { readChangelogFragments, type ChangelogFragment } from "./changelog-fragments.ts";
 import { documentationGit } from "../documentation-routing.ts";
-import { assembleUpgradePage, planReleaseGuide, previousCoreTag, upgradePagePath } from "./release-docs-pass.ts";
+import { assembleUpgradePage, rebaseCoreGuideLinks, planReleaseGuide, previousCoreTag, upgradePagePath } from "./release-docs-pass.ts";
 
 type Json = Record<string, unknown>;
 type Edit = { path: readonly string[]; from: string | number; to: string | number };
@@ -80,7 +80,7 @@ export function addReleaseSection(file: string, text: string, version: string, t
   const next = /^## /mu.exec(text.slice(end));
   const history = next ? end + next.index : text.length;
   const legacy = text.slice(end, history);
-  const notes = fragments.length === 0 ? legacy : [legacy, ...fragments.map(({ contents }) => contents)].filter((body) => body.trim()).map((body) => `${body.trimEnd()}\n\n`).join("");
+  const notes = fragments.length === 0 ? legacy : [legacy, ...fragments.map(fragment => rebaseCoreGuideLinks(fragment, "docs/guide/"))].filter((body) => body.trim()).map((body) => `${body.trimEnd()}\n\n`).join("");
   return `${text.slice(0, end)}## [${version}]\n\n- Publishable on the npm \`latest\` dist-tag as \`${version}\`, from tag\n  \`${tag}\`.\n\n${notes}${text.slice(history)}`;
 }
 

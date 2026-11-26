@@ -98,21 +98,18 @@ has no caller in the managed topology.
 ### Dormant native renewal occurrence views and root writer
 
 The migration owner can read the exact scoped key, including history, or lock
-the current active occurrence in READ COMMITTED. A selected root on either
-rail must match its owner, original anchor, exact generation and wire tag.
-The views project the pinned cancellation deadline in UTC.
+the current active occurrence in READ COMMITTED. Selected roots on either
+rail must match owner, original anchor, exact generation and wire tag. The
+views project the pinned cancellation deadline in UTC.
 
-After allocation commits, the owner can claim a due v3 occurrence in a later
-READ COMMITTED transaction. A first claim commits the selected pair, root and
-initial lease together. An exact retry returns the retained agreement with
-both lease fields null. On an immutable-request conflict, retry the original
-bytes after verifying the retained agreement. If retained data is inconsistent,
-reconcile it with the Subscriptions owner. On a stale selection, read the
-selected pair and recover its original agreement. On a root UUID collision,
-resolve the selection first. If empty, rebind both IDs and recompute the digest.
+After allocation commits, a later READ COMMITTED claim commits the selected
+pair, root and initial lease together. An exact retry returns the retained
+agreement with both lease fields null. Changed immutable input requires the
+original bytes. Reconcile inconsistent retained data with Subscriptions.
+For a stale selection, recover the selected pair's agreement. For a root UUID
+collision, resolve selection. If empty, rebind both IDs and recompute the digest.
 
-The routines grant runtime roles no EXECUTE. Mounted renewal paths continue
-to use the incumbent owner contracts.
+Runtime roles receive no EXECUTE grant. Mounted workers use incumbent contracts.
 
 ## Recover payment
 
