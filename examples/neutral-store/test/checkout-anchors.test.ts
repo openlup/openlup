@@ -15,6 +15,10 @@ test('the checkout field map names every storefront field anchor exactly once', 
   for (const value of values) assert.ok(members.includes(value), `${value} is not a storefrontAnchor.field member`);
   assert.equal(new Set(values).size, values.length, 'one control per field anchor');
   assert.deepEqual([...values].sort(), [...members].sort());
+  // Each mapped field of the form renders its anchor.
+  const page = readFileSync(join(root, 'client/pages/checkout.ts'), 'utf8');
+  for (const name of Object.keys(checkoutFieldAnchors))
+    assert.ok(page.includes(`{ name: '${name}', anchor: checkoutFieldAnchors.${name},`), `${name} control carries its anchor`);
 });
 
 // K3: the payment-status page names a state only for the attempt states it can show.
