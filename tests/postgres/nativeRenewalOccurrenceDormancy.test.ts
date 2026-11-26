@@ -11,19 +11,58 @@ import { closePostgres, postgresSetupTimeoutMs, runPostgresContainer, waitForPos
 import { installAccountMutations } from "./customerAccountMutations.fixture.js";
 import { exerciseLegacyRenewals } from "./nativeRenewalV3Legacy.fixture.js";
 import { transaction } from "./orderMoneyV2Storage.fixture.js";
-import { activation, allocate, probe, producer, signature } from "./nativeRenewalOccurrence.fixture.js";
-import type { Db } from "./subscriptionNativeFixture.js";
+import { activatedRenewal, activation, allocate, occurrenceProducerPath, probe, producer, signature } from "./nativeRenewalOccurrence.fixture.js";
+import { AT, call, later, seedRenewalStock, type Db } from "./subscriptionNativeFixture.js";
 
 const current = readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest | null;
 if (current?.schemaVersion !== 3) throw new Error("Expected the full native migration catalogue");
-const catalogue = current;
-const forward = catalogue.forward.at(-1)!;
-if (!forward.file.endsWith("_native_renewal_occurrence_producer.sql")) throw new Error("Expected the producer at the fresh installation boundary");
-const sql = readFileSync(forward.file, "utf8");
-const predecessor = structuredClone(catalogue);
-for (const plan of [predecessor, predecessor.qualified, predecessor.qualifiedAdmin]) plan.forward.pop();
-predecessor.objectInventorySha256 = "e2313b0643586038d25261827855bfe062053d7385f2542de4dea349eae1b47f";
-predecessor.qualified.objectInventorySha256.bootstrapMigrator.withRestore = "74fe3c59f86dc91724e0abd9c70264a7995cbd225cf92b5f6265fda3a99720f8";
+const producerPath = occurrenceProducerPath();
+const sql = readFileSync(producerPath, "utf8");
+const pins = {
+  before: {
+    legacy: "e2313b0643586038d25261827855bfe062053d7385f2542de4dea349eae1b47f",
+    bootstrap: "74fe3c59f86dc91724e0abd9c70264a7995cbd225cf92b5f6265fda3a99720f8",
+    separate: "1adb1913d6c767f7050a9284fb0bd371f17e9d4eaaae263c83d3d4719f49530c",
+    admin: "5de9424b5dbc6e75a7fb5f0f16a79b589c0bd3601fbe6020a0e97a2c91d125fb",
+    operator: "9feaa78b89cc3e113a9184b5283bfe580c1152c7b3180da1ebd92593fff35beb",
+  },
+  through: {
+    legacy: "dfc73621469c362542c149101487bb307bd29b4b071f107ae1eff37c4cc75944",
+    bootstrap: "3eb365d52b4311a57336a8c5f1d672cc75c04fe3967a030bd7649850abed989f",
+    separate: "c0ff414cbdfe90e1fd31b031d9f3e6f436c9e88954e7db373ed5fe04f671a710",
+    admin: "c7b097c6ad7d5d84399278c28ea15d3dddd0b2dee2c4116678e99628e878d112",
+    operator: "4297956ac1ec8814730c4f775f2cc1e1fce0e0ee70be39fc9c728bd988911b98",
+  },
+};
+
+function atProducer(manifest: Extract<PlatformMigrationManifest, { schemaVersion: 3 }>, boundary: keyof typeof pins) {
+  const plan = structuredClone(manifest), inventory = pins[boundary];
+  for (const profile of [plan, plan.qualified, plan.qualifiedAdmin]) {
+    const index = profile.forward.findIndex(({ file }) => file === producerPath);
+    if (index < 0) throw new Error(`Missing producer migration ${producerPath}`);
+    profile.forward = profile.forward.slice(0, boundary === "through" ? index + 1 : index);
+  }
+  plan.objectInventorySha256 = inventory.legacy;
+  plan.qualified.objectInventorySha256 = { bootstrapMigrator: { withRestore: inventory.bootstrap },
+    separateMigrator: { withRestore: inventory.separate } };
+  plan.qualifiedAdmin.objectInventorySha256 = { installerManaged: inventory.admin, operatorProvisioned: inventory.operator };
+  return plan;
+}
+
+const catalogue = atProducer(current, "through"), predecessor = atProducer(current, "before");
+it("selects the exact pinned prefixes even when every plan has a later forward", () => {
+  const extended = structuredClone(current);
+  const laterInventory = "a".repeat(64);
+  for (const plan of [extended, extended.qualified, extended.qualifiedAdmin]) {
+    plan.forward.push({ file: "db/platform/migrations/99991231235959_fixture_later_forward.sql", sha256: laterInventory });
+  }
+  extended.objectInventorySha256 = laterInventory;
+  extended.qualified.objectInventorySha256 = { bootstrapMigrator: { withRestore: laterInventory },
+    separateMigrator: { withRestore: laterInventory } };
+  extended.qualifiedAdmin.objectInventorySha256 = { installerManaged: laterInventory, operatorProvisioned: laterInventory };
+  expect(atProducer(extended, "before")).toEqual(predecessor);
+  expect(atProducer(extended, "through")).toEqual(catalogue);
+});
 const denied = { code: "42501", message: `permission denied for function ${producer}` };
 
 async function assertAcl(db: Db) {
@@ -66,8 +105,8 @@ function watchAttempts() {
 }
 
 it.each(["bootstrap", "separate", "admin-managed", "admin-operator"] as const)(
-  "installs the owner-only signature and denies the actual %s runtime and an unrelated definer", async profile => {
-    const store = await installAccountMutations(profile, false, "occurrence-acl");
+  "installs the owner-only signature and denies the actual %s runtime and an unrelated definer", profile => withPlatformCatalog(catalogue, async root => {
+    const store = await installAccountMutations(profile, false, "occurrence-acl", root);
     try {
       const f = await transaction(store.migrator, db => activation(db), "COMMIT");
       await assertAcl(store.migrator);
@@ -95,7 +134,7 @@ it.each(["bootstrap", "separate", "admin-managed", "admin-operator"] as const)(
         }
       }, "ROLLBACK");
     } finally { await store.close(); }
-  }, postgresSetupTimeoutMs);
+  }), postgresSetupTimeoutMs);
 
 const emptyV3 = async (db: Db) => {
   const { rows } = await db.query(`SELECT tablename FROM pg_tables WHERE schemaname='public'
@@ -105,6 +144,17 @@ const emptyV3 = async (db: Db) => {
       .toEqual([{ count: 0 }]);
   }
 };
+
+const occurrenceRows = (db: Db) => db.query(`SELECT to_jsonb(o) AS occurrence,xmin::text,ctid::text
+  FROM public.subscription_cycle_occurrences o ORDER BY subscription_id`).then(({ rows }) => rows);
+
+async function dispatchEffects(db: Db) {
+  return (await db.query(`SELECT
+    (SELECT count(*)::int FROM public.payment_provider_attempts) AS provider_attempts,
+    (SELECT count(*)::int FROM public.payment_simulator_attempts) AS simulator_attempts,
+    (SELECT count(*)::int FROM public.transactional_delivery_receipts) AS send_receipts,
+    (SELECT jsonb_agg(jsonb_build_array(event_type,status) ORDER BY event_type,status) FROM public.outbox_events) AS outbox`)).rows[0];
+}
 
 it.each([false, true])("preserves the mounted native worker with owner login and service role present=%s", async withService => {
   async function exercise(candidate: boolean) {
@@ -127,86 +177,138 @@ it.each([false, true])("preserves the mounted native worker with owner login and
 
   async function run(pools: { owner: Pool; runtime: Pool }, candidate: boolean) {
     const { owner, runtime } = pools;
-    const f = await transaction(owner, db => activation(db), "COMMIT");
-    await owner.query("UPDATE public.subscriptions SET next_cycle_at='2050-01-01Z' WHERE id=$1", [f.subscriptionId]);
     expect((await runtime.query("SELECT session_user,current_user")).rows).toEqual([{ session_user: "postgres", current_user: "postgres" }]);
-    let retained: unknown, count: (() => Promise<number>) | undefined;
-    const current = () => owner.query(`SELECT to_jsonb(o),xmin::text,ctid::text
-      FROM public.subscription_cycle_occurrences o WHERE subscription_id=$1`, [f.subscriptionId]).then(r => r.rows);
+    const retained: Awaited<ReturnType<typeof occurrenceRows>> = [];
+    let count: (() => Promise<number>) | undefined;
     if (candidate) {
       await assertAcl(owner);
       await assertNoCallers(owner);
       count = await probe(owner, producer, signature, "fixture_producer_entries");
       expect(await count()).toBe(1);
-      expect(await allocate(owner, f)).toMatchObject({ outcome: "created" });
-      expect(await count()).toBe(2);
-      retained = await current();
       await owner.query("CREATE ROLE fixture_occurrence_plain LOGIN NOINHERIT PASSWORD 'synthetic-occurrence'");
-      const login = new URL(owner.options.connectionString!); login.username = "fixture_occurrence_plain"; login.password = "synthetic-occurrence";
-      const negative = new Pool({ connectionString: login.toString() });
-      try { await assertDeniedPaths(negative, f); } finally { await negative.end(); }
     }
     const watch = watchAttempts();
     try {
-      const effects = await exerciseLegacyRenewals({ ...pools } as Parameters<typeof exerciseLegacyRenewals>[0]);
+      const effects = await exerciseLegacyRenewals(pools, async availability => {
+        const subject = await transaction(owner, db => activatedRenewal(db, { availability }), "COMMIT");
+        if (candidate) {
+          const login = new URL(owner.options.connectionString!);
+          login.username = "fixture_occurrence_plain";
+          login.password = "synthetic-occurrence";
+          if (!retained.length) {
+            const negative = new Pool({ connectionString: login.toString() });
+            try { await assertDeniedPaths(negative, subject); } finally { await negative.end(); }
+            expect(watch.attempts.splice(0)).toEqual(["fixture_occurrence_plain"]);
+          }
+          expect(await allocate(owner, subject)).toMatchObject({ outcome: "created", originalAnchorAt: subject.due });
+          expect(watch.attempts.splice(0)).toEqual(["postgres"]);
+          retained.push((await occurrenceRows(owner)).find(({ occurrence }) => occurrence.subscription_id === subject.subscriptionId)!);
+        }
+        return subject;
+      });
       expect(watch.attempts).toEqual([]);
       if (candidate) {
-        expect(await count!()).toBe(2);
-        expect(await current()).toEqual(retained);
-        expect((await owner.query("SELECT count(*)::int AS count FROM public.subscription_cycle_occurrences")).rows).toEqual([{ count: 1 }]);
+        expect(await count!()).toBe(4);
+        expect(retained).toHaveLength(3);
+        expect(await occurrenceRows(owner)).toEqual(expect.arrayContaining(retained));
+        expect(await occurrenceRows(owner)).toHaveLength(3);
         await emptyV3(owner);
       }
-      return effects;
+      return { effects, dispatch: await dispatchEffects(owner) };
     } finally { watch.close(); }
   }
   expect(await exercise(true)).toEqual(await exercise(false));
 }, postgresSetupTimeoutMs);
 
-it("observes attempts and entry separately while mounting the starter under its real runtime login", async () => {
-  const container = await runPostgresContainer({ name: `occurrence-starter-${process.pid}`, password: "synthetic-occurrence" });
-  const owner = new Pool({ connectionString: container.connectionString });
-  const installation = { generation: "qualified-v2", roleMode: "installer-managed", migrationLogin: "postgres",
-    bootstrapLogin: "postgres", runtimeLogin: "starter_runtime", restoreLogin: "starter_restore" } as const;
-  const migration = new Pool({ connectionString: container.connectionString, options: qualifiedPostgresStartupOptions(installation) });
-  const url = new URL(container.connectionString); url.username = "starter_runtime";
-  const runtime = new Pool({ connectionString: url.toString() });
-  try {
-    expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
-    await owner.query(`CREATE ROLE starter_runtime LOGIN NOINHERIT PASSWORD 'synthetic-occurrence';
-      CREATE ROLE starter_restore LOGIN NOINHERIT PASSWORD 'synthetic-occurrence'`);
-    const runner = (root?: string) => createPostgresMigrationRunner({ connectionString: container.connectionString },
-      { root, installation, poolFactory: () => migration });
-    await withPlatformCatalog(predecessor, root => runner(root).apply());
-    const f = await transaction(migration, db => activation(db), "COMMIT");
-    await owner.query("UPDATE public.subscriptions SET next_cycle_at='2050-01-01Z' WHERE id=$1", [f.subscriptionId]);
-    // Both mounted passes start with the same empty paid-mail queue.
-    await owner.query("DELETE FROM public.outbox_events WHERE event_type='commerce.order.paid.email'");
-    const config = structuredClone(Object.values(configurations)[0]!);
-    config.renewal.enabled = true;
-    const watch = watchAttempts();
+it("compares a paid renewal under the actual starter login with a fixed occurrence on the renewed subscription", async () => {
+  async function exercise(candidate: boolean) {
+    const container = await runPostgresContainer({ name: `occurrence-starter-${process.pid}`, password: "synthetic-occurrence" });
+    const owner = new Pool({ connectionString: container.connectionString });
+    const installation = { generation: "qualified-v2", roleMode: "installer-managed", migrationLogin: "postgres",
+      bootstrapLogin: "postgres", runtimeLogin: "starter_runtime", restoreLogin: "starter_restore" } as const;
+    const migration = new Pool({ connectionString: container.connectionString, options: qualifiedPostgresStartupOptions(installation) });
+    const url = new URL(container.connectionString); url.username = "starter_runtime";
+    const runtime = new Pool({ connectionString: url.toString() });
     try {
-      const before = await runScheduledRenewal(url.toString(), config);
-      expect(before).toMatchObject({ renewals: [], retries: [], paidMail: { claimed: 0, processed: 0 } });
-      expect(watch.attempts).toEqual([]);
-      expect(await runner().apply()).toEqual({ applied: [forward.file] });
-      await assertAcl(migration);
-      const count = await probe(owner, producer, signature, "fixture_producer_entries");
-      watch.attempts.length = 0;
-      await expect(allocate(runtime, f)).rejects.toMatchObject(denied);
-      expect(watch.attempts.splice(0)).toEqual(["starter_runtime"]);
-      expect(await count()).toBe(1);
-      expect(await allocate(migration, f)).toMatchObject({ outcome: "created" });
-      expect(watch.attempts.splice(0)).toEqual(["postgres"]);
-      expect(await count()).toBe(2);
-      const retained = () => owner.query("SELECT to_jsonb(o),xmin::text,ctid::text FROM public.subscription_cycle_occurrences o").then(r => r.rows);
-      const fixed = await retained();
-      expect(await runScheduledRenewal(url.toString(), config)).toEqual({ ...before, paidMail: { ...before.paidMail, runMs: expect.any(Number) } });
-      expect(watch.attempts).toEqual([]);
-      expect(await count()).toBe(2);
-      expect(await retained()).toEqual(fixed);
-      await emptyV3(owner);
-    } finally { watch.close(); }
-  } finally { await closePostgres(container, [runtime, migration, owner]); }
+      expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
+      await owner.query(`CREATE ROLE starter_runtime LOGIN NOINHERIT PASSWORD 'synthetic-occurrence';
+        CREATE ROLE starter_restore LOGIN NOINHERIT PASSWORD 'synthetic-occurrence'`);
+      await withPlatformCatalog(candidate ? catalogue : predecessor, root => createPostgresMigrationRunner(
+        { connectionString: container.connectionString }, { root, installation, poolFactory: () => migration }).apply());
+      const f = await transaction(migration, async db => {
+        await call(db, "subscription_delivery_alignment_set_mode", ["off"]);
+        const subject = await activation(db, 28, later(-29 * 24));
+        const { destinationId } = await call(db, "commerce_register_order_destination", [`destination:${subject.orderId}`,
+          subject.orderId, { recipientName: "Synthetic recipient", line1: "Synthetic street 1", city: "Fixture", postalCode: "00000", country: "ZZ" }, AT]);
+        const { source, basket } = await seedRenewalStock(db);
+        await call(db, "subscription_register_renewal_purchase", [subject.orderId, {
+          settlementChannelKey: "sandbox", authorizationRef: "frozen-mandate", unattendedChargeAuthorizedAt: AT,
+          payerAccountRef: null, methodRef: "method-1", methodEvidenceRef: "fixture-evidence", stockSourceKey: source,
+          templateId: "fixture-template", cadenceDays: 28, currency: "XXX", lines: basket, shippingAmountMinor: 0, acquisitionRef: null,
+        }]);
+        expect(await call(db, "subscription_complete_renewal_attachment", [subject.orderId]))
+          .toMatchObject({ subscriptionId: subject.subscriptionId, replayed: false });
+        return { ...subject, destinationId };
+      }, "COMMIT");
+      // Isolate delivery produced by the mounted renewal from the activation's paid mail.
+      await owner.query("DELETE FROM public.outbox_events WHERE event_type='commerce.order.paid.email'");
+      const config = structuredClone(Object.values(configurations)[0]!);
+      config.renewal.enabled = true;
+      config.renewal.sandbox.initial = "succeeded";
+      expect((await runtime.query("SELECT session_user,current_user")).rows).toEqual([{ session_user: "starter_runtime", current_user: "starter_runtime" }]);
+      const count = candidate ? await probe(owner, producer, signature, "fixture_producer_entries") : undefined;
+      const watch = watchAttempts();
+      try {
+        let fixed: unknown;
+        if (count) {
+          await assertDeniedPaths(runtime, f);
+          expect(watch.attempts.splice(0)).toEqual(["starter_runtime"]);
+          expect(await count()).toBe(1);
+          expect(await allocate(migration, f)).toMatchObject({ outcome: "created", originalAnchorAt: f.due });
+          expect(watch.attempts.splice(0)).toEqual(["postgres"]);
+          expect(await count()).toBe(2);
+          fixed = await occurrenceRows(owner);
+        }
+        const run = await runScheduledRenewal(url.toString(), config);
+        expect(run).toMatchObject({ retries: [], renewals: [{ subscriptionId: f.subscriptionId, status: "succeeded" }],
+          paidMail: { claimed: 0, processed: 0 } });
+        if (!("renewals" in run)) throw new Error("Starter renewal did not run");
+        expect(run.renewals).toHaveLength(1);
+        const [result] = run.renewals;
+        const readback = await call(runtime, "subscription_read_renewal", [result!.identityKey]);
+        expect(readback).toMatchObject({ operationId: result!.operationId, state: "succeeded",
+          cycleSnapshot: { subscriptionId: f.subscriptionId, orderSnapshot: { shippingAddressRef: f.destinationId } } });
+        const persisted = (await owner.query(`SELECT o.state, c.status AS cycle, ord.status AS "order", i.status AS settlement,
+          r.status AS reservation, s.next_cycle_at > $2::timestamptz AS advanced,
+          o.external_attempt_ref LIKE ('sandbox-renewal:'||o.id::text||':succeeded:%') AS acknowledged,
+          (SELECT count(*)::int FROM public.subscription_renewal_outcomes a WHERE a.renewal_operation_id=o.id
+            AND a.event_key='sandbox-observation:'||o.id::text AND a.external_ref=o.external_attempt_ref
+            AND a.outcome='succeeded') AS observations
+          FROM public.subscription_renewal_operations o JOIN public.subscriptions s ON s.id=o.subscription_id
+          JOIN public.subscription_cycles c ON c.renewal_operation_id=o.id
+          JOIN public.commerce_orders ord ON ord.renewal_operation_id=o.id
+          JOIN public.commerce_settlement_intents i ON i.renewal_operation_id=o.id
+          JOIN public.fulfillment_inventory_reservations r ON r.renewal_operation_id=o.id
+          WHERE o.id=$1 AND s.id=$3`, [readback.operationId, AT, f.subscriptionId])).rows;
+        expect(persisted).toEqual([{ state: "succeeded", cycle: "paid", order: "paid", settlement: "settled",
+          reservation: "consumed", advanced: true, acknowledged: true, observations: 1 }]);
+        expect(watch.attempts).toEqual([]);
+        if (count) {
+          expect(await count()).toBe(2);
+          expect(await occurrenceRows(owner)).toEqual(fixed);
+          await emptyV3(owner);
+        }
+        const { runMs, ...paidMail } = run.paidMail;
+        const { status, reason, replayed } = result!;
+        const dispatch = await dispatchEffects(owner);
+        expect(dispatch).toMatchObject({ provider_attempts: 0, simulator_attempts: 0, send_receipts: 0 });
+        return { transcript: { status, reason, replayed, retries: run.retries, paidMail },
+          readback: { state: readback.state, terminalReason: readback.terminalReason, cycleNumber: readback.cycleNumber },
+          persisted, dispatch };
+      } finally { watch.close(); }
+    } finally { await closePostgres(container, [runtime, migration, owner]); }
+  }
+  expect(await exercise(true)).toEqual(await exercise(false));
 }, postgresSetupTimeoutMs);
 
 it("has no mounted source callers and is absent from managed migrations", () => {

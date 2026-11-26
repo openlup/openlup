@@ -6,8 +6,8 @@ import { fixture, openCase, replacement } from "../helpers/fulfillmentNative.js"
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 import { installAccountMutations, type AccountMutationsStore } from "./customerAccountMutations.fixture.js";
 import { transaction } from "./orderMoneyV2Storage.fixture.js";
-import { activation, allocate, defaultRule, probe, signature, utc } from "./nativeRenewalOccurrence.fixture.js";
-import { AT, call, recordRenewalMethod, type Db } from "./subscriptionNativeFixture.js";
+import { activatedRenewal, activation, allocate, defaultRule, occurrenceProducerPath, probe, signature, utc } from "./nativeRenewalOccurrence.fixture.js";
+import { AT, call, claimFixtureRenewal, later, recordRenewalMethod, type Db } from "./subscriptionNativeFixture.js";
 
 const confirmation = "subscription_delivery_alignment_confirm_replacement";
 const carrier = "subscription_cycle_occurrences";
@@ -35,15 +35,44 @@ async function rolledBack<T>(db: PoolClient, work: () => Promise<T>) {
 
 async function refuses(db: PoolClient, action: () => Promise<unknown>, error: { code: string; message: string; detail: string }) {
   const before = await snapshot(db);
+  const attempts = await countWrites();
   await rolledBack(db, async () => {
     await expect(action()).rejects.toMatchObject({ ...error, hint: undefined });
   });
+  expect(await countWrites()).toBe(attempts);
   expect(await snapshot(db)).toEqual(before);
 }
 
 let store: AccountMutationsStore;
-beforeAll(async () => { store = await installAccountMutations("legacy", false, "occurrence-producer"); }, postgresSetupTimeoutMs);
+const countWrites = async () => (await store.owner.query("SELECT last_value FROM public.fixture_occurrence_writes")).rows[0].last_value;
+beforeAll(async () => {
+  store = await installAccountMutations("legacy", false, "occurrence-producer");
+  expect((await store.owner.query(`SELECT tgname FROM pg_trigger WHERE tgrelid='public.${carrier}'::regclass AND NOT tgisinternal`)).rows).toEqual([]);
+  // Statement-level observation records even zero-row writes and survives rollback.
+  await store.owner.query(`CREATE SEQUENCE public.fixture_occurrence_writes CACHE 1;
+    CREATE FUNCTION public.fixture_count_occurrence_write() RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
+    SET search_path = pg_catalog, pg_temp AS $$ BEGIN PERFORM nextval('public.fixture_occurrence_writes'); RETURN NULL; END $$;
+    SELECT nextval('public.fixture_occurrence_writes')`);
+  const { rows } = await store.owner.query("SELECT tablename FROM pg_tables WHERE schemaname='public'");
+  for (const { tablename } of rows) await store.owner.query(`CREATE TRIGGER fixture_count_occurrence_write
+    BEFORE INSERT OR UPDATE OR DELETE OR TRUNCATE ON public.${escapeIdentifier(tablename)}
+    FOR EACH STATEMENT EXECUTE FUNCTION public.fixture_count_occurrence_write()`);
+}, postgresSetupTimeoutMs);
 afterAll(async () => { await store?.close(); }, postgresTeardownTimeoutMs);
+
+it("observes a zero-row write before the same refusal even after rollback", async () => {
+  await transaction(store.owner, async db => {
+    const before = await snapshot(db), attempts = BigInt(await countWrites());
+    await rolledBack(db, async () => {
+      await expect(db.query(`DO $$ BEGIN
+        UPDATE public.subscription_cycle_occurrences SET is_current=false WHERE false;
+        RAISE EXCEPTION 'renewal_cycle_unavailable' USING ERRCODE='22023', DETAIL='/cycleKey current_conflict';
+      END $$`)).rejects.toMatchObject(unavailable("current_conflict"));
+    });
+    expect(BigInt(await countWrites())).toBe(attempts + 1n);
+    expect(await snapshot(db)).toEqual(before);
+  }, "ROLLBACK");
+});
 
 it.each([["legacy", 1], ["v3", 3660]] as const)("allocates and commits an exact %s occurrence at %i days", async (rail, days) => {
   const f = await transaction(store.migrator, db => activation(db, days), "COMMIT");
@@ -203,12 +232,12 @@ const obligation = (db: Db, f: Subject, op: Operation, linked: Pick<Subject, "cy
     (renewal_operation_id,subscription_id,cycle_id,order_id,settlement_intent_id,logical_cycle_number,identity_key,operation_fingerprint,scheduled_at,cycle_snapshot)
     VALUES ($1,$2,$3,$4,$5,2,$6,repeat('a',64),$7,'{}')`, [op.id, f.subscriptionId, linked.cycleId, linked.orderId, linked.intentId, op.identity, op.at]);
 
-it.each(["closed_root", "retry_obligation", "renewal_settlement", "stock_wait", "stock_reservation", "renewal_operation"])(
+it.each(["closed_root", "retry_obligation", "renewal_settlement", "stock_reservation", "renewal_operation"])(
   "refuses a retained %s at its winning precedence on either rail", async cause => {
     await transaction(store.owner, async db => {
       const f = await activation(db);
-      const op = await operation(db, f, cause === "closed_root" ? f.due : AT, ["closed_root", "stock_wait"].includes(cause));
-      if (cause === "closed_root" || cause === "stock_wait") await wait(db, f, op);
+      const op = await operation(db, f, cause === "closed_root" ? f.due : AT, cause === "closed_root");
+      if (cause === "closed_root") await wait(db, f, op);
       if (cause === "stock_reservation") await db.query(`INSERT INTO public.fulfillment_inventory_reservations
         (renewal_operation_id,operation_fingerprint,source_key,status,terminal_reason)
         VALUES($1,repeat('a',64),'fixture','expired','reservation_expired')`, [op.id]);
@@ -233,6 +262,34 @@ it.each(["closed_root", "retry_obligation", "renewal_settlement", "stock_wait", 
       expect(await readback()).toEqual(before);
     }, "ROLLBACK");
   });
+
+it("refuses an older recoverable incumbent stock wait on both rails with stable readback", async () => {
+  await transaction(store.owner, async db => {
+    const f = await activatedRenewal(db, { availability: 0 });
+    const op = await claimFixtureRenewal(db, f);
+    const due = { subscriptionId: f.subscriptionId, scheduledAt: AT };
+    const input = { operationId: op.operation, claimToken: op.token, snapshot: f.snapshot,
+      operationFingerprint: f.fingerprint, identityKey: f.identity, worker: "fixture" };
+    const waiting = await call(db, "subscription_stock_wait_admit", [input, due, AT]);
+    expect(waiting).toMatchObject({ waiting: true, reason: "inventory_unavailable" });
+    expect(await call(db, "subscription_stock_wait_frozen", [f.subscriptionId, AT])).toMatchObject({
+      caseId: waiting.caseId, operationId: op.operation, snapshot: { stockSourceKey: f.source, lines: f.snapshot.lines },
+    });
+    // Verify actual recovery while the old anchor is eligible, then roll it back.
+    await rolledBack(db, async () => {
+      await db.query("UPDATE public.fulfillment_stock_current SET total_quantity=10,for_sale_quantity=10 WHERE source_key=$1", [f.source]);
+      expect(await call(db, "subscription_stock_wait_recover_refusal", [op.operation, f.fingerprint, "fixture", later(2)]))
+        .toMatchObject({ acquired: true, waiting: false, state: "reserved" });
+    });
+    await db.query("UPDATE public.subscriptions SET next_cycle_at=$2 WHERE id=$1", [f.subscriptionId, later(24)]);
+    const readback = async () => [await call(db, "subscription_read_renewal", [f.identity]),
+      await call(db, "subscription_stock_wait_read", [waiting.caseId])];
+    const before = await readback();
+    expect(before).toMatchObject([{ state: "refused", terminalReason: "inventory_unavailable" }, { state: "waiting", waitingNoticeRelevant: false }]);
+    for (const rail of ["legacy", "v3"]) await refuses(db, () => allocate(db, f, rail), unavailable("stock_wait"));
+    expect(await readback()).toEqual(before);
+  }, "ROLLBACK");
+});
 
 it.each(["wait cycle", "wait order", "retry cycle", "retry order", "retry intent"])(
   "refuses a foreign %s edge entering the proved activation without leaking linked IDs", async edge => {
@@ -303,12 +360,11 @@ it("keeps the clamped due across DST, never stacks deliveries and never enters r
   const due = "2037-03-29T01:05:00.123456Z";
   expect((await db.query(`UPDATE public.subscriptions SET status='paused' WHERE id=$1
     RETURNING to_char(next_cycle_at AT TIME ZONE 'UTC',${utc}) AS due`, [f.subscriptionId])).rows).toEqual([{ due }]);
-  const sql = readFileSync("db/platform/migrations/20261129130505_native_renewal_occurrence_producer.sql", "utf8");
+  const sql = readFileSync(occurrenceProducerPath(), "utf8");
   expect(sql).not.toContain(confirmation);
   const body = (await db.query("SELECT prosrc FROM pg_proc WHERE oid=$1::regprocedure", [signature])).rows[0].prosrc;
   const installed = (await db.query("SELECT proname,prosrc FROM pg_proc WHERE pronamespace='public'::regnamespace")).rows;
   expect(installed.filter(({ proname }) => new RegExp(`\\b${proname}\\s*\\(`, "iu").test(body))).toEqual([]);
-  expect((await db.query(`SELECT tgname FROM pg_trigger WHERE tgrelid='public.${carrier}'::regclass AND NOT tgisinternal`)).rows).toEqual([]);
   const count = await probe(db, confirmation, `public.${confirmation}(uuid,text)`, "fixture_confirmation_entries");
   expect(await count()).toBe(1);
   await transaction(db, async writer => {
