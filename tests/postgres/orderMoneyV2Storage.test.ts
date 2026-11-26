@@ -70,7 +70,7 @@ const definitions = async (pool: Pool) => (await pool.query<{ definition: string
 
 let store: AccountMutationsStore, sku: Awaited<ReturnType<typeof seedSku>>;
 let live: Awaited<ReturnType<typeof seedPrivateFacts>>, erased: typeof live;
-let beforeDefinitions: Awaited<ReturnType<typeof definitions>>;
+let lineSumAfterStorage: string;
 let predecessorOrder: string, predecessorRows: Awaited<ReturnType<typeof priorOrderRows>>;
 let priorSource: ConnectedNativeStoreCapture;
 let applied: string[];
@@ -114,10 +114,14 @@ beforeAll(async () => {
     sku = await seedSku(store.owner);
     predecessorOrder = await nativeDraft(store.runtime);
     predecessorRows = await priorOrderRows();
-    beforeDefinitions = await definitions(store.owner);
+    const beforeDefinitions = await definitions(store.owner);
     const sql = "SELECT catalog_path,sha256,position FROM public.platform_schema_migrations WHERE position=$1";
     expect((await store.owner.query(sql, [position + 1])).rows).toEqual([]);
     applied = (await store.runner.apply()).applied;
+    const afterDefinitions = await definitions(store.owner);
+    expect(afterDefinitions).toHaveLength(functions.length);
+    expect(afterDefinitions).toStrictEqual(beforeDefinitions);
+    lineSumAfterStorage = afterDefinitions[0]!.source;
   });
   priorSource = priorPacket(await capture(store.owner, store.inventory, "prior-order-store"));
   live = await transaction(store.owner, db => seedPrivateFacts(db, sku));
@@ -134,10 +138,7 @@ it("applies its own prefix, keeps the incumbent definitions, and stores nulls th
   expect((await store.owner.query("SELECT catalog_path,sha256,position FROM public.platform_schema_migrations WHERE position=$1",
     [position + 1])).rows).toEqual([{ catalog_path: unit.file, sha256: unit.sha256, position: position + 1 }]);
   expect(createHash("sha256").update(readFileSync(unit.file)).digest("hex")).toBe(unit.sha256);
-  const afterDefinitions = await definitions(store.owner);
-  expect(afterDefinitions).toHaveLength(functions.length);
-  expect(afterDefinitions).toStrictEqual(beforeDefinitions);
-  const body = afterDefinitions[0]!.source;
+  const body = lineSumAfterStorage;
   const legacyBlock = body.slice(body.indexOf("  SELECT total_amount_minor"),
     body.lastIndexOf("\n\n  PERFORM public.catalog_order_line_sum_acceptance(v_order_id);") + 1);
   expect(Buffer.byteLength(legacyBlock)).toBe(939);

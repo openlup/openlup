@@ -34,8 +34,9 @@ beforeAll(async () => {
   runtimeUrl.username = selection.runtimeLogin;
   runtimeUrl.password = password;
   runtime = new Pool({ connectionString: runtimeUrl.toString() });
-  expect((await runtime.query(`SELECT current_user,pg_has_role(current_user,'service_role','USAGE') AS inherits`)).rows)
-    .toEqual([{ current_user: selection.runtimeLogin, inherits: true }]);
+  expect((await runtime.query(`SELECT current_user,pg_has_role(current_user,'service_role','USAGE') AS inherits,
+    has_function_privilege(current_user,'public.catalog_admission_is_governed(jsonb,jsonb)','EXECUTE') AS evaluates`)).rows)
+    .toEqual([{ current_user: selection.runtimeLogin, inherits: true, evaluates: true }]);
   await pool.query("INSERT INTO public.commerce_settings(key,value_text) VALUES('subscription_minimum_base_units','1') ON CONFLICT(key) DO UPDATE SET value_text='1'");
   await installPublicationActors(pool);
   await transaction(pool, async db => {
@@ -751,9 +752,43 @@ it("preserves authenticated writes to unaccepted orders outside the acting clien
     // Model a writer with the base tables' permissions, including reads by the line-sum trigger.
     await db.query("GRANT SELECT, UPDATE ON public.commerce_orders,public.commerce_order_items,public.commerce_order_draft_receipts TO authenticated");
     await db.query("GRANT SELECT ON public.commerce_order_adjustments,public.commerce_promotion_claims TO authenticated");
-    await db.query("SET LOCAL ROLE authenticated");
     await db.query("SELECT set_config('request.jwt.claims',$1,true)", [json({ sub: randomUUID(), role: "authenticated" })]);
-    expect((await db.query("UPDATE public.commerce_orders SET updated_at=now() WHERE id=$1", [owner.order])).rowCount).toBe(1);
+    const { rows } = await db.query(`WITH guarded AS (
+      SELECT oid, relowner, relacl FROM pg_class WHERE oid IN ('public.commerce_orders'::regclass,
+        'public.commerce_order_items'::regclass, 'public.commerce_order_draft_receipts'::regclass)
+    ), writes AS (
+      SELECT relowner, grantee, privilege_type FROM guarded CROSS JOIN LATERAL aclexplode(relacl)
+      UNION ALL
+      SELECT relowner, grantee, privilege_type FROM guarded JOIN pg_attribute ON attrelid=oid
+      CROSS JOIN LATERAL aclexplode(attacl) WHERE attnum>0 AND NOT attisdropped
+    )
+    SELECT proconfig, prosecdef, provolatile, btrim(prosrc, E' \\n') AS body,
+      ARRAY(SELECT DISTINCT COALESCE(rolname::text,'PUBLIC') AS role FROM writes
+        LEFT JOIN pg_roles ON pg_roles.oid=grantee
+        WHERE grantee<>relowner AND privilege_type IN ('INSERT','UPDATE','DELETE') ORDER BY role) AS writers,
+      ARRAY(SELECT COALESCE(rolname::text,'PUBLIC') AS role FROM aclexplode(proacl)
+        LEFT JOIN pg_roles ON pg_roles.oid=grantee WHERE grantee<>proowner AND privilege_type='EXECUTE' ORDER BY role) AS executors,
+      EXISTS(SELECT 1 FROM aclexplode(proacl) WHERE grantee<>proowner AND is_grantable) AS grant_option,
+      EXISTS(SELECT 1 FROM guarded WHERE has_table_privilege('anon',oid,'INSERT,UPDATE,DELETE')
+        OR has_any_column_privilege('anon',oid,'INSERT,UPDATE')) AS anon_writer
+    FROM pg_proc WHERE oid='public.catalog_admission_is_governed(jsonb,jsonb)'::regprocedure`);
+    expect(rows).toEqual([{
+      proconfig: ["search_path=pg_catalog, pg_temp"], prosecdef: false, provolatile: "i",
+      body: "SELECT p_origin IS NOT NULL AND p_acceptance->'admission' IS NOT NULL",
+      writers: ["authenticated", "service_role"], executors: ["authenticated", "service_role"],
+      grant_option: false, anon_writer: false,
+    }]);
+
+    const updateClassic = "UPDATE public.commerce_orders SET updated_at=now() WHERE id=$1";
+    await db.query("SAVEPOINT without_predicate_grant");
+    await db.query("REVOKE EXECUTE ON FUNCTION public.catalog_admission_is_governed(jsonb,jsonb) FROM authenticated");
+    await db.query("SET LOCAL ROLE authenticated");
+    await expect(db.query(updateClassic, [owner.order])).rejects.toMatchObject({
+      code: "42501", message: "permission denied for function catalog_admission_is_governed",
+    });
+    await db.query("ROLLBACK TO SAVEPOINT without_predicate_grant");
+    await db.query("SET LOCAL ROLE authenticated");
+    expect((await db.query(updateClassic, [owner.order])).rowCount).toBe(1);
     expect((await db.query("UPDATE public.commerce_order_items SET quantity=quantity WHERE order_id=$1", [owner.order])).rowCount).toBe(1);
     expect((await db.query("UPDATE public.commerce_order_draft_receipts SET response_payload=response_payload WHERE order_id=$1", [owner.order])).rowCount).toBe(1);
     // Run every queued commit check with the actual write role, then discard fixture grants.

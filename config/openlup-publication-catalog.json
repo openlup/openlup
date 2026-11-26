@@ -30618,7 +30618,19 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/catalogAdmissionOwnerWrite.fixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogAdmissionOwnerWrite.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/catalogAdmissionPrelock.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogAdmissionRuntimeCommit.test.ts",
       "class": "public-output"
     },
     {
