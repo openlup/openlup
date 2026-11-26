@@ -7,10 +7,11 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { createHash, randomUUID } from 'node:crypto';
 import { env as processEnvironment } from 'node:process';
-import { digest, explainSession, protectedCoveragePath, carryOver, cumulativeRepairPrefix, fullReviewReports, demand, integrationReviewContext, prepareCandidate, receiptBody, receiptSummary, recordReport, verdict } from './agent-review-decide.mjs';
+import { digest, explainSession, protectedCoveragePath, carryOver, cumulativeRepairPrefix, fullReviewReports, deferFinding, demand, integrationReviewContext, prepareCandidate, receiptBody, receiptSummary, recordReport, verdict } from './agent-review-decide.mjs';
 import { REGISTRY_PATHS, registryUnion } from './agent-review-registry.mjs';
-import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryOnlyCurrent, migrationRegistryUnion } from './agent-review-derived.mjs';
-import { generatedCarrier, ownerOutputCarrier, runDerivedOutputGenerators, runLandingGenerators, withPredictedTree } from './agent-review-generators.mjs';
+import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryOnlyCurrent, migrationRegistryUnion, reslotRegistryJson } from './agent-review-derived.mjs';
+import { MATURITY_REFERENCE, generatedCarrier, ownerOutputCarrier, runDerivedOutputGenerators, runLandingGenerators, withPredictedTree } from './agent-review-generators.mjs';
+import { isUtcMigrationSlot, MIGRATION_RAILS, migrationIdentity } from './migration-slots.mjs';
 import { join as joinPath } from 'node:path';
 
 const execute = promisify(execFile);
@@ -108,19 +109,104 @@ export async function objectInput(cwd, args, input) {
     child.stdin.end(input);
   });
 }
-export async function replaceTreeBlobs(cwd, tree, replacements) {
+export async function replaceTreeBlobs(cwd, tree, replacements, removals = new Set()) {
   const rows = (await git(cwd, 'ls-tree', '-z', tree)).split('\0').filter(Boolean);
+  const existing = new Map();
   const output = [];
   for (const row of rows) {
     const match = /^(\d{6}) (blob|tree) ([a-f0-9]{40})\t([\s\S]+)$/u.exec(row); demand(match, 'unreadable merge tree');
     const [, mode, type, oid, name] = match;
+    existing.set(name, { mode, type, oid });
+    if (removals.has(name)) continue;
     let next = replacements.get(name) ?? oid;
-    const nested = new Map([...replacements].filter(([path]) => path.startsWith(name + '/')).map(([path, value]) => [path.slice(name.length + 1), value]));
-    if (nested.size) { demand(type === 'tree', 'registry parent is not a tree'); next = await replaceTreeBlobs(cwd, oid, nested); }
+    const nestedRep = new Map([...replacements].filter(([path]) => path.startsWith(name + '/')).map(([path, value]) => [path.slice(name.length + 1), value]));
+    const nestedRem = new Set([...removals].filter(path => path.startsWith(name + '/')).map(path => path.slice(name.length + 1)));
+    if (nestedRep.size || nestedRem.size) { demand(type === 'tree', 'registry parent is not a tree'); next = await replaceTreeBlobs(cwd, oid, nestedRep, nestedRem); }
     output.push(`${mode} ${type} ${next}\t${name}\0`);
   }
-  demand([...replacements.keys()].every(path => rows.some(row => path === row.slice(row.indexOf('\t') + 1) || path.startsWith(row.slice(row.indexOf('\t') + 1) + '/'))), 'registry absent from merge tree');
+  const topAdditions = [...replacements.entries()].filter(([path]) => !path.includes('/') && !existing.has(path));
+  for (const [name, oid] of topAdditions) output.push(`100644 blob ${oid}\t${name}\0`);
+  const missingNested = [...replacements.keys()].filter(path => path.includes('/') && !existing.has(path.split('/')[0]));
+  demand(missingNested.length === 0, 'registry absent from merge tree');
   return objectInput(cwd, ['mktree', '-z'], output.join(''));
+}
+
+const PORTABLE_FORWARD_PATH = /^db\/platform\/migrations\/(\d{14})_([a-z][a-z0-9_]*)\.sql$/u;
+async function blobOid(cwd, revision, path) {
+  const line = (await git(cwd, 'ls-tree', revision, '--', path)).trim();
+  const match = /^100644 blob ([a-f0-9]{40})\t/u.exec(line);
+  return match ? match[1] : null;
+}
+async function pathExists(cwd, revision, path) {
+  return (await git(cwd, 'ls-tree', revision, '--', path)).trim().length > 0;
+}
+
+async function detectByteIdenticalReslot(cwd, previous, current, prediction) {
+  const prAdded = (await git(cwd, 'diff', '--name-only', '--diff-filter=A', '--no-renames', '-z', previous.base, previous.head))
+    .split('\0').filter(path => PORTABLE_FORWARD_PATH.test(path)).sort();
+  if (!prAdded.length) return { changes: [], addBlobs: new Map(), removePaths: new Set() };
+  const missing = [];
+  for (const oldPath of prAdded) {
+    if (!(await pathExists(cwd, current.tree, oldPath))) missing.push(oldPath);
+  }
+  if (!missing.length) return { changes: [], addBlobs: new Map(), removePaths: new Set() };
+  const predAdded = (await git(cwd, 'diff', '--name-only', '--diff-filter=A', '--no-renames', '-z', prediction, current.tree))
+    .split('\0').filter(path => PORTABLE_FORWARD_PATH.test(path));
+  demand(predAdded.length === missing.length, 'reslot count differs');
+  const mainPaths = (await git(cwd, 'ls-tree', '-r', '--name-only', '-z', current.base, '--', ...MIGRATION_RAILS))
+    .split('\0').filter(Boolean);
+  const maxMainSlot = mainPaths.map(p => migrationIdentity(p)?.version ?? '').filter(Boolean).sort().at(-1) ?? '00000000000000';
+  const slugOf = p => PORTABLE_FORWARD_PATH.exec(p)?.[2];
+  const bySlug = new Map();
+  for (const p of [...predAdded].sort()) {
+    const slug = slugOf(p);
+    demand(slug, 'invalid reslot target slug');
+    if (!bySlug.has(slug)) bySlug.set(slug, []);
+    bySlug.get(slug).push(p);
+  }
+  const changes = [];
+  const reslotMap = new Map();
+  const addBlobs = new Map();
+  const removePaths = new Set();
+  const sortedMissing = [...missing].sort();
+  let lastNewSlot = maxMainSlot;
+  for (const oldPath of sortedMissing) {
+    const oldId = migrationIdentity(oldPath);
+    const targets = bySlug.get(slugOf(oldPath));
+    const target = targets?.shift();
+    demand(target && target !== oldPath, 'reslot target missing');
+    const newId = migrationIdentity(target);
+    demand(oldId && newId && isUtcMigrationSlot(newId.version) && newId.version > oldId.version && newId.version > lastNewSlot,
+      'reslot target slot must be strictly later valid UTC above main and original slot');
+    lastNewSlot = newId.version;
+    const oldOid = await blobOid(cwd, previous.head, oldPath);
+    const newOid = await blobOid(cwd, current.tree, target);
+    demand(oldOid && newOid && oldOid === newOid, 'reslot SQL bytes differ');
+    demand(!(await pathExists(cwd, current.base, oldPath)), 'reslot old path exists on main');
+    demand(!(await pathExists(cwd, current.base, target)), 'reslot target exists on main');
+    changes.push({ path: oldPath, target });
+    reslotMap.set(oldPath, target);
+    removePaths.add(oldPath);
+    addBlobs.set(target, newOid);
+    const oldMirror = `packages/platform/sql/${oldPath.split('/').at(-1)}`;
+    const newMirror = `packages/platform/sql/${target.split('/').at(-1)}`;
+    const oldMirrorOid = await blobOid(cwd, previous.head, oldMirror);
+    if (oldMirrorOid) {
+      demand(!(await pathExists(cwd, current.tree, oldMirror)), 'old SQL mirror still present');
+      demand(!(await pathExists(cwd, current.base, oldMirror)), 'reslot old mirror exists on main');
+      demand(!(await pathExists(cwd, current.base, newMirror)), 'reslot target mirror exists on main');
+      const newMirrorOid = await blobOid(cwd, current.tree, newMirror);
+      demand(newMirrorOid === newOid, 'reslot SQL mirror bytes differ');
+      removePaths.add(oldMirror);
+      addBlobs.set(newMirror, newMirrorOid);
+    }
+  }
+  // Preserve reviewed relative execution order across ALL PR forwards (kept + reslotted).
+  const finalVersions = prAdded.map(p => migrationIdentity(reslotMap.get(p) ?? p)?.version ?? '');
+  for (let i = 1; i < finalVersions.length; i += 1) {
+    demand(finalVersions[i] > finalVersions[i - 1], 'reslot inverted reviewed PR migration order');
+  }
+  return { changes, addBlobs, removePaths };
 }
 export async function proveReviewIntegration(cwd, previous, current, portable = false, { legacy = false, resolvedOwnerOutputs = [] } = {}) {
   const parents = await integrationParents(cwd, current.head);
@@ -167,14 +253,16 @@ export async function proveReviewIntegration(cwd, previous, current, portable = 
         demand((await git(cwd, 'ls-tree', revision, '--', path)).trim().startsWith('100644 blob '), 'derived carrier mode differs');
         return git(cwd, 'show', `${revision}:${path}`);
       };
+      const reslot = await detectByteIdenticalReslot(cwd, previous, current, prediction);
       const inventories = await Promise.all([previous.base, previous.head, current.base, current.tree].map(revision => read(revision, INVENTORY_PATH)));
       const currentOnly = inventoryOnlyCurrent(...inventories);
       const inventorySame = inventories.every(source => source === inventories[0]);
       demand(currentOnly || inventorySame, 'historical inventory or envelope differs');
-      const derivedBlobs = new Map();
+      const derivedBlobs = new Map(reslot.addBlobs);
       if (currentOnly) derivedBlobs.set(INVENTORY_PATH, await objectInput(cwd, ['hash-object', '-w', '--stdin'], inventories[3]));
       for (const path of MIGRATION_REGISTRIES) {
         const inputs = await Promise.all([previous.base, previous.head, current.base].map(revision => read(revision, path)));
+        if (reslot.changes.length) inputs[1] = reslotRegistryJson(path, inputs[1], reslot.changes);
         const union = migrationRegistryUnion(path, ...inputs, inventories[3]);
         demand(union === await read(current.tree, path), 'registry union differs');
         derivedBlobs.set(path, await objectInput(cwd, ['hash-object', '-w', '--stdin'], union));
@@ -185,9 +273,19 @@ export async function proveReviewIntegration(cwd, previous, current, portable = 
       if (conflicts.includes(catalogue) && !replacements.has(catalogue)) {
         demand(registryBaseMatches, 'registry union requires the reviewed merge base');
         const inputs = await Promise.all([previous.base, previous.head, current.base].map(revision => read(revision, catalogue)));
+        if (reslot.changes.length) {
+          const reslotMirrorChanges = reslot.changes.flatMap(({ path: oldPath, target }) => [
+            { path: oldPath, target },
+            ...(oldPath.startsWith('db/platform/migrations/') ? [{
+              path: `packages/platform/sql/${oldPath.split('/').at(-1)}`,
+              target: `packages/platform/sql/${target.split('/').at(-1)}`,
+            }] : []),
+          ]);
+          inputs[1] = reslotRegistryJson(catalogue, inputs[1], reslotMirrorChanges);
+        }
         derivedBlobs.set(catalogue, await objectInput(cwd, ['hash-object', '-w', '--stdin'], registryUnion(catalogue, ...inputs)));
       }
-      let predicted = await replaceTreeBlobs(cwd, prediction, derivedBlobs);
+      let predicted = await replaceTreeBlobs(cwd, prediction, derivedBlobs, reslot.removePaths);
       const delta = await captureCommittedReviewCandidate(cwd, predicted, current.tree);
       // SQL and modes always retain their mechanical result, including mirrors.
       // A committed conflict-marker blob has no delta from merge-tree. It still
@@ -198,7 +296,8 @@ export async function proveReviewIntegration(cwd, previous, current, portable = 
         'scripts/build-packages-incremental.mjs', 'scripts/settings-catalogue.ts',
         'config/openlup-packages.json', 'package-lock.json',
         ...ownerPaths.filter(path => /\/api\//u.test(path)).map(path => `packages/${path.split('/')[1]}/scripts/api-contract.ts`),
-        ...(ownerPaths.some(path => path.startsWith('packages/core/api/')) ? ['packages/core/scripts/public-api-config.ts'] : [])];
+        ...(ownerPaths.some(path => path.startsWith('packages/core/api/')) ? ['packages/core/scripts/public-api-config.ts'] : []),
+        ...(ownerPaths.includes(MATURITY_REFERENCE) ? ['packages/core/scripts/documentation-contract.ts', 'packages/ui/smoke/neutrality.ts'] : [])];
       const trustedRows = ownerPaths.length ? await Promise.allSettled(trustedPaths.map(async path =>
         [path, await read(current.base, path)])) : [];
       const trusted = Object.fromEntries(trustedRows.filter(row => row.status === 'fulfilled').map(row => row.value));
@@ -218,7 +317,7 @@ export async function proveReviewIntegration(cwd, previous, current, portable = 
           demand(output === await read(current.tree, path), 'generated bytes differ');
           derivedBlobs.set(path, await objectInput(cwd, ['hash-object', '-w', '--stdin'], output));
         }
-        predicted = await replaceTreeBlobs(cwd, prediction, derivedBlobs);
+        predicted = await replaceTreeBlobs(cwd, prediction, derivedBlobs, reslot.removePaths);
       }
       derived = predicted !== prediction; prediction = predicted;
       // Publish exemptions only after the complete derivation succeeds. Each
@@ -376,6 +475,7 @@ const SESSION_HELP = `Usage:
   node scripts/agent-review-session.mjs prepare [--new] [intent.json]
   node scripts/agent-review-session.mjs status [--explain]
   node scripts/agent-review-session.mjs record <report.json>
+  node scripts/agent-review-session.mjs defer <findingId> --to <target> --decision <ref> --reason <text>
   node scripts/agent-review-session.mjs verify
   node scripts/agent-review-session.mjs receipt <PR>
   node scripts/agent-review-session.mjs verify-command [--resource PROFILE] -- <command> [args...]
@@ -389,10 +489,10 @@ export async function sessionMain(argv = process.argv.slice(2), { cwd = process.
     demand(args.length === 0, 'use --help without extra arguments');
     console.log(SESSION_HELP); return 0;
   }
-  demand(['prepare', 'record', 'verify', 'status', 'receipt', 'verify-command'].includes(verb), 'use prepare [--new] <intent.json>, record <report.json>, verify, status [--explain], receipt <PR>, verify-command or --help');
+  demand(['prepare', 'record', 'defer', 'verify', 'status', 'receipt', 'verify-command'].includes(verb), 'use prepare [--new] <intent.json>, record <report.json>, defer <findingId> --to <target> --decision <ref> --reason <text>, verify, status [--explain], receipt <PR>, verify-command or --help');
   const directory = join(cwd, '.context', 'scratch', 'agent-review'); const path = join(directory, 'session.json');
   let lock;
-  if (['prepare', 'record'].includes(verb)) {
+  if (['prepare', 'record', 'defer'].includes(verb)) {
     await mkdir(directory, { recursive: true });
     try { lock = await open(join(directory, '.session.lock'), 'wx', 0o600); }
     catch (error) { if (error.code === 'EEXIST') throw new Error('invalid: session is busy; retry after the active transaction finishes'); throw error; }
@@ -454,6 +554,20 @@ export async function sessionMain(argv = process.argv.slice(2), { cwd = process.
     demand(observed.clean, 'commit source changes before review', 'dirty');
     demand(['base', 'head', 'tree'].every(key => observed[key] === session.candidate[key]), 'candidate changed; prepare again', 'stale');
     if (verb === 'record') { session = recordReport(session, await boundedJson(args[0]), Date.now()); await saveState(path, session); return 0; }
+    if (verb === 'defer') {
+      const findingId = args.shift();
+      let target; let decision; let reason;
+      while (args.length) {
+        const flag = args.shift();
+        if (flag === '--to') target = args.shift();
+        else if (flag === '--decision') decision = args.shift();
+        else if (flag === '--reason') reason = args.shift();
+        else demand(false, `unknown defer option: ${flag}`);
+      }
+      session = deferFinding(session, { findingId, target, decision, reason }, Date.now());
+      await saveState(path, session);
+      return 0;
+    }
     await validateEconomySession(cwd, session);
     const decision = verdict(session, observed, Date.now()); demand(decision.ok, decision.reason, decision.code);
     if (verb === 'receipt') await assertMergePreflight(cwd, observed, { env });

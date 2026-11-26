@@ -1,9 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { access, mkdtemp, mkdir, readFile, rm } from 'node:fs/promises';
+import { access, mkdtemp, mkdir, readdir, readFile, rm } from 'node:fs/promises';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { createPostgresContactClientRegistrar } from '@openlup/platform/identity';
+import { createPostgresContactClientRegistrar, createPostgresOperatorIdentityStore } from '@openlup/platform/identity';
 import { env as processEnvironment } from 'node:process';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -397,7 +397,7 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
   const paid = new Map<string, Record<string, unknown>>();
   const email = `uuid-${config.id}@example.test`;
 
-  async function exchange(operation: Operation, payload: Record<string, unknown>, signedIn = false, key = randomUUID()) {
+  async function exchange(operation: Operation, payload: Record<string, unknown>, signedIn = false, key: string = randomUUID()) {
     const started = performance.now();
     const response = await fetch(`${base}/api/actions/${operation}`, {
       method: 'POST', headers: {
@@ -410,24 +410,30 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     return { body: await response.json() as ActionResult, status: response.status, elapsed: performance.now() - started };
   }
 
-  async function call(operation: Operation, payload: Record<string, unknown>, signedIn = false, key = randomUUID()) {
+  async function call(operation: Operation, payload: Record<string, unknown>, signedIn = false, key: string = randomUUID()) {
     return (await exchange(operation, payload, signedIn, key)).body;
+  }
+
+  async function review(payload: Record<string, unknown>, signedIn = false) {
+    const quoted = await call('offer.validate', payload, signedIn);
+    expect(quoted.ok).toBe(true);
+    if (!quoted.ok || !isRecord(quoted.value)) throw new Error('host_server_quote_required');
+    return quoted.value;
   }
 
   async function quotedSubscription(payload: Record<string, unknown>) {
     const capable = { ...payload, acquisitionCapability: 'subscription-acquisition.v1' };
-    const quoted = await call('offer.validate', capable);
-    expect(quoted.ok).toBe(true);
-    if (!quoted.ok || !isRecord(quoted.value)) throw new Error('host_server_quote_required');
-    return { ...capable, quoteAcceptance: quoted.value.quoteAcceptance, expectedTotal: quoted.value.expectedTotal };
+    const quote = await review(capable);
+    return { ...capable, quoteAcceptance: quote.quoteAcceptance, expectedTotal: quote.expectedTotal };
   }
 
-  async function control(permissive: boolean | null, emailLimit?: number, subscriptionOffers?: SubscriptionOffers) {
+  async function control(permissive: boolean | null, emailLimit?: number, subscriptionOffers?: SubscriptionOffers,
+    attemptLimits?: Partial<typeof config.purchase.attemptLimits>) {
     const host = fixture.child()!;
     return waitForHost<{ registrations: number }>(host, fixture.signal, 5_000, 'host_control_timeout', finish => {
       const onMessage = (message: unknown) => finish(undefined, message as { registrations: number });
       host.once('message', onMessage);
-      host.send({ permissive, emailLimit, subscriptionOffers }, error => {
+      host.send({ permissive, emailLimit, subscriptionOffers, attemptLimits }, error => {
         if (error) finish(new Error('host_control_failed'));
       });
       return () => host.off('message', onMessage);
@@ -443,15 +449,14 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
       lines: [{ sku: config.offer.products[0]!.sku, quantity: 1 }] },
   });
 
+  async function reviewedCheckout(address: string, signedIn = false) {
+    const input = checkout(address);
+    const quote = await review(input, signedIn);
+    return { ...input, expectedTotal: quote.expectedTotal };
+  }
+
   async function createOrder(signedIn = false) {
-    const result = await call('checkout.create', {
-      locale: 'en', email, configuration: config.id, country: config.market.country,
-      termsAccepted: true, termsRevision: config.legal.revision,
-      firstName: 'Example', lastName: 'Buyer', phone: '000000000',
-      line1: '1 Example Lane', city: 'Example City', postalCode: '00000',
-      cart: { schemaVersion: 1, configuration: config.id, mode: 'one_time', cadenceDays: null,
-        lines: [{ sku: config.offer.products[0]!.sku, quantity: 1 }] },
-    }, signedIn);
+    const result = await call('checkout.create', await reviewedCheckout(email, signedIn), signedIn);
     if (!result.ok || !isRecord(result.value)
       || typeof result.value.orderRef !== 'string' || typeof result.value.token !== 'string') {
       throw new Error('uuid_host_checkout_required');
@@ -484,7 +489,10 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
       const connectionString = ${JSON.stringify(runtimeConnection)};
       process.chdir(${JSON.stringify(state)});
       const keyring = { current: 'fixture-only-acceptance-key-00000000000000' };
-      const bindings = await composeNativeBindings(connectionString, createOriginPolicy(config, port), config, keyring);
+      // The requester key seam: every quota consumer must receive this replacement.
+      const { createHash } = await import('node:crypto');
+      const requesterKey = request => createHash('sha256').update('fixture-requester:' + request.socket.remoteAddress).digest('hex');
+      const bindings = await composeNativeBindings(connectionString, createOriginPolicy(config, port), config, keyring, undefined, { requesterKey });
       const stopAtContact = ${stopAtContact};
       const pool = new Pool({ connectionString, ...(stopAtContact ? { max: 1, connectionTimeoutMillis: 1000 } : {}) });
       const registrar = createPostgresContactClientRegistrar({ connectionString });
@@ -508,6 +516,7 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
         if (message.subscriptionOffers !== undefined) config.subscriptionOffers = message.subscriptionOffers;
         if (message.emailLimit !== undefined) config.purchase.inputLimits.email = message.emailLimit;
         if (message.permissive !== null) configureCheckout(message.permissive);
+        if (message.attemptLimits !== undefined) config.purchase.attemptLimits = { ...config.purchase.attemptLimits, ...message.attemptLimits };
         process.send({ registrations });
       });
       server.on('request', createApplication(bindings).listeners('request')[0]);
@@ -662,11 +671,12 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
         [sku, rules.map(rule => ({ ...rule, days: set(...choices(rule.days), 89) }))]));
       await control(null, undefined, offers);
       const input = checkout(`cadence-${config.id}@example.test`);
-      const refused = await call('checkout.create', { ...input, acquisitionCapability: 'subscription-acquisition.v1', cart: { ...input.cart, mode: 'subscription', cadenceDays: 90 } });
+      const reviewed = await quotedSubscription({ ...input, cart: { ...input.cart, mode: 'subscription', cadenceDays: 89 } });
+      const refused = await call('checkout.create', { ...reviewed, cart: { ...input.cart, mode: 'subscription', cadenceDays: 90 } });
       expect(refused).toEqual({ ok: false, code: 'cadence_unavailable' });
       expect(Number((await owner!.query('SELECT count(*) AS count FROM public.clients')).rows[0].count)).toBe(before);
       expect((await control(null)).registrations).toBe(registrations);
-      const accepted = await call('checkout.create', await quotedSubscription({ ...input, cart: { ...input.cart, mode: 'subscription', cadenceDays: 89 } }));
+      const accepted = await call('checkout.create', reviewed);
       expect(accepted.ok).toBe(true);
       if (!accepted.ok || !isRecord(accepted.value)) throw new Error('cadence_purchase_required');
       const read = await call('checkout.read', { orderRef: accepted.value.orderRef, token: accepted.value.token });
@@ -676,7 +686,7 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
 
   it('padded customer challenge email preserves the normalized address, public shape and floor', async () => {
     const address = `padded-${email}`;
-    expect((await call('checkout.create', checkout(address))).ok).toBe(true);
+    expect((await call('checkout.create', await reviewedCheckout(address))).ok).toBe(true);
     const padded = await exchange('auth.request', { email: `  ${address}  ` });
     const plain = await exchange('auth.request', { email: address });
     expect(plain.status).toBe(200);
@@ -693,7 +703,7 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
   it('shared email boundary preserves purchase, payment and later native sign-in', async () => {
     const address = 'a'.repeat(60) + '@' + 'b'.repeat(49) + '.' + 'c'.repeat(44) + '.test';
     expect(address.length).toBe(160);
-    const created = await call('checkout.create', checkout(address));
+    const created = await call('checkout.create', await reviewedCheckout(address));
     expect(created.ok).toBe(true);
     if (!created.ok || !isRecord(created.value)) throw new Error('boundary_purchase_required');
     expect((await call('payment.simulate', { orderRef: created.value.orderRef, token: created.value.token, outcome: 'captured' })).ok).toBe(true);
@@ -753,7 +763,7 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     expect((await owner!.query('SELECT principal_id FROM public.clients WHERE email=$1', [email])).rows[0].principal_id).not.toBeNull();
     const results: ActionResult[] = [];
     for (const address of [`new-${config.id}@example.test`, unlinked, email]) {
-      const result = await exchange('checkout.create', checkout(address));
+      const result = await exchange('checkout.create', await reviewedCheckout(address));
       expect(result.status).toBe(200);
       expect(result.body.ok).toBe(true);
       expect(result.elapsed).toBeGreaterThanOrEqual(config.purchase.responseFloorMs - 5);
@@ -777,16 +787,17 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     await startHost();
     const previous = new Set((await ledger()).map(row => row.attempt_digest));
     const key = randomUUID();
-    expect((await call('checkout.create', checkout(`native-ledger-${config.id}@example.test`), false, key)).ok).toBe(true);
+    expect((await call('checkout.create', await reviewedCheckout(`native-ledger-${config.id}@example.test`), false, key)).ok).toBe(true);
     const recorded = await ledger();
     expect(recorded.filter(row => !previous.has(row.attempt_digest)).map(row => row.attempt_digest))
-      .toEqual([createHash('sha256').update(`${key}\0${0}`).digest('hex')]);
+      // The limiter receives the derived key, never the header value.
+      .toEqual([createHash('sha256').update(`${derivedKey(key)}\0${0}`).digest('hex')]);
 
     const before = await purchaseCounts();
     // The restricted runtime inherits this grant through service_role.
     await owner!.query(`REVOKE EXECUTE ON FUNCTION ${ledgerSignature} FROM service_role`);
     try {
-      expect(await call('checkout.create', checkout(`native-ledger-refused-${config.id}@example.test`)))
+      expect(await call('checkout.create', await reviewedCheckout(`native-ledger-refused-${config.id}@example.test`)))
         .toEqual({ ok: false, code: 'starter_attempt_limited' });
       expect(await purchaseCounts()).toEqual(before);
       expect(await ledger()).toEqual(recorded);
@@ -799,9 +810,9 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     await stopHost();
     await startHost(true);
     const before = await purchaseCounts();
-    const input = checkout(`restart-${config.id}@example.test`);
+    const input = await reviewedCheckout(`restart-${config.id}@example.test`);
     const key = randomUUID();
-    const digest = createHash('sha256').update(`${key}\0${0}`).digest('hex');
+    const digest = createHash('sha256').update(`${derivedKey(key)}\0${0}`).digest('hex');
     const stopped = { ok: false, code: 'starter_purchase_unavailable' };
     expect(await call('checkout.create', input, false, key)).toEqual(stopped);
     expect((await control(null)).registrations).toBe(1);
@@ -844,7 +855,8 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     const before = await count();
     const key = randomUUID();
     const address = `bound-${permissive}-${config.id}@example.test`;
-    const first = await call('checkout.create', checkout(address), false, key);
+    const input = await reviewedCheckout(address);
+    const first = await call('checkout.create', input, false, key);
     expect(first.ok).toBe(true);
     if (!first.ok || !isRecord(first.value)) throw new Error('bound_checkout_required');
     expect(await count()).toBe(before + 1);
@@ -853,33 +865,437 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     expect(afterFirst).toHaveLength(permissive ? 0 : 1);
     const changedResults: Array<Awaited<ReturnType<typeof exchange>>> = [];
     for (let index = 0; index < 5; index++) {
-      const changed = await exchange('checkout.create', checkout(`changed-${permissive}-${index}-${config.id}@example.test`), false, key);
+      const changed = await exchange('checkout.create', { ...input, email: `changed-${permissive}-${index}-${config.id}@example.test` }, false, key);
       changedResults.push(changed);
     }
     expect(await count()).toBe(before + 1);
+    // A key bound to another e-mail is a changed payload: metered per key, and named until the key's quota is spent.
+    expect(changedResults.map(changed => changed.body)).toEqual(Array.from({ length: 5 }, (_, index) =>
+      ({ ok: false, code: permissive || index < 2 ? 'starter_checkout_changed' : 'starter_attempt_limited' })));
     for (const changed of changedResults) {
-      expect(changed.body).toEqual({ ok: false, code: 'starter_attempt_limited' });
       expect(changed.status).toBe(409);
       expect(changed.elapsed).toBeGreaterThanOrEqual(config.purchase.responseFloorMs - 5);
     }
     expect((await control(null)).registrations).toBe(1);
-    expect(await call('checkout.create', checkout(address.toUpperCase()), false, key))
-      .toEqual({ ok: true, value: original, replayed: true });
-    expect(await ledger()).toEqual(afterFirst);
+    const repeated = await call('checkout.create', { ...input, email: address.toUpperCase() }, false, key);
+    if (permissive) {
+      // The exact repeat is admitted and returns a new way to pay.
+      expect(repeated.ok && isRecord(repeated.value) && typeof repeated.value.token).toBe('string');
+      if (!repeated.ok || !isRecord(repeated.value)) throw new Error('bound_repeat_required');
+      const { token: _token, ...value } = repeated.value;
+      expect({ ...repeated, value }).toEqual({ ok: true, value: original, replayed: true });
+    } else {
+      // The key's quota is spent: the order is returned without a token.
+      expect(repeated).toEqual({ ok: true, value: original, replayed: true });
+    }
+    expect(await ledger()).toHaveLength(permissive ? 0 : 3);
+    await owner!.query('TRUNCATE public.commerce_checkout_attempt_ledger');
     // A fresh second key still fits the native requester quota after all refusals.
-    expect((await call('checkout.create', checkout(`second-${permissive}-${config.id}@example.test`))).ok).toBe(true);
+    expect((await call('checkout.create', await reviewedCheckout(`second-${permissive}-${config.id}@example.test`))).ok).toBe(true);
     await control(permissive);
     const concurrentBefore = await count();
     const concurrentKey = randomUUID();
     const results = await Promise.all([0, 1].map(index => call('checkout.create',
-      checkout(`race-${permissive}-${index}-${config.id}@example.test`), false, concurrentKey)));
+      { ...input, email: `race-${permissive}-${index}-${config.id}@example.test` }, false, concurrentKey)));
     expect(results.filter(result => result.ok)).toHaveLength(1);
-    expect(results.filter(result => !result.ok)).toEqual([{ ok: false, code: 'starter_attempt_limited' }]);
+    expect(results.filter(result => !result.ok)).toEqual([{ ok: false, code: 'starter_checkout_changed' }]);
     expect(await count()).toBe(concurrentBefore + 1);
     expect((await control(null)).registrations).toBe(1);
     const afterRace = await ledger();
     if (permissive) expect(afterRace).toEqual(ledgerBefore);
     else expect(afterRace).toHaveLength(3);
   }, 30_000);
+
+  const digest = (value: string) => createHash('sha256').update(value).digest('hex');
+  const derivedKey = (header: string) => `checkout:${digest(JSON.stringify([null, header]))}`;
+  const fixtureRequester = digest('fixture-requester:127.0.0.1');
+  const tokenCount = async (orderRef: string) => Number((await owner!.query(
+    'SELECT count(*) AS n FROM public.commerce_checkout_recovery_tokens WHERE order_id=$1', [orderRef])).rows[0].n);
+  const capturedRecoveries = async () => (await readdir(resolve(state, '.context/captured-messages')).catch(() => [] as string[]))
+    .filter(name => name.endsWith('.json')).length;
+  const repeatLimits = { maxPerEmail: 4, maxPerRequester: 12, maxEntries: 50 };
+  // Host restarts in earlier cases drop in-memory sessions, so each case signs in again.
+  const mailbox = async () => (await readFile(resolve(state, '.context/captured-messages/identity.jsonl'), 'utf8').catch(() => ''))
+    .trim().split('\n').filter(Boolean).map(line => JSON.parse(line) as { email: string; token: string });
+  /** Requests a challenge and waits for its delivery: acceptance can precede the private mailbox write. */
+  async function freshChallenge(operation: 'auth.request' | 'auth.operator', address: string) {
+    const prior = new Set((await mailbox()).filter(row => row.email === address).map(row => row.token));
+    expect((await call(operation, { email: address })).ok).toBe(true);
+    const deadline = Date.now() + 5_000;
+    for (;;) {
+      const message = (await mailbox()).filter(row => row.email === address && !prior.has(row.token)).at(-1);
+      if (message) return message.token;
+      if (Date.now() > deadline) throw new Error(`${operation}_challenge_missing`);
+      await new Promise(done => setTimeout(done, 25));
+    }
+  }
+  async function signIn(address: string) {
+    const token = await freshChallenge('auth.request', address);
+    expect((await call('auth.verify', { token })).ok).toBe(true);
+  }
+  async function guestOrder(label: string, key = randomUUID()) {
+    const input = await reviewedCheckout(`${label}-${config.id}@example.test`);
+    const created = await call('checkout.create', input, false, key);
+    if (!created.ok || !isRecord(created.value) || typeof created.value.token !== 'string') throw new Error(`${label}_checkout_required`);
+    return { key, input, orderRef: String(created.value.orderRef), token: created.value.token, value: created.value };
+  }
+
+  it('a repeat of a completed guest checkout is counted and returns a new token', async () => {
+    await control(false, undefined, undefined, repeatLimits);
+    await owner!.query('TRUNCATE public.commerce_checkout_attempt_ledger');
+    const first = await guestOrder('repeat');
+    const [fresh] = await ledger();
+    // The replaced requester function is the value the limiter receives.
+    expect(fresh.requester_digest).toBe(fixtureRequester);
+    expect(fresh.email_digest).toBe(digest(`repeat-${config.id}@example.test`));
+    const captured = await capturedRecoveries();
+    expect(captured).toBeGreaterThan(0);
+    const tokens = new Set([first.token]);
+    for (let index = 1; index <= 2; index++) {
+      const repeated = await call('checkout.create', first.input, false, first.key);
+      if (!repeated.ok || !isRecord(repeated.value) || typeof repeated.value.token !== 'string') throw new Error('repeat_token_required');
+      expect(repeated.replayed).toBe(true);
+      expect(repeated.value.orderRef).toBe(first.orderRef);
+      tokens.add(repeated.value.token);
+      const rows = await ledger();
+      expect(rows).toHaveLength(1 + index);
+      for (const row of rows.filter(row => row.attempt_digest !== fresh.attempt_digest)) {
+        expect(row.email_digest).toBe(digest(`replay:${derivedKey(first.key)}`));
+        expect(row.email_digest).not.toBe(fresh.email_digest);
+        expect(row.requester_digest).toBe(digest(`replay:${fixtureRequester}`));
+      }
+      const read = await call('checkout.read', { orderRef: first.orderRef, token: repeated.value.token });
+      expect(read.ok && isRecord(read.value) && read.value.orderRef).toBe(first.orderRef);
+    }
+    expect(tokens.size).toBe(3);
+    expect(await tokenCount(first.orderRef)).toBe(3);
+    // Earlier links stay valid, and no repeat sends mail.
+    expect((await call('checkout.read', { orderRef: first.orderRef, token: first.token })).ok).toBe(true);
+    expect(await capturedRecoveries()).toBe(captured);
+  }, 30_000);
+
+  it('repeats beyond the per-key quota are refused and issue nothing', async () => {
+    await control(false, undefined, undefined, { maxPerEmail: 2, maxPerRequester: 12, maxEntries: 50 });
+    await owner!.query('TRUNCATE public.commerce_checkout_attempt_ledger');
+    const first = await guestOrder('quota');
+    for (let index = 0; index < 2; index++) {
+      const repeated = await call('checkout.create', first.input, false, first.key);
+      expect(repeated.ok && isRecord(repeated.value) && typeof repeated.value.token).toBe('string');
+    }
+    const issued = await tokenCount(first.orderRef);
+    const rows = await ledger();
+    const limited = await call('checkout.create', first.input, false, first.key);
+    const { token: _token, ...value } = first.value;
+    expect(limited).toEqual({ ok: true, value, replayed: true });
+    expect(await tokenCount(first.orderRef)).toBe(issued);
+    expect(await ledger()).toEqual(rows);
+    // The buyer's e-mail quota was not consumed by the repeats.
+    expect((await call('checkout.create', await reviewedCheckout(`quota-${config.id}@example.test`))).ok).toBe(true);
+  }, 30_000);
+
+  it('checkout.continuation resumes by key', async () => {
+    await control(false, undefined, undefined, repeatLimits);
+    await owner!.query('TRUNCATE public.commerce_checkout_attempt_ledger');
+    const pendingOrder = await guestOrder('resume');
+    const resumed = await call('checkout.continuation', { action: 'resume', locale: 'en' }, false, pendingOrder.key);
+    if (!resumed.ok || !isRecord(resumed.value) || typeof resumed.value.token !== 'string') throw new Error('resume_token_required');
+    const { token: _token, ...value } = pendingOrder.value;
+    expect({ ...resumed, value: { ...resumed.value, token: '<token>' } }).toEqual({ ok: true, value: { ...value, token: '<token>' }, replayed: true });
+    const read = await call('checkout.read', { orderRef: pendingOrder.orderRef, token: resumed.value.token });
+    expect(read.ok && isRecord(read.value) && read.value.status).toBe('pending_payment');
+    const paidOrder = await guestOrder('resume-paid');
+    expect((await call('payment.simulate', { orderRef: paidOrder.orderRef, token: paidOrder.token, outcome: 'captured' })).ok).toBe(true);
+    expect(await call('checkout.continuation', { action: 'resume', locale: 'en' }, false, paidOrder.key))
+      .toEqual({ ok: true, value: { ...value, orderRef: paidOrder.orderRef, status: 'paid' }, replayed: true });
+    const closedOrder = await guestOrder('resume-closed');
+    await owner!.query('SELECT public.commerce_cancel_abandoned_purchase_checkout($1,$2::uuid,$3,now())',
+      [`fixture-close:${closedOrder.orderRef}`, closedOrder.orderRef, 'fixture_closed']);
+    expect(await call('checkout.continuation', { action: 'resume', locale: 'en' }, false, closedOrder.key))
+      .toEqual({ ok: false, code: 'starter_checkout_not_payable' });
+    expect(await call('checkout.continuation', { action: 'resume', locale: 'en' }))
+      .toEqual({ ok: false, code: 'starter_checkout_not_found' });
+  }, 30_000);
+
+  it('a guest key works without the contact e-mail and is useless to another principal', async () => {
+    await control(false, undefined, undefined, repeatLimits);
+    await owner!.query('TRUNCATE public.commerce_checkout_attempt_ledger');
+    const order = await guestOrder('bearer');
+    const resumed = await call('checkout.continuation', { action: 'resume', locale: 'en' }, false, order.key);
+    expect(resumed.ok && isRecord(resumed.value) && typeof resumed.value.token).toBe('string');
+    // The buyer's own principal does not address the guest key either.
+    await signIn(`bearer-${config.id}@example.test`);
+    expect(await call('checkout.continuation', { action: 'resume', locale: 'en' }, true, order.key))
+      .toEqual({ ok: false, code: 'starter_checkout_not_found' });
+  }, 30_000);
+
+  it('the stored journey key is the derived key', async () => {
+    await control(false, undefined, undefined, repeatLimits);
+    await owner!.query('TRUNCATE public.commerce_checkout_attempt_ledger');
+    const order = await guestOrder('journey');
+    const { rows: [client] } = await owner!.query(`SELECT c.metadata->'checkout'->>'lastIntentIdempotencyKey' AS key, row_to_json(c)::text AS bytes
+      FROM public.clients c JOIN public.commerce_orders o ON o.client_id=c.id WHERE o.id=$1`, [order.orderRef]);
+    expect(client.key).toBe(derivedKey(order.key));
+    expect(client.bytes).not.toContain(order.key);
+  }, 30_000);
+
+  it('continuation is metered for known keys only and requires a version 4 key', async () => {
+    await control(false, undefined, undefined, { maxPerEmail: 2, maxPerRequester: 12, maxEntries: 50 });
+    await owner!.query('TRUNCATE public.commerce_checkout_attempt_ledger');
+    for (let index = 0; index < 4; index++) {
+      expect(await call('checkout.continuation', { action: 'resume', locale: 'en' }))
+        .toEqual({ ok: false, code: 'starter_checkout_not_found' });
+    }
+    expect(await ledger()).toEqual([]);
+    for (const header of ['fictional-command-0001', randomUUID().replace(/^(.{14})4/, '$11')]) {
+      expect(await call('checkout.continuation', { action: 'resume', locale: 'en' }, false, header))
+        .toEqual({ ok: false, code: 'starter_input_invalid' });
+    }
+    expect(await ledger()).toEqual([]);
+    const order = await guestOrder('probe');
+    for (let index = 0; index < 2; index++) {
+      const resumed = await call('checkout.continuation', { action: 'resume', locale: 'en' }, false, order.key);
+      expect(resumed.ok && isRecord(resumed.value) && typeof resumed.value.token).toBe('string');
+    }
+    expect(await ledger()).toHaveLength(3);
+    const limited = await call('checkout.continuation', { action: 'resume', locale: 'en' }, false, order.key);
+    const { token: _token, ...value } = order.value;
+    expect(limited).toEqual({ ok: true, value, replayed: true });
+    expect(await ledger()).toHaveLength(3);
+  }, 30_000);
+
+  /** Polls until `minimum` backends wait on a lock held by `holder`, or the bound passes; returns how many did. */
+  async function blockedBy(holder: number, minimum: number, boundMs = 5_000) {
+    const deadline = performance.now() + boundMs;
+    for (;;) {
+      const count = Number((await owner!.query(`SELECT count(*) AS n FROM pg_stat_activity
+        WHERE wait_event_type='Lock' AND $1::integer = ANY(pg_blocking_pids(pid))`, [holder])).rows[0].n);
+      if (count >= minimum || performance.now() > deadline) return count;
+      await new Promise(resolve => setImmediate(resolve));
+    }
+  }
+
+  it('checkout.continuation waits for the key lock and many calls complete on the small pool', async () => {
+    await control(false, undefined, undefined, repeatLimits);
+    await owner!.query('TRUNCATE public.commerce_checkout_attempt_ledger');
+    const order = await guestOrder('locked');
+    const holder = await owner!.connect();
+    try {
+      const { rows: [{ pid }] } = await holder.query('SELECT pg_backend_pid() AS pid');
+      await holder.query('SELECT pg_advisory_lock(hashtextextended($1,0))', [derivedKey(order.key)]);
+      let settled = false;
+      const waiting = call('checkout.continuation', { action: 'resume', locale: 'en' }, false, order.key)
+        .finally(() => { settled = true; });
+      // The continuation's session waits on the advisory key lock held here.
+      expect(await blockedBy(pid, 1)).toBe(1);
+      expect(settled).toBe(false);
+      await holder.query('SELECT pg_advisory_unlock(hashtextextended($1,0))', [derivedKey(order.key)]);
+      const resumed = await waiting;
+      expect(resumed.ok && isRecord(resumed.value) && resumed.value.orderRef).toBe(order.orderRef);
+    } finally { holder.release(); }
+    // More calls than pooled connections all complete, each issuing a token while it holds a session and its key lock.
+    const orders: Awaited<ReturnType<typeof guestOrder>>[] = [];
+    // Five callers against four pooled connections.
+    for (let index = 0; index < 5; index++) orders.push(await guestOrder(`pool-${index}`));
+    const answers = await Promise.all(orders.map(known => call('checkout.continuation', { action: 'resume', locale: 'en' }, false, known.key)));
+    for (const [index, answer] of answers.entries()) {
+      expect(answer.ok && isRecord(answer.value) && answer.value.orderRef).toBe(orders[index]!.orderRef);
+      expect(answer.ok && isRecord(answer.value) && typeof answer.value.token).toBe('string');
+    }
+  }, 60_000);
+
+
+  const held = async (orderRef: string) => Number((await owner!.query(`SELECT count(*) AS n FROM public.fulfillment_inventory_reservations
+    WHERE purchase_order_id=$1 AND status='held'`, [orderRef])).rows[0].n);
+  const orderStatus = async (orderRef: string) => (await owner!.query('SELECT status FROM public.commerce_orders WHERE id=$1', [orderRef])).rows[0].status;
+  const abandon = (key: string, signedIn = false) => call('checkout.continuation', { action: 'abandon', locale: 'en' }, signedIn, key);
+
+  it('checkout.continuation abandons by key', async () => {
+    await control(false, undefined, undefined, repeatLimits);
+    await owner!.query('TRUNCATE public.commerce_checkout_attempt_ledger');
+    const order = await guestOrder('abandon');
+    expect(await held(order.orderRef)).toBeGreaterThan(0);
+    expect(await abandon(order.key)).toEqual({ ok: true, value: { abandoned: true, orderRef: order.orderRef } });
+    expect(await orderStatus(order.orderRef)).toBe('cancelled');
+    expect(await held(order.orderRef)).toBe(0);
+    expect((await owner!.query('SELECT failure_reason FROM public.commerce_settlement_intents WHERE order_id=$1', [order.orderRef])).rows)
+      .toEqual([{ failure_reason: 'checkout_started_over' }]);
+    expect(await abandon(order.key)).toEqual({ ok: true, value: { abandoned: false, orderRef: order.orderRef, status: 'cancelled' } });
+    expect(await call('checkout.create', order.input, false, order.key))
+      .toEqual({ ok: false, code: 'starter_checkout_not_payable' });
+    expect(await abandon(randomUUID())).toEqual({ ok: true, value: { abandoned: false } });
+    const paidOrder = await guestOrder('abandon-paid');
+    expect((await call('payment.simulate', { orderRef: paidOrder.orderRef, token: paidOrder.token, outcome: 'captured' })).ok).toBe(true);
+    expect(await abandon(paidOrder.key)).toEqual({ ok: false, code: 'starter_checkout_paid' });
+    // A provider attempt that ever happened keeps the order out of the start-over path.
+    const attempted = await guestOrder('abandon-attempted');
+    expect((await call('payment.simulate', { orderRef: attempted.orderRef, token: attempted.token, outcome: 'refused' })).ok).toBe(true);
+    expect(await abandon(attempted.key)).toEqual({ ok: false, code: 'starter_checkout_not_abandonable' });
+    expect(await orderStatus(attempted.orderRef)).toBe('pending_payment');
+    // The signed-in principal cannot address a guest key.
+    const guestKey = (await guestOrder('abandon-bearer')).key;
+    await signIn(`abandon-bearer-${config.id}@example.test`);
+    expect(await abandon(guestKey, true)).toEqual({ ok: true, value: { abandoned: false } });
+    expect((await abandon(guestKey)).ok).toBe(true);
+  }, 45_000);
+
+  it('abandon racing a capture ends in exactly one of paid or cancelled', async () => {
+    await control(false, undefined, undefined, repeatLimits);
+    await owner!.query('TRUNCATE public.commerce_checkout_attempt_ledger');
+    const order = await guestOrder('race');
+    const holder = await owner!.connect();
+    let outcomes: [ActionResult, ActionResult];
+    try {
+      const { rows: [{ pid }] } = await holder.query('SELECT pg_backend_pid() AS pid');
+      await holder.query('BEGIN');
+      await holder.query('SELECT id FROM public.commerce_orders WHERE id=$1 FOR UPDATE', [order.orderRef]);
+      const racing = Promise.all([abandon(order.key),
+        call('payment.simulate', { orderRef: order.orderRef, token: order.token, outcome: 'captured' })]);
+      // Contention is proved, not assumed: at least one racer waits on the held order row.
+      expect(await blockedBy(pid, 2)).toBeGreaterThanOrEqual(1);
+      await holder.query('ROLLBACK');
+      outcomes = await racing;
+    } finally { holder.release(); }
+    const [abandoned, captured] = outcomes;
+    const status = await orderStatus(order.orderRef);
+    expect(['paid', 'cancelled']).toContain(status);
+    if (status === 'cancelled') {
+      expect(abandoned).toEqual({ ok: true, value: { abandoned: true, orderRef: order.orderRef } });
+      expect(captured.ok).toBe(false);
+      expect(await held(order.orderRef)).toBe(0);
+      expect(await call('checkout.create', order.input, false, order.key))
+        .toEqual({ ok: false, code: 'starter_checkout_not_payable' });
+    } else {
+      expect(captured.ok).toBe(true);
+      // A capture recorded before abandon decides answers paid. A capture still in flight when the
+      // compensation port runs leaves the order unpaid at that moment, so abandon names it not abandonable.
+      expect(['starter_checkout_paid', 'starter_checkout_not_abandonable']).toContain(!abandoned.ok && abandoned.code);
+    }
+    expect((await owner!.query(`SELECT count(*) AS n FROM public.outbox_events WHERE event_type='commerce.checkout.expired'
+      AND idempotency_key=$1`, [`checkout_expired:${order.orderRef}`])).rows[0].n).toBe('0');
+  }, 45_000);
+
+  // The store's operator path: a provisioned human administrator with a Commerce operator row.
+  let operatorCookie: string | undefined;
+  let operatorId: string | undefined;
+  async function operatorCall(operation: Operation, payload: Record<string, unknown>) {
+    const address = `operator-${config.id}@example.test`;
+    if (!operatorId) {
+      // Bootstrapping happens once per installation; a later sign-in failure must not try it again.
+      const connection = new URL(runtimeConnection); connection.password = 'synthetic-conformance';
+      const operators = createPostgresOperatorIdentityStore({ connectionString: connection.toString() });
+      try { operatorId = (await operators.bootstrapFirstAdministrator({ email: address })).principalId; }
+      finally { await operators.close(); }
+      await owner!.query('INSERT INTO public.commerce_operators(id,label) VALUES($1,$2) ON CONFLICT DO NOTHING', [operatorId, 'Synthetic operator']);
+    }
+    if (!operatorCookie) {
+      const token = await freshChallenge('auth.operator', address);
+      const verified = await fetch(`${base}/api/actions/auth.operator`, { method: 'POST', headers: { Origin: base,
+        'Content-Type': 'application/json', 'X-Starter-Request': '1', 'Idempotency-Key': randomUUID() },
+        body: JSON.stringify({ token }), signal: fixture.signal });
+      expect(((await verified.json()) as ActionResult).ok).toBe(true);
+      operatorCookie = verified.headers.get('set-cookie')!.split(';')[0];
+    }
+    const response = await fetch(`${base}/api/actions/${operation}`, { method: 'POST', headers: { Origin: base,
+      'Content-Type': 'application/json', 'X-Starter-Request': '1', 'Idempotency-Key': randomUUID(), Cookie: operatorCookie! },
+      body: JSON.stringify(payload), signal: fixture.signal });
+    return await response.json() as ActionResult;
+  }
+  async function agedSubscription(label: string, outcome: 'refused' | 'indeterminate') {
+    await control(false, undefined, undefined, repeatLimits);
+    await owner!.query('TRUNCATE public.commerce_checkout_attempt_ledger');
+    const key = randomUUID();
+    const payload = checkout(`${label}-${config.id}@example.test`);
+    const subscription = async () => quotedSubscription({ ...payload,
+      cart: { ...payload.cart, mode: 'subscription', cadenceDays: config.offer.defaultCadenceDays } });
+    const created = await call('checkout.create', await subscription(), false, key);
+    if (!created.ok || !isRecord(created.value) || typeof created.value.token !== 'string') throw new Error(`${label}_subscription_required`);
+    const orderRef = String(created.value.orderRef);
+    expect((await call('payment.simulate', { orderRef, token: created.value.token, outcome })).ok).toBe(true);
+    await owner!.query("UPDATE public.commerce_orders SET created_at=created_at - interval '25 hours' WHERE id=$1", [orderRef]);
+    // Past the link lifetime the buyer gets no token and cannot abandon an attempted order.
+    expect(await call('checkout.continuation', { action: 'resume', locale: 'en' }, false, key))
+      .toEqual({ ok: false, code: 'starter_checkout_expired' });
+    expect(await abandon(key)).toEqual({ ok: false, code: 'starter_checkout_not_abandonable' });
+    expect(await orderStatus(orderRef)).toBe('pending_payment');
+    return { key, orderRef, subscription };
+  }
+
+  it('an aged order with a refused attempt is settled by the store, then the key and a new key resolve', async () => {
+    const { key, orderRef, subscription } = await agedSubscription('aged-refused', 'refused');
+    // While the unpaid draft exists, the same contact's first subscription is held.
+    expect(await call('checkout.create', await subscription(), false, randomUUID()))
+      .toEqual({ ok: false, code: 'starter_command_conflict' });
+    const cancelled = await operatorCall('operator.cancelUnpaid', { orderRef, reason: 'buyer_requested_start_over', confirmed: true });
+    expect(cancelled.ok, JSON.stringify(cancelled)).toBe(true);
+    expect(await orderStatus(orderRef)).toBe('cancelled');
+    expect(await call('checkout.continuation', { action: 'resume', locale: 'en' }, false, key))
+      .toEqual({ ok: false, code: 'starter_checkout_not_payable' });
+    const fresh = await call('checkout.create', await subscription(), false, randomUUID());
+    expect(fresh.ok, JSON.stringify(fresh)).toBe(true);
+    expect(fresh.ok && isRecord(fresh.value) && fresh.value.orderRef).not.toBe(orderRef);
+  }, 60_000);
+
+  it('an aged order with an indeterminate attempt cannot be cancelled by the store', async () => {
+    const { orderRef } = await agedSubscription('aged-indeterminate', 'indeterminate');
+    expect(await operatorCall('operator.cancelUnpaid', { orderRef, reason: 'buyer_requested_start_over', confirmed: true }))
+      .toEqual({ ok: false, code: 'starter_order_transition_conflict' });
+    expect(await orderStatus(orderRef)).toBe('pending_payment');
+  }, 60_000);
+
+  it('abandon with no order, then the first create, then a changed create leave one order', async () => {
+    await control(false, undefined, undefined, repeatLimits);
+    await owner!.query('TRUNCATE public.commerce_checkout_attempt_ledger');
+    const key = randomUUID();
+    expect(await abandon(key)).toEqual({ ok: true, value: { abandoned: false } });
+    const first = await guestOrder('late', key);
+    expect(await call('checkout.create', { ...first.input, line1: '2 Example Lane' }, false, key))
+      .toEqual({ ok: false, code: 'starter_checkout_changed' });
+    expect((await owner!.query('SELECT order_id FROM public.commerce_order_draft_receipts WHERE idempotency_key=$1', [derivedKey(key)])).rows)
+      .toEqual([{ order_id: first.orderRef }]);
+  }, 30_000);
+
+  it('an incomplete order is abandoned and its creation tail holds nothing', async () => {
+    await control(false, undefined, undefined, repeatLimits);
+    await owner!.query('TRUNCATE public.commerce_checkout_attempt_ledger');
+    const reserve = 'public.fulfillment_reserve_purchase_order_items(text,uuid,text,jsonb,text,timestamptz,jsonb,timestamptz)';
+    const cancel = 'public.commerce_cancel_abandoned_purchase_checkout(text,uuid,text,timestamptz)';
+    const key = randomUUID();
+    const input = await reviewedCheckout(`incomplete-${config.id}@example.test`);
+    // A host that stops after the draft commit: the hold fails and so does its compensation.
+    await owner!.query(`REVOKE EXECUTE ON FUNCTION ${reserve}, ${cancel} FROM service_role`);
+    try { expect((await call('checkout.create', input, false, key)).ok).toBe(false); }
+    finally { await owner!.query(`GRANT EXECUTE ON FUNCTION ${reserve}, ${cancel} TO service_role`); }
+    const { rows: [draft] } = await owner!.query(`SELECT o.id, o.status FROM public.commerce_order_draft_receipts r
+      JOIN public.commerce_orders o ON o.id=r.order_id WHERE r.idempotency_key=$1`, [derivedKey(key)]);
+    expect(draft.status).toBe('pending_payment');
+    expect(await call('checkout.continuation', { action: 'resume', locale: 'en' }, false, key))
+      .toEqual({ ok: false, code: 'starter_checkout_in_progress' });
+    // A young incomplete order may still be creating; abandon waits until creation has stalled.
+    expect(await abandon(key)).toEqual({ ok: false, code: 'starter_checkout_in_progress' });
+    expect(await orderStatus(draft.id)).toBe('pending_payment');
+    await owner!.query("UPDATE public.commerce_orders SET created_at=created_at - interval '61 seconds' WHERE id=$1", [draft.id]);
+    expect(await abandon(key)).toEqual({ ok: true, value: { abandoned: true, orderRef: draft.id } });
+    expect(await call('checkout.create', input, false, key)).toEqual({ ok: false, code: 'starter_checkout_not_payable' });
+    expect(await held(draft.id)).toBe(0);
+    expect((await owner!.query('SELECT count(*) AS n FROM public.commerce_settlement_intents WHERE order_id=$1', [draft.id])).rows[0].n).toBe('0');
+  }, 30_000);
+
+  it('more parallel abandons than pooled connections all complete', async () => {
+    await control(false, undefined, undefined, repeatLimits);
+    await owner!.query('TRUNCATE public.commerce_checkout_attempt_ledger');
+    const orders: Awaited<ReturnType<typeof guestOrder>>[] = [];
+    for (let index = 0; index < 6; index++) orders.push(await guestOrder(`parallel-${index}`));
+    const answers = await Promise.all(orders.map(order => abandon(order.key)));
+    // Releases share the inventory admission gate; a busy release refuses and can be repeated.
+    const abandoned = { ok: true, value: { abandoned: true } };
+    for (const [index, answer] of answers.entries()) {
+      if (!answer.ok) {
+        expect(answer).toEqual({ ok: false, code: 'starter_purchase_unavailable' });
+        expect(await orderStatus(orders[index]!.orderRef)).toBe('pending_payment');
+        expect(await abandon(orders[index]!.key)).toMatchObject(abandoned);
+      } else expect(answer).toMatchObject(abandoned);
+      expect(await orderStatus(orders[index]!.orderRef)).toBe('cancelled');
+    }
+  }, 45_000);
 
 });

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { createServer } from 'node:net';
@@ -40,7 +40,7 @@ test('up_json_reports_four_fields_for_installer_refusal and verifies the real on
     const config = "export const selectConfiguration = (id = 'coffee') => ({ id });";
     const configFile = join(app, 'owned/store.config.ts');
     writeFileSync(configFile, config);
-    writeFileSync(join(app, 'shared/config.ts'), "export const assertConfig = () => {}; export const isConfigurationId = id => typeof id === 'string';");
+    writeFileSync(join(app, 'shared/config.ts'), "export const assertConfig = () => {}; export const isConfigurationId = id => typeof id === 'string'; export const parseStarterPort = () => 4319;");
     writeFileSync(join(app, 'installation/install.ts'), `
       import { refusal } from './refusals.ts';
       import { starterDiagnostic } from '../shared/refusals.ts';
@@ -128,7 +128,7 @@ test('up_json_reports_four_fields_for_installer_refusal and verifies the real on
     assert.deepEqual(up('success', ['--configuration', 'coffee', '--json']).report.packs, [summary]);
     for (const [mode, code, fix] of [
       ['legacy-conflict', 'starter_catalogue_build_conflict', /Restore the original declaration and rules.*new pack version/u],
-      ['price-conflict', 'starter_price_seed_conflict', /reconcile divergent seed rows with the original demo inputs.*close other active or open explicit subscription rows or withdraw pending rows.*rebuild a disposable demo/u],
+      ['price-conflict', 'starter_price_seed_conflict', /owned price, discount or rounding inputs after seeding, restore the originals.*reconcile divergent seed rows with the original demo inputs.*close other active or open explicit subscription rows or withdraw pending rows.*rebuild a disposable demo/u],
       ['driver', 'starter_installation_failed', /Compose availability/u],
     ] as const) {
       const { report, calls } = up(mode);
@@ -338,6 +338,7 @@ test('every_thrown_starter_code_is_in_the_refusal_table and discovery needs no c
   assert.equal(json.status, 0);
   assert.equal(text.status, 0);
   const table = oneLine(json.stdout);
+  assert.match(table.starter_port_invalid.fix, /Direct host: .*--port.*Lifecycle commands: .*OPENLUP_STARTER_PORT.*unset it/u);
   const codes = Object.keys(table);
   assert.deepEqual(codes, [...codes].sort());
   const rows = text.stdout.trimEnd().split('\n').map(line => line.split('\t'));
@@ -378,6 +379,547 @@ test('every_thrown_starter_code_is_in_the_refusal_table and discovery needs no c
 
 const recipeApp = processEnv.OPENLUP_STARTER_CATALOGUE_RECIPE_APP;
 const catalogueProofOwner = processEnv.OPENLUP_STARTER_CATALOGUE_TEST_OWNER_URL;
+
+test('catalogue_apply_reports_and_bounds', async () => {
+  const launch = (...args: string[]) => spawnSync(process.execPath, ['lifecycle.mjs', 'catalogue', 'apply', '--json', ...args],
+    { cwd: root, encoding: 'utf8', input: 'approve\n' });
+  for (const [args, code] of [[[], 'OPENLUP_E_CATALOGUE_PRODUCT_REQUIRED'], [['--approve'], 'starter_argument_unknown']] as const) {
+    const result = launch(...args);
+    assert.equal(result.status, 2);
+    const report = oneLine(result.stdout);
+    assert.deepEqual(Object.keys(report), ['formatVersion', 'command', 'state', 'exitCode', 'receipts', 'findings']);
+    assert.deepEqual(report.receipts, []);
+    assert.equal(report.findings[0].code, code);
+    assert.equal(result.stderr, '');
+  }
+  // Exercise the real error surface and preserve an infrastructure cause out of JSON.
+  const checked = spawnSync(process.execPath, ['--input-type=module', '-e', `
+    import assert from 'node:assert/strict';
+    import { catalogueApplyRefusal } from './lifecycle-refusals.mjs';
+    const cause = new Error('private transport detail');
+    const code = 'OPENLUP_E_CATALOGUE_APPLY_UNAVAILABLE';
+    const refused = catalogueApplyRefusal({code, path: 'catalogue.demoTarget'}, cause);
+    assert.equal(Object.getPrototypeOf(refused), Error.prototype);
+    assert.equal(refused.message, code);
+    assert.deepEqual(Reflect.ownKeys(refused).filter(key => key !== 'stack'), ['message','cause','finding']);
+    assert.deepEqual(Object.getOwnPropertyDescriptor(refused, 'cause'),
+      {value: cause, writable: true, configurable: true, enumerable: false});
+    assert.doesNotMatch(JSON.stringify(refused), /private transport detail/);
+  `], { cwd: root, encoding: 'utf8' });
+  assert.equal(checked.status, 0, checked.stderr);
+
+  const { composeOperatorCapabilities } = await import('../host/operator-composition.ts');
+  const { demonstrationMarker, demonstrationMarkerQuery } = await import('../host/demonstration-marker.ts');
+  const variantId = randomUUID(), priceListId = randomUUID(), revisionId = randomUUID(), actorId = randomUUID();
+  const config = selectConfiguration();
+  const policy = { revisionId, discountBps: 500, roundingQuantumMinor: 10, roundingRule: 'FLOOR_TO_QUANTUM' };
+  const validTarget = { priceListId, currency: config.market.currency, basis: null, policies: [policy], valid: true };
+  let target = validTarget, inGate = false, switchListOnPreview = false, successorStarts: string | undefined;
+  const previewAt = '2026-11-25T10:00:00.000123Z';
+  const pendingReadAt = '2026-11-25T10:00:02.000Z';
+  const predecessor = { entryId: randomUUID(), unitPriceMinor: 11, validFrom: '2026-11-25T09:00:00.000Z' };
+  const commands: unknown[][] = [];
+  const previews: unknown[][] = [];
+  const trace: string[] = [];
+  const publication = {
+    async run<T>(work: (db: { query: typeof query }) => Promise<T>) {
+      trace.push('BEGIN');
+      return work({ query });
+    },
+    async close() {},
+  };
+  async function query(sql: string, values?: unknown[]) {
+    trace.push(sql.split('\n')[0]!);
+    if (sql === demonstrationMarkerQuery) {
+      assert.equal(values, undefined);
+      return { rows: [{ marker: demonstrationMarker }] };
+    }
+    if (sql.startsWith('WITH list')) return { rows: [target] };
+    return { rows: [] };
+  }
+  const operator = composeOperatorCapabilities({ executor: { query }, connectionString: 'postgresql://localhost/demo', publication,
+    asOperator: async (principal, work) => {
+      assert.equal(principal, actorId);
+      trace.push('asActor');
+      return work({ async query(sql, values) {
+        if (sql === 'SELECT statement_timestamp()::text AS instant') {
+          assert.deepEqual(trace.slice(-1), ['asActor']);
+          trace.push('reference instant');
+          return { rows: [{ instant: previewAt }] };
+        }
+        if (sql.includes('catalog_price_setup_preview')) {
+          trace.push('preview');
+          previews.push(values!);
+          if (switchListOnPreview) target = { ...target, priceListId: randomUUID() };
+          const readiness = { ready: true, reasons: [] };
+          return { rows: [{ result: { outcome: 'preview', variantId, priceListId, inGate,
+            current: successorStarts ? predecessor : null, currentCount: Number(!!successorStarts),
+            subscription: { kind: 'derived', revisionId, discountBps: 500, roundingQuantumMinor: 10, derivedUnitPriceMinor: null },
+            readiness, ...(values?.[2] !== null && { proposed: { unitPriceMinor: values?.[2], readiness } }) } }] };
+        }
+        if (sql === 'RESET ROLE') { trace.push('runtime read'); return { rows: [] }; }
+        if (sql.includes('AS "hasPending"')) {
+          assert.deepEqual(values, [variantId, priceListId, previewAt]);
+          assert.deepEqual(trace.slice(-4), ['asActor', 'reference instant', 'preview', 'runtime read']);
+          assert.match(sql, /valid_from > \$3::timestamptz/u);
+          const hasPending = successorStarts !== undefined && Date.parse(successorStarts) > Date.parse(String(values?.[2]));
+          return { rows: [{ listEffective: target.priceListId === priceListId, hasPending }] };
+        }
+        trace.push('apply');
+        commands.push(values!);
+        return { rows: [{ result: { outcome: 'validation_issue', reason: 'expected_state_mismatch' } }] };
+      } });
+    } });
+  const context = { commandKey: randomUUID(), config,
+    actor: { customerRef: null, operatorRef: actorId, sessionToken: 'verified fixture' } };
+  try {
+    assert.deepEqual(await operator.actions['catalogue.demoTarget']!({}, context),
+      { ok: true, value: { marked: true, configurationId: config.id } });
+    assert.deepEqual(trace, ['BEGIN', 'SET TRANSACTION READ ONLY', "SET LOCAL statement_timeout = '1s'", demonstrationMarkerQuery.split('\n')[0]]);
+    const price = operator.actions['operator.catalogPublication']!;
+    const input = { action: 'price-apply', variantId, priceListId, policyRevisionId: revisionId };
+    const apply = { ...input, unitPriceMinor: 11 };
+    const entryId = 'db7ccc53-9ab0-4111-89c8-57c9fd8c8543';
+    const nullPair = { entryId: null, unitPriceMinor: null };
+    const original = JSON.stringify({ amountKind: 'gross', commandKey: context.commandKey, expected: nullPair,
+      minQty: 1, mode: 'one_time', priceListId, schemaVersion: 1, unitPriceMinor: 11, variantId });
+    for (const [amount, code] of [[0, 'starter_input_invalid'], [10, 'starter_catalogue_derived_price_zero'],
+      [2_147_483_648, 'starter_input_invalid'], [2_147_483_647, 'expected_state_mismatch']] as const) {
+      trace.length = 0;
+      assert.deepEqual(await price({ ...input, unitPriceMinor: amount }, context), { ok: false, code });
+      assert.equal(trace.includes('apply'), amount === 2_147_483_647);
+      if (trace.includes('apply')) assert.deepEqual(trace.slice(-3), ['asActor', 'preview', 'apply']);
+    }
+    for (const body of [apply, { ...apply, expected: nullPair }]) {
+      assert.deepEqual(await price(body, context), { ok: false, code: 'expected_state_mismatch' });
+      assert.deepEqual(commands.at(-1), [original, createHash('sha256').update(original).digest('hex')]);
+      assert.deepEqual(trace.slice(-3), ['asActor', 'preview', 'apply']);
+    }
+    const expected = { entryId, unitPriceMinor: 22 };
+    trace.length = 0;
+    assert.deepEqual(await price({ ...apply, expected }, context), { ok: false, code: 'starter_catalogue_reprice_requires_active' });
+    assert.deepEqual(trace.slice(-2), ['asActor', 'preview']);
+    assert.equal(trace.includes('apply'), false);
+    inGate = true;
+    for (const unitPriceMinor of [0, 22, 2_147_483_647]) {
+      const expectation = { entryId, unitPriceMinor };
+      assert.deepEqual(await price({ ...apply, expected: expectation }, context), { ok: false, code: 'expected_state_mismatch' });
+      assert.deepEqual(trace.slice(-3), ['asActor', 'preview', 'apply']);
+      assert.deepEqual(JSON.parse(String(commands.at(-1)?.[0])).expected, expectation);
+    }
+    for (const invalid of [null, {}, { ...expected, extra: 0 }, { entryId }, { unitPriceMinor: 22 },
+      { ...expected, entryId: entryId.toUpperCase() }, { ...expected, entryId: 'malformed' },
+      ...[null, -1, 1.5, '22', 2_147_483_648].map(unitPriceMinor => ({ entryId, unitPriceMinor }))]) {
+      trace.length = 0;
+      assert.deepEqual(await price({ ...apply, expected: invalid }, context), { ok: false, code: 'starter_input_invalid' });
+      assert.deepEqual(trace, []);
+    }
+    trace.length = 0;
+    assert.deepEqual(await price({ ...apply, expected, unitPriceMinor: 10 }, context),
+      { ok: false, code: 'starter_catalogue_derived_price_zero' });
+    assert.deepEqual(trace.slice(-2), ['asActor', 'preview']);
+    const previewInput = { action: 'price-preview', variantId, priceListId };
+    assert.equal((await price({ ...previewInput, unitPriceMinor: 22 }, context)).ok, true);
+    assert.deepEqual(previews.at(-1), [variantId, priceListId, 22]);
+    assert.deepEqual(await price({ ...previewInput, unitPriceMinor: 0 }, context), { ok: false, code: 'starter_input_invalid' });
+    trace.length = 0;
+    assert.deepEqual(await price({ ...input, unitPriceMinor: 11, policyRevisionId: randomUUID() }, context),
+      { ok: false, code: 'starter_catalogue_d2c_policy_required' });
+    assert.deepEqual(trace.slice(-2), ['asActor', 'preview']);
+    for (const [change, code] of [
+      [{ currency: config.market.currency === 'XTS' ? 'XXX' : 'XTS' }, 'starter_catalogue_currency_mismatch'],
+      [{ currency: config.market.currency, valid: false }, 'starter_catalogue_d2c_policy_required'],
+    ] as const) {
+      target = { ...validTarget, ...change };
+      assert.deepEqual(await price({ action: 'price-target' }, context), { ok: false, code });
+    }
+    for (const change of [{ policies: [] }, { valid: false }]) {
+      trace.length = 0;
+      target = { ...validTarget, ...change };
+      assert.deepEqual(await price(previewInput, context), { ok: false, code: 'starter_catalogue_d2c_policy_required' });
+      assert.equal(trace.includes('asActor'), false);
+    }
+    target = validTarget;
+    successorStarts = '2026-11-25T10:00:01.000Z';
+    assert.ok(Date.parse(previewAt) < Date.parse(successorStarts) && Date.parse(successorStarts) <= Date.parse(pendingReadAt));
+    const crossing = await price(previewInput, context);
+    assert.ok(crossing.ok && 'value' in crossing);
+    const { priceSetup } = crossing.value as { priceSetup: { current: unknown; hasPending: boolean } };
+    assert.deepEqual(priceSetup.current, predecessor);
+    assert.equal(priceSetup.hasPending, true);
+    successorStarts = undefined;
+    switchListOnPreview = true;
+    const oldList = await price(previewInput, context);
+    assert.ok(oldList.ok && 'value' in oldList);
+    assert.deepEqual(previews.at(-1), [variantId, priceListId, null]);
+    assert.equal((oldList.value as { listEffective: boolean }).listEffective, false);
+  } finally { await operator.close(); }
+});
+
+test('installed_catalogue_operator_workflow', { skip: !recipeApp, timeout: 600_000 }, async context => {
+  const app = recipeApp!;
+  const existing = processEnv.OPENLUP_STARTER_CATALOGUE_OPERATOR_PROJECT;
+  const project = existing ?? 'catalogue-operator-' + randomUUID().slice(0, 12);
+  assert.match(project, /^[a-z0-9-]+$/u);
+  const manifest = JSON.parse(readFileSync(join(app, '.starter-origin.json'), 'utf8'));
+  assert.ok(['candidate', 'local-candidate', 'released', 'reconstructed'].includes(manifest.mode ?? manifest.kind));
+  const run = (file: string, args: string[], input?: string) => execFileSync(file, args,
+    { cwd: app, env: { ...processEnv, COMPOSE_PROJECT_NAME: project }, encoding: 'utf8', input, stdio: ['pipe', 'pipe', 'pipe'] });
+  const compose = (...args: string[]) => run('docker', ['compose', ...args]);
+  const sql = (statement: string) => compose('exec', '-T', 'database', 'psql', '-XAtq', '-v', 'ON_ERROR_STOP=1', '-v', 'VERBOSITY=verbose',
+    '-U', 'postgres', '-d', 'neutral_store', '-c', statement).trim();
+  const port = Number(processEnv.OPENLUP_STARTER_PORT || 4319);
+  const fixtureOrigin = processEnv.OPENLUP_STARTER_CATALOGUE_OPERATOR_ORIGIN;
+  const base = fixtureOrigin ?? `http://127.0.0.1:${port}`;
+  const headers = { Origin: base, 'X-Starter-Request': '1', 'Content-Type': 'application/json' };
+  async function action(operation: string, body: unknown, key: string = randomUUID(), cookie?: string) {
+    const response = await fetch(base + '/api/actions/' + operation, { method: 'POST',
+      headers: { ...headers, 'Idempotency-Key': key, ...(cookie && { Cookie: cookie }) }, body: JSON.stringify(body) });
+    return { data: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] };
+  }
+  const actor = randomUUID(), alternate = randomUUID(), email = `operator-${actor.slice(0, 8)}@example.test`;
+  const alternateEmail = `alternate-${actor.slice(0, 8)}@example.test`;
+  const snapshot = () => sql(`SELECT (SELECT count(*) FROM public.catalog_draft_revisions),
+    (SELECT count(*) FROM public.catalog_publication_decisions), (SELECT count(*) FROM public.catalog_publications),
+    (SELECT count(*) FROM public.catalog_publication_heads), (SELECT count(*) FROM public.price_entries),
+    (SELECT count(*) FROM public.catalog_price_setup_receipts)`);
+  function mailbox(address = email) {
+    try {
+      return compose('exec', '-T', '--user', 'node', 'application', 'cat', '/application/.context/captured-messages/identity.jsonl')
+        .trim().split('\n').filter(Boolean).map(line => JSON.parse(line)).filter(row => row.email === address);
+    } catch (error) {
+      if (String((error as { stderr?: string }).stderr).includes('No such file or directory')) return [];
+      throw error;
+    }
+  }
+  let cookie: string | undefined;
+  const operator = 'operator.catalogPublication', drafts = 'operator.catalogDrafts';
+  async function send(operation: string, body: unknown, key?: string) {
+    return (await action(operation, body, key, cookie)).data;
+  }
+  async function askChallenge() {
+    assert.deepEqual((await action('auth.operator', { email })).data, { ok: true, value: { accepted: true } });
+  }
+  async function newestToken(count: number, address = email) {
+    for (let attempt = 0; attempt < 40; attempt++) {
+      const rows = mailbox(address);
+      if (rows.length === count) return rows.at(-1).token as string;
+      await delay(50);
+    }
+    throw new Error('Expected operator challenge delivery');
+  }
+  try {
+    if (!existing) assert.equal(oneLine(run('./lifecycle', ['up', '--configuration', 'coffee', '--json'])).exitCode, 0);
+    if (!fixtureOrigin) {
+      assert.equal(compose('port', 'application', String(port)).trim(), `127.0.0.1:${port}`);
+      assert.equal((await fetch(`${base}/api/config`)).status, 200);
+      if (port !== 4319) {
+        const refused = spawnSync('curl', ['--silent', '--header', 'Host: 127.0.0.1:4319', `${base}/api/config`], { encoding: 'utf8' });
+        assert.equal(refused.status, 0);
+        assert.deepEqual(JSON.parse(refused.stdout), { ok: false, code: 'starter_local_host_required' });
+      }
+      context.diagnostic(`Compose project ${project} healthy on loopback port ${port}`);
+    }
+    assert.deepEqual((await action('catalogue.demoTarget', {})).data, { ok: true, value: { marked: true, configurationId: 'coffee' } });
+    const registry = (await action('application.status', {})).data.value.bindings as { operation: string; bound: boolean }[];
+    assert.deepEqual(registry.map(({ operation }) => operation), (await import('../shared/api.ts')).operations);
+    assert.equal(registry.find(({ operation }) => operation === 'catalogue.demoTarget')?.bound, true);
+    const readOnly = JSON.parse(compose('exec', '-T', '--user', 'node', 'application', 'node', '--input-type=module', '-e', `
+      import { readFileSync } from 'node:fs';
+      import { env } from 'node:process';
+      import { createPostgresRoleFreeTransactionLane } from '@openlup/platform/data';
+      import { composeOperatorCapabilities } from './host/operator-composition.ts';
+      import { demonstrationMarkerQuery } from './host/demonstration-marker.ts';
+      const url = new URL(env.DATABASE_URL);
+      url.username = 'openlup_catalog_publication';
+      url.password = readFileSync('.context/catalogue-builds/.publication-password', 'utf8').trim();
+      const lane = createPostgresRoleFreeTransactionLane({connectionString: url.href});
+      let markerSettings;
+      const publication = { run: work => lane.run(db => work({ async query(statement, values) {
+        if (statement === demonstrationMarkerQuery) {
+          markerSettings = (await db.query("SELECT current_setting('transaction_read_only') AS mode,current_setting('statement_timeout') AS deadline")).rows[0];
+          if (values !== undefined) throw Error('Marker query must be parameterless');
+        }
+        return db.query(statement, values);
+      } })), close: () => lane.close() };
+      const composed = composeOperatorCapabilities({executor: {}, publication, connectionString: env.DATABASE_URL});
+      try {
+        const { ok } = await composed.actions['catalogue.demoTarget']({}, {config: {id:'coffee'}});
+        console.log(JSON.stringify({ ok, ...markerSettings }));
+      } finally { await Promise.all([composed.close(), lane.close()]); }
+    `));
+    assert.deepEqual(readOnly, { ok: true, mode: 'on', deadline: '1s' });
+    const anonymous = await send(operator, { action: 'price-target' });
+    assert.equal(anonymous.code, 'operator_required');
+    sql(`INSERT INTO public.platform_human_principals(principal_id,email) VALUES
+      ('${actor}','${email}'),('${alternate}','${alternateEmail}');
+      INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at)
+      VALUES ('${actor}','admin','active','legacy',now()),('${alternate}','admin','active','legacy',now())`);
+    const challenges = () => Number(sql(`SELECT count(*) FROM public.operator_identity_challenges WHERE principal_id='${actor}'`));
+    await askChallenge();
+    const expired = await newestToken(1);
+    await askChallenge();
+    assert.equal(challenges(), 1);
+    assert.equal(mailbox().length, 1);
+    sql(`UPDATE public.operator_identity_challenges SET created_at=statement_timestamp()-interval '10 minutes',
+      expires_at=statement_timestamp() WHERE principal_id='${actor}'`);
+    const invalid = await action('auth.operator', { token: expired });
+    assert.equal(invalid.data.code, 'starter_auth_invalid');
+    assert.equal(invalid.cookie, undefined);
+    assert.equal(sql(`SELECT count(*) FROM public.operator_identity_challenges WHERE principal_id='${actor}' AND used_at IS NOT NULL`), '0');
+    sql(`INSERT INTO public.operator_identity_challenges(principal_id,email_fingerprint,token_hash,created_at,expires_at)
+      SELECT principal_id,email_fingerprint,md5((principal_id||'fixture-hour-'||n)::text)||md5((principal_id||'fixture-hour-more-'||n)::text),
+        statement_timestamp()-interval '20 minutes',statement_timestamp()-interval '10 minutes'
+      FROM public.operator_identity_challenges CROSS JOIN generate_series(1,4) n WHERE principal_id='${actor}' AND used_at IS NULL`);
+    await askChallenge();
+    assert.equal(challenges(), 5);
+    assert.equal(mailbox().length, 1);
+    sql(`UPDATE public.operator_identity_challenges SET created_at=statement_timestamp()-interval '2 hours',
+      expires_at=statement_timestamp()-interval '110 minutes' WHERE principal_id='${actor}'`);
+    await askChallenge();
+    const login = await action('auth.operator', { token: await newestToken(2) });
+    assert.ok(login.cookie && login.data.ok && Number.isFinite(Date.parse(login.data.value.expiresAt)));
+    cookie = login.cookie;
+    const target = (await send(operator, { action: 'price-target' })).value;
+    assert.equal(target.actorId, actor);
+    assert.equal(target.currency, 'XTS');
+    const { priceListId, policy } = target;
+    const { buildCatalogReleaseDraftV3, catalogInternalGtin } = await import('@openlup/platform/catalog');
+    const { canonicalCatalogPriceSetupCommand } = await import('@openlup/platform/pricing');
+    const sequence = 100_000 + parseInt(actor.slice(0, 6), 16) % 800_000;
+    const slug = 'proof-notebook-' + actor.slice(0, 8);
+    const type = (await send(drafts, { action: 'example' })).value.product.type;
+    const mass = { dimension: 'mass', unit: 'openlup:g', unscaled: '100', scale: 0 } as const;
+    const { release, activation } = buildCatalogReleaseDraftV3({ namespace: 'starter', type, slug, name: 'Proof notebook',
+      presentation: { title: 'Proof notebook' }, skus: [{ code: slug.toUpperCase(), title: 'Notebook', options: {}, netContent: mass,
+        grossMass: { ...mass, unscaled: '120' }, identifiers: [{ scheme: 'gs1:gtin', issuer: 'starter:proof',
+          value: catalogInternalGtin(sequence), packagingLevel: 'unit' }], sell: { oneTime: true, subscription: false },
+        logisticsRef: 'starter:proof/' + slug }] });
+    const draftId = randomUUID(), productId = release.payload.product.id, variantId = release.payload.skus[0]!.id;
+    const prepare = async (expectedRevision: number, expectedHead: unknown) => {
+      const { value } = await send(drafts, { action: 'prepare', draftId, expectedRevision, expectedHead });
+      assert.ok(value?.preparation?.postStateDigest);
+      assert.deepEqual(value.expectedHead, expectedHead);
+      const candidate = { productId, candidateRef: value.candidateRef, candidateDigest: value.candidateDigest };
+      return { approve: { action: 'approve', ...candidate, postStateDigest: value.preparation.postStateDigest },
+        publish: { action: 'publish', ...candidate, expectedHead, changes: [] } };
+    };
+    const save = (payload: typeof release.payload, expectedRevision: number) => ({ action: expectedRevision ? 'revise' : 'create',
+      draftId, expectedRevision, payload });
+    const replay = (result: Record<string, unknown>, initial: Record<string, unknown>) => {
+      assert.equal(result.outcome, 'replayed');
+      assert.deepEqual(result.receipt ?? result.record, initial.receipt ?? initial.record);
+    };
+    const coffee = selectConfiguration('coffee');
+    const cart = { schemaVersion: 1, configuration: 'coffee', mode: 'one_time',
+      cadenceDays: null, lines: [{ sku: coffee.offer.products[0]!.sku, quantity: 1 }] };
+    const quote = () => send('offer.validate', { cart });
+    const legacy = await quote();
+    assert.equal(legacy.value.totalMinor, 4200);
+    const saveKey = randomUUID(), approvalKey = randomUUID(), releaseKey = randomUUID();
+    const saved = (await send(drafts, save(release.payload, 0), saveKey)).value;
+    assert.equal(saved.record.revision, 1);
+    assert.equal((await send(drafts, { action: 'prepare', draftId, expectedRevision: 1 })).value.expectedHead, null);
+    const first = await prepare(1, null);
+    const approval = (await send(operator, first.approve, approvalKey)).value;
+    const released = (await send(operator, first.publish, releaseKey)).value;
+    const { head } = released.receipt;
+    const prices = { variantId, priceListId };
+    const planned = { action: 'price-apply', ...prices, policyRevisionId: policy.revisionId, unitPriceMinor: 11 };
+    const control = await action(operator, planned);
+    assert.equal(control.data.code, 'operator_required');
+    const customer = `customer-${actor.slice(0, 8)}@example.test`;
+    compose('exec', '-T', '--user', 'node', 'application', 'node', '--input-type=module', '-e', `
+      import { randomUUID } from 'node:crypto';
+      import { env } from 'node:process';
+      import { createPostgresAccountLinkStore } from '@openlup/platform/identity';
+      const accounts = createPostgresAccountLinkStore({ connectionString: env.DATABASE_URL });
+      try { await accounts.createAccount({ principalId: randomUUID(), email: ${JSON.stringify(customer)},
+        acquisitionSource: 'direct', lifecycleStage: 'customer' }); }
+      finally { await accounts.close(); }
+    `);
+    assert.equal((await action('auth.request', { email: customer })).data.ok, true);
+    const signedCustomer = await action('auth.verify', { token: await newestToken(1, customer) });
+    assert.ok(signedCustomer.cookie);
+    assert.equal((await action(operator, planned, undefined, signedCustomer.cookie)).data.code, 'operator_required');
+    const { value: preview } = await send(operator, { action: 'price-preview', ...prices });
+    assert.equal(preview.listEffective, true);
+    assert.equal(preview.priceSetup.inGate, false);
+    assert.equal(preview.priceSetup.current, null);
+    assert.equal(preview.priceSetup.subscription.revisionId, policy.revisionId);
+    const initial = snapshot();
+    assert.equal((await send(operator, { ...planned, priceListId: randomUUID() })).code, 'price_list_not_active');
+    assert.equal((await send(operator, { ...planned, unitPriceMinor: 10 })).code, 'starter_catalogue_derived_price_zero');
+    assert.equal((await send(operator, { ...planned, policyRevisionId: randomUUID() })).code, 'starter_catalogue_d2c_policy_required');
+    assert.equal(snapshot(), initial);
+    const activationSave = await send(drafts, save(activation.payload, 1));
+    assert.equal(activationSave.value.record.revision, 2);
+    for (const badHead of [null, { ...head, documentDigest: 'f'.repeat(64) }]) {
+      const stale = await send(drafts, { action: 'prepare', draftId, expectedRevision: 2, expectedHead: badHead });
+      assert(!stale.ok || !stale.value?.preparation?.postStateDigest);
+    }
+    const next = await prepare(2, head), activationKey = randomUUID();
+    assert.equal((await send(operator, next.approve)).value.outcome, 'committed');
+    const before = snapshot();
+    assert.equal((await send(operator, next.publish, activationKey)).code, 'publication_sku_price_not_ready');
+    assert.equal(snapshot(), before);
+    assert.equal((await send(operator, { action: 'receipt', productId, commandKey: activationKey })).value.outcome, 'absent');
+    assert.equal(sql(`SELECT status FROM public.catalog_skus WHERE id='${variantId}'`), 'draft');
+    const priceKey = randomUUID();
+    const priced = (await send(operator, planned, priceKey)).value;
+    assert.equal(priced.receipt.current.unitPriceMinor, 11);
+    const { entryId, unitPriceMinor } = priced.receipt.current;
+    const expectation = { entryId, unitPriceMinor };
+    const replacement = { ...planned, unitPriceMinor: 22, expected: expectation };
+    const beforeActivation = snapshot();
+    assert.equal((await send(operator, replacement)).code, 'starter_catalogue_reprice_requires_active');
+    assert.equal(snapshot(), beforeActivation);
+    const activated = (await send(operator, next.publish, activationKey)).value;
+    assert.deepEqual(activated.receipt.previousHead, head);
+    const completed = snapshot();
+    replay((await send(drafts, save(release.payload, 0), saveKey)).value, saved);
+    replay((await send(operator, first.approve, approvalKey)).value, approval);
+    replay((await send(operator, first.publish, releaseKey)).value, released);
+    replay((await send(operator, next.publish, activationKey)).value, activated);
+    replay((await send(operator, planned, priceKey)).value, priced);
+    assert.equal(snapshot(), completed);
+    await context.test('installed_catalogue_copy_preserves_history', async () => {
+      const { record } = (await send(drafts, { action: 'get', draftId, revision: 2 })).value;
+      const activeHead = activated.receipt.head;
+      const exact = (expectedHead: unknown) => send(operator, { action: 'exact', head: expectedHead }).then(result => result.value);
+      const original = await exact(activeHead);
+      const payload = record.payload;
+      const presentation = { title: 'Proof notebook revised' };
+      Object.assign(payload.product.sharedContent, { catalogAction: 'revise', presentation });
+      payload.publication.operations = [{ op: 'set_product_presentation', productSlug: slug, presentation }];
+      assert.equal((await send(drafts, save(payload, 2))).value.record.revision, 3);
+      const copy = await prepare(3, activeHead);
+      assert.equal((await send(operator, copy.approve)).ok, true);
+      const copied = (await send(operator, copy.publish)).value.receipt;
+      assert.deepEqual(copied.previousHead, activeHead);
+      const amended = await exact(copied.head);
+      assert.equal(amended.product.id, original.product.id);
+      assert.deepEqual(amended.product.document, original.product.document);
+      assert.deepEqual(amended.product.presentation.title, presentation.title);
+      assert.deepEqual(amended.items, original.items);
+      assert.deepEqual(await exact(activeHead), original);
+      assert.deepEqual(await quote(), legacy);
+      assert.deepEqual((await send(operator, { action: 'price-preview', ...prices })).value.priceSetup.current, priced.receipt.current);
+    });
+    await context.test('installed_catalogue_reprice', async () => {
+      assert.equal(sql(`SELECT status FROM public.catalog_skus WHERE id='${variantId}'`), 'active');
+      const checkout = await action('checkout.create', { cart, locale: coffee.market.defaultLocale, configuration: 'coffee',
+        email: customer, country: coffee.market.country, firstName: 'Example', lastName: 'Buyer', phone: '000000000',
+        line1: '1 Example Lane', city: 'Example City', postalCode: '00000', termsAccepted: true, termsRevision: coffee.legal.revision,
+        quoteAcceptance: legacy.value.quoteAcceptance, expectedTotal: legacy.value.expectedTotal }, undefined, signedCustomer.cookie);
+      assert.equal(checkout.data.ok, true, checkout.data.code);
+      const { orderRef } = checkout.data.value;
+      const paid = await action('payment.simulate', { orderRef, outcome: 'captured' }, undefined, signedCustomer.cookie);
+      assert.equal(paid.data.ok, true, paid.data.code);
+      sql(`UPDATE public.commerce_orders SET created_at=statement_timestamp()-interval '25 hours' WHERE id='${orderRef}'`);
+      const orderSnapshot = () => JSON.parse(sql(`SELECT jsonb_build_object('total',total_amount_minor,'currency',currency_code,
+        'status',status,'quote',metadata->'quoteSnapshot') FROM public.commerce_orders WHERE id='${orderRef}'`));
+      const order = orderSnapshot();
+      assert.equal(order.status, 'paid');
+      assert.equal(order.total, legacy.value.totalMinor);
+      assert.equal(order.currency, target.currency);
+      assert.ok(order.quote);
+      assert.deepEqual(await quote(), legacy);
+
+      assert.equal((await action('auth.operator', { email: alternateEmail })).data.ok, true);
+      const signed = await action('auth.operator', { token: await newestToken(1, alternateEmail) });
+      assert.ok(signed.data.ok && signed.cookie);
+      const read = async (body: unknown, key?: string) => (await action(operator, body, key, signed.cookie)).data;
+      for (const [commandKey, previous] of [[releaseKey, released.receipt], [activationKey, activated.receipt]]) {
+        const historical = await read({ action: 'receipt', productId, commandKey });
+        assert.deepEqual(historical.value, { outcome: 'found', receipt: previous });
+      }
+      const pre = await read({ action: 'price-preview', ...prices });
+      assert.equal(pre.value.priceSetup.inGate, true);
+      const beforePrice = snapshot();
+      const key = randomUUID();
+      const result = await read(replacement, key);
+      assert.equal(result.ok, true, result.code);
+      assert.equal(result.value.outcome, 'committed');
+      const { receipt } = result.value;
+      assert.equal(receipt.actorId, alternate);
+      assert.equal(receipt.commandKey, key);
+      assert.deepEqual(receipt.previous, priced.receipt.current);
+      assert.equal(receipt.current.unitPriceMinor, 22);
+      const { value: readback } = await read({ action: 'price-preview', ...prices });
+      assert.equal(readback.listEffective, true);
+      assert.equal(readback.priceSetup.currentCount, 1);
+      assert.deepEqual(readback.priceSetup.current, receipt.current);
+      assert.equal(readback.priceSetup.subscription.derivedUnitPriceMinor, 20);
+      assert.equal(readback.priceSetup.subscription.revisionId, policy.revisionId);
+      assert.deepEqual(readback.priceSetup.readiness, pre.value.priceSetup.readiness);
+      assert.equal(sql(`SELECT old.unit_price_minor,old.active,old.valid_to=new.valid_from FROM public.price_entries old
+        CROSS JOIN public.price_entries new WHERE old.id='${entryId}' AND new.id='${receipt.current.entryId}'`), '11|f|t');
+      const afterPrice = snapshot();
+      const counts = beforePrice.split('|').map(Number);
+      assert.deepEqual(afterPrice.split('|').map(Number), counts.map((count, index) => count + Number(index >= 4)));
+      assert.deepEqual(orderSnapshot(), order);
+      assert.deepEqual(await quote(), legacy);
+
+      for (const amount of [22, 33]) {
+        assert.equal((await send(operator, { ...replacement, unitPriceMinor: amount })).code, 'expected_state_mismatch');
+        assert.equal(snapshot(), afterPrice);
+      }
+      assert.equal((await read({ ...replacement, unitPriceMinor: 10 })).code, 'starter_catalogue_derived_price_zero');
+      assert.equal((await send(operator, replacement, key)).code, 'operator_mismatch');
+      replay((await read(replacement, key)).value, result.value);
+      assert.equal(snapshot(), afterPrice);
+      const rolledRevisionId = randomUUID();
+      sql(`BEGIN;
+        UPDATE public.subscription_price_policy_revisions SET effective_to=date_trunc('milliseconds',statement_timestamp())
+        WHERE id='${policy.revisionId}';
+        INSERT INTO public.subscription_price_policy_revisions (id, price_list_id, region_code, currency, channel, revision_no,
+          effective_from, discount_bps, rounding_quantum_minor, rounding_rule, digest)
+        SELECT '${rolledRevisionId}', price_list_id, region_code, currency, channel, revision_no+1,
+          effective_to, discount_bps, rounding_quantum_minor, rounding_rule,
+          public.catalog_price_setup_policy_digest('${rolledRevisionId}',revision_no+1,price_list_id,region_code,currency,channel,
+            effective_to,NULL,discount_bps,rounding_quantum_minor,rounding_rule)
+        FROM public.subscription_price_policy_revisions WHERE id='${policy.revisionId}'; COMMIT`);
+      assert.equal((await read({ action: 'price-target' })).value.policy.revisionId, rolledRevisionId);
+      const blocked = await read(replacement, key);
+      assert.equal(blocked.code, 'starter_catalogue_d2c_policy_required');
+      assert.equal(snapshot(), afterPrice);
+      const verified = (await read({ action: 'price-preview', ...prices })).value;
+      assert.equal(verified.listEffective, true);
+      assert.deepEqual(verified.priceSetup.current, receipt.current);
+      assert.equal(verified.priceSetup.subscription.derivedUnitPriceMinor, 20);
+      assert.equal(verified.priceSetup.subscription.revisionId, rolledRevisionId);
+      assert.equal(snapshot(), afterPrice);
+    });
+    const authorized = snapshot();
+    async function denied() {
+      for (const body of [next.approve, next.publish, { action: 'price-preview', ...prices }, planned, replacement])
+        assert.equal((await send(operator, body)).code, 'operator_required');
+      assert.equal(snapshot(), authorized);
+    }
+    sql(`INSERT INTO public.platform_control_operators(principal_id) VALUES ('${actor}')`);
+    await denied();
+    function directDenied() {
+      for (const expected of [{ entryId: null, unitPriceMinor: null }, expectation]) {
+        const sqlCommand = canonicalCatalogPriceSetupCommand({ schemaVersion: 1, commandKey: randomUUID(), ...prices,
+          unitPriceMinor: expected.entryId === null ? 11 : 22,
+          mode: 'one_time', minQty: 1, amountKind: 'gross', expected });
+        const fingerprint = createHash('sha256').update(sqlCommand).digest('hex');
+        assert.throws(() => sql(`BEGIN; SET LOCAL ROLE authenticated; SET LOCAL request.jwt.claims='{"sub":"${actor}","role":"authenticated"}';
+          SELECT public.catalog_price_setup_apply('${sqlCommand}','${fingerprint}')`),
+        (error: unknown) => /42501:.*catalog_price_setup_operator_required/u.test(String((error as { stderr?: string }).stderr)));
+      }
+    }
+    directDenied();
+    sql(`DELETE FROM public.platform_control_operators WHERE principal_id='${actor}';
+      SELECT principal_id FROM public.platform_revoke_human_membership('${alternate}','${actor}')`);
+    await denied();
+    directDenied();
+  } finally {
+    if (!existing) compose('down', '--volumes');
+  }
+});
+
 test('catalogue job remedies admit owned IDs and omit ambiguous renewal populations', async () => {
   const { catalogueFailedJobFilter } = await import('../host/catalogue-readiness-jobs.ts');
   const example = 'store-' + 'x'.repeat(74), tooLong = example + 'x', duplicate = 'other-store';
@@ -639,7 +1181,7 @@ test('up_json_installed_starter_recipe', { skip: !recipeApp, timeout: 600_000 },
   mkdirSync(context, { recursive: true });
   const scratch = mkdtempSync(join(context, 'st1-recipe-'));
   const project = 'st1-pr2-recipe-' + randomUUID().slice(0, 8);
-  const env = { ...processEnv, COMPOSE_PROJECT_NAME: project, GIT_INDEX_FILE: join(scratch, 'index') };
+  const env = { ...processEnv, OPENLUP_STARTER_PORT: '4319', COMPOSE_PROJECT_NAME: project, GIT_INDEX_FILE: join(scratch, 'index') };
   const run = (command: string, args: string[], exit = 0) => {
     const result = spawnSync(command, args, { cwd: app, env, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
     assert.ifError(result.error);

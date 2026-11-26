@@ -87,7 +87,8 @@ application INSERTs. Checkout does not import the install-only seed.
 `host/checkout-recovery.ts` composes the separate private recovery mailbox;
 the host owns and closes the native token transaction lane.
 The host names its single role-free lane after its capability, checkout recovery tokens, owns it and closes it.
-`client/purchase.ts` owns tab continuation and visible-response redaction. Neither
+`client/purchase.ts` owns tab continuation, including the checkout continuation
+record that keeps one checkout key per purchase, and visible-response redaction. Neither
 is an account authority. No demo customer seed or mandatory purchase sign-in exists.
 
 `playwright.database.config.ts` is the managed real-database UI recipe. Its
@@ -127,7 +128,7 @@ The token is returned only in the creating response and a separate private
 captured checkout-recovery message, never an authentication challenge or event.
 The completion page reads the URL token once and replaces history synchronously
 before configuration fetch or rendering. Request bodies carry the token; memory
-and session storage preserve reload convenience but grant no authority. An unchanged repeated submit for the same order keeps its existing token when the replay response omits it. A different order never inherits that token. A new token replaces the token stored in this tab; this storage update does not revoke other links. Operator issuance revokes them through the native issuer.
+and session storage preserve reload convenience but grant no authority. An unchanged repeated submit for the same unpaid order returns a further token; when a limited or paid repeat omits it, the tab keeps its existing token for that order. A different order never inherits that token. A new token replaces the token stored in this tab; this storage update does not revoke other links. Operator issuance revokes them through the native issuer.
 Live pending-order links support sandbox continuation payment of the original
 order, including retry after a decline. Dedicated token pay and exact cookie-authorized
 inline retry are also bound for the explicit synthetic sandbox choices. Real-provider

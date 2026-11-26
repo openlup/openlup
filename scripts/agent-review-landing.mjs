@@ -29,7 +29,7 @@ async function git(cwd, ...args) {
   return result.stdout;
 }
 
-const { generatedCarrier, ownerOutputCarrier, SQL_REFERENCE } = carrierGenerators;
+const { generatedCarrier, ownerOutputCarrier, MATURITY_REFERENCE, SQL_REFERENCE } = carrierGenerators;
 const PUBLICATION_CATALOGUE = REGISTRY_PATHS[0];
 const SETTINGS_GUIDE = 'packages/core/docs/guide/how-to/operate/settings-catalogue.md';
 const SETTINGS_OUTPUTS = ['packages/platform/settings-catalog.json', 'packages/platform/settings-refusals.json', SETTINGS_GUIDE];
@@ -255,6 +255,15 @@ async function checkMergedLandingToolchain(cwd, head, run, carrierEnv, diagnosti
   }
 }
 
+// A conflict inside the maturity reference's generated regions is resolved by regenerating them; one in its prose is authored.
+function checkLandingMaturityReference(runGenerators) {
+  try { runGenerators('owners.syncMaturityReference(process.cwd());'); }
+  catch (error) {
+    if (error.message !== `landing: authored conflicts remain: ${MATURITY_REFERENCE}`) throw error;
+    refuseAuthoredConflicts([MATURITY_REFERENCE]);
+  }
+}
+
 function checkLandingSqlReference(runGenerators) {
   try { runGenerators('owners.syncSqlReference(process.cwd());'); }
   catch (error) {
@@ -297,8 +306,8 @@ export function readReportOwners(cwd) {
 
 function ownerOutputs(owners, publicPaths) {
   const registered = new Set(publicPaths.filter(row => row.class === 'public-output').map(row => row.path));
-  const admitted = new Set([...registered, ...SETTINGS_OUTPUTS.filter(path => path === SETTINGS_GUIDE && isGuidePage(path))]);
-  return { admitted, replaceable: new Set([...owners.flatMap(owner => owner.reports), ...SETTINGS_OUTPUTS].filter(path => admitted.has(path))) };
+  const admitted = new Set([...registered, ...[SETTINGS_GUIDE, MATURITY_REFERENCE].filter(isGuidePage)]);
+  return { admitted, replaceable: new Set([...owners.flatMap(owner => owner.reports), ...SETTINGS_OUTPUTS, MATURITY_REFERENCE].filter(path => admitted.has(path))) };
 }
 
 export function carrierPlan(owners, paths) {
@@ -318,7 +327,9 @@ export function carrierPlan(owners, paths) {
   for (const owner of [...owners].reverse()) {
     if (needed.has(owner.name)) for (const dependency of Object.keys(owner.dependencies)) needed.add(dependency);
   }
-  return { reports: owners.filter(({ name }) => selected.has(name)), builds: owners.filter(({ name }) => needed.has(name)), settings };
+  // The maturity reference is read from the API reports: any owner whose reports are regenerated can change it.
+  const maturity = selected.size > 0 || paths.includes(MATURITY_REFERENCE);
+  return { reports: owners.filter(({ name }) => selected.has(name)), builds: owners.filter(({ name }) => needed.has(name)), settings, maturity };
 }
 
 function safeRelativePath(path) {
@@ -388,7 +399,8 @@ export function isInventoryInputPath(path) {
   return INVENTORY_INPUT_PATHS.has(path) ||
     /^(?:db|supabase)\/.*\.sql$/u.test(path) ||
     /^packages\/[^/]+\/sql\//u.test(path) ||
-    /^packages\/platform\/src\/migrations\//u.test(path);
+    /^packages\/platform\/src\/migrations\//u.test(path) ||
+    /^server\/adapters\/postgres\/connectedStoreDomains\//u.test(path);
 }
 
 export function landingSlotPlan(prAddedPaths, mainMigrationPaths) {
@@ -662,6 +674,7 @@ async function landMergedCheckout(cwd, { head, main, base, run, carrierEnv, diag
   }
   await finalization?.checkpoint();
   if (conflicts.includes(SQL_REFERENCE)) await guarded({}, () => checkLandingSqlReference(runGenerators));
+  if (conflicts.includes(MATURITY_REFERENCE)) await guarded({}, () => checkLandingMaturityReference(runGenerators));
   for (const path of new Set([...registryConflicts, ...(reslotsCatalogue ? [PUBLICATION_CATALOGUE] : [])])) {
     writes.paths.add(path);
     const contents = path === PUBLICATION_CATALOGUE ? catalogueUnion : await readUnion(path);
@@ -672,7 +685,7 @@ async function landMergedCheckout(cwd, { head, main, base, run, carrierEnv, diag
   }
   // Keep Git's merged prose in the SQL reference; discard conflicts in other generated carriers.
   for (const path of conflicts.filter(path => generatedCarrier(path) && (legacyConflict(path) || (replaceable.has(path) && safeOutput(cwd, path, index))))) {
-    if (path !== SQL_REFERENCE && !REGISTRY_PATHS.includes(path)) {
+    if (path !== SQL_REFERENCE && path !== MATURITY_REFERENCE && !REGISTRY_PATHS.includes(path)) {
       await guarded({ files: [path] }, () => git(cwd, 'checkout', '--ours', '--', path));
     }
   }
@@ -744,8 +757,8 @@ async function landMergedCheckout(cwd, { head, main, base, run, carrierEnv, diag
     const errors = checkPlatformMigrationProjection(process.cwd(), true);
     if (errors.length) throw new Error(errors.join('; '));`));
   if (readFileSync(resolve(cwd, projection), 'utf8') !== projectionBefore) inputs.push(projection);
-  const { reports, builds, settings } = carrierPlan(owners, inputs);
-  const outputs = [...new Set([...reports.flatMap(owner => owner.reports), ...(settings ? SETTINGS_OUTPUTS : [])])];
+  const { reports, builds, settings, maturity } = carrierPlan(owners, inputs);
+  const outputs = [...new Set([...reports.flatMap(owner => owner.reports), ...(settings ? SETTINGS_OUTPUTS : []), ...(maturity ? [MATURITY_REFERENCE] : [])])];
   if (outputs.length) {
     for (const path of outputs) {
       if (!admitted.has(path)) throw new Error(`landing: ${path} needs a reviewed public-output classification in ${PUBLICATION_CATALOGUE}`);
@@ -768,6 +781,8 @@ async function landMergedCheckout(cwd, { head, main, base, run, carrierEnv, diag
     }
     if (settings) await guarded({ files: SETTINGS_OUTPUTS }, () =>
       run(process.execPath, [resolve(cwd, 'scripts/settings-catalogue.ts'), '--write'], { env: carrierEnv }));
+    // The regions read the reports regenerated above.
+    if (maturity) await guarded({ files: [MATURITY_REFERENCE] }, () => runGenerators('owners.refreshMaturityReference(process.cwd());'));
   }
   const tracked = pathsFrom(await git(cwd, 'ls-files', '-z'));
   const generated = pathsFrom(await git(cwd, 'ls-files', '--others', '--exclude-standard', '-z'))

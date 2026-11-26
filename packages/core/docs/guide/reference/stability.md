@@ -36,7 +36,8 @@ Documented application dependencies cannot be reclassified as internal to
 avoid compatibility obligations. Undeclared implementation details may change
 in any release; check the selected channel’s commitments before relying on a
 surface. The [generated maturity reference](maturity.md) lists subpath classifications
-from each package’s `release-gates.json`; use that table rather than inferring
+from each package’s `release-gates.json`, and the symbols of a subpath that are
+tagged `@experimental` or `@deprecated`; use those tables rather than inferring
 stability from a namespace’s name.
 
 Stable subpaths follow SemVer from 1.0.0. Status, event, reason, command and

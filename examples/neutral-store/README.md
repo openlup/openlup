@@ -303,9 +303,16 @@ released set.
 
 ## Run the local application
 
-`compose.yaml` pins PostgreSQL 16 and publishes the application only at
-`http://127.0.0.1:4319`. The lifecycle starts its one-shot installed migration
-runner and seed before the application container.
+`compose.yaml` pins PostgreSQL 16 and publishes the application on loopback,
+at `http://127.0.0.1:4319` by default. The lifecycle starts its one-shot
+installed migration runner and seed before the application container.
+
+To use another free local port, export `OPENLUP_STARTER_PORT=4320` in the shell
+that runs `./lifecycle up` and `npm run catalogue:apply`. Use a decimal port
+from 1024 to 65535. With the default origin, exclude [ports blocked by Fetch](https://fetch.spec.whatwg.org/#port-blocking).
+An unset or empty value uses 4319, even if Compose has a
+different value in `.env`. Choose a distinct `COMPOSE_PROJECT_NAME` for each
+concurrent demo. A configured `publicOrigin` still governs request authority.
 
 ## Host origin and local sessions
 
@@ -380,6 +387,21 @@ Run `npm run --silent catalogue:check:source` to check the packs and fixtures in
 `owned/catalogue.ts` with their registered content validators.
 The installed recipes in `node_modules/@openlup/core/docs/guide/how-to/extend/catalogue-extension.md`
 describe the evidence each check supplies.
+
+For a marked demonstration store, follow [Release, price and activate a demo product](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#release-price-and-activate-a-demo-product).
+`catalogue:check:source` is offline. `catalogue:apply` signs in a human operator and can write drafts, prices and publications.
+After Activation, `catalogue:apply` verifies live prices. Use `npm run catalogue:apply -- --reprice` to review and change them.
+
+### Read the private demonstration mailbox
+
+Use a separate private terminal in the same Compose project to find the newest
+operator sign-in message for the invited administrator.
+
+```sh
+docker compose exec -T --user node --workdir /application/.context application cat captured-messages/identity.jsonl
+```
+
+Enter only the matching token at the hidden prompt.
 
 ## Install-only fictional catalogue
 
@@ -488,9 +510,10 @@ Both fictional catalogues use the ISO test currency `XTS`, fictional country
 pricing, tax or jurisdiction claim. Polish and English remain UI content; money
 formatting uses the selected locale ID directly.
 
-The starter reads no environment configuration. For direct host use, pass
+Direct host startup reads its options from flags. Pass
 `--configuration <id>`, `--port <number>` and `--listen <address>` after `npm start --`.
-The port defaults to 4319 and listen address to 127.0.0.1. The only other supported
+The port defaults to 4319 and accepts the full range from 1024 to 65535.
+The listen address defaults to 127.0.0.1. The only other supported
 listen address is 0.0.0.0 for explicit container transport. Unknown/duplicate flags,
 missing values, invalid ports/addresses and unknown configurations refuse by name.
 Compose passes the container listen/port flags and publishes only host loopback.
@@ -604,10 +627,17 @@ Acceptance binds the request, money,
 policy, second promise and delivery terms. An equivalent refresh keeps the
 customer's reviewed token, payable amount and original deadline. Changed terms
 or an expired deadline require fresh review and consent.
-After an uncertain checkout response, an unchanged retry retains the submitted
-acceptance proof and command key so the host can recover the saved receipt.
-Changing the input or explicitly starting a new action prepares a fresh quote;
-the server still validates acceptance before any new draft is admitted.
+After an uncertain checkout response, an unchanged retry under the same command
+key returns the saved order and, while it is unpaid, a further continuation
+token. A refreshed acceptance for the same stored terms is the same purchase;
+changed details are refused, never applied. `checkout.continuation` resumes or
+abandons that order by its key. The managed checkout page keeps one key per
+purchase in tab storage, across reloads and changed details; changed details
+answer `starter_checkout_changed` and a panel offers to pay or cancel the
+earlier order. It starts a new key only after that order is closed or no order
+can still arrive, or the buyer explicitly starts a different purchase. Other forms prepare a fresh key when the input changes or the
+buyer starts a new action. The server still validates acceptance before any new
+draft is admitted.
 
 Before enabling governed quote issuance, verify the compatible v1 reader and
 checkout controller on every serving and replay replica and each rollback

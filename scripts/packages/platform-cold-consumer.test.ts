@@ -40,6 +40,7 @@ import {
   consumerNode,
   NON_ADAPTER_ENTRIES,
   OPTIONAL_PEERS,
+  PLATFORM_MIGRATION_CONSUMER_PROOF,
   proveAdapterRefusals,
   proveOidcRefusals,
   provePostgresOperations,
@@ -201,8 +202,8 @@ function fixture() {
   for (const file of ["metadata", "jsonLd", "urls"]) copyFileSync(join(root, `packages/platform/dist/marketing/seo/${file}.d.ts`), join(platformRoot, `seo/${file}.d.ts`));
   mkdirSync(join(platformRoot, "contracts"), { recursive: true });
   copyFileSync(join(root, "packages/platform/dist/marketing/contracts/contactLegal.d.ts"), join(platformRoot, "contracts/contactLegal.d.ts"));
-  packageFixture(consumer, "zod", { ".": "./index.js" });
-  writeFileSync(join(consumer, "node_modules/zod/index.d.ts"), "export namespace z { export interface ZodType<Output, Input = unknown> { parse(input: Input): Output } }\n");
+  // The lifecycle entry is copied from the build and loads zod at runtime, so the consumer gets the real package.
+  cpSync(join(root, "node_modules/zod"), join(consumer, "node_modules/zod"), { recursive: true });
   return consumer;
 }
 
@@ -2068,3 +2069,24 @@ it("skeleton_pack_projects_clean", () => {
   // Prove the application parser uses native, erasable TypeScript imports.
   call(sourceArgs(write("forward.ts", 'export { catalogueConformance } from "./catalogue.ts";')), 0);
 }, 30_000);
+
+it("stages the canonical migration manifest as a consumer file so oversized manifests never hit argv E2BIG", () => {
+  expect(PLATFORM_MIGRATION_CONSUMER_PROOF).toContain('readFileSync(expectedManifestPath, "utf8")');
+  const consumer = mkdtempSync(join(tmpdir(), "openlup-manifest-file-proof-"));
+  const manifestPath = join(consumer, "expected-platform-migration-manifest.json");
+  try {
+    // Exceed Linux MAX_ARG_STRLEN (128 KiB) to prove file-path handoff avoids E2BIG.
+    const oversized = JSON.stringify({ entries: Array.from({ length: 1600 }, (_, i) => ({ file: `m_${i}.sql`, sha256: "a".repeat(64) })) });
+    expect(Buffer.byteLength(oversized, "utf8")).toBeGreaterThan(150 * 1024);
+    writeFileSync(manifestPath, oversized);
+    const out = consumerNode(consumer, `
+      import { readFileSync } from "node:fs";
+      import { argv } from "node:process";
+      const parsed = JSON.parse(readFileSync(argv[2], "utf8"));
+      console.log(JSON.stringify({ count: parsed.entries.length }));
+    `, [manifestPath]);
+    expect(JSON.parse(out)).toEqual({ count: 1600 });
+  } finally {
+    rmSync(consumer, { recursive: true, force: true });
+  }
+});

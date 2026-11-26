@@ -1,0 +1,118 @@
+import { fileURLToPath } from "node:url";
+import ts from "typescript";
+import { expect, it } from "vitest";
+
+// One probe per line: each `@ts-expect-error` names the line after it and the one
+// diagnostic code that line must raise without the suppression.
+const probes = `import { createPurchaseContinuation, getOrCreateContinuationId, storefrontAnchor, toAttemptNumber, toCommandKey, toContinuationId } from "@openlup/platform/storefront";
+import type { AttemptNumber, ChangedPayloadPolicy, ClientEventReporter, CommandKey, ContinuationId, ContinuationRecord, ContinuationRecordStorageBinding, IdentifierBinding, PaymentProviderFacts, PendingAction, PendingActionStorageBinding, PurchaseContinuation, PurchaseContinuationSnapshot, StatusReading, StatusTransportBinding, StorageFailurePolicy, StorefrontAnchor, SubmitFailureClass, SubmitFailureClassifier, SubmitOutcomeClass, SubmitOutcomeClassifier, SubmitTransportBinding } from "@openlup/platform/storefront";
+declare const continuationId: ContinuationId;
+declare const commandKey: CommandKey;
+// @ts-expect-error 01 TS2322 a plain string is not a continuation identity
+const plainContinuation: ContinuationId = "continuation";
+// @ts-expect-error 02 TS2322 a plain string is not a command key
+const plainCommand: CommandKey = "command";
+// @ts-expect-error 03 TS2322 a plain number is not an attempt number
+const plainAttempt: AttemptNumber = 1;
+// @ts-expect-error 04 TS2322 a continuation identity is not a command key
+const crossedCommand: CommandKey = continuationId;
+// @ts-expect-error 05 TS2322 a command key is not a continuation identity
+const crossedContinuation: ContinuationId = commandKey;
+// @ts-expect-error 06 TS2322 a record names its purchase by continuation identity, not by command key
+const crossedRecord: ContinuationRecord = { continuationId: commandKey, fingerprint: "f" };
+// @ts-expect-error 07 TS2345 an attempt number is branded from a number only
+const textAttempt = toAttemptNumber("1");
+// @ts-expect-error 08 TS2322 a transport's command key is branded, never a plain string
+const plainKeyTransport: SubmitTransportBinding = { commandKey: (): string => "plain", replay: async () => undefined };
+declare const continuation: PurchaseContinuation<{ item: string }, { status: string }>;
+// @ts-expect-error 09 TS2554 a return carries no argument: only a later read can settle
+continuation.recordReturn({ status: "paid" });
+declare const probeBindings: { storage: ContinuationRecordStorageBinding; identifier: IdentifierBinding };
+// @ts-expect-error 10 TS2322 a call under the default may refuse, so its result is not a plain identity
+const defaultIdentity: ContinuationId = getOrCreateContinuationId(probeBindings, { fingerprint: () => "f" });
+// @ts-expect-error 11 TS2322 the deprecated member narrows too
+const unpersistedIdentity: ContinuationId = getOrCreateContinuationId(probeBindings, { fingerprint: () => "f", storageFailure: "continue_unpersisted" });
+// Positive controls: object literals, using the constructors for branded members.
+const record: ContinuationRecord = { continuationId: toContinuationId("c"), fingerprint: "f", attempt: toAttemptNumber(0) };
+const firstRecord: ContinuationRecord = { continuationId: toContinuationId("c"), fingerprint: "f" };
+let stored: ContinuationRecord | null = null;
+const recordStorage: ContinuationRecordStorageBinding = { read: () => stored, write: (next) => { stored = next; }, clear: () => { stored = null; } };
+const identifiers: IdentifierBinding = { next: () => "generated", accepts: (value) => value.length > 0 };
+const refusing: ContinuationId | null = getOrCreateContinuationId({ storage: recordStorage, identifier: identifiers }, { fingerprint: () => "f", storageFailure: "refuse" });
+const unpersisted: ContinuationId | null = getOrCreateContinuationId({ storage: recordStorage, identifier: identifiers }, { fingerprint: () => "f", storageFailure: "continue_unpersisted" });
+type Request = { key: CommandKey | null };
+const transport: SubmitTransportBinding<Request, { signal?: AbortSignal }, { ok: true }> = { commandKey: (request) => request.key, replay: async () => ({ ok: true }) };
+const brandedKeyTransport: SubmitTransportBinding = { commandKey: () => toCommandKey("k"), replay: async () => undefined };
+const nullKeyTransport: SubmitTransportBinding = { commandKey: () => null, replay: async () => undefined };
+const undefinedKeyTransport: SubmitTransportBinding = { commandKey: () => undefined, replay: async () => undefined };
+const failureClasses: SubmitFailureClass[] = ["attempt_in_flight", "timeout", "transport_uncertain", "other"];
+const classifyFailure: SubmitFailureClassifier = (error) => error instanceof TypeError ? "transport_uncertain" : "other";
+const pending: PendingAction = { actionKind: "embedded", phase: "action_issued", expiresAt: 4_102_444_800 };
+const redirectPending: PendingAction = { actionKind: "redirect", phase: "confirm_dispatched" };
+const quietPending: PendingAction = { actionKind: "none" };
+let pendingStored: PendingAction | null = null;
+const pendingStorage: PendingActionStorageBinding = { read: () => pendingStored, write: (next) => { pendingStored = next; }, clear: () => { pendingStored = null; } };
+const terminal: StatusReading = { kind: "terminal" };
+const checking: StatusReading = { kind: "checking" };
+const active: StatusReading = { kind: "active", payment: { provider: "provider", attemptStatus: "failed" }, action: { kind: "redirect", url: "https://example.invalid/" } };
+const embedded: StatusReading = { kind: "active", payment: null, action: { kind: "embedded", provider: "provider", actionToken: "token" } };
+const other: StatusReading = { kind: "active", action: { kind: "other" } };
+const statusTransport: StatusTransportBinding = { read: async () => terminal };
+const changedPolicies: ChangedPayloadPolicy[] = ["update_in_place", "refuse_changed"];
+const storagePolicies: StorageFailurePolicy[] = ["refuse", "continue_unpersisted"];
+const outcomes: SubmitOutcomeClass[] = ["settled", "needs_client_action", "awaiting_authority", "declined", "refused", "closed", "unknown"];
+const classifyOutcome: SubmitOutcomeClassifier<{ status: string }> = (result) => result.status === "paid" ? "settled" : "unknown";
+const facts: PaymentProviderFacts = { providers: ["provider"], reopenableEmbeddedProviders: ["provider"], retryableAttemptStatuses: ["failed", "expired"] };
+const report: ClientEventReporter = (event) => { void event; };
+const anchor: StorefrontAnchor = storefrontAnchor;
+const attribute: "data-openlup-action" = storefrontAnchor.attribute.action;
+const proceed: "proceed_to_checkout" = anchor.action.proceed_to_checkout;
+type Purchase = { item: string };
+type Sent = { key: CommandKey; attempt: AttemptNumber; item: string };
+type Answer = { status: string; declines?: number };
+const controller = createPurchaseContinuation<Purchase, Sent, Answer, { signal?: AbortSignal }>({
+  storage: recordStorage, identifier: identifiers, changedPayload: "refuse_changed",
+  commandKeyFor: ({ continuationId: id, attempt }) => toCommandKey(id + ":" + attempt),
+  request: { fingerprint: (purchase) => purchase.item, build: (purchase, identity) => ({ key: identity.commandKey, attempt: identity.attempt, item: purchase.item }) },
+  transport: { submit: async () => ({ status: "processing" }), replay: async () => ({ status: "processing" }),
+    read: async () => ({ status: "paid" }), abandon: async () => terminal },
+  classifySubmitFailure: classifyFailure, classifyOutcome: (answer) => answer.status === "paid" ? "settled" : "unknown",
+  activationPending: () => false, declinedAttempt: (answer) => answer.declines ?? null, report,
+  pending: { storage: pendingStorage, toStatusReading: () => checking, clock: { now: () => 0 }, providerFacts: facts },
+});
+type Transport = Parameters<typeof createPurchaseContinuation>[0]["transport"];
+const transportOnly: Transport = { submit: async () => null, replay: async () => null, read: async () => null, abandon: async () => checking };
+declare function useExternal<T>(subscribe: (onChange: () => void) => () => void, getSnapshot: () => T): T;
+const { subscribe, getSnapshot } = controller;
+const rendered: PurchaseContinuationSnapshot<Answer> = useExternal(subscribe, getSnapshot);
+const shown: boolean = rendered.hasContinuation;
+export { controller, transportOnly, shown, record, firstRecord, recordStorage, identifiers, transport, brandedKeyTransport, nullKeyTransport, undefinedKeyTransport, failureClasses, classifyFailure, pending, redirectPending, quietPending, pendingStorage, checking, active, embedded, other, statusTransport, changedPolicies, storagePolicies, outcomes, classifyOutcome, facts, report, attribute, proceed };
+`;
+
+it("keeps the identity roles apart and accepts every binding shape", () => {
+  const filename = fileURLToPath(new URL("./storefront-types-virtual.mts", import.meta.url));
+  const options: ts.CompilerOptions = {
+    strict: true, exactOptionalPropertyTypes: true, noEmit: true, noUnusedLocals: false, target: ts.ScriptTarget.ES2022,
+    module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, types: [],
+    lib: ["lib.es2022.d.ts", "lib.dom.d.ts"], skipLibCheck: false,
+  };
+  function compile(text: string) {
+    const host = ts.createCompilerHost(options);
+    const read = host.readFile.bind(host), exists = host.fileExists.bind(host);
+    host.readFile = path => path === filename ? text : read(path);
+    host.fileExists = path => path === filename || exists(path);
+    return ts.getPreEmitDiagnostics(ts.createProgram([filename], options, host));
+  }
+  expect(compile(probes).map(d => ts.flattenDiagnosticMessageText(d.messageText, "\n"))).toEqual([]);
+  // Each rejection is matched by line and code, so a probe failing for an unrelated reason stays red.
+  const expected = probes.split("\n").flatMap((line, index) => {
+    const marker = /@ts-expect-error \d+ TS(\d+) /.exec(line);
+    return line.includes("@ts-expect-error") ? [`${index + 2}:TS${marker?.[1] ?? "missing code"}`] : [];
+  });
+  expect(expected).toHaveLength(11);
+  const rejected = compile(probes.replace(/@ts-expect-error/g, "probe-without-suppression"));
+  const found = [...new Set(rejected.map(d => d.file?.fileName === filename && d.start !== undefined
+    ? `${d.file.getLineAndCharacterOfPosition(d.start).line + 1}:TS${d.code}` : `outside:TS${d.code}`))];
+  const byLine = (a: string, b: string) => Number.parseInt(a, 10) - Number.parseInt(b, 10) || a.localeCompare(b);
+  expect(found.sort(byLine)).toEqual(expected.sort(byLine));
+}, 45_000);

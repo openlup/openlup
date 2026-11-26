@@ -340,7 +340,7 @@ axis and rules that derive `{ derived: 12 }`. The store has reserved the interna
 identifier sequences 203 and 204 for these SKUs.
 
 ```ts
-import { buildCatalogReleaseDraftV3, catalogInternalGtin } from "@openlup/platform/catalog";
+import { buildCatalogReleaseDraftV3, catalogInternalGtin, type CatalogProductInput } from "@openlup/platform/catalog";
 
 const grams = (unscaled: string) => ({ dimension: "mass", unit: "openlup:g", unscaled, scale: 0 } as const);
 const finishSku = (code: string, finish: string, sequence: number) => ({
@@ -356,12 +356,14 @@ const finishSku = (code: string, finish: string, sequence: number) => ({
   logisticsRef: `example:fulfillment/${code}`,
 });
 
-const { release, activation } = buildCatalogReleaseDraftV3({
+const product = {
   namespace: "example",
   type: { key: "example:article", version: 1 },
   slug: "two-finishes", name: "Example article", presentation: { title: "Example article" },
   skus: [{ ...finishSku("FINISH-MATTE", "matte", 203), primary: true, minQuantity: 2 }, finishSku("FINISH-GLOSS", "gloss", 204)],
-});
+} satisfies CatalogProductInput;
+
+const { release, activation } = buildCatalogReleaseDraftV3(product);
 ```
 
 1. Save `release.payload`, prepare it, approve it, then publish it. The
@@ -391,19 +393,82 @@ and call the builder again.
 
 On the server, read the experimental `readPostgresCatalogStorefrontPage` result
 and call `projectPublishedCatalogOfferPage` from `@openlup/platform/catalog`.
-Supply definition receipts verified against the installed builds for the exact
-type key and version. The projection exposes own attributes marked
-`public: true` for their exact product or variant scope. Missing, conflicting
-or unverifiable type evidence yields empty attribute maps.
+
+### Verify definition receipts in your host
+
+If you installed an adopter pack with the starter, read the exact pack `id`, pack
+`version` and type pairs from a successful `./lifecycle up --json` report. From
+the same Compose project, copy that pack's build into a private server-side
+directory. For the stationery pack at version 1:
+
+```sh
+(
+  umask 077
+  build_dir=$(mktemp -d "${TMPDIR:-/tmp}/openlup-pack-build.XXXXXX") || exit 1
+  pack_id=stationery
+  pack_version=1
+  filename="${pack_id}@${pack_version}.json"
+  docker compose exec -T --user node --workdir /application/.context application \
+    cat "catalogue-builds/packs/$filename" > "$build_dir/$filename" || exit 1
+  printf '%s\n' "$build_dir/$filename"
+)
+```
+
+The envelope contains `{ pack, asset, receipt }`. Decode `asset` from base64 to
+recover the exact portable rules bytes. A failed copy supplies no evidence.
+For a missing build, restore the declared version and tested rules, then rerun
+`./lifecycle up --json` in the same project before copying again. The built-in
+starter type uses `<type-version>.json` one directory above `packs/`, with a
+separate `{ type, asset, installed }` envelope. Copy only the requested pack
+file and keep it server-side.
+
+1. Load the server-owned pack build and the matching
+   `CatalogDefinitionInstallReceipt` returned by `installCatalogDefinitions`.
+   For a build with a portable rules artifact, bind the retained artifact with
+   `withCatalogPublicationRules`. Check the pack ID and version and compare
+   `catalogPackManifest(pack).digest` with the receipt's `manifestDigest`.
+2. Build a `CatalogProductTypeRegistry` with
+   `createCatalogProductTypeRegistry(pack.types)`. For each product on a governed
+   `CatalogStorefrontPageResult`, use its `typeRef` to select the exact key and
+   version from `receipt.types` and resolve the same pair to a
+   `CatalogProductTypeDefinition` in the registry. Compute
+   `catalogDefinitionDigest(type)` and compare it with that receipt entry's
+   `definitionDigest`. Use only pairs that verify.
+3. Pass the successful reader result and the verified `{ type, digest }`
+   entries to `projectPublishedCatalogOfferPage(result, definitions)`. The
+   projection also checks the digest against the product's published
+   definition digest when present. It exposes own attributes marked
+   `public: true` for their exact product or variant scope. Missing, conflicting
+   or unverifiable type evidence yields empty attribute maps.
+
+The projection drops the raw reader's `options` map. To display a finish
+selector, declare `finish` as a public variant attribute in the installed
+type, supply it in the SKU's attributes, and read it from the projected SKU.
+
+```ts
+import type { PublishedCatalogOfferPage } from "@openlup/platform/catalog";
+
+function readFinish(page: PublishedCatalogOfferPage, skuCode: string) {
+  const sku = page.products.flatMap(product => product.skus).find(sku => sku.skuCode === skuCode);
+  const finish = sku?.attributes["finish"];
+  return typeof finish === "string" ? finish : undefined;
+}
+```
 
 On the first page, the raw reader's `catalog_offer_memberships_page_input_invalid`
-refusal can carry `issue: "offer_unpublished"`. A caller may treat that typed
-case as an empty published list.
+refusal can carry `issue: "offer_unpublished"`. Verify the requested offer version
+identifier before treating that typed case as an empty published list. A
+misspelled version can return the same issue. Surface other refusals.
 
 Everything authored in `product.presentation` becomes public copy. The
 projection carries it unchanged. The starter chooses the fields it displays
 from that copy. Continue the server read with the returned cursor, even when
 the current page produces no displayable SKUs.
+
+The starter lists published SKUs with one-time selling enabled and a positive
+tax-inclusive one-time price in the market currency. Its home and catalogue
+cards show that amount in either cart mode. The product and cart use the server
+quote for the selected mode. See [custom starter card links](../build/customize-the-starter.md#show-published-products-in-the-starter).
 
 The projected primary identifier includes `internal`. Keep internal values as
 local references and omit them from external global GTIN fields. An external

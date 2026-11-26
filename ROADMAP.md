@@ -2,7 +2,7 @@
 
 > OpenLup follows the stable 1.x compatibility policy, and plans are not release commitments: the order and scope of everything below may change. Read the [README status section](README.md#status-stable-1x) before relying on any capability.
 
-Last updated: 2026-11-24 · npm set: 1.3.0
+Last updated: 2026-11-25 · npm set: 1.3.0
 
 ## Current status
 
@@ -124,6 +124,7 @@ Last updated: 2026-11-24 · npm set: 1.3.0
 | hostability-providers | Hostability and provider portability | planned | - | Hosted runs and provider portability: a Neon receipt, Neon to Amazon RDS transfer and recovery, an independent PaaS candidate with Netlify first, a hosted database connection and a Vercel host for the neutral store, and a checkout attempt limiter that survives restarts. The providers in scope are Vercel, Netlify, AWS and Neon. Until then no hosted claim is made, and the neutral store runs on its local demonstration database. |
 | promotions-codes-schedule | Promotions: codes and acquisition schedule | planned | - | Promotion codes with a code catalogue, claims and limits, an operator code center and a checkout code card, plus an acquisition schedule writer with a command line. Device evidence for eligibility is decided together with a retention and erasure design. Until then, promotion codes are not available on the portable rail. |
 | a5-market-adapters | A5 market adapters | planned | - | An example company and customer lookup adapter built on Polish public registries (VAT whitelist, GUS/CEIDG), after the company-identity and invoicing ports are frozen. Data provenance, freshness, licence and fallback are settled first, and other market adapters can follow the same pattern. |
+| agent-commerce | Purchases by buyers' AI agents | planned | - | Buyers' AI agents buy and manage one-off and subscription orders through an agent commerce protocol, delivered as a provider recipe on the same engine without changes to the store's own code. It builds on what ships today: one server-authoritative quote, frozen renewal terms, idempotent commands, stable refusal codes and guest checkout. It follows the provider recipe command and the published offer projection; the protocol is chosen when the work starts, and nothing is built yet. |
 | p1-sf-stable-framework | Stable 1.x policy | shipped | 1.0.0 | 1.3.0 is the current qualified stable set; 1.1.0 was the first; 1.0.0 is superseded. The stable API and installation commitments begin at 1.0.0; see the [stability policy](packages/core/docs/guide/reference/stability.md). Evidence is a first-party demo store from npm and a first-party production deployment. Schema and code-rollback evidence retain the [database guide’s limits](packages/core/docs/guide/upgrade/database-migrations.md#check-application-compatibility). |
 
 ## Providers and adapters
@@ -162,5 +163,4 @@ Last updated: 2026-11-24 · npm set: 1.3.0
 | deferred-catalogue-publication | Catalogue publication workflow | deferred | - | In 1.3.0, an opt-in native PostgreSQL binding approves, revokes, publishes and replays commands for receipted drafts, including variant activation and withdrawal. It requires the complete native migration chain and an explicitly bound owner transaction. A built-in operator publication workflow and storefront product pages backed by published content remain deferred. |
 | deferred-operator-contact-edits | Operator contact edits and order notes on the portable rail | deferred | - | Operator changes to a customer's email, phone and account link, order notes and order address corrections refuse by name on the portable rail. |
 | deferred-rich-order-reports | Rich order projections and reports on the portable rail | deferred | - | Rich operator order projections, analytics, document guidance, saved draft resume and commercial reports refuse by name on the portable rail. Reduced order reads work. |
-| deferred-agent-commerce | Purchases by buyers' AI agents | deferred | - | Purchases made and managed by buyers' AI agents are not built, and no agent commerce protocol is chosen; a protocol would arrive as a recipe. Current plans keep the option open: one published offer projection, a sales channel recorded on prices and orders, and data vocabularies that stay open to new values. |
 | deferred-portable-social-sign-in | Social sign-in on the portable rail | deferred | - | Customer sign-in with a social account is not provided on the portable rail. Email magic links and one-time codes work. |

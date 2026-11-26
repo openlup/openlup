@@ -517,7 +517,8 @@ describe.each(lifecycleProfiles)("subscription lifecycle closure on %s", profile
     END IF;
 `, "")
       .replace("    IF TG_OP = 'UPDATE' THEN\n      PERFORM public.catalog_order_line_sum_acceptance(v_order_id, OLD.order_id);\n    END IF;\n", "")
-      .replace("  PERFORM public.catalog_order_line_sum_acceptance(v_order_id);\n", "");
+      .replace("  PERFORM public.catalog_order_line_sum_acceptance(v_order_id);\n", "")
+      .replace(/ {2}IF v_keyed_item THEN\n[\s\S]*?\n {2}END IF;\n/u, "");
     expect(moneyBody).toBe(mainGuard!.body);
     expect(catalogueGuard!.definition.replace(catalogueGuard!.body, "")).toBe(mainGuard!.definition.replace(mainGuard!.body, "")
       .replace("SET search_path TO 'public', 'pg_catalog'\n", "SET search_path TO 'public', 'pg_catalog', 'pg_temp'\n"));

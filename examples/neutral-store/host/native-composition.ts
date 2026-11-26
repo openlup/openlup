@@ -18,7 +18,6 @@ import pg from 'pg';
 import type { StoreConfig } from '../shared/config.ts';
 import { readCheckoutRecoveryReminderSchedule } from '@openlup/platform/commerce/server';
 import { readRenewalStockProtectionPolicy } from '@openlup/platform/inventory';
-import { createHash } from 'node:crypto';
 import { mkdir, appendFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { setTimeout } from 'node:timers/promises';
@@ -29,7 +28,8 @@ import { createPostgresDataGateway, createPostgresRoleFreeTransactionLane, type 
 import { createPostgresCustomerOrderHistoryReadStore, createPostgresCustomerSubscriptionSnapshotPort,
   createPostgresCustomerNewsletterPreferencesPort } from '@openlup/platform/account-support';
 import { createPostgresCommerceOmsControlPlane } from '@openlup/platform/commerce/server/postgres';
-import type { ActionBinding, ApplicationBindings, VerifiedActor } from './bindings.ts';
+import { checkedRequesterKey, requesterKeyFor, type ActionBinding, type ApplicationBindings, type VerifiedActor } from './bindings.ts';
+import type { IncomingMessage } from 'node:http';
 import type { PromotionAcceptanceKeyring } from '@openlup/platform/promotions';
 import type { OriginPolicy } from './origin-policy.ts';
 import { createSessions } from './sessions.ts';
@@ -62,7 +62,8 @@ export function createStarterPersonalDataRegistry(additional: readonly PersonalD
 
 /** Local demonstration only. Publication uses a private credential on the same database. */
 export async function composeNativeBindings(connectionString: string, origin: OriginPolicy, config: StoreConfig, quoteAcceptanceKeyring?: PromotionAcceptanceKeyring,
-  publicationPassword?: string, options?: { readinessJobs?: boolean }): Promise<ApplicationBindings> {
+  publicationPassword?: string, options?: { readinessJobs?: boolean; requesterKey?: (request: IncomingMessage) => string | undefined }): Promise<ApplicationBindings> {
+  const requesterKey = options?.requesterKey === undefined ? requesterKeyFor : checkedRequesterKey(options.requesterKey);
   const readinessPrincipal = options?.readinessJobs === true && isRecord(config) ? catalogueWatchdogPrincipalId(config) : undefined;
   if (!isRecord(config) || !isRecord(config.inventory) || !isRecord(config.inventory.renewalProtection) || !isRecord(config.checkoutRecoveryReminders)) {
     throw new Error('OPENLUP_E_STARTER_STORE_CONFIG_REQUIRED\n'
@@ -148,8 +149,10 @@ export async function composeNativeBindings(connectionString: string, origin: Or
         ? { principalId: found.session.principalId, email: null, emailVerified: false } : null;
     },
   } });
+  const asCustomer = <T>(principalId: string, work: (db: PgGatewayClient) => Promise<T>) =>
+    gateway.asActor({ role: 'authenticated', sub: principalId }, db => work(db as PgGatewayClient));
   const watchdogEvidence = publication && createPostgresRoleFreeTransactionLane<PgQueryExecutor>({ connectionString }, { pool });
-  const capabilities = composeExistingCapabilities({ executor: pool, connectionString, publication, watchdogEvidence });
+  const capabilities = composeExistingCapabilities({ executor: pool, connectionString, publication, watchdogEvidence, asOperator: asCustomer });
   const contacts = createPostgresContactClientRegistrar({ connectionString });
   const checkoutRecoveryTokenLane = createPostgresRoleFreeTransactionLane({ connectionString });
   const storefront = composeCatalogueStorefront(createPostgresRoleFreeTransactionLane<PgQueryExecutor>({ connectionString }, { pool }));
@@ -186,8 +189,6 @@ export async function composeNativeBindings(connectionString: string, origin: Or
     const auth = await operatorAuth.authorize(context.actor.sessionToken ?? '', { allowedRoles: ['admin'] });
     return auth.ok && auth.principalId.toLowerCase() === context.actor.operatorRef?.toLowerCase();
   }, quoteAcceptanceKeyring));
-  const asCustomer = <T>(principalId: string, work: (db: PgGatewayClient) => Promise<T>) =>
-    gateway.asActor({ role: 'authenticated', sub: principalId }, db => work(db as PgGatewayClient));
   Object.assign(actions, composeExpiredRecovery(pool, checkoutRecoveryTokenLane, recovery.tokens, quoteAcceptanceKeyring));
   Object.assign(actions, composeSandboxRecoveryPayments(pool, checkoutRecoveryTokenLane, recovery.tokens, quoteAcceptanceKeyring));
   actions['checkout.recoveryStart'] = async (payload, context) => {
@@ -322,11 +323,10 @@ export async function composeNativeBindings(connectionString: string, origin: Or
     resolveCatalogue: storefront.resolveCatalogue,
     actions,
     async authenticate(request) {
-      // This local host trusts its socket peer only, never forwarding headers or
-      // a contact supplied by the caller. Proxies share their peer's quota.
-      const peer = request.socket.remoteAddress;
+      // Every quota consumer reads this one value; see requesterKeyFor.
+      const key = requesterKey(request);
       const admittedOrigin = origin.originFor(request.headers.host ?? '');
-      const requester = { ...(peer ? { requesterKey: createHash('sha256').update(peer.toLowerCase()).digest('hex') } : {}),
+      const requester = { ...(key ? { requesterKey: key } : {}),
         ...(admittedOrigin ? { requestOrigin: admittedOrigin } : {}) };
       const found = sessions.read(request);
       if (!found) return { ...nobody(), ...requester };

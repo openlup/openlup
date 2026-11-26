@@ -123,6 +123,7 @@ import { env } from 'node:process';
     'operator.bundleCommand', 'operator.catalogDrafts'];
   const status = (await action('application.status')).value.bindings;
   expect(status.map((row: { operation: string }) => row.operation)).toEqual(declaredOperations);
+  expect(status).toContainEqual({ operation: 'catalogue.demoTarget', declared: true, bound: true, checked: false });
   for (const operation of operations) {
     expect(status.find((row: { operation: string }) => row.operation === operation).bound).toBe(true);
     expect((await action(operation, { operatorRef: fixture.operator })).code).toBe('operator_required');

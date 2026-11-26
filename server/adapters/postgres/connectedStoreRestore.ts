@@ -12,12 +12,21 @@ import { qualifiedAdminPostgresCatalogPayload, qualifiedPostgresCatalogPayload,
 import { assertConnectedCatalogPublications, connectedNativeStoreTables,
   connectedStoreClusterIdentitySql, connectedStoreRowSource, readPrivacyDeclarationCensus,
   requiredPrivacyDeclarationTable, type ConnectedNativeStoreCapture } from "./connectedStoreCapture.js";
+import {
+  connectedStoreAllowedInsertTriggers,
+  connectedStoreOutsideProfileRelations,
+  connectedStoreRestoreOrder,
+  connectedStoreSettingsTables,
+} from "./connectedStoreDomains/index.js";
+import { paymentsDomain } from "./connectedStoreDomains/payments.js";
 
 const { catalogPublicationAdmissionRefusal, decodePublicationPacket, requireDecodedPublication } = nativeCatalogPublication;
 
 type TableName = typeof connectedNativeStoreTables[number];
 type Rows = { table: TableName; columns: readonly { name: string; type: string }[]; rows: readonly string[] };
 const migrationLock = "openlup:public-platform-migrations:v1";
+const paymentTables = ["commerce_settlement_intents", ...Object.values(paymentsDomain.restore).flat()] as const;
+const paymentQualificationRelation = "public.payment_capture_time_test_qualification";
 type SourceShape = "current" | "unsupported";
 
 export function connectedStoreSourceShape(
@@ -27,9 +36,7 @@ export function connectedStoreSourceShape(
   return catalogueId === currentCatalogueId ? "current" : "unsupported";
 }
 
-const settings = ["fulfillment_provider_archetypes", "sales_channels", "commerce_settings", "client_absorption_policy",
-  "platform_job_controls", "subscriber_retention_activation_watermarks", "subscription_delivery_alignment_control",
-  "commerce_offer_policy_cohort_marking"] as const;
+const settings = connectedStoreSettingsTables satisfies readonly TableName[];
 type SettingsTable = typeof settings[number];
 
 /** Explicit source evidence for the finite managed identity portion of a transfer. */
@@ -245,69 +252,7 @@ export async function mapManagedIdentityForConnectedRestore(input: {
 }
 
 // Explicit owner order, not schema discovery or a general FK/translation engine.
-const order = [
-  "tax_coverage_revisions",
-  "platform_human_principals", "platform_control_operators", "commerce_operators", "clients",
-  "platform_human_memberships", "platform_human_membership_audit_events", "platform_communication_operators",
-  "identity_operator_invitations", "identity_operator_invitation_events", "identity_privacy_erasures",
-  "identity_privacy_erasure_reconciliations",
-  "customer_subject_lifecycle_events", "customer_communication_preferences", "customer_communication_preference_events", "customer_account_events", "customer_saved_addresses", "customer_payment_preferences", "customer_delivery_preferences", "customer_orderer_profiles",
-  "platform_operational_controls", "platform_control_operations", "platform_alerts", "platform_alert_notifications", "platform_job_runs",
-  // AUTHORITATIVE pack metadata; no customer FK or absorption/erasure duty.
-  "catalog_type_versions", "catalog_definition_installs", "catalog_tax_classes",
-  "catalog_products", "catalog_product_document_revisions", "catalog_skus", "catalog_sku_identifiers",
-  "catalog_draft_heads", "catalog_draft_revisions", "catalog_draft_command_receipts", "catalog_draft_sku_reservations",
-  "catalog_publications", "catalog_sku_revisions", "catalog_publication_heads", "catalog_operator_receipts", "catalog_publication_decisions",
-  // AUTHORITATIVE policy tuples include their original-end close marker, byte-exactly.
-  "price_lists", "subscription_price_policy_revisions", "price_entries", "commerce_promotion_definitions",
-  "catalog_price_setup_receipts",
-  "subscriptions", "commerce_offer_policy_rollout_baselines", "subscription_events", "subscription_cancel_feedback", "subscription_command_receipts",
-  "subscription_quote_previews", "subscription_edit_quotes", "subscription_pause_windows", "subscription_renewal_terms", "subscription_renewal_term_lines",
-  "payment_method_refs", "payment_method_ref_receipts", "subscription_method_states",
-  "subscription_renewal_operations", "subscription_lines", "subscription_cycles", "commerce_orders",
-  "commerce_order_line_sources", "commerce_order_items",
-  "commerce_order_draft_receipts", "fulfillment_stock_operations",
-  "commerce_order_adjustments", "commerce_promotion_claims", "commerce_promotion_claim_events",
-  "subscription_activations", "subscription_renewal_attachments", "subscription_method_state_events",
-  "commerce_checkout_attempt_ledger", "commerce_checkout_compensations",
-  "fulfillment_stock_current", "fulfillment_inventory_reservations", "fulfillment_inventory_reservation_lines", "fulfillment_purchase_reservation_receipts",
-  "commerce_settlement_intents", "commerce_settlement_transitions",
-  "subscription_reminder_ledger", "transactional_delivery_receipts",
-  "subscription_notice_refusals",
-  "payment_simulator_attempts", "payment_simulator_observations",
-  "payment_provider_states", "payment_provider_attempts", "payment_provider_attempt_evidence",
-  "payment_provider_receipts", "payment_provider_transitions",
-  "payment_truth_events", "payment_truth_reconciliation_evidence", "subscription_renewal_outcomes", "outbox_events", "communication_event_bindings", "communication_event_receipts", "communication_event_erasures", "communication_native_sync_state", "outbox_dormant_event_types",
-  "communication_recipient_consents", "communication_native_sends", "communication_native_observations",
-  "customer_account_consent_events", "customer_account_consent_sync_targets",
-  "fulfillment_ports", "fulfillment_shipments", "shipment_external_refs", "fulfillment_shipment_operations", "fulfillment_provider_attempts", "fulfillment_operator_attempts",
-  "commerce_fulfillment_provider_commands", "commerce_fulfillment_provider_command_transitions", "fulfillment_dispatch_contexts",
-  "commerce_destinations", "commerce_destination_bindings", "commerce_destination_v2_receipts",
-  "commerce_destination_v2_documents", "commerce_destination_v2_checkout_selections", "commerce_destination_v2_order_bindings",
-  "subscription_destination_v2_selections",
-  "fulfillment_parcel_contacts", "fulfillment_order_contacts", "fulfillment_contact_correction_receipts",
-  "commerce_money_limits_v2",
-  "tax_calculations",
-  "commerce_order_tax_snapshots",
-  "commerce_order_delivery_buckets",
-  "commerce_order_line_allocations",
-  "commerce_order_tax_positions",
-  "commerce_order_fee_lines",
-  "customer_support_subscription_commands", "customer_support_subscription_audit_events",
-  "fulfillment_dispatch_refs", "fulfillment_paid_handoffs", "fulfillment_observations", "fulfillment_stock_movements",
-  "fulfillment_parcel_reservation_sets", "fulfillment_parcel_lines", "fulfillment_parcel_line_reservations",
-  "fulfillment_operator_receipts", "fulfillment_operator_status_evidence",
-  "commerce_order_holds", "commerce_order_operations", "subscription_delivery_alignment_cases", "subscription_delivery_alignment_admission_receipts", "subscription_delivery_alignment_arrivals",
-  "subscription_dunning_cases", "subscription_dunning_notifications",
-  "commerce_checkout_recovery_tokens", "commerce_reminder_episodes", "payment_method_recovery_authorities", "subscription_retry_obligations", "subscription_retry_receipts",
-  "subscription_retry_recovery_authorizations",
-  "payment_provider_reconciliation_runs", "payment_prepared_absence_reopens",
-  "payment_dunning_case_attribution", "payment_refund_evidence",
-  "subscription_stock_wait_cases",
-  "subscriber_profiles", "subscriber_review_access_grants", "subscriber_retention_intents", "commerce_order_reviews", "commerce_order_review_media",
-  "commerce_order_review_command_receipts", "commerce_order_review_audit", "invoicing_cutover", "invoicing_duties", "invoicing_seller_revisions",
-  "invoicing_buyer_snapshots", "invoicing_fact_revisions", "invoicing_effect_receipts", "invoicing_capture_faults", "invoicing_document_observations", "invoicing_delivery_receipts",
-] as const satisfies readonly TableName[];
+const order = connectedStoreRestoreOrder satisfies readonly TableName[];
 
 /**
  * One finite native-profile owner transaction. The host must actually own a
@@ -411,12 +356,16 @@ export async function restoreConnectedNativeStore(input: {
       if (JSON.stringify(actual) !== JSON.stringify(columns)) refuseSourceSchema(table);
     }
     await assertInsertTriggers(client);
-    await assertOutsideEmpty(client, relations);
+    const replayed = await equalCensus(client, source);
+    if (!replayed && paymentTables.some(table => source.get(table)!.rows.length > 0)) {
+      await client.query(`DELETE FROM ${paymentQualificationRelation}`);
+    }
+    await assertOutsideEmpty(client, relations, replayed);
     // Sized bindings cannot be replayed as final rows through the insert guard.
     // Refuse before restoring settings or inserting any retained source data.
     if (source.get("subscriptions")!.rows.some(row =>
       (JSON.parse(row) as Record<string, unknown>).configured_offer_version !== "classic")) fail("unsupported_table", "subscriptions");
-    if (await equalCensus(client, source)) {
+    if (replayed) {
       await assertConnectedCatalogPublications(client);
       if (JSON.stringify((await client.query("SELECT tableoid::pg_catalog.text,ctid::pg_catalog.text,xmin::pg_catalog.text FROM acquisition_private.installation_key")).rows) !== JSON.stringify(keyIdentity.rows)) fail("target_conflict", "acquisition_private.installation_key");
       if (installation.generation === "qualified-admin") await closeRestrictedOwnerWindow(client, installation);
@@ -597,11 +546,7 @@ function copyCapture(input: ConnectedNativeStoreCapture, shape: SourceShape = "c
         || Object.keys(entry).sort().join("\0") !== "disposition\0owner\0relation\0rows"
         || typeof entry.relation !== "string" || !entry.relation || typeof entry.owner !== "string" || !entry.owner
         || typeof entry.rows !== "string" || !entry.rows || /[^0-9]/.test(entry.rows)) fail("invalid_input");
-      const disposition = entry.relation === "acquisition_private.installation_key" ? "new-target-installation-key"
-        : entry.relation === "public.platform_schema_migrations" ? "target-migration-history"
-          : entry.relation === "acquisition_private.address_references" ? "target-address-references"
-            : entry.relation === "public.customer_identity_challenges" ? "intentionally-not-carried"
-              : entry.relation === "public.catalog_attribute_projection" ? "rebuildable" : "unsupported-empty";
+      const disposition = connectedStoreOutsideProfileRelations.get(entry.relation)?.disposition ?? "unsupported-empty";
       if (entry.disposition !== disposition || disposition === "unsupported-empty" && entry.rows !== "0") fail("invalid_input");
     }
     if (shape === "unsupported") refuseSourceSchema();
@@ -686,11 +631,13 @@ async function equalCensus(client: PoolClient, expected: Map<TableName, Rows>): 
   }
   return true;
 }
-async function assertOutsideEmpty(client: PoolClient, relations: readonly { schema: string; table: string }[]): Promise<void> {
-  const outside = relations.filter(relation =>
-    !(relation.schema === "public" && (connectedNativeStoreTables.includes(relation.table as TableName)
-      || relation.table === "platform_schema_migrations" || relation.table === requiredPrivacyDeclarationTable))
-    && !(relation.schema === "acquisition_private" && (relation.table === "installation_key" || relation.table === "address_references")));
+async function assertOutsideEmpty(client: PoolClient, relations: readonly { schema: string; table: string }[], replayed = false): Promise<void> {
+  const outside = relations.filter(({ schema, table }) => {
+    const name = `${schema}.${table}`;
+    return !(schema === "public" && (connectedNativeStoreTables.includes(table as TableName) || table === requiredPrivacyDeclarationTable))
+      && !connectedStoreOutsideProfileRelations.get(name)?.preserveTarget
+      && (!replayed || name !== paymentQualificationRelation);
+  });
   for (let start = 0; start < outside.length; start += existsCheckBatchSize) {
     const batch = outside.slice(start, start + existsCheckBatchSize);
     const probes = batch.map((relation, index) =>
@@ -751,45 +698,7 @@ function parentOrder(table: TableName, rows: readonly string[]): string[] {
   return ordered;
 }
 async function assertInsertTriggers(client: PoolClient): Promise<void> {
-  const allowed: Readonly<Record<string, readonly string[]>> = {
-    // Publication guards validate restored facts and the complete ledger. The
-    // live-write binding triggers are scoped to the dedicated publication login.
-    catalog_products: ["catalog_products_publication_pointer_fence", "catalog_publication_live_write", "catalog_products_lifecycle_projection_final"],
-    catalog_skus: ["catalog_skus_publication_facts_admitted", "catalog_publication_live_write", "catalog_skus_lifecycle_write_fence"],
-    catalog_sku_identifiers: ["catalog_publication_live_write"],
-    catalog_product_document_revisions: ["catalog_publication_live_write"],
-    catalog_publications: ["catalog_publications_issued", "catalog_publication_record_write_binding", "catalog_publications_open_draft"],
-    price_entries: ["catalog_publication_live_write"],
-    catalog_price_setup_receipts: ["catalog_publication_live_write"],
-    catalog_sku_revisions: ["catalog_sku_revisions_issued"],
-    catalog_operator_receipts: ["catalog_receipts_issued"],
-    catalog_publication_decisions: ["catalog_decisions_issued"],
-    catalog_publication_heads: ["catalog_heads_issued"],
-    // These guards retain final intervals and recompute the same definition digest.
-    subscription_price_policy_revisions: ["subscription_price_policy_revisions_00_guard_insert", "subscription_price_policy_revisions_10_prevent_overlap"],
-    commerce_promotion_definitions: ["commerce_promotion_definition_fingerprint_trigger"],
-    identity_privacy_erasures: ["tax_calculation_privacy_guard"],
-    tax_calculations: ["tax_calculation_guard"],
-    clients: ["customer_subject_capture_lifecycle_trigger"], subscription_cycles: ["trg_subscription_delivery_alignment_guard_cycle_insert"],
-    commerce_orders: ["trg_commerce_orders_line_sum"], commerce_order_items: ["trg_commerce_order_items_line_sum"],
-    commerce_order_holds: ["trg_fulfillment_emit_shipment_exception", "trg_subscription_delivery_alignment_exception_case"],
-    fulfillment_shipments: ["trg_subscription_delivery_alignment_on_delivery"],
-    // The guard only refuses fresh v2 commands, which an exact-current source cannot contain.
-    commerce_fulfillment_provider_commands: ["commerce_fulfillment_provider_command_destination_v2_guard"],
-    shipment_external_refs: ["trg_fulfillment_emit_shipment_reference_notice"],
-    outbox_events: ["channel_purchase_outbox_guard", "communication_event_source_guard"],
-    // The guard admits only classic inserts. The binder acts only on opt-in
-    // events, whose subscriptions are sized.v1 and refused before any writes.
-    subscriptions: ["subscriptions_configured_offer_guard"],
-    commerce_offer_policy_rollout_baselines: ["commerce_offer_policy_baseline_insert_guard"],
-    subscription_events: ["subscription_events_bind_sized_opt_in", "communication_subscription_subject", "subscription_events_catalog_final"],
-    subscription_edit_quotes: ["subscription_edit_quotes_catalog_final"],
-    subscription_quote_previews: ["subscription_quote_previews_catalog_final"],
-    commerce_order_draft_receipts: ["commerce_order_draft_receipts_catalog_final"],
-    subscription_renewal_terms: ["subscription_renewal_terms_catalog_acceptance_admit"],
-    subscription_renewal_operations: ["subscription_renewal_operations_catalog_acceptance_admit"],
-    commerce_order_operations: ["communication_refund_subject"],
-  };
+  const allowed = connectedStoreAllowedInsertTriggers;
   const actual = (await client.query<{ table: string; name: string }>(`SELECT c.relname AS table,t.tgname AS name FROM pg_catalog.pg_trigger t
     JOIN pg_catalog.pg_class c ON c.oid=t.tgrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
     WHERE n.nspname='public' AND NOT t.tgisinternal AND (t.tgtype & 4)<>0 AND t.tgenabled IN ('O','A')`)).rows;

@@ -250,7 +250,7 @@ it("capture_binding_refuses", async () => {
         { ...line, unitBasisMinor: edge, preDiscountMinor: edge, effectiveMinor: edge, netMinor: edge, lineTotalMinor: edge,
           taxPositions: line.taxPositions.map(position => ({ ...position, taxableMinor: edge })) },
       ] };
-    }, { restore: true, ...(edge === 1 ? {} : { limitMaxMinor: edge }) });
+    }, { restore: true, ...(edge === 1 ? {} : { paymentBounds: { minMinor: 1, maxMinor: edge } }) });
     expect(await read(store.runtime, f.id)).toMatchObject({ kind: "paid", money: { paidMinor: edge } });
     for (const delta of [-1, 1]) {
       await evidenceEdit(f, "amount_minor=$2", [edge + delta]);

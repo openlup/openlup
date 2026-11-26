@@ -13,6 +13,7 @@ import {
 import { persistCheckoutContinuation, readCheckoutContinuation } from "./checkoutNavigation";
 import { BffClientError } from "@/lib/bff/client";
 import { PSP_PROVIDER_KINDS } from "@/domains/payment/pspIntegrationPlan";
+import { PAYMENT_ATTEMPT_STATUSES, RETRYABLE_ATTEMPT_STATUSES } from "@/domains/payment/paymentControlTypes";
 import { CHECKOUT_PAYMENT_CONTINUATION_TTL_SECONDS } from "@/domains/commerce/paymentContinuationContracts";
 
 const { getCommercePaymentStatus } = vi.hoisted(() => ({
@@ -546,5 +547,150 @@ describe("a reload", () => {
 
     expect(markerAfter).toEqual(markerBefore);
     await expect(guard.resolvePendingResume(markerAfter!)).resolves.toEqual(decisionBefore);
+  });
+});
+
+/**
+ * Characterization of which provider counts as the open rail, when a retryable
+ * attempt status admits a new attempt, which embedded action may be reopened,
+ * and where a marker stops being true. Each case states what the code does today.
+ */
+describe("the open rail and the reopenable action", () => {
+  // Named by position, not by vendor: this is the guarded checkout core.
+  const FIRST = PSP_PROVIDER_KINDS[0];
+  const SECOND = PSP_PROVIDER_KINDS[1];
+  const ACTION_ISSUED = { ...PENDING, phase: "action_issued" } as const;
+  const SECOND_RAIL_ACTION = { ...EMBEDDED_ACTION, provider: SECOND } as const;
+
+  type Payment = { provider: string; attemptStatus: string | null };
+  const payment = ({ provider, attemptStatus }: Payment) => ({
+    intentStatus: "requires_action",
+    attemptStatus,
+    paymentAttemptId: "55555555-5555-4555-8555-555555555555",
+    provider,
+    providerPaymentId: "provider_payment",
+    updatedAt: "2099-01-01T00:00:00Z",
+  });
+  const withPayment = (nextAction: unknown, facts: Payment) =>
+    ({
+      kind: "active",
+      response: { nextAction, payment: payment(facts) },
+    }) as Parameters<typeof decidePendingResume>[1];
+  const statusRead = (nextAction: unknown, facts?: Payment) => ({
+    status: "requires_action",
+    nextAction,
+    ...(facts ? { payment: payment(facts) } : {}),
+  });
+
+  it("takes the open rail from the payment before the action", () => {
+    expect(decidePendingResume(
+      ACTION_ISSUED,
+      withPayment(EMBEDDED_ACTION, { provider: SECOND, attemptStatus: "sent_to_provider" }),
+      SECOND,
+    )).toEqual({ kind: "reopen_embedded", clientSecret: "pi_secret" });
+  });
+
+  it("falls back to the action's provider when the payment names an unlisted one", () => {
+    expect(decidePendingResume(
+      ACTION_ISSUED,
+      withPayment(EMBEDDED_ACTION, { provider: "unlisted_rail", attemptStatus: "sent_to_provider" }),
+      SECOND,
+    )).toEqual({ kind: "blocked_by_prior_attempt", provider: FIRST, clientSecret: "pi_secret" });
+  });
+
+  it.each(RETRYABLE_ATTEMPT_STATUSES)(
+    "does not block when the attempt status admits a new attempt: %s",
+    (attemptStatus) => {
+      expect(decidePendingResume(
+        ACTION_ISSUED,
+        withPayment(EMBEDDED_ACTION, { provider: FIRST, attemptStatus }),
+        SECOND,
+      )).toEqual({ kind: "reopen_embedded", clientSecret: "pi_secret" });
+    },
+  );
+
+  // Every enum status outside the retryable set, plus an absent one and one the
+  // enum does not know: the gate is fail-closed, so each of them blocks, a
+  // terminal `succeeded` included.
+  const NON_RETRYABLE_STATUSES: readonly (string | null)[] = [
+    ...PAYMENT_ATTEMPT_STATUSES.filter(
+      (status) => !(RETRYABLE_ATTEMPT_STATUSES as readonly string[]).includes(status),
+    ),
+    null,
+    "status_outside_the_enum",
+  ];
+
+  it.each(NON_RETRYABLE_STATUSES.map((status) => [String(status), status] as const))(
+    "blocks when the attempt status is not retryable or unknown: %s",
+    (_label, attemptStatus) => {
+      expect(decidePendingResume(
+        ACTION_ISSUED,
+        withPayment(EMBEDDED_ACTION, { provider: FIRST, attemptStatus }),
+        SECOND,
+      )).toEqual({ kind: "blocked_by_prior_attempt", provider: FIRST, clientSecret: "pi_secret" });
+    },
+  );
+
+  it("reopens only an embedded action of the reopenable provider", () => {
+    // The action names the second listed rail, so the embedded branch does not
+    // reopen it even with a secret and a matching marker; the phase decides.
+    expect(decidePendingResume(ACTION_ISSUED, active(SECOND_RAIL_ACTION)))
+      .toBe("no_action_keep_marker");
+    expect(decidePendingResume({ ...PENDING, phase: "confirm_dispatched" }, active(SECOND_RAIL_ACTION)))
+      .toBe("wait_on_status");
+  });
+
+  it("forwards the selection through resolvePendingResume and blocks", async () => {
+    getCommercePaymentStatus.mockReset();
+    getCommercePaymentStatus.mockResolvedValue({ status: "requires_action", nextAction: EMBEDDED_ACTION });
+
+    await expect(resolvePendingResume(ACTION_ISSUED, SECOND)).resolves.toEqual({
+      kind: "blocked_by_prior_attempt",
+      provider: FIRST,
+      clientSecret: "pi_secret",
+    });
+  });
+
+  it("lets a retryable attempt status through resolvePendingResume", async () => {
+    // The same answer the decision gives, reached through the status read: the
+    // attempt status on the response is what admits the buyer's other rail.
+    getCommercePaymentStatus.mockReset();
+    getCommercePaymentStatus.mockResolvedValue(statusRead(
+      EMBEDDED_ACTION,
+      { provider: FIRST, attemptStatus: RETRYABLE_ATTEMPT_STATUSES[0] },
+    ));
+
+    await expect(resolvePendingResume(ACTION_ISSUED, SECOND)).resolves.toEqual({
+      kind: "reopen_embedded",
+      clientSecret: "pi_secret",
+    });
+  });
+
+  it("reads the payment's provider through resolvePendingResume", async () => {
+    // Without the payment the open rail is unknown for a redirect, which does not
+    // name its provider, and the answer would be `follow_redirect`.
+    getCommercePaymentStatus.mockReset();
+    getCommercePaymentStatus.mockResolvedValue(statusRead(
+      { kind: "redirect", url: "https://payments.example/continue" },
+      { provider: FIRST, attemptStatus: "sent_to_provider" },
+    ));
+
+    await expect(
+      resolvePendingResume({ ...ACTION_ISSUED, actionKind: "redirect" }, SECOND),
+    ).resolves.toEqual({ kind: "blocked_by_prior_attempt", provider: FIRST, clientSecret: null });
+  });
+
+  it("expires at the stamped second when resolved", async () => {
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    getCommercePaymentStatus.mockReset();
+    getCommercePaymentStatus.mockResolvedValue({ status: "processing" });
+
+    await expect(resolvePendingResume({ ...PENDING, expiresAt: nowSeconds }))
+      .resolves.toBe("no_action_keep_marker");
+    expect(getCommercePaymentStatus).not.toHaveBeenCalled();
+
+    await expect(resolvePendingResume({ ...PENDING, expiresAt: nowSeconds + 1 }))
+      .resolves.toBe("wait_on_status");
+    expect(getCommercePaymentStatus).toHaveBeenCalledTimes(1);
   });
 });

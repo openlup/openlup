@@ -3,16 +3,18 @@ import { copyFile, mkdir, readFile, writeFile, access } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
+import { env } from 'node:process';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { readStarterDiagnostic, starterDiagnostic } from './shared/refusals.ts';
 import { seedPhysicalGuidance } from './shared/seed-physical.ts';
 import { applicationHealthcheck } from './host/healthcheck.ts';
 import { browserJourneyGroups } from './browser-groups.mjs';
-import { starterGuidance, starterRefusals } from './lifecycle-refusals.mjs';
+import { catalogueApplyFix, catalogueApplyRefusal, isSkuLocalPriceRefusal, localPortFix, operatorChallengeGuidance, repriceRecovery, starterGuidance, starterRefusals } from './lifecycle-refusals.mjs';
 import { installationFailure, installationFinding, installationReport, refusal } from './installation/refusals.ts';
 
 const root = dirname(fileURLToPath(import.meta.url));
-const [command, ...args] = process.argv.slice(2);
+const npmSilent = process.argv[2] === '--npm-silent';
+const [command, ...args] = process.argv.slice(npmSilent ? 3 : 2);
 const packageNames = ['core', 'outbox', 'platform'];
 const installationHintLimit = 240;
 const json = args.includes('--json');
@@ -58,6 +60,7 @@ const argumentObserved = {
   starter_argument_unknown: 'The lifecycle command received an unsupported option.',
   starter_argument_duplicate: 'The lifecycle command received the same option more than once.',
   starter_argument_value_required: 'The configuration option has no value.',
+  starter_port_invalid: 'The lifecycle command received an invalid OPENLUP_STARTER_PORT.',
 };
 function physicalFinding(error) {
   const diagnostic = readStarterDiagnostic(error);
@@ -78,6 +81,9 @@ function commandRefusal(error, stage, allowLegacy = false) {
   const prerequisite = stage === '/installation' ? 'demonstration installation' : 'selected configuration';
   const { cause = `The ${prerequisite} failed a starter prerequisite.`, fix, recheck } = guidance;
   const observed = Object.hasOwn(argumentObserved, code) ? argumentObserved[code] : `The starter refused the ${prerequisite}.`;
+  if (command === 'up' && stage === '/arguments' && code === 'starter_port_invalid')
+    return installationFinding(refusal(code, stage, observed, 'The local starter requires a supported listener port.',
+      `${localPortFix} Run \`./lifecycle up\` again.`));
   return installationFinding(refusal(code, diagnostic?.guidance?.path ?? stage, observed, cause,
     command === 'refusals' ? 'Use `./lifecycle refusals` with at most one `--json` option.' : diagnostic?.guidance?.fix ?? fix,
     command === 'refusals' ? 'Repeat the refusals command with the corrected options.' : recheck));
@@ -161,18 +167,36 @@ if (command === 'refusals') {
   }, null, 2) + '\n');
   run('npm', ['install', '--package-lock-only', '--ignore-scripts']);
   process.stdout.write('next: npm ci\n');
+} else if (command === 'catalogue') {
+  const report = await catalogueApply(args);
+  if (json) await emit(report);
+  else {
+    process.exitCode = report.exitCode;
+    if (report.receipts.length) await new Promise((done, fail) => {
+      const observations = report.receipts.map(receipt => JSON.stringify(receipt) + '\n').join('');
+      process.stdout.write(observations, error => error ? fail(error) : done());
+    });
+    for (const finding of report.findings) {
+      const subject = finding.subject === undefined ? '' : `Subject: ${safePrompt(String(finding.subject))}\n`;
+      process.stderr.write(`${finding.code}\n${subject}Observed: ${safePrompt(finding.observed)}\nCause: ${finding.cause}\nFix: ${finding.fix}\nRecheck: ${finding.recheck}\n`);
+    }
+  }
 } else if (command === 'up') {
   let configuration = '', packs = [], stage = '/arguments';
   let final;
   try {
     const selected = lifecycleOptions(args);
+    const { assertConfig, isConfigurationId, parseStarterPort } = await import('./shared/config.ts');
     stage = '/configuration';
     const owner = await import('./owned/store.config.ts');
-    const { assertConfig, isConfigurationId } = await import('./shared/config.ts');
     const config = ownedConfiguration(owner, selected);
     if (json && !isConfigurationId(config.id)) throw starterDiagnostic('starter_configuration_invalid');
     configuration = config.id;
     assertConfig(config);
+    stage = '/arguments';
+    const port = parseStarterPort(env.OPENLUP_STARTER_PORT || undefined, config.publicOrigin === undefined);
+    // Give each Compose subprocess the same listener port, ahead of any .env value.
+    env.OPENLUP_STARTER_PORT = String(port);
     stage = '/installation';
     run('docker', ['compose', 'build'], undefined, json);
     run('docker', ['compose', 'up', '--wait', 'database'], undefined, json);
@@ -191,11 +215,11 @@ if (command === 'refusals') {
       // Install and runtime receive the same non-secret configuration through arguments.
       const override = { services: { application: { command: [
         'node', '--experimental-strip-types', 'lifecycle.mjs', 'serve-demo',
-        '--configuration', config.id, '--port', '4319', '--listen', '0.0.0.0',
+        '--configuration', config.id, '--port', String(port), '--listen', '0.0.0.0',
         '--database-url', 'postgresql://starter_runtime@database:5432/neutral_store',
         '--catalogue-publication-password-file', '/application/.context/catalogue-builds/.publication-password',
       ] } } };
-      const healthcheck = applicationHealthcheck(config.publicOrigin);
+      const healthcheck = applicationHealthcheck(config.publicOrigin, port);
       if (healthcheck) override.services.application.healthcheck = healthcheck;
       run('docker', ['compose', '-f', 'compose.yaml', '-f', '-', 'up', '--wait', 'application'], JSON.stringify(override), json);
       final = installReport(configuration, packs);
@@ -326,8 +350,429 @@ if (command === 'refusals') {
 } else if (command === 'ownership') {
   process.stdout.write(await readFile(resolve(root, 'ownership.json'), 'utf8'));
 } else {
-  process.stderr.write('Usage: ./lifecycle candidate <core.tgz> <outbox.tgz> <platform.tgz> | up [--configuration <id>] [--json] | refusals [--json] | browser [Playwright selection flags] | checkout-recovery --configuration <id> --database-url <runtime-url> | care --configuration <id> --database-url <runtime-url> | renewal --configuration <id> --database-url <runtime-url> | down | verify | upgrade <args> | ownership\n');
+  process.stderr.write('Usage: ./lifecycle candidate <core.tgz> <outbox.tgz> <platform.tgz> | up [--configuration <id>] [--json] | catalogue apply [--configuration <id>] [--prepare-only | --copy | --reprice] [--json] | refusals [--json] | browser [Playwright selection flags] | checkout-recovery --configuration <id> --database-url <runtime-url> | care --configuration <id> --database-url <runtime-url> | renewal --configuration <id> --database-url <runtime-url> | down | verify | upgrade <args> | ownership\n');
   process.exitCode = 2;
+}
+
+function safePrompt(value) {
+  return value.replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, ' ');
+}
+
+async function catalogueApply(argv) {
+  const receipts = [], refusals = [];
+  let terminal, invocation, repriceStarted, recovery, freshReprice;
+  let activity = 'catalogue apply';
+  let path = '/arguments';
+  const unavailable = 'OPENLUP_E_CATALOGUE_APPLY_UNAVAILABLE';
+  const deny = (code, details = {}, cause, hostCode) => {
+    throw Object.assign(catalogueApplyRefusal({ code, path, ...details }, cause), { hostCode });
+  };
+  const refusalFinding = (error, subject) => error?.finding ?? catalogueApplyRefusal({
+    code: readStarterDiagnostic(error)?.code ?? unavailable, path, subject }, error).finding;
+  const report = failure => {
+    if (failure) refusals.push(failure);
+    const findings = refusals.map(finding => {
+      const cause = finding.code === 'starter_catalogue_reprice_readback_unverified'
+        ? finding.reason && catalogueApplyRefusal({ code: finding.reason, path: finding.path }).finding : finding;
+      const fix = cause && catalogueApplyFix(cause, { activity, invocation, freshReprice, repriceStarted });
+      if (repriceStarted) return { ...finding, fix: fix ? `${fix} ${recovery}` : recovery,
+        recheck: 'Check the default report for the entry and subscription figure.' };
+      return { ...finding, fix };
+    });
+    return { formatVersion: 1, command: 'catalogue apply', state: findings.length ? 'violated' : 'satisfied',
+      exitCode: findings.length ? 2 : 0, receipts, findings };
+  };
+  try {
+    const [verb, ...options] = argv;
+    const modes = options.filter(option => ['--prepare-only', '--copy', '--reprice'].includes(option));
+    if (verb !== 'apply' || modes.length > 1) deny('starter_argument_unknown');
+    const [mode] = modes;
+    const sharedFlags = options.filter(option => option !== mode);
+    const { assertConfig, parseStarterPort } = await import('./shared/config.ts');
+    const config = ownedConfiguration(await import('./owned/store.config.ts'), lifecycleOptions(sharedFlags));
+    assertConfig(config);
+    const port = parseStarterPort(env.OPENLUP_STARTER_PORT || undefined, config.publicOrigin === undefined);
+    const npmApply = npmSilent ? 'npm run --silent catalogue:apply' : 'npm run catalogue:apply';
+    const applyCommand = flags => [npmApply, ...(flags.length ? ['--', ...flags.map(flag =>
+      /^[a-z0-9_-]+$/iu.test(flag) ? flag : "'" + flag.replaceAll("'", "'\\''") + "'")] : [])].join(' ');
+    invocation = applyCommand(options);
+    if (mode === '--copy') activity = 'presentation copy';
+    if (mode === '--reprice') activity = '--reprice';
+    freshReprice = mode === '--reprice' ? invocation : applyCommand([...sharedFlags, '--reprice']);
+    recovery = repriceRecovery(applyCommand(sharedFlags), freshReprice);
+    const [owned, { buildCatalogReleaseDraftV3 }, { canonicalCatalogDraftJson }, pricing, { mapStarterPresentation }, { digestStarterMedia }] = await Promise.all([
+      import('./owned/catalogue.ts'), import('@openlup/platform/catalog'), import('@openlup/platform/catalog/contracts'),
+      import('@openlup/platform/pricing'), import('./shared/catalogue-presentation.ts'), import('./host/catalogue-media.ts'),
+    ]);
+    const hash = value => createHash('sha256').update(canonicalCatalogDraftJson(value)).digest('hex');
+    const same = (left, right) => canonicalCatalogDraftJson(left) === canonicalCatalogDraftJson(right);
+    const uuid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/u;
+    path = 'catalogueProduct';
+    if (!Object.hasOwn(owned, 'catalogueProduct')) deny('OPENLUP_E_CATALOGUE_PRODUCT_REQUIRED');
+    const { draftId, product, basePrices, copyPresentation } = JSON.parse(canonicalCatalogDraftJson(owned.catalogueProduct));
+    if (typeof draftId !== 'string' || !uuid.test(draftId)) deny('starter_input_invalid', { path: 'draftId' });
+    const { release, activation } = buildCatalogReleaseDraftV3(product);
+    const skus = release.payload.skus;
+    const productId = release.payload.product.id;
+    const presentation = mapStarterPresentation(release.payload.product.sharedContent.presentation);
+    const copy = mode === '--copy' ? mapStarterPresentation(copyPresentation) : undefined;
+    if (!presentation || (mode === '--copy' && !copy))
+      deny('starter_catalogue_presentation_invalid', { path: mode === '--copy' ? 'copyPresentation' : 'product.presentation' });
+    async function bindMedia(payload, mediaRef, path) {
+      if (!mediaRef) { delete payload.publication.evidence.media; return; }
+      const revisionDigest = await digestStarterMedia(mediaRef);
+      if (!revisionDigest) deny(revisionDigest === null ? 'catalog_publication_media_validation_unavailable' : 'starter_catalogue_media_invalid', { path });
+      payload.publication.evidence.media = payload.skus.map(({ code, assetRefs }) => ({
+        skuCode: code, mediaRef, assetRefs: assetRefs ?? [], revisionDigest,
+      }));
+    }
+    if (presentation.media) {
+      await bindMedia(activation.payload, presentation.media, 'product.presentation.mediaRef');
+      activation.digest = hash(activation.payload);
+    }
+    path = 'basePrices';
+    if (!basePrices || typeof basePrices !== 'object' || Array.isArray(basePrices)
+      || Object.keys(basePrices).length !== skus.length || !skus.every(({ code }) => Object.hasOwn(basePrices, code)))
+      deny('OPENLUP_E_CATALOGUE_BASE_PRICES_MISMATCH');
+    for (const { code } of skus) {
+      const amount = basePrices[code];
+      if (!Number.isInteger(amount) || amount < 1 || amount > pricing.CATALOG_PRICE_SETUP_MAX_MINOR)
+        deny('starter_catalogue_price_invalid', { subject: code });
+    }
+    const stages = ['release', 'activation', 'copy'];
+    function makeStage(stage, artifact, head) {
+      const index = stages.indexOf(stage);
+      const save = { action: index === 0 ? 'create' : 'revise', draftId, expectedRevision: index, payload: artifact.payload };
+      if (Buffer.byteLength(JSON.stringify(save)) > 65_536) deny('starter_catalogue_save_too_large', { path: `${stage}.save` });
+      return { stage, revision: index + 1, save, head, saveKey: hash([stage, 'save', draftId, index, artifact.digest]),
+        key: action => hash([stage, action, draftId, artifact.digest, head]) };
+    }
+    const first = makeStage('release', release, null);
+    makeStage('activation', activation, null);
+    if (!process.stdin.isTTY || !process.stderr.isTTY) deny('OPENLUP_E_CATALOGUE_TERMINAL_REQUIRED', { path: '/terminal' });
+    const origin = config.publicOrigin ?? `http://127.0.0.1:${port}`;
+    let cookie, expiresAt, operator;
+    async function request(operation, body, key = hash([operation, body]), sessionCookie, sku) {
+      const unavailableCodes = ['host_binding_required', 'starter_dependency_unavailable', 'starter_operation_unknown',
+        'price_setup_dependency_unavailable', 'store_unavailable'];
+      let response, result;
+      try {
+        if (mode === '--reprice' && operation === 'operator.catalogPublication' && body.action === 'price-apply')
+          repriceStarted = true;
+        response = await fetch(new URL(`/api/actions/${operation}`, origin), { method: 'POST', redirect: 'error',
+          headers: { Origin: origin, 'X-Starter-Request': '1', 'Content-Type': 'application/json', 'Idempotency-Key': key,
+            ...(sessionCookie ? { Cookie: sessionCookie } : {}) }, body: JSON.stringify(body) });
+        result = await response.json();
+      } catch (error) { deny(unavailable, { subject: sku }, error); }
+      if (result?.ok === true && response.ok) return { value: result.value, cookie: response.headers.get('set-cookie') };
+      const code = result?.code;
+      const guidance = ['observed', 'cause', 'fix', 'recheck'].every(field => typeof result?.[field] === 'string') ? result : undefined;
+      const details = { ...(result?.path && { path: result.path }), subject: sku ?? result?.subject, reason: result?.reason ?? (sku && code),
+        issues: result?.issues, message: result?.message, guidance };
+      deny(typeof code === 'string' && !unavailableCodes.includes(code) ? code : unavailable, details,
+        undefined, typeof code === 'string' ? code : undefined);
+    }
+    path = 'catalogue.demoTarget';
+    const { value: demo } = await request('catalogue.demoTarget', {});
+    if (!demo?.marked || demo.configurationId !== config.id) deny('starter_seed_demonstration_database_required');
+    const [{ createInterface }, { Writable }] = await Promise.all([import('node:readline/promises'), import('node:stream')]);
+    let privateInput = false;
+    const output = new Writable({ write(chunk, _encoding, done) {
+      if (privateInput) done();
+      else process.stderr.write(chunk, done);
+    } });
+    terminal = createInterface({ input: process.stdin, output, terminal: true, historySize: 0 });
+    const stopped = new AbortController();
+    terminal.on('close', () => stopped.abort());
+    async function ask(prompt, hidden = false) {
+      privateInput = hidden;
+      if (hidden) process.stderr.write(prompt);
+      try { return await terminal.question(hidden ? '' : prompt, { signal: stopped.signal }); }
+      catch { deny(path === 'auth.operator' ? 'starter_catalogue_sign_in_incomplete' : 'OPENLUP_E_CATALOGUE_CONFIRMATION_INVALID'); }
+      finally {
+        privateInput = false;
+        if (hidden) process.stderr.write('\n');
+      }
+    }
+    async function signIn() {
+      const priorPath = path;
+      path = 'auth.operator';
+      const email = await ask(`Email for the active administrator account or current invitation (configured currency ${config.market.currency}): `);
+      await request('auth.operator', { email }, hash(['challenge', Date.now()]));
+      process.stderr.write(`${operatorChallengeGuidance}\n`);
+      const token = await ask('Operator token (hidden): ', true);
+      const login = await request('auth.operator', { token }, hash(['redeem', Date.now()]));
+      const nextCookie = login.cookie?.split(';', 1)[0];
+      const nextExpiry = Date.parse(login.value?.expiresAt);
+      if (!/^starter_session=[A-Za-z0-9_-]{43}$/u.test(nextCookie ?? '') || !Number.isFinite(nextExpiry)) deny(unavailable);
+      path = 'price-target';
+      const { value } = await request('operator.catalogPublication', { action: 'price-target' }, undefined, nextCookie);
+      if (operator && operator.actorId !== value.actorId) deny('operator_required');
+      if (operator && mode === '--reprice' && operator.priceListId !== value.priceListId)
+        deny('starter_catalogue_reprice_review_required');
+      if (operator && mode !== '--reprice' && !same(operator, value)) deny('starter_catalogue_d2c_policy_required');
+      operator ??= value;
+      cookie = nextCookie;
+      expiresAt = nextExpiry;
+      path = priorPath;
+    }
+    async function action(operation, body, key, sku) {
+      if (Date.now() >= expiresAt) await signIn();
+      return (await request(operation, body, key, cookie, sku)).value;
+    }
+    const publish = (body, key, sku) => action('operator.catalogPublication', body, key, sku);
+    const drafts = (body, key) => action('operator.catalogDrafts', body, key);
+    await signIn();
+    const { currency, priceListId, policy, actorId } = operator;
+    const positivePrice = code => pricing.deriveSubscriptionUnitPrice(basePrices[code], policy) > 0;
+    function requirePositivePrices() {
+      path = 'basePrices';
+      for (const { code } of skus)
+        if (!positivePrice(code)) deny('starter_catalogue_derived_price_zero', { subject: code });
+    }
+    const prices = [];
+    const record = (stage, outcome, draftRevision, head, items = prices) => receipts.push({ stage, outcome, productId, draftId,
+      draftRevision, head, currency, prices: [...items] });
+    function verifyDraft(saved, step) {
+      if (!saved || saved.draftId !== draftId || saved.productId !== productId || saved.revision !== step.revision
+        || saved.actorId !== actorId || saved.commandKey !== step.saveKey || !same(saved.payload, step.save.payload))
+        deny('publication_draft_advanced');
+    }
+    function requireIssuer(receipt) {
+      if (receipt.actorId !== actorId) deny('starter_catalogue_publication_actor_mismatch');
+    }
+    async function issued(step, receipt, verifyIssuer = true) {
+      if (!uuid.test(receipt.actorId ?? '') || receipt.productId !== productId || receipt.commandKey !== step.key('publish')
+        || !same(receipt.previousHead, step.head) || receipt.head.revision !== step.revision
+        || receipt.head.documentDigest !== step.save.payload.product.documentRevision.digest) deny('catalog_publication_receipt_invalid');
+      const exact = await publish({ action: 'exact', head: receipt.head });
+      if (exact.product?.id !== productId || !same(exact.head, receipt.head)) deny('catalog_publication_receipt_invalid');
+      if (verifyIssuer) requireIssuer(receipt);
+      return receipt.head;
+    }
+    async function lookup(step, verifyIssuer = true) {
+      path = `${step.stage}.publish`;
+      const result = await publish({ action: 'receipt', productId, commandKey: step.key('publish') });
+      if (result.outcome !== 'found') return null;
+      const head = await issued(step, result.receipt, verifyIssuer);
+      record(path, 'observed', step.revision, head);
+      return result.receipt;
+    }
+    async function runStage(step, observed, prepareOnly = false) {
+      const { stage, revision, head, save, saveKey, key } = step;
+      const note = (name, outcome, next = head) => record(`${stage}.${name}`, outcome, revision, next);
+      path = `${stage}.save`;
+      if (prepareOnly && !observed) process.stderr.write('Save + Prepare writes a catalogue draft.\n');
+      const result = await drafts(save, saveKey);
+      verifyDraft(result.record, step);
+      note('save', result.outcome);
+      if (observed) return observed;
+      path = `${stage}.prepare`;
+      const prepared = await drafts({ action: 'prepare', draftId, expectedRevision: revision, expectedHead: head });
+      const { candidateRef, candidateDigest, preparation, impact } = prepared;
+      if (!same(prepared.expectedHead, head)) deny('head_conflict');
+      if (!preparation?.postStateDigest || impact?.productId !== productId) {
+        const issues = preparation?.structural?.issues ?? prepared.issues;
+        deny(issues?.[0]?.code ?? 'publication_preparation_unavailable', { ...issues?.[0], issues });
+      }
+      note('prepare', 'observed');
+      if (prepareOnly) return null;
+      path = `${stage}.approve`;
+      const display = stage === 'copy' ? copy : presentation;
+      const shownPrices = prices.length ? prices : skus.map(({ code, id: skuId }) => ({ code, skuId, unitPriceMinor: basePrices[code], currency }));
+      const effect = { release: 'Release the product and its draft SKUs', activation: 'Activate the priced product and SKUs', copy: 'Publish presentation only' };
+      const context = { product: display.title, productId, draftId, revision, expectedHead: head, currency,
+        [prices.length ? 'confirmedPrices' : 'plannedPrices']: shownPrices };
+      if (await ask(`${effect[stage]}.\n${safePrompt(JSON.stringify(context))}\nType approve: `) !== 'approve')
+        deny('OPENLUP_E_CATALOGUE_CONFIRMATION_INVALID');
+      const candidate = { productId: impact.productId, candidateRef, candidateDigest };
+      const decision = await publish({ action: 'approve', ...candidate, postStateDigest: preparation.postStateDigest }, key('approve'));
+      const decisionReceipt = decision.receipt;
+      if (decisionReceipt?.actorId !== actorId || decisionReceipt.productId !== productId
+        || decisionReceipt.candidateRef !== candidateRef || decisionReceipt.commandKey !== key('approve')
+        || decisionReceipt.candidateDigest !== candidateDigest || decisionReceipt.postStateDigest !== preparation.postStateDigest)
+        deny('catalog_publication_receipt_invalid');
+      note('approve', decision.outcome);
+      path = `${stage}.publish`;
+      const body = { action: 'publish', ...candidate, expectedHead: head, changes: [] };
+      const resultOfPublish = await publish(body, key('publish'));
+      const next = await issued(step, resultOfPublish.receipt);
+      note('publish', resultOfPublish.outcome, next);
+      return next;
+    }
+    async function pricePreview(variantId, code, unitPriceMinor) {
+      path = 'basePrices';
+      const { listEffective, priceSetup } = await publish({ action: 'price-preview', variantId, priceListId,
+        ...(unitPriceMinor !== undefined && { unitPriceMinor }) }, undefined, code);
+      if (listEffective === false) deny(mode === '--reprice' && !repriceStarted
+        ? 'starter_catalogue_reprice_review_required' : 'price_list_not_active', { subject: code });
+      if (listEffective !== true || typeof priceSetup?.hasPending !== 'boolean') deny(unavailable, { subject: code });
+      const { subscription } = priceSetup;
+      if (subscription?.kind !== 'derived' || subscription.revisionId !== policy.revisionId)
+        deny('starter_catalogue_d2c_policy_required', { subject: code });
+      if (priceSetup.hasPending) deny('starter_catalogue_price_scheduled', { subject: code });
+      return priceSetup;
+    }
+    async function preview(sku) {
+      const { code } = sku;
+      const priceSetup = await pricePreview(sku.id, code);
+      const unitPriceMinor = basePrices[code];
+      if (priceSetup.currentCount > 1 || (priceSetup.current && priceSetup.current.unitPriceMinor !== unitPriceMinor))
+        deny('expected_state_mismatch', { subject: code });
+      return priceSetup.current;
+    }
+    function amountPreviewRefusal(error, subject) {
+      const reason = error.finding?.code;
+      const code = reason === 'price_list_not_active' ? 'starter_catalogue_reprice_review_required'
+        : reason === 'expected_state_mismatch' ? 'starter_catalogue_price_scheduled' : undefined;
+      if (!code) throw error;
+      deny(code, { subject, reason: error.finding.reason ?? reason, issues: error.finding.issues });
+    }
+    function subscriptionFigure(subscription) {
+      if (subscription?.kind === 'derived' && subscription.revisionId && subscription.derivedUnitPriceMinor > 0)
+        return { policyRevisionId: subscription.revisionId, subscriptionUnitPriceMinor: subscription.derivedUnitPriceMinor };
+    }
+    async function reviewPublishedPrices(active) {
+      const changes = [];
+      for (const { id: skuId, code } of skus) {
+        try {
+          const declared = basePrices[code];
+          let reviewed = await pricePreview(skuId, code);
+          if (reviewed.currentCount > 1) deny('base_price_ambiguous', { subject: code });
+          if (!reviewed.current) deny('starter_catalogue_reprice_base_missing', { subject: code });
+          if (mode === '--reprice' && reviewed.current.unitPriceMinor !== declared) {
+            if (!positivePrice(code)) deny('starter_catalogue_derived_price_zero', { subject: code });
+            reviewed = await pricePreview(skuId, code, declared).catch(error => amountPreviewRefusal(error, code));
+          }
+          const { current, subscription } = reviewed;
+          if (reviewed.currentCount > 1) deny('base_price_ambiguous', { subject: code });
+          if (!current) deny('starter_catalogue_reprice_base_missing', { subject: code });
+          const { entryId, unitPriceMinor } = current;
+          if (unitPriceMinor === declared) {
+            const figure = subscriptionFigure(subscription);
+            if (!figure) deny('starter_catalogue_derived_price_zero', { subject: code });
+            const item = { skuId, entryId, unitPriceMinor, currency, ...figure };
+            prices.push(item);
+            record('price.apply', 'observed', 2, active, [item]);
+            continue;
+          }
+          if (!reviewed.inGate) deny('starter_catalogue_reprice_requires_active', { subject: code });
+          const estimate = amount => pricing.deriveSubscriptionUnitPrice(amount, { ...subscription, roundingRule: 'FLOOR_TO_QUANTUM' });
+          changes.push({ code, skuId, from: { entryId, unitPriceMinor }, to: { unitPriceMinor: declared },
+            subscriptionEstimate: { from: estimate(unitPriceMinor), to: estimate(declared) } });
+        } catch (error) {
+          const finding = { ...refusalFinding(error), subject: code };
+          refusals.push(finding);
+          // A refresh failure belongs to sign-in or target verification, even if it occurs between SKUs.
+          if (path !== 'basePrices' || !isSkuLocalPriceRefusal(finding.code)) break;
+        }
+      }
+      if (mode !== '--reprice' || refusals.length) {
+        for (const { code } of changes)
+          refusals.push(catalogueApplyRefusal({ path: 'basePrices', subject: code, code: positivePrice(code)
+            ? 'starter_catalogue_reprice_required' : 'starter_catalogue_derived_price_zero' }).finding);
+      }
+      return changes;
+    }
+    async function reprice(changes, active) {
+      if (!changes.length) { process.stderr.write('No price changes.\n'); return; }
+      const proposal = { product: presentation.title, productId, currency, changes };
+      if (await ask(`Change live base prices.\n${safePrompt(JSON.stringify(proposal))}\nSubscription figures are estimates under the policy effective now. Approval covers the base amounts only.\nType approve: `) !== 'approve')
+        deny('OPENLUP_E_CATALOGUE_CONFIRMATION_INVALID');
+      for (const { code, skuId, from: expected, to: { unitPriceMinor } } of changes) {
+        path = 'basePrices';
+        const result = await publish({ action: 'price-apply', variantId: skuId, priceListId,
+          policyRevisionId: policy.revisionId, unitPriceMinor, expected },
+          hash(['reprice', actorId, priceListId, skuId, unitPriceMinor, expected]), code);
+        const { current, previous } = result.receipt;
+        const item = { skuId, entryId: current.entryId, unitPriceMinor: current.unitPriceMinor, currency: result.currency,
+          previous: { entryId: previous.entryId, unitPriceMinor: previous.unitPriceMinor } };
+        record('price.reprice', result.outcome, 2, active, [item]);
+        let figure, reason, issues;
+        try {
+          const priceSetup = await pricePreview(skuId, code);
+          if (priceSetup.currentCount === 1 && priceSetup.current?.entryId === item.entryId
+            && priceSetup.current.unitPriceMinor === item.unitPriceMinor)
+            figure = subscriptionFigure(priceSetup.subscription);
+        } catch (error) {
+          const finding = refusalFinding(error);
+          reason = error?.hostCode ?? finding.code;
+          issues = finding.issues;
+        }
+        if (!figure) deny('starter_catalogue_reprice_readback_unverified',
+          { path: 'basePrices', subject: code, reason, issues });
+        Object.assign(item, figure);
+      }
+    }
+    async function requireHead(expected) {
+      const current = await publish({ action: 'current', productId });
+      if (!same(current.head ?? null, expected)) deny('head_conflict', { path: 'expectedHead' });
+    }
+    async function verifyPublished(active) {
+      if (!mode) activity = 'read-only verification';
+      const changes = await reviewPublishedPrices(active);
+      if (mode === '--reprice' && !refusals.length) await reprice(changes, active);
+      return report();
+    }
+    const verifyIssuer = mode === '--copy' || mode === '--prepare-only';
+    const releaseReceipt = await lookup(first, verifyIssuer);
+    const released = releaseReceipt?.head ?? null;
+    const activationStep = released && mode !== '--prepare-only' ? makeStage('activation', activation, released) : null;
+    const active = activationStep ? (await lookup(activationStep, verifyIssuer))?.head ?? null : null;
+    if (mode === '--reprice' && !active) deny('starter_catalogue_copy_requires_published');
+    if (active && !verifyIssuer) return await verifyPublished(active);
+    if (mode === '--copy') {
+      if (!active) deny('starter_catalogue_copy_requires_published');
+      const { record: saved } = await drafts({ action: 'get', draftId, revision: 2 });
+      verifyDraft(saved, activationStep);
+      const payload = saved.payload;
+      if (same(payload.product.sharedContent.presentation, copyPresentation)) deny('starter_catalogue_copy_unchanged', { path: 'copyPresentation' });
+      Object.assign(payload.product.sharedContent, { catalogAction: 'revise', presentation: copyPresentation });
+      payload.publication.operations = [{ op: 'set_product_presentation', productSlug: payload.product.slug, presentation: copyPresentation }];
+      await bindMedia(payload, copy.media, 'copyPresentation.mediaRef');
+      const third = makeStage('copy', { payload, digest: hash(payload) }, active);
+      const copied = (await lookup(third))?.head ?? null;
+      await requireHead(copied ?? active);
+      await reviewPublishedPrices(active);
+      if (!refusals.length) await runStage(third, copied);
+    } else {
+      requirePositivePrices();
+      if (releaseReceipt) { path = 'release.publish'; requireIssuer(releaseReceipt); }
+      if (!released) await requireHead(null);
+      const head = await runStage(first, released, mode === '--prepare-only');
+      if (mode === '--prepare-only') return report();
+      const second = activationStep ?? makeStage('activation', activation, head);
+      if (!activationStep) {
+        const concurrent = await lookup(second, false);
+        if (concurrent) return await verifyPublished(concurrent.head);
+      }
+      path = 'activation.publish';
+      await requireHead(head);
+      for (const sku of skus) await preview(sku);
+      for (const { id: variantId, code } of skus) {
+        path = 'basePrices';
+        const unitPriceMinor = basePrices[code];
+        const result = await publish({ action: 'price-apply', variantId, priceListId, policyRevisionId: policy.revisionId, unitPriceMinor },
+          hash(['initial-base', priceListId, variantId, unitPriceMinor, null]), code);
+        const entry = result.receipt?.current;
+        if (result.currency !== currency || typeof entry?.entryId !== 'string' || entry.unitPriceMinor !== unitPriceMinor)
+          deny('expected_state_mismatch', { subject: code });
+        const item = { skuId: variantId, entryId: entry.entryId, unitPriceMinor, currency };
+        record('price.apply', result.outcome, 1, head, [...prices, item]);
+        if (!same(entry, await preview({ id: variantId, code }))) deny('expected_state_mismatch', { subject: code });
+        prices.push(item);
+      }
+      await runStage(second, null);
+    }
+    return report();
+  } catch (error) {
+    if (error?.finding) return report(error.finding);
+    if (error?.code === 'release_draft_invalid') {
+      const [observed, cause, fix, recheck] = error.message.split('\n').map(line => line.slice(line.indexOf(': ') + 2));
+      return report({ code: error.code, path: error.path, observed, cause, fix, recheck });
+    }
+    return report(refusalFinding(error));
+  } finally { terminal?.close(); }
 }
 
 /** Disposable installed-PostgreSQL recipe; never a production or customer database. */

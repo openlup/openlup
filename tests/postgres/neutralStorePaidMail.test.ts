@@ -337,12 +337,15 @@ async function realPurchase(directory: string, owned: StoreConfig): Promise<stri
     const context=()=>({config,commandKey:randomUUID(),actor:{customerRef:null,operatorRef:null,
       requesterKey:createHash('sha256').update(randomUUID()).digest('hex'),requestOrigin:'http://localhost:4319'}});
     try {
-      const created=await dispatchAction(bindings,'checkout.create',{
+      const input={
         locale:'en',email:randomUUID()+'@example.test',configuration:config.id,country:config.market.country,
         termsAccepted:true,termsRevision:config.legal.revision,firstName:'Example',lastName:'Buyer',
         phone:'000000000',line1:'1 Example Lane',city:'Example City',postalCode:'00000',
         cart:{schemaVersion:1,configuration:config.id,mode:'one_time',cadenceDays:null,
-          lines:[{sku:config.offer.products[0].sku,quantity:1}]}},context());
+          lines:[{sku:config.offer.products[0].sku,quantity:1}]}};
+      const reviewed=await dispatchAction(bindings,'offer.validate',input,context());
+      if(!reviewed.ok) throw new Error('paid_mail_purchase_quote_'+reviewed.code);
+      const created=await dispatchAction(bindings,'checkout.create',{...input,expectedTotal:reviewed.value.expectedTotal},context());
       if(!created.ok) throw new Error('paid_mail_purchase_create_'+created.code);
       const paid=await dispatchAction(bindings,'payment.simulate',{
         orderRef:created.value.orderRef,token:created.value.token,outcome:'captured'},context());

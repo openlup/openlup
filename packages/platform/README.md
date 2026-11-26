@@ -174,7 +174,7 @@ bearer; its local fixture establishes no hosted revocation guarantee.
 
 | Export | Contents |
 | --- | --- |
-| `./lifecycle` | Experimental Node file-snapshot planning/apply and read-only legacy PostgreSQL role prerequisites; no install-readiness claim, optional SDK or activation |
+| `./lifecycle` | Experimental Node file-snapshot planning/apply, read-only legacy PostgreSQL role prerequisites, and storefront verdict and proof-file contracts; no install-readiness claim, optional SDK or activation |
 | `./portability` | Experimental server object copy/resume, private filesystem transfer store and compatible PostgreSQL row capture/restore; injected handles, explicit refusal and no activation |
 | `./http` | Generic capped raw-body reader, hex HMAC and constant-time token comparison; Node request adaptation, deadlines, security headers and static documents, and `createNodeHttpRuntime` with its fixed request order |
 | `./bff` | `createBffDispatcher`, `lazyBffRoute`, the hosted router URL rewrite, the response envelope (`createBffResponder`), the observed request context and the health route |
@@ -226,6 +226,7 @@ bearer; its local fixture establishes no hosted revocation guarantee.
 | `./tax`, `./tax/contracts` | Experimental tax contracts, local calculation and offline adapter conformance |
 | `./shipping` | Delivery ports, injected-schema handlers, summary/evidence; native flat-rate port + Core schema readiness |
 | `./shipping/contracts` | Type-only address, customer-address, delivery, pickup-point, shipping-rate and threshold contracts, plus selection summary and evidence DTOs |
+| `./storefront` | Experimental, browser-safe purchase continuation: identity roles and their constructors, the continuation record and its recovery functions, an experimental continuation controller, host bindings and declarations, and the markup anchor names; storage, requests and provider facts only through host bindings |
 
 ## HTTP runtime and security contract
 
@@ -2571,6 +2572,8 @@ structural client, `webhookSigningSecrets`, explicit `mode`, required
 `toleranceSeconds` (default 300) and `clock` (UTC seconds). The host constructs
 and configures the SDK, associates saved methods with customers and confirms
 off-session requests. Interactive methods follow the declared card/wallet offer.
+For capture-time qualification, supply `client.ownAccountRef` from the verified
+installed credential account and record that same reference in the local qualification.
 Importing creates no I/O or default binding. The adapter advertises the host
 currency list as a frozen copy; the frozen exported descriptor keeps an empty list.
 Account-specific readiness remains pending TEST verification. Exact absence,
@@ -3877,3 +3880,130 @@ verifiers (`verifyHmacSha256`, `verifyHardenedStandardWebhook`,
 - `@openlup/platform/channels/testing`: offline `runChannelAdapterConformance`
   and `createScriptedChannelFake` certifying `ChannelOrderSourcePort` webhook
   auth, `normalizedChannelOrderSchema` fidelity, and cursor pulls.
+
+## Storefront continuation contracts
+
+Status: current contract (experimental).
+
+`@openlup/platform/storefront` is the browser-side home for the logic that keeps
+a buyer's purchase safe across a lost response, a reload and a decline. It holds
+types, three identity constructors, the recovery functions listed below, an
+experimental continuation controller that composes them, and one constant of
+markup anchor names. The functions and the controller reach storage, requests
+and provider facts only through the host bindings a store passes in.
+
+- **Identity roles.** A continuation identity names one purchase, a command key
+  is the replay identity of one command and an attempt number counts payment
+  attempts within a purchase. They are distinct types, and a plain `string` or
+  `number` is none of them. The constructors return their argument unchanged
+  and never refuse a value; which identities may be reused is decided by the
+  host's identifier binding.
+- **Bindings.** The store's client supplies storage, the submit transport, an
+  identifier generator and a failure classifier as plain objects and functions
+  (see [Binding](../core/docs/guide/glossary.md) in the glossary). The store keeps its storage
+  names, serialization, wire spelling and provider facts.
+- **Functions.** The first four keep the continuation record through the
+  storage and identifier bindings; the fifth recovers a failed submit through
+  the transport and classifier bindings; the last three, which are
+  experimental, resume a pending provider action through the status binding,
+  a clock and the provider facts:
+  - `getOrCreateContinuationId` reuses the stored identity when the identifier
+    binding accepts it, and otherwise mints one and stores it with the
+    payload's fingerprint, and, unless told to continue unpersisted, returns
+    `null` (nothing may be sent) when the record it wrote does not read back;
+  - `readContinuationRecord` returns the stored record without an acceptance
+    check;
+  - `advanceAttempt` moves the stored record to its next payment attempt;
+  - `clearContinuationRecord` clears the record, so the next purchase gets a
+    new identity;
+  - `recoverAmbiguousSubmit` replays the retained request once, unchanged,
+    after a timeout or a transport failure, sends nothing after an in-flight
+    refusal or an unrecognized failure, and returns an
+    `AmbiguousSubmitRecovery` saying which happened;
+  - `checkPendingResume` (experimental) keeps an expired marker without a
+    status read, otherwise reads the status once and decides, and answers
+    `unknown` rather than dropping or keeping the marker when the status could
+    not be read;
+  - `decidePendingResume` (experimental) turns one status reading into one
+    `PendingResumeDecision` (experimental): drop the marker, reopen or follow
+    the action, wait, keep the marker, or block a switch to another provider
+    while an attempt that was not sent to its provider is still open;
+  - `applyPendingResume` (experimental) runs exactly one effect for a decision
+    and returns whether the submit must stop.
+- **Controller.** `createPurchaseContinuation` (experimental) returns a
+  `PurchaseContinuation` (experimental) that a store's UI renders from in any
+  framework: `getSnapshot()` returns a frozen `PurchaseContinuationSnapshot`
+  (experimental) that never carries the continuation identity, and
+  `subscribe()` reports each new snapshot. It holds no timer and never reads on
+  its own; each command is one step of the purchase:
+  - `begin` reads the stored record into an `idle` snapshot and checks a
+    pending provider action when one is stored;
+  - `submit` sends the purchase under the key the host derives from the
+    continuation identity and attempt, refuses a changed payload while a
+    purchase may exist, sends nothing when the record cannot be stored, and
+    replays a submit whose response was lost (a timeout or an uncertain
+    transport failure) once under the same key;
+  - `resume` reads the purchase by its key once and applies the answer;
+  - `recordReturn` marks the buyer's return from a provider as waiting on the
+    server, never as paid;
+  - `startOver` asks the server to give up the purchase and clears the record
+    only when the server answers that it is over.
+
+  Only a declined answer for the stored attempt advances the attempt. Once a
+  purchase is paid, the snapshot stays paid for that purchase until
+  `startOver`; when another instance, such as another tab, starts a new
+  purchase, the next command that reads the record shows the new purchase
+  instead. An answer clears the stored record and pending-action marker only
+  while they still belong to the purchase it answers. "Paid, activation
+  pending" is a status of its own. The bindings object has no exported type
+  name: a host names it as
+  `Parameters<typeof createPurchaseContinuation<TPayload, TRequest, TResult, TOptions>>[0]`
+  and a member as, for example, `…[0]["transport"]`.
+- **Markup anchors.** Production markup reads its `data-openlup-*` attribute
+  names and the action, state and field names from the constant instead of
+  string literals. Names are only added; a wrong one is superseded, not renamed.
+- **Maturity.** The whole entry is `experimental`. Names tagged `@experimental`
+  stay outside a later stable promise of this entry until promoted on their own
+  evidence. As with every export, a name is not removed once a release carries
+  it, while its shape may still change in a minor release.
+
+The entry is a leaf: it imports no other platform module and bundles for a
+browser without Node built-ins. The declarations are in the
+[API report](https://github.com/openlup/openlup/blob/main/packages/platform/api/storefront.api.md).
+
+### Storefront verdict and proof-file contracts
+
+Status: current contract (experimental).
+
+A host, a production command and a proof harness read the same storefront
+evidence from `@openlup/platform/lifecycle`, without importing test support:
+
+- **Verdict.** `StorefrontVerdict` (format version 1) records one scenario
+  run: its tier, channel, result, control, steps with the buyer's ledger after
+  each, findings with four texts, the build identity and the harness inputs,
+  including the outcomes the store's driver declared. `parseStorefrontVerdict`
+  returns the typed verdict or a refusal (`storefront_verdict_invalid` naming
+  the failing path, or `storefront_verdict_version_unsupported` naming the
+  version found) and never throws. A `browser_ui` verdict requires `width`.
+  `storefrontVerdictJsonSchema` is the same contract as frozen draft-07 data.
+- **Proof file.** `StorefrontProofFile` (format version 1) names the
+  configurations and widths to prove, local routes, auto-progress actions, the
+  changed-payload policy, buyer overrides other than the e-mail, a recheck
+  command and an optional relative adapter module. `parseStorefrontProofFile`
+  and `storefrontProofFileJsonSchema` follow the verdict's rules; `host` is the
+  one object a host may fill.
+- **Digest.** `digestStorefrontFiles` is the one client-build digest:
+  `sha256:` over a manifest of relative POSIX paths and their SHA-256, sorted
+  by UTF-16 code units (not locale or UTF-8 byte order).
+- **Open sets.** Tiers, channels, results, runs, phases, control, observer,
+  build-source and adapter kinds, and finding codes accept values added later
+  (`^[a-z][a-z0-9_]*$`); a reader keeps a default branch. Unknown fields are
+  kept, except an own `__proto__` key, which is dropped. A result of
+  `not_run` is missing evidence, never a pass.
+- **Compatibility.** Within format version 1 fields are only added. Until the
+  first release that carries the storefront runner, format version 1 may still
+  be amended without a version bump; afterwards a removed field or changed
+  meaning raises `formatVersion`.
+
+Nothing here runs a scenario or reads a file. The declarations are in the
+[API report](https://github.com/openlup/openlup/blob/main/packages/platform/api/lifecycle.api.md).

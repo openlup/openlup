@@ -1,4 +1,4 @@
-import type { Operation, ActionInput } from '../shared/api.ts';
+import type { Operation, ActionInput, ActionResult } from '../shared/api.ts';
 import type { PageContext } from './context.ts';
 import type { CopyKey } from '../owned/copy.ts';
 import { act, uncertainAction } from './api.ts';
@@ -27,10 +27,25 @@ export interface ActionFormOptions {
   input?: () => ActionInput;
   transform?: (values: ActionInput) => ActionInput;
   prepare?: (values: ActionInput) => Promise<ActionInput | null>;
+  onRefusal?: (code: string) => void;
   onSuccess?: (value: unknown) => void;
   onFailure?: (code: string) => void;
   display?: (value: unknown) => unknown;
   resultMessage?: (value: unknown) => CopyKey | undefined;
+  /** A durable command key owned by the page. Without it the key lives in this form and a reset button starts a new one. */
+  continuation?: FormContinuation;
+}
+
+export interface FormContinuation {
+  /** Called right before the request is sent; returns its key. */
+  dispatch(): string;
+  /** Called after every request returned, even when the form view is gone. */
+  settled(key: string, result: ActionResult): void;
+  /** Called after every request returned. It settles the page's record whatever the view; only while `current`
+   * it may update the page and return the output to show instead of the default. */
+  answer(key: string, result: ActionResult, current: boolean): HTMLElement | undefined;
+  /** True while the page has another request of this key in flight; the form then sends nothing. */
+  busy(): boolean;
 }
 
 let fieldCounter = 0;
@@ -80,7 +95,8 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
   let generation = 0;
   form.addEventListener('input', () => { ++generation; });
   form.addEventListener('change', () => { ++generation; });
-  const reset = button(context.t('newAction'), () => {
+  const continuation = options.continuation;
+  const reset = continuation ? undefined : button(context.t('newAction'), () => {
     if (inFlight) return;
     ++generation;
     commandKey = crypto.randomUUID();
@@ -88,11 +104,12 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
     uncertain = undefined;
     output.replaceChildren();
   }, 'secondary');
-  append(form, el('p', { class: 'muted small' }, context.t('idempotency')),
+  const busy = (value: boolean) => { inFlight = value; submit.disabled = value; if (reset) reset.disabled = value; };
+  append(form, continuation ? null : el('p', { class: 'muted small' }, context.t('idempotency')),
     el('div', { class: 'actions' }, submit, reset), output);
   form.addEventListener('submit', event => {
     event.preventDefault();
-    if (inFlight || !form.isConnected || !form.reportValidity()) return;
+    if (inFlight || options.continuation?.busy() || submit.getAttribute('aria-disabled') === 'true' || !form.isConnected || !form.reportValidity()) return;
     const requestGeneration = ++generation;
     const current = () => form.isConnected && generation === requestGeneration;
     void (async () => {
@@ -112,42 +129,42 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
       const input = JSON.stringify(values);
       if (uncertain?.input === input) values = uncertain.prepared;
       else if (options.prepare) {
-        uncertain = undefined;
-        inFlight = true; submit.disabled = true; reset.disabled = true;
+        busy(true);
         try {
           const prepared = await options.prepare(values);
           if (!current() || !prepared) return;
           values = prepared;
-        } finally { inFlight = false; submit.disabled = false; reset.disabled = false; }
+        } finally { busy(false); }
       }
       if (!current()) return;
-      const serialized = JSON.stringify(values);
-      if (priorInput !== null && priorInput !== serialized) commandKey = crypto.randomUUID();
-      priorInput = serialized;
-      inFlight = true;
-      submit.disabled = true;
-      reset.disabled = true;
+      // A changed input is a new command. What prepare adds, such as a refreshed reviewed total, is not.
+      if (!continuation && priorInput !== null && priorInput !== input) commandKey = crypto.randomUUID();
+      priorInput = input;
+      busy(true);
       form.setAttribute('aria-busy', 'true');
       output.replaceChildren(el('p', {}, context.t('loading')));
       try {
-        const result = await act(options.operation, values, commandKey);
-        if (!current()) return;
+        const key = continuation ? continuation.dispatch() : commandKey;
+        const result = await act(options.operation, values, key);
+        continuation?.settled(key, result);
         uncertain = uncertainAction(result)
           ? { input, prepared: values } : undefined;
-        output.replaceChildren(result.ok
+        if (!result.ok && !uncertain) options.onRefusal?.(result.code);
+        const shown = current();
+        const custom = continuation?.answer(key, result, shown);
+        if (!shown) return;
+        output.replaceChildren(custom ?? (result.ok
           ? el('section', {}, el('h4', {}, context.t('response')),
             options.resultMessage?.(result.value) ? el('p', {}, context.t(options.resultMessage(result.value)!)) : null,
             renderValue(options.display ? options.display(result.value) : result.value))
-          : refusal(context, result.code, operationLimits[options.operation]?.code === result.code ? operationLimits[options.operation]!.explanation[context.locale] : undefined));
+          : refusal(context, result.code, operationLimits[options.operation]?.code === result.code ? operationLimits[options.operation]!.explanation[context.locale] : undefined)));
         if (!result.ok && result.issues?.length) append(output, renderValue(result.issues));
         if (result.ok) {
           for (const { spec, control } of controls) if (spec.type === 'password') control.value = '';
           options.onSuccess?.(result.value);
         } else options.onFailure?.(result.code);
       } finally {
-        inFlight = false;
-        submit.disabled = false;
-        reset.disabled = false;
+        busy(false);
         form.removeAttribute('aria-busy');
       }
     })();

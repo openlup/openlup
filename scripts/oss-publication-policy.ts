@@ -63,6 +63,7 @@ export const PUBLIC_PACKAGE_COMMANDS: PublicPackageCommand[] = [
   publicCommand("inventory:refresh", "node --import tsx scripts/installation-inventory-refresh.ts"),
   publicCommand("landing:merge", "node scripts/agent-review-landing.mjs"),
   publicCommand("migration:finalize", "node scripts/migration-finalize.mjs"),
+  publicCommand("migration:sync", "node --experimental-strip-types scripts/migration-sync.ts"),
   publicCommand("lint", "node scripts/ast-grep/check-filewide-ignore.mjs && ast-grep scan --error=no-suppress-all --error=unused-suppression && ast-grep test --skip-snapshot-tests && eslint --concurrency auto ."),
   publicCommand("preflight", "node --experimental-strip-types scripts/preflight.ts"),
   publicCommand("prelint", "node scripts/build-packages-incremental.mjs"),
@@ -78,7 +79,7 @@ export const PUBLIC_PACKAGE_COMMANDS: PublicPackageCommand[] = [
   publicCommand("test:scoped", "scope_file=$(mktemp) && trap 'rm -f \"$scope_file\"' EXIT && export OPENLUP_VITEST_EXCLUDE_FILE=\"$scope_file\" && node scripts/ci-test-scope.mjs && npm test"),
 ];
 export const PUBLIC_PACKAGE_EXECUTION_SURFACES: PublicPackageExecutionSurface[] = [
-  { path: "examples/neutral-store/package.json", digest: "sha256-f13fb832ebc96fc06a087c8932f84194d5f51cf3b629a6a731f5410504611d45" },
+  { path: "examples/neutral-store/package.json", digest: "sha256-6beae26df400ee4ac52815e4d82b51245a4e9adc5e4dbb850889c62c269afc30" },
   { path: "package.json", digest: packageExecutionDigest({ scripts: Object.fromEntries(PUBLIC_PACKAGE_COMMANDS.map(({ name, command }) => [name, command])) }) },
   { path: "packages/core/package.json", digest: "sha256-4f6bcde0848f6c84669b06720154b12e47a3f73d75a1cfd7f54fd7802bc745ca" },
   { path: "packages/outbox/package.json", digest: "sha256-a360b29145594eb1e103130637c52225910ff5ea07a41d46d9db34bc43279dfa" },

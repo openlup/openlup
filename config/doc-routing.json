@@ -1109,6 +1109,27 @@
       "anchor": "#provider-recipe-contract"
     },
     {
+      "id": "platform-storefront",
+      "when": "Browser-safe storefront purchase-continuation types, recovery functions, continuation controller, host bindings and markup anchor names",
+      "paths": [
+        "packages/platform/src/storefront/**",
+        "packages/platform/test/storefront/**",
+        "packages/platform/api/storefront*.api.md"
+      ],
+      "doc": "packages/platform/README.md",
+      "anchor": "#storefront-continuation-contracts"
+    },
+    {
+      "id": "platform-storefront-verification",
+      "when": "Storefront verdict and proof-file contracts and the client-build digest",
+      "paths": [
+        "packages/platform/src/lifecycle/storefront*.ts",
+        "packages/platform/test/lifecycle/storefront*.test.ts"
+      ],
+      "doc": "packages/platform/README.md",
+      "anchor": "#storefront-verdict-and-proof-file-contracts"
+    },
+    {
       "id": "platform-http",
       "when": "Node HTTP runtime, request adaptation and deployment-owned security policy contracts",
       "paths": [

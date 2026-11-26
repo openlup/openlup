@@ -102,6 +102,41 @@ $$;
 
 REVOKE ALL ON FUNCTION public.commerce_order_money_v2_live_body(uuid) FROM PUBLIC;
 
+-- The deferred header INSERT supplies freshness. Remember it through later
+-- constraint flushes, and memoize the shared projection independently of seal checks.
+CREATE FUNCTION public.commerce_order_money_v2_check_state(p_id uuid,p_fresh boolean,p_authority text,p_stamp text)
+RETURNS TABLE (fresh boolean,check_seal boolean,check_projection boolean)
+LANGUAGE plpgsql VOLATILE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE
+  was_fresh boolean;
+  last_authority text;
+  last_stamp text;
+BEGIN
+  IF to_regclass('pg_temp.commerce_order_money_v2_checks') IS NULL THEN
+    CREATE TEMP TABLE commerce_order_money_v2_checks (
+      order_id uuid PRIMARY KEY, fresh boolean NOT NULL, authority text NOT NULL, stamp text NOT NULL
+    ) ON COMMIT DELETE ROWS;
+  END IF;
+  -- A caller's temporary table must never vouch for an accepted projection.
+  IF NOT EXISTS (SELECT FROM pg_class WHERE oid=to_regclass('pg_temp.commerce_order_money_v2_checks')
+    AND relowner=current_user::regrole AND relkind='r' AND relpersistence='t') THEN
+    RAISE EXCEPTION 'commerce_order_money_v2_check_state_unavailable' USING ERRCODE='42501';
+  END IF;
+  SELECT c.fresh,c.authority,c.stamp INTO was_fresh,last_authority,last_stamp
+  FROM pg_temp.commerce_order_money_v2_checks c WHERE order_id=p_id;
+  fresh := p_fresh OR coalesce(was_fresh,false);
+  check_projection := last_stamp IS DISTINCT FROM p_stamp;
+  check_seal := fresh AND (check_projection OR NOT was_fresh OR last_authority IS DISTINCT FROM p_authority);
+  IF check_projection OR check_seal THEN
+    INSERT INTO pg_temp.commerce_order_money_v2_checks VALUES (p_id,fresh,p_authority,p_stamp)
+    ON CONFLICT (order_id) DO UPDATE SET fresh=excluded.fresh,authority=excluded.authority,stamp=excluded.stamp;
+  END IF;
+  RETURN NEXT;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.commerce_order_money_v2_check_state(uuid,boolean,text,text) FROM PUBLIC;
+
 -- Verify the retained projection at the existing deferred order boundary.
 CREATE FUNCTION public.commerce_order_money_v2_assert(p_order_id uuid, p_fresh boolean, p_owner boolean,
   p_before jsonb DEFAULT NULL, p_after jsonb DEFAULT NULL) RETURNS void
@@ -118,6 +153,10 @@ DECLARE
   ledger_locked boolean;
   receipt_xid xid;
   copies text[];
+  check_seal boolean;
+  check_projection boolean;
+  evidence_remedy constant text := 'Recover the original accepted evidence through its owner and retry with its original binding.';
+  write_remedy constant text := 'Write the order money snapshot and its line sources in the same transaction as the order.';
   invoking_role name := coalesce(nullif(current_setting('role',true),'none'),session_user::text);
   v2 constant text := 'commerce.order-money.v2';
   remedy constant text := 'Replay the original accepted document and its digest.';
@@ -129,23 +168,51 @@ BEGIN
     SELECT FROM public.clients c WHERE c.id=header.client_id AND c.principal_id=auth.uid()
   ) THEN
     RAISE EXCEPTION 'commerce_order_money_v2_mismatch' USING ERRCODE='23514', COLUMN='/moneyVersion',
-      HINT='Recover the original accepted evidence through its owner and retry with its original binding.';
+      HINT=evidence_remedy;
   END IF;
 
   SELECT * INTO snapshot FROM public.commerce_order_tax_snapshots WHERE order_id=p_order_id;
   IF header.money_version IS NULL THEN
     IF snapshot.order_id IS NOT NULL OR EXISTS (
-      SELECT FROM public.commerce_order_items i JOIN public.commerce_order_line_sources s
-        ON (s.order_id,s.line_key)=(i.order_id,i.line_key) WHERE i.order_id=p_order_id
-    ) THEN
+      SELECT FROM public.commerce_order_items WHERE order_id=p_order_id AND line_key IS NOT NULL) THEN
       RAISE EXCEPTION 'commerce_order_money_v2_mismatch' USING ERRCODE='23514', COLUMN='/lines', HINT=remedy;
     END IF;
     RETURN;
   END IF;
-  -- The already installed deferred foreign keys own missing-row refusals.
-  IF snapshot.order_id IS NULL THEN RETURN; END IF;
+  -- Compare visible tuple identities and creating transactions, with a boundary
+  -- between relations. Including xmin detects a slot reused by another writer.
+  -- Skip unchanged events before validating or hashing the projection. A later
+  -- write changes the stamp even after a named IMMEDIATE flush.
+  SELECT state.fresh,state.check_seal,state.check_projection INTO p_fresh,check_seal,check_projection
+  FROM public.commerce_order_money_v2_check_state(p_order_id,p_fresh,invoking_role||':'||p_owner,
+    (ARRAY[
+      (SELECT ctid::text||'@'||xmin FROM public.commerce_orders WHERE id=p_order_id),
+      (SELECT ctid::text||'@'||xmin FROM public.commerce_order_tax_snapshots WHERE order_id=p_order_id),
+      (SELECT ctid::text||'@'||xmin FROM public.commerce_destination_v2_order_bindings WHERE order_id=p_order_id),
+      (SELECT ctid::text||'@'||xmin FROM public.commerce_destination_v2_documents WHERE snapshot_ref=snapshot.destination_snapshot_ref),
+      (SELECT ctid::text||'@'||xmin FROM public.tax_calculations WHERE calculation_id=snapshot.calculation_id),
+      (SELECT ctid::text||'@'||xmin FROM public.identity_privacy_erasures WHERE client_id=header.client_id)]
+    || ARRAY(SELECT ctid::text||'@'||xmin FROM public.commerce_order_items WHERE order_id=p_order_id ORDER BY ctid) || NULL::text
+    || ARRAY(SELECT ctid::text||'@'||xmin FROM public.commerce_order_line_sources WHERE order_id=p_order_id ORDER BY ctid) || NULL::text
+    || ARRAY(SELECT ctid::text||'@'||xmin FROM public.commerce_order_delivery_buckets WHERE order_id=p_order_id ORDER BY ctid) || NULL::text
+    || ARRAY(SELECT ctid::text||'@'||xmin FROM public.commerce_order_line_allocations WHERE order_id=p_order_id ORDER BY ctid) || NULL::text
+    || ARRAY(SELECT ctid::text||'@'||xmin FROM public.commerce_order_tax_positions WHERE order_id=p_order_id ORDER BY ctid) || NULL::text
+    || ARRAY(SELECT ctid::text||'@'||xmin FROM public.commerce_order_fee_lines WHERE order_id=p_order_id ORDER BY ctid) || NULL::text
+    || ARRAY(SELECT ctid::text||'@'||xmin FROM public.commerce_order_adjustments WHERE order_id=p_order_id ORDER BY ctid) || NULL::text
+    || ARRAY(SELECT sku.ctid::text||'@'||sku.xmin FROM public.catalog_skus sku WHERE sku.id IN (
+      SELECT sku_id FROM public.commerce_order_line_sources WHERE order_id=p_order_id) ORDER BY sku.ctid))::text) state;
+  -- OLD/NEW guards still run for each event, even with an unchanged projection.
+  IF NOT check_seal AND NOT check_projection AND p_before IS NULL THEN RETURN; END IF;
+
+  -- A caller can flush either line-sum constraint ahead of the foreign keys.
+  -- Refuse the missing snapshot now with the same named foreign-key diagnostic.
+  IF snapshot.order_id IS NULL THEN
+    RAISE EXCEPTION 'insert or update on table "commerce_orders" violates foreign key constraint "commerce_orders_money_snapshot_fkey"'
+      USING ERRCODE='23503', SCHEMA='public', TABLE='commerce_orders', CONSTRAINT='commerce_orders_money_snapshot_fkey',
+      HINT=write_remedy;
+  END IF;
   IF header.money_version <> v2 OR snapshot.money_version <> v2 THEN
-    RAISE EXCEPTION 'commerce_order_money_v2_mismatch' USING ERRCODE='23514', COLUMN='/moneyVersion', HINT=remedy;
+    RAISE EXCEPTION 'commerce_order_money_v2_mismatch' USING ERRCODE='23514', COLUMN='/moneyVersion', HINT=evidence_remedy;
   END IF;
   IF snapshot.cycle_binding_ref IS NOT NULL THEN
     RAISE EXCEPTION 'commerce_order_money_v2_mismatch' USING ERRCODE='23514', COLUMN='/cycleBindingRef', HINT=remedy;
@@ -169,6 +236,19 @@ BEGIN
   inclusive := snapshot.amount_basis='inclusive';
   destination := jsonb_build_object('snapshotRef',snapshot.destination_snapshot_ref,'schemaVersion',2,
     'destinationDigest',snapshot.destination_digest,'policyRevision',snapshot.destination_policy_revision);
+
+  IF EXISTS (SELECT FROM public.commerce_order_items i WHERE i.order_id=p_order_id AND i.line_key IS NULL) THEN
+    RAISE EXCEPTION 'commerce_order_money_v2_mismatch' USING ERRCODE='23514', COLUMN='/lines', HINT=remedy;
+  END IF;
+  -- A later source insert has no assertion trigger in this forward.
+  PERFORM 1 FROM public.commerce_order_items i WHERE i.order_id=p_order_id AND NOT EXISTS (
+    SELECT FROM public.commerce_order_line_sources s WHERE (s.order_id,s.line_key)=(i.order_id,i.line_key)
+  ) LIMIT 1;
+  IF FOUND THEN
+    RAISE EXCEPTION 'insert or update on table "commerce_order_items" violates foreign key constraint "commerce_order_items_money_source_fkey"'
+      USING ERRCODE='23503', SCHEMA='public', TABLE='commerce_order_items', CONSTRAINT='commerce_order_items_money_source_fkey',
+      HINT=write_remedy;
+  END IF;
 
   IF p_fresh OR p_before IS NOT NULL OR snapshot.destination_erased THEN
     SELECT EXISTS (SELECT FROM pg_locks WHERE pid=pg_backend_pid() AND granted
@@ -205,10 +285,14 @@ BEGIN
         OR EXISTS (SELECT FROM pg_locks l WHERE l.pid=pg_backend_pid() AND l.granted
           AND l.locktype='transactionid' AND l.mode='ExclusiveLock' AND l.transactionid=receipt_xid)
       ) THEN
-      RAISE EXCEPTION 'commerce_order_money_v2_mismatch' USING ERRCODE='23514', COLUMN='/taxEvidence', HINT=remedy;
+      RAISE EXCEPTION 'commerce_order_money_v2_mismatch' USING ERRCODE='23514', COLUMN='/taxEvidence',
+        HINT='Keep the accepted facts and use the owning order lifecycle operation.';
     END IF;
   END IF;
-  IF snapshot.destination_erased AND ((p_fresh AND NOT restoring) OR receipt_xid IS NULL OR NOT EXISTS (
+  IF snapshot.destination_erased AND p_fresh AND NOT restoring THEN
+    RAISE EXCEPTION 'commerce_order_money_v2_mismatch' USING ERRCODE='23514', COLUMN='/taxEvidence', HINT=evidence_remedy;
+  END IF;
+  IF snapshot.destination_erased AND (receipt_xid IS NULL OR NOT EXISTS (
     SELECT FROM public.commerce_destination_v2_order_bindings b
     JOIN public.commerce_destination_v2_documents d USING (snapshot_ref)
     JOIN public.tax_calculations t ON t.calculation_id=snapshot.calculation_id
@@ -216,15 +300,15 @@ BEGIN
       AND d.client_id=header.client_id AND d.evidence_disposition='erased'
       AND b.selection IS NULL AND b.service IS NULL AND t.state='erased'
   )) THEN
-    RAISE EXCEPTION 'commerce_order_money_v2_mismatch' USING ERRCODE='23514', COLUMN='/taxEvidence', HINT=remedy;
+    RAISE EXCEPTION 'commerce_order_money_v2_mismatch' USING ERRCODE='23514', COLUMN='/taxEvidence', HINT=evidence_remedy;
   END IF;
 
-  IF p_fresh AND restoring AND NOT snapshot.destination_erased AND NOT EXISTS (
+  IF check_seal AND restoring AND NOT snapshot.destination_erased AND NOT EXISTS (
     SELECT FROM public.tax_calculations t WHERE t.calculation_id=snapshot.calculation_id AND t.state='terminal'
   ) THEN
-    RAISE EXCEPTION 'commerce_order_money_v2_mismatch' USING ERRCODE='23514', COLUMN='/taxEvidence', HINT=remedy;
+    RAISE EXCEPTION 'commerce_order_money_v2_mismatch' USING ERRCODE='23514', COLUMN='/taxEvidence', HINT=evidence_remedy;
   END IF;
-  IF p_fresh AND NOT restoring THEN
+  IF check_seal AND NOT restoring THEN
     SELECT * INTO calculation FROM public.tax_calculations WHERE calculation_id=snapshot.calculation_id;
     IF calculation.state='terminal' AND calculation.pin ? 'composition'
       AND calculation.identity->'clientId'=to_jsonb(header.client_id) THEN
@@ -240,23 +324,35 @@ BEGIN
         WHERE b.order_id=p_order_id AND d.snapshot_ref=snapshot.destination_snapshot_ref
           AND d.client_id=header.client_id AND d.evidence_disposition='available'
           AND d.binding=destination AND d.scope_ref::text=calculation.identity->>'scopeRef'
+          AND d.owner_scope->>'principalRef'=calculation.identity->>'principalRef'
+          AND d.owner_scope->>'installationRef'=calculation.identity->>'installationRef'
           AND public.commerce_destination_v2_verified_document(d)->>'verified'='true'
           AND public.commerce_destination_v2_valid_pins(b.selection,b.service,d.scope_ref)
           AND (b.selection,b.service)=(calculation.pin#>'{composition,selection}',calculation.pin#>'{composition,service}')
           AND b.service->>'deliverySelectionRef'=snapshot.delivery_selection_ref
       ) THEN
       RAISE EXCEPTION 'commerce_order_money_v2_mismatch' USING ERRCODE='23514', COLUMN='/taxEvidence',
-        HINT='Recover the original accepted evidence through its owner and retry with its original binding.';
+        HINT=evidence_remedy;
+    END IF;
+    IF EXISTS (
+      SELECT FROM public.commerce_order_line_sources l LEFT JOIN public.catalog_skus sku ON sku.id=l.sku_id
+      WHERE l.order_id=p_order_id AND sku.sku IS DISTINCT FROM l.sku_code
+    ) THEN
+      RAISE EXCEPTION 'commerce_order_money_v2_mismatch' USING ERRCODE='23514', COLUMN='/lines', HINT=remedy;
+    END IF;
+    IF EXISTS (
+      SELECT FROM public.commerce_order_line_allocations a JOIN public.commerce_order_adjustments j ON j.id=a.adjustment_id
+      WHERE a.order_id=p_order_id AND NOT EXISTS (
+        SELECT FROM jsonb_array_elements(coalesce(calculation.pin#>'{composition,planInput,selected,adjustments}','[]')) pin
+        WHERE (pin->>'adjustmentRef',pin->>'evidenceRef',pin->>'appliesTo')=(a.adjustment_ref,a.evidence_ref,j.scope)
+          AND CASE WHEN a.bucket_key IS NULL THEN (pin#>'{target,lineKeys}') ? a.line_key
+            ELSE pin#>>'{target,bucketKey}'=a.bucket_key END
+      )
+    ) THEN
+      RAISE EXCEPTION 'commerce_order_money_v2_mismatch' USING ERRCODE='23514', COLUMN='/discountAllocations', HINT=remedy;
     END IF;
   END IF;
-
-  IF EXISTS (SELECT FROM public.commerce_order_items i WHERE i.order_id=p_order_id AND i.line_key IS NULL) THEN
-    RAISE EXCEPTION 'commerce_order_money_v2_mismatch' USING ERRCODE='23514', COLUMN='/lines', HINT=remedy;
-  END IF;
-  -- If the item has no source, let its named deferred FK raise the original SQLSTATE.
-  IF EXISTS (SELECT FROM public.commerce_order_items i WHERE i.order_id=p_order_id AND NOT EXISTS (
-    SELECT FROM public.commerce_order_line_sources s WHERE (s.order_id,s.line_key)=(i.order_id,i.line_key)
-  )) THEN RETURN; END IF;
+  IF NOT check_projection THEN RETURN; END IF;
 
   WITH lines AS (
     SELECT * FROM public.commerce_order_line_sources WHERE order_id=p_order_id
@@ -327,14 +423,13 @@ BEGIN
     WHEN (SELECT count(*)=0 OR min(source_rank)<>1 OR max(source_rank)<>count(*)
             OR count(DISTINCT source_rank)<>count(*) FROM lines)
       OR EXISTS (
-        SELECT FROM lines l LEFT JOIN line_items i USING (line_key) LEFT JOIN public.catalog_skus sku ON sku.id=l.sku_id
+        SELECT FROM lines l LEFT JOIN line_items i USING (line_key)
         WHERE l.mode<>snapshot.mode OR l.unit_basis_minor::numeric*l.quantity<>l.pre_discount_minor
-          OR (p_fresh AND NOT restoring AND sku.sku IS DISTINCT FROM l.sku_code)
           OR (i.quantity,i.effective,i.matched) IS DISTINCT FROM (l.quantity::bigint,l.effective_minor::numeric,true)
           OR CASE WHEN i.promoted=0 THEN i.size<>1 OR l.pre_discount_minor<>l.effective_minor
              ELSE i.promoted<>i.size OR i.fingerprints<>1 OR i.catalogue<>l.pre_discount_minor
                OR i.reduction<>l.pre_discount_minor-l.effective_minor END
-      ) THEN '/lines'
+      ) OR EXISTS (SELECT FROM lines WHERE NOT public.catalog_publication_text_valid(to_jsonb(line_key),128,false)) THEN '/lines'
     WHEN (SELECT count(*)<>count(DISTINCT bucket_rank) OR coalesce(max(bucket_rank),0)<>count(*) FROM delivery WHERE part_no=0)
       OR EXISTS (
         SELECT FROM delivery h LEFT JOIN delivery p ON (p.bucket_key=h.bucket_key AND p.part_no>0)
@@ -347,12 +442,14 @@ BEGIN
               OR NOT array_agg(p.source_ordinal) <@ ARRAY(SELECT source_ordinal FROM lines)
             ELSE count(p.part_no)<>1 OR count(p.source_ordinal)<>0 END
       )
+      OR EXISTS (SELECT FROM delivery WHERE part_no=0 AND NOT public.catalog_publication_text_valid(to_jsonb(bucket_key),128,false))
       OR (inclusive AND (SELECT count(*) FROM delivery WHERE part_no=0 AND kind='shipping')>1)
       OR (SELECT coalesce(sum(pre_discount_minor),0) FROM components WHERE shipping)
          <> (SELECT coalesce(sum(amount_minor),0) FROM adjustments WHERE kind='shipping_charge')
       THEN '/deliveryBuckets'
     WHEN (SELECT count(*)<>count(DISTINCT fee_rank) OR coalesce(max(fee_rank),0)<>count(*) FROM fees)
-      OR EXISTS (SELECT FROM fees WHERE scope_kind NOT IN ('order','delivery')) THEN '/feeLines'
+      OR EXISTS (SELECT FROM fees WHERE scope_kind NOT IN ('order','delivery')
+        OR NOT public.catalog_publication_text_valid(to_jsonb(fee_key),128,false)) THEN '/feeLines'
     WHEN EXISTS (
         SELECT FROM allocation_steps a JOIN components c USING (ref,part)
         WHERE a.before_basis_minor-a.after_basis_minor<>a.basis_reduction_minor
@@ -366,15 +463,12 @@ BEGIN
           AND NOT EXISTS (SELECT FROM allocation_steps a WHERE (a.ref,a.part)=(c.ref,c.part))
       ) OR EXISTS (
         SELECT FROM allocations a LEFT JOIN adjustments j ON j.id=a.adjustment_id
+        LEFT JOIN delivery h ON h.bucket_key=a.bucket_key AND h.part_no=0
         WHERE j.id IS NULL OR j.kind<>'promotion_discount'
           OR (j.promotion_id,j.definition_fingerprint) IS DISTINCT FROM (a.adjustment_ref,a.evidence_ref)
           OR (j.scope='shipping')<>(a.bucket_key IS NOT NULL)
-          OR (p_fresh AND NOT restoring AND NOT EXISTS (
-            SELECT FROM jsonb_array_elements(coalesce(calculation.pin#>'{composition,planInput,selected,adjustments}','[]')) pin
-            WHERE (pin->>'adjustmentRef',pin->>'evidenceRef',pin->>'appliesTo')=(a.adjustment_ref,a.evidence_ref,j.scope)
-              AND CASE WHEN a.bucket_key IS NULL THEN (pin#>'{target,lineKeys}') ? a.line_key
-                ELSE pin#>>'{target,bucketKey}'=a.bucket_key END
-          ))
+          OR (j.scope='shipping' AND h.kind IS DISTINCT FROM 'shipping')
+          OR NOT public.catalog_publication_text_valid(to_jsonb(a.adjustment_ref),128,false)
       ) OR EXISTS (
         SELECT FROM adjustments j LEFT JOIN adjustment_totals a ON a.adjustment_id=j.id
         WHERE j.kind='promotion_discount' AND j.amount_minor IS DISTINCT FROM a.amount
@@ -388,19 +482,13 @@ BEGIN
       OR EXISTS (
         SELECT FROM positions p CROSS JOIN LATERAL (VALUES (p.effective_from),(p.effective_until)) AS instant(at)
         WHERE p.state_side NOT IN ('final','before','after') OR p.effective_until<=p.effective_from
+          OR NOT public.catalog_publication_text_valid(to_jsonb(p.position_ref),128,false)
           OR NOT isfinite(at) OR extract(year FROM at AT TIME ZONE 'UTC') NOT BETWEEN -1 AND 9999
           OR at <> date_trunc('milliseconds',at)
           OR CASE WHEN p.rate_decimal IS NULL THEN false
              WHEN p.rate_decimal COLLATE "C" !~ '\A(0|[1-9][0-9]{0,9})(\.[0-9]{1,6})?\Z' THEN true
              ELSE p.rate_decimal::numeric*1000000>9007199254740991 END
       ) THEN '/taxEvidence'
-    WHEN EXISTS (
-      SELECT FROM (
-        SELECT line_key AS key FROM lines UNION ALL SELECT bucket_key FROM delivery WHERE part_no=0
-        UNION ALL SELECT fee_key FROM fees UNION ALL SELECT position_ref FROM positions
-        UNION ALL SELECT adjustment_ref FROM allocations
-      ) AS keys WHERE NOT public.catalog_publication_text_valid(to_jsonb(key),128,false)
-    ) THEN '/lines'
     WHEN (SELECT (coalesce(sum(net_minor),0),coalesce(sum(tax_minor),0)) FROM components)
         IS DISTINCT FROM (snapshot.net_total::numeric,snapshot.tax_total::numeric)
       OR (SELECT coalesce(sum(amount_minor),0) FROM fees)<>snapshot.fee_total
@@ -448,7 +536,8 @@ DECLARE
   v_other_order uuid;
   v_version text;
   v_other_version text;
-  v_event_marker boolean;
+  v_event_marker boolean := false;
+  v_keyed_item boolean := false;
   v_order_event boolean := TG_TABLE_NAME = 'commerce_orders';
   v_owner boolean;
 BEGIN
@@ -479,7 +568,7 @@ BEGIN
   IF v_order_event THEN
     v_event_marker := NEW.money_version IS NOT NULL OR (TG_OP='UPDATE' AND OLD.money_version IS NOT NULL);
   ELSE
-    v_event_marker := (TG_OP<>'DELETE' AND NEW.line_key IS NOT NULL) OR (TG_OP<>'INSERT' AND OLD.line_key IS NOT NULL);
+    v_keyed_item := (TG_OP<>'DELETE' AND NEW.line_key IS NOT NULL) OR (TG_OP<>'INSERT' AND OLD.line_key IS NOT NULL);
     IF TG_OP='UPDATE' AND OLD.order_id<>NEW.order_id THEN
       v_other_order := OLD.order_id;
       SELECT money_version INTO v_other_version FROM public.commerce_orders WHERE id=v_other_order;
@@ -491,7 +580,7 @@ BEGIN
         RAISE EXCEPTION 'commerce_order_money_v2_mismatch' USING ERRCODE='23514', COLUMN='/moneyVersion',
           HINT='Keep the accepted facts and use the owning order lifecycle operation.';
       END IF;
-    ELSIF (v_version IS NOT NULL OR v_other_version IS NOT NULL) AND TG_OP<>'INSERT' AND
+    ELSIF TG_OP<>'INSERT' AND
       (TG_OP='DELETE' OR to_jsonb(OLD)-'created_at' IS DISTINCT FROM to_jsonb(NEW)-'created_at') THEN
       RAISE EXCEPTION 'commerce_order_money_v2_mismatch' USING ERRCODE='23514', COLUMN='/lines',
         HINT='Keep the accepted facts and use the owning order lifecycle operation.';
@@ -531,6 +620,10 @@ BEGIN
   END IF;
 
   PERFORM public.catalog_order_line_sum_acceptance(v_order_id);
+  IF v_keyed_item THEN
+    IF v_other_order IS NOT NULL THEN PERFORM public.commerce_order_money_v2_assert(v_other_order,false,false); END IF;
+    PERFORM public.commerce_order_money_v2_assert(v_order_id,false,false);
+  END IF;
   RETURN NULL;
 END;
 $$;

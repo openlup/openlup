@@ -6,6 +6,8 @@ import {
   captureCompatiblePostgresRows, PostgresTransferError,
   type CompatiblePostgresPacket, type CompatiblePostgresSnapshot, type CompatiblePostgresTable,
 } from "@openlup/platform/portability";
+import { connectedStoreOutsideProfileRelations, connectedStoreOwnedTables as owned,
+  type ConnectedStoreOutsideProfileDisposition } from "./connectedStoreDomains/index.js";
 
 const { catalogPublicationAdmissionRefusal, assertPublishedSkuIdentity, decodePublicationPacket, requireDecodedPublication } = nativeCatalogPublication;
 
@@ -41,86 +43,6 @@ const compatible = [
   "invoicing_effect_receipts", "invoicing_capture_faults",
 ] as const satisfies readonly CompatiblePostgresTable[];
 
-const owned = [
-  "commerce_money_limits_v2",
-  "tax_calculations",
-  "commerce_order_tax_snapshots",
-  "commerce_order_line_sources",
-  "commerce_order_delivery_buckets",
-  "commerce_order_line_allocations",
-  "commerce_order_tax_positions",
-  "commerce_order_fee_lines",
-  "subscription_cancel_feedback",
-  // Authoritative installation configuration with operator audit references.
-  "tax_coverage_revisions",
-  "commerce_promotion_definitions", "commerce_order_draft_receipts", "fulfillment_stock_operations",
-  "commerce_order_adjustments", "commerce_promotion_claims", "commerce_promotion_claim_events",
-  "subscription_dunning_cases", "subscription_dunning_notifications",
-  "subscription_retry_obligations", "subscription_retry_receipts", "subscription_retry_recovery_authorizations",
-  "commerce_checkout_recovery_tokens", "commerce_reminder_episodes", "subscription_stock_wait_cases",
-  "subscription_renewal_attachments", "subscription_method_state_events", "subscription_method_states", "subscription_activations",
-
-  // Private companion rows of the compatible payment_truth_events above.
-  "payment_simulator_attempts", "payment_simulator_observations",
-  "payment_provider_states", "payment_provider_attempts", "payment_provider_attempt_evidence",
-  "payment_provider_receipts", "payment_provider_transitions",
-  "payment_method_refs", "payment_method_ref_receipts", "payment_method_recovery_authorities",
-  "payment_provider_reconciliation_runs", "payment_prepared_absence_reopens",
-  "payment_dunning_case_attribution", "payment_refund_evidence",
-  "commerce_destinations", "commerce_destination_bindings", "commerce_destination_v2_receipts",
-  "commerce_destination_v2_documents", "commerce_destination_v2_checkout_selections", "commerce_destination_v2_order_bindings",
-  "subscription_destination_v2_selections",
-  "fulfillment_parcel_contacts", "fulfillment_order_contacts", "fulfillment_contact_correction_receipts", "subscription_command_receipts", "subscription_quote_previews", "subscription_edit_quotes",
-  "customer_support_subscription_commands", "customer_support_subscription_audit_events",
-  "platform_human_principals", "platform_human_memberships", "platform_human_membership_audit_events",
-  // AUTHORITATIVE pack metadata; no customer FK or absorption/erasure duty.
-  "catalog_type_versions", "catalog_definition_installs", "catalog_tax_classes",
-  "catalog_products", "catalog_product_document_revisions", "catalog_skus", "catalog_sku_identifiers",
-  // Authoritative draft history and identity reservations, including abandoned drafts.
-  "catalog_draft_heads", "catalog_draft_revisions", "catalog_draft_command_receipts", "catalog_draft_sku_reservations",
-  // AUTHORITATIVE immutable publications, complete SKU revisions, scoped receipts and approval decisions.
-  // The transient catalog_publication_pointer_capabilities table stays outside this profile;
-  // the existing unknown-nonempty refusal requires it to be empty, rather than carrying authority.
-  "catalog_publications", "catalog_sku_revisions", "catalog_publication_heads", "catalog_operator_receipts", "catalog_publication_decisions",
-  // AUTHORITATIVE policy tuples include their original-end close marker, byte-exactly.
-  "price_lists", "subscription_price_policy_revisions", "price_entries", "subscription_lines",
-  "communication_event_bindings", "communication_event_receipts", "communication_event_erasures",
-  "communication_recipient_consents", "communication_native_sends", "communication_native_observations", "communication_native_sync_state",
-  "customer_account_consent_events", "customer_account_consent_sync_targets",
-  "identity_operator_invitations", "identity_operator_invitation_events", "identity_privacy_erasures",
-  "identity_privacy_erasure_reconciliations",
-  "customer_subject_lifecycle_events", "customer_communication_preferences", "customer_communication_preference_events",
-  "customer_account_events", "customer_saved_addresses", "customer_payment_preferences", "customer_delivery_preferences", "customer_orderer_profiles", "invoicing_buyer_snapshots",
-  "commerce_operators", "commerce_order_holds", "commerce_order_operations",
-  "commerce_checkout_compensations",
-  "fulfillment_stock_current", "fulfillment_inventory_reservations", "fulfillment_inventory_reservation_lines", "fulfillment_purchase_reservation_receipts",
-  "fulfillment_provider_archetypes", "fulfillment_ports", "fulfillment_shipments", "shipment_external_refs", "fulfillment_shipment_operations",
-  "fulfillment_provider_attempts", "fulfillment_operator_attempts", "commerce_fulfillment_provider_commands", "commerce_fulfillment_provider_command_transitions",
-  "fulfillment_dispatch_contexts", "fulfillment_dispatch_refs", "fulfillment_paid_handoffs", "fulfillment_observations", "fulfillment_stock_movements",
-  "fulfillment_parcel_reservation_sets", "fulfillment_parcel_lines", "fulfillment_parcel_line_reservations",
-  "fulfillment_operator_receipts", "fulfillment_operator_status_evidence",
-  "subscription_delivery_alignment_cases", "subscription_delivery_alignment_admission_receipts", "subscription_delivery_alignment_arrivals",
-  "subscriber_profiles", "subscriber_review_access_grants", "subscriber_retention_intents",
-  "commerce_order_reviews", "commerce_order_review_media", "commerce_order_review_command_receipts", "commerce_order_review_audit",
-  "invoicing_cutover", "invoicing_document_observations", "invoicing_delivery_receipts", "invoicing_seller_revisions",
-  "platform_communication_operators", "platform_control_operators", "platform_operational_controls", "platform_control_operations",
-  "platform_alerts", "platform_alert_notifications", "platform_job_controls", "platform_job_runs",
-  "sales_channels", "commerce_settings", "client_absorption_policy", "subscriber_retention_activation_watermarks",
-  "subscription_delivery_alignment_control", "outbox_dormant_event_types",
-  "subscription_reminder_ledger", "transactional_delivery_receipts",
-  "subscription_notice_refusals",
-  // AUTHORITATIVE installation marking and the separate, audited baseline.
-  "commerce_offer_policy_cohort_marking", "commerce_offer_policy_rollout_baselines",
-  // AUTHORITATIVE catalogue-local exact-command replay evidence.
-  "catalog_price_setup_receipts",
-] as const;
-
-// Intentionally not carried: single-use authorization state must stay in its
-// source store. Only this exact relation receives the count-only disposition.
-const intentionallyNotCarriedRelation = "public.customer_identity_challenges";
-
-// REBUILDABLE: count only, never transport stale attribute rows as authority.
-const rebuildableRelation = "public.catalog_attribute_projection";
 export const requiredPrivacyDeclarationTable = "identity_privacy_required_contributors";
 
 export async function readPrivacyDeclarationCensus(db: PgQueryExecutor): Promise<readonly string[]> {
@@ -159,7 +81,7 @@ export interface ConnectedNativeStoreCapture {
   observation: { cluster: string; database: string; login: string; snapshot: string };
   emptyOutsideProfile: string[];
   outsideProfileCensus: { relation: string; owner: string; rows: string;
-    disposition: "unsupported-empty" | "new-target-installation-key" | "target-migration-history" | "target-address-references" | "intentionally-not-carried" | "rebuildable" }[];
+    disposition: "unsupported-empty" | ConnectedStoreOutsideProfileDisposition }[];
   sha256: string;
 }
 
@@ -232,28 +154,19 @@ export async function captureConnectedNativeStore(input: {
       for (const relation of relations) {
         if (relation.schema === "public" && (allowed.has(relation.table) || relation.table === requiredPrivacyDeclarationTable)) continue;
         const qualified = `${identifier(relation.schema)}.${identifier(relation.table)}`;
-        if (relation.schema === "acquisition_private" && (relation.table === "installation_key" || relation.table === "address_references")
-          || relation.schema === "public" && relation.table === "platform_schema_migrations"
-          || `${relation.schema}.${relation.table}` === intentionallyNotCarriedRelation
-          || `${relation.schema}.${relation.table}` === rebuildableRelation) {
-          // Count/ownership only. Never read, hash or transport installation key
-          // payloads, target-owned address-reference registry rows or any challenge
-          // column. Rebuildable projection contents are also excluded.
-          // Private acquisition business rows below are NOT secrets by
-          // naming convention: nonempty cases/history still refuse capture.
+        const relationName = `${relation.schema}.${relation.table}`;
+        const census = connectedStoreOutsideProfileRelations.get(relationName);
+        if (census) {
+          // Registered outside-profile relations contribute count and ownership only.
           const rows = (await db.query<{ count: string }>(`SELECT count(*)::pg_catalog.text AS count FROM ${qualified}`)).rows[0]!.count;
-          outsideProfileCensus.push({ relation: `${relation.schema}.${relation.table}`, owner: relation.owner, rows,
-            disposition: relation.table === "installation_key" ? "new-target-installation-key"
-              : relation.table === "address_references" ? "target-address-references"
-                : relation.table === "platform_schema_migrations" ? "target-migration-history"
-                  : `${relation.schema}.${relation.table}` === rebuildableRelation ? "rebuildable" : "intentionally-not-carried" });
+          outsideProfileCensus.push({ relation: relationName, owner: relation.owner, rows, disposition: census.disposition });
           continue;
         }
         if ((await db.query(`SELECT 1 FROM ${qualified} LIMIT 1`)).rows.length) {
-          throw new PostgresTransferError("unsupported_table", `${relation.schema}.${relation.table}`);
+          throw new PostgresTransferError("unsupported_table", relationName);
         }
-        emptyOutsideProfile.push(`${relation.schema}.${relation.table}`);
-        outsideProfileCensus.push({ relation: `${relation.schema}.${relation.table}`, owner: relation.owner, rows: "0", disposition: "unsupported-empty" });
+        emptyOutsideProfile.push(relationName);
+        outsideProfileCensus.push({ relation: relationName, owner: relation.owner, rows: "0", disposition: "unsupported-empty" });
       }
       let count = packet.tables.reduce((sum, table) => sum + table.rows.length, 0);
       let bytes = packet.tables.reduce((sum, table) => sum + table.rows.reduce((total, row) => total + Buffer.byteLength(row), 0), 0);

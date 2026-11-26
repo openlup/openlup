@@ -212,6 +212,21 @@ may be internal, imported, aliased, type-only or ambiguous. Read the installed
 manifest's exports and that version's examples to establish the public specifier
 and type/value usage; a declaration path is not a legal deep-import recipe.
 
+An export hit for a symbol, such as `@openlup/core/pricing (symbolName)`, carries
+`maturity` in `--json` output and in the MCP tool's structured hits, and the text
+output ends it with `; maturity <value>`. The value is `experimental` when the
+declaration, or the re-export statement that exports it, is tagged `@experimental`,
+unless the declaration carries a tag of its own; otherwise it is the subpath's
+maturity from `release-gates.json` (`stable`, `experimental` or `testing`).
+`@deprecated` adds `deprecated: true`. Tags are read as the TypeScript compiler reads
+the doc comment before a declaration; a tag on a member does not count. `maturity` is
+absent when the declaration is not found inside the installed package, for example a
+re-export from another `@openlup` package, or when no subpath maturity is known and no
+`@experimental` tag applies. In either case, read the declaration. A one-line
+`/** ... */ export declare ...`, a declaration that follows a comment on its line, and a
+later declarator of `export declare const A: T, B: U` yield an export hit only when a
+named re-export reaches them, in any scanned declaration file including the entry file.
+
 Run from the selected application's `package.json` directory. Lookup selects its
 reachable declared OpenLup dependencies plus required Core through Node's normal
 `node_modules` resolution, including npm workspace hoisting and linked package

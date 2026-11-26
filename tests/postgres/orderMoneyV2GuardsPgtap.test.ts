@@ -55,7 +55,9 @@ it.each([true, false])("checks the installed assertion with optional writers pre
         [`ALTER FUNCTION ${signature} SECURITY INVOKER`, "stable definer"],
         [`GRANT EXECUTE ON FUNCTION ${signature} TO PUBLIC`, "approved grantees"],
         [`REVOKE EXECUTE ON FUNCTION ${signature} FROM service_role`, "optional writers"],
-        ["GRANT EXECUTE ON FUNCTION public.commerce_order_money_v2_live_body(uuid) TO PUBLIC", "owner only"],
+        ["GRANT EXECUTE ON FUNCTION public.commerce_order_money_v2_live_body(uuid) TO PUBLIC", "live body reader is owner only"],
+        ["GRANT EXECUTE ON FUNCTION public.commerce_order_money_v2_check_state(uuid,boolean,text,text) TO PUBLIC",
+          "transaction check state helper is owner only"],
       ] as const;
       for (const [statement, failure] of mutants) {
         await db.query("SAVEPOINT mutation");

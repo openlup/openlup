@@ -438,6 +438,7 @@ export type PaymentReadbackEnvelope = {
     observedMoney: PaymentMoney;
     providerOccurredAt: string | null;
     capturedAmountBasis?: VerifiedPaymentEvidence["capturedAmountBasis"];
+    providerAccountRef?: string;
     refusal?: PaymentRefusalEnvelope;
     handoff?: PaymentMethodHandoff;
 } | {

@@ -3,7 +3,7 @@ import type { StoreConfig } from './config.ts';
 /** Host operations compose existing public ports; this is an application wire contract. */
 export const operations = [
   'checkout.tokenPay', 'checkout.inlineRetry', 'checkout.payment', 'checkout.paymentLink',
-  'checkout.recovery', 'checkout.create', 'checkout.read', 'payment.simulate', 'payment.recover',
+  'checkout.recovery', 'checkout.create', 'checkout.continuation', 'checkout.read', 'payment.simulate', 'payment.recover',
   'account.billing', 'account.defaults', 'account.addresses', 'account.paymentPreference', 'account.deliveryPreference', 'subscription.savedAddress',
   'account.profile', 'account.invoiceCorrection', 'checkout.recoveryStart', 'operator.paymentLink', 'operator.replacement', 'operator.cancelFulfillment',
   'account.read', 'account.orders', 'account.invoice', 'account.consent',
@@ -19,10 +19,17 @@ export const operations = [
   'operator.reviews', 'operator.reviewModerate', 'operator.partners', 'operator.partnerTransition',
   'review.read', 'review.submit', 'unsubscribe.apply',
   'tracking.read', 'acquisition.submit', 'research.submit', 'partners.submit',
-  'ingest.submit', 'application.status', 'offer.validate', 'storefront.catalogue',
+  'ingest.submit', 'application.status', 'offer.validate', 'storefront.catalogue', 'catalogue.demoTarget',
 ] as const;
 
 export type Operation = typeof operations[number];
+
+/** A fresh `checkout.create` that obtains its key lock later than this after the
+ * host received it is refused, so "no order under this key" becomes final once a
+ * caller's own request timeout plus this bound have passed. A code constant. */
+export const checkoutLateCreateMs = 15_000;
+/** The browser gives up on an action request after this. A code constant. */
+export const actionRequestTimeoutMs = 20_000;
 export type ActionInput = Record<string, unknown>;
 export type SubscriptionCancelFeedbackInput = { subscriptionRef: string; cancelCommandKey: string; reasonCode: string };
 

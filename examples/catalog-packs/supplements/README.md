@@ -23,7 +23,7 @@ using its candidate extraction recipe. Keep the existing `owned/catalogue-rules.
    `advisory_net_content_not_publishable` nor `advisory_unit_identifier_missing`.
    The existing starter fixture uses schema version 1 and has its own advisories.
 3. Run `./lifecycle up` in the PostgreSQL sandbox. Expect exit 0 and a healthy
-   local application. Run
+   local application. With the default port, run
    `curl --fail --silent --output /dev/null --write-out '%{http_code}\n' http://127.0.0.1:4319/api/config`
    and expect `200`.
 

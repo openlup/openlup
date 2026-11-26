@@ -72,6 +72,14 @@ the prepared application directory:
 This builds the image, starts PostgreSQL, applies the packaged migration history
 and fictional seed, then serves the application at `http://127.0.0.1:4319`.
 Pass `--configuration <id>` to select another owned configuration.
+To use another free local port, export `OPENLUP_STARTER_PORT=4320` in the shell
+that runs `./lifecycle up` and `npm run catalogue:apply`. Use a decimal port
+from 1024 to 65535. With the default origin, exclude [ports blocked by Fetch](https://fetch.spec.whatwg.org/#port-blocking).
+An unset or empty value uses 4319. A Compose-only `.env`
+value does not configure either lifecycle command. Set a distinct
+`COMPOSE_PROJECT_NAME` for each concurrent demo. A configured `publicOrigin`
+still governs request authority.
+
 Use `./lifecycle up --json` for the final installation report on stdout. Progress
 goes to stderr. The report lists adopter packs as `installed` or `unchanged`.
 On a refusal, `packs: []` means there is no confirmed install report. The SQL
@@ -226,9 +234,13 @@ fi
 
 An inactive principal or a human identity collision stops the recipe. Ask the
 control-plane owner to reconcile that identity before rechecking. For
-`starter_price_seed_conflict` or `starter_promotion_seed_conflict`, ask the
-price or promotion owner to reconcile the retained demo data, then rerun the
-installer.
+`starter_price_seed_conflict`, restore the original owned price, discount and
+rounding inputs if you changed them after seeding. Ask the pricing owner to
+reconcile divergent retained rows, close other active or open explicit rows,
+or withdraw pending rows while preserving price history. You can also rebuild
+a disposable demo. Use `./lifecycle up --json` or `./lifecycle refusals` for
+the remedy. For `starter_promotion_seed_conflict`, ask the promotion owner to
+reconcile the retained demo data, then rerun the installer.
 
 For a Publish refusal at `pricing.readiness`, follow its fix and recheck.
 Use these steps for the marked demo.
@@ -249,6 +261,10 @@ owned ID for `<id>` and your authorized runtime connection for `<runtime-url>`.
 | `subscription-care:<id>` | `./lifecycle care --configuration <id> --database-url <runtime-url>` |
 | `starter-checkout:<id>` | `./lifecycle checkout-recovery --configuration <id> --database-url <runtime-url>` |
 | `promotion-claim-sweep`, `platform-watchdog` | Wait for the next scheduled tick on the database-backed host. A restart starts an initial tick. |
+
+For a nondefault local port, add `--port "$OPENLUP_STARTER_PORT"` to `care`
+and `checkout-recovery` so locally generated links use that port. A configured
+`publicOrigin` takes precedence.
 
 Run an auxiliary job still in use until its latest ledger status is
 `success`. Ask the job owner to identify failures with no reported name or
@@ -297,11 +313,19 @@ its product URL with `?sku=<encoded SKU>`, add it to the cart and check the
 same SKU and currency in the server quote. See the [published catalogue limits](../../reference/limits.md#published-starter-catalogue-limits)
 for capacity and document schema.
 
+Published SKUs need one-time selling enabled and a positive tax-inclusive
+one-time price in the market currency. The starter excludes a SKU without
+one-time selling with `starter_catalogue_one_time_required`. The shipped home
+and catalogue cards show the one-time amount in either cart mode. The product
+and cart use the server quote for the selected mode.
+
 If you copied an earlier managed storefront page into application source,
 reconcile its product selection and cart with the installed version. Keep the
 SKU query parameter in localized links, preserve the saved SKU through a failed
 read and verify the server's SKU, quantity and currency before showing amounts.
 Owned `productCard(context, product)` customizations still receive a `Product`.
+Use the exact localized `productPath(product.slug, context.locale)` as the card's
+anchor `href` so the starter can append `?sku=<encoded SKU>`.
 
 ## Select your configuration
 
@@ -921,6 +945,164 @@ in the JSON and choose **Save**. Expect `title_required` at that field. Restore
 the title, save, and choose **Prepare saved draft** with the saved draft ID and
 revision. Earlier saved drafts keep their installed rule version.
 
+### Release, price and activate a demo product
+
+With dependencies installed, run this from the extracted application root to
+compute the `starter:item` publication version from the local owned definition
+and rules bytes. You can do this offline before starting the demo.
+
+```sh
+node --experimental-strip-types --input-type=module -e '
+  import { readStarterCatalogueRules, starterCataloguePack } from "./host/editor-catalogue.ts";
+  const rules = readStarterCatalogueRules();
+  if (!rules) throw new Error("Restore owned/catalogue-rules.cjs and retry.");
+  console.log(starterCataloguePack(rules).types[0].version);
+'
+```
+
+The result predicts the installed version for those source bytes. Run
+`./lifecycle up` on the same tree after editing the rule sources. To verify a
+running demo, sign in and choose **Load draft example** under **Catalogue drafts**
+to read `product.type.version`.
+
+In `owned/catalogue.ts`, keep the installed pack declaration, add the example
+below, and export `const catalogueProduct = demoCatalogueProduct(version)` using
+the computed number. Keep the draft UUID stable and reserve an unused internal
+GTIN sequence. For variants, see [Author a product](../extend/catalogue-extension.md#author-a-product).
+
+```ts
+import { catalogInternalGtin, type CatalogProductInput } from "@openlup/platform/catalog";
+
+export function demoCatalogueProduct(version: number) {
+  const grams = (unscaled: string) => ({ dimension: "mass", unit: "openlup:g", unscaled, scale: 0 } as const);
+  const product = {
+    namespace: "starter", type: { key: "starter:item", version },
+    slug: "field-notebook", name: "Field notebook", presentation: { title: "Field notebook" },
+    skus: [{ code: "FIELD-NOTEBOOK", title: "Field notebook", options: {},
+      netContent: grams("100"), grossMass: grams("120"),
+      identifiers: [{ scheme: "gs1:gtin", issuer: "starter:internal",
+        value: catalogInternalGtin(203), packagingLevel: "unit" }],
+      sell: { oneTime: true, subscription: false }, logisticsRef: "starter:fulfilment/notebook" }],
+  } satisfies CatalogProductInput;
+  return {
+    draftId: "d9176a9d-274b-4a4a-90d8-2a0db738f181",
+    product,
+    basePrices: { "FIELD-NOTEBOOK": 1900 },
+    copyPresentation: { title: "Field notebook, second edition" },
+  };
+}
+```
+
+Give each authored SKU exactly one initial gross one-time price in minor units.
+To include an image, put it in the starter's `public/media` folder and set
+`product.presentation.mediaRef` to its local path, for example
+`/media/field-notebook.png`. Run `./lifecycle up` after adding the file so the
+running demo has the same image when you apply.
+Run `npm run --silent catalogue:check:source` to check the pack fixtures offline.
+
+Both apply variants require an interactive terminal, a running marked demo and
+verified administrator sign-in. Start the demo with `./lifecycle up`. On a fresh
+demo, use the same Compose project and a trusted terminal to run
+[first-administrator bootstrap](../../concepts/identity.md#first-administrator-bootstrap).
+
+```sh
+docker compose exec -T --user node application node --input-type=module -e '
+  import { env } from "node:process";
+  import { createPostgresOperatorIdentityStore } from "@openlup/platform/identity";
+  const operators = createPostgresOperatorIdentityStore({ connectionString: env.DATABASE_URL });
+  try { await operators.bootstrapFirstAdministrator({ email: process.argv[1] }); }
+  finally { await operators.close(); }
+' operator@example.test
+```
+
+Bootstrap creates the invitation. Normal mailbox sign-in activates it and
+creates the session. On an initialized demo, use an existing administrator or
+the [invitation recovery procedure](../../concepts/identity.md#first-administrator-bootstrap).
+
+Run the selected apply command below with the same `--configuration` as the
+running host when using a nondefault configuration. Apply checks the demo marker
+before requesting a challenge. Enter the email for the active administrator
+account or its current invitation. After requesting a token, re-read the
+mailbox from a separate private terminal in the same Compose project.
+
+```sh
+docker compose exec -T --user node --workdir /application/.context application cat captured-messages/identity.jsonl
+```
+
+If a new matching message appears, enter its token at the hidden prompt within
+ten minutes. If none arrives, confirm the address and retry with the same apply
+flags once both rolling limits allow it. The limits are one issued challenge per
+minute and five per hour per address.
+
+- `npm run catalogue:apply -- --prepare-only` signs in, then on a fresh proposal
+  saves and prepares the Release draft. It writes the draft and stops before
+  approval, publication and price writes.
+- `npm run catalogue:apply -- --json` runs the full workflow. Check the saved
+  revision, expected head, currency and proposed gross one-time amounts for
+  each SKU. Type `approve` when you intend to publish Release and again when you
+  intend to publish Activation. Check the reported initial price receipts
+  between the two publications. On refusal, use the reported fix and recheck and
+  confirm the selected price list and affected SKU before resuming.
+
+After Activation, the default command verifies the publication receipts and
+live prices and reports the effective subscription figures.
+Use `--copy` to review and publish the first presentation-only successor.
+Declared amounts must match the live amounts. To keep the live prices, restore
+those declarations and retry. To change them, follow the
+[authorized price-change procedure](#change-a-products-price). Use
+`npm run --silent catalogue:apply -- --json` for a single machine-readable
+report on stdout.
+
+After a readiness refusal, follow its Fix and Recheck. Exact `catalogue:apply`
+retry requires the original administrator and unchanged proposal bytes. After
+Release, the CLI cannot recover a proposal with changed evidence. If a
+promotion job is unready, check its readiness before running the command again.
+A missing initial price can be supplied through the authorized price action. Retry the same approved
+Publish body and key once the intended price is ready.
+
+- `catalog_publication_media_readiness_unproven` means the reviewed media
+  evidence could not be verified. Check the selected draft's media reference,
+  asset list and exact image bytes, including filename case. If the running
+  image is stale, rebuild the same demo with `./lifecycle up` using the reviewed
+  bytes, then retry the unchanged proposal.
+- `starter_catalogue_media_invalid` calls for a nonempty local file under
+  `public/media` that matches the reference and its case. For
+  `catalog_publication_media_validation_unavailable`, check file access and
+  retry once verification is available.
+
+### Change a product's price
+
+Any active administrator can change an eligible SKU's live gross base price
+after Release and Activation, including for SKUs sold by subscription.
+
+1. In `owned/catalogue.ts`, edit the SKU's amount in `catalogueProduct.basePrices`.
+   Use whole minor units.
+2. From the extracted application directory, run
+   `npm run catalogue:apply -- --reprice` in a terminal and sign in to the
+   marked demo. Use the same `--configuration` as the running host.
+3. Review the live bases, replacement amounts and labelled subscription
+   estimates. Type `approve` to authorize the base amounts.
+4. Check each receipt for its effective subscription figure and policy revision.
+   Verify the current figures with the same flags, omitting only `--reprice`.
+
+During price review, the command reports SKU-local price findings and checks
+the remaining SKUs. Other refusals end the run immediately. Either kind of
+finding prevents writes from that review. Once approved, the batch stops at
+the first refusal and retains its confirmed receipts.
+If an apply or its readback fails, follow the cause-specific guidance and the
+commands in the report to verify committed prices read-only, then review any
+remaining change. For example, if
+you used `--configuration coffee`, run `npm run catalogue:apply -- --configuration coffee`
+to verify, then `npm run catalogue:apply -- --configuration coffee --reprice` to
+start a fresh review. Keep any other flags from the original invocation. For
+machine-readable output, keep `--silent` on npm and `--json` after `--`. A receipt
+marked “committed; figure not verified” needs this readback.
+
+If the session cannot be verified, use the printed restart command with the
+same flags under an active administrator. A receipt tied to another administrator
+requires its original issuer. The report retains publications and prices whose
+checks have completed.
+
 ### Publish a saved catalogue draft
 
 If you change an input, follow [Change a product rule](#change-a-product-rule)
@@ -1078,6 +1260,10 @@ application directory, choose the pass you need:
 | `./lifecycle renewal --configuration "$CONFIGURATION" --database-url "$RUNTIME_URL"` | Drain paid-order mail, then attempt a bounded sandbox renewal pass when enabled. |
 | `./lifecycle care --configuration "$CONFIGURATION" --database-url "$RUNTIME_URL"` | Run auto-resume, subscription notices and winback when care is enabled. |
 | `./lifecycle checkout-recovery --configuration "$CONFIGURATION" --database-url "$RUNTIME_URL"` | Reconcile reminders, enqueue eligible waves, expire checkouts and process recovery mail. |
+
+For a nondefault local port, add `--port "$OPENLUP_STARTER_PORT"` to `care`
+and `checkout-recovery` so locally generated links use that port. A configured
+`publicOrigin` takes precedence.
 
 These commands change the demonstration database and private message captures;
 they install no timer or HTTP endpoint. An existing scheduler may invoke them.

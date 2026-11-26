@@ -137,6 +137,27 @@ These forwards use the reviewed default-ACL preimage for the two base functions.
 An installation with an explicit ACL on either base function requires separate
 review before applying the ACL forward.
 
+## Checkout abandonment predicate grant
+
+The [grant forward](../../db/platform/migrations/20261128230001_checkout_abandonment_safety_execute_grant.sql)
+creates `public.commerce_checkout_abandonment_safe_runtime(uuid)`, a
+`SECURITY DEFINER` entry with a pinned `search_path` that returns
+`public.commerce_initial_checkout_abandonment_safe(uuid)` unchanged. It revokes
+the entry from PUBLIC, `anon` and `authenticated` and grants EXECUTE to
+`service_role` where that role exists. The predicate keeps its definition and
+ACL: it was created inside the native store class, by
+`20261110100000_checkout_recovery_waves.sql`, so the grant-only rail, which
+admits only base-chain functions, does not apply, and the catalog boundary
+refuses an ACL change on a replaced function. A created function may carry the
+closed `service_role` grant. A qualified runtime login inherits that grant and
+evaluates the sweep's predicate before it asks for a buyer-requested
+cancellation; calling the predicate directly still refuses. The migration
+ledger applies the forward once. Repeating its grant blocks, applying it
+without `service_role`, or replacing the predicate later leaves the entry and
+its grants as they were; the
+[grant witness](../../tests/postgres/checkoutAbandonmentSafetyGrant.test.ts)
+covers each case.
+
 ## Native renewal stock protection
 
 The [renewal credit aggregation forward](../../db/platform/migrations/20261123147000_inventory_atp_aggregate_renewal_credits.sql)
@@ -217,6 +238,20 @@ before enabling database adapters. It is not evidence of schema compatibility.
 Frozen historical record (2026-11-13) archived in [Data and migrations evidence](history/data-and-migrations-evidence-2026-11-13.md#data-ownership-archived-evidence).
 
 ## Retained renewal storage
+
+`public.subscription_read_frozen_renewal_generation(uuid,uuid)` reads the original UTC anchor
+and frozen agreement by operation and commercial generation. Existing operations use their
+row UUID for both coordinates. The [projection contract](../../tests/postgres/subscriptionPublicRenewalFixture.ts)
+pins the exact keys, types and optional members. Unavailable scalar fields and singular
+objects are null. A missing required line member makes `lines` null, and missing retained
+line provenance yields an empty array. The roster requires the stored acceptance fingerprint
+to match the operation fingerprint. `cycleNumber` is the persisted operation counter as a
+JSON string. Only line unit amount, flat shipping and free shipping threshold are JSON
+numbers. Treat returned strings as opaque in money calculations and resolve retained provenance
+through its owners. Use the persisted claim identity key for
+legacy readback. Recover both coordinates after an invalid or mismatched pair. For an absent
+root, check the installation and recover the original pair. Use the installed server role for
+permission refusals.
 
 The subscription-notice forward preserves the reminder ledger's renewal-day
 identity and stores new queued charge facts in `subscription_reminder_ledger.renewal_at`;
@@ -505,6 +540,13 @@ quote and draft by line position and checks the claimed gross base and D2C
 policy against their shared market and effective windows. Lines without this
 claim keep the existing stored-price selection and tier order.
 
+A base closed by a price-writer replacement still verifies a purchase inside
+its closed interval when a same-key successor starts at the closing instant.
+Historical verification requires that instant to be at or before the lookup
+transaction’s millisecond floor, and draft writers continue to require an
+active base. A base closed without that successor stays unverifiable for
+historical purchases.
+
 The writer uses PostgreSQL transaction time. The host quote's `atTime` records
 when it was priced. If the host and database clocks straddle a price or policy
 boundary, the claim can refuse until both clocks have crossed it. An
@@ -559,17 +601,32 @@ and the restoration of local timeouts before COMMIT.
 
 - **Erasure.** The privacy store takes the ledger in `SHARE ROW EXCLUSIVE`,
   then the identity challenge relation in `EXCLUSIVE` before its subject locks.
-  [Destination erasure](../../db/platform/migrations/20261125130000_commerce_destination_v2_order_bindings.sql)
-  locks the client `FOR UPDATE`, scrubs binding pins and documents, and removes selections.
+  [Destination erasure](../../db/platform/migrations/20261127030000_subscription_destination_v2.sql)
+  locks the client `FOR UPDATE`, scrubs binding pins and documents, removes checkout
+  selections, and clears subscription selection pins while keeping the pointer.
   `postgresPrivacy.ts:10–24,46–52`.
 - **Destination receipt and issuance.** The receipt takes its scoped exclusive
   advisory lock, ledger `SHARE`, and, for a fresh receipt, client `FOR UPDATE`.
   Issuance takes those guards before inserting the fresh document, upserting the
   selection and committing the scoped receipt.
-  [Expiry](../../db/platform/migrations/20261125130000_commerce_destination_v2_order_bindings.sql) takes ledger `SHARE`, then
-  client, selection and document `FOR UPDATE`, in client and snapshot order.
+  [Expiry](../../db/platform/migrations/20261127030000_subscription_destination_v2.sql)
+  takes ledger `SHARE`, then client, checkout selection, subscription selection and
+  document `FOR UPDATE`. It excludes order-bound and current subscription evidence
+  before limiting candidates and rechecks references under the guards.
   `20261125080000_commerce_destination_v2_receipts.sql:102–132,136–195`,
   `20261125100000_commerce_destination_v2_checkout.sql:139–148,220–231`.
+- **Subscription destination.** Owner-only issuance takes the scoped advisory
+  lock and ledger `SHARE` before replay. On a miss it takes subscription
+  `FOR UPDATE`, probes the origin, then takes client `FOR UPDATE NOWAIT` before
+  selection and document guards. [Read and recheck](../../db/platform/migrations/20261128180000_subscription_destination_read.sql)
+  borrow a writable `READ COMMITTED` transaction and take ledger `SHARE`, then
+  subscription and client `FOR SHARE`. A ledger entry for the matched
+  subscription's client takes precedence over missing live linkage. An explicit
+  selection takes precedence over inherited evidence. The reader takes order,
+  activation and binding `FOR SHARE` in that order before the inherited document,
+  including when verifying prior inherited evidence after an explicit selection.
+  It rechecks that the same-client origin is still unique after the document
+  guard and before returning selection-required advice after a binding wait.
 - **Stage B publication.** It takes candidate and command advisory guards, then
   sorted draft heads `FOR NO KEY UPDATE`. Publish takes `SHARE ROW EXCLUSIVE
   NOWAIT` on `catalog_products`, `catalog_skus`, `catalog_sku_identifiers`,

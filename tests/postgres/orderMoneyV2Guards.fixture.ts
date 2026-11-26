@@ -11,7 +11,7 @@ import { allocations, buckets, fees, insert, itemTable, orderTable, positions, s
 type Sku = { sku: string; id: string };
 type Body = CommerceQuoteMoneyV2;
 type Component = Body["lines"][number];
-type Promotion = { id: string } & ({ lineKey: string } | { bucketKey: string });
+type PromotionTarget = { id: string } & ({ lineKey: string } | { bucketKey: string });
 const digest = "a".repeat(64);
 
 function component(basis: number, taxPositions: Component["taxPositions"] = []) {
@@ -22,7 +22,7 @@ function component(basis: number, taxPositions: Component["taxPositions"] = []) 
   };
 }
 
-export function reseal(body: Body, quoteId = randomUUID()): CommerceQuoteV2 {
+export function reseal(body: Body, quoteId: string = randomUUID()): CommerceQuoteV2 {
   const inner = { ...body, quoteId, status: "final", schemaVersion: 2, contractVersion: "commerce.v1",
     moneyDigest: quoteDigest("commerce.quote-money.v2", body) } as const;
   return { ...inner, quoteDigest: quoteDigest("commerce.quote.v2", inner) };
@@ -30,24 +30,23 @@ export function reseal(body: Body, quoteId = randomUUID()): CommerceQuoteV2 {
 
 export async function issue(store: Pick<AccountMutationsStore, "owner" | "runtime">, sku: Sku, inclusive: boolean,
   edit: (body: Body) => Body = body => body,
-  { pending = false, legacySeal = false, promotions = [], limitMaxMinor }: {
-    pending?: boolean; legacySeal?: boolean; promotions?: readonly Promotion[]; limitMaxMinor?: number;
+  { pending = false, legacySeal = false, promotions = [], paymentBounds }: {
+    pending?: boolean; legacySeal?: boolean; promotions?: readonly PromotionTarget[];
+    paymentBounds?: Pick<Body["paymentLimits"], "minMinor" | "maxMinor">;
   } = {}) {
   const at = (await store.owner.query<{ now: Date }>("SELECT date_trunc('milliseconds',clock_timestamp()) AS now")).rows[0]!.now;
   const value = await fixture(store, at.toISOString());
   const input = value.begin(inclusive ? fiscalKind : exclusiveKind, !legacySeal);
-  if (limitMaxMinor !== undefined) {
-    const limits = input.pin.composition!.limits;
-    limits.maxMinor = limitMaxMinor;
-    limits.effective.maxMinor = limitMaxMinor;
+  if (paymentBounds && input.pin.composition) {
+    Object.assign(input.pin.composition.limits, paymentBounds, { effective: paymentBounds });
   }
   if (promotions.length > 0) {
     const plan = input.pin.composition!.planInput;
     plan.selected.adjustments = promotions.map(promotion => ({
       amountOffMinor: 1, adjustmentRef: promotion.id, evidenceRef: "b".repeat(64),
       ...("lineKey" in promotion
-        ? { appliesTo: "line", target: { lineKeys: [promotion.lineKey] } }
-        : { appliesTo: "shipping", target: { bucketKey: promotion.bucketKey } }),
+        ? { appliesTo: "line", target: { lineKeys: [promotion.lineKey] } } as const
+        : { appliesTo: "shipping", target: { bucketKey: promotion.bucketKey } } as const),
     }));
     await store.owner.query(`INSERT INTO public.commerce_promotion_definitions(promotion_id, definition)
       SELECT id, jsonb_build_object('id',id,'status','active','trigger_type','automatic',
@@ -87,18 +86,17 @@ function amounts(value: Pick<Component, "preDiscountMinor" | "effectiveMinor" | 
 
 export async function write(db: PoolClient, evidence: Evidence, sku: Sku,
   opts: { orderId?: string; snapshot?: Record<string, unknown>; item?: Record<string, unknown>; source?: Record<string, unknown>;
-    erased?: boolean; clientId?: string; bucketErased?: boolean } = {}) {
+    moneyVersion?: string;
+    erased?: boolean; clientId?: string; bucketErased?: boolean; snapshotFirst?: boolean;
+    beforeSnapshot?: () => Promise<unknown>; beforeSource?: () => Promise<unknown> } = {}) {
   const { quote, clientId, selection, service } = evidence;
   const id = opts.orderId ?? randomUUID();
   const erased = opts.erased ?? false;
   await db.query("LOCK TABLE public.identity_privacy_erasures IN SHARE MODE");
   await db.query("SELECT 1 FROM public.clients WHERE id=$1 FOR UPDATE", [opts.clientId ?? clientId]);
-  await insert(db, orderTable, { id, client_id: opts.clientId ?? clientId, status: "pending_payment",
-    money_version: version, currency_code: quote.currency, total_amount_minor: quote.payableMinor });
-  await insert(db, "commerce_destination_v2_order_bindings", {
-    order_id: id, snapshot_ref: quote.destination.snapshotRef, selection: erased ? null : selection, service: erased ? null : service,
-  });
-  await insert(db, snapshots, {
+  const writeHeader = () => insert(db, orderTable, { id, client_id: opts.clientId ?? clientId, status: "pending_payment",
+    money_version: opts.moneyVersion ?? version, currency_code: quote.currency, total_amount_minor: quote.payableMinor });
+  const writeSnapshot = () => insert(db, snapshots, {
     order_id: id, calculation_id: quote.taxEvidence.calculationId, accepted_quote_id: quote.quoteId,
     accepted_quote_digest: quote.quoteDigest, token_digest: digest, accepted_money_digest: quote.moneyDigest,
     evidence_digest: quote.taxEvidence.evidenceDigest, coverage_digest: quote.coverageDigest,
@@ -110,11 +108,19 @@ export async function write(db: PoolClient, evidence: Evidence, sku: Sku,
     catalogue_evidence_ref: quote.catalogueEvidenceRef, limit_profile_ref: quote.paymentLimits.profileRef,
     limit_channel_key: quote.paymentLimits.channelKey, limit_revision: Number(quote.paymentLimits.revision),
     limit_min_minor: quote.paymentLimits.minMinor, limit_max_minor: quote.paymentLimits.maxMinor,
-    money_version: version, amount_basis: quote.amountBasis, currency: quote.currency, mode: quote.mode,
+    money_version: opts.moneyVersion ?? version, amount_basis: quote.amountBasis, currency: quote.currency, mode: quote.mode,
     promotion_engine: quote.promotion.engine, cadence_days: quote.cadence?.days,
     tax_date: quote.taxEvidence.taxDate, evaluation_expires_at: quote.taxEvidence.expiresAt,
     net_total: quote.netTotal, tax_total: quote.taxTotal, fee_total: quote.feeTotal, payable_minor: quote.payableMinor,
     ...opts.snapshot,
+  });
+
+  if (opts.snapshotFirst) await writeSnapshot();
+  await writeHeader();
+  await opts.beforeSnapshot?.();
+  if (!opts.snapshotFirst) await writeSnapshot();
+  await insert(db, "commerce_destination_v2_order_bindings", {
+    order_id: id, snapshot_ref: quote.destination.snapshotRef, selection: erased ? null : selection, service: erased ? null : service,
   });
 
   const adjustments = new Map<string, string>();
@@ -157,11 +163,14 @@ export async function write(db: PoolClient, evidence: Evidence, sku: Sku,
   let ordinal = 0;
   const itemIds: string[] = [];
   for (const [index, row] of quote.lines.entries()) {
-    await insert(db, sources, { order_id: id, sku_id: sku.id, sku_code: row.sku, line_key: row.lineKey,
-      tax_class_key: row.taxClassKey, assignment_ref: row.assignmentRef, mode: row.mode,
-      source_ordinal: row.sourceOrdinal, source_rank: index + 1, quantity: row.quantity, unit_basis_minor: row.unitBasisMinor,
-      ...amounts(row), ...(index === 0 ? opts.source : {}) });
-    await addComponent(row, { line_key: row.lineKey });
+    const writeSource = async () => {
+      await insert(db, sources, { order_id: id, sku_id: sku.id, sku_code: row.sku, line_key: row.lineKey,
+        tax_class_key: row.taxClassKey, assignment_ref: row.assignmentRef, mode: row.mode,
+        source_ordinal: row.sourceOrdinal, source_rank: index + 1, quantity: row.quantity, unit_basis_minor: row.unitBasisMinor,
+        ...amounts(row), ...(index === 0 ? opts.source : {}) });
+      await addComponent(row, { line_key: row.lineKey });
+    };
+    if (!opts.beforeSource) await writeSource();
     const unit = Math.floor(row.effectiveMinor / row.quantity);
     const extras = row.effectiveMinor % row.quantity;
     const split = [[row.quantity - extras, unit], ...(extras ? [[extras, unit + 1]] : [])];
@@ -176,6 +185,10 @@ export async function write(db: PoolClient, evidence: Evidence, sku: Sku,
           catalog_line_amount_minor: row.unitBasisMinor * quantity, promotion_discount_allocated_minor: (row.unitBasisMinor - price) * quantity,
           promotion_allocation_fingerprint: digest } : {}), ...(itemIds.length === 0 ? opts.item : {}) });
       itemIds.push(itemId);
+    }
+    if (opts.beforeSource) {
+      await opts.beforeSource();
+      await writeSource();
     }
   }
   for (const [index, bucket] of quote.deliveryBuckets.entries()) {

@@ -274,6 +274,7 @@ test('completes sandbox purchase through the installed engine', async ({ page })
   await page.getByRole('spinbutton').first().fill('1');
   await page.getByRole('button', { name: copy[market.defaultLocale].addBox, exact: true }).click();
   await page.getByRole('button', { name: copy[market.defaultLocale].checkout, exact: true }).click();
+  await expect(page.locator('.summary')).toBeVisible();
   await page.getByLabel(copy[market.defaultLocale].termsAccept).check();
   await page.getByRole('button', { name: copy[market.defaultLocale].placeOrder, exact: true }).click();
   await page.locator('main').getByRole('link', { name: copy[market.defaultLocale].completion, exact: true }).click();

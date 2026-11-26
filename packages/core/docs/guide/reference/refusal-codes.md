@@ -242,6 +242,7 @@ replay the original authorized request with its key.
 | `@openlup/platform` | `Code` | [`./pricing`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/pricing.api.md) | definition is not a closed set of string literals |
 | `@openlup/platform` | `CommerceQuoteMoneyV2Refusal` | [`./pricing`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/pricing.api.md) | reference to another type |
 | `@openlup/platform` | `ReconcileAccountErrorCode` | [`./identity`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/identity.api.md) | reference to another type |
+| `@openlup/platform` | `StorefrontFindingCode` | [`./lifecycle`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/lifecycle.api.md) | intersection type permits values beyond string literals |
 <!-- /generated:refusal-codes-open -->
 
 ## Native subscription profile installation and capture
