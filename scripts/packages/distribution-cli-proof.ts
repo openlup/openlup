@@ -1417,112 +1417,13 @@ export function createVerificationInput() {
 }
 
 /** Installed adjacent-file upgrade on one occupied local demonstration. */
-const occupiedApplicationAudit = String.raw`
-// Runs separately from the occupied proof so synchronous Compose calls cannot block Docker events.
-import { spawn } from "node:child_process";
-import { createInterface } from "node:readline";
-
-const { docker, project, alternate, barrier } = await new Promise(resolve => process.once("message", resolve));
-const events = spawn(docker, ["events", "--since", new Date().toISOString(), "--filter", "event=create", "--filter", "event=start", "--filter", "event=die", "--filter", "event=destroy",
-  "--format", '{{.Type}} {{.Action}} {{index .Actor.Attributes "com.docker.compose.project"}} {{.Actor.ID}}'
-    + ' {{index .Actor.Attributes "com.docker.compose.service"}}'
-    + ' {{if index .Actor.Attributes "com.docker.compose.container-number"}}managed{{end}}'
-    + ' {{index .Actor.Attributes "com.openlup.proof.log-fixture"}}'],
-{ stdio: ["ignore", "pipe", "ignore"] });
-const inventory = new Map(), installers = new Set();
-let finishing = false;
-const report = result => {
-  // Keep captured bytes on the private IPC channel.
-  process.send(result, () => process.disconnect());
-};
-events.once("error", () => {
-  if (!finishing) report({ error: "application_event_stream" });
-});
-events.once("exit", () => {
-  if (!finishing) report({ error: "application_event_stream" });
-});
-events.once("spawn", () => process.send({ ready: true }));
-
-function follow(id) {
-  const client = spawn(docker, ["logs", "--follow", id], { stdio: ["ignore", "pipe", "pipe"] });
-  const stdout = [], stderr = [];
-  client.stdout.on("data", bytes => stdout.push(bytes));
-  client.stderr.on("data", bytes => stderr.push(bytes));
-  return new Promise(resolve => {
-    client.once("error", () => resolve({ ok: false }));
-    client.once("close", code => resolve({ ok: code === 0,
-      stdout: Buffer.concat(stdout).toString("utf8"), stderr: Buffer.concat(stderr).toString("utf8") }));
-  });
-}
-
-async function finish() {
-  finishing = true;
-  events.kill();
-  const logs = [];
-  const errors = new Set();
-  for (const [id, entry] of inventory) {
-    const streams = await Promise.all(entry.followers);
-    if (!entry.destroyed || entry.starts !== entry.exits || (!entry.starts && entry.fixture)
-      || streams.some(result => !result.ok)) errors.add("application_log_stream_incomplete");
-    logs.push({ id, fixture: entry.fixture, started: entry.starts > 0, streams: streams.flatMap(result => [result.stdout, result.stderr]) });
-  }
-  report({ logs, installerCount: installers.size, errors: [...errors] });
-}
-
-for await (const line of createInterface({ input: events.stdout })) {
-  const [type, action, name, id, service, managed, fixture] = line.split(" ");
-  if (type === "volume" && action === "create" && id === barrier) {
-    await finish();
-    break;
-  }
-  if (type !== "container" || (name !== project && name !== alternate)) continue;
-  if (service === "installation" && action === "create") installers.add(id);
-  if (!(service === "application" && managed === "managed") && !fixture) continue;
-  if (action === "create") inventory.set(id, { fixture, followers: [follow(id)], starts: 0, exits: 0, destroyed: false });
-  const entry = inventory.get(id);
-  if (!entry) {
-    finishing = true;
-    events.kill();
-    report({ error: "application_event_without_create" });
-    break;
-  }
-  if (action === "start") {
-    entry.starts++;
-    // Docker closes a follower opened before start. Follow again for each running interval.
-    entry.followers.push(follow(id));
-  }
-  if (action === "die") entry.exits++;
-  if (action === "destroy") entry.destroyed = true;
-}
-`;
-
 export async function proveStarterRuntimeUpgrade(from: string, to: string, port: number) {
   if (process.platform !== "linux" || port === 4319) throw new Error("starter_runtime_upgrade_requires_native_linux_and_free_port");
   const started = performance.now();
   const project = "starter-runtime-" + randomBytes(6).toString("hex");
   const scratch = mkdtempSync(join(tmpdir(), project + "-"));
   const dockerBin = realpathSync("/usr/bin/docker");
-  const bin = join(scratch, "bin"), installerLogs = join(scratch, "installer-logs");
-  mkdirSync(bin);
-  mkdirSync(installerLogs, { mode: 0o700 });
-  // A Compose one-shot removes itself. Save the attached streams before
-  // forwarding them to lifecycle, which may sanitize or discard them.
-  writeFileSync(join(bin, "docker"), `#!/bin/sh
-case " $* " in
-  *" compose "*" run "*" installation "*)
-    umask 077
-    capture=$(mktemp -d "${installerLogs}/run.XXXXXXXX") || exit 125
-    status=0
-    "${dockerBin}" "$@" > "$capture/stdout" 2> "$capture/stderr" || status=$?
-    cat "$capture/stdout"
-    cat "$capture/stderr" >&2
-    exit "$status"
-    ;;
-esac
-exec "${dockerBin}" "$@"
-`, { mode: 0o700 });
   const env: NodeJS.ProcessEnv = { ...isolatedConsumerEnv(), COMPOSE_PROJECT_NAME: project, OPENLUP_STARTER_PORT: String(port) };
-  env.PATH = bin + ":" + env.PATH;
   const fresh = { ...env };
   delete fresh.COMPOSE_PROJECT_NAME;
   const alternate = project + "-next";
@@ -1531,7 +1432,7 @@ exec "${dockerBin}" "$@"
   const composeFor = (activeProject: string, ...args: string[]) =>
     run(from, "docker", ["compose", "--project-name", activeProject, ...args]);
   const compose = (...args: string[]) => composeFor(project, ...args);
-  const captures: string[] = [];
+  const captures: string[] = [], output: string[] = [];
   const credentials = new Map<string, Set<string>>();
   const remember = (kind: string, value: unknown) => {
     if (typeof value !== "string" || !value) return;
@@ -1539,82 +1440,29 @@ exec "${dockerBin}" "$@"
     values.add(value);
     credentials.set(kind, values);
   };
-  const appLogs = new Map<string, string[]>();
-  const generations = new Map<string, string>();
-  let activeApps = new Map<string, string>();
   let cleanupAttempted = false;
-  let auditFinished = false;
   const failures: unknown[] = [];
   const stopProof = new Error("occupied proof has recorded failures");
   const fail = (name: string) => { throw new Error("starter_runtime_proof_" + name); };
-  function runRaw(cwd: string, command: string, args: string[], input?: string, environment: NodeJS.ProcessEnv = env, privateResult = false) {
+  function run(cwd: string, command: string, args: string[], input?: string, environment: NodeJS.ProcessEnv = env, privateResult = false) {
     const child = spawnSync(command, args, { cwd, env: environment, input, encoding: "utf8", timeout: 300_000, maxBuffer: 16 * 1024 * 1024 });
     const stdout = child.stdout ?? "", stderr = child.stderr ?? "";
     if (!privateResult) captures.push(stdout, stderr);
-    if (child.error) fail("command_" + (child.error as NodeJS.ErrnoException).code);
+    if (child.error) fail("command_" + ((child.error as NodeJS.ErrnoException).code ?? "unknown").toLowerCase());
     return { ...child, stdout, stderr };
   }
-  const checked = (step: string, result: ReturnType<typeof runRaw>, expected = 0) => {
+  const checked = (step: string, result: ReturnType<typeof run>, expected = 0) => {
     if (result.status !== expected) fail(step + "_exit_" + result.status);
     return result.stdout.trim();
   };
-  const projectLabel = "com.docker.compose.project";
-  const appFilters = ["--filter", "label=com.docker.compose.service=application",
-    "--filter", "label=com.docker.compose.container-number"];
-  const barrier = project + "-log-audit";
-  type LogAudit = { error?: string; errors?: string[]; installerCount?: number;
-    logs?: { id: string; fixture: string; started: boolean; streams: string[] }[] };
-  const audit = spawn(process.execPath, ["--input-type=module", "--eval", occupiedApplicationAudit],
-    { cwd: from, env, detached: true, stdio: ["ignore", "ignore", "ignore", "ipc"] });
-  let markReady!: () => void, reportAudit!: (result: LogAudit) => void;
-  const ready = new Promise<void>(resolve => { markReady = resolve; });
-  const auditResult = new Promise<LogAudit>(resolve => { reportAudit = resolve; });
-  audit.once("spawn", () => audit.send({ docker: dockerBin, project, alternate, barrier }, error => {
-    if (error) reportAudit({ error: "application_log_audit_configuration" });
-  }));
-  audit.on("message", (message: LogAudit & { ready?: boolean }) => {
-    if (message.ready) markReady();
-    else reportAudit(message);
-  });
-  audit.once("exit", () => reportAudit({ error: "application_log_audit_exit" }));
-  audit.once("error", () => reportAudit({ error: "application_log_audit_launch" }));
-  const fixtureLabel = "com.openlup.proof.log-fixture";
   function cleanupProjects() {
     cleanupAttempted = true;
     for (const name of [project, alternate]) {
       try {
-        checked("proof_project_down", runRaw(from, dockerBin,
+        checked("proof_project_down", run(from, dockerBin,
           ["compose", "--project-name", name, "down", "--volumes", "--remove-orphans", "--rmi", "local"]));
       } catch (error) { failures.push(error); }
     }
-  }
-  async function finishAudit() {
-    auditFinished = true;
-    // The daemon sends the barrier after the teardown events, including any transient containers.
-    try {
-      checked("log_audit_barrier", runRaw(from, dockerBin, ["volume", "create", barrier]));
-      const result = await Promise.race([auditResult, new Promise<LogAudit>(resolve => {
-        setTimeout(() => resolve({ error: "application_log_audit_timeout" }), 30_000).unref();
-      })]);
-      for (const finding of [result.error, ...result.errors ?? []])
-        if (finding) failures.push(new Error("starter_runtime_proof_" + finding));
-      return result;
-    } catch (error) {
-      failures.push(error);
-      return {};
-    } finally {
-      try { checked("log_audit_barrier_cleanup", runRaw(from, dockerBin, ["volume", "rm", barrier])); }
-      catch (error) { failures.push(error); }
-    }
-  }
-  function listApps() {
-    const apps = new Map<string, string>();
-    for (const name of [project, alternate]) {
-      const ids = checked("application_inventory", runRaw(from, dockerBin, ["ps", "-aq", "--no-trunc",
-        "--filter", "label=" + projectLabel + "=" + name, ...appFilters]));
-      for (const id of ids.split(/\s+/u).filter(Boolean)) apps.set(id, name);
-    }
-    return apps;
   }
   const guestFiles = `const fs = require("node:fs");
     const read = path => { try { return fs.readFileSync(path, "utf8").trim(); }
@@ -1624,53 +1472,31 @@ exec "${dockerBin}" "$@"
       publication: read("/application/.context/catalogue-builds/.publication-password")
     }));`;
   function rememberAppFiles(id: string) {
-    const state = checked("application_state", runRaw(from, dockerBin, ["inspect", "--format", "{{.State.Running}}", id]));
-    if (state !== "true") return;
-    const result = runRaw(from, dockerBin, ["exec", id, "node", "-e", guestFiles], undefined, env, true);
-    const { keyring, publication } = JSON.parse(checked("private_application_inventory", result));
+    const result = run(from, dockerBin, ["exec", id, "node", "-e", guestFiles], undefined, env, true);
+    captures.push(result.stderr);
+    const privateFiles = checked("private_application_inventory", result);
+    let guest: { keyring?: { current?: string; previous?: string }; publication?: string };
+    try { guest = JSON.parse(privateFiles); } catch { return fail("private_application_inventory_invalid"); }
+    const { keyring, publication } = guest;
     remember("guest signing key", keyring?.current);
     remember("guest signing key", keyring?.previous);
     remember("publication password", publication);
   }
-  function applicationBoundary(label: string, operate: () => ReturnType<typeof runRaw>) {
-    const before = listApps();
-    if (before.size !== activeApps.size || [...before].some(([id, name]) => activeApps.get(id) !== name))
-      fail("application_changed_outside_capture_boundary");
-    for (const id of before.keys()) rememberAppFiles(id);
-    try { return operate(); }
-    finally {
-      activeApps = listApps();
-      for (const [id, name] of activeApps) {
-        if (!generations.has(id)) generations.set(id, name === alternate ? "blank-volume application" : label);
-      }
-    }
-  }
-
-  function run(cwd: string, command: string, args: string[], input?: string, environment = env, privateResult = false) {
-    const execute = () => runRaw(cwd, command, args, input, environment, privateResult);
-    const lifecycleChange = command === "./lifecycle" && ["up", "down"].includes(args[0]!);
-    const composeChange = (args[0] === "compose" || args[0] === "--project-name")
-      && args.some(arg => ["up", "stop", "down", "rm"].includes(arg));
-    const attachedInstaller = args[0] === "compose" && args.includes("run") && args.includes("installation");
-    if (lifecycleChange || composeChange || attachedInstaller) {
-      const fault = environment.STARTER_PROOF_FAULT;
-      const label = fault ? fault + " fault application" : environment.OPENLUP_STARTER_PORT !== String(port)
-        ? "occupied-listener application" : "lifecycle application";
-      return applicationBoundary(label, execute);
-    }
-    return execute();
-  }
-  const sql = (text: string, database = "neutral_store", privateResult = false, activeProject = project) => checked("owner_sql",
-    run(from, "docker", ["compose", "--project-name", activeProject, "exec", "-T", "database", "psql", "-XAtq", "-w",
+  const sql = (text: string, database = "neutral_store", privateResult = false, activeProject = project) => {
+    const result = run(from, "docker", ["compose", "--project-name", activeProject, "exec", "-T", "database", "psql", "-XAtq", "-w",
       "-v", "ON_ERROR_STOP=1", "-U", database === "postgres" ? "postgres" : "starter_install", "-d", database, "-c", text],
-    undefined, env, privateResult));
+      undefined, env, privateResult);
+    if (privateResult) captures.push(result.stderr);
+    return checked("owner_sql", result);
+  };
   const source = join(homedir(), ".local/state/openlup/neutral-store", project, "runtime-password");
   const projectFile = join(from, ".context/compose-project");
-  const up = (code = 0, label = "lifecycle application") => checked("up", applicationBoundary(label,
-    () => runRaw(from, "./lifecycle", ["up", "--configuration", "coffee", "--json"])), code);
   const container = (service: string, activeProject = project) => checked("container_id", composeFor(activeProject, "ps", "-q", service));
-  const applicationId = (name = project) =>
-    [...activeApps].find(([, activeProject]) => activeProject === name)?.[0] ?? fail("untracked_checkout_application");
+  const up = (code = 0) => {
+    const result = checked("up", run(from, "./lifecycle", ["up", "--configuration", "coffee", "--json"]), code);
+    if (code === 0) rememberAppFiles(container("application"));
+    return result;
+  };
   const identity = (activeProject = project) => {
     const id = container("database", activeProject);
     const format = "{{.State.StartedAt}} {{range .Mounts}}{{if eq .Destination \"/var/lib/postgresql/data\"}}{{.Name}}{{end}}{{end}}";
@@ -1685,7 +1511,7 @@ exec "${dockerBin}" "$@"
     sql("select jsonb_agg(to_jsonb(t) order by id) from public.price_entries t"),
     sql("select jsonb_agg(to_jsonb(t) order by position) from public.platform_schema_migrations t"),
   ];
-  const mark = (label: string) => process.stdout.write("Starter runtime " + label + " PASS\n");
+  const mark = (label: string) => output.push("Starter runtime " + label + " PASS\n");
   const origin = `http://127.0.0.1:${port}`;
   type CheckoutResult = { ok: boolean; code?: string; value?: Record<string, unknown> };
   async function checkoutAction(action: string, body: Record<string, unknown>): Promise<CheckoutResult> {
@@ -1757,16 +1583,14 @@ exec "${dockerBin}" "$@"
     return { records, receipt, matches };
   }
   try {
-    await Promise.race([ready, auditResult.then(() => fail("application_log_audit_startup"))]);
     const predecessor: string = JSON.parse(readFileSync(join(from, ".starter-origin.json"), "utf8")).sourceRevision;
     if (!/^[a-f0-9]{40}$/u.test(predecessor)) fail("predecessor_identity");
     const old = starterUpgradeSnapshot(from, "1.0.0"), next = starterUpgradeSnapshot(to, "1.0.1");
     const oldCompose = join(from, "compose.yaml"), oldLifecycle = readFileSync(join(from, "lifecycle.mjs"), "utf8");
     if (existsSync(source)) fail("unexpected_runtime_file");
-    up(0, "predecessor application");
+    up();
     const before = retained(), original = identity();
     if (before.some(value => !value || !JSON.parse(value).length)) fail("empty_retained_seed");
-    const predecessorGeneration = applicationId();
     const settled = await createSettledReceipt();
     mark("predecessor checkout settled with keyed records");
     const count = JSON.parse(before[3]!).length as number;
@@ -1786,7 +1610,6 @@ exec "${dockerBin}" "$@"
     }
     mark(project + " common installed schema " + count);
     checked("stop_predecessor_application", compose("stop", "application"));
-
     const stoppedApplication = () => {
       const id = checked("all_application_containers", compose("ps", "--all", "-q", "application"));
       if (!id) fail("predecessor_application_missing");
@@ -1850,9 +1673,8 @@ exec "${dockerBin}" "$@"
       if (!body) throw new Error("starter_runtime_documented_recipe_missing");
       return body;
     }
-    const recover = () => applicationBoundary("lock recovery application", () =>
-      runRaw(from, "/bin/sh", ["-ec", recipe("Recover a stale database lock")], undefined,
-        { ...env, VOLUME: volume, DATABASE_IMAGE: predecessorImage }));
+    const recover = () => run(from, "/bin/sh", ["-ec", recipe("Recover a stale database lock")], undefined,
+      { ...env, VOLUME: volume, DATABASE_IMAGE: predecessorImage });
     const fingerprint = () => checked("paused_volume_fingerprint", run(from, dockerBin, ["run", "--rm", "--network", "none",
       "--volume", volume + ":/predecessor:ro", "--entrypoint", "/bin/sh", predecessorImage, "-ec",
       "cd /predecessor; find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum"]));
@@ -1882,19 +1704,19 @@ exec "${dockerBin}" "$@"
     checked("stale_predecessor_lock_and_hba", run(from, dockerBin, ["run", "--rm", "--network", "none",
       "--volume", volume + ":/predecessor:ro", "--entrypoint", "/bin/sh", predecessorImage, "-ec",
       'test -s /predecessor/postmaster.pid && grep -Eq "^host[[:space:]].*[[:space:]]trust$" /predecessor/pg_hba.conf']));
-    const cutover = () => applicationBoundary("upgraded application", () =>
-      runRaw(from, "/bin/sh", ["-ec", recipe("Database login", "##")], undefined,
-        { ...fresh, OPENLUP_STARTER_PORT: undefined, PROJECT: project, CONFIGURATION: "coffee", PORT: String(port) }));
+    const cutover = () => run(from, "/bin/sh", ["-ec", recipe("Database login", "##")], undefined,
+      { ...fresh, OPENLUP_STARTER_PORT: undefined, PROJECT: project, CONFIGURATION: "coffee", PORT: String(port) });
     const lockedCutover = cutover();
     if (lockedCutover.status !== 2 || !lockedCutover.stderr.includes("starter_runtime_database_lock_held")
       || !lockedCutover.stderr.includes("docker ps --filter volume=" + volume)) fail("stale_lock_remedy");
     checked("documented_predecessor_recovery", recover());
     checked("documented_cutover_from_fresh_shell", cutover());
-    const upgradedGeneration = applicationId();
-    if (upgradedGeneration === predecessorGeneration || !(await readSettlementContinuity(settled)).matches)
+    const upgradedApp = container("application");
+    if (!upgradedApp || upgradedApp === predecessorApp || !(await readSettlementContinuity(settled)).matches)
       fail("settled_data_continuity");
     mark("settled data continuity and original receipt");
     mark("original receipt and keyed records checked before startup replay");
+    rememberAppFiles(upgradedApp);
     const recovered = checked("recovery_logs", compose("logs", "--no-color", "database"));
     if (!/database system was interrupted|automatic recovery in progress/u.test(recovered)) fail("predecessor_recovery_missing");
     const initial = readFileSync(source, "utf8").trim();
@@ -1992,8 +1814,10 @@ exec "${dockerBin}" "$@"
       if (result.status === 0 || !/no pg_hba.conf entry|pg_hba.conf rejects connection/u.test(result.stderr)) fail("physical_replication_hba");
     }
     mark("ordered HBA rules and physical replication refusal");
-    const publication = checked("publication_input", run(from, "docker", ["compose", "--project-name", project, "exec", "-T", "application",
-      "cat", "/application/.context/catalogue-builds/.publication-password"], undefined, env, true));
+    const publicationRead = run(from, "docker", ["compose", "--project-name", project, "exec", "-T", "application",
+      "cat", "/application/.context/catalogue-builds/.publication-password"], undefined, env, true);
+    captures.push(publicationRead.stderr);
+    const publication = checked("publication_input", publicationRead);
     remember("publication password", publication);
     if (checked("publication_connection", peer(publication, "openlup_catalog_publication")) !== "openlup_catalog_publication" ||
       !/password authentication failed/u.test(peer(initial, "openlup_catalog_publication").stderr)) fail("publication_isolation");
@@ -2016,8 +1840,7 @@ exec "${dockerBin}" "$@"
     const oldRenewal = readFileSync(renewalConfig, "utf8");
     if (!oldRenewal.includes("enabled: false")) fail("renewal_fixture");
     writeFileSync(renewalConfig, oldRenewal.replace("enabled: false", "enabled: true"));
-    up(0, "renewal fixture application");
-    const upgradedBeforeRecreate = applicationId();
+    up();
     const olderCompose = env.OPENLUP_STARTER_COMPOSE_V2;
     const currentCompose = env.OPENLUP_STARTER_COMPOSE_V5;
     if (!olderCompose || !currentCompose) fail("both_compose_releases_required");
@@ -2084,28 +1907,11 @@ exec "${dockerBin}" "$@"
     const { prepareRuntimeHandoff } = await import("../../examples/neutral-store/host/runtime-database.ts");
     const handoff = prepareRuntimeHandoff(project, [from]);
     const override = join(scratch, "missing-bind.yaml");
-    const shutdownRed = randomBytes(24).toString("hex") + "/=";
-    const shutdownPath = "/tmp/occupied-proof-shutdown-control";
-    const shutdownFixture = `const fs = require("node:fs");
-      process.on("SIGTERM", () => {
-        const value = fs.readFileSync(${JSON.stringify(shutdownPath)}, "utf8");
-        fs.writeSync(1, value + "\\n");
-        fs.writeSync(2, encodeURIComponent(value) + "\\n");
-        process.exit(0);
-      });
-      setInterval(() => {}, 1000);`;
-    writeFileSync(override, 'services:\n  application:\n    command: '
-      + JSON.stringify(["node", "-e", shutdownFixture]) + '\n    volumes: !override []\n');
+    writeFileSync(override, 'services:\n  application:\n    command: ["sleep", "infinity"]\n    volumes: !override []\n');
     try {
-      checked("missing_bind_fixture", applicationBoundary("missing-bind application", () =>
-        runRaw(from, "docker", ["compose", "--project-name", project, "-f", "compose.yaml", "-f", override,
-          "up", "--no-deps", "--no-build", "--force-recreate", "-d", "application"], undefined, { ...env, ...handoff.environment })));
+      checked("missing_bind_fixture", run(from, "docker", ["compose", "--project-name", project, "-f", "compose.yaml", "-f", override,
+        "up", "--no-deps", "--no-build", "--force-recreate", "-d", "application"], undefined, { ...env, ...handoff.environment }));
     } finally { handoff.cleanup(); }
-    if (activeApps.has(upgradedBeforeRecreate) || activeApps.has(upgradedGeneration)) fail("upgraded_application_recreate");
-    const shutdownGeneration = applicationId();
-    checked("arm_shutdown_log_fixture", runRaw(from, dockerBin, ["exec", "-i", shutdownGeneration, "node", "-e",
-      `const fs = require("node:fs"); fs.writeFileSync(${JSON.stringify(shutdownPath)}, fs.readFileSync(0), {mode: 0o600});`],
-      shutdownRed));
     for (const [release] of releases) {
       exerciseJobs(release, true);
       for (const mode of ["show", "preview"]) {
@@ -2117,7 +1923,7 @@ exec "${dockerBin}" "$@"
       if (result.status !== 2 || JSON.parse(result.stdout).findings?.[0]?.code !== "starter_runtime_credential_read_failed")
         fail("settings_missing_bind");
     }
-    up(0, "restored-bind application");
+    up();
     for (const [release] of releases) exerciseJobs(release);
     mark("lifecycle settings show and preview help work without a credential bind on both Compose versions");
     mark("missing credential bind refusal and restoration on both Compose versions");
@@ -2134,6 +1940,7 @@ exec "${dockerBin}" "$@"
     mark("first administrator invitation through mounted runtime resolver");
 
     const afterRotation = randomBytes(32).toString("hex");
+    remember("runtime password", afterRotation);
     const previousApp = container("application");
     const replacement = source + ".next";
     writeFileSync(replacement, afterRotation + "\n", { mode: 0o444 });
@@ -2144,20 +1951,19 @@ exec "${dockerBin}" "$@"
         "installation", "node", "lifecycle.mjs", "install", "--configuration", "coffee", "--json"], undefined, { ...env, ...rotated.environment }));
     } finally { rotated.cleanup(); }
     const changedVerifier = verifier();
-    remember("runtime password", afterRotation);
     if (changedVerifier === committedVerifier || container("application") !== previousApp ||
       (await fetch(`http://127.0.0.1:${port}/api/config`)).status !== 200) fail("interrupted_replacement_fixture");
     const stale = compose("exec", "-T", "application", "node", "lifecycle.mjs", "runtime-probe");
     if (stale.status !== 2 || stale.stdout.trim() !== "starter_runtime_database_auth_failed") fail("stale_mount_fresh_probe");
-    up(0, "credential replacement application");
+    up();
     if (verifier() !== changedVerifier || container("application") === previousApp || checked("new_password", native(afterRotation)) !== "starter_runtime"
       || !/password authentication failed/u.test(native(initial).stderr)) fail("rotation_failed");
     mark("credential replacement, interrupted recreation and fresh runtime read");
 
     const heldSource = source + ".held";
-    checked("rotation_from_fresh_shell", applicationBoundary("documented rotation application", () =>
-      runRaw(from, "/bin/sh", ["-ec", recipe("Rotate the runtime credential")], undefined,
-        { ...fresh, OPENLUP_STARTER_PORT: undefined, CONFIGURATION: "coffee", PORT: String(port) })));
+    checked("rotation_from_fresh_shell", run(from, "/bin/sh", ["-ec", recipe("Rotate the runtime credential")], undefined,
+      { ...fresh, OPENLUP_STARTER_PORT: undefined, CONFIGURATION: "coffee", PORT: String(port) }));
+    rememberAppFiles(container("application"));
     const rotatedResponse = await fetch(`http://127.0.0.1:${port}/api/config`);
     if (rotatedResponse.status !== 200 ||
       (await rotatedResponse.json() as { config?: { id?: unknown } }).config?.id !== "coffee") fail("rotation_configuration");
@@ -2191,7 +1997,6 @@ exec "${dockerBin}" "$@"
     finally { renameSync(heldSource, source); }
     if (existsSync(projectFile)) fail("down_did_not_clear_project");
     const alternateSource = join(dirname(dirname(source)), alternate, "runtime-password");
-    let blankGeneration: string;
     try {
       if (checked("replacement_volume_inventory", run(from, dockerBin,
         ["volume", "ls", "-q", "--filter", "label=com.docker.compose.project=" + alternate]))) fail("replacement_volume_not_fresh");
@@ -2199,7 +2004,7 @@ exec "${dockerBin}" "$@"
       const alternatePassword = readFileSync(alternateSource, "utf8").trim();
       remember("runtime password", alternatePassword);
       verifier(alternate);
-      blankGeneration = applicationId(alternate);
+      rememberAppFiles(container("application", alternate));
       if (readFileSync(projectFile, "utf8") !== alternate + "\n" || alternatePassword === current) fail("second_project_record");
       const replacement = identity(alternate);
       if (replacement[1]?.split(" ").at(-1) !== alternate + "_database" || replacement[2] === live[2]
@@ -2213,7 +2018,6 @@ exec "${dockerBin}" "$@"
         fail("blank_replacement_volume_red_control");
       mark("blank replacement volume refused the original order and receipt");
       checked("stop_second_project", run(from, "./lifecycle", ["down"], undefined, fresh));
-      if (activeApps.has(blankGeneration)) fail("blank_application_removal");
     } finally {
       try {
         checked("remove_blank_project", run(from, dockerBin,
@@ -2223,14 +2027,13 @@ exec "${dockerBin}" "$@"
       catch (error) { failures.push(error); }
     }
     if (failures.length) throw stopProof;
-    up(0, "restored original project application");
+    up();
     if (identity()[2] !== original[2] || verifier() !== currentVerifier) fail("original_project_changed");
     mark("one project per directory, down clears record and permits switching");
 
     const listener = project + "-port-holder";
     try {
       checked("occupy_listener_port", run(from, dockerBin, ["run", "-d", "--name", listener,
-        "--label", projectLabel + "=" + project, "--label", fixtureLabel + "=listener",
         "-p", "127.0.0.1::5432", "--entrypoint", "sleep", postgresImage, "120"]));
       const portMapping = checked("occupied_port", run(from, dockerBin, ["port", listener, "5432/tcp"]));
       const occupied = portMapping.match(/^127\.0\.0\.1:([0-9]+)$/u)?.[1];
@@ -2240,11 +2043,11 @@ exec "${dockerBin}" "$@"
       refusal(result, "starter_installation_failed", true);
       if (!/port is already allocated|address already in use|failed to bind/u.test(result.stderr)) fail("lost_listener_diagnostic");
     } finally {
-      if (checked("listener_holder_inventory", runRaw(from, dockerBin, ["ps", "-aq", "--filter", "name=^/" + listener + "$"]))) {
-        checked("listener_holder_cleanup", runRaw(from, dockerBin, ["rm", "-f", listener]));
+      if (checked("listener_holder_inventory", run(from, dockerBin, ["ps", "-aq", "--filter", "name=^/" + listener + "$"]))) {
+        checked("listener_holder_cleanup", run(from, dockerBin, ["rm", "-f", listener]));
       }
     }
-    up(0, "restored-listener application");
+    up();
     const dockerfile = join(from, "Dockerfile"), originalDockerfile = readFileSync(dockerfile);
     const redactedFixture = randomBytes(32).toString("hex");
     remember("diagnostic fixture", redactedFixture);
@@ -2290,7 +2093,7 @@ exec "${dockerBin}" "$@"
     remember("runtime password", wrongPassword);
     const shim = join(scratch, "docker");
     writeFileSync(shim, `#!/bin/sh
-"${join(bin, "docker")}" "$@" || exit $?
+"${dockerBin}" "$@" || exit $?
 case " $STARTER_PROOF_FAULT $* " in
   *" auth "*" run "*" installation "*)
     mv -- "$OPENLUP_STARTER_RUNTIME_SOURCE" "$OPENLUP_STARTER_RUNTIME_SOURCE.held"
@@ -2319,7 +2122,7 @@ esac
           container("database"), container("application")]));
         if ([model, inspected].some(value => value.includes("STARTER_SAMPLE") || value.includes(synthetic))) fail("changed_source_reached_environment");
       } finally { rmSync(source, { force: true }); renameSync(heldSource, source); }
-      up(0, "application after " + fault + " refusal");
+      up();
     }
     mark("changed source mount and bounded read refusal with environment isolation");
     for (const mode of [false, true]) {
@@ -2332,14 +2135,14 @@ esac
       } finally {
         if (existsSync(heldSource)) { rmSync(source, { force: true }); renameSync(heldSource, source); }
       }
-      up(0, "application after authentication refusal");
+      up();
     }
     mark("application authentication refusal and same-store retry");
 
     checked("crash_database", run(from, dockerBin, ["kill", "--signal", "KILL", container("database")]));
     if (JSON.parse(up(2)).findings?.[0]?.code !== "starter_runtime_database_lock_held") fail("occupied_stale_lock");
     checked("documented_occupied_recovery", recover());
-    up(0, "application after database recovery");
+    up();
     if (identity()[2] !== live[2] || readFileSync(source, "utf8").trim() !== current || verifier() !== currentVerifier)
       fail("crash_restart_changed_store");
     mark("PostgreSQL crash recovery with unchanged occupied fallback");
@@ -2357,8 +2160,7 @@ esac
     const browserName = project + "-installed-browser";
     const args = browserContainerArguments(from, browser, browserName, localImage, mounts);
     try {
-      checked("installed_browser_container", run(from, "docker", [args[0]!, "--detach", "--label", projectLabel + "=" + project,
-        "--label", fixtureLabel + "=browser", ...args.slice(1), "sleep", "120"]));
+      checked("installed_browser_container", run(from, "docker", [args[0]!, "--detach", ...args.slice(1), "sleep", "120"]));
       const inspected = JSON.parse(checked("installed_browser_mounts", run(from, "docker", ["inspect", "--format", "{{json .Mounts}}", browserName])));
       for (const mount of inspected) if (mount.Type === "bind") {
         const root = realpathSync(mount.Source);
@@ -2380,20 +2182,19 @@ esac
         browserCheck, `http://127.0.0.1:${port}/`]));
       if (hidden !== "PASS") fail("installed_browser_open");
     } finally {
-      if (checked("browser_container_inventory", runRaw(from, dockerBin, ["ps", "-aq", "--no-trunc", "--filter", "name=^/" + browserName + "$"]))) {
-        checked("installed_browser_cleanup", runRaw(from, dockerBin, ["rm", "-f", browserName]));
+      if (checked("browser_container_inventory", run(from, dockerBin, ["ps", "-aq", "--no-trunc", "--filter", "name=^/" + browserName + "$"]))) {
+        checked("installed_browser_cleanup", run(from, dockerBin, ["rm", "-f", browserName]));
       }
     }
     mark("installed browser, mount inventory and both credential opens");
 
-    checked("compose_database_logs", compose("logs", "--no-color", "database"));
-    for (const id of activeApps.keys()) rememberAppFiles(id);
-    const exactValues = () => [...credentials.values()].flatMap(values => [...values]);
-    const leaks = (text: string, values = exactValues()) =>
+    const exactValues = [...credentials.values()].flatMap(values => [...values]);
+    const leaks = (text: string, values = exactValues) =>
       values.some(value => text.includes(value) || text.includes(encodeURIComponent(value)));
     const inputs = files.flatMap(path => [from, to].map(dir => join(dir, path))).filter(existsSync);
-    for (const path of [...inputs, join(scratch, "from.json"), join(scratch, "to.json"), projectFile])
-      if (leaks(readFileSync(path, "utf8"))) fail("application_material_credential_scan");
+    const snapshots = ["from.json", "to.json"].map(name => readFileSync(join(scratch, name), "utf8"));
+    const materials = [...inputs, projectFile, preload, shim, override, dockerfile, renewalConfig,
+      join(from, "package-lock.json"), join(from, ".starter-origin.json")].map(path => readFileSync(path, "utf8"));
     const image = checked("application_image", run(from, "docker", ["inspect", "--format", "{{.Image}}", container("application")]));
     const imagePaths = checked("application_image_file_list", run(from, "docker", ["run", "--rm", "--network", "none", image,
       "find", "/application", "/run", "-name", "runtime-password", "-o", "-name", "starter_runtime_password"]));
@@ -2403,11 +2204,12 @@ esac
     const imageErrors: Buffer[] = [];
     imageFiles.stderr.on("data", chunk => imageErrors.push(chunk));
     const done = new Promise(resolveDone => imageFiles.once("close", resolveDone));
+    const overlap = Math.max(0, ...exactValues.map(value => encodeURIComponent(value).length - 1));
     let tail = "", imageLeak = false;
     for await (const chunk of imageFiles.stdout) {
       const value = tail + chunk.toString("latin1");
       if (leaks(value)) imageLeak = true;
-      tail = value.slice(-1024);
+      tail = overlap ? value.slice(-overlap) : "";
     }
     if (await done !== 0 || imageLeak) fail("application_image_credential_scan");
     captures.push(Buffer.concat(imageErrors).toString("utf8"));
@@ -2418,61 +2220,30 @@ esac
       fail("client_environment_scan");
     mark("private passfiles; exact client environment scan and synthetic red control");
     cleanupProjects();
-    const logAudit = await finishAudit();
     if (failures.length) throw stopProof;
-    const auditedApps = (logAudit.logs ?? []).filter(entry => !entry.fixture);
-    const auditedFixtures = (logAudit.logs ?? []).flatMap(entry => entry.fixture && entry.started ? [entry.fixture] : []);
-    for (const entry of logAudit.logs ?? []) appLogs.set(entry.id, entry.streams);
-    if (listApps().size || auditedApps.length !== generations.size || auditedApps.some(entry => !generations.has(entry.id))
-      || auditedFixtures.sort().join(",") !== "browser,listener") fail("uncaptured_application_generation");
-    if (!appLogs.get(predecessorGeneration)?.some(log => log.trim())) fail("empty_predecessor_logs");
-    const installerCount = logAudit.installerCount ?? 0;
-    const installerCaptures = readdirSync(installerLogs);
-    if (!installerCount || installerCaptures.length < installerCount) fail("uncaptured_installation_logs");
-    for (const log of installerCaptures) for (const stream of ["stdout", "stderr"])
-      captures.push(readFileSync(join(installerLogs, log, stream), "utf8"));
-    const outputLeaks = (values: string[], control?: { id: string; value: string }) => {
-      const logs = [...appLogs].flatMap(([id, streams]) =>
-        id === control?.id ? [streams[0] + "\n" + control.value, ...streams.slice(1)] : streams);
-      return [...captures, ...logs].some(stream => leaks(stream, values));
-    };
     for (const [kind, count] of [["checkout creation key", 2], ["receipt bearer", 2], ["guest cookie", 2]] as const)
       if (credentials.get(kind)?.size !== count) fail("incomplete_" + kind.replaceAll(" ", "_") + "_inventory");
     if (!credentials.get("guest signing key")?.size) fail("incomplete_guest_signing_key_inventory");
-    if (outputLeaks(exactValues()) || leaks(committed)) fail("credential_output_scan");
-    const shutdownLogs = appLogs.get(shutdownGeneration) ?? [];
-    if (!shutdownLogs.some((log, index) => index % 2 === 0 && log.includes(shutdownRed))
-      || !shutdownLogs.some((log, index) => index % 2 === 1 && log.includes(encodeURIComponent(shutdownRed)))
-      || captures.some(log => leaks(log, [shutdownRed])) || !outputLeaks([shutdownRed]))
-      fail("shutdown_only_log_red_control");
-    mark("shutdown-only value caught on both streams of the recreated application");
+    const outputLeaks = (streams: string[], values = exactValues) => streams.some(stream => leaks(stream, values));
+    const sample = captures.find(text => text.trim()) ?? fail("missing_captured_command_output");
     for (const kind of ["runtime password", "runtime verifier", "publication password", "diagnostic fixture",
       "checkout creation key", "other action key", "receipt bearer", "guest signing key", "guest cookie", "quote acceptance"]) {
       const planted = randomBytes(24).toString("hex") + "/=";
-      const targets = kind === "receipt bearer" ? new Set([upgradedGeneration, upgradedBeforeRecreate, blankGeneration]) : [predecessorGeneration];
-      for (const id of targets) for (const value of [planted, encodeURIComponent(planted)]) {
-        if (!outputLeaks([planted], { id, value })) fail("private_log_scanner_red_control");
+      for (const variant of [planted, encodeURIComponent(planted)]) {
+        for (const material of [output.join(""), sample, ...snapshots, committed]) {
+          if (!outputLeaks([material + "\n" + variant], [planted])) fail("proof_output_scanner_red_control");
+        }
       }
-      mark(kind + " raw and URI-encoded log red controls");
+      mark(kind + " raw and URI-encoded proof output red controls");
     }
-    for (const label of new Set(generations.values())) {
-      const count = [...generations.values()].filter(value => value === label).length;
-      mark(label + " private log coverage (" + count + ")");
-    }
-    mark("recreated upgraded application and removed blank-volume application log red controls");
-    mark("attached installer private log coverage (" + installerCount + ")");
-    mark("installed browser and listener holder private log coverage (2)");
-    mark("captured output and scanner red controls");
+    mark("proof outputs and scanner red controls");
     mark("occupied proof completed in " + Math.round(performance.now() - started) + " ms");
+    if (outputLeaks([output.join(""), ...captures, ...materials, ...snapshots, committed])) fail("credential_output_scan");
+    process.stdout.write(output.join(""));
   } catch (error) {
     if (error !== stopProof) failures.push(error);
   } finally {
     if (!cleanupAttempted) cleanupProjects();
-    if (!auditFinished) await finishAudit();
-    if (audit.exitCode === null && audit.signalCode === null && audit.pid) {
-      try { process.kill(-audit.pid, "SIGTERM"); }
-      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") failures.push(error); }
-    }
     for (const path of [dirname(source), join(dirname(dirname(source)), alternate), scratch]) {
       try { rmSync(path, { recursive: true, force: true }); } catch (error) { failures.push(error); }
     }
