@@ -2278,7 +2278,9 @@ the failed `native-review` job within rerun authority. A group timeout needs a
 requeue under merge authority. After a same-head failed-check or timeout removal,
 the preflight requires a passing rerun of the removed merge-group commit with
 all required checks successful. A second removal of the same head stops routine
-re-arming. Diagnose any hold before considering further action. Missing or late
+re-arming. A conflict removal without a merge-group commit is not counted;
+the live mergeability check holds any conflict that remains on the head.
+Diagnose any hold before considering further action. Missing or late
 receipts require a receipt fix. A timely
 valid receipt rejected without a conflict is a defect to diagnose.
 
