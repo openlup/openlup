@@ -2211,7 +2211,7 @@ publicationTest("issues verified v2 effects across the three installed price ent
     const fresh = { ...tinyEdit, unitPriceMinor: 2280 };
     const badPredecessorStart = receiptField("receipt.previous.validFrom", oldStart);
     const wrongShape = { code: "23514", message: "price_shape_invalid" };
-    const companionEdit = { ...operation, variantId: companionSkuId, commandKey: randomUUID() };
+    const companionEdit: typeof operation = { ...operation, variantId: companionSkuId, commandKey: randomUUID() };
     const companionCandidate = seedSource(priceOnly, head, [companionEdit, edit]);
     const firstPair = { skuId: companionSkuId, priceListId };
     const fixedPublicationClock = async (db: PoolClient) => {
