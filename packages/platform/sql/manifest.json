@@ -920,11 +920,15 @@
         "sha256": "bdec86e74f6015efdd7ab595e409647bb8adc923606ff80604bf8ca82c8277de"
       },
       {
-        "file": "db/platform/migrations/20261129130505_subscription_renewal_current_template.sql",
+        "file": "db/platform/migrations/20261129130505_settings_wave4a_reschedule_timezone.sql",
+        "sha256": "8fdc4dffe112ddd7dad2765b921fbbf3556db874e21b20318568c1dfb1f76225"
+      },
+      {
+        "file": "db/platform/migrations/20261129130506_subscription_renewal_current_template.sql",
         "sha256": "2bb623018bfa91c2fd33806050eafc4ed897ab5d4a3bff2ea8b5091a5d7ab9af"
       }
     ],
-    "objectInventorySha256": "8a3d1bb538bf56231dd5e4940e7c51d59baabdf5a0a22f5e6dc42d58162db2ca",
+    "objectInventorySha256": "6ad7ed308e53bb1a116f8f2df727cff4c9193012e9f1b7e9367d0a3a9d072cde",
     "qualified": {
       "baseline": {
         "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1868,16 +1872,20 @@
           "sha256": "bdec86e74f6015efdd7ab595e409647bb8adc923606ff80604bf8ca82c8277de"
         },
         {
-          "file": "db/platform/migrations/20261129130505_subscription_renewal_current_template.sql",
+          "file": "db/platform/migrations/20261129130505_settings_wave4a_reschedule_timezone.sql",
+          "sha256": "8fdc4dffe112ddd7dad2765b921fbbf3556db874e21b20318568c1dfb1f76225"
+        },
+        {
+          "file": "db/platform/migrations/20261129130506_subscription_renewal_current_template.sql",
           "sha256": "2bb623018bfa91c2fd33806050eafc4ed897ab5d4a3bff2ea8b5091a5d7ab9af"
         }
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "cd266f93a78a9de828cd225109b1b73b253c96f88ff6992561f934ee04721667"
+          "withRestore": "976d56d295c662fe21be5929401a0cebbad494c396bb6d9a22037336e60c1295"
         },
         "separateMigrator": {
-          "withRestore": "8539250c26d37a4589d9d6cb01efcefee0fd1ad52ec71f5c16932bbe5de32b3e"
+          "withRestore": "1cde2ed18b99b1f79af87d84361e94379cb1032a1c10c5c4ab3459db17ff7c91"
         }
       }
     },
@@ -2816,13 +2824,17 @@
           "sha256": "bdec86e74f6015efdd7ab595e409647bb8adc923606ff80604bf8ca82c8277de"
         },
         {
-          "file": "db/platform/migrations/20261129130505_subscription_renewal_current_template.sql",
+          "file": "db/platform/migrations/20261129130505_settings_wave4a_reschedule_timezone.sql",
+          "sha256": "8fdc4dffe112ddd7dad2765b921fbbf3556db874e21b20318568c1dfb1f76225"
+        },
+        {
+          "file": "db/platform/migrations/20261129130506_subscription_renewal_current_template.sql",
           "sha256": "2bb623018bfa91c2fd33806050eafc4ed897ab5d4a3bff2ea8b5091a5d7ab9af"
         }
       ],
       "objectInventorySha256": {
-        "installerManaged": "519f6d6bee2fd897c2a6b68f6eb5a974e088a06afa662c48edb11bb48effaf1f",
-        "operatorProvisioned": "f113a60b246dd7be072e00d49d2b8dc8c63e9f37a365e0868ff8cee4100b93a1"
+        "installerManaged": "bf8d23a6384943fae341acde684c02f16cda43a822a39c6704fe06b18a68fe01",
+        "operatorProvisioned": "f56b9e47931b7f761f8c3e591b6bae2279949dae751222b5a9e0b0a4195c461f"
       }
     }
   },
@@ -3973,8 +3985,13 @@
       "sha256": "bdec86e74f6015efdd7ab595e409647bb8adc923606ff80604bf8ca82c8277de"
     },
     {
-      "file": "20261129130505_subscription_renewal_current_template.sql",
-      "source": "db/platform/migrations/20261129130505_subscription_renewal_current_template.sql",
+      "file": "20261129130505_settings_wave4a_reschedule_timezone.sql",
+      "source": "db/platform/migrations/20261129130505_settings_wave4a_reschedule_timezone.sql",
+      "sha256": "8fdc4dffe112ddd7dad2765b921fbbf3556db874e21b20318568c1dfb1f76225"
+    },
+    {
+      "file": "20261129130506_subscription_renewal_current_template.sql",
+      "source": "db/platform/migrations/20261129130506_subscription_renewal_current_template.sql",
       "sha256": "2bb623018bfa91c2fd33806050eafc4ed897ab5d4a3bff2ea8b5091a5d7ab9af"
     },
     {
