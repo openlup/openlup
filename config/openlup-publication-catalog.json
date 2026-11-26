@@ -5170,6 +5170,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/returnReasonsPolicy.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/runtimeErrors.ts",
       "class": "public-output"
     },
@@ -8654,6 +8658,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/shipping/paymentMethodPreferencesPolicy.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/shipping/pickupPointSearchPort.ts",
       "class": "public-output"
     },
@@ -9718,6 +9726,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/commerce/commerce_return_reasons.json",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/commerce/configuratorIntentPersistence.test.ts",
       "class": "public-output"
     },
@@ -9995,6 +10007,10 @@
     },
     {
       "path": "packages/platform/test/commerce/reservationSweepPort.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/returnReasonsPolicy.test.ts",
       "class": "public-output"
     },
     {
@@ -11610,11 +11626,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/shipping/paymentMethodPreferencesPolicy.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/shipping/savedAddressSchemas.test.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/test/shipping/shippingRateConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/shipping/shipping_payment_method_preferences.json",
       "class": "public-output"
     },
     {
@@ -31995,6 +32019,10 @@
     },
     {
       "path": "tests/postgres/settingsWave3aPolicies.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/settingsWave3bPolicies.test.ts",
       "class": "public-output"
     },
     {

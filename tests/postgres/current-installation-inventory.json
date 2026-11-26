@@ -2,10 +2,14 @@
   "current": {
     "profiles": {
       "legacy": {
-        "count": 231,
-        "exactTailCount": 121,
-        "objectInventorySha256": "ad21aac3e22b326824a3a38b8a9096409832deb46d88e08872ea416fa68397ce",
+        "count": 232,
+        "exactTailCount": 122,
+        "objectInventorySha256": "2494b30966120917b8202600dc6714fc8511e16c2cb52f1229d5e5dfef8ea536",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261129130507_settings_wave3b_return_reasons_and_payment_preferences.sql",
+            "sha256": "0f3a48e4bf37494cc69d46a6dfa11706a1215d1e482fac8f94a948f5ca88e539"
+          },
           {
             "file": "db/platform/migrations/20261129130506_paid_order_money_v2_read.sql",
             "sha256": "38c765551a254c374a04f72e8d1e49b9ac1f835b7359319ce745ecdfc9634466"
@@ -933,10 +937,14 @@
         ]
       },
       "bootstrap": {
-        "count": 237,
-        "exactTailCount": 122,
-        "objectInventorySha256": "61b191f2d16f3193ba094314bc6285bea36514f584ff31ac04bc760bf6e5ebf0",
+        "count": 238,
+        "exactTailCount": 123,
+        "objectInventorySha256": "ef40568d172a252b4d5d534ba7b47468df445d05561835d674fa4aefe411d9eb",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261129130507_settings_wave3b_return_reasons_and_payment_preferences.sql",
+            "sha256": "0f3a48e4bf37494cc69d46a6dfa11706a1215d1e482fac8f94a948f5ca88e539"
+          },
           {
             "file": "db/platform/migrations/20261129130506_paid_order_money_v2_read.sql",
             "sha256": "38c765551a254c374a04f72e8d1e49b9ac1f835b7359319ce745ecdfc9634466"
@@ -1888,10 +1896,14 @@
         ]
       },
       "separate": {
-        "count": 237,
-        "exactTailCount": 122,
-        "objectInventorySha256": "e238b573f939aab810493c9c0d0917daf6ed3a4c82d2926a09deb9e6c01c9801",
+        "count": 238,
+        "exactTailCount": 123,
+        "objectInventorySha256": "45ecfd9ba146754510936d48a5ccf8d12863c94b7ca6320e6acbc54d94fdaa91",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261129130507_settings_wave3b_return_reasons_and_payment_preferences.sql",
+            "sha256": "0f3a48e4bf37494cc69d46a6dfa11706a1215d1e482fac8f94a948f5ca88e539"
+          },
           {
             "file": "db/platform/migrations/20261129130506_paid_order_money_v2_read.sql",
             "sha256": "38c765551a254c374a04f72e8d1e49b9ac1f835b7359319ce745ecdfc9634466"
@@ -2843,10 +2855,14 @@
         ]
       },
       "admin-managed": {
-        "count": 235,
-        "exactTailCount": 121,
-        "objectInventorySha256": "e516ec534769f8326ae28b613d927f452e8b4923705ab0666b54d4dba61bac26",
+        "count": 236,
+        "exactTailCount": 122,
+        "objectInventorySha256": "15e425b49066bc6f38d913d6b3e31a06a0b65b59b5d54583f232606c6d453247",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261129130507_settings_wave3b_return_reasons_and_payment_preferences.sql",
+            "sha256": "0f3a48e4bf37494cc69d46a6dfa11706a1215d1e482fac8f94a948f5ca88e539"
+          },
           {
             "file": "db/platform/migrations/20261129130506_paid_order_money_v2_read.sql",
             "sha256": "38c765551a254c374a04f72e8d1e49b9ac1f835b7359319ce745ecdfc9634466"
@@ -3790,10 +3806,14 @@
         ]
       },
       "admin-operator": {
-        "count": 235,
-        "exactTailCount": 121,
-        "objectInventorySha256": "7fc3f89dff9c70ed70db781d9ea410a8787a2936cdabb4156b47e545d7cf8c10",
+        "count": 236,
+        "exactTailCount": 122,
+        "objectInventorySha256": "463dc293d3e09fb136252194fed24fb244bfba6fe2f22cffdfb0c4e2adaa783d",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261129130507_settings_wave3b_return_reasons_and_payment_preferences.sql",
+            "sha256": "0f3a48e4bf37494cc69d46a6dfa11706a1215d1e482fac8f94a948f5ca88e539"
+          },
           {
             "file": "db/platform/migrations/20261129130506_paid_order_money_v2_read.sql",
             "sha256": "38c765551a254c374a04f72e8d1e49b9ac1f835b7359319ce745ecdfc9634466"

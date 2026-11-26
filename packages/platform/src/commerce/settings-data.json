@@ -86,11 +86,35 @@
   {
     "key": "commerce.returnReasons",
     "domain": "commerce",
-    "goal": "Choose the allowed return reasons.",
+    "kind": "installed",
+    "goal": "Configure the allowed return reason codes accepted for new return requests (return reasons, return vocabulary, reason codes).",
     "schemaVersion": 1,
-    "kind": "cap",
-    "runtime": {"level": "read-only", "reason": "The native order service still enforces a fixed vocabulary."},
-    "change": {"reference": "docs/guide/how-to/build/oms-stores.md#record-return-intent"}
+    "schema": {"$schema": "http://json-schema.org/draft-07/schema#", "type": "object", "properties": {"revision": {"type": "string", "pattern": "\\S"}, "reasons": {"type": "array", "minItems": 1, "maxItems": 64, "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]{1,63}$"}}}, "required": ["revision", "reasons"], "additionalProperties": false},
+    "previewSchema": null,
+    "examples": [
+      {"value": {"revision": "store-1", "reasons": ["damaged", "wrong_item", "box_crushed", "other"]}},
+      {"value": {"revision": "store-1", "reasons": ["damaged", "not_as_described"]}},
+      {"value": {"revision": " ", "reasons": ["damaged"]}, "code": "commerce_return_reasons_policy_invalid"},
+      {"value": {"revision": "store-1", "reasons": []}, "code": "commerce_return_reasons_policy_invalid"},
+      {"value": {"revision": "store-1", "reasons": ["damaged", "damaged"]}, "code": "commerce_return_reasons_policy_invalid"}
+    ],
+    "fallback": {"revision": "default", "reasons": ["damaged", "wrong_item", "not_as_described", "pet_refused", "changed_mind", "other"]},
+    "defaultBasis": {"kind": "reference-code"},
+    "whyThisDefault": "The six built-in return reason codes preserve the historical commerce_return_requests vocabulary when no commerce_return_reasons row is installed.",
+    "effect": {
+      "appliesTo": "New return request inserts in commerce_return_request_create_owned read key='commerce_return_reasons' from public.commerce_settings via commerce_return_reasons_read(). The table CHECK constraint enforces the lowercase identifier format ^[a-z][a-z0-9_]{1,63}$, while commerce_return_request_create_owned enforces membership in the active configured list on new inserts. When absent, the SQL reader defaults to the six built-in codes; malformed rows refuse fail-closed with SQLSTATE 22023 commerce_return_reasons_policy_invalid.",
+      "frozenOn": ["Historical commerce_return_requests rows and idempotent replays of already-recorded requests keep their recorded reason_code even after that code is removed from the active list."],
+      "impact": "customer-promise"
+    },
+    "runtime": {"level": "read-only", "reason": "Install or update the public.commerce_settings row through installCommerceReturnReasonsPolicy or your store deployment step; runtime edits require a write-capable host connection."},
+    "change": {"operation": "installCommerceReturnReasonsPolicy"},
+    "rules": [
+      {
+        "code": "commerce_return_reasons_policy_invalid",
+        "path": [],
+        "description": "Supply exactly revision and reasons. Revision must be a nonblank string and reasons a non-empty array of 1 through 64 unique codes matching ^[a-z][a-z0-9_]{1,63}$."
+      }
+    ]
   },
   {
     "key": "commerce.zeroPayableSettlements",
