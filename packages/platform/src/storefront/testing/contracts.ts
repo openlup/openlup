@@ -75,7 +75,12 @@ export type StorefrontScenario = {
     readonly noAttemptAfter?: number;
     /** Attempts never exceed the declines the outcome driver produced so far plus one. */
     readonly attemptsPerDecline?: boolean;
-    /** States that must not be shown from the end of the step at index `after` on. */
+    /**
+     * States that must not be shown once the run has shown the outcome: from the
+     * first observation, not before the step at index `after` ends, that shows the
+     * state that step expects (for a step that is not an expect, from its end on).
+     * A run that never shows that state is not judged by this rule.
+     */
     readonly forbiddenStates?: { readonly after: number; readonly states: readonly string[] };
   };
   readonly control: {

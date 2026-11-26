@@ -81,8 +81,11 @@ const SETTLING_OUTCOMES: ReadonlySet<string> = new Set(["settled", "settled_afte
 const ON_EARLIER_ATTEMPT = "settled_after_pending";
 /** Ledger harm: once proven, a later fault of the harness does not hide it. */
 const LEDGER_HARM: ReadonlySet<string> = new Set(["duplicate_order", "duplicate_hold", "duplicate_capture", "second_attempt", "forbidden_state_shown"]);
-/** Faults that stop a run; ranked below ledger harm the runs proved before them. */
-const RUN_FAULTS: ReadonlySet<string> = new Set(["page_failed", "observer_failed:rejected", "arrange_failed", "outcome_failed:rejected", "outcome_failed:no_attempt", "outcome_failed:no_effect"]);
+/** Faults of a run and the stimulus checks that end `not_run`; ranked below ledger harm the runs proved before them. */
+const RUN_FAULTS: ReadonlySet<string> = new Set([
+  "page_failed", "observer_failed:rejected", "arrange_failed", "outcome_failed:rejected", "outcome_failed:no_attempt", "outcome_failed:no_effect",
+  "auto_progress_not_performed", "stimulus_not_applied", "stimulus_not_create",
+]);
 /** The changed-payload policies; an absent or unknown policy reads as the first. */
 const POLICIES = ["refuse_changed", "update_in_place"] as const;
 const STOP_PREFIX = "checkout.";
@@ -409,7 +412,7 @@ type RunRecord = {
  * a matched create, every withhold applied, every outcome shows its ledger
  * effect and declared auto-progress was performed; 4 ledger safety in both
  * runs and settle windows (payable orders, orders holding stock, attempts, captures, no attempt after its step, attempts per
- * decline, forbidden states from their step on; a paid state needs a capture
+ * decline, forbidden states once the run has shown the outcome; a paid state needs a capture
  * and no payable order) and, for an exclusive database, no payable order
  * outside the subjects; 5 the create budget kept (a run over it stopped before
  * proving anything, but a violation it already caused stands); 6 each matcher
@@ -422,8 +425,9 @@ type RunRecord = {
  * as do `control_not_applied` and `auto_progress_undeclared`; a harness fault
  * is never `failed` or `passed`; a ledger violation is
  * `failed`; progress under the control is `vacuous`. Ledger harm a run proved
- * before a fault (in the clean run before a control-run fault, or at or before
- * the fault's step in the same run) outranks that fault, so the result is
+ * before a fault or a stimulus check that ends `not_run` (in the clean run
+ * before one in the control run, or at or before its step in the same run)
+ * outranks it, so the result is
  * `failed`. Without a finding the result is `passed`, or `safety_only` for a
  * scenario without a control.
  *
@@ -932,7 +936,13 @@ export async function runStorefrontScenario(options: StorefrontRunOptions): Prom
     const forbidden = safety.forbiddenStates;
     if (forbidden !== undefined) {
       const names = new Set(forbidden.states.map((state) => `state:${state}`));
-      const shown = steps.find((step) => step.index >= forbidden.after && step.observedAnchors.some((name) => names.has(name)));
+      // The window opens once the run has shown the state the expect step at `after` asks for, and not before that
+      // step ends: a run that never learned the outcome (a control that blocks its status reads) is not judged by it.
+      const at = scenario.steps[forbidden.after];
+      const outcome = at?.kind === "expect" ? `state:${progressOf(at, policy).state}` : null;
+      const learned = outcome === null ? forbidden.after : steps.find((step) => step.observedAnchors.includes(outcome))?.index;
+      const opens = learned === undefined ? null : Math.max(forbidden.after, learned);
+      const shown = opens === null ? undefined : steps.find((step) => step.index >= opens && step.observedAnchors.some((name) => names.has(name)));
       if (shown !== undefined) {
         add("forbidden_state_shown", "after_step", run, shown.index, {
           at: where(shown), name: shown.observedAnchors.filter((name) => names.has(name)).join(", "), detail: describe(forbidden.after, run),

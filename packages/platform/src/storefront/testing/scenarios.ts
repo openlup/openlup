@@ -42,9 +42,9 @@ function deepFreeze<T>(value: T): T {
  *   `retry_payment`, skips the outcomes after it and must keep `paid` from
  *   being shown. Requires the `declined` and `settled` outcomes.
  * - `paid_pending_activation`: a subscription's payment settles while its
- *   activation stays pending. From the end of the expect step on,
- *   `awaiting_payment`, `declined` and `paid` must not be shown, and at most
- *   one capture; progress
+ *   activation stays pending. Once the page shows that state (from the end of
+ *   the expect step), `awaiting_payment`, `declined` and `paid` must not be
+ *   shown, and at most one capture; progress
  *   is `paid_pending_activation`; the control blocks status reads and creates
  *   from the outcome on, keeps the outcomes and must keep that state from being
  *   shown. Requires the `activation_pending` outcome.
@@ -199,7 +199,8 @@ export const storefrontScenarios: readonly StorefrontScenario[] = deepFreeze([
       { kind: "outcome", outcome: "activation_pending" },
       { kind: "expect", state: "paid_pending_activation", offers: [] },
     ],
-    // The window opens when the expect step ends, so a page that learns the outcome on a later poll is not judged early.
+    // The window opens once the page shows the expected state, and not before the expect step ends, so a page that learns
+    // the outcome on a later poll, or a control run that never learns it, is not judged early.
     safety: { forbiddenStates: { after: 5, states: ["awaiting_payment", "declined", "paid"] }, maxCaptures: 1 },
     control: { kind: "block_read", negates: "paid_pending_activation", commands: ["read", "create"], from: 4, outcomes: "kept" },
   },
