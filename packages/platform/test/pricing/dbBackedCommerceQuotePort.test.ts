@@ -8,6 +8,8 @@ import {
   type OneTimeOfferPricing,
   CommercePriceAuthorityError,
   type CommercePriceAuthorityPort,
+  CommerceQuoteCatalogReadError,
+  memoizeCommerceQuoteCatalogReads,
   type PricingResolverPort,
 } from "../../src/pricing/index.js";
 import type { ResolvedPrice, ResolvePriceQuery } from "@openlup/core/pricing";
@@ -16,6 +18,7 @@ import {
   createLegacyCommerceQuoteCatalogReadPort,
   type CommerceQuoteCatalogReadPort,
 } from "./catalogFixtures.js";
+import { projectCommerceOfferPricing } from "./offerFixtures.js";
 import { createDbBackedCommerceQuotePort } from "./quoteEngineFixtures.js";
 
 const COVERAGE_CONSTRAINT = { kind: "usage_days" as const, value: 21, dailyUsageOverride: 328 };
@@ -50,6 +53,102 @@ const exampleTaxProfile = {
 } as const;
 
 describe("db backed commerce quote port", () => {
+  it.each([
+    { version: "v1", pricingPolicy: undefined, unwrappedReads: 4 },
+    {
+      version: "v2",
+      pricingPolicy: {
+        offerPolicyVersion: "commerce.offer-policy.v2",
+        promotionEngineVersion: "promotion-engine.v2",
+      },
+      unwrappedReads: 5,
+    },
+  ] as const)("shares the $version offer projection's catalog read with its quote engines", async ({ pricingPolicy, unwrappedReads }) => {
+    const [item] = await quoteCatalogReadPort().listQuoteCatalogItems();
+    const read = vi.fn(async () => [item!]);
+    const catalog = { listQuoteCatalogItems: read };
+    const oneTime = price({ unitPriceMinor: 1490 });
+    const priceAuthority = createCommercePriceAuthority({
+      oneTime,
+      subscription: {
+        kind: "subscription_policy",
+        base: oneTime,
+        unitPriceMinor: 1340,
+        policy: subscriptionPolicy(),
+      },
+    });
+    async function project(quoteCatalogReadPort: CommerceQuoteCatalogReadPort) {
+      const quoteDeps = {
+        quoteCatalogReadPort,
+        commercePriceAuthorityPort: priceAuthority,
+        now: () => oneTime.resolvedAt,
+      };
+      const quoteWithPromotions = createDbBackedCommerceQuotePort(quoteDeps);
+      const quoteWithoutPromotions = createDbBackedCommerceQuotePort(quoteDeps);
+      const promoted = vi.spyOn(quoteWithPromotions, "createQuote");
+      const recurring = vi.spyOn(quoteWithoutPromotions, "createQuote");
+      const offer = await projectCommerceOfferPricing({
+        quoteCatalogReadPort,
+        quoteWithPromotions,
+        quoteWithoutPromotions,
+        pricingPolicy,
+      });
+      const quotes = {
+        promoted: await Promise.all(promoted.mock.results.map(({ value }) => value)),
+        recurring: await Promise.all(recurring.mock.results.map(({ value }) => value)),
+      };
+      return { offer, quotes };
+    }
+
+    const unwrapped = await project(catalog);
+    expect(unwrapped.quotes.promoted).toHaveLength(pricingPolicy ? 3 : 2);
+    expect(unwrapped.quotes.recurring).toHaveLength(1);
+    expect(read).toHaveBeenCalledTimes(unwrappedReads);
+    read.mockClear();
+
+    const wrapped = await project(memoizeCommerceQuoteCatalogReads(catalog));
+    expect(JSON.stringify(wrapped.offer)).toBe(JSON.stringify(unwrapped.offer));
+    expect(JSON.stringify(wrapped.quotes)).toBe(JSON.stringify(unwrapped.quotes));
+    expect(read).toHaveBeenCalledTimes(1);
+
+    read.mockResolvedValueOnce([{ ...item!, productSlug: "item-beta" }]);
+    const next = await project(memoizeCommerceQuoteCatalogReads(catalog));
+    expect(next.offer.products.map((product) => product.productSlug)).toEqual(["item-beta"]);
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["synchronous throw", "asynchronous rejection"] as const)("shares a catalog %s only within its quote composition", async (failure) => {
+    const catalog = quoteCatalogReadPort();
+    const items = await catalog.listQuoteCatalogItems();
+    const refusal = new CommerceQuoteCatalogReadError("catalog_authority_changed");
+    const read = vi.fn(catalog.listQuoteCatalogItems)
+      .mockImplementationOnce(() => {
+        if (failure === "synchronous throw") throw refusal;
+        return Promise.reject(refusal);
+      })
+      .mockResolvedValueOnce(items);
+    const inner = { listQuoteCatalogItems: read };
+    const wrapped = memoizeCommerceQuoteCatalogReads(inner);
+    expect(read).not.toHaveBeenCalled();
+
+    const first = wrapped.listQuoteCatalogItems();
+    expect(read).toHaveBeenCalledTimes(1);
+    if (failure === "asynchronous rejection") expect(first).toBe(read.mock.results[0]?.value);
+    const second = wrapped.listQuoteCatalogItems();
+    expect(second).toBe(first);
+    await Promise.all([
+      expect(first).rejects.toBe(refusal),
+      expect(second).rejects.toBe(refusal),
+    ]);
+    expect(wrapped.listQuoteCatalogItems()).toBe(first);
+    expect(read).toHaveBeenCalledTimes(1);
+
+    const recovered = memoizeCommerceQuoteCatalogReads(inner).listQuoteCatalogItems();
+    expect(recovered).toBe(read.mock.results[1]?.value);
+    await expect(recovered).resolves.toBe(items);
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+
   it("quotes opaque DB SKUs through catalog variants and pricing resolver tiers", async () => {
     const pricingResolverPort = createPricingResolver({
       "variant-item-alpha-400:subscription": price({

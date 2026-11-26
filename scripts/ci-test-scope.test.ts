@@ -270,6 +270,9 @@ describe('conservative tooling scope', () => {
   const ownerWriteSuite = 'tests/postgres/catalogAdmissionOwnerWrite.test.ts';
   const runtimeCommitSuite = 'tests/postgres/catalogAdmissionRuntimeCommit.test.ts';
   const draftSuites = [ownerWriteSuite, runtimeCommitSuite];
+  const renewalDestinationSuite = 'tests/postgres/renewalOrderDestinationV2.test.ts';
+  const renewalDestinationFixture = 'tests/postgres/renewalOrderDestinationV2.fixture.ts';
+  const pendingSuites = [...draftSuites, renewalDestinationSuite];
   const restoreSuite = 'tests/postgres/m14RestrictedConnectedRestore.test.ts';
   const restoreFixtures = [
     'tests/postgres/catalogAdmissionOwnerWrite.fixture.ts',
@@ -279,8 +282,9 @@ describe('conservative tooling scope', () => {
   it.each([
     { scenario: 'owner-write only', present: [ownerWriteSuite] },
     { scenario: 'runtime-commit only', present: [runtimeCommitSuite] },
-    { scenario: 'both present', present: draftSuites },
-    { scenario: 'neither present', present: [] },
+    { scenario: 'both draft suites present', present: draftSuites },
+    { scenario: 'renewal destination only', present: [renewalDestinationSuite] },
+    { scenario: 'no suites present', present: [] },
     { scenario: 'owner-write throws EACCES', present: [runtimeCommitSuite], failure: { suite: ownerWriteSuite, code: 'EACCES' } },
     { scenario: 'runtime-commit throws ELOOP', present: [ownerWriteSuite], failure: { suite: runtimeCommitSuite, code: 'ELOOP' } },
   ])('registers present suites at import and keeps unlisted tests running ($scenario)', async ({ present, failure }) => {
@@ -289,7 +293,7 @@ describe('conservative tooling scope', () => {
       const actual = await vi.importActual<typeof import('node:fs')>('node:fs');
       const statSync = (...args: Parameters<typeof actual.statSync>) => {
         const file = args[0] instanceof URL ? fileURLToPath(args[0]) : args[0];
-        const suite = draftSuites.find(testPath => resolve(testPath) === file);
+        const suite = pendingSuites.find(testPath => resolve(testPath) === file);
         if (!suite) return actual.statSync(...args);
         if (failure?.suite === suite) throw Object.assign(new Error('suite probe failed'), { code: failure.code });
         return present.includes(suite) ? { isFile: () => true } : undefined;
@@ -299,7 +303,7 @@ describe('conservative tooling scope', () => {
     try {
       const scope = await import('./ci-test-scope.mjs');
       const unrelated = scope.excludedToolingTests(['docs/platform/README.md']);
-      for (const suite of draftSuites) {
+      for (const suite of pendingSuites) {
         expect(Object.hasOwn(scope.TOOLING_INPUTS, suite), suite).toBe(present.includes(suite));
         expect(unrelated.includes(suite), suite).toBe(present.includes(suite));
       }
@@ -314,6 +318,18 @@ describe('conservative tooling scope', () => {
         for (const suite of draftSuites) expect(excluded, `${suite} <- ${input}`).not.toContain(suite);
         if (restoreFixtures.includes(input)) expect(excluded, input).not.toContain(restoreSuite);
       }
+      for (const input of [
+        renewalDestinationFixture,
+        'tests/postgres/customerAccountMutations.fixture.ts',
+        'tests/postgres/destinationDocumentFixture.ts',
+        'tests/postgres/destinationReceiptFixture.ts',
+        'tests/postgres/orderMoneyV2Storage.fixture.ts',
+        'tests/postgres/subscriptionNativeFixture.ts',
+      ]) {
+        const excluded = scope.excludedToolingTests([input]);
+        expect(excluded, `${renewalDestinationSuite} <- ${input}`).not.toContain(renewalDestinationSuite);
+      }
+      expect(scope.excludedToolingTests([renewalDestinationFixture])).toContain(restoreSuite);
     } finally {
       vi.doUnmock('node:fs');
       vi.resetModules();
@@ -321,6 +337,9 @@ describe('conservative tooling scope', () => {
   });
   it('scopes all tests/postgres suites per-file and per-axis without broad tests/postgres/ prefixes', () => {
     const purePgSuites = [
+      'tests/postgres/catalogAdmissionIssueReader.test.ts',
+      'tests/postgres/catalogAdmissionIssueReaderAdminRails.test.ts',
+      'tests/postgres/catalogAdmissionIssueReaderRails.test.ts',
       'tests/postgres/catalogPublication.test.ts',
       'tests/postgres/connectedStoreCatalogRevisions.test.ts',
       'tests/postgres/connectedStorePromotionClaims.test.ts',
@@ -331,6 +350,9 @@ describe('conservative tooling scope', () => {
       'tests/postgres/m14QualifiedAdminComposition.test.ts',
       'tests/postgres/m14RestrictedConnectedRestore.test.ts',
       'tests/postgres/m14RestrictedConnectedRestoreMatrix.test.ts',
+      'tests/postgres/m14RestrictedConnectedRestoreMatrixNeonOperator.test.ts',
+      'tests/postgres/m14RestrictedConnectedRestoreMatrixRdsManaged.test.ts',
+      'tests/postgres/m14RestrictedConnectedRestoreMatrixRdsOperator.test.ts',
       'tests/postgres/subscriptionNoticeProducers.test.ts',
       'tests/postgres/subscriptionRetainedRenewal.test.ts',
     ];

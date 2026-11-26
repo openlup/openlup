@@ -6989,6 +6989,7 @@ interface FulfillmentObservationInput<LocalStatus, TrackingStatus> {
     stockIdempotencyKey: string;
     handoffIdempotencyKey: string;
     trackingIdempotencyKey: (trackingNumber: string) => string;
+    recordDeliveryWithoutTracking?: () => Promise<void>;
     issueAccountingInvoice?: () => Promise<void>;
     onReplayed?: () => void;
     onTrackingRecorded?: (result: {
@@ -7003,7 +7004,7 @@ interface FulfillmentObservationStatusPolicy<LocalStatus, TrackingStatus> {
     suppressDispatched(status: LocalStatus): boolean;
     trackingStatus(status: LocalStatus): TrackingStatus;
 }
-/** Stock → durable handover → every tracking reference → optional invoice. No catches or retries. */
+/** Stock → durable handover → tracking or verified arrival → optional invoice. No catches or retries. */
 export declare function applyFulfillmentObservationEffects<LocalStatus, TrackingStatus>(input: FulfillmentObservationInput<LocalStatus, TrackingStatus>, policy: FulfillmentObservationStatusPolicy<LocalStatus, TrackingStatus>): Promise<void>;
 export {};
 ```
@@ -8131,6 +8132,7 @@ export type FulfillmentIngressResult = {
     replayed: boolean;
     trackingRefs: number;
     trackingReadBacks: number;
+    deliveryReadBack?: true;
     supersededCause?: string;
 });
 /** Safe response classes only; the host owns HTTP and localized message text. */
@@ -8166,6 +8168,13 @@ export declare function verifyAndNormalizeFulfillmentObservation(input: {
             replayed: boolean;
         }>;
         effects: EffectInput["port"];
+        /**
+         * Commit delivery only after proving the exact parcel and chronology. Receives the
+         * retained verified observation after handoff, before accounting and receipt completion.
+         */
+        recordDeliveryWithoutTracking?(ref: DispatchRef, observation: FulfillmentObservation): Promise<{
+            readBack: boolean;
+        }>;
         keys: {
             stock(ref: string): string;
             handoff(ref: string): string;

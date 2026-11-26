@@ -2,6 +2,7 @@ import type {
   PaymentExecutionBaseInput, PaymentExecutionBaseResult, PaymentProviderCapabilityDescriptor,
   ProviderAttemptIdentity,
 } from "@openlup/core/payment";
+import { providerAckedButNeverConfirmed } from "@openlup/core/payment";
 import type { RenewalPreparedAttemptPersistencePort } from "./contracts/renewal.js";
 import type {
   HostedRenewalDue, SubscriptionRenewalChargeResult, SubscriptionCycleSnapshotResult,
@@ -14,6 +15,28 @@ import {
   defaultFailedRenewalResult, defaultReadRenewalTotalGrossMinor, defaultRenewalCycleKey, defaultRenewalExecutionKey,
   type RenewalPreflightPolicy, type RenewalReplayPolicy, type RenewalOutcomePolicy,
 } from "./renewalCycleRefusalMechanism.js";
+
+export type ManagedRenewalPaymentEvidence =
+  | { kind: "result"; attemptStatus: SubscriptionRenewalChargeResult["attemptStatus"] }
+  | { kind: "row_error"; reason: string };
+
+export type ManagedRenewalPaymentClassification =
+  | "prepared_without_ack"
+  | "provider_acknowledged"
+  | "settled"
+  | "unclassified";
+
+/** Classify managed renewal reporting evidence without making a dispatch decision. */
+export function classifyManagedRenewalPayment(evidence: ManagedRenewalPaymentEvidence): ManagedRenewalPaymentClassification {
+  if (evidence.kind === "row_error") {
+    return evidence.reason === "provider_execution_indeterminate" ? "prepared_without_ack" : "unclassified";
+  }
+  const status = evidence.attemptStatus;
+  if (status === "succeeded") return "settled";
+  if (providerAckedButNeverConfirmed(status ?? "") || status === "processing") return "provider_acknowledged";
+  if (status === "created") return "prepared_without_ack";
+  return "unclassified";
+}
 
 /**
  * @deprecated Scheduled for simplification in 2.0.0; prefer `createDefaultRenewalCyclePolicy`
