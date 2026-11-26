@@ -39,7 +39,7 @@ type StorefrontRequestDecision = "pass" | "withhold" | "block";
  * - `budget.creates` is the number of create requests one run may send.
  * - `text` holds one sentence each on the stimulus, the safety rule, the
  *   progress and the control.
- * - Step, `noAttemptAfter`, `forbiddenStates.after` and `control.from` indices
+ * - Step, `noAttemptAfter` and `control.from` indices
  *   count from 0 within `steps`.
  *
  * @experimental
@@ -76,12 +76,20 @@ export type StorefrontScenario = {
     /** Attempts never exceed the declines the outcome driver produced so far plus one. */
     readonly attemptsPerDecline?: boolean;
     /**
-     * States that must not be shown once the run has shown the outcome: from the
-     * first observation, not before the step at index `after` ends, that shows the
-     * state that step expects (for a step that is not an expect, from its end on).
-     * A run that never shows that state is not judged by this rule.
+     * States that must not be shown, per run. `control`: forbidden in the control
+     * run from its first sample on: outcomes a page whose status reads are blocked
+     * cannot know (awaiting states stay allowed). `clean.ruledOut`: forbidden in
+     * the clean run from its first sample on: outcomes the scenario rules out.
+     * `clean.afterShowing`: once the clean run has shown `state`, each of
+     * `regressions` (a pre-outcome state) is forbidden too.
      */
-    readonly forbiddenStates?: { readonly after: number; readonly states: readonly string[] };
+    readonly forbiddenStates?: {
+      readonly control: readonly string[];
+      readonly clean: {
+        readonly ruledOut: readonly string[];
+        readonly afterShowing?: { readonly state: string; readonly regressions: readonly string[] };
+      };
+    };
   };
   readonly control: {
     readonly kind: "none" | "block_read" | "omit_action" | "other_policy" | (string & {});

@@ -423,6 +423,9 @@ describe("input and admission", () => {
     ["a scenario object with an other_policy control and no expect by policy", {
       scenario: { ...storefrontScenarios[0]!, id: "broken_ten", control: { kind: "other_policy", negates: null } },
     }, "storefront_run_input_invalid"],
+    ["a scenario object with forbidden states in the single-window shape", {
+      scenario: { ...storefrontScenarios[1]!, id: "broken_eleven", safety: { forbiddenStates: { after: 1, states: ["paid"] } } } as never,
+    }, "storefront_run_input_invalid"],
     ["an outcome driver without produce", { outcomes: { capabilities: ["settled"] } as never }, "storefront_run_input_invalid"],
     ["an outcome driver declaring a capability that is not a name", { outcomes: { capabilities: ["settled", "Settled!"], produce: async () => undefined } }, "storefront_run_input_invalid: outcomes.capabilities\\[1\\] is \"Settled!\""],
     ["an outcome driver declaring a capability that is not a string", { outcomes: { capabilities: [7], produce: async () => undefined } as never }, "storefront_run_input_invalid: outcomes.capabilities\\[0\\] is 7"],

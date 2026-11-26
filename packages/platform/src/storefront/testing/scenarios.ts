@@ -42,9 +42,11 @@ function deepFreeze<T>(value: T): T {
  *   `retry_payment`, skips the outcomes after it and must keep `paid` from
  *   being shown. Requires the `declined` and `settled` outcomes.
  * - `paid_pending_activation`: a subscription's payment settles while its
- *   activation stays pending. Once the page shows that state (from the end of
- *   the expect step), `awaiting_payment`, `declined` and `paid` must not be
- *   shown, and at most one capture; progress
+ *   activation stays pending. The clean run never shows `paid` or `declined`
+ *   and, once it showed `paid_pending_activation`, never `awaiting_payment`
+ *   again; the control run, whose status reads are blocked, never shows `paid`,
+ *   `declined` or `paid_pending_activation` (awaiting states stay allowed); at
+ *   most one capture; progress
  *   is `paid_pending_activation`; the control blocks status reads and creates
  *   from the outcome on, keeps the outcomes and must keep that state from being
  *   shown. Requires the `activation_pending` outcome.
@@ -187,7 +189,7 @@ export const storefrontScenarios: readonly StorefrontScenario[] = deepFreeze([
     budget: { creates: 1 },
     text: {
       stimulus: "The subscription's payment settles while its activation stays pending.",
-      safety: "Once the page shows the outcome, it shows neither the order awaiting payment, nor a decline, nor the order paid, and the buyer ends with at most one captured payment.",
+      safety: "The page never shows the order paid or a decline, never returns to awaiting payment once it showed the outcome, shows no outcome it could not have learned, and the buyer ends with at most one captured payment.",
       progress: "The page shows the payment settled with the activation pending.",
       control: "With status reads and order creates blocked from the outcome on, the page must not show the payment settled with the activation pending.",
     },
@@ -199,9 +201,16 @@ export const storefrontScenarios: readonly StorefrontScenario[] = deepFreeze([
       { kind: "outcome", outcome: "activation_pending" },
       { kind: "expect", state: "paid_pending_activation", offers: [] },
     ],
-    // The window opens once the page shows the expected state, and not before the expect step ends, so a page that learns
-    // the outcome on a later poll, or a control run that never learns it, is not judged early.
-    safety: { forbiddenStates: { after: 5, states: ["awaiting_payment", "declined", "paid"] }, maxCaptures: 1 },
+    // Per run: the control run blocks the status reads, so any outcome it shows is one it cannot know, while
+    // awaiting_payment stays allowed there; the clean run may never show a ruled-out outcome, nor regress once it
+    // showed the expected state.
+    safety: {
+      forbiddenStates: {
+        control: ["paid", "declined", "paid_pending_activation"],
+        clean: { ruledOut: ["paid", "declined"], afterShowing: { state: "paid_pending_activation", regressions: ["awaiting_payment"] } },
+      },
+      maxCaptures: 1,
+    },
     control: { kind: "block_read", negates: "paid_pending_activation", commands: ["read", "create"], from: 4, outcomes: "kept" },
   },
 ] satisfies StorefrontScenario[]);

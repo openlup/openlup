@@ -55,10 +55,20 @@ const texts: Readonly<Record<string, Readonly<Record<string, FindingText>>>> = {
       cause: "The page claims a paid state the ledger does not hold: a paid state needs at least one capture and no payable order.",
       fix: "Show a paid state only from a status read that reports the capture.",
     },
-    after_step: {
-      observed: (f) => `${f.at}: the page shows ${f.name}, which the scenario forbids from the end of ${f.detail} on.`,
-      cause: "After the outcome the page shows a state that contradicts it: an earlier state, a decline or a paid state the outcome rules out.",
-      fix: "Show the state the server reports after the outcome, and never fall back to an earlier or contradicting state when a status read fails.",
+    ruled_out: {
+      observed: (f) => `${f.at}: the page shows ${f.name}, an outcome the scenario rules out.`,
+      cause: "The page shows an outcome that contradicts the one the payment reached.",
+      fix: "Show the state the server reports for the payment, never a paid state or a decline the outcome rules out.",
+    },
+    unknowable: {
+      observed: (f) => `${f.at}: the page shows ${f.name} although the control blocked the status reads it could have learned it from.`,
+      cause: "The page shows an outcome it cannot know, from state kept in the page rather than from the server.",
+      fix: "Show an outcome only from a status read that reports it; keep an awaiting state while no read answers.",
+    },
+    regression: {
+      observed: (f) => `${f.at}: the page shows ${f.name} after it showed ${f.detail}.`,
+      cause: "After showing the outcome the page fell back to a state before it, which invites the buyer to pay again.",
+      fix: "Keep the outcome once a status read reported it; never fall back to an earlier state when a later read fails.",
     },
   },
   order_outside_subject: {

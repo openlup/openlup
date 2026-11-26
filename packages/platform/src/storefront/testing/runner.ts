@@ -170,6 +170,14 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 const isName = (value: unknown): value is string => typeof value === "string" && NAME.test(value);
 const isCount = (value: unknown): value is number => typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 
+const isNames = (value: unknown): boolean => Array.isArray(value) && value.every(isName);
+/** `forbiddenStates`: `{ control: names, clean: { ruledOut: names, afterShowing?: { state, regressions: names } } }`. */
+function isForbiddenStates(value: unknown): boolean {
+  if (!isRecord(value) || !isNames(value.control) || !isRecord(value.clean) || !isNames(value.clean.ruledOut)) return false;
+  const after = value.clean.afterShowing;
+  return after === undefined || (isRecord(after) && isName(after.state) && isNames(after.regressions));
+}
+
 /** The first way a scenario object is malformed, or `null`. Nothing about it is trusted before this check. */
 function scenarioProblem(scenario: StorefrontScenario): string | null {
   const value = scenario as unknown as Record<string, unknown>;
@@ -196,9 +204,9 @@ function scenarioProblem(scenario: StorefrontScenario): string | null {
   for (const [rule, limit] of Object.entries(safety)) {
     if (limit === undefined) continue;
     const expected = rule === "attemptsPerDecline" ? "a boolean" : rule === "noAttemptAfter" ? "a step index"
-      : rule === "forbiddenStates" ? "{ after: a step index, states: state names }" : "an integer, 0 or more";
+      : rule === "forbiddenStates" ? "{ control: state names, clean: { ruledOut: state names, afterShowing?: { state, regressions: state names } } }" : "an integer, 0 or more";
     const valid = rule === "attemptsPerDecline" ? typeof limit === "boolean" : rule === "noAttemptAfter" ? isStepIndex(limit)
-      : rule === "forbiddenStates" ? isRecord(limit) && isStepIndex(limit.after) && Array.isArray(limit.states) && limit.states.every(isName) : isCount(limit);
+      : rule === "forbiddenStates" ? isForbiddenStates(limit) : isCount(limit);
     if (!valid) return `safety.${rule} must be ${expected}`;
   }
   const control = value.control;
@@ -412,7 +420,7 @@ type RunRecord = {
  * a matched create, every withhold applied, every outcome shows its ledger
  * effect and declared auto-progress was performed; 4 ledger safety in both
  * runs and settle windows (payable orders, orders holding stock, attempts, captures, no attempt after its step, attempts per
- * decline, forbidden states once the run has shown the outcome; a paid state needs a capture
+ * decline, forbidden states per run; a paid state needs a capture
  * and no payable order) and, for an exclusive database, no payable order
  * outside the subjects; 5 the create budget kept (a run over it stopped before
  * proving anything, but a violation it already caused stands); 6 each matcher
@@ -935,18 +943,28 @@ export async function runStorefrontScenario(options: StorefrontRunOptions): Prom
     }
     const forbidden = safety.forbiddenStates;
     if (forbidden !== undefined) {
-      const names = new Set(forbidden.states.map((state) => `state:${state}`));
-      // The window opens once the run has shown the state the expect step at `after` asks for, and not before that
-      // step ends: a run that never learned the outcome (a control that blocks its status reads) is not judged by it.
-      const at = scenario.steps[forbidden.after];
-      const outcome = at?.kind === "expect" ? `state:${progressOf(at, policy).state}` : null;
-      const learned = outcome === null ? forbidden.after : steps.find((step) => step.observedAnchors.includes(outcome))?.index;
-      const opens = learned === undefined ? null : Math.max(forbidden.after, learned);
-      const shown = opens === null ? undefined : steps.find((step) => step.index >= opens && step.observedAnchors.some((name) => names.has(name)));
-      if (shown !== undefined) {
-        add("forbidden_state_shown", "after_step", run, shown.index, {
-          at: where(shown), name: shown.observedAnchors.filter((name) => names.has(name)).join(", "), detail: describe(forbidden.after, run),
-        });
+      // Per run. The control run blocks the status reads, so any outcome it shows is one it cannot know; the clean run
+      // may never show a ruled-out outcome, nor regress to a pre-outcome state once it showed the expected one.
+      const anchorsOf = (states: readonly string[]) => new Set(states.map((state) => `state:${state}`));
+      const firstShowing = (names: ReadonlySet<string>, from: number) => steps.find((step) => step.index >= from && step.observedAnchors.some((name) => names.has(name)));
+      const report = (step: VerdictStep, names: ReadonlySet<string>, cause: string, detail?: string) => add("forbidden_state_shown", cause, run, step.index, {
+        at: where(step), name: step.observedAnchors.filter((name) => names.has(name)).join(", "), ...(detail === undefined ? {} : { detail }),
+      });
+      if (run === "control") {
+        const names = anchorsOf(forbidden.control);
+        const shown = firstShowing(names, 0);
+        if (shown !== undefined) report(shown, names, "unknowable");
+      } else {
+        const ruledOut = anchorsOf(forbidden.clean.ruledOut);
+        const shown = firstShowing(ruledOut, 0);
+        if (shown !== undefined) report(shown, ruledOut, "ruled_out");
+        const after = forbidden.clean.afterShowing;
+        const outcome = after === undefined ? undefined : steps.find((step) => step.observedAnchors.includes(`state:${after.state}`));
+        if (after !== undefined && outcome !== undefined) {
+          const regressions = anchorsOf(after.regressions);
+          const back = firstShowing(regressions, outcome.index);
+          if (back !== undefined) report(back, regressions, "regression", `state:${after.state}`);
+        }
       }
     }
     if (run === "control") {
