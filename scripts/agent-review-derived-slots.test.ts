@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryEnvelope, migrationRegistryUnion } from './agent-review-derived.mjs';
 import { syncSqlReference } from './agent-review-generators.mjs';
 import { applyMigrationReslot, assertAppendOnlyLandingSlots, assertNoAuthoredSlotReferences, landingMerge, landingSlotPlan, nextFreeMigrationSlot } from './agent-review-landing.mjs';
@@ -30,10 +30,12 @@ import {
 let f: DerivedFixture;
 
 beforeAll(async () => {
-  f = await createDerivedFixture({ runInitialLanding: true });
+  vi.stubEnv('npm_execpath', npmCli);
+  f = await createDerivedFixture({ runInitialLanding: true, stubNpmEnv: false });
 }, 180000);
 
 afterAll(() => {
+  vi.unstubAllEnvs();
   f?.cleanup();
 });
 
@@ -338,9 +340,10 @@ it('re-slots migration paths in the manifest, reviewed forwards and publication 
 });
 
 it('lands an inverted migration only with explicit re-slot', async () => {
+  const f = await createDerivedFixture({ runInitialLanding: false, stubNpmEnv: false });
   const ignoredMirror = 'packages/platform/sql/20990101020002_landing_fixture.sql';
-  const exclude = f.read('.git/info/exclude');
   try {
+    const exclude = f.read('.git/info/exclude');
     f.checkout(f.base);
     f.append('20990101010000');
     f.append('20990101020001');
@@ -415,11 +418,9 @@ it('lands an inverted migration only with explicit re-slot', async () => {
     expect(tamperedProof.kind).toBe('resolution');
     expect(tamperedProof.resolution).toContain(later);
   } finally {
-    rmSync(join(f.root, ignoredMirror), { force: true });
-    f.write('.git/info/exclude', exclude);
-    f.restoreDerivedFixture();
+    f.cleanup();
   }
-}, 60_000);
+}, 120_000);
 
 it.each([
   {

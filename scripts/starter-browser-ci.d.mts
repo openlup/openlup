@@ -5,6 +5,7 @@ export function resolveBrowserImage(io?: typeof imageIo, localImage?: string): P
 export function withCleanup<T>(work: (defer: (release: () => unknown | Promise<unknown>) => void) => Promise<T>): Promise<T>;
 export function withConnectionCleanup<T>(work: (defer: (release: () => unknown | Promise<unknown>) => void, guard: <C extends { on(event: 'error', listener: (error: Error) => void): unknown }>(connection: C) => C, recordLoss: (code: string) => void) => Promise<T>): Promise<T>;
 export function scanPrivateOutput(output: string, privateValues?: string[]): void;
+export function browserContainerArguments(app: string, reference: string, name: string, localImage?: string, mounts?: string[]): string[];
 export function browserArguments(app: string, reference: string, name: string, localImage?: string): string[];
 export function runStarterBrowser(options: BrowserOptions): Promise<void>;
 export function acquireStarterPostgres(defer: (release: () => Promise<unknown>) => void, io?: {
