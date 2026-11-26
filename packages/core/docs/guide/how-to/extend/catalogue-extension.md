@@ -408,7 +408,9 @@ directory. For the stationery pack at version 1:
   pack_id=stationery
   pack_version=1
   filename="${pack_id}@${pack_version}.json"
-  docker compose exec -T --user node --workdir /application/.context application \
+  PROJECT=$( (cd .context && cat compose-project) 2>/dev/null) && [ -n "$PROJECT" ] ||
+    { printf '%s\n' 'Run ./lifecycle up first.' >&2; exit 1; }
+  docker compose --project-name "$PROJECT" exec -T --user node --workdir /application/.context application \
     cat "catalogue-builds/packs/$filename" > "$build_dir/$filename" || exit 1
   printf '%s\n' "$build_dir/$filename"
 )

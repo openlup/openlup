@@ -193,7 +193,7 @@ async function bindSettings({ database, app, configuration }) {
     // eslint-disable-next-line no-restricted-syntax -- tool entry composes existing installed capabilities only for connected settings
     const { readShippingPaymentMethodPreferencesOverride } = await import("@openlup/platform/shipping");
     // eslint-disable-next-line no-restricted-syntax -- tool entry composes existing installed capabilities only for connected settings
-    const { readSubscriptionEditQuoteTtlMinutesOverride, readSubscriptionRetryScheduleOverride } = await import("@openlup/platform/subscriptions");
+    const { readSubscriptionEditQuoteTtlMinutesOverride, readSubscriptionRescheduleTimeZoneOverride, readSubscriptionRetryScheduleOverride } = await import("@openlup/platform/subscriptions");
     const inventory = describeRenewalStockProtectionSetting().key;
     inventorySettingKey = inventory;
     return {
@@ -230,6 +230,10 @@ async function bindSettings({ database, app, configuration }) {
         },
         subscription_edit_quote_ttl_minutes: async () => {
           const policy = await readSubscriptionEditQuoteTtlMinutesOverride(db);
+          return policy ? { present: true, value: { ...policy }, revision: policy.revision } : { present: false };
+        },
+        "subscriptions.rescheduleTimeZone": async () => {
+          const policy = await readSubscriptionRescheduleTimeZoneOverride(db);
           return policy ? { present: true, value: { ...policy }, revision: policy.revision } : { present: false };
         },
         "subscriptions.retrySchedule": async () => {

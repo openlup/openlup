@@ -2429,16 +2429,80 @@
     {
       "key": "subscriptions.rescheduleTimeZone",
       "domain": "subscriptions",
-      "goal": "Calculate a subscription reschedule date in the market time zone.",
+      "kind": "installed",
+      "goal": "Calculate subscription reschedule calendar-day boundaries in a configured IANA time zone (reschedule time zone, slide calendar day, market timezone).",
       "schemaVersion": 1,
-      "kind": "cap",
+      "examples": [
+        {
+          "value": {
+            "revision": "store-1",
+            "timeZone": "Europe/Berlin"
+          }
+        },
+        {
+          "value": {
+            "revision": " ",
+            "timeZone": "UTC"
+          },
+          "code": "subscription_reschedule_timezone_policy_invalid"
+        },
+        {
+          "value": {
+            "revision": "store-1",
+            "timeZone": "Mars/Olympus"
+          },
+          "code": "subscription_reschedule_timezone_policy_invalid"
+        }
+      ],
+      "fallback": {
+        "revision": "default",
+        "timeZone": "UTC"
+      },
+      "defaultBasis": {
+        "kind": "reference-code"
+      },
+      "whyThisDefault": "UTC preserves historical epoch-day and UTC calendar-day reschedule comparisons across subscription_apply_lifecycle_action, subscription_command_preview, subscription_command_apply, customer_support_apply_subscription_action_v1, and save-offer reschedule target calculation.",
+      "effect": {
+        "appliesTo": "Subsequent fresh slide_next_cycle evaluations in subscription_apply_lifecycle_action, subscription_command_preview, subscription_command_apply, customer_support_apply_subscription_action_v1, and reschedule save-offer target calculation in Postgres command stores read key='subscription_reschedule_timezone' from public.commerce_settings via subscription_reschedule_timezone_read(). When no row exists in public.commerce_settings, the SQL reader defaults to 'UTC'; malformed or unrecognized IANA time zone rows refuse fail-closed with SQLSTATE 22023 subscription_reschedule_timezone_policy_invalid.",
+        "frozenOn": [
+          "Completed subscription_command_receipts, customer_support_subscription_commands, and already scheduled subscription next_cycle_at timestamps retain their recorded values."
+        ],
+        "impact": "customer-promise"
+      },
       "runtime": {
         "level": "read-only",
-        "reason": "The native command compares dates using UTC days."
+        "reason": "Install or update the public.commerce_settings row through installSubscriptionRescheduleTimeZonePolicy or your store deployment step; runtime edits require a write-capable host connection."
       },
       "change": {
-        "reference": "docs/guide/concepts/subscription-engine.md#what-this-package-owns"
-      }
+        "operation": "installSubscriptionRescheduleTimeZonePolicy"
+      },
+      "schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "string",
+            "pattern": "\\S"
+          },
+          "timeZone": {
+            "type": "string",
+            "pattern": "\\S"
+          }
+        },
+        "required": [
+          "revision",
+          "timeZone"
+        ],
+        "additionalProperties": false
+      },
+      "previewSchema": null,
+      "rules": [
+        {
+          "code": "subscription_reschedule_timezone_policy_invalid",
+          "path": [],
+          "description": "The policy must be a JSON object with only revision (nonblank string) and timeZone (valid IANA time zone name recognized by PostgreSQL pg_timezone_names)."
+        }
+      ]
     },
     {
       "key": "subscriptions.retrySchedule",
@@ -2968,6 +3032,7 @@
     "subscription_edit_quote_ttl_minutes": "subscription edit quote TTL, quote expiry minutes, edit preview validity window",
     "commerce.returnReasons": "return reasons, return request reason codes, return vocabulary, commerce_return_reasons",
     "shipping.paymentMethodPreferences": "payment method preferences, saved payment method kinds, shipping_payment_method_preferences",
+    "subscriptions.rescheduleTimeZone": "subscription reschedule time zone, slide calendar day, market timezone, IANA timezone",
     "savedAddressValidation": "postal format, phone normalization, delivery address checks",
     "checkout.offerAdmission": "offer policy, offer version, checkout admission, quote acceptance",
     "checkout.resumeWindowMinutes": "checkout resume window, open order continuation, unpaid order resume, duplicate checkout guard",
@@ -3271,6 +3336,7 @@
                   "promotion_claim_hold_hours_policy_invalid",
                   "shipping_payment_method_preferences_policy_invalid",
                   "subscription_edit_quote_ttl_minutes_policy_invalid",
+                  "subscription_reschedule_timezone_policy_invalid",
                   "subscription_retry_schedule_policy_invalid"
                 ]
               },

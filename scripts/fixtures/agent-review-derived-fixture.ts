@@ -69,9 +69,10 @@ export interface DerivedFixture {
   cleanup: () => void;
 }
 
-export async function createDerivedFixture(options: { runInitialLanding?: boolean } = {}): Promise<DerivedFixture> {
+export async function createDerivedFixture(options: { runInitialLanding?: boolean; stubNpmEnv?: boolean } = {}): Promise<DerivedFixture> {
   const source = process.cwd();
   const runInitialLanding = options.runInitialLanding ?? true;
+  const stubNpmEnv = options.stubNpmEnv ?? true;
   const state: DerivedFixture = {
     root: '',
     base: '',
@@ -170,15 +171,16 @@ export async function createDerivedFixture(options: { runInitialLanding?: boolea
       await captureCommittedReviewCandidate(state.root, state.main, head),
     ),
     cleanup: () => {
-      vi.unstubAllEnvs();
+      if (stubNpmEnv) vi.unstubAllEnvs();
       if (state.root) rmSync(state.root, { recursive: true, force: true });
     },
   };
 
   try {
-    vi.stubEnv('npm_execpath', npmCli);
+    if (stubNpmEnv) vi.stubEnv('npm_execpath', npmCli);
     state.root = realpathSync(mkdtempSync(join(tmpdir(), 'openlup-derived-live-')));
     execFileSync('/usr/bin/git', ['clone', '--shared', '--no-hardlinks', '-q', source, state.root], { env: fixtureEnvironment, timeout: 30000 });
+    state.git('checkout', '-q', '--detach');
     // The clone already has HEAD. Overlay only differences during local development.
     const sourcePaths = (...args: string[]) => execFileSync('/usr/bin/git', args, { cwd: source, env: fixtureEnvironment, encoding: 'utf8' }).split('\0').filter(Boolean);
     const overlays = new Set([

@@ -212,6 +212,7 @@ No symbol of this package differs from its subpath's maturity or is deprecated.
 | `./shipping/contracts` | capability | stable |
 | `./shipping/testing` | capability | testing |
 | `./storefront` | capability | experimental |
+| `./storefront/testing` | capability | testing |
 | `./subscriptions` | capability | stable |
 | `./subscriptions/contracts` | capability | stable |
 | `./tax` | capability | experimental |
@@ -619,9 +620,19 @@ Symbols whose maturity differs from their subpath, or that are deprecated:
 | `./shipping` | `validateDestinationAddressV2` | experimental | no |
 | `./shipping` | `validateShippingPaymentMethodPreferences` | experimental | no |
 | `./shipping/testing` | `runShippingRateAdapterConformance` | experimental | no |
+| `./storefront/testing` | `PageHandle` | experimental | no |
+| `./storefront/testing` | `StorefrontAdapter` | experimental | no |
+| `./storefront/testing` | `StorefrontObserver` | experimental | no |
+| `./storefront/testing` | `StorefrontScenario` | experimental | no |
+| `./storefront/testing` | `createPageHandle` | experimental | no |
+| `./storefront/testing` | `createPostgresStorefrontObserver` | experimental | no |
+| `./storefront/testing` | `runStorefrontScenario` | experimental | no |
+| `./storefront/testing` | `serializeStorefrontVerdict` | experimental | no |
+| `./storefront/testing` | `storefrontScenarios` | experimental | no |
 | `./subscriptions` | `CatalogProfileCadenceInput` | experimental | no |
 | `./subscriptions` | `CatalogProfileCadenceResult` | experimental | no |
 | `./subscriptions` | `DEFAULT_SUBSCRIPTION_EDIT_QUOTE_TTL_MINUTES` | experimental | no |
+| `./subscriptions` | `DEFAULT_SUBSCRIPTION_RESCHEDULE_TIMEZONE` | experimental | no |
 | `./subscriptions` | `DEFAULT_SUBSCRIPTION_RETRY_BACKOFF_HOURS` | experimental | no |
 | `./subscriptions` | `RenewalCyclePolicy` | stable | yes |
 | `./subscriptions` | `StockWaitAdminPage` | experimental | no |
@@ -630,19 +641,24 @@ Symbols whose maturity differs from their subpath, or that are deprecated:
 | `./subscriptions` | `StockWaitReadProjection` | experimental | no |
 | `./subscriptions` | `StockWaitReadState` | experimental | no |
 | `./subscriptions` | `SubscriptionEditQuoteTtlMinutesPolicy` | experimental | no |
+| `./subscriptions` | `SubscriptionRescheduleTimeZonePolicy` | experimental | no |
 | `./subscriptions` | `SubscriptionRetrySchedulePolicy` | experimental | no |
 | `./subscriptions` | `createPostgresStockWaitReads` | experimental | no |
 | `./subscriptions` | `createPostgresSubscriptionSaveOfferAcceptor` | experimental | no |
 | `./subscriptions` | `installSubscriptionEditQuoteTtlMinutesPolicy` | experimental | no |
+| `./subscriptions` | `installSubscriptionRescheduleTimeZonePolicy` | experimental | no |
 | `./subscriptions` | `installSubscriptionRetrySchedulePolicy` | experimental | no |
 | `./subscriptions` | `readSubscriptionEditQuoteTtlMinutesOverride` | experimental | no |
 | `./subscriptions` | `readSubscriptionEditQuoteTtlMinutesPolicy` | experimental | no |
+| `./subscriptions` | `readSubscriptionRescheduleTimeZoneOverride` | experimental | no |
+| `./subscriptions` | `readSubscriptionRescheduleTimeZonePolicy` | experimental | no |
 | `./subscriptions` | `readSubscriptionRetryScheduleOverride` | experimental | no |
 | `./subscriptions` | `readSubscriptionRetrySchedulePolicy` | experimental | no |
 | `./subscriptions` | `resolveSubscriptionEditQuoteTtlMinutes` | experimental | no |
 | `./subscriptions` | `selectCatalogProfileCadence` | experimental | no |
 | `./subscriptions` | `stockWaitHealth` | experimental | no |
 | `./subscriptions` | `validateSubscriptionEditQuoteTtlMinutes` | experimental | no |
+| `./subscriptions` | `validateSubscriptionRescheduleTimeZone` | experimental | no |
 | `./subscriptions` | `validateSubscriptionRetrySchedule` | experimental | no |
 | `./subscriptions/contracts` | `StockWaitAdminPage` | experimental | no |
 | `./subscriptions/contracts` | `StockWaitOperatorSummary` | experimental | no |

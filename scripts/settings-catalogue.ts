@@ -80,6 +80,7 @@ const searchTerms: Record<string, string> = {
   subscription_edit_quote_ttl_minutes: "subscription edit quote TTL, quote expiry minutes, edit preview validity window",
   "commerce.returnReasons": "return reasons, return request reason codes, return vocabulary, commerce_return_reasons",
   "shipping.paymentMethodPreferences": "payment method preferences, saved payment method kinds, shipping_payment_method_preferences",
+  "subscriptions.rescheduleTimeZone": "subscription reschedule time zone, slide calendar day, market timezone, IANA timezone",
   savedAddressValidation: "postal format, phone normalization, delivery address checks",
   "checkout.offerAdmission": "offer policy, offer version, checkout admission, quote acceptance",
   "checkout.resumeWindowMinutes": "checkout resume window, open order continuation, unpaid order resume, duplicate checkout guard",

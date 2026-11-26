@@ -13,7 +13,7 @@ if (new Set(hosts.map(host => host.id)).size !== 2) throw new Error('starter_dat
 const editorProofs = hosts.every(host => typeof host.composeProject === 'string')
   ? ['subscription-journeys.spec.ts', 'subscription-api.spec.ts'] : [];
 export default defineConfig<SubscriptionProofOptions>({
-  testDir: './browser', testMatch: ['journey.spec.ts', 'acquisition.spec.ts', 'catalogue-products.spec.ts', 'checkout-expected-total.spec.ts', 'lost-response.spec.ts', 'native-operator.proof.ts', ...editorProofs], workers: 1, fullyParallel: false,
+  testDir: './browser', testMatch: ['journey.spec.ts', 'acquisition.spec.ts', 'catalogue-products.spec.ts', 'checkout-expected-total.spec.ts', 'lost-response.spec.ts', 'page-handle.spec.ts', 'storefront-anchors.spec.ts', 'checkout-controller.spec.ts', 'native-operator.proof.ts', ...editorProofs], workers: 1, fullyParallel: false,
   // Explicit budgets for shared hosted runners instead of the 30 s / 5 s defaults.
   timeout: 60_000, expect: { timeout: 10_000 },
   use: { headless: true, actionTimeout: 10_000, trace: 'off', screenshot: 'off', video: 'off' },

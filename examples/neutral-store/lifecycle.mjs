@@ -1,12 +1,15 @@
 import { createHash } from 'node:crypto';
-import { copyFile, mkdir, readFile, writeFile, access } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, writeFile, access, lstat, mkdtemp, readdir, rename, rm, rmdir, unlink } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 import { env } from 'node:process';
+import { stripVTControlCharacters } from 'node:util';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { readStarterDiagnostic, starterDiagnostic } from './shared/refusals.ts';
 import { seedPhysicalGuidance } from './shared/seed-physical.ts';
+import { assertRuntimeIdentity, connectRuntime, mountedRuntimeLine, prepareRuntimeHandoff,
+  runtimeAuthFailed, runtimeConnectionString, runtimeMounted, runtimeReadFailed, runtimeUrl } from './host/runtime-database.ts';
 import { applicationHealthcheck } from './host/healthcheck.ts';
 import { browserJourneyGroups } from './browser-groups.mjs';
 import { catalogueApplyFix, catalogueApplyRefusal, isSkuLocalPriceRefusal, localPortFix, operatorChallengeGuidance, repriceRecovery, starterGuidance, starterRefusals } from './lifecycle-refusals.mjs';
@@ -74,8 +77,8 @@ function physicalReport({ code, path, observed, cause, fix, recheck, subject }) 
 function commandRefusal(error, stage, allowLegacy = false) {
   const known = installationFinding(error) ?? physicalFinding(error);
   if (known) return known;
-  const diagnostic = json ? readStarterDiagnostic(error) : undefined;
-  const code = json ? diagnostic?.code : (allowLegacy && error instanceof Error ? error.message : undefined);
+  const diagnostic = readStarterDiagnostic(error);
+  const code = diagnostic?.code ?? (!json && allowLegacy && error instanceof Error ? error.message : undefined);
   const guidance = code && starterGuidance(code);
   if (!guidance) return installationFinding(installationFailure(error, stage, 'launch'));
   const prerequisite = stage === '/installation' ? 'demonstration installation' : 'selected configuration';
@@ -101,20 +104,26 @@ function emit(report) {
 
 const fields = (row, keys) => row && typeof row === 'object' && !Array.isArray(row)
   && Object.keys(row).length === keys.length && keys.every(key => Object.hasOwn(row, key));
-async function readInstallReport(argv, configuration) {
-  const child = spawn('docker', argv, { cwd: root, stdio: ['ignore', 'pipe', 'inherit'] });
+async function readInstallReport(compose, argv, configuration) {
+  const child = spawn('docker', [...compose.args, ...argv], { cwd: root, env: compose.env, stdio: ['ignore', 'pipe', 'pipe'] });
+  let tail = '';
+  child.stderr.on('data', bytes => { tail = (tail + bytes).slice(-8192); });
   const chunks = [];
   let failed = false;
   child.stdout.on('data', bytes => chunks.push(bytes));
   child.stdout.on('error', () => { failed = true; });
   child.on('error', () => { failed = true; });
   const [status, signal] = await new Promise(done => child.once('close', (...result) => done(result)));
+  const launchFinding = composeFinding(tail, compose.env);
+  if (launchFinding) throw starterDiagnostic(launchFinding);
+  if (status !== 2) composeOutput(tail);
   const line = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(Buffer.concat(chunks));
   if (failed || signal || !line.endsWith('\n') || line.indexOf('\n') !== line.length - 1 || line.includes('\r'))
     throw new Error('starter_installation_failed');
   const report = JSON.parse(line);
-  const { catalogProductTypeRefSchema } = await import('@openlup/platform/catalog');
-  const version = catalogProductTypeRefSchema.shape.version;
+  const catalogProductTypeRefSchema = Array.isArray(report?.packs) && report.packs.length
+    ? (await import('@openlup/platform/catalog')).catalogProductTypeRefSchema : undefined;
+  const version = catalogProductTypeRefSchema?.shape.version;
   if (!fields(report, ['formatVersion', 'state', 'exitCode', 'configuration', 'packs', 'findings'])
     || report.formatVersion !== 1 || report.exitCode !== status || report.configuration !== configuration
     || !Array.isArray(report.packs) || !Array.isArray(report.findings)) throw new Error('starter_installation_failed');
@@ -130,6 +139,112 @@ async function readInstallReport(argv, configuration) {
     && fields(finding, findingFields) && findingFields.every(key => typeof finding[key] === 'string')
     && starterGuidance(finding.code)) return report;
   throw new Error('starter_installation_failed');
+}
+
+function composeFinding(stderr, environment) {
+  if (stderr.includes('starter_runtime_preflight_handoff_missing')
+    || (environment.OPENLUP_STARTER_PREFLIGHT_HANDOFF && stderr.includes(environment.OPENLUP_STARTER_PREFLIGHT_HANDOFF) && /not found|no such file/u.test(stderr)))
+    return 'starter_runtime_preflight_handoff_missing';
+  if (/bind source path|error while mounting|invalid mount config|failed to mount/u.test(stderr)
+    && environment.OPENLUP_STARTER_RUNTIME_SOURCE && stderr.includes(environment.OPENLUP_STARTER_RUNTIME_SOURCE))
+    return 'starter_runtime_credential_mount_failed';
+}
+
+const projectFile = resolve(root, '.context/compose-project');
+async function admitProjectState() {
+  await mkdir(dirname(projectFile), { recursive: true, mode: 0o700 });
+  const state = await lstat(dirname(projectFile));
+  if (!state.isDirectory() || state.uid !== process.getuid() || (state.mode & 0o022))
+    throw starterDiagnostic('starter_runtime_credential_source_invalid');
+}
+async function recordedProject() {
+  try {
+    const name = await readFile(projectFile, 'utf8');
+    if (/^[a-z0-9][a-z0-9_-]*\n$/u.test(name)) return name.trim();
+    throw starterDiagnostic('starter_runtime_project_record_invalid');
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+}
+async function lockProjectOperation() {
+  const lock = resolve(dirname(projectFile), '.compose-operation');
+  const pending = await mkdtemp(lock + '-');
+  // Publish only a complete lock. The unique owner entry lets one retry reclaim it.
+  const owner = process.pid + pending.slice(lock.length);
+  await writeFile(resolve(pending, owner), '', { mode: 0o600 });
+  async function release(name) {
+    await unlink(resolve(lock, name));
+    try { await rmdir(lock); }
+    catch (error) { if (!['ENOENT', 'ENOTEMPTY'].includes(error.code)) throw error; }
+  }
+  try {
+    while (true) {
+      try { await rename(pending, lock); return () => release(owner); }
+      catch (error) { if (!['EEXIST', 'ENOTEMPTY'].includes(error.code)) throw error; }
+      const [name] = await readdir(lock).catch(error => error.code === 'ENOENT' ? [] : Promise.reject(error));
+      if (!name) continue;
+      const pid = Number(/^([0-9]+)-[a-zA-Z0-9]+$/u.exec(name)?.[1]);
+      if (!(pid > 0)) throw starterDiagnostic('starter_runtime_project_busy');
+      try { process.kill(pid, 0); }
+      catch (error) {
+        if (error.code === 'ESRCH') {
+          await release(name).catch(error => { if (error.code !== 'ENOENT') throw error; });
+          continue;
+        }
+        if (error.code !== 'EPERM') throw error;
+      }
+      throw starterDiagnostic('starter_runtime_project_busy');
+    }
+  } finally { await rm(pending, { recursive: true, force: true }); }
+}
+async function recordProject(project) {
+  const recorded = await recordedProject();
+  if (recorded === project) return;
+  if (recorded) throw starterDiagnostic('starter_runtime_project_mismatch');
+  const pending = await mkdtemp(resolve(dirname(projectFile), '.compose-project-'));
+  try {
+    const file = resolve(pending, 'name');
+    await writeFile(file, project + '\n', { mode: 0o600 });
+    await rename(file, projectFile);
+  } finally { await rm(pending, { recursive: true, force: true }); }
+}
+
+function composeOutput(output) {
+  const safe = stripVTControlCharacters(output)
+    .replace(/[^\S\n\t ]/gu, ' ')
+    .replace(/SCRAM-SHA-256\$[^\s"']+|[a-f0-9]{64}/giu, '[redacted]');
+  if (safe) process.stderr.write(safe);
+}
+
+function composeRun(compose, argv, input, finding) {
+  const result = spawnSync('docker', [...compose.args, ...argv],
+    { cwd: root, env: compose.env, input, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
+  if (result.status === 0) return result;
+  const known = composeFinding(result.stderr ?? '', compose.env) ?? finding?.(result);
+  if (!known) composeOutput((result.stdout ?? '') + (result.stderr ?? '') + (result.error?.code ?? ''));
+  throw starterDiagnostic(known ?? 'starter_installation_failed');
+}
+
+const databaseLockHeld = 'starter_runtime_database_lock_held';
+function serviceFinding(compose, service, since, codes) {
+  const { stdout } = spawnSync('docker', [...compose.args, 'logs', '--no-color', '--since', since, '--tail', '25', service],
+    { cwd: root, env: compose.env, maxBuffer: 32_768, encoding: 'utf8' });
+  return stdout?.match(new RegExp('^[^|]*\\| +(' + codes.join('|') + ')$', 'mu'))?.[1];
+}
+
+async function freshRuntimeRead(connectionString, prepare) {
+  if (!connectionString) throw starterDiagnostic('starter_runtime_connection_required');
+  const { default: pg } = await import('pg');
+  const client = new pg.Client({ connectionString, connectionTimeoutMillis: 5000, query_timeout: 5000 });
+  try {
+    await connectRuntime(client);
+    if (runtimeMounted()) await assertRuntimeIdentity(client);
+    return await prepare?.(client);
+  } finally { await client.end(); }
+}
+function runtimeFinding(error) {
+  const code = readStarterDiagnostic(error)?.code ?? (error?.code === '28P01' ? runtimeAuthFailed : undefined);
+  return code === runtimeReadFailed || code === runtimeAuthFailed ? code : undefined;
 }
 
 if (command === 'refusals') {
@@ -183,7 +298,7 @@ if (command === 'refusals') {
   }
 } else if (command === 'up') {
   let configuration = '', packs = [], stage = '/arguments';
-  let final;
+  let final, handoff, unlock, dataVolume;
   try {
     const selected = lifecycleOptions(args);
     const { assertConfig, isConfigurationId, parseStarterPort } = await import('./shared/config.ts');
@@ -198,20 +313,28 @@ if (command === 'refusals') {
     // Give each Compose subprocess the same listener port, ahead of any .env value.
     env.OPENLUP_STARTER_PORT = String(port);
     stage = '/installation';
-    run('docker', ['compose', 'build'], undefined, json);
-    run('docker', ['compose', 'up', '--wait', 'database'], undefined, json);
-    const installerArgs = ['compose', 'run', '--rm', '--no-deps', ...(json ? ['-T'] : []), 'installation',
-      'node', 'lifecycle.mjs', 'install', '--configuration', configuration, ...(json ? ['--json'] : [])];
-    const report = json ? await readInstallReport(installerArgs, configuration) : undefined;
-    if (report?.state === 'violated') final = report;
+    const compose = { args: ['compose'], env: { ...env, OPENLUP_STARTER_PREFLIGHT_HANDOFF: '/dev/null' } };
+    const { stdout } = composeRun(compose, ['config', '--no-env-resolution', '--format', 'json']);
+    const { name: project, volumes } = JSON.parse(stdout);
+    await admitProjectState();
+    unlock = await lockProjectOperation();
+    if (!/^[a-z0-9][a-z0-9_-]*$/u.test(project)) throw starterDiagnostic('starter_runtime_project_record_invalid');
+    await recordProject(project);
+    dataVolume = volumes?.database?.name ?? project + '_database';
+    handoff = prepareRuntimeHandoff(project, [root]);
+    compose.args.push('--project-name', project);
+    compose.env = { ...env, ...handoff.environment };
+    const build = composeRun(compose, ['build']);
+    composeOutput(build.stdout + build.stderr);
+    const databaseSince = new Date().toISOString();
+    const database = composeRun(compose, ['up', '--wait', 'database'], undefined,
+      () => serviceFinding(compose, 'database', databaseSince, [databaseLockHeld]));
+    composeOutput(database.stdout + database.stderr);
+    const report = await readInstallReport(compose, ['run', '--rm', '--no-deps', '-T', 'installation',
+      'node', 'lifecycle.mjs', 'install', '--configuration', configuration, '--json'], configuration);
+    if (report.state === 'violated') final = report;
     else {
-      if (report) packs = report.packs;
-      else {
-        const installer = spawnSync('docker', installerArgs, { cwd: root, stdio: 'inherit' });
-        if (installer.error || installer.status === null) throw installer.error ?? new Error('starter_installation_failed');
-        if (installer.status === 2) process.exit(installer.status);
-        if (installer.status !== 0) throw new Error('starter_installation_failed');
-      }
+      packs = report.packs;
       // Install and runtime receive the same non-secret configuration through arguments.
       const override = { services: { application: { command: [
         'node', '--experimental-strip-types', 'lifecycle.mjs', 'serve-demo',
@@ -221,18 +344,35 @@ if (command === 'refusals') {
       ] } } };
       const healthcheck = applicationHealthcheck(config.publicOrigin, port);
       if (healthcheck) override.services.application.healthcheck = healthcheck;
-      run('docker', ['compose', '-f', 'compose.yaml', '-f', '-', 'up', '--wait', 'application'], JSON.stringify(override), json);
+      const appSince = new Date().toISOString();
+      composeRun(compose, ['-f', 'compose.yaml', '-f', '-', 'up', '--wait', 'application'], JSON.stringify(override),
+        () => serviceFinding(compose, 'application', appSince, [runtimeReadFailed, runtimeAuthFailed]));
+      composeRun(compose, ['exec', '-T', 'application', 'node', 'lifecycle.mjs', 'runtime-probe'], undefined,
+        ({ stdout }) => [runtimeReadFailed, runtimeAuthFailed].includes(stdout?.trim()) ? stdout.trim() : undefined);
       final = installReport(configuration, packs);
     }
   } catch (error) {
     const finding = commandRefusal(error, stage, stage !== '/installation');
+    if (finding.code === databaseLockHeld && typeof dataVolume === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/u.test(dataVolume))
+      finding.fix = finding.fix.replace('<volume>', dataVolume);
     if (json) final = installReport(configuration, packs, finding);
     else {
-      process.stderr.write(Object.hasOwn(finding, 'subject') ? physicalReport(finding) : `${finding.code}\nFix: ${finding.fix}\n`);
+      if (Object.hasOwn(finding, 'subject')) process.stderr.write(physicalReport(finding));
+      else if (stage === '/installation' && finding.code.startsWith('starter_runtime_'))
+        process.stderr.write(installationReport(refusal(finding.code, finding.path, finding.observed, finding.cause, finding.fix, finding.recheck)));
+      else process.stderr.write(`${finding.code}\nFix: ${finding.fix}\n`);
       process.exitCode = 2;
     }
-  }
+  } finally { try { handoff?.cleanup(); } finally { await unlock?.(); } }
   if (json) await emit({ command: 'up', ...final });
+  else if (final?.state === 'violated') {
+    process.exitCode = 2;
+    const finding = final.findings[0];
+    process.stderr.write(installationReport(refusal(finding.code, finding.path, finding.observed, finding.cause, finding.fix, finding.recheck)));
+  }
+} else if (command === 'runtime-probe') {
+  try { await freshRuntimeRead(runtimeConnectionString()); }
+  catch (error) { process.stdout.write((runtimeFinding(error) ?? 'starter_installation_failed') + '\n'); process.exitCode = 2; }
 } else if (command === 'serve-demo') {
   // Internal container entry: private runtime state never enters the image or Compose values.
   try {
@@ -241,20 +381,14 @@ if (command === 'refusals') {
     const options = parseHostArguments(args);
     assertConfig(selectConfiguration(options.configuration));
     const { prepareDemonstrationQuoteKey } = await import('./installation/install.ts');
-    const { default: pg } = await import('pg');
-    if (!options.databaseUrl) throw new Error('starter_runtime_connection_required');
-    const connection = new pg.Client({ connectionString: options.databaseUrl });
-    let keyFile;
-    try {
-      await connection.connect();
-      keyFile = await prepareDemonstrationQuoteKey(connection, resolve(root, '.context'));
-    } finally { await connection.end(); }
+    const keyFile = await freshRuntimeRead(runtimeConnectionString(options.databaseUrl),
+      connection => prepareDemonstrationQuoteKey(connection, resolve(root, '.context')));
     process.argv = [process.execPath, resolve(root, 'host/server.ts'), ...args,
       '--quote-acceptance-key-file', keyFile];
     await import('./host/server.ts');
   } catch (error) {
-    const code = error instanceof Error && starterGuidance(error.message)
-      ? error.message : 'starter_demo_start_failed';
+    const code = (runtimeMounted() ? runtimeFinding(error) : undefined) ??
+      (error instanceof Error && starterGuidance(error.message) ? error.message : 'starter_demo_start_failed');
     const finding = physicalFinding(error);
     process.stderr.write(finding ? physicalReport(finding) : `${code}\n`);
     process.exitCode = 2;
@@ -304,39 +438,68 @@ if (command === 'refusals') {
   process.exit(process.exitCode ?? 0);
 } else if (command === 'browser') {
   await databaseBrowserRecipe(args);
-} else if (command === 'checkout-recovery') {
-  const { selectConfiguration } = await import('./owned/store.config.ts');
-  const { parseHostArguments, assertConfig } = await import('./shared/config.ts');
-  const { runCheckoutRecovery } = await import('./host/paid-mail.ts');
-  const { default: pg } = await import('pg');
-  const options = parseHostArguments(args), config = selectConfiguration(options.configuration);
-  assertConfig(config);
-  if (!options.databaseUrl) throw new Error('starter_runtime_connection_required');
-  const pool = new pg.Pool({ connectionString: options.databaseUrl });
-  try { process.stdout.write(JSON.stringify(await runCheckoutRecovery({ executor: pool, config,
-    publicOrigin: config.publicOrigin ?? `http://127.0.0.1:${options.port}` })) + '\n'); }
-  finally { await pool.end(); }
-} else if (command === 'care') {
-  const { selectConfiguration } = await import('./owned/store.config.ts');
-  const { parseHostArguments, assertConfig } = await import('./shared/config.ts');
-  const { runScheduledCare } = await import('./host/scheduled-renewal.ts');
-  const options = parseHostArguments(args);
-  const config = selectConfiguration(options.configuration); assertConfig(config);
-  if (!options.databaseUrl) throw new Error('starter_runtime_connection_required');
-  process.stdout.write(JSON.stringify(await runScheduledCare(options.databaseUrl, config, { publicOrigin: `http://127.0.0.1:${options.port}` })) + '\n');
-} else if (command === 'renewal') {
-  const { selectConfiguration } = await import('./owned/store.config.ts');
-  const { parseHostArguments, assertConfig } = await import('./shared/config.ts');
-  const { runScheduledRenewal } = await import('./host/scheduled-renewal.ts');
-  const options = parseHostArguments(args);
-  const config = selectConfiguration(options.configuration);
-  assertConfig(config);
-  if (!options.databaseUrl) throw new Error('starter_runtime_connection_required');
-  // Local invocation only. The existing scheduler may call this same entry.
-  process.stdout.write(JSON.stringify(await runScheduledRenewal(options.databaseUrl, config)) + '\n');
+} else if (command === 'settings' && args.slice(0, [...args, '--'].indexOf('--')).includes('--help')) {
+  delegate(resolve(root, 'node_modules/.bin/openlup'), ['settings', ...args]);
+} else if (['checkout-recovery', 'care', 'renewal', 'settings'].includes(command)) {
+  try {
+    if (command === 'settings') {
+      if (!runtimeMounted() || !['show', 'preview'].includes(args[0])) throw starterDiagnostic('starter_argument_unknown');
+      const line = mountedRuntimeLine();
+      if (args.slice(1).some(arg => /^--(?:app|database-url|database-password-fd)(?:=|$)/u.test(arg)))
+        throw starterDiagnostic('starter_argument_unknown');
+      const child = spawn(resolve(root, 'node_modules/.bin/openlup'),
+        ['settings', ...args, '--app', './owned/settings-host.ts', '--database-url', runtimeUrl, '--database-password-fd', '3'],
+        { cwd: root, stdio: ['inherit', 'inherit', 'inherit', 'pipe'] });
+      child.stdio[3].on('error', () => {});
+      child.stdio[3].end(line);
+      process.exitCode = await new Promise((done, fail) => { child.once('error', fail); child.once('close', code => done(code ?? 1)); });
+    } else {
+      const { selectConfiguration } = await import('./owned/store.config.ts');
+      const { parseHostArguments, assertConfig } = await import('./shared/config.ts');
+      const options = parseHostArguments(args), config = selectConfiguration(options.configuration);
+      assertConfig(config);
+      const connectionString = runtimeConnectionString(options.databaseUrl);
+      if (!connectionString) throw new Error('starter_runtime_connection_required');
+      const publicOrigin = config.publicOrigin ?? `http://127.0.0.1:${options.port}`;
+      if (command === 'checkout-recovery') {
+        const { runCheckoutRecovery } = await import('./host/paid-mail.ts');
+        const { default: pg } = await import('pg');
+        const pool = new pg.Pool({ connectionString });
+        try { process.stdout.write(JSON.stringify(await runCheckoutRecovery({ executor: pool, config, publicOrigin })) + '\n'); }
+        finally { await pool.end(); }
+      } else {
+        const { runScheduledCare, runScheduledRenewal } = await import('./host/scheduled-renewal.ts');
+        const result = command === 'renewal' ? await runScheduledRenewal(connectionString, config)
+          : await runScheduledCare(connectionString, config, { publicOrigin });
+        process.stdout.write(JSON.stringify(result) + '\n');
+      }
+    }
+  } catch (error) {
+    if (!runtimeMounted()) throw error;
+    const code = runtimeFinding(error) ?? readStarterDiagnostic(error)?.code ?? 'starter_installation_failed';
+    const finding = commandRefusal(starterDiagnostic(code), '/installation');
+    if (json) await emit({ command, ...installReport('', [], finding) });
+    else {
+      process.stderr.write(installationReport(refusal(finding.code, finding.path, finding.observed, finding.cause, finding.fix, finding.recheck)));
+      process.exitCode = 2;
+    }
+  }
 } else if (command === 'down') {
-  // Does not discard the database volume. Destruction is an explicit separate owner action.
-  run('docker', ['compose', 'down']);
+  let unlock;
+  try {
+    await admitProjectState();
+    unlock = await lockProjectOperation();
+    const recorded = await recordedProject(), selected = env.COMPOSE_PROJECT_NAME;
+    if (recorded && selected && recorded !== selected) throw starterDiagnostic('starter_runtime_project_mismatch');
+    const project = recorded || selected;
+    const result = composeRun({ args: ['compose', ...(project ? ['--project-name', project] : [])], env }, ['down']);
+    composeOutput(result.stdout + result.stderr);
+    if (recorded) await rm(projectFile, { force: true });
+  } catch (error) {
+    const { code, fix } = commandRefusal(error, '/installation');
+    process.stderr.write(`${code}\nFix: ${fix}\n`);
+    process.exitCode = 2;
+  } finally { await unlock?.(); }
 } else if (command === 'verify') {
   const binary = resolve(root, 'node_modules/.bin/openlup');
   try { await access(binary); }

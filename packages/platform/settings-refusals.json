@@ -334,6 +334,17 @@
       }
     },
     {
+      "code": "subscription_reschedule_timezone_policy_invalid",
+      "path": [],
+      "rule": "The policy must be a JSON object with only revision (nonblank string) and timeZone (valid IANA time zone name recognized by PostgreSQL pg_timezone_names).",
+      "hint": "Check the value schema and examples for subscriptions.rescheduleTimeZone.",
+      "remediation": {
+        "retry": true,
+        "action": "Check the schema and correct the rejected value.",
+        "command": "npm --silent run settings -- show subscriptions.rescheduleTimeZone --json"
+      }
+    },
+    {
       "code": "subscription_retry_schedule_policy_invalid",
       "path": [],
       "rule": "Supply exactly revision and backoffHours. Revision must be a nonblank string and backoffHours an array of exactly three integers from 1 through 2147483647.",

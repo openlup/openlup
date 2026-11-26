@@ -50,6 +50,7 @@ describe('installed starter browser CI', () => {
       return args.includes('--input-type=module') && mode !== 'recovery' ? 'Portability installed canonical selected-row recovery PASS' : '';
     };
     try {
+      await writeFile(join(app, 'compose.yaml'), 'services: {}\n');
       await mkdir(join(app, 'host')); await copyFile('examples/neutral-store/host/healthcheck.ts', join(app, 'host/healthcheck.ts'));
       const work = runStarterImageCanary(app, 'retained.tar', digest, evidence, { command,
         pull: async () => imageReference(readCiImage('test-postgres')), browserImage: async () => imageReference(readCiImage('starter-browser')) });
@@ -217,7 +218,7 @@ describe('installed starter browser CI', () => {
     expect(command).not.toContain('install');
     expect(() => browserArguments('/tmp/starter', 'mcr.microsoft.com/playwright:latest', 'proof')).toThrow('starter_browser_mirror_required');
     const config = readFileSync('examples/neutral-store/playwright.database.config.ts', 'utf8');
-    for (const setting of ["trace: 'off'", "screenshot: 'off'", "video: 'off'", "'journey.spec.ts'", "'acquisition.spec.ts'", "'lost-response.spec.ts'"]) expect(config).toContain(setting);
+    for (const setting of ["trace: 'off'", "screenshot: 'off'", "video: 'off'", "'journey.spec.ts'", "'acquisition.spec.ts'", "'lost-response.spec.ts'", "'page-handle.spec.ts'"]) expect(config).toContain(setting);
   });
   it('writes both private care fixtures and credential-free UI origins inside cleanup', async () => {
     const app = await mkdtemp(join(tmpdir(), 'starter-care-fixtures-'));
@@ -289,7 +290,7 @@ describe('installed starter browser CI', () => {
     expect(install.indexOf('docker login')).toBeLessThan(install.indexOf('scripts/starter-browser-ci.mjs'));
     expect(install).toContain('scripts/starter-browser-ci.mjs --manifest "$RUNNER_TEMP/package-gates/packages-manifest.json" --expected-commit "$(git rev-parse HEAD)" --groups "$BROWSER_GROUPS"');
     expect(install).toContain('needs: [install-pack]');
-    expect(workflow).toContain('needs: [install-pack, install-packages, install-browser]');
+    expect(workflow).toContain('needs: [reuse-gate, install-pack, install-packages, install-browser]');
     const groups = install.match(/groups: \[(.*)\]/u)![1]!.replaceAll("'", '').split(', ').flatMap(shard => shard.split(',').map(Number));
     expect(groups.filter(index => index === catalogueUpgradeGroupIndex)).toHaveLength(1);
     expect(groups.sort((left, right) => left - right)).toEqual(browserJourneyGroups.map((_, index) => index));

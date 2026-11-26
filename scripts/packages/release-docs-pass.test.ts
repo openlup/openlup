@@ -686,6 +686,11 @@ describe("shift-left simulated upgrade-page audit", () => {
     expect(checkLinkOutcome(contents.replace(before, after))).toContain(`- See ${after}.`);
   });
 
+  it("renders one Core fragment link from both the changelog and the upgrade page", () => {
+    const note = "- See [Change](../docs/guide/how-to/change.md).\n";
+    expect(checkLinkOutcome(note, false, coreFragment)).toContain("- See [Change](../how-to/change.md).");
+  });
+
   it("reports the Core CHANGELOG command in the first refusal and after a pin-only edit", () => {
     const source = "./" + "veli";
     const original = `- See [API](${blob}/main/${apiFile}?source=${source}#api).\n`;
@@ -790,8 +795,8 @@ describe("shift-left simulated upgrade-page audit", () => {
     expect(() => assertSimulatedUpgradePage(f.root)).toThrow(`Fix: correct ${path}\nRecheck: npm run preflight -- --fast`);
   });
 
-  it("exposes a 128 KiB default byte cap and accepts a valid simulated upgrade page without writing files", () => {
-    expect(UPGRADE_PAGE_MAX_BYTES).toBe(128 * 1024);
+  it("exposes a 160 KiB default byte cap and accepts a valid simulated upgrade page without writing files", () => {
+    expect(UPGRADE_PAGE_MAX_BYTES).toBe(160 * 1024);
     const f = fixture();
     f.write("packages/core/package.json", JSON.stringify({ name: "@openlup/core", version: "0.4.0" }));
     f.write("packages/core/changes/allowlisted.md", `- Documented ${allowlistedSubpath} contract update.\n`);
