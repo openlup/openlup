@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { Pool } from "pg";
 import { expect, it } from "vitest";
+import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { withPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
 import { runManagedCompatPostgres } from "../helpers/managedCompatPostgres.js";
 import { closePostgres, postgresSetupTimeoutMs } from "../helpers/postgresContainer.js";
@@ -119,12 +121,9 @@ it.each(["legacy", "admin-managed", "bootstrap"] as const)("preserves the releas
 
 it("replays populated v1 receipts byte for byte through runtime logins after the runner applies the recorder forward", async () => {
   const predecessor = before();
-  // The installed qualified predecessor ends at the renewal generation seam.
-  predecessor.qualified.objectInventorySha256.bootstrapMigrator.withRestore =
-    "705a544980f4094cec2a093b1287c76acb71ad79386596387adc7833d3acf794";
   const forward = current().qualified.forward.find(unit => recorderForward.test(unit.file))!;
   await withPlatformCatalog(predecessor, async root => {
-    const store = await installAccountMutations("bootstrap", false, "populated-price-recorder-upgrade", root);
+    const store = await installAccountMutations("bootstrap", true, "populated-price-recorder-upgrade", root);
     const { owner, runtime, installation } = store;
     const password = randomUUID();
     const publicationUrl = new URL(owner.options.connectionString!);
@@ -133,6 +132,13 @@ it("replays populated v1 receipts byte for byte through runtime logins after the
     const publisher = new Pool({ connectionString: publicationUrl.href });
     try {
       if (installation.generation !== "qualified-v2") throw new Error("Expected the qualified runtime login");
+      // Bind the temporary catalogue to the measured prefix and verify it before seeding receipts.
+      predecessor.qualified.objectInventorySha256.bootstrapMigrator.withRestore = store.inventory;
+      writeFileSync(join(root, catalogPath), JSON.stringify(predecessor));
+      const prefixRunner = createPostgresMigrationRunner({ connectionString: store.migrator.options.connectionString! }, {
+        installation, root, poolFactory: () => store.migrator,
+      });
+      expect(await prefixRunner.apply()).toEqual({ applied: [] });
       expect((await runtime.query("SELECT session_user AS login")).rows).toEqual([{ login: installation.runtimeLogin }]);
       const tail = predecessor.qualified.forward.at(-1)!;
       expect((await owner.query("SELECT catalog_path,sha256 FROM public.platform_schema_migrations ORDER BY position DESC LIMIT 1")).rows)
