@@ -40,6 +40,7 @@ import {
   consumerNode,
   NON_ADAPTER_ENTRIES,
   OPTIONAL_PEERS,
+  PLATFORM_MIGRATION_CONSUMER_PROOF,
   proveAdapterRefusals,
   proveOidcRefusals,
   provePostgresOperations,
@@ -2047,3 +2048,23 @@ it("skeleton_pack_projects_clean", () => {
   // Prove the application parser uses native, erasable TypeScript imports.
   call(sourceArgs(write("forward.ts", 'export { catalogueConformance } from "./catalogue.ts";')), 0);
 }, 30_000);
+
+it("stages the canonical migration manifest as a consumer file so oversized manifests never hit argv E2BIG", () => {
+  expect(PLATFORM_MIGRATION_CONSUMER_PROOF).toContain('readFileSync(expectedManifestPath, "utf8")');
+  const consumer = mkdtempSync(join(tmpdir(), "openlup-manifest-file-proof-"));
+  const manifestPath = join(consumer, "expected-platform-migration-manifest.json");
+  try {
+    // Exceed Linux MAX_ARG_STRLEN (128 KiB) to prove file-path handoff avoids E2BIG.
+    const oversized = JSON.stringify({ entries: Array.from({ length: 1600 }, (_, i) => ({ file: `m_${i}.sql`, sha256: "a".repeat(64) })) });
+    expect(Buffer.byteLength(oversized, "utf8")).toBeGreaterThan(150 * 1024);
+    writeFileSync(manifestPath, oversized);
+    const out = consumerNode(consumer, `
+      import { readFileSync } from "node:fs";
+      const parsed = JSON.parse(readFileSync(process.argv[2], "utf8"));
+      console.log(JSON.stringify({ count: parsed.entries.length }));
+    `, [manifestPath]);
+    expect(JSON.parse(out)).toEqual({ count: 1600 });
+  } finally {
+    rmSync(consumer, { recursive: true, force: true });
+  }
+});
