@@ -50,7 +50,8 @@ export async function completedMergeGroup({ eventName, ref, sha, checkout, event
       || !jobs.every(job => positive(job?.id)) || new Set(jobs.map(job => job.id)).size !== jobs.length) return false;
     if (!CHECKS.every(name => {
       const matches = jobs.filter(job => job.name === name);
-      return matches.length === 1 && matches[0].head_sha === sha && matches[0].status === 'completed' && matches[0].conclusion === 'success';
+      const allowed = name === 'pgtap' ? ['success', 'skipped'] : ['success'];
+      return matches.length === 1 && matches[0].head_sha === sha && matches[0].status === 'completed' && allowed.includes(matches[0].conclusion);
     })) return false;
     // A rerun can start while the explicitly addressed old jobs remain readable.
     // Revalidate both latest-run selection and attempt after collecting the proof.

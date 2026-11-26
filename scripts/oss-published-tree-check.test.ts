@@ -106,12 +106,14 @@ describe("queue completion trust boundary", () => {
     const job = workflowJob("enqueue", value);
     expect(job).toContain(admissionLock);
     for (const guard of ["github.repository == 'openlup/openlup'", "github.ref == 'refs/heads/main'",
-      "github.event.workflow_run.event == 'pull_request'", "vars.OPENLUP_NATIVE_QUEUE == 'enabled'",
+      "github.event.workflow_run.event == 'pull_request'", "github.event.workflow_run.conclusion == 'success'",
+      "vars.OPENLUP_NATIVE_QUEUE == 'enabled'",
       "vars.OPENLUP_QUEUE_APP_CLIENT_ID != ''", "environment: openlup-merge-queue",
       "repository: openlup/openlup", "ref: ${{ github.sha }}", "persist-credentials: false", "repositories: openlup",
       "permission-merge-queues: write", "permission-contents: write", "permission-pull-requests: read",
       "GH_TOKEN: ${{ github.token }}", "OPENLUP_QUEUE_TOKEN: ${{ steps.queue-identity.outputs.token }}"])
       expect(job).toContain(guard);
+    expect(job).not.toContain("github.event.workflow_run.conclusion == 'failure'");
     expect(job).not.toMatch(/\b(?:actions|issues|pull-requests): write\b|(?<!permission-)\bcontents: write\b|\bwrite-all\b/u);
     expect(workflowCommands(job)).toEqual(["node scripts/agent-review-queue.mjs enqueue"]);
     expect(job).not.toMatch(/download-artifact|npm (?:ci|install)|github\.event\.workflow_run\.head_sha/u);
@@ -125,6 +127,7 @@ describe("queue completion trust boundary", () => {
     ["      queue: max\n", ""],
     ["  workflow_run:\n", "  pull_request_target:\n"],
     ["github.ref == 'refs/heads/main'", "true"],
+    ["github.event.workflow_run.conclusion == 'success'", "(github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure')"],
     ["environment: openlup-merge-queue", "environment: npm-stage"],
     ["repository: openlup/openlup", "repository: attacker/fork"],
     ["ref: ${{ github.sha }}", "ref: ${{ github.event.workflow_run.head_sha }}"],
@@ -554,14 +557,11 @@ describe("complete public CI", () => {
       const job = workflowJob(name);
       expect(job).toContain("    permissions:\n      contents: read\n      actions: read\n      packages: read\n");
       const login = job.split("      - name: Authenticate GitHub Container Registry pulls\n")[1]?.split(/(?=^ {6}- )/mu)[0];
-      const expectedLoginIf = name === "pgtap"
-        ? "needs.reuse-gate.outputs.reuse != 'true' && needs.scope-gate.outputs.run_pgtap != 'false'"
-        : name === "install-packages"
-          ? "needs.install-pack.outputs.reuse != 'true' && needs.install-pack.outputs.run_package_gates != 'false'"
-          : name === "install-browser"
-            ? "needs.install-pack.outputs.reuse != 'true'"
-            : "needs.reuse-gate.outputs.reuse != 'true'";
-      expect(login).toContain(`        if: ${expectedLoginIf}\n`);
+      if (name === "install-packages") {
+        expect(login).toContain("        if: needs.install-pack.outputs.run_package_gates != 'false'\n");
+      } else {
+        expect(login).not.toContain("        if: ");
+      }
       expect(login).toContain("        env:\n          GH_TOKEN: ${{ github.token }}\n          GH_ACTOR: ${{ github.actor }}\n");
       expect(login.split("run:")[1]).not.toContain("${{");
       expect(login).toContain('run: echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin');
@@ -603,9 +603,9 @@ describe("complete public CI", () => {
     const shard = workflowJob("test-full-shard");
     expect(shard).toContain("name: test-full-shard (${{ matrix.shard }}/8)");
     const eventFence = workflowJob("dco").split("\n").find(line => line.startsWith("    if:"))!;
-    const scopeFence = eventFence.replace("${{ ", "${{ always() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && needs.scope-gate.result == 'success' && ");
+    const pgtapFence = eventFence.replace("${{ ", "${{ always() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && needs.scope-gate.result == 'success' && needs.reuse-gate.outputs.reuse != 'true' && needs.scope-gate.outputs.run_pgtap != 'false' && ");
     const prepFence = eventFence.replace("${{ ", "${{ always() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && needs.reuse-gate.outputs.reuse != 'true' && ");
-    const shardFence = eventFence.replace("${{ ", "${{ always() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && (needs.test-prep.result == 'success' || (needs.reuse-gate.outputs.reuse == 'true' && needs.test-prep.result == 'skipped')) && ");
+    const shardFence = eventFence.replace("${{ ", "${{ always() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && needs.reuse-gate.outputs.reuse != 'true' && needs.test-prep.result == 'success' && ");
     expect(prep).toContain("needs: [reuse-gate]");
     expect(prep.split("\n").find(line => line.startsWith("    if:"))).toBe(prepFence);
     expect(prep).toContain("          fetch-depth: 0\n");
@@ -635,63 +635,84 @@ describe("complete public CI", () => {
     expect(workflow).not.toMatch(/^ {2}test-full:$/mu);
     const aggregate = workflowJob("test");
     expect(aggregate).toContain("    name: test\n");
-    expect(aggregate).toContain("    needs: [test-full-shard, pgtap]\n");
+    expect(aggregate).toContain("    needs: [reuse-gate, scope-gate, test-full-shard, pgtap]\n");
     expect(aggregate).toContain("\n    timeout-minutes: 2\n");
+    expect(aggregate).toContain("REUSE_RESULT: ${{ needs.reuse-gate.result }}");
+    expect(aggregate).toContain("REUSE: ${{ needs.reuse-gate.outputs.reuse }}");
+    expect(aggregate).toContain("RUN_PGTAP: ${{ needs.scope-gate.outputs.run_pgtap }}");
     expect(aggregate).toContain("SHARD_RESULT: ${{ needs.test-full-shard.result }}");
-    expect(workflowJob("pgtap").split("\n").find(line => line.startsWith("    if:"))).toBe(scopeFence);
+    expect(workflowJob("pgtap").split("\n").find(line => line.startsWith("    if:"))).toBe(pgtapFence);
     expect(aggregate).toContain("PGTAP_RESULT: ${{ needs.pgtap.result }}");
-    expect(workflowCommands(aggregate)).toEqual(['test "$SHARD_RESULT" = "success" && test "$PGTAP_RESULT" = "success"']);
-    for (const result of ["success", "failure", "cancelled", "skipped", "", "unknown"]) for (const pgtap of ["success", "failure", "cancelled", "skipped", "", "unknown"]) {
-      const check = spawnSync("bash", ["-e", "-c", workflowCommands(aggregate)[0]!], {
-        env: { SHARD_RESULT: result, PGTAP_RESULT: pgtap },
-      });
-      expect(check.status, `${result}/${pgtap}`).toBe(result === "success" && pgtap === "success" ? 0 : 1);
+    const expectedTestCommand = '(test "$REUSE_RESULT" = "success" && test "$REUSE" = "true" && test "$SHARD_RESULT" = "skipped" && test "$PGTAP_RESULT" = "skipped") || (test "$SHARD_RESULT" = "success" && (test "$PGTAP_RESULT" = "success" || (test "$RUN_PGTAP" = "false" && test "$PGTAP_RESULT" = "skipped")))';
+    expect(workflowCommands(aggregate)).toEqual([expectedTestCommand]);
+    for (const reuseResult of ["success", "skipped", "failure"]) {
+      for (const reuse of ["true", "false", ""]) {
+        for (const runPgtap of ["true", "false", ""]) {
+          for (const shardResult of ["success", "failure", "skipped"]) {
+            for (const pgtap of ["success", "failure", "skipped"]) {
+              const check = spawnSync("bash", ["-e", "-c", workflowCommands(aggregate)[0]!], {
+                env: { REUSE_RESULT: reuseResult, REUSE: reuse, RUN_PGTAP: runPgtap, SHARD_RESULT: shardResult, PGTAP_RESULT: pgtap },
+              });
+              const expectedPass = (reuseResult === "success" && reuse === "true" && shardResult === "skipped" && pgtap === "skipped")
+                || (shardResult === "success" && (pgtap === "success" || (runPgtap === "false" && pgtap === "skipped")));
+              expect(check.status, `${reuseResult}/${reuse}/${runPgtap}/${shardResult}/${pgtap}`).toBe(expectedPass ? 0 : 1);
+            }
+          }
+        }
+      }
     }
   });
   it("requires cold package pack, package proof and all browser shards, including on main-push reuse and fail-closed scope-gate", () => {
     const pack = workflowJob("install-pack"), packages = workflowJob("install-packages"), browser = workflowJob("install-browser"), aggregate = workflowJob("install-proof");
     const eventFence = workflowJob("dco").split("\n").find(line => line.startsWith("    if:"))!;
-    const scopeFence = eventFence.replace("${{ ", "${{ always() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && needs.scope-gate.result == 'success' && ");
+    const packFence = eventFence.replace("${{ ", "${{ always() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && needs.scope-gate.result == 'success' && needs.reuse-gate.outputs.reuse != 'true' && ");
     const consumerFence = eventFence.replace("${{ ", "${{ always() && needs.install-pack.result == 'success' && ");
     const browserFence = eventFence.replace("${{ ", "${{ always() && needs.install-pack.result == 'success' && needs.install-pack.outputs.run_browser != 'false' && ");
-    expect(pack.split("\n").find(line => line.startsWith("    if:"))).toBe(scopeFence);
+    expect(pack.split("\n").find(line => line.startsWith("    if:"))).toBe(packFence);
     expect(packages.split("\n").find(line => line.startsWith("    if:"))).toBe(consumerFence);
     expect(browser.split("\n").find(line => line.startsWith("    if:"))).toBe(browserFence);
     expect(aggregate.split("\n").find(line => line.startsWith("    if:"))).toBe(eventFence.replace("${{ ", "${{ always() && "));
     expect(pack).toContain([
       "outputs:",
-      "      reuse: ${{ needs.reuse-gate.outputs.reuse }}",
       "      run_pack: ${{ needs.scope-gate.outputs.run_install_pack }}",
       "      run_reference_build: ${{ needs.scope-gate.outputs.run_reference_build }}",
       "      run_package_gates: ${{ needs.scope-gate.outputs.run_package_gates }}",
       "      run_browser: ${{ needs.scope-gate.outputs.run_install_browser }}",
     ].join("\n"));
+    expect(pack).not.toContain("      reuse: ${{ needs.reuse-gate.outputs.reuse }}");
     expect(packages).toContain("needs: [install-pack]");
-    expect(packages).toContain("if: needs.install-pack.outputs.reuse != 'true'");
+    expect(packages).not.toContain("needs.install-pack.outputs.reuse");
     const depAuditStep = packages.split("      - name: Refuse newly introduced vulnerable dependencies\n")[1]?.split(/(?=^ {6}- )/mu)[0];
-    expect(depAuditStep).toContain("        if: needs.install-pack.outputs.reuse != 'true'\n");
+    expect(depAuditStep).not.toContain("        if:");
     expect(depAuditStep).not.toMatch(/run_(?:reference_build|package_gates|pack|browser|pgtap)/u);
     expect(browser).toContain("needs: [install-pack]");
-    expect(browser).toContain("if: needs.install-pack.outputs.reuse != 'true'");
+    expect(browser).not.toContain("needs.install-pack.outputs.reuse");
     expect(browser).not.toContain("scripts/public-ci-reuse.mjs");
     expect(browser).toContain("fail-fast: false\n      max-parallel: 6");
     expect(browser).toContain("groups: ['0', '6', '1', '2', '3,5', '4']");
     expect(aggregate).toContain("name: install-proof\n");
-    expect(aggregate).toContain("needs: [install-pack, install-packages, install-browser]");
+    expect(aggregate).toContain("needs: [reuse-gate, install-pack, install-packages, install-browser]");
     expect(aggregate).toContain("\n    timeout-minutes: 2\n");
+    expect(aggregate).toContain("REUSE_RESULT: ${{ needs.reuse-gate.result }}");
+    expect(aggregate).toContain("REUSE: ${{ needs.reuse-gate.outputs.reuse }}");
     expect(aggregate).toContain("PACK_RESULT: ${{ needs.install-pack.result }}");
     expect(aggregate).toContain("PACKAGE_RESULT: ${{ needs.install-packages.result }}");
     expect(aggregate).toContain("BROWSER_RESULT: ${{ needs.install-browser.result }}");
     expect(aggregate).toContain("RUN_BROWSER: ${{ needs.install-pack.outputs.run_browser }}");
     const commands = workflowCommands(aggregate);
-    expect(commands).toEqual(['test "$PACK_RESULT" = "success" && test "$PACKAGE_RESULT" = "success" && { test "$BROWSER_RESULT" = "success" || { test "$RUN_BROWSER" = "false" && test "$BROWSER_RESULT" = "skipped"; }; }']);
-    for (const packed of ["success", "failure", "skipped"]) {
-      for (const pkgs of ["success", "failure", "cancelled", "skipped", "", "unknown"]) {
-        for (const brw of ["success", "failure", "cancelled", "skipped", "", "unknown"]) {
-          for (const runBrowser of ["true", "false", "", "unknown"]) {
-            const result = spawnSync("bash", ["-e", "-c", commands[0]!], { env: { PACK_RESULT: packed, PACKAGE_RESULT: pkgs, BROWSER_RESULT: brw, RUN_BROWSER: runBrowser } });
-            const expectedPass = packed === "success" && pkgs === "success" && (brw === "success" || (runBrowser === "false" && brw === "skipped"));
-            expect(result.status, `${packed}/${pkgs}/${brw}/runBrowser=${runBrowser}`).toBe(expectedPass ? 0 : 1);
+    expect(commands).toEqual(['(test "$REUSE_RESULT" = "success" && test "$REUSE" = "true" && test "$PACK_RESULT" = "skipped" && test "$PACKAGE_RESULT" = "skipped" && test "$BROWSER_RESULT" = "skipped") || (test "$PACK_RESULT" = "success" && test "$PACKAGE_RESULT" = "success" && (test "$BROWSER_RESULT" = "success" || (test "$RUN_BROWSER" = "false" && test "$BROWSER_RESULT" = "skipped")))']);
+    for (const reuseResult of ["success", "skipped", "failure"]) {
+      for (const reuse of ["true", "false", ""]) {
+        for (const packed of ["success", "failure", "skipped"]) {
+          for (const pkgs of ["success", "failure", "skipped"]) {
+            for (const brw of ["success", "failure", "skipped"]) {
+              for (const runBrowser of ["true", "false", ""]) {
+                const result = spawnSync("bash", ["-e", "-c", commands[0]!], { env: { REUSE_RESULT: reuseResult, REUSE: reuse, PACK_RESULT: packed, PACKAGE_RESULT: pkgs, BROWSER_RESULT: brw, RUN_BROWSER: runBrowser } });
+                const expectedPass = (reuseResult === "success" && reuse === "true" && packed === "skipped" && pkgs === "skipped" && brw === "skipped")
+                  || (packed === "success" && pkgs === "success" && (brw === "success" || (runBrowser === "false" && brw === "skipped")));
+                expect(result.status, `${reuseResult}/${reuse}/${packed}/${pkgs}/${brw}/runBrowser=${runBrowser}`).toBe(expectedPass ? 0 : 1);
+              }
+            }
           }
         }
       }
@@ -701,7 +722,7 @@ describe("complete public CI", () => {
     const pack = workflowJob("install-pack"), packages = workflowJob("install-packages"), browser = workflowJob("install-browser");
     expect(browser).toContain("run: npm ci --ignore-scripts --prefer-offline --no-audit --fund=false");
     const upload = pack.split("      - name: Share verified candidate packages\n")[1]!;
-    expect(upload).toContain("if: needs.reuse-gate.outputs.reuse != 'true' && needs.scope-gate.outputs.run_install_pack != 'false'");
+    expect(upload).toContain("if: needs.scope-gate.outputs.run_install_pack != 'false'");
     expect(upload).toContain("uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a");
     expect(upload).toContain("name: install-packages\n");
     expect(upload).toContain("path: |\n            ${{ runner.temp }}/package-gates/packages-manifest.json\n            ${{ runner.temp }}/package-gates/*.tgz\n");
@@ -724,7 +745,7 @@ describe("complete public CI", () => {
       expect(job).toContain(`    runs-on: ubuntu-latest\n    timeout-minutes: ${timeoutMinutes}\n`);
       expect(job).toContain("      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\n        with:\n          persist-credentials: false\n");
       expect(job).toContain("      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6\n        with:\n          node-version: 24.21.0\n          cache: npm\n");
-      const unconditionalPrGroup = job.replace(/^ {8}if: (?:needs\.reuse-gate\.outputs\.reuse != 'true'(?: && needs\.scope-gate\.outputs\.run_install_pack != 'false')?|needs\.install-pack\.outputs\.reuse != 'true'(?: && (?:\(needs\.install-pack\.outputs\.run_reference_build != 'false' \|\| needs\.install-pack\.outputs\.run_package_gates != 'false'\)|needs\.install-pack\.outputs\.run_(?:reference_build|package_gates) != 'false'))?|always\(\) && steps\.postgres\.outcome != 'skipped')\n/gmu, "");
+      const unconditionalPrGroup = job.replace(/^ {8}if: (?:needs\.scope-gate\.outputs\.run_install_pack != 'false'|needs\.install-pack\.outputs\.run_reference_build != 'false' \|\| needs\.install-pack\.outputs\.run_package_gates != 'false'|needs\.install-pack\.outputs\.run_(?:reference_build|package_gates) != 'false'|always\(\) && steps\.postgres\.outcome != 'skipped')\n/gmu, "");
       expect(unconditionalPrGroup).not.toMatch(/^ {6}(?:- | {2})if:|^ {10}ref:|continue-on-error/mu);
       expect(job.indexOf("      - name: Assert Node and npm contract\n")).toBeGreaterThan(0);
       expect(job.indexOf("      - run: npm ci")).toBeGreaterThan(job.indexOf("      - name: Assert Node and npm contract\n"));
@@ -859,33 +880,30 @@ describe("the workflow stays in step with what it claims to run", () => {
     expect(gate).toContain("id: reused\n");
     expect(gate).toContain("run: node scripts/public-ci-reuse.mjs\n");
     expect(workflow.match(/node scripts\/public-ci-reuse\.mjs/gu)).toHaveLength(1);
-    for (const name of ["typecheck", "install-pack", "test-full-shard", "pgtap"]) {
+    const typecheck = workflowJob("typecheck");
+    expect(typecheck).not.toContain("scripts/public-ci-reuse.mjs");
+    const typecheckSteps = typecheck.split(/(?=^ {6}- )/mu).filter(step => step.startsWith("      - "));
+    let contractSeen = false;
+    for (const step of typecheckSteps) {
+      if (step.startsWith("      - name: Assert Node and npm contract")) { contractSeen = true; continue; }
+      if (contractSeen) expect(step).toContain("if: needs.reuse-gate.outputs.reuse != 'true'");
+    }
+    expect(contractSeen).toBe(true);
+    for (const name of ["install-pack", "test-prep", "test-full-shard", "pgtap"]) {
       const job = workflowJob(name);
       expect(job).not.toContain("scripts/public-ci-reuse.mjs");
-      const steps = job.split(/(?=^ {6}- )/mu).filter(step => step.startsWith("      - "));
-      let contractSeen = false;
-      for (const step of steps) {
-        if (step.startsWith("      - name: Assert Node and npm contract")) { contractSeen = true; continue; }
-        if (contractSeen) expect(step).toContain("if: needs.reuse-gate.outputs.reuse != 'true'");
-      }
-      expect(contractSeen).toBe(true);
+      expect(job.split("\n").find(line => line.startsWith("    if:"))).toContain("needs.reuse-gate.outputs.reuse != 'true'");
     }
-    const prep = workflowJob("test-prep");
-    expect(prep).toContain("needs: [reuse-gate]");
-    expect(prep).toContain("needs.reuse-gate.outputs.reuse != 'true'");
-    expect(prep).not.toContain("scripts/public-ci-reuse.mjs");
     for (const name of ["install-packages", "install-browser"]) {
       const job = workflowJob(name);
       expect(job).not.toContain("scripts/public-ci-reuse.mjs");
-      const steps = job.split(/(?=^ {6}- )/mu).filter(step => step.startsWith("      - "));
-      let contractSeen = false;
-      for (const step of steps) {
-        if (step.startsWith("      - name: Assert Node and npm contract")) { contractSeen = true; continue; }
-        if (contractSeen && !step.startsWith("      - name: Remove the package-proof PostgreSQL service")) {
-          expect(step).toContain("if: needs.install-pack.outputs.reuse != 'true'");
-        }
-      }
-      expect(contractSeen).toBe(true);
+      expect(job.split("\n").find(line => line.startsWith("    if:"))).toContain("needs.install-pack.result == 'success'");
+      expect(job).not.toContain("needs.install-pack.outputs.reuse");
+    }
+    for (const name of ["install-proof", "test"]) {
+      const job = workflowJob(name);
+      expect(job).toContain("REUSE_RESULT: ${{ needs.reuse-gate.result }}");
+      expect(job).toContain("REUSE: ${{ needs.reuse-gate.outputs.reuse }}");
     }
     for (const name of ["dco", "self-check", "gitleaks", "native-review"]) expect(workflowJob(name)).not.toMatch(/reuse-gate|steps\.reused/u);
   });
@@ -905,30 +923,39 @@ describe("the workflow stays in step with what it claims to run", () => {
     expect(workflow).not.toContain("needs: applies");
     const predicate = "    if: ${{ github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}";
     const reusePredicate = predicate.replace("${{ ", "${{ always() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && ");
-    const scopePredicate = predicate.replace("${{ ", "${{ always() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && needs.scope-gate.result == 'success' && ");
+    const packPredicate = predicate.replace("${{ ", "${{ always() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && needs.scope-gate.result == 'success' && needs.reuse-gate.outputs.reuse != 'true' && ");
+    const pgtapPredicate = predicate.replace("${{ ", "${{ always() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && needs.scope-gate.result == 'success' && needs.reuse-gate.outputs.reuse != 'true' && needs.scope-gate.outputs.run_pgtap != 'false' && ");
     const packConsumerPredicate = predicate.replace("${{ ", "${{ always() && needs.install-pack.result == 'success' && ");
     const browserConsumerPredicate = predicate.replace("${{ ", "${{ always() && needs.install-pack.result == 'success' && needs.install-pack.outputs.run_browser != 'false' && ");
     expect(workflow.split("\n").filter((line) => line === predicate)).toHaveLength(4);
     expect(workflow.split("\n").filter((line) => line === packConsumerPredicate)).toHaveLength(1);
     expect(workflow.split("\n").filter((line) => line === browserConsumerPredicate)).toHaveLength(1);
     expect(workflow.split("\n").filter((line) => line === reusePredicate)).toHaveLength(1);
-    expect(workflow.split("\n").filter((line) => line === scopePredicate)).toHaveLength(2);
+    expect(workflow.split("\n").filter((line) => line === packPredicate)).toHaveLength(1);
+    expect(workflow.split("\n").filter((line) => line === pgtapPredicate)).toHaveLength(1);
     for (const job of ["dco", "scope-gate", "self-check", "gitleaks"]) expect(workflow).toContain(`  ${job}:\n    name: ${job}\n${predicate}\n`);
     expect(workflow).toContain(`  typecheck:\n    name: typecheck\n    needs: [reuse-gate]\n${reusePredicate}\n`);
-    for (const job of ["install-pack", "pgtap"]) expect(workflow).toContain(`  ${job}:\n    name: ${job}\n    needs: [reuse-gate, scope-gate]\n${scopePredicate}\n`);
+    expect(workflow).toContain(`  install-pack:\n    name: install-pack\n    needs: [reuse-gate, scope-gate]\n${packPredicate}\n`);
+    expect(workflow).toContain(`  pgtap:\n    name: pgtap\n    needs: [reuse-gate, scope-gate]\n${pgtapPredicate}\n`);
     expect(workflow).toContain("  reuse-gate:\n    name: reuse-gate\n    if: ${{ github.event.repository.private == false && github.event_name == 'push' }}\n");
     expect(workflow.replace("    name: dco", "    name: dco-renamed")).not.toContain(`  dco:\n    name: dco\n${predicate}\n`);
     expect(workflow.replace(predicate, `${predicate.slice(0, -3)} && false }}`)).not.toContain(`  dco:\n    name: dco\n${predicate}\n`);
   });
   it("native admission uses trusted main and refuses every non-success mechanical result", () => {
     const admission = workflow.split("  native-review:\n")[1]!;
-    expect(admission).toContain("always() && vars.OPENLUP_NATIVE_QUEUE == 'enabled'");
+    const jobIf = admission.split("\n").find((line) => line.startsWith("    if:"))!;
+    expect(jobIf).not.toContain("always()");
+    expect(jobIf).toContain("needs.dco.result == 'success' && needs.typecheck.result == 'success' && needs.install-proof.result == 'success' && needs.test.result == 'success' && needs.self-check.result == 'success' && needs.gitleaks.result == 'success' && vars.OPENLUP_NATIVE_QUEUE == 'enabled'");
     expect(admission).toContain("github.event.repository.private == false");
     expect(admission).toContain("github.event_name == 'merge_group'");
     expect(admission).toContain("github.event_name == 'pull_request' && github.event.pull_request.draft == false");
     expect(admission).toContain("github.event.pull_request.user.login != 'dependabot[bot]'");
     expect(admission).toContain("needs: [dco, typecheck, install-proof, test, self-check, gitleaks]");
     expect(admission).toContain("timeout-minutes: 15");
+    expect(admission).not.toContain("Require six actual mechanical successes");
+    expect(admission).toContain("id: toolchain");
+    expect(admission).toContain("run: node scripts/agent-review-queue.mjs probe-toolchain");
+    expect(admission).toContain("if: steps.toolchain.outputs.needs_install == 'true'");
     expect(admission).toContain("npm ci --ignore-scripts --prefer-offline --no-audit --no-fund");
     expect(admission).toContain("issues: read\n      contents: read\n      pull-requests: read");
     expect(admission).not.toMatch(/(?:actions|contents|issues|pull-requests): write/u);
@@ -936,15 +963,8 @@ describe("the workflow stays in step with what it claims to run", () => {
     expect(admission).toContain("package-manager-cache: false");
     expect(admission).toContain("run: node scripts/agent-review-queue.mjs wait");
     expect(admission).not.toContain("run: npm ci --prefer-offline");
-    const command = admission.split("        run: |\n")[1]?.split("      - uses:")[0]?.split("\n").map((line) => line.replace(/^ {10}/u, "")).join("\n");
-    expect(command).toBeTruthy();
-    const names = ["NEEDS_DCO", "NEEDS_TYPECHECK", "NEEDS_INSTALL_PROOF", "NEEDS_TEST", "NEEDS_SELF_CHECK", "NEEDS_GITLEAKS"];
-    const successes = Object.fromEntries(names.map((name) => [name, "success"]));
-    const run = (patch = {}) => spawnSync("bash", ["-e", "-o", "pipefail", "-c", command!], { env: { ...process.env, ...successes, ...patch }, encoding: "utf8", timeout: 5000 });
-    expect(run().status).toBe(0);
-    for (const name of names) for (const result of ["skipped", "failure", "cancelled", ""]) {
-      const refused = run({ [name]: result }); expect(refused.status).toBe(1); expect(refused.stderr).toContain("six actual mechanical successes");
-    }
+    expect(admission.indexOf("run: node scripts/agent-review-queue.mjs probe-toolchain")).toBeLessThan(admission.indexOf("npm ci --ignore-scripts"));
+    expect(admission.indexOf("npm ci --ignore-scripts")).toBeLessThan(admission.indexOf("run: node scripts/agent-review-queue.mjs wait"));
   });
 
   it("holds every pull request to the sign-off the contributing document promises", () => {

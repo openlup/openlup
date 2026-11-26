@@ -7,7 +7,7 @@ import { gzipSync } from 'node:zlib';
 import ts from 'typescript';
 import { describe, expect, it, vi } from 'vitest';
 import { admit, carryOver, COMPRESSED_RECEIPT_MARKER, digest, ECONOMY_RECEIPT_MARKER, prepareCandidate, receiptBody, RECEIPT_DETAILS_HEADER, RECEIPT_MARKER, receiptSummary, recordReport } from './agent-review-decide.mjs';
-import { carryOverSourceReview, diagnoseReceipt, enqueueAfterChecks, isMigrationQueueSerializedPath, parseReceipt, readReceipts, waitNativeAdmission } from './agent-review-queue.mjs';
+import { carryOverSourceReview, createGitHubReadApi, diagnoseReceipt, enqueueAfterChecks, EXIT_AWAITING_RECEIPT, isMigrationQueueSerializedPath, parseReceipt, probeToolchainNeeded, readReceipts, reportQueueCliError, waitNativeAdmission } from './agent-review-queue.mjs';
 import { createLocalQueueReadAdapter, observeQueueAdmission, parseQueueCommand, verifyQueueReview } from './agent-review-queue-planner.mjs';
 import { REQUIRED_CONTEXTS } from './packages/release-gate.ts';
 import { checkQueueArm } from './merge-queue-check-arm.mjs';
@@ -61,10 +61,10 @@ it('imports agent-review-queue.mjs and agent-review-session.mjs in bare Node wit
     }
     const output = execFileSync(
       process.execPath,
-      ['--input-type=module', '-e', "const q = await import('./scripts/agent-review-queue.mjs'); const s = await import('./scripts/agent-review-session.mjs'); console.log(typeof q.enqueueAfterChecks, typeof s.proveReviewIntegration);"],
+      ['--input-type=module', '-e', "const q = await import('./scripts/agent-review-queue.mjs'); const s = await import('./scripts/agent-review-session.mjs'); console.log(typeof q.enqueueAfterChecks, typeof q.probeToolchainNeeded, typeof q.reportQueueCliError, typeof q.createGitHubReadApi, q.EXIT_AWAITING_RECEIPT, typeof s.proveReviewIntegration);"],
       { cwd: isolated, env: { PATH: processEnvironment.PATH ?? '' }, encoding: 'utf8', timeout: 30000 },
     );
-    expect(output.trim()).toBe('function function');
+    expect(output.trim()).toBe('function function function function 78 function');
   } finally {
     rmSync(isolated, { recursive: true, force: true });
   }
@@ -996,6 +996,7 @@ describe('migration merge-queue serialization', () => {
       head: receipt.head,
       blockingPrs: [77],
       reason: 'another migration PR is already active in the merge queue',
+      remediation: expect.stringMatching(/#77[\s\S]*npm run landing:merge -- --re-slot/u),
     });
     expect(f.enqueue).not.toHaveBeenCalled();
   });
@@ -1068,6 +1069,7 @@ describe('migration merge-queue serialization', () => {
       head: receipt.head,
       blockingPrs: [77],
       reason: 'another migration PR is already active in the merge queue',
+      remediation: expect.stringMatching(/#77[\s\S]*npm run landing:merge -- --re-slot/u),
     });
     expect(f.enqueue).not.toHaveBeenCalled();
   });
@@ -1558,4 +1560,138 @@ it('holds when main moves during an otherwise unchanged arm preflight', async ()
   const { check, f } = armFixture();
   f.onLive = reads => { if (reads === 2) f.main = 'e'.repeat(40); };
   await expect(check()).resolves.toMatchObject({ status: 'held', reason: 'evidence_unknown' });
+});
+
+describe('queue hygiene helpers (toolchain probe, CLI error reporting, 5xx retry, comment pagination)', () => {
+  it('paginates PR receipt comments with per_page=50', async () => {
+    const page1 = Array.from({ length: 50 }, (_, index) => ({ id: index + 1, body: 'ordinary comment', user: { login: 'u', type: 'User' }, created_at: '2026-10-19T00:00:00Z' }));
+    const page2 = [comment({ id: 51 })];
+    const api = {
+      get: vi.fn(async (path: string) => {
+        if (path === '/repos/openlup/openlup/issues/12/comments?per_page=50&page=1') return page1;
+        if (path === '/repos/openlup/openlup/issues/12/comments?per_page=50&page=2') return page2;
+        if (path.includes('/collaborators/')) return { permission: 'write' };
+        throw new Error(`unexpected read ${path}`);
+      }),
+    };
+    const receipts = await readReceipts(api, '/repos/openlup/openlup', 12, receipt.head, time);
+    expect(receipts).toEqual([receipt]);
+    expect(api.get).toHaveBeenCalledWith('/repos/openlup/openlup/issues/12/comments?per_page=50&page=1');
+    expect(api.get).toHaveBeenCalledWith('/repos/openlup/openlup/issues/12/comments?per_page=50&page=2');
+  });
+
+  it('retries transient HTTP 5xx reads with exponential backoff and never retries 4xx', async () => {
+    const sleeps: number[] = [];
+    let calls = 0;
+    const exec = vi.fn(async () => {
+      calls += 1;
+      if (calls < 3) throw Object.assign(new Error('gh failed'), { stderr: 'gh: Service Unavailable (HTTP 503)' });
+      return { stdout: '{"ok":true}' };
+    });
+    const api = createGitHubReadApi({ exec, sleep: async ms => { sleeps.push(ms); }, maxAttempts: 3, baseDelayMs: 250 });
+    await expect(api.get('/repos/openlup/openlup/pulls/12')).resolves.toEqual({ ok: true });
+    expect(calls).toBe(3);
+    expect(sleeps).toEqual([250, 500]);
+
+    const sleeps4xx: number[] = [];
+    const exec4xx = vi.fn(async () => {
+      throw Object.assign(new Error('gh failed'), { stderr: 'gh: Not Found (HTTP 404)' });
+    });
+    const api4xx = createGitHubReadApi({ exec: exec4xx, sleep: async ms => { sleeps4xx.push(ms); }, maxAttempts: 3, baseDelayMs: 250 });
+    await expect(api4xx.get('/repos/openlup/openlup/pulls/999')).rejects.toThrow('gh failed');
+    expect(exec4xx).toHaveBeenCalledTimes(1);
+    expect(sleeps4xx).toEqual([]);
+  });
+
+  it('probes whether native-review needs npm ci and writes GITHUB_OUTPUT', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'openlup-probe-toolchain-'));
+    try {
+      const outputPath = join(dir, 'github-output.txt');
+      const v3Receipt = (derived: boolean) => {
+        const rules = { version: 3, base: digest([]), head: digest([]) };
+        const base1 = '1'.repeat(40);
+        const head1 = '2'.repeat(40);
+        const tree1 = '3'.repeat(40);
+        const intent = { risk: 'routine', criteria: 'Probe test' };
+        const firstCandidate = {
+          base: derived ? base1 : receipt.base,
+          head: derived ? head1 : receipt.head,
+          tree: derived ? tree1 : receipt.tree,
+          changedPaths: observed.changedPaths,
+          modeChanged: false,
+          clean: true,
+          rules,
+        };
+        const prepared = prepareCandidate(null, { ...firstCandidate, authorSessionId: 'author', intent }, time);
+        const completed = recordReport(prepared, { cold: true, tree: firstCandidate.tree, verdict: 'PASS', documentation: 'Checked.', findings: [], closes: [], reviewer: 'reviewer-1' }, time);
+        if (!derived) return receiptBody(receiptSummary(completed, receipt.pr, time));
+        const integrated = prepareCandidate(completed, {
+          base: receipt.base,
+          head: receipt.head,
+          tree: receipt.tree,
+          changedPaths: observed.changedPaths,
+          modeChanged: false,
+          clean: true,
+          rules,
+          authorSessionId: 'author',
+          intent,
+          integration: { base: base1, head: head1, tree: tree1, expires: time + 86400000, mechanical: false },
+          coverage: {
+            kind: 'integration',
+            previous: digest(completed.history),
+            from: { base: base1, head: head1, tree: tree1 },
+            proof: { kind: 'derived', tree: receipt.tree, derived: true },
+          },
+        }, time);
+        return receiptBody(receiptSummary(integrated, receipt.pr, time));
+      };
+      const makeApi = (comments: unknown[], fail = false) => ({
+        get: vi.fn(async (path: string) => {
+          if (fail) throw new Error('network error');
+          if (path.includes('/pulls/')) return { number: 12, head: { sha: receipt.head } };
+          if (path.includes('/issues/')) return comments;
+          if (path.includes('/collaborators/')) return { permission: 'write' };
+          throw new Error(`unexpected ${path}`);
+        }),
+      });
+      const prEvent = { number: 12, repository: { private: false } };
+      const prEnv = { GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_EVENT_NAME: 'pull_request', GITHUB_OUTPUT: outputPath };
+      const mgEvent = { repository: { private: false }, merge_group: { head_ref: `refs/heads/gh-readonly-queue/main/pr-12-${receipt.head}` } };
+      const mgEnv = { GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_EVENT_NAME: 'merge_group' };
+
+      await expect(probeToolchainNeeded({ event: prEvent, env: prEnv, api: makeApi([]), now: () => time })).resolves.toBe(false);
+      await expect(probeToolchainNeeded({ event: prEvent, env: { ...prEnv, GITHUB_OUTPUT: undefined }, api: makeApi([comment({ body: v3Receipt(false) })]), now: () => time })).resolves.toBe(false);
+      await expect(probeToolchainNeeded({ event: prEvent, env: prEnv, api: makeApi([comment({ body: v3Receipt(true) })]), now: () => time })).resolves.toBe(true);
+      await expect(probeToolchainNeeded({ event: mgEvent, env: mgEnv, api: makeApi([]), now: () => time })).resolves.toBe(true);
+      await expect(probeToolchainNeeded({ event: prEvent, env: { ...prEnv, GITHUB_OUTPUT: undefined }, api: makeApi([], true), now: () => time })).resolves.toBe(true);
+      expect(readFileSync(outputPath, 'utf8')).toBe('needs_install=false\nneeds_install=true\n');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('reports awaiting_receipt errors with exit code 78, notice, and step summary, and other errors with exit code 1', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'openlup-cli-error-'));
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const summaryPath = join(dir, 'summary.md');
+      const awaiting = Object.assign(new Error('needs_agent_review: no receipt comment yet'), { code: 'awaiting_receipt', pr: 12, head: receipt.head });
+      await expect(reportQueueCliError(awaiting, { GITHUB_STEP_SUMMARY: summaryPath })).resolves.toBe(EXIT_AWAITING_RECEIPT);
+      expect(EXIT_AWAITING_RECEIPT).toBe(78);
+      expect(log).toHaveBeenCalledWith(expect.stringContaining('::notice title=Awaiting review receipt::'));
+      expect(err).toHaveBeenCalledWith('needs_agent_review: no receipt comment yet');
+      expect(readFileSync(summaryPath, 'utf8')).toContain(`PR #12 (\`${receipt.head}\`)`);
+
+      log.mockClear();
+      err.mockClear();
+      await expect(reportQueueCliError(new Error('unexpected failure'), { GITHUB_STEP_SUMMARY: summaryPath })).resolves.toBe(1);
+      expect(log).not.toHaveBeenCalled();
+      expect(err).toHaveBeenCalledWith('unexpected failure');
+    } finally {
+      log.mockRestore();
+      err.mockRestore();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });

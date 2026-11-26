@@ -75,6 +75,16 @@ describe("exact-commit post-merge reuse", () => {
   ])("falls back on missing or contradictory execution evidence %#", async mutate => {
     const f = fixture(); mutate(f); expect(await completedMergeGroup(f.input)).toBe(false);
   });
+  it("reuses when scope-gate skipped pgtap on merge_group but refuses non-success/non-skipped pgtap", async () => {
+    const skipped = fixture();
+    skipped.jobs.find(job => job.name === "pgtap")!.conclusion = "skipped";
+    expect(await completedMergeGroup(skipped.input)).toBe(true);
+    for (const conclusion of ["failure", "cancelled", "timed_out", ""]) {
+      const f = fixture();
+      f.jobs.find(job => job.name === "pgtap")!.conclusion = conclusion;
+      expect(await completedMergeGroup(f.input), conclusion).toBe(false);
+    }
+  });
   it.each(["failure", "cancelled", "skipped", "timed_out", ""])(
     "refuses a %s full-root aggregate even when the run is green", async conclusion => {
       const f = fixture();
