@@ -2,7 +2,7 @@
 export const PUBLIC_EXECUTION_ENTRYPOINTS = [
   "scripts/agent-review-landing.mjs", "scripts/build-packages-incremental.mjs", "scripts/installation-inventory-refresh.ts",
   "scripts/migration-finalize.mjs", "scripts/migration-sync.ts", "scripts/merge-queue-churn.mjs", "scripts/merge-queue-check-arm.mjs",
-  "scripts/preflight.ts", "scripts/settings-catalogue.ts", "scripts/sql-admit.ts", "scripts/test-hosted.mjs",
+  "scripts/preflight.ts", "scripts/run-eslint.mjs", "scripts/settings-catalogue.ts", "scripts/sql-admit.ts", "scripts/test-hosted.mjs",
   "deploy/neutral-store/prove.mjs",
   "examples/neutral-store/browser/dev-loop.proof.ts",
   "examples/neutral-store/browser/native-operator.proof.ts",

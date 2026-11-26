@@ -3,7 +3,10 @@
 // with CI=true, no coverage, no duration pins and no contributor Git identity.
 // See CONTRIBUTING.md#test-scope-and-diagnostics.
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
+import { accessSync, constants, statSync } from "node:fs";
 import { devNull } from "node:os";
+import { delimiter, join, resolve } from "node:path";
 import { env as processEnvironment } from "node:process";
 import { pathToFileURL } from "node:url";
 
@@ -64,6 +67,62 @@ export function hostedTestRun(argv, environment) {
   return { command: "npm", args: ["test", "--", ...args], env: { ...env, ...HOSTED_ENVIRONMENT }, files, ignored };
 }
 
+export const HOSTED_POSTGRES_QUEUE_TIMEOUT_SECONDS = 600;
+export const HOSTED_POSTGRES_EXECUTION_TIMEOUT_SECONDS = 1800;
+
+const isExecutableFile = (candidate) => {
+  try {
+    accessSync(candidate, constants.X_OK);
+    return statSync(candidate).isFile();
+  } catch {
+    return false;
+  }
+};
+
+const isPostgresTestFile = (file) => /^(?:\.\/)?tests\/postgres(?:\/|$)/u.test(file);
+
+/**
+ * Optionally wraps local `tests/postgres/` invocations in `ai-resource-gate`
+ * on the `supabase-db` lane without mutating `hostedTestRun()`'s pure contract.
+ */
+export function resolveHostedPostgresGate(
+  run,
+  callerEnv = processEnvironment,
+  cwd = process.cwd(),
+  checkExecutable = isExecutableFile,
+) {
+  if (callerEnv.CI === "true" || callerEnv.AI_RESOURCE_GATE_ACTIVE === "1" || callerEnv.OPENLUP_DISABLE_RESOURCE_GATE === "1") {
+    return null;
+  }
+  if (!run.files.some(isPostgresTestFile)) return null;
+  const broker = (callerEnv.PATH ?? "")
+    .split(delimiter)
+    .filter(Boolean)
+    .map((dir) => join(dir, "ai-resource-gate"))
+    .find(checkExecutable);
+  if (!broker) return null;
+  const suffix = createHash("sha256").update(resolve(cwd)).digest().readBigUInt64BE().toString(10);
+  const key = `openlup:postgres:wt${suffix}`;
+  return {
+    command: broker,
+    args: [
+      "run",
+      "--wait",
+      "--lane",
+      "supabase-db",
+      "--queue-timeout",
+      String(HOSTED_POSTGRES_QUEUE_TIMEOUT_SECONDS),
+      "--execution-timeout",
+      String(HOSTED_POSTGRES_EXECUTION_TIMEOUT_SECONDS),
+      key,
+      "--",
+      run.command,
+      ...run.args,
+    ],
+    key,
+  };
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const run = hostedTestRun(process.argv.slice(2), processEnvironment);
   if (run.refusal) {
@@ -72,7 +131,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   }
   if (run.ignored.length > 0) console.error(`test:hosted: ignoring ${run.ignored.join(" ")}; hosted shards run without coverage`);
   console.error(`test:hosted: CI=true, no coverage, no Git identity, ${HOSTED_VITEST_WORKERS} workers, flat test timeout`);
-  const child = spawn(run.command, run.args, { stdio: "inherit", env: run.env, shell: process.platform === "win32" });
+  const gated = resolveHostedPostgresGate(run, processEnvironment, process.cwd());
+  const spawnCommand = gated ? gated.command : run.command;
+  const spawnArgs = gated ? gated.args : run.args;
+  const child = spawn(spawnCommand, spawnArgs, { stdio: "inherit", env: run.env, shell: !gated && process.platform === "win32" });
   child.on("error", (error) => {
     console.error(error);
     process.exitCode = 1;
