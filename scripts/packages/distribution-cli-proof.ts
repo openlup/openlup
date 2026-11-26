@@ -1567,7 +1567,7 @@ async function runStarterRuntimeUpgrade(from: string, to: string, port: number) 
     const settled = await createSettledReceipt();
     mark("predecessor checkout settled with keyed records");
     const schema: unknown = JSON.parse(before[3]!);
-    if (!Array.isArray(schema)) fail("installed_schema", null, "invalid_shape");
+    if (!Array.isArray(schema)) return fail("installed_schema", null, "invalid_shape");
     const count = schema.length;
     const catalogue = (app: string) => readFileSync(join(app, "node_modules/@openlup/platform/sql/manifest.json"));
     if (!catalogue(from).equals(catalogue(to))) fail("catalogue_mismatch");
