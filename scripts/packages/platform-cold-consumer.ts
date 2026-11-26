@@ -1993,8 +1993,8 @@ assert.throws(() => createPlatformPostgresMigrationRunner({connectionString:"unu
   get catalog() { throw new Error("catalogue was read before selection admission"); },
   get poolFactory() { throw new Error("pool factory was read before selection admission"); },
 }), /platform migration installation is required/);
-const [connectionString, generation, roleMode, expectedJson] = process.argv.slice(2);
-const canonical = JSON.parse(expectedJson);
+const [connectionString, generation, roleMode, expectedManifestPath] = process.argv.slice(2);
+const canonical = JSON.parse(readFileSync(expectedManifestPath, "utf8"));
 const plan = generation === "qualified-v2" ? canonical.qualified : canonical.qualifiedAdmin;
 const expected = [plan.baseline, ...plan.forward];
 const packageRoot = dirname(dirname(dirname(fileURLToPath(import.meta.resolve("@openlup/platform/migrations")))));
@@ -2059,7 +2059,8 @@ process.exit(0);
 
 /** Real installed-chain proof: each selection gets a fresh PG16 cluster. */
 export function provePackagedPlatformMigrations(consumer: string): void {
-  const canonical = readFileSync(join(root, "config/platform-migration-manifest.json"), "utf8");
+  const canonicalPath = join(consumer, "platform-migration-manifest.json");
+  writeFileSync(canonicalPath, readFileSync(join(root, PLATFORM_MIGRATION_MANIFEST)));
   for (const generation of ["qualified-v2", "qualified-admin"]) for (const mode of ["installer-managed", "operator-provisioned"]) {
     const name = `openlup-packaged-migrations-${randomUUID()}`;
     const docker = (args: string[]) => command("docker", args, root, isolatedConsumerEnv()).trim();
@@ -2071,7 +2072,7 @@ export function provePackagedPlatformMigrations(consumer: string): void {
         import { waitForPostgresTcpReady } from ${JSON.stringify(pathToFileURL(join(root, "tests/helpers/postgresContainer.ts")).href)};
         if (!await waitForPostgresTcpReady(process.argv[1])) throw new Error("Packaged migration PG16 unavailable");
       `, url], root, isolatedConsumerEnv());
-      process.stdout.write(consumerNode(consumer, PLATFORM_MIGRATION_CONSUMER_PROOF, [url, generation, mode, canonical]));
+      process.stdout.write(consumerNode(consumer, PLATFORM_MIGRATION_CONSUMER_PROOF, [url, generation, mode, canonicalPath]));
     } finally { docker(["rm", "--force", "--volumes", name]); }
   }
 }

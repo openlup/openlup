@@ -1,11 +1,12 @@
-import { execFileSync, spawnSync } from "node:child_process";
-import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import childProcess, { execFileSync, spawnSync } from "node:child_process";
+import fs, { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { isolatedConsumerEnv } from "./pack-manifest-input.ts";
-import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
 import {
   platformConsumerInstallArgs,
   starterDependencyMatchesPlatform,
@@ -42,6 +43,7 @@ import {
   OPTIONAL_PEERS,
   proveAdapterRefusals,
   proveOidcRefusals,
+  provePackagedPlatformMigrations,
   provePostgresOperations,
   proveNativeCommunicationsOperations,
   proveResendConsumer,
@@ -88,6 +90,39 @@ it("applies the three-day release age only to the network install", () => {
 
 function scratch() { const path = mkdtempSync(join(tmpdir(), "platform-consumer-falsifier-")); temporary.push(path); return path; }
 afterEach(() => { for (const path of temporary.splice(0)) rmSync(path, { recursive: true, force: true }); });
+
+it("passes an oversized canonical migration manifest by file", () => {
+  const consumer = mkdtempSync(join(tmpdir(), "platform-migration-consumer-"));
+  temporary.push(consumer);
+  const manifest = Buffer.from(JSON.stringify({ synthetic: "é".repeat(70_000) }) + "\n");
+  expect(manifest.length).toBeGreaterThan(131_072);
+  const read = fs.readFileSync;
+  const sourcePath = join(root, "config/platform-migration-manifest.json");
+  const readManifest = vi.spyOn(fs, "readFileSync").mockImplementation((file, options) => {
+    if (file === sourcePath) return options === "utf8" ? manifest.toString("utf8") : manifest;
+    return read(file, options);
+  });
+  const proof = join(consumer, "proof.mjs");
+  const run = vi.spyOn(childProcess, "execFileSync").mockImplementation((exe, args) => {
+    if (exe === "docker") return args?.[0] === "port" ? "127.0.0.1:5432" : "";
+    if (args?.[0] === proof) {
+      expect(Math.max(...args.map(arg => Buffer.byteLength(arg)))).toBeLessThan(4_096);
+      const manifestPath = args[4];
+      expect(dirname(manifestPath)).toBe(consumer);
+      expect(read(manifestPath)).toEqual(manifest);
+    }
+    return "";
+  });
+  syncBuiltinESMExports();
+  try {
+    provePackagedPlatformMigrations(consumer);
+    expect(run.mock.calls.filter(([, args]) => args?.[0] === proof)).toHaveLength(4);
+  } finally {
+    run.mockRestore();
+    readManifest.mockRestore();
+    syncBuiltinESMExports();
+  }
+});
 
 function packageFixture(consumer: string, name: string, exports: Record<string, unknown>) {
   const path = join(consumer, "node_modules", name); mkdirSync(path, { recursive: true });
