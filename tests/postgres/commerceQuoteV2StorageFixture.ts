@@ -126,7 +126,8 @@ async function fixture(store: Pick<JourneyInstallation, "owner" | "runtime">, ta
 type Fixture = Awaited<ReturnType<typeof fixture>>;
 type Begin = ReturnType<Fixture["begin"]>;
 
-async function verifiedAdapterMoney(value: Fixture, purpose: "final" | "estimate", extended: boolean, now = taxDate) {
+async function verifiedAdapterMoney(value: Fixture, purpose: "final" | "estimate", extended: boolean, now = value.fullInput.taxDate) {
+  const { taxDate } = value.fullInput;
   const command = value.begin(exclusiveKind, true);
   const composition = command.pin.composition!;
   const [shippingPlan] = composition.planInput.baseline.delivery;

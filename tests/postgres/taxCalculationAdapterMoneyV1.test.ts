@@ -62,7 +62,11 @@ it("upgrades the populated installed predecessor in ledger order and preserves s
   const sourceCatalog = readPlatformMigrations(process.cwd());
   const before = [predecessor.qualified.baseline, ...predecessor.qualified.forward];
   const suffix = catalog.qualified.forward.slice(before.length - 1);
-  const expectedPaths = [unit!.file, "db/platform/migrations/20261129160001_tax_calculation_adapter_money_activation.sql"];
+  const expectedPaths = [
+    "db/platform/migrations/20261129130002_order_money_v2_assert.sql",
+    unit!.file,
+    "db/platform/migrations/20261129160001_tax_calculation_adapter_money_activation.sql",
+  ];
   const ledger = "SELECT catalog_path,sha256,position,executed_at::text FROM public.platform_schema_migrations ORDER BY position";
 
   const installation: QualifiedPostgresInstallation = {
@@ -171,7 +175,7 @@ it("upgrades the populated installed predecessor in ledger order and preserves s
     const upgrade = createPlatformPostgresMigrationRunner(binding, options);
     expect(await upgrade.status()).toStrictEqual({ applied: before.map(unit => unit.file), pending: suffix.map(unit => unit.file) });
     const { applied } = await upgrade.apply();
-    expect(applied.slice(0, 2)).toStrictEqual(expectedPaths);
+    expect(applied.slice(0, expectedPaths.length)).toStrictEqual(expectedPaths);
     expect(applied).toStrictEqual(suffix.map(unit => unit.file));
     const historyAfter = (await owner.query(ledger)).rows;
     expect(historyAfter.slice(0, history.length)).toStrictEqual(history);
@@ -526,7 +530,7 @@ it("isolates the dormant validator lifecycle and proves both forwards’ ACLs wi
     }
     expect((await owner.query("SELECT rolname FROM pg_roles WHERE rolname=ANY($1) ORDER BY rolname", [roles])).rows)
       .toStrictEqual(roles.map(rolname => ({ rolname })));
-    const value = await fixture({ owner, runtime, runtimeUrl: instance.connectionString });
+    const value = await fixture({ owner, runtime });
     const input = value.begin(exclusiveKind, true);
     const grant = await claim(input, runtime);
     const command = seal(value, input, grant);
