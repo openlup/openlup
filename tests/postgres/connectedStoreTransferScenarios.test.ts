@@ -687,7 +687,7 @@ it("exports class markers for restored cross-client destination links and preser
     expect(end).toBeGreaterThan(0);
     plan.forward.splice(end);
   }
-  const catalogueId = "da65bcca28f92a0e84e23d277b8d1476a5782489fa11c440e84aa79069677fe2";
+  const catalogueId = "1adb1913d6c767f7050a9284fb0bd371f17e9d4eaaae263c83d3d4719f49530c";
   prefix.qualified.objectInventorySha256.separateMigrator.withRestore = catalogueId;
   await withPlatformCatalog(prefix, async root => {
     const predecessor = storeJourneyResources({ catalogueRoot: root });
