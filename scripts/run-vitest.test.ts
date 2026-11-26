@@ -40,6 +40,23 @@ it("preserves explicit caller and machine pins and leaves CI scheduling unchange
   expect(run({ ...broker, CI: "true" }).workers).toBeUndefined();
 });
 
+it("bounds ungated local plain runs without polluting stderr or affecting CI", () => {
+  const cores = Math.max(1, availableParallelism());
+  const normal = witness({});
+  const normalWorkers = Number(JSON.parse(normal.stdout.trim().split("\n").at(-1)!).workers);
+  expect(normalWorkers).toBeGreaterThanOrEqual(1);
+  expect(normalWorkers).toBeLessThanOrEqual(Math.min(cores, 4));
+  expect(normal.stderr).not.toContain("Local verification Vitest workers=");
+  expect(run({ CI: "true" }).workers).toBeUndefined();
+
+  const fakeLockDir = join(scratch, "docker-heavy-locks");
+  mkdirSync(join(fakeLockDir, "docker_job"), { recursive: true });
+  writeFileSync(join(fakeLockDir, "docker_job", "owner.env"), `lane=docker-heavy\npid=${process.pid}\n`);
+  const contended = Number(run({ AI_RESOURCE_GATE_LOCK_DIR: fakeLockDir }).workers);
+  expect(contended).toBeGreaterThanOrEqual(1);
+  expect(contended).toBeLessThanOrEqual(Math.min(cores, 2));
+});
+
 // Vitest's own rule for a configured percentage: round(cores * percent), at least one.
 const percentOfCores = (percent: number) => String(Math.max(1, Math.min(availableParallelism(), Math.round(percent / 100 * availableParallelism()))));
 

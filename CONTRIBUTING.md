@@ -255,7 +255,10 @@ required verification is hosted CI. To run one against the reviewed candidate, u
 It checks the clean committed candidate and its review before and after the
 command and preserves the command's exit code. With `--resource` it runs through
 `ai-resource-gate`, whose policies stay binding; it refuses nesting inside another
-broker or wrapper.
+broker or wrapper. Each broker invocation must wrap a single bounded command
+rather than holding a lease open across idle polling or editing loops, and
+lightweight checks (`lint`, `preflight`) must use non-database profiles such as
+`openlup:typecheck` or the default lane rather than `openlup:postgres:*`.
 
 ### Optional SonarQube Cloud diagnostics
 
