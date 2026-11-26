@@ -118,6 +118,7 @@ Find an import subpath and its API report. API reports list every exported symbo
 | `./shipping/contracts` | capability | stable | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/shipping-contracts.api.md) |
 | `./shipping/testing` | capability | testing | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/shipping-testing.api.md) |
 | `./storefront` | capability | experimental | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/storefront.api.md) |
+| `./storefront/testing` | capability | testing | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/storefront-testing.api.md) |
 | `./subscriptions` | capability | stable | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/subscriptions.api.md) |
 | `./subscriptions/contracts` | capability | stable | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/subscriptions-contracts.api.md) |
 | `./tax` | capability | experimental | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/tax.api.md) |

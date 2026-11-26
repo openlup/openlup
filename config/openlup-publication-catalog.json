@@ -1638,6 +1638,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/browser/page-handle.spec.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/browser/recovery.proof.ts",
       "class": "public-output"
     },
@@ -3855,6 +3859,10 @@
     },
     {
       "path": "packages/platform/api/shipping.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/storefront-testing.api.md",
       "class": "public-output"
     },
     {
@@ -8698,6 +8706,26 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/storefront/testing/anchorVisibility.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/testing/contracts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/testing/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/testing/pageHandle.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/testing/serialize.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/agreedPlanQuote.ts",
       "class": "public-output"
     },
@@ -11567,6 +11595,22 @@
     },
     {
       "path": "packages/platform/test/storefront/purchaseContinuation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/testing/exports.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/testing/pageHandle.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/testing/serialize.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/testing/sourceScan.test.ts",
       "class": "public-output"
     },
     {
