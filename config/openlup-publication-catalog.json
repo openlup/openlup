@@ -30638,11 +30638,23 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/checkoutOwnerRestoreStatesAdminManaged.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/checkoutOwnerRestoreStatesAdminOperator.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/checkoutOwnerRestoreStatesBootstrapAbsent.test.ts",
       "class": "public-output"
     },
     {
       "path": "tests/postgres/checkoutOwnerRestoreStatesBootstrapDormant.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/checkoutOwnerRestoreStatesBootstrapGranted.test.ts",
       "class": "public-output"
     },
     {
@@ -30854,7 +30866,19 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/definerSearchPath.fixture.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/definerSearchPath.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/definerSearchPathPins.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/definerSearchPathPrelock.test.ts",
       "class": "public-output"
     },
     {
