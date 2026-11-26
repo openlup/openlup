@@ -231,7 +231,9 @@ export function parseVersionedContract<T, Invalid extends string, Unsupported ex
   });
   let input: unknown;
   try {
-    input = typeof text === "string" ? JSON.parse(text) : undefined;
+    // Drop every own __proto__ key at any depth, including inside values kept as unknown fields,
+    // so a reader that copies a kept value cannot have its prototype replaced.
+    input = typeof text === "string" ? JSON.parse(text, (key, value: unknown) => key === "__proto__" ? undefined : value) : undefined;
   } catch {
     return invalid("(root)", "the text is not JSON");
   }
