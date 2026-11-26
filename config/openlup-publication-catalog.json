@@ -8714,6 +8714,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/storefront/testing/findings.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/storefront/testing/index.ts",
       "class": "public-output"
     },
@@ -8722,7 +8726,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/storefront/testing/runner.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/testing/scenarios.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/storefront/testing/serialize.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/testing/utcInstant.ts",
       "class": "public-output"
     },
     {
@@ -11606,11 +11622,27 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/storefront/testing/runner.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/testing/scenarios.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/storefront/testing/serialize.test.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/test/storefront/testing/sourceScan.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/testing/storeDouble.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/testing/utcInstant.test.ts",
       "class": "public-output"
     },
     {
@@ -30594,7 +30626,19 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/catalogAdmissionOwnerWrite.fixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogAdmissionOwnerWrite.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/catalogAdmissionPrelock.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogAdmissionRuntimeCommit.test.ts",
       "class": "public-output"
     },
     {
