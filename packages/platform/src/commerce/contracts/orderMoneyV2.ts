@@ -12,3 +12,13 @@ export type OrderMoneyV2 = CommerceMoneyBodyV2 & Readonly<{
 export type PaidOrderMoneyV2 = OrderMoneyV2 & Readonly<{
   intentId: string; captureEvidenceRef: string; capturedAt: string; paidMinor: number;
 }>;
+
+type EraseDestination<Money extends PaidOrderMoneyV2> = Money extends PaidOrderMoneyV2
+  ? Omit<Money, "destination" | "deliverySelectionRef" | "deliveryBuckets"> & Readonly<{
+    destination: { snapshotRef: string; schemaVersion: 2; erased: true };
+    deliveryBuckets: readonly Omit<Money["deliveryBuckets"][number], "carrierRef" | "serviceRef">[];
+  }>
+  : never;
+
+/** @experimental Original quote-based paid money with the destination copies erased. */
+export type ErasedPaidOrderMoneyV2 = EraseDestination<Extract<PaidOrderMoneyV2, { acceptedQuoteRef: unknown }>>;

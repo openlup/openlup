@@ -581,6 +581,27 @@ function pristinePackedA1Fixture() {
   for (const [path, source] of packedA1Originals) writeFileSync(path, source);
   return packedA1Consumer;
 }
+it("resolves the v2 structural money schemas only through the packed pricing server entry", () => {
+  const consumer = pristinePackedA1Fixture();
+  assertConsumerIsolation(consumer, root);
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import * as pricing from "@openlup/platform/pricing";
+import * as contracts from "@openlup/platform/pricing/contracts";
+import * as browser from "@openlup/platform/pricing/browser";
+assert.deepEqual(Object.keys(pricing).filter(key => key.startsWith("commerceMoneyV2")).sort(), [
+  "commerceMoneyV2CurrencySchema", "commerceMoneyV2DeliveryBucketSchema", "commerceMoneyV2DigestSchema",
+  "commerceMoneyV2FactsSchema", "commerceMoneyV2FeeLineSchema", "commerceMoneyV2LineSchema",
+  "commerceMoneyV2MinorSchema", "commerceMoneyV2PriceSchema", "commerceMoneyV2PromotionEngineSchema",
+  "commerceMoneyV2ReferenceSchema", "commerceMoneyV2TaxEvidenceShape", "commerceMoneyV2UuidSchema",
+]);
+for (const key of Object.keys(pricing).filter(key => key.startsWith("commerceMoneyV2"))) {
+  assert.equal(key in contracts || key in browser, false);
+}
+assert.equal(pricing.commerceMoneyV2FactsSchema.shape.destination.safeParse({ schemaVersion: 2 }).success, false);
+`);
+});
+
 it("checks the packed inert catalogue skeleton and reports unavailable content evidence", () => {
   proveCatalogConformanceConsumer(pristinePackedA1Fixture());
 });
