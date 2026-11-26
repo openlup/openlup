@@ -7,6 +7,7 @@ import type { CommerceQuoteMoneyV2 } from "@openlup/platform/pricing/contracts";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { flatTestTimeoutMs } from "../../scripts/ci-vitest-duration-keys.js";
 import { readPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
+import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { withPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
 import type { ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
@@ -24,6 +25,7 @@ const unit = manifest.forward.find(entry => entry.file.endsWith("_order_money_v2
 if (!unit) throw new Error("Expected order money assertion forward");
 const position = manifest.qualified.forward.findIndex(entry => entry.file === unit.file);
 const prefixInventory = "a9d0f834ca62b1bf4341a522fdc8dcda2219c2ee97eb80583027610779c27acd";
+const assertionInventory = "ee9666bd5182e91b36498443189a4841e8893054fc629052965ed91f9103b791";
 const routine = "public.commerce_order_money_v2_assert(uuid,boolean,boolean,jsonb,jsonb)";
 const checkState = "public.commerce_order_money_v2_check_state(uuid,boolean,text,text)";
 const evidenceRemedy = "Recover the original accepted evidence through its owner and retry with its original binding.";
@@ -73,21 +75,33 @@ async function defs() {
     'public.catalog_order_line_sum_acceptance(uuid,uuid,public.commerce_orders,public.commerce_orders)'::regprocedure,
     'public.commerce_create_order_draft_with_outbox(text,jsonb,jsonb,uuid)'::regprocedure) ORDER BY p.proname`)).rows;
 }
-let predecessorDefinitions: Awaited<ReturnType<typeof defs>>;
 
 beforeAll(async () => {
   const prefix = structuredClone(manifest);
+  const assertionBoundary = structuredClone(manifest);
   for (const plan of [prefix, prefix.qualified, prefix.qualifiedAdmin]) {
     const index = plan.forward.findIndex(entry => entry.file === unit.file);
+    expect(index).toBeGreaterThan(0);
     plan.forward = plan.forward.slice(0, index);
   }
+  for (const plan of [assertionBoundary, assertionBoundary.qualified, assertionBoundary.qualifiedAdmin]) {
+    const index = plan.forward.findIndex(entry => entry.file === unit.file);
+    expect(index).toBeGreaterThan(0);
+    plan.forward = plan.forward.slice(0, index + 1);
+  }
   prefix.qualified.objectInventorySha256.bootstrapMigrator.withRestore = prefixInventory;
+  assertionBoundary.qualified.objectInventorySha256.bootstrapMigrator.withRestore = assertionInventory;
   await withPlatformCatalog(prefix, async root => {
     store = await installAccountMutations("bootstrap", false, "order-guards-prefix", root);
-    predecessorDefinitions = await defs();
-    sku = await seedSku(store.owner);
-    applied = (await store.runner.apply()).applied;
   });
+  const predecessorDefinitions = await defs();
+  sku = await seedSku(store.owner);
+  const { applied: assertionApplied } = await withPlatformCatalog(assertionBoundary, root =>
+    createPostgresMigrationRunner({ connectionString: store.migrator.options.connectionString! }, {
+      root, installation: store.installation, poolFactory: () => store.migrator,
+    }).apply());
+  expect(await defs()).toStrictEqual(predecessorDefinitions);
+  applied = [...assertionApplied, ...(await store.runner.apply()).applied];
 }, postgresSetupTimeoutMs);
 
 afterAll(() => store?.close(), postgresTeardownTimeoutMs);
@@ -96,7 +110,6 @@ it("applies its own forward and preserves the other checkout definitions", async
   expect(applied.slice(0, 1)).toEqual([unit.file]);
   expect((await store.owner.query("SELECT catalog_path,sha256,position FROM public.platform_schema_migrations WHERE position=$1",
     [position + 1])).rows).toEqual([{ catalog_path: unit.file, sha256: unit.sha256, position: position + 1 }]);
-  expect(await defs()).toStrictEqual(predecessorDefinitions);
 });
 
 it("order_money_legacy_block_byte_identity", async () => {

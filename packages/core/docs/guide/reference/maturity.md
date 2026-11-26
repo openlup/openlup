@@ -212,6 +212,7 @@ No symbol of this package differs from its subpath's maturity or is deprecated.
 | `./shipping/contracts` | capability | stable |
 | `./shipping/testing` | capability | testing |
 | `./storefront` | capability | experimental |
+| `./storefront/testing` | capability | testing |
 | `./subscriptions` | capability | stable |
 | `./subscriptions/contracts` | capability | stable |
 | `./tax` | capability | experimental |
@@ -607,6 +608,14 @@ Symbols whose maturity differs from their subpath, or that are deprecated:
 | `./shipping` | `AddressPolicyV1` | experimental | no |
 | `./shipping` | `validateDestinationAddressV2` | experimental | no |
 | `./shipping/testing` | `runShippingRateAdapterConformance` | experimental | no |
+| `./storefront/testing` | `PageHandle` | experimental | no |
+| `./storefront/testing` | `StorefrontAdapter` | experimental | no |
+| `./storefront/testing` | `StorefrontObserver` | experimental | no |
+| `./storefront/testing` | `StorefrontScenario` | experimental | no |
+| `./storefront/testing` | `createPageHandle` | experimental | no |
+| `./storefront/testing` | `runStorefrontScenario` | experimental | no |
+| `./storefront/testing` | `serializeStorefrontVerdict` | experimental | no |
+| `./storefront/testing` | `storefrontScenarios` | experimental | no |
 | `./subscriptions` | `CatalogProfileCadenceInput` | experimental | no |
 | `./subscriptions` | `CatalogProfileCadenceResult` | experimental | no |
 | `./subscriptions` | `DEFAULT_SUBSCRIPTION_EDIT_QUOTE_TTL_MINUTES` | experimental | no |

@@ -11,6 +11,30 @@ import { offerIssues } from './storefront.ts';
 import { checkoutContinuation, continuationMessage, currentPurchase, rememberPurchase, visiblePurchase,
   type CheckoutContinuationText, type CheckoutOutcome } from '../purchase.ts';
 import { embeddedCheckoutBrowserMarkers } from '../../owned/quote-copy.ts';
+import { storefrontAnchor } from '@openlup/platform/storefront';
+
+/** The checkout form's fields and the storefront field anchor each one carries. */
+export const checkoutFieldAnchors = {
+  firstName: storefrontAnchor.field.first_name,
+  lastName: storefrontAnchor.field.last_name,
+  email: storefrontAnchor.field.email,
+  phone: storefrontAnchor.field.phone,
+  line1: storefrontAnchor.field.address_line1,
+  line2: storefrontAnchor.field.address_line2,
+  city: storefrontAnchor.field.city,
+  postalCode: storefrontAnchor.field.postal_code,
+  termsAccepted: storefrontAnchor.field.terms_accepted,
+} as const satisfies Record<string, keyof typeof storefrontAnchor.field>;
+
+type StateAnchor = (typeof storefrontAnchor.state)[keyof typeof storefrontAnchor.state];
+const attemptAnchors = new Map<unknown, StateAnchor>([
+  ['refused', storefrontAnchor.state.declined],
+  ['dispatched', storefrontAnchor.state.awaiting_authority], ['indeterminate', storefrontAnchor.state.awaiting_authority],
+]);
+/** The state anchor of the payment-status page for a payment attempt's state; other states name none. */
+export function paymentAttemptAnchor(state: unknown): StateAnchor | null {
+  return attemptAnchors.get(state) ?? null;
+}
 
 // Confirmation survives panel remounts; it never suppresses the send-again control.
 export function createBuyerLinkConfirmation() {
@@ -188,17 +212,17 @@ export function checkoutPage(context: PageContext): HTMLElement {
   };
   append(page, notice, el('div', { class: 'checkout-layout' },
     (() => { const form = actionForm(context, {
-      operation: 'checkout.create', submit: 'placeOrder',
+      operation: 'checkout.create', submit: 'placeOrder', submitAnchor: storefrontAnchor.action.place_order,
       fields: [
-        { name: 'firstName', maxLength: context.config.purchase.inputLimits.name, label: 'firstName', value: context.t('demoFirstName') },
-        { name: 'lastName', maxLength: context.config.purchase.inputLimits.name, label: 'lastName', value: context.t('demoCustomer') },
-        { name: 'email', maxLength: context.config.purchase.inputLimits.email, label: 'email', type: 'email', value: 'customer@example.test' },
-        { name: 'phone', maxLength: context.config.purchase.inputLimits.phone, label: 'phone', type: 'tel', value: '+48500100200' },
-        { name: 'line1', maxLength: context.config.purchase.inputLimits.text, label: 'address', value: context.t('demoStreet') },
-        { name: 'line2', maxLength: context.config.purchase.inputLimits.text, label: 'address2', required: false },
-        { name: 'city', maxLength: context.config.purchase.inputLimits.text, label: 'city', value: context.t('demoCity') },
-        { name: 'postalCode', maxLength: context.config.purchase.inputLimits.postalCode, label: 'postalCode', value: '00-001' },
-        { name: 'termsAccepted', label: 'termsAccept', type: 'checkbox', required: false },
+        { name: 'firstName', anchor: checkoutFieldAnchors.firstName, maxLength: context.config.purchase.inputLimits.name, label: 'firstName', value: context.t('demoFirstName') },
+        { name: 'lastName', anchor: checkoutFieldAnchors.lastName, maxLength: context.config.purchase.inputLimits.name, label: 'lastName', value: context.t('demoCustomer') },
+        { name: 'email', anchor: checkoutFieldAnchors.email, maxLength: context.config.purchase.inputLimits.email, label: 'email', type: 'email', value: 'customer@example.test' },
+        { name: 'phone', anchor: checkoutFieldAnchors.phone, maxLength: context.config.purchase.inputLimits.phone, label: 'phone', type: 'tel', value: '+48500100200' },
+        { name: 'line1', anchor: checkoutFieldAnchors.line1, maxLength: context.config.purchase.inputLimits.text, label: 'address', value: context.t('demoStreet') },
+        { name: 'line2', anchor: checkoutFieldAnchors.line2, maxLength: context.config.purchase.inputLimits.text, label: 'address2', required: false },
+        { name: 'city', anchor: checkoutFieldAnchors.city, maxLength: context.config.purchase.inputLimits.text, label: 'city', value: context.t('demoCity') },
+        { name: 'postalCode', anchor: checkoutFieldAnchors.postalCode, maxLength: context.config.purchase.inputLimits.postalCode, label: 'postalCode', value: '00-001' },
+        { name: 'termsAccepted', anchor: checkoutFieldAnchors.termsAccepted, label: 'termsAccept', type: 'checkbox', required: false },
       ],
       input: quote.input,
       prepare: quote.prepare,
@@ -220,44 +244,53 @@ export function checkoutPage(context: PageContext): HTMLElement {
 
 export function completionPage(context: PageContext): HTMLElement {
   const state = el('section', { class: 'panel', 'aria-live': 'polite' }, el('p', {}, context.t('loading')));
-  const page = el('div', {}, el('h1', {}, context.t('completion')), state,
+  // The one element that names the payment state: a sibling of the section that holds the forms, never around a form.
+  const stateLine = el('p', { role: 'status' });
+  const page = el('div', {}, el('h1', {}, context.t('completion')), stateLine, state,
     link(context.t('account'), routes.account[context.locale]));
+  const showState = (anchor: StateAnchor | null, ...nodes: Array<Node | string>) => {
+    if (anchor) stateLine.setAttribute(storefrontAnchor.attribute.state, anchor);
+    else stateLine.removeAttribute(storefrontAnchor.attribute.state);
+    state.replaceChildren(...nodes);
+  };
   const credential = Object.freeze({ ...currentPurchase(context.config.id) });
   // Only a host status for the order under the checkout key ends that key; a browser return settles nothing.
   const settled = (value: unknown) => { checkoutContinuation(context.config.id).completed(value); };
   const showStarted = (result: unknown) => {
     if (!isRecord(result) || typeof result.latestOrderRef !== 'string' || typeof result.attemptRef !== 'string') return;
-    if (result.state === 'captured') { state.replaceChildren(el('p', {}, context.t('loading'))); void inspect(); return; }
+    if (result.state === 'captured') { showState(null, el('p', {}, context.t('loading'))); void inspect(); return; }
     const started = Object.freeze({ token: credential.token, orderRef: result.latestOrderRef, attemptRef: result.attemptRef });
-    state.replaceChildren(renderValue(result), ...(result.state==='refused' && result.canTokenPay===true ? [freshPay({orderRef:result.latestOrderRef,token:credential.token})] : []), ...(['captured', 'refused', 'expired', 'indeterminate'] as const).map(outcome =>
+    showState(paymentAttemptAnchor(result.state), renderValue(result), ...(result.state==='refused' && result.canTokenPay===true ? [freshPay({orderRef:result.latestOrderRef,token:credential.token}, true)] : []), ...(['captured', 'refused', 'expired', 'indeterminate'] as const).map(outcome =>
       actionForm(context, { operation: 'checkout.recovery',
         submit: outcome === 'captured' ? 'simulatePaid' : outcome === 'refused' ? 'simulateDeclined' : outcome === 'expired' ? 'simulateExpired' : 'simulateIndeterminate',
         input: () => ({ ...started, action: 'simulate', outcome }), onSuccess: () => { void inspect(); } })));
   };
-  const freshPay = (inspected: {orderRef?: unknown;token?: string | undefined}) => actionForm(context, { operation: 'checkout.tokenPay', submit: 'recoveryPay',
+  // After a refused attempt, paying again is the buyer's retry; the first payment is not.
+  const freshPay = (inspected: {orderRef?: unknown;token?: string | undefined}, retry = false) => actionForm(context, { operation: 'checkout.tokenPay', submit: 'recoveryPay',
+      ...(retry ? { submitAnchor: storefrontAnchor.action.retry_payment } : {}),
       fields: [{ name: 'methodKey', label: 'sandboxChoice', type: 'select', options: [
         { value: 'primary', text: context.t('sandboxPrimary') }, { value: 'secondary', text: context.t('sandboxSecondary') }] }],
-      input: () => ({ token: inspected.token, executionRail: 'sandbox' }), onSuccess: () => { state.replaceChildren(el('p', {}, context.t('loading'))); void inspect(); } });
+      input: () => ({ token: inspected.token, executionRail: 'sandbox' }), onSuccess: () => { showState(null, el('p', {}, context.t('loading'))); void inspect(); } });
   const renderExecution = (inspected: {orderRef?: unknown;token?: string | undefined}, value: Record<string,unknown> | null): boolean => {
-    if (value?.paymentBlocked === true) { state.replaceChildren(el('p', {}, context.t('recoveryUnavailable')),renderValue({orderRef:inspected.orderRef})); return true; }
+    if (value?.paymentBlocked === true) { showState(null, el('p', {}, context.t('recoveryUnavailable')),renderValue({orderRef:inspected.orderRef})); return true; }
     if (value && typeof value.attemptRef === 'string' && value.methodKey !== null) {
       const attemptRef = value.attemptRef;
       const forms: HTMLElement[] = [];
       if (value.state === 'refused') {
         if (value.canInlineRetry === true) {
           const retryRequestId = crypto.randomUUID();
-          forms.push(actionForm(context, { operation: 'checkout.inlineRetry', submit: 'inlineRetry',
+          forms.push(actionForm(context, { operation: 'checkout.inlineRetry', submit: 'inlineRetry', submitAnchor: storefrontAnchor.action.retry_payment,
             fields: [{ name: 'methodKey', label: 'sandboxChoice', type: 'select', options: [
               { value: 'primary', text: context.t('sandboxPrimary') }, { value: 'secondary', text: context.t('sandboxSecondary') }] }],
             input: () => ({ orderRef: inspected.orderRef, expectedAttemptRef: attemptRef, retryRequestId, executionRail: 'sandbox' }),
             onSuccess: () => { void inspect(); }, onFailure: code => { if (code !== 'starter_transport_unavailable') void inspect(); } }));
-        } else if (inspected.token) forms.push(freshPay(inspected));
+        } else if (inspected.token) forms.push(freshPay(inspected, true));
       } else if (['dispatched','indeterminate'].includes(String(value.state))) {
         forms.push(...(['captured','refused','expired','indeterminate'] as const).map(outcome => actionForm(context, {
           operation: 'checkout.payment', submit: outcome === 'captured' ? 'simulatePaid' : outcome === 'refused' ? 'simulateDeclined' : outcome === 'expired' ? 'simulateExpired' : 'simulateIndeterminate',
           input: () => ({ ...inspected, action: 'simulate', attemptRef, outcome }), onSuccess: () => { void inspect(); } })));
       }
-      state.replaceChildren(el('p', {}, context.t('sandboxOnly')), renderValue({ orderRef: inspected.orderRef, attemptRef, state: value.state }),
+      showState(paymentAttemptAnchor(value.state), el('p', {}, context.t('sandboxOnly')), renderValue({ orderRef: inspected.orderRef, attemptRef, state: value.state }),
         ...(isRecord(value.recoveryGuidance) ? [el('section', { 'data-payment-guidance': '' }, el('h2', {}, context.t('guidanceTitle')), el('p', {}, context.t('guidanceBody')))] : []),
         ...forms, ...(value.continuationAvailable === true && typeof inspected.orderRef === 'string' && isEmbeddedCheckoutBrowser() ? [buyerLinkControl(context, inspected.orderRef)] : []));
       return true;
@@ -274,7 +307,7 @@ export function completionPage(context: PageContext): HTMLElement {
       const value = recovered.value;
       if (value.terminalStatus === 'paid') {
         settled(value);
-        state.replaceChildren(el('p', {}, context.t('recoveryPaid')), renderValue(value)); return;
+        showState(storefrontAnchor.state.paid, el('p', {}, context.t('recoveryPaid')), renderValue(value)); return;
       }
       let execution: Record<string,unknown> | null = null;
       if (!value.terminalStatus && typeof value.latestOrderRef === 'string') {
@@ -290,13 +323,13 @@ export function completionPage(context: PageContext): HTMLElement {
         const pay = actionForm(context, { operation: 'checkout.recovery', submit: 'recoveryPay',
           input: () => ({ token: credential.token, action: 'pay' }),
           onSuccess: showStarted,
-          onFailure: code => { state.replaceChildren(el('p', {}, context.t(code === 'starter_recovery_order_changed' ? 'recoveryChanged' : 'recoveryUnavailable')), link(context.t('builder'), routes.builder[context.locale])); },
+          onFailure: code => { showState(null, el('p', {}, context.t(code === 'starter_recovery_order_changed' ? 'recoveryChanged' : 'recoveryUnavailable')), link(context.t('builder'), routes.builder[context.locale])); },
         });
-        state.replaceChildren(renderValue(value), pay); return;
+        showState(null, renderValue(value), pay); return;
       }
       if (value.terminalStatus === 'order_changed' || value.terminalStatus === 'cancelled') {
         if (value.terminalStatus === 'cancelled') settled(value);
-        state.replaceChildren(el('p', {}, context.t(value.terminalStatus === 'cancelled' ? 'recoveryCancelled' : 'recoveryChanged')), renderValue(value),
+        showState(null, el('p', {}, context.t(value.terminalStatus === 'cancelled' ? 'recoveryCancelled' : 'recoveryChanged')), renderValue(value),
           link(context.t('builder'), routes.builder[context.locale])); return;
       }
     }
@@ -304,18 +337,18 @@ export function completionPage(context: PageContext): HTMLElement {
     if (!page.isConnected || generation !== inspectionGeneration) return;
     if (!result.ok || !isRecord(result.value)) {
       const code = result.ok ? 'starter_recovery_unavailable' : result.code;
-      state.replaceChildren(el('p', {}, context.t(code === 'starter_recovery_expired' ? 'recoveryExpired'
+      showState(null, el('p', {}, context.t(code === 'starter_recovery_expired' ? 'recoveryExpired'
         : code === 'starter_recovery_cancelled' ? 'recoveryCancelled' : 'recoveryUnavailable')), el('code', {}, code));
       return;
     }
     if (result.value.status === 'paid') {
       settled(result.value);
-      state.replaceChildren(el('p', {}, context.t('recoveryPaid')), renderValue(result.value));
+      showState(storefrontAnchor.state.paid, el('p', {}, context.t('recoveryPaid')), renderValue(result.value));
       return;
     }
     if (result.value.status !== 'pending_payment') {
       if (result.value.status === 'cancelled' || result.value.status === 'expired') settled(result.value);
-      state.replaceChildren(el('p', {}, context.t(result.value.status === 'cancelled' ? 'recoveryCancelled' : result.value.status === 'expired' ? 'recoveryExpired' : 'recoveryUnavailable')), renderValue({ orderRef: result.value.orderRef, status: result.value.status }));
+      showState(null, el('p', {}, context.t(result.value.status === 'cancelled' ? 'recoveryCancelled' : result.value.status === 'expired' ? 'recoveryExpired' : 'recoveryUnavailable')), renderValue({ orderRef: result.value.orderRef, status: result.value.status }));
       return;
     }
     const inspected = Object.freeze({ ...credential, orderRef: result.value.orderRef });
@@ -324,7 +357,7 @@ export function completionPage(context: PageContext): HTMLElement {
     if (!page.isConnected || generation !== inspectionGeneration) return;
     const value = execution.ok && isRecord(execution.value) ? execution.value : null;
     if (renderExecution(inspected,value)) return;
-    state.replaceChildren(el('p', {}, context.t('sandboxOnly')), renderValue(result.value),
+    showState(storefrontAnchor.state.awaiting_payment, el('p', {}, context.t('sandboxOnly')), renderValue(result.value),
       ...(isRecord(result.value.recoveryGuidance) ? [el('section', { 'data-payment-guidance': '' },
         el('h2', {}, context.t('guidanceTitle')), el('p', {}, context.t('guidanceBody')))] : []),
       el('h2', {}, context.t('payment')),

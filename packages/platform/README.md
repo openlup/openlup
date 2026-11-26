@@ -227,6 +227,7 @@ bearer; its local fixture establishes no hosted revocation guarantee.
 | `./shipping` | Delivery ports, injected-schema handlers, summary/evidence; native flat-rate port + Core schema readiness |
 | `./shipping/contracts` | Type-only address, customer-address, delivery, pickup-point, shipping-rate and threshold contracts, plus selection summary and evidence DTOs |
 | `./storefront` | Experimental, browser-safe purchase continuation: identity roles and their constructors, the continuation record and its recovery functions, an experimental continuation controller, host bindings and declarations, and the markup anchor names; storage, requests and provider facts only through host bindings |
+| `./storefront/testing` | Test support for storefront proofs, Node only: the scenario, adapter, observer and page-handle contracts, `createPageHandle` over a Playwright page, and the verdict serializer; never in a buyer's bundle |
 
 ## HTTP runtime and security contract
 
@@ -4014,3 +4015,178 @@ evidence from `@openlup/platform/lifecycle`, without importing test support:
 
 Nothing here runs a scenario or reads a file. The declarations are in the
 [API report](https://github.com/openlup/openlup/blob/main/packages/platform/api/lifecycle.api.md).
+
+### Storefront test-support entry
+
+Status: current contract (testing).
+
+`@openlup/platform/storefront/testing` is test support for a storefront proof
+harness. It runs under Node, beside the browser that drives the store's pages,
+and never in a buyer's bundle: a browser bundle of the entry fails, and the
+`storefront` entry cannot import it.
+
+- **`StorefrontScenario`.** One buyer journey: its steps, the ledger safety it
+  must keep, the progress it must reach and the control that must keep that
+  progress from being reached, a create-request budget, one sentence each on
+  stimulus, safety, progress and control, and `requires.outcomes`, the outcomes
+  a run's outcome driver must declare for the scenario to be admitted. The
+  step, safety and control language is at `testing` maturity, so its shape may
+  change in a minor release with an upgrade note.
+- **`StorefrontAdapter`.** A store's departures from the defaults: an `arrange`
+  function up to the first buyer action, custom locators for actions and
+  states, command matchers for create and read requests and the key header,
+  auto-progress actions, routes and a recheck command. A field here overrides
+  the proof file, which overrides the run's defaults.
+- **`StorefrontObserver`.** Reads one run subject's ledger (orders, payable
+  orders, orders holding stock, payment attempts and captures).
+  `payableOrdersInDatabase` exists only when the observer reads a database
+  exclusive to one run.
+- **`PageHandle` and `createPageHandle(page, options?)`.** Wraps a Playwright
+  page without importing a browser library: navigation, the current path
+  without query, the width, anchor lookup and visibility, the visible
+  `state:` and `action:` anchors, clicking, filling, request interception
+  (`pass`, `withhold`, which delivers the request and fails the page's
+  response, or `block`) and `settled({ quietMs, timeoutMs })`, which resolves
+  once every intercepted request, followed through its redirects, has finished
+  and `quietMs` passed with no new request, and otherwise rejects after
+  `timeoutMs` naming the requests still open. An anchor is visible when its box is
+  non-zero, the buyer can bring it into view, is not hidden (the browser's
+  `checkVisibility` included, so a closed `details` element hides its content),
+  is not fully transparent, and part of it survives clipping by the overflow
+  boxes of the ancestors in its containing-block chain (a fixed or absolute
+  anchor escapes those outside it; the page's root scroller never clips) and
+  by `clip` and `clip-path`, with the element at that part's centre the anchor,
+  a descendant or an ancestor of it. An anchor not already shown in full is
+  scrolled into view before it is measured, and every scroll position is restored afterwards, instantly
+  whatever the page's `scroll-behavior`. The handle reads no clock.
+
+  Whether the buyer can bring an anchor into view is judged per axis before
+  anything moves, walking its scrollers from the anchor outward: the overflow
+  ancestors in its containing-block chain, then the viewport (whose overflow
+  is the root element's, or body's while the root's is visible). A scroller the
+  buyer can scroll (overflow other than `hidden` or `clip`) brings anything in
+  its scrollable content into its range, so from there outward what must be
+  shown is that range. A locked scroller must already show the anchor itself,
+  or, when a scrollable scroller lies inside it, an anchor-sized part of that
+  scroller's range. So an app shell, an `overflow: hidden` page or a body
+  scroll lock hides an anchor below the fold, but not one inside a scrollable
+  `main`, `#app` or modal. A container with nothing to scroll on an axis only
+  clips there; the viewport always counts and does not move a fixed anchor.
+- **`serializeStorefrontVerdict`.** Returns the verdict as two-space JSON with
+  sorted keys and a line feed after `parseStorefrontVerdict` accepts it, so
+  equal verdicts give equal bytes; it refuses a value JSON cannot carry
+  (function, `undefined`, non-finite number, object that is not plain, cycle)
+  instead of coercing it, and throws a `TypeError` with the refusal's four
+  parts. A harness writes one file per run
+  under `.context/storefront-verdicts/`; the entry writes no file.
+- **`storefrontScenarios`.** The frozen scenario catalogue, by id; ids are
+  never renamed.
+- **`runStorefrontScenario(options)`.** Runs one scenario, given by id or as a
+  scenario object shaped like the catalogue's entries, against a
+  `PageHandle` and an observer and resolves `{ kind: "verdict", verdict }`.
+  Options: `scenario`, `page`, `observer`, `tier`, `profile`, `width`
+  (required for `browser_ui` and equal to the page's width), `channel`
+  (default `browser_ui`), `commands` (`create`, `read` and `keyHeader`, default
+  `idempotency-key`), `proofFile`, `adapter`, `build` (`source` default
+  `claimed`), `harness` (`runnerVersion`, the caller's claim, and
+  `adapterDigest`), `runId` (8 to 40 letters, digits and hyphens), `clock`
+  (`now()` in integer epoch milliseconds), `timeoutMs` (default 10,000) and
+  `quietMs` (default 3,000). Invalid options, including a malformed scenario
+  object, reject with a `TypeError` starting `storefront_scenario_unknown` or
+  `storefront_run_input_invalid` and its cause, fix and recheck, before
+  anything is driven.
+
+**Running a scenario.** A store whose pages carry the anchors and whose proof
+file declares `routes.selectionEntry` for the scenario's purchase mode writes no
+adapter: the default arrangement opens the selection entry, performs
+`proceed_to_checkout` and fills each field anchor it finds from the buyer
+values (`email` must resolve; it carries the run's subject,
+`storefront-<runId>-clean@example.test` or `…-control@example.test`). After a
+reload a declared selection entry is arranged again; otherwise an adapter's
+`arrange` arranged the run and only the details are re-typed. The clean run
+reads the subject's ledger first, then routes every request through one
+interceptor that classifies it by the create and read matchers and records
+whether each command reused an earlier key (the key value is compared, never
+stored). A step ends only when the page has settled, and the runner then reads
+the ledger, the visible anchors and the path; after the last step a settle
+window waits once more and reads them again. The control run repeats the steps
+under its own subject, blocking from the control's step every request of its
+commands. An arrangement that fails under the control is the control's effect:
+the remaining steps are skipped and the settle window still samples the page.
+The clean and control runs share the page and its browser storage.
+
+| Scenario | Stimulus | Safety | Progress | Control |
+| --- | --- | --- | --- | --- |
+| `lost_response_reload` | The first place-order response is withheld after the server received it; reload; arrange again; place the order again | At most one payable order, one order holding stock, one capture | `awaiting_payment` offering `continue_payment` | `block_read` of `read` and `create` from the reload; negates `awaiting_payment` |
+| `duplicate_submit` | Place the order twice while the first create is held | At most one payable order, one order holding stock, one attempt, one capture | None | None: `safety_only` |
+
+Each scenario also has a create budget (3 and 2 creates per run); a run that
+sends more stops with `request_budget_exceeded`. Whenever `state:paid` or
+`state:paid_pending_activation` shows, the ledger must hold a capture and no
+payable order. Anchors and the ledger are sampled when a step has settled and
+in the settle window, so a state shown only for a moment inside a step and
+gone before it settles is not seen.
+
+**Judgement.** Every failed check adds a finding with its run, step, the field
+at fault where there is one, and texts saying what was observed, why and how
+to fix it, and the recheck command (`recheck` from the adapter or proof file,
+`{scenario}` replaced). The first failing group decides the result:
+
+| Order | Check | Codes | Result |
+| --- | --- | --- | --- |
+| 1 | Page, observer and arrangement worked | `page_failed`, `observer_failed`, `arrange_failed` | `not_run` |
+| 2 | No order before the arrangement; one after the first matched create | `observer_subject_unseen` | `not_run` |
+| 3 | The first order appeared in a step with a matched create; every withhold applied | `stimulus_not_create`, `stimulus_not_applied` | `not_run` |
+| 4 | Ledger safety in both runs and settle windows; with an exclusive database, payable orders added equal those of the subjects | `duplicate_order`, `duplicate_hold`, `duplicate_capture`, `second_attempt`, `forbidden_state_shown`, `order_outside_subject`; `observer_failed` when fewer were added | `failed`; `not_run` |
+| 5 | The create budget kept | `request_budget_exceeded` | `not_run` |
+| 6 | Each matcher used matched in the clean run, and for `block_read` a request of the blocked set after its start; each needed anchor resolved and was visible | `adapter_matcher_unmatched`, `adapter_anchor_missing`, `anchor_hidden` | `not_run` |
+| 7 | The clean run reached its expected state | `progress_not_reached` (another state shown), `adapter_anchor_missing` (none) | `failed`; `not_run` |
+| 8 | The control blocked a request; its negated state was not reached within `quietMs` | `control_not_applied`, `vacuous_progress` | `not_run`, `vacuous` |
+| 9 | All hold | — | `passed`, or `safety_only` without a control |
+
+A harness fault is never `failed` or `passed`. A run that exceeds its budget
+stops before its progress and control are exercised, so it proves nothing
+either way; a ledger violation seen before the stop still makes it `failed`.
+The control's checks run over every recorded control step, also when the
+control run stopped. A fault's text keeps its code and first sentence with
+every URL replaced by `<url>`. A scenario whose
+`requires.outcomes` names an outcome the run's outcome driver does not declare
+ends `not_run` with `tier_unreachable` before any page or observer call; the
+runner takes no outcome driver yet, so `harness.declaredOutcomes` is empty and
+`not_run` is missing evidence, never a pass.
+
+**Trust.** A verdict produced on a developer's machine is a claim about that
+build, not evidence for a release; only a verdict a CI run records for an equal
+build identity is reused.
+
+**Matching limits.** A command matcher sees only the method and the request
+path, without query string or fragment, so a token in a query never reaches a
+matcher or a verdict. A store whose operations share one endpoint (for example
+a single GraphQL path) cannot tell create from read by matcher; a server-sent
+event stream is one request the handle can pass or block as a whole, but not
+message by message, and WebSocket frames are not requests at all; requests
+answered by a service worker are not routed unless the harness blocks service
+workers in its browser context; a cross-origin request is matched by path
+alone; `settled` follows a redirect to the request the browser reports it
+redirected to, and a hop the browser does not report is covered only by the
+quiet window. An open stream, a long poll or a request in flight when the page
+closes keeps `settled` pending until its `timeoutMs` (default 30,000), when it
+rejects with `storefront_page_settle_timeout` naming each open request's method
+and path. An anchor inside a shadow root is measured as covered: the walk
+stops at the shadow root, so the handle does not yet see such an anchor as
+visible.
+
+**State anchors.** Each `data-openlup-state` value means one thing to the
+runner:
+
+| State | Meaning |
+| --- | --- |
+| `awaiting_payment` | An order exists and the buyer can pay |
+| `details_changed` | The server refused changed details under the same purchase |
+| `awaiting_authority` | Only a later status read can say how a payment ends |
+| `declined` | The attempt was declined and the order stays payable |
+| `paid` | Payment captured |
+| `paid_pending_activation` | Payment captured, subscription activation pending |
+
+The declarations are in the
+[API report](https://github.com/openlup/openlup/blob/main/packages/platform/api/storefront-testing.api.md).
