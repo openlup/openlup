@@ -431,7 +431,7 @@ if (!env[workerFlag]) {
   });
 
   test('prepare-only uses the configured origin or local port and stops after writing the draft', { skip: nestedSkip }, () => {
-    for (const options of [{ port: '' }, { port: '04320' }, { port: '4320', publicOrigin: 'https://store.example.test:4443' }]) {
+    for (const options of [{ port: '' }, { port: '04320' }, { port: '6000', publicOrigin: 'https://store.example.test:4443' }]) {
       const result = invoke({ ...options, args: ['--prepare-only'] });
       assert.equal(result.status, 0, result.stdout);
       assert.deepEqual(result.trace, ordered.slice(0, 10));

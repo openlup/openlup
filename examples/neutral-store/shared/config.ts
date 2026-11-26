@@ -302,9 +302,9 @@ const fetchBlockedPorts = new Set([
   6665, 6666, 6667, 6668, 6669, 6679, 6697, 10080,
 ]);
 
-export function parseStarterPort(value = String(defaultStarterPort)): number {
+export function parseStarterPort(value = String(defaultStarterPort), localFetch = false): number {
   const port = Number(value);
-  if (!/^[0-9]+$/.test(value) || port < 1024 || port > 65535 || fetchBlockedPorts.has(port))
+  if (!/^[0-9]+$/.test(value) || port < 1024 || port > 65535 || (localFetch && fetchBlockedPorts.has(port)))
     throw starterDiagnostic('starter_port_invalid');
   return port;
 }

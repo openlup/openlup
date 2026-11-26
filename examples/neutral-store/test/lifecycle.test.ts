@@ -338,6 +338,7 @@ test('every_thrown_starter_code_is_in_the_refusal_table and discovery needs no c
   assert.equal(json.status, 0);
   assert.equal(text.status, 0);
   const table = oneLine(json.stdout);
+  assert.match(table.starter_port_invalid.fix, /Direct host: .*--port.*Lifecycle commands: .*OPENLUP_STARTER_PORT.*unset it/u);
   const codes = Object.keys(table);
   assert.deepEqual(codes, [...codes].sort());
   const rows = text.stdout.trimEnd().split('\n').map(line => line.split('\t'));

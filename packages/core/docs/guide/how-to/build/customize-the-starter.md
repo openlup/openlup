@@ -74,7 +74,7 @@ and fictional seed, then serves the application at `http://127.0.0.1:4319`.
 Pass `--configuration <id>` to select another owned configuration.
 To use another free local port, export `OPENLUP_STARTER_PORT=4320` in the shell
 that runs `./lifecycle up` and `npm run catalogue:apply`. Use a decimal port
-from 1024 to 65535, excluding [ports blocked by Fetch](https://fetch.spec.whatwg.org/#port-blocking).
+from 1024 to 65535. With the default origin, exclude [ports blocked by Fetch](https://fetch.spec.whatwg.org/#port-blocking).
 An unset or empty value uses 4319. A Compose-only `.env`
 value does not configure either lifecycle command. Set a distinct
 `COMPOSE_PROJECT_NAME` for each concurrent demo. A configured `publicOrigin`

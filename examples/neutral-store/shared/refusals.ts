@@ -1,5 +1,5 @@
 export const up = 'Run `./lifecycle up`.';
-export const hostPortFix = 'Pass a valid `--port <1024–65535>` using a port that Fetch permits.';
+export const hostPortFix = 'Pass a valid `--port <1024–65535>`.';
 export const rulesRecheck = 'Run `node --test owned/catalogue-rules.test.cjs`, then `./lifecycle up`.';
 const upJson = 'Run `./lifecycle up --json`';
 const reports = new WeakSet<Error>();

@@ -309,7 +309,7 @@ installed migration runner and seed before the application container.
 
 To use another free local port, export `OPENLUP_STARTER_PORT=4320` in the shell
 that runs `./lifecycle up` and `npm run catalogue:apply`. Use a decimal port
-from 1024 to 65535, excluding [ports blocked by Fetch](https://fetch.spec.whatwg.org/#port-blocking).
+from 1024 to 65535. With the default origin, exclude [ports blocked by Fetch](https://fetch.spec.whatwg.org/#port-blocking).
 An unset or empty value uses 4319, even if Compose has a
 different value in `.env`. Choose a distinct `COMPOSE_PROJECT_NAME` for each
 concurrent demo. A configured `publicOrigin` still governs request authority.
@@ -512,7 +512,7 @@ formatting uses the selected locale ID directly.
 
 Direct host startup reads its options from flags. Pass
 `--configuration <id>`, `--port <number>` and `--listen <address>` after `npm start --`.
-The port defaults to 4319 and uses the range and Fetch exclusions above.
+The port defaults to 4319 and accepts the full range from 1024 to 65535.
 The listen address defaults to 127.0.0.1. The only other supported
 listen address is 0.0.0.0 for explicit container transport. Unknown/duplicate flags,
 missing values, invalid ports/addresses and unknown configurations refuse by name.

@@ -1,13 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { delimiter, dirname, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import { createServer } from 'node:net';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import { setTimeout } from 'node:timers/promises';
 import { env } from 'node:process';
 import { applicationHealthcheck } from '../host/healthcheck.ts';
+import { parseHostArguments } from '../shared/config.ts';
 import { configurations } from '../owned/store.config.ts';
 
 const root = new URL('../', import.meta.url).pathname;
@@ -16,17 +17,15 @@ function execute(script: string) {
   return once(child, 'exit').then(([code]) => code);
 }
 
-test('npm start explains how to correct a refused port flag', () => {
-  for (const port of ['1023', '6000']) {
-    const direct = spawnSync('npm', ['start', '--', '--port', port], {
-      cwd: root, env: { ...env, PATH: [dirname(process.execPath), env.PATH].filter(Boolean).join(delimiter),
-        OPENLUP_STARTER_PORT: '4320' }, encoding: 'utf8', timeout: 10_000,
-    });
-    assert.ifError(direct.error);
-    assert.equal(direct.status, 1);
-    assert.match(direct.stderr, /starter_port_invalid\nFix: Pass a valid `--port <1024–65535>`/u);
-    assert.doesNotMatch(direct.stderr, /OPENLUP_STARTER_PORT|lifecycle up/u);
-  }
+test('the direct host explains how to correct a refused port flag', () => {
+  assert.equal(parseHostArguments(['--port', '6000', '--listen', '0.0.0.0']).port, 6000);
+  const direct = spawnSync(process.execPath, ['host/server.ts', '--port', '1023'], {
+    cwd: root, env: { ...env, OPENLUP_STARTER_PORT: '4320' }, encoding: 'utf8', timeout: 10_000,
+  });
+  assert.ifError(direct.error);
+  assert.equal(direct.status, 1);
+  assert.match(direct.stderr, /starter_port_invalid\nFix: Pass a valid `--port <1024–65535>`/u);
+  assert.doesNotMatch(direct.stderr, /OPENLUP_STARTER_PORT|lifecycle up/u);
 });
 
 test('real lifecycle probe sends the configured Host; wrong Host and connection errors fail', async () => {
@@ -68,7 +67,9 @@ test('real lifecycle probe sends the configured Host; wrong Host and connection 
   } finally { await close?.(); await rm(directory, { recursive: true, force: true }); }
 });
 
-test('Compose interpolates the listener, loopback mapping and working probe together', async () => {
+test('Compose interpolates the listener, loopback mapping and working probe together', {
+  skip: env.PATH === undefined && 'The raw extracted starter suite has an empty environment',
+}, async () => {
   for (const value of [undefined, '', '4320']) {
     const expected = value || '4319';
     const output = execFileSync('docker', ['compose', '--env-file', '/dev/null', '-f', 'compose.yaml', 'config', '--format', 'json'],
@@ -100,6 +101,7 @@ test('lifecycle passes the resolved port to Compose and configures the probe aut
       const refused = up(value);
       assert.equal(refused.status, 2);
       assert.match(refused.stderr, /starter_port_invalid\nFix: .*OPENLUP_STARTER_PORT.*1024 to 65535.*lifecycle up/u);
+      assert.doesNotMatch(refused.stderr, /--port/u);
       const structured = up(value, '--json');
       assert.equal(structured.status, 2);
       const { code, path, fix } = JSON.parse(structured.stdout).findings[0];
@@ -108,7 +110,7 @@ test('lifecycle passes the resolved port to Compose and configures the probe aut
       assert.equal(refused.stderr, `${code}\nFix: ${fix}\n`);
       await assert.rejects(readFile(resolve(directory, 'calls')), { code: 'ENOENT' });
     }
-    for (const [value, publicOrigin] of [[undefined, undefined], ['', undefined], ['04320', undefined], ['4320', 'https://store.example.test:4443']]) {
+    for (const [value, publicOrigin] of [[undefined, undefined], ['', undefined], ['04320', undefined], ['6000', 'https://store.example.test:4443']]) {
       await writeFile(resolve(directory, 'owned/store.config.ts'), `export function selectConfiguration() { return ${JSON.stringify({ ...config, publicOrigin })}; }`);
       await writeFile(resolve(directory, 'calls'), '');
       const result = up(value);
@@ -120,7 +122,7 @@ test('lifecycle passes the resolved port to Compose and configures the probe aut
       assert.equal(application.command[application.command.indexOf('--port') + 1], String(port));
       assert.equal(Object.hasOwn(application, 'environment'), false);
       assert.deepEqual(application.healthcheck, applicationHealthcheck(publicOrigin, port));
-      if (publicOrigin) assert.match(application.healthcheck.test[3], /port:4320,.*Host:"store\.example\.test:4443"/u);
+      if (publicOrigin) assert.match(application.healthcheck.test[3], /port:6000,.*Host:"store\.example\.test:4443"/u);
     }
   } finally { await rm(directory, { recursive: true, force: true }); }
 });

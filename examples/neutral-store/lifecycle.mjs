@@ -187,15 +187,16 @@ if (command === 'refusals') {
   try {
     const selected = lifecycleOptions(args);
     const { assertConfig, isConfigurationId, parseStarterPort } = await import('./shared/config.ts');
-    const port = parseStarterPort(env.OPENLUP_STARTER_PORT || undefined);
-    // Give each Compose subprocess the same listener port, ahead of any .env value.
-    env.OPENLUP_STARTER_PORT = String(port);
     stage = '/configuration';
     const owner = await import('./owned/store.config.ts');
     const config = ownedConfiguration(owner, selected);
     if (json && !isConfigurationId(config.id)) throw starterDiagnostic('starter_configuration_invalid');
     configuration = config.id;
     assertConfig(config);
+    stage = '/arguments';
+    const port = parseStarterPort(env.OPENLUP_STARTER_PORT || undefined, config.publicOrigin === undefined);
+    // Give each Compose subprocess the same listener port, ahead of any .env value.
+    env.OPENLUP_STARTER_PORT = String(port);
     stage = '/installation';
     run('docker', ['compose', 'build'], undefined, json);
     run('docker', ['compose', 'up', '--wait', 'database'], undefined, json);
@@ -388,9 +389,9 @@ async function catalogueApply(argv) {
     const [mode] = modes;
     const sharedFlags = options.filter(option => option !== mode);
     const { assertConfig, parseStarterPort } = await import('./shared/config.ts');
-    const port = parseStarterPort(env.OPENLUP_STARTER_PORT || undefined);
     const config = ownedConfiguration(await import('./owned/store.config.ts'), lifecycleOptions(sharedFlags));
     assertConfig(config);
+    const port = parseStarterPort(env.OPENLUP_STARTER_PORT || undefined, config.publicOrigin === undefined);
     const npmApply = npmSilent ? 'npm run --silent catalogue:apply' : 'npm run catalogue:apply';
     const applyCommand = flags => [npmApply, ...(flags.length ? ['--', ...flags.map(flag =>
       /^[a-z0-9_-]+$/iu.test(flag) ? flag : "'" + flag.replaceAll("'", "'\\''") + "'")] : [])].join(' ');
