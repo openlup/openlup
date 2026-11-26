@@ -488,7 +488,7 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
     };
     const entries = readdirSync(platformSource, { withFileTypes: true });
     expect(entries.filter((entry) => !entry.isDirectory()).map(({ name }) => name)).toEqual([]);
-    expect(Object.keys(graph).sort()).toEqual([...entries.map(({ name }) => name), "commerce/server", "marketing/server", "operations/server", "risk/server", "company-identity/server", "channels/server", "catalog/testing"].sort());
+    expect(Object.keys(graph).sort()).toEqual([...entries.map(({ name }) => name), "commerce/server", "marketing/server", "operations/server", "risk/server", "company-identity/server", "channels/server", "catalog/testing", "storefront/testing"].sort());
     for (const [module, { values, types }] of Object.entries(graph)) {
       for (const target of [...values, ...types]) {
         const [owner, ...entry] = target.split("/");
@@ -749,6 +749,37 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
     // The rule is scoped to the storefront module: another module's source is unaffected.
     expect((await lint("export const read = () => sessionStorage;\n", "packages/platform/src/kernel/usesGlobal.ts"))
       .filter(({ ruleId }) => ruleId === "no-restricted-globals")).toEqual([]);
+  });
+
+  it("lets storefront test support reach only the storefront and lifecycle entries, without Node built-ins or clocks", async () => {
+    const config = await loadConfig();
+    const testingFile = "packages/platform/src/storefront/testing/usesBoundary.ts";
+    const graphMessage = 'packages/platform module "storefront/testing" imports';
+    const storefrontMessage = "packages/platform storefront";
+    const lint = async (source: string, file: string) =>
+      (await linterFor(config).lintText(source, { filePath: resolve(root, file), warnIgnored: true }))[0]!.messages;
+    for (const source of [
+      "import { storefrontAnchor } from \"../index.js\";\nexport const a = storefrontAnchor;\n",
+      "import { parseStorefrontVerdict } from \"../../lifecycle/index.js\";\nexport const p = parseStorefrontVerdict;\n",
+      "import type { StorefrontVerdict } from \"../../lifecycle/index.js\";\nexport type V = StorefrontVerdict;\n",
+      "import { own } from \"./own.js\";\nexport const o = own;\n",
+    ]) expect(await moduleMessages(config, source, testingFile), source).toEqual([]);
+    for (const target of ["../../kernel/index.js", "../../data/index.js"]) for (const source of loadSources(target, "ts")) {
+      expect(await moduleMessages(config, source, testingFile), source).toContainEqual(expect.stringContaining(graphMessage));
+    }
+    for (const target of ["node:fs", "fs", "node:crypto"]) for (const source of loadSources(target, "ts")) {
+      expect(await moduleMessages(config, source, testingFile), source).toContainEqual(expect.stringContaining(storefrontMessage));
+    }
+    for (const name of ["Date", "crypto", "setTimeout", "performance", "globalThis"]) {
+      const messages = await lint(`export const read = () => ${name};\n`, testingFile);
+      expect(messages.filter(({ ruleId }) => ruleId === "no-restricted-globals").map(({ message }) => message), name)
+        .toEqual([expect.stringContaining(storefrontMessage)]);
+    }
+    // The browser entry never reaches its test support, at any spelling of the nested entry.
+    for (const target of ["./testing/index.js", "./testing/pageHandle.js"]) for (const source of loadSources(target, "ts")) {
+      expect(await moduleMessages(config, source, "packages/platform/src/storefront/usesTesting.ts"), source)
+        .toContainEqual(expect.stringContaining('packages/platform module "storefront"'));
+    }
   });
 
   it("declares exactly the inventoried edges; only the composer may declare more", async () => {

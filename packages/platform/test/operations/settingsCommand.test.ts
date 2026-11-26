@@ -669,6 +669,16 @@ it("shows versioned JSON help before checking required arguments", async () => {
   expect(bind).not.toHaveBeenCalled();
 });
 
+it.each(["show", "preview", "mcp"])("prints %s help before checking a reserved descriptor or binding", async command => {
+  const bind = vi.fn(), loadCheck = vi.fn();
+  const { exit, output } = await run([command, "--help", "--json", "--database-password-fd", "3"],
+    { host: { bind, loadCheck } });
+  expect(exit).toBe(0);
+  expect(JSON.parse(output).help).toContain("openlup settings");
+  expect(bind).not.toHaveBeenCalled();
+  expect(loadCheck).not.toHaveBeenCalled();
+});
+
 const checkArgs = ["check", "--app", "./app.ts", "--configuration", "sample", "--json"];
 const minimumFile = { configuration: "sample", entries: {} };
 const checks = (loadCheck: NonNullable<NonNullable<Parameters<typeof runSettingsCommand>[2]>["loadCheck"]>) =>

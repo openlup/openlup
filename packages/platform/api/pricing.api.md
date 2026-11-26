@@ -831,9 +831,11 @@ export interface CommerceQuoteCatalogItem {
         digest: string | null;
     };
 }
-export interface CommerceQuoteCatalogReadPort {
-    listQuoteCatalogItems(): Promise<CommerceQuoteCatalogItem[]>;
+export interface CommerceQuoteCatalogReadPort<Item extends CommerceQuoteCatalogItem = CommerceQuoteCatalogItem> {
+    listQuoteCatalogItems(): Promise<Item[]>;
 }
+/** Share one lazy authority read, including rejection, within one quote composition. */
+export declare function memoizeCommerceQuoteCatalogReads<Item extends CommerceQuoteCatalogItem>(inner: CommerceQuoteCatalogReadPort<Item>): CommerceQuoteCatalogReadPort<Item>;
 export type CommerceQuoteCatalogReadRefusalCode = "catalog_read_not_configured" | "catalog_authority_unavailable" | "catalog_authority_changed" | "catalog_revision_invalid" | "catalog_document_schema_invalid" | "catalog_document_digest_mismatch" | "catalog_primary_trade_item_invalid" | "catalog_cursor_invalid" | "catalog_cardinality_exceeded";
 export declare class CommerceQuoteCatalogReadError extends Error {
     readonly code: CommerceQuoteCatalogReadRefusalCode;
@@ -1717,7 +1719,7 @@ export { quoteDiscountSchema, hasValidV2PromotionEvidence } from "./quotePromoti
 export { quoteCodeRejectionDetailSchema } from "./quoteCodeRejectionDetails.js";
 export { catalogFactsProvenanceSchema, rejectCatalogFactsFromPublicQuote } from "./catalogFactsSchemas.js";
 export { createCatalogFactsProvenance, catalogFactsForQuoteLine, projectPublicQuoteSnapshot } from "./catalogFactsProvenance.js";
-export { CommerceQuoteCatalogReadError } from "./commerceQuoteCatalogReadPort.js";
+export { CommerceQuoteCatalogReadError, memoizeCommerceQuoteCatalogReads } from "./commerceQuoteCatalogReadPort.js";
 export type { CommerceQuoteCatalogItem, CommerceQuoteCatalogReadPort, CommerceQuoteCatalogReadRefusalCode } from "./commerceQuoteCatalogReadPort.js";
 export { assertSupportedCommerceTaxProfile } from "./taxProfileGuard.js";
 export { buildSkuIndex, eligibleQtyForMode, resolveOneTimeComparison, resolveStrictQuotePrice, assertSubscriptionCheapest, toGrossMinor, calculateIncludedVat, mapPricingComponent, moneyIn, sum } from "./dbBackedCommerceQuoteHelpers.js";

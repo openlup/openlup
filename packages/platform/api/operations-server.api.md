@@ -111,6 +111,7 @@ export * from "./platformWatchdogService.js";
 export * from "./platformWatchdogDecision.js";
 export * from "./platformWatchdogDeliveryPolicy.js";
 export * from "./platformWatchdogQueue.js";
+export * from "./watchdogAlertBatch.js";
 export * from "./controlPlaneWatchdog.js";
 export * from "./migrations.js";
 export type { SettingReader, SettingPreviewer } from "./settingsRead.js";
@@ -556,4 +557,29 @@ export declare function settingRefusalSchema(codes: readonly string[]): z.ZodObj
 }, z.core.$strict>;
 /** @experimental Derive the success/refusal union and advertise the object root required by MCP. */
 export declare function settingsToolOutputSchema(result: ZodType, refusal: ReturnType<typeof settingRefusalSchema>, schemaVersion?: 1): Record<string, unknown>;
+```
+## dist/operations/server/watchdogAlertBatch.d.ts
+
+```ts
+import type { AlertDecision, AlertLedgerPort, OpenAlert } from "../contracts/index.js";
+/** The zero-based index within the request correlates an outcome to its input. */
+export type WatchdogAlertBatchOutcome = {
+    index: number;
+    kind: "persisted";
+    alert: OpenAlert;
+} | {
+    index: number;
+    kind: "failed";
+    error: unknown;
+};
+/**
+ * Create once per watchdog run. Only upserts already admitted by the watchdog
+ * are batched. The watchdog still serializes complete decision chains per key.
+ */
+export declare function createBatchedWatchdogAlertUpsert<Input, Channel extends string = string>({ prepare, persist }: {
+    /** Capture a detached store input before the call yields. */
+    prepare(decision: AlertDecision<Channel>, now: Date): Input;
+    /** Apply the existing store transition and return one outcome per input. */
+    persist(inputs: readonly Input[]): Promise<readonly WatchdogAlertBatchOutcome[]>;
+}): AlertLedgerPort<Channel>["upsertOpenAlert"];
 ```

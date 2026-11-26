@@ -327,8 +327,8 @@ function apiSections(root: string, since: string): string[] {
   return sections;
 }
 
-/** Upper bound (128 KiB) on a simulated or prepared upgrade page: headroom over real releases, catches runaway API diffs early. */
-export const UPGRADE_PAGE_MAX_BYTES = 128 * 1024;
+/** Upper bound (160 KiB) on a simulated or prepared upgrade page: headroom over real releases (1.4.0 measured about 131 KiB), catches runaway API diffs early. */
+export const UPGRADE_PAGE_MAX_BYTES = 160 * 1024;
 export const RELEASE_NOTE_PACKAGED_CONTENT_REMEDY =
   "wrap approved adapter subpaths in inline code (for example `@openlup/platform/<family>/<adapter>`) "
   + "or remove downstream/provider terms from the offending changelog fragment or API declaration";
@@ -336,6 +336,13 @@ export type SimulatedUpgradePageAudit = { version: string; since: string; path: 
 
 function isUpgradeVersion(version: string): boolean {
   return RELEASE_VERSION.test(version) || /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)-[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*(?:\+[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*)?$/u.test(version);
+}
+
+// An inline link authored from changes/ is projected into two published Markdown files.
+export function rebaseCoreGuideLinks({ path, contents }: ChangelogFragment, prefix: string): string {
+  return path.startsWith("packages/core/changes/")
+    ? contents.replace(/(\]\([ \t]*<?)\.\.\/docs\/guide\//gu, `$1${prefix}`)
+    : contents;
 }
 
 function renderUpgradePageSections({ root, version, since, fragments }: { root: string; version: string; since: string | undefined; fragments: readonly ChangelogFragment[] }) {
@@ -347,7 +354,7 @@ function renderUpgradePageSections({ root, version, since, fragments }: { root: 
   const config = parsePackagesConfig(readFileSync(join(root, PACKAGES_CONFIG_PATH), "utf8"));
   for (const entry of config.packages.filter(({ publish }) => publish)) {
     const notes = fragments.filter(({ path }) => path.startsWith(`${entry.directory}/changes/`)).sort((a, b) => Buffer.compare(Buffer.from(a.path), Buffer.from(b.path)));
-    if (notes.length) notesSections.push(`## ${entry.name}`, ...notes.map(({ contents }) => contents.trimEnd()));
+    if (notes.length) notesSections.push(`## ${entry.name}`, ...notes.map(fragment => rebaseCoreGuideLinks(fragment, "../").trimEnd()));
   }
   const api = ["## API changes", ...(since ? apiSections(root, since) : ["The previous release could not be determined: no core release tag is an ancestor of HEAD."])];
   return { text: `${[...intro, ...notesSections, ...api].join("\n\n")}\n`, generated: `${[...intro, ...api].join("\n\n")}\n` };
@@ -446,10 +453,9 @@ function assertUpgradePageDocumentation(
   const changelog = { packageRoot, file: join(packageRoot, "CHANGELOG.md"), label: "CHANGELOG.md", packed, scripts };
   for (const fragment of fragments) {
     const count = fragmentViolations.length;
-    const source = fragment.contents.trimEnd();
-    if (violations.length) assertGuidePage({ ...context, source: normalize(source), fragmentPath: fragment.path }, fragmentViolations);
+    if (violations.length) assertGuidePage({ ...context, source: normalize(rebaseCoreGuideLinks(fragment, "../").trimEnd()), fragmentPath: fragment.path }, fragmentViolations);
     if (fragment.path.startsWith("packages/core/changes/")) {
-      // Release copies the fragment text verbatim and links resolve from the package root.
+      const source = rebaseCoreGuideLinks(fragment, "docs/guide/").trimEnd();
       assertPackageMarkdown({ ...changelog, source }, false, fragmentViolations, `${fragment.path} (Core CHANGELOG.md)`);
     }
     if (fragmentViolations.length > count) instructions.push(`correct the reported content in ${fragment.path}`);

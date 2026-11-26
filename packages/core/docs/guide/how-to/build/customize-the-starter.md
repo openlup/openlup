@@ -76,14 +76,16 @@ To use another free local port, export `OPENLUP_STARTER_PORT=4320` in the shell
 that runs `./lifecycle up` and `npm run catalogue:apply`. Use a decimal port
 from 1024 to 65535. With the default origin, exclude [ports blocked by Fetch](https://fetch.spec.whatwg.org/#port-blocking).
 An unset or empty value uses 4319. A Compose-only `.env`
-value does not configure either lifecycle command. Set a distinct
-`COMPOSE_PROJECT_NAME` for each concurrent demo. A configured `publicOrigin`
-still governs request authority.
+value does not configure either lifecycle command. Use a separate application
+directory, `COMPOSE_PROJECT_NAME`, and port for each concurrent demo.
+A configured `publicOrigin` still governs request authority.
 
 The runtime credential file must stay in owner-only configuration. The starter
-validates it at start. Each successful start records the selected project name
-in the adopter-owned `compose-project` file under `.context`. From the application
-directory, load that name before running the local Compose commands below.
+validates it at start. The adopter-owned `compose-project` file under
+`.context` reserves the selected project for this directory. To switch projects, run
+`./lifecycle down` for the recorded project to clear the record, then start
+the new project. From a running application's directory, load the recorded
+name before running the local Compose commands below.
 
 ```sh
 PROJECT=$( (cd .context && cat compose-project) 2>/dev/null) && [ -n "$PROJECT" ] ||
@@ -99,12 +101,8 @@ Restore a missing rules bundle before rerunning the
 [pack installation recipe](../extend/catalogue-extension.md#install-a-pack-in-the-starter).
 For a disposable demonstration with damaged storage, see
 [Reset an interrupted first install](#reset-an-interrupted-first-install).
-`./lifecycle down` stops the project while preserving its data. For credential
-rotation, stop the project in an exclusive maintenance window, remove its
-`~/.local/state/openlup/neutral-store/$PROJECT/runtime-password` file, and rerun
-`./lifecycle up` for the same project. Recheck a fresh runtime connection. If a
-startup fails after updating the database, retry with the updated starter and
-the same volume. Use the demo’s Compose file for local operation only.
+`./lifecycle down` stops the project while preserving its data. Use the demo’s
+Compose file for local operation only.
 Use fictional contacts and `.test` addresses. A healthy configuration response
 does not establish a completed purchase; read the [starter limits](../../reference/limits.md).
 
@@ -120,15 +118,78 @@ and `--port` to select your configuration and listener; the [host CLI](https://g
 owns their defaults. Stop with Ctrl-C before reusing the port. Use the
 [edit loop](#edit-and-refresh) while changing the presentation.
 
+## Database login
+
+Save the existing Compose project name before stopping the application. Follow
+the [adjacent-release starter upgrade](../../upgrade/README.md#starter-upgrade-order)
+and reconcile locally changed Compose or installation files. Run the updated
+`./lifecycle up` with `COMPOSE_PROJECT_NAME` set to the saved name to provision the
+runtime credential with the existing database volume. Verify application health.
+If startup reports a credential-source problem, restore access to the private
+project credential and retry with the same project and volume. Run connected
+settings and the local renewal, care, and checkout recovery jobs through the
+recorded project.
+
+### Rotate the runtime credential
+
+Use an exclusive maintenance window. Set `CONFIGURATION` and `PORT` to the
+active configuration ID and listener port. For a default installation, use
+`supplements` and `4319`. Run these commands from the application directory.
+
+```sh
+PROJECT=$( (cd .context && cat compose-project) 2>/dev/null) && [ -n "$PROJECT" ] ||
+  { printf '%s\n' 'Run ./lifecycle up first.' >&2; exit 1; }
+: "${CONFIGURATION:?Set CONFIGURATION to the active configuration ID}"
+: "${PORT:?Set PORT to the active listener port}"
+COMPOSE_PROJECT_NAME="$PROJECT" OPENLUP_STARTER_PORT="$PORT" ./lifecycle down &&
+  rm -- "$HOME/.local/state/openlup/neutral-store/$PROJECT/runtime-password" &&
+  COMPOSE_PROJECT_NAME="$PROJECT" OPENLUP_STARTER_PORT="$PORT" \
+    ./lifecycle up --configuration "$CONFIGURATION"
+```
+
+Verify application health and a fresh database read. If startup fails after
+updating the database, retry with the updated starter and the same volume.
+
+### Recover a stale database lock
+
+If startup reports that the PostgreSQL lock is held, keep the data volume.
+A server can still own it even when it gives no answer. During an exclusive
+maintenance window, disable anything that could start a container on that volume.
+Set `VOLUME` to the exact name in the refusal. Use
+`docker ps --filter "volume=$VOLUME"` to identify all running owners, including
+paused containers. Unpause any paused owner, then stop every owner normally
+where possible. A normal shutdown clears the lock. If shutdown was unclean and the lock remains, set
+`DATABASE_IMAGE` to the PostgreSQL image configured for the project. Run:
+
+```sh
+: "${VOLUME:?Set VOLUME to the reported data volume name}"
+: "${DATABASE_IMAGE:?Set DATABASE_IMAGE to the project's PostgreSQL image}"
+docker volume inspect "$VOLUME" >/dev/null || exit 1
+OWNERS=$(docker ps --quiet --filter "volume=$VOLUME") || exit 1
+if [ -n "$OWNERS" ]; then
+  printf '%s\n' "A running container still mounts $VOLUME. Stop it before recovering the lock." >&2
+  exit 1
+fi
+docker run --rm --network none \
+  --mount "type=volume,source=$VOLUME,target=/var/lib/postgresql/data" \
+  --entrypoint /bin/sh "$DATABASE_IMAGE" -ec '
+    if ! test -f "$PGDATA/postmaster.pid" || test -L "$PGDATA/postmaster.pid"; then exit 1; fi
+    archive=$(mktemp "$PGDATA/.postmaster.pid.stale.XXXXXX")
+    mv -- "$PGDATA/postmaster.pid" "$archive"
+  '
+```
+
+The command archives only the stale lock. Retry `./lifecycle up` for the same
+project, configuration, port, and volume. PostgreSQL replays its own recovery.
+
 ## Reset an interrupted first install
 
 An interruption after database creation but before its demonstration marker is
 written leaves an unmarked database. Startup refuses with
 `starter_seed_demonstration_database_required` rather than adopting it.
 From its application directory, set `PROJECT` to the exact name selected for
-the failed startup. A project-name record is written after a successful start.
-The example uses the default name. Substitute the name you selected for a
-custom project.
+the failed startup. Read the project record if it exists. The example uses
+the default name. Substitute the name selected for a custom project.
 
 ```sh
 PROJECT=neutral-store

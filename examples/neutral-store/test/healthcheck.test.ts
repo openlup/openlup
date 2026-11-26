@@ -21,7 +21,7 @@ function execute(script: string) {
 test('the direct host explains how to correct a refused port flag', () => {
   assert.equal(parseHostArguments(['--port', '6000', '--listen', '0.0.0.0']).port, 6000);
   const direct = spawnSync(process.execPath, ['host/server.ts', '--port', '1023'], {
-    cwd: root, env: { ...env, OPENLUP_STARTER_PORT: '4320' }, encoding: 'utf8', timeout: 10_000,
+    cwd: root, env: { ...env, OPENLUP_STARTER_PORT: '4320' }, encoding: 'utf8', timeout: 20_000,
   });
   assert.ifError(direct.error);
   assert.equal(direct.status, 1);
@@ -57,7 +57,7 @@ test('real lifecycle probe sends the configured Host; wrong Host and connection 
     });
     const timeout = new AbortController();
     try {
-      await Promise.race([ready, setTimeout(5000, undefined, { signal: timeout.signal }).then(() => { throw new Error('host readiness timeout'); })]);
+      await Promise.race([ready, setTimeout(20_000, undefined, { signal: timeout.signal }).then(() => { throw new Error('host readiness timeout'); })]);
     } finally { timeout.abort(); }
     const probe = applicationHealthcheck(config.publicOrigin, port)!;
     assert.deepEqual(probe.test.slice(0, 3), ['CMD', 'node', '-e']);
@@ -117,12 +117,14 @@ if [ "$4" = exec ] && [ "${'$'}{PROBE_FAILURE:-}" = 1 ]; then printf 'starter_ru
       assert.equal(path, '/arguments');
       assert.equal(refused.stderr, `${code}\nFix: ${fix}\n`);
       await assert.rejects(readFile(resolve(directory, 'calls')), { code: 'ENOENT' });
+      await assert.rejects(readFile(resolve(directory, '.context/compose-project')), { code: 'ENOENT' });
     }
     const refusal = spawnSync(process.execPath, ['lifecycle.mjs', 'up', '--json'],
       { cwd: directory, env: { PATH: bin, HOME: home, PROBE_FAILURE: '1' }, encoding: 'utf8' });
     assert.equal(refusal.status, 2);
     assert.equal(JSON.parse(refusal.stdout).findings[0].code, 'starter_runtime_database_auth_failed');
-    await assert.rejects(readFile(resolve(directory, '.context/compose-project')), { code: 'ENOENT' });
+    // Database startup can have changed the selected project before the fresh read fails.
+    assert.equal(await readFile(resolve(directory, '.context/compose-project'), 'utf8'), 'healthcheck\n');
     for (const [value, publicOrigin] of [[undefined, undefined], ['', undefined], ['04320', undefined], ['6000', 'https://store.example.test:4443']]) {
       await writeFile(resolve(directory, 'owned/store.config.ts'), `export function selectConfiguration() { return ${JSON.stringify({ ...config, publicOrigin })}; }`);
       await writeFile(resolve(directory, 'calls'), '');

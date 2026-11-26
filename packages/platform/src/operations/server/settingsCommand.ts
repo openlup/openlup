@@ -374,11 +374,11 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
     return emit(field && hint ? { ...result, refusal: { ...result.refusal, path: [field], hint } } : result, 64);
   };
   if (argv[0] === "mcp") {
-    if (argv.some(arg => /^--database-password-fd(?:=|$)/u.test(arg))) return invalid();
     if (argv.includes("--help")) {
       io.write((json ? JSON.stringify({ schemaVersion: 1, help: mcpHelp }) : mcpHelp) + "\n");
       return 0;
     }
+    if (argv.some(arg => /^--database-password-fd(?:=|$)/u.test(arg))) return invalid();
     // Hosts must route process output away from the protocol stream they pass as io.write.
     // Hosts must supply a strict preview result schema, since the output gate accepts what that schema admits.
     if (!io.input || !host?.previewResultSchema) return invalid();
@@ -433,7 +433,7 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
   }
   const { values, positionals: [command, key, ...extra] } = parsed;
   json = values.json === true;
-  if (values.help && values["database-password-fd"] === undefined) {
+  if (values.help) {
     const helpByCommand: Record<string, string> = {
       list: listHelp,
       show: showHelp,

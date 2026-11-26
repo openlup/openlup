@@ -1,9 +1,10 @@
 import { createHash } from 'node:crypto';
-import { copyFile, mkdir, readFile, writeFile, access, lstat, mkdtemp, rename, rm } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, writeFile, access, lstat, mkdtemp, readdir, rename, rm, rmdir, unlink } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 import { env } from 'node:process';
+import { stripVTControlCharacters } from 'node:util';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { readStarterDiagnostic, starterDiagnostic } from './shared/refusals.ts';
 import { seedPhysicalGuidance } from './shared/seed-physical.ts';
@@ -115,7 +116,7 @@ async function readInstallReport(compose, argv, configuration) {
   const [status, signal] = await new Promise(done => child.once('close', (...result) => done(result)));
   const launchFinding = composeFinding(tail, compose.env);
   if (launchFinding) throw starterDiagnostic(launchFinding);
-  if (!status && tail) process.stderr.write(tail);
+  if (status !== 2) composeOutput(tail);
   const line = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(Buffer.concat(chunks));
   if (failed || signal || !line.endsWith('\n') || line.indexOf('\n') !== line.length - 1 || line.includes('\r'))
     throw new Error('starter_installation_failed');
@@ -156,7 +157,50 @@ async function admitProjectState() {
   if (!state.isDirectory() || state.uid !== process.getuid() || (state.mode & 0o022))
     throw starterDiagnostic('starter_runtime_credential_source_invalid');
 }
+async function recordedProject() {
+  try {
+    const name = await readFile(projectFile, 'utf8');
+    if (/^[a-z0-9][a-z0-9_-]*\n$/u.test(name)) return name.trim();
+    throw starterDiagnostic('starter_runtime_project_record_invalid');
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+}
+async function lockProjectOperation() {
+  const lock = resolve(dirname(projectFile), '.compose-operation');
+  const pending = await mkdtemp(lock + '-');
+  // Publish only a complete lock. The unique owner entry lets one retry reclaim it.
+  const owner = process.pid + pending.slice(lock.length);
+  await writeFile(resolve(pending, owner), '', { mode: 0o600 });
+  async function release(name) {
+    await unlink(resolve(lock, name));
+    try { await rmdir(lock); }
+    catch (error) { if (!['ENOENT', 'ENOTEMPTY'].includes(error.code)) throw error; }
+  }
+  try {
+    while (true) {
+      try { await rename(pending, lock); return () => release(owner); }
+      catch (error) { if (!['EEXIST', 'ENOTEMPTY'].includes(error.code)) throw error; }
+      const [name] = await readdir(lock).catch(error => error.code === 'ENOENT' ? [] : Promise.reject(error));
+      if (!name) continue;
+      const pid = Number(/^([0-9]+)-[a-zA-Z0-9]+$/u.exec(name)?.[1]);
+      if (!(pid > 0)) throw starterDiagnostic('starter_runtime_project_busy');
+      try { process.kill(pid, 0); }
+      catch (error) {
+        if (error.code === 'ESRCH') {
+          await release(name).catch(error => { if (error.code !== 'ENOENT') throw error; });
+          continue;
+        }
+        if (error.code !== 'EPERM') throw error;
+      }
+      throw starterDiagnostic('starter_runtime_project_busy');
+    }
+  } finally { await rm(pending, { recursive: true, force: true }); }
+}
 async function recordProject(project) {
+  const recorded = await recordedProject();
+  if (recorded === project) return;
+  if (recorded) throw starterDiagnostic('starter_runtime_project_mismatch');
   const pending = await mkdtemp(resolve(dirname(projectFile), '.compose-project-'));
   try {
     const file = resolve(pending, 'name');
@@ -165,11 +209,27 @@ async function recordProject(project) {
   } finally { await rm(pending, { recursive: true, force: true }); }
 }
 
+function composeOutput(output) {
+  const safe = stripVTControlCharacters(output)
+    .replace(/[^\S\n\t ]/gu, ' ')
+    .replace(/SCRAM-SHA-256\$[^\s"']+|[a-f0-9]{64}/giu, '[redacted]');
+  if (safe) process.stderr.write(safe);
+}
+
 function composeRun(compose, argv, input, finding) {
   const result = spawnSync('docker', [...compose.args, ...argv],
     { cwd: root, env: compose.env, input, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
   if (result.status === 0) return result;
-  throw starterDiagnostic(composeFinding(result.stderr ?? '', compose.env) ?? finding?.(result) ?? 'starter_installation_failed');
+  const known = composeFinding(result.stderr ?? '', compose.env) ?? finding?.(result);
+  if (!known) composeOutput((result.stdout ?? '') + (result.stderr ?? '') + (result.error?.code ?? ''));
+  throw starterDiagnostic(known ?? 'starter_installation_failed');
+}
+
+const databaseLockHeld = 'starter_runtime_database_lock_held';
+function serviceFinding(compose, service, since, codes) {
+  const { stdout } = spawnSync('docker', [...compose.args, 'logs', '--no-color', '--since', since, '--tail', '25', service],
+    { cwd: root, env: compose.env, maxBuffer: 32_768, encoding: 'utf8' });
+  return stdout?.match(new RegExp('^[^|]*\\| +(' + codes.join('|') + ')$', 'mu'))?.[1];
 }
 
 async function freshRuntimeRead(connectionString, prepare) {
@@ -238,7 +298,7 @@ if (command === 'refusals') {
   }
 } else if (command === 'up') {
   let configuration = '', packs = [], stage = '/arguments';
-  let final, handoff;
+  let final, handoff, unlock, dataVolume;
   try {
     const selected = lifecycleOptions(args);
     const { assertConfig, isConfigurationId, parseStarterPort } = await import('./shared/config.ts');
@@ -255,15 +315,21 @@ if (command === 'refusals') {
     stage = '/installation';
     const compose = { args: ['compose'], env: { ...env, OPENLUP_STARTER_PREFLIGHT_HANDOFF: '/dev/null' } };
     const { stdout } = composeRun(compose, ['config', '--no-env-resolution', '--format', 'json']);
-    const { name: project } = JSON.parse(stdout);
-    handoff = prepareRuntimeHandoff(project, [root]);
+    const { name: project, volumes } = JSON.parse(stdout);
     await admitProjectState();
+    unlock = await lockProjectOperation();
+    if (!/^[a-z0-9][a-z0-9_-]*$/u.test(project)) throw starterDiagnostic('starter_runtime_project_record_invalid');
+    await recordProject(project);
+    dataVolume = volumes?.database?.name ?? project + '_database';
+    handoff = prepareRuntimeHandoff(project, [root]);
     compose.args.push('--project-name', project);
     compose.env = { ...env, ...handoff.environment };
-    for (const argv of [['build'], ['up', '--wait', 'database']]) {
-      const result = composeRun(compose, argv);
-      process.stderr.write(result.stdout + result.stderr);
-    }
+    const build = composeRun(compose, ['build']);
+    composeOutput(build.stdout + build.stderr);
+    const databaseSince = new Date().toISOString();
+    const database = composeRun(compose, ['up', '--wait', 'database'], undefined,
+      () => serviceFinding(compose, 'database', databaseSince, [databaseLockHeld]));
+    composeOutput(database.stdout + database.stderr);
     const report = await readInstallReport(compose, ['run', '--rm', '--no-deps', '-T', 'installation',
       'node', 'lifecycle.mjs', 'install', '--configuration', configuration, '--json'], configuration);
     if (report.state === 'violated') final = report;
@@ -278,20 +344,17 @@ if (command === 'refusals') {
       ] } } };
       const healthcheck = applicationHealthcheck(config.publicOrigin, port);
       if (healthcheck) override.services.application.healthcheck = healthcheck;
-      const attemptStarted = new Date().toISOString();
-      const appFinding = () => {
-        const { stdout } = spawnSync('docker', [...compose.args, 'logs', '--no-color', '--since', attemptStarted, '--tail', '25', 'application'],
-          { cwd: root, env: compose.env, maxBuffer: 32_768, encoding: 'utf8' });
-        return stdout?.match(new RegExp('^application[^|]*\\| +(' + runtimeReadFailed + '|' + runtimeAuthFailed + ')$', 'mu'))?.[1];
-      };
-      composeRun(compose, ['-f', 'compose.yaml', '-f', '-', 'up', '--wait', 'application'], JSON.stringify(override), appFinding);
+      const appSince = new Date().toISOString();
+      composeRun(compose, ['-f', 'compose.yaml', '-f', '-', 'up', '--wait', 'application'], JSON.stringify(override),
+        () => serviceFinding(compose, 'application', appSince, [runtimeReadFailed, runtimeAuthFailed]));
       composeRun(compose, ['exec', '-T', 'application', 'node', 'lifecycle.mjs', 'runtime-probe'], undefined,
         ({ stdout }) => [runtimeReadFailed, runtimeAuthFailed].includes(stdout?.trim()) ? stdout.trim() : undefined);
-      await recordProject(project);
       final = installReport(configuration, packs);
     }
   } catch (error) {
     const finding = commandRefusal(error, stage, stage !== '/installation');
+    if (finding.code === databaseLockHeld && typeof dataVolume === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/u.test(dataVolume))
+      finding.fix = finding.fix.replace('<volume>', dataVolume);
     if (json) final = installReport(configuration, packs, finding);
     else {
       if (Object.hasOwn(finding, 'subject')) process.stderr.write(physicalReport(finding));
@@ -300,7 +363,7 @@ if (command === 'refusals') {
       else process.stderr.write(`${finding.code}\nFix: ${finding.fix}\n`);
       process.exitCode = 2;
     }
-  } finally { handoff?.cleanup(); }
+  } finally { try { handoff?.cleanup(); } finally { await unlock?.(); } }
   if (json) await emit({ command: 'up', ...final });
   else if (final?.state === 'violated') {
     process.exitCode = 2;
@@ -375,6 +438,8 @@ if (command === 'refusals') {
   process.exit(process.exitCode ?? 0);
 } else if (command === 'browser') {
   await databaseBrowserRecipe(args);
+} else if (command === 'settings' && args.slice(0, [...args, '--'].indexOf('--')).includes('--help')) {
+  delegate(resolve(root, 'node_modules/.bin/openlup'), ['settings', ...args]);
 } else if (['checkout-recovery', 'care', 'renewal', 'settings'].includes(command)) {
   try {
     if (command === 'settings') {
@@ -420,8 +485,21 @@ if (command === 'refusals') {
     }
   }
 } else if (command === 'down') {
-  const project = env.COMPOSE_PROJECT_NAME ?? await readFile(projectFile, 'utf8').then(name => name.trim(), () => '');
-  run('docker', ['compose', ...(project ? ['--project-name', project] : []), 'down']);
+  let unlock;
+  try {
+    await admitProjectState();
+    unlock = await lockProjectOperation();
+    const recorded = await recordedProject(), selected = env.COMPOSE_PROJECT_NAME;
+    if (recorded && selected && recorded !== selected) throw starterDiagnostic('starter_runtime_project_mismatch');
+    const project = recorded || selected;
+    const result = composeRun({ args: ['compose', ...(project ? ['--project-name', project] : [])], env }, ['down']);
+    composeOutput(result.stdout + result.stderr);
+    if (recorded) await rm(projectFile, { force: true });
+  } catch (error) {
+    const { code, fix } = commandRefusal(error, '/installation');
+    process.stderr.write(`${code}\nFix: ${fix}\n`);
+    process.exitCode = 2;
+  } finally { await unlock?.(); }
 } else if (command === 'verify') {
   const binary = resolve(root, 'node_modules/.bin/openlup');
   try { await access(binary); }
