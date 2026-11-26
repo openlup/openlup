@@ -141,10 +141,9 @@ it("measures the native predecessor, applies the destination forward first and p
   });
 }, postgresSetupTimeoutMs);
 
-it("denies the private writer under browser and service default privileges and permits its installed owner", async () => {
+it("denies the private writer to installed non-owner roles under permissive defaults and permits its owner", async () => {
   const { owner, runtime } = store;
   const args = [null, null, null, null, null, null];
-  const roles = ["anon", "authenticated", "service_role", "transfer_runtime"];
   const census = `SELECT p.provolatile, p.prosecdef, p.proconfig, p.proowner::regrole::text AS owner,
       (SELECT t.relowner::regrole::text FROM pg_class t WHERE t.oid='public.subscription_cycle_preparations'::regclass) AS preparation_owner,
       EXISTS(SELECT 1 FROM aclexplode(p.proacl) WHERE grantee=0) AS public_grant
@@ -158,19 +157,24 @@ it("denies the private writer under browser and service default privileges and p
     code: "22023", message: "address_invalid_input", detail: "subscriptionId", hint: "Correct the indicated input.",
   });
   await ownerTransaction(owner, async db => {
+    const { rows: installedRoles } = await db.query<{ role: string }>(`SELECT rolname::text AS role
+      FROM pg_catalog.pg_roles WHERE NOT rolsuper AND rolname <> current_user AND rolname !~ '^pg_'
+      ORDER BY role`);
+    expect(installedRoles.length).toBeGreaterThan(0);
+    const roles = installedRoles.map(({ role }) => role);
     await db.query(`DROP FUNCTION ${registerSignature};
       ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role;
       CREATE FUNCTION public.destination_default_acl_control() RETURNS boolean LANGUAGE sql AS 'SELECT true'`);
     expect(await data(db, `SELECT role FROM unnest($1::text[]) AS r(role)
       WHERE has_function_privilege(role,'public.destination_default_acl_control()','EXECUTE') ORDER BY role`, [roles]))
-      .toEqual([...roles].sort().map(role => ({ role })));
+      .toEqual(installedRoles);
     await db.query(readFileSync(migration.file, "utf8"));
     const privileges = await data(db, `SELECT role FROM unnest($1::text[]) AS r(role)
       WHERE has_function_privilege(role, $2::regprocedure, 'EXECUTE')`, [roles, registerSignature]);
     expect(privileges).toEqual([]);
     for (const role of roles) {
-      await db.query(`SAVEPOINT permission_check; SET LOCAL ROLE ${role}`);
-      await expect(call(db, registerName, args)).rejects.toMatchObject({ code: "42501" });
+      await db.query(`SAVEPOINT permission_check; SET LOCAL ROLE ${db.escapeIdentifier(role)}`);
+      await expect(call(db, registerName, args), role).rejects.toMatchObject({ code: "42501" });
       await db.query("ROLLBACK TO SAVEPOINT permission_check; RELEASE SAVEPOINT permission_check");
     }
   }, false);
