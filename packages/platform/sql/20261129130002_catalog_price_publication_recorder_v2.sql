@@ -274,7 +274,7 @@ LANGUAGE sql STABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
   CROSS JOIN product_withdrawal
   CROSS JOIN LATERAL (SELECT NOT coalesce(prior.facts->'memberships' @> '[{"admitted":true}]',false)
     AND CASE WHEN s ? 'memberships' THEN s->'memberships' @> '[{"admitted":true}]'
-      ELSE coalesce(p_sealed_memberships, p_authored #> '{product,sharedContent,offerMemberships}', '[]')
+      ELSE coalesce(p_sealed_memberships, '[]')
         @> jsonb_build_array(jsonb_build_object('skuCode',s->'code','admitted',true)) END AS first_offer) admission
   CROSS JOIN LATERAL (SELECT
     CASE WHEN product_withdrawal.n>coalesce(eligibility.n,0) THEN false
@@ -465,7 +465,8 @@ BEGIN
   FROM jsonb_array_elements(operations) item
   JOIN jsonb_array_elements(authored->'skus') s ON s->'id'=item->'skuId'
   CROSS JOIN LATERAL public.catalog_publication_price_modes_v2(authored,
-    nullif(split_part(split_part(approval.candidate_ref,'/',2),'@',1),'unpublished')::uuid,jsonb_build_array(s))
+    nullif(split_part(split_part(approval.candidate_ref,'/',2),'@',1),'unpublished')::uuid,jsonb_build_array(s),
+    approval.post_state_canonical_text::jsonb #> '{product,content,offerMemberships}')
   WHERE item->'skuId'=to_jsonb(p_sku) AND item #> '{operation,priceListId}'=to_jsonb(p_list)
     AND item #> '{operation,schemaVersion}'='2'::jsonb;
   IF NOT FOUND THEN

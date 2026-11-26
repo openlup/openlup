@@ -1816,26 +1816,52 @@ publicationTest("issues verified v2 effects and rolls them back on a deferred pu
     const omitted = structuredClone(membershipOnly);
     omitted.publication.operations = [];
     omitted.product.sharedContent.offerMemberships = [];
-    const omittedAdmission = seedSource(omitted, issued.receipt.head, []);
     const missingFreshPrice = "catalog_publication_price_edit_required";
-    await expect(transaction(pool, async db => {
+    const bindOmittedAdmission = async (db: PoolClient, candidate: ReturnType<typeof seedSource>) => {
       const seal = await approvalSeal(db, enrollment.approve.commandKey);
-      await saveSource(db, omittedAdmission.source, 2);
+      await saveSource(db, candidate.source, 2);
       await db.query("SELECT set_config('request.jwt.claims',$1,true)", [claims]);
       const decisionKey = randomUUID();
-      await db.query(recordSql, [{ ...enrollment.approve, candidateDigest: omittedAdmission.digest, commandKey: decisionKey,
+      await db.query(recordSql, [{ ...enrollment.approve, candidateDigest: candidate.digest, commandKey: decisionKey,
         postStateText: seal.post_state_canonical_text, postStateDigest: seal.post_state_digest }]);
-      const { rows: [{ id }] } = await db.query("SELECT id FROM public.catalog_publication_decisions WHERE product_id=$1 AND command_key=$2",
+      const { rows: [{ id }] } = await db.query<{ id: string }>("SELECT id FROM public.catalog_publication_decisions WHERE product_id=$1 AND command_key=$2",
         [data.productId, decisionKey]);
+      return { ...sealedIssue, candidateDigest: candidate.digest, approvalId: id };
+    };
+    const asPublisher = async (db: PgQueryExecutor) => {
+      await db.query("SET LOCAL SESSION AUTHORIZATION openlup_catalog_publication");
+      await db.query("SELECT set_config('request.jwt.claims',$1,true)", [claims]);
+    };
+    const rollbackProbe = new Error("Roll back the successful probe");
+    type PriceProbePacket = Record<string, unknown> & { approvalId: string };
+    const priceProbes = [
+      ["issuance replay", (db: PoolClient, packet: PriceProbePacket) => db.query(recordSql, [packet])],
+      ["locked reader", (db: PoolClient, packet: PriceProbePacket) => readPrice(db, packet.approvalId)],
+    ] as const;
+    const omittedAdmission = seedSource(omitted, issued.receipt.head, []);
+    await expect(transaction(pool, async db => {
+      const packet = await bindOmittedAdmission(db, omittedAdmission);
       const { result } = (await db.query(recordSql, [{ ...assessment, candidateRef: enrollment.publish.candidateRef,
-        candidateDigest: omittedAdmission.digest }])).rows[0];
+        candidateDigest: packet.candidateDigest }])).rows[0];
       expect(JSON.parse(result)).toMatchObject({ targets: [{ skuId: data.skuId, reason: missingFreshPrice }] });
-      await db.query(recordSql, [{ ...sealedIssue, candidateDigest: omittedAdmission.digest, approvalId: id }]);
-      throw new Error("Expected the sealed first admission without an operation to refuse");
+      await db.query(recordSql, [packet]);
+      throw rollbackProbe;
     }), "assessment and issuance refuse a sealed first admission omitted from saved operations").rejects.toMatchObject({
       code: "23514", constraint: missingFreshPrice,
     });
     expect(await effects()).toEqual(beforeEnrollment);
+    const omittedAdmissionReplay = seedSource(omitted, issued.receipt.head, [operation]);
+    for (const [path, probe] of priceProbes) {
+      await expect.soft(transaction(pool, async db => {
+        const packet = await bindOmittedAdmission(db, omittedAdmissionReplay);
+        await asPublisher(db);
+        await probe(db, packet);
+        throw rollbackProbe;
+      }), `${path} refuses a sealed first admission omitted from saved declarations`).rejects.toMatchObject({
+        code: "23514", message: missingFreshPrice, constraint: missingFreshPrice,
+      });
+      expect(await effects()).toEqual(beforeEnrollment);
+    }
     const pending = seedSource(membershipOnly, issued.receipt.head, [operation]);
     const signedApproval = await persistApproval(pending, enrollment.approve, 2);
     const revocation = { ...enrollment.revoke, candidateDigest: pending.digest };
@@ -1940,11 +1966,6 @@ publicationTest("issues verified v2 effects and rolls them back on a deferred pu
       FROM public.catalog_price_setup_receipts WHERE idempotency_key=$1`, [edit.commandKey])).rows).toEqual([{ start: "-infinity" }]);
     const completed = seedSource(priceOnly, head, [edit]);
     const completedPacket = await transaction(pool, db => bindPriceOnly(db, completed));
-    const asPublisher = async (db: PgQueryExecutor) => {
-      await db.query("SET LOCAL SESSION AUTHORIZATION openlup_catalog_publication");
-      await db.query("SELECT set_config('request.jwt.claims',$1,true)", [claims]);
-    };
-    const rollbackProbe = new Error("Roll back the successful probe");
     await expect(transaction(pool, async db => {
       await asPublisher(db);
       expect((await readPrice(db, completedPacket.approvalId)).rows).toEqual([
@@ -2015,10 +2036,7 @@ publicationTest("issues verified v2 effects and rolls them back on a deferred pu
         await moveSettlement("region_code", "settlement_region", "QZ")(db);
       }, keyReused],
     ] as const;
-    for (const [path, probe] of [
-      ["issuance replay", (db: PoolClient, packet: typeof completedPacket) => db.query(recordSql, [packet])],
-      ["locked reader", (db: PoolClient, packet: typeof completedPacket) => readPrice(db, packet.approvalId)],
-    ] as const) {
+    for (const [path, probe] of priceProbes) {
       for (const [field, mutate, expected = priceChanged] of evidenceCases) {
         await expect.soft(transaction(pool, async db => {
           await mutate(db);
