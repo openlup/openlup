@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import type { CatalogAcceptanceV2 } from "@openlup/core/catalog";
+import { catalogAcceptanceV2Schema } from "@openlup/platform/catalog";
 import { readFileSync } from "node:fs";
 import { Pool } from "pg";
 import { expect } from "vitest";
@@ -14,7 +14,7 @@ export type Profile = AccountProfile | "legacy-with-service";
 
 type Store = Pick<AccountMutationsStore, "owner" | "migrator" | "runtime" | "installation" | "inventory" | "close">;
 export async function installOccurrenceStore(profile: Profile, side = "source"): Promise<Store> {
-  if (profile !== "legacy-with-service") return installAccountMutations(profile, false, `renewal-occurrence-${side}`, undefined, undefined, { isolatedCluster: true });
+  if (profile !== "legacy-with-service") return installAccountMutations(profile, false, `renewal-occurrence-${side}`, undefined);
   const container = await runPostgresContainer({ name: `renewal-occurrence-service-${process.pid}`, password: "synthetic-occurrence" });
   const owner = new Pool({ connectionString: container.connectionString });
   try {
@@ -52,8 +52,9 @@ export const sha256 = (value: string) => createHash("sha256").update(value).dige
 
 export async function paidRootFixture(db: Db, due = original) {
   const f = await activation(db, 7);
-  const { cycle_number: cycleNumber } = (await db.query(`SELECT count(*)::int+1 AS cycle_number
-    FROM public.subscription_cycles WHERE subscription_id=$1 AND status='paid'`, [f.subscriptionId])).rows[0];
+  const { cycle_number: cycleNumber, authorized } = (await db.query(`SELECT count(*)::int+1 AS cycle_number,
+    to_char($2::timestamptz AT TIME ZONE 'UTC',${utc}) AS authorized
+    FROM public.subscription_cycles WHERE subscription_id=$1 AND status='paid'`, [f.subscriptionId, f.paidAt])).rows[0];
   expect(cycleNumber).toBe(2);
   const stockSourceKey = "fixture-stock", settlementChannelKey = "fixture-channel", authorizationRef = "fixture-mandate";
   const currency = "XXX", lines: RenewalSeed["snapshot"]["lines"] = [];
@@ -66,8 +67,8 @@ export async function paidRootFixture(db: Db, due = original) {
   await db.query("UPDATE public.subscriptions SET next_cycle_at=$2 WHERE id=$1", [f.subscriptionId, due]);
   await insert(db, "subscription_renewal_terms", { subscription_id: f.subscriptionId, next_cycle_number: cycleNumber,
     currency_code: currency, stock_source_key: stockSourceKey, settlement_channel_key: settlementChannelKey,
-    unattended_charge_authorized_at: f.paidAt, authorization_ref: authorizationRef });
-  return { ...f, cycleNumber: Number(cycleNumber), stockSourceKey, settlementChannelKey, authorizationRef, currency, lines };
+    unattended_charge_authorized_at: authorized, authorization_ref: authorizationRef });
+  return { ...f, cycleNumber: Number(cycleNumber), authorized: String(authorized), stockSourceKey, settlementChannelKey, authorizationRef, currency, lines };
 }
 
 const allocationState = (db: Db, cycleKey: string) => db.query(`SELECT is_current,operation_id,commercial_generation_id,
@@ -88,8 +89,7 @@ export async function committedAllocation(owner: Pool, f: Awaited<ReturnType<typ
       cancellation_receipt_id: null, cancellation_effective_at: null, anchor: originalAnchorAt, due: originalAnchorAt }]);
     return { cycleKey, originalAnchorAt };
   } finally {
-    await db.query("ROLLBACK");
-    db.release();
+    try { await db.query("ROLLBACK"); } finally { db.release(); }
   }
 }
 
@@ -98,12 +98,12 @@ export async function rootFixture(owner: Pool, rail = "v3", due = original,
   const f = await paidRootFixture(owner, due);
   await prepare(owner, f);
   const { cycleKey, originalAnchorAt } = await committedAllocation(owner, f, rail);
-  const operation = randomUUID(), priceEvidenceRef = "fixture:accepted-price:1";
+  const operation = randomUUID();
   const cycle = { status: "correlated", logicalCycleNumber: 2, nativeRenewalCounter: f.cycleNumber,
     activationCycleId: f.cycleId, evidenceRef: "fixture:paid-activation" };
   const { currency } = f;
   const db = owner;
-  const digest = sha256(cycleKey);
+  const digest = sha256(cycleKey), priceEvidenceRef = `price.v1:${digest}`;
   const lines = f.lines.map(({ lineOrdinal, sku, quantity, unitAmountMinor }) => ({
     lineKey: `line:${lineOrdinal}`, sourceOrdinal: lineOrdinal, sku, quantity, unitBasisMinor: unitAmountMinor,
     taxClassKey: "merchandise", assignmentRef: "fixture:merchandise-class:1",
@@ -119,18 +119,19 @@ export async function rootFixture(owner: Pool, rail = "v3", due = original,
       netContent: { dimension: "count" as const, unscaled: "1", scale: 0, unit: "openlup:piece" },
     } };
   }));
-  const catalogAcceptance = {
+  const catalogAcceptance = catalogAcceptanceV2Schema.parse({
     schemaVersion: 2, lines: roster.map(({ accepted }) => accepted),
     admission: {
       quoteRef: `fixture:accepted-quote:${cycleKey}`, quoteDigest: digest, moneyVersion: "v0",
-      priceEvidenceRef, policyEvidenceRef: "fixture:catalogue-policy:1",
-      consultedHeads: roster.map(({ productId, accepted }) => ({ productId, ...accepted.publicationHead })),
+      priceEvidenceRef, policyEvidenceRef: `policy.v1:${digest}`,
+      consultedHeads: roster.map(({ productId, accepted }) => ({ productId, ...accepted.publicationHead }))
+        .sort((a, b) => a.productId < b.productId ? -1 : 1),
       lineBindings: roster.map(({ line, accepted }) => ({
         source: "retained", mode: "subscription", role: "core", lineKey: line.lineKey, sourceOrdinal: line.sourceOrdinal,
         skuId: accepted.skuId, skuCode: accepted.skuCode, skuRevisionId: accepted.skuRevisionId, quantity: line.quantity,
       })),
     },
-  } satisfies CatalogAcceptanceV2;
+  });
   const agreement = {
     frozenRevision: "native.purchase-renewal.v3", contractVersion: "platform.subscription.renewal.v3",
     clientId: f.clientId, subscriptionId: f.subscriptionId, cycleKey, originalAnchorAt,
@@ -147,7 +148,7 @@ export async function rootFixture(owner: Pool, rail = "v3", due = original,
     destinationSelectionPolicy: { kind: "current_validated", policyRevision: "fixture:destination-policy:1",
       deliverySelectionRef: "fixture:delivery:1", providerRef: "fixture:delivery-provider", carrierRef: "fixture:carrier",
       serviceRef: "fixture:service", servicePolicyRevision: "1", adapterRevision: "1" },
-    unattendedChargeAuthorizedAt: originalAnchorAt,
+    unattendedChargeAuthorizedAt: f.authorized,
     stockSourceKey: f.stockSourceKey, settlementChannelKey: f.settlementChannelKey,
     payerAccountRef: null, authorizationRef: f.authorizationRef,
   };

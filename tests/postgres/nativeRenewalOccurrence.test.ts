@@ -84,6 +84,14 @@ it.each(["legacy", "legacy-with-service", "bootstrap", "separate", "admin-manage
         }
       });
       const history = await rootFixture(owner, "legacy");
+      await transaction(owner, async db => {
+        await unavailable(db, { ...f, scope: [f.clientId, f.subscriptionId, history.cycleKey] }, "/cycleKey");
+      }, "ROLLBACK");
+      await transaction(owner, async db => {
+        await unavailable(db, { ...f, scope: [f.clientId, f.subscriptionId, randomUUID()] }, "/cycleKey");
+      }, "ROLLBACK");
+      for (const routine of [read, lock]) await expect(call(owner, routine, [history.clientId, f.subscriptionId, f.cycleKey]))
+        .rejects.toMatchObject({ code: "22023", message: "subscription_command_forbidden", detail: "/subscriptionId" });
       const legacyId = await transaction(owner, async db => {
         const id = await retainLegacy(db, history);
         await db.query(`UPDATE public.${occurrence} SET lifecycle='retired',is_current=false WHERE cycle_key=$1`, [history.cycleKey]);
@@ -120,6 +128,8 @@ it.each(["legacy", "legacy-with-service", "bootstrap", "separate", "admin-manage
         await db.query(`UPDATE public.${occurrence} SET lifecycle='stopped',cancellation_receipt_id=$2,cancellation_effective_at=$3 WHERE cycle_key=$1`,
           [f.cycleKey, receipt, cancellationEffectiveAt]);
       });
+      const active = await rootFixture(owner);
+      const created = await call(owner, writer, args(active));
       const packet = await capture(store.owner, store.inventory, "renewal-occurrence-source");
       if (store.installation.generation === "legacy") {
         await expect(restoreConnectedNativeStore({ owner, installation: store.installation as never, packet, freshTarget: packet }))
@@ -139,6 +149,8 @@ it.each(["legacy", "legacy-with-service", "bootstrap", "separate", "admin-manage
           expect((await target.migrator.query(`SELECT r.id,r.result FROM public.${occurrence} c
             JOIN public.subscription_command_receipts r ON r.id=c.cancellation_receipt_id WHERE c.cycle_key=$1`, [f.cycleKey])).rows)
             .toEqual([{ id: receipt, result }]);
+          expect(await call(target.migrator, lock, active.scope)).toEqual(await call(owner, read, active.scope));
+          expect(await call(target.migrator, writer, args(active))).toEqual({ ...created, outcome: "existing", claimToken: null, leaseExpiresAt: null });
           await expectUnavailable(target.migrator, wrongAnchor, "/cycleKey");
           await expectUnavailable(target.migrator, invalidDue, "/effectiveDueAt");
           expect(await call(target.migrator, read, history.scope)).toEqual(historyView);

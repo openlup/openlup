@@ -14,7 +14,7 @@ import { exerciseLegacyRenewals } from "./nativeRenewalV3Legacy.fixture.js";
 import { transaction } from "./orderMoneyV2Storage.fixture.js";
 import { activation, allocate, probe, producer, signature } from "./nativeRenewalOccurrence.fixture.js";
 import { args, lock, occurrence, operations, read, rootFixture, writer, writerParameters } from "./nativeRenewalOccurrenceWriter.fixture.js";
-import { call, type Db } from "./subscriptionNativeFixture.js";
+import { AT, call, sandboxRenewal, type Db } from "./subscriptionNativeFixture.js";
 
 const current = readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest | null;
 if (current?.schemaVersion !== 3) throw new Error("Expected the full native migration catalogue");
@@ -58,6 +58,27 @@ async function assertDeniedPaths(db: Db, f: Awaited<ReturnType<typeof activation
     WHERE p.oid=$1::regprocedure AND (pg_has_role(current_user,r.oid,'USAGE') OR pg_has_role(current_user,r.oid,'SET'))
       AND has_function_privilege(r.oid,p.oid,'EXECUTE')`, [signature])).rows).toEqual([]);
   await expect(allocate(db, f)).rejects.toMatchObject(denied);
+}
+
+const writerNames = [read, lock, writer];
+const writerSignatures = writerNames.map(name => `public.${name}(${name === writer ? writerParameters : "uuid,uuid,uuid"})`);
+
+async function assertWriterAcl(db: Db) {
+  for (const [index, sig] of writerSignatures.entries()) {
+    expect((await db.query(`SELECT p.prosecdef, p.provolatile, p.proconfig,p.pronargdefaults,p.prorettype='jsonb'::regtype AS json,
+      p.proowner=c.relowner AND p.proowner=current_user::regrole
+        AND p.proowner=(SELECT relowner FROM pg_class WHERE oid='public.subscription_cycle_generations'::regclass) AS owns,
+      ARRAY(SELECT privilege_type FROM aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) WHERE grantee<>p.proowner) AS grants,
+      (SELECT count(*)::int FROM pg_proc WHERE proname=p.proname AND pronamespace=p.pronamespace) AS overloads
+      FROM pg_proc p, pg_class c WHERE p.oid=$1::regprocedure AND c.oid='public.${occurrence}'::regclass`, [sig])).rows)
+      .toEqual([{ prosecdef: index === 2, provolatile: "v", proconfig: ["search_path=pg_catalog, pg_temp"], pronargdefaults: 0,
+        json: true, owns: true, grants: [], overloads: 1 }]);
+    expect((await db.query(`SELECT proname::text AS caller FROM pg_proc WHERE oid<>$1::regprocedure AND strpos(lower(prosrc),$2)>0
+          UNION ALL SELECT rulename FROM pg_rewrite WHERE strpos(lower(pg_get_ruledef(oid)),$2)>0
+          UNION ALL SELECT tgname FROM pg_trigger WHERE NOT tgisinternal AND strpos(lower(pg_get_triggerdef(oid)),$2)>0
+          UNION ALL SELECT classid::regclass::text FROM pg_depend WHERE refclassid='pg_proc'::regclass AND refobjid=$1::regprocedure`,
+        [sig, writerNames[index]])).rows).toEqual(index === 2 ? [] : [{ caller: writerNames[index + 1] }]);
+  }
 }
 
 function watchAttempts() {
@@ -146,6 +167,7 @@ it.each([false, true])("preserves the mounted native worker with owner login and
     if (candidate) {
       await assertAcl(owner);
       await assertNoCallers(owner);
+      await assertWriterAcl(owner);
       writerEntries = await probe(owner, writer, `public.${writer}(${writerParameters})`, "fixture_writer_entries");
       count = await probe(owner, producer, signature, "fixture_producer_entries");
       expect(await count()).toBe(1);
@@ -189,7 +211,6 @@ it("observes attempts and entry separately while mounting the starter under its 
     bootstrapLogin: "postgres", runtimeLogin: "starter_runtime", restoreLogin: "starter_restore" } as const;
   const migration = new Pool({ connectionString: container.connectionString, options: qualifiedPostgresStartupOptions(installation) });
   const url = new URL(container.connectionString); url.username = "starter_runtime";
-  const runtime = new Pool({ connectionString: url.toString() });
   try {
     expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
     await owner.query(`CREATE ROLE starter_runtime LOGIN NOINHERIT PASSWORD 'synthetic-occurrence';
@@ -197,16 +218,22 @@ it("observes attempts and entry separately while mounting the starter under its 
     const runner = (root?: string) => createPostgresMigrationRunner({ connectionString: container.connectionString },
       { root, installation, poolFactory: () => migration });
     await withPlatformCatalog(predecessor, root => runner(root).apply());
-    const f = await transaction(migration, db => activation(db), "COMMIT");
-    await owner.query("UPDATE public.subscriptions SET next_cycle_at='2050-01-01Z' WHERE id=$1", [f.subscriptionId]);
-    // Both mounted passes start with the same empty paid-mail queue.
-    await owner.query("DELETE FROM public.outbox_events WHERE event_type='commerce.order.paid.email'");
+    const expiredFixture = async () => {
+      const f = await sandboxRenewal(migration);
+      expect(await call(migration, "fulfillment_reserve_subscription_renewal", [f.operation, f.token, 900, AT])).toMatchObject({ reserved: true });
+      await owner.query("UPDATE public.subscriptions SET next_cycle_at='2050-01-01Z' WHERE id=$1", [f.subscription]);
+      return () => owner.query("SELECT status,terminal_reason FROM public.fulfillment_inventory_reservations WHERE renewal_operation_id=$1",
+        [f.operation]).then(r => r.rows);
+    };
+    const expired = await expiredFixture();
     const config = structuredClone(Object.values(configurations)[0]!);
     config.renewal.enabled = true;
     const watch = watchAttempts();
     try {
       const before = await runScheduledRenewal(url.toString(), config);
       expect(before).toMatchObject({ renewals: [], retries: [], paidMail: { claimed: 0, processed: 0 } });
+      const expiredState = await expired();
+      expect(expiredState).toEqual([{ status: "expired", terminal_reason: "reservation_expired" }]);
       expect(watch.attempts).toEqual([]);
       const preimages = () => owner.query(`SELECT oid::regprocedure::text,pg_get_functiondef(oid),proacl
         FROM pg_proc WHERE pronamespace='public'::regnamespace AND proname IN
@@ -222,30 +249,46 @@ it("observes attempts and entry separately while mounting the starter under its 
       const count = await probe(owner, producer, signature, "fixture_producer_entries");
       const writerEntries = await probe(owner, writer, `public.${writer}(${writerParameters})`, "fixture_writer_entries");
       watch.attempts.length = 0;
-      await expect(allocate(runtime, f)).rejects.toMatchObject(denied);
-      expect(watch.attempts.splice(0)).toEqual([`starter_runtime:${producer}`]);
-      expect(await count()).toBe(1);
-      const allocated = await allocate(migration, f);
-      expect(allocated).toMatchObject({ outcome: "created" });
+      const f = await rootFixture(migration);
       expect(watch.attempts.splice(0)).toEqual([`postgres:${producer}`]);
-      const values = [f.clientId, f.subscriptionId, allocated.cycleKey, randomUUID(), 2, null, null, "fixture", 30];
-      await expect(call(runtime, writer, values)).rejects.toMatchObject({ code: "42501" });
-      expect(watch.attempts.splice(0)).toEqual([`starter_runtime:${writer}`]);
-      expect(await writerEntries()).toBe(1);
-      await expect(call(migration, writer, values)).rejects.toMatchObject({ code: "22023", detail: "/cycleKey" });
+      await transaction(migration, async db => {
+        expect(await call(db, writer, args(f))).toMatchObject({ outcome: "created" });
+      }, "ROLLBACK");
       expect(watch.attempts.splice(0)).toEqual([`postgres:${writer}`]);
+      await owner.query("UPDATE public.subscriptions SET next_cycle_at='2050-01-01Z' WHERE id=$1", [f.subscriptionId]);
+      await owner.query("DELETE FROM public.outbox_events WHERE event_type='commerce.order.paid.email'");
+      const query = Pool.prototype.query;
+      let deniedControls = 0;
+      const inject = vi.spyOn(Pool.prototype, "query").mockImplementation(function (this: Pool, ...input: Parameters<typeof query>) {
+        if (deniedControls || !String(input[0]).includes("session_user AS login,current_user AS role")) return Reflect.apply(query, this, input);
+        deniedControls++;
+        return (async () => {
+          await expect(allocate(this, f)).rejects.toMatchObject(denied);
+          await expect(call(this, writer, args(f))).rejects.toMatchObject({ code: "42501" });
+          return Reflect.apply(query, this, input);
+        })();
+      });
+      try { await runScheduledRenewal(url.toString(), config); } finally { inject.mockRestore(); }
+      expect(deniedControls).toBe(1);
+      expect(watch.attempts.splice(0)).toEqual([`starter_runtime:${producer}`, `starter_runtime:${writer}`]);
       expect(await count()).toBe(2);
       expect(await writerEntries()).toBe(2);
+      const candidateExpired = await expiredFixture();
       const retained = () => owner.query("SELECT to_jsonb(o),xmin::text,ctid::text FROM public.subscription_cycle_occurrences o").then(r => r.rows);
-      const fixed = await retained();
+      const external = () => owner.query(`SELECT (SELECT count(*) FROM public.payment_simulator_attempts) AS attempts,
+        (SELECT count(*) FROM public.communication_recipient_consents) AS consents,
+        (SELECT count(*) FROM public.outbox_events) AS outbox`).then(r => r.rows);
+      const fixed = await retained(), effects = await external();
       expect(await runScheduledRenewal(url.toString(), config)).toEqual({ ...before, paidMail: { ...before.paidMail, runMs: expect.any(Number) } });
       expect(watch.attempts).toEqual([]);
       expect(await count()).toBe(2);
       expect(await writerEntries()).toBe(2);
       expect(await retained()).toEqual(fixed);
+      expect(await candidateExpired()).toEqual(expiredState);
+      expect(await external()).toEqual(effects);
       await emptyV3(owner);
     } finally { watch.close(); }
-  } finally { await closePostgres(container, [runtime, migration, owner]); }
+  } finally { await closePostgres(container, [migration, owner]); }
 }, postgresSetupTimeoutMs);
 
 it("has no mounted source callers and is absent from managed migrations", () => {
@@ -264,33 +307,15 @@ it.each(["bootstrap", "separate", "admin-managed", "admin-operator"] as const)(
     const store = await installAccountMutations(profile, false, "writer-acl");
     try {
       const owner = store.migrator, f = await rootFixture(owner);
-      const names = [read, lock, writer], signatures = names.map(name => `public.${name}(${name === writer ? writerParameters : "uuid,uuid,uuid"})`);
       const before = () => owner.query(`SELECT to_jsonb(c),xmin::text FROM public.${occurrence} c`).then(r => r.rows);
       const pristine = await before();
-      async function check(db: Db) {
-        for (const [index, sig] of signatures.entries()) {
-          expect((await db.query(`SELECT p.prosecdef, p.provolatile, p.proconfig,p.pronargdefaults,p.prorettype='jsonb'::regtype AS json,
-            p.proowner=c.relowner AND p.proowner=current_user::regrole
-              AND p.proowner=(SELECT relowner FROM pg_class WHERE oid='public.subscription_cycle_generations'::regclass) AS owns,
-            ARRAY(SELECT privilege_type FROM aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) WHERE grantee<>p.proowner) AS grants,
-            (SELECT count(*)::int FROM pg_proc WHERE proname=p.proname AND pronamespace=p.pronamespace) AS overloads
-            FROM pg_proc p, pg_class c WHERE p.oid=$1::regprocedure AND c.oid='public.${occurrence}'::regclass`, [sig])).rows)
-            .toEqual([{ prosecdef: index === 2, provolatile: "v", proconfig: ["search_path=pg_catalog, pg_temp"], pronargdefaults: 0,
-              json: true, owns: true, grants: [], overloads: 1 }]);
-        }
-      }
-      await check(owner);
+      await assertWriterAcl(owner);
       await assertNoCallers(owner);
-      for (const [index, name] of names.entries()) {
-        expect((await owner.query(`SELECT proname::text AS caller FROM pg_proc WHERE oid<>$1::regprocedure AND strpos(lower(prosrc),$2)>0
-          UNION ALL SELECT rulename FROM pg_rewrite WHERE strpos(lower(pg_get_ruledef(oid)),$2)>0
-          UNION ALL SELECT tgname FROM pg_trigger WHERE NOT tgisinternal AND strpos(lower(pg_get_triggerdef(oid)),$2)>0
-          UNION ALL SELECT classid::regclass::text FROM pg_depend WHERE refclassid='pg_proc'::regclass AND refobjid=$1::regprocedure`,
-        [signatures[index], name])).rows).toEqual(index === 2 ? [] : [{ caller: names[index + 1] }]);
+      for (const [index, name] of writerNames.entries()) {
         const input = name === writer ? args(f) : f.scope;
         expect((await store.runtime.query(`SELECT r.rolname FROM pg_roles r,pg_proc p
           WHERE p.oid=$1::regprocedure AND (pg_has_role(current_user,r.oid,'USAGE') OR pg_has_role(current_user,r.oid,'SET'))
-            AND has_function_privilege(r.oid,p.oid,'EXECUTE')`, [signatures[index]])).rows).toEqual([]);
+            AND has_function_privilege(r.oid,p.oid,'EXECUTE')`, [writerSignatures[index]])).rows).toEqual([]);
         await expect(call(store.runtime, name, input)).rejects.toMatchObject({ code: "42501" });
         await transaction(store.owner, async db => {
           await db.query(`CREATE ROLE fixture_writer_other LOGIN NOINHERIT;
@@ -301,16 +326,27 @@ it.each(["bootstrap", "separate", "admin-managed", "admin-operator"] as const)(
         }, "ROLLBACK");
         expect(await before()).toEqual(pristine);
       }
-      await transaction(owner, async db => {
-        await db.query(`DROP FUNCTION ${signatures.join(",")};
+      const { role } = (await owner.query("SELECT current_user AS role")).rows[0];
+      const { login } = (await store.runtime.query("SELECT session_user AS login")).rows[0];
+      await transaction(store.owner, async db => {
+        await db.query(`SET LOCAL ROLE ${db.escapeIdentifier(String(role))}`);
+        await db.query(`DROP FUNCTION ${writerSignatures.join(",")};
           ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon,authenticated,service_role;
           CREATE FUNCTION public.fixture_writer_default_control() RETURNS boolean LANGUAGE sql AS 'SELECT true'`);
         expect((await db.query(`SELECT grantee::regrole::text AS role FROM pg_proc p,aclexplode(p.proacl)
           WHERE p.oid='public.fixture_writer_default_control()'::regprocedure AND grantee NOT IN (0,p.proowner) ORDER BY role`)).rows)
           .toEqual(["anon", "authenticated", "service_role"].map(role => ({ role })));
         await db.query(readFileSync(writerForward.file, "utf8"));
-        await check(db);
+        await assertWriterAcl(db);
         expect(await call(db, writer, args(f))).toMatchObject({ outcome: "created" });
+        await db.query("RESET ROLE");
+        for (const nonOwner of ["anon", "authenticated", "service_role", String(login)]) {
+          for (const name of writerNames) {
+            await db.query(`SAVEPOINT denial; SET LOCAL ROLE ${db.escapeIdentifier(nonOwner)}`);
+            await expect(call(db, name, name === writer ? args(f) : f.scope)).rejects.toMatchObject({ code: "42501" });
+            await db.query("ROLLBACK TO SAVEPOINT denial; RELEASE SAVEPOINT denial");
+          }
+        }
       }, "ROLLBACK");
       expect(await before()).toEqual(pristine);
       expect((await store.runtime.query(`SELECT EXISTS(SELECT FROM public.${operations} WHERE subscription_id=$1) AS created`,

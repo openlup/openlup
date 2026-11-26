@@ -105,10 +105,11 @@ The views project the pinned cancellation deadline in UTC.
 After allocation commits, the owner can claim a due v3 occurrence in a later
 READ COMMITTED transaction. A first claim commits the selected pair, root and
 initial lease together. An exact retry returns the retained agreement with
-both lease fields null. For a stale selection, re-read the owner's current
-key and retry with the original agreement. For an occupied root UUID, resolve
-the selection first, then rebind both agreement IDs and recompute the digest
-if the occurrence remains unselected.
+both lease fields null. On an immutable-request conflict, retry the original
+bytes after verifying the retained agreement. If retained data is inconsistent,
+reconcile it with the Subscriptions owner. On a stale selection, read the
+selected pair and recover its original agreement. On a root UUID collision,
+resolve the selection first. If empty, rebind both IDs and recompute the digest.
 
 The routines grant runtime roles no EXECUTE. Mounted renewal paths continue
 to use the incumbent owner contracts.

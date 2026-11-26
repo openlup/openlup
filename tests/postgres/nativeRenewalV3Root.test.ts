@@ -117,6 +117,15 @@ it.each([30, 3600])("commits the equal pair and one %i-second lease after the pr
         await expect(claim(db, f)).rejects.toMatchObject(conflict);
       }, "ROLLBACK");
     }
+    await transaction(owner, async db => {
+      const agreement = { ...f.agreement, cadenceSeconds: 604800 };
+      const request = args(f, agreement), fingerprint = request[6];
+      await db.query(`UPDATE public.${operations} SET cycle_snapshot=$2,operation_fingerprint=$3 WHERE id=$1`,
+        [operationId, { ...agreement, frozenFingerprint: fingerprint }, fingerprint]);
+      await db.query(`UPDATE public.${generations} SET agreement=$2,agreement_fingerprint=$3 WHERE cycle_key=$1`, [f.cycleKey, agreement, fingerprint]);
+      expect(await selected(db, f)).toMatchObject({ operationId });
+      await expect(claim(db, f, request)).rejects.toMatchObject(conflict);
+    }, "ROLLBACK");
     expect(await effects(owner)).toEqual(outside);
   } finally { await store.close(); }
 }, postgresSetupTimeoutMs);
@@ -130,6 +139,7 @@ it("uses the ordered scope, eligibility, counter and agreement refusals without 
       [3, null, error("subscription_renewal_claim_invalid_input", "/operationId")],
       [4, 0, error("subscription_renewal_claim_invalid_input", "/cycleNumber")],
       [7, " \t\n", error("subscription_renewal_claim_invalid_input", "/workerId")],
+      [7, "\u00a0", error("subscription_renewal_claim_invalid_input", "/workerId")],
       ...[29, 3601, null].map(value => [8, value, error("subscription_renewal_claim_invalid_input", "/leaseSeconds")] as const),
       [0, legacy.clientId, error("subscription_command_forbidden", "/subscriptionId")],
       [2, randomUUID(), unavailable("/cycleKey")], [2, legacy.cycleKey, unavailable("/cycleKey")], [2, null, unavailable("/cycleKey")],
@@ -180,6 +190,8 @@ it("uses the ordered scope, eligibility, counter and agreement refusals without 
         WHERE o.id=$1 AND c.cycle_key=$2`, [incumbent.operationId, test.cycleKey, identity])).rows, collision)
         .toEqual([{ anchor: collision === "original anchor", identity: collision === "derived identity", eligible: true }]);
       const before = await snapshot(db, test);
+      await expect(claim(db, test, changed(test, 4, test.cycleNumber + 1))).rejects.toMatchObject(error("renewal_agreement_unavailable", "/agreement"));
+      await expect(claim(db, test, changed(test, 5, "{"))).rejects.toMatchObject(mismatch);
       await expect(claim(db, test), collision).rejects.toMatchObject(blocked);
       expect(await snapshot(db, test)).toEqual(before);
       expect((await db.query(`SELECT id FROM public.${operations} WHERE subscription_id=$1`, [test.subscriptionId])).rows)
@@ -192,7 +204,7 @@ it("uses the ordered scope, eligibility, counter and agreement refusals without 
 
 it("serializes exact replay, competing selection and due changes at the parent fence", async () => {
   const store = await installOccurrenceStore("legacy");
-  const owner = store.migrator, follower = await owner.connect();
+  const owner = store.migrator, follower = await owner.connect().catch(async error => { await store.close(); throw error; });
   try {
     const { pid } = (await follower.query("SELECT pg_backend_pid() AS pid")).rows[0];
     const waitForParent = (tx: PoolClient) => expect.poll(async () =>
@@ -236,7 +248,7 @@ it("serializes exact replay, competing selection and due changes at the parent f
 
 it("refuses a root UUID committed after the precheck and allows both IDs to be rebound", async () => {
   const store = await installOccurrenceStore("legacy"), owner = store.migrator;
-  const coordinator = await owner.connect();
+  const coordinator = await owner.connect().catch(async error => { await store.close(); throw error; });
   try {
     const loser = await rootFixture(owner), winner = await rootFixture(owner), id = winner.agreement.operationId;
     const colliding = args(loser, { ...loser.agreement, operationId: id, commercialGenerationId: id });
@@ -290,16 +302,23 @@ it("preserves the outstanding replacement and never enters delivery confirmation
       outstanding = await replacement(db, originalShipment);
     });
     const before = await snapshot(owner, f);
-    const deliveryState = () => Promise.all(["fulfillment_shipments", "subscription_delivery_alignment_cases",
+    const deliveryState = (db: Db) => Promise.all(["fulfillment_shipments", "subscription_delivery_alignment_cases",
       "subscription_delivery_alignment_arrivals", "subscriptions"].map(table =>
-      owner.query(`SELECT to_jsonb(t) AS row FROM public.${table} t ORDER BY to_jsonb(t)`).then(r => r.rows)));
+      db.query(`SELECT to_jsonb(t) AS row FROM public.${table} t ORDER BY to_jsonb(t)`).then(r => r.rows)));
     expect((await owner.query("SELECT delivered_at FROM public.fulfillment_shipments WHERE id=$1", [outstanding])).rows).toEqual([{ delivered_at: null }]);
-    const state = await deliveryState();
+    const state = await deliveryState(owner);
     const confirmation = "subscription_delivery_alignment_confirm_replacement";
     const definitions = (await owner.query(`SELECT proname,prosrc FROM pg_proc
       WHERE proname=ANY($1::text[]) OR oid IN (SELECT tgfoid FROM pg_trigger WHERE NOT tgisinternal
       AND tgrelid=ANY($2::regclass[]))`, [[read, lock, writer], [occurrence, operations, generations].map(name => `public.${name}`)])).rows;
-    expect(definitions.filter(({ prosrc }) => prosrc.includes(confirmation))).toEqual([]);
+    const publicBodies = (await owner.query("SELECT oid,proname,prosrc FROM pg_proc WHERE pronamespace='public'::regnamespace")).rows;
+    const visited = new Set<number>();
+    for (const { prosrc } of definitions) {
+      expect(prosrc).not.toContain(confirmation);
+      for (const body of publicBodies) if (!visited.has(body.oid) && prosrc.includes(`public.${body.proname}(`)) {
+        visited.add(body.oid); definitions.push(body);
+      }
+    }
     const count = await probe(owner, confirmation, `public.${confirmation}(uuid,text)`, "fixture_confirmation_entries");
     expect(await count()).toBe(1);
     await transaction(owner, async tx => {
@@ -311,14 +330,21 @@ it("preserves the outstanding replacement and never enters delivery confirmation
         RAISE EXCEPTION 'control unexpectedly succeeded'; EXCEPTION WHEN invalid_parameter_value THEN NULL; END $$`));
       expect(await count()).toBe(3);
       await savepoint(tx, async () => {
-        expect(await selected(tx, f)).toEqual(await call(tx, lock, f.scope));
-        expect(await claim(tx, f)).toMatchObject({ outcome: "created" });
-        expect(await claim(tx, f)).toMatchObject({ outcome: "existing", claimToken: null });
-        await expect(claim(tx, f, changed(f, 6, null))).rejects.toMatchObject(conflict);
+        const unchanged = async () => {
+          expect(await deliveryState(tx)).toEqual(state);
+          expect(await selected(tx, f)).toMatchObject({ originalAnchorAt: f.originalAnchorAt, effectiveDueAt: f.originalAnchorAt });
+        };
+        expect(await selected(tx, f)).toMatchObject({ operationId: null }); await unchanged();
+        expect(await call(tx, lock, f.scope)).toMatchObject({ operationId: null }); await unchanged();
+        expect(await claim(tx, f)).toMatchObject({ outcome: "created" }); await unchanged();
+        expect(await claim(tx, f)).toMatchObject({ outcome: "existing", claimToken: null }); await unchanged();
+        const retained = await snapshot(tx, f);
+        await savepoint(tx, async () => { await expect(claim(tx, f, changed(f, 6, null))).rejects.toMatchObject(conflict); });
+        expect(await snapshot(tx, f)).toEqual(retained); await unchanged();
       });
       expect(await count()).toBe(3);
     }, "ROLLBACK");
-    expect(await deliveryState()).toEqual(state);
+    expect(await deliveryState(owner)).toEqual(state);
     expect(await snapshot(owner, f)).toEqual(before);
     expect(await count()).toBe(3);
   } finally { await store.close(); }

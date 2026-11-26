@@ -98,6 +98,7 @@ DECLARE
   coordinates jsonb;
   cadence jsonb;
   agreement jsonb;
+  agreement_fits boolean;
   digest text;
   sampled_at timestamptz;
   lease_end timestamptz;
@@ -107,7 +108,7 @@ BEGIN
   input_field:=CASE
     WHEN p_operation_id IS NULL THEN '/operationId'
     WHEN p_cycle_number IS NULL OR p_cycle_number<1 THEN '/cycleNumber'
-    WHEN p_worker_id IS NULL OR p_worker_id COLLATE "C" !~ '[^[:space:]]' THEN '/workerId'
+    WHEN p_worker_id IS NULL OR p_worker_id COLLATE "C" SIMILAR TO '[[:space:]                 　﻿]*' THEN '/workerId'
     WHEN p_lease_seconds IS NULL OR p_lease_seconds NOT BETWEEN 30 AND 3600 THEN '/leaseSeconds'
   END;
   IF input_field IS NOT NULL THEN
@@ -148,12 +149,9 @@ BEGIN
     SELECT * INTO generation FROM public.subscription_cycle_generations
      WHERE cycle_key=p_cycle_key AND operation_id=p_operation_id AND commercial_generation_id=p_operation_id FOR KEY SHARE;
   ELSE
-    -- The caller owns lineage admission. An incumbent root at this anchor still occupies its native key.
     sampled_at:=pg_catalog.clock_timestamp();
     IF parent.status<>'active' OR occurrence.cancellation_receipt_id IS NOT NULL
-        OR occurrence.cancellation_effective_at IS NOT NULL OR occurrence.effective_due_at>sampled_at
-        OR EXISTS (SELECT 1 FROM public.subscription_renewal_operations o
-             WHERE o.subscription_id=p_subscription_id AND (o.scheduled_at=occurrence.original_anchor_at OR o.identity_key=identity)) THEN
+        OR occurrence.cancellation_effective_at IS NOT NULL OR occurrence.effective_due_at>sampled_at THEN
       RAISE EXCEPTION 'renewal_cycle_blocked' USING ERRCODE='22023', DETAIL='/cycleKey';
     END IF;
     IF terms_counter IS DISTINCT FROM p_cycle_number THEN
@@ -167,25 +165,28 @@ BEGIN
     agreement:=NULL;
   END;
   digest:=encode(sha256(convert_to(p_agreement_canonical,'UTF8')),'hex');
+  agreement_fits:=(agreement @> coordinates) IS TRUE AND NOT (agreement ?| ARRAY['frozenFingerprint','cadenceSeconds'])
+    AND occurrence.cadence_seconds/86400 BETWEEN 1 AND 3660
+    AND agreement->'cadence' = cadence AND agreement#>'{templateSnapshot,cadenceDays}' IS NOT DISTINCT FROM cadence->'days';
 
   IF occurrence.operation_id IS NOT NULL THEN
     IF root.scheduled_at IS DISTINCT FROM occurrence.original_anchor_at OR root.cycle_number IS DISTINCT FROM p_cycle_number
         OR root.identity_key IS DISTINCT FROM identity OR root.operation_fingerprint IS DISTINCT FROM generation.agreement_fingerprint
         OR root.cycle_snapshot IS DISTINCT FROM generation.agreement||jsonb_build_object('frozenFingerprint',generation.agreement_fingerprint)
-        OR generation.agreement IS NULL OR generation.agreement ? 'frozenFingerprint'
-        OR NOT (generation.agreement @> coordinates) OR generation.agreement IS DISTINCT FROM agreement
+        OR NOT agreement_fits OR generation.agreement IS DISTINCT FROM agreement
         OR p_agreement_fingerprint IS DISTINCT FROM generation.agreement_fingerprint OR digest IS DISTINCT FROM generation.agreement_fingerprint THEN
       RAISE EXCEPTION 'subscription_renewal_claim_idempotency_conflict' USING ERRCODE='23505', DETAIL='/agreementFingerprint';
     END IF;
   ELSE
-    IF (agreement @> coordinates) IS DISTINCT FROM true OR agreement ?| ARRAY['frozenFingerprint','cadenceSeconds']
-        OR occurrence.cadence_seconds/86400 NOT BETWEEN 1 AND 3660
-        OR agreement->'cadence' IS DISTINCT FROM cadence
-        OR agreement#>'{templateSnapshot,cadenceDays}' IS DISTINCT FROM cadence->'days'
-        OR jsonb_typeof(agreement->'catalogAcceptance') IS DISTINCT FROM 'object'
+    IF NOT agreement_fits OR jsonb_typeof(agreement->'catalogAcceptance') IS DISTINCT FROM 'object'
         OR agreement#>'{templateSnapshot,version}' IS DISTINCT FROM to_jsonb(parent.template_version)
         OR digest IS DISTINCT FROM p_agreement_fingerprint THEN
       RAISE EXCEPTION 'catalog_acceptance_snapshot_mismatch' USING ERRCODE='22023', DETAIL='/agreementFingerprint';
+    END IF;
+    -- The caller proves wider lineage. An incumbent root still occupies its native key.
+    IF EXISTS (SELECT 1 FROM public.subscription_renewal_operations o WHERE o.subscription_id=p_subscription_id
+               AND (o.scheduled_at=occurrence.original_anchor_at OR o.identity_key=identity)) THEN
+      RAISE EXCEPTION 'renewal_cycle_blocked' USING ERRCODE='22023', DETAIL='/cycleKey';
     END IF;
     -- Scope is already established. Check the global key without returning any row data.
     IF EXISTS (SELECT 1 FROM public.subscription_renewal_operations WHERE id=p_operation_id) THEN
