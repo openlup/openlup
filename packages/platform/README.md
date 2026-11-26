@@ -2572,6 +2572,8 @@ structural client, `webhookSigningSecrets`, explicit `mode`, required
 `toleranceSeconds` (default 300) and `clock` (UTC seconds). The host constructs
 and configures the SDK, associates saved methods with customers and confirms
 off-session requests. Interactive methods follow the declared card/wallet offer.
+For capture-time qualification, supply `client.ownAccountRef` from the verified
+installed credential account and record that same reference in the local qualification.
 Importing creates no I/O or default binding. The adapter advertises the host
 currency list as a frozen copy; the frozen exported descriptor keeps an empty list.
 Account-specific readiness remains pending TEST verification. Exact absence,

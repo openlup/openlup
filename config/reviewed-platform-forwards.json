@@ -9645,6 +9645,19 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "payment-capture-time-read",
+        "path": "db/platform/migrations/20261129130000_payment_capture_time_read.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.payment_read_capture_time(uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -13944,6 +13957,17 @@
           "signature": "public.subscription_read_frozen_renewal_generation(uuid,uuid)",
           "beforeSha256": null,
           "afterSha256": "5665822c59370bbfcca08b6d5dcb2722e755fec20fbf2788252cf9fa1bde27f2"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261129130000_payment_capture_time_read.sql",
+      "sha256": "fa1852c267f8676c23ec8f33d5cdb9d1e531c954ad26ec984139b3800ddd88ff",
+      "functions": [
+        {
+          "signature": "public.payment_read_capture_time(uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "a3d69943184d60fce278cceab5dc85a8bd9d63d55b1dc68ebceffc2e9e8e7083"
         }
       ]
     }

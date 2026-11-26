@@ -58,7 +58,8 @@ export function createStripeConformanceFixture() {
       const currency = "currency" in object ? object.currency as string | undefined : money.currency;
       const observedMoney = amount && currency ? { amountMinor: amount, currency: currency.toUpperCase() } : null;
       const eventId = `evt_${fixture.remote}_${outcome}`;
-      const rawBody = Buffer.from(JSON.stringify({ id: eventId, type: sourceType, created: timestamp, data: { object: {
+      const accountRef = sourceType === "payment_intent.succeeded" ? "acct_conformance_fixture" : undefined;
+      const rawBody = Buffer.from(JSON.stringify({ id: eventId, type: sourceType, created: timestamp, account: accountRef, data: { object: {
         id: fixture.remote, amount: money.amountMinor, amount_received: money.amountMinor, currency: money.currency.toLowerCase(),
         metadata: { paymentIntentId: fixture.intentRef }, client_secret: `transient_${fixture.remote}`, ...object,
       } } }));
@@ -83,9 +84,11 @@ export function createStripeConformanceFixture() {
         ...(outcome === "succeeded" && observedMoney ? { capturedAmountBasis: "provider_capture_v1" as const } : {}),
         providerAuditPayload: { provider: "stripe", eventId, eventType: sourceType, providerPaymentId: fixture.remote,
           amountMinor: amount ?? null, currency: currency?.toUpperCase() ?? null,
+          ...(accountRef ? { providerAccountRef: accountRef } : {}),
           ...(outcome === "succeeded" && rawAmount === 0 && configuredAmount !== 0
             ? { configuredAmountMinor: configuredAmount, paidAmountMinor: 0 } : {}),
           ...(outcome === "refunded" ? { stripeRefundSnapshot: { chargeId: `ch_${fixture.remote}`, amountRefundedMinor: 500 } } : {}),
+          ...(sourceType === "payment_intent.succeeded" ? { captureTimeBasis: "signed_event_v1" } : {}),
         },
       };
       return { input, expected };
