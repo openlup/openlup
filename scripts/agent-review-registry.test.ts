@@ -9,7 +9,7 @@ import { landingMerge } from './agent-review-landing.mjs';
 import { carryOverSourceReview, captureReviewRules, captureSessionCandidate, sessionMain, validateEconomySession, git as sourceGit } from './agent-review-session.mjs';
 import { parseReceipt, waitNativeAdmission } from './agent-review-queue.mjs';
 
-const { REGISTRY_PATHS, readRegistry, registryUnion, strictRegistryJson } = registry;
+const { PG_CLOSURE_AXES, PG_SUITE_CLOSURES_PATH, REGISTRY_PATHS, RULE_SNAPSHOT_REGISTRY_PATHS, readRegistry, registryUnion, strictRegistryJson } = registry;
 const roots: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
 const DAY = 86400000;
@@ -60,7 +60,26 @@ function admitSourceReceipt(cwd: string, main: string, head: string, body: strin
     env: { GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_EVENT_NAME: 'pull_request' },
   });
 }
+const weightsPath = 'config/vitest-shard-weights.json';
+const weights = (durationsMs: Record<string, number>, defaultDurationMs = 18, schemaVersion = 1) =>
+  JSON.stringify({ schemaVersion, defaultDurationMs, durationsMs }, null, 2) + '\n';
+const sortedWeights = (durationsMs: Record<string, number>) =>
+  Object.fromEntries(Object.entries(durationsMs).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0));
+const pgClosuresPath = PG_SUITE_CLOSURES_PATH;
+const pgSuiteKey = (entry: string) => /^tests\/postgres\/.+\.test\.ts$/u.test(entry) ? entry : `tests/postgres/${entry}.test.ts`;
+const sortedClosures = (suites: Record<string, string[]>) =>
+  Object.fromEntries(Object.entries(suites).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0));
+const closures = (suites: Record<string, string[]>, schemaVersion = 1) =>
+  JSON.stringify({ schemaVersion, suites: sortedClosures(suites) }, null, 2) + '\n';
 function addRegistry(path: string, source: string, entry: string) {
+  if (path === weightsPath) {
+    const data = JSON.parse(source);
+    return weights(sortedWeights({ ...data.durationsMs, [entry]: 1 }), data.defaultDurationMs, data.schemaVersion);
+  }
+  if (path === pgClosuresPath) {
+    const data = JSON.parse(source);
+    return closures({ ...data.suites, [pgSuiteKey(entry)]: ['@api'] }, data.schemaVersion);
+  }
   if (path === REGISTRY_PATHS[0]) {
     const data = JSON.parse(source); data.publicPaths.push({ path: entry, class: 'public-output' });
     data.publicPaths.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0); return JSON.stringify(data, null, 2) + '\n';
@@ -161,9 +180,10 @@ describe('closed registry grammar', () => {
     const merged = registryUnion(path, source, left, right);
     const list = readRegistry(path, merged).lists[0];
     const keys = list.map((entry: string | { path: string }) => typeof entry === 'string' ? entry : entry.path);
-    expect(keys.filter((entry: string) => entry === 'zz-pred')).toHaveLength(1);
-    expect(keys).toContain('zz-main');
-    expect(keys).toContain('zz-stack');
+    const expectedKey = (entry: string) => path === pgClosuresPath ? pgSuiteKey(entry) : entry;
+    expect(keys.filter((entry: string) => entry === expectedKey('zz-pred'))).toHaveLength(1);
+    expect(keys).toContain(expectedKey('zz-main'));
+    expect(keys).toContain(expectedKey('zz-stack'));
   });
   it('refuses same-key different-value, cross-gap, cross-array overlaps and unilateral outside edits', async () => {
     // 1. Same key with different value in publication catalog.
@@ -197,6 +217,180 @@ describe('closed registry grammar', () => {
     // 4. Unilateral outside edit MUST still refuse even when additions are identical.
     const outsideLeft = coldBase.replace('Cold installed-artifact proof.', 'Cold installed-artifact proof, edited.');
     expect(() => registryUnion(coldPath, coldBase, outsideLeft, coldBase)).toThrow('changed carrier outside named arrays');
+  });
+});
+
+describe('shard weights registry union', () => {
+  const base = weights({ 'a.test.ts': 10, 'm.test.ts': 20 });
+  it('is a closed registry carrier', () => {
+    expect(REGISTRY_PATHS).toContain(weightsPath);
+  });
+  it('takes a key only the branch added, with the branch value', () => {
+    const left = weights({ 'a.test.ts': 10, 'b.test.ts': 5, 'm.test.ts': 20 });
+    expect(registryUnion(weightsPath, base, left, base)).toBe(left);
+  });
+  it('takes keys main added or recalibrated, with main values', () => {
+    const right = weights({ 'a.test.ts': 11, 'm.test.ts': 21, 'z.test.ts': 3 });
+    expect(registryUnion(weightsPath, base, base, right)).toBe(right);
+  });
+  it('takes main value for a key both sides added', () => {
+    const left = weights({ 'a.test.ts': 10, 'm.test.ts': 20, 'n.test.ts': 7 });
+    const right = weights({ 'a.test.ts': 12, 'm.test.ts': 20, 'n.test.ts': 9 });
+    expect(registryUnion(weightsPath, base, left, right)).toBe(weights({ 'a.test.ts': 12, 'm.test.ts': 20, 'n.test.ts': 9 }));
+  });
+  it('takes main defaultDurationMs and keeps main removals of unchanged branch keys', () => {
+    const left = weights({ 'a.test.ts': 10, 'c.test.ts': 4, 'm.test.ts': 20 });
+    const right = weights({ 'm.test.ts': 22 }, 25);
+    expect(registryUnion(weightsPath, base, left, right)).toBe(weights({ 'c.test.ts': 4, 'm.test.ts': 22 }, 25));
+  });
+  it.each<[string, string]>([
+    ['changes a base weight', weights({ 'a.test.ts': 30, 'm.test.ts': 20 })],
+    ['changes a base weight to main value', weights({ 'a.test.ts': 11, 'm.test.ts': 20 })],
+    ['removes a base weight', weights({ 'm.test.ts': 20 })],
+    ['changes defaultDurationMs', weights({ 'a.test.ts': 10, 'm.test.ts': 20 }, 19)],
+    ['changes schemaVersion', weights({ 'a.test.ts': 10, 'm.test.ts': 20 }, 18, 2)],
+  ])('refuses when the branch %s', (_name, left) => {
+    const right = weights({ 'a.test.ts': 11, 'm.test.ts': 21 });
+    expect(() => registryUnion(weightsPath, base, left, right)).toThrow('registry: ');
+    expect(() => registryUnion(weightsPath, base, left, base)).toThrow('registry: ');
+  });
+  it('names the base key and the review route in a branch-edit refusal', () => {
+    expect(() => registryUnion(weightsPath, base, weights({ 'a.test.ts': 30, 'm.test.ts': 20 }), base))
+      .toThrow(/^registry: branch changed a base shard weight: a\.test\.ts\n.*\nCause\. .*\nFix\. Resolve the carrier manually and obtain resolution review\./u);
+  });
+  it.each<[string, string]>([
+    ['unsorted keys', base.replace('"a.test.ts": 10,\n    "m.test.ts": 20', '"m.test.ts": 20,\n    "a.test.ts": 10')],
+    ['a zero weight', weights({ 'a.test.ts': 0, 'm.test.ts': 20 })],
+    ['a negative weight', weights({ 'a.test.ts': -1, 'm.test.ts': 20 })],
+    ['a string weight', base.replace('10', '"10"')],
+    ['a zero default', weights({ 'a.test.ts': 10 }, 0)],
+    ['a duplicate key', base.replace('"m.test.ts": 20', '"a.test.ts": 20')],
+    ['another top-level key', JSON.stringify({ schemaVersion: 1, defaultDurationMs: 18, durationsMs: {}, extra: 1 }, null, 2) + '\n'],
+    ['another indentation', JSON.stringify(JSON.parse(base), null, 4) + '\n'],
+    ['no trailing newline', base.trimEnd()],
+    ['an invalid key path', weights({ '../a.test.ts': 10 })],
+  ])('refuses an input with %s on any side', (_name, bad) => {
+    expect(() => registryUnion(weightsPath, bad, base, base)).toThrow('registry: ');
+    expect(() => registryUnion(weightsPath, base, bad, base)).toThrow('registry: ');
+    expect(() => registryUnion(weightsPath, base, base, bad)).toThrow('registry: ');
+  });
+  it('unions a hosted recalibration with two branch additions in the real carrier', async () => {
+    const source = await readFile(weightsPath, 'utf8'); const durations: Record<string, number> = JSON.parse(source).durationsMs;
+    const keys = Object.keys(durations); expect(keys.length).toBeGreaterThan(100);
+    const recalibrated = Object.fromEntries(keys.map((key, index) => [key, index % 3 ? durations[key] : durations[key] + 7]));
+    const main = weights(recalibrated, JSON.parse(source).defaultDurationMs);
+    const added = { [`${keys[0]}-new.test.ts`]: 41, [`${keys.at(-1)}-new.test.ts`]: 42 };
+    const branch = weights(sortedWeights({ ...durations, ...added }), JSON.parse(source).defaultDurationMs);
+    await mkdir('.context/scratch', { recursive: true });
+    const scratch = await mkdtemp(join(process.cwd(), '.context/scratch/shard-weights-')); roots.push(scratch);
+    const files = { base: source, branch, main };
+    for (const [name, value] of Object.entries(files)) await writeFile(join(scratch, name), value);
+    // Git sees a text conflict for this shape; the union removes the hand resolution.
+    expect(() => execFileSync('/usr/bin/git', ['merge-file', '-p', join(scratch, 'branch'), join(scratch, 'base'), join(scratch, 'main')], { stdio: 'pipe' })).toThrow();
+    const union = registryUnion(weightsPath, source, branch, main);
+    expect(union).toBe(weights(sortedWeights({ ...recalibrated, ...added }), JSON.parse(source).defaultDurationMs));
+    expect(readRegistry(weightsPath, union).lists[0]).toEqual(Object.keys(sortedWeights({ ...recalibrated, ...added })));
+  });
+});
+
+describe('pg suite closures registry union', () => {
+  const suiteA = 'tests/postgres/a.test.ts';
+  const suiteB = 'tests/postgres/b.test.ts';
+  const suiteM = 'tests/postgres/m.test.ts';
+  const suiteN = 'tests/postgres/n.test.ts';
+  const suiteZ = 'tests/postgres/z.test.ts';
+  const base = closures({ [suiteA]: ['@api'], [suiteM]: ['@src', 'tests/postgres/shared.fixture.ts'] });
+
+  it('registers config/ci-postgres-suite-closures.json outside rule snapshots', () => {
+    expect(PG_SUITE_CLOSURES_PATH).toBe('config/ci-postgres-suite-closures.json');
+    expect(REGISTRY_PATHS[4]).toBe(PG_SUITE_CLOSURES_PATH);
+    expect(RULE_SNAPSHOT_REGISTRY_PATHS).toEqual(REGISTRY_PATHS.slice(0, 3));
+    expect(PG_CLOSURE_AXES).toContain('@api');
+  });
+
+  it('takes new suites and appended inputs from the branch when main keeps base unchanged', () => {
+    const newSuiteLeft = closures({ [suiteA]: ['@api'], [suiteB]: ['@starter'], [suiteM]: ['@src', 'tests/postgres/shared.fixture.ts'] });
+    expect(registryUnion(pgClosuresPath, base, newSuiteLeft, base)).toBe(newSuiteLeft);
+    const appendedLeft = closures({ [suiteA]: ['@api', '@src'], [suiteM]: ['@src', 'tests/postgres/shared.fixture.ts'] });
+    expect(registryUnion(pgClosuresPath, base, appendedLeft, base)).toBe(appendedLeft);
+  });
+
+  it('keeps main additions, narrowings, and removals on suites the branch left unchanged', () => {
+    const left = closures({ [suiteA]: ['@api'], [suiteB]: ['@starter'], [suiteM]: ['@src', 'tests/postgres/shared.fixture.ts'] });
+    const right = closures({ [suiteA]: [], [suiteZ]: ['@mcp'] });
+    expect(registryUnion(pgClosuresPath, base, left, right)).toBe(
+      closures({ [suiteA]: [], [suiteB]: ['@starter'], [suiteZ]: ['@mcp'] }),
+    );
+  });
+
+  it('deduplicates identical new-suite additions or identical appends across both sides', () => {
+    const identicalNew = closures({ [suiteA]: ['@api'], [suiteM]: ['@src', 'tests/postgres/shared.fixture.ts'], [suiteN]: ['@api'] });
+    expect(registryUnion(pgClosuresPath, base, identicalNew, identicalNew)).toBe(identicalNew);
+    const identicalAppend = closures({ [suiteA]: ['@api', '@mcp'], [suiteM]: ['@src', 'tests/postgres/shared.fixture.ts'] });
+    expect(registryUnion(pgClosuresPath, base, identicalAppend, identicalAppend)).toBe(identicalAppend);
+  });
+
+  it.each<[string, string, string]>([
+    ['branch removes a base suite', closures({ [suiteM]: ['@src', 'tests/postgres/shared.fixture.ts'] }), base],
+    ['branch removes a base input', closures({ [suiteA]: [], [suiteM]: ['@src', 'tests/postgres/shared.fixture.ts'] }), base],
+    ['branch changes schemaVersion', closures({ [suiteA]: ['@api'], [suiteM]: ['@src', 'tests/postgres/shared.fixture.ts'] }, 2), base],
+    ['branch modifies base suite while main removes it (modify/delete)', closures({ [suiteA]: ['@api', '@src'], [suiteM]: ['@src', 'tests/postgres/shared.fixture.ts'] }), closures({ [suiteM]: ['@src', 'tests/postgres/shared.fixture.ts'] })],
+    ['divergent additions on a newly added suite', closures({ [suiteA]: ['@api'], [suiteM]: ['@src', 'tests/postgres/shared.fixture.ts'], [suiteN]: ['@api'] }), closures({ [suiteA]: ['@api'], [suiteM]: ['@src', 'tests/postgres/shared.fixture.ts'], [suiteN]: ['@src'] })],
+    ['divergent appends to the same base suite', closures({ [suiteA]: ['@api', '@mcp'], [suiteM]: ['@src', 'tests/postgres/shared.fixture.ts'] }), closures({ [suiteA]: ['@api', '@starter'], [suiteM]: ['@src', 'tests/postgres/shared.fixture.ts'] })],
+  ])('refuses %s', (_name, left, right) => {
+    expect(() => registryUnion(pgClosuresPath, base, left, right)).toThrow('registry: ');
+  });
+
+  it('names the base suite and review route in a branch-edit refusal', () => {
+    const removed = closures({ [suiteM]: ['@src', 'tests/postgres/shared.fixture.ts'] });
+    expect(() => registryUnion(pgClosuresPath, base, removed, base))
+      .toThrow(/^registry: branch changed or removed a base PostgreSQL suite closure: tests\/postgres\/a\.test\.ts\n.*\nCause\. .*\nFix\. Resolve the carrier manually and obtain resolution review\./u);
+  });
+
+  it.each<[string, string]>([
+    ['unsorted suite keys', base.replace(`"${suiteA}": [\n      "@api"\n    ],\n    "${suiteM}": [\n      "@src",\n      "tests/postgres/shared.fixture.ts"\n    ]`, `"${suiteM}": [\n      "@src",\n      "tests/postgres/shared.fixture.ts"\n    ],\n    "${suiteA}": [\n      "@api"\n    ]`)],
+    ['unsorted inputs', base.replace('"@src",\n      "tests/postgres/shared.fixture.ts"', '"tests/postgres/shared.fixture.ts",\n      "@src"')],
+    ['a duplicate key', base.replace(`"${suiteM}":`, `"${suiteA}":`)],
+    ['another top-level key', JSON.stringify({ schemaVersion: 1, suites: {}, extra: 1 }, null, 2) + '\n'],
+    ['bad schemaVersion', closures({ [suiteA]: ['@api'] }, 2).replace('"schemaVersion": 2', '"schemaVersion": 0')],
+    ['another indentation', JSON.stringify(JSON.parse(base), null, 4) + '\n'],
+    ['no trailing newline', base.trimEnd()],
+    ['an invalid suite key', closures({ 'src/a.test.ts': [] })],
+    ['a traversal suite key', closures({ 'tests/postgres/../evil.test.ts': [] })],
+    ['a hidden suite segment', closures({ 'tests/postgres/.hidden.test.ts': [] })],
+    ['a control suite key', closures({ 'tests/postgres/subscriptionExactInstallation.test.ts': [] })],
+    ['an unknown @axis', closures({ [suiteA]: ['@unknown'] })],
+    ['broad tests/postgres/ prefix', closures({ [suiteA]: ['tests/postgres/'] })],
+  ])('refuses an input with %s on any side', (_name, bad) => {
+    expect(() => registryUnion(pgClosuresPath, bad, base, base)).toThrow('registry: ');
+    expect(() => registryUnion(pgClosuresPath, base, bad, base)).toThrow('registry: ');
+    expect(() => registryUnion(pgClosuresPath, base, base, bad)).toThrow('registry: ');
+  });
+
+  it('unions main narrowing with two branch additions in the real carrier on a Git text conflict', async () => {
+    const source = await readFile(pgClosuresPath, 'utf8');
+    const existing: Record<string, string[]> = JSON.parse(source).suites;
+    const keys = Object.keys(existing);
+    expect(keys.length).toBeGreaterThan(270);
+    const mainSuites = { ...existing, [keys[0]]: [] };
+    delete mainSuites[keys[1]];
+    const main = closures(mainSuites);
+    const branchSuites = {
+      ...existing,
+      [keys[0].replace(/\.test\.ts$/u, 'ZzzBranchA.test.ts')]: ['@api'],
+      [keys.at(-1)!.replace(/\.test\.ts$/u, 'ZzzBranchB.test.ts')]: ['@starter'],
+    };
+    const branch = closures(branchSuites);
+    await mkdir('.context/scratch', { recursive: true });
+    const scratch = await mkdtemp(join(process.cwd(), '.context/scratch/pg-closures-')); roots.push(scratch);
+    const files = { base: source, branch, main };
+    for (const [name, value] of Object.entries(files)) await writeFile(join(scratch, name), value);
+    // Adjacent suites make Git merge-file conflict; the closed union resolves cleanly.
+    expect(() => execFileSync('/usr/bin/git', ['merge-file', '-p', join(scratch, 'branch'), join(scratch, 'base'), join(scratch, 'main')], { stdio: 'pipe' })).toThrow();
+    const expected = { ...mainSuites, [keys[0].replace(/\.test\.ts$/u, 'ZzzBranchA.test.ts')]: ['@api'], [keys.at(-1)!.replace(/\.test\.ts$/u, 'ZzzBranchB.test.ts')]: ['@starter'] };
+    const union = registryUnion(pgClosuresPath, source, branch, main);
+    expect(union).toBe(closures(expected));
+    expect(readRegistry(pgClosuresPath, union).lists[0]).toEqual(Object.keys(sortedClosures(expected)));
   });
 });
 
@@ -401,6 +595,46 @@ describe('real Git coverage histories', () => {
     expect(f.git('rev-parse', 'MERGE_HEAD')).toBe(main);
     expect(f.git('diff', '--name-only', '--diff-filter=U')).toBe(coldPath);
   });
+  it('leaves a refused shard-weights union as an authored conflict', async () => {
+    const f = await fixture(true, [], { [weightsPath]: weights({ 'a.test.ts': 10, 'm.test.ts': 20 }) });
+    await f.write(weightsPath, weights({ 'a.test.ts': 30, 'm.test.ts': 20 })); const head = f.commit();
+    const main = await f.mainMove(() => f.write(weightsPath, weights({ 'a.test.ts': 11, 'm.test.ts': 20 })));
+    f.git('checkout', '-q', '--detach', head);
+    f.git('config', 'user.name', 'Fixture'); f.git('config', 'user.email', 'fixture@example.invalid');
+    await expect(landingMerge(f.cwd, { runCommand: vi.fn() })).rejects.toThrow(`landing: authored conflicts remain: ${weightsPath}`);
+    expect(f.git('rev-parse', 'HEAD')).toBe(head);
+    expect(f.git('rev-parse', 'MERGE_HEAD')).toBe(main);
+    expect(f.git('diff', '--name-only', '--diff-filter=U')).toBe(weightsPath);
+  });
+  it('keeps shard weights in recorded review-rule snapshots', async () => {
+    const f = await fixture(true, [], { [weightsPath]: weights({ 'a.test.ts': 10 }) });
+    const same = await captureReviewRules(f.cwd, { base: f.base, head: f.head });
+    await f.write(weightsPath, weights({ 'a.test.ts': 10, 'b.test.ts': 4 })); const head = f.commit();
+    const changed = await captureReviewRules(f.cwd, { base: f.base, head });
+    expect(same!.head).toBe(same!.base);
+    expect(changed!.head).not.toBe(changed!.base);
+  });
+  it('leaves a refused pg-suite-closures union as an authored conflict', async () => {
+    const fConflict = await fixture(true, [], { [pgClosuresPath]: closures({ 'tests/postgres/a.test.ts': ['@api'], 'tests/postgres/m.test.ts': ['@src'] }) });
+    await fConflict.write(pgClosuresPath, closures({ 'tests/postgres/m.test.ts': ['@src'] }));
+    const conflictHead = fConflict.commit();
+    const conflictMain = await fConflict.mainMove(() => fConflict.write(pgClosuresPath, closures({ 'tests/postgres/a.test.ts': ['@api', '@src'], 'tests/postgres/m.test.ts': ['@src'] })));
+    fConflict.git('checkout', '-q', '--detach', conflictHead);
+    fConflict.git('config', 'user.name', 'Fixture'); fConflict.git('config', 'user.email', 'fixture@example.invalid');
+    await expect(landingMerge(fConflict.cwd, { runCommand: vi.fn() })).rejects.toThrow(`landing: authored conflicts remain: ${pgClosuresPath}`);
+    expect(fConflict.git('rev-parse', 'HEAD')).toBe(conflictHead);
+    expect(fConflict.git('rev-parse', 'MERGE_HEAD')).toBe(conflictMain);
+    expect(fConflict.git('diff', '--name-only', '--diff-filter=U')).toBe(pgClosuresPath);
+  });
+  it('keeps pg suite closures in recorded review-rule snapshots', async () => {
+    const f = await fixture(true, [], { [pgClosuresPath]: closures({ 'tests/postgres/a.test.ts': ['@api'] }) });
+    const same = await captureReviewRules(f.cwd, { base: f.base, head: f.head });
+    await f.write(pgClosuresPath, closures({ 'tests/postgres/a.test.ts': ['@api'], 'tests/postgres/b.test.ts': ['@api'] }));
+    const head = f.commit();
+    const changed = await captureReviewRules(f.cwd, { base: f.base, head });
+    expect(same!.head).toBe(same!.base);
+    expect(changed!.head).not.toBe(changed!.base);
+  });
   it('reviews a hand edit made in a clean merge as the resolution', async () => {
     const f = await fixture(); await f.review();
     const main = await f.mainMove(() => f.write('other.ts', 'main delta\n'));
@@ -582,6 +816,105 @@ describe('real Git coverage histories', () => {
     }
     await expect(f.cli('verify')).resolves.toBe(0); await expect(f.cli('receipt', '12')).resolves.toBe(0);
     expect(coverageState(await f.state()).earliest).toBe(prior.history.find(event => event.type === 'report').at);
+  });
+  it.each([false, true])('retains floor = 2 on repair of an existing protected path after all-FAIL (mixed pass: %s)', async mixedPass => {
+    const f = await fixture();
+    await f.write('scripts/agent-review-extra.mjs', 'export const guard = 1;\n');
+    f.commit();
+    await f.cli('prepare', f.request);
+    await f.report({ verdict: 'FAIL', findings: [{ id: 'P-1', summary: 'guard incomplete', material: true }] });
+    await f.report({ verdict: mixedPass ? 'PASS' : 'FAIL' });
+
+    await f.write('scripts/agent-review-extra.mjs', 'export const guard = 2;\n');
+    f.commit();
+    await f.cli('prepare', f.request);
+    const next = await f.state();
+    await f.cli('status', '--explain');
+    expect(JSON.parse(vi.mocked(console.log).mock.lastCall?.[0]).requirements.floor).toBe(mixedPass ? 1 : 2);
+    await f.report({ ordinary: true, delta: next.candidate.coverage.delta, closes: ['P-1'] });
+    if (mixedPass) {
+      await expect(f.cli('verify')).resolves.toBe(0);
+    } else {
+      await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
+      await f.report({ ordinary: true, delta: next.candidate.coverage.delta });
+      await expect(f.cli('verify')).resolves.toBe(0);
+    }
+    await validateEconomySession(f.cwd, await f.state());
+    const head = (await f.state()).candidate.head;
+    const receipt = receiptSummary(await f.state(), 12, Date.now());
+    await expect(admitSourceReceipt(f.cwd, f.base, head, receiptBody(receipt))).resolves.toEqual(receipt);
+  });
+  it.each(['app.ts', 'README.md'])('retains floor = 2 after an all-FAIL protected anchor even when repair edits %s', async repairPath => {
+    const f = await fixture();
+    await f.write('scripts/agent-review-extra.mjs', 'export const guard = 1;\n');
+    f.commit();
+    await f.cli('prepare', f.request);
+    await f.report({ verdict: 'FAIL', findings: [{ id: 'NP-1', summary: 'protected failure', material: true }] });
+    await f.report({ verdict: 'FAIL' });
+
+    await f.write(repairPath, 'non-protected repair\n');
+    const head = f.commit();
+    await f.cli('prepare', f.request);
+    const next = await f.state();
+    await f.cli('status', '--explain');
+    expect(JSON.parse(vi.mocked(console.log).mock.lastCall?.[0]).requirements.floor).toBe(2);
+    await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
+    await f.report({ ordinary: true, delta: next.candidate.coverage.delta, closes: ['NP-1'] });
+    await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
+    await f.report({ ordinary: true, delta: next.candidate.coverage.delta });
+    await expect(f.cli('verify')).resolves.toBe(0);
+    await validateEconomySession(f.cwd, await f.state());
+    const receipt = receiptSummary(await f.state(), 12, Date.now());
+    await expect(admitSourceReceipt(f.cwd, f.base, head, receiptBody(receipt))).resolves.toEqual(receipt);
+  });
+  it('requires floor = 1 (never 0) when a README.md-only repair follows an all-FAIL routine anchor', async () => {
+    const f = await fixture();
+    const request = JSON.parse(await readFile(f.request, 'utf8'));
+    request.intent.risk = 'routine';
+    await writeFile(f.request, JSON.stringify(request));
+    await f.cli('prepare', f.request);
+    await f.report({ verdict: 'FAIL', findings: [{ id: 'MD-1', summary: 'routine failure', material: true }] });
+
+    await f.write('README.md', 'docs-only repair note\n');
+    const head = f.commit();
+    await f.cli('prepare', f.request);
+    const next = await f.state();
+    await f.cli('status', '--explain');
+    expect(JSON.parse(vi.mocked(console.log).mock.lastCall?.[0]).requirements.floor).toBe(1);
+    await expect(f.cli('verify')).rejects.toThrow('1 independent PASS');
+    await f.report({ ordinary: true, delta: next.candidate.coverage.delta, closes: ['MD-1'] });
+    await expect(f.cli('verify')).resolves.toBe(0);
+    await validateEconomySession(f.cwd, await f.state());
+    const receipt = receiptSummary(await f.state(), 12, Date.now());
+    await expect(admitSourceReceipt(f.cwd, f.base, head, receiptBody(receipt))).resolves.toEqual(receipt);
+  });
+  it('retains floor = 2 on cumulative repair of an existing protected path after all-FAIL anchor', async () => {
+    const f = await fixture();
+    await f.write('scripts/agent-review-extra.mjs', 'export const guard = 1;\n');
+    const anchor = f.commit();
+    await f.cli('prepare', f.request);
+    await f.report({ verdict: 'FAIL', findings: [{ id: 'C-1', summary: 'broken guard', material: true }] });
+    await f.report({ verdict: 'FAIL' });
+
+    await f.write('app.ts', 'export const helper = 1;\n');
+    f.commit();
+    await f.cli('prepare', f.request);
+    const first = await f.state();
+    await f.report({ ordinary: true, delta: first.candidate.coverage.delta, verdict: 'FAIL', findings: [{ id: 'C-2', summary: 'still broken', material: true }] });
+
+    await f.write('scripts/agent-review-extra.mjs', 'export const guard = 2;\n');
+    const head = f.commit();
+    await f.cli('prepare', f.request);
+    const next = await f.state();
+    expect(next.candidate.coverage.proof).toMatchObject({ cumulativeFrom: anchor, paths: expect.arrayContaining(['app.ts', 'scripts/agent-review-extra.mjs']) });
+    await f.cli('status', '--explain');
+    expect(JSON.parse(vi.mocked(console.log).mock.lastCall?.[0]).requirements.floor).toBe(2);
+    await f.report({ ordinary: true, delta: next.candidate.coverage.delta, closes: ['C-1', 'C-2'] });
+    await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
+    await f.report({ ordinary: true, delta: next.candidate.coverage.delta });
+    await expect(f.cli('verify')).resolves.toBe(0);
+    const receipt = receiptSummary(await f.state(), 12, Date.now());
+    await expect(admitSourceReceipt(f.cwd, f.base, head, receiptBody(receipt))).resolves.toEqual(receipt);
   });
   it('does not create a repair edge from fewer full reports than the candidate floor', async () => {
     const f = await fixture(); await f.cli('prepare', f.request);
