@@ -60,7 +60,16 @@ function admitSourceReceipt(cwd: string, main: string, head: string, body: strin
     env: { GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_EVENT_NAME: 'pull_request' },
   });
 }
+const weightsPath = 'config/vitest-shard-weights.json';
+const weights = (durationsMs: Record<string, number>, defaultDurationMs = 18, schemaVersion = 1) =>
+  JSON.stringify({ schemaVersion, defaultDurationMs, durationsMs }, null, 2) + '\n';
+const sortedWeights = (durationsMs: Record<string, number>) =>
+  Object.fromEntries(Object.entries(durationsMs).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0));
 function addRegistry(path: string, source: string, entry: string) {
+  if (path === weightsPath) {
+    const data = JSON.parse(source);
+    return weights(sortedWeights({ ...data.durationsMs, [entry]: 1 }), data.defaultDurationMs, data.schemaVersion);
+  }
   if (path === REGISTRY_PATHS[0]) {
     const data = JSON.parse(source); data.publicPaths.push({ path: entry, class: 'public-output' });
     data.publicPaths.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0); return JSON.stringify(data, null, 2) + '\n';
@@ -197,6 +206,79 @@ describe('closed registry grammar', () => {
     // 4. Unilateral outside edit MUST still refuse even when additions are identical.
     const outsideLeft = coldBase.replace('Cold installed-artifact proof.', 'Cold installed-artifact proof, edited.');
     expect(() => registryUnion(coldPath, coldBase, outsideLeft, coldBase)).toThrow('changed carrier outside named arrays');
+  });
+});
+
+describe('shard weights registry union', () => {
+  const base = weights({ 'a.test.ts': 10, 'm.test.ts': 20 });
+  it('is a closed registry carrier', () => {
+    expect(REGISTRY_PATHS).toContain(weightsPath);
+  });
+  it('takes a key only the branch added, with the branch value', () => {
+    const left = weights({ 'a.test.ts': 10, 'b.test.ts': 5, 'm.test.ts': 20 });
+    expect(registryUnion(weightsPath, base, left, base)).toBe(left);
+  });
+  it('takes keys main added or recalibrated, with main values', () => {
+    const right = weights({ 'a.test.ts': 11, 'm.test.ts': 21, 'z.test.ts': 3 });
+    expect(registryUnion(weightsPath, base, base, right)).toBe(right);
+  });
+  it('takes main value for a key both sides added', () => {
+    const left = weights({ 'a.test.ts': 10, 'm.test.ts': 20, 'n.test.ts': 7 });
+    const right = weights({ 'a.test.ts': 12, 'm.test.ts': 20, 'n.test.ts': 9 });
+    expect(registryUnion(weightsPath, base, left, right)).toBe(weights({ 'a.test.ts': 12, 'm.test.ts': 20, 'n.test.ts': 9 }));
+  });
+  it('takes main defaultDurationMs and keeps main removals of unchanged branch keys', () => {
+    const left = weights({ 'a.test.ts': 10, 'c.test.ts': 4, 'm.test.ts': 20 });
+    const right = weights({ 'm.test.ts': 22 }, 25);
+    expect(registryUnion(weightsPath, base, left, right)).toBe(weights({ 'c.test.ts': 4, 'm.test.ts': 22 }, 25));
+  });
+  it.each<[string, string]>([
+    ['changes a base weight', weights({ 'a.test.ts': 30, 'm.test.ts': 20 })],
+    ['changes a base weight to main value', weights({ 'a.test.ts': 11, 'm.test.ts': 20 })],
+    ['removes a base weight', weights({ 'm.test.ts': 20 })],
+    ['changes defaultDurationMs', weights({ 'a.test.ts': 10, 'm.test.ts': 20 }, 19)],
+    ['changes schemaVersion', weights({ 'a.test.ts': 10, 'm.test.ts': 20 }, 18, 2)],
+  ])('refuses when the branch %s', (_name, left) => {
+    const right = weights({ 'a.test.ts': 11, 'm.test.ts': 21 });
+    expect(() => registryUnion(weightsPath, base, left, right)).toThrow('registry: ');
+    expect(() => registryUnion(weightsPath, base, left, base)).toThrow('registry: ');
+  });
+  it('names the base key and the review route in a branch-edit refusal', () => {
+    expect(() => registryUnion(weightsPath, base, weights({ 'a.test.ts': 30, 'm.test.ts': 20 }), base))
+      .toThrow(/^registry: branch changed a base shard weight: a\.test\.ts\n.*\nCause\. .*\nFix\. Resolve the carrier manually and obtain resolution review\./u);
+  });
+  it.each<[string, string]>([
+    ['unsorted keys', base.replace('"a.test.ts": 10,\n    "m.test.ts": 20', '"m.test.ts": 20,\n    "a.test.ts": 10')],
+    ['a zero weight', weights({ 'a.test.ts': 0, 'm.test.ts': 20 })],
+    ['a negative weight', weights({ 'a.test.ts': -1, 'm.test.ts': 20 })],
+    ['a string weight', base.replace('10', '"10"')],
+    ['a zero default', weights({ 'a.test.ts': 10 }, 0)],
+    ['a duplicate key', base.replace('"m.test.ts": 20', '"a.test.ts": 20')],
+    ['another top-level key', JSON.stringify({ schemaVersion: 1, defaultDurationMs: 18, durationsMs: {}, extra: 1 }, null, 2) + '\n'],
+    ['another indentation', JSON.stringify(JSON.parse(base), null, 4) + '\n'],
+    ['no trailing newline', base.trimEnd()],
+    ['an invalid key path', weights({ '../a.test.ts': 10 })],
+  ])('refuses an input with %s on any side', (_name, bad) => {
+    expect(() => registryUnion(weightsPath, bad, base, base)).toThrow('registry: ');
+    expect(() => registryUnion(weightsPath, base, bad, base)).toThrow('registry: ');
+    expect(() => registryUnion(weightsPath, base, base, bad)).toThrow('registry: ');
+  });
+  it('unions a hosted recalibration with two branch additions in the real carrier', async () => {
+    const source = await readFile(weightsPath, 'utf8'); const durations: Record<string, number> = JSON.parse(source).durationsMs;
+    const keys = Object.keys(durations); expect(keys.length).toBeGreaterThan(100);
+    const recalibrated = Object.fromEntries(keys.map((key, index) => [key, index % 3 ? durations[key] : durations[key] + 7]));
+    const main = weights(recalibrated, JSON.parse(source).defaultDurationMs);
+    const added = { [`${keys[0]}-new.test.ts`]: 41, [`${keys.at(-1)}-new.test.ts`]: 42 };
+    const branch = weights(sortedWeights({ ...durations, ...added }), JSON.parse(source).defaultDurationMs);
+    await mkdir('.context/scratch', { recursive: true });
+    const scratch = await mkdtemp(join(process.cwd(), '.context/scratch/shard-weights-')); roots.push(scratch);
+    const files = { base: source, branch, main };
+    for (const [name, value] of Object.entries(files)) await writeFile(join(scratch, name), value);
+    // Git sees a text conflict for this shape; the union removes the hand resolution.
+    expect(() => execFileSync('/usr/bin/git', ['merge-file', '-p', join(scratch, 'branch'), join(scratch, 'base'), join(scratch, 'main')], { stdio: 'pipe' })).toThrow();
+    const union = registryUnion(weightsPath, source, branch, main);
+    expect(union).toBe(weights(sortedWeights({ ...recalibrated, ...added }), JSON.parse(source).defaultDurationMs));
+    expect(readRegistry(weightsPath, union).lists[0]).toEqual(Object.keys(sortedWeights({ ...recalibrated, ...added })));
   });
 });
 
@@ -400,6 +482,17 @@ describe('real Git coverage histories', () => {
     expect(f.git('rev-parse', 'HEAD')).toBe(head);
     expect(f.git('rev-parse', 'MERGE_HEAD')).toBe(main);
     expect(f.git('diff', '--name-only', '--diff-filter=U')).toBe(coldPath);
+  });
+  it('leaves a refused shard-weights union as an authored conflict', async () => {
+    const f = await fixture(true, [], { [weightsPath]: weights({ 'a.test.ts': 10, 'm.test.ts': 20 }) });
+    await f.write(weightsPath, weights({ 'a.test.ts': 30, 'm.test.ts': 20 })); const head = f.commit();
+    const main = await f.mainMove(() => f.write(weightsPath, weights({ 'a.test.ts': 11, 'm.test.ts': 20 })));
+    f.git('checkout', '-q', '--detach', head);
+    f.git('config', 'user.name', 'Fixture'); f.git('config', 'user.email', 'fixture@example.invalid');
+    await expect(landingMerge(f.cwd, { runCommand: vi.fn() })).rejects.toThrow(`landing: authored conflicts remain: ${weightsPath}`);
+    expect(f.git('rev-parse', 'HEAD')).toBe(head);
+    expect(f.git('rev-parse', 'MERGE_HEAD')).toBe(main);
+    expect(f.git('diff', '--name-only', '--diff-filter=U')).toBe(weightsPath);
   });
   it('reviews a hand edit made in a clean merge as the resolution', async () => {
     const f = await fixture(); await f.review();
