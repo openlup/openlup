@@ -399,7 +399,7 @@ Use a separate private terminal in the same Compose project to find the newest
 operator sign-in message for the invited administrator.
 
 ```sh
-PROJECT=$(cat .context/compose-project 2>/dev/null) && [ -n "$PROJECT" ] ||
+PROJECT=$( (cd .context && cat compose-project) 2>/dev/null) && [ -n "$PROJECT" ] ||
   { printf '%s\n' 'Run ./lifecycle up first.' >&2; exit 1; }
 docker compose --project-name "$PROJECT" exec -T --user node --workdir /application/.context application cat captured-messages/identity.jsonl
 ```

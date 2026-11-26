@@ -39,7 +39,7 @@ export function assertCanaryImage(manifest, expected, loaded, daemonManifest) {
 /** The existing purchase spec and installed recovery witness, against the retained image. */
 export async function runStarterImageCanary(application, archive, imageDigest, evidence, {
   command = (file, args, input, environment) => execFileSync(file, args, { input, env: environment, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, stdio: ['pipe', 'pipe', 'pipe'] }),
-  pull = pullWithRetry, browserImage = resolveBrowserImage,
+  localImage, pull = pullWithRetry, browserImage = () => resolveBrowserImage(undefined, localImage),
 } = {}) {
   const started = performance.now(); let current = 'identity';
   const run = (file, args, input, environment) => {
@@ -97,7 +97,7 @@ export async function runStarterImageCanary(application, archive, imageDigest, e
         await writeBrowserFixtures(application, hosts);
         const name = `canary-browser-${randomBytes(6).toString('hex')}`;
         defer(() => { if (run('docker', ['ps', '-aq', '--filter', `name=^${name}$`]).trim()) run('docker', ['rm', '-f', name]); });
-        const argv = browserArguments(application, browser, name), entry = argv.indexOf('node');
+        const argv = browserArguments(application, browser, name, localImage), entry = argv.indexOf('node');
         if (runtime) {
           runtime.assertRuntimeSourceOutside(sources[0], [application, join(application, '.context/care-browser'), join(application, '.context/catalogue-builds')]);
           argv.splice(entry, 0, 'sh', '-ec', 'timeout 5 node -e "$1" "$2" "$3" && shift 3 && exec "$@"', 'browser', visibilityCheck, ...sources);

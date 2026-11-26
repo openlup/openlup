@@ -113,7 +113,7 @@ For the local demonstration, start with `./lifecycle up` and run these commands
 from the extracted application. Set `CONFIGURATION` to the selected owned ID.
 
 ```sh
-PROJECT=$(cat .context/compose-project 2>/dev/null) && [ -n "$PROJECT" ] ||
+PROJECT=$( (cd .context && cat compose-project) 2>/dev/null) && [ -n "$PROJECT" ] ||
   { printf '%s\n' 'Run ./lifecycle up first.' >&2; exit 1; }
 docker compose --project-name "$PROJECT" exec -T application ./lifecycle settings show inventory_renewal_protection --json
 docker compose --project-name "$PROJECT" exec -T application ./lifecycle settings preview inventory_renewal_protection --configuration "$CONFIGURATION" --value "$POLICY_JSON" --sku "$SKU" --json

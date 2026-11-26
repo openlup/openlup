@@ -280,14 +280,15 @@ export function proveInstalledCareUpgrade(run, application, previous, customized
 }
 
 /** Build only the verified extraction; the original Dockerfile remains in its content identity. */
-export function buildQualifiedImage(application, commit, archive) {
+export function buildQualifiedImage(application, commit, archive, reference = imageReference(readCiImage('starter-node'))) {
   const base = readCiImage('starter-node'), name = 'ghcr.io/openlup/neutral-store-starter';
+  assert(base.sources.some(source => imageReference(base, source) === reference), 'qualified_image_base_pin_mismatch');
   const original = readFileSync(join(application, 'Dockerfile'), 'utf8');
   assert(original.startsWith('FROM node:24.21.0-bookworm-slim AS application\n') && original.match(/^FROM /gmu).length === 1, 'qualified_image_base_unexpected');
   const epoch = execFileSync('git', ['show', '-s', '--format=%ct', commit], { cwd: root, encoding: 'utf8' }).trim();
   execFileSync('docker', ['buildx', 'build', '--platform', 'linux/amd64', '--provenance=false', '--sbom=false',
     '--build-arg', `SOURCE_DATE_EPOCH=${epoch}`, '--output', `type=oci,dest=${archive},rewrite-timestamp=true`, '--file', '-', application],
-    { input: original.replace(/^FROM \S+/u, `FROM ${imageReference(base)}`), stdio: ['pipe', 'inherit', 'inherit'] });
+    { input: original.replace(/^FROM \S+/u, `FROM ${reference}`), stdio: ['pipe', 'inherit', 'inherit'] });
   const raw = execFileSync('skopeo', ['inspect', '--raw', `oci-archive:${archive}`]);
   assert.equal(JSON.parse(raw).mediaType, 'application/vnd.oci.image.manifest.v1+json', 'qualified_image_requires_single_manifest');
   return { name, platform: 'linux/amd64', manifestDigest: `sha256:${sha256(raw)}`, baseImageDigest: base.digest };
@@ -510,11 +511,16 @@ export async function qualifyCandidateCanary(commit, manifest, output) {
     const prepared = prepareStarterCandidate(commit, manifest, scratch);
     Object.assign(receipt, prepared.receipt);
     const archive = join(scratch, 'candidate.oci.tar'), started = performance.now();
-    receipt.image = buildQualifiedImage(prepared.application, commit, archive);
+    const reference = await pullWithRetry(readCiImage('starter-node'));
+    receipt.image = buildQualifiedImage(prepared.application, commit, archive, reference);
+    receipt.image.baseReference = reference;
     receipt.image.buildDurationMs = Math.round(performance.now() - started);
     console.log('Candidate starter image build complete', receipt.image.buildDurationMs + ' ms');
     const { runStarterImageCanary } = await import('../starter-browser-ci.mjs');
-    await runStarterImageCanary(prepared.application, archive, receipt.image.manifestDigest, receipt.canary);
+    await runStarterImageCanary(prepared.application, archive, receipt.image.manifestDigest, receipt.canary, {
+      localImage: env.OPENLUP_STARTER_LOCAL_IMAGE,
+      pull: () => pullWithRetry(readCiImage('test-postgres')),
+    });
     receipt.result = 'PASS';
     console.log('Candidate starter retained image PASS');
   } finally {

@@ -44,6 +44,9 @@ services:
     configs:
       - source: database_auth
         target: /etc/postgresql/starter-pg-hba.conf
+      - source: database_bootstrap_environment
+        target: /docker-entrypoint-initdb.d/99-starter-bootstrap-environment.sh
+        mode: 0444
     volumes:
       - database:/var/lib/postgresql/data
       - installation-socket:/var/run/postgresql
@@ -90,6 +93,10 @@ volumes:
   installation-socket:
   catalogue-builds:
 configs:
+  database_bootstrap_environment:
+    # The stock entrypoint sources non-executable .sh files after initialization.
+    content: |
+      unset POSTGRES_PASSWORD
   database_auth:
     content: |
       local postgres postgres trust

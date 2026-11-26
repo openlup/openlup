@@ -158,7 +158,7 @@ For a value change, a `checked` result from `npm --silent run settings -- check 
 Before changing renewal stock protection, run a connected, read-only preview.
 
 ```sh
-PROJECT=$(cat .context/compose-project 2>/dev/null) && [ -n "$PROJECT" ] ||
+PROJECT=$( (cd .context && cat compose-project) 2>/dev/null) && [ -n "$PROJECT" ] ||
   { printf '%s\n' 'Run ./lifecycle up first.' >&2; exit 1; }
 docker compose --project-name "$PROJECT" exec -T application ./lifecycle settings show inventory_renewal_protection --json
 docker compose --project-name "$PROJECT" exec -T application ./lifecycle settings preview inventory_renewal_protection --configuration "$CONFIGURATION" --value "$POLICY_JSON" --sku "$SKU" --json

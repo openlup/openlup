@@ -3,13 +3,14 @@ import { closeSync, constants, fstatSync, linkSync, lstatSync, mkdirSync, mkdtem
   openSync, readSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join, sep } from 'node:path';
+import { env } from 'node:process';
 import { starterDiagnostic } from '../shared/refusals.ts';
 
 export const runtimeUrl = 'postgresql://starter_runtime@database:5432/neutral_store';
 export const runtimeTarget = '/run/secrets/starter_runtime_password';
 export const runtimeReadFailed = 'starter_runtime_credential_read_failed';
 export const runtimeAuthFailed = 'starter_runtime_database_auth_failed';
-export const runtimeMounted = () => process.env.OPENLUP_STARTER_RUNTIME_CREDENTIAL === '1';
+export const runtimeMounted = () => env.OPENLUP_STARTER_RUNTIME_CREDENTIAL === '1';
 
 function readCredential(path: string, uid?: number) {
   if (!lstatSync(path).isFile()) throw starterDiagnostic(runtimeReadFailed);

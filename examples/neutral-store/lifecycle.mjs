@@ -404,8 +404,8 @@ if (command === 'refusals') {
       }
     }
   } catch (error) {
-    const code = runtimeFinding(error);
-    if (!runtimeMounted() || !code) throw error;
+    if (!runtimeMounted()) throw error;
+    const code = runtimeFinding(error) ?? readStarterDiagnostic(error)?.code ?? 'starter_installation_failed';
     const finding = commandRefusal(starterDiagnostic(code), '/installation');
     if (json) await emit({ command, ...installReport('', [], finding) });
     else {

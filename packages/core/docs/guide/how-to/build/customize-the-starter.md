@@ -82,11 +82,11 @@ still governs request authority.
 
 The runtime credential file must stay in owner-only configuration. The starter
 validates it at start. Each successful start records the selected project name
-in the adopter-owned `.context/compose-project` file. From the application
+in the adopter-owned `compose-project` file under `.context`. From the application
 directory, load that name before running the local Compose commands below.
 
 ```sh
-PROJECT=$(cat .context/compose-project 2>/dev/null) && [ -n "$PROJECT" ] ||
+PROJECT=$( (cd .context && cat compose-project) 2>/dev/null) && [ -n "$PROJECT" ] ||
   { printf '%s\n' 'Run ./lifecycle up first.' >&2; exit 1; }
 ```
 
