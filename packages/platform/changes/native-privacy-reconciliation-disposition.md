@@ -1,0 +1,1 @@
+- Native privacy reconciliation refuses invalid contributor dispositions with `PRIVACY_RECONCILIATION_APPROVAL_UNVERIFIED`. Erasure replay continues to report incomplete coverage until the owner successfully reconciles the missing contributor.
