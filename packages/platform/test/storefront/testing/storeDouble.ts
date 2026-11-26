@@ -41,6 +41,20 @@ export type StoreDoubleSwitches = {
   readonly navigateRejects?: boolean;
   /** The page resends its create three more times after each answer. */
   readonly resubmitLoop?: boolean;
+  /** The place-order control stays enabled while a create is unanswered, but a second click reuses the key. */
+  readonly noSubmitGuardSameKey?: boolean;
+  /** Each new order records two payment attempts. */
+  readonly twoAttempts?: boolean;
+  /** Each new order records two captured payments. */
+  readonly doubleCapture?: boolean;
+  /** `state:awaiting_payment` shows without `action:continue_payment`. */
+  readonly noContinuePayment?: boolean;
+  /** When the status read after a reload gets no answer, the page shows `awaiting_payment` from its own state. */
+  readonly progressFromPageState?: boolean;
+  /** With `progressFromPageState`, the selection entry keeps showing that state, so no arrangement is possible. */
+  readonly stuckInPageState?: boolean;
+  /** Entering checkout without a stored key sends a status read; nothing after a reload does (with `replayFromCache`). */
+  readonly statusReadOnFirstCheckout?: boolean;
 };
 
 type View = "blank" | "cart" | "checkout" | "awaiting_payment";
@@ -60,6 +74,14 @@ const OTHER_BUYER = "other-buyer@example.test";
  */
 export function storeDouble(switches: StoreDoubleSwitches = {}, options: { readonly locators?: Readonly<Record<string, string>>; readonly exclusive?: boolean } = {}) {
   const events: string[] = [];
+  // Click number of each create, in the order the server received them.
+  const arrivals: number[] = [];
+  // Every anchor wait the runner asked for, as [anchor, timeoutMs].
+  const findTimeouts: [string, number][] = [];
+  const attempts = new Map<string, number>();
+  const captures = new Map<string, number>();
+  let clicks = 0;
+  let stuck = false;
   const calls: string[] = [];
   const keysSent: string[] = [];
   const withheld = new Map<string, number>();
@@ -93,10 +115,11 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: { reado
     return `key-${keyCount}-d1c3a9`;
   };
 
-  const serve = async (method: string, path: string, key: string | null, email: string) => {
+  const serve = async (method: string, path: string, key: string | null, email: string, click: number) => {
     if (switches.async === true) await new Promise<void>((resolve) => queue.push(resolve));
     if (method === "POST" && path === "/api/orders" && key !== null) {
       events.push("create:answered");
+      arrivals.push(click);
       const first = answers.get(key);
       if (first !== undefined) {
         if (switches.holdOnReplay === true) orders.push({ email, key, payable: false, hold: true });
@@ -105,6 +128,8 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: { reado
       }
       answers.set(key, orders.length);
       orders.push({ email, key, payable: true, hold: true });
+      attempts.set(email, (attempts.get(email) ?? 0) + (switches.twoAttempts === true ? 2 : 0));
+      captures.set(email, (captures.get(email) ?? 0) + (switches.doubleCapture === true ? 2 : 0));
       if (switches.createsForOtherBuyer === true) orders.push({ email: OTHER_BUYER, key: `${key}-other`, payable: true, hold: false });
       if (switches.otherBuyerPays === true && orders[0]!.payable) orders[0]!.payable = false;
       return true;
@@ -113,13 +138,13 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: { reado
   };
 
   /** Sends one request through the installed interceptor; resolves whether the page received an answer. */
-  const send = async (method: string, path: string, key: string | null) => {
+  const send = async (method: string, path: string, key: string | null, click = 0) => {
     const email = typeof fields.email === "string" ? fields.email : "";
     if (key !== null) keysSent.push(key);
     if (method === "POST" && path === "/api/orders") events.push("create:start");
     const decision = decide === null ? "pass" : await decide({ method, path, header: (name) => name === "idempotency-key" ? key : null });
     if (decision === "block") return false;
-    await serve(method, path, key, email);
+    await serve(method, path, key, email, click);
     if (decision === "withhold") {
       if (method === "POST" && path === "/api/orders") withheld.set(email, (withheld.get(email) ?? 0) + 1);
       return false;
@@ -127,13 +152,19 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: { reado
     return true;
   };
 
-  const load = () => {
+  const load = (reloaded: boolean) => {
     if (switches.newKeyOnReload === true) delete storage.key;
-    if (storage.key !== undefined && switches.replayFromCache !== true) void track(send("GET", "/api/orders/status", null));
+    if (storage.key !== undefined && switches.replayFromCache !== true) {
+      void track(send("GET", "/api/orders/status", null).then((answered) => {
+        if (answered || !reloaded || switches.progressFromPageState !== true) return;
+        view = "awaiting_payment";
+        stuck = switches.stuckInPageState === true;
+      }));
+    }
   };
 
-  const submit = async (key: string) => {
-    let delivered = await send("POST", "/api/orders", key);
+  const submit = async (key: string, click: number) => {
+    let delivered = await send("POST", "/api/orders", key, click);
     if (switches.resubmitLoop === true) for (let again = 0; again < 3; again += 1) delivered = await send("POST", "/api/orders", key);
     placing = false;
     if (delivered) {
@@ -154,7 +185,7 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: { reado
     if (view === "awaiting_payment") {
       if (switches.wrongState === true) shown.set("state:declined", true);
       else if (switches.noStateAnchor !== true) shown.set("state:awaiting_payment", switches.hideAwaitingPayment !== true);
-      shown.set("action:continue_payment", true);
+      if (switches.noContinuePayment !== true) shown.set("action:continue_payment", true);
       if (switches.showPaidEarly === true || paidRevealed) shown.set("state:paid", true);
     }
     return shown;
@@ -166,22 +197,23 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: { reado
     async navigate(path) {
       acted(`navigate ${path}`);
       if (switches.navigateRejects === true) throw new Error("net::ERR_CONNECTION_REFUSED at https://shop.example.test/select?token=secret-token-value");
-      view = path.startsWith("/select/") ? "cart" : "blank";
+      if (!stuck) view = path.startsWith("/select/") ? "cart" : "blank";
       fields = {};
-      load();
+      load(false);
     },
     async reload() {
       acted("reload");
       storage.reloaded = true;
       fields = {};
       if (view === "awaiting_payment") view = "checkout";
-      load();
+      load(true);
     },
     path: () => ({ blank: "/", cart: "/cart", checkout: "/checkout", awaiting_payment: "/checkout/pay" })[view],
     width: () => 1280,
-    async find(target, _options) {
+    async find(target, { timeoutMs }) {
       const name = nameOf(target);
       calls.push(`find ${name}`);
+      findTimeouts.push([name, timeoutMs]);
       const shown = present().get(name);
       return shown === undefined ? null : measure(shown);
     },
@@ -203,10 +235,11 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: { reado
         view = "checkout";
         fields = {};
         void track(send("POST", "/api/quote", null));
+        if (switches.statusReadOnFirstCheckout === true && storage.key === undefined) void track(send("GET", "/api/orders/status", null));
         return true;
       }
       if (name === "action:place_order") {
-        if (placing && switches.noSubmitGuard !== true) return false;
+        if (placing && switches.noSubmitGuard !== true && switches.noSubmitGuardSameKey !== true) return false;
         if (switches.firstSubmitSendsNothing === true && !firstSubmitSkipped) {
           firstSubmitSkipped = true;
           return true;
@@ -217,7 +250,8 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: { reado
         }
         placing = true;
         if (switches.noSubmitGuard === true || storage.key === undefined) storage.key = newKey();
-        void track(submit(storage.key));
+        clicks += 1;
+        void track(submit(storage.key, clicks));
         return true;
       }
       return true;
@@ -256,12 +290,15 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: { reado
     kind: "store",
     async ledger(subject) {
       events.push("ledger");
-      if (switches.observerRejects === true) throw new Error("connection refused: postgres://owner:secret@db/store");
+      if (switches.observerRejects === true) throw new Error("observer_unreachable: connect postgres://owner:secret@db.example.test/store?sslmode=require failed. Retry later.");
       const own = orders.filter((order) => order.email === subject);
-      return { orders: own.length, payableOrders: own.filter((order) => order.payable).length, holds: own.filter((order) => order.hold).length, attempts: 0, captures: 0 };
+      return {
+        orders: own.length, payableOrders: own.filter((order) => order.payable).length, holds: own.filter((order) => order.hold).length,
+        attempts: attempts.get(subject) ?? 0, captures: captures.get(subject) ?? 0,
+      };
     },
     ...(options.exclusive === true ? { payableOrdersInDatabase: async () => orders.filter((order) => order.payable).length } : {}),
   };
 
-  return { page, observer, events, calls, keysSent, withheld };
+  return { page, observer, events, calls, keysSent, withheld, arrivals, findTimeouts };
 }

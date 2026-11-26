@@ -245,6 +245,8 @@ describe("faults of collaborators (R10)", () => {
     expect(verdict.result).toBe("not_run");
     expect(verdict.findings).toHaveLength(1);
     expect(finding(verdict, "observer_failed")).toMatchObject({ run: "clean", step: null });
+    // The fault's code and first sentence are kept; a URL in it, with its credentials and query, is not.
+    expect(finding(verdict, "observer_failed")!.observed).toBe("Before the arrangement of the clean run: the observer rejected (observer_unreachable: connect <url> failed.).");
   });
 
   it("ends not_run with the step when the page cannot navigate", async () => {
@@ -255,7 +257,82 @@ describe("faults of collaborators (R10)", () => {
   });
 });
 
+describe("the control run (R14)", () => {
+  it.each([["synchronous", false], ["asynchronous", true]] as const)("ends vacuous when the page shows the negated state from its own state (%s)", async (_mode, async) => {
+    const { verdict } = await run("lost_response_reload", { async, progressFromPageState: true });
+    expect(verdict.result).toBe("vacuous");
+    expect(codes(verdict)).toEqual(["vacuous_progress"]);
+    expect(finding(verdict, "vacuous_progress")).toMatchObject({ run: "control", step: 3 });
+    expect(verdict.control.applied).toBe(true);
+  });
+
+  it("judges a control run that showed the negated state and then could not arrange again", async () => {
+    const { verdict } = await run("lost_response_reload", { async: true, progressFromPageState: true, stuckInPageState: true });
+    expect(verdict.result).toBe("vacuous");
+    expect(codes(verdict)).toEqual(["vacuous_progress"]);
+    expect(finding(verdict, "vacuous_progress")).toMatchObject({ run: "control", step: 3 });
+    // The steps after the failed arrangement are skipped, but the control's settle window is still read.
+    expect(stepsOf(verdict, "control").map((step) => [step.index, step.phase])).toEqual([
+      [0, "arrange"], [1, "stimulus"], [2, "stimulus"], [3, "control"], [4, "control"], [7, "settle"],
+    ]);
+    expect(stepsOf(verdict, "control").at(-1)!.observedAnchors).toContain("state:awaiting_payment");
+  });
+
+  it("gives the negated state only the quiet window, and the clean expect the full timeout", async () => {
+    const { double } = await run("lost_response_reload", {}, { quietMs: 5, timeoutMs: 50 });
+    expect(double.findTimeouts.filter(([name]) => name === "state:awaiting_payment")).toEqual([["state:awaiting_payment", 50], ["state:awaiting_payment", 5]]);
+    expect(double.findTimeouts.filter(([name]) => name === "action:continue_payment")).toEqual([["action:continue_payment", 50]]);
+  });
+
+  it("names a blocked set that matched nothing from the control's step on", async () => {
+    const { verdict } = await run("lost_response_reload", { replayFromCache: true, statusReadOnFirstCheckout: true });
+    expect(verdict.result).toBe("not_run");
+    const unmatched = verdict.findings.filter((entry) => entry.code === "adapter_matcher_unmatched");
+    expect(unmatched).toHaveLength(1);
+    expect(unmatched[0]).toMatchObject({ run: "clean", step: null, field: "commands" });
+    expect(unmatched[0]!.observed).toBe("The clean run: no read or create request matched from step 3 on.");
+  });
+});
+
+describe("attempts, captures and offers (R15)", () => {
+  it("fails a second payment attempt and a second capture", async () => {
+    const attempts = await run("duplicate_submit", { twoAttempts: true });
+    expect(attempts.verdict.result).toBe("failed");
+    expect(codes(attempts.verdict)).toEqual(["second_attempt"]);
+    expect(finding(attempts.verdict, "second_attempt")).toMatchObject({ run: "clean", step: 1 });
+    const captures = await run("duplicate_submit", { doubleCapture: true });
+    expect(captures.verdict.result).toBe("failed");
+    expect(codes(captures.verdict)).toEqual(["duplicate_capture"]);
+  });
+
+  it("names a progress state that does not offer its action", async () => {
+    const { verdict } = await run("lost_response_reload", { noContinuePayment: true });
+    expect(verdict.result).toBe("not_run");
+    expect(codes(verdict)).toEqual(["adapter_anchor_missing"]);
+    expect(finding(verdict, "adapter_anchor_missing")).toMatchObject({ run: "clean", step: 6 });
+    expect(finding(verdict, "adapter_anchor_missing")!.observed).toContain("the action action:continue_payment did not resolve");
+  });
+});
+
+describe("the double click (R16)", () => {
+  it.each([["synchronous", false], ["asynchronous", true]] as const)("holds the first create until the second click was attempted (%s)", async (_mode, async) => {
+    const { verdict, double } = await run("duplicate_submit", { async, noSubmitGuardSameKey: true });
+    expect(verdict.result).toBe("safety_only");
+    // The second click's create reaches the server first: the first was held while the second was attempted.
+    expect(double.arrivals).toEqual([2, 1]);
+    expect(stepsOf(verdict, "clean")[1]!.commands.map((command) => command.key)).toEqual([
+      { present: true, sameAs: null }, { present: true, sameAs: 0 },
+    ]);
+  });
+});
+
 describe("the create budget (R11)", () => {
+  it("ranks duplicates already in the ledger above the exceeded budget", async () => {
+    const { verdict } = await run("duplicate_submit", { noSubmitGuard: true, resubmitLoop: true });
+    expect(verdict.result).toBe("failed");
+    expect(codes(verdict)).toEqual(["duplicate_order", "duplicate_hold", "request_budget_exceeded"]);
+  });
+
   it("stops a run that keeps sending creates", async () => {
     const { verdict } = await run("duplicate_submit", { resubmitLoop: true });
     expect(verdict.result).toBe("not_run");
@@ -306,6 +383,12 @@ describe("input and admission", () => {
     ["a clock before the epoch", { clock: { now: () => -1 } }, "storefront_run_input_invalid"],
     ["a fractional clock", { clock: { now: () => 1.5 } }, "storefront_run_input_invalid"],
     ["an unknown tier spelling", { tier: "Postgres" }, "storefront_run_input_invalid"],
+    ["a scenario object without steps", { scenario: { ...storefrontScenarios[1]!, id: "broken_one", steps: undefined } as never }, "storefront_run_input_invalid"],
+    ["a scenario object without a budget", { scenario: { ...storefrontScenarios[1]!, id: "broken_two", budget: undefined } as never }, "storefront_run_input_invalid"],
+    ["a scenario object with a negative budget", { scenario: { ...storefrontScenarios[1]!, id: "broken_three", budget: { creates: -1 } } }, "storefront_run_input_invalid"],
+    ["a scenario object with an act and no action", { scenario: { ...storefrontScenarios[1]!, id: "broken_four", steps: [{ kind: "arrange" }, { kind: "act" }] } as never }, "storefront_run_input_invalid"],
+    ["a scenario object whose control starts past its steps", { scenario: { ...storefrontScenarios[0]!, id: "broken_five", control: { ...storefrontScenarios[0]!.control, from: 9 } } }, "storefront_run_input_invalid"],
+    ["a scenario object without requires", { scenario: { ...storefrontScenarios[1]!, id: "broken_six", requires: undefined } as never }, "storefront_run_input_invalid"],
   ];
   it.each(refusals)("refuses %s and drives nothing", async (_name, extra, code) => {
     const double = storeDouble();
