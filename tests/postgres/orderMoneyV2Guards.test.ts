@@ -20,7 +20,7 @@ if (manifest?.schemaVersion !== 3) throw new Error("Expected native catalogue");
 const unit = manifest.forward.find(entry => entry.file.endsWith("_order_money_v2_assert.sql"));
 if (!unit) throw new Error("Expected order money assertion forward");
 const position = manifest.qualified.forward.findIndex(entry => entry.file === unit.file);
-const prefixInventory = "6ffc2de73b50852f70c99fb1529521d753e2859a7d1f6e8f618a4aae33f967fb";
+const prefixInventory = "bb5b2abb5a1cad98e598cfdb2bb39ba73f13eaa7160ff942419036359ed1487b";
 const routine = "public.commerce_order_money_v2_assert(uuid,boolean,boolean,jsonb,jsonb)";
 const checkState = "public.commerce_order_money_v2_check_state(uuid,boolean,text,text)";
 const evidenceRemedy = "Recover the original accepted evidence through its owner and retry with its original binding.";
