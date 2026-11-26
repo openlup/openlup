@@ -61,6 +61,20 @@ export { createPostgresCatalogPriceSetupStore, catalogPriceSetupRefusal, CATALOG
 export type { CatalogPriceSetupQueryExecutor } from "./postgresCatalogPriceSetupStore.js";
 
 export { commerceQuoteV2Schema } from "./quoteSchemasV2.js";
+export {
+  bucket as commerceMoneyV2DeliveryBucketSchema,
+  currency as commerceMoneyV2CurrencySchema,
+  digest as commerceMoneyV2DigestSchema,
+  engine as commerceMoneyV2PromotionEngineSchema,
+  evidence as commerceMoneyV2TaxEvidenceShape,
+  factsShape as commerceMoneyV2FactsSchema,
+  feeLine as commerceMoneyV2FeeLineSchema,
+  line as commerceMoneyV2LineSchema,
+  minor as commerceMoneyV2MinorSchema,
+  price as commerceMoneyV2PriceSchema,
+  ref as commerceMoneyV2ReferenceSchema,
+  uuid as commerceMoneyV2UuidSchema,
+} from "./quoteMoneyValidationV2.js";
 export { planCommerceQuoteMoneyV2, composeCommerceQuoteMoneyV2 } from "./commerceQuoteMoneyV2.js";
 export type { PlanCommerceQuoteMoneyV2Input, CommerceQuoteMoneyV2Plan, ComposeCommerceQuoteMoneyV2Input,
   CommerceQuoteMoneyV2Refusal } from "./commerceQuoteMoneyV2.js";

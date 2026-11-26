@@ -17,8 +17,8 @@ if (current?.schemaVersion !== 3) throw new Error("Expected the three native mig
 export const occurrenceCatalogue = current;
 export const writerPath = current.forward.find(({ file }) => file.endsWith("_native_renewal_occurrence_writer.sql"))?.file;
 if (!writerPath) throw new Error("Missing renewal occurrence writer migration");
-const writerPins = { legacy: "37ae356e65f2bde6380735c2afd34bf2a11114d411936424c4076e23b5fde4c2", bootstrap: "e128d95b5446fb20878b848650c947bf8b2141b6a8ae9dbf2eb7189114cc60d4", separate: "7f1cb5f1be459b7e205ba4ad335608fd9d0d161e22565a8ff08d5df92dd2a727",
-    admin: "dd8a1e6539bbaf26993fb5ab49b2ddf5e68b7ec0a01b68340087fc35c641f016", operator: "4e19800b9f85031944928d35fd0c75343a9009b949b8bfc13b86817f8782498f" };
+const writerPins = { legacy: "ac30b127bf781b831e3824914f0af93a5b794676c2679b3461d756c11c53b26d", bootstrap: "3a86da7673504399856c973891d37354010956b739d15b3d081f038beb7dd709", separate: "41f552f08c6b77dfd9cbebea8f448b59f77c10279cd6a27b4216f64762a7ca4f",
+    admin: "dd94e2db90c404bfdeded9507797867dc463c077f7db2fcaae3cbd6aca46a776", operator: "e0ffd16240231615335d4da69d23c5ed2a881687a98a61f90aa45c2cfcd99213" };
 export function pinOccurrencePlan(manifest: OccurrenceCatalogue, path: string, inventory: typeof writerPins, include: boolean) {
   const plan = structuredClone(manifest);
   for (const profile of [plan, plan.qualified, plan.qualifiedAdmin]) {

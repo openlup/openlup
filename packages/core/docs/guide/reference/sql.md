@@ -255,8 +255,9 @@ in [Upgrade the database](../upgrade/database-migrations.md).
 | [`20261129130503_order_money_v2_restore_no_temp.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129130503_order_money_v2_restore_no_temp.sql) |
 | [`20261129130504_catalog_price_publication_recorder_v2.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129130504_catalog_price_publication_recorder_v2.sql) |
 | [`20261129130505_settings_wave4a_reschedule_timezone.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129130505_settings_wave4a_reschedule_timezone.sql) |
-| [`20261129130506_native_renewal_occurrence_producer.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129130506_native_renewal_occurrence_producer.sql) |
-| [`20261129130507_native_renewal_occurrence_writer.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129130507_native_renewal_occurrence_writer.sql) |
+| [`20261129130506_paid_order_money_v2_read.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129130506_paid_order_money_v2_read.sql) |
+| [`20261129130507_native_renewal_occurrence_producer.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129130507_native_renewal_occurrence_producer.sql) |
+| [`20261129130508_native_renewal_occurrence_writer.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129130508_native_renewal_occurrence_writer.sql) |
 | [`q2_00000000000000_platform_baseline.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_00000000000000_platform_baseline.sql) |
 | [`q2_20260810180001_self_host_actor_auth.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20260810180001_self_host_actor_auth.sql) |
 | [`q2_20260816140000_acquisition_case_foundation.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20260816140000_acquisition_case_foundation.sql) |

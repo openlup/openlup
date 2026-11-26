@@ -9906,8 +9906,21 @@
         "dataStatements": []
       },
       {
+        "row": "paid-order-money-v2-read",
+        "path": "db/platform/migrations/20261129130506_paid_order_money_v2_read.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.commerce_read_paid_order_money_v2(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "native-renewal-occurrence-producer",
-        "path": "db/platform/migrations/20261129130506_native_renewal_occurrence_producer.sql",
+        "path": "db/platform/migrations/20261129130507_native_renewal_occurrence_producer.sql",
         "replacedFunctions": [],
         "createdFunctions": [
           {
@@ -9920,7 +9933,7 @@
       },
       {
         "row": "native-renewal-occurrence-writer",
-        "path": "db/platform/migrations/20261129130507_native_renewal_occurrence_writer.sql",
+        "path": "db/platform/migrations/20261129130508_native_renewal_occurrence_writer.sql",
         "replacedFunctions": [],
         "createdFunctions": [
           {
@@ -14443,7 +14456,18 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261129130506_native_renewal_occurrence_producer.sql",
+      "path": "db/platform/migrations/20261129130506_paid_order_money_v2_read.sql",
+      "sha256": "38c765551a254c374a04f72e8d1e49b9ac1f835b7359319ce745ecdfc9634466",
+      "functions": [
+        {
+          "signature": "public.commerce_read_paid_order_money_v2(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "c06b4df12b5d2081dc661c1c9bc31df5c73388ab25a995abac2b4e4ba086f028"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261129130507_native_renewal_occurrence_producer.sql",
       "sha256": "31a544c3848c94585c4d0959c09edd875cbf781a4fe5d475a0559496cc1a07eb",
       "functions": [
         {
@@ -14454,7 +14478,7 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261129130507_native_renewal_occurrence_writer.sql",
+      "path": "db/platform/migrations/20261129130508_native_renewal_occurrence_writer.sql",
       "sha256": "6eea804c693944bbf0af377ebfa122d1ad213a4da62c939e68dfa7bf9cf6d6fc",
       "functions": [
         {
