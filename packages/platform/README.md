@@ -4081,7 +4081,8 @@ and never in a buyer's bundle: a browser bundle of the entry fails, and the
   under `.context/storefront-verdicts/`; the entry writes no file.
 - **`storefrontScenarios`.** The frozen scenario catalogue, by id; ids are
   never renamed.
-- **`runStorefrontScenario(options)`.** Runs one scenario by id against a
+- **`runStorefrontScenario(options)`.** Runs one scenario, given by id or as a
+  scenario object shaped like the catalogue's entries, against a
   `PageHandle` and an observer and resolves `{ kind: "verdict", verdict }`.
   Options: `scenario`, `page`, `observer`, `tier`, `profile`, `width`
   (required for `browser_ui` and equal to the page's width), `channel`
@@ -4090,8 +4091,9 @@ and never in a buyer's bundle: a browser bundle of the entry fails, and the
   `claimed`), `harness` (`runnerVersion`, the caller's claim, and
   `adapterDigest`), `runId` (8 to 40 letters, digits and hyphens), `clock`
   (`now()` in integer epoch milliseconds), `timeoutMs` (default 10,000) and
-  `quietMs` (default 3,000). Invalid options reject with a `TypeError` starting
-  `storefront_scenario_unknown` or `storefront_run_input_invalid` before
+  `quietMs` (default 3,000). Invalid options, including a malformed scenario
+  object, reject with a `TypeError` starting `storefront_scenario_unknown` or
+  `storefront_run_input_invalid` and its cause, fix and recheck, before
   anything is driven.
 
 **Running a scenario.** A store whose pages carry the anchors and whose proof
@@ -4109,7 +4111,9 @@ stored). A step ends only when the page has settled, and the runner then reads
 the ledger, the visible anchors and the path; after the last step a settle
 window waits once more and reads them again. The control run repeats the steps
 under its own subject, blocking from the control's step every request of its
-commands. The clean and control runs share the page and its browser storage.
+commands. An arrangement that fails under the control is the control's effect:
+the remaining steps are skipped and the settle window still samples the page.
+The clean and control runs share the page and its browser storage.
 
 | Scenario | Stimulus | Safety | Progress | Control |
 | --- | --- | --- | --- | --- |
@@ -4119,7 +4123,9 @@ commands. The clean and control runs share the page and its browser storage.
 Each scenario also has a create budget (3 and 2 creates per run); a run that
 sends more stops with `request_budget_exceeded`. Whenever `state:paid` or
 `state:paid_pending_activation` shows, the ledger must hold a capture and no
-payable order.
+payable order. Anchors and the ledger are sampled when a step has settled and
+in the settle window, so a state shown only for a moment inside a step and
+gone before it settles is not seen.
 
 **Judgement.** Every failed check adds a finding with its run, step, the field
 at fault where there is one, and texts saying what was observed, why and how
@@ -4131,14 +4137,19 @@ to fix it, and the recheck command (`recheck` from the adapter or proof file,
 | 1 | Page, observer and arrangement worked | `page_failed`, `observer_failed`, `arrange_failed` | `not_run` |
 | 2 | No order before the arrangement; one after the first matched create | `observer_subject_unseen` | `not_run` |
 | 3 | The first order appeared in a step with a matched create; every withhold applied | `stimulus_not_create`, `stimulus_not_applied` | `not_run` |
-| 4 | The create budget kept | `request_budget_exceeded` | `not_run` |
-| 5 | Ledger safety in both runs and settle windows; with an exclusive database, payable orders added equal those of the subjects | `duplicate_order`, `duplicate_hold`, `duplicate_capture`, `second_attempt`, `forbidden_state_shown`, `order_outside_subject`; `observer_failed` when fewer were added | `failed`; `not_run` |
+| 4 | Ledger safety in both runs and settle windows; with an exclusive database, payable orders added equal those of the subjects | `duplicate_order`, `duplicate_hold`, `duplicate_capture`, `second_attempt`, `forbidden_state_shown`, `order_outside_subject`; `observer_failed` when fewer were added | `failed`; `not_run` |
+| 5 | The create budget kept | `request_budget_exceeded` | `not_run` |
 | 6 | Each matcher used matched in the clean run, and for `block_read` a request of the blocked set after its start; each needed anchor resolved and was visible | `adapter_matcher_unmatched`, `adapter_anchor_missing`, `anchor_hidden` | `not_run` |
 | 7 | The clean run reached its expected state | `progress_not_reached` (another state shown), `adapter_anchor_missing` (none) | `failed`; `not_run` |
 | 8 | The control blocked a request; its negated state was not reached within `quietMs` | `control_not_applied`, `vacuous_progress` | `not_run`, `vacuous` |
 | 9 | All hold | — | `passed`, or `safety_only` without a control |
 
-A harness fault is never `failed` or `passed`. A scenario whose
+A harness fault is never `failed` or `passed`. A run that exceeds its budget
+stops before its progress and control are exercised, so it proves nothing
+either way; a ledger violation seen before the stop still makes it `failed`.
+The control's checks run over every recorded control step, also when the
+control run stopped. A fault's text keeps its code and first sentence with
+every URL replaced by `<url>`. A scenario whose
 `requires.outcomes` names an outcome the run's outcome driver does not declare
 ends `not_run` with `tier_unreachable` before any page or observer call; the
 runner takes no outcome driver yet, so `harness.declaredOutcomes` is empty and

@@ -427,14 +427,16 @@ type StorefrontRunOptions = {
  * Judgement, first failing group decides: 1 page, observer and arrangement
  * worked; 2 no order before the arrangement and one after the first matched
  * create; 3 the first order appeared in a step with a matched create and every
- * withhold applied; 4 the create budget kept; 5 ledger safety in both runs and
- * settle windows (payable orders, orders holding stock, attempts, captures; a
- * paid state needs a capture and no payable order) and, for an exclusive
- * database, no payable order outside the subjects; 6 each matcher used matched
- * and each needed anchor resolved and was visible; 7 the clean run reached its
- * expected state; 8 the control blocked a request and its negated state was not
- * reached. Codes 1–4 and 6 end `not_run`, a harness fault is never `failed` or
- * `passed`; a ledger violation is `failed`; progress under the control is
+ * withhold applied; 4 ledger safety in both runs and settle windows (payable
+ * orders, orders holding stock, attempts, captures; a paid state needs a
+ * capture and no payable order) and, for an exclusive database, no payable
+ * order outside the subjects; 5 the create budget kept (a run over it stopped
+ * before proving anything, but a violation it already caused stands); 6 each
+ * matcher used matched and each needed anchor resolved and was visible; 7 the
+ * clean run reached its expected state; 8 the control blocked a request and its
+ * negated state was not reached, judged over every recorded control step even
+ * when the control run stopped. Codes 1–3, 5 and 6 end `not_run`, a harness
+ * fault is never `failed` or `passed`; a ledger violation is `failed`; progress under the control is
  * `vacuous`. Without a finding the result is `passed`, or `safety_only` for a
  * scenario without a control.
  *
@@ -445,7 +447,13 @@ type StorefrontRunOptions = {
  * malformed `runId`, a missing or mismatched `width`, a clock outside integer
  * milliseconds 0 to the end of the year 9999) reject with a `TypeError` starting
  * `storefront_scenario_unknown` or `storefront_run_input_invalid`, and nothing
- * is driven. The clean and control runs share the page and its browser storage.
+ * is driven, as does a malformed scenario object. An arrangement that fails
+ * under the control is the control's effect: the remaining steps are skipped
+ * and the settle window still samples the page. Anchors and the ledger are
+ * sampled after each step settles and in the settle window, so a state shown
+ * only inside a step is not seen. A fault's text keeps its code and first
+ * sentence with every URL replaced. The clean and control runs share the page
+ * and its browser storage.
  *
  * @experimental
  */
