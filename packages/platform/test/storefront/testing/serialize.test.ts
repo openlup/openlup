@@ -30,13 +30,51 @@ function verdict(): StorefrontVerdict {
   };
 }
 
+/** The same value with every object's keys sorted by UTF-16 code units, reversed when `reverse` is set. */
+function reordered(value: unknown, reverse: boolean): unknown {
+  if (Array.isArray(value)) return value.map((item) => reordered(item, reverse));
+  if (value === null || typeof value !== "object") return value;
+  const keys = Object.keys(value).sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
+  if (reverse) keys.reverse();
+  return Object.fromEntries(keys.map((key) => [key, reordered((value as Record<string, unknown>)[key], reverse)]));
+}
+
 describe("serializeStorefrontVerdict (S1)", () => {
-  it("writes two-space JSON and a line feed that the parser reads back to the same verdict", () => {
+  it("writes two-space JSON with sorted keys and a line feed that the parser reads back to the same verdict", () => {
     const value = verdict();
     const text = serializeStorefrontVerdict(value);
-    expect(text).toBe(`${JSON.stringify(value, null, 2)}\n`);
+    expect(text).toBe(`${JSON.stringify(reordered(value, false), null, 2)}\n`);
+    expect(text.indexOf('"build"')).toBeLessThan(text.indexOf('"formatVersion"'));
     const parsed = parseStorefrontVerdict(text);
     expect(parsed).toEqual({ ok: true, verdict: value });
+  });
+
+  it("writes the same bytes for equal verdicts built in different key orders", () => {
+    const forward = reordered(verdict(), false) as StorefrontVerdict;
+    const backward = reordered(verdict(), true) as StorefrontVerdict;
+    expect(Object.keys(forward)).not.toEqual(Object.keys(backward));
+    expect(serializeStorefrontVerdict(backward)).toBe(serializeStorefrontVerdict(forward));
+  });
+
+  it.each([
+    ["a function", (v: Record<string, unknown>) => { v.extra = () => 1; }, "extra"],
+    ["an undefined member", (v: Record<string, unknown>) => { (v.control as Record<string, unknown>).action = undefined; }, "control.action"],
+    ["NaN", (v: Record<string, unknown>) => { (v.durations as Record<string, unknown>).totalMs = Number.NaN; }, "durations.totalMs"],
+    ["Infinity", (v: Record<string, unknown>) => { v.width = Number.POSITIVE_INFINITY; }, "width"],
+    ["a Date", (v: Record<string, unknown>) => { v.completedAt = new Date(0); }, "completedAt"],
+    ["a bigint", (v: Record<string, unknown>) => { (v.stimulus as Record<string, unknown>).create = 2n; }, "stimulus.create"],
+    ["a symbol", (v: Record<string, unknown>) => { v.extra = Symbol("x"); }, "extra"],
+    ["a Map", (v: Record<string, unknown>) => { v.extra = new Map(); }, "extra"],
+    ["an undefined array item", (v: Record<string, unknown>) => { (v.harness as Record<string, unknown>).autoProgress = [undefined]; }, "harness.autoProgress[0]"],
+    ["a cycle", (v: Record<string, unknown>) => { v.extra = v; }, "extra"],
+  ])("refuses %s instead of coercing it", (_name, mutate, path) => {
+    const value = verdict() as unknown as Record<string, unknown>;
+    mutate(value);
+    let thrown: unknown;
+    try { serializeStorefrontVerdict(value as unknown as StorefrontVerdict); } catch (error) { thrown = error; }
+    expect(thrown).toBeInstanceOf(TypeError);
+    expect((thrown as TypeError).message.startsWith(`storefront_verdict_invalid: ${path} `)).toBe(true);
+    for (const part of [" Cause: ", " Fix: ", " Recheck: "]) expect((thrown as TypeError).message).toContain(part);
   });
 
   it("throws a TypeError naming the refusal's code and four parts for a browser verdict without a width", () => {

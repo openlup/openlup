@@ -25,6 +25,20 @@ const markup = `<!doctype html><html><head><meta charset="utf-8"><style>
     <span data-openlup-state="case_ancestor_hit" style="pointer-events: none">Text</span>
   </div>
   <button class="box" id="plain">Plain</button>
+  <div style="position: relative; width: 200px; height: 40px">
+    <span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">
+      <span data-openlup-state="case_visually_hidden">Order confirmed</span>
+    </span>
+  </div>
+  <div style="clip-path: inset(50%); width: 200px; height: 40px"><button class="box" data-openlup-action="case_clip_path">Clipped</button></div>
+  <div id="carousel" style="width: 200px; height: 50px; overflow: hidden">
+    <div style="height: 50px">First slide</div>
+    <div style="height: 50px"><div class="box" style="height: 20px" data-openlup-state="case_second_slide"></div></div>
+  </div>
+  <div id="list" style="width: 200px; height: 50px; overflow: auto">
+    <div style="height: 100px">Earlier items</div>
+    <div class="box" style="height: 20px" data-openlup-state="case_scrolled_list"></div>
+  </div>
   <div style="height: 3000px"></div>
   <div class="box" data-openlup-state="case_below_fold"></div>
 </body></html>`;
@@ -38,12 +52,16 @@ const purchase = `<!doctype html><html><head><meta charset="utf-8"></head><body>
       .then(() => { document.getElementById('outcome').textContent = 'answered'; },
             () => { document.getElementById('outcome').textContent = 'failed'; });
   ">Place order</button>
+  <button data-openlup-action="redirect" onclick="
+    fetch('/api/redirect', { method: 'POST' }).then(response => response.text())
+      .then(() => { document.getElementById('outcome').textContent = 'landed'; });
+  ">Redirect</button>
 </body></html>`;
 
 // The server answers a create 600 ms after receiving it, well after the 100 ms quiet window below.
 const answerDelayMs = 600;
 let server: Server, origin: string;
-const served = { received: 0, answered: 0 };
+const served = { received: 0, answered: 0, landed: 0 };
 
 test.beforeAll(async () => {
   server = createServer((request, response) => {
@@ -51,6 +69,11 @@ test.beforeAll(async () => {
     if (request.method === 'POST' && request.url?.startsWith('/api/create')) {
       served.received++;
       setTimeout(() => { served.answered++; response.writeHead(201, { 'content-type': 'text/plain' }).end('created'); }, answerDelayMs);
+      return;
+    }
+    if (request.method === 'POST' && request.url === '/api/redirect') { response.writeHead(303, { location: '/api/landing' }).end(); return; }
+    if (request.url === '/api/landing') {
+      setTimeout(() => { served.landed++; response.writeHead(200, { 'content-type': 'text/plain' }).end('landed'); }, answerDelayMs);
       return;
     }
     response.writeHead(404).end();
@@ -62,7 +85,7 @@ test.afterAll(async () => { await new Promise(resolve => server.close(resolve));
 test.beforeEach(() => {
   const info = test.info();
   test.skip(info.project.name !== info.config.projects[0]?.name, 'independent of the store configuration');
-  served.received = 0; served.answered = 0;
+  served.received = 0; served.answered = 0; served.landed = 0;
 });
 
 async function visibilityPage(page: Page) {
@@ -86,16 +109,27 @@ test('page handle: measures each visibility case in a real layout', async ({ pag
   expect(await find('state', 'case_covered')).toMatchObject({ coveredAtCentre: true, hidden: false, transparent: false, insideScrollArea: true });
   expect(await find('action', 'case_child_hit')).toEqual({ width: 120, height: 40, ...visible });
   expect(await find('state', 'case_ancestor_hit')).toMatchObject(visible);
+  // Clipped away by an ancestor: the element at the centre is an ancestor, but the anchor shows nothing.
+  expect(await find('state', 'case_visually_hidden')).toMatchObject({ coveredAtCentre: true, hidden: false, transparent: false });
+  expect(await find('action', 'case_clip_path')).toMatchObject({ coveredAtCentre: true, hidden: false, transparent: false });
+  // Only scrolling a container the buyer cannot scroll would reveal it; the container is left as it was.
+  expect(await find('state', 'case_second_slide')).toMatchObject({ insideScrollArea: false });
+  expect(await page.evaluate(() => document.getElementById('carousel')!.scrollTop)).toBe(0);
+  // A container the buyer can scroll counts, and its position is restored.
+  await page.evaluate(() => { document.getElementById('list')!.scrollTop = 5; });
+  expect(await find('state', 'case_scrolled_list')).toEqual({ width: 120, height: 20, ...visible });
+  expect(await page.evaluate(() => document.getElementById('list')!.scrollTop)).toBe(5);
   expect(await find('state', 'case_absent')).toBeNull();
   expect(handle.width()).toBe(800);
 });
 
 test('page handle: lists only visible anchors, with custom locators replacing attribute anchors', async ({ page }) => {
   const handle = await visibilityPage(page);
-  expect(await handle.anchors()).toEqual(['action:case_child_hit', 'action:case_visible', 'state:case_ancestor_hit', 'state:case_below_fold']);
+  expect(await handle.anchors()).toEqual(['action:case_child_hit', 'action:case_visible', 'state:case_ancestor_hit', 'state:case_below_fold', 'state:case_scrolled_list']);
   expect(await handle.anchors({ 'action:case_visible': '#absent', 'state:case_plain': '#plain', 'state:case_covered': '[data-openlup-state="case_covered"]' }))
-    .toEqual(['action:case_child_hit', 'state:case_ancestor_hit', 'state:case_below_fold', 'state:case_plain']);
-  expect(await page.evaluate(() => [window.scrollX, window.scrollY]), 'the scroll position is restored').toEqual([0, 0]);
+    .toEqual(['action:case_child_hit', 'state:case_ancestor_hit', 'state:case_below_fold', 'state:case_plain', 'state:case_scrolled_list']);
+  expect(await page.evaluate(() => [window.scrollX, window.scrollY, document.getElementById('carousel')!.scrollTop, document.getElementById('list')!.scrollTop]),
+    'every scroll position is restored').toEqual([0, 0, 0, 0]);
 });
 
 test('page handle: a withheld create reaches the server, the page sees a failure, and settling waits for it', async ({ page }) => {
@@ -108,7 +142,7 @@ test('page handle: a withheld create reaches the server, the page sees a failure
   });
   expect(await handle.perform({ attribute: 'action', value: 'place_order' }, { timeoutMs: 2_000 })).toBe(true);
   await handle.settled({ quietMs: 100 });
-  expect(served).toEqual({ received: 1, answered: 1 });
+  expect(served).toMatchObject({ received: 1, answered: 1 });
   await expect(page.locator('#outcome')).toHaveText('failed');
   expect(seen).toEqual([{ method: 'POST', path: '/api/create', key: 'key-1' }]);
   expect(handle.path()).toBe('/purchase');
@@ -121,7 +155,7 @@ test('page handle: a passed create settles only after its answer arrived', async
   const remove = await handle.intercept(() => 'pass');
   await handle.perform({ attribute: 'action', value: 'place_order' }, { timeoutMs: 2_000 });
   await handle.settled({ quietMs: 100 });
-  expect(served).toEqual({ received: 1, answered: 1 });
+  expect(served).toMatchObject({ received: 1, answered: 1 });
   await expect(page.locator('#outcome')).toHaveText('answered');
   await remove();
 });
@@ -138,5 +172,16 @@ test('page handle: a blocked create never reaches the server, and a removed inte
   await handle.reload();
   await handle.perform({ attribute: 'action', value: 'place_order' }, { timeoutMs: 2_000 });
   await expect(page.locator('#outcome')).toHaveText('answered', { timeout: 5_000 });
-  expect(served).toEqual({ received: 1, answered: 1 });
+  expect(served).toMatchObject({ received: 1, answered: 1 });
+});
+
+test('page handle: settling follows a redirect and waits for the redirected request', async ({ page }) => {
+  const handle = createPageHandle(page, { origin });
+  await handle.navigate('/purchase');
+  const remove = await handle.intercept(() => 'pass');
+  await handle.perform({ attribute: 'action', value: 'redirect' }, { timeoutMs: 2_000 });
+  await handle.settled({ quietMs: 100 });
+  expect(served.landed).toBe(1);
+  await expect(page.locator('#outcome')).toHaveText('landed');
+  await remove();
 });

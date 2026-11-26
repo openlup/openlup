@@ -161,6 +161,26 @@ describe("createPageHandle over a recording page (H1)", () => {
     expect(settled.done).toBe(true);
   });
 
+  it("follows a redirect: settling waits for the hop the routed request was redirected to", async () => {
+    const fake = fakePage();
+    const handle = createPageHandle(fake.page);
+    await handle.intercept(() => "pass");
+    const create = fake.send("POST", "https://shop.example.test/api/create");
+    await create.handled;
+    const hop: FakeRequest & { redirectedTo(): null } = { method: () => "GET", url: () => "https://shop.example.test/orders/1", headers: () => ({}), redirectedTo: () => null };
+    const redirected = Object.assign(create.request, { redirectedTo: () => hop });
+    const settled = tracked(handle.settled({ quietMs: 5 }));
+    fake.emit("requestfinished", redirected);
+    await flush();
+    expect(fake.waits, "the hop is still in flight").toHaveLength(0);
+    fake.emit("requestfinished", hop);
+    await flush();
+    expect(fake.waits).toHaveLength(1);
+    fake.release();
+    await flush();
+    expect(settled.done).toBe(true);
+  });
+
   it("settles after one quiet window when nothing was routed, and the removal function unroutes and detaches", async () => {
     const fake = fakePage();
     const handle = createPageHandle(fake.page);
@@ -274,41 +294,64 @@ describe("createPageHandle over a recording page (H1)", () => {
 /**
  * Element-like objects for the visibility function: one document, a viewport of
  * 400 × 300 over a scrollable area of 400 × 3000, boxes in document coordinates.
- * As in a browser, `elementFromPoint` answers null outside the viewport and skips
- * `pointer-events: none`, and an element without a box measures 0 × 0.
+ * As in a browser, an element's box moves with the window's and its ancestors'
+ * scroll positions; `scrollIntoView` scrolls every ancestor with an `overflow`
+ * style (nearest first, centred, clamped) and then the window; `elementFromPoint`
+ * answers null outside the viewport and skips `pointer-events: none`, elements
+ * clipped by their own or an ancestor's `clip` or `clip-path`, and points outside
+ * an ancestor's overflow box; and an element without a box measures 0 × 0.
  */
 function fakeDocument() {
   type Box = { left: number; top: number; width: number; height: number };
   type FakeElement = {
     nodeType: 1; style: Record<string, string>; attributes: Record<string, string>; parentElement: FakeElement | null; ownerDocument: unknown;
+    box: Box; scrollTop: number; scrollLeft: number; scrollHeight: number; clientLeft: number; clientTop: number; clientWidth: number; clientHeight: number;
     getAttribute(name: string): string | null; hasAttribute(name: string): boolean; contains(other: FakeElement): boolean;
     getBoundingClientRect(): Box; scrollIntoView(options: unknown): void;
   };
   const view = {
     scrollX: 0, scrollY: 0, innerWidth: 400, innerHeight: 300,
-    getComputedStyle: (element: FakeElement) => ({ display: "block", visibility: "visible", opacity: "1", ...element.style }),
+    getComputedStyle: (element: FakeElement) => ({
+      display: "block", visibility: "visible", opacity: "1", position: "static", clip: "auto", clipPath: "none",
+      overflowX: element.style.overflow ?? "visible", overflowY: element.style.overflow ?? "visible", ...element.style,
+    }),
     scrollTo(x: number, y: number) { view.scrollX = x; view.scrollY = y; },
   };
   const all: FakeElement[] = [];
+  const ancestors = (element: FakeElement) => { const found: FakeElement[] = []; for (let node = element.parentElement; node; node = node.parentElement) found.push(node); return found; };
+  const inside = (x: number, y: number, box: Box) => x >= box.left && x < box.left + box.width && y >= box.top && y < box.top + box.height;
+  const clippedAway = (element: FakeElement) => [element, ...ancestors(element)].some((node) => (node.style.clip ?? "auto") !== "auto" || (node.style.clipPath ?? "none") !== "none");
   const document = {
     defaultView: view,
     documentElement: { scrollWidth: 400, scrollHeight: 3000 },
     elementFromPoint(x: number, y: number) {
       if (x < 0 || y < 0 || x >= view.innerWidth || y >= view.innerHeight) return null;
-      return all.filter((element) => element.style.pointerEvents !== "none").filter((element) => {
-        const box = element.getBoundingClientRect();
-        return x >= box.left && x < box.left + box.width && y >= box.top && y < box.top + box.height;
-      }).at(-1) ?? null;
+      return all.filter((element) => element.style.pointerEvents !== "none" && !clippedAway(element))
+        .filter((element) => inside(x, y, element.getBoundingClientRect()))
+        .filter((element) => ancestors(element).every((node) => node.style.overflow === undefined || inside(x, y, node.getBoundingClientRect())))
+        .at(-1) ?? null;
     },
   };
-  const element = (box: Box, options: { parent?: FakeElement; style?: Record<string, string>; attributes?: Record<string, string> } = {}): FakeElement => {
+  const element = (box: Box, options: { parent?: FakeElement; style?: Record<string, string>; attributes?: Record<string, string>; scrollHeight?: number } = {}): FakeElement => {
     const created: FakeElement = {
-      nodeType: 1, style: options.style ?? {}, attributes: options.attributes ?? {}, parentElement: options.parent ?? null, ownerDocument: document,
+      nodeType: 1, style: options.style ?? {}, attributes: options.attributes ?? {}, parentElement: options.parent ?? null, ownerDocument: document, box,
+      scrollTop: 0, scrollLeft: 0, scrollHeight: options.scrollHeight ?? box.height, clientLeft: 0, clientTop: 0, clientWidth: box.width, clientHeight: box.height,
       getAttribute: (name) => created.attributes[name] ?? null,
       hasAttribute: (name) => Object.hasOwn(created.attributes, name),
       contains(other) { for (let node: FakeElement | null = other; node; node = node.parentElement) if (node === created) return true; return false; },
-      getBoundingClientRect: () => ({ left: box.left - view.scrollX, top: box.top - view.scrollY, width: box.width, height: box.height }),
-      scrollIntoView() { view.scrollY = Math.max(0, Math.min(3000 - view.innerHeight, box.top + box.height / 2 - view.innerHeight / 2)); },
+      getBoundingClientRect: () => {
+        const scrolled = ancestors(created).reduce((sum, node) => ({ x: sum.x + node.scrollLeft, y: sum.y + node.scrollTop }), { x: view.scrollX, y: view.scrollY });
+        return { left: box.left - scrolled.x, top: box.top - scrolled.y, width: box.width, height: box.height };
+      },
+      scrollIntoView() {
+        let centre = box.top + box.height / 2;
+        for (const node of ancestors(created)) {
+          if (node.style.overflow === undefined) continue;
+          node.scrollTop = Math.max(0, Math.min(node.scrollHeight - node.clientHeight, centre - node.box.top - node.clientHeight / 2));
+          centre -= node.scrollTop;
+        }
+        view.scrollY = Math.max(0, Math.min(3000 - view.innerHeight, centre - view.innerHeight / 2));
+      },
     };
     all.push(created);
     return created;
@@ -336,8 +379,22 @@ function visibilityCases() {
   element(box(420), { parent: childHit }); // a child filling the anchor
   const positioned = element({ left: 10, top: 480, width: 200, height: 80 }, { parent: body });
   const passThrough = element({ left: 20, top: 500, width: 60, height: 20 }, { parent: positioned, style: { pointerEvents: "none" } });
+  // A 140 × 50 carousel the buyer cannot scroll; the anchor sits in its second slide.
+  const carousel = element({ left: 250, top: 20, width: 140, height: 50 }, { parent: body, style: { overflow: "hidden" }, scrollHeight: 100 });
+  const secondSlide = element({ left: 250, top: 70, width: 140, height: 50 }, { parent: carousel });
+  const inSecondSlide = element({ left: 260, top: 75, width: 60, height: 20 }, { parent: secondSlide });
+  // A 140 × 50 list the buyer can scroll; the anchor sits 100 px down its content.
+  const list = element({ left: 250, top: 100, width: 140, height: 50 }, { parent: body, style: { overflow: "auto" }, scrollHeight: 150 });
+  const inList = element({ left: 260, top: 200, width: 60, height: 20 }, { parent: list });
+  // Visually hidden text: a 1 × 1 wrapper clipped to nothing inside a sized container.
+  const srContainer = element({ left: 250, top: 240, width: 140, height: 40 }, { parent: body });
+  const srWrapper = element({ left: 300, top: 250, width: 1, height: 1 }, { parent: srContainer, style: { position: "absolute", overflow: "hidden", clip: "rect(0px, 0px, 0px, 0px)" } });
+  const srOnly = element({ left: 300, top: 250, width: 106, height: 18 }, { parent: srWrapper });
+  // An ancestor clipped to nothing by `clip-path: inset(50%)`.
+  const clipPath = element({ left: 250, top: 280, width: 140, height: 20 }, { parent: body, style: { clipPath: "inset(50%)" } });
+  const underClipPath = element({ left: 260, top: 282, width: 60, height: 16 }, { parent: clipPath });
   return {
-    view,
+    view, carousel, list,
     cases: [
       ["visible", visible, result()],
       ["display none", displayNone, result({ width: 0, height: 0, hidden: true, coveredAtCentre: true })],
@@ -349,6 +406,10 @@ function visibilityCases() {
       ["covered by an overlay", covered, result({ coveredAtCentre: true })],
       ["centre hits a child", childHit, result()],
       ["the hit is a positioned ancestor", passThrough, result({ width: 60, height: 20 })],
+      ["the second slide of a carousel the buyer cannot scroll", inSecondSlide, result({ width: 60, height: 20, insideScrollArea: false })],
+      ["further down a list the buyer can scroll", inList, result({ width: 60, height: 20 })],
+      ["inside a visually hidden wrapper", srOnly, result({ width: 106, height: 18, coveredAtCentre: true })],
+      ["under an ancestor clipped by clip-path", underClipPath, result({ width: 60, height: 16, coveredAtCentre: true })],
     ] as const,
   };
 }
@@ -357,11 +418,13 @@ describe("the visibility function is self-contained (H3)", () => {
   const rebuilt = new Function(`return ${anchorVisibility.toString()}`)() as typeof anchorVisibility;
 
   it.each(visibilityCases().cases.map(([name]) => name))("measures %s", (name) => {
-    const { view, cases } = visibilityCases();
+    const { view, cases, carousel, list } = visibilityCases();
     const [, element, expected] = cases.find(([candidate]) => candidate === name)!;
     view.scrollTo(0, 7);
+    list.scrollTop = 10;
     expect(rebuilt([element as unknown as Element], [])).toEqual([expected]);
     expect([view.scrollX, view.scrollY], "the window scroll position is restored").toEqual([0, 7]);
+    expect([carousel.scrollTop, list.scrollTop], "every container's scroll position is restored").toEqual([0, 10]);
   });
 
   it("measures a batch in order and reads the requested attributes", () => {
