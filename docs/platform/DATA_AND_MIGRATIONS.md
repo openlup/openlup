@@ -555,9 +555,11 @@ The [bundle edit forward](../../db/platform/migrations/20261129080000_subscripti
 uses the subscription's existing stored selector for each edit line, including
 zero-priced lines. When a line has no stored price, the native previews derive
 its unit from the subscription's price list and currency. Both lookups use the
-same database instant after the subscription lock is acquired. Choose an
-available bundle or restore eligible catalogue
-pricing if a fresh preview returns `subscription_edit_catalog_unavailable`.
+same database instant after the subscription lock is acquired. Hosts must run
+both previews in `READ COMMITTED`. If a preview refuses with
+`subscription_command_admission_isolation_unsupported`, roll back and retry in
+a `READ COMMITTED` transaction. Choose an available bundle or restore eligible
+catalogue pricing if a fresh preview returns `subscription_edit_catalog_unavailable`.
 
 The customer preview requires matching renewal terms and a positive merchandise
 subtotal. Acceptance uses the saved quote to update the account template and

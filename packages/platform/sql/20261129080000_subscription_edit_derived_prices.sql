@@ -173,6 +173,9 @@ DECLARE
   v_can_apply boolean := true;
   v_missing_sku boolean := false;
 BEGIN
+  IF current_setting('transaction_isolation') <> 'read committed' THEN
+    RAISE EXCEPTION 'subscription_command_admission_isolation_unsupported' USING ERRCODE = '22023';
+  END IF;
   IF p_idempotency_key IS NULL OR p_idempotency_key <> btrim(p_idempotency_key)
     OR char_length(p_idempotency_key) NOT BETWEEN 8 AND 180
   THEN
@@ -449,6 +452,9 @@ DECLARE
  v_noop boolean:=false; core_matches boolean; addon_matches boolean;
  v_expires_at timestamptz;
 BEGIN
+ IF current_setting('transaction_isolation') <> 'read committed' THEN
+  RAISE EXCEPTION 'subscription_command_admission_isolation_unsupported' USING ERRCODE='22023';
+ END IF;
  IF p_actor_id IS NULL OR p_client_id IS NULL OR p_now IS NULL OR NOT isfinite(p_now)
   OR p_key IS NULL OR p_key<>btrim(p_key) OR char_length(p_key) NOT BETWEEN 8 AND 180
   OR p_payload IS NULL OR jsonb_typeof(p_payload)<>'object' OR p_payload ? 'acceptedQuoteHash' OR p_action IS NULL THEN

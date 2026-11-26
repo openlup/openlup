@@ -679,6 +679,44 @@ describe("derived renewal price context in PostgreSQL", () => {
     }
   });
 
+  it.each(["actor", "command"] as const)("refuses preview with a stale repeatable-read catalogue snapshot (%s)", async path => {
+    const f = await editFixture(), subject = await editSku(list, 125);
+    const core = [{ variantId: subject.id, qty: 2 }], key = randomUUID();
+    const before = await editRows(f);
+    const db = await (path === "actor" ? admin : runtime).connect();
+    try {
+      await db.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+      expect((await db.query("SELECT unit_price_minor FROM public.price_entries WHERE id=$1", [subject.entry])).rows)
+        .toEqual([{ unit_price_minor: 125 }]);
+      await admin.query(`WITH cutoff AS (
+          UPDATE public.price_entries SET active=false,valid_to=clock_timestamp() WHERE id=$1 RETURNING valid_to
+        ) INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from)
+          SELECT $2,$3,'one_time',230,valid_to FROM cutoff`, [subject.entry, list, subject.id]);
+      if (path === "actor") {
+        await db.query("SET LOCAL ROLE authenticated");
+        await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: f.principal, role: "authenticated" })]);
+      }
+      const [preview] = await Promise.allSettled([path === "actor"
+        ? db.query("SELECT public.customer_subscription_preview_bundle_as_actor($1,$2,$3)->'preview' AS result",
+          [f.subscriptionId, key, JSON.stringify(core)])
+        : db.query("SELECT public.subscription_command_preview($1,$2,$3,$4,'update_package_template',$5,$6) AS result",
+          [f.commandActor, f.clientId, key, f.subscriptionId,
+            { coreLines: core, expectedTemplateVersion: 1, compositionConstraint: {} }, await clock()])]);
+      await db.query(preview.status === "fulfilled" ? "COMMIT" : "ROLLBACK");
+      expect.soft(preview.status === "fulfilled" ? preview.value.rows[0].result : preview.reason)
+        .toMatchObject({ code: "22023", message: "subscription_command_admission_isolation_unsupported" });
+      expect.soft(await editRows(f)).toEqual(before);
+      expect.soft((await admin.query("SELECT 1 FROM public.subscription_command_receipts WHERE actor_id=$1 AND idempotency_key=$2",
+        [f.commandActor, key])).rows).toEqual([]);
+      const fresh = request(f, core);
+      const current = path === "actor" ? await fresh.actorPreview() : await fresh.commandPreview();
+      expect(current).toMatchObject(path === "actor" ? { newTotal: money(420) } : { newTotalMinor: 420 });
+    } finally {
+      await db.query("ROLLBACK");
+      db.release();
+    }
+  });
+
   it("refuses incomplete pricing and checks actor renewal context at preview and apply", async () => {
     const f = await editFixture(), missing = await editSku(), core = [{ variantId: skuId, qty: 1 }, { variantId: missing.id, qty: 1 }];
     const edit = request(f, core), before = await editRows(f);
