@@ -574,20 +574,37 @@ describe("paid with activation pending (R27)", () => {
     expect(finding(verdict, "forbidden_state_shown")!.observed).toContain("state:paid");
   });
 
-  it("opens the forbidden window after the expect step, so a page that learns the outcome on a later poll passes", async () => {
+  it("opens the forbidden window only once the run has shown the outcome, so a page that learns it on a later poll passes", async () => {
     const { verdict } = await run("paid_pending_activation", { slowPoll: true, awaitingPaymentUntilPoll: true });
     expect(verdict.findings).toEqual([]);
     expect(verdict.result).toBe("passed");
-    // The outcome step itself still shows the state the window forbids from the expect step on.
+    // The clean run shows awaiting_payment until its poll answers; the control run, whose polls get no answer, keeps it.
     expect(stepsOf(verdict, "clean")[4]!.observedAnchors).toContain("state:awaiting_payment");
     expect(stepsOf(verdict, "clean")[5]!.observedAnchors).toContain("state:paid_pending_activation");
+    expect(stepsOf(verdict, "control")[5]!.observedAnchors).toContain("state:awaiting_payment");
+    expect(stepsOf(verdict, "control").at(-1)!.observedAnchors).toContain("state:awaiting_payment");
   });
 
-  it("fails a forbidden state shown only in the control run", async () => {
+  it("does not judge a control run that never learned the outcome, even when its failed read shows awaiting_payment", async () => {
     const { verdict } = await run("paid_pending_activation", { awaitingPaymentWhenReadFails: true });
+    expect(verdict.findings).toEqual([]);
+    expect(verdict.result).toBe("passed");
+    expect(stepsOf(verdict, "control")[5]!.observedAnchors).toContain("state:awaiting_payment");
+  });
+
+  it("fails a page that falls back to awaiting_payment after it showed the outcome", async () => {
+    const { verdict } = await run("paid_pending_activation", { fallsBackAfterShowing: true });
     expect(verdict.result).toBe("failed");
-    expect(codes(verdict)).toEqual(["forbidden_state_shown"]);
-    expect(finding(verdict, "forbidden_state_shown")).toMatchObject({ run: "control", step: 5 });
+    expect(codes(verdict)[0]).toBe("forbidden_state_shown");
+    expect(finding(verdict, "forbidden_state_shown")).toMatchObject({ run: "clean", step: 5 });
+  });
+
+  it("fails the fall-back in the control run too, once that run showed the outcome", async () => {
+    const { verdict } = await run("paid_pending_activation", { activationFromPageState: true, fallsBackAfterShowing: true });
+    expect(verdict.result).toBe("failed");
+    const forbidden = verdict.findings.filter((entry) => entry.code === "forbidden_state_shown");
+    expect(forbidden.map((entry) => [entry.run, entry.step])).toContainEqual(["control", 5]);
+    expect(codes(verdict)).toContain("vacuous_progress");
   });
 });
 
@@ -739,6 +756,14 @@ describe("harm proven before a fault (R33)", () => {
     expect(codes(verdict)).toEqual(["duplicate_capture", "outcome_failed"]);
     expect(finding(verdict, "duplicate_capture")).toMatchObject({ run: "clean", step: 1 });
     expect(finding(verdict, "outcome_failed")).toMatchObject({ run: "clean", step: 4 });
+  });
+
+  it("ranks harm proven earlier in the clean run above a later stimulus check that ends not_run", async () => {
+    const { verdict } = await run("decline_retry", { twoAttempts: true }, { proofFile: proofWith({ autoProgress: ["retry_payment"] }) });
+    expect(verdict.result).toBe("failed");
+    expect(codes(verdict)).toEqual(["second_attempt", "auto_progress_not_performed"]);
+    expect(finding(verdict, "second_attempt")).toMatchObject({ run: "clean", step: 1 });
+    expect(finding(verdict, "auto_progress_not_performed")).toMatchObject({ run: "clean", step: 7 });
   });
 
   it("keeps a fault ahead when no harm was proven before it", async () => {

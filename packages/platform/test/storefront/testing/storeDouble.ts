@@ -93,8 +93,12 @@ export type StoreDoubleSwitches = {
   readonly driverRejectsForControl?: boolean;
   /** The page polls the status only on the second settle after an outcome, not at once. */
   readonly slowPoll?: boolean;
-  /** After continue-payment the page keeps showing `awaiting_payment` until its first status poll completes; one with no answer shows `paying`. */
+  /** After continue-payment the page keeps showing `awaiting_payment` until a status poll answers; a poll with no answer keeps it. */
   readonly awaitingPaymentUntilPoll?: boolean;
+  /** When a status poll after an outcome gets no answer, the page shows `paid_pending_activation` from its own state. */
+  readonly activationFromPageState?: boolean;
+  /** Once `paid_pending_activation` was shown, the page's next settle falls back to `awaiting_payment` (a later poll that failed). */
+  readonly fallsBackAfterShowing?: boolean;
 };
 
 /** Every outcome kind the double's driver can produce. */
@@ -161,6 +165,10 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: {
   let autoFired = false;
   // Settles left before a slow status poll.
   let pollIn = 0;
+  // Anchor reads that saw `paid_pending_activation`, and whether the page fell back from it.
+  // Per buyer: the two runs share the page.
+  const activationReads = new Map<string, number>();
+  const fellBack = new Set<string>();
   let placing = false;
   let firstSubmitSkipped = false;
   let keyCount = 0;
@@ -251,7 +259,7 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: {
       return;
     }
     if (switches.awaitingPaymentWhenReadFails === true) view = "awaiting_payment";
-    else if (switches.awaitingPaymentUntilPoll === true && view === "awaiting_payment") show("paying");
+    else if (poll && switches.activationFromPageState === true && (view === "awaiting_payment" || view === "paying")) show("paid_pending_activation");
     else if (poll && switches.paidFromLocalState === true && view === "awaiting_authority") show("paid");
   }));
 
@@ -379,6 +387,7 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: {
     },
     async anchors(locators = {}) {
       if (view === "declined") declinedReads += 1;
+      if (view === "paid_pending_activation") activationReads.set(buyer(), (activationReads.get(buyer()) ?? 0) + 1);
       const custom = new Set(Object.keys(locators));
       const names = new Set<string>();
       for (const [name, shown] of present()) if (shown && !name.startsWith("field:") && !custom.has(name)) names.add(name);
@@ -448,6 +457,10 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: {
       if (pollIn > 0) {
         pollIn -= 1;
         if (pollIn === 0) void readStatus(true);
+      }
+      if (switches.fallsBackAfterShowing === true && (activationReads.get(buyer()) ?? 0) > 0 && !fellBack.has(buyer()) && view === "paid_pending_activation") {
+        fellBack.add(buyer());
+        view = "awaiting_payment";
       }
       progressOnItsOwn();
       for (;;) {
