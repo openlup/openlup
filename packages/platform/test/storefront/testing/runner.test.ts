@@ -681,7 +681,7 @@ describe("stop-at (R30)", () => {
   it("refuses a state the run never showed, naming the last step", async () => {
     const double = storeDouble({ neverDeclines: true });
     await expect(runStorefrontScenario({ ...options(double, "decline_retry"), stopAt: "checkout.declined" }))
-      .rejects.toThrow(/^storefront_stop_state_unreached: The settle window of the clean run .*state:declined/);
+      .rejects.toThrow(/^storefront_stop_state_unreached: Step 7 \(outcome settled\) of the clean run was the last step, and state:declined was not visible after any step \(first finding: /);
     expect(double.calls.at(-1)).toBe("unintercept");
   });
 });
@@ -714,6 +714,16 @@ describe("the ledger effect of each outcome (R32)", () => {
   });
 });
 
+describe("an outcome needs a new attempt (R32)", () => {
+  it("ends not_run when the retry started no attempt for the settling outcome to act on", async () => {
+    const { verdict } = await run("decline_retry", { retryStartsNone: true });
+    expect(verdict.result).toBe("not_run");
+    expect(codes(verdict)).toEqual(["outcome_failed"]);
+    expect(finding(verdict, "outcome_failed")).toMatchObject({ run: "clean", step: 7 });
+    expect(finding(verdict, "outcome_failed")!.observed).toContain("1 payment attempts against 1 at the previous outcome");
+  });
+});
+
 describe("harm proven before a fault (R33)", () => {
   it("ranks a duplicate capture of the clean run above an outcome driver fault in the control run", async () => {
     const { verdict } = await run("paid_pending_activation", { doubleCapture: true, driverRejectsForControl: true });
@@ -721,6 +731,14 @@ describe("harm proven before a fault (R33)", () => {
     expect(codes(verdict)[0]).toBe("duplicate_capture");
     expect(finding(verdict, "duplicate_capture")).toMatchObject({ run: "clean" });
     expect(finding(verdict, "outcome_failed")).toMatchObject({ run: "control", step: 4 });
+  });
+
+  it("ranks harm proven earlier in the same run above the run's fault", async () => {
+    const { verdict } = await run("paid_pending_activation", { doubleCapture: true, driverRejects: true });
+    expect(verdict.result).toBe("failed");
+    expect(codes(verdict)).toEqual(["duplicate_capture", "outcome_failed"]);
+    expect(finding(verdict, "duplicate_capture")).toMatchObject({ run: "clean", step: 1 });
+    expect(finding(verdict, "outcome_failed")).toMatchObject({ run: "clean", step: 4 });
   });
 
   it("keeps a fault ahead when no harm was proven before it", async () => {

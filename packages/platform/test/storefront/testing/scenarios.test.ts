@@ -55,7 +55,7 @@ it("keys the finding texts by code and cause, with one cause per single-cause co
   expect(causes("adapter_anchor_missing")).toEqual(["action", "field", "state"]);
   expect(causes("adapter_matcher_unmatched")).toEqual(["blocked_set", "create", "read"]);
   expect(causes("observer_failed")).toEqual(["rejected", "unattributable"]);
-  expect(causes("outcome_failed")).toEqual(["no_attempt", "rejected"]);
+  expect(causes("outcome_failed")).toEqual(["no_attempt", "no_effect", "rejected"]);
   expect(causes("forbidden_state_shown")).toEqual(["after_step", "paid_without_capture"]);
   expect(causes("vacuous_progress")).toEqual(["blocked", "omitted", "other_policy"]);
   for (const [code, cause] of findingTextKeys) {

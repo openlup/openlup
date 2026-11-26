@@ -75,6 +75,14 @@ const STEP_KINDS: ReadonlySet<string> = new Set(["arrange", "rearrange", "withho
 const CONTROL_KINDS: ReadonlySet<string> = new Set(["none", "block_read", "omit_action", "other_policy"]);
 /** The outcome kinds this runner knows. Each implies a payment attempt in the ledger after it is produced. */
 const KNOWN_OUTCOMES: ReadonlySet<string> = new Set(["declined", "pending", "settled", "settled_after_pending", "activation_pending"]);
+/** Outcomes that capture the payment: the ledger must then show more captures than at the end of the previous outcome. */
+const SETTLING_OUTCOMES: ReadonlySet<string> = new Set(["settled", "settled_after_pending", "activation_pending"]);
+/** The outcome that acts on an attempt an earlier outcome left pending; every other outcome acts on a new attempt. */
+const ON_EARLIER_ATTEMPT = "settled_after_pending";
+/** Ledger harm: once proven, a later fault of the harness does not hide it. */
+const LEDGER_HARM: ReadonlySet<string> = new Set(["duplicate_order", "duplicate_hold", "duplicate_capture", "second_attempt", "forbidden_state_shown"]);
+/** Faults that stop a run; ranked below ledger harm the runs proved before them. */
+const RUN_FAULTS: ReadonlySet<string> = new Set(["page_failed", "observer_failed:rejected", "arrange_failed", "outcome_failed:rejected", "outcome_failed:no_attempt", "outcome_failed:no_effect"]);
 /** The changed-payload policies; an absent or unknown policy reads as the first. */
 const POLICIES = ["refuse_changed", "update_in_place"] as const;
 const STOP_PREFIX = "checkout.";
@@ -96,7 +104,10 @@ const JUDGEMENT: Readonly<Record<string, { readonly group: number; readonly rank
   stimulus_not_create: { group: 3, rank: 0, result: "not_run" },
   stimulus_not_applied: { group: 3, rank: 0, result: "not_run" },
   // An outcome the driver reported but the ledger does not show never counts as stimulus.
-  "outcome_failed:no_attempt": { group: 3, rank: 0, result: "not_run" },
+  "outcome_failed:no_attempt": { group: 3, rank: 1, result: "not_run" },
+  "outcome_failed:no_effect": { group: 3, rank: 1, result: "not_run" },
+  // A declared auto-progress the page did not perform explains a missing outcome effect, so it ranks first.
+  auto_progress_not_performed: { group: 3, rank: 0, result: "not_run" },
   duplicate_order: { group: 5, rank: 0, result: "failed" },
   duplicate_hold: { group: 5, rank: 0, result: "failed" },
   duplicate_capture: { group: 5, rank: 0, result: "failed" },
@@ -312,7 +323,27 @@ function anchorLocators(actions: Readonly<Record<string, string>> | undefined): 
   return locators;
 }
 
-type Judged = { readonly group: number; readonly rank: number; readonly result: StorefrontVerdict["result"]; readonly order: number; readonly finding: VerdictFinding };
+type Judged = {
+  readonly group: number;
+  readonly rank: number;
+  readonly result: StorefrontVerdict["result"];
+  readonly order: number;
+  readonly key: string;
+  readonly finding: VerdictFinding;
+};
+
+/**
+ * Ledger harm a run proved before a fault outranks the fault: harm in the
+ * clean run before a fault in the control run, or harm at or before the
+ * fault's step in the same run. The fault then ranks right below the ledger
+ * checks, still above the budget, so the result is `failed`.
+ */
+function rankFaultsBelowProvenHarm(judged: readonly Judged[]): Judged[] {
+  const harm = judged.filter((entry) => LEDGER_HARM.has(entry.finding.code));
+  const provenBefore = (fault: VerdictFinding) => harm.some(({ finding }) => (finding.run === "clean" && fault.run === "control")
+    || (finding.run === fault.run && finding.step !== null && fault.step !== null && finding.step <= fault.step));
+  return judged.map((entry) => RUN_FAULTS.has(entry.key) && provenBefore(entry.finding) ? { ...entry, group: 5, rank: 2 } : entry);
+}
 
 type RunRecord = {
   readonly run: RunName;
@@ -352,23 +383,32 @@ type RunRecord = {
  * declare. A `safety_only` scenario has no control run. When the UI performs
  * the omitted action by itself, as the effective `autoProgress` declares,
  * neither run performs it and the control becomes a `block_read` of status
- * reads from the step before it, with the outcomes after it skipped.
+ * reads from the step before it, with the outcomes after it skipped; when the
+ * clean run still offers that action at the end of the following step and the
+ * next expected state is not shown, the declaration is wrong:
+ * `auto_progress_not_performed` (`not_run`).
  *
  * Outcomes: an `outcome` step asks the `outcomes` driver for one outcome
  * (`declined`, `pending`, `settled`, `settled_after_pending`,
  * `activation_pending`). A scenario runs only when every outcome in its
  * `requires.outcomes` is one this runner knows and the driver declares; else
  * it ends `not_run` with `tier_unreachable` naming each missing outcome before
- * any page, observer or driver call. Tier names do not decide admission. A
- * rejected `produce`, or a ledger without a payment attempt after the outcome,
- * is `outcome_failed`.
+ * any page, observer or driver call. Tier names do not decide admission.
+ * Every capability must be a name; one the runner does not know is ignored.
+ * Each outcome has a ledger effect, compared with the ledger at the end of the
+ * previous outcome step (zero before the first): every outcome but
+ * `settled_after_pending` acts on a new attempt (more attempts), a settling
+ * outcome (`settled`, `settled_after_pending`, `activation_pending`) adds a
+ * capture, and `declined` or `pending` adds none. A rejected `produce`, or an
+ * outcome whose effect the ledger does not show, is `outcome_failed` and stops
+ * the run.
  *
  * Judgement, first failing group decides: 0 admitted; 1 page, observer,
  * arrangement and outcome driver worked; 2 no order before the arrangement and
  * one after the first matched create; 3 the first order appeared in a step with
- * a matched create, every withhold applied and every outcome shows an attempt;
- * 4 ledger safety in both runs and settle windows (payable orders, orders
- * holding stock, attempts, captures, no attempt after its step, attempts per
+ * a matched create, every withhold applied, every outcome shows its ledger
+ * effect and declared auto-progress was performed; 4 ledger safety in both
+ * runs and settle windows (payable orders, orders holding stock, attempts, captures, no attempt after its step, attempts per
  * decline, forbidden states from their step on; a paid state needs a capture
  * and no payable order) and, for an exclusive database, no payable order
  * outside the subjects; 5 the create budget kept (a run over it stopped before
@@ -381,12 +421,15 @@ type RunRecord = {
  * status read is `auto_progress_undeclared`. Codes 0–3, 5 and 6 end `not_run`,
  * as do `control_not_applied` and `auto_progress_undeclared`; a harness fault
  * is never `failed` or `passed`; a ledger violation is
- * `failed`; progress under the control is `vacuous`. Without a finding the
- * result is `passed`, or `safety_only` for a scenario without a control.
+ * `failed`; progress under the control is `vacuous`. Ledger harm a run proved
+ * before a fault (in the clean run before a control-run fault, or at or before
+ * the fault's step in the same run) outranks that fault, so the result is
+ * `failed`. Without a finding the result is `passed`, or `safety_only` for a
+ * scenario without a control.
  *
  * Invalid options (an unknown scenario, a malformed `runId`, a missing or
  * mismatched `width`, a clock outside integer milliseconds 0 to the end of the
- * year 9999, a malformed outcome driver) reject with a `TypeError` starting
+ * year 9999, a malformed outcome driver or a capability that is not a name) reject with a `TypeError` starting
  * `storefront_scenario_unknown` or `storefront_run_input_invalid`, and nothing
  * is driven, as does a malformed scenario object; a `stopAt` that is not
  * `checkout.<state>` for a state the scenario expects rejects
@@ -419,10 +462,20 @@ export async function runStorefrontScenario(options: StorefrontRunOptions): Prom
   if (outcomes !== undefined && (!isRecord(outcomes) || !Array.isArray(outcomes.capabilities) || typeof outcomes.produce !== "function")) {
     throw invalid("outcomes is not an outcome driver.", "Pass outcomes as { capabilities: outcome kinds the driver can produce, produce(outcome, { subject }) }, or leave it out.");
   }
+  // A capability is recorded in the verdict, so one that is not a name is refused; a name the runner does not know is ignored.
+  const badCapability = outcomes?.capabilities.findIndex((capability) => !isName(capability)) ?? -1;
+  if (badCapability >= 0) {
+    throw refuse("storefront_run_input_invalid", `outcomes.capabilities[${badCapability}] is ${JSON.stringify(outcomes!.capabilities[badCapability]) ?? String(outcomes!.capabilities[badCapability])}, not a name matching ^[a-z][a-z0-9_]*$.`,
+      "the runner records every declared capability in the verdict, so each must be a name.", "Declare each capability as an outcome kind name, such as settled.");
+  }
   const policy: string = proofFile?.changedPayloadPolicy === "update_in_place" ? "update_in_place" : POLICIES[0];
   const autoProgress = [...(adapter?.autoProgress ?? proofFile?.autoProgress ?? [])];
   const control = effectiveControl(scenario, policy, autoProgress);
   const expectSteps = scenario.steps.filter((step): step is ScenarioStep & { kind: "expect" } => step.kind === "expect");
+  // With declared auto-progress, the state the next expect after the skipped action asks for.
+  const nextAfterSkip = control.cleanSkip === null ? undefined
+    : scenario.steps.slice(control.cleanSkip + 1).find((step): step is ScenarioStep & { kind: "expect" } => step.kind === "expect");
+  const nextProgress = nextAfterSkip === undefined ? null : progressOf(nextAfterSkip, policy).state;
   const stopState = options.stopAt === undefined ? undefined : stopStateOf(options.stopAt, expectSteps);
   const create = adapter?.commands?.create ?? options.commands?.create;
   const read = adapter?.commands?.read ?? options.commands?.read;
@@ -475,13 +528,14 @@ export async function runStorefrontScenario(options: StorefrontRunOptions): Prom
     judged.push({
       ...place,
       order: judged.length,
+      key: JUDGEMENT[`${code}:${cause}`] === undefined ? code : `${code}:${cause}`,
       finding: { code, run, step, ...(field === undefined ? {} : { field }), observed: text.observed, cause: text.cause, fix: text.fix, recheck },
     });
   };
   const finish = (rest: Omit<Parameters<typeof verdictOf>[0], "result" | "findings" | "completedAt">) => {
     const ended = clock.now();
     const completedAt = utcInstant(ended);
-    const ordered = [...judged].sort((a, b) => a.group - b.group || a.rank - b.rank || a.order - b.order);
+    const ordered = rankFaultsBelowProvenHarm(judged).sort((a, b) => a.group - b.group || a.rank - b.rank || a.order - b.order);
     const result = ordered[0]?.result ?? (control.kind === "none" ? "safety_only" : "passed");
     const verdict = verdictOf({ ...rest, result, findings: ordered.map((entry) => entry.finding), completedAt,
       durations: { ...rest.durations, totalMs: Math.max(0, Math.round(ended - started)) } });
@@ -535,6 +589,8 @@ export async function runStorefrontScenario(options: StorefrontRunOptions): Prom
     let commands: VerdictStep["commands"] = [];
     let ordinal = 0;
     let declines = 0;
+    // The ledger at the end of the previous outcome step (none yet: zero).
+    let beforeOutcome = { attempts: 0, captures: 0 };
     const keys = new Map<string, number>();
     let withhold: "idle" | "armed" | "applied" = "idle";
     let hold: { used: boolean; released: Promise<void> } | null = null;
@@ -762,10 +818,30 @@ export async function runStorefrontScenario(options: StorefrontRunOptions): Prom
           expectedAnchor: progress === null ? null : `state:${progress.state}`,
           observedAnchors, path, elapsedMs: stepElapsed, commands, ledger,
         });
-        // Every outcome this runner knows implies a payment attempt: one the ledger does not show never counts as stimulus.
-        if (produced !== null && ledger !== null && ledger.attempts < 1) {
-          add("outcome_failed", "no_attempt", run, index, { at: at(index), name: produced }, "outcomes");
+        // Declared auto-progress the page did not perform: the skipped action is still offered and the next state not reached.
+        // Judged in the clean run only: the control blocks the status reads the page would learn its own progress from.
+        const notPerformed = run === "clean" && control.cleanSkip !== null && index === control.cleanSkip + 1 && ledger !== null
+          && observedAnchors.includes(`action:${(scenario.steps[control.cleanSkip] as ScenarioStep & { kind: "act" }).action}`)
+          && nextProgress !== null && !observedAnchors.includes(`state:${nextProgress}`);
+        if (notPerformed) {
+          const action = (scenario.steps[control.cleanSkip!] as ScenarioStep & { kind: "act" }).action;
+          add("auto_progress_not_performed", "only", run, index, { at: at(index), name: `action:${action}`, detail: `state:${nextProgress}` }, "autoProgress");
           record.stopped = true;
+        } else if (produced !== null && ledger !== null) {
+          // Each outcome has a ledger effect: an outcome the ledger does not show never counts as stimulus.
+          const newAttempt = produced !== ON_EARLIER_ATTEMPT;
+          const settling = SETTLING_OUTCOMES.has(produced);
+          if (newAttempt ? ledger.attempts <= beforeOutcome.attempts : ledger.attempts < 1) {
+            add("outcome_failed", "no_attempt", run, index, { at: at(index), name: produced, count: ledger.attempts, limit: beforeOutcome.attempts }, "outcomes");
+            record.stopped = true;
+          } else if (settling ? ledger.captures <= beforeOutcome.captures : ledger.captures !== beforeOutcome.captures) {
+            add("outcome_failed", "no_effect", run, index, {
+              at: at(index), name: produced, count: ledger.captures, limit: beforeOutcome.captures,
+              detail: settling ? "more captures than" : "the same captures as",
+            }, "outcomes");
+            record.stopped = true;
+          }
+          beforeOutcome = { attempts: ledger.attempts, captures: ledger.captures };
         }
         if (produced === "declined") declines += 1;
         record.declines.set(index, declines);

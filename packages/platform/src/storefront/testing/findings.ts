@@ -99,6 +99,13 @@ const texts: Readonly<Record<string, Readonly<Record<string, FindingText>>>> = {
       fix: "Declare the policy the store applies as changedPayloadPolicy in the proof file, or make the store apply the declared one.",
     },
   },
+  auto_progress_not_performed: {
+    only: {
+      observed: (f) => `${f.at}: the page still offers ${f.name} and does not show ${f.detail}, although autoProgress declares that it performs the action by itself.`,
+      cause: "The adapter or proof file declares an action in autoProgress that the page leaves to the buyer, so neither run performed it.",
+      fix: "Remove the action from autoProgress (adapter or proof file), or make the page perform it by itself.",
+    },
+  },
   auto_progress_undeclared: {
     only: {
       observed: (f) => `${f.at}: the page shows ${f.name} although the control omitted ${f.detail}; ${f.count} status reads were matched before it.`,
@@ -201,9 +208,14 @@ const texts: Readonly<Record<string, Readonly<Record<string, FindingText>>>> = {
       fix: "Make the outcome driver's sandbox reachable for the harness, or declare only the outcomes it can produce.",
     },
     no_attempt: {
-      observed: (f) => `${f.at}: the outcome driver produced ${f.name}, but the ledger shows no payment attempt.`,
-      cause: "The outcome resolved but the ledger shows no payment attempt, so it did not act on this run's payment.",
+      observed: (f) => `${f.at}: the outcome driver produced ${f.name}, but the ledger shows ${f.count} payment attempts against ${f.limit} at the previous outcome.`,
+      cause: "The outcome resolved but the ledger shows no payment attempt for it to act on (a new one, except for settled_after_pending), so it did not act on this run's payment.",
       fix: "Make the page start a payment attempt before the outcome, and the driver act on the run subject's attempt.",
+    },
+    no_effect: {
+      observed: (f) => `${f.at}: the outcome driver produced ${f.name}, but the ledger shows ${f.count} captures; the outcome needs ${f.detail} the ${f.limit} at the previous outcome.`,
+      cause: "The outcome resolved but the ledger does not show its effect (a settling outcome captures the payment, a decline or a pending attempt captures nothing), so the driver did not produce what it answered.",
+      fix: "Make the outcome driver produce exactly the outcome asked for on the run subject's attempt, or declare only the outcomes it can produce.",
     },
   },
   tier_unreachable: {

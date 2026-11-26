@@ -77,6 +77,8 @@ export type StoreDoubleSwitches = {
   readonly continueSendsNothing?: boolean;
   /** A retry click starts two payment attempts. */
   readonly retryStartsTwo?: boolean;
+  /** A retry click starts no payment attempt. */
+  readonly retryStartsNone?: boolean;
   /** The outcome driver rejects every outcome. */
   readonly driverRejects?: boolean;
   /** The outcome driver never declines a payment. */
@@ -91,7 +93,7 @@ export type StoreDoubleSwitches = {
   readonly driverRejectsForControl?: boolean;
   /** The page polls the status only on the second settle after an outcome, not at once. */
   readonly slowPoll?: boolean;
-  /** After continue-payment the page keeps showing `awaiting_payment` until a status read answers. */
+  /** After continue-payment the page keeps showing `awaiting_payment` until its first status poll completes; one with no answer shows `paying`. */
   readonly awaitingPaymentUntilPoll?: boolean;
 };
 
@@ -249,6 +251,7 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: {
       return;
     }
     if (switches.awaitingPaymentWhenReadFails === true) view = "awaiting_payment";
+    else if (switches.awaitingPaymentUntilPoll === true && view === "awaiting_payment") show("paying");
     else if (poll && switches.paidFromLocalState === true && view === "awaiting_authority") show("paid");
   }));
 
@@ -418,7 +421,7 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: {
         return true;
       }
       if (name === "action:retry_payment") {
-        pay(switches.retryStartsTwo === true ? 2 : 1);
+        pay(switches.retryStartsTwo === true ? 2 : switches.retryStartsNone === true ? 0 : 1);
         return true;
       }
       return true;
