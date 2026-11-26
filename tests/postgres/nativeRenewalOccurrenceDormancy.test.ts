@@ -129,7 +129,7 @@ async function probeWriter(owner: Pool) {
     expect(await call(db, writer, input)).toMatchObject({ outcome: "created" });
   }, "ROLLBACK");
   await owner.query("UPDATE public.subscriptions SET next_cycle_at='2050-01-01Z' WHERE id=$1", [f.subscriptionId]);
-  await owner.query("DELETE FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='commerce.order.paid.email'", [f.orderId]);
+  await owner.query("DELETE FROM public.outbox_events WHERE aggregate_id=$1 AND event_type IN ('commerce.order.paid','commerce.order.paid.email')", [f.orderId]);
   expect(await count()).toBe(2);
   return { input, scope: f.scope, count };
 }
