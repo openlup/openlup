@@ -154,11 +154,13 @@ export type StorefrontObserver = {
  * - `find` scrolls the first match into view when it is not already shown in
  *   full and measures it, or resolves
  *   `null` when none appeared within `timeoutMs`; every scroll position is
- *   restored afterwards, instantly whatever the page's `scroll-behavior`. An anchor is visible when its box is non-zero; lies
- *   inside the page's scrollable area and is not left partly outside the shown
- *   range of a container or viewport the buyer cannot scroll (`overflow:
- *   hidden` or `clip`, including an app shell or a body scroll lock), judged
- *   before anything moves; is not
+ *   restored afterwards, instantly whatever the page's `scroll-behavior`. An
+ *   anchor is visible when its box is non-zero; the buyer can bring it into
+ *   view (judged before anything moves, from the anchor outward: a scroller the
+ *   buyer can scroll brings its content into its range, while a locked one,
+ *   `overflow: hidden` or `clip` on a container or on the viewport as in an app
+ *   shell or a body scroll lock, must already show the anchor or an
+ *   anchor-sized part of what an inner scrollable scroller shows); is not
  *   hidden (`display: none`, a `hidden` attribute up the tree, or an inherited
  *   `visibility` other than `visible`); is not fully transparent (the product of
  *   its and its ancestors' computed opacity is 0); and some part of it survives

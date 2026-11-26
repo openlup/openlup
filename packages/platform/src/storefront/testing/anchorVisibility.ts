@@ -9,11 +9,16 @@
  * measured:
  *
  * - its box;
- * - `insideScrollArea`: the box lies inside the page's scrollable area, and,
- *   judged before anything moves, no scroller the buyer cannot scroll
- *   (`overflow: hidden` or `clip`; the viewport's overflow is the root
- *   element's, or body's while the root's is visible; a container only on an
- *   axis it can scroll) leaves part of the box outside the range it shows;
+ * - `insideScrollArea`: the buyer can bring the box into view, judged per axis
+ *   before anything moves, walking its scrollers from the anchor outward (the
+ *   overflow ancestors in its containing-block chain, then the viewport, whose
+ *   overflow is the root element's, or body's while the root's is visible). A
+ *   scroller the buyer can scroll (not `hidden` or `clip`) brings anything in
+ *   its scrollable content into its range, so from there outward what must be
+ *   shown is that range; a locked one must already show the anchor, or an
+ *   anchor-sized part of what an inner scrollable scroller shows. A container
+ *   with nothing to scroll on an axis only clips there; the viewport always
+ *   counts, and does not move a fixed box;
  * - `hidden`: `display: none` or a `hidden` attribute up the tree, or an
  *   inherited `visibility` other than `visible`;
  * - `transparent`: the product of its and its ancestors' opacity is 0;
@@ -97,14 +102,29 @@ export function anchorVisibility(elements: readonly Element[], attributes: reado
         awaiting = style.position;
       }
     }
-    // The scrollers that show the anchor: the viewport, and every overflow ancestor in its chain but the root scroller.
-    const locked = (overflow: string) => overflow === "hidden" || overflow === "clip";
-    // The viewport's overflow is the root element's, or body's while the root's is visible.
+    // The scrollers that show the anchor, innermost first: every overflow ancestor in its chain but the root scroller,
+    // then the viewport, whose overflow is the root element's, or body's while the root's is visible. Each has, per
+    // axis, the range it shows now and the scroll extent its position can take; the buyer can move it only when its
+    // overflow on that axis is not `hidden` or `clip`. A fixed anchor or ancestor is not moved by the viewport.
     const viewportStyle = rootStyle.overflowX === "visible" && rootStyle.overflowY === "visible" && owner.body !== null
       ? view.getComputedStyle(owner.body) : rootStyle;
-    const scrollers: { x: [number, number]; y: [number, number]; lockedX: boolean; lockedY: boolean }[] = [
-      { x: [0, view.innerWidth], y: [0, view.innerHeight], lockedX: locked(viewportStyle.overflowX), lockedY: locked(viewportStyle.overflowY) },
-    ];
+    const locked = (overflow: string) => overflow === "hidden" || overflow === "clip";
+    // A container scrolls for the buyer under `auto`, `scroll` or `overlay`; the viewport under anything but a lock.
+    const userScrollable = (overflow: string) => overflow !== "visible" && !locked(overflow);
+    const windowScroll = { x: view.scrollX, y: view.scrollY };
+    const saved = chain.map((node) => ({ node, left: node.scrollLeft, top: node.scrollTop }));
+    // The extent of a scroll position, read by scrolling to both ends and back (instantly; everything is restored).
+    const extent = (read: () => number, write: (value: number) => void) => {
+      const current = read();
+      write(-1e7);
+      const min = read();
+      write(1e7);
+      const max = read();
+      write(current);
+      return { min, max, current };
+    };
+    type Axis = { range: [number, number]; min: number; max: number; current: number; user: boolean };
+    const scrollers: { x: Axis; y: Axis; viewport: boolean }[] = [];
     for (const node of chain) {
       if (!inChain.has(node) || isRootScroller(node)) continue;
       const style = view.getComputedStyle(node);
@@ -112,25 +132,56 @@ export function anchorVisibility(elements: readonly Element[], attributes: reado
       const nodeBox = node.getBoundingClientRect();
       const left = nodeBox.left + node.clientLeft;
       const top = nodeBox.top + node.clientTop;
-      // A locked container counts only on an axis it could scroll; one with nothing to scroll merely clips (below).
       scrollers.push({
-        x: [left, left + node.clientWidth], y: [top, top + node.clientHeight],
-        lockedX: locked(style.overflowX) && node.scrollWidth > node.clientWidth, lockedY: locked(style.overflowY) && node.scrollHeight > node.clientHeight,
+        viewport: false,
+        x: { range: [left, left + node.clientWidth], user: userScrollable(style.overflowX),
+          ...extent(() => node.scrollLeft, (value) => node.scrollTo({ left: value, behavior: "instant" })) },
+        y: { range: [top, top + node.clientHeight], user: userScrollable(style.overflowY),
+          ...extent(() => node.scrollTop, (value) => node.scrollTo({ top: value, behavior: "instant" })) },
       });
     }
-    // Decided before anything moves: an axis needs a scroller to move only when the box is not already within the
-    // range it shows (one pixel of tolerance), and the buyer cannot move a locked one. Centring an anchor that is
-    // already in view would move a locked viewport or container without the buyer needing it to.
+    const moves = awaiting !== "fixed";
+    const still = { min: 0, max: 0, current: 0 };
+    scrollers.push({
+      viewport: true,
+      x: { range: [0, view.innerWidth], user: moves && !locked(viewportStyle.overflowX),
+        ...(moves ? extent(() => view.scrollX, (value) => view.scrollTo({ left: value, behavior: "instant" })) : still) },
+      y: { range: [0, view.innerHeight], user: moves && !locked(viewportStyle.overflowY),
+        ...(moves ? extent(() => view.scrollY, (value) => view.scrollTo({ top: value, behavior: "instant" })) : still) },
+    });
+    // Reachability per axis, decided before anything moves, from the anchor outward (one pixel of tolerance). While
+    // no scroller the buyer can move lies inside, the anchor stays where it is and must lie within every range that
+    // shows it. A scroller the buyer can move brings anything in its scrollable content into its range, so from there
+    // outward what must be shown is that range, of which an anchor-sized part must survive every locked scroller
+    // outside. A container with nothing to scroll on an axis only clips there (measured below); the viewport always
+    // counts, since nothing beyond it shows the anchor.
     const before = element.getBoundingClientRect();
-    const within = (start: number, size: number, [from, to]: [number, number]) => start > from - 1 && start + size < to + 1;
-    const needs = scrollers.map((scroller) => ({
-      x: !within(before.left, before.width, scroller.x), y: !within(before.top, before.height, scroller.y), scroller,
-    }));
-    const unreachable = needs.some(({ x, y, scroller }) => (x && scroller.lockedX) || (y && scroller.lockedY));
-    const windowScroll = { x: view.scrollX, y: view.scrollY };
-    const saved = chain.map((node) => ({ node, left: node.scrollLeft, top: node.scrollTop }));
+    const reachable = (axis: "x" | "y") => {
+      const size = axis === "x" ? before.width : before.height;
+      let from = axis === "x" ? before.left : before.top;
+      let to = from + size;
+      let placeable = false;
+      for (const scroller of scrollers) {
+        const { range: [start, end], min, max, current, user } = scroller[axis];
+        if (!scroller.viewport && max <= min) continue;
+        if (user) {
+          // Content the buyer can scroll into this range, in current coordinates.
+          const [first, last] = [start + min - current, end + max - current];
+          if (placeable ? Math.min(to, last) - Math.max(from, first) < size - 1 : from < first - 1 || to > last + 1) return false;
+          [from, to, placeable] = [start, end, true];
+        } else if (placeable) {
+          [from, to] = [Math.max(from, start), Math.min(to, end)];
+          if (to - from < size - 1) return false;
+        } else if (from < start - 1 || to > end + 1) return false;
+      }
+      return true;
+    };
+    const unreachable = !reachable("x") || !reachable("y");
     // Scroll only to measure an anchor some scroller does not fully show.
-    if (needs.some(({ x, y }) => x || y)) element.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+    const within = (from: number, size: number, [start, end]: [number, number]) => from > start - 1 && from + size < end + 1;
+    if (scrollers.some(({ x, y }) => !within(before.left, before.width, x.range) || !within(before.top, before.height, y.range))) {
+      element.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+    }
 
     const box = element.getBoundingClientRect();
     let hidden = own.visibility !== "visible";
@@ -155,11 +206,7 @@ export function anchorVisibility(elements: readonly Element[], attributes: reado
       else if (clipped !== null) visibleRect = intersect(visibleRect, clipped);
     }
 
-    const left = box.left + view.scrollX;
-    const top = box.top + view.scrollY;
-    const root = owner.documentElement;
-    // One pixel of tolerance for sub-pixel layout against the integer scroll size.
-    const insideScrollArea = !unreachable && left > -1 && top > -1 && left + box.width < root.scrollWidth + 1 && top + box.height < root.scrollHeight + 1;
+    const insideScrollArea = !unreachable;
     const empty = !(visibleRect.right > visibleRect.left && visibleRect.bottom > visibleRect.top);
     const hit = empty ? null : owner.elementFromPoint((visibleRect.left + visibleRect.right) / 2, (visibleRect.top + visibleRect.bottom) / 2);
     const accepted = hit !== null && (hit === element || element.contains(hit) || (!unmeasuredClip && hit.contains(element)));

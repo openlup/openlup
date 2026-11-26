@@ -4043,10 +4043,7 @@ contracts follows in a later change.
   response, or `block`) and `settled({ quietMs })`, which resolves once every
   intercepted request, followed through its redirects, has finished and
   `quietMs` passed with no new request. An anchor is visible when its box is
-  non-zero, lies inside the scrollable area and is not left partly outside
-  what a container or viewport the buyer cannot scroll shows (`overflow:
-  hidden` or `clip`, such as an app shell or a body scroll lock; judged before
-  anything moves), is not hidden,
+  non-zero, the buyer can bring it into view, is not hidden,
   is not fully transparent, and part of it survives clipping by the overflow
   boxes of the ancestors in its containing-block chain (a fixed or absolute
   anchor escapes those outside it; the page's root scroller never clips) and
@@ -4054,6 +4051,19 @@ contracts follows in a later change.
   a descendant or an ancestor of it. An anchor not already shown in full is
   scrolled into view before it is measured, and every scroll position is restored afterwards, instantly
   whatever the page's `scroll-behavior`. The handle reads no clock.
+
+  Whether the buyer can bring an anchor into view is judged per axis before
+  anything moves, walking its scrollers from the anchor outward: the overflow
+  ancestors in its containing-block chain, then the viewport (whose overflow
+  is the root element's, or body's while the root's is visible). A scroller the
+  buyer can scroll (overflow other than `hidden` or `clip`) brings anything in
+  its scrollable content into its range, so from there outward what must be
+  shown is that range. A locked scroller must already show the anchor itself,
+  or, when a scrollable scroller lies inside it, an anchor-sized part of that
+  scroller's range. So an app shell, an `overflow: hidden` page or a body
+  scroll lock hides an anchor below the fold, but not one inside a scrollable
+  `main`, `#app` or modal. A container with nothing to scroll on an axis only
+  clips there; the viewport always counts and does not move a fixed anchor.
 - **`serializeStorefrontVerdict`.** Returns the verdict as two-space JSON with
   sorted keys and a line feed after `parseStorefrontVerdict` accepts it, so
   equal verdicts give equal bytes; it refuses a value JSON cannot carry
