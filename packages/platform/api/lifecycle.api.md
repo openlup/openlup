@@ -101,6 +101,9 @@ export declare function verifyApp(input: ReadinessInput): Promise<AppVerificatio
 export { planAppUpgrade, applyAppUpgrade, AppUpgradeConflictError, type AppVersionSnapshot, type AppUpgradeInput, type AppUpgradeAction, type AppUpgradeConflict, type AppUpgradePlan, } from "./appUpgrade.js";
 export { inspectLegacyPostgresInstallRoles, type PostgresInstallQuery, type LegacyPostgresInstallRequest, type PostgresInstallRoleObservation, type PostgresInstallMembershipObservation, type LegacyPostgresInstallBlocker, type LegacyPostgresInstallRoleReport, } from "./postgresInstallQualification.js";
 export { verifyApp, APP_VERIFICATION_BOUNDARY, type AppVerificationFinding, type AppVerificationReport, } from "./appVerification.js";
+export { parseStorefrontVerdict, storefrontVerdictJsonSchema, type StorefrontVerdict, type StorefrontFindingCode, } from "./storefrontVerdict.js";
+export { digestStorefrontFiles } from "./storefrontDigest.js";
+export { parseStorefrontProofFile, storefrontProofFileJsonSchema, type StorefrontProofFile, } from "./storefrontProofFile.js";
 ```
 ## dist/lifecycle/postgresInstallQualification.d.ts
 
@@ -156,4 +159,301 @@ export interface LegacyPostgresInstallRoleReport {
  * Query/driver errors are redacted because they can contain connection credentials.
  */
 export declare function inspectLegacyPostgresInstallRoles(db: PostgresInstallQuery, request: LegacyPostgresInstallRequest): Promise<LegacyPostgresInstallRoleReport>;
+```
+## dist/lifecycle/storefrontDigest.d.ts
+
+```ts
+/**
+ * The one client-build digest: `sha256:` and the lower-case hex SHA-256 of a
+ * manifest that lists, sorted by path in code-unit order, each file's path, a
+ * NUL, the lower-case hex SHA-256 of its bytes and a line feed. Input order does
+ * not matter; any changed byte or path changes the digest.
+ *
+ * Each path is relative and uses `/`, with no empty, `.` or `..` segment, no NUL,
+ * line feed, backslash or lone surrogate, and is in NFC. Otherwise, or for a path
+ * given twice, it rejects with a `TypeError` whose message starts
+ * `storefront_digest_path_invalid` and names the path.
+ *
+ * @experimental
+ */
+export declare function digestStorefrontFiles(files: readonly {
+    path: string;
+    bytes: Uint8Array;
+}[]): Promise<string>;
+```
+## dist/lifecycle/storefrontProofFile.d.ts
+
+```ts
+/**
+ * A store's proof file, format version 1: what a storefront proof runs against.
+ * Unknown fields are kept; `host` is the only namespace a host may use, and other
+ * unknown top-level fields are reserved for later platform fields.
+ *
+ * Within format version 1 fields are only added. Until the first release that
+ * carries the storefront runner, format version 1 may still be amended without a
+ * version bump.
+ *
+ * @experimental
+ */
+export type StorefrontProofFile = {
+    formatVersion: 1;
+    /** Configuration ids to prove; at least one. */
+    configurations: string[];
+    /** Positive integer widths in CSS pixels; at least one. */
+    widths: number[];
+    /**
+     * `surfaces`: a path per surface (`product`, `cart`, `checkout`, `account`;
+     * open), without query or fragment. `selectionEntry`: per purchase mode
+     * (`one_time`, `subscription`; open) an ordinary route that opens the cart with
+     * the first sellable product at its minimum quantity in that mode; it may carry
+     * a query, never a fragment. Every path starts with `/`, not `//`, and holds no
+     * backslash.
+     */
+    routes?: {
+        surfaces?: Record<string, string>;
+        selectionEntry?: Record<string, string>;
+    };
+    /** Action names this UI performs by itself. */
+    autoProgress?: string[];
+    /** Absent or unknown is read as `refuse_changed`. */
+    changedPayloadPolicy?: "update_in_place" | "refuse_changed" | (string & {});
+    /** Buyer-detail overrides. `email` is refused: the e-mail carries the run's subject. */
+    buyer?: {
+        first_name?: string;
+        last_name?: string;
+        phone?: string;
+        address_line1?: string;
+        address_line2?: string;
+        city?: string;
+        postal_code?: string;
+        email?: never;
+    };
+    /** Command that reruns one scenario; `{scenario}` is replaced by the scenario id. */
+    recheck?: string;
+    /** Relative POSIX path of the optional adapter module: no leading `/`, scheme, backslash, `?`, `#`, `.` or `..` segment. */
+    adapterModule?: string;
+    /** Fields a host adds, kept as given and never read by the package. */
+    host?: Record<string, unknown>;
+};
+/**
+ * Parses proof-file text: JSON object, `formatVersion`, then the schema. Never
+ * throws; unknown fields are kept.
+ *
+ * @experimental
+ */
+export declare function parseStorefrontProofFile(text: string): {
+    ok: true;
+    proofFile: StorefrontProofFile;
+} | {
+    ok: false;
+    refusal: {
+        code: "storefront_proof_file_invalid" | "storefront_proof_file_version_unsupported";
+        observed: string;
+        cause: string;
+        fix: string;
+        recheck: string;
+    };
+};
+/**
+ * The proof file's JSON Schema (draft-07), as data. Unknown properties are allowed. Frozen.
+ *
+ * @experimental
+ */
+export declare const storefrontProofFileJsonSchema: Readonly<Record<string, unknown>>;
+```
+## dist/lifecycle/storefrontVerdict.d.ts
+
+```ts
+/**
+ * Codes a storefront verdict's findings carry. The set is open: a reader keeps a
+ * default branch for a code it does not know. Each code names the part at fault:
+ *
+ * - The UI: `duplicate_order` (more payable orders than the scenario allows),
+ *   `duplicate_hold` (more orders holding stock), `duplicate_capture` (a payment
+ *   captured more than once), `second_attempt` (a payment attempt the scenario
+ *   forbids), `forbidden_state_shown` (a state the ledger contradicts, such as
+ *   `paid` without a capture), `order_outside_subject` (orders added outside the
+ *   run's buyer), `progress_not_reached` (another state shown where the expected
+ *   one was due), `policy_mismatch` (changed details handled against the
+ *   declared policy), `vacuous_progress` (the control reached the state it must
+ *   not reach, so the clean pass proves nothing), `auto_progress_undeclared`
+ *   (the UI acted by itself without declaring it).
+ * - The adapter or proof file: `adapter_matcher_unmatched` (a command matcher
+ *   matched no request), `adapter_anchor_missing` (an anchor did not resolve),
+ *   `anchor_hidden` (an anchor resolved but was not visible).
+ * - The harness: `control_not_applied`, `arrange_failed`, `stimulus_not_create`,
+ *   `stimulus_not_applied`, `tier_unreachable`, `page_failed`,
+ *   `request_budget_exceeded`.
+ * - The outcome driver: `outcome_failed`.
+ * - The observer: `observer_subject_unseen`, `observer_failed`.
+ *
+ * @experimental
+ */
+export type StorefrontFindingCode = "duplicate_order" | "duplicate_hold" | "duplicate_capture" | "second_attempt" | "forbidden_state_shown" | "order_outside_subject" | "progress_not_reached" | "policy_mismatch" | "vacuous_progress" | "auto_progress_undeclared" | "adapter_matcher_unmatched" | "adapter_anchor_missing" | "anchor_hidden" | "control_not_applied" | "arrange_failed" | "observer_subject_unseen" | "stimulus_not_create" | "stimulus_not_applied" | "tier_unreachable" | "outcome_failed" | "observer_failed" | "page_failed" | "request_budget_exceeded" | (string & {});
+/**
+ * A storefront verdict, format version 1: what one scenario run observed and
+ * concluded. Scenario ids, tiers, channels, results, runs, phases, control kinds,
+ * observer kinds, build sources, adapter kinds and finding codes are open sets
+ * matching `^[a-z][a-z0-9_]*$`; a reader keeps a default branch for each.
+ *
+ * No field holds a request body, a response body, a token or a command key value.
+ * Unknown fields at any level are kept by `parseStorefrontVerdict`; the
+ * runner neither reads nor writes them.
+ *
+ * Within format version 1 fields are only added. Until the first release that
+ * carries the storefront runner, format version 1 may still be amended without a
+ * version bump; afterwards a removed field or changed meaning raises
+ * `formatVersion`.
+ *
+ * @experimental
+ */
+export type StorefrontVerdict = {
+    formatVersion: 1;
+    /** Unique per run, supplied by whoever ran the scenario. */
+    runId: string;
+    /** UTC instant with milliseconds (`YYYY-MM-DDTHH:mm:ss.sssZ`). "Newest" means the latest `completedAt`, never a file time. */
+    completedAt: string;
+    scenario: string;
+    tier: "fixture_preview" | "postgres_sandbox" | (string & {});
+    /** The store configuration id the run used. */
+    profile: string;
+    channel: "browser_ui" | (string & {});
+    /** CSS pixels; required when `channel` is `browser_ui`. */
+    width?: number;
+    /** `not_run` is missing evidence, never a pass. */
+    result: "passed" | "failed" | "vacuous" | "safety_only" | "not_run" | (string & {});
+    control: {
+        kind: "omit_action" | "block_read" | "other_policy" | "none" | (string & {});
+        /** The omitted action. */
+        action?: string;
+        /** The anchor state the control must keep from being reached; `null` for `none`. */
+        negates: string | null;
+        /** Whether the control took effect. */
+        applied: boolean;
+    };
+    /** Per command matcher (`create`, `read`), requests matched in the clean run. */
+    stimulus: Record<string, number>;
+    /** `index` and every command `ordinal` count from 0 within each run. */
+    steps: {
+        index: number;
+        run: "clean" | "control" | (string & {});
+        phase: "arrange" | "stimulus" | "control" | "observe" | "settle" | (string & {});
+        action: string | null;
+        /** `state:<value>`. */
+        expectedAnchor: string | null;
+        /** `state:<value>` and `action:<value>`. */
+        observedAnchors: string[];
+        /** Without query or fragment. */
+        path: string | null;
+        elapsedMs: number;
+        commands: {
+            operation: string;
+            ordinal: number;
+            /** `sameAs` is the ordinal of the first earlier command with the same key; the key value is never recorded. */
+            key: {
+                present: boolean;
+                sameAs: number | null;
+            };
+        }[];
+        /**
+         * The run subject's ledger after the step: `orders` in any status,
+         * `payableOrders` awaiting payment, `holds` orders holding at least one stock
+         * reservation, `attempts` payment attempts, `captures` captured payments (one per capture).
+         */
+        ledger: {
+            orders: number;
+            payableOrders: number;
+            holds: number;
+            attempts: number;
+            captures: number;
+        } | null;
+    }[];
+    findings: {
+        code: StorefrontFindingCode;
+        /** `null` for a check of the whole scenario. */
+        run: "clean" | "control" | (string & {}) | null;
+        /** Step index within that run. */
+        step: number | null;
+        /** The adapter or proof-file field at fault. */
+        field?: string;
+        observed: string;
+        cause: string;
+        fix: string;
+        recheck: string;
+    }[];
+    /**
+     * The identity of the build the run exercised. Two identities are equal when
+     * the package set (`name`, `version`, `integrity`), the client digests (`name`,
+     * `digest`) and `proofFile` are equal; a package with `integrity` never equals
+     * one without, and `source` is not part of equality. A verdict is reusable only
+     * for an equal identity; one read from a workspace is a claim whatever its `source`.
+     */
+    build: {
+        source: "claimed" | "ci" | (string & {});
+        /** `integrity` is absent or a full SRI string. */
+        packages: {
+            name: string;
+            version: string;
+            integrity?: string;
+        }[];
+        /** One per client build served; `digest` from `digestStorefrontFiles`. */
+        clients: {
+            name: string;
+            digest: string;
+        }[];
+        /** Digest of the proof file, or `null`. */
+        proofFile: string | null;
+    };
+    harness: {
+        /** The caller's claim about the installed runner, copied, not evidence. */
+        runnerVersion: string;
+        catalogueVersion: number;
+        adapter: {
+            kind: "default" | "custom" | (string & {});
+            fields: string[];
+            digest: string | null;
+        };
+        /** Action names the UI performs by itself. */
+        autoProgress: string[];
+        observer: "fixture" | "package" | "store" | (string & {});
+        /**
+         * The outcome driver's declaration as given, sorted; empty when the run had no
+         * driver. A scenario that needs an outcome outside it is `not_run`, never
+         * `passed`; readiness and promotion treat `not_run` as missing evidence.
+         */
+        declaredOutcomes: string[];
+    };
+    durations: {
+        totalMs: number;
+        byPhase: Record<string, number>;
+    };
+};
+/**
+ * Parses verdict text. Order: JSON object, `formatVersion`, `channel`, then the
+ * one schema the channel selects (`browser_ui` requires `width`), so a refusal
+ * names the real failing path. Never throws; unknown fields are kept.
+ *
+ * @experimental
+ */
+export declare function parseStorefrontVerdict(text: string): {
+    ok: true;
+    verdict: StorefrontVerdict;
+} | {
+    ok: false;
+    refusal: {
+        code: "storefront_verdict_invalid" | "storefront_verdict_version_unsupported";
+        observed: string;
+        cause: string;
+        fix: string;
+        recheck: string;
+    };
+};
+/**
+ * The verdict's JSON Schema (draft-07), as data: `anyOf` a `browser_ui` branch
+ * that requires `width` and a branch for every other channel. Unknown properties
+ * are allowed. Frozen.
+ *
+ * @experimental
+ */
+export declare const storefrontVerdictJsonSchema: Readonly<Record<string, unknown>>;
 ```
