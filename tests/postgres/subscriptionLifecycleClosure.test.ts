@@ -501,9 +501,11 @@ describe.each(lifecycleProfiles)("subscription lifecycle closure on %s", profile
   it("preserves the installed order money guard byte for byte around catalogue checks", () => {
     const [mainGuard] = env.guardBefore.function;
     const [catalogueGuard] = env.guardAfter.function;
-    // Strip only the catalogue checks. This compares the entire
-    // remaining body, including the declared total, line sum and refusal.
+    // Compare the entire incumbent body after projecting out the additive
+    // catalogue checks and the versioned branch.
     const moneyBody = catalogueGuard!.body
+      .replace(/ {2}v_other_order uuid;\n[\s\S]*?(?=BEGIN\n)/u, "")
+      .replace(/ {2}SELECT money_version INTO v_version[\s\S]*?(?= {2}SELECT total_amount_minor INTO v_declared)/u, "")
       .replace("    PERFORM public.catalog_order_line_sum_acceptance(v_order_id, p_old_header => OLD, p_new_header => NEW);\n", "")
       .replace(`    -- Transfer runs under the owning migration login. Ordinary table writers
     -- may not add governed purchase lines outside the native draft owner.
@@ -515,7 +517,8 @@ describe.each(lifecycleProfiles)("subscription lifecycle closure on %s", profile
     END IF;
 `, "")
       .replace("    IF TG_OP = 'UPDATE' THEN\n      PERFORM public.catalog_order_line_sum_acceptance(v_order_id, OLD.order_id);\n    END IF;\n", "")
-      .replace("  PERFORM public.catalog_order_line_sum_acceptance(v_order_id);\n", "");
+      .replace("  PERFORM public.catalog_order_line_sum_acceptance(v_order_id);\n", "")
+      .replace(/ {2}IF v_keyed_item THEN\n[\s\S]*?\n {2}END IF;\n/u, "");
     expect(moneyBody).toBe(mainGuard!.body);
     expect(catalogueGuard!.definition.replace(catalogueGuard!.body, "")).toBe(mainGuard!.definition.replace(mainGuard!.body, "")
       .replace("SET search_path TO 'public', 'pg_catalog'\n", "SET search_path TO 'public', 'pg_catalog', 'pg_temp'\n"));

@@ -10,7 +10,7 @@ import { destinationContext, destinationHash, snapshot, snapshotCommand, testSer
 const digest = "ab".repeat(32);
 const quoteDigest = (tag: "commerce.quote.v2" | "commerce.quote-money.v2", body: unknown) =>
   destinationHash(canonicalCatalogDraftJson([tag, body]));
-const taxDate = "2026-06-05T10:00:00.000Z";
+const fixtureTaxDate = "2026-06-05T10:00:00.000Z";
 const coverageTag = { kind: "not_applicable" };
 const fiscalKind = "fiscal_profile";
 const exclusiveKind = "tax_calculation";
@@ -33,7 +33,7 @@ const fee = { feeKey: "fee-a", jurisdictionRef: "district-a", feeKind: "fee-kind
   providerPositionRef: "provider-position-a" };
 const price = { priceListRef: "list-a", priceContextDigest: digest, priceEvidenceRef: "price-a", classMapRevision: "classes-a" };
 
-async function fixture(store: JourneyInstallation) {
+async function fixture(store: Pick<JourneyInstallation, "owner" | "runtime">, taxDate = fixtureTaxDate) {
   const ctx = await destinationContext(store.owner);
   const issued = await snapshot(store.runtime, ctx);
   const { address } = snapshotCommand(ctx).command.validated;
@@ -137,6 +137,7 @@ async function claim(input: Begin, db: Db) {
 function seal(value: Fixture, input: Begin, grant: Claim, extended = Boolean(input.pin.composition), providerRef: string = randomUUID()) {
   const calc = grant.calculationId;
   const { destination, kind, requestDigest, validUntil, composition } = input.pin;
+  const taxDate = "input" in input.pin.request ? input.pin.request.input!.taxDate : input.pin.request.taxDate;
   const fiscal = kind === fiscalKind;
   const pin = composition ?? value.begin(kind, true).pin.composition!;
   const disposition = fiscal ? "no_provider_posting" : "required";
