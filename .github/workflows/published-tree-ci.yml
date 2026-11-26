@@ -630,7 +630,7 @@ jobs:
 
   native-review:
     name: native-review
-    if: ${{ needs.dco.result == 'success' && needs.typecheck.result == 'success' && needs.install-proof.result == 'success' && needs.test.result == 'success' && needs.self-check.result == 'success' && needs.gitleaks.result == 'success' && vars.OPENLUP_NATIVE_QUEUE == 'enabled' && github.event.repository.private == false && (github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
+    if: ${{ always() && needs.dco.result == 'success' && needs.typecheck.result == 'success' && needs.install-proof.result == 'success' && needs.test.result == 'success' && needs.self-check.result == 'success' && needs.gitleaks.result == 'success' && vars.OPENLUP_NATIVE_QUEUE == 'enabled' && github.event.repository.private == false && (github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
     needs: [dco, typecheck, install-proof, test, self-check, gitleaks]
     runs-on: ubuntu-latest
     timeout-minutes: 15

@@ -944,8 +944,7 @@ describe("the workflow stays in step with what it claims to run", () => {
   it("native admission uses trusted main and refuses every non-success mechanical result", () => {
     const admission = workflow.split("  native-review:\n")[1]!;
     const jobIf = admission.split("\n").find((line) => line.startsWith("    if:"))!;
-    expect(jobIf).not.toContain("always()");
-    expect(jobIf).toContain("needs.dco.result == 'success' && needs.typecheck.result == 'success' && needs.install-proof.result == 'success' && needs.test.result == 'success' && needs.self-check.result == 'success' && needs.gitleaks.result == 'success' && vars.OPENLUP_NATIVE_QUEUE == 'enabled'");
+    expect(jobIf).toContain("always() && needs.dco.result == 'success' && needs.typecheck.result == 'success' && needs.install-proof.result == 'success' && needs.test.result == 'success' && needs.self-check.result == 'success' && needs.gitleaks.result == 'success' && vars.OPENLUP_NATIVE_QUEUE == 'enabled'");
     expect(admission).toContain("github.event.repository.private == false");
     expect(admission).toContain("github.event_name == 'merge_group'");
     expect(admission).toContain("github.event_name == 'pull_request' && github.event.pull_request.draft == false");
