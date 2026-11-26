@@ -101,12 +101,16 @@ export async function bindDestinationOrder(pool: Pool, ctx: Context, issued: Iss
     expect(await registerDestination(db, ctx, order, issued)).toEqual(issued.binding);
     return order;
   }, key);
-  // The fence compares cluster-wide snapshots before the read runs, so any concurrent transaction can produce this
-  // refusal; its hint asks the caller to retry with the same idempotency key, and this fixture retries once.
-  return bind().catch((error: unknown) => {
-    if (!(error instanceof Error) || error.message !== "catalog_admission_visibility_changed") throw error;
-    return bind();
-  });
+  // The fence compares cluster-wide snapshots before the read runs, so concurrent shard transactions on a shared
+  // template cluster can produce this transient refusal; its hint asks the caller to retry with the same idempotency
+  // key, so retry boundedly with the same key.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await bind();
+    } catch (error: unknown) {
+      if (attempt >= 8 || !(error instanceof Error) || error.message !== "catalog_admission_visibility_changed") throw error;
+    }
+  }
 }
 export async function proveDocumentEncoderParity(owner: Db) {
   const ctx = { clientId: uuid(), scopeRef: uuid(), owner: { installationRef: 'Fixture "α"\\😀', principalKind: "customer",
