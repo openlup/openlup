@@ -50,6 +50,7 @@ const SUPPORTED_EVENT_TYPES = new Set<NormalizedProviderPaymentWebhook["eventTyp
  */
 export function normalizeStripeWebhookEvent(
   rawPayload: Record<string, unknown>,
+  ownAccountRef?: string,
 ): ProviderWebhookWithMethodLifecycle {
   const providerEventId = readString(rawPayload, "id");
   const eventType = readString(rawPayload, "type");
@@ -71,7 +72,7 @@ export function normalizeStripeWebhookEvent(
     : readOptionalNumber(object, "amount") ?? readOptionalNumber(object, "amount_received") ?? null;
   const currency = readOptionalString(object, "currency")?.toUpperCase() ?? null;
   const occurredAt = readOccurredAt(rawPayload);
-  const accountRef = eventType === "payment_intent.succeeded" ? readOptionalString(rawPayload, "account") : undefined;
+  const accountRef = rawPayload.account == null ? ownAccountRef : readOptionalString(rawPayload, "account");
   const reusableMethod = extractReusableMethod(canonicalEventType, object);
   const refund = stripeRefundEvidence(eventType, object);
 
@@ -90,7 +91,7 @@ export function normalizeStripeWebhookEvent(
       ...stripeWebhookPayload({ eventId: providerEventId, eventType, providerPaymentId, amountMinor, currency }, object),
       ...(eventType === "payment_intent.succeeded" && typeof rawPayload.livemode === "boolean"
         ? { livemode: rawPayload.livemode } : {}),
-      ...(accountRef?.trim() ? { providerAccountRef: accountRef } : {}),
+      ...(eventType === "payment_intent.succeeded" && typeof accountRef === "string" && accountRef.trim() ? { providerAccountRef: accountRef } : {}),
       ...(amountConflict ? {
         ...(typeof requested === "number" ? { configuredAmountMinor: requested } : {}),
         ...(typeof received === "number" ? { paidAmountMinor: received } : {}),

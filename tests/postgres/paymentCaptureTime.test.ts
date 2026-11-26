@@ -130,7 +130,7 @@ function rail(db: Db, f: Subject, recorded = signed(f)) {
     readbackPort: { async readPayment(input) {
       expect(input.identity.providerPaymentRef).toBe(f.remote);
       return { ...input, kind: "succeeded", observedMoney: { amountMinor: amount, currency },
-        providerOccurredAt: null, capturedAmountBasis: "provider_capture_v1" };
+      providerOccurredAt: null, capturedAmountBasis: "provider_capture_v1", providerAccountRef: primaryAccount };
     } },
   };
   return createPostgresProviderPaymentRail({ executor: db, adapter, mode: "test", truth: options,
@@ -304,8 +304,10 @@ function readbackRequest(f: Subject, precise = false) {
     resultStatus: "succeeded" as const, occurredAt: precise ? f.time.precise : f.time.observed,
     checkedAt: f.time.observed, failureReason: null,
     payload: precise
-      ? { observedMoney: { amountMinor: amount, currency }, providerOccurredAt: f.time.precise, capturedAmountBasis: "provider_capture_v1" }
-      : { normalizedStatus: "succeeded", amountMinor: amount, currency, capturedAmountBasis: "provider_capture_v1" },
+      ? { observedMoney: { amountMinor: amount, currency }, providerOccurredAt: f.time.precise,
+          capturedAmountBasis: "provider_capture_v1", providerAccountRef: primaryAccount }
+      : { normalizedStatus: "succeeded", amountMinor: amount, currency, capturedAmountBasis: "provider_capture_v1",
+          providerPayload: { providerAccountRef: primaryAccount } },
   };
 }
 
@@ -314,23 +316,25 @@ const fallback = {
   route: "reconciliation_read", payment_mode: "unknown", captured_at: null,
 };
 
-it("holds coherent readback from an excluded provider or source path", async () => {
-  const included = await prepare(), excluded = await prepare(otherProvider);
-  for (const f of [included, excluded]) {
-    expect(await recovery().applyTerminalResult(readbackRequest(f))).toMatchObject({ correctionStatus: "corrected" });
+it("qualifies readback by provider and account under a signed-path attestation", async () => {
+  const included = await prepare(), excluded = await prepare(otherProvider), foreign = await prepare();
+  for (const [f, account] of [[included, primaryAccount], [excluded, primaryAccount], [foreign, foreignAccount]] as const) {
+    const request = readbackRequest(f);
+    expect(await recovery().applyTerminalResult({ ...request, payload: { ...request.payload, providerPayload: { providerAccountRef: account } } }))
+      .toMatchObject({ correctionStatus: "corrected" });
     expect(await read(env.owner, f.order)).toMatchObject({ ...hold("unqualified"), provider: f.provider, route: "reconciliation_read" });
   }
   await qualify(env.migration);
-  expect(await read(env.owner, included.order)).toMatchObject(hold("unqualified"));
-  await env.migration.query(`UPDATE ${scope} SET source_path='reconciliation_read'`);
   expect(await read(env.owner, included.order)).toMatchObject(fallback);
   expect(await read(env.owner, excluded.order)).toMatchObject({ ...hold("unqualified"), provider: otherProvider, route: "reconciliation_read" });
+  expect(await read(env.owner, foreign.order)).toMatchObject({ ...hold("unqualified"), provider: primaryProvider, route: "reconciliation_read" });
 });
 const readbackProvider = (f: Subject) => ({
   async readPayment({ providerPaymentId }: { providerPaymentId: string }) {
     expect(providerPaymentId).toBe(f.remote);
     return { status: "succeeded" as const, providerStatus: "succeeded", amountMinor: amount, currency,
-      capturedAmountBasis: "provider_capture_v1" as const, occurredAt: null, failureReason: null, rawPayload: {} };
+      capturedAmountBasis: "provider_capture_v1" as const, occurredAt: null, failureReason: null,
+      rawPayload: { providerAccountRef: primaryAccount } };
   },
 });
 
@@ -340,7 +344,7 @@ it.each(["worker", "verify-now"] as const)("retains the %s observer clock as a d
     "SELECT provider FROM public.payment_provider_profile(NULL) WHERE claim_stale AND one_time_flow='one_time_payment'");
   const f = await prepare(path === "worker" ? claimable!.provider : primaryProvider);
   const providers = { [f.provider]: readbackProvider(f) };
-  await qualify(env.migration, f.provider, "reconciliation_read");
+  await qualify(env.migration, f.provider);
   if (path === "worker") {
     await env.owner.query(`UPDATE public.payment_provider_attempts
       SET updated_at=$2::timestamptz-interval '1 hour',created_at=$2::timestamptz-interval '1 hour' WHERE id=$1`,
@@ -371,7 +375,7 @@ it.each(["worker", "verify-now"] as const)("retains the %s observer clock as a d
 });
 
 it.each([false, true])("binds the typed renewal carrier with provider time present=%s", async timed => {
-  await qualify(env.migration, primaryProvider, "reconciliation_read");
+  await qualify(env.migration);
   const time = await clock(env.owner);
   const source = await renewal(env.owner, 10, 1, undefined, false, primaryProvider);
   const codec = createNativeRenewalCodec();
@@ -491,12 +495,11 @@ it.each(corruptions)("holds a settled capture with a %s", async (label, mutation
   expect(await read(env.owner, f.order)).toMatchObject(hold("ambiguous"));
 });
 
-it.each(["missing", "foreign"] as const)("holds a readback whose winning run is %s", async change => {
+it.each(["missing", "foreign"] as const)("holds a %s winning readback run before qualification", async change => {
   const f = await prepare();
-  await qualify(env.migration, f.provider, "reconciliation_read");
   const request = readbackRequest(f, true);
   expect(await recovery().applyTerminalResult(request)).toMatchObject({ correctionStatus: "corrected" });
-  expect(await read(env.owner, f.order)).toMatchObject(fallback);
+  expect(await read(env.owner, f.order)).toMatchObject(hold("unqualified"));
   await env.owner.query(change === "missing"
     ? "DELETE FROM public.payment_provider_reconciliation_runs WHERE idempotency_key=$1"
     : "UPDATE public.payment_provider_reconciliation_runs SET payment_attempt_id=NULL WHERE idempotency_key=$1",
@@ -505,11 +508,13 @@ it.each(["missing", "foreign"] as const)("holds a readback whose winning run is 
     paymentIntentId: f.intent, paymentAttemptId: f.attempt, localStatus: "succeeded", providerStatus: "succeeded",
     checkedAt: f.time.observed, correctionStatus: "observed", payload: request.payload });
   expect(await read(env.owner, f.order)).toMatchObject(hold("ambiguous"));
+  await qualify(env.migration);
+  expect(await read(env.owner, f.order)).toMatchObject(hold("ambiguous"));
 });
 
 it.each(["signed_webhook", "reconciliation_read"] as const)("keeps %s as the winning concurrent route", async winner => {
   const f = await prepare();
-  await qualify(env.migration, f.provider, winner);
+  await qualify(env.migration, f.provider);
   const race = await env.owner.connect();
   let other: Promise<unknown> | undefined;
   try {
@@ -644,7 +649,7 @@ it("classifies sandbox co-settlement using the primary observation", async () =>
   expect(await read(env.owner, order)).toMatchObject({ ...hold("unqualified"), provider: "sandbox", route: null, payment_mode: "unknown" });
 });
 
-it("preserves target qualification and holds a different same-provider account on first restore", async () => {
+it("invalidates target qualification on first restore of mixed payment accounts", async () => {
   const resources = storeJourneyResources();
   try {
     const source = await resources.installation("capture-clock-source");
@@ -668,25 +673,20 @@ it("preserves target qualification and holds a different same-provider account o
     expect(freshTarget.outsideProfileCensus.find(entry => entry.relation === scope)).toMatchObject({
       rows: "1", disposition: "target-payment-qualification",
     });
-    const targetQualification = async () => (await target.owner.query(`SELECT to_jsonb(q) AS value,
-      tableoid::text,ctid::text,xmin::text FROM ${scope} q`)).rows;
-    const before = await targetQualification();
-    expect(before).toMatchObject([{ value: { provider_ref: primaryProvider, source_path: "signed_webhook", provider_account_ref: primaryAccount } }]);
+    const targetQualification = async () => (await target.owner.query(`SELECT provider_account_ref FROM ${scope}`)).rows;
+    expect(await targetQualification()).toEqual([{ provider_account_ref: primaryAccount }]);
     const restore = () => restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet, freshTarget });
     expect(await restore()).toMatchObject({ replayed: false, captureSha256: packet.sha256 });
-    expect(await targetQualification()).toEqual(before);
+    expect(await targetQualification()).toEqual([]);
+    for (const capture of [f, foreign]) expect(await read(target.owner, capture.order)).toMatchObject(hold("unqualified"));
+    expect(await restore()).toMatchObject({ replayed: true });
+    expect(await targetQualification()).toEqual([]);
+    await qualify(target.owner);
     const captured = await read(target.owner, f.order);
     expect(captured).toMatchObject({ kind: "authoritative", intent_id: f.intent, provider: primaryProvider });
     await timeEq(target.owner, captured.captured_at, f.time.occurred);
     expect(await read(target.owner, foreign.order)).toMatchObject({
       ...hold("unqualified"), provider: primaryProvider, payment_mode: "test", route: "signed_webhook",
     });
-    expect(await restore()).toMatchObject({ replayed: true });
-    expect(await targetQualification()).toEqual(before);
-    await target.owner.query(`DELETE FROM ${scope}`);
-    expect(await restore()).toMatchObject({ replayed: true });
-    expect(await targetQualification()).toEqual([]);
-    await qualify(target.owner);
-    expect(await read(target.owner, f.order)).toEqual(captured);
   } finally { await resources.close(); }
 }, postgresSetupTimeoutMs);

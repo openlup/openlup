@@ -55,6 +55,7 @@ export function createStripePaymentAdapter(config: StripePaymentAdapterConfig): 
   const tolerance = config.toleranceSeconds ?? 300;
   if (!Number.isFinite(tolerance) || tolerance < 0) throw new Error("Invalid signature tolerance");
   const secrets = [...config.webhookSigningSecrets];
+  const ownAccountRef = config.client.ownAccountRef;
   const now = config.clock ?? (() => Math.floor(Date.now() / 1000));
   const execution = createStripeSandboxPaymentExecutionAdapter({ client: {
     createPaymentIntent: config.client.createPaymentIntent.bind(config.client),
@@ -89,7 +90,7 @@ export function createStripePaymentAdapter(config: StripePaymentAdapterConfig): 
         return { ...base, kind: "unknown", reason: "indeterminate" };
       }
       const status = readStripeIntentStatus(intent, input.identity.providerPaymentRef, input.purpose);
-      return readback(base, status);
+      return readback(base, status, ownAccountRef);
     } catch { return { ...base, kind: "unknown", reason: "indeterminate" }; }
   };
   return {
@@ -148,7 +149,7 @@ export function createStripePaymentAdapter(config: StripePaymentAdapterConfig): 
           if (!raw || typeof raw !== "object" || Array.isArray(raw)) return refusal("malformed");
           const event = raw as Record<string, unknown>;
           if (typeof event.livemode === "boolean" && event.livemode !== (config.mode === "live")) return refusal("unsupported-event");
-          return mapVerifiedStripeEvent(event);
+          return mapVerifiedStripeEvent(event, ownAccountRef);
         } catch { return refusal("malformed"); }
       },
     },
@@ -177,14 +178,16 @@ function neutralDecline(decline: NonNullable<PaymentExecutionResult["providerDec
 }
 
 function readback(base: Pick<PaymentReadbackEnvelope, "identity" | "expectedMoney" | "purpose">,
-  status: Awaited<ReturnType<ReturnType<typeof createStripePaymentReconciliationProvider>["readPayment"]>>): PaymentReadbackEnvelope {
+  status: Awaited<ReturnType<ReturnType<typeof createStripePaymentReconciliationProvider>["readPayment"]>>,
+  ownAccountRef?: string): PaymentReadbackEnvelope {
   if (status.status === "unknown" || status.amountMinor === null || !Number.isSafeInteger(status.amountMinor) || !status.currency
     || (status.status === "succeeded" && status.capturedAmountBasis !== "provider_capture_v1")) {
     return { ...base, kind: "unknown", reason: "indeterminate" };
   }
   return { ...base, kind: status.status, observedMoney: { amountMinor: status.amountMinor, currency: status.currency },
     providerOccurredAt: status.occurredAt,
-    ...(status.capturedAmountBasis ? { capturedAmountBasis: status.capturedAmountBasis } : {}) };
+    ...(status.capturedAmountBasis ? { capturedAmountBasis: status.capturedAmountBasis } : {}),
+    ...(status.status === "succeeded" && typeof ownAccountRef === "string" && ownAccountRef.trim() ? { providerAccountRef: ownAccountRef } : {}) };
 }
 
 /** Preserve donor money classifications in the neutral evidence union. */
@@ -199,9 +202,9 @@ function mapStripeOutcome(eventType: string): VerifiedPaymentEvidence["outcome"]
   }
 }
 
-function mapVerifiedStripeEvent(raw: Record<string, unknown>): VerificationResult {
+function mapVerifiedStripeEvent(raw: Record<string, unknown>, ownAccountRef?: string): VerificationResult {
   let normalized: ReturnType<typeof normalizeStripeWebhookEvent>;
-  try { normalized = normalizeStripeWebhookEvent(raw); }
+  try { normalized = normalizeStripeWebhookEvent(raw, ownAccountRef); }
   catch (error) {
     return refusal(error instanceof Error && error.message.startsWith("Unsupported Stripe webhook event:") ? "unsupported-event" : "malformed");
   }

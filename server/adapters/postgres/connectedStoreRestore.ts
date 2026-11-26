@@ -18,12 +18,14 @@ import {
   connectedStoreRestoreOrder,
   connectedStoreSettingsTables,
 } from "./connectedStoreDomains/index.js";
+import { paymentsDomain } from "./connectedStoreDomains/payments.js";
 
 const { catalogPublicationAdmissionRefusal, decodePublicationPacket, requireDecodedPublication } = nativeCatalogPublication;
 
 type TableName = typeof connectedNativeStoreTables[number];
 type Rows = { table: TableName; columns: readonly { name: string; type: string }[]; rows: readonly string[] };
 const migrationLock = "openlup:public-platform-migrations:v1";
+const paymentTables = ["commerce_settlement_intents", ...Object.values(paymentsDomain.restore).flat()] as const;
 type SourceShape = "current" | "unsupported";
 
 export function connectedStoreSourceShape(
@@ -353,12 +355,16 @@ export async function restoreConnectedNativeStore(input: {
       if (JSON.stringify(actual) !== JSON.stringify(columns)) refuseSourceSchema(table);
     }
     await assertInsertTriggers(client);
+    const replayed = await equalCensus(client, source);
+    if (!replayed && paymentTables.some(table => source.get(table)!.rows.length > 0)) {
+      await client.query("DELETE FROM public.payment_capture_time_test_qualification");
+    }
     await assertOutsideEmpty(client, relations);
     // Sized bindings cannot be replayed as final rows through the insert guard.
     // Refuse before restoring settings or inserting any retained source data.
     if (source.get("subscriptions")!.rows.some(row =>
       (JSON.parse(row) as Record<string, unknown>).configured_offer_version !== "classic")) fail("unsupported_table", "subscriptions");
-    if (await equalCensus(client, source)) {
+    if (replayed) {
       await assertConnectedCatalogPublications(client);
       if (JSON.stringify((await client.query("SELECT tableoid::pg_catalog.text,ctid::pg_catalog.text,xmin::pg_catalog.text FROM acquisition_private.installation_key")).rows) !== JSON.stringify(keyIdentity.rows)) fail("target_conflict", "acquisition_private.installation_key");
       if (installation.generation === "qualified-admin") await closeRestrictedOwnerWindow(client, installation);
