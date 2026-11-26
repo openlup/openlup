@@ -157,6 +157,7 @@ DECLARE
   check_projection boolean;
   orphan_key text;
   evidence_remedy constant text := 'Recover the original accepted evidence through its owner and retry with its original binding.';
+  write_remedy constant text := 'Write the order money snapshot and its line sources in the same transaction as the order.';
   invoking_role name := coalesce(nullif(current_setting('role',true),'none'),session_user::text);
   v2 constant text := 'commerce.order-money.v2';
   remedy constant text := 'Replay the original accepted document and its digest.';
@@ -209,11 +210,12 @@ BEGIN
   IF snapshot.order_id IS NULL THEN
     RAISE EXCEPTION 'insert or update on table "commerce_orders" violates foreign key constraint "commerce_orders_money_snapshot_fkey"'
       USING ERRCODE='23503', SCHEMA='public', TABLE='commerce_orders', CONSTRAINT='commerce_orders_money_snapshot_fkey',
+      HINT=write_remedy,
       DETAIL=format('Key (id, money_version)=(%s, %s) is not present in table "commerce_order_tax_snapshots".',
         p_order_id,header.money_version);
   END IF;
   IF header.money_version <> v2 OR snapshot.money_version <> v2 THEN
-    RAISE EXCEPTION 'commerce_order_money_v2_mismatch' USING ERRCODE='23514', COLUMN='/moneyVersion', HINT=remedy;
+    RAISE EXCEPTION 'commerce_order_money_v2_mismatch' USING ERRCODE='23514', COLUMN='/moneyVersion', HINT=evidence_remedy;
   END IF;
   IF snapshot.cycle_binding_ref IS NOT NULL THEN
     RAISE EXCEPTION 'commerce_order_money_v2_mismatch' USING ERRCODE='23514', COLUMN='/cycleBindingRef', HINT=remedy;
@@ -248,6 +250,7 @@ BEGIN
   IF FOUND THEN
     RAISE EXCEPTION 'insert or update on table "commerce_order_items" violates foreign key constraint "commerce_order_items_money_source_fkey"'
       USING ERRCODE='23503', SCHEMA='public', TABLE='commerce_order_items', CONSTRAINT='commerce_order_items_money_source_fkey',
+      HINT=write_remedy,
       DETAIL=format('Key (order_id, line_key)=(%s, %s) is not present in table "commerce_order_line_sources".',p_order_id,orphan_key);
   END IF;
 
@@ -286,7 +289,8 @@ BEGIN
         OR EXISTS (SELECT FROM pg_locks l WHERE l.pid=pg_backend_pid() AND l.granted
           AND l.locktype='transactionid' AND l.mode='ExclusiveLock' AND l.transactionid=receipt_xid)
       ) THEN
-      RAISE EXCEPTION 'commerce_order_money_v2_mismatch' USING ERRCODE='23514', COLUMN='/taxEvidence', HINT=remedy;
+      RAISE EXCEPTION 'commerce_order_money_v2_mismatch' USING ERRCODE='23514', COLUMN='/taxEvidence',
+        HINT='Keep the accepted facts and use the owning order lifecycle operation.';
     END IF;
   END IF;
   IF snapshot.destination_erased AND p_fresh AND NOT restoring THEN
@@ -300,13 +304,13 @@ BEGIN
       AND d.client_id=header.client_id AND d.evidence_disposition='erased'
       AND b.selection IS NULL AND b.service IS NULL AND t.state='erased'
   )) THEN
-    RAISE EXCEPTION 'commerce_order_money_v2_mismatch' USING ERRCODE='23514', COLUMN='/taxEvidence', HINT=remedy;
+    RAISE EXCEPTION 'commerce_order_money_v2_mismatch' USING ERRCODE='23514', COLUMN='/taxEvidence', HINT=evidence_remedy;
   END IF;
 
   IF check_seal AND restoring AND NOT snapshot.destination_erased AND NOT EXISTS (
     SELECT FROM public.tax_calculations t WHERE t.calculation_id=snapshot.calculation_id AND t.state='terminal'
   ) THEN
-    RAISE EXCEPTION 'commerce_order_money_v2_mismatch' USING ERRCODE='23514', COLUMN='/taxEvidence', HINT=remedy;
+    RAISE EXCEPTION 'commerce_order_money_v2_mismatch' USING ERRCODE='23514', COLUMN='/taxEvidence', HINT=evidence_remedy;
   END IF;
   IF check_seal AND NOT restoring THEN
     SELECT * INTO calculation FROM public.tax_calculations WHERE calculation_id=snapshot.calculation_id;

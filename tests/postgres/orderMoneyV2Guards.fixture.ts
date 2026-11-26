@@ -22,7 +22,7 @@ function component(basis: number, taxPositions: Component["taxPositions"] = []) 
   };
 }
 
-export function reseal(body: Body, quoteId = randomUUID()): CommerceQuoteV2 {
+export function reseal(body: Body, quoteId: string = randomUUID()): CommerceQuoteV2 {
   const inner = { ...body, quoteId, status: "final", schemaVersion: 2, contractVersion: "commerce.v1",
     moneyDigest: quoteDigest("commerce.quote-money.v2", body) } as const;
   return { ...inner, quoteDigest: quoteDigest("commerce.quote.v2", inner) };
@@ -30,12 +30,16 @@ export function reseal(body: Body, quoteId = randomUUID()): CommerceQuoteV2 {
 
 export async function issue(store: Pick<AccountMutationsStore, "owner" | "runtime">, sku: Sku, inclusive: boolean,
   edit: (body: Body) => Body = body => body,
-  { pending = false, legacySeal = false, promotions = [] }: {
+  { pending = false, legacySeal = false, promotions = [], paymentBounds }: {
     pending?: boolean; legacySeal?: boolean; promotions?: readonly PromotionTarget[];
+    paymentBounds?: Pick<Body["paymentLimits"], "minMinor" | "maxMinor">;
   } = {}) {
   const at = (await store.owner.query<{ now: Date }>("SELECT date_trunc('milliseconds',clock_timestamp()) AS now")).rows[0]!.now;
   const value = await fixture(store, at.toISOString());
   const input = value.begin(inclusive ? fiscalKind : exclusiveKind, !legacySeal);
+  if (paymentBounds && input.pin.composition) {
+    Object.assign(input.pin.composition.limits, paymentBounds, { effective: paymentBounds });
+  }
   if (promotions.length > 0) {
     const plan = input.pin.composition!.planInput;
     plan.selected.adjustments = promotions.map(promotion => ({
@@ -82,6 +86,7 @@ function amounts(value: Pick<Component, "preDiscountMinor" | "effectiveMinor" | 
 
 export async function write(db: PoolClient, evidence: Evidence, sku: Sku,
   opts: { orderId?: string; snapshot?: Record<string, unknown>; item?: Record<string, unknown>; source?: Record<string, unknown>;
+    moneyVersion?: string;
     erased?: boolean; clientId?: string; bucketErased?: boolean; snapshotFirst?: boolean;
     beforeSnapshot?: () => Promise<unknown>; beforeSource?: () => Promise<unknown> } = {}) {
   const { quote, clientId, selection, service } = evidence;
@@ -90,7 +95,7 @@ export async function write(db: PoolClient, evidence: Evidence, sku: Sku,
   await db.query("LOCK TABLE public.identity_privacy_erasures IN SHARE MODE");
   await db.query("SELECT 1 FROM public.clients WHERE id=$1 FOR UPDATE", [opts.clientId ?? clientId]);
   const writeHeader = () => insert(db, orderTable, { id, client_id: opts.clientId ?? clientId, status: "pending_payment",
-    money_version: version, currency_code: quote.currency, total_amount_minor: quote.payableMinor });
+    money_version: opts.moneyVersion ?? version, currency_code: quote.currency, total_amount_minor: quote.payableMinor });
   const writeSnapshot = () => insert(db, snapshots, {
     order_id: id, calculation_id: quote.taxEvidence.calculationId, accepted_quote_id: quote.quoteId,
     accepted_quote_digest: quote.quoteDigest, token_digest: digest, accepted_money_digest: quote.moneyDigest,
@@ -103,7 +108,7 @@ export async function write(db: PoolClient, evidence: Evidence, sku: Sku,
     catalogue_evidence_ref: quote.catalogueEvidenceRef, limit_profile_ref: quote.paymentLimits.profileRef,
     limit_channel_key: quote.paymentLimits.channelKey, limit_revision: Number(quote.paymentLimits.revision),
     limit_min_minor: quote.paymentLimits.minMinor, limit_max_minor: quote.paymentLimits.maxMinor,
-    money_version: version, amount_basis: quote.amountBasis, currency: quote.currency, mode: quote.mode,
+    money_version: opts.moneyVersion ?? version, amount_basis: quote.amountBasis, currency: quote.currency, mode: quote.mode,
     promotion_engine: quote.promotion.engine, cadence_days: quote.cadence?.days,
     tax_date: quote.taxEvidence.taxDate, evaluation_expires_at: quote.taxEvidence.expiresAt,
     net_total: quote.netTotal, tax_total: quote.taxTotal, fee_total: quote.feeTotal, payable_minor: quote.payableMinor,
