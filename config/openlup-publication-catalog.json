@@ -30494,7 +30494,19 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/catalogAdmissionIssueReader.fixture.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/catalogAdmissionIssueReader.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogAdmissionIssueReaderAdminRails.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogAdmissionIssueReaderRails.test.ts",
       "class": "public-output"
     },
     {
@@ -31283,6 +31295,18 @@
     },
     {
       "path": "tests/postgres/m14RestrictedConnectedRestoreMatrix.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14RestrictedConnectedRestoreMatrixNeonOperator.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14RestrictedConnectedRestoreMatrixRdsManaged.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14RestrictedConnectedRestoreMatrixRdsOperator.test.ts",
       "class": "public-output"
     },
     {
