@@ -582,7 +582,8 @@ export function proveInstalledCatalogueUpgrade(app: string, preservedHashes: Rec
         const root = realpathSync(mount.Source);
         assert(!source.startsWith(root + "/") && source !== root, "Starter browser mount overlaps private state");
       }
-      const check = `const {openSync,closeSync}=require('node:fs'); for(const path of process.argv.slice(1)) {
+      const check = `const {openSync,closeSync}=require('node:fs'), {argv}=require('node:process');
+        for(const path of argv.slice(1)) {
         try { closeSync(openSync(path,'r')); } catch (error) { if (['ENOENT','EACCES'].includes(error.code)) continue; throw error; }
         process.exit(2);
       } console.log('PASS');`;
@@ -1642,10 +1643,11 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
     for (const release of releases) exerciseJobs(release);
     mark("missing credential bind refusal and restoration on both Compose versions");
 
-    const firstAdmin = `import {runtimeConnectionString} from './host/runtime-database.ts';
+    const firstAdmin = `import {argv} from 'node:process';
+      import {runtimeConnectionString} from './host/runtime-database.ts';
       import {createPostgresOperatorIdentityStore} from '@openlup/platform/identity';
       const operators=createPostgresOperatorIdentityStore({connectionString:await runtimeConnectionString()});
-      try { await operators.bootstrapFirstAdministrator({email:process.argv[1]}); } finally { await operators.close(); }`;
+      try { await operators.bootstrapFirstAdministrator({email:argv[1]}); } finally { await operators.close(); }`;
     checked("first_administrator", compose("exec", "-T", "--user", "node", "application", "node",
       "--input-type=module", "-e", firstAdmin, "operator@example.test"));
     if (sql("select count(*) from public.platform_human_principals where email='operator@example.test'") !== "1")
@@ -1780,17 +1782,17 @@ esac
         const root = realpathSync(mount.Source);
         if (source === root || source.startsWith(root + "/")) fail("installed_browser_mount_overlap");
       }
-      const opens = `const fs=require('node:fs');
-        for(const path of process.argv.slice(1)) {
+      const opens = `const fs=require('node:fs'), {argv}=require('node:process');
+        for(const path of argv.slice(1)) {
           try { fs.closeSync(fs.openSync(path,'r')); }
           catch(error) { if (['ENOENT','EACCES'].includes(error.code)) continue; throw error; }
           process.exit(2);
         } console.log('PASS');`;
       const hidden = checked("installed_browser_credential_visibility", run(from, "docker", ["exec", browserName,
         "timeout", "5", "node", "-e", opens, source, "/run/secrets/starter_runtime_password"]));
-      const browserCheck = `const {chromium}=require('@playwright/test');
+      const browserCheck = `const {chromium}=require('@playwright/test'), {argv}=require('node:process');
         (async()=>{const browser=await chromium.launch({headless:true});
-        try{const page=await browser.newPage(); const response=await page.goto(process.argv[1]);
+        try{const page=await browser.newPage(); const response=await page.goto(argv[1]);
         if (response.status()!==200) process.exitCode=2; } finally{await browser.close();}})();`;
       checked("installed_browser_http", run(from, "docker", ["exec", browserName, "timeout", "15", "node", "-e",
         browserCheck, `http://127.0.0.1:${port}/`]));

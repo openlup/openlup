@@ -38,8 +38,9 @@ async function run(
 it("admits a private password descriptor and withholds its bytes from every result", async () => {
   const privateValue = randomBytes(32).toString("hex");
   const entry = new URL("../../src/operations/server/settingsCommand.ts", import.meta.url).href;
-  const program = `import { runSettingsCommand } from ${JSON.stringify(entry)};
-    const status = await runSettingsCommand(JSON.parse(process.argv[1]), {
+  const program = `import { argv } from "node:process";
+    import { runSettingsCommand } from ${JSON.stringify(entry)};
+    const status = await runSettingsCommand(JSON.parse(argv[1]), {
       write: line => process.stdout.write(line), warn: line => process.stderr.write(line),
       readStdin: async () => { let input = ''; for await (const chunk of process.stdin) input += chunk; return input; },
     }, { bind: async ({database}) => {

@@ -8,7 +8,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { findPackageJSON } from 'node:module';
 import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
-import { env } from 'node:process';
+import { cwd, env } from 'node:process';
 import pg from 'pg';
 import { buildCatalogReleaseDraftV3, canonicalCatalogDraftJson, catalogInternalGtin,
   createPostgresCatalogDraftStoreV4, createPostgresCatalogPublicationCommands } from '@openlup/platform/catalog';
@@ -17,6 +17,7 @@ import { createPostgresOperatorIdentityStore } from '@openlup/platform/identity'
 import { catalogueWatchdogPrincipalId, startCatalogueReadinessJobs } from '../host/catalogue-readiness-jobs.ts';
 import { starterCatalogue } from '../host/editor-catalogue.ts';
 import { createPrivateCapture } from '../host/private-capture.ts';
+import { prepareRuntimeHandoff } from '../host/runtime-database.ts';
 import { runScheduledCare } from '../host/scheduled-renewal.ts';
 import { buildDemoSeed } from '../owned/demo-seed.ts';
 import { selectConfiguration } from '../owned/store.config.ts';
@@ -523,8 +524,10 @@ test('installed adopter pack refuses missing builds and resumes exact-pair autho
   test.setTimeout(180_000);
   test.skip(!/^st1-pr2-recipe-[a-z0-9-]+$/u.test(composeProject), 'Requires the installed adopter-pack fixture.');
   if (!baseURL) throw new Error('starter_pack_recipe_fixture_required');
-  const compose = (...args: string[]) => execFileSync('docker', ['compose', '--project-name', composeProject, ...args],
-    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 8 * 1024 * 1024 });
+  const runCompose = (environment: NodeJS.ProcessEnv, ...args: string[]) => execFileSync('docker',
+    ['compose', '--project-name', composeProject, ...args],
+    { env: environment, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 8 * 1024 * 1024 });
+  const compose = (...args: string[]) => runCompose(env, ...args);
   const sql = (statement: string) => compose('exec', '-T', 'database', 'psql', '-XAt', '-v', 'ON_ERROR_STOP=1',
     '-U', 'starter_install', '-d', 'neutral_store', '-c', statement);
   const email = 'pack-operator@example.test', actionPath = '/api/actions/operator.catalogDrafts';
@@ -604,8 +607,13 @@ test('installed adopter pack refuses missing builds and resumes exact-pair autho
   const beforeBuild = buildDigest(), beforeReceipt = ledgerReceipt();
   expect(beforeBuild).toMatch(/^[a-f0-9]{64}$/u);
   expect(JSON.parse(beforeReceipt)).toMatchObject({ packId: 'stationery', packVersion: pair.version });
-  compose('run', '--rm', '--no-deps', '-T', 'installation', 'node', '-e', 'require("node:fs").unlinkSync(process.argv[1])', target);
-  compose('restart', 'application');
+  const handoff = prepareRuntimeHandoff(composeProject, [cwd()]);
+  try {
+    const environment = { ...env, ...handoff.environment };
+    runCompose(environment, 'run', '--rm', '--no-deps', '-T', 'installation', 'node', '-e',
+      'require("node:fs").unlinkSync(process.argv[1])', target);
+    runCompose(environment, 'restart', 'application');
+  } finally { handoff.cleanup(); }
   await expect.poll(async () => (await page.request.get(baseURL + '/api/config').catch(() => null))?.status()).toBe(200);
   await login();
   const missing = { ok: false, code: 'starter_catalogue_build_missing', path: '/packs/1/pack',
