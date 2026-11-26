@@ -8874,6 +8874,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/subscriptions/rescheduleTimeZonePolicy.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/retrySchedulePolicy.ts",
       "class": "public-output"
     },
@@ -11630,6 +11634,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/subscriptions/rescheduleTimeZonePolicy.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/subscriptions/retrySchedulePolicy.test.ts",
       "class": "public-output"
     },
@@ -11655,6 +11663,10 @@
     },
     {
       "path": "packages/platform/test/subscriptions/subscription_edit_quote_ttl_minutes.json",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/subscription_reschedule_timezone.json",
       "class": "public-output"
     },
     {
@@ -31703,6 +31715,10 @@
     },
     {
       "path": "tests/postgres/settingsWave3aPolicies.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/settingsWave4aPolicies.test.ts",
       "class": "public-output"
     },
     {

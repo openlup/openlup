@@ -896,9 +896,13 @@
     {
       "file": "db/platform/migrations/20261129130001_native_renewal_v3_storage.sql",
       "sha256": "03cddadfb849aa09d4e2eb9fc2e36165a2bdef65ce943f06f04396c6ec009263"
+    },
+    {
+      "file": "db/platform/migrations/20261129130002_settings_wave4a_reschedule_timezone.sql",
+      "sha256": "8fdc4dffe112ddd7dad2765b921fbbf3556db874e21b20318568c1dfb1f76225"
     }
   ],
-  "objectInventorySha256": "7bc42d7e26931120bfb3a4c7397f58c1a154c947eb6f6458b0e06e5830794474",
+  "objectInventorySha256": "b3280641434a729891bf7a1f0d6705af9081aa905880bc737e7580adfe1e3c42",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1820,14 +1824,18 @@
       {
         "file": "db/platform/migrations/20261129130001_native_renewal_v3_storage.sql",
         "sha256": "03cddadfb849aa09d4e2eb9fc2e36165a2bdef65ce943f06f04396c6ec009263"
+      },
+      {
+        "file": "db/platform/migrations/20261129130002_settings_wave4a_reschedule_timezone.sql",
+        "sha256": "8fdc4dffe112ddd7dad2765b921fbbf3556db874e21b20318568c1dfb1f76225"
       }
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "a9d0f834ca62b1bf4341a522fdc8dcda2219c2ee97eb80583027610779c27acd"
+        "withRestore": "f4da78e12eb36507539c52288eeb04221b57805d929332b0ea7a8f6bde64b24a"
       },
       "separateMigrator": {
-        "withRestore": "a490cb3e8df3a606f90d0e6705805b1018d38e52d001e5f7c01f21a4d15e6a7c"
+        "withRestore": "eaa73bcd10612bb97f6acaf5d928a3bbb1472a17be59483b9da08c58a9d1b742"
       }
     }
   },
@@ -2744,11 +2752,15 @@
       {
         "file": "db/platform/migrations/20261129130001_native_renewal_v3_storage.sql",
         "sha256": "03cddadfb849aa09d4e2eb9fc2e36165a2bdef65ce943f06f04396c6ec009263"
+      },
+      {
+        "file": "db/platform/migrations/20261129130002_settings_wave4a_reschedule_timezone.sql",
+        "sha256": "8fdc4dffe112ddd7dad2765b921fbbf3556db874e21b20318568c1dfb1f76225"
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "111e894f2e5009a6018ceaca36304442aea81d017a8efd6e7fdb1406a0fcbc23",
-      "operatorProvisioned": "9462c5087cbba2fca2e9381d2d3fcad1ad19df6b88ce4009a6cb8c6711ab42f4"
+      "installerManaged": "cf7015c89ff06208420138f58720de2e22a7fb396539c3d8af1e560780571a14",
+      "operatorProvisioned": "a4add914607bc199518a08a5cc88eeedc6a8885640d2bc61d5557b4c3dd5bcb5"
     }
   }
 }
