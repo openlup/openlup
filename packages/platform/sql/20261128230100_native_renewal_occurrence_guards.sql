@@ -194,14 +194,25 @@ BEGIN
         SELECT r.renewal_operation_id,r.purchase_order_id INTO operation_id,order_id
           FROM public.fulfillment_inventory_reservations r WHERE r.id=(row_data->>'reservation_id')::uuid;
       END IF;
-      SELECT o.renewal_operation_id,o.subscription_cycle_id INTO linked_operation,linked_cycle
-        FROM public.commerce_orders o WHERE o.id=order_id;
-      row_owners:=ARRAY(SELECT DISTINCT id FROM (
-        SELECT owner_id AS id
-        UNION ALL SELECT op.subscription_id FROM public.subscription_renewal_operations op WHERE op.id IN (operation_id,linked_operation)
-        UNION ALL SELECT c.subscription_id FROM public.subscription_cycles c WHERE c.id IN (cycle_id,linked_cycle)
-      ) AS links WHERE id IS NOT NULL ORDER BY id);
-      IF cardinality(row_owners)>1 THEN
+      linked_operation:=NULL; linked_cycle:=NULL;
+      IF order_id IS NOT NULL THEN
+        SELECT o.renewal_operation_id,o.subscription_cycle_id INTO linked_operation,linked_cycle
+          FROM public.commerce_orders o WHERE o.id=order_id;
+        IF NOT FOUND THEN
+          RAISE EXCEPTION 'renewal_cycle_unavailable' USING ERRCODE='22023', DETAIL='/cycleKey';
+        END IF;
+      END IF;
+      row_owners:=array_remove(ARRAY[owner_id],NULL);
+      IF coalesce(operation_id,linked_operation) IS NOT NULL THEN
+        row_owners:=row_owners||ARRAY(SELECT op.subscription_id FROM unnest(ARRAY[operation_id,linked_operation]) ref(id)
+          LEFT JOIN public.subscription_renewal_operations op ON op.id=ref.id WHERE ref.id IS NOT NULL);
+      END IF;
+      IF coalesce(cycle_id,linked_cycle) IS NOT NULL THEN
+        row_owners:=row_owners||ARRAY(SELECT c.subscription_id FROM unnest(ARRAY[cycle_id,linked_cycle]) ref(id)
+          LEFT JOIN public.subscription_cycles c ON c.id=ref.id WHERE ref.id IS NOT NULL);
+      END IF;
+      row_owners:=ARRAY(SELECT DISTINCT id FROM unnest(row_owners) id ORDER BY id);
+      IF cardinality(row_owners)>1 OR array_position(row_owners,NULL) IS NOT NULL THEN
         RAISE EXCEPTION 'renewal_cycle_unavailable' USING ERRCODE='22023', DETAIL='/cycleKey';
       END IF;
       owners:=owners||row_owners;
