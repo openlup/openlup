@@ -9866,6 +9866,19 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "native-renewal-occurrence-producer",
+        "path": "db/platform/migrations/20261129130505_native_renewal_occurrence_producer.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.subscriptions__allocate_renewal_occurrence(uuid,uuid,text,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -14331,6 +14344,17 @@
           "signature": "public.catalog_publication_assess_prices_v2(jsonb)",
           "beforeSha256": null,
           "afterSha256": "fdb05657dd6287853166e57ceb64411d3265bf741331c9f372c44b8101926dcc"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261129130505_native_renewal_occurrence_producer.sql",
+      "sha256": "31a544c3848c94585c4d0959c09edd875cbf781a4fe5d475a0559496cc1a07eb",
+      "functions": [
+        {
+          "signature": "public.subscriptions__allocate_renewal_occurrence(uuid,uuid,text,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "5010069482c117b5d06ae3e653545a8523162a93ba8bad2fce1b93337af0a501"
         }
       ]
     }

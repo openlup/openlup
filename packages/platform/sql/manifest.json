@@ -918,9 +918,13 @@
       {
         "file": "db/platform/migrations/20261129130504_catalog_price_publication_recorder_v2.sql",
         "sha256": "bdec86e74f6015efdd7ab595e409647bb8adc923606ff80604bf8ca82c8277de"
+      },
+      {
+        "file": "db/platform/migrations/20261129130505_native_renewal_occurrence_producer.sql",
+        "sha256": "31a544c3848c94585c4d0959c09edd875cbf781a4fe5d475a0559496cc1a07eb"
       }
     ],
-    "objectInventorySha256": "e2313b0643586038d25261827855bfe062053d7385f2542de4dea349eae1b47f",
+    "objectInventorySha256": "dfc73621469c362542c149101487bb307bd29b4b071f107ae1eff37c4cc75944",
     "qualified": {
       "baseline": {
         "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1862,14 +1866,18 @@
         {
           "file": "db/platform/migrations/20261129130504_catalog_price_publication_recorder_v2.sql",
           "sha256": "bdec86e74f6015efdd7ab595e409647bb8adc923606ff80604bf8ca82c8277de"
+        },
+        {
+          "file": "db/platform/migrations/20261129130505_native_renewal_occurrence_producer.sql",
+          "sha256": "31a544c3848c94585c4d0959c09edd875cbf781a4fe5d475a0559496cc1a07eb"
         }
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "74fe3c59f86dc91724e0abd9c70264a7995cbd225cf92b5f6265fda3a99720f8"
+          "withRestore": "3eb365d52b4311a57336a8c5f1d672cc75c04fe3967a030bd7649850abed989f"
         },
         "separateMigrator": {
-          "withRestore": "1adb1913d6c767f7050a9284fb0bd371f17e9d4eaaae263c83d3d4719f49530c"
+          "withRestore": "c0ff414cbdfe90e1fd31b031d9f3e6f436c9e88954e7db373ed5fe04f671a710"
         }
       }
     },
@@ -2806,11 +2814,15 @@
         {
           "file": "db/platform/migrations/20261129130504_catalog_price_publication_recorder_v2.sql",
           "sha256": "bdec86e74f6015efdd7ab595e409647bb8adc923606ff80604bf8ca82c8277de"
+        },
+        {
+          "file": "db/platform/migrations/20261129130505_native_renewal_occurrence_producer.sql",
+          "sha256": "31a544c3848c94585c4d0959c09edd875cbf781a4fe5d475a0559496cc1a07eb"
         }
       ],
       "objectInventorySha256": {
-        "installerManaged": "5de9424b5dbc6e75a7fb5f0f16a79b589c0bd3601fbe6020a0e97a2c91d125fb",
-        "operatorProvisioned": "9feaa78b89cc3e113a9184b5283bfe580c1152c7b3180da1ebd92593fff35beb"
+        "installerManaged": "c7b097c6ad7d5d84399278c28ea15d3dddd0b2dee2c4116678e99628e878d112",
+        "operatorProvisioned": "4297956ac1ec8814730c4f775f2cc1e1fce0e0ee70be39fc9c728bd988911b98"
       }
     }
   },
@@ -3959,6 +3971,11 @@
       "file": "20261129130504_catalog_price_publication_recorder_v2.sql",
       "source": "db/platform/migrations/20261129130504_catalog_price_publication_recorder_v2.sql",
       "sha256": "bdec86e74f6015efdd7ab595e409647bb8adc923606ff80604bf8ca82c8277de"
+    },
+    {
+      "file": "20261129130505_native_renewal_occurrence_producer.sql",
+      "source": "db/platform/migrations/20261129130505_native_renewal_occurrence_producer.sql",
+      "sha256": "31a544c3848c94585c4d0959c09edd875cbf781a4fe5d475a0559496cc1a07eb"
     },
     {
       "file": "q2_00000000000000_platform_baseline.sql",
