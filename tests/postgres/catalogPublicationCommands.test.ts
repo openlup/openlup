@@ -1673,8 +1673,13 @@ publicationTest("issues verified v2 effects and rolls them back on a deferred pu
       await db.query("UPDATE public.catalog_draft_revisions SET payload=$1 WHERE draft_id=$2 AND revision=$3", [source, data.draftId, revision]);
       await db.query("ALTER TABLE public.catalog_draft_revisions ENABLE TRIGGER catalog_draft_revisions_immutable");
     };
-    const approvalSeal = async (db: PgQueryExecutor, commandKey: string) => (await db.query(`SELECT post_state_canonical_text,post_state_digest
-      FROM public.catalog_publication_decisions WHERE product_id=$1 AND command_key=$2`, [data.productId, commandKey])).rows[0];
+    const approvalSeal = async (db: PgQueryExecutor, commandKey: string) => {
+      const { rows: [saved] } = await db.query(`SELECT post_state_canonical_text,post_state_digest
+        FROM public.catalog_publication_decisions WHERE product_id=$1 AND command_key=$2`, [data.productId, commandKey]);
+      const { post_state_canonical_text, post_state_digest } = saved ?? {};
+      if (typeof post_state_canonical_text !== "string" || typeof post_state_digest !== "string") throw new Error("Missing the saved approval seal");
+      return { post_state_canonical_text, post_state_digest };
+    };
     const persistApproval = (candidate: ReturnType<typeof seedSource>, command: typeof next.approve, revision: number) =>
       transaction(pool, async db => {
         const seal = await approvalSeal(db, command.commandKey);
@@ -1693,15 +1698,17 @@ publicationTest("issues verified v2 effects and rolls them back on a deferred pu
     });
     const assess = async (db: PgQueryExecutor, packet: ReturnType<typeof assessPacket>) => {
       const { result } = (await db.query(assessmentSql, [packet])).rows[0];
-      expect(canonicalCatalogDraftJson(JSON.parse(result))).toBe(result);
-      return JSON.parse(result);
+      if (typeof result !== "string") throw new Error("Missing canonical assessment output");
+      const verdict = JSON.parse(result);
+      expect(canonicalCatalogDraftJson(verdict)).toBe(result);
+      return verdict;
     };
     type PriceRefusal = { code: string; message: string; constraint?: string };
     const rollbackProbe = new Error("Roll back the successful probe");
     const missingFreshPrice = "catalog_publication_price_edit_required";
     const issueRequired = { code: "23514", message: "catalog_publication_price_issue_required" };
     const editRequired = { code: "23514", message: missingFreshPrice };
-    const verifyRefusal = async (db: PoolClient, execute: () => Promise<unknown>, expected: PriceRefusal) => {
+    const verifyRefusal = async (db: PgQueryExecutor, execute: () => Promise<unknown>, expected: PriceRefusal) => {
       await db.query("SAVEPOINT refused_price_case");
       await expect(execute()).rejects.toMatchObject(expected);
       await db.query("ROLLBACK TO SAVEPOINT refused_price_case; RELEASE SAVEPOINT refused_price_case");
@@ -1879,11 +1886,11 @@ publicationTest("issues verified v2 effects and rolls them back on a deferred pu
     });
 
     const revised = structuredClone(membershipOnly);
-    revised.product.sharedContent.requestedModes = [{ skuCode: data.code, modes: ["one_time", "subscription"] }];
+    revised.product.sharedContent.requestedModes = [{ skuCode: data.code, modes: ["subscription"] }];
     revised.publication.operations = [
       { op: "set_product_lifecycle", productSlug: data.slug, expectedState: "draft", state: "active", children: [] },
       { op: "set_sku_lifecycle", skuCode: data.code, expectedState: "draft", state: "active" },
-      { op: "set_eligibility", skuCode: data.code, sellableStandalone: true, sellableInSubscription: true },
+      { op: "set_eligibility", skuCode: data.code, sellableStandalone: false, sellableInSubscription: true },
       { op: "set_offer_membership", ...membership },
     ];
     await pool.query(`INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from)
@@ -1936,7 +1943,7 @@ publicationTest("issues verified v2 effects and rolls them back on a deferred pu
     const activated = await issue(false, publish, activation.approve, revised, 3, [edit]);
     expect(activated, String(recorderError)).toMatchObject({ outcome: "committed", receipt: { head: { revision: 3 } } });
     if (!("receipt" in activated && "head" in activated.receipt)) throw new Error("Missing activated head");
-    expect(await effects()).toMatchObject({ skus: 1, activation: ["active", true], prices: 4, child_receipts: 3, receipts: 3, heads: 1, outbox: 3 });
+    expect(await effects()).toMatchObject({ skus: 1, activation: ["active", false], prices: 4, child_receipts: 3, receipts: 3, heads: 1, outbox: 3 });
     expect((await pool.query(`SELECT previous.valid_to=live.valid_from AS shared_instant
       FROM public.price_entries previous JOIN public.price_entries live USING(variant_id,price_list_id,mode)
       WHERE previous.id=$1 AND live.active`, [current.id])).rows).toEqual([{ shared_instant: true }]);
