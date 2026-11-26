@@ -4,13 +4,16 @@
  * `ownerDocument` and `defaultView`, and calls nothing outside itself (its
  * helpers are declared inside it).
  *
- * Each element is scrolled into view, then measured:
+ * Each element is scrolled into view when the viewport or an overflow
+ * ancestor in its containing-block chain does not already show all of it, then
+ * measured:
  *
  * - its box;
- * - `insideScrollArea`: the box lies inside the page's scrollable area, and
- *   bringing it into view did not need a container or a viewport the buyer
- *   cannot scroll (`overflow: hidden` or `clip`; the viewport's overflow is the
- *   root element's, or body's while the root's is visible) to move;
+ * - `insideScrollArea`: the box lies inside the page's scrollable area, and,
+ *   judged before anything moves, no scroller the buyer cannot scroll
+ *   (`overflow: hidden` or `clip`; the viewport's overflow is the root
+ *   element's, or body's while the root's is visible; a container only on an
+ *   axis it can scroll) leaves part of the box outside the range it shows;
  * - `hidden`: `display: none` or a `hidden` attribute up the tree, or an
  *   inherited `visibility` other than `visible`;
  * - `transparent`: the product of its and its ancestors' opacity is 0;
@@ -78,46 +81,68 @@ export function anchorVisibility(elements: readonly Element[], attributes: reado
     const rootStyle = view.getComputedStyle(owner.documentElement);
     const isRootScroller = (node: Element) => node === owner.documentElement || node === owner.scrollingElement
       || (node === owner.body && rootStyle.overflowX === "visible" && rootStyle.overflowY === "visible");
-    const windowScroll = { x: view.scrollX, y: view.scrollY };
-    const saved = chain.map((node) => ({ node, left: node.scrollLeft, top: node.scrollTop }));
-    element.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
-    // A container or viewport the buyer cannot scroll moved to reveal the anchor: the buyer could not do that.
+    const own = view.getComputedStyle(element);
+    // An overflow box clips only the boxes in its containing-block chain: a fixed box escapes every ancestor but one
+    // that contains fixed boxes (transform, filter, perspective, paint or layout containment), an absolute box every
+    // ancestor below its positioned (or so containing) ancestor.
+    const inChain = new Set<Element>();
+    let awaiting = own.position;
+    for (const node of chain) {
+      const style = view.getComputedStyle(node);
+      const containsFixed = style.transform !== "none" || style.filter !== "none" || style.perspective !== "none"
+        || /\b(?:paint|layout|strict|content)\b/.test(style.contain) || /\b(?:transform|perspective|filter)\b/.test(style.willChange)
+        || (style.backdropFilter !== undefined && style.backdropFilter !== "none" && style.backdropFilter !== "");
+      if (awaiting === "fixed" ? containsFixed : awaiting === "absolute" ? style.position !== "static" || containsFixed : true) {
+        inChain.add(node);
+        awaiting = style.position;
+      }
+    }
+    // The scrollers that show the anchor: the viewport, and every overflow ancestor in its chain but the root scroller.
     const locked = (overflow: string) => overflow === "hidden" || overflow === "clip";
     // The viewport's overflow is the root element's, or body's while the root's is visible.
     const viewportStyle = rootStyle.overflowX === "visible" && rootStyle.overflowY === "visible" && owner.body !== null
       ? view.getComputedStyle(owner.body) : rootStyle;
-    const viewportLocked = (view.scrollY !== windowScroll.y && locked(viewportStyle.overflowY))
-      || (view.scrollX !== windowScroll.x && locked(viewportStyle.overflowX));
-    const unreachable = viewportLocked || saved.some(({ node, left, top }) => {
-      if (isRootScroller(node)) return false;
+    const scrollers: { x: [number, number]; y: [number, number]; lockedX: boolean; lockedY: boolean }[] = [
+      { x: [0, view.innerWidth], y: [0, view.innerHeight], lockedX: locked(viewportStyle.overflowX), lockedY: locked(viewportStyle.overflowY) },
+    ];
+    for (const node of chain) {
+      if (!inChain.has(node) || isRootScroller(node)) continue;
       const style = view.getComputedStyle(node);
-      return (node.scrollTop !== top && locked(style.overflowY)) || (node.scrollLeft !== left && locked(style.overflowX));
-    });
+      if (style.overflowX === "visible" && style.overflowY === "visible") continue;
+      const nodeBox = node.getBoundingClientRect();
+      const left = nodeBox.left + node.clientLeft;
+      const top = nodeBox.top + node.clientTop;
+      // A locked container counts only on an axis it could scroll; one with nothing to scroll merely clips (below).
+      scrollers.push({
+        x: [left, left + node.clientWidth], y: [top, top + node.clientHeight],
+        lockedX: locked(style.overflowX) && node.scrollWidth > node.clientWidth, lockedY: locked(style.overflowY) && node.scrollHeight > node.clientHeight,
+      });
+    }
+    // Decided before anything moves: an axis needs a scroller to move only when the box is not already within the
+    // range it shows (one pixel of tolerance), and the buyer cannot move a locked one. Centring an anchor that is
+    // already in view would move a locked viewport or container without the buyer needing it to.
+    const before = element.getBoundingClientRect();
+    const within = (start: number, size: number, [from, to]: [number, number]) => start > from - 1 && start + size < to + 1;
+    const needs = scrollers.map((scroller) => ({
+      x: !within(before.left, before.width, scroller.x), y: !within(before.top, before.height, scroller.y), scroller,
+    }));
+    const unreachable = needs.some(({ x, y, scroller }) => (x && scroller.lockedX) || (y && scroller.lockedY));
+    const windowScroll = { x: view.scrollX, y: view.scrollY };
+    const saved = chain.map((node) => ({ node, left: node.scrollLeft, top: node.scrollTop }));
+    // Scroll only to measure an anchor some scroller does not fully show.
+    if (needs.some(({ x, y }) => x || y)) element.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
 
     const box = element.getBoundingClientRect();
-    const own = view.getComputedStyle(element);
     let hidden = own.visibility !== "visible";
     let opacity = 1;
     let visibleRect: Rect = { left: box.left, top: box.top, right: box.left + box.width, bottom: box.top + box.height };
     let unmeasuredClip = false;
-    // An overflow box clips only the boxes in its containing-block chain: a fixed box escapes every ancestor but one
-    // that contains fixed boxes (transform, filter, perspective, paint or layout containment), an absolute box every
-    // ancestor below its positioned (or so containing) ancestor.
-    let awaiting = own.position;
     for (const node of [element, ...chain]) {
       const style = node === element ? own : view.getComputedStyle(node);
       if (style.display === "none" || node.hasAttribute("hidden")) hidden = true;
       opacity *= Number(style.opacity);
       const nodeBox = node === element ? box : node.getBoundingClientRect();
-      let inChain = node === element;
-      if (node !== element) {
-        const containsFixed = style.transform !== "none" || style.filter !== "none" || style.perspective !== "none"
-          || /\b(?:paint|layout|strict|content)\b/.test(style.contain) || /\b(?:transform|perspective|filter)\b/.test(style.willChange)
-          || (style.backdropFilter !== undefined && style.backdropFilter !== "none" && style.backdropFilter !== "");
-        inChain = awaiting === "fixed" ? containsFixed : awaiting === "absolute" ? style.position !== "static" || containsFixed : true;
-        if (inChain) awaiting = style.position;
-      }
-      if (node !== element && inChain && !isRootScroller(node) && (style.overflowX !== "visible" || style.overflowY !== "visible")) {
+      if (node !== element && inChain.has(node) && !isRootScroller(node) && (style.overflowX !== "visible" || style.overflowY !== "visible")) {
         const left = nodeBox.left + node.clientLeft;
         const top = nodeBox.top + node.clientTop;
         visibleRect = intersect(visibleRect, {
