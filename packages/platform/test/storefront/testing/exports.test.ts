@@ -14,6 +14,8 @@ const STOREFRONT_TESTING_EXPORTS = {
   PageHandle: "type",
   createPageHandle: "value",
   serializeStorefrontVerdict: "value",
+  storefrontScenarios: "value",
+  runStorefrontScenario: "value",
 } as const satisfies Record<string, "type" | "value">;
 
 const entryFile = fileURLToPath(new URL("../../../src/storefront/testing/index.ts", import.meta.url));
@@ -32,7 +34,7 @@ function entryExports() {
   return { checker, exports: checker.getExportsOfModule(module!) };
 }
 
-it("exports exactly the six listed names (E1)", () => {
+it("exports exactly the eight listed names (E1)", () => {
   expect(entryExports().exports.map((symbol) => symbol.getName()).sort()).toEqual(names());
 });
 
@@ -45,8 +47,8 @@ it("tags every name experimental", () => {
   }
 });
 
-it("exposes runtime values only for the two functions", async () => {
+it("exposes runtime values only for the listed values", async () => {
   const entry = await import("../../../src/storefront/testing/index.js");
   expect(Object.keys(entry).sort()).toEqual(names("value"));
-  for (const name of names("value")) expect(typeof entry[name]).toBe("function");
+  for (const name of names("value")) expect(typeof entry[name]).toBe(name === "storefrontScenarios" ? "object" : "function");
 });

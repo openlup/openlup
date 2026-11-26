@@ -470,7 +470,7 @@ export const TOOLING_INPUTS = {
   ], // Real Docker landing:merge + installation-inventory-refresh.ts witness (builds core/outbox/platform, syncs SQL/source-map, refreshes 5 PG inventories).
   'scripts/agent-review-queue.test.ts': [...AGENT_REVIEW_QUEUE_SCRIPTS, 'scripts/agent-review-queue-planner.mjs', 'scripts/merge-queue-check-arm.mjs', 'scripts/dco-signoff-check.ts', 'scripts/merge-queue-churn.mjs'], // Synthetic Git repositories and recorded transport.
   'scripts/agent-review-gate.test.ts': [...AGENT_REVIEW_QUEUE_SCRIPTS], // Real-Git witnesses of the session CLI and hosted admission.
-  'scripts/agent-review-registry.test.ts': ['config/openlup-publication-catalog.json', 'packages/platform/test/packageBoundary.test.ts', ...AGENT_REVIEW_QUEUE_SCRIPTS], // Closed-registry union and review-economy fixtures reading REGISTRY_PATHS.
+  'scripts/agent-review-registry.test.ts': ['config/openlup-publication-catalog.json', 'config/vitest-shard-weights.json', 'packages/platform/test/packageBoundary.test.ts', ...AGENT_REVIEW_QUEUE_SCRIPTS], // Closed-registry union and review-economy fixtures reading REGISTRY_PATHS.
   'scripts/public-ci-reuse.test.ts': ['scripts/public-ci-reuse.mjs'], // Recorded workflow/job responses.
   'scripts/documentation-cli.test.ts': ['examples/neutral-store/package.json', ...PACKAGE_MANIFESTS, 'packages/core/scripts/', ...ROOT_DOC_FILES], // Copies CLI closure, package execution surfaces and validates root docs.
   'scripts/pgtap-parity.test.ts': [], // Pure TAP/row-diff/sabotage/executable unit fixtures.

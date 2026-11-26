@@ -685,7 +685,7 @@ its original acceptance on replay.
 | `catalog_accepted_reference_mismatch` | Capture the reference from the SKU revision's issuing publication. |
 | `catalog_retained_revision_unavailable` | Recover the issuing publication and SKU revision from the retained catalogue. |
 | `catalog_acceptance_invalid` | Supply a schema-2 acceptance with 1 to 100 distinct SKU identities and codes. |
-| `catalog_acceptance_line_mismatch` | Register matching purchase lines from the persisted draft, preview and apply a fresh edit quote, or rebuild the snapshot from the current due subscription. Follow the SQL hint for the operation that refused. |
+| `catalog_acceptance_line_mismatch` | For governed adjustment or claim mismatches, recreate the draft from the frozen quote and its promotion records. For line mismatches, follow the SQL hint to register matching purchase lines from the persisted draft, preview and apply a fresh edit quote, or rebuild the snapshot from the current due subscription. |
 | `catalog_acceptance_receipt_mismatch` | Use this order's persisted draft receipt and its original key. |
 | `catalog_acceptance_snapshot_mismatch` | Use the stored renewal operation, its original acceptance and its frozen snapshot. |
 | `catalog_acceptance_snapshot_immutable` | Replay the renewal operation with its original acceptance and frozen snapshot. |
@@ -1268,6 +1268,12 @@ search path changes.
 If a retained-store packet has an unknown or mismatched inventory, the remedy is
 `capture the source and restore it with the same OpenLup version on a pristine target of the same profile; upgrade the source within its installed profile first if it is older`.
 If no such target can be provisioned, connected-store restore is unavailable for that pair.
+
+This version refuses captures containing stamped governed drafts or their
+marked draft-created events before connecting to the target. Keep the capture
+for a version that supports their restore.
+If capture refuses outside-profile source data, clean the source or use a supported source.
+If restore refuses outside-profile target data, provision a pristine target of the same profile.
 
 `absorptionCensusTables` may list qualified `public.<table>` names with unquoted
 lowercase ASCII identifiers for new
