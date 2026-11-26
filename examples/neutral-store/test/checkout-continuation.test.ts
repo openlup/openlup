@@ -1,435 +1,190 @@
+// The checkout page's earlier-order answers and their managed texts. The record, the key and the create bookkeeping
+// belong to `shared/storefront-bindings.ts` and are witnessed in `test/storefront-bindings.test.ts`.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
-import { act } from '../client/api.ts';
+import type { StatusReading } from '@openlup/platform/storefront';
+import { changedDetailsView, continuationView, orderStateFor, orderStateOf, type ContinuationView } from '../client/pages/checkout.ts';
+import { continuationMessage } from '../client/purchase.ts';
 import { market } from '../owned/market.config.ts';
 import type { ActionResult } from '../shared/api.ts';
+import { checkoutContinuationCopy } from '../shared/limits.ts';
 
-type Purchase = typeof import('../client/purchase.ts');
-type Controller = ReturnType<Purchase['checkoutContinuation']>;
-type Outcome = Awaited<ReturnType<Controller['continue']>>;
-
-const v4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-const storageKey = (configuration: string) => `neutral-store:checkout-continuation:v1:${configuration}`;
-const orderA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', orderB = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const orderA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const total = { amountMinor: 4200, currency: 'XTS' };
-let documents = 0, configurations = 0;
-
-type Creates = typeof import('../shared/storefront-bindings.ts')['checkoutCreates'];
-/** The create bookkeeping of each fresh document, which the page reads through its `creates` option. */
-const bookkeeping = new WeakMap<Purchase, Creates>();
-
-/** Each import is a fresh document: its module memory, create bookkeeping and document start are its own. */
-async function freshDocument(): Promise<Purchase> {
-  const purchase = await import(new URL(`../client/purchase.ts?continuation-document-${++documents}`, import.meta.url).href) as Purchase;
-  const bindings = await import(new URL(`../shared/storefront-bindings.ts?continuation-document-${documents}`, import.meta.url).href) as
-    typeof import('../shared/storefront-bindings.ts');
-  bookkeeping.set(purchase, bindings.checkoutCreates);
-  return purchase;
-}
-
-function storage(data = new Map<string, string>()) {
-  const faults = { access: false, get: false, set: false, remove: false };
-  const store = {
-    getItem(key: string) { if (faults.get) throw new Error('blocked'); return data.get(key) ?? null; },
-    setItem(key: string, value: string) { if (faults.set) throw new Error('full'); data.set(key, value); },
-    removeItem(key: string) { if (faults.remove) throw new Error('blocked'); data.delete(key); },
-  };
-  return { data, faults, accessor: () => { if (faults.access) throw new Error('denied'); return store; } };
-}
-
-function setup(purchase: Purchase, data?: Map<string, string>, start = 1_764_000_000_000) {
-  const configuration = `continuation-${++configurations}`;
-  const tab = storage(data), time = { now: start };
-  const controller = purchase.checkoutContinuation(configuration, { storage: tab.accessor, now: () => time.now, creates: bookkeeping.get(purchase)! });
-  const stored = () => { const raw = tab.data.get(storageKey(configuration)); return raw === undefined ? null : JSON.parse(raw); };
-  return { configuration, tab, time, controller, stored };
-}
-
-/** Stubs HTTP only, so `act` and its classification run unchanged. */
-async function withFetch<T>(reply: (url: string, init: RequestInit) => Response | Promise<Response>, run: () => Promise<T>): Promise<T> {
-  const original = globalThis.fetch;
-  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => reply(String(url), init ?? {})) as typeof fetch;
-  try { return await run(); } finally { globalThis.fetch = original; }
-}
-const json = (body: unknown, status = 200) => () => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
-const refusedWith = (code: string, status = 409) => json({ ok: false, code }, status);
-const succeeded = (value: unknown) => json({ ok: true, value, replayed: true });
-const lost = (): Response => { throw new TypeError('network'); };
-
-async function create(controller: Controller, reply: () => Response) {
-  const { key } = controller.dispatch();
-  const result = await withFetch(reply, () => act('checkout.create', {}, key));
-  controller.settled(key, result);
-  return { key, result, outcome: controller.answer(key, result) };
-}
-async function proceed(controller: Controller, action: 'resume' | 'abandon', reply: () => Response) {
-  const sent: Array<{ url: string; key: string | null; body: unknown }> = [];
-  const outcome = await withFetch(async (url, init) => {
-    sent.push({ url, key: new Headers(init.headers).get('Idempotency-Key'), body: JSON.parse(String(init.body)) });
-    return reply();
-  }, () => controller.continue(action, 'en'));
-  return { outcome, sent };
-}
-
-test('every host checkout code has a class', async () => {
-  const purchase = await freshDocument();
-  const source = await readFile(new URL('../host/purchase-composition.ts', import.meta.url), 'utf8');
-  const start = source.indexOf('async function continuationToken'), end = source.indexOf("actions['checkout.read']");
-  const failure = source.indexOf('\nfunction failure'), failureEnd = source.indexOf('\n}\n', failure);
-  assert.ok(start > 0 && end > start && failure > end && failureEnd > failure, 'starter_host_checkout_scan_anchor_missing');
-  const codes = new Set([...(source.slice(start, end) + source.slice(failure, failureEnd)).matchAll(/'(starter_[a-z_]+)'/g)].map(match => match[1]!));
-  assert.ok(codes.size >= 16, `scanned ${codes.size} host codes`);
-  for (const code of codes) assert.ok(Object.hasOwn(purchase.checkoutAnswerCodes, code), `${code} has no checkout answer class`);
-  for (const code of ['starter_transport_unavailable', 'starter_response_invalid', 'starter_dependency_unavailable']) {
-    assert.equal(purchase.checkoutAnswerCodes[code], 'noAnswer');
-  }
-  const counts: Record<string, number> = {};
-  for (const kind of Object.values(purchase.checkoutAnswerCodes)) counts[kind] = (counts[kind] ?? 0) + 1;
-  assert.deepEqual(counts, { noAnswer: 3, open: 4, closed: 2, none: 1, other: 10 });
-});
+const refused = (code: string, status?: 503): ActionResult => ({ ok: false, code, ...(status ? { status } : {}) });
+const value = (body: Record<string, unknown>): ActionResult => ({ ok: true, value: body });
+const terminal: StatusReading = { kind: 'terminal' }, checking: StatusReading = { kind: 'checking' }, active: StatusReading = { kind: 'active' };
 
 interface Row {
   name: string;
   operation: 'create' | 'resume' | 'abandon';
-  reply: () => Response;
-  kind: Outcome['kind'];
-  record: 'unchanged' | 'ordered' | 'cleared';
-  orderRef?: string;
-  panel: Outcome['panel'];
-  choices?: boolean;
-  different?: boolean;
-  link: Outcome['link'];
-  code?: string;
-  text?: string;
-  copy?: string;
-  /** A definite refusal of the only create clears its dispatch time; the key stays. */
-  cleared?: true;
+  answer: ActionResult;
+  reading?: StatusReading;
+  ordered?: boolean;
+  view: Partial<ContinuationView> & Pick<ContinuationView, 'choices' | 'different' | 'link'>;
 }
 
-const pending = (token?: string) => ({ orderRef: orderA, status: 'pending_payment', total, ...(token ? { token } : {}) });
+type Text = NonNullable<ContinuationView['text']>;
+const coded = (code: Text) => ({ code, text: code });
+const both = { choices: 'both', different: false, link: 'keep' } as const;
+const gone = { choices: 'none', different: false, link: 'remove' } as const;
+const notPayable: Row['view'] = { choices: 'resume', different: true, link: 'keep', ...coded('starter_checkout_not_payable') };
+
+// The answer table of the earlier-order panel, row by row.
 const rows: Row[] = [
-  { name: 'create success with token', operation: 'create', reply: succeeded(pending('rcv_first')), kind: 'open', record: 'ordered', orderRef: orderA, panel: 'close', link: 'show' },
-  { name: 'create success without token', operation: 'create', reply: succeeded(pending()), kind: 'open', record: 'ordered', orderRef: orderA, panel: 'open', link: 'remove', text: 'limited' },
-  { name: 'create success paid', operation: 'create', reply: succeeded({ orderRef: orderA, status: 'paid', total }), kind: 'closed', record: 'cleared', panel: 'close', link: 'remove', copy: 'recoveryPaid' },
-  { name: 'create changed', operation: 'create', reply: refusedWith('starter_checkout_changed'), kind: 'open', record: 'ordered', panel: 'open', link: 'keep', code: 'starter_checkout_changed', text: 'starter_checkout_changed' },
-  { name: 'create expired', operation: 'create', reply: refusedWith('starter_checkout_expired'), kind: 'open', record: 'ordered', panel: 'open', different: true, link: 'keep', code: 'starter_checkout_expired', text: 'starter_checkout_expired' },
-  { name: 'create paid', operation: 'create', reply: refusedWith('starter_checkout_paid'), kind: 'closed', record: 'cleared', panel: 'close', link: 'remove', code: 'starter_checkout_paid', text: 'starter_checkout_paid' },
-  { name: 'create not payable', operation: 'create', reply: refusedWith('starter_checkout_not_payable'), kind: 'closed', record: 'cleared', panel: 'close', link: 'remove', code: 'starter_checkout_not_payable', text: 'starter_checkout_not_payable' },
-  { name: 'create stale', cleared: true, operation: 'create', reply: refusedWith('starter_checkout_request_stale'), kind: 'other', record: 'unchanged', panel: 'keep', link: 'keep', code: 'starter_checkout_request_stale', text: 'starter_checkout_request_stale' },
-  { name: 'create limited', cleared: true, operation: 'create', reply: refusedWith('starter_attempt_limited'), kind: 'other', record: 'unchanged', panel: 'keep', link: 'keep', code: 'starter_attempt_limited', text: 'starter_attempt_limited' },
-  { name: 'create conflict', cleared: true, operation: 'create', reply: refusedWith('starter_command_conflict'), kind: 'other', record: 'unchanged', panel: 'keep', link: 'keep', code: 'starter_command_conflict', text: 'starter_command_conflict' },
-  ...['starter_input_invalid', 'starter_email_invalid', 'starter_terms_required', 'starter_purchase_unavailable', 'starter_quote_refresh_required', 'starter_quote_price_changed', 'starter_expected_total_required', 'starter_cart_invalid'].map(code =>
-    ({ name: `create ${code}`, cleared: true as const, operation: 'create' as const, reply: refusedWith(code), kind: 'other' as const, record: 'unchanged' as const, panel: 'keep' as const, link: 'keep' as const, code })),
-  { name: 'create dependency unavailable', operation: 'create', reply: refusedWith('starter_dependency_unavailable', 503), kind: 'noAnswer', record: 'unchanged', panel: 'open', link: 'keep', code: 'starter_dependency_unavailable' },
-  { name: 'create lost', operation: 'create', reply: lost, kind: 'noAnswer', record: 'unchanged', panel: 'open', link: 'keep', code: 'starter_transport_unavailable' },
-  { name: 'create unreadable', operation: 'create', reply: json({ ok: 'maybe' }), kind: 'noAnswer', record: 'unchanged', panel: 'open', link: 'keep', code: 'starter_response_invalid' },
-  { name: 'create other success shape', operation: 'create', reply: succeeded({ accepted: true }), kind: 'other', record: 'unchanged', panel: 'keep', link: 'keep' },
-  { name: 'resume with token', operation: 'resume', reply: succeeded(pending('rcv_resumed')), kind: 'open', record: 'ordered', orderRef: orderA, panel: 'open', choices: true, link: 'show' },
-  { name: 'resume without token', operation: 'resume', reply: succeeded(pending()), kind: 'open', record: 'ordered', orderRef: orderA, panel: 'open', choices: true, link: 'remove', text: 'limited' },
-  { name: 'resume paid', operation: 'resume', reply: succeeded({ orderRef: orderA, status: 'paid', total }), kind: 'closed', record: 'cleared', panel: 'open', choices: false, link: 'remove', copy: 'recoveryPaid' },
-  { name: 'resume in progress', operation: 'resume', reply: refusedWith('starter_checkout_in_progress'), kind: 'open', record: 'ordered', panel: 'open', choices: true, link: 'keep', code: 'starter_checkout_in_progress', text: 'starter_checkout_in_progress' },
-  { name: 'resume expired', operation: 'resume', reply: refusedWith('starter_checkout_expired'), kind: 'open', record: 'ordered', panel: 'open', choices: true, different: true, link: 'keep', code: 'starter_checkout_expired', text: 'starter_checkout_expired' },
-  { name: 'resume not payable', operation: 'resume', reply: refusedWith('starter_checkout_not_payable'), kind: 'closed', record: 'cleared', panel: 'open', choices: false, link: 'remove', code: 'starter_checkout_not_payable', text: 'starter_checkout_not_payable' },
-  { name: 'resume not found', operation: 'resume', reply: refusedWith('starter_checkout_not_found'), kind: 'none', record: 'cleared', panel: 'open', choices: false, link: 'keep', code: 'starter_checkout_not_found', text: 'starter_checkout_not_found' },
-  { name: 'resume lost', operation: 'resume', reply: lost, kind: 'noAnswer', record: 'unchanged', panel: 'open', choices: true, link: 'keep', code: 'starter_transport_unavailable' },
-  { name: 'abandon cancelled it', operation: 'abandon', reply: succeeded({ abandoned: true, orderRef: orderA }), kind: 'closed', record: 'cleared', panel: 'open', choices: false, link: 'remove', text: 'abandoned' },
-  ...(['paid', 'fulfillment_pending', 'fulfilled'] as const).map(status => ({ name: `abandon found ${status}`, operation: 'abandon' as const,
-    reply: succeeded({ abandoned: false, orderRef: orderA, status }), kind: 'closed' as const, record: 'cleared' as const, panel: 'open' as const, choices: false, link: 'remove' as const, copy: 'recoveryPaid' })),
-  { name: 'abandon found cancelled', operation: 'abandon', reply: succeeded({ abandoned: false, orderRef: orderA, status: 'cancelled' }), kind: 'closed', record: 'cleared', panel: 'open', choices: false, link: 'remove', copy: 'recoveryCancelled' },
-  ...(['refunded', 'expired'] as const).map(status => ({ name: `abandon found ${status}`, operation: 'abandon' as const,
-    reply: succeeded({ abandoned: false, orderRef: orderA, status }), kind: 'closed' as const, record: 'cleared' as const, panel: 'open' as const, choices: false, link: 'remove' as const, text: 'starter_checkout_not_payable' })),
-  { name: 'abandon found a later unpaid order', operation: 'abandon', reply: succeeded({ abandoned: false, orderRef: orderA, status: 'pending_payment' }), kind: 'other', record: 'unchanged', panel: 'open', choices: true, link: 'keep' },
-  { name: 'abandon found none', operation: 'abandon', reply: succeeded({ abandoned: false }), kind: 'none', record: 'cleared', panel: 'open', choices: false, link: 'keep', code: 'starter_checkout_not_found', text: 'starter_checkout_not_found' },
-  { name: 'abandon not abandonable', operation: 'abandon', reply: refusedWith('starter_checkout_not_abandonable'), kind: 'open', record: 'ordered', panel: 'open', choices: true, different: true, link: 'keep', code: 'starter_checkout_not_abandonable', text: 'starter_checkout_not_abandonable' },
-  { name: 'abandon in progress', operation: 'abandon', reply: refusedWith('starter_checkout_in_progress'), kind: 'open', record: 'ordered', panel: 'open', choices: true, link: 'keep', code: 'starter_checkout_in_progress', text: 'starter_checkout_in_progress' },
-  { name: 'abandon paid', operation: 'abandon', reply: refusedWith('starter_checkout_paid'), kind: 'closed', record: 'cleared', panel: 'open', choices: false, link: 'remove', code: 'starter_checkout_paid', copy: 'recoveryPaid' },
-  { name: 'abandon limited', operation: 'abandon', reply: refusedWith('starter_attempt_limited'), kind: 'other', record: 'unchanged', panel: 'open', choices: true, link: 'keep', code: 'starter_attempt_limited', text: 'starter_attempt_limited' },
-  { name: 'abandon busy', operation: 'abandon', reply: refusedWith('starter_purchase_unavailable'), kind: 'other', record: 'unchanged', panel: 'open', choices: true, link: 'keep', code: 'starter_purchase_unavailable' },
-  { name: 'abandon unavailable', operation: 'abandon', reply: refusedWith('starter_dependency_unavailable', 503), kind: 'noAnswer', record: 'unchanged', panel: 'open', choices: true, link: 'keep', code: 'starter_dependency_unavailable' },
+  { name: 'abandon cancelled it', operation: 'abandon', answer: value({ abandoned: true, orderRef: orderA }), reading: terminal, view: { ...gone, text: 'abandoned' } },
+  { name: 'abandon found none, not yet final', operation: 'abandon', answer: value({ abandoned: false }), reading: checking, view: { ...both, ...coded('starter_checkout_in_progress') } },
+  { name: 'abandon found none under a recorded order', operation: 'abandon', answer: value({ abandoned: false }), reading: checking, ordered: true,
+    view: { ...both, ...coded('starter_checkout_session_changed') } },
+  { name: 'abandon found none, final', operation: 'abandon', answer: value({ abandoned: false }), reading: terminal, view: { ...gone, ...coded('starter_checkout_not_found') } },
+  ...['paid', 'fulfillment_pending', 'fulfilled'].map(status => ({ name: `abandon found ${status}`, operation: 'abandon' as const,
+    answer: value({ abandoned: false, orderRef: orderA, status }), reading: terminal, view: { ...gone, copy: 'recoveryPaid' as const } })),
+  { name: 'abandon refused as paid', operation: 'abandon', answer: refused('starter_checkout_paid'), reading: terminal, view: { ...gone, copy: 'recoveryPaid' } },
+  ...['cancelled', 'refunded'].map(status => ({ name: `abandon found ${status}`, operation: 'abandon' as const,
+    answer: value({ abandoned: false, orderRef: orderA, status }), reading: terminal, view: { ...gone, copy: 'recoveryCancelled' as const } })),
+  ...['expired', 'failed'].map(status => ({ name: `abandon found ${status}`, operation: 'abandon' as const,
+    answer: value({ abandoned: false, orderRef: orderA, status }), reading: active, view: notPayable })),
+  { name: 'abandon found a later unpaid order', operation: 'abandon', answer: value({ abandoned: false, orderRef: orderA, status: 'pending_payment' }), reading: active,
+    view: { ...both, value: { abandoned: false, orderRef: orderA, status: 'pending_payment' } } },
+  { name: 'abandon not abandonable', operation: 'abandon', answer: refused('starter_checkout_not_abandonable'), reading: active,
+    view: { choices: 'resume', different: true, link: 'keep', ...coded('starter_checkout_not_abandonable') } },
+  ...(['create', 'resume', 'abandon'] as const).map(operation => ({ name: `${operation} expired`, operation, answer: refused('starter_checkout_expired'),
+    reading: checking, view: { ...both, different: true, ...coded('starter_checkout_expired') } })),
+  ...(['create', 'resume'] as const).map(operation => ({ name: `${operation} not payable`, operation, answer: refused('starter_checkout_not_payable'), view: notPayable })),
+  { name: 'create paid', operation: 'create', answer: refused('starter_checkout_paid'),
+    view: { choices: 'resume', different: true, link: 'keep', ...coded('starter_checkout_paid') } },
+  { name: 'resume read the order expired', operation: 'resume', answer: value({ orderRef: orderA, status: 'expired' }), view: notPayable },
+  ...(['create', 'resume', 'abandon'] as const).map(operation => ({ name: `${operation} session changed`, operation,
+    answer: refused('starter_checkout_session_changed'), reading: checking, view: { ...both, ...coded('starter_checkout_session_changed') } })),
+  // The record stays: the buyer can submit the same details, cancel, or start a different purchase for other details.
+  ...['paid', 'fulfillment_pending', 'fulfilled'].map(status => ({ name: `resume read ${status}`, operation: 'resume' as const,
+    answer: value({ orderRef: orderA, status }), view: { ...gone, different: true, copy: 'recoveryPaid' as const } })),
+  ...['cancelled', 'refunded'].map(status => ({ name: `resume read ${status}`, operation: 'resume' as const,
+    answer: value({ orderRef: orderA, status }), view: { ...gone, different: true, copy: 'recoveryCancelled' as const } })),
+  { name: 'resume found none', operation: 'resume', answer: refused('starter_checkout_not_found'),
+    view: { choices: 'both', different: true, link: 'remove', code: 'starter_checkout_not_found', text: 'resumeNotFound' } },
+  { name: 'resume limited', operation: 'resume', answer: refused('starter_attempt_limited'), view: { ...both, ...coded('starter_attempt_limited') } },
+  { name: 'abandon limited', operation: 'abandon', answer: refused('starter_attempt_limited'), reading: checking, view: { ...both, ...coded('starter_attempt_limited') } },
+  { name: 'resume without a token', operation: 'resume', answer: value({ orderRef: orderA, status: 'pending_payment', total }),
+    view: { ...both, text: 'limited', value: { orderRef: orderA, status: 'pending_payment', total } } },
+  { name: 'resume in progress', operation: 'resume', answer: refused('starter_checkout_in_progress'), view: { ...both, ...coded('starter_checkout_in_progress') } },
+  { name: 'resume of a code without a managed text', operation: 'resume', answer: refused('starter_purchase_unavailable'), view: { ...both, code: 'starter_purchase_unavailable' } },
+  { name: 'resume lost', operation: 'resume', answer: refused('starter_transport_unavailable'), view: { ...both, code: 'starter_transport_unavailable', uncertain: true } },
+  { name: 'abandon unavailable', operation: 'abandon', answer: refused('starter_dependency_unavailable', 503), view: { ...both, code: 'starter_dependency_unavailable', uncertain: true } },
 ];
 
-test('each answer class updates the record as the table says', async () => {
-  const purchase = await freshDocument();
+test('each earlier-order answer shows its code, texts, choices and link as the table says', () => {
   for (const row of rows) {
-    const { controller, time, stored, configuration } = setup(purchase);
-    let key: string, outcome: Outcome;
-    if (row.operation === 'create') ({ key, outcome } = await create(controller, row.reply));
-    else {
-      // A create lost in transport, then a continuation once "none" is final: strictly after its request timeout plus the bound.
-      ({ key } = await create(controller, lost));
-      if (row.name === 'abandon cancelled it') purchase.rememberPurchase(configuration, { orderRef: orderA, token: 'rcv_remembered' });
-      time.now += 35_001;
-      const sent = await proceed(controller, row.operation, row.reply);
-      outcome = sent.outcome;
-      assert.deepEqual(sent.sent, [{ url: '/api/actions/checkout.continuation', key, body: { action: row.operation, locale: 'en' } }], row.name);
-      if (row.name === 'abandon cancelled it') assert.equal(purchase.currentPurchase(configuration), null, 'the remembered purchase of the cancelled order is forgotten');
-    }
-    assert.match(key, v4, row.name);
-    assert.equal(outcome.kind, row.kind, row.name);
-    assert.equal(outcome.panel, row.panel, row.name);
-    assert.equal(outcome.link, row.link, row.name);
-    assert.equal(outcome.different, row.different ?? false, row.name);
-    if (row.choices !== undefined) assert.equal(outcome.choices, row.choices, row.name);
-    assert.equal(outcome.code, row.code, row.name);
-    assert.equal(outcome.text, row.text, row.name);
-    assert.equal(outcome.copy, row.copy, row.name);
-    assert.equal(outcome.stored, true, row.name);
-    const record = stored();
-    if (row.record === 'cleared') {
-      assert.equal(record, null, row.name);
-      assert.equal(controller.current(), null, row.name);
-      assert.notEqual(controller.dispatch().key, key, `${row.name}: a closed or final answer lets the next submit use a new key`);
-    } else {
-      assert.equal(record.id, key, row.name);
-      assert.equal(typeof record.sentAt, row.cleared ? 'undefined' : 'number', row.name);
-      assert.equal(controller.pending(), row.record === 'ordered' || !row.cleared, `${row.name}: the panel on load`);
-      assert.equal(record.ordered, row.record === 'ordered' ? true : undefined, row.name);
-      assert.equal(record.orderRef, row.orderRef, row.name);
-      assert.deepEqual(controller.current(), record, row.name);
-      assert.equal(controller.dispatch().key, key, `${row.name}: the next submit reuses the key`);
+    assert.deepEqual(continuationView(row.answer, row.reading ?? null, row.operation, row.ordered ?? false), row.view, row.name);
+  }
+});
+
+// Every answer that names the order's state updates what the page knows about it; an answer that names none leaves it.
+test('each answer naming the order sets the known order state', () => {
+  const rows: Array<[string, ActionResult | Record<string, unknown>, string | null]> = [
+    ['create or resume, payable', value({ orderRef: orderA, status: 'pending_payment' }), 'payable'],
+    ['host changed details', refused('starter_checkout_changed'), 'payable'],
+    ['in progress', refused('starter_checkout_in_progress'), 'payable'],
+    ...(['starter_checkout_not_payable', 'starter_checkout_paid', 'starter_checkout_expired', 'starter_checkout_not_abandonable'] as const)
+      .map((code): [string, ActionResult, string] => [code, refused(code), code]),
+    ...['expired', 'cancelled', 'refunded', 'failed'].map((status): [string, ActionResult, string] =>
+      [`read ${status}`, value({ orderRef: orderA, status }), 'starter_checkout_not_payable']),
+    ...['paid', 'fulfillment_pending', 'fulfilled'].map((status): [string, ActionResult, string] =>
+      [`read ${status}`, value({ orderRef: orderA, status }), 'starter_checkout_paid']),
+    // The payment-status page's own answers.
+    ['payment status: replacement for an expired order', { originalOrderRef: orderA, latestOrderRef: orderA, recoverable: true, recoveryKind: 'recreate_expired' }, 'starter_checkout_not_payable'],
+    ['payment status: paid', { originalOrderRef: orderA, terminalStatus: 'paid' }, 'starter_checkout_paid'],
+    ['payment status: cancelled', { originalOrderRef: orderA, terminalStatus: 'cancelled' }, 'starter_checkout_not_payable'],
+    ['payment status: read expired', { orderRef: orderA, status: 'expired' }, 'starter_checkout_not_payable'],
+    ['payment status: payable', { orderRef: orderA, status: 'pending_payment' }, 'payable'],
+    ['no order named', value({ abandoned: true }), null],
+    ['transport', refused('starter_transport_unavailable'), null],
+    ['other refusal', refused('starter_attempt_limited'), null],
+  ];
+  for (const [name, answer, state] of rows) {
+    const result = 'ok' in answer ? answer as ActionResult : { ok: true as const, value: answer };
+    assert.equal(orderStateOf(result)?.state ?? null, state, name);
+    // A refusal names the state of the order under the key; a value names its order too.
+    if (state !== null) assert.equal(orderStateOf(result)?.orderRef, result.ok ? orderA : undefined, name);
+  }
+});
+
+// An answer that names an order sets the state only for a record that names the same order; an answer that names no
+// order (a refusal of the record's own command) sets it for the record.
+test('the known order state is set only for the order the record names', () => {
+  const orderB = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  const paidA = value({ originalOrderRef: orderA, terminalStatus: 'paid' });
+  const expiredA = value({ orderRef: orderA, status: 'expired' });
+  const rows: Array<[string, { orderRef?: string }, ActionResult, string | null]> = [
+    ['same order', { orderRef: orderA }, paidA, 'starter_checkout_paid'],
+    ['same order, read', { orderRef: orderA }, expiredA, 'starter_checkout_not_payable'],
+    ['another order', { orderRef: orderB }, paidA, null],
+    ['record without an order', {}, paidA, null],
+    ['record without an order, read', {}, expiredA, null],
+    ['refusal of the record\'s own command, record without an order', {}, refused('starter_checkout_not_payable'), 'starter_checkout_not_payable'],
+    ['refusal, record with an order', { orderRef: orderB }, refused('starter_checkout_changed'), 'payable'],
+  ];
+  for (const [name, record, answer, state] of rows) assert.equal(orderStateFor(record, answer), state, name);
+});
+
+// Changed details name what is known about the recorded order: unpaid only when it is known payable.
+test('changed details show the view of what is known about the recorded order', () => {
+  const changed = { choices: 'both', different: false, link: 'keep', ...coded('starter_checkout_changed') };
+  assert.deepEqual(changedDetailsView('payable'), changed);
+  for (const code of ['starter_checkout_not_payable', 'starter_checkout_paid', 'starter_checkout_not_abandonable'] as const) {
+    assert.deepEqual(changedDetailsView(code), { choices: 'resume', different: true, link: 'keep', ...coded(code) }, code);
+  }
+  assert.deepEqual(changedDetailsView('starter_checkout_expired'), { ...both, different: true, ...coded('starter_checkout_expired') });
+  assert.deepEqual(changedDetailsView(null), { ...both, different: true, code: 'starter_checkout_changed', text: 'changedUnconfirmed' });
+});
+
+test('"Start a different purchase" is offered on every answer that names the earlier order not payable', () => {
+  const offered = rows.filter(row => row.view.different).map(row => row.view.code ?? row.view.text ?? row.view.copy);
+  assert.deepEqual([...new Set(offered)].sort(), ['recoveryCancelled', 'recoveryPaid', 'starter_checkout_expired', 'starter_checkout_not_abandonable',
+    'starter_checkout_not_found', 'starter_checkout_not_payable', 'starter_checkout_paid']);
+  for (const locale of market.locales) {
+    const label = checkoutContinuationCopy.different[locale];
+    for (const code of ['starter_checkout_not_payable', 'starter_checkout_paid', 'starter_checkout_expired'] as const) {
+      const text = checkoutContinuationCopy[code][locale];
+      assert.ok(text.includes(label), `${code} (${locale}) names "${label}"`);
+      assert.doesNotMatch(text, /submit again|wyślij ponownie/iu, `${code} (${locale}) no longer says to submit again`);
     }
   }
-  const { controller, configuration } = setup(purchase);
-  const { key } = controller.dispatch();
-  purchase.rememberPurchase(configuration, { orderRef: orderA, token: 'rcv_known' });
-  assert.equal(controller.answer(key, { ok: true, value: pending() }).link, 'show', 'a token already known for that order keeps the link');
+});
+
+test('the texts for an earlier order that may not exist claim no unpaid order and name every way out', () => {
+  for (const locale of market.locales) {
+    const label = checkoutContinuationCopy.different[locale];
+    const unconfirmed = checkoutContinuationCopy.changedUnconfirmed[locale];
+    const none = checkoutContinuationCopy.resumeNotFound[locale];
+    for (const text of [unconfirmed, none]) assert.ok(text.includes(label), `${text} names "${label}"`);
+    assert.doesNotMatch(unconfirmed, /is unpaid|jest nieopłacone/u, locale);
+    const phrases: Readonly<Record<string, RegExp>> = { en: /may have created/u, pl: /mogło utworzyć/u };
+    assert.match(unconfirmed, phrases[String(locale)] ?? /./u, locale);
+    assert.doesNotMatch(none, /^No earlier order[^.]*\. Submit the form to place your order\.$/u, locale);
+  }
+});
+
+test('the storage texts say what the page keeps and promise no send', () => {
+  for (const locale of market.locales) {
+    const notice = checkoutContinuationCopy.starter_storage_unavailable[locale];
+    const refusedWrite = checkoutContinuationCopy.starter_checkout_storage_unavailable[locale];
+    // Any market's locale list: only the locales that ship texts are checked by phrase.
+    const phrases: Readonly<Record<string, readonly [RegExp, RegExp]>> = { en: [/until a reload/u, /nothing was sent/u], pl: [/do przeładowania/u, /niczego nie wysłano/u] };
+    const [kept, nothingSent] = phrases[String(locale)] ?? [/./u, /./u];
+    assert.match(notice, kept, locale);
+    assert.match(refusedWrite, nothingSent, locale);
+  }
+});
+
+test('managed texts fill in the request-limit wait', () => {
   for (const locale of market.locales) {
     for (const text of ['limited', 'starter_attempt_limited'] as const) {
-      assert.match(purchase.continuationMessage(text, locale, 180_000), /\b3 min\b/, `${text} (${locale})`);
+      assert.match(continuationMessage(text, locale, 180_000), /\b3 min\b/, `${text} (${locale})`);
       // The wait is a point in time, not a deadline.
-      assert.match(purchase.continuationMessage(text, locale, 180_000), /(?:\bin|\bza) 3 min\./u, `${text} (${locale})`);
-      assert.doesNotMatch(purchase.continuationMessage(text, locale, 180_000), /\{minutes\}/);
+      assert.match(continuationMessage(text, locale, 180_000), /(?:\bin|\bza) 3 min\./u, `${text} (${locale})`);
+      assert.doesNotMatch(continuationMessage(text, locale, 180_000), /\{minutes\}/);
     }
-    assert.match(purchase.continuationMessage('starter_attempt_limited', locale, 60_001), /\b2 min\b/);
-  }
-});
-
-test('contradictions keep the record', async () => {
-  const purchase = await freshDocument();
-  for (const [action, reply] of [['resume', refusedWith('starter_checkout_not_found')], ['abandon', succeeded({ abandoned: false })]] as const) {
-    const { controller, time, stored } = setup(purchase);
-    await create(controller, refusedWith('starter_checkout_changed'));
-    const before = stored();
-    assert.equal(before.ordered, true);
-    time.now += 1_000_000;
-    const { outcome } = await proceed(controller, action, reply);
-    assert.equal(outcome.kind, 'contradiction', action);
-    assert.equal(outcome.code, 'starter_checkout_session_changed', action);
-    assert.equal(outcome.text, 'starter_checkout_session_changed', action);
-    assert.equal(outcome.choices, true, action);
-    assert.deepEqual(stored(), before, action);
-  }
-  for (const operation of ['create', 'resume', 'abandon'] as const) {
-    const { controller, stored, configuration } = setup(purchase);
-    await create(controller, succeeded(pending('rcv_first')));
-    const before = stored();
-    assert.equal(before.orderRef, orderA);
-    const other = operation === 'abandon' ? succeeded({ abandoned: true, orderRef: orderB })
-      : succeeded({ orderRef: orderB, status: 'pending_payment', total, token: 'rcv_other' });
-    const outcome = operation === 'create' ? (await create(controller, other)).outcome : (await proceed(controller, operation, other)).outcome;
-    assert.equal(outcome.kind, 'contradiction', operation);
-    assert.equal(outcome.code, 'starter_checkout_session_changed', operation);
-    assert.equal(outcome.text, 'starter_checkout_session_changed', operation);
-    // The host answered with another order: it is shown, and the record keeps the earlier one.
-    assert.equal(outcome.value?.orderRef, orderB, operation);
-    if (operation === 'abandon') {
-      assert.equal(outcome.copy, 'recoveryCancelled', 'the shown order was cancelled');
-      assert.equal(outcome.link, 'keep');
-    } else {
-      assert.equal(outcome.link, 'show', operation);
-      assert.deepEqual(purchase.currentPurchase(configuration), { orderRef: orderB, token: 'rcv_other' }, operation);
-    }
-    assert.deepEqual({ ...stored(), sentAt: before.sentAt }, before, operation);
-  }
-});
-
-test('storage faults fall back and never mask the answer', async () => {
-  const purchase = await freshDocument();
-  const denied = setup(purchase);
-  denied.tab.faults.access = true;
-  assert.equal(denied.controller.available(), false);
-  assert.equal(denied.controller.current(), null);
-  const full = setup(purchase);
-  full.tab.faults.set = true;
-  assert.equal(full.controller.available(), false, 'a probe write that fails selects the fallback');
-  const dispatched = full.controller.dispatch();
-  assert.match(dispatched.key, v4);
-  assert.equal(dispatched.stored, false);
-  assert.equal(full.controller.current()?.id, dispatched.key, 'the in-memory record still serves this document');
-  assert.equal(full.controller.dispatch().key, dispatched.key);
-
-  const answer = setup(purchase);
-  const { key } = answer.controller.dispatch();
-  answer.tab.faults.set = true;
-  const changed = answer.controller.answer(key, { ok: false, code: 'starter_checkout_changed' });
-  assert.equal(changed.kind, 'open');
-  assert.equal(changed.code, 'starter_checkout_changed');
-  assert.equal(changed.stored, false);
-  assert.equal(answer.controller.current()?.ordered, true);
-  answer.tab.faults.remove = true;
-  const closed = answer.controller.answer(key, { ok: false, code: 'starter_checkout_paid' });
-  assert.equal(closed.kind, 'closed');
-  assert.equal(closed.code, 'starter_checkout_paid');
-  assert.equal(closed.stored, false);
-  assert.equal(answer.controller.current(), null);
-
-  const ok = setup(purchase);
-  assert.equal(ok.controller.available(), true);
-  assert.equal(ok.tab.data.size, 0, 'the probe leaves nothing behind');
-
-  const id = '0f8fad5b-d9cb-469f-a165-70867728950e';
-  for (const [value, expected] of [
-    [JSON.stringify({ v: 2, id, sentAt: 1 }), { v: 1, id }],
-    [JSON.stringify({ v: 1, id, sentAt: 'later', ordered: true }), { v: 1, id }],
-    [JSON.stringify({ v: 1, id, orderRef: orderA }), { v: 1, id }],
-    [JSON.stringify({ v: 1, id, ordered: 'yes' }), { v: 1, id }],
-    [JSON.stringify({ v: 1, id, sentAt: 7, ordered: true, orderRef: orderA }), { v: 1, id, sentAt: 7, ordered: true, orderRef: orderA }],
-    [JSON.stringify({ v: 1, id: '0f8fad5b-d9cb-169f-a165-70867728950e', sentAt: 1 }), null],
-    [JSON.stringify({ v: 1, id: id.toUpperCase() }), null],
-    [JSON.stringify(['not', 'a', 'record']), null],
-    ['{', null],
-  ] as const) {
-    const data = new Map<string, string>();
-    const malformed = setup(purchase, data);
-    data.set(storageKey(malformed.configuration), value);
-    assert.deepEqual(malformed.controller.current(), expected, value);
-    const next = malformed.controller.dispatch().key;
-    if (expected) assert.equal(next, id, value);
-    else assert.notEqual(next.toLowerCase(), id, value);
-    assert.match(next, v4);
-    assert.equal(malformed.stored().id, next, `${value} is replaced on the next dispatch`);
-  }
-});
-
-test('start a different purchase follows only not abandonable or expired', async () => {
-  const purchase = await freshDocument();
-  for (const code of Object.keys(purchase.checkoutAnswerCodes)) {
-    const { controller } = setup(purchase);
-    const { key } = controller.dispatch();
-    const result: ActionResult = { ok: false, code, ...(code === 'starter_dependency_unavailable' ? { status: 503 as const } : {}) };
-    assert.equal(controller.answer(key, result).different, ['starter_checkout_not_abandonable', 'starter_checkout_expired'].includes(code), code);
-  }
-  const { controller, stored } = setup(purchase);
-  const { key } = await create(controller, succeeded(pending('rcv_first')));
-  assert.equal(controller.pending(), true);
-  assert.equal(controller.startDifferent(), true);
-  assert.equal(stored(), null);
-  assert.equal(controller.pending(), false);
-  const next = controller.dispatch().key;
-  assert.match(next, v4);
-  assert.notEqual(next, key);
-});
-
-test('completion clears only the order under the key', async () => {
-  const purchase = await freshDocument();
-  for (const [value, cleared] of [
-    [{ orderRef: orderA, status: 'paid' }, true],
-    [{ originalOrderRef: orderA, latestOrderRef: orderB, terminalStatus: 'paid' }, true],
-    [{ originalOrderRef: orderB, latestOrderRef: orderA, terminalStatus: 'paid' }, false],
-    [{ orderRef: orderB, status: 'cancelled' }, false],
-    [{ status: 'paid' }, false],
-    [null, false],
-  ] as const) {
-    const { controller, stored } = setup(purchase);
-    await create(controller, succeeded(pending('rcv_first')));
-    assert.equal(controller.completed(value), cleared, JSON.stringify(value));
-    assert.equal(stored() === null, cleared, JSON.stringify(value));
-  }
-  const { controller, stored } = setup(purchase);
-  await create(controller, refusedWith('starter_checkout_changed'));
-  assert.equal(controller.completed({ orderRef: orderA, status: 'paid' }), false, 'an order of unknown reference is kept');
-  assert.equal(stored().ordered, true);
-});
-
-test('a stale view settles the record without replacing the shown purchase', async () => {
-  const purchase = await freshDocument();
-  const { controller, stored, configuration } = setup(purchase);
-  purchase.rememberPurchase(configuration, { orderRef: orderB, token: 'rcv_shown' });
-  const { key } = controller.dispatch();
-  controller.settled(key, { ok: true, value: pending('rcv_late') });
-  const outcome = controller.answer(key, { ok: true, value: pending('rcv_late') }, false);
-  assert.equal(outcome.kind, 'open');
-  assert.deepEqual(stored(), { v: 1, id: key, sentAt: stored().sentAt, ordered: true, orderRef: orderA });
-  assert.deepEqual(purchase.currentPurchase(configuration), { orderRef: orderB, token: 'rcv_shown' });
-});
-
-test('in flight covers the creates and choices of this purchase', async () => {
-  const purchase = await freshDocument();
-  const { controller } = setup(purchase);
-  assert.equal(controller.inFlight(), false);
-  const { key } = controller.dispatch();
-  assert.equal(controller.inFlight(), true);
-  controller.settled(key, { ok: false, code: 'starter_transport_unavailable' });
-  assert.equal(controller.inFlight(), false);
-  let release!: (response: Response) => void;
-  const held = withFetch(() => new Promise<Response>(done => { release = done; }), () => controller.continue('resume', 'en'));
-  assert.equal(controller.inFlight(), true);
-  release(refusedWith('starter_checkout_in_progress')());
-  await held;
-  assert.equal(controller.inFlight(), false);
-});
-
-// The page's own use of the create bookkeeping: its document start, the dispatch time of each continuation and the
-// bound a key inherits from an earlier document. "No order" is final strictly after the bound.
-test('page: none is final only strictly after the browser gave up plus the bound, judged at the continuation\'s dispatch', async () => {
-  const purchase = await freshDocument();
-  const { controller, time, stored } = setup(purchase);
-  const { key } = controller.dispatch();
-  time.now += 1_000_000;
-  const inFlight = await proceed(controller, 'resume', refusedWith('starter_checkout_not_found'));
-  assert.equal(inFlight.outcome.code, 'starter_checkout_in_progress', 'never final while the create is in flight');
-  controller.settled(key);
-  const settledAt = time.now;
-  // Each answer arrives 30 s after dispatch; the decision uses the continuation's dispatch time.
-  for (const [action, reply] of [['resume', refusedWith('starter_checkout_not_found')], ['abandon', succeeded({ abandoned: false })]] as const) {
-    time.now = settledAt + 15_000;
-    const slow = await proceed(controller, action, () => { time.now += 30_000; return reply(); });
-    assert.equal(slow.outcome.code, 'starter_checkout_in_progress', action);
-    assert.equal(stored().id, key, action);
-  }
-  time.now = settledAt + 15_001;
-  assert.equal((await proceed(controller, 'resume', refusedWith('starter_checkout_not_found'))).outcome.code, 'starter_checkout_not_found');
-  assert.equal(stored(), null);
-
-  const T2 = 5_000_000;
-  for (const [D, bound] of [[T2 + 10_000, T2 + 35_000], [T2 + 30_000, T2 + 45_000]] as const) {
-    const data = new Map<string, string>();
-    const page = setup(await freshDocument(), data, D);
-    data.set(storageKey(page.configuration), JSON.stringify({ v: 1, id: key, sentAt: T2 }));
-    assert.equal(page.controller.pending(), true, 'the inherited record opens the panel on load');
-    page.time.now = bound;
-    assert.equal((await proceed(page.controller, 'resume', refusedWith('starter_checkout_not_found'))).outcome.code, 'starter_checkout_in_progress', `document from ${D - T2}`);
-    page.time.now = bound + 1;
-    assert.equal((await proceed(page.controller, 'resume', refusedWith('starter_checkout_not_found'))).outcome.code, 'starter_checkout_not_found', `document from ${D - T2}`);
-    assert.equal(page.stored(), null);
-  }
-});
-
-test('page: a create lost in transport is final only strictly after its request timeout plus the bound', async () => {
-  const { controller, time, stored } = setup(await freshDocument());
-  const start = time.now;
-  const { key } = await create(controller, () => { time.now += 100; return lost(); });
-  for (const [at, code] of [[100 + 15_000, 'starter_checkout_in_progress'], [35_000, 'starter_checkout_in_progress'], [35_001, 'starter_checkout_not_found']] as const) {
-    time.now = start + at;
-    assert.equal((await proceed(controller, 'resume', refusedWith('starter_checkout_not_found'))).outcome.code, code, `at ${at}`);
-  }
-  assert.equal(stored(), null, key);
-});
-
-test('page: a key from an earlier document keeps its bound through a create of this document', async () => {
-  const T = 5_000_000, id = '0f8fad5b-d9cb-469f-a165-70867728950e';
-  for (const reply of [refusedWith('starter_terms_required'), refusedWith('starter_dependency_unavailable', 503)]) {
-    const data = new Map<string, string>();
-    const page = setup(await freshDocument(), data, T + 5_000);
-    data.set(storageKey(page.configuration), JSON.stringify({ v: 1, id, sentAt: T }));
-    const { key } = await create(page.controller, () => { page.time.now += 100; return reply(); });
-    assert.equal(key, id);
-    assert.equal(typeof page.stored().sentAt, 'number', 'a create of an earlier document may still arrive');
-    // The earlier document's create may reach the host until T + 20 s, then 15 s more.
-    for (const [at, code] of [[T + 5_100 + 15_000, 'starter_checkout_in_progress'], [T + 35_000, 'starter_checkout_in_progress'], [T + 35_001, 'starter_checkout_not_found']] as const) {
-      page.time.now = at;
-      assert.equal((await proceed(page.controller, 'resume', refusedWith('starter_checkout_not_found'))).outcome.code, code, `at ${at - T}`);
-    }
+    assert.match(continuationMessage('starter_attempt_limited', locale, 60_001), /\b2 min\b/);
   }
 });

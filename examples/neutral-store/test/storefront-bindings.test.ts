@@ -109,10 +109,6 @@ test('U2 a write keeps the host fields of the same identity only', async () => {
   page.checkout.bindings.storage.write({ continuationId: toContinuationId(idA), fingerprint: 'g', attempt: toAttemptNumber(1) });
   assert.deepEqual(page.stored(), { v: 1, id: idA, fingerprint: 'g', attempt: 1, attempts: { a1: 0 }, sentAt: 5, ordered: true, orderRef: orderA });
   assert.deepEqual(page.checkout.bindings.storage.read(), { continuationId: idA, fingerprint: 'g', attempt: 1 });
-  // The client from before the bindings still parses the extended record.
-  const purchase = await import('../client/purchase.ts');
-  assert.deepEqual(purchase.checkoutContinuation(page.configuration, { storage: () => page.storage }).current(),
-    { v: 1, id: idA, sentAt: 5, ordered: true, orderRef: orderA });
   page.checkout.bindings.storage.write({ continuationId: toContinuationId(idB), fingerprint: 'h' });
   assert.deepEqual(page.stored(), { v: 1, id: idB, fingerprint: 'h' }, 'another identity drops the host fields');
 });
@@ -203,7 +199,8 @@ const no = (code: string, status?: 503) => ({ ok: false, code, ...(status ? { st
 const additions = ['starter_terms_required', 'starter_expected_total_required', 'starter_quote_price_changed', 'starter_quote_refresh_required',
   'acquisition_terms_capability_required', 'acquisition_terms_changed', 'catalog_admission_quote_authority_required',
   'cart_invalid', 'cart_configuration_changed', 'cart_empty', 'unknown_sku', 'quantity_invalid', 'duplicate_sku',
-  'purchase_mode_unavailable', 'cadence_unavailable', 'minimum_units', 'maximum_units', 'amount_overflow'];
+  'purchase_mode_unavailable', 'cadence_unavailable', 'minimum_units', 'maximum_units', 'amount_overflow',
+  'starter_checkout_request_stale'];
 const classRows: Array<[unknown, string]> = [
   [ok({ status: 'paid' }), 'settled'], [ok({ status: 'fulfillment_pending' }), 'settled'], [ok({ status: 'fulfilled' }), 'settled'],
   [ok({ status: 'pending_payment' }), 'needs_client_action'], [ok({ status: 'pending_payment', attemptState: null }), 'needs_client_action'],
@@ -216,7 +213,7 @@ const classRows: Array<[unknown, string]> = [
   [no('starter_input_invalid'), 'refused'], [no('starter_email_invalid'), 'refused'],
   ...additions.map((code): [unknown, string] => [no(code), 'refused']),
   ...['starter_checkout_expired', 'starter_checkout_not_payable', 'starter_checkout_changed', 'starter_checkout_paid',
-    'starter_checkout_request_stale', 'starter_command_conflict', 'starter_attempt_limited', 'starter_checkout_not_found',
+    'starter_command_conflict', 'starter_attempt_limited', 'starter_purchase_unavailable', 'starter_checkout_not_found',
     'starter_checkout_session_changed', 'starter_transport_unavailable', 'starter_response_invalid', 'starter_quote_unavailable',
     'starter_unlisted_code'].map((code): [unknown, string] => [no(code), 'unknown']),
   [no('starter_dependency_unavailable', 503), 'unknown'], [no('starter_input_invalid', 503), 'unknown'],
@@ -233,6 +230,39 @@ test('U7 the classifier gives every answer its class', async () => {
   const codes = new Set([...(source.slice(start, end) + source.slice(failure, failureEnd)).matchAll(/'(starter_[a-z_]+)'/g)].map(match => match[1]!));
   assert.ok(codes.size >= 19, `scanned ${codes.size} host codes`);
   for (const code of codes) assert.ok(Object.hasOwn(module.checkoutRefusalClasses, code), `${code} has no listed class`);
+});
+
+// The create action's refusals that write no order are `refused`, so corrected details are sent; a refusal the host can
+// also answer when an order exists under the key, or after one was written, stays `unknown`.
+test('U7b each create refusal is classed by whether an order can exist under the key when the host answers it', async () => {
+  const module = await freshDocument();
+  const source = await readFile(new URL('../host/purchase-composition.ts', import.meta.url), 'utf8');
+  const lines = source.split('\n');
+  const start = lines.findIndex(line => line.includes("actions['checkout.create'] = async"));
+  const end = lines.findIndex(line => line.includes("actions['checkout.continuation'] = async"));
+  const write = lines.findIndex(line => line.includes('drafts.createOrderDraft('));
+  assert.ok(start > 0 && write > start && end > write, 'starter_host_checkout_scan_anchor_missing');
+  const create = lines.slice(start, end).map((text, index) => ({ text, at: start + index }));
+  const answering = (code: string) => create.filter(line => line.text.includes(`'${code}'`));
+  // Answered only while no draft exists under the key, read under the key's lock, and before any write.
+  const stale = answering('starter_checkout_request_stale');
+  assert.equal(stale.length, 1);
+  assert.ok(stale.every(line => line.text.includes('!priorOrder') && line.at < write), 'request_stale writes no order');
+  assert.equal(module.classifyCheckoutAnswer(no('starter_checkout_request_stale')), 'refused');
+  // Each of these is also answered with an order under the key (an earlier draft) or after this create wrote one.
+  const failureAfterWrite = create.some(line => line.at > write && /return failure\(error\)/.test(line.text));
+  const quoteFailureAfterWrite = create.some(line => line.at > write && /refused\(quoteFailure\(error\)\)/.test(line.text));
+  const failureCodes = source.slice(source.indexOf('\nfunction failure'));
+  const mayExist: Record<string, boolean> = {
+    starter_attempt_limited: answering('starter_attempt_limited').some(line => /priorOrder|order\.status/.test(line.text) || /changed = async/.test(lines[line.at - 1] ?? '')),
+    starter_command_conflict: answering('starter_command_conflict').some(line => line.at > write) || (failureAfterWrite && failureCodes.includes("'starter_command_conflict'")),
+    starter_purchase_unavailable: answering('starter_purchase_unavailable').some(line => line.at > write) || (failureAfterWrite && failureCodes.includes("'starter_purchase_unavailable'")),
+    starter_quote_unavailable: quoteFailureAfterWrite,
+  };
+  for (const [code, exists] of Object.entries(mayExist)) {
+    assert.ok(exists, `${code} can be answered while an order exists under the key`);
+    assert.equal(module.classifyCheckoutAnswer(no(code)), 'unknown', code);
+  }
 });
 
 test('U8 the abandon answer resolves its reading', async () => {

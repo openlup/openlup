@@ -914,11 +914,15 @@
       "sha256": "871b648d426739e13c67478dafb4c3e99476b22d543eb7d91da6a782237cb89d"
     },
     {
-      "file": "db/platform/migrations/20261129130504_subscription_renewal_current_template.sql",
+      "file": "db/platform/migrations/20261129130504_catalog_price_publication_recorder_v2.sql",
+      "sha256": "bdec86e74f6015efdd7ab595e409647bb8adc923606ff80604bf8ca82c8277de"
+    },
+    {
+      "file": "db/platform/migrations/20261129130505_subscription_renewal_current_template.sql",
       "sha256": "5ec3cc52d4f3e9e2b57530f0528205fd51e9616f3e97868bc0b5d946b016604e"
     }
   ],
-  "objectInventorySha256": "c675f4e0720e10a9a4672ba12536d475ce7009b6f82d513120af88bb99143bc5",
+  "objectInventorySha256": "c766f1ce73624fd62d3dbdefb2ad1cfa7d5bd92f955b0bb8c2a9ea5366a236ec",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1858,16 +1862,20 @@
         "sha256": "871b648d426739e13c67478dafb4c3e99476b22d543eb7d91da6a782237cb89d"
       },
       {
-        "file": "db/platform/migrations/20261129130504_subscription_renewal_current_template.sql",
+        "file": "db/platform/migrations/20261129130504_catalog_price_publication_recorder_v2.sql",
+        "sha256": "bdec86e74f6015efdd7ab595e409647bb8adc923606ff80604bf8ca82c8277de"
+      },
+      {
+        "file": "db/platform/migrations/20261129130505_subscription_renewal_current_template.sql",
         "sha256": "5ec3cc52d4f3e9e2b57530f0528205fd51e9616f3e97868bc0b5d946b016604e"
       }
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "8217d1cec1174b7605c2844905b0a970dc7d5f746daadc410acacc59c96cdb86"
+        "withRestore": "aa4e9921cc392b0f4c27c15768b5a483c833f4598ee2a33813732f414cd71ef5"
       },
       "separateMigrator": {
-        "withRestore": "ab8925f36aaf1eb1ae36267d346a374756b4c9e93a292134a833375c95684a3b"
+        "withRestore": "a7cc7cc2e0cb671b9669244746c6b297f38eda59d037897140050e921790a2db"
       }
     }
   },
@@ -2802,13 +2810,17 @@
         "sha256": "871b648d426739e13c67478dafb4c3e99476b22d543eb7d91da6a782237cb89d"
       },
       {
-        "file": "db/platform/migrations/20261129130504_subscription_renewal_current_template.sql",
+        "file": "db/platform/migrations/20261129130504_catalog_price_publication_recorder_v2.sql",
+        "sha256": "bdec86e74f6015efdd7ab595e409647bb8adc923606ff80604bf8ca82c8277de"
+      },
+      {
+        "file": "db/platform/migrations/20261129130505_subscription_renewal_current_template.sql",
         "sha256": "5ec3cc52d4f3e9e2b57530f0528205fd51e9616f3e97868bc0b5d946b016604e"
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "874ee58173db49b3c1a98908bba74807d85aca758623483245cf1c965203debd",
-      "operatorProvisioned": "b8442515aa99d0a24468156b8c332c1b47fdfd064ad37728ef9f0690248e68f1"
+      "installerManaged": "62413afddb3c572ef307cc9623015ca4d1165a75cee608d710b73e5d47ab9940",
+      "operatorProvisioned": "f80827865b246631c5e659ac51c49e0c4114c643eede56906cc981663cd3a0a4"
     }
   }
 }
