@@ -658,6 +658,10 @@
       "class": "public-output"
     },
     {
+      "path": "config/ci-postgres-suite-closures.json",
+      "class": "public-output"
+    },
+    {
       "path": "config/ci-quarantine.json",
       "class": "public-output"
     },

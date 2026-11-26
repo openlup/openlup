@@ -9,7 +9,7 @@ import { landingMerge } from './agent-review-landing.mjs';
 import { carryOverSourceReview, captureReviewRules, captureSessionCandidate, sessionMain, validateEconomySession, git as sourceGit } from './agent-review-session.mjs';
 import { parseReceipt, waitNativeAdmission } from './agent-review-queue.mjs';
 
-const { REGISTRY_PATHS, readRegistry, registryUnion, strictRegistryJson } = registry;
+const { PG_CLOSURE_AXES, PG_SUITE_CLOSURES_PATH, REGISTRY_PATHS, RULE_SNAPSHOT_REGISTRY_PATHS, readRegistry, registryUnion, strictRegistryJson } = registry;
 const roots: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
 const DAY = 86400000;
@@ -65,10 +65,20 @@ const weights = (durationsMs: Record<string, number>, defaultDurationMs = 18, sc
   JSON.stringify({ schemaVersion, defaultDurationMs, durationsMs }, null, 2) + '\n';
 const sortedWeights = (durationsMs: Record<string, number>) =>
   Object.fromEntries(Object.entries(durationsMs).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0));
+const pgClosuresPath = PG_SUITE_CLOSURES_PATH;
+const pgSuiteKey = (entry: string) => /^tests\/postgres\/.+\.test\.ts$/u.test(entry) ? entry : `tests/postgres/${entry}.test.ts`;
+const sortedClosures = (suites: Record<string, string[]>) =>
+  Object.fromEntries(Object.entries(suites).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0));
+const closures = (suites: Record<string, string[]>, schemaVersion = 1) =>
+  JSON.stringify({ schemaVersion, suites: sortedClosures(suites) }, null, 2) + '\n';
 function addRegistry(path: string, source: string, entry: string) {
   if (path === weightsPath) {
     const data = JSON.parse(source);
     return weights(sortedWeights({ ...data.durationsMs, [entry]: 1 }), data.defaultDurationMs, data.schemaVersion);
+  }
+  if (path === pgClosuresPath) {
+    const data = JSON.parse(source);
+    return closures({ ...data.suites, [pgSuiteKey(entry)]: ['@api'] }, data.schemaVersion);
   }
   if (path === REGISTRY_PATHS[0]) {
     const data = JSON.parse(source); data.publicPaths.push({ path: entry, class: 'public-output' });
@@ -170,9 +180,10 @@ describe('closed registry grammar', () => {
     const merged = registryUnion(path, source, left, right);
     const list = readRegistry(path, merged).lists[0];
     const keys = list.map((entry: string | { path: string }) => typeof entry === 'string' ? entry : entry.path);
-    expect(keys.filter((entry: string) => entry === 'zz-pred')).toHaveLength(1);
-    expect(keys).toContain('zz-main');
-    expect(keys).toContain('zz-stack');
+    const expectedKey = (entry: string) => path === pgClosuresPath ? pgSuiteKey(entry) : entry;
+    expect(keys.filter((entry: string) => entry === expectedKey('zz-pred'))).toHaveLength(1);
+    expect(keys).toContain(expectedKey('zz-main'));
+    expect(keys).toContain(expectedKey('zz-stack'));
   });
   it('refuses same-key different-value, cross-gap, cross-array overlaps and unilateral outside edits', async () => {
     // 1. Same key with different value in publication catalog.
@@ -279,6 +290,107 @@ describe('shard weights registry union', () => {
     const union = registryUnion(weightsPath, source, branch, main);
     expect(union).toBe(weights(sortedWeights({ ...recalibrated, ...added }), JSON.parse(source).defaultDurationMs));
     expect(readRegistry(weightsPath, union).lists[0]).toEqual(Object.keys(sortedWeights({ ...recalibrated, ...added })));
+  });
+});
+
+describe('pg suite closures registry union', () => {
+  const suiteA = 'tests/postgres/a.test.ts';
+  const suiteB = 'tests/postgres/b.test.ts';
+  const suiteM = 'tests/postgres/m.test.ts';
+  const suiteN = 'tests/postgres/n.test.ts';
+  const suiteZ = 'tests/postgres/z.test.ts';
+  const base = closures({ [suiteA]: ['@api'], [suiteM]: ['@src', 'tests/postgres/shared.fixture.ts'] });
+
+  it('registers config/ci-postgres-suite-closures.json outside rule snapshots', () => {
+    expect(PG_SUITE_CLOSURES_PATH).toBe('config/ci-postgres-suite-closures.json');
+    expect(REGISTRY_PATHS[4]).toBe(PG_SUITE_CLOSURES_PATH);
+    expect(RULE_SNAPSHOT_REGISTRY_PATHS).toEqual(REGISTRY_PATHS.slice(0, 3));
+    expect(PG_CLOSURE_AXES).toContain('@api');
+  });
+
+  it('takes new suites and appended inputs from the branch when main keeps base unchanged', () => {
+    const newSuiteLeft = closures({ [suiteA]: ['@api'], [suiteB]: ['@starter'], [suiteM]: ['@src', 'tests/postgres/shared.fixture.ts'] });
+    expect(registryUnion(pgClosuresPath, base, newSuiteLeft, base)).toBe(newSuiteLeft);
+    const appendedLeft = closures({ [suiteA]: ['@api', '@src'], [suiteM]: ['@src', 'tests/postgres/shared.fixture.ts'] });
+    expect(registryUnion(pgClosuresPath, base, appendedLeft, base)).toBe(appendedLeft);
+  });
+
+  it('keeps main additions, narrowings, and removals on suites the branch left unchanged', () => {
+    const left = closures({ [suiteA]: ['@api'], [suiteB]: ['@starter'], [suiteM]: ['@src', 'tests/postgres/shared.fixture.ts'] });
+    const right = closures({ [suiteA]: [], [suiteZ]: ['@mcp'] });
+    expect(registryUnion(pgClosuresPath, base, left, right)).toBe(
+      closures({ [suiteA]: [], [suiteB]: ['@starter'], [suiteZ]: ['@mcp'] }),
+    );
+  });
+
+  it('deduplicates identical new-suite additions or identical appends across both sides', () => {
+    const identicalNew = closures({ [suiteA]: ['@api'], [suiteM]: ['@src', 'tests/postgres/shared.fixture.ts'], [suiteN]: ['@api'] });
+    expect(registryUnion(pgClosuresPath, base, identicalNew, identicalNew)).toBe(identicalNew);
+    const identicalAppend = closures({ [suiteA]: ['@api', '@mcp'], [suiteM]: ['@src', 'tests/postgres/shared.fixture.ts'] });
+    expect(registryUnion(pgClosuresPath, base, identicalAppend, identicalAppend)).toBe(identicalAppend);
+  });
+
+  it.each<[string, string, string]>([
+    ['branch removes a base suite', closures({ [suiteM]: ['@src', 'tests/postgres/shared.fixture.ts'] }), base],
+    ['branch removes a base input', closures({ [suiteA]: [], [suiteM]: ['@src', 'tests/postgres/shared.fixture.ts'] }), base],
+    ['branch changes schemaVersion', closures({ [suiteA]: ['@api'], [suiteM]: ['@src', 'tests/postgres/shared.fixture.ts'] }, 2), base],
+    ['branch modifies base suite while main removes it (modify/delete)', closures({ [suiteA]: ['@api', '@src'], [suiteM]: ['@src', 'tests/postgres/shared.fixture.ts'] }), closures({ [suiteM]: ['@src', 'tests/postgres/shared.fixture.ts'] })],
+    ['divergent additions on a newly added suite', closures({ [suiteA]: ['@api'], [suiteM]: ['@src', 'tests/postgres/shared.fixture.ts'], [suiteN]: ['@api'] }), closures({ [suiteA]: ['@api'], [suiteM]: ['@src', 'tests/postgres/shared.fixture.ts'], [suiteN]: ['@src'] })],
+    ['divergent appends to the same base suite', closures({ [suiteA]: ['@api', '@mcp'], [suiteM]: ['@src', 'tests/postgres/shared.fixture.ts'] }), closures({ [suiteA]: ['@api', '@starter'], [suiteM]: ['@src', 'tests/postgres/shared.fixture.ts'] })],
+  ])('refuses %s', (_name, left, right) => {
+    expect(() => registryUnion(pgClosuresPath, base, left, right)).toThrow('registry: ');
+  });
+
+  it('names the base suite and review route in a branch-edit refusal', () => {
+    const removed = closures({ [suiteM]: ['@src', 'tests/postgres/shared.fixture.ts'] });
+    expect(() => registryUnion(pgClosuresPath, base, removed, base))
+      .toThrow(/^registry: branch changed or removed a base PostgreSQL suite closure: tests\/postgres\/a\.test\.ts\n.*\nCause\. .*\nFix\. Resolve the carrier manually and obtain resolution review\./u);
+  });
+
+  it.each<[string, string]>([
+    ['unsorted suite keys', base.replace(`"${suiteA}": [\n      "@api"\n    ],\n    "${suiteM}": [\n      "@src",\n      "tests/postgres/shared.fixture.ts"\n    ]`, `"${suiteM}": [\n      "@src",\n      "tests/postgres/shared.fixture.ts"\n    ],\n    "${suiteA}": [\n      "@api"\n    ]`)],
+    ['unsorted inputs', base.replace('"@src",\n      "tests/postgres/shared.fixture.ts"', '"tests/postgres/shared.fixture.ts",\n      "@src"')],
+    ['a duplicate key', base.replace(`"${suiteM}":`, `"${suiteA}":`)],
+    ['another top-level key', JSON.stringify({ schemaVersion: 1, suites: {}, extra: 1 }, null, 2) + '\n'],
+    ['bad schemaVersion', closures({ [suiteA]: ['@api'] }, 2).replace('"schemaVersion": 2', '"schemaVersion": 0')],
+    ['another indentation', JSON.stringify(JSON.parse(base), null, 4) + '\n'],
+    ['no trailing newline', base.trimEnd()],
+    ['an invalid suite key', closures({ 'src/a.test.ts': [] })],
+    ['a traversal suite key', closures({ 'tests/postgres/../evil.test.ts': [] })],
+    ['a hidden suite segment', closures({ 'tests/postgres/.hidden.test.ts': [] })],
+    ['a control suite key', closures({ 'tests/postgres/subscriptionExactInstallation.test.ts': [] })],
+    ['an unknown @axis', closures({ [suiteA]: ['@unknown'] })],
+    ['broad tests/postgres/ prefix', closures({ [suiteA]: ['tests/postgres/'] })],
+  ])('refuses an input with %s on any side', (_name, bad) => {
+    expect(() => registryUnion(pgClosuresPath, bad, base, base)).toThrow('registry: ');
+    expect(() => registryUnion(pgClosuresPath, base, bad, base)).toThrow('registry: ');
+    expect(() => registryUnion(pgClosuresPath, base, base, bad)).toThrow('registry: ');
+  });
+
+  it('unions main narrowing with two branch additions in the real carrier on a Git text conflict', async () => {
+    const source = await readFile(pgClosuresPath, 'utf8');
+    const existing: Record<string, string[]> = JSON.parse(source).suites;
+    const keys = Object.keys(existing);
+    expect(keys.length).toBeGreaterThan(270);
+    const mainSuites = { ...existing, [keys[0]]: [] };
+    delete mainSuites[keys[1]];
+    const main = closures(mainSuites);
+    const branchSuites = {
+      ...existing,
+      [keys[0].replace(/\.test\.ts$/u, 'ZzzBranchA.test.ts')]: ['@api'],
+      [keys.at(-1)!.replace(/\.test\.ts$/u, 'ZzzBranchB.test.ts')]: ['@starter'],
+    };
+    const branch = closures(branchSuites);
+    await mkdir('.context/scratch', { recursive: true });
+    const scratch = await mkdtemp(join(process.cwd(), '.context/scratch/pg-closures-')); roots.push(scratch);
+    const files = { base: source, branch, main };
+    for (const [name, value] of Object.entries(files)) await writeFile(join(scratch, name), value);
+    // Adjacent suites make Git merge-file conflict; the closed union resolves cleanly.
+    expect(() => execFileSync('/usr/bin/git', ['merge-file', '-p', join(scratch, 'branch'), join(scratch, 'base'), join(scratch, 'main')], { stdio: 'pipe' })).toThrow();
+    const expected = { ...mainSuites, [keys[0].replace(/\.test\.ts$/u, 'ZzzBranchA.test.ts')]: ['@api'], [keys.at(-1)!.replace(/\.test\.ts$/u, 'ZzzBranchB.test.ts')]: ['@starter'] };
+    const union = registryUnion(pgClosuresPath, source, branch, main);
+    expect(union).toBe(closures(expected));
+    expect(readRegistry(pgClosuresPath, union).lists[0]).toEqual(Object.keys(sortedClosures(expected)));
   });
 });
 
@@ -498,6 +610,27 @@ describe('real Git coverage histories', () => {
     const f = await fixture(true, [], { [weightsPath]: weights({ 'a.test.ts': 10 }) });
     const same = await captureReviewRules(f.cwd, { base: f.base, head: f.head });
     await f.write(weightsPath, weights({ 'a.test.ts': 10, 'b.test.ts': 4 })); const head = f.commit();
+    const changed = await captureReviewRules(f.cwd, { base: f.base, head });
+    expect(same!.head).toBe(same!.base);
+    expect(changed!.head).not.toBe(changed!.base);
+  });
+  it('leaves a refused pg-suite-closures union as an authored conflict', async () => {
+    const fConflict = await fixture(true, [], { [pgClosuresPath]: closures({ 'tests/postgres/a.test.ts': ['@api'], 'tests/postgres/m.test.ts': ['@src'] }) });
+    await fConflict.write(pgClosuresPath, closures({ 'tests/postgres/m.test.ts': ['@src'] }));
+    const conflictHead = fConflict.commit();
+    const conflictMain = await fConflict.mainMove(() => fConflict.write(pgClosuresPath, closures({ 'tests/postgres/a.test.ts': ['@api', '@src'], 'tests/postgres/m.test.ts': ['@src'] })));
+    fConflict.git('checkout', '-q', '--detach', conflictHead);
+    fConflict.git('config', 'user.name', 'Fixture'); fConflict.git('config', 'user.email', 'fixture@example.invalid');
+    await expect(landingMerge(fConflict.cwd, { runCommand: vi.fn() })).rejects.toThrow(`landing: authored conflicts remain: ${pgClosuresPath}`);
+    expect(fConflict.git('rev-parse', 'HEAD')).toBe(conflictHead);
+    expect(fConflict.git('rev-parse', 'MERGE_HEAD')).toBe(conflictMain);
+    expect(fConflict.git('diff', '--name-only', '--diff-filter=U')).toBe(pgClosuresPath);
+  });
+  it('keeps pg suite closures in recorded review-rule snapshots', async () => {
+    const f = await fixture(true, [], { [pgClosuresPath]: closures({ 'tests/postgres/a.test.ts': ['@api'] }) });
+    const same = await captureReviewRules(f.cwd, { base: f.base, head: f.head });
+    await f.write(pgClosuresPath, closures({ 'tests/postgres/a.test.ts': ['@api'], 'tests/postgres/b.test.ts': ['@api'] }));
+    const head = f.commit();
     const changed = await captureReviewRules(f.cwd, { base: f.base, head });
     expect(same!.head).toBe(same!.base);
     expect(changed!.head).not.toBe(changed!.base);

@@ -8,7 +8,7 @@ import { gunzipSync, inflateRawSync } from 'node:zlib';
 import { admit, demand, RECEIPT_MARKER, ECONOMY_RECEIPT_MARKER, COMPRESSED_RECEIPT_MARKER, RECEIPT_DETAILS_HEADER } from './agent-review-decide.mjs';
 import { captureCommittedReviewCandidate, captureReviewRules, carryOverSourceReview, git, validateEconomySession } from './agent-review-session.mjs';
 import { RECEIPT_MARKER_PREFIX } from './ci-receipt-rerun.mjs';
-import { assertCoLocatedForwardApproval, hasExactManagedForward, isNativeStoreMigrationPath, REVIEWED_FORWARD_PATH } from './reviewed-platform-forward.ts';
+import { assertCoLocatedForwardApproval, hasExactManagedForward, isNativeStoreMigrationPath, PG_SUITE_CLOSURES_PATH, REVIEWED_FORWARD_PATH } from './reviewed-platform-forward.ts';
 import { isChannelIngestMigrationPath, isQualifiedPlatformMigrationPath } from './platform-migration-manifest.ts';
 import { REQUIRED_CONTEXTS } from './packages/release-gate.ts';
 
@@ -81,13 +81,18 @@ export async function findBlockingMigrationQueuePrs({ api, root, owner, name, pr
   }
   return blockingPrs;
 }
+const isMigrationRailSqlPath = path =>
+  (path.startsWith('db/platform/migrations/') || path.startsWith('supabase/migrations/')) && path.endsWith('.sql');
 /**
- * The queue applies the co-located forward guard only when a PR changes the registry or a reviewed-class migration.
+ * The queue applies the co-located forward guard when a PR changes the forward registry,
+ * changes PostgreSQL suite closures alongside migration-rail SQL, or adds a reviewed-class migration.
  * @param {readonly string[]} changedPaths
  * @param {(path: string) => boolean} hasUpstreamManagedApproval
  */
 export function needsForwardApproval(changedPaths, hasUpstreamManagedApproval = () => false) {
-  return changedPaths.includes(REVIEWED_FORWARD_PATH) || changedPaths.some(path => isQualifiedPlatformMigrationPath(path) || isChannelIngestMigrationPath(path) || isNativeStoreMigrationPath(path) || hasUpstreamManagedApproval(path));
+  return changedPaths.includes(REVIEWED_FORWARD_PATH)
+    || (changedPaths.includes(PG_SUITE_CLOSURES_PATH) && changedPaths.some(isMigrationRailSqlPath))
+    || changedPaths.some(path => isQualifiedPlatformMigrationPath(path) || isChannelIngestMigrationPath(path) || isNativeStoreMigrationPath(path) || hasUpstreamManagedApproval(path));
 }
 function decodeGzipText(encoded) {
   const payload = Buffer.from(encoded, 'base64');
