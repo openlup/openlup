@@ -2226,11 +2226,19 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/shared/storefront-bindings.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/shared/subscription-edit.ts",
       "class": "public-output"
     },
     {
       "path": "examples/neutral-store/shared/subscription-offer.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/shared/transport.ts",
       "class": "public-output"
     },
     {
@@ -2395,6 +2403,10 @@
     },
     {
       "path": "examples/neutral-store/test/sessions.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/storefront-bindings.test.ts",
       "class": "public-output"
     },
     {
@@ -30474,6 +30486,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/platform/neutralStoreCheckoutClassifier.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/platform/neutralStoreCheckoutRetry.test.ts",
       "class": "public-output"
     },
@@ -30602,7 +30618,19 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/catalogAdmissionOwnerWrite.fixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogAdmissionOwnerWrite.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/catalogAdmissionPrelock.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogAdmissionRuntimeCommit.test.ts",
       "class": "public-output"
     },
     {

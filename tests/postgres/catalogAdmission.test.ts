@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Pool, type PoolClient, type QueryConfig } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
@@ -914,6 +914,7 @@ it("accepts a stored subscription draft from a writer role without resolver exec
       GRANT UPDATE ON public.commerce_order_draft_receipts TO stored_price_writer;
       GRANT EXECUTE ON FUNCTION ${draftWriter}, public.catalog_admission_check_legacy_draft(text,jsonb,uuid,boolean),
         public.catalog_admission_replay_order_draft(text,uuid,text,text),
+        public.catalog_admission_is_governed(jsonb,jsonb),
         public.catalog_order_line_sum_acceptance(uuid,uuid,public.commerce_orders,public.commerce_orders),
         public.catalog_admission_guard_purchase_item(public.commerce_order_items) TO stored_price_writer;
       SET LOCAL ROLE stored_price_writer`);
@@ -1093,3 +1094,144 @@ it("keeps rounding parity with quote and preview amounts and readiness signs", a
     await owner.query("UPDATE public.commerce_settings SET value_text='XXX' WHERE key='settlement_currency'");
   }
 });
+
+function findGovernedDraftOwnerForward(): string {
+  const directory = "db/platform/migrations";
+  const suffix = "_catalog_governed_draft_owner.sql";
+  const matches = readdirSync(directory, { withFileTypes: true })
+    .filter(entry => entry.isFile() && entry.name.endsWith(suffix));
+  const [match] = matches;
+  if (!match || matches.length !== 1) {
+    throw new Error(`Expected exactly one migration ending in ${suffix} under ${directory}, found ${matches.length}`);
+  }
+  return `${directory}/${match.name}`;
+}
+
+it("appends governed draft finality in place and preserves the installed runtime boundary", async () => {
+  const forward = findGovernedDraftOwnerForward();
+  const prefix = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as PlatformMigrationManifest;
+  if (prefix.schemaVersion !== 3) throw new Error("Expected the complete platform migration catalogue");
+  for (const plan of [prefix, prefix.qualified, prefix.qualifiedAdmin]) {
+    const start = plan.forward.findIndex(unit => unit.file === forward);
+    expect(start).toBeGreaterThan(0);
+    plan.forward = plan.forward.slice(0, start);
+  }
+  const store = await withPlatformCatalog(prefix, root => installAccountMutations("bootstrap", true, "governed-draft", root));
+  const final = "public.catalog_order_acceptance_final(uuid)";
+  const dispatch = "public.catalog_admission_runtime_checkout(text,text,uuid,jsonb)";
+  const fingerprints = async () => (await store.owner.query(`SELECT oid,proname,proowner,prosecdef,proconfig,provolatile,proacl::text
+    FROM pg_proc WHERE oid=ANY($1::regprocedure[]) ORDER BY proname`, [[final, dispatch]])).rows;
+  try {
+    const before = await fingerprints();
+    const legacy = (await store.owner.query("INSERT INTO public.commerce_orders(status,currency_code,total_amount_minor) VALUES('pending_payment','XTS',0) RETURNING id")).rows[0]!.id;
+    const subject = await priceSubject(store.owner, "XXX");
+    await addPrice(store.owner, subject, 125);
+    await addPrice(store.owner, subject, 125, "subscription");
+    const customer = (await store.owner.query("INSERT INTO public.clients(email) VALUES('classic@example.invalid') RETURNING id")).rows[0]!.id;
+    const cases = {
+      statusOneTime: "one_time", statusSubscription: "subscription",
+      staleOneTime: "one_time", staleSubscription: "subscription",
+      paidOneTime: "one_time", activateDefault: "subscription", activateWithWindow: "subscription",
+    } as const;
+    const classic = await transaction(store.runtime, async db => {
+      const ids = {} as Record<keyof typeof cases, string>;
+      for (const [name, mode] of Object.entries(cases)) {
+        const key = randomUUID();
+        const snapshot = quote(subject.sku);
+        if (mode === "subscription") snapshot.quote.context = { mode, promoCodes: [], cadenceDays: 28 };
+        const response = await createPostgresNativeCheckoutPersistence(db)
+          .createOrderDraft({ idempotencyKey: key, quoteSnapshot: snapshot }, { clientId: customer });
+        await db.query("SELECT public.catalog_admission_attach_legacy_submit($1,$2,$3)", [key, customer, {
+          schemaVersion: 1, ownerNamespace: "example:store", clientId: customer, lane: "example-checkout", requestKey: key,
+          submitDigest: "a".repeat(64), acceptanceTokenDigest: null,
+        }]);
+        ids[name as keyof typeof cases] = response.orderDraft.orderId.slice(6);
+      }
+      expect((await db.query(`UPDATE public.commerce_orders SET metadata=metadata||'{"catalogAdmissionOwnerOrigin":{"stray":true}}'
+        WHERE id=ANY($1) AND catalog_acceptance IS NULL`, [Object.values(ids)])).rowCount).toBe(Object.keys(cases).length);
+      return ids;
+    });
+    const scratch = (await store.owner.query(`INSERT INTO public.commerce_orders(status,currency_code,total_amount_minor,metadata)
+      VALUES('pending_payment','XXX',0,'{"catalogAdmissionOwnerOrigin":null}') RETURNING id`)).rows[0]!.id;
+    const stale = [classic.staleOneTime, classic.staleSubscription];
+    await store.owner.query(`WITH definition AS (
+      INSERT INTO public.commerce_promotion_definitions(promotion_id,definition,active) VALUES('example:stale',
+        '{"id":"example:stale","status":"active","trigger_type":"automatic","discount_type":"fixed_amount",
+          "applies_to_kind":"order_total","stacking_rule":"exclusive","eligibility":{},"applies_to_payload":{},"region_availability":["ZZ"]}',true)
+      RETURNING promotion_id,definition_fingerprint
+    ), adjustment AS (
+      INSERT INTO public.commerce_order_adjustments(order_id,kind,scope,amount_minor,promotion_id,definition_fingerprint)
+      SELECT draft.id,'promotion_discount','order_total',1,promotion_id,definition_fingerprint
+      FROM definition CROSS JOIN unnest($1::uuid[]) AS draft(id) RETURNING *
+    ) INSERT INTO public.commerce_promotion_claims(promotion_id,definition_fingerprint,adjustment_id,order_id,client_id,amount_off_minor,expires_at)
+      SELECT promotion_id,definition_fingerprint,id,order_id,$2,amount_minor,clock_timestamp()+interval '1 hour' FROM adjustment`,
+    [stale, customer]);
+    expect((await store.runner.apply()).applied.slice(0, 1)).toEqual([forward]);
+    expect(await fingerprints()).toEqual(before);
+    expect((await store.owner.query("SELECT metadata ? 'catalogAdmissionOwnerOrigin' AS stamped FROM public.commerce_orders WHERE id=$1", [legacy])).rows)
+      .toEqual([{ stamped: false }]);
+    await expect(store.owner.query(`INSERT INTO public.commerce_orders(status,currency_code,total_amount_minor,metadata)
+      VALUES('pending_payment','XXX',0,'{"catalogAdmissionOwnerOrigin":{}}')`)).rejects.toMatchObject({
+      code: "55000", message: "catalog_acceptance_immutable", constraint: "catalog_owner_origin",
+    });
+    const status = [classic.statusOneTime, classic.statusSubscription];
+    const paid = [classic.paidOneTime, classic.activateDefault, classic.activateWithWindow];
+    const lifecycle = await Promise.allSettled([
+      ...status.map(id => store.runtime.query("UPDATE public.commerce_orders SET status='cancelled' WHERE id=$1", [id])),
+      store.runtime.query(`SELECT public.commerce_sweep_stale_promotion_claims(clock_timestamp()+interval '3 hours',2,15,0) AS sweep`),
+      ...paid.map(async id => {
+        const { rows: [opened] } = await store.runtime.query(`SELECT public.commerce_open_settlement_intent($1,$2,'sandbox',125,'XXX') AS result`,
+          [`open:${id}`, id]);
+        return store.runtime.query("SELECT public.commerce_record_settlement($1,$2,'succeeded',$3) AS result",
+          [`paid:${id}`, opened!.result.settlement.id, `captured:${id}`]);
+      }),
+    ]);
+    expect(lifecycle).toMatchObject([
+      { status: "fulfilled", value: { rowCount: 1 } },
+      { status: "fulfilled", value: { rowCount: 1 } },
+      { status: "fulfilled", value: { rows: [{ sweep: { checked: 2, cancelled: 2, skipped: 0 } }] } },
+      ...paid.map(id => ({ status: "fulfilled", value: { rows: [{ result: { settlement: { orderId: id, status: "settled" } } }] } })),
+    ]);
+    const activation = await Promise.allSettled([
+      [classic.activateDefault, 72] as const, [classic.activateWithWindow, 24] as const,
+    ].map(async ([id, hours]) => {
+      await store.runtime.query("SELECT public.subscription_declare_provisional_activation($1,$2,28)", [`declare:${id}`, id]);
+      const inputs = [`activate:${id}`, id, hash(`captured:${id}`)];
+      if (hours === 72) await store.runtime.query("SELECT public.subscription_activate_from_captured_payment($1,$2,$3)", inputs);
+      else await store.runtime.query("SELECT public.subscription_activate_from_captured_payment_with_edit_window($1,$2,$3,$4)", [...inputs, hours]);
+      return (await store.owner.query(`SELECT a.state,s.edit_window_hours,c.status
+        FROM public.commerce_orders o JOIN public.subscription_cycles c ON c.id=o.subscription_cycle_id
+        JOIN public.subscription_activations a ON a.order_id=o.id
+        JOIN public.subscriptions s ON s.id=a.subscription_id AND s.id=c.subscription_id WHERE o.id=$1`, [id])).rows;
+    }));
+    expect(activation).toEqual([72, 24].map(edit_window_hours =>
+      ({ status: "fulfilled", value: [{ state: "active", edit_window_hours, status: "paid" }] })));
+    expect((await store.owner.query(`SELECT status,catalog_acceptance,metadata->'catalogAdmissionOwnerOrigin' AS marker
+      FROM public.commerce_orders WHERE id=ANY($1) ORDER BY status`, [Object.values(classic)])).rows)
+      .toEqual([...status.map(() => "cancelled"), ...stale.map(() => "cancelled"), ...paid.map(() => "paid")]
+        .map(orderStatus => ({ status: orderStatus, catalog_acceptance: null, marker: { stray: true } })));
+    expect((await store.owner.query(`SELECT c.status,c.release_reason,r.invalidation_reason
+      FROM public.commerce_promotion_claims c JOIN public.commerce_order_draft_receipts r USING (order_id) WHERE c.order_id=ANY($1)`,
+    [stale])).rows).toEqual(stale.map(() => ({ status: "released", release_reason: "order_cancelled", invalidation_reason: "stale_promotion_claim" })));
+    await expect(store.runtime.query("UPDATE public.commerce_orders SET metadata=metadata-'catalogAdmissionOwnerOrigin' WHERE id=$1", [scratch]))
+      .rejects.toMatchObject({ code: "55000", message: "catalog_acceptance_immutable", constraint: "catalog_owner_origin" });
+    expect((await store.runtime.query(`INSERT INTO public.commerce_order_items(order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor)
+      VALUES($1,$2,1,1,0,0)`, [scratch, subject.skuId])).rowCount).toBe(1);
+    expect((await store.owner.query("DELETE FROM public.commerce_order_items WHERE order_id=$1", [scratch])).rowCount).toBe(1);
+    expect((await store.owner.query("DELETE FROM public.commerce_orders WHERE id=$1", [scratch])).rowCount).toBe(1);
+    const privileges = (await store.owner.query(`SELECT p.proconfig,p.prosecdef,p.proowner=t.relowner AS table_owner,
+      has_function_privilege('service_role',p.oid,'EXECUTE') AS runtime,
+      has_function_privilege(0::oid,p.oid,'EXECUTE') AS public
+      FROM pg_proc p CROSS JOIN pg_class t WHERE p.oid=$1::regprocedure AND t.oid='public.commerce_orders'::regclass`,
+    ["public.catalog_admission_write_governed_draft(text,uuid,jsonb)"])).rows;
+    expect(privileges).toEqual([{ proconfig: ["search_path=pg_catalog, pg_temp"], prosecdef: false,
+      table_owner: true, runtime: false, public: false }]);
+    const predicatePrivileges = (await store.owner.query(`SELECT p.proconfig,p.prosecdef,p.provolatile,
+      has_function_privilege('service_role',p.oid,'EXECUTE') AS runtime,has_function_privilege(0::oid,p.oid,'EXECUTE') AS public
+      FROM pg_proc p WHERE p.oid='public.catalog_admission_is_governed(jsonb,jsonb)'::regprocedure`)).rows;
+    expect(predicatePrivileges).toEqual([{ proconfig: ["search_path=pg_catalog, pg_temp"], prosecdef: false,
+      provolatile: "i", runtime: true, public: false }]);
+    await expect(store.runtime.query("SELECT public.catalog_admission_runtime_checkout('write',$1,NULL,'{}')", [randomUUID()]))
+      .rejects.toMatchObject(closed);
+  } finally { await store.close(); }
+}, postgresSetupTimeoutMs);

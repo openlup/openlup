@@ -8,7 +8,7 @@ import { promisify } from 'node:util';
 import { createHash, randomUUID } from 'node:crypto';
 import { env as processEnvironment } from 'node:process';
 import { digest, explainSession, protectedCoveragePath, carryOver, cumulativeRepairPrefix, fullReviewReports, deferFinding, demand, integrationReviewContext, prepareCandidate, receiptBody, receiptSummary, recordReport, verdict } from './agent-review-decide.mjs';
-import { REGISTRY_PATHS, registryUnion } from './agent-review-registry.mjs';
+import { REGISTRY_PATHS, RULE_SNAPSHOT_REGISTRY_PATHS, registryUnion } from './agent-review-registry.mjs';
 import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryOnlyCurrent, migrationRegistryUnion, reslotRegistryJson } from './agent-review-derived.mjs';
 import { MATURITY_REFERENCE, generatedCarrier, ownerOutputCarrier, runDerivedOutputGenerators, runLandingGenerators, withPredictedTree } from './agent-review-generators.mjs';
 import { isUtcMigrationSlot, MIGRATION_RAILS, migrationIdentity } from './migration-slots.mjs';
@@ -93,7 +93,7 @@ export async function captureReviewRules(cwd, candidate, runGit = git) {
     const rows = (await runGit(cwd, 'ls-tree', '-rz', '--full-tree', revision)).split('\0').filter(Boolean);
     return digest(rows.filter(row => {
       const path = row.slice(row.indexOf('\t') + 1);
-      return protectedCoveragePath(path) && !REGISTRY_PATHS.includes(path);
+      return protectedCoveragePath(path) && !RULE_SNAPSHOT_REGISTRY_PATHS.includes(path);
     }).sort());
   };
   return { version: 3, base: await snapshot(candidate.base), head: await snapshot(candidate.head) };
