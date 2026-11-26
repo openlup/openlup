@@ -1,10 +1,10 @@
 import { PLATFORM_MIGRATION_MANIFEST, type PlatformMigrationManifest, PLATFORM_BASELINE_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_IMPORT_FILE, QUALIFIED_OWNER_PATH_FILE, isChannelIngestMigrationPath, isQualifiedPlatformMigrationPath, checkoutOwnerGrantPath, checkoutOwnerLogin, checkoutOwnerRoutines, renderCheckoutOwnerGrant } from "./platform-migration-manifest.ts";
 import { DuplicateJsonKeyError } from "./oss-strict-json.mts";
-import { canonical, closedHistoricalForwardPaths, FORWARD_LISTS, MANAGED_BASELINE, REVIEWED_FORWARD_PATH, sqlSha256, type BatchedForwardBinding, type ForwardBinding, type ManagedCommerceForwardBinding, type NativeDeferredTrigger, type NativeStoreCheck, type NativeStoreForwardClass, type NativeStoreSlot, type NativeStoreUnique, type ReviewedForwardRegistry, type RuntimeForwardBinding, type SupportAuthorityForwardBinding } from "./migrations/types.ts";
+import { canonical, closedHistoricalForwardPaths, FORWARD_LISTS, MANAGED_BASELINE, REVIEWED_FORWARD_PATH, sqlSha256, type BatchedForwardBinding, type ForwardBinding, type ManagedCommerceForwardBinding, type NativeDeferredTrigger, type NativeStoreCheck, type NativeStoreCheckToFunctionGuard, type NativeStoreForwardClass, type NativeStoreSlot, type NativeStoreUnique, type ReviewedForwardRegistry, type RuntimeForwardBinding, type SupportAuthorityForwardBinding } from "./migrations/types.ts";
 import { blob, cachedDumpSqlStatements, git, headerAttributes, isExpandOnlyPlatformForward, NATIVE_SUCCESSOR_TABLE_SQL, readPrecedingBlobs, sqlStatements } from "./migrations/sql-tokenizer.ts";
 import { assertSecurityDefinerSearchPath, isGrandfatheredSecurityDefinerForward } from "./migrations/security-definer.ts";
 import { assertBatchedForward, assertChannelIngestForward, assertFunctionStatements, assertManagedCommerceForward, assertManagedInvoicingStatements, assertPortableCreationStatements, assertQualifiedOwnerPathForward, assertSupportAuthorityForward, batchedFunctionDefinitions, channelIngestShapes, functionSignature, identityHeaderSql, identityPrivilegeKeys, reviewedFunctionDefinitions, reviewedPolicyDefinitions, runtimePrivilegeKeys, runtimeReplacements, updatePolicyDefinitions } from "./migrations/historical-classes.ts";
-import { assertExecutePredecessors, assertNativeStoreClassTransition, assertNativeStoreForward, assertNativeStoreSettingsTargets, checkoutForwardRefusal, checkoutOwnerControls, checkoutPredecessorRefusal, checkoutReplacementRefusal, checkoutSlotRefusal, expectedReplacedFunctionAttrs, isNativeStoreMigrationPath, isQualifiedCatalogueReadGrant, nativeStoreAddedForeignKeys, nativeStoreCreatedTable, nativeStoreFunctionDefinitions, nativeStoreNewSlotTimes, nativeStoreRevokePublicMessages, nativeStoreTriggerDefinition, previewAcceptanceSource, previewAcceptanceSourceSha256, previewNoopAcceptanceSql, qualifiedCatalogueReadTargets, qualifiedCatalogueStorageSelectSql, renderNativeDeferredTrigger, renderNativeStoreSettingsOwnerWindow, renderQualifiedSecurityDefiner, replacesCheckoutRoutine } from "./migrations/native-store-admission.ts";
+import { assertExecutePredecessors, assertNativeStoreClassTransition, assertNativeStoreForward, assertNativeStoreSettingsTargets, checkConstraintSha256, checkoutForwardRefusal, checkoutOwnerControls, checkoutPredecessorRefusal, checkoutReplacementRefusal, checkoutSlotRefusal, expectedReplacedFunctionAttrs, isNativeStoreMigrationPath, isQualifiedCatalogueReadGrant, matchesBoundedFormatPattern, nativeStoreAddedForeignKeys, nativeStoreCreatedTable, nativeStoreFunctionDefinitions, nativeStoreNewSlotTimes, nativeStoreRevokePublicMessages, nativeStoreTriggerDefinition, parseBoundedFormatPattern, previewAcceptanceSource, previewAcceptanceSourceSha256, previewNoopAcceptanceSql, qualifiedCatalogueReadTargets, qualifiedCatalogueStorageSelectSql, renderNativeDeferredTrigger, renderNativeStoreSettingsOwnerWindow, renderQualifiedSecurityDefiner, replacesCheckoutRoutine, type BoundedFormatAtom } from "./migrations/native-store-admission.ts";
 import { approvalBinding, changedForwardApprovals, keepsApprovalOrder, readForwardRegistry, readReviewedForwardRegistry, sharedApproval } from "./migrations/registry.ts";
 
 export {
@@ -19,11 +19,11 @@ export {
   qualifiedCatalogueStorageSelectSql, previewNoopAcceptanceSql, renderQualifiedSecurityDefiner,
   nativeStoreFunctionDefinitions, isNativeStoreMigrationPath, nativeStoreAddedForeignKeys, nativeStoreCreatedTable,
   renderNativeStoreSettingsOwnerWindow, nativeStoreRevokePublicMessages, nativeStoreTriggerDefinition, renderNativeDeferredTrigger,
-  expectedReplacedFunctionAttrs, assertNativeStoreForward,
+  checkConstraintSha256, parseBoundedFormatPattern, matchesBoundedFormatPattern, expectedReplacedFunctionAttrs, assertNativeStoreForward,
 };
 export type {
-  BatchedForwardBinding, ManagedCommerceForwardBinding, SupportAuthorityForwardBinding,
-  NativeStoreCheck, NativeStoreUnique, NativeDeferredTrigger, NativeStoreSlot, NativeStoreForwardClass, ReviewedForwardRegistry,
+  BatchedForwardBinding, BoundedFormatAtom, ManagedCommerceForwardBinding, SupportAuthorityForwardBinding,
+  NativeStoreCheck, NativeStoreCheckToFunctionGuard, NativeStoreUnique, NativeDeferredTrigger, NativeStoreSlot, NativeStoreForwardClass, ReviewedForwardRegistry,
 };
 
 export function assertForwardApproval(root: string, base: string, head: string): void {
