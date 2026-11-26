@@ -8,6 +8,7 @@ import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import type { AppUpgradePlan, AppVerificationFinding } from "@openlup/platform/lifecycle";
 import { isolatedConsumerEnv } from "./pack-manifest-input.ts";
+import type { StoreConfig } from "../../examples/neutral-store/shared/config.ts";
 import { catalogueUpgradeFixture } from "../../examples/neutral-store/test/catalogue-upgrade-fixture.ts";
 
 // Immutable published artifacts, independently read from the public registry.
@@ -1493,8 +1494,8 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
   async function createSettledReceipt() {
     const response = await fetch(`${origin}/api/config`, { signal: AbortSignal.timeout(15_000) });
     if (!response.ok) fail("checkout_configuration");
-    const { config } = await response.json();
-    if (config?.id !== "coffee") fail("checkout_configuration");
+    const { config } = await response.json() as { config?: StoreConfig };
+    if (config?.id !== "coffee") return fail("checkout_configuration");
     const order = { configuration: config.id, locale: config.market.defaultLocale, country: config.market.country,
       email: `buyer-${randomUUID()}@example.test`, firstName: "Example", lastName: "Buyer", phone: "000000000",
       line1: "1 Example Lane", city: "Example City", postalCode: "00000", termsAccepted: true, termsRevision: config.legal.revision,
