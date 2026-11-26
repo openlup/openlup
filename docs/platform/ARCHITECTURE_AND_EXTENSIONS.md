@@ -2639,10 +2639,8 @@ managed runner and account aggregation are unchanged.
 The six native renewal reservation, release, expiry and stock-wait routines
 enter the same inventory admission gate inline, before lock-bearing work, with
 the shared helper's busy and isolation codes. Their invoker rights, original
-execution grants and caller relation privileges remain unchanged. The shared
-admission helper stays owner-only. The renewal occurrence guard requires custom
-stock runtimes to receive explicit `EXECUTE` on the scoped parent lock and rail
-checker alongside their incumbent relation permissions. Only stock-wait
+execution grants and caller relation privileges remain unchanged. Custom invoker
+runtimes need no new grant; the shared helper stays owner-only. Only stock-wait
 admit maps admission busy errors; the reservation adapter preserves raw errors.
 The shipment destination view reads the pinned document or the order's current
 document without writing or acquiring preparation locks.

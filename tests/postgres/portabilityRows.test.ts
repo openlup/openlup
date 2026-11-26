@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Pool } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
@@ -134,31 +134,4 @@ it("admits the renewal acceptance trigger at its earlier or pinned search path a
       }
     }
   } finally { await target.query(`ALTER FUNCTION ${admit} ${pinned}`); }
-});
-
-it("restores a legacy operation through the pinned renewal write guard and refuses a changed guard", async () => {
-  const client = randomUUID(), subscription = randomUUID();
-  const scheduledAt = "2040-01-01T12:00:00.123456Z";
-  for (const pool of [source, target]) {
-    await pool.query("INSERT INTO public.clients(id,email) VALUES($1,$2)", [client, `${client}@example.invalid`]);
-    await pool.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at) VALUES($1,$2,28,$3)", [subscription, client, scheduledAt]);
-  }
-  const cycle = {
-    contractVersion: "platform.subscription.renewal.v1", subscriptionId: subscription, clientId: client,
-    scheduledAt, cycleNumber: 2, currency: "XXX", stockSourceKey: "fixture-stock", settlementChannelKey: "sandbox",
-    authorizationRef: "frozen-mandate", payerAccountRef: null, totalAmountMinor: 200,
-    lines: [{ lineOrdinal: 1, sku: "fixture-sku", quantity: 2, unitAmountMinor: 100 }],
-  };
-  const fingerprint = createHash("sha256").update(JSON.stringify(cycle)).digest("hex");
-  await source.query(`SELECT public.subscription_claim_due_renewal(
-    public.subscription_renewal_identity($1,$2),$3,$4,'fixture',300,$2)`, [subscription, scheduledAt, fingerprint, cycle]);
-  const packet = await capture(["subscription_renewal_operations"]);
-  const restore = () => restoreCompatiblePostgresRows({ target: destination, catalogueId, packet });
-  expect(await restore()).toEqual({ inserted: 1, replayed: 0, sha256: packet.sha256 });
-  expect(await restore()).toEqual({ inserted: 0, replayed: 1, sha256: packet.sha256 });
-  const guard = "public.subscriptions__guard_renewal_write()";
-  await target.query(`ALTER FUNCTION ${guard} SET search_path = pg_catalog, public, pg_temp`);
-  try {
-    await expect(restore()).rejects.toMatchObject({ code: "insert_trigger_requires_owner", table: "subscription_renewal_operations" });
-  } finally { await target.query(`ALTER FUNCTION ${guard} SET search_path = pg_catalog, pg_temp`); }
 });

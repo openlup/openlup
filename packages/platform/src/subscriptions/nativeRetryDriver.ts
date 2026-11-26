@@ -4,7 +4,6 @@ import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 import { createPostgresRetryStore } from "./postgresRetryStore.js";
 import type { NativeRetryFailure, NativeRetryPreparation, NativeRetryRow, NativeRetryRequest } from "./postgresRetryStore.js";
 import type { RenewalExecutionRequest, RenewalFrozenSnapshot, RenewalPaymentEvidence, RenewalPaymentRail } from "./contracts/renewal.js";
-import { renewalRailRefusal } from "./automaticRenewalExecution.js";
 
 export interface NativeRetryDriverOptions {
   /** Trusted timing only; cannot alter terminating failure classes. */
@@ -68,7 +67,7 @@ export function createNativeRetryDriver(options: NativeRetryDriverOptions) {
       return { obligation, replayed: prior.replayed, caseAdvanced: progress.caseAdvanced };
     });
   }
-  async function run(now: string, limit: number, guard?: (subscriptionId: string) => Promise<void>) {
+  async function run(now: string, limit: number) {
     // Filter settled rows BEFORE limiting; they cannot starve unpaid obligations.
     // Prepared attempts and interrupted failure propagation are reconciliation work.
     const rows = (await options.executor.query(`SELECT o.*,op.cycle_snapshot,
@@ -90,11 +89,10 @@ export function createNativeRetryDriver(options: NativeRetryDriverOptions) {
         AND (o.state='prepared' OR o.next_retry_at<=$1::timestamptz
         OR c.id IS NULL OR c.retry_attempt<(latest.result->>'retry_attempt')::integer)
       ORDER BY o.next_retry_at NULLS FIRST,o.id LIMIT $2::integer`, [now, limit])).rows;
-    const results: { operationId: string; status: string; reason?: string; field?: string }[] = [];
+    const results: { operationId: string; status: string }[] = [];
     for (const raw of rows) {
       const operationId = String(raw.renewal_operation_id);
       try {
-        await guard?.(String(raw.subscription_id));
         if (raw.failure_propagation_pending !== false && raw.failure_key && raw.failure_input) {
           await propagateFailure(operationId, String(raw.failure_key), raw.failure_input as NativeRetryFailure);
         }
@@ -165,8 +163,6 @@ export function createNativeRetryDriver(options: NativeRetryDriverOptions) {
           results.push({ operationId, status: "refused" });
         } else results.push({ operationId, status: "awaiting_provider" });
       } catch (error) {
-        const rail = renewalRailRefusal(error);
-        if (rail) { results.push({ operationId, status: "refused", ...rail }); continue; }
         // Keep each captured obligation available for reconciliation; never pause.
         results.push({ operationId, status: error instanceof Error && error.message === "subscription_retry_frozen_mandate_mismatch"
           ? "frozen_mandate_mismatch" : "error" });

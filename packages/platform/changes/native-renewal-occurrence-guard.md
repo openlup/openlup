@@ -1,1 +1,1 @@
-- The installed native renewal worker refuses fresh legacy work for a v3 occurrence with `renewal_v3_unavailable` at `/rail`. The occurrence owner can read the stable key and pinned deadline after the effective due instant changes.
+- The native occurrence owner can read the stable renewal key and pinned cancellation deadline after the effective due instant changes. Qualified connected-store transfer preserves the occurrence evidence.

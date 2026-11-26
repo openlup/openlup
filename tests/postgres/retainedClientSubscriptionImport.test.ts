@@ -239,7 +239,6 @@ it("constraints and every target trigger stay enabled for retained imports", asy
   expect((await pool.query(`SELECT tgname,tgenabled FROM pg_catalog.pg_trigger
     WHERE tgrelid IN ('public.clients'::regclass,'public.subscription_cycles'::regclass) AND NOT tgisinternal ORDER BY tgname`)).rows).toEqual([
     { tgname: "customer_subject_capture_lifecycle_trigger", tgenabled: "O" },
-    { tgname: "subscriptions_guard_renewal_cycles", tgenabled: "O" },
     { tgname: "trg_subscription_delivery_alignment_guard_cycle_insert", tgenabled: "O" },
   ]);
 });

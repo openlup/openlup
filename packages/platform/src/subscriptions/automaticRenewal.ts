@@ -5,7 +5,7 @@ import { readAndApplyProviderOutcome } from "./paymentOutcomes.js";
 export type AutomaticRenewalRunStatus = "succeeded" | "refused" | "deferred" | "awaiting_provider" | "error" | "lease_active" | "terminal_replay";
 export interface AutomaticRenewalRunResult {
   subscriptionId: string; identityKey: string; operationId: string;
-  status: AutomaticRenewalRunStatus; replayed: boolean; reason: string | null; caseRef?: string; field?: string;
+  status: AutomaticRenewalRunStatus; replayed: boolean; reason: string | null; caseRef?: string;
 }
 export interface AutomaticRenewalPolicy {
   executionInput(due: RenewalDue, operation: RenewalReadback, prepared: Pick<RenewalPreparedSettlement, "orderId" | "settlementIntentId">): RenewalExecutionRequest;

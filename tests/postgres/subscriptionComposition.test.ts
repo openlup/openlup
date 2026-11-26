@@ -38,22 +38,6 @@ async function predecessor(f: Renewal, mode: string) {
   return shipment;
 }
 
-it("keeps a v3 occurrence off the mounted legacy rail while an ordinary renewal proceeds", async () => {
-  const ordinary = await renewal(h.pool), occupied = await renewal(h.pool);
-  await h.pool.query(`INSERT INTO public.subscription_cycle_occurrences
-    (cycle_key,subscription_id,client_id,original_anchor_at,effective_due_at,cadence_seconds,rail,lifecycle,is_current)
-    VALUES($1,$2,$3,$4,$4,2419200,'v3','active',true)`, [randomUUID(), occupied.subscription, occupied.client, AT]);
-  const readback = () => call(h.pool, "subscription_read_renewal", [occupied.identity]);
-  const baseline = await readback();
-  const b = bind(ordinary);
-  expect(await b.binding.services.run()).toMatchObject({ renewals: expect.arrayContaining([
-    expect.objectContaining({ subscriptionId: occupied.subscription, status: "refused", reason: "renewal_v3_unavailable", field: "/rail" }),
-    expect.objectContaining({ subscriptionId: ordinary.subscription, status: "succeeded" }),
-  ]) });
-  expect(b.execute).toHaveBeenCalledTimes(1);
-  expect(await readback()).toEqual(baseline);
-});
-
 it.each(["off", "protect", "arrival", "rollback", "dunning", "stock", "prepared", "static"] as const)("composes %s through one executor without interrupting the subscription", async scenario => {
   const f = await renewal(h.pool, scenario === "stock" ? 0 : 10), b = bind(f);
   expect(b.binding.contributions[0].schedules).toHaveLength(1);

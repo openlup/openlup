@@ -418,7 +418,7 @@ it.each(["apply", "abandoned", "oms"] as const)("retains the %s order/root barri
   } finally { await blocker.query("ROLLBACK"); await pending; blocker.release(); writer.release(); }
 });
 
-it("retries a refused renewal outcome after a due-renewal claim holds the root and waits for its operation", async () => {
+it("completes a refused renewal outcome while due-renewal claim holds the root and waits for its operation", async () => {
   const f = await renewal(env.owner); await prepareOriginal(env.owner, f);
   const writer = await env.owner.connect(), claimant = await env.owner.connect(); let pending: Promise<unknown> | undefined;
   try {
@@ -429,10 +429,9 @@ it("retries a refused renewal outcome after a due-renewal claim holds the root a
     pending = call(claimant, "subscription_claim_due_renewal", [f.identity, f.fingerprint, f.snapshot, "concurrent-claim", 300, "2026-09-01T12:00:00Z"]).catch(error => error);
     await blockedBy(claimPid, writerPid);
     await expect(env.owner.query("SELECT id FROM public.subscriptions WHERE id=$1 FOR UPDATE NOWAIT", [f.subscription])).rejects.toMatchObject({ code: "55P03" });
-    const outcome = [f.operation, `refused:${f.operation}`, f.fingerprint, "refused", null, "declined", "2026-09-01T12:00:00Z"];
-    await expect(call(writer, "commerce_record_subscription_renewal_outcome", outcome)).rejects.toMatchObject({ code: "55P03" });
-    await writer.query("ROLLBACK"); expect(await pending).toMatchObject({ state: "attempt_prepared", replayed: true });
-    expect(await call(writer, "commerce_record_subscription_renewal_outcome", outcome)).toMatchObject({ state: "refused" });
+    expect(await call(writer, "commerce_record_subscription_renewal_outcome", [f.operation, `refused:${f.operation}`, f.fingerprint, "refused", null, "declined", "2026-09-01T12:00:00Z"]))
+      .toMatchObject({ state: "refused" });
+    await writer.query("COMMIT"); expect(await pending).toMatchObject({ state: "refused", replayed: true });
   } finally { await writer.query("ROLLBACK"); await pending; writer.release(); claimant.release(); }
 });
 

@@ -78,8 +78,6 @@ export const fulfillmentDomain = {
     "fulfillment_provider_archetypes",
   ],
   allowedInsertTriggers: {
-    fulfillment_inventory_reservations: ["subscriptions_guard_renewal_reservations"],
-    fulfillment_inventory_reservation_lines: ["subscriptions_guard_renewal_reservation_lines"],
     fulfillment_shipments: ["trg_subscription_delivery_alignment_on_delivery"],
     // The guard only refuses fresh v2 commands, which an exact-current source cannot contain.
     commerce_fulfillment_provider_commands: ["commerce_fulfillment_provider_command_destination_v2_guard"],

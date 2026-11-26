@@ -47,7 +47,6 @@ export interface AutomaticRenewalRunResult {
     replayed: boolean;
     reason: string | null;
     caseRef?: string;
-    field?: string;
 }
 export interface AutomaticRenewalPolicy {
     executionInput(due: RenewalDue, operation: RenewalReadback, prepared: Pick<RenewalPreparedSettlement, "orderId" | "settlementIntentId">): RenewalExecutionRequest;
@@ -96,10 +95,6 @@ export declare function recoverPreparedExternalAttempt(input: {
     occurredAt: string;
 }): Promise<string | null>;
 export declare const MAX_RENEWAL_CONCURRENCY = 16;
-export declare function renewalRailRefusal(error: unknown): {
-    reason: "renewal_v3_unavailable";
-    field: "/rail";
-} | undefined;
 export interface RunRenewalBatchOptions {
     /** Bounded per-batch concurrency for normal due renewals (default `1`, max `16`). */
     concurrency?: number;
@@ -879,11 +874,9 @@ export interface NativeRetryDriverOptions {
 /** Internal value matcher; not re-exported by a package entry. */
 export declare function canonicalUuid(value: unknown): string | null;
 export declare function createNativeRetryDriver(options: NativeRetryDriverOptions): {
-    run: (now: string, limit: number, guard?: (subscriptionId: string) => Promise<void>) => Promise<{
+    run: (now: string, limit: number) => Promise<{
         operationId: string;
         status: string;
-        reason?: string;
-        field?: string;
     }[]>;
     propagateFailure: (operationId: string, key: string, input: NativeRetryFailure) => Promise<{
         obligation: NativeRetryRow;
@@ -951,8 +944,6 @@ export declare function createNativeSubscriptionBinding(input: {
             retries: {
                 operationId: string;
                 status: string;
-                reason?: string;
-                field?: string;
             }[];
             renewals: AutomaticRenewalRunResult[];
         } | {

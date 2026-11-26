@@ -124,7 +124,7 @@ export const subscriptionsDomain = {
     "subscription_delivery_alignment_control",
   ],
   allowedInsertTriggers: {
-    subscription_cycles: ["trg_subscription_delivery_alignment_guard_cycle_insert", "subscriptions_guard_renewal_cycles"],
+    subscription_cycles: ["trg_subscription_delivery_alignment_guard_cycle_insert"],
     // The guard admits only classic inserts. The binder acts only on opt-in
     // events, whose subscriptions are sized.v1 and refused before any writes.
     subscriptions: ["subscriptions_configured_offer_guard"],
@@ -132,7 +132,6 @@ export const subscriptionsDomain = {
     subscription_edit_quotes: ["subscription_edit_quotes_catalog_final"],
     subscription_quote_previews: ["subscription_quote_previews_catalog_final"],
     subscription_renewal_terms: ["subscription_renewal_terms_catalog_acceptance_admit"],
-    subscription_renewal_operations: ["subscription_renewal_operations_catalog_acceptance_admit", "subscriptions_guard_renewal_operations"],
-    subscription_stock_wait_cases: ["subscriptions_guard_renewal_stock_wait"],
+    subscription_renewal_operations: ["subscription_renewal_operations_catalog_acceptance_admit"],
   },
 } as const;

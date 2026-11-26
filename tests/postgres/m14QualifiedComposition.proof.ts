@@ -371,7 +371,6 @@ async function proveRetainedRuntime(admin: Pool) {
   assert.deepEqual((await admin.query(`SELECT tgname,tgenabled FROM pg_catalog.pg_trigger
     WHERE tgrelid IN ('public.clients'::regclass,'public.subscription_cycles'::regclass) AND NOT tgisinternal ORDER BY tgname`)).rows, [
     { tgname: "customer_subject_capture_lifecycle_trigger", tgenabled: "O" },
-    { tgname: "subscriptions_guard_renewal_cycles", tgenabled: "O" },
     { tgname: "trg_subscription_delivery_alignment_guard_cycle_insert", tgenabled: "O" },
   ]);
   for (const sql of ["SET ROLE openlup_retained_import_owner", "SET SESSION AUTHORIZATION openlup_retained_import_owner",

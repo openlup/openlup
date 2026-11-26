@@ -21,13 +21,6 @@ export async function recoverPreparedExternalAttempt(input: { operation: Renewal
 }
 export const MAX_RENEWAL_CONCURRENCY = 16;
 
-export function renewalRailRefusal(error: unknown): { reason: "renewal_v3_unavailable"; field: "/rail" } | undefined {
-  if (error instanceof Error && "code" in error && error.code === "22023"
-    && "detail" in error && error.detail === "/rail" && error.message === "renewal_v3_unavailable") {
-    return { reason: "renewal_v3_unavailable", field: "/rail" };
-  }
-}
-
 export interface RunRenewalBatchOptions {
   /** Bounded per-batch concurrency for normal due renewals (default `1`, max `16`). */
   concurrency?: number;
@@ -48,18 +41,13 @@ export async function runRenewalBatchRows(
   options?: RunRenewalBatchOptions,
 ): Promise<AutomaticRenewalRunResult[]> {
   const concurrency = normalizeRenewalConcurrency(options?.concurrency);
-  const failed = (row: RenewalDue, error: unknown): AutomaticRenewalRunResult => {
-    const rail = renewalRailRefusal(error);
-    return { subscriptionId: row.subscriptionId, identityKey: policy.identityKey(row), operationId: "",
-      status: rail ? "refused" : "error", replayed: false, reason: "renewal_processing_failed", ...rail };
-  };
   if (concurrency === 1 || due.length <= 1) {
     const results: AutomaticRenewalRunResult[] = [];
     for (const row of due) {
       try { results.push(await run(row)); }
       catch (error) {
         if (isInventoryAdmissionBusy(error)) continue;
-        results.push(failed(row, error));
+        results.push({ subscriptionId: row.subscriptionId, identityKey: policy.identityKey(row), operationId: "", status: "error", replayed: false, reason: "renewal_processing_failed" });
       }
     }
     return results;
@@ -80,7 +68,14 @@ export async function runRenewalBatchRows(
         if (isInventoryAdmissionBusy(error)) {
           slots[index] = null;
         } else {
-          slots[index] = failed(row, error);
+          slots[index] = {
+            subscriptionId: row.subscriptionId,
+            identityKey: policy.identityKey(row),
+            operationId: "",
+            status: "error",
+            replayed: false,
+            reason: "renewal_processing_failed",
+          };
         }
       }
     }
