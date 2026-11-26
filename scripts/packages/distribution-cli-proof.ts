@@ -1401,6 +1401,7 @@ export function createVerificationInput() {
 /** Installed adjacent-file upgrade on one occupied local demonstration. */
 export async function proveStarterRuntimeUpgrade(from: string, to: string, port: number) {
   if (process.platform !== "linux" || port === 4319) throw new Error("starter_runtime_upgrade_requires_native_linux_and_free_port");
+  const started = performance.now();
   const project = "starter-runtime-" + randomBytes(6).toString("hex");
   const scratch = mkdtempSync(join(tmpdir(), project + "-"));
   const env: NodeJS.ProcessEnv = { ...isolatedConsumerEnv(), COMPOSE_PROJECT_NAME: project, OPENLUP_STARTER_PORT: String(port) };
@@ -1463,6 +1464,7 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
         "--workdir", "/candidate", socketImage, "node", "--input-type=module", "-e", statusCode])));
       if (status.pending || status.applied !== count) fail("qualified_schema_status");
     }
+    mark(project + " common installed schema " + count);
     checked("stop_predecessor_application", compose("stop", "application"));
     for (const [label, snapshot] of [["from", old], ["to", next]] as const) {
       snapshot.schema = { min: count, max: count };
@@ -1766,15 +1768,13 @@ esac
     mkdirSync(readiness);
     const fixtures = join(from, ".context/care-browser"), builds = join(from, ".context/catalogue-builds");
     for (const directory of [fixtures, builds]) mkdirSync(directory, { recursive: true });
-    const mounts = [`type=bind,src=${fixtures},dst=/app/.context/care-browser`,
-      `type=bind,src=${builds},dst=/app/.context/catalogue-builds`, `type=bind,src=${readiness},dst=/readiness`];
+    const mounts = ["--mount", `type=bind,src=${fixtures},dst=/app/.context/care-browser`,
+      "--mount", `type=bind,src=${builds},dst=/app/.context/catalogue-builds`,
+      "--mount", `type=bind,src=${readiness},dst=/readiness`];
     const browserName = project + "-installed-browser";
     const args = browserContainerArguments(from, browser, browserName, localImage, mounts);
     try {
-      const launched = run(from, "docker", [args[0]!, "--detach", ...args.slice(1), "sleep", "120"]);
-      if (launched.status !== 0 && !privateValues.some(value => launched.stderr.includes(value) || launched.stderr.includes(encodeURIComponent(value))))
-        process.stderr.write(launched.stderr);
-      checked("installed_browser_container", launched);
+      checked("installed_browser_container", run(from, "docker", [args[0]!, "--detach", ...args.slice(1), "sleep", "120"]));
       const inspected = JSON.parse(checked("installed_browser_mounts", run(from, "docker", ["inspect", "--format", "{{json .Mounts}}", browserName])));
       for (const mount of inspected) if (mount.Type === "bind") {
         const root = realpathSync(mount.Source);
@@ -1821,6 +1821,7 @@ esac
     if (!leaks("private-red:" + initial) || !leaks("private-red:" + synthetic) || captures.some(leaks) || leaks(committed))
       fail("credential_output_scan");
     mark("captured output and scanner red control");
+    mark("occupied proof completed in " + Math.round(performance.now() - started) + " ms");
   } finally {
     compose("down", "--volumes", "--remove-orphans", "--rmi", "local");
     rmSync(dirname(source), { recursive: true, force: true });

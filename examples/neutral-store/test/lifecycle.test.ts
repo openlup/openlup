@@ -570,7 +570,7 @@ test('installed_catalogue_operator_workflow', { skip: !recipeApp, timeout: 600_0
   assert.ok(['candidate', 'local-candidate', 'released', 'reconstructed'].includes(manifest.mode ?? manifest.kind));
   const run = (file: string, args: string[], input?: string) => execFileSync(file, args,
     { cwd: app, env: { ...processEnv, COMPOSE_PROJECT_NAME: project }, encoding: 'utf8', input, stdio: ['pipe', 'pipe', 'pipe'] });
-  const compose = (...args: string[]) => run('docker', ['compose', ...args]);
+  const compose = (...args: string[]) => run('docker', ['compose', '--project-name', project, ...args]);
   const sql = (statement: string) => compose('exec', '-T', 'database', 'psql', '-XAtq', '-v', 'ON_ERROR_STOP=1', '-v', 'VERBOSITY=verbose',
     '-U', 'starter_install', '-d', 'neutral_store', '-c', statement).trim();
   const port = Number(processEnv.OPENLUP_STARTER_PORT || 4319);
@@ -631,11 +631,11 @@ test('installed_catalogue_operator_workflow', { skip: !recipeApp, timeout: 600_0
     assert.equal(registry.find(({ operation }) => operation === 'catalogue.demoTarget')?.bound, true);
     const readOnly = JSON.parse(compose('exec', '-T', '--user', 'node', 'application', 'node', '--input-type=module', '-e', `
       import { readFileSync } from 'node:fs';
-      import { env } from 'node:process';
+      import { runtimeConnectionString, runtimeUrl } from './host/runtime-database.ts';
       import { createPostgresRoleFreeTransactionLane } from '@openlup/platform/data';
       import { composeOperatorCapabilities } from './host/operator-composition.ts';
       import { demonstrationMarkerQuery } from './host/demonstration-marker.ts';
-      const url = new URL(env.DATABASE_URL);
+      const url = new URL(runtimeUrl);
       url.username = 'openlup_catalog_publication';
       url.password = readFileSync('.context/catalogue-builds/.publication-password', 'utf8').trim();
       const lane = createPostgresRoleFreeTransactionLane({connectionString: url.href});
@@ -647,7 +647,7 @@ test('installed_catalogue_operator_workflow', { skip: !recipeApp, timeout: 600_0
         }
         return db.query(statement, values);
       } })), close: () => lane.close() };
-      const composed = composeOperatorCapabilities({executor: {}, publication, connectionString: env.DATABASE_URL});
+      const composed = composeOperatorCapabilities({executor: {}, publication, connectionString: runtimeConnectionString()});
       try {
         const { ok } = await composed.actions['catalogue.demoTarget']({}, {config: {id:'coffee'}});
         console.log(JSON.stringify({ ok, ...markerSettings }));
@@ -736,9 +736,9 @@ test('installed_catalogue_operator_workflow', { skip: !recipeApp, timeout: 600_0
     const customer = `customer-${actor.slice(0, 8)}@example.test`;
     compose('exec', '-T', '--user', 'node', 'application', 'node', '--input-type=module', '-e', `
       import { randomUUID } from 'node:crypto';
-      import { env } from 'node:process';
+      import { runtimeConnectionString } from './host/runtime-database.ts';
       import { createPostgresAccountLinkStore } from '@openlup/platform/identity';
-      const accounts = createPostgresAccountLinkStore({ connectionString: env.DATABASE_URL });
+      const accounts = createPostgresAccountLinkStore({ connectionString: runtimeConnectionString() });
       try { await accounts.createAccount({ principalId: randomUUID(), email: ${JSON.stringify(customer)},
         acquisitionSource: 'direct', lifecycleStage: 'customer' }); }
       finally { await accounts.close(); }
@@ -1195,7 +1195,7 @@ test('up_json_installed_starter_recipe', { skip: !recipeApp, timeout: 600_000 },
     return result.stdout;
   };
   const up = (exit = 0) => oneLine(run('./lifecycle', ['up', '--configuration', 'coffee', '--json'], exit));
-  const docker = (...args: string[]) => run('docker', ['compose', ...args]);
+  const docker = (...args: string[]) => run('docker', ['compose', '--project-name', project, ...args]);
   const ledger = () => docker('exec', '-T', 'database', 'psql', '-XAt', '-v', 'ON_ERROR_STOP=1', '-U', 'starter_install',
     '-d', 'neutral_store', '-c', "SELECT pack_version FROM public.catalog_definition_installs WHERE pack_id='stationery' ORDER BY pack_version").trim();
   const packPath = join(app, 'owned/catalogue/pack.ts'), rules = join(app, 'owned/catalogue-rules.cjs');
