@@ -340,6 +340,15 @@ describe("createStripeApiClient", () => {
 
 
 describe("real SDK to reconciliation diagnostic continuity", () => {
+  it.each([{}, { ownAccountRef: "acct_reader_fixture" }])("carries the optional credential account on successful readback (%j)", async options => {
+    const id = "pi_account_readback";
+    paymentIntentRetrieve.mockResolvedValueOnce({ id, status: "succeeded", amount: 4990, amount_received: 4990, currency: "pln" });
+    const client = createStripeApiClient({ secretKey: "sk_test_dummy", ...options });
+    const result = await createStripePaymentReconciliationProvider(client).readPayment({ providerPaymentId: id });
+    expect(result.status).toBe("succeeded");
+    expect(result.rawPayload.providerAccountRef).toBe(options.ownAccountRef);
+  });
+
   it("retains fine codes without populating the legacy classifier input", async () => {
     paymentIntentRetrieve.mockResolvedValueOnce({ id: "pi_real_shape", status: "requires_payment_method",
       amount: 4990, currency: "pln", latest_charge: "ch_current", payment_method_types: ["card"],
