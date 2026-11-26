@@ -391,8 +391,8 @@ describe("native-review aggregation", () => {
   it("reads the real job graph and finds no job in any workflow that needs native-review", () => {
     const graph = jobNeeds(ci);
     expect(graph.get(RERUN_JOB)).toEqual(["dco", "typecheck", "install-proof", "test", "self-check", "gitleaks"]);
-    expect(graph.get("test")).toEqual(["test-full-shard", "pgtap"]);
-    expect(graph.get("install-proof")).toEqual(["install-pack", "install-packages", "install-browser"]);
+    expect(graph.get("test")).toEqual(["reuse-gate", "scope-gate", "test-full-shard", "pgtap"]);
+    expect(graph.get("install-proof")).toEqual(["reuse-gate", "install-pack", "install-packages", "install-browser"]);
     expect(graph.get("install-packages")).toEqual(["install-pack"]);
     expect(graph.get("install-browser")).toEqual(["install-pack"]);
     expect(graph.get("dco")).toEqual([]);
