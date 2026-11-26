@@ -249,9 +249,17 @@ newer delivered evidence; manual and unknown classifications never heal.
 Historical null classifications remain unproven. Webhook receipts restore the
 first typed fact, receipt time, correlation, digest and tracking snapshot before
 ACK or effects. Polling retains current tracking snapshots for repeated status
-occurrences. Canonical delivered status alone never writes arrival: the existing
-tracking command is invoked once per admitted reference, so an empty reference
-list leaves arrival and alignment untouched while eligible hold healing remains
+occurrences. The tracking command is invoked once per admitted reference.
+For a verified webhook with no incoming tracking references, the optional
+`recordDeliveryWithoutTracking` effect can commit arrival after handoff and
+before accounting or receipt completion. An applied effect returns
+`deliveryReadBack: true` separately from tracking counters. The native effect
+checks exact parcel correlation, one existing provider-bound tracking reference
+and explicit delivery chronology in the same transaction as arrival. A
+dispatch-only match requires a single original parcel and a dispatch binding
+established before the first receipt. A host replay affects arrival only when
+the host restores the original observation. Missing or ambiguous evidence
+leaves arrival unchanged. Eligible hold healing stays
 independent. Tracking namespace serialization precedes reference mutation;
 arrival retains subscription, parcel and alignment-case lock order.
 

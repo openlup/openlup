@@ -9,7 +9,7 @@ type DispatchRef = { orderRef: string; fulfillmentRef: string; dispatchRef: stri
 export interface FulfillmentIngressCounts { invalidTimestamps: number; rejectedCorrelationRefs: number; rejectedTrackingRefs: number; rejectedTrackingUrls: number }
 export type FulfillmentIngressResult = { counts: FulfillmentIngressCounts } & (
   | { kind: "refused"; receiptId: null; refusal: FulfillmentRefusal; diagnostics?: { invalidTimestamp?: true; rejectedCorrelationRefs?: number } }
-  | { kind: "processed" | "ignored" | "superseded"; receiptId: string; observation: FulfillmentObservation; replayed: boolean; trackingRefs: number; trackingReadBacks: number; supersededCause?: string });
+  | { kind: "processed" | "ignored" | "superseded"; receiptId: string; observation: FulfillmentObservation; replayed: boolean; trackingRefs: number; trackingReadBacks: number; deliveryReadBack?: true; supersededCause?: string });
 /** Safe response classes only; the host owns HTTP and localized message text. */
 export function fulfillmentIngressHttpResult(result: FulfillmentIngressResult): { status: 200 | 400 | 403 | 503; messageClass: "accepted" | "bad_request" | "forbidden" | "upstream_unavailable" } {
   if (result.kind !== "refused") return { status: 200, messageClass: "accepted" };
@@ -36,6 +36,11 @@ export async function verifyAndNormalizeFulfillmentObservation(input: {
     acknowledgeDispatchAcceptance(ref: DispatchRef, observation: FulfillmentObservation): Promise<void>;
     recordStatusEvidence(ref: DispatchRef, observation: FulfillmentObservation): Promise<{ replayed: boolean }>;
     effects: EffectInput["port"];
+    /**
+     * Commit delivery only after proving the exact parcel and chronology. Receives the
+     * retained verified observation after handoff, before accounting and receipt completion.
+     */
+    recordDeliveryWithoutTracking?(ref: DispatchRef, observation: FulfillmentObservation): Promise<{ readBack: boolean }>;
     keys: { stock(ref: string): string; handoff(ref: string): string; tracking(eventKey: string, number: string): string };
     issueAccountingInvoice?(ref: string): Promise<void>;
     /** Return a machine identity, never exception prose. */
@@ -74,6 +79,7 @@ export async function verifyAndNormalizeFulfillmentObservation(input: {
   const statusEvidence = await input.lifecycle.recordStatusEvidence(ref, observation);
   let trackingRefs = 0;
   let trackingReadBacks = 0;
+  let deliveryReadBack = false;
   const effectPort: EffectInput["port"] = {
     ...input.lifecycle.effects,
     async markProviderStockConsumed(request) {
@@ -89,11 +95,16 @@ export async function verifyAndNormalizeFulfillmentObservation(input: {
     },
   };
   const localStatus = observation.fact.canonicalStatus;
+  const recordDelivery = input.lifecycle.recordDeliveryWithoutTracking;
   const effects: EffectInput = {
     port: effectPort, localStatus, ids: { orderId: ref.orderRef, fulfillmentOrderId: ref.fulfillmentRef }, observation,
     trackingRefs: uniqueTrackingReferences(observation.trackingRefs).map(tracking => ({ trackingNumber: tracking.trackingNumber, trackingUrl: tracking.publicUrl, carrierKind: tracking.carrierRef, service: tracking.serviceRef })),
     stockIdempotencyKey: input.lifecycle.keys.stock(ref.fulfillmentRef), handoffIdempotencyKey: input.lifecycle.keys.handoff(ref.fulfillmentRef),
     trackingIdempotencyKey: number => input.lifecycle.keys.tracking(observation.eventKey, number),
+    recordDeliveryWithoutTracking: recordDelivery && (!inbound.replayed || inbound.observation) ? async () => {
+      const result = await recordDelivery(ref, observation);
+      deliveryReadBack = result.readBack;
+    } : undefined,
     issueAccountingInvoice: input.lifecycle.issueAccountingInvoice ? () => input.lifecycle.issueAccountingInvoice!(ref.fulfillmentRef) : undefined,
     onTrackingRecorded: result => { trackingRefs += result.replayed ? 0 : 1; trackingReadBacks += result.readBack ? 1 : 0; },
   };
@@ -110,5 +121,5 @@ export async function verifyAndNormalizeFulfillmentObservation(input: {
     }
   }
   await input.localPersistence.markProcessed(observation.eventKey, { status: "processed" });
-  return { kind: "processed", receiptId, counts, observation, replayed: inbound.replayed || statusEvidence.replayed, trackingRefs, trackingReadBacks };
+  return { kind: "processed", receiptId, counts, observation, replayed: inbound.replayed || statusEvidence.replayed, trackingRefs, trackingReadBacks, ...(deliveryReadBack ? { deliveryReadBack: true as const } : {}) };
 }
