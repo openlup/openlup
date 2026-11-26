@@ -168,12 +168,12 @@ export const checkoutContinuationCopy = Object.freeze({
     pl: 'Zmienione dane nie zostały zastosowane i nie utworzono drugiego zamówienia. Wcześniejsze zamówienie tego zakupu jest nieopłacone: dokończ jego płatność w pierwotnej postaci albo anuluj je i zacznij od nowa.',
   },
   starter_checkout_paid: {
-    en: 'The earlier order of this purchase is already paid, so nothing new was placed. Submit again to place a new order.',
-    pl: 'Wcześniejsze zamówienie tego zakupu jest już opłacone, więc nic nowego nie zostało złożone. Wyślij ponownie, aby złożyć nowe zamówienie.',
+    en: 'The earlier order of this purchase is already paid, so nothing new was placed. Choose "Start a different purchase" to buy again.',
+    pl: 'Wcześniejsze zamówienie tego zakupu jest już opłacone, więc nic nowego nie zostało złożone. Wybierz „Rozpocznij inny zakup”, aby kupić ponownie.',
   },
   starter_checkout_not_payable: {
-    en: 'The earlier order of this purchase is closed and cannot be paid here. A recovery e-mail sent earlier may still lead to it; the store handles any duplicate. Nothing new was placed: submit again to place a new order.',
-    pl: 'Wcześniejsze zamówienie tego zakupu jest zamknięte i nie można go tu opłacić. Wysłany wcześniej e-mail z linkiem może jeszcze do niego prowadzić; ewentualnym duplikatem zajmie się sklep. Nic nowego nie zostało złożone: wyślij ponownie, aby złożyć nowe zamówienie.',
+    en: 'The earlier order of this purchase is closed or expired and cannot be paid here. A recovery e-mail sent earlier may still lead to it; the store handles any duplicate. Choose "Start a different purchase" to place a new order.',
+    pl: 'Wcześniejsze zamówienie tego zakupu jest zamknięte lub wygasło i nie można go tu opłacić. Wysłany wcześniej e-mail z linkiem może jeszcze do niego prowadzić; ewentualnym duplikatem zajmie się sklep. Wybierz „Rozpocznij inny zakup”, aby złożyć nowe zamówienie.',
   },
   starter_checkout_request_stale: {
     en: 'The store was busy and placed nothing. Submit the same details again.',
@@ -204,11 +204,25 @@ export const checkoutContinuationCopy = Object.freeze({
     pl: 'Zbyt wiele żądań zamówienia w krótkim czasie. Spróbuj ponownie za {minutes} min.',
   },
   starter_storage_unavailable: {
-    en: 'This browser does not let the page keep your purchase in tab storage. A retry without reloading still reaches the same order, but a reload or changed details may create a second order.',
-    pl: 'Ta przeglądarka nie pozwala stronie zachować zakupu w pamięci karty. Ponowienie bez przeładowania nadal trafi do tego samego zamówienia, ale przeładowanie lub zmiana danych może utworzyć drugie zamówienie.',
+    en: 'This browser does not let the page keep your purchase in tab storage, so this page keeps it until a reload: submitting the form again continues the same purchase. A reload loses it and may create a second order, so do not reload before the order is placed. "Start a new action" starts a new purchase.',
+    pl: 'Ta przeglądarka nie pozwala stronie zachować zakupu w pamięci karty, więc strona przechowuje go do przeładowania: ponowne wysłanie formularza kontynuuje ten sam zakup. Przeładowanie go utraci i może utworzyć drugie zamówienie, więc nie przeładowuj strony przed złożeniem zamówienia. „Rozpocznij nowe działanie” rozpoczyna nowy zakup.',
+  },
+  starter_checkout_storage_unavailable: {
+    en: 'This browser refused to keep the details of this order in tab storage, so nothing was sent.',
+    pl: 'Przeglądarka odmówiła zachowania danych tego zamówienia w pamięci karty, więc niczego nie wysłano.',
   },
   starter_checkout_session_changed: {
     en: 'The earlier order of this purchase was placed while you were signed in differently, so it cannot be reached now. Sign in or out as you were when you placed it, then choose again.',
     pl: 'Wcześniejsze zamówienie tego zakupu złożono przy innym stanie logowania, więc teraz nie można do niego dotrzeć. Zaloguj się lub wyloguj się tak, jak przy jego składaniu, a potem wybierz ponownie.',
   },
+} satisfies Record<string, Localized>);
+
+/** Managed text of the checkout and payment-status status lines, one per storefront state anchor they carry. */
+export const checkoutStateCopy = Object.freeze({
+  awaiting_payment: { en: 'Waiting for payment', pl: 'Oczekuje na płatność' },
+  details_changed: { en: 'Details changed: nothing was sent', pl: 'Dane zmienione: niczego nie wysłano' },
+  awaiting_authority: { en: 'Waiting for the payment outcome', pl: 'Oczekuje na wynik płatności' },
+  declined: { en: 'Payment declined', pl: 'Płatność odrzucona' },
+  paid: { en: 'Paid', pl: 'Opłacone' },
+  paid_pending_activation: { en: 'Paid; activation pending', pl: 'Opłacone; aktywacja w toku' },
 } satisfies Record<string, Localized>);
