@@ -1654,6 +1654,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/browser/storefront-anchors.spec.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/browser/subscription-api.spec.ts",
       "class": "public-output"
     },
@@ -2279,6 +2283,10 @@
     },
     {
       "path": "examples/neutral-store/test/catalogue-upgrade-fixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/checkout-anchors.test.ts",
       "class": "public-output"
     },
     {
@@ -13735,6 +13743,14 @@
     },
     {
       "path": "scripts/reference-journey-egress-guard.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/resource-gate.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/resource-gate.test.ts",
       "class": "public-output"
     },
     {
