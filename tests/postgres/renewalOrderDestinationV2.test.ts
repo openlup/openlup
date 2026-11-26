@@ -351,8 +351,11 @@ it("returns the original binding on direct writer replay with zero writes and re
   expect(original).toStrictEqual(f.ny.binding);
   const beforeReplay = await effects(owner, f);
   await ownerTransaction(owner, async db => {
+    const writeCounts = () => data(db, `SELECT relid, n_tup_ins, n_tup_upd, n_tup_del
+      FROM pg_stat_xact_user_tables ORDER BY relid`);
+    const beforeWrites = await writeCounts();
     expect(await bind(db, f.ctx, target.order, f.ny)).toStrictEqual(original);
-    expect(await data(db, `SELECT relname FROM pg_stat_xact_user_tables WHERE n_tup_ins+n_tup_upd+n_tup_del>0`)).toEqual([]);
+    expect(await writeCounts()).toStrictEqual(beforeWrites);
   });
   expect(await effects(owner, f)).toStrictEqual(beforeReplay);
 
