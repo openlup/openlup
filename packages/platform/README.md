@@ -4098,22 +4098,32 @@ and never in a buyer's bundle: a browser bundle of the entry fails, and the
 - **`createPostgresStorefrontObserver(executor, options?)`.** An observer of
   `kind: "package"` over the platform's own tables, so a PostgreSQL-tier proof
   needs no store-written observer. `executor` is any object with
-  `query(text, values)`, for example `asPostgresSqlExecutor(client)` from
-  `@openlup/platform/data`; the entry imports no database client.
-  `ledger(subject)` runs one read-only statement with the subject as its only
-  parameter and finds the orders of the client whose e-mail equals it
-  case-insensitively: `orders` in any status, `payableOrders` in
-  `pending_payment`, `holds` orders with at least one `held` stock reservation,
-  `attempts` simulator and provider payment attempts on their settlement
-  intents, and `captures` captured simulator attempts and succeeded provider
-  attempts, one per capture. Each count is its own subquery, so no join
-  multiplies another. `exclusive: true` adds `payableOrdersInDatabase()`; set it
-  only when the database is exclusive to one run. The executor needs `SELECT`
-  on `commerce_orders`, `clients`, `fulfillment_inventory_reservations`,
-  `commerce_settlement_intents`, `payment_simulator_attempts` and
-  `payment_provider_attempts`; the observer writes, locks and controls no
-  transaction, so a harness may run it inside `BEGIN READ ONLY`. A count that
-  is not a non-negative safe integer rejects
+  `query(text, values)` over one database session, for example
+  `asPostgresSqlExecutor(await pool.connect())` from `@openlup/platform/data`;
+  the entry imports no database client. `ledger(subject)` finds the orders of
+  the client whose e-mail equals the subject case-insensitively (the subject
+  must carry no surrounding whitespace): `orders` in any status,
+  `payableOrders` in `pending_payment`, `holds` orders with at least one
+  `held` stock reservation, `attempts` simulator attempts and provider
+  attempts on their settlement intents except those `blocked_preflight`
+  (refused before reaching the provider; a `created` one counts), and
+  `captures` captured simulator attempts and succeeded provider attempts, one
+  per capture. Each count is its own subquery, so no join multiplies another.
+  `exclusive: true` adds `payableOrdersInDatabase()`; set it only when the
+  database is exclusive to one run. Every read is one statement in its own
+  `BEGIN READ ONLY` transaction with `SET LOCAL row_security = off`, ended by
+  `COMMIT` or, after any failure, `ROLLBACK`, so call the observer outside a
+  transaction; `ledger` and `payableOrdersInDatabase` read separate snapshots.
+  The reading role needs `SELECT` on `commerce_orders`, `clients`,
+  `fulfillment_inventory_reservations`, `commerce_settlement_intents`,
+  `payment_simulator_attempts` and `payment_provider_attempts` and must own
+  them or have `BYPASSRLS`: the grants alone are not enough, because
+  `clients` and `payment_provider_attempts` have row-level security, and a
+  role it applies to would read zeros. With row security off PostgreSQL
+  refuses such a read, and the observer rejects
+  `storefront_observer_row_security`. A read outside its own transaction (an
+  executor over several sessions) rejects `storefront_observer_session_invalid`;
+  a count that is not a non-negative safe integer rejects
   `storefront_observer_count_invalid`, never zero. A host whose records live
   elsewhere supplies its own observer.
 
