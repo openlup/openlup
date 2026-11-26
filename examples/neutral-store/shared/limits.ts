@@ -163,6 +163,14 @@ export const checkoutContinuationCopy = Object.freeze({
     en: 'The earlier order was cancelled and its stock released. Submit the form to place a new order.',
     pl: 'Wcześniejsze zamówienie zostało anulowane, a towar zwolniony. Wyślij formularz, aby złożyć nowe zamówienie.',
   },
+  changedUnconfirmed: {
+    en: 'Your changed details were not sent. An earlier submit of this purchase may have created an order: complete its payment as first submitted, cancel it and start over, or choose "Start a different purchase" to place a new order with these details.',
+    pl: 'Zmienione dane nie zostały wysłane. Wcześniejsze wysłanie formularza tego zakupu mogło utworzyć zamówienie: dokończ jego płatność w pierwotnej postaci, anuluj je i zacznij od nowa albo wybierz „Rozpocznij inny zakup”, aby złożyć nowe zamówienie z tymi danymi.',
+  },
+  resumeNotFound: {
+    en: 'No earlier order of this purchase was found yet. Submitting the details you first sent continues this purchase; to place an order with other details, choose "Start a different purchase".',
+    pl: 'Nie znaleziono jeszcze wcześniejszego zamówienia tego zakupu. Wysłanie pierwotnie podanych danych kontynuuje ten zakup; aby złożyć zamówienie z innymi danymi, wybierz „Rozpocznij inny zakup”.',
+  },
   starter_checkout_changed: {
     en: 'Your changed details were not applied and no second order was created. An earlier order of this purchase is unpaid: complete its payment as first submitted, or cancel it and start over.',
     pl: 'Zmienione dane nie zostały zastosowane i nie utworzono drugiego zamówienia. Wcześniejsze zamówienie tego zakupu jest nieopłacone: dokończ jego płatność w pierwotnej postaci albo anuluj je i zacznij od nowa.',
