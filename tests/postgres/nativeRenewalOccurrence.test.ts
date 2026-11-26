@@ -2,9 +2,14 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Pool } from "pg";
 import { expect, it } from "vitest";
-import { createCustomerPreferencePrivacyContributor } from "@openlup/platform/identity";
+import type { PgQueryExecutor } from "@openlup/platform/data";
+import type { HttpRequest, HttpResponse } from "@openlup/platform/http";
+import { createCustomerPreferencePrivacyContributor, createPostgresPrivacyStore,
+  createPostgresPrivacyUnitOfWork, createPrivacyEraseHandler } from "@openlup/platform/identity";
+import type { ErasureReceipt } from "@openlup/platform/identity/contracts";
 import { closePostgres, postgresSetupTimeoutMs, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
+import { composeNativePrivacy } from "../../server/runtime/auth/privacyBinding.js";
 import { createSubscriptionsPrivacyContributor } from "../../server/runtime/auth/subscriptionsPrivacyContributor.js";
 import { readPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { installAccountMutations, type AccountMutationsStore, type AccountProfile } from "./customerAccountMutations.fixture.js";
@@ -24,7 +29,8 @@ async function legacyRuntime(owner: Pool, connectionString: string, withServiceR
   const recipient = withServiceRole ? "service_role" : "occurrence_privacy";
   // Keep the grants for the incumbent subscription veto and mounted privacy export.
   await owner.query(`GRANT SELECT, UPDATE ON public.subscriptions TO ${recipient}`);
-  if (!withServiceRole) await owner.query("GRANT EXECUTE ON FUNCTION public.customer_preferences_export(uuid) TO occurrence_privacy");
+  if (!withServiceRole) await owner.query(`GRANT EXECUTE ON FUNCTION public.customer_preferences_export(uuid),
+    public.customer_preferences_prepare_erasure(), public.customer_preferences_erase(uuid) TO occurrence_privacy`);
   const url = new URL(connectionString);
   url.username = "occurrence_privacy";
   url.password = password;
@@ -248,3 +254,89 @@ it.each(["legacy", "legacy-with-service", "bootstrap", "separate", "admin-manage
   },
   postgresSetupTimeoutMs,
 );
+
+it("commits the occurrence retention obligation through mounted legacy erasure with erase-only grants", async () => {
+  const fixture = await install("legacy", "erase-only");
+  const { owner, runtime } = fixture;
+  try {
+    await owner.query(`REVOKE EXECUTE ON FUNCTION public.customer_preferences_export(uuid) FROM occurrence_privacy;
+      GRANT SELECT, UPDATE ON public.clients TO occurrence_privacy;
+      CREATE POLICY occurrence_privacy_clients_select ON public.clients FOR SELECT TO occurrence_privacy USING (true);
+      CREATE POLICY occurrence_privacy_clients_update ON public.clients FOR UPDATE TO occurrence_privacy USING (true) WITH CHECK (true);
+      GRANT SELECT ON public.platform_human_memberships, public.platform_control_operators TO occurrence_privacy;
+      GRANT UPDATE (membership_revocation_reason) ON public.platform_human_memberships TO occurrence_privacy;
+      GRANT SELECT, INSERT, UPDATE ON public.identity_privacy_erasures TO occurrence_privacy;
+      GRANT SELECT, DELETE ON public.customer_identity_challenges TO occurrence_privacy;
+      GRANT EXECUTE ON FUNCTION public.identity_privacy_required_contributor_ids(), public.identity_privacy_reconciled_contributor_ids(uuid),
+        public.fulfillment_erase_parcel_contacts(uuid), public.customer_billing_prepare_erasure(), public.customer_billing_erase(uuid),
+        public.communication_event_prepare_erasure(), public.communication_event_privacy(uuid,boolean),
+        public.commerce_destination_v2_receipts_erase(uuid), public.commerce_destination_v2_erase(uuid),
+        public.customer_saved_addresses_prepare_erasure(), public.customer_saved_addresses_erase(uuid),
+        public.tax_calculation_erase_v1(uuid) TO occurrence_privacy`);
+    expect((await runtime.query(`SELECT session_user AS login,
+      coalesce((SELECT pg_has_role(session_user,oid,'MEMBER') FROM pg_roles WHERE rolname='service_role'),false) AS service,
+      has_function_privilege('public.customer_preferences_export(uuid)','EXECUTE') AS export,
+      has_function_privilege('public.customer_preferences_prepare_erasure()','EXECUTE') AS prepare,
+      has_function_privilege('public.customer_preferences_erase(uuid)','EXECUTE') AS erase,
+      has_column_privilege('public.subscription_cycle_occurrences','client_id','SELECT') AS carrier`)).rows[0])
+      .toEqual({ login: "occurrence_privacy", service: false, export: false, prepare: true, erase: true, carrier: false });
+
+    const principalId = randomUUID();
+    await owner.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES ($1,'admin@example.invalid')", [principalId]);
+    await owner.query(`INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at)
+      VALUES ($1,'admin','active','legacy',now())`, [principalId]);
+    const store = createPostgresPrivacyStore();
+    const connected = createPostgresPrivacyUnitOfWork({ connectionString: runtime.options.connectionString! }, { pool: runtime });
+    const failures: string[] = [];
+    const unitOfWork = { run: <T>(work: (db: PgQueryExecutor) => Promise<T>) => connected.run(db => work({
+      async query(sql, values) {
+        try { return await db.query(sql, values); }
+        catch (error) {
+          failures.push(`${sql.trim().split("\n")[0]}: ${error instanceof Error ? error.message : String(error)}`);
+          throw error;
+        }
+      },
+    })) };
+    const { operations } = composeNativePrivacy({ store, unitOfWork });
+    const handler = createPrivacyEraseHandler({ operations, authorizeAdmin: async () => ({ ok: true, principalId, role: "admin", isMachineActor: false }) });
+    const erase = async (contactId: string) => {
+      const idempotencyKey = randomUUID();
+      let status = 0, body: { ok: boolean; data?: ErasureReceipt } | undefined;
+      const res = { setHeader() {}, status(code: number) { status = code; return res; },
+        json(value: typeof body) { body = value; } } as HttpResponse;
+      await handler({ method: "POST", body: { subject: { kind: "contact", contactId }, idempotencyKey } } as HttpRequest, res);
+      expect({ status, body }, failures.join("\n")).toMatchObject({ status: 200, body: { ok: true, data: { outcome: "ERASED" } } });
+      const { rows } = await owner.query("SELECT retained_obligations FROM public.identity_privacy_erasures WHERE idempotency_key=$1", [idempotencyKey]);
+      expect(rows).toEqual([{ retained_obligations: body?.data?.obligations }]);
+      return body!.data!.obligations;
+    };
+    const seed = async () => {
+      const client = randomUUID(), subscription = randomUUID();
+      await insert(owner, "clients", { id: client, email: `${client}@example.invalid` });
+      await insert(owner, "subscriptions", { id: subscription, client_id: client, status: "cancelled", cadence_days: 7, next_cycle_at: AT });
+      return { client, subscription };
+    };
+    const empty = await seed();
+    const emptyObligations = await erase(empty.client);
+    expect(emptyObligations.map(value => value.resource)).toContain("subscriptions.lifecycle");
+    expect(emptyObligations.map(value => value.resource)).not.toContain("subscriptions.occurrence-evidence");
+
+    const populated = await seed(), cycleKey = randomUUID();
+    await insert(owner, occurrence, { cycle_key: cycleKey, subscription_id: populated.subscription, client_id: populated.client,
+      original_anchor_at: AT, effective_due_at: AT, cadence_seconds: 604800, rail: "legacy", lifecycle: "stopped", is_current: true });
+    const evidence = { owner: "subscriptions", resource: "subscriptions.occurrence-evidence", disposition: "retain",
+      reasonCode: "RENEWAL_OCCURRENCE_RETENTION", remote: false };
+    const populatedObligations = await erase(populated.client);
+    expect(populatedObligations.filter(value => value.resource === evidence.resource)).toEqual([evidence]);
+    expect(populatedObligations.filter(value => value.resource !== evidence.resource)).toEqual(emptyObligations);
+
+    // Export authority does not imply permission to assess or erase.
+    await owner.query(`REVOKE EXECUTE ON FUNCTION public.customer_preferences_prepare_erasure(), public.customer_preferences_erase(uuid) FROM occurrence_privacy;
+      GRANT EXECUTE ON FUNCTION public.customer_preferences_export(uuid) TO occurrence_privacy`);
+    const contributor = createSubscriptionsPrivacyContributor();
+    const subject = { contactId: populated.client, principalId: null, identity: {} };
+    expect((await contributor.export(runtime, subject)).data).toEqual([{ id: populated.subscription, status: "cancelled",
+      renewalOccurrences: [expect.objectContaining({ cycleKey })] }]);
+    await expect(contributor.assessErasure(runtime, subject)).rejects.toMatchObject({ code: "PRIVACY_ASSESSMENT_UNAVAILABLE" });
+  } finally { await fixture.close(); }
+}, postgresSetupTimeoutMs);

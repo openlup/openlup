@@ -264,10 +264,12 @@ and operation in the caller's transaction. V3 due instants earlier than the
 original anchor return `renewal_cycle_unavailable` at `/effectiveDueAt`.
 An unavailable key or rule confers no renewal authority.
 
-The Subscriptions privacy contributor exports occurrence evidence and declares
-its retention through the incumbent privacy export privilege. Qualified
-connected-store transfer preserves occurrence keys, selected pairs and retained
-cancellation evidence.
+The Subscriptions privacy contributor exports occurrence evidence through the
+incumbent privacy export privilege. Erasure assessment uses the incumbent
+erasure preparation privilege to verify retention for the subject. Unavailable
+evidence refuses assessment before the erasure receipt can be committed.
+Qualified connected-store transfer preserves occurrence keys, selected pairs
+and retained cancellation evidence.
 
 The subscription-notice forward preserves the reminder ledger's renewal-day
 identity and stores new queued charge facts in `subscription_reminder_ledger.renewal_at`;

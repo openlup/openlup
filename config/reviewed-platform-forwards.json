@@ -9799,6 +9799,11 @@
             "signature": "public.customer_preferences_export(uuid)",
             "beforeSha256": "0b0eadf68d764ddaa24fb654015760ff30f8bf79798f6478a27091efc71b2da6",
             "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_preferences_prepare_erasure()",
+            "beforeSha256": "80ffd6d4b8637fe5b79a1fece39e266caeb445798cf18b193e51a273c3755773",
+            "searchPath": "pg_catalog, pg_temp"
           }
         ],
         "createdFunctions": [
@@ -9812,6 +9817,10 @@
           },
           {
             "signature": "public.subscriptions__export_renewal_occurrences(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscriptions__has_renewal_occurrence_evidence(uuid)",
             "searchPath": "pg_catalog, pg_temp"
           }
         ],
@@ -14210,12 +14219,17 @@
     },
     {
       "path": "db/platform/migrations/20261129140000_native_renewal_occurrence_guards.sql",
-      "sha256": "c7ad1f3c87977f39f6e7e7751f7b3b0cd03918c3910ce648c3601c1cd0c5f988",
+      "sha256": "85d9e62e2fb71c2df658f6482e7c92f81b7fa3d52290b86da7a99781789f89ba",
       "functions": [
         {
           "signature": "public.customer_preferences_export(uuid)",
           "beforeSha256": "0b0eadf68d764ddaa24fb654015760ff30f8bf79798f6478a27091efc71b2da6",
           "afterSha256": "b09ba49f218967419aed3d43d61e5cc8530d5bb17fc55fce7414af9d383e1041"
+        },
+        {
+          "signature": "public.customer_preferences_prepare_erasure()",
+          "beforeSha256": "80ffd6d4b8637fe5b79a1fece39e266caeb445798cf18b193e51a273c3755773",
+          "afterSha256": "5d87eeb181d1e540584bbe7d58f931db4940692b0791f64528b77d9506597088"
         },
         {
           "signature": "public.subscriptions__read_renewal_occurrence(uuid,uuid,uuid)",
@@ -14231,6 +14245,11 @@
           "signature": "public.subscriptions__export_renewal_occurrences(uuid)",
           "beforeSha256": null,
           "afterSha256": "33849ce02c5448aa5aabe24e23d3094a7da987cb26add4d25253691c211ea408"
+        },
+        {
+          "signature": "public.subscriptions__has_renewal_occurrence_evidence(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "6e179a8620cf507335a82c6c3f02b354bbd5b3dd81047754d955feeed9b7f921"
         }
       ]
     }

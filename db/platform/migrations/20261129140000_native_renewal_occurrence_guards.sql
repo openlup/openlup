@@ -113,16 +113,44 @@ BEGIN
 END;
 $$;
 
+CREATE FUNCTION public.subscriptions__has_renewal_occurrence_evidence(p_client uuid)
+RETURNS boolean LANGUAGE plpgsql VOLATILE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE caller name:=coalesce(nullif(current_setting('role'),'none'),session_user::text)::name;
+BEGIN
+ IF NOT (has_column_privilege(caller,'public.subscriptions','client_id','SELECT')
+   AND has_column_privilege(caller,'public.subscriptions','status','SELECT'))
+   OR EXISTS (SELECT 1 FROM pg_class c JOIN pg_roles r ON r.rolname=caller
+     WHERE c.oid='public.subscriptions'::regclass AND c.relrowsecurity
+       AND NOT (r.rolsuper OR r.rolbypassrls OR (NOT c.relforcerowsecurity AND pg_has_role(caller,c.relowner,'USAGE'))))
+ THEN RAISE EXCEPTION 'renewal_occurrence_evidence_unavailable' USING ERRCODE='42501'; END IF;
+ LOCK TABLE public.subscription_cycle_occurrences IN SHARE MODE;
+ RETURN EXISTS (SELECT 1 FROM public.subscription_cycle_occurrences WHERE client_id=p_client);
+END;
+$$;
+
+-- The transaction-local setting supplies only the subject to the already-granted
+-- prepare function. It grants no authority and never alters the erasure writes.
+CREATE OR REPLACE FUNCTION public.customer_preferences_prepare_erasure()
+RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE subject text:=nullif(current_setting('openlup.renewal_occurrence_erasure_client',true),'');
+BEGIN
+ LOCK TABLE public.customer_payment_preferences,public.customer_delivery_preferences IN SHARE ROW EXCLUSIVE MODE;
+ IF subject IS NULL THEN RETURN true; END IF;
+ RETURN public.subscriptions__has_renewal_occurrence_evidence(subject::uuid);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.subscriptions__has_renewal_occurrence_evidence(uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.subscriptions__export_renewal_occurrences(uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.subscriptions__read_renewal_occurrence(uuid,uuid,uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.subscriptions__lock_renewal_occurrence(uuid,uuid,uuid) FROM PUBLIC;
 
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.subscriptions__read_renewal_occurrence(uuid,uuid,uuid), public.subscriptions__lock_renewal_occurrence(uuid,uuid,uuid), public.subscriptions__export_renewal_occurrences(uuid) FROM anon;';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.subscriptions__read_renewal_occurrence(uuid,uuid,uuid), public.subscriptions__lock_renewal_occurrence(uuid,uuid,uuid), public.subscriptions__export_renewal_occurrences(uuid), public.subscriptions__has_renewal_occurrence_evidence(uuid) FROM anon;';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.subscriptions__read_renewal_occurrence(uuid,uuid,uuid), public.subscriptions__lock_renewal_occurrence(uuid,uuid,uuid), public.subscriptions__export_renewal_occurrences(uuid) FROM authenticated;';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.subscriptions__read_renewal_occurrence(uuid,uuid,uuid), public.subscriptions__lock_renewal_occurrence(uuid,uuid,uuid), public.subscriptions__export_renewal_occurrences(uuid), public.subscriptions__has_renewal_occurrence_evidence(uuid) FROM authenticated;';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.subscriptions__read_renewal_occurrence(uuid,uuid,uuid), public.subscriptions__lock_renewal_occurrence(uuid,uuid,uuid), public.subscriptions__export_renewal_occurrences(uuid) FROM service_role;';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.subscriptions__read_renewal_occurrence(uuid,uuid,uuid), public.subscriptions__lock_renewal_occurrence(uuid,uuid,uuid), public.subscriptions__export_renewal_occurrences(uuid), public.subscriptions__has_renewal_occurrence_evidence(uuid) FROM service_role;';
 END IF; END; $$;
