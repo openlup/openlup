@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryEnvelope, migrationRegistryUnion } from './agent-review-derived.mjs';
 import { syncSqlReference } from './agent-review-generators.mjs';
 import { applyMigrationReslot, assertAppendOnlyLandingSlots, assertNoAuthoredSlotReferences, landingMerge, landingSlotPlan, nextFreeMigrationSlot } from './agent-review-landing.mjs';
@@ -30,10 +30,12 @@ import {
 let f: DerivedFixture;
 
 beforeAll(async () => {
-  f = await createDerivedFixture({ runInitialLanding: true });
+  vi.stubEnv('npm_execpath', npmCli);
+  f = await createDerivedFixture({ runInitialLanding: true, stubNpmEnv: false });
 }, 180000);
 
 afterAll(() => {
+  vi.unstubAllEnvs();
   f?.cleanup();
 });
 
@@ -338,7 +340,7 @@ it('re-slots migration paths in the manifest, reviewed forwards and publication 
 });
 
 it('lands an inverted migration only with explicit re-slot', async () => {
-  const f = await createDerivedFixture({ runInitialLanding: false });
+  const f = await createDerivedFixture({ runInitialLanding: false, stubNpmEnv: false });
   const ignoredMirror = 'packages/platform/sql/20990101020002_landing_fixture.sql';
   try {
     const exclude = f.read('.git/info/exclude');
@@ -416,8 +418,7 @@ it('lands an inverted migration only with explicit re-slot', async () => {
     expect(tamperedProof.kind).toBe('resolution');
     expect(tamperedProof.resolution).toContain(later);
   } finally {
-    // Keep the suite's npm environment stub in place for its remaining cases.
-    rmSync(f.root, { recursive: true, force: true });
+    f.cleanup();
   }
 }, 120_000);
 
@@ -683,6 +684,7 @@ it('keeps both SQL forwards when main added the same migration filename', async 
 }, 90_000);
 
 it.each(['clean', 'derived-carrier'])('skips Docker inventory refresh on non-SQL PR (%s) even when main changed SQL and inventory', async mode => {
+  expect(process.env.npm_execpath).toBe(npmCli);
   try {
     // Build a main commit that changed SQL, registries, publication catalogue, AND measured inventory.
     f.git('reset', '--hard', f.main); f.git('checkout', '-q', '--detach', f.main);
