@@ -61,10 +61,10 @@ function renewalCatalogs() {
   for (const plan of [candidate, candidate.qualified, candidate.qualifiedAdmin]) {
     plan.forward = plan.forward.slice(0, plan.forward.findIndex(entry => entry.file === forward.file) + 1);
   }
-  candidate.qualified.objectInventorySha256.bootstrapMigrator.withRestore = "ba4e5f6d65f59a8ddd7d4921a093f638d58987275e1d42ca4a31739fa651b32e";
+  candidate.qualified.objectInventorySha256.bootstrapMigrator.withRestore = "6df5df8847d0d889c7cfafd0341d6e8afa3bbe30ea55d73cce5963464509fb48";
   const prefix = structuredClone(candidate);
   for (const plan of [prefix, prefix.qualified, prefix.qualifiedAdmin]) expect(plan.forward.pop()).toEqual(forward);
-  prefix.qualified.objectInventorySha256.bootstrapMigrator.withRestore = "705a544980f4094cec2a093b1287c76acb71ad79386596387adc7833d3acf794";
+  prefix.qualified.objectInventorySha256.bootstrapMigrator.withRestore = "bb5b2abb5a1cad98e598cfdb2bb39ba73f13eaa7160ff942419036359ed1487b";
   return { candidate, prefix };
 }
 
