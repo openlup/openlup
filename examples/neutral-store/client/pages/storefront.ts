@@ -8,7 +8,7 @@ import { selectCatalogueProduct } from '../../shared/catalogue-products.ts';
 import { append, button, el, link } from '../dom.ts';
 import { field, refusal } from '../forms.ts';
 import { storefrontAnchor } from '@openlup/platform/storefront';
-import { decideSelectionEntry, isSelectionEntrySku, parseSelectionEntry, selectionEntryCopy, withoutSelectionEntry,
+import { decideSelectionEntry, parseSelectionEntry, selectionEntryCopy, withoutSelectionEntry,
   type SelectionEntryCatalogue } from '../../shared/selection-entry.ts';
 
 export function homePage(context: PageContext): HTMLElement {
@@ -170,13 +170,19 @@ function selectionCatalogue(context: PageContext): SelectionEntryCatalogue {
   return context.catalogueSettled === false ? 'loading' : 'ready';
 }
 
-/** The entry's own refusal: the cart's texts per code, and a SKU only when it matched the grammar. */
+/** The entry's own refusal: the cart's texts per code. A SKU is printed only when a product has it, so a link never places its own words on the page. */
 function selectionRefusal(context: PageContext, issues: readonly OfferIssue[]): HTMLElement {
   const text = (key: keyof typeof selectionEntryCopy) => selectionEntryCopy[key][context.locale];
-  return el('section', { class: 'panel selection-entry', 'aria-labelledby': 'selection-entry-refusal' },
-    el('h2', { id: 'selection-entry-refusal' }, text('refusalHeading')), el('p', {}, text('refusalIntro')),
+  const known = (sku: string | undefined) => sku !== undefined && context.catalogueProducts.some(product => product.sku === sku);
+  const status = el('div', { role: 'status' });
+  const section = el('section', { class: 'panel selection-entry', 'aria-labelledby': 'selection-entry-refusal' },
+    el('h2', { id: 'selection-entry-refusal' }, text('refusalHeading')), status);
+  const details = [el('p', {}, text('refusalIntro')),
     el('ul', {}, ...issues.map(issue => el('li', {}, context.t(issue.code), issue.limit === undefined ? null : ` (${issue.limit})`,
-      issue.sku !== undefined && isSelectionEntrySku(issue.sku) ? el('span', {}, ' · ', el('code', {}, issue.sku)) : null))));
+      known(issue.sku) ? el('span', {}, ' · ', el('code', {}, issue.sku!)) : null)))];
+  // Filled once attached, so the polite status announces a refusal shown on load.
+  queueMicrotask(() => status.replaceChildren(...details));
+  return section;
 }
 
 function selectionSummary(context: PageContext, cart: Cart): HTMLElement {
@@ -201,13 +207,16 @@ function selectionQuestion(context: PageContext, held: Cart, offered: Cart): HTM
     context.navigate(entryAddress(), { replace: true });
   });
   const keep = button(text('keepCart'), () => context.navigate(entryAddress(), { replace: true }), 'secondary');
-  const section = el('section', { class: 'panel selection-entry', tabindex: -1, 'aria-labelledby': 'selection-entry-question' },
+  const section = el('section', { class: 'panel selection-entry', tabindex: -1, 'aria-labelledby': 'selection-entry-question',
+    'data-selection-entry-question': '' },
     el('h2', { id: 'selection-entry-question' }, text('questionHeading')), el('p', {}, text('questionIntro')),
     el('h3', {}, text('offered')), selectionSummary(context, offered),
     el('h3', {}, text('current')), selectionSummary(context, held),
     el('div', { class: 'actions' }, use, keep));
   const offer = location.search;
-  if (focusedOffer !== offer) {
+  // A redraw replaces the focused question; focus follows it to the new one.
+  const redrawn = document.activeElement instanceof Element && document.activeElement.closest('[data-selection-entry-question]') !== null;
+  if (focusedOffer !== offer || redrawn) {
     focusedOffer = offer;
     // After the shell is attached and has placed its own focus.
     queueMicrotask(() => { if (section.isConnected) section.focus(); });

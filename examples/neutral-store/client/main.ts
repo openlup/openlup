@@ -7,6 +7,7 @@ import { assertConfig } from '../shared/config.ts';
 import { productPath, resolveRoute, routes, type RouteKey } from '../shared/routes.ts';
 import { configuration, storefrontCatalogue } from './api.ts';
 import type { StarterCatalogueItem } from '../shared/catalogue-products.ts';
+import { settleCatalogueRequest } from '../shared/selection-entry.ts';
 import { createBrowserCart } from './cart.ts';
 import { append, el, link } from './dom.ts';
 import type { PageContext } from './context.ts';
@@ -125,7 +126,7 @@ async function start(): Promise<void> {
   window.addEventListener('beforeunload', () => cart.close());
   renderReady = true;
   render(false);
-  void storefrontCatalogue().then(result => {
+  void settleCatalogueRequest(storefrontCatalogue, result => {
     if (result.ok) {
       products = result.products;
       cart.reconcile();
@@ -135,8 +136,10 @@ async function start(): Promise<void> {
       products = config.offer.products;
       cart.reconcile();
     }
-  }).finally(() => {
+  }).then(failure => {
     // Every outcome settles the catalogue, so a waiting selection entry is decided at most one action timeout later.
+    // A request that rejects or an answer that cannot be applied is unavailable, never the configured products.
+    if (failure) catalogueError = failure;
     catalogueSettled = true;
     if (['home', 'catalog', 'product', 'cart'].includes(resolveRoute(location.pathname, config.market).key)) render(false);
   });

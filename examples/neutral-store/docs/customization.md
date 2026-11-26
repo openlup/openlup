@@ -95,12 +95,15 @@ An address is an entry only when it carries at least one `line`. Exactly three
 parameters are read:
 
 - `line=<sku>:<quantity>`, repeated for several lines and split at the last `:`.
-  The SKU matches `^[A-Za-z0-9._:-]{1,128}$`; the quantity is a whole number without
-  sign, fraction or leading zeros. A `+` in a hand-written link decodes to a space
-  and is refused, so encode it as `%2B`. At most 50 lines are read.
+  The SKU matches `^[A-Za-z0-9._:-]{1,128}$`. The quantity is `0` or a whole
+  number of at most 9 digits without sign, fraction or leading zeros; the cart's
+  own rules then refuse `0` and anything above 99 or the store's limits. A `+` is
+  never valid, encoded or not: no grammar admits it. At most 50 lines are read.
 - `mode`: `one_time` (the default when absent) or `subscription`, given at most once.
-- `cadence`: subscription cadence in days, given at most once; absent means
-  `offer.defaultCadenceDays`. It is ignored, and removed, in one-time mode.
+- `cadence`: subscription cadence in days, given at most once: a positive whole
+  number of at most 9 digits without sign or leading zeros, which the store must
+  offer for the selection. Absent means `offer.defaultCadenceDays`. It is ignored,
+  and removed, in one-time mode.
 
 The selection is checked with `parseCart` and `validateCart` against the storefront
 catalogue, or against the configured products when the store has no catalogue
@@ -112,8 +115,9 @@ nothing; a catalogue error shows its refusal and leaves the address unchanged.
 - A cart that holds anything else shows a question, **Use the selection from the
   link** or **Keep my cart**. Until the buyer answers, the page offers no other
   cart control and no checkout. The entry never merges lines.
-- An invalid selection shows the entry's own refusal with the cart's texts and
-  writes nothing. It never prints raw link text.
+- An invalid selection shows the entry's own refusal with the cart's texts, as a
+  polite status, and writes nothing. It never prints raw link text: a SKU is shown
+  only when a product has it.
 
 Once decided, only `line`, `mode` and `cadence` leave the address, with one
 history replacement. Every other parameter, including any price, amount or
@@ -124,8 +128,9 @@ while no question is open.
 A store that owns `client/pages/storefront.ts` or `client/main.ts` keeps its copy on
 upgrade. To add the entry, import `decideSelectionEntry` and
 `withoutSelectionEntry` from `shared/selection-entry.ts` in the cart page, and set
-`catalogueSettled` in `PageContext` from the catalogue request. Without it, the
-entry validates before the catalogue answers.
+`catalogueSettled` in `PageContext` from the catalogue request, settling a rejected
+request as unavailable with `settleCatalogueRequest`. Without it, the entry
+validates before the catalogue answers.
 
 ## Support contact
 

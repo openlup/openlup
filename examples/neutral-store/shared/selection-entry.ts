@@ -18,8 +18,6 @@ const cadenceGrammar = /^[1-9][0-9]{0,8}$/;
 const maximumLines = 50;
 const read = new Set<string>(Object.values(selectionEntryParameter));
 
-export const isSelectionEntrySku = (sku: string): boolean => skuGrammar.test(sku);
-
 export interface SelectionEntrySelection {
   mode: PurchaseMode;
   /** Subscription cadence in days; absent or null means the store's default cadence. */
@@ -85,6 +83,19 @@ export function parseSelectionEntry(config: StoreConfig, query: URLSearchParams)
   }
   if (issues.length) return refuse(issues);
   return { kind: 'read', candidate: { schemaVersion: 1, configuration: config.id, mode, cadenceDays, lines }, ignored };
+}
+
+/**
+ * Runs the storefront catalogue request and applies its answer. A request that rejects, or an answer that cannot be
+ * applied, settles as `starter_catalogue_unavailable`, so the entry refuses instead of using the configured products.
+ */
+export async function settleCatalogueRequest<T>(request: () => Promise<T>, apply: (result: T) => void): Promise<'starter_catalogue_unavailable' | undefined> {
+  try {
+    apply(await request());
+    return undefined;
+  } catch {
+    return 'starter_catalogue_unavailable';
+  }
 }
 
 /** `unbound`: the store has no catalogue binding and validates against its configured products. */
