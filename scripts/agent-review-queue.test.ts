@@ -1607,16 +1607,16 @@ describe('queue hygiene helpers (toolchain probe, CLI error reporting, 5xx retry
     const dir = mkdtempSync(join(tmpdir(), 'openlup-probe-toolchain-'));
     try {
       const outputPath = join(dir, 'github-output.txt');
-      const v3Receipt = (derived: boolean) => {
+      const v3Receipt = (proof?: { kind: string; derived?: boolean }) => {
         const rules = { version: 3, base: digest([]), head: digest([]) };
         const base1 = '1'.repeat(40);
         const head1 = '2'.repeat(40);
         const tree1 = '3'.repeat(40);
         const intent = { risk: 'routine', criteria: 'Probe test' };
         const firstCandidate = {
-          base: derived ? base1 : receipt.base,
-          head: derived ? head1 : receipt.head,
-          tree: derived ? tree1 : receipt.tree,
+          base: proof ? base1 : receipt.base,
+          head: proof ? head1 : receipt.head,
+          tree: proof ? tree1 : receipt.tree,
           changedPaths: observed.changedPaths,
           modeChanged: false,
           clean: true,
@@ -1624,7 +1624,7 @@ describe('queue hygiene helpers (toolchain probe, CLI error reporting, 5xx retry
         };
         const prepared = prepareCandidate(null, { ...firstCandidate, authorSessionId: 'author', intent }, time);
         const completed = recordReport(prepared, { cold: true, tree: firstCandidate.tree, verdict: 'PASS', documentation: 'Checked.', findings: [], closes: [], reviewer: 'reviewer-1' }, time);
-        if (!derived) return receiptBody(receiptSummary(completed, receipt.pr, time));
+        if (!proof) return receiptBody(receiptSummary(completed, receipt.pr, time));
         const integrated = prepareCandidate(completed, {
           base: receipt.base,
           head: receipt.head,
@@ -1640,30 +1640,48 @@ describe('queue hygiene helpers (toolchain probe, CLI error reporting, 5xx retry
             kind: 'integration',
             previous: digest(completed.history),
             from: { base: base1, head: head1, tree: tree1 },
-            proof: { kind: 'derived', tree: receipt.tree, derived: true },
+            proof: { ...proof, tree: receipt.tree },
           },
         }, time);
         return receiptBody(receiptSummary(integrated, receipt.pr, time));
       };
-      const makeApi = (comments: unknown[], fail = false) => ({
+      const makeApi = (comments: unknown[], { fail = false, failPermission = false, permission = 'write' } = {}) => ({
         get: vi.fn(async (path: string) => {
           if (fail) throw new Error('network error');
           if (path.includes('/pulls/')) return { number: 12, head: { sha: receipt.head } };
           if (path.includes('/issues/')) return comments;
-          if (path.includes('/collaborators/')) return { permission: 'write' };
+          if (path.includes('/collaborators/')) {
+            if (failPermission) throw new Error('permission lookup HTTP 503');
+            return { permission };
+          }
           throw new Error(`unexpected ${path}`);
         }),
       });
       const prEvent = { number: 12, repository: { private: false } };
       const prEnv = { GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_EVENT_NAME: 'pull_request', GITHUB_OUTPUT: outputPath };
+      const prEnvNoOut = { GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_EVENT_NAME: 'pull_request' };
       const mgEvent = { repository: { private: false }, merge_group: { head_ref: `refs/heads/gh-readonly-queue/main/pr-12-${receipt.head}` } };
       const mgEnv = { GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_EVENT_NAME: 'merge_group' };
 
+      // Truly unreceipted pull_request fast-fails without polling -> false
       await expect(probeToolchainNeeded({ event: prEvent, env: prEnv, api: makeApi([]), now: () => time })).resolves.toBe(false);
-      await expect(probeToolchainNeeded({ event: prEvent, env: { ...prEnv, GITHUB_OUTPUT: undefined }, api: makeApi([comment({ body: v3Receipt(false) })]), now: () => time })).resolves.toBe(false);
-      await expect(probeToolchainNeeded({ event: prEvent, env: prEnv, api: makeApi([comment({ body: v3Receipt(true) })]), now: () => time })).resolves.toBe(true);
+      // Clean non-derived v3 receipt -> false
+      await expect(probeToolchainNeeded({ event: prEvent, env: prEnvNoOut, api: makeApi([comment({ body: v3Receipt() })]), now: () => time })).resolves.toBe(false);
+      // Derived flag or derived/portable-derived proof kinds -> true
+      await expect(probeToolchainNeeded({ event: prEvent, env: prEnv, api: makeApi([comment({ body: v3Receipt({ kind: 'resolution', derived: true }) })]), now: () => time })).resolves.toBe(true);
+      await expect(probeToolchainNeeded({ event: prEvent, env: prEnvNoOut, api: makeApi([comment({ body: v3Receipt({ kind: 'derived' }) })]), now: () => time })).resolves.toBe(true);
+      await expect(probeToolchainNeeded({ event: prEvent, env: prEnvNoOut, api: makeApi([comment({ body: v3Receipt({ kind: 'portable-derived' }) })]), now: () => time })).resolves.toBe(true);
+      // merge_group with no receipts polls -> true
       await expect(probeToolchainNeeded({ event: mgEvent, env: mgEnv, api: makeApi([]), now: () => time })).resolves.toBe(true);
-      await expect(probeToolchainNeeded({ event: prEvent, env: { ...prEnv, GITHUB_OUTPUT: undefined }, api: makeApi([], true), now: () => time })).resolves.toBe(true);
+      // invalidComments (malformed receipt marker) polls -> true
+      await expect(probeToolchainNeeded({ event: prEvent, env: prEnvNoOut, api: makeApi([comment({ body: `${ECONOMY_RECEIPT_MARKER}\nnot-a-fence` })]), now: () => time })).resolves.toBe(true);
+      // currentHeadComments without an admitted receipt (FAIL verdict or non-write author) polls -> true
+      await expect(probeToolchainNeeded({ event: prEvent, env: prEnvNoOut, api: makeApi([comment({ body: body({ ...receipt, verdict: 'FAIL' }) })]), now: () => time })).resolves.toBe(true);
+      await expect(probeToolchainNeeded({ event: prEvent, env: prEnvNoOut, api: makeApi([comment({ body: v3Receipt() })], { permission: 'read' }), now: () => time })).resolves.toBe(true);
+      // Permission lookup error fails safe -> true
+      await expect(probeToolchainNeeded({ event: prEvent, env: prEnvNoOut, api: makeApi([comment({ body: v3Receipt() })], { failPermission: true }), now: () => time })).resolves.toBe(true);
+      // Unexpected API error fails safe -> true
+      await expect(probeToolchainNeeded({ event: prEvent, env: prEnvNoOut, api: makeApi([], { fail: true }), now: () => time })).resolves.toBe(true);
       expect(readFileSync(outputPath, 'utf8')).toBe('needs_install=false\nneeds_install=true\n');
     } finally {
       rmSync(dir, { recursive: true, force: true });

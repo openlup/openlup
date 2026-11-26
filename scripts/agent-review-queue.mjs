@@ -197,15 +197,24 @@ export async function probeToolchainNeeded({ event, env = process.env, api, now 
     demand(Number.isSafeInteger(prNumber) && prNumber > 0, 'event must name one PR on main');
     const pr = await api.get(`${root}/pulls/${prNumber}`);
     demand(SHA.test(pr?.head?.sha ?? ''), 'PR head SHA is invalid');
-    const receipts = await readReceipts(api, root, prNumber, pr.head.sha, now(), new Map(), undefined, undefined, { readComments });
-    const hasDerivedIntegration = receipts.some(receipt =>
+    const invalidComments = [];
+    const currentHeadComments = [];
+    const receipts = await readReceipts(api, root, prNumber, pr.head.sha, now(), new Map(), invalidComments, currentHeadComments, {
+      readComments,
+      onPermissionError: error => { throw error; },
+    });
+    const hasDerivedProof = receipts.some(receipt =>
       receipt?.version === 3
       && Array.isArray(receipt.session?.history)
       && receipt.session.history.some(entry =>
         entry?.type === 'prepare'
-        && entry.candidate?.coverage?.kind === 'integration'
-        && entry.candidate?.coverage?.proof?.derived === true));
-    needed = hasDerivedIntegration || (Boolean(group) && receipts.length === 0);
+        && (
+          entry.candidate?.coverage?.proof?.derived === true
+          || ['derived', 'portable-derived'].includes(entry.candidate?.coverage?.proof?.kind)
+        )));
+    const willPoll = invalidComments.length > 0
+      || (receipts.length === 0 && (Boolean(group) || currentHeadComments.length > 0));
+    needed = hasDerivedProof || willPoll;
   } catch {
     needed = true;
   }
@@ -214,7 +223,7 @@ export async function probeToolchainNeeded({ event, env = process.env, api, now 
 }
 
 export async function readReceipts(api, root, pr, head, now, permissions = new Map(), invalidComments, currentHeadComments, {
-  readComments = readReceiptComments, receiptIds,
+  readComments = readReceiptComments, receiptIds, onPermissionError,
 } = {}) {
   const comments = [...await readComments(api, root, pr)];
   const receipts = [];
@@ -230,7 +239,10 @@ export async function readReceipts(api, root, pr, head, now, permissions = new M
         const access = await api.get(`${root}/collaborators/${encodeURIComponent(login)}/permission`);
         // The base permission covers custom roles; use role_name only when absent.
         permissions.set(key, ['admin', 'maintain', 'write'].includes(access?.permission ?? access?.role_name));
-      } catch { /* A failed lookup never establishes trust; the next poll asks again. */ }
+      } catch (error) {
+        onPermissionError?.(error);
+        /* A failed lookup never establishes trust; the next poll asks again. */
+      }
     }
     if (permissions.get(key)) {
       receipts.push(receipt);
