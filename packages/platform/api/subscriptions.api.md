@@ -659,8 +659,8 @@ export declare function createExactSubscriptionRepricer(deps: PackageEditQuotePo
 export { renewalIdentity } from "./renewalIdentity.js";
 export { selectCatalogProfileCadence, type CatalogProfileCadenceInput, type CatalogProfileCadenceResult } from "./catalogProfileBinding.js";
 export { NATIVE_SUBSCRIPTION_CAPABILITIES } from "./services.js";
-export { executeRenewalCycle, prepareRenewalAttempt, checkRenewalDeliveryAdmission, createDefaultRenewalCyclePolicy } from "./renewalCycleMechanism.js";
-export type { RenewalCyclePolicy } from "./renewalCycleMechanism.js";
+export { executeRenewalCycle, prepareRenewalAttempt, checkRenewalDeliveryAdmission, createDefaultRenewalCyclePolicy, classifyManagedRenewalPayment } from "./renewalCycleMechanism.js";
+export type { RenewalCyclePolicy, ManagedRenewalPaymentEvidence, ManagedRenewalPaymentClassification } from "./renewalCycleMechanism.js";
 export { recordRenewalPreflightBlock, replayRenewalAttempt, declinedRenewalOutcome, requiresActionRenewalOutcome, createDefaultRenewalPreflightPolicy } from "./renewalCycleRefusalMechanism.js";
 export type { RenewalPreflightPolicy, RenewalReplayPolicy, RenewalOutcomePolicy } from "./renewalCycleRefusalMechanism.js";
 export { propagateRenewalFailure, createDefaultRenewalFailurePolicy } from "./renewalCycleFailureMechanism.js";
@@ -1911,6 +1911,16 @@ import type { PaymentExecutionBaseInput, PaymentExecutionBaseResult, PaymentProv
 import type { RenewalPreparedAttemptPersistencePort } from "./contracts/renewal.js";
 import type { HostedRenewalDue, SubscriptionRenewalChargeResult, SubscriptionCycleSnapshotResult, SubscriptionCycleOrderResult, RenewalIntentResult, RenewalCycleDeps, RenewalExecutionContext, RenewalPrepareInput, RenewalAttemptResult, RenewalDeliveryClient, RenewalAllowedAdmission } from "./contracts/renewal.js";
 import { type RenewalPreflightPolicy, type RenewalReplayPolicy, type RenewalOutcomePolicy } from "./renewalCycleRefusalMechanism.js";
+export type ManagedRenewalPaymentEvidence = {
+    kind: "result";
+    attemptStatus: SubscriptionRenewalChargeResult["attemptStatus"];
+} | {
+    kind: "row_error";
+    reason: string;
+};
+export type ManagedRenewalPaymentClassification = "prepared_without_ack" | "provider_acknowledged" | "settled" | "unclassified";
+/** Classify managed renewal reporting evidence without making a dispatch decision. */
+export declare function classifyManagedRenewalPayment(evidence: ManagedRenewalPaymentEvidence): ManagedRenewalPaymentClassification;
 /**
  * @deprecated Scheduled for simplification in 2.0.0; prefer `createDefaultRenewalCyclePolicy`
  * in 1.x instead of implementing the 7-generic policy surface directly.

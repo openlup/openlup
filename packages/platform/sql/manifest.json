@@ -904,11 +904,15 @@
         "sha256": "e8b989a3ac88eabb0c95fe39bd6ae55bab134858ddf56cf98ff20d6ab0aa71d4"
       },
       {
-        "file": "db/platform/migrations/20261129130003_settings_wave4a_reschedule_timezone.sql",
+        "file": "db/platform/migrations/20261129130501_fulfillment_delivery_without_tracking.sql",
+        "sha256": "8fb338903c87905d493b110134d7b89d8a65ba50db33eab7b4741a2802b898ef"
+      },
+      {
+        "file": "db/platform/migrations/20261129130502_settings_wave4a_reschedule_timezone.sql",
         "sha256": "8fdc4dffe112ddd7dad2765b921fbbf3556db874e21b20318568c1dfb1f76225"
       }
     ],
-    "objectInventorySha256": "0c2beef0d8a54a83113b9d4dfe3c5e56404842c7fd81adf9b1ef2fe6d453a47f",
+    "objectInventorySha256": "0cea872aa42ea3c1e21781a4b1e838f0f3f1eb729dc368a6def6a25ed7c84988",
     "qualified": {
       "baseline": {
         "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1836,16 +1840,20 @@
           "sha256": "e8b989a3ac88eabb0c95fe39bd6ae55bab134858ddf56cf98ff20d6ab0aa71d4"
         },
         {
-          "file": "db/platform/migrations/20261129130003_settings_wave4a_reschedule_timezone.sql",
+          "file": "db/platform/migrations/20261129130501_fulfillment_delivery_without_tracking.sql",
+          "sha256": "8fb338903c87905d493b110134d7b89d8a65ba50db33eab7b4741a2802b898ef"
+        },
+        {
+          "file": "db/platform/migrations/20261129130502_settings_wave4a_reschedule_timezone.sql",
           "sha256": "8fdc4dffe112ddd7dad2765b921fbbf3556db874e21b20318568c1dfb1f76225"
         }
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "a6a200e4932e11ed2988497d28964f0f2229d9358e8d6b8bf0432b11f1f6fb30"
+          "withRestore": "3e14182ef07a3ef36992456598e38f43be406bfc351df7ac3b1168d1ee28d195"
         },
         "separateMigrator": {
-          "withRestore": "0dc48d2c414611aac92a83ac2fe2a09b35b10421713adb21a91a8a4788ea74c7"
+          "withRestore": "8e614bc08cf459f927f65b4626881e26ca8a1aef7a95b3e759b0f333fb3042a2"
         }
       }
     },
@@ -2768,13 +2776,17 @@
           "sha256": "e8b989a3ac88eabb0c95fe39bd6ae55bab134858ddf56cf98ff20d6ab0aa71d4"
         },
         {
-          "file": "db/platform/migrations/20261129130003_settings_wave4a_reschedule_timezone.sql",
+          "file": "db/platform/migrations/20261129130501_fulfillment_delivery_without_tracking.sql",
+          "sha256": "8fb338903c87905d493b110134d7b89d8a65ba50db33eab7b4741a2802b898ef"
+        },
+        {
+          "file": "db/platform/migrations/20261129130502_settings_wave4a_reschedule_timezone.sql",
           "sha256": "8fdc4dffe112ddd7dad2765b921fbbf3556db874e21b20318568c1dfb1f76225"
         }
       ],
       "objectInventorySha256": {
-        "installerManaged": "a6c9c32f21f14ab547fb2913821c7fe1dc96ac9f3e1f7b9c02c0a22b3205c3d1",
-        "operatorProvisioned": "9b387a678443c6e81b788ae39d82ecd64f5df9493eac0ce0feb9f459ad710a21"
+        "installerManaged": "239977f49c45c61d404ab8d3a74714ce9128b3e8ed0e8c4b1c85eaf291d1977f",
+        "operatorProvisioned": "c7a65b0de4ee65c7db3a5843eea1c28359c48398da6cf86edb1375570acf837f"
       }
     }
   },
@@ -3905,8 +3917,13 @@
       "sha256": "e8b989a3ac88eabb0c95fe39bd6ae55bab134858ddf56cf98ff20d6ab0aa71d4"
     },
     {
-      "file": "20261129130003_settings_wave4a_reschedule_timezone.sql",
-      "source": "db/platform/migrations/20261129130003_settings_wave4a_reschedule_timezone.sql",
+      "file": "20261129130501_fulfillment_delivery_without_tracking.sql",
+      "source": "db/platform/migrations/20261129130501_fulfillment_delivery_without_tracking.sql",
+      "sha256": "8fb338903c87905d493b110134d7b89d8a65ba50db33eab7b4741a2802b898ef"
+    },
+    {
+      "file": "20261129130502_settings_wave4a_reschedule_timezone.sql",
+      "source": "db/platform/migrations/20261129130502_settings_wave4a_reschedule_timezone.sql",
       "sha256": "8fdc4dffe112ddd7dad2765b921fbbf3556db874e21b20318568c1dfb1f76225"
     },
     {

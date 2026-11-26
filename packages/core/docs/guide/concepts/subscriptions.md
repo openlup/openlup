@@ -331,6 +331,13 @@ A group with spare capacity yields its slots to the other group. Settlement
 continues through the recorded operation and its prepared attempt after a lease
 expires.
 
+For managed renewal reporting, pass the returned attempt status or a normalized
+row error to `classifyManagedRenewalPayment` from
+`@openlup/platform/subscriptions`. Report attempts prepared without a recorded
+acknowledgement, attempts acknowledged by the provider, and settled attempts
+separately. These counts can coexist with the legacy `charged` or `failed`
+outcome. Use the established renewal rules for charge admission.
+
 ## Durable retry timing
 
 The [retry ladder](subscription-engine.md#the-retry-ladder-terminates) uses delays
