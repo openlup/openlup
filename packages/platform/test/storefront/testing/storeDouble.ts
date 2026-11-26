@@ -53,6 +53,8 @@ export type StoreDoubleSwitches = {
   readonly progressFromPageState?: boolean;
   /** With `progressFromPageState`, the selection entry keeps showing that state, so no arrangement is possible. */
   readonly stuckInPageState?: boolean;
+  /** With `stuckInPageState`, navigating away from that state rejects. */
+  readonly stuckNavigateRejects?: boolean;
   /** Entering checkout without a stored key sends a status read; nothing after a reload does (with `replayFromCache`). */
   readonly statusReadOnFirstCheckout?: boolean;
 };
@@ -197,6 +199,7 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: { reado
     async navigate(path) {
       acted(`navigate ${path}`);
       if (switches.navigateRejects === true) throw new Error("net::ERR_CONNECTION_REFUSED at https://shop.example.test/select?token=secret-token-value");
+      if (stuck && switches.stuckNavigateRejects === true) throw new Error("net::ERR_ABORTED");
       if (!stuck) view = path.startsWith("/select/") ? "cart" : "blank";
       fields = {};
       load(false);

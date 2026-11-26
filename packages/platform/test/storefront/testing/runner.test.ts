@@ -278,6 +278,14 @@ describe("the control run (R14)", () => {
     expect(stepsOf(verdict, "control").at(-1)!.observedAnchors).toContain("state:awaiting_payment");
   });
 
+  it("judges the negated state over the recorded steps of a control run that stopped on a fault", async () => {
+    const { verdict } = await run("lost_response_reload", { progressFromPageState: true, stuckInPageState: true, stuckNavigateRejects: true });
+    expect(verdict.result).toBe("not_run");
+    expect(codes(verdict)).toEqual(["page_failed", "vacuous_progress"]);
+    expect(finding(verdict, "page_failed")).toMatchObject({ run: "control", step: 4 });
+    expect(finding(verdict, "vacuous_progress")).toMatchObject({ run: "control", step: 3 });
+  });
+
   it("gives the negated state only the quiet window, and the clean expect the full timeout", async () => {
     const { double } = await run("lost_response_reload", {}, { quietMs: 5, timeoutMs: 50 });
     expect(double.findTimeouts.filter(([name]) => name === "state:awaiting_payment")).toEqual([["state:awaiting_payment", 50], ["state:awaiting_payment", 5]]);
