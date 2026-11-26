@@ -40,6 +40,22 @@ describe("parseStorefrontProofFile", () => {
     expect(parse(minimal)).toEqual({ ok: true, proofFile: minimal });
   });
 
+  it("P2 drops an own __proto__ key inside host and unknown fields at any depth", () => {
+    const text = JSON.stringify({ ...completeProofFile(), host: { x: { keep: 1 } }, extra: [{ keep: 2 }] })
+      .replace('"x":{', '"x":{"__proto__":{"isAdmin":true},')
+      .replace('[{"keep":2}', '[{"__proto__":{"isAdmin":true},"keep":2}');
+    expect(text.match(/__proto__/g)).toHaveLength(2);
+    const result = parseStorefrontProofFile(text);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const file = result.proofFile as unknown as { host: { x: object }; extra: object[] };
+      for (const value of [file.host.x, file.extra[0]]) {
+        expect(Object.prototype.hasOwnProperty.call(value, "__proto__")).toBe(false);
+        expect((Object.assign({}, value) as Record<string, unknown>).isAdmin).toBeUndefined();
+      }
+    }
+  });
+
   it("P2 keeps unknown fields", () => {
     const proofFile = { ...completeProofFile(), hostField: { kept: true } };
     expect(parse(proofFile)).toEqual({ ok: true, proofFile });
