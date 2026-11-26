@@ -7,7 +7,7 @@
  */
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { env as processEnvironment } from 'node:process';
@@ -35,8 +35,12 @@ import { closePostgres, dockerAvailable, postgresTeardownTimeoutMs, runPostgresC
 const config = Object.values(configurations)[0]!;
 const scenarioHelper = resolve('tests/helpers/neutralStoreScenario.mjs');
 const uuidV4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-/** The witness client's own request timeout; the finality wait adds the starter's late-create bound to it. */
-const clientTimeoutMs = 10_000;
+/**
+ * The starter client's own request timeout: `examples/neutral-store/client/api.ts` passes it to
+ * `AbortSignal.timeout` for every action. The controller has no transport timeout, so the host
+ * supplies it: the witness sends with it, and its finality wait adds the starter's late-create bound.
+ */
+const starterRequestTimeoutMs = 20_000;
 
 let container: PostgresContainer | undefined;
 let owner: Pool | undefined;
@@ -45,65 +49,9 @@ let host: ChildProcess | undefined;
 let state: string | undefined;
 let base: string;
 
-beforeAll(async () => {
-  if (!await dockerAvailable()) throw new Error('Purchase continuation proof requires Docker PostgreSQL');
-  container = await runPostgresContainer({ name: `starter-continuation-${process.pid}`, database: 'neutral_store', password: 'synthetic-conformance' });
-  if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error('Purchase continuation PostgreSQL unavailable');
-  owner = new Pool({ connectionString: container.connectionString });
-  for (const role of ['starter_runtime', 'starter_restore']) {
-    await owner.query(`CREATE ROLE ${role} LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-conformance'`);
-  }
-  const installation = { generation: 'qualified-v2', roleMode: 'installer-managed', bootstrapLogin: 'postgres',
-    migrationLogin: 'postgres', runtimeLogin: 'starter_runtime', restoreLogin: 'starter_restore' } as const;
-  migration = new Pool({ connectionString: container.connectionString, options: qualifiedPostgresStartupOptions(installation) });
-  const runner = createPlatformPostgresMigrationRunner({ connectionString: container.connectionString }, { installation, poolFactory: () => migration! });
-  await runner.apply();
-  expect((await runner.status()).pending).toEqual([]);
-  await owner.query(`COMMENT ON DATABASE neutral_store IS '${demonstrationMarker}'`);
-  await applyDemoSeed(config, { connection: owner, installRole: 'postgres', runtimeRole: 'starter_runtime',
-    stock: createPostgresFulfillmentStockSyncPort(owner, { sourceKey: `starter-demo:${config.id}`, readLocalInventoryStock: async () => [] }),
-    close: async () => {} });
-
-  // The starter host as the scenario helper starts it, with its captured messages in a private directory.
-  state = await mkdtemp(join(tmpdir(), 'starter-continuation-'));
-  const keyFile = join(state, 'quote-acceptance-key.json');
-  await writeFile(keyFile, JSON.stringify({ current: 'fixture-only-acceptance-key-00000000000000' }));
-  const runtime = new URL(container.connectionString);
-  runtime.username = 'starter_runtime';
-  runtime.password = '';
-  runtime.protocol = 'postgresql:';
-  const child = spawn(process.execPath, ['--experimental-strip-types', scenarioHelper, '--configuration', config.id,
-    '--database-url', runtime.toString(), '--quote-acceptance-key-file', keyFile],
-  { cwd: state, env: { ...processEnvironment, PGPASSWORD: 'synthetic-conformance' }, stdio: ['ignore', 'pipe', 'pipe'] });
-  host = child;
-  base = await new Promise<string>((done, fail) => {
-    let output = '', errors = '';
-    const timer = setTimeout(() => fail(new Error('continuation_host_start_timeout')), 20_000);
-    child.stderr!.setEncoding('utf8').on('data', (chunk: string) => { errors = (errors + chunk).slice(-4096); });
-    child.stdout!.setEncoding('utf8').on('data', (chunk: string) => {
-      output = (output + chunk).slice(-2048);
-      const origin = /Neutral store local candidate: (http:\/\/127\.0\.0\.1:\d+)\n/.exec(output)?.[1];
-      if (origin) { clearTimeout(timer); done(origin); }
-    });
-    child.once('exit', () => { clearTimeout(timer); fail(new Error(`continuation_host_exited: ${errors}`)); });
-  });
-}, 300_000);
-
-afterAll(async () => {
-  if (host && host.exitCode === null) {
-    const closed = new Promise(done => host!.once('exit', done));
-    host.kill('SIGTERM');
-    const kill = setTimeout(() => host!.kill('SIGKILL'), 10_000);
-    await closed;
-    clearTimeout(kill);
-  }
-  if (state) await rm(state, { recursive: true, force: true });
-  await closePostgres(container, [owner, migration].filter((pool): pool is Pool => pool !== undefined));
-}, postgresTeardownTimeoutMs);
-
 async function action(operation: Operation, payload: Record<string, unknown>, key: string = randomUUID()): Promise<ActionResult> {
   const response = await fetch(`${base}/api/actions/${operation}`, {
-    method: 'POST', body: JSON.stringify(payload), signal: AbortSignal.timeout(clientTimeoutMs),
+    method: 'POST', body: JSON.stringify(payload), signal: AbortSignal.timeout(starterRequestTimeoutMs),
     headers: { Origin: base, 'Content-Type': 'application/json', 'X-Starter-Request': '1', 'Idempotency-Key': key },
   });
   return await response.json() as ActionResult;
@@ -128,8 +76,28 @@ async function reviewed(email: string) {
 type Payload = Awaited<ReturnType<typeof reviewed>>;
 type Sent = { key: CommandKey; body: Payload };
 
+/**
+ * The witness host's reading of a `checkout.continuation` abandon answer. "No order under this key"
+ * is final only once the host's own request timeout plus the starter's late-create bound have passed
+ * since the last unanswered create, because a create sent earlier can still arrive until then.
+ */
+function abandonReading(answer: ActionResult,
+  finality: { requestTimeoutMs: number; unansweredCreateSince: number | null; now: number }): StatusReading {
+  const value = valueOf(answer);
+  if (answer.ok && value.abandoned === true) return { kind: 'terminal' };
+  if (answer.ok && value.abandoned === false && value.orderRef === undefined) {
+    const since = finality.unansweredCreateSince;
+    return since === null || finality.now - since > finality.requestTimeoutMs + checkoutLateCreateMs
+      ? { kind: 'terminal' } : { kind: 'checking' };
+  }
+  if (answer.ok && value.abandoned === false) return value.status === 'cancelled' ? { kind: 'terminal' } : { kind: 'active' };
+  if (!answer.ok && ['starter_checkout_not_abandonable', 'starter_checkout_paid'].includes(answer.code)) return { kind: 'active' };
+  return { kind: 'checking' };
+}
+
 /** One buyer page: the controller over the starter's real actions, with storage that survives the page. */
-function purchase(options: { loseFirstAnswer?: boolean } = {}) {
+function purchase(options: { requestTimeoutMs: number; loseFirstAnswer?: boolean }) {
+  const now = () => performance.now();
   let stored: ContinuationRecord | null = null;
   const operations: string[] = [];
   const keys = new Set<string>();
@@ -147,7 +115,7 @@ function purchase(options: { loseFirstAnswer?: boolean } = {}) {
       unansweredCreateSince = null;
       return answer;
     } catch (error) {
-      unansweredCreateSince ??= performance.now();
+      unansweredCreateSince ??= now();
       throw error;
     }
   };
@@ -166,7 +134,7 @@ function purchase(options: { loseFirstAnswer?: boolean } = {}) {
         if (options.loseFirstAnswer && !lost) {
           lost = true;
           await create(request);
-          unansweredCreateSince ??= performance.now();
+          unansweredCreateSince ??= now();
           throw new TypeError('fetch failed');
         }
         return await create(request);
@@ -188,19 +156,9 @@ function purchase(options: { loseFirstAnswer?: boolean } = {}) {
         }
         return resumed;
       },
-      abandon: async ({ continuationId }): Promise<StatusReading> => {
-        const answer = await send('checkout.continuation', { action: 'abandon', locale: 'en' }, continuationId);
-        const value = valueOf(answer);
-        if (answer.ok && value.abandoned === true) return { kind: 'terminal' };
-        if (answer.ok && value.abandoned === false && value.orderRef === undefined) {
-          // "None exists" is final only once no create sent under the key can still arrive.
-          const since = unansweredCreateSince;
-          return since === null || performance.now() - since > clientTimeoutMs + checkoutLateCreateMs ? { kind: 'terminal' } : { kind: 'checking' };
-        }
-        if (answer.ok && value.abandoned === false) return value.status === 'cancelled' ? { kind: 'terminal' } : { kind: 'active' };
-        if (!answer.ok && ['starter_checkout_not_abandonable', 'starter_checkout_paid'].includes(answer.code)) return { kind: 'active' };
-        return { kind: 'checking' };
-      },
+      abandon: async ({ continuationId }) => abandonReading(
+        await send('checkout.continuation', { action: 'abandon', locale: 'en' }, continuationId),
+        { requestTimeoutMs: options.requestTimeoutMs, unansweredCreateSince, now: now() }),
     },
     classifySubmitFailure: (error): SubmitFailureClass => error instanceof TypeError ? 'transport_uncertain'
       : error instanceof DOMException && error.name === 'TimeoutError' ? 'timeout' : 'other',
@@ -220,9 +178,93 @@ const heldFor = async (orders: string[]) => Number((await owner!.query(`SELECT c
   WHERE purchase_order_id = ANY($1::uuid[]) AND status='held'`, [orders])).rows[0].n);
 const address = (label: string) => `continuation-${label}-${randomUUID().slice(0, 8)}@example.test`;
 
+describe('the witness host binding', () => {
+  const none: ActionResult = { ok: true, value: { abandoned: false } };
+  const since = 1_000;
+  const reading = (answer: ActionResult, now = since, unansweredCreateSince: number | null = since) =>
+    abandonReading(answer, { requestTimeoutMs: starterRequestTimeoutMs, unansweredCreateSince, now }).kind;
+
+  it('sends with the starter client\'s own request timeout', async () => {
+    const client = await readFile(resolve('examples/neutral-store/client/api.ts'), 'utf8');
+    expect([...client.matchAll(/AbortSignal\.timeout\((\d+)\)/g)].map(match => Number(match[1]))).toEqual([starterRequestTimeoutMs]);
+  });
+
+  it('treats no order under the key as final only after the request timeout plus the late-create bound', () => {
+    // The starter's 20 s request timeout plus its 15 s late-create bound.
+    expect(reading(none, since + 34_999)).toBe('checking');
+    expect(reading(none, since + 35_000)).toBe('checking');
+    expect(reading(none, since + 35_001)).toBe('terminal');
+    expect(reading(none, since, null)).toBe('terminal');
+  });
+
+  it('maps every other abandon answer', () => {
+    expect(reading({ ok: true, value: { abandoned: true, orderRef: 'order' } })).toBe('terminal');
+    expect(reading({ ok: true, value: { abandoned: false, orderRef: 'order', status: 'cancelled' } })).toBe('terminal');
+    expect(reading({ ok: true, value: { abandoned: false, orderRef: 'order', status: 'expired' } })).toBe('active');
+    for (const code of ['starter_checkout_not_abandonable', 'starter_checkout_paid']) expect(reading({ ok: false, code })).toBe('active');
+    for (const code of ['starter_checkout_in_progress', 'starter_purchase_unavailable']) expect(reading({ ok: false, code })).toBe('checking');
+  });
+});
+
 describe('purchase continuation over the neutral starter', () => {
+  beforeAll(async () => {
+    if (!await dockerAvailable()) throw new Error('Purchase continuation proof requires Docker PostgreSQL');
+    container = await runPostgresContainer({ name: `starter-continuation-${process.pid}`, database: 'neutral_store', password: 'synthetic-conformance' });
+    if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error('Purchase continuation PostgreSQL unavailable');
+    owner = new Pool({ connectionString: container.connectionString });
+    for (const role of ['starter_runtime', 'starter_restore']) {
+      await owner.query(`CREATE ROLE ${role} LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-conformance'`);
+    }
+    const installation = { generation: 'qualified-v2', roleMode: 'installer-managed', bootstrapLogin: 'postgres',
+      migrationLogin: 'postgres', runtimeLogin: 'starter_runtime', restoreLogin: 'starter_restore' } as const;
+    migration = new Pool({ connectionString: container.connectionString, options: qualifiedPostgresStartupOptions(installation) });
+    const runner = createPlatformPostgresMigrationRunner({ connectionString: container.connectionString }, { installation, poolFactory: () => migration! });
+    await runner.apply();
+    expect((await runner.status()).pending).toEqual([]);
+    await owner.query(`COMMENT ON DATABASE neutral_store IS '${demonstrationMarker}'`);
+    await applyDemoSeed(config, { connection: owner, installRole: 'postgres', runtimeRole: 'starter_runtime',
+      stock: createPostgresFulfillmentStockSyncPort(owner, { sourceKey: `starter-demo:${config.id}`, readLocalInventoryStock: async () => [] }),
+      close: async () => {} });
+
+    // The starter host as the scenario helper starts it, with its captured messages in a private directory.
+    state = await mkdtemp(join(tmpdir(), 'starter-continuation-'));
+    const keyFile = join(state, 'quote-acceptance-key.json');
+    await writeFile(keyFile, JSON.stringify({ current: 'fixture-only-acceptance-key-00000000000000' }));
+    const runtime = new URL(container.connectionString);
+    runtime.username = 'starter_runtime';
+    runtime.password = '';
+    runtime.protocol = 'postgresql:';
+    const child = spawn(process.execPath, ['--experimental-strip-types', scenarioHelper, '--configuration', config.id,
+      '--database-url', runtime.toString(), '--quote-acceptance-key-file', keyFile],
+    { cwd: state, env: { ...processEnvironment, PGPASSWORD: 'synthetic-conformance' }, stdio: ['ignore', 'pipe', 'pipe'] });
+    host = child;
+    base = await new Promise<string>((done, fail) => {
+      let output = '', errors = '';
+      const timer = setTimeout(() => fail(new Error('continuation_host_start_timeout')), 20_000);
+      child.stderr!.setEncoding('utf8').on('data', (chunk: string) => { errors = (errors + chunk).slice(-4096); });
+      child.stdout!.setEncoding('utf8').on('data', (chunk: string) => {
+        output = (output + chunk).slice(-2048);
+        const origin = /Neutral store local candidate: (http:\/\/127\.0\.0\.1:\d+)\n/.exec(output)?.[1];
+        if (origin) { clearTimeout(timer); done(origin); }
+      });
+      child.once('exit', () => { clearTimeout(timer); fail(new Error(`continuation_host_exited: ${errors}`)); });
+    });
+  }, 300_000);
+
+  afterAll(async () => {
+    if (host && host.exitCode === null) {
+      const closed = new Promise(done => host!.once('exit', done));
+      host.kill('SIGTERM');
+      const kill = setTimeout(() => host!.kill('SIGKILL'), 10_000);
+      await closed;
+      clearTimeout(kill);
+    }
+    if (state) await rm(state, { recursive: true, force: true });
+    await closePostgres(container, [owner, migration].filter((pool): pool is Pool => pool !== undefined));
+  }, postgresTeardownTimeoutMs);
+
   it('E1 settled: a captured payment read by key is paid, clears the record and refuses a later submit', async () => {
-    const p = purchase();
+    const p = purchase({ requestTimeoutMs: starterRequestTimeoutMs });
     const payload = await reviewed(address('settled'));
     expect((await p.c.submit({ payload })).snapshot.status).toBe('awaiting_payment');
     const created = valueOf(p.c.getSnapshot().result);
@@ -235,7 +277,7 @@ describe('purchase continuation over the neutral starter', () => {
   }, 60_000);
 
   it('E2 declined: a refused attempt advances the attempt once over two reads and keeps one order', async () => {
-    const p = purchase();
+    const p = purchase({ requestTimeoutMs: starterRequestTimeoutMs });
     const email = address('declined');
     await p.c.submit({ payload: await reviewed(email) });
     const created = valueOf(p.c.getSnapshot().result);
@@ -247,7 +289,7 @@ describe('purchase continuation over the neutral starter', () => {
   }, 60_000);
 
   it('E3 refused: an invalid e-mail is refused, then the corrected payload is sent under the same key', async () => {
-    const p = purchase();
+    const p = purchase({ requestTimeoutMs: starterRequestTimeoutMs });
     const email = address('refused');
     const corrected = await reviewed(email);
     expect((await p.c.submit({ payload: { ...corrected, email: 'not-an-address' } })).snapshot)
@@ -259,7 +301,7 @@ describe('purchase continuation over the neutral starter', () => {
   }, 60_000);
 
   it('E4 closed: a cancelled order is closed, clears the record and sends nothing more', async () => {
-    const p = purchase();
+    const p = purchase({ requestTimeoutMs: starterRequestTimeoutMs });
     await p.c.submit({ payload: await reviewed(address('closed')) });
     const created = valueOf(p.c.getSnapshot().result);
     // Labelled bypass: the fixture cancels the order as the existing continuation witness does.
@@ -272,7 +314,7 @@ describe('purchase continuation over the neutral starter', () => {
   }, 60_000);
 
   it('E5 not closed: an expired order with a refused attempt stays unknown and keeps its key', async () => {
-    const p = purchase();
+    const p = purchase({ requestTimeoutMs: starterRequestTimeoutMs });
     await p.c.submit({ payload: await reviewed(address('expired')) });
     const created = valueOf(p.c.getSnapshot().result);
     const record = p.stored();
@@ -286,7 +328,7 @@ describe('purchase continuation over the neutral starter', () => {
   }, 60_000);
 
   it('E6 uncertain submit: the replay under the same key returns the first order', async () => {
-    const p = purchase({ loseFirstAnswer: true });
+    const p = purchase({ requestTimeoutMs: starterRequestTimeoutMs, loseFirstAnswer: true });
     const email = address('uncertain');
     const { snapshot } = await p.c.submit({ payload: await reviewed(email) });
     expect(snapshot).toMatchObject({ status: 'awaiting_payment', source: 'replay', result: { ok: true, replayed: true } });

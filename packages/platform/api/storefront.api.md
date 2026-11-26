@@ -741,7 +741,9 @@ export interface PurchaseContinuation<TPayload, TResult, TOptions = undefined> {
  * 4. `abandon` resolves `terminal` only when the server cancelled or closed the
  *    purchase under the key, or confirmed that none exists and none can still
  *    arrive, after the host's own request timeout plus the server's
- *    late-create bound since the last unanswered create.
+ *    late-create bound since the last unanswered create. The controller has
+ *    no transport timeout, so this wait is the host's: it uses the timeout its
+ *    transport actually applies.
  * 5. `request.fingerprint` covers the purchase the buyer reviewed, without the
  *    payment method, and is stable across reloads and instances.
  * 6. `declinedAttempt` returns the attempt number the answer declines, or
