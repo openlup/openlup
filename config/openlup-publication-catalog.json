@@ -8642,6 +8642,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/storefront/purchaseContinuation.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/agreedPlanQuote.ts",
       "class": "public-output"
     },
@@ -11483,6 +11487,10 @@
     },
     {
       "path": "packages/platform/test/storefront/pendingResume.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/purchaseContinuation.test.ts",
       "class": "public-output"
     },
     {
@@ -31347,6 +31355,10 @@
     },
     {
       "path": "tests/postgres/neutralStorePaidMail.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/neutralStorePurchaseContinuation.test.ts",
       "class": "public-output"
     },
     {
