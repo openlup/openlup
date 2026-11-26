@@ -213,13 +213,12 @@ export interface SubmitTransportBinding<TRequest = unknown, TOptions = unknown, 
  * The union is open: members may be added in a minor release. The package reads
  * a member it does not know as `refuse`.
  *
- * No function reads this policy yet: `getOrCreateContinuationId` continues
- * with an identity that was not persisted when its storage binding drops a
- * write. `createPurchaseContinuation` takes no policy: it reads the record
- * back and always refuses to send when a write throws or does not read back.
- * A later change makes `getOrCreateContinuationId` this policy's reader, with
- * the storage-failure policy parameter (default `refuse`) as a declared
- * behaviour change.
+ * `getOrCreateContinuationId` reads it from its per-call `storageFailure`:
+ * absent, `refuse` or an unknown member, it returns `null` (nothing may be
+ * sent) when a new identity does not read back with the identity and
+ * fingerprint it wrote. `createPurchaseContinuation` takes no policy: it calls
+ * that function with `refuse`, and refuses to send when a write throws or the
+ * record read back names no identity or another one.
  *
  * @experimental
  */
@@ -395,29 +394,49 @@ export type SubmitOutcomeClassifier<TResult = unknown> = (result: TResult) => Su
 ## dist/storefront/continuationRecord.d.ts
 
 ```ts
-import type { ContinuationRecord, ContinuationRecordStorageBinding, IdentifierBinding } from "./bindings.js";
+import type { ContinuationRecord, ContinuationRecordStorageBinding, IdentifierBinding, StorageFailurePolicy } from "./bindings.js";
 import { type ContinuationId } from "./identity.js";
 /**
- * Returns the continuation identity of the current purchase.
+ * Returns the continuation identity of the current purchase, or `null` when
+ * its storage did not keep a new identity: `null` means nothing may be sent.
  *
- * It reuses the stored record's identity when `identifier.accepts` accepts it;
- * reuse writes nothing and does not call `fingerprint`. Otherwise it calls
- * `identifier.next()`, then `fingerprint()`, writes a new record with that
- * fingerprint and identity and no attempt, replacing any stored record, and
- * returns the new identity. One purchase therefore keeps one identity across
- * payload changes until `clearContinuationRecord` runs.
+ * 1. It reads the record. When one is stored and `identifier.accepts` accepts
+ *    its identity, it returns that identity. Reuse writes nothing, does not
+ *    call `fingerprint` and reads nothing back, under every policy.
+ * 2. Otherwise it calls `identifier.next()`, then `fingerprint()`, and writes
+ *    a new record with that fingerprint and identity and no attempt, replacing
+ *    any stored record.
+ * 3. Under `storageFailure: "continue_unpersisted"` it returns the new
+ *    identity without reading it back, whether or not it was kept.
+ * 4. Under any other value (absent, `"refuse"`, or a member this version does
+ *    not know) it reads the record once more and returns the new identity only
+ *    when that record names it and the fingerprint just written; `attempt` is
+ *    not compared, so a codec may read an absent attempt as `0`. Otherwise it
+ *    returns `null`.
+ * 5. A refusal has no other effect: no second identity, no clear, no retry,
+ *    no event.
+ * 6. It catches nothing: an error a binding or `fingerprint` raises propagates
+ *    as the same object, and a write that throws is not read back.
  *
- * It reads no storage-failure policy. A storage binding that cannot reach its
- * storage returns `null` from `read` and drops `write`, so each call returns a
- * new identity that is not kept. An error a binding or `fingerprint` raises
- * propagates unchanged.
+ * One purchase therefore keeps one identity across payload changes until
+ * `clearContinuationRecord` runs. The result type includes `null` under every
+ * policy, so a `continue_unpersisted` caller narrows it too.
+ *
+ * On `null`, send nothing and let the buyer try again once storage is
+ * available. The cause is a storage binding that did not keep the record it
+ * was given: the browser refused or dropped the write, or the binding's codec
+ * reads back another identity or fingerprint than it was written. A codec
+ * reads back the `continuationId` and `fingerprint` it wrote. Passing the
+ * deprecated `continue_unpersisted` restores the earlier behaviour, which can
+ * create a second order.
  */
 export declare function getOrCreateContinuationId(bindings: {
     storage: ContinuationRecordStorageBinding;
     identifier: IdentifierBinding;
 }, input: {
     fingerprint: () => string;
-}): ContinuationId;
+    storageFailure?: StorageFailurePolicy;
+}): ContinuationId | null;
 /**
  * Returns the stored continuation record as the storage binding reads it, or
  * `null`. It applies no acceptance check and writes nothing, so it also returns
@@ -775,10 +794,13 @@ export interface PurchaseContinuation<TPayload, TResult, TOptions = undefined> {
  * while no record is stored. A changed
  * payload is sent only under `update_in_place`, or after a `refused` answer to
  * a submit or its replay, until the next payload is sent; any other policy
- * value reads as `refuse_changed`. When a record write throws or does not read
- * back with the identity and fingerprint just written, nothing is sent and
- * `error` holds the write's error: the controller takes no storage-failure
- * policy. A class, recovery, reading or decision this version does not know
+ * value reads as `refuse_changed`. The controller calls
+ * `getOrCreateContinuationId` with `storageFailure: "refuse"` and takes no
+ * storage-failure policy of its own. Nothing is sent when that call returns
+ * `null`, a record write throws, the record read back names no identity or
+ * another one, or a changed fingerprint written after a `refused` answer does
+ * not read back; `error` holds the write's error, if one was thrown. A class,
+ * recovery, reading or decision this version does not know
  * sends nothing more and keeps the record.
  *
  * A stored identity that `identifier.accepts` rejects is never replaced and no
