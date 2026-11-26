@@ -9,7 +9,7 @@ import { needsForwardApproval } from "./agent-review-queue.mjs";
 import { assertAppendOnlyMigrationHistory } from "./oss-published-tree-check.ts";
 import { assertAdmittedPlatformForward } from "./oss-source-release-contract.ts";
 import { PLATFORM_BASELINE_FILE, PLATFORM_MIGRATION_MANIFEST, sha256 } from "./platform-migration-manifest.ts";
-import { assertNativeStoreForward, isExpandOnlyPlatformForward, assertCoLocatedForwardApproval, hasExactManagedForward, managedForwardPrefixSha256, readReviewedForwardRegistry, renderQualifiedSecurityDefiner, REVIEWED_FORWARD_PATH, sqlSha256, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
+import { assertNativeStoreForward, isExpandOnlyPlatformForward, assertCoLocatedForwardApproval, hasExactManagedForward, managedForwardPrefixSha256, PG_SUITE_CLOSURES_PATH, readReviewedForwardRegistry, renderQualifiedSecurityDefiner, REVIEWED_FORWARD_PATH, sqlSha256, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
 import { admissionRuleFiles } from "./sql-admit.ts";
 import { definitionPath, definitionPin, definitionSlot, definitionSql, grantPath, grantSlot, grantSql } from "../tests/helpers/issuedPlatformCatalog.ts";
 
@@ -988,4 +988,50 @@ describe("SECURITY DEFINER trailing pg_temp rule in sql:admit and hosted checks"
     expect(result.status).toBe(0);
     expect(verdictLines(result.stdout)).toEqual(directVerdicts(f, approval, head).verdicts);
   }, 20_000);
+});
+
+describe("PostgreSQL suite closures admission in queue and sql:admit", () => {
+  const closuresDoc = (suites: Record<string, string[]>) =>
+    `${JSON.stringify({ schemaVersion: 1, suites }, null, 2)}\n`;
+  const initialClosures = closuresDoc({
+    "tests/postgres/a.test.ts": ["@api"],
+    "tests/postgres/m.test.ts": ["@starter"],
+  });
+
+  it("triggers needsForwardApproval only when PG_SUITE_CLOSURES_PATH changes alongside migration-rail SQL", () => {
+    expect(needsForwardApproval([PG_SUITE_CLOSURES_PATH])).toBe(false);
+    expect(needsForwardApproval([PG_SUITE_CLOSURES_PATH, "tests/postgres/fixtures/example.sql"])).toBe(false);
+    expect(needsForwardApproval([PG_SUITE_CLOSURES_PATH, "db/platform/migrations/20990101000000_note.txt"])).toBe(false);
+    expect(needsForwardApproval([PG_SUITE_CLOSURES_PATH, "db/platform/migrations/20990101000000_expand.sql"])).toBe(true);
+    expect(needsForwardApproval([PG_SUITE_CLOSURES_PATH, "supabase/migrations/20990101000000_expand.sql"])).toBe(true);
+  });
+
+  it("admits append-only PG suite closures alongside SQL and refuses removals through sql:admit", () => {
+    const f = fixture();
+    f.put(PG_SUITE_CLOSURES_PATH, initialClosures);
+    const base = f.commit();
+
+    f.git("switch", "-q", "-c", "valid-append");
+    f.put("supabase/migrations/20990101000000_expand.sql", "CREATE TABLE public.fixture_expand (id uuid);\n");
+    f.put(PG_SUITE_CLOSURES_PATH, closuresDoc({
+      "tests/postgres/a.test.ts": ["@api", "@src"],
+      "tests/postgres/m.test.ts": ["@starter"],
+      "tests/postgres/z.test.ts": ["@mcp"],
+    }));
+    const validHead = f.commit();
+    const passResult = cli(f.root, ["--base", base, "--head", validHead, STALE]);
+    expect(passResult.stderr).toBe("");
+    expect(passResult.status).toBe(0);
+    expect(verdictLines(passResult.stdout)).toEqual(directVerdicts(f, base, validHead).verdicts);
+
+    f.git("switch", "-q", "-c", "invalid-narrow", base);
+    f.put("supabase/migrations/20990101000000_expand.sql", "CREATE TABLE public.fixture_expand (id uuid);\n");
+    f.put(PG_SUITE_CLOSURES_PATH, closuresDoc({ "tests/postgres/m.test.ts": ["@starter"] }));
+    const refusedHead = f.commit();
+    const refusedResult = cli(f.root, ["--base", base, "--head", refusedHead, STALE]);
+    expect(refusedResult.stderr).toBe("");
+    expect(refusedResult.status).toBe(1);
+    expect(refusedResult.stdout).toContain(`${PG_SUITE_CLOSURES_PATH} is append-only while introducing SQL: removed suite tests/postgres/a.test.ts`);
+    expect(verdictLines(refusedResult.stdout)).toEqual(directVerdicts(f, base, refusedHead).verdicts);
+  }, 30_000);
 });

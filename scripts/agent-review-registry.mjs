@@ -4,10 +4,29 @@ export const REGISTRY_PATHS = [
   'packages/platform/test/packageBoundary.test.ts',
   'scripts/packages/platform-cold-consumer.ts',
   'config/vitest-shard-weights.json',
+  'config/ci-postgres-suite-closures.json',
 ];
 export const SHARD_WEIGHTS_PATH = REGISTRY_PATHS[3];
-// Review-rule snapshots predate the shard weights carrier; recorded digests keep their bytes.
+export const PG_SUITE_CLOSURES_PATH = REGISTRY_PATHS[4];
+// Review-rule snapshots predate the shard weights and PostgreSQL closures carriers; recorded digests keep their bytes.
 export const RULE_SNAPSHOT_REGISTRY_PATHS = REGISTRY_PATHS.slice(0, 3);
+export const CONTROL_POSTGRES_SUITES = [
+  'tests/postgres/nativeStoreForwardCatalog.noServiceRole.test.ts',
+  'tests/postgres/nativeStoreForwardCatalog.serviceRole.test.ts',
+  'tests/postgres/reviewedBatchForwards.test.ts',
+  'tests/postgres/subscriptionExactInstallation.test.ts',
+];
+export const PG_CLOSURE_AXES = [
+  '@api',
+  '@catalogPacks',
+  '@dataDoc',
+  '@examples',
+  '@identityTests',
+  '@managedCompat',
+  '@mcp',
+  '@src',
+  '@starter',
+];
 const refuse = message => { throw new Error(`registry: ${message}`); };
 const check = (ok, message) => { if (!ok) refuse(message); };
 const key = value => typeof value === 'string' ? value : value.path;
@@ -77,6 +96,7 @@ function validEntries(entries) {
 export function readRegistry(path, source) {
   check(typeof source === 'string' && Buffer.byteLength(source) <= 1024 * 1024 && !source.includes('\uFFFD') && !source.includes('\0'), 'unreadable or oversized blob');
   if (path === SHARD_WEIGHTS_PATH) return readShardWeights(source);
+  if (path === PG_SUITE_CLOSURES_PATH) return readPgSuiteClosures(source);
   const ranges = []; const lists = [];
   if (path === REGISTRY_PATHS[0]) {
     const parsed = strictRegistryJson(source);
@@ -148,6 +168,95 @@ function shardWeightsUnion(baseSource, leftSource, rightSource) {
   const result = shardWeightsSource({ schemaVersion: right.schemaVersion, defaultDurationMs: right.defaultDurationMs, durationsMs });
   readShardWeights(result); return result;
 }
+// PostgreSQL suite closures: a closed map of sorted non-control suite paths to
+// sorted dependency inputs in the exact bytes JSON.stringify(value, null, 2) + '\n' writes.
+const pgSuiteClosuresSource = closures => `${JSON.stringify(closures, null, 2)}\n`;
+const PG_SUITE_KEY = /^tests\/postgres\/[A-Za-z0-9_./-]+\.test\.ts$/u;
+const toSet = (value, fallback) => {
+  if (value === undefined) return new Set(fallback);
+  if (value instanceof Set) return value;
+  return Array.isArray(value) ? new Set(value) : new Set(Object.keys(value));
+};
+const validPgInputPath = path => {
+  if (typeof path !== 'string' || !path || path === 'tests/postgres/' || /[\\\x00-\x1f\x7f]/u.test(path) || path.normalize('NFC') !== path || path.startsWith('/') || path.includes('//')) return false;
+  const trimmed = path.endsWith('/') ? path.slice(0, -1) : path;
+  return trimmed.length > 0 && !trimmed.split('/').some(part => part === '..' || part === '.' || part === '');
+};
+export function readPgSuiteClosures(source, {
+  controlSuites = CONTROL_POSTGRES_SUITES,
+  pendingSuites = [],
+  validAxes = PG_CLOSURE_AXES,
+} = {}) {
+  check(typeof source === 'string' && Buffer.byteLength(source) <= 1024 * 1024 && !source.includes('\uFFFD') && !source.includes('\0'), 'unreadable or oversized blob');
+  const closures = strictRegistryJson(source);
+  check(closures && typeof closures === 'object' && !Array.isArray(closures) &&
+    Object.keys(closures).join(',') === 'schemaVersion,suites' && closures.schemaVersion === 1, 'pg suite closures schema');
+  const suites = closures.suites;
+  check(suites && typeof suites === 'object' && !Array.isArray(suites), 'pg suite closures map');
+  const controlSet = toSet(controlSuites, CONTROL_POSTGRES_SUITES);
+  const pendingSet = toSet(pendingSuites, []);
+  const axisSet = toSet(validAxes, PG_CLOSURE_AXES);
+  const keys = Object.keys(suites);
+  check(keys.every((entry, index) => index === 0 || compare(keys[index - 1], entry) < 0), 'pg suite closures key order');
+  for (const suite of keys) {
+    check(PG_SUITE_KEY.test(suite) && !suite.includes('..') && !suite.includes('//') && !suite.includes('\\') &&
+      !suite.split('/').some(part => part === '.' || part === '..' || part === '' || part.startsWith('.')), `pg suite closures invalid suite key: ${suite}`);
+    check(!controlSet.has(suite), `pg suite closures control suite collision: ${suite}`);
+    check(!pendingSet.has(suite), `pg suite closures pending suite collision: ${suite}`);
+    const inputs = suites[suite];
+    check(Array.isArray(inputs), `pg suite closures inputs array: ${suite}`);
+    check(inputs.every((entry, index) => typeof entry === 'string' && (index === 0 || compare(inputs[index - 1], entry) < 0)), `pg suite closures input order: ${suite}`);
+    for (const input of inputs) {
+      if (input.startsWith('@')) check(axisSet.has(input), `pg suite closures unknown axis: ${input}`);
+      else {
+        check(input !== 'tests/postgres/', 'pg suite closures broad tests/postgres/ prefix is not allowed');
+        check(validPgInputPath(input), `pg suite closures invalid input: ${input}`);
+      }
+    }
+  }
+  check(source === pgSuiteClosuresSource(closures), 'pg suite closures formatting');
+  return { source, outside: '', ranges: [], lists: [keys], closures };
+}
+const changedBaseClosure = name => `branch changed or removed a base PostgreSQL suite closure: ${name}
+Observed. The union stopped.
+Cause. The branch edited or removed a suite or input that exists at the merge base.
+Fix. Resolve the carrier manually and obtain resolution review.
+Recheck. Run \`node scripts/agent-review-session.mjs status --explain\` on the committed resolution.`;
+const divergentClosureAddition = name => `divergent PostgreSQL suite closure additions: ${name}
+Observed. The union stopped.
+Cause. Both sides modified or added the same PostgreSQL suite with different inputs.
+Fix. Resolve the carrier manually and obtain resolution review.
+Recheck. Run \`node scripts/agent-review-session.mjs status --explain\` on the committed resolution.`;
+export function pgSuiteClosuresUnion(baseSource, leftSource, rightSource) {
+  const [base, left, right] = [baseSource, leftSource, rightSource].map(source => readPgSuiteClosures(source).closures);
+  check(left.schemaVersion === base.schemaVersion, changedBaseClosure('schemaVersion'));
+  const closure = (side, name) => Object.hasOwn(side.suites, name) ? side.suites[name] : undefined;
+  const sameList = (a, b) => a.length === b.length && a.every((value, index) => value === b[index]);
+  const names = new Set([base, left, right].flatMap(side => Object.keys(side.suites)));
+  const suites = Object.create(null);
+  for (const name of [...names].sort(compare)) {
+    const [original, branch, main] = [base, left, right].map(side => closure(side, name));
+    if (original === undefined) {
+      if (branch !== undefined && main !== undefined) check(sameList(branch, main), divergentClosureAddition(name));
+      const value = main ?? branch;
+      if (value !== undefined) suites[name] = value;
+      continue;
+    }
+    check(branch !== undefined && original.every(input => branch.includes(input)), changedBaseClosure(name));
+    if (sameList(branch, original)) {
+      if (main !== undefined) suites[name] = main;
+      continue;
+    }
+    check(main !== undefined, changedBaseClosure(name));
+    if (sameList(main, original) || sameList(main, branch)) {
+      suites[name] = branch;
+      continue;
+    }
+    refuse(divergentClosureAddition(name));
+  }
+  const result = pgSuiteClosuresSource({ schemaVersion: right.schemaVersion, suites });
+  readPgSuiteClosures(result); return result;
+}
 function partitionEntries(basePositions, side, catalogue) {
   const gaps = new Map();
   const retained = new Map();
@@ -187,6 +296,7 @@ Recheck. Run \`node scripts/agent-review-session.mjs status --explain\` on the c
 }
 export function registryUnion(path, baseSource, leftSource, rightSource) {
   if (path === SHARD_WEIGHTS_PATH) return shardWeightsUnion(baseSource, leftSource, rightSource);
+  if (path === PG_SUITE_CLOSURES_PATH) return pgSuiteClosuresUnion(baseSource, leftSource, rightSource);
   const [base, left, right] = [baseSource, leftSource, rightSource].map(source => readRegistry(path, source));
   check(base.outside === left.outside && base.outside === right.outside, 'changed carrier outside named arrays');
   const catalogue = path === REGISTRY_PATHS[0];

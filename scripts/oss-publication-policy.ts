@@ -64,7 +64,7 @@ export const PUBLIC_PACKAGE_COMMANDS: PublicPackageCommand[] = [
   publicCommand("landing:merge", "node scripts/agent-review-landing.mjs"),
   publicCommand("migration:finalize", "node scripts/migration-finalize.mjs"),
   publicCommand("migration:sync", "node --experimental-strip-types scripts/migration-sync.ts"),
-  publicCommand("lint", "node scripts/ast-grep/check-filewide-ignore.mjs && ast-grep scan --error=no-suppress-all --error=unused-suppression && ast-grep test --skip-snapshot-tests && eslint --concurrency auto ."),
+  publicCommand("lint", "node scripts/ast-grep/check-filewide-ignore.mjs && ast-grep scan --error=no-suppress-all --error=unused-suppression && ast-grep test --skip-snapshot-tests && node scripts/run-eslint.mjs ."),
   publicCommand("preflight", "node --experimental-strip-types scripts/preflight.ts"),
   publicCommand("prelint", "node scripts/build-packages-incremental.mjs"),
   publicCommand("oss:published-tree", "node --experimental-strip-types scripts/oss-published-tree-check.ts"),

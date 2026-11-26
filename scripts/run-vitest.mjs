@@ -123,9 +123,14 @@ if (!env.VITEST_MAX_WORKERS && process.env.CI !== "true") {
   const cores = Math.max(1, cpus().length);
   const highLoad = loadavg()[0] > cores;
   const dockerHeavyActive = hasActiveLane("docker-heavy");
-  // Plain runs default to 37.5% in the config, below any former high-load cap.
   if (isCoverageRun) {
     env.VITEST_MAX_WORKERS = highLoad || dockerHeavyActive ? "40%" : "50%";
+  } else {
+    // Bound ungated local plain runs so parallel sessions do not push host load
+    // above the broker's overload gate. Explicit caller pins still take precedence.
+    const ungatedCap = Math.max(1, Math.min(cores, 4, Math.max(2, Math.floor(cores / 4))));
+    const effective = highLoad || dockerHeavyActive ? Math.min(cores, 2) : ungatedCap;
+    env.VITEST_MAX_WORKERS = String(Math.max(1, effective));
   }
 }
 

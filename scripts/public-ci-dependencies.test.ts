@@ -85,8 +85,9 @@ it("keeps dependency admission under install-proof before builds and preserves s
   const workflow = readFileSync(".github/workflows/published-tree-ci.yml", "utf8").split("\n  install-packages:\n")[1]!.split("\n  install-browser:\n")[0]!;
   expect(workflow.indexOf("run: node scripts/public-ci-dependencies.mjs")).toBeLessThan(workflow.indexOf("run: npm run build"));
   expect(workflow).toContain("GH_TOKEN: ${{ github.token }}");
+  expect(workflow).toContain("needs.install-pack.result == 'success'");
   const step = workflow.split("      - name: Refuse newly introduced vulnerable dependencies\n")[1]!.split("      - ")[0]!;
-  expect(step).toContain("if: needs.install-pack.outputs.reuse != 'true'");
+  expect(step).not.toContain("if:");
   expect(step).not.toContain("continue-on-error");
   // Compiles the real CLI too, without importing a test-only implementation.
   expect(() => execFileSync(process.execPath, ["--check", "scripts/public-ci-dependencies.mjs"])).not.toThrow();
