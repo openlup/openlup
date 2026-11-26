@@ -2,7 +2,6 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { performance } from "node:perf_hooks";
 import type { PoolClient } from "pg";
-import { CATALOG_DRAFT_MAX_BYTES } from "@openlup/platform/catalog/contracts";
 import type { CommerceQuoteMoneyV2 } from "@openlup/platform/pricing/contracts";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { flatTestTimeoutMs } from "../../scripts/ci-vitest-duration-keys.js";
@@ -1121,54 +1120,50 @@ it("matches supplementary Unicode boundaries and records the bounded exclusive c
   } }))).rejects.toMatchObject({ code: "23514", table: snapshots });
 }, postgresSetupTimeoutMs);
 
-it.each([1, 2])("checks a combined order near both wire caps exactly %i times", async expected => {
+it.each([1, 2])("checks a combined order near the completion base wire cap exactly %i times", async expected => {
   const lineKey = "dense-source";
   const promotions = Array.from({ length: 20 }, () => ({ id: `offer-${randomUUID()}`, lineKey }));
-  const positionCount = 32 * (promotions.length * 2 + 1);
-  const sealWireCap = 1_048_576;
+  const positionsPerState = 20;
+  const baseWireCap = 1_048_576;
   const evidence = await issue(store, sku, false, body => {
     const line = body.lines[0]!, position = line.taxPositions[0]!;
-    const sized = (refBytes: number) => {
-      const state = (amount: number) => ({
-        basisMinor: amount, netMinor: amount, taxMinor: 0,
-        taxPositions: Array.from({ length: 32 }, (_, index) => ({
-          ...position, positionRef: `dense-position-${index}`, taxableMinor: amount,
-          providerLineRef: "p".repeat(Math.min(256, refBytes - 1)),
-          resolution: { ...position.resolution, sourceRef: "s".repeat(Math.max(1, refBytes - 256)) },
+    const state = (amount: number) => ({
+      basisMinor: amount, netMinor: amount, taxMinor: 0,
+      // The full 32-position plan exceeded the base cap even with one-byte refs.
+      // These refs fill the remaining room on the 20-position plan.
+      taxPositions: Array.from({ length: positionsPerState }, (_, index) => ({
+        ...position, positionRef: `dense-position-${index}`, taxableMinor: amount,
+        providerLineRef: index < 7 ? "ppp" : "pp",
+        resolution: { ...position.resolution, sourceRef: "s" },
+      })),
+    });
+    return {
+      ...body, deliveryBuckets: boundedHandling(), feeLines: boundedFees(), netTotal: 50, feeTotal: 256, payableMinor: 306,
+      lines: [{ ...line, lineKey, unitBasisMinor: 21, preDiscountMinor: 21, effectiveMinor: 1, netMinor: 1,
+        lineTotalMinor: 1, taxPositions: state(1).taxPositions,
+        discountAllocations: promotions.map(({ id }, slot) => ({
+          allocationId: randomUUID(), adjustmentRef: id, sequence: slot + 1, source: "legacy_promotion" as const,
+          basisReductionMinor: 1, netReductionMinor: 1, taxReductionMinor: 0, evidenceRef: "b".repeat(64),
+          before: state(21 - slot), after: state(20 - slot),
         })),
-      });
-      return {
-        ...body, deliveryBuckets: boundedHandling(), feeLines: boundedFees(), netTotal: 50, feeTotal: 256, payableMinor: 306,
-        lines: [{ ...line, lineKey, unitBasisMinor: 21, preDiscountMinor: 21, effectiveMinor: 1, netMinor: 1,
-          lineTotalMinor: 1, taxPositions: state(1).taxPositions,
-          discountAllocations: promotions.map(({ id }, slot) => ({
-            allocationId: randomUUID(), adjustmentRef: id, sequence: slot + 1, source: "legacy_promotion" as const,
-            basisReductionMinor: 1, netReductionMinor: 1, taxReductionMinor: 0, evidenceRef: "b".repeat(64),
-            before: state(21 - slot), after: state(20 - slot),
-          })),
-        }, ...Array.from({ length: 49 }, (_, index) => ({
-          ...line, lineKey: `source-${index + 2}`, sourceOrdinal: index + 2, unitBasisMinor: 1,
-          preDiscountMinor: 1, effectiveMinor: 1, netMinor: 1, lineTotalMinor: 1, taxPositions: [], discountAllocations: [],
-        }))],
-      };
+      }, ...Array.from({ length: 49 }, (_, index) => ({
+        ...line, lineKey: `source-${index + 2}`, sourceOrdinal: index + 2, unitBasisMinor: 1,
+        preDiscountMinor: 1, effectiveMinor: 1, netMinor: 1, lineTotalMinor: 1, taxPositions: [], discountAllocations: [],
+      }))],
     };
-    // Reserve bytes for the quote and seal envelope, then fill the repeated references.
-    const room = Math.min(CATALOG_DRAFT_MAX_BYTES, sealWireCap) - 8_192 - Buffer.byteLength(JSON.stringify(sized(2)));
-    const refBytes = 2 + Math.floor(room / positionCount);
-    expect(refBytes).toBeGreaterThanOrEqual(2);
-    expect(refBytes).toBeLessThanOrEqual(512);
-    return sized(refBytes);
-  }, { promotions });
-  const quoteBytes = Buffer.byteLength(JSON.stringify(evidence.quote));
-  const { rows: [seal] } = await store.owner.query<{ bytes: number }>(
-    "SELECT octet_length(outcome_text) AS bytes FROM public.tax_calculations WHERE calculation_id=$1",
-    [evidence.quote.taxEvidence.calculationId]);
-  expect(quoteBytes).toBeGreaterThan(CATALOG_DRAFT_MAX_BYTES * 0.99);
-  expect(quoteBytes).toBeLessThanOrEqual(CATALOG_DRAFT_MAX_BYTES);
-  expect(seal!.bytes).toBeGreaterThan(sealWireCap * 0.99);
-  expect(seal!.bytes).toBeLessThanOrEqual(sealWireCap);
+  }, { promotions, measureCompletion: true });
+  const { base, supplement, assembled } = evidence.completionBytes!;
+  expect(base, JSON.stringify(evidence.completionBytes)).toBeGreaterThan(baseWireCap - 128);
+  expect(base).toBeLessThanOrEqual(baseWireCap);
+  expect(supplement).toBeLessThanOrEqual(baseWireCap);
+  expect(assembled).toBe(base + supplement + 22);
+  expect(assembled).toBeLessThanOrEqual(2_097_174);
   expect(evidence.quote.lines).toHaveLength(50);
-  console.info(`Combined order fixture: 50 items and sources, ${promotions.length} allocations, ${positionCount} positions, ${quoteBytes} quote bytes, ${seal!.bytes} seal bytes`);
+  expect(evidence.quote.deliveryBuckets).toHaveLength(256);
+  expect(evidence.quote.feeLines).toHaveLength(256);
+  expect(evidence.quote.lines[0]!.discountAllocations).toHaveLength(20);
+  expect(evidence.quote.lines[0]!.taxPositions).toHaveLength(positionsPerState);
+  console.info(`Combined order fixture (${expected}): ${base} base bytes, ${supplement} supplement bytes, ${assembled} assembled bytes`);
   await countCombinedCommit(evidence, expected);
 }, postgresSetupTimeoutMs);
 

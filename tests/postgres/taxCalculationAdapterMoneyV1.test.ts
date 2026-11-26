@@ -4,7 +4,7 @@ import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { createPlatformPostgresMigrationRunner, qualifiedPostgresStartupOptions,
   type QualifiedPostgresInstallation } from "@openlup/platform/migrations";
-import { canonicalCatalogDraftJson } from "@openlup/platform/catalog";
+import { CATALOG_DRAFT_MAX_BYTES, canonicalCatalogDraftJson } from "@openlup/platform/catalog";
 import { applyTaxCoverageRevision, evaluationDigest } from "@openlup/platform/tax";
 // eslint-disable-next-line no-restricted-imports -- witness the reporting verifier's private result for a refusal
 import { checkedQuoteResult } from "../../packages/platform/src/tax/digest.js";
@@ -41,6 +41,29 @@ beforeAll(async () => {
   store = await resources.installation("adapter-money");
   sample = await verifiedAdapterMoney(await fixture(store), "final", true);
 }, postgresSetupTimeoutMs);
+
+async function claimVerifiedCompletion(source: Pick<JourneyInstallation, "owner" | "runtime">, extended: boolean) {
+  const value = await fixture(source);
+  const { request, result, pin, body, invocation, identity } = await verifiedAdapterMoney(value, "final", extended, new Date().toISOString());
+  expect(await applyTaxCoverageRevision(source.owner, { expectedHead: "coverage-a", document: {
+    installationRef: identity.installationRef, accountRef: request.input.scope.accountRef, coverage: request.input.coverage, actorRef: "fixture",
+  } })).toHaveProperty("coverageDigest", pin.coverage.digest);
+  const grant = await invoke<Claim>(source.runtime, beginSql, { identity, invocation, operation: "claim", pin, recovery: pin.recovery });
+  expect(grant.kind).toBe("claimed");
+  const { outcome, contradiction, ...preimage } = body;
+  const { calculationId, generation, claimToken } = grant;
+  const envelope = { ...preimage, calculationId, generation, invocationDigest: grant.pin.invocationDigest };
+  const { quoteId, status, schemaVersion, contractVersion, moneyDigest: _money, quoteDigest: _quote, ...money } = outcome.quote;
+  const projection = { ...money, taxEvidence: { ...money.taxEvidence, calculationId,
+    evidenceDigest: evaluationDigest("evaluation-evidence", envelope) } };
+  const quote = { ...projection, quoteId, status, schemaVersion, contractVersion, moneyDigest: quoteDigest("commerce.quote-money.v2", projection) };
+  const seal = { destination: body.destination, kind: exclusiveKind, requestDigest: pin.requestDigest,
+    disposition: body.disposition, validUntil: body.validUntil, evidence: body.evidence, contradiction,
+    outcome: { kind: "final", quote: { ...quote, quoteDigest: quoteDigest("commerce.quote.v2", quote) } } };
+  const base = { identity, invocation, calculationId, generation, claimToken, operation: "complete", seal };
+  const full = { ...base, seal: { ...seal, adapterMoneyResult: result.money } };
+  return { base, full, expected: { kind: "terminal", outcome: seal.outcome, validUntil: seal.validUntil } };
+}
 
 it("upgrades the populated installed predecessor in ledger order and preserves stored frames and replay", async () => {
   const predecessor = structuredClone(catalog);
@@ -93,28 +116,10 @@ it("upgrades the populated installed predecessor in ledger order and preserves s
     expect((await owner.query("SELECT to_regprocedure($1) AS validator,to_regprocedure($2) AS reader", [signature, reader])).rows)
       .toStrictEqual([{ validator: null, reader: null }]);
     const createCase = async (extended: boolean) => {
-      const value = await fixture(source);
-      const { request, result, pin, body, invocation, identity } = await verifiedAdapterMoney(value, "final", extended, new Date().toISOString());
-      expect(await applyTaxCoverageRevision(source.owner, { expectedHead: "coverage-a", document: {
-        installationRef: identity.installationRef, accountRef: request.input.scope.accountRef, coverage: request.input.coverage, actorRef: "fixture",
-      } })).toHaveProperty("coverageDigest", pin.coverage.digest);
-      const grant = await invoke<Claim>(source.runtime, beginSql, { identity, invocation, operation: "claim", pin, recovery: pin.recovery });
-      expect(grant.kind).toBe("claimed");
-      const { outcome, contradiction, ...preimage } = body;
-      const { calculationId, generation, claimToken } = grant;
-      const envelope = { ...preimage, calculationId, generation, invocationDigest: grant.pin.invocationDigest };
-      const { quoteId, status, schemaVersion, contractVersion, moneyDigest: _money, quoteDigest: _quote, ...money } = outcome.quote;
-      const projection = { ...money, taxEvidence: { ...money.taxEvidence, calculationId,
-        evidenceDigest: evaluationDigest("evaluation-evidence", envelope) } };
-      const quote = { ...projection, quoteId, status, schemaVersion, contractVersion, moneyDigest: quoteDigest("commerce.quote-money.v2", projection) };
-      const seal = { destination: body.destination, kind: exclusiveKind, requestDigest: pin.requestDigest,
-        disposition: body.disposition, validUntil: body.validUntil, evidence: body.evidence, contradiction,
-        outcome: { kind: "final", quote: { ...quote, quoteDigest: quoteDigest("commerce.quote.v2", quote) } } };
-      const base = { identity, invocation, calculationId, generation, claimToken, operation: "complete", seal };
-      const full = { ...base, seal: { ...seal, adapterMoneyResult: result.money } };
-      await expect(invoke(source.runtime, completeSql, full)).rejects.toMatchObject({ code: "22023", message: "tax_invalid_input",
+      const completion = await claimVerifiedCompletion(source, extended);
+      await expect(invoke(source.runtime, completeSql, completion.full)).rejects.toMatchObject({ code: "22023", message: "tax_invalid_input",
         detail: "/seal", hint: "Supply the documented input." });
-      return { base, full, expected: { kind: "terminal", outcome: seal.outcome, validUntil: seal.validUntil } };
+      return completion;
     };
     const pending = [await createCase(false), await createCase(true)];
     const historical = [await createCase(false), await createCase(true)];
@@ -289,6 +294,23 @@ it("enforces closed nesting, safe integers, reference length and exact rate spel
   }
 });
 
+function adapterMoneyAtByteLimit() {
+  const state = () => ({ ...zeroState, taxPositions: Array.from({ length: 16 }, (_, i) =>
+    ({ ...position, positionRef: "position-" + i, jurisdictionRef: "🧪" })) });
+  const large = { ...emptyMoney, components: Array.from({ length: 192 }, (_, i) => ({
+    ...component, ref: { ...component.ref, lineKey: "item-" + i, sourceOrdinal: i + 1 }, initial: state(), final: state(),
+  })) };
+  const positions = large.components.flatMap(({ initial, final }) => [...initial.taxPositions, ...final.taxPositions]);
+  let remainingBytes = CATALOG_DRAFT_MAX_BYTES - Buffer.byteLength(canonicalCatalogDraftJson(large), "utf8");
+  for (const row of positions) {
+    const count = Math.min(126, remainingBytes);
+    row.jurisdictionRef += "a".repeat(count);
+    remainingBytes -= count;
+  }
+  expect(remainingBytes).toBe(0);
+  return { large, lastPosition: positions.at(-1)! };
+}
+
 it("enforces all array ceilings and the exact UTF-8 byte boundary", async () => {
   for (const [key, limit, build] of [
     ["components", 512, (length: number) => ({ ...emptyMoney, components: Array.from({ length }, (_, i) =>
@@ -306,26 +328,35 @@ it("enforces all array ceilings and the exact UTF-8 byte boundary", async () => 
     expect(await validate(store.owner, build(limit + 1)), key).toBeNull();
   }
 
-  const state = () => ({ ...zeroState, taxPositions: Array.from({ length: 16 }, (_, i) =>
-    ({ ...position, positionRef: "position-" + i, jurisdictionRef: "🧪" })) });
-  const large = { ...emptyMoney, components: Array.from({ length: 192 }, (_, i) => ({
-    ...component, ref: { ...component.ref, lineKey: "item-" + i, sourceOrdinal: i + 1 }, initial: state(), final: state(),
-  })) };
-  const positions = large.components.flatMap(({ initial, final }) => [...initial.taxPositions, ...final.taxPositions]);
-  let remainingBytes = 1_048_576 - Buffer.byteLength(canonicalCatalogDraftJson(large), "utf8");
-  for (const row of positions) {
-    const count = Math.min(126, remainingBytes);
-    row.jurisdictionRef += "a".repeat(count);
-    remainingBytes -= count;
-  }
-  expect(remainingBytes).toBe(0);
+  const { large, lastPosition } = adapterMoneyAtByteLimit();
   const moneyText = canonicalCatalogDraftJson(large);
   expect(Buffer.byteLength(moneyText, "utf8")).toBe(1_048_576);
   expect(await validate(store.owner, large)).toStrictEqual({ moneyText, resultDigest: null });
-  positions.at(-1)!.jurisdictionRef += "a";
+  lastPosition.jurisdictionRef += "a";
   expect(Buffer.byteLength(JSON.stringify(large), "utf8")).toBe(1_048_577);
   expect(await validate(store.owner, large)).toBeNull();
 }, 30_000);
+
+it("refuses a one-byte-oversized adapter money supplement without writing completion", async () => {
+  const { base } = await claimVerifiedCompletion(store, true);
+  const { large, lastPosition } = adapterMoneyAtByteLimit();
+  lastPosition.jurisdictionRef += "a";
+  const full = { ...base, seal: { ...base.seal, adapterMoneyResult: large } };
+  const { rows: [sizes] } = await store.owner.query<{ base: number; supplement: number }>(`WITH request AS (SELECT $1::jsonb AS value)
+    SELECT octet_length(public.catalog_publication_canonical(value #- '{seal,adapterMoneyResult}',0)) AS base,
+      octet_length(public.catalog_publication_canonical(value #> '{seal,adapterMoneyResult}',0)) AS supplement FROM request`, [full]);
+  expect(sizes!.base).toBeLessThan(CATALOG_DRAFT_MAX_BYTES);
+  expect(sizes!.supplement).toBe(CATALOG_DRAFT_MAX_BYTES + 1);
+
+  const readRows = async () => (await store.owner.query("SELECT to_jsonb(r) AS row FROM public.tax_calculations r ORDER BY calculation_id")).rows;
+  const before = await readRows();
+  expect(before).toContainEqual({ row: expect.objectContaining({ calculation_id: base.calculationId, state: "pending",
+    outcome_text: null, outcome_digest: null, adapter_money_text: null, adapter_result_digest: null }) });
+  await expect(invoke(store.runtime, completeSql, full)).rejects.toMatchObject({ code: "22023",
+    message: "tax_invalid_input", detail: "/seal/adapterMoneyResult",
+    hint: "Supply the original verified adapter money through the native tax completion adapter." });
+  expect(await readRows()).toStrictEqual(before);
+});
 
 it("refuses independent component, allocation, position and fee mismatches", async () => {
   const { result: { money }, pin, body } = sample;
