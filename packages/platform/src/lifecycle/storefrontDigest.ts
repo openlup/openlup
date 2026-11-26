@@ -2,7 +2,11 @@ const LONE_SURROGATE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[
 
 function pathProblem(path: unknown): string | null {
   if (typeof path !== "string" || path.length === 0) return "it is not a non-empty string";
-  if (path.includes("\u0000") || path.includes("\n") || path.includes("\\")) return "it holds a NUL, a line feed or a backslash";
+  if (path.includes("\\")) return "it holds a backslash";
+  for (let index = 0; index < path.length; index += 1) {
+    const unit = path.charCodeAt(index);
+    if (unit < 0x20 || unit === 0x7f) return "it holds a control character (such as NUL or a line feed)";
+  }
   if (LONE_SURROGATE.test(path)) return "it holds a lone surrogate";
   if (path.normalize("NFC") !== path) return "it is not in Unicode NFC form";
   if (path.startsWith("/")) return "it is absolute";
@@ -23,8 +27,10 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
  * NUL, the lower-case hex SHA-256 of its bytes and a line feed. Input order does
  * not matter; any changed byte or path changes the digest.
  *
- * Each path is relative and uses `/`, with no empty, `.` or `..` segment, no NUL,
- * line feed, backslash or lone surrogate, and is in NFC. Otherwise, or for a path
+ * Each path is relative and uses `/`, with no empty, `.` or `..` segment, no
+ * control character (NUL, line feed and the rest of C0, and DEL), backslash or
+ * lone surrogate, and is in NFC. Sorting compares UTF-16 code units, not locale,
+ * code-point or UTF-8 byte order. Otherwise, or for a path
  * given twice, it rejects with a `TypeError` whose message starts
  * `storefront_digest_path_invalid` and names the path.
  *

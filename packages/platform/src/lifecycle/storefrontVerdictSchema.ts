@@ -17,6 +17,7 @@ export const knownControlKinds = ["omit_action", "block_read", "other_policy", "
 export const knownBuildSources = ["claimed", "ci"] as const;
 export const knownAdapterKinds = ["default", "custom"] as const;
 export const knownObserverKinds = ["fixture", "package", "store"] as const;
+export const knownChangedPayloadPolicies = ["update_in_place", "refuse_changed"] as const;
 export const knownFindingCodes = [
   "duplicate_order", "duplicate_hold", "duplicate_capture", "second_attempt", "forbidden_state_shown",
   "order_outside_subject", "progress_not_reached", "policy_mismatch", "vacuous_progress", "auto_progress_undeclared",
@@ -71,8 +72,20 @@ const count = z.number().int().nonnegative();
 const nonEmpty = z.string().min(1);
 const name = z.string().regex(OPEN_SET_PATTERN);
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
-const SRI = /^sha(256|384|512)-[A-Za-z0-9+/]+={0,2}$/;
-const UTC_INSTANT = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T([01]\d|2[0-3]):[0-5]\d:[0-5]\d\.\d{3}Z$/;
+// A space-separated list of hash expressions as npm writes it, holding at least one SHA-2 hash.
+const HASH = String.raw`sha(?:1|256|384|512)-[A-Za-z0-9+/]+={0,2}(?:\?[\x21-\x7e]*)?`;
+const STRONG_HASH = String.raw`sha(?:256|384|512)-[A-Za-z0-9+/]+={0,2}(?:\?[\x21-\x7e]*)?`;
+const SRI = new RegExp(`^(?:${HASH} )*${STRONG_HASH}(?: ${HASH})*$`);
+// A real calendar instant: month lengths, and 29 February only in leap years.
+const LEAP_YEAR = String.raw`(?:\d\d(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)`;
+const DATE = String.raw`(?:\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|02-(?:0[1-9]|1\d|2[0-8]))|${LEAP_YEAR}-02-29)`;
+const UTC_INSTANT = new RegExp(String.raw`^${DATE}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d\.\d{3}Z$`);
+
+// One UTF-16 unit of a local path: no C0 control, DEL or lone surrogate, and none of `excluded`.
+// Portable: no lookaround, and correct with or without the regex `u` flag.
+function pathUnit(excluded: string): string {
+  return String.raw`(?:[^${excluded}\u0000-\u001f\u007f\ud800-\udfff]|[\ud800-\udbff][\udc00-\udfff])`;
+}
 
 const ledger = z.looseObject({ orders: count, payableOrders: count, holds: count, attempts: count, captures: count });
 
@@ -144,6 +157,40 @@ export const verdictSchema = z.looseObject({
 
 /** The `browser_ui` channel: `width` required. */
 export const browserVerdictSchema = verdictSchema.extend({ channel: z.literal("browser_ui"), width });
+
+// Proof file, format version 1. Route paths start with `/`, not `//`; surfaces carry no query or fragment,
+// a selection entry may carry a query. Module segments are non-empty and neither `.` nor `..`.
+const surfacePath = z.string().regex(new RegExp(String.raw`^/(?:${pathUnit(String.raw`/\\?#`)}${pathUnit(String.raw`\\?#`)}*)?$`));
+const selectionEntryPath = z.string().regex(new RegExp(String.raw`^/(?:${pathUnit(String.raw`/\\#`)}${pathUnit(String.raw`\\#`)}*)?$`));
+const MODULE_SEGMENT = (() => {
+  const plain = pathUnit(String.raw`/\\?#:.`), any = pathUnit(String.raw`/\\?#:`);
+  return String.raw`(?:${plain}${any}*|\.${plain}${any}*|\.\.${any}+)`;
+})();
+
+export const proofFileSchema = z.looseObject({
+  formatVersion: z.literal(1),
+  configurations: z.array(nonEmpty).min(1),
+  widths: z.array(width).min(1),
+  routes: z.looseObject({
+    surfaces: z.record(name, surfacePath).optional(),
+    selectionEntry: z.record(name, selectionEntryPath).optional(),
+  }).optional(),
+  autoProgress: z.array(name).optional(),
+  changedPayloadPolicy: openSet(knownChangedPayloadPolicies).optional(),
+  buyer: z.looseObject({
+    first_name: z.string().optional(),
+    last_name: z.string().optional(),
+    phone: z.string().optional(),
+    address_line1: z.string().optional(),
+    address_line2: z.string().optional(),
+    city: z.string().optional(),
+    postal_code: z.string().optional(),
+    email: z.never().optional(),
+  }).optional(),
+  recheck: nonEmpty.optional(),
+  adapterModule: z.string().regex(new RegExp(`^${MODULE_SEGMENT}(?:/${MODULE_SEGMENT})*$`)).optional(),
+  host: z.looseObject({}).optional(),
+});
 
 /** Draft-07 JSON Schema of an internal zod schema, deep-frozen so a reader cannot change the shared constant. */
 export function frozenJsonSchema(schema: z.ZodType): Readonly<Record<string, unknown>> {

@@ -59,8 +59,9 @@ export type StorefrontFindingCode =
  * matching `^[a-z][a-z0-9_]*$`; a reader keeps a default branch for each.
  *
  * No field holds a request body, a response body, a token or a command key value.
- * Unknown fields at any level are kept by `parseStorefrontVerdict`; the
- * runner neither reads nor writes them.
+ * Unknown fields at any level are kept by `parseStorefrontVerdict`, except an
+ * own `__proto__` key, which is dropped so a reader's objects keep their
+ * prototype; the runner neither reads nor writes unknown fields.
  *
  * Within format version 1 fields are only added. Until the first release that
  * carries the storefront runner, format version 1 may still be amended without a
@@ -73,7 +74,10 @@ export type StorefrontVerdict = {
   formatVersion: 1;
   /** Unique per run, supplied by whoever ran the scenario. */
   runId: string;
-  /** UTC instant with milliseconds (`YYYY-MM-DDTHH:mm:ss.sssZ`). "Newest" means the latest `completedAt`, never a file time. */
+  /**
+   * A real UTC instant with milliseconds (`YYYY-MM-DDTHH:mm:ss.sssZ`; month lengths
+   * and leap years are checked). "Newest" means the latest `completedAt`, never a file time.
+   */
   completedAt: string;
   scenario: string;
   tier: "fixture_preview" | "postgres_sandbox" | (string & {});
@@ -105,7 +109,7 @@ export type StorefrontVerdict = {
     expectedAnchor: string | null;
     /** `state:<value>` and `action:<value>`. */
     observedAnchors: string[];
-    /** Without query or fragment. */
+    /** Starts with `/`, without query or fragment. */
     path: string | null;
     elapsedMs: number;
     commands: {
@@ -143,7 +147,11 @@ export type StorefrontVerdict = {
    */
   build: {
     source: "claimed" | "ci" | (string & {});
-    /** `integrity` is absent or a full SRI string. */
+    /**
+     * `integrity` is absent or a space-separated list of SRI hash expressions, as
+     * npm writes it, holding at least one SHA-256, SHA-384 or SHA-512 hash; it is
+     * compared as written.
+     */
     packages: { name: string; version: string; integrity?: string }[];
     /** One per client build served; `digest` from `digestStorefrontFiles`. */
     clients: { name: string; digest: string }[];

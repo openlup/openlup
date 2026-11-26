@@ -169,8 +169,10 @@ export declare function inspectLegacyPostgresInstallRoles(db: PostgresInstallQue
  * NUL, the lower-case hex SHA-256 of its bytes and a line feed. Input order does
  * not matter; any changed byte or path changes the digest.
  *
- * Each path is relative and uses `/`, with no empty, `.` or `..` segment, no NUL,
- * line feed, backslash or lone surrogate, and is in NFC. Otherwise, or for a path
+ * Each path is relative and uses `/`, with no empty, `.` or `..` segment, no
+ * control character (NUL, line feed and the rest of C0, and DEL), backslash or
+ * lone surrogate, and is in NFC. Sorting compares UTF-16 code units, not locale,
+ * code-point or UTF-8 byte order. Otherwise, or for a path
  * given twice, it rejects with a `TypeError` whose message starts
  * `storefront_digest_path_invalid` and names the path.
  *
@@ -186,7 +188,7 @@ export declare function digestStorefrontFiles(files: readonly {
 ```ts
 /**
  * A store's proof file, format version 1: what a storefront proof runs against.
- * Unknown fields are kept; `host` is the only namespace a host may use, and other
+ * Unknown fields are kept (an own `__proto__` key is dropped); `host` is the only namespace a host may use, and other
  * unknown top-level fields are reserved for later platform fields.
  *
  * Within format version 1 fields are only added. Until the first release that
@@ -207,7 +209,7 @@ export type StorefrontProofFile = {
      * (`one_time`, `subscription`; open) an ordinary route that opens the cart with
      * the first sellable product at its minimum quantity in that mode; it may carry
      * a query, never a fragment. Every path starts with `/`, not `//`, and holds no
-     * backslash.
+     * backslash, control character or lone surrogate.
      */
     routes?: {
         surfaces?: Record<string, string>;
@@ -230,7 +232,7 @@ export type StorefrontProofFile = {
     };
     /** Command that reruns one scenario; `{scenario}` is replaced by the scenario id. */
     recheck?: string;
-    /** Relative POSIX path of the optional adapter module: no leading `/`, scheme, backslash, `?`, `#`, `.` or `..` segment. */
+    /** Relative POSIX path of the optional adapter module: no leading `/`, `:`, backslash, `?`, `#`, control character, lone surrogate, empty, `.` or `..` segment. */
     adapterModule?: string;
     /** Fields a host adds, kept as given and never read by the package. */
     host?: Record<string, unknown>;
@@ -297,8 +299,9 @@ export type StorefrontFindingCode = "duplicate_order" | "duplicate_hold" | "dupl
  * matching `^[a-z][a-z0-9_]*$`; a reader keeps a default branch for each.
  *
  * No field holds a request body, a response body, a token or a command key value.
- * Unknown fields at any level are kept by `parseStorefrontVerdict`; the
- * runner neither reads nor writes them.
+ * Unknown fields at any level are kept by `parseStorefrontVerdict`, except an
+ * own `__proto__` key, which is dropped so a reader's objects keep their
+ * prototype; the runner neither reads nor writes unknown fields.
  *
  * Within format version 1 fields are only added. Until the first release that
  * carries the storefront runner, format version 1 may still be amended without a
@@ -311,7 +314,10 @@ export type StorefrontVerdict = {
     formatVersion: 1;
     /** Unique per run, supplied by whoever ran the scenario. */
     runId: string;
-    /** UTC instant with milliseconds (`YYYY-MM-DDTHH:mm:ss.sssZ`). "Newest" means the latest `completedAt`, never a file time. */
+    /**
+     * A real UTC instant with milliseconds (`YYYY-MM-DDTHH:mm:ss.sssZ`; month lengths
+     * and leap years are checked). "Newest" means the latest `completedAt`, never a file time.
+     */
     completedAt: string;
     scenario: string;
     tier: "fixture_preview" | "postgres_sandbox" | (string & {});
@@ -343,7 +349,7 @@ export type StorefrontVerdict = {
         expectedAnchor: string | null;
         /** `state:<value>` and `action:<value>`. */
         observedAnchors: string[];
-        /** Without query or fragment. */
+        /** Starts with `/`, without query or fragment. */
         path: string | null;
         elapsedMs: number;
         commands: {
@@ -390,7 +396,11 @@ export type StorefrontVerdict = {
      */
     build: {
         source: "claimed" | "ci" | (string & {});
-        /** `integrity` is absent or a full SRI string. */
+        /**
+         * `integrity` is absent or a space-separated list of SRI hash expressions, as
+         * npm writes it, holding at least one SHA-256, SHA-384 or SHA-512 hash; it is
+         * compared as written.
+         */
         packages: {
             name: string;
             version: string;

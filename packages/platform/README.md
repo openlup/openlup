@@ -3960,11 +3960,13 @@ evidence from `@openlup/platform/lifecycle`, without importing test support:
   and `storefrontProofFileJsonSchema` follow the verdict's rules; `host` is the
   one object a host may fill.
 - **Digest.** `digestStorefrontFiles` is the one client-build digest:
-  `sha256:` over a sorted manifest of relative POSIX paths and their SHA-256.
+  `sha256:` over a manifest of relative POSIX paths and their SHA-256, sorted
+  by UTF-16 code units (not locale or UTF-8 byte order).
 - **Open sets.** Tiers, channels, results, runs, phases, control, observer,
   build-source and adapter kinds, and finding codes accept values added later
   (`^[a-z][a-z0-9_]*$`); a reader keeps a default branch. Unknown fields are
-  kept. A result of `not_run` is missing evidence, never a pass.
+  kept, except an own `__proto__` key, which is dropped. A result of
+  `not_run` is missing evidence, never a pass.
 - **Compatibility.** Within format version 1 fields are only added. Until the
   first release that carries the storefront runner, format version 1 may still
   be amended without a version bump; afterwards a removed field or changed
