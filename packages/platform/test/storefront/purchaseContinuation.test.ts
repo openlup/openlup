@@ -660,6 +660,63 @@ describe("source of a status no answer produced", () => {
   });
 });
 
+describe("storage checks around getOrCreateContinuationId", () => {
+  /** A storage over `store` whose `write` and `read` a test replaces, logging nothing the world does not log. */
+  const storageOver = (store: { record: ContinuationRecord | null }) => ({
+    read: (): ContinuationRecord | null => store.record,
+    write: (record: ContinuationRecord): void => { store.record = record; },
+    clear: (): void => { store.record = null; },
+  });
+
+  it("sends nothing when a minted record reads back with another fingerprint", async () => {
+    const store = { record: null as ContinuationRecord | null };
+    const storage = { ...storageOver(store), write: (record: ContinuationRecord) => { store.record = { ...record, fingerprint: "another-fingerprint" }; } };
+    const w = world({ overrides: { storage } });
+
+    const { snapshot } = await w.c.submit({ payload: A });
+
+    expect(snapshot).toMatchObject({ status: "storage_unavailable", source: null, busy: false });
+    expect(snapshot.error).toBeUndefined();
+    expect(w.count("submit")).toBe(0);
+    expect(w.count("commandKeyFor")).toBe(0);
+  });
+
+  it("sends nothing when a write keeps the record and then throws", async () => {
+    const store = { record: null as ContinuationRecord | null };
+    const refusal = new Error("storage kept the record, then refused");
+    const storage = { ...storageOver(store), write: (record: ContinuationRecord) => { store.record = record; throw refusal; } };
+    const w = world({ overrides: { storage } });
+
+    const { snapshot } = await w.c.submit({ payload: A });
+
+    expect(snapshot).toMatchObject({ status: "storage_unavailable", source: null, busy: false });
+    expect(snapshot.error).toBe(refusal);
+    expect(w.count("submit")).toBe(0);
+    expect(w.count("commandKeyFor")).toBe(0);
+  });
+
+  it.each([["missing", null], ["another identity", storedRecord("cid-after-the-call")]] as const)(
+    "sends nothing when the record read after the call is %s",
+    async (_case, later) => {
+      const kept = storedRecord("cid-reused");
+      const store = { record: kept as ContinuationRecord | null };
+      let reads = 0;
+      // The controller reads the record, then getOrCreateContinuationId reuses it; every later read answers with `later`.
+      const storage = { ...storageOver(store), read: () => (++reads <= 2 ? store.record : later) };
+      const w = world({ overrides: { storage } });
+
+      const { snapshot } = await w.c.submit({ payload: A });
+
+      expect(w.argsOf("identifier.accepts")).toEqual(["cid-reused", "cid-reused"]);
+      expect(w.count("identifier.next")).toBe(0);
+      expect(snapshot).toMatchObject({ status: "storage_unavailable", source: null, busy: false });
+      expect(snapshot.error).toBeUndefined();
+      expect(w.count("submit")).toBe(0);
+      expect(w.count("commandKeyFor")).toBe(0);
+    },
+  );
+});
+
 describe("W23 state belongs to one identity", () => {
   it("drops a refusal allowance when another instance replaced the purchase", async () => {
     const store = shelf(), srv = server();

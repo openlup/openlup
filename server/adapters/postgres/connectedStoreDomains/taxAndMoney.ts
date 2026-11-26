@@ -1,5 +1,8 @@
 export const taxAndMoneyDomain = {
   owned: {
+    renewalIssuances: ["subscription_cycle_tax_issuances"],
+    renewalBindings: ["subscription_cycle_tax_bindings"],
+    renewalRebinds: ["subscription_cycle_calculation_rebinds"],
     moneyAndTax: [
       "commerce_money_limits_v2",
       "tax_calculations",

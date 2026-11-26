@@ -156,10 +156,13 @@ const FIELDS = Object.keys(FIRST) as (keyof Snapshot<never>)[];
  * while no record is stored. A changed
  * payload is sent only under `update_in_place`, or after a `refused` answer to
  * a submit or its replay, until the next payload is sent; any other policy
- * value reads as `refuse_changed`. When a record write throws or does not read
- * back with the identity and fingerprint just written, nothing is sent and
- * `error` holds the write's error: the controller takes no storage-failure
- * policy. A class, recovery, reading or decision this version does not know
+ * value reads as `refuse_changed`. The controller calls
+ * `getOrCreateContinuationId` with `storageFailure: "refuse"` and takes no
+ * storage-failure policy of its own. Nothing is sent when that call returns
+ * `null`, a record write throws, the record read back names no identity or
+ * another one, or a changed fingerprint written after a `refused` answer does
+ * not read back; `error` holds the write's error, if one was thrown. A class,
+ * recovery, reading or decision this version does not know
  * sends nothing more and keeps the record.
  *
  * A stored identity that `identifier.accepts` rejects is never replaced and no
@@ -279,12 +282,10 @@ export function createPurchaseContinuation<TPayload, TRequest, TResult, TOptions
   }
 
   /** The host storage with each write's error caught and kept in `errors`. */
-  function guardedStorage(errors: unknown[]): ContinuationRecordStorageBinding & { written: ContinuationRecord | null } {
-    const guarded = {
-      written: null as ContinuationRecord | null,
+  function guardedStorage(errors: unknown[]): ContinuationRecordStorageBinding {
+    return {
       read: () => storage.read(),
       write: (record: ContinuationRecord) => {
-        guarded.written = record;
         try {
           storage.write(record);
         } catch (error) {
@@ -293,7 +294,6 @@ export function createPurchaseContinuation<TPayload, TRequest, TResult, TOptions
       },
       clear: () => storage.clear(),
     };
-    return guarded;
   }
 
   function identity(): Identity | null {
@@ -417,6 +417,7 @@ export function createPurchaseContinuation<TPayload, TRequest, TResult, TOptions
     const writeErrors: unknown[] = [];
     const guarded = guardedStorage(writeErrors);
     const record = readRecord();
+    let rewritten: string | null = null;
     if (record && !identifier.accepts(record.continuationId)) {
       report?.("stored_continuation_rejected");
       Object.assign(patch, recordFields(record), { status: "unknown", source: null });
@@ -429,14 +430,17 @@ export function createPurchaseContinuation<TPayload, TRequest, TResult, TOptions
           Object.assign(patch, recordFields(record), { status: "details_changed", source: null });
           return;
         }
+        rewritten = fingerprint;
         guarded.write({ ...record, fingerprint });
       }
     }
-    const continuationId = getOrCreateContinuationId({ storage: guarded, identifier }, { fingerprint: () => bindings.request.fingerprint(payload) });
-    // The attempt and the key come only from the record read back, so an identity or fingerprint that was not kept is never sent.
+    // A minted identity that was not kept comes back as null: the function reads its own write back.
+    const continuationId = getOrCreateContinuationId({ storage: guarded, identifier },
+      { fingerprint: () => bindings.request.fingerprint(payload), storageFailure: "refuse" });
+    // The attempt and the key come only from the record read back, which must name the identity sent, also on reuse.
     const stored = readRecord();
-    if (writeErrors.length > 0 || !stored || stored.continuationId !== continuationId
-      || (guarded.written !== null && stored.fingerprint !== guarded.written.fingerprint)) {
+    if (continuationId === null || writeErrors.length > 0 || !stored || stored.continuationId !== continuationId
+      || (rewritten !== null && stored.fingerprint !== rewritten)) {
       Object.assign(patch, recordFields(stored), { status: "storage_unavailable", source: null, error: writeErrors[0] });
       return;
     }
