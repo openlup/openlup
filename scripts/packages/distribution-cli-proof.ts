@@ -1,7 +1,7 @@
 /** Called by the existing cold consumer after installing its verified tarballs. */
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync, type ExecFileSyncOptionsWithStringEncoding } from "node:child_process";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { isIPv4 } from "node:net";
 import { homedir, tmpdir } from "node:os";
@@ -1439,7 +1439,10 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
     undefined, env, privateResult));
   const source = join(homedir(), ".local/state/openlup/neutral-store", project, "runtime-password");
   const projectFile = join(from, ".context/compose-project");
-  const up = (code = 0) => checked("up", run(from, "./lifecycle", ["up", "--configuration", "coffee", "--json"]), code);
+  const configurationId = "coffee";
+  const configuration = ["--configuration", configurationId];
+  const origin = `http://127.0.0.1:${port}`;
+  const up = (code = 0) => checked("up", run(from, "./lifecycle", ["up", ...configuration, "--json"]), code);
   const container = (service: string) => checked("container_id", compose("ps", "-q", service));
   const identity = () => {
     const id = container("database");
@@ -1454,6 +1457,57 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
     sql("select jsonb_agg(to_jsonb(t) order by id) from public.price_entries t"),
     sql("select jsonb_agg(to_jsonb(t) order by position) from public.platform_schema_migrations t"),
   ];
+  type CheckoutResult = { ok: boolean; code?: string; value?: Record<string, unknown> };
+  async function checkoutAction(action: string, body: Record<string, unknown>): Promise<CheckoutResult> {
+    try {
+      // Receipt reads carry no cookies from the original checkout.
+      const response = await fetch(`${origin}/api/actions/${action}`, {
+        method: "POST", signal: AbortSignal.timeout(15_000),
+        headers: { Origin: origin, "X-Starter-Request": "1", "Idempotency-Key": randomUUID(),
+          "Content-Type": "application/json", Connection: "close" },
+        body: JSON.stringify(body),
+      });
+      const result = await response.json() as CheckoutResult;
+      if (result.ok === response.ok) return result;
+    } catch { /* Keep private checkout responses out of diagnostics. */ }
+    return fail("checkout_transport_" + action);
+  }
+  const settledFacts = (ref: string) => {
+    if (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(ref)) fail("invalid_settled_order_key");
+    return sql(`select jsonb_build_object(
+      'orders', coalesce((select jsonb_agg(to_jsonb(o) order by o.id) from public.commerce_orders o where o.id = '${ref}'), '[]'),
+      'lines', coalesce((select jsonb_agg(to_jsonb(l) order by l.id) from public.commerce_order_items l where l.order_id = '${ref}'), '[]'),
+      'payments', coalesce((select jsonb_agg(to_jsonb(p) order by p.id) from public.commerce_settlement_intents p where p.order_id = '${ref}'), '[]'),
+      'attempts', coalesce((select jsonb_agg(to_jsonb(a) order by a.id) from public.payment_simulator_attempts a
+        join public.commerce_settlement_intents p on p.id = a.settlement_intent_id where p.order_id = '${ref}'), '[]'))`,
+      "neutral_store", true);
+  };
+  async function createSettledReceipt() {
+    const response = await fetch(`${origin}/api/config`, { signal: AbortSignal.timeout(15_000) });
+    if (!response.ok) fail("checkout_configuration");
+    const { config } = await response.json();
+    if (config?.id !== configurationId) fail("checkout_configuration");
+    const order = { configuration: config.id, locale: config.market.defaultLocale, country: config.market.country,
+      email: `buyer-${randomUUID()}@example.test`, firstName: "Example", lastName: "Buyer", phone: "000000000",
+      line1: "1 Example Lane", city: "Example City", postalCode: "00000", termsAccepted: true, termsRevision: config.legal.revision,
+      cart: { schemaVersion: 1, configuration: config.id, mode: "one_time", cadenceDays: null,
+        lines: [{ sku: config.offer.products[0].sku, quantity: config.offer.minUnits }] } };
+    const quote = await checkoutAction("offer.validate", order);
+    if (!quote.ok || !quote.value?.expectedTotal) return fail("checkout_quote");
+    const checkout = await checkoutAction("checkout.create", { ...order,
+      quoteAcceptance: quote.value.quoteAcceptance, expectedTotal: quote.value.expectedTotal });
+    const { orderRef, token } = checkout.value ?? {};
+    if (!checkout.ok || typeof orderRef !== "string" || typeof token !== "string" || !token) return fail("checkout_create");
+    privateValues.push(token);
+    const reference = { orderRef, token };
+    const paid = await checkoutAction("payment.simulate", { ...reference, outcome: "captured" });
+    if (!paid.ok || paid.value?.status !== "paid" || paid.value.orderRef !== orderRef) fail("checkout_capture");
+    const facts = settledFacts(orderRef);
+    const { orders, lines, payments, attempts } = JSON.parse(facts);
+    if (orders.length !== 1 || orders[0].status !== "paid" || lines.length !== 1 || payments.length !== 1
+      || payments[0].status !== "settled" || attempts.length !== 1 || attempts[0].state !== "captured") fail("settled_facts_missing");
+    return { reference, facts };
+  }
   const mark = (label: string) => process.stdout.write("Starter runtime " + label + " PASS\n");
   try {
     const predecessor: string = JSON.parse(readFileSync(join(from, ".starter-origin.json"), "utf8")).sourceRevision;
@@ -1464,6 +1518,8 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
     up();
     const before = retained(), original = identity();
     if (before.some(value => !value || !JSON.parse(value).length)) fail("empty_retained_seed");
+    const settled = await createSettledReceipt();
+    mark("predecessor checkout settled with keyed records");
     const count = JSON.parse(before[3]!).length as number;
     const catalogue = (app: string) => readFileSync(join(app, "node_modules/@openlup/platform/sql/manifest.json"));
     if (!catalogue(from).equals(catalogue(to))) fail("catalogue_mismatch");
@@ -1601,92 +1657,7 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
         'stat -c "%U:%G %a" "$PGDATA/pg_hba.conf"')) !== "postgres:postgres 600") fail("occupied_fallback");
     mark("installer socket, publication and occupied fallback");
 
-    const mounted = ["renewal", "care", "checkout-recovery"];
-    const renewalConfig = join(from, "owned/renewal.config.ts");
-    const oldRenewal = readFileSync(renewalConfig, "utf8");
-    if (!oldRenewal.includes("enabled: false")) fail("renewal_fixture");
-    writeFileSync(renewalConfig, oldRenewal.replace("enabled: false", "enabled: true"));
-    up();
-    const olderCompose = env.OPENLUP_STARTER_COMPOSE_V2;
-    const currentCompose = env.OPENLUP_STARTER_COMPOSE_V5;
-    if (!olderCompose || !currentCompose) fail("both_compose_releases_required");
-    const mountedExec = `PROJECT=$( (cd .context && cat compose-project) 2>/dev/null) && [ -n "$PROJECT" ] ||
-      { printf '%s\\n' 'Run ./lifecycle up first.' >&2; exit 1; }
-      exec "$1" --project-name "$PROJECT" exec -T application ./lifecycle "\${@:2}"`;
-    const exec = (release: string, command: string, args: string[], input?: string) =>
-      run(from, "bash", ["-c", mountedExec, "starter", release, command, ...args], input);
-    const configuration = ["--configuration", "coffee"];
-    const policy = JSON.stringify({ revision: "runtime-preview-fixture", renewalProtectionDays: 21 });
-    const sku = sql("select sku from public.fulfillment_stock_current where source_key='starter-demo:coffee' order by sku limit 1");
-    if (!/^[A-Za-z0-9_-]+$/u.test(sku)) fail("invalid_stock_fixture_sku");
-    const stock = sql("select for_sale_quantity from public.fulfillment_stock_current where source_key='starter-demo:coffee' and sku='" + sku + "'");
-    sql(`insert into public.fulfillment_stock_current (source_key,sku,total_quantity,for_sale_quantity,reserved_unavailable_quantity,
-      inventory_class,last_synced_at,stale_after,sync_run_id,idempotency_key,operation_fingerprint)
-      select 'starter-demo:supplements',sku,0,0,0,inventory_class,last_synced_at,stale_after,sync_run_id,'runtime-stock-control',operation_fingerprint
-      from public.fulfillment_stock_current where source_key='starter-demo:coffee' and sku='${sku}'`);
-    const jobs = ["subscription-renewal:demo:coffee", "subscription-care:coffee", "starter-checkout:coffee"];
-    const jobCount = (name: string, successful = false) => Number(sql(
-      "select count(*) from platform_job_runs where job_name = '" + name + "'" + (successful ? " and status = 'success'" : "")));
-    const preview = ["preview", "inventory_renewal_protection", ...configuration, "--value", "-", "--sku", sku, "--json"];
-    const exerciseJobs = (release: string, missingBind = false) => {
-      for (const [index, command] of mounted.entries()) {
-        const name = jobs[index]!, beforePass = jobCount(name, !missingBind);
-        const result = exec(release, command, configuration);
-        if (missingBind) {
-          if (result.status !== 2 || !result.stderr.includes("starter_runtime_credential_read_failed") || jobCount(name) !== beforePass)
-            fail("missing_bind_" + command);
-        } else {
-          checked("mounted_" + command, result);
-          if (jobCount(name, true) <= beforePass) fail("job_claim_" + command);
-        }
-      }
-    };
-    const releases = [[olderCompose!, "2.40.3"], [currentCompose!, "5.5.0"]] as const;
-    for (const [release, expected] of releases) {
-      const version = checked("compose_version", run(from, release, ["version", "--short"])).replace(/^v/u, "");
-      if (version !== expected) fail("compose_version_" + expected + "_required");
-      checked("settings_show", exec(release, "settings", ["show", "inventory_renewal_protection", "--json"]));
-      const result = JSON.parse(checked("settings_preview", exec(release, "settings", preview, policy)));
-      const at = new Date(result.asOf).toISOString();
-      const quantity = (source: string) => Number(sql(`select public.inventory_available_to_promise(
-        'starter-demo:${source}','${sku}','${at}',false)->>'available_quantity'`));
-      const row = result.effect?.skus?.[0];
-      if (!stock || row?.sku !== sku || row.source !== "provider" ||
-        row.currentAvailableForNewPurchases !== quantity("coffee") ||
-        quantity("coffee") === quantity("supplements")) fail("nondefault_stock_source");
-      exerciseJobs(release);
-      const held = projectFile + ".held";
-      renameSync(projectFile, held);
-      try {
-        const missing = exec(release, "renewal", configuration);
-        if (missing.status !== 1 || !missing.stderr.includes("Run ./lifecycle up first.")) fail("missing_project_record");
-      } finally { renameSync(held, projectFile); }
-      const unchangedApp = container("application"), unchangedDatabase = container("database");
-      for (const service of ["database", "application"]) {
-        const denied = run(from, release, ["--project-name", project, "up", "--no-build", "--force-recreate", "-d", service],
-          undefined, { ...env, OPENLUP_STARTER_RUNTIME_SOURCE: source });
-        if (denied.status === 0 || !denied.stderr.includes("starter_runtime_preflight_handoff_missing") ||
-          container("application") !== unchangedApp || container("database") !== unchangedDatabase) fail("required_handoff_" + service);
-      }
-      mark("project-record commands, settings, job readback and startup gate on Compose " + version);
-    }
     const { prepareRuntimeHandoff } = await import("../../examples/neutral-store/host/runtime-database.ts");
-    const handoff = prepareRuntimeHandoff(project, [from]);
-    const override = join(scratch, "missing-bind.yaml");
-    writeFileSync(override, 'services:\n  application:\n    command: ["sleep", "infinity"]\n    volumes: !override []\n');
-    try {
-      checked("missing_bind_fixture", run(from, "docker", ["compose", "--project-name", project, "-f", "compose.yaml",
-        "-f", override, "up", "--no-deps", "--no-build", "--force-recreate", "-d", "application"], undefined, { ...env, ...handoff.environment }));
-    } finally { handoff.cleanup(); }
-    for (const [release] of releases) {
-      exerciseJobs(release, true);
-      const result = exec(release, "settings", preview, policy);
-      if (result.status !== 2 || JSON.parse(result.stdout).findings?.[0]?.code !== "starter_runtime_credential_read_failed")
-        fail("settings_missing_bind");
-    }
-    up();
-    for (const [release] of releases) exerciseJobs(release);
-    mark("missing credential bind refusal and restoration on both Compose versions");
 
     const firstAdmin = `import {argv} from 'node:process';
       import {runtimeConnectionString} from './host/runtime-database.ts';
@@ -1881,6 +1852,113 @@ esac
     if (!leaks("private-red:" + initial) || !leaks("private-red:" + synthetic) || captures.some(leaks) || leaks(committed))
       fail("credential_output_scan");
     mark("captured output and scanner red control");
+
+    const after = identity();
+    if (after[1]?.split(" ").at(-1) !== original[1]?.split(" ").at(-1) || after[2] !== original[2]
+      || JSON.stringify(retained()) !== JSON.stringify(before)) fail("settled_store_identity");
+    const { reference, facts } = settled;
+    const readSettled = async (orderRef: string) => {
+      const records = settledFacts(orderRef);
+      const receipt = await checkoutAction("checkout.read", { ...reference, orderRef });
+      return { records, receipt, matches: records === facts && receipt.ok && receipt.value?.status === "paid"
+        && receipt.value.orderRef === reference.orderRef };
+    };
+    const different = await readSettled(randomUUID());
+    const absent = JSON.parse(different.records) as Record<string, unknown[]>;
+    if (different.matches || different.receipt.ok || different.receipt.code !== "starter_recovery_unavailable"
+      || Object.values(absent).some(rows => rows.length))
+      fail("settled_receipt_red_control");
+    mark("missing settled records and substituted receipt refused");
+    if (!(await readSettled(reference.orderRef)).matches) fail("settled_data_continuity");
+    mark("settled data continuity and original receipt");
+
+    const mounted = ["renewal", "care", "checkout-recovery"];
+    const renewalConfig = join(from, "owned/renewal.config.ts");
+    const oldRenewal = readFileSync(renewalConfig, "utf8");
+    if (!oldRenewal.includes("enabled: false")) fail("renewal_fixture");
+    writeFileSync(renewalConfig, oldRenewal.replace("enabled: false", "enabled: true"));
+    up();
+    const olderCompose = env.OPENLUP_STARTER_COMPOSE_V2;
+    const currentCompose = env.OPENLUP_STARTER_COMPOSE_V5;
+    if (!olderCompose || !currentCompose) fail("both_compose_releases_required");
+    const mountedExec = `PROJECT=$( (cd .context && cat compose-project) 2>/dev/null) && [ -n "$PROJECT" ] ||
+      { printf '%s\\n' 'Run ./lifecycle up first.' >&2; exit 1; }
+      exec "$1" --project-name "$PROJECT" exec -T application ./lifecycle "\${@:2}"`;
+    const exec = (release: string, command: string, args: string[], input?: string) =>
+      run(from, "bash", ["-c", mountedExec, "starter", release, command, ...args], input);
+    const policy = JSON.stringify({ revision: "runtime-preview-fixture", renewalProtectionDays: 21 });
+    const sku = sql("select sku from public.fulfillment_stock_current where source_key='starter-demo:coffee' order by sku limit 1");
+    if (!/^[A-Za-z0-9_-]+$/u.test(sku)) fail("invalid_stock_fixture_sku");
+    const stock = sql("select for_sale_quantity from public.fulfillment_stock_current where source_key='starter-demo:coffee' and sku='" + sku + "'");
+    sql(`insert into public.fulfillment_stock_current (source_key,sku,total_quantity,for_sale_quantity,reserved_unavailable_quantity,
+      inventory_class,last_synced_at,stale_after,sync_run_id,idempotency_key,operation_fingerprint)
+      select 'starter-demo:supplements',sku,0,0,0,inventory_class,last_synced_at,stale_after,sync_run_id,'runtime-stock-control',operation_fingerprint
+      from public.fulfillment_stock_current where source_key='starter-demo:coffee' and sku='${sku}'`);
+    const jobs = ["subscription-renewal:demo:coffee", "subscription-care:coffee", "starter-checkout:coffee"];
+    const jobCount = (name: string, successful = false) => Number(sql(
+      "select count(*) from platform_job_runs where job_name = '" + name + "'" + (successful ? " and status = 'success'" : "")));
+    const preview = ["preview", "inventory_renewal_protection", ...configuration, "--value", "-", "--sku", sku, "--json"];
+    const exerciseJobs = (release: string, missingBind = false) => {
+      for (const [index, command] of mounted.entries()) {
+        const name = jobs[index]!, beforePass = jobCount(name, !missingBind);
+        const result = exec(release, command, configuration);
+        if (missingBind) {
+          if (result.status !== 2 || !result.stderr.includes("starter_runtime_credential_read_failed") || jobCount(name) !== beforePass)
+            fail("missing_bind_" + command);
+        } else {
+          checked("mounted_" + command, result);
+          if (jobCount(name, true) <= beforePass) fail("job_claim_" + command);
+        }
+      }
+    };
+    const releases = [[olderCompose!, "2.40.3"], [currentCompose!, "5.5.0"]] as const;
+    for (const [release, expected] of releases) {
+      const version = checked("compose_version", run(from, release, ["version", "--short"])).replace(/^v/u, "");
+      if (version !== expected) fail("compose_version_" + expected + "_required");
+      checked("settings_show", exec(release, "settings", ["show", "inventory_renewal_protection", "--json"]));
+      const result = JSON.parse(checked("settings_preview", exec(release, "settings", preview, policy)));
+      const at = new Date(result.asOf).toISOString();
+      const quantity = (source: string) => Number(sql(`select public.inventory_available_to_promise(
+        'starter-demo:${source}','${sku}','${at}',false)->>'available_quantity'`));
+      const row = result.effect?.skus?.[0];
+      if (!stock || row?.sku !== sku || row.source !== "provider" ||
+        row.currentAvailableForNewPurchases !== quantity("coffee") ||
+        quantity("coffee") === quantity("supplements")) fail("nondefault_stock_source");
+      exerciseJobs(release);
+      const held = projectFile + ".held";
+      renameSync(projectFile, held);
+      try {
+        const missing = exec(release, "renewal", configuration);
+        if (missing.status !== 1 || !missing.stderr.includes("Run ./lifecycle up first.")) fail("missing_project_record");
+      } finally { renameSync(held, projectFile); }
+      const unchangedApp = container("application"), unchangedDatabase = container("database");
+      for (const service of ["database", "application"]) {
+        const denied = run(from, release, ["--project-name", project, "up", "--no-build", "--force-recreate", "-d", service],
+          undefined, { ...env, OPENLUP_STARTER_RUNTIME_SOURCE: source });
+        if (denied.status === 0 || !denied.stderr.includes("starter_runtime_preflight_handoff_missing") ||
+          container("application") !== unchangedApp || container("database") !== unchangedDatabase) fail("required_handoff_" + service);
+      }
+      mark("project-record commands, settings, job readback and startup gate on Compose " + version);
+    }
+    const handoff = prepareRuntimeHandoff(project, [from]);
+    const override = join(scratch, "missing-bind.yaml");
+    writeFileSync(override, 'services:\n  application:\n    command: ["sleep", "infinity"]\n    volumes: !override []\n');
+    try {
+      checked("missing_bind_fixture", run(from, "docker", ["compose", "--project-name", project, "-f", "compose.yaml",
+        "-f", override, "up", "--no-deps", "--no-build", "--force-recreate", "-d", "application"], undefined, { ...env, ...handoff.environment }));
+    } finally { handoff.cleanup(); }
+    for (const [release] of releases) {
+      exerciseJobs(release, true);
+      const result = exec(release, "settings", preview, policy);
+      if (result.status !== 2 || JSON.parse(result.stdout).findings?.[0]?.code !== "starter_runtime_credential_read_failed")
+        fail("settings_missing_bind");
+    }
+    up();
+    for (const [release] of releases) exerciseJobs(release);
+    mark("missing credential bind refusal and restoration on both Compose versions");
+
+    if (captures.some(leaks) || leaks(checked("mounted_operations_logs", compose("logs", "--no-color"))))
+      fail("mounted_operations_credential_scan");
     mark("occupied proof completed in " + Math.round(performance.now() - started) + " ms");
   } finally {
     compose("down", "--volumes", "--remove-orphans", "--rmi", "local");
