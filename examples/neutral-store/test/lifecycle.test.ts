@@ -412,7 +412,13 @@ test('catalogue_apply_reports_and_bounds', async () => {
   const variantId = randomUUID(), priceListId = randomUUID(), revisionId = randomUUID(), actorId = randomUUID();
   const config = selectConfiguration();
   const policy = { revisionId, discountBps: 500, roundingQuantumMinor: 10, roundingRule: 'FLOOR_TO_QUANTUM' };
-  let target = { priceListId, currency: config.market.currency, basis: null, policies: [policy], valid: true };
+  const validTarget = { priceListId, currency: config.market.currency, basis: null, policies: [policy], valid: true };
+  let target = validTarget, inGate = false, switchListOnPreview = false, successorStarts: string | undefined;
+  const previewAt = '2026-11-25T10:00:00.000123Z';
+  const pendingReadAt = '2026-11-25T10:00:02.000Z';
+  const predecessor = { entryId: randomUUID(), unitPriceMinor: 11, validFrom: '2026-11-25T09:00:00.000Z' };
+  const commands: unknown[][] = [];
+  const previews: unknown[][] = [];
   const trace: string[] = [];
   const publication = {
     async run<T>(work: (db: { query: typeof query }) => Promise<T>) {
@@ -435,14 +441,31 @@ test('catalogue_apply_reports_and_bounds', async () => {
       assert.equal(principal, actorId);
       trace.push('asActor');
       return work({ async query(sql, values) {
+        if (sql === 'SELECT statement_timestamp()::text AS instant') {
+          assert.deepEqual(trace.slice(-1), ['asActor']);
+          trace.push('reference instant');
+          return { rows: [{ instant: previewAt }] };
+        }
         if (sql.includes('catalog_price_setup_preview')) {
           trace.push('preview');
-          assert.deepEqual(values, [variantId, priceListId, null]);
-          return { rows: [{ result: { outcome: 'preview', variantId, priceListId, inGate: false, current: null, currentCount: 0,
+          previews.push(values!);
+          if (switchListOnPreview) target = { ...target, priceListId: randomUUID() };
+          const readiness = { ready: true, reasons: [] };
+          return { rows: [{ result: { outcome: 'preview', variantId, priceListId, inGate,
+            current: successorStarts ? predecessor : null, currentCount: Number(!!successorStarts),
             subscription: { kind: 'derived', revisionId, discountBps: 500, roundingQuantumMinor: 10, derivedUnitPriceMinor: null },
-            readiness: { ready: true, reasons: [] } } }] };
+            readiness, ...(values?.[2] !== null && { proposed: { unitPriceMinor: values?.[2], readiness } }) } }] };
+        }
+        if (sql === 'RESET ROLE') { trace.push('runtime read'); return { rows: [] }; }
+        if (sql.includes('AS "hasPending"')) {
+          assert.deepEqual(values, [variantId, priceListId, previewAt]);
+          assert.deepEqual(trace.slice(-4), ['asActor', 'reference instant', 'preview', 'runtime read']);
+          assert.match(sql, /valid_from > \$3::timestamptz/u);
+          const hasPending = successorStarts !== undefined && Date.parse(successorStarts) > Date.parse(String(values?.[2]));
+          return { rows: [{ listEffective: target.priceListId === priceListId, hasPending }] };
         }
         trace.push('apply');
+        commands.push(values!);
         return { rows: [{ result: { outcome: 'validation_issue', reason: 'expected_state_mismatch' } }] };
       } });
     } });
@@ -454,6 +477,11 @@ test('catalogue_apply_reports_and_bounds', async () => {
     assert.deepEqual(trace, ['BEGIN', 'SET TRANSACTION READ ONLY', "SET LOCAL statement_timeout = '1s'", demonstrationMarkerQuery.split('\n')[0]]);
     const price = operator.actions['operator.catalogPublication']!;
     const input = { action: 'price-apply', variantId, priceListId, policyRevisionId: revisionId };
+    const apply = { ...input, unitPriceMinor: 11 };
+    const entryId = 'db7ccc53-9ab0-4111-89c8-57c9fd8c8543';
+    const nullPair = { entryId: null, unitPriceMinor: null };
+    const original = JSON.stringify({ amountKind: 'gross', commandKey: context.commandKey, expected: nullPair,
+      minQty: 1, mode: 'one_time', priceListId, schemaVersion: 1, unitPriceMinor: 11, variantId });
     for (const [amount, code] of [[0, 'starter_input_invalid'], [10, 'starter_catalogue_derived_price_zero'],
       [2_147_483_648, 'starter_input_invalid'], [2_147_483_647, 'expected_state_mismatch']] as const) {
       trace.length = 0;
@@ -461,6 +489,38 @@ test('catalogue_apply_reports_and_bounds', async () => {
       assert.equal(trace.includes('apply'), amount === 2_147_483_647);
       if (trace.includes('apply')) assert.deepEqual(trace.slice(-3), ['asActor', 'preview', 'apply']);
     }
+    for (const body of [apply, { ...apply, expected: nullPair }]) {
+      assert.deepEqual(await price(body, context), { ok: false, code: 'expected_state_mismatch' });
+      assert.deepEqual(commands.at(-1), [original, createHash('sha256').update(original).digest('hex')]);
+      assert.deepEqual(trace.slice(-3), ['asActor', 'preview', 'apply']);
+    }
+    const expected = { entryId, unitPriceMinor: 22 };
+    trace.length = 0;
+    assert.deepEqual(await price({ ...apply, expected }, context), { ok: false, code: 'starter_catalogue_reprice_requires_active' });
+    assert.deepEqual(trace.slice(-2), ['asActor', 'preview']);
+    assert.equal(trace.includes('apply'), false);
+    inGate = true;
+    for (const unitPriceMinor of [0, 22, 2_147_483_647]) {
+      const expectation = { entryId, unitPriceMinor };
+      assert.deepEqual(await price({ ...apply, expected: expectation }, context), { ok: false, code: 'expected_state_mismatch' });
+      assert.deepEqual(trace.slice(-3), ['asActor', 'preview', 'apply']);
+      assert.deepEqual(JSON.parse(String(commands.at(-1)?.[0])).expected, expectation);
+    }
+    for (const invalid of [null, {}, { ...expected, extra: 0 }, { entryId }, { unitPriceMinor: 22 },
+      { ...expected, entryId: entryId.toUpperCase() }, { ...expected, entryId: 'malformed' },
+      ...[null, -1, 1.5, '22', 2_147_483_648].map(unitPriceMinor => ({ entryId, unitPriceMinor }))]) {
+      trace.length = 0;
+      assert.deepEqual(await price({ ...apply, expected: invalid }, context), { ok: false, code: 'starter_input_invalid' });
+      assert.deepEqual(trace, []);
+    }
+    trace.length = 0;
+    assert.deepEqual(await price({ ...apply, expected, unitPriceMinor: 10 }, context),
+      { ok: false, code: 'starter_catalogue_derived_price_zero' });
+    assert.deepEqual(trace.slice(-2), ['asActor', 'preview']);
+    const previewInput = { action: 'price-preview', variantId, priceListId };
+    assert.equal((await price({ ...previewInput, unitPriceMinor: 22 }, context)).ok, true);
+    assert.deepEqual(previews.at(-1), [variantId, priceListId, 22]);
+    assert.deepEqual(await price({ ...previewInput, unitPriceMinor: 0 }, context), { ok: false, code: 'starter_input_invalid' });
     trace.length = 0;
     assert.deepEqual(await price({ ...input, unitPriceMinor: 11, policyRevisionId: randomUUID() }, context),
       { ok: false, code: 'starter_catalogue_d2c_policy_required' });
@@ -469,9 +529,29 @@ test('catalogue_apply_reports_and_bounds', async () => {
       [{ currency: config.market.currency === 'XTS' ? 'XXX' : 'XTS' }, 'starter_catalogue_currency_mismatch'],
       [{ currency: config.market.currency, valid: false }, 'starter_catalogue_d2c_policy_required'],
     ] as const) {
-      target = { ...target, ...change };
+      target = { ...validTarget, ...change };
       assert.deepEqual(await price({ action: 'price-target' }, context), { ok: false, code });
     }
+    for (const change of [{ policies: [] }, { valid: false }]) {
+      trace.length = 0;
+      target = { ...validTarget, ...change };
+      assert.deepEqual(await price(previewInput, context), { ok: false, code: 'starter_catalogue_d2c_policy_required' });
+      assert.equal(trace.includes('asActor'), false);
+    }
+    target = validTarget;
+    successorStarts = '2026-11-25T10:00:01.000Z';
+    assert.ok(Date.parse(previewAt) < Date.parse(successorStarts) && Date.parse(successorStarts) <= Date.parse(pendingReadAt));
+    const crossing = await price(previewInput, context);
+    assert.ok(crossing.ok && 'value' in crossing);
+    const { priceSetup } = crossing.value as { priceSetup: { current: unknown; hasPending: boolean } };
+    assert.deepEqual(priceSetup.current, predecessor);
+    assert.equal(priceSetup.hasPending, true);
+    successorStarts = undefined;
+    switchListOnPreview = true;
+    const oldList = await price(previewInput, context);
+    assert.ok(oldList.ok && 'value' in oldList);
+    assert.deepEqual(previews.at(-1), [variantId, priceListId, null]);
+    assert.equal((oldList.value as { listEffective: boolean }).listEffective, false);
   } finally { await operator.close(); }
 });
 
@@ -495,6 +575,7 @@ test('installed_catalogue_operator_workflow', { skip: !recipeApp, timeout: 600_0
     return { data: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] };
   }
   const actor = randomUUID(), alternate = randomUUID(), email = `operator-${actor.slice(0, 8)}@example.test`;
+  const alternateEmail = `alternate-${actor.slice(0, 8)}@example.test`;
   const snapshot = () => sql(`SELECT (SELECT count(*) FROM public.catalog_draft_revisions),
     (SELECT count(*) FROM public.catalog_publication_decisions), (SELECT count(*) FROM public.catalog_publications),
     (SELECT count(*) FROM public.catalog_publication_heads), (SELECT count(*) FROM public.price_entries),
@@ -558,7 +639,7 @@ test('installed_catalogue_operator_workflow', { skip: !recipeApp, timeout: 600_0
     const anonymous = await send(operator, { action: 'price-target' });
     assert.equal(anonymous.code, 'operator_required');
     sql(`INSERT INTO public.platform_human_principals(principal_id,email) VALUES
-      ('${actor}','${email}'),('${alternate}','alternate-${actor.slice(0, 8)}@example.test');
+      ('${actor}','${email}'),('${alternate}','${alternateEmail}');
       INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at)
       VALUES ('${actor}','admin','active','legacy',now()),('${alternate}','admin','active','legacy',now())`);
     const challenges = () => Number(sql(`SELECT count(*) FROM public.operator_identity_challenges WHERE principal_id='${actor}'`));
@@ -616,8 +697,10 @@ test('installed_catalogue_operator_workflow', { skip: !recipeApp, timeout: 600_0
       assert.equal(result.outcome, 'replayed');
       assert.deepEqual(result.receipt ?? result.record, initial.receipt ?? initial.record);
     };
-    const quote = () => send('offer.validate', { cart: { schemaVersion: 1, configuration: 'coffee', mode: 'one_time',
-      cadenceDays: null, lines: [{ sku: selectConfiguration('coffee').offer.products[0]!.sku, quantity: 1 }] } });
+    const coffee = selectConfiguration('coffee');
+    const cart = { schemaVersion: 1, configuration: 'coffee', mode: 'one_time',
+      cadenceDays: null, lines: [{ sku: coffee.offer.products[0]!.sku, quantity: 1 }] };
+    const quote = () => send('offer.validate', { cart });
     const legacy = await quote();
     assert.equal(legacy.value.totalMinor, 4200);
     const saveKey = randomUUID(), approvalKey = randomUUID(), releaseKey = randomUUID();
@@ -672,6 +755,12 @@ test('installed_catalogue_operator_workflow', { skip: !recipeApp, timeout: 600_0
     const priceKey = randomUUID();
     const priced = (await send(operator, planned, priceKey)).value;
     assert.equal(priced.receipt.current.unitPriceMinor, 11);
+    const { entryId, unitPriceMinor } = priced.receipt.current;
+    const expectation = { entryId, unitPriceMinor };
+    const replacement = { ...planned, unitPriceMinor: 22, expected: expectation };
+    const beforeActivation = snapshot();
+    assert.equal((await send(operator, replacement)).code, 'starter_catalogue_reprice_requires_active');
+    assert.equal(snapshot(), beforeActivation);
     const activated = (await send(operator, next.publish, activationKey)).value;
     assert.deepEqual(activated.receipt.previousHead, head);
     const completed = snapshot();
@@ -704,23 +793,115 @@ test('installed_catalogue_operator_workflow', { skip: !recipeApp, timeout: 600_0
       assert.deepEqual(await quote(), legacy);
       assert.deepEqual((await send(operator, { action: 'price-preview', ...prices })).value.priceSetup.current, priced.receipt.current);
     });
+    await context.test('installed_catalogue_reprice', async () => {
+      assert.equal(sql(`SELECT status FROM public.catalog_skus WHERE id='${variantId}'`), 'active');
+      const checkout = await action('checkout.create', { cart, locale: coffee.market.defaultLocale, configuration: 'coffee',
+        email: customer, country: coffee.market.country, firstName: 'Example', lastName: 'Buyer', phone: '000000000',
+        line1: '1 Example Lane', city: 'Example City', postalCode: '00000', termsAccepted: true, termsRevision: coffee.legal.revision,
+        quoteAcceptance: legacy.value.quoteAcceptance, expectedTotal: legacy.value.expectedTotal }, undefined, signedCustomer.cookie);
+      assert.equal(checkout.data.ok, true, checkout.data.code);
+      const { orderRef } = checkout.data.value;
+      const paid = await action('payment.simulate', { orderRef, outcome: 'captured' }, undefined, signedCustomer.cookie);
+      assert.equal(paid.data.ok, true, paid.data.code);
+      sql(`UPDATE public.commerce_orders SET created_at=statement_timestamp()-interval '25 hours' WHERE id='${orderRef}'`);
+      const orderSnapshot = () => JSON.parse(sql(`SELECT jsonb_build_object('total',total_amount_minor,'currency',currency_code,
+        'status',status,'quote',metadata->'quoteSnapshot') FROM public.commerce_orders WHERE id='${orderRef}'`));
+      const order = orderSnapshot();
+      assert.equal(order.status, 'paid');
+      assert.equal(order.total, legacy.value.totalMinor);
+      assert.equal(order.currency, target.currency);
+      assert.ok(order.quote);
+      assert.deepEqual(await quote(), legacy);
+
+      assert.equal((await action('auth.operator', { email: alternateEmail })).data.ok, true);
+      const signed = await action('auth.operator', { token: await newestToken(1, alternateEmail) });
+      assert.ok(signed.data.ok && signed.cookie);
+      const read = async (body: unknown, key?: string) => (await action(operator, body, key, signed.cookie)).data;
+      for (const [commandKey, previous] of [[releaseKey, released.receipt], [activationKey, activated.receipt]]) {
+        const historical = await read({ action: 'receipt', productId, commandKey });
+        assert.deepEqual(historical.value, { outcome: 'found', receipt: previous });
+      }
+      const pre = await read({ action: 'price-preview', ...prices });
+      assert.equal(pre.value.priceSetup.inGate, true);
+      const beforePrice = snapshot();
+      const key = randomUUID();
+      const result = await read(replacement, key);
+      assert.equal(result.ok, true, result.code);
+      assert.equal(result.value.outcome, 'committed');
+      const { receipt } = result.value;
+      assert.equal(receipt.actorId, alternate);
+      assert.equal(receipt.commandKey, key);
+      assert.deepEqual(receipt.previous, priced.receipt.current);
+      assert.equal(receipt.current.unitPriceMinor, 22);
+      const { value: readback } = await read({ action: 'price-preview', ...prices });
+      assert.equal(readback.listEffective, true);
+      assert.equal(readback.priceSetup.currentCount, 1);
+      assert.deepEqual(readback.priceSetup.current, receipt.current);
+      assert.equal(readback.priceSetup.subscription.derivedUnitPriceMinor, 20);
+      assert.equal(readback.priceSetup.subscription.revisionId, policy.revisionId);
+      assert.deepEqual(readback.priceSetup.readiness, pre.value.priceSetup.readiness);
+      assert.equal(sql(`SELECT old.unit_price_minor,old.active,old.valid_to=new.valid_from FROM public.price_entries old
+        CROSS JOIN public.price_entries new WHERE old.id='${entryId}' AND new.id='${receipt.current.entryId}'`), '11|f|t');
+      const afterPrice = snapshot();
+      const counts = beforePrice.split('|').map(Number);
+      assert.deepEqual(afterPrice.split('|').map(Number), counts.map((count, index) => count + Number(index >= 4)));
+      assert.deepEqual(orderSnapshot(), order);
+      assert.deepEqual(await quote(), legacy);
+
+      for (const amount of [22, 33]) {
+        assert.equal((await send(operator, { ...replacement, unitPriceMinor: amount })).code, 'expected_state_mismatch');
+        assert.equal(snapshot(), afterPrice);
+      }
+      assert.equal((await read({ ...replacement, unitPriceMinor: 10 })).code, 'starter_catalogue_derived_price_zero');
+      assert.equal((await send(operator, replacement, key)).code, 'operator_mismatch');
+      replay((await read(replacement, key)).value, result.value);
+      assert.equal(snapshot(), afterPrice);
+      const rolledRevisionId = randomUUID();
+      sql(`BEGIN;
+        UPDATE public.subscription_price_policy_revisions SET effective_to=date_trunc('milliseconds',statement_timestamp())
+        WHERE id='${policy.revisionId}';
+        INSERT INTO public.subscription_price_policy_revisions (id, price_list_id, region_code, currency, channel, revision_no,
+          effective_from, discount_bps, rounding_quantum_minor, rounding_rule, digest)
+        SELECT '${rolledRevisionId}', price_list_id, region_code, currency, channel, revision_no+1,
+          effective_to, discount_bps, rounding_quantum_minor, rounding_rule,
+          public.catalog_price_setup_policy_digest('${rolledRevisionId}',revision_no+1,price_list_id,region_code,currency,channel,
+            effective_to,NULL,discount_bps,rounding_quantum_minor,rounding_rule)
+        FROM public.subscription_price_policy_revisions WHERE id='${policy.revisionId}'; COMMIT`);
+      assert.equal((await read({ action: 'price-target' })).value.policy.revisionId, rolledRevisionId);
+      const blocked = await read(replacement, key);
+      assert.equal(blocked.code, 'starter_catalogue_d2c_policy_required');
+      assert.equal(snapshot(), afterPrice);
+      const verified = (await read({ action: 'price-preview', ...prices })).value;
+      assert.equal(verified.listEffective, true);
+      assert.deepEqual(verified.priceSetup.current, receipt.current);
+      assert.equal(verified.priceSetup.subscription.derivedUnitPriceMinor, 20);
+      assert.equal(verified.priceSetup.subscription.revisionId, rolledRevisionId);
+      assert.equal(snapshot(), afterPrice);
+    });
     const authorized = snapshot();
     async function denied() {
-      for (const body of [next.approve, next.publish, { action: 'price-preview', ...prices }, planned])
+      for (const body of [next.approve, next.publish, { action: 'price-preview', ...prices }, planned, replacement])
         assert.equal((await send(operator, body)).code, 'operator_required');
       assert.equal(snapshot(), authorized);
     }
     sql(`INSERT INTO public.platform_control_operators(principal_id) VALUES ('${actor}')`);
     await denied();
-    const sqlCommand = canonicalCatalogPriceSetupCommand({ schemaVersion: 1, commandKey: randomUUID(), ...prices, unitPriceMinor: 11,
-      mode: 'one_time', minQty: 1, amountKind: 'gross', expected: { entryId: null, unitPriceMinor: null } });
-    const fingerprint = createHash('sha256').update(sqlCommand).digest('hex');
-    assert.throws(() => sql(`BEGIN; SET LOCAL ROLE authenticated; SET LOCAL request.jwt.claims='{"sub":"${actor}","role":"authenticated"}';
-      SELECT public.catalog_price_setup_apply('${sqlCommand}','${fingerprint}')`),
-    (error: unknown) => /42501:.*catalog_price_setup_operator_required/u.test(String((error as { stderr?: string }).stderr)));
+    function directDenied() {
+      for (const expected of [{ entryId: null, unitPriceMinor: null }, expectation]) {
+        const sqlCommand = canonicalCatalogPriceSetupCommand({ schemaVersion: 1, commandKey: randomUUID(), ...prices,
+          unitPriceMinor: expected.entryId === null ? 11 : 22,
+          mode: 'one_time', minQty: 1, amountKind: 'gross', expected });
+        const fingerprint = createHash('sha256').update(sqlCommand).digest('hex');
+        assert.throws(() => sql(`BEGIN; SET LOCAL ROLE authenticated; SET LOCAL request.jwt.claims='{"sub":"${actor}","role":"authenticated"}';
+          SELECT public.catalog_price_setup_apply('${sqlCommand}','${fingerprint}')`),
+        (error: unknown) => /42501:.*catalog_price_setup_operator_required/u.test(String((error as { stderr?: string }).stderr)));
+      }
+    }
+    directDenied();
     sql(`DELETE FROM public.platform_control_operators WHERE principal_id='${actor}';
       SELECT principal_id FROM public.platform_revoke_human_membership('${alternate}','${actor}')`);
     await denied();
+    directDenied();
   } finally {
     if (!existing) compose('down', '--volumes');
   }

@@ -979,22 +979,54 @@ Release and again when you intend to publish Activation. The command verifies
 the initial prices between the two publications. Each SKU preview checks
 `listEffective` for the selected list. The owner's `priceSetup.inGate`
 reports whether the SKU is already active and sellable on that list.
+After Activation, the default command verifies the publication receipts and
+live prices and reports the effective subscription figures.
 Run the command with
 `--copy` to review and publish the first presentation-only successor. Use
 `npm run --silent catalogue:apply -- --json` for a single machine-readable
 report on stdout.
 
 After a readiness refusal, follow its Fix and Recheck and resume as the
-original administrator with the same declaration. To give the first demo job
-runs time to finish, the command waits one second and retries the exact
-Publish request once if either promotion job reports that it is unready.
-The report preserves any refusal from that retry.
-A missing initial price can
-be supplied through the authorized price action. Retry the same approved
-Publish body and key once the intended price is ready. Existing-base
-corrections belong to the pricing owner. If a challenge arrives late or has
+original administrator with the same declaration. If a promotion job is unready,
+check its readiness before running the command again.
+A missing initial price can be supplied through the authorized price action. Retry the same approved
+Publish body and key once the intended price is ready. For a live base after
+Activation, use the price-change recipe below. If a challenge arrives late or has
 expired, check the invitation and request a fresh token after the minute and
 hourly limits allow it.
+
+### Change a product's price
+
+Any active administrator can change an eligible SKU's live gross base price
+after Release and Activation, including for SKUs sold by subscription.
+
+1. In `owned/catalogue.ts`, edit the SKU's amount in `catalogueProduct.basePrices`.
+   Use whole minor units.
+2. From the extracted application directory, run
+   `npm run catalogue:apply -- --reprice` in a terminal and sign in to the
+   marked demo. Use the same `--configuration` as the running host.
+3. Review the live bases, replacement amounts and labelled subscription
+   estimates. Type `approve` to authorize the base amounts.
+4. Check each receipt for its effective subscription figure and policy revision.
+   Verify the current figures with the same flags, omitting only `--reprice`.
+
+During price review, the command reports SKU-local price findings and checks
+the remaining SKUs. Other refusals end the run immediately. Either kind of
+finding prevents writes from that review. Once approved, the batch stops at
+the first refusal and retains its confirmed receipts.
+If an apply or its readback fails, follow the cause-specific guidance and the
+commands in the report to verify committed prices read-only, then review any
+remaining change. For example, if
+you used `--configuration coffee`, run `npm run catalogue:apply -- --configuration coffee`
+to verify, then `npm run catalogue:apply -- --configuration coffee --reprice` to
+start a fresh review. Keep any other flags from the original invocation. For
+machine-readable output, keep `--silent` on npm and `--json` after `--`. A receipt
+marked “committed; figure not verified” needs this readback.
+
+If the session cannot be verified, use the printed restart command with the
+same flags under an active administrator. A receipt tied to another administrator
+requires its original issuer. The report retains publications and prices whose
+checks have completed.
 
 ### Publish a saved catalogue draft
 

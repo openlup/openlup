@@ -1,4 +1,7 @@
 #!/bin/sh
 set -eu
 cd -- "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+if [ "${1:-}" = catalogue ] && [ "${npm_config_loglevel:-}" = silent ]; then
+  set -- --npm-silent "$@"
+fi
 exec node lifecycle.mjs "$@"

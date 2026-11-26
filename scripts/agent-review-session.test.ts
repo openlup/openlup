@@ -1,6 +1,6 @@
 import { gunzipSync, gzipSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
-import { admit, candidateFloor, classifyRisk, COMPRESSED_RECEIPT_MARKER, digest, ECONOMY_RECEIPT_MARKER, explainSession, integrationReviewContext, prepareCandidate, receiptBody, RECEIPT_MARKER, receiptSummary, recordReport, requiredReviewers, verdict } from './agent-review-decide.mjs';
+import { admit, candidateFloor, classifyRisk, COMPRESSED_RECEIPT_MARKER, deferFinding, digest, ECONOMY_RECEIPT_MARKER, explainSession, integrationReviewContext, prepareCandidate, receiptBody, RECEIPT_MARKER, receiptSummary, recordReport, requiredReviewers, verdict } from './agent-review-decide.mjs';
 import { parseReceipt } from './agent-review-queue.mjs';
 
 const time = 1000;
@@ -837,5 +837,35 @@ describe('native review decisions', () => {
       nonConvergingCycles: 2,
       reason: '2 consecutive repair cycles did not reduce open material findings; regroup before editing further.',
     });
+  });
+
+  it('supports audited deferral of open material findings and surfaces them in the receipt', () => {
+    const rules = { version: 3, base: 'a'.repeat(64), head: 'a'.repeat(64) };
+    let session = prepare({ rules });
+    session = recordReport(session, report({
+      reviewer: 'r1',
+      verdict: 'FAIL',
+      findings: [{ id: 'R1A-1', summary: 'deferred follow-up item', material: true }],
+    }), time);
+    expect(verdict(session, observed, time)).toMatchObject({ ok: false, code: 'needs_agent_review' });
+
+    // Refuses deferring an unknown finding or missing fields.
+    expect(() => deferFinding(session, { findingId: 'UNKNOWN', target: 'S3f-A2', decision: 'CM-155', reason: 'follow-up' }, time + 1))
+      .toThrow('defer must name an open material finding');
+    expect(() => deferFinding(session, { findingId: 'R1A-1', target: '', decision: 'CM-155', reason: 'follow-up' }, time + 1))
+      .toThrow('defer requires findingId, target, decision, and reason');
+
+    // Deferring the open finding clears it from openFindings and surfaces it in the receipt.
+    session = deferFinding(session, { findingId: 'R1A-1', target: 'S3f-A2', decision: 'CM-155', reason: 'owned by successor slice' }, time + 1);
+    const explained = explainSession(session, observed, time + 1);
+    expect(explained.openFindings).toEqual([]);
+    expect(explained.regroupAdvisory).toEqual({ triggered: false, nonConvergingCycles: 0, reason: null });
+    session = recordReport(session, report({ reviewer: 'r2', verdict: 'PASS' }), time + 2);
+    expect(verdict(session, observed, time + 2)).toEqual({ ok: true, code: 'reviewed', reason: 'reviewed' });
+    const summary = receiptSummary(session, 42, time + 2);
+    const body = receiptBody(summary);
+    expect(body).toContain('Deferred cards: R1A-1 to S3f-A2 · CM-155');
+    expect(admit({ receipt: parseReceipt(body), observed: { ...observed, pr: 42, baseValid: true }, now: time + 2 }))
+      .toEqual({ ok: true, code: 'reviewed', reason: 'reviewed' });
   });
 });

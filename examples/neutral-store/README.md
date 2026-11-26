@@ -383,6 +383,7 @@ describe the evidence each check supplies.
 
 For a marked demonstration store, follow [Release, price and activate a demo product](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#release-price-and-activate-a-demo-product).
 `catalogue:check:source` is offline. `catalogue:apply` signs in a human operator and can write drafts, prices and publications.
+After Activation, `catalogue:apply` verifies live prices. Use `npm run catalogue:apply -- --reprice` to review and change them.
 
 ### Read the private demonstration mailbox
 
@@ -622,9 +623,13 @@ After an uncertain checkout response, an unchanged retry under the same command
 key returns the saved order and, while it is unpaid, a further continuation
 token. A refreshed acceptance for the same stored terms is the same purchase;
 changed details are refused, never applied. `checkout.continuation` resumes or
-abandons that order by its key. Changing the input or explicitly starting a new
-action prepares a fresh quote and key; the server still validates acceptance
-before any new draft is admitted.
+abandons that order by its key. The managed checkout page keeps one key per
+purchase in tab storage, across reloads and changed details; changed details
+answer `starter_checkout_changed` and a panel offers to pay or cancel the
+earlier order. It starts a new key only after that order is closed or no order
+can still arrive, or the buyer explicitly starts a different purchase. Other forms prepare a fresh key when the input changes or the
+buyer starts a new action. The server still validates acceptance before any new
+draft is admitted.
 
 Before enabling governed quote issuance, verify the compatible v1 reader and
 checkout controller on every serving and replay replica and each rollback

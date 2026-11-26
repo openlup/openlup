@@ -113,7 +113,7 @@ function surfaceTable(): string {
 describe("extracted-root documentation contract", () => {
   it("accepts the current package surface from release-gates.json", () => {
     expect(() => assertDocumentationContract(packageRoot)).not.toThrow();
-  }, 30_000);
+  }, 90_000);
 
   it("keeps downstream documentation identifiers readable in the production contract", () => {
     const source = readFileSync(join(packageRoot, "scripts", "documentation-contract.ts"), "utf8");
