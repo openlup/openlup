@@ -153,11 +153,16 @@ Provider exceptions create occurrence-idempotent holds without changing parcel
 status. Newer eligible evidence can release only a proven machine exception hold;
 terminal exceptions, unknown chronology and human holds remain manual cases.
 
-A delivered observation with no admitted tracking reference records status but
-writes no arrival or alignment. It can still heal an eligible hold. An authorized
-operator tracking/delivery command, or a later observation with a reference, is
-the manual completion path. Delivered evidence suppresses a late dispatched
-notice; a handoff with zero references creates no dispatched notice key.
+A verified delivered webhook may omit the tracking number. Native intake can
+commit arrival for an exactly correlated parcel with one existing provider-bound
+tracking reference and a proven occurrence time. The receipt then reports
+`deliveryReadBack: true`. When only the external dispatch identity matches, the
+first receipt must pin its existing binding to the order's sole original parcel.
+An ambiguous association, missing proof or a contradictory terminal event leaves
+the arrival unchanged. Use the authorized
+operator tracking/delivery command if the carrier cannot supply sufficient
+evidence. Eligible hold healing remains independent. Delivered evidence
+suppresses a late dispatched notice.
 
 Call `reconcile` from your existing scheduler with its job ledger, job name,
 invocation and page size. It claims the lease, reads the latest terminal

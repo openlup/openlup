@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { PLATFORM_BASELINE_FILE, checkoutOwnerDefinitionPath, checkoutOwnerGrantPath, checkoutOwnerLogin, checkoutOwnerRoutines, renderCheckoutOwnerGrant } from "../platform-migration-manifest.ts";
 import { assertSecurityDefinerSearchPath, isGrandfatheredSecurityDefinerForward, tokenizeSecurityDefinerStatements, type SecurityDefinerToken } from "./security-definer.ts";
 import { cachedDumpSqlStatements, expandOnlyPlatformForward, git, headerAttributes, isExpandOnlyPlatformForward, MAX_SQL_STATEMENT_CACHE_ENTRIES, nativeCatalogSuccessorsCreation, nativeStoreArguments, nativeStoreAscii, nativeStoreIdentity, nativeStoreTrim, NATIVE_SUCCESSOR_TABLE_SQL, nativeSuccessorStorageCreation, platformSqlTokens, readPrecedingBlobs, sqlStatements } from "./sql-tokenizer.ts";
-import { canonical, cataloguePublicationAuthorityPath, deferredEvents, deferredKeyword, hash, keysAre, sqlSha256, type ForwardBinding, type NativeCreatedTrigger, type NativeDeferredTrigger, type NativeStoreCheck, type NativeStoreFunction, type NativeStoreFunctionSetting, type NativeStoreGrantOnly, type NativeStoreSlot, type NativeStoreUnique, type PlatformSqlToken, type ReviewedForwardRegistry } from "./types.ts";
+import { canonical, cataloguePublicationAuthorityPath, deferredEvents, deferredKeyword, hash, keysAre, sqlSha256, type ForwardBinding, type NativeCreatedTrigger, type NativeDeferredTrigger, type NativeStoreCheck, type NativeStoreCheckToFunctionGuard, type NativeStoreFunction, type NativeStoreFunctionSetting, type NativeStoreGrantOnly, type NativeStoreSlot, type NativeStoreUnique, type PlatformSqlToken, type ReviewedForwardRegistry } from "./types.ts";
 
 const deferredTriggerMessages = {
   unregistered: (name: PlatformSqlToken | undefined, supported: boolean) => `deferred trigger ${name?.value ?? "<missing name>"} is not registered; ${!supported ? "remove it" : name?.kind !== "word" || deferredNameRule(name.value)
@@ -588,7 +588,7 @@ export function validateNativeStoreClass(registry: ReviewedForwardRegistry, path
     const fields = ["createdFunctions", "dataStatements", "grantOnlyFunctions", "path", "replacedFunctions", "row", ...nativeStoreOwnerWindowFields(slot, settingsOnly)];
     if (settingsOnly) fields.push("settingsOnlyFunctions");
     else {
-      fields.push(...["purposeCheck", "checkSupersets", "uniqueSupersets", "droppedIndexes", "createdViews", "createdTriggers", "absorptionCensusTables", "qualifiedCatalogueStorageSelect", "qualifiedPriceListBasisSelect", "qualifiedPriceSetupExecute", "previewNoopAcceptance"].filter(key => Object.hasOwn(slot, key)));
+      fields.push(...["purposeCheck", "checkSupersets", "checkToFunctionGuard", "uniqueSupersets", "droppedIndexes", "createdViews", "createdTriggers", "absorptionCensusTables", "qualifiedCatalogueStorageSelect", "qualifiedPriceListBasisSelect", "qualifiedPriceSetupExecute", "previewNoopAcceptance"].filter(key => Object.hasOwn(slot, key)));
       if (slot.existingTableStatements !== undefined) fields.push("existingTableStatements");
       if (slot.insertSelectTables !== undefined) fields.push("insertSelectTables");
     }
@@ -697,7 +697,38 @@ export function validateNativeStoreClass(registry: ReviewedForwardRegistry, path
         || !nativeStoreInteger(check.range.upper) || check.range.lower > check.range.upper;
     }))) throw new Error("reviewed native store invalid CHECK superset entry");
     if (slot.uniqueSupersets !== undefined && (!Array.isArray(slot.uniqueSupersets) || slot.uniqueSupersets.some(unique => !keysAre(unique, "columns,constraint,nullsNotDistinct,table") || !nativeStoreTable(unique.table) || !nativeStoreName(unique.constraint) || !nativeStoreList(unique.columns) || typeof unique.nullsNotDistinct !== "boolean"))) throw new Error("reviewed native store invalid UNIQUE superset entry");
-    const constraints = [...slot.checkSupersets ?? [], ...slot.purposeCheck ? [{ table: purposeTable, constraint: purposeConstraint }] : [], ...slot.uniqueSupersets ?? []].map(entry => `${entry.table}.${entry.constraint}`);
+    if (slot.checkToFunctionGuard !== undefined) {
+      if (!Array.isArray(slot.checkToFunctionGuard) || slot.checkToFunctionGuard.length === 0) {
+        throw new Error("reviewed native store checkToFunctionGuard requires a non-empty array");
+      }
+      const replacedSignatures = new Set(slot.replacedFunctions.map(fn => fn.signature));
+      for (const entry of slot.checkToFunctionGuard) {
+        if (!entry || typeof entry !== "object"
+          || !keysAre(entry, "afterSha256,beforeSha256,column,guardFunctions,name,table")
+          || !nativeStoreTable(entry.table) || !nativeStoreName(entry.name) || !nativeStoreName(entry.column)
+          || !hash(entry.beforeSha256) || !hash(entry.afterSha256) || entry.beforeSha256 === entry.afterSha256) {
+          throw new Error("reviewed native store invalid checkToFunctionGuard entry");
+        }
+        if (!Array.isArray(entry.guardFunctions) || entry.guardFunctions.length === 0) {
+          throw new Error(`reviewed native store checkToFunctionGuard requires at least one guardFunctions entry: ${entry.table}.${entry.name}`);
+        }
+        if (new Set(entry.guardFunctions).size !== entry.guardFunctions.length
+          || entry.guardFunctions.some(sig => typeof sig !== "string" || nativeStoreSignature(sig) !== sig)) {
+          throw new Error(`reviewed native store checkToFunctionGuard guardFunctions must be unique canonical signatures: ${entry.table}.${entry.name}`);
+        }
+        for (const sig of entry.guardFunctions) {
+          if (!replacedSignatures.has(sig)) {
+            throw new Error(`reviewed native store checkToFunctionGuard guardFunction must be listed in slot.replacedFunctions: ${sig}`);
+          }
+        }
+      }
+    }
+    const constraints = [
+      ...slot.checkSupersets ?? [],
+      ...slot.purposeCheck ? [{ table: purposeTable, constraint: purposeConstraint }] : [],
+      ...slot.uniqueSupersets ?? [],
+      ...(slot.checkToFunctionGuard ?? []).map(entry => ({ table: entry.table, constraint: entry.name })),
+    ].map(entry => `${entry.table}.${entry.constraint}`);
     if (new Set(constraints).size !== constraints.length) throw new Error("reviewed native store duplicate constraint entry");
     if (slot.droppedIndexes !== undefined && (!Array.isArray(slot.droppedIndexes) || slot.droppedIndexes.some(index => !keysAre(index, "beforeSha256,name,table") || !nativeStoreTable(index.table) || !nativeStoreName(index.name) || !hash(index.beforeSha256)) || new Set(slot.droppedIndexes.map(index => index.name)).size !== slot.droppedIndexes.length)) throw new Error("reviewed native store invalid dropped index inventory");
     if (slot.createdViews !== undefined && (!Array.isArray(slot.createdViews) || slot.createdViews.some(view => !keysAre(view, "name,sha256") || !nativeStoreTable(view.name) || !hash(view.sha256)) || new Set(slot.createdViews.map(view => view.name)).size !== slot.createdViews.length)) throw new Error("reviewed native store invalid created view inventory");
@@ -874,6 +905,211 @@ function nativeCheckRange(tokens: readonly PlatformSqlToken[], column: string): 
   }
   const upper = integer();
   return lower !== null && upper !== null && lower <= upper && nativeSymbol(tokens, index, ")") ? { lower, upper, next: index + 1 } : null;
+}
+function normalizeCheckTokens(tokens: readonly PlatformSqlToken[]): string {
+  return tokens.map(token => {
+    if (token.kind === "word") return token.value.toLowerCase();
+    if (token.kind === "string") return `'${token.value.replaceAll("'", "''")}'`;
+    return token.value;
+  }).join(" ");
+}
+export function checkConstraintSha256(checkSql: string): string {
+  const { tokens, complete } = platformSqlTokens(checkSql, false, true);
+  if (!complete || !tokens.length || !nativeWord(tokens, 0, "CHECK")) {
+    throw new Error("checkConstraintSha256 requires a complete CHECK (...) SQL fragment");
+  }
+  return sqlSha256(normalizeCheckTokens(tokens));
+}
+export type BoundedFormatAtom = { chars: ReadonlySet<string>; min: number; max: number };
+const MAX_BOUNDED_FORMAT_LENGTH = 256;
+
+function parseBoundedCharClass(pattern: string, start: number): { chars: Set<string>; next: number } | null {
+  if (pattern[start] !== "[" || pattern[start + 1] === "^") return null;
+  const chars = new Set<string>();
+  let index = start + 1;
+  while (index < pattern.length && pattern[index] !== "]") {
+    const ch = pattern[index]!;
+    if (ch === "\\" || ch === "[" || ch < "!" || ch > "~") return null;
+    if (pattern[index + 1] === "-" && index + 2 < pattern.length && pattern[index + 2] !== "]") {
+      const end = pattern[index + 2]!;
+      const validRange = (ch >= "a" && end <= "z" && ch <= end)
+        || (ch >= "A" && end <= "Z" && ch <= end)
+        || (ch >= "0" && end <= "9" && ch <= end);
+      if (!validRange) return null;
+      for (let code = ch.charCodeAt(0); code <= end.charCodeAt(0); code++) chars.add(String.fromCharCode(code));
+      index += 3;
+      continue;
+    }
+    chars.add(ch);
+    index++;
+  }
+  return pattern[index] === "]" && chars.size > 0 ? { chars, next: index + 1 } : null;
+}
+
+function parseBoundedQuantifier(pattern: string, start: number): { min: number; max: number; next: number } | null {
+  if (pattern[start] !== "{") return { min: 1, max: 1, next: start };
+  const close = pattern.indexOf("}", start + 1);
+  if (close < 0) return null;
+  const match = /^([0-9]+)(?:,([0-9]+))?$/u.exec(pattern.slice(start + 1, close));
+  if (!match) return null;
+  const min = Number(match[1]), max = match[2] === undefined ? min : Number(match[2]);
+  if (!Number.isInteger(min) || !Number.isInteger(max) || min < 0 || max < min || max === 0 || max > MAX_BOUNDED_FORMAT_LENGTH) return null;
+  return { min, max, next: close + 1 };
+}
+
+export function parseBoundedFormatPattern(pattern: string): BoundedFormatAtom[] | null {
+  if (!pattern.startsWith("^") || !pattern.endsWith("$") || pattern.length < 4 || pattern.length > 128) return null;
+  const atoms: BoundedFormatAtom[] = [];
+  let index = 1, totalMin = 0, totalMax = 0;
+  const end = pattern.length - 1;
+  while (index < end) {
+    const cls = parseBoundedCharClass(pattern, index);
+    if (!cls) return null;
+    const quant = parseBoundedQuantifier(pattern, cls.next);
+    if (!quant) return null;
+    atoms.push({ chars: cls.chars, min: quant.min, max: quant.max });
+    totalMin += quant.min;
+    totalMax += quant.max;
+    index = quant.next;
+  }
+  return atoms.length > 0 && totalMin >= 1 && totalMax <= MAX_BOUNDED_FORMAT_LENGTH ? atoms : null;
+}
+
+export function matchesBoundedFormatPattern(atoms: readonly BoundedFormatAtom[], value: string): boolean {
+  let reachable = new Set<number>([0]);
+  for (const atom of atoms) {
+    const next = new Set<number>();
+    for (const pos of reachable) {
+      for (let count = 0; count <= atom.max; count++) {
+        if (count >= atom.min) next.add(pos + count);
+        if (count === atom.max || pos + count >= value.length || !atom.chars.has(value[pos + count]!)) break;
+      }
+    }
+    if (!next.size) return false;
+    reachable = next;
+  }
+  return reachable.has(value.length);
+}
+
+function nativeCheckFormat(tokens: readonly PlatformSqlToken[], column: string): { atoms: BoundedFormatAtom[]; next: number } | null {
+  if (!nativeWord(tokens, 0, "CHECK") || !nativeSymbol(tokens, 1, "(") || nativeIdentifier(tokens[2]) !== column
+    || !nativeSymbol(tokens, 3, "~") || tokens[4]?.kind !== "string" || !nativeSymbol(tokens, 5, ")")) return null;
+  const atoms = parseBoundedFormatPattern(tokens[4]!.value);
+  return atoms ? { atoms, next: 6 } : null;
+}
+
+function findMatchingParen(tokens: readonly PlatformSqlToken[], open: number): number {
+  let depth = 0;
+  for (let index = open; index < tokens.length; index++) {
+    if (nativeSymbol(tokens, index, "(")) depth++;
+    else if (nativeSymbol(tokens, index, ")") && --depth === 0) return index;
+  }
+  return -1;
+}
+
+function splitTopLevelCommaItems(tokens: readonly PlatformSqlToken[], start: number, end: number): PlatformSqlToken[][] {
+  const items: PlatformSqlToken[][] = [];
+  let itemStart = start, depth = 0;
+  for (let index = start; index < end; index++) {
+    if (nativeSymbol(tokens, index, "(")) depth++;
+    else if (nativeSymbol(tokens, index, ")")) depth--;
+    else if (depth === 0 && nativeSymbol(tokens, index, ",")) {
+      items.push(tokens.slice(itemStart, index));
+      itemStart = index + 1;
+    }
+  }
+  if (itemStart < end) items.push(tokens.slice(itemStart, end));
+  return items;
+}
+
+function resolvePrefixTableHead(tokens: readonly PlatformSqlToken[]): { verb: string; table: string; next: number } | null {
+  const verb = tokens[0]?.kind === "word" ? tokens[0].value.toUpperCase() : "";
+  if (!["CREATE", "ALTER", "DROP"].includes(verb) || !nativeWord(tokens, 1, "TABLE")) return null;
+  let index = 2;
+  if (verb === "CREATE" && nativeWord(tokens, index, "IF") && nativeWord(tokens, index + 1, "NOT") && nativeWord(tokens, index + 2, "EXISTS")) index += 3;
+  else if (verb !== "CREATE" && nativeWord(tokens, index, "IF") && nativeWord(tokens, index + 1, "EXISTS")) index += 2;
+  if (verb === "ALTER" && nativeWord(tokens, index, "ONLY")) index++;
+  const target = nativeQualified(tokens, index);
+  return target ? { verb, table: target.name, next: target.next } : null;
+}
+
+function extractColumnChecks(table: string, item: readonly PlatformSqlToken[], priorChecks: Map<string, PlatformSqlToken[]>): void {
+  const column = nativeIdentifier(item[0]);
+  if (!column || ["CONSTRAINT", "PRIMARY", "FOREIGN", "UNIQUE", "CHECK"].some(word => nativeWord(item, 0, word))) return;
+  const tableBare = table.slice("public.".length);
+  for (let index = 1; index < item.length; index++) {
+    if (nativeSymbol(item, index, "(")) {
+      const end = findMatchingParen(item, index);
+      if (end < 0) return;
+      index = end;
+      continue;
+    }
+    const named = nativeWord(item, index, "CONSTRAINT") && nativeIdentifier(item[index + 1]) !== null
+      && nativeWord(item, index + 2, "CHECK") && nativeSymbol(item, index + 3, "(");
+    const unnamed = !named && nativeWord(item, index, "CHECK") && nativeSymbol(item, index + 1, "(");
+    if (!named && !unnamed) continue;
+    const checkStart = named ? index + 2 : index;
+    const end = findMatchingParen(item, checkStart + 1);
+    if (end < 0) return;
+    const name = named ? nativeIdentifier(item[index + 1])! : `${tableBare}_${column}_check`;
+    priorChecks.set(`${table}.${name}`, item.slice(checkStart, end + 1));
+    index = end;
+  }
+}
+
+function trackCreateTableChecks(table: string, tokens: readonly PlatformSqlToken[], open: number, priorChecks: Map<string, PlatformSqlToken[]>): void {
+  const close = findMatchingParen(tokens, open);
+  if (close < 0) return;
+  for (const item of splitTopLevelCommaItems(tokens, open + 1, close)) {
+    if (nativeWord(item, 0, "CONSTRAINT") && nativeIdentifier(item[1]) !== null && nativeWord(item, 2, "CHECK") && nativeSymbol(item, 3, "(")) {
+      const end = findMatchingParen(item, 3);
+      if (end >= 0) priorChecks.set(`${table}.${nativeIdentifier(item[1])!}`, item.slice(2, end + 1));
+    } else {
+      extractColumnChecks(table, item, priorChecks);
+    }
+  }
+}
+
+function trackAlterTableChecks(table: string, statement: string, tokens: readonly PlatformSqlToken[], actionStart: number, priorChecks: Map<string, PlatformSqlToken[]>): void {
+  const last = tokens.at(-1);
+  if (!last || !nativeSymbol(tokens, tokens.length - 1, ";") || actionStart >= tokens.length - 1) return;
+  const actions = nativeStoreArguments(statement.slice(tokens[actionStart]!.start, last.start)).map(nativeStoreTrim);
+  for (const action of actions) {
+    const { tokens: sub, complete } = platformSqlTokens(action, false, true);
+    if (!complete) continue;
+    if (nativeWord(sub, 0, "DROP") && nativeWord(sub, 1, "CONSTRAINT")) {
+      const nameIndex = nativeWord(sub, 2, "IF") && nativeWord(sub, 3, "EXISTS") ? 4 : 2;
+      const name = nativeIdentifier(sub[nameIndex]);
+      if (name) priorChecks.delete(`${table}.${name}`);
+    } else if (nativeWord(sub, 0, "ADD") && nativeWord(sub, 1, "CONSTRAINT") && nativeIdentifier(sub[2]) !== null && nativeWord(sub, 3, "CHECK") && nativeSymbol(sub, 4, "(")) {
+      const end = findMatchingParen(sub, 4);
+      if (end >= 0) priorChecks.set(`${table}.${nativeIdentifier(sub[2])!}`, sub.slice(3, end + 1));
+    } else if (nativeWord(sub, 0, "ADD")) {
+      let colIndex = nativeWord(sub, 1, "COLUMN") ? 2 : 1;
+      if (nativeWord(sub, colIndex, "IF") && nativeWord(sub, colIndex + 1, "NOT") && nativeWord(sub, colIndex + 2, "EXISTS")) colIndex += 3;
+      extractColumnChecks(table, sub.slice(colIndex), priorChecks);
+    }
+  }
+}
+
+function trackPriorCheckConstraints(
+  statement: string,
+  tokens: readonly PlatformSqlToken[],
+  complete: boolean,
+  trackedTables: ReadonlySet<string>,
+  priorChecks: Map<string, PlatformSqlToken[]>,
+): void {
+  if (!complete) return;
+  const head = resolvePrefixTableHead(tokens);
+  if (!head || !trackedTables.has(head.table)) return;
+  if (head.verb === "DROP") {
+    const prefix = `${head.table}.`;
+    for (const key of priorChecks.keys()) if (key.startsWith(prefix)) priorChecks.delete(key);
+  } else if (head.verb === "CREATE" && nativeSymbol(tokens, head.next, "(")) {
+    trackCreateTableChecks(head.table, tokens, head.next, priorChecks);
+  } else if (head.verb === "ALTER") {
+    trackAlterTableChecks(head.table, statement, tokens, head.next, priorChecks);
+  }
 }
 function nativeUniqueValues(tokens: readonly PlatformSqlToken[], start: number): { columns: string[]; nullsNotDistinct: boolean; next: number } | null {
   if (!nativeWord(tokens, start, "UNIQUE")) return null;
@@ -1438,6 +1674,9 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   const functions = nativeStoreFunctions(slot), signatures = [...functions, ...slot.grantOnlyFunctions].map(fn => fn.signature);
   const names = new Set(signatures.map(signature => signature.split("(")[0]!)), prior = new Map<string, string>(), baseDefinitions = new Map<string, string>(), priorStatements = new Map<string, string>();
   const replacements = [...slot.checkSupersets ?? [], ...slot.uniqueSupersets ?? []], droppedIndexes = slot.droppedIndexes ?? [];
+  const guardedChecks: NativeStoreCheckToFunctionGuard[] = slot.checkToFunctionGuard ?? [];
+  const guardedTables = new Set(guardedChecks.map(entry => entry.table));
+  const priorChecks = new Map<string, PlatformSqlToken[]>();
   const indexCreates = new Set<string>();
   let checkSource: string | undefined;
   const allowedSignatures = new Set(signatures);
@@ -1477,6 +1716,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     }
     if (slot.purposeCheck && statement.startsWith(`CREATE TABLE ${purposeTable} (`)) checkSource = statement;
     if (slot.purposeCheck && /^(?:ALTER|DROP)\b/iu.test(statement) && /\bTABLE\b/iu.test(statement) && statement.toLowerCase().includes("communication_native_sync_state")) throw new Error("reviewed native store purpose CHECK intervening DDL refused");
+    if (guardedTables.size) trackPriorCheckConstraints(statement, tokens, complete, guardedTables, priorChecks);
   }
   if (definitionSources) {
     for (const [sourcePath, signature] of qualifiedCatalogueReadTargets) {
@@ -1486,6 +1726,16 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     return { slot, ordinaryProof };
   }
   if (indexCreates.size !== droppedIndexes.length) throw new Error("reviewed native store dropped index plain CREATE missing from prefix");
+  const priorEnumValues = new Map<string, string[]>();
+  for (const entry of guardedChecks) {
+    const key = `${entry.table}.${entry.name}`;
+    const priorTokens = priorChecks.get(key);
+    if (!priorTokens) throw new Error(`reviewed native store checkToFunctionGuard prior CHECK missing from prefix: ${key}`);
+    const parsed = nativeCheckValues(priorTokens, 0, entry.column);
+    if (!parsed || parsed.next !== priorTokens.length) throw new Error(`reviewed native store checkToFunctionGuard prior CHECK must be a closed enum on ${entry.column}: ${key}`);
+    if (sqlSha256(normalizeCheckTokens(priorTokens)) !== entry.beforeSha256) throw new Error(`reviewed native store checkToFunctionGuard beforeSha256 mismatch for ${key}`);
+    priorEnumValues.set(key, parsed.values);
+  }
   const chained = new Set(earlierSlots.flatMap(slot => nativeStoreFunctions(slot).map(fn => fn.signature)));
   for (const fn of functions) if ((!chained.has(fn.signature) && (baseDefinitions.get(fn.signature) ?? null) !== fn.beforeSha256) || (prior.get(fn.signature) ?? null) !== fn.beforeSha256) throw new Error("reviewed native store actual base function before-hash drifted");
   for (const fn of slot.grantOnlyFunctions) if (!baseDefinitions.has(fn.signature)) throw new Error("reviewed native store grant-only function absent from base chain");
@@ -1587,6 +1837,23 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
             : "lower" in parsed && parsed.lower === check.range.lower && parsed.upper === check.range.upper);
           if (pending !== key || !listed || next !== action.tail.length) throw new Error(`reviewed native store CHECK must match its listed ${"values" in check ? "values" : "range"}`);
         }
+        pending = undefined; completedConstraints.add(key); continue;
+      }
+    }
+    const guardedPin = action && guardedChecks.find(entry => entry.table === action.table && entry.name === action.name);
+    if (action && guardedPin) {
+      const key = `${action.table}.${action.name}`;
+      if (action.verb === "DROP" && action.tail.length === 0) {
+        if (pending || completedConstraints.has(key)) throw new Error("reviewed native store duplicate CHECK replacement");
+        pending = key; continue;
+      }
+      if (action.verb === "ADD") {
+        if (pending !== key) throw new Error("reviewed native store requires the adjacent named constraint replacement");
+        const parsed = nativeCheckFormat(action.tail, guardedPin.column);
+        const next = parsed && nativeWord(action.tail, parsed.next, "NOT") && nativeWord(action.tail, parsed.next + 1, "VALID") ? parsed.next + 2 : parsed?.next;
+        if (!parsed || next !== action.tail.length) throw new Error(`reviewed native store checkToFunctionGuard replacement must be a non-trivial anchored format CHECK on ${guardedPin.column}: ${key}`);
+        if (sqlSha256(normalizeCheckTokens(action.tail.slice(0, parsed.next))) !== guardedPin.afterSha256) throw new Error(`reviewed native store checkToFunctionGuard afterSha256 mismatch for ${key}`);
+        if (priorEnumValues.get(key)!.some(value => !matchesBoundedFormatPattern(parsed.atoms, value))) throw new Error(`reviewed native store checkToFunctionGuard replacement format CHECK must accept all prior enum values for ${key}`);
         pending = undefined; completedConstraints.add(key); continue;
       }
     }
@@ -1701,7 +1968,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   if (defined.size !== functions.length) throw new Error("reviewed native store unlisted, missing or drifted function definition");
   if ([...created].some(signature => !revoked.has(signature))) throw new Error("reviewed native store created function missing PUBLIC revoke");
   if (droppedCheck !== addedCheck || Boolean(slot.purposeCheck) !== addedCheck) throw new Error("reviewed native store requires the complete named CHECK replacement");
-  if (pending || completedConstraints.size !== replacements.length) throw new Error("reviewed native store requires the complete named CHECK replacement");
+  if (pending || completedConstraints.size !== replacements.length + guardedChecks.length) throw new Error("reviewed native store requires the complete named CHECK replacement");
   if (dropped.size !== droppedIndexes.length) throw new Error("reviewed native store listed index drop missing");
   if (triggers.size !== (slot.createdTriggers?.length ?? 0)) throw new Error(["reviewed native store created trigger statement missing", pins.find(pin => !triggers.has(pin.name))?.name].filter(Boolean).join(": "));
   if (views.size !== (slot.createdViews?.length ?? 0)) throw new Error("reviewed native store created view missing");
