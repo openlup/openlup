@@ -498,7 +498,7 @@ describe.each(lifecycleProfiles)("subscription lifecycle closure on %s", profile
     writeFileSync(`.context/scratch/c21/catalog-${profile}.json`, JSON.stringify({ before: env.before, after: env.after, guardBefore: env.guardBefore, guardAfter: env.guardAfter, bodiesBefore: env.bodiesBefore, bodiesAfter: env.bodiesAfter, deferred, acl, view }, null, 2));
   }, 30_000);
 
-  it("preserves the installed order money guard byte for byte around catalogue checks", () => {
+  it("preserves the installed order money guard apart from catalogue checks and refusal detail", () => {
     const [mainGuard] = env.guardBefore.function;
     const [catalogueGuard] = env.guardAfter.function;
     // Compare the entire incumbent body after projecting out the additive
@@ -519,7 +519,11 @@ describe.each(lifecycleProfiles)("subscription lifecycle closure on %s", profile
       .replace("    IF TG_OP = 'UPDATE' THEN\n      PERFORM public.catalog_order_line_sum_acceptance(v_order_id, OLD.order_id);\n    END IF;\n", "")
       .replace("  PERFORM public.catalog_order_line_sum_acceptance(v_order_id);\n", "")
       .replace(/ {2}IF v_keyed_item THEN\n[\s\S]*?\n {2}END IF;\n/u, "");
-    expect(moneyBody).toBe(mainGuard!.body);
+    expect(moneyBody).toBe(mainGuard!.body.replace(
+      ",\n      DETAIL = format('order %s declares %s and its lines sum to %s',\n" +
+        "                      v_order_id, COALESCE(v_declared::text, 'nothing'), v_sum);",
+      ";",
+    ));
     expect(catalogueGuard!.definition.replace(catalogueGuard!.body, "")).toBe(mainGuard!.definition.replace(mainGuard!.body, "")
       .replace("SET search_path TO 'public', 'pg_catalog'\n", "SET search_path TO 'public', 'pg_catalog', 'pg_temp'\n"));
     expect(env.guardAfter.triggers).toEqual(env.guardBefore.triggers);
@@ -837,7 +841,7 @@ describe.each(lifecycleProfiles)("subscription lifecycle closure on %s", profile
       await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: principal })]);
       await expect(call(db, "customer_subscription_pause_as_actor", [f.subscription.toUpperCase(), `mismatch:${f.subscription}`, "indefinite", null]))
         .rejects.toMatchObject({ code: "23514", message: "commerce_order_line_sum_mismatch",
-          detail: `order ${f.original.orderId} declares 200 and its lines sum to 300` });
+          detail: undefined });
       await db.query("ROLLBACK");
       expect(await lifecycleRows(env.owner)).toEqual(before);
     } finally { await db.query("ROLLBACK"); db.release(); }

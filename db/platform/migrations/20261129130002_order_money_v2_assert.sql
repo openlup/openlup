@@ -155,7 +155,6 @@ DECLARE
   copies text[];
   check_seal boolean;
   check_projection boolean;
-  orphan_key text;
   evidence_remedy constant text := 'Recover the original accepted evidence through its owner and retry with its original binding.';
   write_remedy constant text := 'Write the order money snapshot and its line sources in the same transaction as the order.';
   invoking_role name := coalesce(nullif(current_setting('role',true),'none'),session_user::text);
@@ -210,9 +209,7 @@ BEGIN
   IF snapshot.order_id IS NULL THEN
     RAISE EXCEPTION 'insert or update on table "commerce_orders" violates foreign key constraint "commerce_orders_money_snapshot_fkey"'
       USING ERRCODE='23503', SCHEMA='public', TABLE='commerce_orders', CONSTRAINT='commerce_orders_money_snapshot_fkey',
-      HINT=write_remedy,
-      DETAIL=format('Key (id, money_version)=(%s, %s) is not present in table "commerce_order_tax_snapshots".',
-        p_order_id,header.money_version);
+      HINT=write_remedy;
   END IF;
   IF header.money_version <> v2 OR snapshot.money_version <> v2 THEN
     RAISE EXCEPTION 'commerce_order_money_v2_mismatch' USING ERRCODE='23514', COLUMN='/moneyVersion', HINT=evidence_remedy;
@@ -244,14 +241,13 @@ BEGIN
     RAISE EXCEPTION 'commerce_order_money_v2_mismatch' USING ERRCODE='23514', COLUMN='/lines', HINT=remedy;
   END IF;
   -- A later source insert has no assertion trigger in this forward.
-  SELECT i.line_key INTO orphan_key FROM public.commerce_order_items i WHERE i.order_id=p_order_id AND NOT EXISTS (
+  PERFORM 1 FROM public.commerce_order_items i WHERE i.order_id=p_order_id AND NOT EXISTS (
     SELECT FROM public.commerce_order_line_sources s WHERE (s.order_id,s.line_key)=(i.order_id,i.line_key)
   ) LIMIT 1;
   IF FOUND THEN
     RAISE EXCEPTION 'insert or update on table "commerce_order_items" violates foreign key constraint "commerce_order_items_money_source_fkey"'
       USING ERRCODE='23503', SCHEMA='public', TABLE='commerce_order_items', CONSTRAINT='commerce_order_items_money_source_fkey',
-      HINT=write_remedy,
-      DETAIL=format('Key (order_id, line_key)=(%s, %s) is not present in table "commerce_order_line_sources".',p_order_id,orphan_key);
+      HINT=write_remedy;
   END IF;
 
   IF p_fresh OR p_before IS NOT NULL OR snapshot.destination_erased THEN
@@ -618,9 +614,7 @@ BEGIN
    WHERE order_id = v_order_id;
 
   IF v_sum IS DISTINCT FROM COALESCE(v_declared, 0) THEN
-    RAISE EXCEPTION 'commerce_order_line_sum_mismatch' USING ERRCODE = '23514',
-      DETAIL = format('order %s declares %s and its lines sum to %s',
-                      v_order_id, COALESCE(v_declared::text, 'nothing'), v_sum);
+    RAISE EXCEPTION 'commerce_order_line_sum_mismatch' USING ERRCODE = '23514';
   END IF;
 
   PERFORM public.catalog_order_line_sum_acceptance(v_order_id);

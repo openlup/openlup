@@ -97,14 +97,18 @@ it("applies its own forward and preserves the other checkout definitions", async
   expect(await defs()).toStrictEqual(predecessorDefinitions);
 });
 
-it("order_money_legacy_block_byte_identity", async () => {
+it("preserves the legacy line-sum block apart from the refusal detail", async () => {
   const { rows: [row] } = await store.owner.query<{ prosrc: string }>(
     "SELECT prosrc FROM pg_proc WHERE oid='public.commerce_order_assert_line_sum()'::regprocedure");
   const block = row!.prosrc.slice(row!.prosrc.indexOf("  SELECT total_amount_minor"),
     row!.prosrc.lastIndexOf("\n\n  PERFORM public.catalog_order_line_sum_acceptance(v_order_id);") + 1);
-  expect(Buffer.from(block)).toEqual(Buffer.from(readFileSync(path, "utf8").split("\n").slice(931, 955).join("\n") + "\n"));
-  expect(Buffer.byteLength(block)).toBe(939);
-  expect(createHash("sha256").update(block).digest("hex")).toBe("c1b997aff2e805edd7496b8714cdc66ad554c00c81766e88c6bf37fbd6fa2b5c");
+  const predecessor = readFileSync(path, "utf8").split("\n").slice(931, 955).join("\n") + "\n";
+  expect(createHash("sha256").update(predecessor).digest("hex")).toBe("c1b997aff2e805edd7496b8714cdc66ad554c00c81766e88c6bf37fbd6fa2b5c");
+  expect(block).toBe(predecessor.replace(
+    ",\n      DETAIL = format('order %s declares %s and its lines sum to %s',\n" +
+      "                      v_order_id, COALESCE(v_declared::text, 'nothing'), v_sum);",
+    ";",
+  ));
 
   const amount = { currency: "XXX", amountMinor: 100 };
   const line = { sku: sku.sku, quantity: 1, unitPriceGross: amount, lineSubtotalGross: amount };
@@ -241,7 +245,7 @@ it("refuses an item when both line-sum constraints flush before its source is in
   });
   const error = await rejected(transaction(store.owner, insertItemFirst));
   expectSqlError(error, "23503", foreignKeyMessage(itemTable, itemFk), itemFk);
-  expect(error).toMatchObject({ schema: "public", table: itemTable, hint: writeRemedy });
+  expect(error).toMatchObject({ schema: "public", table: itemTable, hint: writeRemedy, detail: undefined });
   expect((await store.owner.query(`SELECT FROM public.${orderTable} WHERE id=$1`, [id])).rowCount).toBe(0);
 
   // Temporarily disabled the missing-source refusal in a disposable database transaction.
@@ -274,7 +278,7 @@ it.each(["header", "item"])("refuses an absent snapshot when the %s constraint f
     } });
   const error = await rejected(transaction(store.owner, flushWithoutSnapshot));
   expectSqlError(error, "23503", foreignKeyMessage(orderTable, orderFk), orderFk);
-  expect(error).toMatchObject({ schema: "public", table: orderTable, hint: writeRemedy });
+  expect(error).toMatchObject({ schema: "public", table: orderTable, hint: writeRemedy, detail: undefined });
   expect((await store.owner.query("SELECT FROM public.commerce_orders WHERE id=$1", [id])).rowCount).toBe(0);
   // Temporarily disabled the missing-snapshot refusal in a disposable database transaction.
   await transaction(store.owner, async db => {
