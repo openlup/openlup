@@ -575,7 +575,7 @@
     "packages/platform/test/storefront/purchaseContinuation.test.ts": 74,
     "packages/platform/test/storefront/testing/exports.test.ts": 345,
     "packages/platform/test/storefront/testing/pageHandle.test.ts": 10,
-    "packages/platform/test/storefront/testing/runner.test.ts": 160,
+    "packages/platform/test/storefront/testing/runner.test.ts": 40,
     "packages/platform/test/storefront/testing/scenarios.test.ts": 10,
     "packages/platform/test/storefront/testing/serialize.test.ts": 5,
     "packages/platform/test/storefront/testing/sourceScan.test.ts": 15,

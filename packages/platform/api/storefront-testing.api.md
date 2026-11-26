@@ -449,23 +449,32 @@ type StorefrontRunResult = {
  * declare. A `safety_only` scenario has no control run. When the UI performs
  * the omitted action by itself, as the effective `autoProgress` declares,
  * neither run performs it and the control becomes a `block_read` of status
- * reads from the step before it, with the outcomes after it skipped.
+ * reads from the step before it, with the outcomes after it skipped; when the
+ * clean run still offers that action at the end of the following step and the
+ * next expected state is not shown, the declaration is wrong:
+ * `auto_progress_not_performed` (`not_run`).
  *
  * Outcomes: an `outcome` step asks the `outcomes` driver for one outcome
  * (`declined`, `pending`, `settled`, `settled_after_pending`,
  * `activation_pending`). A scenario runs only when every outcome in its
  * `requires.outcomes` is one this runner knows and the driver declares; else
  * it ends `not_run` with `tier_unreachable` naming each missing outcome before
- * any page, observer or driver call. Tier names do not decide admission. A
- * rejected `produce`, or a ledger without a payment attempt after the outcome,
- * is `outcome_failed`.
+ * any page, observer or driver call. Tier names do not decide admission.
+ * Every capability must be a name; one the runner does not know is ignored.
+ * Each outcome has a ledger effect, compared with the ledger at the end of the
+ * previous outcome step (zero before the first): every outcome but
+ * `settled_after_pending` acts on a new attempt (more attempts), a settling
+ * outcome (`settled`, `settled_after_pending`, `activation_pending`) adds a
+ * capture, and `declined` or `pending` adds none. A rejected `produce`, or an
+ * outcome whose effect the ledger does not show, is `outcome_failed` and stops
+ * the run.
  *
  * Judgement, first failing group decides: 0 admitted; 1 page, observer,
  * arrangement and outcome driver worked; 2 no order before the arrangement and
  * one after the first matched create; 3 the first order appeared in a step with
- * a matched create, every withhold applied and every outcome shows an attempt;
- * 4 ledger safety in both runs and settle windows (payable orders, orders
- * holding stock, attempts, captures, no attempt after its step, attempts per
+ * a matched create, every withhold applied, every outcome shows its ledger
+ * effect and declared auto-progress was performed; 4 ledger safety in both
+ * runs and settle windows (payable orders, orders holding stock, attempts, captures, no attempt after its step, attempts per
  * decline, forbidden states from their step on; a paid state needs a capture
  * and no payable order) and, for an exclusive database, no payable order
  * outside the subjects; 5 the create budget kept (a run over it stopped before
@@ -478,12 +487,15 @@ type StorefrontRunResult = {
  * status read is `auto_progress_undeclared`. Codes 0–3, 5 and 6 end `not_run`,
  * as do `control_not_applied` and `auto_progress_undeclared`; a harness fault
  * is never `failed` or `passed`; a ledger violation is
- * `failed`; progress under the control is `vacuous`. Without a finding the
- * result is `passed`, or `safety_only` for a scenario without a control.
+ * `failed`; progress under the control is `vacuous`. Ledger harm a run proved
+ * before a fault (in the clean run before a control-run fault, or at or before
+ * the fault's step in the same run) outranks that fault, so the result is
+ * `failed`. Without a finding the result is `passed`, or `safety_only` for a
+ * scenario without a control.
  *
  * Invalid options (an unknown scenario, a malformed `runId`, a missing or
  * mismatched `width`, a clock outside integer milliseconds 0 to the end of the
- * year 9999, a malformed outcome driver) reject with a `TypeError` starting
+ * year 9999, a malformed outcome driver or a capability that is not a name) reject with a `TypeError` starting
  * `storefront_scenario_unknown` or `storefront_run_input_invalid`, and nothing
  * is driven, as does a malformed scenario object; a `stopAt` that is not
  * `checkout.<state>` for a state the scenario expects rejects
@@ -542,8 +554,9 @@ import type { StorefrontScenario } from "./contracts.js";
  *   `retry_payment`, skips the outcomes after it and must keep `paid` from
  *   being shown. Requires the `declined` and `settled` outcomes.
  * - `paid_pending_activation`: a subscription's payment settles while its
- *   activation stays pending. From the outcome on, `awaiting_payment`,
- *   `declined` and `paid` must not be shown, and at most one capture; progress
+ *   activation stays pending. From the end of the expect step on,
+ *   `awaiting_payment`, `declined` and `paid` must not be shown, and at most
+ *   one capture; progress
  *   is `paid_pending_activation`; the control blocks status reads and creates
  *   from the outcome on, keeps the outcomes and must keep that state from being
  *   shown. Requires the `activation_pending` outcome.
