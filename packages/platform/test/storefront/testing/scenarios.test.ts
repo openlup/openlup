@@ -30,9 +30,22 @@ it("uses only storefront anchors, and requires exactly the outcomes its steps us
     expect([...scenario.requires.outcomes].sort(), scenario.id).toEqual([...used].sort());
     if (scenario.control.negates !== null) expect(Object.hasOwn(storefrontAnchor.state, scenario.control.negates)).toBe(true);
     if (scenario.control.action !== undefined) expect(Object.hasOwn(storefrontAnchor.action, scenario.control.action)).toBe(true);
-    for (const state of scenario.safety.forbiddenStates?.states ?? []) expect(Object.hasOwn(storefrontAnchor.state, state)).toBe(true);
+    const forbidden = scenario.safety.forbiddenStates;
+    const named = forbidden === undefined ? [] : [
+      ...forbidden.control, ...forbidden.clean.ruledOut,
+      ...(forbidden.clean.afterShowing === undefined ? [] : [forbidden.clean.afterShowing.state, ...forbidden.clean.afterShowing.regressions]),
+    ];
+    for (const state of named) expect(Object.hasOwn(storefrontAnchor.state, state), `${scenario.id} ${state}`).toBe(true);
     for (const sentence of Object.values(scenario.text)) expect(sentence).toMatch(/^[A-Z].+\.$/);
   }
+});
+
+it("forbids, per run, the outcomes a paid_pending_activation run must not show", () => {
+  const scenario = storefrontScenarios.find((entry) => entry.id === "paid_pending_activation")!;
+  expect(scenario.safety.forbiddenStates).toEqual({
+    control: ["paid", "declined", "paid_pending_activation"],
+    clean: { ruledOut: ["paid", "declined"], afterShowing: { state: "paid_pending_activation", regressions: ["awaiting_payment"] } },
+  });
 });
 
 it("starts each control at a step of its scenario and negates a state it expects", () => {
@@ -56,7 +69,7 @@ it("keys the finding texts by code and cause, with one cause per single-cause co
   expect(causes("adapter_matcher_unmatched")).toEqual(["blocked_set", "create", "read"]);
   expect(causes("observer_failed")).toEqual(["rejected", "unattributable"]);
   expect(causes("outcome_failed")).toEqual(["no_attempt", "no_effect", "rejected"]);
-  expect(causes("forbidden_state_shown")).toEqual(["after_step", "paid_without_capture"]);
+  expect(causes("forbidden_state_shown")).toEqual(["paid_without_capture", "regression", "ruled_out", "unknowable"]);
   expect(causes("vacuous_progress")).toEqual(["blocked", "omitted", "other_policy"]);
   for (const [code, cause] of findingTextKeys) {
     const text = findingText(code, cause, { at: "Step 1 (act place_order) of the clean run", count: 2, limit: 1, name: "state:paid", seen: "state:declined", detail: "hidden" });

@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { parseStorefrontVerdict, type StorefrontVerdict } from "../../../src/lifecycle/index.js";
 import { runStorefrontScenario, serializeStorefrontVerdict, storefrontScenarios, type StorefrontAdapter, type StorefrontScenario } from "../../../src/storefront/testing/index.js";
+import { findingText } from "../../../src/storefront/testing/findings.js";
 import { ALL_OUTCOMES, storeDouble, type StoreDoubleSwitches } from "./storeDouble.js";
+
+/** The cause text of forbidden_state_shown for one cause. */
+const findingCause = (cause: string) => findingText("forbidden_state_shown", cause, { at: "x" }).cause;
 
 type RunOptions = Parameters<typeof runStorefrontScenario>[0];
 type Double = ReturnType<typeof storeDouble>;
@@ -565,51 +569,42 @@ describe("a pending attempt and a reload (R25, R26)", () => {
   });
 });
 
-describe("paid with activation pending (R27)", () => {
-  it("fails paid shown while activation is pending", async () => {
-    const { verdict } = await run("paid_pending_activation", { showPaidWhilePending: true });
-    expect(verdict.result).toBe("failed");
-    expect(codes(verdict)).toEqual(["forbidden_state_shown"]);
-    expect(finding(verdict, "forbidden_state_shown")).toMatchObject({ run: "clean", step: 5 });
-    expect(finding(verdict, "forbidden_state_shown")!.observed).toContain("state:paid");
+describe("paid with activation pending: the forbidden-state matrix (R27)", () => {
+  // Per run: the control run (status reads blocked from the outcome on) may never show an outcome it cannot know; the
+  // clean run may never show an outcome the scenario rules out, nor regress to a pre-outcome state once it showed the
+  // expected one. Awaiting states stay allowed in the control run.
+  const rows: readonly (readonly [string, StoreDoubleSwitches, "passed" | "failed", readonly [string, number, string, string] | null])[] = [
+    ["a correct store", {}, "passed", null],
+    ["an honest polling store (awaiting_payment until its poll answers; the control run keeps it)", { slowPoll: true, awaitingPaymentUntilPoll: true }, "passed", null],
+    ["a control run that falls back to awaiting_payment when its read fails", { awaitingPaymentWhenReadFails: true }, "passed", null],
+    ["a control run that shows paid when its read fails", { paidWhenReadFails: true }, "failed", ["control", 4, "unknowable", "state:paid"]],
+    ["a control run that shows declined when its read fails", { declinedWhenReadFails: true }, "failed", ["control", 4, "unknowable", "state:declined"]],
+    ["a control run that shows the outcome from page state", { activationFromPageState: true }, "failed", ["control", 4, "unknowable", "state:paid_pending_activation"]],
+    ["a clean run that shows paid beside the outcome", { showPaidWhilePending: true }, "failed", ["clean", 4, "ruled_out", "state:paid"]],
+    ["a clean run that regresses to awaiting_payment after it showed the outcome", { fallsBackAfterShowing: true }, "failed", ["clean", 5, "regression", "state:awaiting_payment"]],
+  ];
+  it.each(rows)("%s", async (_name, switches, result, expected) => {
+    const { verdict } = await run("paid_pending_activation", switches);
+    expect(verdict.result).toBe(result);
+    if (expected === null) {
+      expect(verdict.findings).toEqual([]);
+      return;
+    }
+    const [runName, step, cause, state] = expected;
+    expect(codes(verdict)[0]).toBe("forbidden_state_shown");
+    const forbidden = verdict.findings.filter((entry) => entry.code === "forbidden_state_shown");
+    expect(forbidden).toHaveLength(1);
+    expect(forbidden[0]).toMatchObject({ run: runName, step });
+    expect(forbidden[0]!.observed).toContain(state);
+    expect(forbidden[0]!.cause).toBe(findingCause(cause));
   });
 
-  it("opens the forbidden window only once the run has shown the outcome, so a page that learns it on a later poll passes", async () => {
+  it("lets the honest polling store keep awaiting_payment through the control run", async () => {
     const { verdict } = await run("paid_pending_activation", { slowPoll: true, awaitingPaymentUntilPoll: true });
-    expect(verdict.findings).toEqual([]);
-    expect(verdict.result).toBe("passed");
-    // The clean run shows awaiting_payment until its poll answers; the control run, whose polls get no answer, keeps it.
     expect(stepsOf(verdict, "clean")[4]!.observedAnchors).toContain("state:awaiting_payment");
     expect(stepsOf(verdict, "clean")[5]!.observedAnchors).toContain("state:paid_pending_activation");
     expect(stepsOf(verdict, "control")[5]!.observedAnchors).toContain("state:awaiting_payment");
     expect(stepsOf(verdict, "control").at(-1)!.observedAnchors).toContain("state:awaiting_payment");
-  });
-
-  it.each([
-    ["regresses to awaiting_payment from the paying state it showed before the outcome", { awaitingPaymentWhenReadFails: true }, "state:awaiting_payment"],
-    ["shows paid", { paidWhenReadFails: true }, "state:paid"],
-    ["shows declined", { declinedWhenReadFails: true }, "state:declined"],
-  ] as const)("fails a control run that never learned the outcome but %s when its read fails", async (_name, switches, state) => {
-    const { verdict } = await run("paid_pending_activation", switches);
-    expect(verdict.result).toBe("failed");
-    expect(codes(verdict)).toEqual(["forbidden_state_shown"]);
-    expect(finding(verdict, "forbidden_state_shown")).toMatchObject({ run: "control", step: 5 });
-    expect(finding(verdict, "forbidden_state_shown")!.observed).toContain(state);
-  });
-
-  it("fails a page that falls back to awaiting_payment after it showed the outcome", async () => {
-    const { verdict } = await run("paid_pending_activation", { fallsBackAfterShowing: true });
-    expect(verdict.result).toBe("failed");
-    expect(codes(verdict)[0]).toBe("forbidden_state_shown");
-    expect(finding(verdict, "forbidden_state_shown")).toMatchObject({ run: "clean", step: 5 });
-  });
-
-  it("fails the fall-back in the control run too, once that run showed the outcome", async () => {
-    const { verdict } = await run("paid_pending_activation", { activationFromPageState: true, fallsBackAfterShowing: true });
-    expect(verdict.result).toBe("failed");
-    const forbidden = verdict.findings.filter((entry) => entry.code === "forbidden_state_shown");
-    expect(forbidden.map((entry) => [entry.run, entry.step])).toContainEqual(["control", 5]);
-    expect(codes(verdict)).toContain("vacuous_progress");
   });
 });
 
