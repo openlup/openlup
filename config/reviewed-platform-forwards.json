@@ -9828,6 +9828,21 @@
             "signature": "public.subscription_retry_prepare(uuid,text,jsonb,timestamptz)",
             "beforeSha256": "0f9f7fc4a022e4a40239bb9d546c7de2bd1ea1f4f2b10c2c237470dc11cc3297",
             "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.payment_provider_attempt_prepare(text,uuid,text,text,text,text,text,jsonb)",
+            "beforeSha256": "62d79901ee8051339d3e68ff7bf59fb53b01371e871329b9855ee4f38ca80d82",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.payment_simulator_begin_attempt(text,uuid,text,jsonb,timestamptz)",
+            "beforeSha256": "c8b90ddd69697d7304a041af937968e6e18e2d5eb52e2ee72e8ea9c023624fb1",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_acknowledge_subscription_renewal_attempt(uuid,text,text,timestamptz)",
+            "beforeSha256": "8e9d9e1a3bf444ab5f49efe5f00af6e8ad24b84a03c71ce2fe2612849f30008c",
+            "searchPath": "pg_catalog, pg_temp"
           }
         ],
         "createdFunctions": [
@@ -9842,11 +9857,23 @@
           {
             "signature": "public.subscription_renewal_unresolved_stock_wait(uuid)",
             "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_renewal_occurrence_is_current(text,timestamptz,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_renewal_intent_is_held(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_retry_prepared_payment_attempt(uuid,integer)",
+            "searchPath": "pg_catalog, pg_temp"
           }
         ],
         "grantOnlyFunctions": [],
         "dataStatements": [
-          "UPDATE public.subscription_renewal_operations o\n   SET claimed_before_rnw_1 = true\n  FROM public.subscriptions s\n WHERE s.id = o.subscription_id\n   AND (o.state IN ('claimed', 'attempt_prepared')\n     OR (o.state = 'reserved' AND (\n       NOT EXISTS (\n         SELECT 1 FROM public.subscription_stock_wait_cases w\n         WHERE w.renewal_operation_id = o.id\n       )\n       OR public.subscription_renewal_unresolved_stock_wait(o.id) IS NOT NULL\n     ))\n     OR (o.state = 'refused' AND (\n       EXISTS (\n         SELECT 1 FROM public.subscription_retry_obligations r\n         JOIN public.subscription_cycles c ON c.id = r.cycle_id AND c.status = 'payment_pending'\n         JOIN public.commerce_settlement_intents i ON i.id = r.settlement_intent_id AND i.status IN ('created', 'failed')\n         WHERE r.renewal_operation_id = o.id AND r.state IN ('waiting', 'prepared')\n       )\n       OR (o.terminal_reason IN ('inventory_unavailable', 'reservation_expired')\n         AND public.subscription_renewal_unresolved_stock_wait(o.id) IS NOT NULL)\n     )))\n   AND public.subscription_renewal_snapshot_is_stale(s.template_version, o.cycle_snapshot, NULL::integer);"
+          "UPDATE public.subscription_renewal_operations o\n   SET claimed_before_rnw_1 = true\n  FROM public.subscriptions s\n WHERE s.id = o.subscription_id\n   AND (o.state = 'attempt_prepared'\n     OR (public.subscription_renewal_occurrence_is_current(s.status, s.next_cycle_at, o.scheduled_at) AND (\n       o.state = 'claimed'\n       OR (o.state = 'reserved' AND (\n         NOT EXISTS (\n           SELECT 1 FROM public.subscription_stock_wait_cases w\n           WHERE w.renewal_operation_id = o.id\n         )\n         OR public.subscription_renewal_unresolved_stock_wait(o.id) IS NOT NULL\n       ))\n     ))\n     OR (o.state = 'refused' AND (\n       EXISTS (\n         SELECT 1 FROM public.subscription_retry_obligations r\n         JOIN public.subscription_cycles c ON c.id = r.cycle_id AND c.status = 'payment_pending'\n         JOIN public.commerce_settlement_intents i ON i.id = r.settlement_intent_id AND i.status IN ('created', 'failed')\n         WHERE r.renewal_operation_id = o.id AND r.state IN ('waiting', 'prepared')\n       )\n       OR (o.terminal_reason IN ('inventory_unavailable', 'reservation_expired')\n         AND public.subscription_renewal_unresolved_stock_wait(o.id) IS NOT NULL)\n     )))\n   AND public.subscription_renewal_snapshot_is_stale(s.template_version, o.cycle_snapshot, NULL::integer);"
         ],
         "existingTableStatements": [
           "ALTER TABLE public.subscription_renewal_operations ADD COLUMN claimed_before_rnw_1 boolean NOT NULL DEFAULT false;"
@@ -14255,7 +14282,7 @@
     },
     {
       "path": "db/platform/migrations/20261129130504_subscription_renewal_current_template.sql",
-      "sha256": "ff45d5eddce72a01a8e98d93aaa4ef38fe1c5082a45ad7eb8194720b9fa72b55",
+      "sha256": "5ec3cc52d4f3e9e2b57530f0528205fd51e9616f3e97868bc0b5d946b016604e",
       "functions": [
         {
           "signature": "public.subscription_claim_due_renewal(text,text,jsonb,text,integer,timestamptz)",
@@ -14265,7 +14292,7 @@
         {
           "signature": "public.commerce_prepare_subscription_renewal(uuid,uuid,timestamptz)",
           "beforeSha256": "30e0a497c472f793c628f1387ca713d7a869c7f31545ba186122b5c70846ac41",
-          "afterSha256": "28563e98dc43ce936d39e0d651f6acad93f380021da19a3dd130ebfd7fad3dfe"
+          "afterSha256": "c5b34c897a35aec50f49dcab3a39beeb83ca5f1099c4da23efd6095ed466d04b"
         },
         {
           "signature": "public.subscription_delivery_alignment_on_delivery()",
@@ -14275,7 +14302,22 @@
         {
           "signature": "public.subscription_retry_prepare(uuid,text,jsonb,timestamptz)",
           "beforeSha256": "0f9f7fc4a022e4a40239bb9d546c7de2bd1ea1f4f2b10c2c237470dc11cc3297",
-          "afterSha256": "a8bde2761ed9bb73917fd61bc279e9d7a8ff18eeaaa9d0cf0d5ff5b41c0f414e"
+          "afterSha256": "32bfa7bdc1decd9e1f02d4ad30e5ede7fb27e55e9b10ab65d43c44c8fd7e41a6"
+        },
+        {
+          "signature": "public.payment_provider_attempt_prepare(text,uuid,text,text,text,text,text,jsonb)",
+          "beforeSha256": "62d79901ee8051339d3e68ff7bf59fb53b01371e871329b9855ee4f38ca80d82",
+          "afterSha256": "e783f0a29964469df9735dd21f0af5b40d61050a2f50ed13f899f3ce8dd46380"
+        },
+        {
+          "signature": "public.payment_simulator_begin_attempt(text,uuid,text,jsonb,timestamptz)",
+          "beforeSha256": "c8b90ddd69697d7304a041af937968e6e18e2d5eb52e2ee72e8ea9c023624fb1",
+          "afterSha256": "c72420c0340161c534fafc40029cdb66a4f3ea6f910505e8f98224c2981c62d5"
+        },
+        {
+          "signature": "public.commerce_acknowledge_subscription_renewal_attempt(uuid,text,text,timestamptz)",
+          "beforeSha256": "8e9d9e1a3bf444ab5f49efe5f00af6e8ad24b84a03c71ce2fe2612849f30008c",
+          "afterSha256": "057a69f012d0172c5af69965da12aa2b29de661b2966506e8d5c8eb01df8cf30"
         },
         {
           "signature": "public.subscription_renewal_snapshot_is_billing(jsonb,boolean)",
@@ -14290,7 +14332,22 @@
         {
           "signature": "public.subscription_renewal_unresolved_stock_wait(uuid)",
           "beforeSha256": null,
-          "afterSha256": "b5c7bbabe1a7f88d8ac6f6848a6071e8c9f52467adfab6c7d8b5be564e0c5089"
+          "afterSha256": "9922ab58b550a073472e84b62383d424dbb59c290995641de6033ae159025704"
+        },
+        {
+          "signature": "public.subscription_renewal_occurrence_is_current(text,timestamptz,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "2f2a7aafdcfb5a6717e7363a94bb23d36afa8c645f9df52de9f0961292933fc4"
+        },
+        {
+          "signature": "public.subscription_renewal_intent_is_held(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "311d897bcee7c3077d5c03ee15af8c1c55b7bc772883a2a9ee8335eb86829ab4"
+        },
+        {
+          "signature": "public.subscription_retry_prepared_payment_attempt(uuid,integer)",
+          "beforeSha256": null,
+          "afterSha256": "cff98eb996b2cdcb15bf5290ca3189839821a205161821ae7fcca8438fc766dc"
         }
       ]
     }

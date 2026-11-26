@@ -84,7 +84,7 @@ it('preserves the default scheduled renewal transcript and query count', async (
   expect(await job.services.run()).toEqual({ retries: [], renewals: [] });
   // The retry batch filters held rows within its existing query (count unchanged at 9).
   expect({ count: queries.length, sha256: createHash('sha256').update(JSON.stringify(queries)).digest('hex') })
-    .toEqual({ count: 9, sha256: '45a33c88a41c91fc16ec414d4999431513b42c25a220fd38272443e1f0042e77' });
+    .toEqual({ count: 9, sha256: '701a9bdc79dcc9cdcc4ece60fe66efd1b829e7b7785a9c4cf5d7dd9848269d2f' });
 });
 
 it('projects uppercase owned account identity from actual frozen and retained facts without a rich account assembler', async () => {

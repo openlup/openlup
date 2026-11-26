@@ -14,7 +14,9 @@ export const transaction = async <T>(pool: Pool, work: (db: SubscriptionQueryExe
 };
 export function preHoldRetryExecutor(db: SubscriptionQueryExecutor): SubscriptionQueryExecutor {
   // The historical worker did not have the hold predicate or its column.
-  return { query: (sql, values) => db.query(sql.replace(/\n\s*AND \(NOT op\.claimed_before_rnw_1[^\n]*/u, ""), values) };
+  return { query: (sql, values) => db.query(sql
+    .replace("op.claimed_before_rnw_1 AS renewal_held", "false AS renewal_held")
+    .replace(/\n\s*AND \(NOT op\.claimed_before_rnw_1[\s\S]+?(?=\n\s*ORDER BY o\.next_retry_at)/u, ""), values) };
 }
 
 export function bindSubscriptionJob(pool: Pool, f: RenewalSeed & { operation?: string }, enabled = true, ambiguous?: Renewal,

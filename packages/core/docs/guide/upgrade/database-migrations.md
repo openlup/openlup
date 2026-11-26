@@ -120,16 +120,25 @@ SELECT pg_current_snapshot()::text AS cut_snapshot,
 
 WITH stale_incumbent AS MATERIALIZED (
   SELECT o.id, o.subscription_id, o.scheduled_at, o.state,
-         o.terminal_reason, o.cycle_snapshot
+         o.terminal_reason, o.cycle_snapshot,
+         public.subscription_renewal_occurrence_is_current(
+           s.status, s.next_cycle_at, o.scheduled_at
+         ) AS occurrence_current
   FROM public.subscription_renewal_operations o
+  JOIN public.subscriptions s ON s.id = o.subscription_id
   WHERE o.claimed_before_rnw_1
+    AND o.cycle_snapshot->>'contractVersion'
+        IS DISTINCT FROM 'platform.subscription.renewal.v3'
 ), roots AS (
   SELECT o.id AS operation_id, o.subscription_id, o.scheduled_at,
          o.state AS operation_state, o.terminal_reason,
-         o.cycle_snapshot,
+         o.cycle_snapshot, o.occurrence_current,
          w.id IS NOT NULL AS captured_stock_wait,
          public.subscription_renewal_unresolved_stock_wait(o.id) AS stock_wait_state,
-         r.id AS retry_obligation_id, r.state AS retry_state
+         r.id AS retry_obligation_id, r.state AS retry_state,
+         CASE WHEN r.state = 'prepared' THEN
+           public.subscription_retry_prepared_payment_attempt(r.id, r.attempt_sequence) IS NOT NULL
+         END AS retry_has_readable_attempt
   FROM stale_incumbent o
   LEFT JOIN public.subscription_stock_wait_cases w ON w.renewal_operation_id = o.id
   LEFT JOIN public.subscription_retry_obligations r
@@ -145,13 +154,17 @@ WITH stale_incumbent AS MATERIALIZED (
    )
 )
 SELECT operation_id, subscription_id, scheduled_at, operation_state,
-       stock_wait_state, retry_obligation_id, retry_state,
+       stock_wait_state, retry_obligation_id, retry_state, retry_has_readable_attempt,
        cycle_snapshot->'totalAmountMinor' AS frozen_amount_minor,
        cycle_snapshot->>'currency' AS currency,
        'subscription_renewal_snapshot_stale' AS reason
 FROM roots
-WHERE operation_state IN ('claimed', 'attempt_prepared')
-   OR (operation_state = 'reserved' AND (NOT captured_stock_wait OR stock_wait_state IS NOT NULL))
+WHERE operation_state = 'attempt_prepared'
+   OR (occurrence_current AND (
+     operation_state = 'claimed'
+     OR (operation_state = 'reserved'
+       AND (NOT captured_stock_wait OR stock_wait_state IS NOT NULL))
+   ))
    OR (operation_state = 'refused' AND (
      retry_obligation_id IS NOT NULL
      OR (stock_wait_state IS NOT NULL
@@ -168,7 +181,9 @@ Prepared replay does not dispatch another charge. For unprepared roots and
 stock waits, use the original occurrence with your authorized lifecycle or
 reconciliation path. Retry preparation refuses new attempts for marked
 operations, including when a verified decline received after the report puts
-the obligation back in waiting. Use the operation ID if you rerun the report.
+the obligation back in waiting. A prepared retry with
+`retry_has_readable_attempt = false` needs operator reconciliation before it
+can proceed. Use the operation ID if you rerun the report.
 
 ## Prepare the optional checkout owner
 

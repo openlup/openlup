@@ -212,10 +212,11 @@ export function createPostgresProviderRenewalBinding(input: {
     const obligation = await createPostgresRetryStore(db).read(operationId);
     if ((obligation?.retryAttempt ?? 1) >= 1) await handoff(intentId, attemptId);
   }
-  async function observe(intent: string, remote: string | null, retry: boolean): ReturnType<NativeRetryDriverOptions["payments"]["readOutcome"]> {
-    const { row } = await operation(intent), attempt = await payments.readAttempt(intent);
+  async function observe(intent: string, expectedRemote: string | null, retry: boolean, attemptId?: string): ReturnType<NativeRetryDriverOptions["payments"]["readOutcome"]> {
+    const { row } = await operation(intent), attempt = await payments.readAttempt(intent, attemptId);
     if (!attempt || attempt.paymentAttempt.provider !== payments.provider) throw new Error("payment_control_result_active_attempt_not_found");
     const a = attempt.paymentAttempt, checkedAt = nativeInstant(input.now());
+    const remote = attemptId ? a.providerAttemptId : expectedRemote;
     const empty: RenewalPaymentEvidence = { operationId: String(row.id), requestFingerprint: String(row.operation_fingerprint),
       status: "unknown", disposition: "ambiguous", eventKey: "", verifiedEvidenceRef: "", externalAttemptRef: remote,
       occurredAt: null, observedAt: checkedAt, firstRecordedAt: checkedAt, amountMinor: null, currency: null, reason: null };
@@ -228,7 +229,7 @@ export function createPostgresProviderRenewalBinding(input: {
       const method = attempt.requestPayload.storedMethod;
       if (method && typeof method === "object") subscriptionRecord(method);
       await applyRequiresActionAttempt(String(row.order_id), intent, String(row.id), a.id, executionKey);
-      return observe(intent, remote, retry);
+      return observe(intent, remote, retry, attemptId);
     }
     if (a.status === "failed") {
       const receipt = (await db.query(`SELECT r.receipt_key,r.input FROM public.subscription_retry_receipts r
@@ -272,12 +273,12 @@ export function createPostgresProviderRenewalBinding(input: {
         failureReason: observed.kind === "failed" ? "provider_failed" : null, checkedAt, payload,
       });
       if (observed.kind === "succeeded") {
-        const current = await payments.readAttempt(intent);
+        const current = await payments.readAttempt(intent, attemptId);
         if (current?.captureReviewRequired) return { ...empty, reason: "provider_capture_manual_review" };
         if (current?.settlementStatus !== "settled") return empty;
       }
     }
-    if (retry && observed.kind === "failed") return observe(intent, remote, true);
+    if (retry && observed.kind === "failed") return observe(intent, remote, true, attemptId);
     return { ...empty, status: observed.kind, disposition: "observed", eventKey: `${key}:recovery`,
       verifiedEvidenceRef: recorded.reconciliationId, occurredAt, amountMinor: observed.observedMoney.amountMinor,
       currency: observed.observedMoney.currency, reason: observed.kind === "failed" ? "provider_failed" : null };
@@ -323,8 +324,10 @@ export function createPostgresProviderRenewalBinding(input: {
   const retryPayments: NativeRetryDriverOptions["payments"] = {
     execute: rail.execute,
     async readOutcome(prepared) {
-      const a = await payments.readAttempt(prepared.settlementIntentId);
-      return observe(prepared.settlementIntentId, a?.paymentAttempt.providerAttemptId ?? null, true);
+      const id = (await db.query(`SELECT public.subscription_retry_prepared_payment_attempt($1::uuid,$2::integer) AS id`,
+        [prepared.obligationId, prepared.attemptSequence])).rows[0]?.id;
+      if (typeof id !== "string") throw new Error("payment_control_result_active_attempt_not_found");
+      return observe(prepared.settlementIntentId, null, true, id);
     },
   };
   function composeWebhook<C extends ProviderRenewalWebhookControl>(event: ProviderRenewalWebhook, control: C): Omit<C, "applyPaymentResult"> & { applyPaymentResult: NonNullable<ProviderRenewalWebhookControl["applyPaymentResult"]> } {
