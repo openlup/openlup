@@ -1310,16 +1310,16 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     const reader = await owner!.connect();
     try {
       const observer = createPostgresStorefrontObserver(asPostgresSqlExecutor(reader), { exclusive: true });
-      // Every observation reads inside one READ ONLY transaction: a write or row lock would fail there.
+      // The observer opens and ends its own READ ONLY transaction on this session, with row security off;
+      // afterwards the session is outside any transaction and its settings are back to their defaults.
+      const sessionAfter = async () => (await reader.query(
+        "SELECT current_setting('transaction_read_only') AS read_only, current_setting('row_security') AS row_security")).rows[0];
       const observe = async () => {
-        await reader.query('BEGIN READ ONLY');
-        try {
-          expect((await reader.query('SHOW transaction_read_only')).rows[0].transaction_read_only).toBe('on');
-          const seen = { a: await observer.ledger(subjectA), upperA: await observer.ledger(subjectA.toUpperCase()),
-            b: await observer.ledger(subjectB), database: await observer.payableOrdersInDatabase!() };
-          expect(seen.upperA).toEqual(seen.a);
-          return seen;
-        } finally { await reader.query('COMMIT'); }
+        const seen = { a: await observer.ledger(subjectA), upperA: await observer.ledger(subjectA.toUpperCase()),
+          b: await observer.ledger(subjectB), database: await observer.payableOrdersInDatabase!() };
+        expect(seen.upperA).toEqual(seen.a);
+        expect(await sessionAfter()).toEqual({ read_only: 'off', row_security: 'on' });
+        return seen;
       };
       const start = await observe();
       expect([start.a, start.b]).toEqual([ledgerOf(0, 0, 0, 0, 0), ledgerOf(0, 0, 0, 0, 0)]);
@@ -1361,7 +1361,23 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
       await owner!.query(`INSERT INTO public.payment_provider_attempts(settlement_intent_id, payment_id, provider, idempotency_key,
         status, amount_minor, currency) VALUES ($1, $2, 'fixture', 'fixture-observer-attempt', 'succeeded', $3, $4)`,
       [intent.id, providerState.payment_id, intent.amount_minor, intent.currency_code]);
+      // A provider attempt refused in preflight never reached the provider and is not an attempt.
+      await owner!.query(`INSERT INTO public.payment_provider_attempts(settlement_intent_id, payment_id, provider, idempotency_key,
+        status, amount_minor, currency) VALUES ($1, $2, 'fixture', 'fixture-observer-preflight', 'blocked_preflight', $3, $4)`,
+      [intent.id, providerState.payment_id, intent.amount_minor, intent.currency_code]);
       await expectObserved(ledgerOf(2, 0, holdsA, 2, 1), ledgerOf(1, 1, 1, 1, 1));
+      // (6) A role with only USAGE and SELECT on the six tables is subject to row-level security on
+      // public.clients and public.payment_provider_attempts: the observer refuses instead of reading zeros.
+      const restricted = `storefront_observer_reader_${config.id}`;
+      await owner!.query(`CREATE ROLE ${restricted} NOLOGIN NOSUPERUSER NOBYPASSRLS`);
+      await owner!.query(`GRANT USAGE ON SCHEMA public TO ${restricted}`);
+      await owner!.query(`GRANT SELECT ON public.commerce_orders, public.clients, public.fulfillment_inventory_reservations,
+        public.commerce_settlement_intents, public.payment_simulator_attempts, public.payment_provider_attempts TO ${restricted}`);
+      await reader.query(`SET ROLE ${restricted}`);
+      try {
+        await expect(observer.ledger(subjectB)).rejects.toThrow(/^storefront_observer_row_security: /);
+        expect(await sessionAfter()).toEqual({ read_only: 'off', row_security: 'on' });
+      } finally { await reader.query('RESET ROLE'); }
     } finally {
       reader.release();
     }
