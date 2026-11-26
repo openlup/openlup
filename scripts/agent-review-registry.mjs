@@ -3,7 +3,11 @@ export const REGISTRY_PATHS = [
   'config/openlup-publication-catalog.json',
   'packages/platform/test/packageBoundary.test.ts',
   'scripts/packages/platform-cold-consumer.ts',
+  'config/vitest-shard-weights.json',
 ];
+export const SHARD_WEIGHTS_PATH = REGISTRY_PATHS[3];
+// Review-rule snapshots predate the shard weights carrier; recorded digests keep their bytes.
+export const RULE_SNAPSHOT_REGISTRY_PATHS = REGISTRY_PATHS.slice(0, 3);
 const refuse = message => { throw new Error(`registry: ${message}`); };
 const check = (ok, message) => { if (!ok) refuse(message); };
 const key = value => typeof value === 'string' ? value : value.path;
@@ -72,6 +76,7 @@ function validEntries(entries) {
 }
 export function readRegistry(path, source) {
   check(typeof source === 'string' && Buffer.byteLength(source) <= 1024 * 1024 && !source.includes('\uFFFD') && !source.includes('\0'), 'unreadable or oversized blob');
+  if (path === SHARD_WEIGHTS_PATH) return readShardWeights(source);
   const ranges = []; const lists = [];
   if (path === REGISTRY_PATHS[0]) {
     const parsed = strictRegistryJson(source);
@@ -102,6 +107,46 @@ export function readRegistry(path, source) {
   for (const { range: [start, end], index } of order) { outside += source.slice(at, start) + `\0${index}\0`; at = end; }
   outside += source.slice(at);
   return { source, outside, ranges, lists };
+}
+// Shard weights: a closed object of sorted, positive test-file durations in the
+// exact bytes JSON.stringify(value, null, 2) writes, plus a trailing newline.
+const shardWeightsSource = weights => `${JSON.stringify(weights, null, 2)}\n`;
+const positiveWeight = value => typeof value === 'number' && Number.isFinite(value) && value > 0;
+function readShardWeights(source) {
+  const weights = strictRegistryJson(source);
+  check(weights && typeof weights === 'object' && !Array.isArray(weights) &&
+    Object.keys(weights).join(',') === 'schemaVersion,defaultDurationMs,durationsMs' && weights.schemaVersion === 1, 'shard weights schema');
+  check(positiveWeight(weights.defaultDurationMs), 'shard weights default');
+  const durations = weights.durationsMs;
+  check(durations && typeof durations === 'object' && !Array.isArray(durations), 'shard weights map');
+  const keys = Object.keys(durations);
+  check(keys.every((entry, index) => index === 0 || compare(keys[index - 1], entry) < 0), 'shard weights key order');
+  check(keys.every(entry => positiveWeight(durations[entry])), 'shard weights value');
+  validEntries(keys);
+  check(source === shardWeightsSource(weights), 'shard weights formatting');
+  return { source, outside: '', ranges: [], lists: [keys], weights };
+}
+const changedBaseWeight = name => `branch changed a base shard weight: ${name}
+Observed. The union stopped.
+Cause. The branch changed or removed a value that exists at the merge base; its test timeout changes with it.
+Fix. Resolve the carrier manually and obtain resolution review.
+Recheck. Run \`node scripts/agent-review-session.mjs status --explain\` on the committed resolution.`;
+// Main owns calibration: its values win for base keys and for keys both sides
+// added. The branch contributes only keys main lacks and may not edit base weights.
+function shardWeightsUnion(baseSource, leftSource, rightSource) {
+  const [base, left, right] = [baseSource, leftSource, rightSource].map(source => readShardWeights(source).weights);
+  for (const field of ['schemaVersion', 'defaultDurationMs']) check(left[field] === base[field], changedBaseWeight(field));
+  const weight = (side, name) => Object.hasOwn(side.durationsMs, name) ? side.durationsMs[name] : undefined;
+  const names = new Set([base, left, right].flatMap(side => Object.keys(side.durationsMs)));
+  const durationsMs = Object.create(null);
+  for (const name of [...names].sort(compare)) {
+    const [original, branch, main] = [base, left, right].map(side => weight(side, name));
+    if (original !== undefined) check(branch === original, changedBaseWeight(name));
+    const value = main ?? (original === undefined ? branch : undefined);
+    if (value !== undefined) durationsMs[name] = value;
+  }
+  const result = shardWeightsSource({ schemaVersion: right.schemaVersion, defaultDurationMs: right.defaultDurationMs, durationsMs });
+  readShardWeights(result); return result;
 }
 function partitionEntries(basePositions, side, catalogue) {
   const gaps = new Map();
@@ -141,6 +186,7 @@ Recheck. Run \`node scripts/agent-review-session.mjs status --explain\` on the c
   return false;
 }
 export function registryUnion(path, baseSource, leftSource, rightSource) {
+  if (path === SHARD_WEIGHTS_PATH) return shardWeightsUnion(baseSource, leftSource, rightSource);
   const [base, left, right] = [baseSource, leftSource, rightSource].map(source => readRegistry(path, source));
   check(base.outside === left.outside && base.outside === right.outside, 'changed carrier outside named arrays');
   const catalogue = path === REGISTRY_PATHS[0];

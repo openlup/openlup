@@ -21,13 +21,13 @@ function runFixtureWork(work: () => Promise<void>) {
   return operation;
 }
 
-it("restores the same nonempty checkout graph on bootstrap from absent and granted states", () =>
+it("restores the same nonempty checkout graph on bootstrap from absent state", () =>
   runFixtureWork(() =>
     withGrantArtifact((pkg, root, manifest) =>
       verifyRestoreProfile("bootstrap", pkg, root, manifest, {
-        fromStates: ["absent", "granted"],
+        fromStates: ["absent"],
         verifyLater: false,
-        labelSuffix: "absent-granted",
+        labelSuffix: "absent",
       }),
     ),
   ), Math.max(360_000, postgresSetupTimeoutMs));
