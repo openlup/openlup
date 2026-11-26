@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync, type ExecFileSyncOptionsWithStringEncoding } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { isIPv4 } from "node:net";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import type { AppUpgradePlan, AppVerificationFinding } from "@openlup/platform/lifecycle";
@@ -1545,14 +1546,19 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
     if (readFileSync(source, "utf8").trim() !== initial || verifier() !== committedVerifier) fail("credential_replay_changed");
     mark("ordinary runtime credential and verifier replay");
 
-    const ip = checked("database_ip", run(from, "docker", ["inspect", "--format",
-      "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}", container("database")]));
+    // Teardown can replace the bridge and its addresses before another fresh connection.
+    const databaseIp = () => {
+      const address = checked("database_ip", run(from, "docker", ["inspect", "--format",
+        "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}", container("database")]));
+      if (!isIPv4(address) || address.startsWith("127.")) fail("database_bridge_ip");
+      return address;
+    };
     const postgresImage = checked("database_image", run(from, "docker", ["inspect", "--format", "{{.Config.Image}}", container("database")]));
     const peer = (password: string, user = "starter_runtime", db = "neutral_store") => run(from, "docker",
       ["run", "--rm", "-i", "--network", project + "_default", "--entrypoint", "sh", postgresImage, "-ec",
-        'IFS= read -r PGPASSWORD; export PGPASSWORD; PGPASSFILE=/dev/null exec psql -XAtw -h "$1" -U "$2" -d "$3" -c "select session_user"', "peer", ip, user, db], password + "\n");
+        'IFS= read -r PGPASSWORD; export PGPASSWORD; PGPASSFILE=/dev/null exec psql -XAtw -h "$1" -p 5432 -U "$2" -d "$3" -c "select session_user"', "peer", databaseIp(), user, db], password + "\n");
     const native = (password?: string, user = "starter_runtime", db = "neutral_store") => run(from, "psql",
-      ["-XAtw", "-h", ip, "-U", user, "-d", db, "-c", "select session_user"], undefined,
+      ["-XAtw", "-h", databaseIp(), "-p", "5432", "-U", user, "-d", db, "-c", "select session_user"], undefined,
       { ...env, PGPASSWORD: password ?? "", PGPASSFILE: "/dev/null", PGCONNECT_TIMEOUT: "4", LC_ALL: "C" });
     for (const client of [peer, native]) {
       const noPassword = client("");
