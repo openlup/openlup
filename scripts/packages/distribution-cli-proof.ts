@@ -1813,7 +1813,8 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
     checked("rotation_from_fresh_shell", run(from, "/bin/sh", ["-ec", recipe("Rotate the runtime credential")],
       undefined, { ...fresh, OPENLUP_STARTER_PORT: undefined, CONFIGURATION: "coffee", PORT: String(port) }));
     const rotatedResponse = await fetch(`http://127.0.0.1:${port}/api/config`);
-    if (rotatedResponse.status !== 200 || (await rotatedResponse.json()).config?.id !== "coffee") fail("rotation_configuration");
+    if (rotatedResponse.status !== 200 ||
+      (await rotatedResponse.json() as { config?: { id?: unknown } }).config?.id !== "coffee") fail("rotation_configuration");
     const current = readFileSync(source, "utf8").trim(), currentVerifier = verifier();
     privateValues.push(current, currentVerifier);
     if (current === afterRotation || checked("stopped_rotation_auth", native(current)) !== "starter_runtime"
