@@ -1289,6 +1289,7 @@
       "when": "Native connected-store capture and restore preparation",
       "paths": [
         "server/adapters/postgres/connectedStore*.ts",
+        "server/adapters/postgres/connectedStoreDomains/**",
         "server/adapters/filesystem/orderReviewMediaTransfer*"
       ],
       "doc": "server/adapters/README.md",
