@@ -22,17 +22,34 @@ export const repriceRequired = (review = reviewCommand) =>
   `To change the live price, run ${review}. To keep it, set the declared amount to the live price.`;
 const applyAgain = 'Repeat catalogue apply after correcting the prerequisite.';
 const review = 'Reload the current draft and head. Prepare the current revision and obtain its own approval.';
-const original = 'Have the original issuing administrator sign in and resume the original operation.';
+const originalActor = 'Have the original issuing administrator sign in';
+const original = `${originalActor} and resume the original operation.`;
 const unchanged = 'Retry the unchanged original request. For a separate proposal, prepare it and obtain its own approval.';
 export const operatorChallengeGuidance = 'Verify the invited email. If a challenge was requested recently, wait until the minute and hourly limits allow another request, then check the private mailbox.';
-// The native dispatcher uses operator_required for missing, expired and unauthorized sessions.
-const catalogueIdentityRefusals = new Set([
-  'operator_required', 'starter_auth_invalid', 'publisher_not_authorized', 'operator_mismatch',
-  // The draft adapter prefixes owner refusals except for the draft read in prepare.
-  'draft_operator_required', 'catalog_draft_operator_required', 'catalog_operator_required',
-  'catalog_draft_command_actor_mismatch', 'catalog_operator_mismatch',
+// Only findings about a single SKU's price state can be collected during review.
+const skuLocalPriceRefusals = new Set([
+  'starter_catalogue_reprice_required', 'starter_catalogue_price_scheduled', 'base_price_ambiguous',
+  'starter_catalogue_reprice_base_missing', 'starter_catalogue_derived_price_zero',
 ]);
-export const isCatalogueIdentityRefusal = code => catalogueIdentityRefusals.has(code);
+export const isSkuLocalPriceRefusal = code => skuLocalPriceRefusals.has(code);
+
+export function catalogueApplyFix(finding, { activity, invocation, freshReprice, repriceStarted }) {
+  const { code, fix } = finding;
+  if (['operator_required', 'starter_auth_invalid', 'draft_operator_required', 'catalog_draft_operator_required',
+    'catalog_operator_required'].includes(code)) return repriceStarted
+    ? 'Use an active administrator when restarting with the same flags.'
+    : `Restart ${activity} with the same flags under an active administrator. Run ${invocation}.`;
+  if (['publisher_not_authorized', 'operator_mismatch', 'catalog_operator_mismatch',
+    'catalog_draft_command_actor_mismatch'].includes(code))
+    return repriceStarted ? `${originalActor}.` : `${original} Run ${invocation}.`;
+  if (code === 'starter_catalogue_reprice_review_required') return repriceStarted
+    ? 'Use the reviewing administrator and the effective list for the next review.' : repriceReview(freshReprice);
+  if (code === 'starter_catalogue_reprice_required') return repriceRequired(freshReprice);
+  if (repriceStarted && code === 'price_list_not_active') return 'Use the effective price list for the next review.';
+  if (repriceStarted && code === 'expected_state_mismatch')
+    return 'Review the current base again and ask the pricing owner to clear any pending replacement.';
+  return fix;
+}
 
 const applyRefusals = {
   OPENLUP_E_CATALOGUE_PRODUCT_REQUIRED: ['The owned catalogue has no product declaration for apply.', 'The command needs a catalogueProduct export.', 'Add the documented product declaration to the owned catalogue.', 'Repeat apply and check that the product is loaded.'],
@@ -43,7 +60,9 @@ const applyRefusals = {
   OPENLUP_E_CATALOGUE_APPLY_UNAVAILABLE: ['The starter operation is unavailable.', infrastructure.cause, 'Check the running demo, installed packages and migrations, connection and TLS, and scoped routine access.', applyAgain],
   starter_seed_demonstration_database_required: ['The database or configuration did not match the marked demo.', 'Apply requires an admitted demonstration store.', 'Select the intended marked demo. Use the normal human operator workflow for another store.'],
   starter_auth_invalid: ['The sign-in token was refused.', 'The token may be expired, used or invalid.', 'Request a fresh challenge and enter the newest unused token within ten minutes.', 'Recheck by signing in.'],
-  operator_required: ['The session lacks active administrator authority.', 'Apply needs an active human administrator.', 'Have an active human store administrator sign in and review the saved proposal.'],
+  operator_required: ['The administrator session could not be verified for this run.', 'Apply requires an active human administrator and a consistent identity.', 'Have an active human store administrator sign in and review the saved proposal.'],
+  starter_same_origin_required: ['The host refused the request origin.', 'Catalogue requests must use the configured origin.', 'Use the origin of the running starter for the selected configuration and rerun.'],
+  starter_local_host_required: ['The host refused the request address.', 'The request host and port must match the running starter.', 'Use the configured host and port for the selected starter and rerun.'],
   starter_catalogue_currency_mismatch: ['The effective list currency differs from the configured market currency.', 'The selected list must price this market.', 'Restore a market and effective list that use the same currency.', 'Recheck the authenticated price target.'],
   starter_catalogue_d2c_policy_required: ['The effective D2C policy is missing, invalid or changed.', 'The base price requires a verified derived subscription price.', 'Restore one valid effective D2C policy.', 'Recheck the authenticated price target.'],
   starter_catalogue_derived_price_zero: ['The proposed base derives a zero subscription price.', 'The effective policy discounts and rounds the proposed base.', 'Choose a base that derives a positive subscription price under the effective policy.', 'Repeat validation.'],
@@ -84,10 +103,11 @@ export function catalogueApplyRefusal({ code, path, subject, reason, issues, mes
     : /^(?:native_[a-z_]+|settlement_context)_unverified$/u.test(code) ? nativePriceRefusal : undefined;
   const [observed, cause, fix, recheck = applyAgain] = applyGuidance ??
     ['An installed owner refused the action.', 'The action did not meet the installed contract.',
-      'Review the indicated input and the installed owner guidance.'];
-  const readiness = path === 'pricing.readiness' &&
+      'Review the reported refusal before restarting catalogue apply.'];
+  const known = applyGuidance ?? starterGuidance(code);
+  const readiness = known && path === 'pricing.readiness' &&
     /^Observed: (.+?) Cause: (.+?) Fix: (.+?) Recheck: (.+)$/u.exec(message ?? '');
-  const owner = guidance ?? (applyGuidance ? undefined : starterGuidance(code));
+  const owner = known && (guidance ?? (applyGuidance ? undefined : known));
   const finding = { code, path, ...(subject !== undefined && { subject }), ...(reason !== undefined && { reason }),
     ...(issues !== undefined && { issues }), observed: readiness?.[1] ?? owner?.observed ?? observed,
     cause: readiness?.[2] ?? owner?.cause ?? cause, fix: readiness?.[3] ?? owner?.fix ?? fix,

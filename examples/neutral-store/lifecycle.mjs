@@ -8,7 +8,7 @@ import { readStarterDiagnostic, starterDiagnostic } from './shared/refusals.ts';
 import { seedPhysicalGuidance } from './shared/seed-physical.ts';
 import { applicationHealthcheck } from './host/healthcheck.ts';
 import { browserJourneyGroups } from './browser-groups.mjs';
-import { catalogueApplyRefusal, isCatalogueIdentityRefusal, operatorChallengeGuidance, repriceRecovery, repriceRequired, repriceReview, starterGuidance, starterRefusals } from './lifecycle-refusals.mjs';
+import { catalogueApplyFix, catalogueApplyRefusal, isSkuLocalPriceRefusal, operatorChallengeGuidance, repriceRecovery, starterGuidance, starterRefusals } from './lifecycle-refusals.mjs';
 import { installationFailure, installationFinding, installationReport, refusal } from './installation/refusals.ts';
 
 const root = dirname(fileURLToPath(import.meta.url));
@@ -351,27 +351,24 @@ function safePrompt(value) {
 
 async function catalogueApply(argv) {
   const receipts = [], refusals = [];
-  let terminal, identityStopped, invocation, repriceStarted, recovery, freshReprice;
+  let terminal, invocation, repriceStarted, recovery, freshReprice;
   let activity = 'catalogue apply';
   let path = '/arguments';
   const unavailable = 'OPENLUP_E_CATALOGUE_APPLY_UNAVAILABLE';
   const deny = (code, details = {}, cause, hostCode) => {
     throw Object.assign(catalogueApplyRefusal({ code, path, ...details }, cause), { hostCode });
   };
-  const refusalFinding = (error, subject) => error.finding ?? catalogueApplyRefusal({
+  const refusalFinding = (error, subject) => error?.finding ?? catalogueApplyRefusal({
     code: readStarterDiagnostic(error)?.code ?? unavailable, path, subject }, error).finding;
   const report = failure => {
     if (failure) refusals.push(failure);
     const findings = refusals.map(finding => {
-      if (repriceStarted) return { ...finding, fix: recovery, recheck: 'Check the default report for the entry and subscription figure.' };
-      if (identityStopped && finding === failure) return { ...finding,
-        observed: 'Administrator identity or authority could not be verified.',
-        cause: 'This run requires continuity with an active administrator.',
-        fix: `Restart ${activity} with the same flags under an active administrator. Run ${invocation}.`,
-        recheck: 'Check the report for completed steps and remaining findings.' };
-      if (finding.code === 'starter_catalogue_reprice_review_required') return { ...finding, fix: repriceReview(freshReprice) };
-      if (finding.code === 'starter_catalogue_reprice_required') return { ...finding, fix: repriceRequired(freshReprice) };
-      return finding;
+      const cause = finding.code === 'starter_catalogue_reprice_readback_unverified'
+        ? finding.reason && catalogueApplyRefusal({ code: finding.reason, path: finding.path }).finding : finding;
+      const fix = cause && catalogueApplyFix(cause, { activity, invocation, freshReprice, repriceStarted });
+      if (repriceStarted) return { ...finding, fix: fix ? `${fix} ${recovery}` : recovery,
+        recheck: 'Check the default report for the entry and subscription figure.' };
+      return { ...finding, fix };
     });
     return { formatVersion: 1, command: 'catalogue apply', state: findings.length ? 'violated' : 'satisfied',
       exitCode: findings.length ? 2 : 0, receipts, findings };
@@ -458,7 +455,6 @@ async function catalogueApply(argv) {
       } catch (error) { deny(unavailable, { subject: sku }, error); }
       if (result?.ok === true && response.ok) return { value: result.value, cookie: response.headers.get('set-cookie') };
       const code = result?.code;
-      if (isCatalogueIdentityRefusal(code)) identityStopped = true;
       const guidance = ['observed', 'cause', 'fix', 'recheck'].every(field => typeof result?.[field] === 'string') ? result : undefined;
       const details = { ...(result?.path && { path: result.path }), subject: sku ?? result?.subject, reason: result?.reason ?? (sku && code),
         issues: result?.issues, message: result?.message, guidance };
@@ -500,11 +496,9 @@ async function catalogueApply(argv) {
       if (!/^starter_session=[A-Za-z0-9_-]{43}$/u.test(nextCookie ?? '') || !Number.isFinite(nextExpiry)) deny(unavailable);
       path = 'price-target';
       const { value } = await request('operator.catalogPublication', { action: 'price-target' }, undefined, nextCookie);
-      const actorChanged = operator && operator.actorId !== value.actorId;
-      if (actorChanged) identityStopped = true;
-      if (operator && mode === '--reprice' && (actorChanged || operator.priceListId !== value.priceListId))
+      if (operator && operator.actorId !== value.actorId) deny('operator_required');
+      if (operator && mode === '--reprice' && operator.priceListId !== value.priceListId)
         deny('starter_catalogue_reprice_review_required');
-      if (actorChanged) deny('publisher_not_authorized');
       if (operator && mode !== '--reprice' && !same(operator, value)) deny('starter_catalogue_d2c_policy_required');
       operator ??= value;
       cookie = nextCookie;
@@ -512,10 +506,7 @@ async function catalogueApply(argv) {
       path = priorPath;
     }
     async function action(operation, body, key, sku) {
-      if (Date.now() >= expiresAt) await signIn().catch(error => {
-        if (!mode) identityStopped = true;
-        throw error;
-      });
+      if (Date.now() >= expiresAt) await signIn();
       return (await request(operation, body, key, cookie, sku)).value;
     }
     const publish = (body, key, sku) => action('operator.catalogPublication', body, key, sku);
@@ -528,7 +519,6 @@ async function catalogueApply(argv) {
       for (const { code } of skus)
         if (!positivePrice(code)) deny('starter_catalogue_derived_price_zero', { subject: code });
     }
-    if (mode) requirePositivePrices();
     const prices = [];
     const record = (stage, outcome, draftRevision, head, items = prices) => receipts.push({ stage, outcome, productId, draftId,
       draftRevision, head, currency, prices: [...items] });
@@ -553,7 +543,8 @@ async function catalogueApply(argv) {
       path = `${step.stage}.publish`;
       const result = await publish({ action: 'receipt', productId, commandKey: step.key('publish') });
       if (result.outcome !== 'found') return null;
-      await issued(step, result.receipt, verifyIssuer);
+      const head = await issued(step, result.receipt, verifyIssuer);
+      record(path, 'observed', step.revision, head);
       return result.receipt;
     }
     async function runStage(step, observed, prepareOnly = false) {
@@ -564,7 +555,7 @@ async function catalogueApply(argv) {
       const result = await drafts(save, saveKey);
       verifyDraft(result.record, step);
       note('save', result.outcome);
-      if (observed) { note('publish', 'observed', observed); return observed; }
+      if (observed) return observed;
       path = `${stage}.prepare`;
       const prepared = await drafts({ action: 'prepare', draftId, expectedRevision: revision, expectedHead: head });
       const { candidateRef, candidateDigest, preparation, impact } = prepared;
@@ -593,29 +584,22 @@ async function catalogueApply(argv) {
       note('approve', decision.outcome);
       path = `${stage}.publish`;
       const body = { action: 'publish', ...candidate, expectedHead: head, changes: [] };
-      const resultOfPublish = await publish(body, key('publish')).catch(async error => {
-        if (error.finding?.code !== 'publication_price_readiness'
-          || !['promotion_claim_sweep_not_ready', 'promotion_watchdog_not_ready'].includes(error.finding.reason)) throw error;
-        // Give the first demo job pair one chance to finish, then surface any refusal from the unchanged request.
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        return publish(body, key('publish'));
-      });
+      const resultOfPublish = await publish(body, key('publish'));
       const next = await issued(step, resultOfPublish.receipt);
       note('publish', resultOfPublish.outcome, next);
       return next;
     }
     async function pricePreview(variantId, code, unitPriceMinor) {
       path = 'basePrices';
-      const result = await publish({ action: 'price-preview', variantId, priceListId,
+      const { listEffective, priceSetup } = await publish({ action: 'price-preview', variantId, priceListId,
         ...(unitPriceMinor !== undefined && { unitPriceMinor }) }, undefined, code);
-      if (result.listEffective === false && mode === '--reprice' && !repriceStarted)
-        deny('starter_catalogue_reprice_review_required', { subject: code });
-      if (typeof result.priceSetup?.hasPending !== 'boolean') deny(unavailable, { subject: code });
-      if (result.priceSetup.hasPending) deny('starter_catalogue_price_scheduled', { subject: code });
-      return result;
+      if (listEffective === false) deny(mode === '--reprice' && !repriceStarted
+        ? 'starter_catalogue_reprice_review_required' : 'price_list_not_active', { subject: code });
+      if (listEffective !== true || typeof priceSetup?.hasPending !== 'boolean') deny(unavailable, { subject: code });
+      if (priceSetup.hasPending) deny('starter_catalogue_price_scheduled', { subject: code });
+      return priceSetup;
     }
-    function reviewPreview({ listEffective, priceSetup }, code) {
-      if (!listEffective) deny('price_list_not_active', { subject: code });
+    function reviewPreview(priceSetup, code) {
       const subscription = priceSetup.subscription;
       if (subscription.kind !== 'derived' || subscription.revisionId !== policy.revisionId)
         deny('starter_catalogue_d2c_policy_required', { subject: code });
@@ -623,7 +607,7 @@ async function catalogueApply(argv) {
     }
     async function preview(sku) {
       const { code } = sku;
-      const priceSetup = reviewPreview(await pricePreview(sku.id), code);
+      const priceSetup = reviewPreview(await pricePreview(sku.id, code), code);
       const unitPriceMinor = basePrices[code];
       if (priceSetup.currentCount > 1 || (priceSetup.current && priceSetup.current.unitPriceMinor !== unitPriceMinor))
         deny('expected_state_mismatch', { subject: code });
@@ -642,13 +626,14 @@ async function catalogueApply(argv) {
     }
     async function reviewPublishedPrices(active) {
       const changes = [];
-      let stopped;
       for (const { id: skuId, code } of skus) {
         try {
           const declared = basePrices[code];
           let reviewed = reviewPreview(await pricePreview(skuId, code), code);
           if (reviewed.currentCount > 1) deny('base_price_ambiguous', { subject: code });
-          if (mode === '--reprice' && reviewed.current?.unitPriceMinor !== declared) {
+          if (!reviewed.current) deny('starter_catalogue_reprice_base_missing', { subject: code });
+          if (mode === '--reprice' && reviewed.current.unitPriceMinor !== declared) {
+            if (!positivePrice(code)) deny('starter_catalogue_derived_price_zero', { subject: code });
             const proposed = await pricePreview(skuId, code, declared)
               .catch(error => amountPreviewRefusal(error, code));
             reviewed = reviewPreview(proposed, code);
@@ -670,21 +655,17 @@ async function catalogueApply(argv) {
           changes.push({ code, skuId, from: { entryId, unitPriceMinor }, to: { unitPriceMinor: declared },
             subscriptionEstimate: { from: estimate(unitPriceMinor), to: estimate(declared) } });
         } catch (error) {
-          if (identityStopped) {
-            stopped = Object.assign(error, { finding: { ...refusalFinding(error, code), subject: code } });
-            break;
-          }
-          if (mode) throw error;
-          refusals.push(refusalFinding(error, code));
+          const finding = { ...refusalFinding(error), subject: code };
+          refusals.push(finding);
+          // A refresh failure belongs to sign-in or target verification, even if it occurs between SKUs.
+          if (path !== 'basePrices' || !isSkuLocalPriceRefusal(finding.code)) break;
         }
       }
-      if (!mode || stopped) {
+      if (mode !== '--reprice' || refusals.length) {
         for (const { code } of changes)
           refusals.push(catalogueApplyRefusal({ path: 'basePrices', subject: code, code: positivePrice(code)
             ? 'starter_catalogue_reprice_required' : 'starter_catalogue_derived_price_zero' }).finding);
       }
-      if (stopped) throw stopped;
-      if (changes.length && mode === '--copy') deny('starter_catalogue_reprice_required', { subject: changes[0].code });
       return changes;
     }
     async function reprice(changes, active) {
@@ -703,13 +684,14 @@ async function catalogueApply(argv) {
         record('price.reprice', result.outcome, 2, active, [item]);
         let figure, reason, issues;
         try {
-          const { listEffective, priceSetup } = await pricePreview(skuId, code);
-          if (listEffective === true && priceSetup?.currentCount === 1 && priceSetup.current?.entryId === item.entryId
+          const priceSetup = await pricePreview(skuId, code);
+          if (priceSetup.currentCount === 1 && priceSetup.current?.entryId === item.entryId
             && priceSetup.current.unitPriceMinor === item.unitPriceMinor)
             figure = subscriptionFigure(priceSetup.subscription);
         } catch (error) {
-          reason = error.hostCode ?? error.finding?.code;
-          issues = error.finding?.issues;
+          const finding = refusalFinding(error);
+          reason = error?.hostCode ?? finding.code;
+          issues = finding.issues;
         }
         if (!figure) deny('starter_catalogue_reprice_readback_unverified',
           { path: 'basePrices', subject: code, reason, issues });
@@ -720,12 +702,10 @@ async function catalogueApply(argv) {
       const current = await publish({ action: 'current', productId });
       if (!same(current.head ?? null, expected)) deny('head_conflict', { path: 'expectedHead' });
     }
-    async function verifyPublished(released, active) {
+    async function verifyPublished(active) {
       if (!mode) activity = 'read-only verification';
-      record('release.publish', 'observed', 1, released);
-      record('activation.publish', 'observed', 2, active);
       const changes = await reviewPublishedPrices(active);
-      if (mode === '--reprice') await reprice(changes, active);
+      if (mode === '--reprice' && !refusals.length) await reprice(changes, active);
       return report();
     }
     const verifyIssuer = mode === '--copy' || mode === '--prepare-only';
@@ -734,7 +714,7 @@ async function catalogueApply(argv) {
     const activationStep = released && mode !== '--prepare-only' ? makeStage('activation', activation, released) : null;
     const active = activationStep ? (await lookup(activationStep, verifyIssuer))?.head ?? null : null;
     if (mode === '--reprice' && !active) deny('starter_catalogue_copy_requires_published');
-    if (active && !verifyIssuer) return await verifyPublished(released, active);
+    if (active && !verifyIssuer) return await verifyPublished(active);
     if (mode === '--copy') {
       if (!active) deny('starter_catalogue_copy_requires_published');
       const { record: saved } = await drafts({ action: 'get', draftId, revision: 2 });
@@ -748,9 +728,9 @@ async function catalogueApply(argv) {
       const copied = (await lookup(third))?.head ?? null;
       await requireHead(copied ?? active);
       await reviewPublishedPrices(active);
-      await runStage(third, copied);
+      if (!refusals.length) await runStage(third, copied);
     } else {
-      if (!mode) requirePositivePrices();
+      requirePositivePrices();
       if (releaseReceipt) { path = 'release.publish'; requireIssuer(releaseReceipt); }
       if (!released) await requireHead(null);
       const head = await runStage(first, released, mode === '--prepare-only');
@@ -758,7 +738,7 @@ async function catalogueApply(argv) {
       const second = activationStep ?? makeStage('activation', activation, head);
       if (!activationStep) {
         const concurrent = await lookup(second, false);
-        if (concurrent) return await verifyPublished(head, concurrent.head);
+        if (concurrent) return await verifyPublished(concurrent.head);
       }
       path = 'activation.publish';
       await requireHead(head);
@@ -768,18 +748,20 @@ async function catalogueApply(argv) {
         const unitPriceMinor = basePrices[code];
         const result = await publish({ action: 'price-apply', variantId, priceListId, policyRevisionId: policy.revisionId, unitPriceMinor },
           hash(['initial-base', priceListId, variantId, unitPriceMinor, null]), code);
-        const current = await preview({ id: variantId, code });
-        if (result.currency !== currency || !current || !same(result.receipt?.current, current))
+        const entry = result.receipt?.current;
+        if (result.currency !== currency || typeof entry?.entryId !== 'string' || entry.unitPriceMinor !== unitPriceMinor)
           deny('expected_state_mismatch', { subject: code });
-        prices.push({ skuId: variantId, entryId: current.entryId, unitPriceMinor, currency });
-        record('price.apply', result.outcome, 1, head);
+        const item = { skuId: variantId, entryId: entry.entryId, unitPriceMinor, currency };
+        record('price.apply', result.outcome, 1, head, [...prices, item]);
+        if (!same(entry, await preview({ id: variantId, code }))) deny('expected_state_mismatch', { subject: code });
+        prices.push(item);
       }
       await runStage(second, null);
     }
     return report();
   } catch (error) {
-    if (error.finding) return report(error.finding);
-    if (error.code === 'release_draft_invalid') {
+    if (error?.finding) return report(error.finding);
+    if (error?.code === 'release_draft_invalid') {
       const [observed, cause, fix, recheck] = error.message.split('\n').map(line => line.slice(line.indexOf(': ') + 2));
       return report({ code: error.code, path: error.path, observed, cause, fix, recheck });
     }

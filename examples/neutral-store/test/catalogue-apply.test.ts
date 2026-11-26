@@ -79,13 +79,13 @@ function writeBase(state: State, actor: string, key: string, skuCode: string, bo
 }
 type Options = { declaration?: unknown; args?: string[]; noTerminal?: boolean; mediaIoError?: boolean;
   missingProduct?: boolean; wrongTarget?: boolean; closeAt?: 'email' | 'token'; declineAt?: number;
-  failAt?: number; refusal?: Partial<Finding>; failRetry?: boolean; state?: State; actor?: string; approveAfter?: Options;
+  failAt?: number; refusal?: Partial<Finding>; state?: State; actor?: string; approveAfter?: Options;
   pending?: readonly string[]; pendingAfterReview?: string; pendingOnAmount?: string; refreshBeforeApply?: boolean;
   ambiguous?: string[]; ineligible?: string[]; stale?: string; rolledPolicy?: boolean; loseRepriceReply?: boolean;
   configurationId?: string; listSwitched?: boolean; expireAfterPreview?: string; textOutput?: boolean;
   stopSecond?: 'policy' | 'expired' | 'zero-old' | 'derived-zero' | 'list';
   refresh?: 'same' | 'actor' | 'list'; readback?: 'list' | 'missing' | 'entry' | 'amount' | 'figure' | 'policy' | 'pending' };
-type Observation = { trace: string[]; state: State; retry: { key: string; body: unknown }[];
+type Observation = { trace: string[]; state: State;
   prompts: string[]; changes: { actor: string; key: string; code: string; expected: Price }[] };
 type PriceItem = Price & { skuId: string; currency: string; policyRevisionId?: string; subscriptionUnitPriceMinor?: number; previous?: Price };
 type Output = Observation & { report: { findings: Finding[]; receipts: { stage: string; outcome: string; prices: PriceItem[] }[] };
@@ -94,7 +94,7 @@ type Output = Observation & { report: { findings: Finding[]; receipts: { stage: 
 if (env[workerFlag] === '1') {
   const options: Options = JSON.parse(await text(process.stdin));
   const state: State = options.state ?? { drafts: {}, decisions: {}, publications: {}, prices: {}, priceReceipts: {}, head: null };
-  const trace: string[] = [], retry: Observation['retry'] = [];
+  const trace: string[] = [];
   const prompts: string[] = [], changes: Observation['changes'] = [];
   const actor = options.actor ?? actorId;
   const pending = new Set(options.pending);
@@ -135,9 +135,11 @@ if (env[workerFlag] === '1') {
     },
   }) });
   syncBuiltinESMExports();
-  process.on('exit', () => process.stderr.write('\nfixture: ' + JSON.stringify({ trace, state, retry, prompts, changes }) + '\n'));
+  process.on('exit', () => process.stderr.write('\nfixture: ' + JSON.stringify({ trace, state, prompts, changes }) + '\n'));
   const response = (value: unknown, headers?: Record<string, string>) => Response.json({ ok: true, value }, headers && { headers });
-  const refused = (details: Partial<Finding>) => Response.json({ ok: false, ...details }, { status: 409 });
+  const refused = (details: Partial<Finding>) => Response.json({ ok: false, ...details }, {
+    status: ['starter_same_origin_required', 'starter_local_host_required'].includes(details.code ?? '') ? 403 : 409,
+  });
   let lookups = 0, candidateRevision = 0;
   globalThis.fetch = async (url, init) => {
     const operation = new URL(String(url)).pathname.split('/').at(-1);
@@ -154,10 +156,6 @@ if (env[workerFlag] === '1') {
       : action === 'exact' ? 'exact:' + fields.head.revision
       : skuCode ? action + ':' + skuCode + (action === 'price-preview' && fields.unitPriceMinor !== undefined ? ':amount' : '') : action;
     trace.push(step);
-    if (options.refusal?.code === 'publication_price_readiness' && action === 'publish') {
-      retry.push({ key, body: { action, ...fields } });
-      if (options.failRetry && trace.length === (options.failAt ?? 0) + 1) return refused(options.refusal);
-    }
     if (trace.length === options.failAt) {
       if (!options.refusal) throw new Error('fixture transport unavailable');
       return refused(options.refusal);
@@ -400,7 +398,7 @@ if (!env[workerFlag]) {
       ['redeem', 'starter_auth_invalid', /Restart catalogue apply with the same flags under an active administrator/u],
       ['price-target', 'starter_catalogue_currency_mismatch', /use the same currency/u],
       ['price-target', 'catalog_price_setup_basis_mismatch', /effective gross list/u],
-      ['lookup:1', 'publisher_not_authorized', /Restart catalogue apply with the same flags under an active administrator/u],
+      ['lookup:1', 'publisher_not_authorized', /original issuing administrator/u],
       ['current', 'head_conflict', /Reload the current draft and head/u],
       ['current', 'head_conflict', /Reload the current draft and head/u, 'last'],
       ['save:1', 'publication_draft_advanced', /Reload the current draft and head/u],
@@ -415,7 +413,7 @@ if (!env[workerFlag]) {
       ['price-preview:SECOND', 'expected_state_mismatch', /restore the declared amount to it and resume/u, 'last'],
       ['price-apply:FIRST', 'readiness_would_fail', /Review the typed readiness findings/u],
       ['price-apply:FIRST', 'starter_catalogue_d2c_policy_required', /Restore one valid effective D2C policy/u],
-      ['price-apply:SECOND', 'operator_mismatch', /Restart catalogue apply with the same flags under an active administrator/u],
+      ['price-apply:SECOND', 'operator_mismatch', /original issuing administrator/u],
       ['price-apply:SECOND', 'command_key_reused', /Retry the unchanged original request/u],
       ['save:2', 'publication_draft_advanced', /Reload the current draft and head/u],
       ['prepare:2', 'publication_post_state_changed', /Reload the current draft and head/u],
@@ -440,6 +438,10 @@ if (!env[workerFlag]) {
       const row = finding(refused, code, remedy);
       assert.deepEqual(refused.trace, ordered.slice(0, failAt));
       assert.deepEqual(row.issues, issues);
+      if (code === 'operator_mismatch') assert.match(row.fix, /npm run catalogue:apply -- --json/u);
+      if (occurrence && stage.startsWith('price-preview:'))
+        assert.ok(refused.report.receipts.some(receipt => receipt.stage === 'price.apply' && receipt.prices.some(item =>
+          item.entryId === price(refused.state, stage.endsWith('FIRST') ? 0 : 1).entryId)));
       if (stage.startsWith('price-apply:')) {
         assert.equal(row.subject, stage.split(':')[1]);
         assert.equal(row.reason, code);
@@ -456,22 +458,20 @@ if (!env[workerFlag]) {
     });
   });
 
-  test('catalogue apply retries the identical startup Publish once and retains the final native finding', { skip: nestedSkip }, () => {
+  test('catalogue apply stops at a startup Publish refusal and retains native guidance', { skip: nestedSkip }, () => {
     const failAt = ordered.indexOf('publish:2') + 1;
     const message = 'Observed: Job unready Cause: Startup Fix: Check the promotion job Recheck: Retry the original request';
     const refusal = { code: 'publication_price_readiness', reason: 'promotion_watchdog_not_ready', path: 'pricing.readiness',
       subject: 'promotion_watchdog_not_ready', issues: [{ code: 'publication_price_readiness' }], message };
-    const refused = invoke({ failAt, refusal, failRetry: true });
+    const refused = invoke({ failAt, refusal });
     const row = finding(refused, refusal.code, /Check the promotion job/u);
     assert.equal(row.path, refusal.path);
     assert.equal(row.reason, refusal.reason);
     assert.equal(row.subject, refusal.subject);
     assert.deepEqual(row.issues, refusal.issues);
     assert.equal(row.recheck, 'Retry the original request');
-    assert.deepEqual(refused.trace, [...ordered.slice(0, failAt), 'publish:2']);
-    assert.deepEqual(refused.retry.at(-1), refused.retry.at(-2));
+    assert.deepEqual(refused.trace, ordered.slice(0, failAt));
     complete(invoke({ state: refused.state }));
-    complete(invoke({ failAt, refusal }));
   });
 
   test('catalogue copy requires Release and Activation, then refuses unchanged presentation with a recoverable remedy', { skip: nestedSkip }, () => {
@@ -609,8 +609,8 @@ if (!env[workerFlag]) {
         assert.equal(row.path, 'basePrices');
         noWrites(result, 'state' in extra ? extra.state : state);
         if (args !== repriceArgs) assert.ok(!result.trace.some(step => step.endsWith(':amount')));
-        if (code === 'starter_catalogue_price_scheduled')
-          assert.equal(result.trace.at(-1), args.length ? 'price-preview:FIRST' : 'price-preview:SECOND');
+        assert.equal(result.trace.at(-1), code === 'starter_catalogue_reprice_requires_active'
+          ? (args === repriceArgs ? 'price-preview:FIRST:amount' : 'price-preview:FIRST') : 'price-preview:SECOND');
       }
       if (args !== repriceArgs) {
         const required = invoke(options);
@@ -666,7 +666,7 @@ if (!env[workerFlag]) {
     const options = { args: repriceArgs, state: initial.state, declaration: replacement };
     const reviewed = invoke({ ...options, pendingOnAmount: 'FIRST' });
     finding(reviewed, 'starter_catalogue_price_scheduled', /clear the scheduled base price first/u);
-    assert.equal(reviewed.trace.at(-1), 'price-preview:FIRST:amount');
+    assert.deepEqual(reviewed.trace.slice(-2), ['price-preview:FIRST:amount', 'price-preview:SECOND']);
     assert.deepEqual(reviewed.prompts, []);
     noWrites(reviewed, initial.state);
     const refused = invoke({ ...options, pendingAfterReview: 'FIRST' });
@@ -682,12 +682,14 @@ if (!env[workerFlag]) {
     const declaration = { ...replacement, basePrices: { ...replacement.basePrices, SECOND: 3000 } };
     for (const refresh of ['actor', 'list'] as const) {
       const refused = invoke({ ...options, refresh, refreshBeforeApply: true });
-      finding(refused, 'starter_catalogue_reprice_review_required', refresh === 'actor'
+      const code = refresh === 'actor' ? 'operator_required' : 'starter_catalogue_reprice_review_required';
+      finding(refused, code, refresh === 'actor'
         ? /Restart --reprice with the same flags under an active administrator/u : /Start a fresh --reprice/u);
       noWrites(refused, initial.state);
       const result = invoke({ ...options, refresh });
       const row = unverified(result);
-      assert.equal(row.reason, 'starter_catalogue_reprice_review_required');
+      assert.equal(row.reason, code);
+      assert.match(row.fix, refresh === 'actor' ? /Use an active administrator/u : /the effective list for the next review/u);
       assert.match(row.recheck, /Check the default report/u);
       assert.equal(result.trace.at(-1), 'price-target');
     }
@@ -695,7 +697,7 @@ if (!env[workerFlag]) {
       const result = invoke({ ...options, readback, declaration });
       const row = unverified(result);
       assert.equal(row.reason, readback === 'policy' ? 'starter_catalogue_d2c_policy_required' :
-        readback === 'pending' ? 'starter_catalogue_price_scheduled' : undefined);
+        readback === 'pending' ? 'starter_catalogue_price_scheduled' : readback === 'list' ? 'price_list_not_active' : undefined);
       assert.deepEqual(row.issues, readback === 'policy' ? [{ code: 'policy_changed' }] : undefined);
       assert.equal(result.trace.at(-1), 'price-preview:FIRST');
       assert.deepEqual(writes(result), ['price-apply:FIRST']);
@@ -794,6 +796,12 @@ if (!env[workerFlag]) {
       assert.deepEqual(result.prompts, []);
       noWrites(result, initial.state);
     }
+    for (const args of [[], ['--copy']]) {
+      const result = invoke({ args, state: initial.state, listSwitched: true, pending: ['FIRST'] });
+      finding(result, 'price_list_not_active', /effective list/u);
+      assert.equal(result.trace.at(-1), 'price-preview:FIRST');
+      noWrites(result, initial.state);
+    }
   });
 
   test('amount preview list refusal asks for a fresh reprice with the original flags', { skip: nestedSkip }, () => {
@@ -816,82 +824,91 @@ if (!env[workerFlag]) {
     basePrices: { ...authored.basePrices, THIRD: 3500 } };
   const stoppedScan = [...observed.slice(0, -1), 'email', 'challenge', 'token', 'redeem', 'price-target'];
 
-  test('catalogue requests stop on identity refusals', { skip: nestedSkip }, async context => {
+  test('published price scans continue only for local price findings and retain completed observations', { skip: nestedSkip }, async context => {
     const configurationId = 'coffee';
-    const args = ['--configuration', configurationId];
+    const flags = ['--configuration', configurationId];
     const declaration = threeSkuDeclaration;
-    const initial = invoke({ args, configurationId, declaration });
+    const initial = invoke({ args: flags, configurationId, declaration });
     complete(initial);
     const { state } = initial;
-    const options = { args, configurationId, declaration, state };
-    const copy = invoke({ ...options, args: [...args, '--copy'] });
-    assert.equal(copy.status, 0, JSON.stringify(copy.report.findings));
-    const copyState = { ...copy.state, head: state.head, publications: state.publications };
-    const copyOptions = { ...options, args: [...args, '--copy'], state: copyState };
-    const priceOptions = { ...options, args: [...args, '--reprice'],
-      declaration: { ...declaration, basePrices: { ...declaration.basePrices, SECOND: 3200, THIRD: 3600 } } };
-    const refreshOptions = { ...options, refresh: 'same', expireAfterPreview: 'FIRST' } as const;
+    const options = { configurationId, declaration, state };
+    const release = Object.values(state.publications).find(publication => publication.head.revision === 1)!;
+    const copied = invoke({ ...options, args: [...flags, '--copy'] });
+    assert.equal(copied.status, 0, JSON.stringify(copied.report.findings));
     const scan = [...observed, 'price-preview:THIRD'];
-    const review = [...observed, 'price-preview:SECOND:amount', 'price-preview:THIRD', 'price-preview:THIRD:amount', 'approval'];
-    const prices = [...review, 'price-apply:SECOND', 'price-preview:SECOND', 'price-apply:THIRD', 'price-preview:THIRD'];
-    type Stage = [label: string, trace: string[], stop: string, observed?: number[], options?: Options];
-    const stages: Stage[] = [
-      ...['marker', 'challenge', 'redeem', 'price-target', 'lookup:2', 'exact:2']
-        .map((step): Stage => [step, scan, step]),
-      ...['challenge', 'redeem', 'price-target'].map((step): Stage =>
-        ['refresh ' + step, stoppedScan, step, [0], refreshOptions]),
-      ['default preview', scan, 'price-preview:SECOND', [0]],
-      ...['get', 'lookup:3', 'current', 'price-preview:SECOND', 'save:3', 'prepare:3', 'approve:3', 'publish:3']
-        .map((step): Stage => ['copy ' + step, copy.trace, step,
-          step === 'price-preview:SECOND' ? [0] : /^(save|prepare|approve|publish):/u.test(step) ? [0, 1, 2] : [], copyOptions]),
-      ['reprice preview', review, 'price-preview:SECOND', [0], priceOptions],
-      ['amount preview', review, 'price-preview:SECOND:amount', [0], priceOptions],
-      ['reprice refresh', [...review, ...stoppedScan.slice(observed.length - 1)], 'price-target',
-        [0], { ...priceOptions, refresh: 'same', refreshBeforeApply: true }],
-      ['apply', prices, 'price-apply:SECOND', [0], priceOptions],
-      ['readback', prices, 'price-preview:SECOND', [0], priceOptions],
+    const cases: [code: string | undefined, continues: boolean, remedy: RegExp][] = [
+      ['starter_catalogue_reprice_required', true, /set the declared amount to the live price/u],
+      ['starter_catalogue_price_scheduled', true, /clear the scheduled base price first/u],
+      ['base_price_ambiguous', true, /Route the duplicate/u],
+      ['starter_catalogue_reprice_base_missing', true, /authorized price action with no prior entry/u],
+      ['starter_catalogue_derived_price_zero', true, /Choose a base that derives a positive/u],
+      ['operator_required', false, /same flags under an active administrator/u],
+      ['operator_mismatch', false, /original issuing administrator/u],
+      ['catalog_draft_command_actor_mismatch', false, /original issuing administrator/u],
+      ['starter_same_origin_required', false, /origin of the running starter/u],
+      ['starter_local_host_required', false, /configured host and port/u],
+      ['expected_state_mismatch', false, /restore the declared amount/u],
+      ['starter_unrecognized_fixture_refusal', false, /Review the reported refusal before restarting/u],
+      [undefined, false, /Check the running demo/u],
     ];
-    const identityCodes = [
-      'operator_required', 'starter_auth_invalid', 'publisher_not_authorized', 'operator_mismatch',
-      'draft_operator_required', 'catalog_draft_operator_required', 'catalog_operator_required',
-      'catalog_draft_command_actor_mismatch', 'catalog_operator_mismatch',
-    ];
-    for (const [label, trace, stop, observations = [], run = options] of stages) {
-      const canHaveWritten = label === 'apply' || label === 'readback';
-      const failAt = trace.lastIndexOf(stop) + 1;
-      assert.ok(failAt > 0, label);
-      for (const code of identityCodes) await context.test(label + ' ' + code, () => {
-        const result = invoke({ ...run, failAt, refusal: { code } });
-        assert.deepEqual(result.trace, trace.slice(0, failAt));
-        const matching = result.report.receipts.filter(row => row.stage === 'price.apply');
-        assert.deepEqual(matching.map(row => row.prices[0]), observations.map(index => {
+    for (const mode of [undefined, '--copy', '--reprice']) {
+      const label = mode ?? 'default';
+      const args = mode ? [...flags, mode] : flags;
+      const trace = mode === '--copy' ? copied.trace : scan;
+      const stop = trace.indexOf('price-preview:SECOND') + 1;
+      for (const [code, continues, remedy] of cases) await context.test(label + ' ' + (code ?? 'transport error'), () => {
+        const result = invoke({ ...options, args, failAt: stop, ...(code && { refusal: { code } }) });
+        const row = finding(result, code ?? 'OPENLUP_E_CATALOGUE_APPLY_UNAVAILABLE', remedy);
+        assert.equal(row.subject, 'SECOND');
+        assert.deepEqual(result.trace, trace.slice(0, stop + Number(continues)), code);
+        assert.deepEqual(result.report.receipts.map(receipt => receipt.stage), [
+          'release.publish', 'activation.publish', 'price.apply', ...(continues ? ['price.apply'] : []),
+        ]);
+        assert.deepEqual(result.report.receipts.flatMap(receipt => receipt.prices), (continues ? [0, 2] : [0]).map(index => {
           const entry = price(state, index);
           return { ...entry, skuId: state.drafts[1]!.payload.skus[index]!.id, currency, policyRevisionId: policy.revisionId,
             subscriptionUnitPriceMinor: deriveSubscriptionUnitPrice(entry.unitPriceMinor, policy) };
         }));
-        const command = 'npm run catalogue:apply -- --json ' + run.args!.join(' ');
-        const row = finding(result, label === 'readback' ? 'starter_catalogue_reprice_readback_unverified' : code,
-          canHaveWritten ? recovery : /with the same flags under an active administrator/u);
-        assert.ok(row.fix.includes(command));
-        if (label === 'readback') {
-          assert.equal(row.reason, code);
-          assert.equal(row.observed, 'committed; figure not verified');
-          assert.deepEqual(writes(result), ['price-apply:SECOND']);
-          const item = committed(result)[0]?.prices[0];
-          assert.equal(item?.entryId, price(result.state, 1).entryId);
-          assert.equal(item?.subscriptionUnitPriceMinor, undefined);
-          assert.equal(price(result.state, 1).unitPriceMinor, 3200);
-          assert.deepEqual([price(result.state), price(result.state, 2)], [price(state), price(state, 2)]);
-          assert.equal(Object.keys(result.state.priceReceipts).length, Object.keys(state.priceReceipts).length + 1);
-        } else {
-          assert.deepEqual(result.state, run.state);
-          assert.deepEqual(committed(result), []);
-        }
-        if (label === 'default preview') {
-          assert.equal(row.subject, 'SECOND');
-          assert.match(row.fix, /^Restart read-only verification/u);
-        }
+        if (['operator_required', 'operator_mismatch', 'catalog_draft_command_actor_mismatch'].includes(code ?? ''))
+          assert.ok(row.fix.includes('npm run catalogue:apply -- --json ' + args.join(' ')), row.fix);
+        noWrites(result, state);
       });
+      for (const step of ['lookup:2', 'exact:2']) await context.test(label + ' Activation ' + step, () => {
+        const failAt = trace.indexOf(step) + 1;
+        const stopped = invoke({ ...options, args, failAt, refusal: { code: 'operator_required' } });
+        finding(stopped, 'operator_required', /same flags under an active administrator/u);
+        assert.deepEqual(stopped.trace, trace.slice(0, failAt));
+        assert.deepEqual(stopped.report.receipts, [{
+          stage: 'release.publish', outcome: 'observed', productId: state.drafts[1]!.productId, draftId: declaration.draftId,
+          draftRevision: 1, currency, head: release.head, prices: [],
+        }]);
+        noWrites(stopped, state);
+      });
+    }
+  });
+
+  test('reprice preserves actor guidance and batch recovery after dispatch', { skip: nestedSkip }, () => {
+    const initial = invoke({ declaration: threeSkuDeclaration });
+    complete(initial);
+    const declaration = { ...threeSkuDeclaration, basePrices: { ...threeSkuDeclaration.basePrices, SECOND: 3200, THIRD: 3600 } };
+    const review = [...observed, 'price-preview:SECOND:amount', 'price-preview:THIRD', 'price-preview:THIRD:amount', 'approval'];
+    const trace = [...review, 'price-apply:SECOND', 'price-preview:SECOND'];
+    for (const step of ['price-apply:SECOND', 'price-preview:SECOND']) {
+      const failAt = trace.lastIndexOf(step) + 1;
+      const result = invoke({ args: repriceArgs, declaration, state: initial.state, failAt, refusal: { code: 'operator_mismatch' } });
+      const readback = step.startsWith('price-preview');
+      const row = finding(result, readback ? 'starter_catalogue_reprice_readback_unverified' : 'operator_mismatch', recovery);
+      assert.match(row.fix, /original issuing administrator/u);
+      assert.equal(row.reason, 'operator_mismatch');
+      assert.deepEqual(result.trace, trace.slice(0, failAt));
+      assert.deepEqual(writes(result), ['price-apply:SECOND']);
+      assert.equal(committed(result).length, Number(readback));
+      if (readback) {
+        assert.equal(row.observed, 'committed; figure not verified');
+        assert.equal(committed(result)[0]!.prices[0]!.entryId, price(result.state, 1).entryId);
+        assert.equal(committed(result)[0]!.prices[0]!.subscriptionUnitPriceMinor, undefined);
+      } else assert.deepEqual(result.state, initial.state);
+      assert.deepEqual(price(result.state, 2), price(initial.state, 2));
     }
   });
 
@@ -903,18 +920,21 @@ if (!env[workerFlag]) {
     complete(initial);
     const options = { configurationId, declaration, state: initial.state, actor: alternate, expireAfterPreview: 'FIRST' };
     const npmApply = ['run', '--silent', 'catalogue:apply', '--', '--json', ...args];
-    for (const [code, fault] of [
-      ['operator_required', { refresh: 'same', failAt: stoppedScan.length, refusal: { code: 'operator_required' } }],
-      ['OPENLUP_E_CATALOGUE_APPLY_UNAVAILABLE', { refresh: 'same', failAt: stoppedScan.length }],
-      ['publisher_not_authorized', { refresh: 'actor' }],
-    ] as const) await testContext.test(code, () => {
+    for (const [label, code, fault] of [
+      ['host refusal', 'operator_required', { refresh: 'same', failAt: stoppedScan.length, refusal: { code: 'operator_required' } }],
+      ['transport error', 'OPENLUP_E_CATALOGUE_APPLY_UNAVAILABLE', { refresh: 'same', failAt: stoppedScan.length }],
+      ['actor changed', 'operator_required', { refresh: 'actor' }],
+      ['price code from target', 'base_price_ambiguous', { refresh: 'same', failAt: stoppedScan.length, refusal: { code: 'base_price_ambiguous' } }],
+    ] as const) await testContext.test(label, () => {
       const result = invoke({ ...options, ...fault }, npmApply);
       assert.deepEqual(result.trace, stoppedScan);
       assert.deepEqual(result.report.receipts.flatMap(row => row.prices).map(({ entryId }) => entryId),
         [price(initial.state).entryId]);
       noWrites(result, initial.state);
-      const row = finding(result, code, /Restart read-only verification with the same flags under an active administrator/u);
-      assert.match(row.fix, /npm run --silent catalogue:apply -- --json --configuration coffee/u);
+      const row = finding(result, code, code === 'operator_required'
+        ? /Restart read-only verification with the same flags under an active administrator/u
+        : code === 'base_price_ambiguous' ? /Route the duplicate/u : /Check the running demo/u);
+      if (code === 'operator_required') assert.match(row.fix, /npm run --silent catalogue:apply -- --json --configuration coffee/u);
       assert.doesNotMatch(JSON.stringify(row), /original issuing administrator|only the issuing administrator/iu);
     });
   });
@@ -930,7 +950,7 @@ if (!env[workerFlag]) {
     const stoppedByHost = (trace: string[], args: string[] = []) =>
       [{ args, failAt: trace.length, refusal: { code: 'operator_required' } }, trace, 'operator_required'] as const;
     for (const [fault, trace, code] of [
-      [{ refresh: 'actor', expireAfterPreview: 'FIRST' }, stoppedScan, 'publisher_not_authorized'],
+      [{ refresh: 'actor', expireAfterPreview: 'FIRST' }, stoppedScan, 'operator_required'],
       stoppedByHost(observed), stoppedByHost(copyScan, ['--copy']), stoppedByHost(repriceScan, repriceArgs),
     ] as const) {
       const result = invoke({ declaration, state: initial.state, ...fault });
