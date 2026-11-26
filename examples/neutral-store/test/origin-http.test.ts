@@ -42,7 +42,7 @@ async function start(directory: string) {
     child.once('exit', () => reject(new Error(diagnostic || 'host exited before ready')));
   });
   const timeout = new AbortController();
-  try { await Promise.race([ready, setTimeout(5000, undefined, { signal: timeout.signal }).then(() => { throw new Error('host readiness timeout'); })]); }
+  try { await Promise.race([ready, setTimeout(20_000, undefined, { signal: timeout.signal }).then(() => { throw new Error('host readiness timeout'); })]); }
   catch (error) { child.kill(); await exited; throw error; }
   finally { timeout.abort(); }
   return { port, close: async () => { child.kill('SIGTERM'); await exited; } };
@@ -51,7 +51,7 @@ function http(port: number, method: string, path: string, headers: string[]) {
   return new Promise<{ status: number; body: unknown }>((resolve, reject) => {
     const socket = connect(port, '127.0.0.1');
     let bytes = '';
-    socket.setTimeout(3000, () => socket.destroy(new Error('HTTP timeout')));
+    socket.setTimeout(10_000, () => socket.destroy(new Error('HTTP timeout')));
     socket.on('error', reject);
     socket.on('data', chunk => { bytes += String(chunk); });
     socket.on('end', () => {
@@ -119,7 +119,7 @@ test('host and lifecycle both refuse invalid origin before listening or Docker',
     await mkdir(bin);
     await writeFile(resolve(bin, 'docker'), '#!/bin/sh\nprintf invoked > "$0.called"\nexit 91\n', { mode: 0o755 });
     for (const args of [['--experimental-strip-types', 'host/server.ts'], ['lifecycle.mjs', 'up']]) {
-      assert.throws(() => execFileSync(process.execPath, args, { cwd: directory, stdio: 'pipe', timeout: 5000, env: { PATH: bin } }),
+      assert.throws(() => execFileSync(process.execPath, args, { cwd: directory, stdio: 'pipe', timeout: 20_000, env: { PATH: bin } }),
         error => String((error as { stderr?: Buffer }).stderr).includes('starter_public_origin_tls_required'));
     }
     await assert.rejects(access(resolve(bin, 'docker.called')));

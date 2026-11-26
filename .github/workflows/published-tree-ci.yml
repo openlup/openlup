@@ -317,12 +317,12 @@ jobs:
       contents: read
       actions: read
       packages: read
-    # Five balanced shards isolate the heavy remainder journeys (group 6) while keeping group 1 (catalogue upgrade) paired with light group 2.
+    # Six balanced shards isolate the heavy remainder journeys (group 6), group 1 (catalogue upgrade), and group 2 on separate runners.
     strategy:
       fail-fast: false
-      max-parallel: 5
+      max-parallel: 6
       matrix:
-        groups: ['0', '6', '1,2', '3,5', '4']
+        groups: ['0', '6', '1', '2', '3,5', '4']
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
