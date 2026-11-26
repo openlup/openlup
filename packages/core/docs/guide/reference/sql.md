@@ -250,6 +250,10 @@ in [Upgrade the database](../upgrade/database-migrations.md).
 | [`20261129130000_payment_capture_time_read.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129130000_payment_capture_time_read.sql) |
 | [`20261129130001_native_renewal_v3_storage.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129130001_native_renewal_v3_storage.sql) |
 | [`20261129130002_order_money_v2_assert.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129130002_order_money_v2_assert.sql) |
+| [`20261129130003_order_money_v2_child_guards.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129130003_order_money_v2_child_guards.sql) |
+| [`20261129130004_order_draft_receipts_v2.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129130004_order_draft_receipts_v2.sql) |
+| [`20261129130005_order_draft_receipt_privacy_v2.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129130005_order_draft_receipt_privacy_v2.sql) |
+| [`20261129130006_order_draft_payment_entry_fence.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129130006_order_draft_payment_entry_fence.sql) |
 | [`q2_00000000000000_platform_baseline.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_00000000000000_platform_baseline.sql) |
 | [`q2_20260810180001_self_host_actor_auth.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20260810180001_self_host_actor_auth.sql) |
 | [`q2_20260816140000_acquisition_case_foundation.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20260816140000_acquisition_case_foundation.sql) |

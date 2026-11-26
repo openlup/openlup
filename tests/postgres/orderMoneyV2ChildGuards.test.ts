@@ -24,9 +24,11 @@ if (manifest?.schemaVersion !== 3) throw new Error("Expected complete native cat
 const unit = manifest.forward.find(entry => entry.file.endsWith("_order_money_v2_child_guards.sql"));
 if (!unit) throw new Error("Expected order money child guard forward");
 const position = manifest.qualified.forward.findIndex(entry => entry.file === unit.file);
-const predecessorInventory = "fd780e55f18d8288494c24f61b29b734e4bbbcec64fcfde301b204446f617ae9";
+const predecessorInventory = "ee9666bd5182e91b36498443189a4841e8893054fc629052965ed91f9103b791";
 const assertion = "public.commerce_order_money_v2_assert(uuid,boolean,boolean,jsonb,jsonb)";
 const bodyReader = "public.commerce_order_money_v2_live_body(uuid)";
+const memo = "public.commerce_order_money_v2_check_state(uuid,boolean,text,text)";
+const lineSum = "public.commerce_order_assert_line_sum()";
 const adjustments = "commerce_order_adjustments";
 const message = "commerce_order_money_v2_mismatch";
 const immutable = "Keep the accepted facts and use the owning order lifecycle operation.";
@@ -39,8 +41,8 @@ const moneyObligations = [
     reasonCode: "ACCEPTED_ORDER_MONEY_RECORD", remote: false },
 ];
 const predecessorDefinitions = async (db: Pool) => (await db.query(
-  "SELECT oid::regprocedure::text AS name, pg_get_functiondef(oid), proacl FROM pg_proc WHERE oid IN ($1::regprocedure,$2::regprocedure) ORDER BY proname",
-  [assertion, bodyReader])).rows;
+  "SELECT oid::regprocedure::text AS name, pg_get_functiondef(oid), proacl FROM pg_proc WHERE oid = ANY($1::regprocedure[]) ORDER BY proname",
+  [[assertion, bodyReader, memo, lineSum]])).rows;
 let store: AccountMutationsStore;
 let sku: Awaited<ReturnType<typeof seedSku>>;
 let applied: string[];
@@ -69,12 +71,12 @@ async function mismatch(run: Promise<unknown>, column: string, hint = replayOrig
   expect(error).toMatchObject({ column, hint, detail: undefined });
 }
 
-it("applies only its own forward and preserves the installed assertion and body reader", async () => {
+it("applies the child guards first and preserves the installed assertion, reader, memo and line-sum trigger function", async () => {
   expect(applied.slice(0, 1)).toEqual([unit.file]);
   expect(sha256(readFileSync(unit.file, "utf8"))).toBe(unit.sha256);
   expect((await store.owner.query("SELECT catalog_path,sha256,position FROM public.platform_schema_migrations WHERE position=$1",
     [position + 1])).rows).toEqual([{ catalog_path: unit.file, sha256: unit.sha256, position: position + 1 }]);
-  expect(priorDefinitions).toHaveLength(2);
+  expect(priorDefinitions).toHaveLength(4);
   expect(await predecessorDefinitions(store.owner)).toStrictEqual(priorDefinitions);
   const signature = "public.commerce_order_money_v2_child_guard()";
   expect((await store.runtime.query("SELECT session_user::text AS login, has_function_privilege($1,'EXECUTE') AS execute",
@@ -131,8 +133,8 @@ it("refuses standalone child rewrites, deletion and moves at commit and leaves t
   const { id: other } = await writeOrder(store, await fullEvidence(store, sku), sku);
   const before = await capture(store.owner, store.inventory, "child-guard-before");
   const updates = [
-    [snapshots, "accepted_money_digest=repeat('c',64)", "/taxEvidence", replayOriginal],
-    [snapshots, "destination_snapshot_ref=gen_random_uuid()", "/taxEvidence", replayOriginal],
+    [snapshots, "accepted_money_digest=repeat('c',64)", "/taxEvidence", immutable],
+    [snapshots, "destination_snapshot_ref=gen_random_uuid()", "/taxEvidence", immutable],
     [sources, "assignment_ref='different-assignment'", "/lines", immutable],
     [buckets, "net_minor=net_minor+1", "/deliveryBuckets", immutable],
     [allocations, "evidence_ref=repeat('d',64)", "/discountAllocations", immutable],
@@ -164,6 +166,13 @@ it("refuses a late private fact and a standalone adjustment INSERT from the qual
   });
   await withoutGuard(fees, guardName(fees), lateFee);
   await mismatch(transaction(store.owner, lateFee), "/acceptedMoneyDigest");
+  const lateFeeAfterFlush = async (db: PoolClient) => {
+    await db.query(`UPDATE public.${snapshots} SET destination_erased=destination_erased WHERE order_id=$1`, [id]);
+    await db.query(`SET CONSTRAINTS ${guardName(snapshots)} IMMEDIATE`);
+    await lateFee(db);
+  };
+  await withoutGuard(fees, guardName(fees), lateFeeAfterFlush);
+  await mismatch(transaction(store.owner, lateFeeAfterFlush), "/acceptedMoneyDigest");
   const lateAdjustment = (db: PoolClient) => insert(db, adjustments, {
     order_id: id, kind: "shipping_charge", scope: "shipping", amount_minor: 1,
   });
@@ -453,7 +462,7 @@ it("leaves the erased-first writer without usable evidence and preserves no-orde
 it("refuses mixed marker arms, old receipts and redaction that changes any retained column", async () => {
   const evidence = await fullEvidence(store, sku);
   await mismatch(writeOrder(store, evidence, sku, { bucketErased: true }), "/deliveryBuckets");
-  await mismatch(writeOrder(store, evidence, sku, { erased: true, bucketErased: false }), "/taxEvidence");
+  await mismatch(writeOrder(store, evidence, sku, { erased: true, bucketErased: false }), "/taxEvidence", recoverEvidence);
   const { id } = await writeOrder(store, evidence, sku);
   const actor = await operator(store.owner);
   const key = randomUUID();
@@ -470,13 +479,13 @@ it("refuses mixed marker arms, old receipts and redaction that changes any retai
     destination_digest=NULL,destination_policy_revision=NULL,delivery_selection_ref=NULL,accepted_money_digest=repeat('e',64)
     WHERE order_id=$1`, [id]);
   await withoutGuard(snapshots, guardName(snapshots), changed);
-  await mismatch(transaction(store.owner, changed), "/taxEvidence");
+  await mismatch(transaction(store.owner, changed), "/taxEvidence", immutable);
   const valid = receipt(await erasure(store, actor)(evidence.clientId, key), "ERASED");
   await provedErasure(store, evidence, id, valid.erasureId);
   await mismatch(store.owner.query(`UPDATE public.${snapshots} SET accepted_money_digest=repeat('e',64) WHERE order_id=$1`, [id]),
-    "/taxEvidence");
+    "/taxEvidence", immutable);
   await mismatch(store.owner.query(`UPDATE public.${snapshots} SET destination_snapshot_ref=gen_random_uuid() WHERE order_id=$1`, [id]),
-    "/taxEvidence");
+    "/taxEvidence", immutable);
 });
 
 it("refuses borrowed, pending, corrupted and legacy-sealed evidence at the installed boundary", async () => {

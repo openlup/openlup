@@ -9,6 +9,7 @@ DECLARE
     WHEN 'commerce_order_tax_positions' THEN '/taxEvidence'
     WHEN 'commerce_order_fee_lines' THEN '/feeLines'
   END;
+  owner_path boolean := pg_has_role(current_user, (SELECT relowner FROM pg_class WHERE oid = TG_RELID), 'USAGE');
   before_row jsonb;
   after_row jsonb;
 BEGIN
@@ -17,8 +18,8 @@ BEGIN
       HINT = 'Keep the accepted facts and use the owning order lifecycle operation.';
   END IF;
   IF TG_OP = 'UPDATE' AND OLD.order_id <> NEW.order_id THEN
-    PERFORM public.commerce_order_money_v2_assert(OLD.order_id, false, false);
-    PERFORM public.commerce_order_money_v2_assert(NEW.order_id, false, false);
+    PERFORM public.commerce_order_money_v2_assert(OLD.order_id, false, owner_path);
+    PERFORM public.commerce_order_money_v2_assert(NEW.order_id, false, owner_path);
     RAISE EXCEPTION 'commerce_order_money_v2_mismatch' USING ERRCODE = '23514', COLUMN = field,
       HINT = 'Keep the accepted facts and use the owning order lifecycle operation.';
   END IF;
@@ -32,7 +33,7 @@ BEGIN
         HINT = 'Keep the accepted facts and use the owning order lifecycle operation.';
     END IF;
   END IF;
-  PERFORM public.commerce_order_money_v2_assert(NEW.order_id, false, false, before_row, after_row);
+  PERFORM public.commerce_order_money_v2_assert(NEW.order_id, false, owner_path, before_row, after_row);
   RETURN NULL;
 END;
 $$;

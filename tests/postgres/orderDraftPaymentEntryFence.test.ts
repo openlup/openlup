@@ -44,6 +44,7 @@ const providerGuard = guard("o", " ");
 const sourcePins = [
   {
     name: opener,
+    source: "db/platform/migrations/20260810180000_payment_settlement_rail.sql",
     insertion: openerGuard,
     before: "    RETURN public.commerce_settlement_response(v_intent, v_transition.id, 'opened', true);\n  END IF;\n\n",
     after: "  IF v_order.status <> 'pending_payment' THEN\n",
@@ -51,6 +52,7 @@ const sourcePins = [
   },
   {
     name: provider,
+    source: "db/platform/migrations/20261114100000_payment_provider_attempt_store.sql",
     insertion: providerGuard,
     before: " IF o.id IS NULL THEN RAISE EXCEPTION 'payment_control_intent_order_not_found' USING ERRCODE='22023'; END IF;\n",
     after: " IF (o.total_amount_minor,o.currency_code) IS DISTINCT FROM (p_amount_minor,p_currency) THEN\n",
@@ -62,12 +64,16 @@ function assertBytes(forwardSql: string) {
   const definitions = [...forwardSql.matchAll(/^CREATE OR REPLACE FUNCTION public\.([a-z_]+)\([\s\S]*?^\$\$;\n/gmu)];
   expect(definitions.map(match => match[1])).toStrictEqual([opener, provider]);
   expect(definitions.map(match => match[0]).join("\n")).toBe(forwardSql);
-  for (const [index, { name, insertion, before, after, hash }] of sourcePins.entries()) {
+  for (const [index, { name, source, insertion, before, after, hash }] of sourcePins.entries()) {
     const definition = definitions[index]![0];
     expect(definition.split(insertion)).toHaveLength(2);
     expect(definition).toContain(before + insertion + after);
     let original = definition.replace("CREATE OR REPLACE FUNCTION", "CREATE FUNCTION").replace(insertion, "");
     if (name === opener) original = original.replace("SET search_path = public, pg_catalog, pg_temp", "SET search_path = public, pg_catalog");
+    const landed = readFileSync(source, "utf8").match(new RegExp(
+      `^CREATE FUNCTION public\\.${name}\\([\\s\\S]*?^\\$\\$;\\n`, "mu",
+    ))?.[0];
+    expect(landed).toBe(original);
     expect(sha256(original)).toBe(hash);
   }
 }
@@ -154,8 +160,8 @@ it.each(["bootstrap", "admin-managed"] as const)("upgrades the qualified %s prof
     expect(rail.forward[index - 1]?.file).toMatch(/_order_draft_receipt_privacy_v2\.sql$/u);
     rail.forward = rail.forward.slice(0, index);
   }
-  prefix.qualified.objectInventorySha256.bootstrapMigrator.withRestore = "9972ce938fb2c1a12b0b7fb4ac884e758c0d5d471adbd82776c9c999bb21390c";
-  prefix.qualifiedAdmin.objectInventorySha256.installerManaged = "3597f8d1d27fe5e110c7029325f20c1c06cb65268ee9d1c6df48946f7cecde00";
+  prefix.qualified.objectInventorySha256.bootstrapMigrator.withRestore = "753017472efe59148ff5f6a5b99d257261859539f73818e02e69918312acc97f";
+  prefix.qualifiedAdmin.objectInventorySha256.installerManaged = "a23de7dd34562769443b6f7425dbc4d681a8c678d3286e92ab922b9d883f0b14";
   await withPlatformCatalog(prefix, async root => {
     const store = await installAccountMutations(profile, false, "payment-entry-upgrade", root);
     const { owner, runtime } = store;
