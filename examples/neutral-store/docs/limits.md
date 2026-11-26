@@ -22,6 +22,12 @@ Published products display a title or localized short name and an optional
 local image. Long descriptions, product details and pack contents display as
 empty copy.
 
+A published SKU needs one-time selling enabled and a positive tax-inclusive
+one-time price in the configured market currency to appear. The starter excludes
+a SKU without one-time selling and reports `starter_catalogue_one_time_required`.
+The home and catalogue cards show the one-time amount in either cart mode.
+The product and cart use the server quote for the selected mode.
+
 The native storefront and strict quote share a ceiling of 500 active sellable
 SKUs. Seeded catalogue and synthetic editor rows consume that capacity.
 Active sellable SKUs in other offers count too. If the storefront refuses with

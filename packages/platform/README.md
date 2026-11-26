@@ -3909,7 +3909,8 @@ and provider facts only through the host bindings a store passes in.
   a clock and the provider facts:
   - `getOrCreateContinuationId` reuses the stored identity when the identifier
     binding accepts it, and otherwise mints one and stores it with the
-    payload's fingerprint;
+    payload's fingerprint, and, unless told to continue unpersisted, returns
+    `null` (nothing may be sent) when the record it wrote does not read back;
   - `readContinuationRecord` returns the stored record without an acceptance
     check;
   - `advanceAttempt` moves the stored record to its next payment attempt;

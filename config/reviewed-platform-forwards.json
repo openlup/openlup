@@ -9658,6 +9658,19 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "native-renewal-v3-storage",
+        "path": "db/platform/migrations/20261129130001_native_renewal_v3_storage.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": [
+          "INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('subscription_cycle_occurrences', 'block', 'Renewal occurrence history stays with its original client.');"
+        ],
+        "absorptionCensusTables": [
+          "public.subscription_cycle_occurrences"
+        ]
       }
     ]
   },
@@ -13970,6 +13983,11 @@
           "afterSha256": "a3d69943184d60fce278cceab5dc85a8bd9d63d55b1dc68ebceffc2e9e8e7083"
         }
       ]
+    },
+    {
+      "path": "db/platform/migrations/20261129130001_native_renewal_v3_storage.sql",
+      "sha256": "03cddadfb849aa09d4e2eb9fc2e36165a2bdef65ce943f06f04396c6ec009263",
+      "functions": []
     }
   ],
   "managedExactForwards": [
