@@ -1,5 +1,3 @@
-import { close, fstat, read } from "node:fs";
-import { promisify } from "node:util";
 import { isIPv4, Socket } from "node:net";
 import { z } from "zod";
 import type { SettingRefusal } from "../contracts/settings.js";
@@ -74,52 +72,25 @@ export function admitDatabaseUrl(input: string): SettingsDatabase | { path: stri
   };
 }
 
-const descriptorStat = promisify(fstat);
-const closeDescriptor = promisify(close);
-
 export async function bindSettingsPasswordDescriptor(fd: 3): Promise<() => string> {
   const limit = 4096, bytes = Buffer.alloc(limit + 1);
-  let socket: Socket | undefined, timer: ReturnType<typeof setTimeout> | undefined, abandoned = false;
-  const readLine = async () => {
-    let size = 0, closeFile = false;
-    try {
-      const stat = await descriptorStat(fd);
-      closeFile = stat.isFile();
-      if (abandoned) throw new Error();
-      if (closeFile) {
-        while (!abandoned && size < bytes.length) {
-          const count = await new Promise<number>((resolve, reject) =>
-            read(fd, bytes, size, bytes.length - size, null, (error, count) => error ? reject(error) : resolve(count)));
-          if (!count) break;
-          size += count;
-        }
-      } else {
-        if (!stat.isSocket() && !stat.isFIFO()) throw new Error();
-        socket = new Socket({ fd, readable: true, writable: false });
-        for await (const chunk of socket) {
-          size += chunk.copy(bytes, size);
-          if (size > limit) throw new Error();
-        }
-      }
-      return size;
-    } finally {
-      if (abandoned) bytes.fill(0);
-      if (socket) socket.destroy();
-      else if (closeFile) await closeDescriptor(fd).catch(() => {});
-    }
-  };
+  // The starter hands off a pollable child pipe. Socket rejects filesystem descriptors.
+  const socket = new Socket({ fd, readable: true, writable: false });
+  const timer = setTimeout(() => socket.destroy(new Error()), 2000);
+  let size = 0;
   try {
-    const deadline = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error()), 2000); });
-    const size = await Promise.race([readLine(), deadline]);
+    for await (const chunk of socket) {
+      size += chunk.copy(bytes, size);
+      if (size > limit) throw new Error();
+    }
     const line = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes.subarray(0, size));
-    if (size > limit || !/^[^\p{Cc}]+\n$/u.test(line)) throw new Error();
+    if (!/^[^\p{Cc}]+\n$/u.test(line)) throw new Error();
     const password = line.slice(0, -1);
     return () => password;
   } finally {
-    abandoned = true;
     bytes.fill(0);
     clearTimeout(timer);
-    socket?.destroy();
+    socket.destroy();
   }
 }
 

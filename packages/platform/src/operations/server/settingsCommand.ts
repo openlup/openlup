@@ -504,7 +504,7 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
   if (command !== "list" && command !== "explain" && command !== "show" && !preview) return invalid();
 
   if (passwordFd) {
-    const hint = "Supply one UTF-8 password line on descriptor 3 with a passwordless TCP database URL.";
+    const hint = "Supply one UTF-8 password line through the pipe on descriptor 3 with a passwordless TCP database URL.";
     if (!database || parsed.tokens.filter(token => token.kind === "option" && token.name === "database-url").length !== 1
       || typeof database.password !== "function" || /^[^:]+:\/\/[^@/]*:/u.test(databaseUrl!))
       return invalid("database-password-fd", hint);

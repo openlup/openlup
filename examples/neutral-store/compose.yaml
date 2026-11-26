@@ -27,10 +27,18 @@ services:
           trap 'rm -f "$$fallback"' EXIT
           printf '%s\n' 'local all all reject' 'host all all all reject' > "$$fallback"
           if ! cmp -s "$$fallback" "$$PGDATA/pg_hba.conf"; then
-            # Leave the existing file alone while an earlier postmaster can own it.
-            test ! -e "$$PGDATA/postmaster.pid"
-            chown postgres:postgres "$$fallback"
-            mv -f "$$fallback" "$$PGDATA/pg_hba.conf"
+            if [ -e "$$PGDATA/postmaster.pid" ]; then
+              # A fresh deny-only fallback needs no rewrite before PostgreSQL checks its lock.
+              awk '
+                /^[[:space:]]*(#|$$)/ { next }
+                (($$1 == "local" && NF == 4) || ($$1 == "host" && NF == 5)) && $$NF == "reject" { ++rules; next }
+                { exit 1 }
+                END { if (rules < 2) exit 1 }
+              ' "$$PGDATA/pg_hba.conf"
+            else
+              chown postgres:postgres "$$fallback"
+              mv -f "$$fallback" "$$PGDATA/pg_hba.conf"
+            fi
           fi
           rm -f "$$fallback"
         else

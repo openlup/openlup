@@ -1223,6 +1223,12 @@ async function witnessFreshDatabase(app: string, scratch: string, project: strin
       .split('\n').filter(line => line.trim() && !line.trimStart().startsWith('#'));
     assert.ok(fallback.length >= 2 && fallback.every(line => /\breject$/u.test(line)));
     console.log('Fresh PostgreSQL temporary socket, rules, TCP transition and deny-only fallback PASS');
+    const system = sql('select system_identifier from pg_control_system()');
+    checked('kill', '-s', 'KILL', 'database');
+    checked('up', '--wait', '--wait-timeout', '45', '--no-build', 'database');
+    assert.equal(sql('select system_identifier from pg_control_system()'), system);
+    assert.equal(sql('select type, database, user_name, address, netmask, auth_method, options, error from pg_hba_file_rules order by line_number'), rules);
+    console.log('Fresh PostgreSQL crash recovery with the stock deny-only fallback PASS');
   } finally { handoff.cleanup(); }
 }
 

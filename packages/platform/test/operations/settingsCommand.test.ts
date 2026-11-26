@@ -1,7 +1,9 @@
 import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { once } from "node:events";
-import { readFileSync } from "node:fs";
+import { closeSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { expect, it, vi } from "vitest";
 import { z, type ZodType } from "zod";
 import { runSettingsCommand, type SettingsAppBindings } from "../../src/operations/server/settingsCommand.js";
@@ -49,16 +51,16 @@ it("admits a private password descriptor and withholds its bytes from every resu
     }});
     process.exitCode = status;`;
   const connected = ["preview", key, "--value", "-", "--database-url", url, "--database-password-fd", "3", "--json"];
-  const invoke = async (argv: string[], line: Buffer | string | null, keepOpen = false) => {
+  const invoke = async (argv: string[], line: Buffer | string | number | null, keepOpen = false) => {
     const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", program, JSON.stringify(argv)],
-      { stdio: ["pipe", "pipe", "pipe", line === null ? "ignore" : "pipe"] });
+      { stdio: ["pipe", "pipe", "pipe", typeof line === "number" ? line : line === null ? "ignore" : "pipe"] });
     const chunks: Buffer[] = [];
     child.stdout.on("data", bytes => chunks.push(bytes));
     child.stderr.on("data", bytes => chunks.push(bytes));
     child.stdin.on("error", () => {});
     child.stdin.end('{"revision":"descriptor-fixture","renewalProtectionDays":21}');
     const descriptor = child.stdio[3];
-    if (line !== null && descriptor && "write" in descriptor) {
+    if (line !== null && typeof line !== "number" && descriptor && "write" in descriptor) {
       descriptor.on("error", () => {});
       if (keepOpen) descriptor.write(line);
       else descriptor.end(line);
@@ -72,6 +74,14 @@ it("admits a private password descriptor and withholds its bytes from every resu
   const accepted = await invoke(connected, line);
   expect(accepted.exit).not.toBe(64);
   expect(accepted.output).not.toContain('"path":["database-password-fd"]');
+  const directory = mkdtempSync(join(tmpdir(), "openlup-settings-descriptor-"));
+  try {
+    const path = join(directory, "fixture");
+    writeFileSync(path, line, { mode: 0o600 });
+    const file = openSync(path, "r");
+    try { expect((await invoke(connected, file)).exit).toBe(64); }
+    finally { closeSync(file); }
+  } finally { rmSync(directory, { recursive: true, force: true }); }
   for (const [argv, data, keepOpen] of [
     [connected, null], [connected, ""], [connected, privateValue], [connected, line + line],
     [connected, privateValue.repeat(65) + "\n"], [connected, Buffer.from([255, 10])], [connected, privateValue, true],

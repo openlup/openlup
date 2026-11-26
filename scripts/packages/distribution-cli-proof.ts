@@ -587,8 +587,10 @@ export function proveInstalledCatalogueUpgrade(app: string, preservedHashes: Rec
     assert.match(result, /✔ up_json_installed_starter_recipe/u);
     if (source) {
       const freshMarker = "Fresh PostgreSQL temporary socket, rules, TCP transition and deny-only fallback PASS";
-      assert(result.includes(freshMarker), "Fresh PostgreSQL hold did not execute");
+      const restartMarker = "Fresh PostgreSQL crash recovery with the stock deny-only fallback PASS";
+      assert(result.includes(freshMarker) && result.includes(restartMarker), "Fresh PostgreSQL controls did not execute");
       console.log(freshMarker);
+      console.log(restartMarker);
     }
     if (container && source) {
       assert.equal(realpathSync(source), source);
