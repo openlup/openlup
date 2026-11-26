@@ -1870,8 +1870,8 @@ export { encodeNativeSubscriptionCommand, decodeNativeSubscriptionPreview, creat
 export { createPaymentMethodComposition } from "./paymentMethodComposition.js";
 export { createOperatorRecovery, moveIdentityForEmailCorrection, OperatorIdentityMoveRefusedError, executeOperatorAccountLink, linkThenApply } from "./operatorRecovery.js";
 export type { OperatorRecoverySelection } from "./operatorRecovery.js";
-export { createManagedOperatorAuthority, operatorAuthorityCapabilities, CustomerSupportCommandInvalidError, CustomerSupportCommandIdempotencyConflictError, OperatorSubscriptionAuthorityUnavailableError, CustomerSupportCommandRequiresHumanError, CustomerSupportOperatorInactiveError, CustomerSupportOperatorNotProvisionedError } from "./operatorAuthority.js";
-export type { OperatorRpcExecutor, OperatorAuthorityOptions } from "./operatorAuthority.js";
+export { createManagedOperatorAuthority, withManagedOperatorDeadlockRetry, operatorAuthorityCapabilities, CustomerSupportCommandInvalidError, CustomerSupportCommandIdempotencyConflictError, OperatorSubscriptionAuthorityUnavailableError, CustomerSupportCommandRequiresHumanError, CustomerSupportOperatorInactiveError, CustomerSupportOperatorNotProvisionedError } from "./operatorAuthority.js";
+export type { OperatorRpcExecutor, OperatorAuthorityOptions, ManagedOperatorDeadlockRetryOptions } from "./operatorAuthority.js";
 export { createPostgresOperatorAuthority } from "./postgresOperatorAuthority.js";
 export type { OperatorQueryExecutor, OperatorTransactionExecutor } from "./postgresOperatorAuthority.js";
 export { ACCOUNT_SUPPORT_MIGRATIONS } from "./migrations.js";
@@ -2033,6 +2033,18 @@ export interface OperatorRpcExecutor {
         error: unknown;
     }>;
 }
+type ManagedOperatorDeadlockRpc = "customer_support_apply_subscription_action_v1" | "customer_support_issue_recovery";
+export interface ManagedOperatorDeadlockRetryOptions {
+    /** The host owns the delay between an aborted RPC and the next transaction. */
+    waitBeforeRetry(attempt: 1 | 2): PromiseLike<void>;
+    onDeadlock?(event: {
+        rpc: ManagedOperatorDeadlockRpc;
+        sqlstate: "40P01";
+        phase: "first" | "exhausted";
+    }): void | PromiseLike<void>;
+}
+/** Opt in only when every RPC attempt is its own database transaction. */
+export declare function withManagedOperatorDeadlockRetry(executor: OperatorRpcExecutor, options: ManagedOperatorDeadlockRetryOptions): OperatorRpcExecutor;
 /** Injected recovery material is private to the adapter; paths belong to the host. */
 export interface OperatorRecoveryMaterial {
     tokenHash: string;
@@ -2053,6 +2065,7 @@ export declare function operatorRecoveryMaterial(input: {
 }, options: OperatorAuthorityOptions): Promise<OperatorRecoveryMaterial>;
 /** Current managed calls over an injected executor; no provider, credentials or defaults. */
 export declare function createManagedOperatorAuthority(executor: OperatorRpcExecutor, options: OperatorAuthorityOptions): ManagedOperatorAuthorityPort;
+export {};
 ```
 ## dist/account-support/operatorRecovery.d.ts
 
