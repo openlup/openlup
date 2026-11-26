@@ -267,7 +267,8 @@ order may exist send nothing: the page opens a panel and shows
 `starter_checkout_changed` itself when the order was last seen payable, the code
 that last named it not payable, expired or paid, or otherwise that an order may
 exist. It keeps that knowledge beside the record, under
-`neutral-store:checkout-order-state:v1:<configuration>`. A record written before the bindings takes the current
+`neutral-store:checkout-order-state:v1:<configuration>`, from every answer that
+names the order's state, the payment-status page's included. A record written before the bindings takes the current
 details on its first submit, under the same key. The panel also appears on load
 when the tab holds an earlier order or an uncertain create. It offers "Complete
 payment for the earlier order" (`resume`) and "Cancel the earlier order and start
