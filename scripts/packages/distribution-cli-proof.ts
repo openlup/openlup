@@ -1,6 +1,6 @@
 /** Called by the existing cold consumer after installing its verified tarballs. */
 import assert from "node:assert/strict";
-import { execFileSync, spawn, spawnSync, type ExecFileSyncOptionsWithStringEncoding } from "node:child_process";
+import { execFileSync, spawnSync, type ExecFileSyncOptionsWithStringEncoding } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { isIPv4 } from "node:net";
@@ -1417,8 +1417,30 @@ export function createVerificationInput() {
 }
 
 /** Installed adjacent-file upgrade on one occupied local demonstration. */
+export class StarterRuntimeProofError extends Error {
+  constructor(step: string | string[], status: number | null = null, reason = "assertion_failed") {
+    super(typeof step === "string" ? `${step} exit=${status ?? "none"} reason=${reason}` : step.join("\n"));
+    this.stack = undefined;
+  }
+
+  static diagnostic(error: unknown, step: string) {
+    return error instanceof StarterRuntimeProofError ? error.message
+      : new StarterRuntimeProofError(step, null, "unexpected_failure").message;
+  }
+}
+
 export async function proveStarterRuntimeUpgrade(from: string, to: string, port: number) {
-  if (process.platform !== "linux" || port === 4319) throw new Error("starter_runtime_upgrade_requires_native_linux_and_free_port");
+  try { await runStarterRuntimeUpgrade(from, to, port); }
+  catch (error) {
+    throw new StarterRuntimeProofError([StarterRuntimeProofError.diagnostic(error, "occupied_proof")]);
+  }
+}
+
+async function runStarterRuntimeUpgrade(from: string, to: string, port: number) {
+  const fail = (step: string, status: number | null = null, reason?: string): never => {
+    throw new StarterRuntimeProofError(step, status, reason);
+  };
+  if (process.platform !== "linux" || port === 4319) fail("occupied_proof", null, "unsupported_runner_or_port");
   const started = performance.now();
   const project = "starter-runtime-" + randomBytes(6).toString("hex");
   const scratch = mkdtempSync(join(tmpdir(), project + "-"));
@@ -1428,82 +1450,43 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
   delete fresh.COMPOSE_PROJECT_NAME;
   const alternate = project + "-next";
   const selectNext = { ...env, COMPOSE_PROJECT_NAME: alternate };
-  const clientEnvironments: string[] = [];
   const composeFor = (activeProject: string, ...args: string[]) =>
     run(from, "docker", ["compose", "--project-name", activeProject, ...args]);
   const compose = (...args: string[]) => composeFor(project, ...args);
-  const captures: string[] = [], output: string[] = [];
-  const credentials = new Map<string, Set<string>>();
-  const remember = (kind: string, value: unknown) => {
-    if (typeof value !== "string" || !value) return;
-    const values = credentials.get(kind) ?? new Set<string>();
-    values.add(value);
-    credentials.set(kind, values);
-  };
-  let cleanupAttempted = false;
-  const failures: unknown[] = [];
-  const stopProof = new Error("occupied proof has recorded failures");
-  const fail = (name: string) => { throw new Error("starter_runtime_proof_" + name); };
-  function run(cwd: string, command: string, args: string[], input?: string, environment: NodeJS.ProcessEnv = env, privateResult = false) {
-    const child = spawnSync(command, args, { cwd, env: environment, input, encoding: "utf8", timeout: 300_000, maxBuffer: 16 * 1024 * 1024 });
-    const stdout = child.stdout ?? "", stderr = child.stderr ?? "";
-    if (!privateResult) captures.push(stdout, stderr);
-    if (child.error) fail("command_" + ((child.error as NodeJS.ErrnoException).code ?? "unknown").toLowerCase());
-    return { ...child, stdout, stderr };
+  const failures: string[] = [];
+  function run(cwd: string, command: string, args: string[], input?: string, environment: NodeJS.ProcessEnv = env) {
+    const child = spawnSync(command, args, { cwd, env: environment, input, encoding: "utf8",
+      stdio: ["pipe", "pipe", "pipe"], timeout: 300_000, maxBuffer: 16 * 1024 * 1024 });
+    if (child.error) fail("command", child.status, (child.error as NodeJS.ErrnoException).code === "ENOBUFS"
+      ? "capture_failed" : "command_failed");
+    return { status: child.status, signal: child.signal, stdout: child.stdout ?? "", stderr: child.stderr ?? "" };
   }
   const checked = (step: string, result: ReturnType<typeof run>, expected = 0) => {
-    if (result.status !== expected) fail(step + "_exit_" + result.status);
+    if (result.status !== expected) fail(step, result.status, "unexpected_exit");
     return result.stdout.trim();
   };
   function cleanupProjects() {
-    cleanupAttempted = true;
-    for (const name of [project, alternate]) {
+    for (const [step, name] of [["primary_project_down", project], ["replacement_project_down", alternate]] as const) {
       try {
-        checked("proof_project_down", run(from, dockerBin,
+        checked(step, run(from, dockerBin,
           ["compose", "--project-name", name, "down", "--volumes", "--remove-orphans", "--rmi", "local"]));
-      } catch (error) { failures.push(error); }
+      } catch (error) { failures.push(StarterRuntimeProofError.diagnostic(error, step)); }
     }
   }
-  const guestFiles = `const fs = require("node:fs");
-    const read = path => { try { return fs.readFileSync(path, "utf8").trim(); }
-      catch (error) { if (error.code !== "ENOENT") throw error; } };
-    console.log(JSON.stringify({
-      keyring: JSON.parse(read("/application/.context/quote-acceptance-keyring.json") ?? "null"),
-      publication: read("/application/.context/catalogue-builds/.publication-password")
-    }));`;
-  function rememberAppFiles(id: string) {
-    const result = run(from, dockerBin, ["exec", id, "node", "-e", guestFiles], undefined, env, true);
-    captures.push(result.stderr);
-    const privateFiles = checked("private_application_inventory", result);
-    let guest: { keyring?: { current?: string; previous?: string }; publication?: string };
-    try { guest = JSON.parse(privateFiles); } catch { return fail("private_application_inventory_invalid"); }
-    const { keyring, publication } = guest;
-    remember("guest signing key", keyring?.current);
-    remember("guest signing key", keyring?.previous);
-    remember("publication password", publication);
-  }
-  const sql = (text: string, database = "neutral_store", privateResult = false, activeProject = project) => {
-    const result = run(from, "docker", ["compose", "--project-name", activeProject, "exec", "-T", "database", "psql", "-XAtq", "-w",
-      "-v", "ON_ERROR_STOP=1", "-U", database === "postgres" ? "postgres" : "starter_install", "-d", database, "-c", text],
-      undefined, env, privateResult);
-    if (privateResult) captures.push(result.stderr);
-    return checked("owner_sql", result);
-  };
+  const sql = (text: string, database = "neutral_store", activeProject = project) => checked("owner_sql",
+    run(from, "docker", ["compose", "--project-name", activeProject, "exec", "-T", "database", "psql", "-XAtq", "-w",
+      "-v", "ON_ERROR_STOP=1", "-U", database === "postgres" ? "postgres" : "starter_install", "-d", database, "-c", text]));
   const source = join(homedir(), ".local/state/openlup/neutral-store", project, "runtime-password");
   const projectFile = join(from, ".context/compose-project");
   const container = (service: string, activeProject = project) => checked("container_id", composeFor(activeProject, "ps", "-q", service));
-  const up = (code = 0) => {
-    const result = checked("up", run(from, "./lifecycle", ["up", "--configuration", "coffee", "--json"]), code);
-    if (code === 0) rememberAppFiles(container("application"));
-    return result;
-  };
+  const up = (code = 0) => checked("up", run(from, "./lifecycle", ["up", "--configuration", "coffee", "--json"]), code);
   const identity = (activeProject = project) => {
     const id = container("database", activeProject);
     const format = "{{.State.StartedAt}} {{range .Mounts}}{{if eq .Destination \"/var/lib/postgresql/data\"}}{{.Name}}{{end}}{{end}}";
     return [id, checked("database_identity", run(from, "docker", ["inspect", "--format", format, id])),
-      sql("select oid from pg_database where datname = current_database()", "neutral_store", false, activeProject)
-        + ":" + sql("select system_identifier from pg_control_system()", "postgres", false, activeProject),
-      sql("show hba_file", "postgres", false, activeProject)];
+      sql("select oid from pg_database where datname = current_database()", "neutral_store", activeProject)
+        + ":" + sql("select system_identifier from pg_control_system()", "postgres", activeProject),
+      sql("show hba_file", "postgres", activeProject)];
   };
   const retained = () => [
     sql("select jsonb_agg(to_jsonb(t) order by id) from public.catalog_products t"),
@@ -1511,32 +1494,22 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
     sql("select jsonb_agg(to_jsonb(t) order by id) from public.price_entries t"),
     sql("select jsonb_agg(to_jsonb(t) order by position) from public.platform_schema_migrations t"),
   ];
-  const mark = (label: string) => output.push("Starter runtime " + label + " PASS\n");
+  const mark = (step: string) => process.stdout.write("Starter runtime " + step + " PASS\n");
   const origin = `http://127.0.0.1:${port}`;
   type CheckoutResult = { ok: boolean; code?: string; value?: Record<string, unknown> };
   async function checkoutAction(action: string, body: Record<string, unknown>): Promise<CheckoutResult> {
-    const key = randomUUID();
-    remember(action === "checkout.create" ? "checkout creation key" : "other action key", key);
-    remember("receipt bearer", body.token);
-    remember("quote acceptance", body.quoteAcceptance);
     try {
       // Receipt reads carry no cookies from the original checkout.
       const response = await fetch(`${origin}/api/actions/${action}`, {
         method: "POST", signal: AbortSignal.timeout(15_000),
-        headers: { Origin: origin, "X-Starter-Request": "1", "Idempotency-Key": key,
+        headers: { Origin: origin, "X-Starter-Request": "1", "Idempotency-Key": randomUUID(),
           "Content-Type": "application/json", Connection: "close" },
         body: JSON.stringify(body),
       });
-      for (const cookie of response.headers.getSetCookie()) {
-        const pair = cookie.split(";", 1)[0]!;
-        remember("guest cookie", pair.slice(pair.indexOf("=") + 1));
-      }
       const result = await response.json() as CheckoutResult;
-      remember("receipt bearer", result.value?.token);
-      remember("quote acceptance", result.value?.quoteAcceptance);
       if (result.ok === response.ok) return result;
     } catch { /* Keep private checkout responses out of diagnostics. */ }
-    return fail("checkout_transport_" + action);
+    return fail(action, null, "invalid_response");
   }
   const settledFacts = (ref: string, activeProject = project) => {
     if (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(ref)) fail("invalid_settled_order_key");
@@ -1546,7 +1519,7 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
       'payments', coalesce((select jsonb_agg(to_jsonb(p) order by p.id) from public.commerce_settlement_intents p where p.order_id = '${ref}'), '[]'),
       'attempts', coalesce((select jsonb_agg(to_jsonb(a) order by a.id) from public.payment_simulator_attempts a
         join public.commerce_settlement_intents p on p.id = a.settlement_intent_id where p.order_id = '${ref}'), '[]'))`,
-      "neutral_store", true, activeProject);
+      "neutral_store", activeProject);
   };
   async function createSettledReceipt() {
     const response = await fetch(`${origin}/api/config`, { signal: AbortSignal.timeout(15_000) });
@@ -1593,7 +1566,9 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
     if (before.some(value => !value || !JSON.parse(value).length)) fail("empty_retained_seed");
     const settled = await createSettledReceipt();
     mark("predecessor checkout settled with keyed records");
-    const count = JSON.parse(before[3]!).length as number;
+    const schema: unknown = JSON.parse(before[3]!);
+    if (!Array.isArray(schema)) fail("installed_schema", null, "invalid_shape");
+    const count = schema.length;
     const catalogue = (app: string) => readFileSync(join(app, "node_modules/@openlup/platform/sql/manifest.json"));
     if (!catalogue(from).equals(catalogue(to))) fail("catalogue_mismatch");
     const predecessorApp = container("application");
@@ -1608,7 +1583,7 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
         "--workdir", "/candidate", socketImage, "node", "--input-type=module", "-e", statusCode])));
       if (status.pending || status.applied !== count) fail("qualified_schema_status");
     }
-    mark(project + " common installed schema " + count);
+    mark("common installed schema " + count);
     checked("stop_predecessor_application", compose("stop", "application"));
     const stoppedApplication = () => {
       const id = checked("all_application_containers", compose("ps", "--all", "-q", "application"));
@@ -1645,7 +1620,7 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
     if (oldUp.status === 0) fail("mixed_lifecycle_started");
     const staged = join(scratch, "source");
     const stagedPassword = randomBytes(32).toString("hex");
-    remember("runtime password", stagedPassword);
+
     writeFileSync(staged, stagedPassword + "\n", { mode: 0o444 });
     for (const service of ["database", "application"]) {
       const blocked = run(from, "docker", ["compose", "--project-name", project, "up", "--no-build", "--force-recreate", "-d", service],
@@ -1670,7 +1645,7 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
     const guide = readFileSync(join(from, "node_modules/@openlup/core/docs/guide/how-to/build/customize-the-starter.md"), "utf8");
     function recipe(heading: string, level = "###") {
       const body = guide.split(level + " " + heading + "\n")[1]?.match(/```sh\n([^]*?)\n```/u)?.[1];
-      if (!body) throw new Error("starter_runtime_documented_recipe_missing");
+      if (!body) return fail("documented_recipe", null, "missing");
       return body;
     }
     const recover = () => run(from, "/bin/sh", ["-ec", recipe("Recover a stale database lock")], undefined,
@@ -1716,16 +1691,10 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
       fail("settled_data_continuity");
     mark("settled data continuity and original receipt");
     mark("original receipt and keyed records checked before startup replay");
-    rememberAppFiles(upgradedApp);
     const recovered = checked("recovery_logs", compose("logs", "--no-color", "database"));
     if (!/database system was interrupted|automatic recovery in progress/u.test(recovered)) fail("predecessor_recovery_missing");
     const initial = readFileSync(source, "utf8").trim();
-    const verifier = (name = project) => {
-      const value = sql("select rolpassword from pg_authid where rolname = 'starter_runtime'", "postgres", true, name);
-      remember("runtime verifier", value);
-      return value;
-    };
-    remember("runtime password", initial);
+    const verifier = () => sql("select rolpassword from pg_authid where rolname = 'starter_runtime'", "postgres");
     const live = identity();
     if (live[0] === original[0] || live[1]?.split(" ").at(-1) !== original[1]?.split(" ").at(-1)
       || live[2] !== original[2] || live[3] !== "/etc/postgresql/starter-pg-hba.conf" ||
@@ -1756,12 +1725,11 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
     const peerPassfile = "/run/proof.pgpass";
     const separator = "\u0000client-diagnostic\n";
     const probeCommand = 'env -0 >&2; printf "\\000client-diagnostic\\n" >&2; exec /usr/bin/psql "$@"';
-    function tcpClient(peer: boolean, password: string, user: string, db: string, red?: string) {
+    function tcpClient(peer: boolean, password: string, user: string, db: string) {
       const address = databaseIp();
       const connect = ["-XAtw", "-h", address, "-p", "5432", "-U", user, "-d", db, "-c", "select session_user"];
       const clientEnv: NodeJS.ProcessEnv = { ...env, PGCONNECT_TIMEOUT: "4", LC_ALL: "C", PGPASSFILE: passfile };
       delete clientEnv.PGPASSWORD;
-      if (red) clientEnv.STARTER_PROOF_RED = red;
       writeFileSync(passfile, password ? `${address}:5432:${db}:${user}:${password}\n` : "", { mode: 0o600, flag: "wx" });
       try {
         const probe = ["-ec", probeCommand, "client", ...connect];
@@ -1769,21 +1737,20 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
           ? run(from, dockerBin, ["run", "--rm", "--network", project + "_default", "--entrypoint", "/bin/sh",
             "--mount", `type=bind,src=${passfile},dst=${peerPassfile},readonly`,
             "--env", "PGPASSFILE=" + peerPassfile, "--env", "PGCONNECT_TIMEOUT=4", "--env", "LC_ALL=C",
-            postgresImage, ...probe], undefined, clientEnv, true)
-          : run(from, "/bin/sh", probe, undefined, clientEnv, true);
+            postgresImage, ...probe], undefined, clientEnv)
+          : run(from, "/bin/sh", probe, undefined, clientEnv);
         const parts = result.stderr.split(separator);
         if (parts.length !== 2) fail("client_environment_probe");
         const [environment, stderr] = parts as [string, string];
-        if (red) return { ...result, stderr, environment };
-        clientEnvironments.push(environment);
-        captures.push(result.stdout, stderr);
-        return { ...result, stderr, environment };
+        if (environment.split("\0").some(entry => entry.startsWith("PGPASSWORD=")))
+          fail("client_environment", result.status, "password_variable_present");
+        return { ...result, stderr };
       } finally { rmSync(passfile); }
     }
     const peer = (password: string, user = "starter_runtime", db = "neutral_store") => tcpClient(true, password, user, db);
     const native = (password: string, user = "starter_runtime", db = "neutral_store") => tcpClient(false, password, user, db);
     const refusedPassword = randomBytes(32).toString("hex");
-    remember("runtime password", refusedPassword);
+
     for (const client of [peer, native]) {
       const noPassword = client("");
       const wrong = client(refusedPassword);
@@ -1814,11 +1781,9 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
       if (result.status === 0 || !/no pg_hba.conf entry|pg_hba.conf rejects connection/u.test(result.stderr)) fail("physical_replication_hba");
     }
     mark("ordered HBA rules and physical replication refusal");
-    const publicationRead = run(from, "docker", ["compose", "--project-name", project, "exec", "-T", "application",
-      "cat", "/application/.context/catalogue-builds/.publication-password"], undefined, env, true);
-    captures.push(publicationRead.stderr);
-    const publication = checked("publication_input", publicationRead);
-    remember("publication password", publication);
+    const publication = checked("publication_input", compose("exec", "-T", "application",
+      "cat", "/application/.context/catalogue-builds/.publication-password"));
+
     if (checked("publication_connection", peer(publication, "openlup_catalog_publication")) !== "openlup_catalog_publication" ||
       !/password authentication failed/u.test(peer(initial, "openlup_catalog_publication").stderr)) fail("publication_isolation");
     const fallback = checked("fallback_hba", compose("exec", "-T", "database", "sh", "-c", 'cat "$PGDATA/pg_hba.conf"'));
@@ -1902,7 +1867,7 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
         if (denied.status === 0 || !denied.stderr.includes("starter_runtime_preflight_handoff_missing") ||
           container("application") !== unchangedApp || container("database") !== unchangedDatabase) fail("required_handoff_" + service);
       }
-      mark("project-record commands, settings, job readback and startup gate on Compose " + version);
+      mark("project-record commands, settings, job readback and startup gate on Compose " + expected);
     }
     const { prepareRuntimeHandoff } = await import("../../examples/neutral-store/host/runtime-database.ts");
     const handoff = prepareRuntimeHandoff(project, [from]);
@@ -1940,7 +1905,7 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
     mark("first administrator invitation through mounted runtime resolver");
 
     const afterRotation = randomBytes(32).toString("hex");
-    remember("runtime password", afterRotation);
+
     const previousApp = container("application");
     const replacement = source + ".next";
     writeFileSync(replacement, afterRotation + "\n", { mode: 0o444 });
@@ -1963,12 +1928,11 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
     const heldSource = source + ".held";
     checked("rotation_from_fresh_shell", run(from, "/bin/sh", ["-ec", recipe("Rotate the runtime credential")], undefined,
       { ...fresh, OPENLUP_STARTER_PORT: undefined, CONFIGURATION: "coffee", PORT: String(port) }));
-    rememberAppFiles(container("application"));
     const rotatedResponse = await fetch(`http://127.0.0.1:${port}/api/config`);
     if (rotatedResponse.status !== 200 ||
       (await rotatedResponse.json() as { config?: { id?: unknown } }).config?.id !== "coffee") fail("rotation_configuration");
     const current = readFileSync(source, "utf8").trim(), currentVerifier = verifier();
-    remember("runtime password", current);
+
     if (current === afterRotation || checked("stopped_rotation_auth", native(current)) !== "starter_runtime"
       || !/password authentication failed/u.test(native(afterRotation).stderr) || identity()[2] !== original[2]
       || readFileSync(projectFile, "utf8") !== project + "\n") fail("stopped_rotation");
@@ -1979,11 +1943,8 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
       try {
         observed = jsonMode ? JSON.parse(result.stdout).findings?.[0]?.code
           : result.stderr.split("\n").find(line => /^starter_[a-z0-9_]+$/u.test(line));
-      } catch { fail("invalid_refusal_envelope"); }
-      if (result.status !== 2 || observed !== code) {
-        const diagnostic = typeof observed === "string" && /^starter_[a-z0-9_]+$/u.test(observed) ? observed : "no_finding";
-        fail("expected_" + code + "_observed_" + diagnostic + "_exit_" + result.status);
-      }
+      } catch { fail(code, result.status, "invalid_refusal_envelope"); }
+      if (result.status !== 2 || observed !== code) fail(code, result.status, "unexpected_finding");
       if (!jsonMode && !["Cause:", "Fix:", "Recheck:"].every(label => result.stderr.includes(label))) fail("text_refusal_details");
     }
     const projectBefore = container("application");
@@ -2002,14 +1963,12 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
         ["volume", "ls", "-q", "--filter", "label=com.docker.compose.project=" + alternate]))) fail("replacement_volume_not_fresh");
       checked("start_second_project", run(from, "./lifecycle", ["up", "--configuration", "coffee", "--json"], undefined, selectNext));
       const alternatePassword = readFileSync(alternateSource, "utf8").trim();
-      remember("runtime password", alternatePassword);
-      verifier(alternate);
-      rememberAppFiles(container("application", alternate));
+
       if (readFileSync(projectFile, "utf8") !== alternate + "\n" || alternatePassword === current) fail("second_project_record");
       const replacement = identity(alternate);
       if (replacement[1]?.split(" ").at(-1) !== alternate + "_database" || replacement[2] === live[2]
         || checked("replacement_listener", composeFor(alternate, "port", "application", String(port))) !== `127.0.0.1:${port}`
-        || sql("select count(*) from public.commerce_orders", "neutral_store", true, alternate) !== "0")
+        || sql("select count(*) from public.commerce_orders", "neutral_store", alternate) !== "0")
         fail("blank_replacement_volume_identity");
       const missing = await readSettlementContinuity(settled, alternate);
       const absent = JSON.parse(missing.records) as Record<string, unknown[]>;
@@ -2022,11 +1981,11 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
       try {
         checked("remove_blank_project", run(from, dockerBin,
           ["compose", "--project-name", alternate, "down", "--volumes", "--remove-orphans"], undefined, selectNext));
-      } catch (error) { failures.push(error); }
+      } catch (error) { failures.push(StarterRuntimeProofError.diagnostic(error, "remove_blank_project")); }
       try { rmSync(dirname(alternateSource), { recursive: true, force: true }); }
-      catch (error) { failures.push(error); }
+      catch (error) { failures.push(StarterRuntimeProofError.diagnostic(error, "remove_blank_state")); }
     }
-    if (failures.length) throw stopProof;
+    if (failures.length) throw new StarterRuntimeProofError(failures.splice(0));
     up();
     if (identity()[2] !== original[2] || verifier() !== currentVerifier) fail("original_project_changed");
     mark("one project per directory, down clears record and permits switching");
@@ -2050,7 +2009,7 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
     up();
     const dockerfile = join(from, "Dockerfile"), originalDockerfile = readFileSync(dockerfile);
     const redactedFixture = randomBytes(32).toString("hex");
-    remember("diagnostic fixture", redactedFixture);
+
     try {
       writeFileSync(dockerfile, Buffer.concat([originalDockerfile, Buffer.from(`\nRUN echo '${redactedFixture}' >&2; exit 17\n`)]));
       const build = run(from, "./lifecycle", ["up", "--configuration", "coffee", "--json"]);
@@ -2089,8 +2048,8 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
     mark("invalid sources refused before build");
 
     const synthetic = randomBytes(24).toString("hex"), wrongPassword = randomBytes(32).toString("hex");
-    remember("diagnostic fixture", synthetic);
-    remember("runtime password", wrongPassword);
+
+
     const shim = join(scratch, "docker");
     writeFileSync(shim, `#!/bin/sh
 "${dockerBin}" "$@" || exit $?
@@ -2188,69 +2147,20 @@ esac
     }
     mark("installed browser, mount inventory and both credential opens");
 
-    const exactValues = [...credentials.values()].flatMap(values => [...values]);
-    const leaks = (text: string, values = exactValues) =>
-      values.some(value => text.includes(value) || text.includes(encodeURIComponent(value)));
-    const inputs = files.flatMap(path => [from, to].map(dir => join(dir, path))).filter(existsSync);
-    const snapshots = ["from.json", "to.json"].map(name => readFileSync(join(scratch, name), "utf8"));
-    const materials = [...inputs, projectFile, preload, shim, override, dockerfile, renewalConfig,
-      join(from, "package-lock.json"), join(from, ".starter-origin.json")].map(path => readFileSync(path, "utf8"));
     const image = checked("application_image", run(from, "docker", ["inspect", "--format", "{{.Image}}", container("application")]));
     const imagePaths = checked("application_image_file_list", run(from, "docker", ["run", "--rm", "--network", "none", image,
       "find", "/application", "/run", "-name", "runtime-password", "-o", "-name", "starter_runtime_password"]));
     if (imagePaths) fail("credential_path_in_image");
-    const imageFiles = spawn(dockerBin, ["run", "--rm", "--network", "none", image, "tar", "-cf", "-", "/application"],
-      { cwd: from, env, stdio: ["ignore", "pipe", "pipe"] });
-    const imageErrors: Buffer[] = [];
-    imageFiles.stderr.on("data", chunk => imageErrors.push(chunk));
-    const done = new Promise(resolveDone => imageFiles.once("close", resolveDone));
-    const overlap = Math.max(0, ...exactValues.map(value => encodeURIComponent(value).length - 1));
-    let tail = "", imageLeak = false;
-    for await (const chunk of imageFiles.stdout) {
-      const value = tail + chunk.toString("latin1");
-      if (leaks(value)) imageLeak = true;
-      tail = overlap ? value.slice(-overlap) : "";
-    }
-    if (await done !== 0 || imageLeak) fail("application_image_credential_scan");
-    captures.push(Buffer.concat(imageErrors).toString("utf8"));
-    const committed = checked("git_candidate_contents", run(process.cwd(), "git", ["diff", predecessor + "..HEAD"]));
-    const redClient = tcpClient(false, "", "starter_runtime", "neutral_store", synthetic);
-    if (clientEnvironments.length < 10 || clientEnvironments.some(value => leaks(value) || value.split("\0").some(entry => entry.startsWith("PGPASSWORD=")))
-      || !redClient.environment.includes("STARTER_PROOF_RED=") || !leaks(redClient.environment))
-      fail("client_environment_scan");
-    mark("private passfiles; exact client environment scan and synthetic red control");
-    cleanupProjects();
-    if (failures.length) throw stopProof;
-    for (const [kind, count] of [["checkout creation key", 2], ["receipt bearer", 2], ["guest cookie", 2]] as const)
-      if (credentials.get(kind)?.size !== count) fail("incomplete_" + kind.replaceAll(" ", "_") + "_inventory");
-    if (!credentials.get("guest signing key")?.size) fail("incomplete_guest_signing_key_inventory");
-    const outputLeaks = (streams: string[], values = exactValues) => streams.some(stream => leaks(stream, values));
-    const sample = captures.find(text => text.trim()) ?? fail("missing_captured_command_output");
-    for (const kind of ["runtime password", "runtime verifier", "publication password", "diagnostic fixture",
-      "checkout creation key", "other action key", "receipt bearer", "guest signing key", "guest cookie", "quote acceptance"]) {
-      const planted = randomBytes(24).toString("hex") + "/=";
-      for (const variant of [planted, encodeURIComponent(planted)]) {
-        for (const material of [output.join(""), sample, ...snapshots, committed]) {
-          if (!outputLeaks([material + "\n" + variant], [planted])) fail("proof_output_scanner_red_control");
-        }
-      }
-      mark(kind + " raw and URI-encoded proof output red controls");
-    }
-    mark("proof outputs and scanner red controls");
-    mark("occupied proof completed in " + Math.round(performance.now() - started) + " ms");
-    if (outputLeaks([output.join(""), ...captures, ...materials, ...snapshots, committed])) fail("credential_output_scan");
-    process.stdout.write(output.join(""));
   } catch (error) {
-    if (error !== stopProof) failures.push(error);
+    failures.push(StarterRuntimeProofError.diagnostic(error, "occupied_proof"));
   } finally {
-    if (!cleanupAttempted) cleanupProjects();
+    cleanupProjects();
     for (const path of [dirname(source), join(dirname(dirname(source)), alternate), scratch]) {
-      try { rmSync(path, { recursive: true, force: true }); } catch (error) { failures.push(error); }
+      try { rmSync(path, { recursive: true, force: true }); }
+      catch (error) { failures.push(StarterRuntimeProofError.diagnostic(error, "remove_proof_state")); }
     }
+    // No foreign errors, causes, or captured output cross the proof boundary.
   }
-  if (failures.length === 1) throw failures[0];
-  if (failures.length > 1) throw new Error(failures.map(error => {
-    const message = error instanceof Error ? error.message : "";
-    return /^starter_runtime_proof_[a-z0-9_]+$/u.test(message) ? message : "starter_runtime_proof_private_failure";
-  }).join("\n"));
+  if (failures.length) throw new StarterRuntimeProofError(failures);
+  mark("occupied proof completed in " + Math.round(performance.now() - started) + " ms");
 }

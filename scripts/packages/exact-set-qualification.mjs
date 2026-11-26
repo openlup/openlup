@@ -9,7 +9,7 @@ import { env } from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { imageReference, pullWithRetry, readCiImage } from '../ci-image-pull.mjs';
 import { needsStarterCareUpgrade, previousPublishedSet, proveDistributionCliConsumer, proveStarterRuntimeUpgrade, proveSettingsDiscovery, proveSettingsMcp,
-  starterCareJourney, starterCareWitness, starterSettingsHost } from './distribution-cli-proof.ts';
+  StarterRuntimeProofError, starterCareJourney, starterCareWitness, starterSettingsHost } from './distribution-cli-proof.ts';
 import { assertInstalledPackages, isolatedConsumerEnv, readCurrentPackManifest } from './pack-manifest-input.ts';
 import { generateExactSetReleaseBom } from './generate-release-bom.ts';
 
@@ -482,7 +482,9 @@ export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = f
   return receipt;
 }
 
-const runCandidate = (file, args, cwd = root) => execFileSync(file, args, { cwd, env: isolatedConsumerEnv(), encoding: 'utf8' });
+const runCandidate = (file, args, cwd = root) => execFileSync(file, args, {
+  cwd, env: isolatedConsumerEnv(), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+});
 
 export function prepareStarterCandidate(commit, manifest, scratch) {
   mkdirSync(scratch, { recursive: true });
@@ -536,13 +538,22 @@ export async function qualifyCandidateCanary(commit, manifest, output) {
 }
 
 async function qualifyCandidateOccupied(predecessor, previousManifest, candidate, candidateManifest, port) {
-  assert.equal(runCandidate('git', ['rev-parse', 'HEAD']).trim(), candidate, 'candidate checkout mismatch');
-  const scratch = mkdtempSync(join(tmpdir(), 'openlup-occupied-upgrade-'));
+  const failures = [];
+  let scratch;
   try {
+    assert.equal(runCandidate('git', ['rev-parse', 'HEAD']).trim(), candidate, 'candidate checkout mismatch');
+    scratch = mkdtempSync(join(tmpdir(), 'openlup-occupied-upgrade-'));
     const from = prepareStarterCandidate(predecessor, previousManifest, join(scratch, 'from'));
     const to = prepareStarterCandidate(candidate, candidateManifest, join(scratch, 'to'));
     await proveStarterRuntimeUpgrade(from.application, to.application, Number(port));
-  } finally { rmSync(scratch, { recursive: true, force: true }); }
+  } catch (error) { failures.push(StarterRuntimeProofError.diagnostic(error, 'candidate_occupied')); }
+  finally {
+    if (scratch) {
+      try { rmSync(scratch, { recursive: true, force: true }); }
+      catch (error) { failures.push(StarterRuntimeProofError.diagnostic(error, 'candidate_cleanup')); }
+    }
+  }
+  if (failures.length) throw new StarterRuntimeProofError(failures);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
@@ -551,8 +562,13 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     if (process.argv.length !== 6) refuse('use --candidate-canary commit manifest receipt');
     await qualifyCandidateCanary(commit, receipt, mode);
   } else if (tag === '--candidate-occupied') {
-    if (process.argv.length !== 8) refuse('use --candidate-occupied predecessor previous-manifest candidate candidate-manifest free-port');
-    await qualifyCandidateOccupied(...process.argv.slice(3));
+    try {
+      if (process.argv.length !== 8) throw new StarterRuntimeProofError('candidate_occupied', null, 'invalid_arguments');
+      await qualifyCandidateOccupied(...process.argv.slice(3));
+    } catch (error) {
+      process.stderr.write(StarterRuntimeProofError.diagnostic(error, 'candidate_occupied') + '\n');
+      process.exitCode = 1;
+    }
   } else {
     if (!(process.argv.length === 7 && mode === '--candidate') && process.argv.length !== 5 && !(process.argv.length === 6 && ['--upgrade', '--schema-upgrade', '--bom', '--canary'].includes(mode))) refuse('use release-tag full-tag-commit receipt-path');
     // Finish module evaluation before recovery imports this module; incomplete work exits nonzero.

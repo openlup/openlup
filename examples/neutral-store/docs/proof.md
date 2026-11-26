@@ -62,10 +62,7 @@ session immediately after the documented cutover, before the startup replay or
 the mounted renewal, care and checkout recovery commands.
 The same check refuses the original order and receipt on a separately initialized
 empty store and refuses a second paid receipt paired with the original records.
-The exact-value scan checks the proof's own output and receipts for runtime and
-publication credentials, guest signing keys, checkout idempotency keys, receipt
-bearer tokens, and any continuation cookies or quote acceptances. It checks raw
-and URI-encoded forms with planted controls.
+Proof diagnostics carry only step names, exit codes, and reason codes.
 
 ## Published product and quote proof
 
