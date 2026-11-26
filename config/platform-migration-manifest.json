@@ -910,11 +910,15 @@
       "sha256": "33869ed7310f1bf994228a211d20803420ca8aba634ae99891fbc9b2f9ad9ace"
     },
     {
-      "file": "db/platform/migrations/20261129130503_subscription_edit_derived_prices.sql",
+      "file": "db/platform/migrations/20261129130503_order_money_v2_restore_no_temp.sql",
+      "sha256": "871b648d426739e13c67478dafb4c3e99476b22d543eb7d91da6a782237cb89d"
+    },
+    {
+      "file": "db/platform/migrations/20261129130504_subscription_edit_derived_prices.sql",
       "sha256": "3739862bf9ebbf8d3f5594a4f437a4e987f6fb612d8d4fc71a7c72c96603a123"
     }
   ],
-  "objectInventorySha256": "4818f15ec3e34f6b987dc9e2e25bc89b80e97810727a53f0f9ac935d0710fff7",
+  "objectInventorySha256": "7cdd23c81968af2a2fc4b90c8ccf3ca6c6ab57502f7addadd690557fc1fe4ab9",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1850,16 +1854,20 @@
         "sha256": "33869ed7310f1bf994228a211d20803420ca8aba634ae99891fbc9b2f9ad9ace"
       },
       {
-        "file": "db/platform/migrations/20261129130503_subscription_edit_derived_prices.sql",
+        "file": "db/platform/migrations/20261129130503_order_money_v2_restore_no_temp.sql",
+        "sha256": "871b648d426739e13c67478dafb4c3e99476b22d543eb7d91da6a782237cb89d"
+      },
+      {
+        "file": "db/platform/migrations/20261129130504_subscription_edit_derived_prices.sql",
         "sha256": "3739862bf9ebbf8d3f5594a4f437a4e987f6fb612d8d4fc71a7c72c96603a123"
       }
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "877a7387c1e1f46691f2a87bbe46936d25963e1202623538e31dff1cf30e862a"
+        "withRestore": "66136f2226ce67e24baa5dfc320ddc46f059d13d3a1c1dc96e8e7975f5c64833"
       },
       "separateMigrator": {
-        "withRestore": "3814a784fef42118f7ae5db7485693a15407b7efdc6ac91312d35280e874979b"
+        "withRestore": "052cbeeb009bb2b557bddb34f4a591d143f89fdf5cb7e724970d8036b804e887"
       }
     }
   },
@@ -2790,13 +2798,17 @@
         "sha256": "33869ed7310f1bf994228a211d20803420ca8aba634ae99891fbc9b2f9ad9ace"
       },
       {
-        "file": "db/platform/migrations/20261129130503_subscription_edit_derived_prices.sql",
+        "file": "db/platform/migrations/20261129130503_order_money_v2_restore_no_temp.sql",
+        "sha256": "871b648d426739e13c67478dafb4c3e99476b22d543eb7d91da6a782237cb89d"
+      },
+      {
+        "file": "db/platform/migrations/20261129130504_subscription_edit_derived_prices.sql",
         "sha256": "3739862bf9ebbf8d3f5594a4f437a4e987f6fb612d8d4fc71a7c72c96603a123"
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "f74dfac70c234115f2ad02d84cd2cdb5c410c29f6847327f5bebfde9c6b1dc8a",
-      "operatorProvisioned": "eb59353018e3e86c11ef6d1660753a3469e787176d51308f3cf08fa3e0f7d655"
+      "installerManaged": "aeff9232e3bdd43f1da69860e3ab270b945a004a2be61f3d0f065214043711c7",
+      "operatorProvisioned": "101b043aecb3dccc3e925d866278226617912f6154bb942d474f9da316ab9886"
     }
   }
 }

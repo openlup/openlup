@@ -9,7 +9,7 @@ import { captureCommittedReviewCandidate, git as reviewGit } from "./agent-revie
 import { prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER } from "./agent-review-decide.mjs";
 import { definitionPath, definitionPin, definitionSlot, definitionSql, grantPath, grantSlot, grantSql, NATIVE_STORE_GUARD_CATALOGS } from "../tests/helpers/issuedPlatformCatalog.ts";
 import { nativeStoreRevokePublicMessages } from "./reviewed-platform-forward.ts";
-import { renderCheckoutOwnerGrant, renderNativeStoreSettingsOwnerWindow, NATIVE_SUCCESSOR_TABLE_SQL, NATIVE_CATALOG_CONTROLS, isNativeStoreMigrationPath, assertCoLocatedForwardApproval, assertNativeStoreForward, assertReviewedPlatformForward, assertSecurityDefinerSearchPath, assertUnchangedForwardApproval, checkConstraintSha256, expectedReplacedFunctionAttrs, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, reviewedFunctionDefinitions, renderQualifiedSecurityDefiner, qualifiedCatalogueStorageSelectSql, sqlStatements, isExpandOnlyPlatformForward, changedForwardApprovals, readReviewedForwardRegistry, sqlSha256, type NativeStoreForwardClass, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
+import { assertAppendOnlyPostgresSuiteClosures, PG_SUITE_CLOSURES_PATH, renderCheckoutOwnerGrant, renderNativeStoreSettingsOwnerWindow, NATIVE_SUCCESSOR_TABLE_SQL, NATIVE_CATALOG_CONTROLS, isNativeStoreMigrationPath, assertCoLocatedForwardApproval, assertNativeStoreForward, assertReviewedPlatformForward, assertSecurityDefinerSearchPath, assertUnchangedForwardApproval, checkConstraintSha256, expectedReplacedFunctionAttrs, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, reviewedFunctionDefinitions, renderQualifiedSecurityDefiner, qualifiedCatalogueStorageSelectSql, sqlStatements, isExpandOnlyPlatformForward, changedForwardApprovals, readReviewedForwardRegistry, sqlSha256, type NativeStoreForwardClass, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
 
 const fixture = (path: string) => readFileSync(`scripts/fixtures/reviewed-native-store/${path}`);
 const control = JSON.parse(fixture("registry.json").toString()) as NativeStoreForwardClass;
@@ -3769,6 +3769,92 @@ describe("native-store replacement search_path pg_temp tightening", () => {
     ])("does not allow tightening for %s", (_label, oldProconfig, slotSearchPath) => {
       const oldAttrs = baseAttrs(oldProconfig);
       expect(expectedReplacedFunctionAttrs(oldAttrs, slotSearchPath)).toBe(oldAttrs);
+    });
+  });
+});
+
+describe("PostgreSQL suite closures SQL guard", () => {
+  const closuresJson = (suites: Record<string, string[]>, schemaVersion = 1) =>
+    `${JSON.stringify({ schemaVersion, suites }, null, 2)}\n`;
+  const initialClosures = closuresJson({
+    "tests/postgres/a.test.ts": ["@api", "tests/postgres/a.fixture.ts"],
+    "tests/postgres/m.test.ts": ["@starter"],
+  });
+
+  function setupGuardRepo(
+    put: (path: string, bytes: string | Buffer) => void,
+    commit: () => string,
+  ) {
+    put(PLATFORM_BASELINE_FILE, before);
+    put("config/reviewed-platform-forwards.json", encode(registry()));
+    put(PG_SUITE_CLOSURES_PATH, initialClosures);
+    return commit();
+  }
+
+  it.each(["db/platform/migrations/20990101000000_expand.sql", "supabase/migrations/20990101000000_expand.sql"])(
+    "allows appending new suites and new inputs alongside added SQL in %s",
+    (sqlPath) => {
+      nativeGitFixture(({ folder, put, commit }) => {
+        const base = setupGuardRepo(put, commit);
+        put(sqlPath, "CREATE TABLE public.fixture_expand (id uuid);\n");
+        put(PG_SUITE_CLOSURES_PATH, closuresJson({
+          "tests/postgres/a.test.ts": ["@api", "tests/postgres/a.fixture.ts", "tests/postgres/b.fixture.ts"],
+          "tests/postgres/m.test.ts": ["@starter"],
+          "tests/postgres/z.test.ts": ["@src"],
+        }));
+        const head = commit();
+        expect(() => assertAppendOnlyPostgresSuiteClosures(folder, base, head)).not.toThrow();
+        expect(() => assertCoLocatedForwardApproval(folder, base, head)).not.toThrow();
+      });
+    },
+  );
+
+  it("allows removing or narrowing suite closures in non-SQL cleanup commits", () => {
+    nativeGitFixture(({ folder, git, put, commit }) => {
+      const base = setupGuardRepo(put, commit);
+      put("README.md", "cleanup note\n");
+      put(PG_SUITE_CLOSURES_PATH, closuresJson({ "tests/postgres/m.test.ts": [] }));
+      const head = commit();
+      expect(() => assertAppendOnlyPostgresSuiteClosures(folder, base, head)).not.toThrow();
+      expect(() => assertCoLocatedForwardApproval(folder, base, head)).not.toThrow();
+
+      git("rm", PG_SUITE_CLOSURES_PATH);
+      const deletedHead = commit();
+      expect(() => assertAppendOnlyPostgresSuiteClosures(folder, base, deletedHead)).not.toThrow();
+    });
+  });
+
+  it.each<[string, string | null]>([
+    ["removing a suite", closuresJson({ "tests/postgres/m.test.ts": ["@starter"] })],
+    ["removing an input from an existing suite", closuresJson({ "tests/postgres/a.test.ts": ["@api"], "tests/postgres/m.test.ts": ["@starter"] })],
+    ["deleting the closures file", null],
+    ["changing schemaVersion", closuresJson({ "tests/postgres/a.test.ts": ["@api", "tests/postgres/a.fixture.ts"], "tests/postgres/m.test.ts": ["@starter"] }, 2)],
+    ["adding a control suite", closuresJson({ "tests/postgres/a.test.ts": ["@api", "tests/postgres/a.fixture.ts"], "tests/postgres/m.test.ts": ["@starter"], "tests/postgres/subscriptionExactInstallation.test.ts": [] })],
+    ["unsorted inputs", closuresJson({ "tests/postgres/a.test.ts": ["tests/postgres/a.fixture.ts", "@api"], "tests/postgres/m.test.ts": ["@starter"] })],
+    ["unknown @axis", closuresJson({ "tests/postgres/a.test.ts": ["@api", "tests/postgres/a.fixture.ts"], "tests/postgres/m.test.ts": ["@starter"], "tests/postgres/z.test.ts": ["@unknown"] })],
+    ["broad tests/postgres/ prefix", closuresJson({ "tests/postgres/a.test.ts": ["@api", "tests/postgres/a.fixture.ts"], "tests/postgres/m.test.ts": ["@starter"], "tests/postgres/z.test.ts": ["tests/postgres/"] })],
+  ])("refuses %s alongside newly added SQL across direct guard and co-located queue check", (_label, candidate) => {
+    nativeGitFixture(({ folder, git, put, commit }) => {
+      const base = setupGuardRepo(put, commit);
+      put("db/platform/migrations/20990101000000_expand.sql", "CREATE TABLE public.fixture_expand (id uuid);\n");
+      if (candidate === null) git("rm", PG_SUITE_CLOSURES_PATH);
+      else put(PG_SUITE_CLOSURES_PATH, candidate);
+      const head = commit();
+      expect(() => assertAppendOnlyPostgresSuiteClosures(folder, base, head)).toThrow();
+      expect(() => assertCoLocatedForwardApproval(folder, base, head)).toThrow();
+    });
+  });
+
+  it("refuses symlink replacement of PostgreSQL suite closures alongside newly added SQL", () => {
+    nativeGitFixture(({ folder, git, put, commit }) => {
+      const base = setupGuardRepo(put, commit);
+      put("db/platform/migrations/20990101000000_expand.sql", "CREATE TABLE public.fixture_expand (id uuid);\n");
+      put("config/other.json", initialClosures);
+      git("rm", PG_SUITE_CLOSURES_PATH);
+      symlinkSync("other.json", resolve(folder, PG_SUITE_CLOSURES_PATH));
+      const head = commit();
+      expect(() => assertAppendOnlyPostgresSuiteClosures(folder, base, head)).toThrow("reviewed replacement requires a regular file");
+      expect(() => assertCoLocatedForwardApproval(folder, base, head)).toThrow("reviewed replacement requires a regular file");
     });
   });
 });

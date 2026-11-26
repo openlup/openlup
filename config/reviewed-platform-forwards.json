@@ -9792,8 +9792,22 @@
         ]
       },
       {
+        "row": "order-money-v2-restore-no-temp",
+        "path": "db/platform/migrations/20261129130503_order_money_v2_restore_no_temp.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.commerce_order_money_v2_assert(uuid,boolean,boolean,jsonb,jsonb)",
+            "beforeSha256": "ff2ef9c8f64cd957ccbff6f00e2873750be65603ddd0bb8a0b7d1ac0a59cfba5",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "subscription-edit-derived-prices",
-        "path": "db/platform/migrations/20261129130503_subscription_edit_derived_prices.sql",
+        "path": "db/platform/migrations/20261129130504_subscription_edit_derived_prices.sql",
         "replacedFunctions": [
           {
             "signature": "public.catalog_admission_derived_subscription_prices(text,jsonb,jsonb,timestamptz)",
@@ -14216,7 +14230,18 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261129130503_subscription_edit_derived_prices.sql",
+      "path": "db/platform/migrations/20261129130503_order_money_v2_restore_no_temp.sql",
+      "sha256": "871b648d426739e13c67478dafb4c3e99476b22d543eb7d91da6a782237cb89d",
+      "functions": [
+        {
+          "signature": "public.commerce_order_money_v2_assert(uuid,boolean,boolean,jsonb,jsonb)",
+          "beforeSha256": "ff2ef9c8f64cd957ccbff6f00e2873750be65603ddd0bb8a0b7d1ac0a59cfba5",
+          "afterSha256": "7bf7e6485608ec567b1837a7286e3bb7a508e4141cf4dd295678cdefbd21c5b0"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261129130504_subscription_edit_derived_prices.sql",
       "sha256": "3739862bf9ebbf8d3f5594a4f437a4e987f6fb612d8d4fc71a7c72c96603a123",
       "functions": [
         {
