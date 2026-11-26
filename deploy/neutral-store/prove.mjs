@@ -389,7 +389,7 @@ networks:
         || health.body.artifact?.kind !== 'local-candidate') throw new Error('configuration_health_failed');
       const container = compose(['ps', '-q', 'application']);
       const state = JSON.parse(localDocker(['inspect', container]))[0];
-      const publication = state?.NetworkSettings?.Ports?.['4319/tcp'];
+      const publication = state?.NetworkSettings?.Ports?.[`${port}/tcp`];
       if (publication?.length !== 1 || publication[0].HostIp !== '127.0.0.1'
         || publication[0].HostPort !== String(port)) throw new Error('loopback_publication_required');
       const image = state.Image;

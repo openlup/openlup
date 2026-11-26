@@ -1938,11 +1938,11 @@
       "class": "public-output"
     },
     {
-      "path": "examples/neutral-store/host/scheduled-renewal.ts",
+      "path": "examples/neutral-store/host/runtime-database.ts",
       "class": "public-output"
     },
     {
-      "path": "examples/neutral-store/host/runtime-database.ts",
+      "path": "examples/neutral-store/host/scheduled-renewal.ts",
       "class": "public-output"
     },
     {

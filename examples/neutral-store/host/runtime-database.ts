@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { closeSync, constants, fstatSync, linkSync, lstatSync, mkdirSync, mkdtempSync,
+import { chmodSync, closeSync, constants, fstatSync, linkSync, lstatSync, mkdirSync, mkdtempSync,
   openSync, readSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join, sep } from 'node:path';
@@ -93,6 +93,7 @@ export function prepareRuntimeHandoff(project: string, roots: readonly string[])
       try {
         const source = join(pending, 'password');
         writeFileSync(source, randomBytes(32).toString('hex') + '\n', { mode: 0o444 });
+        chmodSync(source, 0o444);
         try { linkSync(source, path); }
         catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; }
       } finally { rmSync(pending, { recursive: true, force: true }); }

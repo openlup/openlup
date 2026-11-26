@@ -150,11 +150,13 @@ function composeFinding(stderr, environment) {
 }
 
 const projectFile = resolve(root, '.context/compose-project');
-async function recordProject(project) {
+async function admitProjectState() {
   await mkdir(dirname(projectFile), { recursive: true, mode: 0o700 });
   const state = await lstat(dirname(projectFile));
   if (!state.isDirectory() || state.uid !== process.getuid() || (state.mode & 0o022))
     throw starterDiagnostic('starter_runtime_credential_source_invalid');
+}
+async function recordProject(project) {
   const pending = await mkdtemp(resolve(dirname(projectFile), '.compose-project-'));
   try {
     const file = resolve(pending, 'name');
@@ -255,6 +257,7 @@ if (command === 'refusals') {
     const { stdout } = composeRun(compose, ['config', '--no-env-resolution', '--format', 'json']);
     const { name: project } = JSON.parse(stdout);
     handoff = prepareRuntimeHandoff(project, [root]);
+    await admitProjectState();
     compose.args.push('--project-name', project);
     compose.env = { ...env, ...handoff.environment };
     for (const argv of [['build'], ['up', '--wait', 'database']]) {
@@ -318,8 +321,8 @@ if (command === 'refusals') {
       '--quote-acceptance-key-file', keyFile];
     await import('./host/server.ts');
   } catch (error) {
-    const code = error instanceof Error && starterGuidance(error.message)
-      ? error.message : 'starter_demo_start_failed';
+    const code = (runtimeMounted() ? runtimeFinding(error) : undefined) ??
+      (error instanceof Error && starterGuidance(error.message) ? error.message : 'starter_demo_start_failed');
     const finding = physicalFinding(error);
     process.stderr.write(finding ? physicalReport(finding) : `${code}\n`);
     process.exitCode = 2;

@@ -498,7 +498,12 @@ export function prepareStarterCandidate(commit, manifest, scratch) {
     cpSync(pack.path, join(application, target));
     edge.resolved = 'file:' + target;
   }
-  writeFileSync(lockfile, JSON.stringify(lock) + '\n');
+  const preparedLock = JSON.stringify(lock) + '\n';
+  writeFileSync(lockfile, preparedLock);
+  receipt.buildContextLockfileSha256 = sha256(preparedLock);
+  writeFileSync(join(application, '.starter-origin.json'), JSON.stringify({
+    ...receipt.extraction, lockfileSha256: receipt.buildContextLockfileSha256,
+  }, null, 2) + '\n');
   runCandidate('npm', ['ci', '--ignore-scripts', '--no-audit', '--fund=false'], application);
   return { application, receipt };
 }

@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { tmpdir } from 'node:os';
 import { createServer } from 'node:net';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
@@ -87,7 +88,7 @@ test('lifecycle passes the resolved port to Compose and configures the probe aut
   // Exercise lifecycle's real override construction, without invoking Docker.
   await mkdir(resolve(root, '.context'), { recursive: true });
   const directory = await mkdtemp(resolve(root, '.context/healthcheck-default-'));
-  const home = await mkdtemp(resolve(root, '.context/healthcheck-home-'));
+  const home = await mkdtemp(resolve(await realpath(tmpdir()), 'healthcheck-home-'));
   try {
     for (const path of ['host', 'shared', 'owned', 'installation', 'lifecycle.mjs', 'lifecycle-refusals.mjs', 'browser-groups.mjs'])
       await cp(resolve(root, path), resolve(directory, path), { recursive: true });

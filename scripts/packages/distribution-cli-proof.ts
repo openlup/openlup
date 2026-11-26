@@ -547,7 +547,7 @@ export function proveInstalledCatalogueUpgrade(app: string, preservedHashes: Rec
     }
     if (lockRemapped) writeFileSync(lockfile, JSON.stringify(lock) + "\n");
     const recipeProject = "st1-pr2-recipe-" + randomBytes(6).toString("hex");
-    const recipe = { ...options, env: { ...options.env, OPENLUP_STARTER_PORT: options.env.OPENLUP_STARTER_PORT ?? "4319",
+    const recipe = { ...options, env: { ...options.env, OPENLUP_STARTER_PORT: isolatedConsumerEnv().OPENLUP_STARTER_PORT ?? "4319",
       OPENLUP_STARTER_CATALOGUE_RECIPE_PROJECT: recipeProject } as NodeJS.ProcessEnv };
     const dockerOptions = { ...options, timeout: 30_000 };
     if (browser) {
@@ -1441,6 +1441,8 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
   ];
   const mark = (label: string) => process.stdout.write("Starter runtime " + label + " PASS\n");
   try {
+    const predecessor: string = JSON.parse(readFileSync(join(from, ".starter-origin.json"), "utf8")).sourceRevision;
+    if (!/^[a-f0-9]{40}$/u.test(predecessor)) fail("predecessor_identity");
     const old = starterUpgradeSnapshot(from, "1.0.0"), next = starterUpgradeSnapshot(to, "1.0.1");
     const oldCompose = join(from, "compose.yaml"), oldLifecycle = readFileSync(join(from, "lifecycle.mjs"), "utf8");
     if (existsSync(source)) fail("unexpected_runtime_file");
@@ -1611,7 +1613,14 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
         const missing = exec(release, "renewal", configuration);
         if (missing.status !== 1 || !missing.stderr.includes("Run ./lifecycle up first.")) fail("missing_project_record");
       } finally { renameSync(held, projectFile); }
-      mark("project-record commands, settings and PostgreSQL job readback on Compose " + version);
+      const unchangedApp = container("application"), unchangedDatabase = container("database");
+      for (const service of ["database", "application"]) {
+        const denied = run(from, release, ["--project-name", project, "up", "--no-build", "--force-recreate", "-d", service],
+          undefined, { ...env, OPENLUP_STARTER_RUNTIME_SOURCE: source });
+        if (denied.status === 0 || !denied.stderr.includes("starter_runtime_preflight_handoff_missing") ||
+          container("application") !== unchangedApp || container("database") !== unchangedDatabase) fail("required_handoff_" + service);
+      }
+      mark("project-record commands, settings, job readback and startup gate on Compose " + version);
     }
     const { prepareRuntimeHandoff } = await import("../../examples/neutral-store/host/runtime-database.ts");
     const handoff = prepareRuntimeHandoff(project, [from]);
@@ -1624,11 +1633,22 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
     for (const release of releases) {
       exerciseJobs(release, true);
       const result = exec(release, "settings", preview, policy);
-      if (result.status !== 2 || !result.stderr.includes("starter_runtime_credential_read_failed")) fail("settings_missing_bind");
+      if (result.status !== 2 || JSON.parse(result.stdout).findings?.[0]?.code !== "starter_runtime_credential_read_failed")
+        fail("settings_missing_bind");
     }
     up();
     for (const release of releases) exerciseJobs(release);
     mark("missing credential bind refusal and restoration on both Compose versions");
+
+    const firstAdmin = `import {runtimeConnectionString} from './host/runtime-database.ts';
+      import {createPostgresOperatorIdentityStore} from '@openlup/platform/identity';
+      const operators=createPostgresOperatorIdentityStore({connectionString:await runtimeConnectionString()});
+      try { await operators.bootstrapFirstAdministrator({email:process.argv[1]}); } finally { await operators.close(); }`;
+    checked("first_administrator", compose("exec", "-T", "--user", "node", "application", "node",
+      "--input-type=module", "-e", firstAdmin, "operator@example.test"));
+    if (sql("select count(*) from public.platform_human_principals where email='operator@example.test'") !== "1")
+      fail("first_administrator_invitation");
+    mark("first administrator invitation through mounted runtime resolver");
 
     const afterRotation = randomBytes(32).toString("hex");
     const previousApp = container("application");
@@ -1663,8 +1683,15 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
     mark("documented stopped-project rotation");
 
     function refusal(result: ReturnType<typeof run>, code: string, jsonMode: boolean) {
-      const observed = jsonMode ? JSON.parse(result.stdout).findings?.[0]?.code : result.stderr.split("\n")[0];
-      if (result.status !== 2 || observed !== code) fail("expected_" + code);
+      let observed: unknown;
+      try {
+        observed = jsonMode ? JSON.parse(result.stdout).findings?.[0]?.code
+          : result.stderr.split("\n").find(line => /^starter_[a-z0-9_]+$/u.test(line));
+      } catch { fail("invalid_refusal_envelope"); }
+      if (result.status !== 2 || observed !== code) {
+        const diagnostic = typeof observed === "string" && /^starter_[a-z0-9_]+$/u.test(observed) ? observed : "no_finding";
+        fail("expected_" + code + "_observed_" + diagnostic + "_exit_" + result.status);
+      }
     }
     // Refuse shape, permissions and special files before Compose build.
     const installedApp = container("application");
@@ -1732,6 +1759,45 @@ esac
     }
     mark("application authentication refusal and same-store retry");
 
+    const { browserContainerArguments, resolveBrowserImage } = await import("../starter-browser-ci.mjs");
+    const localImage = env.OPENLUP_STARTER_LOCAL_IMAGE;
+    const browser = await resolveBrowserImage(undefined, localImage);
+    const readiness = join(scratch, "browser-ready");
+    mkdirSync(readiness);
+    const fixtures = join(from, ".context/care-browser"), builds = join(from, ".context/catalogue-builds");
+    for (const directory of [fixtures, builds]) mkdirSync(directory, { recursive: true });
+    const mounts = [`type=bind,src=${fixtures},dst=/app/.context/care-browser`,
+      `type=bind,src=${builds},dst=/app/.context/catalogue-builds`, `type=bind,src=${readiness},dst=/readiness`];
+    const browserName = project + "-installed-browser";
+    const args = browserContainerArguments(from, browser, browserName, localImage, mounts);
+    try {
+      const launched = run(from, "docker", [args[0]!, "--detach", ...args.slice(1), "sleep", "120"]);
+      if (launched.status !== 0 && !privateValues.some(value => launched.stderr.includes(value) || launched.stderr.includes(encodeURIComponent(value))))
+        process.stderr.write(launched.stderr);
+      checked("installed_browser_container", launched);
+      const inspected = JSON.parse(checked("installed_browser_mounts", run(from, "docker", ["inspect", "--format", "{{json .Mounts}}", browserName])));
+      for (const mount of inspected) if (mount.Type === "bind") {
+        const root = realpathSync(mount.Source);
+        if (source === root || source.startsWith(root + "/")) fail("installed_browser_mount_overlap");
+      }
+      const opens = `const fs=require('node:fs');
+        for(const path of process.argv.slice(1)) {
+          try { fs.closeSync(fs.openSync(path,'r')); }
+          catch(error) { if (['ENOENT','EACCES'].includes(error.code)) continue; throw error; }
+          process.exit(2);
+        } console.log('PASS');`;
+      const hidden = checked("installed_browser_credential_visibility", run(from, "docker", ["exec", browserName,
+        "timeout", "5", "node", "-e", opens, source, "/run/secrets/starter_runtime_password"]));
+      const browserCheck = `const {chromium}=require('@playwright/test');
+        (async()=>{const browser=await chromium.launch({headless:true});
+        try{const page=await browser.newPage(); const response=await page.goto(process.argv[1]);
+        if (response.status()!==200) process.exitCode=2; } finally{await browser.close();}})();`;
+      checked("installed_browser_http", run(from, "docker", ["exec", browserName, "timeout", "15", "node", "-e",
+        browserCheck, `http://127.0.0.1:${port}/`]));
+      if (hidden !== "PASS") fail("installed_browser_open");
+    } finally { run(from, "docker", ["rm", "-f", browserName]); }
+    mark("installed browser, mount inventory and both credential opens");
+
     captures.push(checked("compose_logs", compose("logs", "--no-color")));
     const leaks = (text: string) => privateValues.some(value => value.length > 0 && (text.includes(value) || text.includes(encodeURIComponent(value))));
     const inputs = files.flatMap(path => [from, to].map(dir => join(dir, path))).filter(existsSync);
@@ -1751,7 +1817,7 @@ esac
       tail = value.slice(-1024);
     }
     if (await done !== 0 || imageLeak) fail("application_image_credential_scan");
-    const committed = checked("git_candidate_contents", run(process.cwd(), "git", ["diff", "285430244..HEAD"]));
+    const committed = checked("git_candidate_contents", run(process.cwd(), "git", ["diff", predecessor + "..HEAD"]));
     if (!leaks("private-red:" + initial) || !leaks("private-red:" + synthetic) || captures.some(leaks) || leaks(committed))
       fail("credential_output_scan");
     mark("captured output and scanner red control");
