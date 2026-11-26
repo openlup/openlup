@@ -294,7 +294,10 @@ if (command === 'refusals') {
     const finding = commandRefusal(error, stage, stage !== '/installation');
     if (json) final = installReport(configuration, packs, finding);
     else {
-      process.stderr.write(Object.hasOwn(finding, 'subject') ? physicalReport(finding) : `${finding.code}\nFix: ${finding.fix}\n`);
+      if (Object.hasOwn(finding, 'subject')) process.stderr.write(physicalReport(finding));
+      else if (stage === '/installation' && finding.code.startsWith('starter_runtime_'))
+        process.stderr.write(installationReport(refusal(finding.code, finding.path, finding.observed, finding.cause, finding.fix, finding.recheck)));
+      else process.stderr.write(`${finding.code}\nFix: ${finding.fix}\n`);
       process.exitCode = 2;
     }
   } finally { handoff?.cleanup(); }

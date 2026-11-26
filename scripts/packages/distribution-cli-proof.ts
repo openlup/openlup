@@ -547,6 +547,8 @@ export function proveInstalledCatalogueUpgrade(app: string, preservedHashes: Rec
     }
     if (lockRemapped) writeFileSync(lockfile, JSON.stringify(lock) + "\n");
     const recipeProject = "st1-pr2-recipe-" + randomBytes(6).toString("hex");
+    const source = existsSync(join(app, "host/runtime-database.ts"))
+      ? join(realpathSync(homedir()), ".local/state/openlup/neutral-store", recipeProject, "runtime-password") : undefined;
     const recipe = { ...options, env: { ...options.env, OPENLUP_STARTER_PORT: isolatedConsumerEnv().OPENLUP_STARTER_PORT ?? "4319",
       OPENLUP_STARTER_CATALOGUE_RECIPE_PROJECT: recipeProject } as NodeJS.ProcessEnv };
     const dockerOptions = { ...options, timeout: 30_000 };
@@ -558,7 +560,15 @@ export function proveInstalledCatalogueUpgrade(app: string, preservedHashes: Rec
         const readinessMount = `type=bind,src=${realpathSync(readinessDirectory)},dst=${catalogueBrowserReadiness}`;
         const [action, ...args] = browser.containerArguments(app, browser.reference, name, browser.localImage, ["--mount", readinessMount]);
         container = name;
-        run("docker", [action!, "--detach", ...args, "node", "-e", launchCatalogueBrowser], dockerOptions);
+        if (source) {
+          run("docker", [action!, "--detach", ...args, "sleep", "900"], dockerOptions);
+          const mounts = JSON.parse(run("docker", ["inspect", "--format", "{{json .Mounts}}", name], dockerOptions));
+          for (const mount of mounts) if (mount.Type === "bind") {
+            const root = realpathSync(mount.Source);
+            assert(!source.startsWith(root + "/") && source !== root, "Starter browser mount overlaps private state");
+          }
+          run("docker", ["exec", "-d", name, "node", "-e", launchCatalogueBrowser], dockerOptions);
+        } else run("docker", [action!, "--detach", ...args, "node", "-e", launchCatalogueBrowser], dockerOptions);
         const readiness = JSON.parse(run("docker", ["exec", name, "node", "-e", readCatalogueBrowser], dockerOptions));
         if (readiness !== "deadline") {
           if (readiness?.error) throw new Error(readiness.error);
@@ -575,13 +585,13 @@ export function proveInstalledCatalogueUpgrade(app: string, preservedHashes: Rec
     }
     const result = run(process.execPath, ["--test", "--test-reporter=spec", "--test-name-pattern=^up_json_installed_starter_recipe$", "test/lifecycle.test.ts"], recipe);
     assert.match(result, /✔ up_json_installed_starter_recipe/u);
-    if (container && existsSync(join(app, "host/runtime-database.ts"))) {
-      const source = realpathSync(join(homedir(), ".local/state/openlup/neutral-store", recipeProject, "runtime-password"));
-      const mounts = JSON.parse(run("docker", ["inspect", "--format", "{{json .Mounts}}", container], dockerOptions));
-      for (const mount of mounts) if (mount.Type === "bind") {
-        const root = realpathSync(mount.Source);
-        assert(!source.startsWith(root + "/") && source !== root, "Starter browser mount overlaps private state");
-      }
+    if (source) {
+      const freshMarker = "Fresh PostgreSQL temporary socket, rules, TCP transition and deny-only fallback PASS";
+      assert(result.includes(freshMarker), "Fresh PostgreSQL hold did not execute");
+      console.log(freshMarker);
+    }
+    if (container && source) {
+      assert.equal(realpathSync(source), source);
       const check = `const {openSync,closeSync}=require('node:fs'), {argv}=require('node:process');
         for(const path of argv.slice(1)) {
         try { closeSync(openSync(path,'r')); } catch (error) { if (['ENOENT','EACCES'].includes(error.code)) continue; throw error; }
@@ -1467,6 +1477,13 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
     }
     mark(project + " common installed schema " + count);
     checked("stop_predecessor_application", compose("stop", "application"));
+    const stoppedApplication = () => {
+      const id = checked("all_application_containers", compose("ps", "--all", "-q", "application"));
+      if (!id) fail("predecessor_application_missing");
+      return id + " " + checked("stopped_application_identity",
+        run(from, "docker", ["inspect", "--format", "{{.State.Status}} {{.State.StartedAt}}", id]));
+    };
+    const originalApp = stoppedApplication();
     for (const [label, snapshot] of [["from", old], ["to", next]] as const) {
       snapshot.schema = { min: count, max: count };
       writeFileSync(join(scratch, label + ".json"), JSON.stringify(snapshot));
@@ -1500,7 +1517,8 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
         undefined, { ...env, OPENLUP_STARTER_RUNTIME_SOURCE: staged });
       if (blocked.status === 0 || !blocked.stderr.includes("starter_runtime_preflight_handoff_missing")) fail("compose_gate_" + service);
     }
-    if (JSON.stringify(identity()) !== JSON.stringify(original) || JSON.stringify(retained()) !== JSON.stringify(before)) fail("interrupted_data_changed");
+    if (stoppedApplication() !== originalApp || JSON.stringify(identity()) !== JSON.stringify(original)
+      || JSON.stringify(retained()) !== JSON.stringify(before)) fail("interrupted_data_changed");
     mark("mixed files and startup gate");
     if (!upgrade("apply").files.some((row: { path: string; action: string }) => row.path === "compose.yaml" && row.action === "already-applied"))
       fail("compose_not_resumed");
@@ -1549,13 +1567,30 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
     for (const [user, db] of [["postgres", "neutral_store"], ["starter_install", "postgres"], ["starter_runtime", "neutral_store"],
       ["starter_restore", "neutral_store"], ["openlup_catalog_publication", "neutral_store"]])
       if (!/pg_hba.conf rejects connection/u.test(socket(user!, db!).stderr)) fail("socket_denial");
+    const hbaRules = sql("select type, database, user_name, address, netmask, auth_method, options, error from pg_hba_file_rules order by line_number", "postgres");
+    if (hbaRules !== [
+      "local|{postgres}|{postgres}|||trust||",
+      "local|{neutral_store}|{starter_install}|||trust||",
+      "local|{all}|{all}|||reject||",
+      "host|{neutral_store}|{openlup_catalog_publication}|all||scram-sha-256||",
+      "host|{neutral_store}|{starter_runtime}|all||scram-sha-256||",
+      "host|{all}|{all}|all||reject||",
+    ].join("\n")) fail("parsed_runtime_hba");
+    for (const host of ["", " host=127.0.0.1"]) {
+      const result = compose("exec", "-T", "database", "psql", "-XAtw",
+        "user=postgres dbname=postgres replication=true" + host, "-c", "IDENTIFY_SYSTEM");
+      if (result.status === 0 || !/no pg_hba.conf entry|pg_hba.conf rejects connection/u.test(result.stderr)) fail("physical_replication_hba");
+    }
+    mark("ordered HBA rules and physical replication refusal");
     const publication = checked("publication_input", run(from, "docker", ["compose", "--project-name", project, "exec", "-T", "application",
       "cat", "/application/.context/catalogue-builds/.publication-password"], undefined, env, true));
     privateValues.push(publication);
     if (checked("publication_connection", peer(publication, "openlup_catalog_publication")) !== "openlup_catalog_publication" ||
       !/password authentication failed/u.test(peer(initial, "openlup_catalog_publication").stderr)) fail("publication_isolation");
     const fallback = checked("fallback_hba", compose("exec", "-T", "database", "sh", "-c", 'cat "$PGDATA/pg_hba.conf"'));
-    if (fallback !== "local all all reject\nhost all all all reject") fail("occupied_fallback");
+    if (fallback !== "local all all reject\nhost all all all reject"
+      || checked("fallback_permissions", compose("exec", "-T", "database", "sh", "-c",
+        'stat -c "%U:%G %a" "$PGDATA/pg_hba.conf"')) !== "postgres:postgres 600") fail("occupied_fallback");
     mark("installer socket, publication and occupied fallback");
 
     const mounted = ["renewal", "care", "checkout-recovery"];
@@ -1582,24 +1617,26 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
       select 'starter-demo:supplements',sku,0,0,0,inventory_class,last_synced_at,stale_after,sync_run_id,'runtime-stock-control',operation_fingerprint
       from public.fulfillment_stock_current where source_key='starter-demo:coffee' and sku='${sku}'`);
     const jobs = ["subscription-renewal:demo:coffee", "subscription-care:coffee", "starter-checkout:coffee"];
-    const jobCount = (name: string) => Number(sql("select count(*) from platform_job_runs where job_name = '" + name + "'"));
+    const jobCount = (name: string, successful = false) => Number(sql(
+      "select count(*) from platform_job_runs where job_name = '" + name + "'" + (successful ? " and status = 'success'" : "")));
     const preview = ["preview", "inventory_renewal_protection", ...configuration, "--value", "-", "--sku", sku, "--json"];
     const exerciseJobs = (release: string, missingBind = false) => {
       for (const [index, command] of mounted.entries()) {
-        const name = jobs[index]!, beforePass = jobCount(name);
+        const name = jobs[index]!, beforePass = jobCount(name, !missingBind);
         const result = exec(release, command, configuration);
         if (missingBind) {
           if (result.status !== 2 || !result.stderr.includes("starter_runtime_credential_read_failed") || jobCount(name) !== beforePass)
             fail("missing_bind_" + command);
         } else {
           checked("mounted_" + command, result);
-          if (jobCount(name) <= beforePass) fail("job_claim_" + command);
+          if (jobCount(name, true) <= beforePass) fail("job_claim_" + command);
         }
       }
     };
-    const releases = [olderCompose!, currentCompose!];
-    for (const release of releases) {
-      const version = checked("compose_version", run(from, release, ["version", "--short"]));
+    const releases = [[olderCompose!, "2.40.3"], [currentCompose!, "5.5.0"]] as const;
+    for (const [release, expected] of releases) {
+      const version = checked("compose_version", run(from, release, ["version", "--short"])).replace(/^v/u, "");
+      if (version !== expected) fail("compose_version_" + expected + "_required");
       checked("settings_show", exec(release, "settings", ["show", "inventory_renewal_protection", "--json"]));
       const result = JSON.parse(checked("settings_preview", exec(release, "settings", preview, policy)));
       const at = new Date(result.asOf).toISOString();
@@ -1633,14 +1670,14 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
       checked("missing_bind_fixture", run(from, "docker", ["compose", "--project-name", project, "-f", "compose.yaml",
         "-f", override, "up", "--no-deps", "--no-build", "--force-recreate", "-d", "application"], undefined, { ...env, ...handoff.environment }));
     } finally { handoff.cleanup(); }
-    for (const release of releases) {
+    for (const [release] of releases) {
       exerciseJobs(release, true);
       const result = exec(release, "settings", preview, policy);
       if (result.status !== 2 || JSON.parse(result.stdout).findings?.[0]?.code !== "starter_runtime_credential_read_failed")
         fail("settings_missing_bind");
     }
     up();
-    for (const release of releases) exerciseJobs(release);
+    for (const [release] of releases) exerciseJobs(release);
     mark("missing credential bind refusal and restoration on both Compose versions");
 
     const firstAdmin = `import {argv} from 'node:process';
@@ -1696,9 +1733,14 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
         const diagnostic = typeof observed === "string" && /^starter_[a-z0-9_]+$/u.test(observed) ? observed : "no_finding";
         fail("expected_" + code + "_observed_" + diagnostic + "_exit_" + result.status);
       }
+      if (!jsonMode && !["Cause:", "Fix:", "Recheck:"].every(label => result.stderr.includes(label))) fail("text_refusal_details");
     }
     // Refuse shape, permissions and special files before Compose build.
     const installedApp = container("application");
+    checked("live_model", run(from, "docker", ["compose", "--project-name", project, "config", "--format", "json"], undefined,
+      { ...env, OPENLUP_STARTER_PREFLIGHT_HANDOFF: "/dev/null", OPENLUP_STARTER_RUNTIME_SOURCE: source }));
+    checked("live_env", run(from, "docker", ["inspect", "--format", "{{json .Config.Env}}",
+      container("database"), installedApp]));
     for (const kind of ["bad-mode", "payload", "fifo"]) {
       renameSync(source, heldSource);
       try {
@@ -1739,6 +1781,7 @@ esac
         const result = run(from, "./lifecycle", ["up", "--configuration", "coffee", ...(mode ? ["--json"] : [])], undefined,
           { ...env, PATH: scratch + ":" + env.PATH, STARTER_PROOF_FAULT: fault, STARTER_PROOF_VALUE: synthetic });
         refusal(result, "starter_runtime_credential_" + fault + "_failed", mode);
+        checked("mount_read_refusal_logs", compose("logs", "--no-color"));
         const config = run(from, dockerBin, ["compose", "--project-name", project, "config", "--format", "json"], undefined,
           { ...env, OPENLUP_STARTER_PREFLIGHT_HANDOFF: "/dev/null", OPENLUP_STARTER_RUNTIME_SOURCE: source });
         const model = checked("changed_source_model", config);
@@ -1756,12 +1799,19 @@ esac
         refusal(run(from, "./lifecycle", ["up", "--configuration", "coffee", ...(mode ? ["--json"] : [])], undefined,
           { ...env, PATH: scratch + ":" + env.PATH, STARTER_PROOF_FAULT: "auth", STARTER_PROOF_VALUE: wrongPassword }),
         "starter_runtime_database_auth_failed", mode);
+        checked("failed_application_logs", compose("logs", "--no-color", "application"));
       } finally {
         if (existsSync(heldSource)) { rmSync(source, { force: true }); renameSync(heldSource, source); }
       }
       up();
     }
     mark("application authentication refusal and same-store retry");
+
+    checked("crash_database", run(from, "docker", ["kill", "--signal", "KILL", container("database")]));
+    up();
+    if (identity()[2] !== live[2] || readFileSync(source, "utf8").trim() !== current || verifier() !== currentVerifier)
+      fail("crash_restart_changed_store");
+    mark("PostgreSQL crash recovery with unchanged occupied fallback");
 
     const { browserContainerArguments, resolveBrowserImage } = await import("../starter-browser-ci.mjs");
     const localImage = env.OPENLUP_STARTER_LOCAL_IMAGE;

@@ -125,13 +125,16 @@ owns their defaults. Stop with Ctrl-C before reusing the port. Use the
 An interruption after database creation but before its demonstration marker is
 written leaves an unmarked database. Startup refuses with
 `starter_seed_demonstration_database_required` rather than adopting it.
-To discard only that local demonstration, use its application directory and the
-same Compose project selection:
+From its application directory, set `PROJECT` to the exact name selected for
+the failed startup. A project-name record is written after a successful start.
+The example uses the default name. Substitute the name you selected for a
+custom project.
 
 ```sh
-./lifecycle down
+PROJECT=neutral-store
+COMPOSE_PROJECT_NAME="$PROJECT" ./lifecycle down
 docker compose --project-name "$PROJECT" down --volumes
-./lifecycle up
+COMPOSE_PROJECT_NAME="$PROJECT" ./lifecycle up
 ```
 
 The volume removal destroys all data in that demonstration project. A fresh

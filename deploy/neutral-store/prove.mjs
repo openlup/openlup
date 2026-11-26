@@ -123,7 +123,6 @@ async function rollback(prepared, scratchParent) {
       try { docker(['image', 'rm', image]); images.delete(image); }
       catch (error) { errors.push(error.message); }
     }
-    handoff?.cleanup();
     rmSync(scratch, { recursive: true, force: true });
     return errors;
   };
@@ -297,6 +296,8 @@ async function dataRollback(prepared, scratchParent) {
         if (localDocker([...listing, '--filter', 'label=' + label])) errors.push(kind + '_cleanup_incomplete');
       } catch (error) { errors.push(error.message); }
     }
+    try { handoff?.cleanup(); }
+    catch (error) { errors.push(error.message); }
     rmSync(scratch, { recursive: true, force: true });
     return errors;
   };

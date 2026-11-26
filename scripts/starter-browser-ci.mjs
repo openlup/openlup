@@ -98,11 +98,16 @@ export async function runStarterImageCanary(application, archive, imageDigest, e
         const name = `canary-browser-${randomBytes(6).toString('hex')}`;
         defer(() => { if (run('docker', ['ps', '-aq', '--filter', `name=^${name}$`]).trim()) run('docker', ['rm', '-f', name]); });
         const argv = browserArguments(application, browser, name, localImage), entry = argv.indexOf('node');
+        const selection = [...browserJourneyGroups.at(-1), 'journey.spec.ts', '--grep', canaryPurchasePattern];
+        let output;
         if (runtime) {
-          runtime.assertRuntimeSourceOutside(sources[0], [application, join(application, '.context/care-browser'), join(application, '.context/catalogue-builds')]);
-          argv.splice(entry, 0, 'sh', '-ec', 'timeout 5 node -e "$1" "$2" "$3" && shift 3 && exec "$@"', 'browser', visibilityCheck, ...sources);
-        }
-        const output = run('docker', [...argv, ...browserJourneyGroups.at(-1), 'journey.spec.ts', '--grep', canaryPurchasePattern]);
+          run('docker', [argv[0], '--detach', ...argv.slice(1, entry), 'sleep', '180']);
+          const mounts = JSON.parse(run('docker', ['inspect', '--format', '{{json .Mounts}}', name]));
+          const roots = mounts.filter(mount => mount.Type === 'bind').map(mount => mount.Source);
+          for (const source of sources) runtime.assertRuntimeSourceOutside(source, roots);
+          output = run('docker', ['exec', name, 'sh', '-ec', 'timeout 5 node -e "$1" "$2" "$3" && shift 3 && exec "$@"',
+            'browser', visibilityCheck, ...sources, ...argv.slice(entry), ...selection]);
+        } else output = run('docker', [...argv, ...selection]);
         if (runtime && !output.includes('Starter browser credential visibility PASS')) throw new Error('starter_canary_visibility_missing');
         if (runtime) evidence.journey.credentialVisibility = 'PASS';
         if (!/\b2 passed\b/u.test(output)) throw new Error('starter_canary_purchase_results_missing');

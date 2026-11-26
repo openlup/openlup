@@ -22,13 +22,13 @@ services:
       - -ec
       - |
         if [ -s "$$PGDATA/PG_VERSION" ]; then
-          # Leave an owned volume alone while any earlier postmaster can own it.
-          test ! -e "$$PGDATA/postmaster.pid"
           umask 077
           fallback=$$(mktemp "$$PGDATA/.starter-hba.XXXXXX")
           trap 'rm -f "$$fallback"' EXIT
           printf '%s\n' 'local all all reject' 'host all all all reject' > "$$fallback"
           if ! cmp -s "$$fallback" "$$PGDATA/pg_hba.conf"; then
+            # Leave the existing file alone while an earlier postmaster can own it.
+            test ! -e "$$PGDATA/postmaster.pid"
             chown postgres:postgres "$$fallback"
             mv -f "$$fallback" "$$PGDATA/pg_hba.conf"
           fi

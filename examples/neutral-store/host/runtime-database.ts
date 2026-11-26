@@ -73,6 +73,8 @@ export function prepareRuntimeHandoff(project: string, roots: readonly string[])
   try {
     const home = homedir(), uid = process.getuid?.();
     if (!/^[a-z0-9][a-z0-9_-]*$/u.test(project) || realpathSync(home) !== home) throw new Error();
+    const homeState = lstatSync(home);
+    if (!homeState.isDirectory() || homeState.uid !== uid || (homeState.mode & 0o022)) throw new Error();
     const parts = ['.local', 'state', 'openlup', 'neutral-store', project];
     const path = join(home, ...parts, 'runtime-password');
     assertRuntimeSourceOutside(path, roots);

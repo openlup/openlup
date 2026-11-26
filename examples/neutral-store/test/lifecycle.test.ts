@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { env as processEnv } from 'node:process';
 import { setTimeout as delay } from 'node:timers/promises';
 import { catalogueUpgradeFixture } from './catalogue-upgrade-fixture.ts';
+import { prepareRuntimeHandoff } from '../host/runtime-database.ts';
 import { configurations, selectConfiguration } from '../owned/store.config.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -1175,7 +1176,57 @@ test('installed catalogue jobs isolate requests, fence heartbeat failures and dr
     }
   });
 
-test('up_json_installed_starter_recipe', { skip: !recipeApp, timeout: 600_000 }, () => {
+async function witnessFreshDatabase(app: string, scratch: string, project: string, env: NodeJS.ProcessEnv) {
+  const hook = join(scratch, 'hold-init.sh'), override = join(scratch, 'hold-init.json');
+  writeFileSync(hook, '#!/bin/sh\nset -eu\ntouch /tmp/starter-init-ready\nwhile [ ! -e /tmp/starter-init-release ]; do sleep 0.1; done\n', { mode: 0o755 });
+  writeFileSync(override, JSON.stringify({ services: { database: { volumes: [
+    { type: 'bind', source: hook, target: '/docker-entrypoint-initdb.d/10-starter-hold.sh', read_only: true },
+  ] } } }));
+  const handoff = prepareRuntimeHandoff(project, [app]);
+  const compose = (args: string[]) => spawnSync('docker', ['compose', '--project-name', project, '-f', 'compose.yaml', '-f', override, ...args],
+    { cwd: app, env: { ...env, ...handoff.environment, LC_ALL: 'C' }, encoding: 'utf8', timeout: 60_000 });
+  const checked = (...args: string[]) => {
+    const result = compose(args);
+    assert.equal(result.status, 0, `Fresh PostgreSQL witness failed at ${args.slice(0, 3).join(' ')}`);
+    return result.stdout.trim();
+  };
+  const owner = ['exec', '-T', 'database', 'psql', '-XAtw', '-U', 'postgres'];
+  const sql = (text: string) => checked(...owner, '-d', 'postgres', '-c', text);
+  const ready = ['exec', '-T', 'database', 'test', '-e', '/tmp/starter-init-ready'];
+  try {
+    checked('up', '-d', '--no-build', 'database');
+    const deadline = Date.now() + 20_000;
+    while (compose(ready).status !== 0 && Date.now() < deadline) await delay(100);
+    checked(...ready);
+    assert.equal(sql('show hba_file'), '/etc/postgresql/starter-pg-hba.conf');
+    assert.equal(sql("select rolname from pg_roles where rolname='postgres'"), 'postgres');
+    assert.equal(sql("select datallowconn from pg_database where datname='template1'"), 't');
+    const rules = sql('select type, database, user_name, address, netmask, auth_method, options, error from pg_hba_file_rules order by line_number');
+    assert.deepEqual(rules.split('\n'), [
+      'local|{postgres}|{postgres}|||trust||',
+      'local|{neutral_store}|{starter_install}|||trust||',
+      'local|{all}|{all}|||reject||',
+      'host|{neutral_store}|{openlup_catalog_publication}|all||scram-sha-256||',
+      'host|{neutral_store}|{starter_runtime}|all||scram-sha-256||',
+      'host|{all}|{all}|all||reject||',
+    ]);
+    const crossDenied = compose([...owner, '-d', 'template1', '-c', 'select 1']);
+    assert.notEqual(crossDenied.status, 0);
+    assert.match(crossDenied.stderr, /pg_hba.conf rejects connection/u);
+    const tcpHold = compose(['exec', '-T', 'database', 'pg_isready', '-h', '127.0.0.1', '-t', '1']);
+    assert.equal(tcpHold.status, 2);
+    assert.match(tcpHold.stdout, /no response/u);
+    checked('exec', '-T', '--user', 'postgres', 'database', 'touch', '/tmp/starter-init-release');
+    checked('up', '--wait', '--wait-timeout', '45', '--no-build', 'database');
+    checked('exec', '-T', 'database', 'pg_isready', '-h', '127.0.0.1');
+    const fallback = checked('exec', '-T', 'database', 'sh', '-c', 'cat "$PGDATA/pg_hba.conf"')
+      .split('\n').filter(line => line.trim() && !line.trimStart().startsWith('#'));
+    assert.ok(fallback.length >= 2 && fallback.every(line => /\breject$/u.test(line)));
+    console.log('Fresh PostgreSQL temporary socket, rules, TCP transition and deny-only fallback PASS');
+  } finally { handoff.cleanup(); }
+}
+
+test('up_json_installed_starter_recipe', { skip: !recipeApp, timeout: 600_000 }, async () => {
   const app = recipeApp!;
   const origin = JSON.parse(readFileSync(join(app, '.starter-origin.json'), 'utf8'));
   assert.ok(['candidate', 'local-candidate', 'released', 'reconstructed'].includes(origin.mode ?? origin.kind));
@@ -1211,6 +1262,7 @@ test('up_json_installed_starter_recipe', { skip: !recipeApp, timeout: 600_000 },
     run(process.execPath, ['--test', 'owned/catalogue-rules.test.cjs']);
     assert.equal(oneLine(run('npm', ['run', '--silent', 'catalogue:check:source'])).state, 'satisfied');
     run('npm', ['run', 'typecheck']);
+    if (existsSync(join(app, 'host/runtime-database.ts'))) await witnessFreshDatabase(app, scratch, project, env);
     const heldRules = join(scratch, 'catalogue-rules.cjs');
     renameSync(rules, heldRules);
     let refused;

@@ -505,7 +505,7 @@ test('authenticated Publish discloses only owned degraded jobs and supports exac
     } finally { await blocker.query('ROLLBACK'); blocker.release(); }
     const core = findPackageJSON('@openlup/core/catalog', import.meta.url)!;
     const guide = readFileSync(join(dirname(core), 'docs/guide/how-to/build/customize-the-starter.md'), 'utf8');
-    expect(guide).toContain('./lifecycle care --configuration <id> --database-url <runtime-url>');
+    expect(guide).toContain('docker compose --project-name "$PROJECT" exec -T application ./lifecycle care --configuration "$CONFIGURATION"');
     // The CLI pins the demo database name. Run the same care handler against the isolated clone.
     expect(await runScheduledCare(fixture.runtimeUrl, config, { publicOrigin: fixture.baseURL,
       capture: createPrivateCapture(join(fixture.state, '.context/captured-messages')) })).toHaveProperty('messages');
