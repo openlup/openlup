@@ -53,6 +53,11 @@ describe("the commerce example classifier", () => {
       .toBe("needs_client_action");
   });
 
+  it("reads a present clientAction alone, even when it is null beside a nextAction", () => {
+    expect(classifyCheckoutAnswer({ status: "requires_action", clientAction: null, nextAction: { kind: "redirect" } })).toBe("awaiting_authority");
+    expect(classifyCheckoutAnswer({ status: "requires_action", clientAction: { kind: "none" }, nextAction: { kind: "redirect" } })).toBe("awaiting_authority");
+  });
+
   it("never closes a key: the commerce answers carry no terminal-key status", () => {
     const answers = [...ASYNC_CHECKOUT_STATUSES, "price_changed", "status_added_later", "cancelled", "closed"]
       .flatMap(status => [{ status }, { status, clientAction: { kind: "redirect" } }]);
@@ -76,6 +81,15 @@ describe("the activation example", () => {
     expect(checkoutActivationPending({ status: "paid", subscription: { activationStatus: "activation_state_added_later" } })).toBe(true);
     expect(checkoutActivationPending({ status: "paid", subscriptionActivation: { status: 1 } })).toBe(true);
     expect(checkoutActivationPending({ status: "paid", subscriptionActivation: { status: "active", fieldAddedLater: 1 }, fieldAddedLater: 1 })).toBe(false);
+  });
+
+  it("is never pending for an answer that is not settled, or for a value that is not an answer", () => {
+    for (const status of ["processing", "requires_action", "failed", "status_added_later"]) {
+      expect(checkoutActivationPending({ status, subscriptionActivation: { status: "waiting_for_mandate", subscriptionId: null } })).toBe(false);
+      expect(checkoutActivationPending({ status, subscription: { activationStatus: "activation_state_added_later" } })).toBe(false);
+    }
+    expect(checkoutActivationPending({ subscriptionActivation: { status: "waiting_for_mandate" } })).toBe(false);
+    for (const [, answer] of NOT_ANSWERS) expect(checkoutActivationPending(answer)).toBe(false);
   });
 });
 

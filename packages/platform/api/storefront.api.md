@@ -362,6 +362,8 @@ export type ChangedPayloadPolicy = "update_in_place" | "refuse_changed";
  * `closed` is never the class of a purchase that is not payable but may still
  * settle a payment, for example an unpaid order past its link lifetime that
  * has a payment attempt: that answer is `awaiting_authority` or `unknown`.
+ * Only `declined` advances an attempt and only `closed` retires a key, so an
+ * older classifier that never returns either fails safe.
  *
  * The union is open: members may be added in a minor release. The package reads
  * this value and treats a member it does not know as `unknown`.

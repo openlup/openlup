@@ -26,6 +26,7 @@ function isRecord(value: unknown): value is AnswerRecord {
 
 function hasClientAction(answer: AnswerRecord): boolean {
   // A checkout answer carries `clientAction`; a payment-status answer carries `nextAction`.
+  // A present `clientAction` decides alone, so `clientAction: null` beside a `nextAction` is no action.
   const action = answer.clientAction !== undefined ? answer.clientAction : answer.nextAction;
   return isRecord(action) && typeof action.kind === "string" && action.kind !== "none";
 }
@@ -39,6 +40,8 @@ const COMMERCE_CLASSES: { readonly [status in AsyncCheckoutStatus]: (answer: Ans
   processing: () => "awaiting_authority",
   // The payment attempt ended; the order stays payable under a new attempt.
   failed: () => "declined",
+  // An `expired` answer can come with an order that is no longer payable. It
+  // still never closes a key: the server refuses the next attempt instead.
   expired: () => "declined",
 };
 
@@ -62,14 +65,15 @@ const ACTIVATION_SETTLED: readonly string[] = [
 ];
 
 /**
- * Whether a paid answer still waits for its subscription to activate. It reads
+ * Whether a paid answer still waits for its subscription to activate. Only an
+ * answer this module classifies as `settled` can be pending. It reads
  * `subscriptionActivation.status` on a payment-status answer, or
  * `subscription.activationStatus` on a checkout answer. An answer that carries
  * neither field is not pending; an activation state this module does not know
  * is pending.
  */
 export function checkoutActivationPending(answer: unknown): boolean {
-  if (!isRecord(answer)) return false;
+  if (!isRecord(answer) || classifyCheckoutAnswer(answer) !== "settled") return false;
   const status = isRecord(answer.subscriptionActivation) ? answer.subscriptionActivation.status
     : isRecord(answer.subscription) ? answer.subscription.activationStatus : undefined;
   if (status === undefined) return false;
@@ -94,7 +98,9 @@ const STARTER_ATTEMPT_CLASSES: ReadonlyMap<unknown, SubmitOutcomeClass> = new Ma
  * Classifies the neutral starter's action-result envelope. `value.attemptState`
  * is not a field of one starter action: a host binding builds it from the
  * starter's payment inspection. `cancelled` is the only order status that says
- * the purchase is terminal with nothing left to settle. An expired order, and
+ * the purchase is terminal with nothing left to settle: a capture that arrives
+ * after the order was cancelled is held for review and never settles that
+ * order. An expired order, and
  * the refusals that report an expired or not payable checkout, do not say
  * whether a payment under the key can still settle, so they are `unknown`.
  */
