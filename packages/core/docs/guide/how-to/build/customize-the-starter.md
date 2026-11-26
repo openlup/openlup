@@ -10,6 +10,10 @@ Start from the 1.1.0 demo store (`openlup/demo-store` on GitHub) or use
 release-matched starter inputs when available. The starter is separate
 application source that you can customize in your own repository.
 
+The database-login, project-record, and lifecycle settings steps in this
+guide apply to starters extracted from this release or later. For the 1.1.0
+demo store, follow its README.
+
 For the historical **0.43.0 starter recipe** below, use Node 24, npm 11.19.0,
 Git, curl and tar. Start in a directory with no application named `my-store`.
 The extractor refuses a nonempty destination.
@@ -120,15 +124,26 @@ owns their defaults. Stop with Ctrl-C before reusing the port. Use the
 
 ## Database login
 
-Save the existing Compose project name before stopping the application. Follow
-the [adjacent-release starter upgrade](../../upgrade/README.md#starter-upgrade-order)
-and reconcile locally changed Compose or installation files. Run the updated
-`./lifecycle up` with `COMPOSE_PROJECT_NAME` set to the saved name to provision the
-runtime credential with the existing database volume. Verify application health.
-If startup reports a credential-source problem, restore access to the private
-project credential and retry with the same project and volume. Run connected
-settings and the local renewal, care, and checkout recovery jobs through the
-recorded project.
+Before stopping the application, save its existing Compose project name,
+active configuration ID, and listener port. Follow the
+[adjacent-release starter upgrade](../../upgrade/README.md#starter-upgrade-order)
+and reconcile locally changed Compose or installation files. Set `PROJECT`,
+`CONFIGURATION`, and `PORT` to the saved values. From the application directory,
+run the updated lifecycle to provision the runtime credential on the existing
+database volume:
+
+```sh
+: "${PROJECT:?Set PROJECT to the existing Compose project name}"
+: "${CONFIGURATION:?Set CONFIGURATION to the active configuration ID}"
+: "${PORT:?Set PORT to the active listener port}"
+COMPOSE_PROJECT_NAME="$PROJECT" OPENLUP_STARTER_PORT="$PORT" \
+  ./lifecycle up --configuration "$CONFIGURATION"
+```
+
+Verify application health. If startup reports a credential-source problem,
+restore access to the private project credential and rerun the same command.
+Run connected settings and the local renewal, care, and checkout recovery jobs
+through the recorded project.
 
 ### Rotate the runtime credential
 

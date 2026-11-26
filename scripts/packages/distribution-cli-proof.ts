@@ -1545,8 +1545,8 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
     const predecessorImage = checked("predecessor_database_image", run(from, dockerBin,
       ["inspect", "--format", "{{.Config.Image}}", original[0]!]));
     const guide = readFileSync(join(from, "node_modules/@openlup/core/docs/guide/how-to/build/customize-the-starter.md"), "utf8");
-    function recipe(heading: string) {
-      const body = guide.split("### " + heading + "\n")[1]?.match(/```sh\n([^]*?)\n```/u)?.[1];
+    function recipe(heading: string, level = "###") {
+      const body = guide.split(level + " " + heading + "\n")[1]?.match(/```sh\n([^]*?)\n```/u)?.[1];
       if (!body) throw new Error("starter_runtime_documented_recipe_missing");
       return body;
     }
@@ -1581,11 +1581,13 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
     checked("stale_predecessor_lock_and_hba", run(from, dockerBin, ["run", "--rm", "--network", "none",
       "--volume", volume + ":/predecessor:ro", "--entrypoint", "/bin/sh", predecessorImage, "-ec",
       'test -s /predecessor/postmaster.pid && grep -Eq "^host[[:space:]].*[[:space:]]trust$" /predecessor/pg_hba.conf']));
-    const staleFinding = JSON.parse(up(2)).findings?.[0];
-    if (staleFinding?.code !== "starter_runtime_database_lock_held"
-      || !staleFinding.fix.includes("docker ps --filter volume=" + volume)) fail("stale_lock_remedy");
+    const cutover = () => run(from, "/bin/sh", ["-ec", recipe("Database login", "##")], undefined,
+      { ...fresh, OPENLUP_STARTER_PORT: undefined, PROJECT: project, CONFIGURATION: "coffee", PORT: String(port) });
+    const lockedCutover = cutover();
+    if (lockedCutover.status !== 2 || !lockedCutover.stderr.includes("starter_runtime_database_lock_held")
+      || !lockedCutover.stderr.includes("docker ps --filter volume=" + volume)) fail("stale_lock_remedy");
     checked("documented_predecessor_recovery", recover());
-    up();
+    checked("documented_cutover_from_fresh_shell", cutover());
     const recovered = checked("recovery_logs", compose("logs", "--no-color", "database"));
     if (!/database system was interrupted|automatic recovery in progress/u.test(recovered)) fail("predecessor_recovery_missing");
     const initial = readFileSync(source, "utf8").trim(), verifier = () => sql("select rolpassword from pg_authid where rolname = 'starter_runtime'", "postgres", true);
@@ -1594,9 +1596,12 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
     if (live[0] === original[0] || live[1]?.split(" ").at(-1) !== original[1]?.split(" ").at(-1)
       || live[2] !== original[2] || live[3] !== "/etc/postgresql/starter-pg-hba.conf" ||
       JSON.stringify(retained()) !== JSON.stringify(before)) fail("cutover_identity");
-    if (await (await fetch(`http://127.0.0.1:${port}/api/config`)).status !== 200 ||
+    const cutoverResponse = await fetch(`http://127.0.0.1:${port}/api/config`);
+    if (cutoverResponse.status !== 200 ||
+      (await cutoverResponse.json() as { config?: { id?: unknown } }).config?.id !== "coffee" ||
       readFileSync(projectFile, "utf8") !== project + "\n") fail("starter_http_or_project_record");
     mark("occupied same-volume file upgrade");
+    mark("verbatim documented cutover from a fresh shell preserves the custom project, coffee configuration and listener port");
     const committedVerifier = verifier();
     up();
     if (readFileSync(source, "utf8").trim() !== initial || verifier() !== committedVerifier) fail("credential_replay_changed");

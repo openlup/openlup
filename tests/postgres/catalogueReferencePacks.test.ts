@@ -13,6 +13,7 @@ import type { CatalogDraftPayloadV3, CatalogPackInput, CatalogPublicationCommand
 import type { CatalogConformanceReport } from "@openlup/platform/catalog/testing";
 import { ownedStackCleanup } from "../../scripts/owned-stack-cleanup.mjs";
 import { runCommand } from "../../scripts/run-cancellable-process-group.ts";
+import { reservePort } from "../helpers/postgresContainer.js";
 import { hash, transaction } from "./catalogPublicationFixture.js";
 
 type Entry = { pack: CatalogPackInput; drafts: CatalogDraftPayloadV3[] };
@@ -42,13 +43,14 @@ let temporary: string;
 let app: string;
 let childEnv: NodeJS.ProcessEnv;
 let composeUsed = false;
-let bridge: Server | undefined;
+let starterPort: number;
+const bridges: Server[] = [];
 let stackCleanup: ReturnType<typeof ownedStackCleanup> | undefined;
 const composeAbort = new AbortController();
 const pools: Pool[] = [];
-let installation: Promise<{ catalog: Catalog; db: Pool; entries: Map<string, Entry> }> | undefined;
+let installation: ReturnType<typeof installRecipes> | undefined;
 
-beforeAll(() => {
+beforeAll(async () => {
   scratch = realpathSync(mkdtempSync(join(tmpdir(), "openlup-reference-packs-")));
   const fromCheckout = relative(realpathSync("."), scratch);
   expect(isAbsolute(fromCheckout) || fromCheckout.startsWith(`..${sep}`)).toBe(true);
@@ -56,8 +58,10 @@ beforeAll(() => {
   // The trusted catalogue CLI requires its projection directory outside any application tree.
   temporary = mkdtempSync(join(tmpdir(), "openlup-reference-packs-"));
   const project = `reference-packs-${randomUUID()}`;
+  starterPort = await reservePort();
+  expect(starterPort).not.toBe(4319);
   childEnv = { ...processEnvironment, TMPDIR: temporary, TMP: temporary, TEMP: temporary,
-    OPENLUP_STARTER_PORT: "4319", COMPOSE_PROJECT_NAME: project, COMPOSE_FILE: join(app, "compose.yaml") };
+    OPENLUP_STARTER_PORT: String(starterPort), COMPOSE_PROJECT_NAME: project, COMPOSE_FILE: join(app, "compose.yaml") };
   const signals = (["SIGINT", "SIGTERM"] as const).map(signal => ({ signal, listeners: process.listenerCount(signal) }));
   stackCleanup = ownedStackCleanup(options => {
     composeAbort.abort();
@@ -101,7 +105,7 @@ function expectSatisfied(output: string, ignoreStarter = false) {
 afterAll(async () => {
   try {
     await Promise.all(pools.map(pool => pool.end()));
-    if (bridge) await new Promise<void>((done, fail) => bridge!.close(error => error ? fail(error) : done()));
+    await Promise.all(bridges.map(bridge => new Promise<void>((done, fail) => bridge.close(error => error ? fail(error) : done()))));
   } finally {
     if (stackCleanup) await stackCleanup.finish();
     else removeScratch();
@@ -182,15 +186,14 @@ async function assertInstalledCli() {
   accessSync(executable, constants.X_OK);
 }
 
-// Only the installer image has the scratch database's Unix socket. Relay a
-// test connection over Compose stdio without publishing a database port.
-async function scratchDatabase() {
-  const relay = `const socket = require("node:net").connect("/var/run/postgresql/.s.PGSQL.5432");
+async function databaseRelay(host: string, dockerArgs: string[], target: { path: string } | { host: string; port: number }) {
+  mkdirSync(host, { mode: 0o700 });
+  const relay = `const socket = require("node:net").connect(JSON.parse(process.argv[1]));
     process.stdin.pipe(socket); socket.pipe(process.stdout);
     socket.on("end", () => process.stdin.destroy());`;
   const server = createServer(socket => {
-    const child = spawn("docker", ["compose", "run", "--rm", "--no-deps", "-T", "installation",
-      "node", "-e", relay], { cwd: app, env: childEnv, signal: composeAbort.signal, stdio: ["pipe", "pipe", "inherit"] });
+    const child = spawn("docker", [...dockerArgs, "-e", relay, JSON.stringify(target)],
+      { cwd: app, env: childEnv, signal: composeAbort.signal, stdio: ["pipe", "pipe", "inherit"] });
     socket.pipe(child.stdin);
     child.stdout.pipe(socket);
     child.once("error", error => socket.destroy(error));
@@ -198,17 +201,45 @@ async function scratchDatabase() {
     child.stdin.on("error", () => socket.destroy());
     socket.once("close", () => child.stdin.end());
   });
-  bridge = server;
   await new Promise<void>((done, fail) => {
     server.once("error", fail);
-    server.listen(join(temporary, ".s.PGSQL.5432"), done);
+    server.listen(join(host, ".s.PGSQL.5432"), done);
   });
+  bridges.push(server);
+  return host;
 }
 
-function scratchPool(user: string) {
-  const pool = new Pool({ host: temporary, port: 5432, database: "neutral_store",
-    user, max: 1, idleTimeoutMillis: 0, connectionTimeoutMillis: 30_000 });
+type ScratchRole = "starter_install" | "openlup_catalog_publication" | "starter_runtime";
+
+function applicationContainer() {
+  const container = executable("docker", ["compose", "--project-name", childEnv.COMPOSE_PROJECT_NAME!,
+    "ps", "-q", "application"], app).trim();
+  expect(container).toMatch(/^[a-f0-9]{64}$/u);
+  return container;
+}
+
+async function installerSocket() {
+  const image = executable("docker", ["inspect", "--format", "{{.Image}}", applicationContainer()], app).trim();
+  // This client reaches the real PostgreSQL socket and needs no database port.
+  return databaseRelay(join(temporary, "db"), ["run", "--rm", "-i", "--network", "none",
+    "--mount", `type=volume,source=${childEnv.COMPOSE_PROJECT_NAME}_installation-socket,target=/var/run/postgresql,readonly`,
+    "--entrypoint", "node", image], { path: "/var/run/postgresql/.s.PGSQL.5432" });
+}
+
+function mountedPassword(container: string, path: string) {
+  // Transfer the credential over a private descriptor directly into the client.
+  const read = spawnSync("docker", ["exec", container, "cat", path],
+    { cwd: app, env: childEnv, stdio: ["ignore", "pipe", "ignore"], encoding: "utf8", timeout: 30_000 });
+  if (read.status !== 0 || !/^[0-9a-f]{64}\n?$/u.test(read.stdout)) throw new Error("Missing mounted database credential");
+  return read.stdout.trimEnd();
+}
+
+async function scratchPool(user: ScratchRole, host: string, password = () => "") {
+  const pool = new Pool({ host, port: 5432, database: "neutral_store",
+    user, password, max: 1, idleTimeoutMillis: 0, connectionTimeoutMillis: 30_000 });
   pools.push(pool);
+  const result = await pool.query("SELECT session_user AS role, inet_client_addr() IS NULL AS socket");
+  expect(result.rows).toEqual([{ role: user, socket: user === "starter_install" }]);
   return pool;
 }
 
@@ -273,11 +304,8 @@ async function installRecipes() {
     const started = await runCommand({ program: "sh", args: ["-ec", up], cwd: app, env: childEnv, capture: true,
       signal: AbortSignal.any([composeAbort.signal, AbortSignal.timeout(240_000)]) });
     expect(started.code, `${up}\n${started.stdout}`).toBe(0);
-    expect((await recipe(health)).trim()).toBe("200");
-    if (!db) {
-      await scratchDatabase();
-      db = scratchPool("starter_install");
-    }
+    expect((await recipe(health.replace("127.0.0.1:4319", `127.0.0.1:${starterPort}`))).trim()).toBe("200");
+    db ??= await scratchPool("starter_install", await installerSocket());
     const current = await installedState(db);
     if (previous) {
       for (const table of ["receipts", "types", "taxes"] as const) {
@@ -366,7 +394,11 @@ it("reference_pack_native_refusals", async () => {
   const rules = readFileSync(join(app, "owned/catalogue-rules.cjs"));
   const registry = catalog.createCatalogProductTypeRegistry([...entries.values()].flatMap(({ pack }) =>
     catalog.withCatalogPublicationRules(pack, () => rules).types));
-  const publicationDb = scratchPool("openlup_catalog_publication");
+  // Resolve the current application after the last pack install can recreate it.
+  const container = applicationContainer();
+  const tcp = await databaseRelay(join(temporary, "tcp"), ["exec", "-i", container, "node"], { host: "database", port: 5432 });
+  const publicationDb = await scratchPool("openlup_catalog_publication", tcp,
+    () => mountedPassword(container, "/application/.context/catalogue-builds/.publication-password"));
   const publisher = catalog.createPostgresCatalogPublicationCommands({
     registry,
     authorizeHuman: async (userId: string) => ({ ok: true, userId, role: "admin", isMachineActor: false }),
@@ -374,7 +406,9 @@ it("reference_pack_native_refusals", async () => {
   });
   const who = await publisher.authorize(actor);
   if (!who) throw new Error("Scratch publisher authorization refused");
-  const store = catalog.createPostgresCatalogDraftStoreV3(scratchPool("starter_runtime"));
+  const runtime = await scratchPool("starter_runtime", tcp,
+    () => mountedPassword(container, "/run/secrets/starter_runtime_password"));
+  const store = catalog.createPostgresCatalogDraftStoreV3(runtime);
   async function saveAndPrepare(draft: ReturnType<typeof publicationDraft>, revision: number) {
     const canonicalCommand = catalog.canonicalCatalogDraftJson({ schemaVersion: 3,
       action: revision === 1 ? "create" : "revise", draftId: draft.draftId,
