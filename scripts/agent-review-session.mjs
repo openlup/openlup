@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { createHash, randomUUID } from 'node:crypto';
 import { env as processEnvironment } from 'node:process';
-import { digest, explainSession, protectedCoveragePath, carryOver, cumulativeRepairPrefix, fullReviewReports, deferFinding, demand, integrationReviewContext, prepareCandidate, receiptBody, receiptSummary, recordReport, verdict } from './agent-review-decide.mjs';
+import { computeRegroupAdvisory, digest, explainSession, protectedCoveragePath, carryOver, cumulativeRepairPrefix, fullReviewReports, deferFinding, demand, integrationReviewContext, prepareCandidate, receiptBody, receiptSummary, recordRegroup, recordReport, verdict } from './agent-review-decide.mjs';
 import { REGISTRY_PATHS, RULE_SNAPSHOT_REGISTRY_PATHS, registryUnion } from './agent-review-registry.mjs';
 import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryOnlyCurrent, migrationRegistryUnion, reslotRegistryJson } from './agent-review-derived.mjs';
 import { MATURITY_REFERENCE, generatedCarrier, ownerOutputCarrier, runDerivedOutputGenerators, runLandingGenerators, withPredictedTree } from './agent-review-generators.mjs';
@@ -131,6 +131,408 @@ export async function replaceTreeBlobs(cwd, tree, replacements, removals = new S
   return objectInput(cwd, ['mktree', '-z'], output.join(''));
 }
 
+const DO_DDL_KEYWORDS = new Set(['CREATE', 'ALTER', 'DROP', 'TRUNCATE', 'GRANT', 'REVOKE']);
+const wordAt = (tokens, index) => tokens[index]?.kind === 'word' ? tokens[index].value.toUpperCase() : '';
+function skipWords(tokens, pos, ...words) {
+  for (let i = 0; i < words.length; i += 1) if (wordAt(tokens, pos + i) !== words[i]) return pos;
+  return pos + words.length;
+}
+function tokenizeSql(sql) {
+  const tokens = [];
+  if (typeof sql !== 'string') return { tokens, opaque: true };
+  for (let index = 0; index < sql.length;) {
+    const ch = sql[index];
+    if (ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r' || ch === '\f' || ch === '\v') { index += 1; continue; }
+    if (sql.charCodeAt(index) > 0x7f) return { tokens, opaque: true };
+    if (sql.startsWith('--', index)) {
+      while (index < sql.length && sql[index] !== '\n' && sql[index] !== '\r') index += 1;
+      continue;
+    }
+    if (sql.startsWith('/*', index)) {
+      let depth = 1; index += 2;
+      while (index < sql.length && depth > 0) {
+        if (sql.startsWith('/*', index)) { depth += 1; index += 2; }
+        else if (sql.startsWith('*/', index)) { depth -= 1; index += 2; }
+        else index += 1;
+      }
+      if (depth > 0) return { tokens, opaque: true };
+      continue;
+    }
+    if ((ch === 'U' || ch === 'u') && sql[index + 1] === '&' && (sql[index + 2] === "'" || sql[index + 2] === '"')) {
+      return { tokens, opaque: true };
+    }
+    if ((ch === 'E' || ch === 'e') && sql[index + 1] === "'") {
+      index += 2; let value = ''; let closed = false;
+      while (index < sql.length) {
+        const cur = sql[index];
+        if (cur === '\\') {
+          if (index + 1 >= sql.length) break;
+          const next = sql[index + 1];
+          const escaped = { n: '\n', r: '\r', t: '\t', b: '\b', f: '\f' }[next] ?? next;
+          value += escaped; index += 2; continue;
+        }
+        if (cur === "'") {
+          if (sql[index + 1] === "'") { value += "'"; index += 2; continue; }
+          index += 1; closed = true; break;
+        }
+        value += cur; index += 1;
+      }
+      if (!closed) return { tokens, opaque: true };
+      tokens.push({ kind: 'string', value });
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      const kind = ch === "'" ? 'string' : 'quoted';
+      index += 1; let value = ''; let closed = false;
+      while (index < sql.length) {
+        const cur = sql[index];
+        if (cur === ch) {
+          if (sql[index + 1] === ch) { value += ch; index += 2; continue; }
+          index += 1; closed = true; break;
+        }
+        value += cur; index += 1;
+      }
+      if (!closed) return { tokens, opaque: true };
+      tokens.push({ kind, value });
+      continue;
+    }
+    if (ch === '$') {
+      const tag = /^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/u.exec(sql.slice(index))?.[0];
+      if (tag) {
+        const end = sql.indexOf(tag, index + tag.length);
+        if (end < 0) return { tokens, opaque: true };
+        tokens.push({ kind: 'dollar', value: sql.slice(index + tag.length, end) });
+        index = end + tag.length;
+        continue;
+      }
+    }
+    const word = /^[A-Za-z_][A-Za-z0-9_$]*/u.exec(sql.slice(index))?.[0];
+    if (word) { tokens.push({ kind: 'word', value: word }); index += word.length; continue; }
+    const num = /^[0-9]+(?:\.[0-9]+)?/u.exec(sql.slice(index))?.[0];
+    if (num) { tokens.push({ kind: 'number', value: num }); index += num.length; continue; }
+    tokens.push({ kind: 'symbol', value: ch }); index += 1;
+  }
+  return { tokens, opaque: false };
+}
+function splitSqlStatements(tokens) {
+  const statements = [];
+  let current = [];
+  let depth = 0;
+  for (const token of tokens) {
+    if (token.kind === 'symbol' && token.value === '(') depth += 1;
+    else if (token.kind === 'symbol' && token.value === ')') {
+      depth -= 1;
+      if (depth < 0) return { statements, opaque: true };
+    } else if (token.kind === 'symbol' && token.value === ';' && depth === 0) {
+      if (current.length) { statements.push(current); current = []; }
+      continue;
+    }
+    current.push(token);
+  }
+  if (depth !== 0) return { statements, opaque: true };
+  if (current.length) statements.push(current);
+  return { statements, opaque: false };
+}
+function normalizeSqlIdent(token, result) {
+  if (token?.kind === 'word') return token.value.toLowerCase();
+  if (token?.kind === 'quoted') {
+    if (token.value.length > 0 && /^[\x20-\x7e]+$/u.test(token.value) && !token.value.includes('.')) return token.value;
+    result.opaque = true;
+    return null;
+  }
+  return null;
+}
+function readQualifiedSqlName(tokens, pos, result, defaultSchema = 'public') {
+  const first = normalizeSqlIdent(tokens[pos], result);
+  if (!first) return null;
+  if (tokens[pos + 1]?.kind === 'symbol' && tokens[pos + 1].value === '.') {
+    const second = normalizeSqlIdent(tokens[pos + 2], result);
+    if (!second) return null;
+    if (tokens[pos + 3]?.kind === 'symbol' && tokens[pos + 3].value === '.') {
+      result.opaque = true;
+      return null;
+    }
+    return { qual: `${first}.${second}`, schema: first, name: second, nextPos: pos + 3 };
+  }
+  return { qual: `${defaultSchema}.${first}`, schema: defaultSchema, name: first, nextPos: pos + 1 };
+}
+function findTopLevelWord(tokens, start, target) {
+  let depth = 0;
+  for (let i = start; i < tokens.length; i += 1) {
+    const tok = tokens[i];
+    if (tok.kind === 'symbol' && tok.value === '(') depth += 1;
+    else if (tok.kind === 'symbol' && tok.value === ')') depth -= 1;
+    else if (depth === 0 && tok.kind === 'word' && tok.value.toUpperCase() === target) return i;
+  }
+  return -1;
+}
+function skipParenGroup(tokens, pos) {
+  if (tokens[pos]?.kind !== 'symbol' || tokens[pos].value !== '(') return pos;
+  let depth = 1; pos += 1;
+  while (pos < tokens.length && depth > 0) {
+    if (tokens[pos].kind === 'symbol' && tokens[pos].value === '(') depth += 1;
+    else if (tokens[pos].kind === 'symbol' && tokens[pos].value === ')') depth -= 1;
+    pos += 1;
+  }
+  return pos;
+}
+function mergeSqlObjects(target, source) {
+  for (const item of source.objects) target.objects.add(item);
+  for (const item of source.tablesMutated) target.tablesMutated.add(item);
+  for (const item of source.tableTargets) target.tableTargets.add(item);
+  target.opaque ||= source.opaque;
+}
+function extractDoBlock(stmt, result) {
+  let pos = 1;
+  if (wordAt(stmt, pos) === 'LANGUAGE' && (stmt[pos + 1]?.kind === 'word' || stmt[pos + 1]?.kind === 'quoted')) pos += 2;
+  const body = stmt[pos];
+  if (!body || (body.kind !== 'dollar' && body.kind !== 'string')) { result.opaque = true; return; }
+  pos += 1;
+  if (wordAt(stmt, pos) === 'LANGUAGE' && (stmt[pos + 1]?.kind === 'word' || stmt[pos + 1]?.kind === 'quoted')) pos += 2;
+  if (pos !== stmt.length) { result.opaque = true; return; }
+  const inner = tokenizeSql(body.value);
+  if (inner.opaque) { result.opaque = true; return; }
+  for (let i = 0; i < inner.tokens.length; i += 1) {
+    const tok = inner.tokens[i];
+    if (tok.kind !== 'word') continue;
+    const upper = tok.value.toUpperCase();
+    if (upper === 'EXECUTE') {
+      const arg = inner.tokens[i + 1];
+      const next = inner.tokens[i + 2];
+      const staticFollow = !next || (next.kind === 'symbol' && next.value === ';') ||
+        (next.kind === 'word' && ['INTO', 'USING'].includes(next.value.toUpperCase()));
+      if ((arg?.kind === 'string' || arg?.kind === 'dollar') && staticFollow) {
+        mergeSqlObjects(result, extractSqlObjects(arg.value));
+        i += 1;
+      } else {
+        result.opaque = true;
+      }
+      continue;
+    }
+    if (DO_DDL_KEYWORDS.has(upper)) result.opaque = true;
+  }
+}
+function addTableTargetObject(stmt, pos, prefix, result, { rename = false, allowOnly = false } = {}) {
+  const name = normalizeSqlIdent(stmt[pos], result);
+  const onIdx = findTopLevelWord(stmt, pos + 1, 'ON');
+  if (!name || onIdx < 0) { result.opaque = true; return; }
+  let tblPos = onIdx + 1;
+  if (allowOnly && wordAt(stmt, tblPos) === 'ONLY') tblPos += 1;
+  const tbl = readQualifiedSqlName(stmt, tblPos, result);
+  if (!tbl) { result.opaque = true; return; }
+  result.objects.add(`${prefix}:${tbl.qual}.${name}`);
+  result.tableTargets.add(tbl.qual);
+  if (rename && wordAt(stmt, tbl.nextPos) === 'RENAME' && wordAt(stmt, tbl.nextPos + 1) === 'TO') {
+    const nextName = normalizeSqlIdent(stmt[tbl.nextPos + 2], result);
+    if (nextName) result.objects.add(`${prefix}:${tbl.qual}.${nextName}`);
+  }
+}
+function extractCreateDdl(stmt, result) {
+  let pos = skipWords(stmt, 1, 'OR', 'REPLACE');
+  if (['FUNCTION', 'PROCEDURE'].includes(wordAt(stmt, pos))) {
+    pos = skipWords(stmt, pos + 1, 'IF', 'NOT', 'EXISTS');
+    const fn = readQualifiedSqlName(stmt, pos, result);
+    if (!fn) { result.opaque = true; return; }
+    result.objects.add(`function:${fn.qual}`);
+    return;
+  }
+  const trigPos = wordAt(stmt, pos) === 'CONSTRAINT' ? pos + 1 : pos;
+  if (wordAt(stmt, trigPos) === 'TRIGGER') { addTableTargetObject(stmt, trigPos + 1, 'trigger', result); return; }
+  if (wordAt(stmt, pos) === 'POLICY') { addTableTargetObject(stmt, pos + 1, 'policy', result); return; }
+  if (wordAt(stmt, pos) === 'RULE') {
+    const ruleName = normalizeSqlIdent(stmt[pos + 1], result);
+    const toIdx = wordAt(stmt, pos + 2) === 'AS' && wordAt(stmt, pos + 3) === 'ON' && wordAt(stmt, pos + 5) === 'TO'
+      ? pos + 5 : findTopLevelWord(stmt, pos + 2, 'TO');
+    const tbl = ruleName && toIdx >= 0 ? readQualifiedSqlName(stmt, toIdx + 1, result) : null;
+    if (!tbl) { result.opaque = true; return; }
+    result.objects.add(`rule:${tbl.qual}.${ruleName}`);
+    result.tableTargets.add(tbl.qual);
+    return;
+  }
+  let viewPos = pos;
+  if (['TEMP', 'TEMPORARY'].includes(wordAt(stmt, viewPos))) viewPos += 1;
+  if (wordAt(stmt, viewPos) === 'RECURSIVE') viewPos += 1;
+  if (wordAt(stmt, viewPos) === 'MATERIALIZED') viewPos += 1;
+  if (wordAt(stmt, viewPos) === 'VIEW') {
+    viewPos = skipWords(stmt, viewPos + 1, 'IF', 'NOT', 'EXISTS');
+    const view = readQualifiedSqlName(stmt, viewPos, result);
+    if (!view) { result.opaque = true; return; }
+    result.objects.add(`view:${view.qual}`);
+    return;
+  }
+  let tblPos = pos;
+  if (['GLOBAL', 'LOCAL'].includes(wordAt(stmt, tblPos))) tblPos += 1;
+  if (['TEMP', 'TEMPORARY', 'UNLOGGED'].includes(wordAt(stmt, tblPos))) tblPos += 1;
+  if (wordAt(stmt, tblPos) === 'TABLE') {
+    tblPos = skipWords(stmt, tblPos + 1, 'IF', 'NOT', 'EXISTS');
+    const tbl = readQualifiedSqlName(stmt, tblPos, result);
+    if (!tbl) { result.opaque = true; return; }
+    result.objects.add(`table:${tbl.qual}`);
+    result.tablesMutated.add(tbl.qual);
+    if (wordAt(stmt, tbl.nextPos) === 'PARTITION' && wordAt(stmt, tbl.nextPos + 1) === 'OF') {
+      const parent = readQualifiedSqlName(stmt, tbl.nextPos + 2, result);
+      if (parent) result.tableTargets.add(parent.qual);
+    }
+    return;
+  }
+  let idxPos = wordAt(stmt, pos) === 'UNIQUE' ? pos + 1 : pos;
+  if (wordAt(stmt, idxPos) === 'INDEX') {
+    idxPos += 1;
+    if (wordAt(stmt, idxPos) === 'CONCURRENTLY') idxPos += 1;
+    idxPos = skipWords(stmt, idxPos, 'IF', 'NOT', 'EXISTS');
+    if (wordAt(stmt, idxPos) === 'ON') {
+      let onTbl = idxPos + 1;
+      if (wordAt(stmt, onTbl) === 'ONLY') onTbl += 1;
+      const tbl = readQualifiedSqlName(stmt, onTbl, result);
+      if (!tbl) { result.opaque = true; return; }
+      result.tableTargets.add(tbl.qual);
+      return;
+    }
+    const idxName = normalizeSqlIdent(stmt[idxPos], result);
+    if (!idxName || wordAt(stmt, idxPos + 1) !== 'ON') { result.opaque = true; return; }
+    let onTbl = idxPos + 2;
+    if (wordAt(stmt, onTbl) === 'ONLY') onTbl += 1;
+    const tbl = readQualifiedSqlName(stmt, onTbl, result);
+    if (!tbl) { result.opaque = true; return; }
+    result.objects.add(`index:${tbl.schema}.${idxName}`);
+    result.tableTargets.add(tbl.qual);
+    return;
+  }
+  if (wordAt(stmt, pos) === 'TYPE' || wordAt(stmt, pos) === 'DOMAIN') {
+    const prefix = wordAt(stmt, pos).toLowerCase();
+    const obj = readQualifiedSqlName(stmt, skipWords(stmt, pos + 1, 'IF', 'NOT', 'EXISTS'), result);
+    if (!obj) { result.opaque = true; return; }
+    result.objects.add(`${prefix}:${obj.qual}`);
+    return;
+  }
+  let seqPos = ['TEMP', 'TEMPORARY', 'UNLOGGED'].includes(wordAt(stmt, pos)) ? pos + 1 : pos;
+  if (wordAt(stmt, seqPos) === 'SEQUENCE') {
+    const seq = readQualifiedSqlName(stmt, skipWords(stmt, seqPos + 1, 'IF', 'NOT', 'EXISTS'), result);
+    if (!seq) { result.opaque = true; return; }
+    result.objects.add(`sequence:${seq.qual}`);
+    return;
+  }
+  if (wordAt(stmt, pos) === 'SCHEMA') {
+    let schPos = skipWords(stmt, pos + 1, 'IF', 'NOT', 'EXISTS');
+    if (wordAt(stmt, schPos) === 'AUTHORIZATION') schPos += 1;
+    const sch = normalizeSqlIdent(stmt[schPos], result);
+    if (!sch) { result.opaque = true; return; }
+    result.objects.add(`schema:${sch}`);
+  }
+}
+function extractAlterDdl(stmt, result) {
+  let pos = 1;
+  if (wordAt(stmt, pos) === 'MATERIALIZED') pos += 1;
+  const kind = wordAt(stmt, pos);
+  if (kind === 'TRIGGER' || kind === 'POLICY' || kind === 'RULE') {
+    addTableTargetObject(stmt, pos + 1, kind.toLowerCase(), result, { rename: true, allowOnly: kind === 'TRIGGER' });
+    return;
+  }
+  if (kind === 'SCHEMA') {
+    const sch = normalizeSqlIdent(stmt[pos + 1], result);
+    if (!sch) { result.opaque = true; return; }
+    result.objects.add(`schema:${sch}`);
+    if (wordAt(stmt, pos + 2) === 'RENAME' && wordAt(stmt, pos + 3) === 'TO') {
+      const nextSch = normalizeSqlIdent(stmt[pos + 4], result);
+      if (nextSch) result.objects.add(`schema:${nextSch}`);
+    }
+    return;
+  }
+  const prefixes = { FUNCTION: 'function', PROCEDURE: 'function', VIEW: 'view', TABLE: 'table', INDEX: 'index', TYPE: 'type', DOMAIN: 'domain', SEQUENCE: 'sequence' };
+  const prefix = prefixes[kind];
+  if (!prefix) return;
+  pos = skipWords(stmt, pos + 1, 'IF', 'EXISTS');
+  if (kind === 'TABLE' && wordAt(stmt, pos) === 'ONLY') pos += 1;
+  const obj = readQualifiedSqlName(stmt, pos, result);
+  if (!obj) { result.opaque = true; return; }
+  result.objects.add(`${prefix}:${obj.qual}`);
+  if (kind === 'TABLE') result.tablesMutated.add(obj.qual);
+  if (wordAt(stmt, obj.nextPos) === 'RENAME' && wordAt(stmt, obj.nextPos + 1) === 'TO') {
+    const nextName = normalizeSqlIdent(stmt[obj.nextPos + 2], result);
+    if (nextName) {
+      const renamed = `${obj.schema}.${nextName}`;
+      result.objects.add(`${prefix}:${renamed}`);
+      if (kind === 'TABLE') result.tablesMutated.add(renamed);
+    }
+  }
+}
+function extractDropDdl(stmt, result) {
+  let pos = 1;
+  if (wordAt(stmt, pos) === 'MATERIALIZED') pos += 1;
+  const kind = wordAt(stmt, pos);
+  if (kind === 'TRIGGER' || kind === 'POLICY' || kind === 'RULE') {
+    addTableTargetObject(stmt, skipWords(stmt, pos + 1, 'IF', 'EXISTS'), kind.toLowerCase(), result);
+    return;
+  }
+  if (kind === 'SCHEMA') {
+    pos = skipWords(stmt, pos + 1, 'IF', 'EXISTS');
+    while (pos < stmt.length) {
+      const sch = normalizeSqlIdent(stmt[pos], result);
+      if (!sch) { result.opaque = true; return; }
+      result.objects.add(`schema:${sch}`);
+      pos += 1;
+      if (stmt[pos]?.kind === 'symbol' && stmt[pos].value === ',') { pos += 1; continue; }
+      break;
+    }
+    return;
+  }
+  const prefixes = { FUNCTION: 'function', PROCEDURE: 'function', VIEW: 'view', TABLE: 'table', INDEX: 'index', TYPE: 'type', DOMAIN: 'domain', SEQUENCE: 'sequence' };
+  const prefix = prefixes[kind];
+  if (!prefix) return;
+  pos += 1;
+  if (kind === 'INDEX' && wordAt(stmt, pos) === 'CONCURRENTLY') pos += 1;
+  pos = skipWords(stmt, pos, 'IF', 'EXISTS');
+  while (pos < stmt.length) {
+    const obj = readQualifiedSqlName(stmt, pos, result);
+    if (!obj) { result.opaque = true; return; }
+    result.objects.add(`${prefix}:${obj.qual}`);
+    if (kind === 'TABLE') result.tablesMutated.add(obj.qual);
+    pos = obj.nextPos;
+    if (prefix === 'function' && stmt[pos]?.kind === 'symbol' && stmt[pos].value === '(') pos = skipParenGroup(stmt, pos);
+    if (stmt[pos]?.kind === 'symbol' && stmt[pos].value === ',') { pos += 1; continue; }
+    break;
+  }
+}
+export function extractSqlObjects(sql) {
+  const result = { objects: new Set(), tablesMutated: new Set(), tableTargets: new Set(), opaque: false };
+  const tokenized = tokenizeSql(sql);
+  if (tokenized.opaque) result.opaque = true;
+  const { statements, opaque } = splitSqlStatements(tokenized.tokens);
+  if (opaque) result.opaque = true;
+  for (const stmt of statements) {
+    const head = wordAt(stmt, 0);
+    if (head === 'DO') extractDoBlock(stmt, result);
+    else if (head === 'CREATE') extractCreateDdl(stmt, result);
+    else if (head === 'ALTER') extractAlterDdl(stmt, result);
+    else if (head === 'DROP') extractDropDdl(stmt, result);
+    else if (head === 'TRUNCATE') {
+      let pos = wordAt(stmt, 1) === 'TABLE' ? 2 : 1;
+      while (pos < stmt.length) {
+        if (wordAt(stmt, pos) === 'ONLY') pos += 1;
+        const tbl = readQualifiedSqlName(stmt, pos, result);
+        if (!tbl) { result.opaque = true; break; }
+        result.objects.add(`table:${tbl.qual}`);
+        result.tablesMutated.add(tbl.qual);
+        pos = tbl.nextPos;
+        if (stmt[pos]?.kind === 'symbol' && stmt[pos].value === ',') { pos += 1; continue; }
+        break;
+      }
+    }
+  }
+  return result;
+}
+function setsIntersect(left, right) {
+  for (const item of left) if (right.has(item)) return true;
+  return false;
+}
+function sqlObjectsOverlap(moved, reslotted) {
+  if (moved.opaque || reslotted.opaque) return true;
+  return setsIntersect(moved.objects, reslotted.objects) ||
+    setsIntersect(moved.tablesMutated, reslotted.tablesMutated) ||
+    setsIntersect(moved.tablesMutated, reslotted.tableTargets) ||
+    setsIntersect(reslotted.tablesMutated, moved.tableTargets);
+}
+
 const PORTABLE_FORWARD_PATH = /^db\/platform\/migrations\/(\d{14})_([a-z][a-z0-9_]*)\.sql$/u;
 async function blobOid(cwd, revision, path) {
   const line = (await git(cwd, 'ls-tree', revision, '--', path)).trim();
@@ -142,20 +544,32 @@ async function pathExists(cwd, revision, path) {
 }
 
 async function detectByteIdenticalReslot(cwd, previous, current, prediction) {
+  const empty = { changes: [], addBlobs: new Map(), removePaths: new Set(), overlapPaths: new Set() };
   const prAdded = (await git(cwd, 'diff', '--name-only', '--diff-filter=A', '--no-renames', '-z', previous.base, previous.head))
     .split('\0').filter(path => PORTABLE_FORWARD_PATH.test(path)).sort();
-  if (!prAdded.length) return { changes: [], addBlobs: new Map(), removePaths: new Set() };
+  if (!prAdded.length) return empty;
   const missing = [];
   for (const oldPath of prAdded) {
     if (!(await pathExists(cwd, current.tree, oldPath))) missing.push(oldPath);
   }
-  if (!missing.length) return { changes: [], addBlobs: new Map(), removePaths: new Set() };
+  if (!missing.length) return empty;
   const predAdded = (await git(cwd, 'diff', '--name-only', '--diff-filter=A', '--no-renames', '-z', prediction, current.tree))
     .split('\0').filter(path => PORTABLE_FORWARD_PATH.test(path));
   demand(predAdded.length === missing.length, 'reslot count differs');
   const mainPaths = (await git(cwd, 'ls-tree', '-r', '--name-only', '-z', current.base, '--', ...MIGRATION_RAILS))
     .split('\0').filter(Boolean);
   const maxMainSlot = mainPaths.map(p => migrationIdentity(p)?.version ?? '').filter(Boolean).sort().at(-1) ?? '00000000000000';
+  const movedSqlPaths = (await git(cwd, 'diff', '--name-only', '--no-renames', '-z', previous.base, current.base, '--', ...MIGRATION_RAILS))
+    .split('\0').filter(path => path.endsWith('.sql'));
+  const movedObjects = { objects: new Set(), tablesMutated: new Set(), tableTargets: new Set(), opaque: false };
+  for (const movedPath of movedSqlPaths) {
+    const curOid = await blobOid(cwd, current.base, movedPath);
+    const prevOid = await blobOid(cwd, previous.base, movedPath);
+    if ((await pathExists(cwd, current.base, movedPath)) && !curOid) movedObjects.opaque = true;
+    if ((await pathExists(cwd, previous.base, movedPath)) && !prevOid) movedObjects.opaque = true;
+    if (curOid) mergeSqlObjects(movedObjects, extractSqlObjects(await git(cwd, 'show', `${current.base}:${movedPath}`)));
+    if (prevOid && prevOid !== curOid) mergeSqlObjects(movedObjects, extractSqlObjects(await git(cwd, 'show', `${previous.base}:${movedPath}`)));
+  }
   const slugOf = p => PORTABLE_FORWARD_PATH.exec(p)?.[2];
   const bySlug = new Map();
   for (const p of [...predAdded].sort()) {
@@ -168,6 +582,7 @@ async function detectByteIdenticalReslot(cwd, previous, current, prediction) {
   const reslotMap = new Map();
   const addBlobs = new Map();
   const removePaths = new Set();
+  const overlapPaths = new Set();
   const sortedMissing = [...missing].sort();
   let lastNewSlot = maxMainSlot;
   for (const oldPath of sortedMissing) {
@@ -184,10 +599,13 @@ async function detectByteIdenticalReslot(cwd, previous, current, prediction) {
     demand(oldOid && newOid && oldOid === newOid, 'reslot SQL bytes differ');
     demand(!(await pathExists(cwd, current.base, oldPath)), 'reslot old path exists on main');
     demand(!(await pathExists(cwd, current.base, target)), 'reslot target exists on main');
+    const reslotObjects = extractSqlObjects(await git(cwd, 'show', `${current.tree}:${target}`));
+    const overlaps = sqlObjectsOverlap(movedObjects, reslotObjects);
     changes.push({ path: oldPath, target });
     reslotMap.set(oldPath, target);
     removePaths.add(oldPath);
     addBlobs.set(target, newOid);
+    if (overlaps) overlapPaths.add(target);
     const oldMirror = `packages/platform/sql/${oldPath.split('/').at(-1)}`;
     const newMirror = `packages/platform/sql/${target.split('/').at(-1)}`;
     const oldMirrorOid = await blobOid(cwd, previous.head, oldMirror);
@@ -199,6 +617,7 @@ async function detectByteIdenticalReslot(cwd, previous, current, prediction) {
       demand(newMirrorOid === newOid, 'reslot SQL mirror bytes differ');
       removePaths.add(oldMirror);
       addBlobs.set(newMirror, newMirrorOid);
+      if (overlaps) overlapPaths.add(newMirror);
     }
   }
   // Preserve reviewed relative execution order across ALL PR forwards (kept + reslotted).
@@ -206,7 +625,7 @@ async function detectByteIdenticalReslot(cwd, previous, current, prediction) {
   for (let i = 1; i < finalVersions.length; i += 1) {
     demand(finalVersions[i] > finalVersions[i - 1], 'reslot inverted reviewed PR migration order');
   }
-  return { changes, addBlobs, removePaths };
+  return { changes, addBlobs, removePaths, overlapPaths };
 }
 export async function proveReviewIntegration(cwd, previous, current, portable = false, { legacy = false, resolvedOwnerOutputs = [] } = {}) {
   const parents = await integrationParents(cwd, current.head);
@@ -244,6 +663,7 @@ export async function proveReviewIntegration(cwd, previous, current, portable = 
   const exactParents = (await git(cwd, 'show', '-s', '--format=%P', current.head)).trim().split(' ');
   const onMain = await ancestor(git, cwd, current.base, 'origin/main');
   let derived = false;
+  let reslotOverlapPaths = new Set();
   const provenDerived = new Set();
   // Preserve historical receipt identities; derived proof is selected only by
   // trusted main after this machinery lands. Errors retain the old resolution.
@@ -317,19 +737,26 @@ export async function proveReviewIntegration(cwd, previous, current, portable = 
           demand(output === await read(current.tree, path), 'generated bytes differ');
           derivedBlobs.set(path, await objectInput(cwd, ['hash-object', '-w', '--stdin'], output));
         }
+      }
+      // Exclude semantically overlapping byte-identical re-slotted SQL paths only after
+      // generators verify the full projection, so only the overlapping SQL remains unresolved.
+      for (const path of reslot.overlapPaths) derivedBlobs.delete(path);
+      if (carrierPaths.length || reslot.overlapPaths.size) {
         predicted = await replaceTreeBlobs(cwd, prediction, derivedBlobs, reslot.removePaths);
       }
       derived = predicted !== prediction; prediction = predicted;
+      reslotOverlapPaths = reslot.overlapPaths;
       // Publish exemptions only after the complete derivation succeeds. Each
       // replacement above was checked against the committed regular-file blob.
       for (const path of derivedBlobs.keys()) if (!path.endsWith('.sql')) provenDerived.add(path);
-    } catch { prediction = oldPrediction; }
+    } catch { prediction = oldPrediction; derived = false; reslotOverlapPaths = new Set(); }
   }
   const delta = await captureCommittedReviewCandidate(cwd, prediction, current.tree);
   demand(conflicts.every(path => replacements.has(path) || delta.changedPaths.includes(path) || provenDerived.has(path)), 'integration commits a conflict without resolving it');
   const resolution = delta.changedPaths; const modeChanged = delta.modeChanged;
   const kind = resolution.length ? 'resolution' : derived ? 'derived' : conflicts.length ? 'registry-union' : 'git';
-  return { kind: portable ? 'portable-' + kind : kind, tree: current.tree, own, moved, ...(derived ? { derived: true } : {}), ...(resolution.length ? { resolution, prediction, modeChanged } : {}) };
+  const reslotOverlap = reslotOverlapPaths.size > 0 && resolution.length > 0 && !modeChanged && resolution.every(path => reslotOverlapPaths.has(path));
+  return { kind: portable ? 'portable-' + kind : kind, tree: current.tree, own, moved, ...(derived ? { derived: true } : {}), ...(reslotOverlap ? { reslotOverlap: true } : {}), ...(resolution.length ? { resolution, prediction, modeChanged } : {}) };
 }
 
 export async function captureCoverageEdge(cwd, session, observed, now, historicalKind, {
@@ -476,6 +903,7 @@ const SESSION_HELP = `Usage:
   node scripts/agent-review-session.mjs status [--explain]
   node scripts/agent-review-session.mjs record <report.json>
   node scripts/agent-review-session.mjs defer <findingId> --to <target> --decision <ref> --reason <text>
+  node scripts/agent-review-session.mjs regroup --summary <note>
   node scripts/agent-review-session.mjs verify
   node scripts/agent-review-session.mjs receipt <PR>
   node scripts/agent-review-session.mjs verify-command [--resource PROFILE] -- <command> [args...]
@@ -489,10 +917,10 @@ export async function sessionMain(argv = process.argv.slice(2), { cwd = process.
     demand(args.length === 0, 'use --help without extra arguments');
     console.log(SESSION_HELP); return 0;
   }
-  demand(['prepare', 'record', 'defer', 'verify', 'status', 'receipt', 'verify-command'].includes(verb), 'use prepare [--new] <intent.json>, record <report.json>, defer <findingId> --to <target> --decision <ref> --reason <text>, verify, status [--explain], receipt <PR>, verify-command or --help');
+  demand(['prepare', 'record', 'defer', 'regroup', 'verify', 'status', 'receipt', 'verify-command'].includes(verb), 'use prepare [--new] <intent.json>, record <report.json>, defer <findingId> --to <target> --decision <ref> --reason <text>, regroup --summary <note>, verify, status [--explain], receipt <PR>, verify-command or --help');
   const directory = join(cwd, '.context', 'scratch', 'agent-review'); const path = join(directory, 'session.json');
   let lock;
-  if (['prepare', 'record', 'defer'].includes(verb)) {
+  if (['prepare', 'record', 'defer', 'regroup'].includes(verb)) {
     await mkdir(directory, { recursive: true });
     try { lock = await open(join(directory, '.session.lock'), 'wx', 0o600); }
     catch (error) { if (error.code === 'EEXIST') throw new Error('invalid: session is busy; retry after the active transaction finishes'); throw error; }
@@ -506,6 +934,19 @@ export async function sessionMain(argv = process.argv.slice(2), { cwd = process.
       if (!fresh && session?.candidate && session.candidate.head !== observed.head) {
         try { await git(cwd, 'merge-base', '--is-ancestor', session.candidate.head, observed.head); }
         catch { throw new Error('invalid: rebased history; use prepare --new'); }
+      }
+      if (!fresh && session?.version === 3 && session.candidate &&
+        session.candidate.base === observed.base && session.candidate.head !== observed.head &&
+        observed.clean) {
+        const lastPrepare = session.history?.findLast(event => event.type === 'prepare');
+        const expectedAuthor = lastPrepare?.authorSessionId ?? session.authorSessionId;
+        const expectedIntent = lastPrepare?.intent ?? session.intent;
+        if (expectedAuthor === observed.authorSessionId && digest(expectedIntent) === digest(observed.intent)) {
+          const regroup = computeRegroupAdvisory(session);
+          if (regroup.triggered) {
+            throw new Error(`REGROUP_REQUIRED: ${regroup.reason} Run node scripts/agent-review-session.mjs regroup --summary "<root cause and new approach>" before preparing a new repair round.`);
+          }
+        }
       }
       await assertMergePreflight(cwd, observed, { env });
       const now = Date.now();
@@ -533,6 +974,12 @@ export async function sessionMain(argv = process.argv.slice(2), { cwd = process.
       console.log(JSON.stringify(next, null, 2)); return 0;
     }
     demand([2, 3].includes(session?.version), 'prepare a version-2 session before review');
+    if (verb === 'regroup') {
+      demand(args.length === 2 && args[0] === '--summary' && Boolean(args[1]?.trim()), 'use regroup --summary <note>');
+      session = recordRegroup(session, args[1], Date.now());
+      await saveState(path, session);
+      return 0;
+    }
     if (verb === 'status') {
       demand(args.length === 0 || (args.length === 1 && args[0] === '--explain'), 'use status [--explain]');
       if (!args.length) { console.log(JSON.stringify(session, null, 2)); return 0; }

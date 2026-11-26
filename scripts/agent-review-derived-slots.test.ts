@@ -6,8 +6,10 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryEnvelope, migrationRegistryUnion } from './agent-review-derived.mjs';
+import { syncSqlReference } from './agent-review-generators.mjs';
 import { applyMigrationReslot, assertAppendOnlyLandingSlots, assertNoAuthoredSlotReferences, landingMerge, landingSlotPlan, nextFreeMigrationSlot } from './agent-review-landing.mjs';
-import { deltaFloor, prepareCandidate, recordReport, integrationReviewContext, verdict } from './agent-review-decide.mjs';
+import { admit, coverageRequirement, deltaFloor, digest, prepareCandidate, receiptSummary, recordReport, integrationReviewContext, verdict } from './agent-review-decide.mjs';
+import { parseReceipt } from './agent-review-queue.mjs';
 import { captureCommittedReviewCandidate, captureReviewRules, captureCoverageEdge, validateEconomySession, proveReviewIntegration, git as sourceGit } from './agent-review-session.mjs';
 import { renderDocumentationSourceMap } from './documentation-navigation.ts';
 import { readDocumentationState } from './documentation-routing.ts';
@@ -418,6 +420,118 @@ it('lands an inverted migration only with explicit re-slot', async () => {
     f.restoreDerivedFixture();
   }
 }, 60_000);
+
+it.each([
+  {
+    name: 'disjoint SQL definitions stay derived (floor 0)',
+    mainSql: 'CREATE OR REPLACE FUNCTION public.main_only_fn() RETURNS int LANGUAGE sql AS $$ SELECT 2; $$;\n',
+    prSql: 'CREATE OR REPLACE FUNCTION public.pr_only_fn() RETURNS int LANGUAGE sql AS $$ SELECT 1; $$;\n',
+    expectedOverlap: false,
+  },
+  {
+    name: 'overlapping CREATE OR REPLACE FUNCTION forces reslotOverlap (floor 1)',
+    mainSql: 'CREATE OR REPLACE FUNCTION public.shared_fn() RETURNS int LANGUAGE sql AS $$ SELECT 2; $$;\n',
+    prSql: 'CREATE OR REPLACE FUNCTION shared_fn() RETURNS int LANGUAGE sql AS $$ SELECT 1; $$;\n',
+    expectedOverlap: true,
+  },
+  {
+    name: 'table mutation vs policy target forces reslotOverlap (floor 1)',
+    mainSql: 'CREATE TABLE public.reslot_orders (id uuid PRIMARY KEY);\n',
+    prSql: 'CREATE POLICY reslot_orders_read ON reslot_orders FOR SELECT USING (true);\n',
+    expectedOverlap: true,
+  },
+  {
+    name: 'opaque DO block in re-slotted migration forces reslotOverlap (floor 1)',
+    mainSql: 'CREATE OR REPLACE FUNCTION public.unrelated_fn() RETURNS int LANGUAGE sql AS $$ SELECT 2; $$;\n',
+    prSql: 'DO $$ BEGIN EXECUTE v_dynamic_sql; END $$;\n',
+    expectedOverlap: true,
+  },
+])('guards byte-identical SQL re-slots against semantic clobber: $name', async ({ mainSql, prSql, expectedOverlap }) => {
+  const writeMigration = (slot: string, slug: string, sql: string) => {
+    const file = `db/platform/migrations/${slot}_${slug}.sql`;
+    f.write(file, sql);
+    const sha256 = createHash('sha256').update(sql).digest('hex');
+    const manifest = JSON.parse(f.read(MIGRATION_REGISTRIES[0]));
+    for (const plan of [manifest, manifest.qualified, manifest.qualifiedAdmin]) plan.forward.push({ file, sha256 });
+    f.write(MIGRATION_REGISTRIES[0], json(manifest));
+    const registry = JSON.parse(f.read(MIGRATION_REGISTRIES[1]));
+    registry.nativeStoreForwardClass.slots.push({ row: `fixture-${slot}-${slug}`, path: file, replacedFunctions: [], createdFunctions: [] });
+    registry.nativeStoreForwards.push({ path: file, sha256, functions: [] });
+    f.write(MIGRATION_REGISTRIES[1], json(registry));
+    expect(checkPlatformMigrationProjection(f.root, true)).toEqual([]);
+    f.write(SQL_REFERENCE, syncSqlReference(f.root));
+    return file;
+  };
+  try {
+    f.checkout(f.base);
+    const prFile = writeMigration('20990101010000', 'pr_item', prSql);
+    const pr = f.commit();
+    f.checkout(f.base);
+    writeMigration('20990101020000', 'main_item', mainSql);
+    const upstream = f.commit();
+    f.setMain(upstream);
+    f.checkout(pr);
+
+    const landed = await landingMerge(f.root, { reSlot: true, runCommand: (command, args) => {
+      if (args.includes(join(f.root, 'scripts/installation-inventory-refresh.ts'))) return;
+      f.fixtureCommand(command, args);
+    } });
+    const reslottedFile = 'db/platform/migrations/20990101020001_pr_item.sql';
+    const reslottedMirror = 'packages/platform/sql/20990101020001_pr_item.sql';
+    expect(f.git('ls-files', prFile)).toBe('');
+    expect(f.git('ls-files', reslottedFile)).toBe(reslottedFile);
+
+    const previous = await captureCommittedReviewCandidate(f.root, f.base, pr);
+    const intent = { risk: 'behavior', criteria: 'Guard overlapping re-slotted SQL migrations' };
+    let session = prepareCandidate(null, { ...previous, rules: await captureReviewRules(f.root, previous), intent, authorSessionId: 'fixture-author' }, 1000);
+    for (const reviewer of ['r-init-1', 'r-init-2']) {
+      session = recordReport(session, {
+        reviewer, cold: true, verdict: 'PASS', tree: previous.tree, findings: [], closes: [],
+        documentation: 'Checked SQL forward and guidance.',
+      }, 1000);
+    }
+    const current = await captureCommittedReviewCandidate(f.root, upstream, landed.head);
+    const observed = { ...current, rules: await captureReviewRules(f.root, current), intent, authorSessionId: 'fixture-author' };
+    const integration = integrationReviewContext(session, observed, { parents: [pr, upstream], baseAncestor: true }, 1001);
+    const coverage = await captureCoverageEdge(f.root, session, observed, 1001);
+    expect(coverage).toBeDefined();
+    session = prepareCandidate(session, { ...observed, integration, coverage }, 1001);
+
+    if (!expectedOverlap) {
+      expect(coverage!.proof).toMatchObject({ kind: 'portable-derived', derived: true });
+      expect(coverage!.proof.reslotOverlap).toBeUndefined();
+      expect(coverageRequirement(session).floor).toBe(0);
+      expect(verdict(session, current, 1001)).toEqual({ ok: true, code: 'reviewed', reason: 'reviewed' });
+    } else {
+      expect(coverage!.proof).toMatchObject({
+        kind: 'portable-resolution',
+        derived: true,
+        reslotOverlap: true,
+        modeChanged: false,
+      });
+      expect(coverage!.proof.resolution).toEqual([reslottedFile, reslottedMirror].sort());
+      expect(coverageRequirement(session).floor).toBe(1);
+      expect(verdict(session, current, 1001)).toMatchObject({ ok: false, code: 'needs_agent_review', reason: 'needs_agent_review: 1 independent PASS reports required' });
+
+      session = recordReport(session, {
+        reviewer: 'r-overlap-check', cold: true, verdict: 'PASS', tree: current.tree,
+        ordinary: true, delta: coverage!.delta, findings: [], closes: [],
+        documentation: 'Verified re-slotted SQL does not clobber upstream migration.',
+      }, 1002);
+      expect(verdict(session, current, 1002)).toEqual({ ok: true, code: 'reviewed', reason: 'reviewed' });
+      await expect(validateEconomySession(f.root, session)).resolves.toBeUndefined();
+      const summary = receiptSummary(session, 12, 1002);
+      expect(admit({ receipt: summary, observed: { ...current, pr: 12, baseValid: true }, now: 1002 })).toEqual({
+        ok: true, code: 'reviewed', reason: 'reviewed',
+      });
+    }
+  } finally {
+    f.git('reset', '--hard', f.merged);
+    f.git('clean', '-fd', '--', 'db/platform/migrations', 'packages/platform/sql');
+    f.git('checkout', '-q', '--detach', f.merged);
+    f.setMain(f.main);
+  }
+}, 90_000);
 
 it('keeps both SQL forwards when main added the same migration filename', async () => {
   const oldPath = 'db/platform/migrations/20990101010000_landing_fixture.sql';

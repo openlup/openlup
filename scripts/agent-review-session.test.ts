@@ -1,7 +1,8 @@
 import { gunzipSync, gzipSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
-import { admit, candidateFloor, classifyRisk, COMPRESSED_RECEIPT_MARKER, deferFinding, digest, ECONOMY_RECEIPT_MARKER, explainSession, integrationReviewContext, prepareCandidate, receiptBody, RECEIPT_MARKER, receiptSummary, recordReport, requiredReviewers, verdict } from './agent-review-decide.mjs';
+import { admit, candidateFloor, classifyRisk, COMPRESSED_RECEIPT_MARKER, computeRegroupAdvisory, coverageRequirement, deferFinding, digest, ECONOMY_RECEIPT_MARKER, explainSession, integrationReviewContext, prepareCandidate, receiptBody, RECEIPT_MARKER, receiptSummary, recordRegroup, recordReport, requiredReviewers, verdict } from './agent-review-decide.mjs';
 import { parseReceipt } from './agent-review-queue.mjs';
+import { extractSqlObjects } from './agent-review-session.mjs';
 
 const time = 1000;
 const observed = { base: 'a'.repeat(40), head: 'b'.repeat(40), tree: 'c'.repeat(40), changedPaths: ['source.txt'], clean: true };
@@ -757,7 +758,7 @@ describe('native review decisions', () => {
       triggered: false, nonConvergingCycles: 0, reason: null,
     });
 
-    // Repair cycle 1: closes F1 but opens F2 (1 -> 1) -> 1 non-converging cycle (not triggered yet).
+    // Repair cycle 1: closes F1 and opens genuinely distinct F2 (1 -> 1, sameIdPersists=false, repeatedClosed=false) -> converging!
     const c1 = { ...observed, head: '1'.repeat(40), tree: '1'.repeat(40), rules, intent, authorSessionId: 'author' };
     session = prepareCandidate(session, c1, time + 1);
     session = recordReport(session, report({
@@ -766,71 +767,85 @@ describe('native review decisions', () => {
       closes: ['F1'],
     }), time + 1);
     expect(explainSession(session, c1, time + 1).regroupAdvisory).toEqual({
+      triggered: false, nonConvergingCycles: 0, reason: null,
+    });
+
+    // Repair cycle 2: leaves F2 open (1 -> 1, sameIdPersists=true) -> 1 non-converging cycle.
+    const c2 = { ...observed, head: '2'.repeat(40), tree: '2'.repeat(40), rules, intent, authorSessionId: 'author' };
+    session = prepareCandidate(session, c2, time + 2);
+    session = recordReport(session, report({ reviewer: 'r2', tree: c2.tree, verdict: 'FAIL' }), time + 2);
+    expect(explainSession(session, c2, time + 2).regroupAdvisory).toEqual({
       triggered: false, nonConvergingCycles: 1, reason: null,
     });
 
-    // Repair cycle 2: leaves F2 open and opens F3 (1 -> 2) -> 2 consecutive non-converging cycles -> triggered!
-    const c2 = { ...observed, head: '2'.repeat(40), tree: '2'.repeat(40), rules, intent, authorSessionId: 'author' };
-    session = prepareCandidate(session, c2, time + 2);
+    // Repair cycle 3: leaves F2 open and opens F3 (1 -> 2) -> 2 consecutive non-converging cycles -> triggered!
+    const c3 = { ...observed, head: '3'.repeat(40), tree: '3'.repeat(40), rules, intent, authorSessionId: 'author' };
+    session = prepareCandidate(session, c3, time + 3);
     session = recordReport(session, report({
-      reviewer: 'r2', tree: c2.tree, verdict: 'FAIL',
+      reviewer: 'r3', tree: c3.tree, verdict: 'FAIL',
       findings: [{ id: 'F3', summary: 'defect three', material: true }],
-    }), time + 2);
-    expect(explainSession(session, c2, time + 2).regroupAdvisory).toEqual({
+    }), time + 3);
+    expect(explainSession(session, c3, time + 3).regroupAdvisory).toEqual({
       triggered: true,
       nonConvergingCycles: 2,
       reason: '2 consecutive repair cycles did not reduce open material findings; regroup before editing further.',
     });
 
-    // Preparing cycle 3 before reports arrive preserves the advisory from completed cycles.
-    const c3 = { ...observed, head: '3'.repeat(40), tree: '3'.repeat(40), rules, intent, authorSessionId: 'author' };
-    session = prepareCandidate(session, c3, time + 3);
-    expect(explainSession(session, c3, time + 3).regroupAdvisory).toMatchObject({
+    // Preparing cycle 4 before reports arrive preserves the advisory from completed cycles.
+    const c4 = { ...observed, head: '4'.repeat(40), tree: '4'.repeat(40), rules, intent, authorSessionId: 'author' };
+    session = prepareCandidate(session, c4, time + 4);
+    expect(explainSession(session, c4, time + 4).regroupAdvisory).toMatchObject({
       triggered: true, nonConvergingCycles: 2,
     });
 
-    // Cycle 3 closes F2 (2 -> 1, strictly decreases) -> converging! Advisory resets.
-    session = recordReport(session, report({ reviewer: 'r3', tree: c3.tree, verdict: 'FAIL', closes: ['F2'] }), time + 3);
-    expect(explainSession(session, c3, time + 3).regroupAdvisory).toEqual({
-      triggered: false, nonConvergingCycles: 0, reason: null,
-    });
-
-    // Cycle 4 closes F3 (1 -> 0) and passes -> verdict and admit succeed cleanly without advisory interference.
-    const c4 = { ...observed, head: '4'.repeat(40), tree: '4'.repeat(40), rules, intent, authorSessionId: 'author' };
-    session = prepareCandidate(session, c4, time + 4);
-    session = recordReport(session, report({ reviewer: 'r4', tree: c4.tree, verdict: 'PASS', closes: ['F3'] }), time + 4);
+    // Cycle 4 closes F2 (2 -> 1, strictly decreases) -> converging! Advisory resets.
+    session = recordReport(session, report({ reviewer: 'r4', tree: c4.tree, verdict: 'FAIL', closes: ['F2'] }), time + 4);
     expect(explainSession(session, c4, time + 4).regroupAdvisory).toEqual({
       triggered: false, nonConvergingCycles: 0, reason: null,
     });
-    expect(verdict(session, c4, time + 4)).toEqual({ ok: true, code: 'reviewed', reason: 'reviewed' });
-    const summary = receiptSummary(session, 12, time + 4);
-    expect(admit({ receipt: parseReceipt(receiptBody(summary)), observed: { ...c4, pr: 12, baseValid: true }, now: time + 4 })).toEqual({ ok: true, code: 'reviewed', reason: 'reviewed' });
 
-    // Corrupted legacy findings keep regroupAdvisory null instead of throwing.
+    // Cycle 5 closes F3 (1 -> 0) and passes -> verdict and admit succeed cleanly without advisory interference.
+    const c5 = { ...observed, head: '5'.repeat(40), tree: '5'.repeat(40), rules, intent, authorSessionId: 'author' };
+    session = prepareCandidate(session, c5, time + 5);
+    session = recordReport(session, report({ reviewer: 'r5', tree: c5.tree, verdict: 'PASS', closes: ['F3'] }), time + 5);
+    expect(explainSession(session, c5, time + 5).regroupAdvisory).toEqual({
+      triggered: false, nonConvergingCycles: 0, reason: null,
+    });
+    expect(verdict(session, c5, time + 5)).toEqual({ ok: true, code: 'reviewed', reason: 'reviewed' });
+    const summary = receiptSummary(session, 12, time + 5);
+    expect(admit({ receipt: parseReceipt(receiptBody(summary)), observed: { ...c5, pr: 12, baseValid: true }, now: time + 5 })).toEqual({ ok: true, code: 'reviewed', reason: 'reviewed' });
+
+    // Corrupted legacy findings keep regroupAdvisory and unconfirmedDefers null instead of throwing.
     const broken = passed();
     broken.history.at(-1).report.findings = null;
     expect(explainSession(broken, observed, time)).toMatchObject({
-      status: 'invalid', openFindings: null, regroupAdvisory: null,
+      status: 'invalid', openFindings: null, unconfirmedDefers: null, regroupAdvisory: null,
     });
 
-    // Incomplete floor-2 trailing round does not prematurely trigger regroupAdvisory until its second report arrives.
+    // Incomplete floor-2 trailing round does not prematurely trigger regroupAdvisory until its second report arrives,
+    // and moving to another prepare from a partial 1-of-2 round never pushes a cycle.
     const behaviorIntent = { ...intent, risk: 'behavior' };
     let floor2 = prepare({ intent: behaviorIntent, rules });
     floor2 = recordReport(floor2, report({ reviewer: 'f2-r0a', verdict: 'FAIL', findings: [{ id: 'B-1', summary: 'open defect', material: true }] }), time);
     floor2 = recordReport(floor2, report({ reviewer: 'f2-r0b', verdict: 'FAIL' }), time);
-    const f2c1 = { ...observed, head: '5'.repeat(40), tree: '5'.repeat(40), rules, intent: behaviorIntent, authorSessionId: 'author' };
+    const f2c1 = { ...observed, head: '6'.repeat(40), tree: '6'.repeat(40), rules, intent: behaviorIntent, authorSessionId: 'author' };
     floor2 = prepareCandidate(floor2, f2c1, time + 1);
     floor2 = recordReport(floor2, report({ reviewer: 'f2-r1a', tree: f2c1.tree, verdict: 'FAIL' }), time + 1);
     floor2 = recordReport(floor2, report({ reviewer: 'f2-r1b', tree: f2c1.tree, verdict: 'FAIL' }), time + 1);
     expect(explainSession(floor2, f2c1, time + 1).regroupAdvisory).toEqual({
       triggered: false, nonConvergingCycles: 1, reason: null,
     });
-    const f2c2 = { ...observed, head: '6'.repeat(40), tree: '6'.repeat(40), rules, intent: behaviorIntent, authorSessionId: 'author' };
+    const f2c2 = { ...observed, head: '7'.repeat(40), tree: '7'.repeat(40), rules, intent: behaviorIntent, authorSessionId: 'author' };
     floor2 = prepareCandidate(floor2, f2c2, time + 2);
     floor2 = recordReport(floor2, report({ reviewer: 'f2-r2a', tree: f2c2.tree, verdict: 'PASS' }), time + 2);
+    expect(computeRegroupAdvisory(floor2)).toEqual({ triggered: false, nonConvergingCycles: 1, reason: null });
     expect(explainSession(floor2, f2c2, time + 2).regroupAdvisory).toEqual({
       triggered: false, nonConvergingCycles: 1, reason: null,
     });
+    const f2c2PartialNext = { ...observed, head: '8'.repeat(40), tree: '8'.repeat(40), rules, intent: behaviorIntent, authorSessionId: 'author' };
+    const afterPartialPrepare = prepareCandidate(floor2, f2c2PartialNext, time + 3);
+    expect(computeRegroupAdvisory(afterPartialPrepare)).toEqual({ triggered: false, nonConvergingCycles: 1, reason: null });
+
     floor2 = recordReport(floor2, report({ reviewer: 'f2-r2b', tree: f2c2.tree, verdict: 'FAIL' }), time + 2);
     expect(explainSession(floor2, f2c2, time + 2).regroupAdvisory).toEqual({
       triggered: true,
@@ -839,7 +854,77 @@ describe('native review decisions', () => {
     });
   });
 
-  it('supports audited deferral of open material findings and surfaces them in the receipt', () => {
+  it('tracks repeated closed findings, regroup resets, and unconfirmed defers in computeRegroupAdvisory', () => {
+    const rules = { version: 3, base: '1'.repeat(64), head: '2'.repeat(64) };
+    let session = prepare({ rules });
+    session = recordReport(session, report({
+      reviewer: 'r0', verdict: 'FAIL',
+      findings: [{ id: 'F1', summary: 'Missing guard check', material: true }],
+    }), time);
+
+    // 1 -> 1 repeating the closed summary counts as non-converging (repeatedClosed = true).
+    const c1 = { ...observed, head: '1'.repeat(40), tree: '1'.repeat(40), rules, intent, authorSessionId: 'author' };
+    session = prepareCandidate(session, c1, time + 1);
+    session = recordReport(session, report({
+      reviewer: 'r1', tree: c1.tree, verdict: 'FAIL',
+      findings: [{ id: 'F2', summary: '  missing   guard check ', material: true }],
+      closes: ['F1'],
+    }), time + 1);
+    expect(computeRegroupAdvisory(session)).toEqual({ triggered: false, nonConvergingCycles: 1, reason: null });
+
+    // Unilateral defer does NOT remove F2 from open in regroup tracking; next cycle still triggers.
+    session = deferFinding(session, { findingId: 'F2', target: 'OPT-05', decision: 'CM-155', reason: 'trying to bypass' }, time + 2);
+    const c2 = { ...observed, head: '2'.repeat(40), tree: '2'.repeat(40), rules, intent, authorSessionId: 'author' };
+    session = prepareCandidate(session, c2, time + 3);
+    session = recordReport(session, report({
+      reviewer: 'r2', tree: c2.tree, verdict: 'FAIL',
+      findings: [{ id: 'F3', summary: 'distinct issue', material: true }],
+    }), time + 3);
+    expect(computeRegroupAdvisory(session)).toMatchObject({ triggered: true, nonConvergingCycles: 2 });
+
+    // recordRegroup validates inputs and resets cycles while preserving open, closedIds, and closedSummaries.
+    expect(() => recordRegroup(session, '', time + 4)).toThrow('regroup requires a non-empty summary');
+    expect(() => recordRegroup(session, '   ', time + 4)).toThrow('regroup requires a non-empty summary');
+    expect(() => recordRegroup(session, 'x'.repeat(4097), time + 4)).toThrow('limit 4,096');
+    expect(() => recordRegroup(session, 'valid', time + 2)).toThrow('regroup time is invalid');
+    expect(() => recordRegroup(session, 'valid', NaN)).toThrow('regroup time is invalid');
+
+    session = recordRegroup(session, 'Root cause: missing invariant wrapper', time + 4);
+    expect(computeRegroupAdvisory(session)).toEqual({ triggered: false, nonConvergingCycles: 0, reason: null });
+    expect(explainSession(session, c2, time + 4).unconfirmedDefers).toHaveLength(1);
+
+    // validateHistory refuses invalid historical regroup summaries in verdict() and admit().
+    const invalidRegroup = structuredClone(session);
+    invalidRegroup.history.at(-1).summary = '   ';
+    expect(verdict(invalidRegroup, c2, time + 4)).toMatchObject({ ok: false, code: 'invalid', reason: 'invalid: invalid historical regroup summary' });
+
+    // After regroup, confirming F2 via acceptsDefer removes it from open; re-opening previously closed F1 still triggers repeatedClosed.
+    const c3 = { ...observed, head: '3'.repeat(40), tree: '3'.repeat(40), rules, intent, authorSessionId: 'author' };
+    session = prepareCandidate(session, c3, time + 5);
+    session = recordReport(session, report({
+      reviewer: 'r3', tree: c3.tree, verdict: 'PASS', closes: ['F3'], acceptsDefer: ['F2'],
+    }), time + 5);
+    expect(verdict(session, c3, time + 5)).toEqual({ ok: true, code: 'reviewed', reason: 'reviewed' });
+    expect(computeRegroupAdvisory(session)).toEqual({ triggered: false, nonConvergingCycles: 0, reason: null });
+
+    // Re-opening F1 after regroup -> 0->1 (initial), then closing it while opening distinct vs re-opening F2.
+    const c4 = { ...observed, head: '4'.repeat(40), tree: '4'.repeat(40), rules, intent, authorSessionId: 'author' };
+    session = prepareCandidate(session, c4, time + 6);
+    session = recordReport(session, report({
+      reviewer: 'r4', tree: c4.tree, verdict: 'FAIL',
+      findings: [{ id: 'F4', summary: 'brand new four', material: true }],
+    }), time + 6);
+    const c5 = { ...observed, head: '5'.repeat(40), tree: '5'.repeat(40), rules, intent, authorSessionId: 'author' };
+    session = prepareCandidate(session, c5, time + 7);
+    session = recordReport(session, report({
+      reviewer: 'r5', tree: c5.tree, verdict: 'FAIL',
+      findings: [{ id: 'F1', summary: 'Missing guard check', material: true }],
+      closes: ['F4'],
+    }), time + 7);
+    expect(computeRegroupAdvisory(session)).toEqual({ triggered: false, nonConvergingCycles: 1, reason: null });
+  });
+
+  it('requires structured targets and cold PASS acceptsDefer confirmation for deferred material findings', () => {
     const rules = { version: 3, base: 'a'.repeat(64), head: 'a'.repeat(64) };
     let session = prepare({ rules });
     session = recordReport(session, report({
@@ -849,23 +934,233 @@ describe('native review decisions', () => {
     }), time);
     expect(verdict(session, observed, time)).toMatchObject({ ok: false, code: 'needs_agent_review' });
 
-    // Refuses deferring an unknown finding or missing fields.
+    // Refuses deferring an unknown finding, missing fields, or vague targets.
     expect(() => deferFinding(session, { findingId: 'UNKNOWN', target: 'S3f-A2', decision: 'CM-155', reason: 'follow-up' }, time + 1))
       .toThrow('defer must name an open material finding');
     expect(() => deferFinding(session, { findingId: 'R1A-1', target: '', decision: 'CM-155', reason: 'follow-up' }, time + 1))
       .toThrow('defer requires findingId, target, decision, and reason');
+    for (const badTarget of ['later', 'todo', 'follow-up', 'next PR', 'TBD', '#0', 'docs/../secret.md', 'docs/a.md#', 'plan: later', 'next-pr']) {
+      expect(() => deferFinding(session, { findingId: 'R1A-1', target: badTarget, decision: 'CM-155', reason: 'follow-up' }, time + 1), badTarget)
+        .toThrow('defer target must reference a structured issue');
+    }
+    for (const validTarget of ['#123', 'openlup/openlup#123', 'PR-42', 'issue#9', 'docs/platform/plans/oss-m19.md#opt-09', 'milestone:m20', 'plan:oss-m20', 'S3f-A2', 'CM-155', 'OPT-09']) {
+      expect(() => deferFinding(session, { findingId: 'R1A-1', target: validTarget, decision: 'CM-155', reason: 'owned by successor slice' }, time + 1), validTarget)
+        .not.toThrow();
+    }
 
-    // Deferring the open finding clears it from openFindings and surfaces it in the receipt.
+    // Deferring moves finding from open to pendingDefer; verdict and explainSession stay blocked until acceptsDefer.
     session = deferFinding(session, { findingId: 'R1A-1', target: 'S3f-A2', decision: 'CM-155', reason: 'owned by successor slice' }, time + 1);
-    const explained = explainSession(session, observed, time + 1);
-    expect(explained.openFindings).toEqual([]);
-    expect(explained.regroupAdvisory).toEqual({ triggered: false, nonConvergingCycles: 0, reason: null });
-    session = recordReport(session, report({ reviewer: 'r2', verdict: 'PASS' }), time + 2);
-    expect(verdict(session, observed, time + 2)).toEqual({ ok: true, code: 'reviewed', reason: 'reviewed' });
-    const summary = receiptSummary(session, 42, time + 2);
+    expect(() => deferFinding(session, { findingId: 'R1A-1', target: 'S3f-A2', decision: 'CM-155', reason: 'duplicate defer' }, time + 1))
+      .toThrow('defer must name an open material finding');
+    const pendingExplained = explainSession(session, observed, time + 1);
+    expect(pendingExplained.openFindings).toEqual([]);
+    expect(pendingExplained.unconfirmedDefers).toMatchObject([{ id: 'R1A-1', target: 'S3f-A2', decision: 'CM-155' }]);
+    expect(pendingExplained.status).toBe('needs_agent_review');
+    expect(pendingExplained.nextAction).toContain('acceptsDefer');
+    expect(pendingExplained.regroupAdvisory).toEqual({ triggered: false, nonConvergingCycles: 0, reason: null });
+
+    // PASS report without acceptsDefer still blocks verdict and status remains needs_agent_review.
+    const unconfirmed = recordReport(session, report({ reviewer: 'r2', verdict: 'PASS' }), time + 2);
+    expect(verdict(unconfirmed, observed, time + 2)).toEqual({
+      ok: false,
+      code: 'needs_agent_review',
+      reason: 'confirm every deferred material finding in a cold PASS report (acceptsDefer)',
+    });
+    expect(explainSession(unconfirmed, observed, time + 2)).toMatchObject({
+      status: 'needs_agent_review',
+      unconfirmedDefers: [{ id: 'R1A-1', target: 'S3f-A2' }],
+    });
+
+    // Rejects invalid acceptsDefer values on recordReport.
+    expect(() => recordReport(session, report({ reviewer: 'bad-fail', verdict: 'FAIL', acceptsDefer: ['R1A-1'] }), time + 2))
+      .toThrow('acceptsDefer is only valid on PASS reports');
+    expect(() => recordReport(session, report({ reviewer: 'bad-fail-empty', verdict: 'FAIL', acceptsDefer: [] }), time + 2))
+      .toThrow('acceptsDefer is only valid on PASS reports');
+    expect(() => recordReport(session, report({ reviewer: 'bad-dup', verdict: 'PASS', acceptsDefer: ['R1A-1', 'R1A-1'] }), time + 2))
+      .toThrow('acceptsDefer must be an array of unique finding ids');
+    expect(() => recordReport(session, report({ reviewer: 'bad-unknown', verdict: 'PASS', acceptsDefer: ['UNKNOWN'] }), time + 2))
+      .toThrow('acceptsDefer must name pending deferred material findings');
+    expect(() => recordReport(session, report({
+      reviewer: 'bad-reemit', verdict: 'PASS',
+      findings: [{ id: 'R1A-1', summary: 'deferred follow-up item', material: true }],
+      acceptsDefer: ['R1A-1'],
+    }), time + 2)).toThrow('acceptsDefer must name pending deferred material findings');
+    expect(() => recordReport(session, report({ reviewer: 'bad-close', verdict: 'PASS', closes: ['R1A-1'] }), time + 2))
+      .toThrow('closes must name open material findings');
+
+    // A cold PASS report with acceptsDefer promotes pendingDefer -> deferred and admits cleanly.
+    const confirmed = recordReport(session, report({ reviewer: 'r2', verdict: 'PASS', acceptsDefer: ['R1A-1'] }), time + 2);
+    expect(explainSession(confirmed, observed, time + 2)).toMatchObject({
+      status: 'verify_required',
+      openFindings: [],
+      unconfirmedDefers: [],
+    });
+    expect(verdict(confirmed, observed, time + 2)).toEqual({ ok: true, code: 'reviewed', reason: 'reviewed' });
+    const summary = receiptSummary(confirmed, 42, time + 2);
     const body = receiptBody(summary);
     expect(body).toContain('Deferred cards: R1A-1 to S3f-A2 · CM-155');
     expect(admit({ receipt: parseReceipt(body), observed: { ...observed, pr: 42, baseValid: true }, now: time + 2 }))
       .toEqual({ ok: true, code: 'reviewed', reason: 'reviewed' });
+
+    // Re-emitting a previously confirmed deferred finding moves it back to open and blocks until closed or re-deferred.
+    const reopened = recordReport(confirmed, report({
+      reviewer: 'r3', verdict: 'FAIL',
+      findings: [{ id: 'R1A-1', summary: 'deferred follow-up item', material: true }],
+    }), time + 3);
+    expect(verdict(reopened, observed, time + 3)).toMatchObject({ ok: false, code: 'needs_agent_review', reason: 'close every material finding' });
+    expect(explainSession(reopened, observed, time + 3)).toMatchObject({
+      openFindings: [{ id: 'R1A-1' }],
+      unconfirmedDefers: [],
+    });
+
+    // Parallel floor-2 PASS reports can both carry acceptsDefer in the same round, while the next prepare round rejects re-confirming it.
+    const behaviorIntent = { ...intent, risk: 'behavior' };
+    let floor2 = prepare({ intent: behaviorIntent, rules });
+    floor2 = recordReport(floor2, report({
+      reviewer: 'f2-a', verdict: 'FAIL',
+      findings: [{ id: 'D-1', summary: 'needs later slice', material: true }],
+    }), time);
+    floor2 = deferFinding(floor2, { findingId: 'D-1', target: '#123', decision: 'OPT-09', reason: 'tracked in #123' }, time + 1);
+    const f2next = { ...observed, head: 'a'.repeat(39) + '1', tree: 'c'.repeat(39) + '1', rules, intent: behaviorIntent, authorSessionId: 'author' };
+    floor2 = prepareCandidate(floor2, f2next, time + 2);
+    floor2 = recordReport(floor2, report({ reviewer: 'f2-b', tree: f2next.tree, verdict: 'PASS', acceptsDefer: ['D-1'] }), time + 2);
+    floor2 = recordReport(floor2, report({ reviewer: 'f2-c', tree: f2next.tree, verdict: 'PASS', acceptsDefer: ['D-1'] }), time + 2);
+    expect(verdict(floor2, f2next, time + 2)).toEqual({ ok: true, code: 'reviewed', reason: 'reviewed' });
+    const f2round3 = { ...observed, head: 'a'.repeat(39) + '2', tree: 'c'.repeat(39) + '2', rules, intent: behaviorIntent, authorSessionId: 'author' };
+    floor2 = prepareCandidate(floor2, f2round3, time + 3);
+    expect(() => recordReport(floor2, report({ reviewer: 'f2-d', tree: f2round3.tree, verdict: 'PASS', acceptsDefer: ['D-1'] }), time + 3))
+      .toThrow('acceptsDefer must name pending deferred material findings');
+
+    // validateHistory enforces structured defer target and acceptsDefer symmetry in verdict() and admit().
+    const tamperedVague = structuredClone(confirmed);
+    tamperedVague.history.find(event => event.type === 'defer').target = 'later';
+    expect(verdict(tamperedVague, observed, time + 2)).toMatchObject({ ok: false, code: 'invalid', reason: 'invalid: invalid historical finding deferral' });
+    const tamperedAccept = structuredClone(confirmed);
+    tamperedAccept.history.at(-1).report.verdict = 'FAIL';
+    expect(verdict(tamperedAccept, observed, time + 2)).toMatchObject({ ok: false, code: 'invalid', reason: 'invalid: invalid historical acceptsDefer' });
+  });
+
+  it('extracts SQL objects deterministically and marks opaque constructs fail-closed', () => {
+    const sql = `
+      -- CREATE FUNCTION public.ignored_in_comment() RETURNS void LANGUAGE sql AS $$ SELECT 1; $$;
+      /* nested /* CREATE TABLE public.ignored_in_nested() */ comment */
+      CREATE OR REPLACE FUNCTION "my_func"(x int) RETURNS text LANGUAGE plpgsql AS $fn$
+      BEGIN
+        RETURN 'CREATE TABLE public.ignored_in_dollar()';
+      END;
+      $fn$;
+      CREATE CONSTRAINT TRIGGER trg_check AFTER INSERT ON public.orders FOR EACH ROW EXECUTE FUNCTION public.check_order();
+      CREATE POLICY orders_read ON "Orders" FOR SELECT USING (true);
+      CREATE OR REPLACE MATERIALIZED VIEW reporting.daily_totals AS SELECT 1;
+      ALTER TABLE public.items ADD COLUMN note text;
+      CREATE UNIQUE INDEX idx_items_code ON private.items (code);
+      CREATE TYPE order_state AS ENUM ('open', 'closed');
+      CREATE DOMAIN email_addr AS text;
+      CREATE SEQUENCE IF NOT EXISTS order_seq;
+      CREATE SCHEMA IF NOT EXISTS analytics;
+      CREATE OR REPLACE RULE items_no_delete AS ON DELETE TO private.items DO INSTEAD NOTHING;
+      INSERT INTO public.items (note) VALUES (E'it\\'s; CREATE TABLE public.ignored_escape(id int)');
+      DO $$
+      BEGIN
+        PERFORM 1;
+        EXECUTE 'CREATE POLICY dynamic_lit ON public.items FOR ALL USING (true)';
+        EXECUTE $ddl$CREATE OR REPLACE FUNCTION public.from_do() RETURNS void LANGUAGE sql AS $b$ SELECT 1; $b$;$ddl$;
+      END;
+      $$;
+    `;
+    const extracted = extractSqlObjects(sql);
+    expect(extracted.opaque).toBe(false);
+    expect([...extracted.objects].sort()).toEqual([
+      'domain:public.email_addr',
+      'function:public.from_do',
+      'function:public.my_func',
+      'index:private.idx_items_code',
+      'policy:public.Orders.orders_read',
+      'policy:public.items.dynamic_lit',
+      'rule:private.items.items_no_delete',
+      'schema:analytics',
+      'sequence:public.order_seq',
+      'table:public.items',
+      'trigger:public.orders.trg_check',
+      'type:public.order_state',
+      'view:reporting.daily_totals',
+    ]);
+    expect([...extracted.tablesMutated].sort()).toEqual(['public.items']);
+    expect([...extracted.tableTargets].sort()).toEqual(['private.items', 'public.Orders', 'public.items', 'public.orders']);
+
+    // Unterminated tokens, dynamic EXECUTE, and non-literal DDL inside DO mark opaque = true.
+    for (const opaqueSql of [
+      "CREATE FUNCTION public.f() RETURNS void AS 'unterminated;",
+      "/* /* unterminated nested comment */",
+      "CREATE FUNCTION public.f() RETURNS void AS $tag$unterminated;",
+      'CREATE TABLE "unterminated ();',
+      "SELECT E'unterminated\\';",
+      "DO $$ BEGIN EXECUTE E'unterminated\\'; END $$;",
+      'DO $$ BEGIN EXECUTE v_sql; END $$;',
+      "DO $$ BEGIN EXECUTE 'CREATE TABLE ' || 'public.x (id int)'; END $$;",
+      "DO $$ BEGIN EXECUTE format('DROP TABLE %I', 't'); END $$;",
+      'DO $$ BEGIN CREATE TABLE public.direct_ddl (id int); END $$;',
+      'DO $$ BEGIN ALTER TABLE public.orders ADD COLUMN x int; END $$;',
+      'DO $$ BEGIN GRANT SELECT ON public.orders TO anon; END $$;',
+    ]) {
+      expect(extractSqlObjects(opaqueSql).opaque, opaqueSql).toBe(true);
+    }
+  });
+
+  it('requires floor = 1 for reslotOverlap derived SQL integrations and retains floor = 2 on all-FAIL repair of a protected path', () => {
+    const rules = { version: 3, base: '1'.repeat(64), head: '2'.repeat(64) };
+    const prior = recordReport(prepare({ changedPaths: ['db/platform/migrations/20990101010000_fn.sql'], rules }), report({ reviewer: 'r1' }), time);
+    const prior2 = recordReport(prior, report({ reviewer: 'r2' }), time);
+    const nextCandidate = {
+      ...observed, base: 'd'.repeat(40), head: 'e'.repeat(40), tree: 'f'.repeat(40),
+      changedPaths: ['db/platform/migrations/20990101020001_fn.sql'], rules,
+    };
+    const integration = integrationReviewContext(prior2, { ...nextCandidate, intent, authorSessionId: 'author' }, { parents: [prior2.candidate.head, nextCandidate.base], baseAncestor: true, mechanical: false }, time + 1);
+    const reslotSession = prepareCandidate(prior2, {
+      ...nextCandidate, intent, authorSessionId: 'author', integration,
+      coverage: {
+        kind: 'integration', previous: digest(prior2.history),
+        from: { base: prior2.candidate.base, head: prior2.candidate.head, tree: prior2.candidate.tree },
+        delta: '4'.repeat(64),
+        proof: {
+          kind: 'resolution', tree: nextCandidate.tree, derived: true, reslotOverlap: true,
+          resolution: ['db/platform/migrations/20990101020001_fn.sql'], modeChanged: false,
+        },
+      },
+    }, time + 1);
+    expect(coverageRequirement(reslotSession).floor).toBe(1);
+
+    // If resolution includes a non-SQL path, floor stays 2 even if reslotOverlap is set.
+    const mixedCandidate = {
+      ...nextCandidate, changedPaths: ['db/platform/migrations/20990101020001_fn.sql', 'config/settings.json'],
+    };
+    const mixedSession = prepareCandidate(prior2, {
+      ...mixedCandidate, intent, authorSessionId: 'author', integration,
+      coverage: {
+        kind: 'integration', previous: digest(prior2.history),
+        from: { base: prior2.candidate.base, head: prior2.candidate.head, tree: prior2.candidate.tree },
+        delta: '5'.repeat(64),
+        proof: {
+          kind: 'resolution', tree: mixedCandidate.tree, derived: true, reslotOverlap: true,
+          resolution: ['db/platform/migrations/20990101020001_fn.sql', 'config/settings.json'], modeChanged: false,
+        },
+      },
+    }, time + 1);
+    expect(coverageRequirement(mixedSession).floor).toBe(2);
+
+    // OPT-11: all-FAIL full round on a protected path retains floor = 2 when repair modifies that protected path.
+    let allFail = prepare({ changedPaths: ['config/settings.json'], rules });
+    allFail = recordReport(allFail, report({ reviewer: 'af-1', verdict: 'FAIL', findings: [{ id: 'AF-1', summary: 'bad setting', material: true }] }), time);
+    allFail = recordReport(allFail, report({ reviewer: 'af-2', verdict: 'FAIL' }), time);
+    const repairHead = { ...observed, head: 'b'.repeat(39) + '1', tree: 'c'.repeat(39) + '1', changedPaths: ['config/settings.json'], rules };
+    const repaired = prepareCandidate(allFail, {
+      ...repairHead, intent, authorSessionId: 'author',
+      coverage: {
+        kind: 'repair', previous: digest(allFail.history),
+        from: { base: allFail.candidate.base, head: allFail.candidate.head, tree: allFail.candidate.tree },
+        delta: '6'.repeat(64), proof: { paths: ['config/settings.json'], modeChanged: false },
+      },
+    }, time + 1);
+    expect(coverageRequirement(repaired).floor).toBe(2);
   });
 });

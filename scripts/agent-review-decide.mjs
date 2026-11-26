@@ -45,29 +45,54 @@ function currentReports(session) {
   const start = session.history.findLastIndex(event => event.type === 'prepare');
   return session.history.slice(start + 1).filter(event => event.type === 'report').map(event => event.report);
 }
+const DEFER_TARGETS = [
+  /^#[1-9]\d*$/u,
+  /^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*#[1-9]\d*$/u,
+  /^(?:PR|issue)[-#][1-9]\d*$/iu,
+  /^docs\/(?:[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*\/)*[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*\.md(?:#[A-Za-z0-9_.:-]+)?$/u,
+  /^(?:milestone|plan):[A-Za-z0-9][A-Za-z0-9_./:#-]*$/u,
+  /^(?=[A-Za-z0-9-]*\d)[A-Z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)+$/u,
+];
+const structuredDeferTarget = target => typeof target === 'string' &&
+  !target.includes('..') &&
+  DEFER_TARGETS.some(pattern => pattern.test(target));
+const normalizeSummary = summary => summary.trim().replace(/\s+/gu, ' ').toLowerCase();
 function findingState(session) {
   const open = new Map();
+  const pendingDefer = new Map();
   const deferred = new Map();
   let openAtPrepare = new Set();
   const closedInCurrentRound = new Set();
+  const confirmedDefersInCurrentRound = new Set();
   for (const event of session.history) {
     if (event.type === 'prepare') {
       openAtPrepare = new Set(open.keys());
       closedInCurrentRound.clear();
+      confirmedDefersInCurrentRound.clear();
     } else if (event.type === 'report') {
       for (const finding of event.report.findings) if (finding.material) {
         open.set(finding.id, { id: finding.id, summary: finding.summary, material: true });
+        pendingDefer.delete(finding.id);
         deferred.delete(finding.id);
         closedInCurrentRound.delete(finding.id);
+        confirmedDefersInCurrentRound.delete(finding.id);
       }
       for (const id of event.report.closes) {
         open.delete(id);
         if (openAtPrepare.has(id)) closedInCurrentRound.add(id);
       }
+      for (const id of event.report.acceptsDefer ?? []) {
+        const pending = pendingDefer.get(id);
+        if (pending) {
+          pendingDefer.delete(id);
+          deferred.set(id, pending);
+        }
+        confirmedDefersInCurrentRound.add(id);
+      }
     } else if (event.type === 'defer') {
       const prior = open.get(event.findingId);
       open.delete(event.findingId);
-      deferred.set(event.findingId, {
+      pendingDefer.set(event.findingId, {
         id: event.findingId,
         summary: prior?.summary ?? event.findingId,
         target: event.target,
@@ -77,33 +102,102 @@ function findingState(session) {
       });
     }
   }
-  return { open, deferred, openAtPrepare, closedInCurrentRound };
+  return { open, pendingDefer, deferred, openAtPrepare, closedInCurrentRound, confirmedDefersInCurrentRound };
 }
 function openFindings(session) { return findingState(session).open; }
-function computeRegroupAdvisory(session, trailingFloor = 1) {
-  const open = new Set();
+function roundFloorForPrepare(session, index, event) {
+  const fallback = candidateFloor(event.candidate, event.intent?.risk ?? 'routine');
+  try {
+    const nextPrepare = session.history.findIndex((item, pos) => pos > index && item.type === 'prepare');
+    const end = nextPrepare === -1 ? session.history.length : nextPrepare;
+    const history = session.history.slice(0, end);
+    const version = history.some(item => item.type === 'rules' || item.candidate?.rules?.version === 3) ? 3 : 2;
+    if (version === 2) {
+      return Math.max(
+        legacyRequiredReviewers(legacyClassifyRisk(event.candidate, event.intent?.risk ?? 'routine')),
+        event.candidate.integration ? 2 : 0,
+      );
+    }
+    const slice = { ...session, version, history, candidate: event.candidate, preparedAt: event.at };
+    return coverageRequirement(slice).floor;
+  } catch {
+    return fallback;
+  }
+}
+export function computeRegroupAdvisory(session, trailingFloor = undefined) {
+  const open = new Map();
+  const findingSummaries = new Map();
+  const closedIds = new Set();
+  const closedSummaries = new Set();
   const cycles = [];
   let current = null;
-  for (const event of session.history) {
+  let activeFloor = candidateFloor(session.candidate, latestIntent(session)?.risk ?? 'routine');
+  const pushCycle = (cycle, floorOverride) => {
+    const floor = Math.max(1, floorOverride ?? cycle.floor);
+    if (cycle.reports < floor) return;
+    const openIdsAfter = new Set(open.keys());
+    let sameIdPersists = false;
+    let repeatedClosed = false;
+    for (const [id, summary] of open.entries()) {
+      if (cycle.openIdsBefore.has(id)) {
+        sameIdPersists = true;
+      } else if (closedIds.has(id) || closedSummaries.has(summary)) {
+        repeatedClosed = true;
+      }
+    }
+    cycles.push({
+      beforeSize: cycle.openBefore,
+      afterSize: openIdsAfter.size,
+      sameIdPersists,
+      repeatedClosed,
+    });
+  };
+  for (let index = 0; index < session.history.length; index++) {
+    const event = session.history[index];
     if (event.type === 'prepare') {
-      if (current && current.reports > 0) cycles.push({ openBefore: current.openBefore, openAfter: open.size });
-      current = { openBefore: open.size, reports: 0 };
+      if (current) pushCycle(current);
+      activeFloor = roundFloorForPrepare(session, index, event);
+      current = {
+        openBefore: open.size,
+        openIdsBefore: new Set(open.keys()),
+        reports: 0,
+        floor: activeFloor,
+      };
+    } else if (event.type === 'regroup') {
+      cycles.length = 0;
+      current = null;
     } else if (event.type === 'report') {
-      if (!current) current = { openBefore: open.size, reports: 0 };
+      if (!current) {
+        current = {
+          openBefore: open.size,
+          openIdsBefore: new Set(open.keys()),
+          reports: 0,
+          floor: activeFloor,
+        };
+      }
       current.reports += 1;
-      for (const finding of event.report.findings) if (finding.material) open.add(finding.id);
-      for (const id of event.report.closes) open.delete(id);
-    } else if (event.type === 'defer') {
-      open.delete(event.findingId);
+      for (const finding of event.report.findings) if (finding.material) {
+        const normalized = normalizeSummary(finding.summary);
+        open.set(finding.id, normalized);
+        findingSummaries.set(finding.id, normalized);
+      }
+      for (const id of [...event.report.closes, ...(event.report.acceptsDefer ?? [])]) {
+        const summary = open.get(id) ?? findingSummaries.get(id);
+        open.delete(id);
+        closedIds.add(id);
+        if (summary) closedSummaries.add(summary);
+      }
     }
   }
-  if (current && current.reports >= Math.max(1, trailingFloor)) {
-    cycles.push({ openBefore: current.openBefore, openAfter: open.size });
-  }
+  if (current) pushCycle(current, trailingFloor);
   let nonConvergingCycles = 0;
   for (let index = cycles.length - 1; index >= 0; index--) {
     const cycle = cycles[index];
-    if (cycle.openBefore > 0 && cycle.openAfter >= cycle.openBefore) nonConvergingCycles += 1;
+    const nonConverging = cycle.beforeSize > 0 && (
+      cycle.afterSize > cycle.beforeSize ||
+      (cycle.afterSize >= cycle.beforeSize && (cycle.sameIdPersists || cycle.repeatedClosed))
+    );
+    if (nonConverging) nonConvergingCycles += 1;
     else break;
   }
   const triggered = nonConvergingCycles >= 2;
@@ -214,10 +308,15 @@ export function coverageRequirement(session) {
     const delta = edge.kind === 'repair' ? edge.proof.paths : edge.proof.resolution;
     if (delta) {
       floor = deltaFloor(delta, edge.proof.modeChanged === true);
-      if (edge.kind === 'repair' && (priorFull || fullReviewReports(prior)) &&
+      const anchorFull = priorFull ?? fullReviewReports(prior);
+      if (edge.kind === 'repair' && anchorFull &&
         edge.proof.modeChanged !== true &&
         !delta.some(path => twoReviewerPath(path) && !(priorFull ? repair : prior).candidate.changedPaths.includes(path)) &&
+        (!delta.some(twoReviewerPath) || anchorFull.some(report => report.verdict === 'PASS')) &&
         floor !== 0) floor = 1;
+      if (edge.kind === 'integration' && edge.proof.reslotOverlap === true &&
+        edge.proof.derived === true && edge.proof.modeChanged !== true &&
+        delta.every(path => path.endsWith('.sql')) && floor !== 0) floor = 1;
       demand(deltaReports.every(report => report.delta === edge.delta), 'delta reviewer must confirm the exact delta');
       if (fullReports.length) {
         inherited = undefined; floor = candidateFloor(candidate, event.intent.risk); scope = 'full';
@@ -285,17 +384,25 @@ export function recordReport(session, report, now) {
   demand(report.tree === session.candidate.tree && ['PASS', 'FAIL'].includes(report.verdict), 'report tree or verdict differs');
   demand(Number.isFinite(now) && now >= session.preparedAt && session.history.every(event => event.at <= now), 'report time is invalid');
   demand(Array.isArray(report.findings) && Array.isArray(report.closes), 'findings and closes must be arrays');
+  if (report.acceptsDefer !== undefined) {
+    demand(Array.isArray(report.acceptsDefer) && report.acceptsDefer.every(identity) && new Set(report.acceptsDefer).size === report.acceptsDefer.length, 'acceptsDefer must be an array of unique finding ids');
+    demand(report.verdict === 'PASS', 'acceptsDefer is only valid on PASS reports');
+  }
   const findingIds = new Set(report.findings.map(finding => finding.id));
   demand(report.findings.every(finding => identity(finding.id) && identity(finding.summary) && typeof finding.material === 'boolean') && findingIds.size === report.findings.length, 'findings need unique stable ids, summaries and material flags');
   const prior = session.history.filter(event => event.type === 'report').flatMap(event => event.report.findings);
   demand(report.findings.every(finding => prior.every(old => old.id !== finding.id || digest(old) === digest(finding))), 'finding id changed meaning');
-  const { open, closedInCurrentRound } = findingState(session);
-  demand(new Set(report.closes).size === report.closes.length && report.closes.every(id => !findingIds.has(id) && (open.has(id) || closedInCurrentRound.has(id))), 'closes must name open material findings');
+  const { open, pendingDefer, closedInCurrentRound, confirmedDefersInCurrentRound } = findingState(session);
+  const closesSet = new Set(report.closes);
+  demand(closesSet.size === report.closes.length && report.closes.every(id => !findingIds.has(id) && (open.has(id) || closedInCurrentRound.has(id))), 'closes must name open material findings');
+  const acceptsDefer = report.acceptsDefer ?? [];
+  demand(acceptsDefer.every(id => !findingIds.has(id) && !closesSet.has(id) && (pendingDefer.has(id) || confirmedDefersInCurrentRound.has(id))), 'acceptsDefer must name pending deferred material findings');
   const next = structuredClone(session); next.history.push({ type: 'report', at: now, report: { ...report, at: now } }); return next;
 }
 export function deferFinding(session, { findingId, target, decision, reason }, now) {
   stateValid(session);
   demand(identity(findingId) && identity(target) && identity(decision) && identity(reason), 'defer requires findingId, target, decision, and reason');
+  demand(structuredDeferTarget(target), 'defer target must reference a structured issue, PR, doc anchor, milestone/plan, or slice ID');
   demand(Number.isFinite(now) && now >= session.preparedAt && session.history.every(event => event.at <= now), 'defer time is invalid');
   const { open } = findingState(session);
   demand(open.has(findingId), 'defer must name an open material finding');
@@ -303,19 +410,37 @@ export function deferFinding(session, { findingId, target, decision, reason }, n
   next.history.push({ type: 'defer', at: now, findingId, target, decision, reason });
   return next;
 }
+export function recordRegroup(session, summary, now) {
+  stateValid(session);
+  if (typeof summary === 'string' && summary.length > IDENTITY_LIMIT && summary.trim()) {
+    demand(false, `regroup summary is ${summary.length} characters (limit ${IDENTITY_LIMIT.toLocaleString('en-US')}); shorten it`);
+  }
+  demand(identity(summary), 'regroup requires a non-empty summary');
+  demand(Number.isFinite(now) && now >= session.preparedAt && session.history.every(event => event.at <= now), 'regroup time is invalid');
+  const next = structuredClone(session);
+  next.history.push({ type: 'regroup', at: now, summary });
+  return next;
+}
 function validateHistory(session) {
   let candidate; let enabled = false; const findings = new Map(); const open = new Set();
+  const pendingDefer = new Set();
   let openAtPrepare = new Set(); const closedInCurrentRound = new Set();
+  const confirmedDefersInCurrentRound = new Set();
   for (const event of session.history) {
-    demand(['prepare', 'report', 'continue', 'rules', 'renew', 'defer'].includes(event.type), 'unknown history event');
+    demand(['prepare', 'report', 'continue', 'rules', 'renew', 'defer', 'regroup'].includes(event.type), 'unknown history event');
     if (event.type === 'rules') { demand(event.version === 3, 'unknown rules transition'); enabled = true; }
     if (event.type === 'prepare') {
       candidate = event.candidate; candidateValid(candidate); enabled ||= candidate.rules?.version === 3;
-      openAtPrepare = new Set(open); closedInCurrentRound.clear();
+      openAtPrepare = new Set(open); closedInCurrentRound.clear(); confirmedDefersInCurrentRound.clear();
+    }
+    if (event.type === 'regroup') {
+      demand(identity(event.summary), 'invalid historical regroup summary');
+      continue;
     }
     if (event.type === 'defer') {
-      demand(identity(event.findingId) && identity(event.target) && identity(event.decision) && identity(event.reason) && open.has(event.findingId), 'invalid historical finding deferral');
+      demand(identity(event.findingId) && identity(event.target) && structuredDeferTarget(event.target) && identity(event.decision) && identity(event.reason) && open.has(event.findingId), 'invalid historical finding deferral');
       open.delete(event.findingId);
+      pendingDefer.add(event.findingId);
       continue;
     }
     if (event.type !== 'report') continue;
@@ -323,6 +448,10 @@ function validateHistory(session) {
     if (enabled) demand(identity(report.documentation), 'documentation assessment is required');
     demand(candidate && report.tree === candidate.tree && report.at === event.at && ['PASS', 'FAIL'].includes(report.verdict) &&
       Array.isArray(report.findings) && Array.isArray(report.closes), 'report differs from its historical candidate');
+    if (report.acceptsDefer !== undefined) {
+      demand(Array.isArray(report.acceptsDefer) && report.acceptsDefer.every(identity) &&
+        new Set(report.acceptsDefer).size === report.acceptsDefer.length && report.verdict === 'PASS', 'invalid historical acceptsDefer');
+    }
     const findingIds = new Set();
     for (const finding of report.findings) {
       demand(identity(finding.id) && identity(finding.summary) && typeof finding.material === 'boolean' &&
@@ -330,9 +459,18 @@ function validateHistory(session) {
       findings.set(finding.id, finding);
       findingIds.add(finding.id);
     }
-    demand(new Set(report.closes).size === report.closes.length && report.closes.every(id => !findingIds.has(id) && (open.has(id) || closedInCurrentRound.has(id))), 'invalid historical finding closure');
-    for (const finding of report.findings) if (finding.material) { open.add(finding.id); closedInCurrentRound.delete(finding.id); }
+    const closesSet = new Set(report.closes);
+    demand(closesSet.size === report.closes.length && report.closes.every(id => !findingIds.has(id) && (open.has(id) || closedInCurrentRound.has(id))), 'invalid historical finding closure');
+    const acceptsDefer = report.acceptsDefer ?? [];
+    demand(acceptsDefer.every(id => !findingIds.has(id) && !closesSet.has(id) && (pendingDefer.has(id) || confirmedDefersInCurrentRound.has(id))), 'invalid historical acceptsDefer');
+    for (const finding of report.findings) if (finding.material) {
+      open.add(finding.id);
+      pendingDefer.delete(finding.id);
+      closedInCurrentRound.delete(finding.id);
+      confirmedDefersInCurrentRound.delete(finding.id);
+    }
     for (const id of report.closes) { open.delete(id); if (openAtPrepare.has(id)) closedInCurrentRound.add(id); }
+    for (const id of acceptsDefer) { pendingDefer.delete(id); confirmedDefersInCurrentRound.add(id); }
   }
 }
 function validateSessionReports(session, now) {
@@ -356,14 +494,18 @@ export function verdict(session, observed, now) {
     validateSessionReports(session, now);
     if (session.version === 3) {
       coverageState(session);
-      if (openFindings(session).size) return result(false, 'needs_agent_review', 'close every material finding');
+      const { open, pendingDefer } = findingState(session);
+      if (open.size) return result(false, 'needs_agent_review', 'close every material finding');
+      if (pendingDefer.size) return result(false, 'needs_agent_review', 'confirm every deferred material finding in a cold PASS report (acceptsDefer)');
       return result(true, 'reviewed', 'reviewed');
     }
     const reports = currentReports(session).filter(report => report.verdict === 'PASS');
     const floor = Math.max(legacyRequiredReviewers(legacyClassifyRisk(observed, latestIntent(session).risk)), session.candidate.integration ? 2 : 0);
     if (reports.length < floor) return result(false, 'needs_agent_review', `${floor} independent PASS reports required`);
     if (reports.some(report => report.at > now)) return result(false, 'invalid', 'report is from the future');
-    if (openFindings(session).size) return result(false, 'needs_agent_review', 'close every material finding');
+    const { open, pendingDefer } = findingState(session);
+    if (open.size) return result(false, 'needs_agent_review', 'close every material finding');
+    if (pendingDefer.size) return result(false, 'needs_agent_review', 'confirm every deferred material finding in a cold PASS report (acceptsDefer)');
     return result(true, 'reviewed', 'reviewed');
   } catch (error) { return result(false, error.message.startsWith('needs_agent_review:') ? 'needs_agent_review' : 'invalid', error.message); }
 }
@@ -398,9 +540,12 @@ export function explainSession(session, observed = session?.candidate, now = Dat
     twoReviewerPaths = (session.candidate.changedPaths ?? []).filter(session.version === 3 ? twoReviewerPath : sensitivePath);
   }
   let openMaterial = null;
+  let unconfirmedDefers = null;
   let regroupAdvisory = null;
   try {
-    openMaterial = [...openFindings(session).values()];
+    const findings = findingState(session);
+    openMaterial = [...findings.open.values()];
+    unconfirmedDefers = [...findings.pendingDefer.values()];
     regroupAdvisory = computeRegroupAdvisory(session, floor);
   } catch (error) { invalidReason ??= error.message; }
   const missingReports = Math.max(0, floor - reports.length);
@@ -421,21 +566,24 @@ export function explainSession(session, observed = session?.candidate, now = Dat
   const status = invalidReason || candidateStatus === 'unreadable' ? 'invalid'
     : candidateStatus === 'dirty' ? 'dirty'
       : candidateStatus === 'stale' ? 'stale'
-        : missingReports > 0 || openMaterial?.length ? 'needs_agent_review' : 'verify_required';
+        : missingReports > 0 || openMaterial?.length || unconfirmedDefers?.length ? 'needs_agent_review' : 'verify_required';
   const nextAction = candidateStatus === 'unreadable'
     ? `Resolve the Git comparison or OPENLUP_STACK_BASE error (${observed?.error ?? 'candidate unreadable'}) before running prepare or verify.`
     : candidateStatus === 'dirty'
       ? 'Commit or discard working-tree changes before running prepare, record or verify.'
       : candidateStatus === 'stale'
-        ? 'Run node scripts/agent-review-session.mjs prepare with the existing intent for a descendant HEAD. For rebased history use prepare --new with that intent and obtain a full review.'
+        ? (session.version === 3 && regroupAdvisory?.triggered && observed?.base === session.candidate.base
+          ? 'Run node scripts/agent-review-session.mjs regroup --summary "<root cause and new approach>" before running prepare for a descendant HEAD (or prepare --new for rebased history).'
+          : 'Run node scripts/agent-review-session.mjs prepare with the existing intent for a descendant HEAD. For rebased history use prepare --new with that intent and obtain a full review.')
         : invalidReason
           ? `Fix invalid session state (${invalidReason}) or run node scripts/agent-review-session.mjs prepare --new .context/scratch/agent-review/intent.json.`
-          : missingReports > 0 || openMaterial?.length
+          : missingReports > 0 || openMaterial?.length || unconfirmedDefers?.length
             ? [
                 missingReports > 0
                   ? `Record ${missingReports} independent cold PASS report(s) (${coverage?.ordinaryAllowed ? `ordinary: true, delta: ${coverage.delta}` : `full tree ${session.candidate.tree}`}) with node scripts/agent-review-session.mjs record <report.json>`
                   : null,
                 openMaterial?.length ? `close open material finding(s): ${openMaterial.map(finding => finding.id).join(', ')}` : null,
+                unconfirmedDefers?.length ? `confirm deferred material finding(s) via acceptsDefer in a cold PASS report: ${unconfirmedDefers.map(item => item.id).join(', ')}` : null,
               ].filter(Boolean).join(' and ') + '.'
             : 'Run node scripts/agent-review-session.mjs verify to confirm the local review evidence.';
   return {
@@ -465,6 +613,7 @@ export function explainSession(session, observed = session?.candidate, now = Dat
       twoReviewerPaths, modeChanged,
     },
     openFindings: openMaterial,
+    unconfirmedDefers,
     regroupAdvisory,
     coverage,
     nextAction,
