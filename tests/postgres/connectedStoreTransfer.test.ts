@@ -21,6 +21,7 @@ import { createPostgresDataGateway, type PgGatewayClient, type PgQueryExecutor }
 import { createPostgresOrderReviewLifecyclePort, createPostgresOrderReviewMediaPort } from "@openlup/platform/commerce/server";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { captureConnectedNativeStore, connectedNativeStoreTables, connectedStoreClusterIdentitySql, type ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
+import { connectedStoreOutsideProfileRelations } from "../../server/adapters/postgres/connectedStoreDomains/index.js";
 import { mapManagedIdentityForConnectedRestore, restoreConnectedNativeStore, type ManagedIdentityMappingSource } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { createPostgresPartnerAcquisitionPort } from "../../server/adapters/postgres/partners/partnerAcquisitionRoutines.js";
 import { createPartnerAcquisitionSubmitHandler } from "../../server/bff/partners/partnerAcquisitionDirect.js";
@@ -786,7 +787,7 @@ it("captures only the address-reference registry census and preserves the target
     const sourcePacket = await capture(source.owner, "source-with-address-reference-registry");
     const freshTarget = await capture(target.owner, "target-with-own-address-reference-registry");
     expect(sourcePacket.outsideProfileCensus.filter(entry => entry.disposition !== "unsupported-empty").map(entry => entry.relation).sort())
-      .toEqual(["acquisition_private.address_references", "acquisition_private.installation_key", "public.catalog_attribute_projection", "public.customer_identity_challenges", "public.platform_schema_migrations"]);
+      .toEqual([...connectedStoreOutsideProfileRelations.keys()].sort());
     expect(sourcePacket.outsideProfileCensus.find(entry => entry.relation === "acquisition_private.address_references"))
       .toEqual({ relation: "acquisition_private.address_references", owner: "platform_acquisition_owner", rows: "2", disposition: "target-address-references" });
     expect(freshTarget.outsideProfileCensus.find(entry => entry.relation === "acquisition_private.address_references")).toMatchObject({ rows: "1" });

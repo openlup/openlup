@@ -294,7 +294,8 @@ for (const outcome of ['changed total', 'same total', 'stale refusal', 'uncertai
       expect(await (await created).json()).toMatchObject({ ok: true, value: { total: current } });
       expect(sent).toHaveLength(refusedAttempt + 1);
       const fresh = sent.at(-1)!;
-      expect(fresh.key).not.toBe(sent[0]!.key);
+      // The managed page keeps one key per purchase; a refusal that wrote nothing does not end it.
+      expect(fresh.key).toBe(sent[0]!.key);
       expect(JSON.parse(fresh.body).expectedTotal).toEqual(current);
       if (outcome === 'same total') expect(fresh.body).toBe(sent[0]!.body);
       expect(Number((await effects()).orders)).toBe(Number(before.orders) + 1);

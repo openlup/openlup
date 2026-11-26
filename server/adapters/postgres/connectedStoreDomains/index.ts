@@ -10,6 +10,20 @@ import { pricingAndPromotionsDomain } from "./pricingAndPromotions.js";
 import { subscriptionsDomain } from "./subscriptions.js";
 import { taxAndMoneyDomain } from "./taxAndMoney.js";
 
+const outsideProfileRelations = {
+  "acquisition_private.installation_key": { disposition: "new-target-installation-key", preserveTarget: true },
+  "acquisition_private.address_references": { disposition: "target-address-references", preserveTarget: true },
+  "public.platform_schema_migrations": { disposition: "target-migration-history", preserveTarget: true },
+  "public.customer_identity_challenges": { disposition: "intentionally-not-carried", preserveTarget: false },
+  "public.catalog_attribute_projection": { disposition: "rebuildable", preserveTarget: false },
+  ...paymentsDomain.outsideProfile,
+} as const;
+
+type OutsideProfileRelation = typeof outsideProfileRelations[keyof typeof outsideProfileRelations];
+export type ConnectedStoreOutsideProfileDisposition = OutsideProfileRelation["disposition"];
+export const connectedStoreOutsideProfileRelations: ReadonlyMap<string, OutsideProfileRelation> =
+  new Map(Object.entries(outsideProfileRelations));
+
 /**
  * Finite native-profile owned table roster, composed from per-domain modules in
  * exact capture order. Adding a table to an existing domain edits only that
@@ -54,6 +68,15 @@ export const connectedStoreOwnedTables = [
   ...subscriptionsDomain.owned.noticeRefusals,
   ...pricingAndPromotionsDomain.owned.offerPolicy,
   ...catalogDomain.owned.priceSetup,
+  ...subscriptionsDomain.owned.renewalOccurrences,
+  ...fulfillmentDomain.owned.renewalStockHolds,
+  ...taxAndMoneyDomain.owned.renewalIssuances,
+  ...taxAndMoneyDomain.owned.renewalBindings,
+  ...subscriptionsDomain.owned.renewalCases,
+  ...subscriptionsDomain.owned.renewalPreparations,
+  ...paymentsDomain.owned.renewalAttemptsAndGrants,
+  ...taxAndMoneyDomain.owned.renewalRebinds,
+  ...fulfillmentDomain.owned.renewalDelivery,
 ] as const;
 
 export const connectedStoreSettingsTables = [
@@ -84,6 +107,7 @@ export const connectedStoreRestoreOrder = [
   ...paymentsDomain.restore.methodRefs,
   ...subscriptionsDomain.restore.methodStates,
   ...subscriptionsDomain.restore.operationsLinesAndCycles,
+  ...subscriptionsDomain.owned.renewalOccurrences,
   ...commerceDomain.restore.orders,
   ...taxAndMoneyDomain.restore.orderLineSources,
   ...commerceDomain.restore.orderItemsAndDraftReceipts,
@@ -93,6 +117,8 @@ export const connectedStoreRestoreOrder = [
   ...subscriptionsDomain.restore.activationsAndMethodEvents,
   ...commerceDomain.restore.checkoutLedgerAndCompensations,
   ...fulfillmentDomain.restore.stockAndReservations,
+  ...fulfillmentDomain.owned.renewalStockHolds,
+  ...taxAndMoneyDomain.owned.renewalIssuances,
   ...commerceDomain.restore.settlements,
   ...subscriptionsDomain.restore.reminders,
   ...communicationsDomain.restore.transactionalReceipts,
@@ -106,8 +132,14 @@ export const connectedStoreRestoreOrder = [
   ...subscriptionsDomain.restore.destinationSelections,
   ...fulfillmentDomain.restore.contacts,
   ...taxAndMoneyDomain.restore.postOrders,
+  ...taxAndMoneyDomain.owned.renewalBindings,
+  ...subscriptionsDomain.owned.renewalCases,
+  ...subscriptionsDomain.owned.renewalPreparations,
+  ...paymentsDomain.owned.renewalAttemptsAndGrants,
+  ...taxAndMoneyDomain.owned.renewalRebinds,
   ...subscriptionsDomain.restore.supportCommands,
   ...fulfillmentDomain.restore.dispatchParcelsAndEvidence,
+  ...fulfillmentDomain.owned.renewalDelivery,
   ...commerceDomain.restore.holdsAndOperations,
   ...subscriptionsDomain.restore.deliveryAlignment,
   ...subscriptionsDomain.restore.dunning,
