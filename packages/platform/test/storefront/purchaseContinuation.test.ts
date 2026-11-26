@@ -433,6 +433,33 @@ describe("W7 a decline is bound to its attempt", () => {
     expect(attemptOf(w.shelf)).toBe(0);
   });
 
+  it("(g) clears the pending-action marker, so the next submit is not held by the declined action", async () => {
+    const holder = { value: { actionKind: "none", phase: "action_issued" } as PendingAction | null };
+    const w = world({ shelf: shelf(storedRecord("cid-w7-marker")), marker: holder });
+    w.server.reads.push(declineOfFirst);
+    expect((await w.c.resume()).snapshot).toMatchObject({ status: "declined", attempt: 1 });
+    expect(holder.value).toBeNull();
+    const { snapshot } = await w.c.submit({ payload: A, selectedProvider: SECOND });
+    expect(w.count("read")).toBe(1);
+    expect(w.count("submit")).toBe(1);
+    expect(w.requests("submit")[0]!.attempt).toBe(1);
+    expect(snapshot).toMatchObject({ status: "awaiting_payment", source: "submit" });
+  });
+
+  it("(h) does not advance a purchase that replaced the declined one at the same attempt", async () => {
+    const store = shelf(storedRecord("cid-w7-declined"));
+    const w = world({ shelf: store });
+    const read = deferred<Answer>();
+    w.server.reads.push(read.promise);
+    const resuming = w.c.resume();
+    const replaced = storedRecord("cid-w7-replacing", B);
+    store.record = replaced;
+    read.resolve(declineOfFirst);
+    await resuming;
+    expect(store.record).toBe(replaced);
+    expect(attemptOf(store)).toBe(0);
+  });
+
   it("(e) advances once for two instances reading the same decline", async () => {
     const store = shelf(storedRecord("cid-w7-shared")), srv = server();
     srv.reads.push(declineOfFirst, declineOfFirst);
@@ -456,6 +483,8 @@ describe("W8 paid is absorbing", () => {
       expect(w.shelf.record).toBeNull();
     }
     expect(w.argsOf<Purchase>("read").map(read => read.continuationId)).toEqual(Array(6).fill(firstKey.split("/")[0]));
+    const returned = w.c.recordReturn();
+    expect(returned).toMatchObject({ accepted: true, snapshot: { status: "paid", source: "submit" } });
     const before = w.calls.length;
     const refused = await w.c.submit({ payload: A });
     expect(refused).toMatchObject({ accepted: false, snapshot: { status: "paid" } });
@@ -673,6 +702,34 @@ describe("W23 state belongs to one identity", () => {
     read.resolve(answer("closed"));
     expect((await resuming).snapshot).toMatchObject({ status: "unknown", result: null, hasContinuation: true });
     expect(store.record).toBe(replaced);
+  });
+});
+
+describe("W23 a stale answer keeps another purchase's pending-action marker", () => {
+  it.each([
+    { outcome: "settled", late: answer("settled") },
+    { outcome: "declined", late: answer("declined", { declines: 0 }) },
+    { outcome: "closed", late: answer("closed") },
+  ])("$outcome for the earlier purchase", async ({ late }) => {
+    const store = shelf(storedRecord("cid-w23-earlier")), srv = server();
+    const holder = { value: null as PendingAction | null };
+    const first = world({ shelf: store, server: srv, marker: holder });
+    const second = world({ shelf: store, server: srv, marker: holder });
+    const read = deferred<Answer>();
+    srv.reads.push(read.promise);
+    const resuming = first.c.resume();
+    srv.abandons.push({ kind: "terminal" });
+    await second.c.startOver();
+    expect((await second.c.submit({ payload: B })).snapshot.status).toBe("awaiting_payment");
+    const replaced = store.record;
+    // The host stores the marker of the provider action it opened for the new purchase.
+    const markerOfNew: PendingAction = { actionKind: "none", phase: "action_issued" };
+    holder.value = markerOfNew;
+    read.resolve(late);
+    await resuming;
+    expect(store.record).toBe(replaced);
+    expect(holder.value).toBe(markerOfNew);
+    expect(first.count("marker.clear")).toBe(0);
   });
 });
 
