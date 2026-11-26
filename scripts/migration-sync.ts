@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { buildPackagesIncremental } from "./build-packages-incremental.mjs";
 import { INVENTORY_PATH, inventoryEnvelope } from "./agent-review-derived.mjs";
 import { SQL_REFERENCE, syncSqlReference } from "./agent-review-generators.mjs";
-import { documentationGit } from "./documentation-routing.ts";
+import { assertDocumentationPath, documentationGit } from "./documentation-routing.ts";
 import { isUtcMigrationSlot, nextFreeMigrationSlot } from "./migration-slots.mjs";
 import { parseStrictJson } from "./oss-strict-json.mts";
 import { checkPlatformMigrationProjection } from "./packages/platform-migration-projection.ts";
@@ -22,6 +22,7 @@ const ALL_SLOT_PATTERN = /^(?:db\/platform|supabase)\/migrations\/(?:(?:q2|qa|qb
 const PLAIN_FORWARD_PATTERN = /^db\/platform\/migrations\/(\d{14})_[a-z][a-z0-9_]*\.sql$/u;
 const ZERO_SLOT = "00000000000000";
 const HEX_SHA256 = /^[a-f0-9]{64}$/u;
+const GIT_OID_PATTERN = /^[a-f0-9]{40}$/u;
 
 export interface MigrationSyncOptions {
   readonly root: string;
@@ -64,12 +65,7 @@ type MutableReviewedForwards = {
   [key: string]: unknown;
 };
 
-function gitLines(root: string, args: readonly string[]): string[] {
-  return documentationGit(root, [...args], undefined, 32 * 1024 * 1024)
-    .toString("utf8")
-    .split("\0")
-    .filter(Boolean);
-}
+type BaseMigrationEntry = { readonly path: string; readonly oid: string };
 
 function resolveBaseCommit(root: string, baseRef: string): string {
   if (!baseRef || baseRef.startsWith("-")) {
@@ -96,9 +92,35 @@ function listLocalMigrationPaths(root: string): string[] {
   return results.sort();
 }
 
-function listBaseMigrationPaths(root: string, baseCommit: string): string[] {
+function listBaseMigrationEntries(root: string, baseCommit: string): BaseMigrationEntry[] {
   try {
-    return gitLines(root, ["ls-tree", "-r", "--name-only", "-z", baseCommit, "--", "db/platform/migrations", "supabase/migrations"]).sort();
+    const output = documentationGit(
+      root,
+      ["ls-tree", "-r", "-z", baseCommit, "--", "db/platform/migrations", "supabase/migrations"],
+      undefined,
+      32 * 1024 * 1024,
+    ).toString("utf8");
+    const entries: BaseMigrationEntry[] = [];
+    for (const record of output.split("\0")) {
+      if (!record) continue;
+      const tab = record.indexOf("\t");
+      if (tab < 0) throw new Error("malformed ls-tree record");
+      const [mode, type, oid, ...rest] = record.slice(0, tab).split(" ");
+      const path = record.slice(tab + 1);
+      if (
+        rest.length > 0 ||
+        type !== "blob" ||
+        (mode !== "100644" && mode !== "100755") ||
+        !oid ||
+        !GIT_OID_PATTERN.test(oid) ||
+        path.startsWith('"')
+      ) {
+        throw new Error("unexpected ls-tree entry");
+      }
+      assertDocumentationPath(path);
+      entries.push({ path, oid });
+    }
+    return entries.sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0));
   } catch (error) {
     throw new Error("unable to read base migration history from the configured git ref", { cause: error });
   }
@@ -114,24 +136,46 @@ function maxSlotFromPaths(paths: readonly string[]): string {
 
 export function allocateNextMigrationSlot(root: string, baseRef = "origin/main"): string {
   const baseCommit = resolveBaseCommit(root, baseRef);
-  const basePaths = listBaseMigrationPaths(root, baseCommit);
+  const basePaths = listBaseMigrationEntries(root, baseCommit).map((entry) => entry.path);
   const localPaths = listLocalMigrationPaths(root);
   const highest = maxSlotFromPaths([...basePaths, ...localPaths]);
   return nextFreeMigrationSlot(highest);
 }
 
-function readGitBlob(root: string, ref: string, path: string): Buffer {
-  return documentationGit(root, ["show", `${ref}:${path}`], undefined, 32 * 1024 * 1024);
-}
+function assertBaseMigrationsUnchanged(root: string, baseEntries: readonly BaseMigrationEntry[]): void {
+  const platformEntries = baseEntries.filter((entry) => entry.path.startsWith("db/platform/migrations/"));
+  if (platformEntries.length === 0) return;
 
-function assertBaseMigrationsUnchanged(root: string, baseCommit: string, basePaths: readonly string[]): void {
-  for (const path of basePaths) {
-    if (!path.startsWith("db/platform/migrations/")) continue;
-    const full = join(root, path);
+  for (const entry of platformEntries) {
+    const full = join(root, entry.path);
     if (!existsSync(full)) throw new Error("existing base migration file was deleted from the working tree");
-    const disk = readFileSync(full);
-    const committed = readGitBlob(root, baseCommit, path);
-    if (!disk.equals(committed)) throw new Error("existing base migration bytes are immutable and must not be edited");
+    if (!lstatSync(full).isFile()) throw new Error("existing base migration bytes are immutable and must not be edited");
+  }
+
+  let actualOids: string[];
+  try {
+    const input = `${platformEntries.map((entry) => entry.path).join("\n")}\n`;
+    const output = documentationGit(
+      root,
+      ["hash-object", "--no-filters", "--stdin-paths"],
+      input,
+      32 * 1024 * 1024,
+    ).toString("utf8");
+    actualOids = output
+      .split(/\r?\n/u)
+      .map((line) => line.trim())
+      .filter(Boolean);
+  } catch (error) {
+    throw new Error("unable to verify base migration hashes from the working tree", { cause: error });
+  }
+
+  if (actualOids.length !== platformEntries.length) {
+    throw new Error("unable to verify base migration hashes from the working tree");
+  }
+  for (let index = 0; index < platformEntries.length; index += 1) {
+    if (actualOids[index] !== platformEntries[index]!.oid) {
+      throw new Error("existing base migration bytes are immutable and must not be edited");
+    }
   }
 }
 
@@ -288,10 +332,11 @@ export function runMigrationSync(options: MigrationSyncOptions): MigrationSyncRe
   }
 
   const baseCommit = resolveBaseCommit(root, baseRef);
-  const basePaths = listBaseMigrationPaths(root, baseCommit);
+  const baseEntries = listBaseMigrationEntries(root, baseCommit);
+  const basePaths = baseEntries.map((entry) => entry.path);
   const baseSet = new Set(basePaths);
   const maxBaseSlot = maxSlotFromPaths(basePaths);
-  assertBaseMigrationsUnchanged(root, baseCommit, basePaths);
+  assertBaseMigrationsUnchanged(root, baseEntries);
 
   let targets: string[];
   if (options.files && options.files.length > 0) {
