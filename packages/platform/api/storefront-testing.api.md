@@ -117,7 +117,8 @@ export type StorefrontScenario = {
         /**
          * States that must not be shown, per run. `control`: forbidden in the control
          * run from its first sample on: outcomes a page whose status reads are blocked
-         * cannot know (awaiting states stay allowed). `clean.ruledOut`: forbidden in
+         * cannot know (awaiting states stay allowed; the state the control negates is
+         * left to `vacuous_progress`). `clean.ruledOut`: forbidden in
          * the clean run from its first sample on: outcomes the scenario rules out.
          * `clean.afterShowing`: once the clean run has shown `state`, each of
          * `regressions` (a pre-outcome state) is forbidden too.
@@ -570,9 +571,10 @@ import type { StorefrontScenario } from "./contracts.js";
  * - `paid_pending_activation`: a subscription's payment settles while its
  *   activation stays pending. The clean run never shows `paid` or `declined`
  *   and, once it showed `paid_pending_activation`, never `awaiting_payment`
- *   again; the control run, whose status reads are blocked, never shows `paid`,
- *   `declined` or `paid_pending_activation` (awaiting states stay allowed); at
- *   most one capture; progress
+ *   again; the control run, whose status reads are blocked, never shows `paid`
+ *   or `declined` (awaiting states stay allowed, and showing the negated
+ *   `paid_pending_activation` is `vacuous_progress`); at most one capture;
+ *   progress
  *   is `paid_pending_activation`; the control blocks status reads and creates
  *   from the outcome on, keeps the outcomes and must keep that state from being
  *   shown. Requires the `activation_pending` outcome.

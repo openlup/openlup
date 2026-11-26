@@ -4130,7 +4130,7 @@ storage.
 | `lost_response_edited_payload` | As `lost_response_reload`, with the first name changed before placing the order again | At most one payable order, one order holding stock, one capture | `update_in_place`: `awaiting_payment` offering `continue_payment`; `refuse_changed`: `details_changed` offering `continue_payment` and `start_over` | `other_policy`; negates the other policy's state | — |
 | `reload_pending_attempt` | Continue to payment; the attempt stays pending (`awaiting_authority`); reload; the pending attempt settles | No payment attempt after the step before the reload; one capture | `awaiting_authority` after the reload, then `paid` | `block_read` of `read` and `create` from the reload, outcomes kept; negates `paid` only | `pending`, `settled_after_pending` |
 | `decline_retry` | Continue to payment; declined (`declined` offering `retry_payment`); retry; settled | At most one payable order, attempts at most declines plus one, one capture | `paid` | `omit_action` of `retry_payment`, the outcomes after it skipped; negates `paid` | `declined`, `settled` |
-| `paid_pending_activation` | A subscription; continue to payment; the payment settles while activation stays pending | Clean run: never `paid` or `declined`, and no `awaiting_payment` once it showed `paid_pending_activation`. Control run: never `paid`, `declined` or `paid_pending_activation` (awaiting states allowed). One capture | `paid_pending_activation` | `block_read` of `read` and `create` from the outcome, outcomes kept; negates `paid_pending_activation` | `activation_pending` |
+| `paid_pending_activation` | A subscription; continue to payment; the payment settles while activation stays pending | Clean run: never `paid` or `declined`, and no `awaiting_payment` once it showed `paid_pending_activation`. Control run: never `paid` or `declined` (awaiting states allowed). One capture | `paid_pending_activation` | `block_read` of `read` and `create` from the outcome, outcomes kept; negates `paid_pending_activation` | `activation_pending` |
 
 The edited-payload progress follows the proof file's `changedPayloadPolicy`;
 an absent or unknown policy reads as `refuse_changed`, and a clean run that
@@ -4204,7 +4204,7 @@ to fix it, and the recheck command (`recheck` from the adapter or proof file,
 | 5 | The create budget kept | `request_budget_exceeded` | `not_run` |
 | 6 | Each matcher used matched in the clean run, and for `block_read` a request of the blocked set after its start; each needed anchor resolved and was visible | `adapter_matcher_unmatched`, `adapter_anchor_missing`, `anchor_hidden` | `not_run` |
 | 7 | The clean run reached its expected state | `policy_mismatch` (the other policy's state), `progress_not_reached` (another state shown), `adapter_anchor_missing` (none) | `failed`; `not_run` |
-| 8 | A `block_read` control blocked a request; its negated state was not reached (within `quietMs` at the expect) | `control_not_applied`, `auto_progress_undeclared`, `vacuous_progress` | `not_run`, `vacuous` |
+| 8 | A `block_read` control blocked a request; its negated state was not reached (within `quietMs` at the expect), also where the scenario forbids other states in the control run | `control_not_applied`, `auto_progress_undeclared`, `vacuous_progress` | `not_run`, `vacuous` |
 | 9 | All hold | — | `passed`, or `safety_only` without a control |
 
 A harness fault is never `failed` or `passed`. A run that exceeds its budget
@@ -4216,7 +4216,8 @@ before its step in the same run) outranks it, so the result is `failed`.
 Forbidden states are set per run in the scenario's `forbiddenStates`:
 `control` lists the states the control run must never show, from its first
 sample on (outcomes a page whose status reads are blocked cannot know; an
-awaiting state stays allowed there); `clean.ruledOut` lists the outcomes the
+awaiting state stays allowed there, and the state the control negates is left
+to `vacuous_progress`, as in every `block_read` scenario); `clean.ruledOut` lists the outcomes the
 clean run must never show; and once the clean run has shown
 `clean.afterShowing.state`, each state in `clean.afterShowing.regressions` is
 forbidden too (cause `regression`). Each finding names its cause
