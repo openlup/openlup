@@ -4,7 +4,7 @@ import { isDeepStrictEqual } from "node:util";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { PLATFORM_BASELINE_FILE, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
-import { qualifiedCatalogueStorageSelectSql, renderNativeStoreSettingsOwnerWindow, NATIVE_SUCCESSOR_TABLE_SQL, assertNativeStoreForward, expectedReplacedFunctionAttrs, previewNoopAcceptanceSql, readReviewedForwardRegistry, renderNativeDeferredTrigger, renderQualifiedSecurityDefiner, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, nativeStoreCreatedTable, nativeStoreTriggerDefinition, sqlSha256, sqlStatements, type NativeDeferredTrigger, type NativeStoreSlot, type ReviewedForwardRegistry } from "../../scripts/reviewed-platform-forward.js";
+import { qualifiedCatalogueStorageSelectSql, renderNativeStoreSettingsOwnerWindow, NATIVE_SUCCESSOR_TABLE_SQL, assertNativeStoreForward, checkConstraintSha256, expectedReplacedFunctionAttrs, matchesBoundedFormatPattern, parseBoundedFormatPattern, previewNoopAcceptanceSql, readReviewedForwardRegistry, renderNativeDeferredTrigger, renderQualifiedSecurityDefiner, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, nativeStoreCreatedTable, nativeStoreTriggerDefinition, sqlSha256, sqlStatements, type NativeDeferredTrigger, type NativeStoreSlot, type ReviewedForwardRegistry } from "../../scripts/reviewed-platform-forward.js";
 import { nativeStoreRevokePublicMessages } from "../../scripts/reviewed-platform-forward.js";
 import { definitionPath, definitionSql, grantPath, grantSql, NATIVE_STORE_GUARD_CATALOGS } from "../helpers/issuedPlatformCatalog.js";
 import { readSelectedCatalogProjection } from "../../server/adapters/postgres/selectedCatalogProjection.js";
@@ -13,7 +13,7 @@ import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardow
 // The static native-store class is a first gate for ordinary mistakes. This test is the
 // truth for function identity, attributes and ACLs: it applies a forward to a real
 // database and compares what PostgreSQL itself reports with the slot's lists.
-type CatalogSlot = Pick<NativeStoreSlot, "createdFunctions" | "replacedFunctions" | "grantOnlyFunctions" | "qualifiedCatalogueStorageSelect" | "settingsOnlyFunctions" | "ownerWindowRole" | "purposeCheck" | "insertSelectTables" | "absorptionCensusTables" | "checkSupersets" | "uniqueSupersets" | "droppedIndexes" | "createdViews" | "createdTriggers" | "existingTableStatements" | "previewNoopAcceptance">;
+type CatalogSlot = Pick<NativeStoreSlot, "createdFunctions" | "replacedFunctions" | "grantOnlyFunctions" | "qualifiedCatalogueStorageSelect" | "settingsOnlyFunctions" | "ownerWindowRole" | "purposeCheck" | "insertSelectTables" | "absorptionCensusTables" | "checkSupersets" | "checkToFunctionGuard" | "uniqueSupersets" | "droppedIndexes" | "createdViews" | "createdTriggers" | "existingTableStatements" | "previewNoopAcceptance">;
 // PostgreSQL creates its own objects below this OID; every object a forward adds is at or above it.
 const FIRST_USER_OID = 16384;
 const catalogueAuthorityPath = "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql";
@@ -138,6 +138,10 @@ const checkRange = (def: string, column: string) => {
   const bounds = [match[1]!, match[2]!].map(value => Number(value.replace(/'|::integer/gu, "")));
   return bounds.every(value => Number.isInteger(value) && value >= -2147483648 && value <= 2147483647) && bounds[0]! <= bounds[1]!
     ? { lower: bounds[0]!, upper: bounds[1]! } : null;
+};
+const checkFormat = (def: string, column: string) => {
+  const match = new RegExp(`^CHECK \\(\\(${column} ~ '((?:[^']|'')*)'::text\\)\\)$`, "u").exec(def);
+  return match ? match[1]!.replaceAll("''", "'") : null;
 };
 const PURPOSE_SHAPE = /^CHECK \(\(purpose = ANY \(ARRAY\[((?:'(?:[^']|'')*'::text)(?:, '(?:[^']|'')*'::text)*)\]\)\)\)$/u;
 const purposeValues = (def: string) => { const match = PURPOSE_SHAPE.exec(def); return match ? quotedValues(match[1]!) : null; };
@@ -545,7 +549,7 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
   // New entries compare the installed definitions, independently of historical SQL text.
   const constraintKey = (row: { rel: string; name: string }) => `${row.rel}.${row.name}`;
   const nowConstraints = new Map(after.constraints.map(row => [constraintKey(row), row.def]));
-  const checks = slot.checkSupersets ?? [], uniques = slot.uniqueSupersets ?? [];
+  const checks = slot.checkSupersets ?? [], guardedChecks = slot.checkToFunctionGuard ?? [], uniques = slot.uniqueSupersets ?? [];
   const sorted = (values: string[]) => JSON.stringify([...new Set(values)].sort());
   for (const entry of checks) {
     const old = before.constraints.find(old => old.rel === entry.table && old.name === entry.constraint);
@@ -572,7 +576,31 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
     const def = nowConstraints.get(`${entry.table}.${entry.constraint}`), newDef = def ? uniqueDefinition(def) : null;
     if (!oldDef || !newDef || oldDef.columns.some(column => !entry.columns.includes(column)) || (oldDef.nullsNotDistinct && !entry.nullsNotDistinct) || JSON.stringify(newDef) !== JSON.stringify({ columns: entry.columns, nullsNotDistinct: entry.nullsNotDistinct })) fail(`UNIQUE changed beyond its listed superset: ${def}`);
   }
-  const protectedTables = new Set([...checks, ...uniques].map(entry => entry.table));
+  for (const entry of guardedChecks) {
+    const old = before.constraints.find(row => row.rel === entry.table && row.name === entry.name);
+    const current = after.constraints.find(row => row.rel === entry.table && row.name === entry.name);
+    if (!old || !current || old.kind !== "c" || current.kind !== "c") {
+      fail(`checkToFunctionGuard constraint missing: ${entry.table}.${entry.name}`);
+      continue;
+    }
+    if (old.validated !== current.validated) fail(`CHECK changed its validation state: ${entry.table}.${entry.name}`);
+    const oldValues = checkValues(old.validated ? old.def : old.def.replace(/ NOT VALID$/u, ""), entry.column);
+    const newPattern = checkFormat(current.validated ? current.def : current.def.replace(/ NOT VALID$/u, ""), entry.column);
+    const compiled = newPattern ? parseBoundedFormatPattern(newPattern) : null;
+    if (!oldValues || !newPattern || !compiled) {
+      fail(`checkToFunctionGuard requires closed enum to anchored bounded format CHECK: ${current.def}`);
+      continue;
+    }
+    const expectedBefore = checkConstraintSha256(`CHECK (${entry.column} IN (${oldValues.map(value => `'${value.replaceAll("'", "''")}'`).join(", ")}))`);
+    const expectedAfter = checkConstraintSha256(`CHECK (${entry.column} ~ '${newPattern.replaceAll("'", "''")}')`);
+    if (expectedBefore !== entry.beforeSha256) fail(`checkToFunctionGuard beforeSha256 mismatch: ${entry.table}.${entry.name}`);
+    if (expectedAfter !== entry.afterSha256) fail(`checkToFunctionGuard afterSha256 mismatch: ${entry.table}.${entry.name}`);
+    if (oldValues.some(value => !matchesBoundedFormatPattern(compiled, value))) fail(`checkToFunctionGuard format CHECK rejects prior enum value: ${entry.table}.${entry.name}`);
+    if (!entry.guardFunctions.length || entry.guardFunctions.some(sig => !slot.replacedFunctions.some(fn => fn.signature === sig))) {
+      fail(`checkToFunctionGuard requires every guardFunction in replacedFunctions: ${entry.table}.${entry.name}`);
+    }
+  }
+  const protectedTables = new Set([...checks, ...guardedChecks, ...uniques].map(entry => entry.table));
   if (slot.previewNoopAcceptance) {
     const current = after.constraints.find(row => row.rel === PREVIEW_TABLE && row.name === PREVIEW_CHECK);
     if (current?.kind !== "c" || !current.validated || current.def !== PREVIEW_NEW_DEFINITION) fail("preview acceptance CHECK must match the three validated branches");
@@ -584,7 +612,9 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
     if (JSON.stringify(now) !== JSON.stringify(expected)) fail(`column ${old.rel}.${old.name} changed outside its constraint replacement`);
   }
   for (const old of before.constraints) {
-    if (checks.some(entry => entry.table === old.rel && entry.constraint === old.name) || uniques.some(entry => entry.table === old.rel && entry.constraint === old.name)) continue;
+    if (checks.some(entry => entry.table === old.rel && entry.constraint === old.name)
+      || guardedChecks.some(entry => entry.table === old.rel && entry.name === old.name)
+      || uniques.some(entry => entry.table === old.rel && entry.constraint === old.name)) continue;
     if (slot.previewNoopAcceptance && old.rel === PREVIEW_TABLE && old.name === PREVIEW_CHECK) continue;
     const def = nowConstraints.get(constraintKey(old));
     if (constraintKey(old) === PURPOSE_CONSTRAINT && def !== undefined && def !== old.def) {
