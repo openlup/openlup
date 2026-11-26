@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
@@ -668,30 +667,119 @@ function sourceFiles(root: string): string[] {
   });
 }
 
-/** Uses the repository scanner's vendor rules, including its scoped-package pattern, on arbitrary strings and their name components. */
-export function providerSpecificKeys(repositoryRoot: string, names: string[]): Set<string> {
+const vendorPatternCache = new Map<string, { raw: string; patterns: RegExp[] }>();
+
+function parseRegexLiteral(text: string, preserveStatefulFlags: boolean): RegExp {
+  const lastSlash = text.lastIndexOf("/");
+  const source = text.slice(1, lastSlash);
+  const rawFlags = text.slice(lastSlash + 1);
+  return new RegExp(source, preserveStatefulFlags ? rawFlags : rawFlags.replace(/[gy]/gu, ""));
+}
+
+function evalStaticString(
+  node: ts.Expression,
+  initializers: ReadonlyMap<string, ts.Expression>,
+  bindings: Map<string, string>,
+  sourceFile: ts.SourceFile,
+): string {
+  if (ts.isParenthesizedExpression(node)) return evalStaticString(node.expression, initializers, bindings, sourceFile);
+  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return node.text;
+  if (ts.isIdentifier(node)) {
+    const cached = bindings.get(node.text);
+    if (cached !== undefined) return cached;
+    const initializer = initializers.get(node.text);
+    assert(initializer !== undefined, `${sourceFile.fileName}: unsupported identifier ${node.text} in neutrality scanner`);
+    const resolved = evalStaticString(initializer, initializers, bindings, sourceFile);
+    bindings.set(node.text, resolved);
+    return resolved;
+  }
+  if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+    return evalStaticString(node.left, initializers, bindings, sourceFile) + evalStaticString(node.right, initializers, bindings, sourceFile);
+  }
+  if (ts.isTemplateExpression(node)) {
+    return node.head.text + node.templateSpans.map((span) => evalStaticString(span.expression, initializers, bindings, sourceFile) + span.literal.text).join("");
+  }
+  if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+    const method = node.expression.name.text;
+    const receiver = evalStaticString(node.expression.expression, initializers, bindings, sourceFile);
+    if (method === "toUpperCase" && node.arguments.length === 0) return receiver.toUpperCase();
+    if (method === "toLowerCase" && node.arguments.length === 0) return receiver.toLowerCase();
+    if (method === "replace" && node.arguments.length === 2) {
+      const first = node.arguments[0]!;
+      const search = ts.isRegularExpressionLiteral(first)
+        ? parseRegexLiteral(first.text, true)
+        : evalStaticString(first, initializers, bindings, sourceFile);
+      return receiver.replace(search, evalStaticString(node.arguments[1]!, initializers, bindings, sourceFile));
+    }
+  }
+  throw new Error(`${sourceFile.fileName}: unsupported string expression in neutrality scanner`);
+}
+
+function evalStaticRegex(
+  node: ts.Expression,
+  initializers: ReadonlyMap<string, ts.Expression>,
+  bindings: Map<string, string>,
+  sourceFile: ts.SourceFile,
+): RegExp {
+  if (ts.isParenthesizedExpression(node)) return evalStaticRegex(node.expression, initializers, bindings, sourceFile);
+  if (ts.isRegularExpressionLiteral(node)) return parseRegexLiteral(node.text, false);
+  if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "RegExp") {
+    const args = node.arguments ?? [];
+    assert(args.length >= 1 && args.length <= 2, `${sourceFile.fileName}: unexpected RegExp argument count in neutrality scanner`);
+    const pattern = evalStaticString(args[0]!, initializers, bindings, sourceFile);
+    const flags = args[1] ? evalStaticString(args[1], initializers, bindings, sourceFile).replace(/[gy]/gu, "") : "";
+    return new RegExp(pattern, flags);
+  }
+  throw new Error(`${sourceFile.fileName}: unsupported regex expression in neutrality scanner`);
+}
+
+function vendorPatterns(repositoryRoot: string): readonly RegExp[] {
   const path = join(repositoryRoot, "packages/ui/smoke/neutrality.ts");
-  const source = ts.createSourceFile(path, readFileSync(path, "utf8"), ts.ScriptTarget.Latest, true);
-  const categories = new Set<string>();
+  const raw = readFileSync(path, "utf8");
+  const cached = vendorPatternCache.get(path);
+  if (cached?.raw === raw) return cached.patterns;
+
+  const source = ts.createSourceFile(path, raw, ts.ScriptTarget.Latest, true);
+  const initializers = new Map<string, ts.Expression>();
+  let patternList: ts.ArrayLiteralExpression | undefined;
   for (const statement of source.statements) {
     if (!ts.isVariableStatement(statement)) continue;
     for (const declaration of statement.declarationList.declarations) {
-      if (!ts.isIdentifier(declaration.name) || declaration.name.text !== "forbiddenPatterns" || !declaration.initializer || !ts.isArrayLiteralExpression(declaration.initializer)) continue;
-      declaration.initializer.elements.forEach((element, index) => {
-        if (!ts.isObjectLiteralExpression(element)) return;
-        const label = element.properties.find((property) => ts.isPropertyAssignment(property) && property.name.getText(source) === "label");
-        if (label && ts.isPropertyAssignment(label) && ts.isStringLiteral(label.initializer) && label.initializer.text.startsWith("vendor:")) categories.add(`ui-${index}`);
-      });
+      if (!ts.isIdentifier(declaration.name) || !declaration.initializer) continue;
+      if (declaration.name.text === "forbiddenPatterns" && ts.isArrayLiteralExpression(declaration.initializer)) {
+        patternList = declaration.initializer;
+      } else {
+        initializers.set(declaration.name.text, declaration.initializer);
+      }
     }
   }
-  assert(categories.size > 0, `${path}: missing vendor vocabulary in neutrality scanner`);
-  // scanSnapshots uses this same --counts-json interface. Probe name components as words and
+  const bindings = new Map<string, string>();
+  const patterns: RegExp[] = [];
+  for (const element of patternList?.elements ?? []) {
+    if (!ts.isObjectLiteralExpression(element)) continue;
+    const label = element.properties.find((property) => ts.isPropertyAssignment(property) && property.name.getText(source) === "label");
+    if (!label || !ts.isPropertyAssignment(label) || !ts.isStringLiteral(label.initializer) || !label.initializer.text.startsWith("vendor:")) continue;
+    const patternProp = element.properties.find((property) => ts.isPropertyAssignment(property) && property.name.getText(source) === "pattern");
+    assert(patternProp && ts.isPropertyAssignment(patternProp), `${path}: vendor rule ${label.initializer.text} missing pattern`);
+    patterns.push(evalStaticRegex(patternProp.initializer, initializers, bindings, source));
+  }
+  assert(patterns.length > 0, `${path}: missing vendor vocabulary in neutrality scanner`);
+  vendorPatternCache.set(path, { raw, patterns });
+  return patterns;
+}
+
+/** Uses the repository scanner's vendor rules, including its scoped-package pattern, on arbitrary strings and their name components. */
+export function providerSpecificKeys(repositoryRoot: string, names: string[]): Set<string> {
+  const patterns = vendorPatterns(repositoryRoot);
+  if (names.length === 0) return new Set();
+  // scanSnapshots uses this same --counts-json probing shape. Probe name components as words and
   // scoped packages, including environment keys and export paths, without bypassing either pattern.
-  const sources = names.map((name) => ({ path: name, contents: `${name} ${name.split(/[^A-Za-z0-9-]+/).filter(Boolean).map((part) => `@${part}/ ${part}`).join(" ")}` }));
-  const result = JSON.parse(execFileSync(process.execPath, ["--experimental-strip-types", path, "--counts-json"], {
-    input: JSON.stringify(sources), encoding: "utf8", timeout: 10_000, maxBuffer: 4 * 1024 * 1024,
-  })) as { counts: Array<{ path: string; counts: Record<string, number> }> };
-  return new Set(result.counts.filter(({ counts }) => [...categories].some((category) => (counts[category] ?? 0) > 0)).map(({ path }) => path));
+  const flagged = new Set<string>();
+  for (const name of names) {
+    const contents = `${name} ${name.split(/[^A-Za-z0-9-]+/).filter(Boolean).map((part) => `@${part}/ ${part}`).join(" ")}`;
+    if (patterns.some((pattern) => pattern.test(contents))) flagged.add(name);
+  }
+  return flagged;
 }
 
 /** Selection rule A, shared by the inventory and its reachability check. */

@@ -1130,6 +1130,17 @@
       "anchor": "#storefront-verdict-and-proof-file-contracts"
     },
     {
+      "id": "platform-storefront-testing",
+      "when": "The storefront test-support entry: scenario, adapter, observer and page-handle contracts, the page handle and the verdict serializer",
+      "paths": [
+        "packages/platform/src/storefront/testing/**",
+        "packages/platform/test/storefront/testing/**",
+        "packages/platform/api/storefront-testing.api.md"
+      ],
+      "doc": "packages/platform/README.md",
+      "anchor": "#storefront-test-support-entry"
+    },
+    {
       "id": "platform-http",
       "when": "Node HTTP runtime, request adaptation and deployment-owned security policy contracts",
       "paths": [
@@ -1286,6 +1297,7 @@
       "when": "Native connected-store capture and restore preparation",
       "paths": [
         "server/adapters/postgres/connectedStore*.ts",
+        "server/adapters/postgres/connectedStoreDomains/**",
         "server/adapters/filesystem/orderReviewMediaTransfer*"
       ],
       "doc": "server/adapters/README.md",

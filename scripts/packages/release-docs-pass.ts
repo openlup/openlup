@@ -327,8 +327,8 @@ function apiSections(root: string, since: string): string[] {
   return sections;
 }
 
-/** Upper bound (128 KiB) on a simulated or prepared upgrade page: headroom over real releases, catches runaway API diffs early. */
-export const UPGRADE_PAGE_MAX_BYTES = 128 * 1024;
+/** Upper bound (160 KiB) on a simulated or prepared upgrade page: headroom over real releases (1.4.0 measured about 131 KiB), catches runaway API diffs early. */
+export const UPGRADE_PAGE_MAX_BYTES = 160 * 1024;
 export const RELEASE_NOTE_PACKAGED_CONTENT_REMEDY =
   "wrap approved adapter subpaths in inline code (for example `@openlup/platform/<family>/<adapter>`) "
   + "or remove downstream/provider terms from the offending changelog fragment or API declaration";

@@ -1,5 +1,6 @@
 import { InventoryPersistenceError } from "../../src/inventory/index.js";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { PAYMENT_ATTEMPT_STATUSES } from "@openlup/core/payment";
 import type { PaymentExecutionBaseInput, PaymentExecutionBaseResult, PaymentProviderCapabilityDescriptor } from "@openlup/core/payment";
 import type {
   HostedRenewalDue, RenewalCycleDeps, RenewalAttemptResult, RenewalExecutionContext,
@@ -9,10 +10,12 @@ import type {
 import {
   executeRenewalCycle,
   checkRenewalDeliveryAdmission,
+  classifyManagedRenewalPayment,
   createDefaultRenewalCyclePolicy,
   createDefaultRenewalPreflightPolicy,
   createDefaultRenewalFailurePolicy,
   type RenewalCyclePolicy,
+  type ManagedRenewalPaymentClassification,
 } from "../../src/subscriptions/index.js";
 import { recordRenewalPreflightBlock } from "../../src/subscriptions/renewalCycleRefusalMechanism.js";
 import { propagateRenewalFailure, type RenewalFailurePolicy } from "../../src/subscriptions/renewalCycleFailureMechanism.js";
@@ -267,6 +270,98 @@ describe("neutral hosted cycle ordering", () => {
     f.deps.deliveryAlignmentAdmission = { ...admission, allowed: true };
     await executeRenewalCycle(f.deps, f.due, f.policy);
     expect(f.trace[0]).toBe("validate"); expect(f.trace.filter(x => x === "clock")).toHaveLength(1);
+  });
+});
+
+describe("managed renewal payment reporting", () => {
+  it("keeps the managed report buckets separate from the legacy charge outcome", () => {
+    const expectedStatuses = {
+      created: "prepared_without_ack",
+      blocked_preflight: "unclassified",
+      sent_to_provider: "provider_acknowledged",
+      requires_action: "unclassified",
+      processing: "provider_acknowledged",
+      succeeded: "settled",
+      failed: "unclassified",
+      cancelled: "unclassified",
+      expired: "unclassified",
+    } satisfies Record<NonNullable<SubscriptionRenewalChargeResult["attemptStatus"]>, ManagedRenewalPaymentClassification>;
+    for (const attemptStatus of PAYMENT_ATTEMPT_STATUSES) {
+      expect(classifyManagedRenewalPayment({ kind: "result", attemptStatus })).toBe(expectedStatuses[attemptStatus]);
+    }
+    expect(classifyManagedRenewalPayment({ kind: "result", attemptStatus: null })).toBe("unclassified");
+
+    const rows = [
+      { outcome: "charged", attemptStatus: "processing" },
+      { outcome: "charged", attemptStatus: "sent_to_provider" },
+      { outcome: "charged", attemptStatus: "succeeded" },
+      { outcome: "failed", attemptStatus: "succeeded" },
+      { outcome: "failed", attemptStatus: "created" },
+      { outcome: "requires_action", attemptStatus: "requires_action" },
+      { outcome: "skipped", attemptStatus: null },
+    ] as const;
+    const reasons = ["provider_execution_indeterminate", "reservation_unavailable", "prefix: provider_execution_indeterminate"];
+    const counters = { prepared_without_ack: 0, provider_acknowledged: 0, settled: 0, unclassified: 0 };
+    for (const { attemptStatus } of rows) counters[classifyManagedRenewalPayment({ kind: "result", attemptStatus })]++;
+    for (const reason of reasons) counters[classifyManagedRenewalPayment({ kind: "row_error", reason })]++;
+    expect({ processed: rows.length, charged: rows.filter(row => row.outcome === "charged").length, errors: reasons.length, ...counters })
+      .toEqual({ processed: 7, charged: 3, errors: 3, prepared_without_ack: 2, provider_acknowledged: 2, settled: 2, unclassified: 4 });
+  });
+
+  it("distinguishes acknowledgement from late settlement on replay without redispatch", async () => {
+    const f = fixture();
+    const prepare = vi.spyOn(f.deps.paymentPort, "prepareProviderAttempt");
+    f.result.attemptStatus = "sent_to_provider";
+    f.attempt.status = "sent_to_provider";
+    const first = await executeRenewalCycle(f.deps, f.due, f.policy);
+    expect(first).toMatchObject({ outcome: "charged", attemptStatus: "sent_to_provider", replayed: false });
+    expect(classifyManagedRenewalPayment({ kind: "result", attemptStatus: first.attemptStatus })).toBe("provider_acknowledged");
+
+    f.attempt.replayed = true;
+    const replay = await executeRenewalCycle(f.deps, f.due, f.policy);
+    expect(replay).toStrictEqual({ ...first, replayed: true });
+    expect(classifyManagedRenewalPayment({ kind: "result", attemptStatus: replay.attemptStatus })).toBe("provider_acknowledged");
+
+    // Durable attempt readback after the settlement notification is applied.
+    f.attempt.status = "succeeded";
+    const settled = await executeRenewalCycle(f.deps, f.due, f.policy);
+    expect(settled).toStrictEqual({
+      ...replay, outcome: "failed", attemptStatus: "succeeded", dunningCaseId: null,
+      retryAttempt: null, reason: "custom-unacknowledged",
+    });
+    expect(classifyManagedRenewalPayment({ kind: "result", attemptStatus: settled.attemptStatus })).toBe("settled");
+
+    expect(prepare.mock.calls.map(([input]) => [input.idempotencyKey, input.providerIdempotencyKey, input.providerRequestFingerprint]))
+      .toEqual(Array.from({ length: 3 }, () => ["custom-execution/prepare", "custom-key", "custom-fingerprint"]));
+    expect(f.captured.execution).toMatchObject({ idempotencyKey: "custom-execution", providerIdempotencyKey: "custom-key" });
+    expect(f.captured.finalize).toMatchObject({ idempotencyKey: "custom-execution/finalize", providerIdempotencyKey: "custom-key" });
+    expect(f.trace.filter(step => step === "execute" || step === "finalize")).toEqual(["execute", "finalize"]);
+  });
+
+  it("reports an indeterminate execution after prepare without admitting a new execution on replay", async () => {
+    const f = fixture();
+    const { executionIndeterminate: _fixtureError, ...overrides } = f.policy;
+    const policy = createDefaultRenewalCyclePolicy(overrides);
+    const prepare = vi.spyOn(f.deps.paymentPort, "prepareProviderAttempt");
+    const execute = vi.spyOn(f.deps.executionPort, "execute").mockRejectedValueOnce(new Error("request_timeout"));
+    f.attempt.status = "created";
+
+    const reason = await executeRenewalCycle(f.deps, f.due, policy).then(
+      () => { throw new Error("renewal unexpectedly returned a result"); },
+      (error: Error) => error.message,
+    );
+    expect(reason).toBe("provider_execution_indeterminate");
+    expect(classifyManagedRenewalPayment({ kind: "row_error", reason })).toBe("prepared_without_ack");
+    expect(f.trace).toContain("prepare");
+    expect(f.trace).not.toContain("finalize");
+
+    f.attempt.replayed = true;
+    const replay = await executeRenewalCycle(f.deps, f.due, policy);
+    expect(replay).toMatchObject({ outcome: "failed", attemptStatus: "created", replayed: true });
+    expect(classifyManagedRenewalPayment({ kind: "result", attemptStatus: replay.attemptStatus })).toBe("prepared_without_ack");
+    expect(prepare.mock.calls.map(([input]) => input.idempotencyKey)).toEqual(["custom-execution/prepare", "custom-execution/prepare"]);
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(f.trace).not.toContain("finalize");
   });
 });
 

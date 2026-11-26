@@ -8,6 +8,7 @@ export * from "./platformWatchdogService.js";
 export * from "./platformWatchdogDecision.js";
 export * from "./platformWatchdogDeliveryPolicy.js";
 export * from "./platformWatchdogQueue.js";
+export * from "./watchdogAlertBatch.js";
 export * from "./controlPlaneWatchdog.js";
 export * from "./migrations.js";
 export type { SettingReader, SettingPreviewer } from "./settingsRead.js";
