@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { delimiter, dirname, resolve } from 'node:path';
 import { createServer } from 'node:net';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
@@ -15,6 +15,19 @@ function execute(script: string) {
   const child = spawn(process.execPath, ['-e', script], { stdio: 'pipe' });
   return once(child, 'exit').then(([code]) => code);
 }
+
+test('npm start explains how to correct a refused port flag', () => {
+  for (const port of ['1023', '6000']) {
+    const direct = spawnSync('npm', ['start', '--', '--port', port], {
+      cwd: root, env: { ...env, PATH: [dirname(process.execPath), env.PATH].filter(Boolean).join(delimiter),
+        OPENLUP_STARTER_PORT: '4320' }, encoding: 'utf8', timeout: 10_000,
+    });
+    assert.ifError(direct.error);
+    assert.equal(direct.status, 1);
+    assert.match(direct.stderr, /starter_port_invalid\nFix: Pass a valid `--port <1024–65535>`/u);
+    assert.doesNotMatch(direct.stderr, /OPENLUP_STARTER_PORT|lifecycle up/u);
+  }
+});
 
 test('real lifecycle probe sends the configured Host; wrong Host and connection errors fail', async () => {
   await mkdir(resolve(root, '.context'), { recursive: true });
@@ -81,12 +94,18 @@ test('lifecycle passes the resolved port to Compose and configures the probe aut
     const bin = resolve(directory, 'bin');
     await mkdir(bin);
     await writeFile(resolve(bin, 'docker'), '#!/bin/sh\nif [ "$4" = "-f" ]; then /bin/cat > override.json; fi\nprintf "%s\\n" "$OPENLUP_STARTER_PORT" >> calls\n', { mode: 0o755 });
-    const up = (value?: string) => spawnSync(process.execPath, ['lifecycle.mjs', 'up'],
+    const up = (value?: string, ...args: string[]) => spawnSync(process.execPath, ['lifecycle.mjs', 'up', ...args],
       { cwd: directory, env: { PATH: bin, OPENLUP_STARTER_PORT: value }, encoding: 'utf8' });
-    for (const value of ['--bad', '1023', '65536', '1e4']) {
+    for (const value of ['--bad', '1023', '65536', '1e4', '6000', '06000']) {
       const refused = up(value);
       assert.equal(refused.status, 2);
       assert.match(refused.stderr, /starter_port_invalid\nFix: .*OPENLUP_STARTER_PORT.*1024 to 65535.*lifecycle up/u);
+      const structured = up(value, '--json');
+      assert.equal(structured.status, 2);
+      const { code, path, fix } = JSON.parse(structured.stdout).findings[0];
+      assert.equal(code, 'starter_port_invalid');
+      assert.equal(path, '/arguments');
+      assert.equal(refused.stderr, `${code}\nFix: ${fix}\n`);
       await assert.rejects(readFile(resolve(directory, 'calls')), { code: 'ENOENT' });
     }
     for (const [value, publicOrigin] of [[undefined, undefined], ['', undefined], ['04320', undefined], ['4320', 'https://store.example.test:4443']]) {

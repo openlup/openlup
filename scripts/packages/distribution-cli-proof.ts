@@ -324,6 +324,21 @@ export function reconcileSubscriptionOfferCustomization(app: string, predecessor
 export const starterLifecycle = "lifecycle.mjs";
 const starterCompose = "compose.yaml";
 
+export function proveStarterPortRefusals(app: string) {
+  const options = { cwd: app, env: { ...isolatedConsumerEnv(), PATH: "", OPENLUP_STARTER_PORT: "6000" }, encoding: "utf8" as const };
+  const host = spawnSync(process.execPath, ["host/server.ts", "--port", "1023"], options);
+  assert.ifError(host.error);
+  assert.equal(host.status, 1);
+  assert.match(host.stderr, /starter_port_invalid\nFix: Pass a valid `--port <1024–65535>`/u);
+  const lifecycle = spawnSync(process.execPath, [starterLifecycle, "up", "--json"], options);
+  assert.ifError(lifecycle.error);
+  assert.equal(lifecycle.status, 2);
+  const report = JSON.parse(lifecycle.stdout);
+  assert.deepEqual(report.packs, []);
+  assert.equal(report.findings[0].code, "starter_port_invalid");
+  assert.match(report.findings[0].fix, /Set OPENLUP_STARTER_PORT.*unset it to use 4319/u);
+}
+
 export function reconcileStarterLocalPort(app: string, previous: Record<string, string>,
   applyRefused: () => Parameters<typeof assertUpgradeConflict>[0]) {
   const port = "4320";
@@ -937,6 +952,9 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   rmSync(workspace, { recursive: true, force: true });
   return () => phase("installed-application-and-owned-bytes", () => {
     assertCompleteStarter(app, to); checkUpgradeFiles();
+    if (Object.hasOwn(to.files, "host/server.ts") && Object.hasOwn(to.files, starterLifecycle)
+      && to.files["shared/config.ts"]?.includes("const fetchBlockedPorts"))
+      proveStarterPortRefusals(app);
     if (catalogue130) phase("starter-1.3.0-installer-admission", () => {
       // Target packages are installed here. The role refusal witnesses a completed catalogue admission.
       assertStarterCatalogueAdmission(app, "starter_seed_runtime_role_forbidden", 3, catalogueUpgrade);

@@ -1,4 +1,5 @@
 import { buildGuidance, infrastructure, rulesRecheck, up } from './installation/refusals.ts';
+import { hostPortFix } from './shared/refusals.ts';
 import { seedPhysicalGuidance } from './shared/seed-physical.ts';
 
 const retryBrowser = 'Run `./lifecycle browser` again.';
@@ -35,7 +36,7 @@ const operatorSignIn = [
   'Retry sign-in with the same apply flags. If no new matching message arrives, confirm the address and wait until both limits allow another request.',
 ];
 const isOperatorSignIn = (code, path) => path === 'auth.operator' && ['starter_input_invalid', 'starter_auth_invalid'].includes(code);
-const localPortFix = 'Set OPENLUP_STARTER_PORT to a decimal port from 1024 to 65535, or unset it to use 4319.';
+export const localPortFix = 'Set OPENLUP_STARTER_PORT to a decimal port from 1024 to 65535 that Fetch permits, or unset it to use 4319.';
 // Only findings about a single SKU's price state can be collected during review.
 const skuLocalPriceRefusals = new Set([
   'starter_catalogue_reprice_required', 'starter_catalogue_price_scheduled', 'base_price_ambiguous',
@@ -202,7 +203,7 @@ export const starterRefusals = Object.freeze(Object.fromEntries(Object.entries({
   starter_order_controls_configuration_invalid: checkConfig,
   starter_pause_presets_invalid: checkConfig,
   starter_policy_seed_conflict: verifySeed,
-  starter_port_invalid: { fix: `${localPortFix} ${up}`, recheck: up },
+  starter_port_invalid: { fix: hostPortFix, recheck: 'Rerun the same host command.' },
   starter_predecessor_cancel_failed: browser('Use the qualified predecessor and verify its seeded subscription and cancellation terms.'),
   starter_price_seed_conflict: { fix: 'If you edited the owned price, discount or rounding inputs after seeding, restore the originals before retrying. Ask the pricing owner to reconcile divergent seed rows with the original demo inputs. Have the owner close other active or open explicit subscription rows or withdraw pending rows while preserving price history. You can also rebuild a disposable demo using the installed guide.', recheck: up },
   starter_product_invalid: checkConfig,

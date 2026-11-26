@@ -303,13 +303,14 @@ released set.
 
 ## Run the local application
 
-`compose.yaml` pins PostgreSQL 16 and publishes the application only at
-`http://127.0.0.1:4319`. The lifecycle starts its one-shot installed migration
-runner and seed before the application container.
+`compose.yaml` pins PostgreSQL 16 and publishes the application on loopback,
+at `http://127.0.0.1:4319` by default. The lifecycle starts its one-shot
+installed migration runner and seed before the application container.
 
 To use another free local port, export `OPENLUP_STARTER_PORT=4320` in the shell
 that runs `./lifecycle up` and `npm run catalogue:apply`. Use a decimal port
-from 1024 to 65535. An unset or empty value uses 4319, even if Compose has a
+from 1024 to 65535, excluding [ports blocked by Fetch](https://fetch.spec.whatwg.org/#port-blocking).
+An unset or empty value uses 4319, even if Compose has a
 different value in `.env`. Choose a distinct `COMPOSE_PROJECT_NAME` for each
 concurrent demo. A configured `publicOrigin` still governs request authority.
 
@@ -509,9 +510,10 @@ Both fictional catalogues use the ISO test currency `XTS`, fictional country
 pricing, tax or jurisdiction claim. Polish and English remain UI content; money
 formatting uses the selected locale ID directly.
 
-The starter reads no environment configuration. For direct host use, pass
+Direct host startup reads its options from flags. Pass
 `--configuration <id>`, `--port <number>` and `--listen <address>` after `npm start --`.
-The port defaults to 4319 and listen address to 127.0.0.1. The only other supported
+The port defaults to 4319 and uses the range and Fetch exclusions above.
+The listen address defaults to 127.0.0.1. The only other supported
 listen address is 0.0.0.0 for explicit container transport. Unknown/duplicate flags,
 missing values, invalid ports/addresses and unknown configurations refuse by name.
 Compose passes the container listen/port flags and publishes only host loopback.

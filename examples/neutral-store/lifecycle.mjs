@@ -9,7 +9,7 @@ import { readStarterDiagnostic, starterDiagnostic } from './shared/refusals.ts';
 import { seedPhysicalGuidance } from './shared/seed-physical.ts';
 import { applicationHealthcheck } from './host/healthcheck.ts';
 import { browserJourneyGroups } from './browser-groups.mjs';
-import { catalogueApplyFix, catalogueApplyRefusal, isSkuLocalPriceRefusal, operatorChallengeGuidance, repriceRecovery, starterGuidance, starterRefusals } from './lifecycle-refusals.mjs';
+import { catalogueApplyFix, catalogueApplyRefusal, isSkuLocalPriceRefusal, localPortFix, operatorChallengeGuidance, repriceRecovery, starterGuidance, starterRefusals } from './lifecycle-refusals.mjs';
 import { installationFailure, installationFinding, installationReport, refusal } from './installation/refusals.ts';
 
 const root = dirname(fileURLToPath(import.meta.url));
@@ -56,12 +56,6 @@ function ownedConfiguration(owner, selected) {
   return owner.selectConfiguration(selected);
 }
 
-function starterPort(parseHostArguments) {
-  const value = env.OPENLUP_STARTER_PORT;
-  if (value?.startsWith('--')) throw starterDiagnostic('starter_port_invalid');
-  return parseHostArguments(value ? ['--port', value] : []).port;
-}
-
 const argumentObserved = {
   starter_argument_unknown: 'The lifecycle command received an unsupported option.',
   starter_argument_duplicate: 'The lifecycle command received the same option more than once.',
@@ -87,6 +81,9 @@ function commandRefusal(error, stage, allowLegacy = false) {
   const prerequisite = stage === '/installation' ? 'demonstration installation' : 'selected configuration';
   const { cause = `The ${prerequisite} failed a starter prerequisite.`, fix, recheck } = guidance;
   const observed = Object.hasOwn(argumentObserved, code) ? argumentObserved[code] : `The starter refused the ${prerequisite}.`;
+  if (command === 'up' && stage === '/arguments' && code === 'starter_port_invalid')
+    return installationFinding(refusal(code, stage, observed, 'The local starter requires a supported listener port.',
+      `${localPortFix} Run \`./lifecycle up\` again.`));
   return installationFinding(refusal(code, diagnostic?.guidance?.path ?? stage, observed, cause,
     command === 'refusals' ? 'Use `./lifecycle refusals` with at most one `--json` option.' : diagnostic?.guidance?.fix ?? fix,
     command === 'refusals' ? 'Repeat the refusals command with the corrected options.' : recheck));
@@ -189,8 +186,8 @@ if (command === 'refusals') {
   let final;
   try {
     const selected = lifecycleOptions(args);
-    const { assertConfig, isConfigurationId, parseHostArguments } = await import('./shared/config.ts');
-    const port = starterPort(parseHostArguments);
+    const { assertConfig, isConfigurationId, parseStarterPort } = await import('./shared/config.ts');
+    const port = parseStarterPort(env.OPENLUP_STARTER_PORT || undefined);
     // Give each Compose subprocess the same listener port, ahead of any .env value.
     env.OPENLUP_STARTER_PORT = String(port);
     stage = '/configuration';
@@ -390,8 +387,8 @@ async function catalogueApply(argv) {
     if (verb !== 'apply' || modes.length > 1) deny('starter_argument_unknown');
     const [mode] = modes;
     const sharedFlags = options.filter(option => option !== mode);
-    const { assertConfig, parseHostArguments } = await import('./shared/config.ts');
-    const port = starterPort(parseHostArguments);
+    const { assertConfig, parseStarterPort } = await import('./shared/config.ts');
+    const port = parseStarterPort(env.OPENLUP_STARTER_PORT || undefined);
     const config = ownedConfiguration(await import('./owned/store.config.ts'), lifecycleOptions(sharedFlags));
     assertConfig(config);
     const npmApply = npmSilent ? 'npm run --silent catalogue:apply' : 'npm run catalogue:apply';

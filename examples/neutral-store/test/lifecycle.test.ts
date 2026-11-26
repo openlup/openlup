@@ -40,7 +40,7 @@ test('up_json_reports_four_fields_for_installer_refusal and verifies the real on
     const config = "export const selectConfiguration = (id = 'coffee') => ({ id });";
     const configFile = join(app, 'owned/store.config.ts');
     writeFileSync(configFile, config);
-    writeFileSync(join(app, 'shared/config.ts'), "export const assertConfig = () => {}; export const isConfigurationId = id => typeof id === 'string'; export const parseHostArguments = () => ({ port: 4319 });");
+    writeFileSync(join(app, 'shared/config.ts'), "export const assertConfig = () => {}; export const isConfigurationId = id => typeof id === 'string'; export const parseStarterPort = () => 4319;");
     writeFileSync(join(app, 'installation/install.ts'), `
       import { refusal } from './refusals.ts';
       import { starterDiagnostic } from '../shared/refusals.ts';

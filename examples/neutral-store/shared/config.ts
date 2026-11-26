@@ -295,6 +295,20 @@ export function assertPublicOrigin(config: Pick<StoreConfig, 'publicOrigin' | 'a
 }
 
 
+const defaultStarterPort = 4319;
+// Entries in the starter's allowed range from https://fetch.spec.whatwg.org/#port-blocking
+const fetchBlockedPorts = new Set([
+  1719, 1720, 1723, 2049, 3659, 4045, 4190, 5060, 5061, 6000, 6566,
+  6665, 6666, 6667, 6668, 6669, 6679, 6697, 10080,
+]);
+
+export function parseStarterPort(value = String(defaultStarterPort)): number {
+  const port = Number(value);
+  if (!/^[0-9]+$/.test(value) || port < 1024 || port > 65535 || fetchBlockedPorts.has(port))
+    throw starterDiagnostic('starter_port_invalid');
+  return port;
+}
+
 /** Non-secret host arguments; the owned registry supplies the absent configuration. */
 export function parseHostArguments(args: readonly string[]): {
   configuration: string | undefined; port: number; listen: '127.0.0.1' | '0.0.0.0'; databaseUrl?: string; quoteAcceptanceKeyFile?: string;
@@ -304,7 +318,7 @@ export function parseHostArguments(args: readonly string[]): {
   let databaseUrl: string | undefined;
   let quoteAcceptanceKeyFile: string | undefined;
   let cataloguePublicationPasswordFile: string | undefined;
-  let port = 4319;
+  let port = defaultStarterPort;
   let listen: '127.0.0.1' | '0.0.0.0' = '127.0.0.1';
   const seen = new Set<string>();
   for (let index = 0; index < args.length; index += 2) {
@@ -325,11 +339,8 @@ export function parseHostArguments(args: readonly string[]): {
         || url.search || url.hash || url.pathname !== '/neutral_store') throw starterDiagnostic('starter_runtime_connection_required');
       databaseUrl = value;
     } else if (flag === '--configuration') configuration = value;
-    else if (flag === '--port') {
-      if (!/^[0-9]+$/.test(value) || !Number.isSafeInteger(Number(value))
-        || Number(value) < 1024 || Number(value) > 65535) throw starterDiagnostic('starter_port_invalid');
-      port = Number(value);
-    } else {
+    else if (flag === '--port') port = parseStarterPort(value);
+    else {
       if (value !== '127.0.0.1' && value !== '0.0.0.0') throw starterDiagnostic('starter_listen_invalid');
       listen = value;
     }

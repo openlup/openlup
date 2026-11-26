@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve, extname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertConfig, parseHostArguments } from '../shared/config.ts';
+import { hostPortFix, starterDiagnosticCode } from '../shared/refusals.ts';
 import { readQuoteAcceptanceKeyring } from './quote-secret.ts';
 import { isOperation, operations } from '../shared/api.ts';
 import { isRecord } from '../shared/offer.ts';
@@ -11,7 +12,14 @@ import { dispatchAction, pendingBindings, type ApplicationBindings } from './bin
 import { createOriginPolicy, admitRequest } from './origin-policy.ts';
 
 const staticRoot = resolve(fileURLToPath(new URL('../dist/', import.meta.url)));
-const options = parseHostArguments(process.argv.slice(2));
+let options: ReturnType<typeof parseHostArguments>;
+try {
+  options = parseHostArguments(process.argv.slice(2));
+} catch (error) {
+  if (starterDiagnosticCode(error) !== 'starter_port_invalid') throw error;
+  process.stderr.write(`starter_port_invalid\nFix: ${hostPortFix}\n`);
+  process.exit(1);
+}
 const config = selectConfiguration(options.configuration);
 assertConfig(config);
 const configuredPort = options.port;

@@ -438,7 +438,7 @@ if (!env[workerFlag]) {
       assert.deepEqual(result.report.receipts.map(row => row.stage), ['release.save', 'release.prepare']);
       assert.deepEqual(writes(result), ['save:1', 'prepare:1']);
     }
-    for (const port of ['--invalid', '1023', '65536', '1e4']) {
+    for (const port of ['--invalid', '1023', '65536', '1e4', '6000']) {
       const refused = invoke({ port });
       finding(refused, 'starter_port_invalid', /OPENLUP_STARTER_PORT.*1024 to 65535.*same catalogue apply command/u);
       assert.deepEqual(refused.trace, []);

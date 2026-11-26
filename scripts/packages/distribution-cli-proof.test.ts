@@ -11,7 +11,7 @@ import { imageReference, readCiImage } from "../ci-image-pull.mjs";
 import { browserContainerArguments, starterBrowserFailure } from "../starter-browser-ci.mjs";
 import { proveInstalledCareUpgrade, qualificationReceipt, qualifyReleasedSet } from "./exact-set-qualification.mjs";
 import { assertCompleteStarter, assertUpgradeConflict, previousPublishedSet, migrateStarterOwned,
-  includeSettingsHost, starterSettingsHost, reconcileLifecycleCustomization, reconcileStarterLocalPort, reconcileReminderInstallationTest, proveStarterCatalogueWrappers, retiresStarterCatalogue, proveStarterCatalogue130,
+  includeSettingsHost, starterSettingsHost, reconcileLifecycleCustomization, reconcileStarterLocalPort, proveStarterPortRefusals, reconcileReminderInstallationTest, proveStarterCatalogueWrappers, retiresStarterCatalogue, proveStarterCatalogue130,
   reminderInstallationTest, starterLifecycle, starterOptionalOwnedFiles, starterUpgradeSnapshot,
   starterDisplayFiles, reconcileDisplayCustomization, reconcileStarterAgentGuide,
   starterSubscriptionOffer, reconcileSubscriptionOfferCustomization, starterEditorPorts, starterDocumentFiles,
@@ -1053,6 +1053,7 @@ it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, cus
     expect(readFileSync(join(app, path)).equals(expected), `owned bytes after upgrade: ${path}`).toBe(true);
   }
   symlinkSync(resolve("node_modules"), join(app, "node_modules"), "dir");
+  proveStarterPortRefusals(app);
   if (localLifecycle) {
     const launch = spawnSync(process.execPath, [localLifecycle.path, "ownership"], { cwd: app, encoding: "utf8" });
     expect(launch.status, launch.stderr).toBe(0);
