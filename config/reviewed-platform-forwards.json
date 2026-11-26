@@ -9794,7 +9794,13 @@
       {
         "row": "native-renewal-occurrence-guards",
         "path": "db/platform/migrations/20261129140000_native_renewal_occurrence_guards.sql",
-        "replacedFunctions": [],
+        "replacedFunctions": [
+          {
+            "signature": "public.customer_preferences_export(uuid)",
+            "beforeSha256": "0b0eadf68d764ddaa24fb654015760ff30f8bf79798f6478a27091efc71b2da6",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
         "createdFunctions": [
           {
             "signature": "public.subscriptions__read_renewal_occurrence(uuid,uuid,uuid)",
@@ -14204,12 +14210,17 @@
     },
     {
       "path": "db/platform/migrations/20261129140000_native_renewal_occurrence_guards.sql",
-      "sha256": "969812b156d2dfcd2cc2a441774f5807a0ff17eb6dfc3d9577f31b5e5c00c91b",
+      "sha256": "c7ad1f3c87977f39f6e7e7751f7b3b0cd03918c3910ce648c3601c1cd0c5f988",
       "functions": [
+        {
+          "signature": "public.customer_preferences_export(uuid)",
+          "beforeSha256": "0b0eadf68d764ddaa24fb654015760ff30f8bf79798f6478a27091efc71b2da6",
+          "afterSha256": "b09ba49f218967419aed3d43d61e5cc8530d5bb17fc55fce7414af9d383e1041"
+        },
         {
           "signature": "public.subscriptions__read_renewal_occurrence(uuid,uuid,uuid)",
           "beforeSha256": null,
-          "afterSha256": "be8acb626ca5bf9c0c44c822ad712229b7162b5c3b3d775d57cf1e6a2db3a1b4"
+          "afterSha256": "08fa2a0c162ca36c2da1dbb874e1d2f013bab2ac01f18388e71be01ef7effcf9"
         },
         {
           "signature": "public.subscriptions__lock_renewal_occurrence(uuid,uuid,uuid)",
@@ -14219,7 +14230,7 @@
         {
           "signature": "public.subscriptions__export_renewal_occurrences(uuid)",
           "beforeSha256": null,
-          "afterSha256": "ec5332cedbfd1df94f4286993db900a6a3dd722475d1cf9ded313f1337c34a89"
+          "afterSha256": "33849ce02c5448aa5aabe24e23d3094a7da987cb26add4d25253691c211ea408"
         }
       ]
     }

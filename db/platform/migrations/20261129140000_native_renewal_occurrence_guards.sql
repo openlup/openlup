@@ -12,10 +12,16 @@ BEGIN
   END IF;
   IF occurrence.operation_id IS NOT NULL AND NOT EXISTS (
     SELECT 1 FROM public.subscription_renewal_operations op
+    JOIN public.subscription_cycle_generations generation ON generation.operation_id=op.id
+      AND generation.cycle_key=occurrence.cycle_key
+      AND generation.commercial_generation_id=occurrence.commercial_generation_id
     WHERE op.id=occurrence.operation_id AND op.subscription_id=p_subscription
       AND op.scheduled_at=occurrence.original_anchor_at
   ) THEN
     RETURN jsonb_build_object('kind','unavailable','code','renewal_cycle_unavailable','field','/cycleKey');
+  END IF;
+  IF occurrence.rail='v3' AND occurrence.effective_due_at<occurrence.original_anchor_at THEN
+    RETURN jsonb_build_object('kind','unavailable','code','renewal_cycle_unavailable','field','/effectiveDueAt');
   END IF;
   IF occurrence.deadline_rule_ref IS NOT NULL AND occurrence.cadence_seconds % 86400=0
      AND occurrence.cadence_seconds / 86400<=2147483647 THEN
@@ -76,7 +82,9 @@ CREATE FUNCTION public.subscriptions__export_renewal_occurrences(p_client uuid)
 RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE caller name:=coalesce(nullif(current_setting('role'),'none'),session_user::text)::name;
 BEGIN
- IF NOT has_table_privilege(caller,'public.subscriptions','SELECT')
+ IF NOT (has_column_privilege(caller,'public.subscriptions','id','SELECT')
+   AND has_column_privilege(caller,'public.subscriptions','client_id','SELECT')
+   AND has_column_privilege(caller,'public.subscriptions','status','SELECT'))
    OR EXISTS (SELECT 1 FROM pg_class c JOIN pg_roles r ON r.rolname=caller
      WHERE c.oid='public.subscriptions'::regclass AND c.relrowsecurity
        AND NOT (r.rolsuper OR r.rolbypassrls OR (NOT c.relforcerowsecurity AND pg_has_role(caller,c.relowner,'USAGE'))))
@@ -93,6 +101,18 @@ BEGIN
 END;
 $$;
 
+-- Reuse the mounted privacy owner's existing EXECUTE boundary. The preferences
+-- contributor still projects payment and delivery, and Subscriptions owns the evidence.
+CREATE OR REPLACE FUNCTION public.customer_preferences_export(p_client uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE evidence jsonb:=public.subscriptions__export_renewal_occurrences(p_client);
+BEGIN
+ RETURN jsonb_build_object('payment',coalesce((SELECT jsonb_agg(to_jsonb(p) ORDER BY id) FROM public.customer_payment_preferences p WHERE client_id=p_client),'[]'),
+  'delivery',coalesce((SELECT jsonb_agg(to_jsonb(p) ORDER BY id) FROM public.customer_delivery_preferences p WHERE client_id=p_client),'[]'))
+  || CASE WHEN evidence='[]'::jsonb THEN '{}'::jsonb ELSE jsonb_build_object('renewalOccurrences',evidence) END;
+END;
+$$;
+
 REVOKE ALL ON FUNCTION public.subscriptions__export_renewal_occurrences(uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.subscriptions__read_renewal_occurrence(uuid,uuid,uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.subscriptions__lock_renewal_occurrence(uuid,uuid,uuid) FROM PUBLIC;
@@ -104,8 +124,5 @@ DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THE
   EXECUTE 'REVOKE ALL ON FUNCTION public.subscriptions__read_renewal_occurrence(uuid,uuid,uuid), public.subscriptions__lock_renewal_occurrence(uuid,uuid,uuid), public.subscriptions__export_renewal_occurrences(uuid) FROM authenticated;';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.subscriptions__read_renewal_occurrence(uuid,uuid,uuid), public.subscriptions__lock_renewal_occurrence(uuid,uuid,uuid) FROM service_role;';
-END IF; END; $$;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
-  EXECUTE 'GRANT EXECUTE ON FUNCTION public.subscriptions__export_renewal_occurrences(uuid) TO service_role;';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.subscriptions__read_renewal_occurrence(uuid,uuid,uuid), public.subscriptions__lock_renewal_occurrence(uuid,uuid,uuid), public.subscriptions__export_renewal_occurrences(uuid) FROM service_role;';
 END IF; END; $$;

@@ -8,9 +8,15 @@ const obligations: PersonalDataObligation[] = [
 const occurrenceEvidence: PersonalDataObligation = { owner: "subscriptions", resource: "subscriptions.occurrence-evidence",
   disposition: "retain", reasonCode: "RENEWAL_OCCURRENCE_RETENTION", remote: false };
 
-async function occurrenceEvidenceInstalled(db: PgQueryExecutor): Promise<boolean> {
-  return (await db.query("SELECT to_regprocedure('public.subscriptions__export_renewal_occurrences(uuid)') IS NOT NULL AS installed"))
-    .rows[0]?.installed === true;
+async function readOccurrenceEvidence(db: PgQueryExecutor, contactId: string | null) {
+  if (!contactId) return [];
+  const access = await db.query(`SELECT has_function_privilege(
+    to_regprocedure('public.customer_preferences_export(uuid)'), 'EXECUTE') AS allowed`);
+  if (access.rows[0]?.allowed !== true) return [];
+  const evidence = (await db.query(
+    "SELECT public.customer_preferences_export($1::uuid)->'renewalOccurrences' AS evidence", [contactId],
+  )).rows[0]?.evidence;
+  return Array.isArray(evidence) ? evidence as Record<string, string | null>[] : [];
 }
 
 /** Reference-owned veto: identity never queries subscriptions or cancels them. */
@@ -21,12 +27,7 @@ export function createSubscriptionsPrivacyContributor(): PersonalDataContributor
     async export(db, subject) {
       const rows = subject.contactId ? (await db.query("SELECT id, status FROM public.subscriptions WHERE client_id = $1 ORDER BY id", [subject.contactId])).rows : [];
       const subscriptions = rows.map(row => ({ id: String(row.id), status: String(row.status) }));
-      const evidence = subject.contactId && await occurrenceEvidenceInstalled(db)
-        ? (await db.query(
-          "SELECT public.subscriptions__export_renewal_occurrences($1) AS evidence", [subject.contactId],
-        )).rows[0]?.evidence
-        : undefined;
-      const occurrences = Array.isArray(evidence) ? evidence as Record<string, string | null>[] : [];
+      const occurrences = subscriptions.length ? await readOccurrenceEvidence(db, subject.contactId) : [];
       return { contributorId: "subscriptions", version: "subscriptions.privacy-veto.v1",
         data: subscriptions.map(subscription => {
           const evidence = occurrences.filter(row => row.subscriptionId === subscription.id);
@@ -42,12 +43,11 @@ export function createSubscriptionsPrivacyContributor(): PersonalDataContributor
         if (rows.some(row => row.status === "active")) throw new PrivacyRefusal("PRIVACY_ACTIVE_SUBSCRIPTION");
         if (rows.some(row => row.status === "paused")) throw new PrivacyRefusal("PRIVACY_RESUMABLE_SUBSCRIPTION");
         if (rows.some(row => row.status !== "cancelled")) throw new PrivacyRefusal("PRIVACY_ASSESSMENT_UNAVAILABLE");
+        if (rows.length && (await readOccurrenceEvidence(db, subject.contactId)).length) {
+          return { obligations: [...obligations, occurrenceEvidence] };
+        }
       }
-      const installed = subject.contactId && await occurrenceEvidenceInstalled(db);
-      const retained = installed && (await db.query(
-        "SELECT EXISTS (SELECT 1 FROM public.subscription_cycle_occurrences WHERE client_id = $1) AS retained", [subject.contactId],
-      )).rows[0]?.retained;
-      return { obligations: retained ? [...obligations, occurrenceEvidence] : obligations };
+      return { obligations };
     },
     async eraseOrRetain(_db, _subject, assessment) { return { contributorId: "subscriptions", version: "subscriptions.privacy-veto.v1", obligations: assessment.obligations }; },
   };
