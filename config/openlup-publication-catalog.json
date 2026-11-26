@@ -7218,6 +7218,26 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/lifecycle/storefrontBuildIdentity.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/lifecycle/storefrontDigest.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/lifecycle/storefrontProofFile.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/lifecycle/storefrontVerdict.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/lifecycle/storefrontVerdictSchema.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/market-packs/currencyExponent.ts",
       "class": "public-output"
     },
@@ -10603,6 +10623,26 @@
     },
     {
       "path": "packages/platform/test/lifecycle/recipeCli.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/lifecycle/storefrontBuildIdentity.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/lifecycle/storefrontDigest.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/lifecycle/storefrontProofFile.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/lifecycle/storefrontVerdict.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/lifecycle/storefrontVerdictTypes.test.ts",
       "class": "public-output"
     },
     {
