@@ -883,7 +883,12 @@
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/lifecycle/appUpgrade.test.ts",
-        "test/lifecycle/postgresInstallQualification.test.ts"
+        "test/lifecycle/postgresInstallQualification.test.ts",
+        "test/lifecycle/storefrontVerdict.test.ts",
+        "test/lifecycle/storefrontVerdictTypes.test.ts",
+        "test/lifecycle/storefrontProofFile.test.ts",
+        "test/lifecycle/storefrontDigest.test.ts",
+        "test/lifecycle/storefrontBuildIdentity.test.ts"
       ],
       "entrypoint": "dist/lifecycle/index.d.ts",
       "snapshot": "api/lifecycle.api.md"
