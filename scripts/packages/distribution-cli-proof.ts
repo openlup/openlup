@@ -1945,7 +1945,7 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
       if (readFileSync(projectFile, "utf8") !== alternate + "\n" || alternatePassword === current) fail("second_project_record");
       const replacement = identity(alternate);
       if (replacement[1]?.split(" ").at(-1) !== alternate + "_database" || replacement[2] === live[2]
-        || checked("replacement_listener", composeFor(alternate, "port", "application", "4319")) !== `127.0.0.1:${port}`
+        || checked("replacement_listener", composeFor(alternate, "port", "application", String(port))) !== `127.0.0.1:${port}`
         || sql("select count(*) from public.commerce_orders", "neutral_store", true, alternate) !== "0")
         fail("blank_replacement_volume_identity");
       const missing = await readSettlementContinuity(settled, alternate);
