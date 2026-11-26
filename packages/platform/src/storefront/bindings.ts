@@ -92,8 +92,11 @@ export interface SubmitTransportBinding<TRequest = unknown, TOptions = unknown, 
  *
  * No function reads this policy yet: `getOrCreateContinuationId` continues
  * with an identity that was not persisted when its storage binding drops a
- * write. A later release is planned to add the storage-failure policy
- * parameter (default `refuse`) as a declared behaviour change.
+ * write. `createPurchaseContinuation` takes no policy: it reads the record
+ * back and always refuses to send when a write throws or does not read back.
+ * A later change makes `getOrCreateContinuationId` this policy's reader, with
+ * the storage-failure policy parameter (default `refuse`) as a declared
+ * behaviour change.
  *
  * @experimental
  */
@@ -102,12 +105,18 @@ export type StorageFailurePolicy = "refuse" | "continue_unpersisted";
 /**
  * Receives a client event the package reports.
  *
+ * - `submit_refused_in_flight`: the server refused a submit because an attempt
+ *   for this purchase is already in flight.
+ * - `stored_continuation_rejected`: `createPurchaseContinuation` found a stored
+ *   continuation identity that the identifier binding will not reuse, and sent
+ *   nothing. The event carries no identity.
+ *
  * New events may be added in a minor release, so a host accepts the parameter's
  * union type rather than narrowing to the literals it knows.
  *
  * @experimental
  */
-export type ClientEventReporter = (event: "submit_refused_in_flight") => void;
+export type ClientEventReporter = (event: "submit_refused_in_flight" | "stored_continuation_rejected") => void;
 
 /**
  * Marks a provider action that was already issued for a purchase.
@@ -207,7 +216,9 @@ export interface PaymentProviderFacts {
 /**
  * What the server does with a changed payload sent under the same command key:
  * `update_in_place` updates the existing record, `refuse_changed` refuses it.
- * It configures no replay. The union is open: members may be added in a minor
+ * It configures no replay. `createPurchaseContinuation` reads it: under
+ * `refuse_changed` it sends a changed payload only after a `refused` answer,
+ * when nothing was created. The union is open: members may be added in a minor
  * release. The package reads a member it does not know as `refuse_changed`: it
  * never assumes that the server applied a changed payload.
  *

@@ -215,8 +215,11 @@ export interface SubmitTransportBinding<TRequest = unknown, TOptions = unknown, 
  *
  * No function reads this policy yet: `getOrCreateContinuationId` continues
  * with an identity that was not persisted when its storage binding drops a
- * write. A later release is planned to add the storage-failure policy
- * parameter (default `refuse`) as a declared behaviour change.
+ * write. `createPurchaseContinuation` takes no policy: it reads the record
+ * back and always refuses to send when a write throws or does not read back.
+ * A later change makes `getOrCreateContinuationId` this policy's reader, with
+ * the storage-failure policy parameter (default `refuse`) as a declared
+ * behaviour change.
  *
  * @experimental
  */
@@ -224,12 +227,18 @@ export type StorageFailurePolicy = "refuse" | "continue_unpersisted";
 /**
  * Receives a client event the package reports.
  *
+ * - `submit_refused_in_flight`: the server refused a submit because an attempt
+ *   for this purchase is already in flight.
+ * - `stored_continuation_rejected`: `createPurchaseContinuation` found a stored
+ *   continuation identity that the identifier binding will not reuse, and sent
+ *   nothing. The event carries no identity.
+ *
  * New events may be added in a minor release, so a host accepts the parameter's
  * union type rather than narrowing to the literals it knows.
  *
  * @experimental
  */
-export type ClientEventReporter = (event: "submit_refused_in_flight") => void;
+export type ClientEventReporter = (event: "submit_refused_in_flight" | "stored_continuation_rejected") => void;
 /**
  * Marks a provider action that was already issued for a purchase.
  *
@@ -333,7 +342,9 @@ export interface PaymentProviderFacts {
 /**
  * What the server does with a changed payload sent under the same command key:
  * `update_in_place` updates the existing record, `refuse_changed` refuses it.
- * It configures no replay. The union is open: members may be added in a minor
+ * It configures no replay. `createPurchaseContinuation` reads it: under
+ * `refuse_changed` it sends a changed payload only after a `refused` answer,
+ * when nothing was created. The union is open: members may be added in a minor
  * release. The package reads a member it does not know as `refuse_changed`: it
  * never assumes that the server applied a changed payload.
  *
@@ -489,6 +500,8 @@ export { recoverAmbiguousSubmit } from "./ambiguousSubmit.js";
 export type { PendingResumeDecision } from "./pendingResume.js";
 export { applyPendingResume, checkPendingResume, decidePendingResume } from "./pendingResume.js";
 export type { ChangedPayloadPolicy, ClientEventReporter, ContinuationRecord, ContinuationRecordStorageBinding, IdentifierBinding, PaymentProviderFacts, PendingAction, PendingActionStorageBinding, StatusReading, StatusTransportBinding, StorageFailurePolicy, SubmitFailureClass, SubmitFailureClassifier, SubmitOutcomeClass, SubmitOutcomeClassifier, SubmitTransportBinding, } from "./bindings.js";
+export type { PurchaseContinuation, PurchaseContinuationSnapshot } from "./purchaseContinuation.js";
+export { createPurchaseContinuation } from "./purchaseContinuation.js";
 export type { StorefrontAnchor } from "./anchor.js";
 export { storefrontAnchor } from "./anchor.js";
 ```
@@ -613,4 +626,193 @@ export declare function applyPendingResume(decision: PendingResumeDecision, effe
     }) => void;
     cannotCheck: () => void;
 }): boolean;
+```
+## dist/storefront/purchaseContinuation.d.ts
+
+```ts
+import type { ChangedPayloadPolicy, ClientEventReporter, ContinuationRecordStorageBinding, IdentifierBinding, PaymentProviderFacts, PendingAction, PendingActionStorageBinding, StatusReading, SubmitFailureClassifier, SubmitOutcomeClass, SubmitOutcomeClassifier } from "./bindings.js";
+import { type AttemptNumber, type CommandKey, type ContinuationId } from "./identity.js";
+import { type PendingResumeDecision } from "./pendingResume.js";
+/**
+ * What a store renders for one purchase. A new frozen object whenever a field
+ * changes; `getSnapshot()` returns the same object until then.
+ *
+ * - `status`: what the buyer faces now. The union is open: a reader renders a
+ *   status it does not know as `unknown`.
+ * - `busy`: a command is waiting on a binding; every other command is refused.
+ * - `hasContinuation` and `attempt`: read from the stored record after each
+ *   command. `hasContinuation` in `idle` means a purchase may already exist
+ *   under the stored key; submitting the same intent continues it. The
+ *   snapshot never carries the continuation identity.
+ * - `result` and `outcome`: the last answer applied and its class, computed
+ *   once when the answer was applied.
+ * - `source`: what produced the current status, or `null` after `begin` and a
+ *   reset.
+ * - `resumeDecision`: the last pending-action decision, `null` once an answer
+ *   is applied.
+ * - `error`: the error behind the current status when a binding rejected.
+ *
+ * @experimental
+ */
+export interface PurchaseContinuationSnapshot<TResult = unknown> {
+    readonly status: "idle" | "awaiting_payment" | "awaiting_authority" | "details_changed" | "declined" | "refused" | "closed" | "paid" | "paid_pending_activation" | "storage_unavailable" | "unknown";
+    readonly busy: boolean;
+    readonly hasContinuation: boolean;
+    readonly attempt: AttemptNumber;
+    readonly result: TResult | null;
+    readonly outcome: SubmitOutcomeClass | null;
+    readonly source: "submit" | "replay" | "read" | "return" | null;
+    readonly resumeDecision: PendingResumeDecision | null;
+    readonly error: unknown;
+}
+/**
+ * One purchase as one object a store's UI renders from in any framework.
+ *
+ * Members use no `this`, so they can be destructured. Every command returns
+ * `{ accepted, snapshot }`; `accepted` is `false` when the command was refused
+ * and therefore called no binding and changed nothing: while `busy`, `begin`
+ * outside `idle`, and `submit` after a settled answer until `startOver`.
+ *
+ * - `subscribe`: calls the listener with no argument after each new snapshot,
+ *   synchronously and in subscription order. A listener removed during a
+ *   notification is not called; a listener's error does not stop the others
+ *   and is surfaced as an unhandled rejected promise. Returns an idempotent
+ *   unsubscribe.
+ * - `begin`: reads the stored record into an `idle` snapshot and runs the
+ *   pending-action check when a marker exists. It sends no create request.
+ * - `submit`: runs the pending-action check, applies the changed-payload
+ *   policy, persists and reads back the continuation record, then sends one
+ *   request under the key `commandKeyFor` gives and replays it exactly once
+ *   when the server may have committed it.
+ * - `resume`: one authoritative read of the purchase by its key. The
+ *   controller never reads on its own.
+ * - `recordReturn`: the buyer came back from a provider. It sends nothing and
+ *   never settles: only a following read can.
+ * - `startOver`: asks the server to give up the purchase and clears it only on
+ *   a `terminal` answer.
+ *
+ * @experimental
+ */
+export interface PurchaseContinuation<TPayload, TResult, TOptions = undefined> {
+    readonly getSnapshot: () => PurchaseContinuationSnapshot<TResult>;
+    readonly subscribe: (listener: () => void) => () => void;
+    readonly begin: () => Promise<{
+        readonly accepted: boolean;
+        readonly snapshot: PurchaseContinuationSnapshot<TResult>;
+    }>;
+    readonly submit: (input: {
+        payload: TPayload;
+        options?: TOptions;
+        selectedProvider?: string | null;
+    }) => Promise<{
+        readonly accepted: boolean;
+        readonly snapshot: PurchaseContinuationSnapshot<TResult>;
+    }>;
+    readonly resume: () => Promise<{
+        readonly accepted: boolean;
+        readonly snapshot: PurchaseContinuationSnapshot<TResult>;
+    }>;
+    readonly recordReturn: () => {
+        readonly accepted: boolean;
+        readonly snapshot: PurchaseContinuationSnapshot<TResult>;
+    };
+    readonly startOver: () => Promise<{
+        readonly accepted: boolean;
+        readonly snapshot: PurchaseContinuationSnapshot<TResult>;
+    }>;
+}
+/**
+ * Creates the controller of one purchase. It composes the entry's
+ * continuation-record functions, `recoverAmbiguousSubmit` and the
+ * pending-resume functions, and reaches storage, requests and server answers
+ * only through these bindings. It holds no storage name, wire format,
+ * provider, clock of its own or timer, and creating it calls no binding.
+ *
+ * Host obligations:
+ *
+ * 1. `transport.submit`, `transport.replay` and `transport.read` resolve every
+ *    typed server answer, refusals included, and reject only on a transport
+ *    failure, except the server's in-flight refusal, which rejects so that
+ *    `classifySubmitFailure` returns `attempt_in_flight` for it.
+ * 2. `commandKeyFor` is deterministic across calls, reloads and instances; the
+ *    key is the command's replay identity.
+ * 3. `read` and `abandon` work from `{ continuationId, attempt }` alone;
+ *    `result` is the last answer in this page when one exists.
+ * 4. `abandon` resolves `terminal` only when the server cancelled or closed the
+ *    purchase under the key, or confirmed that none exists and none can still
+ *    arrive, after the host's own request timeout plus the server's
+ *    late-create bound since the last unanswered create.
+ * 5. `request.fingerprint` covers the purchase the buyer reviewed, without the
+ *    payment method, and is stable across reloads and instances.
+ * 6. `declinedAttempt` returns the attempt number the answer declines, or
+ *    `null`; a host whose answers name attempts by a server identifier keeps a
+ *    durable map from that identifier to the attempt number.
+ * 7. A host resolves the purchase or clears the record before a sign-in or
+ *    sign-out changes the principal its keys are bound to.
+ * 8. The continuation identity is a credential on servers that accept it as
+ *    one: a host does not log or report it.
+ *
+ * An answer is applied once. After a `settled` answer only another `settled`
+ * answer changes the status. `settled` and `closed` clear the record and the
+ * pending-action marker; `declined` advances the attempt only when
+ * `declinedAttempt` names the stored attempt, and clears the marker. A changed
+ * payload is sent only under `update_in_place`, or after a `refused` answer;
+ * any other policy value reads as `refuse_changed`. When a record write throws
+ * or does not read back, nothing is sent: the controller takes no
+ * storage-failure policy. A class, recovery, reading or decision this version
+ * does not know sends nothing more and keeps the record.
+ *
+ * A rejected `read` or `abandon` keeps the status and sets `error`. Any other
+ * binding error, a throwing `storage.write` aside, rejects the command with
+ * that error after `busy` is released, and the snapshot keeps its values from
+ * before the command.
+ *
+ * @experimental
+ */
+export declare function createPurchaseContinuation<TPayload, TRequest, TResult, TOptions = undefined, C extends PendingAction = PendingAction>(bindings: {
+    storage: ContinuationRecordStorageBinding;
+    identifier: IdentifierBinding;
+    changedPayload: ChangedPayloadPolicy;
+    commandKeyFor: (identity: {
+        continuationId: ContinuationId;
+        attempt: AttemptNumber;
+    }) => CommandKey;
+    request: {
+        fingerprint: (payload: TPayload) => string;
+        build: (payload: TPayload, identity: {
+            commandKey: CommandKey;
+            attempt: AttemptNumber;
+        }) => TRequest;
+    };
+    transport: {
+        submit: (request: TRequest, options?: TOptions) => Promise<TResult>;
+        replay: (request: TRequest, options: TOptions | undefined, deadlineMs: number) => Promise<TResult>;
+        read: (purchase: {
+            continuationId: ContinuationId;
+            attempt: AttemptNumber;
+            result: TResult | null;
+            pending: C | null;
+        }) => Promise<TResult>;
+        abandon: (purchase: {
+            continuationId: ContinuationId;
+            attempt: AttemptNumber;
+            result: TResult | null;
+            pending: C | null;
+        }) => Promise<StatusReading>;
+    };
+    classifySubmitFailure: SubmitFailureClassifier;
+    classifyOutcome: SubmitOutcomeClassifier<TResult>;
+    activationPending: (result: TResult) => boolean;
+    declinedAttempt: (result: TResult) => number | null;
+    /** @experimental */
+    report?: ClientEventReporter;
+    pending?: {
+        storage: PendingActionStorageBinding<C>;
+        toStatusReading: (result: TResult) => StatusReading;
+        clock: {
+            now: () => number;
+        };
+        providerFacts: PaymentProviderFacts;
+    };
+}): PurchaseContinuation<TPayload, TResult, TOptions>;
 ```
