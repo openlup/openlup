@@ -72,8 +72,8 @@ the exact `@openlup/*` set together.
 The application owns its instructions and execution authority. Inside the
 OpenLup monorepo, root `AGENTS.md` governs.
 
-The implementation seams are `withPayloadSchema`, `composeHandlers` and
-`uniqueRegistry`; `./testing` checks store fencing, without replacing complete
-adapter or absorption proof. Installed bytes under `node_modules/@openlup/**`
-remain the dispatch engine: do not autonomously patch, fork, vendor, monkey-patch,
+Use `withPayloadSchema`, `composeHandlers`, `composeIndependentHandlers` and
+`uniqueRegistry` at the handler boundary. The `./testing` entry checks store
+fencing as part of adapter and absorption proof. Installed bytes under
+`node_modules/@openlup/**` remain the dispatch engine: do not autonomously patch, fork, vendor, monkey-patch,
 shadow resolution or restore a copied engine. Import only declared exports.

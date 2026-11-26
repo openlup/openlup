@@ -39,6 +39,21 @@ component taking precedence.
 Composed components receive the row and abort signal, without the transient
 execution context. Each component must protect its own effect across replay.
 
+Use `composeIndependentHandlers` for destinations with separate durable
+receipts. Set a concurrency limit and a whole-group deadline. Each admitted
+handler receives the same row, abort signal and execution context. A completed
+group prefers snooze, then retry, then discard, then processed. Opt in with
+`acknowledgeDiscardedHandlers` when an individual terminal discard counts as a
+completed destination. `projectProcessedDetail` lets the host select safe
+metadata from terminal outcomes. The default acknowledgement contains no
+sibling detail.
+
+The worker aborts the group at its deadline and gives active handlers its
+existing abort grace. The composer stops starting queued handlers on abort.
+If active work ignores cancellation, the worker's backstop records a timeout
+retry. Give each destination a durable receipt that also protects concurrent
+attempts after a timeout.
+
 Use `withPayloadSchema` when an application handler needs payload validation.
 Validation issues return `retry` with reason `outbox_payload_invalid`; handlers
 without this wrapper retain their existing behavior.

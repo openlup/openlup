@@ -2,191 +2,58 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import type { CatalogSkuRevisionRef } from "@openlup/platform/catalog";
-import registry from "../../config/reviewed-platform-forwards.json" with { type: "json" };
-import { readPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
-import { withPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
-import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady,
-  type PostgresContainer } from "../helpers/postgresContainer.js";
+import {
+  closePostgres,
+  postgresSetupTimeoutMs,
+  postgresTeardownTimeoutMs,
+  runPostgresContainer,
+  waitForPostgresTcpReady,
+  type PostgresContainer,
+} from "../helpers/postgresContainer.js";
 import { captureStoreJourney, journeySelection, storeJourneyResources } from "../helpers/storeJourney.js";
-import { installAccountMutations } from "./customerAccountMutations.fixture.js";
-import { documentRow, fixture, graph, hash, insertGraph, installAfter, installCatalogueReadGrants, installPublicationActors, json,
-  publicationManifestText, transaction, type Graph } from "./catalogPublicationFixture.js";
+import {
+  assertCalleeResolution,
+  binding,
+  carry,
+  fixedId,
+  forward,
+  functionFacts,
+  goldenMatrix,
+  ineligible,
+  invalid,
+  issueOf,
+  password,
+  read,
+  readAsCaller,
+  readerSql,
+  readShadowed,
+  references,
+  refusal,
+  seed,
+  text,
+  withoutSource,
+} from "./catalogAdmissionIssueReader.fixture.js";
+import {
+  fixture,
+  graph,
+  hash,
+  insertGraph,
+  installAfter,
+  installCatalogueReadGrants,
+  installPublicationActors,
+  json,
+  transaction,
+  type Graph,
+} from "./catalogPublicationFixture.js";
 
-const forward = registry.nativeStoreForwardClass.slots.find(slot => slot.path.endsWith("_catalog_admission_issue_reader.sql"))!.path;
-const reader = "public.catalog_offer_memberships_page(text,jsonb,integer,text)";
-const readerSql = "SELECT public.catalog_offer_memberships_page($1,$2,$3,$4)::pg_catalog.text AS result";
-const profiles = ["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] as const;
-const password = "synthetic-reader";
-type Db = Pool | PoolClient;
 let container: PostgresContainer, pool: Pool;
 const pools: Pool[] = [];
 
-const fixedId = (index: number): ReturnType<typeof randomUUID> => `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`;
-const refusal = (reason: string, detail?: string) => detail ? { kind: "refusal", reason, detail } : { kind: "refusal", reason };
-const invalid = refusal("invalid_request");
-const ineligible = refusal("invalid_request", "catalog_admission_selection_ineligible");
-async function text(db: Db, args: unknown[], sql = readerSql) { return (await db.query(sql, args)).rows[0]!.result as string; }
-async function read(db: Db, offer: unknown, cursor: unknown, limit: unknown = 100) {
-  return JSON.parse(await text(db, [offer, cursor, limit, "admission_issue"]));
-}
 const login = (name: string) => {
   const url = new URL(container.connectionString); url.username = name; url.password = password;
   const value = new Pool({ connectionString: url.toString(), max: 2 }); pools.push(value); return value;
 };
-
-type Seed = { offer: string; id?: ReturnType<typeof randomUUID>; admitted?: boolean; productActive?: boolean; skuActive?: boolean; standalone?: boolean;
-  subscription?: boolean; extra?: number; lifecycle?: true; also?: string };
-async function seed(db: PoolClient, options: Seed) {
-  const issue = await graph(db, { ...fixture(), ...(options.id ? { skuId: options.id } : {}) }, null, true,
-    options.lifecycle ? { lifecycle: "active", subscriptionEligible: options.subscription ?? true } : {});
-  if (!options.lifecycle) {
-    issue.product.status = options.productActive === false ? "draft" : "active";
-    issue.facts.status = options.skuActive === false ? "draft" : "active";
-    issue.facts.sellableStandalone = options.standalone ?? true;
-    issue.facts.sellableInSubscription = options.subscription ?? true;
-    await db.query("UPDATE public.catalog_products SET status=$2 WHERE id=$1", [issue.productId, issue.product.status]);
-  }
-  issue.facts.memberships = [{ offerVersion: options.offer, admitted: options.admitted ?? true },
-    ...(options.also ? [{ offerVersion: options.also, admitted: true }] : [])].sort((left, right) => left.offerVersion < right.offerVersion ? -1 : 1);
-  await insertGraph(db, issue, { extraSkuCount: options.extra });
-  return issue;
-}
-
-// Issue a later publication that keeps the given SKU revisions and moves the product to a new document.
-async function carry(db: PoolClient, previous: Graph, original: Graph, refs: CatalogSkuRevisionRef[], revisionNo: number) {
-  const next = await graph(db, { productId: original.productId, skuId: original.skuId, draftId: original.draftId,
-    skuCode: original.facts.code, documentId: randomUUID() }, previous.head, false,
-  { registerExisting: true, documentText: json({ label: `document ${revisionNo}` }) });
-  next.document.revisionNo = revisionNo;
-  next.product.status = original.product.status;
-  const { payload } = (await db.query("SELECT payload FROM public.catalog_draft_revisions WHERE draft_id=$1 AND revision=$2",
-    [original.draftId, next.revision])).rows[0]!;
-  payload.product.documentRevision = next.document;
-  payload.publication.operations[0].revisionNo = revisionNo;
-  const fingerprint = hash(json(payload));
-  next.source.fingerprint = fingerprint;
-  next.candidateDigest = hash(json(["catalog-candidate", 1, payload,
-    [{ ...next.product.type, definitionDigest: hash("synthetic installed definition") }], previous.head]));
-  next.decision.candidateDigest = next.candidateDigest;
-  await db.query("SET LOCAL session_replication_role=replica");
-  await db.query("UPDATE public.catalog_draft_revisions SET payload=$3,fingerprint=$4 WHERE draft_id=$1 AND revision=$2",
-    [original.draftId, next.revision, payload, fingerprint]);
-  await db.query("UPDATE public.catalog_draft_command_receipts SET fingerprint=$3 WHERE draft_id=$1 AND revision=$2",
-    [original.draftId, next.revision, fingerprint]);
-  await db.query("SET LOCAL session_replication_role=origin");
-  await documentRow(db, next);
-  await insertGraph(db, next, { inherited: refs, onlyNew: true, existingDocument: true });
-  return next;
-}
-const references = async (db: Db, head: Graph["head"]) =>
-  (JSON.parse(await publicationManifestText(db as Pool, head)) as { skus: CatalogSkuRevisionRef[] }).skus;
-const issueOf = (head: Graph["head"], productId: string, revisionId: string, kind = "compared") =>
-  ({ kind, productId, ...head, skuRevisionId: revisionId });
-
-// Earlier modes, including overlapping faults, a moved head, a foreign cursor and collation variants.
-async function goldenMatrix(db: Db, offer: string, collation = true) {
-  const results: string[] = [];
-  const record = async (args: unknown[], sql = readerSql) => results.push(`${JSON.stringify(args)} ${await text(db, args, sql)}`);
-  for (const mode of [null, "one_time", "subscription", "unknown", "", "ADMISSION_ISSUE", "admission_issue ", "Admission_issue"]) {
-    const next = [null, "one_time", "subscription"].includes(mode)
-      ? JSON.parse(await text(db, [offer, null, 1, mode])).value?.nextCursor ?? null : null;
-    for (const args of [[offer, null, 1, mode], [offer, null, 100, mode], [offer, next, 1, mode], ["test:never-issued", null, 1, mode],
-      ["", null, 0, mode], [offer, { skuId: "not-a-uuid" }, 101, mode], [offer, next && { ...next, headDigest: "f".repeat(64) }, 1, mode],
-      [offer, next && { ...next, offerVersion: "test:other" }, 1, mode], [offer, { selectedSkuId: fixedId(1) }, 1, mode],
-      [null, null, null, mode]]) await record(args);
-  }
-  if (collation) for (const mode of ["ADMISSION_ISSUE", "ONE_TIME", "one_time"]) {
-    await record([offer, null, 1, mode], "SELECT public.catalog_offer_memberships_page($1,$2,$3,$4 COLLATE issue_ci)::pg_catalog.text AS result");
-  }
-  return results;
-}
-
-async function functionFacts(db: Db) {
-  return (await db.query(`SELECT p.oid::pg_catalog.text AS oid, pg_catalog.pg_get_userbyid(p.proowner) AS owner, p.prosecdef, p.provolatile,
-      p.proisstrict, p.proparallel, p.proconfig, p.proacl::pg_catalog.text AS acl, p.prorettype::pg_catalog.regtype::pg_catalog.text AS returns,
-      pg_catalog.pg_get_function_arguments(p.oid) AS arguments, pg_catalog.md5(p.prosrc) AS source,
-      (SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_array(r.rolname, pg_catalog.has_function_privilege(r.oid, p.oid, 'EXECUTE'))
-        ORDER BY r.rolname) FROM pg_catalog.pg_roles r WHERE r.rolname !~ '^pg_') AS execute,
-      (SELECT pg_catalog.count(*) FROM pg_catalog.pg_default_acl)::pg_catalog.int4 AS default_acls
-    FROM pg_catalog.pg_proc p WHERE p.oid = $1::pg_catalog.regprocedure`, [reader])).rows[0] as Record<string, unknown>;
-}
-const withoutSource = ({ source: _source, ...facts }: Record<string, unknown>) => facts;
-
-// The reader's own callees, read from the installed migration definitions.
-function calleeNames() {
-  const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as { baseline: { file: string }; forward: { file: string }[] };
-  const bodies = new Map<string, string>();
-  for (const { file } of [manifest.baseline, ...manifest.forward]) {
-    for (const match of readFileSync(file, "utf8").matchAll(/CREATE (?:OR REPLACE )?FUNCTION public\.([a-z_0-9]+)\([\s\S]*?\$\$([\s\S]*?)\$\$/gu)) {
-      bodies.set(match[1]!, match[2]!);
-    }
-  }
-  const seen = new Set<string>(), queue = ["catalog_offer_memberships_page"];
-  while (queue.length) {
-    const name = queue.shift()!;
-    if (seen.has(name)) continue;
-    seen.add(name);
-    for (const call of (bodies.get(name) ?? "").matchAll(/public\.([a-z_0-9]+)\s*\(/gu)) if (bodies.has(call[1]!)) queue.push(call[1]!);
-  }
-  return [...seen].sort();
-}
-
-// Every transitive callee pins pg_temp last, belongs to the reader's owner and runs as its caller.
-async function assertCalleeResolution(db: Db) {
-  const rows = (await db.query(`SELECT p.proname, p.prosecdef, pg_catalog.pg_get_userbyid(p.proowner) AS owner,
-      (SELECT pg_catalog.substr(setting, 13) FROM pg_catalog.unnest(p.proconfig) AS setting
-        WHERE pg_catalog.starts_with(setting, 'search_path=')) AS search_path
-    FROM pg_catalog.pg_proc p WHERE p.pronamespace = 'public'::pg_catalog.regnamespace AND p.proname = ANY($1::pg_catalog.text[])
-    ORDER BY p.proname`, [calleeNames()])).rows;
-  expect(rows.map(row => row.proname)).toEqual(calleeNames());
-  const owner = rows.find(row => row.proname === "catalog_offer_memberships_page")!.owner;
-  for (const row of rows) {
-    expect(row, row.proname).toMatchObject({ owner, prosecdef: row.proname === "catalog_offer_memberships_page",
-      search_path: expect.stringMatching(/^(?:pg_catalog|pg_catalog, public), pg_temp$/u) });
-  }
-}
-
-// Same-named temporary relations and value-rejecting temporary types ahead of the caller's path.
-const shadowRelations = ["catalog_products", "catalog_skus", "catalog_publications", "catalog_publication_heads", "catalog_sku_revisions",
-  "catalog_product_document_revisions", "catalog_operator_receipts", "catalog_publication_decisions", "catalog_draft_revisions",
-  "catalog_draft_command_receipts", "catalog_sku_identifiers", "catalog_publication_pointer_capabilities", "platform_schema_migrations"];
-async function readShadowed(caller: Pool, args: unknown[]) {
-  const db = await caller.connect();
-  try {
-    await db.query("SET search_path = pg_temp, public, pg_catalog");
-    for (const name of shadowRelations) await db.query(`CREATE TEMP TABLE ${name}(id pg_catalog.uuid)`);
-    for (const type of ["jsonb", "text", "uuid"]) {
-      await db.query(`CREATE DOMAIN pg_temp.${type} AS pg_catalog.${type} CHECK (VALUE IS NULL)`);
-    }
-    await expect(db.query("SELECT '{}'::jsonb")).rejects.toMatchObject({ code: "23514" });
-    await db.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
-    try { return JSON.parse(await text(db, args)); } finally { await db.query("ROLLBACK"); }
-  } finally { db.release(true); }
-}
-
-// One RR READ ONLY page with the caller's own login, its session facts and the locks it holds.
-async function readAsCaller(caller: Pool, observer: Db, args: unknown[]) {
-  const db = await caller.connect();
-  try {
-    await db.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
-    const session = (await db.query(`SELECT current_user = session_user AS own_login, pg_catalog.pg_backend_pid() AS pid,
-      (SELECT rolsuper OR rolbypassrls OR rolcreaterole FROM pg_catalog.pg_roles WHERE rolname = current_user) AS elevated`)).rows[0]!;
-    const result = JSON.parse(await text(db, args));
-    const locks = (await observer.query(`SELECT locktype, mode FROM pg_catalog.pg_locks
-      WHERE pid = $1 AND NOT (locktype = 'virtualxid' AND mode = 'ExclusiveLock') AND NOT (locktype = 'relation' AND mode = 'AccessShareLock')`,
-    [session.pid])).rows;
-    return { session: { own_login: session.own_login, elevated: session.elevated }, result, locks };
-  } finally { await db.query("ROLLBACK"); db.release(); }
-}
-
-// The continuation binding as the reader computes it, used to build otherwise valid tokens.
-async function binding(db: Db, offer: string, selection: string, limit: number, offset: number, headDigest: string) {
-  return (await db.query(`SELECT pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(pg_catalog.jsonb_build_array($1::pg_catalog.text,
-      pg_catalog.to_jsonb($2::pg_catalog.text), 'admission_issue'::pg_catalog.text, $3::pg_catalog.int4, $4::pg_catalog.int4,
-      $5::pg_catalog.text)::pg_catalog.text, 'UTF8')), 'hex') AS value`, [offer, selection, limit, offset, headDigest])).rows[0]!.value as string;
-}
 
 // Per-transaction counters: helper calls, and rows read from the sealed revision table.
 async function counters(db: PoolClient) {
@@ -668,64 +535,6 @@ it("runs as each granted login in REPEATABLE READ READ ONLY, takes no explicit l
       WHERE n.nspname='public' AND a.grantee=0 AND a.privilege_type='CREATE') AS anyone`)).rows)
     .toEqual([{ caller: false, publication: false, anyone: false }]);
 });
-
-// The upgraded installation keeps the earlier modes and installed identity; a fresh installation matches it.
-it.each(profiles)("upgrades and serves admission issues on the installed %s rail", async profile => {
-  const manifest = readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest | null;
-  if (manifest?.schemaVersion !== 3) throw new Error("Expected the complete platform migration catalogue");
-  const prefix = structuredClone(manifest);
-  for (const plan of [prefix, prefix.qualified, prefix.qualifiedAdmin]) plan.forward = plan.forward.slice(0, plan.forward.findIndex(unit => unit.file === forward));
-  const store = await withPlatformCatalog(prefix, root => installAccountMutations(profile, true, "admission-issue", root));
-  const fresh = await installAccountMutations(profile, false, "admission-issue-fresh", undefined, undefined, { isolatedCluster: true }).catch(async error => { await store.close(); throw error; });
-  const local: Pool[] = [];
-  try {
-    const offer = "test:rail";
-    await installPublicationActors(store.owner);
-    const [first, second] = await transaction(store.owner, async db => [await seed(db, { offer, id: fixedId(600) }),
-      await seed(db, { offer, id: fixedId(601), admitted: false }), await seed(db, { offer, id: fixedId(602), extra: 1 })]);
-    const callers = [store.runtime];
-    const publication = (await store.owner.query("SELECT rolcanlogin FROM pg_catalog.pg_roles WHERE rolname='openlup_catalog_publication'")).rows[0];
-    if (publication?.rolcanlogin) {
-      await store.owner.query(`ALTER ROLE openlup_catalog_publication PASSWORD '${password}'`);
-      const url = new URL((store.runtime.options as { connectionString: string }).connectionString);
-      url.username = "openlup_catalog_publication"; url.password = password;
-      const value = new Pool({ connectionString: url.toString(), max: 2 }); local.push(value); callers.push(value);
-    }
-    expect(callers).toHaveLength(profile === "bootstrap" || profile === "separate" ? 2 : 1);
-    const privileges = async () => (await store.owner.query(`SELECT r.rolname, f.name,
-        pg_catalog.has_function_privilege(r.oid, f.name, 'EXECUTE') AS execute
-      FROM pg_catalog.pg_roles r CROSS JOIN pg_catalog.unnest($1::pg_catalog.text[]) AS f(name)
-      WHERE r.rolname !~ '^pg_' ORDER BY 1, 2`, [[reader, "public.catalog_publication_selected_evidence(uuid,uuid)",
-      "public.catalog_publication_read_head()", "public.catalog_publication_read_manifest(uuid,text,text)"]])).rows;
-    const before = { facts: await functionFacts(store.owner), privileges: await privileges(),
-      golden: await Promise.all(callers.map(caller => goldenMatrix(caller, offer, false))) };
-    expect((await store.runner.apply()).applied[0]).toBe(forward);
-    expect((await store.runner.apply()).applied).toEqual([]);
-    const after = await functionFacts(store.owner);
-    expect(withoutSource(after)).toEqual(withoutSource(before.facts));
-    expect(await privileges()).toEqual(before.privileges);
-    expect(await Promise.all(callers.map(caller => goldenMatrix(caller, offer, false)))).toEqual(before.golden);
-    const { oid: _oid, ...installed } = await functionFacts(fresh.owner);
-    expect(installed).toEqual((({ oid: _drop, ...rest }) => rest)(after));
-    const args = [offer, { selectedSkuId: fixedId(600) }, 100, "admission_issue"];
-    const expected = { kind: "page", value: expect.objectContaining({ rosterCount: 4, nextCursor: null }) };
-    for (const caller of callers) {
-      const observed = await readAsCaller(caller, store.owner, args);
-      expect(observed).toEqual({ session: { own_login: true, elevated: profile === "legacy" }, result: expected, locks: [] });
-      expect(observed.result.value.issues[0]).toEqual(issueOf(first.head, first.productId, first.skuRevisionId, "declaring"));
-      expect(observed.result.value.issues[1]).toEqual(issueOf(second.head, second.productId, second.skuRevisionId));
-      expect(await readShadowed(caller, args)).toEqual(observed.result);
-    }
-    await assertCalleeResolution(store.owner);
-    // Neither the callers, their granted roles nor PUBLIC can create in the schema the helpers search.
-    const names = [...await Promise.all(callers.map(async caller => (await caller.query("SELECT current_user AS name")).rows[0]!.name as string)),
-      "service_role", "openlup_catalog_publication", "anon", "authenticated"];
-    expect((await store.owner.query(`SELECT r.rolname FROM pg_catalog.pg_roles r WHERE r.rolname = ANY($1::pg_catalog.text[])
-        AND NOT r.rolsuper AND pg_catalog.has_schema_privilege(r.oid, 'public', 'CREATE')
-      UNION ALL SELECT 'PUBLIC' FROM pg_catalog.pg_namespace n, pg_catalog.aclexplode(n.nspacl) a
-        WHERE n.nspname = 'public' AND a.grantee = 0 AND a.privilege_type = 'CREATE'`, [names])).rows).toEqual([]);
-  } finally { await Promise.all([store.close(), fresh.close(), ...local.map(value => value.end())]); }
-}, postgresSetupTimeoutMs);
 
 it("restores a sealed catalogue into a pristine same-profile target and serves the same issues as its runtime", async () => {
   const resources = storeJourneyResources();
