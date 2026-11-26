@@ -165,6 +165,7 @@
     "shared/quote-config.ts",
     "browser/acquisition.spec.ts",
     "browser/lost-response.spec.ts",
+    "browser/page-handle.spec.ts",
     "browser/catalogue-products.spec.ts",
     "browser/checkout-expected-total.spec.ts",
     "client/quote-acceptance.ts",
