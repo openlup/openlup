@@ -1165,6 +1165,7 @@ it.each([1, 2])("checks a combined order near the completion base wire cap exact
     "SELECT octet_length(outcome_text) AS bytes FROM public.tax_calculations WHERE calculation_id=$1",
     [evidence.quote.taxEvidence.calculationId]);
   expect(quoteBytes).toBeLessThanOrEqual(CATALOG_DRAFT_MAX_BYTES);
+  expect(stored!.bytes).toBeGreaterThanOrEqual(0.99 * 1_048_576);
   expect(stored!.bytes).toBeLessThanOrEqual(1_048_576);
   expect(evidence.quote.lines).toHaveLength(50);
   expect(evidence.quote.deliveryBuckets).toHaveLength(256);

@@ -338,13 +338,13 @@ it("enforces all array ceilings and the exact UTF-8 byte boundary", async () => 
 }, 30_000);
 
 it("refuses a one-byte-oversized adapter money supplement without writing completion", async () => {
-  const { base } = await claimVerifiedCompletion(store, true);
+  const { base, full, expected } = await claimVerifiedCompletion(store, true);
   const { large, lastPosition } = adapterMoneyAtByteLimit();
   lastPosition.jurisdictionRef += "a";
-  const full = { ...base, seal: { ...base.seal, adapterMoneyResult: large } };
+  const oversized = { ...base, seal: { ...base.seal, adapterMoneyResult: large } };
   const { rows: [sizes] } = await store.owner.query<{ base: number; supplement: number }>(`WITH request AS (SELECT $1::jsonb AS value)
     SELECT octet_length(public.catalog_publication_canonical(value #- '{seal,adapterMoneyResult}',0)) AS base,
-      octet_length(public.catalog_publication_canonical(value #> '{seal,adapterMoneyResult}',0)) AS supplement FROM request`, [full]);
+      octet_length(public.catalog_publication_canonical(value #> '{seal,adapterMoneyResult}',0)) AS supplement FROM request`, [oversized]);
   expect(sizes!.base).toBeLessThan(CATALOG_DRAFT_MAX_BYTES);
   expect(sizes!.supplement).toBe(CATALOG_DRAFT_MAX_BYTES + 1);
 
@@ -352,10 +352,17 @@ it("refuses a one-byte-oversized adapter money supplement without writing comple
   const before = await readRows();
   expect(before).toContainEqual({ row: expect.objectContaining({ calculation_id: base.calculationId, state: "pending",
     outcome_text: null, outcome_digest: null, adapter_money_text: null, adapter_result_digest: null }) });
-  await expect(invoke(store.runtime, completeSql, full)).rejects.toMatchObject({ code: "22023",
+  await expect(invoke(store.runtime, completeSql, oversized)).rejects.toMatchObject({ code: "22023",
     message: "tax_invalid_input", detail: "/seal/adapterMoneyResult",
     hint: "Supply the original verified adapter money through the native tax completion adapter." });
   expect(await readRows()).toStrictEqual(before);
+
+  expect(await invoke(store.runtime, completeSql, full)).toStrictEqual(expected);
+  const moneyText = canonicalCatalogDraftJson(full.seal.adapterMoneyResult);
+  const resultDigest = evaluationDigest("adapter-result-seal",
+    [full.seal.outcome.kind, sha256(moneyText), full.seal.evidence.adapterDigest]);
+  expect(await readRows()).toContainEqual({ row: expect.objectContaining({ calculation_id: base.calculationId,
+    state: "terminal", adapter_money_text: moneyText, adapter_result_digest: resultDigest }) });
 });
 
 it("refuses independent component, allocation, position and fee mismatches", async () => {
