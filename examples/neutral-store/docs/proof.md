@@ -61,8 +61,13 @@ the retained database and volume. It reopens the original receipt in a fresh
 session before running the mounted renewal, care and checkout recovery commands.
 The same check refuses the original order and receipt on a separately initialized
 empty store and refuses a second paid receipt paired with the original records.
-The credential scan includes private predecessor logs, with planted-value controls
-on a copy of those logs.
+The proof captures each application container's stdout and stderr privately before
+stop, recreation, or removal, and checks coverage against the container inventory.
+The exact-value scan checks those captures and the attached installer output for
+runtime and publication credentials, guest signing keys, checkout idempotency
+keys, receipt bearer tokens, and any continuation cookies or quote acceptances.
+It checks raw and URI-encoded forms. Planted receipt tokens in copies of the
+recreated upgrade and removed empty-store logs verify both paths.
 
 ## Published product and quote proof
 
