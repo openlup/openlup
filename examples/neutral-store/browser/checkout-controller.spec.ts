@@ -114,6 +114,28 @@ async function sweepExpired(page: Page, orderRef: string) {
   expect((await runtime.query('SELECT status FROM public.commerce_orders WHERE id=$1', [orderRef])).rows[0].status).toBe('expired');
 }
 
+/**
+ * Counts each create answer the page has read and finished applying: the count moves in a task queued once the answer
+ * is read, after the page's own continuation of that read, which runs in microtasks, has run.
+ */
+async function countCreatesRead(page: Page) {
+  await page.addInitScript(() => {
+    const json = Response.prototype.json;
+    Response.prototype.json = function (this: Response) {
+      const read = json.call(this);
+      if (this.url.endsWith('/api/actions/checkout.create')) {
+        void read.then(() => setTimeout(() => {
+          const counter = window as unknown as { createsRead?: number };
+          counter.createsRead = (counter.createsRead ?? 0) + 1;
+        }, 0), () => {});
+      }
+      return read;
+    };
+  });
+}
+const createsRead = (page: Page, count: number) =>
+  page.waitForFunction(expected => (window as unknown as { createsRead?: number }).createsRead === expected, count);
+
 // C1: the three declared behaviour changes, each with its revert control:
 // (a) changed details send nothing (control: declare `update_in_place`, and a create is sent);
 // (b) a create lost in transport is repeated once (control: classify an uncertain answer as `other`, and nothing is repeated);
@@ -332,6 +354,7 @@ test('checkout controller: with tab storage blocked, changed details send nothin
 
 test('checkout controller: a late answer to a replaced view renders nothing and keeps the newer purchase', async ({ page }) => {
   const email = buyer('stale');
+  await countCreatesRead(page);
   await openCheckout(page);
   await details(page, email);
   let release!: () => void;
@@ -365,8 +388,47 @@ test('checkout controller: a late answer to a replaced view renders nothing and 
   const key = (await record(page)).id;
   release();
   await late;
-  await page.evaluate(() => new Promise<void>(done => requestAnimationFrame(() => done())));
+  // The newer create's answer was read first; the late one is applied once the count reaches two.
+  await createsRead(page, 2);
   expect((await purchase(page)).orderRef).toBe(newer);
   expect((await record(page)).id).toBe(key);
   await expect(page.locator('main')).not.toContainText(first!);
+});
+
+test('checkout controller: a late answer to a view replaced in the same purchase leaves the newer payment link', async ({ page }) => {
+  const email = buyer('stale-same');
+  await countCreatesRead(page);
+  await openCheckout(page);
+  await details(page, email);
+  let release!: () => void;
+  const gate = new Promise<void>(done => { release = done; });
+  let first: { orderRef: string; token: string } | undefined;
+  let delivered!: () => void;
+  const late = new Promise<void>(done => { delivered = done; });
+  await page.route('**/api/actions/checkout.create', async route => {
+    const response = await route.fetch();
+    first = (await response.json()).value;
+    await gate;
+    await route.fulfill({ response });
+    delivered();
+  });
+  await placeOrder(page).click();
+  await expect.poll(() => first).toEqual(expect.objectContaining({ orderRef: expect.any(String) }));
+  const key = (await record(page)).id;
+  await page.locator('header').getByRole('link', { name: t.cart, exact: true }).click();
+  await page.getByRole('button', { name: t.checkout, exact: true }).click();
+  await expect(panel(page)).toBeVisible();
+  // The replacing view continues the same order and receives a newer token for it.
+  const resumed = page.waitForResponse(row => row.url().endsWith('/api/actions/checkout.continuation'));
+  await choice(page, 'resume').click();
+  const newer = (await (await resumed).json()).value;
+  expect(newer).toMatchObject({ orderRef: first!.orderRef, token: expect.any(String) });
+  expect(newer.token).not.toBe(first!.token);
+  await expect(panel(page).getByRole('link', { name: t.completion, exact: true })).toBeVisible();
+  release();
+  await late;
+  await createsRead(page, 1);
+  expect(await purchase(page)).toEqual({ orderRef: first!.orderRef, token: newer.token });
+  expect((await record(page)).id).toBe(key);
+  await expect(page.locator('form.action-form .action-result')).toBeEmpty();
 });

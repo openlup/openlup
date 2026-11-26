@@ -54,8 +54,8 @@ async function oneStateLine(page: Page, expected: string | null): Promise<void> 
   await expect(line).toHaveAttribute('role', 'status');
   await expect(line.locator('form')).toHaveCount(0);
   await expect(page.locator('section[aria-live]').filter({ has: page.locator(`[${attribute.state}]`) })).toHaveCount(0);
-  await expect(line).not.toBeEmpty();
   expect((await createPageHandle(page).anchors()).filter(anchor => anchor.startsWith('state:'))).toEqual([`state:${expected}`]);
+  await expect(line).not.toBeEmpty();
 }
 
 /** Exactly one visible element carries the action, inside a form, and it is that form's submit button. */
