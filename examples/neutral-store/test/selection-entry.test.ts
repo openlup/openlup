@@ -182,7 +182,7 @@ test('the checkout action anchor is named only through storefrontAnchor', () => 
     return statSync(path).isDirectory() ? files(path) : /\.(?:ts|tsx|js|mjs)$/.test(name) ? [path] : [];
   });
   const literal = [...files(join(root, 'client')), ...files(join(root, 'shared'))]
-    .filter(path => readFileSync(path, 'utf8').includes('proceed_to_checkout'));
+    .filter(path => /['"`]proceed_to_checkout['"`]/.test(readFileSync(path, 'utf8')));
   assert.deepEqual(literal, []);
   assert.ok(readFileSync(join(root, 'client/pages/storefront.ts'), 'utf8').includes('storefrontAnchor.action.proceed_to_checkout'));
 });
