@@ -2,9 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { Pool, PoolClient } from "pg";
 import { expect, it } from "vitest";
-import { withPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
 import { postgresSetupTimeoutMs } from "../helpers/postgresContainer.js";
-import { installAccountMutations } from "./customerAccountMutations.fixture.js";
+import { installAccountMutationsBeforeForward } from "./customerAccountMutations.fixture.js";
 import { assertRuntime } from "./orderDraftReceiptsV2.fixture.js";
 import { issue, write } from "./orderMoneyV2Guards.fixture.js";
 import { expectSqlError, rejected, seedSku, transaction, version } from "./orderMoneyV2Storage.fixture.js";
@@ -24,7 +23,7 @@ const channel = "card_rail";
 const currency = "XXX";
 
 const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as
-  Parameters<typeof withPlatformCatalog>[0];
+  Parameters<typeof installAccountMutationsBeforeForward>[0];
 const forward = manifest.forward.find(unit => unit.file.endsWith("_order_draft_payment_entry_fence.sql"))!;
 const sql = readFileSync(forward.file, "utf8");
 const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");
@@ -145,7 +144,7 @@ function receiptReplay(original: Payment): Payment {
   return { ...original, paymentIntent: { ...original.paymentIntent, replayed: true } };
 }
 
-function showMutationFailure(check: (db: Db) => Promise<void>, store: Awaited<ReturnType<typeof installAccountMutations>>, mutant: string) {
+function showMutationFailure(check: (db: Db) => Promise<void>, store: Awaited<ReturnType<typeof installAccountMutationsBeforeForward>>, mutant: string) {
   return transaction(store.owner, async db => {
     await db.query(mutant);
     await db.query("SET LOCAL ROLE service_role");
@@ -154,140 +153,130 @@ function showMutationFailure(check: (db: Db) => Promise<void>, store: Awaited<Re
 }
 
 it.each(["bootstrap", "admin-managed"] as const)("upgrades the qualified %s profile and keeps both incumbent replay protocols", async profile => {
-  const prefix = structuredClone(manifest);
-  for (const rail of [prefix, prefix.qualified, prefix.qualifiedAdmin]) {
-    const index = rail.forward.findIndex(unit => unit.file === forward.file);
-    expect(rail.forward[index - 1]?.file).toMatch(/_order_draft_receipt_privacy_v2\.sql$/u);
-    rail.forward = rail.forward.slice(0, index);
-  }
-  prefix.qualified.objectInventorySha256.bootstrapMigrator.withRestore = "ae3ee9949fdbfd31af14c5c06a80d296c6143d32acdbea56a85a50ea3cdfb6f0";
-  prefix.qualifiedAdmin.objectInventorySha256.installerManaged = "3d60d1296a8b036778b3cc7b6b6e96c1a416e45e6bc7445b078b8a305a13f845";
-  await withPlatformCatalog(prefix, async root => {
-    const store = await installAccountMutations(profile, false, "payment-entry-upgrade", root);
-    const { owner, runtime } = store;
-    try {
-      await assertRuntime(store);
-      expect((await owner.query("SELECT to_regclass('public.commerce_order_draft_receipts_v2') AS receipt_table")).rows[0]?.receipt_table)
-        .toBe("commerce_order_draft_receipts_v2");
-      const attrs = await routineAttributes(owner);
-      expect(attrs).toHaveLength(2);
-      expect(attrs[0]).toMatchObject({ acl: null, prosecdef: false, proconfig: ["search_path=public, pg_catalog, pg_temp"], provolatile: "v",
-        pronargdefaults: 2, defaults: "'{}'::jsonb, now()" });
-      expect(attrs[1]).toMatchObject({ prosecdef: true, proconfig: ["search_path=pg_catalog, pg_temp"], provolatile: "v",
-        pronargdefaults: 0, defaults: null });
+  const store = await installAccountMutationsBeforeForward(manifest, forward.file, profile, "payment-entry-upgrade");
+  const { owner, runtime } = store;
+  try {
+    await assertRuntime(store);
+    expect((await owner.query("SELECT to_regclass('public.commerce_order_draft_receipts_v2') AS receipt_table")).rows[0]?.receipt_table)
+      .toBe("commerce_order_draft_receipts_v2");
+    const attrs = await routineAttributes(owner);
+    expect(attrs).toHaveLength(2);
+    expect(attrs[0]).toMatchObject({ acl: null, prosecdef: false, proconfig: ["search_path=public, pg_catalog, pg_temp"], provolatile: "v",
+      pronargdefaults: 2, defaults: "'{}'::jsonb, now()" });
+    expect(attrs[1]).toMatchObject({ prosecdef: true, proconfig: ["search_path=pg_catalog, pg_temp"], provolatile: "v",
+      pronargdefaults: 0, defaults: null });
 
-      const sku = await seedSku(owner);
-      const versioned = async (): Promise<Order> => {
-        const evidence = await issue(store, sku, false);
-        const { id } = await transaction(owner, db => write(db, evidence, sku));
-        const { rows: [order] } = await owner.query("SELECT money_version, status FROM public.commerce_orders WHERE id=$1", [id]);
-        expect(order).toStrictEqual({ money_version: version, status: "pending_payment" });
-        return { id, amount: evidence.quote.payableMinor, currency: evidence.quote.currency };
-      };
-      const fresh = await versioned(), attach = await versioned(), withProvider = await versioned();
-      const openingKey = "predecessor-opening", receiptKey = "predecessor-provider";
-      const original = await open(runtime, attach, openingKey);
-      expect(original).toMatchObject({ outcome: "opened", replayed: false,
-        settlement: { orderId: attach.id, status: "created", externalRef: null, failureReason: null } });
-      const { rows: [failure] } = await runtime.query<{ result: Settlement }>(
-        "SELECT public.commerce_record_settlement($1,$2,'failed',$3,$4,$5) AS result",
-        ["predecessor-failure", original.settlement.id, "attempt-reference", { reason: "method declined" }, at],
-      );
-      const failed = failure!.result;
-      expect(failed.transitionId).not.toBe(original.transitionId);
-      expect(failed).toMatchObject({ outcome: "failed", replayed: false,
-        settlement: { status: "failed", externalRef: "attempt-reference", failureReason: "method declined" } });
-      expect((await owner.query("SELECT status FROM public.commerce_orders WHERE id=$1", [attach.id])).rows)
-        .toStrictEqual([{ status: "pending_payment" }]);
-      const originalPayment = await create(runtime, withProvider, receiptKey);
-      expect(originalPayment).toMatchObject({ contractVersion: "commerce.v0",
-        paymentIntent: { orderId: withProvider.id, replayed: false } });
-      expect((await owner.query("SELECT response_payload FROM public.payment_provider_receipts WHERE idempotency_key=$1", [receiptKey])).rows)
-        .toStrictEqual([{ response_payload: originalPayment }]);
+    const sku = await seedSku(owner);
+    const versioned = async (): Promise<Order> => {
+      const evidence = await issue(store, sku, false);
+      const { id } = await transaction(owner, db => write(db, evidence, sku));
+      const { rows: [order] } = await owner.query("SELECT money_version, status FROM public.commerce_orders WHERE id=$1", [id]);
+      expect(order).toStrictEqual({ money_version: version, status: "pending_payment" });
+      return { id, amount: evidence.quote.payableMinor, currency: evidence.quote.currency };
+    };
+    const fresh = await versioned(), attach = await versioned(), withProvider = await versioned();
+    const openingKey = "predecessor-opening", receiptKey = "predecessor-provider";
+    const original = await open(runtime, attach, openingKey);
+    expect(original).toMatchObject({ outcome: "opened", replayed: false,
+      settlement: { orderId: attach.id, status: "created", externalRef: null, failureReason: null } });
+    const { rows: [failure] } = await runtime.query<{ result: Settlement }>(
+      "SELECT public.commerce_record_settlement($1,$2,'failed',$3,$4,$5) AS result",
+      ["predecessor-failure", original.settlement.id, "attempt-reference", { reason: "method declined" }, at],
+    );
+    const failed = failure!.result;
+    expect(failed.transitionId).not.toBe(original.transitionId);
+    expect(failed).toMatchObject({ outcome: "failed", replayed: false,
+      settlement: { status: "failed", externalRef: "attempt-reference", failureReason: "method declined" } });
+    expect((await owner.query("SELECT status FROM public.commerce_orders WHERE id=$1", [attach.id])).rows)
+      .toStrictEqual([{ status: "pending_payment" }]);
+    const originalPayment = await create(runtime, withProvider, receiptKey);
+    expect(originalPayment).toMatchObject({ contractVersion: "commerce.v0",
+      paymentIntent: { orderId: withProvider.id, replayed: false } });
+    expect((await owner.query("SELECT response_payload FROM public.payment_provider_receipts WHERE idempotency_key=$1", [receiptKey])).rows)
+      .toStrictEqual([{ response_payload: originalPayment }]);
 
-      const openerReplay = async (db: Db) => {
-        const retry = open(db, { ...attach, amount: attach.amount + 1, currency: "ZZZ" }, openingKey,
-          { channel: "alternate_rail", metadata: { note: "changed retry" } });
-        await expect(retry).resolves.toStrictEqual({ ...original, replayed: true, settlement: failed.settlement });
-      };
-      const providerReplay = async (db: Db) => {
-        await expect(create(db, withProvider, receiptKey)).resolves.toStrictEqual(receiptReplay(originalPayment));
-      };
-      const openerConflict = async (db: Db) => expectError(await rejected(open(db, attach, "different-opening")),
-        "23505", "commerce_settlement_open_order_already_has_intent");
-      const providerConflict = async (db: Db) => expectError(await rejected(create(db, withProvider, receiptKey, "alternate_rail")),
-        "23505", "payment_control_intent_idempotency_conflict");
-      const fences = [
-        (db: Db) => expectFence(open(db, fresh, "fresh-opener"), opener),
-        (db: Db) => expectFence(create(db, fresh, "fresh-provider"), provider),
-        (db: Db) => expectFence(create(db, attach, "fresh-attach"), provider),
-        (db: Db) => expectFence(create(db, withProvider, "unused-provider-key"), provider),
-      ];
-      const unchanged = async (calls: ((db: Db) => Promise<void>)[]) => {
-        const before = await paymentFacts(owner);
-        for (const call of calls) {
-          await call(runtime);
-          expect(await paymentFacts(owner)).toStrictEqual(before);
-        }
-      };
-      const incumbent = [openerReplay, openerConflict, providerReplay, providerConflict];
-      await unchanged(incumbent);
+    const openerReplay = async (db: Db) => {
+      const retry = open(db, { ...attach, amount: attach.amount + 1, currency: "ZZZ" }, openingKey,
+        { channel: "alternate_rail", metadata: { note: "changed retry" } });
+      await expect(retry).resolves.toStrictEqual({ ...original, replayed: true, settlement: failed.settlement });
+    };
+    const providerReplay = async (db: Db) => {
+      await expect(create(db, withProvider, receiptKey)).resolves.toStrictEqual(receiptReplay(originalPayment));
+    };
+    const openerConflict = async (db: Db) => expectError(await rejected(open(db, attach, "different-opening")),
+      "23505", "commerce_settlement_open_order_already_has_intent");
+    const providerConflict = async (db: Db) => expectError(await rejected(create(db, withProvider, receiptKey, "alternate_rail")),
+      "23505", "payment_control_intent_idempotency_conflict");
+    const fences = [
+      (db: Db) => expectFence(open(db, fresh, "fresh-opener"), opener),
+      (db: Db) => expectFence(create(db, fresh, "fresh-provider"), provider),
+      (db: Db) => expectFence(create(db, attach, "fresh-attach"), provider),
+      (db: Db) => expectFence(create(db, withProvider, "unused-provider-key"), provider),
+    ];
+    const unchanged = async (calls: ((db: Db) => Promise<void>)[]) => {
+      const before = await paymentFacts(owner);
+      for (const call of calls) {
+        await call(runtime);
+        expect(await paymentFacts(owner)).toStrictEqual(before);
+      }
+    };
+    const incumbent = [openerReplay, openerConflict, providerReplay, providerConflict];
+    await unchanged(incumbent);
 
-      // Temporarily disabled each fresh guard in a disposable database.
-      await showMutationFailure(fences[0]!, store, sql.replace(openerGuard, ""));
-      for (const check of fences.slice(1)) await showMutationFailure(check, store, sql.replace(providerGuard, ""));
+    // Temporarily disabled each fresh guard in a disposable database.
+    await showMutationFailure(fences[0]!, store, sql.replace(openerGuard, ""));
+    for (const check of fences.slice(1)) await showMutationFailure(check, store, sql.replace(providerGuard, ""));
 
-      // Temporarily disabled replay and conflict precedence in a disposable database.
-      const earlyOpener = sql.replace(openerGuard, "").replace("  SELECT * INTO v_intent\n", openerGuard + "  SELECT * INTO v_intent\n");
-      const receiptLookup = " SELECT * INTO receipt FROM public.payment_provider_receipts";
-      const earlyProvider = sql.replace(providerGuard, "").replace(receiptLookup, providerGuard + receiptLookup);
-      for (const check of incumbent.slice(0, 2)) await showMutationFailure(check, store, earlyOpener);
-      for (const check of incumbent.slice(2)) await showMutationFailure(check, store, earlyProvider);
+    // Temporarily disabled replay and conflict precedence in a disposable database.
+    const earlyOpener = sql.replace(openerGuard, "").replace("  SELECT * INTO v_intent\n", openerGuard + "  SELECT * INTO v_intent\n");
+    const receiptLookup = " SELECT * INTO receipt FROM public.payment_provider_receipts";
+    const earlyProvider = sql.replace(providerGuard, "").replace(receiptLookup, providerGuard + receiptLookup);
+    for (const check of incumbent.slice(0, 2)) await showMutationFailure(check, store, earlyOpener);
+    for (const check of incumbent.slice(2)) await showMutationFailure(check, store, earlyProvider);
 
-      expect((await store.runner.apply()).applied[0]).toBe(forward.file);
-      expect(await routineAttributes(owner)).toStrictEqual(attrs);
-      await unchanged([...incumbent, ...fences]);
+    expect((await store.runner.apply()).applied[0]).toBe(forward.file);
+    expect(await routineAttributes(owner)).toStrictEqual(attrs);
+    await unchanged([...incumbent, ...fences]);
 
-      const { rows: [client] } = await owner.query("SELECT client_id FROM public.commerce_orders WHERE id=$1", [fresh.id]);
-      const legacyOrder = async (): Promise<Order> => {
-        const order = { id: randomUUID(), amount: 100, currency };
-        await owner.query(`WITH created AS (
-          INSERT INTO public.commerce_orders(id,client_id,status,currency_code,total_amount_minor)
-          VALUES($1,$2,'pending_payment',$3,$4) RETURNING id
-        )
-        INSERT INTO public.commerce_order_items(order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor)
-        SELECT id,$5,1,1,$4,$4 FROM created`, [order.id, client!.client_id, order.currency, order.amount, sku.id]);
-        return order;
-      };
-      const attachLegacy = await legacyOrder(), createLegacy = await legacyOrder();
-      await unchanged([
-        async db => expectError(await rejected(open(db, { ...attachLegacy, amount: 99 }, "legacy-opening")),
-          "22023", "commerce_settlement_open_amount_mismatch"),
-        async db => expectError(await rejected(create(db, { ...createLegacy, amount: 99 }, "legacy-provider")),
-          "22023", "payment_control_intent_order_amount_mismatch"),
-        async db => expectError(await rejected(open(db, fresh, "short")), "22023", "commerce_settlement_open_invalid_input"),
-        async db => expectError(await rejected(create(db, fresh, "short")), "22023", "payment_control_intent_invalid_input"),
-      ]);
-      const legacyIntent = await open(runtime, attachLegacy, "legacy-opening");
-      expect(legacyIntent).toMatchObject({ outcome: "opened", replayed: false,
-        settlement: { orderId: attachLegacy.id, status: "created", amountMinor: 100, currencyCode: currency } });
-      await unchanged([
-        async db => expectError(await rejected(create(db, attachLegacy, "legacy-attach", "alternate_rail")),
-          "22023", "payment_control_intent_existing_payment_mismatch"),
-      ]);
-      const attached = await create(runtime, attachLegacy, "legacy-attach");
-      expect(attached.paymentIntent).toMatchObject({ id: legacyIntent.settlement.id, orderId: attachLegacy.id, replayed: false });
-      const created = await create(runtime, createLegacy, "legacy-provider");
-      expect(created.paymentIntent).toMatchObject({ orderId: createLegacy.id, amountMinor: 100, currency, replayed: false });
-      const facts = await paymentFacts(owner);
-      expect(relations.map(table => facts[table]?.length)).toStrictEqual([4, 5, 3, 3, 3]);
-      await unchanged([
-        async db => { expect(await open(db, attachLegacy, "legacy-opening")).toStrictEqual({ ...legacyIntent, replayed: true }); },
-        async db => { expect(await create(db, attachLegacy, "legacy-attach")).toStrictEqual(receiptReplay(attached)); },
-        async db => { expect(await create(db, createLegacy, "legacy-provider")).toStrictEqual(receiptReplay(created)); },
-        async db => expectError(await rejected(create(db, createLegacy, "legacy-provider-unused")),
-          "23505", "payment_control_intent_order_already_has_intent"),
-      ]);
-    } finally { await store.close(); }
-  });
+    const { rows: [client] } = await owner.query("SELECT client_id FROM public.commerce_orders WHERE id=$1", [fresh.id]);
+    const legacyOrder = async (): Promise<Order> => {
+      const order = { id: randomUUID(), amount: 100, currency };
+      await owner.query(`WITH created AS (
+        INSERT INTO public.commerce_orders(id,client_id,status,currency_code,total_amount_minor)
+        VALUES($1,$2,'pending_payment',$3,$4) RETURNING id
+      )
+      INSERT INTO public.commerce_order_items(order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor)
+      SELECT id,$5,1,1,$4,$4 FROM created`, [order.id, client!.client_id, order.currency, order.amount, sku.id]);
+      return order;
+    };
+    const attachLegacy = await legacyOrder(), createLegacy = await legacyOrder();
+    await unchanged([
+      async db => expectError(await rejected(open(db, { ...attachLegacy, amount: 99 }, "legacy-opening")),
+        "22023", "commerce_settlement_open_amount_mismatch"),
+      async db => expectError(await rejected(create(db, { ...createLegacy, amount: 99 }, "legacy-provider")),
+        "22023", "payment_control_intent_order_amount_mismatch"),
+      async db => expectError(await rejected(open(db, fresh, "short")), "22023", "commerce_settlement_open_invalid_input"),
+      async db => expectError(await rejected(create(db, fresh, "short")), "22023", "payment_control_intent_invalid_input"),
+    ]);
+    const legacyIntent = await open(runtime, attachLegacy, "legacy-opening");
+    expect(legacyIntent).toMatchObject({ outcome: "opened", replayed: false,
+      settlement: { orderId: attachLegacy.id, status: "created", amountMinor: 100, currencyCode: currency } });
+    await unchanged([
+      async db => expectError(await rejected(create(db, attachLegacy, "legacy-attach", "alternate_rail")),
+        "22023", "payment_control_intent_existing_payment_mismatch"),
+    ]);
+    const attached = await create(runtime, attachLegacy, "legacy-attach");
+    expect(attached.paymentIntent).toMatchObject({ id: legacyIntent.settlement.id, orderId: attachLegacy.id, replayed: false });
+    const created = await create(runtime, createLegacy, "legacy-provider");
+    expect(created.paymentIntent).toMatchObject({ orderId: createLegacy.id, amountMinor: 100, currency, replayed: false });
+    const facts = await paymentFacts(owner);
+    expect(relations.map(table => facts[table]?.length)).toStrictEqual([4, 5, 3, 3, 3]);
+    await unchanged([
+      async db => { expect(await open(db, attachLegacy, "legacy-opening")).toStrictEqual({ ...legacyIntent, replayed: true }); },
+      async db => { expect(await create(db, attachLegacy, "legacy-attach")).toStrictEqual(receiptReplay(attached)); },
+      async db => { expect(await create(db, createLegacy, "legacy-provider")).toStrictEqual(receiptReplay(created)); },
+      async db => expectError(await rejected(create(db, createLegacy, "legacy-provider-unused")),
+        "23505", "payment_control_intent_order_already_has_intent"),
+    ]);
+  } finally { await store.close(); }
 }, postgresSetupTimeoutMs);

@@ -10,9 +10,8 @@ import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { readPlatformMigrationManifest, sha256, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { composeNativePrivacy } from "../../server/runtime/auth/privacyBinding.js";
-import { withPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
-import { createAccountMutationsTemplate, installAccountMutations, type AccountMutationsStore } from "./customerAccountMutations.fixture.js";
+import { createAccountMutationsTemplate, installAccountMutationsBeforeForward, type AccountMutationsStore } from "./customerAccountMutations.fixture.js";
 import { deferred, testServicePin } from "./destinationDocumentFixture.js";
 import { awaitReceiptWait, backendPid, receiptClient } from "./destinationReceiptFixture.js";
 import { issue, write, type Evidence } from "./orderMoneyV2Guards.fixture.js";
@@ -24,11 +23,11 @@ if (manifest?.schemaVersion !== 3) throw new Error("Expected complete native cat
 const unit = manifest.forward.find(entry => entry.file.endsWith("_order_money_v2_child_guards.sql"));
 if (!unit) throw new Error("Expected order money child guard forward");
 const position = manifest.qualified.forward.findIndex(entry => entry.file === unit.file);
-const predecessorInventory = "cbb0de5414b4878ad3bb34ecaeb05438dae1d9f735b0653ba6381fe86ac564af";
 const assertion = "public.commerce_order_money_v2_assert(uuid,boolean,boolean,jsonb,jsonb)";
 const bodyReader = "public.commerce_order_money_v2_live_body(uuid)";
 const memo = "public.commerce_order_money_v2_check_state(uuid,boolean,text,text)";
 const lineSum = "public.commerce_order_assert_line_sum()";
+const destinationEraser = "public.commerce_destination_v2_erase(uuid)";
 const adjustments = "commerce_order_adjustments";
 const message = "commerce_order_money_v2_mismatch";
 const immutable = "Keep the accepted facts and use the owning order lifecycle operation.";
@@ -42,25 +41,17 @@ const moneyObligations = [
 ];
 const predecessorDefinitions = async (db: Pool) => (await db.query(
   "SELECT oid::regprocedure::text AS name, pg_get_functiondef(oid), proacl FROM pg_proc WHERE oid = ANY($1::regprocedure[]) ORDER BY proname",
-  [[assertion, bodyReader, memo, lineSum]])).rows;
+  [[assertion, bodyReader, memo, lineSum, destinationEraser]])).rows;
 let store: AccountMutationsStore;
 let sku: Awaited<ReturnType<typeof seedSku>>;
 let applied: string[];
 let priorDefinitions: Awaited<ReturnType<typeof predecessorDefinitions>>;
 
 beforeAll(async () => {
-  const prefix = structuredClone(manifest);
-  for (const plan of [prefix, prefix.qualified, prefix.qualifiedAdmin]) {
-    plan.forward = plan.forward.slice(0, plan.forward.findIndex(entry => entry.file === unit.file));
-  }
-  prefix.qualified.objectInventorySha256.bootstrapMigrator.withRestore = predecessorInventory;
-  await withPlatformCatalog(prefix, async root => {
-    store = await installAccountMutations("bootstrap", false, "order-child-guards-prefix", root);
-    expect(store.inventory).toBe(predecessorInventory);
-    priorDefinitions = await predecessorDefinitions(store.owner);
-    applied = (await store.runner.apply()).applied;
-    sku = await seedSku(store.owner);
-  });
+  store = await installAccountMutationsBeforeForward(manifest, unit.file, "bootstrap", "order-child-guards-prefix");
+  priorDefinitions = await predecessorDefinitions(store.owner);
+  applied = (await store.runner.apply()).applied;
+  sku = await seedSku(store.owner);
 }, postgresSetupTimeoutMs);
 
 afterAll(() => store?.close(), postgresTeardownTimeoutMs);
@@ -76,8 +67,18 @@ it("applies the child guards first and preserves the installed assertion, reader
   expect(sha256(readFileSync(unit.file, "utf8"))).toBe(unit.sha256);
   expect((await store.owner.query("SELECT catalog_path,sha256,position FROM public.platform_schema_migrations WHERE position=$1",
     [position + 1])).rows).toEqual([{ catalog_path: unit.file, sha256: unit.sha256, position: position + 1 }]);
-  expect(priorDefinitions).toHaveLength(4);
-  expect(await predecessorDefinitions(store.owner)).toStrictEqual(priorDefinitions);
+  expect(priorDefinitions).toHaveLength(5);
+  const installedDefinitions = await predecessorDefinitions(store.owner);
+  const eraser = installedDefinitions.find(row => row.name.endsWith("commerce_destination_v2_erase(uuid)"))!;
+  const installed: string = eraser.pg_get_functiondef;
+  const unchangedPrefix = "  GET DIAGNOSTICS v_count = ROW_COUNT;\n";
+  const unchangedSuffix = "  RETURN v_count;\n";
+  const addedAt = installed.indexOf(unchangedPrefix) + unchangedPrefix.length;
+  const addedUntil = installed.indexOf(unchangedSuffix, addedAt);
+  expect(installed.indexOf(unchangedPrefix)).toBeGreaterThan(0);
+  expect(addedUntil).toBeGreaterThan(addedAt);
+  eraser.pg_get_functiondef = installed.slice(0, addedAt) + installed.slice(addedUntil);
+  expect(installedDefinitions).toStrictEqual(priorDefinitions);
   const signature = "public.commerce_order_money_v2_child_guard()";
   expect((await store.runtime.query("SELECT session_user::text AS login, has_function_privilege($1,'EXECUTE') AS execute",
     [signature])).rows).toEqual([{ login: store.installation.generation === "qualified-v2" ? store.installation.runtimeLogin : "", execute: false }]);
@@ -231,7 +232,12 @@ async function operator(db: Pool) {
 }
 
 function erasure(target: AccountMutationsStore, principalId: string,
-  hooks: { start?: (pid: number) => void; prepared?: () => Promise<void>; omitMoneyDispositions?: boolean } = {}) {
+  hooks: {
+    start?: (pid: number) => void;
+    prepared?: () => Promise<void>;
+    omitMoneyDispositions?: boolean;
+    releaseSavepoint?: boolean;
+  } = {}) {
   const sqlStore = createPostgresPrivacyStore();
   const operations = composeNativePrivacy({
     store: {
@@ -250,7 +256,10 @@ function erasure(target: AccountMutationsStore, principalId: string,
     unitOfWork: { run: <T>(work: (db: PgQueryExecutor) => Promise<T>) =>
       transaction(target.runtime, async db => {
         if (hooks.start) hooks.start(await backendPid(db));
-        return work(db);
+        if (hooks.releaseSavepoint) await db.query("SAVEPOINT mounted_erasure");
+        const result = await work(db);
+        if (hooks.releaseSavepoint) await db.query("RELEASE SAVEPOINT mounted_erasure");
+        return result;
       }) },
   }).operations;
   const handler = createPrivacyEraseHandler({
@@ -393,7 +402,7 @@ it("order_money_survives_erasure_and_restore", async () => {
       .toEqual([{ body: acceptedBody }]);
     const liveKey = randomUUID();
     const [sourceReceipt, targetReceipt] = await Promise.all([liveSource, liveTarget].map(async db =>
-      receipt(await erasure(db, liveActor)(liveEvidence.clientId, liveKey), "ERASED")));
+      receipt(await erasure(db, liveActor, { releaseSavepoint: true })(liveEvidence.clientId, liveKey), "ERASED")));
     await provedErasure(liveSource, liveEvidence, liveId, sourceReceipt!.erasureId);
     await provedErasure(liveTarget, liveEvidence, liveId, targetReceipt!.erasureId);
     expect(receipt(await erasure(liveTarget, liveActor)(liveEvidence.clientId, liveKey), "ALREADY_ERASED").erasureId)

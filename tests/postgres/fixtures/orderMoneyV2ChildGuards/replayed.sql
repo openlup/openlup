@@ -1,9 +1,9 @@
-SELECT plan(4);
+SELECT plan(5);
 
-SELECT ok((SELECT provolatile='v' AND NOT prosecdef AND prorettype='trigger'::regtype
+SELECT ok((SELECT provolatile='v' AND prosecdef AND prorettype='trigger'::regtype
   AND proconfig=ARRAY['search_path=pg_catalog, pg_temp']
   FROM pg_proc WHERE oid='public.commerce_order_money_v2_child_guard()'::regprocedure),
-  'guard is a volatile invoker with the exact private search path');
+  'guard is a volatile definer with the exact private search path');
 
 SELECT ok((SELECT proowner=(SELECT oid FROM pg_roles WHERE rolname=current_user)
   AND NOT EXISTS (SELECT FROM aclexplode(coalesce(proacl,acldefault('f',proowner))) WHERE grantee<>proowner)
@@ -11,6 +11,13 @@ SELECT ok((SELECT proowner=(SELECT oid FROM pg_roles WHERE rolname=current_user)
     AND has_function_privilege(pg_roles.oid,pg_proc.oid,'EXECUTE'))
   FROM pg_proc WHERE oid='public.commerce_order_money_v2_child_guard()'::regprocedure),
   'guard has owner-only execute');
+
+SELECT ok((SELECT relowner=current_user::regrole AND relrowsecurity AND NOT relforcerowsecurity
+  AND NOT EXISTS (SELECT FROM pg_policy WHERE polrelid=c.oid)
+  AND NOT EXISTS (SELECT FROM aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) WHERE grantee<>c.relowner)
+  AND NOT EXISTS (SELECT FROM pg_attribute a CROSS JOIN LATERAL aclexplode(a.attacl) WHERE a.attrelid=c.oid)
+  FROM pg_class c WHERE oid='public.commerce_order_money_v2_redaction_marks'::regclass),
+  'redaction marks are private');
 
 SELECT set_eq(
   $$SELECT c.relname::text,t.tgname::text,t.tgtype::integer,t.tgdeferrable,t.tginitdeferred,t.tgenabled::text
