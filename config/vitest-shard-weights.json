@@ -2339,6 +2339,7 @@
     "tests/platform/inventory/subscriptionStockContinuityCharacterization.test.ts": 18,
     "tests/platform/mailEgressCallers.test.ts": 787,
     "tests/platform/marketingValidation.test.ts": 313,
+    "tests/platform/neutralStoreCheckoutClassifier.test.ts": 30,
     "tests/platform/neutralStoreCheckoutRetry.test.ts": 70,
     "tests/platform/packWorkspaceTarball.test.ts": 63,
     "tests/platform/partners/partnerAcquisitionParity.test.ts": 39,
