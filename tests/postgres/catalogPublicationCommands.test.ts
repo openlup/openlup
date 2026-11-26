@@ -39,16 +39,18 @@ const artifact = Buffer.from(`
   };
 `);
 const publicationTaxClass = "example:publication-standard";
+const articleType = {
+  key: "example:article", version: 1,
+  units: [{ code: "openlup:g", dimension: "mass", integral: false }],
+  netContentUnits: ["openlup:g"],
+  dimensions: [{ key: "finish", kind: "choice", values: ["matte", "gloss"] }],
+  axes: [{ key: "finish", attributeKey: "finish" }],
+  attributes: [{ key: "finish", scope: "variant", valueType: { kind: "enum", values: [{ id: "matte" }, { id: "gloss" }] },
+    required: false, cardinality: { min: 0, max: 1 }, filterable: false, facetable: false, public: true, displayOrder: 0, labels: {} }],
+} as const;
 const registry = createCatalogProductTypeRegistry(withCatalogPublicationRules({ id: "example:rules", namespace: "example",
-  version: 1, openlupRange: "1.x", capabilities: {}, taxClasses: [{ key: publicationTaxClass }], types: [{
-    key: "example:article", version: 1, taxClass: publicationTaxClass,
-    units: [{ code: "openlup:g", dimension: "mass", integral: false }],
-    netContentUnits: ["openlup:g"],
-    dimensions: [{ key: "finish", kind: "choice", values: ["matte", "gloss"] }],
-    axes: [{ key: "finish", attributeKey: "finish" }],
-    attributes: [{ key: "finish", scope: "variant", valueType: { kind: "enum", values: [{ id: "matte" }, { id: "gloss" }] },
-      required: false, cardinality: { min: 0, max: 1 }, filterable: false, facetable: false, public: true, displayOrder: 0, labels: {} }],
-  }, {
+  version: 1, openlupRange: "1.x", capabilities: {}, taxClasses: [{ key: publicationTaxClass }], types: [
+    articleType, { ...articleType, version: 2, taxClass: publicationTaxClass }, {
     key: "example:volume-item", version: 1,
     units: [{ code: "openlup:g", dimension: "mass", integral: false },
       { code: "example:ml", dimension: "volume", integral: false, factor: { canonicalUnit: "openlup:ml", unscaled: "1", scale: 0 } }],
@@ -57,6 +59,7 @@ const registry = createCatalogProductTypeRegistry(withCatalogPublicationRules({ 
   }] },
 () => artifact).types);
 const installed = registry.resolve({ key: "example:article", version: 1 })!;
+const publicationType = registry.resolve({ key: articleType.key, version: 2 })!;
 const volumeType = registry.resolve({ key: "example:volume-item", version: 1 })!;
 beforeAll(async () => {
   container = await runPostgresContainer({ name: `catalog-publication-commands-${process.pid}`, password: randomUUID() });
@@ -74,9 +77,8 @@ beforeAll(async () => {
   }
   for (const definition of [installed, volumeType]) {
     await pool.query(`INSERT INTO public.catalog_type_versions(type_key,version,definition,definition_digest,validator_ref)
-      VALUES($1,1,$2,$3,$4)`, [definition.key, { taxClass: definition.taxClass }, catalogDefinitionDigest(definition), definition.validatorRef]);
+      VALUES($1,1,'{}',$2,$3)`, [definition.key, catalogDefinitionDigest(definition), definition.validatorRef]);
   }
-  await pool.query("INSERT INTO public.catalog_tax_classes VALUES ($1,'Publication standard','active')", [publicationTaxClass]);
   await pool.query(`INSERT INTO public.commerce_settings(key,value_text) VALUES('settlement_region','ZZ'),('settlement_currency','XXX')
     ON CONFLICT(key) DO UPDATE SET value_text=EXCLUDED.value_text`);
   await pool.query("SELECT public.commerce_capture_offer_policy_v2_legacy_baseline()");
@@ -1321,7 +1323,7 @@ publicationTest("commits deferred publication checks through the restricted logi
     ]) await refuseStatement(sql);
     await refuseStatement("SELECT public.catalog_publication_record_command('{}'::jsonb)");
     await pool.query("INSERT INTO public.catalog_tax_classes VALUES ('example:standard','Standard','active')");
-    expect(await transaction(publisher, db => db.query("SELECT status FROM public.catalog_tax_classes WHERE key='example:standard' FOR SHARE")))
+    expect(await transaction(publisher, db => db.query("SELECT status FROM public.catalog_tax_classes FOR SHARE")))
       .toMatchObject({ rows: [{ status: "active" }] });
     await expect(publisher.query("UPDATE public.catalog_tax_classes SET status='retired'")).rejects.toMatchObject({ code: "42501" });
     const data = authored(26), priceListId = randomUUID();
@@ -1567,6 +1569,11 @@ it("requires explicit adoption before a legacy issued head can carry v4 effects"
 
 publicationTest("issues verified v2 effects and rolls them back on a deferred publication failure", async ({ publicationUrl }) => {
   const data = authored(221);
+  data.payload.product.type = { key: publicationType.key, version: publicationType.version };
+  await pool.query(`INSERT INTO public.catalog_type_versions(type_key,version,definition,definition_digest,validator_ref)
+    VALUES($1,$2,$3,$4,$5)`, [publicationType.key, publicationType.version, { taxClass: publicationTaxClass },
+    catalogDefinitionDigest(publicationType), publicationType.validatorRef]);
+  await pool.query("INSERT INTO public.catalog_tax_classes VALUES ($1,'Publication standard','active')", [publicationTaxClass]);
   const publisher = new Pool({ connectionString: publicationUrl, max: 1 });
   const priceListId = randomUUID(), netListId = randomUUID(), childKey = randomUUID(), unrelated = randomUUID();
   const payload: CatalogDraftPayloadV4 = { ...data.payload, schemaVersion: 4 };
@@ -1594,7 +1601,7 @@ publicationTest("issues verified v2 effects and rolls them back on a deferred pu
       const source = { ...draft, publication: { ...draft.publication, evidence: { ...draft.publication.evidence, priceContext } },
         skus: [{ ...draft.skus[0]!, priceOperations: edits }] };
       const digest = hash(`["catalog-candidate",1,${canonicalCatalogDraftJson(source)},${canonicalCatalogDraftJson([
-        { ...draft.product.type, definitionDigest: catalogDefinitionDigest(installed) },
+        { ...draft.product.type, definitionDigest: catalogDefinitionDigest(publicationType) },
       ])},${canonicalCatalogDraftJson(head)}]`);
       return { source, digest };
     };
@@ -1620,7 +1627,7 @@ publicationTest("issues verified v2 effects and rolls them back on a deferred pu
       ].sort());
     }
     const claims = JSON.stringify({ sub: actor, role: "authenticated" });
-    const readPrice = (db: PgQueryExecutor, approval: string | undefined, list = priceListId) => db.query(
+    const readPrice = (db: PoolClient, approval: string | undefined, list = priceListId) => db.query(
       "SELECT * FROM public.catalog_publication_lock_effective_base_price_v2($1,$2,$3)", [data.skuId, list, approval]);
     const holdPrice = (db: PoolClient) => db.query("SELECT public.catalog_price_setup_lock_context($1,$2)", [priceListId, data.skuId]);
     const insertBase = (db: PoolClient, id: string, validFrom: string) => db.query(`INSERT INTO public.price_entries
