@@ -188,11 +188,11 @@ async function assertInstalledCli() {
 
 async function databaseRelay(host: string, dockerArgs: string[], target: { path: string } | { host: string; port: number }) {
   mkdirSync(host, { mode: 0o700 });
-  const relay = `const socket = require("node:net").connect(JSON.parse(process.argv[1]));
+  const relay = `const socket = require("node:net").connect(${JSON.stringify(target)});
     process.stdin.pipe(socket); socket.pipe(process.stdout);
     socket.on("end", () => process.stdin.destroy());`;
   const server = createServer(socket => {
-    const child = spawn("docker", [...dockerArgs, "-e", relay, JSON.stringify(target)],
+    const child = spawn("docker", [...dockerArgs, "-e", relay],
       { cwd: app, env: childEnv, signal: composeAbort.signal, stdio: ["pipe", "pipe", "inherit"] });
     socket.pipe(child.stdin);
     child.stdout.pipe(socket);
