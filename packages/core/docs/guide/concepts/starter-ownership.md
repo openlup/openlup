@@ -263,8 +263,11 @@ leaves the browser, and reuses it after a reload. A create whose answer was lost
 is repeated once by the page, under the same key, with a 10-second deadline. It
 starts a new key only after the host confirmed that the earlier order is closed,
 or that no order exists and none can still arrive. Changed details while that
-order may exist send nothing: the page shows `starter_checkout_changed` itself
-and opens a panel. A record written before the bindings takes the current
+order may exist send nothing: the page opens a panel and shows
+`starter_checkout_changed` itself when the order was last seen payable, the code
+that last named it not payable, expired or paid, or otherwise that an order may
+exist. It keeps that knowledge beside the record, under
+`neutral-store:checkout-order-state:v1:<configuration>`. A record written before the bindings takes the current
 details on its first submit, under the same key. The panel also appears on load
 when the tab holds an earlier order or an uncertain create. It offers "Complete
 payment for the earlier order" (`resume`) and "Cancel the earlier order and start
