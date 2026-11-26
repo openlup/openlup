@@ -145,9 +145,13 @@ const FIELDS = Object.keys(FIRST) as (keyof Snapshot<never>)[];
  *    one: a host does not log or report it.
  *
  * An answer is applied once. After a `settled` answer only another `settled`
- * answer changes the status. `settled` and `closed` clear the record and the
- * pending-action marker; `declined` advances the attempt only when
- * `declinedAttempt` names the stored attempt, and clears the marker. A changed
+ * answer changes the status, until `startOver` or until the stored record
+ * names another purchase. `settled` and `closed` clear the record and the
+ * pending-action marker; `declined` advances the attempt only when the stored
+ * record names the declined purchase and `declinedAttempt` names its stored
+ * attempt, and clears the marker. Each clear happens only while the stored
+ * record names the purchase the answer is for, or, for the marker, while no
+ * record is stored. A changed
  * payload is sent only under `update_in_place`, or after a `refused` answer to
  * a submit or its replay, until the next payload is sent; any other policy
  * value reads as `refuse_changed`. When a record write throws or does not read
@@ -261,6 +265,13 @@ export function createPurchaseContinuation<TPayload, TRequest, TResult, TOptions
     if (storage.read()?.continuationId === continuationId) clearContinuationRecord({ storage });
   }
 
+  /** Clears the pending-action marker only while no record is stored or the record still names the identity that was read. */
+  function clearMarkerOf(continuationId: ContinuationId): void {
+    if (!pending) return;
+    const stored = storage.read();
+    if (!stored || stored.continuationId === continuationId) pending.storage.clear();
+  }
+
   /** The host storage with each write's error caught and kept in `errors`. */
   function guardedStorage(errors: unknown[]): ContinuationRecordStorageBinding & { written: ContinuationRecord | null } {
     const guarded = {
@@ -310,7 +321,7 @@ export function createPurchaseContinuation<TPayload, TRequest, TResult, TOptions
         // Paid before anything is cleared, so a failing clear cannot leave the purchase open to a new submit.
         settled = true;
         clearRecordOf(continuationId);
-        pending?.storage.clear();
+        clearMarkerOf(continuationId);
         break;
       case "needs_client_action":
         status = "awaiting_payment";
@@ -324,7 +335,7 @@ export function createPurchaseContinuation<TPayload, TRequest, TResult, TOptions
         if (record && record.continuationId === continuationId && declined === (record.attempt ?? 0)) {
           advanceAttempt({ storage: guardedStorage(writeErrors) });
         }
-        pending?.storage.clear();
+        clearMarkerOf(continuationId);
         status = "declined";
         break;
       }
@@ -333,7 +344,7 @@ export function createPurchaseContinuation<TPayload, TRequest, TResult, TOptions
         break;
       case "closed":
         clearRecordOf(continuationId);
-        pending?.storage.clear();
+        clearMarkerOf(continuationId);
         status = "closed";
         break;
       default:

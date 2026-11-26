@@ -3938,15 +3938,20 @@ and provider facts only through the host bindings a store passes in.
   - `submit` sends the purchase under the key the host derives from the
     continuation identity and attempt, refuses a changed payload while a
     purchase may exist, sends nothing when the record cannot be stored, and
-    replays a failed submit once under the same key;
+    replays a submit whose response was lost (a timeout or an uncertain
+    transport failure) once under the same key;
   - `resume` reads the purchase by its key once and applies the answer;
   - `recordReturn` marks the buyer's return from a provider as waiting on the
     server, never as paid;
   - `startOver` asks the server to give up the purchase and clears the record
     only when the server answers that it is over.
 
-  Only a declined answer for the stored attempt advances the attempt. Once
-  paid, the snapshot stays paid until `startOver`, and "paid, activation
+  Only a declined answer for the stored attempt advances the attempt. Once a
+  purchase is paid, the snapshot stays paid for that purchase until
+  `startOver`; when another instance, such as another tab, starts a new
+  purchase, the next command that reads the record shows the new purchase
+  instead. An answer clears the stored record and pending-action marker only
+  while they still belong to the purchase it answers. "Paid, activation
   pending" is a status of its own. The bindings object has no exported type
   name: a host names it as
   `Parameters<typeof createPurchaseContinuation<TPayload, TRequest, TResult, TOptions>>[0]`
