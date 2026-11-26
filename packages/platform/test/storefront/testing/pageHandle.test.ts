@@ -333,7 +333,10 @@ function fakeDocument(styles: { root?: Record<string, string>; body?: Record<str
     scrollTo(x: number | ScrollOptions, y?: number) {
       if (typeof x === "number") { scrolls.push("window positional"); view.scrollX = x; view.scrollY = y ?? 0; return; }
       scrolls.push(`window ${x.behavior ?? "auto"}`);
-      view.scrollX = x.left ?? view.scrollX; view.scrollY = x.top ?? view.scrollY;
+      // Clamped to the page's scroll extent, as a browser does.
+      const clamp = (value: number, extent: number) => Math.max(0, Math.min(extent, value));
+      view.scrollX = clamp(x.left ?? view.scrollX, root.scrollWidth - view.innerWidth);
+      view.scrollY = clamp(x.top ?? view.scrollY, root.scrollHeight - view.innerHeight);
     },
   };
   const all: FakeElement[] = [];
@@ -374,8 +377,15 @@ function fakeDocument(styles: { root?: Record<string, string>; body?: Record<str
       hasAttribute: (name) => Object.hasOwn(created.attributes, name),
       contains(other) { for (let node: FakeElement | null = other; node; node = node.parentElement) if (node === created) return true; return false; },
       getBoundingClientRect: () => {
-        if (position(created) === "fixed") return { ...box };
-        const scrolled = ancestors(created).reduce((sum, node) => ({ x: sum.x + node.scrollLeft, y: sum.y + node.scrollTop }), { x: view.scrollX, y: view.scrollY });
+        // Ancestors' scroll offsets apply up to a fixed box; the window's only when no fixed box is on the way.
+        let scrolled = { x: 0, y: 0 };
+        let fixed = position(created) === "fixed";
+        for (const node of ancestors(created)) {
+          if (fixed) break;
+          scrolled = { x: scrolled.x + node.scrollLeft, y: scrolled.y + node.scrollTop };
+          fixed = position(node) === "fixed";
+        }
+        if (!fixed) scrolled = { x: scrolled.x + view.scrollX, y: scrolled.y + view.scrollY };
         return { left: box.left - scrolled.x, top: box.top - scrolled.y, width: box.width, height: box.height };
       },
       scrollIntoView() {
@@ -384,13 +394,15 @@ function fakeDocument(styles: { root?: Record<string, string>; body?: Record<str
         for (const node of clipping(created)) {
           node.scrollTop = Math.max(0, Math.min(node.scrollHeight - node.clientHeight, centre - node.box.top - node.clientHeight / 2));
           centre -= node.scrollTop;
+          if (position(node) === "fixed") return;
         }
         view.scrollY = Math.max(0, Math.min(3000 - view.innerHeight, centre - view.innerHeight / 2));
         view.scrollX = Math.max(0, Math.min(root.scrollWidth - view.innerWidth, box.left + box.width / 2 - view.innerWidth / 2));
       },
       scrollTo(options: ScrollOptions) {
         scrolls.push(`element ${options.behavior ?? "auto"}`);
-        created.scrollLeft = options.left ?? created.scrollLeft; created.scrollTop = options.top ?? created.scrollTop;
+        created.scrollLeft = Math.max(0, Math.min(created.scrollWidth - created.clientWidth, options.left ?? created.scrollLeft));
+        created.scrollTop = Math.max(0, Math.min(created.scrollHeight - created.clientHeight, options.top ?? created.scrollTop));
       },
     };
     all.push(created);
@@ -506,6 +518,31 @@ describe("the visibility function is self-contained (H3)", () => {
     expect(rebuilt([anchor as unknown as Element], [])).toEqual([{ ...shown, width: box.width, height: box.height }]);
     expect([view.scrollX, view.scrollY]).toEqual([0, 0]);
     expect(scrolls.filter((call) => !call.endsWith(" instant"))).toEqual([]);
+  });
+
+  it.each([
+    ["an app shell: body overflow: hidden, main overflow: auto", (doc: ReturnType<typeof fakeDocument>) => {
+      const main = doc.element({ left: 0, top: 0, width: 400, height: 300 }, { parent: doc.body, style: { overflow: "auto" }, scrollHeight: 2500 });
+      return doc.element({ left: 10, top: 2000, width: 120, height: 40 }, { parent: main });
+    }, { root: {}, body: { overflow: "hidden" } }],
+    ["an app shell: html overflow: hidden, #app overflow: auto", (doc: ReturnType<typeof fakeDocument>) => {
+      const app = doc.element({ left: 0, top: 0, width: 400, height: 300 }, { parent: doc.body, style: { overflow: "auto" }, scrollHeight: 1800 });
+      return doc.element({ left: 10, top: 1500, width: 120, height: 40 }, { parent: app });
+    }, { root: { overflow: "hidden" } }],
+    ["a body scroll lock with a fixed, scrollable modal", (doc: ReturnType<typeof fakeDocument>) => {
+      const modal = doc.element({ left: 0, top: 0, width: 400, height: 300 }, { parent: doc.body, style: { position: "fixed", overflow: "auto" }, scrollHeight: 1400 });
+      return doc.element({ left: 10, top: 1200, width: 120, height: 40 }, { parent: modal });
+    }, { root: {}, body: { overflow: "hidden" } }],
+    ["an overflow: auto container inside an overflow: hidden one, below both folds", (doc: ReturnType<typeof fakeDocument>) => {
+      const outer = doc.element({ left: 0, top: 0, width: 400, height: 300 }, { parent: doc.body, style: { overflow: "hidden" }, scrollHeight: 800 });
+      const inner = doc.element({ left: 0, top: 0, width: 400, height: 200 }, { parent: outer, style: { overflow: "auto" }, scrollHeight: 440 });
+      return doc.element({ left: 10, top: 400, width: 120, height: 40 }, { parent: inner });
+    }, undefined],
+  ] as const)("reaches an anchor an inner scroller the buyer can scroll brings into view, under %s", (_name, build, styles) => {
+    const doc = fakeDocument(styles);
+    const anchor = build(doc);
+    expect(rebuilt([anchor as unknown as Element], [])).toEqual([{ ...shown }]);
+    expect([doc.view.scrollX, doc.view.scrollY]).toEqual([0, 0]);
   });
 
   it("measures a batch in order and reads the requested attributes", () => {
