@@ -1,11 +1,14 @@
 import childProcess, { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { chmodSync, existsSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
-import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { delimiter, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { INVENTORY_PATH } from './agent-review-derived.mjs';
-import { landingMerge } from './agent-review-landing.mjs';
+import { landingMerge, parseLandingCliOptions } from './agent-review-landing.mjs';
+import { PG_SUITE_CLOSURES_PATH } from './agent-review-registry.mjs';
+import { worktreeGateSuffix } from './resource-gate.mjs';
 import { localFixtureEnvironment } from './fixtures/landing-test-environment.ts';
 import {
   CATALOGUE,
@@ -189,14 +192,24 @@ it.each(['unregistered', 'executable', 'symlink'])('keeps a %s report conflict u
 }, 60000);
 
 it.each([
-  ['package-lock.json', '1'],
-  ['package-lock.json', undefined],
-  ['.npmrc', '1'],
-] as const)('lands a changed main lock through the selected install route (%s, marker %s)', async (input, marker) => {
-  const previousMarker = localFixtureEnvironment().AI_RESOURCE_GATE_ACTIVE;
+  ['package-lock.json', '1', true],
+  ['package-lock.json', undefined, true],
+  ['package-lock.json', undefined, false],
+  ['.npmrc', '1', true],
+] as const)('lands a changed main lock through the selected install route (%s, marker %s, broker %s)', async (input, marker, hasBroker) => {
+  const previousEnv = localFixtureEnvironment();
   const lockBytes = f.read(installedLock);
+  const brokerDir = mkdtempSync(join(tmpdir(), 'openlup-landing-broker-'));
+  const broker = join(brokerDir, 'ai-resource-gate');
+  if (hasBroker) {
+    writeFileSync(broker, '#!/bin/sh\nexit 0\n');
+    chmodSync(broker, 0o700);
+  }
   try {
     vi.stubEnv('AI_RESOURCE_GATE_ACTIVE', marker);
+    vi.stubEnv('CI', undefined);
+    vi.stubEnv('OPENLUP_DISABLE_RESOURCE_GATE', undefined);
+    vi.stubEnv('PATH', hasBroker ? `${brokerDir}${delimiter}${previousEnv.PATH ?? ''}` : brokerDir);
     const { left, right } = f.startToolchainLanding(input);
     const mergeHead = () => existsSync(join(f.root, '.git/MERGE_HEAD')) ? f.git('rev-parse', 'MERGE_HEAD') : undefined;
     const calls: [string, string[], string | undefined][] = [];
@@ -210,14 +223,18 @@ it.each([
         f.write(installedLock, json(installed));
       },
     });
-    const install = marker === undefined
-      ? ['ai-resource-gate', ['run', '--wait', 'openlup:landing-build', '--', process.execPath, npmCli, 'ci'], right]
+    const install = marker === undefined && hasBroker
+      ? [broker, ['run', '--wait', '--queue-timeout', '300', '--execution-timeout', '900', `openlup:landing-build:wt${worktreeGateSuffix(f.root)}`, '--', process.execPath, npmCli, 'ci'], right]
       : [process.execPath, [npmCli, 'ci'], right];
     expect(calls).toEqual([[process.execPath, toolchainCheck, undefined], install, [process.execPath, toolchainCheck, right]]);
     expect(f.git('show', '-s', '--format=%P%n%B', landed.head)).toBe(`${left} ${right}\nMerge origin/main and refresh derived carriers\n\nSigned-off-by: Fixture <fixture@example.invalid>`);
     expect(f.status()).toBe('');
   } finally {
-    vi.stubEnv('AI_RESOURCE_GATE_ACTIVE', previousMarker);
+    vi.stubEnv('AI_RESOURCE_GATE_ACTIVE', previousEnv.AI_RESOURCE_GATE_ACTIVE);
+    vi.stubEnv('CI', previousEnv.CI);
+    vi.stubEnv('OPENLUP_DISABLE_RESOURCE_GATE', previousEnv.OPENLUP_DISABLE_RESOURCE_GATE);
+    vi.stubEnv('PATH', previousEnv.PATH);
+    rmSync(brokerDir, { recursive: true, force: true });
     f.write(installedLock, lockBytes);
     f.restoreDerivedFixture();
   }
@@ -261,15 +278,22 @@ it('aborts landing after a carrier failure', async () => {
 
 it('preserves unrelated work saved during the brokered install', async () => {
   const injected = new Error('fixture brokered npm ci failed');
-  const previousMarker = localFixtureEnvironment().AI_RESOURCE_GATE_ACTIVE;
+  const previousEnv = localFixtureEnvironment();
+  const brokerDir = mkdtempSync(join(tmpdir(), 'openlup-landing-broker-'));
+  const broker = join(brokerDir, 'ai-resource-gate');
+  writeFileSync(broker, '#!/bin/sh\nexit 0\n');
+  chmodSync(broker, 0o700);
   const untracked = 'landing-concurrent-note.txt';
   try {
     vi.stubEnv('AI_RESOURCE_GATE_ACTIVE', undefined);
+    vi.stubEnv('CI', undefined);
+    vi.stubEnv('OPENLUP_DISABLE_RESOURCE_GATE', undefined);
+    vi.stubEnv('PATH', `${brokerDir}${delimiter}${previousEnv.PATH ?? ''}`);
     const { left } = f.startToolchainLanding('package-lock.json');
     const readme = f.read('README.md') + '\nConcurrent tracked edit.\n';
     const note = 'Concurrent untracked note.\n';
     const runCommand = (command: string, args: string[]) => {
-      if (command !== 'ai-resource-gate') return f.fixtureCommand(command, args);
+      if (command !== broker) return f.fixtureCommand(command, args);
       f.write('README.md', readme);
       f.write(untracked, note);
       throw injected;
@@ -287,7 +311,11 @@ it('preserves unrelated work saved during the brokered install', async () => {
     expect(readFileSync(join(f.root, untracked))).toEqual(Buffer.from(note));
   } finally {
     rmSync(join(f.root, untracked), { force: true });
-    vi.stubEnv('AI_RESOURCE_GATE_ACTIVE', previousMarker);
+    rmSync(brokerDir, { recursive: true, force: true });
+    vi.stubEnv('AI_RESOURCE_GATE_ACTIVE', previousEnv.AI_RESOURCE_GATE_ACTIVE);
+    vi.stubEnv('CI', previousEnv.CI);
+    vi.stubEnv('OPENLUP_DISABLE_RESOURCE_GATE', previousEnv.OPENLUP_DISABLE_RESOURCE_GATE);
+    vi.stubEnv('PATH', previousEnv.PATH);
     f.restoreDerivedFixture();
   }
 }, 60000);
@@ -421,3 +449,113 @@ it('refuses an inventory-only landing with a mismatched installed dependency bef
     f.restoreDerivedFixture();
   }
 }, 30000);
+
+it('resolves a clean pg-suite-closures union during landingMerge while refusing divergent additions', async () => {
+  try {
+    f.checkout(f.base);
+    const original = JSON.parse(f.read(PG_SUITE_CLOSURES_PATH)) as { schemaVersion: number; suites: Record<string, string[]> };
+    const firstKey = Object.keys(original.suites)[0]!;
+    const branchKey = firstKey.replace(/\.test\.ts$/u, 'ZzzBranch.test.ts');
+    const mainKey = firstKey.replace(/\.test\.ts$/u, 'ZzzMain.test.ts');
+    const sorted = (suites: Record<string, string[]>) =>
+      Object.fromEntries(Object.entries(suites).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0));
+    const render = (suites: Record<string, string[]>) =>
+      `${JSON.stringify({ schemaVersion: original.schemaVersion, suites: sorted(suites) }, null, 2)}\n`;
+
+    f.write(PG_SUITE_CLOSURES_PATH, render({ ...original.suites, [branchKey]: ['@api'] }));
+    const left = f.commit();
+    f.checkout(f.base);
+    f.write(PG_SUITE_CLOSURES_PATH, render({ ...original.suites, [mainKey]: ['@starter'] }));
+    const right = f.commit();
+    f.setMain(right);
+    f.checkout(left);
+    const landed = await landingMerge(f.root, {
+      runCommand: (command, args) => {
+        if (args[0] === npmCli && args[1] === 'run' && args[2] === 'build') return;
+        f.fixtureCommand(command, args);
+      },
+    });
+    expect(landed.main).toBe(right);
+    expect(f.read(PG_SUITE_CLOSURES_PATH)).toBe(render({ ...original.suites, [branchKey]: ['@api'], [mainKey]: ['@starter'] }));
+    expect(f.status()).toBe('');
+  } finally { f.restoreDerivedFixture(); }
+}, 60000);
+
+it('runs post-commit build and typecheck after the merge commit when verify is enabled', async () => {
+  try {
+    f.checkout(f.base);
+    f.write('README.md', f.read('README.md') + '\nFixture branch verify pass.\n');
+    const left = f.commit();
+    f.checkout(f.base);
+    const right = f.commit();
+    f.setMain(right);
+    f.checkout(left);
+    const buildScript = join(f.root, 'scripts/build-packages-incremental.mjs');
+    const typecheckScript = join(f.root, 'scripts/oss-published-tree-check.ts');
+    const calls: { command: string; args: string[]; head: string; merging: boolean }[] = [];
+    const landed = await landingMerge(f.root, {
+      verify: true,
+      runCommand: (command, args) => {
+        calls.push({ command, args, head: f.git('rev-parse', 'HEAD'), merging: existsSync(join(f.root, '.git/MERGE_HEAD')) });
+        if (args[0] === buildScript || args.includes(typecheckScript)) return '';
+        return f.fixtureCommand(command, args);
+      },
+    });
+    expect(landed.verified).toBe(true);
+    expect(f.git('show', '-s', '--format=%P', landed.head)).toBe(`${left} ${right}`);
+    expect(calls).toEqual([
+      { command: process.execPath, args: toolchainCheck, head: left, merging: false },
+      { command: process.execPath, args: [buildScript], head: landed.head, merging: false },
+      { command: process.execPath, args: ['--experimental-strip-types', typecheckScript, '--typecheck'], head: landed.head, merging: false },
+    ]);
+    expect(f.status()).toBe('');
+  } finally {
+    f.restoreDerivedFixture();
+  }
+}, 60000);
+
+it('preserves the merge commit without rolling back when post-commit verify fails', async () => {
+  try {
+    f.checkout(f.base);
+    f.write('README.md', f.read('README.md') + '\nFixture branch verify fail.\n');
+    const left = f.commit();
+    f.checkout(f.base);
+    const right = f.commit();
+    f.setMain(right);
+    f.checkout(left);
+    const buildScript = join(f.root, 'scripts/build-packages-incremental.mjs');
+    const typecheckScript = join(f.root, 'scripts/oss-published-tree-check.ts');
+    let committedHead: string | undefined;
+    const failure = await landingMerge(f.root, {
+      verify: true,
+      runCommand: (command, args) => {
+        if (args[0] === buildScript) {
+          committedHead = f.git('rev-parse', 'HEAD');
+          return '';
+        }
+        if (args.includes(typecheckScript)) {
+          throw new Error('synthetic post-merge typecheck drift');
+        }
+        return f.fixtureCommand(command, args);
+      },
+    }).catch(error => error);
+    expect(committedHead).toBeTruthy();
+    expect(committedHead).not.toBe(left);
+    expect(failure).toBeInstanceOf(Error);
+    expect(failure.message).toContain(`OPENLUP_E_LANDING_VERIFY_FAILED: merge commit ${committedHead} was preserved (not rolled back)`);
+    expect(failure.message).toContain('synthetic post-merge typecheck drift');
+    expect(f.git('rev-parse', 'HEAD')).toBe(committedHead);
+    expect(f.git('show', '-s', '--format=%P', committedHead!)).toBe(`${left} ${right}`);
+    expect(existsSync(join(f.root, '.git/MERGE_HEAD'))).toBe(false);
+    expect(f.status()).toBe('');
+  } finally {
+    f.restoreDerivedFixture();
+  }
+}, 60000);
+
+it('parses landing CLI flags with verify enabled by default and --no-verify opt-out', () => {
+  expect(parseLandingCliOptions([])).toEqual({ reSlot: false, verify: true });
+  expect(parseLandingCliOptions(['--no-verify'])).toEqual({ reSlot: false, verify: false });
+  expect(parseLandingCliOptions(['--re-slot'])).toEqual({ reSlot: true, verify: true });
+  expect(parseLandingCliOptions(['--re-slot', '--no-verify'])).toEqual({ reSlot: true, verify: false });
+});

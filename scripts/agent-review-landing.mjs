@@ -9,12 +9,13 @@ import { env as processEnvironment } from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { isDeepStrictEqual, promisify } from 'node:util';
 import { git as ordinaryGit } from './agent-review-session.mjs';
-import { REGISTRY_PATHS, SHARD_WEIGHTS_PATH, registryUnion } from './agent-review-registry.mjs';
+import { PG_SUITE_CLOSURES_PATH, REGISTRY_PATHS, SHARD_WEIGHTS_PATH, registryUnion } from './agent-review-registry.mjs';
 import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryEnvelope, migrationRegistryUnion } from './agent-review-derived.mjs';
 import * as carrierGenerators from './agent-review-generators.mjs';
 import { DEFAULT_INCREMENTAL_PACKAGES, TSBUILDINFO_FILENAME } from './build-packages-incremental.mjs';
 import { MIGRATION_RAILS, migrationIdentity, planMigrationSlots } from './migration-slots.mjs';
 export { nextFreeMigrationSlot } from './migration-slots.mjs';
+import { resolveResourceGateInvocation } from './resource-gate.mjs';
 import { documentationGit } from './documentation-routing.ts';
 import { isGuidePage } from './oss-publication-policy.ts';
 
@@ -34,6 +35,7 @@ const PUBLICATION_CATALOGUE = REGISTRY_PATHS[0];
 const SETTINGS_GUIDE = 'packages/core/docs/guide/how-to/operate/settings-catalogue.md';
 const SETTINGS_OUTPUTS = ['packages/platform/settings-catalog.json', 'packages/platform/settings-refusals.json', SETTINGS_GUIDE];
 const BUILD_SCRIPT = 'scripts/build-packages-incremental.mjs';
+const TYPECHECK_SCRIPT = 'scripts/oss-published-tree-check.ts';
 export function landingGitDirectory(cwd) {
   const root = realpathSync(documentationGit(cwd, ['rev-parse', '--show-toplevel']).toString('utf8').trimEnd());
   if (root !== realpathSync(cwd)) throw new Error('landing: use the dedicated worktree root');
@@ -244,14 +246,32 @@ async function checkMergedLandingToolchain(cwd, head, run, carrierEnv, diagnosti
     ...DEFAULT_INCREMENTAL_PACKAGES.map(directory => `${directory}/package.json`)];
   if (await git(cwd, '--literal-pathspecs', 'diff', '--name-only', '-z', head, '--', ...toolchainInputs)) {
     const install = [process.execPath, carrierNpmCli(), 'ci'];
-    const [command, ...args] = Object.hasOwn(carrierEnv, 'AI_RESOURCE_GATE_ACTIVE') ? install
-      : ['ai-resource-gate', 'run', '--wait', 'openlup:landing-build', '--', ...install];
+    const gated = resolveResourceGateInvocation({
+      cwd,
+      profile: 'openlup:landing-build',
+      command: install[0],
+      args: install.slice(1),
+      env: carrierEnv,
+    });
+    const [command, ...args] = gated ? [gated.command, ...gated.args] : install;
     run(command, args, { env: carrierEnv });
     try { checkLandingToolchain(run, carrierEnv, true); }
     catch (error) {
       diagnostics.toolchain = `OPENLUP_E_LANDING_TOOLCHAIN: ${commandDiagnostic(error)}\nafter npm ci from the merged lock`;
       throw error;
     }
+  }
+}
+
+function verifyMergedLanding(cwd, run, carrierEnv, committedHead) {
+  try {
+    run(process.execPath, [resolve(cwd, BUILD_SCRIPT)], { env: carrierEnv });
+    run(process.execPath, ['--experimental-strip-types', resolve(cwd, TYPECHECK_SCRIPT), '--typecheck'], { env: carrierEnv });
+  } catch (error) {
+    throw new Error(
+      `OPENLUP_E_LANDING_VERIFY_FAILED: merge commit ${committedHead} was preserved (not rolled back), ${commandDiagnostic(error)}`,
+      { cause: error },
+    );
   }
 }
 
@@ -272,9 +292,17 @@ function checkLandingSqlReference(runGenerators) {
   }
 }
 
+export function parseLandingCliOptions(argv = []) {
+  return {
+    reSlot: argv.includes('--re-slot'),
+    verify: !argv.includes('--no-verify'),
+  };
+}
+
 function runLandingCli() {
   const diagnostics = {};
-  runLanding(process.cwd(), undefined, diagnostics, process.argv.includes('--re-slot')).then(result => console.log(JSON.stringify(result))).catch(error => {
+  const { reSlot, verify } = parseLandingCliOptions(process.argv.slice(2));
+  runLanding(process.cwd(), undefined, diagnostics, reSlot, verify).then(result => console.log(JSON.stringify(result))).catch(error => {
     console.error(diagnostics.aborted ?? error.message);
     process.exitCode = 1;
   });
@@ -506,8 +534,8 @@ export function applyMigrationReslot(cwd, changes, moveFiles = true, remapPaths 
   }
 }
 
-export async function landingMerge(cwd = process.cwd(), { runCommand, reSlot = false } = {}) {
-  return runLanding(cwd, runCommand, {}, reSlot);
+export async function landingMerge(cwd = process.cwd(), { runCommand, reSlot = false, verify = false } = {}) {
+  return runLanding(cwd, runCommand, {}, reSlot, verify);
 }
 
 export async function finalizeLanding(cwd, { head, main, base, ref, moves, checkpoint, guard, trackOwned, mergePaths, verifyIndex, sourceBytes, runCommand, bystanders, captureBystanders }) {
@@ -529,7 +557,7 @@ export async function finalizeLanding(cwd, { head, main, base, ref, moves, check
   });
 }
 
-async function runLanding(cwd, runCommand, diagnostics, reSlot) {
+async function runLanding(cwd, runCommand, diagnostics, reSlot, verify = false) {
   const mergeState = await landingPreflight(cwd);
   for (const key of ['user.name', 'user.email']) {
     let configured;
@@ -559,7 +587,10 @@ async function runLanding(cwd, runCommand, diagnostics, reSlot) {
   const carrierEnv = { ...processEnvironment, ...carrierLocale };
   const run = runCommand ?? ((command, args, options) => execFileSync(command, args, { cwd, stdio: 'inherit', timeout: 900000, ...options }));
   checkLandingToolchain(run, carrierEnv);
-  return mergeWithRollback(cwd, { head, main, base, run, carrierEnv, diagnostics, slotChanges, mainMigrations, ...mergeState });
+  const landed = await mergeWithRollback(cwd, { head, main, base, run, carrierEnv, diagnostics, slotChanges, mainMigrations, ...mergeState });
+  if (!verify) return landed;
+  verifyMergedLanding(cwd, run, carrierEnv, landed.head);
+  return { ...landed, verified: true };
 }
 
 async function reconcileReslotMirror(cwd, { mirror, targetMirror, head, main, collision, writes, stagedReslot }) {
@@ -635,11 +666,18 @@ async function landMergedCheckout(cwd, { head, main, base, run, carrierEnv, diag
     refuseAuthoredConflicts(registryConflicts);
   }
   const readUnion = async path => registryUnion(path, await read(base, path), reslottedHead.get(path) ?? await read(head, path), await read(main, path));
-  // A refused shard-weights union stays an authored conflict: a branch edit of a base weight changes its timeout.
-  const weightsUnion = registryConflicts.includes(SHARD_WEIGHTS_PATH) ? await readUnion(SHARD_WEIGHTS_PATH).catch(error => {
-    if (!error.message.startsWith('registry: ')) throw error;
-    refuseAuthoredConflicts([SHARD_WEIGHTS_PATH]);
-  }) : undefined;
+  // A refused shard-weights or PostgreSQL-closures union stays an authored conflict.
+  const preUnioned = new Map();
+  const refusedRegistries = [];
+  for (const path of [SHARD_WEIGHTS_PATH, PG_SUITE_CLOSURES_PATH]) {
+    if (!registryConflicts.includes(path)) continue;
+    try { preUnioned.set(path, await readUnion(path)); }
+    catch (error) {
+      if (!error.message.startsWith('registry: ')) throw error;
+      refusedRegistries.push(path);
+    }
+  }
+  refuseAuthoredConflicts(refusedRegistries);
   const index = await trackedIndex(cwd);
   const legacyConflict = path => [...REGISTRY_PATHS, ...MIGRATION_REGISTRIES, INVENTORY_PATH].includes(path) ||
     (generatedCarrier(path) && !path.endsWith('.sql') && !/^packages\/[^/]+\/api\/[^/]+\.api\.md$/u.test(path));
@@ -682,7 +720,7 @@ async function landMergedCheckout(cwd, { head, main, base, run, carrierEnv, diag
   if (conflicts.includes(MATURITY_REFERENCE)) await guarded({}, () => checkLandingMaturityReference(runGenerators));
   for (const path of new Set([...registryConflicts, ...(reslotsCatalogue ? [PUBLICATION_CATALOGUE] : [])])) {
     writes.paths.add(path);
-    const contents = path === PUBLICATION_CATALOGUE ? catalogueUnion : path === SHARD_WEIGHTS_PATH ? weightsUnion : await readUnion(path);
+    const contents = path === PUBLICATION_CATALOGUE ? catalogueUnion : preUnioned.has(path) ? preUnioned.get(path) : await readUnion(path);
     await guarded({ files: [path], index: [path] }, async () => {
       writeFileSync(resolve(cwd, path), contents);
       await git(cwd, 'add', '--', path);
