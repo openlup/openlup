@@ -95,6 +95,10 @@ export type StoreDoubleSwitches = {
   readonly slowPoll?: boolean;
   /** After continue-payment the page keeps showing `awaiting_payment` until a status poll answers; a poll with no answer keeps it. */
   readonly awaitingPaymentUntilPoll?: boolean;
+  /** When a status poll after an outcome gets no answer, the page shows `paid` from its own state. */
+  readonly paidWhenReadFails?: boolean;
+  /** When a status poll after an outcome gets no answer, the page shows `declined` from its own state. */
+  readonly declinedWhenReadFails?: boolean;
   /** When a status poll after an outcome gets no answer, the page shows `paid_pending_activation` from its own state. */
   readonly activationFromPageState?: boolean;
   /** Once `paid_pending_activation` was shown, the page's next settle falls back to `awaiting_payment` (a later poll that failed). */
@@ -259,6 +263,8 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: {
       return;
     }
     if (switches.awaitingPaymentWhenReadFails === true) view = "awaiting_payment";
+    else if (poll && switches.paidWhenReadFails === true) show("paid");
+    else if (poll && switches.declinedWhenReadFails === true) show("declined");
     else if (poll && switches.activationFromPageState === true && (view === "awaiting_payment" || view === "paying")) show("paid_pending_activation");
     else if (poll && switches.paidFromLocalState === true && view === "awaiting_authority") show("paid");
   }));

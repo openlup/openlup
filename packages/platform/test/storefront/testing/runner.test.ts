@@ -585,11 +585,16 @@ describe("paid with activation pending (R27)", () => {
     expect(stepsOf(verdict, "control").at(-1)!.observedAnchors).toContain("state:awaiting_payment");
   });
 
-  it("does not judge a control run that never learned the outcome, even when its failed read shows awaiting_payment", async () => {
-    const { verdict } = await run("paid_pending_activation", { awaitingPaymentWhenReadFails: true });
-    expect(verdict.findings).toEqual([]);
-    expect(verdict.result).toBe("passed");
-    expect(stepsOf(verdict, "control")[5]!.observedAnchors).toContain("state:awaiting_payment");
+  it.each([
+    ["regresses to awaiting_payment from the paying state it showed before the outcome", { awaitingPaymentWhenReadFails: true }, "state:awaiting_payment"],
+    ["shows paid", { paidWhenReadFails: true }, "state:paid"],
+    ["shows declined", { declinedWhenReadFails: true }, "state:declined"],
+  ] as const)("fails a control run that never learned the outcome but %s when its read fails", async (_name, switches, state) => {
+    const { verdict } = await run("paid_pending_activation", switches);
+    expect(verdict.result).toBe("failed");
+    expect(codes(verdict)).toEqual(["forbidden_state_shown"]);
+    expect(finding(verdict, "forbidden_state_shown")).toMatchObject({ run: "control", step: 5 });
+    expect(finding(verdict, "forbidden_state_shown")!.observed).toContain(state);
   });
 
   it("fails a page that falls back to awaiting_payment after it showed the outcome", async () => {
