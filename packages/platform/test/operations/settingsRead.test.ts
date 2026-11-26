@@ -353,6 +353,8 @@ describe("settings goal search", () => {
     ["skus", "catalog.optionalGtin"],
     ["VAT rate", "market.fiscalProfile"],
     ["merchant tax registration coverage history", "tax.coverage"],
+    ["return reasons", "commerce.returnReasons"],
+    ["payment method preferences", "shipping.paymentMethodPreferences"],
   ])("includes %s matches such as %s", (goal, key) => {
     const { entries } = catalogue.listResult.parse(listSettings({ goal }));
     expect(entries.map(entry => entry.key)).toContain(key);

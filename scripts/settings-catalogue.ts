@@ -78,6 +78,8 @@ const searchTerms: Record<string, string> = {
   "subscriptions.retrySchedule": "renewal retry policy, payment failure backoff, 3-rung retry ladder, dunning schedule",
   account_support_operator_slide_max_days: "operator slide max days, support reschedule window, slide_next_cycle limit",
   subscription_edit_quote_ttl_minutes: "subscription edit quote TTL, quote expiry minutes, edit preview validity window",
+  "commerce.returnReasons": "return reasons, return request reason codes, return vocabulary, commerce_return_reasons",
+  "shipping.paymentMethodPreferences": "payment method preferences, saved payment method kinds, shipping_payment_method_preferences",
   savedAddressValidation: "postal format, phone normalization, delivery address checks",
   "checkout.offerAdmission": "offer policy, offer version, checkout admission, quote acceptance",
   "checkout.resumeWindowMinutes": "checkout resume window, open order continuation, unpaid order resume, duplicate checkout guard",

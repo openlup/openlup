@@ -82,3 +82,11 @@ export { DEFAULT_LOW_STOCK_THRESHOLD, deriveOfferAvailability, defaultOfferAvail
 export type { DeriveOfferAvailabilityInput } from "./offerAvailability.js";
 export { CHECKOUT_RECOVERY_START_CONTRACT_VERSION,checkoutRecoveryStartRequestSchema,checkoutRecoveryStartResponseSchema } from './checkoutRecoveryStartSchemas.js';
 export type { CheckoutRecoveryStartRequest,CheckoutRecoveryStartResponse } from './checkoutRecoveryStartSchemas.js';
+export {
+  DEFAULT_COMMERCE_RETURN_REASONS,
+  validateCommerceReturnReasons,
+  installCommerceReturnReasonsPolicy,
+  readCommerceReturnReasonsOverride,
+  readCommerceReturnReasonsPolicy,
+} from "./returnReasonsPolicy.js";
+export type { CommerceReturnReasonsPolicy } from "./returnReasonsPolicy.js";

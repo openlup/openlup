@@ -29,7 +29,7 @@ it("represents every domain data key and executable descriptor in the catalogue"
     domain: "pricing", kind: "installed", schemaVersion: 1, runtime: { level: "read-only" },
     schema: { properties: { schemaVersion: { const: 2 } } }, fallback: null, absentMeans: { value: null },
   });
-  expect(entries.filter(({ kind }) => kind === "cap").length).toBeGreaterThanOrEqual(38);
+  expect(entries.filter(({ kind }) => kind === "cap").length).toBeGreaterThanOrEqual(36);
   expect(entries.filter(({ kind }) => kind === "code").map(({ key }) => key)).toEqual([
     "catalog.bundleAvailabilityPolicy",
     "checkout.resumeWindowMinutes",
@@ -158,7 +158,7 @@ it("points every cap and invariant reference away from settings-catalogue.md", (
     entries: Array<{ key: string; kind: string; change: { reference: string } }>;
   };
   const nonEditable = entries.filter(({ kind }) => kind === "cap" || kind === "invariant");
-  expect(nonEditable.length).toBeGreaterThanOrEqual(45);
+  expect(nonEditable.length).toBeGreaterThanOrEqual(43);
   for (const entry of nonEditable) {
     expect(entry.change.reference, entry.key).not.toContain("settings-catalogue.md");
   }
