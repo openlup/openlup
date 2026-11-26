@@ -7618,6 +7618,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/operations/server/watchdogAlertBatch.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/operations/validation.ts",
       "class": "public-output"
     },
@@ -10863,6 +10867,10 @@
     },
     {
       "path": "packages/platform/test/operations/settingsReadToolSchemas.main.json",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/operations/watchdogAlertBatch.test.ts",
       "class": "public-output"
     },
     {

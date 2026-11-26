@@ -262,6 +262,13 @@ completion. Original attribution remains durable when another authorized human
 resumes the command. Phone, recovery, absorption and subscription results remain
 their owners' objects.
 
+When each call opens its own managed database transaction, wrap the executor
+with `withManagedOperatorDeadlockRetry` to retry the subscription action and
+recovery-issue RPCs on a returned PostgreSQL `40P01`. The wrapper makes at most
+three calls with the original arguments and key. The host supplies the delay
+and can observe the first deadlock and exhaustion through redacted events.
+Business refusals and transport exceptions keep their existing handling.
+
 `createPostgresOperatorAuthority` needs a transaction executor and the same
 authority options. Native email, phone and account linking return
 `operator_subscription_authority_unavailable` before SQL. Inspect
