@@ -363,8 +363,17 @@ it("refuses independent component, allocation, position and fee mismatches", asy
     ["fee amount", ["fees", 0, "amountMinor"], 1],
     ["fee order", ["fees"], [...money.fees].reverse()],
   ];
-  for (const [label, path, value] of mutations) {
-    expect(await validate(store.owner, edit(money, path, value), pin, body), label).toBeNull();
+  const db = await store.owner.connect();
+  try {
+    await db.query("BEGIN");
+    // Exercise every mismatch without recompiling the validator for each input.
+    await db.query("SET LOCAL jit = off");
+    for (const [label, path, value] of mutations) {
+      expect(await validate(db, edit(money, path, value), pin, body), label).toBeNull();
+    }
+  } finally {
+    try { await db.query("ROLLBACK"); }
+    finally { db.release(); }
   }
 });
 

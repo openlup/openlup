@@ -178,6 +178,8 @@ async function execute(lane: TaxCalculationTransactionLane, input: EvaluationSco
   try {
     const { reply: result, sampledAtMs, sentAt } = await lane.run(async db => {
       await db.query("SET TRANSACTION ISOLATION LEVEL READ COMMITTED");
+      // Completion and the row trigger both validate adapter money. JIT compilation dominates these bounded queries.
+      if (adapterMoneyText !== undefined) await db.query("SET LOCAL jit = off");
       const sentAt = performance.now();
       const { sampledAtMs, ...reply } = ((await db.query(statement, [wire])).rows[0]?.result ?? {}) as BeginTaxCalculationResult & { sampledAtMs?: number };
       if (!reply?.kind) throw new Error("Missing evaluation result");

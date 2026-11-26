@@ -26,7 +26,8 @@ type Facts = Awaited<ReturnType<Deps["readPlan"]>>;
 type Binding = Parameters<Deps["destination"]["read"]>[3];
 type Contact = Parameters<Deps["destination"]["snapshot"]>[1]["original"]["contact"];
 type Failure = Extract<TaxQuoteResultV1, { kind: "refused" | "unavailable" }>;
-type Timing = "lookup" | "dependencies" | "claim" | "claimAck" | "adapter" | "seal" | "sealAck" | "recoveryRead";
+type Timing = "dependencies" | "claim" | "claimAck" | "adapter" | "seal" | "recoveryRead";
+type TerminalAck = "lookup" | "sealAck";
 
 const resources = storeJourneyResources();
 let store: JourneyInstallation;
@@ -137,6 +138,7 @@ async function installed(options: { basis?: "inclusive" | "exclusive"; shipping?
   const now = {
     ...start, contact: options.contact ?? { recipientName: "Sample Recipient", contactPhone: "001000000000", contactEmail: "protected@example.invalid" },
     timing: undefined as Timing | undefined, pauseUntil: "", taxFailure: undefined as Failure | undefined,
+    onTerminalAck: undefined as ((stage: TerminalAck, validUntil: string) => void) | undefined,
     throwTax: false, onAdapter: undefined as (() => Promise<void>) | undefined, lateCoverage: undefined as TaxCoverageRevision | undefined,
     alterReply: undefined as ((output: TaxQuoteResultV1) => TaxQuoteResultV1) | undefined, fallbackRate: options.rate ?? 2300,
     qualified: true, claimFailure: undefined as Error | undefined, sealFailure: undefined as Error | undefined, deferSeal: false,
@@ -157,6 +159,7 @@ async function installed(options: { basis?: "inclusive" | "exclusive"; shipping?
   };
   const lane: TaxCalculationTransactionLane = { async run(work) {
     let operation = "";
+    let terminalExpiry: string | undefined;
     const result = await realLane.run(db => work({ async query(sql, args) {
       if (args) {
         const input = JSON.parse(String(args[0])) as typeof commands[number];
@@ -168,17 +171,21 @@ async function installed(options: { basis?: "inclusive" | "exclusive"; shipping?
           await pause("seal");
         }
       }
-      return db.query(sql, args);
+      const reply = await db.query(sql, args);
+      if (now.onTerminalAck && args) {
+        const terminal = reply.rows[0]?.result as { kind: string; validUntil?: string } | undefined;
+        if (terminal?.kind === "terminal") terminalExpiry = terminal.validUntil;
+      }
+      return reply;
     } }));
-    if (operation === "lookup") await pause("lookup");
+    if (terminalExpiry && (operation === "lookup" || operation === "complete")) {
+      now.onTerminalAck?.(operation === "lookup" ? "lookup" : "sealAck", terminalExpiry);
+    }
     if (operation === "claim") {
       await pause("claimAck");
       if (now.claimFailure) throw now.claimFailure;
     }
-    if (operation === "complete") {
-      await pause("sealAck");
-      if (now.sealFailure) throw now.sealFailure;
-    }
+    if (operation === "complete" && now.sealFailure) throw now.sealFailure;
     return result;
   } };
   const owned = createPostgresDestinationPortV2(store.runtime);
@@ -870,11 +877,10 @@ it("preserves the owned contradiction marker and drops the adapter vector", asyn
   expect(await row(f)).toStrictEqual(stored);
 });
 
-it.each(["dependencies", "claim", "claimAck", "adapter", "seal", "sealAck", "lookup", "recoveryRead"] as const)(
+it.each(["dependencies", "claim", "claimAck", "adapter", "seal", "recoveryRead"] as const)(
   "fences independently delayed %s", async stage => {
     const f = await installed({ basis: "exclusive", cutoff: "short" });
     f.now.pauseUntil = f.now.quoteCutoff;
-    if (stage === "lookup") quote(await f.bind().createQuote(f.owner, f.request));
     if (stage === "recoveryRead") {
       f.now.taxFailure = noDispatch;
       exact(await f.bind().createQuote(f.owner, f.request), pending);
@@ -883,16 +889,31 @@ it.each(["dependencies", "claim", "claimAck", "adapter", "seal", "sealAck", "loo
     }
     f.now.timing = stage;
     const result = await f.bind().createQuote(f.owner, f.request);
-    if (stage === "sealAck" || stage === "lookup") {
-      expect(result).toMatchObject({ kind: "quoted", freshness: "historical" });
-      expect((await row(f)).state).toBe("terminal");
-    } else {
-      exact(result, expired);
-      expect((await row(f))?.outcome_text ?? null).toBeNull();
-    }
-    expect(f.taxInputs).toHaveLength(["seal", "sealAck", "lookup", "adapter", "recoveryRead"].includes(stage) ? 1 : 0);
+    exact(result, expired);
+    expect((await row(f))?.outcome_text ?? null).toBeNull();
+    expect(f.taxInputs).toHaveLength(["seal", "adapter", "recoveryRead"].includes(stage) ? 1 : 0);
   }, 12_000,
 );
+
+it.each(["sealAck", "lookup"] as const)("fences independently delayed %s", async stage => {
+  const f = await installed({ basis: "exclusive" });
+  const port = f.bind();
+  const original = stage === "lookup" ? await port.createQuote(f.owner, f.request) : undefined;
+  if (original) expect(original).toMatchObject({ kind: "quoted", freshness: "current" });
+  const acknowledge = vi.fn((_stage: TerminalAck, validUntil: string) => {
+    vi.setSystemTime(new Date(validUntil));
+  });
+  f.now.onTerminalAck = acknowledge;
+  let result: QuoteOutcome;
+  try { result = await port.createQuote(f.owner, f.request); }
+  finally { vi.useRealTimers(); }
+  expect(result).toMatchObject({ kind: "quoted", freshness: "historical" });
+  const historical = quote(result);
+  expect(acknowledge).toHaveBeenCalledExactlyOnceWith(stage, historical.taxEvidence.expiresAt);
+  if (original) expect(historical).toStrictEqual(quote(original));
+  expect((await row(f)).state).toBe("terminal");
+  expect(f.taxInputs).toHaveLength(1);
+});
 
 it("does not dispatch after an ambiguous claim commit", async () => {
   const f = await installed({ basis: "exclusive" });

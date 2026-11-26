@@ -43,13 +43,15 @@ function wrappedSeal(input: SqlCompletion, adapter?: Adapter): CompleteInput {
 
 function capture() {
   const requests: Array<Record<string, unknown>> = [];
+  const statements: string[] = [];
   const lane: TaxCalculationTransactionLane = { run: work => work({
-    async query(_statement, parameters) {
+    async query(statement, parameters) {
+      statements.push(statement);
       if (parameters) requests.push(JSON.parse(String(parameters[0])));
       return { rows: [{ result: { kind: "missing" } }] };
     },
   }) };
-  return { lane, requests };
+  return { lane, requests, statements };
 }
 
 it("reports the invalid legacy pin kind before the destination version without entering the lane", async () => {
@@ -146,6 +148,11 @@ describe("native composition wrapper wire", () => {
     const command = wrappedSeal(sql, adapter);
     const captured = capture();
     expect(await completeTaxCalculation(captured.lane, command)).toStrictEqual({ kind: "missing" });
+    expect(captured.statements).toStrictEqual([
+      "SET TRANSACTION ISOLATION LEVEL READ COMMITTED",
+      ...(supplement ? ["SET LOCAL jit = off"] : []),
+      "SELECT public.tax_calculation_complete_v1($1::jsonb) AS result",
+    ]);
     const wire = supplement ? { ...sql, seal: { ...sql.seal, adapterMoneyResult: supplement } } : sql;
     expect(captured.requests).toStrictEqual([wire]);
     expect(await fieldFor({ ...input.pin, ...grant.pin }, sql.seal)).toBeNull();
