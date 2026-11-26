@@ -406,11 +406,24 @@ async function parcel(orderId: string) {
   return (await spine.createShipment({ idempotencyKey: `parcel:${orderId}`, orderId, requestedAt: at })).shipmentId;
 }
 
-it.each([false, true])("aligns late arrival with an empty ledger after a mounted stale refusal (retained=%s)", async retained => {
+it.each([
+  { retained: false, priorShadow: false },
+  { retained: true, priorShadow: false },
+  { retained: false, priorShadow: true },
+])("aligns late arrival after a mounted stale refusal (retained=$retained, priorShadow=$priorShadow)", async ({ retained, priorShadow }) => {
   const f = await renewalPurchase(retained), d = await deps(f.subscriptionId, "succeeded");
   const held = await d.input.store.buildCycleSnapshots(d.due);
   const stale = await bindRenewalDestination(d, held);
   const shipmentId = await parcel(f.orderId);
+  if (priorShadow) {
+    await admin.query("SELECT public.subscription_delivery_alignment_set_mode('shadow')");
+    const spine = fulfillment.createPostgresFulfillmentShipmentSpinePort(executor, { portKey: "g7-parcels" });
+    await spine.raiseException({ idempotencyKey: `exception:${shipmentId}`, shipmentId, reason: "provider_rejected" });
+  }
+  const cases = async () => (await runtime.query(`SELECT id,state,captured_mode FROM public.subscription_delivery_alignment_cases
+    WHERE subscription_id=$1`, [f.subscriptionId])).rows;
+  const before = await cases();
+  expect(before).toEqual(priorShadow ? [{ id: expect.any(String), state: "shadow", captured_mode: "shadow" }] : []);
   await resizeForRenewal(f);
   await admin.query("SELECT public.subscription_delivery_alignment_set_mode('auto_align')");
   let clock = now;
@@ -422,10 +435,9 @@ it.each([false, true])("aligns late arrival with an empty ledger after a mounted
     expect((await runtime.query("SELECT id FROM public.subscription_cycles WHERE subscription_id=$1 AND scheduled_at=$2",
       [f.subscriptionId, held.scheduledAt])).rows).toEqual([]);
   };
-  expect((await runtime.query("SELECT id FROM public.subscription_delivery_alignment_cases WHERE subscription_id=$1", [f.subscriptionId])).rows).toEqual([]);
   vi.spyOn(d.codec, "freeze").mockReturnValueOnce(held);
   expect(await job.run()).toMatchObject({ renewals: [{ status: "error", reason: "renewal_processing_failed" }] });
-  expect((await runtime.query("SELECT id FROM public.subscription_delivery_alignment_cases WHERE subscription_id=$1", [f.subscriptionId])).rows).toEqual([]);
+  expect(await cases()).toEqual(before);
   await noOldOccurrence();
   expect(d.execute).not.toHaveBeenCalled();
 
@@ -436,6 +448,7 @@ it.each([false, true])("aligns late arrival with an empty ledger after a mounted
   expect(await arrival.recordArrival(input)).toMatchObject({ replayed: true, nextCycleAt: shifted });
   expect(await arrival.recordArrival({ ...input, requestKey: `older:${shipmentId}`, deliveredAt: days(deliveredAt, -1) }))
     .toMatchObject({ nextCycleAt: shifted });
+  if (priorShadow) expect(await cases()).toEqual([{ id: before[0].id, state: "aligned", captured_mode: "auto_align" }]);
   expect((await runtime.query(`SELECT state,evidence_kind,observed_next_cycle_at,aligned_next_cycle_at
     FROM public.subscription_delivery_alignment_cases WHERE subscription_id=$1`, [f.subscriptionId])).rows)
     .toEqual([{ state: "aligned", evidence_kind: "overdue_renewal", observed_next_cycle_at: new Date(held.scheduledAt),
@@ -1419,12 +1432,46 @@ async function reserveIncumbent(d: Awaited<ReturnType<typeof deps>>, claim: Rene
     .toMatchObject({ reserved: true });
 }
 
+it("bills a fresh pre-forward claim exactly once at its frozen price after a later accepted edit", async () => {
+  await withTemplateUpgrade(async target => {
+    const { db, applyForward } = target, transact = upgradeTransaction(db);
+    const { f, d, claim } = await upgradeRenewal(target, { edited: false });
+    const operation = await claim();
+    await applyForward();
+    await resizeForRenewal(f, transact);
+    const tick = binding(d, () => later, transact, db);
+    expect(await tick.services.run()).toMatchObject({ renewals: [{ operationId: operation.operationId, status: "succeeded" }] });
+    expect(await tick.services.run()).toMatchObject({ renewals: [] });
+    expect(d.execute.mock.calls.map(([charge]) => charge.amountMinor)).toEqual([200]);
+    const bill = (await d.input.store.readRenewal(operation.identityKey))!;
+    expect(await renewalAmounts(db, bill.orderId!)).toEqual([{ order: 200, intent: 200 }]);
+    expect((await db.query("SELECT claimed_before_rnw_1 FROM public.subscription_renewal_operations WHERE id=$1",
+      [operation.operationId])).rows).toEqual([{ claimed_before_rnw_1: false }]);
+    expect(await renewalUpgradeReport(db)).toEqual([]);
+  });
+}, postgresSetupTimeoutMs);
+
 function runHeldRenewal(entry: Awaited<ReturnType<typeof upgradeRenewal>>, when = now) {
   const { d, snapshot, claim } = entry;
   return api.runOneAutomaticSubscriptionRenewal({ ...d.input, store: {
     ...d.input.store, buildCycleSnapshots: async () => snapshot, claimDue: claim,
   } }, d.due, when);
 }
+
+it("leaves a terminal pre-forward operation unmarked even when its stored version is stale", async () => {
+  await withTemplateUpgrade(async target => {
+    const { db, applyForward } = target, entry = await upgradeRenewal(target);
+    const settled = await runHeldRenewal(entry);
+    expect(settled.status).toBe("succeeded");
+    await applyForward();
+    expect((await db.query(`SELECT state,claimed_before_rnw_1,
+      public.subscription_renewal_snapshot_is_stale(s.template_version, o.cycle_snapshot, NULL) AS stale
+      FROM public.subscription_renewal_operations o JOIN public.subscriptions s ON s.id=o.subscription_id
+      WHERE o.id=$1`, [settled.operationId])).rows)
+      .toEqual([{ state: "succeeded", claimed_before_rnw_1: false, stale: true }]);
+    expect(await renewalUpgradeReport(db)).toEqual([]);
+  });
+}, postgresSetupTimeoutMs);
 
 async function closeWaitingRetry(db: Pool, { f }: Awaited<ReturnType<typeof upgradeRenewal>>, id: string, when: string) {
   await transaction(async tx => {
@@ -1573,7 +1620,7 @@ it("upgrades occupied renewal roots, refuses stale preparation without writes, a
   });
 }, postgresSetupTimeoutMs);
 
-async function prepareWebhookRenewal(target: UpgradeTarget) {
+async function prepareWebhookRenewal(target: UpgradeTarget, outcome: "succeeded" | "failed" = "succeeded") {
   const { db } = target, transact = upgradeTransaction(db);
   const { f, d, claim } = await upgradeRenewal(target, { providerBacked: true });
   const op = await claim();
@@ -1581,7 +1628,7 @@ async function prepareWebhookRenewal(target: UpgradeTarget) {
   const prepared = await d.input.settlement.prepareRenewal({ operationId: op.operationId, claimToken: op.claimToken, now });
   const intentId = prepared.settlementIntentId, providerPaymentId = `pi_${op.operationId}`;
   const event = { provider: webhookProvider, providerEventId: `evt_${op.operationId}`, providerPaymentRef: providerPaymentId,
-    intentRef: intentId, providerOccurredAt: later, outcome: "succeeded" as const, money: { amountMinor: 200, currency: "XXX" } };
+    intentRef: intentId, providerOccurredAt: later, outcome, money: { amountMinor: 200, currency: "XXX" } };
   const body = Buffer.from(JSON.stringify(event));
   const sign = (raw: Uint8Array) => createHmac("sha256", "synthetic-renewal-signature").update(raw).digest("hex");
   const unexpected = async (): Promise<never> => { throw new Error("unexpected_provider_request"); };
@@ -1601,6 +1648,7 @@ async function prepareWebhookRenewal(target: UpgradeTarget) {
         return { kind: "refusal", reason: "malformed" };
       }
       return { ...event, kind: "money", attemptRef: null, fingerprint: sign(rawBody), capturedAmountBasis: "provider_capture_v1",
+        ...(outcome === "failed" ? { refusal: { code: "soft_retryable", hints: [] } } : {}),
         providerAuditPayload: { livemode: false, captureTimeBasis: "signed_event_v1", providerAccountRef: "acct_fixture" } };
     } },
   };
@@ -1623,11 +1671,11 @@ async function prepareWebhookRenewal(target: UpgradeTarget) {
     requestPayload: {}, responsePayload: {} });
   await d.input.settlement.acknowledgeExternalAttempt({ operationId: op.operationId, operationFingerprint: op.operationFingerprint,
     externalAttemptRef: providerPaymentId, acknowledgedAt: now });
-  return { id: op.operationId, async deliver() {
+  return { id: op.operationId, d, methodRef: f.methodRef, async deliver() {
     expect(await rail.ingress.receive({ rawBody: body, headers: { "x-fixture-signature": sign(body) }, receivedAt: later }))
       .toMatchObject({ status: 200 });
     expect((await db.query("SELECT state FROM public.subscription_renewal_operations WHERE id=$1", [op.operationId])).rows)
-      .toEqual([{ state: "succeeded" }]);
+      .toEqual([{ state: outcome === "succeeded" ? "succeeded" : "refused" }]);
   } };
 }
 
@@ -1706,11 +1754,12 @@ it("reports each stale incumbent once at the read-only upgrade cut and preserves
     const postForwardClaim = await postForward.claim();
     await resizeForRenewal(postForward.f, transact);
     expect((await db.query(`SELECT id,claimed_before_rnw_1 FROM public.subscription_renewal_operations
-      WHERE id=ANY($1::uuid[])`, [[tagged.operationId, historicalClaim.operationId, postForwardClaim.operationId]])).rows)
+      WHERE id=ANY($1::uuid[])`, [[tagged.operationId, historicalClaim.operationId, postForwardClaim.operationId, closed.id]])).rows)
       .toEqual(expect.arrayContaining([
         { id: tagged.operationId, claimed_before_rnw_1: false },
-        { id: historicalClaim.operationId, claimed_before_rnw_1: true },
+        { id: historicalClaim.operationId, claimed_before_rnw_1: false },
         { id: postForwardClaim.operationId, claimed_before_rnw_1: false },
+        { id: closed.id, claimed_before_rnw_1: false },
       ]));
     const before = await allPublicRows(owner);
     const expected = [claimed.operationId, reserved.operationId, original.operationId, wait.operationId, missingWait.operationId,
@@ -1743,6 +1792,50 @@ it("reports each stale incumbent once at the read-only upgrade cut and preserves
     expect(read).toHaveBeenCalledOnce();
     expect(prepared.d.execute).toHaveBeenCalledTimes(1);
     expect(await frozenOperation(db, original.operationId)).toEqual(originalWire);
+  });
+}, postgresSetupTimeoutMs);
+
+it("holds a marked attempt-prepared root whose verified decline arrives after the report", async () => {
+  await withTemplateUpgrade(async target => {
+    const { db, owner, applyForward } = target, transact = upgradeTransaction(db);
+    const { id, d, methodRef, deliver } = await prepareWebhookRenewal(target, "failed");
+    await applyForward();
+    expect(await renewalUpgradeReport(db)).toMatchObject([{ operation_id: id, operation_state: "attempt_prepared",
+      frozen_amount_minor: 200, retry_state: null }]);
+    const store = api.createPostgresRetryStore(db);
+    expect(await store.read(id)).toBeNull();
+    await deliver();
+    const waiting = (await store.read(id))!;
+    expect(waiting).toMatchObject({ state: "waiting", nextRetryAt: expect.any(String), externalAttemptSequence: 0 });
+    expect(await renewalUpgradeReport(db)).toMatchObject([{ operation_id: id, operation_state: "refused", retry_state: "waiting" }]);
+
+    let clock = waiting.nextRetryAt!;
+    const supplied = retryDriver(d, "ambiguous", clock, methodRef, { executor: db, transaction: transact }).options;
+    const execute = vi.fn<NativeRetryDriverOptions["payments"]["execute"]>();
+    const query = vi.fn<typeof executor.query>((sql, values) => db.query(sql, values));
+    const mounted = binding(d, () => clock, transact, db, {
+      ...supplied, executor: { query },
+      readFrozenMandate: async snapshot => ({ authorized: true, authorizationRef: snapshot.authorizationRef, paymentMethodRef: methodRef }),
+      payments: { ...supplied.payments, execute },
+    });
+    const before = await allPublicRows(owner);
+    for (let pass = 0; pass < 2; pass++) {
+      const tick = await mounted.services.run();
+      expect(execute.mock.calls.map(([charge]) => charge.amountMinor)).toEqual([]);
+      expect(tick).toMatchObject({ retries: [{ operationId: id, status: "error" }], renewals: [] });
+      clock = days(clock, 1);
+    }
+    expect(query.mock.settledResults.filter((_, index) => query.mock.calls[index][0].includes("public.subscription_retry_prepare(")))
+      .toEqual([expect.objectContaining({ type: "rejected", value: expect.objectContaining(stalePreparation) }),
+        expect.objectContaining({ type: "rejected", value: expect.objectContaining(stalePreparation) })]);
+    const key = `new-retry:${id}`;
+    await expect(db.query("SELECT public.subscription_retry_prepare($1,$2,$3,$4)", [id, key, {
+      paymentIntentId: waiting.settlementIntentId, orderRef: waiting.orderId, amountMinor: "unreadable",
+      currency: "XXX", idempotencyKey: key, providerIdempotencyKey: `new-provider-retry:${id}`,
+      providerRequestFingerprint: waiting.requestFingerprint, paymentMethodRef: methodRef,
+    }, clock])).rejects.toMatchObject(stalePreparation);
+    expect(await store.read(id)).toEqual(waiting);
+    expect(await allPublicRows(owner)).toEqual(before);
   });
 }, postgresSetupTimeoutMs);
 

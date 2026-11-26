@@ -91,8 +91,8 @@ throughout this procedure.
 2. Apply the bundled PostgreSQL forward and confirm it is applied.
 3. Run the report below on one authorized server-side PostgreSQL session with
    renewal read privileges. Use the installation owner where there is no runtime role.
-4. Verify each stale waiting retry has a recorded disposition that prevents a
-   new charge. Use the operation ID to re-read current operation, reservation,
+4. Verify each reported operation has a recorded disposition before resuming
+   dispatch for it. Use the operation ID to re-read current operation, reservation,
    intent, retry and provider evidence as applicable. Save the cut and dispositions
    in your restricted upgrade record. Refer unresolved roots to the subscription
    owner and waiting retries to the payment recovery owner.
@@ -104,11 +104,13 @@ snapshot. A verified webhook committed before that point is visible to both
 queries. A later commit leaves the operation at its earlier state in the report.
 Re-read the live operation before deciding its disposition.
 
-The report covers incumbent operations claimed before the forward when their
-stored template version differs from the current version. Historical operations
-without a recorded template version supply no freshness evidence. Renewals
-claimed after the forward prepare at the price frozen at claim. An accepted edit
-after claim applies to later cycles.
+The forward marks unresolved incumbent operations whose stored template version
+differs from the version at upgrade. A claim made before an accepted edit that
+also landed before the forward looks the same as the billing defect. The report
+includes it for reconciliation. Historical operations without a recorded
+template version supply no freshness evidence. Claims that were current at the
+forward and new claims prepare at the price frozen at claim. Later accepted
+edits apply to later cycles.
 
 ```sql
 BEGIN ISOLATION LEVEL REPEATABLE READ, READ ONLY;
@@ -120,13 +122,7 @@ WITH stale_incumbent AS MATERIALIZED (
   SELECT o.id, o.subscription_id, o.scheduled_at, o.state,
          o.terminal_reason, o.cycle_snapshot
   FROM public.subscription_renewal_operations o
-  JOIN public.subscriptions s ON s.id = o.subscription_id
   WHERE o.claimed_before_rnw_1
-    AND o.cycle_snapshot->>'contractVersion'
-        IS DISTINCT FROM 'platform.subscription.renewal.v3'
-    AND public.subscription_renewal_snapshot_is_stale(
-      s.template_version, o.cycle_snapshot, NULL::integer
-    )
 ), roots AS (
   SELECT o.id AS operation_id, o.subscription_id, o.scheduled_at,
          o.state AS operation_state, o.terminal_reason,
@@ -174,8 +170,9 @@ A prepared attempt can settle at its original amount using existing provider
 readback and settlement. Keep its original snapshot, fingerprint and references.
 Prepared replay does not dispatch another charge. For unprepared roots and
 stock waits, use the original occurrence with your authorized lifecycle or
-reconciliation path. Retrying an unresolved waiting obligation can still use
-the original amount. Use the operation ID if you rerun the report.
+reconciliation path. Retry preparation refuses new attempts for marked
+operations, including when a verified decline received after the report puts
+the obligation back in waiting. Use the operation ID if you rerun the report.
 
 ## Prepare the optional checkout owner
 

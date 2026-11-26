@@ -1,5 +1,4 @@
 ALTER TABLE public.subscription_renewal_operations ADD COLUMN claimed_before_rnw_1 boolean NOT NULL DEFAULT false;
-UPDATE public.subscription_renewal_operations SET claimed_before_rnw_1 = true WHERE cycle_snapshot->>'contractVersion' IS DISTINCT FROM 'platform.subscription.renewal.v3';
 
 CREATE FUNCTION public.subscription_renewal_snapshot_is_billing(p_wire jsonb, p_has_build_evidence boolean)
 RETURNS boolean
@@ -62,6 +61,29 @@ END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
   EXECUTE 'GRANT EXECUTE ON FUNCTION public.subscription_renewal_snapshot_is_billing(jsonb,boolean), public.subscription_renewal_snapshot_is_stale(integer,jsonb,integer) TO service_role;';
 END IF; END; $$;
+
+UPDATE public.subscription_renewal_operations o
+   SET claimed_before_rnw_1 = true
+  FROM public.subscriptions s
+ WHERE s.id = o.subscription_id
+   AND (o.state IN ('claimed', 'reserved', 'attempt_prepared')
+     OR (o.state = 'refused' AND (
+       EXISTS (
+         SELECT 1 FROM public.subscription_retry_obligations r
+         JOIN public.subscription_cycles c ON c.id = r.cycle_id AND c.status = 'payment_pending'
+         JOIN public.commerce_settlement_intents i ON i.id = r.settlement_intent_id AND i.status IN ('created', 'failed')
+         WHERE r.renewal_operation_id = o.id AND r.state IN ('waiting', 'prepared')
+       )
+       OR (o.terminal_reason IN ('inventory_unavailable', 'reservation_expired') AND (
+         EXISTS (
+           SELECT 1 FROM public.subscription_stock_wait_cases w
+           WHERE w.renewal_operation_id = o.id AND w.state IN ('waiting', 'stock_secured')
+         )
+         OR (NOT EXISTS (SELECT 1 FROM public.subscription_stock_wait_cases w WHERE w.renewal_operation_id = o.id)
+           AND public.subscription_stock_wait_frozen(o.subscription_id, o.scheduled_at) IS NOT NULL)
+       ))
+     )))
+   AND public.subscription_renewal_snapshot_is_stale(s.template_version, o.cycle_snapshot, NULL::integer);
 
 CREATE OR REPLACE FUNCTION public.subscription_claim_due_renewal(
   p_identity_key text,
@@ -239,14 +261,13 @@ DECLARE
   v_total bigint;
   v_currency text;
   v_channel text;
-  v_template_version integer;
 BEGIN
   SELECT subscription_id INTO v_operation.subscription_id
     FROM public.subscription_renewal_operations WHERE id = p_operation_id;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'commerce_renewal_operation_not_found' USING ERRCODE = '22023';
   END IF;
-  SELECT template_version INTO v_template_version FROM public.subscriptions
+  PERFORM 1 FROM public.subscriptions
    WHERE id = v_operation.subscription_id FOR UPDATE;
 
   SELECT * INTO v_operation FROM public.subscription_renewal_operations
@@ -289,12 +310,7 @@ BEGIN
     RAISE EXCEPTION 'commerce_renewal_active_reservation_required' USING ERRCODE = '22023';
   END IF;
 
-  IF v_operation.claimed_before_rnw_1
-    AND v_operation.cycle_snapshot->>'contractVersion' IS DISTINCT FROM 'platform.subscription.renewal.v3'
-    AND public.subscription_renewal_snapshot_is_stale(
-      v_template_version, v_operation.cycle_snapshot, NULL::integer
-    )
-  THEN
+  IF v_operation.claimed_before_rnw_1 THEN
     RAISE EXCEPTION 'subscription_renewal_snapshot_stale' USING ERRCODE = '22023',
       DETAIL = '/cycleSnapshot',
       HINT = 'Reconcile the stored renewal operation before resuming it. See the renewal upgrade report.';
@@ -372,6 +388,83 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION public.subscription_retry_prepare(p_operation_id uuid,p_key text,p_input jsonb,p_now timestamptz DEFAULT now())
+RETURNS jsonb LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
+DECLARE o public.subscription_retry_obligations; op public.subscription_renewal_operations; r public.subscription_retry_receipts;
+ a public.subscription_retry_recovery_authorizations; real_authority public.payment_method_recovery_authorities; real_method boolean; reservation public.fulfillment_inventory_reservations;
+ line record; available bigint; committed bigint; result jsonb; method public.payment_method_refs; recovery_token public.commerce_checkout_recovery_tokens;
+BEGIN
+ PERFORM 1 FROM public.subscriptions WHERE id=(SELECT subscription_id FROM public.subscription_renewal_operations WHERE id=p_operation_id) FOR UPDATE;
+ SELECT * INTO op FROM public.subscription_renewal_operations WHERE id=p_operation_id FOR UPDATE;
+ SELECT * INTO o FROM public.subscription_retry_obligations WHERE renewal_operation_id=op.id FOR UPDATE;
+ SELECT * INTO r FROM public.subscription_retry_receipts WHERE receipt_key=p_key;
+ IF r.id IS NOT NULL THEN
+  IF r.obligation_id<>o.id OR r.kind<>'prepare' OR r.input<>p_input THEN RAISE EXCEPTION 'subscription_retry_replay_conflict' USING ERRCODE='23505'; END IF;
+  RETURN r.result||jsonb_build_object('execute',false,'replayed',true);
+ END IF;
+ IF op.claimed_before_rnw_1 AND o.state='waiting' THEN
+  RAISE EXCEPTION 'subscription_renewal_snapshot_stale' USING ERRCODE = '22023',
+    DETAIL = '/cycleSnapshot',
+    HINT = 'Reconcile the stored renewal operation before resuming it. See the renewal upgrade report.';
+ END IF;
+ IF o.id IS NULL OR o.state<>'waiting' OR o.next_retry_at IS NULL OR o.next_retry_at>p_now OR o.renewal_quarantined_until>p_now OR
+  NOT EXISTS(SELECT 1 FROM public.subscriptions WHERE id=o.subscription_id AND status='active') OR
+  NOT EXISTS(SELECT 1 FROM public.subscription_cycles WHERE id=o.cycle_id AND status='payment_pending') OR
+  NOT EXISTS(SELECT 1 FROM public.commerce_settlement_intents WHERE id=o.settlement_intent_id AND status='failed') OR
+  btrim(COALESCE(p_input->>'idempotencyKey',''))='' OR btrim(COALESCE(p_input->>'providerIdempotencyKey',''))='' OR
+  COALESCE(p_input->>'providerRequestFingerprint','') !~ '^[0-9a-f]{64}$' OR
+  p_input->>'paymentIntentId' IS DISTINCT FROM o.settlement_intent_id::text OR
+  p_input->>'orderRef' IS DISTINCT FROM o.order_id::text OR
+  (p_input->>'amountMinor')::bigint IS DISTINCT FROM (o.cycle_snapshot->>'totalAmountMinor')::bigint OR
+  p_input->>'currency' IS DISTINCT FROM o.cycle_snapshot->>'currency' OR
+  EXISTS(SELECT 1 FROM public.subscription_retry_receipts WHERE kind='prepare' AND (input->>'idempotencyKey'=p_input->>'idempotencyKey' OR input->>'providerIdempotencyKey'=p_input->>'providerIdempotencyKey')) OR btrim(COALESCE(p_input->>'paymentMethodRef',''))='' THEN
+  RAISE EXCEPTION 'subscription_retry_not_due_or_ambiguous' USING ERRCODE='22023'; END IF;
+ real_method:=public.subscription_method_uses_recorded_refs(o.subscription_id);
+ IF real_method THEN
+  SELECT recorded.* INTO real_authority FROM jsonb_populate_record(NULL::public.payment_method_recovery_authorities,public.payment_method_recovery_authority_read(o.method_recovery_authority_id)) recorded
+   WHERE recorded.retry_attempt=o.retry_attempt;
+  IF (o.retry_attempt>=4 OR o.failure_class='hard_do_not_retry') AND (real_authority.id IS NULL OR real_authority.retry_attempt<>o.retry_attempt OR real_authority.dispatch_key IS NOT NULL) THEN
+   RAISE EXCEPTION 'subscription_retry_recovery_not_authorized' USING ERRCODE='22023'; END IF;
+  SELECT * INTO recovery_token FROM public.commerce_checkout_recovery_tokens WHERE id=real_authority.token_id FOR UPDATE;
+  SELECT * INTO method FROM jsonb_populate_record(NULL::public.payment_method_refs,
+   public.payment_method_ref_for_subscription_read(o.subscription_id,p_input->>'paymentMethodRef',p_now));
+  IF method.id IS NULL THEN
+   RAISE EXCEPTION 'subscription_missing_payment_method_ref' USING ERRCODE='22023'; END IF;
+  IF NOT public.subscription_method_chargeable_unattended(o.subscription_id,p_now) OR
+   (real_authority.id IS NOT NULL AND (real_authority.retry_attempt<>o.retry_attempt OR real_authority.dispatch_key IS NOT NULL OR real_authority.method_ref IS DISTINCT FROM p_input->>'paymentMethodRef' OR real_authority.method_id IS DISTINCT FROM method.id OR recovery_token.id IS NULL OR recovery_token.revoked_at IS NOT NULL OR recovery_token.expires_at<=p_now OR real_authority.revoked_at IS NOT NULL)) THEN
+   RAISE EXCEPTION 'subscription_retry_method_mismatch'; END IF;
+ ELSE
+ SELECT * INTO a FROM public.subscription_retry_recovery_authorizations WHERE obligation_id=o.id AND retry_attempt=o.retry_attempt FOR UPDATE;
+ IF (o.retry_attempt>=4 OR o.failure_class='hard_do_not_retry') AND (a.id IS NULL OR a.consumed_at IS NOT NULL) THEN
+  RAISE EXCEPTION 'subscription_retry_recovery_not_authorized' USING ERRCODE='22023'; END IF;
+ IF a.id IS NOT NULL AND (a.method_ref IS DISTINCT FROM p_input->>'paymentMethodRef' OR
+  NOT EXISTS(SELECT 1 FROM public.subscription_method_states WHERE subscription_id=o.subscription_id AND health_state='healthy')) THEN RAISE EXCEPTION 'subscription_retry_method_mismatch'; END IF;
+ END IF;
+ SELECT * INTO reservation FROM public.fulfillment_inventory_reservations WHERE renewal_operation_id=op.id FOR UPDATE;
+ IF reservation.id IS NULL OR reservation.operation_fingerprint<>o.operation_fingerprint THEN RAISE EXCEPTION 'subscription_retry_stock_binding_missing'; END IF;
+ PERFORM stock.sku FROM public.fulfillment_stock_current stock JOIN public.fulfillment_inventory_reservation_lines l ON l.sku=stock.sku
+  WHERE l.reservation_id=reservation.id AND stock.source_key=reservation.source_key ORDER BY stock.sku FOR UPDATE OF stock;
+ FOR line IN SELECT * FROM public.fulfillment_inventory_reservation_lines WHERE reservation_id=reservation.id ORDER BY sku LOOP
+  SELECT for_sale_quantity INTO available FROM public.fulfillment_stock_current WHERE source_key=reservation.source_key AND sku=line.sku
+   AND inventory_class='sellable' AND stale_after>p_now;
+  SELECT COALESCE(sum(l.quantity),0) INTO committed FROM public.fulfillment_inventory_reservation_lines l
+   JOIN public.fulfillment_inventory_reservations rr ON rr.id=l.reservation_id WHERE rr.source_key=reservation.source_key AND l.sku=line.sku
+   AND rr.id<>reservation.id AND (rr.status='committed' OR (rr.status='held' AND rr.expires_at>p_now));
+  IF available IS NULL OR available-committed<line.quantity THEN RAISE EXCEPTION 'subscription_retry_inventory_unavailable' USING ERRCODE='23514'; END IF;
+ END LOOP;
+ UPDATE public.fulfillment_inventory_reservations SET status='committed',expires_at=NULL,terminal_reason=NULL,updated_at=p_now WHERE id=reservation.id;
+ UPDATE public.subscription_retry_obligations SET state='prepared',attempt_sequence=attempt_sequence+1,next_retry_at=NULL,updated_at=p_now WHERE id=o.id RETURNING * INTO o;
+ UPDATE public.subscription_retry_recovery_authorizations SET consumed_at=p_now WHERE id=a.id;
+ IF real_authority.id IS NOT NULL THEN PERFORM public.payment_method_recovery_authority_freeze(real_authority.id,p_operation_id,p_key,p_input->>'paymentMethodRef',p_now); END IF;
+ result:=jsonb_build_object('execute',true,'replayed',false,'obligationId',o.id,'attemptSequence',o.attempt_sequence,
+  'cycleId',o.cycle_id,'orderId',o.order_id,'settlementIntentId',o.settlement_intent_id,'identityKey',o.identity_key,
+  'operationFingerprint',o.operation_fingerprint,'snapshot',o.cycle_snapshot,'request',p_input);
+ INSERT INTO public.subscription_retry_receipts(obligation_id,receipt_key,kind,attempt_sequence,input,result)
+ VALUES(o.id,p_key,'prepare',o.attempt_sequence,p_input,result);
+ RETURN result;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION public.subscription_delivery_alignment_on_delivery()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -388,7 +481,7 @@ DECLARE
   v_latest_delivered_at timestamptz;
   v_target timestamptz;
   v_predecessor_number integer;
-  v_no_case_arrival boolean := false;
+  v_qualified_arrival boolean := false;
 BEGIN
   IF NEW.delivered_at IS NULL
      OR (TG_OP = 'UPDATE' AND OLD.delivered_at IS NOT DISTINCT FROM NEW.delivered_at)
@@ -441,57 +534,64 @@ BEGIN
        FOR UPDATE;
     END IF;
   END IF;
-  IF v_case.id IS NULL THEN
-    -- The claim may have refused before admission could capture a case.
-    IF (TG_OP = 'UPDATE' AND OLD.delivered_at IS NOT NULL)
-      OR v_subscription.status <> 'active'
-      OR EXISTS (SELECT 1 FROM public.fulfillment_shipments WHERE replaces_shipment_id = NEW.id)
-      OR v_subscription.next_cycle_at IS NULL
-      OR public.subscription_delivery_alignment_get_mode() IS DISTINCT FROM 'auto_align'
-      OR NOT EXISTS (SELECT 1 FROM public.subscription_renewal_terms
-                     WHERE subscription_id = v_subscription.id AND delivery_admission = 'allowed')
-      OR EXISTS (SELECT 1 FROM public.subscription_renewal_operations
-                 WHERE subscription_id = v_subscription.id AND scheduled_at = v_subscription.next_cycle_at)
-      OR EXISTS (SELECT 1 FROM public.subscription_delivery_alignment_cases
-                 WHERE predecessor_order_id = v_order.id)
-      OR EXISTS (SELECT 1 FROM public.subscription_dunning_cases
-                 WHERE subscription_id = v_subscription.id AND status IN ('open', 'expired'))
-    THEN
+  IF v_case.id IS NULL OR v_case.state = 'shadow' THEN
+    -- A refused claim may have left admission with no case or only shadow cases.
+    <<qualify_arrival>>
+    BEGIN
+      IF (TG_OP = 'UPDATE' AND OLD.delivered_at IS NOT NULL)
+        OR v_subscription.status <> 'active'
+        OR EXISTS (SELECT 1 FROM public.fulfillment_shipments WHERE replaces_shipment_id = NEW.id)
+        OR v_subscription.next_cycle_at IS NULL
+        OR public.subscription_delivery_alignment_get_mode() IS DISTINCT FROM 'auto_align'
+        OR NOT EXISTS (SELECT 1 FROM public.subscription_renewal_terms
+                       WHERE subscription_id = v_subscription.id AND delivery_admission = 'allowed')
+        OR EXISTS (SELECT 1 FROM public.subscription_renewal_operations
+                   WHERE subscription_id = v_subscription.id AND scheduled_at = v_subscription.next_cycle_at)
+        OR EXISTS (SELECT 1 FROM public.subscription_delivery_alignment_cases
+                   WHERE predecessor_order_id = v_order.id AND state <> 'shadow')
+        OR EXISTS (SELECT 1 FROM public.subscription_dunning_cases
+                   WHERE subscription_id = v_subscription.id AND status IN ('open', 'expired'))
+      THEN
+        EXIT qualify_arrival;
+      END IF;
+
+      SELECT cycle_number INTO v_predecessor_number
+        FROM public.subscription_delivery_alignment_cycles
+       WHERE id = v_order.subscription_cycle_id AND order_id = v_order.id AND status = 'paid';
+      IF v_predecessor_number IS NULL OR EXISTS (
+        SELECT 1 FROM public.subscription_delivery_alignment_cycles c
+         WHERE c.subscription_id = v_subscription.id
+           AND (c.cycle_number > v_predecessor_number
+             OR (c.cycle_number IS NULL AND c.id <> v_order.subscription_cycle_id)
+             OR (c.status = 'paid' AND c.cycle_number = v_predecessor_number AND c.order_id IS DISTINCT FROM v_order.id))
+      ) OR EXISTS (
+        SELECT 1 FROM public.subscription_delivery_alignment_cases c
+         WHERE c.subscription_id = v_subscription.id AND c.state IN ('protected', 'manual_review')
+           AND (c.predecessor_cycle_number IS NULL OR c.predecessor_cycle_number >= v_predecessor_number)
+      ) THEN
+        EXIT qualify_arrival;
+      END IF;
+
+      SELECT max(parcel.delivered_at) INTO v_latest_delivered_at
+        FROM public.fulfillment_shipments parcel
+       WHERE parcel.order_id = v_order.id
+         AND NOT EXISTS (SELECT 1 FROM public.fulfillment_shipments successor
+                          WHERE successor.replaces_shipment_id = parcel.id)
+      HAVING count(*) = count(parcel.delivered_at);
+      IF v_latest_delivered_at IS NULL OR v_latest_delivered_at <= v_subscription.next_cycle_at THEN
+        EXIT qualify_arrival;
+      END IF;
+
+      PERFORM public.subscription_delivery_alignment_upsert_case(
+        COALESCE(v_case.shipment_id, NEW.id), v_order.id, v_subscription.id, v_order.subscription_cycle_id,
+        v_predecessor_number, 'auto_align', 'overdue_renewal', v_subscription.next_cycle_at);
+      SELECT * INTO v_case FROM public.subscription_delivery_alignment_cases
+       WHERE shipment_id = COALESCE(v_case.shipment_id, NEW.id);
+      v_qualified_arrival := true;
+    END qualify_arrival;
+    IF v_case.id IS NULL THEN
       RETURN NEW;
     END IF;
-
-    SELECT cycle_number INTO v_predecessor_number
-      FROM public.subscription_delivery_alignment_cycles
-     WHERE id = v_order.subscription_cycle_id AND order_id = v_order.id AND status = 'paid';
-    IF v_predecessor_number IS NULL OR EXISTS (
-      SELECT 1 FROM public.subscription_delivery_alignment_cycles c
-       WHERE c.subscription_id = v_subscription.id
-         AND (c.cycle_number > v_predecessor_number
-           OR (c.cycle_number IS NULL AND c.id <> v_order.subscription_cycle_id)
-           OR (c.status = 'paid' AND c.cycle_number = v_predecessor_number AND c.order_id IS DISTINCT FROM v_order.id))
-    ) OR EXISTS (
-      SELECT 1 FROM public.subscription_delivery_alignment_cases c
-       WHERE c.subscription_id = v_subscription.id AND c.state IN ('protected', 'manual_review')
-         AND (c.predecessor_cycle_number IS NULL OR c.predecessor_cycle_number >= v_predecessor_number)
-    ) THEN
-      RETURN NEW;
-    END IF;
-
-    SELECT max(parcel.delivered_at) INTO v_latest_delivered_at
-      FROM public.fulfillment_shipments parcel
-     WHERE parcel.order_id = v_order.id
-       AND NOT EXISTS (SELECT 1 FROM public.fulfillment_shipments successor
-                        WHERE successor.replaces_shipment_id = parcel.id)
-    HAVING count(*) = count(parcel.delivered_at);
-    IF v_latest_delivered_at IS NULL OR v_latest_delivered_at <= v_subscription.next_cycle_at THEN
-      RETURN NEW;
-    END IF;
-
-    PERFORM public.subscription_delivery_alignment_upsert_case(
-      NEW.id, v_order.id, v_subscription.id, v_order.subscription_cycle_id,
-      v_predecessor_number, 'auto_align', 'overdue_renewal', v_subscription.next_cycle_at);
-    SELECT * INTO v_case FROM public.subscription_delivery_alignment_cases WHERE shipment_id = NEW.id;
-    v_no_case_arrival := true;
   END IF;
 
   UPDATE public.subscription_delivery_alignment_cases
@@ -581,7 +681,7 @@ BEGIN
   -- With a split shipment, delivery events can arrive in either chronology.
   -- Preserve the interval from the last parcel delivered, not necessarily from
   -- the final webhook processed by this transaction.
-  IF NOT v_no_case_arrival THEN
+  IF NOT v_qualified_arrival THEN
     SELECT max(delivered_at) INTO v_latest_delivered_at
       FROM public.fulfillment_shipments
      WHERE order_id = v_case.predecessor_order_id;
