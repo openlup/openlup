@@ -5454,6 +5454,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/server/orderDraftCreatedV2Event.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/server/orderDraftRpcPayload.ts",
       "class": "public-output"
     },
@@ -5539,6 +5543,10 @@
     },
     {
       "path": "packages/platform/src/commerce/server/outboxShipmentExceptionEmailHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/paidOrderMoneyV2.ts",
       "class": "public-output"
     },
     {
@@ -9894,6 +9902,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/commerce/orderDraftCreatedV2Claim.fixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/orderDraftCreatedV2Event.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/commerce/orderDraftRpcPayload.test.ts",
       "class": "public-output"
     },
@@ -9943,6 +9959,14 @@
     },
     {
       "path": "packages/platform/test/commerce/outboxEventContracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/paidOrderMoneyV2Read.fixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/paidOrderMoneyV2Reader.test.ts",
       "class": "public-output"
     },
     {
@@ -31186,6 +31210,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/fixtures/paidOrderMoneyV2Read/replayed.sql",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/fixtures/paymentCaptureTime/replayed.sql",
       "class": "public-output"
     },
@@ -31758,6 +31786,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/orderDraftCreatedV2Claim.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/orderMoneyV2Guards.fixture.ts",
       "class": "public-output"
     },
@@ -31779,6 +31811,14 @@
     },
     {
       "path": "tests/postgres/orderMoneyV2StoragePgtap.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/paidOrderMoneyV2Read.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/paidOrderMoneyV2ReadPgtap.test.ts",
       "class": "public-output"
     },
     {
