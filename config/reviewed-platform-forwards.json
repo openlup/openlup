@@ -9743,12 +9743,21 @@
         ],
         "createdFunctions": [
           {
-            "signature": "public.subscription_renewal_snapshot_is_current(uuid,integer,jsonb)",
+            "signature": "public.subscription_renewal_snapshot_is_billing(jsonb,boolean)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_renewal_snapshot_is_stale(integer,jsonb,integer)",
             "searchPath": "pg_catalog, pg_temp"
           }
         ],
         "grantOnlyFunctions": [],
-        "dataStatements": []
+        "dataStatements": [
+          "UPDATE public.subscription_renewal_operations SET claimed_before_rnw_1 = true WHERE cycle_snapshot->>'contractVersion' IS DISTINCT FROM 'platform.subscription.renewal.v3';"
+        ],
+        "existingTableStatements": [
+          "ALTER TABLE public.subscription_renewal_operations ADD COLUMN claimed_before_rnw_1 boolean NOT NULL DEFAULT false;"
+        ]
       }
     ]
   },
@@ -14111,17 +14120,17 @@
     },
     {
       "path": "db/platform/migrations/20261129130502_subscription_renewal_current_template.sql",
-      "sha256": "c504defec0f223a0a40b29da9006fc4ac4ceba02e13b2f5277013cdcd712ce32",
+      "sha256": "189f379c80fb77102924dd152ff2e3f5385765495bf4e965b231db43994275b8",
       "functions": [
         {
           "signature": "public.subscription_claim_due_renewal(text,text,jsonb,text,integer,timestamptz)",
           "beforeSha256": "2254be1e89681884dbd9823ab13f1f55961071fe75325e22e019343c9edf5248",
-          "afterSha256": "6a508c48d88c3a1f826dc9a349b59fb04ee13f561062011e66972ff8043e0d7e"
+          "afterSha256": "187e52c61c3b64c4f29477e56e920b28a0130f38a3d7990d2fa29a45e87590a0"
         },
         {
           "signature": "public.commerce_prepare_subscription_renewal(uuid,uuid,timestamptz)",
           "beforeSha256": "30e0a497c472f793c628f1387ca713d7a869c7f31545ba186122b5c70846ac41",
-          "afterSha256": "aa6e569098d503b78cc8bad98b7cfdad3ae3a76685d34d9262e93c83dda91968"
+          "afterSha256": "fedf3a9abb5bd88307d7d2540fc7ca7c6903d8976400c38c82087465da5a2a73"
         },
         {
           "signature": "public.subscription_delivery_alignment_on_delivery()",
@@ -14129,9 +14138,14 @@
           "afterSha256": "8f38aa65f1d0ce142a341f4d48ee2c2d0293e7a1b8d16b020701fdcb182a2469"
         },
         {
-          "signature": "public.subscription_renewal_snapshot_is_current(uuid,integer,jsonb)",
+          "signature": "public.subscription_renewal_snapshot_is_billing(jsonb,boolean)",
           "beforeSha256": null,
-          "afterSha256": "9ffa0b16c4d9f7fa134b012a76290f055a638a7b89acbe6808c2a82e7d4886eb"
+          "afterSha256": "ca4693704cb99703512a260b4b585018e7502cc2776b25eaf4ec515621f4802f"
+        },
+        {
+          "signature": "public.subscription_renewal_snapshot_is_stale(integer,jsonb,integer)",
+          "beforeSha256": null,
+          "afterSha256": "71e4f593465e9cff76cac6f436639e5a1382d4f799951d774032db5006b35d4b"
         }
       ]
     }

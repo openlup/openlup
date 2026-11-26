@@ -909,7 +909,7 @@
       },
       {
         "file": "db/platform/migrations/20261129130502_subscription_renewal_current_template.sql",
-        "sha256": "c504defec0f223a0a40b29da9006fc4ac4ceba02e13b2f5277013cdcd712ce32"
+        "sha256": "189f379c80fb77102924dd152ff2e3f5385765495bf4e965b231db43994275b8"
       }
     ],
     "objectInventorySha256": "1c369c70d5c8e4de12937d67186bf5c9d5025ba5581890741f09be8868bf6305",
@@ -1845,7 +1845,7 @@
         },
         {
           "file": "db/platform/migrations/20261129130502_subscription_renewal_current_template.sql",
-          "sha256": "c504defec0f223a0a40b29da9006fc4ac4ceba02e13b2f5277013cdcd712ce32"
+          "sha256": "189f379c80fb77102924dd152ff2e3f5385765495bf4e965b231db43994275b8"
         }
       ],
       "objectInventorySha256": {
@@ -2781,7 +2781,7 @@
         },
         {
           "file": "db/platform/migrations/20261129130502_subscription_renewal_current_template.sql",
-          "sha256": "c504defec0f223a0a40b29da9006fc4ac4ceba02e13b2f5277013cdcd712ce32"
+          "sha256": "189f379c80fb77102924dd152ff2e3f5385765495bf4e965b231db43994275b8"
         }
       ],
       "objectInventorySha256": {
@@ -3924,7 +3924,7 @@
     {
       "file": "20261129130502_subscription_renewal_current_template.sql",
       "source": "db/platform/migrations/20261129130502_subscription_renewal_current_template.sql",
-      "sha256": "c504defec0f223a0a40b29da9006fc4ac4ceba02e13b2f5277013cdcd712ce32"
+      "sha256": "189f379c80fb77102924dd152ff2e3f5385765495bf4e965b231db43994275b8"
     },
     {
       "file": "q2_00000000000000_platform_baseline.sql",

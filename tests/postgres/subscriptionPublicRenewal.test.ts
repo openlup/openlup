@@ -190,12 +190,16 @@ it.each([false, true])("checks current native renewal wires in SQL and the store
     { ...wire, templateSnapshot: { ...fresh.templateSnapshot, version: "2" } },
     { ...wire, frozenRevision: undefined, templateSnapshot: { version: null } },
   ]) {
-    await expect(runtime.query(rawClaim, claimWire(d, bound, bad))).rejects.toMatchObject(staleClaim);
+    await expect(runtime.query(rawClaim, claimWire(d, bound, bad))).rejects.toMatchObject({
+      code: "22023", message: "subscription_renewal_claim_invalid_snapshot",
+    });
   }
   if (retained) {
     const different = { ...fresh, payerAccountRef: "sandbox:other-payer" };
     different.frozenFingerprint = d.codec.fingerprint(different);
-    await expect(d.input.store.claimDue({ snapshot: different, workerId: "fingerprint", now })).rejects.toMatchObject(staleClaim);
+    await expect(d.input.store.claimDue({ snapshot: different, workerId: "fingerprint", now })).rejects.toMatchObject({
+      ...staleClaim, message: "subscription_renewal_snapshot_fingerprint_mismatch",
+    });
     expect(await allPublicRows(admin)).toEqual(before);
   }
   const future = { ...wire, frozenRevision: "native.purchase-renewal.test-revision" };
@@ -210,23 +214,71 @@ it.each([false, true])("checks current native renewal wires in SQL and the store
   expect(await d.input.store.claimDue({ snapshot: fresh, workerId: "fresh", now })).toMatchObject({ acquired: true });
 }, 30_000);
 
-it("checks the ordered typed lines and sum of the unversioned PostgreSQL adapter", async () => {
+it("requires positive build evidence on legacy PostgreSQL billing claims and preserves exact replay", async () => {
   const f = await active(), d = await deps(f.subscriptionId, "succeeded");
   const legacy = createPostgresAutomaticRenewalPort(executor);
   const held = await legacy.buildCycleSnapshots(d.due);
   expect(held.totalAmountMinor).toBe(200);
-  await resizeForRenewal(f);
-  const before = await allPublicRows(admin);
-  await expect(legacy.claimDue({ snapshot: held, workerId: "unversioned", now })).rejects.toMatchObject(staleClaim);
+  const identity = automaticRenewalIdentity(f.subscriptionId, held.scheduledAt);
+  const heldFingerprint = automaticRenewalFingerprint(held);
+
+  const client = await runtime.connect();
+  try {
+    await client.query("BEGIN");
+    const transactional = createPostgresAutomaticRenewalPort({ query: (sql, values) => client.query(sql, values) });
+    const sameVersion = await transactional.buildCycleSnapshots(d.due);
+    await admin.query("UPDATE public.subscription_renewal_term_lines SET unit_amount_minor=999 WHERE subscription_id=$1", [f.subscriptionId]);
+    expect(await transactional.claimDue({ snapshot: sameVersion, workerId: "same-version", now }))
+      .toMatchObject({ acquired: true, cycleSnapshot: { totalAmountMinor: 200 } });
+    await client.query("ROLLBACK");
+    await admin.query("UPDATE public.subscription_renewal_term_lines SET unit_amount_minor=100 WHERE subscription_id=$1", [f.subscriptionId]);
+
+    await resizeForRenewal(f);
+    const before = await allPublicRows(admin);
+    await expect(legacy.claimDue({ snapshot: held, workerId: "unversioned", now })).rejects.toMatchObject(staleClaim);
+    expect(await allPublicRows(admin)).toEqual(before);
+
+    await client.query("BEGIN");
+    const bare = JSON.parse((await client.query(rawClaim, [identity, heldFingerprint, held, now])).rows[0].result);
+    expect(bare).toMatchObject({ acquired: true, operationFingerprint: heldFingerprint, cycleSnapshot: held });
+    await client.query("ROLLBACK");
+    expect(await allPublicRows(admin)).toEqual(before);
+  } finally {
+    await client.query("ROLLBACK");
+    client.release();
+  }
+
   const fresh = await legacy.buildCycleSnapshots(d.due);
   expect(fresh.totalAmountMinor).toBe(300);
-  for (const wire of [{ ...fresh, totalAmountMinor: 200 }, { ...fresh, totalAmountMinor: "300" },
-    { ...fresh, lines: [{ ...fresh.lines[0], quantity: "3" }] }, { ...fresh, currency: "XYY" }]) {
-    await expect(runtime.query(rawClaim, [automaticRenewalIdentity(f.subscriptionId, fresh.scheduledAt),
-      automaticRenewalFingerprint(fresh), JSON.stringify(wire), now])).rejects.toMatchObject(staleClaim);
-  }
-  expect(await allPublicRows(admin)).toEqual(before);
-  expect(await legacy.claimDue({ snapshot: fresh, workerId: "unversioned", now })).toMatchObject({ acquired: true });
+  const claim = await legacy.claimDue({ snapshot: fresh, workerId: "unversioned", now });
+  expect(claim).toMatchObject({ acquired: true, cycleSnapshot: fresh, operationFingerprint: automaticRenewalFingerprint(fresh) });
+  expect((await runtime.query("SELECT cycle_snapshot,operation_fingerprint FROM public.subscription_renewal_operations WHERE id=$1",
+    [claim.operationId])).rows).toEqual([{ cycle_snapshot: fresh, operation_fingerprint: automaticRenewalFingerprint(fresh) }]);
+  expect(JSON.parse((await runtime.query(rawClaim, [identity, claim.operationFingerprint, fresh, now])).rows[0].result))
+    .toMatchObject({ replayed: true, operationId: claim.operationId, cycleSnapshot: fresh });
+  expect(await legacy.claimDue({ snapshot: fresh, workerId: "unversioned", now }))
+    .toMatchObject({ replayed: true, operationId: claim.operationId, cycleSnapshot: fresh });
+}, 30_000);
+
+it("prepares a post-forward claim at its frozen amount after an accepted edit", async () => {
+  const f = await active(), d = await deps(f.subscriptionId, "succeeded");
+  const snapshot = await d.input.store.buildCycleSnapshots(d.due);
+  const claim = await d.input.store.claimDue({ snapshot, workerId: "first", leaseSeconds: 30, now });
+  expect(claim.acquired).toBe(true);
+  await resizeForRenewal(f);
+  expect((await runtime.query("SELECT claimed_before_rnw_1 FROM public.subscription_renewal_operations WHERE id=$1",
+    [claim.operationId])).rows).toEqual([{ claimed_before_rnw_1: false }]);
+  expect((await renewalUpgradeReport(runtime)).some(row => row.operation_id === claim.operationId)).toBe(false);
+
+  const result = await api.runOneAutomaticSubscriptionRenewal(d.input, d.due, days(now, 1 / 1440));
+  expect(result).toMatchObject({ status: "succeeded", operationId: claim.operationId });
+  expect(d.execute.mock.calls.map(([charge]) => charge.amountMinor)).toEqual([200]);
+
+  const next = (await d.input.store.listDue(100, days(now, 30))).find(row => row.subscriptionId === f.subscriptionId)!;
+  expect(next).toBeDefined();
+  expect(await d.input.store.buildCycleSnapshots(next)).toMatchObject({
+    templateSnapshot: { version: 2 }, pricingSnapshot: { totalAmountMinor: 300 },
+  });
 }, 30_000);
 
 it("checks template freshness after a concurrent accepted edit releases the subscription lock", async () => {
@@ -1338,7 +1390,7 @@ const rawPrepare = "SELECT public.commerce_prepare_subscription_renewal($1::uuid
 const rawReadback = "SELECT public.subscription_read_renewal($1::text)::text AS result";
 
 const renewalTemplateForward = /_subscription_renewal_current_template\.sql$/u;
-const currentSnapshotSignature = "subscription_renewal_snapshot_is_current(uuid,integer,jsonb)";
+const staleSnapshotSignature = "subscription_renewal_snapshot_is_stale(integer,jsonb,integer)";
 const stalePreparation = {
   ...staleClaim, hint: "Reconcile the stored renewal operation before resuming it. See the renewal upgrade report.",
 };
@@ -1455,9 +1507,14 @@ it("upgrades occupied renewal roots, refuses stale preparation without writes, a
     const graph = [c, r, p, w], readFrozen = () => Promise.all(graph.map(x => frozenOperation(db, x.operationId)));
     const original = await readFrozen();
     expect((await applyForward()).applied).toEqual([expect.stringMatching(renewalTemplateForward)]);
-    expect(await generationAcl(owner, currentSnapshotSignature)).toEqual([{ owner: "postgres", definer: false, volatility: "s",
+    expect(await generationAcl(owner, staleSnapshotSignature)).toEqual([{ owner: "postgres", definer: false, volatility: "s",
       config: ["search_path=pg_catalog, pg_temp"], acl: [["postgres", "EXECUTE", false], ["service_role", "EXECUTE", false]] }]);
     expect(await readFrozen()).toEqual(original);
+    expect((await db.query("SELECT DISTINCT claimed_before_rnw_1 FROM public.subscription_renewal_operations WHERE id=ANY($1::uuid[])",
+      [graph.map(op => op.operationId)])).rows).toEqual([{ claimed_before_rnw_1: true }]);
+    expect((await owner.query(`SELECT data_type,is_nullable,column_default FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='subscription_renewal_operations' AND column_name='claimed_before_rnw_1'`)).rows)
+      .toEqual([{ data_type: "boolean", is_nullable: "NO", column_default: "false" }]);
     for (const [op, stored] of graph.map((op, index) => [op, original[index]] as const)) {
       const codec = api.createNativeRenewalCodec();
       const wire = codec.encode(op.cycleSnapshot);
@@ -1497,8 +1554,8 @@ it("upgrades occupied renewal roots, refuses stale preparation without writes, a
     expect(mounted.prepare.mock.settledResults[prepared]).toMatchObject({ type: "rejected", value: stalePreparation });
     const after = await readFrozen();
     expect(after).toEqual(original);
-    expect((await db.query("SELECT claim_generation::int FROM public.subscription_renewal_operations WHERE id=$1", [c.operationId])).rows)
-      .toEqual([{ claim_generation: 2 }]);
+    expect((await db.query("SELECT claim_generation::int,claimed_before_rnw_1 FROM public.subscription_renewal_operations WHERE id=$1", [c.operationId])).rows)
+      .toEqual([{ claim_generation: 2, claimed_before_rnw_1: true }]);
     expect((await db.query(`SELECT id FROM public.subscription_cycles WHERE renewal_operation_id=ANY($1::uuid[])`, [[c.operationId, r.operationId, w.operationId]])).rows).toEqual([]);
     expect((await db.query("SELECT id FROM public.subscription_delivery_alignment_cases")).rows).toEqual([]);
     for (const entry of held) {
@@ -1632,6 +1689,12 @@ it("reports each stale incumbent once at the read-only upgrade cut and preserves
       .toEqual([{ cycle: "cancelled", intent: "cancelled", next_retry_at: null }]);
 
     const beforeCut = await prepareWebhookRenewal(target), afterCut = await prepareWebhookRenewal(target);
+    const historical = await upgradeRenewal(target, { edited: false });
+    const legacy = await createPostgresAutomaticRenewalPort(db).buildCycleSnapshots(historical.d.due);
+    const historicalClaim = JSON.parse((await db.query(rawClaim, [
+      automaticRenewalIdentity(legacy.subscriptionId, legacy.scheduledAt), automaticRenewalFingerprint(legacy), legacy, now,
+    ])).rows[0].result);
+    await resizeForRenewal(historical.f, transact);
     const v3 = await upgradeRenewal(target), tagged = await v3.claim();
     await reserveIncumbent(v3.d, tagged);
     // The dormant storage has no v3 producer. Model its persisted wire at the database boundary.
@@ -1639,6 +1702,16 @@ it("reports each stale incumbent once at the read-only upgrade cut and preserves
       SET cycle_snapshot = (cycle_snapshot - 'settlementChannelKey') || '{"contractVersion":"platform.subscription.renewal.v3"}'::jsonb
       WHERE id=$1`, [tagged.operationId]);
     expect((await applyForward()).applied).toEqual([expect.stringMatching(renewalTemplateForward)]);
+    const postForward = await upgradeRenewal(target, { edited: false });
+    const postForwardClaim = await postForward.claim();
+    await resizeForRenewal(postForward.f, transact);
+    expect((await db.query(`SELECT id,claimed_before_rnw_1 FROM public.subscription_renewal_operations
+      WHERE id=ANY($1::uuid[])`, [[tagged.operationId, historicalClaim.operationId, postForwardClaim.operationId]])).rows)
+      .toEqual(expect.arrayContaining([
+        { id: tagged.operationId, claimed_before_rnw_1: false },
+        { id: historicalClaim.operationId, claimed_before_rnw_1: true },
+        { id: postForwardClaim.operationId, claimed_before_rnw_1: false },
+      ]));
     const before = await allPublicRows(owner);
     const expected = [claimed.operationId, reserved.operationId, original.operationId, wait.operationId, missingWait.operationId,
       unpaid.id, waitingRetry.id, pending.id, beforeCut.id, afterCut.id].sort();
@@ -1847,7 +1920,7 @@ it("checks exact generation ACLs on a native installation without the service ro
     expect((await owner.query("SELECT to_regrole('service_role') AS service")).rows).toEqual([{ service: null }]);
     expect(await generationAcl(owner)).toEqual([{ owner: "postgres", definer: false, volatility: "s",
       config: ["search_path=pg_catalog, pg_temp"], acl: [["postgres", "EXECUTE", false]] }]);
-    expect(await generationAcl(owner, currentSnapshotSignature)).toEqual([{ owner: "postgres", definer: false, volatility: "s",
+    expect(await generationAcl(owner, staleSnapshotSignature)).toEqual([{ owner: "postgres", definer: false, volatility: "s",
       config: ["search_path=pg_catalog, pg_temp"], acl: [["postgres", "EXECUTE", false]] }]);
     expect((await owner.query(`SELECT rolname FROM pg_roles WHERE NOT rolsuper AND has_function_privilege(oid,$1,'EXECUTE')`,
       [frozenGenerationSignature])).rows).toEqual([]);

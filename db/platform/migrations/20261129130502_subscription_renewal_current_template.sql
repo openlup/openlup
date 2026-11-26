@@ -1,42 +1,66 @@
-CREATE FUNCTION public.subscription_renewal_snapshot_is_current(
-  p_subscription_id uuid, p_template_version integer, p_wire jsonb
-)
+ALTER TABLE public.subscription_renewal_operations ADD COLUMN claimed_before_rnw_1 boolean NOT NULL DEFAULT false;
+UPDATE public.subscription_renewal_operations SET claimed_before_rnw_1 = true WHERE cycle_snapshot->>'contractVersion' IS DISTINCT FROM 'platform.subscription.renewal.v3';
+
+CREATE FUNCTION public.subscription_renewal_snapshot_is_billing(p_wire jsonb, p_has_build_evidence boolean)
 RETURNS boolean
 LANGUAGE sql STABLE SECURITY INVOKER
 SET search_path = pg_catalog, pg_temp
 AS $$
   SELECT CASE
-    WHEN jsonb_typeof(p_wire) IS DISTINCT FROM 'object' THEN false
-    WHEN p_wire ?| ARRAY['frozenRevision', 'templateSnapshot'] THEN COALESCE(
-      p_wire#>'{templateSnapshot,version}' = to_jsonb(p_template_version), false)
-    WHEN jsonb_typeof(p_wire->'lines') IS DISTINCT FROM 'array' THEN false
-    ELSE COALESCE((
-      SELECT p_wire->'currency' = to_jsonb(t.currency_code)
-         AND p_wire->'totalAmountMinor' = to_jsonb(sum(l.quantity::numeric * l.unit_amount_minor))
-         AND sum(l.quantity::numeric * l.unit_amount_minor) BETWEEN 1 AND 9223372036854775807
-         AND (SELECT jsonb_agg(jsonb_build_object(
-                    'lineOrdinal', item->'lineOrdinal', 'sku', item->'sku',
-                    'quantity', item->'quantity', 'unitAmountMinor', item->'unitAmountMinor') ORDER BY ord)
-                FROM jsonb_array_elements(p_wire->'lines') WITH ORDINALITY AS wire(item, ord))
-           = jsonb_agg(jsonb_build_object('lineOrdinal', l.line_ordinal, 'sku', l.sku,
-                       'quantity', l.quantity, 'unitAmountMinor', l.unit_amount_minor) ORDER BY l.line_ordinal)
-        FROM public.subscription_renewal_terms t
-        JOIN public.subscription_renewal_term_lines l ON l.subscription_id = t.subscription_id
-       WHERE t.subscription_id = p_subscription_id
-       GROUP BY t.subscription_id, t.currency_code
-    ), false)
+    WHEN jsonb_typeof(p_wire) IS DISTINCT FROM 'object'
+      OR p_wire->>'contractVersion' = 'platform.subscription.renewal.v3'
+      OR jsonb_typeof(p_wire->'lines') IS DISTINCT FROM 'array' THEN false
+    WHEN NOT p_has_build_evidence
+      AND NOT (p_wire ?| ARRAY['frozenRevision', 'templateSnapshot', 'pricingSnapshot'])
+      AND p_wire->'orderSnapshot' = jsonb_build_object(
+        'shippingAddressRef', p_wire#>'{orderSnapshot,shippingAddressRef}'
+      ) THEN false
+    WHEN pg_input_is_valid(p_wire->>'totalAmountMinor', 'bigint') THEN COALESCE(
+      btrim(p_wire->>'settlementChannelKey') <> ''
+      AND p_wire->>'currency' ~ '^[A-Z]{3}$'
+      AND (p_wire->>'totalAmountMinor')::bigint > 0
+      AND jsonb_array_length(p_wire->'lines') > 0
+      AND NOT EXISTS (
+        SELECT 1 FROM jsonb_array_elements(p_wire->'lines') AS line(value)
+        WHERE (CASE
+          WHEN pg_input_is_valid(value->>'quantity', 'integer')
+            AND pg_input_is_valid(value->>'unitAmountMinor', 'bigint')
+          THEN btrim(value->>'sku') <> ''
+            AND (value->>'quantity')::integer > 0
+            AND (value->>'unitAmountMinor')::bigint >= 0
+        END) IS NOT TRUE
+      ), false)
+    ELSE false
   END;
 $$;
 
-REVOKE ALL ON FUNCTION public.subscription_renewal_snapshot_is_current(uuid,integer,jsonb) FROM PUBLIC;
+CREATE FUNCTION public.subscription_renewal_snapshot_is_stale(
+  p_template_version integer, p_wire jsonb, p_build_template_version integer
+)
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY INVOKER
+SET search_path = pg_catalog, pg_temp
+AS $$
+  SELECT COALESCE(CASE
+    WHEN NOT public.subscription_renewal_snapshot_is_billing(p_wire, COALESCE(p_build_template_version > 0, false)) THEN false
+    WHEN p_wire ?| ARRAY['frozenRevision', 'templateSnapshot'] THEN
+      jsonb_path_exists(p_wire, 'strict $.templateSnapshot.version ? (
+        @.type() == "number" && @ > 0 && @ <= 2147483647 && @.floor() == @
+      )', '{}'::jsonb, true)
+      AND p_wire#>'{templateSnapshot,version}' <> to_jsonb(p_template_version)
+    ELSE p_build_template_version > 0 AND p_template_version > p_build_template_version
+  END, false);
+$$;
+
+REVOKE ALL ON FUNCTION public.subscription_renewal_snapshot_is_billing(jsonb,boolean), public.subscription_renewal_snapshot_is_stale(integer,jsonb,integer) FROM PUBLIC;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.subscription_renewal_snapshot_is_current(uuid,integer,jsonb) FROM anon;';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.subscription_renewal_snapshot_is_billing(jsonb,boolean), public.subscription_renewal_snapshot_is_stale(integer,jsonb,integer) FROM anon;';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.subscription_renewal_snapshot_is_current(uuid,integer,jsonb) FROM authenticated;';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.subscription_renewal_snapshot_is_billing(jsonb,boolean), public.subscription_renewal_snapshot_is_stale(integer,jsonb,integer) FROM authenticated;';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
-  EXECUTE 'GRANT EXECUTE ON FUNCTION public.subscription_renewal_snapshot_is_current(uuid,integer,jsonb) TO service_role;';
+  EXECUTE 'GRANT EXECUTE ON FUNCTION public.subscription_renewal_snapshot_is_billing(jsonb,boolean), public.subscription_renewal_snapshot_is_stale(integer,jsonb,integer) TO service_role;';
 END IF; END; $$;
 
 CREATE OR REPLACE FUNCTION public.subscription_claim_due_renewal(
@@ -56,9 +80,21 @@ DECLARE
   v_scheduled_at timestamptz;
   v_cycle_number integer;
   v_acceptance jsonb;
+  v_build_template_version integer;
+  v_has_build_envelope boolean := false;
   v_subscription public.subscriptions%ROWTYPE;
   v_operation public.subscription_renewal_operations%ROWTYPE;
 BEGIN
+  IF p_cycle_snapshot->>'contractVersion' = 'platform.subscription.renewal.claim-build.v1' THEN
+    v_has_build_envelope := true;
+    IF jsonb_typeof(p_cycle_snapshot->'buildTemplateVersion') = 'number'
+      AND pg_input_is_valid(p_cycle_snapshot->>'buildTemplateVersion', 'integer')
+    THEN
+      v_build_template_version := (p_cycle_snapshot->>'buildTemplateVersion')::integer;
+    END IF;
+    p_cycle_snapshot := p_cycle_snapshot->'cycleSnapshot';
+  END IF;
+
   IF p_identity_key IS NULL OR p_operation_fingerprint !~ '^[0-9a-f]{64}$'
     OR p_cycle_snapshot IS NULL OR jsonb_typeof(p_cycle_snapshot) <> 'object'
     OR p_cycle_snapshot->>'contractVersion' <> 'platform.subscription.renewal.v1'
@@ -136,8 +172,16 @@ BEGIN
     RETURN public.subscription_renewal_operation_response(v_operation, true, true, 'lease_taken_over');
   END IF;
 
-  IF NOT public.subscription_renewal_snapshot_is_current(
-    v_subscription_id, v_subscription.template_version, p_cycle_snapshot
+  IF p_cycle_snapshot ?| ARRAY['frozenRevision', 'templateSnapshot']
+    AND public.subscription_renewal_snapshot_is_billing(p_cycle_snapshot, v_has_build_envelope)
+    AND jsonb_path_exists(p_cycle_snapshot, 'strict $.templateSnapshot.version ? (
+      @.type() == "number" && @ > 0 && @ <= 2147483647 && @.floor() == @
+    )', '{}'::jsonb, true) IS NOT TRUE
+  THEN
+    RAISE EXCEPTION 'subscription_renewal_claim_invalid_snapshot' USING ERRCODE = '22023';
+  END IF;
+  IF public.subscription_renewal_snapshot_is_stale(
+    v_subscription.template_version, p_cycle_snapshot, v_build_template_version
   ) THEN
     RAISE EXCEPTION 'subscription_renewal_snapshot_stale' USING ERRCODE = '22023',
       DETAIL = '/cycleSnapshot',
@@ -245,9 +289,10 @@ BEGIN
     RAISE EXCEPTION 'commerce_renewal_active_reservation_required' USING ERRCODE = '22023';
   END IF;
 
-  IF v_operation.cycle_snapshot->>'contractVersion' IS DISTINCT FROM 'platform.subscription.renewal.v3'
-    AND NOT public.subscription_renewal_snapshot_is_current(
-      v_operation.subscription_id, v_template_version, v_operation.cycle_snapshot
+  IF v_operation.claimed_before_rnw_1
+    AND v_operation.cycle_snapshot->>'contractVersion' IS DISTINCT FROM 'platform.subscription.renewal.v3'
+    AND public.subscription_renewal_snapshot_is_stale(
+      v_template_version, v_operation.cycle_snapshot, NULL::integer
     )
   THEN
     RAISE EXCEPTION 'subscription_renewal_snapshot_stale' USING ERRCODE = '22023',

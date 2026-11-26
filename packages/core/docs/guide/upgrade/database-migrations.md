@@ -104,19 +104,33 @@ snapshot. A verified webhook committed before that point is visible to both
 queries. A later commit leaves the operation at its earlier state in the report.
 Re-read the live operation before deciding its disposition.
 
+The report covers incumbent operations claimed before the forward when their
+stored template version differs from the current version. Historical operations
+without a recorded template version supply no freshness evidence. Renewals
+claimed after the forward prepare at the price frozen at claim. An accepted edit
+after claim applies to later cycles.
+
 ```sql
 BEGIN ISOLATION LEVEL REPEATABLE READ, READ ONLY;
 
 SELECT pg_current_snapshot()::text AS cut_snapshot,
        statement_timestamp() AS cut_statement_started_at;
 
-WITH incumbent AS MATERIALIZED (
-  SELECT * FROM public.subscription_renewal_operations
-  WHERE cycle_snapshot->>'contractVersion' IS DISTINCT FROM 'platform.subscription.renewal.v3'
+WITH stale_incumbent AS MATERIALIZED (
+  SELECT o.id, o.subscription_id, o.scheduled_at, o.state,
+         o.terminal_reason, o.cycle_snapshot
+  FROM public.subscription_renewal_operations o
+  JOIN public.subscriptions s ON s.id = o.subscription_id
+  WHERE o.claimed_before_rnw_1
+    AND o.cycle_snapshot->>'contractVersion'
+        IS DISTINCT FROM 'platform.subscription.renewal.v3'
+    AND public.subscription_renewal_snapshot_is_stale(
+      s.template_version, o.cycle_snapshot, NULL::integer
+    )
 ), roots AS (
   SELECT o.id AS operation_id, o.subscription_id, o.scheduled_at,
          o.state AS operation_state, o.terminal_reason,
-         o.cycle_snapshot, s.template_version,
+         o.cycle_snapshot,
          CASE
            WHEN w.state IN ('waiting', 'stock_secured') THEN w.state
            WHEN w.id IS NULL AND o.state = 'refused'
@@ -125,8 +139,7 @@ WITH incumbent AS MATERIALIZED (
              THEN 'uncaptured'
          END AS stock_wait_state,
          r.id AS retry_obligation_id, r.state AS retry_state
-  FROM incumbent o
-  JOIN public.subscriptions s ON s.id = o.subscription_id
+  FROM stale_incumbent o
   LEFT JOIN public.subscription_stock_wait_cases w ON w.renewal_operation_id = o.id
   LEFT JOIN public.subscription_retry_obligations r
     ON r.renewal_operation_id = o.id AND o.state = 'refused'
@@ -146,17 +159,12 @@ SELECT operation_id, subscription_id, scheduled_at, operation_state,
        cycle_snapshot->>'currency' AS currency,
        'subscription_renewal_snapshot_stale' AS reason
 FROM roots
-WHERE (
-  operation_state IN ('claimed', 'reserved', 'attempt_prepared')
-  OR (operation_state = 'refused' AND (
-    retry_obligation_id IS NOT NULL
-    OR (stock_wait_state IS NOT NULL
-      AND terminal_reason IN ('inventory_unavailable', 'reservation_expired'))
-  ))
-)
-AND NOT public.subscription_renewal_snapshot_is_current(
-  subscription_id, template_version, cycle_snapshot
-)
+WHERE operation_state IN ('claimed', 'reserved', 'attempt_prepared')
+   OR (operation_state = 'refused' AND (
+     retry_obligation_id IS NOT NULL
+     OR (stock_wait_state IS NOT NULL
+       AND terminal_reason IN ('inventory_unavailable', 'reservation_expired'))
+   ))
 ORDER BY operation_id;
 
 COMMIT;

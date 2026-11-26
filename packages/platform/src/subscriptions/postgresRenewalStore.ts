@@ -154,7 +154,7 @@ export function createPostgresRenewalStore(executor: SubscriptionQueryExecutor, 
           const destination = input.snapshot.orderSnapshot.shippingAddressRef;
           if (destination) fresh = codec.withDestination!(fresh, destination);
           if (codec.fingerprint(fresh) !== codec.fingerprint(input.snapshot)) {
-            throw Object.assign(new Error("subscription_renewal_snapshot_stale"), {
+            throw Object.assign(new Error("subscription_renewal_snapshot_fingerprint_mismatch"), {
               code: "22023",
               detail: "/cycleSnapshot",
               hint: "Re-read the due subscription and rebuild its cycle snapshot before claiming again.",
