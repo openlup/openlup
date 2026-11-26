@@ -233,21 +233,103 @@ test('checkout controller: starting over on a fulfilled order shows it paid, cle
   expect((await orders(email)).map(row => row.status)).toEqual(['fulfilled', 'pending_payment']);
 });
 
-test('checkout controller: a cart refusal before any order lets corrected details continue under the same key', async ({ page }) => {
-  const email = buyer('cart-refusal');
+// A refusal the host answers only before writing any order (a cart issue, or a fresh create that arrived too late) lets
+// corrected details be sent under the same key.
+for (const code of ['minimum_units', 'starter_checkout_request_stale']) {
+  test(`checkout controller: a refusal that wrote no order (${code}) lets corrected details continue under the same key`, async ({ page }) => {
+    const email = buyer('no-order');
+    await openCheckout(page);
+    await details(page, email);
+    const sent = creates(page);
+    await page.route('**/api/actions/checkout.create', route => route.fulfill({ status: 409, contentType: 'application/json',
+      body: JSON.stringify({ ok: false, code }) }), { times: 1 });
+    await placeOrder(page).click();
+    await expect(output(page)).toContainText(code);
+    await details(page, email, '4 Corrected Lane');
+    await placed(page);
+    expect(sent.map(keyOf)).toEqual([keyOf(sent[0]!), keyOf(sent[0]!)]);
+    expect(sent[1]!.postDataJSON().line1).toBe('4 Corrected Lane');
+    await expect(page.locator('main')).not.toContainText(managed('starter_checkout_changed'));
+    await expect(page.locator('main')).not.toContainText(managed('changedUnconfirmed'));
+    expect((await orders(email)).map(row => row.status)).toEqual(['pending_payment']);
+  });
+}
+
+// A refusal the host can also answer while an order exists under the key keeps the key: corrected details send nothing,
+// and the page says an order may exist, never that an unpaid one does, and names every way out.
+for (const code of ['starter_purchase_unavailable', 'starter_attempt_limited', 'starter_command_conflict', 'starter_quote_unavailable']) {
+  test(`checkout controller: after ${code}, corrected details send nothing and say an order may exist`, async ({ page }) => {
+    const email = buyer('may-exist');
+    await openCheckout(page);
+    await details(page, email);
+    const sent = creates(page);
+    await page.route('**/api/actions/checkout.create', route => route.fulfill({ status: 409, contentType: 'application/json',
+      body: JSON.stringify({ ok: false, code }) }), { times: 1 });
+    await placeOrder(page).click();
+    await expect(output(page)).toContainText(code);
+    await details(page, email, '6 Corrected Lane');
+    await placeOrder(page).click();
+    await expect(output(page)).toContainText(managed('changedUnconfirmed'));
+    await expect(output(page)).toContainText('starter_checkout_changed');
+    await expect(page.locator('main')).not.toContainText(managed('starter_checkout_changed'));
+    expect(sent).toHaveLength(1);
+    for (const key of ['resume', 'abandon', 'different'] as const) await expect(choice(page, key)).toBeVisible();
+    await choice(page, 'different').click();
+    await expect(panel(page)).toContainText(managed('differentStarted'));
+    await placed(page);
+    expect(sent).toHaveLength(2);
+    expect(keyOf(sent[1]!)).not.toBe(keyOf(sent[0]!));
+    expect((await orders(email)).map(row => row.status)).toEqual(['pending_payment']);
+  });
+}
+
+test('checkout controller: resume finding no order leaves a way to start a different purchase', async ({ page }) => {
+  const email = buyer('none-found');
   await openCheckout(page);
   await details(page, email);
   const sent = creates(page);
-  await page.route('**/api/actions/checkout.create', route => route.fulfill({ status: 409, contentType: 'application/json',
-    body: JSON.stringify({ ok: false, code: 'minimum_units' }) }), { times: 1 });
+  let first: string | undefined;
+  // Every create under the first key is lost before the host, so no order exists under it.
+  await page.route('**/api/actions/checkout.create', async route => {
+    first ??= keyOf(route.request());
+    if (keyOf(route.request()) === first) return route.abort();
+    return route.continue();
+  });
   await placeOrder(page).click();
-  await expect(output(page)).toContainText('minimum_units');
-  await details(page, email, '4 Corrected Lane');
+  await expect(panel(page)).toBeVisible();
+  await expect(placeOrder(page)).toBeEnabled();
+  await choice(page, 'resume').click();
+  await expect(panel(page)).toContainText(managed('resumeNotFound'));
+  await expect(panel(page)).toContainText('starter_checkout_not_found');
+  for (const key of ['resume', 'abandon', 'different'] as const) await expect(choice(page, key)).toBeVisible();
+  await details(page, email, '8 Other Lane');
+  await choice(page, 'different').click();
+  await expect(panel(page)).toContainText(managed('differentStarted'));
   await placed(page);
-  expect(sent.map(keyOf)).toEqual([sent[0]!.headers()['idempotency-key'], sent[0]!.headers()['idempotency-key']]);
-  expect(sent[1]!.postDataJSON().line1).toBe('4 Corrected Lane');
-  await expect(page.locator('main')).not.toContainText(managed('starter_checkout_changed'));
+  expect(keyOf(sent.at(-1)!)).not.toBe(first);
   expect((await orders(email)).map(row => row.status)).toEqual(['pending_payment']);
+});
+
+test('checkout controller: after a resume finds the order paid, placing an order says so and offers a different purchase', async ({ page }) => {
+  const email = buyer('paid-resume');
+  await openCheckout(page);
+  await details(page, email);
+  const sent = creates(page);
+  const first = await placed(page);
+  const { token } = await purchase(page);
+  expect((await call(page, 'payment.simulate', { orderRef: first, token, outcome: 'captured' })).ok).toBe(true);
+  await page.reload();
+  await choice(page, 'resume').click();
+  await expect(panel(page)).toContainText(t.recoveryPaid);
+  await details(page, email);
+  await placeOrder(page).click();
+  await expect(output(page)).toContainText('starter_checkout_paid');
+  await expect(output(page)).toContainText(managed('starter_checkout_paid'));
+  expect(sent).toHaveLength(1);
+  await choice(page, 'different').click();
+  await placed(page);
+  expect(sent).toHaveLength(2);
+  expect((await orders(email)).map(row => row.status)).toEqual(['paid', 'pending_payment']);
 });
 
 test('checkout controller: a price change answered to the automatic repeat runs the quote refusal hook', async ({ page }) => {
@@ -431,4 +513,50 @@ test('checkout controller: a late answer to a view replaced in the same purchase
   expect(await purchase(page)).toEqual({ orderRef: first!.orderRef, token: newer.token });
   expect((await record(page)).id).toBe(key);
   await expect(page.locator('form.action-form .action-result')).toBeEmpty();
+});
+
+test('checkout controller: tab storage that stops reading after load keeps the key', async ({ page }) => {
+  const email = buyer('storage-read');
+  await openCheckout(page);
+  await details(page, email);
+  const sent = creates(page);
+  await placed(page);
+  const key = (await record(page)).id;
+  await page.evaluate(() => {
+    const getItem = Storage.prototype.getItem;
+    Storage.prototype.getItem = function (this: Storage, name: string) {
+      if (this === window.sessionStorage) throw new DOMException('blocked', 'SecurityError');
+      return getItem.call(this, name);
+    };
+  });
+  const replayed = page.waitForResponse(row => isCreate(row.request()));
+  await placeOrder(page).click();
+  expect(await (await replayed).json()).toMatchObject({ ok: true, replayed: true });
+  expect(sent.map(keyOf)).toEqual([key, key]);
+  expect((await orders(email)).map(row => row.status)).toEqual(['pending_payment']);
+});
+
+test('checkout controller: a start-over answer is shown when tab storage refuses to clear the record', async ({ page }) => {
+  const email = buyer('storage-clear');
+  await openCheckout(page);
+  await details(page, email);
+  const sent = creates(page);
+  const first = await placed(page);
+  await details(page, email, '3 Edited Lane');
+  await refusedAsChanged(page, sent);
+  await page.evaluate(() => {
+    const removeItem = Storage.prototype.removeItem;
+    Storage.prototype.removeItem = function (this: Storage, name: string) {
+      if (this === window.sessionStorage) throw new DOMException('blocked', 'SecurityError');
+      return removeItem.call(this, name);
+    };
+  });
+  await choice(page, 'abandon').click();
+  await expect(panel(page)).toContainText(managed('abandoned'));
+  await expect(page.locator('[data-storage-notice]')).toBeVisible();
+  // The cancelled order's key is not reused: the next submit places a new order under a new key.
+  await placed(page);
+  expect(sent).toHaveLength(2);
+  expect(keyOf(sent[1]!)).not.toBe(keyOf(sent[0]!));
+  expect((await orders(email)).map(row => row.id === first ? 'first ' + row.status : row.status)).toEqual(['first cancelled', 'pending_payment']);
 });

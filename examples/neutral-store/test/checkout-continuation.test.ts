@@ -56,7 +56,9 @@ const rows: Row[] = [
   { name: 'resume read the order expired', operation: 'resume', answer: value({ orderRef: orderA, status: 'expired' }), view: notPayable },
   ...(['create', 'resume', 'abandon'] as const).map(operation => ({ name: `${operation} session changed`, operation,
     answer: refused('starter_checkout_session_changed'), reading: checking, view: { ...both, ...coded('starter_checkout_session_changed') } })),
-  { name: 'resume found none', operation: 'resume', answer: refused('starter_checkout_not_found'), view: { ...gone, ...coded('starter_checkout_not_found') } },
+  // The record stays: the buyer can submit the same details, cancel, or start a different purchase for other details.
+  { name: 'resume found none', operation: 'resume', answer: refused('starter_checkout_not_found'),
+    view: { choices: 'both', different: true, link: 'remove', code: 'starter_checkout_not_found', text: 'resumeNotFound' } },
   { name: 'resume limited', operation: 'resume', answer: refused('starter_attempt_limited'), view: { ...both, ...coded('starter_attempt_limited') } },
   { name: 'abandon limited', operation: 'abandon', answer: refused('starter_attempt_limited'), reading: checking, view: { ...both, ...coded('starter_attempt_limited') } },
   { name: 'resume without a token', operation: 'resume', answer: value({ orderRef: orderA, status: 'pending_payment', total }),
@@ -75,7 +77,8 @@ test('each earlier-order answer shows its code, texts, choices and link as the t
 
 test('"Start a different purchase" is offered on every answer that names the earlier order not payable', () => {
   const offered = rows.filter(row => row.view.different).map(row => row.view.code ?? row.view.text);
-  assert.deepEqual([...new Set(offered)].sort(), ['starter_checkout_expired', 'starter_checkout_not_abandonable', 'starter_checkout_not_payable', 'starter_checkout_paid']);
+  assert.deepEqual([...new Set(offered)].sort(), ['starter_checkout_expired', 'starter_checkout_not_abandonable', 'starter_checkout_not_found',
+    'starter_checkout_not_payable', 'starter_checkout_paid']);
   for (const locale of market.locales) {
     const label = checkoutContinuationCopy.different[locale];
     for (const code of ['starter_checkout_not_payable', 'starter_checkout_paid', 'starter_checkout_expired'] as const) {
@@ -83,6 +86,19 @@ test('"Start a different purchase" is offered on every answer that names the ear
       assert.ok(text.includes(label), `${code} (${locale}) names "${label}"`);
       assert.doesNotMatch(text, /submit again|wyślij ponownie/iu, `${code} (${locale}) no longer says to submit again`);
     }
+  }
+});
+
+test('the texts for an earlier order that may not exist claim no unpaid order and name every way out', () => {
+  for (const locale of market.locales) {
+    const label = checkoutContinuationCopy.different[locale];
+    const unconfirmed = checkoutContinuationCopy.changedUnconfirmed[locale];
+    const none = checkoutContinuationCopy.resumeNotFound[locale];
+    for (const text of [unconfirmed, none]) assert.ok(text.includes(label), `${text} names "${label}"`);
+    assert.doesNotMatch(unconfirmed, /is unpaid|jest nieopłacone/u, locale);
+    const phrases: Readonly<Record<string, RegExp>> = { en: /may have created/u, pl: /mogło utworzyć/u };
+    assert.match(unconfirmed, phrases[String(locale)] ?? /./u, locale);
+    assert.doesNotMatch(none, /^No earlier order[^.]*\. Submit the form to place your order\.$/u, locale);
   }
 });
 
