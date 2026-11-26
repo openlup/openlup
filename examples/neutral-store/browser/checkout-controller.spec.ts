@@ -3,8 +3,9 @@
 // the bindings, tab storage that fails, and the stale-view rule.
 // CI: titles start "checkout controller:", so the file runs in the remainder browser group (shard 6). Every case is
 // independent of the store configuration, so it runs in the first project only.
-// Quota: each case makes at most 3 metered creates and 2 repeats under keys of its own; beforeAll truncates the attempt
-// ledger once per project, as the lost-response witness does.
+// Quota: each case makes at most 3 metered creates and 2 repeats under keys of its own, about 40 in all within 20 s,
+// more than the 36 per address per 180 s that later specs in the same installation share. So each case starts from an
+// empty attempt ledger, and afterAll empties it again for the specs after this one.
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -38,12 +39,17 @@ test.beforeAll(async ({ baseURL }, info) => {
 // 180 s from one address); this spec spends about 40, so it leaves none of them behind.
 test.afterAll(async () => {
   try {
-    const { rows: [left] } = await owner.query<{ n: number }>('SELECT count(*)::int AS n FROM public.commerce_checkout_attempt_ledger');
-    expect(left!.n, 'metered checkout attempts this spec leaves for later specs').toBe(0);
+    // Only the first project runs cases; the other project's ledger is not this spec's.
+    if (test.info().project.name === 'supplements') {
+      await owner.query('TRUNCATE public.commerce_checkout_attempt_ledger');
+      const { rows: [left] } = await owner.query<{ n: number }>('SELECT count(*)::int AS n FROM public.commerce_checkout_attempt_ledger');
+      expect(left!.n, 'metered checkout attempts this spec leaves for later specs').toBe(0);
+    }
   } finally { await owner?.end(); await runtime?.end(); }
 });
-test.beforeEach(({ browserName: _browser }, info) => {
+test.beforeEach(async ({ browserName: _browser }, info) => {
   test.skip(info.project.name !== 'supplements', 'configuration-independent');
+  await owner.query('TRUNCATE public.commerce_checkout_attempt_ledger');
 });
 
 const buyer = (label: string) => `controller-${label}-${randomUUID()}@example.test`;
