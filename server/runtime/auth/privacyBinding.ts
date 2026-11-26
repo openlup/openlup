@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { createPostgresPrivacyUnitOfWork, createPostgresPrivacyStore, createManagedPrivacyStore, createIdentityPersonalDataContributor,
   createPersonalDataContributorRegistry, createPrivacyOperations, createPrivacyExportHandler, createPrivacyEraseHandler,
   createDestinationReceiptPrivacyContributor, createDestinationDocumentPrivacyContributor, createTaxCalculationPrivacyContributor,
+  createOrderDraftReceiptsPrivacyContributor,
   createCustomerSavedAddressPrivacyContributor, createCustomerPreferencePrivacyContributor, isNativePrivacyOperations,
   nativePrivacyUnavailable, privacyRefusalDetails, readBearerToken, createFulfillmentParcelContactPrivacyContributor,
   createCustomerBillingPrivacyContributor, type ManagedIdentityClient, type IdentityPrivacyPolicy, type NativePrivacyStore,
@@ -12,7 +13,6 @@ import { createPostgresPrivacyUnitOfWork, createPostgresPrivacyStore, createMana
 import type { HttpRequest, HttpResponse } from "@openlup/platform/http";
 import { resolveAdminAuthBinding } from "./adminAuthBinding.js";
 import { createSubscriptionsPrivacyContributor } from "./subscriptionsPrivacyContributor.js";
-import { createOrderDraftReceiptsPrivacyContributor } from "./orderDraftReceiptsPrivacyContributor.js";
 import { createServiceRoleClient, resolveSupabaseServiceRoleEnv } from "../../_lib/admin-domain/auth.js";
 import { sendBffError } from "../../_lib/bff/response.js";
 import { readObservedResponseContext } from "../../_lib/observability/requestContext.js";

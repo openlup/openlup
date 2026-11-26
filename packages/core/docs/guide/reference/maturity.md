@@ -501,6 +501,7 @@ Symbols whose maturity differs from their subpath, or that are deprecated:
 | `./fulfillment/testing` | `runFulfillmentAdapterConformance` | experimental | no |
 | `./identity` | `createDestinationDocumentPrivacyContributor` | experimental | no |
 | `./identity` | `createDestinationReceiptPrivacyContributor` | experimental | no |
+| `./identity` | `createOrderDraftReceiptsPrivacyContributor` | experimental | no |
 | `./identity` | `createTaxCalculationPrivacyContributor` | experimental | no |
 | `./inventory` | `RenewalStockProtectionPreviewConnection` | experimental | no |
 | `./inventory` | `describeRenewalStockProtectionSetting` | experimental | no |

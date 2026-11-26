@@ -921,18 +921,18 @@
       },
       {
         "file": "db/platform/migrations/20261129130505_order_draft_receipts_v2.sql",
-        "sha256": "35a18bef1ee478776914c1800e6e99b9236886a01c7ad639c854e5169fd22edd"
+        "sha256": "8cec09d45c9ea1652834280be7d1968d55aa50cd0a933f6b8ce2acf9b25fefc1"
       },
       {
         "file": "db/platform/migrations/20261129130506_order_draft_receipt_privacy_v2.sql",
-        "sha256": "3a76ddcd16a759b50c0a8e31bbad0dcc11f1b5ec6225df79e147e9d237871b1d"
+        "sha256": "569a141c38d7f14d315441861b181bb6189c7e1b380e8a8e58a77912056ddcae"
       },
       {
         "file": "db/platform/migrations/20261129130507_order_draft_payment_entry_fence.sql",
         "sha256": "1f11757213628148547e2d2b500f0e85feced698252e4afdf7dba030b245a174"
       }
     ],
-    "objectInventorySha256": "99c1b2f54c723bfe40f4a440089d6ce515f1078b425b9ae77dd64e3eaf066829",
+    "objectInventorySha256": "fb983f809e96c316ac02c25db1fa693eecc326ddf49d9a37bce4034efe4dd79b",
     "qualified": {
       "baseline": {
         "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1877,11 +1877,11 @@
         },
         {
           "file": "db/platform/migrations/20261129130505_order_draft_receipts_v2.sql",
-          "sha256": "35a18bef1ee478776914c1800e6e99b9236886a01c7ad639c854e5169fd22edd"
+          "sha256": "8cec09d45c9ea1652834280be7d1968d55aa50cd0a933f6b8ce2acf9b25fefc1"
         },
         {
           "file": "db/platform/migrations/20261129130506_order_draft_receipt_privacy_v2.sql",
-          "sha256": "3a76ddcd16a759b50c0a8e31bbad0dcc11f1b5ec6225df79e147e9d237871b1d"
+          "sha256": "569a141c38d7f14d315441861b181bb6189c7e1b380e8a8e58a77912056ddcae"
         },
         {
           "file": "db/platform/migrations/20261129130507_order_draft_payment_entry_fence.sql",
@@ -1890,10 +1890,10 @@
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "bbc6d6df4fe1a9ce4dfb827861e6a8a911279e07d7ec0f528c1905372ed93819"
+          "withRestore": "cb08c02180b74cde5ec1dba14e74b8cc001ee36e405adaa4f809fa429a6b5795"
         },
         "separateMigrator": {
-          "withRestore": "9d365f118cf02921e7d8e9a18db5c8b9d149385c62cdab0a36f5814a0160c508"
+          "withRestore": "33ed8838d7401b397ff7656355f7bfedaadc708d50dbfd9cfa40391ef8251dff"
         }
       }
     },
@@ -2833,11 +2833,11 @@
         },
         {
           "file": "db/platform/migrations/20261129130505_order_draft_receipts_v2.sql",
-          "sha256": "35a18bef1ee478776914c1800e6e99b9236886a01c7ad639c854e5169fd22edd"
+          "sha256": "8cec09d45c9ea1652834280be7d1968d55aa50cd0a933f6b8ce2acf9b25fefc1"
         },
         {
           "file": "db/platform/migrations/20261129130506_order_draft_receipt_privacy_v2.sql",
-          "sha256": "3a76ddcd16a759b50c0a8e31bbad0dcc11f1b5ec6225df79e147e9d237871b1d"
+          "sha256": "569a141c38d7f14d315441861b181bb6189c7e1b380e8a8e58a77912056ddcae"
         },
         {
           "file": "db/platform/migrations/20261129130507_order_draft_payment_entry_fence.sql",
@@ -2845,8 +2845,8 @@
         }
       ],
       "objectInventorySha256": {
-        "installerManaged": "959229fbd7afb404b2242cc1abb84e94d2c553890414e342a0b1c032da2c0894",
-        "operatorProvisioned": "dde1173da87149b6fc95b4b2eb383c4fd0a04f1d2f055652d9a5b93fc9ae4fce"
+        "installerManaged": "fb1b75339d7db491a36a6e24dc4c3a44086b6c03540043280ea2cf2334877b95",
+        "operatorProvisioned": "a80f3a54abd311a95bb405778bec5cf0c3e5a0ff4188e3ef530923b009f990e6"
       }
     }
   },
@@ -3999,12 +3999,12 @@
     {
       "file": "20261129130505_order_draft_receipts_v2.sql",
       "source": "db/platform/migrations/20261129130505_order_draft_receipts_v2.sql",
-      "sha256": "35a18bef1ee478776914c1800e6e99b9236886a01c7ad639c854e5169fd22edd"
+      "sha256": "8cec09d45c9ea1652834280be7d1968d55aa50cd0a933f6b8ce2acf9b25fefc1"
     },
     {
       "file": "20261129130506_order_draft_receipt_privacy_v2.sql",
       "source": "db/platform/migrations/20261129130506_order_draft_receipt_privacy_v2.sql",
-      "sha256": "3a76ddcd16a759b50c0a8e31bbad0dcc11f1b5ec6225df79e147e9d237871b1d"
+      "sha256": "569a141c38d7f14d315441861b181bb6189c7e1b380e8a8e58a77912056ddcae"
     },
     {
       "file": "20261129130507_order_draft_payment_entry_fence.sql",

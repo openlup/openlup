@@ -16,7 +16,7 @@ export const obligations = [
   { owner: contributorId, resource: "commerce.order-draft-receipt-owner-references", disposition: "erase",
     reasonCode: "RECEIPT_OWNER_REFERENCES_CLEARED", remote: false },
   { owner: contributorId, resource: "commerce.order-draft-receipt-retained-facts", disposition: "retain",
-    reasonCode: "RECEIPT_REPLAY_EVIDENCE_RETAINED", remote: false },
+    reasonCode: "ORDER_REFERENCE_AND_DERIVED_REPLAY_KEY_RETAINED", remote: false },
 ] as const;
 export const disposition = { contributorId, version: contributorVersion, obligations: [...obligations] };
 export const immutableHint = "Read through the receipt lookup or use the authorized privacy operation to erase owner references.";

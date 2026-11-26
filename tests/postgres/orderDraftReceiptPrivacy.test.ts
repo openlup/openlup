@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { Pool, PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
-import { createPersonalDataContributorRegistry, createPostgresPrivacyStore, createPrivacyOperations, PrivacyRefusal, readRequiredPrivacyContributorIds,
+import { createOrderDraftReceiptsPrivacyContributor, createPersonalDataContributorRegistry, createPostgresPrivacyStore, createPrivacyOperations, PrivacyRefusal, readRequiredPrivacyContributorIds,
   reconcilePostgresPrivacyErasure } from "@openlup/platform/identity";
 import { personalDataDocumentSchema, type PrivacySubjectRef } from "@openlup/platform/identity/contracts";
 import { readPlatformMigrationManifest, sha256, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
@@ -20,6 +20,7 @@ const first = manifest.forward.find(unit => unit.file.endsWith("_order_draft_rec
 const second = manifest.forward.find(unit => unit.file.endsWith("_order_draft_receipt_privacy_v2.sql"))!;
 const guard = "commerce_order_draft_receipt_v2_immutable";
 const evidenceGuard = "commerce_order_draft_receipt_v2_erasure_check";
+const marks = "commerce_order_draft_receipt_erasure_marks";
 const missingCode = "PRIVACY_CONTRIBUTOR_MISSING";
 const incompleteCode = "PRIVACY_RECEIPT_COVERAGE_INCOMPLETE";
 const unresolvedCode = "PRIVACY_OWNERSHIP_UNDECLARED";
@@ -77,8 +78,9 @@ it("seals the draft projection through mounted erasure, replay and erased restor
   expect(document?.data).toStrictEqual({ receiptChunks: [[{ orderId: id, installationRef: input.owner.installationRef,
     principalKind: "customer", principalRef: input.owner.principalRef, customerOrSessionRef: quote.clientId, createdAt: before.created_at }]] });
   expect(Object.keys(document!.data as object)).toStrictEqual(["receiptChunks"]);
-  expect(document!.coverage.included).toContain("Opaque replay evidence retained");
-  expect(document!.coverage.unavailable).toContain("Opaque replay keys and digests withheld");
+  expect(document!.coverage.included).toContain("Retained order reference remains linked through the order owner");
+  expect(document!.coverage.unavailable).toContain(
+    "Derived replay key and command digest withheld. The key can link to a known original owner scope and request key.");
 
   const erase = { subject, idempotencyKey: randomUUID() };
   const value = await mounted.operations.erase(actor, erase);
@@ -90,6 +92,18 @@ it("seals the draft projection through mounted erasure, replay and erased restor
   const erasedBeforeRestore = { ...before, principal_ref: null, customer_or_session_ref: null };
   expect(await rawReceipt(source.owner, key)).toStrictEqual(erasedBeforeRestore);
   expect(await history(source.owner, key)).toStrictEqual(expected);
+  const retained = { receiptChunks: [[{ orderId: id, installationRef: input.owner.installationRef,
+    principalKind: "customer", createdAt: before.created_at }]] };
+  for (const ref of [subject, { kind: "principal" as const, principalId: input.owner.principalRef }]) {
+    const exported = (await mounted.operations.export(actor, ref)).documents.find(item => item.contributorId === contributorId);
+    expect(exported?.data).toStrictEqual(retained);
+    expect(exported?.coverage.complete).toBe(true);
+    expect(exported?.obligations).toStrictEqual(obligations);
+  }
+  expect((await exportRows(source.runtime, randomUUID(), null)).data).toStrictEqual({ receiptChunks: [] });
+  expect(await exportRows(source.runtime, quote.clientId, randomUUID())).toMatchObject({
+    data: { receiptChunks: [] }, coverage: { complete: false, unavailable: expect.arrayContaining(["Receipt ownership unverified"]) },
+  });
   expect(await scoped(source.runtime, input)).toBeNull();
   expect(await scoped(source.runtime, { ...input, owner: { ...input.owner, principalRef: randomUUID() } })).toBeNull();
   expect(await mounted.operations.erase(actor, erase)).toStrictEqual({ ...value, outcome: "ALREADY_ERASED" });
@@ -167,6 +181,50 @@ it("mounts safely before the declaration, then requires verified reconciliation 
   });
 }, postgresSetupTimeoutMs);
 
+it.each(["contact", "principal"] as const)("reconciles an earlier erasure that recorded only its %s alias", async kind => {
+  const actor = await operator(store.owner);
+  const fresh = await prepareReceipt(store, sku, randomUUID());
+  const id = await transaction(store.owner, db => writeReceipt(db, fresh.input, fresh.quote, sku));
+  const { customerOrSessionRef, principalRef } = fresh.input.owner;
+  const contact = kind === "contact" ? customerOrSessionRef : null;
+  const principal = kind === "principal" ? principalRef : null;
+  if (principal) {
+    await store.owner.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,$2)",
+      [principal, `${principal}@example.invalid`]);
+  }
+  await store.owner.query("UPDATE public.clients SET principal_id=NULL WHERE id=$1", [customerOrSessionRef]);
+  const subject = kind === "contact" ? subjectFor(customerOrSessionRef) : { kind, principalId: principalRef };
+  const request = { subject, idempotencyKey: randomUUID() };
+  const mounted = privacy(store.runtime);
+  // Use the pre-declaration contributor set to produce an earlier erasure with genuine dispositions.
+  const historical = createPrivacyOperations({ ...mounted, now: () => new Date(), randomId: randomUUID,
+    store: { ...mounted.store, async readRequiredContributorIds(db) {
+      return (await readRequiredPrivacyContributorIds(db)).filter(id => id !== contributorId);
+    } } });
+  const original = await historical.erase(actor, request);
+  expect((await store.owner.query("SELECT client_id,principal_id FROM public.identity_privacy_erasures WHERE erasure_id=$1",
+    [original.erasureId])).rows).toStrictEqual([{ client_id: contact, principal_id: principal }]);
+  const unrelated = await ledgerRow(store.owner, actor.principalId, { customerOrSessionRef: null, principalRef: randomUUID() });
+  expectPrivacyError(await rejected(mounted.operations.erase(actor, request)), incompleteCode, true);
+  expect(await eraseRows(store.runtime, contact, principal)).toBe(-1);
+  const reconcileSql = "SELECT public.commerce_erase_order_draft_receipts_v2($1,$2,$3) AS changed";
+  expectSqlError(await rejected(store.runtime.query(reconcileSql, [contact, principal, original.erasureId])),
+    "42501", "privacy_reconciliation_owner_required");
+  expect((await store.migrator.query(reconcileSql, [contact, principal, unrelated.erasureId])).rows).toStrictEqual([{ changed: -1 }]);
+  expect(await scoped(store.runtime, fresh.input)).toStrictEqual(outcome(id, fresh.quote));
+
+  const owner = privacy(store.migrator);
+  const registry = createPersonalDataContributorRegistry([createOrderDraftReceiptsPrivacyContributor()], { requiredContributorIds: [contributorId] });
+  const approval = { erasure_id: original.erasureId, contributor_id: contributorId, evidence_ref: randomUUID() };
+  await expect(reconcilePostgresPrivacyErasure({ ...owner, registry, actor }, approval)).resolves.toStrictEqual(disposition);
+  expect(await rawReceipt(store.owner, keyOf(fresh.input))).toMatchObject({ principal_ref: null, customer_or_session_ref: null });
+  expect(await mounted.operations.erase(actor, request)).toMatchObject({ erasureId: original.erasureId, outcome: "ALREADY_ERASED" });
+  if (kind === "principal") {
+    expect((await exportRows(store.runtime, null, principalRef)).coverage).toMatchObject({ complete: false,
+      unavailable: expect.arrayContaining(["Retained receipt order references unavailable without a verified contact"]) });
+  }
+});
+
 it("withholds opposing aliases and verifies both one-coordinate export paths", async () => {
   const [a, b] = [await prepareReceipt(store, sku, randomUUID()), await prepareReceipt(store, sku, randomUUID())];
   const aId = await transaction(store.owner, db => writeReceipt(db, a.input, a.quote, sku,
@@ -177,8 +235,8 @@ it("withholds opposing aliases and verifies both one-coordinate export paths", a
   const mounted = privacy(store.runtime);
   // Temporarily disabled receipt ownership verification in a disposable database.
   await transaction(store.owner, async db => {
-    await replaceRoutineText(db, "public.commerce_order_draft_receipt_privacy_matches_v2(uuid,uuid)",
-      "v.agrees AND (p_principal IS NULL OR v.paired), v.agrees AND v.paired", "true, true");
+    await replaceRoutineText(db, "public.commerce_order_draft_receipt_privacy_matches_v2(uuid,uuid,uuid)",
+      "v.agrees AND (p_principal IS NULL OR v.paired),", "true,");
     const unsafe = await exportRows(db, a.input.owner.customerOrSessionRef, a.input.owner.principalRef);
     expect(JSON.stringify(unsafe.data)).toContain(bId);
   }, "ROLLBACK");
@@ -208,13 +266,18 @@ it("withholds opposing aliases and verifies both one-coordinate export paths", a
   expect((await exportRows(store.runtime, null, principal)).data).toStrictEqual({ receiptChunks: [[{ ...fields, principalRef: principal }]] });
   // A contact can establish the order without an available principal link.
   await store.owner.query("UPDATE public.clients SET principal_id=NULL WHERE id=$1", [contact]);
-  expect((await exportRows(store.runtime, contact, null)).data).toStrictEqual({ receiptChunks: [[{ ...fields, customerOrSessionRef: contact }]] });
+  const partial = await exportRows(store.runtime, contact, null);
+  expect(partial.data).toStrictEqual({ receiptChunks: [[{ ...fields, customerOrSessionRef: contact }]] });
+  expect(partial.coverage).toMatchObject({ complete: false,
+    unavailable: expect.arrayContaining(["Receipt principal reference unavailable"]) });
+  expect((await mounted.operations.export(actors, subjectFor(contact))).documents.find(item => item.contributorId === contributorId))
+    .toStrictEqual(partial);
   expect((await exportRows(store.runtime, null, principal)).data).toStrictEqual({ receiptChunks: [] });
   expect(await eraseRows(store.runtime, contact, null)).toBe(-1);
 });
 
 const lock = "LOCK TABLE public.identity_privacy_erasures IN SHARE ROW EXCLUSIVE MODE";
-async function ledgerRow(db: Db, actor: string, owner: { customerOrSessionRef: string; principalRef: string }, evidence?: typeof disposition) {
+async function ledgerRow(db: Db, actor: string, owner: { customerOrSessionRef: string | null; principalRef: string | null }, evidence?: typeof disposition) {
   const erasureId = randomUUID(), idempotencyKey = randomUUID();
   await createPostgresPrivacyStore().saveReceipt(db,
     { contactId: owner.customerOrSessionRef, principalId: owner.principalRef, identity: {} },
@@ -228,14 +291,6 @@ async function ledgerRow(db: Db, actor: string, owner: { customerOrSessionRef: s
 }
 
 const refusesClear = (work: Promise<unknown>) => expectReceiptError(work, "55000", "order_draft_receipt_immutable", undefined, immutableHint);
-
-async function holdsErasureEvidence(db: PoolClient, erasureId: string): Promise<boolean> {
-  const { rows } = await db.query(`SELECT EXISTS (SELECT FROM pg_locks
-    WHERE pid = pg_backend_pid() AND granted AND locktype = 'advisory' AND mode = 'ExclusiveLock' AND objsubid = 1
-      AND ((classid::bigint << 32) | objid::bigint) = hashtextextended('order-draft-receipt-erasure:' || $1::uuid::text, 0)
-  ) AS held`, [erasureId]);
-  return rows[0]!.held;
-}
 
 it("requires transaction evidence from the runtime and refuses stale, wrong-subject and version-only records", async () => {
   const actor = await operator(store.owner);
@@ -270,13 +325,43 @@ it("requires transaction evidence from the runtime and refuses stale, wrong-subj
   expect(covered?.coveredContributorIds).not.toContain(contributorId);
   await store.owner.query("UPDATE public.identity_privacy_erasures SET dispositions=$2 WHERE erasure_id=$1",
     [versionOnly.erasureId, JSON.stringify([disposition])]);
-  await refusesClear(runtimeClear());
+  expect(await eraseRows(store.runtime, contact, principal)).toBe(-1);
   await store.owner.query("INSERT INTO public.identity_privacy_erasure_reconciliations(erasure_id,contributor_id,evidence_ref) VALUES($1,$2,$3)",
     [versionOnly.erasureId, contributorId, randomUUID()]);
-  await refusesClear(transaction(store.owner, async db => { await db.query(lock); expect(await eraseRows(db, contact, principal)).toBe(1); }));
+  expect(await eraseRows(store.owner, contact, principal)).toBe(-1);
   expect(await rawReceipt(store.owner, key)).toStrictEqual(original);
   expect(await history(store.owner, key)).toStrictEqual(outcome(id, a.quote));
 });
+
+it("refuses a direct clear by the granted runtime login even with matching new ledger evidence", async () => {
+  const direct = await template.clone("direct-receipt-clear");
+  await assertRuntime(direct);
+  const actor = await operator(direct.owner);
+  const variant = await seedSku(direct.owner);
+  const fresh = await prepareReceipt(direct, variant);
+  const id = await transaction(direct.owner, db => writeReceipt(db, fresh.input, fresh.quote, variant));
+  const key = keyOf(fresh.input), original = await rawReceipt(direct.owner, key);
+  const update = `UPDATE public.${receipts} SET principal_ref=NULL, customer_or_session_ref=NULL WHERE order_id=$1`;
+  await direct.owner.query(`GRANT SELECT, UPDATE ON public.${receipts} TO service_role;
+    CREATE POLICY test_direct_clear ON public.${receipts} TO service_role USING (true)`);
+  await refusesClear(transaction(direct.runtime, async db => {
+    await db.query(lock);
+    await ledgerRow(db, actor.principalId, fresh.input.owner, disposition);
+    await db.query(update, [id]);
+  }));
+  // Temporarily disabled the immediate trigger in this disposable database to exercise the deferred guard directly.
+  await direct.owner.query(`ALTER TABLE public.${receipts} DISABLE TRIGGER ${guard}`);
+  await refusesClear(transaction(direct.runtime, async db => {
+    await db.query(lock);
+    const recorded = await ledgerRow(db, actor.principalId, fresh.input.owner, disposition);
+    await db.query("SELECT pg_advisory_xact_lock(hashtextextended('order-draft-receipt-erasure:' || $1::uuid::text, 0))", [recorded.erasureId]);
+    expect((await db.query(update, [id])).rowCount).toBe(1);
+    await db.query(`SET CONSTRAINTS ${evidenceGuard} IMMEDIATE`);
+  }));
+  expect(await rawReceipt(direct.owner, key)).toStrictEqual(original);
+  expectSqlError(await rejected(direct.runtime.query(`INSERT INTO public.${marks} VALUES (pg_current_xact_id(), $1, NULL)`, [id])),
+    "42501", `permission denied for table ${marks}`);
+}, postgresSetupTimeoutMs);
 
 it("commits the runtime clear and evidence after releasing their savepoint", async () => {
   const actor = await operator(store.owner);
@@ -288,12 +373,12 @@ it("commits the runtime clear and evidence after releasing their savepoint", asy
     expect(await eraseRows(db, fresh.quote.clientId, fresh.input.owner.principalRef)).toBe(1);
     const recorded = await ledgerRow(db, actor.principalId, fresh.input.owner, disposition);
     await db.query("RELEASE SAVEPOINT evidence");
-    expect(await holdsErasureEvidence(db, recorded.erasureId)).toBe(true);
     return recorded;
   });
   expect((await store.owner.query("SELECT erasure_id FROM public.identity_privacy_erasures WHERE erasure_id=$1",
     [evidence.erasureId])).rows).toStrictEqual([{ erasure_id: evidence.erasureId }]);
   expect(await rawReceipt(store.owner, keyOf(fresh.input))).toMatchObject({ principal_ref: null, customer_or_session_ref: null });
+  expect((await store.owner.query(`SELECT * FROM public.${marks}`)).rows).toStrictEqual([]);
 });
 
 it("preserves both owner references when the clear is rolled back to a savepoint", async () => {
@@ -308,6 +393,7 @@ it("preserves both owner references when the clear is rolled back to a savepoint
     await db.query("RELEASE SAVEPOINT clear_receipt");
   });
   expect(await rawReceipt(store.owner, key)).toStrictEqual(original);
+  expect((await store.owner.query(`SELECT * FROM public.${marks}`)).rows).toStrictEqual([]);
 });
 
 it("refuses the clear outside a savepoint when the evidence inside it is rolled back", async () => {
@@ -320,10 +406,8 @@ it("refuses the clear outside a savepoint when the evidence inside it is rolled 
     expect(await eraseRows(db, fresh.quote.clientId, fresh.input.owner.principalRef)).toBe(1);
     await db.query("SAVEPOINT evidence");
     const recorded = await ledgerRow(db, actor.principalId, fresh.input.owner, disposition);
-    expect(await holdsErasureEvidence(db, recorded.erasureId)).toBe(true);
     await db.query("ROLLBACK TO SAVEPOINT evidence");
     await db.query("RELEASE SAVEPOINT evidence");
-    expect(await holdsErasureEvidence(db, recorded.erasureId)).toBe(false);
     expect((await db.query("SELECT erasure_id FROM public.identity_privacy_erasures WHERE erasure_id=$1",
       [recorded.erasureId])).rows).toStrictEqual([]);
   }));

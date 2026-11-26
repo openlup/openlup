@@ -18,6 +18,8 @@ CREATE INDEX commerce_order_draft_receipts_v2_customer_idx ON public.commerce_or
 ALTER TABLE public.commerce_order_draft_receipts_v2 ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.commerce_order_draft_receipts_v2 FROM PUBLIC;
 
+-- This derived key remains linkable to a known original scope and request key.
+-- The private history reader keeps it with the order owner's retained order reference.
 CREATE FUNCTION public.commerce_order_draft_storage_key_v2(p_owner jsonb, p_request_key text) RETURNS text
 LANGUAGE sql STABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
   SELECT encode(sha256(convert_to(public.catalog_publication_canonical(

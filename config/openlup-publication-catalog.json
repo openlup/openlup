@@ -6846,6 +6846,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/identity/orderDraftReceiptsPrivacy.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/identity/parcelContactPrivacy.ts",
       "class": "public-output"
     },
@@ -22003,10 +22007,6 @@
     },
     {
       "path": "server/runtime/auth/operatorSessionBinding.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/runtime/auth/orderDraftReceiptsPrivacyContributor.ts",
       "class": "public-output"
     },
     {

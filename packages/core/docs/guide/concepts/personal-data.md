@@ -49,14 +49,15 @@ owner declares required contributor IDs in the same ordered forward as the owner
 feature. The runtime can execute the declaration reader. Each admitted operation
 reads the current set once inside its transaction.
 Register working owners for every installed ID, including saved addresses,
-preferences and tax evaluations in the reference composition. Keep an ID declared while its
-scoped evidence remains.
+preferences, tax evaluations and order draft receipts in the reference
+composition. Keep an ID declared while its scoped evidence remains.
 
 Native store wrappers implement `NativePrivacyStore` and forward
 `readRequiredContributorIds` and `findErasureReplay` on the held transaction.
 Forward the original receipt and its covered contributor IDs. Receipt coverage
-includes recognized IDs regardless of their historical versions and approvals
-bound to that receipt. Inject the instance
+includes recognized IDs and approvals bound to that receipt. Order draft receipt
+coverage requires its recorded contributor version and obligations or an
+approval bound to the original erasure. Inject the instance
 returned by the serving module's `createPrivacyOperations` into the reference
 host. Use `decoratePrivacyRoute` to wrap each guarded handler with host request
 scope or lifecycle logic. Probe both operations on the exact serving build
@@ -171,6 +172,17 @@ Enable evaluation writes only after every native privacy handler that serves
 the store includes the tax-calculation contributor.
 Export includes verified evaluation outcomes. Erasure keeps only an evaluation
 identifier and any pseudonymous marker needed to fence provider reference reuse.
+
+For native order draft receipts, add
+`createOrderDraftReceiptsPrivacyContributor()` from `@openlup/platform/identity`
+to the privacy registry when the catalogue declares `order-draft-receipts`.
+An export reports incomplete coverage when it can verify the contact's order
+but cannot verify the receipt's principal reference. Erasure clears the receipt's
+direct owner references and retains the order owner's order reference and the
+replay key derived from the original scope and request. Export includes the
+retained order reference when ownership can be verified and withholds the
+derived key and command digest. Reconcile earlier erasures against their
+original receipt and recorded aliases.
 
 The reference host exposes `POST /api/bff/admin/identity/privacy/export` and
 `POST /api/bff/admin/identity/privacy/erase`. Both require the application's
