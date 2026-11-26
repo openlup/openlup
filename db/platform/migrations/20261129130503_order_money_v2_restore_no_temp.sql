@@ -52,10 +52,10 @@ BEGIN
   END IF;
 
   -- Restore re-attests this session after the deferred checks. A temporary
-  -- schema would change its effective search path. Reconcile every restore
-  -- event, while the header INSERT still supplies the seal check.
+  -- schema would change its effective search path. Recheck the evidence and
+  -- projection on every restore event, including after a constraint flush.
   IF restoring THEN
-    check_seal := p_fresh;
+    check_seal := true;
     check_projection := true;
   ELSE
     -- Compare visible tuple identities and creating transactions, with a boundary

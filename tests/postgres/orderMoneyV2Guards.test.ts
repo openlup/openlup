@@ -711,6 +711,25 @@ it("requires owner evidence recovery when a live restore has a nonfinal calculat
   await transaction(store.owner, db => restore(db, terminal));
 });
 
+it.each([
+  "trg_commerce_order_items_line_sum",
+  "trg_commerce_orders_line_sum",
+])("rechecks live restore evidence when %s follows the header flush", async constraint => {
+  const evidence = await issue(store, sku, false);
+  await transaction(store.owner, async db => {
+    await ownerRestore(db);
+    const { id } = await write(db, evidence, sku);
+    await db.query("SET CONSTRAINTS trg_commerce_orders_line_sum IMMEDIATE");
+    expect((await db.query("SELECT public.tax_calculation_erase_v1($1) AS erased", [evidence.clientId])).rows)
+      .toEqual([{ erased: 1 }]);
+    if (constraint === "trg_commerce_orders_line_sum") {
+      await db.query("SET CONSTRAINTS trg_commerce_orders_line_sum DEFERRED");
+      await db.query("UPDATE public.commerce_orders SET updated_at=now() WHERE id=$1", [id]);
+    }
+    await expectMismatch(db.query(`SET CONSTRAINTS ${constraint} IMMEDIATE`), "/taxEvidence", evidenceRemedy);
+  }, "ROLLBACK");
+});
+
 it("honors the owner restore fence, skips live provenance at restore, and checks the retained digest", async () => {
   const evidence = await issue(store, sku, false);
   await expect(transaction(store.owner, async db => {
