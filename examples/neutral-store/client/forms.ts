@@ -1,6 +1,7 @@
 import type { Operation, ActionInput, ActionResult } from '../shared/api.ts';
 import type { PageContext } from './context.ts';
 import type { CopyKey } from '../owned/copy.ts';
+import { storefrontAnchor } from '@openlup/platform/storefront';
 import { act, uncertainAction } from './api.ts';
 import { append, button, el, renderValue } from './dom.ts';
 import { limitFor, nativeLimits, operationLimits, otherLimits } from '../shared/limits.ts';
@@ -17,7 +18,14 @@ export interface FieldSpec {
   pattern?: string;
   options?: Array<{ value: string; text: string }>;
   autocomplete?: string;
+  /** A `storefrontAnchor.field` value, rendered as `data-openlup-field` on the control. */
+  anchor?: FieldAnchor;
 }
+
+/** A buyer-detail field anchor. */
+export type FieldAnchor = (typeof storefrontAnchor.field)[keyof typeof storefrontAnchor.field];
+/** A buyer action anchor. */
+export type ActionAnchor = (typeof storefrontAnchor.action)[keyof typeof storefrontAnchor.action];
 
 export interface ActionFormOptions {
   operation: Operation;
@@ -34,6 +42,8 @@ export interface ActionFormOptions {
   resultMessage?: (value: unknown) => CopyKey | undefined;
   /** A durable command key owned by the page. Without it the key lives in this form and a reset button starts a new one. */
   continuation?: FormContinuation;
+  /** A `storefrontAnchor.action` value, rendered as `data-openlup-action` on the submit button. */
+  submitAnchor?: ActionAnchor;
 }
 
 export interface FormContinuation {
@@ -69,6 +79,7 @@ export function field(context: PageContext, spec: FieldSpec): {
     control = el('input', { ...attrs, type: spec.type ?? 'text', value: spec.value ?? '',
       pattern: spec.pattern, min: spec.min, max: spec.max, step: spec.type === 'number' ? 1 : undefined });
   }
+  if (spec.anchor) control.setAttribute(storefrontAnchor.attribute.field, spec.anchor);
   const wrapper = el('div', { class: spec.type === 'checkbox' ? 'field checkbox-field' : 'field' });
   const label = el('label', { for: id }, context.t(spec.label));
   if (spec.type === 'checkbox') append(wrapper, control, label);
@@ -87,6 +98,7 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
     append(form, item.wrapper);
   }
   const submit = el('button', { type: 'submit' }, typeof options.submit === 'string' ? context.t(options.submit) : options.submit.label);
+  if (options.submitAnchor) submit.setAttribute(storefrontAnchor.attribute.action, options.submitAnchor);
   // Keep command identity on an uncertain transport result. A changed input is a new command.
   let commandKey = crypto.randomUUID();
   let priorInput: string | null = null;
