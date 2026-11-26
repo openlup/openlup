@@ -228,7 +228,7 @@ it("requires explicit relation privileges under native invoker rights and refuse
         public.subscriptions, public.subscription_renewal_terms, public.subscription_renewal_term_lines TO inventory_runtime;
       GRANT EXECUTE ON FUNCTION public.inventory_available_to_promise(text,text,timestamptz,boolean),
         public.inventory_channel_exposure_quantity(text,text), public.inventory_renewal_protection_days(),
-        public.subscriptions__lock_renewal_writer_scope(uuid), public.subscriptions__check_legacy_renewal_write(uuid) TO inventory_runtime`);
+        public.subscriptions__lock_renewal_writer_scope(uuid,boolean), public.subscriptions__check_legacy_renewal_write(uuid) TO inventory_runtime`);
     await db.query("SET ROLE inventory_runtime");
     const held = await reserve(db).reserve(f.input);
     expect(held).toMatchObject({ reserved: true, status: "held", replayed: false });
