@@ -221,7 +221,7 @@ export declare function createOutbox(ports: OutboxFactoryPorts, options: OutboxF
 export * from "./contracts.js";
 export { runOutboxDispatchWorker } from "./worker.js";
 export { OutboxHandlerExecutionTrace } from "./trace.js";
-export { uniqueRegistry, composeHandlers, claimAllowlist } from "./registry.js";
+export { uniqueRegistry, composeHandlers, composeIndependentHandlers, claimAllowlist } from "./registry.js";
 export { readOutboxDispatchConfig, validateScheduledConfig } from "./config.js";
 export { buildOutboxEnqueue } from "./enqueue.js";
 export type { EnqueueEvent } from "./enqueue.js";
@@ -232,10 +232,22 @@ export type { OutboxFactoryPorts, OutboxFactoryOptions, OutboxScheduleResult, Ha
 ## dist/registry.d.ts
 
 ```ts
-import type { OutboxHandler, OutboxHandlerRegistry } from "./contracts.js";
+import type { OutboxHandler, OutboxHandlerOutcome, OutboxHandlerRegistry } from "./contracts.js";
 export declare function claimAllowlist(registry: OutboxHandlerRegistry): string[];
 export declare function uniqueRegistry(handlers: readonly OutboxHandler[]): OutboxHandlerRegistry;
 export declare function composeHandlers(first: OutboxHandler, second: OutboxHandler): OutboxHandler;
+type TerminalHandlerOutcome = Extract<OutboxHandlerOutcome, {
+    kind: "processed" | "discard";
+}>;
+/** Compose same-event handlers whose effects each have their own replay protection. */
+export declare function composeIndependentHandlers(handlers: readonly OutboxHandler[], options: {
+    maxConcurrency: number;
+    /** Deadline for the entire group, enforced by the existing outbox worker. */
+    timeoutMs: number;
+    acknowledgeDiscardedHandlers?: boolean;
+    projectProcessedDetail?(outcomes: readonly TerminalHandlerOutcome[]): Record<string, unknown> | undefined;
+}): OutboxHandler;
+export {};
 ```
 ## dist/trace.d.ts
 

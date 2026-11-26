@@ -179,6 +179,7 @@ const POSTGRES_SUITE_CLOSURES = {
   'tests/postgres/channelManagedRetainedInstallation.test.ts': ['@managedCompat'],
   'tests/postgres/channelMigrationInventory.test.ts': [],
   'tests/postgres/channelPurchase.conformance.test.ts': ['@managedCompat', '@src'],
+  'tests/postgres/checkoutAbandonmentSafetyGrant.test.ts': [],
   'tests/postgres/checkoutAttemptLedger.test.ts': ['@managedCompat'],
   'tests/postgres/checkoutInlineRecovery.test.ts': ['@starter', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
   'tests/postgres/checkoutOwnerRestoreStates.test.ts': ['tests/postgres/checkoutOwnerRestoreStates.fixture.ts'],
@@ -231,10 +232,12 @@ const POSTGRES_SUITE_CLOSURES = {
   'tests/postgres/customer_browser_identity.test.ts': ['@src'],
   'tests/postgres/definerSearchPath.test.ts': ['tests/postgres/catalogPublicationFixture.ts', 'tests/postgres/customerAccountMutations.fixture.ts'],
   'tests/postgres/destinationV2Checkout.test.ts': ['tests/postgres/destinationDocumentFixture.ts', 'tests/postgres/destinationReceiptFixture.ts'],
+  'tests/postgres/destinationV2DispatchLedger.test.ts': ['tests/postgres/destinationDocumentFixture.ts', 'tests/postgres/destinationReceiptFixture.ts'],
   'tests/postgres/destinationV2OrderBinding.test.ts': ['tests/postgres/destinationDocumentFixture.ts', 'tests/postgres/destinationReceiptFixture.ts'],
   'tests/postgres/destinationV2ParcelFreeze.test.ts': ['tests/postgres/destinationDocumentFixture.ts', 'tests/postgres/destinationReceiptFixture.ts'],
   'tests/postgres/destinationV2Receipts.test.ts': ['tests/postgres/destinationReceiptFixture.ts'],
   'tests/postgres/destinationV2SubscriptionEdit.test.ts': ['@src', 'tests/postgres/destinationDocumentFixture.ts', 'tests/postgres/destinationReceiptFixture.ts'],
+  'tests/postgres/destinationV2SubscriptionReads.test.ts': ['tests/postgres/customerAccountMutations.fixture.ts', 'tests/postgres/destinationDocumentFixture.ts', 'tests/postgres/destinationReceiptFixture.ts'],
   'tests/postgres/disposableDockerReap.test.ts': [],
   'tests/postgres/dunningAttemptReplay.test.ts': ['@managedCompat'],
   'tests/postgres/dunningLifecycleActiveRepair.test.ts': [],
@@ -295,9 +298,12 @@ const POSTGRES_SUITE_CLOSURES = {
   'tests/postgres/nativeAccountReads.test.ts': ['@src', 'tests/postgres/subscriptionNativeFixture.ts'],
   'tests/postgres/nativeCheckoutPersistence.test.ts': [],
   'tests/postgres/nativeRenewalDueFairness.test.ts': ['tests/postgres/subscriptionNativeFixture.ts'],
+  'tests/postgres/nativeRenewalV3Storage.test.ts': ['@src', 'tests/postgres/customerAccountMutations.fixture.ts', 'tests/postgres/nativeRenewalV3Legacy.fixture.ts', 'tests/postgres/orderMoneyV2Storage.fixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
+  'tests/postgres/nativeRenewalV3StoragePgtap.test.ts': ['@managedCompat', 'tests/postgres/orderMoneyV2Storage.fixture.ts'],
   'tests/postgres/neutralStarterE4.test.ts': ['@starter'],
   'tests/postgres/neutralStoreCataloguePacks.test.ts': ['@starter'],
   'tests/postgres/neutralStorePaidMail.test.ts': ['@starter'],
+  'tests/postgres/neutralStorePurchaseContinuation.test.ts': ['@starter'],
   'tests/postgres/neutralStoreQuote.test.ts': ['@starter'],
   'tests/postgres/neutralStoreRecovery.test.ts': ['@starter'],
   'tests/postgres/neutralStoreRenewal.test.ts': ['@starter', 'tests/postgres/subscriptionPublicRenewal.worker.mjs', 'tests/postgres/subscriptionPublicRenewalFixture.ts'],
@@ -316,7 +322,11 @@ const POSTGRES_SUITE_CLOSURES = {
   'tests/postgres/operatorInvitationCatalogue.test.ts': ['tests/postgres/operatorInvitationCatalogue.ts'],
   'tests/postgres/operatorInvitationLifecycle.test.ts': ['tests/postgres/operatorInvitationCatalogue.ts'],
   'tests/postgres/operatorOrderCommands.test.ts': ['@starter', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
+  'tests/postgres/orderMoneyV2Storage.test.ts': ['tests/postgres/customerAccountMutations.fixture.ts', 'tests/postgres/orderMoneyV2Storage.fixture.ts'],
+  'tests/postgres/orderMoneyV2StoragePgtap.test.ts': ['@managedCompat', 'tests/postgres/fixtures/orderMoneyV2Storage/replayed.sql'],
   'tests/postgres/partnerAcquisition.test.ts': [],
+  'tests/postgres/paymentCaptureTime.test.ts': ['@starter', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
+  'tests/postgres/paymentCaptureTimePgtap.test.ts': ['@managedCompat', '@starter', 'tests/postgres/fixtures/paymentCaptureTime/replayed.sql', 'tests/postgres/fixtures/paymentProvider/setup.sql', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
   'tests/postgres/paymentMethodRefsPgtap.test.ts': ['@managedCompat', 'tests/postgres/fixtures/paymentMethods/', 'tests/postgres/m19NoticeFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
   'tests/postgres/paymentMethodRuntime.test.ts': ['@starter', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
   'tests/postgres/paymentProviderProfiles.test.ts': ['@starter', 'tests/postgres/fixtures/', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
@@ -400,10 +410,18 @@ const POSTGRES_SUITE_CLOSURES = {
   'tests/postgres/taxCoverageRevisions.test.ts': ['tests/postgres/fixtures/taxCoverage/corpus.ts', 'tests/postgres/fixtures/taxCoverage/settings.ts'],
 };
 // These registrations land before the suites. Check each suite's own file.
-const GOVERNED_DRAFT_SUITE_PATHS = [
-  'tests/postgres/catalogAdmissionOwnerWrite.test.ts',
-  'tests/postgres/catalogAdmissionRuntimeCommit.test.ts',
-];
+const PENDING_POSTGRES_SUITE_CLOSURES = {
+  'tests/postgres/catalogAdmissionOwnerWrite.test.ts': GOVERNED_DRAFT_SUITE_INPUTS,
+  'tests/postgres/catalogAdmissionRuntimeCommit.test.ts': GOVERNED_DRAFT_SUITE_INPUTS,
+  'tests/postgres/renewalOrderDestinationV2.test.ts': [
+    'tests/postgres/renewalOrderDestinationV2.fixture.ts',
+    'tests/postgres/customerAccountMutations.fixture.ts',
+    'tests/postgres/destinationDocumentFixture.ts',
+    'tests/postgres/destinationReceiptFixture.ts',
+    'tests/postgres/orderMoneyV2Storage.fixture.ts',
+    'tests/postgres/subscriptionNativeFixture.ts',
+  ],
+};
 const postgresSuiteInputs = (testPath, extras = []) => [
   ...PG_BASE_INPUTS,
   testPath,
@@ -416,10 +434,11 @@ const safeFileProbe = isFile => testPath => {
     return false;
   }
 };
-export function governedDraftSuiteInputs(isFile) {
-  return Object.fromEntries(GOVERNED_DRAFT_SUITE_PATHS
-    .filter(safeFileProbe(isFile))
-    .map(testPath => [testPath, postgresSuiteInputs(testPath, GOVERNED_DRAFT_SUITE_INPUTS)]));
+function pendingPostgresSuiteInputs(isFile) {
+  const probe = safeFileProbe(isFile);
+  return Object.fromEntries(Object.entries(PENDING_POSTGRES_SUITE_CLOSURES)
+    .filter(([testPath]) => probe(testPath))
+    .map(([testPath, extras]) => [testPath, postgresSuiteInputs(testPath, extras)]));
 }
 export const TOOLING_INPUTS = {
   'scripts/agent-review-derived-inventory.test.ts': [
@@ -494,7 +513,7 @@ export const TOOLING_INPUTS = {
   ...Object.fromEntries(
     Object.entries(POSTGRES_SUITE_CLOSURES).map(([testPath, extras]) => [testPath, postgresSuiteInputs(testPath, extras)]),
   ),
-  ...governedDraftSuiteInputs(testPath =>
+  ...pendingPostgresSuiteInputs(testPath =>
     statSync(new URL(`../${testPath}`, import.meta.url), { throwIfNoEntry: false })?.isFile() ?? false),
 };
 
