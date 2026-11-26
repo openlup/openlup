@@ -19,9 +19,11 @@ const applyV2 = "public.catalog_price_setup_apply_v2(text,text,uuid)";
 const lockedV2 = "public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid)";
 const recorder = "public.catalog_publication_record_command(jsonb)";
 const mutation = "public.catalog_price_setup_mutate_claimed(jsonb,timestamptz,jsonb)";
-const verifyReceipt = "public.catalog_publication_assert_price_receipt_v2(jsonb,jsonb,jsonb,uuid,text[])";
+const verifyReceipt = "public.catalog_publication_assert_price_receipt_v2(jsonb,jsonb,jsonb,uuid,text[],text)";
 const priceOperations = "public.catalog_publication_price_operations_v2(jsonb,uuid,boolean)";
-const priceModes = "public.catalog_publication_price_modes_v2(jsonb,uuid,jsonb)";
+const priceModes = "public.catalog_publication_price_modes_v2(jsonb,uuid,jsonb,jsonb)";
+const receiptIdentity = "public.catalog_publication_completed_price_receipt_v2(jsonb,uuid)";
+const taxClassLock = "public.catalog_publication_lock_tax_class_v2(jsonb)";
 const replaced = [recorder, "public.catalog_price_setup_apply_claimed(jsonb,timestamptz)"];
 const refusal = '{"reason": "command_invalid", "outcome": "validation_issue"}';
 const before = () => {
@@ -68,13 +70,13 @@ async function assertDormant(store: AccountMutationsStore) {
     has_function_privilege('openlup_catalog_publication',to_regprocedure($2),'EXECUTE') AS second_execute`, [applyV2, lockedV2])).rows[0];
   expect(facts).toEqual({ basis: installation.generation === "qualified-v2", write_basis: false, delegation: false,
     other_column: false, whole_table: false, first_execute: false, second_execute: false });
-  const [entry, gate, valid, record, reader, mutate, verify, operations, modes] = await routineAttributes(owner,
-    [apply, basisGate, validator, recorder, lockedV2, mutation, verifyReceipt, priceOperations, priceModes]);
+  const [entry, gate, valid, record, reader, mutate, verify, operations, modes, identity, taxLock] = await routineAttributes(owner,
+    [apply, basisGate, validator, recorder, lockedV2, mutation, verifyReceipt, priceOperations, priceModes, receiptIdentity, taxClassLock]);
   expect(record).toMatchObject({ owner: entry.owner, definer: installation.generation === "qualified-v2",
     settings: ["search_path=pg_catalog, public, pg_temp"] });
   expect(reader).toMatchObject({ owner: entry.owner, definer: true, settings: ["search_path=pg_catalog, pg_temp"] });
   expect(mutate).toMatchObject({ owner: entry.owner, definer: false, settings: ["search_path=pg_catalog, pg_temp"] });
-  for (const helper of [gate, valid, verify, operations, modes]) expect(helper).toMatchObject({
+  for (const helper of [gate, valid, verify, operations, modes, identity, taxLock]) expect(helper).toMatchObject({
     owner: entry.owner, definer: false, settings: ["search_path=pg_catalog, pg_temp"],
   });
   const { rows: [{ present: hasServiceRole }] } = await owner.query(
@@ -205,7 +207,7 @@ it("keeps fresh qualified-v2 dormant until both controlled EXECUTEs are effectiv
 
 it("revokes browser default EXECUTE on the installed private price routines", async () => {
   const store = await installAccountMutations("bootstrap", false, "price-recorder-acl");
-  const signatures = [mutation, lockedV2, verifyReceipt, priceOperations, priceModes];
+  const signatures = [mutation, lockedV2, verifyReceipt, priceOperations, priceModes, receiptIdentity, taxClassLock];
   try {
     const forward = current().forward.find(unit => recorderForward.test(unit.file))!;
     const db = await store.owner.connect();
@@ -234,7 +236,7 @@ it("finds no native v2 writer or gate on the managed rail", async () => {
         await db.query(readFileSync(`supabase/migrations/${file}`, "utf8").replace(/^\\(?:un)?restrict .*$/gmu,""));
       }
       expect(await routineAttributes(owner,
-        [apply, applyV2, lockedV2, mutation, verifyReceipt, priceOperations, priceModes, recorder, basisGate, validator])).toEqual([]);
+        [apply, applyV2, lockedV2, mutation, verifyReceipt, priceOperations, priceModes, receiptIdentity, taxClassLock, recorder, basisGate, validator])).toEqual([]);
       expect((await db.query("SELECT to_regclass('public.catalog_price_setup_receipts') AS receipts")).rows).toEqual([{ receipts: null }]);
     } finally { db.release(); }
   } finally { await closePostgres(managed, owner); }

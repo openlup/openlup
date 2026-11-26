@@ -238,8 +238,8 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_publication_price_operations_v2(jsonb,uuid,boolean) FROM PUBLIC;
 
-CREATE FUNCTION public.catalog_publication_price_modes_v2(p_authored jsonb, p_previous uuid, p_skus jsonb)
-RETURNS TABLE(sku jsonb, modes jsonb)
+CREATE FUNCTION public.catalog_publication_price_modes_v2(p_authored jsonb, p_previous uuid, p_skus jsonb,
+  p_sealed_memberships jsonb DEFAULT NULL) RETURNS TABLE(sku jsonb, modes jsonb)
 LANGUAGE sql STABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
   WITH prior AS (
     SELECT ref->'skuId' AS id, r.full_facts::jsonb AS facts,
@@ -261,33 +261,67 @@ LANGUAGE sql STABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
       op->>'op'='set_eligibility' AND op->'sellableInSubscription'='true'::jsonb AS subscription
     FROM operations WHERE op->>'op'='set_eligibility' OR (op->>'op'='set_sku_lifecycle' AND op->>'state'='withdrawn')
     ORDER BY op->'skuCode',n DESC
-  ), memberships AS (
-    SELECT DISTINCT ON (op->'skuCode',op->'offerVersion') op->'skuCode' AS code,op->'admitted' AS admitted
-    FROM operations WHERE op->>'op'='set_offer_membership'
-    ORDER BY op->'skuCode',op->'offerVersion',n DESC
-  ), enrollments AS (
-    SELECT DISTINCT code FROM memberships WHERE admitted='true'::jsonb
   )
   SELECT s,jsonb_build_object(
     'requiredModes',CASE WHEN effective.subscription THEN '["one_time","subscription"]'::jsonb ELSE '["one_time"]'::jsonb END,
     'sellableStandalone',effective.standalone,
+    'firstAdmission',admission.first_offer,
     'needsFresh', (effective.standalone AND NOT coalesce(prior.active AND prior.facts->'sellableStandalone'='true'::jsonb,false))
       OR (effective.subscription AND NOT coalesce(prior.active AND prior.facts->'sellableInSubscription'='true'::jsonb,false))
-      OR (enrollments.code IS NOT NULL
-        AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(prior.facts->'memberships') m WHERE m->'admitted'='true'::jsonb)))
+      OR admission.first_offer)
   FROM jsonb_array_elements(p_skus) s LEFT JOIN prior ON prior.id=s->'id'
-  LEFT JOIN eligibility ON eligibility.code=s->'code' LEFT JOIN enrollments ON enrollments.code=s->'code'
+  LEFT JOIN eligibility ON eligibility.code=s->'code'
   CROSS JOIN product_withdrawal
+  CROSS JOIN LATERAL (SELECT NOT coalesce(prior.facts->'memberships' @> '[{"admitted":true}]',false)
+    AND CASE WHEN s ? 'memberships' THEN s->'memberships' @> '[{"admitted":true}]'
+      ELSE coalesce(p_sealed_memberships, p_authored #> '{product,sharedContent,offerMemberships}', '[]')
+        @> jsonb_build_array(jsonb_build_object('skuCode',s->'code','admitted',true)) END AS first_offer) admission
   CROSS JOIN LATERAL (SELECT
     CASE WHEN product_withdrawal.n>coalesce(eligibility.n,0) THEN false
       ELSE coalesce(eligibility.standalone,prior.facts->'sellableStandalone'='true'::jsonb,false) END AS standalone,
     CASE WHEN product_withdrawal.n>coalesce(eligibility.n,0) THEN false
       ELSE coalesce(eligibility.subscription,prior.facts->'sellableInSubscription'='true'::jsonb,false) END AS subscription) effective
 $$;
-REVOKE ALL ON FUNCTION public.catalog_publication_price_modes_v2(jsonb,uuid,jsonb) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.catalog_publication_price_modes_v2(jsonb,uuid,jsonb,jsonb) FROM PUBLIC;
+
+CREATE FUNCTION public.catalog_publication_completed_price_receipt_v2(p_operation jsonb, p_actor uuid)
+RETURNS public.catalog_price_setup_receipts
+LANGUAGE plpgsql VOLATILE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE saved public.catalog_price_setup_receipts%ROWTYPE;
+BEGIN
+  SELECT * INTO saved FROM public.catalog_price_setup_receipts r
+    WHERE r.scope='catalog.price_setup.base' AND r.idempotency_key=p_operation->>'commandKey' FOR NO KEY UPDATE NOWAIT;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'catalog_publication_price_issue_required' USING ERRCODE='23514', CONSTRAINT='catalog_publication_price_issue_required';
+  ELSIF saved.request_fingerprint IS DISTINCT FROM encode(sha256(convert_to(public.catalog_publication_canonical(p_operation,0),'UTF8')),'hex') THEN
+    RAISE EXCEPTION 'command_key_reused' USING ERRCODE='40001', CONSTRAINT='command_key_reused';
+  ELSIF saved.status<>'completed' OR saved.response_payload IS NULL THEN
+    RAISE EXCEPTION 'command_in_progress' USING ERRCODE='40001', CONSTRAINT='command_in_progress';
+  ELSIF saved.metadata->>'actorId' IS DISTINCT FROM p_actor::text THEN
+    RAISE EXCEPTION 'operator_mismatch' USING ERRCODE='42501', CONSTRAINT='operator_mismatch';
+  END IF;
+  RETURN saved;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.catalog_publication_completed_price_receipt_v2(jsonb,uuid) FROM PUBLIC;
+
+CREATE FUNCTION public.catalog_publication_lock_tax_class_v2(p_authored jsonb) RETURNS text
+LANGUAGE plpgsql VOLATILE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE class_key text; class_status text;
+BEGIN
+  IF p_authored #>> '{publication,evidence,priceContext,amountBasis}'='tax_exclusive' THEN
+    SELECT t.definition->>'taxClass' INTO class_key FROM public.catalog_type_versions t
+      WHERE t.type_key=p_authored #>> '{product,type,key}' AND to_jsonb(t.version)=p_authored #> '{product,type,version}';
+    SELECT c.status INTO class_status FROM public.catalog_tax_classes c WHERE c.key=class_key FOR SHARE NOWAIT;
+    IF class_status='active' THEN RETURN class_key; END IF;
+  END IF;
+  RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.catalog_publication_lock_tax_class_v2(jsonb) FROM PUBLIC;
 
 CREATE FUNCTION public.catalog_publication_assert_price_receipt_v2(p_authored jsonb, p_targets jsonb, p_verdict jsonb,
-  p_actor uuid, p_fresh_keys text[]) RETURNS void
+  p_actor uuid, p_fresh_keys text[], p_tax_class text) RETURNS void
 LANGUAGE plpgsql VOLATILE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
   context jsonb := p_authored #> '{publication,evidence,priceContext}';
@@ -302,8 +336,6 @@ DECLARE
   expected_start timestamptz;
   key text;
   reason text := p_verdict->>'reason';
-  class_key text;
-  class_status text;
   timestamp_shape CONSTANT text := '^[0-9]{4}-[0-9]{2}-[0-9]{2}T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\.[0-9]{1,6})?(Z|[+-][0-9]{2}:[0-9]{2}(:[0-9]{2})?)$';
 BEGIN
   IF reason IS NULL AND ((CASE WHEN jsonb_typeof(context)='object' THEN context-'tax' END) IS DISTINCT FROM p_verdict-'targets'
@@ -313,13 +345,10 @@ BEGIN
     reason := 'catalog_publication_price_context_mismatch';
   END IF;
   IF reason IS NULL AND context->>'amountBasis'='tax_exclusive' THEN
-    SELECT t.definition->>'taxClass' INTO class_key FROM public.catalog_type_versions t
-      WHERE t.type_key=p_authored #>> '{product,type,key}' AND to_jsonb(t.version)=p_authored #> '{product,type,version}';
-    SELECT c.status INTO class_status FROM public.catalog_tax_classes c WHERE c.key=class_key FOR SHARE NOWAIT;
-    reason := CASE WHEN class_status IS DISTINCT FROM 'active' THEN 'catalog_publication_tax_class_unavailable'
+    reason := CASE WHEN p_tax_class IS NULL THEN 'catalog_publication_tax_class_unavailable'
       WHEN jsonb_typeof(context->'tax') IS DISTINCT FROM 'object'
         OR (CASE WHEN jsonb_typeof(context->'tax')='object' THEN (context->'tax') - ARRAY['market','taxClassKey','classMapRevision','classMapDigest'] END) IS DISTINCT FROM '{}'::jsonb
-        OR context #> '{tax,taxClassKey}' IS DISTINCT FROM to_jsonb(class_key)
+        OR context #> '{tax,taxClassKey}' IS DISTINCT FROM to_jsonb(p_tax_class)
         OR jsonb_typeof(context #> '{tax,market}') IS DISTINCT FROM 'string'
         OR jsonb_typeof(context #> '{tax,classMapRevision}') IS DISTINCT FROM 'string'
         OR jsonb_typeof(context #> '{tax,classMapDigest}') IS DISTINCT FROM 'string'
@@ -344,17 +373,7 @@ BEGIN
       RAISE EXCEPTION 'catalog_publication_price_changed' USING ERRCODE='40001';
     END IF;
     IF NOT (key=ANY(p_fresh_keys)) THEN
-      SELECT * INTO saved FROM public.catalog_price_setup_receipts r
-        WHERE r.scope='catalog.price_setup.base' AND r.idempotency_key=key FOR NO KEY UPDATE NOWAIT;
-      IF NOT FOUND THEN
-        RAISE EXCEPTION 'catalog_publication_price_issue_required' USING ERRCODE='23514', CONSTRAINT='catalog_publication_price_issue_required';
-      ELSIF saved.request_fingerprint IS DISTINCT FROM encode(sha256(convert_to(public.catalog_publication_canonical(operation,0),'UTF8')),'hex') THEN
-        RAISE EXCEPTION 'command_key_reused' USING ERRCODE='40001', CONSTRAINT='command_key_reused';
-      ELSIF saved.status<>'completed' OR saved.response_payload IS NULL THEN
-        RAISE EXCEPTION 'command_in_progress' USING ERRCODE='40001', CONSTRAINT='command_in_progress';
-      ELSIF saved.metadata->>'actorId' IS DISTINCT FROM p_actor::text THEN
-        RAISE EXCEPTION 'operator_mismatch' USING ERRCODE='42501', CONSTRAINT='operator_mismatch';
-      END IF;
+      saved := public.catalog_publication_completed_price_receipt_v2(operation,p_actor);
       receipt := saved.response_payload->'receipt';
       IF (CASE WHEN jsonb_typeof(saved.response_payload)='object' THEN saved.response_payload - 'receipt' END) IS DISTINCT FROM '{"outcome":"committed"}'::jsonb
         OR saved.metadata IS DISTINCT FROM jsonb_build_object('actorId',p_actor,'variantId',target->'skuId','priceListId',context->'priceListId')
@@ -390,7 +409,7 @@ BEGIN
       -- Compare instants at PostgreSQL precision, including a predecessor's start.
       FOR proof, expected_start IN SELECT receipt->'current',current_entry.valid_from
         UNION ALL SELECT receipt->'previous',prior_entry.valid_from WHERE prior_entry.id IS NOT NULL LOOP
-        IF jsonb_typeof(proof->'validFrom') IS DISTINCT FROM 'string' OR proof->>'validFrom' !~ timestamp_shape
+        IF jsonb_typeof(proof->'validFrom') IS DISTINCT FROM 'string' OR (proof->>'validFrom' NOT IN ('-infinity','infinity') AND proof->>'validFrom' !~ timestamp_shape)
           OR (proof->>'validFrom')::timestamptz IS DISTINCT FROM expected_start THEN
           RAISE EXCEPTION 'catalog_publication_price_changed' USING ERRCODE='40001';
         END IF;
@@ -406,7 +425,7 @@ EXCEPTION WHEN invalid_datetime_format OR datetime_field_overflow OR invalid_tim
   RAISE EXCEPTION 'catalog_publication_price_changed' USING ERRCODE='40001';
 END;
 $$;
-REVOKE ALL ON FUNCTION public.catalog_publication_assert_price_receipt_v2(jsonb,jsonb,jsonb,uuid,text[]) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.catalog_publication_assert_price_receipt_v2(jsonb,jsonb,jsonb,uuid,text[],text) FROM PUBLIC;
 
 CREATE FUNCTION public.catalog_publication_lock_effective_base_price_v2(p_sku uuid, p_list uuid, p_approval uuid)
 RETURNS TABLE(id uuid, unit_price_minor integer, amount_kind text)
@@ -421,6 +440,7 @@ DECLARE
   target jsonb;
   verdict jsonb;
   observed jsonb;
+  tax_class text;
 BEGIN
   IF current_setting('transaction_isolation') <> 'read committed' THEN
     RAISE EXCEPTION 'catalog_publication_isolation_unsupported' USING ERRCODE='22023',
@@ -452,16 +472,16 @@ BEGIN
     RAISE EXCEPTION 'catalog_publication_price_issue_required' USING ERRCODE='23514', CONSTRAINT='catalog_publication_price_issue_required';
   END IF;
   target := target || jsonb_build_object('skuId',p_sku,'operation',operation);
-  -- Fence the receipt key before entering the price locks, as the recorder does.
-  PERFORM 1 FROM public.catalog_price_setup_receipts r
-    WHERE r.scope='catalog.price_setup.base' AND r.idempotency_key=operation->>'commandKey' FOR NO KEY UPDATE NOWAIT;
+  -- Validate receipt identity before entering the price fence, as the recorder does.
+  PERFORM public.catalog_publication_completed_price_receipt_v2(operation,actor);
   PERFORM public.catalog_price_setup_lock_context(p_list,p_sku);
   LOCK TABLE public.commerce_settings, public.price_lists, public.subscription_price_policy_revisions IN SHARE MODE NOWAIT;
   LOCK TABLE public.price_entries IN SHARE ROW EXCLUSIVE MODE NOWAIT;
   PERFORM 1 FROM public.price_entries e WHERE (e.price_list_id,e.variant_id)=(p_list,p_sku)
     ORDER BY e.id FOR NO KEY UPDATE NOWAIT;
+  tax_class := public.catalog_publication_lock_tax_class_v2(authored);
   verdict := public.catalog_publication_target_price_verdict(jsonb_build_array(target-'operation'),clock_timestamp());
-  PERFORM public.catalog_publication_assert_price_receipt_v2(authored,jsonb_build_array(target),verdict,actor,ARRAY[]::text[]);
+  PERFORM public.catalog_publication_assert_price_receipt_v2(authored,jsonb_build_array(target),verdict,actor,ARRAY[]::text[],tax_class);
   IF target->'needsFresh'='true'::jsonb AND NOT EXISTS (
     SELECT 1 FROM public.catalog_publications p WHERE p.approval_id=approval.id) THEN
     RAISE EXCEPTION 'catalog_publication_price_edit_required' USING ERRCODE='23514', CONSTRAINT='catalog_publication_price_edit_required';
@@ -473,13 +493,13 @@ $$;
 REVOKE ALL ON FUNCTION public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid) FROM PUBLIC;
 
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.catalog_price_setup_mutate_claimed(jsonb,timestamptz,jsonb), public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid), public.catalog_publication_price_operations_v2(jsonb,uuid,boolean), public.catalog_publication_price_modes_v2(jsonb,uuid,jsonb), public.catalog_publication_assert_price_receipt_v2(jsonb,jsonb,jsonb,uuid,text[]) FROM anon;';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.catalog_price_setup_mutate_claimed(jsonb,timestamptz,jsonb), public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid), public.catalog_publication_price_operations_v2(jsonb,uuid,boolean), public.catalog_publication_price_modes_v2(jsonb,uuid,jsonb,jsonb), public.catalog_publication_assert_price_receipt_v2(jsonb,jsonb,jsonb,uuid,text[],text), public.catalog_publication_completed_price_receipt_v2(jsonb,uuid), public.catalog_publication_lock_tax_class_v2(jsonb) FROM anon;';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.catalog_price_setup_mutate_claimed(jsonb,timestamptz,jsonb), public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid), public.catalog_publication_price_operations_v2(jsonb,uuid,boolean), public.catalog_publication_price_modes_v2(jsonb,uuid,jsonb), public.catalog_publication_assert_price_receipt_v2(jsonb,jsonb,jsonb,uuid,text[]) FROM authenticated;';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.catalog_price_setup_mutate_claimed(jsonb,timestamptz,jsonb), public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid), public.catalog_publication_price_operations_v2(jsonb,uuid,boolean), public.catalog_publication_price_modes_v2(jsonb,uuid,jsonb,jsonb), public.catalog_publication_assert_price_receipt_v2(jsonb,jsonb,jsonb,uuid,text[],text), public.catalog_publication_completed_price_receipt_v2(jsonb,uuid), public.catalog_publication_lock_tax_class_v2(jsonb) FROM authenticated;';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.catalog_price_setup_mutate_claimed(jsonb,timestamptz,jsonb), public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid), public.catalog_publication_price_operations_v2(jsonb,uuid,boolean), public.catalog_publication_price_modes_v2(jsonb,uuid,jsonb), public.catalog_publication_assert_price_receipt_v2(jsonb,jsonb,jsonb,uuid,text[]) FROM service_role;';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.catalog_price_setup_mutate_claimed(jsonb,timestamptz,jsonb), public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid), public.catalog_publication_price_operations_v2(jsonb,uuid,boolean), public.catalog_publication_price_modes_v2(jsonb,uuid,jsonb,jsonb), public.catalog_publication_assert_price_receipt_v2(jsonb,jsonb,jsonb,uuid,text[],text), public.catalog_publication_completed_price_receipt_v2(jsonb,uuid), public.catalog_publication_lock_tax_class_v2(jsonb) FROM service_role;';
 END IF; END; $$;
 
 CREATE OR REPLACE FUNCTION public.catalog_publication_record_command(p_command jsonb) RETURNS text
@@ -525,6 +545,9 @@ DECLARE
   command_text text;
   reason text;
   at_price timestamptz;
+  tax_class text;
+  sealed_memberships jsonb;
+  assessment_skus jsonb;
   draft public.catalog_draft_heads%ROWTYPE;
   prospective public.catalog_publications%ROWTYPE;
   approval public.catalog_publication_decisions%ROWTYPE;
@@ -570,15 +593,36 @@ BEGIN
     IF p_command - ARRAY['action','productId','candidateRef','candidateDigest'] <> '{}'::jsonb THEN
       RAISE EXCEPTION 'catalog_publication_candidate_invalid' USING ERRCODE='22023';
     END IF;
+    SELECT d.* INTO approval FROM public.catalog_publication_decisions d
+      WHERE (d.product_id,d.candidate_ref,d.candidate_digest)=(product_id,candidate_ref,candidate_digest)
+      ORDER BY d.decided_at DESC,d.id DESC LIMIT 1;
+    IF approval.action='approve' THEN
+      PERFORM public.catalog_publication_assert_receipt(product_id,approval.command_key);
+      -- An approval seals SKU digests before the full SKU revisions exist.
+      -- Use its sealed membership declarations until the issue supplies those revisions.
+      sealed_memberships := approval.post_state_canonical_text::jsonb #> '{product,content,offerMemberships}';
+      SELECT jsonb_agg(public.catalog_publication_read_sku_revision(p.product_id,ref))
+        INTO assessment_skus FROM public.catalog_publications p
+        CROSS JOIN LATERAL jsonb_array_elements(p.canonical_state::jsonb->'skus') ref
+        WHERE p.approval_id=approval.id;
+    END IF;
     SELECT coalesce(jsonb_agg(jsonb_build_object('skuId',s->'id','operation',item->'operation') || modes
       ORDER BY s->>'id' COLLATE "C", item #>> '{operation,commandKey}' COLLATE "C"),'[]')
     INTO targets FROM public.catalog_publication_price_modes_v2(authored,
-      nullif(split_part(split_part(candidate_ref,'/',2),'@',1),'unpublished')::uuid,authored->'skus') AS priced(s,modes)
+      nullif(split_part(split_part(candidate_ref,'/',2),'@',1),'unpublished')::uuid,coalesce(assessment_skus,authored->'skus'),sealed_memberships) AS priced(s,modes)
     LEFT JOIN jsonb_array_elements(operations) item ON item->'skuId'=s->'id' AND item #> '{operation,schemaVersion}'='2'::jsonb
-    WHERE item IS NOT NULL OR EXISTS (
+    WHERE item IS NOT NULL OR modes->'firstAdmission'='true'::jsonb OR EXISTS (
       SELECT 1 FROM jsonb_array_elements(authored #> '{product,sharedContent,requestedModes}') r
       WHERE r->'skuCode'=s->'code' AND jsonb_array_length(r->'modes')>0);
-    RETURN public.catalog_publication_canonical(public.catalog_publication_target_price_verdict(targets,clock_timestamp()),0);
+    verdict := public.catalog_publication_target_price_verdict(targets,clock_timestamp());
+    IF verdict ? 'targets' THEN
+      SELECT coalesce(jsonb_agg(CASE WHEN t->'firstAdmission'='true'::jsonb AND t->'operation'='null'::jsonb
+        THEN v || '{"reason":"catalog_publication_price_edit_required"}'::jsonb ELSE v END ORDER BY n),'[]')
+        INTO actual_targets FROM jsonb_array_elements(targets) WITH ORDINALITY target(t,n)
+        JOIN jsonb_array_elements(verdict->'targets') WITH ORDINALITY result(v,n) USING (n);
+      verdict := jsonb_set(verdict,'{targets}',actual_targets);
+    END IF;
+    RETURN public.catalog_publication_canonical(verdict,0);
   END IF;
 
   IF price_v2 THEN
@@ -728,6 +772,7 @@ BEGIN
     PERFORM 1 FROM public.price_entries e WHERE e.price_list_id=price_list
       AND e.variant_id IN (SELECT (t->>'skuId')::uuid FROM jsonb_array_elements(targets) t)
       ORDER BY e.id FOR NO KEY UPDATE NOWAIT;
+    tax_class := public.catalog_publication_lock_tax_class_v2(authored);
     at_price := clock_timestamp();
 
     -- Evaluate proposals only for fresh claims. A replay proves its current row below.
@@ -735,7 +780,7 @@ BEGIN
       THEN t ELSE t-'operation' END ORDER BY t->>'skuId' COLLATE "C"),'[]')
       INTO actual_targets FROM jsonb_array_elements(targets) t;
     verdict := public.catalog_publication_target_price_verdict(actual_targets,at_price);
-    PERFORM public.catalog_publication_assert_price_receipt_v2(authored,targets,verdict,actor_id,fresh_keys);
+    PERFORM public.catalog_publication_assert_price_receipt_v2(authored,targets,verdict,actor_id,fresh_keys,tax_class);
     IF EXISTS (SELECT 1 FROM jsonb_array_elements(targets) t
       WHERE t->'needsFresh'='true'::jsonb AND NOT ((t #>> '{operation,commandKey}')=ANY(fresh_keys))) THEN
       RAISE EXCEPTION 'catalog_publication_price_edit_required' USING ERRCODE='23514', CONSTRAINT='catalog_publication_price_edit_required';
@@ -759,7 +804,7 @@ BEGIN
     SELECT coalesce(jsonb_agg(t-'operation' ORDER BY t->>'skuId' COLLATE "C", t #>> '{operation,commandKey}' COLLATE "C"),'[]')
       INTO actual_targets FROM jsonb_array_elements(targets) t;
     verdict := public.catalog_publication_target_price_verdict(actual_targets,at_price);
-    PERFORM public.catalog_publication_assert_price_receipt_v2(authored,targets,verdict,actor_id,ARRAY[]::text[]);
+    PERFORM public.catalog_publication_assert_price_receipt_v2(authored,targets,verdict,actor_id,ARRAY[]::text[],tax_class);
   END IF;
 
   SELECT greatest(clock_timestamp(),d.decided_at) INTO STRICT stamp FROM public.catalog_publication_decisions d
