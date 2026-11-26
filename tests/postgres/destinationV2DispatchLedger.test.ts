@@ -234,7 +234,9 @@ it("upgrades the qualified ledger, preserving legacy bytes and fencing fresh v2 
   await refusal(runtime.query(`UPDATE ${table} SET status='submitting' WHERE id=$1`, [historical.commandId]), exactDialect);
   expect((await census(allShipments)).rows).toEqual(beforeRefusals);
 
-  await runtime.query("SELECT public.commerce_destination_v2_erase($1)", [fresh.context.clientId]);
+  for (const { context } of [fresh, v2]) await runtime.query("SELECT public.commerce_destination_v2_erase($1)", [context.clientId]);
+  await refusal(submitting(runtime, fenceArgs(historical)), exactDialect);
+  await refusal(runtime.query(`UPDATE ${table} SET status='submitting' WHERE id=$1`, [historical.commandId]), exactDialect);
   expect((await owner.query(`SELECT selection,service FROM ${orderBindingTable} WHERE order_id=$1`, [fresh.order])).rows)
     .toEqual([{ selection: null, service: null }]);
   await refusal(enqueue(runtime, fresh.shipment, provider, randomUUID()), exactDialect);

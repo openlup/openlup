@@ -1,17 +1,19 @@
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { createPostgresDestinationPortV2 } from "@openlup/platform/commerce/server/destinations";
+import { createDestinationDocumentPrivacyContributor, createFulfillmentParcelContactPrivacyContributor, createPostgresPrivacyStore } from "@openlup/platform/identity";
 import type { Pool, PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { readPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
+import { composeNativePrivacy } from "../../server/runtime/auth/privacyBinding.js";
 import { withPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 import { storeJourneyResources, type JourneyInstallation } from "../helpers/storeJourney.js";
 import { installAccountMutations } from "./customerAccountMutations.fixture.js";
-import { destinationHash, insertDestinationOrder, readSnapshot } from "./destinationDocumentFixture.js";
-import { backendPid, markReceiptClientErased } from "./destinationReceiptFixture.js";
+import { destinationHash, insertDestinationOrder, readSnapshot, reachDestinationCutoff, snapshot } from "./destinationDocumentFixture.js";
+import { backendPid } from "./destinationReceiptFixture.js";
 import {
-  activate, bind, bookCycle, checkoutSignature, edit, insertLocalAttempt, ownerTransaction, paidHandoff, prepareGraph, prepareOpening,
+  activate, bind, bookCycle, checkoutSignature, edit, insertLocalAttempt, ownerTransaction, paidHandoff, prepareGraph,
   registerName, registerSignature, subject, type Destination, type Subject, type Target,
 } from "./renewalOrderDestinationV2.fixture.js";
 import { AT, call, type Db } from "./subscriptionNativeFixture.js";
@@ -20,17 +22,13 @@ const resources = storeJourneyResources({ isolatedCluster: true });
 let store: JourneyInstallation;
 const manifest = readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest | null;
 if (manifest?.schemaVersion !== 3) throw new Error("Complete native catalogue required");
-const forward = manifest.forward.find(entry => entry.file.endsWith("_renewal_order_destination_v2.sql"));
-if (!forward) throw new Error("Renewal destination migration missing");
-const migration = forward;
-const installedManifest = manifest;
+const migration = manifest.forward.find(entry => entry.file.endsWith("_renewal_order_destination_v2.sql"));
+if (!migration) throw new Error("Renewal destination migration missing");
 
 beforeAll(async () => { store = await resources.installation("renewal-destination"); }, postgresSetupTimeoutMs);
 afterAll(() => resources.close(), postgresTeardownTimeoutMs);
 
 const data = async (db: Db, sql: string, args: unknown[] = []) => (await db.query(sql, args)).rows;
-const retained = (db: Db, f: Subject, target: Target, destination: Destination) =>
-  readSnapshot(db, f.ctx, destination.binding, target.order, "order");
 const unavailable = (detail = "subscriptionId") => ({
   code: "22023", message: "destination_evidence_unavailable", detail, hint: "Re-obtain evidence through the authenticated owner.",
 });
@@ -51,9 +49,22 @@ async function invariant(db: Db, f: Subject) {
     (SELECT array_agg(row_to_json(a)::text ORDER BY id) FROM public.subscription_delivery_alignment_cases a WHERE subscription_id=$1) AS alignment,
     (SELECT row_to_json(s)::text FROM public.subscriptions s WHERE id=$1) AS subscription,
     (SELECT array_agg(row_to_json(o)::text ORDER BY cycle_key) FROM public.subscription_cycle_occurrences o WHERE subscription_id=$1) AS occurrences,
+    (SELECT array_agg(row_to_json(s)::text ORDER BY s.id) FROM public.fulfillment_shipments s
+      JOIN public.commerce_orders o ON o.id=s.order_id WHERE o.client_id=$2) AS shipments,
+    (SELECT array_agg(row_to_json(e)::text ORDER BY observation_event_key) FROM public.subscription_cycle_delivery_evidence e
+      WHERE e.obligation_ref=$3) AS evidence,
     (SELECT array_agg(row_to_json(x)::text ORDER BY obligation_ref) FROM public.subscription_cycle_delivery_assignments x
       JOIN public.subscription_cycle_occurrences o ON o.cycle_key=x.assigned_cycle_key WHERE o.subscription_id=$1) AS obligations`,
-  [f.ctx.scopeRef]);
+  [f.ctx.scopeRef, f.ctx.clientId, f.origin]);
+}
+
+async function assignedInvariant(db: Db, f: Subject) {
+  const state = await invariant(db, f);
+  expect(state[0].obligations.map((row: string) => JSON.parse(row))).toEqual([
+    { obligation_ref: f.origin, assigned_cycle_key: f.pair.cycle_key, marker_cycle_key: null,
+      qualifying_actual_arrival_at: null, applied_due_at: null },
+  ]);
+  return state;
 }
 
 async function effects(db: Db, f: Subject) {
@@ -88,10 +99,10 @@ async function prepare(db: PoolClient, f: Subject, selected: Destination, cycle:
   return target;
 }
 
-async function stagePreparation(owner: Pool, f: Subject) {
+async function stagePreparation(owner: Pool, f: Subject, selected = f.ny) {
   const cycle = await bookCycle(owner, f);
   return ownerTransaction(owner, async db => {
-    const target = await prepareGraph(db, f, f.ny, cycle);
+    const target = await prepareGraph(db, f, selected, cycle);
     // Satisfy the deferred payment references so the writer can run in a fresh transaction.
     await insertLocalAttempt(db, f, target);
     return target;
@@ -103,30 +114,31 @@ async function noReplacementConfirmation(db: PoolClient) {
     WHERE schemaname='public' AND funcname='subscription_delivery_alignment_confirm_replacement'`)).toEqual([]);
 }
 
-async function waitFor(observer: Db, waiting: PoolClient, blocker: PoolClient) {
+async function waitFor(observer: Db, waiting: PoolClient, blocker: PoolClient, relation = "subscriptions") {
   const [pid, blocking] = await Promise.all([backendPid(waiting), backendPid(blocker)]);
   return async () => expect.poll(async () => (await data(observer,
     `SELECT $2::int=ANY(pg_blocking_pids($1)) AND EXISTS (
-      SELECT 1 FROM pg_locks WHERE pid=$1 AND locktype='tuple' AND relation='public.subscriptions'::regclass
-    ) AS blocked`, [pid, blocking]))[0]?.blocked, { timeout: 4_000 }).toBe(true);
+      SELECT 1 FROM pg_locks WHERE pid=$1 AND locktype='tuple' AND relation=('public.' || $3)::regclass
+    ) AS blocked`, [pid, blocking, relation]))[0]?.blocked, { timeout: 4_000 }).toBe(true);
 }
 
 it("measures the native predecessor, applies the destination forward first and preserves checkout registration bytes and ACL", async () => {
-  const prefix = structuredClone(installedManifest);
+  const prefix = structuredClone(manifest);
   for (const plan of [prefix, prefix.qualified, prefix.qualifiedAdmin]) {
     const index = plan.forward.findIndex(entry => entry.file === migration.file);
     expect(index).toBeGreaterThan(0);
     plan.forward.splice(index);
   }
+  const predecessorPin = "b8b20309bf163b8aa73db2d5c4d84a268d96327faf677b2ddb5034d8b40ae874";
+  prefix.qualified.objectInventorySha256.bootstrapMigrator.withRestore = predecessorPin;
   const previousUnits = [prefix.qualified.baseline, ...prefix.qualified.forward].map(unit => unit.file);
-  const suffix = installedManifest.qualified.forward.slice(prefix.qualified.forward.length).map(unit => unit.file);
+  const suffix = manifest.qualified.forward.slice(prefix.qualified.forward.length).map(unit => unit.file);
   const checkout = (db: Db) => data(db, `SELECT pg_get_functiondef(p.oid) AS definition, proacl, proowner, proconfig
     FROM pg_proc p WHERE p.oid=$1::regprocedure`, [checkoutSignature]);
   await withPlatformCatalog(prefix, async root => {
     const installation = await installAccountMutations("bootstrap", true, "renewal-destination-upgrade", root, process.cwd());
     try {
-      const predecessorInventory = installation.inventory;
-      expect(predecessorInventory).toMatch(/^[0-9a-f]{64}$/u);
+      expect(installation.inventory).toBe(predecessorPin);
       const previous = await checkout(installation.owner);
       expect(previous).toHaveLength(1);
       const status = await installation.runner.status();
@@ -134,8 +146,7 @@ it("measures the native predecessor, applies the destination forward first and p
       expect(status.pending[0]).toBe(migration.file);
       expect(status.pending).toStrictEqual(suffix);
       expect(await installation.runner.apply()).toStrictEqual({ applied: suffix });
-      expect(installation.inventory).toBe(installedManifest.qualified.objectInventorySha256.bootstrapMigrator.withRestore);
-      expect(installation.inventory).not.toBe(predecessorInventory);
+      expect(installation.inventory).toBe(manifest.qualified.objectInventorySha256.bootstrapMigrator.withRestore);
       expect(await checkout(installation.owner)).toStrictEqual(previous);
     } finally {
       await installation.close();
@@ -143,40 +154,69 @@ it("measures the native predecessor, applies the destination forward first and p
   });
 }, postgresSetupTimeoutMs);
 
-it("denies the private writer to installed non-owner roles under permissive defaults and permits its owner", async () => {
+it("keeps the private destination writer dormant and both routines owner-only under permissive defaults", async () => {
   const { owner, runtime } = store;
-  const args = [null, null, null, null, null, null];
-  const census = `SELECT p.provolatile, p.prosecdef, p.proconfig, p.proowner::regrole::text AS owner,
-      (SELECT t.relowner::regrole::text FROM pg_class t WHERE t.oid='public.subscription_cycle_preparations'::regclass) AS preparation_owner,
-      EXISTS(SELECT 1 FROM aclexplode(p.proacl) WHERE grantee=0) AS public_grant
-    FROM pg_proc p WHERE p.oid=$1::regprocedure`;
-  expect(await data(owner, census, [registerSignature])).toEqual([
-    { provolatile: "v", prosecdef: false, proconfig: ["search_path=pg_catalog, pg_temp"], owner: "transfer_owner",
-      preparation_owner: "transfer_owner", public_grant: false },
-  ]);
-  await expect(call(runtime, registerName, args)).rejects.toMatchObject({ code: "42501" });
-  await expect(call(owner, registerName, args)).rejects.toMatchObject({
+  const classifier = "classify_order_destination";
+  const signatures = [registerSignature, `public.${classifier}(uuid,public.commerce_destination_v2_documents,text)`];
+  const routines = [[registerName, Array<null>(6).fill(null)], [classifier, [null, null, null]]] as const;
+  const census = `SELECT p.provolatile, p.prosecdef, p.proconfig, p.proowner = t.relowner AS owned,
+      ARRAY(SELECT privilege_type FROM aclexplode(coalesce(p.proacl, acldefault('f',p.proowner))) WHERE grantee <> p.proowner) AS grants
+    FROM pg_proc p, pg_class t WHERE p.oid=$1::regprocedure AND t.oid='public.subscription_cycle_preparations'::regclass`;
+  async function checkAcl(db: Db) {
+    for (const [index, signature] of signatures.entries()) {
+      expect(await data(db, census, [signature])).toEqual([{ provolatile: index ? "s" : "v", prosecdef: false,
+        proconfig: ["search_path=pg_catalog, pg_temp"], owned: true, grants: [] }]);
+    }
+  }
+  await checkAcl(owner);
+  for (const [name, args] of routines) await expect(call(runtime, name, [...args])).rejects.toMatchObject({ code: "42501" });
+  await expect(call(owner, registerName, Array<null>(6).fill(null))).rejects.toMatchObject({
     code: "22023", message: "address_invalid_input", detail: "subscriptionId", hint: "Correct the indicated input.",
   });
+  expect(await call(owner, classifier, [null, null, null])).toMatchObject({ code: "destination_binding_invalid" });
+  expect(await data(owner, `SELECT p.oid::regprocedure::text FROM pg_proc p WHERE p.oid <> $1::regprocedure
+    AND (strpos(lower(p.prosrc), $2) > 0 OR EXISTS (SELECT 1 FROM pg_depend d
+      WHERE d.classid='pg_proc'::regclass AND d.objid=p.oid AND d.refclassid='pg_proc'::regclass AND d.refobjid=$1::regprocedure))`,
+  [registerSignature, registerName])).toEqual([]);
+  for (const root of ["server", "src", ...readdirSync("packages").map(name => `packages/${name}/src`)].filter(existsSync)) {
+    for (const file of readdirSync(root, { recursive: true, encoding: "utf8" }).filter(file => /\.[cm]?[jt]sx?$/u.test(file))) {
+      expect(readFileSync(`${root}/${file}`, "utf8").toLowerCase().includes(registerName), `${root}/${file}`).toBe(false);
+    }
+  }
+  const definitions = new Map((await data(owner, `SELECT proname, string_agg(prosrc, ' ') AS body FROM pg_proc
+    WHERE pronamespace='public'::regnamespace GROUP BY proname`)).map(({ proname, body }) => [proname, body]));
+  for (const [callee, callers] of [
+    [classifier, [registerName, "commerce_destination_v2_check_retained", "commerce_destination_v2_export"]],
+    ["commerce_destination_v2_check_retained", ["commerce_destination_v2_read_retained", "commerce_register_order_destination_v2",
+      "subscription_destination_v2_current", "fulfillment_destination_contact_v2", registerName]],
+    ["fulfillment_open_shipment", ["fulfillment_create_shipment", "fulfillment_route_order"]],
+    ["fulfillment_create_shipment", ["fulfillment_ensure_paid_handoff", "fulfillment_operator_create_order"]],
+    ["fulfillment_resolve_parcel_contact", ["fulfillment_read_replacement_preparation", "commerce_oms_request_replacement_shipment",
+      "fulfillment_native_dispatch_read_candidate", "fulfillment_native_dispatch_refusal"]],
+    ["fulfillment_native_dispatch_refusal", ["fulfillment_native_dispatch_read_candidate", "fulfillment_native_dispatch_begin"]],
+    ["fulfillment_native_dispatch_read_candidate", ["fulfillment_native_dispatch_candidate_ids"]],
+    ["commerce_destination_v2_read_retained", ["commerce_read_destination_v2"]],
+    ["fulfillment_destination_contact_v2", ["fulfillment_freeze_destination_contact_v2"]],
+    ["fulfillment_freeze_destination_contact_v2", ["fulfillment_resolve_parcel_contact", "fulfillment_capture_parcel_contact", "fulfillment_capture_order_contact_for_shipment"]],
+  ] as const) for (const caller of callers) expect(definitions.get(caller), caller).toContain(callee);
+  for (const name of ["commerce_destination_v2_check_retained", "commerce_destination_v2_export"]) {
+    expect(definitions.get(name)).not.toMatch(/selection\s*->>?\s*'kind'/u);
+  }
   await ownerTransaction(owner, async db => {
-    const { rows: installedRoles } = await db.query<{ role: string }>(`SELECT rolname::text AS role
-      FROM pg_catalog.pg_roles WHERE NOT rolsuper AND rolname <> current_user AND rolname !~ '^pg_'
-      ORDER BY role`);
-    expect(installedRoles.length).toBeGreaterThan(0);
-    const roles = installedRoles.map(({ role }) => role);
-    await db.query(`DROP FUNCTION ${registerSignature};
+    const roles = (await data(db, `SELECT rolname::text AS role FROM pg_roles
+      WHERE NOT rolsuper AND rolname !~ '^pg_' ORDER BY role`)).map(({ role }) => role as string);
+    expect(roles).toEqual(expect.arrayContaining(["anon", "authenticated", "service_role", "transfer_runtime", "transfer_restore"]));
+    await db.query(`DROP FUNCTION ${signatures.join(", ")};
       ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role;
       CREATE FUNCTION public.destination_default_acl_control() RETURNS boolean LANGUAGE sql AS 'SELECT true'`);
-    expect(await data(db, `SELECT role FROM unnest($1::text[]) AS r(role)
-      WHERE has_function_privilege(role,'public.destination_default_acl_control()','EXECUTE') ORDER BY role`, [roles]))
-      .toEqual(installedRoles);
+    expect(await data(db, `SELECT grantee::regrole::text AS role FROM pg_proc p, aclexplode(p.proacl)
+      WHERE p.oid='public.destination_default_acl_control()'::regprocedure AND grantee NOT IN (0,p.proowner) ORDER BY role`))
+      .toEqual(["anon", "authenticated", "service_role"].map(role => ({ role })));
     await db.query(readFileSync(migration.file, "utf8"));
-    const privileges = await data(db, `SELECT role FROM unnest($1::text[]) AS r(role)
-      WHERE has_function_privilege(role, $2::regprocedure, 'EXECUTE')`, [roles, registerSignature]);
-    expect(privileges).toEqual([]);
-    for (const role of roles) {
+    await checkAcl(db);
+    for (const role of roles) for (const [name, args] of routines) {
       await db.query(`SAVEPOINT permission_check; SET LOCAL ROLE ${db.escapeIdentifier(role)}`);
-      await expect(call(db, registerName, args), role).rejects.toMatchObject({ code: "42501" });
+      await expect(call(db, name, [...args]), role).rejects.toMatchObject({ code: "42501" });
       await db.query("ROLLBACK TO SAVEPOINT permission_check; RELEASE SAVEPOINT permission_check");
     }
   }, false);
@@ -189,44 +229,31 @@ it("reads the checkout and frozen inherited and explicit renewal destinations th
   expect(checkout).toMatchObject({ binding: f.ny.binding, document: { address: { subdivision: "NY" } },
     evidenceExpiresAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T.*\.\d{3}Z$/u) });
   expect(checkout).not.toHaveProperty("documentPurpose");
-  expect(await port.read(f.checkout, "order", f.origin, f.ny.binding)).toStrictEqual(checkout);
-  const booked = await bookCycle(owner, f);
-  const before = await invariant(owner, f);
-  expect(before[0].alignment).toHaveLength(1);
-  const lostAcknowledgement = new Error("Commit acknowledgement was lost");
-  await expect(ownerTransaction(owner, async db => {
+  const checkoutParcel = await paidHandoff(store, { order: f.origin });
+  expect(await port.read(f.ctx, "subscription", f.ctx.scopeRef, f.ny.binding)).toMatchObject({ binding: f.ny.binding, evidenceExpiresAt: null });
+  expect(await port.recheck(f.ctx, { kind: "subscription", scopeRef: f.ctx.scopeRef, expectedSelectionRevision: f.ny.selectionRevision,
+    expectedBinding: f.ny.binding, expectedService: f.ny.service })).toMatchObject({ binding: f.ny.binding });
+  const booked = await bookCycle(owner, f), before = await assignedInvariant(owner, f);
+  const east = await ownerTransaction(owner, async db => {
     await db.query("SET LOCAL track_functions='pl'");
-    await prepare(db, f, f.ny, booked);
+    const target = await prepare(db, f, f.ny, booked);
     await noReplacementConfirmation(db);
-  }).then(() => { throw lostAcknowledgement; })).rejects.toBe(lostAcknowledgement);
-  expect(await invariant(owner, f)).toEqual(before);
-  const ca = await edit(owner, f.ctx, f.ny.selectionRevision);
-  expect(ca.outcome).toBe("applied_from_next_parcel");
-  const beforeReplay = await effects(owner, f);
-  const receipt = await owner.query<Target>(`SELECT p.preparation_id AS preparation, p.order_id AS "order",
-    p.cycle_id AS cycle, p.settlement_intent_id AS intent, p.payment_attempt_id AS attempt,
-    a.payment_id AS payment, p.hold_incarnation_id AS hold, p.opening_key AS opening
-    FROM public.subscription_cycle_preparations p JOIN public.payment_provider_attempts a ON a.id=p.payment_attempt_id
-    WHERE p.opening_key=$1 AND p.cycle_key=$2`, [prepareOpening(f, 1), f.pair.cycle_key]);
-  const east = receipt.rows[0]!;
-  expect(receipt.rows).toHaveLength(1);
-  expect(await port.read(f.ctx, "order", east.order, f.ny.binding)).toStrictEqual(checkout);
-  expect(await effects(owner, f)).toStrictEqual(beforeReplay);
-  expect(beforeReplay[0]).toMatchObject({ grants: 0, commands: 0 });
-
+    return target;
+  });
+  expect(await invariant(owner, f)).toStrictEqual(before);
+  expect(await edit(owner, f.ctx, f.ny.selectionRevision)).toMatchObject({ outcome: "applied_from_next_parcel" });
   const firstParcel = await paidHandoff(store, east);
-  expect(firstParcel.contact).toMatchObject({ binding: f.ny.binding, service: f.ny.service,
-    address: { subdivision: "NY" }, recipient: { recipientName: "Sample Recipient" } });
-  expect(await port.read(f.ctx, "shipment", firstParcel.shipment, f.ny.binding)).toStrictEqual(checkout);
 
   const replacing = await subject(store);
   const originalCycle = await bookCycle(owner, replacing);
   const original = await ownerTransaction(owner, db => prepare(db, replacing, replacing.ny, originalCycle));
   const originalRows = (await effects(owner, replacing))[0].destinations;
   const westSelection = await edit(owner, replacing.ctx, replacing.ny.selectionRevision);
-  expect(westSelection.outcome).toBe("applied_from_next_parcel");
-  const replacementCycle = await bookCycle(owner, replacing);
-  const beforeReplacement = await invariant(owner, replacing);
+  expect(await port.read(replacing.ctx, "subscription", replacing.ctx.scopeRef, null)).toMatchObject({ binding: westSelection.binding });
+  expect(await port.read(replacing.ctx, "subscription", replacing.ctx.scopeRef, westSelection.binding)).toMatchObject({ evidenceExpiresAt: null });
+  expect(await port.read(replacing.ctx, "snapshot", westSelection.binding.snapshotRef, westSelection.binding))
+    .toMatchObject({ code: "destination_evidence_unavailable", field: "destination.snapshotRef" });
+  const replacementCycle = await bookCycle(owner, replacing), beforeReplacement = await invariant(owner, replacing);
   const west = await ownerTransaction(owner, async db => {
     await db.query("SET LOCAL track_functions='pl'");
     const replacement = await prepare(db, replacing, westSelection, replacementCycle, original);
@@ -235,62 +262,92 @@ it("reads the checkout and frozen inherited and explicit renewal destinations th
   });
   expect(await invariant(owner, replacing)).toStrictEqual(beforeReplacement);
   expect((await effects(owner, replacing))[0].destinations).toEqual(expect.arrayContaining(originalRows));
-  expect(await data(owner, `SELECT o.status, p.closed_unsent_at IS NOT NULL AS closed
-    FROM public.subscription_cycle_preparations p JOIN public.commerce_orders o ON o.id=p.order_id
-    WHERE p.preparation_id=$1`, [original.preparation])).toEqual([{ status: "cancelled", closed: true }]);
-  const rows = await data(owner, `SELECT order_id, snapshot_ref, selection, service
-    FROM public.commerce_destination_v2_order_bindings WHERE order_id=ANY($1) ORDER BY order_id`, [[original.order, west.order]]);
-  const exported = await call(runtime, "commerce_destination_v2_export", [replacing.ctx.clientId]);
-  for (const [target, selected, issuedScope] of [
-    [original, replacing.ny, replacing.checkout.scopeRef], [west, westSelection, replacing.ctx.scopeRef],
-  ] as const) {
-    const selection = expectedSelection(replacing, selected);
-    expect(rows).toContainEqual({ order_id: target.order, snapshot_ref: selected.binding.snapshotRef, selection, service: selected.service });
-    expect(exported).toEqual(expect.arrayContaining([expect.objectContaining({
-      snapshotRef: selected.binding.snapshotRef, scopeRef: issuedScope,
-      orderBindings: expect.arrayContaining([{ orderId: target.order, selection, service: selected.service }]),
-    })]));
-  }
+  expect(await port.read(replacing.ctx, "order", original.order, replacing.ny.binding)).toStrictEqual(
+    await port.read(replacing.checkout, "order", replacing.origin, replacing.ny.binding));
   expect(await edit(owner, replacing.ctx, westSelection.selectionRevision, {
     ...westSelection.service, adapterRevision: "later-adapter",
   })).toMatchObject({ outcome: "applied_from_next_parcel" });
+  await call(owner, "commerce_destination_v2_expire", [new Date(), 1000]);
   const replacementParcel = await paidHandoff(store, west);
-  expect(replacementParcel.contact).toMatchObject({ binding: westSelection.binding, service: westSelection.service,
-    address: { subdivision: "CA" }, recipient: { recipientName: "West Recipient" } });
   const frozen = await port.read(replacing.ctx, "order", west.order, westSelection.binding);
   expect(frozen).toMatchObject({
     binding: westSelection.binding, document: { address: { subdivision: "CA" } },
     documentPurpose: "subscription", evidenceExpiresAt: null,
   });
-  expect(await port.read(replacing.ctx, "shipment", replacementParcel.shipment, westSelection.binding)).toStrictEqual(frozen);
+
+  for (const [subject, ctx, order, parcel, selected, expected, origin] of [
+    [f, f.checkout, f.origin, checkoutParcel, f.ny, checkout, "checkout"],
+    [f, f.ctx, east.order, firstParcel, f.ny, checkout, "renewal"],
+    [replacing, replacing.ctx, west.order, replacementParcel, westSelection, frozen, "renewal"],
+  ] as const) {
+    expect(parcel.contact).toMatchObject({ binding: selected.binding, service: selected.service,
+      address: { subdivision: selected === westSelection ? "CA" : "NY" },
+      recipient: { recipientName: selected === westSelection ? "West Recipient" : "Sample Recipient" } });
+    for (const [kind, id] of [["order", order], ["shipment", parcel.shipment]] as const) {
+      expect(await port.read(ctx, kind, id, selected.binding)).toStrictEqual(expected);
+      for (const [key, value] of Object.entries({ snapshotRef: randomUUID(), destinationDigest: "0".repeat(64), policyRevision: "old" })) {
+        const remedy = origin === "checkout" ? "sealed checkout evidence through the authorized order workflow, then repeat the read; never"
+          : "retained preparation evidence through the authorized order workflow, then repeat the read. Never";
+        expect(await port.read(ctx, kind, id, { ...selected.binding, [key]: value })).toMatchObject({
+          code: "destination_version_changed", field: key === "destinationDigest" ? key : `destination.${key}`,
+          fix: "Use the binding recorded for the original order.",
+          recheck: `Take the order's binding from its ${remedy} reselect for a placed order.`,
+        });
+      }
+    }
+    const check = { kind: "checkout", scopeRef: ctx.scopeRef, expectedSelectionRevision: selected.selectionRevision,
+      expectedBinding: selected.binding, expectedService: selected.service } as const;
+    expect(await port.registerOrder(ctx, order, check)).toMatchObject(origin === "checkout" ? selected.binding : {
+      code: "destination_order_binding_occupied", field: "orderId", fix: "Resolve the existing binding without moving it.",
+      recheck: "Replay with the original authenticated evidence or resolve through the order owner.",
+    });
+    const issuedScope = selected === westSelection ? ctx.scopeRef : subject.checkout.scopeRef;
+    const selection = origin === "checkout" ? { ...expectedSelection(subject, selected), kind: "checkout", scopeRef: issuedScope }
+      : expectedSelection(subject, selected);
+    expect(await exportDestinations(runtime, subject)).toMatchObject({ coverage: { complete: true }, data: expect.arrayContaining([
+      expect.objectContaining({ snapshotRef: selected.binding.snapshotRef, scopeRef: issuedScope,
+        orderBindings: expect.arrayContaining([{ orderId: order, selection, service: selected.service }]) }),
+    ]) });
+    expect((await exportParcels(runtime, subject)).data).toContainEqual(expect.objectContaining({ shipmentId: parcel.shipment, contact: parcel.contact }));
+    if (origin === "checkout") continue;
+    await ownerTransaction(owner, async db => {
+      await db.query("DELETE FROM public.subscription_destination_v2_selections WHERE subscription_id=$1", [ctx.scopeRef]);
+      await db.query("UPDATE public.subscription_activations SET order_id=$1 WHERE order_id=$2", [order, subject.origin]);
+      const reader = createPostgresDestinationPortV2(db);
+      expect(await reader.read(subject.checkout, "order", subject.origin, subject.ny.binding))
+        .toMatchObject({ code: "destination_binding_invalid", field: "orderBindings" });
+      expect(await reader.read(ctx, "subscription", ctx.scopeRef, null)).toMatchObject({
+        code: "destination_evidence_unavailable", field: "subscriptionId", recheck: "Repeat the authorized subscription lookup.",
+      });
+    }, false);
+    for (const mutation of [
+      ["subscription_cycle_tax_bindings", "live_evidence=jsonb_set(live_evidence,'{service,adapterRevision}','\"different\"')", "cycle_key", subject.pair.cycle_key],
+      ["commerce_destination_v2_order_bindings", "selection=jsonb_set(jsonb_set(selection,'{kind}','\"checkout\"'),'{scopeRef}',to_jsonb($2::uuid))", "order_id", order],
+    ]) await ownerTransaction(owner, async db => {
+      await db.query(`UPDATE public.${mutation[0]} SET ${mutation[1]} WHERE ${mutation[2]}=$1`,
+        mutation[0] === "commerce_destination_v2_order_bindings" ? [order, subject.checkout.scopeRef] : [mutation[3]]);
+      expect(await createPostgresDestinationPortV2(db).read(ctx, "order", order, selected.binding)).toMatchObject({
+        code: "destination_binding_invalid", field: "orderBindings",
+      });
+      const { data: exported, coverage } = await exportDestinations(db, subject);
+      expect(coverage).toMatchObject({ complete: false, unavailable: [expect.stringContaining("Review withheld destination evidence")] });
+      const retained = (exported as Record<string, unknown>[]).find(row => row.snapshotRef === selected.binding.snapshotRef);
+      expect(retained).toMatchObject({ document: expect.any(Object), verification: { status: "failed", code: "destination_binding_invalid", field: "orderBindings" } });
+      expect(retained?.orderBindings ?? []).not.toContainEqual(expect.objectContaining({ orderId: order }));
+      await expect(call(db, "fulfillment_resolve_parcel_contact", [parcel.shipment])).rejects.toMatchObject(invalidStoredPins);
+    }, false);
+  }
 });
 
-it("exports the verified document and withholds renewal order pins that disagree with fiscal evidence", async () => {
-  const { owner, runtime } = store, f = await subject(store);
-  const direct = await edit(owner, f.ctx, f.ny.selectionRevision);
-  expect(direct.outcome).toBe("applied_from_next_parcel");
-  const cycle = await bookCycle(owner, f);
-  const target = await ownerTransaction(owner, db => prepare(db, f, direct, cycle));
-  const exportedDocument = async () => (await call(runtime, "commerce_destination_v2_export", [f.ctx.clientId]))
-    .find(({ snapshotRef }: { snapshotRef: string }) => snapshotRef === direct.binding.snapshotRef);
-  const { orderBindings, ...verifiedDocument } = await exportedDocument();
-  expect(orderBindings).toStrictEqual([{ orderId: target.order, selection: expectedSelection(f, direct), service: direct.service }]);
-  expect(verifiedDocument).toMatchObject({ scopeRef: f.ctx.scopeRef, evidenceDisposition: "available",
-    document: { address: { subdivision: "CA" } }, documentDigest: expect.stringMatching(/^[0-9a-f]{64}$/u) });
-  expect(verifiedDocument).not.toHaveProperty("verification");
-
-  const mismatch = await owner.query(`UPDATE public.subscription_cycle_tax_bindings
-    SET live_evidence=jsonb_set(live_evidence,'{service,adapterRevision}',to_jsonb('other-adapter'::text),false)
-    WHERE cycle_key=$1`, [f.pair.cycle_key]);
-  expect(mismatch.rowCount).toBe(1);
-  expect(await exportedDocument()).toStrictEqual({ ...verifiedDocument,
-    verification: { status: "failed", code: "destination_binding_invalid", field: "orderBindings" },
-  });
-});
+const documents = createDestinationDocumentPrivacyContributor(), parcels = createFulfillmentParcelContactPrivacyContributor();
+const privacySubject = (f: Subject) => ({ contactId: f.ctx.clientId, principalId: f.ctx.owner.principalRef, identity: {} });
+const exportDestinations = (db: Db, f: Subject) => documents.export(db, privacySubject(f));
+const exportParcels = (db: Db, f: Subject) => parcels.export(db, privacySubject(f));
 
 it("rolls back the destination with preparation before creating the local attempt and leaves delivery state byte-identical", async () => {
   const { owner } = store, f = await subject(store), cycle = await bookCycle(owner, f);
-  const before = await effects(owner, f), delivery = await invariant(owner, f);
+  await paidHandoff(store, { order: f.origin });
+  const before = await effects(owner, f), delivery = await assignedInvariant(owner, f);
   await ownerTransaction(owner, async db => {
     await db.query("SET LOCAL track_functions='pl'");
     const target = await prepareGraph(db, f, f.ny, cycle);
@@ -380,33 +437,42 @@ it("refuses each mismatched live fiscal pin with current destination arguments a
   });
 });
 
-it("refuses fiscal evidence that expires during an observed subscription row wait and leaves rows unchanged", async () => {
+it.each(["subscriptions", "commerce_destination_v2_documents"])("checks all four deadlines after the final wait on %s", async relation => {
   const { owner } = store, f = await subject(store), target = await stagePreparation(owner, f);
+  expect(await bind(owner, f.ctx, target.order, f.ny)).toStrictEqual(f.ny.binding);
   const blocker = await owner.connect(), writer = await owner.connect();
   try {
-    await blocker.query("BEGIN");
-    await blocker.query("SELECT id FROM public.subscriptions WHERE id=$1 FOR UPDATE", [f.ctx.scopeRef]);
-    await writer.query("BEGIN; SET LOCAL lock_timeout='10s'; SET LOCAL statement_timeout='12s'");
-    const wait = await waitFor(owner, writer, blocker);
-    const { rows: [fiscal] } = await owner.query<{ cutoff: string }>(`UPDATE public.subscription_cycle_tax_bindings
-      SET expires_at=clock_timestamp()+interval '5 seconds' WHERE cycle_key=$1 RETURNING expires_at::text AS cutoff`, [f.pair.cycle_key]);
-    const cutoff = fiscal!.cutoff;
-    const before = await effects(owner, f), delivery = await invariant(owner, f);
-    const pending = bind(writer, f.ctx, target.order, f.ny).catch((error: unknown) => error);
-    await wait();
-    expect(await data(owner, "SELECT clock_timestamp() < $1::timestamptz AS fresh", [cutoff])).toEqual([{ fresh: true }]);
-    await blocker.query("SELECT pg_sleep_until($1::timestamptz + interval '10 milliseconds')", [cutoff]);
-    await blocker.query("COMMIT");
-    expect(await pending).toMatchObject(unavailable("orderId"));
-    await writer.query("ROLLBACK");
-    expect(await effects(owner, f)).toStrictEqual(before);
-    expect(await invariant(owner, f)).toStrictEqual(delivery);
+    for (const [table, column, key, id] of [
+      ["subscription_cycle_generations", "lease_expires_at", "cycle_key", f.pair.cycle_key],
+      ["subscription_cycle_stock_holds", "expires_at", "hold_incarnation_id", target.hold],
+      ["fulfillment_inventory_reservations", "expires_at", "id", f.reservation],
+      ["subscription_cycle_tax_bindings", "expires_at", "cycle_key", f.pair.cycle_key],
+    ]) {
+      await blocker.query("BEGIN");
+      const coordinate = relation === "subscriptions" ? ["id", f.ctx.scopeRef] : ["snapshot_ref", f.ny.binding.snapshotRef];
+      await blocker.query(`SELECT 1 FROM public.${relation} WHERE ${coordinate[0]}=$1 FOR UPDATE`, [coordinate[1]]);
+      await writer.query("BEGIN; SET LOCAL lock_timeout='8s'; SET LOCAL statement_timeout='10s'");
+      const wait = await waitFor(owner, writer, blocker, relation);
+      const deadline = `UPDATE public.${table} SET ${column}=$2 WHERE ${key}=$1 RETURNING ${column}::text AS cutoff`;
+      const [{ cutoff }] = await data(owner, deadline.replace("$2", "clock_timestamp()+interval '2 seconds'"), [id]);
+      const before = await effects(owner, f), delivery = await invariant(owner, f);
+      const pending = bind(writer, f.ctx, target.order, f.ny).catch((error: unknown) => error);
+      await wait();
+      expect(await data(owner, "SELECT clock_timestamp() < $1::timestamptz AS fresh", [cutoff])).toEqual([{ fresh: true }]);
+      await blocker.query("SELECT pg_sleep_until($1::timestamptz + interval '10 milliseconds')", [cutoff]);
+      await blocker.query("COMMIT");
+      expect(await pending).toMatchObject(unavailable("orderId"));
+      await writer.query("ROLLBACK");
+      expect(await effects(owner, f)).toStrictEqual(before);
+      expect(await invariant(owner, f)).toStrictEqual(delivery);
+      await owner.query(deadline, [id, "2099-01-01T00:00:00Z"]);
+    }
   } finally {
     await Promise.all([blocker.query("ROLLBACK"), writer.query("ROLLBACK")]);
     blocker.release();
     writer.release();
   }
-}, 18_000);
+}, 25_000);
 
 it("distinguishes malformed prior checkout pins from missing acquisition lineage after an explicit edit", async () => {
   const { owner } = store, f = await subject(store), target = await stagePreparation(owner, f);
@@ -417,12 +483,15 @@ it("distinguishes malformed prior checkout pins from missing acquisition lineage
     for (const [pin, change] of [
       ["selection", "selection=selection-'selectionRevision'"],
       ["service", "service=service-'adapterRevision'"],
+      ["corrupt document", "service=service-'adapterRevision'"],
     ] as const) {
       await db.query("SAVEPOINT checkout_fixture");
       expect((await db.query(`UPDATE public.commerce_destination_v2_order_bindings SET ${change} WHERE order_id=$1`, [f.origin])).rowCount).toBe(1);
+      if (pin === "corrupt document") await db.query("UPDATE public.commerce_destination_v2_documents SET document_digest=repeat('1',64) WHERE snapshot_ref=$1",
+        [f.ny.binding.snapshotRef]);
       const read = await readSnapshot(db, f.ctx, f.ny.binding, f.ctx.scopeRef, "subscription");
       expect(read).toMatchObject({ outcome: "refused", code: "destination_evidence_unavailable", field: "subscriptionId" });
-      await expectBindRefused(db, f, target, invalidStoredPins, pin);
+      await expectBindRefused(db, f, target, pin === "corrupt document" ? unavailable() : invalidStoredPins, pin);
       await db.query("ROLLBACK TO SAVEPOINT checkout_fixture; RELEASE SAVEPOINT checkout_fixture");
     }
     await db.query("DELETE FROM public.commerce_destination_v2_order_bindings WHERE order_id=$1", [f.origin]);
@@ -431,24 +500,26 @@ it("distinguishes malformed prior checkout pins from missing acquisition lineage
   expect(await effects(owner, f)).toStrictEqual(before);
 });
 
-it("returns the original binding on direct writer replay with zero writes and refuses a different incumbent", async () => {
-  const { owner } = store, f = await subject(store), target = await stagePreparation(owner, f);
-  const original = await bind(owner, f.ctx, target.order, f.ny);
-  expect(original).toStrictEqual(f.ny.binding);
+it.each(["inherited", "explicit"])("replays the %s binding with zero writes and refuses a different incumbent", async kind => {
+  const { owner } = store, f = await subject(store);
+  const selected = kind === "explicit" ? await edit(owner, f.ctx, f.ny.selectionRevision) as Destination : f.ny;
+  const target = await stagePreparation(owner, f, selected);
+  const original = await bind(owner, f.ctx, target.order, selected);
+  expect(original).toStrictEqual(selected.binding);
   const beforeReplay = await effects(owner, f);
   await ownerTransaction(owner, async db => {
     const writeCounts = () => data(db, `SELECT relid, n_tup_ins, n_tup_upd, n_tup_del
       FROM pg_stat_xact_user_tables ORDER BY relid`);
     const beforeWrites = await writeCounts();
-    expect(await bind(db, f.ctx, target.order, f.ny)).toStrictEqual(original);
+    expect(await bind(db, f.ctx, target.order, selected)).toStrictEqual(original);
     expect(await writeCounts()).toStrictEqual(beforeWrites);
   });
   expect(await effects(owner, f)).toStrictEqual(beforeReplay);
 
   await owner.query("UPDATE public.commerce_destination_v2_order_bindings SET service=$2 WHERE order_id=$1",
-    [target.order, { ...f.ny.service, adapterRevision: "incumbent-adapter" }]);
+    [target.order, { ...selected.service, adapterRevision: "incumbent-adapter" }]);
   const occupied = await effects(owner, f);
-  await expect(bind(owner, f.ctx, target.order, f.ny)).rejects.toMatchObject({
+  await expect(bind(owner, f.ctx, target.order, selected)).rejects.toMatchObject({
     code: "23505", message: "destination_order_binding_occupied", detail: "orderId",
     hint: "Resolve the existing binding without moving it.",
   });
@@ -480,13 +551,34 @@ it("checks completed erasure before missing live linkage and rejects ambiguous a
     hint: "Use the qualified native dispatch workflow for the original order.",
   });
   await assertLegacyRefusal();
+  const unbound = await snapshot(runtime, { ...erased.checkout, scopeRef: randomUUID() });
+  await reachDestinationCutoff(owner, unbound.binding);
+  await call(owner, "commerce_destination_v2_expire", [new Date(), 1000]);
+  expect((await exportDestinations(runtime, erased)).data).toEqual(expect.arrayContaining([
+    expect.objectContaining({ snapshotRef: unbound.binding.snapshotRef, evidenceDisposition: "expired" }),
+    expect.objectContaining({ snapshotRef: erased.ny.binding.snapshotRef, evidenceDisposition: "available", document: expect.any(Object) }),
+  ]));
   await call(runtime, "commerce_destination_v2_erase", [erased.ctx.clientId]);
-  await markReceiptClientErased(owner, erased.ctx.clientId);
-  await owner.query("UPDATE public.clients SET principal_id=NULL WHERE id=$1", [erased.ctx.clientId]);
+  const resolve = () => call(owner, "fulfillment_resolve_parcel_contact", [shipment]);
+  await expect(resolve()).rejects.toMatchObject(unavailable("shipmentId"));
+  expect((await exportParcels(runtime, erased)).data).toContainEqual(expect.objectContaining({ shipmentId: shipment, contact: expect.any(Object) }));
+  const markers = (await exportDestinations(runtime, erased)).data;
+  expect(markers).toEqual(expect.arrayContaining([expect.objectContaining({ evidenceDisposition: "erased" })]));
+  expect(JSON.stringify(markers)).not.toMatch(/"document"|"orderBindings"|"subscriptionSelections"/u);
+  const actor = randomUUID(), id = erased.ctx.clientId;
+  await owner.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,'privacy-admin@example.invalid')", [actor]);
+  await owner.query(`INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at)
+    VALUES($1,'admin','active','legacy',now())`, [actor]);
+  await owner.query("UPDATE public.subscriptions SET status='cancelled' WHERE id=$1", [erased.ctx.scopeRef]);
+  const { operations } = composeNativePrivacy({ store: createPostgresPrivacyStore(), unitOfWork: { run: work => ownerTransaction(runtime, work) } });
+  expect(await operations.erase({ principalId: actor }, { subject: { kind: "contact", contactId: id }, idempotencyKey: randomUUID() }))
+    .toMatchObject({ outcome: "ERASED" });
+  expect((await exportParcels(runtime, erased)).data).toEqual([expect.objectContaining({ shipmentId: shipment, contact: {}, erasedAt: expect.any(String) })]);
+  expect((await exportDestinations(runtime, erased)).data).toStrictEqual(markers);
   const beforeErased = await effects(owner, erased);
   await assertLegacyRefusal();
   await expect(bind(owner, erased.ctx, erasedOrder.order, erased.ny)).rejects.toMatchObject(unavailable());
-  expect(await retained(runtime, erased, erasedOrder, erased.ny)).toMatchObject({ code: "destination_evidence_unavailable" });
+  expect(await readSnapshot(runtime, erased.ctx, erased.ny.binding, erasedOrder.order, "order")).toMatchObject({ code: "destination_evidence_unavailable" });
   expect(await data(owner, "SELECT selection, service FROM public.commerce_destination_v2_order_bindings WHERE order_id=$1",
     [erasedOrder.order])).toEqual([{ selection: null, service: null }]);
   expect(await effects(owner, erased)).toStrictEqual(beforeErased);
@@ -531,7 +623,7 @@ it.each(["edit", "writer"] as const)("serializes direct writer contention on the
       await writer.query("COMMIT");
       expect(await editing).toMatchObject({ code: "payment_blocked", field: "subscriptionId" });
       await editor.query("COMMIT");
-      expect(await retained(runtime, f, target, f.ny)).toMatchObject({ binding: f.ny.binding });
+      expect(await readSnapshot(runtime, f.ctx, f.ny.binding, target.order, "order")).toMatchObject({ binding: f.ny.binding });
       expect(await data(owner, "SELECT 1 FROM public.subscription_destination_v2_selections WHERE subscription_id=$1",
         [f.ctx.scopeRef])).toEqual([]);
     }

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { canonicalCatalogDraftJson } from "@openlup/platform/catalog";
+import { createPostgresPaidFulfillmentHandoffStore } from "@openlup/platform/fulfillment";
 import type { Pool, PoolClient } from "pg";
 import type { JourneyInstallation } from "../helpers/storeJourney.js";
 import {
@@ -62,10 +63,12 @@ export async function subject({ owner, runtime }: JourneyInstallation) {
   await insert(owner, "subscription_cycles", {
     id: predecessorCycle, subscription_id: root.subscription, scheduled_at: AT, status: "paid",
   });
+  await owner.query("UPDATE public.commerce_orders SET subscription_cycle_id=$2 WHERE id=$1", [origin, predecessorCycle]);
   await insert(owner, "subscription_delivery_alignment_cases", {
     predecessor_order_id: origin, subscription_id: root.subscription, predecessor_cycle_id: predecessorCycle,
     captured_mode: "protect", state: "protected", evidence_kind: "missing_fulfillment",
   });
+  await insert(owner, "subscription_cycle_delivery_assignments", { obligation_ref: origin, assigned_cycle_key: cycleKey });
   return { root, ctx, checkout, ny, origin, pair, reservation };
 }
 
@@ -91,8 +94,6 @@ export async function bookCycle(db: Db, f: Subject) {
   return id;
 }
 
-export const prepareOpening = (f: Subject, sequence: number) => `renewal:${f.pair.operation_id}:${sequence}`;
-
 export type Target = {
   preparation: string;
   order: string;
@@ -109,7 +110,7 @@ export async function prepareGraph(db: PoolClient, f: Subject, selected: Destina
   const preparation = randomUUID(), order = randomUUID(), intent = randomUUID(), attempt = randomUUID(), payment = randomUUID();
   const binding = randomUUID(), hold = randomUUID(), evaluation = randomUUID(), calculation = randomUUID();
   const binding_seq = predecessor ? 2 : 1;
-  const opening = prepareOpening(f, binding_seq);
+  const opening = `renewal:${f.pair.operation_id}:${binding_seq}`;
   const { binding: destinationBinding, service, selectionRevision } = selected;
   const live_evidence = { binding: destinationBinding, service, selectionRevision };
   if (predecessor) {
@@ -181,7 +182,7 @@ export async function ownerTransaction<T>(owner: Pool, work: (db: PoolClient) =>
   }
 }
 
-export async function paidHandoff({ owner, runtime }: JourneyInstallation, prepared: Target) {
+export async function paidHandoff({ owner, runtime }: JourneyInstallation, prepared: Pick<Target, "order"> & Partial<Pick<Target, "intent">>) {
   const sku = randomUUID(), item = randomUUID();
   await ownerTransaction(owner, async db => {
     await db.query("INSERT INTO public.fulfillment_ports(port_key,provider_type,routable) VALUES($1,'3pl',true) ON CONFLICT DO NOTHING", [port]);
@@ -192,7 +193,12 @@ export async function paidHandoff({ owner, runtime }: JourneyInstallation, prepa
     [prepared.order, amount]);
     await db.query(`INSERT INTO public.commerce_order_items(id,order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor)
       VALUES($1,$2,$3,1,1,$4,$4)`, [item, prepared.order, sku, amount]);
-    await db.query("UPDATE public.commerce_settlement_intents SET status='settled',settled_at=clock_timestamp() WHERE id=$1", [prepared.intent]);
+    if (prepared.intent) {
+      await db.query("UPDATE public.commerce_settlement_intents SET status='settled',settled_at=clock_timestamp() WHERE id=$1", [prepared.intent]);
+    } else {
+      await db.query(`INSERT INTO public.commerce_settlement_intents(order_id,channel_key,status,amount_minor,currency_code,open_idempotency_key,settled_at)
+        VALUES($1,'sandbox','settled',$2,'XXX',$1::uuid::text,clock_timestamp())`, [prepared.order, amount]);
+    }
     await db.query(`INSERT INTO public.fulfillment_stock_current(source_key,sku,total_quantity,for_sale_quantity,reserved_unavailable_quantity,
       inventory_class,last_synced_at,stale_after,sync_run_id,idempotency_key,operation_fingerprint)
       VALUES($1,$1,10,10,0,'sellable',clock_timestamp(),clock_timestamp()+interval '1 day',$1,$1,repeat('a',64))`, [sku]);
@@ -200,9 +206,8 @@ export async function paidHandoff({ owner, runtime }: JourneyInstallation, prepa
   await runtime.query(`SELECT public.fulfillment_reserve_purchase_order_items($1,$2,$3,$4,'succeeded',
     clock_timestamp()+interval '1 hour','{}',clock_timestamp())`,
   [`reserve:${prepared.order}`, prepared.order, sku, JSON.stringify([{ orderItemId: item, skuId: sku, quantity: 1 }])]);
-  const { fulfillmentRef } = await call(runtime, "fulfillment_ensure_paid_handoff", [
-    `handoff:${prepared.order}`, prepared.order, "paid-fact", port,
-  ]);
+  const { fulfillmentRef } = await createPostgresPaidFulfillmentHandoffStore(runtime, port)
+    .ensureObligation({ requestKey: `handoff:${prepared.order}`, orderRef: prepared.order, paidFactRef: "paid-fact" });
   const { rows } = await owner.query("SELECT contact FROM public.fulfillment_parcel_contacts WHERE shipment_id=$1", [fulfillmentRef]);
   return { shipment: fulfillmentRef as string, contact: rows[0]?.contact };
 }
