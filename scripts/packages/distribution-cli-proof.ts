@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync, type ExecFileSyncOptionsWithStringEncoding } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, linkSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { isIPv4 } from "node:net";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -1480,6 +1480,19 @@ exec "${dockerBin}" "$@"
   const projectLabel = "com.docker.compose.project";
   const appFilters = ["--filter", "label=com.docker.compose.service=application",
     "--filter", "label=com.docker.compose.container-number"];
+  // Subscribe before startup so healthcheck activity cannot evict earlier creates
+  // from Docker's bounded event history.
+  const eventPath = join(scratch, "container-creates"), eventErrors = eventPath + ".stderr";
+  const eventOut = openSync(eventPath, "wx", 0o600), eventErr = openSync(eventErrors, "wx", 0o600);
+  const eventStream = spawn(dockerBin, ["events", "--since", new Date().toISOString(),
+    "--filter", "type=container", "--filter", "event=create", "--filter", "label=" + projectLabel,
+    "--format", '{{index .Actor.Attributes "com.docker.compose.project"}} {{index .Actor.Attributes "com.docker.compose.service"}} {{.Actor.ID}} {{if index .Actor.Attributes "com.docker.compose.container-number"}}managed{{end}}'],
+    { cwd: from, env, stdio: ["ignore", eventOut, eventErr] });
+  closeSync(eventOut);
+  closeSync(eventErr);
+  const eventClosed = new Promise(resolve => eventStream.once("close", resolve));
+  let eventError = false;
+  eventStream.on("error", () => { eventError = true; });
   function listApps() {
     const apps = new Map<string, string>();
     for (const name of [project, alternate]) {
@@ -1520,36 +1533,15 @@ exec "${dockerBin}" "$@"
       captureLogs(id);
       rememberAppFiles(id);
     }
-    const priorInstallers = readdirSync(installerLogs).length;
-    const since = new Date().toISOString();
     try { return operate(); }
     finally {
-      const after = listApps();
-      const until = new Date().toISOString();
-      // Detect a generation that disappeared inside one command, before it could be captured.
-      const events = checked("application_create_events", runRaw(from, dockerBin, ["events", "--since", since,
-        "--until", until, "--filter", "type=container", "--filter", "event=create",
-        "--filter", "label=" + projectLabel,
-        "--format", '{{index .Actor.Attributes "com.docker.compose.project"}} {{index .Actor.Attributes "com.docker.compose.service"}} {{.Actor.ID}}']));
-      const startedApps = new Set<string>();
-      const startedInstallers = new Set<string>();
-      for (const event of events.split("\n")) {
-        const [name, service, id] = event.split(" ");
-        if ((name !== project && name !== alternate) || !id) continue;
-        if (service === "application") startedApps.add(id);
-        if (service === "installation") startedInstallers.add(id);
+      activeApps = listApps();
+      for (const [id, name] of activeApps) {
+        if (!generations.has(id)) generations.set(id, name === alternate ? "blank-volume application" : label);
       }
-      if (readdirSync(installerLogs).length - priorInstallers < startedInstallers.size) fail("uncaptured_installation_logs");
-      for (const id of startedInstallers) installers.add(id);
-      if ([...startedApps].some(id => !after.has(id) && !appLogs.has(id))) fail("uncaptured_application_generation");
-      for (const [id, name] of after) {
-        if (generations.has(id)) continue;
-        if (!startedApps.has(id)) fail("unobserved_application_generation");
-        generations.set(id, name === alternate ? "blank-volume application" : label);
-      }
-      activeApps = after;
     }
   }
+
   function run(cwd: string, command: string, args: string[], input?: string, environment = env, privateResult = false) {
     const execute = () => runRaw(cwd, command, args, input, environment, privateResult);
     const lifecycleChange = command === "./lifecycle" && ["up", "down"].includes(args[0]!);
@@ -2289,7 +2281,8 @@ esac
     if (imagePaths) fail("credential_path_in_image");
     const imageFiles = spawn(dockerBin, ["run", "--rm", "--network", "none", image, "tar", "-cf", "-", "/application"],
       { cwd: from, env, stdio: ["ignore", "pipe", "pipe"] });
-    imageFiles.stderr.on("data", chunk => captures.push(chunk.toString("utf8")));
+    const imageErrors: Buffer[] = [];
+    imageFiles.stderr.on("data", chunk => imageErrors.push(chunk));
     const done = new Promise(resolveDone => imageFiles.once("close", resolveDone));
     let tail = "", imageLeak = false;
     for await (const chunk of imageFiles.stdout) {
@@ -2298,6 +2291,7 @@ esac
       tail = value.slice(-1024);
     }
     if (await done !== 0 || imageLeak) fail("application_image_credential_scan");
+    captures.push(Buffer.concat(imageErrors).toString("utf8"));
     const committed = checked("git_candidate_contents", run(process.cwd(), "git", ["diff", predecessor + "..HEAD"]));
     const redClient = tcpClient(false, "", "starter_runtime", "neutral_store", synthetic);
     if (clientEnvironments.length < 10 || clientEnvironments.some(value => leaks(value) || value.split("\0").some(entry => entry.startsWith("PGPASSWORD=")))
@@ -2308,9 +2302,22 @@ esac
     cleaned = true;
     if (activeApps.size || [...generations.keys()].some(id => !appLogs.has(id))) fail("uncaptured_application_logs");
 
-    for (const log of readdirSync(installerLogs)) for (const stream of ["stdout", "stderr"])
+    if (eventError || !eventStream.kill()) fail("application_event_stream");
+    await eventClosed;
+    captures.push(readFileSync(eventErrors, "utf8"));
+    const startedApps = new Set<string>();
+    for (const event of readFileSync(eventPath, "utf8").split("\n")) {
+      const [name, service, id, managed] = event.split(" ");
+      if ((name !== project && name !== alternate) || !id) continue;
+      if (service === "application" && managed === "managed") startedApps.add(id);
+      if (service === "installation") installers.add(id);
+    }
+    if (startedApps.size !== generations.size || [...startedApps].some(id => !appLogs.has(id)))
+      fail("uncaptured_application_generation");
+    const installerCaptures = readdirSync(installerLogs);
+    if (!installers.size || installerCaptures.length < installers.size) fail("uncaptured_installation_logs");
+    for (const log of installerCaptures) for (const stream of ["stdout", "stderr"])
       captures.push(readFileSync(join(installerLogs, log, stream), "utf8"));
-    if (!installers.size) fail("installation_inventory_empty");
     const outputLeaks = (values: string[], control?: { id: string; value: string }) => {
       const logs = [...appLogs].flatMap(([id, streams]) =>
         id === control?.id ? [streams[0] + "\n" + control.value, ...streams.slice(1)] : streams);
@@ -2340,8 +2347,13 @@ esac
     mark("occupied proof completed in " + Math.round(performance.now() - started) + " ms");
   } finally {
     try {
-      if (!cleaned) compose("down", "--volumes", "--remove-orphans", "--rmi", "local");
+      if (!cleaned) {
+        for (const id of listApps().keys()) captureLogs(id);
+        runRaw(from, dockerBin, ["compose", "--project-name", project, "down", "--volumes", "--remove-orphans", "--rmi", "local"]);
+      }
     } finally {
+      eventStream.kill();
+      await eventClosed;
       rmSync(dirname(source), { recursive: true, force: true });
       rmSync(scratch, { recursive: true, force: true });
     }
