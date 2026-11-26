@@ -298,14 +298,7 @@ function addTableReferences(stmt, startPos, result) {
     result.tableTargets.add(refTbl.qual);
   }
 }
-function isUnsafeSetStatement(tokens, i) {
-  const w1 = wordAt(tokens, i + 1);
-  const w2 = wordAt(tokens, i + 2);
-  return w1 === 'SEARCH_PATH' ||
-    (['LOCAL', 'SESSION'].includes(w1) && w2 === 'SEARCH_PATH') ||
-    w1 === 'ROLE' ||
-    (w1 === 'SESSION' && w2 === 'AUTHORIZATION');
-}
+const isSetConfigToken = tok => (tok?.kind === 'word' || tok?.kind === 'quoted') && tok.value.toLowerCase() === 'set_config';
 function extractDoBlock(stmt, result) {
   let pos = 1;
   if (wordAt(stmt, pos) === 'LANGUAGE' && (stmt[pos + 1]?.kind === 'word' || stmt[pos + 1]?.kind === 'quoted')) pos += 2;
@@ -318,6 +311,7 @@ function extractDoBlock(stmt, result) {
   if (inner.opaque) { result.opaque = true; return; }
   for (let i = 0; i < inner.tokens.length; i += 1) {
     const tok = inner.tokens[i];
+    if (isSetConfigToken(tok)) { result.opaque = true; continue; }
     if (tok.kind !== 'word') continue;
     const upper = tok.value.toUpperCase();
     if (upper === 'EXECUTE') {
@@ -333,10 +327,12 @@ function extractDoBlock(stmt, result) {
       }
       continue;
     }
+    const prev = inner.tokens[i - 1];
+    const prevUpper = prev?.kind === 'word' ? prev.value.toUpperCase() : '';
+    const atDoStmtBoundary = i === 0 || (prev?.kind === 'symbol' && prev.value === ';') ||
+      ['BEGIN', 'THEN', 'ELSE', 'LOOP'].includes(prevUpper);
     if (DO_DDL_KEYWORDS.has(upper) ||
-      upper === 'SET_CONFIG' ||
-      (upper === 'SET' && isUnsafeSetStatement(inner.tokens, i)) ||
-      (upper === 'RESET' && ['SEARCH_PATH', 'ALL', 'ROLE'].includes(wordAt(inner.tokens, i + 1))) ||
+      (atDoStmtBoundary && (upper === 'SET' || upper === 'RESET')) ||
       (upper === 'SECURITY' && wordAt(inner.tokens, i + 1) === 'LABEL') ||
       (upper === 'COMMENT' && wordAt(inner.tokens, i + 1) === 'ON')) {
       result.opaque = true;
@@ -616,6 +612,7 @@ export function extractSqlObjects(sql) {
   const { statements, opaque } = splitSqlStatements(tokenized.tokens);
   if (opaque) result.opaque = true;
   for (const stmt of statements) {
+    if (stmt.some(isSetConfigToken)) result.opaque = true;
     const head = wordAt(stmt, 0);
     if (head === 'DO') extractDoBlock(stmt, result);
     else if (head === 'CREATE') extractCreateDdl(stmt, result);
@@ -637,12 +634,12 @@ export function extractSqlObjects(sql) {
         break;
       }
       if (parsed === 0) result.opaque = true;
-    } else if (head === 'SET') {
-      if (isUnsafeSetStatement(stmt, 0)) result.opaque = true;
-    } else if (head === 'RESET') {
-      if (['SEARCH_PATH', 'ALL', 'ROLE'].includes(wordAt(stmt, 1))) result.opaque = true;
+    } else if (head === 'SET' || head === 'RESET') {
+      result.opaque = true;
     } else if (SAFE_TOP_LEVEL_NON_DDL.has(head)) {
-      if (stmt.some(tok => tok.kind === 'word' && tok.value.toUpperCase() === 'SET_CONFIG')) result.opaque = true;
+      if ((head === 'SELECT' || head === 'WITH') && stmt.some(tok => tok.kind === 'word' && tok.value.toUpperCase() === 'INTO')) {
+        result.opaque = true;
+      }
     } else {
       result.opaque = true;
     }
@@ -1087,6 +1084,7 @@ export async function sessionMain(argv = process.argv.slice(2), { cwd = process.
         try { await git(cwd, 'merge-base', '--is-ancestor', session.candidate.head, observed.head); }
         catch { throw new Error('invalid: rebased history; use prepare --new'); }
       }
+      const deferOptions = await sessionLegacyDeferOptions(cwd, session);
       if (!fresh && session?.version === 3 && session.candidate &&
         session.candidate.base === observed.base && session.candidate.head !== observed.head &&
         observed.clean) {
@@ -1094,7 +1092,7 @@ export async function sessionMain(argv = process.argv.slice(2), { cwd = process.
         const expectedAuthor = lastPrepare?.authorSessionId ?? session.authorSessionId;
         const expectedIntent = lastPrepare?.intent ?? session.intent;
         if (expectedAuthor === observed.authorSessionId && digest(expectedIntent) === digest(observed.intent)) {
-          const regroup = computeRegroupAdvisory(session);
+          const regroup = computeRegroupAdvisory(session, undefined, { supersedeTrailing: true, ...deferOptions });
           if (regroup.triggered) {
             throw new Error(`REGROUP_REQUIRED: ${regroup.reason} Run node scripts/agent-review-session.mjs regroup --summary "<root cause and new approach>" before preparing a new repair round.`);
           }
@@ -1104,7 +1102,6 @@ export async function sessionMain(argv = process.argv.slice(2), { cwd = process.
       const now = Date.now();
       const rules = await captureReviewRules(cwd, observed);
       if (rules) observed.rules = rules;
-      const deferOptions = await sessionLegacyDeferOptions(cwd, session);
       if (!fresh && session?.candidate && session.candidate.head !== observed.head) {
         const parents = await integrationParents(cwd, observed.head);
         const baseAncestor = await ancestor(git, cwd, session.candidate.base, observed.base) &&
@@ -1154,7 +1151,8 @@ export async function sessionMain(argv = process.argv.slice(2), { cwd = process.
     const observed = await captureSessionCandidate(cwd, session.candidate.base, { env });
     demand(observed.clean, 'commit source changes before review', 'dirty');
     demand(['base', 'head', 'tree'].every(key => observed[key] === session.candidate[key]), 'candidate changed; prepare again', 'stale');
-    if (verb === 'record') { session = recordReport(session, await boundedJson(args[0]), Date.now()); await saveState(path, session); return 0; }
+    const deferOptions = await sessionLegacyDeferOptions(cwd, session);
+    if (verb === 'record') { session = recordReport(session, await boundedJson(args[0]), Date.now(), deferOptions); await saveState(path, session); return 0; }
     if (verb === 'defer') {
       const findingId = args.shift();
       let target; let decision; let reason;
@@ -1170,7 +1168,6 @@ export async function sessionMain(argv = process.argv.slice(2), { cwd = process.
       return 0;
     }
     await validateEconomySession(cwd, session);
-    const deferOptions = await sessionLegacyDeferOptions(cwd, session);
     const decision = verdict(session, observed, Date.now(), deferOptions); demand(decision.ok, decision.reason, decision.code);
     if (verb === 'receipt') await assertMergePreflight(cwd, observed, { env });
     if (verb === 'receipt') console.log(receiptBody(receiptSummary(session, Number(args[0]), Date.now(), deferOptions), deferOptions));

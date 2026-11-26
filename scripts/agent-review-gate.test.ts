@@ -650,6 +650,55 @@ describe('six real Git witnesses', () => {
     await writeFile(join(f.cwd, 'source.txt'), 'fresh start\n');
     f.commit();
     await expect(f.cli('prepare', '--new', request)).resolves.toBe(0);
+
+    // On a floor-2 session, abandoning two consecutive partial 1-FAIL rounds triggers REGROUP_REQUIRED on the 3rd prepare,
+    // while status --explain keeps waiting for the 2nd reviewer on the trailing partial round before prepare is called.
+    const f2 = await fixture('native-review-regroup-f2-');
+    f2.git('checkout', '-q', '--detach', f2.base);
+    await mkdir(join(f2.cwd, 'scripts'), { recursive: true });
+    await writeFile(join(f2.cwd, 'scripts/agent-review-decide.mjs'), 'export const REVIEW_RULES_VERSION = 3;\n');
+    f2.git('add', 'scripts/agent-review-decide.mjs');
+    f2.git('commit', '-qm', 'enable v3 rules on main');
+    f2.git('update-ref', 'refs/remotes/origin/main', f2.git('rev-parse', 'HEAD'));
+    const f2Request = join(f2.scratch, 'f2-intent.json');
+    await writeFile(f2Request, JSON.stringify({ intent: { risk: 'behavior', criteria: 'Exercise partial floor-2 regroup guard' } }));
+    const f2Report = join(f2.scratch, 'f2-report.json');
+    const writeF2Report = (payload: Record<string, unknown>) => writeFile(f2Report, JSON.stringify({
+      cold: true, verdict: 'PASS', findings: [], closes: [],
+      documentation: 'Fixture assessment: reviewed canonical guidance; no impact.',
+      ...payload,
+    }));
+
+    await writeFile(join(f2.cwd, 'source.txt'), 'floor2 start\n');
+    f2.commit();
+    await f2.cli('prepare', f2Request);
+    let f2Session = JSON.parse(await readFile(f2.statePath, 'utf8'));
+    await writeF2Report({ reviewer: 'f2-0a', verdict: 'FAIL', tree: f2Session.candidate.tree, findings: [{ id: 'F2-1', summary: 'floor2 defect', material: true }] });
+    await f2.cli('record', f2Report);
+    await writeF2Report({ reviewer: 'f2-0b', verdict: 'FAIL', tree: f2Session.candidate.tree });
+    await f2.cli('record', f2Report);
+
+    await writeFile(join(f2.cwd, 'source.txt'), 'floor2 cycle 1\n');
+    f2.commit();
+    await f2.cli('prepare', f2Request);
+    f2Session = JSON.parse(await readFile(f2.statePath, 'utf8'));
+    await writeF2Report({ reviewer: 'f2-1a', verdict: 'FAIL', tree: f2Session.candidate.tree });
+    await f2.cli('record', f2Report);
+
+    await writeFile(join(f2.cwd, 'source.txt'), 'floor2 cycle 2\n');
+    f2.commit();
+    await f2.cli('prepare', f2Request);
+    f2Session = JSON.parse(await readFile(f2.statePath, 'utf8'));
+    await writeF2Report({ reviewer: 'f2-2a', verdict: 'FAIL', tree: f2Session.candidate.tree });
+    await f2.cli('record', f2Report);
+    await f2.cli('status', '--explain');
+    expect(JSON.parse(vi.mocked(console.log).mock.lastCall![0]).regroupAdvisory).toMatchObject({
+      triggered: false, nonConvergingCycles: 1,
+    });
+
+    await writeFile(join(f2.cwd, 'source.txt'), 'floor2 cycle 3\n');
+    f2.commit();
+    await expect(f2.cli('prepare', f2Request)).rejects.toThrow('REGROUP_REQUIRED');
   });
 
   it('hardens CLI defer --to targets and requires cold PASS acceptsDefer confirmation before verify', async () => {

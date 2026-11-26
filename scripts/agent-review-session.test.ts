@@ -852,6 +852,33 @@ describe('native review decisions', () => {
       nonConvergingCycles: 2,
       reason: '2 consecutive repair cycles did not reduce open material findings; regroup before editing further.',
     });
+
+    // Superseded partial floor-2 FAIL rounds count toward nonConvergingCycles, while trailing partial rounds still wait.
+    let partialFail = prepare({ intent: behaviorIntent, rules });
+    partialFail = recordReport(partialFail, report({ reviewer: 'pf-r0a', verdict: 'FAIL', findings: [{ id: 'PF-1', summary: 'partial loop defect', material: true }] }), time);
+    partialFail = recordReport(partialFail, report({ reviewer: 'pf-r0b', verdict: 'FAIL' }), time);
+    const pfc1 = { ...observed, head: 'a'.repeat(39) + '1', tree: 'a'.repeat(39) + '1', rules, intent: behaviorIntent, authorSessionId: 'author' };
+    partialFail = prepareCandidate(partialFail, pfc1, time + 1);
+    partialFail = recordReport(partialFail, report({ reviewer: 'pf-r1a', tree: pfc1.tree, verdict: 'FAIL' }), time + 1);
+    expect(computeRegroupAdvisory(partialFail)).toEqual({ triggered: false, nonConvergingCycles: 0, reason: null });
+    const pfc2 = { ...observed, head: 'a'.repeat(39) + '2', tree: 'a'.repeat(39) + '2', rules, intent: behaviorIntent, authorSessionId: 'author' };
+    partialFail = prepareCandidate(partialFail, pfc2, time + 2);
+    expect(computeRegroupAdvisory(partialFail)).toEqual({ triggered: false, nonConvergingCycles: 1, reason: null });
+    partialFail = recordReport(partialFail, report({ reviewer: 'pf-r2a', tree: pfc2.tree, verdict: 'FAIL' }), time + 2);
+    // Trailing partial FAIL round still waits for its 2nd reviewer unless supersedeTrailing is set.
+    expect(computeRegroupAdvisory(partialFail)).toEqual({ triggered: false, nonConvergingCycles: 1, reason: null });
+    expect(computeRegroupAdvisory(partialFail, undefined, { supersedeTrailing: true })).toEqual({
+      triggered: true,
+      nonConvergingCycles: 2,
+      reason: '2 consecutive repair cycles did not reduce open material findings; regroup before editing further.',
+    });
+    const pfc3 = { ...observed, head: 'a'.repeat(39) + '3', tree: 'a'.repeat(39) + '3', rules, intent: behaviorIntent, authorSessionId: 'author' };
+    partialFail = prepareCandidate(partialFail, pfc3, time + 3);
+    expect(computeRegroupAdvisory(partialFail)).toEqual({
+      triggered: true,
+      nonConvergingCycles: 2,
+      reason: '2 consecutive repair cycles did not reduce open material findings; regroup before editing further.',
+    });
   });
 
   it('tracks repeated closed findings, regroup resets, and unconfirmed defers in computeRegroupAdvisory', () => {
@@ -1111,13 +1138,38 @@ describe('native review decisions', () => {
       'DO $$ BEGIN GRANT SELECT ON public.orders TO anon; END $$;',
       'DO $$ BEGIN SET search_path = private, public; END $$;',
       'DO $$ BEGIN SET LOCAL search_path TO private; END $$;',
+      'DO $$ BEGIN SET "search_path" = private; END $$;',
+      'DO $$ BEGIN SET LOCAL ROLE admin; END $$;',
+      'DO $$ BEGIN SET standard_conforming_strings = off; END $$;',
+      'DO $$ BEGIN RESET "search_path"; END $$;',
       "DO $$ BEGIN PERFORM set_config('search_path', 'private', true); END $$;",
+      'DO $$ BEGIN PERFORM "set_config"(\'search_path\', \'private\', true); END $$;',
+      "DO $$ BEGIN EXECUTE 'SELECT * INTO public.orders FROM source'; END $$;",
       'SET search_path TO private, public; CREATE OR REPLACE FUNCTION calc() RETURNS int LANGUAGE sql AS $$ SELECT 1; $$;',
+      'SET "search_path" TO private, public; CREATE OR REPLACE FUNCTION calc() RETURNS int LANGUAGE sql AS $$ SELECT 1; $$;',
+      'SET LOCAL "search_path" = private;',
       'SET LOCAL search_path = private;',
       'SET ROLE admin;',
+      'SET LOCAL ROLE admin;',
+      'SET SESSION ROLE admin;',
+      "SET SESSION SCHEMA 'private';",
+      "SET LOCAL SCHEMA 'private';",
       'SET SESSION AUTHORIZATION admin;',
+      'SET LOCAL SESSION AUTHORIZATION admin;',
+      'SET standard_conforming_strings = off;',
+      "SET LOCAL statement_timeout = '5s';",
+      'SET row_security = off;',
       'RESET search_path;',
+      'RESET "search_path";',
+      'RESET "role";',
+      'RESET SESSION AUTHORIZATION;',
+      'RESET standard_conforming_strings;',
       "SELECT set_config('search_path', 'private', true);",
+      'SELECT "set_config"(\'search_path\', \'private\', true);',
+      'SELECT pg_catalog."set_config"(\'search_path\', \'private\', true);',
+      'SELECT * INTO public.orders FROM source;',
+      'SELECT * INTO TEMP TABLE orders_tmp FROM source;',
+      'WITH cte AS (SELECT 1 AS id) SELECT * INTO public.orders FROM cte;',
       'CREATE SCHEMA analytics CREATE TABLE analytics.events (id int);',
       'CREATE SCHEMA AUTHORIZATION CURRENT_USER;',
       'ALTER FUNCTION public.f(int) RENAME TO g;',
@@ -1140,10 +1192,8 @@ describe('native review decisions', () => {
       expect(extractSqlObjects(opaqueSql).opaque, opaqueSql).toBe(true);
     }
 
-    // GRANT/REVOKE, REFERENCES targets, safe SET, CREATE SCHEMA AUTHORIZATION, and benign DO IF EXISTS EXECUTE patterns parse deterministically (opaque = false).
+    // GRANT/REVOKE, REFERENCES targets, CREATE FUNCTION SET search_path, DO UPDATE SET, CREATE SCHEMA AUTHORIZATION, and benign DO IF EXISTS EXECUTE patterns parse deterministically (opaque = false).
     const grantDoSql = `
-      SET LOCAL statement_timeout = '5s';
-      SET row_security = off;
       CREATE FUNCTION public.pinned_fn() RETURNS int LANGUAGE sql SET search_path = pg_catalog, public AS $$ SELECT 1; $$;
       CREATE SCHEMA IF NOT EXISTS reporting AUTHORIZATION reporting_owner;
       CREATE TABLE public.orders (id int PRIMARY KEY, user_id int REFERENCES private.users(id));
@@ -1156,6 +1206,7 @@ describe('native review decisions', () => {
       GRANT USAGE ON DOMAIN public.email_addr TO app_reader;
       GRANT USAGE ON SCHEMA reporting TO app_reader;
       DO $$ BEGIN
+        UPDATE public.items SET note = 'ok' WHERE false;
         IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
           EXECUTE 'GRANT EXECUTE ON FUNCTION public.catalog_offer(text, integer), public.catalog_ready(text[]) TO service_role;';
         END IF;
@@ -1306,6 +1357,37 @@ describe('native review decisions', () => {
     expect(admit({ receipt: legacySummary, observed: { ...preCandidate, pr: 99, baseValid: true }, now: time + 2 })).toMatchObject({ ok: false, code: 'invalid' });
     expect(admit({ receipt: legacySummary, observed: { ...preCandidate, pr: 99, baseValid: true, legacyDefer: true }, now: time + 2 })).toEqual({ ok: true, code: 'reviewed', reason: 'reviewed' });
     expect(admit({ receipt: legacySummary, observed: { ...preCandidate, pr: 99, baseValid: true, legacyDeferBases: new Set([legacyBase]) }, now: time + 2 })).toEqual({ ok: true, code: 'reviewed', reason: 'reviewed' });
+    expect(() => recordReport(preSession, report({ reviewer: 'legacy-r3', tree: preCandidate.tree, acceptsDefer: ['LEG-1'] }), time + 2, { legacyDeferBases: new Set([legacyBase]) }))
+      .toThrow('acceptsDefer must name pending deferred material findings');
+    // Protected pre-PR-4 legacy-defer repair round uses floor=1 in computeRegroupAdvisory when legacyDeferBases is supplied.
+    const protPre = { ...preCandidate, changedPaths: ['config/settings.json'] };
+    const protHead2 = { ...protPre, head: 'b'.repeat(39) + '2', tree: 'c'.repeat(39) + '2' };
+    const protBaseSession = {
+      ...preSession,
+      candidate: protPre,
+      history: [
+        { type: 'rules', version: 3, at: time },
+        { type: 'prepare', intent, candidate: protPre, authorSessionId: 'author', at: time },
+        { type: 'report', at: time, report: { reviewer: 'p1', cold: true, tree: protPre.tree, verdict: 'FAIL', documentation: 'Checked.', findings: [{ id: 'LP-1', summary: 'legacy open', material: true }], closes: [], at: time } },
+        { type: 'defer', at: time + 1, findingId: 'LP-1', target: 'later', decision: 'CM-1', reason: 'pre-pr4 defer' },
+        { type: 'report', at: time + 2, report: { reviewer: 'p2', cold: true, tree: protPre.tree, verdict: 'PASS', documentation: 'Checked.', findings: [], closes: [], at: time + 2 } },
+        { type: 'report', at: time + 2, report: { reviewer: 'p3', cold: true, tree: protPre.tree, verdict: 'PASS', documentation: 'Checked.', findings: [], closes: [], at: time + 2 } },
+      ],
+    };
+    const protRepair = prepareCandidate(protBaseSession, {
+      ...protHead2, intent, authorSessionId: 'author',
+      coverage: { kind: 'repair', previous: digest(protBaseSession.history), from: { base: protPre.base, head: protPre.head, tree: protPre.tree }, delta: '8'.repeat(64), proof: { paths: ['config/settings.json'], modeChanged: false } },
+    }, time + 3, false, { legacyDeferBases: new Set([legacyBase]) });
+    const protFail = recordReport(protRepair, report({ reviewer: 'p4', tree: protHead2.tree, verdict: 'FAIL', ordinary: true, delta: '8'.repeat(64), findings: [{ id: 'LP-2', summary: 'repair flaw', material: true }] }), time + 4);
+    expect(computeRegroupAdvisory(protFail, undefined, { legacyDeferBases: new Set([legacyBase]) })).toEqual({ triggered: false, nonConvergingCycles: 1, reason: null });
+    const protHead3 = { ...protPre, head: 'b'.repeat(39) + '3', tree: 'c'.repeat(39) + '3' };
+    const protRepair3 = prepareCandidate(protFail, {
+      ...protHead3, intent, authorSessionId: 'author',
+      coverage: { kind: 'repair', previous: digest(protFail.history), from: { base: protHead2.base, head: protHead2.head, tree: protHead2.tree }, delta: '9'.repeat(64), proof: { cumulativeFrom: protPre.head, paths: ['config/settings.json'], modeChanged: false } },
+    }, time + 5, false, { legacyDeferBases: new Set([legacyBase]) });
+    const protFail2 = recordReport(protRepair3, report({ reviewer: 'p5', tree: protHead3.tree, verdict: 'FAIL', ordinary: true, delta: '9'.repeat(64) }), time + 6);
+    expect(computeRegroupAdvisory(protFail2)).toMatchObject({ triggered: false, nonConvergingCycles: 1 });
+    expect(computeRegroupAdvisory(protFail2, undefined, { legacyDeferBases: new Set([legacyBase]) })).toMatchObject({ triggered: true, nonConvergingCycles: 2 });
 
     // Rules transition event immediately before a v3 prepare is trimmed from the prior v2 round's slice.
     const v2Session = prepareCandidate(null, { ...observed, intent, authorSessionId: 'author' }, time);

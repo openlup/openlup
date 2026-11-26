@@ -112,7 +112,7 @@ function findingState(session, options = {}) {
   return { open, pendingDefer, deferred, openAtPrepare, closedInCurrentRound, confirmedDefersInCurrentRound };
 }
 function openFindings(session, options = {}) { return findingState(session, options).open; }
-function roundFloorForPrepare(session, index, event) {
+function roundFloorForPrepare(session, index, event, options = {}) {
   const fallback = candidateFloor(event.candidate, event.intent?.risk ?? 'routine');
   try {
     const nextPrepare = session.history.findIndex((item, pos) => pos > index && item.type === 'prepare');
@@ -127,12 +127,12 @@ function roundFloorForPrepare(session, index, event) {
       );
     }
     const slice = { ...session, version, history, candidate: event.candidate, preparedAt: event.at };
-    return coverageRequirement(slice).floor;
+    return coverageRequirement(slice, options).floor;
   } catch {
     return fallback;
   }
 }
-export function computeRegroupAdvisory(session, trailingFloor = undefined) {
+export function computeRegroupAdvisory(session, trailingFloor = undefined, options = {}) {
   const open = new Map();
   const findingSummaries = new Map();
   const closedIds = new Set();
@@ -140,9 +140,9 @@ export function computeRegroupAdvisory(session, trailingFloor = undefined) {
   const cycles = [];
   let current = null;
   let activeFloor = candidateFloor(session.candidate, latestIntent(session)?.risk ?? 'routine');
-  const pushCycle = (cycle, floorOverride) => {
+  const pushCycle = (cycle, floorOverride, superseded = false) => {
     const floor = Math.max(1, floorOverride ?? cycle.floor);
-    if (cycle.reports < floor) return;
+    if (cycle.reports < floor && !(superseded && cycle.failedReports > 0)) return;
     const openIdsAfter = new Set(open.keys());
     let sameIdPersists = false;
     let repeatedClosed = false;
@@ -163,12 +163,13 @@ export function computeRegroupAdvisory(session, trailingFloor = undefined) {
   for (let index = 0; index < session.history.length; index++) {
     const event = session.history[index];
     if (event.type === 'prepare') {
-      if (current) pushCycle(current);
-      activeFloor = roundFloorForPrepare(session, index, event);
+      if (current) pushCycle(current, undefined, true);
+      activeFloor = roundFloorForPrepare(session, index, event, options);
       current = {
         openBefore: open.size,
         openIdsBefore: new Set(open.keys()),
         reports: 0,
+        failedReports: 0,
         floor: activeFloor,
       };
     } else if (event.type === 'regroup') {
@@ -180,10 +181,12 @@ export function computeRegroupAdvisory(session, trailingFloor = undefined) {
           openBefore: open.size,
           openIdsBefore: new Set(open.keys()),
           reports: 0,
+          failedReports: 0,
           floor: activeFloor,
         };
       }
       current.reports += 1;
+      if (event.report.verdict === 'FAIL') current.failedReports += 1;
       for (const finding of event.report.findings) if (finding.material) {
         const normalized = normalizeSummary(finding.summary);
         open.set(finding.id, normalized);
@@ -197,7 +200,7 @@ export function computeRegroupAdvisory(session, trailingFloor = undefined) {
       }
     }
   }
-  if (current) pushCycle(current, trailingFloor);
+  if (current) pushCycle(current, trailingFloor, options.supersedeTrailing === true);
   let nonConvergingCycles = 0;
   for (let index = cycles.length - 1; index >= 0; index--) {
     const cycle = cycles[index];
@@ -389,7 +392,7 @@ export function prepareCandidate(session, observed, now, fresh = false, options 
   next.history.push({ type: 'prepare', intent, candidate, authorSessionId, at: now });
   return next;
 }
-export function recordReport(session, report, now) {
+export function recordReport(session, report, now, options = {}) {
   stateValid(session);
   demand(report && identity(report.reviewer) && !authorIds(session).has(report.reviewer) && report.cold === true, 'reviewer must be cold and independent of the author');
   demand(identity(report.documentation), 'documentation assessment is required');
@@ -407,7 +410,7 @@ export function recordReport(session, report, now) {
   demand(report.findings.every(finding => identity(finding.id) && identity(finding.summary) && typeof finding.material === 'boolean') && findingIds.size === report.findings.length, 'findings need unique stable ids, summaries and material flags');
   const prior = session.history.filter(event => event.type === 'report').flatMap(event => event.report.findings);
   demand(report.findings.every(finding => prior.every(old => old.id !== finding.id || digest(old) === digest(finding))), 'finding id changed meaning');
-  const { open, pendingDefer, closedInCurrentRound, confirmedDefersInCurrentRound } = findingState(session);
+  const { open, pendingDefer, closedInCurrentRound, confirmedDefersInCurrentRound } = findingState(session, options);
   const closesSet = new Set(report.closes);
   demand(closesSet.size === report.closes.length && report.closes.every(id => !findingIds.has(id) && (open.has(id) || closedInCurrentRound.has(id))), 'closes must name open material findings');
   const acceptsDefer = report.acceptsDefer ?? [];
@@ -562,7 +565,7 @@ export function explainSession(session, observed = session?.candidate, now = Dat
     const findings = findingState(session, options);
     openMaterial = [...findings.open.values()];
     unconfirmedDefers = [...findings.pendingDefer.values()];
-    regroupAdvisory = computeRegroupAdvisory(session, floor);
+    regroupAdvisory = computeRegroupAdvisory(session, floor, options);
   } catch (error) { invalidReason ??= error.message; }
   const missingReports = Math.max(0, floor - reports.length);
   const edge = session.version === 3 ? session.candidate.coverage : undefined;
