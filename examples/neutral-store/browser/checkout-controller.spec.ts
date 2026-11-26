@@ -234,6 +234,26 @@ test('checkout controller: changed details after an expired order was refused as
   expect(sent).toHaveLength(2);
 });
 
+test('checkout controller: changed details after the payment-status page showed the order expired name it closed', async ({ page }) => {
+  const email = buyer('status-expired');
+  await openCheckout(page);
+  await details(page, email);
+  const sent = creates(page);
+  const first = await placed(page);
+  await sweepExpired(page, first);
+  // The payment-status page reads the expired order (it offers to pay a replacement) and keeps the record.
+  await page.goto(routes.completion[locale]);
+  await expect(page.getByRole('button', { name: t.recoveryPay, exact: true })).toBeVisible();
+  await expect(page.locator('main')).toContainText(first);
+  await openCheckout(page);
+  await details(page, email, '5 Returned Lane');
+  await placeOrder(page).click();
+  await expect(output(page)).toContainText(managed('starter_checkout_not_payable'));
+  await expect(page.locator('main')).not.toContainText(managed('starter_checkout_changed'));
+  await expect(choice(page, 'different')).toBeVisible();
+  expect(sent).toHaveLength(1);
+});
+
 test('checkout controller: starting over on a fulfilled order shows it paid, clears the record, and places one new order', async ({ page }) => {
   const email = buyer('fulfilled');
   await openCheckout(page);

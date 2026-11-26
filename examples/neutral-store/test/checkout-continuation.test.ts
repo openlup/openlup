@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { StatusReading } from '@openlup/platform/storefront';
-import { changedDetailsView, continuationView, type ContinuationView } from '../client/pages/checkout.ts';
+import { changedDetailsView, continuationView, orderStateOf, type ContinuationView } from '../client/pages/checkout.ts';
 import { continuationMessage } from '../client/purchase.ts';
 import { market } from '../owned/market.config.ts';
 import type { ActionResult } from '../shared/api.ts';
@@ -76,6 +76,35 @@ const rows: Row[] = [
 test('each earlier-order answer shows its code, texts, choices and link as the table says', () => {
   for (const row of rows) {
     assert.deepEqual(continuationView(row.answer, row.reading ?? null, row.operation, row.ordered ?? false), row.view, row.name);
+  }
+});
+
+// Every answer that names the order's state updates what the page knows about it; an answer that names none leaves it.
+test('each answer naming the order sets the known order state', () => {
+  const rows: Array<[string, ActionResult | Record<string, unknown>, string | null]> = [
+    ['create or resume, payable', value({ orderRef: orderA, status: 'pending_payment' }), 'payable'],
+    ['host changed details', refused('starter_checkout_changed'), 'payable'],
+    ['in progress', refused('starter_checkout_in_progress'), 'payable'],
+    ...(['starter_checkout_not_payable', 'starter_checkout_paid', 'starter_checkout_expired', 'starter_checkout_not_abandonable'] as const)
+      .map((code): [string, ActionResult, string] => [code, refused(code), code]),
+    ...['expired', 'cancelled', 'refunded', 'failed'].map((status): [string, ActionResult, string] =>
+      [`read ${status}`, value({ orderRef: orderA, status }), 'starter_checkout_not_payable']),
+    ...['paid', 'fulfillment_pending', 'fulfilled'].map((status): [string, ActionResult, string] =>
+      [`read ${status}`, value({ orderRef: orderA, status }), 'starter_checkout_paid']),
+    // The payment-status page's own answers.
+    ['payment status: replacement for an expired order', { originalOrderRef: orderA, latestOrderRef: orderA, recoverable: true, recoveryKind: 'recreate_expired' }, 'starter_checkout_not_payable'],
+    ['payment status: paid', { originalOrderRef: orderA, terminalStatus: 'paid' }, 'starter_checkout_paid'],
+    ['payment status: cancelled', { originalOrderRef: orderA, terminalStatus: 'cancelled' }, 'starter_checkout_not_payable'],
+    ['payment status: read expired', { orderRef: orderA, status: 'expired' }, 'starter_checkout_not_payable'],
+    ['payment status: payable', { orderRef: orderA, status: 'pending_payment' }, 'payable'],
+    ['no order named', value({ abandoned: true }), null],
+    ['transport', refused('starter_transport_unavailable'), null],
+    ['other refusal', refused('starter_attempt_limited'), null],
+  ];
+  for (const [name, answer, state] of rows) {
+    const result = 'ok' in answer ? answer as ActionResult : { ok: true as const, value: answer };
+    assert.equal(orderStateOf(result)?.state ?? null, state, name);
+    if (state !== null) assert.equal(orderStateOf(result)?.orderRef, orderA, name);
   }
 });
 
