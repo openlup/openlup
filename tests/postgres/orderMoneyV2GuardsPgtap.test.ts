@@ -11,6 +11,9 @@ const index = manifest.forward.findIndex(entry => entry.file.endsWith("_order_mo
 if (index < 0) throw new Error("Expected order money assertion forward");
 const unit = manifest.forward[index]!;
 const sql = readFileSync(unit.file, "utf8");
+const restoreForward = manifest.forward.find(entry => entry.file.endsWith("_order_money_v2_restore_no_temp.sql"));
+if (!restoreForward) throw new Error("Expected order money restore forward");
+const restoreSql = readFileSync(restoreForward.file, "utf8");
 const fixture = readFileSync("tests/postgres/fixtures/orderMoneyV2Guards/replayed.sql", "utf8");
 let container: PostgresContainer | undefined;
 let pool: Pool | undefined;
@@ -48,6 +51,8 @@ it.each([true, false])("checks the installed assertion with optional writers pre
     if (!optional) await db.query("DROP OWNED BY anon,authenticated,service_role CASCADE; DROP ROLE anon,authenticated,service_role");
     expect(sha256(sql)).toBe(unit.sha256);
     await db.query(sql);
+    expect(sha256(restoreSql)).toBe(restoreForward.sha256);
+    await db.query(restoreSql);
     if (optional) {
       // Temporarily disabled each routine property in a disposable database transaction.
       const signature = "public.commerce_order_money_v2_assert(uuid,boolean,boolean,jsonb,jsonb)";
