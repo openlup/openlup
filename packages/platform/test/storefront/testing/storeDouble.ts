@@ -81,6 +81,18 @@ export type StoreDoubleSwitches = {
   readonly driverRejects?: boolean;
   /** The outcome driver never declines a payment. */
   readonly neverDeclines?: boolean;
+  /** The outcome driver answers `settled` by leaving the attempt pending. */
+  readonly driverSettlesAsPending?: boolean;
+  /** The outcome driver answers `settled` and `activation_pending` without acting. */
+  readonly driverIgnoresSettle?: boolean;
+  /** The outcome driver's `declined` also captures the payment. */
+  readonly driverCapturesDecline?: boolean;
+  /** The outcome driver rejects every outcome for the control run's buyer. */
+  readonly driverRejectsForControl?: boolean;
+  /** The page polls the status only on the second settle after an outcome, not at once. */
+  readonly slowPoll?: boolean;
+  /** After continue-payment the page keeps showing `awaiting_payment` until a status read answers. */
+  readonly awaitingPaymentUntilPoll?: boolean;
 };
 
 /** Every outcome kind the double's driver can produce. */
@@ -145,6 +157,8 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: {
   // Anchor reads while the page showed a decline, since the last buyer action; the page's own retry fires after two.
   let declinedReads = 0;
   let autoFired = false;
+  // Settles left before a slow status poll.
+  let pollIn = 0;
   let placing = false;
   let firstSubmitSkipped = false;
   let keyCount = 0;
@@ -264,6 +278,7 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: {
   const pay = (attempts: number) => {
     storage.email = buyer();
     show("paying");
+    if (switches.awaitingPaymentUntilPoll === true) view = "awaiting_payment";
     for (let attempt = 0; attempt < attempts; attempt += 1) void track(send("POST", "/api/payments", null));
   };
 
@@ -427,6 +442,10 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: {
       calls.push("settled");
       settlesSinceAction += 1;
       if (switches.showPaidAfterSettle === true && settlesSinceAction >= 2 && view === "awaiting_payment") paidRevealed = true;
+      if (pollIn > 0) {
+        pollIn -= 1;
+        if (pollIn === 0) void readStatus(true);
+      }
       progressOnItsOwn();
       for (;;) {
         await turn();
@@ -461,18 +480,20 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: {
     capabilities: options.capabilities ?? ALL_OUTCOMES,
     async produce(outcome: string, { subject }: { readonly subject: string }) {
       produced.push([subject, outcome]);
-      if (switches.driverRejects === true) throw new Error("outcome_driver_unavailable: the sandbox at https://sandbox.example.test/pay?key=secret-sandbox-key refused. Retry later.");
+      if (switches.driverRejects === true || (switches.driverRejectsForControl === true && subject.endsWith("-control@example.test"))) throw new Error("outcome_driver_unavailable: the sandbox at https://sandbox.example.test/pay?key=secret-sandbox-key refused. Retry later.");
       const own = payments.filter((payment) => payment.email === subject);
       const latest = own.at(-1);
       if (latest?.status === "open") {
         if (outcome === "declined" && switches.neverDeclines !== true) latest.status = "declined";
-        if (outcome === "pending") latest.status = "pending";
-        if (outcome === "settled") settlePayment(latest, "settled");
-        if (outcome === "activation_pending") settlePayment(latest, "activation_pending");
+        if (outcome === "declined" && switches.driverCapturesDecline === true) captures.set(subject, (captures.get(subject) ?? 0) + 1);
+        if (outcome === "pending" || (outcome === "settled" && switches.driverSettlesAsPending === true)) latest.status = "pending";
+        else if (outcome === "settled" && switches.driverIgnoresSettle !== true) settlePayment(latest, "settled");
+        if (outcome === "activation_pending" && switches.driverIgnoresSettle !== true) settlePayment(latest, "activation_pending");
       }
       const pending = [...own].reverse().find((payment) => payment.status === "pending");
       if (outcome === "settled_after_pending" && pending !== undefined) settlePayment(pending, "settled");
-      if (PAYMENT_VIEWS.has(view) && buyer() === subject) void readStatus(true);
+      if (switches.slowPoll === true) pollIn = 2;
+      else if ((PAYMENT_VIEWS.has(view) || switches.awaitingPaymentUntilPoll === true) && buyer() === subject) void readStatus(true);
     },
   };
 

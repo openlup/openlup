@@ -420,11 +420,12 @@ describe("input and admission", () => {
       scenario: { ...storefrontScenarios[0]!, id: "broken_ten", control: { kind: "other_policy", negates: null } },
     }, "storefront_run_input_invalid"],
     ["an outcome driver without produce", { outcomes: { capabilities: ["settled"] } as never }, "storefront_run_input_invalid"],
-    ["an outcome driver declaring a capability that is not a name", { outcomes: { capabilities: ["Settled!"], produce: async () => undefined } }, "storefront_run_input_invalid"],
+    ["an outcome driver declaring a capability that is not a name", { outcomes: { capabilities: ["settled", "Settled!"], produce: async () => undefined } }, "storefront_run_input_invalid: outcomes.capabilities\\[1\\] is \"Settled!\""],
+    ["an outcome driver declaring a capability that is not a string", { outcomes: { capabilities: [7], produce: async () => undefined } as never }, "storefront_run_input_invalid: outcomes.capabilities\\[0\\] is 7"],
   ];
   it.each(refusals)("refuses %s and drives nothing", async (_name, extra, code) => {
     const double = storeDouble();
-    await expect(runStorefrontScenario(options(double, "lost_response_reload", extra))).rejects.toThrow(new RegExp(`^${code}: .+ Cause: .+ Fix: .+ Recheck: `));
+    await expect(runStorefrontScenario(options(double, "lost_response_reload", extra))).rejects.toThrow(new RegExp(`^${code}${code.includes(":") ? "" : ": "}.+ Cause: .+ Fix: .+ Recheck: `));
     expect(double.calls).toEqual([]);
     expect(double.events).toEqual([]);
   });
@@ -569,15 +570,24 @@ describe("paid with activation pending (R27)", () => {
     const { verdict } = await run("paid_pending_activation", { showPaidWhilePending: true });
     expect(verdict.result).toBe("failed");
     expect(codes(verdict)).toEqual(["forbidden_state_shown"]);
-    expect(finding(verdict, "forbidden_state_shown")).toMatchObject({ run: "clean", step: 4 });
+    expect(finding(verdict, "forbidden_state_shown")).toMatchObject({ run: "clean", step: 5 });
     expect(finding(verdict, "forbidden_state_shown")!.observed).toContain("state:paid");
+  });
+
+  it("opens the forbidden window after the expect step, so a page that learns the outcome on a later poll passes", async () => {
+    const { verdict } = await run("paid_pending_activation", { slowPoll: true, awaitingPaymentUntilPoll: true });
+    expect(verdict.findings).toEqual([]);
+    expect(verdict.result).toBe("passed");
+    // The outcome step itself still shows the state the window forbids from the expect step on.
+    expect(stepsOf(verdict, "clean")[4]!.observedAnchors).toContain("state:awaiting_payment");
+    expect(stepsOf(verdict, "clean")[5]!.observedAnchors).toContain("state:paid_pending_activation");
   });
 
   it("fails a forbidden state shown only in the control run", async () => {
     const { verdict } = await run("paid_pending_activation", { awaitingPaymentWhenReadFails: true });
     expect(verdict.result).toBe("failed");
     expect(codes(verdict)).toEqual(["forbidden_state_shown"]);
-    expect(finding(verdict, "forbidden_state_shown")).toMatchObject({ run: "control", step: 4 });
+    expect(finding(verdict, "forbidden_state_shown")).toMatchObject({ run: "control", step: 5 });
   });
 });
 
@@ -673,6 +683,51 @@ describe("stop-at (R30)", () => {
     await expect(runStorefrontScenario({ ...options(double, "decline_retry"), stopAt: "checkout.declined" }))
       .rejects.toThrow(/^storefront_stop_state_unreached: The settle window of the clean run .*state:declined/);
     expect(double.calls.at(-1)).toBe("unintercept");
+  });
+});
+
+describe("declared auto-progress the page does not perform (R31)", () => {
+  it("ends not_run naming autoProgress when the skipped action is still offered and the state is not reached", async () => {
+    const { verdict, double } = await run("decline_retry", {}, { proofFile: proofWith({ autoProgress: ["retry_payment"] }) });
+    expect(verdict.result).toBe("not_run");
+    expect(codes(verdict)).toEqual(["auto_progress_not_performed"]);
+    expect(finding(verdict, "auto_progress_not_performed")).toMatchObject({ run: "clean", step: 7, field: "autoProgress" });
+    expect(finding(verdict, "auto_progress_not_performed")!.observed).toContain("action:retry_payment");
+    expect(stepsOf(verdict, "control")).toEqual([]);
+    expect(double.calls).not.toContain("perform action:retry_payment");
+  });
+});
+
+describe("the ledger effect of each outcome (R32)", () => {
+  it.each([
+    ["answers settled by leaving the attempt pending", "decline_retry", { driverSettlesAsPending: true }, 7],
+    ["answers settled without acting", "decline_retry", { driverIgnoresSettle: true }, 7],
+    ["answers activation_pending without acting", "paid_pending_activation", { driverIgnoresSettle: true }, 4],
+    ["captures on a decline", "decline_retry", { driverCapturesDecline: true }, 4],
+  ] as const)("ends not_run when the driver %s", async (_name, scenario, switches, step) => {
+    const { verdict } = await run(scenario, switches);
+    expect(verdict.result).toBe("not_run");
+    expect(codes(verdict)).toEqual(["outcome_failed"]);
+    expect(finding(verdict, "outcome_failed")).toMatchObject({ run: "clean", step, field: "outcomes" });
+    expect(finding(verdict, "outcome_failed")!.cause).toContain("ledger");
+    expect(stepsOf(verdict, "control")).toEqual([]);
+  });
+});
+
+describe("harm proven before a fault (R33)", () => {
+  it("ranks a duplicate capture of the clean run above an outcome driver fault in the control run", async () => {
+    const { verdict } = await run("paid_pending_activation", { doubleCapture: true, driverRejectsForControl: true });
+    expect(verdict.result).toBe("failed");
+    expect(codes(verdict)[0]).toBe("duplicate_capture");
+    expect(finding(verdict, "duplicate_capture")).toMatchObject({ run: "clean" });
+    expect(finding(verdict, "outcome_failed")).toMatchObject({ run: "control", step: 4 });
+  });
+
+  it("keeps a fault ahead when no harm was proven before it", async () => {
+    const { verdict } = await run("paid_pending_activation", { driverRejectsForControl: true });
+    expect(verdict.result).toBe("not_run");
+    // The stopped control run blocked nothing, which is reported after the fault.
+    expect(codes(verdict)).toEqual(["outcome_failed", "control_not_applied"]);
   });
 });
 
