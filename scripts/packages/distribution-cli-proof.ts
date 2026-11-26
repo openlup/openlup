@@ -322,6 +322,23 @@ export function reconcileSubscriptionOfferCustomization(app: string, predecessor
 }
 
 export const starterLifecycle = "lifecycle.mjs";
+const starterCompose = "compose.yaml";
+
+export function reconcileStarterLocalPort(app: string, previous: Record<string, string>,
+  applyRefused: () => Parameters<typeof assertUpgradeConflict>[0]) {
+  const port = "4320";
+  for (const path of [starterCompose, starterLifecycle]) {
+    const original = previous[path]!;
+    const edited = original.replaceAll("4319", port);
+    assert.notEqual(edited, original, `expected a fixed port in ${path}`);
+    const managed = join(app, path);
+    writeFileSync(managed, edited);
+    assertUpgradeConflict(applyRefused(), path);
+    assert.equal(readFileSync(managed, "utf8"), edited);
+    writeFileSync(managed, original);
+  }
+  return port;
+}
 
 export function reconcileLifecycleCustomization(app: string, predecessor: string, applyRefused: () => Parameters<typeof assertUpgradeConflict>[0]) {
   const managed = join(app, starterLifecycle);
@@ -486,7 +503,8 @@ function refuseCatalogueBrowser(code: string, cause?: unknown): never {
 
 /** Exercise the installed recipe on the upgraded app with its target package bytes. */
 export function proveInstalledCatalogueUpgrade(app: string, preservedHashes: Record<string, string>, browser?: CatalogueBrowser,
-  run: (file: string, args: readonly string[], options: ExecFileSyncOptionsWithStringEncoding) => string = execFileSync) {
+  run: (file: string, args: readonly string[], options: ExecFileSyncOptionsWithStringEncoding) => string = execFileSync,
+  migratedPort?: string) {
   const lockfile = join(app, "package-lock.json");
   const retained = readFileSync(lockfile);
   const lock = JSON.parse(retained.toString("utf8"));
@@ -513,7 +531,7 @@ export function proveInstalledCatalogueUpgrade(app: string, preservedHashes: Rec
       }
     }
     if (lockRemapped) writeFileSync(lockfile, JSON.stringify(lock) + "\n");
-    const recipe = { ...options, env: { ...options.env } as NodeJS.ProcessEnv };
+    const recipe = { ...options, env: { ...options.env, OPENLUP_STARTER_PORT: "4319" } as NodeJS.ProcessEnv };
     const dockerOptions = { ...options, timeout: 30_000 };
     if (browser) {
       let url: URL | undefined;
@@ -540,6 +558,17 @@ export function proveInstalledCatalogueUpgrade(app: string, preservedHashes: Rec
     }
     const result = run(process.execPath, ["--test", "--test-reporter=spec", "--test-name-pattern=^up_json_installed_starter_recipe$", "test/lifecycle.test.ts"], recipe);
     assert.match(result, /✔ up_json_installed_starter_recipe/u);
+    if (migratedPort) {
+      const migrated = { ...options, env: { ...options.env, OPENLUP_STARTER_PORT: migratedPort,
+        COMPOSE_PROJECT_NAME: `starter-upgrade-${randomBytes(6).toString("hex")}` } };
+      try {
+        const up = JSON.parse(run("./lifecycle", ["up", "--configuration", "coffee", "--json"], migrated));
+        assert.equal(up.exitCode, 0);
+        assert.equal(run("docker", ["compose", "port", "application", migratedPort], migrated).trim(), `127.0.0.1:${migratedPort}`);
+        run("curl", ["--fail", "--silent", `http://127.0.0.1:${migratedPort}/api/config`], migrated);
+        console.log(`Upgraded starter healthy on migrated port ${migratedPort}`);
+      } finally { run("docker", ["compose", "down", "--volumes", "--rmi", "local"], migrated); }
+    }
     if (browser) console.log(`Catalogue replay operator connected to pinned browser image ${browser.reference}`);
   } catch (error) {
     failure = { error };
@@ -570,6 +599,8 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   const careUpgrade = needsStarterCareUpgrade(app, pair.to);
   const catalogueUpgrade = !pair.pristine && !Object.hasOwn(from.files, "lifecycle-refusals.mjs")
     && Object.hasOwn(to.files, "lifecycle-refusals.mjs");
+  const localPortUpgrade = /127\.0\.0\.1:4319:4319/u.test(from.files[starterCompose] ?? "")
+    && to.files[starterCompose]?.includes("${OPENLUP_STARTER_PORT:-4319}");
   const phase = (name: string, action: () => void) => { const entry = { name, result: "FAIL" }; pair.evidence.phases.push(entry); action(); entry.result = "PASS"; };
   const hash = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex");
   const owned: Record<string, Buffer> = {};
@@ -719,6 +750,10 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     assertUpgradeConflict(applyRefused(), conflict);
     if (original) writeFileSync(join(app, conflict), original); else rmSync(join(app, conflict));
   });
+  let migratedPort: string | undefined;
+  if (localPortUpgrade && !pair.pristine) phase("local-port-reconciliation", () => {
+    migratedPort = reconcileStarterLocalPort(app, from.files, applyRefused);
+  });
   if (!pair.pristine && lifecycleReplaced) phase("lifecycle-reconciliation", () => {
     const local = reconcileLifecycleCustomization(app, from.files[starterLifecycle]!, applyRefused);
     owned[local.path] = local.bytes;
@@ -828,6 +863,7 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
       assert.equal(readFileSync(join(app, starterEditorPorts), "utf8"), to.files[starterEditorPorts]);
     if (lifecycleReplaced)
       assert.equal(readFileSync(join(app, starterLifecycle), "utf8"), to.files[starterLifecycle]);
+    if (localPortUpgrade) assert.equal(readFileSync(join(app, starterCompose), "utf8"), to.files[starterCompose]);
     if (offerReplaced)
       assert.equal(readFileSync(join(app, starterSubscriptionOffer), "utf8"), to.files[starterSubscriptionOffer]);
     for (const path of displayReplacements)
@@ -933,7 +969,7 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
       assert(adopterHashes && beforeCatalogueApply);
       const before = catalogueOwned();
       const expected = Object.fromEntries(Object.keys(adopterHashes).map(path => [path, beforeCatalogueApply[path]!]));
-      proveInstalledCatalogueUpgrade(app, expected, pair.browser);
+      proveInstalledCatalogueUpgrade(app, expected, pair.browser, undefined, migratedPort);
       assert.deepEqual(catalogueOwned(), before, "Catalogue replay changed upgraded owned bytes");
     });
   });

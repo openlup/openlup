@@ -40,7 +40,7 @@ test('up_json_reports_four_fields_for_installer_refusal and verifies the real on
     const config = "export const selectConfiguration = (id = 'coffee') => ({ id });";
     const configFile = join(app, 'owned/store.config.ts');
     writeFileSync(configFile, config);
-    writeFileSync(join(app, 'shared/config.ts'), "export const assertConfig = () => {}; export const isConfigurationId = id => typeof id === 'string';");
+    writeFileSync(join(app, 'shared/config.ts'), "export const assertConfig = () => {}; export const isConfigurationId = id => typeof id === 'string'; export const parseHostArguments = () => ({ port: 4319 });");
     writeFileSync(join(app, 'installation/install.ts'), `
       import { refusal } from './refusals.ts';
       import { starterDiagnostic } from '../shared/refusals.ts';
@@ -128,7 +128,7 @@ test('up_json_reports_four_fields_for_installer_refusal and verifies the real on
     assert.deepEqual(up('success', ['--configuration', 'coffee', '--json']).report.packs, [summary]);
     for (const [mode, code, fix] of [
       ['legacy-conflict', 'starter_catalogue_build_conflict', /Restore the original declaration and rules.*new pack version/u],
-      ['price-conflict', 'starter_price_seed_conflict', /reconcile divergent seed rows with the original demo inputs.*close other active or open explicit subscription rows or withdraw pending rows.*rebuild a disposable demo/u],
+      ['price-conflict', 'starter_price_seed_conflict', /owned price, discount or rounding inputs after seeding, restore the originals.*reconcile divergent seed rows with the original demo inputs.*close other active or open explicit subscription rows or withdraw pending rows.*rebuild a disposable demo/u],
       ['driver', 'starter_installation_failed', /Compose availability/u],
     ] as const) {
       const { report, calls } = up(mode);
@@ -567,7 +567,9 @@ test('installed_catalogue_operator_workflow', { skip: !recipeApp, timeout: 600_0
   const compose = (...args: string[]) => run('docker', ['compose', ...args]);
   const sql = (statement: string) => compose('exec', '-T', 'database', 'psql', '-XAtq', '-v', 'ON_ERROR_STOP=1', '-v', 'VERBOSITY=verbose',
     '-U', 'postgres', '-d', 'neutral_store', '-c', statement).trim();
-  const base = processEnv.OPENLUP_STARTER_CATALOGUE_OPERATOR_ORIGIN ?? 'http://127.0.0.1:4319';
+  const port = Number(processEnv.OPENLUP_STARTER_PORT || 4319);
+  const fixtureOrigin = processEnv.OPENLUP_STARTER_CATALOGUE_OPERATOR_ORIGIN;
+  const base = fixtureOrigin ?? `http://127.0.0.1:${port}`;
   const headers = { Origin: base, 'X-Starter-Request': '1', 'Content-Type': 'application/json' };
   async function action(operation: string, body: unknown, key: string = randomUUID(), cookie?: string) {
     const response = await fetch(base + '/api/actions/' + operation, { method: 'POST',
@@ -607,6 +609,16 @@ test('installed_catalogue_operator_workflow', { skip: !recipeApp, timeout: 600_0
   }
   try {
     if (!existing) assert.equal(oneLine(run('./lifecycle', ['up', '--configuration', 'coffee', '--json'])).exitCode, 0);
+    if (!fixtureOrigin) {
+      assert.equal(compose('port', 'application', String(port)).trim(), `127.0.0.1:${port}`);
+      assert.equal((await fetch(`${base}/api/config`)).status, 200);
+      if (port !== 4319) {
+        const refused = spawnSync('curl', ['--silent', '--header', 'Host: 127.0.0.1:4319', `${base}/api/config`], { encoding: 'utf8' });
+        assert.equal(refused.status, 0);
+        assert.deepEqual(JSON.parse(refused.stdout), { ok: false, code: 'starter_local_host_required' });
+      }
+      context.diagnostic(`Compose project ${project} healthy on loopback port ${port}`);
+    }
     assert.deepEqual((await action('catalogue.demoTarget', {})).data, { ok: true, value: { marked: true, configurationId: 'coffee' } });
     const registry = (await action('application.status', {})).data.value.bindings as { operation: string; bound: boolean }[];
     assert.deepEqual(registry.map(({ operation }) => operation), (await import('../shared/api.ts')).operations);
@@ -1168,7 +1180,7 @@ test('up_json_installed_starter_recipe', { skip: !recipeApp, timeout: 600_000 },
   mkdirSync(context, { recursive: true });
   const scratch = mkdtempSync(join(context, 'st1-recipe-'));
   const project = 'st1-pr2-recipe-' + randomUUID().slice(0, 8);
-  const env = { ...processEnv, COMPOSE_PROJECT_NAME: project, GIT_INDEX_FILE: join(scratch, 'index') };
+  const env = { ...processEnv, OPENLUP_STARTER_PORT: '4319', COMPOSE_PROJECT_NAME: project, GIT_INDEX_FILE: join(scratch, 'index') };
   const run = (command: string, args: string[], exit = 0) => {
     const result = spawnSync(command, args, { cwd: app, env, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
     assert.ifError(result.error);

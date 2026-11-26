@@ -307,6 +307,12 @@ released set.
 `http://127.0.0.1:4319`. The lifecycle starts its one-shot installed migration
 runner and seed before the application container.
 
+To use another free local port, export `OPENLUP_STARTER_PORT=4320` in the shell
+that runs `./lifecycle up` and `npm run catalogue:apply`. Use a decimal port
+from 1024 to 65535. An unset or empty value uses 4319, even if Compose has a
+different value in `.env`. Choose a distinct `COMPOSE_PROJECT_NAME` for each
+concurrent demo. A configured `publicOrigin` still governs request authority.
+
 ## Host origin and local sessions
 
 The default Host authorities are `127.0.0.1:<listening-port>` and

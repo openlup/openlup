@@ -3,6 +3,7 @@ import { copyFile, mkdir, readFile, writeFile, access } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
+import { env } from 'node:process';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { readStarterDiagnostic, starterDiagnostic } from './shared/refusals.ts';
 import { seedPhysicalGuidance } from './shared/seed-physical.ts';
@@ -55,10 +56,17 @@ function ownedConfiguration(owner, selected) {
   return owner.selectConfiguration(selected);
 }
 
+function starterPort(parseHostArguments) {
+  const value = env.OPENLUP_STARTER_PORT;
+  if (value?.startsWith('--')) throw starterDiagnostic('starter_port_invalid');
+  return parseHostArguments(value ? ['--port', value] : []).port;
+}
+
 const argumentObserved = {
   starter_argument_unknown: 'The lifecycle command received an unsupported option.',
   starter_argument_duplicate: 'The lifecycle command received the same option more than once.',
   starter_argument_value_required: 'The configuration option has no value.',
+  starter_port_invalid: 'The lifecycle command received an invalid OPENLUP_STARTER_PORT.',
 };
 function physicalFinding(error) {
   const diagnostic = readStarterDiagnostic(error);
@@ -181,9 +189,12 @@ if (command === 'refusals') {
   let final;
   try {
     const selected = lifecycleOptions(args);
+    const { assertConfig, isConfigurationId, parseHostArguments } = await import('./shared/config.ts');
+    const port = starterPort(parseHostArguments);
+    // Give each Compose subprocess the same listener port, ahead of any .env value.
+    env.OPENLUP_STARTER_PORT = String(port);
     stage = '/configuration';
     const owner = await import('./owned/store.config.ts');
-    const { assertConfig, isConfigurationId } = await import('./shared/config.ts');
     const config = ownedConfiguration(owner, selected);
     if (json && !isConfigurationId(config.id)) throw starterDiagnostic('starter_configuration_invalid');
     configuration = config.id;
@@ -206,11 +217,11 @@ if (command === 'refusals') {
       // Install and runtime receive the same non-secret configuration through arguments.
       const override = { services: { application: { command: [
         'node', '--experimental-strip-types', 'lifecycle.mjs', 'serve-demo',
-        '--configuration', config.id, '--port', '4319', '--listen', '0.0.0.0',
+        '--configuration', config.id, '--port', String(port), '--listen', '0.0.0.0',
         '--database-url', 'postgresql://starter_runtime@database:5432/neutral_store',
         '--catalogue-publication-password-file', '/application/.context/catalogue-builds/.publication-password',
       ] } } };
-      const healthcheck = applicationHealthcheck(config.publicOrigin);
+      const healthcheck = applicationHealthcheck(config.publicOrigin, port);
       if (healthcheck) override.services.application.healthcheck = healthcheck;
       run('docker', ['compose', '-f', 'compose.yaml', '-f', '-', 'up', '--wait', 'application'], JSON.stringify(override), json);
       final = installReport(configuration, packs);
@@ -379,8 +390,10 @@ async function catalogueApply(argv) {
     if (verb !== 'apply' || modes.length > 1) deny('starter_argument_unknown');
     const [mode] = modes;
     const sharedFlags = options.filter(option => option !== mode);
+    const { assertConfig, parseHostArguments } = await import('./shared/config.ts');
+    const port = starterPort(parseHostArguments);
     const config = ownedConfiguration(await import('./owned/store.config.ts'), lifecycleOptions(sharedFlags));
-    (await import('./shared/config.ts')).assertConfig(config);
+    assertConfig(config);
     const npmApply = npmSilent ? 'npm run --silent catalogue:apply' : 'npm run catalogue:apply';
     const applyCommand = flags => [npmApply, ...(flags.length ? ['--', ...flags.map(flag =>
       /^[a-z0-9_-]+$/iu.test(flag) ? flag : "'" + flag.replaceAll("'", "'\\''") + "'")] : [])].join(' ');
@@ -439,7 +452,7 @@ async function catalogueApply(argv) {
     const first = makeStage('release', release, null);
     makeStage('activation', activation, null);
     if (!process.stdin.isTTY || !process.stderr.isTTY) deny('OPENLUP_E_CATALOGUE_TERMINAL_REQUIRED', { path: '/terminal' });
-    const origin = config.publicOrigin ?? 'http://127.0.0.1:4319';
+    const origin = config.publicOrigin ?? `http://127.0.0.1:${port}`;
     let cookie, expiresAt, operator;
     async function request(operation, body, key = hash([operation, body]), sessionCookie, sku) {
       const unavailableCodes = ['host_binding_required', 'starter_dependency_unavailable', 'starter_operation_unknown',
@@ -486,9 +499,9 @@ async function catalogueApply(argv) {
     async function signIn() {
       const priorPath = path;
       path = 'auth.operator';
-      const email = await ask(`Invited operator email (configured currency ${config.market.currency}): `);
+      const email = await ask(`Email for the active administrator account or current invitation (configured currency ${config.market.currency}): `);
       await request('auth.operator', { email }, hash(['challenge', Date.now()]));
-      process.stderr.write(`${operatorChallengeGuidance}\nRead the matching message in the private demo mailbox.\n`);
+      process.stderr.write(`${operatorChallengeGuidance}\n`);
       const token = await ask('Operator token (hidden): ', true);
       const login = await request('auth.operator', { token }, hash(['redeem', Date.now()]));
       const nextCookie = login.cookie?.split(';', 1)[0];

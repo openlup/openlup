@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createServer } from 'node:net';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import { setTimeout } from 'node:timers/promises';
+import { env } from 'node:process';
 import { applicationHealthcheck } from '../host/healthcheck.ts';
 import { configurations } from '../owned/store.config.ts';
 
@@ -54,10 +55,21 @@ test('real lifecycle probe sends the configured Host; wrong Host and connection 
   } finally { await close?.(); await rm(directory, { recursive: true, force: true }); }
 });
 
-test('default lifecycle leaves compose.yaml healthcheck in place', async () => {
+test('Compose interpolates the listener, loopback mapping and working probe together', async () => {
+  for (const value of [undefined, '', '4320']) {
+    const expected = value || '4319';
+    const output = execFileSync('docker', ['compose', '--env-file', '/dev/null', '-f', 'compose.yaml', 'config', '--format', 'json'],
+      { cwd: root, env: { ...env, OPENLUP_STARTER_PORT: value }, encoding: 'utf8' });
+    const app = JSON.parse(output).services.application;
+    assert.equal(app.command[app.command.indexOf('--port') + 1], expected);
+    assert.deepEqual(app.ports.map(({ host_ip, published, target }: Record<string, unknown>) => [host_ip, published, target]),
+      [['127.0.0.1', expected, Number(expected)]]);
+    assert.equal(await execute(`globalThis.fetch = async url => ({ok: url === 'http://127.0.0.1:${expected}/api/config'});\n${app.healthcheck.test[3]}`), 0);
+  }
+});
+
+test('lifecycle passes the resolved port to Compose and configures the probe authority separately', async () => {
   assert.equal(applicationHealthcheck(), undefined);
-  const compose = await readFile(resolve(root, 'compose.yaml'), 'utf8');
-  assert.ok(compose.includes("fetch('http://127.0.0.1:4319/api/config')"));
   // Exercise lifecycle's real override construction, without invoking Docker.
   await mkdir(resolve(root, '.context'), { recursive: true });
   const directory = await mkdtemp(resolve(root, '.context/healthcheck-default-'));
@@ -66,17 +78,30 @@ test('default lifecycle leaves compose.yaml healthcheck in place', async () => {
       await cp(resolve(root, path), resolve(directory, path), { recursive: true });
     await writeFile(resolve(directory, 'package.json'), '{"type":"module"}');
     const config = structuredClone(Object.values(configurations)[0]!);
-    delete config.publicOrigin;
-    await writeFile(resolve(directory, 'owned/store.config.ts'), `export function selectConfiguration() { return ${JSON.stringify(config)}; }`);
     const bin = resolve(directory, 'bin');
     await mkdir(bin);
-    await writeFile(resolve(bin, 'docker'), '#!/bin/sh\nif [ "$4" = "-f" ]; then /bin/cat > override.json; fi\n', { mode: 0o755 });
-    const child = spawn(process.execPath, ['lifecycle.mjs', 'up'], { cwd: directory, env: { PATH: bin }, stdio: 'pipe' });
-    assert.equal((await once(child, 'exit'))[0], 0);
-    const override = JSON.parse(await readFile(resolve(directory, 'override.json'), 'utf8'));
-    assert.equal(Object.hasOwn(override.services.application, 'healthcheck'), false);
-    assert.deepEqual(override.services.application.command.slice(0, 4),
-      ['node', '--experimental-strip-types', 'lifecycle.mjs', 'serve-demo']);
-    assert.equal(Object.hasOwn(override.services.application, 'environment'), false);
+    await writeFile(resolve(bin, 'docker'), '#!/bin/sh\nif [ "$4" = "-f" ]; then /bin/cat > override.json; fi\nprintf "%s\\n" "$OPENLUP_STARTER_PORT" >> calls\n', { mode: 0o755 });
+    const up = (value?: string) => spawnSync(process.execPath, ['lifecycle.mjs', 'up'],
+      { cwd: directory, env: { PATH: bin, OPENLUP_STARTER_PORT: value }, encoding: 'utf8' });
+    for (const value of ['--bad', '1023', '65536', '1e4']) {
+      const refused = up(value);
+      assert.equal(refused.status, 2);
+      assert.match(refused.stderr, /starter_port_invalid\nFix: .*OPENLUP_STARTER_PORT.*1024 to 65535.*lifecycle up/u);
+      await assert.rejects(readFile(resolve(directory, 'calls')), { code: 'ENOENT' });
+    }
+    for (const [value, publicOrigin] of [[undefined, undefined], ['', undefined], ['04320', undefined], ['4320', 'https://store.example.test:4443']]) {
+      await writeFile(resolve(directory, 'owned/store.config.ts'), `export function selectConfiguration() { return ${JSON.stringify({ ...config, publicOrigin })}; }`);
+      await writeFile(resolve(directory, 'calls'), '');
+      const result = up(value);
+      assert.equal(result.status, 0, result.stderr);
+      const port = value ? Number(value) : 4319;
+      assert.deepEqual((await readFile(resolve(directory, 'calls'), 'utf8')).trim().split('\n'), Array(4).fill(String(port)));
+      const { services: { application } } = JSON.parse(await readFile(resolve(directory, 'override.json'), 'utf8'));
+      assert.deepEqual(application.command.slice(0, 4), ['node', '--experimental-strip-types', 'lifecycle.mjs', 'serve-demo']);
+      assert.equal(application.command[application.command.indexOf('--port') + 1], String(port));
+      assert.equal(Object.hasOwn(application, 'environment'), false);
+      assert.deepEqual(application.healthcheck, applicationHealthcheck(publicOrigin, port));
+      if (publicOrigin) assert.match(application.healthcheck.test[3], /port:4320,.*Host:"store\.example\.test:4443"/u);
+    }
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
