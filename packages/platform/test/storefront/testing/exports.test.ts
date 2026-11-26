@@ -16,6 +16,7 @@ const STOREFRONT_TESTING_EXPORTS = {
   serializeStorefrontVerdict: "value",
   storefrontScenarios: "value",
   runStorefrontScenario: "value",
+  createPostgresStorefrontObserver: "value",
 } as const satisfies Record<string, "type" | "value">;
 
 const entryFile = fileURLToPath(new URL("../../../src/storefront/testing/index.ts", import.meta.url));
@@ -34,7 +35,7 @@ function entryExports() {
   return { checker, exports: checker.getExportsOfModule(module!) };
 }
 
-it("exports exactly the eight listed names (E1)", () => {
+it("exports exactly the nine listed names (E1)", () => {
   expect(entryExports().exports.map((symbol) => symbol.getName()).sort()).toEqual(names());
 });
 
