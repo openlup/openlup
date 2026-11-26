@@ -83,13 +83,14 @@ type Options = { declaration?: unknown; args?: string[]; noTerminal?: boolean; m
   pending?: readonly string[]; pendingAfterReview?: string; pendingOnAmount?: string; refreshBeforeApply?: boolean;
   ambiguous?: string[]; ineligible?: string[]; stale?: string; rolledPolicy?: boolean; rollPolicyAtPreview?: string; loseRepriceReply?: boolean;
   configurationId?: string; listSwitched?: boolean; expireAfterPreview?: string; textOutput?: boolean;
+  port?: string; publicOrigin?: string; invalidInput?: 'email' | 'token';
   stopSecond?: 'policy' | 'expired' | 'zero-old' | 'derived-zero' | 'list';
   refresh?: 'same' | 'actor' | 'list'; readback?: 'list' | 'missing' | 'entry' | 'amount' | 'figure' | 'policy' | 'pending' | 'rolled-policy' };
 type Observation = { trace: string[]; state: State;
   prompts: string[]; changes: { actor: string; key: string; code: string; expected: Price }[] };
 type PriceItem = Price & { skuId: string; currency: string; policyRevisionId?: string; subscriptionUnitPriceMinor?: number; previous?: Price };
 type Output = Observation & { report: { findings: Finding[]; receipts: { stage: string; outcome: string; prices: PriceItem[] }[] };
-  status: number; stderr: string };
+  status: number; stdout: string; stderr: string };
 
 if (env[workerFlag] === '1') {
   const options: Options = JSON.parse(await text(process.stdin));
@@ -104,6 +105,10 @@ if (env[workerFlag] === '1') {
   if (options.refresh || options.stopSecond === 'expired') Date.now = () => now;
   const fixture = new URL('../lifecycle.mjs', import.meta.url).href;
   registerHooks({ resolve(specifier, context, next) {
+    if (options.publicOrigin && specifier === './owned/store.config.ts' && context.parentURL === fixture) {
+      const config = { ...selectConfiguration(options.configurationId), publicOrigin: options.publicOrigin };
+      return { url: 'data:text/javascript,' + encodeURIComponent(`export const selectConfiguration = () => (${JSON.stringify(config)});`), shortCircuit: true };
+    }
     if (specifier === './owned/catalogue.ts' && context.parentURL === fixture) {
       const source = options.missingProduct ? 'export {}' : 'export const catalogueProduct = ' + JSON.stringify(options.declaration ?? authored);
       return { url: 'data:text/javascript;base64,' + Buffer.from(source).toString('base64'), shortCircuit: true };
@@ -117,7 +122,7 @@ if (env[workerFlag] === '1') {
   Object.assign(readline, { createInterface: () => ({
     on() {}, close() {},
     async question(prompt: string) {
-      const step = prompt.startsWith('Invited') ? 'email' : prompt === '' ? 'token' : 'approval';
+      const step = prompt.startsWith('Email for the active administrator') ? 'email' : prompt === '' ? 'token' : 'approval';
       trace.push(step);
       if (options.closeAt === step) throw new Error('terminal closed');
       if (step === 'approval') {
@@ -131,6 +136,7 @@ if (env[workerFlag] === '1') {
         if (options.refreshBeforeApply) now += 1000;
         return ++approvals === options.declineAt ? 'decline' : 'approve';
       }
+      if (step === options.invalidInput) return `invalid-${step}`;
       return step === 'email' ? 'operator@example.test' : 'fixture-token';
     },
   }) });
@@ -142,6 +148,9 @@ if (env[workerFlag] === '1') {
   });
   let lookups = 0, candidateRevision = 0;
   globalThis.fetch = async (url, init) => {
+    const origin = options.publicOrigin ?? `http://127.0.0.1:${options.port ? Number(options.port) : 4319}`;
+    assert.equal(new URL(String(url)).origin, origin);
+    assert.equal(new Headers(init?.headers).get('Origin'), origin);
     const operation = new URL(String(url)).pathname.split('/').at(-1);
     const { action, ...fields } = JSON.parse(String(init?.body));
     const key = new Headers(init?.headers).get('Idempotency-Key')!;
@@ -284,7 +293,7 @@ function invoke(options: Options = {}, npmArgs?: string[]): Output {
   const preload = '--import=' + import.meta.url;
   const result = spawnSync(npmArgs ? 'npm' : process.execPath,
     npmArgs ?? [preload, 'lifecycle.mjs', 'catalogue', 'apply', ...(options.textOutput ? [] : ['--json']), ...options.args ?? []],
-    { cwd: root, env: { ...env, npm_config_loglevel: undefined, [workerFlag]: '1',
+    { cwd: root, env: { ...env, OPENLUP_STARTER_PORT: options.port, npm_config_loglevel: undefined, [workerFlag]: '1',
       ...(npmArgs && { npm_config_node_options: preload }) }, input: JSON.stringify(options), encoding: 'utf8' });
   assert.ifError(result.error);
   assert.ok(result.stderr.includes('\nfixture: '), result.stderr);
@@ -293,7 +302,7 @@ function invoke(options: Options = {}, npmArgs?: string[]): Output {
     receipts: result.stdout.trim().split('\n').filter(Boolean).map(line => JSON.parse(line)) } : JSON.parse(result.stdout);
   assert.equal(result.status, report.exitCode);
   assert.ok(!result.stderr.includes('fixture-token'));
-  return { ...observation, report, status: result.status!, stderr: result.stderr };
+  return { ...observation, report, status: result.status!, stdout: result.stdout, stderr: result.stderr };
 }
 
 function finding(result: Output, code: string, remedy: RegExp): Finding {
@@ -393,10 +402,54 @@ if (!env[workerFlag]) {
     assert.deepEqual(verified.report.receipts.slice(2).map(row => row.prices[0]?.subscriptionUnitPriceMinor), [1800, 2560]);
   });
 
+  test('initial sign-in refusals give the same safe guidance in JSON and human output', { skip: nestedSkip }, () => {
+    const cases = [['email', 'challenge', 'starter_input_invalid'], ['token', 'redeem', 'starter_input_invalid'],
+      ['token', 'redeem', 'starter_auth_invalid']] as const;
+    const results = cases.map(([invalidInput, step, code]) => {
+      const options = { invalidInput, failAt: ordered.indexOf(step) + 1, refusal: { code } };
+      const result = invoke(options);
+      const row = finding(result, code, /active administrator account or its current invitation.*If a new matching message appears.*ten minutes/u);
+      assert.equal(row.path, 'auth.operator');
+      const human = invoke({ ...options, textOutput: true });
+      const block = `${code}\nObserved: ${row.observed}\nCause: ${row.cause}\nFix: ${row.fix}\nRecheck: ${row.recheck}\n`;
+      assert.equal(human.status, 2);
+      const refusalStarts = human.stderr.indexOf(`${code}\n`);
+      assert.equal(human.stderr.slice(refusalStarts).split('\nfixture: ')[0], block);
+      assert.equal(human.stderr.slice(0, refusalStarts).includes('If a new matching message appears'), step === 'redeem');
+      assert.match(block, /one issued challenge per minute and five per hour per address/u);
+      assert.doesNotMatch(block, /invalid-email|invalid-token/u);
+      for (const output of [result, human]) {
+        assert.deepEqual(output.trace, ordered.slice(0, options.failAt));
+        assert.deepEqual(writes(output), []);
+        assert.deepEqual(output.report.receipts, []);
+      }
+      return { stdout: result.stdout, guidance: block.slice(code.length) };
+    });
+    assert.equal(results[0]!.stdout, results[1]!.stdout);
+    assert.equal(results[0]!.guidance, results[1]!.guidance);
+    assert.equal(results[0]!.guidance, results[2]!.guidance);
+  });
+
+  test('prepare-only uses the configured origin or local port and stops after writing the draft', { skip: nestedSkip }, () => {
+    for (const options of [{ port: '' }, { port: '04320' }, { port: '6000', publicOrigin: 'https://store.example.test:4443' }]) {
+      const result = invoke({ ...options, args: ['--prepare-only'] });
+      assert.equal(result.status, 0, result.stdout);
+      assert.deepEqual(result.trace, ordered.slice(0, 10));
+      assert.deepEqual(result.report.receipts.map(row => row.stage), ['release.save', 'release.prepare']);
+      assert.deepEqual(writes(result), ['save:1', 'prepare:1']);
+    }
+    for (const port of ['--invalid', '1023', '65536', '1e4', '6000']) {
+      const refused = invoke({ port });
+      finding(refused, 'starter_port_invalid', /OPENLUP_STARTER_PORT.*1024 to 65535.*same catalogue apply command/u);
+      assert.deepEqual(refused.trace, []);
+      assert.deepEqual(refused.report.receipts, []);
+    }
+  });
+
   test('catalogue apply stops and resumes at each refused host stage', { skip: nestedSkip }, async context => {
     const owners: [string, string, RegExp, 'last'?][] = [
       ['challenge', 'operator_required', /Restart catalogue apply with the same flags under an active administrator/u],
-      ['redeem', 'starter_auth_invalid', /Restart catalogue apply with the same flags under an active administrator/u],
+      ['redeem', 'starter_auth_invalid', /Use the email for the active administrator account or its current invitation/u],
       ['price-target', 'starter_catalogue_currency_mismatch', /use the same currency/u],
       ['price-target', 'catalog_price_setup_basis_mismatch', /effective gross list/u],
       ['lookup:1', 'publisher_not_authorized', /^Restart catalogue apply with the same flags under an active administrator/u],

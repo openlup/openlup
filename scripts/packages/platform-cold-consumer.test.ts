@@ -201,8 +201,8 @@ function fixture() {
   for (const file of ["metadata", "jsonLd", "urls"]) copyFileSync(join(root, `packages/platform/dist/marketing/seo/${file}.d.ts`), join(platformRoot, `seo/${file}.d.ts`));
   mkdirSync(join(platformRoot, "contracts"), { recursive: true });
   copyFileSync(join(root, "packages/platform/dist/marketing/contracts/contactLegal.d.ts"), join(platformRoot, "contracts/contactLegal.d.ts"));
-  packageFixture(consumer, "zod", { ".": "./index.js" });
-  writeFileSync(join(consumer, "node_modules/zod/index.d.ts"), "export namespace z { export interface ZodType<Output, Input = unknown> { parse(input: Input): Output } }\n");
+  // The lifecycle entry is copied from the build and loads zod at runtime, so the consumer gets the real package.
+  cpSync(join(root, "node_modules/zod"), join(consumer, "node_modules/zod"), { recursive: true });
   return consumer;
 }
 

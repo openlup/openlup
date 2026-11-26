@@ -233,6 +233,23 @@ describe("parseStorefrontVerdict field rules", () => {
     }
     expect(({} as Record<string, unknown>).polluted).toBeUndefined();
   });
+
+  it("V14 drops an own __proto__ key inside unknown fields, nested objects and array items", () => {
+    const text = JSON.stringify({ ...browserVerdict(), ext: { inner: { keep: 1 }, list: [{ keep: 2 }] } })
+      .replace('"inner":{', '"__proto__":{"isAdmin":true},"inner":{"__proto__":{"isAdmin":true},')
+      .replace('[{"keep":2}', '[{"__proto__":{"isAdmin":true},"keep":2}');
+    expect(text.match(/__proto__/g)).toHaveLength(3);
+    const result = parseStorefrontVerdict(text);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const ext = (result.verdict as unknown as { ext: { inner: object; list: object[] } }).ext;
+      for (const value of [ext, ext.inner, ext.list[0]]) {
+        expect(Object.prototype.hasOwnProperty.call(value, "__proto__")).toBe(false);
+        expect((Object.assign({}, value) as Record<string, unknown>).isAdmin).toBeUndefined();
+      }
+      expect(ext).toEqual({ inner: { keep: 1 }, list: [{ keep: 2 }] });
+    }
+  });
 });
 
 describe("storefrontVerdictJsonSchema", () => {

@@ -9,7 +9,7 @@ export type Db=Pool|PoolClient;
 export async function call(db:Db,name:string,args:unknown[]) {
  return (await db.query(`SELECT public.${name}(${args.map((_,i)=>`$${i+1}`).join(',')}) AS result`,args)).rows[0].result;
 }
-export async function renewal(pool:Db,availability=10,lines=1,subscription=randomUUID(),correlated=false,settlementChannelKey='fixture') {
+export async function seedRenewal(pool:Db,availability=10,lines=1,subscription=randomUUID(),correlated=false,settlementChannelKey='fixture') {
  await call(pool,'subscription_delivery_alignment_set_mode',['off']);
  const client=randomUUID(),source=randomUUID();
  await pool.query("INSERT INTO public.clients(id,email) VALUES($1,$2)",[client,`${client}@example.invalid`]);
@@ -31,8 +31,13 @@ export async function renewal(pool:Db,availability=10,lines=1,subscription=rando
   ...(correlated ? {cycle:{status:'correlated',logicalCycleNumber:3,nativeRenewalCounter:2,activationCycleId:randomUUID(),evidenceRef:'fixture:paid-history'},externalAttemptSequence:0} : {})};
  const fingerprint=createHash('sha256').update(JSON.stringify(snapshot)).digest('hex');
  const identity=await call(pool,'subscription_renewal_identity',[subscription,AT]);
- const op=await call(pool,'subscription_claim_due_renewal',[identity,fingerprint,snapshot,'fixture',300,AT]);
- return {client,subscription,source,snapshot,fingerprint,identity,operation:op.operationId as string,token:op.claimToken as string};
+ return {client,subscription,source,snapshot,fingerprint,identity};
+}
+export type RenewalSeed=Awaited<ReturnType<typeof seedRenewal>>;
+export async function renewal(...args:Parameters<typeof seedRenewal>) {
+ const seed=await seedRenewal(...args);
+ const op=await call(args[0],'subscription_claim_due_renewal',[seed.identity,seed.fingerprint,seed.snapshot,'fixture',300,AT]);
+ return {...seed,operation:op.operationId as string,token:op.claimToken as string};
 }
 // Recovery scheduling owns its due time through PostgreSQL now(), not the fixture calendar.
 export async function retryDueAt(db:Db,operation:string):Promise<string> {

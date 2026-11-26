@@ -11,7 +11,7 @@ import { imageReference, readCiImage } from "../ci-image-pull.mjs";
 import { browserContainerArguments, starterBrowserFailure } from "../starter-browser-ci.mjs";
 import { proveInstalledCareUpgrade, qualificationReceipt, qualifyReleasedSet } from "./exact-set-qualification.mjs";
 import { assertCompleteStarter, assertUpgradeConflict, previousPublishedSet, migrateStarterOwned,
-  includeSettingsHost, starterSettingsHost, reconcileLifecycleCustomization, reconcileReminderInstallationTest, proveStarterCatalogueWrappers, retiresStarterCatalogue, proveStarterCatalogue130,
+  includeSettingsHost, starterSettingsHost, reconcileLifecycleCustomization, reconcileStarterLocalPort, proveStarterPortRefusals, reconcileReminderInstallationTest, proveStarterCatalogueWrappers, retiresStarterCatalogue, proveStarterCatalogue130,
   reminderInstallationTest, starterLifecycle, starterOptionalOwnedFiles, starterUpgradeSnapshot,
   starterDisplayFiles, reconcileDisplayCustomization, reconcileStarterAgentGuide,
   starterSubscriptionOffer, reconcileSubscriptionOfferCustomization, starterEditorPorts, starterDocumentFiles,
@@ -999,6 +999,14 @@ it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, cus
     expect(existsSync(join(app, marketPath))).toBe(false);
     return JSON.parse(refusal.stdout);
   }) : undefined;
+  if (customized) expect(reconcileStarterLocalPort(app, from.files, () => {
+    const before = starterUpgradeSnapshot(app, from.version);
+    const refusal = run();
+    expect(refusal.status).toBe(1);
+    expect(starterUpgradeSnapshot(app, from.version)).toEqual(before);
+    expect(existsSync(join(app, marketPath))).toBe(false);
+    return JSON.parse(refusal.stdout);
+  })).toBe("4320");
   const localDisplay = customized ? starterDisplayFiles.map(path =>
     reconcileDisplayCustomization(app, from.files[path]!, () => {
       const before = starterUpgradeSnapshot(app, from.version);
@@ -1011,6 +1019,8 @@ it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, cus
     expect(read("AGENTS.md")).toContain("customize-the-starter.md#publish-a-saved-catalogue-draft");
     expect(read(reminderInstallationTest)).toBe(to.files[reminderInstallationTest]);
     expect(read(starterLifecycle)).toBe(to.files[starterLifecycle]);
+    expect(read("compose.yaml")).toBe(to.files["compose.yaml"]);
+    expect(read("README.md")).toContain("OPENLUP_STARTER_PORT");
     if (localTest) expect(read(localTest.path)).toBe(localTest.bytes);
     if (localLifecycle) expect(readFileSync(join(app, localLifecycle.path))).toEqual(localLifecycle.bytes);
     for (const path of starterDisplayFiles) expect(read(path), path).toBe(to.files[path]);
@@ -1043,6 +1053,7 @@ it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, cus
     expect(readFileSync(join(app, path)).equals(expected), `owned bytes after upgrade: ${path}`).toBe(true);
   }
   symlinkSync(resolve("node_modules"), join(app, "node_modules"), "dir");
+  proveStarterPortRefusals(app);
   if (localLifecycle) {
     const launch = spawnSync(process.execPath, [localLifecycle.path, "ownership"], { cwd: app, encoding: "utf8" });
     expect(launch.status, launch.stderr).toBe(0);

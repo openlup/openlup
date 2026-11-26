@@ -554,16 +554,27 @@ it("holds a bound signed capture whose provider or source differs from the owner
   expect(await read(env.owner, f.order)).toMatchObject({ kind: "authoritative", provider: f.provider, payment_mode: "test" });
 });
 
+function captureTimeReplay() {
+  const manifest = readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest;
+  const beforeEvidence = manifest.forward.findIndex(unit => unit.file.endsWith("_native_durable_capture_evidence.sql"));
+  expect(beforeEvidence).toBeGreaterThan(0);
+  const pending = manifest.forward.slice(beforeEvidence);
+  const captureTime = pending.findIndex(unit => unit.file.endsWith(forward));
+  expect(captureTime, "capture-time forward is pending after the predecessor").toBeGreaterThan(0);
+  return {
+    predecessor: [manifest.baseline, ...manifest.forward.slice(0, beforeEvidence)],
+    upgrade: pending.slice(0, captureTime + 1),
+  };
+}
+
 it("retains predecessor captures and classifies excluded evidence identically after verified fingerprint enrichment", async () => {
   const container = await runPostgresContainer({ name: `capture-predecessor-${process.pid}`, password: "synthetic-conformance" });
   const { Pool } = await import("pg");
   const db = new Pool({ connectionString: container.connectionString, options: "-c timezone=UTC" });
   try {
     expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
-    const manifest = readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest;
-    const beforeEvidence = manifest.forward.findIndex(unit => unit.file.endsWith("_native_durable_capture_evidence.sql"));
-    expect(beforeEvidence).toBeGreaterThan(0);
-    for (const unit of [manifest.baseline, ...manifest.forward.slice(0, beforeEvidence)]) await db.query(readFileSync(unit.file, "utf8"));
+    const { predecessor, upgrade } = captureTimeReplay();
+    for (const unit of predecessor) await db.query(readFileSync(unit.file, "utf8"));
     const staged: { f: Subject; id: string }[] = [];
     for (const provider of [otherProvider, primaryProvider]) {
       const f = await prepared(db, db, provider);
@@ -577,8 +588,7 @@ it("retains predecessor captures and classifies excluded evidence identically af
       });
       staged.push({ f, id });
     }
-    for (const unit of manifest.forward.slice(beforeEvidence)) await db.query(readFileSync(unit.file, "utf8"));
-    expect(manifest.forward.at(-1)?.file).toEqual(expect.stringMatching(forward + "$"));
+    for (const unit of upgrade) await db.query(readFileSync(unit.file, "utf8"));
     const evidence = async (id: string) => (await db.query(`SELECT e.event_fingerprint,e.payload,e.captured_amount_basis,
       to_jsonb(t) AS truth,to_jsonb(x) AS transition FROM public.payment_provider_attempt_evidence e
       JOIN public.payment_truth_events t ON t.source_evidence->>'sourceReference'=e.id::text
@@ -604,16 +614,14 @@ it("preserves a historical execution capture after a late ignored failure enrich
   const db = new Pool({ connectionString: container.connectionString, options: "-c timezone=UTC" });
   try {
     expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
-    const manifest = readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest;
-    const beforeEvidence = manifest.forward.findIndex(unit => unit.file.endsWith("_native_durable_capture_evidence.sql"));
-    expect(beforeEvidence).toBeGreaterThan(0);
-    for (const unit of [manifest.baseline, ...manifest.forward.slice(0, beforeEvidence)]) await db.query(readFileSync(unit.file, "utf8"));
+    const { predecessor, upgrade } = captureTimeReplay();
+    for (const unit of predecessor) await db.query(readFileSync(unit.file, "utf8"));
     const f = await prepared(db, db);
     const control = createPostgresProviderPaymentControlPort(db, options);
     expect(await control.applyPaymentResult({ idempotencyKey: `legacy:${f.intent}`, paymentIntentId: f.intent,
       paymentEventId: null, resultStatus: "succeeded", occurredAt: f.time.occurred, failureReason: null,
     })).toMatchObject({ kind: "state_changed" });
-    for (const unit of manifest.forward.slice(beforeEvidence)) await db.query(readFileSync(unit.file, "utf8"));
+    for (const unit of upgrade) await db.query(readFileSync(unit.file, "utf8"));
     const applied = () => db.query(`SELECT t.source_evidence AS truth, a.response_payload AS response
       FROM public.payment_truth_events t JOIN public.payment_provider_attempts a ON a.settlement_intent_id=t.settlement_intent_id
       WHERE a.id=$1 AND t.state='settled' AND t.outcome='captured'`, [f.attempt]).then(r => r.rows[0]);
