@@ -888,10 +888,6 @@
         "sha256": "841d3a42b322ff0d515f5c642320f56a10abbc8076f7a6170983bd6457302fa7"
       },
       {
-        "file": "db/platform/migrations/20261129060000_paid_order_money_v2_read.sql",
-        "sha256": "f042c8ec6fa446d0ad3db3033cbf203e79efb2aa46e25de233939c1fbb6f4178"
-      },
-      {
         "file": "db/platform/migrations/20261129120000_subscription_renewal_generation_seam.sql",
         "sha256": "e406e902de4a22b627866af1306a7b6cad82d768b46a5a7596c03b9a45d6aeed"
       },
@@ -906,9 +902,17 @@
       {
         "file": "db/platform/migrations/20261129130002_order_money_v2_assert.sql",
         "sha256": "e8b989a3ac88eabb0c95fe39bd6ae55bab134858ddf56cf98ff20d6ab0aa71d4"
+      },
+      {
+        "file": "db/platform/migrations/20261129130501_fulfillment_delivery_without_tracking.sql",
+        "sha256": "8fb338903c87905d493b110134d7b89d8a65ba50db33eab7b4741a2802b898ef"
+      },
+      {
+        "file": "db/platform/migrations/20261129130502_paid_order_money_v2_read.sql",
+        "sha256": "f042c8ec6fa446d0ad3db3033cbf203e79efb2aa46e25de233939c1fbb6f4178"
       }
     ],
-    "objectInventorySha256": "b2c97d439496681cac2d7a38453868058fa37c9d9c4d1fa714db9f794453c414",
+    "objectInventorySha256": "9683917046c91f3ba71185d91ad80e9b03b45d641791b60777ffc230e80d22f0",
     "qualified": {
       "baseline": {
         "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1820,10 +1824,6 @@
           "sha256": "841d3a42b322ff0d515f5c642320f56a10abbc8076f7a6170983bd6457302fa7"
         },
         {
-          "file": "db/platform/migrations/20261129060000_paid_order_money_v2_read.sql",
-          "sha256": "f042c8ec6fa446d0ad3db3033cbf203e79efb2aa46e25de233939c1fbb6f4178"
-        },
-        {
           "file": "db/platform/migrations/20261129120000_subscription_renewal_generation_seam.sql",
           "sha256": "e406e902de4a22b627866af1306a7b6cad82d768b46a5a7596c03b9a45d6aeed"
         },
@@ -1838,14 +1838,22 @@
         {
           "file": "db/platform/migrations/20261129130002_order_money_v2_assert.sql",
           "sha256": "e8b989a3ac88eabb0c95fe39bd6ae55bab134858ddf56cf98ff20d6ab0aa71d4"
+        },
+        {
+          "file": "db/platform/migrations/20261129130501_fulfillment_delivery_without_tracking.sql",
+          "sha256": "8fb338903c87905d493b110134d7b89d8a65ba50db33eab7b4741a2802b898ef"
+        },
+        {
+          "file": "db/platform/migrations/20261129130502_paid_order_money_v2_read.sql",
+          "sha256": "f042c8ec6fa446d0ad3db3033cbf203e79efb2aa46e25de233939c1fbb6f4178"
         }
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "ee9666bd5182e91b36498443189a4841e8893054fc629052965ed91f9103b791"
+          "withRestore": "213796bbcdce11c83e44a4270ca2de8533af19d94a9eba0fb6a3619d6b40615f"
         },
         "separateMigrator": {
-          "withRestore": "4e628afcfa721fd4511e568cd8a83bdff538ea02c02a89a6cb5b11e0a67dcecc"
+          "withRestore": "1f8c9d6c94910b33a694af776d40a1f4a5638df5b05cd94b115b49b608e0c7d7"
         }
       }
     },
@@ -2752,10 +2760,6 @@
           "sha256": "841d3a42b322ff0d515f5c642320f56a10abbc8076f7a6170983bd6457302fa7"
         },
         {
-          "file": "db/platform/migrations/20261129060000_paid_order_money_v2_read.sql",
-          "sha256": "f042c8ec6fa446d0ad3db3033cbf203e79efb2aa46e25de233939c1fbb6f4178"
-        },
-        {
           "file": "db/platform/migrations/20261129120000_subscription_renewal_generation_seam.sql",
           "sha256": "e406e902de4a22b627866af1306a7b6cad82d768b46a5a7596c03b9a45d6aeed"
         },
@@ -2770,11 +2774,19 @@
         {
           "file": "db/platform/migrations/20261129130002_order_money_v2_assert.sql",
           "sha256": "e8b989a3ac88eabb0c95fe39bd6ae55bab134858ddf56cf98ff20d6ab0aa71d4"
+        },
+        {
+          "file": "db/platform/migrations/20261129130501_fulfillment_delivery_without_tracking.sql",
+          "sha256": "8fb338903c87905d493b110134d7b89d8a65ba50db33eab7b4741a2802b898ef"
+        },
+        {
+          "file": "db/platform/migrations/20261129130502_paid_order_money_v2_read.sql",
+          "sha256": "f042c8ec6fa446d0ad3db3033cbf203e79efb2aa46e25de233939c1fbb6f4178"
         }
       ],
       "objectInventorySha256": {
-        "installerManaged": "70cb8e6285023dc3c1aeac1b5f3fd5cdf76d23353ea8682019263158b6253079",
-        "operatorProvisioned": "d22c0d8d5976e4700860f9c0b94b829eb24dd205616358c99c9669e4c380caa7"
+        "installerManaged": "96510bcc2a2064104c49cbe98c806fbd181c583f79c44ed152aa3c06b0539dff",
+        "operatorProvisioned": "3e4ca154b35946fb22110c02a2958d6e3847bb7bd9a20aeb16cfcd6f86a21feb"
       }
     }
   },
@@ -3885,11 +3897,6 @@
       "sha256": "841d3a42b322ff0d515f5c642320f56a10abbc8076f7a6170983bd6457302fa7"
     },
     {
-      "file": "20261129060000_paid_order_money_v2_read.sql",
-      "source": "db/platform/migrations/20261129060000_paid_order_money_v2_read.sql",
-      "sha256": "f042c8ec6fa446d0ad3db3033cbf203e79efb2aa46e25de233939c1fbb6f4178"
-    },
-    {
       "file": "20261129120000_subscription_renewal_generation_seam.sql",
       "source": "db/platform/migrations/20261129120000_subscription_renewal_generation_seam.sql",
       "sha256": "e406e902de4a22b627866af1306a7b6cad82d768b46a5a7596c03b9a45d6aeed"
@@ -3908,6 +3915,16 @@
       "file": "20261129130002_order_money_v2_assert.sql",
       "source": "db/platform/migrations/20261129130002_order_money_v2_assert.sql",
       "sha256": "e8b989a3ac88eabb0c95fe39bd6ae55bab134858ddf56cf98ff20d6ab0aa71d4"
+    },
+    {
+      "file": "20261129130501_fulfillment_delivery_without_tracking.sql",
+      "source": "db/platform/migrations/20261129130501_fulfillment_delivery_without_tracking.sql",
+      "sha256": "8fb338903c87905d493b110134d7b89d8a65ba50db33eab7b4741a2802b898ef"
+    },
+    {
+      "file": "20261129130502_paid_order_money_v2_read.sql",
+      "source": "db/platform/migrations/20261129130502_paid_order_money_v2_read.sql",
+      "sha256": "f042c8ec6fa446d0ad3db3033cbf203e79efb2aa46e25de233939c1fbb6f4178"
     },
     {
       "file": "q2_00000000000000_platform_baseline.sql",

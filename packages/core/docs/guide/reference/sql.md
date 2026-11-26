@@ -246,11 +246,12 @@ in [Upgrade the database](../upgrade/database-migrations.md).
 | [`20261128180000_subscription_destination_read.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261128180000_subscription_destination_read.sql) |
 | [`20261128230000_derived_subscription_price_retired_base.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261128230000_derived_subscription_price_retired_base.sql) |
 | [`20261128230001_checkout_abandonment_safety_execute_grant.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261128230001_checkout_abandonment_safety_execute_grant.sql) |
-| [`20261129060000_paid_order_money_v2_read.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129060000_paid_order_money_v2_read.sql) |
 | [`20261129120000_subscription_renewal_generation_seam.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129120000_subscription_renewal_generation_seam.sql) |
 | [`20261129130000_payment_capture_time_read.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129130000_payment_capture_time_read.sql) |
 | [`20261129130001_native_renewal_v3_storage.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129130001_native_renewal_v3_storage.sql) |
 | [`20261129130002_order_money_v2_assert.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129130002_order_money_v2_assert.sql) |
+| [`20261129130501_fulfillment_delivery_without_tracking.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129130501_fulfillment_delivery_without_tracking.sql) |
+| [`20261129130502_paid_order_money_v2_read.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129130502_paid_order_money_v2_read.sql) |
 | [`q2_00000000000000_platform_baseline.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_00000000000000_platform_baseline.sql) |
 | [`q2_20260810180001_self_host_actor_auth.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20260810180001_self_host_actor_auth.sql) |
 | [`q2_20260816140000_acquisition_case_foundation.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20260816140000_acquisition_case_foundation.sql) |

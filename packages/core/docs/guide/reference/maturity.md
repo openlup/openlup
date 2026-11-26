@@ -212,6 +212,7 @@ No symbol of this package differs from its subpath's maturity or is deprecated.
 | `./shipping/contracts` | capability | stable |
 | `./shipping/testing` | capability | testing |
 | `./storefront` | capability | experimental |
+| `./storefront/testing` | capability | testing |
 | `./subscriptions` | capability | stable |
 | `./subscriptions/contracts` | capability | stable |
 | `./tax` | capability | experimental |
@@ -570,6 +571,18 @@ Symbols whose maturity differs from their subpath, or that are deprecated:
 | `./pricing` | `catalogPriceSetupReceiptSchema` | experimental | no |
 | `./pricing` | `catalogPriceSetupRefusal` | experimental | no |
 | `./pricing` | `catalogPriceSetupRefusalSchema` | experimental | no |
+| `./pricing` | `commerceMoneyV2CurrencySchema` | experimental | no |
+| `./pricing` | `commerceMoneyV2DeliveryBucketSchema` | experimental | no |
+| `./pricing` | `commerceMoneyV2DigestSchema` | experimental | no |
+| `./pricing` | `commerceMoneyV2FactsSchema` | experimental | no |
+| `./pricing` | `commerceMoneyV2FeeLineSchema` | experimental | no |
+| `./pricing` | `commerceMoneyV2LineSchema` | experimental | no |
+| `./pricing` | `commerceMoneyV2MinorSchema` | experimental | no |
+| `./pricing` | `commerceMoneyV2PriceSchema` | experimental | no |
+| `./pricing` | `commerceMoneyV2PromotionEngineSchema` | experimental | no |
+| `./pricing` | `commerceMoneyV2ReferenceSchema` | experimental | no |
+| `./pricing` | `commerceMoneyV2TaxEvidenceShape` | experimental | no |
+| `./pricing` | `commerceMoneyV2UuidSchema` | experimental | no |
 | `./pricing` | `commerceQuoteV2Schema` | experimental | no |
 | `./pricing` | `composeCommerceQuoteMoneyV2` | experimental | no |
 | `./pricing` | `createCatalogPriceSetupHandler` | experimental | no |
@@ -607,6 +620,12 @@ Symbols whose maturity differs from their subpath, or that are deprecated:
 | `./shipping` | `AddressPolicyV1` | experimental | no |
 | `./shipping` | `validateDestinationAddressV2` | experimental | no |
 | `./shipping/testing` | `runShippingRateAdapterConformance` | experimental | no |
+| `./storefront/testing` | `PageHandle` | experimental | no |
+| `./storefront/testing` | `StorefrontAdapter` | experimental | no |
+| `./storefront/testing` | `StorefrontObserver` | experimental | no |
+| `./storefront/testing` | `StorefrontScenario` | experimental | no |
+| `./storefront/testing` | `createPageHandle` | experimental | no |
+| `./storefront/testing` | `serializeStorefrontVerdict` | experimental | no |
 | `./subscriptions` | `CatalogProfileCadenceInput` | experimental | no |
 | `./subscriptions` | `CatalogProfileCadenceResult` | experimental | no |
 | `./subscriptions` | `DEFAULT_SUBSCRIPTION_EDIT_QUOTE_TTL_MINUTES` | experimental | no |

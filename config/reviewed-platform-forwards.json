@@ -9634,19 +9634,6 @@
         "dataStatements": []
       },
       {
-        "row": "paid-order-money-v2-read",
-        "path": "db/platform/migrations/20261129060000_paid_order_money_v2_read.sql",
-        "replacedFunctions": [],
-        "createdFunctions": [
-          {
-            "signature": "public.commerce_read_paid_order_money_v2(uuid)",
-            "searchPath": "pg_catalog, pg_temp"
-          }
-        ],
-        "grantOnlyFunctions": [],
-        "dataStatements": []
-      },
-      {
         "row": "subscription-renewal-generation",
         "path": "db/platform/migrations/20261129120000_subscription_renewal_generation_seam.sql",
         "replacedFunctions": [],
@@ -9706,6 +9693,41 @@
           },
           {
             "signature": "public.commerce_order_money_v2_check_state(uuid,boolean,text,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
+        "row": "fulfillment-delivery-without-tracking",
+        "path": "db/platform/migrations/20261129130501_fulfillment_delivery_without_tracking.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.fulfillment_intake_record_observation(text,uuid,jsonb,timestamptz)",
+            "beforeSha256": "8d138fb099bbc511032a68e482f720ebbc065efaf1294c5dad4872a225688691",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.fulfillment_intake_record_delivery_without_tracking(text,uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "existingTableStatements": [
+          "ALTER TABLE public.fulfillment_observations ADD COLUMN prebound_arrival_dispatch_id uuid;"
+        ]
+      },
+      {
+        "row": "paid-order-money-v2-read",
+        "path": "db/platform/migrations/20261129130502_paid_order_money_v2_read.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.commerce_read_paid_order_money_v2(uuid)",
             "searchPath": "pg_catalog, pg_temp"
           }
         ],
@@ -14003,17 +14025,6 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261129060000_paid_order_money_v2_read.sql",
-      "sha256": "f042c8ec6fa446d0ad3db3033cbf203e79efb2aa46e25de233939c1fbb6f4178",
-      "functions": [
-        {
-          "signature": "public.commerce_read_paid_order_money_v2(uuid)",
-          "beforeSha256": null,
-          "afterSha256": "4cf99a054ce1c4dad67916ddc33a13ecc989541cac4f3053b14532198a9c3e43"
-        }
-      ]
-    },
-    {
       "path": "db/platform/migrations/20261129120000_subscription_renewal_generation_seam.sql",
       "sha256": "e406e902de4a22b627866af1306a7b6cad82d768b46a5a7596c03b9a45d6aeed",
       "functions": [
@@ -14063,6 +14074,33 @@
           "signature": "public.commerce_order_money_v2_check_state(uuid,boolean,text,text)",
           "beforeSha256": null,
           "afterSha256": "1cc9249747fce4b21ae668b88cb444fabadfd4bfd1cdb6e1c2f80c8a418beb8a"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261129130501_fulfillment_delivery_without_tracking.sql",
+      "sha256": "8fb338903c87905d493b110134d7b89d8a65ba50db33eab7b4741a2802b898ef",
+      "functions": [
+        {
+          "signature": "public.fulfillment_intake_record_observation(text,uuid,jsonb,timestamptz)",
+          "beforeSha256": "8d138fb099bbc511032a68e482f720ebbc065efaf1294c5dad4872a225688691",
+          "afterSha256": "61194e679e9a3ae6440d83e1d4862e23ae75721707432399b703335c67aa9580"
+        },
+        {
+          "signature": "public.fulfillment_intake_record_delivery_without_tracking(text,uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "307281b2c1cd8b5682fd854b0e72a387cafdf31e0b29bd708053728dbe9f366f"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261129130502_paid_order_money_v2_read.sql",
+      "sha256": "f042c8ec6fa446d0ad3db3033cbf203e79efb2aa46e25de233939c1fbb6f4178",
+      "functions": [
+        {
+          "signature": "public.commerce_read_paid_order_money_v2(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "4cf99a054ce1c4dad67916ddc33a13ecc989541cac4f3053b14532198a9c3e43"
         }
       ]
     }

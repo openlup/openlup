@@ -18,7 +18,7 @@ export { quoteDiscountSchema, hasValidV2PromotionEvidence } from "./quotePromoti
 export { quoteCodeRejectionDetailSchema } from "./quoteCodeRejectionDetails.js";
 export { catalogFactsProvenanceSchema, rejectCatalogFactsFromPublicQuote } from "./catalogFactsSchemas.js";
 export { createCatalogFactsProvenance, catalogFactsForQuoteLine, projectPublicQuoteSnapshot } from "./catalogFactsProvenance.js";
-export { CommerceQuoteCatalogReadError } from "./commerceQuoteCatalogReadPort.js";
+export { CommerceQuoteCatalogReadError, memoizeCommerceQuoteCatalogReads } from "./commerceQuoteCatalogReadPort.js";
 export type { CommerceQuoteCatalogItem, CommerceQuoteCatalogReadPort, CommerceQuoteCatalogReadRefusalCode } from "./commerceQuoteCatalogReadPort.js";
 export { assertSupportedCommerceTaxProfile } from "./taxProfileGuard.js";
 

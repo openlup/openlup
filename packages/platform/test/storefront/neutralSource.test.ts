@@ -48,8 +48,11 @@ function findings(fileName: string, text: string): string[] {
   return found;
 }
 
+// Only the files directly in the entry's directory: `browserBoundary.test.ts` proves the browser
+// bundle has no subdirectory input, and `testing/` is Node-only test support that serializes verdicts.
 it("finds no serialization and no storage name in the storefront source", () => {
-  const files = readdirSync(directory, { recursive: true, encoding: "utf8" }).filter(file => /\.(?:ts|tsx|js|mjs|cjs)$/.test(file)).sort();
+  const files = readdirSync(directory, { withFileTypes: true })
+    .filter(entry => entry.isFile() && /\.(?:ts|tsx|js|mjs|cjs)$/.test(entry.name)).map(entry => entry.name).sort();
   expect(files).toContain("index.ts");
   const found = files.flatMap(file => findings(file, readFileSync(join(directory, file), "utf8")));
   expect(found).toEqual([]);

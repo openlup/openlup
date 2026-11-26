@@ -515,7 +515,7 @@ each of which must fail. It is not a required context of its own; the required
 See [Test scope and diagnostics](#test-scope-and-diagnostics) for selection,
 sharding, discovery and test-author guidance.
 
-The required `install-proof` context aggregates `install-packages` and all five
+The required `install-proof` context aggregates `install-packages` and all six
 `install-browser` shards. It requires actual success from both dependencies; failed,
 cancelled or skipped jobs refuse admission. On main pushes, `install-packages`
 checks `scripts/public-ci-reuse.mjs`; browser shards share its decision so a
@@ -547,13 +547,13 @@ for trust, evidence and support limits. The workflow adds no required PR check,
 does not hold publication open and does not delay the next dispatch.
 
 After package proof succeeds, `install-browser` runs the starter's installed
-PostgreSQL browser journeys in five parallel shards through
+PostgreSQL browser journeys in six parallel shards through
 [`starter-browser-ci.mjs`](scripts/starter-browser-ci.mjs). Pinned official artifact
 actions transfer only the verified manifest and public tarballs from the package
 job, retained for one day; private browser output is never uploaded. Each shard
 verifies all manifest hashes, the package inventory and the exact checkout commit
 before installing, then checks installed-package confinement. The zero-based
-`--groups` selections are `0`, `6`, `1,2`, `3,5` and `4`, covering every group once.
+`--groups` selections are `0`, `6`, `1`, `2`, `3,5` and `4`, covering every group once.
 Each shard acquires an isolated disposable
 PostgreSQL 16 per configuration through the shared test helper and `test-postgres`
 inventory pin. The package job's PostgreSQL 17 service retains its package proofs. The runner
@@ -1288,7 +1288,7 @@ PR/group scope uses the merge-base with the event's exact base. Local scope uses
 
 Unknown events, malformed metadata or unavailable Git history exclude nothing. Selection is an optimization, never a failure waiver. Keep the project-level exact-path seam; root `--exclude` cannot replace it.
 
-In hosted CI (`.github/workflows/published-tree-ci.yml`), `scope-gate` runs `node scripts/ci-test-scope.mjs --workflow-outputs` without installing workspace dependencies and emits five fail-closed outputs (`run_pgtap`, `run_reference_build`, `run_package_gates`, `run_install_browser`, `run_install_pack`). Every output defaults to `true` on `push`, missing/malformed base SHAs, Git errors, root non-doc files, dot-segments, shared setup inputs, or non-allowlisted `scripts/` changes; any file deletion or rename also triggers `run_package_gates=true` (and `run_install_pack=true`) so `packages/core` `docs:check` repository-link existence checks run. `pgtap`, `install-pack`, and `install-packages` use step-level pass-through (keeping `public-ci-dependencies.mjs` active on non-reused runs and preserving `success` job conclusions for `public-ci-reuse.mjs`), while `install-browser` skips its 5 matrix runners when `run_browser == 'false'` and `install-proof` requires either `BROWSER_RESULT=success` or the explicit pair `RUN_BROWSER=false` with `BROWSER_RESULT=skipped`.
+In hosted CI (`.github/workflows/published-tree-ci.yml`), `scope-gate` runs `node scripts/ci-test-scope.mjs --workflow-outputs` without installing workspace dependencies and emits five fail-closed outputs (`run_pgtap`, `run_reference_build`, `run_package_gates`, `run_install_browser`, `run_install_pack`). Every output defaults to `true` on `push`, missing/malformed base SHAs, Git errors, root non-doc files, dot-segments, shared setup inputs, or non-allowlisted `scripts/` changes; any file deletion or rename also triggers `run_package_gates=true` (and `run_install_pack=true`) so `packages/core` `docs:check` repository-link existence checks run. `pgtap`, `install-pack`, and `install-packages` use step-level pass-through (keeping `public-ci-dependencies.mjs` active on non-reused runs and preserving `success` job conclusions for `public-ci-reuse.mjs`), while `install-browser` skips its 6 matrix runners when `run_browser == 'false'` and `install-proof` requires either `BROWSER_RESULT=success` or the explicit pair `RUN_BROWSER=false` with `BROWSER_RESULT=skipped`.
 
 #### Separate DB, package and coverage proof
 
@@ -2278,7 +2278,9 @@ the failed `native-review` job within rerun authority. A group timeout needs a
 requeue under merge authority. After a same-head failed-check or timeout removal,
 the preflight requires a passing rerun of the removed merge-group commit with
 all required checks successful. A second removal of the same head stops routine
-re-arming. Diagnose any hold before considering further action. Missing or late
+re-arming. A conflict removal without a merge-group commit is not counted;
+the live mergeability check holds any conflict that remains on the head.
+Diagnose any hold before considering further action. Missing or late
 receipts require a receipt fix. A timely
 valid receipt rejected without a conflict is a defect to diagnose.
 
