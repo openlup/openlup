@@ -40,6 +40,22 @@ export function reseal(body: Body, quoteId: string = randomUUID()): CommerceQuot
   return { ...inner, quoteDigest: quoteDigest("commerce.quote.v2", inner) };
 }
 
+function comparableMoney(body: Body) {
+  const { coverageDigest: _coverageDigest, taxEvidence: { calculationId: _calculationId, evidenceDigest: _evidenceDigest, ...taxEvidence },
+    lines, deliveryBuckets, ...money } = body;
+  const taxPositions = (positions: Part["taxPositions"]) =>
+    positions.map(({ resolutionDigest: _resolutionDigest, ...position }) => position);
+  const state = (value: Part["discountAllocations"][number]["before"]) =>
+    ({ ...value, taxPositions: taxPositions(value.taxPositions) });
+  const part = <T extends Part>(value: T) => ({
+    ...value, taxPositions: taxPositions(value.taxPositions),
+    discountAllocations: value.discountAllocations.map(allocation =>
+      ({ ...allocation, before: state(allocation.before), after: state(allocation.after) })),
+  });
+  return { ...money, taxEvidence, lines: lines.map(part),
+    deliveryBuckets: deliveryBuckets.map(bucket => ({ ...bucket, parts: bucket.parts.map(part) })) };
+}
+
 function taxPositionsFor(part: Part) {
   const assessments = new Map<string, Part["taxPositions"][number]>();
   for (const { taxPositions } of [...part.discountAllocations.flatMap(({ before, after }) => [before, after]), part]) {
@@ -71,10 +87,9 @@ async function verifyExclusive(store: Store, value: Fixture, input: Begin, body:
   for (const { part, target } of parts) {
     const positions = taxPositionsFor(part);
     if (!positions.length) unassessed.push({ ...sample, target });
-    // Positions in the same jurisdiction still need distinct required cells.
-    for (const [index, position] of positions.entries()) {
+    for (const position of positions) {
       const { jurisdictionRef: jurisdiction, level, taxKind, rateDecimal, taxableMinor: _basis, taxMinor: _tax, ...metadata } = position;
-      const cell = { ...sample, target, jurisdiction, level, taxKind: index === 0 ? taxKind : `s${String(index).padStart(3, "0")}` };
+      const cell = { ...sample, target, jurisdiction, level, taxKind };
       tax.push({ ...metadata, cell, resolutionDigest: taxDigest("resolution", metadata.resolution),
         ...(rateDecimal === undefined ? {} : { ratePercent: rateDecimal }) });
     }
@@ -87,7 +102,9 @@ async function verifyExclusive(store: Store, value: Fixture, input: Begin, body:
   const feeCells = fees.map(({ feeKey, jurisdiction, feeKind, scope }) => ({ ...sample, jurisdiction, taxKind: feeKind,
     target: { kind: "fee" as const, key: feeKey, taxClass: lines[0]!.taxClassKey, assignmentRef: lines[0]!.assignmentRef,
       ...(scope.kind === "delivery" ? { deliveryKey: scope.key } : {}) } }));
-  const required = [...tax.map(row => row.cell), ...feeCells, ...unassessed];
+  // Distinct assessments can share a required cell. Keep each assessment's tax kind.
+  const taxedCells = new Map(tax.map(row => [canonicalCatalogDraftJson(row.cell), row]));
+  const required = [...Array.from(taxedCells.values(), row => row.cell), ...feeCells, ...unassessed];
   const declarationKey = ({ jurisdiction, taxKind }: Pick<Cell, "jurisdiction" | "taxKind">) => JSON.stringify([jurisdiction, taxKind]);
   const declarations = new Map(required.map(({ jurisdiction, taxKind }) =>
     [declarationKey({ jurisdiction, taxKind }), { ...value.fullInput.coverage.declarations[0]!, jurisdiction, taxKind }]));
@@ -102,7 +119,6 @@ async function verifyExclusive(store: Store, value: Fixture, input: Begin, body:
     delivery: delivery.map(({ bucketKey, carrierRef, serviceRef, separatelyStated, cost, taxClassKey, assignmentRef }) =>
       ({ bucketKey, carrierRef, serviceRef, separatelyStated, cost, taxClass: taxClassKey, assignmentRef })),
   });
-  const taxedCells = new Map(tax.map(row => [canonicalCatalogDraftJson(row.cell), row]));
   const exemptions = new Set(unassessed.map(cell => canonicalCatalogDraftJson(cell)));
   const vector: TaxCalculationEvidenceV1["coverage"]["vector"] = request.input.required.map(cell => {
     const declaration = declarations.get(declarationKey(cell))!;
@@ -205,6 +221,7 @@ export async function issue(store: Store, sku: Sku, inclusive: boolean,
     lines: [first], deliveryBuckets: [], feeLines: [], netTotal: 100, taxTotal: 0, feeTotal: 0, payableMinor: 100,
   } as Body);
   const verified = inclusive ? undefined : await verifyExclusive(store, value, input, body);
+  if (verified) expect(comparableMoney(verified.money)).toStrictEqual(comparableMoney(body));
   const grant = verified ? await invoke<Claim>(store.runtime, beginSql, verified.input) : await claim(input, store.runtime);
   expect(grant).toMatchObject({ kind: "claimed", generation: 1 });
   const command = seal(value, input, grant);

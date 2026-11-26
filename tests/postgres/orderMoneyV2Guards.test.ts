@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { performance } from "node:perf_hooks";
 import type { PoolClient } from "pg";
+import { CATALOG_DRAFT_MAX_BYTES } from "@openlup/platform/catalog/contracts";
 import type { CommerceQuoteMoneyV2 } from "@openlup/platform/pricing/contracts";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { flatTestTimeoutMs } from "../../scripts/ci-vitest-duration-keys.js";
@@ -1133,7 +1134,7 @@ it.each([1, 2])("checks a combined order near the completion base wire cap exact
       // These refs fill the remaining room on the 20-position plan.
       taxPositions: Array.from({ length: positionsPerState }, (_, index) => ({
         ...position, positionRef: `dense-position-${index}`, taxableMinor: amount,
-        providerLineRef: index < 7 ? "ppp" : "pp",
+        providerLineRef: "p".repeat(16 + Number(index < 7) + Number(index === 0)),
         resolution: { ...position.resolution, sourceRef: "s" },
       })),
     });
@@ -1158,12 +1159,20 @@ it.each([1, 2])("checks a combined order near the completion base wire cap exact
   expect(supplement).toBeLessThanOrEqual(baseWireCap);
   expect(assembled).toBe(base + supplement + 22);
   expect(assembled).toBeLessThanOrEqual(2_097_174);
+  // The base completion cap binds first.
+  const quoteBytes = Buffer.byteLength(JSON.stringify(evidence.quote));
+  const { rows: [stored] } = await store.owner.query<{ bytes: number }>(
+    "SELECT octet_length(outcome_text) AS bytes FROM public.tax_calculations WHERE calculation_id=$1",
+    [evidence.quote.taxEvidence.calculationId]);
+  expect(quoteBytes).toBeLessThanOrEqual(CATALOG_DRAFT_MAX_BYTES);
+  expect(stored!.bytes).toBeLessThanOrEqual(1_048_576);
   expect(evidence.quote.lines).toHaveLength(50);
   expect(evidence.quote.deliveryBuckets).toHaveLength(256);
   expect(evidence.quote.feeLines).toHaveLength(256);
   expect(evidence.quote.lines[0]!.discountAllocations).toHaveLength(20);
   expect(evidence.quote.lines[0]!.taxPositions).toHaveLength(positionsPerState);
-  console.info(`Combined order fixture (${expected}): ${base} base bytes, ${supplement} supplement bytes, ${assembled} assembled bytes`);
+  console.info(`Combined order fixture (${expected}): ${base} base bytes, ${supplement} supplement bytes, `
+    + `${assembled} assembled bytes, ${quoteBytes} quote bytes, ${stored!.bytes} stored outcome bytes`);
   await countCombinedCommit(evidence, expected);
 }, postgresSetupTimeoutMs);
 
