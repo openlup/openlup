@@ -4130,7 +4130,7 @@ storage.
 | `lost_response_edited_payload` | As `lost_response_reload`, with the first name changed before placing the order again | At most one payable order, one order holding stock, one capture | `update_in_place`: `awaiting_payment` offering `continue_payment`; `refuse_changed`: `details_changed` offering `continue_payment` and `start_over` | `other_policy`; negates the other policy's state | — |
 | `reload_pending_attempt` | Continue to payment; the attempt stays pending (`awaiting_authority`); reload; the pending attempt settles | No payment attempt after the step before the reload; one capture | `awaiting_authority` after the reload, then `paid` | `block_read` of `read` and `create` from the reload, outcomes kept; negates `paid` only | `pending`, `settled_after_pending` |
 | `decline_retry` | Continue to payment; declined (`declined` offering `retry_payment`); retry; settled | At most one payable order, attempts at most declines plus one, one capture | `paid` | `omit_action` of `retry_payment`, the outcomes after it skipped; negates `paid` | `declined`, `settled` |
-| `paid_pending_activation` | A subscription; continue to payment; the payment settles while activation stays pending | Once the run shows `paid_pending_activation` (not before the expect step ends), no `awaiting_payment`, `declined` or `paid`; one capture | `paid_pending_activation` | `block_read` of `read` and `create` from the outcome, outcomes kept; negates `paid_pending_activation` | `activation_pending` |
+| `paid_pending_activation` | A subscription; continue to payment; the payment settles while activation stays pending | Clean run: never `paid` or `declined`, and no `awaiting_payment` once it showed `paid_pending_activation`. Control run: never `paid`, `declined` or `paid_pending_activation` (awaiting states allowed). One capture | `paid_pending_activation` | `block_read` of `read` and `create` from the outcome, outcomes kept; negates `paid_pending_activation` | `activation_pending` |
 
 The edited-payload progress follows the proof file's `changedPayloadPolicy`;
 an absent or unknown policy reads as `refuse_changed`, and a clean run that
@@ -4200,7 +4200,7 @@ to fix it, and the recheck command (`recheck` from the adapter or proof file,
 | 1 | Page, observer, arrangement and outcome driver worked | `page_failed`, `observer_failed`, `arrange_failed`, `outcome_failed` | `not_run` |
 | 2 | No order before the arrangement; one after the first matched create | `observer_subject_unseen` | `not_run` |
 | 3 | The first order appeared in a step with a matched create; every withhold applied; declared auto-progress was performed; every outcome shows its ledger effect | `stimulus_not_create`, `stimulus_not_applied`, `auto_progress_not_performed`, `outcome_failed` | `not_run` |
-| 4 | Ledger safety in both runs and settle windows (also no attempt after its step, attempts per decline, forbidden states once the run has shown the outcome); with an exclusive database, payable orders added equal those of the subjects | `duplicate_order`, `duplicate_hold`, `duplicate_capture`, `second_attempt`, `forbidden_state_shown`, `order_outside_subject`; `observer_failed` when fewer were added | `failed`; `not_run` |
+| 4 | Ledger safety in both runs and settle windows (also no attempt after its step, attempts per decline, forbidden states per run); with an exclusive database, payable orders added equal those of the subjects | `duplicate_order`, `duplicate_hold`, `duplicate_capture`, `second_attempt`, `forbidden_state_shown`, `order_outside_subject`; `observer_failed` when fewer were added | `failed`; `not_run` |
 | 5 | The create budget kept | `request_budget_exceeded` | `not_run` |
 | 6 | Each matcher used matched in the clean run, and for `block_read` a request of the blocked set after its start; each needed anchor resolved and was visible | `adapter_matcher_unmatched`, `adapter_anchor_missing`, `anchor_hidden` | `not_run` |
 | 7 | The clean run reached its expected state | `policy_mismatch` (the other policy's state), `progress_not_reached` (another state shown), `adapter_anchor_missing` (none) | `failed`; `not_run` |
@@ -4212,10 +4212,15 @@ stops before its progress and control are exercised, so it proves nothing
 either way; a ledger violation seen before the stop still makes it `failed`.
 Likewise, ledger harm a run proved before a fault or a stimulus check that
 ends `not_run` (in the clean run before one in the control run, or at or
-before its step in the same run) outranks it, so the result is `failed`. A
-forbidden-states window opens only once the run has shown the state its expect
-step asks for: a control run that blocks the status reads never learns the
-outcome, so a page that keeps its earlier state there is not judged by it.
+before its step in the same run) outranks it, so the result is `failed`.
+Forbidden states are set per run in the scenario's `forbiddenStates`:
+`control` lists the states the control run must never show, from its first
+sample on (outcomes a page whose status reads are blocked cannot know; an
+awaiting state stays allowed there); `clean.ruledOut` lists the outcomes the
+clean run must never show; and once the clean run has shown
+`clean.afterShowing.state`, each state in `clean.afterShowing.regressions` is
+forbidden too (cause `regression`). Each finding names its cause
+(`unknowable`, `ruled_out`, `regression`).
 The control's checks run over every recorded control step, also when the
 control run stopped. A fault's text keeps its code and first sentence with
 every URL replaced by `<url>`. `not_run` is missing evidence, never a pass.

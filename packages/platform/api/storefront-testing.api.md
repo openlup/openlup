@@ -52,7 +52,7 @@ type StorefrontRequestDecision = "pass" | "withhold" | "block";
  * - `budget.creates` is the number of create requests one run may send.
  * - `text` holds one sentence each on the stimulus, the safety rule, the
  *   progress and the control.
- * - Step, `noAttemptAfter`, `forbiddenStates.after` and `control.from` indices
+ * - Step, `noAttemptAfter` and `control.from` indices
  *   count from 0 within `steps`.
  *
  * @experimental
@@ -115,14 +115,22 @@ export type StorefrontScenario = {
         /** Attempts never exceed the declines the outcome driver produced so far plus one. */
         readonly attemptsPerDecline?: boolean;
         /**
-         * States that must not be shown once the run has shown the outcome: from the
-         * first observation, not before the step at index `after` ends, that shows the
-         * state that step expects (for a step that is not an expect, from its end on).
-         * A run that never shows that state is not judged by this rule.
+         * States that must not be shown, per run. `control`: forbidden in the control
+         * run from its first sample on: outcomes a page whose status reads are blocked
+         * cannot know (awaiting states stay allowed). `clean.ruledOut`: forbidden in
+         * the clean run from its first sample on: outcomes the scenario rules out.
+         * `clean.afterShowing`: once the clean run has shown `state`, each of
+         * `regressions` (a pre-outcome state) is forbidden too.
          */
         readonly forbiddenStates?: {
-            readonly after: number;
-            readonly states: readonly string[];
+            readonly control: readonly string[];
+            readonly clean: {
+                readonly ruledOut: readonly string[];
+                readonly afterShowing?: {
+                    readonly state: string;
+                    readonly regressions: readonly string[];
+                };
+            };
         };
     };
     readonly control: {
@@ -480,7 +488,7 @@ type StorefrontRunResult = {
  * a matched create, every withhold applied, every outcome shows its ledger
  * effect and declared auto-progress was performed; 4 ledger safety in both
  * runs and settle windows (payable orders, orders holding stock, attempts, captures, no attempt after its step, attempts per
- * decline, forbidden states once the run has shown the outcome; a paid state needs a capture
+ * decline, forbidden states per run; a paid state needs a capture
  * and no payable order) and, for an exclusive database, no payable order
  * outside the subjects; 5 the create budget kept (a run over it stopped before
  * proving anything, but a violation it already caused stands); 6 each matcher
@@ -560,9 +568,11 @@ import type { StorefrontScenario } from "./contracts.js";
  *   `retry_payment`, skips the outcomes after it and must keep `paid` from
  *   being shown. Requires the `declined` and `settled` outcomes.
  * - `paid_pending_activation`: a subscription's payment settles while its
- *   activation stays pending. Once the page shows that state (from the end of
- *   the expect step), `awaiting_payment`, `declined` and `paid` must not be
- *   shown, and at most one capture; progress
+ *   activation stays pending. The clean run never shows `paid` or `declined`
+ *   and, once it showed `paid_pending_activation`, never `awaiting_payment`
+ *   again; the control run, whose status reads are blocked, never shows `paid`,
+ *   `declined` or `paid_pending_activation` (awaiting states stay allowed); at
+ *   most one capture; progress
  *   is `paid_pending_activation`; the control blocks status reads and creates
  *   from the outcome on, keeps the outcomes and must keep that state from being
  *   shown. Requires the `activation_pending` outcome.
