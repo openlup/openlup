@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -16,6 +16,21 @@ afterEach(() => {
 
 function sha(text: string): string {
   return createHash("sha256").update(text).digest("hex");
+}
+
+function snapshotTree(root: string, rel = ""): Record<string, string> {
+  const result: Record<string, string> = {};
+  const dir = rel ? join(root, rel) : root;
+  for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
+    if (entry.name === ".git") continue;
+    const childRel = rel ? `${rel}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) {
+      Object.assign(result, snapshotTree(root, childRel));
+    } else {
+      result[childRel] = readFileSync(join(root, childRel), "utf8");
+    }
+  }
+  return result;
 }
 
 function createFixtureRepo() {
@@ -269,5 +284,94 @@ describe("migration:sync", () => {
 
     f.write(f.priorPath, "CREATE TABLE public.tampered (id int);\n");
     expect(() => runMigrationSync({ root: f.root, noInventory: true })).toThrow("immutable");
+  });
+
+  it("reports drift across all four surfaces in --check mode without calling build/inventory hooks or writing files", () => {
+    const f = createFixtureRepo();
+    const nextPath = "db/platform/migrations/20261125000000_replace_demo.sql";
+    const replacementSql =
+      "CREATE OR REPLACE FUNCTION public.demo_fn() RETURNS integer LANGUAGE sql SET search_path = pg_catalog, pg_temp AS $$ SELECT 2; $$;\n";
+    f.write(nextPath, replacementSql);
+
+    const forwards = JSON.parse(f.read("config/reviewed-platform-forwards.json"));
+    forwards.nativeStoreForwardClass.slots.push({
+      row: "R1",
+      path: nextPath,
+      replacedFunctions: [{ signature: "public.demo_fn()", beforeSha256: "f".repeat(64), searchPath: "pg_catalog, pg_temp" }],
+      createdFunctions: [],
+      grantOnlyFunctions: [],
+      dataStatements: [],
+    });
+    f.write("config/reviewed-platform-forwards.json", `${JSON.stringify(forwards, null, 2)}\n`);
+
+    f.write("packages/core/package.json", '{"version":"1.0.0"}\n');
+    f.write(
+      "packages/core/docs/guide/reference/sql.md",
+      "# SQL Reference\n\n<!-- generated:sql:platform -->\n| stale |\n<!-- /generated:sql:platform -->\n",
+    );
+
+    const beforeTree = snapshotTree(f.root);
+    const beforeSqlDir = readdirSync(join(f.root, "packages/platform/sql")).sort();
+    const runIncrementalBuild = vi.fn();
+    const runInventoryRefresh = vi.fn();
+
+    const result = runMigrationSync({
+      root: f.root,
+      check: true,
+      runIncrementalBuild,
+      runInventoryRefresh,
+    });
+
+    expect(result.mode).toBe("check");
+    expect(result.inventoryRefreshed).toBe(false);
+    expect(result.manifestUpdated).toBe(true);
+    expect(result.forwardsUpdated).toBe(true);
+    expect(result.drift.length).toBeGreaterThanOrEqual(4);
+    expect(result.drift).toContain("config/platform-migration-manifest.json: checksum or forward entries out of sync");
+    expect(result.drift).toContain("config/reviewed-platform-forwards.json: reviewed forward digests out of sync");
+    expect(result.drift).toContain("packages/core/docs/guide/reference/sql.md: generated SQL reference out of sync");
+    expect(runIncrementalBuild).not.toHaveBeenCalled();
+    expect(runInventoryRefresh).not.toHaveBeenCalled();
+    expect(snapshotTree(f.root)).toEqual(beforeTree);
+    expect(readdirSync(join(f.root, "packages/platform/sql")).sort()).toEqual(beforeSqlDir);
+  });
+
+  it("refuses deleted base migration files in both sync and --check modes without modifying the manifest", () => {
+    const f = createFixtureRepo();
+    const beforeManifest = f.read("config/platform-migration-manifest.json");
+    rmSync(join(f.root, f.priorPath));
+
+    expect(() => runMigrationSync({ root: f.root, noInventory: true })).toThrow(
+      "existing base migration file was deleted from the working tree",
+    );
+    expect(() => runMigrationSync({ root: f.root, check: true, noInventory: true })).toThrow(
+      "existing base migration file was deleted from the working tree",
+    );
+    expect(f.read("config/platform-migration-manifest.json")).toBe(beforeManifest);
+  });
+
+  it("detects SQL reference drift in --check without mutating it and recovers cleanly on sync", () => {
+    const f = createFixtureRepo();
+    const sqlRefPath = "packages/core/docs/guide/reference/sql.md";
+    f.write("packages/core/package.json", '{"version":"1.0.0"}\n');
+    f.write(
+      sqlRefPath,
+      "# SQL Reference\n\n<!-- generated:sql:platform -->\n| initial |\n<!-- /generated:sql:platform -->\n",
+    );
+
+    runMigrationSync({ root: f.root, noInventory: true });
+    expect(runMigrationSync({ root: f.root, check: true, noInventory: true }).drift).toEqual([]);
+    const cleanSqlRef = f.read(sqlRefPath);
+
+    const corruptedSqlRef = "# SQL Reference\n\n<!-- generated:sql:platform -->\n| corrupted |\n<!-- /generated:sql:platform -->\n";
+    f.write(sqlRefPath, corruptedSqlRef);
+
+    const checkResult = runMigrationSync({ root: f.root, check: true, noInventory: true });
+    expect(checkResult.drift).toEqual([`${sqlRefPath}: generated SQL reference out of sync`]);
+    expect(f.read(sqlRefPath)).toBe(corruptedSqlRef);
+
+    runMigrationSync({ root: f.root, noInventory: true });
+    expect(f.read(sqlRefPath)).toBe(cleanSqlRef);
+    expect(runMigrationSync({ root: f.root, check: true, noInventory: true }).drift).toEqual([]);
   });
 });

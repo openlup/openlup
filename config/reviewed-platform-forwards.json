@@ -9673,6 +9673,33 @@
         ]
       },
       {
+        "row": "order-money-v2-assert",
+        "path": "db/platform/migrations/20261129130002_order_money_v2_assert.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.commerce_order_assert_line_sum()",
+            "beforeSha256": "6a15c3f2873f5b1799dedb1ff1ce81ef843251e4a292a18f71df64aa492dede7",
+            "searchPath": "public, pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.commerce_order_money_v2_assert(uuid,boolean,boolean,jsonb,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_order_money_v2_live_body(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_order_money_v2_check_state(uuid,boolean,text,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "fulfillment-delivery-without-tracking",
         "path": "db/platform/migrations/20261129130501_fulfillment_delivery_without_tracking.sql",
         "replacedFunctions": [
@@ -14010,6 +14037,32 @@
       "path": "db/platform/migrations/20261129130001_native_renewal_v3_storage.sql",
       "sha256": "03cddadfb849aa09d4e2eb9fc2e36165a2bdef65ce943f06f04396c6ec009263",
       "functions": []
+    },
+    {
+      "path": "db/platform/migrations/20261129130002_order_money_v2_assert.sql",
+      "sha256": "e8b989a3ac88eabb0c95fe39bd6ae55bab134858ddf56cf98ff20d6ab0aa71d4",
+      "functions": [
+        {
+          "signature": "public.commerce_order_assert_line_sum()",
+          "beforeSha256": "6a15c3f2873f5b1799dedb1ff1ce81ef843251e4a292a18f71df64aa492dede7",
+          "afterSha256": "389aae614a73fa6b8fb1edb7bd65e5723ac107c5ddccad356b0bd61d124c51b4"
+        },
+        {
+          "signature": "public.commerce_order_money_v2_assert(uuid,boolean,boolean,jsonb,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "ff2ef9c8f64cd957ccbff6f00e2873750be65603ddd0bb8a0b7d1ac0a59cfba5"
+        },
+        {
+          "signature": "public.commerce_order_money_v2_live_body(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "8d9d402e1f1b887b2cdd26f8222b133d3d5a4e680b659a03291ae626e509b854"
+        },
+        {
+          "signature": "public.commerce_order_money_v2_check_state(uuid,boolean,text,text)",
+          "beforeSha256": null,
+          "afterSha256": "1cc9249747fce4b21ae668b88cb444fabadfd4bfd1cdb6e1c2f80c8a418beb8a"
+        }
+      ]
     },
     {
       "path": "db/platform/migrations/20261129130501_fulfillment_delivery_without_tracking.sql",
