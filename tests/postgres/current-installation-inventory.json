@@ -2,13 +2,17 @@
   "current": {
     "profiles": {
       "legacy": {
-        "count": 223,
-        "exactTailCount": 113,
-        "objectInventorySha256": "93a35ce11d9e96824f1702a42e51ad3b957ace406ebc90c029acaf3ba980c07c",
+        "count": 224,
+        "exactTailCount": 114,
+        "objectInventorySha256": "c65c0378113151188da03147c619b6cfe827c30c573b910aa38b12f0359950fa",
         "tail": [
           {
-            "file": "db/platform/migrations/20261129120001_native_renewal_v3_storage.sql",
+            "file": "db/platform/migrations/20261129130001_native_renewal_v3_storage.sql",
             "sha256": "fa16f42e19d0fbc447cb4022b23deb9d25fcc4877c7898322fe167809031e8f3"
+          },
+          {
+            "file": "db/platform/migrations/20261129130000_payment_capture_time_read.sql",
+            "sha256": "fa1852c267f8676c23ec8f33d5cdb9d1e531c954ad26ec984139b3800ddd88ff"
           },
           {
             "file": "db/platform/migrations/20261129120000_subscription_renewal_generation_seam.sql",
@@ -901,13 +905,17 @@
         ]
       },
       "bootstrap": {
-        "count": 229,
-        "exactTailCount": 114,
-        "objectInventorySha256": "ba4e5f6d65f59a8ddd7d4921a093f638d58987275e1d42ca4a31739fa651b32e",
+        "count": 230,
+        "exactTailCount": 115,
+        "objectInventorySha256": "6df5df8847d0d889c7cfafd0341d6e8afa3bbe30ea55d73cce5963464509fb48",
         "tail": [
           {
-            "file": "db/platform/migrations/20261129120001_native_renewal_v3_storage.sql",
+            "file": "db/platform/migrations/20261129130001_native_renewal_v3_storage.sql",
             "sha256": "fa16f42e19d0fbc447cb4022b23deb9d25fcc4877c7898322fe167809031e8f3"
+          },
+          {
+            "file": "db/platform/migrations/20261129130000_payment_capture_time_read.sql",
+            "sha256": "fa1852c267f8676c23ec8f33d5cdb9d1e531c954ad26ec984139b3800ddd88ff"
           },
           {
             "file": "db/platform/migrations/20261129120000_subscription_renewal_generation_seam.sql",
@@ -1824,13 +1832,17 @@
         ]
       },
       "separate": {
-        "count": 229,
-        "exactTailCount": 114,
-        "objectInventorySha256": "1406e99f954d6095bdcb61d15f80a670ad88552370ba02829ae02edde1eadca6",
+        "count": 230,
+        "exactTailCount": 115,
+        "objectInventorySha256": "aa6648c8a2399720192f4f4af681741ff0b07544206eb85f00d3875bb8835890",
         "tail": [
           {
-            "file": "db/platform/migrations/20261129120001_native_renewal_v3_storage.sql",
+            "file": "db/platform/migrations/20261129130001_native_renewal_v3_storage.sql",
             "sha256": "fa16f42e19d0fbc447cb4022b23deb9d25fcc4877c7898322fe167809031e8f3"
+          },
+          {
+            "file": "db/platform/migrations/20261129130000_payment_capture_time_read.sql",
+            "sha256": "fa1852c267f8676c23ec8f33d5cdb9d1e531c954ad26ec984139b3800ddd88ff"
           },
           {
             "file": "db/platform/migrations/20261129120000_subscription_renewal_generation_seam.sql",
@@ -2747,13 +2759,17 @@
         ]
       },
       "admin-managed": {
-        "count": 227,
-        "exactTailCount": 113,
-        "objectInventorySha256": "74b5b1c4a47955ea568f2b9c5394869d0809361ad12187a5c9e12c9d28ce6a43",
+        "count": 228,
+        "exactTailCount": 114,
+        "objectInventorySha256": "a3c02bbe3edcffdeb90bf40df0b1779f9b375f686d3b3ab682f96f9c61fc4afa",
         "tail": [
           {
-            "file": "db/platform/migrations/20261129120001_native_renewal_v3_storage.sql",
+            "file": "db/platform/migrations/20261129130001_native_renewal_v3_storage.sql",
             "sha256": "fa16f42e19d0fbc447cb4022b23deb9d25fcc4877c7898322fe167809031e8f3"
+          },
+          {
+            "file": "db/platform/migrations/20261129130000_payment_capture_time_read.sql",
+            "sha256": "fa1852c267f8676c23ec8f33d5cdb9d1e531c954ad26ec984139b3800ddd88ff"
           },
           {
             "file": "db/platform/migrations/20261129120000_subscription_renewal_generation_seam.sql",
@@ -3662,13 +3678,17 @@
         ]
       },
       "admin-operator": {
-        "count": 227,
-        "exactTailCount": 113,
-        "objectInventorySha256": "26d9d25a483b7f20358bcc2e4154fdf87be880ad48cd173f6c4545df7cfc70ac",
+        "count": 228,
+        "exactTailCount": 114,
+        "objectInventorySha256": "fb697196a15f1dc84aa8f83608da3b2581c58e4405742fb4ee1946069256d2f9",
         "tail": [
           {
-            "file": "db/platform/migrations/20261129120001_native_renewal_v3_storage.sql",
+            "file": "db/platform/migrations/20261129130001_native_renewal_v3_storage.sql",
             "sha256": "fa16f42e19d0fbc447cb4022b23deb9d25fcc4877c7898322fe167809031e8f3"
+          },
+          {
+            "file": "db/platform/migrations/20261129130000_payment_capture_time_read.sql",
+            "sha256": "fa1852c267f8676c23ec8f33d5cdb9d1e531c954ad26ec984139b3800ddd88ff"
           },
           {
             "file": "db/platform/migrations/20261129120000_subscription_renewal_generation_seam.sql",

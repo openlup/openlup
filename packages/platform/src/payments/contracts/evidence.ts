@@ -114,6 +114,7 @@ export type PaymentReadbackEnvelope = {
 } & (
   | { kind: "succeeded" | "failed" | "pending"; observedMoney: PaymentMoney; providerOccurredAt: string | null;
       capturedAmountBasis?: VerifiedPaymentEvidence["capturedAmountBasis"];
+      providerAccountRef?: string;
       refusal?: PaymentRefusalEnvelope; handoff?: PaymentMethodHandoff }
   | { kind: "unknown"; reason: "timeout" | "truncated" | "indeterminate" }
   | { kind: "absent"; evidence: Extract<PaymentAbsenceEnvelope, { kind: "absent" }>["evidence"] }

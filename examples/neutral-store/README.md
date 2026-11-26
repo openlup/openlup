@@ -383,6 +383,7 @@ describe the evidence each check supplies.
 
 For a marked demonstration store, follow [Release, price and activate a demo product](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#release-price-and-activate-a-demo-product).
 `catalogue:check:source` is offline. `catalogue:apply` signs in a human operator and can write drafts, prices and publications.
+After Activation, `catalogue:apply` verifies live prices. Use `npm run catalogue:apply -- --reprice` to review and change them.
 
 ### Read the private demonstration mailbox
 

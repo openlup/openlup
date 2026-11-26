@@ -226,7 +226,7 @@ bearer; its local fixture establishes no hosted revocation guarantee.
 | `./tax`, `./tax/contracts` | Experimental tax contracts, local calculation and offline adapter conformance |
 | `./shipping` | Delivery ports, injected-schema handlers, summary/evidence; native flat-rate port + Core schema readiness |
 | `./shipping/contracts` | Type-only address, customer-address, delivery, pickup-point, shipping-rate and threshold contracts, plus selection summary and evidence DTOs |
-| `./storefront` | Experimental, browser-safe purchase continuation: identity roles and their constructors, the continuation record and its recovery functions, host bindings and declarations, and the markup anchor names; storage, requests and provider facts only through host bindings |
+| `./storefront` | Experimental, browser-safe purchase continuation: identity roles and their constructors, the continuation record and its recovery functions, an experimental continuation controller, host bindings and declarations, and the markup anchor names; storage, requests and provider facts only through host bindings |
 
 ## HTTP runtime and security contract
 
@@ -2572,6 +2572,8 @@ structural client, `webhookSigningSecrets`, explicit `mode`, required
 `toleranceSeconds` (default 300) and `clock` (UTC seconds). The host constructs
 and configures the SDK, associates saved methods with customers and confirms
 off-session requests. Interactive methods follow the declared card/wallet offer.
+For capture-time qualification, supply `client.ownAccountRef` from the verified
+installed credential account and record that same reference in the local qualification.
 Importing creates no I/O or default binding. The adapter advertises the host
 currency list as a frozen copy; the frozen exported descriptor keeps an empty list.
 Account-specific readiness remains pending TEST verification. Exact absence,
@@ -3885,9 +3887,10 @@ Status: current contract (experimental).
 
 `@openlup/platform/storefront` is the browser-side home for the logic that keeps
 a buyer's purchase safe across a lost response, a reload and a decline. It holds
-types, three identity constructors, the recovery functions listed below and one
-constant of markup anchor names. The functions reach storage, requests and
-provider facts only through the host bindings a store passes in.
+types, three identity constructors, the recovery functions listed below, an
+experimental continuation controller that composes them, and one constant of
+markup anchor names. The functions and the controller reach storage, requests
+and provider facts only through the host bindings a store passes in.
 
 - **Identity roles.** A continuation identity names one purchase, a command key
   is the replay identity of one command and an attempt number counts payment
@@ -3926,6 +3929,35 @@ provider facts only through the host bindings a store passes in.
     while an attempt that was not sent to its provider is still open;
   - `applyPendingResume` (experimental) runs exactly one effect for a decision
     and returns whether the submit must stop.
+- **Controller.** `createPurchaseContinuation` (experimental) returns a
+  `PurchaseContinuation` (experimental) that a store's UI renders from in any
+  framework: `getSnapshot()` returns a frozen `PurchaseContinuationSnapshot`
+  (experimental) that never carries the continuation identity, and
+  `subscribe()` reports each new snapshot. It holds no timer and never reads on
+  its own; each command is one step of the purchase:
+  - `begin` reads the stored record into an `idle` snapshot and checks a
+    pending provider action when one is stored;
+  - `submit` sends the purchase under the key the host derives from the
+    continuation identity and attempt, refuses a changed payload while a
+    purchase may exist, sends nothing when the record cannot be stored, and
+    replays a submit whose response was lost (a timeout or an uncertain
+    transport failure) once under the same key;
+  - `resume` reads the purchase by its key once and applies the answer;
+  - `recordReturn` marks the buyer's return from a provider as waiting on the
+    server, never as paid;
+  - `startOver` asks the server to give up the purchase and clears the record
+    only when the server answers that it is over.
+
+  Only a declined answer for the stored attempt advances the attempt. Once a
+  purchase is paid, the snapshot stays paid for that purchase until
+  `startOver`; when another instance, such as another tab, starts a new
+  purchase, the next command that reads the record shows the new purchase
+  instead. An answer clears the stored record and pending-action marker only
+  while they still belong to the purchase it answers. "Paid, activation
+  pending" is a status of its own. The bindings object has no exported type
+  name: a host names it as
+  `Parameters<typeof createPurchaseContinuation<TPayload, TRequest, TResult, TOptions>>[0]`
+  and a member as, for example, `…[0]["transport"]`.
 - **Markup anchors.** Production markup reads its `data-openlup-*` attribute
   names and the action, state and field names from the constant instead of
   string literals. Names are only added; a wrong one is superseded, not renamed.

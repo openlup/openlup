@@ -23,5 +23,7 @@ export type {
   SubmitOutcomeClassifier,
   SubmitTransportBinding,
 } from "./bindings.js";
+export type { PurchaseContinuation, PurchaseContinuationSnapshot } from "./purchaseContinuation.js";
+export { createPurchaseContinuation } from "./purchaseContinuation.js";
 export type { StorefrontAnchor } from "./anchor.js";
 export { storefrontAnchor } from "./anchor.js";
