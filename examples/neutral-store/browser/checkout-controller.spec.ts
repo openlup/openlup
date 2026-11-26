@@ -606,7 +606,7 @@ test('checkout controller: a paid resume whose record cannot be cleared shows it
   await expect(choice(page, 'resume')).toHaveCount(0);
   await expect(choice(page, 'abandon')).toHaveCount(0);
   await expect(choice(page, 'different')).toBeVisible();
-  await choice(page, 'different').click();
+  // The paid order's record did not move to page memory: the next submit is a new purchase under a new key.
   await details(page, email);
   await placed(page);
   expect(sent).toHaveLength(2);
