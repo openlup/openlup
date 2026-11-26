@@ -4016,8 +4016,7 @@ Status: current contract (testing).
 `@openlup/platform/storefront/testing` is test support for a storefront proof
 harness. It runs under Node, beside the browser that drives the store's pages,
 and never in a buyer's bundle: a browser bundle of the entry fails, and the
-`storefront` entry cannot import it. The scenario runner that reads these
-contracts follows in a later change.
+`storefront` entry cannot import it.
 
 - **`StorefrontScenario`.** One buyer journey: its steps, the ledger safety it
   must keep, the progress it must reach and the control that must keep that
@@ -4073,6 +4072,70 @@ contracts follows in a later change.
   instead of coercing it, and throws a `TypeError` with the refusal's four
   parts. A harness writes one file per run
   under `.context/storefront-verdicts/`; the entry writes no file.
+- **`storefrontScenarios`.** The frozen scenario catalogue, by id; ids are
+  never renamed.
+- **`runStorefrontScenario(options)`.** Runs one scenario by id against a
+  `PageHandle` and an observer and resolves `{ kind: "verdict", verdict }`.
+  Options: `scenario`, `page`, `observer`, `tier`, `profile`, `width`
+  (required for `browser_ui` and equal to the page's width), `channel`
+  (default `browser_ui`), `commands` (`create`, `read` and `keyHeader`, default
+  `idempotency-key`), `proofFile`, `adapter`, `build` (`source` default
+  `claimed`), `harness` (`runnerVersion`, the caller's claim, and
+  `adapterDigest`), `runId` (8 to 40 letters, digits and hyphens), `clock`
+  (`now()` in integer epoch milliseconds), `timeoutMs` (default 10,000) and
+  `quietMs` (default 3,000). Invalid options reject with a `TypeError` starting
+  `storefront_scenario_unknown` or `storefront_run_input_invalid` before
+  anything is driven.
+
+**Running a scenario.** A store whose pages carry the anchors and whose proof
+file declares `routes.selectionEntry` for the scenario's purchase mode writes no
+adapter: the default arrangement opens the selection entry, performs
+`proceed_to_checkout` and fills each field anchor it finds from the buyer
+values (`email` must resolve; it carries the run's subject,
+`storefront-<runId>-clean@example.test` or `…-control@example.test`). After a
+reload a declared selection entry is arranged again; otherwise an adapter's
+`arrange` arranged the run and only the details are re-typed. The clean run
+reads the subject's ledger first, then routes every request through one
+interceptor that classifies it by the create and read matchers and records
+whether each command reused an earlier key (the key value is compared, never
+stored). A step ends only when the page has settled, and the runner then reads
+the ledger, the visible anchors and the path; after the last step a settle
+window waits once more and reads them again. The control run repeats the steps
+under its own subject, blocking from the control's step every request of its
+commands. The clean and control runs share the page and its browser storage.
+
+| Scenario | Stimulus | Safety | Progress | Control |
+| --- | --- | --- | --- | --- |
+| `lost_response_reload` | The first place-order response is withheld after the server received it; reload; arrange again; place the order again | At most one payable order, one order holding stock, one capture | `awaiting_payment` offering `continue_payment` | `block_read` of `read` and `create` from the reload; negates `awaiting_payment` |
+| `duplicate_submit` | Place the order twice while the first create is held | At most one payable order, one order holding stock, one attempt, one capture | None | None: `safety_only` |
+
+Each scenario also has a create budget (3 and 2 creates per run); a run that
+sends more stops with `request_budget_exceeded`. Whenever `state:paid` or
+`state:paid_pending_activation` shows, the ledger must hold a capture and no
+payable order.
+
+**Judgement.** Every failed check adds a finding with its run, step, the field
+at fault where there is one, and texts saying what was observed, why and how
+to fix it, and the recheck command (`recheck` from the adapter or proof file,
+`{scenario}` replaced). The first failing group decides the result:
+
+| Order | Check | Codes | Result |
+| --- | --- | --- | --- |
+| 1 | Page, observer and arrangement worked | `page_failed`, `observer_failed`, `arrange_failed` | `not_run` |
+| 2 | No order before the arrangement; one after the first matched create | `observer_subject_unseen` | `not_run` |
+| 3 | The first order appeared in a step with a matched create; every withhold applied | `stimulus_not_create`, `stimulus_not_applied` | `not_run` |
+| 4 | The create budget kept | `request_budget_exceeded` | `not_run` |
+| 5 | Ledger safety in both runs and settle windows; with an exclusive database, payable orders added equal those of the subjects | `duplicate_order`, `duplicate_hold`, `duplicate_capture`, `second_attempt`, `forbidden_state_shown`, `order_outside_subject`; `observer_failed` when fewer were added | `failed`; `not_run` |
+| 6 | Each matcher used matched in the clean run, and for `block_read` a request of the blocked set after its start; each needed anchor resolved and was visible | `adapter_matcher_unmatched`, `adapter_anchor_missing`, `anchor_hidden` | `not_run` |
+| 7 | The clean run reached its expected state | `progress_not_reached` (another state shown), `adapter_anchor_missing` (none) | `failed`; `not_run` |
+| 8 | The control blocked a request; its negated state was not reached within `quietMs` | `control_not_applied`, `vacuous_progress` | `not_run`, `vacuous` |
+| 9 | All hold | — | `passed`, or `safety_only` without a control |
+
+A harness fault is never `failed` or `passed`. A scenario whose
+`requires.outcomes` names an outcome the run's outcome driver does not declare
+ends `not_run` with `tier_unreachable` before any page or observer call; the
+runner takes no outcome driver yet, so `harness.declaredOutcomes` is empty and
+`not_run` is missing evidence, never a pass.
 
 **Trust.** A verdict produced on a developer's machine is a claim about that
 build, not evidence for a release; only a verdict a CI run records for an equal

@@ -1189,8 +1189,11 @@
       "packageSmokeEvidence": [
         "test/storefront/testing/exports.test.ts",
         "test/storefront/testing/pageHandle.test.ts",
+        "test/storefront/testing/runner.test.ts",
+        "test/storefront/testing/scenarios.test.ts",
         "test/storefront/testing/serialize.test.ts",
-        "test/storefront/testing/sourceScan.test.ts"
+        "test/storefront/testing/sourceScan.test.ts",
+        "test/storefront/testing/utcInstant.test.ts"
       ],
       "entrypoint": "dist/storefront/testing/index.d.ts",
       "snapshot": "api/storefront-testing.api.md"
