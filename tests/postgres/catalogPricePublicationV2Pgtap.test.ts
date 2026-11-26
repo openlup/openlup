@@ -7,7 +7,7 @@ import { createPostgresMigrationRunner } from "../../server/adapters/postgres/mi
 import { withPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
 import { runManagedCompatPostgres } from "../helpers/managedCompatPostgres.js";
 import { closePostgres, postgresSetupTimeoutMs } from "../helpers/postgresContainer.js";
-import { actorId, fixture, graph, hash, insertGraph, installPublicationActors, json, transaction } from "./catalogPublicationFixture.js";
+import { actorId, documentRow, fixture, graph, hash, installPublicationActors, json, sealedState, transaction } from "./catalogPublicationFixture.js";
 import { installAccountMutations, type AccountMutationsStore } from "./customerAccountMutations.fixture.js";
 
 const catalogPath = "config/platform-migration-manifest.json";
@@ -28,8 +28,7 @@ const privateRoutines = [mutation, lockedV2, decision, assessment,
   "public.catalog_publication_price_revision_facts_v2(uuid,jsonb)",
   "public.catalog_publication_price_tax_class_v2(jsonb,jsonb,boolean)",
   "public.catalog_publication_lock_price_plan_v2(jsonb,jsonb,jsonb)",
-  "public.catalog_publication_price_receipt_facts_v2(public.catalog_price_setup_receipts,jsonb,jsonb,uuid)",
-  "public.catalog_publication_write_price_v2(jsonb,jsonb,uuid,uuid,timestamptz)"];
+  "public.catalog_publication_price_receipt_facts_v2(public.catalog_price_setup_receipts,jsonb,jsonb,uuid,timestamptz)"];
 const replaced = [recorder, "public.catalog_price_setup_apply_claimed(jsonb,timestamptz)"];
 const refusal = '{"reason": "command_invalid", "outcome": "validation_issue"}';
 const before = () => {
@@ -152,20 +151,40 @@ it("replays populated v1 receipts byte for byte through runtime logins after the
       await owner.query(`ALTER ROLE openlup_catalog_publication PASSWORD '${password}'`);
       expect((await publisher.query("SELECT session_user AS login")).rows).toEqual([{ login: "openlup_catalog_publication" }]);
       await installPublicationActors(owner);
-      const issue = await transaction(owner, async db => {
-        const issued = await graph(db, fixture());
-        await insertGraph(db, issued);
-        return issued;
+      const claims = JSON.stringify({ sub: actorId, role: "authenticated" });
+      const recordSql = "SELECT public.catalog_publication_record_command($1) AS bytes";
+      const { issue, publish, originalPublication } = await transaction(owner, async db => {
+        const draft = await graph(db, fixture());
+        const command = { schemaVersion: 2, action: "publish", productId: draft.productId, commandKey: draft.commandKey,
+          candidateRef: draft.candidateRef, candidateDigest: draft.candidateDigest, expectedHead: null, changes: [] };
+        const fingerprint = hash(json([command, actorId]));
+        await documentRow(db, { ...draft, fingerprint });
+        await db.query("UPDATE public.catalog_products SET publication_facts=$2,variant_axes=$3,attribute_values=$4 WHERE id=$1",
+          [draft.productId, draft.product, draft.product.axes, draft.product.attributes]);
+        await db.query(`UPDATE public.catalog_skus SET publication_facts=$2,option_values=$2::jsonb->'options',
+          sellable_standalone=false,sellable_in_subscription=false,attribute_values=$2::jsonb->'attributes',net_content_dimension='mass',net_content_unit='openlup:g',
+          net_content_unscaled=100,net_content_scale=0 WHERE id=$1`, [draft.skuId, draft.facts]);
+        const seal = sealedState(draft.product, [{ skuId: draft.skuId, digest: hash(json(draft.facts)) }]);
+        await db.query("SELECT set_config('request.jwt.claims',$1,true)", [claims]);
+        await db.query("SET LOCAL SESSION AUTHORIZATION openlup_catalog_publication");
+        await db.query(recordSql, [{ ...draft.decision, postStateText: seal, postStateDigest: hash(seal) }]);
+        await db.query("RESET SESSION AUTHORIZATION");
+        const { rows: [{ id: approvalId }] } = await db.query("SELECT id FROM public.catalog_publication_decisions WHERE product_id=$1",
+          [draft.productId]);
+        const packet = { ...command, fingerprint, approvalId, product: draft.product, skus: [draft.facts] };
+        await db.query("SET LOCAL SESSION AUTHORIZATION openlup_catalog_publication");
+        const { rows: [{ bytes }] } = await db.query(recordSql, [packet]);
+        return { issue: draft, publish: packet, originalPublication: Buffer.from(bytes, "utf8") };
       });
       const keys = [issue.productId, issue.commandKey];
-      const { rows: [savedPublication] } = await owner.query(`SELECT result FROM public.catalog_operator_receipts
-        WHERE scope_id=$1 AND command_key=$2 AND kind='publish'`, keys);
-      const originalPublication = Buffer.from(savedPublication.result, "utf8");
-      const readPublication = async () => {
-        const { rows: [result] } = await publisher.query("SELECT public.catalog_publication_assert_receipt($1,$2) AS bytes", keys);
-        return Buffer.from(result.bytes, "utf8");
-      };
-      expect(await readPublication()).toEqual(originalPublication);
+      const savedPublication = async () => (await owner.query(`SELECT result FROM public.catalog_operator_receipts
+        WHERE scope_id=$1 AND command_key=$2 AND kind='publish'`, keys)).rows.map(row => Buffer.from(row.result, "utf8"));
+      expect(await savedPublication()).toEqual([originalPublication]);
+      const replayPublication = () => transaction(publisher, async db => {
+        await db.query("SELECT set_config('request.jwt.claims',$1,true)", [claims]);
+        const { rows: [{ bytes }] } = await db.query(recordSql, [publish]);
+        return Buffer.from(bytes, "utf8");
+      });
       await owner.query(`INSERT INTO public.commerce_settings(key,value_text) VALUES('settlement_region','ZZ'),('settlement_currency','XXX')
         ON CONFLICT(key) DO UPDATE SET value_text=EXCLUDED.value_text`);
       await owner.query("SELECT public.commerce_capture_offer_policy_v2_legacy_baseline()");
@@ -192,7 +211,10 @@ it("replays populated v1 receipts byte for byte through runtime logins after the
       await owner.query("UPDATE public.catalog_skus SET title='Live drift' WHERE id=$1", [issue.skuId]);
       await owner.query("UPDATE public.price_lists SET amount_basis='tax_exclusive' WHERE id=$1", [priceListId]);
       expect(await rawPrice()).toEqual(originalPriceReplay);
-      expect(await readPublication()).toEqual(originalPublication);
+      expect(await replayPublication()).toEqual(originalPublication);
+      expect(await savedPublication()).toEqual([originalPublication]);
+      expect((await owner.query("SELECT count(*)::int AS effects FROM public.outbox_events WHERE aggregate_id=$1", [issue.productId])).rows)
+        .toEqual([{ effects: 1 }]);
       for (const [routine, query] of [
         ["catalog_publication_decide_prices_v2", "SELECT public.catalog_publication_decide_prices_v2(NULL,NULL,NULL,NULL,NULL,NULL)"],
         ["catalog_publication_assess_prices_v2", "SELECT public.catalog_publication_assess_prices_v2(NULL)"],
@@ -225,57 +247,116 @@ it("denies direct calls to the dormant locked price reader on a fresh qualified-
   } finally { await store.close(); }
 }, postgresSetupTimeoutMs);
 
-it("uses one installed builder and refusal selector across the publication price call graph", async () => {
-  const store = await installAccountMutations("bootstrap", false, "price-decision-structure");
-  try {
-    const { rows } = await store.owner.query<{ name: string; definition: string }>(`SELECT p.proname AS name, pg_get_functiondef(p.oid) AS definition
-      FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.prokind IN ('f','p')`);
-    const definitions = new Map(rows.map(({ name, definition }) => [name, definition]));
-    const owner = "catalog_publication_decide_prices_v2";
-    const landed = "catalog_publication_target_price_verdict";
-    const evidence = "catalog_publication_price_receipt_facts_v2";
-    const adapters = ["catalog_publication_record_command", "catalog_publication_lock_effective_base_price_v2", "catalog_publication_assess_prices_v2"];
-    const knownBoundaries = new Set(["catalog_publication_assert_head", "catalog_publication_assert_receipt", "catalog_publication_assert_issued",
-      "catalog_publication_assert_candidate", "catalog_publication_head_ref", "catalog_publication_candidate_source", "catalog_publication_manifest_text",
-      "catalog_publication_read_sku_revision", "catalog_publication_sku_projection", "catalog_publication_canonical", "catalog_publication_lock_projection",
-      "catalog_lifecycle_assert_archive", "catalog_price_setup_lock_context", "catalog_price_setup_require_human_admin", "catalog_price_setup_claim",
-      "catalog_price_setup_v2_command_valid", "catalog_price_basis_gate", "commerce_offer_policy_v2_readiness"]);
-    const review = (source: Map<string, string>) => {
-      const visited = new Set<string>();
-      const walk = (name: string) => {
-        if (visited.has(name) || knownBoundaries.has(name) || name === landed) return;
-        visited.add(name);
-        const body = source.get(name)!.split(/\$function\$/u)[1]!.replace(/--[^\n]*/gu, "");
-        if (name === owner) {
-          expect(body.match(/WITH next_skus AS/gu)).toHaveLength(1);
-          expect(body.match(/catalog_publication_target_price_verdict\(/gu)).toHaveLength(1);
-          expect(body.match(/ERRCODE=state/gu)).toHaveLength(1);
-        } else {
-          expect(body).not.toMatch(/needsFresh|requiredModes|requestedModes|offerMemberships|['"]memberships['"]|sellable(?:Standalone|InSubscription)|catalog_publication_target_price_verdict|catalog_publication_price_(?:edit_required|context_mismatch|changed)|\b(?:reason|refusal)\s*(?::=|=)|jsonb_set\(/iu);
-          for (const statement of body.split(/;|\bLOOP\b/iu)) {
-            expect(statement).not.toMatch(/jsonb_array_elements\(plan\).*\b(?:WHERE|FILTER)\b.*\b(?:t|target)\s*(?:->|#>)/isu);
-          }
-          if (name !== evidence) expect(body).not.toMatch(/response_payload\s*->/iu);
-        }
-        for (const match of body.matchAll(/public\.(\w+)\s*\(/gu)) {
-          if (source.has(match[1]!)) walk(match[1]!);
-        }
-      };
-      for (const entry of adapters) {
-        visited.clear();
-        walk(entry);
-        expect(visited.has(owner)).toBe(true);
-        expect(visited.has(evidence)).toBe(true);
-      }
-    };
-    review(definitions);
-    for (const mutation of ["PERFORM authored->'offerMemberships';", "SELECT t FROM jsonb_array_elements(plan) t WHERE t->>'skuId' IS NOT NULL;",
-      "reason := 'catalog_publication_price_changed';"]) {
-      const mutated = new Map(definitions);
-      const entry = adapters[1]!;
-      mutated.set(entry, definitions.get(entry)!.replace("BEGIN", `BEGIN ${mutation}`));
-      expect(() => review(mutated)).toThrow();
+const installedPriceEntries = [
+  "public.catalog_publication_assess_prices_v2(jsonb)",
+  "public.catalog_publication_record_command(jsonb)",
+  "public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid)",
+  "public.catalog_price_setup_apply_claimed(jsonb,timestamp with time zone)",
+] as const;
+const decisionIdentity = "public.catalog_publication_decide_prices_v2(jsonb,jsonb,jsonb,jsonb,jsonb,timestamp with time zone)";
+const landedIdentity = "public.catalog_publication_target_price_verdict(jsonb,timestamp with time zone)";
+
+type InstalledRoutine = {
+  schema: string; name: string; identity: string; definition: string; language: string; searchPath: string[] | null;
+};
+async function installedRoutines(db: Pick<Pool, "query">) {
+  return (await db.query<InstalledRoutine>(`SELECT n.nspname AS schema,p.proname AS name,
+    n.nspname||'.'||p.proname||'('||oidvectortypes(p.proargtypes)||')' AS identity,pg_get_functiondef(p.oid) AS definition,
+    l.lanname AS language, string_to_array((SELECT substr(c,13) FROM unnest(p.proconfig) c WHERE c LIKE 'search_path=%'),', ') AS "searchPath"
+    FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace JOIN pg_language l ON l.oid=p.prolang
+    WHERE p.prokind IN ('f','p') AND (p.oid>=16384 OR n.nspname NOT IN ('pg_catalog','information_schema'))
+    ORDER BY identity`)).rows.map(row => ({ ...row, identity: row.identity.replaceAll(", ", ",") }));
+}
+
+function installedBody(routine: InstalledRoutine) {
+  if (routine.language === "c" || routine.language === "internal") return routine.definition;
+  expect(["sql", "plpgsql"], routine.identity).toContain(routine.language);
+  const body = /\nAS (\$[a-z_0-9]*\$)([\s\S]*)\1\s*$/iu.exec(routine.definition)?.[2];
+  if (body === undefined) throw new Error(`Cannot parse installed body for ${routine.identity}`);
+  return body;
+}
+
+function installedCalls(routine: InstalledRoutine, body: string, definitions: InstalledRoutine[]) {
+  if (routine.language === "c" || routine.language === "internal") return [];
+  // Tokenize executable text. Strings and comments cannot masquerade as calls.
+  const lexeme = /--[^\n]*|\/\*|\*\/|'(?:''|[^'])*'|"(?:""|[^"])*"|[a-z_][a-z_0-9$]*|[^\s]/giu;
+  let comment = 0;
+  const tokens: string[] = [];
+  for (const { 0: token } of body.matchAll(lexeme)) {
+    if (token === "/*") comment++;
+    else if (token === "*/") comment--;
+    else if (comment === 0 && !token.startsWith("--")) {
+      tokens.push(token.startsWith('"') ? token.slice(1, -1).replaceAll('""', '"') : token.toLowerCase());
     }
+  }
+  expect(comment, routine.identity).toBe(0);
+  expect(tokens, `${routine.identity} must use statically resolved calls`).not.toContain("execute");
+  const path = routine.searchPath ?? ["public"];
+  const calls = new Set<string>();
+  for (let i = 0; i < tokens.length - 1; i++) {
+    if (tokens[i + 1] !== "(") continue;
+    const qualified = tokens[i - 1] === ".";
+    for (const target of definitions) {
+      if (target.name === tokens[i] && (qualified ? target.schema === tokens[i - 2] : path.includes(target.schema))) {
+        // Keep every installed overload as a candidate. A change in overloads
+        // must also change the witness instead of hiding a different callee.
+        calls.add(target.identity);
+      }
+    }
+  }
+  return [...calls].sort();
+}
+
+function assertInstalledPriceGraph(definitions: InstalledRoutine[]) {
+  const byIdentity = new Map(definitions.map(routine => [routine.identity, routine]));
+  const graph = new Map<string, { calls: string[]; definition: string }>();
+  const walk = (identity: string, visited: Set<string>) => {
+    if (visited.has(identity)) return;
+    visited.add(identity);
+    const routine = byIdentity.get(identity);
+    if (!routine) throw new Error(`Missing installed price routine ${identity}`);
+    const body = installedBody(routine);
+    const node = graph.get(identity) ?? { calls: installedCalls(routine, body, definitions), definition: hash(body) };
+    graph.set(identity, node);
+    for (const call of node.calls) walk(call, visited);
+  };
+  for (const entry of installedPriceEntries) {
+    const visited = new Set<string>();
+    walk(entry, visited);
+    expect(visited.has(decisionIdentity), entry).toBe(true);
+  }
+  expect([...graph].filter(([, node]) => node.calls.includes(landedIdentity)).map(([identity]) => identity)).toEqual([decisionIdentity]);
+  // Seal the reviewed code and its edges, including the decision owner and all
+  // application helpers. An extra expression can change decisions without
+  // changing any edge or reusing a known variable name.
+  const reviewedGraph = [...graph].sort(([left], [right]) => left.localeCompare(right));
+  expect(hash(JSON.stringify(reviewedGraph)), JSON.stringify(reviewedGraph)).toBe("4f2d386c66e5bd491fd3ae169dd9c1390c90644cee4f2b4fbfa0a00527af4bd0");
+}
+
+it("uses one installed builder and refusal selector across the publication price call graph", async () => {
+  const store = await installAccountMutations("bootstrap", true, "price-decision-structure");
+  try {
+    const definitions = await installedRoutines(store.owner);
+    assertInstalledPriceGraph(definitions);
+    await transaction(store.owner, async db => {
+      for (const [identity, addedDecision] of [
+        [installedPriceEntries[0], "PERFORM (sku->>'id')::uuid FROM jsonb_array_elements(post_state->'skus') sku WHERE sku->'memberships' @> '[{\"admitted\":true}]';"],
+        [installedPriceEntries[1], "IF child_results #>> '{probe,outcome}' = 'claimed' THEN PERFORM 1; END IF;"],
+        [installedPriceEntries[2], "PERFORM t FROM jsonb_array_elements(plan) t WHERE t->>'skuId' = p_sku::text;"],
+        [installedPriceEntries[3], "IF p_claim->>'outcome' <> 'claimed' THEN RETURN jsonb_build_object('reason','price_operation_invalid'); END IF;"],
+        [decisionIdentity, "plan := jsonb_build_array(jsonb_build_object('operation',p_saved_operations));"],
+        ["public.catalog_publication_read_sku_revision(uuid,jsonb)", "IF p_product IS NULL THEN RETURN NULL; END IF;"],
+      ] as const) {
+        const definition = definitions.find(routine => routine.identity === identity)!.definition;
+        const changed = definition.replace(/\bBEGIN\b/iu, `BEGIN\n  ${addedDecision}`);
+        expect(changed, identity).not.toBe(definition);
+        await db.query("SAVEPOINT installed_decision_probe");
+        await db.query(changed);
+        const mutated = await installedRoutines(db);
+        expect(() => assertInstalledPriceGraph(mutated), identity).toThrow();
+        await db.query("ROLLBACK TO SAVEPOINT installed_decision_probe; RELEASE SAVEPOINT installed_decision_probe");
+      }
+    });
   } finally { await store.close(); }
 }, postgresSetupTimeoutMs);
 

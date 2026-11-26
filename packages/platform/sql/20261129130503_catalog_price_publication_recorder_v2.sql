@@ -1,6 +1,6 @@
 -- Basis-aware price effects stay private until the paired publication grants.
 
-CREATE FUNCTION public.catalog_price_setup_mutate_claimed(p_claim jsonb, p_at timestamptz, p_required_modes jsonb) RETURNS jsonb
+CREATE FUNCTION public.catalog_price_setup_mutate_claimed(p_claim jsonb, p_at timestamptz, p_publication jsonb) RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
   v_now timestamptz := p_at;
@@ -9,7 +9,6 @@ DECLARE
   v_basis text;
   v_kind text;
   v_verdict jsonb;
-  v_target jsonb;
   v_command jsonb;
   v_saved public.catalog_price_setup_receipts%ROWTYPE;
   v_key text;
@@ -49,84 +48,90 @@ BEGIN
     RAISE EXCEPTION 'catalog_price_setup_claim_mismatch' USING ERRCODE = '55000';
   END IF;
 
-  IF v_is_v2 AND p_at IS NULL THEN
-    PERFORM public.catalog_price_setup_lock_context(v_list_id, v_variant_id);
-    LOCK TABLE public.commerce_settings, public.price_lists, public.subscription_price_policy_revisions IN SHARE MODE NOWAIT;
-    LOCK TABLE public.price_entries IN SHARE ROW EXCLUSIVE MODE NOWAIT;
-    PERFORM 1 FROM public.price_entries
-      WHERE price_list_id=v_list_id AND variant_id=v_variant_id ORDER BY id FOR NO KEY UPDATE NOWAIT;
-    v_now := clock_timestamp();
-  END IF;
+  IF p_publication IS NOT NULL THEN
+    -- The publication decision already holds the whole-plan price fence.
+    v_basis := v_command->>'expectedListAmountBasis';
+    IF p_publication #>> '{previous,entryId}' IS NOT NULL THEN
+      SELECT * INTO STRICT v_current FROM public.price_entries WHERE id=(p_publication #>> '{previous,entryId}')::uuid;
+    END IF;
+  ELSE
+    IF v_is_v2 AND p_at IS NULL THEN
+      PERFORM public.catalog_price_setup_lock_context(v_list_id, v_variant_id);
+      LOCK TABLE public.commerce_settings, public.price_lists, public.subscription_price_policy_revisions IN SHARE MODE NOWAIT;
+      LOCK TABLE public.price_entries IN SHARE ROW EXCLUSIVE MODE NOWAIT;
+      PERFORM 1 FROM public.price_entries
+        WHERE price_list_id=v_list_id AND variant_id=v_variant_id ORDER BY id FOR NO KEY UPDATE NOWAIT;
+      v_now := clock_timestamp();
+    END IF;
 
-  -- 5. The target: a SKU that is not archived, and the active list of the
-  -- settlement region and currency.
-  SELECT * INTO v_sku FROM public.catalog_skus WHERE id = v_variant_id;
-  SELECT * INTO v_list FROM public.price_lists WHERE id = v_list_id;
-  v_refusal := CASE
-    WHEN v_sku.id IS NULL THEN 'sku_not_found'
-    WHEN v_sku.status = 'archived' THEN 'sku_archived'
-    WHEN v_list.id IS NULL THEN 'price_list_not_found'
-    WHEN v_list.status <> 'active' OR v_list.region_code <> public.catalog_price_setup_region_code()
-      OR v_list.currency <> public.catalog_price_setup_settlement_currency()
-      OR v_list.valid_from > v_now OR (v_list.valid_to IS NOT NULL AND v_list.valid_to <= v_now)
-      THEN 'price_list_not_active'
-  END;
+    -- 5. The target: a SKU that is not archived, and the active list of the
+    -- settlement region and currency.
+    SELECT * INTO v_sku FROM public.catalog_skus WHERE id = v_variant_id;
+    SELECT * INTO v_list FROM public.price_lists WHERE id = v_list_id;
+    v_refusal := CASE
+      WHEN v_sku.id IS NULL THEN 'sku_not_found'
+      WHEN v_sku.status = 'archived' THEN 'sku_archived'
+      WHEN v_list.id IS NULL THEN 'price_list_not_found'
+      WHEN v_list.status <> 'active' OR v_list.region_code <> public.catalog_price_setup_region_code()
+        OR v_list.currency <> public.catalog_price_setup_settlement_currency()
+        OR v_list.valid_from > v_now OR (v_list.valid_to IS NOT NULL AND v_list.valid_to <= v_now)
+        THEN 'price_list_not_active'
+    END;
 
-  IF v_refusal IS NULL AND v_is_v2 THEN
-    v_target := jsonb_build_object('skuId',v_variant_id,'requiredModes',
-      coalesce(p_required_modes, CASE WHEN v_sku.sellable_in_subscription
-        THEN '["one_time","subscription"]'::jsonb ELSE '["one_time"]'::jsonb END));
-    v_verdict := public.catalog_publication_target_price_verdict(
-      jsonb_build_array(v_target || jsonb_build_object('operation',v_command)), v_now);
-    v_refusal := coalesce(v_verdict->>'reason', v_verdict #>> '{targets,0,reason}');
-    v_basis := v_verdict->>'amountBasis';
-  ELSIF v_refusal IS NULL THEN
-    -- 6. One command at a time for this list and SKU, and a row lock against
-    -- other writers of its open base rows.
-    PERFORM public.catalog_price_setup_lock_context(v_list_id, v_variant_id);
-    SELECT amount_basis INTO v_basis FROM public.price_lists WHERE id=v_list_id FOR SHARE;
-    IF v_basis = 'tax_exclusive' THEN
-      v_refusal := 'catalog_price_setup_basis_mismatch';
-    ELSE
-      PERFORM 1 FROM public.price_entries entry
-      WHERE entry.price_list_id = v_list_id AND entry.variant_id = v_variant_id
-        AND entry.mode = 'one_time' AND entry.min_qty = 1 AND entry.active = true
-        AND (entry.valid_to IS NULL OR entry.valid_to > v_now)
-      FOR NO KEY UPDATE;
+    IF v_refusal IS NULL AND v_is_v2 THEN
+      v_verdict := public.catalog_publication_decide_prices_v2(NULL,NULL,NULL,NULL,
+        jsonb_build_object('lane','immediate','operation',v_command,'sku',to_jsonb(v_sku)),v_now);
+      v_refusal := v_verdict->>'reason';
+      v_basis := v_verdict->>'amountBasis';
+    ELSIF v_refusal IS NULL THEN
+      -- 6. One command at a time for this list and SKU, and a row lock against
+      -- other writers of its open base rows.
+      PERFORM public.catalog_price_setup_lock_context(v_list_id, v_variant_id);
+      SELECT amount_basis INTO v_basis FROM public.price_lists WHERE id=v_list_id FOR SHARE;
+      IF v_basis = 'tax_exclusive' THEN
+        v_refusal := 'catalog_price_setup_basis_mismatch';
+      ELSE
+        PERFORM 1 FROM public.price_entries entry
+        WHERE entry.price_list_id = v_list_id AND entry.variant_id = v_variant_id
+          AND entry.mode = 'one_time' AND entry.min_qty = 1 AND entry.active = true
+          AND (entry.valid_to IS NULL OR entry.valid_to > v_now)
+        FOR NO KEY UPDATE;
 
-      -- 7. The state: at most one effective base, and none starting now or later.
-      SELECT count(*) FILTER (WHERE entry.valid_from <= v_now),
-        count(*) FILTER (WHERE entry.valid_from >= v_now)
-      INTO v_current_count, v_pending_count
-      FROM public.price_entries entry
-      WHERE entry.price_list_id = v_list_id AND entry.variant_id = v_variant_id
-        AND entry.mode = 'one_time' AND entry.min_qty = 1 AND entry.active = true
-        AND (entry.valid_to IS NULL OR entry.valid_to > v_now);
-      IF v_current_count > 1 THEN
-        v_refusal := 'base_price_ambiguous';
+        -- 7. The state: at most one effective base, and none starting now or later.
+        SELECT count(*) FILTER (WHERE entry.valid_from <= v_now),
+          count(*) FILTER (WHERE entry.valid_from >= v_now)
+        INTO v_current_count, v_pending_count
+        FROM public.price_entries entry
+        WHERE entry.price_list_id = v_list_id AND entry.variant_id = v_variant_id
+          AND entry.mode = 'one_time' AND entry.min_qty = 1 AND entry.active = true
+          AND (entry.valid_to IS NULL OR entry.valid_to > v_now);
+        IF v_current_count > 1 THEN
+          v_refusal := 'base_price_ambiguous';
+        END IF;
       END IF;
     END IF;
-  END IF;
 
-  IF v_refusal IS NOT NULL THEN
-    DELETE FROM public.catalog_price_setup_receipts
-    WHERE scope = 'catalog.price_setup.base' AND idempotency_key = v_key;
-    RETURN jsonb_build_object('outcome', CASE WHEN v_refusal='expected_state_mismatch' THEN 'conflict'
-      ELSE 'validation_issue' END, 'reason', v_refusal);
-  END IF;
+    IF v_refusal IS NOT NULL THEN
+      DELETE FROM public.catalog_price_setup_receipts
+      WHERE scope = 'catalog.price_setup.base' AND idempotency_key = v_key;
+      RETURN jsonb_build_object('outcome', CASE WHEN v_refusal='expected_state_mismatch' THEN 'conflict'
+        ELSE 'validation_issue' END, 'reason', v_refusal);
+    END IF;
 
-  SELECT * INTO v_current FROM public.price_entries entry
-  WHERE entry.price_list_id = v_list_id AND entry.variant_id = v_variant_id
-    AND entry.mode = 'one_time' AND entry.min_qty = 1 AND entry.active = true
-    AND entry.valid_from <= v_now AND (entry.valid_to IS NULL OR entry.valid_to > v_now);
-  IF NOT v_is_v2 AND (v_pending_count > 0
-    OR v_current.id IS DISTINCT FROM v_expected_entry_id
-    OR v_current.unit_price_minor IS DISTINCT FROM v_expected_unit_price_minor) THEN
-    RAISE EXCEPTION 'catalog_price_setup_expected_state_mismatch' USING ERRCODE = '40001';
-  END IF;
+    SELECT * INTO v_current FROM public.price_entries entry
+    WHERE entry.price_list_id = v_list_id AND entry.variant_id = v_variant_id
+      AND entry.mode = 'one_time' AND entry.min_qty = 1 AND entry.active = true
+      AND entry.valid_from <= v_now AND (entry.valid_to IS NULL OR entry.valid_to > v_now);
+    IF NOT v_is_v2 AND (v_pending_count > 0
+      OR v_current.id IS DISTINCT FROM v_expected_entry_id
+      OR v_current.unit_price_minor IS DISTINCT FROM v_expected_unit_price_minor) THEN
+      RAISE EXCEPTION 'catalog_price_setup_expected_state_mismatch' USING ERRCODE = '40001';
+    END IF;
 
-  -- 8. The readiness verdict before the write.
-  v_before := public.commerce_offer_policy_v2_readiness();
+    -- 8. The readiness verdict before the write.
+    v_before := public.commerce_offer_policy_v2_readiness();
+
+  END IF;
 
   -- 9. Close the current base and insert its replacement at the same instant.
   IF v_current.id IS NOT NULL THEN
@@ -138,29 +143,33 @@ BEGIN
   VALUES (v_list_id, v_variant_id, 'one_time', 1, v_unit_price_minor, v_kind, true, v_now)
   RETURNING id INTO v_entry_id;
 
-  IF v_is_v2 THEN
-    v_verdict := public.catalog_publication_target_price_verdict(jsonb_build_array(v_target),v_now);
-    v_refusal := coalesce(v_verdict->>'reason',v_verdict #>> '{targets,0,reason}');
-    IF v_refusal IS NOT NULL OR v_verdict #> '{targets,0,previous}' IS DISTINCT FROM
-      jsonb_build_object('entryId',v_entry_id,'unitPriceMinor',v_unit_price_minor,'amountKind',v_kind) THEN
-      RAISE EXCEPTION 'catalog_price_setup_readiness_would_fail' USING ERRCODE='55000',
-        DETAIL=jsonb_build_array(coalesce(v_refusal,'catalog_publication_sku_price_not_ready'))::text;
+  IF p_publication IS NULL THEN
+    IF v_is_v2 THEN
+      v_verdict := public.catalog_publication_decide_prices_v2(NULL,NULL,NULL,NULL,
+        jsonb_build_object('lane','immediate','operation',v_command,'sku',to_jsonb(v_sku),'written',true),v_now);
+      v_refusal := coalesce(v_verdict->>'reason',v_verdict #>> '{targets,0,reason}');
+      IF v_refusal IS NOT NULL OR v_verdict #> '{targets,0,previous}' IS DISTINCT FROM
+        jsonb_build_object('entryId',v_entry_id,'unitPriceMinor',v_unit_price_minor,'amountKind',v_kind) THEN
+        RAISE EXCEPTION 'catalog_price_setup_readiness_would_fail' USING ERRCODE='55000',
+          DETAIL=jsonb_build_array(coalesce(v_refusal,'catalog_publication_sku_price_not_ready'))::text;
+      END IF;
     END IF;
-  END IF;
 
-  -- 10. Refuse a change after which the gate reports a reason it did not report
-  -- before. An unrelated reason that was already there neither blocks the change
-  -- nor hides one the change adds.
-  v_after := public.commerce_offer_policy_v2_readiness();
-  SELECT COALESCE(jsonb_agg(reason.code ORDER BY reason.n), '[]'::jsonb) INTO v_added
-  FROM jsonb_array_elements_text(v_after->'reasons') WITH ORDINALITY AS reason(code, n)
-  WHERE NOT ((v_before->'reasons') ? reason.code)
-    -- The per-target verdict owns the edited base. The historical aggregate
-    -- sees the closed row as inactive before the replacement's start.
-    AND NOT (v_is_v2 AND reason.code='catalog_1490_legacy_1340_invalid');
-  IF jsonb_array_length(v_added) > 0 THEN
-    RAISE EXCEPTION 'catalog_price_setup_readiness_would_fail'
-      USING ERRCODE = '55000', DETAIL = v_added::text;
+    -- 10. Refuse a change after which the gate reports a reason it did not report
+    -- before. An unrelated reason that was already there neither blocks the change
+    -- nor hides one the change adds.
+    v_after := public.commerce_offer_policy_v2_readiness();
+    SELECT COALESCE(jsonb_agg(reason.code ORDER BY reason.n), '[]'::jsonb) INTO v_added
+    FROM jsonb_array_elements_text(v_after->'reasons') WITH ORDINALITY AS reason(code, n)
+    WHERE NOT ((v_before->'reasons') ? reason.code)
+      -- The per-target verdict owns the edited base. The historical aggregate
+      -- sees the closed row as inactive before the replacement's start.
+      AND NOT (v_is_v2 AND reason.code='catalog_1490_legacy_1340_invalid');
+    IF jsonb_array_length(v_added) > 0 THEN
+      RAISE EXCEPTION 'catalog_price_setup_readiness_would_fail'
+        USING ERRCODE = '55000', DETAIL = v_added::text;
+    END IF;
+
   END IF;
 
   -- 11. Complete the receipt with the response a replay returns.
@@ -176,7 +185,9 @@ BEGIN
       || CASE WHEN v_is_v2 THEN jsonb_build_object('amountKind',v_kind) ELSE '{}'::jsonb END)
     || CASE WHEN v_is_v2 THEN jsonb_build_object('amountBasis',v_basis) ELSE '{}'::jsonb END);
   UPDATE public.catalog_price_setup_receipts
-  SET status = 'completed', response_payload = v_response
+  SET status = 'completed', response_payload = v_response,
+      metadata = CASE WHEN p_publication IS NULL THEN metadata
+        ELSE metadata || jsonb_build_object('publicationId',p_publication->'publicationId') END
   WHERE scope = 'catalog.price_setup.base' AND idempotency_key = v_key;
   RETURN v_response;
 END;
@@ -249,7 +260,7 @@ END;
 $$;
 
 CREATE FUNCTION public.catalog_publication_price_receipt_facts_v2(saved public.catalog_price_setup_receipts,
-  operation jsonb, p_actual jsonb, p_actor uuid) RETURNS jsonb
+  operation jsonb, p_actual jsonb, p_actor uuid, p_written_at timestamptz) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
   receipt jsonb := saved.response_payload->'receipt';
@@ -269,7 +280,8 @@ BEGIN
   END IF;
   SELECT * INTO current_entry FROM public.price_entries e WHERE e.id=(p_actual->>'entryId')::uuid
     AND (e.variant_id,e.price_list_id)=((operation->>'variantId')::uuid,(operation->>'priceListId')::uuid);
-  IF NOT FOUND OR (receipt->'current')-'validFrom' IS DISTINCT FROM p_actual
+  IF NOT FOUND OR (p_written_at IS NOT NULL AND current_entry.valid_from IS DISTINCT FROM p_written_at)
+    OR (receipt->'current')-'validFrom' IS DISTINCT FROM p_actual
     OR receipt #> '{current,unitPriceMinor}' IS DISTINCT FROM operation->'unitPriceMinor'
     OR receipt #> '{current,amountKind}' IS DISTINCT FROM operation->'amountKind' THEN RETURN NULL; END IF;
   SELECT * INTO prior_entry FROM public.price_entries e WHERE e.id=(operation #>> '{expected,entryId}')::uuid
@@ -293,6 +305,105 @@ EXCEPTION WHEN invalid_datetime_format OR datetime_field_overflow OR invalid_tim
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION public.catalog_publication_target_price_verdict(p_targets jsonb, p_at timestamptz) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE
+  region text := public.catalog_price_setup_region_code();
+  settlement_currency text := public.catalog_price_setup_settlement_currency();
+  list_id uuid;
+  basis text;
+  kind text;
+  list_count integer;
+  target jsonb;
+  operation jsonb;
+  sku_id uuid;
+  needs_subscription boolean;
+  reason text;
+  current_entry jsonb;
+  current_start timestamptz;
+  base_count integer;
+  base_minor integer;
+  subscription_count integer;
+  subscription_valid boolean;
+  wrong_kind boolean;
+  wrong_shape boolean;
+  history_count integer;
+  policy_count integer;
+  policy_valid boolean;
+  discount integer;
+  quantum integer;
+  results jsonb := '[]';
+BEGIN
+  SELECT count(*), (array_agg(l.id))[1], (array_agg(coalesce(l.amount_basis, 'tax_inclusive')))[1]
+  INTO list_count, list_id, basis
+  FROM public.price_lists l
+  WHERE l.region_code=region AND l.currency=settlement_currency AND l.status='active'
+    AND l.valid_from<=p_at AND (l.valid_to IS NULL OR l.valid_to>p_at);
+  IF list_count <> 1 THEN
+    RETURN jsonb_build_object('reason', CASE WHEN list_count=0 THEN 'active_price_list_not_found'
+      ELSE 'active_price_list_ambiguous' END);
+  END IF;
+  kind := CASE basis WHEN 'tax_exclusive' THEN 'net' ELSE 'gross' END;
+  FOR target IN SELECT value FROM jsonb_array_elements(p_targets) LOOP
+    sku_id := (target->>'skuId')::uuid;
+    operation := nullif(target->'operation','null'::jsonb);
+    needs_subscription := coalesce((target->'requiredModes') ? 'subscription', false);
+    SELECT count(*) FILTER (WHERE e.mode='one_time' AND e.min_qty=1),
+      min(e.unit_price_minor) FILTER (WHERE e.mode='one_time' AND e.min_qty=1),
+      (jsonb_agg(jsonb_build_object('entryId', e.id, 'unitPriceMinor', e.unit_price_minor, 'amountKind', e.amount_kind))
+        FILTER (WHERE e.mode='one_time' AND e.min_qty=1))->0,
+      min(e.valid_from) FILTER (WHERE e.mode='one_time' AND e.min_qty=1),
+      count(*) FILTER (WHERE e.mode='subscription'),
+      bool_and(e.min_qty=1 AND e.unit_price_minor>0) FILTER (WHERE e.mode='subscription'),
+      bool_or(e.mode IN ('one_time','any') AND e.amount_kind<>kind
+        -- The receipt proof checks drift on its own base. A conflicting sibling still ranks here.
+        AND NOT (e.mode='one_time' AND e.min_qty=1 AND to_jsonb(e.id) IS NOT DISTINCT FROM target->'receiptEntryId')),
+      bool_or(e.mode='any' OR e.min_qty<>1 OR (e.mode='subscription' AND e.amount_kind<>kind))
+    INTO base_count, base_minor, current_entry, current_start, subscription_count, subscription_valid, wrong_kind, wrong_shape
+    FROM public.price_entries e
+    WHERE e.price_list_id=list_id AND e.variant_id=sku_id AND e.active
+      AND e.valid_from<=p_at AND (e.valid_to IS NULL OR e.valid_to>p_at)
+      AND (e.mode IN ('one_time','any') OR (needs_subscription AND e.mode='subscription'));
+
+    reason := CASE
+      WHEN operation IS NOT NULL AND operation->>'priceListId' IS DISTINCT FROM list_id::text THEN 'price_list_not_active'
+      WHEN operation IS NOT NULL AND (operation->>'expectedListAmountBasis' IS DISTINCT FROM basis
+        OR operation->>'amountKind' IS DISTINCT FROM kind) THEN 'catalog_price_setup_basis_mismatch'
+      WHEN wrong_kind THEN 'base_price_amount_kind_invalid'
+      WHEN wrong_shape THEN 'price_shape_invalid'
+      WHEN base_count>1 THEN 'base_price_ambiguous'
+      WHEN operation IS NOT NULL AND (current_start=p_at OR EXISTS (
+        SELECT 1 FROM public.price_entries e WHERE e.price_list_id=list_id AND e.variant_id=sku_id
+          AND e.active AND e.mode IN ('one_time','any') AND e.valid_from>p_at))
+        THEN 'catalog_price_setup_pending_entry'
+      WHEN operation IS NOT NULL AND operation->'expected' IS DISTINCT FROM
+        coalesce(current_entry, '{"entryId":null,"unitPriceMinor":null,"amountKind":null}'::jsonb)
+        THEN 'expected_state_mismatch'
+      WHEN operation IS NULL AND (base_count=0 OR base_minor<=0) THEN 'catalog_publication_sku_price_not_ready'
+    END;
+    IF reason IS NULL AND needs_subscription THEN
+      SELECT count(*),count(*) FILTER (WHERE w.effective),bool_and(p.rounding_rule='FLOOR_TO_QUANTUM'
+        AND p.rounding_quantum_minor>0 AND p.discount_bps BETWEEN 0 AND 10000
+        AND p.digest=public.catalog_price_setup_policy_digest(p.id,p.revision_no,p.price_list_id,p.region_code,p.currency,p.channel,
+          p.effective_from,CASE WHEN p.closed_from_open THEN NULL ELSE p.effective_to END,p.discount_bps,p.rounding_quantum_minor,p.rounding_rule))
+        FILTER (WHERE w.effective), min(p.discount_bps) FILTER (WHERE w.effective), min(p.rounding_quantum_minor) FILTER (WHERE w.effective)
+      INTO history_count,policy_count,policy_valid,discount,quantum
+      FROM public.subscription_price_policy_revisions p
+      CROSS JOIN LATERAL (SELECT p.effective_from<=p_at AND (p.effective_to IS NULL OR p.effective_to>p_at) AS effective) w
+      WHERE p.price_list_id=list_id AND p.region_code=region AND p.currency=settlement_currency AND p.channel='D2C';
+      IF NOT coalesce((history_count=0 AND subscription_count=1 AND subscription_valid)
+        OR (history_count>0 AND policy_count=1 AND policy_valid AND subscription_count=0
+          AND CASE WHEN quantum>0 THEN coalesce((operation->>'unitPriceMinor')::bigint,base_minor)
+            *(10000-discount)/10000/quantum*quantum END>0),false) THEN
+        reason := 'catalog_publication_sku_price_not_ready';
+      END IF;
+    END IF;
+    results := results || jsonb_build_array(jsonb_build_object('skuId',sku_id,'reason',reason,'previous',current_entry));
+  END LOOP;
+  RETURN jsonb_build_object('priceListId',list_id,'regionCode',region,'currency',settlement_currency,'amountBasis',basis,'targets',results);
+END;
+$$;
+
 -- A validated plan is carried across receipt reservation, the price fence and proof.
 -- Observations describe the adapter phase. Only this routine interprets them.
 CREATE FUNCTION public.catalog_publication_decide_prices_v2(p_previous_facts jsonb, p_next_facts jsonb,
@@ -304,6 +415,8 @@ DECLARE
   actor uuid := (p_observed_evidence->>'actor')::uuid;
   issue_id uuid := (p_observed_evidence->>'issueId')::uuid;
   claims jsonb := p_observed_evidence->'claims';
+  written boolean := coalesce((p_observed_evidence->>'written')::boolean,false);
+  mutations jsonb := '[]';
   target jsonb;
   operation jsonb;
   actual jsonb;
@@ -314,17 +427,27 @@ DECLARE
   first_replayed jsonb;
   refusal text;
   price_reason text;
+  replay_failed boolean;
   rank integer;
   best_rank integer := 100;
   tax jsonb := p_saved_context->'tax';
   tax_class text := p_observed_evidence->>'taxClass';
   selected jsonb;
   selected_price jsonb;
-  result jsonb;
   state text;
   field text := 'skus[].priceOperations';
   remedy text := 'Correct the indicated field, save a new revision, and run Prepare.';
 BEGIN
+  IF lane='immediate' THEN
+    operation := p_observed_evidence->'operation';
+    target := jsonb_build_object('skuId',operation->'variantId','requiredModes',
+      CASE WHEN (p_observed_evidence #>> '{sku,sellable_in_subscription}')::boolean
+        THEN '["one_time","subscription"]'::jsonb ELSE '["one_time"]'::jsonb END);
+    IF NOT written THEN target := target || jsonb_build_object('operation',operation); END IF;
+    verdict := public.catalog_publication_target_price_verdict(jsonb_build_array(target),p_at);
+    RETURN verdict || jsonb_build_object('reason',coalesce(verdict->>'reason',verdict #>> '{targets,0,reason}'));
+  END IF;
+
   <<decision>>
   BEGIN
     IF lane='reader' AND issue_id IS NULL THEN
@@ -405,30 +528,34 @@ BEGIN
 
     -- The adapters transport locked/claimed rows. Assessment observes the same
     -- ledger without reserving keys or waiting for another transaction.
-    IF p_at IS NULL OR lane='assessment' THEN
-      FOR target IN SELECT t FROM jsonb_array_elements(plan) t
-        ORDER BY convert_to(t #>> '{operation,commandKey}','UTF8') LOOP
-        operation := target->'operation';
-        SELECT * INTO saved FROM public.catalog_price_setup_receipts r
-        WHERE r.scope='catalog.price_setup.base' AND r.idempotency_key=operation->>'commandKey';
-        refusal := CASE
-          WHEN NOT FOUND AND lane='reader' THEN 'catalog_publication_price_issue_required'
-          WHEN NOT FOUND AND lane='issuance' THEN 'price_operation_invalid'
-          WHEN NOT FOUND THEN NULL
-          WHEN saved.request_fingerprint IS DISTINCT FROM encode(sha256(convert_to(
-            public.catalog_publication_canonical(operation,0),'UTF8')),'hex') THEN 'command_key_reused'
-          WHEN claims #>> ARRAY[operation->>'commandKey','outcome']='claimed' THEN NULL
-          WHEN saved.status<>'completed' OR saved.response_payload IS NULL THEN 'command_in_progress'
-          WHEN saved.metadata->>'actorId' IS DISTINCT FROM actor::text THEN 'operator_mismatch'
-        END;
-        IF refusal IS NOT NULL THEN selected := target; EXIT decision; END IF;
-      END LOOP;
-      IF p_at IS NULL THEN EXIT decision; END IF;
-    END IF;
+    FOR target IN SELECT t FROM jsonb_array_elements(plan) t
+      ORDER BY convert_to(t #>> '{operation,commandKey}','UTF8') LOOP
+      operation := target->'operation';
+      fresh := coalesce(claims #>> ARRAY[operation->>'commandKey','outcome']='claimed',false);
+      SELECT * INTO saved FROM public.catalog_price_setup_receipts r
+      WHERE r.scope='catalog.price_setup.base' AND r.idempotency_key=operation->>'commandKey';
+      refusal := CASE
+        WHEN NOT FOUND AND lane='reader' THEN 'catalog_publication_price_issue_required'
+        WHEN NOT FOUND AND written THEN 'catalog_publication_price_changed'
+        WHEN NOT FOUND AND lane='issuance' THEN 'price_operation_invalid'
+        WHEN NOT FOUND THEN NULL
+        WHEN saved.request_fingerprint IS DISTINCT FROM encode(sha256(convert_to(
+          public.catalog_publication_canonical(operation,0),'UTF8')),'hex') THEN 'command_key_reused'
+        WHEN fresh AND NOT written AND (saved.status<>'in_progress' OR saved.response_payload IS NOT NULL)
+          THEN 'price_operation_invalid'
+        WHEN (NOT fresh OR written) AND (saved.status<>'completed' OR saved.response_payload IS NULL)
+          THEN 'command_in_progress'
+        WHEN saved.metadata->>'actorId' IS DISTINCT FROM actor::text THEN 'operator_mismatch'
+      END;
+      IF refusal IS NOT NULL THEN selected := target; EXIT decision; END IF;
+    END LOOP;
+    IF p_at IS NULL THEN EXIT decision; END IF;
 
     SELECT public.catalog_publication_target_price_verdict(coalesce(jsonb_agg(CASE
-      WHEN lane='assessment' AND r.idempotency_key IS NULL OR claims #>> ARRAY[t #>> '{operation,commandKey}','outcome']='claimed'
-      THEN t ELSE t-'operation' END ORDER BY n),'[]'),p_at) INTO verdict
+      WHEN NOT written AND (lane='assessment' AND r.idempotency_key IS NULL
+        OR claims #>> ARRAY[t #>> '{operation,commandKey}','outcome']='claimed') THEN t
+      ELSE (t-'operation') || jsonb_build_object('receiptEntryId',r.response_payload #> '{receipt,current,entryId}') END ORDER BY n),'[]'),p_at)
+    INTO verdict
     FROM jsonb_array_elements(plan) WITH ORDINALITY AS item(t,n)
     LEFT JOIN public.catalog_price_setup_receipts r ON r.scope='catalog.price_setup.base' AND r.idempotency_key=t #>> '{operation,commandKey}';
     refusal := verdict->>'reason';
@@ -449,26 +576,42 @@ BEGIN
     END IF;
     IF refusal IS NOT NULL THEN EXIT decision; END IF;
 
+    IF jsonb_array_length(verdict->'targets') IS DISTINCT FROM jsonb_array_length(plan) THEN
+      RAISE EXCEPTION 'catalog_publication_price_plan_invalid' USING ERRCODE='55000';
+    END IF;
     FOR target, actual IN SELECT t.value,v.value FROM jsonb_array_elements(plan) WITH ORDINALITY t(value,n)
       JOIN jsonb_array_elements(verdict->'targets') WITH ORDINALITY v(value,n) USING (n) ORDER BY n LOOP
+      IF actual->'skuId' IS DISTINCT FROM target->'skuId' THEN
+        RAISE EXCEPTION 'catalog_publication_price_plan_invalid' USING ERRCODE='55000';
+      END IF;
       operation := target->'operation';
       SELECT * INTO saved FROM public.catalog_price_setup_receipts r
         WHERE r.scope='catalog.price_setup.base' AND r.idempotency_key=operation->>'commandKey';
       fresh := coalesce(lane='assessment' AND NOT FOUND OR claims #>> ARRAY[operation->>'commandKey','outcome']='claimed',false);
-      price_reason := actual->>'reason';
-      IF fresh THEN
-        IF price_reason='expected_state_mismatch' THEN price_reason := 'catalog_publication_price_changed'; END IF;
+      replay_failed := false;
+      IF fresh AND NOT written THEN
+        IF lane='issuance' THEN
+          mutations := mutations || jsonb_build_array(jsonb_build_object('claim',claims->(operation->>'commandKey'),
+            'publication',jsonb_build_object('previous',actual->'previous','publicationId',issue_id)));
+        END IF;
       ELSE
-        replay := public.catalog_publication_price_receipt_facts_v2(saved,operation,actual->'previous',actor);
-        IF replay IS NULL OR price_reason='base_price_ambiguous' THEN
-          price_reason := 'catalog_publication_price_changed';
-        ELSIF (target->>'needsFresh')::boolean AND (issue_id IS NULL OR saved.metadata->'publicationId' IS DISTINCT FROM to_jsonb(issue_id)) THEN
+        replay := public.catalog_publication_price_receipt_facts_v2(saved,operation,actual->'previous',actor,
+          CASE WHEN fresh THEN p_at END);
+        replay_failed := replay IS NULL OR (fresh AND saved.metadata->'publicationId' IS DISTINCT FROM to_jsonb(issue_id));
+        IF NOT replay_failed AND (target->>'needsFresh')::boolean
+          AND (issue_id IS NULL OR saved.metadata->'publicationId' IS DISTINCT FROM to_jsonb(issue_id)) THEN
           first_replayed := coalesce(first_replayed,target);
         END IF;
       END IF;
-      rank := array_position(ARRAY['price_list_not_active','catalog_price_setup_basis_mismatch',
-        'base_price_amount_kind_invalid','price_shape_invalid','base_price_ambiguous','catalog_price_setup_pending_entry',
-        'catalog_publication_price_changed','catalog_publication_sku_price_not_ready'],price_reason);
+      -- Rank the landed defect and failed receipt proof independently.
+      SELECT reason,ord INTO price_reason,rank FROM unnest(ARRAY[
+        'price_list_not_active','catalog_price_setup_basis_mismatch','base_price_amount_kind_invalid',
+        'price_shape_invalid','base_price_ambiguous','catalog_price_setup_pending_entry',
+        'catalog_publication_price_changed','catalog_publication_sku_price_not_ready']) WITH ORDINALITY AS ranked(reason,ord)
+      WHERE (reason=actual->>'reason' AND (reason<>'base_price_ambiguous' OR fresh AND NOT written))
+        OR (reason='catalog_publication_price_changed' AND (replay_failed OR actual->>'reason'='expected_state_mismatch'
+          OR (actual->>'reason'='base_price_ambiguous' AND (NOT fresh OR written))))
+      ORDER BY ord LIMIT 1;
       IF rank<best_rank THEN
         best_rank := rank;
         refusal := price_reason;
@@ -485,7 +628,7 @@ BEGIN
   END decision;
 
   IF refusal IS NULL THEN
-    RETURN jsonb_build_object('outcome','pass','plan',plan,'targets',verdict->'targets','price',selected_price);
+    RETURN jsonb_build_object('outcome','pass','plan',plan,'targets',verdict->'targets','price',selected_price,'mutations',mutations);
   END IF;
   state := CASE WHEN refusal IN ('command_key_reused','command_in_progress','catalog_publication_price_changed') THEN '40001'
     WHEN refusal='operator_mismatch' THEN '42501' ELSE '23514' END;
@@ -518,34 +661,6 @@ BEGIN
   END IF;
   RETURN jsonb_build_object('outcome','blocked-input','reason',refusal,'sqlstate',state,'field',field,'remedy',remedy,
     'pair',CASE WHEN selected IS NOT NULL THEN jsonb_build_object('skuId',selected->'skuId','priceListId',selected->'priceListId') END);
-END;
-$$;
-
--- Publication mutation consumes the predecessor selected under the whole plan's fence.
-CREATE FUNCTION public.catalog_publication_write_price_v2(operation jsonb, previous jsonb, actor uuid,
-  issue_id uuid, at_price timestamptz) RETURNS void
-LANGUAGE plpgsql VOLATILE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
-DECLARE
-  prior public.price_entries%ROWTYPE;
-  current_id uuid;
-  variant_id uuid := (operation->>'variantId')::uuid;
-  list_id uuid := (operation->>'priceListId')::uuid;
-  amount integer := (operation->>'unitPriceMinor')::integer;
-  kind text := operation->>'amountKind';
-BEGIN
-  IF previous IS NOT NULL AND previous<>'null' THEN
-    UPDATE public.price_entries SET active=false,valid_to=at_price,updated_at=at_price
-    WHERE id=(previous->>'entryId')::uuid RETURNING * INTO STRICT prior;
-  END IF;
-  INSERT INTO public.price_entries(price_list_id,variant_id,mode,min_qty,unit_price_minor,amount_kind,active,valid_from)
-  VALUES(list_id,variant_id,'one_time',1,amount,kind,true,at_price) RETURNING id INTO current_id;
-  UPDATE public.catalog_price_setup_receipts r SET status='completed', metadata=r.metadata || jsonb_build_object('publicationId',issue_id),
-    response_payload=jsonb_build_object('outcome','committed','receipt',jsonb_build_object('commandKey',operation->'commandKey',
-      'variantId',variant_id,'priceListId',list_id,'actorId',actor,'amountBasis',operation->'expectedListAmountBasis',
-      'previous',CASE WHEN prior.id IS NOT NULL THEN previous || jsonb_build_object('validFrom',prior.valid_from) END,
-      'current',jsonb_build_object('entryId',current_id,'unitPriceMinor',amount,'amountKind',kind,'validFrom',at_price)))
-  WHERE r.scope='catalog.price_setup.base' AND r.idempotency_key=operation->>'commandKey' AND r.status='in_progress';
-  IF NOT FOUND THEN RAISE EXCEPTION 'catalog_price_setup_claim_mismatch' USING ERRCODE='55000'; END IF;
 END;
 $$;
 
@@ -607,7 +722,7 @@ BEGIN
     public.catalog_publication_price_operations_v2(authored),context,
     jsonb_build_object('lane','assessment','actor',actor,'taxClass',public.catalog_publication_price_tax_class_v2(seal->'product',context,false)),clock_timestamp());
   IF verdict->>'outcome'='pass' THEN
-    verdict := (verdict - ARRAY['plan','price']) || jsonb_build_object('postStateDigest',post_state->'digest');
+    verdict := (verdict - ARRAY['plan','price','mutations']) || jsonb_build_object('postStateDigest',post_state->'digest');
   END IF;
   RETURN public.catalog_publication_canonical(verdict,0);
 END;
@@ -682,19 +797,18 @@ REVOKE ALL ON FUNCTION public.catalog_publication_price_operations_v2(jsonb) FRO
 REVOKE ALL ON FUNCTION public.catalog_publication_price_revision_facts_v2(uuid,jsonb) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.catalog_publication_price_tax_class_v2(jsonb,jsonb,boolean) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.catalog_publication_lock_price_plan_v2(jsonb,jsonb,jsonb) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.catalog_publication_price_receipt_facts_v2(public.catalog_price_setup_receipts,jsonb,jsonb,uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.catalog_publication_price_receipt_facts_v2(public.catalog_price_setup_receipts,jsonb,jsonb,uuid,timestamptz) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.catalog_publication_decide_prices_v2(jsonb,jsonb,jsonb,jsonb,jsonb,timestamptz) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.catalog_publication_assess_prices_v2(jsonb) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.catalog_publication_write_price_v2(jsonb,jsonb,uuid,uuid,timestamptz) FROM PUBLIC;
 
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.catalog_price_setup_mutate_claimed(jsonb,timestamptz,jsonb), public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid), public.catalog_publication_price_operations_v2(jsonb), public.catalog_publication_price_revision_facts_v2(uuid,jsonb), public.catalog_publication_price_tax_class_v2(jsonb,jsonb,boolean), public.catalog_publication_lock_price_plan_v2(jsonb,jsonb,jsonb), public.catalog_publication_price_receipt_facts_v2(public.catalog_price_setup_receipts,jsonb,jsonb,uuid), public.catalog_publication_decide_prices_v2(jsonb,jsonb,jsonb,jsonb,jsonb,timestamptz), public.catalog_publication_assess_prices_v2(jsonb), public.catalog_publication_write_price_v2(jsonb,jsonb,uuid,uuid,timestamptz) FROM anon;';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.catalog_price_setup_mutate_claimed(jsonb,timestamptz,jsonb), public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid), public.catalog_publication_price_operations_v2(jsonb), public.catalog_publication_price_revision_facts_v2(uuid,jsonb), public.catalog_publication_price_tax_class_v2(jsonb,jsonb,boolean), public.catalog_publication_lock_price_plan_v2(jsonb,jsonb,jsonb), public.catalog_publication_price_receipt_facts_v2(public.catalog_price_setup_receipts,jsonb,jsonb,uuid,timestamptz), public.catalog_publication_decide_prices_v2(jsonb,jsonb,jsonb,jsonb,jsonb,timestamptz), public.catalog_publication_assess_prices_v2(jsonb) FROM anon;';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.catalog_price_setup_mutate_claimed(jsonb,timestamptz,jsonb), public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid), public.catalog_publication_price_operations_v2(jsonb), public.catalog_publication_price_revision_facts_v2(uuid,jsonb), public.catalog_publication_price_tax_class_v2(jsonb,jsonb,boolean), public.catalog_publication_lock_price_plan_v2(jsonb,jsonb,jsonb), public.catalog_publication_price_receipt_facts_v2(public.catalog_price_setup_receipts,jsonb,jsonb,uuid), public.catalog_publication_decide_prices_v2(jsonb,jsonb,jsonb,jsonb,jsonb,timestamptz), public.catalog_publication_assess_prices_v2(jsonb), public.catalog_publication_write_price_v2(jsonb,jsonb,uuid,uuid,timestamptz) FROM authenticated;';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.catalog_price_setup_mutate_claimed(jsonb,timestamptz,jsonb), public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid), public.catalog_publication_price_operations_v2(jsonb), public.catalog_publication_price_revision_facts_v2(uuid,jsonb), public.catalog_publication_price_tax_class_v2(jsonb,jsonb,boolean), public.catalog_publication_lock_price_plan_v2(jsonb,jsonb,jsonb), public.catalog_publication_price_receipt_facts_v2(public.catalog_price_setup_receipts,jsonb,jsonb,uuid,timestamptz), public.catalog_publication_decide_prices_v2(jsonb,jsonb,jsonb,jsonb,jsonb,timestamptz), public.catalog_publication_assess_prices_v2(jsonb) FROM authenticated;';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.catalog_price_setup_mutate_claimed(jsonb,timestamptz,jsonb), public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid), public.catalog_publication_price_operations_v2(jsonb), public.catalog_publication_price_revision_facts_v2(uuid,jsonb), public.catalog_publication_price_tax_class_v2(jsonb,jsonb,boolean), public.catalog_publication_lock_price_plan_v2(jsonb,jsonb,jsonb), public.catalog_publication_price_receipt_facts_v2(public.catalog_price_setup_receipts,jsonb,jsonb,uuid), public.catalog_publication_decide_prices_v2(jsonb,jsonb,jsonb,jsonb,jsonb,timestamptz), public.catalog_publication_assess_prices_v2(jsonb), public.catalog_publication_write_price_v2(jsonb,jsonb,uuid,uuid,timestamptz) FROM service_role;';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.catalog_price_setup_mutate_claimed(jsonb,timestamptz,jsonb), public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid), public.catalog_publication_price_operations_v2(jsonb), public.catalog_publication_price_revision_facts_v2(uuid,jsonb), public.catalog_publication_price_tax_class_v2(jsonb,jsonb,boolean), public.catalog_publication_lock_price_plan_v2(jsonb,jsonb,jsonb), public.catalog_publication_price_receipt_facts_v2(public.catalog_price_setup_receipts,jsonb,jsonb,uuid,timestamptz), public.catalog_publication_decide_prices_v2(jsonb,jsonb,jsonb,jsonb,jsonb,timestamptz), public.catalog_publication_assess_prices_v2(jsonb) FROM service_role;';
 END IF; END; $$;
 
 CREATE OR REPLACE FUNCTION public.catalog_publication_record_command(p_command jsonb) RETURNS text
@@ -728,7 +842,7 @@ DECLARE
   price_context jsonb;
   price_v2 boolean;
   operations jsonb;
-  target jsonb;
+  mutation jsonb;
   plan jsonb;
   previous_manifest jsonb;
   evidence jsonb;
@@ -921,18 +1035,14 @@ BEGIN
     tax_class := public.catalog_publication_lock_price_plan_v2(plan,product,price_context);
     at_price := clock_timestamp();
     evidence := evidence || jsonb_build_object('taxClass',tax_class);
-    verdict := public.catalog_publication_decide_prices_v2(NULL,NULL,NULL,price_context,
-      evidence || jsonb_build_object('claims',child_results),at_price);
+    evidence := evidence || jsonb_build_object('claims',child_results);
+    verdict := public.catalog_publication_decide_prices_v2(NULL,NULL,NULL,price_context,evidence,at_price);
 
     readiness_before := public.commerce_offer_policy_v2_readiness();
-    FOR target IN SELECT t.value || jsonb_build_object('previous',v.value->'previous')
-      FROM jsonb_array_elements(plan) WITH ORDINALITY t(value,n)
-      JOIN jsonb_array_elements(verdict->'targets') WITH ORDINALITY v(value,n) USING (n) ORDER BY n LOOP
-      IF child_results #>> ARRAY[target #>> '{operation,commandKey}','outcome']='claimed' THEN
-        PERFORM public.catalog_publication_write_price_v2(target->'operation',target->'previous',actor_id,new_id,at_price);
-      END IF;
+    FOR mutation IN SELECT value FROM jsonb_array_elements(verdict->'mutations') LOOP
+      PERFORM public.catalog_price_setup_mutate_claimed(mutation->'claim',at_price,mutation->'publication');
     END LOOP;
-    PERFORM public.catalog_publication_decide_prices_v2(NULL,NULL,NULL,price_context,evidence,at_price);
+    PERFORM public.catalog_publication_decide_prices_v2(NULL,NULL,NULL,price_context,evidence || jsonb_build_object('written',true),at_price);
     SELECT coalesce(jsonb_agg(code ORDER BY n),'[]') INTO added
     FROM jsonb_array_elements_text(public.commerce_offer_policy_v2_readiness()->'reasons') WITH ORDINALITY r(code,n)
     WHERE NOT (readiness_before->'reasons' ? code) AND code<>'catalog_1490_legacy_1340_invalid';
