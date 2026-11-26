@@ -1181,6 +1181,19 @@
       ],
       "entrypoint": "dist/storefront/index.d.ts",
       "snapshot": "api/storefront.api.md"
+    },
+    "./storefront/testing": {
+      "role": "capability",
+      "maturity": "testing",
+      "compatibilityPolicy": "testing",
+      "packageSmokeEvidence": [
+        "test/storefront/testing/exports.test.ts",
+        "test/storefront/testing/pageHandle.test.ts",
+        "test/storefront/testing/serialize.test.ts",
+        "test/storefront/testing/sourceScan.test.ts"
+      ],
+      "entrypoint": "dist/storefront/testing/index.d.ts",
+      "snapshot": "api/storefront-testing.api.md"
     }
   },
   "pack": {

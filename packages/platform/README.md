@@ -227,6 +227,7 @@ bearer; its local fixture establishes no hosted revocation guarantee.
 | `./shipping` | Delivery ports, injected-schema handlers, summary/evidence; native flat-rate port + Core schema readiness |
 | `./shipping/contracts` | Type-only address, customer-address, delivery, pickup-point, shipping-rate and threshold contracts, plus selection summary and evidence DTOs |
 | `./storefront` | Experimental, browser-safe purchase continuation: identity roles and their constructors, the continuation record and its recovery functions, an experimental continuation controller, host bindings and declarations, and the markup anchor names; storage, requests and provider facts only through host bindings |
+| `./storefront/testing` | Test support for storefront proofs, Node only: the scenario, adapter, observer and page-handle contracts, `createPageHandle` over a Playwright page, and the verdict serializer; never in a buyer's bundle |
 
 ## HTTP runtime and security contract
 
@@ -4006,3 +4007,73 @@ evidence from `@openlup/platform/lifecycle`, without importing test support:
 
 Nothing here runs a scenario or reads a file. The declarations are in the
 [API report](https://github.com/openlup/openlup/blob/main/packages/platform/api/lifecycle.api.md).
+
+### Storefront verification runner
+
+Status: current contract (testing).
+
+`@openlup/platform/storefront/testing` is test support for a storefront proof
+harness. It runs under Node, beside the browser that drives the store's pages,
+and never in a buyer's bundle: a browser bundle of the entry fails, and the
+`storefront` entry cannot import it. The scenario runner that reads these
+contracts follows in a later change.
+
+- **`StorefrontScenario`.** One buyer journey: its steps, the ledger safety it
+  must keep, the progress it must reach and the control that must keep that
+  progress from being reached, a create-request budget, one sentence each on
+  stimulus, safety, progress and control, and `requires.outcomes`, the outcomes
+  a run's outcome driver must declare for the scenario to be admitted. The
+  step, safety and control language is at `testing` maturity, so its shape may
+  change in a minor release with an upgrade note.
+- **`StorefrontAdapter`.** A store's departures from the defaults: an `arrange`
+  function up to the first buyer action, custom locators for actions and
+  states, command matchers for create and read requests and the key header,
+  auto-progress actions, routes and a recheck command. A field here overrides
+  the proof file, which overrides the run's defaults.
+- **`StorefrontObserver`.** Reads one run subject's ledger (orders, payable
+  orders, orders holding stock, payment attempts and captures).
+  `payableOrdersInDatabase` exists only when the observer reads a database
+  exclusive to one run.
+- **`PageHandle` and `createPageHandle(page, options?)`.** Wraps a Playwright
+  page without importing a browser library: navigation, the current path
+  without query, the width, anchor lookup and visibility, the visible
+  `state:` and `action:` anchors, clicking, filling, request interception
+  (`pass`, `withhold`, which delivers the request and fails the page's
+  response, or `block`) and `settled({ quietMs })`, which resolves once every
+  intercepted request has finished and `quietMs` passed with no new request.
+  An anchor is visible when its box is non-zero, lies inside the scrollable
+  area, is not hidden, is not fully transparent, and the element at its centre
+  is the anchor, a descendant or an ancestor of it; the anchor is scrolled into
+  view before it is measured. The handle reads no clock.
+- **`serializeStorefrontVerdict`.** Returns the verdict as two-space JSON and a
+  line feed after `parseStorefrontVerdict` accepts it, and otherwise throws a
+  `TypeError` with the refusal's four parts. A harness writes one file per run
+  under `.context/storefront-verdicts/`; the entry writes no file.
+
+**Trust.** A verdict produced on a developer's machine is a claim about that
+build, not evidence for a release; only a verdict a CI run records for an equal
+build identity is reused.
+
+**Matching limits.** A command matcher sees only the method and the request
+path, without query string or fragment, so a token in a query never reaches a
+matcher or a verdict. A store whose operations share one endpoint (for example
+a single GraphQL path) cannot tell create from read by matcher; status
+delivered over server-sent events or a WebSocket is not a request the handle
+can block; requests answered by a service worker are not routed unless the
+harness blocks service workers in its browser context; a cross-origin request
+is matched by path alone.
+
+**State anchors.** Each `data-openlup-state` value means one thing to the
+runner:
+
+| State | Meaning |
+| --- | --- |
+| `awaiting_payment` | An order exists and the buyer can pay |
+| `details_changed` | The server refused changed details under the same purchase |
+| `awaiting_authority` | Only a later status read can say how a payment ends |
+| `declined` | The attempt was declined and the order stays payable |
+| `paid` | Payment captured |
+| `paid_pending_activation` | Payment captured, subscription activation pending |
+
+The declarations are in the
+[API report](https://github.com/openlup/openlup/blob/main/packages/platform/api/storefront-testing.api.md).

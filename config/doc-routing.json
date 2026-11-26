@@ -1121,13 +1121,16 @@
     },
     {
       "id": "platform-storefront-verification",
-      "when": "Storefront verdict and proof-file contracts and the client-build digest",
+      "when": "Storefront verdict and proof-file contracts, the client-build digest, and the storefront test-support entry with its page handle",
       "paths": [
         "packages/platform/src/lifecycle/storefront*.ts",
-        "packages/platform/test/lifecycle/storefront*.test.ts"
+        "packages/platform/test/lifecycle/storefront*.test.ts",
+        "packages/platform/src/storefront/testing/**",
+        "packages/platform/test/storefront/testing/**",
+        "packages/platform/api/storefront-testing.api.md"
       ],
       "doc": "packages/platform/README.md",
-      "anchor": "#storefront-verdict-and-proof-file-contracts"
+      "anchor": "#storefront-verification-runner"
     },
     {
       "id": "platform-http",

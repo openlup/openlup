@@ -59,7 +59,8 @@ test.beforeAll(async () => {
   origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 });
 test.afterAll(async () => { await new Promise(resolve => server.close(resolve)); });
-test.beforeEach(({}, info) => {
+test.beforeEach(() => {
+  const info = test.info();
   test.skip(info.project.name !== info.config.projects[0]?.name, 'independent of the store configuration');
   served.received = 0; served.answered = 0;
 });
