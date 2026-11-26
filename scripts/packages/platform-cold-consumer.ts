@@ -1033,7 +1033,7 @@ import {promises as fs} from "node:fs";
 import {join} from "node:path";
 import {pathToFileURL} from "node:url";
 import * as lifecycle from "@openlup/platform/lifecycle";
-assert.deepEqual(Object.keys(lifecycle).sort(),["APP_VERIFICATION_BOUNDARY","AppUpgradeConflictError","applyAppUpgrade","inspectLegacyPostgresInstallRoles","planAppUpgrade","verifyApp"]);
+assert.deepEqual(Object.keys(lifecycle).sort(),["APP_VERIFICATION_BOUNDARY","AppUpgradeConflictError","applyAppUpgrade","digestStorefrontFiles","inspectLegacyPostgresInstallRoles","parseStorefrontProofFile","parseStorefrontVerdict","planAppUpgrade","storefrontProofFileJsonSchema","storefrontVerdictJsonSchema","verifyApp"]);
 const roleRequest={migrationLogin:"migration",runtimeLogin:"migration",roleMode:"installer-managed"};
 const role={name:"migration",login:true,superuser:true,inherit:false,createRole:false,createDatabase:false,replication:false,bypassRls:false};
 const observed={database:"synthetic",currentUser:"migration",sessionUser:"migration",roles:[role],memberships:[]};
