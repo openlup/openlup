@@ -1979,8 +1979,8 @@ export function provePortabilityPostgres(consumer: string, connectionString: str
   consumerNode(consumer, PORTABILITY_CONSUMER_PROOF, [connectionString]);
 }
 
-/** Runs wholly inside the installed consumer; canonical expectations arrive as inert JSON. */
-const PLATFORM_MIGRATION_CONSUMER_PROOF = String.raw`
+/** Runs wholly inside the installed consumer; canonical expectations arrive via a staged JSON file. */
+export const PLATFORM_MIGRATION_CONSUMER_PROOF = String.raw`
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync, unlinkSync, realpathSync } from "node:fs";
@@ -1993,8 +1993,8 @@ assert.throws(() => createPlatformPostgresMigrationRunner({connectionString:"unu
   get catalog() { throw new Error("catalogue was read before selection admission"); },
   get poolFactory() { throw new Error("pool factory was read before selection admission"); },
 }), /platform migration installation is required/);
-const [connectionString, generation, roleMode, expectedJson] = process.argv.slice(2);
-const canonical = JSON.parse(expectedJson);
+const [connectionString, generation, roleMode, expectedManifestPath] = process.argv.slice(2);
+const canonical = JSON.parse(readFileSync(expectedManifestPath, "utf8"));
 const plan = generation === "qualified-v2" ? canonical.qualified : canonical.qualifiedAdmin;
 const expected = [plan.baseline, ...plan.forward];
 const packageRoot = dirname(dirname(dirname(fileURLToPath(import.meta.resolve("@openlup/platform/migrations")))));
@@ -2060,20 +2060,25 @@ process.exit(0);
 /** Real installed-chain proof: each selection gets a fresh PG16 cluster. */
 export function provePackagedPlatformMigrations(consumer: string): void {
   const canonical = readFileSync(join(root, "config/platform-migration-manifest.json"), "utf8");
-  for (const generation of ["qualified-v2", "qualified-admin"]) for (const mode of ["installer-managed", "operator-provisioned"]) {
-    const name = `openlup-packaged-migrations-${randomUUID()}`;
-    const docker = (args: string[]) => command("docker", args, root, isolatedConsumerEnv()).trim();
-    try {
-      docker(["run", ...disposableLabelArgs(), "--detach", "--rm", "--name", name, "--cpus=1", "--memory=512m", "--pids-limit=128", "--tmpfs", "/var/lib/postgresql/data", "--publish", "127.0.0.1::5432", "--env", "POSTGRES_HOST_AUTH_METHOD=trust", pinnedTestPostgresImage()]);
-      const port = docker(["port", name, "5432/tcp"]).split(":").at(-1)!;
-      const url = `postgresql://postgres@127.0.0.1:${port}/postgres`;
-      command(process.execPath, ["--import", import.meta.resolve("tsx"), "--input-type=module", "-e", `
-        import { waitForPostgresTcpReady } from ${JSON.stringify(pathToFileURL(join(root, "tests/helpers/postgresContainer.ts")).href)};
-        if (!await waitForPostgresTcpReady(process.argv[1])) throw new Error("Packaged migration PG16 unavailable");
-      `, url], root, isolatedConsumerEnv());
-      process.stdout.write(consumerNode(consumer, PLATFORM_MIGRATION_CONSUMER_PROOF, [url, generation, mode, canonical]));
-    } finally { docker(["rm", "--force", "--volumes", name]); }
-  }
+  // Stage the canonical manifest as a file inside the consumer dir so argv never hits Linux MAX_ARG_STRLEN (E2BIG).
+  const expectedManifestPath = join(consumer, "expected-platform-migration-manifest.json");
+  writeFileSync(expectedManifestPath, canonical);
+  try {
+    for (const generation of ["qualified-v2", "qualified-admin"]) for (const mode of ["installer-managed", "operator-provisioned"]) {
+      const name = `openlup-packaged-migrations-${randomUUID()}`;
+      const docker = (args: string[]) => command("docker", args, root, isolatedConsumerEnv()).trim();
+      try {
+        docker(["run", ...disposableLabelArgs(), "--detach", "--rm", "--name", name, "--cpus=1", "--memory=512m", "--pids-limit=128", "--tmpfs", "/var/lib/postgresql/data", "--publish", "127.0.0.1::5432", "--env", "POSTGRES_HOST_AUTH_METHOD=trust", pinnedTestPostgresImage()]);
+        const port = docker(["port", name, "5432/tcp"]).split(":").at(-1)!;
+        const url = `postgresql://postgres@127.0.0.1:${port}/postgres`;
+        command(process.execPath, ["--import", import.meta.resolve("tsx"), "--input-type=module", "-e", `
+          import { waitForPostgresTcpReady } from ${JSON.stringify(pathToFileURL(join(root, "tests/helpers/postgresContainer.ts")).href)};
+          if (!await waitForPostgresTcpReady(process.argv[1])) throw new Error("Packaged migration PG16 unavailable");
+        `, url], root, isolatedConsumerEnv());
+        process.stdout.write(consumerNode(consumer, PLATFORM_MIGRATION_CONSUMER_PROOF, [url, generation, mode, expectedManifestPath]));
+      } finally { docker(["rm", "--force", "--volumes", name]); }
+    }
+  } finally { rmSync(expectedManifestPath, { force: true }); }
 }
 
 /** Setup uses the existing canonical runner; subjects resolve only from installed artifacts. */
