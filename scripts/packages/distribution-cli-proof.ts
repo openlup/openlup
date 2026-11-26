@@ -1,6 +1,6 @@
 /** Called by the existing cold consumer after installing its verified tarballs. */
 import assert from "node:assert/strict";
-import { execFileSync, fork, spawn, spawnSync, type ExecFileSyncOptionsWithStringEncoding } from "node:child_process";
+import { execFileSync, spawn, spawnSync, type ExecFileSyncOptionsWithStringEncoding } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { isIPv4 } from "node:net";
@@ -1417,6 +1417,85 @@ export function createVerificationInput() {
 }
 
 /** Installed adjacent-file upgrade on one occupied local demonstration. */
+const occupiedApplicationAudit = String.raw`
+// Runs separately from the occupied proof so synchronous Compose calls cannot block Docker events.
+import { spawn } from "node:child_process";
+import { createInterface } from "node:readline";
+
+const [docker, project, alternate, barrier] = process.argv.slice(1);
+const events = spawn(docker, ["events", "--since", new Date().toISOString(), "--filter", "event=create", "--filter", "event=start", "--filter", "event=die", "--filter", "event=destroy",
+  "--format", '{{.Type}} {{.Action}} {{index .Actor.Attributes "com.docker.compose.project"}} {{.Actor.ID}}'
+    + ' {{index .Actor.Attributes "com.docker.compose.service"}}'
+    + ' {{if index .Actor.Attributes "com.docker.compose.container-number"}}managed{{end}}'
+    + ' {{index .Actor.Attributes "com.openlup.proof.log-fixture"}}'],
+{ stdio: ["ignore", "pipe", "ignore"] });
+const inventory = new Map(), installers = new Set();
+let finishing = false;
+const report = result => {
+  // Keep captured bytes on the private IPC channel.
+  process.send(result, () => process.disconnect());
+};
+events.once("error", () => {
+  if (!finishing) report({ error: "application_event_stream" });
+});
+events.once("exit", () => {
+  if (!finishing) report({ error: "application_event_stream" });
+});
+events.once("spawn", () => process.send({ ready: true }));
+
+function follow(id) {
+  const client = spawn(docker, ["logs", "--follow", id], { stdio: ["ignore", "pipe", "pipe"] });
+  const stdout = [], stderr = [];
+  client.stdout.on("data", bytes => stdout.push(bytes));
+  client.stderr.on("data", bytes => stderr.push(bytes));
+  return new Promise(resolve => {
+    client.once("error", () => resolve({ ok: false }));
+    client.once("close", code => resolve({ ok: code === 0,
+      stdout: Buffer.concat(stdout).toString("utf8"), stderr: Buffer.concat(stderr).toString("utf8") }));
+  });
+}
+
+async function finish() {
+  finishing = true;
+  events.kill();
+  const logs = [];
+  const errors = new Set();
+  for (const [id, entry] of inventory) {
+    const streams = await Promise.all(entry.followers);
+    if (!entry.destroyed || entry.starts !== entry.exits || (!entry.starts && entry.fixture)
+      || streams.some(result => !result.ok)) errors.add("application_log_stream_incomplete");
+    logs.push({ id, fixture: entry.fixture, started: entry.starts > 0, streams: streams.flatMap(result => [result.stdout, result.stderr]) });
+  }
+  report({ logs, installerCount: installers.size, errors: [...errors] });
+}
+
+for await (const line of createInterface({ input: events.stdout })) {
+  const [type, action, name, id, service, managed, fixture] = line.split(" ");
+  if (type === "volume" && action === "create" && id === barrier) {
+    await finish();
+    break;
+  }
+  if (type !== "container" || (name !== project && name !== alternate)) continue;
+  if (service === "installation" && action === "create") installers.add(id);
+  if (!(service === "application" && managed === "managed") && !fixture) continue;
+  if (action === "create") inventory.set(id, { fixture, followers: [follow(id)], starts: 0, exits: 0, destroyed: false });
+  const entry = inventory.get(id);
+  if (!entry) {
+    finishing = true;
+    events.kill();
+    report({ error: "application_event_without_create" });
+    break;
+  }
+  if (action === "start") {
+    entry.starts++;
+    // Docker closes a follower opened before start. Follow again for each running interval.
+    entry.followers.push(follow(id));
+  }
+  if (action === "die") entry.exits++;
+  if (action === "destroy") entry.destroyed = true;
+}
+`;
+
 export async function proveStarterRuntimeUpgrade(from: string, to: string, port: number) {
   if (process.platform !== "linux" || port === 4319) throw new Error("starter_runtime_upgrade_requires_native_linux_and_free_port");
   const started = performance.now();
@@ -1485,16 +1564,18 @@ exec "${dockerBin}" "$@"
   const barrier = project + "-log-audit";
   type LogAudit = { error?: string; errors?: string[]; installerCount?: number;
     logs?: { id: string; fixture: string; started: boolean; streams: string[] }[] };
-  const audit = fork(new URL("./occupied-application-logs.mjs", import.meta.url),
-    [dockerBin, project, alternate, barrier], { cwd: from, env, execArgv: [], detached: true,
+  const audit = spawn(process.execPath, ["--input-type=module", "--eval", occupiedApplicationAudit, "--",
+    dockerBin, project, alternate, barrier], { cwd: from, env, detached: true,
       stdio: ["ignore", "ignore", "ignore", "ipc"] });
-  const ready = Promise.withResolvers<void>(), auditResult = Promise.withResolvers<LogAudit>();
+  let markReady!: () => void, reportAudit!: (result: LogAudit) => void;
+  const ready = new Promise<void>(resolve => { markReady = resolve; });
+  const auditResult = new Promise<LogAudit>(resolve => { reportAudit = resolve; });
   audit.on("message", (message: LogAudit & { ready?: boolean }) => {
-    if (message.ready) ready.resolve();
-    else auditResult.resolve(message);
+    if (message.ready) markReady();
+    else reportAudit(message);
   });
-  audit.once("exit", () => auditResult.resolve({ error: "application_log_audit_exit" }));
-  audit.once("error", () => auditResult.resolve({ error: "application_log_audit_launch" }));
+  audit.once("exit", () => reportAudit({ error: "application_log_audit_exit" }));
+  audit.once("error", () => reportAudit({ error: "application_log_audit_launch" }));
   const fixtureLabel = "com.openlup.proof.log-fixture";
   function cleanupProjects() {
     cleanupAttempted = true;
@@ -1510,7 +1591,7 @@ exec "${dockerBin}" "$@"
     // The daemon sends the barrier after the teardown events, including any transient containers.
     try {
       checked("log_audit_barrier", runRaw(from, dockerBin, ["volume", "create", barrier]));
-      const result = await Promise.race([auditResult.promise, new Promise<LogAudit>(resolve => {
+      const result = await Promise.race([auditResult, new Promise<LogAudit>(resolve => {
         setTimeout(() => resolve({ error: "application_log_audit_timeout" }), 30_000).unref();
       })]);
       for (const finding of [result.error, ...result.errors ?? []])
@@ -1674,7 +1755,7 @@ exec "${dockerBin}" "$@"
     return { records, receipt, matches };
   }
   try {
-    await Promise.race([ready.promise, auditResult.promise.then(() => fail("application_log_audit_startup"))]);
+    await Promise.race([ready, auditResult.then(() => fail("application_log_audit_startup"))]);
     const predecessor: string = JSON.parse(readFileSync(join(from, ".starter-origin.json"), "utf8")).sourceRevision;
     if (!/^[a-f0-9]{40}$/u.test(predecessor)) fail("predecessor_identity");
     const old = starterUpgradeSnapshot(from, "1.0.0"), next = starterUpgradeSnapshot(to, "1.0.1");
