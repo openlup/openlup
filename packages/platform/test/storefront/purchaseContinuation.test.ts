@@ -73,7 +73,7 @@ function server() {
     submits: [] as ({ answer: Answer; store?: boolean } | { lose: Failure; answer: Answer } | { fail: Error })[],
     replays: [] as Failure[],
     reads: [] as (Answer | Error | Promise<Answer>)[],
-    abandons: [] as (StatusReading | Error)[],
+    abandons: [] as (StatusReading | Error | Promise<StatusReading>)[],
   };
 }
 type Server = ReturnType<typeof server>;
@@ -727,6 +727,49 @@ describe("W23 a stale answer keeps another purchase's pending-action marker", ()
     holder.value = markerOfNew;
     read.resolve(late);
     await resuming;
+    expect(store.record).toBe(replaced);
+    expect(holder.value).toBe(markerOfNew);
+    expect(first.count("marker.clear")).toBe(0);
+  });
+});
+
+describe("W23 a late answer to one instance keeps another purchase's marker", () => {
+  const markerOfNew: PendingAction = { actionKind: "none", phase: "action_issued" };
+  const twoInstances = (marker: PendingAction | null) => {
+    const store = shelf(storedRecord("cid-w23-earlier")), srv = server();
+    const holder = { value: marker };
+    return { store, srv, holder, first: world({ shelf: store, server: srv, marker: holder }), second: world({ shelf: store, server: srv, marker: holder }) };
+  };
+
+  it("a terminal abandon of the earlier purchase", async () => {
+    const { store, srv, holder, first, second } = twoInstances(null);
+    const abandon = deferred<StatusReading>();
+    srv.abandons.push(abandon.promise, { kind: "terminal" });
+    const startingOver = first.c.startOver();
+    await second.c.startOver();
+    expect((await second.c.submit({ payload: B })).snapshot.status).toBe("awaiting_payment");
+    const replaced = store.record;
+    holder.value = markerOfNew;
+    abandon.resolve({ kind: "terminal" });
+    await startingOver;
+    expect(store.record).toBe(replaced);
+    expect(holder.value).toBe(markerOfNew);
+    expect(first.count("marker.clear")).toBe(0);
+  });
+
+  it("a discard decision of the pending-action check for the earlier purchase", async () => {
+    const { store, srv, holder, first, second } = twoInstances({ actionKind: "none", phase: "action_issued" });
+    const read = deferred<Answer>();
+    srv.reads.push(read.promise);
+    const beginning = first.c.begin();
+    srv.abandons.push({ kind: "terminal" });
+    await second.c.startOver();
+    expect(holder.value).toBeNull();
+    expect((await second.c.submit({ payload: B })).snapshot.status).toBe("awaiting_payment");
+    const replaced = store.record;
+    holder.value = markerOfNew;
+    read.resolve(answer("awaiting_authority", { reading: { kind: "terminal" } }));
+    expect((await beginning).snapshot.resumeDecision).toBe("discard");
     expect(store.record).toBe(replaced);
     expect(holder.value).toBe(markerOfNew);
     expect(first.count("marker.clear")).toBe(0);
