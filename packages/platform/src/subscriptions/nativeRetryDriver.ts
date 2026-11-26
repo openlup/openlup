@@ -36,30 +36,14 @@ export function canonicalUuid(value: unknown): string | null {
   return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)].join("-");
 }
 
-const actionableNativeFailure = `o.state='waiting' AND latest.attempt_sequence=o.attempt_sequence
-  AND (latest.result->>'retry_attempt')::integer=o.retry_attempt
-  AND NOT (latest.input ? 'paymentAttemptId')
-  AND ((o.case_id IS NULL AND NOT EXISTS (
-    SELECT 1 FROM public.subscription_dunning_cases conflict
-    WHERE conflict.cycle_id=o.cycle_id OR conflict.idempotency_key=o.identity_key||':retry-case'
-  )) OR (c.status='open' AND c.subscription_id=o.subscription_id AND c.cycle_id=o.cycle_id
-    AND c.retry_attempt<o.retry_attempt))`;
-
 export function createNativeRetryDriver(options: NativeRetryDriverOptions) {
   const store = createPostgresRetryStore(options.executor, options.retryCadence);
-  async function propagateFailure(operationId: string, key: string, input: NativeRetryFailure, held = false) {
+  async function propagateFailure(operationId: string, key: string, input: NativeRetryFailure) {
     return options.withTransaction(async db => {
       // Serialize with SQL's subscription -> operation order. The receipt/case
       // observation and optional propagation are one transaction.
       await db.query(`SELECT id FROM public.subscriptions WHERE id=(SELECT subscription_id
         FROM public.subscription_renewal_operations WHERE id=$1::uuid) FOR UPDATE`, [operationId]);
-      if (held && !(await db.query(`SELECT 1 FROM public.subscription_retry_obligations o
-        JOIN public.subscription_retry_receipts latest ON latest.obligation_id=o.id
-          AND latest.kind='failure' AND latest.receipt_key=$2
-        LEFT JOIN public.subscription_dunning_cases c ON c.id=o.case_id
-        WHERE o.renewal_operation_id=$1::uuid AND ${actionableNativeFailure}`, [operationId, key])).rows.length) {
-        throw new Error("subscription_retry_failure_no_longer_actionable");
-      }
       const retry = createPostgresRetryStore(db, options.retryCadence);
       const recorded = (await db.query(`SELECT r.receipt_key,r.input,
         public.payment_provider_retry_failure_recorded(o.settlement_intent_id,r.receipt_key,
@@ -84,11 +68,12 @@ export function createNativeRetryDriver(options: NativeRetryDriverOptions) {
     });
   }
   async function run(now: string, limit: number) {
-    // Filter settled and held rows before limiting so due retries can make progress.
+    // Filter settled rows BEFORE limiting; they cannot starve unpaid obligations.
     // Prepared attempts and interrupted failure propagation are reconciliation work.
-    const rows = (await options.executor.query(`SELECT o.*,op.cycle_snapshot,op.claimed_before_rnw_1 AS renewal_held,
+    const rows = (await options.executor.query(`SELECT o.*,op.cycle_snapshot,
       latest.receipt_key AS failure_key,latest.input AS failure_input,
-      propagation.pending AS failure_propagation_pending,
+      (latest.receipt_key IS NOT NULL
+        AND (c.id IS NULL OR COALESCE(c.retry_attempt<(latest.result->>'retry_attempt')::integer,true))) AS failure_propagation_pending,
       prep.receipt_key AS prepare_key,prep.result AS preparation
       FROM public.subscription_retry_obligations o
       JOIN public.subscriptions s ON s.id=o.subscription_id AND s.status='active'
@@ -96,35 +81,23 @@ export function createNativeRetryDriver(options: NativeRetryDriverOptions) {
       JOIN public.subscription_cycles cycle ON cycle.id=o.cycle_id AND cycle.status='payment_pending'
       JOIN public.commerce_settlement_intents intent ON intent.id=o.settlement_intent_id AND intent.status<>'settled'
       LEFT JOIN public.subscription_dunning_cases c ON c.id=o.case_id
-      LEFT JOIN LATERAL (SELECT receipt_key,input,result,attempt_sequence FROM public.subscription_retry_receipts r
+      LEFT JOIN LATERAL (SELECT receipt_key,input,result FROM public.subscription_retry_receipts r
         WHERE r.obligation_id=o.id AND r.kind='failure' ORDER BY r.attempt_sequence DESC LIMIT 1) latest ON true
       LEFT JOIN public.subscription_retry_receipts prep ON prep.obligation_id=o.id
         AND prep.kind='prepare' AND prep.attempt_sequence=o.attempt_sequence
-      CROSS JOIN LATERAL (SELECT latest.receipt_key IS NOT NULL
-        AND (c.id IS NULL OR COALESCE(c.retry_attempt<(latest.result->>'retry_attempt')::integer,true)) AS pending) propagation
       WHERE o.state<>'recovered' AND (o.renewal_quarantined_until IS NULL OR o.renewal_quarantined_until<=$1::timestamptz)
         AND (o.state='prepared' OR o.next_retry_at<=$1::timestamptz
         OR c.id IS NULL OR c.retry_attempt<(latest.result->>'retry_attempt')::integer)
-        AND (NOT op.claimed_before_rnw_1
-          OR (o.state='prepared' AND prep.id IS NOT NULL
-            AND public.subscription_retry_prepared_payment_attempt(o.id,o.attempt_sequence) IS NOT NULL)
-          OR (${actionableNativeFailure}))
       ORDER BY o.next_retry_at NULLS FIRST,o.id LIMIT $2::integer`, [now, limit])).rows;
     const results: { operationId: string; status: string }[] = [];
     for (const raw of rows) {
       const operationId = String(raw.renewal_operation_id);
       try {
-        const held = raw.renewal_held === true;
-        if (held && raw.state === "waiting") {
-          await propagateFailure(operationId, String(raw.failure_key), raw.failure_input as NativeRetryFailure, true);
-          continue;
-        }
-        if (!held && raw.failure_propagation_pending !== false && raw.failure_key && raw.failure_input) {
+        if (raw.failure_propagation_pending !== false && raw.failure_key && raw.failure_input) {
           await propagateFailure(operationId, String(raw.failure_key), raw.failure_input as NativeRetryFailure);
         }
         const row = await store.read(operationId);
         if (!row || row.state === "recovered") continue;
-        if (held && (row.state !== "prepared" || row.externalAttemptSequence !== Number(raw.attempt_sequence))) continue;
         const snapshot = options.decode(raw.cycle_snapshot as Record<string, unknown>);
         if (snapshot.cycle.status !== "correlated" || snapshot.cycle.logicalCycleNumber !== row.logicalCycleNumber
           || snapshot.cycle.nativeRenewalCounter !== row.nativeRenewalCounter) throw new Error("subscription_renewal_cycle_correlation_required");
@@ -197,6 +170,5 @@ export function createNativeRetryDriver(options: NativeRetryDriverOptions) {
     }
     return results;
   }
-  return { run, propagateFailure: (operationId: string, key: string, input: NativeRetryFailure) =>
-    propagateFailure(operationId, key, input) };
+  return { run, propagateFailure };
 }

@@ -7,7 +7,6 @@ import { readFileSync } from "node:fs";
 import { DatabaseError, Pool } from "pg";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { closePostgres, postgresSetupTimeoutMs, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
-import { preHoldRetryExecutor } from "../helpers/subscriptionJob.fixture.js";
 import { beforeEach, expect, it, vi } from "vitest";
 import { allPublicRows } from "./subscriptionStockWaitCases.js";
 import { api, active, purchase, admin, at, composition, payments, destinations, inventory, captureStore, withRestoredStore, days, deps, executor, facts, fulfillment, later, now, retire, requireIsolatedRenewalContainer, restartDatabase, freshRetryReadback, normalRenewalWorkerPopulation, rpc, runtime, settlement, stock, transaction, withNormalRenewalWorker, loginConnection, runtimeLogin, runtimeUrl, withOccupiedRenewalPrefix, expectFrozenGenerationShape, frozenGenerationSignature, frozenGenerationSql, generationForward } from "./subscriptionPublicRenewalFixture.js";
@@ -141,15 +140,16 @@ it("rebuilds one stale mounted renewal at the accepted amount on the next tick",
 }, 30_000);
 
 async function renewalPurchase(retained = false, target = { db: runtime, connectionString: runtimeUrl }, paidAt = at,
-  providerBacked = false) {
+  providerBacked: boolean | string = false) {
   const f = await purchase(true, true, paidAt, target);
   let renewalFacts = facts;
   if (providerBacked) {
+    const provider = typeof providerBacked === "string" ? providerBacked : webhookProvider;
     const methodRef = `pm_${f.clientId}`, payerAccountRef = `cus_${f.clientId}`;
     const method = await payments.createPostgresPaymentMethodStore(target.db).upsert({ key: `method:${f.clientId}`,
-      clientId: f.clientId, subscriptionId: null, provider: webhookProvider, methodKind: "card", customer: payerAccountRef,
+      clientId: f.clientId, subscriptionId: null, provider, methodKind: "card", customer: payerAccountRef,
       reference: methodRef, mandate: null, status: "active", active: true, expiresAt: null, consent: {}, payload: {} });
-    renewalFacts = { ...facts, settlementChannelKey: webhookProvider, payerAccountRef, methodRef, methodEvidenceRef: method.id };
+    renewalFacts = { ...facts, settlementChannelKey: provider, payerAccountRef, methodRef, methodEvidenceRef: method.id };
   }
   const activation = await api.activateNativePurchaseWithRenewal(target.db, { ...f, facts: {
     ...renewalFacts, ...(retained ? { renewalTerms: { version: "native.renewal-terms.v1" as const, minimumPayableMinor: 1 } } : {}),
@@ -269,7 +269,7 @@ it("prepares a post-forward claim at its frozen amount after an accepted edit", 
   await resizeForRenewal(f);
   expect((await runtime.query("SELECT claimed_before_rnw_1 FROM public.subscription_renewal_operations WHERE id=$1",
     [claim.operationId])).rows).toEqual([{ claimed_before_rnw_1: false }]);
-  expect((await renewalUpgradeReport(runtime)).some(row => row.operation_id === claim.operationId)).toBe(false);
+  expect((await renewalUpgradeReport(admin)).some(row => row.operation_id === claim.operationId)).toBe(false);
 
   const result = await api.runOneAutomaticSubscriptionRenewal(d.input, d.due, days(now, 1 / 1440));
   expect(result).toMatchObject({ status: "succeeded", operationId: claim.operationId });
@@ -472,6 +472,53 @@ it.each([
   expect(await renewalAmounts(runtime, shiftedOperation.orderId!)).toEqual([{ order: 300, intent: 300 }]);
   await noOldOccurrence();
   expect(await job.run()).toMatchObject({ renewals: [] });
+  expect(d.execute.mock.calls.map(([charge]) => charge.amountMinor)).toEqual([300]);
+}, 30_000);
+
+it("aligns a verified final replacement after a stale claim with only shadow evidence", async () => {
+  const f = await renewalPurchase(), d = await deps(f.subscriptionId, "succeeded");
+  const held = await d.input.store.buildCycleSnapshots(d.due);
+  const original = await parcel(f.orderId);
+  await admin.query("SELECT public.subscription_delivery_alignment_set_mode('shadow')");
+  const spine = fulfillment.createPostgresFulfillmentShipmentSpinePort(executor, { portKey: "g7-parcels" });
+  await spine.raiseException({ idempotencyKey: `exception:${original}`, shipmentId: original, reason: "provider_rejected" });
+  const replacement = randomUUID();
+  await admin.query(`INSERT INTO public.fulfillment_shipments(id,order_id,port_key,provider_type,create_idempotency_key,
+    sequence_no,replaces_shipment_id,replacement_reason) VALUES($1,$2,'g7-parcels','3pl',$3,1,$4,'lost')`,
+  [replacement, f.orderId, `replacement:${replacement}`, original]);
+
+  await resizeForRenewal(f);
+  await admin.query("SELECT public.subscription_delivery_alignment_set_mode('auto_align')");
+  let clock = now;
+  const runner = binding(d, () => clock);
+  const stale = await bindRenewalDestination(d, held);
+  await expect(runtime.query(rawClaim, claimWire(d, stale))).rejects.toMatchObject(staleClaim);
+  const due = async () => (await runtime.query("SELECT next_cycle_at FROM public.subscriptions WHERE id=$1",
+    [f.subscriptionId])).rows[0].next_cycle_at.toISOString();
+  const cases = async () => (await runtime.query("SELECT id,state,captured_mode FROM public.subscription_delivery_alignment_cases WHERE subscription_id=$1",
+    [f.subscriptionId])).rows;
+  const shadow = await cases();
+  expect(shadow).toEqual([{ id: expect.any(String), state: "shadow", captured_mode: "shadow" }]);
+  const arrival = fulfillment.createPostgresDeliveryAlignmentPort(executor), deliveredAt = days(d.due.scheduledAt, 7);
+  const input = (parcelRef: string, deliveredAt: string) =>
+    ({ requestKey: `arrival:${parcelRef}`, parcelRef, deliveredAt, evidenceRef: `evidence:${parcelRef}` as const });
+  await arrival.recordArrival(input(original, days(deliveredAt, -1)));
+  expect(await due()).toBe(held.scheduledAt);
+  expect(await cases()).toEqual(shadow);
+  expect((await runtime.query("SELECT delivered_at FROM public.fulfillment_shipments WHERE id=$1", [replacement])).rows)
+    .toEqual([{ delivered_at: null }]);
+
+  const verified = input(replacement, deliveredAt), shifted = days(deliveredAt, 28);
+  await arrival.recordArrival(verified);
+  expect(await due()).toBe(shifted);
+  expect(await cases()).toEqual([{ id: shadow[0].id, state: "aligned", captured_mode: "auto_align" }]);
+  expect(await arrival.recordArrival(verified)).toMatchObject({ replayed: true });
+  expect(await due()).toBe(shifted);
+  clock = days(shifted, -1);
+  expect(await runner.services.run()).toMatchObject({ renewals: [] });
+  expect(d.execute).not.toHaveBeenCalled();
+  clock = shifted;
+  expect(await runner.services.run()).toMatchObject({ renewals: [{ status: "succeeded" }] });
   expect(d.execute.mock.calls.map(([charge]) => charge.amountMinor)).toEqual([300]);
 }, 30_000);
 
@@ -1405,30 +1452,25 @@ const rawReadback = "SELECT public.subscription_read_renewal($1::text)::text AS 
 
 const renewalTemplateForward = /_subscription_renewal_current_template\.sql$/u;
 const staleSnapshotSignature = "subscription_renewal_snapshot_is_stale(integer,jsonb,integer)";
-const stalePreparation = {
-  ...staleClaim, hint: "Reconcile the stored renewal operation before resuming it. See the renewal upgrade report.",
-};
-const invalidOccurrence = { code: "22023", message: "commerce_renewal_occurrence_not_current",
-  detail: "/scheduledAt", hint: "Re-read the subscription and use its current eligible renewal occurrence." };
 type UpgradeTarget = Parameters<Parameters<typeof withOccupiedRenewalPrefix>[0]>[0];
 const withTemplateUpgrade = (work: (target: UpgradeTarget) => Promise<void>) =>
   withOccupiedRenewalPrefix(work, file => renewalTemplateForward.test(file));
 const upgradeTransaction = (db: Pool): typeof transaction => work => transaction(work, db);
 
 function predecessorRetryTarget(db: Pool) {
-  return { executor: preHoldRetryExecutor(db), transaction: upgradeTransaction(db) };
+  return { executor: db, transaction: upgradeTransaction(db) };
 }
 
 async function upgradeRenewal(target: UpgradeTarget, options: {
-  retained?: boolean; scenario?: "succeeded" | "declined" | "ambiguous"; edited?: boolean; variantId?: string;
-  paidAt?: string; claimAt?: string; providerBacked?: boolean;
+  retained?: boolean; scenario?: "succeeded" | "declined" | "ambiguous"; edited?: boolean;
+  paidAt?: string; claimAt?: string; providerBacked?: boolean | string;
 } = {}) {
   const claimAt = options.claimAt ?? now;
   const f = await renewalPurchase(options.retained, target, options.paidAt, options.providerBacked);
   const d = await deps(f.subscriptionId, options.scenario ?? "succeeded", claimAt, target.db);
   const held = await d.input.store.buildCycleSnapshots(d.due);
   const snapshot = await bindRenewalDestination(d, held, target.db);
-  if (options.edited !== false) await resizeForRenewal(f, upgradeTransaction(target.db), options.variantId);
+  if (options.edited !== false) await resizeForRenewal(f, upgradeTransaction(target.db));
   const claim = () => api.createPostgresRenewalStore(target.db, d.codec)
     .claimDue({ snapshot, workerId: "before-upgrade", now: claimAt });
   return { f, d, held, snapshot, claim };
@@ -1454,29 +1496,38 @@ it("bills a fresh pre-forward claim exactly once at its frozen price after a lat
     expect(await renewalAmounts(db, bill.orderId!)).toEqual([{ order: 200, intent: 200 }]);
     expect((await db.query("SELECT claimed_before_rnw_1 FROM public.subscription_renewal_operations WHERE id=$1",
       [operation.operationId])).rows).toEqual([{ claimed_before_rnw_1: false }]);
-    expect(await renewalUpgradeReport(db)).toEqual([]);
+    expect(await renewalUpgradeReport(target.owner)).toEqual([]);
+    const next = (await d.input.store.listDue(100, days(later, 30))).find(row => row.subscriptionId === f.subscriptionId)!;
+    expect(await d.input.store.buildCycleSnapshots(next)).toMatchObject({
+      templateSnapshot: { version: 2 }, pricingSnapshot: { totalAmountMinor: 300 },
+    });
   });
 }, postgresSetupTimeoutMs);
 
-function runHeldRenewal(entry: Awaited<ReturnType<typeof upgradeRenewal>>, when = now) {
+function runPreForwardRenewal(entry: Awaited<ReturnType<typeof upgradeRenewal>>, when = now) {
   const { d, snapshot, claim } = entry;
   return api.runOneAutomaticSubscriptionRenewal({ ...d.input, store: {
     ...d.input.store, buildCycleSnapshots: async () => snapshot, claimDue: claim,
   } }, d.due, when);
 }
 
-it("leaves a terminal pre-forward operation unmarked even when its stored version is stale", async () => {
+it("captures stale terminal history but excludes its settled graph from the report", async () => {
   await withTemplateUpgrade(async target => {
     const { db, applyForward } = target, entry = await upgradeRenewal(target);
-    const settled = await runHeldRenewal(entry);
-    expect(settled.status).toBe("succeeded");
+    vi.spyOn(entry.d.codec, "freeze").mockReturnValueOnce(entry.held);
+    const retry = retryDriver(entry.d, "ambiguous", now, undefined, predecessorRetryTarget(db));
+    const mounted = binding(entry.d, () => now, upgradeTransaction(db), db, retry.options);
+    expect(await mounted.services.run()).toMatchObject({ renewals: [{ subscriptionId: entry.f.subscriptionId, status: "succeeded" }] });
+    const settled = (await entry.d.input.store.readRenewal(entry.d.codec.identity(entry.held)))!;
+    expect(entry.d.execute.mock.calls.map(([request]) => request.amountMinor)).toEqual([200]);
+    expect(await renewalAmounts(db, settled.orderId!)).toEqual([{ order: 200, intent: 200 }]);
     await applyForward();
     expect((await db.query(`SELECT state,claimed_before_rnw_1,
       public.subscription_renewal_snapshot_is_stale(s.template_version, o.cycle_snapshot, NULL) AS stale
       FROM public.subscription_renewal_operations o JOIN public.subscriptions s ON s.id=o.subscription_id
       WHERE o.id=$1`, [settled.operationId])).rows)
-      .toEqual([{ state: "succeeded", claimed_before_rnw_1: false, stale: true }]);
-    expect(await renewalUpgradeReport(db)).toEqual([]);
+      .toEqual([{ state: "succeeded", claimed_before_rnw_1: true, stale: true }]);
+    expect(await renewalUpgradeReport(target.owner)).toEqual([]);
   });
 }, postgresSetupTimeoutMs);
 
@@ -1522,236 +1573,207 @@ async function renewalUpgradeReport(db: Pool, hooks: { beforeCut?: () => Promise
   }
 }
 
-it.each(["cancelled", "superseded"] as const)("excludes %s captured stock waits from the backfill and report", async terminal => {
+async function prepareIncumbent(entry: Awaited<ReturnType<typeof upgradeRenewal>>) {
+  const op = await entry.claim();
+  await reserveIncumbent(entry.d, op);
+  const prepared = await entry.d.input.settlement.prepareRenewal({ operationId: op.operationId, claimToken: op.claimToken, now });
+  return { ...entry, op, prepared };
+}
+
+async function refuseUnprepared(entry: Awaited<ReturnType<typeof upgradeRenewal>>, op: RenewalReadback, occurredAt = now) {
+  await entry.d.input.store.refuseBeforePayment({ operationId: op.operationId, claimToken: op.claimToken,
+    occurredAt, reason: "upgrade_reconciled" });
+}
+
+async function closeOrder({ db, owner }: UpgradeTarget, orderId: string) {
+  const actorUserId = randomUUID();
+  await owner.query("INSERT INTO public.commerce_operators(id,label) VALUES($1,'Synthetic operator')", [actorUserId]);
+  await createPostgresCommerceOmsPort(db).cancelOrder({ idempotencyKey: `upgrade-close:${orderId}`,
+    orderId, reason: "upgrade reconciliation", actorUserId });
+}
+
+async function closeUnsent(entry: Awaited<ReturnType<typeof prepareIncumbent>>, target: UpgradeTarget) {
+  await entry.d.input.settlement.recordTerminalOutcome({ operationId: entry.op.operationId,
+    operationFingerprint: entry.op.operationFingerprint, eventKey: `upgrade-refusal:${entry.op.operationId}`,
+    occurredAt: later, outcome: "refused", externalRef: null, reason: "upgrade_reconciled" });
+  await closeOrder(target, entry.prepared.orderId);
+}
+
+const reportRow = (operation_id: string, reasons: string[], facts: object = {}) =>
+  expect.objectContaining({ operation_id, reasons: expect.arrayContaining(reasons), ...facts });
+
+it("lists the claimed, reserved, and unknown legacy cohort until reconciled", async () => {
   await withTemplateUpgrade(async target => {
     const { owner, db, applyForward } = target, transact = upgradeTransaction(db);
-    const before = await upgradeRenewal(target), after = await upgradeRenewal(target);
-    const terminalOp = await before.claim(), liveOp = await after.claim();
-    const operations = [terminalOp, liveOp];
-    await stock(0, randomUUID(), db);
-    const store = api.createPostgresStockWaitStore({ executor: db, withTransaction: transact,
-      codec: before.d.codec, workerId: "before-upgrade" });
-    for (const { operationId, claimToken, cycleSnapshot: snapshot } of operations) {
-      expect(await store.admit({ operationId, claimToken, snapshot, now })).toMatchObject({ waiting: true });
-    }
-    await stock(1000, randomUUID(), db);
-    const recovered = new Map<string, string>();
-    for (const op of operations) {
-      const response = await rpc<{ state: string; claimToken: string }>("subscription_stock_wait_recover_refusal",
-        [op.operationId, op.operationFingerprint, "before-upgrade", later], db);
-      expect(response).toMatchObject({ state: "reserved", claimToken: expect.any(String) });
-      recovered.set(op.operationId, response.claimToken);
-    }
-    const waitState = "stock_secured";
-    const endWait = async ({ f }: typeof before) => {
-      if (terminal === "cancelled") {
-        await rpc("subscription_apply_lifecycle_action", [f.clientId, `cancel:${f.subscriptionId}`, f.subscriptionId, "cancel", "{}", later], db);
-      } else {
-        await owner.query("UPDATE public.subscriptions SET next_cycle_at=$2 WHERE id=$1", [f.subscriptionId, days(later, 1)]);
-      }
-    };
-    const savedWait = async (id: string) => (await db.query(`SELECT w.state,o.claimed_before_rnw_1
-      FROM public.subscription_stock_wait_cases w JOIN public.subscription_renewal_operations o ON o.id=w.renewal_operation_id
-      WHERE o.id=$1`, [id])).rows;
+    const ordinary = await upgradeRenewal(target), reserved = await upgradeRenewal(target, { retained: true });
+    const claim = await ordinary.claim(), reservation = await reserved.claim();
+    await reserveIncumbent(reserved.d, reservation);
+    const legacy = await upgradeRenewal(target, { edited: false });
+    const old = await createPostgresAutomaticRenewalPort(db).buildCycleSnapshots(legacy.d.due);
+    const wire = [automaticRenewalIdentity(old.subscriptionId, old.scheduledAt), automaticRenewalFingerprint(old), old];
+    const legacyId = JSON.parse((await db.query(rawClaim, [...wire, now])).rows[0].result).operationId;
+    await resizeForRenewal(legacy.f, transact);
 
-    await endWait(before);
-    if (terminal === "cancelled") {
-      await rpc("subscription_apply_lifecycle_action", [after.f.clientId, `pause:${after.f.subscriptionId}`, after.f.subscriptionId, "pause", "{}", later], db);
-    }
+    const signatures = [
+      "commerce_prepare_subscription_renewal(uuid,uuid,timestamptz)",
+      "subscription_retry_prepare(uuid,text,jsonb,timestamptz)",
+      "payment_provider_attempt_prepare(text,uuid,text,text,text,text,text,jsonb)",
+      "payment_simulator_begin_attempt(text,uuid,text,jsonb,timestamptz)",
+      "commerce_acknowledge_subscription_renewal_attempt(uuid,text,text,timestamptz)",
+    ];
+    const owners = async () => (await owner.query(`SELECT name, pg_get_functiondef(('public.'||name)::regprocedure) AS definition,
+      proacl, proowner FROM unnest($1::text[]) AS name JOIN pg_proc
+      ON pg_proc.oid = ('public.'||name)::regprocedure ORDER BY name`, [signatures])).rows;
+    const predecessor = await owners();
+    expect(predecessor).toHaveLength(signatures.length);
+    const bytes = await frozenOperation(db, claim.operationId);
     await applyForward();
-    expect(await savedWait(terminalOp.operationId)).toEqual([{ state: waitState, claimed_before_rnw_1: false }]);
-    expect(await savedWait(liveOp.operationId)).toEqual([{ state: waitState, claimed_before_rnw_1: true }]);
-    expect(await renewalUpgradeReport(db)).toMatchObject([{ operation_id: liveOp.operationId, stock_wait_state: waitState }]);
-
-    const token = recovered.get(terminalOp.operationId)!;
-    expect((await db.query(`SELECT o.claim_token=$2 AS token, o.lease_expires_at>$3 AS leased,
-      r.status, r.expires_at>$3 AS live, r.operation_fingerprint=o.operation_fingerprint AS bound
-      FROM public.subscription_renewal_operations o JOIN public.fulfillment_inventory_reservations r
-        ON r.renewal_operation_id=o.id WHERE o.id=$1`, [terminalOp.operationId, token, later])).rows)
-      .toEqual([{ token: true, leased: true, status: "held", live: true, bound: true }]);
-    const unchanged = await allPublicRows(owner);
-    const request = { operationId: terminalOp.operationId, claimToken: token, now: later };
-    await expect(before.d.input.settlement.prepareRenewal(request)).rejects.toMatchObject(invalidOccurrence);
-    await expect(db.query(rawPrepare, [request.operationId, token, later])).rejects.toMatchObject(invalidOccurrence);
-    expect(await allPublicRows(owner)).toEqual(unchanged);
-    expect(before.d.execute).not.toHaveBeenCalled();
-
-    // Leave the previously marked case intact so the report has to check liveness itself.
-    await endWait(after);
-    expect(await savedWait(liveOp.operationId)).toEqual([{ state: waitState, claimed_before_rnw_1: true }]);
-    expect(await renewalUpgradeReport(db)).toEqual([]);
-    await rpc("subscription_stock_wait_candidates", [20, days(later, 1)], db);
-    expect(await savedWait(liveOp.operationId)).toEqual([{ state: "closed", claimed_before_rnw_1: true }]);
-    expect(await renewalUpgradeReport(db)).toEqual([]);
-  });
-}, postgresSetupTimeoutMs);
-
-it("requires a current active first occurrence and preserves exact prepared replay", async () => {
-  await withTemplateUpgrade(async target => {
-    const { owner, db, applyForward } = target;
-    async function reserved() {
-      const entry = await upgradeRenewal(target), op = await entry.claim();
-      await reserveIncumbent(entry.d, op);
-      return { ...entry, op, args: [op.operationId, op.claimToken, now] };
+    expect(await owners()).toEqual(predecessor);
+    for (const signature of [staleSnapshotSignature, "subscription_renewal_snapshot_is_billing(jsonb,boolean)"]) {
+      expect(await generationAcl(owner, signature)).toEqual([{ owner: "postgres", definer: false, volatility: "s",
+        config: ["search_path=pg_catalog, pg_temp"], acl: [["postgres", "EXECUTE", false], ["service_role", "EXECUTE", false]] }]);
     }
-    const before = await reserved(), moved = await reserved(), missing = await reserved();
-    const paused = await reserved(), prepared = await reserved(), expired = await reserved();
-    const move = (entry: typeof moved, due: string | null) => owner.query(
-      "UPDATE public.subscriptions SET next_cycle_at=$2 WHERE id=$1", [entry.f.subscriptionId, due]);
-    await move(before, days(now, 1));
-    const original = await db.query(rawPrepare, prepared.args);
-    await applyForward();
-    expect((await renewalUpgradeReport(db)).map(row => row.operation_id).sort()).toEqual(
-      [moved, missing, paused, prepared, expired].map(entry => entry.op.operationId).sort());
-    await move(moved, days(now, 1));
-    await move(missing, null);
-    await move(prepared, days(now, 1));
-    await move(expired, days(now, 1));
-    await owner.query(`UPDATE public.fulfillment_inventory_reservations
-      SET status='expired', expires_at=NULL, terminal_reason='reservation_expired' WHERE renewal_operation_id=$1`,
-    [expired.op.operationId]);
-    await rpc("subscription_apply_lifecycle_action", [paused.f.clientId, randomUUID(), paused.f.subscriptionId, "pause", "{}", now], db);
-    expect((await db.query(`SELECT id, claimed_before_rnw_1 AS held FROM public.subscription_renewal_operations
-      WHERE id=ANY($1::uuid[])`, [[before, moved, missing, paused].map(entry => entry.op.operationId)])).rows)
-      .toEqual(expect.arrayContaining([before, moved, missing, paused].map(entry =>
-        ({ id: entry.op.operationId, held: entry !== before }))));
-    expect((await renewalUpgradeReport(db)).map(row => row.operation_id).sort())
-      .toEqual([paused.op.operationId, prepared.op.operationId].sort());
-    const snapshot = await allPublicRows(owner);
-    for (const entry of [before, moved, missing, paused]) {
-      await expect(db.query(rawPrepare, entry.args)).rejects.toMatchObject(invalidOccurrence);
-    }
-    await expect(db.query(rawPrepare, [moved.op.operationId, randomUUID(), now])).rejects
-      .toMatchObject({ code: "40001", message: "commerce_renewal_stale_claim" });
-    await expect(db.query(rawPrepare, expired.args)).rejects
-      .toMatchObject({ code: "22023", message: "commerce_renewal_active_reservation_required" });
-    const replay = await db.query(rawPrepare, prepared.args);
-    expect(JSON.parse(replay.rows[0].result)).toEqual({ ...JSON.parse(original.rows[0].result), replayed: true });
-    expect(await allPublicRows(owner)).toEqual(snapshot);
-  });
-}, postgresSetupTimeoutMs);
-
-it("upgrades occupied renewal roots, refuses stale preparation without writes, and rebuilds held offers", async () => {
-  await withTemplateUpgrade(async target => {
-    const { owner, db, applyForward } = target, transact = upgradeTransaction(db);
-    const baseline = await upgradeRenewal(target);
-    vi.spyOn(baseline.d.codec, "freeze").mockReturnValueOnce(baseline.held);
-    const predecessor = retryDriver(baseline.d, "ambiguous", now, undefined, predecessorRetryTarget(db));
-    const beforeJob = binding(baseline.d, () => now, transact, db, predecessor.options).contributions[0].schedules![0]!;
-    expect(await beforeJob.run()).toMatchObject({ renewals: [{ subscriptionId: baseline.f.subscriptionId, status: "succeeded" }] });
-    const old = (await baseline.d.input.store.readRenewal(baseline.d.codec.identity(baseline.held)))!;
-    expect(await renewalAmounts(db, old.orderId!)).toEqual([{ order: 200, intent: 200 }]);
-    expect(baseline.d.execute.mock.calls.map(([charge]) => charge.amountMinor)).toEqual([200]);
-
-    const claimed = await upgradeRenewal(target, { retained: true });
-    const c = await claimed.claim();
-    const reserved = await upgradeRenewal(target);
-    const r = await reserved.claim();
-    await reserveIncumbent(reserved.d, r);
-    const ready = await upgradeRenewal(target, { retained: true });
-    const p = await ready.claim();
-    await reserveIncumbent(ready.d, p);
-    await db.query(rawPrepare, [p.operationId, p.claimToken, now]);
-    const preparedReplay = (await db.query(rawPrepare, [p.operationId, p.claimToken, now])).rows;
-
-    const replacement = randomUUID();
-    await owner.query(`INSERT INTO public.catalog_skus(id,product_id,sku,title,sellable_in_subscription)
-      VALUES($1,'11111111-1111-4111-8111-111111111111','G7-REPLACEMENT','Replacement',true)`, [replacement]);
-    await owner.query(`INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from)
-      VALUES('33333333-3333-4333-8333-333333333333',$1,'any',100,'2026-01-01')`, [replacement]);
-    const waitOpenedAt = days(now, -6 / 1440);
-    const waiting = await upgradeRenewal(target, { variantId: replacement, paidAt: days(at, -8 / 1440), claimAt: waitOpenedAt });
-    const w = await waiting.claim();
-    await stock(0, randomUUID(), db);
-    await stock(1000, randomUUID(), db, "G7-REPLACEMENT");
-    expect(await api.createPostgresStockWaitStore({ executor: db, withTransaction: transact, codec: waiting.d.codec, workerId: "before-upgrade" })
-      .admit({ operationId: w.operationId, claimToken: w.claimToken, now: waitOpenedAt, snapshot: w.cycleSnapshot })).toMatchObject({ waiting: true });
-    const laterOffer = { paidAt: days(at, 4 / 1440), claimAt: later };
-    const held = await Promise.all([upgradeRenewal(target, laterOffer), upgradeRenewal(target, { ...laterOffer, retained: true })]);
-    const graph = [c, r, p, w], readFrozen = () => Promise.all(graph.map(x => frozenOperation(db, x.operationId)));
-    const original = await readFrozen();
-    expect((await applyForward()).applied).toEqual([expect.stringMatching(renewalTemplateForward)]);
-    expect(await generationAcl(owner, staleSnapshotSignature)).toEqual([{ owner: "postgres", definer: false, volatility: "s",
-      config: ["search_path=pg_catalog, pg_temp"], acl: [["postgres", "EXECUTE", false], ["service_role", "EXECUTE", false]] }]);
-    expect(await readFrozen()).toEqual(original);
-    expect((await db.query("SELECT DISTINCT claimed_before_rnw_1 FROM public.subscription_renewal_operations WHERE id=ANY($1::uuid[])",
-      [graph.map(op => op.operationId)])).rows).toEqual([{ claimed_before_rnw_1: true }]);
     expect((await owner.query(`SELECT data_type,is_nullable,column_default FROM information_schema.columns
       WHERE table_schema='public' AND table_name='subscription_renewal_operations' AND column_name='claimed_before_rnw_1'`)).rows)
       .toEqual([{ data_type: "boolean", is_nullable: "NO", column_default: "false" }]);
-    for (const [op, stored] of graph.map((op, index) => [op, original[index]] as const)) {
-      const codec = api.createNativeRenewalCodec();
-      const wire = codec.encode(op.cycleSnapshot);
-      expect(JSON.parse(stored.wire)).toEqual(wire);
-      expect(JSON.parse((await db.query(rawClaim, [op.identityKey, op.operationFingerprint, wire, now])).rows[0].result))
-        .toMatchObject({ operationId: op.operationId, replayed: true, acquired: false, cycleSnapshot: wire });
-    }
-    expect((await db.query(rawPrepare, [p.operationId, p.claimToken, now])).rows).toEqual(preparedReplay);
-    await expect(db.query(rawPrepare, [r.operationId, randomUUID(), now])).rejects.toMatchObject({ code: "40001", message: "commerce_renewal_stale_claim" });
-    await expect(db.query(rawPrepare, [c.operationId, c.claimToken, now])).rejects.toMatchObject({ message: "commerce_renewal_reservation_required" });
-    const beforePrepare = await allPublicRows(owner);
-    for (let i = 0; i < 2; i++) await expect(db.query(rawPrepare, [r.operationId, r.claimToken, now])).rejects.toMatchObject(stalePreparation);
-    expect(await allPublicRows(owner)).toEqual(beforePrepare);
+    const before = await allPublicRows(owner);
+    const rows = await renewalUpgradeReport(owner);
+    expect(rows.map(row => row.operation_id)).toEqual([claim.operationId, reservation.operationId, legacyId].sort());
+    expect(rows).toEqual(expect.arrayContaining([
+      reportRow(claim.operationId, ["first_charge"], { operation_state: "claimed" }),
+      reportRow(reservation.operationId, ["first_charge"], { operation_state: "reserved", reservation_state: "held" }),
+      reportRow(legacyId, ["first_charge", "unknown_provenance"], { frozen_amount_minor: 200 }),
+    ]));
+    expect(await allPublicRows(owner)).toEqual(before);
 
-    // With only the edited SKU available, the mounted stock wait still owns the original basket.
-    const noStock = binding(waiting.d, () => now, transact, db);
-    expect(await noStock.services.run()).toMatchObject({ renewals: expect.arrayContaining([
-      expect.objectContaining({ operationId: w.operationId, status: "deferred", reason: "inventory_unavailable" }),
-    ]) });
-    expect(noStock.prepare.mock.calls.some(([, request]) => request.operationId === w.operationId)).toBe(false);
-    expect(waiting.d.execute).not.toHaveBeenCalled();
-    expect(await renewalUpgradeReport(db)).toEqual(expect.arrayContaining([expect.objectContaining({ operation_id: w.operationId, stock_wait_state: "waiting" })]));
-    await stock(1000, randomUUID(), db);
-
-    for (const entry of held) {
-      expect((await db.query("SELECT id FROM public.subscription_renewal_operations WHERE subscription_id=$1", [entry.f.subscriptionId])).rows).toEqual([]);
-      await expect(entry.claim()).rejects.toMatchObject(staleClaim);
-    }
-    let clock = later;
-    const mounted = binding(claimed.d, () => clock, transact, db);
-    const tick = await mounted.services.run();
-    if (!tick || !("renewals" in tick)) throw new Error("expected_mounted_renewal_result");
-    expect(tick.renewals.filter(row => row.subscriptionId === claimed.f.subscriptionId)).toMatchObject([
-      { status: "error", reason: "renewal_processing_failed" },
-    ]);
-    const prepared = mounted.prepare.mock.calls.findIndex(([, request]) => request.operationId === c.operationId);
-    expect(mounted.prepare.mock.settledResults[prepared]).toMatchObject({ type: "rejected", value: stalePreparation });
-    const after = await readFrozen();
-    expect(after).toEqual(original);
-    expect((await db.query("SELECT claim_generation::int,claimed_before_rnw_1 FROM public.subscription_renewal_operations WHERE id=$1", [c.operationId])).rows)
-      .toEqual([{ claim_generation: 2, claimed_before_rnw_1: true }]);
-    expect((await db.query(`SELECT id FROM public.subscription_cycles WHERE renewal_operation_id=ANY($1::uuid[])`, [[c.operationId, r.operationId, w.operationId]])).rows).toEqual([]);
-    expect((await db.query("SELECT id FROM public.subscription_delivery_alignment_cases")).rows).toEqual([]);
-    for (const entry of held) {
-      const result = tick.renewals.find(row => row.subscriptionId === entry.f.subscriptionId);
-      expect(result).toMatchObject({ status: "succeeded", identityKey: entry.d.codec.identity(entry.held) });
-      const next = (await entry.d.input.store.readRenewal(result!.identityKey))!;
-      expect(next.cycleSnapshot).toMatchObject({ cycle: entry.held.cycle, scheduledAt: entry.held.scheduledAt,
-        templateSnapshot: { version: 2 }, pricingSnapshot: { totalAmountMinor: 300 } });
-      expect(await renewalAmounts(db, next.orderId!)).toEqual([{ order: 300, intent: 300 }]);
-    }
-    expect(claimed.d.execute.mock.calls.map(([charge]) => charge.amountMinor)).toEqual([300, 300]);
-    clock = new Date(Date.parse(later) + 60_000).toISOString();
-    await mounted.services.run();
-    expect(claimed.d.execute).toHaveBeenCalledTimes(2);
+    const takeover = JSON.parse((await db.query(rawClaim, claimWire(ordinary.d, ordinary.snapshot, undefined, later))).rows[0].result);
+    expect(takeover).toMatchObject({ operationId: claim.operationId, acquired: true, claimGeneration: 2 });
+    expect(await frozenOperation(db, claim.operationId)).toEqual(bytes);
+    expect((await db.query("SELECT claimed_before_rnw_1 FROM public.subscription_renewal_operations WHERE id=$1",
+      [claim.operationId])).rows).toEqual([{ claimed_before_rnw_1: true }]);
+    const packet = await captureStore(owner, "renewal-upgrade-source");
+    await withRestoredStore(packet, async restored => {
+      expect(await renewalUpgradeReport(restored.owner)).toEqual(await renewalUpgradeReport(owner));
+    });
+    await refuseUnprepared(ordinary, takeover, later);
+    await rpc("fulfillment_release_subscription_renewal", [reservation.operationId, reservation.claimToken, "upgrade_reconciled", now], db);
+    const legacyReplay = JSON.parse((await db.query(rawClaim, [...wire, now])).rows[0].result);
+    expect(legacyReplay).toMatchObject({ operationId: legacyId, replayed: true });
+    await rpc("fulfillment_release_subscription_renewal", [legacyId, legacyReplay.claimToken, "upgrade_reconciled", now], db);
+    expect(await renewalUpgradeReport(owner)).toEqual([]);
   });
 }, postgresSetupTimeoutMs);
 
-async function prepareWebhookRenewal(target: UpgradeTarget, outcome: "succeeded" | "failed" = "succeeded") {
+it("captures an accepted edit that commits while the forward is waiting on its subscription lock", async () => {
+  await withTemplateUpgrade(async target => {
+    const { owner, db, applyForward } = target;
+    const entry = await upgradeRenewal(target, { edited: false }), op = await entry.claim();
+    const editor = await db.connect();
+    const accepted = signal(), release = signal();
+    let transactions = 0;
+    const edit = resizeForRenewal(entry.f, async work => {
+      if (++transactions === 1) return transaction(work, db);
+      await editor.query("BEGIN");
+      try {
+        const result = await work(editor);
+        accepted.resolve();
+        await release.promise;
+        await editor.query("COMMIT");
+        return result;
+      } catch (error) { accepted.reject(error); await editor.query("ROLLBACK"); throw error; }
+    });
+    void edit.catch(accepted.reject);
+    let forward: ReturnType<typeof applyForward> | undefined;
+    try {
+      await accepted.promise;
+      const { rows: [{ pid }] } = await editor.query("SELECT pg_backend_pid() AS pid");
+      forward = applyForward();
+      void forward.catch(() => {});
+      await expect.poll(async () => (await owner.query(`SELECT pid FROM pg_stat_activity
+        WHERE $1 = ANY(pg_blocking_pids(pid)) AND query LIKE '%claimed_before_rnw_1%'`, [pid])).rowCount,
+        { timeout: 20_000 }).toBe(1);
+      release.resolve();
+      await edit;
+      expect((await forward).applied).toEqual([expect.stringMatching(renewalTemplateForward)]);
+      expect(await renewalUpgradeReport(owner)).toEqual([reportRow(op.operationId, ["first_charge"])]);
+      await refuseUnprepared(entry, op);
+      expect(await renewalUpgradeReport(owner)).toEqual([]);
+    } finally {
+      release.resolve();
+      await edit.catch(() => {});
+      await forward?.catch(() => {});
+      editor.release();
+    }
+  });
+}, postgresSetupTimeoutMs);
+
+it("lists captured and allocator-refused frozen stock waits through recovery and closure", async () => {
+  await withTemplateUpgrade(async target => {
+    const { owner, db, applyForward } = target, transact = upgradeTransaction(db);
+    const captured = await upgradeRenewal(target), uncaptured = await upgradeRenewal(target);
+    const wait = await captured.claim(), missing = await uncaptured.claim();
+    await stock(0, randomUUID(), db);
+    const store = api.createPostgresStockWaitStore({ executor: db, withTransaction: transact, codec: captured.d.codec, workerId: "before-upgrade" });
+    expect(await store.admit({ operationId: wait.operationId, claimToken: wait.claimToken, now, snapshot: wait.cycleSnapshot }))
+      .toMatchObject({ waiting: true });
+    expect(await uncaptured.d.input.inventory.reserve({ operationId: missing.operationId, claimToken: missing.claimToken, now }))
+      .toMatchObject({ reserved: false, reason: "inventory_unavailable" });
+    expect((await db.query("SELECT renewal_operation_id FROM public.subscription_stock_wait_cases")).rows)
+      .toEqual([{ renewal_operation_id: wait.operationId }]);
+    await applyForward();
+    const rows = await renewalUpgradeReport(owner);
+    expect(rows.map(row => row.operation_id)).toEqual([wait.operationId, missing.operationId].sort());
+    expect(rows).toEqual(expect.arrayContaining([
+      reportRow(wait.operationId, ["stock_wait"], { stock_wait_state: "waiting" }),
+      reportRow(missing.operationId, ["stock_wait"], { stock_wait_state: "uncaptured" }),
+    ]));
+    await rpc("subscription_apply_lifecycle_action", [captured.f.clientId, randomUUID(), captured.f.subscriptionId, "pause", "{}", later], db);
+    expect(await renewalUpgradeReport(owner)).toContainEqual(reportRow(wait.operationId, ["stock_wait"], {
+      subscription_status: "paused", stock_wait_state: "waiting",
+    }));
+    const frozen = await frozenOperation(db, missing.operationId);
+    await stock(1000, randomUUID(), db);
+    const recovered = await rpc<RenewalReadback>("subscription_stock_wait_recover_refusal",
+      [missing.operationId, missing.operationFingerprint, "upgrade", later], db);
+    expect(recovered).toMatchObject({ state: "reserved", claimToken: expect.any(String) });
+    expect(await frozenOperation(db, missing.operationId)).toEqual(frozen);
+    expect(await renewalUpgradeReport(owner)).toContainEqual(reportRow(missing.operationId,
+      ["first_charge", "stock_wait"], { stock_wait_state: "stock_secured", reservation_state: "held" }));
+
+    await rpc("subscription_apply_lifecycle_action",
+      [uncaptured.f.clientId, randomUUID(), uncaptured.f.subscriptionId, "cancel", "{}", later], db);
+    await rpc("subscription_stock_wait_candidates", [20, later], db);
+    expect(await renewalUpgradeReport(owner)).toContainEqual(reportRow(missing.operationId,
+      ["first_charge"], { subscription_status: "cancelled", stock_wait_state: "closed" }));
+    // Exercise direct preparation on a cancelled stock-secured occurrence without committing it.
+    const conn = await db.connect();
+    try {
+      await conn.query("BEGIN");
+      expect(JSON.parse((await conn.query(rawPrepare, [missing.operationId, recovered.claimToken, later])).rows[0].result))
+        .toMatchObject({ state: "attempt_prepared" });
+    } finally { await conn.query("ROLLBACK"); conn.release(); }
+    await rpc("fulfillment_release_subscription_renewal", [missing.operationId, recovered.claimToken, "upgrade_reconciled", later], db);
+    await rpc("subscription_apply_lifecycle_action",
+      [captured.f.clientId, randomUUID(), captured.f.subscriptionId, "cancel", "{}", later], db);
+    await rpc("subscription_stock_wait_candidates", [20, later], db);
+    expect(await renewalUpgradeReport(owner)).toEqual([]);
+  });
+}, postgresSetupTimeoutMs);
+
+async function prepareWebhookRenewal(target: UpgradeTarget, outcome: "succeeded" | "failed" = "succeeded",
+  stage: "unbound" | "intent" | "dispatched" = "dispatched", provider = webhookProvider) {
   const { db } = target, transact = upgradeTransaction(db);
-  const { f, d, claim } = await upgradeRenewal(target, { providerBacked: true });
-  const op = await claim();
-  await reserveIncumbent(d, op);
-  const prepared = await d.input.settlement.prepareRenewal({ operationId: op.operationId, claimToken: op.claimToken, now });
+  const entry = await prepareIncumbent(await upgradeRenewal(target, { providerBacked: provider }));
+  const { f, d, op, prepared } = entry;
   const intentId = prepared.settlementIntentId, providerPaymentId = `pi_${op.operationId}`;
-  const event = { provider: webhookProvider, providerEventId: `evt_${op.operationId}`, providerPaymentRef: providerPaymentId,
+  const event = { provider, providerEventId: `evt_${op.operationId}`, providerPaymentRef: providerPaymentId,
     intentRef: intentId, providerOccurredAt: later, outcome, money: { amountMinor: 200, currency: "XXX" } };
   const body = Buffer.from(JSON.stringify(event));
   const sign = (raw: Uint8Array) => createHmac("sha256", "synthetic-renewal-signature").update(raw).digest("hex");
   const unexpected = async (): Promise<never> => { throw new Error("unexpected_provider_request"); };
   const execute = vi.fn<Parameters<typeof payments.createPostgresProviderPaymentRail>[0]["adapter"]["attemptPort"]["execute"]>(unexpected);
   const adapter: Parameters<typeof payments.createPostgresProviderPaymentRail>[0]["adapter"] = {
-    capabilities: { providerKind: webhookProvider, captureFlows: [], requiresStoredMandateEvidence: false,
+    capabilities: { providerKind: provider, captureFlows: [], requiresStoredMandateEvidence: false,
       assessMandate: () => ({ chargeable: true }), unattendedChargeFlow: "off_session_payment",
       payerContext: { requiresPayerBlock: false, customerRefFallsBackToContactEmail: false },
       methodHealth: { requiresCustomerRef: false, requiredMethodKind: null, requiresPayerContact: false },
@@ -1771,7 +1793,7 @@ async function prepareWebhookRenewal(target: UpgradeTarget, outcome: "succeeded"
     } },
   };
   const truth = { dunningTemplateSlug: "failed", recoveryUrlPath: "/recover", recoveryTemplateSlug: "recovered" };
-  const bindingOptions = { enabled: true, channelKey: webhookProvider, executor: db, withTransaction: transact,
+  const bindingOptions = { enabled: true, channelKey: provider, executor: db, withTransaction: transact,
     codec: d.codec, truth, settlement: (tx: Parameters<typeof settlement>[1]) => settlement(d.codec, tx),
     now: () => later, search: async () => [] };
   const rail = payments.createPostgresProviderPaymentRail({ executor: db, adapter, mode: "test", truth,
@@ -1779,18 +1801,22 @@ async function prepareWebhookRenewal(target: UpgradeTarget, outcome: "succeeded"
     composeWebhook: (event, control) => bindingForWebhook.composeWebhook(event, control) });
   const bindingForWebhook = api.createPostgresProviderRenewalBinding({ ...bindingOptions, paymentRail: rail });
   const request = { paymentIntentId: intentId, providerIdempotencyKey: `${op.identityKey}:provider`, providerRequestFingerprint: op.operationFingerprint };
-  await rail.control.createIntent({ idempotencyKey: `${op.identityKey}:provider-intent`, targetKind: "subscription_cycle",
+  const attachIntent = () => rail.control.createIntent({ idempotencyKey: `${op.identityKey}:provider-intent`, targetKind: "subscription_cycle",
     orderId: prepared.orderId, subscriptionId: d.due.subscriptionId, subscriptionCycleId: prepared.cycleId,
-    amountMinor: 200, currency: "XXX", channelKey: webhookProvider, metadata: {}, at: now });
+    amountMinor: 200, currency: "XXX", channelKey: provider, metadata: {}, at: now });
+  if (stage !== "unbound") await attachIntent();
   const preparation = { ...request, idempotencyKey: `${op.identityKey}:provider-prepare`,
-    provider: webhookProvider, providerFlow: "off_session_payment" as const, paymentMethodRef: f.methodRef, requestPayload: {} };
-  const { paymentAttemptId } = await rail.control.prepareProviderAttempt(preparation);
-  await rail.control.finalizeProviderAttempt({ ...request, idempotencyKey: `${op.identityKey}:provider-finalize`, paymentAttemptId,
+    provider, providerFlow: "off_session_payment" as const, paymentMethodRef: f.methodRef, requestPayload: {} };
+  let paymentAttemptId = "";
+  if (stage === "dispatched") {
+    ({ paymentAttemptId } = await rail.control.prepareProviderAttempt(preparation));
+    await rail.control.finalizeProviderAttempt({ ...request, idempotencyKey: `${op.identityKey}:provider-finalize`, paymentAttemptId,
     providerAttemptId: providerPaymentId, providerSessionId: null, attemptStatus: "processing", nextActionKind: null,
     requestPayload: {}, responsePayload: {} });
-  await d.input.settlement.acknowledgeExternalAttempt({ operationId: op.operationId, operationFingerprint: op.operationFingerprint,
+    await d.input.settlement.acknowledgeExternalAttempt({ operationId: op.operationId, operationFingerprint: op.operationFingerprint,
     externalAttemptRef: providerPaymentId, acknowledgedAt: now });
-  return { id: op.operationId, d, methodRef: f.methodRef, execute, rail, preparation, paymentAttemptId,
+  }
+  return { ...entry, id: op.operationId, methodRef: f.methodRef, execute, rail, preparation, paymentAttemptId, attachIntent,
     retryPayments: bindingForWebhook.retryPayments,
     recoverDunning: () => bindingForWebhook.lifecycle.failureHandoff.handoffFailure({
       idempotencyKey: `${op.identityKey}:handoff`, subscriptionId: f.subscriptionId, clientId: f.clientId,
@@ -1828,482 +1854,390 @@ async function prepareRetry(db: Pool, row: NonNullable<Awaited<ReturnType<Return
   return { key, input, result: await api.createPostgresRetryStore(db).prepare(row.operationId, key, input, at) };
 }
 
-async function laterEligibleRetry(target: UpgradeTarget, when: string) {
-  const d = await upgradeRenewal(target, { scenario: "declined", claimAt: when, edited: false });
-  const result = await runHeldRenewal(d, when);
-  expect(result.status).toBe("refused");
-  const row = (await api.createPostgresRetryStore(target.db).read(result.operationId))!;
-  return { d: d.d, row, clock: row.nextRetryAt! };
+it("reports unpaid intents before provider attachment and takes one read-only cut across verified settlement", async () => {
+  await withTemplateUpgrade(async target => {
+    const { owner, db, applyForward } = target;
+    const unsent = await prepareWebhookRenewal(target, "succeeded", "unbound");
+    const beforeCut = await prepareWebhookRenewal(target), afterCut = await prepareWebhookRenewal(target);
+    const fresh = await prepareIncumbent(await upgradeRenewal(target, { edited: false }));
+    const future = await upgradeRenewal(target, { edited: false });
+    const dormant = await upgradeRenewal(target), tagged = await dormant.claim();
+    await owner.query(`UPDATE public.subscription_renewal_operations
+      SET cycle_snapshot = cycle_snapshot || '{"contractVersion":"platform.subscription.renewal.v3"}'::jsonb WHERE id=$1`, [tagged.operationId]);
+    const replay = () => db.query(rawPrepare, [afterCut.id, afterCut.op.claimToken, now]);
+    const originalReplay = (await replay()).rows, originalWire = await frozenOperation(db, afterCut.id);
+    await applyForward();
+    expect((await replay()).rows).toEqual(originalReplay);
+    const newOperation = await future.claim();
+    await resizeForRenewal(future.f, upgradeTransaction(db));
+    const ledger = (await owner.query(`SELECT id,claimed_before_rnw_1 FROM public.subscription_renewal_operations WHERE id=ANY($1)
+      ORDER BY id`, [[fresh.op.operationId, tagged.operationId, newOperation.operationId]])).rows;
+    expect(ledger).toHaveLength(3);
+    expect(ledger.every(row => !row.claimed_before_rnw_1)).toBe(true);
+    const before = await allPublicRows(owner);
+    const first = await renewalUpgradeReport(owner);
+    expect(first.map(row => row.operation_id)).toEqual([unsent.id, beforeCut.id, afterCut.id].sort());
+    expect(first).toContainEqual(reportRow(unsent.id, ["prepared_first_charge", "unpaid_intent"], {
+      frozen_amount_minor: 200, currency: "XXX",
+      payment_artifacts: [expect.objectContaining({ intent_id: unsent.prepared.settlementIntentId, intent_state: "created",
+        provider_state: null, provider_attempt_id: null, retry_id: null })],
+    }));
+    expect(await allPublicRows(owner)).toEqual(before);
+    const atCut = await renewalUpgradeReport(owner, { beforeCut: beforeCut.deliver, afterCut: afterCut.deliver });
+    expect(atCut.map(row => row.operation_id)).toEqual([unsent.id, afterCut.id].sort());
+    expect(await renewalUpgradeReport(owner)).toEqual([reportRow(unsent.id, ["unpaid_intent"])]);
+    expect(await frozenOperation(db, afterCut.id)).toEqual(originalWire);
+    expect(await renewalAmounts(db, afterCut.prepared.orderId)).toEqual([{ order: 200, intent: 200 }]);
+    // Exact stored ownership stays visible through order/cycle lineage without the optional direct intent link.
+    await owner.query("UPDATE public.commerce_settlement_intents SET renewal_operation_id=NULL,renewal_operation_fingerprint=NULL WHERE id=$1",
+      [unsent.prepared.settlementIntentId]);
+    expect(await renewalUpgradeReport(owner)).toEqual([reportRow(unsent.id, ["unpaid_intent"])]);
+    await unsent.attachIntent();
+    expect(await renewalUpgradeReport(owner)).toEqual([reportRow(unsent.id, ["provider_attempt", "record_attempt"])]);
+    await owner.query("UPDATE public.commerce_settlement_intents SET renewal_operation_id=$2,renewal_operation_fingerprint=$3 WHERE id=$1",
+      [unsent.prepared.settlementIntentId, unsent.id, unsent.op.operationFingerprint]);
+    await closeUnsent(unsent, target);
+    expect(await renewalUpgradeReport(owner)).toEqual([]);
+  });
+}, postgresSetupTimeoutMs);
+
+it("reports local provider preparation through verified absence and fresh preparation", async () => {
+  await withTemplateUpgrade(async target => {
+    const { owner, db, applyForward } = target;
+    const profile = (await db.query("SELECT provider FROM public.payment_provider_profile(NULL) WHERE renewal_absence ORDER BY provider LIMIT 1")).rows[0];
+    const local = await prepareWebhookRenewal(target, "succeeded", "intent", String(profile.provider));
+    await applyForward();
+    const request = { attemptRef: local.preparation.idempotencyKey, intentRef: local.prepared.settlementIntentId,
+      fingerprint: local.op.operationFingerprint, providerIdempotencyKey: local.preparation.providerIdempotencyKey,
+      money: { amountMinor: 200, currency: "XXX" }, mode: "test" as const, purpose: "renewal-unattended" as const,
+      orderRef: local.prepared.orderId, clientId: local.d.due.clientId, customerRef: local.d.due.payerAccountRef!,
+      storedMethod: { reference: local.methodRef, mandate: { recurringModel: null } } };
+    await expect(local.rail.execute(request)).rejects.toThrow("unexpected_provider_request");
+    expect(local.execute.mock.calls.map(([input]) => input.money.amountMinor)).toEqual([200]);
+    const saved = (await local.rail.readAttempt(local.prepared.settlementIntentId))!.paymentAttempt;
+    expect(await renewalUpgradeReport(owner)).toEqual([reportRow(local.id, ["provider_attempt"], {
+      payment_artifacts: [expect.objectContaining({ provider_attempt_id: saved.id,
+        provider_attempt_state: "created", provider_has_remote_reference: false })],
+    })]);
+    const checkedAt = (await owner.query("SELECT (now() + interval '1 day')::text AS t")).rows[0].t;
+    async function reopen(attemptId: string, suffix: string) {
+      await local.rail.reconciliation.recordEvidence({ idempotencyKey: `probe:${suffix}:${local.id}`, provider: local.rail.provider,
+        providerPaymentId: null, paymentIntentId: local.prepared.settlementIntentId, paymentAttemptId: attemptId,
+        localStatus: "created", providerStatus: "prepared_without_provider_ack", correctionStatus: "observed",
+        checkedAt, payload: {} });
+      expect(await local.rail.reconciliation.reopenPreparedAttemptAfterAbsence({ idempotencyKey: `reopen:${suffix}:${local.id}`,
+        paymentAttemptId: attemptId, expectedPaymentIntentId: local.prepared.settlementIntentId,
+        expectedSubscriptionCycleId: local.prepared.cycleId, operatorRef: "operator.fixture",
+        absenceCheckedAt: checkedAt, nextRetryAt: checkedAt, absenceEvidence: { providerAbsenceConfirmed: true },
+      })).toEqual({ replayed: false });
+    }
+    await reopen(saved.id, "first");
+    expect(await renewalUpgradeReport(owner)).toEqual([reportRow(local.id, ["provider_attempt", "record_attempt"], {
+      payment_artifacts: [expect.objectContaining({ provider_attempt_id: saved.id, provider_attempt_state: "cancelled" })],
+    })]);
+    const next = await local.rail.control.prepareProviderAttempt({ ...local.preparation,
+      idempotencyKey: `fresh:${local.id}`, providerIdempotencyKey: `fresh-provider:${local.id}` });
+    expect(next).toMatchObject({ replayed: false });
+    expect(next.paymentAttemptId).not.toBe(saved.id);
+    await reopen(next.paymentAttemptId, "second");
+    await closeUnsent(local, target);
+    expect(await renewalUpgradeReport(owner)).toEqual([]);
+  });
+}, postgresSetupTimeoutMs);
+
+it("reports independent recordAttempt even when settlement alone would omit the refused operation", async () => {
+  await withTemplateUpgrade(async target => {
+    const { owner, db, applyForward } = target;
+    const entry = await prepareWebhookRenewal(target, "succeeded", "intent");
+    await applyForward();
+    await entry.d.input.settlement.recordTerminalOutcome({ operationId: entry.id, operationFingerprint: entry.op.operationFingerprint,
+      outcome: "refused", eventKey: `locally-refused:${entry.id}`, reason: "verified_no_dispatch", occurredAt: later, externalRef: null });
+    // Model historical divergence between the settlement and provider owners.
+    await owner.query("UPDATE public.commerce_settlement_intents SET status='cancelled' WHERE id=$1", [entry.prepared.settlementIntentId]);
+    expect(await renewalUpgradeReport(owner)).toEqual([expect.objectContaining({
+      operation_id: entry.id, operation_state: "refused", reasons: ["record_attempt"],
+      payment_artifacts: [expect.objectContaining({ intent_state: "cancelled", retry_id: null })],
+    })]);
+    const record = { idempotencyKey: `record:${entry.id}`, paymentIntentId: entry.prepared.settlementIntentId, provider: webhookProvider,
+      providerAttemptId: null, providerSessionId: null, attemptStatus: "blocked_preflight" as const, nextActionKind: null,
+      requestPayload: {}, responsePayload: { providerCall: false } };
+    const result = await entry.rail.control.recordAttempt(record);
+    expect(result).toMatchObject({ replayed: false });
+    expect(await entry.rail.control.recordAttempt(record)).toEqual({ ...result, replayed: true });
+    expect((await owner.query("SELECT count(*)::int AS n FROM public.outbox_events WHERE event_type='commerce.payment_attempt.requested' AND idempotency_key=$1",
+      [record.idempotencyKey])).rows).toEqual([{ n: 1 }]);
+    expect(await renewalUpgradeReport(owner)).toEqual([reportRow(entry.id, ["record_attempt"])]);
+    // The OMS owner closes the open provider state on an unpaid order.
+    await closeOrder(target, entry.prepared.orderId);
+    expect(await renewalUpgradeReport(owner)).toEqual([]);
+  });
+}, postgresSetupTimeoutMs);
+
+it("reports simulator begin and synthetic ACK before dispatch and through unobserved ACK", async () => {
+  await withTemplateUpgrade(async target => {
+    const { owner, db, applyForward } = target;
+    const sandbox = payments.createPostgresSandboxPaymentSimulator(db,
+      { dunningTemplateSlug: "failed", recoveryUrlPath: "/recover", recoveryTemplateSlug: "recovered" });
+    const simulator = await prepareIncumbent(await upgradeRenewal(target));
+    const synthetic = await prepareIncumbent(await upgradeRenewal(target, { scenario: "ambiguous" }));
+    const request = synthetic.d.input.policy.executionInput(synthetic.d.due, synthetic.op, synthetic.prepared);
+    await applyForward();
+    const rows = await renewalUpgradeReport(owner);
+    expect(rows.map(row => row.operation_id)).toEqual([simulator.op.operationId, synthetic.op.operationId].sort());
+    expect(rows).toEqual(expect.arrayContaining([
+      reportRow(simulator.op.operationId, ["sandbox_attempt"]),
+      reportRow(synthetic.op.operationId, ["sandbox_ack"]),
+    ]));
+    const simulatorInput = { settlementIntentId: simulator.prepared.settlementIntentId, idempotencyKey: `sandbox:${simulator.op.operationId}`,
+      requestFingerprint: simulator.op.operationFingerprint, at: now };
+    const attempt = await sandbox.beginAttempt(simulatorInput);
+    expect(await sandbox.beginAttempt(simulatorInput)).toMatchObject({ id: attempt.id, replayed: true });
+    await sandbox.recordObservation({ attemptId: attempt.id, idempotencyKey: `expiry:${attempt.id}`, outcome: "expired", occurredAt: later });
+    const next = await sandbox.beginAttempt({ ...simulatorInput, idempotencyKey: `sandbox-next:${simulator.op.operationId}`, at: later });
+    expect(next.id).not.toBe(attempt.id);
+    expect(await renewalUpgradeReport(owner)).toContainEqual(reportRow(simulator.op.operationId, ["sandbox_attempt"], {
+      payment_artifacts: [expect.objectContaining({ simulator_attempt_id: next.id, simulator_attempt_state: "dispatched" })],
+    }));
+    await sandbox.recordObservation({ attemptId: next.id, idempotencyKey: `refusal:${next.id}`, outcome: "refused", occurredAt: later });
+    await closeUnsent(simulator, target);
+    const acknowledged = await synthetic.d.rail.execute(request);
+    expect(acknowledged.externalAttemptRef).toBeTruthy();
+    expect(await synthetic.d.rail.execute(request)).toEqual(acknowledged);
+    expect(await renewalUpgradeReport(owner)).toEqual([reportRow(synthetic.op.operationId, ["sandbox_ack"], {
+      payment_artifacts: [expect.objectContaining({ simulator_attempt_id: null })],
+    })]);
+    await synthetic.d.rail.observe({ operationId: synthetic.op.operationId, fingerprint: synthetic.op.operationFingerprint,
+      externalAttemptRef: acknowledged.externalAttemptRef!, outcome: "succeeded", occurredAt: later });
+    await synthetic.d.input.settlement.recordTerminalOutcome({ operationId: synthetic.op.operationId,
+      operationFingerprint: synthetic.op.operationFingerprint, outcome: "succeeded", occurredAt: later,
+      eventKey: `upgrade-settle:${synthetic.op.operationId}`, externalRef: acknowledged.externalAttemptRef });
+    expect(await renewalUpgradeReport(owner)).toEqual([]);
+  });
+}, postgresSetupTimeoutMs);
+
+
+
+
+async function retryOutcome(entry: Awaited<ReturnType<typeof prepareWebhookRenewal>>, db: Pool, remote: boolean) {
+  const waiting = (await api.createPostgresRetryStore(db).read(entry.id))!;
+  const at = waiting.nextRetryAt!;
+  const { input, result } = await prepareRetry(db, waiting, entry.methodRef, at);
+  expect(result).toMatchObject({ execute: true, replayed: false, attemptSequence: 1 });
+  const request = { ...entry.preparation, ...input };
+  const { paymentAttemptId } = await entry.rail.control.prepareProviderAttempt(request);
+  const providerPaymentId = `pi_${paymentAttemptId}`;
+  const finalize = () => entry.rail.control.finalizeProviderAttempt({
+    ...request, idempotencyKey: `finalize:${paymentAttemptId}`, paymentAttemptId,
+    providerAttemptId: providerPaymentId, providerSessionId: null,
+    attemptStatus: "processing", nextActionKind: null, responsePayload: {},
+  });
+  if (remote) await finalize();
+  return {
+    paymentAttemptId, at, finalize, async apply(status: "failed" | "succeeded") {
+      const attempt = (await entry.rail.readAttempt(waiting.settlementIntentId, paymentAttemptId))!;
+      return entry.rail.reconciliation.applyTerminalResult({
+        idempotencyKey: `observed:${paymentAttemptId}`, expectedOrderId: waiting.orderId,
+        expectedPaymentIntentId: waiting.settlementIntentId, expectedPaymentAttemptId: paymentAttemptId,
+        expectedPaymentId: attempt.paymentAttempt.paymentId, provider: webhookProvider, providerPaymentId,
+        localStatus: "processing", providerStatus: status, resultStatus: status, occurredAt: at, checkedAt: at,
+        failureReason: status === "failed" ? "declined" : null,
+        ...(status === "failed" ? { failureClassification: { failureClass: "soft_retryable", decidedBy: "fixture" } } : {}), payload: {},
+      });
+    },
+  };
 }
 
-it.each(["missing-case", "behind-case"] as const)("excludes a pending provider-owned %s handoff before the one-row limit", async shape => {
+it("reports receipt-only and both provider-prepared retries by the exact current request", async () => {
   await withTemplateUpgrade(async target => {
-    const { db, owner, applyForward } = target, transact = upgradeTransaction(db);
-    const original = await prepareWebhookRenewal(target, "failed"), store = api.createPostgresRetryStore(db);
-    let providerAttempt = original.paymentAttemptId;
-    if (shape === "missing-case") {
-      await interruptProviderHandoff(owner, original.deliver);
-    } else {
-      await original.deliver();
-      const first = (await store.read(original.id))!, at = first.nextRetryAt!;
-      const retry = await prepareRetry(db, first, original.methodRef, at);
-      const request = { ...original.preparation, ...retry.input };
-      const { paymentAttemptId } = await original.rail.control.prepareProviderAttempt(request);
-      providerAttempt = paymentAttemptId;
-      const providerPaymentId = `pi_${paymentAttemptId}`;
-      await original.rail.control.finalizeProviderAttempt({ ...request, idempotencyKey: `finalize:${paymentAttemptId}`,
-        paymentAttemptId, providerAttemptId: providerPaymentId, providerSessionId: null, attemptStatus: "processing",
-        nextActionKind: null, responsePayload: {} });
-      const attempt = (await original.rail.readAttempt(first.settlementIntentId, paymentAttemptId))!;
-      expect(await interruptProviderHandoff(owner, () => original.rail.reconciliation.applyTerminalResult({
-        idempotencyKey: `declined:${paymentAttemptId}`, expectedOrderId: first.orderId,
-        expectedPaymentIntentId: first.settlementIntentId, expectedPaymentAttemptId: paymentAttemptId,
-        expectedPaymentId: attempt.paymentAttempt.paymentId, provider: webhookProvider, providerPaymentId,
-        localStatus: "processing", providerStatus: "failed", resultStatus: "failed", occurredAt: at, checkedAt: at,
-        failureReason: "declined", failureClassification: { failureClass: "soft_retryable", decidedBy: "fixture" }, payload: {},
-      }))).toMatchObject({ correctionStatus: "corrected", subscriptionWebhookDunning: { opened: false } });
-    }
-    const old = (await store.read(original.id))!;
-    const pending = async () => (await db.query(`SELECT o.state,c.retry_attempt AS case_rung,
-      (r.result->>'retry_attempt')::int AS receipt_rung, r.input->>'paymentAttemptId' AS attributed
-      FROM public.subscription_retry_obligations o LEFT JOIN public.subscription_dunning_cases c ON c.id=o.case_id
-      JOIN public.subscription_retry_receipts r ON r.obligation_id=o.id AND r.kind='failure'
-        AND r.attempt_sequence=o.attempt_sequence WHERE o.renewal_operation_id=$1`, [original.id])).rows[0];
-    const interrupted = { state: "waiting", case_rung: shape === "missing-case" ? null : 1,
-      receipt_rung: shape === "missing-case" ? 1 : 2, attributed: providerAttempt };
-    expect(await pending()).toEqual(interrupted);
-    const eligible = await laterEligibleRetry(target, days(now, 9));
-    expect(Date.parse(old.nextRetryAt!)).toBeLessThan(Date.parse(eligible.clock));
-    await applyForward();
-    const retry = retryDriver(eligible.d, "succeeded", eligible.clock, undefined, { executor: db, transaction: transact });
-    const mounted = binding(eligible.d, () => eligible.clock, transact, db, retry.options, 1);
-    expect(await mounted.services.run()).toMatchObject({ retries: [{ operationId: eligible.row.operationId, status: "succeeded" }] });
-    expect(retry.execute.mock.calls.map(([request]) => request.paymentIntentId)).toEqual([eligible.row.settlementIntentId]);
-    expect(await store.read(original.id)).toEqual(old);
-    expect(await pending()).toEqual(interrupted);
-    expect(await renewalUpgradeReport(db)).toMatchObject([{ operation_id: original.id, retry_state: "waiting" }]);
-    await original.recoverDunning();
-    expect(await pending()).toMatchObject({ case_rung: interrupted.receipt_rung });
-    expect(await mounted.services.run()).toMatchObject({ retries: [] });
-    expect(retry.execute).toHaveBeenCalledOnce();
-  });
-}, postgresSetupTimeoutMs);
-
-it("refuses a fresh provider prepare on a held intent before any provider call", async () => {
-  await withTemplateUpgrade(async target => {
-    const { db, owner, applyForward } = target;
-    const original = await prepareWebhookRenewal(target, "failed");
-    await applyForward();
-    await original.deliver();
-    const waiting = (await api.createPostgresRetryStore(db).read(original.id))!;
-    const before = await allPublicRows(owner);
-    const replay = await original.rail.control.prepareProviderAttempt(original.preparation);
-    expect(replay).toMatchObject({ paymentAttemptId: original.paymentAttemptId, replayed: true });
-    const refusal = await original.rail.execute({
-      attemptRef: `fresh:${original.id}`, intentRef: waiting.settlementIntentId,
-      fingerprint: waiting.requestFingerprint, providerIdempotencyKey: `fresh-provider:${original.id}`,
-      money: { amountMinor: 200, currency: "XXX" }, mode: "test", purpose: "renewal-unattended",
-      orderRef: waiting.orderId, clientId: original.d.due.clientId, customerRef: original.d.due.payerAccountRef!,
-      storedMethod: { reference: original.methodRef, mandate: { recurringModel: null } },
-    }).catch((error: unknown) => error);
-    expect(original.execute.mock.calls.map(([request]) => request.money.amountMinor)).toEqual([]);
-    expect(refusal).toMatchObject(stalePreparation);
-    expect(await allPublicRows(owner)).toEqual(before);
-  });
-}, postgresSetupTimeoutMs);
-
-it("reads the held provider attempt named by the receipt despite a prior pending handoff", async () => {
-  await withTemplateUpgrade(async target => {
-    const { db, owner, applyForward } = target, transact = upgradeTransaction(db);
-    const original = await prepareWebhookRenewal(target, "failed"), store = api.createPostgresRetryStore(db);
-    await interruptProviderHandoff(owner, original.deliver);
-    const waiting = (await store.read(original.id))!, at = waiting.nextRetryAt!;
-    expect(waiting.caseId).toBeNull();
-    const prepared = await prepareRetry(db, waiting, original.methodRef, at);
-    const { paymentAttemptId } = await original.rail.control.prepareProviderAttempt({ ...original.preparation, ...prepared.input });
-    // Isolate the attempt identity from the legacy intent-wide active pointer.
+    const { owner, db, applyForward } = target;
+    const receipt = await prepareWebhookRenewal(target, "failed");
+    const local = await prepareWebhookRenewal(target, "failed");
+    const remote = await prepareWebhookRenewal(target, "failed");
+    for (const entry of [receipt, local, remote]) await entry.deliver();
+    const store = api.createPostgresRetryStore(db);
+    const waiting = (await store.read(receipt.id))!;
+    const prepared = await prepareRetry(db, waiting, receipt.methodRef, waiting.nextRetryAt!);
+    expect(await store.prepare(receipt.id, prepared.key, prepared.input, waiting.nextRetryAt!))
+      .toMatchObject({ execute: false, replayed: true, attemptSequence: 1 });
+    const savedLocal = await retryOutcome(local, db, false), savedRemote = await retryOutcome(remote, db, true);
+    // An older active pointer and prior remote reference cannot identify the current request.
     await owner.query("UPDATE public.payment_provider_states SET active_attempt_id=$2 WHERE id=$1",
-      [waiting.settlementIntentId, original.paymentAttemptId]);
+      [local.prepared.settlementIntentId, local.paymentAttemptId]);
     await applyForward();
-    const read = vi.spyOn(original.rail, "readAttempt");
-    const retry = retryDriver(original.d, "ambiguous", at, original.methodRef, { executor: db, transaction: transact });
-    const mounted = binding(original.d, () => at, transact, db, { ...retry.options, payments: original.retryPayments }, 1);
-    expect(await mounted.services.run()).toMatchObject({ retries: [{ operationId: original.id, status: "awaiting_provider" }] });
-    expect(read.mock.calls).toEqual([[waiting.settlementIntentId, paymentAttemptId]]);
-    expect(original.execute).not.toHaveBeenCalled();
-    expect(await store.read(original.id)).toMatchObject({ state: "prepared", caseId: null });
-  });
-}, postgresSetupTimeoutMs);
-
-it("refuses fresh simulator and synthetic ACK dispatch for held intents and keeps exact replay and late evidence", async () => {
-  await withTemplateUpgrade(async target => {
-    const { db, owner, applyForward } = target;
-    const simulator = payments.createPostgresSandboxPaymentSimulator(db,
-      { dunningTemplateSlug: "failed", recoveryUrlPath: "/recover", recoveryTemplateSlug: "recovered" });
-    async function locallyPrepared() {
-      const entry = await upgradeRenewal(target, { scenario: "ambiguous" }), op = await entry.claim();
-      await reserveIncumbent(entry.d, op);
-      const prepared = await entry.d.input.settlement.prepareRenewal({ operationId: op.operationId, claimToken: op.claimToken, now });
-      const request = entry.d.input.policy.executionInput(entry.d.due, op, prepared);
-      return { entry, op, prepared, request };
+    const rows = await renewalUpgradeReport(owner);
+    expect(rows.map(row => row.operation_id)).toEqual([receipt.id, local.id, remote.id].sort());
+    for (const [entry, exact, hasRemote] of [[receipt, null, false], [local, savedLocal.paymentAttemptId, false],
+      [remote, savedRemote.paymentAttemptId, true]] as const) {
+      expect(rows).toContainEqual(reportRow(entry.id, ["retry"], { payment_artifacts: [expect.objectContaining({
+        retry_state: "prepared", retry_attempt: 1, attempt_sequence: 1, prepare_receipt_id: expect.any(String),
+        retry_attempt_id: exact, retry_has_remote_reference: hasRemote,
+      })] }));
     }
-    const fresh = await locallyPrepared(), existing = await locallyPrepared();
-    const existingInput = { settlementIntentId: existing.prepared.settlementIntentId,
-      idempotencyKey: `existing:${existing.op.operationId}`, requestFingerprint: existing.op.operationFingerprint, at: now };
-    const saved = await simulator.beginAttempt(existingInput);
-    const ack = await existing.entry.d.rail.execute(existing.request);
-    await applyForward();
-    const before = await allPublicRows(owner);
-    await expect(simulator.beginAttempt({ ...existingInput, idempotencyKey: `fresh:${fresh.op.operationId}`,
-      settlementIntentId: fresh.prepared.settlementIntentId, requestFingerprint: fresh.op.operationFingerprint })).rejects.toMatchObject(stalePreparation);
-    await expect(fresh.entry.d.rail.execute(fresh.request)).rejects.toMatchObject(stalePreparation);
-    expect(await simulator.beginAttempt(existingInput)).toMatchObject({ id: saved.id, replayed: true });
-    expect(await existing.entry.d.rail.execute(existing.request)).toEqual(ack);
-    expect(await allPublicRows(owner)).toEqual(before);
-    expect(await simulator.recordObservation({ attemptId: saved.id, idempotencyKey: `late:${saved.id}`,
-      outcome: "captured", occurredAt: later })).toMatchObject({ replayed: false });
-    await existing.entry.d.rail.observe({ operationId: existing.op.operationId, fingerprint: existing.op.operationFingerprint,
-      externalAttemptRef: ack.externalAttemptRef!, outcome: "succeeded", occurredAt: later });
-    expect((await simulator.readAttempt({ settlementIntentId: existingInput.settlementIntentId, attemptId: saved.id }))?.latestObservation)
-      .toMatchObject({ outcome: "captured" });
+    await closeOrder(target, receipt.prepared.orderId);
+    await owner.query("UPDATE public.payment_provider_states SET active_attempt_id=$2 WHERE id=$1",
+      [local.prepared.settlementIntentId, savedLocal.paymentAttemptId]);
+    await savedLocal.finalize();
+    expect(await savedLocal.apply("failed")).toMatchObject({ correctionStatus: "corrected" });
+    await closeOrder(target, local.prepared.orderId);
+    expect(await savedRemote.apply("succeeded")).toMatchObject({ correctionStatus: "corrected" });
+    expect(await renewalUpgradeReport(owner)).toEqual([]);
   });
 }, postgresSetupTimeoutMs);
 
-it.each(["actionable", "terminal", "conflicting"] as const)("selects only actionable native failure propagation (%s)", async shape => {
+it("reports waiting, quarantined, unscheduled, and recovery-authorized retries without dispatching them", async () => {
   await withTemplateUpgrade(async target => {
-    const { db, owner, applyForward } = target, transact = upgradeTransaction(db);
-    const entry = await upgradeRenewal(target, { scenario: "declined" });
-    const first = await runHeldRenewal(entry), store = api.createPostgresRetryStore(db);
-    const old = (await store.read(first.operationId))!, retryAt = old.nextRetryAt!;
-    const prior = retryDriver(entry.d, "ambiguous", retryAt, undefined, predecessorRetryTarget(db));
-    expect(await prior.driver.run(retryAt, 1)).toEqual([{ operationId: old.operationId, status: "awaiting_provider" }]);
-    const simulator = payments.createPostgresSandboxPaymentSimulator(db,
-      { dunningTemplateSlug: "failed", recoveryUrlPath: "/recover", recoveryTemplateSlug: "recovered" });
-    const attempt = (await simulator.readAttempt({ settlementIntentId: old.settlementIntentId }))!;
-    const observed = await simulator.recordObservation({ attemptId: attempt.id, idempotencyKey: `failed:${attempt.id}`,
-      outcome: "refused", occurredAt: retryAt });
-    const failed = await store.applyFailure(old.operationId, `receipt:${observed.id}`, {
-      attemptSequence: 1, logicalCycleNumber: old.logicalCycleNumber, occurredAt: retryAt, failureClass: "temporary",
-      reason: "declined", externalRef: attempt.id, evidenceKey: `sandbox:${observed.id}`, firstRecordedAt: retryAt,
-    });
-    expect(failed).toMatchObject({ state: "waiting", retryAttempt: 2, caseId: old.caseId });
-    if (shape === "terminal") await owner.query("UPDATE public.subscription_dunning_cases SET status='cancelled' WHERE id=$1", [old.caseId]);
-    if (shape === "conflicting") await owner.query(
-      "UPDATE public.subscription_retry_obligations SET case_id=NULL WHERE renewal_operation_id=$1", [old.operationId]);
-    const eligible = await laterEligibleRetry(target, days(now, 9));
-    expect(Date.parse(failed.nextRetryAt!)).toBeLessThan(Date.parse(eligible.clock));
-    await applyForward();
-    const runnable = retryDriver(eligible.d, "succeeded", eligible.clock, undefined, { executor: db, transaction: transact });
-    const mounted = binding(eligible.d, () => eligible.clock, transact, db, runnable.options, 1);
-    const expected = [{ operationId: eligible.row.operationId, status: "succeeded" }];
-    expect(await mounted.services.run()).toMatchObject({ retries: shape === "actionable" ? [] : expected });
-    expect(runnable.execute).toHaveBeenCalledTimes(shape === "actionable" ? 0 : 1);
-    expect((await db.query("SELECT retry_attempt FROM public.subscription_dunning_cases WHERE id=$1", [old.caseId])).rows)
-      .toEqual([{ retry_attempt: shape === "actionable" ? 2 : 1 }]);
-    expect(await mounted.services.run()).toMatchObject({ retries: shape === "actionable" ? expected : [] });
-    expect(runnable.execute.mock.calls.map(([request]) => request.paymentIntentId)).toEqual([eligible.row.settlementIntentId]);
-    const current = (await store.read(old.operationId))!;
-    expect(current).toMatchObject({ state: "waiting", externalAttemptSequence: 1 });
-    if (shape === "actionable") {
-      const before = await allPublicRows(owner);
-      await expect(prepareRetry(db, current, facts.methodRef, eligible.clock)).rejects.toMatchObject(stalePreparation);
-      const receipt = (await db.query(`SELECT receipt_key,input FROM public.subscription_retry_receipts
-        WHERE kind='prepare' AND receipt_key=$1`, [prior.execute.mock.calls[0]![0].executionIdempotencyKey])).rows[0];
-      expect(await store.prepare(old.operationId, receipt.receipt_key, receipt.input, eligible.clock))
-        .toMatchObject({ execute: false, replayed: true, attemptSequence: 1 });
-      expect(await allPublicRows(owner)).toEqual(before);
+    const { owner, db, applyForward } = target;
+    const exhausted = await upgradeRenewal(target, { scenario: "declined" });
+    const exhaustedId = (await runPreForwardRenewal(exhausted)).operationId;
+    const store = api.createPostgresRetryStore(db);
+    for (let n = 0; n < 3; n++) {
+      const retryAt = (await store.read(exhaustedId))!.nextRetryAt!;
+      expect(await retryDriver(exhausted.d, "declined", retryAt, undefined, predecessorRetryTarget(db)).driver.run(retryAt, 1))
+        .toEqual([{ operationId: exhaustedId, status: "refused" }]);
     }
-  });
-}, postgresSetupTimeoutMs);
-
-it.each(["receipt-only", "missing-receipt"] as const)("excludes a held prepared %s retry on both mounted ticks", async shape => {
-  await withTemplateUpgrade(async target => {
-    const { db, owner, applyForward } = target, transact = upgradeTransaction(db);
-    const entry = await upgradeRenewal(target, { scenario: "declined" });
-    const first = await runHeldRenewal(entry), store = api.createPostgresRetryStore(db), retry = (await store.read(first.operationId))!;
-    const previous = retryDriver(entry.d, "declined", retry.nextRetryAt!, undefined, predecessorRetryTarget(db));
-    expect(await previous.driver.run(retry.nextRetryAt!, 1)).toEqual([{ operationId: retry.operationId, status: "refused" }]);
-    const waiting = (await store.read(retry.operationId))!, at = waiting.nextRetryAt!;
-    const before = (await owner.query("SELECT id,request_key FROM public.payment_simulator_attempts WHERE settlement_intent_id=$1",
-      [waiting.settlementIntentId])).rows;
-    expect(before).toHaveLength(1);
-    const preForward = retryDriver(entry.d, "ambiguous", at, undefined, predecessorRetryTarget(db));
-    const stopped = vi.fn(async () => { throw new Error("interrupted_after_prepare"); });
-    expect(await api.createNativeRetryDriver({ ...preForward.options, payments: { ...preForward.options.payments, execute: stopped } }).run(at, 1))
-      .toEqual([{ operationId: retry.operationId, status: "error" }]);
-    expect(stopped).toHaveBeenCalledOnce();
-    expect(await store.read(retry.operationId)).toMatchObject({ state: "prepared", nextRetryAt: null, externalAttemptSequence: 2 });
-    const receipts = await db.query(`SELECT r.receipt_key FROM public.subscription_retry_receipts r
-      JOIN public.subscription_retry_obligations o ON o.id=r.obligation_id
-      WHERE o.renewal_operation_id=$1 AND r.kind='prepare' AND r.attempt_sequence=o.attempt_sequence`, [retry.operationId]);
-    expect(receipts.rows).toHaveLength(1);
-    if (shape === "missing-receipt") await owner.query("DELETE FROM public.subscription_retry_receipts WHERE receipt_key=$1", [receipts.rows[0].receipt_key]);
-    const eligible = await laterEligibleRetry(target, days(now, 9));
+    const future = await upgradeRenewal(target, { scenario: "declined" }), quarantined = await upgradeRenewal(target, { scenario: "declined" });
+    const futureId = (await runPreForwardRenewal(future)).operationId, quarantinedId = (await runPreForwardRenewal(quarantined)).operationId;
+    const until = days(later, 20);
+    await owner.query("UPDATE public.subscription_retry_obligations SET renewal_quarantined_until=$2 WHERE renewal_operation_id=$1", [quarantinedId, until]);
     await applyForward();
-    const runnable = retryDriver(eligible.d, "succeeded", eligible.clock, undefined, { executor: db, transaction: transact });
-    const read = vi.spyOn(runnable.options.payments, "readOutcome");
-    const mounted = binding(eligible.d, () => eligible.clock, transact, db, runnable.options, 1);
-    expect(await mounted.services.run()).toMatchObject({ retries: [{ operationId: eligible.row.operationId, status: "succeeded" }] });
-    expect(await mounted.services.run()).toMatchObject({ retries: [] });
-    expect(runnable.execute.mock.calls.map(([request]) => request.paymentIntentId)).toEqual([eligible.row.settlementIntentId]);
-    expect(read.mock.calls.map(([prepared]) => prepared.settlementIntentId)).toEqual([eligible.row.settlementIntentId]);
-    expect((await owner.query("SELECT id,request_key FROM public.payment_simulator_attempts WHERE settlement_intent_id=$1",
-      [waiting.settlementIntentId])).rows).toEqual(before);
-    expect(await renewalUpgradeReport(db)).toMatchObject([{ operation_id: retry.operationId, retry_state: "prepared", retry_has_readable_attempt: false }]);
+    let rows = await renewalUpgradeReport(owner);
+    expect(rows.map(row => row.operation_id)).toEqual([exhaustedId, futureId, quarantinedId].sort());
+    expect(rows).toEqual(expect.arrayContaining([
+      reportRow(exhaustedId, ["retry"], { payment_artifacts: [expect.objectContaining({ retry_state: "waiting", retry_attempt: 4, next_retry_at: null })] }),
+      reportRow(futureId, ["retry"], { payment_artifacts: [expect.objectContaining({ retry_state: "waiting", next_retry_at: expect.any(String), renewal_quarantined_until: null })] }),
+      reportRow(quarantinedId, ["retry"], { payment_artifacts: [expect.objectContaining({ retry_state: "waiting", renewal_quarantined_until: expect.any(String) })] }),
+    ]));
+    const saved = (await store.read(exhaustedId))!;
+    const liveNow = (await owner.query("SELECT now() AS now")).rows[0].now.toISOString();
+    const tokenHash = randomUUID().replaceAll("-", "").repeat(2);
+    await rpc("dunning_lifecycle_issue_recovery_token", [saved.caseId, tokenHash, days(liveNow, 2)], db);
+    const token = (await db.query("SELECT id FROM public.commerce_checkout_recovery_tokens WHERE token_hash=$1", [tokenHash])).rows[0].id;
+    const auth = await store.authorizeRecovery(exhaustedId, token, facts.methodRef, "fresh-sandbox-evidence", liveNow);
+    await store.scheduleRecovery(exhaustedId, `schedule:${exhaustedId}`, String(auth.id), liveNow);
+    rows = await renewalUpgradeReport(owner);
+    expect(rows).toContainEqual(reportRow(exhaustedId, ["retry"], { payment_artifacts: [
+      expect.objectContaining({ retry_state: "waiting", retry_attempt: 4, next_retry_at: expect.any(String) }),
+    ] }));
+    for (const [entry, id] of [[exhausted, exhaustedId], [future, futureId], [quarantined, quarantinedId]] as const) {
+      await closeWaitingRetry(db, entry, id, until);
+    }
+    expect(await renewalUpgradeReport(owner)).toEqual([]);
   });
 }, postgresSetupTimeoutMs);
 
-it("reports each stale incumbent once at the read-only upgrade cut and preserves prepared payment truth", async () => {
+it.each(["missing", "behind", "conflict"] as const)("reports a provider failure handoff with a %s case", async shape => {
+  await withTemplateUpgrade(async target => {
+    const { owner, db, applyForward } = target;
+    const entry = await prepareWebhookRenewal(target, "failed");
+    await applyForward();
+    expect(await renewalUpgradeReport(owner)).toEqual([reportRow(entry.id, ["provider_attempt"], { payment_artifacts: [
+      expect.objectContaining({ provider_has_remote_reference: true }),
+    ] })]);
+    if (shape === "missing") {
+      await interruptProviderHandoff(owner, entry.deliver);
+    } else {
+      await entry.deliver();
+      const retry = await retryOutcome(entry, db, true);
+      expect(await interruptProviderHandoff(owner, () => retry.apply("failed")))
+        .toMatchObject({ correctionStatus: "corrected", subscriptionWebhookDunning: { opened: false } });
+      if (shape === "conflict") {
+        // Advance the existing case through the native failure owner. Its original provider attribution remains.
+        await rpc("subscription_retry_open_case", [entry.id, "failed", "/recover"], db);
+        await expect(rpc("payment_reconciliation_open_dunning_from_failed_result", [
+          `handoff-conflict:${entry.id}`, entry.prepared.settlementIntentId, null, "declined", retry.at, "soft_retryable",
+          retry.paymentAttemptId, "failed", "/recover",
+        ], db)).rejects.toMatchObject({ code: "55000", message: "subscription_dunning_failed_attempt_ambiguous" });
+      }
+    }
+    const handoff = { missing: "case_missing", behind: "case_behind", conflict: "case_attribution_conflict" }[shape];
+    expect(await renewalUpgradeReport(owner)).toEqual([reportRow(entry.id, ["retry", "failure_handoff"], {
+      operation_state: "refused", payment_artifacts: [expect.objectContaining({
+        failure_receipt_id: expect.any(String), failure_handoff: handoff,
+      })],
+    })]);
+    if (shape !== "conflict") {
+      await entry.recoverDunning();
+      expect(await renewalUpgradeReport(owner)).toEqual([reportRow(entry.id, ["retry"])]);
+    }
+    await closeOrder(target, entry.prepared.orderId);
+    await closeWaitingRetry(db, entry, entry.id, later);
+    expect(await renewalUpgradeReport(owner)).toEqual([]);
+  });
+}, postgresSetupTimeoutMs);
+
+it("reports a committed driver failure while separate case propagation is interrupted", async () => {
+  await withTemplateUpgrade(async target => {
+    const { owner, db, applyForward } = target;
+    const entry = await upgradeRenewal(target, { scenario: "declined" });
+    const root = await runPreForwardRenewal(entry), store = api.createPostgresRetryStore(db);
+    const wait = (await store.read(root.operationId))!, retryAt = wait.nextRetryAt!;
+    const options = retryDriver(entry.d, "declined", retryAt, undefined, predecessorRetryTarget(db)).options;
+    const interrupted = api.createNativeRetryDriver({ ...options, withTransaction: work => transaction(async tx => work({
+      query(sql, values) {
+        if (sql.includes("subscription_retry_open_case")) throw new Error("case_propagation_interrupted");
+        return tx.query(sql, values);
+      },
+    }), db) });
+    expect(await interrupted.run(retryAt, 1)).toEqual([{ operationId: root.operationId, status: "error" }]);
+    await applyForward();
+    expect(await renewalUpgradeReport(owner)).toEqual([reportRow(root.operationId, ["failure_handoff", "retry"], {
+      payment_artifacts: [expect.objectContaining({ failure_handoff: "case_behind", case_rung: 1, retry_attempt: 2 })],
+    })]);
+    await rpc("subscription_retry_open_case", [root.operationId, "failed", "/recover"], db);
+    expect(await renewalUpgradeReport(owner)).toEqual([reportRow(root.operationId, ["retry"])]);
+    await closeWaitingRetry(db, entry, root.operationId, retryAt);
+    expect(await renewalUpgradeReport(owner)).toEqual([]);
+  });
+}, postgresSetupTimeoutMs);
+
+it.each([true, false])("requires draining in-flight renewal dispatch before the forward (drain first: %s)", async drainFirst => {
   await withTemplateUpgrade(async target => {
     const { owner, db, applyForward } = target, transact = upgradeTransaction(db);
-    const predecessorRetry = predecessorRetryTarget(db);
-    const claimed = await (await upgradeRenewal(target)).claim();
-    const r = await upgradeRenewal(target, { retained: true });
-    const reserved = await r.claim();
-    await reserveIncumbent(r.d, reserved);
-    const prepared = await upgradeRenewal(target, { scenario: "ambiguous" });
-    const outstanding = await runHeldRenewal(prepared);
-    expect(outstanding.status).toBe("awaiting_provider");
-    expect(prepared.d.execute.mock.calls.map(([charge]) => charge.amountMinor)).toEqual([200]);
-    const original = (await prepared.d.input.store.readRenewal(outstanding.identityKey))!;
-    const replay = () => db.query(rawPrepare, [original.operationId, original.claimToken, now]);
-    const originalReplay = (await replay()).rows, originalWire = await frozenOperation(db, original.operationId);
-    const fresh = await upgradeRenewal(target, { edited: false });
-    const control = await fresh.claim();
-    await reserveIncumbent(fresh.d, control);
-    await db.query(rawPrepare, [control.operationId, control.claimToken, now]);
-
-    const waiting = await upgradeRenewal(target), uncaptured = await upgradeRenewal(target);
-    const wait = await waiting.claim(), missingWait = await uncaptured.claim();
-    await stock(0, randomUUID(), db);
-    expect(await api.createPostgresStockWaitStore({ executor: db, withTransaction: transact, codec: waiting.d.codec, workerId: "before-upgrade" })
-      .admit({ operationId: wait.operationId, claimToken: wait.claimToken, now, snapshot: wait.cycleSnapshot })).toMatchObject({ waiting: true });
-    await uncaptured.d.input.store.refuseBeforePayment({ operationId: missingWait.operationId,
-      claimToken: missingWait.claimToken, occurredAt: now, reason: "inventory_unavailable" });
-    expect((await db.query("SELECT renewal_operation_id FROM public.subscription_stock_wait_cases")).rows).toEqual([{ renewal_operation_id: wait.operationId }]);
-    await stock(1000, randomUUID(), db);
-
-    async function declined() {
-      const f = await upgradeRenewal(target, { scenario: "declined" });
-      const result = await runHeldRenewal(f);
-      expect(result.status).toBe("refused");
-      return { ...f, id: result.operationId };
-    }
-    const retryStore = api.createPostgresRetryStore(db);
-    const unpaid = await declined();
-    for (let i = 0; i < 3; i++) {
-      const retryAt = (await retryStore.read(unpaid.id))!.nextRetryAt!;
-      expect(await retryDriver(unpaid.d, "declined", retryAt, undefined, predecessorRetry).driver.run(retryAt, 1))
-        .toEqual([{ operationId: unpaid.id, status: "refused" }]);
-    }
-    expect(await retryStore.read(unpaid.id)).toMatchObject({ state: "waiting", nextRetryAt: null });
-    const pending = await declined(), retryAt = (await retryStore.read(pending.id))!.nextRetryAt!;
-    const retry = retryDriver(pending.d, "ambiguous", retryAt, undefined, predecessorRetry);
-    expect(await retry.driver.run(retryAt, 50)).toContainEqual({ operationId: pending.id, status: "awaiting_provider" });
-    const waitingRetry = await declined();
-    await owner.query("UPDATE public.subscription_retry_obligations SET renewal_quarantined_until=$2 WHERE renewal_operation_id=$1",
-      [waitingRetry.id, days(retryAt, 1)]);
-    const closed = await declined();
-    await closeWaitingRetry(db, closed, closed.id, later);
-    expect((await db.query(`SELECT c.status AS cycle,i.status AS intent,r.next_retry_at
-      FROM public.subscription_retry_obligations r JOIN public.subscription_cycles c ON c.id=r.cycle_id
-      JOIN public.commerce_settlement_intents i ON i.id=r.settlement_intent_id WHERE r.renewal_operation_id=$1`, [closed.id])).rows)
-      .toEqual([{ cycle: "cancelled", intent: "cancelled", next_retry_at: null }]);
-
-    const beforeCut = await prepareWebhookRenewal(target), afterCut = await prepareWebhookRenewal(target);
-    const historical = await upgradeRenewal(target, { edited: false });
-    const legacy = await createPostgresAutomaticRenewalPort(db).buildCycleSnapshots(historical.d.due);
-    const historicalClaim = JSON.parse((await db.query(rawClaim, [
-      automaticRenewalIdentity(legacy.subscriptionId, legacy.scheduledAt), automaticRenewalFingerprint(legacy), legacy, now,
-    ])).rows[0].result);
-    await resizeForRenewal(historical.f, transact);
-    const v3 = await upgradeRenewal(target), tagged = await v3.claim();
-    await reserveIncumbent(v3.d, tagged);
-    // The dormant storage has no v3 producer. Model its persisted wire at the database boundary.
-    await owner.query(`UPDATE public.subscription_renewal_operations
-      SET cycle_snapshot = (cycle_snapshot - 'settlementChannelKey') || '{"contractVersion":"platform.subscription.renewal.v3"}'::jsonb
-      WHERE id=$1`, [tagged.operationId]);
-    expect((await applyForward()).applied).toEqual([expect.stringMatching(renewalTemplateForward)]);
-    const postForward = await upgradeRenewal(target, { edited: false });
-    const postForwardClaim = await postForward.claim();
-    await resizeForRenewal(postForward.f, transact);
-    expect((await db.query(`SELECT id,claimed_before_rnw_1 FROM public.subscription_renewal_operations
-      WHERE id=ANY($1::uuid[])`, [[tagged.operationId, historicalClaim.operationId, postForwardClaim.operationId, closed.id]])).rows)
-      .toEqual(expect.arrayContaining([
-        { id: tagged.operationId, claimed_before_rnw_1: false },
-        { id: historicalClaim.operationId, claimed_before_rnw_1: false },
-        { id: postForwardClaim.operationId, claimed_before_rnw_1: false },
-        { id: closed.id, claimed_before_rnw_1: false },
-      ]));
-    const before = await allPublicRows(owner);
-    const expected = [claimed.operationId, reserved.operationId, original.operationId, wait.operationId, missingWait.operationId,
-      unpaid.id, waitingRetry.id, pending.id, beforeCut.id, afterCut.id].sort();
-    const report = await renewalUpgradeReport(db);
-    expect(report.map(row => row.operation_id)).toEqual(expected);
-    expect(report).toEqual(expect.arrayContaining([
-      expect.objectContaining({ operation_id: claimed.operationId, operation_state: "claimed" }),
-      expect.objectContaining({ operation_id: reserved.operationId, operation_state: "reserved" }),
-      expect.objectContaining({ operation_id: original.operationId, operation_state: "attempt_prepared", frozen_amount_minor: 200, currency: "XXX" }),
-      expect.objectContaining({ operation_id: wait.operationId, stock_wait_state: "waiting" }),
-      expect.objectContaining({ operation_id: missingWait.operationId, stock_wait_state: "uncaptured" }),
-      expect.objectContaining({ operation_id: unpaid.id, retry_state: "waiting" }),
-      expect.objectContaining({ operation_id: pending.id, retry_state: "prepared" }),
-    ]));
-    expect(await allPublicRows(owner)).toEqual(before);
-    await expect(db.query(rawPrepare, [tagged.operationId, tagged.claimToken, now]))
-      .rejects.toMatchObject({ code: "22023", message: "commerce_renewal_invalid_snapshot" });
-    expect(await allPublicRows(owner)).toEqual(before);
-    const atCut = await renewalUpgradeReport(db, { beforeCut: beforeCut.deliver, afterCut: afterCut.deliver });
-    expect(atCut.map(row => row.operation_id)).toEqual(expected.filter(id => id !== beforeCut.id));
-    expect((await renewalUpgradeReport(db)).map(row => row.operation_id)).toEqual(expected.filter(id => id !== beforeCut.id && id !== afterCut.id));
-
-    expect((await replay()).rows).toEqual(originalReplay);
-    expect(await frozenOperation(db, original.operationId)).toEqual(originalWire);
-    const rail = prepared.d.input.paymentRails.resolve("sandbox")!;
-    const read = vi.spyOn(rail, "readOutcome");
-    expect(await api.runOneAutomaticSubscriptionRenewal(prepared.d.input, prepared.d.due, later))
-      .toMatchObject({ status: "awaiting_provider", operationId: original.operationId });
-    expect(read).toHaveBeenCalledOnce();
-    expect(prepared.d.execute).toHaveBeenCalledTimes(1);
-    expect(await frozenOperation(db, original.operationId)).toEqual(originalWire);
-
-    const reconcile = retryDriver(pending.d, "succeeded", retryAt, undefined, { executor: db, transaction: transact });
-    expect(await reconcile.driver.run(retryAt, 50)).toContainEqual({ operationId: pending.id, status: "succeeded" });
-    expect(await retryStore.read(pending.id)).toMatchObject({ state: "recovered", externalAttemptSequence: 1 });
-    expect(reconcile.execute).not.toHaveBeenCalled();
-  });
-}, postgresSetupTimeoutMs);
-
-it("holds a marked attempt-prepared root whose verified decline arrives after the report", async () => {
-  await withTemplateUpgrade(async target => {
-    const { db, owner, applyForward } = target, transact = upgradeTransaction(db);
-    const { id, d, methodRef, deliver } = await prepareWebhookRenewal(target, "failed");
-    await applyForward();
-    expect(await renewalUpgradeReport(db)).toMatchObject([{ operation_id: id, operation_state: "attempt_prepared",
-      frozen_amount_minor: 200, retry_state: null }]);
-    const store = api.createPostgresRetryStore(db);
-    expect(await store.read(id)).toBeNull();
-    await deliver();
-    const waiting = (await store.read(id))!;
-    expect(waiting).toMatchObject({ state: "waiting", nextRetryAt: expect.any(String), externalAttemptSequence: 0 });
-    expect(await renewalUpgradeReport(db)).toMatchObject([{ operation_id: id, operation_state: "refused", retry_state: "waiting" }]);
-
-    let clock = waiting.nextRetryAt!;
-    const supplied = retryDriver(d, "ambiguous", clock, methodRef, { executor: db, transaction: transact }).options;
-    const execute = vi.fn<NativeRetryDriverOptions["payments"]["execute"]>();
-    const mounted = binding(d, () => clock, transact, db, {
-      ...supplied,
-      readFrozenMandate: async snapshot => ({ authorized: true, authorizationRef: snapshot.authorizationRef, paymentMethodRef: methodRef }),
-      payments: { ...supplied.payments, execute },
-    });
-    const before = await allPublicRows(owner);
-    for (let pass = 0; pass < 2; pass++) {
-      const tick = await mounted.services.run();
-      expect(execute.mock.calls.map(([charge]) => charge.amountMinor)).toEqual([]);
-      expect(tick).toMatchObject({ retries: [], renewals: [] });
-      clock = days(clock, 1);
-    }
-    const key = `new-retry:${id}`;
-    await expect(db.query("SELECT public.subscription_retry_prepare($1,$2,$3,$4)", [id, key, {
-      paymentIntentId: waiting.settlementIntentId, orderRef: waiting.orderId, amountMinor: 200,
-      currency: "XXX", idempotencyKey: key, providerIdempotencyKey: `new-provider-retry:${id}`,
-      providerRequestFingerprint: waiting.requestFingerprint, paymentMethodRef: methodRef,
-    }, clock])).rejects.toMatchObject(stalePreparation);
-    expect(await store.read(id)).toEqual(waiting);
-    expect(await allPublicRows(owner)).toEqual(before);
-  });
-}, postgresSetupTimeoutMs);
-
-it("attempts the later eligible retry on the first one-row tick without dispatching the older held retry", async () => {
-  await withTemplateUpgrade(async target => {
-    const { db, applyForward } = target, transact = upgradeTransaction(db);
-    const held = await upgradeRenewal(target, { scenario: "declined" });
-    const eligibleAt = days(now, 2);
-    const eligible = await upgradeRenewal(target, { scenario: "declined", claimAt: eligibleAt, edited: false });
-    const older = await runHeldRenewal(held), newer = await runHeldRenewal(eligible, eligibleAt);
-    expect([older.status, newer.status]).toEqual(["refused", "refused"]);
-    const store = api.createPostgresRetryStore(db);
-    const heldRetry = (await store.read(older.operationId))!, eligibleRetry = (await store.read(newer.operationId))!;
-    expect(Date.parse(heldRetry.nextRetryAt!)).toBeLessThan(Date.parse(eligibleRetry.nextRetryAt!));
-    await applyForward();
-    expect(await renewalUpgradeReport(db)).toMatchObject([{ operation_id: older.operationId, retry_state: "waiting" }]);
-
-    const clock = eligibleRetry.nextRetryAt!;
-    const retry = retryDriver(eligible.d, "succeeded", clock, undefined, { executor: db, transaction: transact });
-    expect(await binding(eligible.d, () => clock, transact, db, retry.options, 1).services.run())
-      .toMatchObject({ renewals: [], retries: [{ operationId: newer.operationId, status: "succeeded" }] });
-    expect(retry.execute.mock.calls.map(([input]) => input.paymentIntentId)).toEqual([eligibleRetry.settlementIntentId]);
-    expect(await store.read(older.operationId)).toEqual(heldRetry);
-  });
-}, postgresSetupTimeoutMs);
-
-it("drains in-flight retry dispatch before the forward and resumes without a stale charge", async () => {
-  await withTemplateUpgrade(async target => {
-    const { db, applyForward } = target, transact = upgradeTransaction(db);
     const first = await upgradeRenewal(target, { scenario: "declined" });
-    const held = await upgradeRenewal(target, { scenario: "declined", claimAt: days(now, 2) });
-    async function incurRetry(entry: typeof first, at: string) {
-      const result = await runHeldRenewal(entry, at);
-      expect(result.status).toBe("refused");
-      return result.operationId;
-    }
-    const firstId = await incurRetry(first, now), heldId = await incurRetry(held, days(now, 2));
-    const retryStore = api.createPostgresRetryStore(db);
-    const firstRetryAt = (await retryStore.read(firstId))!.nextRetryAt!;
-    const heldRetryAt = (await retryStore.read(heldId))!.nextRetryAt!;
-    const retry = retryDriver(first.d, "ambiguous", firstRetryAt, undefined, predecessorRetryTarget(db));
-    const atDispatch = signal(), allowDispatch = signal();
-    const cutoverCharges: number[] = [];
+    const separate = await upgradeRenewal(target, { scenario: "declined", claimAt: days(now, 2) });
+    const firstId = (await runPreForwardRenewal(first)).operationId;
+    const separateId = (await runPreForwardRenewal(separate, days(now, 2))).operationId;
+    const store = api.createPostgresRetryStore(db);
+    const firstAt = (await store.read(firstId))!.nextRetryAt!, separateAt = (await store.read(separateId))!.nextRetryAt!;
+    const retry = retryDriver(first.d, "ambiguous", firstAt, undefined, predecessorRetryTarget(db));
+    const atDispatch = signal(), release = signal();
+    const charges: number[] = [];
     let forwardStarted = false;
-    const delayed: typeof retry.options = { ...retry.options, payments: { ...retry.options.payments,
+    const pending = binding(first.d, () => firstAt, transact, db, { ...retry.options, payments: { ...retry.options.payments,
       async execute(input) {
         atDispatch.resolve();
-        await allowDispatch.promise;
-        if (forwardStarted) cutoverCharges.push(input.amountMinor);
+        await release.promise;
+        if (forwardStarted) charges.push(input.amountMinor);
         return retry.execute(input);
       },
-    } };
-    const oldInvocation = binding(first.d, () => firstRetryAt, transact, db, delayed).services.run();
-    const outcome = oldInvocation.catch(error => { atDispatch.reject(error); throw error; });
-    const reportIds: string[] = [];
+    } }).services.run();
     try {
-      await Promise.race([atDispatch.promise, outcome.then(() => { throw new Error("retry_finished_before_dispatch_barrier"); })]);
-      const section = readFileSync("packages/core/docs/guide/upgrade/database-migrations.md", "utf8")
-        .split("## Reconcile stale native renewals")[1]!.split("Use the first report result")[0]!;
-      const steps = [...section.matchAll(/^\d\. (Pause and drain|Apply|Run|Verify|Resume)\b/gmu)].map(match => match[1]);
-      expect(new Set(steps)).toEqual(new Set(["Pause and drain", "Apply", "Run", "Verify", "Resume"]));
-      for (const step of steps) {
-        if (step === "Pause and drain") {
-          allowDispatch.resolve();
-          expect(await outcome).toMatchObject({ retries: [{ operationId: firstId, status: "awaiting_provider" }] });
-        }
-        if (step === "Apply") {
-          forwardStarted = true;
-          expect((await applyForward()).applied).toEqual([expect.stringMatching(renewalTemplateForward)]);
-        }
-        if (step === "Run") {
-          const rows = await renewalUpgradeReport(db);
-          reportIds.push(...rows.filter(row => row.retry_state === "waiting").map(row => row.operation_id));
-        }
-        if (step === "Verify") {
-          expect(reportIds).toEqual([heldId]);
-          await closeWaitingRetry(db, held, heldId, heldRetryAt);
-          expect((await renewalUpgradeReport(db)).map(row => row.operation_id)).not.toContain(heldId);
-        }
-        if (step === "Resume") {
-          const resumed = retryDriver(first.d, "ambiguous", heldRetryAt, undefined, { executor: db, transaction: transact });
-          const tick = await binding(first.d, () => heldRetryAt, transact, db, resumed.options).services.run();
-          if (!tick || !("retries" in tick)) throw new Error("expected_mounted_retry_result");
-          expect(tick.retries).not.toContainEqual(expect.objectContaining({ operationId: heldId }));
-          cutoverCharges.push(...resumed.execute.mock.calls.map(([input]) => input.amountMinor));
-        }
+      await Promise.race([atDispatch.promise, pending.then(() => { throw new Error("retry_finished_before_dispatch_barrier"); })]);
+      if (drainFirst) {
+        release.resolve();
+        expect(await pending).toMatchObject({ retries: [{ operationId: firstId, status: "awaiting_provider" }] });
       }
-      expect(retry.execute.mock.calls.map(([input]) => input.amountMinor)).toEqual([200]);
-      expect(await retryStore.read(firstId)).toMatchObject({ state: "prepared", externalAttemptSequence: 1 });
-      expect(cutoverCharges).toEqual([]);
+      forwardStarted = true;
+      expect((await applyForward()).applied).toEqual([expect.stringMatching(renewalTemplateForward)]);
+      if (!drainFirst) {
+        release.resolve();
+        await pending;
+        expect(charges).toEqual([200]);
+        return;
+      }
+      expect((await renewalUpgradeReport(owner)).map(row => row.operation_id)).toEqual([firstId, separateId].sort());
+      const reconcile = retryDriver(first.d, "succeeded", firstAt, undefined, predecessorRetryTarget(db));
+      expect(await reconcile.driver.run(firstAt, 1)).toEqual([{ operationId: firstId, status: "succeeded" }]);
+      expect(reconcile.execute).not.toHaveBeenCalled();
+      await closeWaitingRetry(db, separate, separateId, separateAt);
+      expect(await renewalUpgradeReport(owner)).toEqual([]);
+      const resumed = retryDriver(first.d, "ambiguous", separateAt, undefined, predecessorRetryTarget(db));
+      expect(await binding(first.d, () => separateAt, transact, db, resumed.options).services.run()).toMatchObject({ retries: [], renewals: [] });
+      expect(resumed.execute).not.toHaveBeenCalled();
+      expect(charges).toEqual([]);
     } finally {
-      allowDispatch.resolve();
-      await outcome;
+      release.resolve();
+      await pending;
     }
   });
 }, postgresSetupTimeoutMs);

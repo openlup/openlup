@@ -83,34 +83,38 @@ Applying both attempts to recreate functions and fails. Importing
 
 ## Reconcile stale native renewals
 
-For upgrades from Platform 1.3.0, keep provider evidence intake available
+For upgrades from Platform 1.3.0, keep verified provider evidence intake available
 throughout this procedure.
 
-1. Pause and drain every dispatch entry point for the affected population.
-   Include the renewal worker, retry driver, and any custom renewal or retry dispatch.
-2. Apply the bundled PostgreSQL forward and confirm it is applied.
-3. Run the report below on one authorized server-side PostgreSQL session with
-   renewal read privileges. Use the installation owner where there is no runtime role.
-4. Verify each reported operation has a recorded disposition before resuming
-   dispatch for it. Use the operation ID to re-read current operation, reservation,
-   intent, retry and provider evidence as applicable. Save the cut and dispositions
-   in your restricted upgrade record. Refer unresolved roots to the subscription
-   owner and waiting retries to the payment recovery owner.
-5. Resume eligible dispatch through the usual scheduler after reconciliation.
-   Keep affected work paused while any unresolved stale obligation can dispatch.
+1. Pause and drain renewal and retry dispatch for the affected population.
+   Include the mounted worker, retry driver, custom callers, and in-flight
+   invocations that already have permission to send. Pause and drain template-edit
+   acceptance before applying the forward and keep it paused until the forward commits.
+2. Apply the bundled PostgreSQL forward and confirm it in the migration ledger.
+3. Run the report below on one authorized server-side PostgreSQL connection with
+   complete visibility into the renewal and payment records. Use the installation
+   owner if the runtime login lacks that visibility. An error or incomplete
+   visibility invalidates the run. Record the cut and operation IDs in the
+   restricted upgrade record.
+4. Re-read each item's live state and reconcile it through its existing owner.
+   Use the subscription and inventory owners for unprepared roots and stock
+   waits. Use verified provider readback, webhook replay, settlement, or authorized
+   closure for existing payment work. Preserve the original amount, fingerprint,
+   and artifact IDs for money already dispatched. Use the payment recovery owner
+   for retries and incomplete handoffs. An operator reopen or a completed handoff
+   can leave the item chargeable. Keep dispatch paused while an item remains unresolved.
+5. Repeat the report after reconciliation until it returns **zero rows immediately
+   before resuming dispatch**. Resume through the ordinary scheduler.
 
-Use the first report result to record the point at which PostgreSQL took the
-snapshot. A verified webhook committed before that point is visible to both
-queries. A later commit leaves the operation at its earlier state in the report.
-Re-read the live operation before deciding its disposition.
+**Known limitation.** The final empty result describes its database snapshot.
+A provider observation or other owner transaction can commit between that snapshot
+and dispatch resumption. Changes in that interval fall outside the final cut.
 
-The forward marks unresolved incumbent operations whose stored template version
-differs from the version at upgrade. A claim made before an accepted edit that
-also landed before the forward looks the same as the billing defect. The report
-includes it for reconciliation. Historical operations without a recorded
-template version supply no freshness evidence. Claims that were current at the
-forward and new claims prepare at the price frozen at claim. Later accepted
-edits apply to later cycles.
+A verified webhook committed before the first read is visible in the report.
+A later commit leaves the earlier state visible. The forward records historical
+billing claims with a stale accepted version or unknown legacy provenance.
+Claims that were current at the forward and new claims use the price frozen at
+claim. Later accepted edits apply to later cycles.
 
 ```sql
 BEGIN ISOLATION LEVEL REPEATABLE READ, READ ONLY;
@@ -118,72 +122,137 @@ BEGIN ISOLATION LEVEL REPEATABLE READ, READ ONLY;
 SELECT pg_current_snapshot()::text AS cut_snapshot,
        statement_timestamp() AS cut_statement_started_at;
 
-WITH stale_incumbent AS MATERIALIZED (
-  SELECT o.id, o.subscription_id, o.scheduled_at, o.state,
-         o.terminal_reason, o.cycle_snapshot,
-         public.subscription_renewal_occurrence_is_current(
-           s.status, s.next_cycle_at, o.scheduled_at
-         ) AS occurrence_current
+WITH roots AS MATERIALIZED (
+  SELECT o.*, s.status AS subscription_status, s.next_cycle_at,
+         NOT (o.cycle_snapshot ?| ARRAY['frozenRevision', 'templateSnapshot']) AS unknown_provenance
   FROM public.subscription_renewal_operations o
   JOIN public.subscriptions s ON s.id = o.subscription_id
   WHERE o.claimed_before_rnw_1
-    AND o.cycle_snapshot->>'contractVersion'
-        IS DISTINCT FROM 'platform.subscription.renewal.v3'
-), roots AS (
-  SELECT o.id AS operation_id, o.subscription_id, o.scheduled_at,
-         o.state AS operation_state, o.terminal_reason,
-         o.cycle_snapshot, o.occurrence_current,
-         w.id IS NOT NULL AS captured_stock_wait,
-         public.subscription_renewal_unresolved_stock_wait(o.id) AS stock_wait_state,
-         r.id AS retry_obligation_id, r.state AS retry_state,
-         CASE WHEN r.state = 'prepared' THEN
-           public.subscription_retry_prepared_payment_attempt(r.id, r.attempt_sequence) IS NOT NULL
-         END AS retry_has_readable_attempt
-  FROM stale_incumbent o
+), financial AS (
+  SELECT o.id, o.state, o.attempt_prepared_at, o.external_attempt_acknowledged_at,
+         o.cycle_snapshot->>'settlementChannelKey' AS channel, i.channel_key AS intent_channel,
+         r.id AS retry_id, r.state AS retry_state, r.retry_attempt, r.attempt_sequence,
+         r.next_retry_at, r.renewal_quarantined_until, prep.id AS prepare_receipt_id,
+         failure.id AS failure_receipt_id, d.id AS case_id, d.status AS case_status,
+         d.retry_attempt AS case_rung,
+         c.id AS cycle_id, c.status AS cycle_state, ord.id AS order_id, ord.status AS order_state,
+         i.id AS intent_id, i.status AS intent_state, ps.status AS provider_state,
+         pa.id AS provider_attempt_id, pa.status AS provider_attempt_state,
+         COALESCE(pa.provider_attempt_id, pa.provider_session_id) IS NOT NULL AS provider_has_remote_reference,
+         sim.id AS simulator_attempt_id, sim.state AS simulator_attempt_state,
+         COALESCE(exact_provider.id, exact_sim.id) AS retry_attempt_id,
+         COALESCE(exact_provider.status, exact_sim.state) AS retry_attempt_state,
+         COALESCE(exact_provider.provider_attempt_id, exact_provider.provider_session_id) IS NOT NULL AS retry_has_remote_reference,
+         (ord.id IS NULL OR ord.status = 'pending_payment') AS payable,
+         (i.id IS NULL OR i.status IN ('created', 'failed')) AS unsettled,
+         (ps.status NOT IN ('succeeded','cancelled','refunded','partially_refunded','disputed')) AS provider_open,
+         CASE
+           WHEN failure.id IS NULL AND (o.attempt_prepared_at IS NULL OR i.status IS DISTINCT FROM 'failed') THEN NULL
+           WHEN d.id IS NULL THEN 'case_missing'
+           WHEN d.retry_attempt < COALESCE(r.retry_attempt, 1) THEN 'case_behind'
+           WHEN d.retry_attempt = r.retry_attempt AND failure.input ? 'paymentAttemptId'
+             AND (failure.input->>'paymentAttemptId') IS DISTINCT FROM attribution.failed_payment_attempt_id::text
+             THEN 'case_attribution_conflict'
+           WHEN r.id IS NOT NULL AND r.case_id IS DISTINCT FROM d.id THEN 'case_binding_conflict'
+           ELSE 'recorded'
+         END AS failure_handoff
+  FROM roots o
+  LEFT JOIN public.subscription_retry_obligations r ON r.renewal_operation_id = o.id
+  LEFT JOIN public.subscription_cycles owned_cycle ON owned_cycle.renewal_operation_id = o.id
+  LEFT JOIN public.commerce_settlement_intents direct_intent ON direct_intent.renewal_operation_id = o.id
+  LEFT JOIN public.commerce_orders ord ON ord.renewal_operation_id = o.id
+    OR ord.subscription_cycle_id = owned_cycle.id OR ord.id IN (direct_intent.order_id, r.order_id)
+  LEFT JOIN public.subscription_cycles c ON c.id = COALESCE(ord.subscription_cycle_id, owned_cycle.id, r.cycle_id)
+  LEFT JOIN public.commerce_settlement_intents i ON i.order_id = ord.id
+  LEFT JOIN public.payment_provider_states ps ON ps.id = i.id
+  LEFT JOIN public.payment_provider_attempts pa ON pa.id = ps.active_attempt_id
+  LEFT JOIN public.payment_simulator_attempts sim ON sim.settlement_intent_id = i.id AND sim.is_active
+  LEFT JOIN public.subscription_retry_receipts prep ON prep.obligation_id = r.id
+    AND prep.kind = 'prepare' AND prep.attempt_sequence = r.attempt_sequence AND r.state = 'prepared'
+  LEFT JOIN public.subscription_retry_receipts failure ON failure.obligation_id = r.id
+    AND failure.kind = 'failure' AND failure.attempt_sequence = r.retry_attempt - 1
+  LEFT JOIN public.subscription_dunning_cases d ON d.cycle_id = c.id
+  LEFT JOIN public.payment_dunning_case_attribution attribution ON attribution.case_id = d.id
+  LEFT JOIN public.payment_provider_attempts exact_provider ON exact_provider.settlement_intent_id = i.id
+    AND i.id = r.settlement_intent_id AND prep.input->>'paymentIntentId' = i.id::text
+    AND exact_provider.idempotency_key = prep.input->>'idempotencyKey'
+    AND exact_provider.request_payload->>'providerIdempotencyKey' = prep.input->>'providerIdempotencyKey'
+    AND exact_provider.request_payload->>'providerRequestFingerprint' = prep.input->>'providerRequestFingerprint'
+  LEFT JOIN public.payment_simulator_attempts exact_sim ON exact_sim.settlement_intent_id = i.id
+    AND i.id = r.settlement_intent_id AND prep.input->>'paymentIntentId' = i.id::text
+    AND exact_sim.request_key = prep.input->>'idempotencyKey'
+    AND exact_sim.request_fingerprint = prep.input->>'providerRequestFingerprint'
+), stock AS (
+  SELECT o.id, w.id AS stock_wait_id, w.state AS stock_wait_state,
+         a.id AS reservation_id, a.status AS reservation_state,
+         (o.state = 'reserved' AND a.status = 'held'
+           AND a.operation_fingerprint = o.operation_fingerprint) AS held_reservation,
+         (o.state = 'refused' AND o.terminal_reason IN ('inventory_unavailable','reservation_expired')
+           AND (w.id IS NULL OR (w.state IN ('waiting','stock_secured') AND w.identity_key = o.identity_key
+             AND w.fingerprint = o.operation_fingerprint AND w.cycle_snapshot = o.cycle_snapshot))
+           AND (a.id IS NULL OR (a.operation_fingerprint = o.operation_fingerprint AND a.source_key = o.cycle_snapshot->>'stockSourceKey'
+             AND (a.status IN ('expired','released') OR (a.status = 'held' AND w.state = 'stock_secured'))))
+           AND o.external_attempt_acknowledged_at IS NULL
+           AND ((o.subscription_status = 'active' AND public.subscription_stock_wait_frozen(o.subscription_id, o.scheduled_at) IS NOT NULL)
+             OR (o.subscription_status = 'paused' AND w.state IN ('waiting','stock_secured') AND w.scheduled_at = o.next_cycle_at
+               AND o.attempt_prepared_at IS NULL AND o.external_attempt_acknowledged_at IS NULL
+               AND NOT EXISTS (SELECT 1 FROM financial f WHERE f.id = o.id
+                 AND COALESCE(f.cycle_id, f.order_id, f.intent_id) IS NOT NULL)))
+           AND NOT EXISTS (SELECT 1 FROM public.subscription_renewal_outcomes e
+             WHERE e.renewal_operation_id = o.id AND (e.outcome <> 'refused'
+               OR e.reason IS NULL OR e.reason NOT IN ('inventory_unavailable','reservation_expired')
+               OR e.external_ref IS NOT NULL OR e.operation_fingerprint <> o.operation_fingerprint
+               OR e.event_key NOT IN (o.identity_key||':inventory', o.identity_key||':reservation-expired')))) AS recoverable_wait
+  FROM roots o
   LEFT JOIN public.subscription_stock_wait_cases w ON w.renewal_operation_id = o.id
-  LEFT JOIN public.subscription_retry_obligations r
-    ON r.renewal_operation_id = o.id AND o.state = 'refused'
-   AND r.state IN ('waiting', 'prepared')
-   AND EXISTS (
-     SELECT 1 FROM public.subscription_cycles c
-     WHERE c.id = r.cycle_id AND c.status = 'payment_pending'
-   )
-   AND EXISTS (
-     SELECT 1 FROM public.commerce_settlement_intents i
-     WHERE i.id = r.settlement_intent_id AND i.status IN ('created', 'failed')
-   )
+  LEFT JOIN public.fulfillment_inventory_reservations a ON a.renewal_operation_id = o.id
+), routes AS (
+  SELECT o.id, reason
+  FROM roots o JOIN stock s USING (id)
+  CROSS JOIN LATERAL (VALUES
+    ('first_charge', o.state = 'claimed' OR s.held_reservation),
+    ('stock_wait', s.recoverable_wait OR (s.held_reservation AND s.stock_wait_state = 'stock_secured'))
+  ) AS route(reason, chargeable)
+  WHERE chargeable
+  UNION ALL
+  SELECT f.id, reason FROM financial f
+  CROSS JOIN LATERAL (VALUES
+    ('prepared_first_charge', f.state = 'attempt_prepared' AND f.unsettled AND f.payable),
+    ('unpaid_intent', f.intent_id IS NOT NULL AND f.unsettled AND f.payable),
+    ('provider_attempt', f.provider_open AND f.unsettled
+      AND (f.payable OR f.provider_attempt_state IN ('created','sent_to_provider','requires_action','processing'))),
+    ('record_attempt', f.provider_open),
+    ('sandbox_attempt', f.intent_channel = 'sandbox' AND f.payable
+      AND f.intent_state <> 'settled'),
+    ('sandbox_ack', f.channel = 'sandbox' AND f.state = 'attempt_prepared'
+      AND (f.external_attempt_acknowledged_at IS NULL OR f.unsettled)),
+    ('retry', f.retry_state IN ('waiting','prepared') AND f.cycle_state = 'payment_pending' AND f.unsettled),
+    ('failure_handoff', f.failure_handoff <> 'recorded' AND f.cycle_state = 'payment_pending'
+      AND f.unsettled AND f.payable)
+  ) AS route(reason, chargeable)
+  WHERE chargeable
+), listed AS (
+  SELECT id, array_agg(DISTINCT reason ORDER BY reason) AS reasons FROM routes GROUP BY id
 )
-SELECT operation_id, subscription_id, scheduled_at, operation_state,
-       stock_wait_state, retry_obligation_id, retry_state, retry_has_readable_attempt,
-       cycle_snapshot->'totalAmountMinor' AS frozen_amount_minor,
-       cycle_snapshot->>'currency' AS currency,
-       'subscription_renewal_snapshot_stale' AS reason
-FROM roots
-WHERE operation_state = 'attempt_prepared'
-   OR (occurrence_current AND (
-     operation_state = 'claimed'
-     OR (operation_state = 'reserved'
-       AND (NOT captured_stock_wait OR stock_wait_state IS NOT NULL))
-   ))
-   OR (operation_state = 'refused' AND (
-     retry_obligation_id IS NOT NULL
-     OR (stock_wait_state IS NOT NULL
-       AND terminal_reason IN ('inventory_unavailable', 'reservation_expired'))
-   ))
-ORDER BY operation_id;
+SELECT o.id AS operation_id, o.subscription_id, o.scheduled_at, o.state AS operation_state,
+       o.subscription_status, o.next_cycle_at, o.terminal_reason,
+       o.cycle_snapshot->'totalAmountMinor' AS frozen_amount_minor, o.cycle_snapshot->>'currency' AS currency,
+       CASE WHEN o.unknown_provenance THEN l.reasons || ARRAY['unknown_provenance'] ELSE l.reasons END AS reasons,
+       s.stock_wait_id,
+       CASE WHEN s.recoverable_wait AND s.stock_wait_id IS NULL THEN 'uncaptured' ELSE s.stock_wait_state END AS stock_wait_state,
+       s.reservation_id, s.reservation_state,
+       (SELECT jsonb_agg(to_jsonb(f) - ARRAY['id','state','channel','intent_channel','payable','unsettled','provider_open',
+           'attempt_prepared_at','external_attempt_acknowledged_at'] ORDER BY f.order_id)
+        FROM financial f WHERE f.id = o.id AND COALESCE(f.cycle_id, f.order_id, f.intent_id) IS NOT NULL) AS payment_artifacts
+FROM roots o JOIN listed l USING (id) JOIN stock s USING (id)
+ORDER BY o.id;
 
 COMMIT;
 ```
 
-A prepared attempt can settle at its original amount using existing provider
-readback and settlement. Keep its original snapshot, fingerprint and references.
-Prepared replay does not dispatch another charge. For unprepared roots and
-stock waits, use the original occurrence with your authorized lifecycle or
-reconciliation path. Retry preparation refuses new attempts for marked
-operations, including when a verified decline received after the report puts
-the obligation back in waiting. A prepared retry with
-`retry_has_readable_attempt = false` needs operator reconciliation before it
-can proceed. Use the operation ID if you rerun the report.
+Retry attempt identifiers refer to the current prepare receipt. A remote-reference
+flag records presence. Use the payment owner's readback or closure procedure to
+resolve the attempt.
 
 ## Prepare the optional checkout owner
 

@@ -2,4 +2,4 @@
 
 Migration:
 
-- Follow the renewal checklist in the database upgrade guide: drain renewal and retry dispatch before the forward, then run the read-only report. Custom workers re-read and rebuild the snapshot on `subscription_renewal_snapshot_stale`.
+- Follow the renewal checklist in the database upgrade guide. Pause and drain renewal and retry dispatch and template-edit acceptance before the forward. Run the read-only report, reconcile every listed item, and confirm an empty rerun immediately before resuming dispatch. Custom workers re-read and rebuild the snapshot on `subscription_renewal_snapshot_stale`.
