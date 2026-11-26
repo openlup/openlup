@@ -104,7 +104,8 @@ test('each answer naming the order sets the known order state', () => {
   for (const [name, answer, state] of rows) {
     const result = 'ok' in answer ? answer as ActionResult : { ok: true as const, value: answer };
     assert.equal(orderStateOf(result)?.state ?? null, state, name);
-    if (state !== null) assert.equal(orderStateOf(result)?.orderRef, orderA, name);
+    // A refusal names the state of the order under the key; a value names its order too.
+    if (state !== null) assert.equal(orderStateOf(result)?.orderRef, result.ok ? orderA : undefined, name);
   }
 });
 
