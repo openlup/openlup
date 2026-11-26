@@ -13986,7 +13986,7 @@
     },
     {
       "path": "db/platform/migrations/20261129130001_native_renewal_v3_storage.sql",
-      "sha256": "fa16f42e19d0fbc447cb4022b23deb9d25fcc4877c7898322fe167809031e8f3",
+      "sha256": "03cddadfb849aa09d4e2eb9fc2e36165a2bdef65ce943f06f04396c6ec009263",
       "functions": []
     }
   ],

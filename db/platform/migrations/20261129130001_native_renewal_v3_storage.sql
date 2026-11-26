@@ -206,10 +206,13 @@ CREATE TABLE public.subscription_cycle_payment_attempts (
   predecessor_attempt_id uuid REFERENCES public.subscription_cycle_payment_attempts(payment_attempt_id) DEFERRABLE INITIALLY DEFERRED,
   retry_key text,
   recovery_authorization_ref uuid,
+  non_capture_proof_ref text,
+  non_capture_verified_at timestamptz,
   UNIQUE (preparation_id, retry_key),
   CONSTRAINT cycle_attempt_kind_check CHECK (
     (attempt_kind = 'initial' AND predecessor_attempt_id IS NULL AND retry_key IS NULL AND recovery_authorization_ref IS NULL)
-    OR (attempt_kind = 'retry' AND predecessor_attempt_id IS NOT NULL AND retry_key IS NOT NULL AND recovery_authorization_ref IS NOT NULL))
+    OR (attempt_kind = 'retry' AND predecessor_attempt_id IS NOT NULL AND retry_key IS NOT NULL AND recovery_authorization_ref IS NOT NULL)),
+  CONSTRAINT cycle_attempt_non_capture_proof_check CHECK ((non_capture_proof_ref IS NULL) = (non_capture_verified_at IS NULL))
 );
 CREATE INDEX subscription_cycle_payment_attempts_preparation_idx ON public.subscription_cycle_payment_attempts (preparation_id);
 

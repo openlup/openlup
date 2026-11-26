@@ -365,7 +365,7 @@ const POSTGRES_SUITE_CLOSURES = {
   'tests/postgres/subscriptionActivationEditWindow.test.ts': ['tests/postgres/subscriptionActivationFixture.ts', 'tests/postgres/subscriptionPublicRenewal.worker.mjs', 'tests/postgres/subscriptionPublicRenewalFixture.ts', 'tests/postgres/subscriptionRegistrationFixture.ts'],
   'tests/postgres/subscriptionActivationPermissions.test.ts': ['tests/postgres/subscriptionActivationFixture.ts', 'tests/postgres/subscriptionRegistrationFixture.ts'],
   'tests/postgres/subscriptionAutoResumeDeliveredHistory.test.ts': ['@starter', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/subscriptionComposition.test.ts': ['@src', 'tests/postgres/subscriptionJob.fixture.ts', 'tests/postgres/subscriptionNativeFixture.ts', 'tests/postgres/subscriptionStockWaitCases.ts'],
+  'tests/postgres/subscriptionComposition.test.ts': ['@src', 'tests/postgres/subscriptionNativeFixture.ts', 'tests/postgres/subscriptionStockWaitCases.ts'],
   'tests/postgres/subscriptionContinuityBaseline.test.ts': [],
   'tests/postgres/subscriptionExactEditor.test.ts': [],
   'tests/postgres/subscriptionExactInstallation.test.ts': ['tests/postgres/current-installation-inventory.json', 'tests/postgres/nativeStoreForwardCatalog.shared.ts'],

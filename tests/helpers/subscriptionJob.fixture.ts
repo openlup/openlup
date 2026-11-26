@@ -5,7 +5,7 @@ import type { NativeRenewalCodec, SubscriptionQueryExecutor } from "@openlup/pla
 import type { RenewalDue, RenewalExecutionRequest, RenewalFrozenSnapshot, RenewalReadback, RenewalSettlementPort } from "@openlup/platform/subscriptions/contracts";
 import { createM10SubscriptionReferenceBinding } from "../../server/runtime/public-reference/m10SubscriptionBinding.js";
 import { createPostgresRenewalSettlementPort } from "../../server/adapters/postgres/commerce/renewalSettlement.js";
-import { AT, later, type Renewal, type RenewalSeed } from "./subscriptionNativeFixture.js";
+import { AT, later, type Renewal, type RenewalSeed } from "../postgres/subscriptionNativeFixture.js";
 
 export const transaction = async <T>(pool: Pool, work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T> => {
   const db = await pool.connect();

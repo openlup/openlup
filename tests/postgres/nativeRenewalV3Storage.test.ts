@@ -27,7 +27,7 @@ const shapes = {
   tax_bindings: "binding_ref evaluation_id cycle_key operation_id commercial_generation_id binding_seq calculation_id bind_digest accepted_money_digest payable_minor currency tax_point expires_at live_evidence erased_at",
   cases: "case_id operation_id commercial_generation_id case_kind state cause revision opened_at closed_at",
   preparations: "preparation_id cycle_key cycle_id operation_id commercial_generation_id binding_ref binding_seq hold_incarnation_id order_id settlement_intent_id payment_attempt_id opening_key accepted_money_digest prepared_at closed_unsent_at replaces_preparation_id",
-  payment_attempts: "payment_attempt_id preparation_id attempt_kind predecessor_attempt_id retry_key recovery_authorization_ref",
+  payment_attempts: "payment_attempt_id preparation_id attempt_kind predecessor_attempt_id retry_key recovery_authorization_ref non_capture_proof_ref non_capture_verified_at",
   dispatch_grants: "grant_id payment_attempt_id confirmation_step_ref confirmation_kind authorized_hold_ref authorized_hold_expires_at provider_account_ref provider_mode request_digest idempotency_key checked_at send_by notice_decision",
   calculation_rebinds: "rebind_id order_id preparation_id retry_attempt_id sale_key sequence previous_calculation_id effective_calculation_id accepted_money_digest proof_digest rebound_at",
 };
@@ -61,7 +61,7 @@ function renewalCatalogs() {
   for (const plan of [candidate, candidate.qualified, candidate.qualifiedAdmin]) {
     plan.forward = plan.forward.slice(0, plan.forward.findIndex(entry => entry.file === forward.file) + 1);
   }
-  candidate.qualified.objectInventorySha256.bootstrapMigrator.withRestore = "6df5df8847d0d889c7cfafd0341d6e8afa3bbe30ea55d73cce5963464509fb48";
+  candidate.qualified.objectInventorySha256.bootstrapMigrator.withRestore = "a9d0f834ca62b1bf4341a522fdc8dcda2219c2ee97eb80583027610779c27acd";
   const prefix = structuredClone(candidate);
   for (const plan of [prefix, prefix.qualified, prefix.qualifiedAdmin]) expect(plan.forward.pop()).toEqual(forward);
   prefix.qualified.objectInventorySha256.bootstrapMigrator.withRestore = "bb5b2abb5a1cad98e598cfdb2bb39ba73f13eaa7160ff942419036359ed1487b";
@@ -198,6 +198,33 @@ it("requires paired hold coordinates for capture and detects a disabled hold che
     await db.query(`ALTER TABLE public.${relation} DROP CONSTRAINT ${key}`);
     const fk = "subscription_cycle_dispatch_grants_payment_attempt_id_fkey";
     expectSqlError(await rejected(insert(db, relation, row)), "23503", foreignKeyMessage(relation, fk), fk);
+  }, "ROLLBACK");
+});
+
+it("retains nullable non-capture evidence and rejects a half-populated proof", async () => {
+  const relation = table("payment_attempts"), key = "cycle_attempt_non_capture_proof_check";
+  const { rows } = await store.owner.query(`SELECT attname AS name, format_type(atttypid,atttypmod) AS type,
+    attnotnull AS required, atthasdef AS has_default FROM pg_attribute WHERE attrelid=$1::regclass
+    AND attname IN ('non_capture_proof_ref','non_capture_verified_at') ORDER BY attname`, [`public.${relation}`]);
+  expect(rows).toEqual([
+    { name: "non_capture_proof_ref", type: "text", required: false, has_default: false },
+    { name: "non_capture_verified_at", type: "timestamp with time zone", required: false, has_default: false },
+  ]);
+  await transaction(store.owner, async db => {
+    // Copy the installed CHECKs so the shape can be exercised without seeding an attempt graph.
+    await db.query(`CREATE TEMP TABLE attempt_shape (LIKE public.${relation} INCLUDING CONSTRAINTS)`);
+    const writeProof = (ref: string | null, at: string | null) => db.query(`INSERT INTO attempt_shape (
+      payment_attempt_id, preparation_id, attempt_kind, non_capture_proof_ref, non_capture_verified_at
+    ) VALUES ($1,$2,'initial',$3,$4) RETURNING non_capture_proof_ref AS ref, non_capture_verified_at AS at`,
+    [randomUUID(), randomUUID(), ref, at]);
+    const proof = "opaque:non-capture:fixture";
+    expect((await writeProof(null, null)).rows).toEqual([{ ref: null, at: null }]);
+    expect((await writeProof(proof, AT)).rows).toEqual([{ ref: proof, at: new Date(AT) }]);
+    for (const [ref, at] of [[proof, null], [null, AT]] as const) {
+      await db.query("SAVEPOINT partial_proof");
+      expectSqlError(await rejected(writeProof(ref, at)), "23514", checkMessage("attempt_shape", key), key);
+      await db.query("ROLLBACK TO SAVEPOINT partial_proof; RELEASE SAVEPOINT partial_proof");
+    }
   }, "ROLLBACK");
 });
 

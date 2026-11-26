@@ -6,7 +6,7 @@ import type { AutomaticRenewalRunResult } from "@openlup/platform/subscriptions"
 import { createM10RetryDriver } from "../../server/runtime/public-reference/m10RetryDriver.js";
 import { nativeHarness, openCase } from "../helpers/fulfillmentNative.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
-import { bindSubscriptionJob, transaction } from "./subscriptionJob.fixture.js";
+import { bindSubscriptionJob, transaction } from "../helpers/subscriptionJob.fixture.js";
 import { AT, call, failure, later, prepareOriginal, renewal as nativeRenewal, recordRenewalMethod, request, unchangedIdentity, type Renewal } from "./subscriptionNativeFixture.js";
 import { allPublicRows } from "./subscriptionStockWaitCases.js";
 

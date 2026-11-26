@@ -2,7 +2,7 @@ import { expect } from "vitest";
 import type { Pool, PoolClient } from "pg";
 import { fixture, openCase, schedule } from "../helpers/fulfillmentNative.js";
 import type { AccountMutationsStore } from "./customerAccountMutations.fixture.js";
-import { bindSubscriptionJob } from "./subscriptionJob.fixture.js";
+import { bindSubscriptionJob } from "../helpers/subscriptionJob.fixture.js";
 import { AT, call, later, recordRenewalMethod, renewal, seedRenewal, type RenewalSeed } from "./subscriptionNativeFixture.js";
 
 export async function observeRenewalWrites({ owner, runtime }: AccountMutationsStore, relations: string[]) {
