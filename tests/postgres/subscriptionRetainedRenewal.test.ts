@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { beforeEach, expect, it, vi } from "vitest";
-import { api, purchase, admin, at, days, deps, executor, facts, inventory, now, rpc, runtime, runtimeLogin, transaction, checkout, destinations, fulfillment, identity, payments, runtimeUrl, captureStore, withRestoredStore } from "./subscriptionPublicRenewalFixture.js";
+import { api, purchase, admin, at, days, deps, executor, facts, inventory, now, rpc, runtime, runtimeLogin, transaction, checkout, destinations, fulfillment, identity, payments, runtimeUrl, captureStore, withRestoredStore, expectFrozenGenerationShape, frozenGenerationSql, plantExcludedFrozenFields } from "./subscriptionPublicRenewalFixture.js";
 import { allPublicRows } from "./subscriptionStockWaitCases.js";
 import { captureSandboxPurchase } from "../helpers/captureSandboxPurchase.js";
 import type { RenewalRetainedTerms } from "@openlup/platform/subscriptions/contracts";
@@ -18,10 +18,10 @@ const terms = (discount = 51): RenewalRetainedTerms => ({ version: "native.renew
     delivery2: { discountBps: 2500, discountMinor: discount, basisSubtotalMinor: 200 },
     graduation: { cadenceDays: 30, sizeConstraint: { kind: "configured" }, lines: [{ sku: "G7-REFILL", qty: 3,
       sortOrder: 0, isAddon: false, quoteLine: { unitPriceGross: { amountMinor: 100 }, lineSubtotalGross: { amountMinor: 300 } } }] } } });
-async function active(retained = terms(), options: { addon?: boolean | number; shipping?: number; authorizedAt?: string } = {}) {
+async function active(retained = terms(), options: { addon?: boolean | number; shipping?: number; authorizedAt?: string; acquisitionRef?: string } = {}) {
   const addonQuantity = typeof options.addon === "number" ? options.addon : 1;
   const p = options.addon ? await addonPurchase(addonQuantity) : await purchase();
-  const input = { ...facts, shippingAmountMinor: options.shipping ?? 0,
+  const input = { ...facts, shippingAmountMinor: options.shipping ?? 0, acquisitionRef: options.acquisitionRef ?? null,
     lines: [...facts.lines, ...(options.addon ? [{ lineOrdinal: 2, sku: "SYNTHETIC-ADDON", quantity: addonQuantity, unitAmountMinor: 40 }] : [])],
     unattendedChargeAuthorizedAt: options.authorizedAt ?? "2026-01-01T00:00:00.123456Z", renewalTerms: retained };
   const result = await api.activateNativePurchaseWithRenewal(executor, { ...p, orderId: p.orderId.toUpperCase(), facts: input });
@@ -513,4 +513,82 @@ it("admits an edit before cutoff, refuses a not-due claim and late edit, and fre
   expect(await allPublicRows(admin)).toEqual(beforeLate);
   expect(await d.input.store.readRenewal(d.codec.identity(snapshot))).toEqual(prepared);
   expect(await d.input.store.buildCycleSnapshots(d.due)).toEqual(prepared!.cycleSnapshot);
+}, 30_000);
+
+it("projects only the frozen renewal terms and opaque retained provenance", async () => {
+  const acquisitionRef = '{"amountMinor":71}', retained = terms(50);
+  const mainFacts = { basePriceEntryId: "unresolvable/entry", basePriceListId: "list:original", resolvedPriceEntryId: '{"total":92}',
+    policyRevisionId: "  original policy  ", policyDigest: "policy:digest", documentRevisionId: "doc:revision",
+    documentDigest: "doc:digest", skuId: "stored:sku", mode: "subscription", currency: "XXX", atTime: "now" };
+  const addonFacts = { resolvedPriceEntryId: "addon:entry", atTime: "2019-01-01T01:00:00+01:00" };
+  retained.linePricing![0]!.quoteLine.catalogFacts = { ...mainFacts, baseUnitAmountMinor: 100, resolvedUnitAmountMinor: 100, resolvedLineAmountMinor: 200 };
+  retained.linePricing = [...retained.linePricing!, { sku: "SYNTHETIC-ADDON", quantity: 1, unitAmountMinor: 40,
+    isAddon: true, quoteLine: { catalogFacts: addonFacts } }];
+  const f = await active(retained, { addon: true, acquisitionRef }), d = await driver(f.subscriptionId);
+  const claim = await d.input.store.claimDue({ snapshot: await d.input.store.buildCycleSnapshots(d.due), workerId: "retained-reader", now });
+  expect(claim.acquired).toBe(true);
+  const pair = [claim.operationId, claim.operationId], sql = `${frozenGenerationSql}::text AS projection`;
+  const legacySql = "SELECT public.subscription_read_renewal($1::text)::text AS legacy";
+  const before = await allPublicRows(admin);
+  const legacy = (await runtime.query(legacySql, [claim.identityKey])).rows[0].legacy;
+  const { cycleSnapshot: frozen, cycleNumber } = JSON.parse(legacy);
+  expect(cycleNumber).toBe(1);
+  expect(frozen).toMatchObject({ frozenRevision: "native.purchase-renewal.v2", retryAttempt: 0, externalAttemptSequence: 0,
+    cycle: { nativeRenewalCounter: 1, logicalCycleNumber: 2 }, templateSnapshot: { version: 1, cadenceDays: 28 },
+    lines: [{ lineOrdinal: 1, quantity: 2 }, { lineOrdinal: 2, quantity: 1 }],
+    orderSnapshot: { acquisitionRef },
+    pricingSnapshot: { productSubtotalAmountMinor: 240, totalAmountMinor: expect.any(Number), discountAmountMinor: expect.any(Number),
+      shippingAmountMinor: 0, acquisition: { reasonCode: "starter_pack_delivery_2", basisTemplateVersion: 1 } } });
+  const wire = (await runtime.query(sql, pair)).rows[0].projection;
+  const projection = JSON.parse(wire);
+  expect(projection).toMatchObject({ lines: frozen.lines.map(({ sku, unitAmountMinor }: { sku: string; unitAmountMinor: number }) => ({ sku, unitAmountMinor })),
+    discountTerms: { reasonCode: frozen.pricingSnapshot.acquisition.reasonCode, acquisitionRef: frozen.orderSnapshot.acquisitionRef } });
+  expect(projection.cycleNumber).toBe(String(cycleNumber));
+  expect(projection.shippingTerms).toEqual(frozen.pricingSnapshot.shippingTerms);
+  expect(projection.shippingTerms).toEqual({ version: "shipping-threshold.v1", currency: "XXX", flatMinor: 37, freeThresholdMinor: 150 });
+  expect(projection.linePricing).toEqual([
+    { sku: "G7-REFILL", quoteLine: { catalogFacts: { ...mainFacts, provenance: "unverified-retained" } } },
+    { sku: "SYNTHETIC-ADDON", quoteLine: { catalogFacts: { ...addonFacts, provenance: "unverified-retained" } } },
+  ]);
+  expect(expectFrozenGenerationShape(projection)).toEqual(["lines[].unitAmountMinor", "shippingTerms.flatMinor", "shippingTerms.freeThresholdMinor"]);
+  for (const zone of ["Etc/GMT-9", "Etc/GMT+5"]) {
+    expect(await transaction(async db => {
+      await db.query(`SET LOCAL TIME ZONE '${zone}'`);
+      return (await db.query(sql, pair)).rows[0].projection;
+    })).toBe(wire);
+  }
+  expect((await runtime.query(legacySql, [claim.identityKey])).rows[0].legacy).toBe(legacy);
+  expect(await allPublicRows(admin)).toEqual(before);
+
+  const db = await admin.connect();
+  try {
+    await db.query("BEGIN");
+    // A disposable owner transaction isolates damaged wires from the renewal writers.
+    const planted = structuredClone(frozen);
+    plantExcludedFrozenFields(planted);
+    const price = planted.pricingSnapshot.linePricing[0].quoteLine.catalogFacts;
+    price.basePriceListId = 123; price.policyDigest = { nested: 234 }; price.documentRevisionId = [345];
+    planted.clientId = { nested: 456 }; planted.authorizationRef = 567; planted.payerAccountRef = [678];
+    planted.pricingSnapshot.linePricing.push({ sku: 999, quoteLine: { catalogFacts: { atTime: "now" } } },
+      { sku: "no-allowed-leaf", quoteLine: { catalogFacts: { atTime: [789], fee: "10" } } });
+    delete planted.pricingSnapshot.acquisition;
+    const readDamaged = async () => {
+      await db.query("RESET ROLE");
+      await db.query("UPDATE public.subscription_renewal_operations SET cycle_snapshot=$2 WHERE id=$1", [claim.operationId, JSON.stringify(planted)]);
+      await db.query("SET LOCAL ROLE service_role");
+      return JSON.parse((await db.query(sql, pair)).rows[0].projection);
+    };
+    const damaged = await readDamaged();
+    const expected = structuredClone(projection);
+    delete expected.linePricing[0].quoteLine.catalogFacts.basePriceListId;
+    delete expected.linePricing[0].quoteLine.catalogFacts.policyDigest;
+    delete expected.linePricing[0].quoteLine.catalogFacts.documentRevisionId;
+    expect(damaged).toEqual({ ...expected, clientId: null, authorizationRef: null, payerAccountRef: null,
+      discountTerms: { reasonCode: null, acquisitionRef } });
+    expect(expectFrozenGenerationShape(damaged)).toEqual(["lines[].unitAmountMinor", "shippingTerms.flatMinor", "shippingTerms.freeThresholdMinor"]);
+    planted.orderSnapshot.acquisitionRef = "";
+    planted.lines[1].sku = ["malformed", 811];
+    expect(await readDamaged()).toEqual({ ...damaged, discountTerms: null, lines: null });
+  } finally { await db.query("ROLLBACK"); db.release(); }
+  expect(await allPublicRows(admin)).toEqual(before);
 }, 30_000);

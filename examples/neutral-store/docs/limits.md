@@ -49,9 +49,11 @@ the review and confirm the displayed price before placing the order again.
 If refresh fails, submit again to retry the review with your current details,
 then reconfirm once the price renders.
 
-A definitive total refusal retires the command key. After reconfirmation,
-use a new key even if the refreshed amount and currency are unchanged.
-An uncertain retry keeps the exact payload and command key.
+Keep the command key after a definitive total refusal and reconfirm under it:
+the refusal created no order, and a create under the same key cannot create a
+second one. A page that retires the key accepts that an earlier create still in
+flight under the old key can place a second order. An uncertain retry keeps the
+exact payload and command key.
 
 Once checkout admits an attempt, a refusal still counts toward the attempt
 limit. This includes a price change detected by the draft writer.
