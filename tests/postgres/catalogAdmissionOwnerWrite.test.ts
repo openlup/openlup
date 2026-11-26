@@ -470,24 +470,46 @@ it.each([
   }
 });
 
-it("rejects late adjustment inserts and claim money changes at ordinary COMMIT", async () => {
+const governedMismatch = { code: "22023", message: "catalog_acceptance_line_mismatch", constraint: "catalog_owner_origin" };
+const itemMismatch = {
+  ...governedMismatch, hint: "Reconcile the accepted SKU revisions and quantities with the authoritative basket before retrying.",
+};
+const promotionMismatch = {
+  ...governedMismatch, hint: "Recreate the draft from the frozen quote and its promotion records to reconcile adjustments and claims.",
+};
+
+it.each([
+  ["item", `UPDATE public.commerce_order_items SET promotion_allocation_fingerprint=repeat('a',64)
+    WHERE order_id=$1 AND line_ordinal=1`, itemMismatch],
+  ["adjustment", `WITH adjustment AS (
+      INSERT INTO public.commerce_order_adjustments(order_id,kind,scope,amount_minor,promotion_id,definition_fingerprint)
+      SELECT $1,'promotion_discount','order_total',1,promotion_id,definition_fingerprint
+      FROM public.commerce_promotion_definitions WHERE promotion_id='example:late' RETURNING *
+    ) INSERT INTO public.commerce_promotion_claims(promotion_id,definition_fingerprint,adjustment_id,order_id,client_id,amount_off_minor,expires_at)
+      SELECT promotion_id,definition_fingerprint,id,order_id,$2,amount_minor,now()+interval '1 hour' FROM adjustment`, promotionMismatch],
+  ["claim", `UPDATE public.commerce_promotion_claims SET amount_off_minor=amount_off_minor+1
+    WHERE order_id=$1 AND promotion_id=$2`, promotionMismatch],
+] as const)("rejects a governed %s mismatch with its remedy at ordinary COMMIT", async (kind, sql, refusal) => {
   expect((await store.owner.query(`SELECT catalog_acceptance->'admission' IS NOT NULL AS accepted,
     metadata->'catalogAdmissionOwnerOrigin' IS NOT NULL AS stamped FROM public.commerce_orders WHERE id=$1`, [order.id])).rows)
     .toEqual([{ accepted: true, stamped: true }]);
-  const { rows: [definition] } = await store.owner.query(`INSERT INTO public.commerce_promotion_definitions(promotion_id,definition,active)
-    SELECT 'example:late',jsonb_set(definition,'{id}','"example:late"'),active
-    FROM public.commerce_promotion_definitions WHERE promotion_id=$1 RETURNING definition_fingerprint`, [productPromotion]);
-  const db = await store.runtime.connect();
+  if (kind === "adjustment") {
+    await store.owner.query(`INSERT INTO public.commerce_promotion_definitions(promotion_id,definition,active)
+      SELECT 'example:late',jsonb_set(definition,'{id}','"example:late"'),active
+      FROM public.commerce_promotion_definitions WHERE promotion_id=$1`, [productPromotion]);
+  }
+  const db = await (kind === "item" ? store.owner : store.runtime).connect();
   try {
-    for (const [sql, values] of [
-      [`INSERT INTO public.commerce_order_adjustments(order_id,kind,scope,amount_minor,promotion_id,definition_fingerprint)
-        VALUES($1,'promotion_discount','order_total',1,'example:late',$2)`, [order.id, definition!.definition_fingerprint]],
-      ["UPDATE public.commerce_promotion_claims SET amount_off_minor=amount_off_minor+1 WHERE order_id=$1 AND promotion_id=$2", [order.id, productPromotion]],
-    ] as const) {
-      await db.query("BEGIN");
-      expect((await db.query(sql, [...values])).rowCount).toBe(1);
-      await expect(db.query("COMMIT")).rejects.toMatchObject({ code: "22023", message: "catalog_acceptance_line_mismatch" });
+    await db.query("BEGIN");
+    if (kind === "item") {
+      await db.query(`ALTER TABLE public.commerce_order_items DISABLE TRIGGER commerce_order_items_catalog_owner_origin_guard;
+        ALTER TABLE public.commerce_order_items DISABLE TRIGGER commerce_promotion_claim_money_freeze_trigger`);
     }
+    // The extra adjustment has a matching claim, so only the adjustment comparison can fail.
+    const values = kind === "item" ? [order.id] : kind === "claim" ? [order.id, productPromotion]
+      : [order.id, fixture.original.clientId];
+    expect((await db.query(sql, values)).rowCount).toBe(1);
+    await expect(db.query("COMMIT")).rejects.toMatchObject(refusal);
     expect((await db.query("SELECT count(*)::integer AS extras FROM public.commerce_order_adjustments WHERE promotion_id='example:late'")).rows)
       .toEqual([{ extras: 0 }]);
     expect((await db.query("SELECT amount_off_minor::integer AS amount FROM public.commerce_promotion_claims WHERE order_id=$1 AND promotion_id=$2",
@@ -508,20 +530,18 @@ it("re-derives the saved graph and detects missing, extra and changed companions
     await db.query(`INSERT INTO public.commerce_promotion_definitions(promotion_id,definition,active)
       SELECT 'example:extra',jsonb_set(definition,'{id}','"example:extra"'),active
       FROM public.commerce_promotion_definitions WHERE promotion_id=$1`, [productPromotion]);
-    for (const mutation of [
-      "DELETE FROM public.commerce_order_items WHERE order_id=$1 AND line_ordinal=1",
-      "UPDATE public.commerce_order_items SET promotion_allocation_fingerprint=repeat('a',64) WHERE order_id=$1 AND line_ordinal=1",
-      `INSERT INTO public.commerce_order_items(order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor)
-        SELECT order_id,sku_id,42,1,0,0 FROM public.commerce_order_items WHERE order_id=$1 AND line_ordinal=1`,
-      `INSERT INTO public.commerce_order_adjustments(order_id,kind,scope,amount_minor,promotion_id,definition_fingerprint)
+    for (const [mutation, refusal] of [
+      ["DELETE FROM public.commerce_order_items WHERE order_id=$1 AND line_ordinal=1", itemMismatch],
+      ["UPDATE public.commerce_order_items SET promotion_allocation_fingerprint=repeat('a',64) WHERE order_id=$1 AND line_ordinal=1", itemMismatch],
+      [`INSERT INTO public.commerce_order_items(order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor)
+        SELECT order_id,sku_id,42,1,0,0 FROM public.commerce_order_items WHERE order_id=$1 AND line_ordinal=1`, itemMismatch],
+      [`INSERT INTO public.commerce_order_adjustments(order_id,kind,scope,amount_minor,promotion_id,definition_fingerprint)
         SELECT $1,'promotion_discount','order_total',1,promotion_id,definition_fingerprint
-        FROM public.commerce_promotion_definitions WHERE promotion_id='example:extra'`,
-    ]) {
+        FROM public.commerce_promotion_definitions WHERE promotion_id='example:extra'`, promotionMismatch],
+    ] as const) {
       await db.query("SAVEPOINT mutated_graph");
       expect((await db.query(mutation, [order.id])).rowCount).toBe(1);
-      await expect(db.query("SELECT public.catalog_order_acceptance_final($1)", [order.id])).rejects.toMatchObject({
-        code: "22023", message: "catalog_acceptance_line_mismatch",
-      });
+      await expect(db.query("SELECT public.catalog_order_acceptance_final($1)", [order.id])).rejects.toMatchObject(refusal);
       await db.query("ROLLBACK TO SAVEPOINT mutated_graph");
       await db.query("RELEASE SAVEPOINT mutated_graph");
       await expect(db.query("SELECT public.catalog_order_acceptance_final($1)", [order.id])).resolves.toMatchObject({ rowCount: 1 });

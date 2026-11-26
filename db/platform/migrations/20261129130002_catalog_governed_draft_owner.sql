@@ -100,6 +100,7 @@ CREATE CONSTRAINT TRIGGER commerce_promotion_claims_catalog_final AFTER INSERT O
 CREATE OR REPLACE FUNCTION public.catalog_order_acceptance_final(p_order_id uuid) RETURNS void
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public, pg_temp AS $$
 DECLARE target public.commerce_orders; basket jsonb; submit jsonb; origin jsonb; snapshot jsonb; draft jsonb; fingerprint text;
+ mismatch_hint text;
 BEGIN
  SELECT * INTO target FROM public.commerce_orders WHERE id=p_order_id;
  submit := target.metadata->'catalogAdmissionSubmit';
@@ -126,28 +127,31 @@ BEGIN
        'idempotencyKey',target.catalog_receipt_key,'quoteSnapshot',snapshot,'replayed',false)))
   THEN RAISE EXCEPTION 'catalog_acceptance_receipt_mismatch' USING ERRCODE='22023', CONSTRAINT='catalog_owner_origin',
     HINT='Supply the persisted draft receipt for this order and retry with its original key.'; END IF;
-  IF EXISTS (
-   WITH expected AS MATERIALIZED (
-    SELECT * FROM public.catalog_admission_governed_companions(draft,target.catalog_acceptance#>'{admission,lineBindings}')
-   ), actual_items AS (SELECT * FROM public.commerce_order_items WHERE order_id=p_order_id),
-   actual_adjustments AS (SELECT * FROM public.commerce_order_adjustments WHERE order_id=p_order_id),
-   claims AS (SELECT * FROM public.commerce_promotion_claims WHERE order_id=p_order_id)
+  WITH expected AS MATERIALIZED (
+   SELECT * FROM public.catalog_admission_governed_companions(draft,target.catalog_acceptance#>'{admission,lineBindings}')
+  ), actual_items AS (SELECT * FROM public.commerce_order_items WHERE order_id=p_order_id),
+  actual_adjustments AS (SELECT * FROM public.commerce_order_adjustments WHERE order_id=p_order_id),
+  claims AS (SELECT * FROM public.commerce_promotion_claims WHERE order_id=p_order_id)
+  SELECT CASE WHEN EXISTS (
    SELECT 1 FROM (SELECT * FROM expected WHERE line_ordinal IS NOT NULL) e FULL JOIN actual_items i USING(line_ordinal)
    WHERE (e.sku_id,e.quantity,e.unit_amount_minor,e.line_amount_minor,e.source_line_ordinal,e.catalog_unit_amount_minor,
      e.catalog_line_amount_minor,e.promotion_discount_allocated_minor,e.promotion_allocation_fingerprint)
     IS DISTINCT FROM (i.sku_id,i.quantity,i.unit_amount_minor,i.line_amount_minor,i.source_line_ordinal,i.catalog_unit_amount_minor,
      i.catalog_line_amount_minor,i.promotion_discount_allocated_minor,i.promotion_allocation_fingerprint)
-   UNION ALL
+  ) THEN 'Reconcile the accepted SKU revisions and quantities with the authoritative basket before retrying.'
+  WHEN EXISTS (
    SELECT 1 FROM (SELECT * FROM expected WHERE kind IS NOT NULL) e FULL JOIN actual_adjustments a
      ON e.kind=a.kind AND e.scope=a.scope AND coalesce(e.promotion_id,'')=coalesce(a.promotion_id,'')
    WHERE e.amount_minor IS DISTINCT FROM a.amount_minor
       OR (a.promotion_id IS NULL AND a.definition_fingerprint IS NOT NULL)
-   UNION ALL
+  ) OR EXISTS (
    SELECT 1 FROM (SELECT * FROM actual_adjustments WHERE promotion_id IS NOT NULL) a FULL JOIN claims c ON a.id=c.adjustment_id
    WHERE (a.promotion_id,a.definition_fingerprint,a.amount_minor,target.client_id)
      IS DISTINCT FROM (c.promotion_id,c.definition_fingerprint,c.amount_off_minor,c.client_id)
-  ) THEN RAISE EXCEPTION 'catalog_acceptance_line_mismatch' USING ERRCODE='22023', CONSTRAINT='catalog_owner_origin',
-   HINT='Reconcile the accepted SKU revisions and quantities with the authoritative basket before retrying.'; END IF;
+  ) THEN 'Recreate the draft from the frozen quote and its promotion records to reconcile adjustments and claims.'
+  END INTO mismatch_hint;
+  IF mismatch_hint IS NOT NULL THEN RAISE EXCEPTION 'catalog_acceptance_line_mismatch'
+   USING ERRCODE='22023', CONSTRAINT='catalog_owner_origin', HINT=mismatch_hint; END IF;
  ELSIF submit IS NOT NULL AND NOT EXISTS (
   SELECT 1 FROM public.commerce_order_draft_receipts r WHERE r.order_id=p_order_id
    AND public.catalog_admission_submit_valid(submit,target.client_id,r.idempotency_key)

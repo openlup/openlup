@@ -14061,12 +14061,12 @@
     },
     {
       "path": "db/platform/migrations/20261129130002_catalog_governed_draft_owner.sql",
-      "sha256": "987a6b663fb5a627f2dfe120e29a89b6e0818f781699f26fc25524cd8e3e4d0e",
+      "sha256": "33869ed7310f1bf994228a211d20803420ca8aba634ae99891fbc9b2f9ad9ace",
       "functions": [
         {
           "signature": "public.catalog_order_acceptance_final(uuid)",
           "beforeSha256": "c935a9194cb0588d9646606329a9b4653a22b9587cfc3f20bacc760c2c6eb822",
-          "afterSha256": "9e8452bcdd16a6965192acfdb12a22da6c90775d49102e40758dafa5d29271f9"
+          "afterSha256": "4a430a2fc48c2f13888f6c4f33b5e0d11bbaf5a01e83dd1d37e76aa1226af709"
         },
         {
           "signature": "public.catalog_admission_governed_companions(jsonb,jsonb)",
