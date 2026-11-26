@@ -330,7 +330,7 @@ function assertInstalledPriceGraph(definitions: InstalledRoutine[]) {
   // application helpers. An extra expression can change decisions without
   // changing any edge or reusing a known variable name.
   const reviewedGraph = [...graph].sort(([left], [right]) => left.localeCompare(right));
-  expect(hash(JSON.stringify(reviewedGraph)), JSON.stringify(reviewedGraph)).toBe("4f2d386c66e5bd491fd3ae169dd9c1390c90644cee4f2b4fbfa0a00527af4bd0");
+  expect(hash(JSON.stringify(reviewedGraph)), JSON.stringify(reviewedGraph)).toBe("d04b45c000fc628c26537df00dd6cc3ac294058ab7a1f48a10aba6606077a614");
 }
 
 it("uses one installed builder and refusal selector across the publication price call graph", async () => {

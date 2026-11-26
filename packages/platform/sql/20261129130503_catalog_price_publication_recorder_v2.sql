@@ -316,6 +316,7 @@ DECLARE
   list_count integer;
   target jsonb;
   operation jsonb;
+  observe_replay boolean;
   sku_id uuid;
   needs_subscription boolean;
   reason text;
@@ -325,7 +326,7 @@ DECLARE
   base_minor integer;
   subscription_count integer;
   subscription_valid boolean;
-  wrong_kind boolean;
+  wrong_kind_count integer;
   wrong_shape boolean;
   history_count integer;
   policy_count integer;
@@ -347,6 +348,7 @@ BEGIN
   FOR target IN SELECT value FROM jsonb_array_elements(p_targets) LOOP
     sku_id := (target->>'skuId')::uuid;
     operation := nullif(target->'operation','null'::jsonb);
+    observe_replay := coalesce((target->>'observeReplay')::boolean,false);
     needs_subscription := coalesce((target->'requiredModes') ? 'subscription', false);
     SELECT count(*) FILTER (WHERE e.mode='one_time' AND e.min_qty=1),
       min(e.unit_price_minor) FILTER (WHERE e.mode='one_time' AND e.min_qty=1),
@@ -355,11 +357,9 @@ BEGIN
       min(e.valid_from) FILTER (WHERE e.mode='one_time' AND e.min_qty=1),
       count(*) FILTER (WHERE e.mode='subscription'),
       bool_and(e.min_qty=1 AND e.unit_price_minor>0) FILTER (WHERE e.mode='subscription'),
-      bool_or(e.mode IN ('one_time','any') AND e.amount_kind<>kind
-        -- The receipt proof checks drift on its own base. A conflicting sibling still ranks here.
-        AND NOT (e.mode='one_time' AND e.min_qty=1 AND to_jsonb(e.id) IS NOT DISTINCT FROM target->'receiptEntryId')),
+      count(*) FILTER (WHERE e.mode IN ('one_time','any') AND e.amount_kind<>kind),
       bool_or(e.mode='any' OR e.min_qty<>1 OR (e.mode='subscription' AND e.amount_kind<>kind))
-    INTO base_count, base_minor, current_entry, current_start, subscription_count, subscription_valid, wrong_kind, wrong_shape
+    INTO base_count, base_minor, current_entry, current_start, subscription_count, subscription_valid, wrong_kind_count, wrong_shape
     FROM public.price_entries e
     WHERE e.price_list_id=list_id AND e.variant_id=sku_id AND e.active
       AND e.valid_from<=p_at AND (e.valid_to IS NULL OR e.valid_to>p_at)
@@ -369,7 +369,7 @@ BEGIN
       WHEN operation IS NOT NULL AND operation->>'priceListId' IS DISTINCT FROM list_id::text THEN 'price_list_not_active'
       WHEN operation IS NOT NULL AND (operation->>'expectedListAmountBasis' IS DISTINCT FROM basis
         OR operation->>'amountKind' IS DISTINCT FROM kind) THEN 'catalog_price_setup_basis_mismatch'
-      WHEN wrong_kind THEN 'base_price_amount_kind_invalid'
+      WHEN wrong_kind_count>0 AND NOT observe_replay THEN 'base_price_amount_kind_invalid'
       WHEN wrong_shape THEN 'price_shape_invalid'
       WHEN base_count>1 THEN 'base_price_ambiguous'
       WHEN operation IS NOT NULL AND (current_start=p_at OR EXISTS (
@@ -398,7 +398,9 @@ BEGIN
         reason := 'catalog_publication_sku_price_not_ready';
       END IF;
     END IF;
-    results := results || jsonb_build_array(jsonb_build_object('skuId',sku_id,'reason',reason,'previous',current_entry));
+    results := results || jsonb_build_array(jsonb_build_object('skuId',sku_id,'reason',reason,'previous',current_entry)
+      || CASE WHEN observe_replay THEN jsonb_build_object('baseRows',jsonb_build_object('count',base_count,'wrongKind',wrong_kind_count))
+        ELSE '{}'::jsonb END);
   END LOOP;
   RETURN jsonb_build_object('priceListId',list_id,'regionCode',region,'currency',settlement_currency,'amountBasis',basis,'targets',results);
 END;
@@ -417,12 +419,17 @@ DECLARE
   claims jsonb := p_observed_evidence->'claims';
   written boolean := coalesce((p_observed_evidence->>'written')::boolean,false);
   mutations jsonb := '[]';
+  targets jsonb := '[]';
   target jsonb;
   operation jsonb;
   actual jsonb;
   verdict jsonb;
   saved public.catalog_price_setup_receipts%ROWTYPE;
   replay jsonb;
+  observed_entry jsonb;
+  basis_matches boolean;
+  wrong_kind boolean;
+  possible_kind_drift boolean;
   fresh boolean;
   first_replayed jsonb;
   refusal text;
@@ -554,7 +561,7 @@ BEGIN
     SELECT public.catalog_publication_target_price_verdict(coalesce(jsonb_agg(CASE
       WHEN NOT written AND (lane='assessment' AND r.idempotency_key IS NULL
         OR claims #>> ARRAY[t #>> '{operation,commandKey}','outcome']='claimed') THEN t
-      ELSE (t-'operation') || jsonb_build_object('receiptEntryId',r.response_payload #> '{receipt,current,entryId}') END ORDER BY n),'[]'),p_at)
+      ELSE (t-'operation') || '{"observeReplay":true}'::jsonb END ORDER BY n),'[]'),p_at)
     INTO verdict
     FROM jsonb_array_elements(plan) WITH ORDINALITY AS item(t,n)
     LEFT JOIN public.catalog_price_setup_receipts r ON r.scope='catalog.price_setup.base' AND r.idempotency_key=t #>> '{operation,commandKey}';
@@ -589,26 +596,42 @@ BEGIN
         WHERE r.scope='catalog.price_setup.base' AND r.idempotency_key=operation->>'commandKey';
       fresh := coalesce(lane='assessment' AND NOT FOUND OR claims #>> ARRAY[operation->>'commandKey','outcome']='claimed',false);
       replay_failed := false;
+      wrong_kind := coalesce((actual #>> '{baseRows,wrongKind}')::integer,0)>0;
       IF fresh AND NOT written THEN
         IF lane='issuance' THEN
           mutations := mutations || jsonb_build_array(jsonb_build_object('claim',claims->(operation->>'commandKey'),
             'publication',jsonb_build_object('previous',actual->'previous','publicationId',issue_id)));
         END IF;
       ELSE
-        replay := public.catalog_publication_price_receipt_facts_v2(saved,operation,actual->'previous',actor,
+        observed_entry := actual->'previous';
+        basis_matches := (operation->>'expectedListAmountBasis'=verdict->>'amountBasis'
+          AND operation->>'amountKind'=CASE verdict->>'amountBasis' WHEN 'tax_exclusive' THEN 'net' ELSE 'gross' END) IS TRUE;
+        possible_kind_drift := basis_matches AND coalesce(actual->'baseRows'='{"count":1,"wrongKind":1}'::jsonb,false)
+          AND observed_entry->'amountKind' IS DISTINCT FROM operation->'amountKind';
+        -- Prove the sole row's receipt identity with only its observed kind normalized.
+        -- A verified difference still fails replay, while another base or other bad evidence leaves the kind conflict ranked.
+        IF possible_kind_drift THEN
+          observed_entry := jsonb_set(observed_entry,'{amountKind}',operation->'amountKind');
+        END IF;
+        replay := public.catalog_publication_price_receipt_facts_v2(saved,operation,observed_entry,actor,
           CASE WHEN fresh THEN p_at END);
-        replay_failed := replay IS NULL OR (fresh AND saved.metadata->'publicationId' IS DISTINCT FROM to_jsonb(issue_id));
+        replay_failed := replay IS NULL OR NOT basis_matches
+          OR (fresh AND saved.metadata->'publicationId' IS DISTINCT FROM to_jsonb(issue_id));
+        wrong_kind := wrong_kind AND NOT (possible_kind_drift AND NOT replay_failed);
+        replay_failed := replay_failed OR possible_kind_drift;
         IF NOT replay_failed AND (target->>'needsFresh')::boolean
           AND (issue_id IS NULL OR saved.metadata->'publicationId' IS DISTINCT FROM to_jsonb(issue_id)) THEN
           first_replayed := coalesce(first_replayed,target);
         END IF;
       END IF;
+      targets := targets || jsonb_build_array(actual-'baseRows');
       -- Rank the landed defect and failed receipt proof independently.
       SELECT reason,ord INTO price_reason,rank FROM unnest(ARRAY[
         'price_list_not_active','catalog_price_setup_basis_mismatch','base_price_amount_kind_invalid',
         'price_shape_invalid','base_price_ambiguous','catalog_price_setup_pending_entry',
         'catalog_publication_price_changed','catalog_publication_sku_price_not_ready']) WITH ORDINALITY AS ranked(reason,ord)
       WHERE (reason=actual->>'reason' AND (reason<>'base_price_ambiguous' OR fresh AND NOT written))
+        OR (reason='base_price_amount_kind_invalid' AND wrong_kind)
         OR (reason='catalog_publication_price_changed' AND (replay_failed OR actual->>'reason'='expected_state_mismatch'
           OR (actual->>'reason'='base_price_ambiguous' AND (NOT fresh OR written))))
       ORDER BY ord LIMIT 1;
@@ -628,7 +651,8 @@ BEGIN
   END decision;
 
   IF refusal IS NULL THEN
-    RETURN jsonb_build_object('outcome','pass','plan',plan,'targets',verdict->'targets','price',selected_price,'mutations',mutations);
+    RETURN jsonb_build_object('outcome','pass','plan',plan,'targets',CASE WHEN verdict IS NOT NULL THEN targets END,
+      'price',selected_price,'mutations',mutations);
   END IF;
   state := CASE WHEN refusal IN ('command_key_reused','command_in_progress','catalog_publication_price_changed') THEN '40001'
     WHEN refusal='operator_mismatch' THEN '42501' ELSE '23514' END;
