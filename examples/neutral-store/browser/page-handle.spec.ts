@@ -62,10 +62,24 @@ const purchase = `<!doctype html><html><head><meta charset="utf-8"></head><body>
 const answerDelayMs = 600;
 let server: Server, origin: string;
 const served = { received: 0, answered: 0, landed: 0 };
+const streams = new Set<import('node:http').ServerResponse>();
+const streamPage = `<!doctype html><html><head><meta charset="utf-8"></head><body>
+  <output id="stream">waiting</output>
+  <script>new EventSource('/events?topic=order').onmessage = event => { document.getElementById('stream').textContent = event.data; };</script>
+</body></html>`;
 
 test.beforeAll(async () => {
   server = createServer((request, response) => {
     if (request.url === '/purchase') { response.writeHead(200, { 'content-type': 'text/html' }).end(purchase); return; }
+    if (request.url === '/stream') { response.writeHead(200, { 'content-type': 'text/html' }).end(streamPage); return; }
+    // A server-sent event stream that never ends, as an order-status or chat widget keeps open.
+    if (request.url === '/events') {
+      response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store' });
+      response.write('data: open\n\n');
+      streams.add(response);
+      response.on('close', () => streams.delete(response));
+      return;
+    }
     if (request.method === 'POST' && request.url?.startsWith('/api/create')) {
       served.received++;
       setTimeout(() => { served.answered++; response.writeHead(201, { 'content-type': 'text/plain' }).end('created'); }, answerDelayMs);
@@ -81,7 +95,11 @@ test.beforeAll(async () => {
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 });
-test.afterAll(async () => { await new Promise(resolve => server.close(resolve)); });
+test.afterAll(async () => {
+  for (const stream of streams) stream.end();
+  server.closeAllConnections();
+  await new Promise(resolve => server.close(resolve));
+});
 test.beforeEach(() => {
   const info = test.info();
   test.skip(info.project.name !== info.config.projects[0]?.name, 'independent of the store configuration');
@@ -208,6 +226,16 @@ const visibilityTable: readonly {
     html: "<!doctype html><html><body style=\"margin:0;overflow:hidden\"><div style=\"height:3000px\"></div><div style=\"position:fixed;inset:0;overflow:auto\"><div style=\"height:1200px\"></div><button id=\"t\" style=\"width:60px;height:40px;background:#ddd\">Pay</button><div style=\"height:100px\"></div></div></body></html>" },
   { name: "auto inside locked: outer hidden 300, inner auto 200, anchor below both folds", expect: { visible: true, insideScrollArea: true, coveredAtCentre: false },
     html: "<!doctype html><html><body style=\"margin:0\"><div style=\"height:300px;overflow:hidden\"><div style=\"height:200px;overflow:auto\"><div style=\"height:400px\"></div><div id=\"t\" style=\"width:60px;height:40px;background:#ddd\"></div></div><div style=\"height:500px\"></div></div></body></html>" },
+  { name: "inside a closed details element", expect: { visible: false, insideScrollArea: true, coveredAtCentre: false },
+    html: "<!doctype html><html><body style=\"margin:0\"><details><summary>Plans</summary><div><button id=\"t\">Subscribe</button></div></details></body></html>" },
+  { name: "inside an open details element", expect: { visible: true, insideScrollArea: true, coveredAtCentre: false },
+    html: "<!doctype html><html><body style=\"margin:0\"><details open><summary>Plans</summary><div><button id=\"t\">Subscribe</button></div></details></body></html>" },
+  { name: "inside a content-visibility: hidden section", expect: { visible: false, insideScrollArea: true, coveredAtCentre: false },
+    html: "<!doctype html><html><body><section style=\"content-visibility:hidden\"><button id=\"t\">Subscribe</button></section></body></html>" },
+  { name: "inside a content-visibility: auto section below the fold", expect: { visible: true, insideScrollArea: true, coveredAtCentre: false },
+    html: "<!doctype html><html><body style=\"margin:0\"><div style=\"height:3000px\"></div><section style=\"content-visibility:auto;contain-intrinsic-size:auto 200px\"><button id=\"t\" style=\"width:60px;height:40px\">Subscribe</button></section><div style=\"height:3000px\"></div></body></html>" },
+  { name: "inside an open shadow root (stated limit: measured as covered)", expect: { visible: false, insideScrollArea: true, coveredAtCentre: true },
+    html: "<!doctype html><html><body style=\"margin:0\"><div id=\"host\"></div><div style=\"height:2000px\"></div><script>document.getElementById('host').attachShadow({ mode: 'open' }).innerHTML = '<button id=\"t\" style=\"width:60px;height:40px\">Buy</button>';</script></body></html>" },
 ];
 
 for (const row of visibilityTable) {
@@ -283,6 +311,17 @@ test('page handle: a blocked create never reaches the server, and a removed inte
   await handle.perform({ attribute: 'action', value: 'place_order' }, { timeoutMs: 2_000 });
   await expect(page.locator('#outcome')).toHaveText('answered', { timeout: 5_000 });
   expect(served).toMatchObject({ received: 1, answered: 1 });
+});
+
+test('page handle: settling refuses after its bound while an event stream stays open, naming the stream', async ({ page }) => {
+  const handle = createPageHandle(page, { origin });
+  const seen: string[] = [];
+  const remove = await handle.intercept(request => { seen.push(`${request.method} ${request.path}`); return 'pass'; });
+  await handle.navigate('/stream');
+  await expect(page.locator('#stream')).toHaveText('open');
+  expect(seen).toContain('GET /events');
+  await expect(handle.settled({ quietMs: 100, timeoutMs: 1_500 })).rejects.toThrow(/^storefront_page_settle_timeout: 1 request did not finish within 1500 ms: GET \/events\. Cause: /);
+  await remove();
 });
 
 test('page handle: settling follows a redirect and waits for the redirected request', async ({ page }) => {

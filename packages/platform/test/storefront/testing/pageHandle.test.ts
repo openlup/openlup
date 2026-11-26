@@ -20,7 +20,9 @@ function fakePage(state: { url?: string; viewport?: { width: number; height: num
   const log: string[] = [];
   const listeners = new Map<string, Set<(request: FakeRequest) => void>>();
   const routes = new Map<string, (route: unknown) => Promise<void>>();
+  // Quiet windows (under a second) and settle bounds (a second or more) wait separately until the test releases them.
   const waits: Array<() => void> = [];
+  const bounds: Array<() => void> = [];
   const elements = state.elements ?? {};
   const locator = (selector: string, first: boolean) => ({
     first: () => locator(selector, true),
@@ -44,7 +46,7 @@ function fakePage(state: { url?: string; viewport?: { width: number; height: num
     async reload() { log.push("reload"); return null; },
     url: () => state.url ?? "https://shop.example.test/checkout/pay?token=secret#summary",
     viewportSize: () => state.viewport === undefined ? { width: 390, height: 844 } : state.viewport,
-    waitForTimeout(timeout: number) { log.push(`waitForTimeout ${timeout}`); return new Promise<void>((resolve) => waits.push(resolve)); },
+    waitForTimeout(timeout: number) { log.push(`waitForTimeout ${timeout}`); return new Promise<void>((resolve) => (timeout >= 1_000 ? bounds : waits).push(resolve)); },
     on(event: "request" | "requestfinished" | "requestfailed", listener: (request: FakeRequest) => void) {
       log.push(`on ${event}`);
       (listeners.get(event) ?? listeners.set(event, new Set()).get(event)!).add(listener);
@@ -73,7 +75,8 @@ function fakePage(state: { url?: string; viewport?: { width: number; height: num
     for (const listener of [...(listeners.get(event) ?? [])]) listener(request);
   };
   const release = () => { const next = waits.shift(); expect(next, "a quiet wait is pending").toBeDefined(); next!(); };
-  return { page, log, send, emit, release, waits, listeners, routes };
+  const expire = () => { const next = bounds.shift(); expect(next, "a settle bound is pending").toBeDefined(); next!(); };
+  return { page, log, send, emit, release, expire, waits, bounds, listeners, routes };
 }
 
 function tracked<T>(promise: Promise<T>) {
@@ -186,6 +189,36 @@ describe("createPageHandle over a recording page (H1)", () => {
     fake.release();
     await flush();
     expect(settled.done).toBe(true);
+  });
+
+  it("refuses to settle past its bound, naming every request still open", async () => {
+    const fake = fakePage();
+    const handle = createPageHandle(fake.page);
+    await handle.intercept(() => "pass");
+    const stream = fake.send("GET", "https://shop.example.test/events?channel=order");
+    const poll = fake.send("POST", "https://shop.example.test/api/poll");
+    await Promise.all([stream.handled, poll.handled]);
+    const settling = handle.settled({ quietMs: 10, timeoutMs: 1_500 });
+    const outcome = settling.then(() => "settled", (error: unknown) => error);
+    await flush();
+    expect(fake.log).toContain("waitForTimeout 1500");
+    expect(fake.waits, "no quiet window while requests are open").toHaveLength(0);
+    fake.expire();
+    const error = await outcome;
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toMatch(/^storefront_page_settle_timeout: 2 requests did not finish within 1500 ms: GET \/events, POST \/api\/poll\. Cause: .+ Fix: .+ Recheck: .+/);
+  });
+
+  it("bounds settling at 30 seconds by default and still settles first when the page goes quiet", async () => {
+    const fake = fakePage();
+    const handle = createPageHandle(fake.page);
+    const settling = tracked(handle.settled({ quietMs: 10 }));
+    await flush();
+    expect(fake.log).toContain("waitForTimeout 30000");
+    fake.release();
+    await flush();
+    expect(settling.done).toBe(true);
+    await expect(handle.settled({ quietMs: 10, timeoutMs: -1 })).rejects.toThrow(TypeError);
   });
 
   it("settles after one quiet window when nothing was routed, and the removal function unroutes and detaches", async () => {
@@ -480,13 +513,13 @@ function visibilityCases() {
 describe("the visibility function is self-contained (H3)", () => {
   const rebuilt = new Function(`return ${anchorVisibility.toString()}`)() as typeof anchorVisibility;
 
-  it.each(visibilityCases().cases.map(([name]) => name))("measures %s", (name) => {
+  it.each(visibilityCases().cases.map(([name]) => name))("measures %s", async (name) => {
     const { view, cases, carousel, list, scrolls } = visibilityCases();
     const [, element, expected] = cases.find(([candidate]) => candidate === name)!;
     view.scrollTo(0, 7);
     list.scrollTop = 10;
     scrolls.length = 0;
-    expect(rebuilt([element as unknown as Element], [])).toEqual([expected]);
+    expect(await rebuilt([element as unknown as Element], [])).toEqual([expected]);
     // Restoring must not animate under `scroll-behavior: smooth`, or the next anchor reads a moving page.
     expect(scrolls.length, "every scroll position is restored through scrollTo").toBeGreaterThan(0);
     expect(scrolls.filter((call) => !call.endsWith(" instant")), "every restore is instant").toEqual([]);
@@ -501,10 +534,10 @@ describe("the visibility function is self-contained (H3)", () => {
     ["the root's overflow-x: hidden", { root: { overflowX: "hidden", overflowY: "auto", overflow: "hidden auto" } }, true],
     ["the root's overflow-y: scroll", { root: { overflowX: "auto", overflowY: "scroll", overflow: "auto scroll" } }, true],
     ["no overflow on the root or body", { root: {} }, true],
-  ] as const)("treats an anchor below the fold under %s as reachable only when the buyer can scroll the viewport", (_name, styles, reachable) => {
+  ] as const)("treats an anchor below the fold under %s as reachable only when the buyer can scroll the viewport", async (_name, styles, reachable) => {
     const { view, element, body } = fakeDocument(styles);
     const belowFold = element({ left: 10, top: 2500, width: 120, height: 40 }, { parent: body });
-    expect(rebuilt([belowFold as unknown as Element], [])).toEqual([{ ...shown, insideScrollArea: reachable }]);
+    expect(await rebuilt([belowFold as unknown as Element], [])).toEqual([{ ...shown, insideScrollArea: reachable }]);
     expect([view.scrollX, view.scrollY], "the window scroll position is restored").toEqual([0, 0]);
   });
 
@@ -512,10 +545,10 @@ describe("the visibility function is self-contained (H3)", () => {
     ["an off-canvas drawer widening the page under the root's overflow-x: hidden", { root: { overflowX: "hidden", overflowY: "auto", overflow: "hidden auto" }, pageWidth: 1100 }, { left: 330, top: 20, width: 60, height: 20 }],
     ["an off-canvas drawer widening the page under body's overflow-x: hidden", { root: {}, body: { overflowX: "hidden", overflowY: "auto", overflow: "hidden auto" }, pageWidth: 1100 }, { left: 330, top: 20, width: 60, height: 20 }],
     ["a body scroll lock, the anchor already on screen", { root: {}, body: { overflow: "hidden" } }, { left: 10, top: 200, width: 120, height: 40 }],
-  ] as const)("keeps an anchor already in view reachable under %s, moving nothing", (_name, styles, box) => {
+  ] as const)("keeps an anchor already in view reachable under %s, moving nothing", async (_name, styles, box) => {
     const { view, element, body, scrolls } = fakeDocument(styles);
     const anchor = element(box, { parent: body });
-    expect(rebuilt([anchor as unknown as Element], [])).toEqual([{ ...shown, width: box.width, height: box.height }]);
+    expect(await rebuilt([anchor as unknown as Element], [])).toEqual([{ ...shown, width: box.width, height: box.height }]);
     expect([view.scrollX, view.scrollY]).toEqual([0, 0]);
     expect(scrolls.filter((call) => !call.endsWith(" instant"))).toEqual([]);
   });
@@ -538,19 +571,32 @@ describe("the visibility function is self-contained (H3)", () => {
       const inner = doc.element({ left: 0, top: 0, width: 400, height: 200 }, { parent: outer, style: { overflow: "auto" }, scrollHeight: 440 });
       return doc.element({ left: 10, top: 400, width: 120, height: 40 }, { parent: inner });
     }, undefined],
-  ] as const)("reaches an anchor an inner scroller the buyer can scroll brings into view, under %s", (_name, build, styles) => {
+  ] as const)("reaches an anchor an inner scroller the buyer can scroll brings into view, under %s", async (_name, build, styles) => {
     const doc = fakeDocument(styles);
     const anchor = build(doc);
-    expect(rebuilt([anchor as unknown as Element], [])).toEqual([{ ...shown }]);
+    expect(await rebuilt([anchor as unknown as Element], [])).toEqual([{ ...shown }]);
     expect([doc.view.scrollX, doc.view.scrollY]).toEqual([0, 0]);
   });
 
-  it("measures a batch in order and reads the requested attributes", () => {
+  it("asks the browser's own rendering check where there is one, and counts a failed check as hidden", async () => {
+    const { element, body } = fakeDocument();
+    const asked: unknown[] = [];
+    const rendered = Object.assign(element({ left: 10, top: 10, width: 120, height: 40 }, { parent: body }), {
+      checkVisibility: (options: unknown) => { asked.push(options); return true; },
+    });
+    const notRendered = Object.assign(element({ left: 10, top: 60, width: 120, height: 40 }, { parent: body }), {
+      checkVisibility: (options: unknown) => { asked.push(options); return false; },
+    });
+    expect(await rebuilt([rendered, notRendered] as unknown as Element[], [])).toEqual([{ ...shown }, { ...shown, hidden: true }]);
+    expect(asked).toEqual(Array(2).fill({ checkOpacity: true, checkVisibilityCSS: true, contentVisibilityAuto: true }));
+  });
+
+  it("measures a batch in order and reads the requested attributes", async () => {
     const { element, body } = fakeDocument();
     const first = element({ left: 0, top: 0, width: 50, height: 20 }, { parent: body, attributes: { "data-openlup-state": "paid" } });
     const second = element({ left: 0, top: 30, width: 50, height: 20 }, { parent: body, attributes: { "data-openlup-action": "start_over" } });
-    expect(rebuilt([first, second] as unknown as Element[], ["data-openlup-state", "data-openlup-action"]).map(({ attributes }) => attributes))
+    expect((await rebuilt([first, second] as unknown as Element[], ["data-openlup-state", "data-openlup-action"])).map(({ attributes }) => attributes))
       .toEqual([["paid", null], [null, "start_over"]]);
-    expect(rebuilt([], ["data-openlup-state"])).toEqual([]);
+    expect(await rebuilt([], ["data-openlup-state"])).toEqual([]);
   });
 });
