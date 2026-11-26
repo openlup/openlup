@@ -14,6 +14,8 @@ import { noIssuerWasAsked } from "./stripeIntentConfirmationEvidence.js";
 import type { StripeIntentLike } from "./stripeSandboxPaymentExecutionAdapter.js";
 
 export interface StripePaymentIntentReader {
+  /** The host records the account bound to this client's installed credentials. */
+  readonly ownAccountRef?: string;
   retrievePaymentIntent(paymentIntentId: string): Promise<StripeIntentLike>;
   cancelPaymentIntent?(paymentIntentId: string): Promise<StripeIntentLike>;
 }
@@ -39,13 +41,18 @@ export function createStripePaymentReconciliationProvider(
 ): PaymentProviderRecoveryProvider {
   const search = client.searchPaymentIntentsByMetadata?.bind(client);
   const cancel = client.cancelPaymentIntent?.bind(client);
+  const ownAccountRef = client.ownAccountRef;
+  const bindAccount = (status: ProviderReconciliationStatus): ProviderReconciliationStatus =>
+    status.status === "succeeded" && typeof ownAccountRef === "string" && ownAccountRef.trim()
+      ? { ...status, rawPayload: { ...status.rawPayload, providerAccountRef: ownAccountRef } }
+      : status;
   return {
     resolvePaymentReference(input) {
       return input.providerAttemptId ?? input.intentProviderPaymentId ?? input.providerSessionId;
     },
     async readRecoveryPayment(input) {
       const intent = await client.retrievePaymentIntent(input.providerPaymentId);
-      let status = normalizeStripeIntent(intent);
+      let status = bindAccount(normalizeStripeIntent(intent));
       let clientAction: ProviderRecoveryAction | null = null;
       if (intent.status === "processing" || intent.status === "requires_capture") {
         clientAction = null;
@@ -74,7 +81,7 @@ export function createStripePaymentReconciliationProvider(
     },
     async readPayment(input) {
       const intent = await client.retrievePaymentIntent(input.providerPaymentId);
-      return readStripeIntentStatus(intent, input.providerPaymentId, input.purpose);
+      return bindAccount(readStripeIntentStatus(intent, input.providerPaymentId, input.purpose));
     },
     ...(cancel
       ? {

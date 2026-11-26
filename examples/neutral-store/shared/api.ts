@@ -28,6 +28,8 @@ export type Operation = typeof operations[number];
  * host received it is refused, so "no order under this key" becomes final once a
  * caller's own request timeout plus this bound have passed. A code constant. */
 export const checkoutLateCreateMs = 15_000;
+/** The browser gives up on an action request after this. A code constant. */
+export const actionRequestTimeoutMs = 20_000;
 export type ActionInput = Record<string, unknown>;
 export type SubscriptionCancelFeedbackInput = { subscriptionRef: string; cancelCommandKey: string; reasonCode: string };
 

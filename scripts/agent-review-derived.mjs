@@ -54,6 +54,23 @@ function unionRows(base, left, right) {
   additions.sort((a, b) => slot(a).localeCompare(slot(b)));
   return [...base, ...additions];
 }
+export function reslotRegistryJson(path, source, changes) {
+  const isCatalogue = path === 'config/openlup-publication-catalog.json';
+  check(MIGRATION_REGISTRIES.includes(path) || isCatalogue, 'unknown registry');
+  const remap = new Map(changes.map(({ path: oldPath, target }) => [oldPath, target]));
+  const replace = value => {
+    if (typeof value === 'string') return remap.get(value) ?? value;
+    if (Array.isArray(value)) return value.map(replace);
+    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k, item]) => [k, replace(item)]));
+    return value;
+  };
+  const updated = replace(strictRegistryJson(source));
+  if (isCatalogue && Array.isArray(updated.publicPaths)) {
+    updated.publicPaths.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
+  }
+  return `${JSON.stringify(updated, null, 2)}\n`;
+}
+
 export function migrationRegistryUnion(path, baseSource, leftSource, rightSource, inventorySource) {
   check(MIGRATION_REGISTRIES.includes(path), 'unknown registry');
   const [base, left, right] = [baseSource, leftSource, rightSource].map(strictRegistryJson);

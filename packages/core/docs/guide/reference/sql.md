@@ -240,6 +240,9 @@ in [Upgrade the database](../upgrade/database-migrations.md).
 | [`20261128180000_subscription_destination_read.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261128180000_subscription_destination_read.sql) |
 | [`20261128230000_derived_subscription_price_retired_base.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261128230000_derived_subscription_price_retired_base.sql) |
 | [`20261128230001_checkout_abandonment_safety_execute_grant.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261128230001_checkout_abandonment_safety_execute_grant.sql) |
+| [`20261129120000_subscription_renewal_generation_seam.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129120000_subscription_renewal_generation_seam.sql) |
+| [`20261129130000_payment_capture_time_read.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129130000_payment_capture_time_read.sql) |
+| [`20261129130001_native_renewal_v3_storage.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129130001_native_renewal_v3_storage.sql) |
 | [`20261129160000_tax_calculation_adapter_money_v1.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129160000_tax_calculation_adapter_money_v1.sql) |
 | [`20261129160001_tax_calculation_adapter_money_activation.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129160001_tax_calculation_adapter_money_activation.sql) |
 | [`q2_00000000000000_platform_baseline.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_00000000000000_platform_baseline.sql) |

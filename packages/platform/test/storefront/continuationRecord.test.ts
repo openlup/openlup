@@ -9,12 +9,15 @@ import {
   type ContinuationRecord,
   type ContinuationRecordStorageBinding,
   type IdentifierBinding,
+  type StorageFailurePolicy,
 } from "../../src/storefront/index.js";
 
 type Call = { binding: string; argument?: unknown };
 
 /** In-memory bindings that record every call, in order, across storage, identifier and fingerprint. */
-function harness(initial: ContinuationRecord | null = null, options: { accepts?: (value: string) => boolean; dropWrites?: boolean } = {}) {
+function harness(initial: ContinuationRecord | null = null, options: {
+  accepts?: (value: string) => boolean; dropWrites?: boolean; keeps?: (written: ContinuationRecord) => ContinuationRecord;
+} = {}) {
   let stored = initial;
   let minted = 0;
   const calls: Call[] = [];
@@ -25,7 +28,7 @@ function harness(initial: ContinuationRecord | null = null, options: { accepts?:
     },
     write: (record) => {
       calls.push({ binding: "write", argument: record });
-      if (!options.dropWrites) stored = record;
+      if (!options.dropWrites) stored = options.keeps ? options.keeps(record) : record;
     },
     clear: () => {
       calls.push({ binding: "clear" });
@@ -82,7 +85,7 @@ describe("getOrCreateContinuationId", () => {
     const id = getOrCreateContinuationId(bindings, { fingerprint: bindings.fingerprint });
 
     expect(id).toBe("minted-1");
-    expect(bindings.calls.map(call => call.binding)).toEqual(["read", "next", "fingerprint", "write"]);
+    expect(bindings.calls.map(call => call.binding)).toEqual(["read", "next", "fingerprint", "write", "read"]);
     expect(bindings.stored()).toStrictEqual({ fingerprint: "stamp", continuationId: "minted-1" });
   });
 
@@ -92,7 +95,7 @@ describe("getOrCreateContinuationId", () => {
     const id = getOrCreateContinuationId(bindings, { fingerprint: bindings.fingerprint });
 
     expect(id).toBe("minted-1");
-    expect(bindings.calls.map(call => call.binding)).toEqual(["read", "accepts", "next", "fingerprint", "write"]);
+    expect(bindings.calls.map(call => call.binding)).toEqual(["read", "accepts", "next", "fingerprint", "write", "read"]);
     const written = bindings.calls.find(call => call.binding === "write")?.argument;
     expect(written).toStrictEqual({ fingerprint: "stamp", continuationId: "minted-1" });
     expect(Object.keys(written as object).sort()).toEqual(["continuationId", "fingerprint"]);
@@ -118,12 +121,90 @@ describe("getOrCreateContinuationId", () => {
 
   it("yields a new identity per call when the storage binding drops every write", () => {
     const bindings = harness(null, { dropWrites: true });
+    const input = { fingerprint: bindings.fingerprint, storageFailure: "continue_unpersisted" } as const;
 
-    const first = getOrCreateContinuationId(bindings, { fingerprint: bindings.fingerprint });
-    const second = getOrCreateContinuationId(bindings, { fingerprint: bindings.fingerprint });
+    const first = getOrCreateContinuationId(bindings, input);
+    const firstCalls = bindings.calls.splice(0).map(call => call.binding);
+    const second = getOrCreateContinuationId(bindings, input);
 
     expect([first, second]).toEqual(["minted-1", "minted-2"]);
+    // No read follows the write: the earlier call sequence, call for call.
+    expect([firstCalls, bindings.calls.map(call => call.binding)]).toEqual([
+      ["read", "next", "fingerprint", "write"],
+      ["read", "next", "fingerprint", "write"],
+    ]);
     expect(bindings.stored()).toBeNull();
+  });
+});
+
+describe("storage failure", () => {
+  it("refuses by default when the storage drops the mint write", () => {
+    const bindings = harness(null, { dropWrites: true });
+
+    expect(getOrCreateContinuationId(bindings, { fingerprint: bindings.fingerprint })).toBeNull();
+    expect(bindings.calls.map(call => call.binding)).toEqual(["read", "next", "fingerprint", "write", "read"]);
+
+    bindings.calls.splice(0);
+    expect(getOrCreateContinuationId(bindings, { fingerprint: bindings.fingerprint })).toBeNull();
+    expect(bindings.calls.map(call => call.binding)).toEqual(["read", "next", "fingerprint", "write", "read"]);
+    expect(bindings.calls.find(call => call.binding === "write")?.argument).toStrictEqual({ fingerprint: "stamp", continuationId: "minted-2" });
+  });
+
+  it("refuses under refuse and under a member it does not know", () => {
+    for (const storageFailure of ["refuse", "policy_added_later"] as StorageFailurePolicy[]) {
+      const bindings = harness(null, { dropWrites: true });
+
+      expect(getOrCreateContinuationId(bindings, { fingerprint: bindings.fingerprint, storageFailure })).toBeNull();
+      expect(bindings.calls.map(call => call.binding)).toEqual(["read", "next", "fingerprint", "write", "read"]);
+    }
+  });
+
+  it("refuses when the record read back names another identity", () => {
+    const bindings = harness(null, { keeps: written => ({ ...written, continuationId: toContinuationId("minted-other") }) });
+
+    expect(getOrCreateContinuationId(bindings, { fingerprint: bindings.fingerprint })).toBeNull();
+    expect(bindings.calls.filter(call => call.binding === "next")).toHaveLength(1);
+  });
+
+  it("refuses when the record read back carries another fingerprint", () => {
+    const bindings = harness(null, { keeps: written => ({ ...written, fingerprint: "another-stamp" }) });
+
+    expect(getOrCreateContinuationId(bindings, { fingerprint: bindings.fingerprint })).toBeNull();
+    expect(bindings.calls.filter(call => call.binding === "next")).toHaveLength(1);
+  });
+
+  it("accepts a read-back that adds attempt zero", () => {
+    const bindings = harness(null, { keeps: written => ({ ...written, attempt: toAttemptNumber(0) }) });
+
+    expect(getOrCreateContinuationId(bindings, { fingerprint: bindings.fingerprint })).toBe("minted-1");
+    expect(bindings.calls.map(call => call.binding)).toEqual(["read", "next", "fingerprint", "write", "read"]);
+  });
+
+  it("propagates a read-back error as the same object", () => {
+    const bindings = harness();
+    const refusal = new Error("storage refused the read-back");
+    const read = bindings.storage.read;
+    let reads = 0;
+    bindings.storage.read = () => {
+      reads += 1;
+      if (reads === 2) throw refusal;
+      return read();
+    };
+
+    expect(thrownBy(() => getOrCreateContinuationId(bindings, { fingerprint: bindings.fingerprint }))).toBe(refusal);
+    expect(bindings.calls.map(call => call.binding)).toEqual(["read", "next", "fingerprint", "write"]);
+  });
+
+  it("does not read back after a write that throws", () => {
+    const bindings = harness();
+    const refusal = new Error("storage refused write");
+    bindings.storage.write = (written) => {
+      bindings.calls.push({ binding: "write", argument: written });
+      throw refusal;
+    };
+
+    expect(thrownBy(() => getOrCreateContinuationId(bindings, { fingerprint: bindings.fingerprint }))).toBe(refusal);
+    expect(bindings.calls.map(call => call.binding)).toEqual(["read", "next", "fingerprint", "write"]);
   });
 });
 

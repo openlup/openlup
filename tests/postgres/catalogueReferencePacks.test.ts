@@ -57,7 +57,7 @@ beforeAll(() => {
   temporary = mkdtempSync(join(tmpdir(), "openlup-reference-packs-"));
   const project = `reference-packs-${randomUUID()}`;
   childEnv = { ...processEnvironment, TMPDIR: temporary, TMP: temporary, TEMP: temporary,
-    COMPOSE_PROJECT_NAME: project, COMPOSE_FILE: join(app, "compose.yaml") };
+    OPENLUP_STARTER_PORT: "4319", COMPOSE_PROJECT_NAME: project, COMPOSE_FILE: join(app, "compose.yaml") };
   const signals = (["SIGINT", "SIGTERM"] as const).map(signal => ({ signal, listeners: process.listenerCount(signal) }));
   stackCleanup = ownedStackCleanup(options => {
     composeAbort.abort();

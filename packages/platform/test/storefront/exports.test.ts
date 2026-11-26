@@ -19,6 +19,10 @@ const STOREFRONT_EXPORTS = {
   clearContinuationRecord: { kind: "value", experimental: false },
   recoverAmbiguousSubmit: { kind: "value", experimental: false },
   AmbiguousSubmitRecovery: { kind: "type", experimental: false },
+  checkPendingResume: { kind: "value", experimental: true },
+  decidePendingResume: { kind: "value", experimental: true },
+  applyPendingResume: { kind: "value", experimental: true },
+  PendingResumeDecision: { kind: "type", experimental: true },
   ContinuationRecord: { kind: "type", experimental: false },
   ContinuationRecordStorageBinding: { kind: "type", experimental: false },
   SubmitTransportBinding: { kind: "type", experimental: false },
@@ -37,6 +41,9 @@ const STOREFRONT_EXPORTS = {
   StorageFailurePolicy: { kind: "type", experimental: true },
   storefrontAnchor: { kind: "value", experimental: true },
   StorefrontAnchor: { kind: "type", experimental: true },
+  createPurchaseContinuation: { kind: "value", experimental: true },
+  PurchaseContinuation: { kind: "type", experimental: true },
+  PurchaseContinuationSnapshot: { kind: "type", experimental: true },
 } as const satisfies Record<string, { kind: "type" | "value"; experimental: boolean }>;
 
 const entryFile = fileURLToPath(new URL("../../src/storefront/index.ts", import.meta.url));

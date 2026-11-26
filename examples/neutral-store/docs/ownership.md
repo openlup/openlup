@@ -87,7 +87,8 @@ application INSERTs. Checkout does not import the install-only seed.
 `host/checkout-recovery.ts` composes the separate private recovery mailbox;
 the host owns and closes the native token transaction lane.
 The host names its single role-free lane after its capability, checkout recovery tokens, owns it and closes it.
-`client/purchase.ts` owns tab continuation and visible-response redaction. Neither
+`client/purchase.ts` owns tab continuation, including the checkout continuation
+record that keeps one checkout key per purchase, and visible-response redaction. Neither
 is an account authority. No demo customer seed or mandatory purchase sign-in exists.
 
 `playwright.database.config.ts` is the managed real-database UI recipe. Its
