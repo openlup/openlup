@@ -78,7 +78,8 @@ export type StorefrontScenario = {
     /**
      * States that must not be shown, per run. `control`: forbidden in the control
      * run from its first sample on: outcomes a page whose status reads are blocked
-     * cannot know (awaiting states stay allowed). `clean.ruledOut`: forbidden in
+     * cannot know (awaiting states stay allowed; the state the control negates is
+     * left to `vacuous_progress`). `clean.ruledOut`: forbidden in
      * the clean run from its first sample on: outcomes the scenario rules out.
      * `clean.afterShowing`: once the clean run has shown `state`, each of
      * `regressions` (a pre-outcome state) is forbidden too.

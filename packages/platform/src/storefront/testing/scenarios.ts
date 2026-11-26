@@ -44,9 +44,10 @@ function deepFreeze<T>(value: T): T {
  * - `paid_pending_activation`: a subscription's payment settles while its
  *   activation stays pending. The clean run never shows `paid` or `declined`
  *   and, once it showed `paid_pending_activation`, never `awaiting_payment`
- *   again; the control run, whose status reads are blocked, never shows `paid`,
- *   `declined` or `paid_pending_activation` (awaiting states stay allowed); at
- *   most one capture; progress
+ *   again; the control run, whose status reads are blocked, never shows `paid`
+ *   or `declined` (awaiting states stay allowed, and showing the negated
+ *   `paid_pending_activation` is `vacuous_progress`); at most one capture;
+ *   progress
  *   is `paid_pending_activation`; the control blocks status reads and creates
  *   from the outcome on, keeps the outcomes and must keep that state from being
  *   shown. Requires the `activation_pending` outcome.
@@ -206,7 +207,8 @@ export const storefrontScenarios: readonly StorefrontScenario[] = deepFreeze([
     // showed the expected state.
     safety: {
       forbiddenStates: {
-        control: ["paid", "declined", "paid_pending_activation"],
+        // The negated state stays with vacuous_progress, as in every other block_read scenario.
+        control: ["paid", "declined"],
         clean: { ruledOut: ["paid", "declined"], afterShowing: { state: "paid_pending_activation", regressions: ["awaiting_payment"] } },
       },
       maxCaptures: 1,

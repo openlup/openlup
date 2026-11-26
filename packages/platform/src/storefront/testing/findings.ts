@@ -61,8 +61,8 @@ const texts: Readonly<Record<string, Readonly<Record<string, FindingText>>>> = {
       fix: "Show the state the server reports for the payment, never a paid state or a decline the outcome rules out.",
     },
     unknowable: {
-      observed: (f) => `${f.at}: the page shows ${f.name} although the control blocked the status reads it could have learned it from.`,
-      cause: "The page shows an outcome it cannot know, from state kept in the page rather than from the server.",
+      observed: (f) => `${f.at}: the page shows ${f.name}, an outcome no status read of this run reported.`,
+      cause: "The page shows an outcome it cannot know, from state kept in the page rather than from the server: before the control starts the outcome has not been produced, and from then on the control withholds the status reads that would report it.",
       fix: "Show an outcome only from a status read that reports it; keep an awaiting state while no read answers.",
     },
     regression: {
