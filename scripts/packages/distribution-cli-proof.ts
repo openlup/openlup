@@ -1,8 +1,8 @@
 /** Called by the existing cold consumer after installing its verified tarballs. */
 import assert from "node:assert/strict";
-import { execFileSync, spawn, spawnSync, type ExecFileSyncOptionsWithStringEncoding } from "node:child_process";
+import { execFileSync, fork, spawn, spawnSync, type ExecFileSyncOptionsWithStringEncoding } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { closeSync, existsSync, linkSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { isIPv4 } from "node:net";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -1463,8 +1463,10 @@ exec "${dockerBin}" "$@"
   const appLogs = new Map<string, string[]>();
   const generations = new Map<string, string>();
   let activeApps = new Map<string, string>();
-  const installers = new Set<string>();
-  let cleaned = false;
+  let cleanupAttempted = false;
+  let auditFinished = false;
+  const failures: unknown[] = [];
+  const stopProof = new Error("occupied proof has recorded failures");
   const fail = (name: string) => { throw new Error("starter_runtime_proof_" + name); };
   function runRaw(cwd: string, command: string, args: string[], input?: string, environment: NodeJS.ProcessEnv = env, privateResult = false) {
     const child = spawnSync(command, args, { cwd, env: environment, input, encoding: "utf8", timeout: 300_000, maxBuffer: 16 * 1024 * 1024 });
@@ -1480,19 +1482,48 @@ exec "${dockerBin}" "$@"
   const projectLabel = "com.docker.compose.project";
   const appFilters = ["--filter", "label=com.docker.compose.service=application",
     "--filter", "label=com.docker.compose.container-number"];
-  // Subscribe before startup so healthcheck activity cannot evict earlier creates
-  // from Docker's bounded event history.
-  const eventPath = join(scratch, "container-creates"), eventErrors = eventPath + ".stderr";
-  const eventOut = openSync(eventPath, "wx", 0o600), eventErr = openSync(eventErrors, "wx", 0o600);
-  const eventStream = spawn(dockerBin, ["events", "--since", new Date().toISOString(),
-    "--filter", "type=container", "--filter", "event=create", "--filter", "label=" + projectLabel,
-    "--format", '{{index .Actor.Attributes "com.docker.compose.project"}} {{index .Actor.Attributes "com.docker.compose.service"}} {{.Actor.ID}} {{if index .Actor.Attributes "com.docker.compose.container-number"}}managed{{end}}'],
-    { cwd: from, env, stdio: ["ignore", eventOut, eventErr] });
-  closeSync(eventOut);
-  closeSync(eventErr);
-  const eventClosed = new Promise(resolve => eventStream.once("close", resolve));
-  let eventError = false;
-  eventStream.on("error", () => { eventError = true; });
+  const barrier = project + "-log-audit";
+  type LogAudit = { error?: string; errors?: string[]; installerCount?: number;
+    logs?: { id: string; fixture: string; started: boolean; streams: string[] }[] };
+  const audit = fork(new URL("./occupied-application-logs.mjs", import.meta.url),
+    [dockerBin, project, alternate, barrier], { cwd: from, env, execArgv: [], detached: true,
+      stdio: ["ignore", "ignore", "ignore", "ipc"] });
+  const ready = Promise.withResolvers<void>(), auditResult = Promise.withResolvers<LogAudit>();
+  audit.on("message", (message: LogAudit & { ready?: boolean }) => {
+    if (message.ready) ready.resolve();
+    else auditResult.resolve(message);
+  });
+  audit.once("exit", () => auditResult.resolve({ error: "application_log_audit_exit" }));
+  audit.once("error", () => auditResult.resolve({ error: "application_log_audit_launch" }));
+  const fixtureLabel = "com.openlup.proof.log-fixture";
+  function cleanupProjects() {
+    cleanupAttempted = true;
+    for (const name of [project, alternate]) {
+      try {
+        checked("proof_project_down", runRaw(from, dockerBin,
+          ["compose", "--project-name", name, "down", "--volumes", "--remove-orphans", "--rmi", "local"]));
+      } catch (error) { failures.push(error); }
+    }
+  }
+  async function finishAudit() {
+    auditFinished = true;
+    // The daemon sends the barrier after the teardown events, including any transient containers.
+    try {
+      checked("log_audit_barrier", runRaw(from, dockerBin, ["volume", "create", barrier]));
+      const result = await Promise.race([auditResult.promise, new Promise<LogAudit>(resolve => {
+        setTimeout(() => resolve({ error: "application_log_audit_timeout" }), 30_000).unref();
+      })]);
+      for (const finding of [result.error, ...result.errors ?? []])
+        if (finding) failures.push(new Error("starter_runtime_proof_" + finding));
+      return result;
+    } catch (error) {
+      failures.push(error);
+      return {};
+    } finally {
+      try { checked("log_audit_barrier_cleanup", runRaw(from, dockerBin, ["volume", "rm", barrier])); }
+      catch (error) { failures.push(error); }
+    }
+  }
   function listApps() {
     const apps = new Map<string, string>();
     for (const name of [project, alternate]) {
@@ -1501,13 +1532,6 @@ exec "${dockerBin}" "$@"
       for (const id of ids.split(/\s+/u).filter(Boolean)) apps.set(id, name);
     }
     return apps;
-  }
-  function captureLogs(id: string) {
-    const result = runRaw(from, dockerBin, ["logs", id], undefined, env, true);
-    checked("private_application_logs", result);
-    const logs = appLogs.get(id) ?? [];
-    logs.push(result.stdout, result.stderr);
-    appLogs.set(id, logs);
   }
   const guestFiles = `const fs = require("node:fs");
     const read = path => { try { return fs.readFileSync(path, "utf8").trim(); }
@@ -1529,10 +1553,7 @@ exec "${dockerBin}" "$@"
     const before = listApps();
     if (before.size !== activeApps.size || [...before].some(([id, name]) => activeApps.get(id) !== name))
       fail("application_changed_outside_capture_boundary");
-    for (const id of before.keys()) {
-      captureLogs(id);
-      rememberAppFiles(id);
-    }
+    for (const id of before.keys()) rememberAppFiles(id);
     try { return operate(); }
     finally {
       activeApps = listApps();
@@ -1653,6 +1674,7 @@ exec "${dockerBin}" "$@"
     return { records, receipt, matches };
   }
   try {
+    await Promise.race([ready.promise, auditResult.promise.then(() => fail("application_log_audit_startup"))]);
     const predecessor: string = JSON.parse(readFileSync(join(from, ".starter-origin.json"), "utf8")).sourceRevision;
     if (!/^[a-f0-9]{40}$/u.test(predecessor)) fail("predecessor_identity");
     const old = starterUpgradeSnapshot(from, "1.0.0"), next = starterUpgradeSnapshot(to, "1.0.1");
@@ -1681,7 +1703,7 @@ exec "${dockerBin}" "$@"
     }
     mark(project + " common installed schema " + count);
     checked("stop_predecessor_application", compose("stop", "application"));
-    if (!appLogs.get(predecessorGeneration)?.some(log => log.trim())) fail("empty_predecessor_logs");
+
     const stoppedApplication = () => {
       const id = checked("all_application_containers", compose("ps", "--all", "-q", "application"));
       if (!id) fail("predecessor_application_missing");
@@ -1785,6 +1807,11 @@ exec "${dockerBin}" "$@"
       || !lockedCutover.stderr.includes("docker ps --filter volume=" + volume)) fail("stale_lock_remedy");
     checked("documented_predecessor_recovery", recover());
     checked("documented_cutover_from_fresh_shell", cutover());
+    const upgradedGeneration = applicationId();
+    if (upgradedGeneration === predecessorGeneration || !(await readSettlementContinuity(settled)).matches)
+      fail("settled_data_continuity");
+    mark("settled data continuity and original receipt");
+    mark("original receipt and keyed records checked before startup replay");
     const recovered = checked("recovery_logs", compose("logs", "--no-color", "database"));
     if (!/database system was interrupted|automatic recovery in progress/u.test(recovered)) fail("predecessor_recovery_missing");
     const initial = readFileSync(source, "utf8").trim();
@@ -1893,13 +1920,6 @@ exec "${dockerBin}" "$@"
         'stat -c "%U:%G %a" "$PGDATA/pg_hba.conf"')) !== "postgres:postgres 600") fail("occupied_fallback");
     mark("installer socket, publication and occupied fallback");
 
-    const upgradedGeneration = applicationId();
-    if (upgradedGeneration === predecessorGeneration) fail("predecessor_application_not_replaced");
-    const reopened = await readSettlementContinuity(settled);
-    const retainedIdentity = identity();
-    if (retainedIdentity[1]?.split(" ").at(-1) !== original[1]?.split(" ").at(-1) || retainedIdentity[2] !== original[2]
-      || JSON.stringify(retained()) !== JSON.stringify(before) || !reopened.matches) fail("settled_data_continuity");
-
     const different = await createSettledReceipt();
     const substituted = await readSettlementContinuity(settled, project, different.reference);
     if (different.reference.orderRef === settled.reference.orderRef || substituted.records !== settled.facts
@@ -1907,7 +1927,6 @@ exec "${dockerBin}" "$@"
       || substituted.receipt.value.orderRef !== different.reference.orderRef || substituted.matches)
       fail("different_paid_receipt_red_control");
     mark("different paid receipt refused against the original records");
-    mark("settled data continuity and original receipt");
 
     const mounted = ["renewal", "care", "checkout-recovery"];
     const renewalConfig = join(from, "owned/renewal.config.ts");
@@ -1982,14 +2001,28 @@ exec "${dockerBin}" "$@"
     const { prepareRuntimeHandoff } = await import("../../examples/neutral-store/host/runtime-database.ts");
     const handoff = prepareRuntimeHandoff(project, [from]);
     const override = join(scratch, "missing-bind.yaml");
-    writeFileSync(override, 'services:\n  application:\n    command: ["sleep", "infinity"]\n    volumes: !override []\n');
+    const shutdownRed = randomBytes(24).toString("hex") + "/=";
+    const shutdownPath = "/tmp/occupied-proof-shutdown-control";
+    const shutdownFixture = `const fs = require("node:fs");
+      process.on("SIGTERM", () => {
+        const value = fs.readFileSync(${JSON.stringify(shutdownPath)}, "utf8");
+        fs.writeSync(1, value + "\\n");
+        fs.writeSync(2, encodeURIComponent(value) + "\\n");
+        process.exit(0);
+      });
+      setInterval(() => {}, 1000);`;
+    writeFileSync(override, 'services:\n  application:\n    command: '
+      + JSON.stringify(["node", "-e", shutdownFixture]) + '\n    volumes: !override []\n');
     try {
       checked("missing_bind_fixture", applicationBoundary("missing-bind application", () =>
         runRaw(from, "docker", ["compose", "--project-name", project, "-f", "compose.yaml", "-f", override,
           "up", "--no-deps", "--no-build", "--force-recreate", "-d", "application"], undefined, { ...env, ...handoff.environment })));
     } finally { handoff.cleanup(); }
-    if (activeApps.has(upgradedBeforeRecreate) || !appLogs.has(upgradedBeforeRecreate)
-      || activeApps.has(upgradedGeneration) || !appLogs.has(upgradedGeneration)) fail("upgraded_application_recreate_capture");
+    if (activeApps.has(upgradedBeforeRecreate) || activeApps.has(upgradedGeneration)) fail("upgraded_application_recreate");
+    const shutdownGeneration = applicationId();
+    checked("arm_shutdown_log_fixture", runRaw(from, dockerBin, ["exec", "-i", shutdownGeneration, "node", "-e",
+      `const fs = require("node:fs"); fs.writeFileSync(${JSON.stringify(shutdownPath)}, fs.readFileSync(0), {mode: 0o600});`],
+      shutdownRed));
     for (const [release] of releases) {
       exerciseJobs(release, true);
       for (const mode of ["show", "preview"]) {
@@ -2097,11 +2130,16 @@ exec "${dockerBin}" "$@"
         fail("blank_replacement_volume_red_control");
       mark("blank replacement volume refused the original order and receipt");
       checked("stop_second_project", run(from, "./lifecycle", ["down"], undefined, fresh));
-      if (activeApps.has(blankGeneration) || !appLogs.has(blankGeneration)) fail("blank_application_removal_capture");
+      if (activeApps.has(blankGeneration)) fail("blank_application_removal");
     } finally {
-      run(from, dockerBin, ["compose", "--project-name", alternate, "down", "--volumes", "--remove-orphans"], undefined, selectNext);
-      rmSync(dirname(alternateSource), { recursive: true, force: true });
+      try {
+        checked("remove_blank_project", run(from, dockerBin,
+          ["compose", "--project-name", alternate, "down", "--volumes", "--remove-orphans"], undefined, selectNext));
+      } catch (error) { failures.push(error); }
+      try { rmSync(dirname(alternateSource), { recursive: true, force: true }); }
+      catch (error) { failures.push(error); }
     }
+    if (failures.length) throw stopProof;
     up(0, "restored original project application");
     if (identity()[2] !== original[2] || verifier() !== currentVerifier) fail("original_project_changed");
     mark("one project per directory, down clears record and permits switching");
@@ -2109,6 +2147,7 @@ exec "${dockerBin}" "$@"
     const listener = project + "-port-holder";
     try {
       checked("occupy_listener_port", run(from, dockerBin, ["run", "-d", "--name", listener,
+        "--label", projectLabel + "=" + project, "--label", fixtureLabel + "=listener",
         "-p", "127.0.0.1::5432", "--entrypoint", "sleep", postgresImage, "120"]));
       const portMapping = checked("occupied_port", run(from, dockerBin, ["port", listener, "5432/tcp"]));
       const occupied = portMapping.match(/^127\.0\.0\.1:([0-9]+)$/u)?.[1];
@@ -2119,7 +2158,6 @@ exec "${dockerBin}" "$@"
       if (!/port is already allocated|address already in use|failed to bind/u.test(result.stderr)) fail("lost_listener_diagnostic");
     } finally {
       if (checked("listener_holder_inventory", runRaw(from, dockerBin, ["ps", "-aq", "--filter", "name=^/" + listener + "$"]))) {
-        captureLogs(listener);
         checked("listener_holder_cleanup", runRaw(from, dockerBin, ["rm", "-f", listener]));
       }
     }
@@ -2191,7 +2229,6 @@ esac
         const result = run(from, "./lifecycle", ["up", "--configuration", "coffee", ...(mode ? ["--json"] : [])], undefined,
           { ...env, PATH: scratch + ":" + env.PATH, STARTER_PROOF_FAULT: fault, STARTER_PROOF_VALUE: synthetic });
         refusal(result, "starter_runtime_credential_" + fault + "_failed", mode);
-        checked("mount_read_refusal_logs", compose("logs", "--no-color"));
         const config = run(from, dockerBin, ["compose", "--project-name", project, "config", "--format", "json"], undefined,
           { ...env, OPENLUP_STARTER_PREFLIGHT_HANDOFF: "/dev/null", OPENLUP_STARTER_RUNTIME_SOURCE: source });
         const model = checked("changed_source_model", config);
@@ -2209,7 +2246,6 @@ esac
         refusal(run(from, "./lifecycle", ["up", "--configuration", "coffee", ...(mode ? ["--json"] : [])], undefined,
           { ...env, PATH: scratch + ":" + env.PATH, STARTER_PROOF_FAULT: "auth", STARTER_PROOF_VALUE: wrongPassword }),
         "starter_runtime_database_auth_failed", mode);
-        checked("failed_application_logs", compose("logs", "--no-color", "application"));
       } finally {
         if (existsSync(heldSource)) { rmSync(source, { force: true }); renameSync(heldSource, source); }
       }
@@ -2238,7 +2274,8 @@ esac
     const browserName = project + "-installed-browser";
     const args = browserContainerArguments(from, browser, browserName, localImage, mounts);
     try {
-      checked("installed_browser_container", run(from, "docker", [args[0]!, "--detach", ...args.slice(1), "sleep", "120"]));
+      checked("installed_browser_container", run(from, "docker", [args[0]!, "--detach", "--label", projectLabel + "=" + project,
+        "--label", fixtureLabel + "=browser", ...args.slice(1), "sleep", "120"]));
       const inspected = JSON.parse(checked("installed_browser_mounts", run(from, "docker", ["inspect", "--format", "{{json .Mounts}}", browserName])));
       for (const mount of inspected) if (mount.Type === "bind") {
         const root = realpathSync(mount.Source);
@@ -2261,13 +2298,12 @@ esac
       if (hidden !== "PASS") fail("installed_browser_open");
     } finally {
       if (checked("browser_container_inventory", runRaw(from, dockerBin, ["ps", "-aq", "--no-trunc", "--filter", "name=^/" + browserName + "$"]))) {
-        captureLogs(browserName);
         checked("installed_browser_cleanup", runRaw(from, dockerBin, ["rm", "-f", browserName]));
       }
     }
     mark("installed browser, mount inventory and both credential opens");
 
-    captures.push(checked("compose_logs", compose("logs", "--no-color")));
+    checked("compose_database_logs", compose("logs", "--no-color", "database"));
     for (const id of activeApps.keys()) rememberAppFiles(id);
     const exactValues = () => [...credentials.values()].flatMap(values => [...values]);
     const leaks = (text: string, values = exactValues()) =>
@@ -2298,24 +2334,18 @@ esac
       || !redClient.environment.includes("STARTER_PROOF_RED=") || !leaks(redClient.environment))
       fail("client_environment_scan");
     mark("private passfiles; exact client environment scan and synthetic red control");
-    checked("final_application_cleanup", compose("down", "--volumes", "--remove-orphans", "--rmi", "local"));
-    cleaned = true;
-    if (activeApps.size || [...generations.keys()].some(id => !appLogs.has(id))) fail("uncaptured_application_logs");
-
-    if (eventError || !eventStream.kill()) fail("application_event_stream");
-    await eventClosed;
-    captures.push(readFileSync(eventErrors, "utf8"));
-    const startedApps = new Set<string>();
-    for (const event of readFileSync(eventPath, "utf8").split("\n")) {
-      const [name, service, id, managed] = event.split(" ");
-      if ((name !== project && name !== alternate) || !id) continue;
-      if (service === "application" && managed === "managed") startedApps.add(id);
-      if (service === "installation") installers.add(id);
-    }
-    if (startedApps.size !== generations.size || [...startedApps].some(id => !appLogs.has(id)))
-      fail("uncaptured_application_generation");
+    cleanupProjects();
+    const logAudit = await finishAudit();
+    if (failures.length) throw stopProof;
+    const auditedApps = (logAudit.logs ?? []).filter(entry => !entry.fixture);
+    const auditedFixtures = (logAudit.logs ?? []).flatMap(entry => entry.fixture && entry.started ? [entry.fixture] : []);
+    for (const entry of logAudit.logs ?? []) appLogs.set(entry.id, entry.streams);
+    if (listApps().size || auditedApps.length !== generations.size || auditedApps.some(entry => !generations.has(entry.id))
+      || auditedFixtures.sort().join(",") !== "browser,listener") fail("uncaptured_application_generation");
+    if (!appLogs.get(predecessorGeneration)?.some(log => log.trim())) fail("empty_predecessor_logs");
+    const installerCount = logAudit.installerCount ?? 0;
     const installerCaptures = readdirSync(installerLogs);
-    if (!installers.size || installerCaptures.length < installers.size) fail("uncaptured_installation_logs");
+    if (!installerCount || installerCaptures.length < installerCount) fail("uncaptured_installation_logs");
     for (const log of installerCaptures) for (const stream of ["stdout", "stderr"])
       captures.push(readFileSync(join(installerLogs, log, stream), "utf8"));
     const outputLeaks = (values: string[], control?: { id: string; value: string }) => {
@@ -2327,6 +2357,12 @@ esac
       if (credentials.get(kind)?.size !== count) fail("incomplete_" + kind.replaceAll(" ", "_") + "_inventory");
     if (!credentials.get("guest signing key")?.size) fail("incomplete_guest_signing_key_inventory");
     if (outputLeaks(exactValues()) || leaks(committed)) fail("credential_output_scan");
+    const shutdownLogs = appLogs.get(shutdownGeneration) ?? [];
+    if (!shutdownLogs.some((log, index) => index % 2 === 0 && log.includes(shutdownRed))
+      || !shutdownLogs.some((log, index) => index % 2 === 1 && log.includes(encodeURIComponent(shutdownRed)))
+      || captures.some(log => leaks(log, [shutdownRed])) || !outputLeaks([shutdownRed]))
+      fail("shutdown_only_log_red_control");
+    mark("shutdown-only value caught on both streams of the recreated application");
     for (const kind of ["runtime password", "runtime verifier", "publication password", "diagnostic fixture",
       "checkout creation key", "other action key", "receipt bearer", "guest signing key", "guest cookie", "quote acceptance"]) {
       const planted = randomBytes(24).toString("hex") + "/=";
@@ -2341,21 +2377,26 @@ esac
       mark(label + " private log coverage (" + count + ")");
     }
     mark("recreated upgraded application and removed blank-volume application log red controls");
-    mark("attached installer private log coverage (" + installers.size + ")");
+    mark("attached installer private log coverage (" + installerCount + ")");
     mark("installed browser and listener holder private log coverage (2)");
     mark("captured output and scanner red controls");
     mark("occupied proof completed in " + Math.round(performance.now() - started) + " ms");
+  } catch (error) {
+    if (error !== stopProof) failures.push(error);
   } finally {
-    try {
-      if (!cleaned) {
-        for (const id of listApps().keys()) captureLogs(id);
-        runRaw(from, dockerBin, ["compose", "--project-name", project, "down", "--volumes", "--remove-orphans", "--rmi", "local"]);
-      }
-    } finally {
-      eventStream.kill();
-      await eventClosed;
-      rmSync(dirname(source), { recursive: true, force: true });
-      rmSync(scratch, { recursive: true, force: true });
+    if (!cleanupAttempted) cleanupProjects();
+    if (!auditFinished) await finishAudit();
+    if (audit.exitCode === null && audit.signalCode === null && audit.pid) {
+      try { process.kill(-audit.pid, "SIGTERM"); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") failures.push(error); }
+    }
+    for (const path of [dirname(source), join(dirname(dirname(source)), alternate), scratch]) {
+      try { rmSync(path, { recursive: true, force: true }); } catch (error) { failures.push(error); }
     }
   }
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) throw new Error(failures.map(error => {
+    const message = error instanceof Error ? error.message : "";
+    return /^starter_runtime_proof_[a-z0-9_]+$/u.test(message) ? message : "starter_runtime_proof_private_failure";
+  }).join("\n"));
 }

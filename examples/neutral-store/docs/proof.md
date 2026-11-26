@@ -58,16 +58,19 @@ at `node_modules/@openlup/core/docs/guide/reference/limits.md`.
 The installed upgrade proof settles a sandbox order on the predecessor. It
 compares the keyed order, line and payment records through the owner socket on
 the retained database and volume. It reopens the original receipt in a fresh
-session before running the mounted renewal, care and checkout recovery commands.
+session immediately after the documented cutover, before the startup replay or
+the mounted renewal, care and checkout recovery commands.
 The same check refuses the original order and receipt on a separately initialized
 empty store and refuses a second paid receipt paired with the original records.
-The proof captures each application container's stdout and stderr privately before
-stop, recreation, or removal, and checks coverage against the container inventory.
+The proof follows each application container's stdout and stderr privately
+through exit, and checks coverage against the container inventory.
 The exact-value scan checks those captures and the attached installer output for
 runtime and publication credentials, guest signing keys, checkout idempotency
 keys, receipt bearer tokens, and any continuation cookies or quote acceptances.
 It checks raw and URI-encoded forms. Planted receipt tokens in copies of the
-recreated upgrade and removed empty-store logs verify both paths.
+recreated upgrade and removed empty-store logs verify both paths. A disposable
+application fixture emits a planted value only during graceful shutdown to verify
+that both captured streams include shutdown output.
 
 ## Published product and quote proof
 
