@@ -132,7 +132,7 @@ it("upgrades in place with byte-identical checkout export and retained reads, in
     expect(index).toBeGreaterThan(0);
     plan.forward.splice(index);
   }
-  const predecessorPin = "cbb0de5414b4878ad3bb34ecaeb05438dae1d9f735b0653ba6381fe86ac564af";
+  const predecessorPin = "74fe3c59f86dc91724e0abd9c70264a7995cbd225cf92b5f6265fda3a99720f8";
   prefix.qualified.objectInventorySha256.bootstrapMigrator.withRestore = predecessorPin;
   const previousUnits = [prefix.qualified.baseline, ...prefix.qualified.forward].map(unit => unit.file);
   const suffix = manifest.qualified.forward.slice(prefix.qualified.forward.length).map(unit => unit.file);
