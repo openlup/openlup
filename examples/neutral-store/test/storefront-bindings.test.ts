@@ -523,3 +523,50 @@ test('U13 completed clears only a paid or cancelled order under the key', async 
   assert.equal(unknown.stored(), null);
   assert.equal(unknown.checkout.pending(), false);
 });
+
+test('a newer dispatch time stored by another document keeps "no order" open until its own bound', async () => {
+  const module = await freshDocument();
+  const page = setup(module);
+  page.seed({ v: 1, id: idA, fingerprint: 'f' });
+  wire(() => json({ ok: 'maybe' }));
+  await assert.rejects(page.checkout.bindings.transport.submit(createOf()), module.CheckoutAnswerUncertain);
+  const settledAt = page.time.now;
+  // Storage shared with another document: it dispatched a create of the same key 5 s later.
+  page.seed({ ...page.stored(), sentAt: settledAt + 5_000 });
+  for (const [at, expected] of [[15_001, 'checking'], [5_000 + 35_000, 'checking'], [5_000 + 35_001, 'terminal']] as const) {
+    page.time.now = settledAt + at;
+    wire(() => succeeded({ abandoned: false }));
+    assert.equal((await page.checkout.bindings.transport.abandon(page.purchase())).kind, expected, `at ${at}`);
+  }
+});
+
+test('a create is not sent when its dispatch time cannot be stored', async () => {
+  const module = await freshDocument();
+  const page = setup(module);
+  page.seed({ v: 1, id: idA, fingerprint: 'f' });
+  page.faults.set = true;
+  const calls = wire(() => succeeded(pending(orderA, 'rcv_first')));
+  await assert.rejects(page.checkout.bindings.transport.submit(createOf()), (error: unknown) => {
+    assert.ok(error instanceof module.CheckoutStorageUnavailable);
+    assert.equal(page.checkout.bindings.classifySubmitFailure(error), 'other', 'never replayed');
+    return true;
+  });
+  assert.equal(calls.length, 0);
+  page.faults.set = false;
+  page.faults.drop = true;
+  await assert.rejects(page.checkout.bindings.transport.submit(createOf()), module.CheckoutStorageUnavailable);
+  assert.equal(calls.length, 0, 'a dropped dispatch-time write sends nothing either');
+  page.faults.drop = false;
+  // Through the controller: its own record write succeeds, the dispatch-time write fails, and nothing is sent.
+  const other = setup(module);
+  const storage = other.storage;
+  other.checkout.bindings.storage.write({ continuationId: toContinuationId(idB), fingerprint: payload().reviewed });
+  const setItem = storage.setItem;
+  storage.setItem = (key: string, value: string) => { if (value.includes('"sentAt"')) throw new Error('full'); setItem(key, value); };
+  const sent = wire(() => succeeded(pending(orderA, 'rcv_first')));
+  const { snapshot } = await other.controller().submit({ payload: payload() });
+  assert.equal(snapshot.status, 'unknown');
+  assert.ok(snapshot.error instanceof module.CheckoutStorageUnavailable);
+  assert.equal(sent.length, 0);
+  assert.equal(other.stored().id, idB, 'the key is kept for the next attempt');
+});

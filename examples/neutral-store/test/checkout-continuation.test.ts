@@ -15,9 +15,17 @@ const orderA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', orderB = 'bbbbbbbb-bbbb-4
 const total = { amountMinor: 4200, currency: 'XTS' };
 let documents = 0, configurations = 0;
 
-/** Each import is a fresh document: its module memory and document start are its own. */
+type Creates = typeof import('../shared/storefront-bindings.ts')['checkoutCreates'];
+/** The create bookkeeping of each fresh document, which the page reads through its `creates` option. */
+const bookkeeping = new WeakMap<Purchase, Creates>();
+
+/** Each import is a fresh document: its module memory, create bookkeeping and document start are its own. */
 async function freshDocument(): Promise<Purchase> {
-  return import(new URL(`../client/purchase.ts?continuation-document-${++documents}`, import.meta.url).href) as Promise<Purchase>;
+  const purchase = await import(new URL(`../client/purchase.ts?continuation-document-${++documents}`, import.meta.url).href) as Purchase;
+  const bindings = await import(new URL(`../shared/storefront-bindings.ts?continuation-document-${documents}`, import.meta.url).href) as
+    typeof import('../shared/storefront-bindings.ts');
+  bookkeeping.set(purchase, bindings.checkoutCreates);
+  return purchase;
 }
 
 function storage(data = new Map<string, string>()) {
@@ -33,7 +41,7 @@ function storage(data = new Map<string, string>()) {
 function setup(purchase: Purchase, data?: Map<string, string>, start = 1_764_000_000_000) {
   const configuration = `continuation-${++configurations}`;
   const tab = storage(data), time = { now: start };
-  const controller = purchase.checkoutContinuation(configuration, { storage: tab.accessor, now: () => time.now });
+  const controller = purchase.checkoutContinuation(configuration, { storage: tab.accessor, now: () => time.now, creates: bookkeeping.get(purchase)! });
   const stored = () => { const raw = tab.data.get(storageKey(configuration)); return raw === undefined ? null : JSON.parse(raw); };
   return { configuration, tab, time, controller, stored };
 }
@@ -360,4 +368,68 @@ test('in flight covers the creates and choices of this purchase', async () => {
   release(refusedWith('starter_checkout_in_progress')());
   await held;
   assert.equal(controller.inFlight(), false);
+});
+
+// The page's own use of the create bookkeeping: its document start, the dispatch time of each continuation and the
+// bound a key inherits from an earlier document. "No order" is final strictly after the bound.
+test('page: none is final only strictly after the browser gave up plus the bound, judged at the continuation\'s dispatch', async () => {
+  const purchase = await freshDocument();
+  const { controller, time, stored } = setup(purchase);
+  const { key } = controller.dispatch();
+  time.now += 1_000_000;
+  const inFlight = await proceed(controller, 'resume', refusedWith('starter_checkout_not_found'));
+  assert.equal(inFlight.outcome.code, 'starter_checkout_in_progress', 'never final while the create is in flight');
+  controller.settled(key);
+  const settledAt = time.now;
+  // Each answer arrives 30 s after dispatch; the decision uses the continuation's dispatch time.
+  for (const [action, reply] of [['resume', refusedWith('starter_checkout_not_found')], ['abandon', succeeded({ abandoned: false })]] as const) {
+    time.now = settledAt + 15_000;
+    const slow = await proceed(controller, action, () => { time.now += 30_000; return reply(); });
+    assert.equal(slow.outcome.code, 'starter_checkout_in_progress', action);
+    assert.equal(stored().id, key, action);
+  }
+  time.now = settledAt + 15_001;
+  assert.equal((await proceed(controller, 'resume', refusedWith('starter_checkout_not_found'))).outcome.code, 'starter_checkout_not_found');
+  assert.equal(stored(), null);
+
+  const T2 = 5_000_000;
+  for (const [D, bound] of [[T2 + 10_000, T2 + 35_000], [T2 + 30_000, T2 + 45_000]] as const) {
+    const data = new Map<string, string>();
+    const page = setup(await freshDocument(), data, D);
+    data.set(storageKey(page.configuration), JSON.stringify({ v: 1, id: key, sentAt: T2 }));
+    assert.equal(page.controller.pending(), true, 'the inherited record opens the panel on load');
+    page.time.now = bound;
+    assert.equal((await proceed(page.controller, 'resume', refusedWith('starter_checkout_not_found'))).outcome.code, 'starter_checkout_in_progress', `document from ${D - T2}`);
+    page.time.now = bound + 1;
+    assert.equal((await proceed(page.controller, 'resume', refusedWith('starter_checkout_not_found'))).outcome.code, 'starter_checkout_not_found', `document from ${D - T2}`);
+    assert.equal(page.stored(), null);
+  }
+});
+
+test('page: a create lost in transport is final only strictly after its request timeout plus the bound', async () => {
+  const { controller, time, stored } = setup(await freshDocument());
+  const start = time.now;
+  const { key } = await create(controller, () => { time.now += 100; return lost(); });
+  for (const [at, code] of [[100 + 15_000, 'starter_checkout_in_progress'], [35_000, 'starter_checkout_in_progress'], [35_001, 'starter_checkout_not_found']] as const) {
+    time.now = start + at;
+    assert.equal((await proceed(controller, 'resume', refusedWith('starter_checkout_not_found'))).outcome.code, code, `at ${at}`);
+  }
+  assert.equal(stored(), null, key);
+});
+
+test('page: a key from an earlier document keeps its bound through a create of this document', async () => {
+  const T = 5_000_000, id = '0f8fad5b-d9cb-469f-a165-70867728950e';
+  for (const reply of [refusedWith('starter_terms_required'), refusedWith('starter_dependency_unavailable', 503)]) {
+    const data = new Map<string, string>();
+    const page = setup(await freshDocument(), data, T + 5_000);
+    data.set(storageKey(page.configuration), JSON.stringify({ v: 1, id, sentAt: T }));
+    const { key } = await create(page.controller, () => { page.time.now += 100; return reply(); });
+    assert.equal(key, id);
+    assert.equal(typeof page.stored().sentAt, 'number', 'a create of an earlier document may still arrive');
+    // The earlier document's create may reach the host until T + 20 s, then 15 s more.
+    for (const [at, code] of [[T + 5_100 + 15_000, 'starter_checkout_in_progress'], [T + 35_000, 'starter_checkout_in_progress'], [T + 35_001, 'starter_checkout_not_found']] as const) {
+      page.time.now = at;
+      assert.equal((await proceed(page.controller, 'resume', refusedWith('starter_checkout_not_found'))).outcome.code, code, `at ${at - T}`);
+    }
+  }
 });
