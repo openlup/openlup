@@ -13,7 +13,8 @@ import { restoreConnectedNativeStore } from "../../server/adapters/postgres/conn
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 import { withPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
 import { captureStoreJourney, journeySelection, storeJourneyResources, type JourneyTargetTemplate } from "../helpers/storeJourney.js";
-import { selectPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
+import { readPlatformMigrationManifest, selectPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
+import { readReviewedForwardRegistry } from "../../scripts/reviewed-platform-forward.js";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { nativePrivacyContributors } from "../../server/runtime/auth/privacyBinding.js";
 import {
@@ -680,19 +681,23 @@ try {
 it("exports class markers for restored cross-client destination links and preserves predecessor exports and grants", async () => {
   const manifest = JSON.parse(await readFile("config/platform-migration-manifest.json", "utf8")) as PlatformMigrationManifest;
   if (manifest.schemaVersion !== 3) throw new Error("Three platform catalogue plans required");
+  const registry = readReviewedForwardRegistry(await readFile("config/reviewed-platform-forwards.json"));
+  const path = registry.nativeStoreForwardClass?.slots.find(slot => slot.row === "commerce-destination-v2-export-ownership")?.path;
+  if (!path) throw new Error("Destination export forward is missing from the reviewed registry");
   const candidate = selectPlatformMigrationManifest(manifest, "qualified-v2", { migrationIsBootstrap: false, hasRestore: true });
   const prefix = structuredClone(manifest);
   for (const plan of [prefix, prefix.qualified, prefix.qualifiedAdmin]) {
-    const end = plan.forward.findIndex(unit => unit.file.endsWith("_commerce_destination_v2_export_ownership.sql"));
-    expect(end).toBeGreaterThan(0);
+    const end = plan.forward.findIndex(unit => unit.file === path);
+    if (end < 1) throw new Error(`Missing predecessor for ${path} in the platform catalogue plan`);
     plan.forward.splice(end);
   }
-  const catalogueId = "1adb1913d6c767f7050a9284fb0bd371f17e9d4eaaae263c83d3d4719f49530c";
-  prefix.qualified.objectInventorySha256.separateMigrator.withRestore = catalogueId;
   await withPlatformCatalog(prefix, async root => {
     const predecessor = storeJourneyResources({ catalogueRoot: root });
     try {
       const templates = await predecessor.targetTemplate("destination-export-predecessor");
+      const measured = readPlatformMigrationManifest(root) as PlatformMigrationManifest;
+      if (measured.schemaVersion !== 3) throw new Error("Three measured platform catalogue plans required");
+      const catalogueId = measured.qualified.objectInventorySha256.separateMigrator.withRestore;
       const source = await templates.clone("source"), restored = await templates.clone("target");
       const db = source.owner;
       const [mixed, foreign, consistent] = await Promise.all(Array.from({ length: 3 }, () => destinationContext(db)));

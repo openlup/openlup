@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { Pool } from "pg";
 import { expect } from "vitest";
 import { createPostgresNativeCheckoutPersistence, type NativeCheckoutDraftRequest } from "@openlup/platform/commerce/server/native-checkout";
@@ -11,7 +12,7 @@ import { createNativeRenewalCodec, createPostgresRenewalStore, createPostgresRen
 import { createPostgresDestinationPort } from "@openlup/platform/commerce/server/destinations";
 import { createPostgresFulfillmentStockSyncPort } from "@openlup/platform/fulfillment";
 import { createPostgresRenewalReservationPort } from "@openlup/platform/inventory";
-import { createPlatformPostgresMigrationRunner } from "@openlup/platform/migrations";
+import { createPlatformPostgresMigrationRunner, qualifiedPostgresCatalogPayload } from "@openlup/platform/migrations";
 import { readPlatformMigrationManifest, readPlatformMigrations, selectPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { captureConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { qualifiedPostgresStartupOptions, type QualifiedPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
@@ -76,12 +77,15 @@ async function readJourneyClusterRoleDigest(bootstrap: Pool): Promise<string> {
  * Own resources per suite; no ambient database, owner fallback or extra runtime grants.
  * Pass `{ isolatedCluster: true }` for suites that mutate cluster-wide roles, restart Docker,
  * or invoke cluster-wide snapshot checks such as `withCatalogAdmissionFence` (`pg_current_snapshot()`).
+ * A scoped catalogue root must be disposable. Its separate-login inventory is
+ * measured on the template and written back before any database is cloned.
  */
 export function storeJourneyResources(options?: { isolatedCluster?: boolean; catalogueRoot?: string }) {
   const catalogueRoot = options?.catalogueRoot;
-  const installedManifest = catalogueRoot
-    ? selectPlatformMigrationManifest(readPlatformMigrationManifest(catalogueRoot) as PlatformMigrationManifest,
-      "qualified-v2", { migrationIsBootstrap: false, hasRestore: true })
+  const scopedManifest = catalogueRoot ? readPlatformMigrationManifest(catalogueRoot) as PlatformMigrationManifest | null : null;
+  if (catalogueRoot && scopedManifest?.schemaVersion !== 3) throw new Error("Three platform catalogue plans required");
+  const installedManifest = scopedManifest
+    ? selectPlatformMigrationManifest(scopedManifest, "qualified-v2", { migrationIsBootstrap: false, hasRestore: true })
     : manifest;
   const containers: PostgresContainer[] = [], pools: Pool[] = [];
   const activeLeases = new Set<PgTemplateLease>();
@@ -145,13 +149,30 @@ export function storeJourneyResources(options?: { isolatedCluster?: boolean; cat
         const templateOwner = new Pool({ connectionString: urlFor("template_migrated", journeySelection.migrationLogin, true) });
         const templateRuntime = new Pool({ connectionString: urlFor("template_migrated", journeySelection.runtimeLogin) });
         try {
+          let measured: string | undefined;
           const runner = createPlatformPostgresMigrationRunner({ connectionString: urlFor("template_migrated", journeySelection.migrationLogin) }, {
             installation: journeySelection, poolFactory: () => templateOwner,
             root: catalogueRoot,
             catalog: { readManifest: readPlatformMigrationManifest, readMigrations: readPlatformMigrations },
+            catalogProjectionPayload: catalogueRoot ? async client => {
+              const payload = await qualifiedPostgresCatalogPayload(client, journeySelection, "openlup:public-platform-migrations:v1");
+              measured = createHash("sha256").update(payload).digest("hex");
+              return payload;
+            } : undefined,
           });
           const units = [installedManifest.baseline, ...installedManifest.forward];
-          expect(await runner.apply()).toEqual({ applied: units.map(unit => unit.file) });
+          try {
+            expect(await runner.apply()).toEqual({ applied: units.map(unit => unit.file) });
+          } catch (error) {
+            // Like inventory:refresh, repin only after the runner reaches its
+            // final inventory assertion with the complete scoped ledger.
+            if (!measured || !(error instanceof Error) || error.message !== "platform migration inventory rejected: platform migration manifest: object inventory SHA-256 mismatch") throw error;
+          }
+          if (catalogueRoot && scopedManifest?.schemaVersion === 3) {
+            if (!measured) throw new Error("Scoped store journey catalogue was not measured");
+            scopedManifest.qualified.objectInventorySha256.separateMigrator.withRestore = measured;
+            writeFileSync(join(catalogueRoot, "config/platform-migration-manifest.json"), JSON.stringify(scopedManifest));
+          }
           expect((await runner.status()).pending).toEqual([]);
           expect((await templateOwner.query("SELECT catalog_path,sha256,position FROM public.platform_schema_migrations ORDER BY position")).rows)
             .toEqual(units.map((unit, position) => ({ catalog_path: unit.file, sha256: unit.sha256, position })));
