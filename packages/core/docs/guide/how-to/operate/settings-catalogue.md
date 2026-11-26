@@ -759,11 +759,13 @@ Show offline: `show subscriptions.renewalPriceChanges --json`.
 
 ## subscriptions.rescheduleTimeZone
 
-Calculate a subscription reschedule date in the market time zone.
-Search terms include recurring orders, renewals.
+Calculate subscription reschedule calendar-day boundaries in a configured IANA time zone (reschedule time zone, slide calendar day, market timezone).
+Search terms include subscription reschedule time zone, slide calendar day, market timezone, IANA timezone.
 
-- Owner **subscriptions** · kind **cap** · runtime **read-only**
-- The native command compares dates using UTC days.
+- Owner **subscriptions** · kind **installed** · runtime **read-only**
+- Default is `{"revision":"default","timeZone":"UTC"}`.
+- Basis `reference-code` (matches the reference deployment's code).
+- UTC preserves historical epoch-day and UTC calendar-day reschedule comparisons across subscription_apply_lifecycle_action, subscription_command_preview, subscription_command_apply, customer_support_apply_subscription_action_v1, and save-offer reschedule target calculation.
 
 Show offline: `show subscriptions.rescheduleTimeZone --json`.
 

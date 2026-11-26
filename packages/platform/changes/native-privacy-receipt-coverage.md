@@ -1,13 +1,22 @@
-- Native erasure retries verify required contributor coverage before returning
-  the original receipt. An uncovered receipt returns
-  `PRIVACY_RECEIPT_COVERAGE_INCOMPLETE` with HTTP 503. Use
-  `reconcilePostgresPrivacyErasure` from an owner session to record one
-  verified contributor disposition with its approval. A foreign or conflicting
-  binding returns `PRIVACY_RECONCILIATION_APPROVAL_UNVERIFIED`.
+### Native erasure receipt coverage
 
-  Migration: Implement `findErasureReplay` on native privacy stores and
-  forward it on the held transaction with `readRequiredContributorIds`.
-  Update strict clients for the added coverage refusal and four governed facts.
-  Apply the complete native catalogue and recapture older stores after upgrading
-  within the same profile. Reopen native privacy traffic only after both parts
-  and the per-store cutover.
+Native erasure retries verify required coverage before returning the original
+receipt. An uncovered receipt returns HTTP 503 (`UPSTREAM_UNAVAILABLE`) with
+`PRIVACY_RECEIPT_COVERAGE_INCOMPLETE` in `error.details.privacyCode` and these
+facts in `error.details`. Here `<owners>` lists the required contributor IDs
+with missing coverage, separated by commas.
+
+- `observed` — A prior erasure is missing recorded coverage for the required owners (`<owners>`).
+- `cause` — The original receipt and verified owner approvals do not establish their local disposition.
+- `fix` — Ask the data privacy owner and contributor owners to reconcile the missing coverage against the original receipt.
+- `recheck` — Retry the original erasure request after reconciliation.
+
+Migration: Forward `findErasureReplay` on the held transaction in native store
+wrappers, returning the original receipt and its covered contributor IDs.
+Update strict clients to accept the coverage refusal and its four facts. Run
+`reconcilePostgresPrivacyErasure` in an owner session for each missing contributor
+with verified approval for the original receipt, as described in **Reconcile
+coverage of a native erasure receipt** in the **Personal data** guide. Retry the
+original subject and idempotency key once coverage is complete. Follow
+**Rehearse native privacy cutover for each store** before reopening native
+privacy traffic.

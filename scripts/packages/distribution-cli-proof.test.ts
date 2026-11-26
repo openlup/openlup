@@ -140,6 +140,7 @@ it("prints a bounded installation hint after the existing refusal and preserves 
   write("lifecycle-refusals.mjs", readFileSync(resolve("examples/neutral-store/lifecycle-refusals.mjs"), "utf8"));
   write("browser-groups.mjs", "export const browserJourneyGroups = [];");
   write("host/healthcheck.ts", "export const applicationHealthcheck = () => undefined;");
+  write("host/runtime-database.ts", readFileSync(resolve("examples/neutral-store/host/runtime-database.ts"), "utf8"));
   write("owned/store.config.ts", "export const selectConfiguration = () => ({});");
   write("installation/refusals.ts", readFileSync(resolve("examples/neutral-store/installation/refusals.ts"), "utf8"));
   write("shared/refusals.ts", readFileSync(resolve("examples/neutral-store/shared/refusals.ts"), "utf8"));
