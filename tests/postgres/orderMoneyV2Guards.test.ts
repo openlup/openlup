@@ -674,10 +674,18 @@ it("allows only the named, same-transaction erasure with immutable accepted fact
     await recordErasure(db, evidence.clientId);
     await db.query("SET CONSTRAINTS ALL IMMEDIATE");
   };
-  const attempt = (substituteDigest: boolean) =>
-    transaction(store.owner, db => attemptRedaction(db, substituteDigest), "ROLLBACK");
+  // The production child guard refuses the direct update even with matching new ledger data.
+  await expectMismatch(transaction(store.owner, db => attemptRedaction(db, false), "ROLLBACK"),
+    "/taxEvidence", lifecycleRemedy);
+  const isolateLandedAssertion = (db: PoolClient) => db.query(`ALTER TABLE public.commerce_order_tax_snapshots
+    DISABLE TRIGGER trg_commerce_order_tax_snapshots_money_v2`);
+  const attempt = (substituteDigest: boolean) => transaction(store.owner, async db => {
+    await isolateLandedAssertion(db);
+    await attemptRedaction(db, substituteDigest);
+  }, "ROLLBACK");
   await expectMismatch(attempt(true), "/taxEvidence", lifecycleRemedy);
   await transaction(store.owner, async db => {
+    await isolateLandedAssertion(db);
     await mutateRoutine(db, routine, [[`HINT='${lifecycleRemedy}'`, "HINT=remedy"]]);
     await expectMismatch(attemptRedaction(db, true), "/taxEvidence", replayRemedy);
   }, "ROLLBACK");
