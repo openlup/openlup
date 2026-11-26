@@ -6,7 +6,7 @@ import { routes } from '../../shared/routes.ts';
 import type { ActionResult } from '../../shared/api.ts';
 import { checkoutContinuationCopy, checkoutStateCopy } from '../../shared/limits.ts';
 import {
-  CheckoutAnswerUncertain, CheckoutStorageUnavailable, checkoutRecordKey, createCheckoutBindings, storageAvailable,
+  CheckoutAnswerUncertain, CheckoutStorageUnavailable, checkoutRecordKey, classifyCheckoutAnswer, createCheckoutBindings, storageAvailable,
   type CheckoutPayload, type CheckoutRequest, type CheckoutStorage,
 } from '../../shared/storefront-bindings.ts';
 import { append, el, link, button } from '../dom.ts';
@@ -59,7 +59,7 @@ export const checkoutStateAnchors = {
 } as const satisfies Record<CheckoutStatus, StateAnchor | null>;
 
 /** A status this version does not know reads as `unknown`. */
-const known = (status: string): CheckoutStatus => Object.hasOwn(checkoutStateAnchors, status) ? status as CheckoutStatus : 'unknown';
+const knownStatus = (status: string): CheckoutStatus => Object.hasOwn(checkoutStateAnchors, status) ? status as CheckoutStatus : 'unknown';
 
 /** The one element of a page that names its state, with visible text for each state, so a reader that measures it sees it. */
 function stateLine(context: PageContext) {
@@ -170,8 +170,39 @@ export function continuationView(answer: ActionResult, reading: StatusReading | 
   }
   // The pinned read behind a not payable continuation names the expired order.
   if (value.status === 'expired') return notPayable;
+  // A paid or cancelled order ends the purchase: only a different purchase is left.
+  if (paidStatuses.includes(value.status)) return { ...gone, different: true, copy: 'recoveryPaid' };
+  if (value.status === 'cancelled' || value.status === 'refunded') return { ...gone, different: true, copy: 'recoveryCancelled' };
   if (value.status === 'pending_payment' && typeof value.token !== 'string') return { ...both, text: 'limited', value };
   return { ...both, value };
+}
+
+/** What the page last learned about the order under the record: payable, or the code that named it otherwise. */
+export type KnownOrderState = 'payable' | 'starter_checkout_not_payable' | 'starter_checkout_paid' | 'starter_checkout_expired'
+  | 'starter_checkout_not_abandonable';
+const namedStates: readonly string[] = ['starter_checkout_not_payable', 'starter_checkout_paid', 'starter_checkout_expired', 'starter_checkout_not_abandonable'];
+
+/** The state an answer tells about the order under the key, or `null` when it tells nothing. */
+function stateOf(answer: ActionResult | null): KnownOrderState | null {
+  if (!answer) return null;
+  if (!answer.ok) {
+    if (namedStates.includes(answer.code)) return answer.code as KnownOrderState;
+    return ['starter_checkout_changed', 'starter_checkout_in_progress'].includes(answer.code) ? 'payable' : null;
+  }
+  const value = isRecord(answer.value) ? answer.value : null;
+  if (!value || typeof value.orderRef !== 'string') return null;
+  if (value.status === 'pending_payment') return 'payable';
+  return ['paid', 'fulfillment_pending', 'fulfilled', 'cancelled', 'refunded'].includes(String(value.status)) ? null : 'starter_checkout_not_payable';
+}
+
+/**
+ * Changed details name what is known about the recorded order: an unpaid order only when it is known payable, the
+ * code that named it otherwise, and, when nothing is known, that an order may exist.
+ */
+export function changedDetailsView(state: KnownOrderState | null): ContinuationView {
+  if (state === 'payable') return { choices: 'both', different: false, link: 'keep', code: 'starter_checkout_changed', text: 'starter_checkout_changed' };
+  if (state) return continuationView({ ok: false, code: state }, null, 'create', true);
+  return { choices: 'both', different: true, link: 'keep', code: 'starter_checkout_changed', text: 'changedUnconfirmed' };
 }
 
 /** The earlier order of this purchase: complete its payment, cancel it, or (after some answers) start a different purchase. */
@@ -261,6 +292,8 @@ interface Instance {
   unsubscribe(): void;
   /** The last continuation answer this instance received, with its abandon reading. */
   answer: { answer: ActionResult; reading: StatusReading | null } | null;
+  /** The last read answer this instance received, kept when the controller could not apply it. */
+  read: ActionResult | null;
 }
 
 export function checkoutPage(context: PageContext): HTMLElement {
@@ -300,9 +333,11 @@ export function checkoutPage(context: PageContext): HTMLElement {
 
   function mount(storage: CheckoutStorage): void {
     instance?.unsubscribe();
-    const own = { storage, answer: null } as Instance;
+    const own = { storage, answer: null, read: null } as Instance;
     own.checkout = pageBindings(context, storage, (answer, reading) => { own.answer = { answer, reading }; });
-    own.controller = createPurchaseContinuation(own.checkout.bindings);
+    const { transport } = own.checkout.bindings;
+    own.controller = createPurchaseContinuation({ ...own.checkout.bindings, transport: { ...transport,
+      read: async purchase => { own.read = null; const answer = await transport.read(purchase); own.read = answer; return answer; } } });
     own.unsubscribe = own.controller.subscribe(() => { if (own === instance) reflect(); });
     instance = own;
     void own.controller.begin();
@@ -317,11 +352,33 @@ export function checkoutPage(context: PageContext): HTMLElement {
   /** Tab storage failed after load: the purchase moves to page memory under the same key, when the record can still be read. */
   function toMemory(): void {
     if (!tab) return;
-    let seed: string | null = null;
+    let seed: string | null = null, state: string | null = null;
     try { seed = tab.getItem(name); } catch { seed = null; }
+    try { state = tab.getItem(stateName); } catch { state = null; }
     tab = null;
-    mount(memoryStorage(name, seed));
+    const memory = memoryStorage(name, seed);
+    if (state !== null) memory.setItem(stateName, state);
+    mount(memory);
     storageNotice();
+  }
+
+  const stateName = `neutral-store:checkout-order-state:v1:${configuration}`;
+  const recordId = (storage: CheckoutStorage): string | null => {
+    try { const record: unknown = JSON.parse(storage.getItem(name) ?? 'null'); return isRecord(record) && typeof record.id === 'string' ? record.id : null; }
+    catch { return null; }
+  };
+  /** What the page last learned about the order under the stored record, kept beside it in the same storage. */
+  function knownState(storage: CheckoutStorage): KnownOrderState | null {
+    const id = recordId(storage);
+    try {
+      const stored: unknown = JSON.parse(storage.getItem(stateName) ?? 'null');
+      return id && isRecord(stored) && stored.id === id && typeof stored.state === 'string' ? stored.state as KnownOrderState : null;
+    } catch { return null; }
+  }
+  function noteState(storage: CheckoutStorage, answer: ActionResult | null): void {
+    const state = stateOf(answer), id = recordId(storage);
+    if (!state || !id) return;
+    try { storage.setItem(stateName, JSON.stringify({ id, state })); } catch { /* Only the changed-details text depends on it. */ }
   }
 
   /** Whether the stored record had recorded an order, read before a command that may clear it. */
@@ -344,7 +401,7 @@ export function checkoutPage(context: PageContext): HTMLElement {
   /** Renders what every snapshot carries: the state line, and busy controls. */
   function reflect(): void {
     const snapshot = current().controller.getSnapshot();
-    state.set(checkoutStateAnchors[known(snapshot.status)]);
+    state.set(checkoutStateAnchors[knownStatus(snapshot.status)]);
     if (submitButton) submitButton.disabled = snapshot.busy;
     newAction.disabled = snapshot.busy;
     panel.busy(snapshot.busy);
@@ -412,14 +469,15 @@ export function checkoutPage(context: PageContext): HTMLElement {
       own.checkout.adoptFingerprint(payload.reviewed);
     }
     const before = own.controller.getSnapshot().result;
-    const hadOrder = ordered(own.storage);
+    const known = knownState(own.storage);
     const { accepted, snapshot } = await own.controller.submit({ payload });
     const error = snapshot.error;
     const applied = accepted && (snapshot.source === 'submit' || snapshot.source === 'replay') && snapshot.result !== null
       && snapshot.result !== before;
     const answer = !accepted ? null : error instanceof CheckoutAnswerUncertain ? error.answer : applied ? snapshot.result : null;
+    noteState(own.storage, answer);
     if (!live(own)) return answer;
-    const status = known(snapshot.status);
+    const status = knownStatus(snapshot.status);
     if (error instanceof CheckoutStorageUnavailable || status === 'storage_unavailable') {
       // Nothing was sent: tab storage refused a write. The purchase moves to page memory under the same key.
       toMemory();
@@ -442,9 +500,9 @@ export function checkoutPage(context: PageContext): HTMLElement {
     const views: Record<CheckoutStatus, () => HTMLElement | null | undefined> = {
       idle: () => undefined,
       details_changed: () => {
-        // Only a recorded order is named as unpaid; otherwise one may exist, and a different purchase is a way out.
-        openPanel({ choices: 'both', different: !hadOrder }, true);
-        return lines({ code: 'starter_checkout_changed', text: hadOrder ? 'starter_checkout_changed' : 'changedUnconfirmed' }, false);
+        const view = changedDetailsView(known);
+        openPanel(view, true);
+        return lines(view, false);
       },
       awaiting_payment: () => {
         if (!value) return undefined;
@@ -515,8 +573,12 @@ export function checkoutPage(context: PageContext): HTMLElement {
       // A terminal start-over answer ended the purchase, so its record does not move with it.
       toMemory();
       moved = true;
-      const terminal = (own.answer as Instance['answer'])?.reading?.kind === 'terminal';
+      // So did a read answering the order paid or cancelled.
+      const read = own.read as ActionResult | null;
+      const terminal = (own.answer as Instance['answer'])?.reading?.kind === 'terminal'
+        || (action === 'resume' && read !== null && ['settled', 'closed'].includes(classifyCheckoutAnswer(read)));
       if (terminal) { current().checkout.clearLocally(); mount(current().storage); }
+      if (action === 'resume' && read !== null) own.answer = { answer: read, reading: null };
       snapshot = before;
     }
     if (!page.isConnected || (!moved && own !== instance)) return;
@@ -526,7 +588,7 @@ export function checkoutPage(context: PageContext): HTMLElement {
     if (applied) {
       const answer = snapshot.result!;
       const value = answer.ok && isRecord(answer.value) ? answer.value : undefined;
-      const status = known(snapshot.status);
+      const status = knownStatus(snapshot.status);
       const payableView = () => {
         if (!value) return continuationView(answer, null, 'resume', hadOrder);
         rememberPurchase(configuration, value);
@@ -534,9 +596,9 @@ export function checkoutPage(context: PageContext): HTMLElement {
       };
       const byStatus: Record<CheckoutStatus, () => ContinuationView> = {
         awaiting_payment: payableView, awaiting_authority: payableView, declined: payableView,
-        paid: () => ({ choices: 'none', different: true, link: 'remove', copy: 'recoveryPaid', ...(value ? { value } : {}) }),
+        paid: () => ({ ...continuationView(answer, null, 'resume', hadOrder), ...(value ? { value } : {}) }),
         paid_pending_activation: () => byStatus.paid(),
-        closed: () => ({ choices: 'none', different: false, link: 'remove', copy: 'recoveryCancelled', ...(value ? { value } : {}) }),
+        closed: () => ({ ...continuationView(answer, null, 'resume', hadOrder), ...(value ? { value } : {}) }),
         idle: () => continuationView(answer, null, 'resume', hadOrder),
         details_changed: () => continuationView(answer, null, 'resume', hadOrder),
         refused: () => continuationView(answer, null, 'resume', hadOrder),
@@ -553,6 +615,7 @@ export function checkoutPage(context: PageContext): HTMLElement {
       reflect();
       return;
     }
+    noteState(current().storage, applied ? snapshot.result : received?.answer ?? null);
     if (view.link === 'remove') links.replaceChildren();
     const withLink = view.link !== 'remove' && view.value !== undefined && tokenKnown(view.value.orderRef);
     openPanel(view, false, lines(view, withLink));
@@ -645,7 +708,7 @@ export function completionPage(context: PageContext): HTMLElement {
   // keeps it, because a payment under it may still settle. A browser return settles nothing.
   const settled = (value: unknown) => {
     let storage: CheckoutStorage;
-    try { storage = sessionStorage; } catch { return; }
+    try { storage = rememberedTabStorage(sessionStorage); } catch { return; }
     pageBindings(context, storage).completed(value);
   };
   const showStarted = (result: unknown) => {
