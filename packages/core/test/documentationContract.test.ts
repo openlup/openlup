@@ -1315,6 +1315,9 @@ describe("generated reference regions", () => {
     assertRefusalCodeReachability(renderGeneratedRegion("refusal-codes", repositoryRoot)!, repositoryRoot, violations);
     expect(violations).toEqual([]);
     expect(open.map(({ typeName }) => typeName)).not.toContain("PrivacyRefusalCode");
+    expect(open).not.toContainEqual(expect.objectContaining({
+      typeName: "Code", report: "packages/platform/api/pricing.api.md",
+    }));
   }, realRepositoryTimeout);
 });
 

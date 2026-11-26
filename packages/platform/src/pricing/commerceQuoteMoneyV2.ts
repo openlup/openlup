@@ -14,7 +14,9 @@ import { quoteDigest } from "./quoteDigest.js";
 import { absentFeeBucket, admit, bucketSource, checkMoney, currency, engine, evidence, factsShape, feeLine,
   lineSource, minor, MoneyIssue, moneyRef, pointer, positionAmounts, positionMetadata, positionsMatchBasis, price, ref, remedies,
   shapePath, sumMinor, uuid } from "./quoteMoneyValidationV2.js";
-import type { Code, Path } from "./quoteMoneyValidationV2.js";
+import type { Path } from "./quoteMoneyValidationV2.js";
+
+type MoneyIssueCode = MoneyIssue["code"];
 
 const sourceShape = lineSource.extend({ amountKind: z.enum(["gross", "net"]) });
 const deliveryShape = bucketSource.extend({ amountMinor: minor,
@@ -87,7 +89,7 @@ export type CommerceQuoteMoneyV2Refusal = Readonly<{
 }>;
 
 const segments = (field: string) => field.split("/").slice(1);
-function fail(code: Code, field: string): never {
+function fail(code: MoneyIssueCode, field: string): never {
   throw new MoneyIssue(code, segments(field));
 }
 // Validate without replacing admitted owner diagnostics with parsed values.
@@ -100,7 +102,7 @@ function planIssue(error: CatalogueMoneyV2Error, candidate: Path): MoneyIssue {
   const [group, index] = error.field.split(/[.[\]]+/u);
   if (error.code === "money_amount_out_of_range" || error.code === "shipping_tax_basis_empty") return new MoneyIssue(error.code, candidate);
   if (group === "adjustments") return new MoneyIssue("promotion_allocation_unsubstantiated", [...candidate, group, index]);
-  const code = Object.hasOwn(remedies, error.code) ? error.code as Code : "money_input_invalid";
+  const code = Object.hasOwn(remedies, error.code) ? error.code as MoneyIssueCode : "money_input_invalid";
   const path = group === "sources" ? ["lines", index] : group === "delivery" ? [...candidate, group, index] : candidate;
   return new MoneyIssue(code, path);
 }
