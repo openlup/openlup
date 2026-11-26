@@ -81,11 +81,12 @@ export async function bindSettingsPasswordDescriptor(fd: 3): Promise<() => strin
   const limit = 4096, bytes = Buffer.alloc(limit + 1);
   let socket: Socket | undefined, timer: ReturnType<typeof setTimeout> | undefined, abandoned = false;
   const readLine = async () => {
-    let size = 0;
+    let size = 0, closeFile = false;
     try {
       const stat = await descriptorStat(fd);
+      closeFile = stat.isFile();
       if (abandoned) throw new Error();
-      if (stat.isFile()) {
+      if (closeFile) {
         while (!abandoned && size < bytes.length) {
           const count = await new Promise<number>((resolve, reject) =>
             read(fd, bytes, size, bytes.length - size, null, (error, count) => error ? reject(error) : resolve(count)));
@@ -104,7 +105,7 @@ export async function bindSettingsPasswordDescriptor(fd: 3): Promise<() => strin
     } finally {
       if (abandoned) bytes.fill(0);
       if (socket) socket.destroy();
-      else await closeDescriptor(fd).catch(() => {});
+      else if (closeFile) await closeDescriptor(fd).catch(() => {});
     }
   };
   try {
