@@ -55,8 +55,8 @@ function atBoundary(manifest: Extract<PlatformMigrationManifest, { schemaVersion
   return plan;
 }
 
-const catalogue = atBoundary(current, "through"), predecessor = atBoundary(current, "before");
-const writerCatalogue = atBoundary(current, "writer");
+const plans = { before: atBoundary(current, "before"), through: atBoundary(current, "through"), writer: atBoundary(current, "writer") };
+const { before: predecessor, through: catalogue, writer: writerCatalogue } = plans;
 it("selects the exact pinned prefixes even when every plan has a later forward", () => {
   const extended = structuredClone(current);
   const laterInventory = "a".repeat(64);
@@ -201,7 +201,7 @@ async function dispatchEffects(db: Db) {
 
 it.each([false, true])("preserves the mounted native worker with owner login and service role present=%s", async withService => {
   async function exercise(boundary: keyof typeof pins) {
-    const plan = atBoundary(current!, boundary);
+    const plan = plans[boundary];
     if (!withService) {
       return withPlatformCatalog(plan, async root => {
         const store = await installAccountMutations("legacy", false, "occurrence-mount", root);
@@ -290,7 +290,7 @@ it("compares a paid renewal under the actual starter login with a fixed occurren
       expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
       await owner.query(`CREATE ROLE starter_runtime LOGIN NOINHERIT PASSWORD 'synthetic-occurrence';
         CREATE ROLE starter_restore LOGIN NOINHERIT PASSWORD 'synthetic-occurrence'`);
-      await withPlatformCatalog(atBoundary(current!, boundary), root => createPostgresMigrationRunner(
+      await withPlatformCatalog(plans[boundary], root => createPostgresMigrationRunner(
         { connectionString: container.connectionString }, { root, installation, poolFactory: () => migration }).apply());
       const preimages = (await owner.query(`SELECT oid::regprocedure::text,pg_get_functiondef(oid),proacl
         FROM pg_proc WHERE pronamespace='public'::regnamespace AND proname IN
