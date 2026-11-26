@@ -1759,6 +1759,7 @@ export type { CatalogPriceSetupStorePort, CatalogPriceSetupHandlerDeps, CatalogP
 export { createPostgresCatalogPriceSetupStore, catalogPriceSetupRefusal, CATALOG_PRICE_SETUP_HARD_REFUSALS } from "./postgresCatalogPriceSetupStore.js";
 export type { CatalogPriceSetupQueryExecutor } from "./postgresCatalogPriceSetupStore.js";
 export { commerceQuoteV2Schema } from "./quoteSchemasV2.js";
+export { bucket as commerceMoneyV2DeliveryBucketSchema, currency as commerceMoneyV2CurrencySchema, digest as commerceMoneyV2DigestSchema, engine as commerceMoneyV2PromotionEngineSchema, evidence as commerceMoneyV2TaxEvidenceShape, factsShape as commerceMoneyV2FactsSchema, feeLine as commerceMoneyV2FeeLineSchema, line as commerceMoneyV2LineSchema, minor as commerceMoneyV2MinorSchema, price as commerceMoneyV2PriceSchema, ref as commerceMoneyV2ReferenceSchema, uuid as commerceMoneyV2UuidSchema, } from "./quoteMoneyValidationV2.js";
 export { planCommerceQuoteMoneyV2, composeCommerceQuoteMoneyV2 } from "./commerceQuoteMoneyV2.js";
 export type { PlanCommerceQuoteMoneyV2Input, CommerceQuoteMoneyV2Plan, ComposeCommerceQuoteMoneyV2Input, CommerceQuoteMoneyV2Refusal } from "./commerceQuoteMoneyV2.js";
 ```
@@ -2293,6 +2294,397 @@ export declare function quoteDigest(dialect: "commerce.quote-presentation.v2", d
     currency: string;
     amountMinor: number;
 }>]): string;
+```
+## dist/pricing/quoteMoneyValidationV2.d.ts
+
+```ts
+import { z } from "zod";
+import type { CommerceQuoteMoneyV2, CommerceQuoteV2 } from "./contracts/quoteV2.js";
+/** @experimental */
+export declare const ref: z.ZodString;
+export declare const moneyRef: z.ZodString;
+/** @experimental */
+export declare const minor: z.ZodNumber;
+/** @experimental */
+export declare const currency: z.ZodString;
+/** @experimental */
+export declare const uuid: z.ZodString;
+/** @experimental */
+export declare const digest: z.ZodString;
+/** @experimental */
+export declare const engine: z.ZodEnum<{
+    "promotion-engine.v1": "promotion-engine.v1";
+    "promotion-engine.v2": "promotion-engine.v2";
+}>;
+export declare const mode: z.ZodEnum<{
+    one_time: "one_time";
+    subscription: "subscription";
+}>;
+export declare const lineSource: z.ZodObject<{
+    lineKey: z.ZodString;
+    sourceOrdinal: z.ZodNumber;
+    sku: z.ZodString;
+    mode: z.ZodEnum<{
+        one_time: "one_time";
+        subscription: "subscription";
+    }>;
+    quantity: z.ZodNumber;
+    unitBasisMinor: z.ZodNumber;
+    taxClassKey: z.ZodString;
+    assignmentRef: z.ZodString;
+}, z.core.$strict>;
+export declare const bucketSource: z.ZodObject<{
+    bucketKey: z.ZodString;
+    kind: z.ZodEnum<{
+        shipping: "shipping";
+        handling: "handling";
+    }>;
+    carrierRef: z.ZodString;
+    serviceRef: z.ZodString;
+    cost: z.ZodObject<{
+        ref: z.ZodString;
+        currency: z.ZodString;
+        amountMinor: z.ZodNumber;
+    }, z.core.$strict>;
+    separatelyStated: z.ZodBoolean;
+    taxClassKey: z.ZodString;
+    assignmentRef: z.ZodString;
+}, z.core.$strict>;
+export declare const positionMetadata: z.ZodObject<{
+    positionRef: z.ZodString;
+    jurisdictionRef: z.ZodString;
+    level: z.ZodString;
+    taxKind: z.ZodString;
+    taxabilityReason: z.ZodString;
+    ruleRef: z.ZodString;
+    resolution: z.ZodObject<{
+        assignmentRef: z.ZodString;
+        policyRevision: z.ZodString;
+        sourceRef: z.ZodString;
+        sourceDigest: z.ZodOptional<z.ZodString>;
+        effective: z.ZodObject<{
+            from: z.ZodString;
+            until: z.ZodOptional<z.ZodString>;
+        }, z.core.$strict>;
+    }, z.core.$strict>;
+    resolutionDigest: z.ZodString;
+    providerLineRef: z.ZodOptional<z.ZodString>;
+}, z.core.$strict>;
+export declare const positionAmounts: {
+    rateDecimal: z.ZodOptional<z.ZodString & z.ZodType<string, string, z.core.$ZodTypeInternals<string, string>>>;
+    taxableMinor: z.ZodNumber;
+    taxMinor: z.ZodNumber;
+};
+/** @experimental */
+export declare const line: z.ZodObject<{
+    lineKey: z.ZodString;
+    sourceOrdinal: z.ZodNumber;
+    sku: z.ZodString;
+    mode: z.ZodEnum<{
+        one_time: "one_time";
+        subscription: "subscription";
+    }>;
+    quantity: z.ZodNumber;
+    unitBasisMinor: z.ZodNumber;
+    taxClassKey: z.ZodString;
+    assignmentRef: z.ZodString;
+    preDiscountMinor: z.ZodNumber;
+    effectiveMinor: z.ZodNumber;
+    discountAllocations: z.ZodArray<z.ZodObject<{
+        allocationId: z.ZodString;
+        adjustmentRef: z.ZodString;
+        sequence: z.ZodNumber;
+        source: z.ZodLiteral<"legacy_promotion">;
+        basisReductionMinor: z.ZodNumber;
+        netReductionMinor: z.ZodNumber;
+        taxReductionMinor: z.ZodNumber;
+        evidenceRef: z.ZodString;
+        before: z.ZodObject<{
+            basisMinor: z.ZodNumber;
+            netMinor: z.ZodNumber;
+            taxMinor: z.ZodNumber;
+            taxPositions: z.ZodArray<z.ZodObject<{
+                rateDecimal: z.ZodOptional<z.ZodString & z.ZodType<string, string, z.core.$ZodTypeInternals<string, string>>>;
+                taxableMinor: z.ZodNumber;
+                taxMinor: z.ZodNumber;
+                positionRef: z.ZodString;
+                jurisdictionRef: z.ZodString;
+                level: z.ZodString;
+                taxKind: z.ZodString;
+                taxabilityReason: z.ZodString;
+                ruleRef: z.ZodString;
+                resolution: z.ZodObject<{
+                    assignmentRef: z.ZodString;
+                    policyRevision: z.ZodString;
+                    sourceRef: z.ZodString;
+                    sourceDigest: z.ZodOptional<z.ZodString>;
+                    effective: z.ZodObject<{
+                        from: z.ZodString;
+                        until: z.ZodOptional<z.ZodString>;
+                    }, z.core.$strict>;
+                }, z.core.$strict>;
+                resolutionDigest: z.ZodString;
+                providerLineRef: z.ZodOptional<z.ZodString>;
+            }, z.core.$strict>>;
+        }, z.core.$strict>;
+        after: z.ZodObject<{
+            basisMinor: z.ZodNumber;
+            netMinor: z.ZodNumber;
+            taxMinor: z.ZodNumber;
+            taxPositions: z.ZodArray<z.ZodObject<{
+                rateDecimal: z.ZodOptional<z.ZodString & z.ZodType<string, string, z.core.$ZodTypeInternals<string, string>>>;
+                taxableMinor: z.ZodNumber;
+                taxMinor: z.ZodNumber;
+                positionRef: z.ZodString;
+                jurisdictionRef: z.ZodString;
+                level: z.ZodString;
+                taxKind: z.ZodString;
+                taxabilityReason: z.ZodString;
+                ruleRef: z.ZodString;
+                resolution: z.ZodObject<{
+                    assignmentRef: z.ZodString;
+                    policyRevision: z.ZodString;
+                    sourceRef: z.ZodString;
+                    sourceDigest: z.ZodOptional<z.ZodString>;
+                    effective: z.ZodObject<{
+                        from: z.ZodString;
+                        until: z.ZodOptional<z.ZodString>;
+                    }, z.core.$strict>;
+                }, z.core.$strict>;
+                resolutionDigest: z.ZodString;
+                providerLineRef: z.ZodOptional<z.ZodString>;
+            }, z.core.$strict>>;
+        }, z.core.$strict>;
+    }, z.core.$strict>>;
+    taxPositions: z.ZodArray<z.ZodObject<{
+        rateDecimal: z.ZodOptional<z.ZodString & z.ZodType<string, string, z.core.$ZodTypeInternals<string, string>>>;
+        taxableMinor: z.ZodNumber;
+        taxMinor: z.ZodNumber;
+        positionRef: z.ZodString;
+        jurisdictionRef: z.ZodString;
+        level: z.ZodString;
+        taxKind: z.ZodString;
+        taxabilityReason: z.ZodString;
+        ruleRef: z.ZodString;
+        resolution: z.ZodObject<{
+            assignmentRef: z.ZodString;
+            policyRevision: z.ZodString;
+            sourceRef: z.ZodString;
+            sourceDigest: z.ZodOptional<z.ZodString>;
+            effective: z.ZodObject<{
+                from: z.ZodString;
+                until: z.ZodOptional<z.ZodString>;
+            }, z.core.$strict>;
+        }, z.core.$strict>;
+        resolutionDigest: z.ZodString;
+        providerLineRef: z.ZodOptional<z.ZodString>;
+    }, z.core.$strict>>;
+    netMinor: z.ZodNumber;
+    taxMinor: z.ZodNumber;
+    lineTotalMinor: z.ZodNumber;
+}, z.core.$strict>;
+/** @experimental */
+export declare const bucket: z.ZodObject<{
+    bucketKey: z.ZodString;
+    kind: z.ZodEnum<{
+        shipping: "shipping";
+        handling: "handling";
+    }>;
+    carrierRef: z.ZodString;
+    serviceRef: z.ZodString;
+    cost: z.ZodObject<{
+        ref: z.ZodString;
+        currency: z.ZodString;
+        amountMinor: z.ZodNumber;
+    }, z.core.$strict>;
+    separatelyStated: z.ZodBoolean;
+    taxClassKey: z.ZodString;
+    assignmentRef: z.ZodString;
+    parts: z.ZodArray<z.ZodObject<{
+        sourceOrdinal: z.ZodOptional<z.ZodNumber>;
+        preDiscountMinor: z.ZodNumber;
+        effectiveMinor: z.ZodNumber;
+        discountAllocations: z.ZodArray<z.ZodObject<{
+            allocationId: z.ZodString;
+            adjustmentRef: z.ZodString;
+            sequence: z.ZodNumber;
+            source: z.ZodLiteral<"legacy_promotion">;
+            basisReductionMinor: z.ZodNumber;
+            netReductionMinor: z.ZodNumber;
+            taxReductionMinor: z.ZodNumber;
+            evidenceRef: z.ZodString;
+            before: z.ZodObject<{
+                basisMinor: z.ZodNumber;
+                netMinor: z.ZodNumber;
+                taxMinor: z.ZodNumber;
+                taxPositions: z.ZodArray<z.ZodObject<{
+                    rateDecimal: z.ZodOptional<z.ZodString & z.ZodType<string, string, z.core.$ZodTypeInternals<string, string>>>;
+                    taxableMinor: z.ZodNumber;
+                    taxMinor: z.ZodNumber;
+                    positionRef: z.ZodString;
+                    jurisdictionRef: z.ZodString;
+                    level: z.ZodString;
+                    taxKind: z.ZodString;
+                    taxabilityReason: z.ZodString;
+                    ruleRef: z.ZodString;
+                    resolution: z.ZodObject<{
+                        assignmentRef: z.ZodString;
+                        policyRevision: z.ZodString;
+                        sourceRef: z.ZodString;
+                        sourceDigest: z.ZodOptional<z.ZodString>;
+                        effective: z.ZodObject<{
+                            from: z.ZodString;
+                            until: z.ZodOptional<z.ZodString>;
+                        }, z.core.$strict>;
+                    }, z.core.$strict>;
+                    resolutionDigest: z.ZodString;
+                    providerLineRef: z.ZodOptional<z.ZodString>;
+                }, z.core.$strict>>;
+            }, z.core.$strict>;
+            after: z.ZodObject<{
+                basisMinor: z.ZodNumber;
+                netMinor: z.ZodNumber;
+                taxMinor: z.ZodNumber;
+                taxPositions: z.ZodArray<z.ZodObject<{
+                    rateDecimal: z.ZodOptional<z.ZodString & z.ZodType<string, string, z.core.$ZodTypeInternals<string, string>>>;
+                    taxableMinor: z.ZodNumber;
+                    taxMinor: z.ZodNumber;
+                    positionRef: z.ZodString;
+                    jurisdictionRef: z.ZodString;
+                    level: z.ZodString;
+                    taxKind: z.ZodString;
+                    taxabilityReason: z.ZodString;
+                    ruleRef: z.ZodString;
+                    resolution: z.ZodObject<{
+                        assignmentRef: z.ZodString;
+                        policyRevision: z.ZodString;
+                        sourceRef: z.ZodString;
+                        sourceDigest: z.ZodOptional<z.ZodString>;
+                        effective: z.ZodObject<{
+                            from: z.ZodString;
+                            until: z.ZodOptional<z.ZodString>;
+                        }, z.core.$strict>;
+                    }, z.core.$strict>;
+                    resolutionDigest: z.ZodString;
+                    providerLineRef: z.ZodOptional<z.ZodString>;
+                }, z.core.$strict>>;
+            }, z.core.$strict>;
+        }, z.core.$strict>>;
+        taxPositions: z.ZodArray<z.ZodObject<{
+            rateDecimal: z.ZodOptional<z.ZodString & z.ZodType<string, string, z.core.$ZodTypeInternals<string, string>>>;
+            taxableMinor: z.ZodNumber;
+            taxMinor: z.ZodNumber;
+            positionRef: z.ZodString;
+            jurisdictionRef: z.ZodString;
+            level: z.ZodString;
+            taxKind: z.ZodString;
+            taxabilityReason: z.ZodString;
+            ruleRef: z.ZodString;
+            resolution: z.ZodObject<{
+                assignmentRef: z.ZodString;
+                policyRevision: z.ZodString;
+                sourceRef: z.ZodString;
+                sourceDigest: z.ZodOptional<z.ZodString>;
+                effective: z.ZodObject<{
+                    from: z.ZodString;
+                    until: z.ZodOptional<z.ZodString>;
+                }, z.core.$strict>;
+            }, z.core.$strict>;
+            resolutionDigest: z.ZodString;
+            providerLineRef: z.ZodOptional<z.ZodString>;
+        }, z.core.$strict>>;
+        netMinor: z.ZodNumber;
+        taxMinor: z.ZodNumber;
+        lineTotalMinor: z.ZodNumber;
+    }, z.core.$strict>>;
+}, z.core.$strict>;
+/** @experimental */
+export declare const feeLine: z.ZodObject<{
+    feeKey: z.ZodString;
+    jurisdictionRef: z.ZodString;
+    feeKind: z.ZodString;
+    amountMinor: z.ZodNumber;
+    scope: z.ZodDiscriminatedUnion<[z.ZodObject<{
+        kind: z.ZodLiteral<"order">;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"delivery">;
+        bucketKey: z.ZodString;
+    }, z.core.$strict>], "kind">;
+    refundRule: z.ZodObject<{
+        ref: z.ZodString;
+        revision: z.ZodString;
+    }, z.core.$strict>;
+    providerPositionRef: z.ZodOptional<z.ZodString>;
+}, z.core.$strict>;
+/** @experimental */
+export declare const price: z.ZodObject<{
+    priceListRef: z.ZodString;
+    priceContextDigest: z.ZodString;
+    priceEvidenceRef: z.ZodString;
+    classMapRevision: z.ZodString;
+}, z.core.$strict>;
+/** @experimental */
+export declare const evidence: {
+    calculationId: z.ZodString;
+    evidenceDigest: z.ZodString;
+    taxDate: z.ZodString;
+    expiresAt: z.ZodString;
+};
+/** @experimental */
+export declare const factsShape: z.ZodObject<{
+    catalogueEvidenceRef: z.ZodString;
+    mode: z.ZodEnum<{
+        one_time: "one_time";
+        subscription: "subscription";
+    }>;
+    cadence: z.ZodOptional<z.ZodObject<{
+        schemaVersion: z.ZodLiteral<1>;
+        kind: z.ZodLiteral<"fixed_days">;
+        days: z.ZodNumber;
+    }, z.core.$strict>>;
+    destination: z.ZodObject<{
+        snapshotRef: z.ZodString;
+        schemaVersion: z.ZodLiteral<2>;
+        destinationDigest: z.ZodString;
+        policyRevision: z.ZodString;
+    }, z.core.$strict>;
+    coverageDigest: z.ZodString;
+    paymentLimits: z.ZodObject<{
+        profileRef: z.ZodString;
+        revision: z.ZodString;
+        channelKey: z.ZodString;
+        currency: z.ZodString;
+        minMinor: z.ZodNumber;
+        maxMinor: z.ZodNumber;
+    }, z.core.$strict>;
+}, z.core.$strict>;
+export declare const quoteShape: z.ZodType<CommerceQuoteV2>;
+export declare const sumMinor: <T>(items: readonly T[], amount: (item: T) => number) => bigint;
+export type Path = (string | number)[];
+export declare const remedies: {
+    money_input_invalid: string;
+    money_amount_basis_mixed: string;
+    shipping_tax_basis_empty: string;
+    promotion_allocation_unsubstantiated: string;
+    money_tax_evidence_mismatch: string;
+    money_amount_out_of_range: string;
+};
+type Code = keyof typeof remedies;
+export declare class MoneyIssue extends Error {
+    readonly code: Code;
+    readonly path: Path;
+    readonly remedy: string;
+    constructor(code: Code, path: Path, remedy?: string);
+}
+export declare function shapePath(issue: z.ZodIssue): Path;
+export declare const pointer: (path: Path) => string;
+export declare function admit<T>(input: T): T;
+export declare const absentFeeBucket: (fees: CommerceQuoteMoneyV2["feeLines"], buckets: ReadonlySet<string>) => number;
+export declare const positionsMatchBasis: (basisMinor: number, netMinor: number, taxPositions: readonly {
+    taxableMinor: number;
+}[], inclusive: boolean, shipping: boolean) => boolean;
+export declare function checkMoney(money: CommerceQuoteMoneyV2): MoneyIssue | undefined;
+export {};
 ```
 ## dist/pricing/quotePorts.d.ts
 
