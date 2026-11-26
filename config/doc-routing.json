@@ -1121,16 +1121,24 @@
     },
     {
       "id": "platform-storefront-verification",
-      "when": "Storefront verdict and proof-file contracts, the client-build digest, and the storefront test-support entry with its page handle",
+      "when": "Storefront verdict and proof-file contracts and the client-build digest",
       "paths": [
         "packages/platform/src/lifecycle/storefront*.ts",
-        "packages/platform/test/lifecycle/storefront*.test.ts",
+        "packages/platform/test/lifecycle/storefront*.test.ts"
+      ],
+      "doc": "packages/platform/README.md",
+      "anchor": "#storefront-verdict-and-proof-file-contracts"
+    },
+    {
+      "id": "platform-storefront-testing",
+      "when": "The storefront test-support entry: scenario, adapter, observer and page-handle contracts, the page handle and the verdict serializer",
+      "paths": [
         "packages/platform/src/storefront/testing/**",
         "packages/platform/test/storefront/testing/**",
         "packages/platform/api/storefront-testing.api.md"
       ],
       "doc": "packages/platform/README.md",
-      "anchor": "#storefront-verification-runner"
+      "anchor": "#storefront-test-support-entry"
     },
     {
       "id": "platform-http",

@@ -100,9 +100,9 @@ export type StorefrontScenario = {
  * A command matcher sees only the method and the request path, without query
  * string or fragment, so a token carried in a query never reaches a matcher or
  * a verdict. Stated limits: a store whose operations share one endpoint (for
- * example a single GraphQL path) cannot tell create from read by matcher;
- * status delivered over server-sent events or a WebSocket is not a request the
- * page handle can block; requests answered by a service worker are not routed
+ * example a single GraphQL path) cannot tell create from read by matcher; a
+ * server-sent event stream is one request the page handle can pass or block as
+ * a whole, not message by message, and WebSocket frames are not requests; requests answered by a service worker are not routed
  * unless the harness blocks service workers in its browser context; a
  * cross-origin request is matched by path alone; a redirect is followed to the
  * request the browser reports it redirected to, and a hop the browser does not
@@ -168,7 +168,10 @@ export type StorefrontObserver = {
  *   or absolute box escapes those outside it; the root scroller never clips)
  *   and its own and its ancestors' `clip` and `clip-path`, with the element hit at that part's centre being the anchor, a
  *   descendant or an ancestor of it (an ancestor only when no `clip-path` other
- *   than `inset()` lies on the way).
+ *   than `inset()` lies on the way). Where the browser has `checkVisibility`,
+ *   its answer also counts, so content of a closed `details` element or a
+ *   `content-visibility: hidden` section is hidden. An anchor inside a shadow
+ *   root is measured as covered (a stated limit).
  * - `anchors(locators)` lists the visible `state:<value>` and
  *   `action:<value>` anchors, sorted; `locators` maps such a name to a custom
  *   CSS locator that replaces its attribute anchor.
@@ -178,9 +181,13 @@ export type StorefrontObserver = {
  * - `intercept(decide)` routes every request through `decide`, with the request
  *   path and no query string or fragment; a `decide` that throws blocks the
  *   request. It resolves a removal function.
- * - `settled({ quietMs })` resolves once every request `decide` saw has
- *   finished (its response delivered, or aborted), following a redirect to the
- *   request it was redirected to, and `quietMs` passed with no new request.
+ * - `settled({ quietMs, timeoutMs })` resolves once every request `decide`
+ *   saw has finished (its response delivered, or aborted), following a
+ *   redirect to the request it was redirected to, and `quietMs` passed with no
+ *   new request. It waits at most `timeoutMs` (default 30,000), then rejects
+ *   with `storefront_page_settle_timeout` naming each unfinished request's
+ *   method and path: an open stream (`EventSource`), a long poll or a request
+ *   in flight when the page closed keeps it pending until that bound.
  *
  * @experimental
  */
@@ -201,5 +208,5 @@ export type PageHandle = {
   perform(target: StorefrontPageTarget, options: { readonly timeoutMs: number }): Promise<boolean>;
   fill(target: StorefrontPageTarget, value: string | boolean, options: { readonly timeoutMs: number }): Promise<boolean>;
   intercept(decide: (request: StorefrontMatchedRequest & { header(name: string): string | null }) => StorefrontRequestDecision | Promise<StorefrontRequestDecision>): Promise<() => Promise<void>>;
-  settled(options: { readonly quietMs: number }): Promise<void>;
+  settled(options: { readonly quietMs: number; readonly timeoutMs?: number }): Promise<void>;
 };

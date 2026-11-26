@@ -6,7 +6,7 @@ type StructuralRequest = { method(): string; url(): string; headers(): Record<st
 type StructuralRoute = { request(): StructuralRequest; continue(): Promise<void>; fetch(): Promise<unknown>; abort(): Promise<void> };
 type StructuralLocator = {
   waitFor(options: { state: "attached"; timeout: number }): Promise<void>;
-  evaluateAll<R>(pageFunction: (elements: never[], attributes: string[]) => R, attributes: string[]): Promise<R>;
+  evaluateAll<R>(pageFunction: (elements: never[], attributes: string[]) => R | Promise<R>, attributes: string[]): Promise<R>;
   isEnabled(options: { timeout: number }): Promise<boolean>;
   click(options: { timeout: number }): Promise<void>;
   fill(value: string, options: { timeout: number }): Promise<void>;
@@ -32,9 +32,11 @@ type StructuralPage = {
 };
 
 type Target = Parameters<PageHandle["find"]>[0];
-type Measurement = ReturnType<typeof anchorVisibility>[number];
+type Measurement = Awaited<ReturnType<typeof anchorVisibility>>[number];
 
 const EVERY_REQUEST = "**/*";
+/** How long `settled` waits by default before it refuses. */
+const SETTLE_TIMEOUT_MS = 30_000;
 const FINISHED: readonly RequestEvent[] = ["requestfinished", "requestfailed"];
 
 function invalid(message: string): TypeError {
@@ -106,7 +108,7 @@ async function appeared(locator: StructuralLocator, timeout: number): Promise<bo
  */
 export function createPageHandle(page: StructuralPage, options: { readonly origin?: string } = {}): PageHandle {
   // Every request a `decide` saw and has not yet finished, with the function that releases its waiter.
-  const pending = new Map<StructuralRequest, { owner: object; finish(): void; done: Promise<void> }>();
+  const pending = new Map<StructuralRequest, { owner: object; label: string; finish(): void; done: Promise<void> }>();
   // Every request a `decide` saw, and every redirect hop of one: the browser routes no hop, so its own request event claims it.
   const claimed = new WeakSet<StructuralRequest>();
   const claim = (request: StructuralRequest, owner: object) => {
@@ -116,7 +118,7 @@ export function createPageHandle(page: StructuralPage, options: { readonly origi
     if (existing !== undefined) return existing;
     let finish = () => undefined as void;
     const done = new Promise<void>((resolve) => { finish = resolve; });
-    const entry = { owner, done, finish: () => { pending.delete(request); finish(); } };
+    const entry = { owner, label: `${request.method()} ${pathOf(request.url())}`, done, finish: () => { pending.delete(request); finish(); } };
     pending.set(request, entry);
     return entry;
   };
@@ -220,14 +222,27 @@ export function createPageHandle(page: StructuralPage, options: { readonly origi
         for (const entry of [...pending.values()]) if (entry.owner === owner) entry.finish();
       };
     },
-    async settled({ quietMs }) {
+    async settled({ quietMs, timeoutMs = SETTLE_TIMEOUT_MS }) {
       const quiet = bound(quietMs);
-      for (;;) {
-        while (pending.size > 0) await Promise.all([...pending.values()].map((entry) => entry.done));
-        const before = seen;
-        await page.waitForTimeout(quiet);
-        if (seen === before && pending.size === 0) return;
-      }
+      const limit = bound(timeoutMs);
+      const work = (async () => {
+        for (;;) {
+          while (pending.size > 0) await Promise.all([...pending.values()].map((entry) => entry.done));
+          const before = seen;
+          await page.waitForTimeout(quiet);
+          if (seen === before && pending.size === 0) return "settled" as const;
+        }
+      })();
+      // The bound is the page's own timer; a request left open (a stream, a long poll, a page closed mid-request)
+      // ends the wait with a refusal naming it instead of keeping the step pending for ever.
+      const deadline = page.waitForTimeout(limit).then(() => "expired" as const, () => "expired" as const);
+      if (await Promise.race([work, deadline]) === "settled") return;
+      work.catch(() => undefined);
+      const open = [...pending.values()].map((entry) => entry.label);
+      throw new Error(`storefront_page_settle_timeout: ${open.length} request${open.length === 1 ? "" : "s"} did not finish within ${limit} ms`
+        + `${open.length > 0 ? `: ${open.join(", ")}` : ""}. Cause: a stream, a long poll or a request left open keeps the page from settling, `
+        + "or new requests kept starting inside the quiet window. Fix: let decide block the stream's path, or give settled a larger timeoutMs. "
+        + "Recheck: run the step again.");
     },
   } satisfies PageHandle);
 }

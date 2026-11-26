@@ -19,8 +19,12 @@
  *   anchor-sized part of what an inner scrollable scroller shows. A container
  *   with nothing to scroll on an axis only clips there; the viewport always
  *   counts, and does not move a fixed box;
- * - `hidden`: `display: none` or a `hidden` attribute up the tree, or an
- *   inherited `visibility` other than `visible`;
+ * - `hidden`: `display: none` or a `hidden` attribute up the tree, an inherited
+ *   `visibility` other than `visible`, or, where the browser has
+ *   `checkVisibility`, its answer with opacity, `visibility` and
+ *   `content-visibility: auto` checked (so a closed `details` element and
+ *   `content-visibility: hidden` count as hidden; a `content-visibility: auto`
+ *   section is measured after the frames that render it);
  * - `transparent`: the product of its and its ancestors' opacity is 0;
  * - `coveredAtCentre`: the part of the box left after clipping by the overflow
  *   boxes of the ancestors in its containing-block chain (never the root
@@ -34,7 +38,7 @@
  * position of the window and of every ancestor is restored after each element,
  * instantly whatever the page's `scroll-behavior`.
  */
-export function anchorVisibility(elements: readonly Element[], attributes: readonly string[]): {
+export async function anchorVisibility(elements: readonly Element[], attributes: readonly string[]): Promise<{
   attributes: (string | null)[];
   width: number;
   height: number;
@@ -42,7 +46,7 @@ export function anchorVisibility(elements: readonly Element[], attributes: reado
   hidden: boolean;
   transparent: boolean;
   coveredAtCentre: boolean;
-}[] {
+}[]> {
   type Rect = { left: number; top: number; right: number; bottom: number };
   const intersect = (a: Rect, b: Rect): Rect => ({
     left: Math.max(a.left, b.left), top: Math.max(a.top, b.top), right: Math.min(a.right, b.right), bottom: Math.min(a.bottom, b.bottom),
@@ -155,7 +159,10 @@ export function anchorVisibility(elements: readonly Element[], attributes: reado
     // outward what must be shown is that range, of which an anchor-sized part must survive every locked scroller
     // outside. A container with nothing to scroll on an axis only clips there (measured below); the viewport always
     // counts, since nothing beyond it shows the anchor.
-    const before = element.getBoundingClientRect();
+    // Content a `content-visibility: auto` section skips has no box until rendered: stand in its section's box.
+    const autoHolder = [element, ...chain].find((node) => view.getComputedStyle(node).contentVisibility === "auto");
+    const own0 = element.getBoundingClientRect();
+    const before = autoHolder !== undefined && own0.width === 0 && own0.height === 0 ? autoHolder.getBoundingClientRect() : own0;
     const reachable = (axis: "x" | "y") => {
       const size = axis === "x" ? before.width : before.height;
       let from = axis === "x" ? before.left : before.top;
@@ -181,10 +188,21 @@ export function anchorVisibility(elements: readonly Element[], attributes: reado
     const within = (from: number, size: number, [start, end]: [number, number]) => from > start - 1 && from + size < end + 1;
     if (scrollers.some(({ x, y }) => !within(before.left, before.width, x.range) || !within(before.top, before.height, y.range))) {
       element.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+      // `content-visibility: auto` renders a section only at the frame after it comes near the viewport: wait for two
+      // frames (or 100 ms where frames do not run) so the measurement sees what the buyer sees after scrolling.
+      if (autoHolder !== undefined) {
+        await new Promise<void>((resolve) => {
+          view.requestAnimationFrame(() => view.requestAnimationFrame(() => resolve()));
+          view.setTimeout(resolve, 100);
+        });
+      }
     }
 
     const box = element.getBoundingClientRect();
-    let hidden = own.visibility !== "visible";
+    // The browser's own rendering check, where it has one: it also sees a closed `details` element and
+    // `content-visibility: hidden` (and opacity 0), which leave a box and a hit at an ancestor.
+    let hidden = own.visibility !== "visible" || (typeof element.checkVisibility === "function"
+      && !element.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true, contentVisibilityAuto: true }));
     let opacity = 1;
     let visibleRect: Rect = { left: box.left, top: box.top, right: box.left + box.width, bottom: box.top + box.height };
     let unmeasuredClip = false;

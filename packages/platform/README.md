@@ -4009,7 +4009,7 @@ evidence from `@openlup/platform/lifecycle`, without importing test support:
 Nothing here runs a scenario or reads a file. The declarations are in the
 [API report](https://github.com/openlup/openlup/blob/main/packages/platform/api/lifecycle.api.md).
 
-### Storefront verification runner
+### Storefront test-support entry
 
 Status: current contract (testing).
 
@@ -4040,10 +4040,12 @@ contracts follows in a later change.
   without query, the width, anchor lookup and visibility, the visible
   `state:` and `action:` anchors, clicking, filling, request interception
   (`pass`, `withhold`, which delivers the request and fails the page's
-  response, or `block`) and `settled({ quietMs })`, which resolves once every
-  intercepted request, followed through its redirects, has finished and
-  `quietMs` passed with no new request. An anchor is visible when its box is
-  non-zero, the buyer can bring it into view, is not hidden,
+  response, or `block`) and `settled({ quietMs, timeoutMs })`, which resolves
+  once every intercepted request, followed through its redirects, has finished
+  and `quietMs` passed with no new request, and otherwise rejects after
+  `timeoutMs` naming the requests still open. An anchor is visible when its box is
+  non-zero, the buyer can bring it into view, is not hidden (the browser's
+  `checkVisibility` included, so a closed `details` element hides its content),
   is not fully transparent, and part of it survives clipping by the overflow
   boxes of the ancestors in its containing-block chain (a fixed or absolute
   anchor escapes those outside it; the page's root scroller never clips) and
@@ -4079,13 +4081,19 @@ build identity is reused.
 **Matching limits.** A command matcher sees only the method and the request
 path, without query string or fragment, so a token in a query never reaches a
 matcher or a verdict. A store whose operations share one endpoint (for example
-a single GraphQL path) cannot tell create from read by matcher; status
-delivered over server-sent events or a WebSocket is not a request the handle
-can block; requests answered by a service worker are not routed unless the
-harness blocks service workers in its browser context; a cross-origin request
-is matched by path alone; `settled` follows a redirect to the request the
-browser reports it redirected to, and a hop the browser does not report is
-covered only by the quiet window.
+a single GraphQL path) cannot tell create from read by matcher; a server-sent
+event stream is one request the handle can pass or block as a whole, but not
+message by message, and WebSocket frames are not requests at all; requests
+answered by a service worker are not routed unless the harness blocks service
+workers in its browser context; a cross-origin request is matched by path
+alone; `settled` follows a redirect to the request the browser reports it
+redirected to, and a hop the browser does not report is covered only by the
+quiet window. An open stream, a long poll or a request in flight when the page
+closes keeps `settled` pending until its `timeoutMs` (default 30,000), when it
+rejects with `storefront_page_settle_timeout` naming each open request's method
+and path. An anchor inside a shadow root is measured as covered: the walk
+stops at the shadow root, so the handle does not yet see such an anchor as
+visible.
 
 **State anchors.** Each `data-openlup-state` value means one thing to the
 runner:
