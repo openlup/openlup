@@ -1663,7 +1663,7 @@ publicationTest("issues verified v2 effects and rolls them back on a deferred pu
       await db.query("UPDATE public.catalog_draft_revisions SET payload=$1 WHERE draft_id=$2 AND revision=$3", [source, data.draftId, revision]);
       await db.query("ALTER TABLE public.catalog_draft_revisions ENABLE TRIGGER catalog_draft_revisions_immutable");
     };
-    const approvalSeal = async (db: PgQueryExecutor, commandKey: string) => (await db.query(`SELECT post_state_canonical_text,post_state_digest
+    const approvalSeal = async (db: PgQueryExecutor, commandKey: string) => (await db.query(`SELECT post_state_canonical_text,post_state_digest,post_state_sku_facts
       FROM public.catalog_publication_decisions WHERE product_id=$1 AND command_key=$2`, [data.productId, commandKey])).rows[0];
     const persistApproval = (candidate: ReturnType<typeof seedSource>, command: typeof next.approve, revision: number) =>
       transaction(pool, async db => {
@@ -1811,22 +1811,26 @@ publicationTest("issues verified v2 effects and rolls them back on a deferred pu
       expect(await effects()).toEqual(beforeEnrollment);
     }
     await issue(false, enrollment.publish, enrollment.approve, membershipOnly, 2, [], "capture");
-    const sealedIssue = stagedPacket;
+    const sealedIssue = stagedPacket as (Record<string, unknown> & {
+      product: { content: { offerMemberships: readonly unknown[] } }; skus: readonly unknown[];
+    }) | undefined;
+    if (!sealedIssue) throw new Error("Missing sealed enrollment packet");
     expect(sealedIssue).toMatchObject({ skus: [{ memberships: [{ admitted: true, offerVersion: membership.offerVersion }] }] });
     const omitted = structuredClone(membershipOnly);
     omitted.publication.operations = [];
     omitted.product.sharedContent.offerMemberships = [];
     const missingFreshPrice = "catalog_publication_price_edit_required";
-    const bindOmittedAdmission = async (db: PoolClient, candidate: ReturnType<typeof seedSource>) => {
+    const bindOmittedAdmission = async (db: PoolClient, candidate: ReturnType<typeof seedSource>, product = sealedIssue.product) => {
       const seal = await approvalSeal(db, enrollment.approve.commandKey);
+      const postStateText = canonicalCatalogDraftJson({ ...JSON.parse(String(seal.post_state_canonical_text)), product });
       await saveSource(db, candidate.source, 2);
       await db.query("SELECT set_config('request.jwt.claims',$1,true)", [claims]);
       const decisionKey = randomUUID();
       await db.query(recordSql, [{ ...enrollment.approve, candidateDigest: candidate.digest, commandKey: decisionKey,
-        postStateText: seal.post_state_canonical_text, postStateDigest: seal.post_state_digest }]);
+        postStateText, postStateDigest: hash(postStateText), postStateSkus: seal.post_state_sku_facts }]);
       const { rows: [{ id }] } = await db.query<{ id: string }>("SELECT id FROM public.catalog_publication_decisions WHERE product_id=$1 AND command_key=$2",
         [data.productId, decisionKey]);
-      return { ...sealedIssue, candidateDigest: candidate.digest, approvalId: id };
+      return { ...sealedIssue, product, candidateDigest: candidate.digest, approvalId: id };
     };
     const asPublisher = async (db: PgQueryExecutor) => {
       await db.query("SET LOCAL SESSION AUTHORIZATION openlup_catalog_publication");
@@ -1851,16 +1855,21 @@ publicationTest("issues verified v2 effects and rolls them back on a deferred pu
     });
     expect(await effects()).toEqual(beforeEnrollment);
     const omittedAdmissionReplay = seedSource(omitted, issued.receipt.head, [operation]);
-    for (const [path, probe] of priceProbes) {
-      await expect.soft(transaction(pool, async db => {
-        const packet = await bindOmittedAdmission(db, omittedAdmissionReplay);
-        await asPublisher(db);
-        await probe(db, packet);
-        throw rollbackProbe;
-      }), `${path} refuses a sealed first admission omitted from saved declarations`).rejects.toMatchObject({
-        code: "23514", message: missingFreshPrice, constraint: missingFreshPrice,
-      });
-      expect(await effects()).toEqual(beforeEnrollment);
+    for (const [label, product] of [
+      ["SKU and product admit", sealedIssue.product],
+      ["SKU admits, product omits", { ...sealedIssue.product, content: { ...sealedIssue.product.content, offerMemberships: [] } }],
+    ] as const) {
+      for (const [path, probe] of priceProbes) {
+        await expect.soft(transaction(pool, async db => {
+          const packet = await bindOmittedAdmission(db, omittedAdmissionReplay, product);
+          await asPublisher(db);
+          await probe(db, packet);
+          throw rollbackProbe;
+        }), `${label}: ${path}`).rejects.toMatchObject({
+          code: "23514", message: missingFreshPrice, constraint: missingFreshPrice,
+        });
+        expect(await effects()).toEqual(beforeEnrollment);
+      }
     }
     const pending = seedSource(membershipOnly, issued.receipt.head, [operation]);
     const signedApproval = await persistApproval(pending, enrollment.approve, 2);
