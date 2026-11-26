@@ -1270,6 +1270,27 @@ The Outbox companion reads `config/ci-images.json` through its image helper;
 image-pin-only changes therefore retain its real interruption and refusal
 witnesses even when unrelated bounded tooling fixtures are excluded.
 
+Non-control PostgreSQL suite closures live in
+[config/ci-postgres-suite-closures.json](config/ci-postgres-suite-closures.json)
+(`schemaVersion: 1`, sorted suite keys and sorted extra paths or `@`-prefixed
+axes expanded via `PG_AXES`, always combined with `PG_BASE_INPUTS` and the
+suite path itself). Hardcoded control suites (`tests/postgres/nativeStoreForwardCatalog.serviceRole.test.ts`,
+`tests/postgres/nativeStoreForwardCatalog.noServiceRole.test.ts`,
+`tests/postgres/reviewedBatchForwards.test.ts`, and
+`tests/postgres/subscriptionExactInstallation.test.ts`), `PG_BASE_INPUTS`,
+`PG_AXES`, `SHARED_INPUTS`, `ROOT_DOC_FILES`, `NON_BAILOUT_SCRIPTS`, and
+`PENDING_POSTGRES_SUITE_CLOSURES` stay hardcoded in
+[ci-test-scope.mjs](scripts/ci-test-scope.mjs) (`scripts/ci-test-scope.mjs` is
+a `NATIVE_CATALOG_CONTROLS` control file). `loadPostgresSuiteClosures` parses
+the registry fail-closed with a duplicate-key JSON scanner and rejects syntax
+errors, duplicate keys, unknown axes, broad `tests/postgres/` prefixes,
+unsorted keys/inputs, or collisions with control or pending suites. When a PR
+adds SQL under `db/platform/migrations/` or `supabase/migrations/`,
+[reviewed-platform-forward.ts](scripts/reviewed-platform-forward.ts) enforces
+that [config/ci-postgres-suite-closures.json](config/ci-postgres-suite-closures.json)
+remains strictly valid and append-only; non-SQL cleanup PRs may narrow or remove
+entries.
+
 All rows already share `tests/setup/`, `src/test/`, `src/checkout/machine/commerceRequestCache.ts`, and every non-allowlisted path under `scripts/` (fail-closed: runners, Docker, builds, fixtures, package scripts, migration helpers, `preflight.ts`, `oss-*.ts`, and any new or unknown script trigger the complete suite; only `scripts/**/*.test.*` / `*.spec.*` and the explicit `NON_BAILOUT_SCRIPTS` allowlist — guarded by the AST exemption-safety test in [ci-test-scope.test.ts](scripts/ci-test-scope.test.ts) — avoid the global bailout, and every listed test always retains itself). Every root file outside the allowlisted root documentation files (`README.md`, `AGENTS.md`, `CONTRIBUTING.md`, `SECURITY.md`, `GOVERNANCE.md`, `CHANGELOG.md`) and every dot-prefixed segment anywhere also runs everything; root documentation edits still run `scripts/documentation-cli.test.ts` and all unlisted doc/policy checks. Package rows conservatively include `packages/`. Repository-wide inventory/policy/neutrality/removal scans stay unlisted. When a row gains a new read, extend it; when its closure becomes uncertain or tree-wide, remove it.
 
 Review input completeness against the actual test/import closure. Extend [scope falsifiers](scripts/ci-test-scope.test.ts) for the new dependency behavior; row-derived tests alone cannot discover an omitted input. Preserve shared triggers, rename/deletion coverage, identical shard selection and errors selecting everything.
@@ -1738,8 +1759,10 @@ authority. Review evidence grants no merge, release, settings or credential righ
    Locally run only the tests being written,
    root test files with `npm run test:hosted -- <files>`, `npm run lint`, and
    `npx --no -- ast-grep scan --error=no-suppress-all --error=unused-suppression`.
-   Before `prepare`, run `npm run preflight` and have it green, or explain each
-   `WARN` in the task record. Full local verification is optional.
+   As the standard pre-push gate (and before `prepare`), run
+   `npm run preflight -- --affected` (or default `npm run preflight` when full
+   area/smoke coverage is needed) and have it green, or explain each `WARN` in
+   the task record. Full local verification is optional.
 
    A PR that adds or changes a starter-owned file or its owned-file contract must
    include the packaged starter migration in a Core fragment and matching steps
@@ -1861,6 +1884,13 @@ exact source revision and state what behavior or fixture the step consumes.
 Use the landed reference to check the dependency once it is available. A
 similar title or an earlier partial change cannot establish that it landed.
 Keep an unresolved start condition visible until its evidence is recorded.
+
+Apply this **Brief standard** in every non-trivial change specification before writing code:
+
+- **Single decision owner.** Name the single module or function that owns each rule, schema check or threshold, and avoid shadow constants or duplicate validation across scripts or entry points.
+- **Legacy-preservation matrix.** Tabulate existing callers, data formats, migrations and carrier paths with their required disposition (`preserve unchanged`, `extend additively`, `narrow/retire`), including dormant defaults and historical blobs.
+- **Consumer census (`rg`).** Record an `rg` census of every caller, test, workflow and derived carrier reading the changed symbol or file, and list every site updated or proven unaffected.
+- **Class-exhaustive repair.** When fixing a defect or review finding, enumerate and test the whole failure class across all entry points and code paths rather than patching a single trigger.
 
 1. **Outcome and scope.** Name the actor, normal entry point, observable result,
    exclusions and what remains unavailable after this change. Name the owning
@@ -2078,6 +2108,19 @@ for manual resolution and review. Output keeps sorted keys, positive finite
 weights and main's two-space JSON layout. GitHub can still remove a queued pull
 request on a text conflict in this file; the union only removes the hand
 resolution.
+
+The [PostgreSQL suite closures](config/ci-postgres-suite-closures.json) use a
+parallel closed union: the branch may add new suites or append inputs to base
+suites, while main's updates, narrowings and removals stand on suites the branch
+left unchanged. A branch edit to `schemaVersion`, removal of a merge-base suite
+or input, or divergent edits/additions on the same suite across branch and main
+remains an authored conflict for manual resolution and review. Output keeps
+sorted suite keys, sorted valid inputs/axes, no control-suite collisions, and
+main's canonical two-space JSON layout. When introducing SQL under
+`db/platform/migrations/` or `supabase/migrations/`,
+[reviewed-platform-forward.ts](scripts/reviewed-platform-forward.ts) also
+enforces that [config/ci-postgres-suite-closures.json](config/ci-postgres-suite-closures.json)
+remains strictly valid and append-only.
 
 If `landing:merge` refuses a new migration because its UTC slot is no longer
 later than `origin/main`, rename the new, unlanded migration to a free UTC slot
