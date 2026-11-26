@@ -14106,7 +14106,7 @@
     },
     {
       "path": "db/platform/migrations/20261129130502_renewal_order_destination_v2.sql",
-      "sha256": "62b977c41cdf1fc02f966d73f20556bdd3a9d13e0d3246ebd4d4fef1b258c737",
+      "sha256": "1a42c239dbb3b4cd1db9de564ea1a56876b733ebaa8e2582245251e48b4ac9b4",
       "functions": [
         {
           "signature": "public.commerce_destination_v2_check_retained(jsonb,public.commerce_destination_v2_order_bindings,text)",
@@ -14121,7 +14121,7 @@
         {
           "signature": "public.commerce_register_renewal_order_destination_v2(jsonb,uuid,uuid,uuid,jsonb,jsonb)",
           "beforeSha256": null,
-          "afterSha256": "5e5235b9dc4095f06da641ada1f94955b6c1601ae46890df1383eed04636d145"
+          "afterSha256": "a9f7e3113577b3f0ede27da60c55846800c3d7cbef7c0aad37b2b222df37d9dc"
         }
       ]
     }

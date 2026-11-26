@@ -147,7 +147,10 @@ BEGIN
         (v_preparation.binding_ref, v_preparation.cycle_key, v_preparation.operation_id,
           v_preparation.commercial_generation_id, v_preparation.binding_seq)
         AND b.accepted_money_digest = v_preparation.accepted_money_digest
-        AND i.hold_incarnation_id = v_preparation.hold_incarnation_id FOR SHARE OF b, i;
+        AND (i.operation_id, i.commercial_generation_id, i.binding_seq) =
+          (b.operation_id, b.commercial_generation_id, b.binding_seq)
+        AND i.hold_incarnation_id = v_preparation.hold_incarnation_id
+        AND i.erased_at IS NULL FOR SHARE OF b, i;
     IF NOT FOUND OR v_fiscal.erased_at IS NOT NULL THEN v_result := v_unproved_order; EXIT recheck; END IF;
 
     IF v_unproved_origin THEN
@@ -162,6 +165,24 @@ BEGIN
 
     v_result := public.subscription_destination_v2_read(p_ctx, p_subscription_id, p_expected_binding,
       p_expected_selection_revision, p_expected_service, true);
+    -- The reader folds invalid historical pins into unavailable evidence.
+    -- Give the writer's stored-pin refusal only for a verified current selection
+    -- and the available checkout document of the guarded acquisition origin.
+    IF v_result->>'code' = 'destination_evidence_unavailable'
+      AND v_direct IS NOT NULL AND v_origin_guarded AND v_prior.snapshot_ref = v_expected
+      AND v_prior.selection IS NOT NULL
+      AND NOT (public.subscription_destination_v2_read(p_ctx, p_subscription_id, NULL, NULL, NULL, false) ? 'outcome') THEN
+      PERFORM 1 FROM public.commerce_destination_v2_documents d
+        WHERE d.snapshot_ref = v_expected AND d.client_id = v_client AND d.owner_scope = p_ctx->'owner'
+          AND d.purpose = 'checkout' AND d.evidence_disposition = 'available'
+          AND NOT public.commerce_destination_v2_valid_pins(v_prior.selection, v_prior.service, d.scope_ref) FOR SHARE;
+      IF FOUND THEN
+        v_origins := public.subscription_destination_v2_origins(p_subscription_id);
+        IF cardinality(v_origins) = 1 AND (v_origins[1]).id = v_origin.id THEN
+          v_result := public.commerce_destination_v2_refusal('stored_binding', 'orderBindings');
+        END IF;
+      END IF;
+    END IF;
     IF v_result ? 'outcome' THEN EXIT recheck; END IF;
 
     v_now := clock_timestamp();
