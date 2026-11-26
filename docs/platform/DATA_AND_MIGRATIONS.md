@@ -570,9 +570,9 @@ uses the subscription's existing stored selector for each edit line, including
 zero-priced lines. When a line has no stored price, the native previews derive
 its unit from the subscription's price list and currency. Both lookups use the
 same database instant after the subscription lock is acquired. Hosts must run
-both previews in `READ COMMITTED`. If a preview refuses with
+both previews in `READ COMMITTED` or `READ UNCOMMITTED`. If a preview refuses with
 `subscription_command_admission_isolation_unsupported`, roll back and retry in
-a `READ COMMITTED` transaction. Choose an available bundle or restore eligible
+either mode. Choose an available bundle or restore eligible
 catalogue pricing if a fresh preview returns `subscription_edit_catalog_unavailable`.
 
 The customer preview requires matching renewal terms and a positive merchandise
@@ -580,8 +580,9 @@ subtotal. Acceptance uses the saved quote to update the account template and
 future renewal terms together. The next cycle stays at its scheduled instant,
 and an existing renewal operation keeps its frozen terms. Re-previewing a
 saved quote retains its price and expiry. It reports that the quote cannot be
-applied if a quoted SKU was deleted, the subtotal is zero, or the renewal
-terms are missing or in another currency.
+applied if a quoted SKU was deleted, the subtotal is zero, the renewal terms
+are missing or in another currency, or attached catalogue acceptance covers
+different SKUs or quantities.
 
 ### Admission fence lock order
 

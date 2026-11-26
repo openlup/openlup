@@ -626,7 +626,10 @@ describe("derived renewal price context in PostgreSQL", () => {
     }
   });
 
-  it.each(["actor", "command"] as const)("prices stored and derived lines at the same instant after a lock wait (%s)", async path => {
+  it.each([
+    ["actor", "READ COMMITTED"], ["command", "READ COMMITTED"],
+    ["actor", "READ UNCOMMITTED"], ["command", "READ UNCOMMITTED"],
+  ] as const)("prices stored and derived lines at the same instant after a lock wait (%s, %s)", async (path, isolation) => {
     const f = await editFixture(), subject = await editSku(list, 125), stored = await editSku(list, 125);
     const before = await editRows(f), core = [{ variantId: subject.id, qty: 2 }, { variantId: stored.id, qty: 3 }];
     const blocker = await admin.connect(), waiter = await (path === "actor" ? admin : runtime).connect();
@@ -634,7 +637,7 @@ describe("derived renewal price context in PostgreSQL", () => {
     try {
       await blocker.query("BEGIN");
       await blocker.query("SELECT id FROM public.subscriptions WHERE id=$1 FOR UPDATE", [f.subscriptionId]);
-      await waiter.query("BEGIN ISOLATION LEVEL READ COMMITTED");
+      await waiter.query(`BEGIN ISOLATION LEVEL ${isolation}`);
       await waiter.query("SET LOCAL statement_timeout='10s'");
       if (path === "actor") {
         await waiter.query("SET LOCAL ROLE authenticated");
@@ -679,13 +682,16 @@ describe("derived renewal price context in PostgreSQL", () => {
     }
   });
 
-  it.each(["actor", "command"] as const)("refuses preview with a stale repeatable-read catalogue snapshot (%s)", async path => {
+  it.each([
+    ["actor", "REPEATABLE READ"], ["command", "REPEATABLE READ"],
+    ["actor", "SERIALIZABLE"], ["command", "SERIALIZABLE"],
+  ] as const)("refuses preview with a stale catalogue snapshot (%s, %s)", async (path, isolation) => {
     const f = await editFixture(), subject = await editSku(list, 125);
     const core = [{ variantId: subject.id, qty: 2 }], key = randomUUID();
     const before = await editRows(f);
     const db = await (path === "actor" ? admin : runtime).connect();
     try {
-      await db.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+      await db.query(`BEGIN ISOLATION LEVEL ${isolation}`);
       expect((await db.query("SELECT unit_price_minor FROM public.price_entries WHERE id=$1", [subject.entry])).rows)
         .toEqual([{ unit_price_minor: 125 }]);
       await admin.query(`WITH cutoff AS (

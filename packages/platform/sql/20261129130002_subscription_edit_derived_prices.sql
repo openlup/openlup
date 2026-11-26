@@ -173,7 +173,7 @@ DECLARE
   v_can_apply boolean := true;
   v_missing_sku boolean := false;
 BEGIN
-  IF current_setting('transaction_isolation') <> 'read committed' THEN
+  IF current_setting('transaction_isolation') NOT IN ('read committed', 'read uncommitted') THEN
     RAISE EXCEPTION 'subscription_command_admission_isolation_unsupported' USING ERRCODE = '22023';
   END IF;
   IF p_idempotency_key IS NULL OR p_idempotency_key <> btrim(p_idempotency_key)
@@ -330,14 +330,17 @@ BEGIN
         WHERE NOT EXISTS (SELECT 1 FROM public.catalog_skus AS sku WHERE sku.id = (line->>'variantId')::uuid)
       );
     END IF;
-    -- First acceptance checks the saved terms and SKU identities.
+    -- First acceptance checks saved terms, SKU identities and the attached basket.
     v_can_apply := CASE WHEN v_existing.id IS NOT NULL THEN v_quote.accepted_event_id IS NOT DISTINCT FROM v_existing.id
       ELSE v_quote.status = 'previewed' AND v_quote.expires_at > statement_timestamp()
         AND v_quote.expected_template_version = v_subscription.template_version
         AND v_quote.new_total_minor > 0 AND EXISTS (
           SELECT 1 FROM public.subscription_renewal_terms
           WHERE subscription_id = v_subscription.id AND currency_code = v_quote.currency_code
-        ) AND NOT v_missing_sku END;
+        ) AND NOT v_missing_sku
+        AND (v_quote.catalog_acceptance IS NULL OR public.catalog_acceptance_roster_valid_v2(
+          v_quote.catalog_acceptance, public.catalog_quoted_edit_evidence_v2(v_quote.proposed_lines, false)->'basket'
+        )) END;
   ELSE
     IF NOT EXISTS (
       SELECT 1 FROM public.subscription_renewal_terms
@@ -452,7 +455,7 @@ DECLARE
  v_noop boolean:=false; core_matches boolean; addon_matches boolean;
  v_expires_at timestamptz;
 BEGIN
- IF current_setting('transaction_isolation') <> 'read committed' THEN
+ IF current_setting('transaction_isolation') NOT IN ('read committed','read uncommitted') THEN
   RAISE EXCEPTION 'subscription_command_admission_isolation_unsupported' USING ERRCODE='22023';
  END IF;
  IF p_actor_id IS NULL OR p_client_id IS NULL OR p_now IS NULL OR NOT isfinite(p_now)
