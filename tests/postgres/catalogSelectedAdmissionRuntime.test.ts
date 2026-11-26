@@ -3,7 +3,7 @@ import { Pool } from "pg";
 import { evaluatePromotionAdjustmentsV2 } from "@openlup/core/promo";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 // eslint-disable-next-line no-restricted-imports -- exercise the private submit boundary without an installed export
-import { submitSelectedCatalogAdmission } from "../../packages/platform/dist/catalog/catalogSelectedAdmissionRuntime.js";
+import { isGovernedDraft, submitSelectedCatalogAdmission } from "../../packages/platform/dist/catalog/catalogSelectedAdmissionRuntime.js";
 // eslint-disable-next-line no-restricted-imports -- issue from the same private evaluator on a read-only connection
 import { evaluateSelectedAdmissionOwner, ownerRequest, selectedInstant, type SelectedProfile } from "../../packages/platform/dist/catalog/catalogSelectedAdmissionOwner.js";
 // eslint-disable-next-line no-restricted-imports -- verify private owner byte equality and payload assembly
@@ -364,24 +364,43 @@ it("refuses legacy origins on selected checkout and replays the same key through
   expect(evaluatePromotion).not.toHaveBeenCalled();
 });
 
+it("keeps the SQL and TypeScript governed predicates in parity", async () => {
+  const marker = "catalogAdmissionOwnerOrigin";
+  const stamps = [[{}, false], [null, false], [[marker], false], [marker, false],
+    [{ [marker]: {} }, true], [{ [marker]: null }, true], [{ [marker]: 0 }, true]] as const;
+  const acceptances = [[{}, false], [null, false], [["admission"], false], ["admission", false],
+    [{ admission: {} }, true], [{ admission: null }, true]] as const;
+  const cases = stamps.flatMap(([metadata, stamped]) => acceptances.map(([acceptance, admitted]) =>
+    ({ metadata, acceptance, expected: stamped && admitted })));
+  const { rows } = await installation.runtime.query(`SELECT public.catalog_admission_is_governed(
+      entry.value->'metadata'->'catalogAdmissionOwnerOrigin',entry.value->'acceptance') AS governed
+    FROM jsonb_array_elements($1::jsonb) WITH ORDINALITY AS entry(value,position) ORDER BY entry.position`,
+  [JSON.stringify(cases)]);
+  expect(rows.map(row => row.governed)).toEqual(cases.map(row => row.expected));
+  expect(cases.map(row => isGovernedDraft(row.metadata, row.acceptance))).toEqual(rows.map(row => row.governed));
+});
+
 it("accepts only an exact governed fixture transcript and classifies owned expiry after conflict", async () => {
   const input = prepare(), orderId = randomUUID(), nativeFingerprint = "a".repeat(32);
   const { submit } = selectedWrite(original, evaluated.quoteSnapshot, evaluated.owner, hash(input.quoteAcceptance));
   const { ownerQuoteDigest, reviewedPayable, ...stamp } = submit;
   const snapshot = evaluated.quoteSnapshot;
+  const origin = { schemaVersion: 1, orderId, receiptKey: original.key, nativeFingerprint };
   const row = {
     id: orderId, client_id: original.clientId, receipt_key: original.key, status: "pending_payment", currency_code: currency,
     total_amount_minor: reviewedPayable.amountMinor, snapshot, stamp,
-    origin: { schemaVersion: 1, orderId, receiptKey: original.key, nativeFingerprint },
+    origin, metadata: { catalogAdmissionOwnerOrigin: origin }, acceptance: { admission: { quoteDigest: ownerQuoteDigest } },
     fingerprint: nativeFingerprint, completed: false, quote_digest: ownerQuoteDigest,
   };
   const response = { contractVersion: "commerce.v0", orderDraft: { orderId: `order_${orderId}`, status: "draft", paymentStatus: "not_started",
     idempotencyKey: original.key, quoteSnapshot: snapshot, replayed: true } };
-  for (const outcome of ["pending", "replayed", "conflict", "expired"] as const) {
+  for (const outcome of ["pending", "replayed", "conflict", "unbound", "expired"] as const) {
     evaluatePromotion.mockClear();
     const observed = trace(async (_index, sql) => {
       if (sql.includes("idempotency_key=$1 FOR UPDATE")) return { rows: [{ order_id: orderId }] };
-      if (sql.includes("AS origin")) return { rows: [{ ...row, completed: outcome === "replayed" }] };
+      if (sql.includes("AS origin")) {
+        return { rows: [{ ...row, acceptance: outcome === "unbound" ? {} : row.acceptance, completed: outcome === "replayed" }] };
+      }
       if (sql.startsWith("SELECT public.catalog_admission_replay_order_draft")) {
         if (outcome === "expired" || outcome === "conflict") throw Object.assign(new Error("commerce_order_draft_expired"), { code: "40001" });
         return { rows: [{ result: response }] };
@@ -391,7 +410,7 @@ it("accepts only an exact governed fixture transcript and classifies owned expir
     });
     const result = submitSelectedCatalogAdmission(observed.pool, outcome === "conflict" ? { ...input, quoteAcceptance: "changed.token" } : input, options());
     if (outcome === "expired") await expect(result).rejects.toMatchObject({ label: "commerce_order_draft_expired", code: "40001" });
-    else if (outcome === "conflict") {
+    else if (outcome === "conflict" || outcome === "unbound") {
       await expect(result).rejects.toMatchObject(conflict);
       expect(observed.statements.some(entry => entry.sql.startsWith("SELECT public.catalog_admission_replay_order_draft"))).toBe(false);
     } else await expect(result).resolves.toMatchObject({ kind: outcome, response });
