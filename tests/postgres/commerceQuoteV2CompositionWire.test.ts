@@ -379,7 +379,8 @@ describe("native composition wrapper wire", () => {
         for (const command of edits) expect(await rollback(store, db => invoke(db, completeSql, command))).toHaveProperty("kind", "terminal");
       });
     for (const command of edits) {
-      expectError(await rejected(store.runtime, completeSql, command), "tax_reference_conflict", "/taxEvidence");
+      expectError(await rejected(store.runtime, completeSql, command), "tax_reference_conflict", "/taxEvidence", "22023",
+        "Replay the original invocation and evidence.");
       expectRefusal(await completeTaxCalculation(runtimeLane(), wrappedSeal(command)), "/taxEvidence", "tax_reference_conflict",
         "Replay the original invocation and evidence.");
     }

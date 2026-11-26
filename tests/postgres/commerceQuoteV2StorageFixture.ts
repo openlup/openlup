@@ -308,16 +308,11 @@ const rowFor = async (store: JourneyInstallation, input: Begin) => (await store.
 const rawErrorKeys = ["length", "name", "message", "severity", "code", "detail", "hint", "position", "internalPosition", "internalQuery",
   "where", "schema", "table", "column", "dataType", "constraint", "file", "line", "routine"].sort();
 
-function expectError(error: unknown, message: string, detail: string | undefined, code = "22023") {
+function expectError(error: unknown, message: string, detail: string | undefined, code = "22023",
+  hint = message === "tax_invalid_input" && detail && ["/pin", "/seal", "/identity"].includes(detail) ? "Supply the documented input." : undefined) {
   expect(Object.getPrototypeOf(error)).toBe(DatabaseError.prototype);
   expect(Reflect.ownKeys(error as object).filter(key => key !== "stack").sort()).toStrictEqual(rawErrorKeys);
-  const remedies = new Map([
-    ["tax_invalid_input", "Supply the documented input."],
-    ["tax_reference_conflict", "Replay the original invocation and evidence."],
-    ["tax_claim_stale", "Read the original evaluation outcome."],
-    ["tax_evaluation_integrity_invalid", "Recover the original evaluation from its authoritative owner."],
-  ]);
-  expect(error).toMatchObject({ message, detail, code, hint: remedies.get(message) });
+  expect(error).toMatchObject({ message, detail, code, hint });
 }
 
 const rejected = (db: Db, sql: string, wire: object) =>
