@@ -1422,7 +1422,7 @@ const occupiedApplicationAudit = String.raw`
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 
-const [docker, project, alternate, barrier] = process.argv.slice(1);
+const { docker, project, alternate, barrier } = await new Promise(resolve => process.once("message", resolve));
 const events = spawn(docker, ["events", "--since", new Date().toISOString(), "--filter", "event=create", "--filter", "event=start", "--filter", "event=die", "--filter", "event=destroy",
   "--format", '{{.Type}} {{.Action}} {{index .Actor.Attributes "com.docker.compose.project"}} {{.Actor.ID}}'
     + ' {{index .Actor.Attributes "com.docker.compose.service"}}'
@@ -1564,12 +1564,14 @@ exec "${dockerBin}" "$@"
   const barrier = project + "-log-audit";
   type LogAudit = { error?: string; errors?: string[]; installerCount?: number;
     logs?: { id: string; fixture: string; started: boolean; streams: string[] }[] };
-  const audit = spawn(process.execPath, ["--input-type=module", "--eval", occupiedApplicationAudit, "--",
-    dockerBin, project, alternate, barrier], { cwd: from, env, detached: true,
-      stdio: ["ignore", "ignore", "ignore", "ipc"] });
+  const audit = spawn(process.execPath, ["--input-type=module", "--eval", occupiedApplicationAudit],
+    { cwd: from, env, detached: true, stdio: ["ignore", "ignore", "ignore", "ipc"] });
   let markReady!: () => void, reportAudit!: (result: LogAudit) => void;
   const ready = new Promise<void>(resolve => { markReady = resolve; });
   const auditResult = new Promise<LogAudit>(resolve => { reportAudit = resolve; });
+  audit.once("spawn", () => audit.send({ docker: dockerBin, project, alternate, barrier }, error => {
+    if (error) reportAudit({ error: "application_log_audit_configuration" });
+  }));
   audit.on("message", (message: LogAudit & { ready?: boolean }) => {
     if (message.ready) markReady();
     else reportAudit(message);
