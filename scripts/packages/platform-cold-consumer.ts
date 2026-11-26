@@ -1993,8 +1993,8 @@ assert.throws(() => createPlatformPostgresMigrationRunner({connectionString:"unu
   get catalog() { throw new Error("catalogue was read before selection admission"); },
   get poolFactory() { throw new Error("pool factory was read before selection admission"); },
 }), /platform migration installation is required/);
-const [connectionString, generation, roleMode, expectedManifest] = process.argv.slice(2);
-const canonical = JSON.parse(readFileSync(expectedManifest, "utf8"));
+const [connectionString, generation, roleMode, expectedJson] = process.argv.slice(2);
+const canonical = JSON.parse(expectedJson);
 const plan = generation === "qualified-v2" ? canonical.qualified : canonical.qualifiedAdmin;
 const expected = [plan.baseline, ...plan.forward];
 const packageRoot = dirname(dirname(dirname(fileURLToPath(import.meta.resolve("@openlup/platform/migrations")))));
@@ -2059,8 +2059,7 @@ process.exit(0);
 
 /** Real installed-chain proof: each selection gets a fresh PG16 cluster. */
 export function provePackagedPlatformMigrations(consumer: string): void {
-  const canonical = join(consumer, "expected-platform-migrations.json");
-  writeFileSync(canonical, readFileSync(join(root, "config/platform-migration-manifest.json")), { flag: "wx" });
+  const canonical = readFileSync(join(root, "config/platform-migration-manifest.json"), "utf8");
   for (const generation of ["qualified-v2", "qualified-admin"]) for (const mode of ["installer-managed", "operator-provisioned"]) {
     const name = `openlup-packaged-migrations-${randomUUID()}`;
     const docker = (args: string[]) => command("docker", args, root, isolatedConsumerEnv()).trim();
