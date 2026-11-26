@@ -313,7 +313,7 @@ describe("createPageHandle over a recording page (H1)", () => {
  * overflow ancestor in the containing-block chain; an element without a box
  * measures 0 × 0. `scrollTo` calls are logged with their behaviour.
  */
-function fakeDocument() {
+function fakeDocument(styles: { root?: Record<string, string>; body?: Record<string, string> } = {}) {
   type Box = { left: number; top: number; width: number; height: number };
   type ScrollOptions = { left?: number; top?: number; behavior?: string };
   type FakeElement = {
@@ -346,11 +346,13 @@ function fakeDocument() {
     for (const node of ancestors(element)) {
       const inChain = awaiting === "static" || awaiting === "relative" || (awaiting === "absolute" && position(node) !== "static");
       if (!inChain) continue;
-      if (node.style.overflow !== undefined && node !== root) found.push(node);
+      if (node.style.overflow !== undefined && !rootScroller(node)) found.push(node);
       awaiting = position(node);
     }
     return found;
   };
+  // The viewport's scrollers: the root element, and body while the root's overflow is visible.
+  const rootScroller = (node: FakeElement) => node === root || (node === body && root.style.overflow === undefined);
   const inside = (x: number, y: number, box: Box) => x >= box.left && x < box.left + box.width && y >= box.top && y < box.top + box.height;
   const clippedAway = (element: FakeElement) => [element, ...ancestors(element)].some((node) => (node.style.clip ?? "auto") !== "auto" || (node.style.clipPath ?? "none") !== "none");
   const document: { defaultView: typeof view; documentElement: FakeElement | null; scrollingElement: FakeElement | null; body: FakeElement | null; elementFromPoint(x: number, y: number): FakeElement | null } = {
@@ -393,8 +395,8 @@ function fakeDocument() {
     all.push(created);
     return created;
   };
-  const root = element({ left: 0, top: 0, width: 400, height: 3000 }, { style: { overflowX: "hidden", overflowY: "auto", overflow: "hidden auto" }, scrollHeight: 3000, clientHeight: 300 });
-  const body = element({ left: 0, top: 0, width: 400, height: 3000 }, { parent: root });
+  const root = element({ left: 0, top: 0, width: 400, height: 3000 }, { style: styles.root ?? { overflowX: "hidden", overflowY: "auto", overflow: "hidden auto" }, scrollHeight: 3000, clientHeight: 300 });
+  const body = element({ left: 0, top: 0, width: 400, height: 3000 }, { parent: root, style: styles.body ?? {} });
   document.documentElement = root; document.scrollingElement = root; document.body = body;
   return { view, element, body, scrolls };
 }
@@ -477,6 +479,20 @@ describe("the visibility function is self-contained (H3)", () => {
     expect(scrolls.filter((call) => !call.endsWith(" instant")), "every restore is instant").toEqual([]);
     expect([view.scrollX, view.scrollY], "the window scroll position is restored").toEqual([0, 7]);
     expect([carousel.scrollTop, list.scrollTop], "every container's scroll position is restored").toEqual([0, 10]);
+  });
+
+  it.each([
+    ["the root's overflow: hidden (an app shell)", { root: { overflow: "hidden" } }, false],
+    ["the root's overflow-y: hidden", { root: { overflowX: "visible", overflowY: "hidden", overflow: "visible hidden" } }, false],
+    ["body's overflow: hidden, propagated to the viewport (a scroll lock)", { root: {}, body: { overflow: "hidden" } }, false],
+    ["the root's overflow-x: hidden", { root: { overflowX: "hidden", overflowY: "auto", overflow: "hidden auto" } }, true],
+    ["the root's overflow-y: scroll", { root: { overflowX: "auto", overflowY: "scroll", overflow: "auto scroll" } }, true],
+    ["no overflow on the root or body", { root: {} }, true],
+  ] as const)("treats an anchor below the fold under %s as reachable only when the buyer can scroll the viewport", (_name, styles, reachable) => {
+    const { view, element, body } = fakeDocument(styles);
+    const belowFold = element({ left: 10, top: 2500, width: 120, height: 40 }, { parent: body });
+    expect(rebuilt([belowFold as unknown as Element], [])).toEqual([{ ...shown, insideScrollArea: reachable }]);
+    expect([view.scrollX, view.scrollY], "the window scroll position is restored").toEqual([0, 0]);
   });
 
   it("measures a batch in order and reads the requested attributes", () => {

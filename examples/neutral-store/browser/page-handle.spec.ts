@@ -174,6 +174,32 @@ for (const rootStyle of ['overflow-x: hidden; scroll-behavior: smooth', 'overflo
   });
 }
 
+// A viewport the buyer cannot scroll: an app shell, a root that hides vertical overflow, and a body scroll lock.
+const lockedPages = [
+  ['an app shell (html overflow: hidden)', `<!doctype html><html style="overflow: hidden; height: 100%"><body style="margin: 0; height: 100%">
+    <main style="height: 100%">Shell</main><button data-openlup-action="case_locked" style="display: block; width: 120px; height: 40px">Below</button>
+  </body></html>`],
+  ['html overflow-y: hidden', `<!doctype html><html style="overflow-y: hidden"><body style="margin: 0">
+    <div style="height: 3000px"></div><div data-openlup-action="case_locked" style="width: 120px; height: 40px; background: #ddd"></div><div style="height: 600px"></div>
+  </body></html>`],
+  ['a body scroll lock (body overflow: hidden)', `<!doctype html><html><body style="margin: 0; overflow: hidden">
+    <div style="height: 3000px"></div><div data-openlup-action="case_locked" style="width: 120px; height: 40px; background: #ddd"></div><div style="height: 600px"></div>
+  </body></html>`],
+] as const;
+
+for (const [name, markup] of lockedPages) {
+  test(`page handle: an anchor only a locked viewport would reveal is outside the scroll area, under ${name}`, async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 600 });
+    await page.setContent(markup);
+    const handle = createPageHandle(page);
+    await page.mouse.wheel(0, 2_000);
+    expect(await page.evaluate(() => window.scrollY), 'the buyer cannot scroll this page').toBe(0);
+    expect(await handle.find({ attribute: 'action', value: 'case_locked' }, { timeoutMs: 1_000 })).toMatchObject({ insideScrollArea: false });
+    expect(await handle.anchors()).toEqual([]);
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  });
+}
+
 test('page handle: a withheld create reaches the server, the page sees a failure, and settling waits for it', async ({ page }) => {
   const handle = createPageHandle(page, { origin });
   await handle.navigate('/purchase');
