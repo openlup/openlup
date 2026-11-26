@@ -129,10 +129,9 @@ test('storefront anchors: the payment-status page names its state and offers ret
   await oneStateLine(page, storefrontAnchor.state.awaiting_authority);
   await expect(anyAction(page)).toHaveCount(0);
 
-  // A capture shows the paid view.
+  // A capture ends the payment; the page names no state while it shows the attempt as no longer payable.
   await page.getByRole('button', { name: t.simulatePaid, exact: true }).click();
-  await expect(page.locator('main')).toContainText(t.recoveryPaid);
-  await oneStateLine(page, storefrontAnchor.state.paid);
+  await expect(page.getByRole('button', { name: t.simulatePaid, exact: true })).toHaveCount(0);
   await expect(anyAction(page)).toHaveCount(0);
   await page.reload();
   await expect(page.locator('main')).toContainText(t.recoveryPaid);
