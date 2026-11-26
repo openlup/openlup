@@ -2,10 +2,14 @@
   "current": {
     "profiles": {
       "legacy": {
-        "count": 226,
-        "exactTailCount": 116,
-        "objectInventorySha256": "ad6497fd6c15becac480c54d87a07190c61ff8fdc29ef808c91c566559ce9c1e",
+        "count": 227,
+        "exactTailCount": 117,
+        "objectInventorySha256": "70c86f08a8d2876e824e465fccedd3a67f2d56e508e1c8b5b0b89497cc0e3d1f",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261129130502_catalog_governed_draft_owner.sql",
+            "sha256": "33869ed7310f1bf994228a211d20803420ca8aba634ae99891fbc9b2f9ad9ace"
+          },
           {
             "file": "db/platform/migrations/20261129130501_fulfillment_delivery_without_tracking.sql",
             "sha256": "8fb338903c87905d493b110134d7b89d8a65ba50db33eab7b4741a2802b898ef"
@@ -913,10 +917,14 @@
         ]
       },
       "bootstrap": {
-        "count": 232,
-        "exactTailCount": 117,
-        "objectInventorySha256": "90cabcd502b7419eee37369ea28f31e8a938904498a197aa25d8f84b966a7843",
+        "count": 233,
+        "exactTailCount": 118,
+        "objectInventorySha256": "b8b20309bf163b8aa73db2d5c4d84a268d96327faf677b2ddb5034d8b40ae874",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261129130502_catalog_governed_draft_owner.sql",
+            "sha256": "33869ed7310f1bf994228a211d20803420ca8aba634ae99891fbc9b2f9ad9ace"
+          },
           {
             "file": "db/platform/migrations/20261129130501_fulfillment_delivery_without_tracking.sql",
             "sha256": "8fb338903c87905d493b110134d7b89d8a65ba50db33eab7b4741a2802b898ef"
@@ -1848,10 +1856,14 @@
         ]
       },
       "separate": {
-        "count": 232,
-        "exactTailCount": 117,
-        "objectInventorySha256": "1eb3b8b5459ba8e5b26c34a39f77c11aa210a6e95431c13ec4446f34aa634541",
+        "count": 233,
+        "exactTailCount": 118,
+        "objectInventorySha256": "454064f2bf9a106a033e4f65b9534081753961829c1dddca480c7fb7e180af54",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261129130502_catalog_governed_draft_owner.sql",
+            "sha256": "33869ed7310f1bf994228a211d20803420ca8aba634ae99891fbc9b2f9ad9ace"
+          },
           {
             "file": "db/platform/migrations/20261129130501_fulfillment_delivery_without_tracking.sql",
             "sha256": "8fb338903c87905d493b110134d7b89d8a65ba50db33eab7b4741a2802b898ef"
@@ -2783,10 +2795,14 @@
         ]
       },
       "admin-managed": {
-        "count": 230,
-        "exactTailCount": 116,
-        "objectInventorySha256": "7d6db10cdc6d86e41d2e93288a294632e59c3ba8beb32692fdacbf698592ee7f",
+        "count": 231,
+        "exactTailCount": 117,
+        "objectInventorySha256": "f092b5215083a3b8b5761b9640933e9508f88bdf7ef35134ced24db2cb3d7328",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261129130502_catalog_governed_draft_owner.sql",
+            "sha256": "33869ed7310f1bf994228a211d20803420ca8aba634ae99891fbc9b2f9ad9ace"
+          },
           {
             "file": "db/platform/migrations/20261129130501_fulfillment_delivery_without_tracking.sql",
             "sha256": "8fb338903c87905d493b110134d7b89d8a65ba50db33eab7b4741a2802b898ef"
@@ -3710,10 +3726,14 @@
         ]
       },
       "admin-operator": {
-        "count": 230,
-        "exactTailCount": 116,
-        "objectInventorySha256": "28a4eaa5e3803cb3a8f7b2d1483728f64f55eb248330f8018675271f68c998d5",
+        "count": 231,
+        "exactTailCount": 117,
+        "objectInventorySha256": "717f7227c972085939e7495c835971e090f2b59ed38cf959e2fd0a7d0c5e758e",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261129130502_catalog_governed_draft_owner.sql",
+            "sha256": "33869ed7310f1bf994228a211d20803420ca8aba634ae99891fbc9b2f9ad9ace"
+          },
           {
             "file": "db/platform/migrations/20261129130501_fulfillment_delivery_without_tracking.sql",
             "sha256": "8fb338903c87905d493b110134d7b89d8a65ba50db33eab7b4741a2802b898ef"
