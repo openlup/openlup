@@ -147,6 +147,10 @@ activation. Trace an actual caller and capability declaration before describing
 them as a running flow. An adopter's composition must preserve their durable
 attempt and idempotency boundaries.
 
+When upgrading from Platform 1.3.0, follow the
+[stale renewal upgrade checklist](../../packages/core/docs/guide/upgrade/database-migrations.md#reconcile-stale-native-renewals)
+before resuming renewal or retry dispatch.
+
 ## Evidence and limits
 
 The links above identify implementation and tests to inspect. They do not record

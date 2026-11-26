@@ -81,6 +81,94 @@ Use those assets in your complete chain or use the catalogue that defines them.
 Applying both attempts to recreate functions and fails. Importing
 `@openlup/platform/job-ledger` applies no SQL.
 
+## Reconcile stale native renewals
+
+For upgrades from Platform 1.3.0, keep provider evidence intake available
+throughout this procedure.
+
+1. Pause and drain every dispatch entry point for the affected population.
+   Include the renewal worker, retry driver, and any custom renewal or retry dispatch.
+2. Apply the bundled PostgreSQL forward and confirm it is applied.
+3. Run the report below on one authorized server-side PostgreSQL session with
+   renewal read privileges. Use the installation owner where there is no runtime role.
+4. Verify each stale waiting retry has a recorded disposition that prevents a
+   new charge. Use the operation ID to re-read current operation, reservation,
+   intent, retry and provider evidence as applicable. Save the cut and dispositions
+   in your restricted upgrade record. Refer unresolved roots to the subscription
+   owner and waiting retries to the payment recovery owner.
+5. Resume eligible dispatch through the usual scheduler after reconciliation.
+   Keep affected work paused while any unresolved stale obligation can dispatch.
+
+Use the first report result to record the point at which PostgreSQL took the
+snapshot. A verified webhook committed before that point is visible to both
+queries. A later commit leaves the operation at its earlier state in the report.
+Re-read the live operation before deciding its disposition.
+
+```sql
+BEGIN ISOLATION LEVEL REPEATABLE READ, READ ONLY;
+
+SELECT pg_current_snapshot()::text AS cut_snapshot,
+       statement_timestamp() AS cut_statement_started_at;
+
+WITH incumbent AS MATERIALIZED (
+  SELECT * FROM public.subscription_renewal_operations
+  WHERE cycle_snapshot->>'contractVersion' IS DISTINCT FROM 'platform.subscription.renewal.v3'
+), roots AS (
+  SELECT o.id AS operation_id, o.subscription_id, o.scheduled_at,
+         o.state AS operation_state, o.terminal_reason,
+         o.cycle_snapshot, s.template_version,
+         CASE
+           WHEN w.state IN ('waiting', 'stock_secured') THEN w.state
+           WHEN w.id IS NULL AND o.state = 'refused'
+             AND o.terminal_reason IN ('inventory_unavailable', 'reservation_expired')
+             AND public.subscription_stock_wait_frozen(o.subscription_id, o.scheduled_at) IS NOT NULL
+             THEN 'uncaptured'
+         END AS stock_wait_state,
+         r.id AS retry_obligation_id, r.state AS retry_state
+  FROM incumbent o
+  JOIN public.subscriptions s ON s.id = o.subscription_id
+  LEFT JOIN public.subscription_stock_wait_cases w ON w.renewal_operation_id = o.id
+  LEFT JOIN public.subscription_retry_obligations r
+    ON r.renewal_operation_id = o.id AND o.state = 'refused'
+   AND r.state IN ('waiting', 'prepared')
+   AND EXISTS (
+     SELECT 1 FROM public.subscription_cycles c
+     WHERE c.id = r.cycle_id AND c.status = 'payment_pending'
+   )
+   AND EXISTS (
+     SELECT 1 FROM public.commerce_settlement_intents i
+     WHERE i.id = r.settlement_intent_id AND i.status IN ('created', 'failed')
+   )
+)
+SELECT operation_id, subscription_id, scheduled_at, operation_state,
+       stock_wait_state, retry_obligation_id, retry_state,
+       cycle_snapshot->'totalAmountMinor' AS frozen_amount_minor,
+       cycle_snapshot->>'currency' AS currency,
+       'subscription_renewal_snapshot_stale' AS reason
+FROM roots
+WHERE (
+  operation_state IN ('claimed', 'reserved', 'attempt_prepared')
+  OR (operation_state = 'refused' AND (
+    retry_obligation_id IS NOT NULL
+    OR (stock_wait_state IS NOT NULL
+      AND terminal_reason IN ('inventory_unavailable', 'reservation_expired'))
+  ))
+)
+AND NOT public.subscription_renewal_snapshot_is_current(
+  subscription_id, template_version, cycle_snapshot
+)
+ORDER BY operation_id;
+
+COMMIT;
+```
+
+A prepared attempt can settle at its original amount using existing provider
+readback and settlement. Keep its original snapshot, fingerprint and references.
+Prepared replay does not dispatch another charge. For unprepared roots and
+stock waits, use the original occurrence with your authorized lifecycle or
+reconciliation path. Retrying an unresolved waiting obligation can still use
+the original amount. Use the operation ID if you rerun the report.
+
 ## Prepare the optional checkout owner
 
 Ordinary upgrades on the four qualified profiles require no new login.
