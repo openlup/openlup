@@ -60,6 +60,13 @@ async function oneSubmit(page: Page, name: string): Promise<Locator> {
   return control;
 }
 
+/** Clicks a control and waits until the page has replaced it, so the next step never acts on the previous view. */
+async function advance(control: Locator): Promise<void> {
+  const before = await control.elementHandle();
+  await control.click();
+  await expect.poll(() => before!.evaluate(element => element.isConnected)).toBe(false);
+}
+
 test('storefront anchors: the checkout form names its nine fields and place_order', async ({ page }) => {
   await openCheckout(page);
   for (const name of Object.values(storefrontAnchor.field)) {
@@ -97,13 +104,13 @@ test('storefront anchors: the payment-status page names its state and offers ret
   await expect(anyAction(page)).toHaveCount(0);
 
   // A started attempt waits for the payment authority.
-  await firstPay.click();
+  await advance(firstPay);
   await expect(page.getByRole('button', { name: t.simulateDeclined, exact: true })).toBeVisible();
   await oneStateLine(page, storefrontAnchor.state.awaiting_authority);
   await expect(anyAction(page)).toHaveCount(0);
 
   // A decline offers the inline retry, the only action on the page.
-  await page.getByRole('button', { name: t.simulateDeclined, exact: true }).click();
+  await advance(page.getByRole('button', { name: t.simulateDeclined, exact: true }));
   await expect(page.getByRole('button', { name: t.inlineRetry, exact: true })).toBeVisible();
   await oneStateLine(page, storefrontAnchor.state.declined);
   const inline = await oneSubmit(page, storefrontAnchor.action.retry_payment);
@@ -121,16 +128,16 @@ test('storefront anchors: the payment-status page names its state and offers ret
   await expect(anyAction(page)).toHaveCount(1);
 
   // An indeterminate outcome still waits for the authority.
-  await again.click();
+  await advance(again);
   await expect(page.getByRole('button', { name: t.simulateIndeterminate, exact: true })).toBeVisible();
   await oneStateLine(page, storefrontAnchor.state.awaiting_authority);
-  await page.getByRole('button', { name: t.simulateIndeterminate, exact: true }).click();
+  await advance(page.getByRole('button', { name: t.simulateIndeterminate, exact: true }));
   await expect(page.getByRole('button', { name: t.simulatePaid, exact: true })).toBeVisible();
   await oneStateLine(page, storefrontAnchor.state.awaiting_authority);
   await expect(anyAction(page)).toHaveCount(0);
 
   // A capture ends the payment; the page names no state while it shows the attempt as no longer payable.
-  await page.getByRole('button', { name: t.simulatePaid, exact: true }).click();
+  await advance(page.getByRole('button', { name: t.simulatePaid, exact: true }));
   await expect(page.getByRole('button', { name: t.simulatePaid, exact: true })).toHaveCount(0);
   await expect(anyAction(page)).toHaveCount(0);
   await page.reload();
