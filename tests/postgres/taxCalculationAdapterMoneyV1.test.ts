@@ -11,7 +11,9 @@ import { checkedQuoteResult } from "../../packages/platform/src/tax/digest.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer,
   waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 import { readPlatformMigrationManifest, readPlatformMigrations, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
+import { withPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
 import { storeJourneyResources, type JourneyInstallation } from "../helpers/storeJourney.js";
+import { installAccountMutations } from "./customerAccountMutations.fixture.js";
 import { beginSql, claim, completeSql, exclusiveKind, fixture, invoke, quoteDigest, seal, verifiedAdapterMoney,
   type Claim, type JsonPath } from "./commerceQuoteV2StorageFixture.js";
 
@@ -42,31 +44,22 @@ beforeAll(async () => {
 
 it("upgrades the populated installed predecessor in ledger order and preserves stored frames and replay", async () => {
   const predecessor = structuredClone(catalog);
-  const predecessorTail = "db/platform/migrations/20261129130001_native_renewal_v3_storage.sql";
+  const expectedPaths = [unit!.file, activation.file];
   for (const plan of [predecessor, predecessor.qualified, predecessor.qualifiedAdmin]) {
-    const end = plan.forward.findIndex(unit => unit.file === predecessorTail);
-    expect(end).toBeGreaterThanOrEqual(0);
-    plan.forward = plan.forward.slice(0, end + 1);
+    const boundary = plan.forward.findIndex(entry => entry.file === unit!.file);
+    expect(boundary).toBeGreaterThanOrEqual(0);
+    plan.forward = plan.forward.slice(0, boundary);
   }
-  predecessor.objectInventorySha256 = "7bc42d7e26931120bfb3a4c7397f58c1a154c947eb6f6458b0e06e5830794474";
-  predecessor.qualified.objectInventorySha256 = {
-    bootstrapMigrator: { withRestore: "a9d0f834ca62b1bf4341a522fdc8dcda2219c2ee97eb80583027610779c27acd" },
-    separateMigrator: { withRestore: "a490cb3e8df3a606f90d0e6705805b1018d38e52d001e5f7c01f21a4d15e6a7c" },
-  };
-  predecessor.qualifiedAdmin.objectInventorySha256 = {
-    installerManaged: "111e894f2e5009a6018ceaca36304442aea81d017a8efd6e7fdb1406a0fcbc23",
-    operatorProvisioned: "9462c5087cbba2fca2e9381d2d3fcad1ad19df6b88ce4009a6cb8c6711ab42f4",
-  };
+  predecessor.qualified.objectInventorySha256.bootstrapMigrator.withRestore = await withPlatformCatalog(predecessor, async root => {
+    const measurement = await installAccountMutations("bootstrap", true, "adapter-money-predecessor", root);
+    try { return measurement.inventory; }
+    finally { await measurement.close(); }
+  });
   const paths = new Set([predecessor, predecessor.qualified, predecessor.qualifiedAdmin]
     .flatMap(plan => [plan.baseline, ...plan.forward]).map(unit => unit.file));
   const sourceCatalog = readPlatformMigrations(process.cwd());
   const before = [predecessor.qualified.baseline, ...predecessor.qualified.forward];
   const suffix = catalog.qualified.forward.slice(before.length - 1);
-  const expectedPaths = [
-    "db/platform/migrations/20261129130002_order_money_v2_assert.sql",
-    unit!.file,
-    "db/platform/migrations/20261129160001_tax_calculation_adapter_money_activation.sql",
-  ];
   const ledger = "SELECT catalog_path,sha256,position,executed_at::text FROM public.platform_schema_migrations ORDER BY position";
 
   const installation: QualifiedPostgresInstallation = {
@@ -494,7 +487,7 @@ const catalog = (() => {
 })();
 const forwardIndex = catalog.forward.findIndex(unit => unit.file.endsWith("_tax_calculation_adapter_money_v1.sql"));
 const unit = catalog.forward[forwardIndex];
-const activation = catalog.forward[forwardIndex + 1]!;
+const activation = catalog.forward.find(unit => unit.file.endsWith("_tax_calculation_adapter_money_activation.sql"))!;
 const reader = "public.tax_calculation_read_adapter_money_v1(uuid)";
 const schema = `SELECT jsonb_build_object(
   'relation', (SELECT to_jsonb(c)-'relpages'-'reltuples'-'relallvisible'-'relallfrozen' FROM pg_class c WHERE oid='public.tax_calculations'::regclass),
