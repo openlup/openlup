@@ -225,16 +225,26 @@ function knownOrderState(storage: CheckoutStorage, configuration: string): Known
   } catch { return null; }
 }
 /**
- * Records the state an answer names for the order under the stored record; an answer about another order changes
- * nothing. When the write fails, the stale state is removed, so the next read falls back to "unknown"; if the removal
+ * Records the state an answer names for the order under the stored record; an answer about another order, or about
+ * an order the record does not name, changes nothing. When the write fails, the stale state is removed, so the next read falls back to "unknown"; if the removal
  * fails too, a later read that also fails still reads "unknown".
  */
+/**
+ * The state `answer` sets for `record`. An answer that names an order sets it only when the record names that same
+ * order, as the bindings' `completed` does; an answer that names none is a refusal of the record's own command.
+ */
+export function orderStateFor(record: { orderRef?: string }, answer: ActionResult | null): KnownOrderState | null {
+  const learned = orderStateOf(answer);
+  if (!learned) return null;
+  return learned.orderRef === undefined || learned.orderRef === record.orderRef ? learned.state : null;
+}
+
 function rememberOrderState(storage: CheckoutStorage, configuration: string, answer: ActionResult | null): void {
-  const learned = orderStateOf(answer), record = storedRecord(storage, configuration);
-  if (!learned || !record) return;
-  if (learned.orderRef !== undefined && record.orderRef !== undefined && learned.orderRef !== record.orderRef) return;
+  const record = storedRecord(storage, configuration);
+  const state = record && orderStateFor(record, answer);
+  if (!record || !state) return;
   const key = orderStateName(configuration);
-  try { storage.setItem(key, JSON.stringify({ id: record.id, state: learned.state })); }
+  try { storage.setItem(key, JSON.stringify({ id: record.id, state })); }
   catch {
     try { storage.removeItem(key); } catch { /* Only the changed-details text depends on it. */ }
   }
