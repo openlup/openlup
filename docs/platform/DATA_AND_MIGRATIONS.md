@@ -551,7 +551,7 @@ zero and positive results.
 
 ### Derived pricing for native bundle edits
 
-The [bundle edit forward](../../db/platform/migrations/20261129080000_subscription_edit_derived_prices.sql)
+The `subscription_edit_derived_prices` forward
 uses the subscription's existing stored selector for each edit line, including
 zero-priced lines. When a line has no stored price, the native previews derive
 its unit from the subscription's price list and currency. Both lookups use the
