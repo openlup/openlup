@@ -41,6 +41,9 @@ const STOREFRONT_EXPORTS = {
   StorageFailurePolicy: { kind: "type", experimental: true },
   storefrontAnchor: { kind: "value", experimental: true },
   StorefrontAnchor: { kind: "type", experimental: true },
+  createPurchaseContinuation: { kind: "value", experimental: true },
+  PurchaseContinuation: { kind: "type", experimental: true },
+  PurchaseContinuationSnapshot: { kind: "type", experimental: true },
 } as const satisfies Record<string, { kind: "type" | "value"; experimental: boolean }>;
 
 const entryFile = fileURLToPath(new URL("../../src/storefront/index.ts", import.meta.url));
