@@ -1227,7 +1227,20 @@ async function witnessFreshDatabase(app: string, scratch: string, project: strin
     assert.ok(fallback.length >= 2 && fallback.every(line => /\breject$/u.test(line)));
     console.log('Fresh PostgreSQL temporary socket, rules, TCP transition and deny-only fallback PASS');
     const system = sql('select system_identifier from pg_control_system()');
+    const db = checked('ps', '-q', 'database');
+    const image = execFileSync('docker', ['inspect', '--format', '{{.Config.Image}}', db], { encoding: 'utf8' }).trim();
     checked('kill', '-s', 'KILL', 'database');
+    const refused = compose(['up', '--wait', '--wait-timeout', '45', '--no-build', 'database']);
+    assert.notEqual(refused.status, 0);
+    assert.match(checked('logs', '--no-color', 'database'), /starter_runtime_database_lock_held/u);
+    const core = findPackageJSON('@openlup/core/catalog', import.meta.url);
+    assert.ok(core);
+    const guide = readFileSync(join(dirname(core), 'docs/guide/how-to/build/customize-the-starter.md'), 'utf8');
+    const remedy = guide.split('### Recover a stale database lock\n')[1]?.match(/```sh\n([^]*?)\n```/u)?.[1];
+    assert.ok(remedy);
+    const cleared = spawnSync('/bin/sh', ['-ec', remedy], { cwd: app, encoding: 'utf8',
+      env: { ...env, VOLUME: project + '_database', DATABASE_IMAGE: image } });
+    assert.equal(cleared.status, 0, cleared.stderr);
     checked('up', '--wait', '--wait-timeout', '45', '--no-build', 'database');
     assert.equal(sql('select system_identifier from pg_control_system()'), system);
     assert.equal(sql('select type, database, user_name, address, netmask, auth_method, options, error from pg_hba_file_rules order by line_number'), rules);

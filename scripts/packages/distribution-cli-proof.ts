@@ -1540,19 +1540,51 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
       writeFileSync(join(from, file), readFileSync(join(to, file)));
     checked("refresh_packages", run(from, "npm", ["ci", "--ignore-scripts", "--no-audit"]));
     if (existsSync(source)) fail("early_runtime_file");
+    const volume = original[1]?.split(" ").at(-1);
+    if (!volume || volume !== project + "_database") fail("predecessor_volume_missing");
     const predecessorImage = checked("predecessor_database_image", run(from, dockerBin,
       ["inspect", "--format", "{{.Config.Image}}", original[0]!]));
-    const liveGuard = run(from, dockerBin, ["compose", "--project-name", project, "run", "--rm", "--no-deps", "-T", "database"],
-      undefined, { ...env, OPENLUP_STARTER_PREFLIGHT_HANDOFF: "/dev/null" });
-    if (liveGuard.status !== 1 || !liveGuard.stderr.includes("PostgreSQL already owns this data directory")
-      || JSON.stringify(identity()) !== JSON.stringify(original)) fail("live_predecessor_lock");
-    mark("live predecessor retains its lock and denies a second postmaster");
+    const guide = readFileSync(join(from, "node_modules/@openlup/core/docs/guide/how-to/build/customize-the-starter.md"), "utf8");
+    function recipe(heading: string) {
+      const body = guide.split("### " + heading + "\n")[1]?.match(/```sh\n([^]*?)\n```/u)?.[1];
+      if (!body) throw new Error("starter_runtime_documented_recipe_missing");
+      return body;
+    }
+    const recover = () => run(from, "/bin/sh", ["-ec", recipe("Recover a stale database lock")], undefined,
+      { ...env, VOLUME: volume, DATABASE_IMAGE: predecessorImage });
+    const fingerprint = () => checked("paused_volume_fingerprint", run(from, dockerBin, ["run", "--rm", "--network", "none",
+      "--volume", volume + ":/predecessor:ro", "--entrypoint", "/bin/sh", predecessorImage, "-ec",
+      "cd /predecessor; find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum"]));
+    const guard = () => {
+      const result = run(from, dockerBin, ["compose", "--project-name", project, "run", "--rm", "--no-deps", "-T", "database"],
+        undefined, { ...env, OPENLUP_STARTER_PREFLIGHT_HANDOFF: "/dev/null" });
+      if (result.status !== 1 || !result.stderr.includes("starter_runtime_database_lock_held")
+        || !result.stderr.includes("docker ps --filter volume=" + volume)) fail("live_predecessor_lock");
+    };
+    guard();
+    checked("pause_predecessor", run(from, dockerBin, ["pause", original[0]!]));
+    try {
+      checked("unresponsive_postmaster", run(from, dockerBin, ["run", "--rm", "--network", "none",
+        "--volume", project + "_installation-socket:/var/run/postgresql", "--entrypoint", "/usr/bin/pg_isready",
+        predecessorImage, "-q", "-t", "1", "-h", "/var/run/postgresql"]), 2);
+      const paused = fingerprint();
+      guard();
+      const blocked = recover();
+      if (blocked.status !== 1 || !blocked.stderr.includes("A running container still mounts " + volume)
+        || checked("paused_owner_ids", run(from, dockerBin, ["ps", "--no-trunc", "-q", "--filter", "volume=" + volume])) !== original[0]
+        || fingerprint() !== paused) fail("unresponsive_owner_data_changed");
+    } finally { checked("unpause_predecessor", run(from, dockerBin, ["unpause", original[0]!])); }
+    if (JSON.stringify(identity()) !== JSON.stringify(original) || JSON.stringify(retained()) !== JSON.stringify(before))
+      fail("live_owner_identity_changed");
+    mark("responsive and paused predecessor refuse a second postmaster; volume fingerprint unchanged");
     checked("kill_predecessor_database", run(from, dockerBin, ["kill", "--signal", "KILL", original[0]!]));
-    const volume = original[1]?.split(" ").at(-1);
-    if (!volume) fail("predecessor_volume_missing");
     checked("stale_predecessor_lock_and_hba", run(from, dockerBin, ["run", "--rm", "--network", "none",
       "--volume", volume + ":/predecessor:ro", "--entrypoint", "/bin/sh", predecessorImage, "-ec",
       'test -s /predecessor/postmaster.pid && grep -Eq "^host[[:space:]].*[[:space:]]trust$" /predecessor/pg_hba.conf']));
+    const staleFinding = JSON.parse(up(2)).findings?.[0];
+    if (staleFinding?.code !== "starter_runtime_database_lock_held"
+      || !staleFinding.fix.includes("docker ps --filter volume=" + volume)) fail("stale_lock_remedy");
+    checked("documented_predecessor_recovery", recover());
     up();
     const recovered = checked("recovery_logs", compose("logs", "--no-color", "database"));
     if (!/database system was interrupted|automatic recovery in progress/u.test(recovered)) fail("predecessor_recovery_missing");
@@ -1570,7 +1602,7 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
     if (readFileSync(source, "utf8").trim() !== initial || verifier() !== committedVerifier) fail("credential_replay_changed");
     if (identity()[2] !== original[2] || JSON.stringify(retained()) !== JSON.stringify(before))
       fail("predecessor_retry_identity");
-    mark("predecessor SIGKILL with stale PID and legacy HBA, hardened recovery and retry");
+    mark("predecessor SIGKILL with stale PID and legacy HBA, documented recovery and retry");
     mark("ordinary runtime credential and verifier replay");
 
     // Teardown can replace the bridge and its addresses before another fresh connection.
@@ -1731,12 +1763,18 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
     } finally { handoff.cleanup(); }
     for (const [release] of releases) {
       exerciseJobs(release, true);
+      for (const mode of ["show", "preview"]) {
+        const help = JSON.parse(checked("settings_help_without_credential_bind",
+          exec(release, "settings", [mode, "--help", "--json"])));
+        if (!help.help?.includes("settings (experimental) " + mode)) fail("settings_help_output");
+      }
       const result = exec(release, "settings", preview, policy);
       if (result.status !== 2 || JSON.parse(result.stdout).findings?.[0]?.code !== "starter_runtime_credential_read_failed")
         fail("settings_missing_bind");
     }
     up();
     for (const [release] of releases) exerciseJobs(release);
+    mark("lifecycle settings show and preview help work without a credential bind on both Compose versions");
     mark("missing credential bind refusal and restoration on both Compose versions");
 
     const firstAdmin = `import {argv} from 'node:process';
@@ -1772,19 +1810,16 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
     mark("credential replacement, interrupted recreation and fresh runtime read");
 
     const heldSource = source + ".held";
-    const documentedRotation = `test -z "\${COMPOSE_PROJECT_NAME+x}" &&
-      PROJECT=$( (cd .context && cat compose-project) 2>/dev/null) && [ -n "$PROJECT" ] &&
-      COMPOSE_PROJECT_NAME="$PROJECT" ./lifecycle down &&
-      test ! -e .context/compose-project &&
-      rm -- "$HOME/.local/state/openlup/neutral-store/$PROJECT/runtime-password" &&
-      COMPOSE_PROJECT_NAME="$PROJECT" ./lifecycle up --configuration coffee --json`;
-    checked("rotation_from_fresh_shell", run(from, "/bin/sh", ["-ec", documentedRotation], undefined, fresh));
+    checked("rotation_from_fresh_shell", run(from, "/bin/sh", ["-ec", recipe("Rotate the runtime credential")],
+      undefined, { ...fresh, OPENLUP_STARTER_PORT: undefined, CONFIGURATION: "coffee", PORT: String(port) }));
+    const rotatedResponse = await fetch(`http://127.0.0.1:${port}/api/config`);
+    if (rotatedResponse.status !== 200 || (await rotatedResponse.json()).config?.id !== "coffee") fail("rotation_configuration");
     const current = readFileSync(source, "utf8").trim(), currentVerifier = verifier();
     privateValues.push(current, currentVerifier);
     if (current === afterRotation || checked("stopped_rotation_auth", native(current)) !== "starter_runtime"
       || !/password authentication failed/u.test(native(afterRotation).stderr) || identity()[2] !== original[2]
       || readFileSync(projectFile, "utf8") !== project + "\n") fail("stopped_rotation");
-    mark("documented custom-project rotation from a fresh shell");
+    mark("verbatim documented rotation preserves the custom project, coffee configuration and listener port");
 
     function refusal(result: ReturnType<typeof run>, code: string, jsonMode: boolean) {
       let observed: unknown;
@@ -1928,7 +1963,9 @@ esac
     }
     mark("application authentication refusal and same-store retry");
 
-    checked("crash_database", run(from, "docker", ["kill", "--signal", "KILL", container("database")]));
+    checked("crash_database", run(from, dockerBin, ["kill", "--signal", "KILL", container("database")]));
+    if (JSON.parse(up(2)).findings?.[0]?.code !== "starter_runtime_database_lock_held") fail("occupied_stale_lock");
+    checked("documented_occupied_recovery", recover());
     up();
     if (identity()[2] !== live[2] || readFileSync(source, "utf8").trim() !== current || verifier() !== currentVerifier)
       fail("crash_restart_changed_store");

@@ -130,18 +130,57 @@ project credential and retry with the same project and volume. Run connected
 settings and the local renewal, care, and checkout recovery jobs through the
 recorded project.
 
-To rotate the runtime credential, load `PROJECT` from the project record as
-shown above. Use an exclusive maintenance window. Keep the same port and
-configuration if you set them for the original startup.
+### Rotate the runtime credential
+
+Use an exclusive maintenance window. Set `CONFIGURATION` and `PORT` to the
+active configuration ID and listener port. For a default installation, use
+`supplements` and `4319`. Run these commands from the application directory.
 
 ```sh
-COMPOSE_PROJECT_NAME="$PROJECT" ./lifecycle down &&
+PROJECT=$( (cd .context && cat compose-project) 2>/dev/null) && [ -n "$PROJECT" ] ||
+  { printf '%s\n' 'Run ./lifecycle up first.' >&2; exit 1; }
+: "${CONFIGURATION:?Set CONFIGURATION to the active configuration ID}"
+: "${PORT:?Set PORT to the active listener port}"
+COMPOSE_PROJECT_NAME="$PROJECT" OPENLUP_STARTER_PORT="$PORT" ./lifecycle down &&
   rm -- "$HOME/.local/state/openlup/neutral-store/$PROJECT/runtime-password" &&
-  COMPOSE_PROJECT_NAME="$PROJECT" ./lifecycle up
+  COMPOSE_PROJECT_NAME="$PROJECT" OPENLUP_STARTER_PORT="$PORT" \
+    ./lifecycle up --configuration "$CONFIGURATION"
 ```
 
 Verify application health and a fresh database read. If startup fails after
 updating the database, retry with the updated starter and the same volume.
+
+### Recover a stale database lock
+
+If startup reports that the PostgreSQL lock is held, keep the data volume.
+A server can still own it even when it gives no answer. During an exclusive
+maintenance window, disable anything that could start a container on that volume.
+Set `VOLUME` to the exact name in the refusal. Use
+`docker ps --filter "volume=$VOLUME"` to identify all running owners, including
+paused containers. Unpause any paused owner, then stop every owner normally
+where possible. A normal shutdown clears the lock. If shutdown was unclean and the lock remains, set
+`DATABASE_IMAGE` to the PostgreSQL image configured for the project. Run:
+
+```sh
+: "${VOLUME:?Set VOLUME to the reported data volume name}"
+: "${DATABASE_IMAGE:?Set DATABASE_IMAGE to the project's PostgreSQL image}"
+docker volume inspect "$VOLUME" >/dev/null || exit 1
+OWNERS=$(docker ps --quiet --filter "volume=$VOLUME") || exit 1
+if [ -n "$OWNERS" ]; then
+  printf '%s\n' "A running container still mounts $VOLUME. Stop it before recovering the lock." >&2
+  exit 1
+fi
+docker run --rm --network none \
+  --mount "type=volume,source=$VOLUME,target=/var/lib/postgresql/data" \
+  --entrypoint /bin/sh "$DATABASE_IMAGE" -ec '
+    if ! test -f "$PGDATA/postmaster.pid" || test -L "$PGDATA/postmaster.pid"; then exit 1; fi
+    archive=$(mktemp "$PGDATA/.postmaster.pid.stale.XXXXXX")
+    mv -- "$PGDATA/postmaster.pid" "$archive"
+  '
+```
+
+The command archives only the stale lock. Retry `./lifecycle up` for the same
+project, configuration, port, and volume. PostgreSQL replays its own recovery.
 
 ## Reset an interrupted first install
 

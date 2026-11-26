@@ -222,6 +222,7 @@ export const starterRefusals = Object.freeze(Object.fromEntries(Object.entries({
   starter_runtime_preflight_handoff_missing: { cause: 'Compose did not receive the empty startup handoff.', fix: 'Use the updated lifecycle command for the same project.', recheck: up },
   starter_runtime_credential_mount_failed: { cause: 'Compose could not mount the private credential file.', fix: 'Restore the source and Docker access to the private state directory.', recheck: up },
   starter_runtime_credential_read_failed: { cause: 'The mounted runtime credential could not be read.', fix: 'Remove any extra hard links, restore the file bind from the correct project, and start that project again.', recheck: up },
+  starter_runtime_database_lock_held: { cause: 'The data volume contains postmaster.pid and PostgreSQL may still own it.', fix: 'Run `docker ps --filter volume=<volume>`. Stop every container using the volume and follow the starter guide to archive a stale lock before retrying.', recheck: up },
   starter_runtime_database_auth_failed: { cause: 'The runtime login or database identity was refused.', fix: 'Rerun the installer through lifecycle up using the retained file and database volume.', recheck: up },
   starter_runtime_connection_required: { fix: 'Supply the starter runtime database connection.', recheck: up },
   starter_seed_demonstration_database_required: owner,

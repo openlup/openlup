@@ -21,13 +21,11 @@ services:
       - /bin/sh
       - -ec
       - |
-        if [ -e "$$PGDATA/postmaster.pid" ]; then
-          status=0
-          pg_isready -q -t 2 -h /var/run/postgresql -U postgres -d postgres || status=$$?
-          if [ "$$status" -ne 2 ]; then
-            printf '%s\n' 'PostgreSQL already owns this data directory. Stop it before retrying.' >&2
-            exit 1
-          fi
+        if [ -e "$$PGDATA/postmaster.pid" ] || [ -L "$$PGDATA/postmaster.pid" ]; then
+          printf '%s\n' 'starter_runtime_database_lock_held' \
+            'The data volume ${COMPOSE_PROJECT_NAME}_database has a PostgreSQL lock file. Its owner may still be running.' \
+            'Run docker ps --filter volume=${COMPOSE_PROJECT_NAME}_database. Use the starter guide to recover a stale lock.' >&2
+          exit 1
         fi
         if [ ! -s "$$PGDATA/PG_VERSION" ]; then
           POSTGRES_PASSWORD=$$(od -An -v -tx1 -N32 /dev/urandom | tr -d ' \n')
