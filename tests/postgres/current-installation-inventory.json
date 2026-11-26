@@ -8,7 +8,7 @@
         "tail": [
           {
             "file": "db/platform/migrations/20261129130004_settings_wave3b_return_reasons_and_payment_preferences.sql",
-            "sha256": "cf082ce45ca3249d426fc89f0c0412720f444d92d82a4ca53979cbedbeda0cb7"
+            "sha256": "0f3a48e4bf37494cc69d46a6dfa11706a1215d1e482fac8f94a948f5ca88e539"
           },
           {
             "file": "db/platform/migrations/20261129130001_native_renewal_v3_storage.sql",
@@ -915,7 +915,7 @@
         "tail": [
           {
             "file": "db/platform/migrations/20261129130004_settings_wave3b_return_reasons_and_payment_preferences.sql",
-            "sha256": "cf082ce45ca3249d426fc89f0c0412720f444d92d82a4ca53979cbedbeda0cb7"
+            "sha256": "0f3a48e4bf37494cc69d46a6dfa11706a1215d1e482fac8f94a948f5ca88e539"
           },
           {
             "file": "db/platform/migrations/20261129130001_native_renewal_v3_storage.sql",
@@ -1846,7 +1846,7 @@
         "tail": [
           {
             "file": "db/platform/migrations/20261129130004_settings_wave3b_return_reasons_and_payment_preferences.sql",
-            "sha256": "cf082ce45ca3249d426fc89f0c0412720f444d92d82a4ca53979cbedbeda0cb7"
+            "sha256": "0f3a48e4bf37494cc69d46a6dfa11706a1215d1e482fac8f94a948f5ca88e539"
           },
           {
             "file": "db/platform/migrations/20261129130001_native_renewal_v3_storage.sql",
@@ -2777,7 +2777,7 @@
         "tail": [
           {
             "file": "db/platform/migrations/20261129130004_settings_wave3b_return_reasons_and_payment_preferences.sql",
-            "sha256": "cf082ce45ca3249d426fc89f0c0412720f444d92d82a4ca53979cbedbeda0cb7"
+            "sha256": "0f3a48e4bf37494cc69d46a6dfa11706a1215d1e482fac8f94a948f5ca88e539"
           },
           {
             "file": "db/platform/migrations/20261129130001_native_renewal_v3_storage.sql",
@@ -3700,7 +3700,7 @@
         "tail": [
           {
             "file": "db/platform/migrations/20261129130004_settings_wave3b_return_reasons_and_payment_preferences.sql",
-            "sha256": "cf082ce45ca3249d426fc89f0c0412720f444d92d82a4ca53979cbedbeda0cb7"
+            "sha256": "0f3a48e4bf37494cc69d46a6dfa11706a1215d1e482fac8f94a948f5ca88e539"
           },
           {
             "file": "db/platform/migrations/20261129130001_native_renewal_v3_storage.sql",
