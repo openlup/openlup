@@ -18,8 +18,29 @@ export interface CommerceQuoteCatalogItem {
   };
 }
 
-export interface CommerceQuoteCatalogReadPort {
-  listQuoteCatalogItems(): Promise<CommerceQuoteCatalogItem[]>;
+export interface CommerceQuoteCatalogReadPort<
+  Item extends CommerceQuoteCatalogItem = CommerceQuoteCatalogItem,
+> {
+  listQuoteCatalogItems(): Promise<Item[]>;
+}
+
+/** Share one lazy authority read, including rejection, within one quote composition. */
+export function memoizeCommerceQuoteCatalogReads<Item extends CommerceQuoteCatalogItem>(
+  inner: CommerceQuoteCatalogReadPort<Item>,
+): CommerceQuoteCatalogReadPort<Item> {
+  let pending: Promise<Item[]> | undefined;
+  return {
+    listQuoteCatalogItems() {
+      if (!pending) {
+        try {
+          pending = inner.listQuoteCatalogItems();
+        } catch (reason) {
+          pending = Promise.reject(reason);
+        }
+      }
+      return pending;
+    },
+  };
 }
 
 export type CommerceQuoteCatalogReadRefusalCode =
