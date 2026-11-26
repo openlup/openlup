@@ -25,6 +25,15 @@ const review = 'Reload the current draft and head. Prepare the current revision 
 const original = 'Have the original issuing administrator sign in and resume the original operation.';
 const unchanged = 'Retry the unchanged original request. For a separate proposal, prepare it and obtain its own approval.';
 export const operatorChallengeGuidance = 'Verify the invited email. If a challenge was requested recently, wait until the minute and hourly limits allow another request, then check the private mailbox.';
+// The native dispatcher uses operator_required for missing, expired and unauthorized sessions.
+const catalogueIdentityRefusals = new Set([
+  'operator_required', 'starter_auth_invalid', 'publisher_not_authorized', 'operator_mismatch',
+  // The draft adapter prefixes owner refusals except for the draft read in prepare.
+  'draft_operator_required', 'catalog_draft_operator_required', 'catalog_operator_required',
+  'catalog_draft_command_actor_mismatch', 'catalog_operator_mismatch',
+]);
+export const isCatalogueIdentityRefusal = code => catalogueIdentityRefusals.has(code);
+
 const applyRefusals = {
   OPENLUP_E_CATALOGUE_PRODUCT_REQUIRED: ['The owned catalogue has no product declaration for apply.', 'The command needs a catalogueProduct export.', 'Add the documented product declaration to the owned catalogue.', 'Repeat apply and check that the product is loaded.'],
   OPENLUP_E_CATALOGUE_BASE_PRICES_MISMATCH: ['Declared price keys differ from the authored SKU codes.', 'Base prices require exactly one amount per authored SKU.', 'Match the price keys to the SKU codes and remove unrelated entries.', 'Repeat preflight and check that every SKU has one price.'],

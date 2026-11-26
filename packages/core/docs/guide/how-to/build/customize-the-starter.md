@@ -1022,6 +1022,10 @@ start a fresh review. Keep any other flags from the original invocation. For
 machine-readable output, keep `--silent` on npm and `--json` after `--`. A receipt
 marked “committed; figure not verified” needs this readback.
 
+If the command cannot verify the administrator before sending a price write,
+use the printed restart command with the same flags under an active
+administrator. The report retains any prices already verified.
+
 ### Publish a saved catalogue draft
 
 If you change an input, follow [Change a product rule](#change-a-product-rule)

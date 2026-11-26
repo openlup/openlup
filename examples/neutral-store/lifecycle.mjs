@@ -8,7 +8,7 @@ import { readStarterDiagnostic, starterDiagnostic } from './shared/refusals.ts';
 import { seedPhysicalGuidance } from './shared/seed-physical.ts';
 import { applicationHealthcheck } from './host/healthcheck.ts';
 import { browserJourneyGroups } from './browser-groups.mjs';
-import { catalogueApplyRefusal, operatorChallengeGuidance, repriceRecovery, repriceRequired, repriceReview, starterGuidance, starterRefusals } from './lifecycle-refusals.mjs';
+import { catalogueApplyRefusal, isCatalogueIdentityRefusal, operatorChallengeGuidance, repriceRecovery, repriceRequired, repriceReview, starterGuidance, starterRefusals } from './lifecycle-refusals.mjs';
 import { installationFailure, installationFinding, installationReport, refusal } from './installation/refusals.ts';
 
 const root = dirname(fileURLToPath(import.meta.url));
@@ -351,7 +351,8 @@ function safePrompt(value) {
 
 async function catalogueApply(argv) {
   const receipts = [], refusals = [];
-  let terminal, repriceStarted, recovery, freshReprice;
+  let terminal, identityStopped, invocation, repriceStarted, recovery, freshReprice;
+  let activity = 'catalogue apply';
   let path = '/arguments';
   const unavailable = 'OPENLUP_E_CATALOGUE_APPLY_UNAVAILABLE';
   const deny = (code, details = {}, cause, hostCode) => {
@@ -363,6 +364,11 @@ async function catalogueApply(argv) {
     if (failure) refusals.push(failure);
     const findings = refusals.map(finding => {
       if (repriceStarted) return { ...finding, fix: recovery, recheck: 'Check the default report for the entry and subscription figure.' };
+      if (identityStopped && finding === failure) return { ...finding,
+        observed: 'Administrator identity or authority could not be verified.',
+        cause: 'This run requires continuity with an active administrator.',
+        fix: `Restart ${activity} with the same flags under an active administrator. Run ${invocation}.`,
+        recheck: 'Check the report for completed steps and remaining findings.' };
       if (finding.code === 'starter_catalogue_reprice_review_required') return { ...finding, fix: repriceReview(freshReprice) };
       if (finding.code === 'starter_catalogue_reprice_required') return { ...finding, fix: repriceRequired(freshReprice) };
       return finding;
@@ -381,9 +387,11 @@ async function catalogueApply(argv) {
     const npmApply = npmSilent ? 'npm run --silent catalogue:apply' : 'npm run catalogue:apply';
     const applyCommand = flags => [npmApply, ...(flags.length ? ['--', ...flags.map(flag =>
       /^[a-z0-9_-]+$/iu.test(flag) ? flag : "'" + flag.replaceAll("'", "'\\''") + "'")] : [])].join(' ');
-    freshReprice = applyCommand(mode === '--reprice' ? options : [...sharedFlags, '--reprice']);
-    const verifyApply = applyCommand(sharedFlags);
-    recovery = repriceRecovery(verifyApply, freshReprice);
+    invocation = applyCommand(options);
+    if (mode === '--copy') activity = 'presentation copy';
+    if (mode === '--reprice') activity = '--reprice';
+    freshReprice = mode === '--reprice' ? invocation : applyCommand([...sharedFlags, '--reprice']);
+    recovery = repriceRecovery(applyCommand(sharedFlags), freshReprice);
     const [owned, { buildCatalogReleaseDraftV3 }, { canonicalCatalogDraftJson }, pricing, { mapStarterPresentation }, { digestStarterMedia }] = await Promise.all([
       import('./owned/catalogue.ts'), import('@openlup/platform/catalog'), import('@openlup/platform/catalog/contracts'),
       import('@openlup/platform/pricing'), import('./shared/catalogue-presentation.ts'), import('./host/catalogue-media.ts'),
@@ -435,12 +443,14 @@ async function catalogueApply(argv) {
     makeStage('activation', activation, null);
     if (!process.stdin.isTTY || !process.stderr.isTTY) deny('OPENLUP_E_CATALOGUE_TERMINAL_REQUIRED', { path: '/terminal' });
     const origin = config.publicOrigin ?? 'http://127.0.0.1:4319';
-    let cookie, expiresAt, operator, scanAbortedOnIdentity;
+    let cookie, expiresAt, operator;
     async function request(operation, body, key = hash([operation, body]), sessionCookie, sku) {
       const unavailableCodes = ['host_binding_required', 'starter_dependency_unavailable', 'starter_operation_unknown',
         'price_setup_dependency_unavailable', 'store_unavailable'];
       let response, result;
       try {
+        if (mode === '--reprice' && operation === 'operator.catalogPublication' && body.action === 'price-apply')
+          repriceStarted = true;
         response = await fetch(new URL(`/api/actions/${operation}`, origin), { method: 'POST', redirect: 'error',
           headers: { Origin: origin, 'X-Starter-Request': '1', 'Content-Type': 'application/json', 'Idempotency-Key': key,
             ...(sessionCookie ? { Cookie: sessionCookie } : {}) }, body: JSON.stringify(body) });
@@ -448,6 +458,7 @@ async function catalogueApply(argv) {
       } catch (error) { deny(unavailable, { subject: sku }, error); }
       if (result?.ok === true && response.ok) return { value: result.value, cookie: response.headers.get('set-cookie') };
       const code = result?.code;
+      if (isCatalogueIdentityRefusal(code)) identityStopped = true;
       const guidance = ['observed', 'cause', 'fix', 'recheck'].every(field => typeof result?.[field] === 'string') ? result : undefined;
       const details = { ...(result?.path && { path: result.path }), subject: sku ?? result?.subject, reason: result?.reason ?? (sku && code),
         issues: result?.issues, message: result?.message, guidance };
@@ -490,6 +501,7 @@ async function catalogueApply(argv) {
       path = 'price-target';
       const { value } = await request('operator.catalogPublication', { action: 'price-target' }, undefined, nextCookie);
       const actorChanged = operator && operator.actorId !== value.actorId;
+      if (actorChanged) identityStopped = true;
       if (operator && mode === '--reprice' && (actorChanged || operator.priceListId !== value.priceListId))
         deny('starter_catalogue_reprice_review_required');
       if (actorChanged) deny('publisher_not_authorized');
@@ -501,7 +513,7 @@ async function catalogueApply(argv) {
     }
     async function action(operation, body, key, sku) {
       if (Date.now() >= expiresAt) await signIn().catch(error => {
-        scanAbortedOnIdentity = true;
+        if (!mode) identityStopped = true;
         throw error;
       });
       return (await request(operation, body, key, cookie, sku)).value;
@@ -630,6 +642,7 @@ async function catalogueApply(argv) {
     }
     async function reviewPublishedPrices(active) {
       const changes = [];
+      let stopped;
       for (const { id: skuId, code } of skus) {
         try {
           const declared = basePrices[code];
@@ -649,7 +662,7 @@ async function catalogueApply(argv) {
             if (!figure) deny('starter_catalogue_derived_price_zero', { subject: code });
             const item = { skuId, entryId, unitPriceMinor, currency, ...figure };
             prices.push(item);
-            if (active) record('price.apply', 'observed', 2, active, [item]);
+            record('price.apply', 'observed', 2, active, [item]);
             continue;
           }
           if (!reviewed.inGate) deny('starter_catalogue_reprice_requires_active', { subject: code });
@@ -657,23 +670,21 @@ async function catalogueApply(argv) {
           changes.push({ code, skuId, from: { entryId, unitPriceMinor }, to: { unitPriceMinor: declared },
             subscriptionEstimate: { from: estimate(unitPriceMinor), to: estimate(declared) } });
         } catch (error) {
-          if (mode) throw error;
-          const finding = refusalFinding(error, code);
-          if (scanAbortedOnIdentity) {
-            refusals.push({ ...finding, subject: code, observed: 'The refreshed administrator could not be verified.',
-              cause: 'Read-only verification requires continuity with the signed-in administrator.',
-              fix: `Restart read-only verification with the same flags under an active administrator. Run ${verifyApply}.`,
-              recheck: 'Check the report for verified prices and remaining findings.' });
+          if (identityStopped) {
+            stopped = Object.assign(error, { finding: { ...refusalFinding(error, code), subject: code } });
             break;
           }
-          refusals.push(finding);
+          if (mode) throw error;
+          refusals.push(refusalFinding(error, code));
         }
       }
-      if (!mode) {
+      if (!mode || stopped) {
         for (const { code } of changes)
           refusals.push(catalogueApplyRefusal({ path: 'basePrices', subject: code, code: positivePrice(code)
             ? 'starter_catalogue_reprice_required' : 'starter_catalogue_derived_price_zero' }).finding);
-      } else if (changes.length && mode === '--copy') deny('starter_catalogue_reprice_required', { subject: changes[0].code });
+      }
+      if (stopped) throw stopped;
+      if (changes.length && mode === '--copy') deny('starter_catalogue_reprice_required', { subject: changes[0].code });
       return changes;
     }
     async function reprice(changes, active) {
@@ -683,7 +694,6 @@ async function catalogueApply(argv) {
         deny('OPENLUP_E_CATALOGUE_CONFIRMATION_INVALID');
       for (const { code, skuId, from: expected, to: { unitPriceMinor } } of changes) {
         path = 'basePrices';
-        repriceStarted = true;
         const result = await publish({ action: 'price-apply', variantId: skuId, priceListId,
           policyRevisionId: policy.revisionId, unitPriceMinor, expected },
           hash(['reprice', actorId, priceListId, skuId, unitPriceMinor, expected]), code);
@@ -711,6 +721,7 @@ async function catalogueApply(argv) {
       if (!same(current.head ?? null, expected)) deny('head_conflict', { path: 'expectedHead' });
     }
     async function verifyPublished(released, active) {
+      if (!mode) activity = 'read-only verification';
       record('release.publish', 'observed', 1, released);
       record('activation.publish', 'observed', 2, active);
       const changes = await reviewPublishedPrices(active);
@@ -736,7 +747,7 @@ async function catalogueApply(argv) {
       const third = makeStage('copy', { payload, digest: hash(payload) }, active);
       const copied = (await lookup(third))?.head ?? null;
       await requireHead(copied ?? active);
-      await reviewPublishedPrices();
+      await reviewPublishedPrices(active);
       await runStage(third, copied);
     } else {
       if (!mode) requirePositivePrices();

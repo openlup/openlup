@@ -396,11 +396,11 @@ if (!env[workerFlag]) {
 
   test('catalogue apply stops and resumes at each refused host stage', { skip: nestedSkip }, async context => {
     const owners: [string, string, RegExp, 'last'?][] = [
-      ['challenge', 'operator_required', /active human store administrator/u],
-      ['redeem', 'starter_auth_invalid', /Request a fresh challenge/u],
+      ['challenge', 'operator_required', /Restart catalogue apply with the same flags under an active administrator/u],
+      ['redeem', 'starter_auth_invalid', /Restart catalogue apply with the same flags under an active administrator/u],
       ['price-target', 'starter_catalogue_currency_mismatch', /use the same currency/u],
       ['price-target', 'catalog_price_setup_basis_mismatch', /effective gross list/u],
-      ['lookup:1', 'publisher_not_authorized', /original issuing administrator/u],
+      ['lookup:1', 'publisher_not_authorized', /Restart catalogue apply with the same flags under an active administrator/u],
       ['current', 'head_conflict', /Reload the current draft and head/u],
       ['current', 'head_conflict', /Reload the current draft and head/u, 'last'],
       ['save:1', 'publication_draft_advanced', /Reload the current draft and head/u],
@@ -408,14 +408,14 @@ if (!env[workerFlag]) {
       ['approve:1', 'publication_command_key_reused', /Retry the unchanged original request/u],
       ['publish:1', 'publication_approval_missing', /Reload the current draft and head/u],
       ['exact:1', 'catalog_publication_receipt_invalid', /Reload the current draft and head/u],
-      ['lookup:2', 'operator_required', /active human store administrator/u],
+      ['lookup:2', 'operator_required', /Restart catalogue apply with the same flags under an active administrator/u],
       ['price-preview:FIRST', 'price_list_not_active', /Restore the effective list/u],
       ['price-preview:SECOND', 'sku_archived', /Select an eligible SKU/u],
       ['price-preview:FIRST', 'expected_state_mismatch', /restore the declared amount to it and resume/u, 'last'],
       ['price-preview:SECOND', 'expected_state_mismatch', /restore the declared amount to it and resume/u, 'last'],
       ['price-apply:FIRST', 'readiness_would_fail', /Review the typed readiness findings/u],
       ['price-apply:FIRST', 'starter_catalogue_d2c_policy_required', /Restore one valid effective D2C policy/u],
-      ['price-apply:SECOND', 'operator_mismatch', /original issuing administrator/u],
+      ['price-apply:SECOND', 'operator_mismatch', /Restart catalogue apply with the same flags under an active administrator/u],
       ['price-apply:SECOND', 'command_key_reused', /Retry the unchanged original request/u],
       ['save:2', 'publication_draft_advanced', /Reload the current draft and head/u],
       ['prepare:2', 'publication_post_state_changed', /Reload the current draft and head/u],
@@ -682,7 +682,8 @@ if (!env[workerFlag]) {
     const declaration = { ...replacement, basePrices: { ...replacement.basePrices, SECOND: 3000 } };
     for (const refresh of ['actor', 'list'] as const) {
       const refused = invoke({ ...options, refresh, refreshBeforeApply: true });
-      finding(refused, 'starter_catalogue_reprice_review_required', recovery);
+      finding(refused, 'starter_catalogue_reprice_review_required', refresh === 'actor'
+        ? /Restart --reprice with the same flags under an active administrator/u : /Start a fresh --reprice/u);
       noWrites(refused, initial.state);
       const result = invoke({ ...options, refresh });
       const row = unverified(result);
@@ -815,6 +816,85 @@ if (!env[workerFlag]) {
     basePrices: { ...authored.basePrices, THIRD: 3500 } };
   const stoppedScan = [...observed.slice(0, -1), 'email', 'challenge', 'token', 'redeem', 'price-target'];
 
+  test('catalogue requests stop on identity refusals', { skip: nestedSkip }, async context => {
+    const configurationId = 'coffee';
+    const args = ['--configuration', configurationId];
+    const declaration = threeSkuDeclaration;
+    const initial = invoke({ args, configurationId, declaration });
+    complete(initial);
+    const { state } = initial;
+    const options = { args, configurationId, declaration, state };
+    const copy = invoke({ ...options, args: [...args, '--copy'] });
+    assert.equal(copy.status, 0, JSON.stringify(copy.report.findings));
+    const copyState = { ...copy.state, head: state.head, publications: state.publications };
+    const copyOptions = { ...options, args: [...args, '--copy'], state: copyState };
+    const priceOptions = { ...options, args: [...args, '--reprice'],
+      declaration: { ...declaration, basePrices: { ...declaration.basePrices, SECOND: 3200, THIRD: 3600 } } };
+    const refreshOptions = { ...options, refresh: 'same', expireAfterPreview: 'FIRST' } as const;
+    const scan = [...observed, 'price-preview:THIRD'];
+    const review = [...observed, 'price-preview:SECOND:amount', 'price-preview:THIRD', 'price-preview:THIRD:amount', 'approval'];
+    const prices = [...review, 'price-apply:SECOND', 'price-preview:SECOND', 'price-apply:THIRD', 'price-preview:THIRD'];
+    type Stage = [label: string, trace: string[], stop: string, observed?: number[], options?: Options];
+    const stages: Stage[] = [
+      ...['marker', 'challenge', 'redeem', 'price-target', 'lookup:2', 'exact:2']
+        .map((step): Stage => [step, scan, step]),
+      ...['challenge', 'redeem', 'price-target'].map((step): Stage =>
+        ['refresh ' + step, stoppedScan, step, [0], refreshOptions]),
+      ['default preview', scan, 'price-preview:SECOND', [0]],
+      ...['get', 'lookup:3', 'current', 'price-preview:SECOND', 'save:3', 'prepare:3', 'approve:3', 'publish:3']
+        .map((step): Stage => ['copy ' + step, copy.trace, step,
+          step === 'price-preview:SECOND' ? [0] : /^(save|prepare|approve|publish):/u.test(step) ? [0, 1, 2] : [], copyOptions]),
+      ['reprice preview', review, 'price-preview:SECOND', [0], priceOptions],
+      ['amount preview', review, 'price-preview:SECOND:amount', [0], priceOptions],
+      ['reprice refresh', [...review, ...stoppedScan.slice(observed.length - 1)], 'price-target',
+        [0], { ...priceOptions, refresh: 'same', refreshBeforeApply: true }],
+      ['apply', prices, 'price-apply:SECOND', [0], priceOptions],
+      ['readback', prices, 'price-preview:SECOND', [0], priceOptions],
+    ];
+    const identityCodes = [
+      'operator_required', 'starter_auth_invalid', 'publisher_not_authorized', 'operator_mismatch',
+      'draft_operator_required', 'catalog_draft_operator_required', 'catalog_operator_required',
+      'catalog_draft_command_actor_mismatch', 'catalog_operator_mismatch',
+    ];
+    for (const [label, trace, stop, observations = [], run = options] of stages) {
+      const canHaveWritten = label === 'apply' || label === 'readback';
+      const failAt = trace.lastIndexOf(stop) + 1;
+      assert.ok(failAt > 0, label);
+      for (const code of identityCodes) await context.test(label + ' ' + code, () => {
+        const result = invoke({ ...run, failAt, refusal: { code } });
+        assert.deepEqual(result.trace, trace.slice(0, failAt));
+        const matching = result.report.receipts.filter(row => row.stage === 'price.apply');
+        assert.deepEqual(matching.map(row => row.prices[0]), observations.map(index => {
+          const entry = price(state, index);
+          return { ...entry, skuId: state.drafts[1]!.payload.skus[index]!.id, currency, policyRevisionId: policy.revisionId,
+            subscriptionUnitPriceMinor: deriveSubscriptionUnitPrice(entry.unitPriceMinor, policy) };
+        }));
+        const command = 'npm run catalogue:apply -- --json ' + run.args!.join(' ');
+        const row = finding(result, label === 'readback' ? 'starter_catalogue_reprice_readback_unverified' : code,
+          canHaveWritten ? recovery : /with the same flags under an active administrator/u);
+        assert.ok(row.fix.includes(command));
+        if (label === 'readback') {
+          assert.equal(row.reason, code);
+          assert.equal(row.observed, 'committed; figure not verified');
+          assert.deepEqual(writes(result), ['price-apply:SECOND']);
+          const item = committed(result)[0]?.prices[0];
+          assert.equal(item?.entryId, price(result.state, 1).entryId);
+          assert.equal(item?.subscriptionUnitPriceMinor, undefined);
+          assert.equal(price(result.state, 1).unitPriceMinor, 3200);
+          assert.deepEqual([price(result.state), price(result.state, 2)], [price(state), price(state, 2)]);
+          assert.equal(Object.keys(result.state.priceReceipts).length, Object.keys(state.priceReceipts).length + 1);
+        } else {
+          assert.deepEqual(result.state, run.state);
+          assert.deepEqual(committed(result), []);
+        }
+        if (label === 'default preview') {
+          assert.equal(row.subject, 'SECOND');
+          assert.match(row.fix, /^Restart read-only verification/u);
+        }
+      });
+    }
+  });
+
   test('default scan aborts on a failed identity refresh and retains earlier observations', { skip: nestedSkip }, async testContext => {
     const args = ['--configuration', 'coffee'];
     const configurationId = 'coffee';
@@ -839,18 +919,29 @@ if (!env[workerFlag]) {
     });
   });
 
-  test('default scan preserves earlier price discrepancies when identity verification stops it', { skip: nestedSkip }, () => {
+  test('published price scans preserve earlier discrepancies when identity verification stops them', { skip: nestedSkip }, () => {
     const initial = invoke({ declaration: threeSkuDeclaration });
     complete(initial);
     const declaration = { ...threeSkuDeclaration, basePrices: { ...threeSkuDeclaration.basePrices, FIRST: 2200 } };
-    const result = invoke({ declaration, state: initial.state, refresh: 'actor', expireAfterPreview: 'FIRST' });
-    assert.equal(result.status, 2);
-    assert.deepEqual(result.trace, stoppedScan);
-    noWrites(result, initial.state);
-    const difference = result.report.findings.find(row => row.code === 'starter_catalogue_reprice_required');
-    assert.equal(difference?.subject, 'FIRST');
-    assert.match(difference!.fix, /npm run catalogue:apply -- --json --reprice/u);
-    assert.ok(result.report.findings.some(row => row.code === 'publisher_not_authorized'));
+    const copy = invoke({ declaration: threeSkuDeclaration, state: initial.state, args: ['--copy'] });
+    assert.equal(copy.status, 0, JSON.stringify(copy.report.findings));
+    const copyScan = copy.trace.slice(0, copy.trace.indexOf('price-preview:SECOND') + 1);
+    const repriceScan = [...observed.slice(0, -1), 'price-preview:FIRST:amount', 'price-preview:SECOND'];
+    const stoppedByHost = (trace: string[], args: string[] = []) =>
+      [{ args, failAt: trace.length, refusal: { code: 'operator_required' } }, trace, 'operator_required'] as const;
+    for (const [fault, trace, code] of [
+      [{ refresh: 'actor', expireAfterPreview: 'FIRST' }, stoppedScan, 'publisher_not_authorized'],
+      stoppedByHost(observed), stoppedByHost(copyScan, ['--copy']), stoppedByHost(repriceScan, repriceArgs),
+    ] as const) {
+      const result = invoke({ declaration, state: initial.state, ...fault });
+      assert.equal(result.status, 2);
+      assert.deepEqual(result.trace, trace);
+      noWrites(result, initial.state);
+      const difference = result.report.findings.find(row => row.code === 'starter_catalogue_reprice_required');
+      assert.equal(difference?.subject, 'FIRST');
+      assert.match(difference!.fix, /npm run catalogue:apply -- --json --reprice/u);
+      assert.ok(result.report.findings.some(row => row.code === code));
+    }
   });
 
   test('terminal refusals identify each SKU using the JSON subjects', { skip: nestedSkip }, () => {
