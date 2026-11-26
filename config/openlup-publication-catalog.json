@@ -1942,6 +1942,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/host/runtime-database.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/host/server.ts",
       "class": "public-output"
     },

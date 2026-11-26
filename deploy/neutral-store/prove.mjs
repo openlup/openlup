@@ -67,8 +67,8 @@ function sourceFiles(directory) {
   });
 }
 
-function docker(args) {
-  const result = spawnSync('docker', args, { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+function docker(args, env = processEnvironment) {
+  const result = spawnSync('docker', args, { env, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
   if (result.error || result.status !== 0) {
     throw new Error('docker_command_failed: ' + args[0] + '\n' + (result.error?.message ?? result.stderr));
   }
@@ -123,6 +123,7 @@ async function rollback(prepared, scratchParent) {
       try { docker(['image', 'rm', image]); images.delete(image); }
       catch (error) { errors.push(error.message); }
     }
+    handoff?.cleanup();
     rmSync(scratch, { recursive: true, force: true });
     return errors;
   };
@@ -262,7 +263,8 @@ async function dataRollback(prepared, scratchParent) {
     || (processEnvironment.DOCKER_HOST && !processEnvironment.DOCKER_HOST.startsWith('unix://'))) {
     throw new Error('local_docker_context_required');
   }
-  const localDocker = args => docker(['--context', contextName, ...args]);
+  let handoff;
+  const localDocker = args => docker(['--context', contextName, ...args], { ...processEnvironment, ...handoff?.environment });
   mkdirSync(parent, { recursive: true });
   const scratch = mkdtempSync(join(parent, 'data-rollback-'));
   const project = 'openlup-data-' + randomUUID();
@@ -318,10 +320,17 @@ async function dataRollback(prepared, scratchParent) {
     if (configured === configuration) throw new Error('proof_configuration_missing');
     writeFileSync(configurationPath, configured);
     const { applicationHealthcheck } = await import(pathToFileURL(join(application, 'host/healthcheck.ts')).href);
-    const runtime = { services: { application: { command: ['node', '--experimental-strip-types', 'host/server.ts',
-      '--configuration', 'supplements', '--port', '4319', '--listen', '0.0.0.0',
-      '--database-url', 'postgresql://starter_runtime@database:5432/neutral_store'],
-      healthcheck: applicationHealthcheck(origin) } } };
+    const hardened = readFileSync(join(application, 'compose.yaml'), 'utf8').includes('OPENLUP_STARTER_PREFLIGHT_HANDOFF');
+    if (hardened) {
+      const { prepareRuntimeHandoff } = await import(pathToFileURL(join(application, 'host/runtime-database.ts')).href);
+      handoff = prepareRuntimeHandoff(project, [application, scratch]);
+    }
+    const runtime = { services: { application: { command: ['node', '--experimental-strip-types',
+      ...(hardened ? ['lifecycle.mjs', 'serve-demo'] : ['host/server.ts']),
+      '--configuration', 'supplements', '--port', String(port), '--listen', '0.0.0.0',
+      '--database-url', 'postgresql://starter_runtime@database:5432/neutral_store',
+      ...(hardened ? ['--catalogue-publication-password-file', '/application/.context/catalogue-builds/.publication-password'] : [])],
+      healthcheck: applicationHealthcheck(origin, port) } } };
     writeFileSync(runtimePath, JSON.stringify(runtime));
     const selectImage = tag => writeFileSync(overridePath, `services:
   database:
@@ -339,7 +348,7 @@ async function dataRollback(prepared, scratchParent) {
       labels: {${JSON.stringify(labelKey)}: ${JSON.stringify(project)}}
     labels: {${JSON.stringify(labelKey)}: ${JSON.stringify(project)}}
     ports: !override
-      - "127.0.0.1:${port}:4319"
+      - "127.0.0.1:${port}:${port}"
 volumes:
   database:
     labels: {${JSON.stringify(labelKey)}: ${JSON.stringify(project)}}
@@ -364,7 +373,7 @@ networks:
     compose(['run', '--rm', '--no-deps', 'installation', 'node', 'lifecycle.mjs', 'install', '--configuration', 'supplements']);
     compose(['up', '--wait', '--no-build', 'application']);
     const sql = text => JSON.parse(compose(['exec', '-T', 'database', 'psql', '-X', '-A', '-t',
-      '-v', 'ON_ERROR_STOP=1', '-h', '/var/run/postgresql', '-U', 'postgres', '-d', 'neutral_store',
+      '-v', 'ON_ERROR_STOP=1', '-h', '/var/run/postgresql', '-U', 'starter_install', '-d', 'neutral_store',
       '-c', 'BEGIN READ ONLY; ' + text + '; COMMIT']).split('\n').filter(row => row.startsWith('{') || row.startsWith('['))[0]);
     const snapshot = () => {
       const rows = sql("SELECT coalesce(json_agg(to_jsonb(m) ORDER BY position), '[]'::json) FROM public.platform_schema_migrations m");

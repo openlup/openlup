@@ -72,8 +72,8 @@ test('Compose interpolates the listener, loopback mapping and working probe toge
 }, async () => {
   for (const value of [undefined, '', '4320']) {
     const expected = value || '4319';
-    const output = execFileSync('docker', ['compose', '--env-file', '/dev/null', '-f', 'compose.yaml', 'config', '--format', 'json'],
-      { cwd: root, env: { ...env, OPENLUP_STARTER_PORT: value }, encoding: 'utf8' });
+    const output = execFileSync('docker', ['compose', '--env-file', '/dev/null', '-f', 'compose.yaml', 'config', '--no-env-resolution', '--format', 'json'],
+      { cwd: root, env: { ...env, OPENLUP_STARTER_PORT: value, OPENLUP_STARTER_PREFLIGHT_HANDOFF: "/dev/null" }, encoding: 'utf8' });
     const app = JSON.parse(output).services.application;
     assert.equal(app.command[app.command.indexOf('--port') + 1], expected);
     assert.deepEqual(app.ports.map(({ host_ip, published, target }: Record<string, unknown>) => [host_ip, published, target]),
@@ -87,6 +87,7 @@ test('lifecycle passes the resolved port to Compose and configures the probe aut
   // Exercise lifecycle's real override construction, without invoking Docker.
   await mkdir(resolve(root, '.context'), { recursive: true });
   const directory = await mkdtemp(resolve(root, '.context/healthcheck-default-'));
+  const home = await mkdtemp(resolve(root, '.context/healthcheck-home-'));
   try {
     for (const path of ['host', 'shared', 'owned', 'installation', 'lifecycle.mjs', 'lifecycle-refusals.mjs', 'browser-groups.mjs'])
       await cp(resolve(root, path), resolve(directory, path), { recursive: true });
@@ -94,9 +95,15 @@ test('lifecycle passes the resolved port to Compose and configures the probe aut
     const config = structuredClone(Object.values(configurations)[0]!);
     const bin = resolve(directory, 'bin');
     await mkdir(bin);
-    await writeFile(resolve(bin, 'docker'), '#!/bin/sh\nif [ "$4" = "-f" ]; then /bin/cat > override.json; fi\nprintf "%s\\n" "$OPENLUP_STARTER_PORT" >> calls\n', { mode: 0o755 });
+    await writeFile(resolve(bin, 'docker'), `#!/bin/sh
+printf '%s\\n' "$OPENLUP_STARTER_PORT" >> calls
+if [ "$2" = config ]; then printf '{"name":"healthcheck"}'; exit 0; fi
+if [ "$4" = "-f" ]; then /bin/cat > override.json; fi
+if [ "$4" = run ]; then printf '{"formatVersion":1,"state":"satisfied","exitCode":0,"configuration":"%s","packs":[],"findings":[]}\\n' "${config.id}"; fi
+if [ "$4" = exec ] && [ "${'$'}{PROBE_FAILURE:-}" = 1 ]; then printf 'starter_runtime_database_auth_failed\\n'; exit 2; fi
+`, { mode: 0o755 });
     const up = (value?: string, ...args: string[]) => spawnSync(process.execPath, ['lifecycle.mjs', 'up', ...args],
-      { cwd: directory, env: { PATH: bin, OPENLUP_STARTER_PORT: value }, encoding: 'utf8' });
+      { cwd: directory, env: { PATH: bin, HOME: home, OPENLUP_STARTER_PORT: value }, encoding: 'utf8' });
     for (const value of ['--bad', '1023', '65536', '1e4', '6000', '06000']) {
       const refused = up(value);
       assert.equal(refused.status, 2);
@@ -110,13 +117,19 @@ test('lifecycle passes the resolved port to Compose and configures the probe aut
       assert.equal(refused.stderr, `${code}\nFix: ${fix}\n`);
       await assert.rejects(readFile(resolve(directory, 'calls')), { code: 'ENOENT' });
     }
+    const refusal = spawnSync(process.execPath, ['lifecycle.mjs', 'up', '--json'],
+      { cwd: directory, env: { PATH: bin, HOME: home, PROBE_FAILURE: '1' }, encoding: 'utf8' });
+    assert.equal(refusal.status, 2);
+    assert.equal(JSON.parse(refusal.stdout).findings[0].code, 'starter_runtime_database_auth_failed');
+    await assert.rejects(readFile(resolve(directory, '.context/compose-project')), { code: 'ENOENT' });
     for (const [value, publicOrigin] of [[undefined, undefined], ['', undefined], ['04320', undefined], ['6000', 'https://store.example.test:4443']]) {
       await writeFile(resolve(directory, 'owned/store.config.ts'), `export function selectConfiguration() { return ${JSON.stringify({ ...config, publicOrigin })}; }`);
       await writeFile(resolve(directory, 'calls'), '');
       const result = up(value);
       assert.equal(result.status, 0, result.stderr);
       const port = value ? Number(value) : 4319;
-      assert.deepEqual((await readFile(resolve(directory, 'calls'), 'utf8')).trim().split('\n'), Array(4).fill(String(port)));
+      assert.deepEqual((await readFile(resolve(directory, 'calls'), 'utf8')).trim().split('\n'), Array(6).fill(String(port)));
+      assert.equal(await readFile(resolve(directory, '.context/compose-project'), 'utf8'), 'healthcheck\n');
       const { services: { application } } = JSON.parse(await readFile(resolve(directory, 'override.json'), 'utf8'));
       assert.deepEqual(application.command.slice(0, 4), ['node', '--experimental-strip-types', 'lifecycle.mjs', 'serve-demo']);
       assert.equal(application.command[application.command.indexOf('--port') + 1], String(port));
@@ -124,5 +137,5 @@ test('lifecycle passes the resolved port to Compose and configures the probe aut
       assert.deepEqual(application.healthcheck, applicationHealthcheck(publicOrigin, port));
       if (publicOrigin) assert.match(application.healthcheck.test[3], /port:6000,.*Host:"store\.example\.test:4443"/u);
     }
-  } finally { await rm(directory, { recursive: true, force: true }); }
+  } finally { await Promise.all([directory, home].map(path => rm(path, { recursive: true, force: true }))); }
 });

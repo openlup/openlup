@@ -1,15 +1,49 @@
 name: neutral-store
+x-starter-handoff: &starter-handoff
+  - path: ${OPENLUP_STARTER_PREFLIGHT_HANDOFF:-/run/openlup/starter_runtime_preflight_handoff_missing}
+    required: true
+x-starter-credential: &starter-credential
+  type: bind
+  source: ${OPENLUP_STARTER_RUNTIME_SOURCE:-/run/openlup/starter_runtime_source_absent}
+  target: /run/secrets/starter_runtime_password
+  read_only: true
+  bind:
+    create_host_path: false
 services:
   database:
     # Same immutable PostgreSQL 16 image as the repository's test-postgres probe.
     image: postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97
     environment:
-      # initdb needs no password; the active HBA below rejects every privileged TCP login.
-      POSTGRES_HOST_AUTH_METHOD: trust
-    command: ['postgres', '-c', 'hba_file=/etc/postgresql/demo-pg-hba.conf']
+      POSTGRES_HOST_AUTH_METHOD: reject
+      POSTGRES_INITDB_ARGS: --auth-local=reject --auth-host=reject
+    env_file: *starter-handoff
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        if [ -s "$$PGDATA/PG_VERSION" ]; then
+          # Leave an owned volume alone while any earlier postmaster can own it.
+          test ! -e "$$PGDATA/postmaster.pid"
+          umask 077
+          fallback=$$(mktemp "$$PGDATA/.starter-hba.XXXXXX")
+          trap 'rm -f "$$fallback"' EXIT
+          printf '%s\n' 'local all all reject' 'host all all all reject' > "$$fallback"
+          if ! cmp -s "$$fallback" "$$PGDATA/pg_hba.conf"; then
+            chown postgres:postgres "$$fallback"
+            mv -f "$$fallback" "$$PGDATA/pg_hba.conf"
+          fi
+          rm -f "$$fallback"
+        else
+          POSTGRES_PASSWORD=$$(od -An -v -tx1 -N32 /dev/urandom | tr -d ' \n')
+          test "$${#POSTGRES_PASSWORD}" -eq 64
+          export POSTGRES_PASSWORD
+        fi
+        exec docker-entrypoint.sh "$$@"
+      - starter-postgres
+    command: ['postgres', '-c', 'hba_file=/etc/postgresql/starter-pg-hba.conf']
     configs:
       - source: database_auth
-        target: /etc/postgresql/demo-pg-hba.conf
+        target: /etc/postgresql/starter-pg-hba.conf
     volumes:
       - database:/var/lib/postgresql/data
       - installation-socket:/var/run/postgresql
@@ -21,7 +55,10 @@ services:
   installation:
     build: .
     command: ['node', 'lifecycle.mjs', 'install']
+    environment:
+      OPENLUP_STARTER_RUNTIME_CREDENTIAL: '1'
     volumes:
+      - *starter-credential
       - installation-socket:/var/run/postgresql
       - catalogue-builds:/application/.context/catalogue-builds
     depends_on:
@@ -29,10 +66,14 @@ services:
         condition: service_healthy
   application:
     build: .
-    command: ['node', '--experimental-strip-types', 'host/server.ts', '--port', '${OPENLUP_STARTER_PORT:-4319}', '--listen', '0.0.0.0', '--catalogue-publication-password-file', '/application/.context/catalogue-builds/.publication-password']
+    command: ['node', '--experimental-strip-types', 'lifecycle.mjs', 'serve-demo', '--port', '${OPENLUP_STARTER_PORT:-4319}', '--listen', '0.0.0.0', '--catalogue-publication-password-file', '/application/.context/catalogue-builds/.publication-password']
+    env_file: *starter-handoff
     environment:
-      DATABASE_URL: postgresql://starter_runtime@database:5432/neutral_store
+      OPENLUP_STARTER_RUNTIME_CREDENTIAL: '1'
+    labels:
+      com.openlup.starter.runtime-source: ${OPENLUP_STARTER_RUNTIME_REVISION:-absent}
     volumes:
+      - *starter-credential
       - catalogue-builds:/application/.context/catalogue-builds:ro
     depends_on:
       database:
@@ -51,9 +92,9 @@ volumes:
 configs:
   database_auth:
     content: |
-      # Only the one-shot installer receives the Unix socket volume.
-      local all all trust
+      local postgres postgres trust
+      local neutral_store starter_install trust
+      local all all reject
       host neutral_store openlup_catalog_publication all scram-sha-256
-      # Runtime access is limited to this isolated fictional database.
-      host neutral_store starter_runtime all trust
+      host neutral_store starter_runtime all scram-sha-256
       host all all all reject

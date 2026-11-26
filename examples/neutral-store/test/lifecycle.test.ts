@@ -25,13 +25,14 @@ test('up_json_reports_four_fields_for_installer_refusal and verifies the real on
   const scratch = join(root, '.context');
   mkdirSync(scratch, { recursive: true });
   const app = mkdtempSync(join(scratch, 'lifecycle-transport-'));
-  const env = { ...processEnv, PATH: [app, dirname(process.execPath), '/usr/bin', '/bin', processEnv.PATH ?? ''].join(delimiter) };
+  const home = mkdtempSync(join(scratch, 'lifecycle-home-'));
+  const env = { ...processEnv, HOME: home, PATH: [app, dirname(process.execPath), '/usr/bin', '/bin', processEnv.PATH ?? ''].join(delimiter) };
   const observed = 'The rules file is absent for 1 adopter packs. é\n\r\t' + 'x'.repeat(500);
   const summary = { id: 'example:pack', version: 1, outcome: 'installed', types: [{ key: 'example:item', version: 2_147_483_647 }], taxClasses: ['example:standard'] };
   const accepted = { formatVersion: 1, configuration: 'coffee', exitCode: 0, state: 'satisfied', packs: [summary], findings: [] };
   try {
     for (const path of ['lifecycle', 'lifecycle.mjs', 'browser-groups.mjs', 'lifecycle-refusals.mjs',
-      'host/healthcheck.ts', 'installation/refusals.ts', 'shared/refusals.ts', 'shared/seed-physical.ts', 'shared/config.ts']) {
+      'host/healthcheck.ts', 'host/runtime-database.ts', 'installation/refusals.ts', 'shared/refusals.ts', 'shared/seed-physical.ts', 'shared/config.ts']) {
       mkdirSync(join(app, path, '..'), { recursive: true });
       cpSync(join(root, path), join(app, path));
     }
@@ -66,10 +67,12 @@ test('up_json_reports_four_fields_for_installer_refusal and verifies the real on
       import { env } from 'node:process';
       const args = process.argv.slice(2), mode = env.ST1_CARRIER_CASE;
       appendFileSync('calls', JSON.stringify(args) + '\\n');
-      if (args[1] !== 'run') {
+      const call = args[1] === '--project-name' ? args[3] : args[1];
+      if (call === 'config') { process.stdout.write('{"name":"transport"}'); }
+      else if (call !== 'run') {
         process.stdout.write('compose progress\\n');
         if (mode === 'missing-installer' && args.at(-1) === 'database') unlinkSync(process.argv[1]);
-        if ((mode === 'before' && args[1] === 'build') || (mode === 'wait' && args.at(-1) === 'database')
+        if ((mode === 'before' && call === 'build') || (mode === 'wait' && args.at(-1) === 'database')
           || (mode === 'after' && args.at(-1) === 'application')) process.exitCode = 1;
       } else if (mode === 'signal') process.kill(process.pid, 'SIGTERM');
       else if (mode.startsWith('fake') || mode === 'after') {
@@ -102,14 +105,15 @@ test('up_json_reports_four_fields_for_installer_refusal and verifies the real on
       return { run, calls, report };
     };
     const refusal = up('refusal');
-    assert.deepEqual(refusal.calls[2], ['compose', 'run', '--rm', '--no-deps', '-T', 'installation',
+    assert.deepEqual(refusal.calls[3], ['compose', '--project-name', 'transport', 'run', '--rm', '--no-deps', '-T', 'installation',
       'node', 'lifecycle.mjs', 'install', '--configuration', 'coffee', '--json']);
-    assert.match(refusal.run.stderr, /compose progress\n[\s\S]*installer progress\n/u);
+    assert.match(refusal.run.stderr, /compose progress/u);
+    assert.doesNotMatch(refusal.run.stderr, /installer progress/u);
     assert.equal(refusal.report.configuration, 'coffee');
     assert.deepEqual(refusal.report.packs, []);
     assert.equal(refusal.report.findings[0].observed, observed);
     assert.equal(refusal.report.findings[0].code, 'starter_catalogue_rules_required');
-    assert.equal(refusal.calls.length, 3);
+    assert.equal(refusal.calls.length, 4);
     const { command: _up, ...refusalEnvelope } = refusal.report;
     assert.equal(up('fake', undefined, JSON.stringify(refusalEnvelope) + '\n', 2).report.findings[0].observed, observed);
     for (const [code, path, fix] of [
@@ -119,12 +123,12 @@ test('up_json_reports_four_fields_for_installer_refusal and verifies the real on
       const finding = { ...refusalEnvelope.findings[0], code, path, fix };
       const result = up('fake', undefined, JSON.stringify({ ...refusalEnvelope, findings: [finding] }) + '\n', 2);
       assert.deepEqual(result.report.findings, [finding]);
-      assert.equal(result.calls.length, 3);
+      assert.equal(result.calls.length, 4);
     }
     const text = up('refusal', ['--configuration', 'coffee']);
     assert.equal(text.run.status, 2);
     assert.match(text.run.stderr, /starter_catalogue_rules_required\nObserved: .*é\\n\\r\\t[^\n]+\nCause: /u);
-    assert.equal(text.calls.length, 3);
+    assert.equal(text.calls.length, 4);
     assert.deepEqual(up('success', ['--configuration', 'coffee', '--json']).report.packs, [summary]);
     for (const [mode, code, fix] of [
       ['legacy-conflict', 'starter_catalogue_build_conflict', /Restore the original declaration and rules.*new pack version/u],
@@ -135,7 +139,7 @@ test('up_json_reports_four_fields_for_installer_refusal and verifies the real on
       assert.equal(report.findings[0].code, code);
       assert.match(report.findings[0].fix, fix);
       assert.deepEqual(report.packs, []);
-      assert.equal(calls.length, 3);
+      assert.equal(calls.length, 4);
       const privateText = spawnSync(process.execPath, ['lifecycle.mjs', 'install', '--configuration', 'coffee'],
         { cwd: app, encoding: 'utf8', env: { ...env, ST1_CARRIER_CASE: mode } });
       assert.equal(privateText.status, 2);
@@ -144,7 +148,7 @@ test('up_json_reports_four_fields_for_installer_refusal and verifies the real on
     const large = up('large');
     assert.ok(Buffer.byteLength(large.run.stdout) > 1_048_576);
     assert.equal(large.report.packs.length, 9000);
-    assert.equal(large.calls.at(-1)?.at(-1), 'application');
+    assert.equal(large.calls.at(-1)?.at(-1), 'runtime-probe');
 
     for (const [args, code] of [
       [['--json', '--unknown'], 'starter_argument_unknown'],
@@ -188,7 +192,7 @@ test('up_json_reports_four_fields_for_installer_refusal and verifies the real on
     }
     const noInstaller = up('missing-installer');
     assert.equal(noInstaller.report.findings[0].code, 'starter_installation_failed');
-    assert.equal(noInstaller.calls.length, 2);
+    assert.equal(noInstaller.calls.length, 3);
     const missing = spawnSync(process.execPath, ['lifecycle.mjs', 'up', '--json'], { cwd: app, encoding: 'utf8', env: { PATH: app } });
     assert.equal(missing.status, 2);
     assert.equal(oneLine(missing.stdout).findings[0].code, 'starter_installation_failed');
@@ -231,7 +235,7 @@ test('up_json_reports_four_fields_for_installer_refusal and verifies the real on
         assert.equal(result.stderr, '');
       }
     }
-  } finally { rmSync(app, { recursive: true, force: true }); }
+  } finally { rmSync(app, { recursive: true, force: true }); rmSync(home, { recursive: true, force: true }); }
 });
 
 // Nested extraction checks reuse the checkout's dependencies. The packed consumer installs its own.
@@ -567,7 +571,7 @@ test('installed_catalogue_operator_workflow', { skip: !recipeApp, timeout: 600_0
     { cwd: app, env: { ...processEnv, COMPOSE_PROJECT_NAME: project }, encoding: 'utf8', input, stdio: ['pipe', 'pipe', 'pipe'] });
   const compose = (...args: string[]) => run('docker', ['compose', ...args]);
   const sql = (statement: string) => compose('exec', '-T', 'database', 'psql', '-XAtq', '-v', 'ON_ERROR_STOP=1', '-v', 'VERBOSITY=verbose',
-    '-U', 'postgres', '-d', 'neutral_store', '-c', statement).trim();
+    '-U', 'starter_install', '-d', 'neutral_store', '-c', statement).trim();
   const port = Number(processEnv.OPENLUP_STARTER_PORT || 4319);
   const fixtureOrigin = processEnv.OPENLUP_STARTER_CATALOGUE_OPERATOR_ORIGIN;
   const base = fixtureOrigin ?? `http://127.0.0.1:${port}`;
@@ -1180,8 +1184,9 @@ test('up_json_installed_starter_recipe', { skip: !recipeApp, timeout: 600_000 },
   const context = join(app, '.context');
   mkdirSync(context, { recursive: true });
   const scratch = mkdtempSync(join(context, 'st1-recipe-'));
-  const project = 'st1-pr2-recipe-' + randomUUID().slice(0, 8);
-  const env = { ...processEnv, OPENLUP_STARTER_PORT: '4319', COMPOSE_PROJECT_NAME: project, GIT_INDEX_FILE: join(scratch, 'index') };
+  const project = processEnv.OPENLUP_STARTER_CATALOGUE_RECIPE_PROJECT ?? 'st1-pr2-recipe-' + randomUUID().slice(0, 8);
+  const port = processEnv.OPENLUP_STARTER_PORT || '4319';
+  const env = { ...processEnv, OPENLUP_STARTER_PORT: port, COMPOSE_PROJECT_NAME: project, GIT_INDEX_FILE: join(scratch, 'index') };
   const run = (command: string, args: string[], exit = 0) => {
     const result = spawnSync(command, args, { cwd: app, env, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
     assert.ifError(result.error);
@@ -1224,7 +1229,7 @@ test('up_json_installed_starter_recipe', { skip: !recipeApp, timeout: 600_000 },
     const wsEndpoint = processEnv.OPENLUP_STARTER_CATALOGUE_RECIPE_WS_ENDPOINT;
     writeFileSync(playwright, `export default {
       testDir: '../../browser', testMatch: 'native-operator.proof.ts', workers: 1,
-      use: ${JSON.stringify({ baseURL: 'http://127.0.0.1:4319', composeProject: project, trace: 'off', screenshot: 'off', video: 'off',
+      use: ${JSON.stringify({ baseURL: 'http://127.0.0.1:' + port, composeProject: project, trace: 'off', screenshot: 'off', video: 'off',
         ...(wsEndpoint ? { connectOptions: { wsEndpoint } } : {}) })}
     };\n`);
     run('./node_modules/.bin/playwright', ['test', '--config', playwright, '--grep', 'installed adopter pack']);

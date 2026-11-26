@@ -1,4 +1,6 @@
-import { createHash } from "node:crypto";
+import { spawn } from "node:child_process";
+import { createHash, randomBytes } from "node:crypto";
+import { once } from "node:events";
 import { readFileSync } from "node:fs";
 import { expect, it, vi } from "vitest";
 import { z, type ZodType } from "zod";
@@ -32,6 +34,55 @@ async function run(
   const output = write.mock.calls[0]![0];
   return { exit, output, readStdin, warnings: warn.mock.calls.flat() };
 }
+
+it("admits a private password descriptor and withholds its bytes from every result", async () => {
+  const privateValue = randomBytes(32).toString("hex");
+  const entry = new URL("../../src/operations/server/settingsCommand.ts", import.meta.url).href;
+  const program = `import { runSettingsCommand } from ${JSON.stringify(entry)};
+    const status = await runSettingsCommand(JSON.parse(process.argv[1]), {
+      write: line => process.stdout.write(line), warn: line => process.stderr.write(line),
+      readStdin: async () => { let input = ''; for await (const chunk of process.stdin) input += chunk; return input; },
+    }, { bind: async ({database}) => {
+      if (typeof database?.password !== 'function' || !/^[a-f0-9]{64}$/.test(database.password())) throw Error('binding shape');
+      return { previewers: { inventory_renewal_protection: async () => ({ effects: [], uncertainty: [] }) } };
+    }});
+    process.exitCode = status;`;
+  const connected = ["preview", key, "--value", "-", "--database-url", url, "--database-password-fd", "3", "--json"];
+  const invoke = async (argv: string[], line: Buffer | string | null, keepOpen = false) => {
+    const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", program, JSON.stringify(argv)],
+      { stdio: ["pipe", "pipe", "pipe", line === null ? "ignore" : "pipe"] });
+    const chunks: Buffer[] = [];
+    child.stdout.on("data", bytes => chunks.push(bytes));
+    child.stderr.on("data", bytes => chunks.push(bytes));
+    child.stdin.on("error", () => {});
+    child.stdin.end('{"revision":"descriptor-fixture","renewalProtectionDays":21}');
+    const descriptor = child.stdio[3];
+    if (line !== null && descriptor && "write" in descriptor) {
+      descriptor.on("error", () => {});
+      if (keepOpen) descriptor.write(line);
+      else descriptor.end(line);
+    }
+    const [exit] = await once(child, "close");
+    const output = Buffer.concat(chunks).toString();
+    expect(!output.includes(privateValue)).toBe(true);
+    return { exit, output };
+  };
+  const line = privateValue + "\n";
+  const accepted = await invoke(connected, line);
+  expect(accepted.exit).not.toBe(64);
+  expect(accepted.output).not.toContain('"path":["database-password-fd"]');
+  for (const [argv, data, keepOpen] of [
+    [connected, null], [connected, ""], [connected, privateValue], [connected, line + line],
+    [connected, privateValue.repeat(65) + "\n"], [connected, Buffer.from([255, 10])], [connected, privateValue, true],
+    [[...connected, "--database-url", url], line],
+    [connected.map(arg => arg === url ? "postgresql://sample:fixture@read.invalid/shop" : arg), line],
+    [connected.map(arg => arg === "3" ? "4" : arg), line],
+    [[...connected, "--database-password-fd", "3"], line],
+    [["list", "--database-password-fd", "3", "--json"], line],
+    [["show", key, "--database-password-fd", "3", "--json"], line],
+    [["mcp", "--database-password-fd", "3"], line],
+  ] as const) expect((await invoke([...argv], data, keepOpen)).exit).toBe(64);
+}, 30_000);
 
 const document = (result: object) =>
   JSON.stringify("schemaVersion" in result ? result : { schemaVersion: 1, ...result }) + "\n";

@@ -38,8 +38,9 @@ and price row sets from `StoreConfig`. `installation/install.ts` is managed and
 reachable only from lifecycle installation, never the HTTP host; it requires the
 install login/current role and a database-level demonstration marker. The
 bootstrap runs the complete packaged history in a one-shot container. Only that
-container receives the privileged Unix socket; the host receives the runtime
-TCP URL only. The missing installed API refuses
+container receives the installer socket. The application and installer receive
+the runtime credential through a read-only file bind. The ownership manifest
+records the generated adopter-owned `.context/compose-project` file. The missing installed API refuses
 `starter_installation_binding_required`, and an existing unmarked database is
 never adopted or marked. A customer environment must use its
 own data onboarding, never this seed or demonstration marker. The installer uses

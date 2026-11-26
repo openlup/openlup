@@ -18,8 +18,10 @@ npm ci
 Use Node 24, npm 11.19.0 and Docker with Compose. The lifecycle installs the
 packaged PostgreSQL history and fictional catalogue, then serves
 `http://127.0.0.1:4319`. `./lifecycle down` stops the project while preserving data.
-Keep this passwordless demonstration isolated; deployment needs your own
-composition and authority. Both one-time and subscription purchases are included.
+The runtime credential file must stay in owner-only configuration. The starter
+validates it at start. It records the project in `.context/compose-project`.
+See “Run a bounded background pass” in the installed starter guide for the
+project-qualified maintenance commands.
 
 To use another free local port, export `OPENLUP_STARTER_PORT=4320` in the shell
 that runs `./lifecycle up` and `npm run catalogue:apply`. Use a decimal port

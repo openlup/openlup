@@ -33,21 +33,29 @@ test('native support roster, catalogue administration, replay and operator admis
   if (!baseURL || !/^[a-z0-9-]+$/.test(composeProject)) throw new Error('native_operator_proof_fixture_required');
   const compose = (...args: string[]) => execFileSync('docker', ['compose', '--project-name', composeProject, ...args],
     { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-  const sql = (query: string, runtime = false) => compose('exec', '-T', 'database', 'psql', '-XAt', '-v', 'ON_ERROR_STOP=1',
-    ...(runtime ? ['-h', '127.0.0.1', '-U', 'starter_runtime'] : ['-U', 'starter_install']), '-d', 'neutral_store', '-c', query).trim();
+  const sql = (query: string, runtime = false) => runtime
+    ? compose('exec', '-T', 'application', 'node', '--input-type=module', '-e', `
+      import pg from 'pg'; import { runtimeConnectionString } from './host/runtime-database.ts';
+      const pool = new pg.Pool({ connectionString: runtimeConnectionString() });
+      try { for (const row of (await pool.query(process.argv[1])).rows) {
+        const [value] = Object.values(row); console.log(typeof value === 'object' ? JSON.stringify(value) : value);
+      } } finally { await pool.end(); }
+    `, query).trim()
+    : compose('exec', '-T', 'database', 'psql', '-XAt', '-v', 'ON_ERROR_STOP=1', '-U', 'starter_install', '-d', 'neutral_store', '-c', query).trim();
   const fixture = JSON.parse(compose('exec', '-T', 'application', 'node', '--input-type=module', '-e', `
+    import { runtimeConnectionString } from './host/runtime-database.ts';
+
     import { randomUUID } from 'node:crypto';
-import { env } from 'node:process';
     import { createPostgresOperatorIdentityStore, createPostgresAccountLinkStore } from '@openlup/platform/identity';
-    const connectionString='postgresql://starter_runtime@database:5432/neutral_store';
+    const connectionString=runtimeConnectionString();
     const operators=createPostgresOperatorIdentityStore({connectionString});
     const accounts=createPostgresAccountLinkStore({connectionString});
     try {
-      const operator=await operators.bootstrapFirstAdministrator({email:'operator@example.test'});
+      const operator=await operators.bootstrapFirstAdministrator({email:process.argv[1]});
       const customer=await accounts.createAccount({principalId:randomUUID(),email:'customer@example.test',acquisitionSource:'direct',lifecycleStage:'customer'});
       console.log(JSON.stringify({operator:operator.principalId,customer:customer.id}));
     } finally { await Promise.all([operators.close(),accounts.close()]); }
-  `));
+  `, 'operator@example.test'));
   const privileges = JSON.parse(sql(`SELECT json_agg(json_build_object('routine',p.oid::regprocedure::text,
     'execute',has_function_privilege(current_user,p.oid,'EXECUTE'))) FROM pg_proc p WHERE p.pronamespace='public'::regnamespace
     AND (p.proname LIKE 'admin_%bundle%' OR p.proname IN ('customer_support_search','customer_support_journey',
@@ -522,8 +530,10 @@ test('installed adopter pack refuses missing builds and resumes exact-pair autho
   const email = 'pack-operator@example.test', actionPath = '/api/actions/operator.catalogDrafts';
   if (sql("SELECT count(*) FROM public.platform_human_principals WHERE email='pack-operator@example.test'").trim() === '0')
     compose('exec', '-T', 'application', 'node', '--input-type=module', '-e', `
+    import { runtimeConnectionString } from './host/runtime-database.ts';
+
     import { createPostgresOperatorIdentityStore } from '@openlup/platform/identity';
-    const operators = createPostgresOperatorIdentityStore({connectionString:'postgresql://starter_runtime@database:5432/neutral_store'});
+    const operators = createPostgresOperatorIdentityStore({connectionString:runtimeConnectionString()});
     try { await operators.bootstrapFirstAdministrator({email:${JSON.stringify(email)}}); } finally { await operators.close(); }
   `);
   async function login() {

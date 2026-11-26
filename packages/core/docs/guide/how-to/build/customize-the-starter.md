@@ -80,6 +80,16 @@ value does not configure either lifecycle command. Set a distinct
 `COMPOSE_PROJECT_NAME` for each concurrent demo. A configured `publicOrigin`
 still governs request authority.
 
+The runtime credential file must stay in owner-only configuration. The starter
+validates it at start. Each successful start records the selected project name
+in the adopter-owned `.context/compose-project` file. From the application
+directory, load that name before running the local Compose commands below.
+
+```sh
+PROJECT=$(cat .context/compose-project 2>/dev/null) && [ -n "$PROJECT" ] ||
+  { printf '%s\n' 'Run ./lifecycle up first.' >&2; exit 1; }
+```
+
 Use `./lifecycle up --json` for the final installation report on stdout. Progress
 goes to stderr. The report lists adopter packs as `installed` or `unchanged`.
 On a refusal, `packs: []` means there is no confirmed install report. The SQL
@@ -89,9 +99,12 @@ Restore a missing rules bundle before rerunning the
 [pack installation recipe](../extend/catalogue-extension.md#install-a-pack-in-the-starter).
 For a disposable demonstration with damaged storage, see
 [Reset an interrupted first install](#reset-an-interrupted-first-install).
-`./lifecycle down` stops the project while preserving its data. Keep the
-passwordless demonstration network and its database isolated; do not reuse this
-Compose file or its database authentication rules for a deployed application.
+`./lifecycle down` stops the project while preserving its data. For credential
+rotation, stop the project in an exclusive maintenance window, remove its
+`~/.local/state/openlup/neutral-store/$PROJECT/runtime-password` file, and rerun
+`./lifecycle up` for the same project. Recheck a fresh runtime connection. If a
+startup fails after updating the database, retry with the updated starter and
+the same volume. Use the demo’s Compose file for local operation only.
 Use fictional contacts and `.test` addresses. A healthy configuration response
 does not establish a completed purchase; read the [starter limits](../../reference/limits.md).
 
@@ -117,7 +130,7 @@ same Compose project selection:
 
 ```sh
 ./lifecycle down
-docker compose down --volumes
+docker compose --project-name "$PROJECT" down --volumes
 ./lifecycle up
 ```
 
@@ -252,14 +265,14 @@ Use these steps for the marked demo.
 | `promotion_claim_sweep_not_ready` | Verify `promotion-claim-sweep` is enabled with the `scheduler` driver. Wait for the next scheduled tick on the database-backed host and verify a successful run. |
 | `promotion_watchdog_not_ready` | Verify the starter catalogue watchdog control-plane principal using the recipe above. Repair any failed jobs using the table below and verify a healthy watchdog run. |
 
-For failed job names in `promotion_watchdog_not_ready`, use the matching
-owned ID for `<id>` and your authorized runtime connection for `<runtime-url>`.
+For failed job names in `promotion_watchdog_not_ready`, load the recorded
+project name and set `CONFIGURATION` to the matching owned ID.
 
 | Failed job | Action |
 | --- | --- |
-| `subscription-renewal:<owned-population>` | `./lifecycle renewal --configuration <id> --database-url <runtime-url>` |
-| `subscription-care:<id>` | `./lifecycle care --configuration <id> --database-url <runtime-url>` |
-| `starter-checkout:<id>` | `./lifecycle checkout-recovery --configuration <id> --database-url <runtime-url>` |
+| `subscription-renewal:<owned-population>` | `docker compose --project-name "$PROJECT" exec -T application ./lifecycle renewal --configuration "$CONFIGURATION"` |
+| `subscription-care:<id>` | `docker compose --project-name "$PROJECT" exec -T application ./lifecycle care --configuration "$CONFIGURATION"` |
+| `starter-checkout:<id>` | `docker compose --project-name "$PROJECT" exec -T application ./lifecycle checkout-recovery --configuration "$CONFIGURATION"` |
 | `promotion-claim-sweep`, `platform-watchdog` | Wait for the next scheduled tick on the database-backed host. A restart starts an initial tick. |
 
 For a nondefault local port, add `--port "$OPENLUP_STARTER_PORT"` to `care`
@@ -1006,10 +1019,10 @@ demo, use the same Compose project and a trusted terminal to run
 [first-administrator bootstrap](../../concepts/identity.md#first-administrator-bootstrap).
 
 ```sh
-docker compose exec -T --user node application node --input-type=module -e '
-  import { env } from "node:process";
+docker compose --project-name "$PROJECT" exec -T --user node application node --input-type=module -e '
+  import { runtimeConnectionString } from "./host/runtime-database.ts";
   import { createPostgresOperatorIdentityStore } from "@openlup/platform/identity";
-  const operators = createPostgresOperatorIdentityStore({ connectionString: env.DATABASE_URL });
+  const operators = createPostgresOperatorIdentityStore({ connectionString: await runtimeConnectionString() });
   try { await operators.bootstrapFirstAdministrator({ email: process.argv[1] }); }
   finally { await operators.close(); }
 ' operator@example.test
@@ -1026,7 +1039,7 @@ account or its current invitation. After requesting a token, re-read the
 mailbox from a separate private terminal in the same Compose project.
 
 ```sh
-docker compose exec -T --user node --workdir /application/.context application cat captured-messages/identity.jsonl
+docker compose --project-name "$PROJECT" exec -T --user node --workdir /application/.context application cat captured-messages/identity.jsonl
 ```
 
 If a new matching message appears, enter its token at the hidden prompt within
@@ -1197,7 +1210,7 @@ From the extracted demonstration application, open the database owner connection
 never provision rosters through the runtime login:
 
 ```sh
-docker compose exec -T database psql -U starter_install -d neutral_store
+docker compose --project-name "$PROJECT" exec -T database psql -X -U starter_install -d neutral_store
 ```
 
 Find the activated administrator by the normalized invitation email:
@@ -1251,22 +1264,23 @@ these administrator commands.
 
 ## Run a bounded background pass
 
-After installation, set `CONFIGURATION` to the selected owned configuration ID
-and `RUNTIME_URL` to its reachable restricted runtime connection. From the
-application directory, choose the pass you need:
+From the application directory, load the recorded project name and set
+`CONFIGURATION` to the selected owned configuration ID. Choose the pass you need.
 
 | Command | Work selected |
 | --- | --- |
-| `./lifecycle renewal --configuration "$CONFIGURATION" --database-url "$RUNTIME_URL"` | Drain paid-order mail, then attempt a bounded sandbox renewal pass when enabled. |
-| `./lifecycle care --configuration "$CONFIGURATION" --database-url "$RUNTIME_URL"` | Run auto-resume, subscription notices and winback when care is enabled. |
-| `./lifecycle checkout-recovery --configuration "$CONFIGURATION" --database-url "$RUNTIME_URL"` | Reconcile reminders, enqueue eligible waves, expire checkouts and process recovery mail. |
+| `docker compose --project-name "$PROJECT" exec -T application ./lifecycle renewal --configuration "$CONFIGURATION"` | Drain paid-order mail, then attempt a bounded sandbox renewal pass when enabled. |
+| `docker compose --project-name "$PROJECT" exec -T application ./lifecycle care --configuration "$CONFIGURATION"` | Run auto-resume, subscription notices and winback when care is enabled. |
+| `docker compose --project-name "$PROJECT" exec -T application ./lifecycle checkout-recovery --configuration "$CONFIGURATION"` | Reconcile reminders, enqueue eligible waves, expire checkouts and process recovery mail. |
 
 For a nondefault local port, add `--port "$OPENLUP_STARTER_PORT"` to `care`
 and `checkout-recovery` so locally generated links use that port. A configured
 `publicOrigin` takes precedence.
 
-These commands change the demonstration database and private message captures;
-they install no timer or HTTP endpoint. An existing scheduler may invoke them.
+These commands change the demonstration database and private message captures.
+A standalone scheduler can invoke `./lifecycle renewal|care|checkout-recovery`
+with the same `--configuration "$CONFIGURATION"` and its existing restricted
+`--database-url "$RUNTIME_URL"` binding. Select one command per invocation.
 Messages are captured locally, which does not establish delivery to recipients.
 
 `owned/renewal.config.ts` controls renewal enablement, population, retry timing,

@@ -8,7 +8,7 @@ import { dirname, join, resolve } from 'node:path';
 import { env } from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { imageReference, pullWithRetry, readCiImage } from '../ci-image-pull.mjs';
-import { needsStarterCareUpgrade, previousPublishedSet, proveDistributionCliConsumer, proveSettingsDiscovery, proveSettingsMcp,
+import { needsStarterCareUpgrade, previousPublishedSet, proveDistributionCliConsumer, proveStarterRuntimeUpgrade, proveSettingsDiscovery, proveSettingsMcp,
   starterCareJourney, starterCareWitness, starterSettingsHost } from './distribution-cli-proof.ts';
 import { assertInstalledPackages, isolatedConsumerEnv, readCurrentPackManifest } from './pack-manifest-input.ts';
 import { generateExactSetReleaseBom } from './generate-release-bom.ts';
@@ -481,11 +481,72 @@ export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = f
   return receipt;
 }
 
+const runCandidate = (file, args, cwd = root) => execFileSync(file, args, { cwd, env: isolatedConsumerEnv(), encoding: 'utf8' });
+
+export function prepareStarterCandidate(commit, manifest, scratch) {
+  mkdirSync(scratch, { recursive: true });
+  const packs = readCurrentPackManifest(root, manifest, commit);
+  const receipt = qualificationReceipt('openlup-core-v' + packs.get('@openlup/core').version, commit);
+  const { application, packages } = prepareReleasedStarter(receipt, scratch, runCandidate, manifest, false);
+  receipt.packages = packages;
+  mkdirSync(join(application, 'artifacts'), { recursive: true });
+  const lockfile = join(application, 'package-lock.json'), lock = json(lockfile);
+  for (const [name, pack] of packs) {
+    const target = `artifacts/openlup-${name.slice(9)}.tgz`, edge = lock.packages[`node_modules/${name}`];
+    assert.equal(edge.integrity, pack.integrity);
+    cpSync(pack.path, join(application, target));
+    edge.resolved = 'file:' + target;
+  }
+  writeFileSync(lockfile, JSON.stringify(lock) + '\n');
+  runCandidate('npm', ['ci', '--ignore-scripts', '--no-audit', '--fund=false'], application);
+  return { application, receipt };
+}
+
+export async function qualifyCandidateCanary(commit, manifest, output) {
+  assert.equal(runCandidate('git', ['rev-parse', 'HEAD']).trim(), commit, 'candidate checkout mismatch');
+  const scratch = mkdtempSync(join(tmpdir(), 'openlup-candidate-image-'));
+  let receipt = { mode: 'candidate-canary', tagCommit: commit, canary: { result: 'FAIL' }, result: 'FAIL' };
+  try {
+    const prepared = prepareStarterCandidate(commit, manifest, scratch);
+    Object.assign(receipt, prepared.receipt);
+    const archive = join(scratch, 'candidate.oci.tar'), started = performance.now();
+    receipt.image = buildQualifiedImage(prepared.application, commit, archive);
+    receipt.image.buildDurationMs = Math.round(performance.now() - started);
+    console.log('Candidate starter image build complete', receipt.image.buildDurationMs + ' ms');
+    const { runStarterImageCanary } = await import('../starter-browser-ci.mjs');
+    await runStarterImageCanary(prepared.application, archive, receipt.image.manifestDigest, receipt.canary);
+    receipt.result = 'PASS';
+    console.log('Candidate starter retained image PASS');
+  } finally {
+    receipt.endedAt = new Date().toISOString();
+    try { writeFileSync(output, JSON.stringify(receipt, null, 2) + '\n'); }
+    finally { rmSync(scratch, { recursive: true, force: true }); }
+  }
+}
+
+async function qualifyCandidateOccupied(predecessor, previousManifest, candidate, candidateManifest, port) {
+  assert.equal(runCandidate('git', ['rev-parse', 'HEAD']).trim(), candidate, 'candidate checkout mismatch');
+  const scratch = mkdtempSync(join(tmpdir(), 'openlup-occupied-upgrade-'));
+  try {
+    const from = prepareStarterCandidate(predecessor, previousManifest, join(scratch, 'from'));
+    const to = prepareStarterCandidate(candidate, candidateManifest, join(scratch, 'to'));
+    await proveStarterRuntimeUpgrade(from.application, to.application, Number(port));
+  } finally { rmSync(scratch, { recursive: true, force: true }); }
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const [tag, commit, receipt, mode, candidateManifest] = process.argv.slice(2);
-  if (!(process.argv.length === 7 && mode === '--candidate') && process.argv.length !== 5 && !(process.argv.length === 6 && ['--upgrade', '--schema-upgrade', '--bom', '--canary'].includes(mode))) refuse('use release-tag full-tag-commit receipt-path');
-  // Finish module evaluation before recovery imports this module; incomplete work exits nonzero.
-  process.exitCode = 1;
-  Promise.resolve(qualifyReleasedSet(tag, commit, receipt, mode === '--upgrade' || mode === '--candidate', mode === '--schema-upgrade', mode === '--bom', mode === '--canary', candidateManifest))
-    .then(() => { process.exitCode = 0; }, error => { console.error(error); });
+  if (tag === '--candidate-canary') {
+    if (process.argv.length !== 6) refuse('use --candidate-canary commit manifest receipt');
+    await qualifyCandidateCanary(commit, receipt, mode);
+  } else if (tag === '--candidate-occupied') {
+    if (process.argv.length !== 8) refuse('use --candidate-occupied predecessor previous-manifest candidate candidate-manifest free-port');
+    await qualifyCandidateOccupied(...process.argv.slice(3));
+  } else {
+    if (!(process.argv.length === 7 && mode === '--candidate') && process.argv.length !== 5 && !(process.argv.length === 6 && ['--upgrade', '--schema-upgrade', '--bom', '--canary'].includes(mode))) refuse('use release-tag full-tag-commit receipt-path');
+    // Finish module evaluation before recovery imports this module; incomplete work exits nonzero.
+    process.exitCode = 1;
+    Promise.resolve(qualifyReleasedSet(tag, commit, receipt, mode === '--upgrade' || mode === '--candidate', mode === '--schema-upgrade', mode === '--bom', mode === '--canary', candidateManifest))
+      .then(() => { process.exitCode = 0; }, error => { console.error(error); });
+  }
 }

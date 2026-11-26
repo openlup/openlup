@@ -17,6 +17,15 @@ import { isHostedCi, reportFlakyRetries } from './ci-flaky-retry.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const execute = promisify(execFile);
+const visibilityCheck = `const fs = require('node:fs');
+for (const path of ['/run/secrets/starter_runtime_password', ...process.argv.slice(1)]) {
+  try { fs.closeSync(fs.openSync(path, 'r')); } catch (error) {
+    if (['ENOENT','EACCES'].includes(error.code)) continue; throw error;
+  }
+  throw new Error('starter_browser_credential_readable');
+}
+console.log('Starter browser credential visibility PASS');`;
+
 export const canaryPurchasePattern = 'completes sandbox purchase through the installed engine$';
 
 export function assertCanaryImage(manifest, expected, loaded, daemonManifest) {
@@ -29,12 +38,12 @@ export function assertCanaryImage(manifest, expected, loaded, daemonManifest) {
 
 /** The existing purchase spec and installed recovery witness, against the retained image. */
 export async function runStarterImageCanary(application, archive, imageDigest, evidence, {
-  command = (file, args, input) => execFileSync(file, args, { input, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, stdio: ['pipe', 'pipe', 'pipe'] }),
+  command = (file, args, input, environment) => execFileSync(file, args, { input, env: environment, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, stdio: ['pipe', 'pipe', 'pipe'] }),
   pull = pullWithRetry, browserImage = resolveBrowserImage,
 } = {}) {
   const started = performance.now(); let current = 'identity';
-  const run = (file, args, input) => {
-    try { return command(file, args, input); }
+  const run = (file, args, input, environment) => {
+    try { return command(file, args, input, environment); }
     catch (error) { throw new Error(`starter_canary_${current}_${file}_failed_status_${error.status ?? 'unknown'}`); }
   };
   const phase = async (name, work) => {
@@ -56,18 +65,23 @@ export async function runStarterImageCanary(application, archive, imageDigest, e
       const reference = await pull(postgres), browser = await browserImage();
       const scratch = await mkdtemp(join(dirname(application), 'canary-'));
       defer(() => rm(scratch, { recursive: true, force: true }));
-      const hosts = [], installations = [];
+      const hosts = [], installations = [], sources = [];
+      const hardened = (await readFile(join(application, 'compose.yaml'), 'utf8')).includes('OPENLUP_STARTER_PREFLIGHT_HANDOFF');
+      const runtime = hardened && await import(pathToFileURL(join(application, 'host/runtime-database.ts')).href);
       await phase('install', async () => {
-        for (const [index, id] of ['supplements', 'coffee'].entries()) {
-          const port = 4319 + index, baseURL = `http://127.0.0.1:${port}`;
+        for (const id of ['supplements', 'coffee']) {
+          const port = await freePort(), baseURL = `http://127.0.0.1:${port}`;
           const project = `canary-${randomBytes(6).toString('hex')}`, override = join(scratch, `${id}.yaml`);
+          const handoff = runtime && runtime.prepareRuntimeHandoff(project, [application, scratch]);
+          if (handoff) { sources.push(handoff.source); defer(handoff.cleanup); }
+          const environment = handoff ? { ...processEnvironment, ...handoff.environment } : processEnvironment;
           const { applicationHealthcheck } = await import(pathToFileURL(join(application, 'host/healthcheck.ts')).href);
           const hostCommand = ['node', '--experimental-strip-types', 'lifecycle.mjs', 'serve-demo', '--configuration', id,
             '--port', String(port), '--listen', '0.0.0.0', '--database-url', 'postgresql://starter_runtime@database:5432/neutral_store',
             '--catalogue-publication-password-file', '/application/.context/catalogue-builds/.publication-password'];
           await writeFile(override, `services:\n  database:\n    image: ${reference}\n    pull_policy: never\n  installation:\n    image: ${imageDigest}\n    pull_policy: never\n  application:\n    image: ${imageDigest}\n    pull_policy: never\n    ports: !override ["127.0.0.1:${port}:${port}"]\n    command: ${JSON.stringify(hostCommand)}\n    healthcheck: ${JSON.stringify(applicationHealthcheck(baseURL, port))}\n`);
           const compose = (args, input) => run('docker', ['compose', '--project-name', project, '--project-directory', application,
-            '-f', join(application, 'compose.yaml'), '-f', override, ...args], input);
+            '-f', join(application, 'compose.yaml'), '-f', override, ...args], input, environment);
           defer(() => compose(['down', '--volumes', '--remove-orphans']));
           compose(['up', '--wait', '--no-build', 'database']);
           compose(['run', '--rm', '--no-deps', 'installation', 'node', 'lifecycle.mjs', 'install', '--configuration', id]);
@@ -77,12 +91,20 @@ export async function runStarterImageCanary(application, archive, imageDigest, e
           hosts.push({ id, baseURL }); installations.push(compose);
         }
       });
+      if (runtime && (await readFile(sources[0])).equals(await readFile(sources[1]))) throw new Error('starter_canary_project_credentials_identical');
+      if (runtime) evidence.install.projectCredentialIsolation = 'PASS';
       await phase('journey', async () => {
         await writeBrowserFixtures(application, hosts);
         const name = `canary-browser-${randomBytes(6).toString('hex')}`;
         defer(() => { if (run('docker', ['ps', '-aq', '--filter', `name=^${name}$`]).trim()) run('docker', ['rm', '-f', name]); });
-        const output = run('docker', [...browserArguments(application, browser, name), ...browserJourneyGroups.at(-1),
-          'journey.spec.ts', '--grep', canaryPurchasePattern]);
+        const argv = browserArguments(application, browser, name), entry = argv.indexOf('node');
+        if (runtime) {
+          runtime.assertRuntimeSourceOutside(sources[0], [application, join(application, '.context/care-browser'), join(application, '.context/catalogue-builds')]);
+          argv.splice(entry, 0, 'sh', '-ec', 'timeout 5 node -e "$1" "$2" "$3" && shift 3 && exec "$@"', 'browser', visibilityCheck, ...sources);
+        }
+        const output = run('docker', [...argv, ...browserJourneyGroups.at(-1), 'journey.spec.ts', '--grep', canaryPurchasePattern]);
+        if (runtime && !output.includes('Starter browser credential visibility PASS')) throw new Error('starter_canary_visibility_missing');
+        if (runtime) evidence.journey.credentialVisibility = 'PASS';
         if (!/\b2 passed\b/u.test(output)) throw new Error('starter_canary_purchase_results_missing');
       });
       await phase('recovery', async () => {

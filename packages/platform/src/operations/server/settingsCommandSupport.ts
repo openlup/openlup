@@ -1,4 +1,5 @@
-import { isIPv4 } from "node:net";
+import { closeSync, fstatSync, readSync } from "node:fs";
+import { isIPv4, Socket } from "node:net";
 import { z } from "zod";
 import type { SettingRefusal } from "../contracts/settings.js";
 import type { runSettingsCommand } from "./settingsCommand.js";
@@ -70,6 +71,39 @@ export function admitDatabaseUrl(input: string): SettingsDatabase | { path: stri
     host, port, user, password: password || (() => ""), database,
     ssl: url.search === "?sslmode=require" || url.search === "?sslmode=verify-full" ? { rejectUnauthorized: true, host } : false,
   };
+}
+
+export async function bindSettingsPasswordDescriptor(fd: 3): Promise<() => string> {
+  const limit = 4096, bytes = Buffer.alloc(limit + 1);
+  let socket: Socket | undefined, timer: ReturnType<typeof setTimeout> | undefined, size = 0, closeFile = false;
+  try {
+    const stat = fstatSync(fd);
+    if (stat.isFile()) {
+      closeFile = true;
+      while (size < bytes.length) {
+        const read = readSync(fd, bytes, size, bytes.length - size, null);
+        if (!read) break;
+        size += read;
+      }
+    } else {
+      if (!stat.isSocket() && !stat.isFIFO()) throw new Error();
+      socket = new Socket({ fd, readable: true, writable: false });
+      timer = setTimeout(() => socket?.destroy(new Error()), 2000);
+      for await (const chunk of socket) {
+        size += chunk.copy(bytes, size);
+        if (size > limit) throw new Error();
+      }
+    }
+    const line = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes.subarray(0, size));
+    if (size > limit || !/^[^\p{Cc}]+\n$/u.test(line)) throw new Error();
+    const password = line.slice(0, -1);
+    return () => password;
+  } finally {
+    bytes.fill(0);
+    clearTimeout(timer);
+    if (socket) socket.destroy();
+    else if (closeFile) closeSync(fd);
+  }
 }
 
 const locationSchema = z.strictObject({ file: z.string(), symbol: z.string() }).optional();
