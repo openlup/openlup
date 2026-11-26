@@ -110,11 +110,11 @@ export type StorefrontScenario = {
         readonly maxHolds?: number;
         readonly maxAttempts?: number;
         readonly maxCaptures?: number;
-        /** No payment attempt after the step at this index. */
+        /** No payment attempt after the step at this index: every later ledger read shows the attempts read when that step ended. */
         readonly noAttemptAfter?: number;
-        /** Attempts never exceed declines plus one. */
+        /** Attempts never exceed the declines the outcome driver produced so far plus one. */
         readonly attemptsPerDecline?: boolean;
-        /** States that must not be shown after the step at index `after`. */
+        /** States that must not be shown from the end of the step at index `after` on. */
         readonly forbiddenStates?: {
             readonly after: number;
             readonly states: readonly string[];
@@ -129,7 +129,7 @@ export type StorefrontScenario = {
         readonly from?: number;
         /** `omit_action`: the omitted action. */
         readonly action?: string;
-        /** Whether outcome steps after the control's start run (`kept`) or not (`skipped`). */
+        /** Whether outcome steps from the control's start run (`kept`, the default) or not (`skipped`); an `omit_action` control starts at the omitted action. */
         readonly outcomes?: "kept" | "skipped";
     };
 };
@@ -378,7 +378,10 @@ type CommandMatcher = NonNullable<NonNullable<StorefrontAdapter["commands"]>["cr
  * `timeoutMs` (default 10,000) bounds each anchor wait; `quietMs` (default
  * 3,000) is the quiet window that ends every step. An observer with
  * `payableOrdersInDatabase` declares that its database is exclusive to this
- * run; the harness must not share it.
+ * run; the harness must not share it. `outcomes` is the outcome driver:
+ * `capabilities` declares the outcome kinds it can produce, `produce` produces
+ * one for the run's subject. `stopAt` (`checkout.<state>` for a state the
+ * scenario expects) drives the clean run until that state is visible.
  */
 type StorefrontRunOptions = {
     readonly scenario: string | StorefrontScenario;
@@ -408,10 +411,27 @@ type StorefrontRunOptions = {
     };
     readonly timeoutMs?: number;
     readonly quietMs?: number;
+    readonly outcomes?: {
+        readonly capabilities: readonly string[];
+        produce(outcome: string, context: {
+            readonly subject: string;
+        }): Promise<void>;
+    };
+    readonly stopAt?: string;
+};
+/** A full run's verdict, or with `stopAt` the clean run's steps up to the state it stopped at. */
+type StorefrontRunResult = {
+    kind: "verdict";
+    verdict: StorefrontVerdict;
+} | {
+    kind: "stopped";
+    stoppedAt: string;
+    steps: StorefrontVerdict["steps"];
 };
 /**
  * Runs one storefront scenario and resolves `{ kind: "verdict", verdict }`, a
- * format-1 verdict that `parseStorefrontVerdict` accepts.
+ * format-1 verdict that `parseStorefrontVerdict` accepts, or with `stopAt`
+ * `{ kind: "stopped", stoppedAt, steps }`.
  *
  * The clean run reads the subject's ledger (an earlier order ends `not_run`),
  * installs one interceptor that classifies requests by the create and read
@@ -421,46 +441,67 @@ type StorefrontRunOptions = {
  * interceptor saw finished and `quietMs` passed with no new request. Then the
  * runner reads the ledger, the visible anchors and the path. After the last
  * step a settle window waits once more and reads them again. The control run
- * repeats the steps under the other subject, blocking from the control's step
- * every request of its commands; a `safety_only` scenario has none.
+ * repeats the steps under the other subject with the scenario's control: a
+ * `block_read` control blocks every request of its commands from its step; an
+ * `omit_action` control omits its action and, when the scenario says so, the
+ * outcomes after it; an `other_policy` control changes nothing and must not
+ * show the progress of the changed-payload policy the proof file does not
+ * declare. A `safety_only` scenario has no control run. When the UI performs
+ * the omitted action by itself, as the effective `autoProgress` declares,
+ * neither run performs it and the control becomes a `block_read` of status
+ * reads from the step before it, with the outcomes after it skipped.
  *
- * Judgement, first failing group decides: 1 page, observer and arrangement
- * worked; 2 no order before the arrangement and one after the first matched
- * create; 3 the first order appeared in a step with a matched create and every
- * withhold applied; 4 ledger safety in both runs and settle windows (payable
- * orders, orders holding stock, attempts, captures; a paid state needs a
- * capture and no payable order) and, for an exclusive database, no payable
- * order outside the subjects; 5 the create budget kept (a run over it stopped
- * before proving anything, but a violation it already caused stands); 6 each
- * matcher used matched and each needed anchor resolved and was visible; 7 the
- * clean run reached its expected state; 8 the control blocked a request and its
- * negated state was not reached, judged over every recorded control step even
- * when the control run stopped. Codes 1–3, 5 and 6 end `not_run`, a harness
- * fault is never `failed` or `passed`; a ledger violation is `failed`; progress under the control is
- * `vacuous`. Without a finding the result is `passed`, or `safety_only` for a
- * scenario without a control.
+ * Outcomes: an `outcome` step asks the `outcomes` driver for one outcome
+ * (`declined`, `pending`, `settled`, `settled_after_pending`,
+ * `activation_pending`). A scenario runs only when every outcome in its
+ * `requires.outcomes` is one this runner knows and the driver declares; else
+ * it ends `not_run` with `tier_unreachable` naming each missing outcome before
+ * any page, observer or driver call. Tier names do not decide admission. A
+ * rejected `produce`, or a ledger without a payment attempt after the outcome,
+ * is `outcome_failed`.
  *
- * A scenario whose `requires.outcomes` names an outcome the run's outcome
- * driver does not declare ends `not_run` with `tier_unreachable` before any page
- * or observer call; this runner takes no outcome driver yet, so
- * `harness.declaredOutcomes` is empty. Invalid options (an unknown scenario, a
- * malformed `runId`, a missing or mismatched `width`, a clock outside integer
- * milliseconds 0 to the end of the year 9999) reject with a `TypeError` starting
+ * Judgement, first failing group decides: 0 admitted; 1 page, observer,
+ * arrangement and outcome driver worked; 2 no order before the arrangement and
+ * one after the first matched create; 3 the first order appeared in a step with
+ * a matched create, every withhold applied and every outcome shows an attempt;
+ * 4 ledger safety in both runs and settle windows (payable orders, orders
+ * holding stock, attempts, captures, no attempt after its step, attempts per
+ * decline, forbidden states from their step on; a paid state needs a capture
+ * and no payable order) and, for an exclusive database, no payable order
+ * outside the subjects; 5 the create budget kept (a run over it stopped before
+ * proving anything, but a violation it already caused stands); 6 each matcher
+ * used matched and each needed anchor resolved and was visible; 7 the clean run
+ * reached its expected state (the other policy's state is `policy_mismatch`);
+ * 8 a `block_read` control blocked a request and the negated state was not
+ * reached, judged over every recorded control step even when the control run
+ * stopped; under an `omit_action` control a negated state reached after a
+ * status read is `auto_progress_undeclared`. Codes 0–3, 5 and 6 end `not_run`,
+ * as do `control_not_applied` and `auto_progress_undeclared`; a harness fault
+ * is never `failed` or `passed`; a ledger violation is
+ * `failed`; progress under the control is `vacuous`. Without a finding the
+ * result is `passed`, or `safety_only` for a scenario without a control.
+ *
+ * Invalid options (an unknown scenario, a malformed `runId`, a missing or
+ * mismatched `width`, a clock outside integer milliseconds 0 to the end of the
+ * year 9999, a malformed outcome driver) reject with a `TypeError` starting
  * `storefront_scenario_unknown` or `storefront_run_input_invalid`, and nothing
- * is driven, as does a malformed scenario object. An arrangement that fails
- * under the control is the control's effect: the remaining steps are skipped
- * and the settle window still samples the page. Anchors and the ledger are
- * sampled after each step settles and in the settle window, so a state shown
- * only inside a step is not seen. A fault's text keeps its code and first
- * sentence with every URL replaced. The clean and control runs share the page
- * and its browser storage.
+ * is driven, as does a malformed scenario object; a `stopAt` that is not
+ * `checkout.<state>` for a state the scenario expects rejects
+ * `storefront_stop_state_unknown`. With `stopAt` the runner runs the clean
+ * steps until that state is visible, removes its interceptor and leaves the
+ * page there: no control run and no verdict; a state not reached rejects
+ * `storefront_stop_state_unreached` naming the last step, as does a scenario
+ * that is not admitted, before any call. An arrangement that
+ * fails under a control is the control's effect: the remaining steps are
+ * skipped and the settle window still samples the page. Anchors and the ledger
+ * are sampled after each step settles and in the settle window, so a state
+ * shown only inside a step is not seen. A fault's text keeps its code and
+ * first sentence with every URL replaced. The clean and control runs share the
+ * page and its browser storage.
  *
  * @experimental
  */
-export declare function runStorefrontScenario(options: StorefrontRunOptions): Promise<{
-    kind: "verdict";
-    verdict: StorefrontVerdict;
-}>;
+export declare function runStorefrontScenario(options: StorefrontRunOptions): Promise<StorefrontRunResult>;
 export {};
 ```
 ## dist/storefront/testing/scenarios.d.ts
@@ -482,6 +523,30 @@ import type { StorefrontScenario } from "./contracts.js";
  *   request is answered. At most one payable order, one order holding stock,
  *   one payment attempt and one capture; no progress is judged and there is no
  *   control run, so a clean run ends `safety_only`.
+ * - `lost_response_edited_payload`: as `lost_response_reload`, but the buyer
+ *   changes the first name before placing the order again. Progress follows the
+ *   proof file's `changedPayloadPolicy`: `update_in_place` shows
+ *   `awaiting_payment` offering `continue_payment`, `refuse_changed` (also when
+ *   absent or unknown) shows `details_changed` offering `continue_payment` and
+ *   `start_over`. The `other_policy` control runs the steps again and must not
+ *   show the other policy's progress.
+ * - `reload_pending_attempt`: a payment attempt left pending is reloaded, then
+ *   settled. No new payment attempt from the reload on and at most one capture;
+ *   progress is `paid`; the control blocks status reads and creates from the
+ *   reload on, keeps the outcomes and must keep `paid` from being shown (it may
+ *   still show `awaiting_authority`). Requires the `pending` and
+ *   `settled_after_pending` outcomes.
+ * - `decline_retry`: a declined payment is retried and settled. At most one
+ *   payable order, attempts never more than declines plus one, at most one
+ *   capture; progress is `paid`; the `omit_action` control omits
+ *   `retry_payment`, skips the outcomes after it and must keep `paid` from
+ *   being shown. Requires the `declined` and `settled` outcomes.
+ * - `paid_pending_activation`: a subscription's payment settles while its
+ *   activation stays pending. From the outcome on, `awaiting_payment`,
+ *   `declined` and `paid` must not be shown, and at most one capture; progress
+ *   is `paid_pending_activation`; the control blocks status reads and creates
+ *   from the outcome on, keeps the outcomes and must keep that state from being
+ *   shown. Requires the `activation_pending` outcome.
  *
  * @experimental
  */
