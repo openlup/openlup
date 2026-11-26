@@ -176,6 +176,8 @@ const contactOrders = async (email: string) => (await owner!.query<{ id: string 
   JOIN public.clients c ON c.id=o.client_id WHERE c.email=$1`, [email])).rows.map(row => row.id);
 const heldFor = async (orders: string[]) => Number((await owner!.query(`SELECT count(*) AS n FROM public.fulfillment_inventory_reservations
   WHERE purchase_order_id = ANY($1::uuid[]) AND status='held'`, [orders])).rows[0].n);
+const orderStatus = async (orderRef: unknown) => (await owner!.query<{ status: string }>(
+  'SELECT status FROM public.commerce_orders WHERE id=$1', [orderRef])).rows[0]?.status;
 const address = (label: string) => `continuation-${label}-${randomUUID().slice(0, 8)}@example.test`;
 
 describe('the witness host binding', () => {
@@ -292,9 +294,12 @@ describe('purchase continuation over the neutral starter', () => {
     const p = purchase({ requestTimeoutMs: starterRequestTimeoutMs });
     const email = address('refused');
     const corrected = await reviewed(email);
-    expect((await p.c.submit({ payload: { ...corrected, email: 'not-an-address' } })).snapshot)
-      .toMatchObject({ status: 'refused', outcome: 'refused' });
-    expect((await p.c.submit({ payload: corrected })).snapshot).toMatchObject({ status: 'awaiting_payment', source: 'submit' });
+    const invalid = await p.c.submit({ payload: { ...corrected, email: 'not-an-address' } });
+    const resent = await p.c.submit({ payload: corrected });
+    // The corrected submit's status first: a refusal the classifier does not recognise leaves it details_changed.
+    expect(resent.snapshot.status).toBe('awaiting_payment');
+    expect(resent.snapshot.source).toBe('submit');
+    expect(invalid.snapshot).toMatchObject({ status: 'refused', outcome: 'refused' });
     expect(p.keys.size).toBe(1);
     expect(p.operations.filter(operation => operation === 'checkout.create')).toHaveLength(2);
     expect(await contactOrders(email)).toHaveLength(1);
@@ -336,5 +341,35 @@ describe('purchase continuation over the neutral starter', () => {
     const orders = await contactOrders(email);
     expect(orders).toEqual([valueOf(snapshot.result).orderRef]);
     expect(await heldFor(orders)).toBe(1);
+  }, 60_000);
+
+  it('E7 startOver of an unpaid order without an attempt: abandoned, record cleared, the next submit is a new order', async () => {
+    const p = purchase({ requestTimeoutMs: starterRequestTimeoutMs });
+    const email = address('start-over');
+    const payload = await reviewed(email);
+    await p.c.submit({ payload });
+    const first = valueOf(p.c.getSnapshot().result).orderRef;
+    expect((await p.c.startOver()).snapshot).toMatchObject({ status: 'idle', hasContinuation: false, result: null });
+    expect(p.stored()).toBeNull();
+    expect(await orderStatus(first)).toBe('cancelled');
+    expect((await p.c.submit({ payload })).snapshot.status).toBe('awaiting_payment');
+    expect(p.keys.size).toBe(2);
+    const orders = await contactOrders(email);
+    expect(orders).toHaveLength(2);
+    expect(await orderStatus(orders.find(order => order !== first)!)).toBe('pending_payment');
+  }, 60_000);
+
+  it('E8 startOver after a payment attempt: not abandonable, record and status kept', async () => {
+    const p = purchase({ requestTimeoutMs: starterRequestTimeoutMs });
+    await p.c.submit({ payload: await reviewed(address('attempted')) });
+    const created = valueOf(p.c.getSnapshot().result);
+    expect((await action('payment.simulate', { orderRef: created.orderRef, token: created.token, outcome: 'refused' })).ok).toBe(true);
+    const record = p.stored();
+    const before = p.operations.length;
+    const { snapshot } = await p.c.startOver();
+    expect(p.operations.slice(before)).toEqual(['checkout.continuation']);
+    expect(snapshot).toMatchObject({ status: 'awaiting_payment', hasContinuation: true, error: undefined });
+    expect(p.stored()).toEqual(record);
+    expect(await orderStatus(String(created.orderRef))).toBe('pending_payment');
   }, 60_000);
 });
