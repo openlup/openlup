@@ -10,6 +10,11 @@ in the source repository.
 
 ## [Unreleased]
 
+- Use one native decision routine for proposed publication price checks, issuance
+  and locked readback. The migration owner can run advisory assessment.
+  The locked reader remains dormant. Prepare integration and runtime grants are
+  deferred to the paired publication change.
+
 ## [1.3.0]
 
 - Publishable on the npm `latest` dist-tag as `1.3.0`, from tag

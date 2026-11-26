@@ -9725,23 +9725,35 @@
             "searchPath": "pg_catalog, pg_temp"
           },
           {
-            "signature": "public.catalog_publication_price_operations_v2(jsonb,uuid,boolean)",
+            "signature": "public.catalog_publication_price_operations_v2(jsonb)",
             "searchPath": "pg_catalog, pg_temp"
           },
           {
-            "signature": "public.catalog_publication_price_modes_v2(jsonb,uuid,jsonb,jsonb)",
+            "signature": "public.catalog_publication_price_revision_facts_v2(uuid,jsonb)",
             "searchPath": "pg_catalog, pg_temp"
           },
           {
-            "signature": "public.catalog_publication_assert_price_receipt_v2(jsonb,jsonb,jsonb,uuid,text[],text)",
+            "signature": "public.catalog_publication_price_tax_class_v2(jsonb,jsonb,boolean)",
             "searchPath": "pg_catalog, pg_temp"
           },
           {
-            "signature": "public.catalog_publication_completed_price_receipt_v2(jsonb,uuid)",
+            "signature": "public.catalog_publication_lock_price_plan_v2(jsonb,jsonb,jsonb)",
             "searchPath": "pg_catalog, pg_temp"
           },
           {
-            "signature": "public.catalog_publication_lock_tax_class_v2(jsonb)",
+            "signature": "public.catalog_publication_price_receipt_facts_v2(public.catalog_price_setup_receipts,jsonb,jsonb,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_decide_prices_v2(jsonb,jsonb,jsonb,jsonb,jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_assess_prices_v2(jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_write_price_v2(jsonb,jsonb,uuid,uuid,timestamptz)",
             "searchPath": "pg_catalog, pg_temp"
           }
         ],
@@ -14093,7 +14105,7 @@
     },
     {
       "path": "db/platform/migrations/20261129130003_catalog_price_publication_recorder_v2.sql",
-      "sha256": "e0ede0b3e8414dd223966c3ab6a05ed719a16462a1f6936b07f5bd44b9f83ce9",
+      "sha256": "f63e895c53575ed8e352f76630f62578765520b78526b50d439e456fdad32804",
       "functions": [
         {
           "signature": "public.catalog_price_setup_apply_claimed(jsonb,timestamptz)",
@@ -14103,7 +14115,7 @@
         {
           "signature": "public.catalog_publication_record_command(jsonb)",
           "beforeSha256": "f7a3fb546da2d7a330a21c90f883d140b12699737f650a9dee60343d724bf909",
-          "afterSha256": "a4ea57baf50cd1303f2ab4cdcf6051b5ca64ce663789c4a7d7e7d9bcaa16ba25"
+          "afterSha256": "07bdb041f6b6ba07425a33264ed69eb9f773bfb5b62c246fe36eae73f4c5f20c"
         },
         {
           "signature": "public.catalog_price_setup_mutate_claimed(jsonb,timestamptz,jsonb)",
@@ -14113,32 +14125,47 @@
         {
           "signature": "public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid)",
           "beforeSha256": null,
-          "afterSha256": "3c9ef059127662683a1bce029f903334677c68816a38b93a9cd98f83f457df85"
+          "afterSha256": "34e1142821e7b58a2e58369d14eee821889f9889212cc3bf5e0ad23078c74114"
         },
         {
-          "signature": "public.catalog_publication_price_operations_v2(jsonb,uuid,boolean)",
+          "signature": "public.catalog_publication_price_operations_v2(jsonb)",
           "beforeSha256": null,
-          "afterSha256": "25dc5c995c3f6bd88dfc4dceb850b6d7e2b36374469fe327cd0e8697d0893aa6"
+          "afterSha256": "29c0b7dfee4a374fb378c79c49a4b0bd646e854a8d849e2c63710e5911dc8d72"
         },
         {
-          "signature": "public.catalog_publication_price_modes_v2(jsonb,uuid,jsonb,jsonb)",
+          "signature": "public.catalog_publication_price_revision_facts_v2(uuid,jsonb)",
           "beforeSha256": null,
-          "afterSha256": "5b4f163c4f609ddb8f87d7f6c0890fdadf276c125fc26d656e8b7af0ea9b59a3"
+          "afterSha256": "3b0ecf30775f14d01c7cd188bd4eb52d03c9a2ad5896c79df2d54f8df53f0962"
         },
         {
-          "signature": "public.catalog_publication_assert_price_receipt_v2(jsonb,jsonb,jsonb,uuid,text[],text)",
+          "signature": "public.catalog_publication_price_tax_class_v2(jsonb,jsonb,boolean)",
           "beforeSha256": null,
-          "afterSha256": "88842cd0dfc4a8eb8da8426049072b17a1c3a75c1a342aabf7ee2815835c7406"
+          "afterSha256": "e9774a4766239c498363ebd2837e061234f039c7d5be0f19e2c3f1422c881d39"
         },
         {
-          "signature": "public.catalog_publication_completed_price_receipt_v2(jsonb,uuid)",
+          "signature": "public.catalog_publication_lock_price_plan_v2(jsonb,jsonb,jsonb)",
           "beforeSha256": null,
-          "afterSha256": "8061bf2ad98dff64dd47c6bf97b71ce7e5869f79a76a34a7db99e6b9ba16ab4d"
+          "afterSha256": "443e3790d4e549b306cdfde666f805753c71d12d4e70e46557684d1cedad8309"
         },
         {
-          "signature": "public.catalog_publication_lock_tax_class_v2(jsonb)",
+          "signature": "public.catalog_publication_price_receipt_facts_v2(public.catalog_price_setup_receipts,jsonb,jsonb,uuid)",
           "beforeSha256": null,
-          "afterSha256": "9235e27cc83c53bde292560b0c4ffddd783fb56a0cc70251991ba503b0f35d70"
+          "afterSha256": "03c34ff4768603f0a9e45d4b6bfa54069d4a57e40c1e7030dbbf605da5a0aaec"
+        },
+        {
+          "signature": "public.catalog_publication_decide_prices_v2(jsonb,jsonb,jsonb,jsonb,jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "c34105eeadd9f0845448767f98f52090bc7cda1ff0d17bd89753d363bbd7d08f"
+        },
+        {
+          "signature": "public.catalog_publication_assess_prices_v2(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "9865964de1bcaad537ad13b2988024e5eecb5ea578200696661b5bc3d0506ff4"
+        },
+        {
+          "signature": "public.catalog_publication_write_price_v2(jsonb,jsonb,uuid,uuid,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "e16602625eb108fb382a5d5ae10fa1be4299619b9ca6cacf8cc969ab12b3e762"
         }
       ]
     }

@@ -11,9 +11,9 @@ import { definitionPath, definitionPin, definitionSlot, definitionSql, grantPath
 import { nativeStoreRevokePublicMessages } from "./reviewed-platform-forward.ts";
 import { renderCheckoutOwnerGrant, renderNativeStoreSettingsOwnerWindow, NATIVE_SUCCESSOR_TABLE_SQL, NATIVE_CATALOG_CONTROLS, isNativeStoreMigrationPath, assertCoLocatedForwardApproval, assertNativeStoreForward, assertReviewedPlatformForward, assertSecurityDefinerSearchPath, assertUnchangedForwardApproval, expectedReplacedFunctionAttrs, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, reviewedFunctionDefinitions, renderQualifiedSecurityDefiner, qualifiedCatalogueStorageSelectSql, sqlStatements, isExpandOnlyPlatformForward, changedForwardApprovals, readReviewedForwardRegistry, sqlSha256, type NativeStoreForwardClass, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
 
-it("keeps the dormant locked price reader out of package and host code", () => {
-  const reader = "catalog_publication_lock_effective_base_price_v2";
-  const result = spawnSync("git", ["grep", "--ignore-case", "--files-with-matches", "-e", reader, "--",
+it("keeps dormant publication pricing out of package and host code", () => {
+  const result = spawnSync("git", ["grep", "--ignore-case", "--files-with-matches", "-e", "catalog_publication_lock_effective_base_price_v2", "-e", "catalog_publication_assess_prices_v2",
+    "-e", "assess_price_v2", "--",
     ...["api", "examples", "mcp", "packages", "server", "src"].flatMap(root =>
       ["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"].map(ext => `:(glob)${root}/**/*.${ext}`)),
   ], { encoding: "utf8" });

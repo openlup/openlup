@@ -21,11 +21,15 @@ const applyV2 = "public.catalog_price_setup_apply_v2(text,text,uuid)";
 const lockedV2 = "public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid)";
 const recorder = "public.catalog_publication_record_command(jsonb)";
 const mutation = "public.catalog_price_setup_mutate_claimed(jsonb,timestamptz,jsonb)";
-const verifyReceipt = "public.catalog_publication_assert_price_receipt_v2(jsonb,jsonb,jsonb,uuid,text[],text)";
-const priceOperations = "public.catalog_publication_price_operations_v2(jsonb,uuid,boolean)";
-const priceModes = "public.catalog_publication_price_modes_v2(jsonb,uuid,jsonb,jsonb)";
-const receiptIdentity = "public.catalog_publication_completed_price_receipt_v2(jsonb,uuid)";
-const taxClassLock = "public.catalog_publication_lock_tax_class_v2(jsonb)";
+const decision = "public.catalog_publication_decide_prices_v2(jsonb,jsonb,jsonb,jsonb,jsonb,timestamptz)";
+const assessment = "public.catalog_publication_assess_prices_v2(jsonb)";
+const privateRoutines = [mutation, lockedV2, decision, assessment,
+  "public.catalog_publication_price_operations_v2(jsonb)",
+  "public.catalog_publication_price_revision_facts_v2(uuid,jsonb)",
+  "public.catalog_publication_price_tax_class_v2(jsonb,jsonb,boolean)",
+  "public.catalog_publication_lock_price_plan_v2(jsonb,jsonb,jsonb)",
+  "public.catalog_publication_price_receipt_facts_v2(public.catalog_price_setup_receipts,jsonb,jsonb,uuid)",
+  "public.catalog_publication_write_price_v2(jsonb,jsonb,uuid,uuid,timestamptz)"];
 const replaced = [recorder, "public.catalog_price_setup_apply_claimed(jsonb,timestamptz)"];
 const refusal = '{"reason": "command_invalid", "outcome": "validation_issue"}';
 const before = () => {
@@ -42,7 +46,7 @@ const before = () => {
 
 async function routineAttributes(db: Pool, signatures: string[]) {
   return (await db.query(`SELECT name, p.proowner::regrole::text AS owner, p.prosecdef AS definer,
-    p.proconfig AS settings, p.proacl::text AS acl
+    p.proconfig AS settings, p.proacl::text AS acl, p.provolatile AS volatility
     FROM unnest($1::text[]) WITH ORDINALITY AS lookup(name,n)
     JOIN pg_catalog.pg_proc p ON p.oid=to_regprocedure(name) ORDER BY n`, [signatures])).rows;
 }
@@ -72,17 +76,17 @@ async function assertDormant(store: AccountMutationsStore) {
     has_function_privilege('openlup_catalog_publication',to_regprocedure($2),'EXECUTE') AS second_execute`, [applyV2, lockedV2])).rows[0];
   expect(facts).toEqual({ basis: installation.generation === "qualified-v2", write_basis: false, delegation: false,
     other_column: false, whole_table: false, first_execute: false, second_execute: false });
-  const [entry, gate, valid, record, reader, mutate, verify, operations, modes, identity, taxLock] = await routineAttributes(owner,
-    [apply, basisGate, validator, recorder, lockedV2, mutation, verifyReceipt, priceOperations, priceModes, receiptIdentity, taxClassLock]);
+  const [entry, gate, valid, record, ...routines] = await routineAttributes(owner, [apply, basisGate, validator, recorder, ...privateRoutines]);
   expect(record).toMatchObject({ owner: entry.owner, definer: installation.generation === "qualified-v2",
     settings: ["search_path=pg_catalog, public, pg_temp"] });
-  expect(reader).toMatchObject({ owner: entry.owner, definer: true, settings: ["search_path=pg_catalog, pg_temp"] });
-  expect((await owner.query(`SELECT a.grantee FROM pg_proc p CROSS JOIN LATERAL aclexplode(p.proacl) a
-    WHERE p.oid=to_regprocedure($1) AND a.grantee<>p.proowner`, [lockedV2])).rows).toEqual([]);
-  expect(mutate).toMatchObject({ owner: entry.owner, definer: false, settings: ["search_path=pg_catalog, pg_temp"] });
-  for (const helper of [gate, valid, verify, operations, modes, identity, taxLock]) expect(helper).toMatchObject({
-    owner: entry.owner, definer: false, settings: ["search_path=pg_catalog, pg_temp"],
+  expect(routines).toHaveLength(privateRoutines.length);
+  for (const helper of [gate, valid, ...routines]) expect(helper).toMatchObject({
+    owner: entry.owner, definer: helper.name === lockedV2, settings: ["search_path=pg_catalog, pg_temp"],
   });
+  expect(routines.find(routine => routine.name === decision)).toMatchObject({ volatility: "v" });
+  expect((await owner.query(`SELECT a.grantee FROM pg_proc p
+    CROSS JOIN LATERAL aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
+    WHERE p.oid IN (SELECT to_regprocedure(name) FROM unnest($1::text[]) name) AND a.grantee<>p.proowner`, [privateRoutines])).rows).toEqual([]);
   const { rows: [{ present: hasServiceRole }] } = await owner.query(
     "SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') AS present");
   if (installation.generation !== "legacy") expect(hasServiceRole).toBe(true);
@@ -189,6 +193,11 @@ it("replays populated v1 receipts byte for byte through runtime logins after the
       await owner.query("UPDATE public.price_lists SET amount_basis='tax_exclusive' WHERE id=$1", [priceListId]);
       expect(await rawPrice()).toEqual(originalPriceReplay);
       expect(await readPublication()).toEqual(originalPublication);
+      for (const [routine, query] of [
+        ["catalog_publication_decide_prices_v2", "SELECT public.catalog_publication_decide_prices_v2(NULL,NULL,NULL,NULL,NULL,NULL)"],
+        ["catalog_publication_assess_prices_v2", "SELECT public.catalog_publication_assess_prices_v2(NULL)"],
+        ["catalog_publication_lock_effective_base_price_v2", "SELECT * FROM public.catalog_publication_lock_effective_base_price_v2(NULL,NULL,NULL)"],
+      ]) await expect(publisher.query(query!)).rejects.toMatchObject({ code: "42501", message: `permission denied for function ${routine}` });
       expect((await owner.query("SELECT count(*)::int AS prices FROM public.price_entries WHERE variant_id=$1", [issue.skuId])).rows)
         .toEqual([{ prices: 1 }]);
     } finally {
@@ -216,9 +225,63 @@ it("denies direct calls to the dormant locked price reader on a fresh qualified-
   } finally { await store.close(); }
 }, postgresSetupTimeoutMs);
 
+it("uses one installed builder and refusal selector across the publication price call graph", async () => {
+  const store = await installAccountMutations("bootstrap", false, "price-decision-structure");
+  try {
+    const { rows } = await store.owner.query<{ name: string; definition: string }>(`SELECT p.proname AS name, pg_get_functiondef(p.oid) AS definition
+      FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.prokind IN ('f','p')`);
+    const definitions = new Map(rows.map(({ name, definition }) => [name, definition]));
+    const owner = "catalog_publication_decide_prices_v2";
+    const landed = "catalog_publication_target_price_verdict";
+    const evidence = "catalog_publication_price_receipt_facts_v2";
+    const adapters = ["catalog_publication_record_command", "catalog_publication_lock_effective_base_price_v2", "catalog_publication_assess_prices_v2"];
+    const knownBoundaries = new Set(["catalog_publication_assert_head", "catalog_publication_assert_receipt", "catalog_publication_assert_issued",
+      "catalog_publication_assert_candidate", "catalog_publication_head_ref", "catalog_publication_candidate_source", "catalog_publication_manifest_text",
+      "catalog_publication_read_sku_revision", "catalog_publication_sku_projection", "catalog_publication_canonical", "catalog_publication_lock_projection",
+      "catalog_lifecycle_assert_archive", "catalog_price_setup_lock_context", "catalog_price_setup_require_human_admin", "catalog_price_setup_claim",
+      "catalog_price_setup_v2_command_valid", "catalog_price_basis_gate", "commerce_offer_policy_v2_readiness"]);
+    const review = (source: Map<string, string>) => {
+      const visited = new Set<string>();
+      const walk = (name: string) => {
+        if (visited.has(name) || knownBoundaries.has(name) || name === landed) return;
+        visited.add(name);
+        const body = source.get(name)!.split(/\$function\$/u)[1]!.replace(/--[^\n]*/gu, "");
+        if (name === owner) {
+          expect(body.match(/WITH next_skus AS/gu)).toHaveLength(1);
+          expect(body.match(/catalog_publication_target_price_verdict\(/gu)).toHaveLength(1);
+          expect(body.match(/ERRCODE=state/gu)).toHaveLength(1);
+        } else {
+          expect(body).not.toMatch(/needsFresh|requiredModes|requestedModes|offerMemberships|['"]memberships['"]|sellable(?:Standalone|InSubscription)|catalog_publication_target_price_verdict|catalog_publication_price_(?:edit_required|context_mismatch|changed)|\b(?:reason|refusal)\s*(?::=|=)|jsonb_set\(/iu);
+          for (const statement of body.split(/;|\bLOOP\b/iu)) {
+            expect(statement).not.toMatch(/jsonb_array_elements\(plan\).*\b(?:WHERE|FILTER)\b.*\b(?:t|target)\s*(?:->|#>)/isu);
+          }
+          if (name !== evidence) expect(body).not.toMatch(/response_payload\s*->/iu);
+        }
+        for (const match of body.matchAll(/public\.(\w+)\s*\(/gu)) {
+          if (source.has(match[1]!)) walk(match[1]!);
+        }
+      };
+      for (const entry of adapters) {
+        visited.clear();
+        walk(entry);
+        expect(visited.has(owner)).toBe(true);
+        expect(visited.has(evidence)).toBe(true);
+      }
+    };
+    review(definitions);
+    for (const mutation of ["PERFORM authored->'offerMemberships';", "SELECT t FROM jsonb_array_elements(plan) t WHERE t->>'skuId' IS NOT NULL;",
+      "reason := 'catalog_publication_price_changed';"]) {
+      const mutated = new Map(definitions);
+      const entry = adapters[1]!;
+      mutated.set(entry, definitions.get(entry)!.replace("BEGIN", `BEGIN ${mutation}`));
+      expect(() => review(mutated)).toThrow();
+    }
+  } finally { await store.close(); }
+}, postgresSetupTimeoutMs);
+
 it("revokes browser default EXECUTE on the installed private price routines", async () => {
-  const store = await installAccountMutations("bootstrap", false, "price-recorder-acl");
-  const signatures = [mutation, lockedV2, verifyReceipt, priceOperations, priceModes, receiptIdentity, taxClassLock];
+  const store = await installAccountMutations("bootstrap", false, "price-recorder-acl", undefined, undefined, { isolatedCluster: true });
+  const signatures = privateRoutines;
   try {
     const forward = current().forward.find(unit => recorderForward.test(unit.file))!;
     const db = await store.owner.connect();
@@ -247,7 +310,7 @@ it("finds no native v2 writer or gate on the managed rail", async () => {
         await db.query(readFileSync(`supabase/migrations/${file}`, "utf8").replace(/^\\(?:un)?restrict .*$/gmu,""));
       }
       expect(await routineAttributes(owner,
-        [apply, applyV2, lockedV2, mutation, verifyReceipt, priceOperations, priceModes, receiptIdentity, taxClassLock, recorder, basisGate, validator])).toEqual([]);
+        [apply, applyV2, ...privateRoutines, recorder, basisGate, validator])).toEqual([]);
       expect((await db.query("SELECT to_regclass('public.catalog_price_setup_receipts') AS receipts")).rows).toEqual([{ receipts: null }]);
     } finally { db.release(); }
   } finally { await closePostgres(managed, owner); }
