@@ -578,7 +578,7 @@ describe("paid with activation pending: the forbidden-state matrix (R27)", () =>
   // expected one. Awaiting states stay allowed in the control run.
   // The state the control negates is not in the control list: a page that shows it is judged vacuous, as in every other
   // block_read scenario, because the runner cannot tell a guess from a page that learned it over an unmatched request.
-  const rows: readonly (readonly [string, StoreDoubleSwitches, "passed" | "failed" | "vacuous", readonly [string, number, CauseOf<"forbidden_state_shown"> | "vacuous_progress", string] | null])[] = [
+  const rows: readonly (readonly [string, StoreDoubleSwitches, "passed" | "failed" | "vacuous", readonly [run: string, step: number, causeOrCode: CauseOf<"forbidden_state_shown"> | "vacuous_progress", state: string] | null])[] = [
     ["a correct store", {}, "passed", null],
     ["an honest polling store (awaiting_payment until its poll answers; the control run keeps it)", { slowPoll: true, awaitingPaymentUntilPoll: true }, "passed", null],
     ["a control run that falls back to awaiting_payment when its read fails", { awaitingPaymentWhenReadFails: true }, "passed", null],

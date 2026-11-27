@@ -65,8 +65,8 @@ export const storefrontCapabilities: readonly StorefrontCapability[] = Object.fr
   }),
   entry({
     id: "embedded_card_element",
-    level: UNSUPPORTED, meanwhile: "Take card details on a payment page the provider hosts, through a redirect handoff.",
-    statement: "The checkout embeds a provider's card entry element",
+    level: UNSUPPORTED, meanwhile: "Mount the provider's card element in the store's own page and confirm the client-confirmed handoff with it.",
+    statement: "The package supplies the card entry element the checkout embeds",
     closedBy: "provider_module",
     appliesTo: { id: "takes_cards", text: "Stores that take cards" },
   }),
@@ -80,13 +80,13 @@ export const storefrontCapabilities: readonly StorefrontCapability[] = Object.fr
   entry({
     id: "destination_tax_at_checkout",
     level: UNSUPPORTED, meanwhile: "Sell at tax-inclusive prices, which the checkout quote already taxes.",
-    statement: "Checkout adds tax calculated for the buyer's destination to tax-exclusive prices",
+    statement: "Checkout issues orders with tax calculated for the buyer's destination on tax-exclusive prices",
     closedBy: "platform",
     appliesTo: { id: "adds_tax_at_checkout", text: "Stores that sell at tax-exclusive prices and add tax at checkout" },
   }),
   entry({
     id: "address_region",
-    level: UNSUPPORTED, meanwhile: "Collect the region in a field of the store's own, outside the storefront's anchored fields.",
+    level: UNSUPPORTED, meanwhile: "Collect the region in a field of the store's own and send it as the subdivision of the experimental destination address.",
     statement: "The storefront's buyer fields include an address region",
     closedBy: "platform",
     appliesTo: { id: "addresses_need_region", text: "Stores whose addresses need a region" },
