@@ -9406,6 +9406,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/catalog/catalogReadsBatching.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/catalog/fixtures/categoryDocument.ts",
       "class": "public-output"
     },
