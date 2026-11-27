@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createCommunicationPreferenceToken,
   verifyCommunicationPreferenceToken,
-} from "./preferencesToken.js";
+} from "@openlup/platform/communications";
 
 describe("communication preference token", () => {
   it("round-trips purpose-scoped self-service tokens", () => {

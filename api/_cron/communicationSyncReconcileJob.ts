@@ -4,7 +4,7 @@ import {
   readSupabaseDataGatewayEnv,
   type SupabaseDataGatewayEnv,
 } from "../../server/adapters/supabase/dataGatewayClientFactory.js";
-import { runCommunicationSyncReconcile } from "../../server/domains/communications/communicationSyncWorker.js";
+import { runCommunicationSyncReconcile } from "@openlup/platform/communications";
 import { createNewsletterSyncProviderRegistry } from "../../server/runtime/communications/newsletterProviderRegistry.js";
 import type { DataGatewayPort } from "../../src/domains/platform-runtime/ports.js";
 import { claimJobRun, finishJobRun } from "./platformJobRunner.js";
