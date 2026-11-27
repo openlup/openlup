@@ -202,20 +202,29 @@ export type StorefrontObserver = {
  *   with `storefront_page_settle_timeout` naming each unfinished request's
  *   method and path: an open stream (`EventSource`), a long poll or a request
  *   in flight when the page closed keeps it pending until that bound.
- * - `clearClientState()` leaves the page with no cookies, local storage or
- *   session storage of the store's origin, as for a new buyer; it sends no
- *   request and never navigates. The runner calls it before each run, so the
- *   control run's buyer never meets the clean run's state. It is optional so
- *   that a hand-built handle written before it still compiles, but a handle
- *   without it cannot isolate the two buyers: every admitted scenario with a
- *   control run then ends `not_run` with `client_state_unisolated`.
- *   `createPageHandle` always provides it. Stated limits: cookies are cleared
- *   for the whole browser context, harness cookies such as a preview sign-in
- *   included, so a harness that needs one sets it again in its arrangement;
- *   a page on `about:blank` cannot reach the store's earlier session storage
- *   in that tab, so a harness that leaves the store's origin between runs
- *   starts each test in a fresh browser context; Cache Storage and
- *   service-worker registrations are outside the guarantee.
+ * - `clearClientState()` clears every cookie of the browser context and the
+ *   local and session storage of the store's origin, as for a new buyer; it
+ *   sends no request and never navigates. The runner calls it before each
+ *   run, so the control run's buyer never meets the clean run's state. It is
+ *   optional so that a hand-built handle written before it still compiles,
+ *   but a handle without it cannot isolate the two buyers: every admitted
+ *   scenario with a control run then ends `not_run` with
+ *   `client_state_unisolated`. `createPageHandle` always provides it. Stated
+ *   limits:
+ *   - Cookies are cleared for the whole browser context, harness cookies such
+ *     as a preview or test-environment sign-in included: a harness that sets
+ *     one before the run sets it again in its arrangement.
+ *   - On a document with no origin, such as `about:blank`, the store's
+ *     session storage in that tab cannot be reached, nor its local storage
+ *     where the context has no `setStorageState`; the call then resolves
+ *     without clearing them. A harness that leaves the store's origin between
+ *     runs starts each test in a fresh browser context.
+ *   - A context's own reset (Playwright's `setStorageState`) also drops the
+ *     HTTP cache, virtual WebAuthn credentials and the service-worker
+ *     registrations of the origins the context visited, and fires storage
+ *     events; its IndexedDB deletion is started, not awaited.
+ *   - Cache Storage and service-worker registrations are outside the
+ *     guarantee.
  *
  * @experimental
  */

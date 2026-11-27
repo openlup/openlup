@@ -404,8 +404,12 @@ type RunRecord = {
  * Client state: the clean and control runs are two buyers on one page. Each
  * run calls `page.clearClientState()` after its ledger read (and the
  * exclusive database's count) and before its interceptor, so it starts with no
- * cookies, local storage or session storage of the store's origin; a
- * rejection is `page_failed` of that run (step `null`). A handle without the
+ * cookie of the browser context and no local or session storage of the
+ * store's origin (the limits are `PageHandle`'s); a rejection is
+ * `page_failed` of that run (step `null`), so a clean run that ends on
+ * another web origin than the store's makes `createPageHandle` refuse the
+ * control run's clear, and the result is `not_run` unless the clean run
+ * proved ledger harm first. A handle without the
  * member cannot isolate the buyers: an admitted scenario with a control run
  * then ends `not_run` with `client_state_unisolated` only, before any page,
  * observer or driver call; a `safety_only` scenario runs as before.
@@ -753,7 +757,7 @@ export async function runStorefrontScenario(options: StorefrontRunOptions): Prom
       if (counted === null) return record;
       record.databaseBefore = counted;
     }
-    // Each run starts as a new buyer: no cookies, local or session storage of the store's origin.
+    // Each run starts as a new buyer: no cookie of the browser context, no local or session storage of the store's origin.
     if (isolates) {
       try {
         await page.clearClientState!();

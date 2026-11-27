@@ -1,3 +1,3 @@
-- `@openlup/platform/storefront/testing`: the runner clears cookies, local and session storage of the store's origin before each run through `clearClientState`, which `createPageHandle` provides.
+- `@openlup/platform/storefront/testing`: before each run, `clearClientState` (from `createPageHandle`) clears every browser-context cookie and the store origin's local and session storage (not from `about:blank`; Cache Storage and service workers excluded).
 
-Migration: a page handle without `clearClientState` now ends each scenario with a control run `not_run` (`client_state_unisolated`); use `createPageHandle` or add the member. Control-scenario verdicts from earlier versions, whose handles lacked it, are not comparable: run them again.
+Migration: set harness cookies, such as a preview sign-in, in the arrangement, not before `runStorefrontScenario`. A handle without `clearClientState` ends control scenarios `not_run` (`client_state_unisolated`). No earlier control-run verdict is comparable.

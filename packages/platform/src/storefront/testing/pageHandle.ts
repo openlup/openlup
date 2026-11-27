@@ -108,18 +108,27 @@ async function appeared(locator: StructuralLocator, timeout: number): Promise<bo
  * event. `options.origin` resolves
  * relative paths for `navigate`; without it the page's own base URL does.
  *
- * `clearClientState` also reads `context()` (`setStorageState`, else
- * `clearCookies`), and runs one self-contained function over the `:root`
- * locator's `evaluateAll`. It reads the document's origin in the page first:
- * a document on another `http:` or `https:` origin than `options.origin`
- * rejects `storefront_page_client_state_foreign_origin`
- * before anything is cleared (without `options.origin`, any such origin is
- * the store's). Then `setStorageState({ cookies: [], origins: [] })` clears
- * the context's cookies, local storage and IndexedDB, or without it
+ * `clearClientState` clears every cookie of the browser context and the local
+ * and session storage of the store's origin. It also reads `context()`
+ * (`setStorageState`, else `clearCookies`) and runs one self-contained
+ * function over the `:root` locator's `evaluateAll`. It reads the document's
+ * origin in the page first: a document on another `http:` or `https:` origin
+ * than `options.origin` rejects `storefront_page_client_state_foreign_origin`
+ * before anything is cleared (without `options.origin`, any such origin is the
+ * store's). Then `setStorageState({ cookies: [], origins: [] })` clears the
+ * context's cookies, local storage and IndexedDB, or without it
  * `clearCookies()` and a local-storage clear in the page do; last, on the
  * store's origin, session storage is cleared in the page. It sends no request
  * and never navigates. A page without `context` rejects
- * `storefront_page_input_invalid`.
+ * `storefront_page_input_invalid`. Its stated limits are those of
+ * `PageHandle`'s `clearClientState`: cookies are cleared for the whole browser
+ * context, harness cookies included; on a document with no origin, such as
+ * `about:blank`, the store's session storage, and without `setStorageState`
+ * its local storage, cannot be reached and the call resolves without clearing
+ * them; the context's own reset also drops the HTTP cache, virtual WebAuthn
+ * credentials and the service-worker registrations of the origins the context
+ * visited, fires storage events and does not await its IndexedDB deletion;
+ * Cache Storage and service-worker registrations are outside the guarantee.
  *
  * `withhold` is `fetch()` then `abort()`: the request reaches the server, its
  * response is discarded and the page sees a failure. `block` is `abort()`. All

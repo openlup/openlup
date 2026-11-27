@@ -248,20 +248,29 @@ export type StorefrontObserver = {
  *   with `storefront_page_settle_timeout` naming each unfinished request's
  *   method and path: an open stream (`EventSource`), a long poll or a request
  *   in flight when the page closed keeps it pending until that bound.
- * - `clearClientState()` leaves the page with no cookies, local storage or
- *   session storage of the store's origin, as for a new buyer; it sends no
- *   request and never navigates. The runner calls it before each run, so the
- *   control run's buyer never meets the clean run's state. It is optional so
- *   that a hand-built handle written before it still compiles, but a handle
- *   without it cannot isolate the two buyers: every admitted scenario with a
- *   control run then ends `not_run` with `client_state_unisolated`.
- *   `createPageHandle` always provides it. Stated limits: cookies are cleared
- *   for the whole browser context, harness cookies such as a preview sign-in
- *   included, so a harness that needs one sets it again in its arrangement;
- *   a page on `about:blank` cannot reach the store's earlier session storage
- *   in that tab, so a harness that leaves the store's origin between runs
- *   starts each test in a fresh browser context; Cache Storage and
- *   service-worker registrations are outside the guarantee.
+ * - `clearClientState()` clears every cookie of the browser context and the
+ *   local and session storage of the store's origin, as for a new buyer; it
+ *   sends no request and never navigates. The runner calls it before each
+ *   run, so the control run's buyer never meets the clean run's state. It is
+ *   optional so that a hand-built handle written before it still compiles,
+ *   but a handle without it cannot isolate the two buyers: every admitted
+ *   scenario with a control run then ends `not_run` with
+ *   `client_state_unisolated`. `createPageHandle` always provides it. Stated
+ *   limits:
+ *   - Cookies are cleared for the whole browser context, harness cookies such
+ *     as a preview or test-environment sign-in included: a harness that sets
+ *     one before the run sets it again in its arrangement.
+ *   - On a document with no origin, such as `about:blank`, the store's
+ *     session storage in that tab cannot be reached, nor its local storage
+ *     where the context has no `setStorageState`; the call then resolves
+ *     without clearing them. A harness that leaves the store's origin between
+ *     runs starts each test in a fresh browser context.
+ *   - A context's own reset (Playwright's `setStorageState`) also drops the
+ *     HTTP cache, virtual WebAuthn credentials and the service-worker
+ *     registrations of the origins the context visited, and fires storage
+ *     events; its IndexedDB deletion is started, not awaited.
+ *   - Cache Storage and service-worker registrations are outside the
+ *     guarantee.
  *
  * @experimental
  */
@@ -387,18 +396,27 @@ type StructuralPage = {
  * event. `options.origin` resolves
  * relative paths for `navigate`; without it the page's own base URL does.
  *
- * `clearClientState` also reads `context()` (`setStorageState`, else
- * `clearCookies`), and runs one self-contained function over the `:root`
- * locator's `evaluateAll`. It reads the document's origin in the page first:
- * a document on another `http:` or `https:` origin than `options.origin`
- * rejects `storefront_page_client_state_foreign_origin`
- * before anything is cleared (without `options.origin`, any such origin is
- * the store's). Then `setStorageState({ cookies: [], origins: [] })` clears
- * the context's cookies, local storage and IndexedDB, or without it
+ * `clearClientState` clears every cookie of the browser context and the local
+ * and session storage of the store's origin. It also reads `context()`
+ * (`setStorageState`, else `clearCookies`) and runs one self-contained
+ * function over the `:root` locator's `evaluateAll`. It reads the document's
+ * origin in the page first: a document on another `http:` or `https:` origin
+ * than `options.origin` rejects `storefront_page_client_state_foreign_origin`
+ * before anything is cleared (without `options.origin`, any such origin is the
+ * store's). Then `setStorageState({ cookies: [], origins: [] })` clears the
+ * context's cookies, local storage and IndexedDB, or without it
  * `clearCookies()` and a local-storage clear in the page do; last, on the
  * store's origin, session storage is cleared in the page. It sends no request
  * and never navigates. A page without `context` rejects
- * `storefront_page_input_invalid`.
+ * `storefront_page_input_invalid`. Its stated limits are those of
+ * `PageHandle`'s `clearClientState`: cookies are cleared for the whole browser
+ * context, harness cookies included; on a document with no origin, such as
+ * `about:blank`, the store's session storage, and without `setStorageState`
+ * its local storage, cannot be reached and the call resolves without clearing
+ * them; the context's own reset also drops the HTTP cache, virtual WebAuthn
+ * credentials and the service-worker registrations of the origins the context
+ * visited, fires storage events and does not await its IndexedDB deletion;
+ * Cache Storage and service-worker registrations are outside the guarantee.
  *
  * `withhold` is `fetch()` then `abort()`: the request reaches the server, its
  * response is discarded and the page sees a failure. `block` is `abort()`. All
@@ -568,8 +586,12 @@ type StorefrontRunResult = {
  * Client state: the clean and control runs are two buyers on one page. Each
  * run calls `page.clearClientState()` after its ledger read (and the
  * exclusive database's count) and before its interceptor, so it starts with no
- * cookies, local storage or session storage of the store's origin; a
- * rejection is `page_failed` of that run (step `null`). A handle without the
+ * cookie of the browser context and no local or session storage of the
+ * store's origin (the limits are `PageHandle`'s); a rejection is
+ * `page_failed` of that run (step `null`), so a clean run that ends on
+ * another web origin than the store's makes `createPageHandle` refuse the
+ * control run's clear, and the result is `not_run` unless the clean run
+ * proved ledger harm first. A handle without the
  * member cannot isolate the buyers: an admitted scenario with a control run
  * then ends `not_run` with `client_state_unisolated` only, before any page,
  * observer or driver call; a `safety_only` scenario runs as before.

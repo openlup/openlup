@@ -882,6 +882,27 @@ describe("client state between the runs (R40–R46)", () => {
     expect(stepsOf(controlFault, "control")).toEqual([]);
   });
 
+  it("ends a safety_only run whose clear rejects as a page fault, and refuses stop-at when the clean run's clear rejects (R47)", async () => {
+    const single = storeDouble();
+    const safety = recorded(single, rejectingOn(single, 1));
+    const verdict = verdictOf(await runStorefrontScenario(options(single, "duplicate_submit", { page: safety.page, observer: safety.observer })));
+    verdicts.push({ verdict, double: single });
+    expect(verdict.result).toBe("not_run");
+    expect(codes(verdict)).toEqual(["page_failed"]);
+    expect(finding(verdict, "page_failed")).toMatchObject({ run: "clean", step: null });
+    expect(verdict.steps).toEqual([]);
+    expect(safety.log).toEqual(["ledger clean", "clearClientState"]);
+    expect(single.calls).toEqual([]);
+
+    const stop = storeDouble();
+    const stopped = recorded(stop, rejectingOn(stop, 1));
+    await expect(runStorefrontScenario({ ...options(stop, "decline_retry", { page: stopped.page, observer: stopped.observer }), stopAt: "checkout.declined" }))
+      .rejects.toThrow(/^storefront_stop_state_unreached: The clean run of decline_retry recorded no step was the last step, and state:declined was not visible after any step \(first finding: page_failed\)\. Cause: /);
+    expect(stopped.log).toEqual(["ledger clean", "clearClientState"]);
+    expect(stop.calls).toEqual([]);
+    expect(stop.produced).toEqual([]);
+  });
+
   it.each(CONTROL_SCENARIOS)("ends %s not_run with only client_state_unisolated when the handle cannot clear, calling nothing (R42, T0.4)", async (id) => {
     const double = storeDouble();
     const verdict = verdictOf(await runStorefrontScenario(options(double, id, { page: unisolated(double) })));
