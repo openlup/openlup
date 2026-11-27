@@ -1,5 +1,9 @@
-import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { createHash, randomBytes } from "node:crypto";
+import { once } from "node:events";
+import { closeSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { expect, it, vi } from "vitest";
 import { z, type ZodType } from "zod";
 import { runSettingsCommand, type SettingsAppBindings } from "../../src/operations/server/settingsCommand.js";
@@ -32,6 +36,64 @@ async function run(
   const output = write.mock.calls[0]![0];
   return { exit, output, readStdin, warnings: warn.mock.calls.flat() };
 }
+
+it("admits a private password descriptor and withholds its bytes from every result", async () => {
+  const privateValue = randomBytes(32).toString("hex");
+  const entry = new URL("../../src/operations/server/settingsCommand.ts", import.meta.url).href;
+  const program = `import { argv } from "node:process";
+    import { runSettingsCommand } from ${JSON.stringify(entry)};
+    const status = await runSettingsCommand(JSON.parse(argv[1]), {
+      write: line => process.stdout.write(line), warn: line => process.stderr.write(line),
+      readStdin: async () => { let input = ''; for await (const chunk of process.stdin) input += chunk; return input; },
+    }, { bind: async ({database}) => {
+      if (typeof database?.password !== 'function' || !/^[a-f0-9]{64}$/.test(database.password())) throw Error('binding shape');
+      return { previewers: { inventory_renewal_protection: async () => ({ effects: [], uncertainty: [] }) } };
+    }});
+    process.exitCode = status;`;
+  const connected = ["preview", key, "--value", "-", "--database-url", url, "--database-password-fd", "3", "--json"];
+  const invoke = async (argv: string[], line: Buffer | string | number | null, keepOpen = false) => {
+    const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", program, JSON.stringify(argv)],
+      { stdio: ["pipe", "pipe", "pipe", typeof line === "number" ? line : line === null ? "ignore" : "pipe"] });
+    const chunks: Buffer[] = [];
+    child.stdout.on("data", bytes => chunks.push(bytes));
+    child.stderr.on("data", bytes => chunks.push(bytes));
+    child.stdin.on("error", () => {});
+    child.stdin.end('{"revision":"descriptor-fixture","renewalProtectionDays":21}');
+    const descriptor = child.stdio[3];
+    if (line !== null && typeof line !== "number" && descriptor && "write" in descriptor) {
+      descriptor.on("error", () => {});
+      if (keepOpen) descriptor.write(line);
+      else descriptor.end(line);
+    }
+    const [exit] = await once(child, "close");
+    const output = Buffer.concat(chunks).toString();
+    expect(!output.includes(privateValue)).toBe(true);
+    return { exit, output };
+  };
+  const line = privateValue + "\n";
+  const accepted = await invoke(connected, line);
+  expect(accepted.exit).not.toBe(64);
+  expect(accepted.output).not.toContain('"path":["database-password-fd"]');
+  const directory = mkdtempSync(join(tmpdir(), "openlup-settings-descriptor-"));
+  try {
+    const path = join(directory, "fixture");
+    writeFileSync(path, line, { mode: 0o600 });
+    const file = openSync(path, "r");
+    try { expect((await invoke(connected, file)).exit).toBe(64); }
+    finally { closeSync(file); }
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+  for (const [argv, data, keepOpen] of [
+    [connected, null], [connected, ""], [connected, privateValue], [connected, line + line],
+    [connected, privateValue.repeat(65) + "\n"], [connected, Buffer.from([255, 10])], [connected, privateValue, true],
+    [[...connected, "--database-url", url], line],
+    [connected.map(arg => arg === url ? "postgresql://sample:fixture@read.invalid/shop" : arg), line],
+    [connected.map(arg => arg === "3" ? "4" : arg), line],
+    [[...connected, "--database-password-fd", "3"], line],
+    [["list", "--database-password-fd", "3", "--json"], line],
+    [["show", key, "--database-password-fd", "3", "--json"], line],
+    [["mcp", "--database-password-fd", "3"], line],
+  ] as const) expect((await invoke([...argv], data, keepOpen)).exit).toBe(64);
+}, 30_000);
 
 const document = (result: object) =>
   JSON.stringify("schemaVersion" in result ? result : { schemaVersion: 1, ...result }) + "\n";
@@ -607,6 +669,16 @@ it("shows versioned JSON help before checking required arguments", async () => {
   expect(bind).not.toHaveBeenCalled();
 });
 
+it.each(["show", "preview", "mcp"])("prints %s help before checking a reserved descriptor or binding", async command => {
+  const bind = vi.fn(), loadCheck = vi.fn();
+  const { exit, output } = await run([command, "--help", "--json", "--database-password-fd", "3"],
+    { host: { bind, loadCheck } });
+  expect(exit).toBe(0);
+  expect(JSON.parse(output).help).toContain("openlup settings");
+  expect(bind).not.toHaveBeenCalled();
+  expect(loadCheck).not.toHaveBeenCalled();
+});
+
 const checkArgs = ["check", "--app", "./app.ts", "--configuration", "sample", "--json"];
 const minimumFile = { configuration: "sample", entries: {} };
 const checks = (loadCheck: NonNullable<NonNullable<Parameters<typeof runSettingsCommand>[2]>["loadCheck"]>) =>
@@ -749,6 +821,7 @@ it("checks every packaged schema against its default and valid examples", async 
     "catalog.bundleAvailabilityPolicy",
     "checkout.resumeWindowMinutes",
     "commerce.money_limits.v2",
+    "commerce.returnReasons",
     "communications.terminalPayloadRetentionDays",
     "inventory.offerLowStockThreshold",
     key,
@@ -757,10 +830,12 @@ it("checks every packaged schema against its default and valid examples", async 
     "payment_method_expiry_warning_days",
     "payments.declineNoticeTiming",
     "promotion_claim_hold_hours",
+    "shipping.paymentMethodPreferences",
     "shipping_flat_minor",
     "subscription_edit_quote_ttl_minutes",
     "subscription_minimum_base_units",
     "subscription_sized_intro_phase",
+    "subscriptions.rescheduleTimeZone",
     "subscriptions.retrySchedule",
     "tax.coverage",
   ]);
@@ -1097,7 +1172,7 @@ async function settingsParity() {
   }
   // Current package output includes the internal number recipe and the installed payment limits entry.
   expect(createHash("sha256").update(JSON.stringify(liveBytes)).digest("hex"))
-    .toBe("922f9b61b856e80da7c0190d3a77c4b4ac35c01dba8938cadbe7e0fbbbc0bf5d");
+    .toBe("4afcfb1ff736e11516f77b785e0b6a68b27324dddc9d56a9500891c22c61d122");
   const checkKeys = liveData.entries.filter(({ kind }) => kind === "code" || kind === "installed").map(({ key }) => key);
   const representatives = bound.filter(({ args, fixture }) => fixture !== undefined &&
     (args[0] === "check" || args[1] === key || args[1] === "checkout_recovery_reminders" && args[0] === "show" ||

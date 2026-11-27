@@ -1,7 +1,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { expect } from "vitest";
 
 import { carrierLocale } from "../agent-review-landing.mjs";
@@ -21,7 +21,10 @@ export function createPreflightIntegrationFixture() {
   const run = (bin: string, ...args: string[]) => execFileSync(bin, args, options()).trim();
   const git = (...args: string[]) => run("git", ...args);
   const path = (file: string) => join(root, file);
-  const put = (file: string, bytes: string) => writeFileSync(path(file), bytes);
+  const put = (file: string, bytes: string) => {
+    mkdirSync(dirname(path(file)), { recursive: true });
+    writeFileSync(path(file), bytes);
+  };
   const get = (file: string) => readFileSync(path(file), "utf8");
   const commit = (message: string) => {
     git("add", "-A");

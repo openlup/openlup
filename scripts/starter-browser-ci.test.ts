@@ -50,6 +50,7 @@ describe('installed starter browser CI', () => {
       return args.includes('--input-type=module') && mode !== 'recovery' ? 'Portability installed canonical selected-row recovery PASS' : '';
     };
     try {
+      await writeFile(join(app, 'compose.yaml'), 'services: {}\n');
       await mkdir(join(app, 'host')); await copyFile('examples/neutral-store/host/healthcheck.ts', join(app, 'host/healthcheck.ts'));
       const work = runStarterImageCanary(app, 'retained.tar', digest, evidence, { command,
         pull: async () => imageReference(readCiImage('test-postgres')), browserImage: async () => imageReference(readCiImage('starter-browser')) });

@@ -44,7 +44,7 @@ it.each([
     if (note === 'main only') f.write(notePath, '- Document a main-side change.\n');
     const right = f.commit(); f.setMain(right); f.checkout(left);
     if (note === 'first parent') {
-      f.landingCli();
+      f.fixtureNpm('run', 'landing:merge', '--', '--no-verify');
       const landed = f.git('rev-parse', 'HEAD');
       expect(f.git('show', '-s', '--format=%P', 'HEAD')).toBe(`${left} ${right}`);
       expect(f.git('show', `HEAD:${report}`)).toContain('declare const fixtureApi = 1');
@@ -54,8 +54,8 @@ it.each([
         await captureCommittedReviewCandidate(f.root, right, landed));
       expect(integration).toMatchObject({ kind: 'derived', derived: true });
     } else {
-      const cli = spawnSync(process.execPath, [npmCli, 'run', 'landing:merge'], { cwd: f.root, env: fixtureEnvironment, encoding: 'utf8', timeout: 180000 });
-      expect(cli.status).toBe(1);
+      const cli = spawnSync(process.execPath, [npmCli, 'run', 'landing:merge', '--', '--no-verify'], { cwd: f.root, env: fixtureEnvironment, encoding: 'utf8', timeout: 240000 });
+      expect(cli.status, `landing:merge (${owner}/${note}) in ${f.root}: error=${cli.error?.message ?? 'none'}\n${cli.stderr}`).toBe(1);
       expect(cli.stderr).toContain(`landing: @openlup/${owner} API snapshots changed; add or modify ${directory}/changes/*.md or ${directory}/CHANGELOG.md on the first parent and retain it in the merge`);
       expect(cli.stderr).toContain('OPENLUP_E_LANDING_ABORTED: merge aborted; the checkout is back at HEAD');
       f.expectRestoredHead(left);
@@ -63,4 +63,4 @@ it.each([
       expect(f.git('diff', '--cached', '--name-only', '--', 'packages/core/api', 'packages/outbox/api', 'packages/platform/api')).toBe('');
     }
   } finally { f.restoreDerivedFixture(); }
-}, 180000);
+}, 240000);

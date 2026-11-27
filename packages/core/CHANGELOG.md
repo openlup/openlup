@@ -10,6 +10,656 @@ in the source repository.
 
 ## [Unreleased]
 
+## [1.4.0]
+
+- Publishable on the npm `latest` dist-tag as `1.4.0`, from tag
+  `openlup-core-v1.4.0`.
+
+- @openlup/core size growth: The packed reader guide adds the 1.4.0 upgrade guide and catalogue and checkout guidance, alongside new catalogue and commerce money contracts.
+
+### Use governed catalogue lifecycle on a new native lineage
+
+Install the complete native catalogue and compose the v4 draft handler and
+store for a new product. Withdraw through a publication to close fresh sales
+while retaining SKU facts and offer membership. Restore the product and
+explicitly restore and enable each SKU intended for fresh sales. Use
+`readbackV3` for exact governed facts and the publication receipt reader for
+the original versioned receipt. Older lineages require explicit adoption.
+
+### Declare fixed-day subscription profiles
+
+`@openlup/core/subscription` adds versioned cadence choices.
+`@openlup/core/catalog` validates profile declarations, returns field-specific
+remedies and provides canonical JSON for a SHA-256 declaration digest.
+Fixed-day declarations and their optional cap use whole days from 1 to 3660.
+
+### Record the catalogue revision accepted by commerce
+
+The experimental `@openlup/core/catalog` accepted-reference types describe
+the immutable SKU identity recorded with a purchase or subscription agreement.
+
+The catalogue extension guide and offline samples use version 3 drafts. The
+limits reference describes the starter's operator publication API, the catalogue
+tax-class check and how the Core evaluator handles stored promotion targets.
+
+Adds an experimental decimal-percent validator to the pricing entry. It shares
+the catalogue money calculator's rate grammar.
+
+- Add the experimental `planCatalogueMoneyV2` and `calculateCatalogueMoneyV2` exports to `@openlup/core/pricing` for basis-aware catalogue amounts, adjustments, delivery, fees and tax. The API documents local rounding and provider evidence. Supply provider tax states in plan order for each component and a payable that includes fees.
+
+Ships a runnable TypeScript catalogue pack and nine installed recipes for checking
+owned definitions and fixtures. The static JSON sample remains available.
+
+Migration: Follow [Convert the owned module from 1.3.0](docs/guide/upgrade/v1-4-0.md#convert-the-owned-module-from-130),
+then run the starter's `catalogue:check:source` npm script from your application
+root. Correct invalid registry definitions before starting the host. Retain the
+unit factor migration and follow the starter's installed-rules procedure if
+you opt into rule installation. The conversion requires no database upgrade.
+
+### Share original quote and order money
+
+- Use experimental `CommerceMoneyBodyV2` from `@openlup/core/pricing` for the
+  shared money facts that a quote commits and an order retains.
+
+Adds JSDoc `@deprecated` notices to legacy 1.x
+fulfillment UI label helpers (`stepLabelKey`, `timelineLabelForStep`) and the
+legacy `PaymentMethodCaptureHandoff` union, pointing adopters to their existing
+1.x replacements (`FULFILLMENT_STATUS_EFFECTS` and `toCoreCaptureHandoff` /
+`fromCoreCaptureHandoff`) ahead of 2.0.0.
+
+Migration: no runtime or type changes in 1.x. Adopters can migrate incrementally
+to `FULFILLMENT_STATUS_EFFECTS`, application-owned i18n, and
+`toCoreCaptureHandoff` / `fromCoreCaptureHandoff` before 2.0.0.
+
+### Report maturity and deprecation in `openlup-context` symbol hits
+
+- `openlup-context` export hits for a symbol now carry `maturity` (`stable`, `experimental` or `testing`) in `--json` output and in the MCP tool's structured hits, and `deprecated: true` for a symbol tagged `@deprecated`. Text output ends the hit with `; maturity <value>` and `; deprecated`.
+- A symbol tagged `@experimental` in its own declaration comment, or under a tagged re-export statement, reports `experimental`. Any other symbol reports its subpath's maturity from `release-gates.json`. A hit has no `maturity` when the declaration was not found inside the package, or when no subpath maturity is known and no `@experimental` tag applies; in either case, read the declaration.
+- The maturity reference lists, for each package, the symbols whose maturity differs from their subpath's or that are deprecated.
+
+### Expand settings guidance, qualification tests and adoption checkpoints
+
+`configure-settings.md` now defines the five qualification tests for settings,
+documents the installed-policy end-to-end flow (including accessing the
+demonstration PostgreSQL container over Compose), and provides a command/exit-code
+table. Adoption, starter customization, upgrade, configuration reference, and
+adopter-kit templates now link directly to `settings list` and `settings check`.
+This documentation change requires no installed-policy step.
+
+### Starter browser code imports platform values from browser-safe entries
+
+The starter's `client/quote-acceptance.ts` and `shared/offer-estimate.ts` now take
+`acquisitionTermsSchema` and `deriveSubscriptionUnitPrice` from
+`@openlup/platform/pricing/browser`, and `ACQUISITION_TERMS_CAPABILITY` from
+`@openlup/platform/pricing/contracts`, instead of the Node-oriented
+`@openlup/platform/pricing` entry. Behaviour is unchanged. In your own
+`client/` or `shared/` code, import runtime values only from a browser entry
+(`…/contracts`, `account-support/read-contracts`, `pricing/browser`, `commerce`,
+`marketing`, `operations`, `storefront`), use `import type` for types, and keep
+host-only modules under `host/`.
+
+Migration: Upgrade replaces pristine copies of both files. If apply reports that
+a managed file has local edits, keep your edits separately, restore the file
+from the installed starter version, rerun apply and reconcile your edits with
+the replacement. A customised copy that still imports from
+`@openlup/platform/pricing` keeps working; change those imports to the browser
+entries when convenient. This upgrade requires no installed-policy step.
+
+### Rebuild starter catalogue packs after applying managed files
+
+- The demonstration installer publishes one verified rules build per adopter pack version. Save and Prepare require that build for the exact declared type. Offline conformance keeps using owned declarations.
+  Migration: Restore required exact versions and their rules under `owned/`, follow the owned-module migration in “Consolidate starter catalogue declarations before demonstration installation”, apply managed files and run `./lifecycle up --json`. Repeat the same draft action.
+- The demonstration installer requires each pack identity to fit one UTF-8 filename, including the version and suffix. A build publication failure can follow a committed SQL transaction.
+  Migration: Check the pack filenames and the installer volume's write access. Restore matching inputs and replay to recreate a missing link. Use new pack and affected type versions for intentional changes.
+- Text `up` adds a Fix line to outer refusals and recognizes registered codes and explicit compatibility cases.
+  Migration: Keep text checks on the first line, or use `./lifecycle up --json`, `findings[].code` and the process exit status. Check the upgraded application with a missing rules bundle and a failed launcher.
+- The managed-file upgrade installs the refusal module and the lifecycle and host changes.
+  Migration: Reconcile divergent managed files against the exact predecessor and target snapshots. Keep owned bytes through apply, then rebuild and check the reported type in the operator form.
+
+### Find catalogue tasks and owned files in the starter
+
+The extracted agent guide maps catalogue tasks to application-owned inputs and
+installed recipes. Managed files point to the owned extension point. The
+extracted ownership guide lists managed JSON paths under **Managed JSON files**.
+
+Migration: Replace a pristine `AGENTS.md` with the target extraction's copy.
+For a customized guide, explicitly reconcile the catalogue task section and
+preserve local instructions. Use the target extraction for managed files.
+This change requires no startup or policy action.
+
+### Apply an authored product on the demonstration starter
+
+The starter can release a product, authorize its first gross base prices and
+activate that same product. The optional copy step publishes presentation on
+the retained product and SKU identities. Apply requires the marked demo and a
+human administrator who confirms each publication in an interactive terminal.
+
+Upgrade replaces pristine managed lifecycle, operator, installer and action
+files together and installs the starter's local media verifier. If
+`upgrade apply` reports a conflict, save local modifications, restore the predecessor files
+and run upgrade again. Reconcile your saved changes
+against the new files before startup. Partial upgrades refuse with
+`incomplete_application_upgrade`. Keep your declarations in `owned/catalogue.ts`.
+Upgrading requires no sign-in, price write or installed-policy step.
+
+### Consolidate starter catalogue declarations before demonstration installation
+
+Move any still-used declarations and fixtures from `owned/catalogue.json` to
+`catalogueConformance.packs` in `owned/catalogue.ts` and run
+the starter’s `catalogue:check:source` npm script from your application root.
+Upgrade leaves the old owned JSON bytes in place. After verifying the migration, remove a pristine copy manually and archive
+or remove a customized copy. Independent inert JSON fixtures can use
+`openlup catalogue check --packs` directly.
+
+#### Convert the owned module from 1.3.0
+
+The 1.3.0 starter exports only `catalogDraftRegistry`. Applying the upgrade
+preserves the owned TypeScript and JSON files. Before starting the demo, edit
+`owned/catalogue.ts` in your application. Keep your existing `types` array and
+its validators. Add the `CatalogPackInput` type import from
+`@openlup/platform/catalog`. Replace the single eager registry export with the
+target starter's pack declaration, `catalogueConformance` export and lazy
+registry block. Have the fixture pack use your retained `types` array. Move
+any still-used drafts into their pack entries and keep their type references.
+Run the source check and start the demo. Archive the retained JSON after
+verifying the conversion.
+
+Upgrade replaces a pristine `package.json` and removes the old
+`catalogue:check` script. For a customized manifest, use the upgrade-conflict
+workflow to reconcile the manifest, then switch local and CI calls to the
+`catalogue:check:source` npm script.
+
+Demo installation now uses each non-starter entry in declaration order. Use an
+application-owned ID and namespace, update references together, and supply and
+test `owned/catalogue-rules.cjs`. Give intentional changes to immutable pack,
+type or profile definitions new versions. Run the source check, then run
+`./lifecycle up` to rebuild the image and activate demo definition installation.
+Applying application files alone performs no catalogue installation. See the
+Platform release notes under “Handle typed catalogue definition install refusals”
+for the experimental install and binding error changes.
+
+- The starter publication guide shows where Prepare reports missing or ineffective price lists and how to correct the affected draft operation before publishing.
+
+### Publish saved catalogue drafts in the starter
+
+The demonstration installer provisions the restricted publication connection on
+`./lifecycle up`. Use the installed starter guide to approve, publish, recover
+a receipt and read exact catalogue facts. The extracted `AGENTS.md` points to
+this workflow. Use the target extraction for a pristine guide or copy the new
+catalogue pointer into a customized guide. If startup reports
+`starter_catalogue_publication_password_missing` or
+`starter_catalogue_publication_login_invalid`, rerun the demonstration installer
+and verify its private credential is mounted before serving the application.
+
+### Keep fresh governed purchases unavailable in the starter
+
+Install the complete native catalogue before starting the updated host. A
+pristine extraction includes the updated checkout and recovery bindings. In
+a customized extraction, preserve local policy and apply the host binding
+changes together. Checkout authenticates the original request before reusing a
+draft. Recovery verifies the original lineage, draft receipt and payment
+receipt before offering a replacement. An eligible tokenless legacy checkout
+can still be recreated.
+
+The experimental catalogue acceptance type can carry private owner evidence.
+Historical acceptance without that evidence remains readable.
+
+### Change a live base price in the demonstration starter
+
+After Activation, an active administrator can edit `basePrices` in
+`owned/catalogue.ts` and run the starter's `catalogue:apply` script with
+`--reprice`.
+Approval covers gross base amounts. Each receipt reports the effective
+subscription figure and policy revision after the write. Default apply verifies
+the publication receipts and live prices after Activation.
+
+Upgrade replaces the pristine managed lifecycle, refusal and operator files
+together. If upgrade reports a conflict, save your changes, restore the
+predecessor files, apply the upgrade and reconcile your changes with the updated
+files before startup. If a starter command refuses after applying only some
+managed changes, compare the managed files with the target upgrade and complete
+the upgrade before retrying. Keep declarations in `owned/catalogue.ts`.
+The upgrade requires no price write or installed policy step.
+
+### The starter's checkout transport and bookkeeping move to `shared/`
+
+The neutral starter gains `shared/storefront-bindings.ts`, which binds
+`createPurchaseContinuation` from `@openlup/platform/storefront` to the
+starter's checkout actions. It keeps the existing tab record
+(`neutral-store:checkout-continuation:v1:<configuration>`), uses the stored
+continuation value as the `checkout.create` key, and classifies the starter's
+answers. A record written by an earlier starter page is reused: call
+`adoptFingerprint` before the first submit and the purchase continues under
+the same key. The action transport `act` and `uncertainAction` move from
+`client/api.ts` to `shared/transport.ts`; `client/api.ts` re-exports both, and
+`act` takes an optional request deadline. The checkout page's create
+bookkeeping moves into the new module. A store-owned client can import both
+modules instead of rewriting the wire. The bindings send a create only after
+its dispatch time reads back from the record, and their finality rule assumes
+per-tab storage (`sessionStorage`) and the shared `act`'s request timeout.
+
+The managed pages are unchanged, with one correction: "no order under this
+key" now counts as final strictly after the request timeout plus the late-create
+bound, 1 ms later than before, matching the host's own strict stale rule.
+Behaviour is otherwise unchanged.
+
+Migration: Upgrade replaces pristine copies of `client/api.ts`,
+`client/purchase.ts` and `test/checkout-continuation.test.ts`, and adds
+`shared/transport.ts`, `shared/storefront-bindings.ts` and
+`test/storefront-bindings.test.ts`. If apply reports that a managed file has
+local edits, keep your edits separately, restore the file from the installed
+starter version, rerun apply and reconcile your edits with the replacement. A
+customised `client/api.ts` that still defines `act` itself keeps working. This
+upgrade requires no installed-policy step.
+
+### The starter checkout page keeps one checkout key per purchase
+
+The neutral starter's managed checkout page now keeps one `checkout.create`
+key for each purchase in the browser tab. It stores the key in tab storage
+under `neutral-store:checkout-continuation:v1:<configuration>` before the first
+request leaves the browser. After a lost response, a reload or a retry
+continues the same order instead of creating a second order and a second stock
+hold. The page starts a new key only after the host confirmed that the earlier
+order is closed, or that no order exists and none can still arrive. "No order"
+counts as final only 15 seconds after the last create settled; when the browser
+lost that create in transport, only 35 seconds after it was sent. For a record
+from an earlier page load, it counts as final no earlier than 15 seconds after
+the reload and 35 seconds after the create was sent. A refusal that wrote
+nothing keeps the key, and the panel does not appear on load after it.
+
+Changed details, or a later purchase in the same tab while an unpaid order
+exists, answer `starter_checkout_changed` and open a panel. The panel also
+appears on load when the tab holds an earlier order or an uncertain create. It
+offers "Complete payment for the earlier order", which shows the order's total
+and then its payment link. It also offers "Cancel the earlier order and start
+over", which cancels the unpaid order and releases its stock. After
+`starter_checkout_not_abandonable` or `starter_checkout_expired` it also offers
+"Start a different purchase". That choice leaves the earlier order open until
+the store settles it; a payment already started for it may still complete. The
+checkout form no longer has the "Start a new action" button; other forms keep
+it. The completion page ends the key when it shows the order under it as paid,
+cancelled or expired.
+
+A browser that blocks tab storage sees `starter_storage_unavailable`. Its form
+keeps the key in the page across retries and refused totals, until a reload or
+changed details, or the buyer chooses "Start a new action". The page raises `starter_checkout_session_changed` when an
+answer belongs to another sign-in state: sign in or out as when the order was
+placed. If the host answered with an order of the current sign-in state, the
+page also shows that order, and says when it was cancelled. It raises
+`starter_checkout_in_progress` when an earlier create may still be running. An
+order cancelled from the panel carries `checkout_started_over`.
+
+Apply the application file upgrade to replace pristine managed files:
+`client/forms.ts`, `client/purchase.ts`, `client/pages/checkout.ts`,
+`client/quote-acceptance.ts`, `client/api.ts`, `shared/api.ts` and
+`shared/limits.ts`. If it reports a
+conflict, reconcile your customised files with the target starter. The buyer
+texts of the panel and its answers are the managed `checkoutContinuationCopy`
+export in `shared/limits.ts`; re-apply any customised text after the upgrade.
+
+If your store owns its checkout page, follow the guide's rules: one random
+version 4 key per purchase, stored before the first request; a new key only
+after a confirmed end, never after a transport error; "no order" final only
+after your request timeout plus 15 seconds; and the key treated as a
+credential, never logged or reused. Changed details under the key answer
+`starter_checkout_changed`, so the page need not compare details itself.
+
+### The starter's checkout page runs on the purchase-continuation controller
+
+The managed checkout page takes its key, replay, resume and start-over from
+`createPurchaseContinuation` through `shared/storefront-bindings.ts`. Three
+buyer-facing changes: changed details while an earlier order may exist send
+nothing, and the page shows `starter_checkout_changed` itself; a create whose
+answer was lost is repeated once under the same key; the payment-status page
+keeps the record of an expired order. "Start a different purchase" is offered
+whenever an answer names the earlier order as not payable, or a refusal leaves
+an order possible. After a refusal that wrote no order, such as
+`starter_checkout_request_stale`, corrected details are still sent.
+
+Migration: Upgrade adds
+`examples/neutral-store/browser/checkout-controller.spec.ts` and replaces
+pristine copies of `examples/neutral-store/client/forms.ts`,
+`examples/neutral-store/client/purchase.ts`,
+`examples/neutral-store/client/pages/checkout.ts`,
+`examples/neutral-store/shared/limits.ts`,
+`examples/neutral-store/shared/storefront-bindings.ts`,
+`examples/neutral-store/test/checkout-continuation.test.ts`,
+`examples/neutral-store/test/checkout-anchors.test.ts`,
+`examples/neutral-store/test/storefront-bindings.test.ts`,
+`examples/neutral-store/browser/journey.spec.ts`,
+`examples/neutral-store/browser/lost-response.spec.ts`,
+`examples/neutral-store/browser/checkout-expected-total.spec.ts`,
+`examples/neutral-store/browser/storefront-anchors.spec.ts`,
+`examples/neutral-store/playwright.config.ts`,
+`examples/neutral-store/playwright.database.config.ts`,
+`examples/neutral-store/ownership.json`,
+`examples/neutral-store/README.md` and
+`examples/neutral-store/docs/ownership.md`. A customised copy of
+`examples/neutral-store/test/checkout-continuation.test.ts` conflicts and is
+reconciled. Owned page copies keep working. No installed-policy step.
+
+- Copied starter checkout pages must send the reviewed `expectedTotal` amount
+  and currency on every fresh submit in either purchase mode. Keep the exact
+  payload and command key when retrying an uncertain response. On a definitive
+  `starter_expected_total_required` or `starter_quote_price_changed` refusal,
+  clear consent and fetch a new `offer.validate` review. Keep the key: the
+  refusal created no order, and a reconfirmed create under the same key cannot
+  create a second one. A page that retires the key after such a refusal accepts
+  that an earlier create still in flight under the old key can place a second
+  order. Managed checkout pages handle these steps.
+
+### One checkout key addresses one starter order
+
+In the neutral starter's host, a repeat of `checkout.create` with the same
+`Idempotency-Key` and the same details returns the first order. While it is
+unpaid, the repeat also returns a further continuation `token`, so a guest can
+pay after a lost response. Earlier tokens stay valid and a repeat sends no mail.
+A refreshed quote acceptance for the same stored terms is the same purchase.
+Under a version 4 UUID key, changed details answer `starter_checkout_changed`,
+`starter_checkout_paid` or `starter_checkout_not_payable` instead of
+`starter_command_conflict`, and are never applied. Other key formats keep
+`starter_command_conflict`. Under a version 4 key, a create whose draft receipt
+was invalidated now answers `starter_checkout_not_payable` instead of
+`commerce_order_draft_expired`.
+
+The new `checkout.continuation` operation resumes or abandons the order under
+a version 4 UUID key without its details, adding one starter operation. An abandoned order carries the reason `checkout_started_over`. An
+order whose creation has not completed can be abandoned only once it is a
+minute old; before that the answer is `starter_checkout_in_progress`. A
+creation that is still running after that minute can leave a stray provisional
+activation on the cancelled order, with no stock hold and no settlement intent,
+so nothing is payable. A
+fresh create that obtains its key lock more than 15 seconds after the host
+received it answers `starter_checkout_request_stale` and writes nothing.
+
+Each repeat and each continuation of a known key adds one attempt-ledger row.
+It counts in a separate requester bucket and against `maxPerEmail` for that one
+key, never against the buyer's email. A replaced quota callback receives these
+calls with the idempotency key `<derived key>:replay:<uuid>` and the contact
+`replay:<derived key>`, which is not an address. A fresh create now passes the
+derived key, never the `Idempotency-Key` header value, as its idempotency key;
+an attempt recorded before the upgrade is therefore counted once more if its
+create is retried across the upgrade. A callback that throws refuses the
+repeat, and the order is returned without a token. The host now stores the
+derived key, `checkout:<64 hex>`, in `clients.metadata.checkout.lastIntentIdempotencyKey`.
+`composeNativeBindings` accepts an optional `requesterKey` function that
+replaces the socket-peer digest for every quota consumer. It must return a
+lowercase 64-hex SHA-256 digest, or `undefined` when the requester is unknown.
+A value that is not a function is refused at composition with
+`OPENLUP_E_STARTER_REQUESTER_KEY_INVALID`. A returned value that is not such a
+digest makes every request answer 503 `starter_dependency_unavailable`, and the
+host logs that code to stderr.
+
+Apply the application file upgrade to replace pristine managed files:
+`host/purchase-composition.ts`, `host/checkout-attempts.ts`, `host/server.ts`,
+`host/bindings.ts`, `host/native-composition.ts`, `host/quote-composition.ts`
+and `shared/api.ts`. If it reports a conflict, reconcile your customised files
+with the target starter before retrying. Apply the platform forward
+`20261128230001_checkout_abandonment_safety_execute_grant.sql` before starting
+the updated host: without it, `abandon` of an unpaid order answers
+`starter_purchase_unavailable` and nothing is cancelled.
+
+If you own your checkout client, your idempotency keys are now credentials for
+unpaid guest orders: make them random version 4 UUIDs, never log them and never
+reuse one for another operation. Keep one key for the whole purchase and treat
+"no order under this key" as final only after your request timeout plus 15
+seconds. A guest key does not survive sign-in or sign-out.
+
+Guest orders created before the upgrade keep the raw key value in
+`lastIntentIdempotencyKey` until a later checkout of that contact overwrites
+it. Until those orders are paid or expire, that value could address them
+through `checkout.continuation`. To remove it sooner, clear
+`clients.metadata.checkout.lastIntentIdempotencyKey` for clients with unpaid
+guest orders created before the upgrade.
+
+### Authenticate the starter's runtime database login
+
+The starter provisions an individual PostgreSQL runtime credential for each
+Compose project. The runtime credential file must stay in owner-only
+configuration. The starter validates it at start.
+
+Migration: Stop the application, then run the updated `./lifecycle up` with the
+existing Compose project, configuration, and listener port. [Starter guide](docs/guide/how-to/build/customize-the-starter.md#database-login)
+
+- On marked starter demos, installation closes the exact obsolete subscription price rows and retains their history. Coffee and supplements keep their one-time bases and subscription amounts. One Light still quotes 4,200 XTS minor units. A one-time bundle gives 5% off at 12,000 minor units or more. Three Light go from 12,600 to 11,970 and one Dawn with two Noon goes from 12,900 to 12,255. The database-backed host runs the promotion claim sweep and watchdog in the background, with repair steps in the starter guide. On a fresh one-time checkout, the starter returns `starter_quote_price_changed` before creating an order if the submitted total differs from the server's re-quoted total.
+
+### Native starter cancellation and save offers
+
+The account offers direct cancellation and asks permission before showing an eligible save offer. Feedback is optional and follows committed cancellation. Omit `subscriptionCare.retention.offerPresentation` for ask-first behavior or set it to `off`. Direct cancel bypasses the legacy action lists and retains native payment and lifecycle fences. `defaultOffer` applies after Yes. The first admitted pause preset can replace the configured preselection.
+
+Feedback transfers with the native full-store capture, and restores follow the [canonical `schema_conflict` remedy](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/docs/platform/migrations/compatible-data-transfer.md#compatible-data-transfer).
+
+Migration: Apply the native Platform forwards before deploying the updated starter. Plan managed changes against both starter snapshots. Use candidate templates for untouched `owned/copy.ts` and `owned/settings-host.ts`. In customized versions, merge the seven permission and feedback strings in each active locale, remove `careGuidance` and `confirmCancel`, and update the retention and action descriptors while preserving local settings. If a managed account, host or shared file conflicts, reconcile the candidate logic into the local file and record its adopter ownership in both snapshots before retrying. Complete any interrupted apply with the same snapshots, then rerun to verify zero writes. Build and start the updated app and check the existing local markup and copy, the effective setting, direct cancel and optional feedback. A feedback setup refusal affects feedback alone. Preserve any intentional legacy `offerByReason` mapping; the startup validator refuses unsupported presentation modes.
+
+### Keep default checkout attempt limits across starter restarts
+
+Apply the checkout attempt ledger forward before upgrading application files or
+starting the updated native starter. Use one PostgreSQL database per store and
+the same limits in every process serving it. Older hosts can run with the
+additive schema. The updated host starts counting in PostgreSQL without
+importing old in-memory counters.
+
+Apply the application file upgrade to replace pristine managed checkout hosts
+and tests. If it reports a conflict, reconcile your customized checkout files
+with the target starter before retrying. Keep custom quota callbacks and bind
+the default callback to the held checkout session before the draft transaction.
+
+In your owned settings host, update only the `purchase.attemptLimits` effect
+description from the target starter and keep your bindings. In your owned copy,
+apply the checkout quota wording in each locale and keep your other text.
+If startup reports that the ledger is missing, apply the forward and restart.
+If it reports missing EXECUTE, restore the runtime role's routine grant and
+restart. For a failed readiness check, check connectivity and the runtime
+credentials before restarting.
+
+### Run the catalogue demonstration on a free local port
+
+Export `OPENLUP_STARTER_PORT` before starting the demonstration and running
+`catalogue:apply`. An unset or empty value uses 4319. Choose a decimal port
+from 1024 to 65535. The default origin excludes ports blocked by Fetch. Startup
+validates the port before Compose. Direct host startup accepts the full range.
+
+The upgrade replaces pristine managed Compose, host, lifecycle and README files.
+If upgrade refuses a locally edited managed file, save your edits and restore
+the predecessor bytes before applying the upgrade. Move a local port edit to
+`OPENLUP_STARTER_PORT` in your launch environment. Reconcile other edits with
+the updated files before startup and keep unrelated owned overrides. If startup
+refuses following an interrupted upgrade, complete the managed upgrade and use
+the startup remedy before retrying. There is no installed business-policy step.
+
+### Upgrade the starter catalogue document verifiers
+
+The starter shares verification of the selected gram SKU across quote and
+sized servicing. This upgrade prepares verification of mixed documents once
+the installed reader can supply authenticated sibling evidence.
+
+Upgrade replaces pristine copies of `host/editor-catalogue.ts`,
+`host/editor-ports.ts` and `host/quote-composition.ts` together. If apply
+reports a conflict, save the customized code, restore the predecessor files
+and rerun apply. Reconcile the saved changes against the replacement group
+before startup. A partial upgrade refuses startup with
+`incomplete_application_upgrade`. This change requires no installed-policy
+step.
+
+### Find the invalid subscription offer member
+
+`settings check` now reports the member and rule alongside
+`starter_subscription_offer_invalid`. In
+`subscriptionOffers.<mode>.days`, check `days` under `classic` or
+`sized` in your owned store configuration. Correct the value and rerun
+`settings check`.
+
+Upgrade replaces a pristine `shared/subscription-offer.ts`. If apply
+reports that the managed file has local edits, preserve those edits
+separately, restore the file from the installed starter version, and rerun
+apply. Reconcile your edits with the replacement before startup. This
+upgrade requires no installed-policy step.
+
+### Browse and quote published starter products
+
+The native starter lists published SKUs, keeps exact sibling selections in
+product URLs and checks SKU, quantity and currency in the server quote. Active
+published products need a document schema distinct from the configured
+application document schema and canonical draft JSON encoding.
+The starter excludes SKUs without one-time sellability and reports
+`starter_catalogue_one_time_required`. Enable one-time sellability through the
+catalogue workflow to make the SKU eligible for listing.
+
+Migration: Apply the managed starter upgrade. If you copied a storefront page
+into application source, reconcile its SKU links, cart restoration and quote
+checks with the candidate. Keep the existing owned card signature. For an
+active schema collision, withdraw the colliding product through governed
+catalogue commands and repeat the original quote.
+
+- The neutral-store checkout keeps the reviewed acceptance and deadline across
+  equivalent refreshes. Changes to the offer or an expired deadline require
+  fresh review and consent.
+
+### The starter cart opens with a selection from its address
+
+The neutral starter's cart route now accepts a selection in its query string:
+`line=<sku>:<quantity>` (repeated), `mode` (`one_time` or `subscription`) and
+`cadence` (days, subscription only), for example
+`/cart?mode=one_time&line=<sku>%3A2`. A buy link or a verification harness can
+open checkout in a fresh browser without seeding browser storage. Build links
+with `selectionEntryPath` from the new managed
+`examples/neutral-store/shared/selection-entry.ts`.
+
+- The cart validates the selection with `validateCart` against the storefront
+  catalogue. It waits for the catalogue answer, and leaves the address unchanged
+  when the catalogue answers with an error, the request fails or its answer
+  cannot be applied.
+- A valid selection replaces an empty cart. A cart that holds anything else
+  shows a question, "Use the selection from the link" or "Keep my cart", and
+  offers no other cart control or checkout until the buyer answers. The entry
+  never merges lines.
+- An invalid selection shows its own refusal with the cart's texts and writes
+  nothing. It prints no raw link text: a SKU appears only when a product has it.
+  A `+` is never valid in the address, encoded or not.
+- Once decided, only `line`, `mode` and `cadence` leave the address, with one
+  history replacement. Every other parameter stays with its bytes and has no
+  effect; no price, amount or currency is ever read.
+- The cart's checkout button carries
+  `data-openlup-action="proceed_to_checkout"`, written from `storefrontAnchor`.
+  The starter now imports that value from the experimental
+  `@openlup/platform/storefront` entry.
+- `PageContext` gains an optional `catalogueSettled` field, and `navigate`
+  takes an optional `{ replace: true }` second argument.
+
+A link over an emptied cart after an order was placed in the same tab cannot
+create a second order: the next submit reuses the tab's checkout key and the
+host refuses a changed payload under it with `starter_checkout_changed`,
+`starter_checkout_paid` or `starter_checkout_not_payable`. That safety comes
+from the host's refusal of a changed payload; a host that updated the order in
+place would behave differently.
+
+Migration: Upgrade adds `examples/neutral-store/shared/selection-entry.ts` and
+`examples/neutral-store/test/selection-entry.test.ts`, and replaces pristine
+copies of `examples/neutral-store/client/pages/storefront.ts`,
+`examples/neutral-store/client/main.ts`,
+`examples/neutral-store/client/context.ts`,
+`examples/neutral-store/browser/journey.spec.ts`,
+`examples/neutral-store/docs/customization.md` and
+`examples/neutral-store/ownership.json`. If apply reports that a managed file
+has local edits, keep your edits separately, restore the file from the
+installed starter version, rerun apply and reconcile your edits with the
+replacement. A store that owns its cart page or its `client/main.ts` keeps its
+copy and gets neither the entry nor the anchor; to add them, import
+`decideSelectionEntry`, `withoutSelectionEntry` and `settleCatalogueRequest`
+from `shared/selection-entry.ts` in the application, and set
+`catalogueSettled` from the catalogue request, or accept that the entry
+validates before the catalogue answers. This upgrade requires no
+installed-policy step.
+
+### Declare 15 additional starter settings for discovery and check
+
+`owned/settings-host.ts` now declares 15 existing starter configuration settings
+(locale policy, guest contact defaults, return and hold reason subsets, checkout
+initial payment window, recovery link policy, wave windows, subscription care
+retention/actions/recovered window, renewal recovery and notice locales, sized
+editing preferences, graduation cadence, and minimum product payable minor) with
+Draft-7 Zod schemas and effect descriptions.
+
+Upgrade replaces a pristine `owned/settings-host.ts`. For a customized copy,
+merge the added declarations from the target starter. This change requires no
+installed-policy step.
+
+### Use the starter settings script to find and check configuration
+
+The starter's agent guide shows how to find settings by goal, verify a value
+edit and start the read-only settings server.
+
+Migration: Before applying the next set's managed files, replace a pristine
+`AGENTS.md` from the 1.3.0 starter with the target starter's `AGENTS.md`.
+If the file has local edits, an explicit snapshot replacement refuses before
+writing. Merge the target guidance into your copy, keep your edits and rerun
+the managed upgrade without `AGENTS.md` in its snapshots. This documentation
+change requires no installed-policy step and adds no startup refusal.
+
+### Fix starter return reason, retry minimum and settings schemas
+
+Starter store configurations now use `damaged` instead of `damaged_item` for
+return requests so database return creation accepts every configured reason.
+`renewal.retryBackoffHours` now requires positive whole hours (`>= 1`) matching
+native SQL validation and documents the separate fixed 24/72/168-hour provider
+failure ladder (`subscriptions.retrySchedule`). `subscriptionOffers.deliveryCycles`
+and `purchase.attemptLimits` now expose strict Zod schemas and updated effect
+guidance in `owned/settings-host.ts`.
+
+Upgrade replaces a pristine `shared/renewal-config.ts`. For customized
+`owned/store.config.ts` or `owned/settings-host.ts`, replace `damaged_item`
+with `damaged` and ensure every retry backoff hour is at least `1`. This
+change requires no installed-policy step.
+
+### Move `shipping.rateResolver` to the packaged catalogue and report subscription policy file values
+
+`shipping.rateResolver` is now a packaged `callback` entry in `@openlup/platform`
+rather than a starter `code` declaration. `owned/settings-host.ts` removes its
+local `shipping.rateResolver` descriptor and reports file values (without
+descriptors) for `subscription_minimum_base_units` and
+`subscription_sized_intro_phase`.
+
+Upgrade replaces a pristine `owned/settings-host.ts`. For a customized copy,
+remove any local `shipping.rateResolver` descriptor so `settings list` and
+`settings check` do not refuse a duplicate packaged key. This change requires
+no installed-policy step.
+
+### The starter's checkout pages carry storefront anchors
+
+The starter's checkout fields, submit and payment-status line carry
+`storefrontAnchor` attributes. Behaviour and copy are unchanged.
+
+Migration: Upgrade replaces pristine copies of
+`examples/neutral-store/client/forms.ts` and
+`examples/neutral-store/client/pages/checkout.ts`, and adds two tests. A
+customised checkout page works without anchors. No installed-policy step.
+
+### Declare seeded product physical facts
+
+The starter takes a typed mass and a primary GTIN through its owned product
+configuration. It retains the existing seed documents and identifiers when
+the original physical facts are preserved.
+
+Migration: For a pristine `owned/store.config.ts`, copy the candidate file.
+For a customized file, convert each `physical` entry in place. Move the old
+`netWeightG` to `netContent` with `dimension: 'mass'`, `unit: 'openlup:g'`,
+`scale: 0` and the original whole grams as the decimal string `unscaled`.
+Move `issuer` and `unitGtin` into `primaryUnitIdentifier` as `issuer` and
+`value`, with `scheme: 'gs1:gtin'`. Keep all the original GTIN digits and the
+issuer for all six demonstration entries, or carry over each corresponding
+custom value. Preserve unrelated owned edits and apply the managed upgrade.
+Restart and recheck `/api/config`. An unchanged seed replay requires no
+installed-policy step.
+
+If startup reports `OPENLUP_E_STARTER_PRODUCT_PHYSICAL_INVALID`, correct the
+named entry from verified facts. If an issuer correction changes its retained
+digest, follow “Reset an interrupted first install” for an owner-approved
+rebuild of the disposable demonstration in the same Compose project.
+That procedure removes all data in the demo volume. If startup reports
+`OPENLUP_E_STARTER_SYNTHETIC_PHYSICAL_SIZE_INVALID`, correct the named SKU's
+numeric `physicalSize` in `owned/subscription-editing.ts` to a verified whole
+gram value from 1 through 2147483647. Restart and recheck `/api/config`.
+
 ## [1.3.0]
 
 - Publishable on the npm `latest` dist-tag as `1.3.0`, from tag
@@ -505,156 +1155,3 @@ dependencies and run typechecking, build, application tests and startup checks.
 Keep customized owned bytes outside the managed snapshots. Npm-only
 applications have no starter-owned file migration.
 
-## [1.1.0]
-
-- Publishable on the npm `latest` dist-tag as `1.1.0`, from tag
-  `openlup-core-v1.1.0`.
-
-- docs: document the required owned-file migration from the 0.43.0 starter,
-  using target-only snapshot entries and the existing installed upgrade CLI.
-  The published 1.0.0 set did not pass exact-set qualification for starter
-  upgrades and is superseded by 1.1.0; 1.1.0 qualification is recorded after
-  publication. This migration guide changes no runtime or SQL.
-
-Migration: Starter applications from 0.43.0 must add `owned/quote-shipping.ts`,
-`owned/renewal-policy.ts` and `owned/catalogue.json` only to the target snapshot,
-and migrate the contracts in `owned/store.config.ts`, `owned/quote-copy.ts`,
-`owned/subscription-editing.ts` and `owned/catalogue.ts` before applying managed
-files. Use the target extraction's bytes for pristine files; preserve local
-values when adapting customized files. Follow the starter section in the
-1.0.0 upgrade guide shipped with this set. Npm-only applications require no
-owned-file migration. Starters targeting 1.1.0 also migrate
-`owned/renewal.config.ts` with the required `subscriptionCare.retention`
-mapping/default and the existing three-rung retry budget, as described in the
-1.1.0 upgrade guide; this also applies when upgrading a 1.0.0 starter.
-
-Align the current source starter and reader guidance with `MAX_CADENCE_DAYS`
-(1..3660 whole days), removing the former starter database refusal above 90.
-Applications continue to choose their offered cadences.
-
-Migration: apply the matching platform package's complete native catalogue,
-including `20261122190000_subscription_cadence_bound.sql`, before using longer
-cadences. This change is unreleased. Checkout-command and saga-fallback replay
-of stored cadence above 3660 can still quote before replay; that unreleased
-development-data case remains a follow-up.
-
-## [1.0.0]
-
-- Preserve the experimental registry readiness code annotation in emitted declarations;
-  the seven established readiness codes retain their stable contracts.
-
-- Publishable on the npm `latest` dist-tag as `1.0.0`, from tag
-  `openlup-core-v1.0.0`.
-- Accept stable MAJOR.MINOR.PATCH package versions in readiness declarations;
-  continue to refuse leading zeros and prerelease suffixes.
-
-Label declaration occurrences as unverified public-import leads. Resolve the
-selected application's reachable declared OpenLup packages and required Core
-through Node's npm node_modules lookup, including workspace hoisting and linked
-packages. Check selected versions against the owning npm lockfile and retain
-application-only source scans. MCP reads accept only the selected package's
-exact returned path and retain bounded ordinary-file and realpath checks.
-Refuse Node package self-references instead of labelling checkout source as an
-installed dependency.
-
-Migration: no result fields or package exports change. Declaration hits do not
-prove public imports; use the installed exports and examples. For hoisted npm
-installs, use the installed-manifest executable recipe in the lookup README.
-
-Add browser-safe exact catalogue quantities, canonical units, comparison and declared-unit conversion using decimal strings and BigInt. Inexact canonical values refuse without rounding.
-
-Migration: additive exports on the existing catalog entry. Existing identifier schemas are unchanged. No database, subscription or capability change; target package set 0.44.0.
-
-Add `cataloguePositionNetFromGross` and `allocateCatalogueDiscountedGrossTotals`
-to the existing pricing subpath. They preserve the existing position arithmetic:
-integer included-VAT net rounding and discount allocation by largest remainder,
-with equal remainders resolved by input position.
-
-Migration: These exports are additive and unbound. Existing quote arithmetic,
-subscription agreements and independent invoice verification stay unchanged.
-Callers explicitly compose the helpers with already validated position money
-in one selected currency and preserve the original position order. The net
-helper retains native integer-conversion errors; the allocator retains its
-existing refusal messages. No data migration or activation is supplied.
-
-- Mark unbound catalogue quantity, money and registry-observation symbols
-  `@experimental`; retain the existing consumed quantity contract without the tag.
-
-Migration: no runtime, signature or import change. The added TSDoc tags identify
-experimental symbols for compatibility guidance.
-
-Add opt-in catalogue definition/quantity/v1-draft checks, explicit refusal
-fixtures and installed recipes with a copied stationery skeleton. Attribute/projection and combination fixtures reuse their owners; taxonomy, tax,
-profile and promotion semantics remain explicitly pending.
-
-Migration: Additive tooling for the next package set. Old imports and v1 canonical
-bytes remain unchanged. The new Node-only `@openlup/platform/catalog/testing`
-subpath and `openlup catalogue check --packs ./owned/catalogue.json --json` require
-explicit JSON fixture text; the supplied file is never imported. No database migration, installation,
-host wiring, publication or capability activation occurs. Upgrade all packages as
-one exact set; an offline PASS is scoped evidence only.
-
-Integrate attribute validation/projection and V2 combination owners into the
-offline catalogue checker. Replace executable subjects with JSON text and the
-copied executable skeleton with one static JSON fixture. Reference and refusal
-observations are checked without invoking caller code; retained identities are
-derived from fixture options and prove no persisted bytes or history.
-
-Migration: For the unreleased 0.44.0 set, migrate module-based callers to
-`await runCatalogExtensionConformance(JSON.stringify(subjectData))` and CLI files
-to `openlup catalogue check --packs ./owned/catalogue.json --json`. Omit
-`validateContent`; requested application content validation is unavailable (2).
-Replace refusal callbacks with `observedCode` and `zeroEffects` records, reference
-ports with resolution rows, and retained identity bytes with options. The single
-entry retains report fields, deterministic ordering and the five CLI exits.
-No SQL, publication, subscription changes or capability activation occurs.
-
-Add optional inert catalogue registry observations to readiness, including the
-`registry_missing_referenced_version` refusal for referenced type versions missing
-from code or carrying a different digest.
-
-Migration: additive `ReadinessInput.catalogRegistry` and `CatalogRegistryObservation`
-exports on the existing readiness entry. Existing inputs keep their behaviour.
-`complete: false` or a NULL installed definition digest yields existing `unknown`
-readiness rather than treating hidden references as ready. The application owns observation and database identity; no boot hook, installer,
-provider call or runtime activation is added. Target package set 0.44.0.
-
-Document the unbound attribute owner beside the offline catalogue checker and
-include its shared issue codes in the generated installed refusal-to-recipe links.
-The recipe links include the per-slot UTF-8 text-index refusal
-`attribute_projection_text_too_large`.
-The checker retains its existing definitions, exact quantity and v1 draft scope;
-attribute-value/projection integration remains pending.
-
-Migration: documentation additions only. Existing APIs, strict v1 drafts and
-checker exit/refusal behavior are unchanged. Owner availability and recipe links
-grant no publication, serving or capability activation authority.
-
-Declare per-subpath stable, experimental and test-support policies for the coherent 1.0.0 package set. Stable APIs follow SemVer with open unions and literal sets; symbols tagged `@experimental` remain outside the stable promise. Consumer evidence is explicitly first-party.
-
-Migration: keep a default branch for unknown union and literal-set values. Check the generated maturity table for experimental and test-support subpaths before upgrading. No runtime behavior or package export changes.
-- Allow intentional API snapshot updates with a new or modified package change fragment; retain changed `CHANGELOG.md` as a legacy route. Fragment contents are validated during release preparation.
-
-Export `MAX_CADENCE_DAYS = 3660` from the existing browser-shareable
-`@openlup/core/subscription` contract for fresh platform cadence admission.
-The ten-year whole-day limit avoids the timestamp and settlement integer
-overflows admitted by the former PostgreSQL integer maximum, with lateness margin.
-Applications continue to own offered cadences.
-
-Migration: fresh quotes, drafts and editor results above 3660 days now refuse.
-Historical transport, stored data and completed receipts keep their integer
-representation. Completed editor, native draft and renewal receipts replay before
-current limits; replay above 3660 is not guaranteed on checkout-command or
-saga-fallback paths that quote before replay. No released data can contain such
-values: no published version admitted cadence above 120, and PR4a's widening is
-unreleased. Existing SQL and starter guards still refuse above 90 pending a
-separate migration.
-
-## [0.43.0]
-
-- Publishable on the npm `latest` dist-tag as `0.43.0`, from tag
-  `openlup-core-v0.43.0`.
-
-- Keep the shared fulfillment status facade and generated JSON neutral; provider dictionaries own translation. Canonical `packed` remains preferred and every historical display alias keeps its customer-step result.
-
-Migration: shared status-map JSON no longer carries adapter trace columns. Consumers needing provider translation use adapter-owned dictionaries. Existing status tokens, ranks, effects and customer steps are unchanged.

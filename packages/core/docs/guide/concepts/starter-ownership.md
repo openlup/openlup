@@ -116,7 +116,7 @@ links for that order and expires at the earlier of its own lifetime or the
 order's recovery deadline. Payment prevents further payment through a link;
 other links still obey their expiry and revocation. Payment-case links rotate separately, invalidating their predecessor.
 
-Use the [recovery issuer contract](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/examples/neutral-store/docs/ownership.md#application-ownership)
+Use the [recovery issuer contract](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/examples/neutral-store/docs/ownership.md#application-ownership)
 for token construction and exact continuation, recovery and operator-link deadlines.
 
 A pending order can continue sandbox payment and retry a decline. Expired orders,
@@ -174,7 +174,7 @@ Purchase and sign-in share the bounded `purchase.inputLimits.email` setting;
 overlong purchase email
 refuses with `starter_email_invalid` before contact resolution. Checkout and
 subscription-address fields use the configured phone and postal limits within
-native destination bounds. The [configuration validator](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/examples/neutral-store/docs/ownership.md#application-ownership)
+native destination bounds. The [configuration validator](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/examples/neutral-store/docs/ownership.md#application-ownership)
 owns the exact limits. Browser field limits do not replace host validation.
 
 ## Checkout key continuation
@@ -239,11 +239,16 @@ response: `checkout.read`, `checkout.recovery` `inspect` and `pay`,
 `payment.simulate`. A key holder can therefore start a payment attempt, which
 makes the order not abandonable.
 
-A client that owns its checkout page follows three rules:
+A client that owns its checkout page follows these rules:
 
 1. Keep one key for the whole purchase, including reloads and retries.
-2. Never start a new key after a transport error; repeat or `resume` instead.
-3. Treat "no order under this key" as final only once more than your own
+2. Send the reviewed `expectedTotal` amount and currency from `offer.validate`
+   on every fresh submit in either purchase mode. If the host returns
+   `starter_expected_total_required` or `starter_quote_price_changed`, clear
+   consent, fetch a new review and reconfirm under the same key.
+3. After a transport error, repeat the exact payload with the same key or
+   call `resume`.
+4. Treat "no order under this key" as final only once more than your own
    request timeout plus 15 seconds have passed since the last unanswered
    create. `shared/storefront-bindings.ts` applies this rule for the starter's
    tab record and its `createPurchaseContinuation` bindings. The rule assumes
@@ -363,7 +368,7 @@ marking records an externally completed refund; it moves no money, sends no
 refund mail, creates no fiscal reversal and changes no subscription. Execute
 real refunds through their own owner. Invalid reasons, missing confirmation,
 stale status and conflicting commands refuse; native receipts own replay. Reasons
-use the native trimmed-text boundary in the [order control schemas](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/README.md#commerce-contracts).
+use the native trimmed-text boundary in the [order control schemas](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/README.md#commerce-contracts).
 
 Signed-in customers request returns for positive quantities from their own paid
 or fulfilled orders using configured reason codes. Keep the returned request
@@ -411,7 +416,7 @@ Detected embedded browsers show send and send-again controls only after verified
 continuation exists. Detection changes display, not authority. The cookie-only
 handler derives identity from claims, uses the saved checkout recipient and
 deduplicates sends within the configured time bucket. The
-[continuation composition](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/examples/neutral-store/docs/ownership.md#sandbox-token-payment-and-exact-continuation)
+[continuation composition](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/examples/neutral-store/docs/ownership.md#sandbox-token-payment-and-exact-continuation)
 owns its duration. Confirmation survives panel
 remounts; failures offer retry. Delivery rechecks buyer authorization and captures
 the marked buyer link privately. Enqueue, capture and payment are separate facts.

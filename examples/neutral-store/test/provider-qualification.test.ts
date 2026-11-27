@@ -517,7 +517,8 @@ shift
 printf '%s\\n' '${sentinel}' >&2
 PROVIDER_TEST_KEY='${sentinel}' exec "$runner" --import "${pathToFileURL(child).href}" "$@"
 `, { mode: 0o700 });
-      const result = spawnSync('npm', ['run', 'provider:qualify', '--', ...args], { cwd: app, encoding: 'utf8', timeout: 30_000,
+      const result = spawnSync('npm', ['--no-update-notifier', 'run', 'provider:qualify', '--', ...args], {
+        cwd: app, encoding: 'utf8', timeout: 30_000,
         env: { PATH: [fixture, dirname(execPath), env.PATH ?? ''].join(delimiter), HOME: env.HOME,
           NODE_OPTIONS: '--import=' + pathToFileURL(parent).href, [keyName]: 'op://fixture/item/key' } });
       assert.ifError(result.error);

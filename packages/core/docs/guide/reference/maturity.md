@@ -14,7 +14,7 @@ is scheduled for removal. Each package section lists these symbols after its sub
 | `stable` | `stable` |
 | `testing` | `testing` |
 
-[Compatibility policy mapping](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/core/scripts/public-api-config.ts)
+[Compatibility policy mapping](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/core/scripts/public-api-config.ts)
 <!-- /generated:compatibility-policies -->
 
 ## Reading the symbol tables
@@ -218,7 +218,7 @@ No symbol of this package differs from its subpath's maturity or is deprecated.
 | `./tax` | capability | experimental |
 | `./tax/contracts` | capability | experimental |
 
-5 subpaths omitted because their names are provider-specific. Complete list: [package.json](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/package.json) and [Subpath maturity](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/AGENTS.md#subpath-maturity).
+5 subpaths omitted because their names are provider-specific. Complete list: [package.json](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/package.json) and [Subpath maturity](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/AGENTS.md#subpath-maturity).
 <!-- /generated:maturity:platform -->
 
 Symbols whose maturity differs from their subpath, or that are deprecated:
@@ -471,6 +471,8 @@ Symbols whose maturity differs from their subpath, or that are deprecated:
 | `./commerce/server` | `CommerceMoneyLimitsV2` | experimental | no |
 | `./commerce/server` | `CommerceQuotePortV2` | experimental | no |
 | `./commerce/server` | `CommerceQuoteV2Request` | experimental | no |
+| `./commerce/server` | `CommerceReturnReasonsPolicy` | experimental | no |
+| `./commerce/server` | `DEFAULT_COMMERCE_RETURN_REASONS` | experimental | no |
 | `./commerce/server` | `DbBackedCommerceQuotePortV2Deps` | experimental | no |
 | `./commerce/server` | `InstallLimitsInput` | experimental | no |
 | `./commerce/server` | `InstallLimitsResult` | experimental | no |
@@ -485,7 +487,11 @@ Symbols whose maturity differs from their subpath, or that are deprecated:
 | `./commerce/server` | `describeCommerceMoneyLimitsV2Setting` | experimental | no |
 | `./commerce/server` | `inspectCommerceMoneyLimitsV2` | experimental | no |
 | `./commerce/server` | `installCommerceMoneyLimitsV2` | experimental | no |
+| `./commerce/server` | `installCommerceReturnReasonsPolicy` | experimental | no |
 | `./commerce/server` | `readCheckoutRecoveryReminderObservation` | experimental | no |
+| `./commerce/server` | `readCommerceReturnReasonsOverride` | experimental | no |
+| `./commerce/server` | `readCommerceReturnReasonsPolicy` | experimental | no |
+| `./commerce/server` | `validateCommerceReturnReasons` | experimental | no |
 | `./commerce/server/destinations` | `DestinationBindingV2` | experimental | no |
 | `./commerce/server/destinations` | `DestinationContextV2` | experimental | no |
 | `./commerce/server/destinations` | `DestinationIssueResultV2` | experimental | no |
@@ -571,6 +577,18 @@ Symbols whose maturity differs from their subpath, or that are deprecated:
 | `./pricing` | `catalogPriceSetupReceiptSchema` | experimental | no |
 | `./pricing` | `catalogPriceSetupRefusal` | experimental | no |
 | `./pricing` | `catalogPriceSetupRefusalSchema` | experimental | no |
+| `./pricing` | `commerceMoneyV2CurrencySchema` | experimental | no |
+| `./pricing` | `commerceMoneyV2DeliveryBucketSchema` | experimental | no |
+| `./pricing` | `commerceMoneyV2DigestSchema` | experimental | no |
+| `./pricing` | `commerceMoneyV2FactsSchema` | experimental | no |
+| `./pricing` | `commerceMoneyV2FeeLineSchema` | experimental | no |
+| `./pricing` | `commerceMoneyV2LineSchema` | experimental | no |
+| `./pricing` | `commerceMoneyV2MinorSchema` | experimental | no |
+| `./pricing` | `commerceMoneyV2PriceSchema` | experimental | no |
+| `./pricing` | `commerceMoneyV2PromotionEngineSchema` | experimental | no |
+| `./pricing` | `commerceMoneyV2ReferenceSchema` | experimental | no |
+| `./pricing` | `commerceMoneyV2TaxEvidenceShape` | experimental | no |
+| `./pricing` | `commerceMoneyV2UuidSchema` | experimental | no |
 | `./pricing` | `commerceQuoteV2Schema` | experimental | no |
 | `./pricing` | `composeCommerceQuoteMoneyV2` | experimental | no |
 | `./pricing` | `createCatalogPriceSetupHandler` | experimental | no |
@@ -606,7 +624,13 @@ Symbols whose maturity differs from their subpath, or that are deprecated:
 | `./promotions` | `validatePromotionClaimHoldHours` | experimental | no |
 | `./promotions` | `verifyQuoteAcceptanceTokenV2` | experimental | no |
 | `./shipping` | `AddressPolicyV1` | experimental | no |
+| `./shipping` | `DEFAULT_SHIPPING_PAYMENT_METHOD_PREFERENCES` | experimental | no |
+| `./shipping` | `ShippingPaymentMethodPreferencesPolicy` | experimental | no |
+| `./shipping` | `installShippingPaymentMethodPreferencesPolicy` | experimental | no |
+| `./shipping` | `readShippingPaymentMethodPreferencesOverride` | experimental | no |
+| `./shipping` | `readShippingPaymentMethodPreferencesPolicy` | experimental | no |
 | `./shipping` | `validateDestinationAddressV2` | experimental | no |
+| `./shipping` | `validateShippingPaymentMethodPreferences` | experimental | no |
 | `./shipping/testing` | `runShippingRateAdapterConformance` | experimental | no |
 | `./storefront/testing` | `PageHandle` | experimental | no |
 | `./storefront/testing` | `StorefrontAdapter` | experimental | no |
@@ -620,6 +644,7 @@ Symbols whose maturity differs from their subpath, or that are deprecated:
 | `./subscriptions` | `CatalogProfileCadenceInput` | experimental | no |
 | `./subscriptions` | `CatalogProfileCadenceResult` | experimental | no |
 | `./subscriptions` | `DEFAULT_SUBSCRIPTION_EDIT_QUOTE_TTL_MINUTES` | experimental | no |
+| `./subscriptions` | `DEFAULT_SUBSCRIPTION_RESCHEDULE_TIMEZONE` | experimental | no |
 | `./subscriptions` | `DEFAULT_SUBSCRIPTION_RETRY_BACKOFF_HOURS` | experimental | no |
 | `./subscriptions` | `RenewalCyclePolicy` | stable | yes |
 | `./subscriptions` | `StockWaitAdminPage` | experimental | no |
@@ -628,19 +653,24 @@ Symbols whose maturity differs from their subpath, or that are deprecated:
 | `./subscriptions` | `StockWaitReadProjection` | experimental | no |
 | `./subscriptions` | `StockWaitReadState` | experimental | no |
 | `./subscriptions` | `SubscriptionEditQuoteTtlMinutesPolicy` | experimental | no |
+| `./subscriptions` | `SubscriptionRescheduleTimeZonePolicy` | experimental | no |
 | `./subscriptions` | `SubscriptionRetrySchedulePolicy` | experimental | no |
 | `./subscriptions` | `createPostgresStockWaitReads` | experimental | no |
 | `./subscriptions` | `createPostgresSubscriptionSaveOfferAcceptor` | experimental | no |
 | `./subscriptions` | `installSubscriptionEditQuoteTtlMinutesPolicy` | experimental | no |
+| `./subscriptions` | `installSubscriptionRescheduleTimeZonePolicy` | experimental | no |
 | `./subscriptions` | `installSubscriptionRetrySchedulePolicy` | experimental | no |
 | `./subscriptions` | `readSubscriptionEditQuoteTtlMinutesOverride` | experimental | no |
 | `./subscriptions` | `readSubscriptionEditQuoteTtlMinutesPolicy` | experimental | no |
+| `./subscriptions` | `readSubscriptionRescheduleTimeZoneOverride` | experimental | no |
+| `./subscriptions` | `readSubscriptionRescheduleTimeZonePolicy` | experimental | no |
 | `./subscriptions` | `readSubscriptionRetryScheduleOverride` | experimental | no |
 | `./subscriptions` | `readSubscriptionRetrySchedulePolicy` | experimental | no |
 | `./subscriptions` | `resolveSubscriptionEditQuoteTtlMinutes` | experimental | no |
 | `./subscriptions` | `selectCatalogProfileCadence` | experimental | no |
 | `./subscriptions` | `stockWaitHealth` | experimental | no |
 | `./subscriptions` | `validateSubscriptionEditQuoteTtlMinutes` | experimental | no |
+| `./subscriptions` | `validateSubscriptionRescheduleTimeZone` | experimental | no |
 | `./subscriptions` | `validateSubscriptionRetrySchedule` | experimental | no |
 | `./subscriptions/contracts` | `StockWaitAdminPage` | experimental | no |
 | `./subscriptions/contracts` | `StockWaitOperatorSummary` | experimental | no |
@@ -651,6 +681,6 @@ Symbols whose maturity differs from their subpath, or that are deprecated:
 
 68 symbols are not listed because their declarations are not in this package's API reports.
 
-5 subpaths omitted because their names are provider-specific. Complete list: [package.json](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/package.json) and [Subpath maturity](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/AGENTS.md#subpath-maturity).
+5 subpaths omitted because their names are provider-specific. Complete list: [package.json](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/package.json) and [Subpath maturity](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/AGENTS.md#subpath-maturity).
 <!-- /generated:maturity-symbols:platform -->
 

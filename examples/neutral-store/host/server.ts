@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { assertConfig, parseHostArguments } from '../shared/config.ts';
 import { hostPortFix, starterDiagnosticCode } from '../shared/refusals.ts';
 import { readQuoteAcceptanceKeyring } from './quote-secret.ts';
+import { runtimeConnectionString } from './runtime-database.ts';
 import { isOperation, operations } from '../shared/api.ts';
 import { isRecord } from '../shared/offer.ts';
 import { selectConfiguration } from '../owned/store.config.ts';
@@ -136,8 +137,9 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const publicationPassword = publicationPasswordFile
     ? (await readFile(publicationPasswordFile, 'utf8').catch(() => { throw new Error('starter_catalogue_publication_password_missing'); })).trim()
     : undefined;
-  const bindings = options.databaseUrl
-    ? await (await import('./native-composition.ts')).composeNativeBindings(options.databaseUrl, originPolicy, config, options.quoteAcceptanceKeyFile
+  const connectionString = runtimeConnectionString(options.databaseUrl);
+  const bindings = connectionString
+    ? await (await import('./native-composition.ts')).composeNativeBindings(connectionString, originPolicy, config, options.quoteAcceptanceKeyFile
       ? await readQuoteAcceptanceKeyring(options.quoteAcceptanceKeyFile) : undefined, publicationPassword, { readinessJobs: true })
     : pendingBindings();
   const server = createApplication(bindings);

@@ -61,7 +61,7 @@ it('lands cold owner bytes after an added Core export and version bump on a warm
     const warmDeclaration = f.read(declaration);
     expect(warmDeclaration).not.toBe(cleanDeclaration);
 
-    f.landingCli();
+    f.fixtureNpm('run', 'landing:merge', '--', '--no-verify');
     expect(f.git('show', '-s', '--format=%P')).toBe(`${left} ${right}`);
     expect(f.git('show', 'HEAD:packages/core/api/subscription.api.md')).toContain('declare const fixtureApi = 1');
     const landedDeclaration = f.read(declaration);
@@ -553,9 +553,52 @@ it('preserves the merge commit without rolling back when post-commit verify fail
   }
 }, 60000);
 
-it('parses landing CLI flags with verify enabled by default and --no-verify opt-out', () => {
-  expect(parseLandingCliOptions([])).toEqual({ reSlot: false, verify: true });
+it('parses landing CLI flags with verify enabled by default, --no-verify opt-out, and --target validation', () => {
+  const baseDefault = parseLandingCliOptions([]);
+  expect(baseDefault).toEqual({ reSlot: false, verify: true });
+  expect('target' in baseDefault).toBe(false);
   expect(parseLandingCliOptions(['--no-verify'])).toEqual({ reSlot: false, verify: false });
   expect(parseLandingCliOptions(['--re-slot'])).toEqual({ reSlot: true, verify: true });
   expect(parseLandingCliOptions(['--re-slot', '--no-verify'])).toEqual({ reSlot: true, verify: false });
+  expect(parseLandingCliOptions(['--re-slot', '--target', '20990101050000'])).toEqual({
+    reSlot: true,
+    verify: true,
+    target: '20990101050000',
+  });
+  expect(parseLandingCliOptions(['--re-slot', '--target=20990101050000', '--no-verify'])).toEqual({
+    reSlot: true,
+    verify: false,
+    target: '20990101050000',
+  });
+  expect(parseLandingCliOptions(['--target=20990101050000', '--re-slot'])).toEqual({
+    reSlot: true,
+    verify: true,
+    target: '20990101050000',
+  });
+
+  expect(() => parseLandingCliOptions(['--unknown'])).toThrow(/unknown CLI option/u);
+  expect(() => parseLandingCliOptions(['positional'])).toThrow(/unknown CLI option/u);
+  expect(() => parseLandingCliOptions(['--re-slot', '--target'])).toThrow(/requires a 14-digit UTC slot/u);
+  expect(() => parseLandingCliOptions(['--re-slot', '--target='])).toThrow(/requires a 14-digit UTC slot/u);
+  expect(() => parseLandingCliOptions(['--re-slot', '--target', ''])).toThrow(/requires a 14-digit UTC slot/u);
+  expect(() => parseLandingCliOptions(['--re-slot', '--target', '--no-verify'])).toThrow(/requires a 14-digit UTC slot/u);
+  expect(() => parseLandingCliOptions(['--re-slot', '--target=-20990101050000'])).toThrow(/requires a 14-digit UTC slot/u);
+  expect(() => parseLandingCliOptions(['--re-slot', '--target', '20990101050000', '--target', '20990101060000']))
+    .toThrow(/duplicate --target/u);
+  expect(() => parseLandingCliOptions(['--re-slot', '--target=20990101050000', '--target=20990101050000']))
+    .toThrow(/duplicate --target/u);
+  expect(() => parseLandingCliOptions(['--re-slot', '--target', '00000000000000'])).toThrow(/valid 14-digit UTC slot/u);
+  expect(() => parseLandingCliOptions(['--re-slot', '--target', '20990230000000'])).toThrow(/valid 14-digit UTC slot/u);
+  expect(() => parseLandingCliOptions(['--re-slot', '--target', '2099'])).toThrow(/valid 14-digit UTC slot/u);
+  expect(() => parseLandingCliOptions(['--target', '20990101050000'])).toThrow(/--target requires --re-slot/u);
+  expect(() => parseLandingCliOptions(['--target=20990101050000'])).toThrow(/--target requires --re-slot/u);
+
+  const cliError = spawnSync(process.execPath, ['scripts/agent-review-landing.mjs', '--target', '20990101050000'], {
+    cwd: f.root,
+    env: fixtureEnvironment,
+    encoding: 'utf8',
+    timeout: 30000,
+  });
+  expect(cliError.status).toBe(1);
+  expect(cliError.stderr).toContain('--target requires --re-slot');
 });

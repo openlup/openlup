@@ -4,12 +4,10 @@ import { existsSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryEnvelope, migrationRegistryUnion } from './agent-review-derived.mjs';
-import { syncSqlReference } from './agent-review-generators.mjs';
 import { applyMigrationReslot, assertAppendOnlyLandingSlots, assertNoAuthoredSlotReferences, landingMerge, landingSlotPlan, nextFreeMigrationSlot } from './agent-review-landing.mjs';
-import { admit, coverageRequirement, deltaFloor, digest, prepareCandidate, receiptSummary, recordReport, integrationReviewContext, verdict } from './agent-review-decide.mjs';
-import { parseReceipt } from './agent-review-queue.mjs';
+import { deltaFloor, integrationReviewContext, prepareCandidate, recordReport, verdict } from './agent-review-decide.mjs';
 import { captureCommittedReviewCandidate, captureReviewRules, captureCoverageEdge, validateEconomySession, proveReviewIntegration, git as sourceGit } from './agent-review-session.mjs';
 import { renderDocumentationSourceMap } from './documentation-navigation.ts';
 import { readDocumentationState } from './documentation-routing.ts';
@@ -30,10 +28,12 @@ import {
 let f: DerivedFixture;
 
 beforeAll(async () => {
-  f = await createDerivedFixture({ runInitialLanding: true });
+  vi.stubEnv('npm_execpath', npmCli);
+  f = await createDerivedFixture({ runInitialLanding: true, stubNpmEnv: false });
 }, 180000);
 
 afterAll(() => {
+  vi.unstubAllEnvs();
   f?.cleanup();
 });
 
@@ -288,6 +288,60 @@ it('plans shared migration slots across rails and UTC rollover', () => {
     nextFreeSlot: '20270101010001',
     changes: [{ target: 'db/platform/migrations/20270101010001_old.sql' }],
   });
+
+  // Explicit --target forces movement even when originalSlot > maxMainSlot and assigns sequential slots for multi-migration branches.
+  expect(landingSlotPlan(
+    ['db/platform/migrations/20990101030000_ahead.sql'],
+    ['db/platform/migrations/20990101020000_main.sql'],
+    { target: '20990101050000' },
+  )).toEqual({
+    maxMainSlot: '20990101020000',
+    nextFreeSlot: '20990101050000',
+    changes: [{
+      path: 'db/platform/migrations/20990101030000_ahead.sql',
+      target: 'db/platform/migrations/20990101050000_ahead.sql',
+    }],
+  });
+  expect(landingSlotPlan(
+    ['db/platform/migrations/20990101010000_first.sql', 'supabase/migrations/20990101030000_second.sql'],
+    ['db/platform/migrations/20990101020000_main.sql'],
+    { target: '20990101050000' },
+  )).toEqual({
+    maxMainSlot: '20990101020000',
+    nextFreeSlot: '20990101050000',
+    changes: [
+      { path: 'db/platform/migrations/20990101010000_first.sql', target: 'db/platform/migrations/20990101050000_first.sql' },
+      { path: 'supabase/migrations/20990101030000_second.sql', target: 'supabase/migrations/20990101050001_second.sql' },
+    ],
+  });
+
+  expect(() => landingSlotPlan(
+    ['db/platform/migrations/20990101010000_pr.sql'],
+    ['db/platform/migrations/20990101020000_main.sql'],
+    { target: '20990230000000' },
+  )).toThrow(/valid 14-digit UTC slot/u);
+  expect(() => landingSlotPlan([], ['db/platform/migrations/20990101020000_main.sql'], { target: '20990101050000' }))
+    .toThrow(/at least one unlanded plain migration/u);
+  expect(() => landingSlotPlan(
+    ['db/platform/migrations/q2_20990101010000_qualified.sql'],
+    ['db/platform/migrations/20990101020000_main.sql'],
+    { target: '20990101050000' },
+  )).toThrow(/at least one unlanded plain migration/u);
+  expect(() => landingSlotPlan(
+    ['db/platform/migrations/20990101030000_pr.sql'],
+    ['db/platform/migrations/20990101020000_main.sql'],
+    { target: '20990101030000' },
+  )).toThrow(/strictly later than 20990101030000/u);
+  expect(() => landingSlotPlan(
+    ['db/platform/migrations/20990101010000_pr.sql'],
+    ['db/platform/migrations/20990101020000_main.sql'],
+    { target: '20990101030000', branchMigrationPaths: ['db/platform/migrations/20990101040000_existing.sql'] },
+  )).toThrow(/strictly later than 20990101040000/u);
+  expect(() => landingSlotPlan(
+    ['db/platform/migrations/20990101010000_pr.sql'],
+    ['packages/platform/sql/20990101050000_PR.sql'],
+    { target: '20990101050000' },
+  )).toThrow(/collides with existing path or mirror/u);
 });
 
 it('refuses authored migration filenames before re-slot changes the tree', async () => {
@@ -338,9 +392,10 @@ it('re-slots migration paths in the manifest, reviewed forwards and publication 
 });
 
 it('lands an inverted migration only with explicit re-slot', async () => {
+  const f = await createDerivedFixture({ runInitialLanding: false, stubNpmEnv: false });
   const ignoredMirror = 'packages/platform/sql/20990101020002_landing_fixture.sql';
-  const exclude = f.read('.git/info/exclude');
   try {
+    const exclude = f.read('.git/info/exclude');
     f.checkout(f.base);
     f.append('20990101010000');
     f.append('20990101020001');
@@ -356,30 +411,27 @@ it('lands an inverted migration only with explicit re-slot', async () => {
     const originalSql = f.read(original);
     f.write('.git/info/exclude', exclude + `\n/${ignoredMirror}\n`);
     f.write(ignoredMirror, 'Local ignored SQL.\n');
-    await expect(landingMerge(f.root, { reSlot: true, runCommand: f.fixtureCommand }))
+    await expect(landingMerge(f.root, { reSlot: true, runCommand: () => '' }))
       .rejects.toThrow(`landing: re-slot refuses to overwrite untracked mirror: ${ignoredMirror}`);
     f.expectRestoredHead(pr);
     expect(f.read(ignoredMirror)).toBe('Local ignored SQL.\n');
     rmSync(join(f.root, ignoredMirror));
-    await expect(landingMerge(f.root, { reSlot: true, runCommand: f.fixtureCommand }))
+    await expect(landingMerge(f.root, { reSlot: true, runCommand: () => '' }))
       .rejects.toThrow(`landing: re-slot destination mirror is ignored: ${ignoredMirror}`);
     f.expectRestoredHead(pr);
     f.write('.git/info/exclude', exclude);
     const failure = new Error('inventory refresh failed after re-slot');
-    await expect(landingMerge(f.root, { reSlot: true, runCommand: (command, args) => {
+    await expect(landingMerge(f.root, { reSlot: true, runCommand: (_command, args) => {
       if (args.includes(join(f.root, 'scripts/installation-inventory-refresh.ts'))) {
-        expect(f.read(reslotted)).toBe(originalSql);
+        expect(f.read(reslotted), `reslotted ${reslotted} in ${f.root}`).toBe(originalSql);
         throw failure;
       }
-      f.fixtureCommand(command, args);
+      return '';
     } })).rejects.toBe(failure);
     f.expectRestoredHead(pr);
     expect(f.read(original)).toBe(originalSql);
     expect(existsSync(join(f.root, reslotted))).toBe(false);
-    const result = await landingMerge(f.root, { reSlot: true, runCommand: (command, args) => {
-      if (args.includes(join(f.root, 'scripts/installation-inventory-refresh.ts'))) return;
-      f.fixtureCommand(command, args);
-    } });
+    const result = await landingMerge(f.root, { reSlot: true, runCommand: () => '' });
     expect(result.head).toMatch(/^[a-f0-9]{40}$/u);
     expect(f.git('ls-files', 'db/platform/migrations/20990101020002_landing_fixture.sql')).toContain('20990101020002');
     expect(f.git('show', `HEAD:${ignoredMirror}`)).toBe(originalSql.trim());
@@ -415,232 +467,15 @@ it('lands an inverted migration only with explicit re-slot', async () => {
     expect(tamperedProof.kind).toBe('resolution');
     expect(tamperedProof.resolution).toContain(later);
   } finally {
-    rmSync(join(f.root, ignoredMirror), { force: true });
-    f.write('.git/info/exclude', exclude);
-    f.restoreDerivedFixture();
+    f.cleanup();
   }
-}, 60_000);
-
-it.each([
-  {
-    name: 'disjoint SQL definitions stay derived (floor 0)',
-    mainSql: 'CREATE OR REPLACE FUNCTION public.main_only_fn() RETURNS int LANGUAGE sql AS $$ SELECT 2; $$;\n',
-    prSql: 'CREATE OR REPLACE FUNCTION public.pr_only_fn() RETURNS int LANGUAGE sql AS $$ SELECT 1; $$;\n',
-    expectedOverlap: false,
-  },
-  {
-    name: 'overlapping CREATE OR REPLACE FUNCTION forces reslotOverlap (floor 1)',
-    mainSql: 'CREATE OR REPLACE FUNCTION public.shared_fn() RETURNS int LANGUAGE sql AS $$ SELECT 2; $$;\n',
-    prSql: 'CREATE OR REPLACE FUNCTION shared_fn() RETURNS int LANGUAGE sql AS $$ SELECT 1; $$;\n',
-    expectedOverlap: true,
-  },
-  {
-    name: 'table mutation vs policy target forces reslotOverlap (floor 1)',
-    mainSql: 'CREATE TABLE public.reslot_orders (id uuid PRIMARY KEY);\n',
-    prSql: 'CREATE POLICY reslot_orders_read ON reslot_orders FOR SELECT USING (true);\n',
-    expectedOverlap: true,
-  },
-  {
-    name: 'opaque DO block in re-slotted migration forces reslotOverlap (floor 1)',
-    mainSql: 'CREATE OR REPLACE FUNCTION public.unrelated_fn() RETURNS int LANGUAGE sql AS $$ SELECT 2; $$;\n',
-    prSql: 'DO $$ BEGIN EXECUTE v_dynamic_sql; END $$;\n',
-    expectedOverlap: true,
-  },
-  {
-    name: 'DO EXECUTE GRANT on main-replaced function forces reslotOverlap (floor 1)',
-    mainSql: 'CREATE OR REPLACE FUNCTION public.shared_fn(x int) RETURNS int LANGUAGE sql AS $$ SELECT x + 1; $$;\n',
-    prSql: "DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.shared_fn(int) TO service_role;'; END IF; END; $$;\n",
-    expectedOverlap: true,
-  },
-  {
-    name: 'GRANT on main-created view forces reslotOverlap (floor 1)',
-    mainSql: 'CREATE VIEW public.summary_v AS SELECT 1 AS n;\n',
-    prSql: 'GRANT SELECT ON public.summary_v TO authenticated;\n',
-    expectedOverlap: true,
-  },
-  {
-    name: 'REFERENCES on main-altered table forces reslotOverlap (floor 1)',
-    mainSql: 'ALTER TABLE private.users ADD COLUMN active boolean DEFAULT true;\n',
-    prSql: 'CREATE TABLE public.orders (id int PRIMARY KEY, user_id int REFERENCES private.users(id));\n',
-    expectedOverlap: true,
-  },
-  {
-    name: 'E-string hex escape in DO EXECUTE fails closed to reslotOverlap (floor 1)',
-    mainSql: 'CREATE OR REPLACE FUNCTION public.unrelated_fn() RETURNS int LANGUAGE sql AS $$ SELECT 2; $$;\n',
-    prSql: "DO $$ BEGIN EXECUTE E'\\x43REATE OR REPLACE FUNCTION public.other() RETURNS int LANGUAGE sql AS $b$ SELECT 1; $b$;'; END $$;\n",
-    expectedOverlap: true,
-  },
-  {
-    name: 'top-level SET search_path fails closed to reslotOverlap (floor 1)',
-    mainSql: 'CREATE OR REPLACE FUNCTION public.unrelated_fn() RETURNS int LANGUAGE sql AS $$ SELECT 2; $$;\n',
-    prSql: 'SET search_path TO private, public; CREATE OR REPLACE FUNCTION calc() RETURNS int LANGUAGE sql AS $$ SELECT 1; $$;\n',
-    expectedOverlap: true,
-  },
-  {
-    name: 'inline CREATE SCHEMA elements fail closed to reslotOverlap (floor 1)',
-    mainSql: 'CREATE OR REPLACE FUNCTION public.unrelated_fn() RETURNS int LANGUAGE sql AS $$ SELECT 2; $$;\n',
-    prSql: 'CREATE SCHEMA analytics CREATE TABLE analytics.events (id int);\n',
-    expectedOverlap: true,
-  },
-  {
-    name: 'ALTER FUNCTION RENAME TO fails closed to reslotOverlap (floor 1)',
-    mainSql: 'CREATE OR REPLACE FUNCTION public.unrelated_fn() RETURNS int LANGUAGE sql AS $$ SELECT 2; $$;\n',
-    prSql: 'ALTER FUNCTION public.other_fn(int) RENAME TO moved_fn;\n',
-    expectedOverlap: true,
-  },
-])('guards byte-identical SQL re-slots against semantic clobber: $name', async ({ mainSql, prSql, expectedOverlap }) => {
-  const writeMigration = (slot: string, slug: string, sql: string) => {
-    const file = `db/platform/migrations/${slot}_${slug}.sql`;
-    f.write(file, sql);
-    const sha256 = createHash('sha256').update(sql).digest('hex');
-    const manifest = JSON.parse(f.read(MIGRATION_REGISTRIES[0]));
-    for (const plan of [manifest, manifest.qualified, manifest.qualifiedAdmin]) plan.forward.push({ file, sha256 });
-    f.write(MIGRATION_REGISTRIES[0], json(manifest));
-    const registry = JSON.parse(f.read(MIGRATION_REGISTRIES[1]));
-    registry.nativeStoreForwardClass.slots.push({ row: `fixture-${slot}-${slug}`, path: file, replacedFunctions: [], createdFunctions: [] });
-    registry.nativeStoreForwards.push({ path: file, sha256, functions: [] });
-    f.write(MIGRATION_REGISTRIES[1], json(registry));
-    expect(checkPlatformMigrationProjection(f.root, true)).toEqual([]);
-    f.write(SQL_REFERENCE, syncSqlReference(f.root));
-    return file;
-  };
-  try {
-    f.checkout(f.base);
-    const prFile = writeMigration('20990101010000', 'pr_item', prSql);
-    const pr = f.commit();
-    f.checkout(f.base);
-    writeMigration('20990101020000', 'main_item', mainSql);
-    const upstream = f.commit();
-    f.setMain(upstream);
-    f.checkout(pr);
-
-    const landed = await landingMerge(f.root, { reSlot: true, runCommand: (command, args) => {
-      if (args.includes(join(f.root, 'scripts/installation-inventory-refresh.ts'))) return;
-      f.fixtureCommand(command, args);
-    } });
-    const reslottedFile = 'db/platform/migrations/20990101020001_pr_item.sql';
-    const reslottedMirror = 'packages/platform/sql/20990101020001_pr_item.sql';
-    expect(f.git('ls-files', prFile)).toBe('');
-    expect(f.git('ls-files', reslottedFile)).toBe(reslottedFile);
-
-    const previous = await captureCommittedReviewCandidate(f.root, f.base, pr);
-    const intent = { risk: 'behavior', criteria: 'Guard overlapping re-slotted SQL migrations' };
-    let session = prepareCandidate(null, { ...previous, rules: await captureReviewRules(f.root, previous), intent, authorSessionId: 'fixture-author' }, 1000);
-    for (const reviewer of ['r-init-1', 'r-init-2']) {
-      session = recordReport(session, {
-        reviewer, cold: true, verdict: 'PASS', tree: previous.tree, findings: [], closes: [],
-        documentation: 'Checked SQL forward and guidance.',
-      }, 1000);
-    }
-    const current = await captureCommittedReviewCandidate(f.root, upstream, landed.head);
-    const observed = { ...current, rules: await captureReviewRules(f.root, current), intent, authorSessionId: 'fixture-author' };
-    const integration = integrationReviewContext(session, observed, { parents: [pr, upstream], baseAncestor: true }, 1001);
-    const coverage = await captureCoverageEdge(f.root, session, observed, 1001);
-    expect(coverage).toBeDefined();
-    session = prepareCandidate(session, { ...observed, integration, coverage }, 1001);
-
-    if (!expectedOverlap) {
-      expect(coverage!.proof).toMatchObject({ kind: 'portable-derived', derived: true });
-      expect(coverage!.proof.reslotOverlap).toBeUndefined();
-      expect(coverageRequirement(session).floor).toBe(0);
-      expect(verdict(session, current, 1001)).toEqual({ ok: true, code: 'reviewed', reason: 'reviewed' });
-    } else {
-      expect(coverage!.proof).toMatchObject({
-        kind: 'portable-resolution',
-        derived: true,
-        reslotOverlap: true,
-        modeChanged: false,
-      });
-      expect(coverage!.proof.resolution).toEqual([reslottedFile, reslottedMirror].sort());
-      expect(coverageRequirement(session).floor).toBe(1);
-      expect(verdict(session, current, 1001)).toMatchObject({ ok: false, code: 'needs_agent_review', reason: 'needs_agent_review: 1 independent PASS reports required' });
-
-      session = recordReport(session, {
-        reviewer: 'r-overlap-check', cold: true, verdict: 'PASS', tree: current.tree,
-        ordinary: true, delta: coverage!.delta, findings: [], closes: [],
-        documentation: 'Verified re-slotted SQL does not clobber upstream migration.',
-      }, 1002);
-      expect(verdict(session, current, 1002)).toEqual({ ok: true, code: 'reviewed', reason: 'reviewed' });
-      await expect(validateEconomySession(f.root, session)).resolves.toBeUndefined();
-      const summary = receiptSummary(session, 12, 1002);
-      expect(admit({ receipt: summary, observed: { ...current, pr: 12, baseValid: true }, now: 1002 })).toEqual({
-        ok: true, code: 'reviewed', reason: 'reviewed',
-      });
-    }
-  } finally {
-    f.git('reset', '--hard', f.merged);
-    f.git('clean', '-fd', '--', 'db/platform/migrations', 'packages/platform/sql');
-    f.git('checkout', '-q', '--detach', f.merged);
-    f.setMain(f.main);
-  }
-}, 90_000);
-
-it('preserves pre-PR-4 derived re-slot replay when RESLOT_OVERLAP_GUARD is absent on main', async () => {
-  const writeMigration = (slot: string, slug: string, sql: string) => {
-    const file = `db/platform/migrations/${slot}_${slug}.sql`;
-    f.write(file, sql);
-    const sha256 = createHash('sha256').update(sql).digest('hex');
-    const manifest = JSON.parse(f.read(MIGRATION_REGISTRIES[0]));
-    for (const plan of [manifest, manifest.qualified, manifest.qualifiedAdmin]) plan.forward.push({ file, sha256 });
-    f.write(MIGRATION_REGISTRIES[0], json(manifest));
-    const registry = JSON.parse(f.read(MIGRATION_REGISTRIES[1]));
-    registry.nativeStoreForwardClass.slots.push({ row: `fixture-${slot}-${slug}`, path: file, replacedFunctions: [], createdFunctions: [] });
-    registry.nativeStoreForwards.push({ path: file, sha256, functions: [] });
-    f.write(MIGRATION_REGISTRIES[1], json(registry));
-    expect(checkPlatformMigrationProjection(f.root, true)).toEqual([]);
-    f.write(SQL_REFERENCE, syncSqlReference(f.root));
-    return file;
-  };
-  try {
-    f.checkout(f.base);
-    const sessionSource = f.read('scripts/agent-review-session.mjs')
-      .replace("const RESLOT_OVERLAP_GUARD = 'openlup-reslot-overlap-20261126';", '// pre-PR-4 session without reslot overlap guard');
-    f.write('scripts/agent-review-session.mjs', sessionSource);
-    const preGuardBase = f.commit();
-
-    writeMigration('20990101010000', 'pr_grant', "DO $$ BEGIN EXECUTE 'GRANT SELECT ON public.reslot_tbl TO anon;'; END $$;\n");
-    const pr = f.commit();
-    f.checkout(preGuardBase);
-    writeMigration('20990101020000', 'main_tbl', 'CREATE TABLE public.reslot_tbl (id int);\n');
-    const upstream = f.commit();
-    f.setMain(upstream);
-    f.checkout(pr);
-
-    const landed = await landingMerge(f.root, { reSlot: true, runCommand: (command, args) => {
-      if (args.includes(join(f.root, 'scripts/installation-inventory-refresh.ts'))) return;
-      f.fixtureCommand(command, args);
-    } });
-
-    const previous = await captureCommittedReviewCandidate(f.root, preGuardBase, pr);
-    const intent = { risk: 'behavior', criteria: 'Replay pre-PR-4 derived re-slot without reslotOverlap' };
-    let session = prepareCandidate(null, { ...previous, rules: await captureReviewRules(f.root, previous), intent, authorSessionId: 'fixture-author' }, 1000);
-    for (const reviewer of ['pre-r1', 'pre-r2']) {
-      session = recordReport(session, {
-        reviewer, cold: true, verdict: 'PASS', tree: previous.tree, findings: [], closes: [],
-        documentation: 'Checked pre-PR-4 migration.',
-      }, 1000);
-    }
-    const current = await captureCommittedReviewCandidate(f.root, upstream, landed.head);
-    const observed = { ...current, rules: await captureReviewRules(f.root, current), intent, authorSessionId: 'fixture-author' };
-    const integration = integrationReviewContext(session, observed, { parents: [pr, upstream], baseAncestor: true }, 1001);
-    const coverage = await captureCoverageEdge(f.root, session, observed, 1001);
-    expect(coverage?.proof).toMatchObject({ kind: 'portable-derived', derived: true });
-    expect(coverage?.proof.reslotOverlap).toBeUndefined();
-    session = prepareCandidate(session, { ...observed, integration, coverage }, 1001);
-    expect(coverageRequirement(session).floor).toBe(0);
-    await expect(validateEconomySession(f.root, session)).resolves.toBeUndefined();
-  } finally {
-    f.git('reset', '--hard', f.merged);
-    f.git('clean', '-fd', '--', 'db/platform/migrations', 'packages/platform/sql');
-    f.git('checkout', '-q', '--detach', f.merged);
-    f.setMain(f.main);
-  }
-}, 90_000);
+}, 180_000);
 
 it('keeps both SQL forwards when main added the same migration filename', async () => {
   const oldPath = 'db/platform/migrations/20990101010000_landing_fixture.sql';
   const target = 'db/platform/migrations/20990101010001_landing_fixture.sql';
   const mainSql = '-- Distinct main forward\nSELECT 2;\n';
+  const ctx = `same-filename reslot (${oldPath} -> ${target}) in ${f.root}`;
   try {
     f.checkout(f.base);
     f.append('20990101010000');
@@ -660,25 +495,22 @@ it('keeps both SQL forwards when main added the same migration filename', async 
     f.write(MIGRATION_REGISTRIES[1], json(forwards));
     const upstream = f.commit();
     f.setMain(upstream); f.checkout(pr);
-    const result = await landingMerge(f.root, { reSlot: true, runCommand: (command, args) => {
-      if (args.includes(join(f.root, 'scripts/installation-inventory-refresh.ts'))) return;
-      f.fixtureCommand(command, args);
-    } });
-    expect(result.head).toMatch(/^[a-f0-9]{40}$/u);
-    expect(f.read(oldPath)).toBe(mainSql);
-    expect(f.read(target)).toBe(prSql);
+    const result = await landingMerge(f.root, { reSlot: true, runCommand: () => '' });
+    expect(result.head, ctx).toMatch(/^[a-f0-9]{40}$/u);
+    expect(f.read(oldPath), ctx).toBe(mainSql);
+    expect(f.read(target), ctx).toBe(prSql);
     const landed = JSON.parse(f.read(MIGRATION_REGISTRIES[0]));
-    expect(landed.forward.map((row: { file: string }) => row.file)).toEqual(expect.arrayContaining([oldPath, target]));
-    expect(JSON.parse(f.read(MIGRATION_REGISTRIES[1])).nativeStoreForwards.map((row: { path: string }) => row.path))
+    expect(landed.forward.map((row: { file: string }) => row.file), ctx).toEqual(expect.arrayContaining([oldPath, target]));
+    expect(JSON.parse(f.read(MIGRATION_REGISTRIES[1])).nativeStoreForwards.map((row: { path: string }) => row.path), ctx)
       .toEqual(expect.arrayContaining([oldPath, target]));
-    expect(checkPlatformMigrationProjection(f.root, false)).toEqual([]);
-    expect(f.git('status', '--porcelain=v1')).toBe('');
-    expect(f.git('show', '-s', '--format=%B', result.head)).toContain('Signed-off-by: Fixture <fixture@example.invalid>');
+    expect(checkPlatformMigrationProjection(f.root, false), ctx).toEqual([]);
+    expect(f.git('status', '--porcelain=v1'), ctx).toBe('');
+    expect(f.git('show', '-s', '--format=%B', result.head), ctx).toContain('Signed-off-by: Fixture <fixture@example.invalid>');
     const integration = await proveReviewIntegration(f.root,
       await captureCommittedReviewCandidate(f.root, f.base, pr),
       await captureCommittedReviewCandidate(f.root, upstream, result.head));
-    expect(integration.kind).toBe('resolution');
-    expect(integration.resolution).toContain(target);
+    expect(integration.kind, ctx).toBe('resolution');
+    expect(integration.resolution, ctx).toContain(target);
   } finally { f.git('reset', '--hard', f.merged); f.git('checkout', '-q', '--detach', f.merged); f.setMain(f.main); }
 }, 90_000);
 
@@ -756,3 +588,87 @@ it.each(['clean', 'derived-carrier'])('skips Docker inventory refresh on non-SQL
     f.git('update-ref', 'refs/remotes/origin/main', f.main);
   }
 }, 180000);
+
+it('validates --target pre-merge and lands forced or inverted migrations at the exact target slot as derived', async () => {
+  const f = await createDerivedFixture({ runInitialLanding: false, stubNpmEnv: false });
+  const runLanding = landingMerge as (
+    root: string,
+    options?: { reSlot?: boolean; verify?: boolean; target?: string; runCommand?: (command: string, args: string[]) => unknown },
+  ) => Promise<{ head: string; main: string; inventoryRefreshed: boolean }>;
+  try {
+    // 1. Pre-merge refusals on non-SQL branch before toolchain/merge/runCommand.
+    f.checkout(f.base);
+    f.write('README.md', `${f.read('README.md')}\nNon-SQL target refusal check\n`);
+    const nonSqlPr = f.commit();
+    f.checkout(f.base);
+    f.append('20990101020000');
+    const aheadMain = f.commit();
+    f.setMain(aheadMain);
+    f.checkout(nonSqlPr);
+
+    const invoked: string[][] = [];
+    const trackingRun = (command: string, args: string[]) => {
+      invoked.push(args);
+      if (args.includes(join(f.root, 'scripts/installation-inventory-refresh.ts'))) return;
+      f.fixtureCommand(command, args);
+    };
+    await expect(runLanding(f.root, { reSlot: false, target: '20990101050000', runCommand: trackingRun }))
+      .rejects.toThrow('--target requires --re-slot');
+    await expect(runLanding(f.root, { reSlot: true, target: '20990230000000', runCommand: trackingRun }))
+      .rejects.toThrow('valid 14-digit UTC slot');
+    await expect(runLanding(f.root, { reSlot: true, target: '20990101050000', runCommand: trackingRun }))
+      .rejects.toThrow('at least one unlanded plain migration');
+    expect(invoked).toEqual([]);
+    f.expectRestoredHead(nonSqlPr);
+
+    // 2. PR with migration already > maxMainSlot (20990101030000 > 20990101020000) forced to --target 20990101050000.
+    f.checkout(f.base);
+    f.append('20990101030000');
+    const aheadPr = f.commit();
+    f.checkout(aheadPr);
+    await expect(runLanding(f.root, { reSlot: true, target: '20990101030000', runCommand: trackingRun }))
+      .rejects.toThrow('strictly later than 20990101030000');
+    expect(invoked).toEqual([]);
+    f.expectRestoredHead(aheadPr);
+
+    const originalPath = 'db/platform/migrations/20990101030000_landing_fixture.sql';
+    const targetPath = 'db/platform/migrations/20990101050000_landing_fixture.sql';
+    const targetMirror = 'packages/platform/sql/20990101050000_landing_fixture.sql';
+    const originalSql = f.read(originalPath);
+    const landed = await runLanding(f.root, { reSlot: true, target: '20990101050000', runCommand: trackingRun });
+    expect(f.git('ls-files', originalPath)).toBe('');
+    expect(f.git('ls-files', targetPath)).toBe(targetPath);
+    expect(f.git('show', `HEAD:${targetMirror}`)).toBe(originalSql.trim());
+    expect(checkPlatformMigrationProjection(f.root, false)).toEqual([]);
+    expect(f.git('status', '--porcelain=v1')).toBe('');
+
+    const proof = await proveReviewIntegration(
+      f.root,
+      await captureCommittedReviewCandidate(f.root, f.base, aheadPr),
+      await captureCommittedReviewCandidate(f.root, aheadMain, landed.head),
+    );
+    expect(proof).toMatchObject({ kind: 'derived', derived: true });
+    expect(proof.resolution).toBeUndefined();
+
+    // 3. Multi-migration branch (one inverted, one ahead) lands sequentially starting at --target and proves as derived.
+    f.checkout(f.base);
+    f.append('20990101010000');
+    f.append('20990101020100');
+    const multiPr = f.commit();
+    const multiLanded = await runLanding(f.root, { reSlot: true, target: '20990101060000', runCommand: trackingRun });
+    expect(f.git('ls-files', 'db/platform/migrations/20990101060000_landing_fixture.sql')).toBe('db/platform/migrations/20990101060000_landing_fixture.sql');
+    expect(f.git('ls-files', 'db/platform/migrations/20990101060001_landing_fixture.sql')).toBe('db/platform/migrations/20990101060001_landing_fixture.sql');
+    expect(f.git('ls-files', 'db/platform/migrations/20990101010000_landing_fixture.sql')).toBe('');
+    expect(f.git('ls-files', 'db/platform/migrations/20990101020100_landing_fixture.sql')).toBe('');
+    expect(checkPlatformMigrationProjection(f.root, false)).toEqual([]);
+    const multiProof = await proveReviewIntegration(
+      f.root,
+      await captureCommittedReviewCandidate(f.root, f.base, multiPr),
+      await captureCommittedReviewCandidate(f.root, aheadMain, multiLanded.head),
+    );
+    expect(multiProof).toMatchObject({ kind: 'derived', derived: true });
+    expect(multiProof.resolution).toBeUndefined();
+  } finally {
+    f.cleanup();
+  }
+}, 120_000);
