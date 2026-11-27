@@ -272,6 +272,30 @@ describe("expired checkout recovery service", () => {
     expect(deps.compensationPort.cancelAbandonedOrder).not.toHaveBeenCalled();
   });
 
+  it("validates and recreates a subscription_cycle order with non-null subscriptionId and subscriptionCycleId", async () => {
+    const deps = depsFor({ paymentProvider: "hidden_rehearsal" });
+    const cycleOrder = order({
+      mode: "subscription_cycle",
+      subscriptionId: "77777777-7777-4777-8777-777777777777",
+      subscriptionCycleId: "88888888-8888-4888-8888-888888888888",
+    });
+
+    const service = createExpiredCheckoutRecoveryService(deps);
+    await expect(service.validate(cycleOrder)).resolves.toBe(true);
+    await expect(service.recreate({
+      order: cycleOrder,
+      clientId: CLIENT_ID,
+      paymentProvider: "hidden_rehearsal",
+    })).resolves.toMatchObject({ orderId: REPLACEMENT_ID, status: "paid" });
+
+    expect(deps.paymentSafetyPort.verifyPriorPayment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subscriptionId: "77777777-7777-4777-8777-777777777777",
+        subscriptionCycleId: "88888888-8888-4888-8888-888888888888",
+      }),
+    );
+  });
+
   it("surfaces the finalize refusal when a legacy pet-less subscription order is recovered", async () => {
     const deps = depsFor();
     // What the runtime port hands back for

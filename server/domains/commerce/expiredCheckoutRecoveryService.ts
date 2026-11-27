@@ -51,18 +51,22 @@ export function createExpiredCheckoutRecoveryService(deps: {
 }) {
   const toNativeOrder = (order: CheckoutRecoveryOrderSnapshot) => ({
     ...order,
+    subscriptionCycleId: null,
     initialDeclarationId: null,
     initialActivationState: null,
   });
 
-  const buildCore = (paymentInput?: Pick<ExpiredCheckoutRecoveryInput, "paymentProvider" | "paymentExecution">) =>
+  const buildCore = (
+    sourceOrder: CheckoutRecoveryOrderSnapshot,
+    paymentInput?: Pick<ExpiredCheckoutRecoveryInput, "paymentProvider" | "paymentExecution">,
+  ) =>
     createPlatformExpiredCheckoutRecoveryService<
       CreateQuoteRequest,
       CreateOrderDraftResponse["orderDraft"],
       ExpiredCheckoutRecoveryResult
     >({
       supports: () => true,
-      quoteRequest: (order) => quoteRequestForExpiredRecovery(order as unknown as CheckoutRecoveryOrderSnapshot),
+      quoteRequest: () => quoteRequestForExpiredRecovery(sourceOrder),
       quotePort: {
         createQuote: (request, options) =>
           deps.quotePort.createQuote(request, options as Parameters<CommerceQuotePort["createQuote"]>[1]),
@@ -89,13 +93,12 @@ export function createExpiredCheckoutRecoveryService(deps: {
         },
       },
       paymentSafetyPort: {
-        verifyPriorPayment: (order) =>
-          deps.paymentSafetyPort.verifyPriorPayment(order as unknown as CheckoutRecoveryOrderSnapshot),
+        verifyPriorPayment: () => deps.paymentSafetyPort.verifyPriorPayment(sourceOrder),
       },
       compensationPort: deps.compensationPort,
       runtimePort: {
-        async startRuntime({ idempotencyKey, orderDraft, quoteSnapshot, source, clientId }) {
-          const order = source as unknown as CheckoutRecoveryOrderSnapshot;
+        async startRuntime({ idempotencyKey, orderDraft, quoteSnapshot, clientId }) {
+          const order = sourceOrder;
           const paymentProvider = paymentInput!.paymentProvider;
           const paymentExecution = paymentInput?.paymentExecution;
           const started = await deps.runtimePort.startRuntime({
@@ -158,15 +161,13 @@ export function createExpiredCheckoutRecoveryService(deps: {
       },
     });
 
-  const validator = buildCore();
-
   return {
     async validate(order: CheckoutRecoveryOrderSnapshot): Promise<boolean> {
-      return validator.validate(toNativeOrder(order));
+      return buildCore(order).validate(toNativeOrder(order));
     },
 
     async recreate(input: ExpiredCheckoutRecoveryInput): Promise<ExpiredCheckoutRecoveryResult> {
-      return buildCore(input).recreate({
+      return buildCore(input.order, input).recreate({
         order: toNativeOrder(input.order),
         clientId: input.clientId,
       });
