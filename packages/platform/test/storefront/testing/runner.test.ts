@@ -784,6 +784,225 @@ describe("harm proven before a fault (R33)", () => {
   });
 });
 
+/** The double's page without `clearClientState`, as a hand-built handle written before it. */
+function unisolated(double: Double): RunOptions["page"] {
+  const { clearClientState: _omitted, ...rest } = double.page;
+  return rest;
+}
+
+/**
+ * Records, in one order, the observer's reads (`ledger <run>`, `count`) and the
+ * page handle's `clearClientState` and `intercept` calls over the store double.
+ * `clear` replaces the double's own member: a function, or `null` for none.
+ */
+function recorded(double: Double, clear?: (() => Promise<void>) | null) {
+  const log: string[] = [];
+  const own = double.page.clearClientState!;
+  const { clearClientState: _own, ...rest } = double.page;
+  const member = clear === undefined ? own : clear;
+  const page: RunOptions["page"] = {
+    ...rest,
+    ...(member === null ? {} : { async clearClientState() { log.push("clearClientState"); await member(); } }),
+    async intercept(decide) { log.push("intercept"); return double.page.intercept(decide); },
+  };
+  const observer: RunOptions["observer"] = {
+    kind: double.observer.kind,
+    async ledger(subject) { log.push(`ledger ${subject.endsWith("-control@example.test") ? "control" : "clean"}`); return double.observer.ledger(subject); },
+    ...(double.observer.payableOrdersInDatabase === undefined ? {} : {
+      async payableOrdersInDatabase() { log.push("count"); return double.observer.payableOrdersInDatabase!(); },
+    }),
+  };
+  return { log, page, observer };
+}
+
+/** A clearClientState that rejects on the given calls (1-based) and otherwise clears as the double does. */
+function rejectingOn(double: Double, ...calls: number[]) {
+  let count = 0;
+  return async () => {
+    count += 1;
+    if (calls.includes(count)) {
+      throw new Error("storefront_page_client_state_foreign_origin: the page is on https://other.example.test?token=secret-token-value while the store's origin is https://shop.example.test (options.origin). Cause: x.");
+    }
+    await double.page.clearClientState!();
+  };
+}
+
+const CONTROL_SCENARIOS = storefrontScenarios.filter((scenario) => scenario.control.kind !== "none").map((scenario) => scenario.id);
+
+describe("client state between the runs (R40–R46)", () => {
+  it("clears after the pre-arrangement reads and before the interceptor, in each run, and once without a control (R40, T0.1, T0.2)", async () => {
+    const double = storeDouble({}, { exclusive: true });
+    const { log, page, observer } = recorded(double);
+    const verdict = verdictOf(await runStorefrontScenario(options(double, "lost_response_reload", { page, observer })));
+    verdicts.push({ verdict, double });
+    expect(verdict.result).toBe("passed");
+    expect(log.filter((entry) => entry === "clearClientState" || entry === "intercept")).toEqual(["clearClientState", "intercept", "clearClientState", "intercept"]);
+    const at = (run: string) => log.indexOf(`ledger ${run}`);
+    expect(log.slice(at("clean"), at("clean") + 4)).toEqual(["ledger clean", "count", "clearClientState", "intercept"]);
+    expect(log.slice(at("control"), at("control") + 4)).toEqual(["ledger control", "count", "clearClientState", "intercept"]);
+    const single = storeDouble();
+    const once = recorded(single);
+    const safety = verdictOf(await runStorefrontScenario(options(single, "duplicate_submit", { page: once.page, observer: once.observer })));
+    verdicts.push({ verdict: safety, double: single });
+    expect(safety.result).toBe("safety_only");
+    expect(once.log.filter((entry) => entry === "clearClientState")).toHaveLength(1);
+    expect(once.log.slice(0, 3)).toEqual(["ledger clean", "clearClientState", "intercept"]);
+  });
+
+  it("ends a rejected clear as a page fault of its run, below ledger harm the clean run proved (R41, T0.9–T0.11)", async () => {
+    const clean = storeDouble();
+    const first = recorded(clean, rejectingOn(clean, 1));
+    const cleanFault = verdictOf(await runStorefrontScenario(options(clean, "lost_response_reload", { page: first.page, observer: first.observer })));
+    verdicts.push({ verdict: cleanFault, double: clean });
+    expect(cleanFault.result).toBe("not_run");
+    expect(codes(cleanFault)).toEqual(["page_failed"]);
+    expect(finding(cleanFault, "page_failed")).toMatchObject({ run: "clean", step: null });
+    expect(finding(cleanFault, "page_failed")!.observed).toContain("(storefront_page_client_state_foreign_origin: the page is on <url> while the store's origin is <url> (options.origin).)");
+    expect(stepsOf(cleanFault, "clean")).toEqual([]);
+    expect(stepsOf(cleanFault, "control")).toEqual([]);
+    expect(first.log).not.toContain("intercept");
+
+    const harmed = storeDouble({ secondPayableOrder: true });
+    const second = recorded(harmed, rejectingOn(harmed, 2));
+    const harm = verdictOf(await runStorefrontScenario(options(harmed, "lost_response_reload", { page: second.page, observer: second.observer })));
+    verdicts.push({ verdict: harm, double: harmed });
+    expect(harm.result).toBe("failed");
+    expect(codes(harm)[0]).toBe("duplicate_order");
+    expect(finding(harm, "duplicate_order")).toMatchObject({ run: "clean" });
+    expect(finding(harm, "page_failed")).toMatchObject({ run: "control", step: null });
+    expect(codes(harm).indexOf("page_failed")).toBeGreaterThan(codes(harm).indexOf("duplicate_order"));
+
+    const control = storeDouble();
+    const third = recorded(control, rejectingOn(control, 2));
+    const controlFault = verdictOf(await runStorefrontScenario(options(control, "lost_response_reload", { page: third.page, observer: third.observer })));
+    verdicts.push({ verdict: controlFault, double: control });
+    expect(controlFault.result).toBe("not_run");
+    expect(codes(controlFault)[0]).toBe("page_failed");
+    expect(finding(controlFault, "page_failed")).toMatchObject({ run: "control", step: null });
+    expect(stepsOf(controlFault, "control")).toEqual([]);
+  });
+
+  it("ends a safety_only run whose clear rejects as a page fault, and refuses stop-at when the clean run's clear rejects (R47)", async () => {
+    const single = storeDouble();
+    const safety = recorded(single, rejectingOn(single, 1));
+    const verdict = verdictOf(await runStorefrontScenario(options(single, "duplicate_submit", { page: safety.page, observer: safety.observer })));
+    verdicts.push({ verdict, double: single });
+    expect(verdict.result).toBe("not_run");
+    expect(codes(verdict)).toEqual(["page_failed"]);
+    expect(finding(verdict, "page_failed")).toMatchObject({ run: "clean", step: null });
+    expect(verdict.steps).toEqual([]);
+    expect(safety.log).toEqual(["ledger clean", "clearClientState"]);
+    expect(single.calls).toEqual([]);
+
+    const stop = storeDouble();
+    const stopped = recorded(stop, rejectingOn(stop, 1));
+    await expect(runStorefrontScenario({ ...options(stop, "decline_retry", { page: stopped.page, observer: stopped.observer }), stopAt: "checkout.declined" }))
+      .rejects.toThrow(/^storefront_stop_state_unreached: The clean run of decline_retry recorded no step, so state:declined was never visible \(first finding: page_failed\)\. Cause: /);
+    expect(stopped.log).toEqual(["ledger clean", "clearClientState"]);
+    expect(stop.calls).toEqual([]);
+    expect(stop.produced).toEqual([]);
+  });
+
+  it.each(CONTROL_SCENARIOS)("ends %s not_run with only client_state_unisolated when the handle cannot clear, calling nothing (R42, T0.4)", async (id) => {
+    const double = storeDouble();
+    const verdict = verdictOf(await runStorefrontScenario(options(double, id, { page: unisolated(double) })));
+    verdicts.push({ verdict, double });
+    expect(verdict.result).toBe("not_run");
+    expect(verdict.findings).toHaveLength(1);
+    expect(verdict.findings[0]).toMatchObject({ code: "client_state_unisolated", run: null, step: null, recheck: `Run scenario ${id} again with the same harness.` });
+    expect(verdict.findings[0]!.fix).toBe("Pass a page handle with clearClientState (createPageHandle provides it).");
+    expect(verdict.steps).toEqual([]);
+    expect(verdict.stimulus).toEqual({});
+    expect(verdict.control.applied).toBe(false);
+    expect(parseStorefrontVerdict(serializeStorefrontVerdict(verdict)).ok).toBe(true);
+    expect(double.calls).toEqual([]);
+    expect(double.events).toEqual([]);
+    expect(double.produced).toEqual([]);
+  });
+
+  it("refuses stop-at without the member before any call, and clears once before the clean run with it (R43, T0.7, T0.8)", async () => {
+    const bare = storeDouble();
+    await expect(runStorefrontScenario({ ...options(bare, "decline_retry", { page: unisolated(bare) }), stopAt: "checkout.declined" }))
+      .rejects.toThrow(/^storefront_stop_state_unreached: The page handle has no clearClientState\. Cause: the page handle cannot clear client state, .+ Fix: Pass a page handle with clearClientState \(createPageHandle provides it\)\. Recheck: /);
+    expect(bare.calls).toEqual([]);
+    expect(bare.events).toEqual([]);
+    const double = storeDouble();
+    const { log, page, observer } = recorded(double);
+    const result = await runStorefrontScenario({ ...options(double, "decline_retry", { page, observer }), stopAt: "checkout.declined" });
+    expect(result.kind).toBe("stopped");
+    expect(log.filter((entry) => entry === "clearClientState")).toHaveLength(1);
+    expect(log.slice(0, 3)).toEqual(["ledger clean", "clearClientState", "intercept"]);
+  });
+
+  it.each(["lost_response_reload", "lost_response_edited_payload"])("isolates the control buyer from the clean buyer's record in %s, and a clear that clears nothing does not (R44)", async (id) => {
+    const isolated = await run(id, { sessionCarriesRecord: true });
+    expect(isolated.verdict.findings).toEqual([]);
+    expect(isolated.verdict.result).toBe("passed");
+    const double = storeDouble({ sessionCarriesRecord: true });
+    const verdict = verdictOf(await runStorefrontScenario(options(double, id, { page: { ...double.page, clearClientState: async () => undefined } })));
+    verdicts.push({ verdict, double });
+    expect(verdict.result).toBe("not_run");
+    expect(verdict.findings.some((entry) => entry.run === "control" && ["stimulus_not_applied", "observer_subject_unseen"].includes(entry.code))).toBe(true);
+  });
+
+  it("admits first: a scenario that is not admitted ends tier_unreachable only, with or without the member, which is never called (R45, T0.3, T0.5)", async () => {
+    const partial = ["activation_pending", "declined", "pending", "settled"];
+    const present = await run("reload_pending_attempt", {}, {}, { capabilities: partial });
+    expect(codes(present.verdict)).toEqual(["tier_unreachable"]);
+    expect(present.verdict.steps).toEqual([]);
+    expect(present.double.calls).toEqual([]);
+    const double = storeDouble({}, { capabilities: partial });
+    const absent = verdictOf(await runStorefrontScenario(options(double, "reload_pending_attempt", { page: unisolated(double) })));
+    verdicts.push({ verdict: absent, double });
+    expect(absent.result).toBe("not_run");
+    expect(codes(absent)).toEqual(["tier_unreachable"]);
+    expect(double.calls).toEqual([]);
+    expect(double.events).toEqual([]);
+  });
+
+  it("runs a safety_only scenario without the member as before (R46, T0.6)", async () => {
+    const double = storeDouble();
+    const verdict = verdictOf(await runStorefrontScenario(options(double, "duplicate_submit", { page: unisolated(double) })));
+    verdicts.push({ verdict, double });
+    expect(verdict.findings).toEqual([]);
+    expect(verdict.result).toBe("safety_only");
+    expect(stepsOf(verdict, "clean").map((step) => step.index)).toEqual([0, 1, 2]);
+    expect(double.calls).not.toContain("clearClientState");
+  });
+});
+
+describe("consent after the page settled from the last text change (R48)", () => {
+  const modes = ["input", "change"] as const;
+  it.each(modes.flatMap((mode) => ["lost_response_reload", "lost_response_edited_payload", "duplicate_submit"].map((id) => [mode, id] as const)))(
+    "with quotes on %s, ticks terms after the page settled and once more after a second settle, so %s sends its creates", async (quoteOn, id) => {
+      const { verdict, double } = await run(id, { quoteOn });
+      expect(verdict.findings).toEqual([]);
+      expect(verdict.result).toBe(id === "duplicate_submit" ? "safety_only" : "passed");
+      const arrangement = double.calls.slice(0, double.calls.indexOf("perform action:place_order"));
+      const last = arrangement.lastIndexOf("fill field:postal_code");
+      expect(arrangement.slice(last, last + 6)).toEqual([
+        "fill field:postal_code", "settled", "find field:terms_accepted", "fill field:terms_accepted", "settled", "fill field:terms_accepted",
+      ]);
+    });
+
+  it.each(modes)("with quotes on %s, re-types the details after a reload under a custom arrange the same way", async (quoteOn) => {
+    const adapter: StorefrontAdapter = {
+      async arrange({ page, buyer }) {
+        await page.navigate("/select/one_time");
+        await page.perform({ attribute: "action", value: "proceed_to_checkout" }, { timeoutMs: 0 });
+        for (const [field, value] of Object.entries(buyer)) if (typeof value === "string") await page.fill({ attribute: "field", value: field }, value, { timeoutMs: 0 });
+        for (let pass = 0; pass < 2; pass += 1) {
+          await page.settled({ quietMs: 0 });
+          await page.fill({ attribute: "field", value: "terms_accepted" }, true, { timeoutMs: 0 });
+        }
+      },
+    };
+    const { verdict } = await run("lost_response_reload", { quoteOn }, { adapter, proofFile: { formatVersion: 1, configurations: ["default"], widths: [1280] } });
+    expect(verdict.findings).toEqual([]);
+    expect(verdict.result).toBe("passed");
+  });
+});
+
 describe("the verdict shape (R12)", () => {
   it("gives every verdict above to the parser, with no key value and no query", () => {
     expect(verdicts.length).toBeGreaterThan(25);

@@ -255,6 +255,13 @@ const texts = {
       fix: "Run the scenario where an outcome driver declares these outcomes; until then it is missing evidence, never a pass.",
     },
   } },
+  client_state_unisolated: { part: "harness", causes: {
+    only: {
+      observed: (f) => `${f.at}: the page handle has no clearClientState, so the clean and control runs would share the browser's cookies and storage.`,
+      cause: "The control run's buyer would meet the clean run's state kept in the browser, such as a purchase record, so neither result would be evidence about the store.",
+      fix: "Pass a page handle with clearClientState (createPageHandle provides it).",
+    },
+  } },
   page_failed: { part: "harness", causes: {
     only: {
       observed: (f) => `${f.at}: the page handle failed (${f.detail}).`,

@@ -37,7 +37,7 @@ export const knownFindingCodes = [
   "auto_progress_not_performed",
   "adapter_matcher_unmatched", "adapter_anchor_missing", "anchor_hidden", "control_not_applied", "arrange_failed",
   "observer_subject_unseen", "stimulus_not_create", "stimulus_not_applied", "tier_unreachable", "outcome_failed",
-  "observer_failed", "page_failed", "request_budget_exceeded",
+  "observer_failed", "page_failed", "request_budget_exceeded", "client_state_unisolated",
 ] as const;
 
 type Open<Known extends readonly string[]> = Known[number] | (string & {});
