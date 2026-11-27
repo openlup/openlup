@@ -24,7 +24,7 @@ This index is for maintainers changing OpenLup. For installing, composing, exten
 - [Canonical contracts](CANONICAL_CONTRACTS.md) — status, idempotency, and provider-boundary rules.
 
 Partner acquisition is available as schemas/types and a PostgreSQL port through
-the existing [marketing package entries](../../packages/platform/README.md#marketing-contracts).
+the existing [marketing package entries](PLATFORM_PACKAGE_REFERENCE.md#marketing-contracts).
 [Partners](../../src/domains/partners/README.md) owns the pipeline and its data;
 source HTTP handlers require host routing and authorization. Customer conversion,
 partner privacy export/erasure and hosted qualification are not supplied.

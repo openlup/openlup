@@ -459,7 +459,7 @@ For the exact callable contracts, see the
 [identity API reference](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/api/identity.api.md)
 and [browser contracts](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/api/identity-contracts.api.md).
 The server report links the implementation that owns verifier and transport limits.
-The [package surface reference](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/README.md#package-surface)
+The [package surface reference](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/README.md#package-surface-maturity)
 owns capability maturity.
 
 Configure `IDENTITY_OIDC_ISSUER`, `IDENTITY_OIDC_CUSTOMER_AUDIENCE` and
