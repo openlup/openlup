@@ -1,68 +1,91 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { Client, Pool, type QueryConfig } from "pg";
 import { expect, it, vi } from "vitest";
 import { configurations } from "../../examples/neutral-store/owned/store.config.ts";
 import { runScheduledRenewal } from "../../examples/neutral-store/host/scheduled-renewal.ts";
-import { readPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
+import { PLATFORM_MIGRATION_MANIFEST, readPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
+import { readReviewedForwardRegistry, REVIEWED_FORWARD_PATH } from "../../scripts/reviewed-platform-forward.js";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
-import { qualifiedPostgresStartupOptions } from "../../server/adapters/postgres/qualifiedInstall.js";
+import { qualifiedPostgresCatalogPayload, qualifiedPostgresStartupOptions } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { withPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
 import { closePostgres, postgresSetupTimeoutMs, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
-import { installAccountMutations } from "./customerAccountMutations.fixture.js";
+import { installAccountMutations, type AccountMutationsStore, type AccountProfile } from "./customerAccountMutations.fixture.js";
 import { exerciseLegacyRenewals } from "./nativeRenewalV3Legacy.fixture.js";
 import { transaction } from "./orderMoneyV2Storage.fixture.js";
-import { activatedRenewal, activation, allocate, occurrenceProducerPath, probe, producer, signature } from "./nativeRenewalOccurrence.fixture.js";
+import { activatedRenewal, activation, allocate, probe, producer, signature } from "./nativeRenewalOccurrence.fixture.js";
 import { AT, call, later, seedRenewalStock, type Db } from "./subscriptionNativeFixture.js";
 
 const current = readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest | null;
 if (current?.schemaVersion !== 3) throw new Error("Expected the full native migration catalogue");
-const producerPath = occurrenceProducerPath();
+const registry = readReviewedForwardRegistry(readFileSync(REVIEWED_FORWARD_PATH));
+const producerSlots = registry.nativeStoreForwardClass?.slots.filter(slot =>
+  slot.createdFunctions.some(fn => fn.signature === signature)) ?? [];
+if (producerSlots.length !== 1) throw new Error(`Expected one registered producer forward for ${signature}`);
+const producerPath = producerSlots[0]!.path;
 const sql = readFileSync(producerPath, "utf8");
-const pins = {
-  before: {
-    legacy: "df0134e8213f9559a23c56a8a705545ffda2ae1bfc011c1eefe1e3754485c386",
-    bootstrap: "3eb85a770c9ae311ed3e74135efcba055c7c902ae7b55096a570fdcd87f2ec12",
-    separate: "83b8d2ad29efe3b827e73deeae8e26626242ddb0f09df292cef8450293ea9bce",
-    admin: "33babfbe85a1ea2063a6ecc936560d3ac86471a03721aaf9ad992a5bf052c5be",
-    operator: "cb8f34664a537f369529f38e733270b897557bec5523c1e8f849e25f90080cfa",
-  },
-  through: {
-    legacy: "8ff85f95f42d13c0ece64041bb4ff7ada3e7e4a0422aa3effbc8dc693ed4d745",
-    bootstrap: "ff2e4f09fe0e169af732dc8b5d742734bbc455f5cfb79c97a2cec2b1c9311cdc",
-    separate: "c3f6f8015123d494038476b7fdf84756114267d89251c427686e8ff90fbba976",
-    admin: "7b40ca62f61d4a0bd9eea0a4a8951b9cc0586d77217a4a2d50beae3374662e3f",
-    operator: "adba183105b7daa3f3b4de1f27ea0521bcde435f07c97b43596bc9d7fe6e32e4",
-  },
-};
 
-function atProducer(manifest: Extract<PlatformMigrationManifest, { schemaVersion: 3 }>, boundary: keyof typeof pins) {
-  const plan = structuredClone(manifest), inventory = pins[boundary];
-  for (const profile of [plan, plan.qualified, plan.qualifiedAdmin]) {
+type CompleteManifest = Extract<PlatformMigrationManifest, { schemaVersion: 3 }>;
+const plans = (manifest: CompleteManifest) => [manifest, manifest.qualified, manifest.qualifiedAdmin] as const;
+
+function atProducer(manifest: CompleteManifest, boundary: "before" | "through") {
+  const plan = structuredClone(manifest);
+  for (const profile of plans(plan)) {
     const index = profile.forward.findIndex(({ file }) => file === producerPath);
     if (index < 0) throw new Error(`Missing producer migration ${producerPath}`);
     profile.forward = profile.forward.slice(0, boundary === "through" ? index + 1 : index);
   }
-  plan.objectInventorySha256 = inventory.legacy;
-  plan.qualified.objectInventorySha256 = { bootstrapMigrator: { withRestore: inventory.bootstrap },
-    separateMigrator: { withRestore: inventory.separate } };
-  plan.qualifiedAdmin.objectInventorySha256 = { installerManaged: inventory.admin, operatorProvisioned: inventory.operator };
   return plan;
 }
 
 const catalogue = atProducer(current, "through"), predecessor = atProducer(current, "before");
-it("selects the exact pinned prefixes even when every plan has a later forward", () => {
+it("includes new predecessor units and excludes stacked forwards at the registered producer path", () => {
   const extended = structuredClone(current);
-  const laterInventory = "a".repeat(64);
-  for (const plan of [extended, extended.qualified, extended.qualifiedAdmin]) {
-    plan.forward.push({ file: "db/platform/migrations/99991231235959_fixture_later_forward.sql", sha256: laterInventory });
+  const newPredecessor = { file: "db/platform/migrations/fixture_predecessor.sql", sha256: "a".repeat(64) };
+  const stacked = { file: "db/platform/migrations/fixture_stacked_forward.sql", sha256: "b".repeat(64) };
+  for (const plan of plans(extended)) {
+    const cut = plan.forward.findIndex(({ file }) => file === producerPath);
+    plan.forward.splice(cut, 1, newPredecessor, plan.forward[cut]!, stacked);
   }
-  extended.objectInventorySha256 = laterInventory;
-  extended.qualified.objectInventorySha256 = { bootstrapMigrator: { withRestore: laterInventory },
-    separateMigrator: { withRestore: laterInventory } };
-  extended.qualifiedAdmin.objectInventorySha256 = { installerManaged: laterInventory, operatorProvisioned: laterInventory };
-  expect(atProducer(extended, "before")).toEqual(predecessor);
-  expect(atProducer(extended, "through")).toEqual(catalogue);
+  const before = plans(atProducer(extended, "before"));
+  const through = plans(atProducer(extended, "through"));
+  for (const [index, plan] of plans(predecessor).entries()) {
+    const producerUnit = plans(catalogue)[index]!.forward[plan.forward.length];
+    expect(producerUnit?.file).toBe(producerPath);
+    expect(before[index]!.forward).toEqual([...plan.forward, newPredecessor]);
+    expect(through[index]!.forward).toEqual([...plan.forward, newPredecessor, producerUnit]);
+  }
 });
+
+async function verifyMeasuredPrefix(root: string, manifest: CompleteManifest, profile: AccountProfile, inventory: string,
+  runner: AccountMutationsStore["runner"]) {
+  if (!inventory) throw new Error("The sliced installation did not produce an object inventory");
+  const pinned = structuredClone(manifest);
+  switch (profile) {
+    case "legacy": pinned.objectInventorySha256 = inventory; break;
+    case "bootstrap": pinned.qualified.objectInventorySha256.bootstrapMigrator.withRestore = inventory; break;
+    case "separate": pinned.qualified.objectInventorySha256.separateMigrator.withRestore = inventory; break;
+    case "admin-managed": pinned.qualifiedAdmin.objectInventorySha256.installerManaged = inventory; break;
+    case "admin-operator": pinned.qualifiedAdmin.objectInventorySha256.operatorProvisioned = inventory; break;
+  }
+  writeFileSync(join(root, PLATFORM_MIGRATION_MANIFEST), JSON.stringify(pinned));
+  // A fresh runner read checks the exact ledger and the measured digest for this prefix.
+  expect((await runner.status()).pending).toEqual([]);
+}
+
+async function withMeasuredAccountPrefix<T>(manifest: CompleteManifest, profile: AccountProfile, label: string,
+  exercise: (store: AccountMutationsStore) => Promise<T>) {
+  return withPlatformCatalog(manifest, async root => {
+    // The install commits the slice before checking its object inventory.
+    const store = await installAccountMutations(profile, true, label, root, root);
+    try {
+      await verifyMeasuredPrefix(root, manifest, profile, store.inventory, store.runner);
+      return await exercise(store);
+    } finally { await store.close(); }
+  });
+}
+
 const denied = { code: "42501", message: `permission denied for function ${producer}` };
 
 async function assertAcl(db: Db) {
@@ -105,35 +128,33 @@ function watchAttempts() {
 }
 
 it.each(["bootstrap", "separate", "admin-managed", "admin-operator"] as const)(
-  "installs the owner-only signature and denies the actual %s runtime and an unrelated definer", profile => withPlatformCatalog(catalogue, async root => {
-    const store = await installAccountMutations(profile, false, "occurrence-acl", root);
-    try {
-      const f = await transaction(store.migrator, db => activation(db), "COMMIT");
-      await assertAcl(store.migrator);
-      await assertNoCallers(store.migrator);
-      await assertDeniedPaths(store.runtime, f);
-      await transaction(store.owner, async db => {
-        await db.query(`CREATE ROLE fixture_unrelated_owner LOGIN NOINHERIT;
-          CREATE FUNCTION public.fixture_occurrence_relay(uuid,uuid) RETURNS jsonb LANGUAGE sql SECURITY DEFINER
-          SET search_path = pg_catalog, pg_temp AS 'SELECT public.${producer}($1,$2,''v3'',NULL)';
-          ALTER FUNCTION public.fixture_occurrence_relay(uuid,uuid) OWNER TO fixture_unrelated_owner`);
-        await expect(db.query("SELECT public.fixture_occurrence_relay($1,$2)", [f.clientId, f.subscriptionId])).rejects.toMatchObject(denied);
-      }, "ROLLBACK");
-      expect(await allocate(store.migrator, f)).toMatchObject({ outcome: "created" });
-      await transaction(store.migrator, async db => {
-        await db.query(`DROP FUNCTION ${signature};
-          ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon,authenticated,service_role;
-          CREATE FUNCTION public.fixture_permissive_default() RETURNS boolean LANGUAGE sql AS 'SELECT true'`);
-        expect((await db.query(`SELECT grantee::regrole::text AS role FROM pg_proc p,aclexplode(p.proacl)
-          WHERE p.oid='public.fixture_permissive_default()'::regprocedure AND grantee NOT IN (0,p.proowner) ORDER BY role`)).rows)
-          .toEqual(["anon", "authenticated", "service_role"].map(role => ({ role })));
-        await db.query(sql);
-        await assertAcl(db);
-        for (const role of ["anon", "authenticated", "service_role"]) {
-          expect((await db.query("SELECT has_function_privilege($1,$2,'EXECUTE') AS allowed", [role, signature])).rows).toEqual([{ allowed: false }]);
-        }
-      }, "ROLLBACK");
-    } finally { await store.close(); }
+  "installs the owner-only signature and denies the actual %s runtime and an unrelated definer",
+  profile => withMeasuredAccountPrefix(catalogue, profile, "occurrence-acl", async store => {
+    const f = await transaction(store.migrator, db => activation(db), "COMMIT");
+    await assertAcl(store.migrator);
+    await assertNoCallers(store.migrator);
+    await assertDeniedPaths(store.runtime, f);
+    await transaction(store.owner, async db => {
+      await db.query(`CREATE ROLE fixture_unrelated_owner LOGIN NOINHERIT;
+        CREATE FUNCTION public.fixture_occurrence_relay(uuid,uuid) RETURNS jsonb LANGUAGE sql SECURITY DEFINER
+        SET search_path = pg_catalog, pg_temp AS 'SELECT public.${producer}($1,$2,''v3'',NULL)';
+        ALTER FUNCTION public.fixture_occurrence_relay(uuid,uuid) OWNER TO fixture_unrelated_owner`);
+      await expect(db.query("SELECT public.fixture_occurrence_relay($1,$2)", [f.clientId, f.subscriptionId])).rejects.toMatchObject(denied);
+    }, "ROLLBACK");
+    expect(await allocate(store.migrator, f)).toMatchObject({ outcome: "created" });
+    await transaction(store.migrator, async db => {
+      await db.query(`DROP FUNCTION ${signature};
+        ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon,authenticated,service_role;
+        CREATE FUNCTION public.fixture_permissive_default() RETURNS boolean LANGUAGE sql AS 'SELECT true'`);
+      expect((await db.query(`SELECT grantee::regrole::text AS role FROM pg_proc p,aclexplode(p.proacl)
+        WHERE p.oid='public.fixture_permissive_default()'::regprocedure AND grantee NOT IN (0,p.proowner) ORDER BY role`)).rows)
+        .toEqual(["anon", "authenticated", "service_role"].map(role => ({ role })));
+      await db.query(sql);
+      await assertAcl(db);
+      for (const role of ["anon", "authenticated", "service_role"]) {
+        expect((await db.query("SELECT has_function_privilege($1,$2,'EXECUTE') AS allowed", [role, signature])).rows).toEqual([{ allowed: false }]);
+      }
+    }, "ROLLBACK");
   }), postgresSetupTimeoutMs);
 
 const emptyV3 = async (db: Db) => {
@@ -159,10 +180,7 @@ async function dispatchEffects(db: Db) {
 it.each([false, true])("preserves the mounted native worker with owner login and service role present=%s", async withService => {
   async function exercise(candidate: boolean) {
     if (!withService) {
-      return withPlatformCatalog(candidate ? catalogue : predecessor, async root => {
-        const store = await installAccountMutations("legacy", false, "occurrence-mount", root);
-        try { return await run(store, candidate); } finally { await store.close(); }
-      });
+      return withMeasuredAccountPrefix(candidate ? catalogue : predecessor, "legacy", "occurrence-mount", store => run(store, candidate));
     }
     const container = await runPostgresContainer({ name: `occurrence-legacy-service-${process.pid}`, password: "synthetic-occurrence" });
     const owner = new Pool({ connectionString: container.connectionString });
@@ -233,8 +251,24 @@ it("compares a paid renewal under the actual starter login with a fixed occurren
       expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
       await owner.query(`CREATE ROLE starter_runtime LOGIN NOINHERIT PASSWORD 'synthetic-occurrence';
         CREATE ROLE starter_restore LOGIN NOINHERIT PASSWORD 'synthetic-occurrence'`);
-      await withPlatformCatalog(candidate ? catalogue : predecessor, root => createPostgresMigrationRunner(
-        { connectionString: container.connectionString }, { root, installation, poolFactory: () => migration }).apply());
+      const plan = candidate ? catalogue : predecessor;
+      await withPlatformCatalog(plan, async root => {
+        let inventory = "";
+        const runner = createPostgresMigrationRunner({ connectionString: container.connectionString }, {
+          root, installation, poolFactory: () => migration,
+          catalogProjectionPayload: async db => {
+            const payload = await qualifiedPostgresCatalogPayload(db, installation, "openlup:public-platform-migrations:v1");
+            inventory = createHash("sha256").update(payload).digest("hex");
+            return payload;
+          },
+        });
+        try { await runner.apply(); }
+        catch (error) {
+          if (!inventory || !(error instanceof Error) || error.message !==
+            "platform migration inventory rejected: platform migration manifest: object inventory SHA-256 mismatch") throw error;
+        }
+        await verifyMeasuredPrefix(root, plan, "bootstrap", inventory, runner);
+      });
       const f = await transaction(migration, async db => {
         await call(db, "subscription_delivery_alignment_set_mode", ["off"]);
         const subject = await activation(db, 28, later(-29 * 24));
