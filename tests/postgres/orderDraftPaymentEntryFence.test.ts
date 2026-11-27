@@ -148,11 +148,12 @@ async function expectFence(run: Promise<unknown>, routine: string) {
   expect(error).toMatchObject({ where: expect.stringMatching(new RegExp(`^[^\\n]+ function (?:public\\.)?${routine}\\(`, "u")) });
 }
 
-const relations = ["commerce_settlement_intents", "commerce_settlement_transitions", "payment_provider_states",
+const paymentRelations = ["commerce_settlement_intents", "commerce_settlement_transitions", "payment_provider_states",
   "payment_provider_transitions", "payment_provider_receipts"];
+const affectedRelations = [...paymentRelations, "outbox_events", "payment_provider_attempt_evidence", "payment_truth_events"];
 async function paymentFacts(db: Db) {
   const facts: Record<string, { fact: string }[]> = {};
-  for (const table of relations) {
+  for (const table of affectedRelations) {
     facts[table] = (await db.query<{ fact: string }>(
       `SELECT to_jsonb(fact)::text AS fact FROM public.${table} AS fact ORDER BY 1`)).rows;
   }
@@ -192,6 +193,42 @@ async function concurrentKeyReservation(
     blocker.release();
     contender.release();
   }
+}
+
+async function fenceWithinSavepoint(
+  { owner, runtime }: { owner: Pool; runtime: Pool },
+  routine: string,
+  order: Order,
+  attempt: (db: PoolClient, order: Order, key: string) => Promise<unknown>,
+) {
+  const { rows: [role] } = await runtime.query<{ statement: string }>("SELECT format('SET LOCAL ROLE %I', current_user) AS statement");
+  const before = await paymentFacts(owner);
+  await transaction(owner, async db => {
+    const pid = await backendPid(db);
+    const transactionId = () => db.query("SELECT pg_current_xact_id()::text AS xid").then(result => result.rows[0]!.xid);
+    const xid = await transactionId();
+    const locks = () => owner.query(`SELECT (to_jsonb(l)-'fastpath'-'waitstart')::text AS lock
+      FROM pg_locks l WHERE pid=$1 ORDER BY 1`, [pid]).then(result => result.rows);
+    const beforeLocks = await locks();
+
+    await db.query("SAVEPOINT payment_fence");
+    await db.query(role!.statement);
+    await expectFence(attempt(db, order, `savepoint-${randomUUID()}`), routine);
+    await db.query("ROLLBACK TO SAVEPOINT payment_fence");
+    expect(await locks()).toStrictEqual(beforeLocks);
+
+    // Uncontended row locks need not appear in pg_locks. A second connection must be able to lock the same rows.
+    expect((await owner.query("SELECT id FROM public.commerce_orders WHERE id=$1 FOR UPDATE NOWAIT", [order.id])).rows)
+      .toStrictEqual([{ id: order.id }]);
+    const locked = await owner.query("SELECT id FROM public.commerce_settlement_intents WHERE order_id=$1 FOR UPDATE NOWAIT", [order.id]);
+    const settlements = before.commerce_settlement_intents!.map(({ fact }) => JSON.parse(fact) as { order_id: string; id: string });
+    expect(locked.rows).toStrictEqual(settlements.filter(row => row.order_id === order.id).map(({ id }) => ({ id })));
+
+    expect(await paymentFacts(db)).toStrictEqual(before);
+    await db.query("RELEASE SAVEPOINT payment_fence");
+    expect(await transactionId()).toBe(xid);
+  });
+  expect(await paymentFacts(owner)).toStrictEqual(before);
 }
 
 function routineAttributes(db: Db) {
@@ -405,7 +442,7 @@ it.each(["bootstrap", "admin-managed"] as const)("upgrades the qualified %s prof
     const created = await create(runtime, createLegacy, "legacy-provider");
     expect(created.paymentIntent).toMatchObject({ orderId: createLegacy.id, amountMinor: 100, currency, replayed: false });
     const facts = await paymentFacts(owner);
-    expect(relations.map(table => facts[table]?.length)).toStrictEqual([5, 6, 4, 6, 5]);
+    expect(paymentRelations.map(table => facts[table]?.length)).toStrictEqual([5, 6, 4, 6, 5]);
     await unchanged([
       async db => { expect(await open(db, attachLegacy, "legacy-opening")).toStrictEqual({ ...legacyIntent, replayed: true }); },
       async db => { expect(await create(db, attachLegacy, "legacy-attach")).toStrictEqual(receiptReplay(attached)); },
@@ -413,6 +450,10 @@ it.each(["bootstrap", "admin-managed"] as const)("upgrades the qualified %s prof
       async db => expectError(await rejected(create(db, createLegacy, "legacy-provider-unused")),
         "23505", "payment_control_intent_order_already_has_intent"),
     ]);
+    await fenceWithinSavepoint(store, opener, fresh, open);
+    await fenceWithinSavepoint(store, provider, fresh, create);
+    await fenceWithinSavepoint(store, provider, attach, create);
+
     // Reserve each key on another order while the versioned contender holds an older snapshot.
     for (const finish of ["COMMIT", "ROLLBACK"] as const) {
       for (const [routine, call] of [[opener, open], [provider, create]] as const) {
