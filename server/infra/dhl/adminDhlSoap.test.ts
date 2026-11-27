@@ -136,45 +136,62 @@ describe("admin carrier SOAP", () => {
     ).rejects.toBeInstanceOf(CarrierSoapResponseTooLargeError);
   });
 
-  it("redacts XML secrets, tokens, credentials, emails, and phones in sanitizeCarrierError", () => {
+  it("redacts XML secrets, tokens, credentials, emails, and phones without over-redacting IDs, dates, or IPs", () => {
     const raw = [
       "<tns:password>xmlSecret!</tns:password>",
-      "<username>xmlUser</username>",
+      "<authData><username>xmlUser</username><password>nestedPass</password></authData>",
       "<accountNumber>99887766</accountNumber>",
+      "Authorization: Basic dXNlcjpwYXNz",
       "Bearer tok_live_abc",
-      "token=tok_eq",
-      "api_key: key_123",
+      "access_token=tok_eq",
+      "x-api-key: key_123",
       "contact user@example.com",
       "tel +48 500 600 700",
     ].join(" ");
     const sanitized = sanitizeCarrierError(raw);
     expect(sanitized).toContain("tns:password: [redacted]");
-    expect(sanitized).toContain("username: [redacted]");
+    expect(sanitized).toContain("authData: [redacted]");
     expect(sanitized).toContain("accountNumber: [redacted]");
+    expect(sanitized).toContain("authorization: [redacted]");
     expect(sanitized).toContain("Bearer [redacted]");
-    expect(sanitized).toContain("token: [redacted]");
-    expect(sanitized).toContain("api_key: [redacted]");
+    expect(sanitized).toContain("access_token: [redacted]");
+    expect(sanitized).toContain("x-api-key: [redacted]");
     expect(sanitized).toContain("[redacted-email]");
     expect(sanitized).toContain("[redacted-phone]");
-    expect(sanitized).not.toMatch(/xmlSecret|xmlUser|99887766|tok_live_abc|tok_eq|key_123|user@example\.com|500 600 700/);
+    expect(sanitized).not.toMatch(/xmlSecret|xmlUser|nestedPass|99887766|dXNlcjpwYXNz|tok_live_abc|tok_eq|key_123|user@example\.com|500 600 700/);
+
+    const preserved = sanitizeCarrierError("Shipment 12345678901 failed on 2026-11-27 from 192.168.1.1");
+    expect(preserved).toBe("Shipment 12345678901 failed on 2026-11-27 from 192.168.1.1");
   });
 
-  it("validates safe object keys and private label keys against traversal", () => {
+  it("validates safe object keys and private label keys against traversal, dot-prefixes, and encoded bypasses", () => {
     expect(safeObjectKey("tester-1/stored.pdf")).toBe(true);
     expect(safeObjectKey("TRK-1.pdf")).toBe(true);
     expect(safeObjectKey("/leading.pdf")).toBe(false);
     expect(safeObjectKey("tester-1/../secret.pdf")).toBe(false);
     expect(safeObjectKey("tester-1/./secret.pdf")).toBe(false);
+    expect(safeObjectKey(".env")).toBe(false);
+    expect(safeObjectKey("tester-1/.hidden")).toBe(false);
+    expect(safeObjectKey("%2e%2e%2fsecret.pdf")).toBe(false);
+    expect(safeObjectKey("tester-1/stored.pdf?token=1")).toBe(false);
+    expect(safeObjectKey("tester-1/stored.pdf#frag")).toBe(false);
     expect(safeObjectKey("tester-1\\secret.pdf")).toBe(false);
     expect(safeObjectKey("tester-1//secret.pdf")).toBe(false);
     expect(safeObjectKey("tester-1/secret.pdf\0")).toBe(false);
 
     expect(safeTrackingLabelObjectKey("TRK-1")).toBe("TRK-1.pdf");
+    expect(safeTrackingLabelObjectKey("")).toBeNull();
+    expect(safeTrackingLabelObjectKey("TRK-1 ")).toBeNull();
+    expect(safeTrackingLabelObjectKey(".hidden")).toBeNull();
+    expect(safeTrackingLabelObjectKey("%2e%2e%2fsecret")).toBeNull();
     expect(safeTrackingLabelObjectKey("../secret")).toBeNull();
     expect(safeTrackingLabelObjectKey("nested/TRK-1")).toBeNull();
     expect(safeTrackingLabelObjectKey("nested\\TRK-1")).toBeNull();
 
     expect(privateLabelObjectKey("tester-1/stored.pdf")).toBe("tester-1/stored.pdf");
+    expect(
+      privateLabelObjectKey(`https://project.supabase.co/storage/v1/object/sign/${CARRIER_LABELS_BUCKET}/%252e%252e%252fsecret.pdf`),
+    ).toBeNull();
     expect(
       privateLabelObjectKey(`https://project.supabase.co/storage/v1/object/sign/${CARRIER_LABELS_BUCKET}/tester-1%2Fstored.pdf?token=exp`),
     ).toBe("tester-1/stored.pdf");

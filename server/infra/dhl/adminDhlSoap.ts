@@ -50,17 +50,22 @@ export function parseStreet(fullStreet: string): { street: string; houseNumber: 
   return { street: match[1].trim(), houseNumber: match[2].replace(/\s+/g, "") };
 }
 
+const MAX_SANITIZE_INPUT_CHARS = 4096;
+const SAFE_OBJECT_SEGMENT_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
 export function sanitizeCarrierError(error: unknown): string {
-  const result = String(error ?? `${CARRIER_DISPLAY_NAME} request failed`)
+  const bounded = String(error ?? `${CARRIER_DISPLAY_NAME} request failed`).slice(0, MAX_SANITIZE_INPUT_CHARS);
+  const result = bounded
     .replace(
-      /<((?:[^:\s<>/]+:)?(?:password|pass|username|login|token|secret|apiKey|accountNumber))\b[^>]*>[\s\S]*?<\/\1>/gi,
+      /<((?:[^:\s<>/]+:)?(?:authData|password|pass|username|login|token|secret|apiKey|accountNumber))\b[^>]*>[\s\S]*?<\/\1>/gi,
       "$1: [redacted]",
     )
     .replace(/<[^>]*>/g, " ")
-    .replace(/\bBearer\s+\S+/gi, "Bearer [redacted]")
-    .replace(/\b(password|pass|username|login|token|secret|api_?key|authorization)\s*[:=]\s*\S+/gi, "$1: [redacted]")
-    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[redacted-email]")
-    .replace(/(?:\+?\d[\d\s()./-]{7,}\d)/g, "[redacted-phone]")
+    .replace(/\bauthorization\s*[:=]\s*(?:(?:Bearer|Basic|Token)\s+)?\S+/gi, "authorization: [redacted]")
+    .replace(/\b(Bearer|Basic)\s+\S+/gi, "$1 [redacted]")
+    .replace(/(?:^|[\s,;(])([a-z0-9_-]*(?:password|pass|username|login|token|secret|api[_-]?key))\s*[:=]\s*\S+/gi, " $1: [redacted]")
+    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[redacted-email]")
+    .replace(/(?:\+\d{1,3}[\s.-]?(?:\(\d{2,4}\)[\s.-]?)?\d{2,4}[\s.-]\d{3}[\s.-]\d{3,4}|\(\d{2,4}\)[\s.-]?\d{3}[\s.-]\d{3,4})/g, "[redacted-phone]")
     .replace(/\s+/g, " ")
     .trim();
   return (result || `${CARRIER_DISPLAY_NAME} request failed`).slice(0, 300);
@@ -78,12 +83,20 @@ export function safeObjectKey(value: string): boolean {
   if (value.length === 0 || value.trim() !== value) return false;
   if (value.startsWith("/") || value.endsWith("/") || value.includes("\\") || value.includes("..")) return false;
   if (hasControlChar(value)) return false;
-  if (value.split("/").some((segment) => segment.length === 0 || segment === "." || segment === "..")) return false;
+  if (value.split("/").some((segment) => !SAFE_OBJECT_SEGMENT_RE.test(segment))) return false;
   return true;
 }
 
 export function safeTrackingLabelObjectKey(trackingNumber: string): string | null {
-  if (trackingNumber.includes("/") || trackingNumber.includes("\\")) return null;
+  if (
+    trackingNumber.length === 0 ||
+    trackingNumber.trim() !== trackingNumber ||
+    trackingNumber.includes("/") ||
+    trackingNumber.includes("\\") ||
+    trackingNumber.startsWith(".")
+  ) {
+    return null;
+  }
   const key = `${trackingNumber}.pdf`;
   return safeObjectKey(key) ? key : null;
 }

@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { mapDhlTrackingStatus as mapCarrierTrackingStatus } from "../../../src/domains/fulfillment/status.js";
 import {
   beginTrackingJobRun,
@@ -243,9 +243,9 @@ async function authorizeTrackingRequest(
 
 function timingSafeSecretEquals(presented: string | null, expected: string): boolean {
   if (!presented || !expected) return false;
-  const presentedBytes = Buffer.from(presented, "utf8");
-  const expectedBytes = Buffer.from(expected, "utf8");
-  return presentedBytes.length === expectedBytes.length && timingSafeEqual(presentedBytes, expectedBytes);
+  const presentedDigest = createHash("sha256").update(presented, "utf8").digest();
+  const expectedDigest = createHash("sha256").update(expected, "utf8").digest();
+  return timingSafeEqual(presentedDigest, expectedDigest);
 }
 
 async function requestBody(request: Request): Promise<Record<string, unknown>> {
