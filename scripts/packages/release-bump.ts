@@ -90,6 +90,9 @@ export function rotateChangelogHistory(
   historyText: string | undefined,
   maxRetainedReleases = CHANGELOG_MAX_RETAINED_RELEASES,
 ): { changelog: string; history: string | undefined; rotated: boolean } {
+  if (!Number.isSafeInteger(maxRetainedReleases) || maxRetainedReleases < 1) {
+    throw new RangeError(`maxRetainedReleases must be an integer >= 1 (received ${String(maxRetainedReleases)})`);
+  }
   const unreleased = UNRELEASED.exec(changelogText);
   if (!unreleased) return { changelog: changelogText, history: historyText, rotated: false };
   const afterUnreleased = unreleased.index + unreleased[0].length;

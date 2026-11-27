@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { UPGRADE_PAGE_MAX_BYTES, addUpgradeIndexLink, assembleUpgradePage, assertReleaseNotePackagedContent, assertSimulatedUpgradePage, formatReleaseDocumentation, listReleaseDocumentation, previousCoreTag, renderUpgradePage, summarizeApiDiff, summarizeSemanticApiDiff, upgradePagePath } from "./release-docs-pass.ts";
+import { UPGRADE_PAGE_MAX_BYTES, addUpgradeIndexLink, assembleUpgradePage, assertReleaseNotePackagedContent, assertSimulatedUpgradePage, collectApiSurfaceSummary, collectSettingsDelta, extractDeclarationSymbolName, formatReleaseDocumentation, listReleaseDocumentation, previousCoreTag, renderUpgradePage, summarizeApiDiff, summarizeSemanticApiDiff, upgradePagePath } from "./release-docs-pass.ts";
 import { addReleaseSection } from "./release-bump.ts";
 import { isGuidePage, validateGuidePage } from "../oss-publication-policy.ts";
 // eslint-disable-next-line no-restricted-imports -- witness Core's installed docs:check path on the same rendered fixture
@@ -385,6 +385,99 @@ describe("upgrade page assembly", () => {
     expect(diff.symbolsDeprecated).toEqual(["Legacy"]);
   });
 
+  it("handles blank lines after export lists, // comments inside export lists, and dual value+type exports without collisions", () => {
+    const before = report([
+      'export { alpha, beta } from "./mod.js";',
+      "",
+      "export {",
+      "  // leading comment inside brace body",
+      "  gamma, // inline comment with /* not a block",
+      "  delta, // second comment */",
+      '} from "./dir//sub.js";',
+      "",
+      'export { Foo } from "./foo-val.js";',
+      'export type { Foo } from "./foo-type.js";',
+      "",
+    ].join("\n"));
+    const after = report([
+      'export { alpha, beta, epsilon } from "./mod.js";',
+      "",
+      "export {",
+      "  // updated comment",
+      "  gamma, // keep gamma",
+      "  delta,",
+      "  zeta, // newly added",
+      '} from "./dir//sub.js";',
+      "",
+      'export { Foo } from "./foo-val.js";',
+      'export type { Foo } from "./foo-type-v2.js";',
+      "",
+    ].join("\n"));
+    const diff = summarizeSemanticApiDiff(before, after);
+    expect(diff.removed).toEqual([]);
+    expect(diff.symbolsRemoved).toEqual([]);
+    expect(diff.added).toEqual(['export { epsilon } from "./mod.js";', 'export { zeta } from "./dir//sub.js";']);
+    expect(diff.symbolsAdded).toEqual(["epsilon", "zeta"]);
+    expect(diff.changed).toEqual(['export type { Foo } from "./foo-type-v2.js";']);
+  });
+
+  it("never reports modified overloads in symbolsRemoved and extracts JSDoc-prefixed overloaded declaration names", () => {
+    const before = report([
+      "export declare function decodePublicationPacket(input: string): string;",
+      "export declare function decodePublicationPacket(input: Uint8Array): string;",
+      "export declare function fullyRemoved(input: string): void;",
+      "export declare function fullyRemoved(input: number): void;",
+      "",
+    ].join("\n"));
+    const after = report([
+      "export declare function decodePublicationPacket(input: string): string;",
+      "export declare function decodePublicationPacket(input: Uint8Array | ArrayBuffer): string;",
+      "/**\n * Newly added overloaded helper.\n */\nexport declare function parseEnvelope(raw: string): object;",
+      "/**\n * Overload accepting bytes.\n */\nexport declare function parseEnvelope(raw: Uint8Array): object;",
+      "",
+    ].join("\n"));
+    const diff = summarizeSemanticApiDiff(before, after);
+    expect(diff.symbolsRemoved).toEqual(["fullyRemoved"]);
+    expect(diff.symbolsAdded).toEqual(["parseEnvelope"]);
+    expect(extractDeclarationSymbolName("/**\n * Docs.\n */\nexport declare function parseEnvelope(raw: string): object;")).toBe("parseEnvelope");
+
+    const f = fixture({ [api]: before });
+    f.write(api, after);
+    f.commit();
+    const { text } = assembleUpgradePage({ root: f.root, version: "0.5.0", since: "openlup-core-v0.4.0", fragments: [] });
+    expect(text).toContain("Added declarations (2): `parseEnvelope` (see `meta/release-index.json`).");
+  });
+
+  it("reconciles intra-package cross-file symbol moves in collectApiSurfaceSummary without false removals or additions", () => {
+    const f = fixture({
+      [api]: declarationFile("communications/old", [
+        "export interface CommunicationsAdapterConformanceEvidence { ok: boolean; }",
+        "export interface CommunicationsAdapterConformanceSubject { id: string; }",
+        "export declare function runCommunicationsAdapterConformance(subjects: readonly CommunicationsAdapterConformanceSubject[]): Promise<CommunicationsAdapterConformanceEvidence>;",
+        "/** @deprecated Legacy helper. */",
+        "export declare function alreadyDeprecated(): void;",
+        "",
+      ].join("\n")),
+    });
+    f.write(api, declarationFile("communications/old", "export declare const brandNewExport: string;\n"));
+    f.write(peer, declarationFile("communications/new", [
+      "export interface CommunicationsAdapterConformanceEvidence { ok: boolean; }",
+      "export interface CommunicationsAdapterConformanceSubject { id: string; }",
+      "export declare function runCommunicationsAdapterConformance(subjects: readonly CommunicationsAdapterConformanceSubject[]): Promise<CommunicationsAdapterConformanceEvidence>;",
+      "/** @deprecated Legacy helper. */",
+      "export declare function alreadyDeprecated(): void;",
+      "",
+    ].join("\n")));
+    f.commit();
+
+    const summary = collectApiSurfaceSummary(f.root, "openlup-core-v0.4.0", "HEAD");
+    expect(summary.symbolsRemoved).toEqual([]);
+    expect(summary.symbolsAdded).toEqual(["brandNewExport"]);
+    expect(summary.symbolsDeprecated).toEqual([]);
+    expect(() => collectSettingsDelta(f.root, "--all")).toThrow();
+    expect(() => collectApiSurfaceSummary(f.root, "--all")).toThrow();
+  });
+
   it("groups starter fragments at the bottom and appends compact SQL Delta and Settings Delta sections", () => {
     const f = fixture();
     f.write("db/platform/migrations/20990101000000_added_feature.sql", "SELECT 1;\n");
@@ -409,7 +502,7 @@ describe("upgrade page assembly", () => {
     const apiIndex = result.text.indexOf("## API changes");
     const sqlIndex = result.text.indexOf("## SQL Delta");
     const settingsIndex = result.text.indexOf("## Settings Delta");
-    const starterIndex = result.text.indexOf("### Starter application (examples/neutral-store)");
+    const starterIndex = result.text.indexOf("## Starter application (examples/neutral-store)");
     expect(libIndex).toBeGreaterThan(-1);
     expect(libIndex).toBeLessThan(apiIndex);
     expect(apiIndex).toBeLessThan(sqlIndex);
@@ -428,6 +521,11 @@ describe("upgrade page assembly", () => {
     const updated = addUpgradeIndexLink(readme, "1.5.0");
     expect(updated).toContain("[Upgrading to 1.5.0](v1-5-0.md),\n[Upgrading to 1.4.0](v1-4-0.md),");
     expect(addUpgradeIndexLink(updated, "1.5.0")).toBe(updated);
+
+    const bulleted = "# Upgrade\n\n## Per-release notes\n\n- [Upgrading to 1.4.0](v1-4-0.md)\n";
+    const updatedBulleted = addUpgradeIndexLink(bulleted, "1.5.0");
+    expect(updatedBulleted).toBe("# Upgrade\n\n## Per-release notes\n\n- [Upgrading to 1.5.0](v1-5-0.md)\n- [Upgrading to 1.4.0](v1-4-0.md)\n");
+    expect(addUpgradeIndexLink(updatedBulleted, "1.5.0")).toBe(updatedBulleted);
   });
 
   it.each([

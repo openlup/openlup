@@ -436,6 +436,9 @@ describe("release:bump", () => {
     expect(result.rotated).toBe(true);
     expect(result.changelog).toBe(threeReleases);
     expect(result.history).toBe(`# Changelog history\n\nReleases moved verbatim.\n\n${oldSection}## [0.4.0]\n\n- Earliest.\n`);
+    for (const invalid of [0, -1, 1.5, Number.NaN]) {
+      expect(() => rotateChangelogHistory(threeReleases, undefined, invalid)).toThrow(RangeError);
+    }
   });
 
   it("updates release-index.json, rotates 4th changelog section, separates starter notes, and links upgrade/README.md during bumpSet", () => {

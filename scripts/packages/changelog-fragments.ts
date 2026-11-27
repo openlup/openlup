@@ -39,11 +39,11 @@ function defaultAudienceForPath(path: string): ChangelogFragmentAudience {
 export function parseChangelogFragment({ path, contents }: ChangelogFragment): ParsedChangelogFragment {
   let kind: ChangelogFragmentKind = "feature";
   let audience: ChangelogFragmentAudience = defaultAudienceForPath(path);
-  let body = contents;
+  let body = contents.startsWith("\uFEFF") ? contents.slice(1) : contents;
 
-  const open = /^---[ \t]*(?:\r?\n|$)/u.exec(contents);
+  const open = /^---[ \t]*(?:\r?\n|$)/u.exec(body);
   if (open) {
-    const rest = contents.slice(open[0].length);
+    const rest = body.slice(open[0].length);
     const close = /^---[ \t]*(?:\r?\n|$)/mu.exec(rest);
     if (!close) throw new Error(`${path}: unterminated frontmatter in changelog fragment`);
     const header = rest.slice(0, close.index);
@@ -80,7 +80,8 @@ export function parseChangelogFragment({ path, contents }: ChangelogFragment): P
 /** The only implicit publication carrier: regular non-executable Markdown, never a directory or script. */
 export function validateChangelogFragment(path: string, bytes: string | Buffer, mode: string): string {
   if (!isChangelogFragment(path) || mode !== "100644") throw new Error(`${path}: fragment must be changes/*.md, regular and non-executable`);
-  const contents = typeof bytes === "string" ? bytes : new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  const decoded = typeof bytes === "string" ? bytes : new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  const contents = decoded.startsWith("\uFEFF") ? decoded.slice(1) : decoded;
   if (!contents.trim() || Buffer.from(contents).some((byte) => (byte < 0x20 && byte !== 9 && byte !== 10 && byte !== 13) || byte === 0x7f)) throw new Error(`${path}: empty or malformed changelog fragment`);
   if (/^[\t ]*(?:<{7}|={7}|>{7}|\|{7})/mu.test(contents)) throw new Error(`${path}: fragment refuses conflict markers`);
   const { body } = parseChangelogFragment({ path, contents });

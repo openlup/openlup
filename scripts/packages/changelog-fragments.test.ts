@@ -275,6 +275,17 @@ describe("fragment frontmatter and strict hygiene", () => {
       meta: { kind: "deprecation", audience: "npm" },
       body: "- Explicit npm override.\n",
     });
+    expect(parseChangelogFragment({
+      path: fragment,
+      contents: "\uFEFF---\nkind: fix\n---\n\n- BOM-prefixed fix.\n",
+    })).toEqual({
+      meta: { kind: "fix", audience: "npm" },
+      body: "- BOM-prefixed fix.\n",
+    });
+    expect(validateChangelogFragment(fragment, "\uFEFF---\nkind: fix\n---\n\n- BOM-prefixed fix.\n", "100644"))
+      .toBe("---\nkind: fix\n---\n\n- BOM-prefixed fix.\n");
+    expect(validateChangelogFragment(fragment, Buffer.from("\uFEFF---\nkind: fix\n---\n\n- BOM-prefixed fix.\n"), "100644"))
+      .toBe("---\nkind: fix\n---\n\n- BOM-prefixed fix.\n");
   });
 
   it("never leaks raw frontmatter delimiters into CHANGELOG.md", () => {
