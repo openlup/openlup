@@ -600,6 +600,30 @@ it("migrates only the pristine retention contract from 1.0.0 to 1.1.0", () => {
   expect(to.files).toEqual(from.files);
 });
 
+it("upgrades without creating the optional owned storefront proof file and keeps one the store added", () => {
+  const path = "owned/storefront-proof.json";
+  expect(starterOptionalOwnedFiles.has(path)).toBe(true);
+  expect(JSON.parse(readFileSync(resolve("examples/neutral-store/ownership.json"), "utf8")).owned).toContain(path);
+  for (const added of [undefined, "{\"formatVersion\":1,\"configurations\":[\"local\"],\"widths\":[390]}\n"]) {
+    const { directory: app, write } = fixture(), { directory: target, write: candidate } = fixture();
+    const ownership = JSON.parse(readFileSync(join(target, "ownership.json"), "utf8"));
+    candidate("ownership.json", { ...ownership, owned: [...ownership.owned, path] });
+    candidate(path, readFileSync(resolve("examples/neutral-store", path), "utf8"));
+    candidate("z.ts", "candidate bytes");
+    if (added) write(path, added);
+    const from = starterUpgradeSnapshot(app, "1.4.0"), to = starterUpgradeSnapshot(target, "999999.0.0");
+    migrateStarterOwned(app, target, from, to);
+    expect(Object.keys(to.files)).not.toContain(path);
+    write("from.json", from); write("to.json", to);
+    const applied = spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"), "upgrade", "apply", "--root", app,
+      "--from", join(app, "from.json"), "--to", join(app, "to.json"), "--schema-version", "0", "--json"], { cwd: app, encoding: "utf8" });
+    expect(applied.status, applied.stdout + applied.stderr).toBe(0);
+    expect(readFileSync(join(app, "z.ts"), "utf8")).toBe("candidate bytes");
+    if (added) expect(readFileSync(join(app, path), "utf8")).toBe(added);
+    else expect(existsSync(join(app, path))).toBe(false);
+  }
+});
+
 it("preserves the actual 1.3.0 catalogue and customized JSON through apply, then guides conversion", () => {
   const { directory: app, write } = fixture(), { directory: target, write: candidate } = fixture();
   const ownedPath = "owned/catalogue.ts", jsonPath = "owned/catalogue.json", starter = resolve("examples/neutral-store");

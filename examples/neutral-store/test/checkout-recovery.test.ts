@@ -317,3 +317,94 @@ test('buyer-link confirmation survives remounts only for the continuation order 
   assert.equal(confirmation.wasSent(second), true);
   assert.equal(createBuyerLinkConfirmation().wasSent(first), false);
 });
+
+
+// S1: the sandbox simulate operations run the same simulate code as the retained `action: 'simulate'` branches:
+// for each input they answer the same result after the same storage reads.
+type Settled = { value?: unknown; error?: string; queries: string[] };
+async function settleWith(queries: string[], run: () => Promise<unknown>): Promise<Settled> {
+  queries.length = 0;
+  try { return { value: await run(), queries: [...queries] }; } catch (error) { return { error: String(error), queries: [...queries] }; }
+}
+
+test('S1: checkout.paymentSimulate answers what checkout.payment with action simulate answers', async () => {
+  const id = 'abcdefab-cdef-4abc-8def-abcdefabcdef';
+  const queries: string[] = [];
+  let order: Record<string, unknown> | null = null;
+  const pool = { async query(sql: string) {
+    queries.push(sql.replace(/\s+/g, ' ').trim());
+    if (sql.includes('checkout_recovery_order_snapshot')) return { rows: [{ result: order }] };
+    return { rows: [] };
+  } } as unknown as Pool;
+  const tokens = { async inspect() { return null; } } as unknown as import('../host/checkout-recovery.ts').PurchaseRecovery['tokens'];
+  const secret = 'a'.repeat(64), codec = createCheckoutPaymentContinuationCodec(secret, { cookieName: sandboxRecoveryPolicy.cookieName, executionRails: sandboxRecoveryPolicy.rails })!;
+  const cookie = codec.issue({ journeyId: `checkout:${id}`, orderId: id, clientId: id, paymentIntentId: id, paymentAttemptId: id, executionRail: 'sandbox' }).setCookie.split(';')[0]!;
+  const actions = composeSandboxRecoveryPayments(pool, {} as PostgresRoleFreeTransactionLane, tokens, { current: secret });
+  const context = { config: Object.values(configurations)[0]!, commandKey: 'test-command-identity', actor: { customerRef: null, operatorRef: null } };
+  const cases: Array<[Record<string, unknown>, typeof context & { requestCookie?: string }, Record<string, unknown> | null]> = [
+    [{ orderRef: 'not-a-uuid', attemptRef: id, outcome: 'captured' }, context, null],
+    [{ orderRef: id, attemptRef: id, outcome: 'captured', clientId: id }, context, null],
+    [{ orderRef: id, attemptRef: id, outcome: 'captured' }, context, null],
+    [{ orderRef: id, attemptRef: id, outcome: 'refused', token: 'rcv_opaque' }, context, null],
+    [{ orderRef: id, attemptRef: id, outcome: 'captured' }, { ...context, requestCookie: cookie }, null],
+    [{ orderRef: id, attemptRef: id, outcome: 'refused' }, { ...context, requestCookie: cookie },
+      { orderId: id, clientId: id, status: 'pending_payment', subscriptionCycleId: null, paymentIntentId: id, technicallyExpired: false }],
+    [{ orderRef: id, attemptRef: id, outcome: 'unknown' }, { ...context, requestCookie: cookie },
+      { orderId: id, clientId: 'bcdefabc-defa-4bcd-8efa-bcdefabcdefa', status: 'pending_payment', subscriptionCycleId: null, paymentIntentId: id }],
+  ];
+  const codes = new Set<unknown>();
+  for (const [input, callContext, stored] of cases) {
+    order = stored;
+    const retained = await settleWith(queries, () => actions['checkout.payment']!({ ...input, action: 'simulate' }, callContext));
+    const moved = await settleWith(queries, () => actions['checkout.paymentSimulate']!(input, callContext));
+    assert.deepEqual(moved, retained, JSON.stringify(input));
+    codes.add(JSON.stringify(moved.value));
+  }
+  assert.ok(codes.size >= 3, [...codes].join(' '));
+  // The new operation never inspects and takes no action field.
+  for (const action of ['simulate', 'inspect']) {
+    assert.deepEqual(await actions['checkout.paymentSimulate']!({ orderRef: id, attemptRef: id, outcome: 'captured', action }, { ...context, requestCookie: cookie }),
+      { ok: false, code: 'starter_input_invalid' });
+  }
+});
+
+test('S1: checkout.recoverySimulate answers what checkout.recovery with action simulate answers', async () => {
+  const source = { orderId, orderRef: `order_${orderId}`, orderNumber: 'EXAMPLE-1', clientId: orderId,
+    status: 'expired', mode: 'one_time_order', totalMinor: 100, currency: 'XXX', createdAt: '2026-11-20T00:00:00Z',
+    cadenceDays: null, customerEmail: null, customerName: null, paymentIntentId: null, paymentIntentStatus: null,
+    subscriptionId: null, subscriptionCycleId: null, shippingAddressId: orderId, initialDeclarationId: null,
+    initialActivationState: null, quoteSnapshot: { quote: {} }, runtimeMetadata: {}, invoiceBuyerSnapshot: {},
+    recoveryRootOrderId: orderId, recreatedFromOrderId: null as string | null, technicallyExpired: true };
+  const queries: string[] = [];
+  let governed = true;
+  const pool = { async query(sql: string) {
+    queries.push(sql.replace(/\s+/g, ' ').trim());
+    if (sql.includes('checkout_recovery_latest_order_snapshot') || sql.includes('checkout_recovery_order_snapshot')) return { rows: [{ result: source }] };
+    if (sql.includes('commerce_order_draft_receipts')) return { rows: [{ governed }] };
+    throw new Error('unexpected_recovery_storage');
+  } } as unknown as Pool;
+  let tokenState = 'expired';
+  const tokens = { async inspect() { return { orderId, clientId: orderId, tokenState }; } } as unknown as import('../host/checkout-recovery.ts').PurchaseRecovery['tokens'];
+  const actions = composeExpiredRecovery(pool, {} as never, tokens);
+  const context = { config: Object.values(configurations)[0]!, commandKey: 'test-command-identity', actor: { customerRef: null, operatorRef: null } };
+  const token = `rcv_${'a'.repeat(43)}`;
+  const cases: Array<[Record<string, unknown>, () => void]> = [
+    [{ token: 'not-a-token', orderRef: orderId, attemptRef: orderId, outcome: 'captured' }, () => {}],
+    [{ token, orderRef: orderId, attemptRef: orderId, outcome: 'captured', clientId: orderId }, () => {}],
+    [{ token, orderRef: orderId, attemptRef: orderId, outcome: 'captured' }, () => {}],
+    [{ token, orderRef: orderId, attemptRef: orderId, outcome: 'refused' }, () => { governed = false; }],
+    [{ token, orderRef: '33333333-3333-4333-8333-333333333333', attemptRef: orderId, outcome: 'captured' }, () => { governed = true; }],
+    [{ token, orderRef: orderId, attemptRef: orderId, outcome: 'captured' }, () => { source.clientId = '44444444-4444-4444-8444-444444444444'; }],
+    [{ token, orderRef: orderId, attemptRef: orderId, outcome: 'captured' }, () => { source.clientId = orderId; tokenState = 'revoked'; }],
+  ];
+  for (const [input, arrange] of cases) {
+    arrange();
+    const retained = await settleWith(queries, () => actions['checkout.recovery']!({ ...input, action: 'simulate' }, context));
+    const moved = await settleWith(queries, () => actions['checkout.recoverySimulate']!(input, context));
+    assert.deepEqual(moved, retained, JSON.stringify(input));
+  }
+  for (const action of ['simulate', 'inspect', 'pay']) {
+    assert.deepEqual(await actions['checkout.recoverySimulate']!({ token, orderRef: orderId, attemptRef: orderId, outcome: 'captured', action }, context),
+      { ok: false, code: 'starter_recovery_unavailable' });
+  }
+});
