@@ -1,1 +1,0 @@
-For the next 1.x release. Marks the derived promise from `Reflect.apply(Promise.prototype.then, ...)` in `settled` (`packages/platform/src/fulfillment/conformanceSchema.ts`) with an explicit `void` operator to satisfy type-aware `@typescript-eslint/no-floating-promises` without changing runtime behavior.

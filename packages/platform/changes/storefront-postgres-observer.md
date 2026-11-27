@@ -1,1 +1,0 @@
-- `@openlup/platform/storefront/testing` adds `createPostgresStorefrontObserver`, a storefront observer that reads each run subject's ledger, and with `exclusive` the database's payable orders, from the platform's own PostgreSQL tables through an injected SQL executor.

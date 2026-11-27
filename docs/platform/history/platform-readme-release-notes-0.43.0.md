@@ -15,7 +15,7 @@ SQL wrappers persist it for eligible obligations. `InvoiceSellerRevision` is als
 available from the type-only contracts entry. Legacy obligations keep fallback.
 
 For the prepared `0.43.0` set, read the [adjacent-release migration and known
-limitations](../../../packages/platform/CHANGELOG.md#0430) before selecting optional services. This set
+limitations](../../../packages/platform/CHANGELOG-HISTORY.md#0430) before selecting optional services. This set
 adds neutral fulfillment capabilities, native dispatch, intake, reconciliation,
 replacement arrival/alignment, delivery-contact correction and an offline
 adapter testing entry. Native payment provider profiles preserve the existing

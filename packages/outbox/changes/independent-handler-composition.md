@@ -1,1 +1,0 @@
-- `composeIndependentHandlers` composes same-event destinations with separate durable receipts, bounded concurrency, deterministic outcomes and an explicit acknowledgement metadata projection.

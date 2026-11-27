@@ -110,10 +110,19 @@ export async function createDerivedFixture(options: { runInitialLanding?: boolea
       expect(checkPlatformMigrationProjection(state.root, true)).toEqual([]);
       state.write(SQL_REFERENCE, syncSqlReference(state.root));
     },
-    fixtureCommand: (command: string, args: string[]) => execFileSync(command, args, {
-      cwd: state.root, env: fixtureEnvironment, encoding: 'utf8', timeout: 180000,
-      maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'],
-    }),
+    fixtureCommand: (command: string, args: string[]) => {
+      try {
+        return execFileSync(command, args, {
+          cwd: state.root, env: fixtureEnvironment, encoding: 'utf8', timeout: 240000,
+          maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'],
+        });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException | null)?.code === 'ETIMEDOUT') {
+          throw new Error(`derived fixture command timed out after 240000ms in ${state.root}: ${command} ${args.join(' ')}`, { cause: error });
+        }
+        throw error;
+      }
+    },
     fixtureNpm: (...args: string[]) => state.fixtureCommand(process.execPath, [npmCli, ...args]),
     coldBuild: (...owners: string[]) => {
       for (const owner of owners) state.fixtureNpm('run', 'build', `--workspace=@openlup/${owner}`);

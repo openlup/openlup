@@ -1,1 +1,0 @@
-- Preserve the price-list context for purchases that use the derived subscription pricing policy. Subscription editing and starter-offer graduation can use the context after checkout and renewal.

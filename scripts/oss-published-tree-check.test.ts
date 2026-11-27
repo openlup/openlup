@@ -603,9 +603,9 @@ describe("complete public CI", () => {
     const shard = workflowJob("test-full-shard");
     expect(shard).toContain("name: test-full-shard (${{ matrix.shard }}/8)");
     const eventFence = workflowJob("dco").split("\n").find(line => line.startsWith("    if:"))!;
-    const pgtapFence = eventFence.replace("${{ ", "${{ always() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && needs.scope-gate.result == 'success' && needs.reuse-gate.outputs.reuse != 'true' && needs.scope-gate.outputs.run_pgtap != 'false' && ");
-    const prepFence = eventFence.replace("${{ ", "${{ always() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && needs.reuse-gate.outputs.reuse != 'true' && ");
-    const shardFence = eventFence.replace("${{ ", "${{ always() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && needs.reuse-gate.outputs.reuse != 'true' && needs.test-prep.result == 'success' && ");
+    const pgtapFence = eventFence.replace("${{ ", "${{ !cancelled() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && needs.scope-gate.result == 'success' && needs.reuse-gate.outputs.reuse != 'true' && needs.scope-gate.outputs.run_pgtap != 'false' && ");
+    const prepFence = eventFence.replace("${{ ", "${{ !cancelled() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && needs.reuse-gate.outputs.reuse != 'true' && ");
+    const shardFence = eventFence.replace("${{ ", "${{ !cancelled() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && needs.reuse-gate.outputs.reuse != 'true' && needs.test-prep.result == 'success' && ");
     expect(prep).toContain("needs: [reuse-gate]");
     expect(prep.split("\n").find(line => line.startsWith("    if:"))).toBe(prepFence);
     expect(prep).toContain("          fetch-depth: 0\n");
@@ -620,7 +620,7 @@ describe("complete public CI", () => {
     expect(prep).toContain("include-hidden-files: true\n          if-no-files-found: error\n          retention-days: 1");
     expect(shard).toContain("needs: [reuse-gate, test-prep]");
     expect(shard.split("\n").find(line => line.startsWith("    if:"))).toBe(shardFence);
-    expect(workflowJob("test").split("\n").find(line => line.startsWith("    if:"))).toBe(eventFence.replace("${{ ", "${{ always() && "));
+    expect(workflowJob("test").split("\n").find(line => line.startsWith("    if:"))).toBe(eventFence.replace("${{ ", "${{ !cancelled() && "));
     expect(shard).toContain("    strategy:\n      fail-fast: ${{ github.event_name == 'merge_group' }}\n      max-parallel: 8\n      matrix:\n        shard: [1, 2, 3, 4, 5, 6, 7, 8]\n");
     expect(shard).not.toMatch(/include:|exclude:|continue-on-error|--(?:maxWorkers|pool|retry|testTimeout|hookTimeout|bail)/u);
     expect(shard).toContain("    runs-on: ubuntu-latest\n    timeout-minutes: 35\n");
@@ -665,13 +665,13 @@ describe("complete public CI", () => {
   it("requires cold package pack, package proof and all browser shards, including on main-push reuse and fail-closed scope-gate", () => {
     const pack = workflowJob("install-pack"), packages = workflowJob("install-packages"), browser = workflowJob("install-browser"), aggregate = workflowJob("install-proof");
     const eventFence = workflowJob("dco").split("\n").find(line => line.startsWith("    if:"))!;
-    const packFence = eventFence.replace("${{ ", "${{ always() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && needs.scope-gate.result == 'success' && needs.reuse-gate.outputs.reuse != 'true' && ");
-    const consumerFence = eventFence.replace("${{ ", "${{ always() && needs.install-pack.result == 'success' && ");
-    const browserFence = eventFence.replace("${{ ", "${{ always() && needs.install-pack.result == 'success' && needs.install-pack.outputs.run_browser != 'false' && ");
+    const packFence = eventFence.replace("${{ ", "${{ !cancelled() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && needs.scope-gate.result == 'success' && needs.reuse-gate.outputs.reuse != 'true' && ");
+    const consumerFence = eventFence.replace("${{ ", "${{ !cancelled() && needs.install-pack.result == 'success' && ");
+    const browserFence = eventFence.replace("${{ ", "${{ !cancelled() && needs.install-pack.result == 'success' && needs.install-pack.outputs.run_browser != 'false' && ");
     expect(pack.split("\n").find(line => line.startsWith("    if:"))).toBe(packFence);
     expect(packages.split("\n").find(line => line.startsWith("    if:"))).toBe(consumerFence);
     expect(browser.split("\n").find(line => line.startsWith("    if:"))).toBe(browserFence);
-    expect(aggregate.split("\n").find(line => line.startsWith("    if:"))).toBe(eventFence.replace("${{ ", "${{ always() && "));
+    expect(aggregate.split("\n").find(line => line.startsWith("    if:"))).toBe(eventFence.replace("${{ ", "${{ !cancelled() && "));
     expect(pack).toContain([
       "outputs:",
       "      run_pack: ${{ needs.scope-gate.outputs.run_install_pack }}",
@@ -922,11 +922,11 @@ describe("the workflow stays in step with what it claims to run", () => {
     expect(jobs).toEqual(["dco", "reuse-gate", "scope-gate", "typecheck", "install-pack", "install-packages", "install-browser", "install-proof", "test-prep", "test-full-shard", "test", "self-check", "gitleaks", "pgtap", "native-review"]);
     expect(workflow).not.toContain("needs: applies");
     const predicate = "    if: ${{ github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}";
-    const reusePredicate = predicate.replace("${{ ", "${{ always() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && ");
-    const packPredicate = predicate.replace("${{ ", "${{ always() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && needs.scope-gate.result == 'success' && needs.reuse-gate.outputs.reuse != 'true' && ");
-    const pgtapPredicate = predicate.replace("${{ ", "${{ always() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && needs.scope-gate.result == 'success' && needs.reuse-gate.outputs.reuse != 'true' && needs.scope-gate.outputs.run_pgtap != 'false' && ");
-    const packConsumerPredicate = predicate.replace("${{ ", "${{ always() && needs.install-pack.result == 'success' && ");
-    const browserConsumerPredicate = predicate.replace("${{ ", "${{ always() && needs.install-pack.result == 'success' && needs.install-pack.outputs.run_browser != 'false' && ");
+    const reusePredicate = predicate.replace("${{ ", "${{ !cancelled() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && ");
+    const packPredicate = predicate.replace("${{ ", "${{ !cancelled() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && needs.scope-gate.result == 'success' && needs.reuse-gate.outputs.reuse != 'true' && ");
+    const pgtapPredicate = predicate.replace("${{ ", "${{ !cancelled() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && needs.scope-gate.result == 'success' && needs.reuse-gate.outputs.reuse != 'true' && needs.scope-gate.outputs.run_pgtap != 'false' && ");
+    const packConsumerPredicate = predicate.replace("${{ ", "${{ !cancelled() && needs.install-pack.result == 'success' && ");
+    const browserConsumerPredicate = predicate.replace("${{ ", "${{ !cancelled() && needs.install-pack.result == 'success' && needs.install-pack.outputs.run_browser != 'false' && ");
     expect(workflow.split("\n").filter((line) => line === predicate)).toHaveLength(4);
     expect(workflow.split("\n").filter((line) => line === packConsumerPredicate)).toHaveLength(1);
     expect(workflow.split("\n").filter((line) => line === browserConsumerPredicate)).toHaveLength(1);
@@ -944,10 +944,10 @@ describe("the workflow stays in step with what it claims to run", () => {
   it("native admission uses trusted main and refuses every non-success mechanical result", () => {
     const admission = workflow.split("  native-review:\n")[1]!;
     const jobIf = admission.split("\n").find((line) => line.startsWith("    if:"))!;
-    expect(jobIf).toContain("always() && needs.dco.result == 'success' && needs.typecheck.result == 'success' && needs.install-proof.result == 'success' && needs.test.result == 'success' && needs.self-check.result == 'success' && needs.gitleaks.result == 'success' && vars.OPENLUP_NATIVE_QUEUE == 'enabled'");
+    expect(jobIf).toContain("!cancelled() && needs.dco.result == 'success' && needs.typecheck.result == 'success' && needs.install-proof.result == 'success' && needs.test.result == 'success' && needs.self-check.result == 'success' && needs.gitleaks.result == 'success' && vars.OPENLUP_NATIVE_QUEUE == 'enabled'");
     expect(admission).toContain("github.event.repository.private == false");
     expect(admission).toContain("github.event_name == 'merge_group'");
-    expect(admission).toContain("github.event_name == 'pull_request' && github.event.pull_request.draft == false");
+    expect(admission).toContain("github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'main' && github.event.pull_request.draft == false");
     expect(admission).toContain("github.event.pull_request.user.login != 'dependabot[bot]'");
     expect(admission).toContain("needs: [dco, typecheck, install-proof, test, self-check, gitleaks]");
     expect(admission).toContain("timeout-minutes: 15");
@@ -964,6 +964,20 @@ describe("the workflow stays in step with what it claims to run", () => {
     expect(admission).not.toContain("run: npm ci --prefer-offline");
     expect(admission.indexOf("run: node scripts/agent-review-queue.mjs probe-toolchain")).toBeLessThan(admission.indexOf("npm ci --ignore-scripts"));
     expect(admission.indexOf("npm ci --ignore-scripts")).toBeLessThan(admission.indexOf("run: node scripts/agent-review-queue.mjs wait"));
+  });
+
+  it("cancels and force-cancels orphaned merge-group runs after listing runs before live refs", () => {
+    const supersede = readFileSync(join(ROOT, ".github/workflows/merge-queue-supersede.yml"), "utf8");
+    const job = workflowJob("cancel-orphaned", supersede);
+    expect(job).toContain("actions: write");
+    const runsIndex = job.indexOf("actions/workflows/published-tree-ci.yml/runs");
+    const refsIndex = job.indexOf("git/matching-refs/heads/gh-readonly-queue/");
+    const cancelIndex = job.indexOf("actions/runs/$id/cancel");
+    const forceCancelIndex = job.indexOf("actions/runs/$id/force-cancel");
+    expect(runsIndex).toBeGreaterThan(-1);
+    expect(refsIndex).toBeGreaterThan(runsIndex);
+    expect(cancelIndex).toBeGreaterThan(refsIndex);
+    expect(forceCancelIndex).toBeGreaterThan(cancelIndex);
   });
 
   it("holds every pull request to the sign-off the contributing document promises", () => {
