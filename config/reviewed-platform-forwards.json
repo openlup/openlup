@@ -10337,7 +10337,7 @@
           },
           {
             "signature": "public.commerce_destination_v2_export(uuid)",
-            "beforeSha256": "985153688bfbd5484f6f3c87381be1abc34438392bbed069393ec63a3c15e171",
+            "beforeSha256": "5200538b1f253ae809f03596938a689f06e4a469436bedaf0bac9ec9e8320f28",
             "searchPath": "pg_catalog, pg_temp"
           }
         ],
@@ -15102,7 +15102,7 @@
     },
     {
       "path": "db/platform/migrations/20261129160009_subscription_destination_renewal_acquisition_v2.sql",
-      "sha256": "8fc9ab49d117ceddc5a968c8d26c474ba66b6a8e822a02a0211bb1e8fbdfc7b3",
+      "sha256": "1e18cd76321acec4ffdd46294f79247c83614d9ff985b262d84f495fca14b8ac",
       "functions": [
         {
           "signature": "public.classify_order_destination(uuid,public.commerce_destination_v2_documents,text)",
@@ -15136,8 +15136,8 @@
         },
         {
           "signature": "public.commerce_destination_v2_export(uuid)",
-          "beforeSha256": "985153688bfbd5484f6f3c87381be1abc34438392bbed069393ec63a3c15e171",
-          "afterSha256": "843c10406adb5c6dddcbc6f8dc5bd789aa9a75f54475da23cc8c4731f3b6fc44"
+          "beforeSha256": "5200538b1f253ae809f03596938a689f06e4a469436bedaf0bac9ec9e8320f28",
+          "afterSha256": "31c7f3c20c8c0565985f92c9a5c64be93234d20ba487c2d42f19692a79e40c08"
         },
         {
           "signature": "public.subscription_destination_v2_current_for_edit(jsonb,uuid)",

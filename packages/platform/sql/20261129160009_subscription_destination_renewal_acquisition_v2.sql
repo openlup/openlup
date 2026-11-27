@@ -547,7 +547,7 @@ BEGIN
       CASE WHEN evidence_disposition = 'available' THEN public.commerce_destination_v2_check_document(d, 'destination.snapshotRef') END AS result
     FROM public.commerce_destination_v2_documents AS d WHERE client_id = p_client_id
   )
-  SELECT coalesce(jsonb_agg(
+  SELECT (SELECT coalesce(jsonb_agg(
     jsonb_build_object('snapshotRef', snapshot_ref, 'issuedAt',
       to_char(issued_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 'evidenceDisposition', evidence_disposition)
     || CASE WHEN (result->>'verified')::boolean THEN
@@ -580,6 +580,20 @@ BEGIN
         AND (v.result->>'verified')::boolean AND s.selection_revision IS NOT NULL
         AND public.subscription_destination_v2_service_valid(s.service), false) AS valid) pin
       WHERE s.snapshot_ref = v.snapshot_ref AND NOT (v.evidence_disposition = 'erased' AND s.selection_revision IS NULL AND s.service IS NULL)
-    ) selections);
+    ) selections)
+    || CASE WHEN EXISTS (
+      SELECT 1 FROM public.commerce_orders o
+      JOIN public.commerce_destination_v2_order_bindings b ON b.order_id = o.id
+      JOIN public.commerce_destination_v2_documents d ON d.snapshot_ref = b.snapshot_ref
+      WHERE o.client_id = p_client_id AND d.client_id <> p_client_id
+    ) THEN '[{"verification":{"status":"failed","code":"destination_binding_invalid","field":"orderBindings"}}]'::jsonb
+    ELSE '[]'::jsonb END
+    || CASE WHEN EXISTS (
+      SELECT 1 FROM public.subscriptions sub
+      JOIN public.subscription_destination_v2_selections s ON s.subscription_id = sub.id
+      JOIN public.commerce_destination_v2_documents d ON d.snapshot_ref = s.snapshot_ref
+      WHERE sub.client_id = p_client_id AND d.client_id <> p_client_id
+    ) THEN '[{"verification":{"status":"failed","code":"destination_binding_invalid","field":"subscriptionSelections"}}]'::jsonb
+    ELSE '[]'::jsonb END);
 END;
 $$;
