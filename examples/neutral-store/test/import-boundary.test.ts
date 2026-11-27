@@ -1,7 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile, readdir } from 'node:fs/promises';
-import { dirname, resolve, sep, extname } from 'node:path';
+import { copyFile, mkdir, mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve, sep, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(fileURLToPath(new URL('../', import.meta.url)));
@@ -104,4 +107,70 @@ test('computed dynamic imports cannot conceal an installation edge', () => {
   assert.throws(() => imports('import(`../installation/${name}.ts`)'), /starter_import_dynamic_unresolved/);
   assert.throws(() => imports("import('../' + name)"), /starter_import_dynamic_unresolved/);
   assert.deepEqual(imports("// import('../installation/install.ts')\nconst text = \"export * from '../owned/demo-seed.ts'\";"), []);
+});
+
+// `./lifecycle` runs before `npm ci` (`./lifecycle candidate` writes the lock the install reads, and `ownership` and
+// `refusals` answer in a fresh extraction), so everything lifecycle.mjs loads at start-up must load without packages.
+// Subcommands that run after the install load packages through dynamic `import()`, which is not part of start-up.
+const preInstallEntries = ['lifecycle.mjs'];
+
+/** Static runtime imports of one module: `import … from`, `import '…'` and `export … from`, never `import type`. */
+function startupImports(source: string): string[] {
+  const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const found: string[] = [];
+  for (const match of code.matchAll(/^[ \t]*(import|export)[ \t]+(type[ \t]+)?([^'";]*?\bfrom[ \t\n]+)?['"]([^'"]+)['"]/gm)) {
+    if (match[2] !== undefined || (match[1] === 'export' && match[3] === undefined)) continue;
+    found.push(match[4]!);
+  }
+  return found;
+}
+
+/** Every package a pre-install entry point loads at start-up, as `file: specifier`. */
+function startupPackages(read: (path: string) => string | undefined, entries: readonly string[]): string[] {
+  const visited = new Set<string>(), packages: string[] = [];
+  const visit = (path: string) => {
+    if (visited.has(path)) return;
+    visited.add(path);
+    const source = read(path);
+    if (source === undefined) throw new Error(`starter_import_unresolved: ${path}`);
+    for (const specifier of startupImports(source)) {
+      if (specifier.startsWith('.')) visit(resolve(dirname(path), specifier));
+      else if (!specifier.startsWith('node:')) packages.push(`${path.slice(root.length + 1)}: ${specifier}`);
+    }
+  };
+  for (const entry of entries) visit(resolve(root, entry));
+  return packages;
+}
+const readSource = (path: string) => { try { return readFileSync(path, 'utf8'); } catch { return undefined; } };
+
+test('lifecycle.mjs loads no package at start-up, so it runs before npm ci', () => {
+  assert.deepEqual(startupPackages(readSource, preInstallEntries), []);
+});
+
+test('negative witness: a package reached through a shared module is detected', () => {
+  const entry = resolve(root, 'lifecycle.mjs'), bridge = resolve(root, 'shared/bridge.ts');
+  for (const planted of ["import { x } from '@openlup/core/subscription';", "export { y } from 'pg';", "import 'zod';"]) {
+    const files = new Map([[entry, "import { a } from './shared/bridge.ts';\nimport type { B } from '@openlup/platform';"], [bridge, planted]]);
+    assert.equal(startupPackages(path => files.get(path), [entry]).length, 1, planted);
+  }
+  const typeOnly = new Map([[entry, "import type { B } from '@openlup/platform';\n// import 'pg';\nconst load = () => import('pg');"]]);
+  assert.deepEqual(startupPackages(path => typeOnly.get(path), [entry]), []);
+});
+
+test('an extracted application outside any node_modules runs ./lifecycle ownership and refusals before npm ci', async () => {
+  const ownership = JSON.parse(readFileSync(resolve(root, 'ownership.json'), 'utf8')) as
+    { owned: string[]; managed: string[]; sourceMappings?: Record<string, string> };
+  const target = await mkdtemp(join(tmpdir(), 'starter-pre-install-'));
+  try {
+    for (const file of [...ownership.owned, ...ownership.managed]) {
+      await mkdir(dirname(join(target, file)), { recursive: true });
+      await copyFile(resolve(root, ownership.sourceMappings?.[file] ?? file), join(target, file));
+    }
+    for (const command of ['ownership', 'refusals']) {
+      const result = spawnSync(process.execPath, ['lifecycle.mjs', command], { cwd: target, encoding: 'utf8', env: { PATH: process.env.PATH ?? '' } });
+      assert.equal(result.status, 0, `${command}: ${result.stderr}`);
+    }
+  } finally {
+    await rm(target, { recursive: true, force: true });
+  }
 });
