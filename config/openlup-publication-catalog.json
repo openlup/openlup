@@ -2718,6 +2718,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/meta/release-index.json",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/package-lock.json",
       "class": "public-output"
     },
@@ -13695,6 +13699,14 @@
     },
     {
       "path": "scripts/packages/release-gate.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/release-index.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/release-index.ts",
       "class": "public-output"
     },
     {

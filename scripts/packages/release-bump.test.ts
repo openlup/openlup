@@ -3,7 +3,8 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, 
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { bumpRelease, bumpSet, npmPublishedPackedBytes, setVersionFields } from "./release-bump.ts";
+import { bumpRelease, bumpSet, npmPublishedPackedBytes, rotateChangelogHistory, setVersionFields } from "./release-bump.ts";
+import { RELEASE_INDEX_PATH, parseReleaseIndex } from "./release-index.ts";
 import * as docs from "./release-docs-pass.ts";
 
 
@@ -403,4 +404,99 @@ describe("release:bump", () => {
     expect(checkGuide(root)).toBe("guide contract ok");
     expect(docs.planReleaseGuide(root, "0.9.0")).toEqual({ writes: [], violations: [], pageViolations: {} });
   }, 60_000);
+
+  it("rotates changelog sections older than current + 2 previous releases verbatim to CHANGELOG-HISTORY.md", () => {
+    const oldSection = "## [0.5.0]\n\n- Old release with trailing spaces.  \n\n";
+    const threeReleases = [
+      "# Changelog",
+      "",
+      "## [Unreleased]",
+      "",
+      "## [0.8.0]",
+      "",
+      "- Latest.",
+      "",
+      "## [0.7.0]",
+      "",
+      "- Previous.",
+      "",
+      "## [0.6.0]",
+      "",
+      "- Older.",
+      "",
+    ].join("\n");
+    expect(rotateChangelogHistory(threeReleases, undefined)).toEqual({
+      changelog: threeReleases,
+      history: undefined,
+      rotated: false,
+    });
+    const existingHistory = "# Changelog history\n\nReleases moved verbatim.\n\n## [0.4.0]\n\n- Earliest.\n";
+    const fourReleases = `${threeReleases}\n${oldSection}`;
+    const result = rotateChangelogHistory(fourReleases, existingHistory);
+    expect(result.rotated).toBe(true);
+    expect(result.changelog).toBe(threeReleases);
+    expect(result.history).toBe(`# Changelog history\n\nReleases moved verbatim.\n\n${oldSection}## [0.4.0]\n\n- Earliest.\n`);
+  });
+
+  it("updates release-index.json, rotates 4th changelog section, separates starter notes, and links upgrade/README.md during bumpSet", () => {
+    const { root } = setFixture();
+    const olderSection = "## [0.5.0]\n\n- Archived verbatim.  \n";
+    writeFileSync(join(root, "packages/core/CHANGELOG.md"), [
+      "# Changelog",
+      "",
+      "## [Unreleased]",
+      "",
+      "## [0.7.0]",
+      "",
+      "- Current.",
+      "",
+      "## [0.6.0]",
+      "",
+      "- Previous.",
+      "",
+      olderSection,
+    ].join("\n"));
+    writeFileSync(join(root, "packages/core/CHANGELOG-HISTORY.md"), "# Changelog history\n\n## [0.4.0]\n\n- Earlier.\n");
+    const upgradeReadme = "packages/core/docs/guide/upgrade/README.md";
+    mkdirSync(dirname(join(root, upgradeReadme)), { recursive: true });
+    writeFileSync(join(root, upgradeReadme), "# Upgrade\n\n## Per-release notes\n\n[Upgrading to 0.7.0](v0-7-0.md) notes.\n");
+    writeFileSync(join(root, "packages/core/changes/starter-checkout.md"), "---\nkind: action_required\n---\n\n- Starter checkout adjustment.\n");
+    mkdirSync(join(root, "db/platform/migrations"), { recursive: true });
+    writeFileSync(join(root, "db/platform/migrations/20990101000000_bump_test.sql"), "SELECT 1;\n");
+    git(root, "add", ".");
+    git(root, "commit", "-qm", "prepare bump inputs");
+
+    const written = bumpSet(root, "0.9.0", () => undefined);
+    expect(written).toContain(RELEASE_INDEX_PATH);
+    expect(written).toContain("packages/core/CHANGELOG-HISTORY.md");
+    expect(written).toContain(upgradeReadme);
+
+    const coreChangelog = readFileSync(join(root, "packages/core/CHANGELOG.md"), "utf8");
+    expect(coreChangelog).toContain("## [0.9.0]");
+    expect(coreChangelog).toContain("## [0.7.0]");
+    expect(coreChangelog).toContain("## [0.6.0]");
+    expect(coreChangelog).not.toContain("## [0.5.0]");
+    expect(coreChangelog.indexOf("First core change.")).toBeLessThan(coreChangelog.indexOf("### Starter application (examples/neutral-store)"));
+    expect(coreChangelog).toContain("- Starter checkout adjustment.");
+    expect(coreChangelog).not.toContain("kind: action_required");
+
+    const coreHistory = readFileSync(join(root, "packages/core/CHANGELOG-HISTORY.md"), "utf8");
+    expect(coreHistory).toContain(`${olderSection}\n## [0.4.0]`);
+
+    const readme = readFileSync(join(root, upgradeReadme), "utf8");
+    expect(readme).toContain("[Upgrading to 0.9.0](v0-9-0.md),\n[Upgrading to 0.7.0](v0-7-0.md)");
+    expect(git(root, "diff", "--cached", "--name-only")).toContain(upgradeReadme);
+
+    const index = parseReleaseIndex(readFileSync(join(root, RELEASE_INDEX_PATH), "utf8"));
+    expect(index.schemaVersion).toBe(1);
+    expect(index.currentVersion).toBe("0.9.0");
+    expect(index.releases).toHaveLength(1);
+    expect(index.releases[0]).toMatchObject({
+      version: "0.9.0",
+      previousVersion: "0.7.0",
+      actionRequired: true,
+      sqlAdded: ["db/platform/migrations/20990101000000_bump_test.sql"],
+      starterEntriesCount: 1,
+    });
+  });
 });

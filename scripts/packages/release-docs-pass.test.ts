@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { UPGRADE_PAGE_MAX_BYTES, assembleUpgradePage, assertReleaseNotePackagedContent, assertSimulatedUpgradePage, formatReleaseDocumentation, listReleaseDocumentation, previousCoreTag, renderUpgradePage, summarizeApiDiff, upgradePagePath } from "./release-docs-pass.ts";
+import { UPGRADE_PAGE_MAX_BYTES, addUpgradeIndexLink, assembleUpgradePage, assertReleaseNotePackagedContent, assertSimulatedUpgradePage, formatReleaseDocumentation, listReleaseDocumentation, previousCoreTag, renderUpgradePage, summarizeApiDiff, summarizeSemanticApiDiff, upgradePagePath } from "./release-docs-pass.ts";
 import { addReleaseSection } from "./release-bump.ts";
 import { isGuidePage, validateGuidePage } from "../oss-publication-policy.ts";
 // eslint-disable-next-line no-restricted-imports -- witness Core's installed docs:check path on the same rendered fixture
@@ -153,12 +153,13 @@ describe("upgrade page assembly", () => {
     expect(result.text.slice(result.text.indexOf("## API changes"))).toBe([
       "## API changes",
       `### \`${api}\``,
-      `Added declarations: 3; see \`${api}\`.`,
+      "Added declarations (3): `nextName`, `NextValue`, `createValue` (see `meta/release-index.json`).",
       "Removed declarations:",
       "```ts nocheck\n// API report diff: not compiled.\nexport declare const oldName: string;\n```",
       "Changed declarations:",
       "```ts nocheck\n// API report diff: not compiled.\nexport declare const kept: number;\n```\n",
     ].join("\n\n"));
+    expect(result.text).not.toContain(`see \`${api}\``);
     expect(validateGuidePage(upgradePagePath("0.5.0"), result.text, "100644")).toBe(result.text);
     expect(f.git("status", "--porcelain")).toBe("");
   });
@@ -177,7 +178,7 @@ describe("upgrade page assembly", () => {
     const f = fixture(); f.git("rm", api); f.write(outbox, report("export declare const send: () => void;\n")); f.commit();
     const { text } = assembleUpgradePage({ root: f.root, version: "0.5.0", since: "openlup-core-v0.4.0", fragments: [] });
     expect(text).toContain(`### \`${api}\``); expect(text).toContain("export declare const oldName");
-    expect(text).toContain(`### \`${outbox}\`\n\nAdded declarations: 1; see \`${outbox}\`.`);
+    expect(text).toContain(`### \`${outbox}\`\n\nAdded declarations (1): \`send\` (see \`meta/release-index.json\`).`);
   });
 
   const overload = (type: string) => `export declare function moved(\n    value: ${type},\n): void;`;
@@ -228,7 +229,7 @@ describe("upgrade page assembly", () => {
     if (rename) f.git("mv", peer, "packages/core/api/renamed.api.md"); else f.write(peer, declaration);
     f.commit();
     const { text } = assembleUpgradePage({ root: f.root, version: "0.5.0", since: previousCoreTag(f.root), fragments: [] });
-    expect(text).toContain(rename ? emptyDeclarations : `### \`${peer}\`\n\nAdded declarations: 1; see \`${peer}\`.`);
+    expect(text).toContain(rename ? emptyDeclarations : `### \`${peer}\`\n\nAdded declarations (1): \`shared\` (see \`meta/release-index.json\`).`);
     expect(text).not.toContain("export declare const shared: string;");
   });
 
@@ -358,6 +359,75 @@ describe("upgrade page assembly", () => {
     expect(summarizeApiDiff("", source)).toEqual({
       added: ['export * from "./values.js";', "export { value };", 'export type * from "./types.js";'], removed: [], changed: [],
     });
+  });
+
+  it("parses export { ... } lists per specifier without false-positive removals and treats type <-> interface as a change", () => {
+    const before = report([
+      'export { alpha, beta as renamed } from "./mod.js";',
+      'export type { Foo } from "./types.js";',
+      "export type Shape = { a: string };",
+      "export interface Legacy { id: string; }",
+      "",
+    ].join("\n"));
+    const after = report([
+      'export { alpha, beta as renamed, gamma } from "./mod.js";',
+      'export type {\n  Foo,\n  Bar,\n} from "./types.js";',
+      "export interface Shape {\n  a: string;\n  b?: number;\n}",
+      "/** @deprecated Use NewLegacy instead. */\nexport interface Legacy { id: string; }",
+      "",
+    ].join("\n"));
+    const diff = summarizeSemanticApiDiff(before, after);
+    expect(diff.removed).toEqual([]);
+    expect(diff.symbolsRemoved).toEqual([]);
+    expect(diff.added).toEqual(['export { gamma } from "./mod.js";', 'export type { Bar } from "./types.js";']);
+    expect(diff.symbolsAdded).toEqual(["Bar", "gamma"]);
+    expect(diff.changed).toContain("export interface Shape {");
+    expect(diff.symbolsDeprecated).toEqual(["Legacy"]);
+  });
+
+  it("groups starter fragments at the bottom and appends compact SQL Delta and Settings Delta sections", () => {
+    const f = fixture();
+    f.write("db/platform/migrations/20990101000000_added_feature.sql", "SELECT 1;\n");
+    f.write("packages/outbox/sql/0009_extra.sql", "SELECT 2;\n");
+    f.write("packages/platform/settings-catalog.json", JSON.stringify({
+      schemaVersion: 1,
+      entries: [{ key: "alpha.setting", value: 1 }, { key: "beta.setting", value: 2 }],
+    }));
+    f.commit();
+    const result = assembleUpgradePage({
+      root: f.root,
+      version: "0.5.0",
+      since: "openlup-core-v0.4.0",
+      fragments: [
+        { path: "packages/core/changes/starter-ui.md", contents: "- Starter-only tweak.\n" },
+        { path: "packages/core/changes/lib-feature.md", contents: "---\nkind: feature\naudience: npm\n---\n\n- Core library feature.\n" },
+        { path: "packages/outbox/changes/explicit-starter.md", contents: "---\naudience: starter\n---\n- Outbox starter helper.\n" },
+      ],
+    });
+    expect(result.violations).toEqual([]);
+    const libIndex = result.text.indexOf("## @openlup/core");
+    const apiIndex = result.text.indexOf("## API changes");
+    const sqlIndex = result.text.indexOf("## SQL Delta");
+    const settingsIndex = result.text.indexOf("## Settings Delta");
+    const starterIndex = result.text.indexOf("### Starter application (examples/neutral-store)");
+    expect(libIndex).toBeGreaterThan(-1);
+    expect(libIndex).toBeLessThan(apiIndex);
+    expect(apiIndex).toBeLessThan(sqlIndex);
+    expect(sqlIndex).toBeLessThan(settingsIndex);
+    expect(settingsIndex).toBeLessThan(starterIndex);
+    expect(result.text).toContain("db/platform/migrations/20990101000000_added_feature.sql");
+    expect(result.text).toContain("packages/outbox/sql/0009_extra.sql");
+    expect(result.text).toContain("`alpha.setting`, `beta.setting`");
+    expect(result.text).toContain("- Starter-only tweak.");
+    expect(result.text).toContain("- Outbox starter helper.");
+    expect(result.text).not.toContain("audience: starter");
+  });
+
+  it("inserts an upgrade link into upgrade/README.md once and stays idempotent", () => {
+    const readme = "# Upgrade\n\n## Per-release notes\n\n[Upgrading to 1.4.0](v1-4-0.md),\n[Upgrading to 1.3.0](v1-3-0.md) gather notes.\n";
+    const updated = addUpgradeIndexLink(readme, "1.5.0");
+    expect(updated).toContain("[Upgrading to 1.5.0](v1-5-0.md),\n[Upgrading to 1.4.0](v1-4-0.md),");
+    expect(addUpgradeIndexLink(updated, "1.5.0")).toBe(updated);
   });
 
   it.each([
@@ -841,12 +911,13 @@ describe("shift-left simulated upgrade-page audit", () => {
   it("admits an exact addition summary for an approved adapter report", () => {
     const f = fixture();
     const adapterReport = `packages/platform/api/tax-${providerName}.api.md`;
-    const summary = `Added declarations: 1; see \`${adapterReport}\`.`;
+    const summary = "Added declarations (1): `factory` (see `meta/release-index.json`).";
     f.write(adapterReport, report("export declare const factory: unknown;\n"));
     f.commit();
 
     const audit = assertSimulatedUpgradePage(f.root)!;
     expect(audit.text).toContain(summary);
+    expect(audit.text).not.toContain(`see \`${adapterReport}\``);
     expect(() => assertReleaseNotePackagedContent(audit.path, `See \`${adapterReport}\`.`)).toThrow(/downstream provider dependency/u);
   });
 

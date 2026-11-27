@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { afterEach, describe, expect, it } from "vitest";
-import { readChangelogFragments, validateChangelogFragment } from "./changelog-fragments.ts";
+import { parseChangelogFragment, readChangelogFragments, validateChangelogFragment } from "./changelog-fragments.ts";
 import { addReleaseSection, bumpSet } from "./release-bump.ts";
 import { assertMigrationBlocks } from "./packages-check.ts";
 import { effectivePublicCatalogPaths } from "../oss-publication-policy.ts";
@@ -232,21 +232,74 @@ describe("Migration gate with Git-tree fragments", () => {
   it("refuses invalid UTF-8 in a committed fragment even when its Migration marker is valid", () => {
     const f = fixture(), base = f.commit();
     f.write("packages/core/api/core.api.md", "## dist/core.d.ts\nexport declare const b: string;\n");
-    f.write(fragment, "Migration: before a, after b.\n");
+    f.write(fragment, "- Replace a with b.\n\nMigration: before a, after b.\n");
     writeFileSync(join(f.root, fragment), Buffer.concat([Buffer.from(f.read(fragment)), Buffer.from([0xc3, 0x28])]));
     const invalid = f.commit();
-    f.write(fragment, "Migration: valid worktree bytes cannot repair the committed blob.\n");
+    f.write(fragment, "- Replace a with b.\n\nMigration: valid worktree bytes cannot repair the committed blob.\n");
     expect(() => assertMigrationBlocks(f.root, base, invalid)).toThrow(/encoded data was not valid/u);
   });
   it("requires a marker for removal; head fragment passes; pure addition passes; worktree edits cannot satisfy it", () => {
     const f = fixture(), base = f.commit();
     f.write("packages/core/api/core.api.md", "## dist/core.d.ts\nexport declare const b: string;\n"); const removed = f.commit();
     expect(() => assertMigrationBlocks(f.root, base, removed)).toThrow(/no Migration/);
-    f.write(fragment, "Migration: before a, after b.\n");
+    f.write(fragment, "- Replace a with b.\n\nMigration: before a, after b.\n");
     expect(() => assertMigrationBlocks(f.root, base, removed)).toThrow(/no Migration/);
     const marked = f.commit(); expect(() => assertMigrationBlocks(f.root, base, marked)).not.toThrow();
     f.write("packages/core/api/core.api.md", "## dist/core.d.ts\nexport declare const a: string;\nexport declare const b: string;\n");
     rmSync(join(f.root, fragment)); const additive = f.commit(); expect(() => assertMigrationBlocks(f.root, base, additive)).not.toThrow();
     f.write(fragment, "## Invalid even for an addition\n"); const invalid = f.commit(); expect(() => assertMigrationBlocks(f.root, base, invalid)).toThrow(/fragment/);
+  });
+});
+
+describe("fragment frontmatter and strict hygiene", () => {
+  it("parses optional kind/audience frontmatter, infers starter-* audience, and strips frontmatter completely", () => {
+    expect(parseChangelogFragment({ path: fragment, contents: "- Plain feature.\n" })).toEqual({
+      meta: { kind: "feature", audience: "npm" },
+      body: "- Plain feature.\n",
+    });
+    expect(parseChangelogFragment({ path: "packages/core/changes/starter-checkout.md", contents: "- Starter tweak.\n" })).toEqual({
+      meta: { kind: "feature", audience: "starter" },
+      body: "- Starter tweak.\n",
+    });
+    expect(parseChangelogFragment({
+      path: fragment,
+      contents: "---\nkind: action_required\naudience: starter\n---\n\n- Action item.\n\nMigration: update config.\n",
+    })).toEqual({
+      meta: { kind: "action_required", audience: "starter" },
+      body: "- Action item.\n\nMigration: update config.\n",
+    });
+    expect(parseChangelogFragment({
+      path: "packages/core/changes/starter-override.md",
+      contents: "---\nkind: deprecation\naudience: npm\n---\n- Explicit npm override.\n",
+    })).toEqual({
+      meta: { kind: "deprecation", audience: "npm" },
+      body: "- Explicit npm override.\n",
+    });
+  });
+
+  it("never leaks raw frontmatter delimiters into CHANGELOG.md", () => {
+    const f = fixture();
+    f.commit();
+    f.write(fragment, "---\nkind: fix\naudience: npm\n---\n\n- Fixed edge case.\n");
+    bumpSet(f.root, "0.5.0");
+    const changelog = f.read("packages/core/CHANGELOG.md");
+    expect(changelog).toContain("- Fixed edge case.");
+    expect(changelog).not.toContain("kind: fix");
+    expect(changelog).not.toContain("---");
+  });
+
+  it.each([
+    ["unknown key", "---\ntype: feature\n---\n- Note.\n", /unknown frontmatter key "type"/u],
+    ["invalid kind", "---\nkind: breaking\n---\n- Note.\n", /invalid frontmatter kind "breaking"/u],
+    ["invalid audience", "---\naudience: internal\n---\n- Note.\n", /invalid frontmatter audience "internal"/u],
+    ["duplicate key", "---\nkind: fix\nkind: feature\n---\n- Note.\n", /duplicate frontmatter key "kind"/u],
+    ["unterminated frontmatter", "---\nkind: fix\n- Note.\n", /unterminated frontmatter/u],
+    ["empty body after frontmatter", "---\nkind: fix\n---\n\n", /empty or malformed/u],
+    ["placeholder literal", "- For the next 1.x release.\n", /For the next 1\.x release\./u],
+    ["orphaned Migration block", "Migration: before a, after b.\n", /orphaned Migration:/u],
+    ["heading-only before Migration", "### Rename\n\nMigration: before a, after b.\n", /orphaned Migration:/u],
+    ["frontmatter then orphaned Migration", "---\nkind: action_required\n---\n\nMigration: before a, after b.\n", /orphaned Migration:/u],
+  ])("refuses %s", (_label, contents, pattern) => {
+    expect(() => validateChangelogFragment(fragment, contents, "100644")).toThrow(pattern);
   });
 });
