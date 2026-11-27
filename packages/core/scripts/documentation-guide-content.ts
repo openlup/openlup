@@ -83,18 +83,19 @@ export function assertPublishableReadmeContent(label: string, source: string, vi
   if (bytes > README_MAX_BYTES) {
     violations.push(`${label}: ${bytes} bytes exceeds the ${README_MAX_BYTES}-byte (48 KiB) npmjs README cap; move deep reference documentation to docs/platform/`);
   }
-  for (const target of markdownLinkTargets(source, () => undefined)) {
+  const prose = withoutFencedCode(source);
+  for (const target of markdownLinkTargets(prose, () => undefined)) {
     if (!isExternalOrAnchor(target)) {
       violations.push(`${label}: bare relative link ${target} breaks on npmjs.com; use a tag-pinned GitHub URL or in-page #anchor`);
     }
   }
-  if (staleHistoryAnchor.test(source)) {
+  if (staleHistoryAnchor.test(prose)) {
     violations.push(`${label}: stale CHANGELOG-HISTORY.md#100 link; link to the package's current CHANGELOG.md instead`);
   }
-  if (leakedBudgetReason.test(source)) {
+  if (leakedBudgetReason.test(prose)) {
     violations.push(`${label}: leaked template variable $budgetReason`);
   } else {
-    const leaked = [...new Set([...withoutFencedCode(source).matchAll(leakedTemplateVariable)].map((match) => match[0]))];
+    const leaked = [...new Set([...prose.matchAll(leakedTemplateVariable)].map((match) => match[0]))];
     if (leaked.length > 0) {
       violations.push(`${label}: leaked template variable (${leaked.join(", ")})`);
     }

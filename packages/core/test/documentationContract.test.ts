@@ -1700,3 +1700,32 @@ it("refusal_codes_page_contains_catalog_publication_tax_class_unavailable_with_f
   }
   expect(violations).toEqual([]);
 });
+
+it("ignores links and indexed calls inside fenced code blocks in publishable README checks while still catching prose relative links", () => {
+  const fencedOnly = [
+    "# @openlup/core",
+    "",
+    "```ts",
+    "const out = handlers[kind](event);",
+    "```",
+    "",
+    "```md",
+    "[Guide](docs/guide.md)",
+    "```",
+    "",
+    "```html",
+    "<a href=\"checkout.html\">Pay</a>",
+    "```",
+    "",
+  ].join("\n");
+  const cleanViolations: string[] = [];
+  assertPublishableReadmeContent("README.md", fencedOnly, cleanViolations);
+  expect(cleanViolations).toEqual([]);
+
+  const withProseLink = `${fencedOnly}\nRead [Guide](docs/guide.md) outside fences.\n`;
+  const proseViolations: string[] = [];
+  assertPublishableReadmeContent("README.md", withProseLink, proseViolations);
+  expect(proseViolations).toEqual([
+    "README.md: bare relative link docs/guide.md breaks on npmjs.com; use a tag-pinned GitHub URL or in-page #anchor",
+  ]);
+});
