@@ -8,7 +8,8 @@ import { runScheduledRenewal } from "../../examples/neutral-store/host/scheduled
 import { PLATFORM_MIGRATION_MANIFEST, readPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { readReviewedForwardRegistry, REVIEWED_FORWARD_PATH } from "../../scripts/reviewed-platform-forward.js";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
-import { qualifiedPostgresCatalogPayload, qualifiedPostgresStartupOptions } from "../../server/adapters/postgres/qualifiedInstall.js";
+import { qualifiedPostgresCatalogPayload, qualifiedPostgresStartupOptions, type QualifiedPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
+import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from "../../server/adapters/postgres/selectedCatalogProjection.js";
 import { withPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
 import { closePostgres, postgresSetupTimeoutMs, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
 import { installAccountMutations, type AccountMutationsStore, type AccountProfile } from "./customerAccountMutations.fixture.js";
@@ -70,8 +71,7 @@ async function verifyMeasuredPrefix(root: string, manifest: CompleteManifest, pr
     case "admin-operator": pinned.qualifiedAdmin.objectInventorySha256.operatorProvisioned = inventory; break;
   }
   writeFileSync(join(root, PLATFORM_MIGRATION_MANIFEST), JSON.stringify(pinned));
-  // A fresh runner read checks the exact ledger and the measured digest for this prefix.
-  expect((await runner.status()).pending).toEqual([]);
+  expect(await runner.apply()).toEqual({ applied: [] });
 }
 
 async function withMeasuredAccountPrefix<T>(manifest: CompleteManifest, profile: AccountProfile, label: string,
@@ -83,6 +83,29 @@ async function withMeasuredAccountPrefix<T>(manifest: CompleteManifest, profile:
       await verifyMeasuredPrefix(root, manifest, profile, store.inventory, store.runner);
       return await exercise(store);
     } finally { await store.close(); }
+  });
+}
+
+async function installMeasuredPrefix(manifest: CompleteManifest, pool: Pool,
+  installation: { generation: "legacy" } | QualifiedPostgresInstallation, profile: "legacy" | "bootstrap") {
+  await withPlatformCatalog(manifest, async root => {
+    let inventory = "";
+    const runner = createPostgresMigrationRunner({ connectionString: pool.options.connectionString! }, {
+      root, installation, poolFactory: () => pool,
+      catalogProjectionPayload: async db => {
+        const payload = installation.generation === "legacy"
+          ? selectedCatalogProjectionPayload(await readSelectedCatalogProjection(db))
+          : await qualifiedPostgresCatalogPayload(db, installation, "openlup:public-platform-migrations:v1");
+        inventory = createHash("sha256").update(payload).digest("hex");
+        return payload;
+      },
+    });
+    try { await runner.apply(); }
+    catch (error) {
+      if (!inventory || !(error instanceof Error) || error.message !==
+        "platform migration inventory rejected: platform migration manifest: object inventory SHA-256 mismatch") throw error;
+    }
+    await verifyMeasuredPrefix(root, manifest, profile, inventory, runner);
   });
 }
 
@@ -187,8 +210,7 @@ it.each([false, true])("preserves the mounted native worker with owner login and
     try {
       expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
       await owner.query("CREATE ROLE service_role NOLOGIN NOINHERIT BYPASSRLS");
-      const plan = candidate ? catalogue : predecessor;
-      for (const unit of [plan.baseline, ...plan.forward]) await owner.query(readFileSync(unit.file, "utf8"));
+      await installMeasuredPrefix(candidate ? catalogue : predecessor, owner, { generation: "legacy" }, "legacy");
       return await run({ owner, runtime: owner }, candidate);
     } finally { await closePostgres(container, owner); }
   }
@@ -251,24 +273,7 @@ it("compares a paid renewal under the actual starter login with a fixed occurren
       expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
       await owner.query(`CREATE ROLE starter_runtime LOGIN NOINHERIT PASSWORD 'synthetic-occurrence';
         CREATE ROLE starter_restore LOGIN NOINHERIT PASSWORD 'synthetic-occurrence'`);
-      const plan = candidate ? catalogue : predecessor;
-      await withPlatformCatalog(plan, async root => {
-        let inventory = "";
-        const runner = createPostgresMigrationRunner({ connectionString: container.connectionString }, {
-          root, installation, poolFactory: () => migration,
-          catalogProjectionPayload: async db => {
-            const payload = await qualifiedPostgresCatalogPayload(db, installation, "openlup:public-platform-migrations:v1");
-            inventory = createHash("sha256").update(payload).digest("hex");
-            return payload;
-          },
-        });
-        try { await runner.apply(); }
-        catch (error) {
-          if (!inventory || !(error instanceof Error) || error.message !==
-            "platform migration inventory rejected: platform migration manifest: object inventory SHA-256 mismatch") throw error;
-        }
-        await verifyMeasuredPrefix(root, plan, "bootstrap", inventory, runner);
-      });
+      await installMeasuredPrefix(candidate ? catalogue : predecessor, migration, installation, "bootstrap");
       const f = await transaction(migration, async db => {
         await call(db, "subscription_delivery_alignment_set_mode", ["off"]);
         const subject = await activation(db, 28, later(-29 * 24));
