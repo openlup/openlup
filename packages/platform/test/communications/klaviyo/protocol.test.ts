@@ -107,6 +107,21 @@ it("H06 numeric + HTTP-date Retry-After, read retries and mutation timeout/5xx f
     h.state.fault = undefined; const count = h.state.calls.length;
     expect(await h.rebuild().consent.read(request("consent.read", { requestId: "new" }))).toMatchObject({ kind: "retryable", reason: "cooling" }); expect(h.state.calls).toHaveLength(count);
   }
+  for (const [label, rawHeader, expected] of [
+    ["padded-numeric", "  12  ", 12],
+    ["huge-numeric", "999999999", 86_400],
+    ["huge-http-date", new Date(10 + 10 * 86_400 * 1000).toUTCString(), 86_400],
+  ] as const) {
+    const h = fixture();
+    h.state.fault = () => ({
+      status: 429,
+      headers: { get: (name: string) => name.toLowerCase() === "retry-after" ? rawHeader : null },
+      body: null,
+    } as unknown as Response);
+    const r = await h.provider.consent.read(request("consent.read"));
+    expect(r, `H06/${label}`).toMatchObject({ kind: "retryable", reason: "cooling", afterSeconds: expected });
+    expect(h.ledger().coolingUntil, `H06/${label}/coolingUntil`).toBe(h.state.now + expected * 1000);
+  }
   for (const fault of ["500", "timeout", "network"] as const) for (const mutation of [false, true]) {
     const h = fixture(undefined, { audience: { kind: "account-wide" } });
     h.state.fault = () => fault === "500" ? new Response(null, { status: 500 }) : fault === "network" ? Promise.reject(Error("synthetic only")) : new Promise<Response>(() => {});

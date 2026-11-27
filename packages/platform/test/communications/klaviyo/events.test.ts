@@ -186,3 +186,33 @@ it("E08 retains identical retry bytes and distinguishes genuine shared storage f
     if (fault !== "false") expect(f.storage.availability.quarantined).toBe(true);
   }
 });
+
+it("E09 returns retryable cooling and quarantines when 429 cooldown storage throws, and trims/caps Retry-After", async () => {
+  for (const phase of ["get", "cas"] as const) {
+    const h = eventFixture();
+    h.state.fault = () => new Response(null, { status: 429, headers: { "Retry-After": "12" } });
+    h.state.storageFault = (p, next) =>
+      h.state.calls.length > 0 && p === phase && (phase === "get" || next?.includes('"coolingUntil":')) ? "throw" : undefined;
+    expect(await h.provider.events.exportEvent(h.request), `429/${phase}`).toEqual({ kind: "retryable", reason: "cooling", afterSeconds: 12 });
+    expect(h.storage.availability.quarantined, `429/${phase}/quarantined`).toBe(true);
+    h.state.fault = undefined; h.state.storageFault = undefined;
+    expect(await h.rebuild().events.exportEvent(h.request), `429/${phase}/blocked`).toMatchObject({ kind: "retryable", reason: "cooling" });
+    expect(h.state.calls, `429/${phase}/no-extra-http`).toHaveLength(1);
+  }
+  const cases: [string, string, number][] = [
+    ["padded-numeric", "  12  ", 12],
+    ["huge-numeric", "999999999", 86_400],
+    ["padded-huge-numeric", "  999999999  ", 86_400],
+    ["huge-http-date", new Date(10 + 10 * 86_400 * 1000).toUTCString(), 86_400],
+  ];
+  for (const [label, rawHeader, expected] of cases) {
+    const h = eventFixture();
+    h.state.fault = () => ({
+      status: 429,
+      headers: { get: (name: string) => name.toLowerCase() === "retry-after" ? rawHeader : null },
+      body: null,
+    } as unknown as Response);
+    expect(await h.provider.events.exportEvent(h.request), label).toEqual({ kind: "retryable", reason: "cooling", afterSeconds: expected });
+    expect(h.ledger().coolingUntil, `${label}/coolingUntil`).toBe(h.state.now + expected * 1000);
+  }
+});
