@@ -1,0 +1,3 @@
+- Add sidecar `sql/portable-advisories.json` documenting portable PostgreSQL improvements that require managed adaptation, without altering `sql/manifest.json`.
+- Add optional `resolveReadbackId` to `PaymentProviderReconciliationProvider` (`@openlup/platform/payments/contracts`), consult it in `verifyPaymentAttemptNow`, and implement it in `@openlup/platform/payments/tpay` so live readback resolves `providerSessionId` instead of falling back to a `TR-*` display title.
+- Add once-per-process, fail-open, zero-PII `emitDeprecationNoticeOnce` (and `__resetDeprecationNoticeRegistryForTests`) to `@openlup/platform/observability`.
