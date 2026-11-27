@@ -37,6 +37,12 @@ const rootCalls = new Map([
 const operations = new Set(("assert mkdirSync readFileSync writeFileSync existsSync readdirSync renameSync rmSync realpathSync mkdtempSync cpSync linkSync " +
   "fetch randomBytes randomUUID homedir isolatedConsumerEnv starterUpgradeSnapshot readCurrentPackManifest parsePackagesConfig qualificationReceipt " +
   "prepareRuntimeHandoff resolveBrowserImage browserContainerArguments createHash spawnSync execFileSync JSON.parse JSON.stringify process.stdout.write import Date").split(" "));
+const isListedOperation = (callee: string) => operations.has(callee) || /^(assert\.|.*\.json$|(?:handoff|rotated)\.cleanup$)/u.test(callee);
+const adapterOperations = new Map([
+  ["runCandidate", "child,isolatedConsumerEnv"], ["readRecipeGuide", "file"],
+  ["recipe", "assert"], ["digest", "createHash"], ["sha256", "createHash"],
+  ["validateCandidateLockfile", "assert.equal,assert,assert"],
+]);
 const pure = new Set("Array.isArray AbortSignal.timeout Object.assign Object.fromEntries Object.keys Object.values Buffer.concat Buffer.from Number String Boolean Math.round performance.now tmpdir join dirname resolve Set isIPv4".split(" "));
 const methods = new Set("at entries filter find includes indexOf map slice some every sort split startsWith endsWith trim toString test replace match push join equals get has values update digest toISOString".split(" "));
 const roles = new Set("identity retained verifier mark checkoutAction createSettledReceipt settledFacts readSettlementContinuity stoppedApplication upgrade identityOfFiles recover cutover fingerprint guard databaseIp tcpClient exerciseJobs refusal".split(" "));
@@ -57,7 +63,7 @@ function scanDiagnosticContract(texts: string[]) {
   for (const [index, path] of contractPaths.entries()) {
     const source = program.getSourceFile(path)!;
     const roots = new Map<string, ts.Node>(), sites = new Map<ts.Node, number>(), calls = new Map<string, Set<string>>();
-    const adapterCalls = new Map<ts.Node, ts.CallExpression[]>();
+    const adapterCalls = new Map<ts.Node, (ts.CallExpression | ts.NewExpression)[]>();
     const rootDelegations = new Map<ts.Node, Set<string>>();
     const text = (node?: ts.Node) => node?.getText(source) ?? "";
     function issue(rule: string, node: ts.Node, label = "") {
@@ -132,13 +138,18 @@ function scanDiagnosticContract(texts: string[]) {
         ts.isReturnStatement(node.parent) && node.parent.expression === node ||
         node.parent === callback && ts.isArrowFunction(callback) && callback.body === node;
     }
-    function primitiveCalls(adapter: ts.Node, chain = new Set<ts.Node>()): string[] {
+    function hasPromiseOwner(ancestors: ts.Node[]) {
+      const owner = ancestors.findLast(ts.isFunctionLike);
+      return !owner || Boolean(name(owner));
+    }
+    function terminalCalls(adapter: ts.Node, chain = new Set<ts.Node>()): string[] {
       if (chain.has(adapter)) return ["cycle"];
       return (adapterCalls.get(adapter) ?? []).flatMap(call => {
         const callee = text(call.expression), target = callTarget(call.expression);
         if (["spawnSync", "execFileSync"].includes(callee)) return ["child"];
         if (filesystem.has(callee)) return ["file"];
-        return target && adapterCalls.has(target) ? primitiveCalls(target, new Set([...chain, adapter])) : [];
+        if (isListedOperation(callee)) return [callee];
+        return target && adapterCalls.has(target) ? terminalCalls(target, new Set([...chain, adapter])) : [];
       });
     }
     function walk(node: ts.Node, ancestors: ts.Node[] = []) {
@@ -163,7 +174,7 @@ function scanDiagnosticContract(texts: string[]) {
       if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
         const args = node.arguments ?? [], callee = text(node.expression), member = callee.split(".").at(-1)!;
         const loops = loopIndices(ancestors);
-        if (ts.isCallExpression(node) && lexical) {
+        if (lexical) {
           adapterCalls.get(lexical)!.push(node);
           if (!hasLivePath(node, lexical) || ancestors.slice(ancestors.indexOf(lexical) + 1).some(ts.isFunctionLike))
             issue("adapter_primitives", node, name(lexical));
@@ -186,6 +197,8 @@ function scanDiagnosticContract(texts: string[]) {
             if (reasons.has(reason.text)) issue("duplicate_reason", node, reason.text);
             reasons.add(reason.text); counts[index]!++;
             if (!validLabels(options(config), loops)) issue("labels", node, reason.text);
+            if (operation.modifiers?.some(modifier => modifier.kind === ts.SyntaxKind.AsyncKeyword) &&
+              (!isReturnedOrAwaited(node) || !hasPromiseOwner(ancestors))) issue("unawaited", node, reason.text);
             if (reason.text === "occupied_entry_invariant") {
               if (!ts.isCallExpression(operation.body) || text(operation.body.expression) !== "qualifyCandidateOccupied" ||
                 args.length !== 3 || !declaration(operation.body.expression)) issue("sentinel", node);
@@ -193,7 +206,7 @@ function scanDiagnosticContract(texts: string[]) {
             sites.set(operation, 0);
           }
         } else if (scope || lexical) {
-          const terminal = operations.has(callee) || /^(assert\.|.*\.json$|(?:handoff|rotated)\.cleanup$)/u.test(callee) ||
+          const terminal = isListedOperation(callee) ||
             adapters.has(callee) && callee !== "checked" && callee !== "requireExit";
           const resolved = !ts.isIdentifier(node.expression) || declaration(node.expression) || ["assert", "fetch", "Date"].includes(callee);
           if (terminal && resolved) {
@@ -205,8 +218,8 @@ function scanDiagnosticContract(texts: string[]) {
           if (asynchronous.has(member) || target && ts.canHaveModifiers(target) && ts.getModifiers(target)?.some(modifier => modifier.kind === ts.SyntaxKind.AsyncKeyword)) {
             if (!isReturnedOrAwaited(node, callback) || callback && ancestors.slice(ancestors.indexOf(callback) + 1).some(ts.isFunctionLike))
               issue(callback ? "detached_promise" : "unawaited", node, member);
-            const owner = ancestors.slice(0, callback ? ancestors.indexOf(callback) : ancestors.length).findLast(ts.isFunctionLike);
-            if (callback && !isReturnedOrAwaited(callback.parent) || owner && !name(owner))
+            const enclosingScopes = callback ? ancestors.slice(0, ancestors.indexOf(callback)) : ancestors;
+            if (callback && !isReturnedOrAwaited(callback.parent) || !hasPromiseOwner(enclosingScopes))
               issue("unawaited", callback?.parent ?? node, member);
           }
           if (roles.has(callee) || callee === "prepareStarterCandidate") {
@@ -241,8 +254,8 @@ function scanDiagnosticContract(texts: string[]) {
     for (const adapter of adapterCalls.keys()) {
       const adapterName = name(adapter);
       // Read the guide once. Extracting a recipe from the captured text does no I/O.
-      const expected = commandAdapters.has(adapterName) ? "child" : adapterName === "readRecipeGuide" ? "file" : "";
-      if (primitiveCalls(adapter).join(",") !== expected) issue("adapter_primitives", adapter, adapterName);
+      const expected = adapterOperations.get(adapterName) ?? (commandAdapters.has(adapterName) ? "child" : "");
+      if (terminalCalls(adapter).join(",") !== expected) issue("adapter_primitives", adapter, adapterName);
     }
     if (!counts[index] || !sites.size) issue("empty_census", source);
   }
@@ -254,6 +267,7 @@ it("binds proof diagnostics to literal sites and rejects contract mutations", ()
   const sources = contractPaths.map(path => readFileSync(path, "utf8"));
   const clean = scanDiagnosticContract(sources);
   expect(clean.issues).toEqual([]);
+  const startupAdapter = 'const up = (code = 0) => checked(run(from, "./lifecycle", ["up", "--configuration", "coffee", "--json"], undefined, env, code));';
   for (const [index, before, after, rule] of [
     [0, '"candidate_upgrade_snapshot", "candidate_upgrade_snapshot"', '"candidate_upgrade_snapshot", "predecessor_upgrade_snapshot"', "duplicate_reason"],
     [0, 'const predecessor = originMetadata?.sourceRevision;', 'throw new StarterRuntimeProofError([]);', "constructor"],
@@ -269,6 +283,8 @@ it("binds proof diagnostics to literal sites and rejects contract mutations", ()
     [0, 'const up = (code = 0) => checked(run(from, "./lifecycle", ["up", "--configuration", "coffee", "--json"], undefined, env, code));', 'const up = (code = 0) => { run(from, "docker", ["version"]); return checked(run(from, "./lifecycle", ["up", "--configuration", "coffee", "--json"], undefined, env, code)); };', "adapter_primitives"],
     [0, 'function recipe(heading: string, level = "###") {', 'function recipe(heading: string, level = "###") { readFileSync(from);', "adapter_primitives"],
     [0, '() => response.json() as Promise<CheckoutResult>', '() => { response.json(); return {}; }', "detached_promise"],
+    [0, startupAdapter, startupAdapter.replace(/=> (.*);$/u, "=> JSON.parse($1);"), "adapter_primitives"],
+    [0, '"unsupported_runner_or_port", () => assert(', '"unsupported_runner_or_port", async () => assert(', "unawaited"],
     [0, 'await runStarterRuntimeUpgrade(from, to, port);', '// await runStarterRuntimeUpgrade(from, to, port);', "empty_root"],
     [0, 'labels: [faultIndex, modeIndex], exit: true', 'labels: [source, faultIndex, modeIndex], exit: true', "labels"],
   ] as const) {
