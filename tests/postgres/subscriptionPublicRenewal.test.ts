@@ -407,152 +407,139 @@ async function parcel(orderId: string, db = executor) {
   return (await spine.createShipment({ idempotencyKey: `parcel:${orderId}`, orderId, requestedAt: at })).shipmentId;
 }
 
-it.each([
-  { retained: false, priorShadow: false },
-  { retained: true, priorShadow: false },
-  { retained: false, priorShadow: true },
-])("aligns late arrival after a mounted stale refusal (retained=$retained, priorShadow=$priorShadow)", async ({ retained, priorShadow }) => {
+async function columnGrantedArrivalLogin() {
+  const role = "renewal_column_arrival", password = randomUUID();
+  await admin.query(`CREATE ROLE renewal_column_arrival LOGIN PASSWORD '${password}';
+    GRANT USAGE ON SCHEMA public TO renewal_column_arrival;
+    GRANT EXECUTE ON FUNCTION public.fulfillment_record_alignment_arrival(text,uuid,timestamptz,text),
+      public.subscription_delivery_alignment_get_mode(),
+      public.subscription_delivery_alignment_upsert_case(uuid,uuid,uuid,uuid,integer,text,text,timestamptz,text) TO renewal_column_arrival;
+    GRANT SELECT,INSERT ON public.subscription_delivery_alignment_arrivals TO renewal_column_arrival;
+    GRANT UPDATE (delivered_at,updated_at) ON public.fulfillment_shipments TO renewal_column_arrival;
+    GRANT UPDATE (next_cycle_at,updated_at) ON public.subscriptions TO renewal_column_arrival;
+    GRANT INSERT (shipment_id,predecessor_order_id,subscription_id,predecessor_cycle_id,predecessor_cycle_number,
+      captured_mode,state,evidence_kind,observed_next_cycle_at,manual_review_reason,metadata)
+      ON public.subscription_delivery_alignment_cases TO renewal_column_arrival;
+    GRANT UPDATE (updated_at,observed_next_cycle_at,evidence_kind,state,captured_mode,manual_review_reason,
+      delivered_at,aligned_next_cycle_at,aligned_at) ON public.subscription_delivery_alignment_cases TO renewal_column_arrival;
+    GRANT SELECT ON public.fulfillment_shipments,public.commerce_orders,public.subscription_cycles,
+      public.subscriptions,public.subscription_delivery_alignment_cases,public.subscription_delivery_alignment_control,
+      public.subscription_renewal_terms,public.subscription_renewal_operations,public.subscription_dunning_cases,
+      public.subscription_delivery_alignment_cycles TO renewal_column_arrival`);
+  const url = new URL(loginConnection(runtimeUrl, role));
+  url.password = password;
+  return new Pool({ connectionString: url.toString() });
+}
+
+const deliveryArrivalCases = [
+  { parcels: "single", shadow: false, retained: false, columnGrants: true },
+  { parcels: "single", shadow: true, retained: false, columnGrants: false },
+  { parcels: "split", shadow: false, retained: false, columnGrants: false },
+  { parcels: "split", shadow: true, retained: false, columnGrants: false },
+  { parcels: "replacement", shadow: false, retained: false, columnGrants: false },
+  { parcels: "replacement", shadow: true, retained: false, columnGrants: false },
+  { parcels: "single", shadow: false, retained: true, columnGrants: false },
+] as const;
+
+it.each(deliveryArrivalCases)("aligns after a mounted stale refusal (parcels=$parcels, shadow=$shadow, retained=$retained, columnGrants=$columnGrants)", async ({ parcels, shadow, retained, columnGrants }) => {
   const f = await renewalPurchase(retained), d = await deps(f.subscriptionId, "succeeded");
   const held = await d.input.store.buildCycleSnapshots(d.due);
-  const stale = await bindRenewalDestination(d, held);
-  const shipmentId = await parcel(f.orderId);
-  if (priorShadow) {
-    await admin.query("SELECT public.subscription_delivery_alignment_set_mode('shadow')");
-    const spine = fulfillment.createPostgresFulfillmentShipmentSpinePort(executor, { portKey: "g7-parcels" });
-    await spine.raiseException({ idempotencyKey: `exception:${shipmentId}`, shipmentId, reason: "provider_rejected" });
-  }
-  const cases = async () => (await runtime.query(`SELECT id,state,captured_mode FROM public.subscription_delivery_alignment_cases
-    WHERE subscription_id=$1`, [f.subscriptionId])).rows;
-  const before = await cases();
-  expect(before).toEqual(priorShadow ? [{ id: expect.any(String), state: "shadow", captured_mode: "shadow" }] : []);
-  await resizeForRenewal(f);
-  await admin.query("SELECT public.subscription_delivery_alignment_set_mode('auto_align')");
-  let clock = now;
-  const b = binding(d, () => clock);
-  const [job] = b.contributions[0].schedules!;
-  const noOldOccurrence = async () => {
-    expect((await runtime.query("SELECT id FROM public.subscription_renewal_operations WHERE subscription_id=$1 AND scheduled_at=$2",
-      [f.subscriptionId, held.scheduledAt])).rows).toEqual([]);
-    expect((await runtime.query("SELECT id FROM public.subscription_cycles WHERE subscription_id=$1 AND scheduled_at=$2",
-      [f.subscriptionId, held.scheduledAt])).rows).toEqual([]);
+  const original = await parcel(f.orderId);
+  const addSuccessor = async (sequence: number) => {
+    const id = randomUUID();
+    await admin.query(`INSERT INTO public.fulfillment_shipments(id,order_id,port_key,provider_type,create_idempotency_key,
+      sequence_no,replaces_shipment_id,replacement_reason) VALUES($1,$2,'g7-parcels','3pl',$3,$4,$5,'lost')`,
+    [id, f.orderId, `successor:${id}`, sequence, original]);
+    return id;
   };
+  // A split has two current parcels superseding the original.
+  const earlier = parcels === "split" ? await addSuccessor(1) : null;
+  let final = parcels === "split" ? await addSuccessor(2) : original;
+  if (shadow) {
+    await rpc("subscription_delivery_alignment_set_mode", ["shadow"], admin);
+    const spine = fulfillment.createPostgresFulfillmentShipmentSpinePort(executor, { portKey: "g7-parcels" });
+    await spine.raiseException({ idempotencyKey: `shadow:${original}`, shipmentId: original, reason: "provider_rejected" });
+  }
+  if (parcels === "replacement") final = await addSuccessor(1);
+  const cases = async () => (await runtime.query<{ state: string }>(`SELECT state
+    FROM public.subscription_delivery_alignment_cases WHERE predecessor_order_id=$1`, [f.orderId])).rows.map(row => row.state);
+  const before = await cases();
+  expect(before).toEqual(Array.from({ length: shadow ? (parcels === "split" ? 3 : 1) : 0 }, () => "shadow"));
+
+  await resizeForRenewal(f);
+  await rpc("subscription_delivery_alignment_set_mode", ["auto_align"], admin);
+  let clock = now;
+  const refusals: unknown[] = [];
+  const mounted = binding(d, () => clock, async work => {
+    try { return await transaction(work); }
+    catch (error) { refusals.push(error); throw error; }
+  });
+  const [job] = mounted.contributions[0].schedules!;
   vi.spyOn(d.codec, "freeze").mockReturnValueOnce(held);
   expect(await job.run()).toMatchObject({ renewals: [{ status: "error", reason: "renewal_processing_failed" }] });
+  expect(refusals).toMatchObject([staleClaim]);
+  expect(mounted.queries.mock.calls.some(([sql]) => sql.includes("SELECT public.subscription_delivery_alignment_admit_renewal("))).toBe(false);
   expect(await cases()).toEqual(before);
+
+  const originalDue = new Date(held.scheduledAt).toISOString();
+  const deliveredAt = days(originalDue, 7), shifted = days(deliveredAt, facts.cadenceDays);
+  const due = async () => (await runtime.query<{ next_cycle_at: Date }>(
+    "SELECT next_cycle_at FROM public.subscriptions WHERE id=$1", [f.subscriptionId])).rows[0]!.next_cycle_at.toISOString();
+  const noOldOccurrence = async () => {
+    expect((await runtime.query(`SELECT EXISTS (
+      SELECT FROM public.subscription_renewal_operations WHERE subscription_id=$1 AND scheduled_at=$2
+      UNION ALL SELECT FROM public.subscription_cycles WHERE subscription_id=$1 AND scheduled_at=$2
+    ) AS found`, [f.subscriptionId, originalDue])).rows).toEqual([{ found: false }]);
+  };
   await noOldOccurrence();
   expect(d.execute).not.toHaveBeenCalled();
 
-  const deliveredAt = days(d.due.scheduledAt, 7), shifted = days(deliveredAt, 28);
-  const arrival = fulfillment.createPostgresDeliveryAlignmentPort(executor);
-  const input = { requestKey: `late:${shipmentId}`, parcelRef: shipmentId, deliveredAt, evidenceRef: `evidence:${shipmentId}` as const };
-  expect(await arrival.recordArrival(input)).toMatchObject({ disposition: "aligned", nextCycleAt: shifted });
-  expect(await arrival.recordArrival(input)).toMatchObject({ replayed: true, nextCycleAt: shifted });
-  expect(await arrival.recordArrival({ ...input, requestKey: `older:${shipmentId}`, deliveredAt: days(deliveredAt, -1) }))
-    .toMatchObject({ nextCycleAt: shifted });
-  if (priorShadow) expect(await cases()).toEqual([{ id: before[0].id, state: "aligned", captured_mode: "auto_align" }]);
-  expect((await runtime.query(`SELECT state,evidence_kind,observed_next_cycle_at,aligned_next_cycle_at
-    FROM public.subscription_delivery_alignment_cases WHERE subscription_id=$1`, [f.subscriptionId])).rows)
-    .toEqual([{ state: "aligned", evidence_kind: "overdue_renewal", observed_next_cycle_at: new Date(held.scheduledAt),
-      aligned_next_cycle_at: new Date(shifted) }]);
+  const direct = columnGrants ? await columnGrantedArrivalLogin() : null;
+  try {
+    if (direct) {
+      expect((await direct.query(`SELECT session_user, current_user,
+        pg_has_role(current_user,'service_role','MEMBER') AS service_member,
+        has_table_privilege('public.subscriptions','UPDATE') AS subscription_update,
+        has_table_privilege('public.subscription_delivery_alignment_cases','UPDATE') AS case_update`)).rows)
+        .toEqual([{ session_user: "renewal_column_arrival", current_user: "renewal_column_arrival",
+          service_member: false, subscription_update: false, case_update: false }]);
+    }
+    const arrival = fulfillment.createPostgresDeliveryAlignmentPort(direct ?? executor);
+    const evidence = (parcelRef: string, arrivalTime: string) =>
+      ({ requestKey: `verified:${parcelRef}`, parcelRef, deliveredAt: arrivalTime, evidenceRef: `evidence:${parcelRef}` as const });
+    if (earlier) {
+      await arrival.recordArrival(evidence(earlier, days(deliveredAt, -1)));
+      expect(await due()).toBe(originalDue);
+    }
+    const verified = evidence(final, deliveredAt);
+    expect(await arrival.recordArrival(verified)).toMatchObject({ disposition: "aligned", nextCycleAt: shifted });
+    expect(await due()).toBe(shifted);
+    expect(await arrival.recordArrival(verified)).toMatchObject({ replayed: true, nextCycleAt: shifted });
+    expect(await arrival.recordArrival({ ...verified, requestKey: `older:${final}`, deliveredAt: days(deliveredAt, -1) }))
+      .toMatchObject({ nextCycleAt: shifted });
+    expect(await due()).toBe(shifted);
+    if (final !== original) {
+      expect((await runtime.query("SELECT delivered_at FROM public.fulfillment_shipments WHERE id=$1", [original])).rows)
+        .toEqual([{ delivered_at: null }]);
+    }
+  } finally {
+    if (direct) {
+      await direct.end();
+      await admin.query("DROP OWNED BY renewal_column_arrival; DROP ROLE renewal_column_arrival");
+    }
+  }
 
-  clock = days(shifted, -1);
+  clock = days(deliveredAt, 1 / 1440);
   expect(await job.run()).toMatchObject({ renewals: [] });
-  expect(d.execute).not.toHaveBeenCalled();
-  clock = shifted;
-  const noDue = { code: "22023", message: "subscription_renewal_claim_not_due" };
-  await expect(runtime.query(rawClaim, claimWire(d, stale, undefined, clock))).rejects.toMatchObject(noDue);
-  await expect(d.input.store.claimDue({ snapshot: held, workerId: "old-offer", now: clock }))
-    .rejects.toThrow(retained ? /^subscription_renewal_snapshot_not_found$/ : /^subscription_renewal_claim_not_due$/);
-  const shiftedSnapshot = await d.input.store.buildCycleSnapshots({ ...d.due, scheduledAt: shifted, scheduledInstant: Date.parse(shifted) });
-  expect(shiftedSnapshot.cycle).toEqual(held.cycle);
-  const newIdentity = d.codec.identity(shiftedSnapshot);
-  expect(newIdentity).not.toBe(d.codec.identity(held));
-  expect(await job.run()).toMatchObject({ renewals: [{ status: "succeeded", identityKey: newIdentity }] });
-  const shiftedOperation = (await d.input.store.readRenewal(newIdentity))!;
-  expect(await renewalAmounts(runtime, shiftedOperation.orderId!)).toEqual([{ order: 300, intent: 300 }]);
+  expect(await due()).toBe(shifted);
   await noOldOccurrence();
-  expect(await job.run()).toMatchObject({ renewals: [] });
-  expect(d.execute.mock.calls.map(([charge]) => charge.amountMinor)).toEqual([300]);
-}, 30_000);
-
-it("returns the persisted alignment for a verified split-parcel arrival with older shadow cases", async () => {
-  const f = await renewalPurchase(), d = await deps(f.subscriptionId, "succeeded");
-  const stale = await bindRenewalDestination(d, await d.input.store.buildCycleSnapshots(d.due));
-  const original = await parcel(f.orderId), first = randomUUID(), last = randomUUID();
-  await admin.query(`INSERT INTO public.fulfillment_shipments(id,order_id,port_key,provider_type,create_idempotency_key,
-    sequence_no,replaces_shipment_id,replacement_reason) VALUES
-    ($1,$3,'g7-parcels','3pl',$4,1,$6,'lost'), ($2,$3,'g7-parcels','3pl',$5,2,$6,'lost')`,
-  [first, last, f.orderId, `split:${first}`, `split:${last}`, original]);
-  await admin.query("SELECT public.subscription_delivery_alignment_set_mode('shadow')");
-  const spine = fulfillment.createPostgresFulfillmentShipmentSpinePort(executor, { portKey: "g7-parcels" });
-  await spine.raiseException({ idempotencyKey: `exception:${original}`, shipmentId: original, reason: "provider_rejected" });
-  // Make the last parcel's shadow younger than the siblings for deterministic readback.
-  await admin.query("UPDATE public.subscription_delivery_alignment_cases SET created_at=created_at+interval '1 second' WHERE shipment_id=$1", [last]);
-  expect((await runtime.query(`SELECT state FROM public.subscription_delivery_alignment_cases
-    WHERE predecessor_order_id=$1 ORDER BY created_at,id`, [f.orderId])).rows)
-    .toEqual([{ state: "shadow" }, { state: "shadow" }, { state: "shadow" }]);
-
-  await resizeForRenewal(f);
-  await admin.query("SELECT public.subscription_delivery_alignment_set_mode('auto_align')");
-  await expect(runtime.query(rawClaim, claimWire(d, stale))).rejects.toMatchObject(staleClaim);
-  const arrival = fulfillment.createPostgresDeliveryAlignmentPort(executor);
-  const deliver = (parcelRef: string, deliveredAt: string) =>
-    arrival.recordArrival({ requestKey: `split-arrival:${parcelRef}`, parcelRef, deliveredAt, evidenceRef: `evidence:${parcelRef}` });
-  const due = async () => (await runtime.query("SELECT next_cycle_at FROM public.subscriptions WHERE id=$1",
-    [f.subscriptionId])).rows[0].next_cycle_at;
-  const latestArrival = days(stale.scheduledAt, 7), shifted = days(latestArrival, facts.cadenceDays);
-  expect(await deliver(first, latestArrival)).toMatchObject({ disposition: "manual_review", nextCycleAt: null });
-  expect(await due()).toEqual(new Date(stale.scheduledAt));
-  const result = await deliver(last, days(latestArrival, -1));
-  expect(await due()).toEqual(new Date(shifted));
-  expect(result).toEqual({ disposition: "aligned", nextCycleAt: shifted, replayed: false });
-  expect(await arrival.read(first)).toEqual({ disposition: "aligned", nextCycleAt: shifted });
-}, 30_000);
-
-it("aligns a verified final replacement after a stale claim with only shadow evidence", async () => {
-  const f = await renewalPurchase(), d = await deps(f.subscriptionId, "succeeded");
-  const held = await d.input.store.buildCycleSnapshots(d.due);
-  const original = await parcel(f.orderId);
-  await admin.query("SELECT public.subscription_delivery_alignment_set_mode('shadow')");
-  const spine = fulfillment.createPostgresFulfillmentShipmentSpinePort(executor, { portKey: "g7-parcels" });
-  await spine.raiseException({ idempotencyKey: `exception:${original}`, shipmentId: original, reason: "provider_rejected" });
-  const replacement = randomUUID();
-  await admin.query(`INSERT INTO public.fulfillment_shipments(id,order_id,port_key,provider_type,create_idempotency_key,
-    sequence_no,replaces_shipment_id,replacement_reason) VALUES($1,$2,'g7-parcels','3pl',$3,1,$4,'lost')`,
-  [replacement, f.orderId, `replacement:${replacement}`, original]);
-
-  await resizeForRenewal(f);
-  await admin.query("SELECT public.subscription_delivery_alignment_set_mode('auto_align')");
-  let clock = now;
-  const runner = binding(d, () => clock);
-  const stale = await bindRenewalDestination(d, held);
-  await expect(runtime.query(rawClaim, claimWire(d, stale))).rejects.toMatchObject(staleClaim);
-  const due = async () => (await runtime.query("SELECT next_cycle_at FROM public.subscriptions WHERE id=$1",
-    [f.subscriptionId])).rows[0].next_cycle_at.toISOString();
-  const cases = async () => (await runtime.query("SELECT id,state,captured_mode FROM public.subscription_delivery_alignment_cases WHERE subscription_id=$1",
-    [f.subscriptionId])).rows;
-  const shadow = await cases();
-  expect(shadow).toEqual([{ id: expect.any(String), state: "shadow", captured_mode: "shadow" }]);
-  const arrival = fulfillment.createPostgresDeliveryAlignmentPort(executor), deliveredAt = days(d.due.scheduledAt, 7);
-  const input = (parcelRef: string, deliveredAt: string) =>
-    ({ requestKey: `arrival:${parcelRef}`, parcelRef, deliveredAt, evidenceRef: `evidence:${parcelRef}` as const });
-  await arrival.recordArrival(input(original, days(deliveredAt, -1)));
-  expect(await due()).toBe(new Date(held.scheduledAt).toISOString());
-  expect(await cases()).toEqual(shadow);
-  expect((await runtime.query("SELECT delivered_at FROM public.fulfillment_shipments WHERE id=$1", [replacement])).rows)
-    .toEqual([{ delivered_at: null }]);
-
-  const verified = input(replacement, deliveredAt), shifted = days(deliveredAt, 28);
-  await arrival.recordArrival(verified);
-  expect(await due()).toBe(shifted);
-  expect(await cases()).toEqual([{ id: shadow[0].id, state: "aligned", captured_mode: "auto_align" }]);
-  expect(await arrival.recordArrival(verified)).toMatchObject({ replayed: true });
-  expect(await due()).toBe(shifted);
-  clock = days(shifted, -1);
-  expect(await runner.services.run()).toMatchObject({ renewals: [] });
   expect(d.execute).not.toHaveBeenCalled();
+
   clock = shifted;
-  expect(await runner.services.run()).toMatchObject({ renewals: [{ status: "succeeded" }] });
+  expect(await job.run()).toMatchObject({ renewals: [{ status: "succeeded" }] });
+  expect(await job.run()).toMatchObject({ renewals: [] });
+  expect(await due()).toBe(days(shifted, facts.cadenceDays));
+  await noOldOccurrence();
   expect(d.execute.mock.calls.map(([charge]) => charge.amountMinor)).toEqual([300]);
 }, 30_000);
 

@@ -14549,7 +14549,7 @@
     },
     {
       "path": "db/platform/migrations/20261129130508_subscription_renewal_current_template.sql",
-      "sha256": "71f2dadd35ad3fe987751a641c3fc68ed2dcbc2dd8a4a29c38f1e771a09f2dea",
+      "sha256": "62f99a582643926653e73213cec1e6c72707f91c83c59ff0a31886220a9bd949",
       "functions": [
         {
           "signature": "public.subscription_claim_due_renewal(text,text,jsonb,text,integer,timestamptz)",
@@ -14559,7 +14559,7 @@
         {
           "signature": "public.subscription_delivery_alignment_on_delivery()",
           "beforeSha256": "7a7bc2bd0e926b7d4c4be060fc14937cabc4b4b057607dccf54b864502aad21f",
-          "afterSha256": "d793a68bce881eb75b5794bd38508cc17cae62ce6a3d0b5c97422179b4ad5ed6"
+          "afterSha256": "08dfa7056ce94ed23e896f036d42e401a5bfe66ac34de256f65465966c231239"
         }
       ]
     }

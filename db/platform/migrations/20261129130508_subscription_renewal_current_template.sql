@@ -321,9 +321,20 @@ BEGIN
         AND has_table_privilege('public.subscription_dunning_cases', 'SELECT')
         AND has_table_privilege('public.subscription_delivery_alignment_cycles', 'SELECT')
         AND has_table_privilege('public.fulfillment_shipments', 'SELECT')
-        AND has_table_privilege('public.subscription_delivery_alignment_cases', 'INSERT')
-        AND has_table_privilege('public.subscription_delivery_alignment_cases', 'UPDATE')
-        AND has_table_privilege('public.subscriptions', 'UPDATE')
+        AND has_table_privilege('public.subscription_delivery_alignment_cases', 'SELECT')
+        AND NOT EXISTS (
+          SELECT FROM unnest(ARRAY['shipment_id', 'predecessor_order_id', 'subscription_id', 'predecessor_cycle_id',
+            'predecessor_cycle_number', 'captured_mode', 'state', 'evidence_kind', 'observed_next_cycle_at',
+            'manual_review_reason', 'metadata']) AS required(column_name)
+          WHERE NOT has_column_privilege('public.subscription_delivery_alignment_cases', column_name, 'INSERT')
+        )
+        AND NOT EXISTS (
+          SELECT FROM unnest(ARRAY['updated_at', 'observed_next_cycle_at', 'evidence_kind', 'state', 'captured_mode',
+            'manual_review_reason', 'delivered_at', 'aligned_next_cycle_at', 'aligned_at']) AS required(column_name)
+          WHERE NOT has_column_privilege('public.subscription_delivery_alignment_cases', column_name, 'UPDATE')
+        )
+        AND has_column_privilege('public.subscriptions', 'next_cycle_at', 'UPDATE')
+        AND has_column_privilege('public.subscriptions', 'updated_at', 'UPDATE')
       ) THEN
         EXIT qualify_arrival;
       END IF;
