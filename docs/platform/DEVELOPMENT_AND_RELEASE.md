@@ -532,7 +532,7 @@ exact catalogue quantities, pricing helpers and registry observations, installed
 lookup improvements and offline catalogue guidance. Its reader guide covers
 Platform's nine native forwards at slots 142–150, explicit migration/backfill
 steps, the experimental base-price writer and code-rollback limits. Upgrade the complete set together and read
-[the set notes](../../packages/core/CHANGELOG.md#100); Core introduces no schema migration.
+[the set notes](../../packages/core/CHANGELOG-HISTORY.md#100); Core introduces no schema migration.
 Size comparison uses the published `0.43.0` tarball; releases before `0.42.0`
 remain in the source-only `CHANGELOG-HISTORY.md`. Preparation establishes no
 npm publication or exact-set qualification.
@@ -550,7 +550,7 @@ The reviewed release workflow owns provenance-backed publication; direct directo
 The prepared `1.0.0` set declares Outbox's stable runtime subpaths and testing
 exclusion, with unchanged runtime, exports and SQL, and an exact
 `@openlup/core@1.0.0` peer. Upgrade the complete set together; no Outbox schema
-migration is introduced. Read [1.0.0 notes](../../packages/outbox/CHANGELOG.md#100).
+migration is introduced. Read [1.0.0 notes](../../packages/outbox/CHANGELOG-HISTORY.md#100).
 Releases before `0.42.0` are retained in the source-only `CHANGELOG-HISTORY.md`.
 Size comparison uses the published `0.43.0` tarball; preparation grants no
 publication or installation proof.

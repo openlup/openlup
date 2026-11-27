@@ -1,1 +1,0 @@
-Native migration admission allows one exact guarded `EXECUTE` grant to the qualified-v2 catalogue publication login for the two price setup wrappers. Both definitions must already be issued in earlier native slots with matching file and definition hashes.
