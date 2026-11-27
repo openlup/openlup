@@ -60,18 +60,38 @@ async function committed(inclusive = false, edit?: (body: CommerceQuoteMoneyV2) 
   return { id, accepted };
 }
 
-async function prepare(id: string, amount: number, runtime = store.runtime) {
-  const control = createPostgresProviderPaymentControlPort(runtime, options);
-  const intent = await control.createIntent({ idempotencyKey: "intent:" + id, targetKind: "one_time_order", orderId: id,
-    subscriptionId: null, subscriptionCycleId: null, amountMinor: amount, currency, metadata: {}, channelKey: provider, at });
-  const input = { idempotencyKey: "prepare:" + id, paymentIntentId: intent.id, provider,
+async function seedSettlement(db: PoolClient, orderId: string, amount: number, channel: string) {
+  // Install the historical opening facts required by the reader and capture paths.
+  const intent = randomUUID(), openingKey = "intent:" + orderId;
+  await insert(db, intentTable, { id: intent, order_id: orderId, channel_key: channel, amount_minor: amount,
+    currency_code: currency, open_idempotency_key: openingKey, created_at: at, updated_at: at });
+  await insert(db, transitionTable, { intent_id: intent, from_status: "absent", to_status: "created",
+    outcome: "opened", idempotency_key: openingKey, occurred_at: at });
+  return { intent, openingKey };
+}
+
+async function prepare(id: string, amount: number, target = store as FixtureStore) {
+  // Fresh versioned orders cannot use legacy intent creation. Attempt and
+  // capture still use the live ports on the historical payment state.
+  const paymentId = randomUUID();
+  const intent = await transaction(target.owner, async db => {
+    const { intent, openingKey } = await seedSettlement(db, id, amount, provider);
+    await insert(db, "payment_provider_states", { id: intent, payment_id: paymentId, target_kind: "one_time_order",
+      metadata: { source: "payment.control.v0" } });
+    await insert(db, "payment_provider_transitions", { settlement_intent_id: intent, transition_kind: "intent",
+      to_status: "created", reason: "payment_intent_created", idempotency_key: openingKey + ":intent_created",
+      payload: { targetKind: "one_time_order", orderId: id, paymentId } });
+    return intent;
+  });
+  const control = createPostgresProviderPaymentControlPort(target.runtime, options);
+  const input = { idempotencyKey: "prepare:" + id, paymentIntentId: intent, provider,
     providerIdempotencyKey: "provider:" + id, providerRequestFingerprint: "a".repeat(64),
     providerFlow: "one_time_payment" as const, requestPayload: {} };
   const { paymentAttemptId: attempt } = await control.prepareProviderAttempt(input);
   const remote = "payment:" + attempt, session = "session:" + attempt;
   await control.finalizeProviderAttempt({ ...input, idempotencyKey: "finalize:" + id, paymentAttemptId: attempt,
     providerAttemptId: remote, providerSessionId: session, attemptStatus: "processing", nextActionKind: null, responsePayload: {} });
-  return { id, amount, intent: intent.id, paymentId: intent.paymentId, attempt, remote, session };
+  return { id, amount, intent, paymentId, attempt, remote, session };
 }
 type Payment = Awaited<ReturnType<typeof prepare>>;
 async function signed(payment: Payment, runtime = store.runtime, refund = false) {
@@ -196,7 +216,7 @@ it("paid_money_survives_restore", async () => {
   const target = await resources.installation("paid-target");
   const product = await seedSku(source.owner);
   const f = await committed(false, undefined, source, product);
-  const payment = await prepare(f.id, f.accepted.quote.payableMinor, source.runtime);
+  const payment = await prepare(f.id, f.accepted.quote.payableMinor, source);
   const event = await signed(payment, source.runtime);
   await matchesLive(f.id, f.accepted, payment.intent, event, source);
   const before = await bytes(source.runtime, f.id);
@@ -309,9 +329,7 @@ it("route_precedes_evidence", async () => {
     source_evidence=jsonb_set(source_evidence,'{sourceReference}',to_jsonb($2::text))`, [randomUUID()]);
   await refuse(providerOrder.id);
   const { id } = await committed();
-  const opened = await value<{ settlement: { id: string } }>(store.runtime,
-    "SELECT public.commerce_open_settlement_intent($1,$2,'sandbox',100,'XXX','{}',$3) AS value", [randomUUID(), id, at]);
-  const intent = opened.settlement.id;
+  const { intent } = await transaction(store.owner, db => seedSettlement(db, id, 100, "sandbox"));
   const simulator = createPostgresSandboxPaymentSimulator(store.runtime, options);
   const attempt = await simulator.beginAttempt({ settlementIntentId: intent, idempotencyKey: randomUUID(), requestFingerprint: "b".repeat(64), at });
   for (const outcome of ["indeterminate", "captured"] as const) {
@@ -424,8 +442,7 @@ function keySets(actual: unknown, expected: unknown, path = "") {
   }
 }
 
-// The pre-guard fixture uses the already installed destination and tax erasers plus
-// the receipt and retained row images required by the order assertion.
+// Exercise the installed destination and tax erasers with the retained ledger evidence.
 async function eraseFixture(f: Paid) {
   await transaction(store.owner, async db => {
     await db.query(`LOCK TABLE ${[...storageTables, "identity_privacy_erasures"].map(table => "public." + table).join(",")}
@@ -441,10 +458,6 @@ async function eraseFixture(f: Paid) {
         { owner: "destination-documents", resource: "commerce.order-money-destination-pins", disposition: "erase", remote: false },
         { owner: "destination-documents", resource: "commerce.order-money-retained-facts", disposition: "retain", remote: false },
       ] }]), retained_obligations: "[]" });
-    await db.query(`UPDATE public.${snapshots} SET destination_erased=true,destination_digest=NULL,
-      destination_policy_revision=NULL,delivery_selection_ref=NULL WHERE order_id=$1`, [f.id]);
-    await db.query(`UPDATE public.${buckets} SET destination_erased=true,carrier_ref=NULL,service_ref=NULL
-      WHERE order_id=$1 AND part_no=0`, [f.id]);
     await db.query("UPDATE public.commerce_orders SET updated_at=updated_at WHERE id=$1", [f.id]);
     await db.query("SET CONSTRAINTS ALL IMMEDIATE");
   });
