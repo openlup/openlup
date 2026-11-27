@@ -9917,6 +9917,10 @@
         ],
         "createdFunctions": [
           {
+            "signature": "public.commerce_order_money_v2_consume_redaction_mark(uuid,boolean)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
             "signature": "public.commerce_order_money_v2_child_guard()",
             "searchPath": "pg_catalog, pg_temp"
           }
@@ -10041,6 +10045,10 @@
         "path": "db/platform/migrations/20261129130510_order_draft_receipt_privacy_v2.sql",
         "replacedFunctions": [],
         "createdFunctions": [
+          {
+            "signature": "public.commerce_order_draft_receipt_v2_consume_erasure_mark(uuid,uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
           {
             "signature": "public.commerce_order_draft_receipt_v2_erasure_check()",
             "searchPath": "pg_catalog, pg_temp"
@@ -14603,7 +14611,7 @@
     },
     {
       "path": "db/platform/migrations/20261129130508_order_money_v2_child_guards.sql",
-      "sha256": "0ed385ec94314740f1848c9fda9f3336d7bc8c3eb767d361e9d8ff05797a9f96",
+      "sha256": "6fc46ea8d578458768a46e20e5c7804760d958b554b4292347faee0c217f5150",
       "functions": [
         {
           "signature": "public.commerce_destination_v2_erase(uuid)",
@@ -14611,9 +14619,14 @@
           "afterSha256": "64e40a7fcae68a585b820018912809e2f2e410c971c6c89a93866cd926ba6b93"
         },
         {
+          "signature": "public.commerce_order_money_v2_consume_redaction_mark(uuid,boolean)",
+          "beforeSha256": null,
+          "afterSha256": "00b180522dd29ea6cef0578ad05251382d871177cd1e055c933b794ee857bc40"
+        },
+        {
           "signature": "public.commerce_order_money_v2_child_guard()",
           "beforeSha256": null,
-          "afterSha256": "6f4e25dbb0d092c8d7fec00283d8083abe9c2133e5a6375b2c2d7b0f0ae1629c"
+          "afterSha256": "a418cb5891635946f6a05ae787f159f6e9211947d7e3a34039fb98573be272bb"
         }
       ]
     },
@@ -14640,12 +14653,17 @@
     },
     {
       "path": "db/platform/migrations/20261129130510_order_draft_receipt_privacy_v2.sql",
-      "sha256": "569a141c38d7f14d315441861b181bb6189c7e1b380e8a8e58a77912056ddcae",
+      "sha256": "733cb7f18218029b173e0b2bf700a7f871e28482f2912d5a8db558e7e6277ce7",
       "functions": [
+        {
+          "signature": "public.commerce_order_draft_receipt_v2_consume_erasure_mark(uuid,uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "204e7e797782a1de9cd0d5d0c27402081d180f72bb28b0c20213ab82a83f0402"
+        },
         {
           "signature": "public.commerce_order_draft_receipt_v2_erasure_check()",
           "beforeSha256": null,
-          "afterSha256": "d74377d9bd46f5d6f72747e1f5918f8b567eea04d76f2b19bb63f132dc81adca"
+          "afterSha256": "bfe79e7f7a8bb69b58c0a0070bd1b1355594d33ce2bbcd33d3ce3aa8e33eaf8e"
         },
         {
           "signature": "public.commerce_order_draft_receipt_privacy_matches_v2(uuid,uuid,uuid)",

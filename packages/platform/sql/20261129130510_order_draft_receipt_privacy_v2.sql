@@ -9,21 +9,26 @@ CREATE TABLE public.commerce_order_draft_receipt_erasure_marks (
 ALTER TABLE public.commerce_order_draft_receipt_erasure_marks ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.commerce_order_draft_receipt_erasure_marks FROM PUBLIC;
 
-CREATE FUNCTION public.commerce_order_draft_receipt_v2_erasure_check() RETURNS trigger
+-- Validate ledger evidence and consume a private mark during deferred checking.
+-- A direct call cannot attest a clear or create authority for a later trigger.
+CREATE FUNCTION public.commerce_order_draft_receipt_v2_consume_erasure_mark(
+  p_order_id uuid, p_contact uuid, p_principal uuid
+) RETURNS boolean
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
   prior_id uuid;
 BEGIN
+  IF pg_trigger_depth() = 0 THEN RETURN false; END IF;
   DELETE FROM public.commerce_order_draft_receipt_erasure_marks
-  WHERE transaction_id = pg_current_xact_id() AND order_id = OLD.order_id
+  WHERE transaction_id = pg_current_xact_id() AND order_id = p_order_id
   RETURNING prior_erasure_id INTO prior_id;
 
-  IF FOUND AND (
+  RETURN FOUND AND (
     (prior_id IS NULL AND EXISTS (
       SELECT FROM public.identity_privacy_erasures e
-      WHERE (e.client_id = OLD.customer_or_session_ref OR e.principal_id = OLD.principal_ref)
-        AND (e.client_id IS NULL OR e.client_id = OLD.customer_or_session_ref)
-        AND (e.principal_id IS NULL OR e.principal_id = OLD.principal_ref)
+      WHERE (e.client_id = p_contact OR e.principal_id = p_principal)
+        AND (e.client_id IS NULL OR e.client_id = p_contact)
+        AND (e.principal_id IS NULL OR e.principal_id = p_principal)
         AND e.contributor_versions->>'order-draft-receipts' = 'commerce.order-draft-receipts.v1'
         AND e.dispositions @> '[{"contributorId":"order-draft-receipts","version":"commerce.order-draft-receipts.v1","obligations":[
           {"owner":"order-draft-receipts","resource":"commerce.order-draft-receipt-owner-references","disposition":"erase","reasonCode":"RECEIPT_OWNER_REFERENCES_CLEARED","remote":false},
@@ -32,7 +37,15 @@ BEGIN
       SELECT FROM public.identity_privacy_erasure_reconciliations
       WHERE erasure_id = prior_id AND contributor_id = 'order-draft-receipts'
     ))
-  ) THEN RETURN NULL;
+  );
+END;
+$$;
+
+CREATE FUNCTION public.commerce_order_draft_receipt_v2_erasure_check() RETURNS trigger
+LANGUAGE plpgsql VOLATILE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+  IF public.commerce_order_draft_receipt_v2_consume_erasure_mark(OLD.order_id, OLD.customer_or_session_ref, OLD.principal_ref)
+  THEN RETURN NULL;
   END IF;
   RAISE EXCEPTION 'order_draft_receipt_immutable' USING ERRCODE = '55000',
     HINT = 'Read through the receipt lookup or use the authorized privacy operation to erase owner references.';
@@ -215,6 +228,7 @@ BEGIN
 END;
 $$;
 
+REVOKE ALL ON FUNCTION public.commerce_order_draft_receipt_v2_consume_erasure_mark(uuid,uuid,uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.commerce_order_draft_receipt_v2_erasure_check() FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.commerce_order_draft_receipt_privacy_matches_v2(uuid,uuid,uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.commerce_export_order_draft_receipts_v2(uuid,uuid) FROM PUBLIC;
@@ -230,20 +244,20 @@ DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
   EXECUTE 'REVOKE ALL ON TABLE public.commerce_order_draft_receipt_erasure_marks FROM anon';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_order_draft_receipt_privacy_matches_v2(uuid,uuid,uuid), public.commerce_export_order_draft_receipts_v2(uuid,uuid), public.commerce_erase_order_draft_receipts_v2(uuid,uuid,uuid), public.commerce_read_order_draft_receipt_v2(jsonb) FROM anon';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_order_draft_receipt_privacy_matches_v2(uuid,uuid,uuid), public.commerce_export_order_draft_receipts_v2(uuid,uuid), public.commerce_erase_order_draft_receipts_v2(uuid,uuid,uuid), public.commerce_read_order_draft_receipt_v2(jsonb), public.commerce_order_draft_receipt_v2_consume_erasure_mark(uuid,uuid,uuid) FROM anon';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
   EXECUTE 'REVOKE ALL ON TABLE public.commerce_order_draft_receipt_erasure_marks FROM authenticated';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_order_draft_receipt_privacy_matches_v2(uuid,uuid,uuid), public.commerce_export_order_draft_receipts_v2(uuid,uuid), public.commerce_erase_order_draft_receipts_v2(uuid,uuid,uuid), public.commerce_read_order_draft_receipt_v2(jsonb) FROM authenticated';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_order_draft_receipt_privacy_matches_v2(uuid,uuid,uuid), public.commerce_export_order_draft_receipts_v2(uuid,uuid), public.commerce_erase_order_draft_receipts_v2(uuid,uuid,uuid), public.commerce_read_order_draft_receipt_v2(jsonb), public.commerce_order_draft_receipt_v2_consume_erasure_mark(uuid,uuid,uuid) FROM authenticated';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
   EXECUTE 'REVOKE ALL ON TABLE public.commerce_order_draft_receipt_erasure_marks FROM service_role';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_order_draft_receipt_privacy_matches_v2(uuid,uuid,uuid), public.commerce_export_order_draft_receipts_v2(uuid,uuid), public.commerce_erase_order_draft_receipts_v2(uuid,uuid,uuid), public.commerce_read_order_draft_receipt_v2(jsonb) FROM service_role';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_order_draft_receipt_privacy_matches_v2(uuid,uuid,uuid), public.commerce_export_order_draft_receipts_v2(uuid,uuid), public.commerce_erase_order_draft_receipts_v2(uuid,uuid,uuid), public.commerce_read_order_draft_receipt_v2(jsonb), public.commerce_order_draft_receipt_v2_consume_erasure_mark(uuid,uuid,uuid) FROM service_role';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
-  EXECUTE 'GRANT EXECUTE ON FUNCTION public.commerce_export_order_draft_receipts_v2(uuid,uuid), public.commerce_erase_order_draft_receipts_v2(uuid,uuid,uuid), public.commerce_read_order_draft_receipt_v2(jsonb) TO service_role';
+  EXECUTE 'GRANT EXECUTE ON FUNCTION public.commerce_export_order_draft_receipts_v2(uuid,uuid), public.commerce_erase_order_draft_receipts_v2(uuid,uuid,uuid), public.commerce_read_order_draft_receipt_v2(jsonb), public.commerce_order_draft_receipt_v2_consume_erasure_mark(uuid,uuid,uuid) TO service_role';
 END IF; END; $$;

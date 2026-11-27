@@ -53,7 +53,8 @@ it.each([true, false])("replays the seven deferred guards with optional writers 
       const mutants = [
         ["GRANT EXECUTE ON FUNCTION public.commerce_order_money_v2_child_guard() TO PUBLIC", "owner-only execute"],
         ["ALTER TABLE public.commerce_order_fee_lines DISABLE TRIGGER trg_commerce_order_fee_lines_money_v2", "exact seven deferred bindings"],
-        ["ALTER FUNCTION public.commerce_order_money_v2_child_guard() SECURITY INVOKER", "volatile definer"],
+        ["ALTER FUNCTION public.commerce_order_money_v2_child_guard() SECURITY DEFINER", "volatile invoker"],
+        ["GRANT EXECUTE ON FUNCTION public.commerce_order_money_v2_consume_redaction_mark(uuid,boolean) TO PUBLIC", "optional service role can execute the definer helper"],
         ["GRANT INSERT ON public.commerce_order_money_v2_redaction_marks TO service_role", "redaction marks are private"],
       ] as const;
       for (const [statement, failure] of mutants) {
@@ -66,6 +67,6 @@ it.each([true, false])("replays the seven deferred guards with optional writers 
     }
     const result = await tap(db);
     expect(result.filter(line => /^(?:not ok|# Looks like)/u.test(line))).toEqual([]);
-    expect(result.filter(line => /^ok /u.test(line))).toHaveLength(5);
+    expect(result.filter(line => /^ok /u.test(line))).toHaveLength(6);
   } finally { await db.query("ROLLBACK"); db.release(); }
 });

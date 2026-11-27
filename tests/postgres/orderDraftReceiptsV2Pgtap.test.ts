@@ -60,7 +60,8 @@ it.each([true, false])("installs both receipt forwards with optional roles prese
         [`GRANT SELECT ON public.${receipts} TO PUBLIC`, "private receipt storage"],
         ["GRANT INSERT ON public.commerce_order_draft_receipt_erasure_marks TO service_role", "private erasure marks"],
         [`ALTER TABLE public.${receipts} DISABLE TRIGGER commerce_order_draft_receipt_v2_erasure_check`, "exact row trigger bindings"],
-        ["GRANT EXECUTE ON FUNCTION public.commerce_read_order_draft_receipt_history_v2(text) TO PUBLIC", "only the three definer entries"],
+        ["ALTER FUNCTION public.commerce_order_draft_receipt_v2_erasure_check() SECURITY DEFINER", "pinned owner, language, volatility and security"],
+        ["GRANT EXECUTE ON FUNCTION public.commerce_read_order_draft_receipt_history_v2(text) TO PUBLIC", "only the four listed definers"],
       ]) {
         await db.query("SAVEPOINT mutation");
         await db.query(mutation!);

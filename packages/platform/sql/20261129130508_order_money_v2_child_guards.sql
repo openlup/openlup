@@ -19,8 +19,28 @@ DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') TH
   EXECUTE 'REVOKE ALL ON TABLE public.commerce_order_money_v2_redaction_marks FROM service_role';
 END IF; END; $$;
 
+-- Only consume a private mark for a deferred trigger in the current transaction.
+CREATE FUNCTION public.commerce_order_money_v2_consume_redaction_mark(p_order_id uuid, p_delivery_bucket boolean)
+RETURNS boolean LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+  IF pg_trigger_depth() = 0 THEN RETURN false; END IF;
+  DELETE FROM public.commerce_order_money_v2_redaction_marks
+    WHERE transaction_id = pg_current_xact_id() AND order_id = p_order_id AND delivery_bucket = p_delivery_bucket;
+  RETURN FOUND AND EXISTS (
+    SELECT FROM public.commerce_orders o
+    JOIN public.commerce_order_tax_snapshots s ON s.order_id = o.id
+    JOIN public.identity_privacy_erasures e ON e.client_id = o.client_id
+    WHERE o.id = p_order_id AND s.destination_erased
+      AND e.contributor_versions->>'destination-documents' = 'commerce.destination-documents.v1'
+      AND e.dispositions @> '[{"contributorId":"destination-documents","version":"commerce.destination-documents.v1","obligations":[
+        {"owner":"destination-documents","resource":"commerce.order-money-destination-pins","disposition":"erase","remote":false},
+        {"owner":"destination-documents","resource":"commerce.order-money-retained-facts","disposition":"retain","remote":false}]}]'::jsonb
+  );
+END;
+$$;
+
 CREATE FUNCTION public.commerce_order_money_v2_child_guard() RETURNS trigger
-LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+LANGUAGE plpgsql VOLATILE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
   field text := CASE TG_TABLE_NAME
     WHEN 'commerce_order_tax_snapshots' THEN '/taxEvidence'
@@ -30,8 +50,7 @@ DECLARE
     WHEN 'commerce_order_tax_positions' THEN '/taxEvidence'
     WHEN 'commerce_order_fee_lines' THEN '/feeLines'
   END;
-  invoking_role name := coalesce(nullif(current_setting('role', true), 'none'), session_user::text);
-  owner_path boolean := pg_has_role(invoking_role, (SELECT relowner FROM pg_class WHERE oid = TG_RELID), 'USAGE');
+  owner_path boolean := pg_has_role(current_user, (SELECT relowner FROM pg_class WHERE oid = TG_RELID), 'USAGE');
   is_delivery_bucket boolean := TG_TABLE_NAME = 'commerce_order_delivery_buckets';
   before_row jsonb;
   after_row jsonb;
@@ -54,23 +73,11 @@ BEGIN
       after_row := to_jsonb(NEW);
       copies := CASE WHEN is_delivery_bucket THEN ARRAY['carrier_ref','service_ref']
         ELSE ARRAY['destination_digest','destination_policy_revision','delivery_selection_ref'] END;
-      DELETE FROM public.commerce_order_money_v2_redaction_marks
-        WHERE transaction_id = pg_current_xact_id() AND order_id = NEW.order_id AND delivery_bucket = is_delivery_bucket;
-      IF NOT FOUND
-        OR before_row->'destination_erased' IS DISTINCT FROM 'false'::jsonb
+      IF before_row->'destination_erased' IS DISTINCT FROM 'false'::jsonb
         OR after_row->'destination_erased' IS DISTINCT FROM 'true'::jsonb
         OR (before_row - copies - 'destination_erased') IS DISTINCT FROM (after_row - copies - 'destination_erased')
         OR EXISTS (SELECT FROM unnest(copies) f WHERE after_row->f IS DISTINCT FROM 'null'::jsonb)
-        OR NOT EXISTS (
-          SELECT FROM public.commerce_orders o
-          JOIN public.commerce_order_tax_snapshots s ON s.order_id = o.id
-          JOIN public.identity_privacy_erasures e ON e.client_id = o.client_id
-          WHERE o.id = NEW.order_id AND s.destination_erased
-            AND e.contributor_versions->>'destination-documents' = 'commerce.destination-documents.v1'
-            AND e.dispositions @> '[{"contributorId":"destination-documents","version":"commerce.destination-documents.v1","obligations":[
-              {"owner":"destination-documents","resource":"commerce.order-money-destination-pins","disposition":"erase","remote":false},
-              {"owner":"destination-documents","resource":"commerce.order-money-retained-facts","disposition":"retain","remote":false}]}]'::jsonb
-        )
+        OR NOT public.commerce_order_money_v2_consume_redaction_mark(NEW.order_id, is_delivery_bucket)
       THEN
         RAISE EXCEPTION 'commerce_order_money_v2_mismatch' USING ERRCODE = '23514', COLUMN = '/taxEvidence',
           HINT = 'Keep the accepted facts and use the owning order lifecycle operation.';
@@ -85,7 +92,20 @@ BEGIN
 END;
 $$;
 
+REVOKE ALL ON FUNCTION public.commerce_order_money_v2_consume_redaction_mark(uuid,boolean) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.commerce_order_money_v2_child_guard() FROM PUBLIC;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+  EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_order_money_v2_consume_redaction_mark(uuid,boolean) FROM anon';
+END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+  EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_order_money_v2_consume_redaction_mark(uuid,boolean) FROM authenticated';
+END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+  EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_order_money_v2_consume_redaction_mark(uuid,boolean) FROM service_role';
+END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+  EXECUTE 'GRANT EXECUTE ON FUNCTION public.commerce_order_money_v2_consume_redaction_mark(uuid,boolean) TO service_role';
+END IF; END; $$;
 
 CREATE CONSTRAINT TRIGGER trg_commerce_order_tax_snapshots_money_v2 AFTER INSERT OR UPDATE OR DELETE ON public.commerce_order_tax_snapshots DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.commerce_order_money_v2_child_guard();
 CREATE CONSTRAINT TRIGGER trg_commerce_order_line_sources_money_v2 AFTER INSERT OR UPDATE OR DELETE ON public.commerce_order_line_sources DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.commerce_order_money_v2_child_guard();

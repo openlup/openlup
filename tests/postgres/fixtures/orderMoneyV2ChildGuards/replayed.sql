@@ -1,9 +1,9 @@
-SELECT plan(5);
+SELECT plan(6);
 
-SELECT ok((SELECT provolatile='v' AND prosecdef AND prorettype='trigger'::regtype
+SELECT ok((SELECT provolatile='v' AND NOT prosecdef AND prorettype='trigger'::regtype
   AND proconfig=ARRAY['search_path=pg_catalog, pg_temp']
   FROM pg_proc WHERE oid='public.commerce_order_money_v2_child_guard()'::regprocedure),
-  'guard is a volatile definer with the exact private search path');
+  'guard is a volatile invoker with the exact private search path');
 
 SELECT ok((SELECT proowner=(SELECT oid FROM pg_roles WHERE rolname=current_user)
   AND NOT EXISTS (SELECT FROM aclexplode(coalesce(proacl,acldefault('f',proowner))) WHERE grantee<>proowner)
@@ -11,6 +11,14 @@ SELECT ok((SELECT proowner=(SELECT oid FROM pg_roles WHERE rolname=current_user)
     AND has_function_privilege(pg_roles.oid,pg_proc.oid,'EXECUTE'))
   FROM pg_proc WHERE oid='public.commerce_order_money_v2_child_guard()'::regprocedure),
   'guard has owner-only execute');
+
+SELECT ok((SELECT proowner=current_user::regrole AND provolatile='v' AND prosecdef
+  AND prorettype='boolean'::regtype AND proconfig=ARRAY['search_path=pg_catalog, pg_temp']
+  AND NOT EXISTS (SELECT FROM aclexplode(coalesce(proacl,acldefault('f',proowner)))
+    WHERE grantee<>proowner AND NOT coalesce(grantee=to_regrole('service_role') AND privilege_type='EXECUTE' AND NOT is_grantable, false))
+  AND (to_regrole('service_role') IS NULL OR has_function_privilege(to_regrole('service_role'),oid,'EXECUTE'))
+  FROM pg_proc WHERE oid='public.commerce_order_money_v2_consume_redaction_mark(uuid,boolean)'::regprocedure),
+  'only owner and optional service role can execute the definer helper');
 
 SELECT ok((SELECT relowner=current_user::regrole AND relrowsecurity AND NOT relforcerowsecurity
   AND NOT EXISTS (SELECT FROM pg_policy WHERE polrelid=c.oid)

@@ -358,12 +358,13 @@ it("refuses a direct clear by the granted runtime login even with matching new l
     "42501", `permission denied for table ${marks}`);
 }, postgresSetupTimeoutMs);
 
-function inReleasedSavepoint(pool: Pool) {
+function inReleasedSavepoint(pool: Pool, afterErasure?: (db: PoolClient) => Promise<void>) {
   const mounted = privacy(pool);
   return createPrivacyOperations({ ...mounted, now: () => new Date(), randomId: randomUUID,
     unitOfWork: { run: work => transaction(pool, async db => {
       await db.query("SAVEPOINT mounted_erasure");
       const result = await work(db);
+      await afterErasure?.(db);
       await db.query("RELEASE SAVEPOINT mounted_erasure");
       return result;
     }) } });
@@ -396,7 +397,13 @@ it("commits mounted erasure and retains its evidence after a released savepoint"
   const fresh = await prepareReceipt(store, sku, randomUUID());
   const id = await transaction(store.owner, db => writeReceipt(db, fresh.input, fresh.quote, sku));
   const erase = { subject: subjectFor(fresh.quote.clientId), idempotencyKey: randomUUID() };
-  const value = await inReleasedSavepoint(store.runtime).erase(actor, erase);
+  const value = await inReleasedSavepoint(store.runtime, async db => {
+    // A direct call fails even while the authorized transaction holds both live marks.
+    expect((await db.query(`SELECT public.commerce_order_draft_receipt_v2_consume_erasure_mark($1,$2,$3) AS receipt,
+      public.commerce_order_money_v2_consume_redaction_mark($1,false) AS money`,
+    [id, fresh.input.owner.customerOrSessionRef, fresh.input.owner.principalRef])).rows)
+      .toStrictEqual([{ receipt: false, money: false }]);
+  }).erase(actor, erase);
   expect(value.outcome).toBe("ERASED");
   expect((await store.owner.query("SELECT erasure_id FROM public.identity_privacy_erasures WHERE erasure_id=$1",
     [value.erasureId])).rows).toStrictEqual([{ erasure_id: value.erasureId }]);

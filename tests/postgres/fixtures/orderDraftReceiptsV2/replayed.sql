@@ -54,7 +54,8 @@ FROM (VALUES
   ('commerce_order_draft_storage_key_v2(jsonb,text)', 'sql', 's', false, false),
   ('commerce_order_draft_receipt_v2_immutable()', 'plpgsql', 'v', false, false),
   ('commerce_read_order_draft_receipt_history_v2(text)', 'sql', 's', false, false),
-  ('commerce_order_draft_receipt_v2_erasure_check()', 'plpgsql', 'v', true, false),
+  ('commerce_order_draft_receipt_v2_consume_erasure_mark(uuid,uuid,uuid)', 'plpgsql', 'v', true, true),
+  ('commerce_order_draft_receipt_v2_erasure_check()', 'plpgsql', 'v', false, false),
   ('commerce_order_draft_receipt_privacy_matches_v2(uuid,uuid,uuid)', 'sql', 's', false, false),
   ('commerce_export_order_draft_receipts_v2(uuid,uuid)', 'sql', 's', true, true),
   ('commerce_erase_order_draft_receipts_v2(uuid,uuid,uuid)', 'plpgsql', 'v', true, true),
@@ -62,10 +63,10 @@ FROM (VALUES
 ) AS expected(name,language,volatility,definer,service_entry)
 JOIN pg_proc p ON p.oid = ('public.' || name)::regprocedure;
 
-SELECT ok(count(*) = 8 AND bool_and(
+SELECT ok(count(*) = 9 AND bool_and(
   p.proowner = current_user::regrole AND l.lanname::text = p.language AND p.provolatile::text = p.volatility
     AND p.prosecdef = p.definer AND p.proconfig = ARRAY['search_path=pg_catalog, pg_temp']
-), 'pinned owner, language, volatility and security for eight functions')
+), 'pinned owner, language, volatility and security for nine functions')
 FROM receipt_function_attributes p JOIN pg_language l ON l.oid = p.prolang;
 
 SELECT ok(bool_and(
@@ -73,7 +74,7 @@ SELECT ok(bool_and(
     AND NOT coalesce(p.service_entry AND grantee = to_regrole('service_role') AND privilege_type = 'EXECUTE' AND NOT is_grantable, false))
   AND CASE WHEN p.service_entry AND to_regrole('service_role') IS NOT NULL
     THEN has_function_privilege(to_regrole('service_role'),p.oid,'EXECUTE') ELSE true END
-), 'only the three definer entries are executable by the optional service role')
+), 'only the four listed definers are executable by the optional service role')
 FROM receipt_function_attributes p;
 
 SELECT is((
