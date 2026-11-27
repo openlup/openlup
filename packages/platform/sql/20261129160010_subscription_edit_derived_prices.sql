@@ -454,6 +454,7 @@ DECLARE
  total bigint; current_total bigint; quote_key text; quote_hash text; answer jsonb; reason text;
  v_noop boolean:=false; core_matches boolean; addon_matches boolean;
  v_expires_at timestamptz;
+ v_reschedule_tz text;
 BEGIN
  IF current_setting('transaction_isolation') NOT IN ('read committed','read uncommitted') THEN
   RAISE EXCEPTION 'subscription_command_admission_isolation_unsupported' USING ERRCODE='22023';
@@ -479,10 +480,11 @@ BEGIN
  <<preview_command>>
  BEGIN
   IF p_action='slide_next_cycle' THEN
+   v_reschedule_tz:=public.subscription_reschedule_timezone_read();
    BEGIN
     v_noop:=s.status='active' AND s.next_cycle_at IS NOT NULL
-     AND floor(extract(epoch FROM NULLIF(p_payload->>'newNextCycleAt','')::timestamptz)/86400)
-      =floor(extract(epoch FROM s.next_cycle_at)/86400);
+     AND (NULLIF(p_payload->>'newNextCycleAt','')::timestamptz AT TIME ZONE v_reschedule_tz)::date
+      =(s.next_cycle_at AT TIME ZONE v_reschedule_tz)::date;
    EXCEPTION WHEN invalid_datetime_format OR datetime_field_overflow THEN
     RAISE EXCEPTION 'subscription_command_preview_unsupported' USING ERRCODE='22023';
    END;
@@ -632,7 +634,10 @@ BEGIN
    'priceAgreementPolicy',jsonb_build_object('kind','lock_until_edit','proration','none','cycleEffect','future_unlocked_cycles_only'));
  EXCEPTION WHEN SQLSTATE '22023' OR invalid_text_representation OR numeric_value_out_of_range THEN
   GET STACKED DIAGNOSTICS reason=MESSAGE_TEXT;
-  IF SQLSTATE = '22023' AND reason = 'subscription_edit_quote_ttl_minutes_policy_invalid' THEN
+  IF SQLSTATE = '22023' AND reason IN (
+   'subscription_edit_quote_ttl_minutes_policy_invalid',
+   'subscription_reschedule_timezone_policy_invalid'
+  ) THEN
    RAISE;
   END IF;
   answer:=jsonb_build_object('status','refused','canApply',false,'reason',reason);
