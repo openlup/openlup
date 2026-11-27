@@ -8,7 +8,7 @@ import type {
 import { CommerceOrderDraftPriceChangedError } from "../../../src/domains/commerce/ports.js";
 import type { CommerceCheckoutRuntimePort } from "../../../src/domains/commerce/runtimePorts.js";
 import type { CheckoutCompensationPort } from "./commerceCheckoutCompensation.js";
-import { CheckoutOrchestrationError } from "./commerceCheckoutOrchestrationError.js";
+import { CheckoutOrchestrationError } from "@openlup/platform/commerce/server";
 import type { CheckoutRecoveryOrderSnapshot } from "./checkoutRecoveryOrderPort.js";
 import {
   ExpiredCheckoutRecoveryConflictError,
@@ -145,7 +145,14 @@ describe("expired checkout recovery service", () => {
   });
 
   it("reports order_changed on commercial drift before creating a draft", async () => {
-    const deps = depsFor({ freshQuote: quote({ totalGross: money(5998), netTotal: money(5554), taxTotal: money(444) }) });
+    const deps = depsFor({
+      freshQuote: quote({
+        shippingGross: money(1000),
+        totalGross: money(5998),
+        netTotal: money(5554),
+        taxTotal: money(444),
+      }),
+    });
     const service = createExpiredCheckoutRecoveryService(deps);
 
     await expect(service.recreate({

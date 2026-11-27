@@ -10,7 +10,7 @@ vi.mock("#deployment-route-policy", async (importOriginal) => ({
 import type { VercelRequest, VercelResponse } from "../../_lib/types/vercel.js";
 import { withObservedRoute } from "../../_lib/observability/route.js";
 import { sendBffError } from "../../_lib/bff/response.js";
-import { createCheckoutTimingLogger } from "./commerceCheckoutTiming.js";
+import { createCheckoutTimingLogger } from "./commerceCheckoutHandler.js";
 
 describe("commerce checkout timing logger", () => {
   afterEach(() => {

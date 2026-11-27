@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildStartedRuntimeResponse } from "./commerceRuntimeStartResponse.js";
+import { buildStartedRuntimeResponse } from "./commerceRuntimeService.js";
 
 type Input = Parameters<typeof buildStartedRuntimeResponse>[0];
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { sanitizeOperationalEvent } from "./operationalEvents.js";
-import { PROMOTION_QUOTE_MISMATCH_FIELDS } from "../../domains/commerce/promotionQuoteBinding.js";
+import { PROMOTION_QUOTE_MISMATCH_FIELDS } from "@openlup/platform/promotions";
 
 describe("operational events", () => {
   it("emits allowlisted shape and drops non-approved detail keys", () => {

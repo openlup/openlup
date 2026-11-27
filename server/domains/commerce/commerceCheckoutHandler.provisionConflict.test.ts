@@ -8,7 +8,7 @@ import type {
 import type { ConfiguratorIntentPersistenceResponse } from "../../../src/domains/commerce/configuratorIntentPersistenceContracts.js";
 import { createCommerceCheckoutHandler } from "./commerceCheckoutHandler.js";
 import type { CommerceCheckoutHandlerDeps } from "./commerceCheckoutHandler.js";
-import { ConfiguratorIntentPersistenceConflictError } from "./configuratorIntentPersistenceHandler.js";
+import { ConfiguratorIntentPersistenceConflictError } from "@openlup/platform/commerce/server";
 import {
   ADDRESS_ID,
   CLIENT_ID,

@@ -19038,10 +19038,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/commerce/adminPromotionCodesDataPort.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/commerce/adminPromotionCodesHandler.test.ts",
       "class": "public-output"
     },
@@ -19114,19 +19110,7 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/commerce/catalogFactsProvenance.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/commerce/catalogRecommendationVariants.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/commerce/checkoutConflictClassifiers.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/commerce/checkoutConflictClassifiers.ts",
       "class": "public-output"
     },
     {
@@ -19155,14 +19139,6 @@
     },
     {
       "path": "server/domains/commerce/checkoutInlineRecoveryPayHandler.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/commerce/checkoutInvoiceBuyerSnapshot.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/commerce/checkoutOfferPolicyPort.ts",
       "class": "public-output"
     },
     {
@@ -19282,10 +19258,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/commerce/commerceCheckoutCommandExecution.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/commerce/commerceCheckoutCompensation.test.ts",
       "class": "public-output"
     },
@@ -19299,10 +19271,6 @@
     },
     {
       "path": "server/domains/commerce/commerceCheckoutCustomerDefaults.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/commerce/commerceCheckoutCustomerDefaults.ts",
       "class": "public-output"
     },
     {
@@ -19374,23 +19342,11 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/commerce/commerceCheckoutJourney.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/commerce/commerceCheckoutOrchestration.test.ts",
       "class": "public-output"
     },
     {
       "path": "server/domains/commerce/commerceCheckoutOrchestration.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/commerce/commerceCheckoutOrchestrationError.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/commerce/commerceCheckoutOrchestrationError.ts",
       "class": "public-output"
     },
     {
@@ -19470,10 +19426,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/commerce/commerceCheckoutTiming.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/commerce/commerceCheckoutTpayHandler.test.ts",
       "class": "public-output"
     },
@@ -19507,10 +19459,6 @@
     },
     {
       "path": "server/domains/commerce/commerceOfferPricing.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/commerce/commerceOfferPricingCache.ts",
       "class": "public-output"
     },
     {
@@ -19595,10 +19543,6 @@
     },
     {
       "path": "server/domains/commerce/commerceOrderRecapHandler.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/commerce/commercePaidOrderOrchestration.ts",
       "class": "public-output"
     },
     {
@@ -19734,10 +19678,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/commerce/commerceRuntimeStartResponse.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/commerce/commerceSettingsPort.ts",
       "class": "public-output"
     },
@@ -19750,15 +19690,7 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/commerce/commerceTaxProfileGuard.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/commerce/configuratorIntentPersistenceHandler.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/commerce/configuratorIntentPersistenceHandler.ts",
       "class": "public-output"
     },
     {
@@ -19855,10 +19787,6 @@
     },
     {
       "path": "server/domains/commerce/orderEmailEligibility.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/commerce/orderEmailEligibility.ts",
       "class": "public-output"
     },
     {
@@ -20018,10 +19946,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/commerce/outboxOrderPaidFulfillmentHandler.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/commerce/outboxOrderPaidFulfillmentPorts.test.ts",
       "class": "public-output"
     },
@@ -20142,10 +20066,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/commerce/pricingPolicyToken.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/commerce/promoDataPort.ts",
       "class": "public-output"
     },
@@ -20154,15 +20074,7 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/commerce/promotionBenefitDefinition.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/commerce/promotionBindings.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/commerce/promotionClaimSweepPort.ts",
       "class": "public-output"
     },
     {
@@ -20198,10 +20110,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/commerce/promotionQuoteBinding.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/commerce/providerExceptionHoldHeal.test.ts",
       "class": "public-output"
     },
@@ -20223,10 +20131,6 @@
     },
     {
       "path": "server/domains/commerce/quotePromoDiscounts.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/commerce/quotePromotionCodeAdjustments.ts",
       "class": "public-output"
     },
     {
