@@ -1,5 +1,5 @@
 ---
-type: fix
+kind: fix
 ---
 
 Native bundle edits can now add derived-only subscription SKUs and apply the
