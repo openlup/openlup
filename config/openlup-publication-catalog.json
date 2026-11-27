@@ -8758,6 +8758,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/storefront/testing/clientStorage.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/storefront/testing/contracts.ts",
       "class": "public-output"
     },
@@ -21967,10 +21971,6 @@
     },
     {
       "path": "server/infra/resend/resendApiKey.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/infra/resend/resendEmailClient.test.ts",
       "class": "public-output"
     },
     {

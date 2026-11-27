@@ -132,7 +132,7 @@ function createRequestAbortScope(callerSignal: AbortSignal | undefined, timeoutM
   }
   if (!controller.signal.aborted) {
     timer = setTimeout(() => {
-      controller.abort(new DOMException("Resend request timed out", "TimeoutError"));
+      controller.abort(new DOMException("Email provider request timed out", "TimeoutError"));
     }, timeoutMs);
   }
   let onAbortPromise: (() => void) | undefined;
@@ -187,14 +187,14 @@ async function readBoundedJsonBody(
     const declaredBytes = Number(contentLengthHeader.trim());
     if (Number.isFinite(declaredBytes) && declaredBytes > maxBytes) {
       await res.body?.cancel().catch(() => {});
-      throw new Error(`Resend response body exceeded ${maxBytes} bytes`);
+      throw new Error(`Email provider response body exceeded ${maxBytes} bytes`);
     }
   }
   const reader = res.body?.getReader();
   if (!reader) {
     const text = await Promise.race([res.text(), abortPromise]);
     if (Buffer.byteLength(text, "utf8") > maxBytes) {
-      throw new Error(`Resend response body exceeded ${maxBytes} bytes`);
+      throw new Error(`Email provider response body exceeded ${maxBytes} bytes`);
     }
     return parseJsonRecord(text);
   }
@@ -207,7 +207,7 @@ async function readBoundedJsonBody(
       totalBytes += chunk.value.byteLength;
       if (totalBytes > maxBytes) {
         await reader.cancel().catch(() => {});
-        throw new Error(`Resend response body exceeded ${maxBytes} bytes`);
+        throw new Error(`Email provider response body exceeded ${maxBytes} bytes`);
       }
       chunks.push(chunk.value);
     }
@@ -301,12 +301,13 @@ export async function postResendEmail(input: ResendEmailSendInput): Promise<Rese
     ]);
     if (res.status >= 300 && res.status < 400) {
       await res.body?.cancel().catch(() => {});
+      const redirectError = providerErrorFromBody({}, res.status);
       return {
         outcome: {
           ok: false,
           resendId: null,
           httpStatus: res.status,
-          providerError: `Resend HTTP ${res.status}`,
+          providerError: redirectError,
           providerErrorCode: null,
           aborted: false,
           egressMode: egress.mode,
@@ -314,7 +315,7 @@ export async function postResendEmail(input: ResendEmailSendInput): Promise<Rese
         },
         providerResponse: {
           http_status: res.status,
-          provider_error_message: `Resend HTTP ${res.status}`,
+          provider_error_message: redirectError,
         },
       };
     }
@@ -420,7 +421,7 @@ export async function getResendEmail(input: {
         httpStatus: res.status,
         lastEvent: null,
         recipientEmail: null,
-        providerError: `Resend HTTP ${res.status}`,
+        providerError: providerErrorFromBody({}, res.status),
       };
     }
     const parsed = await readBoundedJsonBody(res, MAX_RESEND_RESPONSE_BYTES, scope.abortPromise);
