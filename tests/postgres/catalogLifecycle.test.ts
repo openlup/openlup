@@ -11,6 +11,8 @@ import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { fixture, graph, insertGraph, installPublicationActors, json, transaction, type Graph } from "./catalogPublicationFixture.js";
 import { captureSandboxPurchase } from "../helpers/captureSandboxPurchase.js";
+import { bindDestinationOrder, destinationContext, editSubscriptionDestination, snapshot, snapshotCommand } from "./destinationDocumentFixture.js";
+import { backendPid } from "./destinationReceiptFixture.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
   type PostgresContainer } from "../helpers/postgresContainer.js";
 
@@ -491,6 +493,72 @@ async function acceptedPurchase(options: { scheduledAt?: string; graduation?: bo
   return { ...owner, schedule: { subscriptionId: owner.id, scheduledAt: scheduleAt, scheduledInstant: Date.parse(scheduledAt) },
     lines, originalTerms, at, scheduleAt };
 }
+
+it.each(["first-shipment creation", "pending attachment completion"] as const)(
+  "refuses a concurrent inherited edit during %s and retries the same request", async competingOperation => {
+    const shipment = competingOperation === "first-shipment creation";
+    const checkout = await destinationContext(pool), { command } = snapshotCommand(checkout);
+    const issued = await snapshot(runtime, checkout, {
+      ...command, validated: { ...command.validated, contact: { ...command.validated.contact, contactPhone: "+10000000000" } },
+    });
+    const order = await bindDestinationOrder(pool, checkout, issued);
+    const ctx = { ...checkout, scopeRef: randomUUID() };
+    const port = "destination-contention", key = randomUUID(), sku = first.facts.code;
+    await transaction(pool, async db => {
+      await db.query(`INSERT INTO public.subscriptions(id,client_id,status,cadence_days,next_cycle_at)
+        VALUES($1,$2,'active',28,clock_timestamp()+interval '28 days')`, [ctx.scopeRef, ctx.clientId]);
+      await db.query(`INSERT INTO public.subscription_activations(order_id,client_id,subscription_id,state,cadence_days,activated_at,
+        payment_fingerprint,activation_idempotency_key,declare_idempotency_key)
+        VALUES($1,$2,$3,'active',28,clock_timestamp(),repeat('a',64),$4,$5)`,
+      [order, ctx.clientId, ctx.scopeRef, `activate:${order}`, `declare:${order}`]);
+      await db.query("UPDATE public.commerce_orders SET status='paid',total_amount_minor=100,paid_at=clock_timestamp() WHERE id=$1", [order]);
+      await db.query(`INSERT INTO public.commerce_order_items(order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor)
+        VALUES($1,$2,1,1,100,100)`, [order, first.skuId]);
+      if (shipment) {
+        await db.query("INSERT INTO public.fulfillment_ports(port_key,provider_type,routable) VALUES($1,'3pl',true)", [port]);
+      } else {
+        await receipt(db, order, sku);
+        await bindOrder(db, order);
+        await db.query("INSERT INTO public.subscription_renewal_attachments(order_id,subscription_id,purchase_facts) VALUES($1,$2,$3)",
+          [order, ctx.scopeRef, { currency: "XXX", stockSourceKey: "fixture", settlementChannelKey: "sandbox",
+            unattendedChargeAuthorizedAt: new Date().toISOString(), authorizationRef: "fixture", methodRef: "fixture", methodEvidenceRef: "fixture",
+            lines: [{ sku, quantity: 1, lineOrdinal: 1, unitAmountMinor: 100 }] }]);
+      }
+    });
+
+    const editor = await pool.connect(), incumbent = await runtime.connect();
+    try {
+      const begin = "BEGIN; SET LOCAL statement_timeout='10s'";
+      await Promise.all([editor.query(begin), incumbent.query(begin)]);
+      const parent = shipment ? "clients" : "subscriptions";
+      // The installed incumbent owns the order when it waits on this edit guard.
+      await editor.query(`SELECT id FROM public.${parent} WHERE id=$1 FOR UPDATE`, [shipment ? ctx.clientId : ctx.scopeRef]);
+      const [editPid, incumbentPid] = await Promise.all([backendPid(editor), backendPid(incumbent)]);
+      const competing = shipment
+        ? incumbent.query("SELECT public.fulfillment_create_shipment($1,$2,$3,'{}',clock_timestamp()) AS result", [`create:${order}`, order, port])
+        : incumbent.query("SELECT public.subscription_complete_renewal_attachment($1) AS result", [order]);
+      void competing.catch(() => undefined);
+      await expect.poll(async () => (await pool.query(`SELECT $1::int=ANY(pg_blocking_pids($2)) AND EXISTS (
+        SELECT 1 FROM pg_locks WHERE pid=$2 AND locktype='tuple' AND relation=('public.' || $3)::regclass
+      ) AS blocked`, [editPid, incumbentPid, parent])).rows[0].blocked, { timeout: 4_000 }).toBe(true);
+      const writes = async () => (await editor.query(`SELECT relid,n_tup_ins,n_tup_upd,n_tup_del
+        FROM pg_stat_xact_user_tables ORDER BY relid`)).rows;
+      const before = await writes();
+      const edit = () => editSubscriptionDestination(editor, ctx, issued.selection.selectionRevision, undefined, key);
+      expect(await edit()).toMatchObject({ outcome: "refused", code: "destination_busy", field: "subscriptionId",
+        fix: "Retry the same scoped operation.", recheck: "Roll back and retry with the same authenticated evidence." });
+      expect(await writes()).toEqual(before);
+      await editor.query("COMMIT");
+      expect((await competing).rows[0].result).toMatchObject(shipment ? { replayed: false } : { subscriptionId: ctx.scopeRef, replayed: false });
+      await incumbent.query("COMMIT");
+      expect(await edit()).toMatchObject({ outcome: "applied_from_next_parcel", replayed: false });
+    } finally {
+      await Promise.all([editor.query("ROLLBACK"), incumbent.query("ROLLBACK")]);
+      editor.release();
+      incumbent.release();
+    }
+  },
+);
 
 it("replays the stored acceptance after reopening without changing frozen v1 bytes", async () => {
   const owner = await acceptedPurchase();

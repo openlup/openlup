@@ -269,6 +269,8 @@ in [Upgrade the database](../upgrade/database-migrations.md).
 | [`20261129160008_native_renewal_occurrence_producer.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/sql/20261129160008_native_renewal_occurrence_producer.sql) |
 | [`20261129160009_subscription_renewal_current_template.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/sql/20261129160009_subscription_renewal_current_template.sql) |
 | [`20261129160010_native_renewal_occurrence_writer.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/sql/20261129160010_native_renewal_occurrence_writer.sql) |
+| [`20261129160011_subscription_destination_renewal_acquisition_v2.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/sql/20261129160011_subscription_destination_renewal_acquisition_v2.sql) |
+| [`20261129160012_commerce_destination_v2_renewal_replay_guidance.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/sql/20261129160012_commerce_destination_v2_renewal_replay_guidance.sql) |
 | [`q2_00000000000000_platform_baseline.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/sql/q2_00000000000000_platform_baseline.sql) |
 | [`q2_20260810180001_self_host_actor_auth.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/sql/q2_20260810180001_self_host_actor_auth.sql) |
 | [`q2_20260816140000_acquisition_case_foundation.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/sql/q2_20260816140000_acquisition_case_foundation.sql) |
