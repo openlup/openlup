@@ -990,6 +990,14 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/adopter-kit/openlup-post-merge-optin-issue.template.yml",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/adopter-kit/openlup-release-watcher-issue.template.yml",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/assets/velipet-storefront-en.png",
       "class": "public-output"
     },
@@ -2838,6 +2846,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/skills/openlup-upgrade/SKILL.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/smoke/agentsWiringExample.ts",
       "class": "public-output"
     },
@@ -3254,6 +3266,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/src/upgrade-impact.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/test/agent-context-cli.test.ts",
       "class": "public-output"
     },
@@ -3407,6 +3423,10 @@
     },
     {
       "path": "packages/core/test/targetPriceAllocation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/test/upgradeImpact.test.ts",
       "class": "public-output"
     },
     {
