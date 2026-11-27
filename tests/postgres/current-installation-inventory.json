@@ -2,13 +2,17 @@
   "current": {
     "profiles": {
       "legacy": {
-        "count": 243,
-        "exactTailCount": 133,
-        "objectInventorySha256": "8b565bfc9b6da1626383da0201ea76c8f0e54d3bef850cf18fadf340d61686bc",
+        "count": 244,
+        "exactTailCount": 134,
+        "objectInventorySha256": "ad3b51116968c131fc603d037afb75d7f0651e25f41205141dc50ddbcf9d5672",
         "tail": [
           {
-            "file": "db/platform/migrations/20261129160009_native_renewal_occurrence_writer.sql",
+            "file": "db/platform/migrations/20261129160010_native_renewal_occurrence_writer.sql",
             "sha256": "6eea804c693944bbf0af377ebfa122d1ad213a4da62c939e68dfa7bf9cf6d6fc"
+          },
+          {
+            "file": "db/platform/migrations/20261129160009_subscription_renewal_current_template.sql",
+            "sha256": "2ea799158ecb569eed5d9c2ec42f2d14c10ff80273d9502c8b16632d672129cf"
           },
           {
             "file": "db/platform/migrations/20261129160008_native_renewal_occurrence_producer.sql",
@@ -981,13 +985,17 @@
         ]
       },
       "bootstrap": {
-        "count": 249,
-        "exactTailCount": 134,
-        "objectInventorySha256": "6491b7d756687d95dd3c8a17bc14222f11a64ff460f280a5f5ec92321e3efe05",
+        "count": 250,
+        "exactTailCount": 135,
+        "objectInventorySha256": "d9d23560d6a672bdf19aa5074df3ff7bcb03bbdf3cb56917218f8b4d1f5ab5d0",
         "tail": [
           {
-            "file": "db/platform/migrations/20261129160009_native_renewal_occurrence_writer.sql",
+            "file": "db/platform/migrations/20261129160010_native_renewal_occurrence_writer.sql",
             "sha256": "6eea804c693944bbf0af377ebfa122d1ad213a4da62c939e68dfa7bf9cf6d6fc"
+          },
+          {
+            "file": "db/platform/migrations/20261129160009_subscription_renewal_current_template.sql",
+            "sha256": "2ea799158ecb569eed5d9c2ec42f2d14c10ff80273d9502c8b16632d672129cf"
           },
           {
             "file": "db/platform/migrations/20261129160008_native_renewal_occurrence_producer.sql",
@@ -1984,13 +1992,17 @@
         ]
       },
       "separate": {
-        "count": 249,
-        "exactTailCount": 134,
-        "objectInventorySha256": "b7cdab7f691737542dacae4705940f0bd0ec80b53d6b0e344fbf81e7c37454e6",
+        "count": 250,
+        "exactTailCount": 135,
+        "objectInventorySha256": "29865131eaac2bcb5dace37274933a7b41f854843aa4d4595839efcac3767e7f",
         "tail": [
           {
-            "file": "db/platform/migrations/20261129160009_native_renewal_occurrence_writer.sql",
+            "file": "db/platform/migrations/20261129160010_native_renewal_occurrence_writer.sql",
             "sha256": "6eea804c693944bbf0af377ebfa122d1ad213a4da62c939e68dfa7bf9cf6d6fc"
+          },
+          {
+            "file": "db/platform/migrations/20261129160009_subscription_renewal_current_template.sql",
+            "sha256": "2ea799158ecb569eed5d9c2ec42f2d14c10ff80273d9502c8b16632d672129cf"
           },
           {
             "file": "db/platform/migrations/20261129160008_native_renewal_occurrence_producer.sql",
@@ -2987,13 +2999,17 @@
         ]
       },
       "admin-managed": {
-        "count": 247,
-        "exactTailCount": 133,
-        "objectInventorySha256": "f62c06da4a5b440253faa963a73808d75f63c8f717ca63cbe5223a8139ae45df",
+        "count": 248,
+        "exactTailCount": 134,
+        "objectInventorySha256": "afda00565887029a382fbd410786d9824777eeeaee2c81ebba0382ce64a0254f",
         "tail": [
           {
-            "file": "db/platform/migrations/20261129160009_native_renewal_occurrence_writer.sql",
+            "file": "db/platform/migrations/20261129160010_native_renewal_occurrence_writer.sql",
             "sha256": "6eea804c693944bbf0af377ebfa122d1ad213a4da62c939e68dfa7bf9cf6d6fc"
+          },
+          {
+            "file": "db/platform/migrations/20261129160009_subscription_renewal_current_template.sql",
+            "sha256": "2ea799158ecb569eed5d9c2ec42f2d14c10ff80273d9502c8b16632d672129cf"
           },
           {
             "file": "db/platform/migrations/20261129160008_native_renewal_occurrence_producer.sql",
@@ -3982,13 +3998,17 @@
         ]
       },
       "admin-operator": {
-        "count": 247,
-        "exactTailCount": 133,
-        "objectInventorySha256": "409163e0791a51ca94442da1f7328739c21d0566a10cc29ec267b351dc1b3a67",
+        "count": 248,
+        "exactTailCount": 134,
+        "objectInventorySha256": "97bb6db4c8c08a82d07a5e70d959dc5399395c9b2ec17f055b56e83365fdedb1",
         "tail": [
           {
-            "file": "db/platform/migrations/20261129160009_native_renewal_occurrence_writer.sql",
+            "file": "db/platform/migrations/20261129160010_native_renewal_occurrence_writer.sql",
             "sha256": "6eea804c693944bbf0af377ebfa122d1ad213a4da62c939e68dfa7bf9cf6d6fc"
+          },
+          {
+            "file": "db/platform/migrations/20261129160009_subscription_renewal_current_template.sql",
+            "sha256": "2ea799158ecb569eed5d9c2ec42f2d14c10ff80273d9502c8b16632d672129cf"
           },
           {
             "file": "db/platform/migrations/20261129160008_native_renewal_occurrence_producer.sql",
@@ -4977,7 +4997,7 @@
         ]
       }
     },
-    "connectedTableCount": 197
+    "connectedTableCount": 198
   },
   "historical": {}
 }

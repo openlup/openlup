@@ -210,6 +210,7 @@
         "packages/core/test/**",
         "packages/core/smoke/**",
         "packages/core/package-lock.json",
+        "packages/core/meta/release-index.json",
         "packages/core/release-gates.json",
         "packages/core/repository-policy.json",
         "packages/core/vitest.config.ts",

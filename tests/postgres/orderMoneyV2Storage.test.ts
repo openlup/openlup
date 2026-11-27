@@ -107,6 +107,8 @@ const v0Rows = (orderId: string) => store.owner.query(`SELECT o.money_version,i.
 
 it("applies its own prefix, keeps the incumbent definitions, and stores nulls through the native draft writer", async () => {
   expect(applied).toEqual([unit.file]);
+  expect((await store.owner.query("SELECT to_regclass('public.subscription_renewal_upgrade_cohort') AS cohort")).rows)
+    .toEqual([{ cohort: null }]);
   expect((await store.owner.query("SELECT catalog_path,sha256,position FROM public.platform_schema_migrations WHERE position=$1",
     [position + 1])).rows).toEqual([{ catalog_path: unit.file, sha256: unit.sha256, position: position + 1 }]);
   expect(createHash("sha256").update(readFileSync(unit.file)).digest("hex")).toBe(unit.sha256);
@@ -330,7 +332,8 @@ function priorPacket(current: ConnectedNativeStoreCapture): ConnectedNativeStore
   const { sha256: _hash, ...body } = current;
   const prior = { ...body, compatible: { ...earlier, sha256: digest(earlier) },
     requiredPrivacyContributorIds: current.requiredPrivacyContributorIds.filter(id => id !== "order-draft-receipts"),
-    owned: current.owned.filter(row => !storageTables.some(name => name === row.table) && row.table !== "commerce_order_draft_receipts_v2") };
+    owned: current.owned.filter(row => !storageTables.some(name => name === row.table)
+      && row.table !== "commerce_order_draft_receipts_v2" && row.table !== "subscription_renewal_upgrade_cohort") };
   return { ...prior, sha256: digest(prior) };
 }
 
@@ -352,7 +355,10 @@ it("refuses the predecessor packet and restores the current six-table graph with
     const freshTarget = await capture(target.migrator, target.inventory, "empty-target");
     const input = { owner: target.migrator, installation: target.installation, freshTarget };
     const remedy = "capture the source and restore it with the same OpenLup version on a pristine target of the same profile; upgrade the source within its installed profile first if it is older";
-    const error = await rejected(restoreConnectedNativeStore({ ...input, packet: priorPacket(packet) }));
+    expect(packet.owned.find(row => row.table === "subscription_renewal_upgrade_cohort")?.rows).toEqual([]);
+    const previous = priorPacket(packet);
+    expect(previous.owned.map(row => row.table)).not.toContain("subscription_renewal_upgrade_cohort");
+    const error = await rejected(restoreConnectedNativeStore({ ...input, packet: previous }));
     expect(Object.getPrototypeOf(error)).toBe(PostgresTransferError.prototype);
     expect(Reflect.ownKeys(error as object).filter(key => key !== "stack").sort())
       .toStrictEqual(["code", "message", "name", "remedy", "table"]);

@@ -9,7 +9,7 @@ import { rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
-import { Pool } from "pg";
+import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, vi } from "vitest";
 import { selectPlatformMigrationManifest, evaluateSelectedPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { qualifiedPostgresStartupOptions, assertQualifiedPostgresSession, qualifiedPostgresCatalogPayload, type QualifiedPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
@@ -182,10 +182,50 @@ export function loginConnection(connectionString: string, login: string) {
   return url.toString();
 }
 
+type CaptureInstrumentation = { key: number; onError?: (error: unknown) => void };
+
+async function applyWithCaptureBarrier(pool: Pool, apply: () => Promise<{ applied: string[] }>,
+  barrier: CaptureInstrumentation) {
+  const insert = "INSERT INTO public.subscription_renewal_upgrade_cohort ";
+  const afterCapture = "CREATE OR REPLACE FUNCTION public.subscription_claim_due_renewal(";
+  // Decorate only the execution of the installed unit. The runner still validates and
+  // records the canonical bytes, and catalogue verification sees no fixture objects.
+  let restore: (() => void) | undefined;
+  const decorate = (client: PoolClient) => {
+    const original = client.query;
+    restore = () => { client.query = original; };
+    client.query = new Proxy(original, {
+      apply(query, receiver, args) {
+        if (typeof args[0] !== "string" || !args[0].includes(insert)) return Reflect.apply(query, receiver, args);
+        expect(args[0].split(insert)).toHaveLength(2);
+        expect(args[0].split(afterCapture)).toHaveLength(2);
+        args[0] = args[0].replace(insert, `CREATE FUNCTION public.fixture_hold_renewal_capture()
+          RETURNS trigger LANGUAGE plpgsql AS $fixture$
+          BEGIN
+            PERFORM pg_advisory_xact_lock(${barrier.key});
+            RETURN NULL;
+          END $fixture$;
+          CREATE TRIGGER fixture_hold_renewal_capture AFTER INSERT ON public.subscription_renewal_upgrade_cohort
+            FOR EACH STATEMENT EXECUTE FUNCTION public.fixture_hold_renewal_capture();
+          ${insert}`).replace(afterCapture, `DROP TRIGGER fixture_hold_renewal_capture ON public.subscription_renewal_upgrade_cohort;
+          DROP FUNCTION public.fixture_hold_renewal_capture();
+          ${afterCapture}`);
+        return Promise.resolve(Reflect.apply(query, receiver, args)).catch((error: unknown) => {
+          barrier.onError?.(error);
+          throw error;
+        });
+      },
+    });
+  };
+  pool.once("acquire", decorate);
+  try { return await apply(); }
+  finally { pool.off("acquire", decorate); restore?.(); }
+}
+
 export async function withOccupiedRenewalPrefix(work: (target: {
-  owner: Pool; db: Pool; connectionString: string; applyForward: () => Promise<{ applied: string[] }>;
-}) => Promise<void>) {
-  const full = renewalCatalogue(), boundary = full.forward.findIndex(unit => unit.file === generationForward);
+  owner: Pool; db: Pool; connectionString: string; applyForward: (barrier?: CaptureInstrumentation) => Promise<{ applied: string[] }>;
+}) => Promise<void>, isForward: (file: string) => boolean = file => file === generationForward) {
+  const full = renewalCatalogue(), boundary = full.forward.findIndex(unit => isForward(unit.file));
   expect(boundary).toBeGreaterThan(0);
   const plans = [boundary, boundary + 1].map(end => ({ ...full, forward: full.forward.slice(0, end) }));
   // Measure both bounded catalogues on a disposable installation before testing the occupied one.
@@ -205,7 +245,7 @@ export async function withOccupiedRenewalPrefix(work: (target: {
     expect((await preceding.apply()).applied).toEqual([plans[0]!.baseline, ...plans[0]!.forward].map(unit => unit.file));
     await seedRenewalDatabase(owner, db);
     const through = renewalFixtureRunner(connectionString, migrator, selection, plans[1]!);
-    await work({ owner, db, connectionString: runtimeConnection, applyForward: () => through.apply() });
+    await work({ owner, db, connectionString: runtimeConnection, applyForward: barrier => barrier ? applyWithCaptureBarrier(migrator, () => through.apply(), barrier) : through.apply() });
   });
 }
 
@@ -251,22 +291,21 @@ export async function retire() {
   const rows = (await runtime.query("SELECT id,client_id FROM public.subscriptions WHERE status='active'")).rows;
   for (const row of rows) await rpc("subscription_apply_lifecycle_action", [row.client_id, `fixture-cancel:${row.id}`, row.id, "cancel", "{}", new Date().toISOString()]);
 }
-export async function stock(quantity: number, key = randomUUID()) {
-  return fulfillment.createPostgresFulfillmentStockSyncPort(executor, { sourceKey: facts.stockSourceKey, readLocalInventoryStock: async () => [] })
+export async function stock(quantity: number, key = randomUUID(), db = executor, sku = "G7-REFILL") {
+  return fulfillment.createPostgresFulfillmentStockSyncPort(db, { sourceKey: facts.stockSourceKey, readLocalInventoryStock: async () => [] })
     .recordProviderStockCurrent({ requestKey: key, snapshot: { providerRef: "sandbox-stock", collectedAt: days(at, 1), sourceRevision: null,
-      revisionSource: "collection", quantityKind: "snapshot", skuRef: "G7-REFILL", totalQuantity: quantity, forSaleQuantity: quantity,
+      revisionSource: "collection", quantityKind: "snapshot", skuRef: sku, totalQuantity: quantity, forSaleQuantity: quantity,
       reservedOrUnavailableQuantity: 0, syncRunId: key }, inventoryClass: "sellable", lastSyncedAt: days(at, 1), staleAfter: days(at, 500) });
 }
-export async function deps(subscriptionId: string, scenario: "succeeded" | "declined" | "ambiguous", asOf = now) {
-  const codec = api.createNativeRenewalCodec(), store = api.createPostgresRenewalStore(executor, codec, transaction);
-  const rail = api.createPostgresSandboxRenewalRail(executor, { scenario, now: () => asOf });
+export async function deps(subscriptionId: string, scenario: "succeeded" | "declined" | "ambiguous", asOf = now, target = runtime) {
+  const transact: typeof transaction = work => transaction(work, target);
+  const codec = api.createNativeRenewalCodec(), store = api.createPostgresRenewalStore(target, codec, transact);
+  const rail = api.createPostgresSandboxRenewalRail(target, { scenario, now: () => asOf });
   const execute = vi.spyOn(rail, "execute");
-  const lifecycle = api.createPostgresRetryLifecycleBinding({ executor, async withTransaction(work) {
-    const db = await runtime.connect(); try { await db.query("BEGIN"); const result = await work(db); await db.query("COMMIT"); return result; }
-    catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
-  }, settlement: db => settlement(codec, db), correlate: wire => codec.decode(wire).cycle, failureTemplate: "failed", recoveryPath: "/recover" });
+  const lifecycle = api.createPostgresRetryLifecycleBinding({ executor: target, withTransaction: transact,
+    settlement: db => settlement(codec, db), correlate: wire => codec.decode(wire).cycle, failureTemplate: "failed", recoveryPath: "/recover" });
   const input: AutomaticRenewalRunDeps = { store, settlement: lifecycle.settlement, failureHandoff: lifecycle.failureHandoff,
-    inventory: inventory.createPostgresRenewalReservationPort(executor),
+    inventory: inventory.createPostgresRenewalReservationPort(target),
     paymentRails: { resolve: channel => channel === "sandbox" ? rail : null }, workerId: "g7-worker", policy: api.createSandboxRenewalPolicy(facts.methodRef) };
   const due = (await store.listDue(500, asOf)).find(row => row.subscriptionId === subscriptionId)!;
   expect(due).toBeDefined();
