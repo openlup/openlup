@@ -3,7 +3,7 @@ import { z, type ZodType } from "zod";
 import type { SettingDescriptor, SettingRefusal } from "../contracts/settings.js";
 import { taxCoverageV1Schema } from "../../tax/contracts/index.js";
 import { catalogueWithAppSettings, listCatalogueSettings, loadSettingsCatalogue, moneyLimitsOwnerReaderKey, moneyLimitsSettingKey, moneyLimitsUnbound, moneyLimitsUnavailable, settingsEntriesWithAppSettings } from "./settingsCatalog.js";
-import { admitDatabaseUrl, refuseCoverageRead, refuseMoneyLimitsRead, type AppValidation, type FileValue, type Validation } from "./settingsCommandSupport.js";
+import { admitDatabaseUrl, bindSettingsPasswordDescriptor, refuseCoverageRead, refuseMoneyLimitsRead, type AppValidation, type FileValue, type Validation } from "./settingsCommandSupport.js";
 import { settingDescriptorSchema, toolInputSchema } from "./toolSchema.js";
 import {
   explainSetting, invalidSettingsCommand, listSettings, previewSetting, refuseSettingsPreview, showSetting,
@@ -378,6 +378,7 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
       io.write((json ? JSON.stringify({ schemaVersion: 1, help: mcpHelp }) : mcpHelp) + "\n");
       return 0;
     }
+    if (argv.some(arg => /^--database-password-fd(?:=|$)/u.test(arg))) return invalid();
     // Hosts must route process output away from the protocol stream they pass as io.write.
     // Hosts must supply a strict preview result schema, since the output gate accepts what that schema admits.
     if (!io.input || !host?.previewResultSchema) return invalid();
@@ -411,10 +412,10 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
     return 0;
   }
   const parser = {
-    args: [...argv], allowPositionals: true,
+    args: [...argv], allowPositionals: true, tokens: true as const,
     options: {
       goal: { type: "string" }, json: { type: "boolean" }, help: { type: "boolean" },
-      value: { type: "string", multiple: true }, "database-url": { type: "string" }, app: { type: "string" },
+      value: { type: "string", multiple: true }, "database-url": { type: "string" }, "database-password-fd": { type: "string", multiple: true }, app: { type: "string" },
       sku: { type: "string", multiple: true }, configuration: { type: "string" }, "as-of": { type: "string" },
     },
   } as const;
@@ -445,6 +446,9 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
     io.write((json ? JSON.stringify({ schemaVersion: 1, help: usage }) : usage) + "\n");
     return 0;
   }
+  const passwordFd = values["database-password-fd"];
+  if (passwordFd && (passwordFd.length !== 1 || passwordFd[0] !== "3" || (command !== "show" && command !== "preview")))
+    return invalid("database-password-fd", "Use descriptor 3 only with connected show or preview.");
   const configurationHint = (ids: readonly string[]) => {
     const id = values.configuration ?? "";
     return `Unknown configuration ${id.includes("://") ? "ID" : JSON.stringify(id)}. Use one of these IDs: ${ids.join(", ")}.`;
@@ -498,6 +502,15 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
     || values.app === "") return invalid();
   if (!preview && invalidDatabase) return invalid("database-url", invalidDatabase.hint);
   if (command !== "list" && command !== "explain" && command !== "show" && !preview) return invalid();
+
+  if (passwordFd) {
+    const hint = "Supply one UTF-8 password line through the pipe on descriptor 3 with a passwordless TCP database URL.";
+    if (!database || parsed.tokens.filter(token => token.kind === "option" && token.name === "database-url").length !== 1
+      || typeof database.password !== "function" || /^[^:]+:\/\/[^@/]*:/u.test(databaseUrl!))
+      return invalid("database-password-fd", hint);
+    try { database.password = await bindSettingsPasswordDescriptor(3); }
+    catch { return invalid("database-password-fd", hint); }
+  }
 
   const listInput = { goal: values.goal };
   const offline = command === "list" ? listSettings(listInput)

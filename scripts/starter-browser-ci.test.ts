@@ -50,6 +50,7 @@ describe('installed starter browser CI', () => {
       return args.includes('--input-type=module') && mode !== 'recovery' ? 'Portability installed canonical selected-row recovery PASS' : '';
     };
     try {
+      await writeFile(join(app, 'compose.yaml'), 'services: {}\n');
       await mkdir(join(app, 'host')); await copyFile('examples/neutral-store/host/healthcheck.ts', join(app, 'host/healthcheck.ts'));
       const work = runStarterImageCanary(app, 'retained.tar', digest, evidence, { command,
         pull: async () => imageReference(readCiImage('test-postgres')), browserImage: async () => imageReference(readCiImage('starter-browser')) });
@@ -289,7 +290,7 @@ describe('installed starter browser CI', () => {
     expect(install.indexOf('docker login')).toBeLessThan(install.indexOf('scripts/starter-browser-ci.mjs'));
     expect(install).toContain('scripts/starter-browser-ci.mjs --manifest "$RUNNER_TEMP/package-gates/packages-manifest.json" --expected-commit "$(git rev-parse HEAD)" --groups "$BROWSER_GROUPS"');
     expect(install).toContain('needs: [install-pack]');
-    expect(workflow).toContain('needs: [install-pack, install-packages, install-browser]');
+    expect(workflow).toContain('needs: [reuse-gate, install-pack, install-packages, install-browser]');
     const groups = install.match(/groups: \[(.*)\]/u)![1]!.replaceAll("'", '').split(', ').flatMap(shard => shard.split(',').map(Number));
     expect(groups.filter(index => index === catalogueUpgradeGroupIndex)).toHaveLength(1);
     expect(groups.sort((left, right) => left - right)).toEqual(browserJourneyGroups.map((_, index) => index));

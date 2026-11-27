@@ -3,8 +3,11 @@ import { accessSync, appendFileSync, constants, readFileSync, statSync, writeFil
 import { delimiter, join } from 'node:path';
 import { env as processEnvironment } from 'node:process';
 import { pathToFileURL } from 'node:url';
+import { CONTROL_POSTGRES_SUITES, PG_SUITE_CLOSURES_PATH, readPgSuiteClosures } from './agent-review-registry.mjs';
 
-// Inputs are plain prefixes: an entry ending in '/' covers that directory and
+// Inputs are plain prefixes or exact files, plus the PACKAGES_NON_DOC sentinel
+// ('packages/@non-doc') which matches everything under packages/ except
+// packages/core/docs/**/*.md. An entry ending in '/' covers that directory and
 // everything below it (dot files included); any other entry is one exact file.
 // Glob matching is deliberately avoided: its '*' and '**' skip dot segments.
 // Broad shared triggers: every non-doc root file, every dot-prefixed segment
@@ -44,7 +47,11 @@ export const NON_BAILOUT_SCRIPTS = [
   'scripts/agent-ci-queued-diagnose.ts',
   'scripts/agent-context/evaluate.mjs',
 ];
-const coversInput = (input, path) => (input.endsWith('/') ? path === input || path.startsWith(input) : path === input);
+export const PACKAGE_DOC_MD = /^packages\/core\/docs\/.+\.md$/u;
+export const PACKAGES_NON_DOC = 'packages/@non-doc';
+const coversInput = (input, path) => (input === PACKAGES_NON_DOC
+  ? path.startsWith('packages/') && !PACKAGE_DOC_MD.test(path)
+  : input.endsWith('/') ? path === input || path.startsWith(input) : path === input);
 export function isGlobalBailoutScript(path) {
   if (!path.startsWith('scripts/')) return false;
   if (SCRIPT_TEST_FILE.test(path)) return false;
@@ -116,11 +123,11 @@ const PG_BASE_INPUTS = [
   'config/platform-migration-manifest.json',
   'config/reviewed-platform-forwards.json',
   'db/platform/migrations/',
-  'packages/',
+  PACKAGES_NON_DOC,
   'server/',
   'tests/helpers/',
 ];
-const PG_AXES = {
+export const PG_AXES = {
   '@api': ['api/'],
   '@catalogPacks': ['examples/catalog-packs/'],
   '@dataDoc': ['docs/platform/DATA_AND_MIGRATIONS.md'],
@@ -131,328 +138,30 @@ const PG_AXES = {
   '@src': ['src/'],
   '@starter': ['examples/neutral-store/'],
 };
-const GOVERNED_DRAFT_SUITE_INPUTS = [
-  '@starter',
-  'tests/postgres/catalogAdmissionOwnerWrite.fixture.ts',
-  'tests/postgres/catalogPublicationFixture.ts',
-  'tests/postgres/subscriptionLifecycleClosureFixture.ts',
-  'tests/postgres/subscriptionNativeFixture.ts',
-];
-const POSTGRES_SUITE_CLOSURES = {
-  'tests/postgres/accountSupportComposition.test.ts': ['@src', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/accountSupportOperatorAuthority.test.ts': ['tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/accountSupportReads.test.ts': ['@src'],
-  'tests/postgres/accountSupportSelfService.test.ts': ['tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/accountSupportUpgrade.test.ts': ['@managedCompat', 'tests/postgres/reviewedBatchCatalog.ts'],
-  'tests/postgres/acquisitionAdmission.test.ts': ['@api', '@examples', '@mcp', '@src', 'tests/postgres/acquisitionAdmissionFixture.ts'],
-  'tests/postgres/acquisitionEvidenceParity.test.ts': [],
-  'tests/postgres/adminMembershipAuthority.test.ts': [],
-  'tests/postgres/bundleEffectiveParity.test.ts': [],
-  'tests/postgres/bundleNative.test.ts': [],
-  'tests/postgres/catalogAdmission.test.ts': ['@starter', 'tests/postgres/catalogPublicationFixture.ts', 'tests/postgres/catalogRuntimeCheckout.proof.ts', 'tests/postgres/customerAccountMutations.fixture.ts', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/catalogAdmissionIssueReader.test.ts': ['tests/postgres/catalogAdmissionIssueReader.fixture.ts', 'tests/postgres/catalogPublicationFixture.ts', 'tests/postgres/customerAccountMutations.fixture.ts'],
-  'tests/postgres/catalogAdmissionIssueReaderAdminRails.test.ts': ['tests/postgres/catalogAdmissionIssueReader.fixture.ts', 'tests/postgres/catalogPublicationFixture.ts', 'tests/postgres/customerAccountMutations.fixture.ts'],
-  'tests/postgres/catalogAdmissionIssueReaderRails.test.ts': ['tests/postgres/catalogAdmissionIssueReader.fixture.ts', 'tests/postgres/catalogPublicationFixture.ts', 'tests/postgres/customerAccountMutations.fixture.ts'],
-  'tests/postgres/catalogAdmissionPrelock.test.ts': ['@starter', 'tests/postgres/catalogPublicationFixture.ts', 'tests/postgres/destinationDocumentFixture.ts', 'tests/postgres/destinationReceiptFixture.ts', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/catalogAttributeProjection.test.ts': [],
-  'tests/postgres/catalogBasePriceTransfer.test.ts': [],
-  'tests/postgres/catalogBasePriceWriter.test.ts': ['tests/postgres/acquisitionAdmissionFixture.ts'],
-  'tests/postgres/catalogDefinitionInstall.test.ts': ['@starter'],
-  'tests/postgres/catalogDraftV2.test.ts': [],
-  'tests/postgres/catalogLifecycle.test.ts': ['tests/postgres/catalogPublicationFixture.ts'],
-  'tests/postgres/catalogOrderProtection.test.ts': ['@starter', 'tests/postgres/acquisitionAdmissionFixture.ts'],
-  'tests/postgres/catalogPriceListBasis.test.ts': ['tests/postgres/catalogPublicationFixture.ts'],
-  'tests/postgres/catalogPricePublicationV2.test.ts': ['tests/postgres/acquisitionAdmissionFixture.ts', 'tests/postgres/catalogPublicationFixture.ts', 'tests/postgres/fixtures/catalogPricePublicationV2/grants.sql'],
-  'tests/postgres/catalogPricePublicationV2Pgtap.test.ts': ['@managedCompat', 'tests/postgres/catalogPublicationFixture.ts', 'tests/postgres/customerAccountMutations.fixture.ts', 'tests/postgres/fixtures/catalogPricePublicationV2/grants.sql'],
-  'tests/postgres/catalogPublication.test.ts': ['tests/postgres/catalogPublicationFixture.ts', 'tests/postgres/omsHumanAdmission.fixture.ts'],
-  'tests/postgres/catalogPublicationCanonical.test.ts': ['tests/postgres/catalogPublicationFixture.ts', 'tests/postgres/customerAccountMutations.fixture.ts'],
-  'tests/postgres/catalogPublicationCommands.test.ts': ['tests/postgres/acquisitionAdmissionFixture.ts', 'tests/postgres/catalogPublicationFixture.ts', 'tests/postgres/fixtures/catalogPricePublicationV2/grants.sql'],
-  'tests/postgres/catalogPublicationDiscovery.test.ts': ['tests/postgres/catalogPublicationFixture.ts'],
-  'tests/postgres/catalogPublicationGovernedRoster.test.ts': ['tests/postgres/catalogPublicationFixture.ts'],
-  'tests/postgres/catalogPublicationReadiness.test.ts': ['tests/postgres/catalogPublicationFixture.ts'],
-  'tests/postgres/catalogQuantities.test.ts': [],
-  'tests/postgres/catalogRuntimeCheckout.test.ts': ['@src', 'tests/postgres/catalogPublicationFixture.ts', 'tests/postgres/catalogRuntimeCheckout.proof.ts', 'tests/postgres/current-installation-inventory.json', 'tests/postgres/m14QualifiedAdminComposition.proof.ts', 'tests/postgres/m14QualifiedComposition.proof.ts', 'tests/postgres/m14ReleasedSchemaUpgrade.proof.ts', 'tests/postgres/m14ReleasedSchemaUpgradeChild.ts'],
-  'tests/postgres/catalogSelectedAdmissionRuntime.test.ts': ['@starter', 'tests/postgres/catalogPublicationFixture.ts', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/catalogStorefrontPage.test.ts': ['@starter', 'tests/postgres/catalogPublicationFixture.ts'],
-  'tests/postgres/catalogSubscriptionProfiles.test.ts': ['@starter'],
-  'tests/postgres/catalogVariantAxes.test.ts': ['@starter'],
-  'tests/postgres/catalogueReferencePacks.test.ts': ['@catalogPacks', '@starter', 'tests/postgres/catalogPublicationFixture.ts'],
-  'tests/postgres/channelConnectedRestore.test.ts': [],
-  'tests/postgres/channelManagedRetainedInstallation.test.ts': ['@managedCompat'],
-  'tests/postgres/channelMigrationInventory.test.ts': [],
-  'tests/postgres/channelPurchase.conformance.test.ts': ['@managedCompat', '@src'],
-  'tests/postgres/checkoutAbandonmentSafetyGrant.test.ts': [],
-  'tests/postgres/checkoutAttemptLedger.test.ts': ['@managedCompat'],
-  'tests/postgres/checkoutInlineRecovery.test.ts': ['@starter', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/checkoutOwnerRestoreStates.test.ts': ['tests/postgres/checkoutOwnerRestoreStates.fixture.ts'],
-  'tests/postgres/checkoutOwnerRestoreStatesAdminManaged.test.ts': ['tests/postgres/checkoutOwnerRestoreStates.fixture.ts'],
-  'tests/postgres/checkoutOwnerRestoreStatesAdminOperator.test.ts': ['tests/postgres/checkoutOwnerRestoreStates.fixture.ts'],
-  'tests/postgres/checkoutOwnerRestoreStatesBootstrapAbsent.test.ts': ['tests/postgres/checkoutOwnerRestoreStates.fixture.ts'],
-  'tests/postgres/checkoutOwnerRestoreStatesBootstrapDormant.test.ts': ['tests/postgres/checkoutOwnerRestoreStates.fixture.ts'],
-  'tests/postgres/checkoutOwnerRestoreStatesBootstrapGranted.test.ts': ['tests/postgres/checkoutOwnerRestoreStates.fixture.ts'],
-  'tests/postgres/checkoutPaymentGuidance.test.ts': ['@src', '@starter', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/checkoutRecoveryInspection.test.ts': ['@starter', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/checkoutRecoveryInspectionUpgrade.test.ts': [],
-  'tests/postgres/checkoutRecoveryLinkLifecycle.test.ts': ['@starter', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/checkoutRecoveryPay.test.ts': ['@starter', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/checkoutRecoveryRecreation.test.ts': ['@starter', 'tests/postgres/catalogPublicationFixture.ts', 'tests/postgres/catalogRuntimeCheckout.proof.ts', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/checkoutRecoveryReminderEpisodes.test.ts': [],
-  'tests/postgres/checkoutRecoveryReminderSchedule.test.ts': ['@managedCompat', '@src', '@starter'],
-  'tests/postgres/checkoutRecoveryTokenPort.test.ts': [],
-  'tests/postgres/checkoutRecoveryWaves.test.ts': ['@starter', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/commerceComposition.test.ts': ['tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/commerceDestinationsDonor.test.ts': ['@managedCompat'],
-  'tests/postgres/commerceDestinationsNative.test.ts': ['@src', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/commerceManagedRail.test.ts': ['@managedCompat', '@src', 'tests/postgres/reviewedBatchCatalog.ts'],
-  'tests/postgres/commerceMoneyLimitsV2.test.ts': [],
-  'tests/postgres/commerceMoneyLimitsV2Pgtap.test.ts': ['@managedCompat', 'tests/postgres/customerAccountMutations.fixture.ts', 'tests/postgres/fixtures/commerceMoneyLimitsV2/replayed.sql'],
-  'tests/postgres/commercePriceAuthorityRead.test.ts': [],
-  'tests/postgres/commerceQuoteCatalogRead.test.ts': ['@starter', 'tests/postgres/catalogPublicationFixture.ts', 'tests/postgres/commerceQuoteCatalogFixture.ts'],
-  'tests/postgres/commerceQuoteV2.test.ts': ['@src', 'tests/postgres/commerceQuoteV2StorageFixture.ts', 'tests/postgres/destinationDocumentFixture.ts', 'tests/postgres/destinationReceiptFixture.ts'],
-  'tests/postgres/commerceQuoteV2CompositionWire.test.ts': ['tests/postgres/commerceQuoteV2StorageFixture.ts', 'tests/postgres/destinationDocumentFixture.ts', 'tests/postgres/destinationReceiptFixture.ts'],
-  'tests/postgres/commerceQuoteV2Storage.test.ts': ['tests/postgres/commerceQuoteV2StorageFixture.ts', 'tests/postgres/destinationDocumentFixture.ts', 'tests/postgres/destinationReceiptFixture.ts'],
-  'tests/postgres/commerceQuoteV2StoragePgtap.test.ts': ['@managedCompat', 'tests/postgres/fixtures/commerceQuoteV2Storage/replayed.sql'],
-  'tests/postgres/communicationEcommerceErasure.test.ts': ['@src', '@starter', 'tests/postgres/communicationEcommerceFixture.ts', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/communicationEcommerceEvents.test.ts': ['tests/postgres/communicationEcommerceFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/communicationEcommerceProvider.test.ts': ['@managedCompat', 'tests/postgres/communicationEcommerceFixture.ts'],
-  'tests/postgres/communicationEcommerceTransfer.test.ts': ['tests/postgres/communicationEcommerceFixture.ts'],
-  'tests/postgres/communicationsNative.test.ts': ['@api', '@managedCompat', '@src', 'config/canonical-order-money-legacy-exceptions.json', 'config/site-routes.json'],
-  'tests/postgres/connectedManagedRetained.test.ts': ['@managedCompat'],
-  'tests/postgres/connectedStoreCatalogDrafts.test.ts': ['@starter'],
-  'tests/postgres/connectedStoreCatalogRevisions.test.ts': ['tests/postgres/catalogPublicationFixture.ts'],
-  'tests/postgres/connectedStorePaymentMethods.test.ts': ['tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/connectedStorePromotionClaims.test.ts': [],
-  'tests/postgres/connectedStoreRestoreUpgrade.test.ts': ['tests/postgres/customerAccountMutations.fixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/connectedStoreStarterRelations.test.ts': [],
-  'tests/postgres/connectedStoreTransfer.test.ts': ['@src', 'tests/postgres/connectedStoreTransfer.fixture.ts', 'tests/postgres/m19NoticeFixture.ts'],
-  'tests/postgres/connectedStoreTransferRetained.test.ts': ['@src', 'tests/postgres/connectedStoreTransfer.fixture.ts', 'tests/postgres/m19NoticeFixture.ts'],
-  'tests/postgres/connectedStoreTransferScenarios.test.ts': ['@src', 'tests/postgres/connectedStoreTransfer.fixture.ts', 'tests/postgres/destinationDocumentFixture.ts', 'tests/postgres/destinationReceiptFixture.ts', 'tests/postgres/m19NoticeFixture.ts'],
-  'tests/postgres/contactClientRegistrar.test.ts': ['@src'],
-  'tests/postgres/customerAccountConsents.test.ts': ['@dataDoc', 'tests/postgres/current-installation-inventory.json'],
-  'tests/postgres/customerAccountMutations.test.ts': ['@src', 'tests/postgres/customerAccountMutations.fixture.ts'],
-  'tests/postgres/customerBillingProfiles.test.ts': ['tests/postgres/customerAccountMutations.fixture.ts'],
-  'tests/postgres/customerCheckoutLinks.test.ts': ['@starter', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/customerCommandKeyIsolation.test.ts': [],
-  'tests/postgres/customerNewsletterWithdrawal.test.ts': ['@dataDoc'],
-  'tests/postgres/customerPreferences.test.ts': ['tests/postgres/customerAccountMutations.fixture.ts', 'tests/postgres/customerPreferences.fixture.ts'],
-  'tests/postgres/customerSavedAddresses.test.ts': ['@src', 'tests/postgres/customerAccountMutations.fixture.ts', 'tests/postgres/customerPreferences.fixture.ts', 'tests/postgres/customerSavedAddresses.fixture.ts'],
-  'tests/postgres/customer_browser_identity.test.ts': ['@src'],
-  'tests/postgres/definerSearchPath.test.ts': ['tests/postgres/customerAccountMutations.fixture.ts', 'tests/postgres/definerSearchPath.fixture.ts'],
-  'tests/postgres/definerSearchPathPins.test.ts': ['tests/postgres/customerAccountMutations.fixture.ts', 'tests/postgres/definerSearchPath.fixture.ts'],
-  'tests/postgres/definerSearchPathPrelock.test.ts': ['tests/postgres/catalogPublicationFixture.ts', 'tests/postgres/customerAccountMutations.fixture.ts', 'tests/postgres/definerSearchPath.fixture.ts'],
-  'tests/postgres/destinationV2Checkout.test.ts': ['tests/postgres/destinationDocumentFixture.ts', 'tests/postgres/destinationReceiptFixture.ts'],
-  'tests/postgres/destinationV2DispatchLedger.test.ts': ['tests/postgres/destinationDocumentFixture.ts', 'tests/postgres/destinationReceiptFixture.ts'],
-  'tests/postgres/destinationV2OrderBinding.test.ts': ['tests/postgres/destinationDocumentFixture.ts', 'tests/postgres/destinationReceiptFixture.ts'],
-  'tests/postgres/destinationV2ParcelFreeze.test.ts': ['tests/postgres/destinationDocumentFixture.ts', 'tests/postgres/destinationReceiptFixture.ts'],
-  'tests/postgres/destinationV2Receipts.test.ts': ['tests/postgres/destinationReceiptFixture.ts'],
-  'tests/postgres/destinationV2SubscriptionEdit.test.ts': ['@src', 'tests/postgres/destinationDocumentFixture.ts', 'tests/postgres/destinationReceiptFixture.ts'],
-  'tests/postgres/destinationV2SubscriptionReads.test.ts': ['tests/postgres/customerAccountMutations.fixture.ts', 'tests/postgres/destinationDocumentFixture.ts', 'tests/postgres/destinationReceiptFixture.ts'],
-  'tests/postgres/disposableDockerReap.test.ts': [],
-  'tests/postgres/dunningAttemptReplay.test.ts': ['@managedCompat'],
-  'tests/postgres/dunningLifecycleActiveRepair.test.ts': [],
-  'tests/postgres/expandOnlyExpressions.test.ts': [],
-  'tests/postgres/feedbackMediaAuthority.test.ts': ['@managedCompat', '@src'],
-  'tests/postgres/fulfillmentAlignmentComposition.test.ts': [],
-  'tests/postgres/fulfillmentCommerceReads.test.ts': [],
-  'tests/postgres/fulfillmentContactCorrectionPgtap.test.ts': ['@managedCompat', 'tests/postgres/fixtures/fulfillmentContactCorrection.sql'],
-  'tests/postgres/fulfillmentDeliveryAlignment.test.ts': ['@src'],
-  'tests/postgres/fulfillmentDeliveryContactCorrection.test.ts': ['@starter', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/fulfillmentDispatchPgtap.test.ts': ['@managedCompat', 'tests/postgres/fixtures/fulfillmentDispatch/outcomes.sql'],
-  'tests/postgres/fulfillmentHostSeamRefusals.test.ts': [],
-  'tests/postgres/fulfillmentNativeConformance.test.ts': [],
-  'tests/postgres/fulfillmentOperatorJourneys.test.ts': ['@starter', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/fulfillmentParcelContacts.test.ts': ['@starter', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/fulfillmentParcelStatusFence.test.ts': ['@starter', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/fulfillmentPreparationBinding.test.ts': [],
-  'tests/postgres/fulfillmentProviderIntake.test.ts': ['@starter', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/fulfillmentRenewalAdmission.test.ts': ['@starter', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/fulfillmentShipmentCommands.test.ts': ['@starter', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/fulfillmentStockEvidenceReplay.test.ts': [],
-  'tests/postgres/g10FulfillmentIdentity.test.ts': [],
-  'tests/postgres/inventoryNative.test.ts': ['tests/postgres/subscriptionNativeFixture.ts', 'tests/postgres/subscriptionStockWaitCases.ts'],
-  'tests/postgres/inventoryRenewalProtectionPolicy.test.ts': ['@starter', 'tests/postgres/customerAccountMutations.fixture.ts'],
-  'tests/postgres/invoicingBuyerCapture.test.ts': ['tests/postgres/customerAccountMutations.fixture.ts'],
-  'tests/postgres/invoicingCaptured.test.ts': [],
-  'tests/postgres/invoicingContinuity.test.ts': ['@api', '@src', 'config/site-routes.json'],
-  'tests/postgres/invoicingDelivery.test.ts': [],
-  'tests/postgres/invoicingManagedCorrection.test.ts': ['@managedCompat', '@src'],
-  'tests/postgres/invoicingNativeConformance.test.ts': ['@managedCompat', '@src'],
-  'tests/postgres/invoicingStoreContract.test.ts': [],
-  'tests/postgres/m05CatalogComposition.test.ts': ['@src'],
-  'tests/postgres/m14InstallQualification.test.ts': [],
-  'tests/postgres/m14ManagedCatchup.test.ts': ['@managedCompat', '@src', 'tests/postgres/m14ConnectedCatchup.ts', 'tests/postgres/m14ManagedCatchup.ts', 'tests/postgres/m14ManagedSourceFixture.ts'],
-  'tests/postgres/m14MigrationSessionAdmission.test.ts': [],
-  'tests/postgres/m14QualifiedAdminComposition.test.ts': ['tests/postgres/catalogRuntimeCheckout.proof.ts', 'tests/postgres/current-installation-inventory.json', 'tests/postgres/m14QualifiedAdminComposition.proof.ts', 'tests/postgres/m14ReleasedSchemaUpgrade.proof.ts', 'tests/postgres/m14ReleasedSchemaUpgradeChild.ts'],
-  'tests/postgres/m14QualifiedBaseline.test.ts': [],
-  'tests/postgres/m14QualifiedComposition.test.ts': ['@src', 'tests/postgres/catalogPublicationFixture.ts', 'tests/postgres/catalogRuntimeCheckout.proof.ts', 'tests/postgres/current-installation-inventory.json', 'tests/postgres/m14QualifiedComposition.fixture.ts', 'tests/postgres/m14QualifiedComposition.proof.ts'],
-  'tests/postgres/m14QualifiedCompositionTarget.test.ts': ['@src', 'tests/postgres/catalogPublicationFixture.ts', 'tests/postgres/catalogRuntimeCheckout.proof.ts', 'tests/postgres/current-installation-inventory.json', 'tests/postgres/m14QualifiedComposition.fixture.ts', 'tests/postgres/m14QualifiedComposition.proof.ts'],
-  'tests/postgres/m14QualifiedSession.test.ts': [],
-  'tests/postgres/m14RecipeConformance.test.ts': ['@identityTests', '@managedCompat', '@src', 'config/canonical-order-money-legacy-exceptions.json', 'config/public-reference-communications-imports.json', 'config/public-reference-identity-imports.json', 'config/public-reference-subscription-imports.json', 'config/public-reference-subscription-supabase.toml', 'config/site-routes.json', 'tests/postgres/catalogRuntimeCheckout.proof.ts', 'tests/postgres/current-installation-inventory.json', 'tests/postgres/fixtures/m14ApplicationActor.ts', 'tests/postgres/fixtures/m14EffectActor.mjs', 'tests/postgres/fixtures/m14EffectProvider.mjs', 'tests/postgres/fixtures/m14SelfhostActor.ts', 'tests/postgres/m14ApplicationCohort.ts', 'tests/postgres/m14ConnectedCatchup.ts', 'tests/postgres/m14HostedStorage.mjs', 'tests/postgres/m14ManagedCatchup.ts', 'tests/postgres/m14ManagedSourceFixture.ts', 'tests/postgres/m14OlderSnapshotRecovery.ts', 'tests/postgres/m14QualifiedAdminComposition.proof.ts', 'tests/postgres/m14RdsRecipe.mjs', 'tests/postgres/m14RecipeJourneys.mjs', 'tests/postgres/m14ReleasedSchemaUpgrade.proof.ts', 'tests/postgres/m14ReleasedSchemaUpgradeChild.ts', 'tests/postgres/m14SelfhostHost.ts', 'tests/postgres/m14SelfhostStorage.mjs', 'tests/postgres/oidcIdentity.conformance.ts', 'tests/postgres/oidcIssuerFixture.ts', 'tests/postgres/oidcReferenceRp.ts', 'tests/postgres/runM14EffectHandover.ts', 'tests/postgres/runM14RecipeConformance.mjs', 'tests/postgres/runOidcIdentityConformance.mjs'],
-  'tests/postgres/m14ReleasedSchemaUpgrade.test.ts': ['tests/postgres/current-installation-inventory.json', 'tests/postgres/m14ReleasedSchemaUpgrade.proof.ts', 'tests/postgres/m14ReleasedSchemaUpgradeChild.ts'],
-  'tests/postgres/m14RestrictedConnectedRestore.test.ts': ['tests/postgres/catalogAdmissionOwnerWrite.fixture.ts', 'tests/postgres/catalogPublicationFixture.ts', 'tests/postgres/current-installation-inventory.json', 'tests/postgres/m14RestrictedConnectedRestore.fixture.ts'],
-  'tests/postgres/m14RestrictedConnectedRestoreMatrix.test.ts': ['tests/postgres/current-installation-inventory.json', 'tests/postgres/m14RestrictedConnectedRestore.fixture.ts'],
-  'tests/postgres/m14RestrictedConnectedRestoreMatrixNeonOperator.test.ts': ['tests/postgres/current-installation-inventory.json', 'tests/postgres/m14RestrictedConnectedRestore.fixture.ts'],
-  'tests/postgres/m14RestrictedConnectedRestoreMatrixRdsManaged.test.ts': ['tests/postgres/current-installation-inventory.json', 'tests/postgres/m14RestrictedConnectedRestore.fixture.ts'],
-  'tests/postgres/m14RestrictedConnectedRestoreMatrixRdsOperator.test.ts': ['tests/postgres/current-installation-inventory.json', 'tests/postgres/m14RestrictedConnectedRestore.fixture.ts'],
-  'tests/postgres/m17ChannelReference.test.ts': ['@managedCompat', '@src'],
-  'tests/postgres/m19BundleWriteExport.test.ts': [],
-  'tests/postgres/m19BundleWriteIdentity.test.ts': ['@src'],
-  'tests/postgres/m19CheckoutShipping.test.ts': [],
-  'tests/postgres/m19MigrationFacade.test.ts': [],
-  'tests/postgres/m19NoticeIsolation.test.ts': ['@dataDoc', 'tests/postgres/m19NoticeFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/m19PaymentCancellation.test.ts': ['@dataDoc', 'tests/postgres/m19PaymentSimulatorChild.ts'],
-  'tests/postgres/m19StorePromotion.test.ts': [],
-  'tests/postgres/m19StorePromotionIdentity.test.ts': ['@src'],
-  'tests/postgres/managedStorageTransfer.test.ts': ['@managedCompat', 'tests/postgres/managedStorageTransfer.proof.ts'],
-  'tests/postgres/marketDirectoryPreservation.test.ts': ['@managedCompat', '@src'],
-  'tests/postgres/migrationFinalization.test.ts': ['@managedCompat'],
-  'tests/postgres/migrationLedgerAttributeVersion.test.ts': [],
-  'tests/postgres/nativeAccountReads.test.ts': ['@src', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/nativeCheckoutPersistence.test.ts': [],
-  'tests/postgres/nativeRenewalDueFairness.test.ts': ['tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/nativeRenewalV3Storage.test.ts': ['@src', 'tests/postgres/customerAccountMutations.fixture.ts', 'tests/postgres/nativeRenewalV3Legacy.fixture.ts', 'tests/postgres/orderMoneyV2Storage.fixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/nativeRenewalV3StoragePgtap.test.ts': ['@managedCompat', 'tests/postgres/orderMoneyV2Storage.fixture.ts'],
-  'tests/postgres/neutralStarterE4.test.ts': ['@starter'],
-  'tests/postgres/neutralStoreCataloguePacks.test.ts': ['@starter'],
-  'tests/postgres/neutralStorePaidMail.test.ts': ['@starter'],
-  'tests/postgres/neutralStorePurchaseContinuation.test.ts': ['@starter'],
-  'tests/postgres/neutralStoreQuote.test.ts': ['@starter'],
-  'tests/postgres/neutralStoreRecovery.test.ts': ['@starter'],
-  'tests/postgres/neutralStoreRenewal.test.ts': ['@starter', 'tests/postgres/subscriptionPublicRenewal.worker.mjs', 'tests/postgres/subscriptionPublicRenewalFixture.ts'],
-  'tests/postgres/neutralStoreRenewalPolicy.test.ts': ['@starter', 'tests/postgres/subscriptionPublicRenewal.worker.mjs', 'tests/postgres/subscriptionPublicRenewalFixture.ts'],
-  'tests/postgres/neutralStoreUuid.test.ts': ['@starter'],
-  'tests/postgres/newPurchaseStockManaged.test.ts': ['@managedCompat'],
-  'tests/postgres/newPurchaseStockNative.test.ts': [],
-  'tests/postgres/nodeHostRuntimeDrain.test.ts': [],
-  'tests/postgres/offerPolicyReadinessInputs.test.ts': [],
-  'tests/postgres/offerPolicyReadinessTransfer.test.ts': [],
-  'tests/postgres/omsControlPlaneNative.test.ts': [],
-  'tests/postgres/omsHumanAdmission.test.ts': ['tests/postgres/omsHumanAdmission.fixture.ts', 'tests/postgres/omsHumanAdmission.host.mjs'],
-  'tests/postgres/omsQueueLadder.test.ts': ['@managedCompat'],
-  'tests/postgres/operatorCheckoutPaymentLink.test.ts': ['@starter', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/operatorIdentityUpgrade.test.ts': ['@managedCompat', '@src', 'tests/postgres/identityPrivacy.conformance.ts'],
-  'tests/postgres/operatorInvitationCatalogue.test.ts': ['tests/postgres/operatorInvitationCatalogue.ts'],
-  'tests/postgres/operatorInvitationLifecycle.test.ts': ['tests/postgres/operatorInvitationCatalogue.ts'],
-  'tests/postgres/operatorOrderCommands.test.ts': ['@starter', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/orderMoneyV2Storage.test.ts': ['tests/postgres/customerAccountMutations.fixture.ts', 'tests/postgres/orderMoneyV2Storage.fixture.ts'],
-  'tests/postgres/orderMoneyV2StoragePgtap.test.ts': ['@managedCompat', 'tests/postgres/fixtures/orderMoneyV2Storage/replayed.sql'],
-  'tests/postgres/partnerAcquisition.test.ts': [],
-  'tests/postgres/paymentCaptureTime.test.ts': ['@starter', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/paymentCaptureTimePgtap.test.ts': ['@managedCompat', '@starter', 'tests/postgres/fixtures/paymentCaptureTime/replayed.sql', 'tests/postgres/fixtures/paymentProvider/setup.sql', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/paymentMethodRefsPgtap.test.ts': ['@managedCompat', 'tests/postgres/fixtures/paymentMethods/', 'tests/postgres/m19NoticeFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/paymentMethodRuntime.test.ts': ['@starter', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/paymentProviderProfiles.test.ts': ['@starter', 'tests/postgres/fixtures/', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/paymentProviderStore.test.ts': ['@starter', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/paymentProviderStorePgtap.test.ts': ['@managedCompat', 'tests/postgres/fixtures/paymentProvider/', 'tests/postgres/fixtures/paymentProvider/setup.sql'],
-  'tests/postgres/paymentProviderTransfer.test.ts': [],
-  'tests/postgres/paymentReconciliationAttributionGap.test.ts': ['@starter', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/paymentReconciliationPgtap.test.ts': ['@managedCompat', 'tests/postgres/fixtures/', 'tests/postgres/fixtures/paymentProvider/setup.sql', 'tests/postgres/fixtures/paymentReconciliation/setup.sql'],
-  'tests/postgres/paymentReconciliationStore.test.ts': ['@starter', 'tests/postgres/fixtures/', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/paymentReconciliationTransfer.test.ts': ['tests/postgres/fixtures/', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/paymentsNativeConformance.test.ts': [],
-  'tests/postgres/pgTemplateBroker.test.ts': [],
-  'tests/postgres/platformBffMovedRoutes.test.ts': [],
-  'tests/postgres/platformManifestSuffix.test.ts': [],
-  'tests/postgres/policyCloseDigest.test.ts': ['@src', 'tests/postgres/catalogPublicationFixture.ts'],
-  'tests/postgres/portabilityRows.test.ts': [],
-  'tests/postgres/postgresContainer.test.ts': ['@managedCompat'],
-  'tests/postgres/postgresContainerCleanup.test.ts': [],
-  'tests/postgres/privacyErasureReplay.test.ts': ['@managedCompat', '@src', 'tests/postgres/customerAccountMutations.fixture.ts', 'tests/postgres/fixtures/privacyErasureReconciliations.sql'],
-  'tests/postgres/privacyReplayFence.test.ts': ['@managedCompat', '@src', 'tests/postgres/customerAccountMutations.fixture.ts'],
-  'tests/postgres/privacyRequiredContributors.test.ts': ['@managedCompat', '@src', 'tests/postgres/customerAccountMutations.fixture.ts', 'tests/postgres/fixtures/privacyRequiredContributors.sql'],
-  'tests/postgres/privacyRequiredContributorsMounted.test.ts': ['@identityTests', '@managedCompat', '@src', 'config/canonical-order-money-legacy-exceptions.json', 'config/public-reference-communications-imports.json', 'config/public-reference-identity-imports.json', 'config/public-reference-subscription-imports.json', 'config/public-reference-subscription-supabase.toml', 'config/site-routes.json', 'tests/postgres/customerAccountMutations.fixture.ts', 'tests/postgres/fixtures/privacyReplayRecorded.json'],
-  'tests/postgres/promotionsNative.test.ts': [],
-  'tests/postgres/purchaseReservationDonor.test.ts': ['@managedCompat'],
-  'tests/postgres/purchaseReservationNative.test.ts': ['tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/qualifiedRuntimeLockCompletion.test.ts': ['tests/postgres/destinationDocumentFixture.ts', 'tests/postgres/destinationReceiptFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/retainedClientSubscriptionImport.test.ts': [],
-  'tests/postgres/returnRequestCommands.test.ts': ['tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/reviewedPortableCreation.test.ts': ['@managedCompat'],
-  'tests/postgres/riskControl.conformance.test.ts': ['@managedCompat'],
-  'tests/postgres/settingsOwnerWindow.test.ts': [],
-  'tests/postgres/settingsWave1Policies.test.ts': [],
-  'tests/postgres/settingsWave2Policies.test.ts': ['tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/settingsWave3aPolicies.test.ts': ['tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/shippingNative.test.ts': ['@src'],
-  'tests/postgres/starterGraduationCadence.test.ts': ['@managedCompat'],
-  'tests/postgres/storeJourneyAcceptance.test.ts': [],
-  'tests/postgres/storeJourneyChallengeTransfer.test.ts': [],
-  'tests/postgres/storeJourneyConsentChoices.test.ts': [],
-  'tests/postgres/storeJourneyDestinations.test.ts': [],
-  'tests/postgres/storeJourneyGuestCheckout.test.ts': ['@starter'],
-  'tests/postgres/storeJourneyNotices.test.ts': ['tests/postgres/m19NoticeFixture.ts'],
-  'tests/postgres/storeJourneyRenewal.test.ts': [],
-  'tests/postgres/storeJourneyTransfer.test.ts': [],
-  'tests/postgres/stripePortableRail.test.ts': ['@starter', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/subscriptionActivationEditWindow.test.ts': ['tests/postgres/subscriptionActivationFixture.ts', 'tests/postgres/subscriptionPublicRenewal.worker.mjs', 'tests/postgres/subscriptionPublicRenewalFixture.ts', 'tests/postgres/subscriptionRegistrationFixture.ts'],
-  'tests/postgres/subscriptionActivationPermissions.test.ts': ['tests/postgres/subscriptionActivationFixture.ts', 'tests/postgres/subscriptionRegistrationFixture.ts'],
-  'tests/postgres/subscriptionAutoResumeDeliveredHistory.test.ts': ['@starter', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/subscriptionComposition.test.ts': ['@src', 'tests/postgres/subscriptionNativeFixture.ts', 'tests/postgres/subscriptionStockWaitCases.ts'],
-  'tests/postgres/subscriptionContinuityBaseline.test.ts': [],
-  'tests/postgres/subscriptionExactEditor.test.ts': [],
-  'tests/postgres/subscriptionExactInstallation.test.ts': ['tests/postgres/current-installation-inventory.json', 'tests/postgres/nativeStoreForwardCatalog.shared.ts'],
-  'tests/postgres/subscriptionLifecycleClosure.test.ts': ['@starter', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/subscriptionLifecycleContractWitnesses.test.ts': ['@starter', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/subscriptionManagedStock.test.ts': ['@managedCompat'],
-  'tests/postgres/subscriptionMethodHealthCompatibility.test.ts': [],
-  'tests/postgres/subscriptionNoticeDelivery.test.ts': ['tests/postgres/m19NoticeFixture.ts'],
-  'tests/postgres/subscriptionNoticeProducers.test.ts': ['tests/postgres/m19NoticeFixture.ts'],
-  'tests/postgres/subscriptionPackageEditor.test.ts': [],
-  'tests/postgres/subscriptionPauseDuration.test.ts': ['@starter', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/subscriptionPublicRenewal.test.ts': ['@src', 'tests/postgres/subscriptionNativeFixture.ts', 'tests/postgres/subscriptionPublicRenewal.worker.mjs', 'tests/postgres/subscriptionPublicRenewalFixture.ts', 'tests/postgres/subscriptionStockWaitCases.ts'],
-  'tests/postgres/subscriptionPurchaseRenewal.test.ts': ['tests/postgres/subscriptionRegistrationFixture.ts'],
-  'tests/postgres/subscriptionPurchaseTemplate.test.ts': ['tests/postgres/subscriptionNativeFixture.ts', 'tests/postgres/subscriptionPublicRenewal.worker.mjs', 'tests/postgres/subscriptionPublicRenewalFixture.ts', 'tests/postgres/subscriptionStockWaitCases.ts'],
-  'tests/postgres/subscriptionPurchaseTemplateLegacy.test.ts': ['tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/subscriptionRecoveryTruth.test.ts': ['tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/subscriptionRegistrationActivationLockOrder.test.ts': ['tests/postgres/subscriptionActivationFixture.ts', 'tests/postgres/subscriptionRegistrationFixture.ts'],
-  'tests/postgres/subscriptionRenewalGate.test.ts': ['tests/postgres/subscriptionNativeFixture.ts', 'tests/postgres/subscriptionStockWaitCases.ts'],
-  'tests/postgres/subscriptionRenewalLifecycle.test.ts': ['@src', '@starter', 'tests/postgres/subscriptionAlignmentRollbackCases.ts', 'tests/postgres/subscriptionCommandLifecycleCases.ts', 'tests/postgres/subscriptionNativeFixture.ts', 'tests/postgres/subscriptionRenewalAdapterCases.ts', 'tests/postgres/subscriptionRetryLifecycleCases.ts', 'tests/postgres/subscriptionStockAccountingCases.ts', 'tests/postgres/subscriptionStockWaitCases.ts'],
-  'tests/postgres/subscriptionRetainedMethodCompatibility.test.ts': ['@managedCompat'],
-  'tests/postgres/subscriptionRetainedRenewal.test.ts': ['tests/postgres/subscriptionNativeFixture.ts', 'tests/postgres/subscriptionPublicRenewal.worker.mjs', 'tests/postgres/subscriptionPublicRenewalFixture.ts', 'tests/postgres/subscriptionStockWaitCases.ts'],
-  'tests/postgres/subscriptionRetryResume.test.ts': ['@src', '@starter', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
-  'tests/postgres/subscriptionSavedAddressSelection.test.ts': ['tests/postgres/customerAccountMutations.fixture.ts', 'tests/postgres/customerPreferences.fixture.ts', 'tests/postgres/customerSavedAddresses.fixture.ts'],
-  'tests/postgres/subscriptionSizedEditor.test.ts': [],
-  'tests/postgres/subscriptionSizedInstallation.test.ts': ['tests/postgres/catalogPublicationFixture.ts', 'tests/postgres/current-installation-inventory.json', 'tests/postgres/destinationDocumentFixture.ts', 'tests/postgres/destinationReceiptFixture.ts'],
-  'tests/postgres/subscriptionStockWaitBusy.test.ts': ['tests/postgres/subscriptionNativeFixture.ts', 'tests/postgres/subscriptionStockWaitCases.ts'],
-  'tests/postgres/subscriptionStockWaitReads.test.ts': [],
-  'tests/postgres/subscriptionWinback.test.ts': [],
-  'tests/postgres/taxCalculationsV2.test.ts': ['@src', 'tests/postgres/destinationDocumentFixture.ts', 'tests/postgres/destinationReceiptFixture.ts'],
-  'tests/postgres/taxCalculationsV2Pgtap.test.ts': ['@managedCompat', 'tests/postgres/fixtures/taxCalculationsV2/replayed.sql'],
-  'tests/postgres/taxCoveragePgtap.test.ts': ['@managedCompat', 'tests/postgres/fixtures/taxCoverage/revisions.sql', 'tests/postgres/fixtures/taxCoverage/settings.ts'],
-  'tests/postgres/taxCoverageRevisions.test.ts': ['tests/postgres/fixtures/taxCoverage/corpus.ts', 'tests/postgres/fixtures/taxCoverage/settings.ts'],
-};
-// These registrations land before the suites. Check each suite's own file.
-const PENDING_POSTGRES_SUITE_CLOSURES = {
-  'tests/postgres/catalogAdmissionOwnerWrite.test.ts': GOVERNED_DRAFT_SUITE_INPUTS,
-  'tests/postgres/catalogAdmissionRuntimeCommit.test.ts': GOVERNED_DRAFT_SUITE_INPUTS,
-  'tests/postgres/renewalOrderDestinationV2.test.ts': [
-    'tests/postgres/renewalOrderDestinationV2.fixture.ts',
-    'tests/postgres/customerAccountMutations.fixture.ts',
-    'tests/postgres/destinationDocumentFixture.ts',
-    'tests/postgres/destinationReceiptFixture.ts',
-    'tests/postgres/orderMoneyV2Storage.fixture.ts',
-    'tests/postgres/subscriptionNativeFixture.ts',
-  ],
-};
+export const POSTGRES_SUITE_CLOSURES_PATH = PG_SUITE_CLOSURES_PATH;
+export { CONTROL_POSTGRES_SUITES };
+const CONTROL_POSTGRES_SUITE_SET = new Set(CONTROL_POSTGRES_SUITES);
+export function parsePostgresSuiteClosures(source, {
+  controlSuites = CONTROL_POSTGRES_SUITE_SET,
+  axes = PG_AXES,
+} = {}) {
+  return readPgSuiteClosures(source, { controlSuites, validAxes: axes }).closures.suites;
+}
+export function loadPostgresSuiteClosures(
+  pathOrOptions = new URL(`../${POSTGRES_SUITE_CLOSURES_PATH}`, import.meta.url),
+  maybeOptions = undefined,
+) {
+  const isOptions = Boolean(pathOrOptions && typeof pathOrOptions === 'object' && !(pathOrOptions instanceof URL));
+  const target = isOptions ? new URL(`../${POSTGRES_SUITE_CLOSURES_PATH}`, import.meta.url) : pathOrOptions;
+  const options = isOptions ? pathOrOptions : maybeOptions;
+  return parsePostgresSuiteClosures(readFileSync(target, 'utf8'), options);
+}
 const postgresSuiteInputs = (testPath, extras = []) => [
   ...PG_BASE_INPUTS,
   testPath,
   ...extras.flatMap(entry => PG_AXES[entry] ?? [entry]),
 ];
-const safeFileProbe = isFile => testPath => {
-  try {
-    return isFile(testPath);
-  } catch {
-    return false;
-  }
-};
-function pendingPostgresSuiteInputs(isFile) {
-  const probe = safeFileProbe(isFile);
-  return Object.fromEntries(Object.entries(PENDING_POSTGRES_SUITE_CLOSURES)
-    .filter(([testPath]) => probe(testPath))
-    .map(([testPath, extras]) => [testPath, postgresSuiteInputs(testPath, extras)]));
-}
-export const TOOLING_INPUTS = {
+const STATIC_TOOLING_INPUTS = {
   'scripts/agent-review-derived-inventory.test.ts': [
     'db/platform/migrations/',
     'packages/',
@@ -470,7 +179,7 @@ export const TOOLING_INPUTS = {
   ], // Real Docker landing:merge + installation-inventory-refresh.ts witness (builds core/outbox/platform, syncs SQL/source-map, refreshes 5 PG inventories).
   'scripts/agent-review-queue.test.ts': [...AGENT_REVIEW_QUEUE_SCRIPTS, 'scripts/agent-review-queue-planner.mjs', 'scripts/merge-queue-check-arm.mjs', 'scripts/dco-signoff-check.ts', 'scripts/merge-queue-churn.mjs'], // Synthetic Git repositories and recorded transport.
   'scripts/agent-review-gate.test.ts': [...AGENT_REVIEW_QUEUE_SCRIPTS], // Real-Git witnesses of the session CLI and hosted admission.
-  'scripts/agent-review-registry.test.ts': ['config/openlup-publication-catalog.json', 'config/vitest-shard-weights.json', 'packages/platform/test/packageBoundary.test.ts', ...AGENT_REVIEW_QUEUE_SCRIPTS], // Closed-registry union and review-economy fixtures reading REGISTRY_PATHS.
+  'scripts/agent-review-registry.test.ts': ['config/ci-postgres-suite-closures.json', 'config/openlup-publication-catalog.json', 'config/vitest-shard-weights.json', 'packages/platform/test/packageBoundary.test.ts', ...AGENT_REVIEW_QUEUE_SCRIPTS], // Closed-registry union and review-economy fixtures reading REGISTRY_PATHS.
   'scripts/public-ci-reuse.test.ts': ['scripts/public-ci-reuse.mjs'], // Recorded workflow/job responses.
   'scripts/documentation-cli.test.ts': ['examples/neutral-store/package.json', ...PACKAGE_MANIFESTS, 'packages/core/scripts/', ...ROOT_DOC_FILES], // Copies CLI closure, package execution surfaces and validates root docs.
   'scripts/pgtap-parity.test.ts': [], // Pure TAP/row-diff/sabotage/executable unit fixtures.
@@ -522,11 +231,22 @@ export const TOOLING_INPUTS = {
     'server/adapters/postgres/selectedCatalogProjection.ts',
     'src/domains/commerce/offerAvailability.ts',
   ], // Real PostgreSQL native/managed batch catalog gate, compat harness and inventory/offer witnesses.
-  ...Object.fromEntries(
-    Object.entries(POSTGRES_SUITE_CLOSURES).map(([testPath, extras]) => [testPath, postgresSuiteInputs(testPath, extras)]),
-  ),
-  ...pendingPostgresSuiteInputs(testPath =>
-    statSync(new URL(`../${testPath}`, import.meta.url), { throwIfNoEntry: false })?.isFile() ?? false),
+  'tests/postgres/subscriptionExactInstallation.test.ts': postgresSuiteInputs('tests/postgres/subscriptionExactInstallation.test.ts', [
+    'tests/postgres/current-installation-inventory.json',
+    'tests/postgres/nativeStoreForwardCatalog.shared.ts',
+  ]), // Real PostgreSQL exact installation matrix control (in NATIVE_CATALOG_CONTROLS).
+};
+const loadedPostgresSuiteClosures = Object.fromEntries(
+  Object.entries(loadPostgresSuiteClosures()).map(([testPath, extras]) => [testPath, postgresSuiteInputs(testPath, extras)]),
+);
+for (const testPath of Object.keys(loadedPostgresSuiteClosures)) {
+  if (Object.hasOwn(STATIC_TOOLING_INPUTS, testPath)) {
+    throw new Error(`PostgreSQL suite closure collides with static tooling inputs: ${testPath}`);
+  }
+}
+export const TOOLING_INPUTS = {
+  ...STATIC_TOOLING_INPUTS,
+  ...loadedPostgresSuiteClosures,
 };
 
 const WORKFLOW_PGTAP_INPUTS = [
@@ -540,7 +260,7 @@ const WORKFLOW_REFERENCE_BUILD_INPUTS = [
   'src/',
   'server/',
   'api/',
-  'packages/',
+  PACKAGES_NON_DOC,
   'public/',
   'config/',
 ];
@@ -560,7 +280,8 @@ const WORKFLOW_PACKAGE_GATES_INPUTS = [
   'AGENTS.md',
 ];
 const WORKFLOW_INSTALL_BROWSER_INPUTS = [
-  'packages/',
+  PACKAGES_NON_DOC,
+  'packages/core/docs/guide/how-to/build/customize-the-starter.md',
   'examples/neutral-store/',
   'config/openlup-packages.json',
   'config/ci-images.json',

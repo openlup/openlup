@@ -1,1 +1,0 @@
-- The checkout-attempt migration provides private PostgreSQL admission storage. Native connected-store transfer and the experimental `/portability` utility can preserve the attempt digests and timestamps.

@@ -2,9 +2,9 @@
   "current": {
     "profiles": {
       "legacy": {
-        "count": 229,
-        "exactTailCount": 119,
-        "objectInventorySha256": "5b06a7a5056d808127d4be21a64af0cdcaf5e14099903a26d442022ae32e5e44",
+        "count": 235,
+        "exactTailCount": 125,
+        "objectInventorySha256": "d3b1f0599384834381a9f20aada26b678678cca55d174477fa3bdb6bdf1ac4b0",
         "tail": [
           {
             "file": "db/platform/migrations/20261129160001_tax_calculation_adapter_money_activation.sql",
@@ -13,6 +13,30 @@
           {
             "file": "db/platform/migrations/20261129160000_tax_calculation_adapter_money_v1.sql",
             "sha256": "87513fd800efdb97405d8ea5c644a63769e08842a077e6595800bf65aed3761d"
+          },
+          {
+            "file": "db/platform/migrations/20261129130508_renewal_order_destination_v2.sql",
+            "sha256": "cf9f42b785b31b6849da83b46101568e61fd5e4a89500574067602e5f376931f"
+          },
+          {
+            "file": "db/platform/migrations/20261129130507_settings_wave3b_return_reasons_and_payment_preferences.sql",
+            "sha256": "0f3a48e4bf37494cc69d46a6dfa11706a1215d1e482fac8f94a948f5ca88e539"
+          },
+          {
+            "file": "db/platform/migrations/20261129130506_paid_order_money_v2_read.sql",
+            "sha256": "38c765551a254c374a04f72e8d1e49b9ac1f835b7359319ce745ecdfc9634466"
+          },
+          {
+            "file": "db/platform/migrations/20261129130505_settings_wave4a_reschedule_timezone.sql",
+            "sha256": "8fdc4dffe112ddd7dad2765b921fbbf3556db874e21b20318568c1dfb1f76225"
+          },
+          {
+            "file": "db/platform/migrations/20261129130504_catalog_price_publication_recorder_v2.sql",
+            "sha256": "bdec86e74f6015efdd7ab595e409647bb8adc923606ff80604bf8ca82c8277de"
+          },
+          {
+            "file": "db/platform/migrations/20261129130503_order_money_v2_restore_no_temp.sql",
+            "sha256": "871b648d426739e13c67478dafb4c3e99476b22d543eb7d91da6a782237cb89d"
           },
           {
             "file": "db/platform/migrations/20261129130502_catalog_governed_draft_owner.sql",
@@ -925,9 +949,9 @@
         ]
       },
       "bootstrap": {
-        "count": 235,
-        "exactTailCount": 120,
-        "objectInventorySha256": "8b52b0b822321a5aca79f74f90d70133014a5445016db044c1f93bfcc79c7958",
+        "count": 241,
+        "exactTailCount": 126,
+        "objectInventorySha256": "7a06c178e958ab5ea8a9b3c1b23a6df3c4ff481a4fdea90c5c0fb657edb378ad",
         "tail": [
           {
             "file": "db/platform/migrations/20261129160001_tax_calculation_adapter_money_activation.sql",
@@ -936,6 +960,30 @@
           {
             "file": "db/platform/migrations/20261129160000_tax_calculation_adapter_money_v1.sql",
             "sha256": "87513fd800efdb97405d8ea5c644a63769e08842a077e6595800bf65aed3761d"
+          },
+          {
+            "file": "db/platform/migrations/20261129130508_renewal_order_destination_v2.sql",
+            "sha256": "cf9f42b785b31b6849da83b46101568e61fd5e4a89500574067602e5f376931f"
+          },
+          {
+            "file": "db/platform/migrations/20261129130507_settings_wave3b_return_reasons_and_payment_preferences.sql",
+            "sha256": "0f3a48e4bf37494cc69d46a6dfa11706a1215d1e482fac8f94a948f5ca88e539"
+          },
+          {
+            "file": "db/platform/migrations/20261129130506_paid_order_money_v2_read.sql",
+            "sha256": "38c765551a254c374a04f72e8d1e49b9ac1f835b7359319ce745ecdfc9634466"
+          },
+          {
+            "file": "db/platform/migrations/20261129130505_settings_wave4a_reschedule_timezone.sql",
+            "sha256": "8fdc4dffe112ddd7dad2765b921fbbf3556db874e21b20318568c1dfb1f76225"
+          },
+          {
+            "file": "db/platform/migrations/20261129130504_catalog_price_publication_recorder_v2.sql",
+            "sha256": "bdec86e74f6015efdd7ab595e409647bb8adc923606ff80604bf8ca82c8277de"
+          },
+          {
+            "file": "db/platform/migrations/20261129130503_order_money_v2_restore_no_temp.sql",
+            "sha256": "871b648d426739e13c67478dafb4c3e99476b22d543eb7d91da6a782237cb89d"
           },
           {
             "file": "db/platform/migrations/20261129130502_catalog_governed_draft_owner.sql",
@@ -1872,9 +1920,9 @@
         ]
       },
       "separate": {
-        "count": 235,
-        "exactTailCount": 120,
-        "objectInventorySha256": "041d7dfe26614a540fc93dfc1bdcc94bfab33e3e1f0eb5b699974d59e9889eaf",
+        "count": 241,
+        "exactTailCount": 126,
+        "objectInventorySha256": "bf4d45f4af24a01c46bc883f3848b2b0f93b14fc1eb6090927560aa5a18a3456",
         "tail": [
           {
             "file": "db/platform/migrations/20261129160001_tax_calculation_adapter_money_activation.sql",
@@ -1883,6 +1931,30 @@
           {
             "file": "db/platform/migrations/20261129160000_tax_calculation_adapter_money_v1.sql",
             "sha256": "87513fd800efdb97405d8ea5c644a63769e08842a077e6595800bf65aed3761d"
+          },
+          {
+            "file": "db/platform/migrations/20261129130508_renewal_order_destination_v2.sql",
+            "sha256": "cf9f42b785b31b6849da83b46101568e61fd5e4a89500574067602e5f376931f"
+          },
+          {
+            "file": "db/platform/migrations/20261129130507_settings_wave3b_return_reasons_and_payment_preferences.sql",
+            "sha256": "0f3a48e4bf37494cc69d46a6dfa11706a1215d1e482fac8f94a948f5ca88e539"
+          },
+          {
+            "file": "db/platform/migrations/20261129130506_paid_order_money_v2_read.sql",
+            "sha256": "38c765551a254c374a04f72e8d1e49b9ac1f835b7359319ce745ecdfc9634466"
+          },
+          {
+            "file": "db/platform/migrations/20261129130505_settings_wave4a_reschedule_timezone.sql",
+            "sha256": "8fdc4dffe112ddd7dad2765b921fbbf3556db874e21b20318568c1dfb1f76225"
+          },
+          {
+            "file": "db/platform/migrations/20261129130504_catalog_price_publication_recorder_v2.sql",
+            "sha256": "bdec86e74f6015efdd7ab595e409647bb8adc923606ff80604bf8ca82c8277de"
+          },
+          {
+            "file": "db/platform/migrations/20261129130503_order_money_v2_restore_no_temp.sql",
+            "sha256": "871b648d426739e13c67478dafb4c3e99476b22d543eb7d91da6a782237cb89d"
           },
           {
             "file": "db/platform/migrations/20261129130502_catalog_governed_draft_owner.sql",
@@ -2819,9 +2891,9 @@
         ]
       },
       "admin-managed": {
-        "count": 233,
-        "exactTailCount": 119,
-        "objectInventorySha256": "c0c6ccd4289001c3c15d67464c680d58bfb92db78932b4d9b02b13a1eca9dec3",
+        "count": 239,
+        "exactTailCount": 125,
+        "objectInventorySha256": "e4679656f8db637dae8b4d17b15770b432a4d59028400643b7a899282036c9a5",
         "tail": [
           {
             "file": "db/platform/migrations/20261129160001_tax_calculation_adapter_money_activation.sql",
@@ -2830,6 +2902,30 @@
           {
             "file": "db/platform/migrations/20261129160000_tax_calculation_adapter_money_v1.sql",
             "sha256": "87513fd800efdb97405d8ea5c644a63769e08842a077e6595800bf65aed3761d"
+          },
+          {
+            "file": "db/platform/migrations/20261129130508_renewal_order_destination_v2.sql",
+            "sha256": "cf9f42b785b31b6849da83b46101568e61fd5e4a89500574067602e5f376931f"
+          },
+          {
+            "file": "db/platform/migrations/20261129130507_settings_wave3b_return_reasons_and_payment_preferences.sql",
+            "sha256": "0f3a48e4bf37494cc69d46a6dfa11706a1215d1e482fac8f94a948f5ca88e539"
+          },
+          {
+            "file": "db/platform/migrations/20261129130506_paid_order_money_v2_read.sql",
+            "sha256": "38c765551a254c374a04f72e8d1e49b9ac1f835b7359319ce745ecdfc9634466"
+          },
+          {
+            "file": "db/platform/migrations/20261129130505_settings_wave4a_reschedule_timezone.sql",
+            "sha256": "8fdc4dffe112ddd7dad2765b921fbbf3556db874e21b20318568c1dfb1f76225"
+          },
+          {
+            "file": "db/platform/migrations/20261129130504_catalog_price_publication_recorder_v2.sql",
+            "sha256": "bdec86e74f6015efdd7ab595e409647bb8adc923606ff80604bf8ca82c8277de"
+          },
+          {
+            "file": "db/platform/migrations/20261129130503_order_money_v2_restore_no_temp.sql",
+            "sha256": "871b648d426739e13c67478dafb4c3e99476b22d543eb7d91da6a782237cb89d"
           },
           {
             "file": "db/platform/migrations/20261129130502_catalog_governed_draft_owner.sql",
@@ -3758,9 +3854,9 @@
         ]
       },
       "admin-operator": {
-        "count": 233,
-        "exactTailCount": 119,
-        "objectInventorySha256": "4f2dd9c81be8b8c7dec1baaf833a1cc617b168c09fc8dcb6edb85720a01c1600",
+        "count": 239,
+        "exactTailCount": 125,
+        "objectInventorySha256": "fd411c011e54dbb627122918a749932c9d543cd5c3e53fcb3a959328410f4108",
         "tail": [
           {
             "file": "db/platform/migrations/20261129160001_tax_calculation_adapter_money_activation.sql",
@@ -3769,6 +3865,30 @@
           {
             "file": "db/platform/migrations/20261129160000_tax_calculation_adapter_money_v1.sql",
             "sha256": "87513fd800efdb97405d8ea5c644a63769e08842a077e6595800bf65aed3761d"
+          },
+          {
+            "file": "db/platform/migrations/20261129130508_renewal_order_destination_v2.sql",
+            "sha256": "cf9f42b785b31b6849da83b46101568e61fd5e4a89500574067602e5f376931f"
+          },
+          {
+            "file": "db/platform/migrations/20261129130507_settings_wave3b_return_reasons_and_payment_preferences.sql",
+            "sha256": "0f3a48e4bf37494cc69d46a6dfa11706a1215d1e482fac8f94a948f5ca88e539"
+          },
+          {
+            "file": "db/platform/migrations/20261129130506_paid_order_money_v2_read.sql",
+            "sha256": "38c765551a254c374a04f72e8d1e49b9ac1f835b7359319ce745ecdfc9634466"
+          },
+          {
+            "file": "db/platform/migrations/20261129130505_settings_wave4a_reschedule_timezone.sql",
+            "sha256": "8fdc4dffe112ddd7dad2765b921fbbf3556db874e21b20318568c1dfb1f76225"
+          },
+          {
+            "file": "db/platform/migrations/20261129130504_catalog_price_publication_recorder_v2.sql",
+            "sha256": "bdec86e74f6015efdd7ab595e409647bb8adc923606ff80604bf8ca82c8277de"
+          },
+          {
+            "file": "db/platform/migrations/20261129130503_order_money_v2_restore_no_temp.sql",
+            "sha256": "871b648d426739e13c67478dafb4c3e99476b22d543eb7d91da6a782237cb89d"
           },
           {
             "file": "db/platform/migrations/20261129130502_catalog_governed_draft_owner.sql",

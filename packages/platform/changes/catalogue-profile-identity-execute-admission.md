@@ -1,1 +1,0 @@
-Native migration admission recognizes one exact ledger-guarded `EXECUTE` grant for the subscription profile identity lookup. The definition and its `PUBLIC` revoke must already be issued in a hash-pinned native-store forward.

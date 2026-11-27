@@ -1,14 +1,15 @@
 // Run trusted main's copy; candidate commits are read as objects, never executed.
 import { execFile } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { appendFile, readFile } from 'node:fs/promises';
+import { env as processEnvironment } from 'node:process';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { gunzipSync, inflateRawSync } from 'node:zlib';
 import { admit, demand, RECEIPT_MARKER, ECONOMY_RECEIPT_MARKER, COMPRESSED_RECEIPT_MARKER, RECEIPT_DETAILS_HEADER } from './agent-review-decide.mjs';
-import { captureCommittedReviewCandidate, captureReviewRules, carryOverSourceReview, git, validateEconomySession } from './agent-review-session.mjs';
+import { captureCommittedReviewCandidate, captureReviewRules, carryOverSourceReview, git, sessionLegacyDeferOptions, validateEconomySession } from './agent-review-session.mjs';
 import { RECEIPT_MARKER_PREFIX } from './ci-receipt-rerun.mjs';
-import { assertCoLocatedForwardApproval, hasExactManagedForward, isNativeStoreMigrationPath, REVIEWED_FORWARD_PATH } from './reviewed-platform-forward.ts';
+import { assertCoLocatedForwardApproval, hasExactManagedForward, isNativeStoreMigrationPath, PG_SUITE_CLOSURES_PATH, REVIEWED_FORWARD_PATH } from './reviewed-platform-forward.ts';
 import { isChannelIngestMigrationPath, isQualifiedPlatformMigrationPath } from './platform-migration-manifest.ts';
 import { REQUIRED_CONTEXTS } from './packages/release-gate.ts';
 
@@ -17,6 +18,8 @@ export { carryOverSourceReview } from './agent-review-session.mjs';
 const execute = promisify(execFile);
 const SHA = /^[a-f0-9]{40}$/u;
 const RECEIPT_LIMIT = 1024 * 1024;
+const COMMENTS_PER_PAGE = 50;
+export const EXIT_AWAITING_RECEIPT = 78;
 const MIGRATION_QUEUE_EXACT_PATHS = new Set([
   'config/platform-migration-manifest.json',
   REVIEWED_FORWARD_PATH,
@@ -81,13 +84,18 @@ export async function findBlockingMigrationQueuePrs({ api, root, owner, name, pr
   }
   return blockingPrs;
 }
+const isMigrationRailSqlPath = path =>
+  (path.startsWith('db/platform/migrations/') || path.startsWith('supabase/migrations/')) && path.endsWith('.sql');
 /**
- * The queue applies the co-located forward guard only when a PR changes the registry or a reviewed-class migration.
+ * The queue applies the co-located forward guard when a PR changes the forward registry,
+ * changes PostgreSQL suite closures alongside migration-rail SQL, or adds a reviewed-class migration.
  * @param {readonly string[]} changedPaths
  * @param {(path: string) => boolean} hasUpstreamManagedApproval
  */
 export function needsForwardApproval(changedPaths, hasUpstreamManagedApproval = () => false) {
-  return changedPaths.includes(REVIEWED_FORWARD_PATH) || changedPaths.some(path => isQualifiedPlatformMigrationPath(path) || isChannelIngestMigrationPath(path) || isNativeStoreMigrationPath(path) || hasUpstreamManagedApproval(path));
+  return changedPaths.includes(REVIEWED_FORWARD_PATH)
+    || (changedPaths.includes(PG_SUITE_CLOSURES_PATH) && changedPaths.some(isMigrationRailSqlPath))
+    || changedPaths.some(path => isQualifiedPlatformMigrationPath(path) || isChannelIngestMigrationPath(path) || isNativeStoreMigrationPath(path) || hasUpstreamManagedApproval(path));
 }
 function decodeGzipText(encoded) {
   const payload = Buffer.from(encoded, 'base64');
@@ -152,14 +160,76 @@ export function diagnoseReceipt(body) {
 async function readReceiptComments(api, root, pr) {
   const comments = [];
   for (let page = 1; ; page += 1) {
-    const batch = await api.get(`${root}/issues/${pr}/comments?per_page=100&page=${page}`);
+    const batch = await api.get(`${root}/issues/${pr}/comments?per_page=${COMMENTS_PER_PAGE}&page=${page}`);
     demand(Array.isArray(batch), 'PR comments response is invalid'); comments.push(...batch);
-    if (batch.length < 100) return comments;
+    if (batch.length < COMMENTS_PER_PAGE) return comments;
   }
 }
 
+export function createGitHubReadApi({
+  exec = execute,
+  sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
+  maxAttempts = 3,
+  baseDelayMs = 1000,
+} = {}) {
+  const isTransient5xx = error => /\bHTTP 5\d\d\b/u.test(`${error?.stderr ?? ''}\n${error?.message ?? ''}`);
+  return {
+    get: async path => {
+      const args = path.startsWith('/graphql?query=')
+        ? ['api', 'graphql', '-f', `query=${decodeURIComponent(path.slice('/graphql?query='.length))}`]
+        : ['api', path];
+      const maxBuffer = path.includes('/files?') ? 32 * 1024 * 1024 : 2 * 1024 * 1024;
+      for (let attempt = 1; ; attempt += 1) {
+        try {
+          return JSON.parse((await exec('gh', args, { encoding: 'utf8', timeout: 30000, maxBuffer })).stdout);
+        } catch (error) {
+          if (attempt >= maxAttempts || !isTransient5xx(error)) throw error;
+          await sleep(baseDelayMs * (2 ** (attempt - 1)));
+        }
+      }
+    },
+  };
+}
+
+export async function probeToolchainNeeded({ event, env = processEnvironment, api, now = Date.now, readComments = undefined }) {
+  let needed = true;
+  try {
+    demand(/^[\w.-]+\/[\w.-]+$/u.test(env.GITHUB_REPOSITORY ?? '') && event?.repository?.private === false, 'use a public repository GitHub event');
+    demand(['pull_request', 'merge_group'].includes(env.GITHUB_EVENT_NAME), 'only pull_request and merge_group events are supported');
+    const root = `/repos/${env.GITHUB_REPOSITORY}`;
+    const group = env.GITHUB_EVENT_NAME === 'merge_group' ? event.merge_group : null;
+    const match = group && /^(?:refs\/heads\/)?gh-readonly-queue\/main\/pr-(\d+)-[a-f0-9]+$/u.exec(group.head_ref ?? '');
+    const prNumber = group ? Number(match?.[1]) : event.number;
+    demand(Number.isSafeInteger(prNumber) && prNumber > 0, 'event must name one PR on main');
+    const pr = await api.get(`${root}/pulls/${prNumber}`);
+    demand(SHA.test(pr?.head?.sha ?? ''), 'PR head SHA is invalid');
+    const invalidComments = [];
+    const currentHeadComments = [];
+    const receipts = await readReceipts(api, root, prNumber, pr.head.sha, now(), new Map(), invalidComments, currentHeadComments, {
+      readComments,
+      onPermissionError: error => { throw error; },
+    });
+    const needsToolchain = receipts.some(receipt =>
+      receipt?.version === 3
+      && Array.isArray(receipt.session?.history)
+      && receipt.session.history.some(entry =>
+        entry?.type === 'defer'
+        || (entry?.type === 'prepare' && (
+          entry.candidate?.coverage?.proof?.derived === true
+          || ['derived', 'portable-derived'].includes(entry.candidate?.coverage?.proof?.kind)
+        ))));
+    const willPoll = invalidComments.length > 0
+      || (receipts.length === 0 && (Boolean(group) || currentHeadComments.length > 0));
+    needed = needsToolchain || willPoll;
+  } catch {
+    needed = true;
+  }
+  if (env.GITHUB_OUTPUT) await appendFile(env.GITHUB_OUTPUT, `needs_install=${needed}\n`, 'utf8');
+  return needed;
+}
+
 export async function readReceipts(api, root, pr, head, now, permissions = new Map(), invalidComments, currentHeadComments, {
-  readComments = readReceiptComments, receiptIds,
+  readComments = readReceiptComments, receiptIds, onPermissionError,
 } = {}) {
   const comments = [...await readComments(api, root, pr)];
   const receipts = [];
@@ -168,14 +238,22 @@ export async function readReceipts(api, root, pr, head, now, permissions = new M
     const receipt = parseReceipt(comment.body); const login = comment.user?.login;
     if (receipt === null && typeof comment.body === 'string' && comment.body.startsWith(RECEIPT_MARKER_PREFIX)) invalidComments?.push(comment);
     if (receipt?.pr === pr && receipt.head === head) currentHeadComments?.push(comment);
-    if (receipt?.pr !== pr || receipt.head !== head || !admit({ receipt, observed: { ...receipt, baseValid: true }, now }).ok || comment.user?.type !== 'User' || typeof login !== 'string' || !login) continue;
+    if (receipt?.pr !== pr || receipt.head !== head || comment.user?.type !== 'User' || typeof login !== 'string' || !login) continue;
+    // Receipts that require both deferral policies across the hardening boundary remain out of scope.
+    if (!(
+      admit({ receipt, observed: { ...receipt, baseValid: true, legacyDefer: true }, now }).ok ||
+      admit({ receipt, observed: { ...receipt, baseValid: true }, now }).ok
+    )) continue;
     const key = login.toLowerCase();
     if (!permissions.has(key)) {
       try {
         const access = await api.get(`${root}/collaborators/${encodeURIComponent(login)}/permission`);
         // The base permission covers custom roles; use role_name only when absent.
         permissions.set(key, ['admin', 'maintain', 'write'].includes(access?.permission ?? access?.role_name));
-      } catch { /* A failed lookup never establishes trust; the next poll asks again. */ }
+      } catch (error) {
+        onPermissionError?.(error);
+        /* A failed lookup never establishes trust; the next poll asks again. */
+      }
     }
     if (permissions.get(key)) {
       receipts.push(receipt);
@@ -184,7 +262,7 @@ export async function readReceipts(api, root, pr, head, now, permissions = new M
   }
   return receipts;
 }
-export async function waitNativeAdmission({ event, env = process.env, api, cwd = process.cwd(), now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), deadlineMs = 3 * 60 * 1000, runGit = git, fastFail = undefined, onCandidate = undefined, committedObjectsOnly = false, readComments = undefined, expectedMain = undefined }) {
+export async function waitNativeAdmission({ event, env = processEnvironment, api, cwd = process.cwd(), now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), deadlineMs = 3 * 60 * 1000, runGit = git, fastFail = undefined, onCandidate = undefined, committedObjectsOnly = false, readComments = undefined, expectedMain = undefined }) {
   demand(/^[\w.-]+\/[\w.-]+$/u.test(env.GITHUB_REPOSITORY ?? '') && event.repository?.private === false, 'use a public repository GitHub event');
   const root = `/repos/${env.GITHUB_REPOSITORY}`; const group = env.GITHUB_EVENT_NAME === 'merge_group' ? event.merge_group : null;
   const shouldFastFail = fastFail ?? !group;
@@ -209,19 +287,21 @@ export async function waitNativeAdmission({ event, env = process.env, api, cwd =
       const historical = receipt.version === 3 ? receipt.session.history.flatMap(event => event.type === 'prepare' ? [event.candidate.base, event.candidate.head] : event.type === 'renew' ? [event.proof.main] : []) : [];
       const refs = [...new Set([receipt.base, receipt.head, main, ...historical, ...(group ? [group.base_sha, group.head_sha] : [])])];
       demand(refs.every(ref => SHA.test(ref)), 'receipt references invalid source objects');
-      let candidate; let baseValid; let legacyRules;
+      let candidate; let baseValid; let legacyRules; let legacyDeferOptions = {};
       try {
         if (!committedObjectsOnly) {
           await runGit(cwd, '-c', 'transfer.fsckObjects=true', 'fetch', '--no-tags', '--no-write-fetch-head', 'origin', ...refs);
           await runGit(cwd, 'update-ref', 'refs/remotes/origin/main', main);
         }
         candidate = await captureCommittedReviewCandidate(cwd, receipt.base, receipt.head, runGit);
-        if (receipt.version === 3) await validateEconomySession(cwd, receipt.session, runGit);
-        else legacyRules = await captureReviewRules(cwd, candidate, runGit) === undefined;
+        if (receipt.version === 3) {
+          await validateEconomySession(cwd, receipt.session, runGit);
+          legacyDeferOptions = await sessionLegacyDeferOptions(cwd, receipt.session, runGit, [receipt.base]);
+        } else legacyRules = await captureReviewRules(cwd, candidate, runGit) === undefined;
         const forks = (await runGit(cwd, 'merge-base', '--all', receipt.head, committedObjectsOnly ? main : 'origin/main')).trim().split('\n');
         baseValid = forks.length === 1 && SHA.test(forks[0]) && receipt.base === forks[0];
       } catch (error) { reason = `receipt objects could not be verified: ${error.message}; post a corrected receipt`; continue; }
-      let decision = admit({ receipt, observed: { ...candidate, pr: prNumber, baseValid, legacyRules }, now: now() });
+      let decision = admit({ receipt, observed: { ...candidate, pr: prNumber, baseValid, legacyRules, ...legacyDeferOptions }, now: now() });
       if (!decision.ok) { reason = `${decision.code}: ${decision.reason}`; continue; }
       const forwardApproval = needsForwardApproval(candidate.changedPaths, path => hasExactManagedForward(cwd, candidate.base, path));
       // The trusted reader checks each change on its own base; moves on main or ahead in the queue do not refuse it.
@@ -237,13 +317,16 @@ export async function waitNativeAdmission({ event, env = process.env, api, cwd =
       const live = await api.get(`${root}/pulls/${prNumber}`);
       demand(live.head?.sha === pr.head.sha && live.state === 'open' && live.draft === false && !live.merged && live.base?.ref === 'main', 'PR changed during admission; rerun CI', 'stale');
       if (!group) demand((await api.get(`${root}/git/ref/heads/main`)).object?.sha === main, 'main moved during admission; rerun CI', 'stale');
-      const final = admit({ receipt, observed: { ...candidate, pr: prNumber, baseValid, legacyRules }, now: now() }); demand(final.ok, final.reason, final.code);
+      const final = admit({ receipt, observed: { ...candidate, pr: prNumber, baseValid, legacyRules, ...legacyDeferOptions }, now: now() }); demand(final.ok, final.reason, final.code);
       onCandidate?.(candidate, receiptIds.get(receipt));
       if (!committedObjectsOnly) console.log(`Native review admission verified: ${group ? decision.reason : 'reviewed PR head'}.`); return receipt;
     }
     if (shouldFastFail && receipts.length === 0 && invalidComments.length === 0 && currentHeadComments.length === 0) {
       if (!committedObjectsOnly) console.log(`needs_agent_review: ${reason}`);
-      throw new Error(`needs_agent_review: no receipt comment yet for head ${pr.head.sha}; ${reason}; when native-review is the only failed job of the completed run, Native Review Receipt Rerun will rerun it automatically`);
+      throw Object.assign(
+        new Error(`needs_agent_review: no receipt comment yet for head ${pr.head.sha}; ${reason}; when native-review is the only failed job of the completed run, Native Review Receipt Rerun will rerun it automatically`),
+        { code: 'awaiting_receipt', pr: prNumber, head: pr.head.sha },
+      );
     }
     const invalid = invalidComments[0];
     const v2Remedy = invalid?.body.split('\n', 1)[0] === RECEIPT_MARKER
@@ -369,12 +452,14 @@ export async function enqueueAfterChecks({ event, env, api, enqueue, cwd = proce
   if (admittedCandidate.changedPaths.some(isMigrationQueueSerializedPath)) {
     const blockingPrs = await findBlockingMigrationQueuePrs({ api, root, owner, name, prNumber: number });
     if (blockingPrs.length > 0) {
+      const blockingList = blockingPrs.map(id => `#${id}`).join(', ');
       return {
         status: 'deferred',
         pr: number,
         head: source.head_sha,
         blockingPrs,
         reason: 'another migration PR is already active in the merge queue',
+        remediation: `Wait for blocking migration PR(s) ${blockingList} to leave the merge queue, then run \`npm run landing:merge -- --re-slot\` and re-arm or re-run Queue Handoff.`,
       };
     }
   }
@@ -384,15 +469,35 @@ export async function enqueueAfterChecks({ event, env, api, enqueue, cwd = proce
   demand(after.headRefOid === source.head_sha && (after.mergeQueueEntry?.id === queued.id || after.merged === true), 'enqueue read-back did not confirm the exact head queue entry or completed merge');
   return { status: 'enqueued', pr: number, head: source.head_sha, entry: queued.id };
 }
+export async function reportQueueCliError(error, env = processEnvironment) {
+  const message = error?.message ?? String(error);
+  if (error?.code === 'awaiting_receipt') {
+    const prLabel = Number.isSafeInteger(error.pr) ? `PR #${error.pr}` : 'this PR';
+    const headLabel = typeof error.head === 'string' && error.head.length > 0 ? error.head : 'current head';
+    console.log(`::notice title=Awaiting review receipt::No review receipt comment posted yet for ${prLabel} (${headLabel}). Post a receipt comment; Native Review Receipt Rerun will automatically rerun native-review.`);
+    if (env.GITHUB_STEP_SUMMARY) {
+      await appendFile(
+        env.GITHUB_STEP_SUMMARY,
+        `### Awaiting review receipt\n\nNo review receipt comment posted yet for ${prLabel} (\`${headLabel}\`).\n\nPost a current receipt comment from a user with write, maintain, or admin permission; when \`native-review\` is the only failed job of the completed run, **Native Review Receipt Rerun** will rerun it automatically.\n`,
+        'utf8',
+      );
+    }
+    console.error(message);
+    return EXIT_AWAITING_RECEIPT;
+  }
+  console.error(message);
+  return 1;
+}
 async function main() {
-  demand(['wait', 'enqueue'].includes(process.argv[2]) && process.argv.length === 3, 'use wait or enqueue');
-  const env = process.env;
-  const api = { get: async path => {
-    const args = path.startsWith('/graphql?query=') ? ['api', 'graphql', '-f', `query=${decodeURIComponent(path.slice('/graphql?query='.length))}`] : ['api', path];
-    const maxBuffer = path.includes('/files?') ? 32 * 1024 * 1024 : 2 * 1024 * 1024;
-    return JSON.parse((await execute('gh', args, { encoding: 'utf8', timeout: 30000, maxBuffer })).stdout);
-  } };
+  demand(['wait', 'enqueue', 'probe-toolchain'].includes(process.argv[2]) && process.argv.length === 3, 'use wait, enqueue or probe-toolchain');
+  const env = processEnvironment;
+  const api = createGitHubReadApi();
   const event = JSON.parse(await readFile(env.GITHUB_EVENT_PATH, 'utf8'));
+  if (process.argv[2] === 'probe-toolchain') {
+    const needed = await probeToolchainNeeded({ event, env, api });
+    console.log(`needs_install=${needed}`);
+    return;
+  }
   if (process.argv[2] === 'wait') await waitNativeAdmission({ event, env, api });
   else {
     demand(typeof env.OPENLUP_QUEUE_TOKEN === 'string' && env.OPENLUP_QUEUE_TOKEN.length > 0, 'enqueue requires the dedicated queue App token');
@@ -402,7 +507,21 @@ async function main() {
         { encoding: 'utf8', timeout: 30000, maxBuffer: 2 * 1024 * 1024, env: { ...env, GH_TOKEN: env.OPENLUP_QUEUE_TOKEN } })).stdout);
       demand(!response.errors, 'GitHub refused queue admission'); return response.data?.enqueuePullRequest?.mergeQueueEntry;
     };
-    console.log(JSON.stringify(await enqueueAfterChecks({ event, env, api, enqueue })));
+    const result = await enqueueAfterChecks({ event, env, api, enqueue });
+    if (result.status === 'deferred') {
+      const blockingList = (result.blockingPrs ?? []).map(id => `#${id}`).join(', ');
+      console.log(`::notice title=Migration PR deferred::PR #${result.pr} deferred because migration PR(s) ${blockingList} are active in the merge queue. ${result.remediation}`);
+      if (env.GITHUB_STEP_SUMMARY) {
+        await appendFile(
+          env.GITHUB_STEP_SUMMARY,
+          `### Migration PR deferred\n\nPR #${result.pr} (\`${result.head}\`) was deferred because migration PR(s) ${blockingList} are already active in the merge queue.\n\n**Next steps:** ${result.remediation}\n`,
+          'utf8',
+        );
+      }
+    }
+    console.log(JSON.stringify(result));
   }
 }
-if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) main().catch(error => { console.error(error.message); process.exitCode = 1; });
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
+  main().catch(async error => { process.exitCode = await reportQueueCliError(error); });
+}

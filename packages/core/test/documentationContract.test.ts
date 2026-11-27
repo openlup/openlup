@@ -263,6 +263,13 @@ describe("extracted-root documentation contract", () => {
     expect(() => check(root, ["AGENTS.md", "README.md", "package.json", "docs/a guide.md"])).not.toThrow();
   });
 
+  it("accepts a release-pinned source link in the packed README", () => {
+    const repository = "https://github.com/openlup/openlup/blob/";
+    const archive = "/packages/core/CHANGELOG-HISTORY.md#100";
+    expect(() => check(fixture(`[History](${repository}openlup-core-v1.4.0${archive})\n`))).not.toThrow();
+    expect(() => check(fixture(`[History](${repository}main${archive})\n`))).toThrow("monorepo package path");
+  });
+
   it("rejects dangling links, unknown commands, and monorepo paths", () => {
     const root = fixture("[Missing](docs/missing.md)\n\nnpm run ghost\n\npackages/core\n");
     expect(() => check(root)).toThrow(
@@ -1315,6 +1322,9 @@ describe("generated reference regions", () => {
     assertRefusalCodeReachability(renderGeneratedRegion("refusal-codes", repositoryRoot)!, repositoryRoot, violations);
     expect(violations).toEqual([]);
     expect(open.map(({ typeName }) => typeName)).not.toContain("PrivacyRefusalCode");
+    expect(open).not.toContainEqual(expect.objectContaining({
+      typeName: "Code", report: "packages/platform/api/pricing.api.md",
+    }));
   }, realRepositoryTimeout);
 });
 

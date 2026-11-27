@@ -71,6 +71,26 @@ it("exposes exactly the seven pricing browser symbols with their original identi
   expect(browser.shippingTermsSchema).toBe(shipping.shippingTermsSchema);
 });
 
+it("keeps the structural money schemas on the pricing server entry", async () => {
+  const pricing = await import("../../src/pricing/index.js");
+  const owner = await import("../../src/pricing/quoteMoneyValidationV2.js");
+  const browser = await import("../../src/pricing/browser/index.js");
+  const contracts = await import("../../src/pricing/contracts/index.js");
+  const schemas = {
+    commerceMoneyV2CurrencySchema: owner.currency, commerceMoneyV2DeliveryBucketSchema: owner.bucket,
+    commerceMoneyV2DigestSchema: owner.digest, commerceMoneyV2FactsSchema: owner.factsShape,
+    commerceMoneyV2FeeLineSchema: owner.feeLine, commerceMoneyV2LineSchema: owner.line,
+    commerceMoneyV2MinorSchema: owner.minor, commerceMoneyV2PriceSchema: owner.price,
+    commerceMoneyV2PromotionEngineSchema: owner.engine, commerceMoneyV2ReferenceSchema: owner.ref,
+    commerceMoneyV2TaxEvidenceShape: owner.evidence, commerceMoneyV2UuidSchema: owner.uuid,
+  } as const;
+  for (const [name, schema] of Object.entries(schemas)) {
+    expect(pricing[name as keyof typeof schemas]).toBe(schema);
+    expect(browser).not.toHaveProperty(name);
+    expect(contracts).not.toHaveProperty(name);
+  }
+});
+
 it("admits exactly the built pricing browser closure without its server root", async () => {
   const result = await build({
     entryPoints: [fileURLToPath(new URL("../../dist/pricing/browser/index.js", import.meta.url))],

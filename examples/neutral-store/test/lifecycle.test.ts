@@ -4,13 +4,15 @@ import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { createServer } from 'node:net';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { findPackageJSON } from 'node:module';
+import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { env as processEnv } from 'node:process';
 import { setTimeout as delay } from 'node:timers/promises';
 import { catalogueUpgradeFixture } from './catalogue-upgrade-fixture.ts';
+import { prepareRuntimeHandoff } from '../host/runtime-database.ts';
 import { configurations, selectConfiguration } from '../owned/store.config.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -25,13 +27,14 @@ test('up_json_reports_four_fields_for_installer_refusal and verifies the real on
   const scratch = join(root, '.context');
   mkdirSync(scratch, { recursive: true });
   const app = mkdtempSync(join(scratch, 'lifecycle-transport-'));
-  const env = { ...processEnv, PATH: [app, dirname(process.execPath), '/usr/bin', '/bin', processEnv.PATH ?? ''].join(delimiter) };
+  const home = mkdtempSync(join(realpathSync(tmpdir()), 'lifecycle-home-'));
+  const env = { ...processEnv, HOME: home, PATH: [app, dirname(process.execPath), '/usr/bin', '/bin', processEnv.PATH ?? ''].join(delimiter) };
   const observed = 'The rules file is absent for 1 adopter packs. é\n\r\t' + 'x'.repeat(500);
   const summary = { id: 'example:pack', version: 1, outcome: 'installed', types: [{ key: 'example:item', version: 2_147_483_647 }], taxClasses: ['example:standard'] };
   const accepted = { formatVersion: 1, configuration: 'coffee', exitCode: 0, state: 'satisfied', packs: [summary], findings: [] };
   try {
     for (const path of ['lifecycle', 'lifecycle.mjs', 'browser-groups.mjs', 'lifecycle-refusals.mjs',
-      'host/healthcheck.ts', 'installation/refusals.ts', 'shared/refusals.ts', 'shared/seed-physical.ts', 'shared/config.ts']) {
+      'host/healthcheck.ts', 'host/runtime-database.ts', 'installation/refusals.ts', 'shared/refusals.ts', 'shared/seed-physical.ts', 'shared/config.ts']) {
       mkdirSync(join(app, path, '..'), { recursive: true });
       cpSync(join(root, path), join(app, path));
     }
@@ -66,10 +69,12 @@ test('up_json_reports_four_fields_for_installer_refusal and verifies the real on
       import { env } from 'node:process';
       const args = process.argv.slice(2), mode = env.ST1_CARRIER_CASE;
       appendFileSync('calls', JSON.stringify(args) + '\\n');
-      if (args[1] !== 'run') {
+      const call = args[1] === '--project-name' ? args[3] : args[1];
+      if (call === 'config') { process.stdout.write('{"name":"transport"}'); }
+      else if (call !== 'run') {
         process.stdout.write('compose progress\\n');
         if (mode === 'missing-installer' && args.at(-1) === 'database') unlinkSync(process.argv[1]);
-        if ((mode === 'before' && args[1] === 'build') || (mode === 'wait' && args.at(-1) === 'database')
+        if ((mode === 'before' && call === 'build') || (mode === 'wait' && args.at(-1) === 'database')
           || (mode === 'after' && args.at(-1) === 'application')) process.exitCode = 1;
       } else if (mode === 'signal') process.kill(process.pid, 'SIGTERM');
       else if (mode.startsWith('fake') || mode === 'after') {
@@ -102,14 +107,15 @@ test('up_json_reports_four_fields_for_installer_refusal and verifies the real on
       return { run, calls, report };
     };
     const refusal = up('refusal');
-    assert.deepEqual(refusal.calls[2], ['compose', 'run', '--rm', '--no-deps', '-T', 'installation',
+    assert.deepEqual(refusal.calls[3], ['compose', '--project-name', 'transport', 'run', '--rm', '--no-deps', '-T', 'installation',
       'node', 'lifecycle.mjs', 'install', '--configuration', 'coffee', '--json']);
-    assert.match(refusal.run.stderr, /compose progress\n[\s\S]*installer progress\n/u);
+    assert.match(refusal.run.stderr, /compose progress/u);
+    assert.doesNotMatch(refusal.run.stderr, /installer progress/u);
     assert.equal(refusal.report.configuration, 'coffee');
     assert.deepEqual(refusal.report.packs, []);
     assert.equal(refusal.report.findings[0].observed, observed);
     assert.equal(refusal.report.findings[0].code, 'starter_catalogue_rules_required');
-    assert.equal(refusal.calls.length, 3);
+    assert.equal(refusal.calls.length, 4);
     const { command: _up, ...refusalEnvelope } = refusal.report;
     assert.equal(up('fake', undefined, JSON.stringify(refusalEnvelope) + '\n', 2).report.findings[0].observed, observed);
     for (const [code, path, fix] of [
@@ -119,12 +125,12 @@ test('up_json_reports_four_fields_for_installer_refusal and verifies the real on
       const finding = { ...refusalEnvelope.findings[0], code, path, fix };
       const result = up('fake', undefined, JSON.stringify({ ...refusalEnvelope, findings: [finding] }) + '\n', 2);
       assert.deepEqual(result.report.findings, [finding]);
-      assert.equal(result.calls.length, 3);
+      assert.equal(result.calls.length, 4);
     }
     const text = up('refusal', ['--configuration', 'coffee']);
     assert.equal(text.run.status, 2);
     assert.match(text.run.stderr, /starter_catalogue_rules_required\nObserved: .*é\\n\\r\\t[^\n]+\nCause: /u);
-    assert.equal(text.calls.length, 3);
+    assert.equal(text.calls.length, 4);
     assert.deepEqual(up('success', ['--configuration', 'coffee', '--json']).report.packs, [summary]);
     for (const [mode, code, fix] of [
       ['legacy-conflict', 'starter_catalogue_build_conflict', /Restore the original declaration and rules.*new pack version/u],
@@ -135,7 +141,7 @@ test('up_json_reports_four_fields_for_installer_refusal and verifies the real on
       assert.equal(report.findings[0].code, code);
       assert.match(report.findings[0].fix, fix);
       assert.deepEqual(report.packs, []);
-      assert.equal(calls.length, 3);
+      assert.equal(calls.length, 4);
       const privateText = spawnSync(process.execPath, ['lifecycle.mjs', 'install', '--configuration', 'coffee'],
         { cwd: app, encoding: 'utf8', env: { ...env, ST1_CARRIER_CASE: mode } });
       assert.equal(privateText.status, 2);
@@ -144,7 +150,7 @@ test('up_json_reports_four_fields_for_installer_refusal and verifies the real on
     const large = up('large');
     assert.ok(Buffer.byteLength(large.run.stdout) > 1_048_576);
     assert.equal(large.report.packs.length, 9000);
-    assert.equal(large.calls.at(-1)?.at(-1), 'application');
+    assert.equal(large.calls.at(-1)?.at(-1), 'runtime-probe');
 
     for (const [args, code] of [
       [['--json', '--unknown'], 'starter_argument_unknown'],
@@ -188,7 +194,7 @@ test('up_json_reports_four_fields_for_installer_refusal and verifies the real on
     }
     const noInstaller = up('missing-installer');
     assert.equal(noInstaller.report.findings[0].code, 'starter_installation_failed');
-    assert.equal(noInstaller.calls.length, 2);
+    assert.equal(noInstaller.calls.length, 3);
     const missing = spawnSync(process.execPath, ['lifecycle.mjs', 'up', '--json'], { cwd: app, encoding: 'utf8', env: { PATH: app } });
     assert.equal(missing.status, 2);
     assert.equal(oneLine(missing.stdout).findings[0].code, 'starter_installation_failed');
@@ -231,7 +237,7 @@ test('up_json_reports_four_fields_for_installer_refusal and verifies the real on
         assert.equal(result.stderr, '');
       }
     }
-  } finally { rmSync(app, { recursive: true, force: true }); }
+  } finally { rmSync(app, { recursive: true, force: true }); rmSync(home, { recursive: true, force: true }); }
 });
 
 // Nested extraction checks reuse the checkout's dependencies. The packed consumer installs its own.
@@ -565,9 +571,9 @@ test('installed_catalogue_operator_workflow', { skip: !recipeApp, timeout: 600_0
   assert.ok(['candidate', 'local-candidate', 'released', 'reconstructed'].includes(manifest.mode ?? manifest.kind));
   const run = (file: string, args: string[], input?: string) => execFileSync(file, args,
     { cwd: app, env: { ...processEnv, COMPOSE_PROJECT_NAME: project }, encoding: 'utf8', input, stdio: ['pipe', 'pipe', 'pipe'] });
-  const compose = (...args: string[]) => run('docker', ['compose', ...args]);
+  const compose = (...args: string[]) => run('docker', ['compose', '--project-name', project, ...args]);
   const sql = (statement: string) => compose('exec', '-T', 'database', 'psql', '-XAtq', '-v', 'ON_ERROR_STOP=1', '-v', 'VERBOSITY=verbose',
-    '-U', 'postgres', '-d', 'neutral_store', '-c', statement).trim();
+    '-U', 'starter_install', '-d', 'neutral_store', '-c', statement).trim();
   const port = Number(processEnv.OPENLUP_STARTER_PORT || 4319);
   const fixtureOrigin = processEnv.OPENLUP_STARTER_CATALOGUE_OPERATOR_ORIGIN;
   const base = fixtureOrigin ?? `http://127.0.0.1:${port}`;
@@ -626,11 +632,11 @@ test('installed_catalogue_operator_workflow', { skip: !recipeApp, timeout: 600_0
     assert.equal(registry.find(({ operation }) => operation === 'catalogue.demoTarget')?.bound, true);
     const readOnly = JSON.parse(compose('exec', '-T', '--user', 'node', 'application', 'node', '--input-type=module', '-e', `
       import { readFileSync } from 'node:fs';
-      import { env } from 'node:process';
+      import { runtimeConnectionString, runtimeUrl } from './host/runtime-database.ts';
       import { createPostgresRoleFreeTransactionLane } from '@openlup/platform/data';
       import { composeOperatorCapabilities } from './host/operator-composition.ts';
       import { demonstrationMarkerQuery } from './host/demonstration-marker.ts';
-      const url = new URL(env.DATABASE_URL);
+      const url = new URL(runtimeUrl);
       url.username = 'openlup_catalog_publication';
       url.password = readFileSync('.context/catalogue-builds/.publication-password', 'utf8').trim();
       const lane = createPostgresRoleFreeTransactionLane({connectionString: url.href});
@@ -642,7 +648,7 @@ test('installed_catalogue_operator_workflow', { skip: !recipeApp, timeout: 600_0
         }
         return db.query(statement, values);
       } })), close: () => lane.close() };
-      const composed = composeOperatorCapabilities({executor: {}, publication, connectionString: env.DATABASE_URL});
+      const composed = composeOperatorCapabilities({executor: {}, publication, connectionString: runtimeConnectionString()});
       try {
         const { ok } = await composed.actions['catalogue.demoTarget']({}, {config: {id:'coffee'}});
         console.log(JSON.stringify({ ok, ...markerSettings }));
@@ -731,9 +737,9 @@ test('installed_catalogue_operator_workflow', { skip: !recipeApp, timeout: 600_0
     const customer = `customer-${actor.slice(0, 8)}@example.test`;
     compose('exec', '-T', '--user', 'node', 'application', 'node', '--input-type=module', '-e', `
       import { randomUUID } from 'node:crypto';
-      import { env } from 'node:process';
+      import { runtimeConnectionString } from './host/runtime-database.ts';
       import { createPostgresAccountLinkStore } from '@openlup/platform/identity';
-      const accounts = createPostgresAccountLinkStore({ connectionString: env.DATABASE_URL });
+      const accounts = createPostgresAccountLinkStore({ connectionString: runtimeConnectionString() });
       try { await accounts.createAccount({ principalId: randomUUID(), email: ${JSON.stringify(customer)},
         acquisitionSource: 'direct', lifecycleStage: 'customer' }); }
       finally { await accounts.close(); }
@@ -916,7 +922,10 @@ test('installed_catalogue_operator_workflow', { skip: !recipeApp, timeout: 600_0
     await denied();
     directDenied();
   } finally {
-    if (!existing) compose('down', '--volumes');
+    if (!existing) {
+      try { run('./lifecycle', ['down']); }
+      finally { compose('down', '--volumes'); }
+    }
   }
 });
 
@@ -1170,7 +1179,76 @@ test('installed catalogue jobs isolate requests, fence heartbeat failures and dr
     }
   });
 
-test('up_json_installed_starter_recipe', { skip: !recipeApp, timeout: 600_000 }, () => {
+async function witnessFreshDatabase(app: string, scratch: string, project: string, env: NodeJS.ProcessEnv) {
+  const hook = join(scratch, 'hold-init.sh'), override = join(scratch, 'hold-init.json');
+  writeFileSync(hook, '#!/bin/sh\nset -eu\ntouch /tmp/starter-init-ready\nwhile [ ! -e /tmp/starter-init-release ]; do sleep 0.1; done\n', { mode: 0o755 });
+  writeFileSync(override, JSON.stringify({ services: { database: { volumes: [
+    { type: 'bind', source: hook, target: '/docker-entrypoint-initdb.d/10-starter-hold.sh', read_only: true },
+  ] } } }));
+  const handoff = prepareRuntimeHandoff(project, [app]);
+  const compose = (args: string[]) => spawnSync('docker', ['compose', '--project-name', project, '-f', 'compose.yaml', '-f', override, ...args],
+    { cwd: app, env: { ...env, ...handoff.environment, LC_ALL: 'C' }, encoding: 'utf8', timeout: 60_000 });
+  const checked = (...args: string[]) => {
+    const result = compose(args);
+    assert.equal(result.status, 0, `Fresh PostgreSQL witness failed at ${args.slice(0, 3).join(' ')}`);
+    return result.stdout.trim();
+  };
+  const owner = ['exec', '-T', 'database', 'psql', '-XAtw', '-U', 'postgres'];
+  const sql = (text: string) => checked(...owner, '-d', 'postgres', '-c', text);
+  const ready = ['exec', '-T', 'database', 'test', '-e', '/tmp/starter-init-ready'];
+  try {
+    checked('up', '-d', '--no-build', 'database');
+    const deadline = Date.now() + 20_000;
+    while (compose(ready).status !== 0 && Date.now() < deadline) await delay(100);
+    checked(...ready);
+    assert.equal(sql('show hba_file'), '/etc/postgresql/starter-pg-hba.conf');
+    assert.equal(sql("select rolname from pg_roles where rolname='postgres'"), 'postgres');
+    assert.equal(sql("select datallowconn from pg_database where datname='template1'"), 't');
+    const rules = sql('select type, database, user_name, address, netmask, auth_method, options, error from pg_hba_file_rules order by line_number');
+    assert.deepEqual(rules.split('\n'), [
+      'local|{postgres}|{postgres}|||trust||',
+      'local|{neutral_store}|{starter_install}|||trust||',
+      'local|{all}|{all}|||reject||',
+      'host|{neutral_store}|{openlup_catalog_publication}|all||scram-sha-256||',
+      'host|{neutral_store}|{starter_runtime}|all||scram-sha-256||',
+      'host|{all}|{all}|all||reject||',
+    ]);
+    const crossDenied = compose([...owner, '-d', 'template1', '-c', 'select 1']);
+    assert.notEqual(crossDenied.status, 0);
+    assert.match(crossDenied.stderr, /pg_hba.conf rejects connection/u);
+    const tcpHold = compose(['exec', '-T', 'database', 'pg_isready', '-h', '127.0.0.1', '-t', '1']);
+    assert.equal(tcpHold.status, 2);
+    assert.match(tcpHold.stdout, /no response/u);
+    checked('exec', '-T', '--user', 'postgres', 'database', 'touch', '/tmp/starter-init-release');
+    checked('up', '--wait', '--wait-timeout', '45', '--no-build', 'database');
+    checked('exec', '-T', 'database', 'pg_isready', '-h', '127.0.0.1');
+    const fallback = checked('exec', '-T', 'database', 'sh', '-c', 'cat "$PGDATA/pg_hba.conf"')
+      .split('\n').filter(line => line.trim() && !line.trimStart().startsWith('#'));
+    assert.ok(fallback.length >= 2 && fallback.every(line => /\breject$/u.test(line)));
+    console.log('Fresh PostgreSQL temporary socket, rules, TCP transition and deny-only fallback PASS');
+    const system = sql('select system_identifier from pg_control_system()');
+    const db = checked('ps', '-q', 'database');
+    const image = execFileSync('docker', ['inspect', '--format', '{{.Config.Image}}', db], { encoding: 'utf8' }).trim();
+    checked('kill', '-s', 'KILL', 'database');
+    const refused = compose(['up', '--wait', '--wait-timeout', '45', '--no-build', 'database']);
+    assert.notEqual(refused.status, 0);
+    assert.match(checked('logs', '--no-color', 'database'), /starter_runtime_database_lock_held/u);
+    const core = findPackageJSON('@openlup/core/catalog', import.meta.url);
+    assert.ok(core);
+    const guide = readFileSync(join(dirname(core), 'docs/guide/how-to/build/customize-the-starter.md'), 'utf8');
+    const remedy = guide.split('### Recover a stale database lock\n')[1]?.match(/```sh\n([^]*?)\n```/u)?.[1];
+    assert.ok(remedy);
+    const cleared = spawnSync('/bin/sh', ['-ec', remedy], { cwd: app, encoding: 'utf8',
+      env: { ...env, VOLUME: project + '_database', DATABASE_IMAGE: image } });
+    assert.equal(cleared.status, 0, cleared.stderr);
+    checked('up', '--wait', '--wait-timeout', '45', '--no-build', 'database');
+    assert.equal(sql('select system_identifier from pg_control_system()'), system);
+    assert.equal(sql('select type, database, user_name, address, netmask, auth_method, options, error from pg_hba_file_rules order by line_number'), rules);
+    console.log('Fresh PostgreSQL crash recovery with the stock deny-only fallback PASS');
+  } finally { handoff.cleanup(); }
+}
+
+test('up_json_installed_starter_recipe', { skip: !recipeApp, timeout: 600_000 }, async () => {
   const app = recipeApp!;
   const origin = JSON.parse(readFileSync(join(app, '.starter-origin.json'), 'utf8'));
   assert.ok(['candidate', 'local-candidate', 'released', 'reconstructed'].includes(origin.mode ?? origin.kind));
@@ -1180,8 +1258,9 @@ test('up_json_installed_starter_recipe', { skip: !recipeApp, timeout: 600_000 },
   const context = join(app, '.context');
   mkdirSync(context, { recursive: true });
   const scratch = mkdtempSync(join(context, 'st1-recipe-'));
-  const project = 'st1-pr2-recipe-' + randomUUID().slice(0, 8);
-  const env = { ...processEnv, OPENLUP_STARTER_PORT: '4319', COMPOSE_PROJECT_NAME: project, GIT_INDEX_FILE: join(scratch, 'index') };
+  const project = processEnv.OPENLUP_STARTER_CATALOGUE_RECIPE_PROJECT ?? 'st1-pr2-recipe-' + randomUUID().slice(0, 8);
+  const port = processEnv.OPENLUP_STARTER_PORT || '4319';
+  const env = { ...processEnv, OPENLUP_STARTER_PORT: port, COMPOSE_PROJECT_NAME: project, GIT_INDEX_FILE: join(scratch, 'index') };
   const run = (command: string, args: string[], exit = 0) => {
     const result = spawnSync(command, args, { cwd: app, env, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
     assert.ifError(result.error);
@@ -1189,7 +1268,7 @@ test('up_json_installed_starter_recipe', { skip: !recipeApp, timeout: 600_000 },
     return result.stdout;
   };
   const up = (exit = 0) => oneLine(run('./lifecycle', ['up', '--configuration', 'coffee', '--json'], exit));
-  const docker = (...args: string[]) => run('docker', ['compose', ...args]);
+  const docker = (...args: string[]) => run('docker', ['compose', '--project-name', project, ...args]);
   const ledger = () => docker('exec', '-T', 'database', 'psql', '-XAt', '-v', 'ON_ERROR_STOP=1', '-U', 'starter_install',
     '-d', 'neutral_store', '-c', "SELECT pack_version FROM public.catalog_definition_installs WHERE pack_id='stationery' ORDER BY pack_version").trim();
   const packPath = join(app, 'owned/catalogue/pack.ts'), rules = join(app, 'owned/catalogue-rules.cjs');
@@ -1205,6 +1284,7 @@ test('up_json_installed_starter_recipe', { skip: !recipeApp, timeout: 600_000 },
     run(process.execPath, ['--test', 'owned/catalogue-rules.test.cjs']);
     assert.equal(oneLine(run('npm', ['run', '--silent', 'catalogue:check:source'])).state, 'satisfied');
     run('npm', ['run', 'typecheck']);
+    if (existsSync(join(app, 'host/runtime-database.ts'))) await witnessFreshDatabase(app, scratch, project, env);
     const heldRules = join(scratch, 'catalogue-rules.cjs');
     renameSync(rules, heldRules);
     let refused;
@@ -1224,7 +1304,7 @@ test('up_json_installed_starter_recipe', { skip: !recipeApp, timeout: 600_000 },
     const wsEndpoint = processEnv.OPENLUP_STARTER_CATALOGUE_RECIPE_WS_ENDPOINT;
     writeFileSync(playwright, `export default {
       testDir: '../../browser', testMatch: 'native-operator.proof.ts', workers: 1,
-      use: ${JSON.stringify({ baseURL: 'http://127.0.0.1:4319', composeProject: project, trace: 'off', screenshot: 'off', video: 'off',
+      use: ${JSON.stringify({ baseURL: 'http://127.0.0.1:' + port, composeProject: project, trace: 'off', screenshot: 'off', video: 'off',
         ...(wsEndpoint ? { connectOptions: { wsEndpoint } } : {}) })}
     };\n`);
     run('./node_modules/.bin/playwright', ['test', '--config', playwright, '--grep', 'installed adopter pack']);
@@ -1256,8 +1336,10 @@ test('up_json_installed_starter_recipe', { skip: !recipeApp, timeout: 600_000 },
     run('./lifecycle', ['up']);
     assert.equal(ledger(), '2');
   } finally {
-    try { docker('down', '--volumes'); }
-    finally {
+    try {
+      try { run('./lifecycle', ['down']); }
+      finally { docker('down', '--volumes'); }
+    } finally {
       writeFileSync(packPath, initialPack);
       writeFileSync(rules, initialRules);
       rmSync(scratch, { recursive: true });

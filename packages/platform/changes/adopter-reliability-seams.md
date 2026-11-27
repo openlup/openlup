@@ -1,3 +1,0 @@
-- Managed renewal reporting can classify prepared, acknowledged and settled payment attempts independently of the legacy cycle result.
-- Managed operator support can opt into up to three attempts for rolled-back subscription actions and recovery commands on returned PostgreSQL `40P01`.
-- Watchdog ledger adapters can batch up to four already-admitted alert observations over their existing store transition.

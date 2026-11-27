@@ -7,6 +7,7 @@ import { delimiter, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { INVENTORY_PATH } from './agent-review-derived.mjs';
 import { landingMerge, parseLandingCliOptions } from './agent-review-landing.mjs';
+import { PG_SUITE_CLOSURES_PATH } from './agent-review-registry.mjs';
 import { worktreeGateSuffix } from './resource-gate.mjs';
 import { localFixtureEnvironment } from './fixtures/landing-test-environment.ts';
 import {
@@ -60,7 +61,7 @@ it('lands cold owner bytes after an added Core export and version bump on a warm
     const warmDeclaration = f.read(declaration);
     expect(warmDeclaration).not.toBe(cleanDeclaration);
 
-    f.landingCli();
+    f.fixtureNpm('run', 'landing:merge', '--', '--no-verify');
     expect(f.git('show', '-s', '--format=%P')).toBe(`${left} ${right}`);
     expect(f.git('show', 'HEAD:packages/core/api/subscription.api.md')).toContain('declare const fixtureApi = 1');
     const landedDeclaration = f.read(declaration);
@@ -449,6 +450,37 @@ it('refuses an inventory-only landing with a mismatched installed dependency bef
   }
 }, 30000);
 
+it('resolves a clean pg-suite-closures union during landingMerge while refusing divergent additions', async () => {
+  try {
+    f.checkout(f.base);
+    const original = JSON.parse(f.read(PG_SUITE_CLOSURES_PATH)) as { schemaVersion: number; suites: Record<string, string[]> };
+    const firstKey = Object.keys(original.suites)[0]!;
+    const branchKey = firstKey.replace(/\.test\.ts$/u, 'ZzzBranch.test.ts');
+    const mainKey = firstKey.replace(/\.test\.ts$/u, 'ZzzMain.test.ts');
+    const sorted = (suites: Record<string, string[]>) =>
+      Object.fromEntries(Object.entries(suites).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0));
+    const render = (suites: Record<string, string[]>) =>
+      `${JSON.stringify({ schemaVersion: original.schemaVersion, suites: sorted(suites) }, null, 2)}\n`;
+
+    f.write(PG_SUITE_CLOSURES_PATH, render({ ...original.suites, [branchKey]: ['@api'] }));
+    const left = f.commit();
+    f.checkout(f.base);
+    f.write(PG_SUITE_CLOSURES_PATH, render({ ...original.suites, [mainKey]: ['@starter'] }));
+    const right = f.commit();
+    f.setMain(right);
+    f.checkout(left);
+    const landed = await landingMerge(f.root, {
+      runCommand: (command, args) => {
+        if (args[0] === npmCli && args[1] === 'run' && args[2] === 'build') return;
+        f.fixtureCommand(command, args);
+      },
+    });
+    expect(landed.main).toBe(right);
+    expect(f.read(PG_SUITE_CLOSURES_PATH)).toBe(render({ ...original.suites, [branchKey]: ['@api'], [mainKey]: ['@starter'] }));
+    expect(f.status()).toBe('');
+  } finally { f.restoreDerivedFixture(); }
+}, 60000);
+
 it('runs post-commit build and typecheck after the merge commit when verify is enabled', async () => {
   try {
     f.checkout(f.base);
@@ -521,9 +553,52 @@ it('preserves the merge commit without rolling back when post-commit verify fail
   }
 }, 60000);
 
-it('parses landing CLI flags with verify enabled by default and --no-verify opt-out', () => {
-  expect(parseLandingCliOptions([])).toEqual({ reSlot: false, verify: true });
+it('parses landing CLI flags with verify enabled by default, --no-verify opt-out, and --target validation', () => {
+  const baseDefault = parseLandingCliOptions([]);
+  expect(baseDefault).toEqual({ reSlot: false, verify: true });
+  expect('target' in baseDefault).toBe(false);
   expect(parseLandingCliOptions(['--no-verify'])).toEqual({ reSlot: false, verify: false });
   expect(parseLandingCliOptions(['--re-slot'])).toEqual({ reSlot: true, verify: true });
   expect(parseLandingCliOptions(['--re-slot', '--no-verify'])).toEqual({ reSlot: true, verify: false });
+  expect(parseLandingCliOptions(['--re-slot', '--target', '20990101050000'])).toEqual({
+    reSlot: true,
+    verify: true,
+    target: '20990101050000',
+  });
+  expect(parseLandingCliOptions(['--re-slot', '--target=20990101050000', '--no-verify'])).toEqual({
+    reSlot: true,
+    verify: false,
+    target: '20990101050000',
+  });
+  expect(parseLandingCliOptions(['--target=20990101050000', '--re-slot'])).toEqual({
+    reSlot: true,
+    verify: true,
+    target: '20990101050000',
+  });
+
+  expect(() => parseLandingCliOptions(['--unknown'])).toThrow(/unknown CLI option/u);
+  expect(() => parseLandingCliOptions(['positional'])).toThrow(/unknown CLI option/u);
+  expect(() => parseLandingCliOptions(['--re-slot', '--target'])).toThrow(/requires a 14-digit UTC slot/u);
+  expect(() => parseLandingCliOptions(['--re-slot', '--target='])).toThrow(/requires a 14-digit UTC slot/u);
+  expect(() => parseLandingCliOptions(['--re-slot', '--target', ''])).toThrow(/requires a 14-digit UTC slot/u);
+  expect(() => parseLandingCliOptions(['--re-slot', '--target', '--no-verify'])).toThrow(/requires a 14-digit UTC slot/u);
+  expect(() => parseLandingCliOptions(['--re-slot', '--target=-20990101050000'])).toThrow(/requires a 14-digit UTC slot/u);
+  expect(() => parseLandingCliOptions(['--re-slot', '--target', '20990101050000', '--target', '20990101060000']))
+    .toThrow(/duplicate --target/u);
+  expect(() => parseLandingCliOptions(['--re-slot', '--target=20990101050000', '--target=20990101050000']))
+    .toThrow(/duplicate --target/u);
+  expect(() => parseLandingCliOptions(['--re-slot', '--target', '00000000000000'])).toThrow(/valid 14-digit UTC slot/u);
+  expect(() => parseLandingCliOptions(['--re-slot', '--target', '20990230000000'])).toThrow(/valid 14-digit UTC slot/u);
+  expect(() => parseLandingCliOptions(['--re-slot', '--target', '2099'])).toThrow(/valid 14-digit UTC slot/u);
+  expect(() => parseLandingCliOptions(['--target', '20990101050000'])).toThrow(/--target requires --re-slot/u);
+  expect(() => parseLandingCliOptions(['--target=20990101050000'])).toThrow(/--target requires --re-slot/u);
+
+  const cliError = spawnSync(process.execPath, ['scripts/agent-review-landing.mjs', '--target', '20990101050000'], {
+    cwd: f.root,
+    env: fixtureEnvironment,
+    encoding: 'utf8',
+    timeout: 30000,
+  });
+  expect(cliError.status).toBe(1);
+  expect(cliError.stderr).toContain('--target requires --re-slot');
 });

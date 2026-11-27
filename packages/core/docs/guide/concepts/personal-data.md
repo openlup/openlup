@@ -21,16 +21,20 @@ and erasure receipts as unavailable.
 versions and owned resources. Each contributor describes its export coverage
 and its erase, retain or unresolved obligations. Duplicate IDs refuse with
 `PRIVACY_CONTRIBUTOR_DUPLICATE`. Export reports missing host-only contributors.
-Erasure refuses when a required owner or the identity owner is absent. A
-successful export is only as complete as its reported coverage.
+Native export and erasure both refuse if a contributor in the installed
+declaration is absent. Erasure also requires the identity owner and every
+contributor required by the host registry. A successful export is only as
+complete as its reported coverage.
 
 Register the owners of the features your application uses. Account-event
 payloads require the `account-support` contributor and an explicit retention
 decision; clearing the contact profile does not clear that ledger. Native
 billing data requires `customer-billing`: editable billing profiles erase while
 frozen invoice buyer components remain under invoice retention. Native parcel
-preparation requires `fulfillment-parcel-contacts`: private parcel and order contacts and retained correction responses
-erase while payload-free erasure markers remain. A composed `risk` contributor
+preparation requires `fulfillment-parcel-contacts`. Its export includes
+contacts projected from retained destination bindings. Private parcel and
+order contacts and retained correction responses erase while payload-free
+erasure markers remain. A composed `risk` contributor
 exports declared resources and retains facts only under an explicit policy;
 missing policy or ownership blocks erasure. These obligations do not disappear
 when identity erasure succeeds.
@@ -99,7 +103,7 @@ no retention period or remote-provider operation.
    intake and retries, and keep new owner writers dormant.
    The reference wrappers are `api/bff/[...path].ts` and the two routes under
    `server/bff/admin/identity/privacy/`.
-   See [the reference runtime policy](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/docs/platform/RUNTIME_AND_SELF_HOSTING.md#runtime-model)
+   See [the reference runtime policy](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/docs/platform/RUNTIME_AND_SELF_HOSTING.md#runtime-model)
    and the `#deployment-route-policy` binding.
 2. Drain admitted requests and retry work. Check the admission counters and
    database sessions and transactions against the ingress census. Record zero
@@ -113,7 +117,7 @@ no retention period or remote-provider operation.
    advisory lock and locks the relation census before copying retained rows.
    For capture, the authorized restricted migrator uses the host's owner window
    when needed. Verify the sealed role graph after the window closes.
-   See [connected-store transfer](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/docs/platform/migrations/compatible-data-transfer.md#compatible-data-transfer).
+   See [connected-store transfer](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/docs/platform/migrations/compatible-data-transfer.md#compatible-data-transfer).
    The source entry points are `captureConnectedNativeStore` in
    `server/adapters/postgres/connectedStoreCapture.ts` and
    `restoreConnectedNativeStore` in `server/adapters/postgres/connectedStoreRestore.ts`.
@@ -231,7 +235,7 @@ An `ERASED` identity receipt does not mean all platform data has been deleted.
 
 Already-issued customer tokens can remain cryptographically valid until expiry.
 The direct session binding allows a lifetime within its configured range; see
-the [maintainer token limits](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/docs/platform/IDENTITY.md#admin-operations-and-token-limits)
+the [maintainer token limits](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/docs/platform/IDENTITY.md#admin-operations-and-token-limits)
 for the default and accepted range.
 After its link is cleared, customer `me` returns HTTP 403 /
 `FORBIDDEN` with “No customer account linked to this session.” Operator

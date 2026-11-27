@@ -714,15 +714,19 @@ it("allows a handling-only plan without contact and checks corrupt document evid
   const f = await installed({ shipping: 10, contact: {}, units: [10] });
   const delivery = f.now.planInput.baseline.delivery.map(bucket => ({ ...bucket, kind: "handling" as const }));
   const initial = f.deps.destination.snapshot;
+  let change = "document_digest=repeat('1',64)";
   f.deps.destination.snapshot = async (...args) => {
     const issued = await initial(...args);
     if ("binding" in issued) await store.owner.query(
-      "UPDATE public.commerce_destination_v2_documents SET document_digest=$2 WHERE snapshot_ref=$1", [issued.binding.snapshotRef, "1".repeat(64)]);
+      `UPDATE public.commerce_destination_v2_documents SET ${change} WHERE snapshot_ref=$1`, [issued.binding.snapshotRef]);
     return issued;
   };
   exact(await f.bind().createQuote(f.owner, f.request),
     refusal("destination_digest_mismatch", "/destination/destinationDigest", "Replay the original document and its digest."));
-  expect(f.commands.map(command => command.operation)).toEqual(["lookup"]);
+  change = "purpose=NULL,evidence_expires_at=issued_at";
+  exact(await f.bind().createQuote(f.owner, { ...f.request, key: randomUUID() }),
+    refusal("commerce_destination_owner_mismatch", "/destination/snapshotRef", "Re-obtain evidence through the authenticated owner."));
+  expect(f.commands.map(command => command.operation)).toEqual(["lookup", "lookup"]);
   expect(f.taxInputs).toHaveLength(0);
   f.deps.destination.snapshot = initial;
   f.now.planInput = { ...f.now.planInput, baseline: { ...f.now.planInput.baseline, delivery } };

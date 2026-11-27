@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { tmpdir } from 'node:os';
+import { env as processEnv } from 'node:process';
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { once } from 'node:events';
@@ -122,6 +123,7 @@ const inventoryProtectionStatements = [upsertPolicySetting];
 const reminderScheduleStatements = [upsertPolicySetting, installReminderSchedule];
 
 
+let installSequence = 0;
 function installation(identity = { login: 'demo_install', role: 'demo_install', marker: demonstrationMarker }) {
   const calls: Array<{ text: string; values: unknown[] | undefined }> = [];
   let closed = 0;
@@ -138,7 +140,7 @@ function installation(identity = { login: 'demo_install', role: 'demo_install', 
       if (text.startsWith('SELECT public.catalog_definition_install')) {
         const { manifest } = JSON.parse(String(values?.[2]));
         const { id: packId, version: packVersion, types, subscriptionProfileDefinitions } = JSON.parse(manifest);
-        return { rows: [{ receipt: { packId, packVersion, installedAt: '2000-01-01T00:00:00.000Z',
+        return { rows: [{ receipt: { packId, packVersion, installedAt: new Date(Date.UTC(2000, 0, 1) + installSequence++ * 1000).toISOString(),
           manifestDigest: createHash('sha256').update(manifest).digest('hex'), types,
           ...(subscriptionProfileDefinitions === undefined ? {} : { canonicalManifest: manifest, subscriptionProfileDefinitions }) } }] };
       }
@@ -832,13 +834,22 @@ test('lifecycle up, serve-demo, checkout-recovery and CLI delegation preserve na
       async connect() {} async end() {}
       async query() { return { rows: [{ marker: ${JSON.stringify(demonstrationMarker)} }] }; }
     }, Pool: class { async end() {} } };`);
-    async function invoke(argv: string[]) {
-      const child = spawn(process.execPath, ['--experimental-strip-types', 'lifecycle.mjs', ...argv], { cwd: directory, stdio: 'pipe' });
+    const reader = resolve(directory, 'host/runtime-database.ts');
+    await writeFile(reader, (await readFile(reader, 'utf8')).replace("'/run/secrets/starter_runtime_password'",
+      JSON.stringify(resolve(directory, 'absent-password'))));
+    async function invoke(argv: string[], mounted = false) {
+      const child = spawn(process.execPath, ['--experimental-strip-types', 'lifecycle.mjs', ...argv],
+        { cwd: directory, stdio: 'pipe', env: { ...processEnv, OPENLUP_STARTER_RUNTIME_CREDENTIAL: mounted ? '1' : '0' } });
       let stdout = '', stderr = '';
       child.stdout.on('data', bytes => { stdout += String(bytes); });
       child.stderr.on('data', bytes => { stderr += String(bytes); });
       return { code: (await once(child, 'exit'))[0], stdout, stderr };
     }
+    const missing = await invoke(['runtime-probe'], true);
+    assert.equal(missing.code, 2);
+    assert.equal(missing.stdout.trim(), 'starter_runtime_credential_read_failed');
+    assert.equal(missing.stderr, '');
+
     const usage = await invoke(['unknown-command']);
     assert.equal(usage.code, 2);
     assert.ok(usage.stderr.includes('checkout-recovery --configuration <id> --database-url <runtime-url>'));
@@ -924,7 +935,11 @@ test('host_resolves_pack_type_exact_pair and verifies the complete immutable bui
       const target = resolve(directory, 'packs', `${pack.id}@${pack.version}.json`);
       await assert.rejects(stat(target), { code: 'ENOENT' });
       const identical = stagePackBuild(bound, receipt, artifact, directory)!;
+      const laterReceipt = { ...receipt, installedAt: '2026-01-02T00:00:00.000Z' };
+      assert.notEqual(laterReceipt.installedAt, receipt.installedAt);
+      const later = stagePackBuild(bound, laterReceipt, artifact, directory)!;
       stage.publish(); stage.discard(); identical.publish(); identical.discard();
+      later.publish(); later.discard();
       const raw = await readFile(target);
       const build = JSON.parse(raw.toString('utf8'));
       assert.ok(raw.length > 1_048_576);
@@ -933,6 +948,7 @@ test('host_resolves_pack_type_exact_pair and verifies the complete immutable bui
       assert.deepEqual(build.pack.taxClasses, pack.taxClasses);
       assert.equal(build.pack.types.some((type: object) => Object.hasOwn(type, 'validateContent')), false);
       assert.equal(stagePackBuild(bound, receipt, artifact, directory), undefined);
+      assert.equal(stagePackBuild(bound, laterReceipt, artifact, directory), undefined);
       assert.deepEqual(await readFile(target), raw);
     }
     for (const pair of [ref!, newRef!, sibling!]) {

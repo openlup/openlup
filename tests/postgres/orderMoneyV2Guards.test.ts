@@ -9,11 +9,13 @@ import { flatTestTimeoutMs } from "../../scripts/ci-vitest-duration-keys.js";
 import { readPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { withPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
+import type { ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
+import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
-import { installAccountMutations, type AccountMutationsStore } from "./customerAccountMutations.fixture.js";
+import { createAccountMutationsTemplate, installAccountMutations, type AccountMutationsStore } from "./customerAccountMutations.fixture.js";
 import { issue, reseal, type Evidence, write } from "./orderMoneyV2Guards.fixture.js";
 import {
-  allocations, buckets, calculationKey, checkMessage, expectSqlError, fees, foreignKeyMessage, insert, itemFk, itemTable, orderFk, orderTable, positions, quoteKey,
+  allocations, buckets, calculationKey, capture, checkMessage, expectSqlError, fees, foreignKeyMessage, insert, itemFk, itemTable, orderFk, orderTable, positions, quoteKey,
   rejected, seedSku, snapshots, sources, transaction, uniqueMessage, version,
 } from "./orderMoneyV2Storage.fixture.js";
 
@@ -332,6 +334,161 @@ it("checks an unchanged projection once and rechecks after a constraint flush, i
   }, "ROLLBACK");
 });
 
+it("keeps the transaction memo private from the runtime login on the same connection", async () => {
+  const { id } = await writeChecked(await issue(store, sku, false));
+  const db = await store.runtime.connect();
+  try {
+    await db.query("UPDATE public.commerce_orders SET updated_at=now() WHERE id=$1", [id]);
+    expect((await db.query(`SELECT r.rolsuper, c.relowner = r.oid AS runtime_owned, c.relpersistence
+      FROM pg_catalog.pg_roles r CROSS JOIN pg_catalog.pg_class c
+      WHERE r.rolname=session_user AND c.oid='pg_temp.commerce_order_money_v2_checks'::regclass
+        AND c.relnamespace=pg_catalog.pg_my_temp_schema()`)).rows)
+      .toEqual([{ rolsuper: false, runtime_owned: false, relpersistence: "t" }]);
+    for (const sql of ["SELECT *", "DELETE"]) {
+      expectSqlError(await rejected(db.query(`${sql} FROM pg_temp.commerce_order_money_v2_checks`)),
+        "42501", "permission denied for table commerce_order_money_v2_checks");
+    }
+  } finally {
+    db.release();
+  }
+});
+
+async function createAssertionProbe(db: PoolClient, claimsOwner: boolean) {
+  await db.query(`CREATE TEMP TABLE order_money_assertion_probe (order_id uuid, before_image jsonb, after_image jsonb);
+    CREATE FUNCTION pg_temp.check_order_money_probe() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+      PERFORM public.commerce_order_money_v2_assert(NEW.order_id,true,${claimsOwner},NEW.before_image,NEW.after_image);
+      RETURN NULL;
+    END $$;
+    CREATE TRIGGER check_order_money_probe AFTER INSERT ON pg_temp.order_money_assertion_probe
+      FOR EACH ROW EXECUTE FUNCTION pg_temp.check_order_money_probe()`);
+}
+
+it("ignores claimed restore context from the runtime login and keeps memoizing", async () => {
+  const { id } = await writeChecked(await issue(store, sku, false));
+  const owner = await store.owner.connect();
+  let original: string | undefined;
+  const projectionNotice = "Checking the order money projection";
+  const sealNotice = "Checking the fresh order money seal";
+  const settings = ["openlup.restore_mode", "openlup.restore", "commerce_order_money_v2.restoring"];
+  const exercise = (claimRestore: boolean) => transaction(store.runtime, async db => {
+    let projectionChecks = 0;
+    let sealChecks = 0;
+    const recordCheck = (event: { message: string | undefined }) => {
+      if (event.message === projectionNotice) projectionChecks++;
+      if (event.message === sealNotice) sealChecks++;
+    };
+    db.on("notice", recordCheck);
+    try {
+      await db.query("SET LOCAL client_min_messages = notice");
+      await createAssertionProbe(db, claimRestore);
+      if (claimRestore) {
+        const { rows: [identity] } = await db.query<{ owner: string; has_owner: boolean; rolsuper: boolean }>(
+          `SELECT pg_get_userbyid(c.relowner) AS owner, pg_has_role(session_user,c.relowner,'USAGE') AS has_owner, r.rolsuper
+          FROM pg_catalog.pg_class c CROSS JOIN pg_catalog.pg_roles r
+          WHERE c.oid='public.commerce_orders'::regclass AND r.rolname=session_user`);
+        expect(identity).toMatchObject({ has_owner: false, rolsuper: false });
+        const expectDenied = async (sql: string, message: string, params?: string[]) => {
+          await db.query("SAVEPOINT denied_signal");
+          expectSqlError(await rejected(db.query(sql, params)), "42501", message);
+          await db.query("ROLLBACK TO SAVEPOINT denied_signal; RELEASE SAVEPOINT denied_signal");
+        };
+        await expectDenied("SELECT pg_catalog.set_config('role',$1,true)",
+          `permission denied to set role "${identity!.owner}"`, [identity!.owner]);
+        for (const relation of restoreTables.filter(table => table !== "identity_privacy_erasures")) {
+          await expectDenied(`LOCK TABLE public.${relation} IN SHARE ROW EXCLUSIVE MODE`, `permission denied for table ${relation}`);
+        }
+        await db.query("LOCK TABLE public.identity_privacy_erasures IN SHARE ROW EXCLUSIVE MODE");
+        await db.query("SET LOCAL search_path = pg_temp, public, pg_catalog");
+        expect((await db.query("SELECT pg_catalog.current_schema() AS schema")).rows[0]!.schema).toMatch(/^pg_temp_\d+$/u);
+        expect((await db.query("SELECT pg_catalog.set_config(name,'true',true) AS value FROM unnest($1::text[]) name", [settings])).rows)
+          .toEqual(settings.map(() => ({ value: "true" })));
+      }
+
+      const probe = "INSERT INTO pg_temp.order_money_assertion_probe (order_id) VALUES ($1),($1)";
+      await db.query(probe, [id]);
+      expect({ projectionChecks, sealChecks }).toEqual({ projectionChecks: 1, sealChecks: 1 });
+      await db.query("SAVEPOINT forged_images");
+      await expectMismatch(db.query(`INSERT INTO pg_temp.order_money_assertion_probe
+        VALUES ($1,jsonb_build_object('order_id',$1::uuid,'destination_erased',false),
+          jsonb_build_object('order_id',$1::uuid,'destination_erased',true))`, [id]), "/taxEvidence", lifecycleRemedy);
+      await db.query("ROLLBACK TO SAVEPOINT forged_images");
+      await db.query("UPDATE public.commerce_orders SET total_amount_minor=total_amount_minor+1 WHERE id=$1", [id]);
+      await expectMismatch(db.query(probe, [id]), "/payableMinor", replayRemedy);
+    } finally {
+      db.removeListener("notice", recordCheck);
+    }
+  }, "ROLLBACK");
+  try {
+    original = await mutateRoutine(owner, routine, [
+      ["  WITH lines AS (", `  RAISE NOTICE '${projectionNotice}';\n  WITH lines AS (`],
+      ["IF check_seal AND NOT restoring THEN", `IF check_seal AND NOT restoring THEN\n    RAISE NOTICE '${sealNotice}';`],
+    ]);
+    await exercise(false);
+    await exercise(true);
+  } finally {
+    try { if (original) await owner.query(original); }
+    finally { owner.release(); }
+  }
+});
+
+it("uses actual owner locks for restore even when the assertion argument denies ownership", async () => {
+  const { id } = await writeChecked(await issue(store, sku, false));
+  await transaction(store.owner, async db => {
+    await ownerRestore(db);
+    await createAssertionProbe(db, false);
+    const probe = "INSERT INTO pg_temp.order_money_assertion_probe (order_id) VALUES ($1)";
+    await db.query(probe, [id]);
+    const { rows: [memo] } = await db.query<{ present: boolean }>(
+      "SELECT to_regclass('pg_temp.commerce_order_money_v2_checks') IS NOT NULL AS present");
+    if (memo!.present) {
+      expect((await db.query("SELECT FROM pg_temp.commerce_order_money_v2_checks WHERE order_id=$1", [id])).rowCount).toBe(0);
+    }
+    await db.query("UPDATE public.commerce_orders SET total_amount_minor=total_amount_minor+1 WHERE id=$1", [id]);
+    await expectMismatch(db.query(probe, [id]), "/payableMinor", replayRemedy);
+  }, "ROLLBACK");
+});
+
+const carriedRows = (packet: ConnectedNativeStoreCapture) => [...packet.compatible.tables, ...packet.owned];
+
+it("attests an exact-current restore of committed versioned orders without a temporary schema", async () => {
+  const template = await createAccountMutationsTemplate("separate", "restore-versioned-orders");
+  try {
+    const source = await template.clone("source");
+    const target = await template.clone("target");
+    if (target.installation.generation === "legacy") throw new Error("Qualified restore target required");
+    const sku = await seedSku(source.owner);
+    const orderIds: string[] = [];
+    for (const inclusive of [true, false]) {
+      const evidence = await issue(source, sku, inclusive);
+      const { id } = await transaction(source.owner, db => write(db, evidence, sku));
+      orderIds.push(id);
+    }
+    const packet = await capture(source.owner, source.inventory, "versioned-orders");
+    const snapshots = packet.owned.find(entry => entry.table === "commerce_order_tax_snapshots");
+    expect(snapshots?.rows).toHaveLength(orderIds.length);
+    const freshTarget = await capture(target.migrator, target.inventory, "pristine-target");
+    const sessionState = () => target.migrator.query(`SELECT pg_catalog.pg_backend_pid() AS pid,
+      pg_catalog.pg_my_temp_schema()::int AS temp_oid,
+      ARRAY(SELECT nspname::text FROM pg_catalog.pg_namespace
+        WHERE oid=pg_catalog.pg_my_temp_schema()) AS temp_schemas`).then(result => result.rows[0]);
+    const before = await sessionState();
+    expect(target.migrator.totalCount).toBe(1);
+    expect(before).toMatchObject({ temp_oid: 0, temp_schemas: [] });
+
+    const input = { owner: target.migrator, installation: target.installation, packet, freshTarget };
+    expect(await restoreConnectedNativeStore(input)).toMatchObject({ captureSha256: packet.sha256, replayed: false });
+    expect(await sessionState()).toEqual(before);
+    expect((await target.owner.query("SELECT id FROM public.commerce_orders WHERE money_version=$1 ORDER BY id", [version])).rows)
+      .toEqual(orderIds.sort().map(id => ({ id })));
+    const restored = await capture(target.owner, target.inventory, "restored-versioned-orders");
+    expect(carriedRows(restored)).toEqual(carriedRows(packet));
+    expect(await restoreConnectedNativeStore(input)).toMatchObject({ captureSha256: packet.sha256, replayed: true });
+  } finally {
+    await template.close();
+  }
+}, postgresSetupTimeoutMs);
+
 it("keeps fresh seal checks after a successful header flush", async () => {
   const evidence = await issue(store, sku, false);
   const alterAfterFlush = async (db: PoolClient) => {
@@ -554,6 +711,25 @@ it("requires owner evidence recovery when a live restore has a nonfinal calculat
   await transaction(store.owner, db => restore(db, terminal));
 });
 
+it.each([
+  "trg_commerce_order_items_line_sum",
+  "trg_commerce_orders_line_sum",
+])("rechecks live restore evidence when %s follows the header flush", async constraint => {
+  const evidence = await issue(store, sku, false);
+  await transaction(store.owner, async db => {
+    await ownerRestore(db);
+    const { id } = await write(db, evidence, sku);
+    await db.query("SET CONSTRAINTS trg_commerce_orders_line_sum IMMEDIATE");
+    expect((await db.query("SELECT public.tax_calculation_erase_v1($1) AS erased", [evidence.clientId])).rows)
+      .toEqual([{ erased: 1 }]);
+    if (constraint === "trg_commerce_orders_line_sum") {
+      await db.query("SET CONSTRAINTS trg_commerce_orders_line_sum DEFERRED");
+      await db.query("UPDATE public.commerce_orders SET updated_at=now() WHERE id=$1", [id]);
+    }
+    await expectMismatch(db.query(`SET CONSTRAINTS ${constraint} IMMEDIATE`), "/taxEvidence", evidenceRemedy);
+  }, "ROLLBACK");
+});
+
 it("honors the owner restore fence, skips live provenance at restore, and checks the retained digest", async () => {
   const evidence = await issue(store, sku, false);
   await expect(transaction(store.owner, async db => {
@@ -658,7 +834,7 @@ it("requires the same-order tombstone and receipt on the erased restore arm", as
   // Temporarily disabled the fee relation's restore lock requirement in a disposable database transaction.
   await transaction(store.owner, async db => {
     await mutateRoutine(db, routine, [[
-      ",'public.commerce_order_fee_lines'::regclass))=6", "))=5",
+      ",'public.commerce_order_fee_lines'::regclass))=7", "))=6",
     ]]);
     await restore(db, partialLocks);
   }, "ROLLBACK");

@@ -116,7 +116,7 @@ links for that order and expires at the earlier of its own lifetime or the
 order's recovery deadline. Payment prevents further payment through a link;
 other links still obey their expiry and revocation. Payment-case links rotate separately, invalidating their predecessor.
 
-Use the [recovery issuer contract](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/examples/neutral-store/docs/ownership.md#application-ownership)
+Use the [recovery issuer contract](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/examples/neutral-store/docs/ownership.md#application-ownership)
 for token construction and exact continuation, recovery and operator-link deadlines.
 
 A pending order can continue sandbox payment and retry a decline. Expired orders,
@@ -174,7 +174,7 @@ Purchase and sign-in share the bounded `purchase.inputLimits.email` setting;
 overlong purchase email
 refuses with `starter_email_invalid` before contact resolution. Checkout and
 subscription-address fields use the configured phone and postal limits within
-native destination bounds. The [configuration validator](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/examples/neutral-store/docs/ownership.md#application-ownership)
+native destination bounds. The [configuration validator](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/examples/neutral-store/docs/ownership.md#application-ownership)
 owns the exact limits. Browser field limits do not replace host validation.
 
 ## Checkout key continuation
@@ -239,11 +239,16 @@ response: `checkout.read`, `checkout.recovery` `inspect` and `pay`,
 `payment.simulate`. A key holder can therefore start a payment attempt, which
 makes the order not abandonable.
 
-A client that owns its checkout page follows three rules:
+A client that owns its checkout page follows these rules:
 
 1. Keep one key for the whole purchase, including reloads and retries.
-2. Never start a new key after a transport error; repeat or `resume` instead.
-3. Treat "no order under this key" as final only once more than your own
+2. Send the reviewed `expectedTotal` amount and currency from `offer.validate`
+   on every fresh submit in either purchase mode. If the host returns
+   `starter_expected_total_required` or `starter_quote_price_changed`, clear
+   consent, fetch a new review and reconfirm under the same key.
+3. After a transport error, repeat the exact payload with the same key or
+   call `resume`.
+4. Treat "no order under this key" as final only once more than your own
    request timeout plus 15 seconds have passed since the last unanswered
    create. `shared/storefront-bindings.ts` applies this rule for the starter's
    tab record and its `createPurchaseContinuation` bindings. The rule assumes
@@ -255,24 +260,39 @@ A client that owns its checkout page follows three rules:
    buffering proxy adds that proxy's own timeout to its wait. This refusal can
    also reach the managed pages when the host is busy.
 
-The managed checkout page follows these rules. It stores one key per purchase
-in tab storage, under `neutral-store:checkout-continuation:v1:<configuration>`,
-before the first create leaves the browser, and reuses it after a reload or a
-lost response. It starts a new key only after the host confirmed that the
-earlier order is closed, or that no order exists and none can still arrive.
-Changed details, or a later purchase in the same tab while that order is
-unpaid, answer `starter_checkout_changed` and open a panel. The panel also
-appears on load when the tab holds an earlier order or an uncertain create. It offers "Complete payment for the earlier order" (`resume`)
-and "Cancel the earlier order and start over" (`abandon`). After
-`starter_checkout_not_abandonable` or `starter_checkout_expired`, it also offers
-"Start a different purchase". That explicit buyer choice starts a new key while
-the earlier order stays open until the store settles it, and a payment already
-started for it may still complete. The page raises `starter_checkout_in_progress`
-itself while "no order" is not yet final, and `starter_checkout_session_changed`
-when an answer belongs to another sign-in state. A browser that blocks tab
-storage shows `starter_storage_unavailable`; its form keeps the key in the page
-across retries and refused totals, until a reload or changed details, or the
-buyer chooses "Start a new action".
+The managed checkout page follows these rules through `createPurchaseContinuation`
+and `shared/storefront-bindings.ts`; it sends no `checkout.create` of its own. It
+stores one key per purchase in tab storage, under
+`neutral-store:checkout-continuation:v1:<configuration>`, before the first create
+leaves the browser, and reuses it after a reload. A create whose answer was lost
+is repeated once by the page, under the same key, with a 10-second deadline. It
+starts a new key only after the host confirmed that the earlier order is closed,
+or that no order exists and none can still arrive. Changed details while that
+order may exist send nothing: the page opens a panel and shows
+`starter_checkout_changed` itself when the order was last seen payable, the code
+that last named it not payable, expired or paid, or otherwise that an order may
+exist. It keeps that knowledge beside the record, under
+`neutral-store:checkout-order-state:v1:<configuration>`, from every answer that
+names the order's state, the payment-status page's included. A record written before the bindings takes the current
+details on its first submit, under the same key. The panel also appears on load
+when the tab holds an earlier order or an uncertain create. It offers "Complete
+payment for the earlier order" (`resume`) and "Cancel the earlier order and start
+over" (`abandon`). Whenever an answer names the earlier order as not payable
+(`starter_checkout_not_payable`, `starter_checkout_paid`,
+`starter_checkout_not_abandonable`, `starter_checkout_expired`, an expired
+order, or a paid one), it also offers "Start a different purchase". That explicit
+buyer choice starts a new key while the earlier order stays open until the store
+settles it, and a payment already started for it may still complete. The
+payment-status page clears the record only when it shows the order paid or
+cancelled; an expired order keeps it, because a payment under it may still
+settle. When "Cancel the earlier order and start over" finds no order before "no
+order" is final, the page raises `starter_checkout_in_progress` itself, and `starter_checkout_session_changed` when an answer belongs to
+another sign-in state. A browser that blocks tab storage, or refuses a write
+after load (`starter_checkout_storage_unavailable`, nothing sent), shows
+`starter_storage_unavailable`: the page keeps the purchase in its own memory
+under the same key until a reload, and "Start a new action" starts a new one.
+The status line carries the `storefrontAnchor` state with visible text, and the
+panel's choices carry `continue_payment` and `start_over`.
 
 The key is derived from the principal, so a guest key does not survive sign-in
 or sign-out. Resolve the purchase before either; a retry after sign-in finds no
@@ -348,7 +368,7 @@ marking records an externally completed refund; it moves no money, sends no
 refund mail, creates no fiscal reversal and changes no subscription. Execute
 real refunds through their own owner. Invalid reasons, missing confirmation,
 stale status and conflicting commands refuse; native receipts own replay. Reasons
-use the native trimmed-text boundary in the [order control schemas](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/README.md#commerce-contracts).
+use the native trimmed-text boundary in the [order control schemas](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/README.md#commerce-contracts).
 
 Signed-in customers request returns for positive quantities from their own paid
 or fulfilled orders using configured reason codes. Keep the returned request
@@ -396,7 +416,7 @@ Detected embedded browsers show send and send-again controls only after verified
 continuation exists. Detection changes display, not authority. The cookie-only
 handler derives identity from claims, uses the saved checkout recipient and
 deduplicates sends within the configured time bucket. The
-[continuation composition](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/examples/neutral-store/docs/ownership.md#sandbox-token-payment-and-exact-continuation)
+[continuation composition](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/examples/neutral-store/docs/ownership.md#sandbox-token-payment-and-exact-continuation)
 owns its duration. Confirmation survives panel
 remounts; failures offer retry. Delivery rechecks buyer authorization and captures
 the marked buyer link privately. Enqueue, capture and payment are separate facts.

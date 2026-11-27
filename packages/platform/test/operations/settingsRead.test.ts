@@ -312,6 +312,40 @@ describe("settings show", () => {
       });
     }
   });
+
+  it("explains Wave 4A refusal code and distinguishes override, fallback, offline, and malformed rows for E9", async () => {
+    const key = "subscriptions.rescheduleTimeZone";
+    const code = "subscription_reschedule_timezone_policy_invalid";
+    const fallback = { revision: "default", timeZone: "UTC" };
+    const override = { revision: "store-1", timeZone: "Europe/Berlin" };
+
+    expect(explainSetting(code)).toMatchObject({
+      explanation: { code, path: [], rule: expect.stringMatching(/revision.*nonblank.*timeZone.*IANA/u) },
+    });
+    const { listResult } = loadSettingsCatalogue();
+    const listed = listResult.parse(listSettings({ goal: "reschedule time zone" })).entries;
+    expect(listed.map(entry => entry.key)).toContain(key);
+    let state: "override" | "absent" | "malformed" = "override";
+    const readers = {
+      [key]: async () => {
+        if (state === "override") return { present: true, value: override, revision: override.revision } as const;
+        if (state === "absent") return { present: false } as const;
+        throw new Error(code);
+      },
+    };
+    expect(await showSetting({ key })).toMatchObject({ observation: { state: "offline" } });
+    expect(await showSetting({ key }, readers)).toMatchObject({
+      observation: { state: "override", value: override, revision: override.revision },
+    });
+    state = "absent";
+    expect(await showSetting({ key }, readers)).toMatchObject({
+      observation: { state: "fallback", value: fallback },
+    });
+    state = "malformed";
+    expect(await showSetting({ key }, readers)).toMatchObject({
+      refusal: { code: "commerce_setting_read_unavailable" },
+    });
+  });
 });
 
 it("finds inventory buffer in the packaged settings list", () => {
@@ -353,6 +387,8 @@ describe("settings goal search", () => {
     ["skus", "catalog.optionalGtin"],
     ["VAT rate", "market.fiscalProfile"],
     ["merchant tax registration coverage history", "tax.coverage"],
+    ["return reasons", "commerce.returnReasons"],
+    ["payment method preferences", "shipping.paymentMethodPreferences"],
   ])("includes %s matches such as %s", (goal, key) => {
     const { entries } = catalogue.listResult.parse(listSettings({ goal }));
     expect(entries.map(entry => entry.key)).toContain(key);

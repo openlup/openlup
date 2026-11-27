@@ -9792,6 +9792,214 @@
         ]
       },
       {
+        "row": "order-money-v2-restore-no-temp",
+        "path": "db/platform/migrations/20261129130503_order_money_v2_restore_no_temp.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.commerce_order_money_v2_assert(uuid,boolean,boolean,jsonb,jsonb)",
+            "beforeSha256": "ff2ef9c8f64cd957ccbff6f00e2873750be65603ddd0bb8a0b7d1ac0a59cfba5",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
+        "row": "catalog-price-publication-recorder-v2",
+        "path": "db/platform/migrations/20261129130504_catalog_price_publication_recorder_v2.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.catalog_price_setup_apply_claimed(jsonb,timestamptz)",
+            "beforeSha256": "3a0e7528be3b8647e789da007a76fa25184b50f75ac1fd382def8b19f88efc45",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_record_command(jsonb)",
+            "beforeSha256": "f7a3fb546da2d7a330a21c90f883d140b12699737f650a9dee60343d724bf909",
+            "searchPath": "pg_catalog, public, pg_temp",
+            "qualifiedSecurityDefiner": true
+          },
+          {
+            "signature": "public.catalog_publication_target_price_verdict(jsonb,timestamptz)",
+            "beforeSha256": "5321af8c0ce6cf21810c8a1b7cd5e4ebaef13edae73c9ca99150f6ae0def93d4",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.catalog_price_setup_mutate_claimed(jsonb,timestamptz,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_price_operations_v2(jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_price_revision_facts_v2(uuid,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_price_tax_class_v2(jsonb,jsonb,boolean)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_lock_price_plan_v2(jsonb,jsonb,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_price_receipt_facts_v2(public.catalog_price_setup_receipts,jsonb,jsonb,uuid,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_decide_prices_v2(jsonb,jsonb,jsonb,jsonb,jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_assess_prices_v2(jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
+        "row": "settings-wave4a-reschedule-timezone",
+        "path": "db/platform/migrations/20261129130505_settings_wave4a_reschedule_timezone.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.subscription_apply_lifecycle_action(uuid,text,uuid,text,jsonb,timestamptz,jsonb)",
+            "beforeSha256": "b29fd0262d579ecb1d6afabe5863bfbe99069f286f193335904e82acd5523bcb",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_command_preview(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
+            "beforeSha256": "21a83ef480b46955bce24590f9cfd10a0262e1fa27332b75c5fa5ec1f6fdcfe8",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_command_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz,jsonb)",
+            "beforeSha256": "b804c7a11b6e7971e2a27b63b4d0cb856336bad371a6fa61d8fe3d47cf1d430e",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_support_apply_subscription_action_v1(uuid,uuid,text,jsonb,integer,text,timestamptz)",
+            "beforeSha256": "ada7aefb623deaa5b28bae2f545b3fee00adca039da4adc955fac2efff3bf0c3",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.subscription_reschedule_timezone_validate(jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_reschedule_timezone_read()",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
+        "row": "paid-order-money-v2-read",
+        "path": "db/platform/migrations/20261129130506_paid_order_money_v2_read.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.commerce_read_paid_order_money_v2(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
+        "row": "settings-wave3b-return-reasons-and-payment-preferences",
+        "path": "db/platform/migrations/20261129130507_settings_wave3b_return_reasons_and_payment_preferences.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.commerce_return_request_create_owned(text,uuid,jsonb,text,text,uuid)",
+            "beforeSha256": "e3ffd4849151467cb1c62b363fabac49c811e86d7fb6b64f1da74d094ade741a",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_preference_save(uuid,uuid,text,jsonb,timestamptz)",
+            "beforeSha256": "5188e31f346abf4ee41a38843ce264101ca907834a83927c46693556eda435fc",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.commerce_return_reasons_validate(jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_return_reasons_read()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.shipping_payment_method_preferences_validate(jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.shipping_payment_method_preferences_read()",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "checkToFunctionGuard": [
+          {
+            "table": "public.commerce_return_requests",
+            "name": "commerce_return_requests_reason_check",
+            "column": "reason_code",
+            "beforeSha256": "05905e3a8b2afb620e24e0b28da8e3d89555ff3ae7f844cb83ee96127906584f",
+            "afterSha256": "a82c86faf2c5c2d46d5137642fed6f198810fd1a67f5da0bbf906e6fc28e1950",
+            "guardFunctions": [
+              "public.commerce_return_request_create_owned(text,uuid,jsonb,text,text,uuid)"
+            ]
+          },
+          {
+            "table": "public.customer_payment_preferences",
+            "name": "customer_payment_preferences_method_kind_check",
+            "column": "method_kind",
+            "beforeSha256": "18c00241c11981086f733a5b0b7a9e165fe8abc79121216e2d59feb628aeda10",
+            "afterSha256": "0f808b0fb7b4cf6f043ac81706a0dcaf12ec52ad2e4be7ed4635ec2727018b17",
+            "guardFunctions": [
+              "public.customer_preference_save(uuid,uuid,text,jsonb,timestamptz)"
+            ]
+          }
+        ]
+      },
+      {
+        "row": "renewal-order-destination",
+        "path": "db/platform/migrations/20261129130508_renewal_order_destination_v2.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.commerce_destination_v2_read_retained(jsonb,text,uuid,jsonb)",
+            "beforeSha256": "85f21c7afdc1fd1de2fcfde95722f5523ade656f2a89294499ee66f465f734d1",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.classify_order_destination(uuid,public.commerce_destination_v2_documents,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_register_renewal_order_destination_v2(jsonb,uuid,uuid,uuid,jsonb,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "tax-calculation-adapter-money",
         "path": "db/platform/migrations/20261129160000_tax_calculation_adapter_money_v1.sql",
         "replacedFunctions": [],
@@ -14220,6 +14428,187 @@
           "signature": "public.catalog_admission_is_governed(jsonb,jsonb)",
           "beforeSha256": null,
           "afterSha256": "98078fe0b0d23125c0801d7b0900363b88d24688428f977b909475200f8f8fff"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261129130503_order_money_v2_restore_no_temp.sql",
+      "sha256": "871b648d426739e13c67478dafb4c3e99476b22d543eb7d91da6a782237cb89d",
+      "functions": [
+        {
+          "signature": "public.commerce_order_money_v2_assert(uuid,boolean,boolean,jsonb,jsonb)",
+          "beforeSha256": "ff2ef9c8f64cd957ccbff6f00e2873750be65603ddd0bb8a0b7d1ac0a59cfba5",
+          "afterSha256": "7bf7e6485608ec567b1837a7286e3bb7a508e4141cf4dd295678cdefbd21c5b0"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261129130504_catalog_price_publication_recorder_v2.sql",
+      "sha256": "bdec86e74f6015efdd7ab595e409647bb8adc923606ff80604bf8ca82c8277de",
+      "functions": [
+        {
+          "signature": "public.catalog_price_setup_apply_claimed(jsonb,timestamptz)",
+          "beforeSha256": "3a0e7528be3b8647e789da007a76fa25184b50f75ac1fd382def8b19f88efc45",
+          "afterSha256": "36818708bdd4d878ceefe4a9621a09b5d0d96cc03d3d60e5669ef1ad48bc4b4d"
+        },
+        {
+          "signature": "public.catalog_publication_record_command(jsonb)",
+          "beforeSha256": "f7a3fb546da2d7a330a21c90f883d140b12699737f650a9dee60343d724bf909",
+          "afterSha256": "e5cdb27f21eb4568338a39a4d02a31ce33d4b0d8b7b631e727f5e94ffba697f1"
+        },
+        {
+          "signature": "public.catalog_publication_target_price_verdict(jsonb,timestamptz)",
+          "beforeSha256": "5321af8c0ce6cf21810c8a1b7cd5e4ebaef13edae73c9ca99150f6ae0def93d4",
+          "afterSha256": "e7d39341807886392a24600838679de4c84961d3e76e733beff79ec19801b8a2"
+        },
+        {
+          "signature": "public.catalog_price_setup_mutate_claimed(jsonb,timestamptz,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "3947640e6863d844d028cf486d1ca13d2b7f5f4b73b64845ef24400eb0b475ee"
+        },
+        {
+          "signature": "public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "1432fce741baca02630579a3c78be5f98cf37d97f8dfe2016753357f6774c36a"
+        },
+        {
+          "signature": "public.catalog_publication_price_operations_v2(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "29c0b7dfee4a374fb378c79c49a4b0bd646e854a8d849e2c63710e5911dc8d72"
+        },
+        {
+          "signature": "public.catalog_publication_price_revision_facts_v2(uuid,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "3b0ecf30775f14d01c7cd188bd4eb52d03c9a2ad5896c79df2d54f8df53f0962"
+        },
+        {
+          "signature": "public.catalog_publication_price_tax_class_v2(jsonb,jsonb,boolean)",
+          "beforeSha256": null,
+          "afterSha256": "e9774a4766239c498363ebd2837e061234f039c7d5be0f19e2c3f1422c881d39"
+        },
+        {
+          "signature": "public.catalog_publication_lock_price_plan_v2(jsonb,jsonb,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "443e3790d4e549b306cdfde666f805753c71d12d4e70e46557684d1cedad8309"
+        },
+        {
+          "signature": "public.catalog_publication_price_receipt_facts_v2(public.catalog_price_setup_receipts,jsonb,jsonb,uuid,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "cdceb1fdd9997df79f11d555143c6bafae0bac8439f586bddef10feb5f49a3c7"
+        },
+        {
+          "signature": "public.catalog_publication_decide_prices_v2(jsonb,jsonb,jsonb,jsonb,jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "5c60dbf17dd95760c4fec40f78f53891534e002f124dec25fb01ae990bc97606"
+        },
+        {
+          "signature": "public.catalog_publication_assess_prices_v2(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "fdb05657dd6287853166e57ceb64411d3265bf741331c9f372c44b8101926dcc"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261129130505_settings_wave4a_reschedule_timezone.sql",
+      "sha256": "8fdc4dffe112ddd7dad2765b921fbbf3556db874e21b20318568c1dfb1f76225",
+      "functions": [
+        {
+          "signature": "public.subscription_apply_lifecycle_action(uuid,text,uuid,text,jsonb,timestamptz,jsonb)",
+          "beforeSha256": "b29fd0262d579ecb1d6afabe5863bfbe99069f286f193335904e82acd5523bcb",
+          "afterSha256": "5678ce00da103b296b1920b2d78cb188eccea03fe5e6d7cd559531a76f6b0beb"
+        },
+        {
+          "signature": "public.subscription_command_preview(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
+          "beforeSha256": "21a83ef480b46955bce24590f9cfd10a0262e1fa27332b75c5fa5ec1f6fdcfe8",
+          "afterSha256": "8b0c0c1e7eb2fd8d501118e7feadf55b980996b14f18df0de97f0e4e0d382f1b"
+        },
+        {
+          "signature": "public.subscription_command_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz,jsonb)",
+          "beforeSha256": "b804c7a11b6e7971e2a27b63b4d0cb856336bad371a6fa61d8fe3d47cf1d430e",
+          "afterSha256": "6110a3bddc04cc2b3bf8650b9a8ec9af47dc2b77944dd8a62924b6ab60312e63"
+        },
+        {
+          "signature": "public.customer_support_apply_subscription_action_v1(uuid,uuid,text,jsonb,integer,text,timestamptz)",
+          "beforeSha256": "ada7aefb623deaa5b28bae2f545b3fee00adca039da4adc955fac2efff3bf0c3",
+          "afterSha256": "c4f71ec7bcecd1d489aa5e5e15a08d9aa2daae2d28970541b666ebbc1c1ca149"
+        },
+        {
+          "signature": "public.subscription_reschedule_timezone_validate(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "931733bc53f6a23d17cf9e917a2398f7deb7709dc8ed5b83e013d1de6896a43c"
+        },
+        {
+          "signature": "public.subscription_reschedule_timezone_read()",
+          "beforeSha256": null,
+          "afterSha256": "50b344d21f9deb55c8d173d22ab6a9285c4f98c153d0b92ddfe0763ffdfb9a46"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261129130506_paid_order_money_v2_read.sql",
+      "sha256": "38c765551a254c374a04f72e8d1e49b9ac1f835b7359319ce745ecdfc9634466",
+      "functions": [
+        {
+          "signature": "public.commerce_read_paid_order_money_v2(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "c06b4df12b5d2081dc661c1c9bc31df5c73388ab25a995abac2b4e4ba086f028"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261129130507_settings_wave3b_return_reasons_and_payment_preferences.sql",
+      "sha256": "0f3a48e4bf37494cc69d46a6dfa11706a1215d1e482fac8f94a948f5ca88e539",
+      "functions": [
+        {
+          "signature": "public.commerce_return_request_create_owned(text,uuid,jsonb,text,text,uuid)",
+          "beforeSha256": "e3ffd4849151467cb1c62b363fabac49c811e86d7fb6b64f1da74d094ade741a",
+          "afterSha256": "87953e9a4563efcc85c4183b06cb1349a38c67a5f01393770627c55e645041ce"
+        },
+        {
+          "signature": "public.customer_preference_save(uuid,uuid,text,jsonb,timestamptz)",
+          "beforeSha256": "5188e31f346abf4ee41a38843ce264101ca907834a83927c46693556eda435fc",
+          "afterSha256": "797277c76a71060aab13ed0d16175c9719a4d1f9bf2d0c2d32ede2896cabb0ca"
+        },
+        {
+          "signature": "public.commerce_return_reasons_validate(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "ec5170f77fef7ec035289c9ebf14796dc7978bf0ae1fb175e45e548f90cfc814"
+        },
+        {
+          "signature": "public.commerce_return_reasons_read()",
+          "beforeSha256": null,
+          "afterSha256": "affa224f37f2daec35ec1042d08c385c009285525b0c92ce7c7a5a44969975fb"
+        },
+        {
+          "signature": "public.shipping_payment_method_preferences_validate(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "7e5b4e9148fbd9fab701541966d6dde2b5e276252e3a8b5bd96da05b4ae99fb3"
+        },
+        {
+          "signature": "public.shipping_payment_method_preferences_read()",
+          "beforeSha256": null,
+          "afterSha256": "f96cf764180276af53f7aec6601f36de9548974b1b29d0e43603b2f826f591e5"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261129130508_renewal_order_destination_v2.sql",
+      "sha256": "cf9f42b785b31b6849da83b46101568e61fd5e4a89500574067602e5f376931f",
+      "functions": [
+        {
+          "signature": "public.commerce_destination_v2_read_retained(jsonb,text,uuid,jsonb)",
+          "beforeSha256": "85f21c7afdc1fd1de2fcfde95722f5523ade656f2a89294499ee66f465f734d1",
+          "afterSha256": "0761ecaea90ee5ca3be7383227ae5d61e6fd1c54d32c0b39fc938f1a08e2cfcb"
+        },
+        {
+          "signature": "public.classify_order_destination(uuid,public.commerce_destination_v2_documents,text)",
+          "beforeSha256": null,
+          "afterSha256": "569a67ec70d5dfdfd6043d17abef59552fbd592068c7635683312ef25c30d1a9"
+        },
+        {
+          "signature": "public.commerce_register_renewal_order_destination_v2(jsonb,uuid,uuid,uuid,jsonb,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "256ba6e3e12a718c0f994c3b88f26f567a3ab9ccb93c224996b788c6e5cbd0ca"
         }
       ]
     },

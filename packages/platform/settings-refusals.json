@@ -268,6 +268,17 @@
       }
     },
     {
+      "code": "commerce_return_reasons_policy_invalid",
+      "path": [],
+      "rule": "Supply exactly revision and reasons. Revision must be a nonblank string and reasons a non-empty array of 1 through 64 unique codes matching ^[a-z][a-z0-9_]{1,63}$.",
+      "hint": "Check the value schema and examples for commerce.returnReasons.",
+      "remediation": {
+        "retry": true,
+        "action": "Check the schema and correct the rejected value.",
+        "command": "npm --silent run settings -- show commerce.returnReasons --json"
+      }
+    },
+    {
       "code": "payment_method_expiry_warning_days_policy_invalid",
       "path": [],
       "rule": "Supply exactly revision and warningDays. Revision must be a nonblank string and warningDays an integer from 1 through 365.",
@@ -301,6 +312,17 @@
       }
     },
     {
+      "code": "shipping_payment_method_preferences_policy_invalid",
+      "path": [],
+      "rule": "Supply exactly revision and methodKinds. Revision must be a nonblank string and methodKinds a non-empty array of 1 through 32 unique codes matching ^[a-z][a-z0-9_]{1,63}$.",
+      "hint": "Check the value schema and examples for shipping.paymentMethodPreferences.",
+      "remediation": {
+        "retry": true,
+        "action": "Check the schema and correct the rejected value.",
+        "command": "npm --silent run settings -- show shipping.paymentMethodPreferences --json"
+      }
+    },
+    {
       "code": "subscription_edit_quote_ttl_minutes_policy_invalid",
       "path": [],
       "rule": "Supply exactly revision and ttlMinutes. Revision must be a nonblank string and ttlMinutes an integer from 1 through 1440.",
@@ -309,6 +331,17 @@
         "retry": true,
         "action": "Check the schema and correct the rejected value.",
         "command": "npm --silent run settings -- show subscription_edit_quote_ttl_minutes --json"
+      }
+    },
+    {
+      "code": "subscription_reschedule_timezone_policy_invalid",
+      "path": [],
+      "rule": "The policy must be a JSON object with only revision (nonblank string) and timeZone (valid IANA time zone name recognized by PostgreSQL pg_timezone_names).",
+      "hint": "Check the value schema and examples for subscriptions.rescheduleTimeZone.",
+      "remediation": {
+        "retry": true,
+        "action": "Check the schema and correct the rejected value.",
+        "command": "npm --silent run settings -- show subscriptions.rescheduleTimeZone --json"
       }
     },
     {

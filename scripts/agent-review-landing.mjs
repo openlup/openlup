@@ -9,12 +9,12 @@ import { env as processEnvironment } from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { isDeepStrictEqual, promisify } from 'node:util';
 import { git as ordinaryGit } from './agent-review-session.mjs';
-import { REGISTRY_PATHS, SHARD_WEIGHTS_PATH, registryUnion } from './agent-review-registry.mjs';
+import { PG_SUITE_CLOSURES_PATH, REGISTRY_PATHS, SHARD_WEIGHTS_PATH, registryUnion } from './agent-review-registry.mjs';
 import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryEnvelope, migrationRegistryUnion } from './agent-review-derived.mjs';
 import * as carrierGenerators from './agent-review-generators.mjs';
 import { DEFAULT_INCREMENTAL_PACKAGES, TSBUILDINFO_FILENAME } from './build-packages-incremental.mjs';
-import { MIGRATION_RAILS, migrationIdentity, planMigrationSlots } from './migration-slots.mjs';
-export { nextFreeMigrationSlot } from './migration-slots.mjs';
+import { isUtcMigrationSlot, MIGRATION_RAILS, migrationIdentity, nextFreeMigrationSlot, planMigrationSlots } from './migration-slots.mjs';
+export { nextFreeMigrationSlot };
 import { resolveResourceGateInvocation } from './resource-gate.mjs';
 import { documentationGit } from './documentation-routing.ts';
 import { isGuidePage } from './oss-publication-policy.ts';
@@ -293,19 +293,49 @@ function checkLandingSqlReference(runGenerators) {
 }
 
 export function parseLandingCliOptions(argv = []) {
-  return {
-    reSlot: argv.includes('--re-slot'),
-    verify: !argv.includes('--no-verify'),
-  };
+  let reSlot = false;
+  let verify = true;
+  let target;
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === '--re-slot') {
+      reSlot = true;
+    } else if (arg === '--no-verify') {
+      verify = false;
+    } else if (arg === '--target' || arg.startsWith('--target=')) {
+      if (target !== undefined) {
+        throw new Error('landing: duplicate --target option');
+      }
+      const value = arg === '--target' ? argv[++index] : arg.slice('--target='.length);
+      if (!value || value.startsWith('-')) {
+        throw new Error('landing: --target requires a 14-digit UTC slot (YYYYMMDDHHMMSS)');
+      }
+      if (!isUtcMigrationSlot(value)) {
+        throw new Error(`landing: --target must be a valid 14-digit UTC slot (YYYYMMDDHHMMSS): ${value}`);
+      }
+      target = value;
+    } else {
+      throw new Error(`landing: unknown CLI option: ${arg}`);
+    }
+  }
+  if (target !== undefined && !reSlot) {
+    throw new Error('landing: --target requires --re-slot');
+  }
+  return target === undefined ? { reSlot, verify } : { reSlot, verify, target };
 }
 
 function runLandingCli() {
   const diagnostics = {};
-  const { reSlot, verify } = parseLandingCliOptions(process.argv.slice(2));
-  runLanding(process.cwd(), undefined, diagnostics, reSlot, verify).then(result => console.log(JSON.stringify(result))).catch(error => {
-    console.error(diagnostics.aborted ?? error.message);
+  try {
+    const { reSlot, verify, target } = parseLandingCliOptions(process.argv.slice(2));
+    runLanding(process.cwd(), undefined, diagnostics, reSlot, verify, target).then(result => console.log(JSON.stringify(result))).catch(error => {
+      console.error(diagnostics.aborted ?? error.message);
+      process.exitCode = 1;
+    });
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
-  });
+  }
 }
 
 export async function assertCarrierBuildOutputs(cwd, directories, incremental = false) {
@@ -431,11 +461,70 @@ export function isInventoryInputPath(path) {
     /^server\/adapters\/postgres\/connectedStoreDomains\//u.test(path);
 }
 
-export function landingSlotPlan(prAddedPaths, mainMigrationPaths) {
-  const { floor, moves, next } = planMigrationSlots(prAddedPaths, mainMigrationPaths);
-  const changes = moves.filter(move => move.sourcePath !== move.targetPath)
-    .map(move => ({ path: move.sourcePath, target: move.targetPath }));
-  return { maxMainSlot: floor, nextFreeSlot: changes.length ? migrationIdentity(changes[0].target).version : moves.length ? moves.at(-1).targetVersion : next(), changes };
+export function landingSlotPlan(prAddedPaths, mainMigrationPaths, { target, branchMigrationPaths = prAddedPaths } = {}) {
+  if (target === undefined) {
+    const { floor, moves, next } = planMigrationSlots(prAddedPaths, mainMigrationPaths);
+    const changes = moves.filter(move => move.sourcePath !== move.targetPath)
+      .map(move => ({ path: move.sourcePath, target: move.targetPath }));
+    return { maxMainSlot: floor, nextFreeSlot: changes.length ? migrationIdentity(changes[0].target).version : moves.length ? moves.at(-1).targetVersion : next(), changes };
+  }
+  if (typeof target !== 'string' || !isUtcMigrationSlot(target)) {
+    throw new Error(`landing: --target must be a valid 14-digit UTC slot (YYYYMMDDHHMMSS): ${String(target)}`);
+  }
+  const baseline = '00000000000000';
+  const mainSlots = mainMigrationPaths.flatMap(path => migrationIdentity(path)?.version ?? []);
+  const maxMainSlot = [baseline, ...mainSlots].sort().at(-1);
+  const branchAndOriginalSlots = [...branchMigrationPaths, ...prAddedPaths].flatMap(path => migrationIdentity(path)?.version ?? []);
+  const requiredFloor = [maxMainSlot, ...branchAndOriginalSlots].sort().at(-1);
+  const additions = prAddedPaths.flatMap(path => {
+    const identity = migrationIdentity(path);
+    return identity && !identity.qualifier && identity.version !== baseline ? [{ path, ...identity }] : [];
+  }).sort((a, b) => (a.version < b.version ? -1 : Number(a.version > b.version)));
+  if (additions.length === 0) {
+    throw new Error('landing: --target requires at least one unlanded plain migration');
+  }
+  const oldVersions = new Set();
+  for (const { path, version } of additions) {
+    if (oldVersions.has(version)) throw new Error(`migration slots: ambiguous draft version ${version} at ${path}`);
+    oldVersions.add(version);
+  }
+  if (target <= requiredFloor) {
+    throw new Error(`landing: --target ${target} must be strictly later than ${requiredFloor}`);
+  }
+  const occupied = new Set(
+    [...mainMigrationPaths, ...branchMigrationPaths, ...prAddedPaths].flatMap(path => {
+      const lower = path.toLowerCase();
+      return lower.startsWith(MIGRATION_RAILS[0])
+        ? [lower, `packages/platform/sql/${lower.slice(MIGRATION_RAILS[0].length)}`]
+        : [lower];
+    }),
+  );
+  const collides = (root, slot, name) => {
+    const candidate = `${root}${slot}_${name}`.toLowerCase();
+    if (occupied.has(candidate)) return true;
+    return root === MIGRATION_RAILS[0] && occupied.has(`packages/platform/sql/${slot}_${name}`.toLowerCase());
+  };
+  const first = additions[0];
+  if (collides(first.root, target, first.name)) {
+    throw new Error(`landing: --target ${target} collides with existing path or mirror for ${first.path}`);
+  }
+  const used = new Set([...mainSlots, ...branchAndOriginalSlots]);
+  let bound = target;
+  const changes = additions.map(({ path, root, name }, index) => {
+    let slot;
+    if (index === 0) {
+      slot = target;
+    } else {
+      slot = nextFreeMigrationSlot(bound);
+      while (used.has(slot) || collides(root, slot, name)) {
+        slot = nextFreeMigrationSlot(slot);
+      }
+    }
+    bound = slot;
+    used.add(slot);
+    return { path, target: `${root}${slot}_${name}` };
+  });
+  return { maxMainSlot, nextFreeSlot: target, changes };
 }
 
 export function assertAppendOnlyLandingSlots(prAddedPaths, mainMigrationPaths) {
@@ -534,8 +623,8 @@ export function applyMigrationReslot(cwd, changes, moveFiles = true, remapPaths 
   }
 }
 
-export async function landingMerge(cwd = process.cwd(), { runCommand, reSlot = false, verify = false } = {}) {
-  return runLanding(cwd, runCommand, {}, reSlot, verify);
+export async function landingMerge(cwd = process.cwd(), { runCommand, reSlot = false, verify = false, target } = {}) {
+  return runLanding(cwd, runCommand, {}, reSlot, verify, target);
 }
 
 export async function finalizeLanding(cwd, { head, main, base, ref, moves, checkpoint, guard, trackOwned, mergePaths, verifyIndex, sourceBytes, runCommand, bystanders, captureBystanders }) {
@@ -557,7 +646,13 @@ export async function finalizeLanding(cwd, { head, main, base, ref, moves, check
   });
 }
 
-async function runLanding(cwd, runCommand, diagnostics, reSlot, verify = false) {
+async function runLanding(cwd, runCommand, diagnostics, reSlot, verify = false, target = undefined) {
+  if (target !== undefined) {
+    if (!reSlot) throw new Error('landing: --target requires --re-slot');
+    if (typeof target !== 'string' || !isUtcMigrationSlot(target)) {
+      throw new Error(`landing: --target must be a valid 14-digit UTC slot (YYYYMMDDHHMMSS): ${String(target)}`);
+    }
+  }
   const mergeState = await landingPreflight(cwd);
   for (const key of ['user.name', 'user.email']) {
     let configured;
@@ -572,17 +667,22 @@ async function runLanding(cwd, runCommand, diagnostics, reSlot, verify = false) 
   const prAdded = pathsFrom(await git(cwd, 'diff', '--name-only', '--diff-filter=A', '--no-renames', '-z', base, head));
   let slotChanges = [];
   let mainMigrations = [];
+  let netAdded = [];
   if (prAdded.some(path => MIGRATION_RAILS.some(rail => path.startsWith(rail)))) {
     // Skip migrations already present byte-for-byte identically on origin/main (stacked PRs whose predecessor squash-merged).
-    const differingFromMain = new Set(pathsFrom(await git(cwd, 'diff', '--name-only', '--no-renames', '-z', main, head, '--', 'db/platform/migrations', 'supabase/migrations')));
-    const netAdded = prAdded.filter(path => differingFromMain.has(path));
-    if (netAdded.length > 0) {
-      mainMigrations = pathsFrom(await git(cwd, 'ls-tree', '-r', '--name-only', '-z', main, '--', 'db/platform/migrations', 'supabase/migrations'));
-      const plan = landingSlotPlan(netAdded, mainMigrations);
-      if (plan.changes.length && !reSlot) assertAppendOnlyLandingSlots(netAdded, mainMigrations);
-      slotChanges = plan.changes;
-      if (slotChanges.length) await assertNoAuthoredSlotReferences(cwd, base, head, slotChanges);
-    }
+    const differingFromMain = new Set(pathsFrom(await git(cwd, 'diff', '--name-only', '--no-renames', '-z', main, head, '--', ...MIGRATION_RAILS)));
+    netAdded = prAdded.filter(path => differingFromMain.has(path));
+  }
+  if (target !== undefined && netAdded.length === 0) {
+    throw new Error('landing: --target requires at least one unlanded plain migration');
+  }
+  if (netAdded.length > 0) {
+    mainMigrations = pathsFrom(await git(cwd, 'ls-tree', '-r', '--name-only', '-z', main, '--', ...MIGRATION_RAILS));
+    const branchMigrations = pathsFrom(await git(cwd, 'ls-tree', '-r', '--name-only', '-z', head, '--', ...MIGRATION_RAILS));
+    const plan = landingSlotPlan(netAdded, mainMigrations, { target, branchMigrationPaths: branchMigrations });
+    if (plan.changes.length && !reSlot) assertAppendOnlyLandingSlots(netAdded, mainMigrations);
+    slotChanges = plan.changes;
+    if (slotChanges.length) await assertNoAuthoredSlotReferences(cwd, base, head, slotChanges);
   }
   const carrierEnv = { ...processEnvironment, ...carrierLocale };
   const run = runCommand ?? ((command, args, options) => execFileSync(command, args, { cwd, stdio: 'inherit', timeout: 900000, ...options }));
@@ -666,11 +766,18 @@ async function landMergedCheckout(cwd, { head, main, base, run, carrierEnv, diag
     refuseAuthoredConflicts(registryConflicts);
   }
   const readUnion = async path => registryUnion(path, await read(base, path), reslottedHead.get(path) ?? await read(head, path), await read(main, path));
-  // A refused shard-weights union stays an authored conflict: a branch edit of a base weight changes its timeout.
-  const weightsUnion = registryConflicts.includes(SHARD_WEIGHTS_PATH) ? await readUnion(SHARD_WEIGHTS_PATH).catch(error => {
-    if (!error.message.startsWith('registry: ')) throw error;
-    refuseAuthoredConflicts([SHARD_WEIGHTS_PATH]);
-  }) : undefined;
+  // A refused shard-weights or PostgreSQL-closures union stays an authored conflict.
+  const preUnioned = new Map();
+  const refusedRegistries = [];
+  for (const path of [SHARD_WEIGHTS_PATH, PG_SUITE_CLOSURES_PATH]) {
+    if (!registryConflicts.includes(path)) continue;
+    try { preUnioned.set(path, await readUnion(path)); }
+    catch (error) {
+      if (!error.message.startsWith('registry: ')) throw error;
+      refusedRegistries.push(path);
+    }
+  }
+  refuseAuthoredConflicts(refusedRegistries);
   const index = await trackedIndex(cwd);
   const legacyConflict = path => [...REGISTRY_PATHS, ...MIGRATION_REGISTRIES, INVENTORY_PATH].includes(path) ||
     (generatedCarrier(path) && !path.endsWith('.sql') && !/^packages\/[^/]+\/api\/[^/]+\.api\.md$/u.test(path));
@@ -713,7 +820,7 @@ async function landMergedCheckout(cwd, { head, main, base, run, carrierEnv, diag
   if (conflicts.includes(MATURITY_REFERENCE)) await guarded({}, () => checkLandingMaturityReference(runGenerators));
   for (const path of new Set([...registryConflicts, ...(reslotsCatalogue ? [PUBLICATION_CATALOGUE] : [])])) {
     writes.paths.add(path);
-    const contents = path === PUBLICATION_CATALOGUE ? catalogueUnion : path === SHARD_WEIGHTS_PATH ? weightsUnion : await readUnion(path);
+    const contents = path === PUBLICATION_CATALOGUE ? catalogueUnion : preUnioned.has(path) ? preUnioned.get(path) : await readUnion(path);
     await guarded({ files: [path], index: [path] }, async () => {
       writeFileSync(resolve(cwd, path), contents);
       await git(cwd, 'add', '--', path);

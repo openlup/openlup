@@ -66,3 +66,11 @@ export {
   sortCarrierRateOptions,
   selectCheapestCarrierRate,
 } from "./carrierRate.js";
+export {
+  DEFAULT_SHIPPING_PAYMENT_METHOD_PREFERENCES,
+  validateShippingPaymentMethodPreferences,
+  installShippingPaymentMethodPreferencesPolicy,
+  readShippingPaymentMethodPreferencesOverride,
+  readShippingPaymentMethodPreferencesPolicy,
+} from "./paymentMethodPreferencesPolicy.js";
+export type { ShippingPaymentMethodPreferencesPolicy } from "./paymentMethodPreferencesPolicy.js";

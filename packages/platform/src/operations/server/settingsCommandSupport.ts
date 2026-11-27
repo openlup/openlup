@@ -1,4 +1,4 @@
-import { isIPv4 } from "node:net";
+import { isIPv4, Socket } from "node:net";
 import { z } from "zod";
 import type { SettingRefusal } from "../contracts/settings.js";
 import type { runSettingsCommand } from "./settingsCommand.js";
@@ -70,6 +70,28 @@ export function admitDatabaseUrl(input: string): SettingsDatabase | { path: stri
     host, port, user, password: password || (() => ""), database,
     ssl: url.search === "?sslmode=require" || url.search === "?sslmode=verify-full" ? { rejectUnauthorized: true, host } : false,
   };
+}
+
+export async function bindSettingsPasswordDescriptor(fd: 3): Promise<() => string> {
+  const limit = 4096, bytes = Buffer.alloc(limit + 1);
+  // The starter hands off a pollable child pipe. Socket rejects filesystem descriptors.
+  const socket = new Socket({ fd, readable: true, writable: false });
+  const timer = setTimeout(() => socket.destroy(new Error()), 2000);
+  let size = 0;
+  try {
+    for await (const chunk of socket) {
+      size += chunk.copy(bytes, size);
+      if (size > limit) throw new Error();
+    }
+    const line = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes.subarray(0, size));
+    if (!/^[^\p{Cc}]+\n$/u.test(line)) throw new Error();
+    const password = line.slice(0, -1);
+    return () => password;
+  } finally {
+    bytes.fill(0);
+    clearTimeout(timer);
+    socket.destroy();
+  }
 }
 
 const locationSchema = z.strictObject({ file: z.string(), symbol: z.string() }).optional();
