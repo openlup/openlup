@@ -4,6 +4,7 @@ import type { Pool, PoolClient } from "pg";
 import { expect, it } from "vitest";
 import { postgresSetupTimeoutMs } from "../helpers/postgresContainer.js";
 import { installAccountMutationsBeforeForward } from "./customerAccountMutations.fixture.js";
+import { backendPid } from "./destinationReceiptFixture.js";
 import { assertRuntime } from "./orderDraftReceiptsV2.fixture.js";
 import { issue, write } from "./orderMoneyV2Guards.fixture.js";
 import { expectSqlError, rejected, seedSku, transaction, version } from "./orderMoneyV2Storage.fixture.js";
@@ -11,6 +12,7 @@ import { expectSqlError, rejected, seedSku, transaction, version } from "./order
 type Db = Pool | PoolClient;
 const opener = "commerce_open_settlement_intent";
 const provider = "payment_provider_intent_create";
+const providerOpener = "commerce_open_settlement_intent_for_provider";
 const signatures = [
   `public.${opener}(text,uuid,text,bigint,text,jsonb,timestamptz)`,
   `public.${provider}(text,text,uuid,uuid,uuid,bigint,text,jsonb,text,timestamptz)`,
@@ -28,84 +30,54 @@ const forward = manifest.forward.find(unit => unit.file.endsWith("_order_draft_p
 const sql = readFileSync(forward.file, "utf8");
 const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");
 
-const openerOccupied = `    IF EXISTS (SELECT FROM public.commerce_settlement_intents WHERE open_idempotency_key = p_idempotency_key)
-    THEN
-      RAISE unique_violation USING
-        MESSAGE = 'duplicate key value violates unique constraint "commerce_settlement_intents_open_idempotency_key_key"',
-        DETAIL = format('Key (open_idempotency_key)=(%s) already exists.', p_idempotency_key),
-        SCHEMA = 'public', TABLE = 'commerce_settlement_intents',
-        CONSTRAINT = 'commerce_settlement_intents_open_idempotency_key_key';
-    END IF;
-`;
-const providerOpenGuard = `  -- For a versioned order, invoke the opener only when its own validation or
-  -- occupied key would refuse first. Otherwise check the provider key below.
-  IF o.money_version IS NULL OR char_length(btrim(p_idempotency_key)) < 8 OR char_length(p_channel_key) > 64
-    OR EXISTS (SELECT FROM public.commerce_settlement_intents WHERE open_idempotency_key = p_idempotency_key)
-  THEN
-`;
-const providerOpenEnd = "  END IF;\n";
-const providerOccupied = `   IF EXISTS (SELECT FROM public.payment_provider_transitions WHERE idempotency_key = p_idempotency_key||':intent_created')
-   THEN
-     RAISE unique_violation USING
-       MESSAGE = 'duplicate key value violates unique constraint "payment_provider_transitions_idempotency_key_key"',
-       DETAIL = format('Key (idempotency_key)=(%s) already exists.', p_idempotency_key||':intent_created'),
-       SCHEMA = 'public', TABLE = 'payment_provider_transitions',
-       CONSTRAINT = 'payment_provider_transitions_idempotency_key_key';
-   END IF;
-`;
+function guard(record: string, indent: string) {
+  return [
+    `IF ${record}.money_version IS NOT NULL THEN`,
+    `  RAISE EXCEPTION '${refusal}' USING ERRCODE = '22023',`,
+    `    DETAIL = '${field}',`,
+    `    HINT = '${hint}';`,
+    "END IF;",
+  ].map(line => indent + line).join("\n") + "\n";
+}
 
-const openerGuard = `  IF v_order.money_version IS NOT NULL AND p_requested_at IS NOT NULL THEN
-${openerOccupied}    RAISE EXCEPTION '${refusal}' USING ERRCODE = '22023',
-      DETAIL = '${field}',
-      HINT = '${hint}';
-  END IF;
-
-`;
-const providerGuard = ` IF o.money_version IS NOT NULL THEN
-${providerOccupied}   RAISE EXCEPTION '${refusal}' USING ERRCODE = '22023',
-     DETAIL = '${field}',
-     HINT = '${hint}';
- END IF;
-`;
-
-const providerOpenCall = "  opened:=public.commerce_open_settlement_intent(p_idempotency_key,p_order_id,p_channel_key,p_amount_minor,p_currency,p_metadata,p_at);\n";
-const providerReadIntent = "  SELECT * INTO i FROM public.commerce_settlement_intents WHERE id=(opened#>>'{settlement,id}')::uuid;\n";
+const openerGuard = guard("v_order", "  ");
+const providerGuard = guard("o", " ");
+const providerOpenCall = `opened:=public.${providerOpener}(`;
 const sourcePins = [
   {
     name: opener,
     source: "db/platform/migrations/20260810180000_payment_settlement_rail.sql",
-    guards: [{
-      addition: openerGuard,
-      before: "    RAISE EXCEPTION 'commerce_settlement_open_amount_mismatch' USING ERRCODE = '22023';\n  END IF;\n\n",
-      after: "  INSERT INTO public.commerce_settlement_intents\n",
-    }],
+    addition: openerGuard,
+    before: "  RETURNING * INTO v_transition;\n\n",
+    after: "  RETURN public.commerce_settlement_response(v_intent, v_transition.id, 'opened', false);\n",
     hash: "1de48eef8ad18302ea5e35aab121322045723594e9857eac8dd1157967a6ca4f",
   },
   {
     name: provider,
     source: "db/platform/migrations/20261114100000_payment_provider_attempt_store.sql",
-    guards: [
-      { addition: providerOpenGuard, before: " ELSE\n", after: providerOpenCall },
-      { addition: providerOpenEnd, before: providerReadIntent, after: " END IF;\n" },
-      { addition: providerGuard, before: " END IF;\n", after: " INSERT INTO public.payment_provider_states(" },
-    ],
+    addition: providerGuard,
+    before: " VALUES('commerce.payment_intent.create',p_idempotency_key,fingerprint,'completed',answer,jsonb_build_object('paymentIntentId',i.id,'paymentId',ps.payment_id,'channelKey',p_channel_key));\n",
+    after: " RETURN answer;\n",
     hash: "5f8d3f14b8f2eb791333ee5a7227bc33d54fd410d5d5730b5f0f65a819e28b02",
   },
 ];
 
-function omitGuard(definition: string, { before, addition, after }: typeof sourcePins[number]["guards"][number]) {
-  expect(definition.split(before + addition + after)).toHaveLength(2);
-  return definition.replace(before + addition + after, before + after);
-}
-
 function assertBytes(forwardSql: string) {
-  const definitions = [...forwardSql.matchAll(/^CREATE OR REPLACE FUNCTION public\.([a-z_]+)\([\s\S]*?^\$\$;\n/gmu)];
-  expect(definitions.map(match => match[1])).toStrictEqual([opener, provider]);
-  expect(definitions.map(match => match[0]).join("\n")).toBe(forwardSql);
-  for (const [index, { name, source, guards, hash }] of sourcePins.entries()) {
-    const definition = definitions[index]![0];
-    let original = guards.reduce(omitGuard, definition).replace("CREATE OR REPLACE FUNCTION", "CREATE FUNCTION");
-    if (name === opener) original = original.replace("SET search_path = public, pg_catalog, pg_temp", "SET search_path = public, pg_catalog");
+  const definitions = [...forwardSql.matchAll(/^CREATE( OR REPLACE)? FUNCTION public\.([a-z_]+)\([\s\S]*?^\$\$;\n/gmu)];
+  expect(definitions.map(match => match[2])).toStrictEqual([providerOpener, opener, provider]);
+  expect(definitions.map(match => match[1])).toStrictEqual([undefined, " OR REPLACE", " OR REPLACE"]);
+  for (const [index, { name, source, before, addition, after, hash }] of sourcePins.entries()) {
+    const definition = definitions[index + 1]![0];
+    expect(definition.split(before + addition + after)).toHaveLength(2);
+    let original = definition.replace("CREATE OR REPLACE FUNCTION", "CREATE FUNCTION").replace(before + addition + after, before + after);
+    if (name === opener) {
+      original = original.replace("SET search_path = public, pg_catalog, pg_temp", "SET search_path = public, pg_catalog");
+      expect(definitions[0]![0].replace(providerOpener, opener)).toBe(definition
+        .replace("CREATE OR REPLACE FUNCTION", "CREATE FUNCTION").replace(before + addition + after, before + after));
+    } else {
+      expect(original.split(providerOpenCall)).toHaveLength(2);
+      original = original.replace(providerOpenCall, `opened:=public.${opener}(`);
+    }
     const landed = readFileSync(source, "utf8").match(new RegExp(
       `^CREATE FUNCTION public\\.${name}\\([\\s\\S]*?^\\$\\$;\\n`, "mu",
     ))?.[0];
@@ -114,13 +86,12 @@ function assertBytes(forwardSql: string) {
   }
 }
 
-it("pins both insertion anchors and preserves the incumbent source ranges byte for byte", () => {
-  for (const { guards } of sourcePins) {
-    for (const { before, addition, after } of guards) {
-      // Temporarily moved an insertion anchor in a disposable forward string.
-      expect(() => assertBytes(sql.replace(before + addition + after, addition + before + after))).toThrow();
-    }
+it("pins the fresh-return guards, owner opening copy and incumbent source ranges byte for byte", () => {
+  for (const { before, addition, after } of sourcePins) {
+    // Temporarily moved a fresh-return guard in a disposable forward string.
+    expect(() => assertBytes(sql.replace(before + addition + after, addition + before + after))).toThrow();
   }
+  expect(() => assertBytes(sql.replace(providerOpenCall, `opened:=public.${opener}(`))).toThrow();
   assertBytes(sql);
 });
 
@@ -179,9 +150,49 @@ async function expectFence(run: Promise<unknown>, routine: string) {
 
 const relations = ["commerce_settlement_intents", "commerce_settlement_transitions", "payment_provider_states",
   "payment_provider_transitions", "payment_provider_receipts"];
-const paymentFacts = async (db: Db) => Object.fromEntries(await Promise.all(relations.map(async table => [
-  table, (await db.query(`SELECT to_jsonb(fact)::text AS fact FROM public.${table} AS fact ORDER BY 1`)).rows,
-])));
+async function paymentFacts(db: Db) {
+  const facts: Record<string, { fact: string }[]> = {};
+  for (const table of relations) {
+    facts[table] = (await db.query<{ fact: string }>(
+      `SELECT to_jsonb(fact)::text AS fact FROM public.${table} AS fact ORDER BY 1`)).rows;
+  }
+  return facts;
+}
+
+async function concurrentKeyReservation(
+  { owner, runtime }: { owner: Pool; runtime: Pool },
+  finish: "COMMIT" | "ROLLBACK",
+  reserve: (db: PoolClient) => Promise<unknown>,
+  attempt: (db: PoolClient) => Promise<unknown>,
+  verify: (run: Promise<unknown>) => Promise<void>,
+) {
+  const before = await paymentFacts(owner);
+  const blocker = await owner.connect();
+  const contender = await runtime.connect();
+  try {
+    const [waitingPid, blockingPid] = await Promise.all([backendPid(contender), backendPid(blocker)]);
+    await blocker.query("BEGIN");
+    await contender.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+    await contender.query("SET LOCAL statement_timeout = '10s'");
+    await contender.query("SELECT pg_current_snapshot()");
+    await reserve(blocker);
+    const reserved = await paymentFacts(blocker);
+
+    const checked = verify(attempt(contender));
+    void checked.catch(() => {});
+    await expect.poll(async () => (await owner.query(`SELECT $2::int = ANY(pg_blocking_pids($1))
+      AND EXISTS (SELECT FROM pg_locks WHERE pid=$1 AND locktype='transactionid' AND mode='ShareLock' AND NOT granted)
+      AS blocked`, [waitingPid, blockingPid])).rows[0]?.blocked, { timeout: 4_000 }).toBe(true);
+    await blocker.query(finish);
+    await checked;
+    expect(await paymentFacts(owner)).toStrictEqual(finish === "COMMIT" ? reserved : before);
+  } finally {
+    await blocker.query("ROLLBACK");
+    await contender.query("ROLLBACK");
+    blocker.release();
+    contender.release();
+  }
+}
 
 function routineAttributes(db: Db) {
   return db.query(`
@@ -199,6 +210,11 @@ function receiptReplay(original: Payment): Payment {
 function showMutationFailure(check: (db: Db) => Promise<void>, store: Awaited<ReturnType<typeof installAccountMutationsBeforeForward>>, mutant: string) {
   return transaction(store.owner, async db => {
     await db.query(mutant);
+    // The disposable owner session can differ from the installed provider definer.
+    const { rows } = await db.query<{ statement: string }>(`SELECT format(
+      'ALTER FUNCTION public.${providerOpener}(text,uuid,text,bigint,text,jsonb,timestamptz) OWNER TO %I',
+      pg_get_userbyid(proowner)) AS statement FROM pg_proc WHERE oid=$1::regprocedure`, [signatures[1]]);
+    await db.query(rows[0]!.statement);
     await db.query("SET LOCAL ROLE service_role");
     await expect(check(db)).rejects.toThrow(/expected|promise rejected/iu);
   }, "ROLLBACK");
@@ -330,26 +346,32 @@ it.each(["bootstrap", "admin-managed"] as const)("upgrades the qualified %s prof
     // Temporarily disabled each fresh guard in a disposable database.
     const noOpenerFence = sql.replace(openerGuard, "");
     await showMutationFailure(fences[0]!, store, noOpenerFence);
-    const noFences = sourcePins[1]!.guards.reduce(omitGuard, noOpenerFence);
-    for (const check of fences.slice(1)) await showMutationFailure(check, store, noFences);
+    const noProviderFence = sql.replace(providerGuard, "");
+    for (const check of fences.slice(1)) await showMutationFailure(check, store, noProviderFence);
 
     // Temporarily disabled replay and conflict precedence in a disposable database.
-    const earlyOpener = sql.replace(openerGuard, "").replace("  SELECT * INTO v_intent\n", openerGuard + "  SELECT * INTO v_intent\n");
+    const openerStart = sql.indexOf(`CREATE OR REPLACE FUNCTION public.${opener}(`);
+    expect(openerStart).toBeGreaterThan(0);
+    const earlyOpener = sql.slice(0, openerStart) + sql.slice(openerStart).replace(openerGuard, "")
+      .replace("  SELECT * INTO v_intent\n", openerGuard + "  SELECT * INTO v_intent\n");
     const receiptLookup = " SELECT * INTO receipt FROM public.payment_provider_receipts";
     const earlyProvider = sql.replace(providerGuard, "").replace(receiptLookup, providerGuard + receiptLookup);
     for (const check of incumbent.slice(0, 2)) await showMutationFailure(check, store, earlyOpener);
     for (const check of incumbent.slice(2)) await showMutationFailure(check, store, earlyProvider);
     await showMutationFailure(attachedConflict, store, earlyProvider);
 
-    await showMutationFailure(crossOrderOpening, store, sql.replace(openerOccupied, ""));
-    const checkOpening = "    OR EXISTS (SELECT FROM public.commerce_settlement_intents WHERE open_idempotency_key = p_idempotency_key)\n";
-    expect(providerOpenGuard).toContain(checkOpening);
-    await showMutationFailure(crossOrderProviderOpening, store, sql.replace(providerOpenGuard, providerOpenGuard.replace(checkOpening, "")));
-    await showMutationFailure(transitionConflict, store, sql.replace(providerOccupied, ""));
+    await showMutationFailure(crossOrderOpening, store, earlyOpener);
+    await showMutationFailure(crossOrderProviderOpening, store, earlyProvider);
+    await showMutationFailure(transitionConflict, store, earlyProvider);
 
     expect((await store.runner.apply()).applied[0]).toBe(forward.file);
     expect(await routineAttributes(owner)).toStrictEqual(attrs);
     await unchanged([...incumbent, ...occupied, ...validation, ...fences]);
+    expectError(await rejected(runtime.query(
+      `SELECT public.${providerOpener}($1,$2,$3,$4,$5,$6,$7)`,
+      ["direct-private-opener", fresh.id, channel, fresh.amount, fresh.currency, {}, at],
+    )), "42501", `permission denied for function ${providerOpener}`);
+
 
     const { rows: [client] } = await owner.query("SELECT client_id FROM public.commerce_orders WHERE id=$1", [fresh.id]);
     const legacyOrder = async (): Promise<Order> => {
@@ -391,5 +413,21 @@ it.each(["bootstrap", "admin-managed"] as const)("upgrades the qualified %s prof
       async db => expectError(await rejected(create(db, createLegacy, "legacy-provider-unused")),
         "23505", "payment_control_intent_order_already_has_intent"),
     ]);
+    // Reserve each key on another order while the versioned contender holds an older snapshot.
+    for (const finish of ["COMMIT", "ROLLBACK"] as const) {
+      for (const [routine, call] of [[opener, open], [provider, create]] as const) {
+        const otherOrder = await legacyOrder();
+        const key = `concurrent-opening-${randomUUID()}`;
+        await concurrentKeyReservation(store, finish, db => open(db, otherOrder, key), db => call(db, fresh, key),
+          run => finish === "COMMIT" ? expectOccupiedOpening(run, key) : expectFence(run, routine));
+      }
+      const otherOrder = await legacyOrder();
+      await open(runtime, otherOrder, `separate-opening-${randomUUID()}`);
+      const key = `concurrent-provider-${randomUUID()}`;
+      await concurrentKeyReservation(store, finish, db => create(db, otherOrder, key), db => create(db, fresh, key),
+        run => finish === "COMMIT"
+          ? expectOccupiedKey(run, "payment_provider_transitions", "idempotency_key", key + ":intent_created")
+          : expectFence(run, provider));
+    }
   } finally { await store.close(); }
 }, postgresSetupTimeoutMs);

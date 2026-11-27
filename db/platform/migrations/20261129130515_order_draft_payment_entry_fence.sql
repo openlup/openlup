@@ -1,3 +1,79 @@
+-- The provider must reach its own incumbent writes and unique indexes before it fences.
+-- Only the definer-owned provider path needs this unfenced opening body.
+CREATE FUNCTION public.commerce_open_settlement_intent_for_provider(
+  p_idempotency_key text,
+  p_order_id uuid,
+  p_channel_key text,
+  p_amount_minor bigint,
+  p_currency_code text,
+  p_metadata jsonb DEFAULT '{}'::jsonb,
+  p_requested_at timestamptz DEFAULT now()
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SET search_path = public, pg_catalog, pg_temp
+AS $$
+DECLARE
+  v_order public.commerce_orders%ROWTYPE;
+  v_intent public.commerce_settlement_intents%ROWTYPE;
+  v_transition public.commerce_settlement_transitions%ROWTYPE;
+BEGIN
+  -- Long enough that a caller cannot reach it by accident: an idempotency key short enough to
+  -- collide is worse than no key, because it silently suppresses a real second request.
+  IF p_idempotency_key IS NULL OR char_length(btrim(p_idempotency_key)) < 8
+    OR p_order_id IS NULL
+    OR p_channel_key IS NULL OR btrim(p_channel_key) = '' OR char_length(p_channel_key) > 64
+    OR p_amount_minor IS NULL OR p_amount_minor < 1
+    OR p_currency_code IS NULL OR char_length(p_currency_code) <> 3
+  THEN
+    RAISE EXCEPTION 'commerce_settlement_open_invalid_input' USING ERRCODE = '22023';
+  END IF;
+
+  SELECT * INTO v_order FROM public.commerce_orders WHERE id = p_order_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'commerce_settlement_open_order_not_found' USING ERRCODE = '22023';
+  END IF;
+
+  SELECT * INTO v_intent
+    FROM public.commerce_settlement_intents WHERE order_id = p_order_id;
+
+  IF FOUND THEN
+    IF v_intent.open_idempotency_key IS DISTINCT FROM p_idempotency_key THEN
+      RAISE EXCEPTION 'commerce_settlement_open_order_already_has_intent' USING ERRCODE = '23505';
+    END IF;
+    SELECT * INTO v_transition
+      FROM public.commerce_settlement_transitions
+     WHERE intent_id = v_intent.id AND idempotency_key = p_idempotency_key;
+    RETURN public.commerce_settlement_response(v_intent, v_transition.id, 'opened', true);
+  END IF;
+
+  IF v_order.status <> 'pending_payment' THEN
+    RAISE EXCEPTION 'commerce_settlement_open_order_not_payable' USING ERRCODE = '22023';
+  END IF;
+
+  IF v_order.total_amount_minor IS DISTINCT FROM p_amount_minor
+    OR v_order.currency_code IS DISTINCT FROM p_currency_code
+  THEN
+    RAISE EXCEPTION 'commerce_settlement_open_amount_mismatch' USING ERRCODE = '22023';
+  END IF;
+
+  INSERT INTO public.commerce_settlement_intents
+    (order_id, channel_key, status, amount_minor, currency_code, open_idempotency_key,
+     created_at, updated_at)
+  VALUES (p_order_id, btrim(p_channel_key), 'created', p_amount_minor, p_currency_code,
+          p_idempotency_key, p_requested_at, p_requested_at)
+  RETURNING * INTO v_intent;
+
+  INSERT INTO public.commerce_settlement_transitions
+    (intent_id, from_status, to_status, outcome, idempotency_key, payload, occurred_at)
+  VALUES (v_intent.id, 'absent', 'created', 'opened', p_idempotency_key,
+          COALESCE(p_metadata, '{}'::jsonb), p_requested_at)
+  RETURNING * INTO v_transition;
+
+  RETURN public.commerce_settlement_response(v_intent, v_transition.id, 'opened', false);
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION public.commerce_open_settlement_intent(
   p_idempotency_key text,
   p_order_id uuid,
@@ -55,20 +131,6 @@ BEGIN
     RAISE EXCEPTION 'commerce_settlement_open_amount_mismatch' USING ERRCODE = '22023';
   END IF;
 
-  IF v_order.money_version IS NOT NULL AND p_requested_at IS NOT NULL THEN
-    IF EXISTS (SELECT FROM public.commerce_settlement_intents WHERE open_idempotency_key = p_idempotency_key)
-    THEN
-      RAISE unique_violation USING
-        MESSAGE = 'duplicate key value violates unique constraint "commerce_settlement_intents_open_idempotency_key_key"',
-        DETAIL = format('Key (open_idempotency_key)=(%s) already exists.', p_idempotency_key),
-        SCHEMA = 'public', TABLE = 'commerce_settlement_intents',
-        CONSTRAINT = 'commerce_settlement_intents_open_idempotency_key_key';
-    END IF;
-    RAISE EXCEPTION 'fiscal_confirmation_unenforceable' USING ERRCODE = '22023',
-      DETAIL = '/paymentLimits/channelKey',
-      HINT = 'Prepare payment for this order through the versioned-money payment preparation. Legacy settlement opening and provider intent creation do not apply to orders with versioned money.';
-  END IF;
-
   INSERT INTO public.commerce_settlement_intents
     (order_id, channel_key, status, amount_minor, currency_code, open_idempotency_key,
      created_at, updated_at)
@@ -82,6 +144,11 @@ BEGIN
           COALESCE(p_metadata, '{}'::jsonb), p_requested_at)
   RETURNING * INTO v_transition;
 
+  IF v_order.money_version IS NOT NULL THEN
+    RAISE EXCEPTION 'fiscal_confirmation_unenforceable' USING ERRCODE = '22023',
+      DETAIL = '/paymentLimits/channelKey',
+      HINT = 'Prepare payment for this order through the versioned-money payment preparation. Legacy settlement opening and provider intent creation do not apply to orders with versioned money.';
+  END IF;
   RETURN public.commerce_settlement_response(v_intent, v_transition.id, 'opened', false);
 END;
 $$;
@@ -131,27 +198,8 @@ BEGIN
   IF EXISTS(SELECT 1 FROM public.payment_provider_states WHERE id=i.id) THEN
    RAISE EXCEPTION 'payment_control_intent_order_already_has_intent' USING ERRCODE='23505'; END IF;
  ELSE
-  -- For a versioned order, invoke the opener only when its own validation or
-  -- occupied key would refuse first. Otherwise check the provider key below.
-  IF o.money_version IS NULL OR char_length(btrim(p_idempotency_key)) < 8 OR char_length(p_channel_key) > 64
-    OR EXISTS (SELECT FROM public.commerce_settlement_intents WHERE open_idempotency_key = p_idempotency_key)
-  THEN
-  opened:=public.commerce_open_settlement_intent(p_idempotency_key,p_order_id,p_channel_key,p_amount_minor,p_currency,p_metadata,p_at);
+  opened:=public.commerce_open_settlement_intent_for_provider(p_idempotency_key,p_order_id,p_channel_key,p_amount_minor,p_currency,p_metadata,p_at);
   SELECT * INTO i FROM public.commerce_settlement_intents WHERE id=(opened#>>'{settlement,id}')::uuid;
-  END IF;
- END IF;
- IF o.money_version IS NOT NULL THEN
-   IF EXISTS (SELECT FROM public.payment_provider_transitions WHERE idempotency_key = p_idempotency_key||':intent_created')
-   THEN
-     RAISE unique_violation USING
-       MESSAGE = 'duplicate key value violates unique constraint "payment_provider_transitions_idempotency_key_key"',
-       DETAIL = format('Key (idempotency_key)=(%s) already exists.', p_idempotency_key||':intent_created'),
-       SCHEMA = 'public', TABLE = 'payment_provider_transitions',
-       CONSTRAINT = 'payment_provider_transitions_idempotency_key_key';
-   END IF;
-   RAISE EXCEPTION 'fiscal_confirmation_unenforceable' USING ERRCODE = '22023',
-     DETAIL = '/paymentLimits/channelKey',
-     HINT = 'Prepare payment for this order through the versioned-money payment preparation. Legacy settlement opening and provider intent creation do not apply to orders with versioned money.';
  END IF;
  INSERT INTO public.payment_provider_states(id,target_kind,subscription_id,subscription_cycle_id,metadata)
  VALUES(i.id,p_target_kind,p_subscription_id,p_subscription_cycle_id,COALESCE(p_metadata,'{}'::jsonb)||jsonb_build_object('source','payment.control.v0')) RETURNING * INTO ps;
@@ -161,6 +209,22 @@ BEGIN
   'orderId',o.id,'targetKind',p_target_kind,'status',ps.status,'amountMinor',i.amount_minor,'currency',i.currency_code,'idempotencyKey',p_idempotency_key,'replayed',false));
  INSERT INTO public.payment_provider_receipts(scope,idempotency_key,request_fingerprint,status,response_payload,metadata)
  VALUES('commerce.payment_intent.create',p_idempotency_key,fingerprint,'completed',answer,jsonb_build_object('paymentIntentId',i.id,'paymentId',ps.payment_id,'channelKey',p_channel_key));
+ IF o.money_version IS NOT NULL THEN
+   RAISE EXCEPTION 'fiscal_confirmation_unenforceable' USING ERRCODE = '22023',
+     DETAIL = '/paymentLimits/channelKey',
+     HINT = 'Prepare payment for this order through the versioned-money payment preparation. Legacy settlement opening and provider intent creation do not apply to orders with versioned money.';
+ END IF;
  RETURN answer;
 END;
 $$;
+
+REVOKE ALL ON FUNCTION public.commerce_open_settlement_intent_for_provider(text,uuid,text,bigint,text,jsonb,timestamptz) FROM PUBLIC;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+  EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_open_settlement_intent_for_provider(text,uuid,text,bigint,text,jsonb,timestamptz) FROM anon';
+END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+  EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_open_settlement_intent_for_provider(text,uuid,text,bigint,text,jsonb,timestamptz) FROM authenticated';
+END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+  EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_open_settlement_intent_for_provider(text,uuid,text,bigint,text,jsonb,timestamptz) FROM service_role';
+END IF; END; $$;
