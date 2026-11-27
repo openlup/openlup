@@ -1449,18 +1449,16 @@ export function site<T>(step: string, reason: string, operation: () => T, option
 }
 
 export class ProofFailures {
-  private readonly errors: StarterRuntimeProofError[] = [];
-  private escaped = false;
+  private readonly errors: (ProofDiagnostic | StarterRuntimeProofError)[] = [];
   keep(error: unknown) {
-    if (error instanceof StarterRuntimeProofError) this.errors.push(error);
-    else this.escaped = true;
+    this.errors.push(error instanceof StarterRuntimeProofError ? error
+      : { step: "candidate_occupied_entry", exit: null, reason: "occupied_entry_invariant" });
   }
   attempt(operation: () => unknown) {
     try { operation(); } catch (error) { this.keep(error); }
   }
   finish() {
     if (this.errors.length) throw proofError(this.errors.splice(0));
-    if (this.escaped) throw new Error();
   }
 }
 
@@ -1487,10 +1485,11 @@ async function runStarterRuntimeUpgrade(from: string, to: string, port: number) 
   let dockerBin = "/usr/bin/docker";
   let env: NodeJS.ProcessEnv = {};
   const projectFile = join(from, ".context/compose-project");
-  type Expected = number | "nonzero" | "SIGKILL";
+  type Expected = number | "not_success" | "finding" | "SIGKILL";
   function requireExit(result: { status: number | null; signal: string | null }, expected: Expected) {
+    if (expected === "finding") return;
     if (expected === "SIGKILL" ? result.signal !== expected
-      : expected === "nonzero" ? result.status === 0 || result.status === null : result.status !== expected) {
+      : expected === "not_success" ? result.status === 0 : result.status !== expected) {
       throw { status: result.status };
     }
   }
@@ -1588,7 +1587,7 @@ async function runStarterRuntimeUpgrade(from: string, to: string, port: number) 
     }, { labels });
     const { orderRef } = reference;
     const paid = await checkoutAction([step, "payment"], "payment.simulate", { ...reference, outcome: "captured" });
-    site("payment_validation", "payment_validation", () => assert(paid.ok || paid.value?.status !== "paid" || paid.value.orderRef !== orderRef), { labels: [step] });
+    site("payment_validation", "payment_validation", () => assert(paid.ok && paid.value?.status === "paid" && paid.value.orderRef === orderRef), { labels: [step] });
     const facts = settledFacts([step, "records"], orderRef);
     const records = site("settled_record_decode", "settled_record_decode", () => JSON.parse(facts), { labels, exit: 0 });
     site("settled_record_shape", "settled_record_shape", () => {
@@ -1712,12 +1711,12 @@ async function runStarterRuntimeUpgrade(from: string, to: string, port: number) 
     const interruptedLifecycle = site("interrupt_lifecycle_read", "interrupt_lifecycle_read",
       () => readFileSync(join(from, "lifecycle.mjs"), "utf8"));
     site("interrupt_arm", "interrupt_arm", () => assert(interruptedCompose === next.files["compose.yaml"] && interruptedLifecycle === oldLifecycle));
-    site("mixed_startup", "mixed_lifecycle_started", () => run(from, "./lifecycle", ["up", "--configuration", "coffee", "--json"], undefined, undefined, "nonzero"), { exit: true });
+    site("mixed_startup", "mixed_lifecycle_started", () => run(from, "./lifecycle", ["up", "--configuration", "coffee", "--json"], undefined, undefined, "not_success"), { exit: true });
     const staged = join(scratch, "source");
     const stagedPassword = site("staged_credential_random", "staged_credential_random", () => randomBytes(32)).toString("hex");
     site("staged_credential_write", "staged_credential_write", () => writeFileSync(staged, stagedPassword + "\n", { mode: 0o444 }));
     for (const [index, service] of ["database", "application"].entries()) {
-      const blocked = site("compose_gate_command", "compose_gate_command", () => run(from, "docker", ["compose", "--project-name", project, "up", "--no-build", "--force-recreate", "-d", service], undefined, { ...env, OPENLUP_STARTER_RUNTIME_SOURCE: staged }, "nonzero"), { labels: [index], exit: true });
+      const blocked = site("compose_gate_command", "compose_gate_command", () => run(from, "docker", ["compose", "--project-name", project, "up", "--no-build", "--force-recreate", "-d", service], undefined, { ...env, OPENLUP_STARTER_RUNTIME_SOURCE: staged }, "not_success"), { labels: [index], exit: true });
       site("compose_gate_refusal", "compose_gate_refusal", () => assert(!(blocked.status === 0 || !blocked.stderr.includes("starter_runtime_preflight_handoff_missing"))), { labels: [index], exit: blocked.status });
     }
     const interruptedApp = stoppedApplication("interrupted");
@@ -1744,10 +1743,11 @@ async function runStarterRuntimeUpgrade(from: string, to: string, port: number) 
     const earlySource = site("early_runtime_source_exists", "early_runtime_source_exists", () => existsSync(source));
     site("early_runtime_file", "early_runtime_file", () => assert(!earlySource));
     const volume = original[1]?.split(" ").at(-1);
-    site("predecessor_volume_missing", "predecessor_volume_missing", () => assert(volume || volume !== project + "_database"));
+    site("predecessor_volume_missing", "predecessor_volume_missing", () => assert(volume === project + "_database"));
     const predecessorImage = site("predecessor_database_image", "predecessor_database_image", () => run(from, dockerBin, ["inspect", "--format", "{{.Config.Image}}", original[0]!]).stdout.trim(), { exit: true });
-    const guide = site("installed_cutover_guide_read", "installed_cutover_guide_read",
-      () => readFileSync(join(from, "node_modules/@openlup/core/docs/guide/how-to/build/customize-the-starter.md"), "utf8"));
+    const readRecipeGuide = () =>
+      readFileSync(join(from, "node_modules/@openlup/core/docs/guide/how-to/build/customize-the-starter.md"), "utf8");
+    const guide = site("installed_cutover_guide_read", "installed_cutover_guide_read", () => readRecipeGuide());
     function recipe(heading: string, level = "###") {
       const body = guide.split(level + " " + heading + "\n")[1]?.match(/```sh\n([^]*?)\n```/u)?.[1];
       assert(body);
@@ -1888,15 +1888,15 @@ async function runStarterRuntimeUpgrade(from: string, to: string, port: number) 
     const refusedPassword = site("tcp_refused_password_random", "tcp_refused_password_random", () => randomBytes(32)).toString("hex");
 
     for (const [index] of ["peer", "native"].entries()) {
-      const noPassword = tcpClient("passwordless", index, "", "nonzero");
-      const wrong = tcpClient("wrong_password", index, refusedPassword, "nonzero");
-      site("tcp_passwordless_admission", "tcp_passwordless_admission", () => assert(/no password supplied/u.test(noPassword.stderr)), { labels: [index], exit: noPassword.status });
-      site("tcp_wrong_password_admission", "tcp_wrong_password_admission", () => assert(/password authentication failed/u.test(wrong.stderr)), { labels: [index], exit: wrong.status });
+      const noPassword = tcpClient("passwordless", index, "", "finding");
+      const wrong = tcpClient("wrong_password", index, refusedPassword, "finding");
+      site("tcp_passwordless_admission", "tcp_passwordless_admission", () => assert(noPassword.status !== 0 && /no password supplied/u.test(noPassword.stderr)), { labels: [index], exit: noPassword.status });
+      site("tcp_wrong_password_admission", "tcp_wrong_password_admission", () => assert(wrong.status !== 0 && /password authentication failed/u.test(wrong.stderr)), { labels: [index], exit: wrong.status });
       const valid = tcpClient("valid_login", index, initial, 0);
       site("tcp_valid_login_admission", "tcp_valid_login_admission", () => assert.equal(valid.stdout.trim(), "starter_runtime"), { labels: [index], exit: valid.status });
-      const deniedRole = tcpClient("denied_role", index, "", "nonzero", "postgres");
+      const deniedRole = tcpClient("denied_role", index, "", "finding", "postgres");
       site("tcp_denied_role_admission", "tcp_denied_role_admission", () => assert(/pg_hba.conf rejects connection/u.test(deniedRole.stderr)), { labels: [index], exit: deniedRole.status });
-      const deniedDB = tcpClient("denied_database", index, "", "nonzero", "starter_runtime", "postgres");
+      const deniedDB = tcpClient("denied_database", index, "", "finding", "starter_runtime", "postgres");
       site("tcp_denied_database_admission", "tcp_denied_database_admission", () => assert(/pg_hba.conf rejects connection/u.test(deniedDB.stderr)), { labels: [index], exit: deniedDB.status });
     }
     mark("native_host_and_peer_scram_admission", "native host and peer SCRAM admission");
@@ -1908,7 +1908,7 @@ async function runStarterRuntimeUpgrade(from: string, to: string, port: number) 
       () => rawSql("select (rolpassword is null)::text from pg_authid where rolname='postgres'", "postgres"), { exit: true });
     site("owner_socket_passwordless_login", "owner_socket_passwordless_login", () => assert.equal(passwordless, "true"), { exit: 0 });
     const socket = (user: string, db: string) => composeWithExit(project,
-      ["exec", "-T", "database", "psql", "-XAtw", "-U", user, "-d", db, "-c", "select session_user"], "nonzero");
+      ["exec", "-T", "database", "psql", "-XAtw", "-U", user, "-d", db, "-c", "select session_user"], "finding");
     for (const [index, [user, db]] of [["postgres", "neutral_store"], ["starter_install", "postgres"], ["starter_runtime", "neutral_store"],
       ["starter_restore", "neutral_store"], ["openlup_catalog_publication", "neutral_store"]].entries()) {
       const denied = site("socket_psql", "socket_psql", () => socket(user!, db!), { labels: [index], exit: true });
@@ -1924,7 +1924,7 @@ async function runStarterRuntimeUpgrade(from: string, to: string, port: number) 
       "host|{all}|{all}|all||reject||",
     ].join("\n"))), { exit: 0 });
     for (const [index, host] of ["", " host=127.0.0.1"].entries()) {
-      const result = site("replication_refusal", "replication_refusal", () => composeWithExit(project, ["exec", "-T", "database", "psql", "-XAtw", "user=postgres dbname=postgres replication=true" + host, "-c", "IDENTIFY_SYSTEM"], "nonzero"), { labels: [index], exit: true });
+      const result = site("replication_refusal", "replication_refusal", () => composeWithExit(project, ["exec", "-T", "database", "psql", "-XAtw", "user=postgres dbname=postgres replication=true" + host, "-c", "IDENTIFY_SYSTEM"], "not_success"), { labels: [index], exit: true });
       site("physical_replication_hba", "physical_replication_hba", () => assert(!(result.status === 0 || !/no pg_hba.conf entry|pg_hba.conf rejects connection/u.test(result.stderr))), { labels: [index], exit: result.status });
     }
     mark("ordered_hba_rules_and_physical_replication_refusal", "ordered HBA rules and physical replication refusal");
@@ -1932,7 +1932,7 @@ async function runStarterRuntimeUpgrade(from: string, to: string, port: number) 
 
     const publicationLogin = tcpClient("publication_login", 0, publication, 0, "openlup_catalog_publication");
     site("publication_login_valid", "publication_login_valid", () => assert.equal(publicationLogin.stdout.trim(), "openlup_catalog_publication"), { exit: publicationLogin.status });
-    const runtimeAsPublication = tcpClient("runtime_as_publication", 0, initial, "nonzero", "openlup_catalog_publication");
+    const runtimeAsPublication = tcpClient("runtime_as_publication", 0, initial, "finding", "openlup_catalog_publication");
     site("publication_isolation", "publication_isolation", () => assert(/password authentication failed/u.test(runtimeAsPublication.stderr)), { exit: runtimeAsPublication.status });
     const fallback = site("fallback_hba", "fallback_hba", () => compose("exec", "-T", "database", "sh", "-c", 'cat "$PGDATA/pg_hba.conf"').stdout.trim(), { exit: true });
     site("occupied_fallback", "occupied_fallback", () => assert.equal(fallback, "local all all reject\nhost all all all reject"), { exit: 0 });
@@ -1956,7 +1956,7 @@ async function runStarterRuntimeUpgrade(from: string, to: string, port: number) 
     site("renewal_fixture_start", "renewal_fixture_start", () => up(), { exit: true });
     const olderCompose = env.OPENLUP_STARTER_COMPOSE_V2;
     const currentCompose = env.OPENLUP_STARTER_COMPOSE_V5;
-    site("both_compose_releases_required", "both_compose_releases_required", () => assert(olderCompose || !currentCompose));
+    site("both_compose_releases_required", "both_compose_releases_required", () => assert(olderCompose && currentCompose));
     const mountedExec = `PROJECT=$( (cd .context && cat compose-project) 2>/dev/null) && [ -n "$PROJECT" ] ||
       { printf '%s\\n' 'Run ./lifecycle up first.' >&2; exit 1; }
       exec "$1" --project-name "$PROJECT" exec -T application ./lifecycle "\${@:2}"`;
@@ -1984,10 +1984,10 @@ async function runStarterRuntimeUpgrade(from: string, to: string, port: number) 
           site("mounted_job_missing_bind", "mounted_job_missing_bind",
             () => assert(result.stderr.includes("starter_runtime_credential_read_failed")), { labels, exit: result.status });
           const refused = site("mounted_job_count_refused", "mounted_job_count_refused", () => jobCount(name), { labels, exit: true });
-          site("mounted_job_refusal_count", "mounted_job_refusal_count", () => assert.equal(refused, beforePass), { labels });
+          site("mounted_job_refusal_count", "mounted_job_refusal_count", () => assert(refused === beforePass), { labels });
         } else {
           const completed = site("mounted_job_count_completed", "mounted_job_count_completed", () => jobCount(name, true), { labels, exit: true });
-          site("mounted_job_claim", "mounted_job_claim", () => assert(completed > beforePass), { labels });
+          site("mounted_job_claim", "mounted_job_claim", () => assert(!(completed <= beforePass)), { labels });
         }
       }
     };
@@ -2004,10 +2004,10 @@ async function runStarterRuntimeUpgrade(from: string, to: string, port: number) 
       const row = result?.effect?.skus?.[0];
       site("settings_preview_source", "settings_preview_source", () => assert(stock && row?.sku === sku && row.source === "provider"), { labels: [releaseIndex] });
       const coffee = site("preview_coffee_quantity", "preview_coffee_quantity", () => quantity("coffee"), { labels: [releaseIndex], exit: true });
-      site("settings_preview_coffee_stock", "settings_preview_coffee_stock", () => assert.equal(row.currentAvailableForNewPurchases, coffee), { labels: [releaseIndex] });
+      site("settings_preview_coffee_stock", "settings_preview_coffee_stock", () => assert(row.currentAvailableForNewPurchases === coffee), { labels: [releaseIndex] });
       const coffeeControl = site("comparison_coffee_quantity", "comparison_coffee_quantity", () => quantity("coffee"), { labels: [releaseIndex], exit: true });
       const supplements = site("comparison_supplements_quantity", "comparison_supplements_quantity", () => quantity("supplements"), { labels: [releaseIndex], exit: true });
-      site("nondefault_stock_source", "nondefault_stock_source", () => assert.notEqual(coffeeControl, supplements), { labels: [releaseIndex] });
+      site("nondefault_stock_source", "nondefault_stock_source", () => assert(coffeeControl !== supplements), { labels: [releaseIndex] });
       exerciseJobs("mounted", releaseIndex, release);
       const held = projectFile + ".held";
       site("project_record_hold", "project_record_hold", () => renameSync(projectFile, held), { labels: [releaseIndex] });
@@ -2020,7 +2020,7 @@ async function runStarterRuntimeUpgrade(from: string, to: string, port: number) 
       const unchangedApp = site("handoff_application_before", "handoff_application_before", () => container("application"), { labels: [releaseIndex], exit: true });
       const unchangedDatabase = site("handoff_database_before", "handoff_database_before", () => container("database"), { labels: [releaseIndex], exit: true });
       for (const [serviceIndex, service] of ["database", "application"].entries()) {
-        const denied = site("required_handoff_command", "required_handoff_command", () => run(from, release, ["--project-name", project, "up", "--no-build", "--force-recreate", "-d", service], undefined, { ...env, OPENLUP_STARTER_RUNTIME_SOURCE: source }, "nonzero"), { labels: [releaseIndex, serviceIndex], exit: true });
+        const denied = site("required_handoff_command", "required_handoff_command", () => run(from, release, ["--project-name", project, "up", "--no-build", "--force-recreate", "-d", service], undefined, { ...env, OPENLUP_STARTER_RUNTIME_SOURCE: source }, "not_success"), { labels: [releaseIndex, serviceIndex], exit: true });
         const labels = [releaseIndex, serviceIndex];
         site("required_handoff_refusal", "required_handoff_refusal", () => assert(denied.stderr.includes("starter_runtime_preflight_handoff_missing")), { labels, exit: denied.status });
         const appAfter = site("handoff_application_after", "handoff_application_after", () => container("application"), { labels, exit: true });
@@ -2098,7 +2098,7 @@ async function runStarterRuntimeUpgrade(from: string, to: string, port: number) 
     site("resumed_rotation_app_changed", "resumed_rotation_app_changed", () => assert.notEqual(resumedApp, previousApp));
     const rotatedLogin = tcpClient("resumed_rotation_login", 1, afterRotation, 0);
     site("resumed_rotation_login_valid", "resumed_rotation_login_valid", () => assert.equal(rotatedLogin.stdout.trim(), "starter_runtime"), { exit: rotatedLogin.status });
-    const rotatedOld = tcpClient("resumed_rotation_old_login", 1, initial, "nonzero");
+    const rotatedOld = tcpClient("resumed_rotation_old_login", 1, initial, "finding");
     site("rotation_failed", "rotation_failed", () => assert(/password authentication failed/u.test(rotatedOld.stderr)), { exit: rotatedOld.status });
     mark("interrupted_credential_recreation", "credential replacement, interrupted recreation and fresh runtime read");
 
@@ -2116,7 +2116,7 @@ async function runStarterRuntimeUpgrade(from: string, to: string, port: number) 
     site("rotation_credential_replaced", "rotation_credential_replaced", () => assert.notEqual(current, afterRotation));
     const currentLogin = tcpClient("documented_rotation_login", 1, current, 0);
     site("documented_rotation_login_valid", "documented_rotation_login_valid", () => assert.equal(currentLogin.stdout.trim(), "starter_runtime"), { exit: currentLogin.status });
-    const currentOld = tcpClient("documented_rotation_old_login", 1, afterRotation, "nonzero");
+    const currentOld = tcpClient("documented_rotation_old_login", 1, afterRotation, "finding");
     site("documented_rotation_old_login_refused", "documented_rotation_old_login_refused", () => assert(/password authentication failed/u.test(currentOld.stderr)), { exit: currentOld.status });
     const rotatedDB = identity("documented_rotation");
     site("documented_rotation_database_retained", "documented_rotation_database_retained", () => assert.equal(rotatedDB[2], original[2]));
@@ -2194,7 +2194,7 @@ async function runStarterRuntimeUpgrade(from: string, to: string, port: number) 
         "-p", "127.0.0.1::5432", "--entrypoint", "sleep", postgresImage, "120"]).stdout.trim(), { exit: true });
       const portMapping = site("occupied_port", "occupied_port", () => run(from, dockerBin, ["port", listener, "5432/tcp"]).stdout.trim(), { exit: true });
       const occupied = portMapping.match(/^127\.0\.0\.1:([0-9]+)$/u)?.[1];
-      site("unsafe_occupied_port", "unsafe_occupied_port", () => assert(occupied || occupied === "4319"), { exit: 0 });
+      site("unsafe_occupied_port", "unsafe_occupied_port", () => assert(occupied && occupied !== "4319"), { exit: 0 });
       const result = site("occupied_listener_refusal", "occupied_listener_refusal", () => run(from, "./lifecycle", ["up", "--configuration", "coffee", "--json"], undefined, { ...env, OPENLUP_STARTER_PORT: occupied }, 2), { exit: true });
       refusal(["occupied_listener"], result, "starter_installation_failed", true);
       site("lost_listener_diagnostic", "lost_listener_diagnostic", () => assert(/port is already allocated|address already in use|failed to bind/u.test(result.stderr)), { exit: result.status });

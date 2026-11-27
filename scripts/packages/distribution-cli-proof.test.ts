@@ -1,4 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
+import assert from "node:assert/strict";
 import ts from "typescript";
 import { execFileSync, spawnSync, type ExecFileSyncOptionsWithStringEncoding } from "node:child_process";
 import { cpSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
@@ -11,7 +12,7 @@ import { env } from "node:process";
 import { imageReference, readCiImage } from "../ci-image-pull.mjs";
 import { browserContainerArguments, starterBrowserFailure } from "../starter-browser-ci.mjs";
 import { proveInstalledCareUpgrade, qualificationReceipt, qualifyReleasedSet } from "./exact-set-qualification.mjs";
-import { assertCompleteStarter, assertUpgradeConflict, completeStarterRuntimeProof, previousPublishedSet, migrateStarterOwned,
+import { assertCompleteStarter, assertUpgradeConflict, completeStarterRuntimeProof, ProofFailures, site, previousPublishedSet, migrateStarterOwned,
   includeSettingsHost, starterSettingsHost, reconcileLifecycleCustomization, reconcileStarterLocalPort, proveStarterPortRefusals, reconcileReminderInstallationTest, proveStarterCatalogueWrappers, retiresStarterCatalogue, proveStarterCatalogue130,
   reminderInstallationTest, starterLifecycle, starterOptionalOwnedFiles, starterUpgradeSnapshot,
   starterDisplayFiles, reconcileDisplayCustomization, reconcileStarterAgentGuide,
@@ -23,7 +24,16 @@ const contractPaths = contractFiles.map(name => join(dirname(fileURLToPath(impor
 const tokens = /^[a-z][a-z0-9_]*$/u;
 const contractRoots = [["proveStarterRuntimeUpgrade", "runStarterRuntimeUpgrade", "completeStarterRuntimeProof"],
   ["prepareStarterCandidate", "prepareReleasedStarter", "qualifyCandidateOccupied"]];
-const adapters = new Set("runCandidate run requireExit rawSql checked compose composeFor composeWithExit container up downProject socket exec jobCount quantity digest sha256 recipe validateCandidateLockfile".split(" "));
+const commandAdapters = new Set("runCandidate run rawSql compose composeFor composeWithExit container up downProject socket exec jobCount quantity".split(" "));
+const adapters = new Set([...commandAdapters, "requireExit", "checked", "digest", "sha256", "recipe", "readRecipeGuide", "validateCandidateLockfile"]);
+const filesystem = new Set("mkdirSync readFileSync writeFileSync existsSync readdirSync renameSync rmSync realpathSync mkdtempSync cpSync linkSync".split(" "));
+const rootCalls = new Map([
+  ["occupied_cli", ["qualifyCandidateOccupied"]],
+  ["qualifyCandidateOccupied", ["prepareStarterCandidate", "proveStarterRuntimeUpgrade", "completeStarterRuntimeProof"]],
+  ["prepareStarterCandidate", ["prepareReleasedStarter"]],
+  ["proveStarterRuntimeUpgrade", ["runStarterRuntimeUpgrade", "completeStarterRuntimeProof"]],
+  ["prepareReleasedStarter", ["site"]], ["runStarterRuntimeUpgrade", ["site"]], ["completeStarterRuntimeProof", ["site"]],
+]);
 const operations = new Set(("assert mkdirSync readFileSync writeFileSync existsSync readdirSync renameSync rmSync realpathSync mkdtempSync cpSync linkSync " +
   "fetch randomBytes randomUUID homedir isolatedConsumerEnv starterUpgradeSnapshot readCurrentPackManifest parsePackagesConfig qualificationReceipt " +
   "prepareRuntimeHandoff resolveBrowserImage browserContainerArguments createHash spawnSync execFileSync JSON.parse JSON.stringify process.stdout.write import Date").split(" "));
@@ -47,6 +57,8 @@ function scanDiagnosticContract(texts: string[]) {
   for (const [index, path] of contractPaths.entries()) {
     const source = program.getSourceFile(path)!;
     const roots = new Map<string, ts.Node>(), sites = new Map<ts.Node, number>(), calls = new Map<string, Set<string>>();
+    const adapterCalls = new Map<ts.Node, ts.CallExpression[]>();
+    const rootDelegations = new Map<ts.Node, Set<string>>();
     const text = (node?: ts.Node) => node?.getText(source) ?? "";
     function issue(rule: string, node: ts.Node, label = "") {
       issues.push(`${rule} ${contractFiles[index]}:${source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1} ${tokens.test(label) ? label : ""}`.trim());
@@ -87,13 +99,57 @@ function scanDiagnosticContract(texts: string[]) {
         ts.isStringLiteral(label) ? tokens.test(label.text) : ts.isNumericLiteral(label) || ts.isIdentifier(label) &&
           (loops.includes(label.text) || ((ts.isParameter(declaration(label) ?? label) || ts.isBindingElement(declaration(label) ?? label) && label.text === "labels") && /^(step|role|clientIndex|releaseIndex|labels|ordinals)$/u.test(label.text))));
     }
+    function callTarget(node: ts.Expression): ts.Node | undefined {
+      const binding = declaration(node);
+      return binding && ts.isVariableDeclaration(binding) ? binding.initializer : binding;
+    }
+    function bindsRoot(target: ts.Node | undefined, callee: string) {
+      return target && (ts.isFunctionDeclaration(target) && target.parent === source && name(target) === callee ||
+        ts.isImportSpecifier(target) && target.name.text === callee && !target.propertyName &&
+        text(target.parent.parent.parent.moduleSpecifier) === "'./distribution-cli-proof.ts'");
+    }
+    function hasLivePath(call: ts.Node, owner: ts.Node) {
+      for (let child = call; child !== owner; child = child.parent) {
+        const parent = child.parent;
+        if (ts.isIfStatement(parent) &&
+          (child === parent.thenStatement && parent.expression.kind === ts.SyntaxKind.FalseKeyword ||
+           child === parent.elseStatement && parent.expression.kind === ts.SyntaxKind.TrueKeyword)) return false;
+        if (ts.isBlock(parent) && ts.isStatement(child)) {
+          for (const previous of parent.statements) {
+            if (previous === child) break;
+            if (ts.isReturnStatement(previous) || ts.isThrowStatement(previous)) return false;
+          }
+        }
+      }
+      return true;
+    }
+    function isReturnedOrAwaited(expression: ts.Node, callback?: ts.Node) {
+      let node = expression;
+      for (let parent = node.parent; ts.isParenthesizedExpression(parent) || ts.isAsExpression(parent) || ts.isNonNullExpression(parent); parent = node.parent) {
+        node = parent;
+      }
+      return ts.isAwaitExpression(node.parent) && node.parent.expression === node ||
+        ts.isReturnStatement(node.parent) && node.parent.expression === node ||
+        node.parent === callback && ts.isArrowFunction(callback) && callback.body === node;
+    }
+    function primitiveCalls(adapter: ts.Node, chain = new Set<ts.Node>()): string[] {
+      if (chain.has(adapter)) return ["cycle"];
+      return (adapterCalls.get(adapter) ?? []).flatMap(call => {
+        const callee = text(call.expression), target = callTarget(call.expression);
+        if (["spawnSync", "execFileSync"].includes(callee)) return ["child"];
+        if (filesystem.has(callee)) return ["file"];
+        return target && adapterCalls.has(target) ? primitiveCalls(target, new Set([...chain, adapter])) : [];
+      });
+    }
     function walk(node: ts.Node, ancestors: ts.Node[] = []) {
       const parent = node.parent;
+      const adapterName = name(node);
+      if (adapters.has(adapterName) && (index === 0 && ancestors.some(ancestor => name(ancestor) === "runStarterRuntimeUpgrade") ||
+        index === 1 && ["runCandidate", "sha256", "validateCandidateLockfile"].includes(adapterName))) adapterCalls.set(node, []);
       const root = contractRoots[index]!.includes(name(node)) || ts.isBlock(node) && ts.isIfStatement(parent) && parent.thenStatement === node && text(parent.expression) === "tag === '--candidate-occupied'";
       if (root) roots.set(name(node) || "occupied_cli", node);
       const scope = ancestors.find(ancestor => [...roots.values()].includes(ancestor));
-      const callback = ancestors.find(ancestor => sites.has(ancestor)), lexical = ancestors.findLast(ancestor => (scope && adapters.has(name(ancestor))) ||
-        index === 1 && ["runCandidate", "sha256", "validateCandidateLockfile"].includes(name(ancestor)));
+      const callback = ancestors.find(ancestor => sites.has(ancestor)), lexical = ancestors.findLast(ancestor => adapterCalls.has(ancestor));
       if (scope && ts.isThrowStatement(node) && !(lexical && ["run", "requireExit"].includes(name(lexical)))) issue("unclassified_throw", node);
       if (ts.isIdentifier(node) && node.text === "StarterRuntimeProofError") {
         if (ts.isNewExpression(parent) && parent.expression === node) {
@@ -107,6 +163,18 @@ function scanDiagnosticContract(texts: string[]) {
       if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
         const args = node.arguments ?? [], callee = text(node.expression), member = callee.split(".").at(-1)!;
         const loops = loopIndices(ancestors);
+        if (ts.isCallExpression(node) && lexical) {
+          adapterCalls.get(lexical)!.push(node);
+          if (!hasLivePath(node, lexical) || ancestors.slice(ancestors.indexOf(lexical) + 1).some(ts.isFunctionLike))
+            issue("adapter_primitives", node, name(lexical));
+        }
+        if (scope && ts.isCallExpression(node) && bindsRoot(callTarget(node.expression), callee) && hasLivePath(node, scope) &&
+          ancestors.slice(ancestors.indexOf(scope) + 1).every(ancestor =>
+            ancestor === callback || !ts.isFunctionLike(ancestor))) {
+          const seen = rootDelegations.get(scope) ?? new Set<string>();
+          seen.add(callee);
+          rootDelegations.set(scope, seen);
+        }
         if (callee === "site") {
           const [step, reason, operation, config] = args, binding = declaration(node.expression);
           const shared = binding && (ts.isImportSpecifier(binding)
@@ -121,7 +189,8 @@ function scanDiagnosticContract(texts: string[]) {
             if (reason.text === "occupied_entry_invariant") {
               if (!ts.isCallExpression(operation.body) || text(operation.body.expression) !== "qualifyCandidateOccupied" ||
                 args.length !== 3 || !declaration(operation.body.expression)) issue("sentinel", node);
-            } else sites.set(operation, 0);
+            }
+            sites.set(operation, 0);
           }
         } else if (scope || lexical) {
           const terminal = operations.has(callee) || /^(assert\.|.*\.json$|(?:handoff|rotated)\.cleanup$)/u.test(callee) ||
@@ -132,8 +201,14 @@ function scanDiagnosticContract(texts: string[]) {
             else if (!lexical) issue("unwrapped_operation", node, member);
           } else if (!pure.has(callee) && !methods.has(member) && !delegates.has(member) &&
             !["checked", "requireExit", "ProofFailures", "refuse"].includes(callee) && !(callee === "process.stderr.write" && text(args[0]) === "error.message + '\\n'")) issue("unknown_callee", node, member);
-          if (asynchronous.has(member) && !(callback ? ts.isAwaitExpression(callback.parent.parent) || ts.isReturnStatement(callback.parent.parent)
-            : ts.isAwaitExpression(parent) || callee === "qualifyCandidateOccupied")) issue("unawaited", node, member);
+          const target = callTarget(node.expression);
+          if (asynchronous.has(member) || target && ts.canHaveModifiers(target) && ts.getModifiers(target)?.some(modifier => modifier.kind === ts.SyntaxKind.AsyncKeyword)) {
+            if (!isReturnedOrAwaited(node, callback) || callback && ancestors.slice(ancestors.indexOf(callback) + 1).some(ts.isFunctionLike))
+              issue(callback ? "detached_promise" : "unawaited", node, member);
+            const owner = ancestors.slice(0, callback ? ancestors.indexOf(callback) : ancestors.length).findLast(ts.isFunctionLike);
+            if (callback && !isReturnedOrAwaited(callback.parent) || owner && !name(owner))
+              issue("unawaited", callback?.parent ?? node, member);
+          }
           if (roles.has(callee) || callee === "prepareStarterCandidate") {
             const labels = values(args[callee === "prepareStarterCandidate" ? 4 : 0]);
             if (["mark", "tcpClient", "exerciseJobs", "identityOfFiles", "verifier"].includes(callee)) labels.push(...args.slice(1, callee === "mark" ? 1 : undefined).filter(arg => loops.includes(text(arg))));
@@ -154,14 +229,20 @@ function scanDiagnosticContract(texts: string[]) {
       const siteCall = callback.parent;
       const code = ts.isCallExpression(siteCall) && siteCall.arguments[1];
       const decision = code && ts.isStringLiteral(code) ? code.text : "";
-      const decisions = ["receipt_comparison", "settlement_order_input", "starter_dependency_preparation_failed",
+      const decisions = ["occupied_entry_invariant", "receipt_comparison", "settlement_order_input", "starter_dependency_preparation_failed",
         "candidate_locked_package_version", "candidate_generated_lockfile_normalize", "candidate_artifact_lock_binding"];
       if (operations !== (decisions.includes(decision) ? 0 : 1))
         issue("operation_count", callback, decision);
     }
     for (const root of [...contractRoots[index]!, ...(index === 1 ? ["occupied_cli"] : [])]) {
       const node = roots.get(root);
-      if (!node || !/\b(?:site|runStarterRuntimeUpgrade|completeStarterRuntimeProof)\(/u.test(text(node))) issue("empty_root", node ?? source);
+      if (!node || !rootCalls.get(root)?.every(callee => rootDelegations.get(node)?.has(callee))) issue("empty_root", node ?? source);
+    }
+    for (const adapter of adapterCalls.keys()) {
+      const adapterName = name(adapter);
+      // Read the guide once. Extracting a recipe from the captured text does no I/O.
+      const expected = commandAdapters.has(adapterName) ? "child" : adapterName === "readRecipeGuide" ? "file" : "";
+      if (primitiveCalls(adapter).join(",") !== expected) issue("adapter_primitives", adapter, adapterName);
     }
     if (!counts[index] || !sites.size) issue("empty_census", source);
   }
@@ -185,6 +266,10 @@ it("binds proof diagnostics to literal sites and rejects contract mutations", ()
     [0, 'await runStarterRuntimeUpgrade(from, to, port);\n  if (!deferCompletion) completeStarterRuntimeProof(started);', '', "empty_root"],
     [0, 'const labels = [role, releaseIndex, index], name', 'const labels = [role, releaseIndex], name', "labels"],
     [0, 'exerciseJobs("restored_bind"', 'exerciseJobs("missing_bind"', "duplicate_role"],
+    [0, 'const up = (code = 0) => checked(run(from, "./lifecycle", ["up", "--configuration", "coffee", "--json"], undefined, env, code));', 'const up = (code = 0) => { run(from, "docker", ["version"]); return checked(run(from, "./lifecycle", ["up", "--configuration", "coffee", "--json"], undefined, env, code)); };', "adapter_primitives"],
+    [0, 'function recipe(heading: string, level = "###") {', 'function recipe(heading: string, level = "###") { readFileSync(from);', "adapter_primitives"],
+    [0, '() => response.json() as Promise<CheckoutResult>', '() => { response.json(); return {}; }', "detached_promise"],
+    [0, 'await runStarterRuntimeUpgrade(from, to, port);', '// await runStarterRuntimeUpgrade(from, to, port);', "empty_root"],
     [0, 'labels: [faultIndex, modeIndex], exit: true', 'labels: [source, faultIndex, modeIndex], exit: true', "labels"],
   ] as const) {
     const modified = sources[index]!.replace(before, after);
@@ -192,6 +277,45 @@ it("binds proof diagnostics to literal sites and rejects contract mutations", ()
     const issues = scanDiagnosticContract(sources.with(index, rule === "operation_count" ? modified.replace("'-C', source]),", "'-C', source])),") : modified)).issues;
     expect(issues.some(issue => issue.startsWith(rule + " ")) && !issues.some(issue => issue.startsWith("syntax ")), rule).toBe(true);
   }
+});
+
+it.each([
+  ["refused payment", "payment_validation", { paid: { ok: false }, orderRef: "original", step: "fixture" }, "payment_validation.fixture exit=none"],
+  ["payment for another order", "payment_validation", { paid: { ok: true, value: { status: "paid", orderRef: "other" } }, orderRef: "original", step: "fixture" }, "payment_validation.fixture exit=none"],
+  ["missing mount name", "predecessor_volume_missing", { project: "fixture", volume: undefined }, "predecessor_volume_missing exit=none"],
+  ["wrong mount name", "predecessor_volume_missing", { project: "fixture", volume: "other_database" }, "predecessor_volume_missing exit=none"],
+  ["missing Compose v2", "both_compose_releases_required", { olderCompose: undefined, currentCompose: "v5" }, "both_compose_releases_required exit=none"],
+  ["missing Compose v5", "both_compose_releases_required", { olderCompose: "v2", currentCompose: undefined }, "both_compose_releases_required exit=none"],
+  ["both Compose paths missing", "both_compose_releases_required", { olderCompose: undefined, currentCompose: undefined }, "both_compose_releases_required exit=none"],
+  ["reserved occupied port", "unsafe_occupied_port", { occupied: "4319" }, "unsafe_occupied_port exit=0"],
+] as const)("refuses %s at its guarded decision", (_description, reason, bindings, diagnostic) => {
+  const path = contractPaths[0]!;
+  const source = ts.createSourceFile(path, readFileSync(path, "utf8"), ts.ScriptTarget.Latest, true);
+  const guards: ts.CallExpression[] = [];
+  function find(node: ts.Node) {
+    if (ts.isCallExpression(node) && node.expression.getText(source) === "site" &&
+      node.arguments[1]?.getText(source) === JSON.stringify(reason)) guards.push(node);
+    ts.forEachChild(node, find);
+  }
+  find(source);
+  expect(guards).toHaveLength(1);
+  // Execute the checked-in decision with inert inputs, without duplicating its predicate.
+  const evaluate = new Function("site", "assert", ...Object.keys(bindings), `return (${guards[0]!.getText(source)});`);
+  expect(() => evaluate(site, assert, ...Object.values(bindings))).toThrow(expect.objectContaining({
+    message: `${diagnostic} reason=${reason}`,
+  }));
+});
+
+it("keeps an unexpected primary failure before both cleanup diagnostics", () => {
+  const failures = new ProofFailures();
+  failures.keep(new Error("private fixture output", { cause: new Error("private cause") }));
+  failures.attempt(() => site("primary_project_down", "primary_project_down", () => assert.fail(), { exit: 17 }));
+  failures.attempt(() => site("replacement_project_down", "replacement_project_down", () => assert.fail(), { exit: 19 }));
+  expect(() => failures.finish()).toThrow(expect.objectContaining({
+    message: "candidate_occupied_entry exit=none reason=occupied_entry_invariant\n" +
+      "primary_project_down exit=17 reason=primary_project_down\nreplacement_project_down exit=19 reason=replacement_project_down",
+    stack: undefined,
+  }));
 });
 
 it("preserves the occupied proof completion line", () => {
