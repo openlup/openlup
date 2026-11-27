@@ -5185,6 +5185,9 @@ type Fiscal = NonNullable<Extract<Pin, {
 type TaxRequest = ReturnType<typeof makeTaxQuoteRequest>;
 type TaxInput = TaxRequest["input"];
 type AdapterResult = Awaited<ReturnType<TaxCalculationPortV1["quote"]>>;
+type CheckoutDestinationRead = Extract<DestinationVerifiedReadV2, {
+    evidenceExpiresAt: string;
+}>;
 type Refusal = {
     kind: "refused";
     code: string;
@@ -5222,7 +5225,7 @@ type ExclusiveBinding = {
         kind: "refused";
     }>) => boolean;
     readCoverage: (installationRef: string, accountRef: string) => Promise<TaxCoverageRevision | null>;
-    readTaxFacts: (owner: QuoteOwnerContext, plan: CommerceQuoteMoneyV2Plan, service: DestinationServicePinV2, document: DestinationVerifiedReadV2) => Promise<Pick<TaxInput, "market" | "shipFromRef" | "policyRevision" | "required">>;
+    readTaxFacts: (owner: QuoteOwnerContext, plan: CommerceQuoteMoneyV2Plan, service: DestinationServicePinV2, document: CheckoutDestinationRead) => Promise<Pick<TaxInput, "market" | "shipFromRef" | "policyRevision" | "required">>;
 };
 /** @experimental Trusted host-authorized checkout owner. */
 export type QuoteOwnerContext = Omit<Begin["identity"], "evaluationKey">;
@@ -5254,7 +5257,7 @@ export interface DbBackedCommerceQuotePortV2Deps {
     };
     destination: Pick<DestinationPortV2, "snapshot" | "read">;
     snapshotCommand: (owner: QuoteOwnerContext, request: CommerceQuoteV2Request) => Promise<Parameters<DestinationPortV2["snapshot"]>[1]>;
-    readPlan: (owner: QuoteOwnerContext, request: CommerceQuoteV2Request, document: DestinationVerifiedReadV2) => Promise<FreshFacts>;
+    readPlan: (owner: QuoteOwnerContext, request: CommerceQuoteV2Request, document: CheckoutDestinationRead) => Promise<FreshFacts>;
     readLimits: (rail: Rail) => Promise<LimitsReadResult>;
     clockToleranceMs: number;
     readFiscal?: (owner: QuoteOwnerContext) => Promise<Fiscal>;

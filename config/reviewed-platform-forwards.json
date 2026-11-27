@@ -9977,8 +9977,31 @@
         ]
       },
       {
+        "row": "renewal-order-destination",
+        "path": "db/platform/migrations/20261129130508_renewal_order_destination_v2.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.commerce_destination_v2_read_retained(jsonb,text,uuid,jsonb)",
+            "beforeSha256": "85f21c7afdc1fd1de2fcfde95722f5523ade656f2a89294499ee66f465f734d1",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.classify_order_destination(uuid,public.commerce_destination_v2_documents,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_register_renewal_order_destination_v2(jsonb,uuid,uuid,uuid,jsonb,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "subscription-renewal-current-template",
-        "path": "db/platform/migrations/20261129130508_subscription_renewal_current_template.sql",
+        "path": "db/platform/migrations/20261129130509_subscription_renewal_current_template.sql",
         "replacedFunctions": [
           {
             "signature": "public.subscription_claim_due_renewal(text,text,jsonb,text,integer,timestamptz)",
@@ -14548,7 +14571,28 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261129130508_subscription_renewal_current_template.sql",
+      "path": "db/platform/migrations/20261129130508_renewal_order_destination_v2.sql",
+      "sha256": "cf9f42b785b31b6849da83b46101568e61fd5e4a89500574067602e5f376931f",
+      "functions": [
+        {
+          "signature": "public.commerce_destination_v2_read_retained(jsonb,text,uuid,jsonb)",
+          "beforeSha256": "85f21c7afdc1fd1de2fcfde95722f5523ade656f2a89294499ee66f465f734d1",
+          "afterSha256": "0761ecaea90ee5ca3be7383227ae5d61e6fd1c54d32c0b39fc938f1a08e2cfcb"
+        },
+        {
+          "signature": "public.classify_order_destination(uuid,public.commerce_destination_v2_documents,text)",
+          "beforeSha256": null,
+          "afterSha256": "569a67ec70d5dfdfd6043d17abef59552fbd592068c7635683312ef25c30d1a9"
+        },
+        {
+          "signature": "public.commerce_register_renewal_order_destination_v2(jsonb,uuid,uuid,uuid,jsonb,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "256ba6e3e12a718c0f994c3b88f26f567a3ab9ccb93c224996b788c6e5cbd0ca"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261129130509_subscription_renewal_current_template.sql",
       "sha256": "62f99a582643926653e73213cec1e6c72707f91c83c59ff0a31886220a9bd949",
       "functions": [
         {
