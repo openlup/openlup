@@ -1003,3 +1003,35 @@ describe("type-aware ESLint rules on outbox, platform, api, and server", () => {
     }
   }, 30_000);
 });
+
+describe("eslint Playwright route stubs in starter and preview specs", { timeout: 60_000 }, () => {
+  const message = "Use `stubFirst`";
+  const exportsMessage = "Import a workspace package only through a subpath";
+  const files = ["examples/neutral-store/browser/x.spec.ts", "examples/neutral-store/browser/x.proof.ts", "tests/preview/checkout/x.spec.ts"];
+
+  it("refuses `times` in route options, shorthand and quoted keys included, on any receiver", async () => {
+    const config = await loadConfig();
+    const refused = [
+      "await page.route('**/a', route => route.fulfill({ json: {} }), { times: 1 });",
+      "const times = 1; await page.route('**/a', route => route.continue(), { times });",
+      "await context.route(/a/, route => route.abort(), { 'times': 2 });",
+    ];
+    for (const filename of files) for (const source of refused)
+      expect(await boundaryMessages(config, source, filename), `${filename}: ${source}`).toEqual([expect.stringContaining(message)]);
+  });
+
+  it("admits a route that stays installed and keeps the workspace export boundary there", async () => {
+    const config = await loadConfig();
+    const admitted = [
+      "await page.route('**/a', route => ++hits === 1 ? route.fulfill({ json: {} }) : route.fallback());",
+      "await stubFirst(page, '**/a', route => route.fulfill({ json: {} }));",
+      "await page.unroute('**/a');",
+      "await page.waitForTimeout(1); const options = { times: 1 };",
+    ];
+    for (const filename of files) for (const source of admitted)
+      expect(await boundaryMessages(config, `let hits = 0; ${source}`, filename), source).toEqual([]);
+    expect(await boundaryMessages(config, "import value from '@openlup/core/not-exported';\nexport { value };\n", files[0]!))
+      .toContainEqual(expect.stringContaining(exportsMessage));
+    expect(await boundaryMessages(config, "await page.route('**/a', h, { times: 1 });", "examples/neutral-store/host/x.ts")).toEqual([]);
+  });
+});

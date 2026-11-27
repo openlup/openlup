@@ -177,6 +177,7 @@
     "browser/checkout-expected-total.spec.ts",
     "browser/storefront-anchors.spec.ts",
     "browser/checkout-controller.spec.ts",
+    "browser/route-stub.ts",
     "test/checkout-anchors.test.ts",
     "browser/storefront-proof-kit.ts",
     "shared/action-path.ts",
