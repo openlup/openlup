@@ -1927,6 +1927,31 @@ it("lists the claimed, reserved, and unknown legacy cohort until reconciled", as
   });
 }, postgresSetupTimeoutMs);
 
+it("omits a held v1 billing root attached to a v3 occurrence from the upgrade report", async () => {
+  await withTemplateUpgrade(async target => {
+    const { owner, applyForward } = target;
+    const { f, d, claim } = await upgradeRenewal(target);
+    const root = await claim();
+    await reserveIncumbent(d, root);
+    await applyForward();
+    expect((await owner.query(`SELECT o.cycle_snapshot->>'contractVersion' AS wire
+      FROM public.subscription_renewal_operations o JOIN public.subscription_renewal_upgrade_cohort c
+      ON c.renewal_operation_id=o.id WHERE o.id=$1`, [root.operationId])).rows)
+      .toEqual([{ wire: "platform.subscription.renewal.v1" }]);
+    const held = reportRow(root.operationId, ["first_charge"], { operation_state: "reserved", reservation_state: "held" });
+    const cycleKey = randomUUID();
+    await owner.query(`INSERT INTO public.subscription_cycle_occurrences
+      (cycle_key,subscription_id,client_id,original_anchor_at,effective_due_at,cadence_seconds,rail,lifecycle,is_current)
+      VALUES($1,$2,$3,$4,$5,2419200,'v3','active',true)`,
+    [cycleKey, f.subscriptionId, f.clientId, d.due.scheduledAt, days(d.due.scheduledAt, 1)]);
+    expect(await renewalUpgradeReport(owner)).toEqual([held]);
+    await attachRenewalGeneration(owner, cycleKey, root.operationId);
+    expect(await renewalUpgradeReport(owner)).toEqual([]);
+    await selectRenewalGeneration(owner, cycleKey, root.operationId);
+    expect(await renewalUpgradeReport(owner)).toEqual([]);
+  });
+}, postgresSetupTimeoutMs);
+
 it("reports legacy billing with only a shipping reference in the order snapshot", async () => {
   await withTemplateUpgrade(async target => {
     const { db, owner, applyForward } = target;
@@ -2275,6 +2300,18 @@ it.each(["drain", "omit drain", "keep closed", "reopen"])("fences claim admissio
   });
 }, postgresSetupTimeoutMs);
 
+async function attachRenewalGeneration(owner: Pool, cycleKey: string, operationId: string) {
+  await owner.query(`INSERT INTO public.subscription_cycle_generations
+    (cycle_key,operation_id,commercial_generation_id,agreement,agreement_fingerprint,claim_token,lease_expires_at,lease_generation)
+    SELECT $1,id,id,'{}',operation_fingerprint,claim_token,lease_expires_at,1
+    FROM public.subscription_renewal_operations WHERE id=$2`, [cycleKey, operationId]);
+}
+
+async function selectRenewalGeneration(owner: Pool, cycleKey: string, operationId: string) {
+  await owner.query(`UPDATE public.subscription_cycle_occurrences SET operation_id=$2,commercial_generation_id=$2
+    WHERE cycle_key=$1`, [cycleKey, operationId]);
+}
+
 it("keeps v3 schedule and delivery ownership out of the check and scoped repair", async () => {
   await withTemplateUpgrade(async target => {
     const { db, owner, applyForward } = target;
@@ -2298,13 +2335,8 @@ it("keeps v3 schedule and delivery ownership out of the check and scoped repair"
         VALUES($1,$2,$3,$4,$5,2419200,'v3','active',true)`,
       [subject.key, subject.subscriptionId, subject.clientId, subject.anchor, days(observedDue, 1)]);
     }
-    await owner.query(`WITH generation AS (
-      INSERT INTO public.subscription_cycle_generations
-        (cycle_key,operation_id,commercial_generation_id,agreement,agreement_fingerprint,claim_token,lease_expires_at,lease_generation)
-      SELECT $1,id,id,'{}',operation_fingerprint,claim_token,lease_expires_at,1
-      FROM public.subscription_renewal_operations WHERE id=$2 RETURNING *
-    ) UPDATE public.subscription_cycle_occurrences x SET operation_id=g.operation_id,commercial_generation_id=g.commercial_generation_id
-      FROM generation g WHERE x.cycle_key=g.cycle_key`, [booked.key, op.operationId]);
+    await attachRenewalGeneration(owner, booked.key, op.operationId);
+    await selectRenewalGeneration(owner, booked.key, op.operationId);
     await applyForward();
     await rpc("subscription_delivery_alignment_set_mode", ["auto_align"], owner);
     const report = () => readRenewalUpgradeReport(owner);

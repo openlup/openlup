@@ -119,6 +119,13 @@ WITH roots AS MATERIALIZED (
   FROM public.subscription_renewal_upgrade_cohort cohort
   JOIN public.subscription_renewal_operations o ON o.id = cohort.renewal_operation_id
   JOIN public.subscriptions s ON s.id = o.subscription_id
+  WHERE NOT EXISTS (
+    SELECT 1
+    FROM public.subscription_cycle_generations g
+    JOIN public.subscription_cycle_occurrences x ON x.cycle_key = g.cycle_key
+    WHERE g.operation_id = o.id AND x.subscription_id = s.id
+      AND x.client_id = s.client_id AND x.rail = 'v3'
+  )
 ), financial AS (
   SELECT o.id, o.state, o.attempt_prepared_at, o.external_attempt_acknowledged_at,
          o.cycle_snapshot->>'settlementChannelKey' AS channel, i.channel_key AS intent_channel,
