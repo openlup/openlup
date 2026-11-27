@@ -20442,10 +20442,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/customers/customerAccountReadDiagnostics.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/customers/customerAddressesHandler.test.ts",
       "class": "public-output"
     },
@@ -20486,10 +20482,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/customers/customerInvoiceDocumentStatus.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/customers/customerInvoiceDownloadHandler.test.ts",
       "class": "public-output"
     },
@@ -20506,10 +20498,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/customers/customerMeHandler.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/customers/customerOrderHistoryMoney.test.ts",
       "class": "public-output"
     },
@@ -20523,10 +20511,6 @@
     },
     {
       "path": "server/domains/customers/customerOrderLinePricing.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/customers/customerOrderLinePricing.ts",
       "class": "public-output"
     },
     {
