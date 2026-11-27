@@ -174,7 +174,7 @@ bearer; its local fixture establishes no hosted revocation guarantee.
 
 | Export | Contents |
 | --- | --- |
-| `./lifecycle` | Experimental Node file-snapshot planning/apply, read-only legacy PostgreSQL role prerequisites, and storefront verdict and proof-file contracts; no install-readiness claim, optional SDK or activation |
+| `./lifecycle` | Experimental Node file-snapshot planning/apply, read-only legacy PostgreSQL role prerequisites, storefront verdict and proof-file contracts, and the storefront capability list; no install-readiness claim, optional SDK or activation |
 | `./portability` | Experimental server object copy/resume, private filesystem transfer store and compatible PostgreSQL row capture/restore; injected handles, explicit refusal and no activation |
 | `./http` | Generic capped raw-body reader, hex HMAC and constant-time token comparison; Node request adaptation, deadlines, security headers and static documents, and `createNodeHttpRuntime` with its fixed request order |
 | `./bff` | `createBffDispatcher`, `lazyBffRoute`, the hosted router URL rewrite, the response envelope (`createBffResponder`), the observed request context and the health route |
@@ -4003,6 +4003,12 @@ evidence from `@openlup/platform/lifecycle`, without importing test support:
 - **Digest.** `digestStorefrontFiles` is the one client-build digest:
   `sha256:` over a manifest of relative POSIX paths and their SHA-256, sorted
   by UTF-16 code units (not locale or UTF-8 byte order).
+- **Capabilities.** `storefrontCapabilities` is the frozen list of
+  capabilities a selling store may need. Each `StorefrontCapability` states its
+  `level` in this version (`supported` or `unsupported`; a reader keeps a
+  default branch for a level added later), what a store does `meanwhile`, who
+  closes it (`closedBy`) and the stores it affects (`appliesTo`). Ids are never
+  renamed; delivering a capability changes its `level`.
 - **Open sets.** Tiers, channels, results, runs, phases, control, observer,
   build-source and adapter kinds, and finding codes accept values added later
   (`^[a-z][a-z0-9_]*$`); a reader keeps a default branch. Unknown fields are

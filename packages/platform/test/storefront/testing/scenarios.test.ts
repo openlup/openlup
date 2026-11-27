@@ -1,6 +1,11 @@
+import { readFileSync } from "node:fs";
+import ts from "typescript";
 import { expect, it } from "vitest";
+import { knownFindingCodes } from "../../../src/lifecycle/storefrontVerdictSchema.js";
 import { storefrontAnchor } from "../../../src/storefront/index.js";
-import { findingText, findingTextKeys } from "../../../src/storefront/testing/findings.js";
+import { findingParts, findingText, findingTextKeys, partLabels } from "../../../src/storefront/testing/findings.js";
+import { JUDGEMENT } from "../../../src/storefront/testing/judgement.js";
+import { knownOutcomes, outcomeMeanings } from "../../../src/storefront/testing/outcomes.js";
 import { storefrontScenarios, type StorefrontScenario } from "../../../src/storefront/testing/index.js";
 
 const isFrozenDeep = (value: unknown): boolean =>
@@ -79,4 +84,56 @@ it("keys the finding texts by code and cause, with one cause per single-cause co
   // The control list is judged from the control run's first sample, before its control starts too.
   const unknowable = findingText("forbidden_state_shown", "unknowable", { at: "Step 2 (expect awaiting_payment) of the control run", name: "state:paid" });
   expect(`${unknowable.observed} ${unknowable.cause}`).not.toMatch(/blocked/);
+});
+
+const tableCodes = () => [...new Set(findingTextKeys.map(([code]) => code))];
+
+it("F1 holds a text for every known finding code and no other code", () => {
+  expect(tableCodes().sort()).toEqual([...knownFindingCodes].sort());
+});
+
+it("F2 names exactly one part at fault for every finding code", () => {
+  expect(Object.keys(findingParts).sort()).toEqual([...knownFindingCodes].sort());
+  for (const code of knownFindingCodes) expect(Object.keys(partLabels), code).toContain(findingParts[code]);
+});
+
+it("F3 names, per code, the part the StorefrontFindingCode documentation names", () => {
+  const path = new URL("../../../src/lifecycle/storefrontVerdict.ts", import.meta.url);
+  const source = ts.createSourceFile(path.pathname, readFileSync(path, "utf8"), ts.ScriptTarget.ES2022, true);
+  const alias = source.statements.find((node): node is ts.TypeAliasDeclaration => ts.isTypeAliasDeclaration(node) && node.name.text === "StorefrontFindingCode");
+  const comment = ts.getJSDocCommentsAndTags(alias!).filter(ts.isJSDoc).map((doc) => ts.getTextOfJSDocComment(doc.comment) ?? "").join("\n");
+  const byLabel = new Map(Object.entries(partLabels).map(([part, label]) => [label, part]));
+  const documented: Record<string, string> = {};
+  for (const bullet of comment.split(/\n- /).slice(1)) {
+    const label = bullet.slice(0, bullet.indexOf(":"));
+    expect([...byLabel.keys()], label).toContain(label);
+    const codes = [...bullet.matchAll(/`([a-z][a-z0-9_]*)`/g)].map((match) => match[1]!).filter((name) => (knownFindingCodes as readonly string[]).includes(name));
+    for (const code of codes) {
+      expect(documented[code], `${code} is documented twice`).toBeUndefined();
+      documented[code] = byLabel.get(label)!;
+    }
+  }
+  expect(documented).toEqual({ ...findingParts });
+});
+
+it("F4 covers every (code, cause) of the table with a judgement entry, and every judgement entry with the table", () => {
+  const keys = Object.keys(JUDGEMENT);
+  for (const [code, cause] of findingTextKeys) expect(keys.includes(`${code}:${cause}`) || keys.includes(code), `${code}:${cause}`).toBe(true);
+  const causesOf = (code: string) => findingTextKeys.filter(([key]) => key === code).map(([, cause]) => cause);
+  for (const key of keys) {
+    const [code, cause] = key.split(":") as [string, string | undefined];
+    expect(causesOf(code), `${key} names a code the table does not hold`).not.toEqual([]);
+    if (cause !== undefined) expect(causesOf(code), `${key} names a cause the table does not hold`).toContain(cause);
+  }
+  for (const code of tableCodes()) {
+    const split = keys.filter((key) => key.startsWith(`${code}:`));
+    if (split.length === 0) continue;
+    expect(split.sort(), `${code} splits its judgement, so every cause needs a split key`).toEqual(causesOf(code).map((cause) => `${code}:${cause}`).sort());
+    expect(keys, `${code} splits its judgement, so a plain key is never read`).not.toContain(code);
+  }
+});
+
+it("gives every known outcome kind a one-line meaning", () => {
+  expect(Object.keys(outcomeMeanings).sort()).toEqual([...knownOutcomes].sort());
+  for (const meaning of Object.values(outcomeMeanings)) expect(meaning).toMatch(/^[A-Z][^\n]+\.$/);
 });
