@@ -95,6 +95,19 @@ to the producer. Incumbent artifacts, conflicting retained facts and changed
 replay inputs require reconciliation by the Subscriptions owner. The producer
 has no caller in the managed topology.
 
+### Dormant native renewal occurrence views and root writer
+
+The migration owner can read the exact scoped key, including history, or lock the active
+occurrence in READ COMMITTED. Both rails require matching owner, original anchor, generation
+and wire tag. Views project the pinned cancellation deadline in UTC.
+
+After allocation commits, a later READ COMMITTED claim commits the pair, root and initial
+lease together. An exact retry returns the retained agreement with both lease fields null.
+Restore the original request bytes after an immutable-input conflict. Reconcile inconsistent
+retained data with Subscriptions. For stale selection, recover the selected pair's agreement.
+For a root UUID collision, reread selection. If empty, rebind both IDs and recompute the digest.
+Runtime roles receive no EXECUTE grant. Mounted workers use incumbent contracts.
+
 ## Recover payment
 
 [paymentRecoveryHandler.ts](../../server/domains/subscription/paymentRecoveryHandler.ts)

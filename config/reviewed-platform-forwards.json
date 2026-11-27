@@ -10323,8 +10323,29 @@
         ]
       },
       {
+        "row": "native-renewal-occurrence-writer",
+        "path": "db/platform/migrations/20261129160010_native_renewal_occurrence_writer.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.subscriptions__read_renewal_occurrence(uuid,uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscriptions__lock_renewal_occurrence(uuid,uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscriptions__create_renewal_v3_root(uuid,uuid,uuid,uuid,integer,text,text,text,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "subscription-edit-derived-prices",
-        "path": "db/platform/migrations/20261129160010_subscription_edit_derived_prices.sql",
+        "path": "db/platform/migrations/20261129160011_subscription_edit_derived_prices.sql",
         "replacedFunctions": [
           {
             "signature": "public.catalog_admission_derived_subscription_prices(text,jsonb,jsonb,timestamptz)",
@@ -15123,7 +15144,28 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261129160010_subscription_edit_derived_prices.sql",
+      "path": "db/platform/migrations/20261129160010_native_renewal_occurrence_writer.sql",
+      "sha256": "6eea804c693944bbf0af377ebfa122d1ad213a4da62c939e68dfa7bf9cf6d6fc",
+      "functions": [
+        {
+          "signature": "public.subscriptions__read_renewal_occurrence(uuid,uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "5b3072d2f80fa22c9fe1ba86b836aaa87d8963a2070d4eb100d926b7797647f6"
+        },
+        {
+          "signature": "public.subscriptions__lock_renewal_occurrence(uuid,uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "3d19e8336fbf63ae4cbd07edfe1efed693ddce9444e9e7087bf3ca536a8e540e"
+        },
+        {
+          "signature": "public.subscriptions__create_renewal_v3_root(uuid,uuid,uuid,uuid,integer,text,text,text,integer)",
+          "beforeSha256": null,
+          "afterSha256": "58a3a94c7e23bbd4f22ececaa78c471b2022d8b80f497cd5131b46e572d29eda"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261129160011_subscription_edit_derived_prices.sql",
       "sha256": "a645d30d7718b2e30aa4f21713c7ea05609e559697e9e31f8cc042a01b4da2b0",
       "functions": [
         {

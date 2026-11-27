@@ -31738,6 +31738,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/nativeRenewalOccurrence.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/nativeRenewalOccurrenceDormancy.test.ts",
       "class": "public-output"
     },
@@ -31746,7 +31750,15 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/nativeRenewalOccurrenceWriter.fixture.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/nativeRenewalV3Legacy.fixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/nativeRenewalV3Root.test.ts",
       "class": "public-output"
     },
     {

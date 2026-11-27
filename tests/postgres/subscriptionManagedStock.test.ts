@@ -78,6 +78,24 @@ function tapLines(result: QueryResult | QueryResult[]): string[] {
     .filter((value): value is string => typeof value === "string" && /^(?:ok |not ok |1\.\.|#)/u.test(value));
 }
 
+it("excludes the occurrence routines from the installed managed catalogue and still settles a renewal", async () => {
+  const signatures = [
+    "public.subscriptions__allocate_renewal_occurrence(uuid,uuid,text,jsonb)",
+    "public.subscriptions__read_renewal_occurrence(uuid,uuid,uuid)",
+    "public.subscriptions__lock_renewal_occurrence(uuid,uuid,uuid)",
+    "public.subscriptions__create_renewal_v3_root(uuid,uuid,uuid,uuid,integer,text,text,text,integer)",
+  ];
+  expect((await db.query("SELECT signature,to_regprocedure(signature) AS installed FROM unnest($1::text[]) AS signature",
+    [signatures])).rows).toEqual(signatures.map(signature => ({ signature, installed: null })));
+  try {
+    const tap = tapLines(await db.query(readFileSync("supabase/tests/subscription_late_payment_cycle_shift_test.sql", "utf8")));
+    expect(tap.filter(line => /^(?:not ok |# (?:Looks like|Failed))/u.test(line)), tap.join("\n")).toEqual([]);
+    const passed = tap.filter(line => /^ok /u.test(line));
+    expect(tap).toContain(`1..${passed.length}`);
+    expect(passed.some(line => line.includes("cycle_paid still reports the cycle scheduled date"))).toBe(true);
+  } finally { await db.query("ROLLBACK; RESET ROLE; SET ROLE postgres; SET search_path=public,extensions"); }
+}, 120_000);
+
 it("exact-cover managed renewal witness rejects unconditional soft-demand subtraction", async () => {
   const signature = "public.inventory_available_to_promise(uuid,timestamptz,boolean)";
   const original = (await db.query<{ body: string }>("SELECT pg_get_functiondef($1::regprocedure) AS body", [signature])).rows[0].body;
