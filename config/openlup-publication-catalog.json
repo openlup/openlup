@@ -13762,6 +13762,10 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/preflight-integration-settings-cold.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/preflight-integration-settings.test.ts",
       "class": "public-output"
     },
