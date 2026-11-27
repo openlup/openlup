@@ -2349,6 +2349,7 @@
     "tests/platform/marketingValidation.test.ts": 277,
     "tests/platform/neutralStoreCheckoutClassifier.test.ts": 30,
     "tests/platform/neutralStoreCheckoutRetry.test.ts": 81,
+    "tests/platform/neutralStoreProofFile.test.ts": 40,
     "tests/platform/packWorkspaceTarball.test.ts": 66,
     "tests/platform/partners/partnerAcquisitionParity.test.ts": 64,
     "tests/platform/promotions/adminBinding.test.ts": 658,

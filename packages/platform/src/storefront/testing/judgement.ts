@@ -7,6 +7,8 @@ import type { StorefrontVerdict } from "../../lifecycle/index.js";
 /** Where a code sits in the judgement order, and the result it gives when it is the first failing check. */
 export const JUDGEMENT: Readonly<Record<string, { readonly group: number; readonly rank: number; readonly result: StorefrontVerdict["result"] }>> = {
   tier_unreachable: { group: 0, rank: 0, result: "not_run" },
+  // A page handle that cannot clear client state between the two buyers; admission is decided first.
+  client_state_unisolated: { group: 0, rank: 1, result: "not_run" },
   page_failed: { group: 1, rank: 0, result: "not_run" },
   "observer_failed:rejected": { group: 1, rank: 0, result: "not_run" },
   arrange_failed: { group: 1, rank: 0, result: "not_run" },

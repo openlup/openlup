@@ -5,6 +5,7 @@ import { storefrontAnchor } from '@openlup/platform/storefront';
 import { act, uncertainAction } from './api.ts';
 import { append, button, el, renderValue } from './dom.ts';
 import { limitFor, nativeLimits, operationLimits, otherLimits } from '../shared/limits.ts';
+import { sandboxOutcomeAttribute } from '../shared/storefront-bindings.ts';
 
 export interface FieldSpec {
   name: string;
@@ -41,6 +42,8 @@ interface ActionFormBase {
   resultMessage?: (value: unknown) => CopyKey | undefined;
   /** A `storefrontAnchor.action` value, rendered as `data-openlup-action` on the submit button. */
   submitAnchor?: ActionAnchor;
+  /** A sandbox simulate button's outcome, rendered as `data-starter-sandbox-outcome` on the submit button. */
+  sandboxOutcome?: 'captured' | 'refused' | 'expired' | 'indeterminate';
 }
 
 /**
@@ -103,6 +106,7 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
   }
   const submit = el('button', { type: 'submit' }, typeof options.submit === 'string' ? context.t(options.submit) : options.submit.label);
   if (options.submitAnchor) submit.setAttribute(storefrontAnchor.attribute.action, options.submitAnchor);
+  if (options.sandboxOutcome) submit.setAttribute(sandboxOutcomeAttribute, options.sandboxOutcome);
   // Keep command identity on an uncertain transport result. A changed input is a new command.
   let commandKey = crypto.randomUUID();
   let priorInput: string | null = null;

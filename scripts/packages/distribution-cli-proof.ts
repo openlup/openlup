@@ -99,6 +99,8 @@ export const starterOptionalOwnedFiles: ReadonlySet<string> = new Set([
   "owned/fulfillment-adapter.test.ts",
   "owned/invoice-provider.ts",
   "owned/invoice-provider.test.ts",
+  // The storefront proof file: an upgraded store without it is proven with the kit's shipped values.
+  "owned/storefront-proof.json",
 ]);
 
 export const starterSettingsHost = "owned/settings-host.ts";
