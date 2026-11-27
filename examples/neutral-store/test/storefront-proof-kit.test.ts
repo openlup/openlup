@@ -54,7 +54,9 @@ function assertFourParts(error: StarterRefusal, code: string): void {
   }
 }
 
-const shippedText = () => readFile(join(root, 'owned/storefront-proof.json'), 'utf8');
+// The shipped values as a file. Never the owned file itself: a store edits it, and this managed test must hold for
+// every store. A repository-only test pins the shipped file to these values.
+const shippedText = async () => JSON.stringify(shippedStorefrontProof, null, 2);
 const firstConfiguration = Object.keys(configurations)[0]!;
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -116,10 +118,9 @@ test('K3 row 6: another format version refuses with the package code', async () 
 });
 
 test('K3 row 7: more than one configuration refuses; this tier proves one', async () => {
-  const ids = Object.keys(configurations);
-  assert.ok(ids.length > 1, 'the starter ships more than one configuration');
+  const ids = [firstConfiguration, `${firstConfiguration}-second`];
   const error = await refusalOf(async () => readStorefrontProof(await application({
-    'owned/storefront-proof.json': JSON.stringify({ ...JSON.parse(await shippedText()), configurations: ids.slice(0, 2) }) })));
+    'owned/storefront-proof.json': JSON.stringify({ ...JSON.parse(await shippedText()), configurations: ids }) })));
   assertFourParts(error, 'starter_storefront_proof_configuration_count');
 });
 
@@ -500,6 +501,10 @@ test('K8b T8 row 11: every status read of the managed pages is a read operation,
   }
   for (const file of ['client/pages/checkout.ts', 'client/purchase.ts', 'shared/storefront-bindings.ts']) {
     assert.doesNotMatch(await readFile(join(root, file), 'utf8'), /'simulate'/, file);
+  }
+  // No browser witness waits for, or routes, a simulate the managed pages no longer send.
+  for (const name of (await readdir(join(root, 'browser'))).filter(item => /\.(?:spec|proof)\.ts$|fixture\.ts$/.test(item))) {
+    assert.doesNotMatch(await readFile(join(root, 'browser', name), 'utf8'), /postDataJSON\(\)\??\.action\s*[!=]==?\s*'simulate'/, name);
   }
   // Only the checkout and payment-status pages show a storefront state; the account and repair pages, which send the
   // unmatched account.orders and payment.recover, show none, so those answers never report a scenario's outcome.

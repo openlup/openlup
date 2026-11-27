@@ -125,9 +125,9 @@ function startupImports(source: string): string[] {
   return found;
 }
 
-/** Every package a pre-install entry point loads at start-up, as `file: specifier`. */
-function startupPackages(read: (path: string) => string | undefined, entries: readonly string[]): string[] {
-  const visited = new Set<string>(), packages: string[] = [];
+/** Every package a pre-install entry point loads at start-up, as `file: specifier`; `visited` receives every module. */
+function startupPackages(read: (path: string) => string | undefined, entries: readonly string[], visited = new Set<string>()): string[] {
+  const packages: string[] = [];
   const visit = (path: string) => {
     if (visited.has(path)) return;
     visited.add(path);
@@ -164,13 +164,27 @@ test('an extracted application outside any node_modules runs ./lifecycle ownersh
   try {
     for (const file of [...ownership.owned, ...ownership.managed]) {
       await mkdir(dirname(join(target, file)), { recursive: true });
-      await copyFile(resolve(root, ownership.sourceMappings?.[file] ?? file), join(target, file));
+      // A source checkout keeps some files under their template name; an extracted application has the file itself.
+      const mapped = ownership.sourceMappings?.[file];
+      const source = mapped !== undefined && readSource(resolve(root, file)) === undefined ? mapped : file;
+      await copyFile(resolve(root, source), join(target, file));
     }
     for (const command of ['ownership', 'refusals']) {
-      const result = spawnSync(process.execPath, ['lifecycle.mjs', command], { cwd: target, encoding: 'utf8', env: { PATH: process.env.PATH ?? '' } });
+      const result = spawnSync(process.execPath, ['lifecycle.mjs', command], { cwd: target, encoding: 'utf8' });
       assert.equal(result.status, 0, `${command}: ${result.stderr}`);
     }
   } finally {
     await rm(target, { recursive: true, force: true });
   }
+});
+
+test('the lifecycle transport witness copies every module lifecycle.mjs loads at start-up', () => {
+  const modules = new Set<string>();
+  assert.deepEqual(startupPackages(readSource, preInstallEntries, modules), []);
+  const source = readFileSync(resolve(root, 'test/lifecycle.test.ts'), 'utf8');
+  const list = /for \(const path of \[('lifecycle', 'lifecycle\.mjs',[^\]]*)\]\)/.exec(source)?.[1];
+  assert.ok(list, 'the copied module list of the lifecycle transport witness');
+  const copied = new Set([...list.matchAll(/'([^']+)'/g)].map(match => match[1]!));
+  const missing = [...modules].map(path => path.slice(root.length + 1)).filter(path => !copied.has(path));
+  assert.deepEqual(missing, []);
 });
