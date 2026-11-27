@@ -51,7 +51,6 @@ export function parseStreet(fullStreet: string): { street: string; houseNumber: 
 }
 
 const MAX_SANITIZE_INPUT_CHARS = 4096;
-const SAFE_OBJECT_SEGMENT_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 export function sanitizeCarrierError(error: unknown): string {
   const bounded = String(error ?? `${CARRIER_DISPLAY_NAME} request failed`).slice(0, MAX_SANITIZE_INPUT_CHARS);
@@ -81,9 +80,21 @@ function hasControlChar(value: string): boolean {
 
 export function safeObjectKey(value: string): boolean {
   if (value.length === 0 || value.trim() !== value) return false;
-  if (value.startsWith("/") || value.endsWith("/") || value.includes("\\") || value.includes("..")) return false;
+  if (
+    value.startsWith("/") ||
+    value.endsWith("/") ||
+    value.includes("\\") ||
+    value.includes("..") ||
+    value.includes("%") ||
+    value.includes("?") ||
+    value.includes("#")
+  ) {
+    return false;
+  }
   if (hasControlChar(value)) return false;
-  if (value.split("/").some((segment) => !SAFE_OBJECT_SEGMENT_RE.test(segment))) return false;
+  if (value.split("/").some((segment) => segment.length === 0 || segment.startsWith(".") || /\s/.test(segment))) {
+    return false;
+  }
   return true;
 }
 
