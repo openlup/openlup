@@ -1432,15 +1432,16 @@ export class StarterRuntimeProofError extends Error {
 export async function proveStarterRuntimeUpgrade(from: string, to: string, port: number) {
   try { await runStarterRuntimeUpgrade(from, to, port); }
   catch (error) {
-    throw new StarterRuntimeProofError([StarterRuntimeProofError.diagnostic(error, "occupied_proof")]);
+    throw new StarterRuntimeProofError([StarterRuntimeProofError.diagnostic(error, "occupied_proof_setup")]);
   }
 }
 
 async function runStarterRuntimeUpgrade(from: string, to: string, port: number) {
+  const substep = (step: string, ...labels: (string | number)[]) => [step, ...labels].join(".");
   const fail = (step: string, status: number | null = null, reason?: string): never => {
     throw new StarterRuntimeProofError(step, status, reason);
   };
-  if (process.platform !== "linux" || port === 4319) fail("occupied_proof", null, "unsupported_runner_or_port");
+  if (process.platform !== "linux" || port === 4319) fail("occupied_proof_admission", null, "unsupported_runner_or_port");
   const started = performance.now();
   const project = "starter-runtime-" + randomBytes(6).toString("hex");
   const scratch = mkdtempSync(join(tmpdir(), project + "-"));
@@ -1459,7 +1460,7 @@ async function runStarterRuntimeUpgrade(from: string, to: string, port: number) 
     try {
       child = spawnSync(command, args, { cwd, env: environment, input, encoding: "utf8",
         stdio: ["pipe", "pipe", "pipe"], timeout: 300_000, maxBuffer: 16 * 1024 * 1024 });
-    } catch { return fail(step, null, "command_failed"); }
+    } catch { return fail(step, null, "spawn_failed"); }
     if (child.error) fail(step, child.status, (child.error as NodeJS.ErrnoException).code === "ENOBUFS"
       ? "capture_failed" : "command_failed");
     return { step, status: child.status, signal: child.signal, stdout: child.stdout ?? "", stderr: child.stderr ?? "" };
@@ -1468,38 +1469,40 @@ async function runStarterRuntimeUpgrade(from: string, to: string, port: number) 
     if (result.status !== expected) fail(result.step, result.status, "unexpected_exit");
     return result.stdout.trim();
   };
-  function cleanupProjects() {
-    for (const [step, name] of [["primary_project_down", project], ["replacement_project_down", alternate]] as const) {
-      try {
-        checked(run(step, from, dockerBin,
-          ["compose", "--project-name", name, "down", "--volumes", "--remove-orphans", "--rmi", "local"]));
-      } catch (error) { failures.push(StarterRuntimeProofError.diagnostic(error, step)); }
-    }
+  function downProject(step: string, name: string) {
+    try {
+      checked(run(step, from, dockerBin,
+        ["compose", "--project-name", name, "down", "--volumes", "--remove-orphans", "--rmi", "local"]));
+    } catch (error) { failures.push(StarterRuntimeProofError.diagnostic(error, substep(step, "exception"))); }
   }
-  const sql = (text: string, database = "neutral_store", activeProject = project) => checked(run("owner_sql", from, "docker", ["compose", "--project-name", activeProject, "exec", "-T", "database", "psql", "-XAtq", "-w",
+  const sql = (step: string, text: string, database = "neutral_store", activeProject = project) => checked(run(step, from, "docker",
+    ["compose", "--project-name", activeProject, "exec", "-T", "database", "psql", "-XAtq", "-w",
       "-v", "ON_ERROR_STOP=1", "-U", database === "postgres" ? "postgres" : "starter_install", "-d", database, "-c", text]));
   const source = join(homedir(), ".local/state/openlup/neutral-store", project, "runtime-password");
   const projectFile = join(from, ".context/compose-project");
-  const container = (service: string, activeProject = project) => checked(composeFor("container_id", activeProject, "ps", "-q", service));
-  const up = (code = 0) => checked(run("up", from, "./lifecycle", ["up", "--configuration", "coffee", "--json"]), code);
-  const identity = (activeProject = project) => {
-    const id = container("database", activeProject);
+  const container = (step: string, service: string, activeProject = project) => checked(composeFor(step, activeProject, "ps", "-q", service));
+  const up = (step: string, code = 0) => checked(run(step, from, "./lifecycle", ["up", "--configuration", "coffee", "--json"]), code);
+  const identity = (step: string, activeProject = project) => {
+    const id = container(substep(step, "container"), "database", activeProject);
     const format = "{{.State.StartedAt}} {{range .Mounts}}{{if eq .Destination \"/var/lib/postgresql/data\"}}{{.Name}}{{end}}{{end}}";
-    return [id, checked(run("database_identity", from, "docker", ["inspect", "--format", format, id])),
-      sql("select oid from pg_database where datname = current_database()", "neutral_store", activeProject)
-        + ":" + sql("select system_identifier from pg_control_system()", "postgres", activeProject),
-      sql("show hba_file", "postgres", activeProject)];
+    return [id, checked(run(substep(step, "mount"), from, "docker", ["inspect", "--format", format, id])),
+      sql(substep(step, "oid"), "select oid from pg_database where datname = current_database()", "neutral_store", activeProject)
+        + ":" + sql(substep(step, "system_id"), "select system_identifier from pg_control_system()", "postgres", activeProject),
+      sql(substep(step, "hba_file"), "show hba_file", "postgres", activeProject)];
   };
-  const retained = () => [
-    sql("select jsonb_agg(to_jsonb(t) order by id) from public.catalog_products t"),
-    sql("select jsonb_agg(to_jsonb(t) order by id) from public.catalog_skus t"),
-    sql("select jsonb_agg(to_jsonb(t) order by id) from public.price_entries t"),
-    sql("select jsonb_agg(to_jsonb(t) order by position) from public.platform_schema_migrations t"),
+  const retained = (step: string) => [
+    sql(substep(step, "products"), "select jsonb_agg(to_jsonb(t) order by id) from public.catalog_products t"),
+    sql(substep(step, "skus"), "select jsonb_agg(to_jsonb(t) order by id) from public.catalog_skus t"),
+    sql(substep(step, "prices"), "select jsonb_agg(to_jsonb(t) order by id) from public.price_entries t"),
+    sql(substep(step, "migrations"), "select jsonb_agg(to_jsonb(t) order by position) from public.platform_schema_migrations t"),
   ];
-  const mark = (step: string) => process.stdout.write("Starter runtime " + step + " PASS\n");
+  const mark = (label: string) => process.stdout.write("Starter runtime " + label + " PASS\n");
+  function parseJson(step: string, text: string) {
+    try { return JSON.parse(text); } catch { return fail(step, null, "invalid_json"); }
+  }
   const origin = `http://127.0.0.1:${port}`;
   type CheckoutResult = { ok: boolean; code?: string; value?: Record<string, unknown> };
-  async function checkoutAction(action: string, body: Record<string, unknown>): Promise<CheckoutResult> {
+  async function checkoutAction(step: string, action: string, body: Record<string, unknown>): Promise<CheckoutResult> {
     try {
       // Receipt reads carry no cookies from the original checkout.
       const response = await fetch(`${origin}/api/actions/${action}`, {
@@ -1511,11 +1514,11 @@ async function runStarterRuntimeUpgrade(from: string, to: string, port: number) 
       const result = await response.json() as CheckoutResult;
       if (result.ok === response.ok) return result;
     } catch { /* Keep private checkout responses out of diagnostics. */ }
-    return fail(action, null, "invalid_response");
+    return fail(step, null, "invalid_response");
   }
-  const settledFacts = (ref: string, activeProject = project) => {
-    if (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(ref)) fail("invalid_settled_order_key");
-    return sql(`select jsonb_build_object(
+  const settledFacts = (step: string, ref: string, activeProject = project) => {
+    if (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(ref)) fail(substep(step, "invalid_order_key"));
+    return sql(substep(step, "query"), `select jsonb_build_object(
       'orders', coalesce((select jsonb_agg(to_jsonb(o) order by o.id) from public.commerce_orders o where o.id = '${ref}'), '[]'),
       'lines', coalesce((select jsonb_agg(to_jsonb(l) order by l.id) from public.commerce_order_items l where l.order_id = '${ref}'), '[]'),
       'payments', coalesce((select jsonb_agg(to_jsonb(p) order by p.id) from public.commerce_settlement_intents p where p.order_id = '${ref}'), '[]'),
@@ -1523,94 +1526,98 @@ async function runStarterRuntimeUpgrade(from: string, to: string, port: number) 
         join public.commerce_settlement_intents p on p.id = a.settlement_intent_id where p.order_id = '${ref}'), '[]'))`,
       "neutral_store", activeProject);
   };
-  async function createSettledReceipt() {
+  async function createSettledReceipt(step: string) {
     const response = await fetch(`${origin}/api/config`, { signal: AbortSignal.timeout(15_000) });
-    if (!response.ok) fail("checkout_configuration");
+    if (!response.ok) fail(substep(step, "configuration_http"));
     const { config } = await response.json() as { config?: StoreConfig };
-    if (config?.id !== "coffee") return fail("checkout_configuration");
+    if (config?.id !== "coffee") return fail(substep(step, "configuration_selection"));
     const order = { configuration: config.id, locale: config.market.defaultLocale, country: config.market.country,
       email: `buyer-${randomUUID()}@example.test`, firstName: "Example", lastName: "Buyer", phone: "000000000",
       line1: "1 Example Lane", city: "Example City", postalCode: "00000", termsAccepted: true, termsRevision: config.legal.revision,
       cart: { schemaVersion: 1, configuration: config.id, mode: "one_time", cadenceDays: null,
         lines: [{ sku: config.offer.products[0].sku, quantity: config.offer.minUnits }] } };
-    const quote = await checkoutAction("offer.validate", order);
-    if (!quote.ok || !quote.value?.expectedTotal) return fail("checkout_quote");
-    const checkout = await checkoutAction("checkout.create", { ...order,
+    const quote = await checkoutAction(substep(step, "quote_response"), "offer.validate", order);
+    if (!quote.ok || !quote.value?.expectedTotal) return fail(substep(step, "quote_validation"));
+    const checkout = await checkoutAction(substep(step, "checkout_response"), "checkout.create", { ...order,
       quoteAcceptance: quote.value.quoteAcceptance, expectedTotal: quote.value.expectedTotal });
     const { orderRef, token } = checkout.value ?? {};
-    if (!checkout.ok || typeof orderRef !== "string" || typeof token !== "string" || !token) return fail("checkout_create");
+    if (!checkout.ok || typeof orderRef !== "string" || typeof token !== "string" || !token) return fail(substep(step, "checkout_validation"));
     const reference = { orderRef, token };
-    const paid = await checkoutAction("payment.simulate", { ...reference, outcome: "captured" });
-    if (!paid.ok || paid.value?.status !== "paid" || paid.value.orderRef !== orderRef) fail("checkout_capture");
-    const facts = settledFacts(orderRef);
-    const { orders, lines, payments, attempts } = JSON.parse(facts);
+    const paid = await checkoutAction(substep(step, "payment_response"), "payment.simulate", { ...reference, outcome: "captured" });
+    if (!paid.ok || paid.value?.status !== "paid" || paid.value.orderRef !== orderRef) fail(substep(step, "payment_validation"));
+    const facts = settledFacts(substep(step, "records"), orderRef);
+    const { orders, lines, payments, attempts } = parseJson(substep(step, "record_format"), facts);
     if (orders.length !== 1 || orders[0].status !== "paid" || lines.length !== 1 || payments.length !== 1
-      || payments[0].status !== "settled" || attempts.length !== 1 || attempts[0].state !== "captured") fail("settled_facts_missing");
+      || payments[0].status !== "settled" || attempts.length !== 1 || attempts[0].state !== "captured") fail(substep(step, "record_validation"));
     return { reference, facts };
   }
   async function readSettlementContinuity(
-    witness: Awaited<ReturnType<typeof createSettledReceipt>>, activeProject = project, receiptReference = witness.reference,
+    step: string, witness: Awaited<ReturnType<typeof createSettledReceipt>>, activeProject = project, receiptReference = witness.reference,
   ) {
-    const records = settledFacts(witness.reference.orderRef, activeProject);
-    const receipt = await checkoutAction("checkout.read", receiptReference);
+    const records = settledFacts(substep(step, "retained_records"), witness.reference.orderRef, activeProject);
+    const receipt = await checkoutAction(substep(step, "receipt_response"), "checkout.read", receiptReference);
     const matches = records === witness.facts && receipt.ok && receipt.value?.status === "paid"
       && receipt.value.orderRef === witness.reference.orderRef;
     return { records, receipt, matches };
   }
   try {
-    const predecessor: string = JSON.parse(readFileSync(join(from, ".starter-origin.json"), "utf8")).sourceRevision;
+    const predecessor: string = parseJson("predecessor_origin_format", readFileSync(join(from, ".starter-origin.json"), "utf8")).sourceRevision;
     if (!/^[a-f0-9]{40}$/u.test(predecessor)) fail("predecessor_identity");
     const old = starterUpgradeSnapshot(from, "1.0.0"), next = starterUpgradeSnapshot(to, "1.0.1");
     const oldCompose = join(from, "compose.yaml"), oldLifecycle = readFileSync(join(from, "lifecycle.mjs"), "utf8");
     if (existsSync(source)) fail("unexpected_runtime_file");
-    up();
-    const before = retained(), original = identity();
-    if (before.some(value => !value || !JSON.parse(value).length)) fail("empty_retained_seed");
-    const settled = await createSettledReceipt();
+    up("predecessor_start");
+    const before = retained("initial_seed"), original = identity("initial_database");
+    for (const [index, value] of before.entries()) {
+      if (!value || !parseJson(substep("initial_seed_format", index), value).length)
+        fail(substep("empty_retained_seed", index));
+    }
+    const settled = await createSettledReceipt("predecessor_settled_receipt");
     mark("predecessor checkout settled with keyed records");
-    const schema: unknown = JSON.parse(before[3]!);
+    const schema: unknown = parseJson("initial_schema_format", before[3]!);
     if (!Array.isArray(schema)) return fail("installed_schema", null, "invalid_shape");
     const count = schema.length;
     const catalogue = (app: string) => readFileSync(join(app, "node_modules/@openlup/platform/sql/manifest.json"));
     if (!catalogue(from).equals(catalogue(to))) fail("catalogue_mismatch");
-    const predecessorApp = container("application");
+    const predecessorApp = container("predecessor_application", "application");
     const socketImage = checked(run("predecessor_image", from, "docker", ["inspect", "--format", "{{.Image}}", predecessorApp]));
     const statusCode = `import {createPlatformPostgresMigrationRunner} from '@openlup/platform/migrations';
       const runner=createPlatformPostgresMigrationRunner({connectionString:'postgresql://starter_install@localhost/neutral_store?host=/var/run/postgresql'},
         {installation:{generation:'qualified-v2',roleMode:'installer-managed',migrationLogin:'starter_install',bootstrapLogin:'postgres',runtimeLogin:'starter_runtime',restoreLogin:'starter_restore'}});
       const status=await runner.status(); console.log(JSON.stringify({pending:status.pending.length,applied:status.applied.length})); process.exit(0);`;
-    for (const app of [from, to]) {
-      const status = JSON.parse(checked(run("qualified_schema_status", from, "docker", ["run", "--rm", "--network", "none",
+    for (const [index, app] of [from, to].entries()) {
+      const status = parseJson(substep("qualified_schema_format", index), checked(run(substep("qualified_schema_query", index), from, "docker", ["run", "--rm", "--network", "none",
         "--volume", project + "_installation-socket:/var/run/postgresql", "--volume", app + ":/candidate:ro",
         "--workdir", "/candidate", socketImage, "node", "--input-type=module", "-e", statusCode])));
-      if (status.pending || status.applied !== count) fail("qualified_schema_status");
+      if (status.pending || status.applied !== count) fail(substep("qualified_schema_validation", index));
     }
     mark("common installed schema " + count);
     checked(compose("stop_predecessor_application", "stop", "application"));
-    const stoppedApplication = () => {
-      const id = checked(compose("all_application_containers", "ps", "--all", "-q", "application"));
-      if (!id) fail("predecessor_application_missing");
-      return id + " " + checked(run("stopped_application_identity", from, "docker", ["inspect", "--format", "{{.State.Status}} {{.State.StartedAt}}", id]));
+    const stoppedApplication = (step: string) => {
+      const id = checked(compose(substep(step, "inventory"), "ps", "--all", "-q", "application"));
+      if (!id) fail(substep(step, "missing"));
+      return id + " " + checked(run(substep(step, "status"), from, "docker", ["inspect", "--format", "{{.State.Status}} {{.State.StartedAt}}", id]));
     };
-    const originalApp = stoppedApplication();
+    const originalApp = stoppedApplication("original_predecessor_application");
     for (const [label, snapshot] of [["from", old], ["to", next]] as const) {
       snapshot.schema = { min: count, max: count };
       writeFileSync(join(scratch, label + ".json"), JSON.stringify(snapshot));
     }
     const cli = join(to, "node_modules/.bin/openlup");
     const options = ["--root", from, "--from", join(scratch, "from.json"), "--to", join(scratch, "to.json"), "--schema-version", String(count), "--json"];
-    const upgrade = (action: string, expected = 0) => JSON.parse(checked(run("upgrade_" + action, from, cli, ["upgrade", action, ...options]), expected));
+    const upgrade = (step: string, action: string, expected = 0) => parseJson(substep(step, "report"),
+      checked(run(step, from, cli, ["upgrade", action, ...options]), expected));
     const files = [...new Set([...Object.keys(old.files), ...Object.keys(next.files)])];
     const identityOfFiles = () => files.map(path => existsSync(join(from, path)) ? createHash("sha256").update(readFileSync(join(from, path))).digest("hex") : null);
     writeFileSync(oldCompose, old.files["compose.yaml"] + "\n# Adopter configuration\n");
     const dirty = identityOfFiles();
-    for (const action of ["plan", "apply"]) {
-      const refusal = upgrade(action, 1);
+    for (const [index, action] of ["plan", "apply"].entries()) {
+      const refusal = upgrade(substep("dirty_upgrade", index), action, 1);
       if (!refusal.conflicts?.some((row: { path: string }) => row.path === "compose.yaml") ||
-        JSON.stringify(dirty) !== JSON.stringify(identityOfFiles())) fail("conflict_changed_files");
+        JSON.stringify(dirty) !== JSON.stringify(identityOfFiles())) fail(substep("conflict_changed_files", index));
     }
     writeFileSync(oldCompose, old.files["compose.yaml"]!);
-    upgrade("plan");
+    upgrade("clean_upgrade_plan", "plan");
     const preload = join(scratch, "interrupt.mjs");
     writeFileSync(preload, `import { promises as fs } from 'node:fs'; const rename = fs.rename.bind(fs);
       fs.rename = async (...args) => { await rename(...args); if (String(args[1]) === ${JSON.stringify(oldCompose)}) process.kill(process.pid, 'SIGKILL'); };`);
@@ -1623,18 +1630,18 @@ async function runStarterRuntimeUpgrade(from: string, to: string, port: number) 
     const stagedPassword = randomBytes(32).toString("hex");
 
     writeFileSync(staged, stagedPassword + "\n", { mode: 0o444 });
-    for (const service of ["database", "application"]) {
-      const blocked = run("compose_gate_" + service, from, "docker", ["compose", "--project-name", project, "up", "--no-build", "--force-recreate", "-d", service],
+    for (const [index, service] of ["database", "application"].entries()) {
+      const blocked = run(substep("compose_gate_command", index), from, "docker", ["compose", "--project-name", project, "up", "--no-build", "--force-recreate", "-d", service],
         undefined, { ...env, OPENLUP_STARTER_RUNTIME_SOURCE: staged });
-      if (blocked.status === 0 || !blocked.stderr.includes("starter_runtime_preflight_handoff_missing")) fail("compose_gate_" + service);
+      if (blocked.status === 0 || !blocked.stderr.includes("starter_runtime_preflight_handoff_missing")) fail(substep("compose_gate_refusal", index));
     }
-    if (stoppedApplication() !== originalApp || JSON.stringify(identity()) !== JSON.stringify(original)
-      || JSON.stringify(retained()) !== JSON.stringify(before)) fail("interrupted_data_changed");
+    if (stoppedApplication("interrupted_application") !== originalApp || JSON.stringify(identity("interrupted_database")) !== JSON.stringify(original)
+      || JSON.stringify(retained("interrupted_seed")) !== JSON.stringify(before)) fail("interrupted_data_changed");
     mark("mixed files and startup gate");
-    if (!upgrade("apply").files.some((row: { path: string; action: string }) => row.path === "compose.yaml" && row.action === "already-applied"))
+    if (!upgrade("resume_upgrade_apply", "apply").files.some((row: { path: string; action: string }) => row.path === "compose.yaml" && row.action === "already-applied"))
       fail("compose_not_resumed");
     const applied = identityOfFiles();
-    if (upgrade("apply").applied.length || JSON.stringify(applied) !== JSON.stringify(identityOfFiles())) fail("replay_wrote_files");
+    if (upgrade("replay_upgrade_apply", "apply").applied.length || JSON.stringify(applied) !== JSON.stringify(identityOfFiles())) fail("replay_wrote_files");
     for (const file of ["package-lock.json", ".starter-origin.json", ...readdirSync(join(to, "artifacts")).map(name => "artifacts/" + name)])
       writeFileSync(join(from, file), readFileSync(join(to, file)));
     checked(run("refresh_packages", from, "npm", ["ci", "--ignore-scripts", "--no-audit"]));
@@ -1644,90 +1651,90 @@ async function runStarterRuntimeUpgrade(from: string, to: string, port: number) 
     const predecessorImage = checked(run("predecessor_database_image", from, dockerBin,
       ["inspect", "--format", "{{.Config.Image}}", original[0]!]));
     const guide = readFileSync(join(from, "node_modules/@openlup/core/docs/guide/how-to/build/customize-the-starter.md"), "utf8");
-    function recipe(heading: string, level = "###") {
+    function recipe(step: string, heading: string, level = "###") {
       const body = guide.split(level + " " + heading + "\n")[1]?.match(/```sh\n([^]*?)\n```/u)?.[1];
-      if (!body) return fail("documented_recipe", null, "missing");
+      if (!body) return fail(step, null, "missing_recipe");
       return body;
     }
-    const recover = (step: string) => run(step, from, "/bin/sh", ["-ec", recipe("Recover a stale database lock")], undefined,
+    const recover = (step: string) => run(step, from, "/bin/sh", ["-ec", recipe(substep(step, "lock_recovery_recipe"), "Recover a stale database lock")], undefined,
       { ...env, VOLUME: volume, DATABASE_IMAGE: predecessorImage });
-    const fingerprint = () => checked(run("paused_volume_fingerprint", from, dockerBin, ["run", "--rm", "--network", "none",
+    const fingerprint = (step: string) => checked(run(step, from, dockerBin, ["run", "--rm", "--network", "none",
       "--volume", volume + ":/predecessor:ro", "--entrypoint", "/bin/sh", predecessorImage, "-ec",
       "cd /predecessor; find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum"]));
-    const guard = () => {
-      const result = run("live_predecessor_lock", from, dockerBin, ["compose", "--project-name", project, "run", "--rm", "--no-deps", "-T", "database"],
+    const guard = (step: string) => {
+      const result = run(step, from, dockerBin, ["compose", "--project-name", project, "run", "--rm", "--no-deps", "-T", "database"],
         undefined, { ...env, OPENLUP_STARTER_PREFLIGHT_HANDOFF: "/dev/null" });
       if (result.status !== 1 || !result.stderr.includes("starter_runtime_database_lock_held")
-        || !result.stderr.includes("docker ps --filter volume=" + volume)) fail("live_predecessor_lock");
+        || !result.stderr.includes("docker ps --filter volume=" + volume)) fail(substep(step, "refusal"));
     };
-    guard();
+    guard("responsive_predecessor_guard");
     checked(run("pause_predecessor", from, dockerBin, ["pause", original[0]!]));
     try {
       checked(run("unresponsive_postmaster", from, dockerBin, ["run", "--rm", "--network", "none",
         "--volume", project + "_installation-socket:/var/run/postgresql", "--entrypoint", "/usr/bin/pg_isready",
         predecessorImage, "-q", "-t", "1", "-h", "/var/run/postgresql"]), 2);
-      const paused = fingerprint();
-      guard();
+      const paused = fingerprint("paused_volume_before_guard");
+      guard("paused_predecessor_guard");
       const blocked = recover("paused_volume_recovery");
       if (blocked.status !== 1 || !blocked.stderr.includes("A running container still mounts " + volume)
         || checked(run("paused_owner_ids", from, dockerBin, ["ps", "--no-trunc", "-q", "--filter", "volume=" + volume])) !== original[0]
-        || fingerprint() !== paused) fail("unresponsive_owner_data_changed");
+        || fingerprint("paused_volume_after_guard") !== paused) fail("unresponsive_owner_data_changed");
     } finally { checked(run("unpause_predecessor", from, dockerBin, ["unpause", original[0]!])); }
-    if (JSON.stringify(identity()) !== JSON.stringify(original) || JSON.stringify(retained()) !== JSON.stringify(before))
+    if (JSON.stringify(identity("guarded_database")) !== JSON.stringify(original) || JSON.stringify(retained("guarded_seed")) !== JSON.stringify(before))
       fail("live_owner_identity_changed");
     mark("responsive and paused predecessor refuse a second postmaster; volume fingerprint unchanged");
     checked(run("kill_predecessor_database", from, dockerBin, ["kill", "--signal", "KILL", original[0]!]));
     checked(run("stale_predecessor_lock_and_hba", from, dockerBin, ["run", "--rm", "--network", "none",
       "--volume", volume + ":/predecessor:ro", "--entrypoint", "/bin/sh", predecessorImage, "-ec",
       'test -s /predecessor/postmaster.pid && grep -Eq "^host[[:space:]].*[[:space:]]trust$" /predecessor/pg_hba.conf']));
-    const cutover = (step: string) => run(step, from, "/bin/sh", ["-ec", recipe("Database login", "##")], undefined,
+    const cutover = (step: string) => run(step, from, "/bin/sh", ["-ec", recipe(substep(step, "cutover_recipe"), "Database login", "##")], undefined,
       { ...fresh, OPENLUP_STARTER_PORT: undefined, PROJECT: project, CONFIGURATION: "coffee", PORT: String(port) });
     const lockedCutover = cutover("locked_cutover");
     if (lockedCutover.status !== 2 || !lockedCutover.stderr.includes("starter_runtime_database_lock_held")
       || !lockedCutover.stderr.includes("docker ps --filter volume=" + volume)) fail("stale_lock_remedy");
     checked(recover("documented_predecessor_recovery"));
     checked(cutover("documented_cutover_from_fresh_shell"));
-    const upgradedApp = container("application");
-    if (!upgradedApp || upgradedApp === predecessorApp || !(await readSettlementContinuity(settled)).matches)
+    const upgradedApp = container("cutover_application", "application");
+    if (!upgradedApp || upgradedApp === predecessorApp || !(await readSettlementContinuity("cutover_receipt", settled)).matches)
       fail("settled_data_continuity");
     mark("settled data continuity and original receipt");
     mark("original receipt and keyed records checked before startup replay");
     const recovered = checked(compose("recovery_logs", "logs", "--no-color", "database"));
     if (!/database system was interrupted|automatic recovery in progress/u.test(recovered)) fail("predecessor_recovery_missing");
     const initial = readFileSync(source, "utf8").trim();
-    const verifier = () => sql("select rolpassword from pg_authid where rolname = 'starter_runtime'", "postgres");
-    const live = identity();
+    const verifier = (step: string) => sql(step, "select rolpassword from pg_authid where rolname = 'starter_runtime'", "postgres");
+    const live = identity("cutover_database");
     if (live[0] === original[0] || live[1]?.split(" ").at(-1) !== original[1]?.split(" ").at(-1)
       || live[2] !== original[2] || live[3] !== "/etc/postgresql/starter-pg-hba.conf" ||
-      JSON.stringify(retained()) !== JSON.stringify(before)) fail("cutover_identity");
+      JSON.stringify(retained("cutover_seed")) !== JSON.stringify(before)) fail("cutover_identity");
     const cutoverResponse = await fetch(`http://127.0.0.1:${port}/api/config`);
     if (cutoverResponse.status !== 200 ||
       (await cutoverResponse.json() as { config?: { id?: unknown } }).config?.id !== "coffee" ||
       readFileSync(projectFile, "utf8") !== project + "\n") fail("starter_http_or_project_record");
     mark("occupied same-volume file upgrade");
     mark("verbatim documented cutover from a fresh shell preserves the custom project, coffee configuration and listener port");
-    const committedVerifier = verifier();
-    up();
-    if (readFileSync(source, "utf8").trim() !== initial || verifier() !== committedVerifier) fail("credential_replay_changed");
-    if (identity()[2] !== original[2] || JSON.stringify(retained()) !== JSON.stringify(before))
+    const committedVerifier = verifier("cutover_verifier");
+    up("startup_replay");
+    if (readFileSync(source, "utf8").trim() !== initial || verifier("replay_verifier") !== committedVerifier) fail("credential_replay_changed");
+    if (identity("replayed_database")[2] !== original[2] || JSON.stringify(retained("replayed_seed")) !== JSON.stringify(before))
       fail("predecessor_retry_identity");
     mark("predecessor SIGKILL with stale PID and legacy HBA, documented recovery and retry");
     mark("ordinary runtime credential and verifier replay");
 
     // Teardown can replace the bridge and its addresses before another fresh connection.
-    const databaseIp = () => {
-      const address = checked(run("database_ip", from, "docker", ["inspect", "--format",
-        "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}", container("database")]));
-      if (!isIPv4(address) || address.startsWith("127.")) fail("database_bridge_ip");
+    const databaseIp = (step: string) => {
+      const address = checked(run(step, from, "docker", ["inspect", "--format",
+        "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}", container(substep(step, "bridge_container"), "database")]));
+      if (!isIPv4(address) || address.startsWith("127.")) fail(substep(step, "address"));
       return address;
     };
-    const postgresImage = checked(run("database_image", from, "docker", ["inspect", "--format", "{{.Config.Image}}", container("database")]));
+    const postgresImage = checked(run("database_image", from, "docker", ["inspect", "--format", "{{.Config.Image}}", container("client_database_container", "database")]));
     const passfile = join(scratch, "client.pgpass");
     const peerPassfile = "/run/proof.pgpass";
     const separator = "\u0000client-diagnostic\n";
     const probeCommand = 'env -0 >&2; printf "\\000client-diagnostic\\n" >&2; exec /usr/bin/psql "$@"';
-    function tcpClient(peer: boolean, password: string, user: string, db: string) {
-      const address = databaseIp();
+    function tcpClient(step: string, peer: boolean, password: string, user: string, db: string) {
+      const address = databaseIp(substep(step, "database_ip"));
       const connect = ["-XAtw", "-h", address, "-p", "5432", "-U", user, "-d", db, "-c", "select session_user"];
       const clientEnv: NodeJS.ProcessEnv = { ...env, PGCONNECT_TIMEOUT: "4", LC_ALL: "C", PGPASSFILE: passfile };
       delete clientEnv.PGPASSWORD;
@@ -1735,39 +1742,39 @@ async function runStarterRuntimeUpgrade(from: string, to: string, port: number) 
       try {
         const probe = ["-ec", probeCommand, "client", ...connect];
         const result = peer
-          ? run("peer_psql", from, dockerBin, ["run", "--rm", "--network", project + "_default", "--entrypoint", "/bin/sh",
+          ? run(substep(step, "peer_psql"), from, dockerBin, ["run", "--rm", "--network", project + "_default", "--entrypoint", "/bin/sh",
             "--mount", `type=bind,src=${passfile},dst=${peerPassfile},readonly`,
             "--env", "PGPASSFILE=" + peerPassfile, "--env", "PGCONNECT_TIMEOUT=4", "--env", "LC_ALL=C",
             postgresImage, ...probe], undefined, clientEnv)
-          : run("native_psql", from, "/bin/sh", probe, undefined, clientEnv);
+          : run(substep(step, "native_psql"), from, "/bin/sh", probe, undefined, clientEnv);
         const parts = result.stderr.split(separator);
-        if (parts.length !== 2) fail("client_environment_probe");
+        if (parts.length !== 2) fail(substep(step, "environment_probe"));
         const [environment, stderr] = parts as [string, string];
         if (environment.split("\0").some(entry => entry.startsWith("PGPASSWORD=")))
-          fail("client_environment", result.status, "password_variable_present");
+          fail(substep(step, "password_environment"), result.status, "password_variable_present");
         return { ...result, stderr };
       } finally { rmSync(passfile); }
     }
-    const peer = (password: string, user = "starter_runtime", db = "neutral_store") => tcpClient(true, password, user, db);
-    const native = (password: string, user = "starter_runtime", db = "neutral_store") => tcpClient(false, password, user, db);
+    const peer = (step: string, password: string, user = "starter_runtime", db = "neutral_store") => tcpClient(step, true, password, user, db);
+    const native = (step: string, password: string, user = "starter_runtime", db = "neutral_store") => tcpClient(step, false, password, user, db);
     const refusedPassword = randomBytes(32).toString("hex");
 
-    for (const client of [peer, native]) {
-      const noPassword = client("");
-      const wrong = client(refusedPassword);
+    for (const [index, client] of [peer, native].entries()) {
+      const noPassword = client(substep("tcp_no_password", index), "");
+      const wrong = client(substep("tcp_wrong_password", index), refusedPassword);
       if (noPassword.status === 0 || !/no password supplied/u.test(noPassword.stderr) ||
-        wrong.status === 0 || !/password authentication failed/u.test(wrong.stderr) || checked(client(initial)) !== "starter_runtime" ||
-        !/pg_hba.conf rejects connection/u.test(client("", "postgres").stderr) ||
-        !/pg_hba.conf rejects connection/u.test(client("", "starter_runtime", "postgres").stderr)) fail("tcp_admission");
+        wrong.status === 0 || !/password authentication failed/u.test(wrong.stderr) || checked(client(substep("tcp_valid_password", index), initial)) !== "starter_runtime" ||
+        !/pg_hba.conf rejects connection/u.test(client(substep("tcp_postgres_denied", index), "", "postgres").stderr) ||
+        !/pg_hba.conf rejects connection/u.test(client(substep("tcp_other_database_denied", index), "", "starter_runtime", "postgres").stderr)) fail(substep("tcp_admission", index));
     }
     mark("native host and peer SCRAM admission");
-    if (sql("select session_user", "postgres") !== "postgres" || sql("select session_user") !== "starter_install" ||
-      sql("select (rolpassword is null)::text from pg_authid where rolname='postgres'", "postgres") !== "true") fail("owner_socket");
-    const socket = (user: string, db: string) => compose("socket_psql", "exec", "-T", "database", "psql", "-XAtw", "-U", user, "-d", db, "-c", "select session_user");
-    for (const [user, db] of [["postgres", "neutral_store"], ["starter_install", "postgres"], ["starter_runtime", "neutral_store"],
-      ["starter_restore", "neutral_store"], ["openlup_catalog_publication", "neutral_store"]])
-      if (!/pg_hba.conf rejects connection/u.test(socket(user!, db!).stderr)) fail("socket_denial");
-    const hbaRules = sql("select type, database, user_name, address, netmask, auth_method, options, error from pg_hba_file_rules order by line_number", "postgres");
+    if (sql("owner_socket_superuser", "select session_user", "postgres") !== "postgres" || sql("owner_socket_installer", "select session_user") !== "starter_install" ||
+      sql("owner_socket_passwordless", "select (rolpassword is null)::text from pg_authid where rolname='postgres'", "postgres") !== "true") fail("owner_socket");
+    const socket = (step: string, user: string, db: string) => compose(step, "exec", "-T", "database", "psql", "-XAtw", "-U", user, "-d", db, "-c", "select session_user");
+    for (const [index, [user, db]] of [["postgres", "neutral_store"], ["starter_install", "postgres"], ["starter_runtime", "neutral_store"],
+      ["starter_restore", "neutral_store"], ["openlup_catalog_publication", "neutral_store"]].entries())
+      if (!/pg_hba.conf rejects connection/u.test(socket(substep("socket_psql", index), user!, db!).stderr)) fail(substep("socket_denial", index));
+    const hbaRules = sql("runtime_hba_rules", "select type, database, user_name, address, netmask, auth_method, options, error from pg_hba_file_rules order by line_number", "postgres");
     if (hbaRules !== [
       "local|{postgres}|{postgres}|||trust||",
       "local|{neutral_store}|{starter_install}|||trust||",
@@ -1776,25 +1783,25 @@ async function runStarterRuntimeUpgrade(from: string, to: string, port: number) 
       "host|{neutral_store}|{starter_runtime}|all||scram-sha-256||",
       "host|{all}|{all}|all||reject||",
     ].join("\n")) fail("parsed_runtime_hba");
-    for (const host of ["", " host=127.0.0.1"]) {
-      const result = compose("replication_refusal", "exec", "-T", "database", "psql", "-XAtw",
+    for (const [index, host] of ["", " host=127.0.0.1"].entries()) {
+      const result = compose(substep("replication_refusal", index), "exec", "-T", "database", "psql", "-XAtw",
         "user=postgres dbname=postgres replication=true" + host, "-c", "IDENTIFY_SYSTEM");
-      if (result.status === 0 || !/no pg_hba.conf entry|pg_hba.conf rejects connection/u.test(result.stderr)) fail("physical_replication_hba");
+      if (result.status === 0 || !/no pg_hba.conf entry|pg_hba.conf rejects connection/u.test(result.stderr)) fail(substep("physical_replication_hba", index));
     }
     mark("ordered HBA rules and physical replication refusal");
     const publication = checked(compose("publication_input", "exec", "-T", "application",
       "cat", "/application/.context/catalogue-builds/.publication-password"));
 
-    if (checked(peer(publication, "openlup_catalog_publication")) !== "openlup_catalog_publication" ||
-      !/password authentication failed/u.test(peer(initial, "openlup_catalog_publication").stderr)) fail("publication_isolation");
+    if (checked(peer("publication_login", publication, "openlup_catalog_publication")) !== "openlup_catalog_publication" ||
+      !/password authentication failed/u.test(peer("runtime_as_publication_login", initial, "openlup_catalog_publication").stderr)) fail("publication_isolation");
     const fallback = checked(compose("fallback_hba", "exec", "-T", "database", "sh", "-c", 'cat "$PGDATA/pg_hba.conf"'));
     if (fallback !== "local all all reject\nhost all all all reject"
       || checked(compose("fallback_permissions", "exec", "-T", "database", "sh", "-c",
         'stat -c "%U:%G %a" "$PGDATA/pg_hba.conf"')) !== "postgres:postgres 600") fail("occupied_fallback");
     mark("installer socket, publication and occupied fallback");
 
-    const different = await createSettledReceipt();
-    const substituted = await readSettlementContinuity(settled, project, different.reference);
+    const different = await createSettledReceipt("different_paid_receipt");
+    const substituted = await readSettlementContinuity("substituted_receipt", settled, project, different.reference);
     if (different.reference.orderRef === settled.reference.orderRef || substituted.records !== settled.facts
       || !substituted.receipt.ok || substituted.receipt.value?.status !== "paid"
       || substituted.receipt.value.orderRef !== different.reference.orderRef || substituted.matches)
@@ -1806,7 +1813,7 @@ async function runStarterRuntimeUpgrade(from: string, to: string, port: number) 
     const oldRenewal = readFileSync(renewalConfig, "utf8");
     if (!oldRenewal.includes("enabled: false")) fail("renewal_fixture");
     writeFileSync(renewalConfig, oldRenewal.replace("enabled: false", "enabled: true"));
-    up();
+    up("renewal_fixture_start");
     const olderCompose = env.OPENLUP_STARTER_COMPOSE_V2;
     const currentCompose = env.OPENLUP_STARTER_COMPOSE_V5;
     if (!olderCompose || !currentCompose) fail("both_compose_releases_required");
@@ -1817,56 +1824,61 @@ async function runStarterRuntimeUpgrade(from: string, to: string, port: number) 
       run(step, from, "bash", ["-c", mountedExec, "starter", release, command, ...args], input);
     const configuration = ["--configuration", "coffee"];
     const policy = JSON.stringify({ revision: "runtime-preview-fixture", renewalProtectionDays: 21 });
-    const sku = sql("select sku from public.fulfillment_stock_current where source_key='starter-demo:coffee' order by sku limit 1");
+    const sku = sql("coffee_stock_sku", "select sku from public.fulfillment_stock_current where source_key='starter-demo:coffee' order by sku limit 1");
     if (!/^[A-Za-z0-9_-]+$/u.test(sku)) fail("invalid_stock_fixture_sku");
-    const stock = sql("select for_sale_quantity from public.fulfillment_stock_current where source_key='starter-demo:coffee' and sku='" + sku + "'");
-    sql(`insert into public.fulfillment_stock_current (source_key,sku,total_quantity,for_sale_quantity,reserved_unavailable_quantity,
+    const stock = sql("coffee_stock_quantity", "select for_sale_quantity from public.fulfillment_stock_current where source_key='starter-demo:coffee' and sku='" + sku + "'");
+    sql("supplements_stock_fixture", `insert into public.fulfillment_stock_current (source_key,sku,total_quantity,for_sale_quantity,reserved_unavailable_quantity,
       inventory_class,last_synced_at,stale_after,sync_run_id,idempotency_key,operation_fingerprint)
       select 'starter-demo:supplements',sku,0,0,0,inventory_class,last_synced_at,stale_after,sync_run_id,'runtime-stock-control',operation_fingerprint
       from public.fulfillment_stock_current where source_key='starter-demo:coffee' and sku='${sku}'`);
     const jobs = ["subscription-renewal:demo:coffee", "subscription-care:coffee", "starter-checkout:coffee"];
-    const jobCount = (name: string, successful = false) => Number(sql(
+    const jobCount = (step: string, name: string, successful = false) => Number(sql(step,
       "select count(*) from platform_job_runs where job_name = '" + name + "'" + (successful ? " and status = 'success'" : "")));
     const preview = ["preview", "inventory_renewal_protection", ...configuration, "--value", "-", "--sku", sku, "--json"];
-    const exerciseJobs = (release: string, missingBind = false) => {
+    const exerciseJobs = (step: string, release: string, missingBind = false) => {
       for (const [index, command] of mounted.entries()) {
-        const name = jobs[index]!, beforePass = jobCount(name, !missingBind);
-        const result = exec("mounted_" + command, release, command, configuration);
+        const name = jobs[index]!, beforePass = jobCount(substep(step, "count_before", index), name, !missingBind);
+        const result = exec(substep(step, "exec", index), release, command, configuration);
         if (missingBind) {
-          if (result.status !== 2 || !result.stderr.includes("starter_runtime_credential_read_failed") || jobCount(name) !== beforePass)
-            fail("missing_bind_" + command);
+          if (result.status !== 2 || !result.stderr.includes("starter_runtime_credential_read_failed") || jobCount(substep(step, "count_refused", index), name) !== beforePass)
+            fail(substep(step, "missing_bind", index));
         } else {
           checked(result);
-          if (jobCount(name, true) <= beforePass) fail("job_claim_" + command);
+          if (jobCount(substep(step, "count_completed", index), name, true) <= beforePass) fail(substep(step, "job_claim", index));
         }
       }
     };
     const releases = [[olderCompose!, "2.40.3"], [currentCompose!, "5.5.0"]] as const;
-    for (const [release, expected] of releases) {
-      const version = checked(run("compose_version", from, release, ["version", "--short"])).replace(/^v/u, "");
-      if (version !== expected) fail("compose_version_" + expected + "_required");
-      checked(exec("settings_show", release, "settings", ["show", "inventory_renewal_protection", "--json"]));
-      const result = JSON.parse(checked(exec("settings_preview", release, "settings", preview, policy)));
+    for (const [releaseIndex, [release, expected]] of releases.entries()) {
+      const version = checked(run(substep("compose_version_query", releaseIndex), from, release, ["version", "--short"])).replace(/^v/u, "");
+      if (version !== expected) fail(substep("compose_version_required", releaseIndex));
+      checked(exec(substep("settings_show", releaseIndex), release, "settings", ["show", "inventory_renewal_protection", "--json"]));
+      const result = parseJson(substep("settings_preview_format", releaseIndex),
+        checked(exec(substep("settings_preview_exec", releaseIndex), release, "settings", preview, policy)));
       const at = new Date(result.asOf).toISOString();
-      const quantity = (source: string) => Number(sql(`select public.inventory_available_to_promise(
+      const quantity = (step: string, source: string) => Number(sql(step, `select public.inventory_available_to_promise(
         'starter-demo:${source}','${sku}','${at}',false)->>'available_quantity'`));
       const row = result.effect?.skus?.[0];
       if (!stock || row?.sku !== sku || row.source !== "provider" ||
-        row.currentAvailableForNewPurchases !== quantity("coffee") ||
-        quantity("coffee") === quantity("supplements")) fail("nondefault_stock_source");
-      exerciseJobs(release);
+        row.currentAvailableForNewPurchases !== quantity(substep("preview_coffee_quantity", releaseIndex), "coffee") ||
+        quantity(substep("comparison_coffee_quantity", releaseIndex), "coffee")
+          === quantity(substep("comparison_supplements_quantity", releaseIndex), "supplements")) fail(substep("nondefault_stock_source", releaseIndex));
+      exerciseJobs(substep("mounted_jobs", releaseIndex), release);
       const held = projectFile + ".held";
       renameSync(projectFile, held);
       try {
-        const missing = exec("missing_project_record", release, "renewal", configuration);
-        if (missing.status !== 1 || !missing.stderr.includes("Run ./lifecycle up first.")) fail("missing_project_record");
+        const missing = exec(substep("missing_project_exec", releaseIndex), release, "renewal", configuration);
+        if (missing.status !== 1 || !missing.stderr.includes("Run ./lifecycle up first.")) fail(substep("missing_project_refusal", releaseIndex));
       } finally { renameSync(held, projectFile); }
-      const unchangedApp = container("application"), unchangedDatabase = container("database");
-      for (const service of ["database", "application"]) {
-        const denied = run("required_handoff_" + service, from, release, ["--project-name", project, "up", "--no-build", "--force-recreate", "-d", service],
+      const unchangedApp = container(substep("handoff_application_before", releaseIndex), "application");
+      const unchangedDatabase = container(substep("handoff_database_before", releaseIndex), "database");
+      for (const [serviceIndex, service] of ["database", "application"].entries()) {
+        const denied = run(substep("required_handoff_command", releaseIndex, serviceIndex), from, release, ["--project-name", project, "up", "--no-build", "--force-recreate", "-d", service],
           undefined, { ...env, OPENLUP_STARTER_RUNTIME_SOURCE: source });
         if (denied.status === 0 || !denied.stderr.includes("starter_runtime_preflight_handoff_missing") ||
-          container("application") !== unchangedApp || container("database") !== unchangedDatabase) fail("required_handoff_" + service);
+          container(substep("handoff_application_after", releaseIndex, serviceIndex), "application") !== unchangedApp ||
+          container(substep("handoff_database_after", releaseIndex, serviceIndex), "database") !== unchangedDatabase)
+          fail(substep("required_handoff_refusal", releaseIndex, serviceIndex));
       }
       mark("project-record commands, settings, job readback and startup gate on Compose " + expected);
     }
@@ -1878,18 +1890,19 @@ async function runStarterRuntimeUpgrade(from: string, to: string, port: number) 
       checked(run("missing_bind_fixture", from, "docker", ["compose", "--project-name", project, "-f", "compose.yaml", "-f", override,
         "up", "--no-deps", "--no-build", "--force-recreate", "-d", "application"], undefined, { ...env, ...handoff.environment }));
     } finally { handoff.cleanup(); }
-    for (const [release] of releases) {
-      exerciseJobs(release, true);
-      for (const mode of ["show", "preview"]) {
-        const help = JSON.parse(checked(exec("settings_help_without_credential_bind", release, "settings", [mode, "--help", "--json"])));
-        if (!help.help?.includes("settings (experimental) " + mode)) fail("settings_help_output");
+    for (const [releaseIndex, [release]] of releases.entries()) {
+      exerciseJobs(substep("unbound_jobs", releaseIndex), release, true);
+      for (const [modeIndex, mode] of ["show", "preview"].entries()) {
+        const help = parseJson(substep("unbound_settings_help_format", releaseIndex, modeIndex),
+          checked(exec(substep("unbound_settings_help_exec", releaseIndex, modeIndex), release, "settings", [mode, "--help", "--json"])));
+        if (!help.help?.includes("settings (experimental) " + mode)) fail(substep("settings_help_output", releaseIndex, modeIndex));
       }
-      const result = exec("settings_missing_bind", release, "settings", preview, policy);
-      if (result.status !== 2 || JSON.parse(result.stdout).findings?.[0]?.code !== "starter_runtime_credential_read_failed")
-        fail("settings_missing_bind");
+      const result = exec(substep("unbound_settings_preview_exec", releaseIndex), release, "settings", preview, policy);
+      if (result.status !== 2 || parseJson(substep("unbound_settings_preview_format", releaseIndex), result.stdout).findings?.[0]?.code !== "starter_runtime_credential_read_failed")
+        fail(substep("unbound_settings_preview_refusal", releaseIndex));
     }
-    up();
-    for (const [release] of releases) exerciseJobs(release);
+    up("restore_application_bind");
+    for (const [releaseIndex, [release]] of releases.entries()) exerciseJobs(substep("restored_bind_jobs", releaseIndex), release);
     mark("lifecycle settings show and preview help work without a credential bind on both Compose versions");
     mark("missing credential bind refusal and restoration on both Compose versions");
 
@@ -1900,13 +1913,13 @@ async function runStarterRuntimeUpgrade(from: string, to: string, port: number) 
       try { await operators.bootstrapFirstAdministrator({email:argv[1]}); } finally { await operators.close(); }`;
     checked(compose("first_administrator", "exec", "-T", "--user", "node", "application", "node",
       "--input-type=module", "-e", firstAdmin, "operator@example.test"));
-    if (sql("select count(*) from public.platform_human_principals where email='operator@example.test'") !== "1")
+    if (sql("first_administrator_count", "select count(*) from public.platform_human_principals where email='operator@example.test'") !== "1")
       fail("first_administrator_invitation");
     mark("first administrator invitation through mounted runtime resolver");
 
     const afterRotation = randomBytes(32).toString("hex");
 
-    const previousApp = container("application");
+    const previousApp = container("pre_rotation_application", "application");
     const replacement = source + ".next";
     writeFileSync(replacement, afterRotation + "\n", { mode: 0o444 });
     renameSync(replacement, source);
@@ -1915,26 +1928,27 @@ async function runStarterRuntimeUpgrade(from: string, to: string, port: number) 
       checked(run("interrupt_after_installer", from, "docker", ["compose", "--project-name", project, "run", "--rm", "-T", "--no-deps",
         "installation", "node", "lifecycle.mjs", "install", "--configuration", "coffee", "--json"], undefined, { ...env, ...rotated.environment }));
     } finally { rotated.cleanup(); }
-    const changedVerifier = verifier();
-    if (changedVerifier === committedVerifier || container("application") !== previousApp ||
+    const changedVerifier = verifier("interrupted_installer_verifier");
+    if (changedVerifier === committedVerifier || container("interrupted_installer_application", "application") !== previousApp ||
       (await fetch(`http://127.0.0.1:${port}/api/config`)).status !== 200) fail("interrupted_replacement_fixture");
-    const stale = compose("stale_mount_fresh_probe", "exec", "-T", "application", "node", "lifecycle.mjs", "runtime-probe");
-    if (stale.status !== 2 || stale.stdout.trim() !== "starter_runtime_database_auth_failed") fail("stale_mount_fresh_probe");
-    up();
-    if (verifier() !== changedVerifier || container("application") === previousApp || checked(native(afterRotation)) !== "starter_runtime"
-      || !/password authentication failed/u.test(native(initial).stderr)) fail("rotation_failed");
+    const stale = compose("stale_mount_probe_command", "exec", "-T", "application", "node", "lifecycle.mjs", "runtime-probe");
+    if (stale.status !== 2 || stale.stdout.trim() !== "starter_runtime_database_auth_failed") fail("stale_mount_probe_refusal");
+    up("resume_runtime_rotation");
+    if (verifier("resumed_rotation_verifier") !== changedVerifier || container("resumed_rotation_application", "application") === previousApp
+      || checked(native("resumed_rotation_login", afterRotation)) !== "starter_runtime"
+      || !/password authentication failed/u.test(native("resumed_rotation_old_login", initial).stderr)) fail("rotation_failed");
     mark("credential replacement, interrupted recreation and fresh runtime read");
 
     const heldSource = source + ".held";
-    checked(run("rotation_from_fresh_shell", from, "/bin/sh", ["-ec", recipe("Rotate the runtime credential")], undefined,
+    checked(run("rotation_from_fresh_shell", from, "/bin/sh", ["-ec", recipe("rotation_recipe", "Rotate the runtime credential")], undefined,
       { ...fresh, OPENLUP_STARTER_PORT: undefined, CONFIGURATION: "coffee", PORT: String(port) }));
     const rotatedResponse = await fetch(`http://127.0.0.1:${port}/api/config`);
     if (rotatedResponse.status !== 200 ||
       (await rotatedResponse.json() as { config?: { id?: unknown } }).config?.id !== "coffee") fail("rotation_configuration");
-    const current = readFileSync(source, "utf8").trim(), currentVerifier = verifier();
+    const current = readFileSync(source, "utf8").trim(), currentVerifier = verifier("documented_rotation_verifier");
 
-    if (current === afterRotation || checked(native(current)) !== "starter_runtime"
-      || !/password authentication failed/u.test(native(afterRotation).stderr) || identity()[2] !== original[2]
+    if (current === afterRotation || checked(native("documented_rotation_login", current)) !== "starter_runtime"
+      || !/password authentication failed/u.test(native("documented_rotation_old_login", afterRotation).stderr) || identity("documented_rotation_database")[2] !== original[2]
       || readFileSync(projectFile, "utf8") !== project + "\n") fail("stopped_rotation");
     mark("verbatim documented rotation preserves the custom project, coffee configuration and listener port");
 
@@ -1943,15 +1957,15 @@ async function runStarterRuntimeUpgrade(from: string, to: string, port: number) 
       try {
         observed = jsonMode ? JSON.parse(result.stdout).findings?.[0]?.code
           : result.stderr.split("\n").find(line => /^starter_[a-z0-9_]+$/u.test(line));
-      } catch { fail(code, result.status, "invalid_refusal_envelope"); }
-      if (result.status !== 2 || observed !== code) fail(code, result.status, "unexpected_finding");
-      if (!jsonMode && !["Cause:", "Fix:", "Recheck:"].every(label => result.stderr.includes(label))) fail("text_refusal_details");
+      } catch { fail(result.step, result.status, "invalid_refusal_envelope"); }
+      if (result.status !== 2 || observed !== code) fail(result.step, result.status, "unexpected_finding");
+      if (!jsonMode && !["Cause:", "Fix:", "Recheck:"].every(label => result.stderr.includes(label))) fail(result.step, result.status, "incomplete_refusal_details");
     }
-    const projectBefore = container("application");
+    const projectBefore = container("before_project_mismatch", "application");
     const wrongProject = run("wrong_project", from, "./lifecycle", ["up", "--configuration", "coffee", "--json"], undefined, selectNext);
     refusal(wrongProject, "starter_runtime_project_mismatch", true);
     if (!wrongProject.stdout.includes("./lifecycle down") || readFileSync(projectFile, "utf8") !== project + "\n"
-      || container("application") !== projectBefore || checked(run("unused_project", from, dockerBin,
+      || container("after_project_mismatch", "application") !== projectBefore || checked(run("unused_project", from, dockerBin,
         ["ps", "-aq", "--filter", "label=com.docker.compose.project=" + alternate]))) fail("other_project_mutation");
     renameSync(source, heldSource);
     try { checked(run("stop_with_missing_credential", from, "./lifecycle", ["down"], undefined, fresh)); }
@@ -1965,13 +1979,13 @@ async function runStarterRuntimeUpgrade(from: string, to: string, port: number) 
       const alternatePassword = readFileSync(alternateSource, "utf8").trim();
 
       if (readFileSync(projectFile, "utf8") !== alternate + "\n" || alternatePassword === current) fail("second_project_record");
-      const replacement = identity(alternate);
+      const replacement = identity("blank_replacement_database", alternate);
       if (replacement[1]?.split(" ").at(-1) !== alternate + "_database" || replacement[2] === live[2]
         || checked(composeFor("replacement_listener", alternate, "port", "application", String(port))) !== `127.0.0.1:${port}`
-        || sql("select count(*) from public.commerce_orders", "neutral_store", alternate) !== "0")
+        || sql("blank_replacement_order_count", "select count(*) from public.commerce_orders", "neutral_store", alternate) !== "0")
         fail("blank_replacement_volume_identity");
-      const missing = await readSettlementContinuity(settled, alternate);
-      const absent = JSON.parse(missing.records) as Record<string, unknown[]>;
+      const missing = await readSettlementContinuity("blank_replacement_receipt", settled, alternate);
+      const absent = parseJson("blank_replacement_record_format", missing.records) as Record<string, unknown[]>;
       if (Object.values(absent).some(rows => rows.length) || missing.receipt.ok
         || missing.receipt.code !== "starter_recovery_unavailable" || missing.matches)
         fail("blank_replacement_volume_red_control");
@@ -1981,13 +1995,13 @@ async function runStarterRuntimeUpgrade(from: string, to: string, port: number) 
       try {
         checked(run("remove_blank_project", from, dockerBin,
           ["compose", "--project-name", alternate, "down", "--volumes", "--remove-orphans"], undefined, selectNext));
-      } catch (error) { failures.push(StarterRuntimeProofError.diagnostic(error, "remove_blank_project")); }
+      } catch (error) { failures.push(StarterRuntimeProofError.diagnostic(error, "remove_blank_project_exception")); }
       try { rmSync(dirname(alternateSource), { recursive: true, force: true }); }
       catch (error) { failures.push(StarterRuntimeProofError.diagnostic(error, "remove_blank_state")); }
     }
     if (failures.length) throw new StarterRuntimeProofError(failures.splice(0));
-    up();
-    if (identity()[2] !== original[2] || verifier() !== currentVerifier) fail("original_project_changed");
+    up("return_to_original_project");
+    if (identity("restored_original_database")[2] !== original[2] || verifier("restored_original_verifier") !== currentVerifier) fail("original_project_changed");
     mark("one project per directory, down clears record and permits switching");
 
     const listener = project + "-port-holder";
@@ -2006,7 +2020,7 @@ async function runStarterRuntimeUpgrade(from: string, to: string, port: number) 
         checked(run("listener_holder_cleanup", from, dockerBin, ["rm", "-f", listener]));
       }
     }
-    up();
+    up("restart_after_listener_refusal");
     const dockerfile = join(from, "Dockerfile"), originalDockerfile = readFileSync(dockerfile);
     const redactedFixture = randomBytes(32).toString("hex");
 
@@ -2029,16 +2043,18 @@ async function runStarterRuntimeUpgrade(from: string, to: string, port: number) 
     mark("host preflight and mounted reader refuse hard links");
 
     // Refuse shape, permissions and special files before Compose build.
-    const installedApp = container("application");
-    for (const kind of ["bad-mode", "payload", "fifo"]) {
+    const installedApp = container("before_invalid_credential_application", "application");
+    for (const [kindIndex, kind] of ["bad-mode", "payload", "fifo"].entries()) {
       renameSync(source, heldSource);
       try {
-        if (kind === "fifo") checked(run("fifo_fixture", from, "mkfifo", [source]));
+        if (kind === "fifo") checked(run(substep("fifo_fixture", kindIndex), from, "mkfifo", [source]));
         else writeFileSync(source, kind === "payload" ? "DEMO_SETTING=fixture\n" : current + "\n",
           { mode: kind === "bad-mode" ? 0o000 : 0o444 });
-        for (const mode of [false, true]) refusal(run("credential_source_refusal", from, "./lifecycle",
+        for (const [modeIndex, mode] of [false, true].entries()) refusal(run(substep("credential_source_refusal", kindIndex, modeIndex), from, "./lifecycle",
           ["up", "--configuration", "coffee", ...(mode ? ["--json"] : [])]), "starter_runtime_credential_source_invalid", mode);
-        if (container("application") !== installedApp || verifier() !== currentVerifier) fail("invalid_source_mutation");
+        if (container(substep("invalid_source_application", kindIndex), "application") !== installedApp ||
+          verifier(substep("invalid_source_verifier", kindIndex)) !== currentVerifier)
+          fail(substep("invalid_source_mutation", kindIndex));
       } finally { rmSync(source, { force: true }); renameSync(heldSource, source); }
     }
     mark("invalid sources refused before build");
@@ -2065,40 +2081,41 @@ case " $STARTER_PROOF_FAULT $* " in
     ;;
 esac
 `, { mode: 0o700 });
-    for (const fault of ["mount", "read"]) for (const mode of [false, true]) {
+    for (const [faultIndex, fault] of ["mount", "read"].entries()) for (const [modeIndex, mode] of [false, true].entries()) {
       try {
-        const result = run("credential_source_" + fault, from, "./lifecycle", ["up", "--configuration", "coffee", ...(mode ? ["--json"] : [])], undefined,
+        const result = run(substep("changed_source_up", faultIndex, modeIndex), from, "./lifecycle", ["up", "--configuration", "coffee", ...(mode ? ["--json"] : [])], undefined,
           { ...env, PATH: scratch + ":" + env.PATH, STARTER_PROOF_FAULT: fault, STARTER_PROOF_VALUE: synthetic });
         refusal(result, "starter_runtime_credential_" + fault + "_failed", mode);
-        const config = run("changed_source_model", from, dockerBin, ["compose", "--project-name", project, "config", "--format", "json"], undefined,
+        const config = run(substep("changed_source_model", faultIndex, modeIndex), from, dockerBin, ["compose", "--project-name", project, "config", "--format", "json"], undefined,
           { ...env, OPENLUP_STARTER_PREFLIGHT_HANDOFF: "/dev/null", OPENLUP_STARTER_RUNTIME_SOURCE: source });
         const model = checked(config);
-        const inspected = checked(run("inspect_service_environments", from, dockerBin, ["inspect", "--format", "{{json .Config.Env}}",
-          container("database"), container("application")]));
-        if ([model, inspected].some(value => value.includes("STARTER_SAMPLE") || value.includes(synthetic))) fail("changed_source_reached_environment");
+        const inspected = checked(run(substep("inspect_service_environments", faultIndex, modeIndex), from, dockerBin, ["inspect", "--format", "{{json .Config.Env}}",
+          container(substep("changed_source_database", faultIndex, modeIndex), "database"),
+          container(substep("changed_source_application", faultIndex, modeIndex), "application")]));
+        if ([model, inspected].some(value => value.includes("STARTER_SAMPLE") || value.includes(synthetic))) fail(substep("changed_source_reached_environment", faultIndex, modeIndex));
       } finally { rmSync(source, { force: true }); renameSync(heldSource, source); }
-      up();
+      up(substep("restore_changed_source", faultIndex, modeIndex));
     }
     mark("changed source mount and bounded read refusal with environment isolation");
-    for (const mode of [false, true]) {
+    for (const [modeIndex, mode] of [false, true].entries()) {
       writeFileSync(replacement, current + "\n", { mode: 0o444 });
       renameSync(replacement, source);
       try {
-        refusal(run("application_authentication_refusal", from, "./lifecycle", ["up", "--configuration", "coffee", ...(mode ? ["--json"] : [])], undefined,
+        refusal(run(substep("application_authentication_refusal", modeIndex), from, "./lifecycle", ["up", "--configuration", "coffee", ...(mode ? ["--json"] : [])], undefined,
           { ...env, PATH: scratch + ":" + env.PATH, STARTER_PROOF_FAULT: "auth", STARTER_PROOF_VALUE: wrongPassword }),
         "starter_runtime_database_auth_failed", mode);
       } finally {
         if (existsSync(heldSource)) { rmSync(source, { force: true }); renameSync(heldSource, source); }
       }
-      up();
+      up(substep("restore_authenticated_source", modeIndex));
     }
     mark("application authentication refusal and same-store retry");
 
-    checked(run("crash_database", from, dockerBin, ["kill", "--signal", "KILL", container("database")]));
-    if (JSON.parse(up(2)).findings?.[0]?.code !== "starter_runtime_database_lock_held") fail("occupied_stale_lock");
+    checked(run("crash_database", from, dockerBin, ["kill", "--signal", "KILL", container("crashed_database_container", "database")]));
+    if (parseJson("occupied_stale_lock_report", up("occupied_stale_lock_startup", 2)).findings?.[0]?.code !== "starter_runtime_database_lock_held") fail("occupied_stale_lock");
     checked(recover("documented_occupied_recovery"));
-    up();
-    if (identity()[2] !== live[2] || readFileSync(source, "utf8").trim() !== current || verifier() !== currentVerifier)
+    up("restart_after_database_recovery");
+    if (identity("recovered_database")[2] !== live[2] || readFileSync(source, "utf8").trim() !== current || verifier("recovered_database_verifier") !== currentVerifier)
       fail("crash_restart_changed_store");
     mark("PostgreSQL crash recovery with unchanged occupied fallback");
 
@@ -2116,10 +2133,10 @@ esac
     const args = browserContainerArguments(from, browser, browserName, localImage, mounts);
     try {
       checked(run("installed_browser_container", from, "docker", [args[0]!, "--detach", ...args.slice(1), "sleep", "120"]));
-      const inspected = JSON.parse(checked(run("installed_browser_mounts", from, "docker", ["inspect", "--format", "{{json .Mounts}}", browserName])));
-      for (const mount of inspected) if (mount.Type === "bind") {
+      const inspected = parseJson("installed_browser_mount_format", checked(run("installed_browser_mounts", from, "docker", ["inspect", "--format", "{{json .Mounts}}", browserName])));
+      for (const [index, mount] of inspected.entries()) if (mount.Type === "bind") {
         const root = realpathSync(mount.Source);
-        if (source === root || source.startsWith(root + "/")) fail("installed_browser_mount_overlap");
+        if (source === root || source.startsWith(root + "/")) fail(substep("installed_browser_mount_overlap", index));
       }
       const opens = `const fs=require('node:fs'), {argv}=require('node:process');
         for(const path of argv.slice(1)) {
@@ -2143,17 +2160,18 @@ esac
     }
     mark("installed browser, mount inventory and both credential opens");
 
-    const image = checked(run("application_image", from, "docker", ["inspect", "--format", "{{.Image}}", container("application")]));
+    const image = checked(run("application_image", from, "docker", ["inspect", "--format", "{{.Image}}", container("credential_check_application", "application")]));
     const imagePaths = checked(run("application_image_file_list", from, "docker", ["run", "--rm", "--network", "none", image,
       "find", "/application", "/run", "-name", "runtime-password", "-o", "-name", "starter_runtime_password"]));
     if (imagePaths) fail("credential_path_in_image");
   } catch (error) {
     failures.push(StarterRuntimeProofError.diagnostic(error, "occupied_proof"));
   } finally {
-    cleanupProjects();
-    for (const path of [dirname(source), join(dirname(dirname(source)), alternate), scratch]) {
+    downProject("primary_project_down", project);
+    downProject("replacement_project_down", alternate);
+    for (const [index, path] of [dirname(source), join(dirname(dirname(source)), alternate), scratch].entries()) {
       try { rmSync(path, { recursive: true, force: true }); }
-      catch (error) { failures.push(StarterRuntimeProofError.diagnostic(error, "remove_proof_state")); }
+      catch (error) { failures.push(StarterRuntimeProofError.diagnostic(error, substep("remove_proof_state", index))); }
     }
     // No foreign errors, causes, or captured output cross the proof boundary.
   }

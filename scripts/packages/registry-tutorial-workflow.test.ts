@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
+import ts from "typescript";
 import { assertReleaseProvenance, assertSbomPackages, auditInstalledRelease, buildQualifiedImage, candidatePreparationStages, prepareStarterCandidate, proveNeutralStarterConsumer, qualificationReceipt, qualifyReleasedSet, verifiedReleasePackages } from "./exact-set-qualification.mjs";
 import { parsePackagesConfig } from "./package-manifest-policy.ts";
 import * as browserRunner from "../starter-browser-ci.mjs";
@@ -241,15 +242,29 @@ console.log(answer.value ?? "");
 
 
 describe("candidate preparation diagnostics", () => {
-  it("assigns a unique reason code to each preparation stage", () => {
+  it("assigns every preparation site its own declared stage and reason", () => {
+    const path = join(ROOT, "scripts/packages/exact-set-qualification.mjs");
+    const source = ts.createSourceFile(path, readFileSync(path, "utf8"), ts.ScriptTarget.Latest);
+    const keys: string[] = [];
+    function visit(node: ts.Node) {
+      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && ["stage", "candidateStage"].includes(node.expression.text)) {
+        const key = node.arguments[0];
+        keys.push(key && ts.isStringLiteral(key) ? key.text : "<nonliteral>");
+      }
+      ts.forEachChild(node, visit);
+    }
+    visit(source);
+    const declared = Object.keys(candidatePreparationStages).sort();
     const reasons = Object.values(candidatePreparationStages).map(([, reason]) => reason);
-    expect(new Set(reasons).size).toBe(reasons.length);
+    expect({ keys: keys.sort(), uniqueReasons: new Set(reasons).size, foundSites: keys.length > 0 })
+      .toEqual({ keys: declared, uniqueReasons: declared.length, foundSites: true });
   });
 
   it.each([
     ["source_inputs", "candidate_inputs exit=none reason=source_input_validation_failed"],
+    ["starter_inputs", "candidate_starter_inputs exit=none reason=starter_input_preparation_failed"],
     ["generated_lockfile", "candidate_lockfile_validation exit=none reason=generated_lockfile_validation_failed"],
-    ["extracted_lockfile", "candidate_lockfile_validation exit=none reason=generated_lockfile_validation_failed"],
+    ["extracted_lockfile", "candidate_extracted_lockfile exit=none reason=extracted_lockfile_validation_failed"],
     ["lockfile_generation", "candidate_lockfile exit=27 reason=lockfile_generation_failed"],
     ["dependency_install", "candidate_install exit=28 reason=npm_install_failed"],
   ])("reports %s with fixed diagnostics", (fault, expected) => {
@@ -279,7 +294,7 @@ describe("candidate preparation diagnostics", () => {
           const source = args.at(-1)!;
           save(join(source, "config/openlup-packages.json"), fault === "source_inputs" ? { ...inventory, packages: [null] } : inventory);
           for (const { name, version } of packages) save(join(source, "packages", name.slice(9), "package.json"), { name, version });
-          save(join(source, "examples/neutral-store/package.json"), {});
+          save(join(source, "examples/neutral-store/package.json"), fault === "starter_inputs" ? null : {});
         } else if (file === "npm" && args[0] === "install") {
           if (fault === "lockfile_generation") throw commandError(27);
           const entries = packages.map(({ name, version, integrity }) => [`node_modules/${name}`, { version, integrity }]);

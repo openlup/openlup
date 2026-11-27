@@ -1,4 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
+import ts from "typescript";
 import { execFileSync, spawnSync, type ExecFileSyncOptionsWithStringEncoding } from "node:child_process";
 import { cpSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
@@ -16,6 +17,79 @@ import { assertCompleteStarter, assertUpgradeConflict, previousPublishedSet, mig
   starterDisplayFiles, reconcileDisplayCustomization, reconcileStarterAgentGuide,
   starterSubscriptionOffer, reconcileSubscriptionOfferCustomization, starterEditorPorts, starterDocumentFiles,
   reconcileDocumentCustomization, proveDistributionCliConsumer, proveInstalledCatalogueUpgrade, starterCheckoutFiles, mergeStarterCareFile, needsStarterCareUpgrade } from "./distribution-cli-proof.ts";
+
+it("gives occupied starter proof failure sites distinct diagnostic labels", () => {
+  const file = new URL("./distribution-cli-proof.ts", import.meta.url);
+  const source = ts.createSourceFile(file.pathname, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true);
+  const roots = source.statements.filter(node => ts.isFunctionDeclaration(node) &&
+    ["proveStarterRuntimeUpgrade", "runStarterRuntimeUpgrade"].includes(node.name?.text ?? ""));
+  const helpers = new Set(["client"]);
+  const calls: ts.CallExpression[] = [];
+  function visit(node: ts.Node) {
+    if (ts.isFunctionDeclaration(node) && node.name && node.parameters[0]?.name.getText(source) === "step")
+      helpers.add(node.name.text);
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer &&
+      ts.isArrowFunction(node.initializer) && node.initializer.parameters[0]?.name.getText(source) === "step")
+      helpers.add(node.name.text);
+    if (ts.isCallExpression(node)) calls.push(node);
+    ts.forEachChild(node, visit);
+  }
+  roots.forEach(visit);
+
+  // Track each enclosing loop so a step must name every iteration it can run in.
+  function loopIndices(site: ts.Node): string[] {
+    const indices: string[] = [];
+    for (let node = site.parent; node; node = node.parent) {
+      if (!ts.isForOfStatement(node)) {
+        if (ts.isForStatement(node) || ts.isForInStatement(node) || ts.isWhileStatement(node) || ts.isDoStatement(node))
+          indices.push("<unlabelled loop>");
+        continue;
+      }
+      const binding = ts.isVariableDeclarationList(node.initializer) ? node.initializer.declarations[0]?.name : undefined;
+      const first = binding && ts.isArrayBindingPattern(binding) ? binding.elements[0] : undefined;
+      const entries = ts.isCallExpression(node.expression) && ts.isPropertyAccessExpression(node.expression.expression)
+        && node.expression.expression.name.text === "entries";
+      indices.push(entries && first && ts.isBindingElement(first) && ts.isIdentifier(first.name)
+        ? first.name.text : "<unlabelled loop>");
+    }
+    return indices;
+  }
+
+  const names: string[] = [], invalid: string[] = [];
+  function record(label: ts.Node | undefined, prefix = "") {
+    if (label && ts.isStringLiteral(label) && /^[a-z][a-z0-9_]*$/u.test(label.text)) names.push(prefix + label.text);
+    else invalid.push(label?.getText(source) ?? "<missing label>");
+  }
+  for (const call of calls) {
+    const helper = call.expression.getText(source);
+    if (!helpers.has(helper) && helper !== "StarterRuntimeProofError.diagnostic") continue;
+    const label = call.arguments[helper === "StarterRuntimeProofError.diagnostic" ? 1 : 0];
+    if (helper === "substep") {
+      const forwarded = label?.getText(source) === "step";
+      record(call.arguments[forwarded ? 1 : 0], forwarded ? "suffix." : "");
+      const parts = call.arguments.slice(forwarded ? 2 : 1).map(part => part.getText(source));
+      const indices = loopIndices(call);
+      if (new Set(indices).size !== indices.length || indices.some(index => !parts.includes(index)) ||
+        parts.some(part => !/^\d+$/u.test(part) && !indices.includes(part)))
+        invalid.push(call.getText(source));
+    } else if (label && ts.isCallExpression(label) && label.expression.getText(source) === "substep") {
+      // The nested call above owns this label.
+    } else if (label && ["step", "result.step"].includes(label.getText(source))) {
+      if (helper === "fail") {
+        const reason = call.arguments[2];
+        if (reason && ts.isConditionalExpression(reason)) {
+          record(reason.whenTrue, "forwarded.");
+          record(reason.whenFalse, "forwarded.");
+        } else record(reason, "forwarded.");
+      }
+    } else {
+      if (loopIndices(call).length) invalid.push(call.getText(source));
+      record(label);
+    }
+  }
+  expect({ foundSites: names.length > 0, labels: names, invalid })
+    .toEqual({ foundSites: true, labels: [...new Set(names)], invalid: [] });
+});
 
 const directories: string[] = [];
 afterEach(() => { for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true }); });

@@ -177,13 +177,17 @@ export const candidatePreparationStages = Object.freeze({
   checkoutLookup: ['candidate_checkout', 'checkout_lookup_failed'],
   wrongCheckout: ['candidate_checkout', 'wrong_checkout'],
   workspace: ['candidate_workspace', 'workspace_failed'],
+  occupiedWorkspace: ['occupied_workspace', 'occupied_workspace_failed'],
   revisionLookup: ['candidate_revision', 'revision_lookup_failed'],
   revisionMismatch: ['candidate_revision', 'revision_mismatch'],
   sourceExtraction: ['candidate_source', 'source_extraction_failed'],
-  sourceInputs: ['candidate_inputs', 'source_input_validation_failed'],
+  sourceInventory: ['candidate_inputs', 'source_input_validation_failed'],
+  starterInputs: ['candidate_starter_inputs', 'starter_input_preparation_failed'],
   manifest: ['candidate_manifest', 'manifest_validation_failed'],
+  archivedManifest: ['candidate_archived_manifest', 'archived_manifest_validation_failed'],
   lockfileGeneration: ['candidate_lockfile', 'lockfile_generation_failed'],
   generatedLockfile: ['candidate_lockfile_validation', 'generated_lockfile_validation_failed'],
+  extractedLockfile: ['candidate_extracted_lockfile', 'extracted_lockfile_validation_failed'],
   starterExtraction: ['candidate_extraction', 'starter_extraction_failed'],
   artifactStaging: ['candidate_artifacts', 'artifact_staging_failed'],
   dependencyInstall: ['candidate_install', 'npm_install_failed'],
@@ -202,7 +206,7 @@ function prepareReleasedStarter(receipt, temporary, run, candidateManifest = und
     run('tar', ['-xf', archive, '-C', source]);
   });
   const starter = join(source, 'examples/neutral-store'), input = join(temporary, 'input');
-  const inventory = stage('sourceInputs', () => {
+  const inventory = stage('sourceInventory', () => {
     const contents = readFileSync(join(source, 'config/openlup-packages.json'), 'utf8');
     const config = candidateManifest ? parsePackagesConfig(contents) : JSON.parse(contents);
     return config.packages.filter(entry => entry.publish).map(({ name, directory }) => {
@@ -212,9 +216,9 @@ function prepareReleasedStarter(receipt, temporary, run, candidateManifest = und
       return { name, version: metadata.version };
     });
   });
-  const packs = candidateManifest && stage('manifest',
+  const packs = candidateManifest && stage('archivedManifest',
     () => readCurrentPackManifest(source, candidateManifest, expectedCommit));
-  const qualification = stage('sourceInputs', () => {
+  const qualification = stage('starterInputs', () => {
     mkdirSync(input);
     const application = json(join(starter, 'package.json'));
     const profile = application.providerQualification;
@@ -561,7 +565,7 @@ export function prepareStarterCandidate(commit, manifest, scratch, run = runCand
   const { application, packages } = prepareReleasedStarter(receipt, scratch, run, manifest, false, candidateStage);
   receipt.packages = packages;
   const lockfile = join(application, 'package-lock.json');
-  const lock = candidateStage('generatedLockfile', () => {
+  const lock = candidateStage('extractedLockfile', () => {
     const lock = readCandidateLockfile(lockfile);
     for (const [name, pack] of packs) assert.equal(lock.packages[`node_modules/${name}`]?.integrity, pack.integrity);
     return lock;
@@ -618,7 +622,7 @@ async function qualifyCandidateOccupied(predecessor, previousManifest, candidate
   try {
     const checkedOut = candidateStage('checkoutLookup', () => runCandidate('git', ['rev-parse', 'HEAD']).trim());
     candidateStage('wrongCheckout', () => assert.equal(checkedOut, candidate, 'candidate checkout mismatch'));
-    scratch = candidateStage('workspace', () => mkdtempSync(join(tmpdir(), 'openlup-occupied-upgrade-')));
+    scratch = candidateStage('occupiedWorkspace', () => mkdtempSync(join(tmpdir(), 'openlup-occupied-upgrade-')));
     const from = prepareStarterCandidate(predecessor, previousManifest, join(scratch, 'from'));
     const to = prepareStarterCandidate(candidate, candidateManifest, join(scratch, 'to'));
     await proveStarterRuntimeUpgrade(from.application, to.application, Number(port));
@@ -642,7 +646,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       if (process.argv.length !== 8) throw new StarterRuntimeProofError('candidate_occupied', null, 'invalid_arguments');
       await qualifyCandidateOccupied(...process.argv.slice(3));
     } catch (error) {
-      process.stderr.write(StarterRuntimeProofError.diagnostic(error, 'candidate_occupied') + '\n');
+      process.stderr.write(StarterRuntimeProofError.diagnostic(error, 'candidate_occupied_entry') + '\n');
       process.exitCode = 1;
     }
   } else {
