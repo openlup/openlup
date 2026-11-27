@@ -13,6 +13,7 @@ import { market } from '../owned/market.config.ts';
 import { configurations } from '../owned/store.config.ts';
 import { routes } from '../shared/routes.ts';
 import { checkoutContinuationCopy } from '../shared/limits.ts';
+import { stubFirst } from './route-stub.ts';
 
 interface Material { id: string; baseURL: string; ownerUrl: string }
 let material: Material, owner: pg.Pool;
@@ -240,7 +241,7 @@ test('storefront anchors: the blocked view after a capture names no state and of
   await expect.poll(() => live?.state, { message: 'the host answered the dispatched attempt' }).toBe('dispatched');
   const dispatched = live, earlier = order;
   if (dispatched === undefined || earlier === undefined) throw new Error('storefront anchors: no order or attempt answer was recorded');
-  await page.route('**/api/actions/checkout.recovery', route => route.fulfill({ json: earlier }), { times: 1 });
+  const recovery = await stubFirst(page, '**/api/actions/checkout.recovery', route => route.fulfill({ json: earlier }));
   await page.route('**/api/actions/checkout.payment', async route => {
     if (route.request().postDataJSON().action !== 'inspect') return route.fallback();
     await route.fulfill({ json: { ok: true, value: { ...dispatched, state: 'captured', paymentBlocked: true,
@@ -248,6 +249,7 @@ test('storefront anchors: the blocked view after a capture names no state and of
   });
   await advance(page.getByRole('button', { name: t.simulatePaid, exact: true }));
   await expect(page.locator('main p', { hasText: t.recoveryUnavailable })).toHaveCount(1);
+  await expect.poll(() => recovery.hits, { message: 'the page read the earlier order answer' }).toBeGreaterThanOrEqual(1);
   await oneStateLine(page, null);
   await expect(anyAction(page)).toHaveCount(0);
 });

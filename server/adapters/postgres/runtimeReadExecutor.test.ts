@@ -88,4 +88,31 @@ describe("runtime read executor", () => {
     await runtime.closeRuntimeDatabaseReadExecutor();
     expect(pg.end).toHaveBeenCalledTimes(1);
   });
+
+  it("attaches a non-throwing error listener when the Pool exposes EventEmitter.on", async () => {
+    const listeners = new Map<string, (error: Error) => void>();
+    const on = vi.fn((event: string, listener: (error: Error) => void) => {
+      listeners.set(event, listener);
+    });
+    const pg = fakePool();
+    class EventedPool extends pg.Pool {
+      on = on;
+    }
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const runtime = await loadRuntimeReadExecutor({ default: { Pool: EventedPool } });
+      const executor = runtime.resolveRuntimeDatabaseReadExecutor({ DATABASE_URL: "postgres://runtime/events" });
+      if (!executor) throw new Error("expected evented Pool to create a runtime read executor");
+      await expect(executor.query("select 1", [])).resolves.toEqual(pg.result);
+
+      expect(on).toHaveBeenCalledWith("error", expect.any(Function));
+      const errorListener = listeners.get("error");
+      expect(errorListener).toBeDefined();
+      expect(() => errorListener?.(new Error("connection reset"))).not.toThrow();
+      expect(consoleError).toHaveBeenCalledWith(expect.stringContaining("connection reset"));
+      await runtime.closeRuntimeDatabaseReadExecutor();
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
 });

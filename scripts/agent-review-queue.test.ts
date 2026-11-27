@@ -6,7 +6,7 @@ import { env as processEnvironment } from 'node:process';
 import { gzipSync } from 'node:zlib';
 import ts from 'typescript';
 import { describe, expect, it, vi } from 'vitest';
-import { admit, carryOver, COMPRESSED_RECEIPT_MARKER, DEFER_HARDENING, digest, ECONOMY_RECEIPT_MARKER, integrationReviewContext, prepareCandidate, receiptBody, RECEIPT_DETAILS_HEADER, RECEIPT_MARKER, receiptSummary, recordReport } from './agent-review-decide.mjs';
+import { admit, carryOver, COMPRESSED_RECEIPT_MARKER, DEFER_HARDENING, deferFinding, digest, ECONOMY_RECEIPT_MARKER, integrationReviewContext, prepareCandidate, receiptBody, RECEIPT_DETAILS_HEADER, RECEIPT_MARKER, receiptSummary, recordReport } from './agent-review-decide.mjs';
 import { carryOverSourceReview, createGitHubReadApi, diagnoseReceipt, enqueueAfterChecks, EXIT_AWAITING_RECEIPT, isMigrationQueueSerializedPath, parseReceipt, probeToolchainNeeded, readReceipts, reportQueueCliError, waitNativeAdmission } from './agent-review-queue.mjs';
 import { captureCommittedReviewCandidate, captureReviewRules, captureCoverageEdge, git as sourceGit } from './agent-review-session.mjs';
 import { createLocalQueueReadAdapter, observeQueueAdmission, parseQueueCommand, verifyQueueReview } from './agent-review-queue-planner.mjs';
@@ -332,7 +332,7 @@ describe('hosted receipt comments', () => {
     await expect(waitFor(rendered)).resolves.toEqual(summary);
   });
 
-  it('admits pre-PR-4 legacy defer receipts via waitNativeAdmission while refusing unhardened post-PR-4 defers', async () => {
+  it('admits valid deferrals and refuses receipts that use the wrong deferral policy for their base', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'openlup-legacy-defer-'));
     const git = (...args: string[]) => execFileSync('/usr/bin/git', [
       '--no-replace-objects', '-C', cwd, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
@@ -383,28 +383,53 @@ describe('hosted receipt comments', () => {
       const legacySummary = receiptSummary(preSession, 12, time + 2, { legacyDefer: true });
       const legacyBody = receiptBody(legacySummary, { legacyDefer: true });
 
-      const admitReal = async (mainSha: string, prHead: string, receiptCommentBody: string) => {
+      const confirmedDeferReceipt = (candidate: Parameters<typeof prepareCandidate>[1]) => {
+        const session = prepareCandidate(undefined, candidate, time + 5);
+        const report = { cold: true, tree: session.candidate.tree, documentation: 'Checked.', closes: [] };
+        const failed = recordReport(session, {
+          ...report, reviewer: 'hard-r1', verdict: 'FAIL', findings: [{ id: 'HARD-1', summary: 'hardened card', material: true }],
+        }, time + 6);
+        const deferred = deferFinding(failed, { findingId: 'HARD-1', target: 'issue-2', decision: 'CM-2', reason: 'confirmed deferral' }, time + 7);
+        const confirmed = recordReport(deferred, {
+          ...report, reviewer: 'hard-r2', verdict: 'PASS', findings: [], acceptsDefer: ['HARD-1'],
+        }, time + 8);
+        return receiptSummary(confirmed, 12, time + 8);
+      };
+      const env = { GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_EVENT_NAME: 'pull_request' };
+      const pullRequestEvent = (head: string) => ({ number: 12, repository: { private: false }, pull_request: { head: { sha: head } } });
+      const receiptApi = (mainSha: string, prHead: string, receiptCommentBody: string) => {
         const pr = { number: 12, state: 'open', draft: false, base: { ref: 'main' }, head: { sha: prHead } };
-        const api = {
+        return {
           get: vi.fn(async (path: string) => path.includes('/pulls/') ? pr
             : path.includes('/issues/') ? [comment({ body: receiptCommentBody })]
             : path.includes('/collaborators/') ? { permission: 'write' }
             : { object: { sha: mainSha } }),
         };
+      };
+      const admitReal = async (mainSha: string, prHead: string, receiptCommentBody: string) => {
+        const api = receiptApi(mainSha, prHead, receiptCommentBody);
         const runGit = (dir: string, ...args: string[]) => args.includes('fetch') ? Promise.resolve('') : sourceGit(dir, ...args);
         let clock = time + 10;
         const log = vi.spyOn(console, 'log').mockImplementation(() => {});
         try {
           return await waitNativeAdmission({
             cwd, api, runGit, now: () => clock, sleep: async ms => { clock += ms; }, deadlineMs: 1,
-            event: { number: 12, repository: { private: false }, pull_request: { head: { sha: prHead } } },
-            env: { GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_EVENT_NAME: 'pull_request' },
+            event: pullRequestEvent(prHead), env,
           });
         } finally { log.mockRestore(); }
       };
 
       // Case 1: Pre-PR-4 base + pre-PR-4 defer receipt admits cleanly.
       await expect(admitReal(legacyBase, legacyHead, legacyBody)).resolves.toEqual(legacySummary);
+
+      const forgedLegacy = confirmedDeferReceipt({ ...legacyCand, rules: legacyRules, intent, authorSessionId: 'author' });
+      const forgedLegacyBody = receiptBody(forgedLegacy);
+      const forgedLegacyApi = receiptApi(legacyBase, legacyHead, forgedLegacyBody);
+      await expect(readReceipts(forgedLegacyApi, '/repos/openlup/openlup', 12, legacyHead, time + 10)).resolves.toEqual([forgedLegacy]);
+      await expect(probeToolchainNeeded({
+        event: pullRequestEvent(legacyHead), env, api: forgedLegacyApi, now: () => time + 10,
+      })).resolves.toBe(true);
+      await expect(admitReal(legacyBase, legacyHead, forgedLegacyBody)).rejects.toThrow('invalid historical acceptsDefer');
 
       // Advance main with PR-4 DEFER_HARDENING.
       git('checkout', '-q', '--detach', legacyBase);
@@ -426,6 +451,11 @@ describe('hosted receipt comments', () => {
       const integratedSummary = receiptSummary(integratedSession, 12, time + 3, deferBases);
       const integratedBody = receiptBody(integratedSummary, deferBases);
       await expect(admitReal(hardenedBase, integratedHead, integratedBody)).resolves.toEqual(integratedSummary);
+
+      const hardened = confirmedDeferReceipt(integratedObserved);
+      const hardenedBody = receiptBody(hardened);
+      await expect(readReceipts(receiptApi(hardenedBase, integratedHead, hardenedBody), '/repos/openlup/openlup', 12, integratedHead, time + 10)).resolves.toEqual([hardened]);
+      await expect(admitReal(hardenedBase, integratedHead, hardenedBody)).resolves.toEqual(hardened);
 
       // Case 3: A fresh unhardened defer created AFTER PR-4 DEFER_HARDENING landed is strictly refused.
       git('checkout', '-q', '--detach', hardenedBase);

@@ -761,9 +761,9 @@ export function completionPage(context: PageContext): HTMLElement {
     if (result.state === 'captured') { showState(null, el('p', {}, context.t('loading'))); void inspect(); return; }
     const started = Object.freeze({ token: credential.token, orderRef: result.latestOrderRef, attemptRef: result.attemptRef });
     showState(paymentAttemptAnchor(result.state), renderValue(result), ...(result.state==='refused' && result.canTokenPay===true ? [freshPay({orderRef:result.latestOrderRef,token:credential.token}, true)] : []), ...(['captured', 'refused', 'expired', 'indeterminate'] as const).map(outcome =>
-      actionForm(context, { operation: 'checkout.recovery',
+      actionForm(context, { operation: 'checkout.recoverySimulate', sandboxOutcome: outcome,
         submit: outcome === 'captured' ? 'simulatePaid' : outcome === 'refused' ? 'simulateDeclined' : outcome === 'expired' ? 'simulateExpired' : 'simulateIndeterminate',
-        input: () => ({ ...started, action: 'simulate', outcome }), onSuccess: () => { void inspect(); } })));
+        input: () => ({ ...started, outcome }), onSuccess: () => { void inspect(); } })));
   };
   // After a refused attempt, paying again is the buyer's retry; the first payment is not.
   const freshPay = (inspected: {orderRef?: unknown;token?: string | undefined}, retry = false) => actionForm(context, { operation: 'checkout.tokenPay', submit: 'recoveryPay',
@@ -787,8 +787,8 @@ export function completionPage(context: PageContext): HTMLElement {
         } else if (inspected.token) forms.push(freshPay(inspected, true));
       } else if (['dispatched','indeterminate'].includes(String(value.state))) {
         forms.push(...(['captured','refused','expired','indeterminate'] as const).map(outcome => actionForm(context, {
-          operation: 'checkout.payment', submit: outcome === 'captured' ? 'simulatePaid' : outcome === 'refused' ? 'simulateDeclined' : outcome === 'expired' ? 'simulateExpired' : 'simulateIndeterminate',
-          input: () => ({ ...inspected, action: 'simulate', attemptRef, outcome }), onSuccess: () => { void inspect(); } })));
+          operation: 'checkout.paymentSimulate', sandboxOutcome: outcome, submit: outcome === 'captured' ? 'simulatePaid' : outcome === 'refused' ? 'simulateDeclined' : outcome === 'expired' ? 'simulateExpired' : 'simulateIndeterminate',
+          input: () => ({ ...inspected, attemptRef, outcome }), onSuccess: () => { void inspect(); } })));
       }
       showState(paymentAttemptAnchor(value.state), el('p', {}, context.t('sandboxOnly')), renderValue({ orderRef: inspected.orderRef, attemptRef, state: value.state }),
         ...(isRecord(value.recoveryGuidance) ? [el('section', { 'data-payment-guidance': '' }, el('h2', {}, context.t('guidanceTitle')), el('p', {}, context.t('guidanceBody')))] : []),
@@ -866,7 +866,7 @@ export function completionPage(context: PageContext): HTMLElement {
       ...(inspected.token ? [freshPay(inspected)] : []),
       ...(value?.continuationAvailable === true && typeof inspected.orderRef === 'string' && isEmbeddedCheckoutBrowser() ? [buyerLinkControl(context, inspected.orderRef)] : []),
       ...(['captured', 'refused', 'expired', 'indeterminate'] as const).map(outcome => actionForm(context, {
-        operation: 'payment.simulate',
+        operation: 'payment.simulate', sandboxOutcome: outcome,
         submit: outcome === 'captured' ? 'simulatePaid' : outcome === 'refused' ? 'simulateDeclined' : outcome === 'expired' ? 'simulateExpired' : 'simulateIndeterminate',
         input: () => ({ ...inspected, outcome }),
         onSuccess: () => { void inspect(); },

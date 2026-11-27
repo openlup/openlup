@@ -953,6 +953,7 @@ export { createCustomerPreferencePrivacyContributor } from './customerPreference
 export { createCustomerBillingPrivacyContributor } from './billingProfilePrivacy.js';
 export { createDestinationReceiptPrivacyContributor, createDestinationDocumentPrivacyContributor } from "./destinationPrivacy.js";
 export { createTaxCalculationPrivacyContributor } from "./taxCalculationPrivacy.js";
+export { createOrderDraftReceiptsPrivacyContributor } from "./orderDraftReceiptsPrivacy.js";
 ```
 ## dist/identity/inviteAdminUserUseCase.d.ts
 
@@ -1697,6 +1698,14 @@ export type PlatformOperatorAuthConfigResolution = {
 export declare function resolvePlatformOperatorAuthConfig(env: Record<string, string | undefined>): PlatformOperatorAuthConfigResolution;
 export declare function createOperatorTokenAdminAuth(config: PlatformOperatorAuthConfig, isOperatorAllowed: PlatformOperatorAllowlistCheck): AdminAuthPort;
 ```
+## dist/identity/orderDraftReceiptsPrivacy.d.ts
+
+```ts
+import type { PgQueryExecutor } from "../data/index.js";
+import { type PersonalDataContributor } from "./privacyPorts.js";
+/** @experimental Native order draft receipt privacy. */
+export declare function createOrderDraftReceiptsPrivacyContributor(): PersonalDataContributor<PgQueryExecutor>;
+```
 ## dist/identity/parcelContactPrivacy.d.ts
 
 ```ts
@@ -2196,7 +2205,7 @@ export declare function privacyRefusalDetails(error: PrivacyRefusal): {
 export declare function nativePrivacyUnavailable(cause: unknown): PrivacyRefusal;
 export declare function missingPrivacyContributors(ids: readonly string[], installed: boolean): PrivacyRefusal;
 export declare function incompletePrivacyReceiptCoverage(ids: readonly string[]): PrivacyRefusal;
-export declare function unverifiedPrivacyReconciliationApproval(): PrivacyRefusal;
+export declare function unverifiedPrivacyReconciliationApproval(reason?: "binding" | "disposition"): PrivacyRefusal;
 ```
 ## dist/identity/response.d.ts
 

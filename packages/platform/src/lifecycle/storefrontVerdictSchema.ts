@@ -9,8 +9,21 @@ export const OPEN_SET_PATTERN = /^[a-z][a-z0-9_]*$/;
 
 // Known members of each open set; the type test checks each list exhaustively.
 export const knownTiers = ["fixture_preview", "postgres_sandbox"] as const;
+/** One line per known tier. The caller supplies the tier, so each line says what the caller states. A known tier without a meaning does not compile. */
+export const tierMeanings: Readonly<Record<(typeof knownTiers)[number], string>> = Object.freeze({
+  fixture_preview: "The caller states the run drove a preview of the store over fixture data.",
+  postgres_sandbox: "The caller states the run drove the store over a sandbox PostgreSQL database.",
+});
 export const knownChannels = ["browser_ui"] as const;
 export const knownResults = ["passed", "failed", "vacuous", "safety_only", "not_run"] as const;
+/** One line per known result. A known result without a meaning does not compile. */
+export const resultMeanings: Readonly<Record<(typeof knownResults)[number], string>> = Object.freeze({
+  passed: "No check failed: the ledger stayed safe, the page reached every expected state and the control took effect.",
+  failed: "The store broke a ledger limit, showed a state the ledger or the outcome rules out, or did not reach an expected state.",
+  vacuous: "The control run reached the state its control should keep it from, so the clean run's progress proves nothing.",
+  safety_only: "The ledger stayed safe and the page reached every expected state; the scenario has no control, so the progress was not checked against the server.",
+  not_run: "Missing evidence, never a pass.",
+});
 export const knownRuns = ["clean", "control"] as const;
 export const knownPhases = ["arrange", "stimulus", "control", "observe", "settle"] as const;
 export const knownControlKinds = ["omit_action", "block_read", "other_policy", "none"] as const;
@@ -24,7 +37,7 @@ export const knownFindingCodes = [
   "auto_progress_not_performed",
   "adapter_matcher_unmatched", "adapter_anchor_missing", "anchor_hidden", "control_not_applied", "arrange_failed",
   "observer_subject_unseen", "stimulus_not_create", "stimulus_not_applied", "tier_unreachable", "outcome_failed",
-  "observer_failed", "page_failed", "request_budget_exceeded",
+  "observer_failed", "page_failed", "request_budget_exceeded", "client_state_unisolated",
 ] as const;
 
 type Open<Known extends readonly string[]> = Known[number] | (string & {});

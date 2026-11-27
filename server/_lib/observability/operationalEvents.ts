@@ -68,7 +68,7 @@ const OPERATIONAL_EVENT_DETAIL_KEYS = new Set([
 // outside the set are dropped exactly like a non-allowlisted key.
 //
 // ⛔ The literals are duplicated from PROMOTION_QUOTE_MISMATCH_FIELDS in
-// server/domains/commerce/promotionQuoteBinding.ts on purpose — this module is
+// @openlup/platform/promotions on purpose — this module is
 // the platform observability floor and must not import a commerce domain — and
 // operationalEvents.test.ts pins the two lists equal.
 const OPERATIONAL_EVENT_DETAIL_VALUES = new Map<string, ReadonlySet<string>>([

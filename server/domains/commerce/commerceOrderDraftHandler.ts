@@ -23,7 +23,7 @@ import {
   type CommerceOrderDraftWritePort,
   type CommerceQuoteSnapshotVerifierPort,
 } from "../../../src/domains/commerce/ports.js";
-import { projectPublicQuoteSnapshot } from "./catalogFactsProvenance.js";
+import { projectPublicQuoteSnapshot } from "@openlup/platform/pricing";
 
 export interface CommerceOrderDraftHandlerDeps {
   orderDraftPort: CommerceOrderDraftWritePort;

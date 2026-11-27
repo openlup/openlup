@@ -2,8 +2,8 @@ import { expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { qualificationReceipt, qualifyReleasedSet } from "../../scripts/packages/exact-set-qualification.mjs";
+import { join, resolve } from "node:path";
+import { parseQualificationCliArgs, qualificationReceipt, qualifyReleasedSet } from "../../scripts/packages/exact-set-qualification.mjs";
 import { assertSubscriptionMonotonic, runReleasedSchemaUpgradeProof, type ReleasedSchemaPair } from "./m14ReleasedSchemaUpgrade.proof.js";
 
 // About 4x the slowest hosted run (10,992 ms), rounded up to 5 s.
@@ -45,4 +45,53 @@ it.each([
         .rejects.toThrow(reason);
     }
   } finally { vi.unstubAllEnvs(); rmSync(application, { recursive: true, force: true }); }
+});
+
+it("enables pre-publish --candidate with --schema-upgrade and still refuses --bom/--canary on candidates", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "candidate-schema-upgrade-"));
+  const receiptPath = join(dir, "candidate-upgrade.json");
+  const manifestPath = join(dir, "packages-manifest.json");
+  const otherManifestPath = join(dir, "other-manifest.json");
+  const tag = "openlup-core-v1.5.0", commit = "b".repeat(40);
+  try {
+    expect(parseQualificationCliArgs([tag, commit, receiptPath, "--candidate", manifestPath])).toEqual({
+      kind: "qualify", tag, commit, receipt: receiptPath, upgrade: true, schema: false, bom: false, canary: false, candidateManifest: manifestPath,
+    });
+    expect(parseQualificationCliArgs([tag, commit, receiptPath, "--candidate", manifestPath, "--schema-upgrade"])).toEqual({
+      kind: "qualify", tag, commit, receipt: receiptPath, upgrade: true, schema: true, bom: false, canary: false, candidateManifest: manifestPath,
+    });
+    expect(parseQualificationCliArgs([tag, commit, receiptPath, "--schema-upgrade", "--candidate", manifestPath])).toEqual({
+      kind: "qualify", tag, commit, receipt: receiptPath, upgrade: false, schema: true, bom: false, canary: false, candidateManifest: manifestPath,
+    });
+
+    // Candidate mode still refuses --bom and --canary.
+    expect(() => qualifyReleasedSet(tag, commit, receiptPath, true, false, true, false, manifestPath))
+      .toThrow("candidate supports adjacent upgrade and schema upgrade only");
+    expect(() => qualifyReleasedSet(tag, commit, receiptPath, true, false, false, true, manifestPath))
+      .toThrow("candidate supports adjacent upgrade and schema upgrade only");
+
+    // Two-step candidate schema upgrade validates candidate mode & manifest match, then reaches DB connection check.
+    writeFileSync(receiptPath, JSON.stringify({
+      ...qualificationReceipt(tag, commit),
+      mode: "candidate",
+      verificationSource: "candidate, local digest-verified",
+      candidateManifest: resolve(manifestPath),
+      result: "PASS",
+      upgrade: { result: "PASS" },
+    }));
+    expect(() => qualifyReleasedSet(tag, commit, receiptPath, false, true, false, false, otherManifestPath))
+      .toThrow("candidate schema upgrade manifest mismatch");
+
+    vi.stubEnv("OPENLUP_QUALIFICATION_DATABASE_URL", undefined);
+    await expect(async () => qualifyReleasedSet(tag, commit, receiptPath, false, true, false, false, manifestPath))
+      .rejects.toThrow("qualification PostgreSQL connection required");
+    expect(JSON.parse(readFileSync(receiptPath, "utf8"))).toMatchObject({
+      mode: "candidate",
+      result: "FAIL",
+      schemaUpgrade: { result: "FAIL", endedAt: expect.any(String) },
+    });
+  } finally {
+    vi.unstubAllEnvs();
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

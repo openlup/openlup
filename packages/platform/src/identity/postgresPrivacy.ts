@@ -1,7 +1,9 @@
 import { createPostgresRoleFreeTransactionLane, type PgQueryExecutor, type PostgresDataGatewayEnv, type PostgresDataGatewayOptions } from "../data/index.js";
 import { PrivacyRefusal, type NativePrivacyStore, type ResolvedPrivacySubject, type AuthorizedHumanAdministrator,
   type ContributorDisposition, type PersonalDataContributorRegistry, type PrivacyUnitOfWork } from "./privacyPorts.js";
-import { erasureReceiptSchema, type PrivacySubjectRef, type PrivacyJson } from "./contracts/privacy.js";
+import { erasureReceiptSchema, personalDataObligationSchema, type PrivacySubjectRef, type PrivacyJson } from "./contracts/privacy.js";
+import { hasOrderDraftReceiptDisposition, orderDraftReceiptContributorId, orderDraftReceiptContributorVersion,
+  orderDraftReceiptReconciliationId } from "./orderDraftReceiptCoverage.js";
 import { nativePrivacyUnavailable, privacyContributorId, recognizeReceiptContributorIds, unverifiedPrivacyReconciliationApproval,
   validateOrderedPrivacyContributorIds, validateRequiredPrivacyContributorIds } from "./requiredPrivacyContributors.js";
 
@@ -66,7 +68,9 @@ export function createPostgresPrivacyStore(): NativePrivacyStore<PgQueryExecutor
       const { rows } = await db.query("SELECT public.identity_privacy_reconciled_contributor_ids($1::uuid) AS ids", [receipt.erasureId]);
       if (rows.length !== 1) throw new Error("privacy_reconciliation_reader_invalid");
       const approvals = validateOrderedPrivacyContributorIds(rows[0]?.ids, 10_000);
-      const coveredContributorIds = [...new Set([...recognizeReceiptContributorIds(row.contributor_versions), ...approvals])].sort();
+      const recorded = recognizeReceiptContributorIds(row.contributor_versions).filter(id => id !== orderDraftReceiptContributorId
+        || ((row.contributor_versions as Row)[id] === orderDraftReceiptContributorVersion && hasOrderDraftReceiptDisposition(row.dispositions)));
+      const coveredContributorIds = [...new Set([...recorded, ...approvals])].sort();
       return { receipt, coveredContributorIds };
     },
     async eraseIdentity(db, subject, actor, pseudonym) {
@@ -219,6 +223,7 @@ export async function reconcilePostgresPrivacyErasure(
       if (existing.length) return null;
       await assertPrivacyStorePrivileges(db);
       await lockErasureChallenges(db);
+      const registeredVersion = contributor.version;
       await contributor.prepareErasure(db);
       const ref: PrivacySubjectRef = client_id
         ? { kind: "contact", contactId: client_id } : { kind: "principal", principalId: principal_id! };
@@ -227,7 +232,24 @@ export async function reconcilePostgresPrivacyErasure(
       await store.authorizeErasure(db, actor);
       const assessment = await contributor.assessErasure(db, subject);
       if (assessment.obligations.some(obligation => obligation.disposition === "unresolved")) throw new PrivacyRefusal("PRIVACY_OWNERSHIP_UNDECLARED");
-      const disposition = await contributor.eraseOrRetain(db, subject, assessment, actor);
+      const scopedSubject = contributorId === orderDraftReceiptContributorId
+        ? { ...subject, [orderDraftReceiptReconciliationId]: erasureId } : subject;
+      const disposition = await contributor.eraseOrRetain(db, scopedSubject, assessment, actor);
+      try {
+        if (!disposition || typeof disposition !== "object" || Array.isArray(disposition)) {
+          throw new Error("privacy_disposition_invalid");
+        }
+        const { obligations } = disposition;
+        if (disposition.contributorId !== contributorId || disposition.version !== registeredVersion || !Array.isArray(obligations)) {
+          throw new Error("privacy_disposition_invalid");
+        }
+        for (let index = 0; index < obligations.length; index++) {
+          const obligation = personalDataObligationSchema.parse(Object.hasOwn(obligations, index) ? obligations[index] : undefined);
+          if (obligation.disposition === "unresolved") throw new Error("privacy_disposition_unresolved");
+        }
+      } catch {
+        throw unverifiedPrivacyReconciliationApproval("disposition");
+      }
       await db.query(`INSERT INTO public.identity_privacy_erasure_reconciliations (erasure_id, contributor_id, evidence_ref)
         VALUES ($1, $2, $3)`, values);
       return disposition;

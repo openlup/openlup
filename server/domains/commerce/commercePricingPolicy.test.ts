@@ -9,7 +9,7 @@ import {
 import {
   createPricingPolicyToken,
   verifyPricingPolicyToken,
-} from "./pricingPolicyToken.js";
+} from "@openlup/platform/pricing";
 import {
   OFFER_POLICY_V2_READINESS_CONTRACT,
   resetOfferPolicyReadinessCacheForTests,

@@ -73,4 +73,19 @@ export interface TelemetryPort {
     flush(signal?: AbortSignal): Promise<TelemetryFlushResult>;
     shutdown?(signal?: AbortSignal): Promise<void>;
 }
+export interface DeprecationNoticeInput {
+    readonly symbol: string;
+    readonly subpath: string;
+    readonly replacement?: string;
+    readonly removeIn: string;
+}
+export interface DeprecationNoticeEvent {
+    readonly kind: "deprecation";
+    readonly symbol: string;
+    readonly subpath: string;
+    readonly replacement?: string;
+    readonly removeIn: string;
+    readonly message: string;
+    readonly timestamp: string;
+}
 ```

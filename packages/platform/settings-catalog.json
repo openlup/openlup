@@ -602,16 +602,119 @@
     {
       "key": "commerce.returnReasons",
       "domain": "commerce",
-      "goal": "Choose the allowed return reasons.",
+      "kind": "installed",
+      "goal": "Configure the allowed return reason codes accepted for new return requests (return reasons, return vocabulary, reason codes).",
       "schemaVersion": 1,
-      "kind": "cap",
+      "examples": [
+        {
+          "value": {
+            "revision": "store-1",
+            "reasons": [
+              "damaged",
+              "wrong_item",
+              "box_crushed",
+              "other"
+            ]
+          }
+        },
+        {
+          "value": {
+            "revision": "store-1",
+            "reasons": [
+              "damaged",
+              "not_as_described"
+            ]
+          }
+        },
+        {
+          "value": {
+            "revision": " ",
+            "reasons": [
+              "damaged"
+            ]
+          },
+          "code": "commerce_return_reasons_policy_invalid"
+        },
+        {
+          "value": {
+            "revision": "store-1",
+            "reasons": []
+          },
+          "code": "commerce_return_reasons_policy_invalid"
+        },
+        {
+          "value": {
+            "revision": "store-1",
+            "reasons": [
+              "damaged",
+              "damaged"
+            ]
+          },
+          "code": "commerce_return_reasons_policy_invalid"
+        }
+      ],
+      "fallback": {
+        "revision": "default",
+        "reasons": [
+          "damaged",
+          "wrong_item",
+          "not_as_described",
+          "pet_refused",
+          "changed_mind",
+          "other"
+        ]
+      },
+      "defaultBasis": {
+        "kind": "reference-code"
+      },
+      "whyThisDefault": "The six built-in return reason codes preserve the historical commerce_return_requests vocabulary when no commerce_return_reasons row is installed.",
+      "effect": {
+        "appliesTo": "New return request inserts in commerce_return_request_create_owned read key='commerce_return_reasons' from public.commerce_settings via commerce_return_reasons_read(). The table CHECK constraint enforces the lowercase identifier format ^[a-z][a-z0-9_]{1,63}$, while commerce_return_request_create_owned enforces membership in the active configured list on new inserts. When absent, the SQL reader defaults to the six built-in codes; malformed rows refuse fail-closed with SQLSTATE 22023 commerce_return_reasons_policy_invalid.",
+        "frozenOn": [
+          "Historical commerce_return_requests rows and idempotent replays of already-recorded requests keep their recorded reason_code even after that code is removed from the active list."
+        ],
+        "impact": "customer-promise"
+      },
       "runtime": {
         "level": "read-only",
-        "reason": "The native order service still enforces a fixed vocabulary."
+        "reason": "Install or update the public.commerce_settings row through installCommerceReturnReasonsPolicy or your store deployment step; runtime edits require a write-capable host connection."
       },
       "change": {
-        "reference": "docs/guide/how-to/build/oms-stores.md#record-return-intent"
-      }
+        "operation": "installCommerceReturnReasonsPolicy"
+      },
+      "schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "string",
+            "pattern": "\\S"
+          },
+          "reasons": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 64,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]{1,63}$"
+            }
+          }
+        },
+        "required": [
+          "revision",
+          "reasons"
+        ],
+        "additionalProperties": false
+      },
+      "previewSchema": null,
+      "rules": [
+        {
+          "code": "commerce_return_reasons_policy_invalid",
+          "path": [],
+          "description": "Supply exactly revision and reasons. Revision must be a nonblank string and reasons a non-empty array of 1 through 64 unique codes matching ^[a-z][a-z0-9_]{1,63}$."
+        }
+      ]
     },
     {
       "key": "commerce.zeroPayableSettlements",
@@ -1737,16 +1840,115 @@
     {
       "key": "shipping.paymentMethodPreferences",
       "domain": "shipping",
-      "goal": "Save additional payment method preferences.",
+      "kind": "installed",
+      "goal": "Configure the allowed payment method preference codes accepted when customers save a payment preference (payment method preferences, saved payment methods, payment preference vocabulary).",
       "schemaVersion": 1,
-      "kind": "cap",
+      "examples": [
+        {
+          "value": {
+            "revision": "store-1",
+            "methodKinds": [
+              "instant",
+              "card",
+              "wallet_express"
+            ]
+          }
+        },
+        {
+          "value": {
+            "revision": "store-1",
+            "methodKinds": [
+              "card",
+              "transfer"
+            ]
+          }
+        },
+        {
+          "value": {
+            "revision": " ",
+            "methodKinds": [
+              "card"
+            ]
+          },
+          "code": "shipping_payment_method_preferences_policy_invalid"
+        },
+        {
+          "value": {
+            "revision": "store-1",
+            "methodKinds": []
+          },
+          "code": "shipping_payment_method_preferences_policy_invalid"
+        },
+        {
+          "value": {
+            "revision": "store-1",
+            "methodKinds": [
+              "card",
+              "card"
+            ]
+          },
+          "code": "shipping_payment_method_preferences_policy_invalid"
+        }
+      ],
+      "fallback": {
+        "revision": "default",
+        "methodKinds": [
+          "instant",
+          "card",
+          "transfer"
+        ]
+      },
+      "defaultBasis": {
+        "kind": "reference-code"
+      },
+      "whyThisDefault": "The three built-in payment method kinds preserve the historical customer_payment_preferences vocabulary when no shipping_payment_method_preferences row is installed.",
+      "effect": {
+        "appliesTo": "New payment preference writes in customer_preference_save read key='shipping_payment_method_preferences' from public.commerce_settings via shipping_payment_method_preferences_read(). The table CHECK constraint enforces the lowercase identifier format ^[a-z][a-z0-9_]{1,63}$, while customer_preference_save enforces membership in the active configured list on writes. When absent, the SQL reader defaults to instant, card, and transfer; malformed rows refuse fail-closed with SQLSTATE 22023 shipping_payment_method_preferences_policy_invalid.",
+        "frozenOn": [
+          "Historical customer_payment_preferences rows remain readable through customer_preferences_read, customer_preferences_export, and customer_default_address_hints even after a method kind is removed from the active list."
+        ],
+        "impact": "customer-promise"
+      },
       "runtime": {
         "level": "read-only",
-        "reason": "The customer preferences contract has a fixed payment method vocabulary."
+        "reason": "Install or update the public.commerce_settings row through installShippingPaymentMethodPreferencesPolicy or your store deployment step; runtime edits require a write-capable host connection."
       },
       "change": {
-        "reference": "docs/guide/concepts/starter-ownership.md#saved-addresses-billing-and-preferences"
-      }
+        "operation": "installShippingPaymentMethodPreferencesPolicy"
+      },
+      "schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "string",
+            "pattern": "\\S"
+          },
+          "methodKinds": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 32,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]{1,63}$"
+            }
+          }
+        },
+        "required": [
+          "revision",
+          "methodKinds"
+        ],
+        "additionalProperties": false
+      },
+      "previewSchema": null,
+      "rules": [
+        {
+          "code": "shipping_payment_method_preferences_policy_invalid",
+          "path": [],
+          "description": "Supply exactly revision and methodKinds. Revision must be a nonblank string and methodKinds a non-empty array of 1 through 32 unique codes matching ^[a-z][a-z0-9_]{1,63}$."
+        }
+      ]
     },
     {
       "key": "shipping.rateResolver",
@@ -2828,6 +3030,8 @@
     "subscriptions.retrySchedule": "renewal retry policy, payment failure backoff, 3-rung retry ladder, dunning schedule",
     "account_support_operator_slide_max_days": "operator slide max days, support reschedule window, slide_next_cycle limit",
     "subscription_edit_quote_ttl_minutes": "subscription edit quote TTL, quote expiry minutes, edit preview validity window",
+    "commerce.returnReasons": "return reasons, return request reason codes, return vocabulary, commerce_return_reasons",
+    "shipping.paymentMethodPreferences": "payment method preferences, saved payment method kinds, shipping_payment_method_preferences",
     "subscriptions.rescheduleTimeZone": "subscription reschedule time zone, slide calendar day, market timezone, IANA timezone",
     "savedAddressValidation": "postal format, phone normalization, delivery address checks",
     "checkout.offerAdmission": "offer policy, offer version, checkout admission, quote acceptance",
@@ -3126,9 +3330,11 @@
                   "money_limits_invalid_input",
                   "account_support_operator_slide_max_days_policy_invalid",
                   "checkout_recovery_policy_invalid",
+                  "commerce_return_reasons_policy_invalid",
                   "payment_method_expiry_warning_days_policy_invalid",
                   "payment_decline_notice_timing_policy_invalid",
                   "promotion_claim_hold_hours_policy_invalid",
+                  "shipping_payment_method_preferences_policy_invalid",
                   "subscription_edit_quote_ttl_minutes_policy_invalid",
                   "subscription_reschedule_timezone_policy_invalid",
                   "subscription_retry_schedule_policy_invalid"

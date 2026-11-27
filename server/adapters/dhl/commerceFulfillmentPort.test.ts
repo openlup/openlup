@@ -157,6 +157,28 @@ describe("DHL paid-order fulfillment adapter", () => {
     expect(JSON.stringify(attempt)).not.toContain("+48123123123");
     expect(JSON.stringify(attempt)).not.toContain("Main 10");
   });
+
+  it("propagates the worker AbortSignal into createDhlShipmentWithLabel and returns retryable abort on cancellation", async () => {
+    const controller = new AbortController();
+    dhlSoap.createDhlShipmentWithLabel.mockImplementationOnce(async ({ signal }: { signal?: AbortSignal }) => {
+      expect(signal).toBe(controller.signal);
+      controller.abort(new Error("worker timeout"));
+      throw new dhlSoap.DhlProviderFault("worker timeout", true);
+    });
+    const client = createClient();
+    const port = createDhlOrderPaidFulfillmentPort(client as never, credentials());
+
+    await expect(port.ensureFulfilledFromPaidOrder({
+      orderUuid: "order-1",
+      outboxEventId: "event-1",
+      signal: controller.signal,
+    })).resolves.toEqual({ kind: "retryable", reason: "outbox_handler_timeout" });
+
+    expect(dhlSoap.createDhlShipmentWithLabel).toHaveBeenCalledWith(expect.objectContaining({
+      signal: controller.signal,
+    }));
+    expect(client.rpc.mock.calls.find(([name]) => name === "commerce_fulfillment_record_provider_attempt")).toBeUndefined();
+  });
 });
 
 function credentials() {

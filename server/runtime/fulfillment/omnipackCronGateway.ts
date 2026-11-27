@@ -250,7 +250,11 @@ function bundleJobRunExecutor(env: SupabaseOmnipackCronEnv): PgQueryExecutor | n
   const pool = (async () => {
     const pg = await import("pg");
     const PoolCtor = (pg.default?.Pool ?? pg.Pool) as typeof import("pg").Pool;
-    return new PoolCtor({ connectionString });
+    const poolInstance = new PoolCtor({ connectionString });
+    poolInstance.on?.("error", (error: Error) => {
+      console.error(`[openlup/server:fulfillment-cron] idle postgres error: ${error instanceof Error ? error.message : String(error)}`);
+    });
+    return poolInstance;
   })();
   const executor: PgQueryExecutor = {
     async query(text, values) {

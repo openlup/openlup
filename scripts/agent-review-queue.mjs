@@ -209,18 +209,18 @@ export async function probeToolchainNeeded({ event, env = processEnvironment, ap
       readComments,
       onPermissionError: error => { throw error; },
     });
-    const hasDerivedProof = receipts.some(receipt =>
+    const needsToolchain = receipts.some(receipt =>
       receipt?.version === 3
       && Array.isArray(receipt.session?.history)
       && receipt.session.history.some(entry =>
-        entry?.type === 'prepare'
-        && (
+        entry?.type === 'defer'
+        || (entry?.type === 'prepare' && (
           entry.candidate?.coverage?.proof?.derived === true
           || ['derived', 'portable-derived'].includes(entry.candidate?.coverage?.proof?.kind)
-        )));
+        ))));
     const willPoll = invalidComments.length > 0
       || (receipts.length === 0 && (Boolean(group) || currentHeadComments.length > 0));
-    needed = hasDerivedProof || willPoll;
+    needed = needsToolchain || willPoll;
   } catch {
     needed = true;
   }
@@ -238,7 +238,12 @@ export async function readReceipts(api, root, pr, head, now, permissions = new M
     const receipt = parseReceipt(comment.body); const login = comment.user?.login;
     if (receipt === null && typeof comment.body === 'string' && comment.body.startsWith(RECEIPT_MARKER_PREFIX)) invalidComments?.push(comment);
     if (receipt?.pr === pr && receipt.head === head) currentHeadComments?.push(comment);
-    if (receipt?.pr !== pr || receipt.head !== head || !admit({ receipt, observed: { ...receipt, baseValid: true, legacyDefer: true }, now }).ok || comment.user?.type !== 'User' || typeof login !== 'string' || !login) continue;
+    if (receipt?.pr !== pr || receipt.head !== head || comment.user?.type !== 'User' || typeof login !== 'string' || !login) continue;
+    // Receipts that require both deferral policies across the hardening boundary remain out of scope.
+    if (!(
+      admit({ receipt, observed: { ...receipt, baseValid: true, legacyDefer: true }, now }).ok ||
+      admit({ receipt, observed: { ...receipt, baseValid: true }, now }).ok
+    )) continue;
     const key = login.toLowerCase();
     if (!permissions.has(key)) {
       try {

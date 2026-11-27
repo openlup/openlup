@@ -42,7 +42,7 @@ test('actor admission precedes the named refusal and ignores body identities and
 
 test('the removed reader retains the HTTP 404 protocol', async () => {
   assert.equal(isOperation('operator.returns'), false);
-  assert.equal(operations.length, 77);
+  assert.equal(operations.length, 79);
   assert.equal(isOperation('catalogue.demoTarget'), true);
   assert.equal(isOperation('storefront.catalogue'), true);
   const bindings = pendingBindings();

@@ -205,6 +205,7 @@ export function createPostgresCatalogPublicationCommands<Context>(deps: Postgres
           WHERE t.type_key=$1 AND t.version=$2`, [type.key, type.version])).rows[0]?.definition_digest;
         requireCommand(definition && typeof installed === "string", "catalog_definition_drift", "validation_issue");
         let previous: Awaited<ReturnType<typeof readPreviousPublication>> | undefined;
+        let restricted: boolean | undefined;
         const compensation = record.payload.publication.kind === "compensation";
         const attributeReferences = deps.attributeReferences?.(db);
         const result = await evaluateCatalogPublication({
@@ -213,7 +214,7 @@ export function createPostgresCatalogPublicationCommands<Context>(deps: Postgres
           ...(deps.evaluation === undefined ? {} : { evaluation: deps.evaluation }),
           async readCurrentHead() {
             if (action === "publish") {
-              try { await publicationRelationFence(db, productId); }
+              try { restricted = await publicationRelationFence(db, productId); }
               catch (error) {
                 if ((error as { code?: string } | null)?.code === "55P03") refusePublicationCommand("catalog_publication_busy", "conflict");
                 throw error;
@@ -254,7 +255,7 @@ export function createPostgresCatalogPublicationCommands<Context>(deps: Postgres
         }
         requireCommand(seal.digest === active?.post_state_digest && seal.canonicalText === active.post_state_canonical_text,
           "catalog_publication_post_state_changed");
-        await stagePublication(db, previous, definition, plan, command, actor, fingerprint, compensation, attributeReferences);
+        await stagePublication(db, previous, definition, plan, command, actor, fingerprint, compensation, attributeReferences, restricted);
         return commit({ ...command, fingerprint, approvalId: active.id, product: plan.product, skus: plan.skus });
       });
     } catch (error) {

@@ -32,7 +32,7 @@ export interface CheckoutAdmissionDeps {
   subscriptionCheckoutContractEnabled?: () => boolean;
   dhlOnlyDeliveryEnabled?: () => boolean;
   promotionAcceptanceEnforced?: boolean;
-  offerPolicy?: import("./checkoutOfferPolicyPort.js").CheckoutOfferPolicyPort;
+  offerPolicy?: import("@openlup/platform/commerce/server").CheckoutOfferPolicyPort<ConfiguratorIntent, import("../../../src/domains/commerce/contracts.js").CreateQuoteResponse["quote"]>;
 }
 
 const core = createCheckoutAdmission({ minimumOrderUnits: COMMERCE_MIN_ORDER_UNITS, requestSchema: checkoutRequestSchema, responder: { sendBffError, sendBffSuccess, sendMethodNotAllowed }, deliveryAllowed: isDhlCourierDelivery,
