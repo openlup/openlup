@@ -5,7 +5,9 @@ import { env as processEnvironment } from 'node:process';
 import { pathToFileURL } from 'node:url';
 import { CONTROL_POSTGRES_SUITES, PG_SUITE_CLOSURES_PATH, readPgSuiteClosures } from './agent-review-registry.mjs';
 
-// Inputs are plain prefixes: an entry ending in '/' covers that directory and
+// Inputs are plain prefixes or exact files, plus the PACKAGES_NON_DOC sentinel
+// ('packages/@non-doc') which matches everything under packages/ except
+// packages/core/docs/**/*.md. An entry ending in '/' covers that directory and
 // everything below it (dot files included); any other entry is one exact file.
 // Glob matching is deliberately avoided: its '*' and '**' skip dot segments.
 // Broad shared triggers: every non-doc root file, every dot-prefixed segment
@@ -45,7 +47,11 @@ export const NON_BAILOUT_SCRIPTS = [
   'scripts/agent-ci-queued-diagnose.ts',
   'scripts/agent-context/evaluate.mjs',
 ];
-const coversInput = (input, path) => (input.endsWith('/') ? path === input || path.startsWith(input) : path === input);
+export const PACKAGE_DOC_MD = /^packages\/core\/docs\/.+\.md$/u;
+export const PACKAGES_NON_DOC = 'packages/@non-doc';
+const coversInput = (input, path) => (input === PACKAGES_NON_DOC
+  ? path.startsWith('packages/') && !PACKAGE_DOC_MD.test(path)
+  : input.endsWith('/') ? path === input || path.startsWith(input) : path === input);
 export function isGlobalBailoutScript(path) {
   if (!path.startsWith('scripts/')) return false;
   if (SCRIPT_TEST_FILE.test(path)) return false;
@@ -117,7 +123,7 @@ const PG_BASE_INPUTS = [
   'config/platform-migration-manifest.json',
   'config/reviewed-platform-forwards.json',
   'db/platform/migrations/',
-  'packages/',
+  PACKAGES_NON_DOC,
   'server/',
   'tests/helpers/',
 ];
@@ -298,7 +304,7 @@ const WORKFLOW_REFERENCE_BUILD_INPUTS = [
   'src/',
   'server/',
   'api/',
-  'packages/',
+  PACKAGES_NON_DOC,
   'public/',
   'config/',
 ];
@@ -318,7 +324,8 @@ const WORKFLOW_PACKAGE_GATES_INPUTS = [
   'AGENTS.md',
 ];
 const WORKFLOW_INSTALL_BROWSER_INPUTS = [
-  'packages/',
+  PACKAGES_NON_DOC,
+  'packages/core/docs/guide/how-to/build/customize-the-starter.md',
   'examples/neutral-store/',
   'config/openlup-packages.json',
   'config/ci-images.json',
