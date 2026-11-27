@@ -32310,6 +32310,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/taxCalculationAdapterMoneyV1.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/taxCalculationsV2.test.ts",
       "class": "public-output"
     },

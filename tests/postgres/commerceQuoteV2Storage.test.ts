@@ -1,19 +1,41 @@
 import { randomUUID } from "node:crypto";
-import { DatabaseError, type Pool, type PoolClient } from "pg";
+import { readFileSync } from "node:fs";
+import { DatabaseError, Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { canonicalCatalogDraftJson } from "@openlup/platform/catalog";
 import { evaluationDigest, makeTaxQuoteRequest } from "@openlup/platform/tax";
-import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
-import { storeJourneyResources, type JourneyInstallation } from "../helpers/storeJourney.js";
+import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer,
+  waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+import type { JourneyInstallation } from "../helpers/storeJourney.js";
+import { type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { destinationHash, snapshotCommand } from "./destinationDocumentFixture.js";
 import { beginSql, bindEditedSeal, claim as claimOn, completeSql, contaminate, digest, domainRoutine, exclusiveKind, expectError, fiscalFacts, fiscalKind,
   fixture as storageFixture, invoke, mutate as mutateIn, paths, refusal, rejected, rollback as rollbackIn, rowFor as findRows,
   seal, terminalRoutine, terminalCases as cases, type Begin, type Claim, type Completion, type Refusal } from "./commerceQuoteV2StorageFixture.js";
 
-const resources = storeJourneyResources();
 let store: JourneyInstallation;
-beforeAll(async () => { store = await resources.installation("quote-storage"); }, postgresSetupTimeoutMs);
-afterAll(() => resources.close(), postgresTeardownTimeoutMs);
+let container: PostgresContainer | undefined;
+const pools: Pool[] = [];
+beforeAll(async () => {
+  // These raw commands characterize the dormant prefix and omit sealed money.
+  const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as PlatformMigrationManifest;
+  const position = manifest.forward.findIndex(row => row.file.endsWith("_tax_calculation_adapter_money_v1.sql"));
+  expect(position).toBeGreaterThan(0);
+  container = await runPostgresContainer({ name: `quote-storage-prefix-${process.pid}`, password: "synthetic-quote-storage" });
+  expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
+  const owner = new Pool({ connectionString: container.connectionString });
+  pools.push(owner);
+  await owner.query("CREATE ROLE service_role; CREATE ROLE transfer_runtime LOGIN PASSWORD 'synthetic-quote-storage'; GRANT service_role TO transfer_runtime");
+  for (const migration of [manifest.baseline, ...manifest.forward.slice(0, position + 1)]) {
+    await owner.query(readFileSync(migration.file, "utf8"));
+  }
+  const url = new URL(container.connectionString);
+  url.username = "transfer_runtime";
+  const runtime = new Pool({ connectionString: url.toString() });
+  pools.push(runtime);
+  store = { owner, runtime, runtimeUrl: url.toString() };
+}, postgresSetupTimeoutMs);
+afterAll(() => closePostgres(container, pools), postgresTeardownTimeoutMs);
 
 const fixture = () => storageFixture(store);
 const claim = (input: Begin, db: Pool | PoolClient = store.runtime) => claimOn(input, db);
