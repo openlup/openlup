@@ -6,8 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
-import ts from "typescript";
-import { assertReleaseProvenance, assertSbomPackages, auditInstalledRelease, buildQualifiedImage, candidatePreparationStages, prepareStarterCandidate, proveNeutralStarterConsumer, qualificationReceipt, qualifyReleasedSet, verifiedReleasePackages } from "./exact-set-qualification.mjs";
+import { assertReleaseProvenance, assertSbomPackages, auditInstalledRelease, buildQualifiedImage, prepareReleasedStarter, prepareStarterCandidate, proveNeutralStarterConsumer, qualificationReceipt, qualifyReleasedSet, verifiedReleasePackages } from "./exact-set-qualification.mjs";
 import { parsePackagesConfig } from "./package-manifest-policy.ts";
 import * as browserRunner from "../starter-browser-ci.mjs";
 
@@ -242,25 +241,9 @@ console.log(answer.value ?? "");
 
 
 describe("candidate preparation diagnostics", () => {
-  it("assigns every preparation site its own declared stage and reason", () => {
-    const path = join(ROOT, "scripts/packages/exact-set-qualification.mjs");
-    const source = ts.createSourceFile(path, readFileSync(path, "utf8"), ts.ScriptTarget.Latest);
-    const keys: string[] = [];
-    function visit(node: ts.Node) {
-      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && ["stage", "candidateStage"].includes(node.expression.text)) {
-        const key = node.arguments[0];
-        keys.push(key && ts.isStringLiteral(key) ? key.text : "<nonliteral>");
-      }
-      ts.forEachChild(node, visit);
-    }
-    visit(source);
-    const declared = Object.keys(candidatePreparationStages).sort();
-    const reasons = Object.values(candidatePreparationStages).map(([, reason]) => reason);
-    expect({ keys: keys.sort(), uniqueReasons: new Set(reasons).size, foundSites: keys.length > 0 })
-      .toEqual({ keys: declared, uniqueReasons: declared.length, foundSites: true });
-  });
-
   it.each([
+    ["archive", "candidate_git_archive exit=31 reason=git_archive_failed"],
+    ["extract", "candidate_tar_extract exit=31 reason=tar_extract_failed"],
     ["source_inputs", "candidate_inputs exit=none reason=source_input_validation_failed"],
     ["starter_inputs", "candidate_starter_inputs exit=none reason=starter_input_preparation_failed"],
     ["generated_lockfile", "candidate_lockfile_validation exit=none reason=generated_lockfile_validation_failed"],
@@ -288,7 +271,10 @@ describe("candidate preparation diagnostics", () => {
       });
       save(manifest, { schemaVersion: 2, commit, packages });
 
+      const archiveError = commandError(31);
       const run = (file: string, args: string[], cwd = ROOT) => {
+        if (fault === "archive" && file === "git" && args[0] === "archive") throw archiveError;
+        if (fault === "extract" && file === "tar") throw commandError(31);
         if (file === "git") return args[0] === "rev-parse" ? commit : "";
         if (file === "tar") {
           const source = args.at(-1)!;
@@ -308,7 +294,13 @@ describe("candidate preparation diagnostics", () => {
         } else throw new Error("unexpected fixture command");
         return "";
       };
-      expect(() => prepareStarterCandidate(commit, manifest, join(directory, "candidate"), run)).toThrow(new Error(expected));
+      expect(() => prepareStarterCandidate(commit, manifest, join(directory, "candidate"), run)).toThrow(expect.objectContaining({ message: expected }));
+      if (fault === "archive") {
+        const receipt = qualificationReceipt("openlup-core-v" + packages[0]!.version, commit);
+        try { prepareReleasedStarter(receipt, directory, run, manifest); expect.unreachable(); }
+        catch (error) { expect(error).toBe(archiveError); }
+        expect(receipt).toMatchObject({ result: "FAIL", extraction: null });
+      }
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 });

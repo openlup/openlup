@@ -9,7 +9,7 @@ import { env } from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { imageReference, pullWithRetry, readCiImage } from '../ci-image-pull.mjs';
 import { needsStarterCareUpgrade, previousPublishedSet, proveDistributionCliConsumer, proveStarterRuntimeUpgrade, proveSettingsDiscovery, proveSettingsMcp,
-  StarterRuntimeProofError, starterCareJourney, starterCareWitness, starterSettingsHost } from './distribution-cli-proof.ts';
+  StarterRuntimeProofError, ProofFailures, completeStarterRuntimeProof, site, starterCareJourney, starterCareWitness, starterSettingsHost } from './distribution-cli-proof.ts';
 import { assertInstalledPackages, isolatedConsumerEnv, readCurrentPackManifest } from './pack-manifest-input.ts';
 import { parsePackagesConfig } from './package-manifest-policy.ts';
 import { generateExactSetReleaseBom } from './generate-release-bom.ts';
@@ -173,98 +173,111 @@ export function qualificationReceipt(tag, commit, runnerImage = { image: env.Ima
   return { schemaVersion: 1, setVersion: tag.slice(14), tag, tagCommit: commit, runnerImage, startedAt: new Date().toISOString(), endedAt: null, result: 'FAIL', extraction: null, packages: [], checks: [] };
 }
 
-export const candidatePreparationStages = Object.freeze({
-  checkoutLookup: ['candidate_checkout', 'checkout_lookup_failed'],
-  wrongCheckout: ['candidate_checkout', 'wrong_checkout'],
-  workspace: ['candidate_workspace', 'workspace_failed'],
-  occupiedWorkspace: ['occupied_workspace', 'occupied_workspace_failed'],
-  revisionLookup: ['candidate_revision', 'revision_lookup_failed'],
-  revisionMismatch: ['candidate_revision', 'revision_mismatch'],
-  sourceExtraction: ['candidate_source', 'source_extraction_failed'],
-  sourceInventory: ['candidate_inputs', 'source_input_validation_failed'],
-  starterInputs: ['candidate_starter_inputs', 'starter_input_preparation_failed'],
-  manifest: ['candidate_manifest', 'manifest_validation_failed'],
-  archivedManifest: ['candidate_archived_manifest', 'archived_manifest_validation_failed'],
-  lockfileGeneration: ['candidate_lockfile', 'lockfile_generation_failed'],
-  generatedLockfile: ['candidate_lockfile_validation', 'generated_lockfile_validation_failed'],
-  extractedLockfile: ['candidate_extracted_lockfile', 'extracted_lockfile_validation_failed'],
-  starterExtraction: ['candidate_extraction', 'starter_extraction_failed'],
-  artifactStaging: ['candidate_artifacts', 'artifact_staging_failed'],
-  dependencyInstall: ['candidate_install', 'npm_install_failed'],
-});
-
-function prepareReleasedStarter(receipt, temporary, run, candidateManifest = undefined, qualifyProvider = true,
-  stage = (_stage, operation) => operation()) {
+export function prepareReleasedStarter(receipt, temporary, run, candidateManifest = undefined, qualifyProvider = true,
+  { legacy = true, labels = [] } = {}) {
+  const context = { legacy, labels };
   const { tag, tagCommit: expectedCommit } = receipt;
   const revision = candidateManifest ? expectedCommit : `refs/tags/${tag}`;
-  const resolvedRevision = stage('revisionLookup', () => run('git', ['rev-parse', `${revision}^{commit}`]).trim());
-  stage('revisionMismatch', () => assert.equal(resolvedRevision, expectedCommit, 'source commit mismatch'));
+  const resolvedRevision = site('candidate_revision', 'revision_lookup_failed',
+    () => run('git', ['rev-parse', `${revision}^{commit}`]).trim(), { ...context, exit: true });
+  site('candidate_revision', 'revision_mismatch', () => assert.equal(resolvedRevision, expectedCommit, 'source commit mismatch'), context);
   const archive = join(temporary, 'source.tar'), source = join(temporary, 'source');
-  stage('sourceExtraction', () => {
-    mkdirSync(source);
-    run('git', ['archive', '--format=tar', `--output=${archive}`, revision]);
-    run('tar', ['-xf', archive, '-C', source]);
-  });
+  site('candidate_source_directory', 'source_directory_create_failed', () => mkdirSync(source), context);
+  site('candidate_git_archive', 'git_archive_failed',
+    () => run('git', ['archive', '--format=tar', `--output=${archive}`, revision]), { ...context, exit: true });
+  site('candidate_tar_extract', 'tar_extract_failed',
+    () => run('tar', ['-xf', archive, '-C', source]), { ...context, exit: true });
   const starter = join(source, 'examples/neutral-store'), input = join(temporary, 'input');
-  const inventory = stage('sourceInventory', () => {
-    const contents = readFileSync(join(source, 'config/openlup-packages.json'), 'utf8');
-    const config = candidateManifest ? parsePackagesConfig(contents) : JSON.parse(contents);
-    return config.packages.filter(entry => entry.publish).map(({ name, directory }) => {
-      const metadata = json(join(source, directory, 'package.json'));
-      if (candidateManifest) assert.equal(metadata.name, name, 'source package name mismatch');
-      assert.equal(metadata.version, receipt.setVersion, `${name}: source version mismatch`);
-      return { name, version: metadata.version };
-    });
-  });
-  const packs = candidateManifest && stage('archivedManifest',
-    () => readCurrentPackManifest(source, candidateManifest, expectedCommit));
-  const qualification = stage('starterInputs', () => {
-    mkdirSync(input);
-    const application = json(join(starter, 'package.json'));
-    const profile = application.providerQualification;
-    const enabled = Boolean(packs && profile && qualifyProvider);
+  const contents = site('candidate_inventory_read', 'source_inventory_read_failed',
+    () => readFileSync(join(source, 'config/openlup-packages.json'), 'utf8'), context);
+  const config = candidateManifest
+    ? site('candidate_inputs', 'source_input_validation_failed', () => parsePackagesConfig(contents), context)
+    : site('released_inventory_decode', 'released_inventory_decode_failed', () => JSON.parse(contents), context);
+  const inventory = [];
+  for (const [ordinal, { name, directory }] of config.packages.filter(entry => entry.publish).entries()) {
+    const entry = { legacy, labels: [...labels, ordinal] };
+    const text = site('candidate_package_metadata_read', 'candidate_package_metadata_read',
+      () => readFileSync(join(source, directory, 'package.json'), 'utf8'), entry);
+    const metadata = site('candidate_package_metadata_decode', 'candidate_package_metadata_decode', () => JSON.parse(text), entry);
+    if (candidateManifest) site('candidate_package_name', 'candidate_package_name',
+      () => assert.equal(metadata.name, name, 'source package name mismatch'), entry);
+    site('candidate_package_version', 'candidate_package_version',
+      () => assert.equal(metadata.version, receipt.setVersion, `${name}: source version mismatch`), entry);
+    inventory.push({ name, version: metadata.version });
+  }
+  const packs = candidateManifest && site('candidate_archived_manifest', 'archived_manifest_validation_failed',
+    () => readCurrentPackManifest(source, candidateManifest, expectedCommit), context);
+  site('candidate_inputs_directory', 'candidate_inputs_directory', () => mkdirSync(input), context);
+  const starterText = site('candidate_starter_metadata_read', 'candidate_starter_metadata_read',
+    () => readFileSync(join(starter, 'package.json'), 'utf8'), context);
+  const application = site('candidate_starter_metadata_decode', 'candidate_starter_metadata_decode',
+    () => JSON.parse(starterText), context);
+  if (!legacy) site('candidate_starter_inputs', 'starter_input_preparation_failed',
+    () => assert(application && typeof application === 'object' && !Array.isArray(application)), context);
+  const profile = application.providerQualification;
+  const qualification = Boolean(packs && profile && qualifyProvider);
+  site('candidate_starter_dependencies', 'starter_dependency_preparation_failed', () => {
     delete application.providerQualification;
-    if (enabled) Object.assign(application.dependencies, profile.dependencies);
+    if (qualification) Object.assign(application.dependencies, profile.dependencies);
     else if (profile) delete application.scripts['provider:qualify'];
     for (const section of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
       for (const name of Object.keys(application[section] ?? {})) if (name.startsWith('@openlup/')) application[section][name] = packs ? `file:${packs.get(name).path}` : receipt.setVersion;
     }
-    writeFileSync(join(input, 'package.json'), JSON.stringify(application));
-    return enabled;
-  });
-  stage('lockfileGeneration',
-    () => run('npm', ['install', '--package-lock-only', '--ignore-scripts', '--no-audit', '--fund=false'], input));
+  }, context);
+  const applicationText = site('candidate_starter_metadata_encode', 'candidate_starter_metadata_encode',
+    () => JSON.stringify(application), context);
+  site('candidate_starter_metadata_write', 'candidate_starter_metadata_write',
+    () => writeFileSync(join(input, 'package.json'), applicationText), context);
+
+  site('candidate_lockfile', 'lockfile_generation_failed',
+    () => run('npm', ['install', '--package-lock-only', '--ignore-scripts', '--no-audit', '--fund=false'], input),
+    { ...context, exit: true });
   const lockfile = join(input, 'package-lock.json');
-  const packages = stage('generatedLockfile', () => {
-    const lock = packs ? readCandidateLockfile(lockfile) : json(lockfile);
-    if (packs) for (const section of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
-      for (const name of Object.keys(lock.packages[''][section] ?? {})) if (packs.has(name)) lock.packages[''][section][name] = receipt.setVersion;
-    }
-    if (packs) {
-      for (const pack of packs.values()) {
-        const entry = lock.packages[`node_modules/${pack.name}`];
-        assert.equal(entry?.integrity, pack.integrity);
-        entry.resolved = `file:${pack.path}`;
+  const lockText = site('candidate_generated_lockfile_read', 'candidate_generated_lockfile_read',
+    () => readFileSync(lockfile, 'utf8'), context);
+  const lock = site('candidate_generated_lockfile_decode', 'candidate_generated_lockfile_decode', () => JSON.parse(lockText), context);
+  if (packs) {
+    site('candidate_lockfile_validation', 'generated_lockfile_validation_failed', () => validateCandidateLockfile(lock), context);
+    site('candidate_generated_lockfile_normalize', 'candidate_generated_lockfile_normalize', () => {
+      for (const section of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
+        for (const name of Object.keys(lock.packages[''][section] ?? {})) if (packs.has(name)) lock.packages[''][section][name] = receipt.setVersion;
       }
-      writeFileSync(lockfile, JSON.stringify(lock, null, 2) + '\n');
+    }, context);
+    for (const [ordinal, pack] of [...packs.values()].entries()) {
+      const entry = lock.packages[`node_modules/${pack.name}`];
+      site('candidate_generated_pack_integrity', 'candidate_generated_pack_integrity',
+        () => assert.equal(entry?.integrity, pack.integrity), { legacy, labels: [...labels, ordinal] });
+      entry.resolved = `file:${pack.path}`;
     }
-    return inventory.map(({ name, version }) => {
-      const entry = lock.packages[`node_modules/${name}`];
-      if (!entry || entry.version !== version) refuse(`${name}: missing or mismatched locked package`);
-      return { name, version, integrity: entry.integrity };
-    });
-  });
-  const manifest = join(input, 'manifest.json');
-  const extracted = join(temporary, 'application');
-  receipt.extraction = stage('starterExtraction', () => {
-    writeFileSync(manifest, JSON.stringify({ schemaVersion: 2, commit: expectedCommit, packages }));
-    const mode = packs ? 'candidate' : readFileSync(join(starter, 'extract.mjs'), 'utf8').includes('const releasedExtractionSchemaVersion = 2;') ? 'released' : 'reconstructed';
-    run(process.execPath, [join(root, 'examples/neutral-store/extract.mjs'), extracted, '--source', starter,
-      '--mode', mode, '--set-version', receipt.setVersion, '--source-revision', expectedCommit, '--manifest', packs ? resolve(candidateManifest) : manifest, '--lockfile', lockfile,
+    const normalized = site('candidate_generated_lockfile_encode', 'candidate_generated_lockfile_encode', () => JSON.stringify(lock, null, 2) + '\n', context);
+    site('candidate_generated_lockfile_write', 'candidate_generated_lockfile_write', () => writeFileSync(lockfile, normalized), context);
+  }
+  const packages = [];
+  for (const [ordinal, { name, version }] of inventory.entries()) {
+    const entry = site('candidate_locked_package_version', 'candidate_locked_package_version', () => {
+      const locked = lock.packages[`node_modules/${name}`];
+      if (!locked || locked.version !== version) refuse(`${name}: missing or mismatched locked package`);
+      return locked;
+    }, { legacy, labels: [...labels, ordinal] });
+    packages.push({ name, version, integrity: entry.integrity });
+  }
+  const manifest = join(input, 'manifest.json'), extracted = join(temporary, 'application');
+  const manifestText = site('candidate_extraction_manifest_encode', 'candidate_extraction_manifest_encode',
+    () => JSON.stringify({ schemaVersion: 2, commit: expectedCommit, packages }), context);
+  site('candidate_extraction_manifest_write', 'candidate_extraction_manifest_write', () => writeFileSync(manifest, manifestText), context);
+  const extractor = packs ? '' : site('candidate_extractor_source_read', 'candidate_extractor_source_read',
+    () => readFileSync(join(starter, 'extract.mjs'), 'utf8'), context);
+  const mode = packs ? 'candidate' : extractor.includes('const releasedExtractionSchemaVersion = 2;') ? 'released' : 'reconstructed';
+  site('candidate_extraction', 'starter_extraction_failed',
+    () => run(process.execPath, [join(root, 'examples/neutral-store/extract.mjs'), extracted, '--source', starter,
+      '--mode', mode, '--set-version', receipt.setVersion, '--source-revision', expectedCommit,
+      '--manifest', packs ? resolve(candidateManifest) : manifest, '--lockfile', lockfile,
       ...(qualification ? ['--provider-qualification', 'enabled'] : []),
-      ...(mode === 'reconstructed' ? ['--reason', 'Release tag predates versioned starter extraction.'] : [])]);
-    return json(join(extracted, '.starter-origin.json'));
-  });
+      ...(mode === 'reconstructed' ? ['--reason', 'Release tag predates versioned starter extraction.'] : [])]),
+    { ...context, exit: true });
+  const originText = site('candidate_extracted_origin_read', 'candidate_extracted_origin_read',
+    () => readFileSync(join(extracted, '.starter-origin.json'), 'utf8'), context);
+  receipt.extraction = site('candidate_extracted_origin_decode', 'candidate_extracted_origin_decode', () => JSON.parse(originText), context);
   return { application: extracted, packages, source };
 }
 
@@ -537,55 +550,51 @@ const runCandidate = (file, args, cwd = root) => execFileSync(file, args, {
   cwd, env: isolatedConsumerEnv(), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
 });
 
-function candidateStage(stage, operation) {
-  try { return operation(); }
-  catch (error) {
-    if (error instanceof StarterRuntimeProofError) throw error;
-    const status = Number.isInteger(error?.status) ? error.status : null;
-    const [step, reason] = candidatePreparationStages[stage];
-    throw new StarterRuntimeProofError(step, status, reason);
-  }
-}
-
-function readCandidateLockfile(path) {
-  const lock = json(path);
+function validateCandidateLockfile(lock) {
   assert.equal(lock.lockfileVersion, 3);
   assert(lock.packages && typeof lock.packages === 'object' && !Array.isArray(lock.packages));
   const root = lock.packages[''];
   assert(root && typeof root === 'object' && !Array.isArray(root));
-  return lock;
 }
 
-export function prepareStarterCandidate(commit, manifest, scratch, run = runCandidate) {
-  candidateStage('workspace', () => mkdirSync(scratch, { recursive: true }));
-  const { packs, receipt } = candidateStage('manifest', () => {
-    const packs = readCurrentPackManifest(root, manifest, commit);
-    return { packs, receipt: qualificationReceipt('openlup-core-v' + packs.get('@openlup/core').version, commit) };
-  });
-  const { application, packages } = prepareReleasedStarter(receipt, scratch, run, manifest, false, candidateStage);
+export function prepareStarterCandidate(commit, manifest, scratch, run = runCandidate, role) {
+  const labels = role === undefined ? [] : [role];
+  const context = { labels };
+  site('candidate_workspace', 'workspace_failed', () => mkdirSync(scratch, { recursive: true }), context);
+  const packs = site('candidate_manifest', 'manifest_validation_failed',
+    () => readCurrentPackManifest(root, manifest, commit), context);
+  const receipt = site('candidate_receipt_init', 'candidate_receipt_init_failed',
+    () => qualificationReceipt('openlup-core-v' + packs.get('@openlup/core').version, commit), context);
+  const { application, packages } = prepareReleasedStarter(receipt, scratch, run, manifest, false, { legacy: false, labels });
   receipt.packages = packages;
   const lockfile = join(application, 'package-lock.json');
-  const lock = candidateStage('extractedLockfile', () => {
-    const lock = readCandidateLockfile(lockfile);
-    for (const [name, pack] of packs) assert.equal(lock.packages[`node_modules/${name}`]?.integrity, pack.integrity);
-    return lock;
-  });
-  candidateStage('artifactStaging', () => {
-    mkdirSync(join(application, 'artifacts'), { recursive: true });
-    for (const [name, pack] of packs) {
-      const target = `artifacts/openlup-${name.slice(9)}.tgz`;
-      cpSync(pack.path, join(application, target));
-      lock.packages[`node_modules/${name}`].resolved = 'file:' + target;
-    }
-    const preparedLock = JSON.stringify(lock) + '\n';
-    writeFileSync(lockfile, preparedLock);
-    receipt.buildContextLockfileSha256 = sha256(preparedLock);
-    writeFileSync(join(application, '.starter-origin.json'), JSON.stringify({
-      ...receipt.extraction, lockfileSha256: receipt.buildContextLockfileSha256,
-    }, null, 2) + '\n');
-  });
-  candidateStage('dependencyInstall',
-    () => run('npm', ['ci', '--ignore-scripts', '--no-audit', '--fund=false'], application));
+  const lockText = site('candidate_extracted_lockfile_read', 'candidate_extracted_lockfile_read',
+    () => readFileSync(lockfile, 'utf8'), context);
+  const lock = site('candidate_extracted_lockfile_decode', 'candidate_extracted_lockfile_decode', () => JSON.parse(lockText), context);
+  site('candidate_extracted_lockfile', 'extracted_lockfile_validation_failed', () => validateCandidateLockfile(lock), context);
+  for (const [ordinal, [name, pack]] of [...packs].entries()) {
+    site('candidate_extracted_pack_integrity', 'candidate_extracted_pack_integrity',
+      () => assert.equal(lock.packages[`node_modules/${name}`]?.integrity, pack.integrity), { labels: [...labels, ordinal] });
+  }
+  const artifacts = join(application, 'artifacts');
+  site('candidate_artifacts_directory', 'candidate_artifacts_directory', () => mkdirSync(artifacts, { recursive: true }), context);
+  for (const [ordinal, [name, pack]] of [...packs].entries()) {
+    const target = `artifacts/openlup-${name.slice(9)}.tgz`;
+    const entry = { labels: [...labels, ordinal] };
+    site('candidate_artifact_copy', 'candidate_artifact_copy', () => cpSync(pack.path, join(application, target)), entry);
+    site('candidate_artifact_lock_binding', 'candidate_artifact_lock_binding',
+      () => { lock.packages[`node_modules/${name}`].resolved = 'file:' + target; }, entry);
+  }
+  const preparedLock = site('candidate_prepared_lockfile_encode', 'candidate_prepared_lockfile_encode', () => JSON.stringify(lock) + '\n', context);
+  site('candidate_prepared_lockfile_write', 'candidate_prepared_lockfile_write', () => writeFileSync(lockfile, preparedLock), context);
+  receipt.buildContextLockfileSha256 = site('candidate_prepared_lockfile_hash', 'candidate_prepared_lockfile_hash', () => sha256(preparedLock), context);
+  const originText = site('candidate_prepared_origin_encode', 'candidate_prepared_origin_encode', () => JSON.stringify({
+    ...receipt.extraction, lockfileSha256: receipt.buildContextLockfileSha256,
+  }, null, 2) + '\n', context);
+  site('candidate_prepared_origin_write', 'candidate_prepared_origin_write',
+    () => writeFileSync(join(application, '.starter-origin.json'), originText), context);
+  site('candidate_install', 'npm_install_failed',
+    () => run('npm', ['ci', '--ignore-scripts', '--no-audit', '--fund=false'], application), { ...context, exit: true });
   return { application, receipt };
 }
 
@@ -617,23 +626,24 @@ export async function qualifyCandidateCanary(commit, manifest, output) {
 }
 
 async function qualifyCandidateOccupied(predecessor, previousManifest, candidate, candidateManifest, port) {
-  const failures = [];
-  let scratch;
+  const failures = new ProofFailures();
+  let started;
+  const checkedOut = site('candidate_checkout', 'checkout_lookup_failed',
+    () => runCandidate('git', ['rev-parse', 'HEAD']).trim(), { exit: true });
+  site('candidate_checkout', 'wrong_checkout', () => assert.equal(checkedOut, candidate, 'candidate checkout mismatch'));
+  const scratch = site('occupied_workspace', 'occupied_workspace_failed',
+    () => mkdtempSync(join(tmpdir(), 'openlup-occupied-upgrade-')));
   try {
-    const checkedOut = candidateStage('checkoutLookup', () => runCandidate('git', ['rev-parse', 'HEAD']).trim());
-    candidateStage('wrongCheckout', () => assert.equal(checkedOut, candidate, 'candidate checkout mismatch'));
-    scratch = candidateStage('occupiedWorkspace', () => mkdtempSync(join(tmpdir(), 'openlup-occupied-upgrade-')));
-    const from = prepareStarterCandidate(predecessor, previousManifest, join(scratch, 'from'));
-    const to = prepareStarterCandidate(candidate, candidateManifest, join(scratch, 'to'));
-    await proveStarterRuntimeUpgrade(from.application, to.application, Number(port));
-  } catch (error) { failures.push(StarterRuntimeProofError.diagnostic(error, 'candidate_occupied')); }
+    const from = prepareStarterCandidate(predecessor, previousManifest, join(scratch, 'from'), runCandidate, 'from');
+    const to = prepareStarterCandidate(candidate, candidateManifest, join(scratch, 'to'), runCandidate, 'to');
+    started = await proveStarterRuntimeUpgrade(from.application, to.application, Number(port), true);
+  } catch (error) { failures.keep(error); }
   finally {
-    if (scratch) {
-      try { rmSync(scratch, { recursive: true, force: true }); }
-      catch (error) { failures.push(StarterRuntimeProofError.diagnostic(error, 'candidate_cleanup')); }
-    }
+    failures.attempt(() => site('candidate_cleanup', 'occupied_workspace_remove_failed',
+      () => rmSync(scratch, { recursive: true, force: true })));
   }
-  if (failures.length) throw new StarterRuntimeProofError(failures);
+  failures.finish();
+  completeStarterRuntimeProof(started);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
@@ -643,10 +653,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     await qualifyCandidateCanary(commit, receipt, mode);
   } else if (tag === '--candidate-occupied') {
     try {
-      if (process.argv.length !== 8) throw new StarterRuntimeProofError('candidate_occupied', null, 'invalid_arguments');
-      await qualifyCandidateOccupied(...process.argv.slice(3));
+      site('candidate_occupied', 'invalid_arguments', () => assert.equal(process.argv.length, 8));
+      await site('candidate_occupied_entry', 'occupied_entry_invariant',
+        () => qualifyCandidateOccupied(...process.argv.slice(3)));
     } catch (error) {
-      process.stderr.write(StarterRuntimeProofError.diagnostic(error, 'candidate_occupied_entry') + '\n');
+      if (error instanceof StarterRuntimeProofError) process.stderr.write(error.message + '\n');
       process.exitCode = 1;
     }
   } else {

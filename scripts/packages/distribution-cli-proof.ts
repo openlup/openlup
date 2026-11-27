@@ -1417,653 +1417,855 @@ export function createVerificationInput() {
 }
 
 /** Installed adjacent-file upgrade on one occupied local demonstration. */
+type ProofDiagnostic = { step: string; exit: number | null; reason: string };
 export class StarterRuntimeProofError extends Error {
-  constructor(step: string | string[], status: number | null = null, reason = "assertion_failed") {
-    super(typeof step === "string" ? `${step} exit=${status ?? "none"} reason=${reason}` : step.join("\n"));
+  readonly records: readonly ProofDiagnostic[];
+  constructor(records: readonly ProofDiagnostic[]) {
+    super(records.map(({ step, exit, reason }) => `${step} exit=${exit ?? "none"} reason=${reason}`).join("\n"));
+    this.records = records;
     this.stack = undefined;
-  }
-
-  static diagnostic(error: unknown, step: string) {
-    return error instanceof StarterRuntimeProofError ? error.message
-      : new StarterRuntimeProofError(step, null, "unexpected_failure").message;
   }
 }
 
-export async function proveStarterRuntimeUpgrade(from: string, to: string, port: number) {
-  try { await runStarterRuntimeUpgrade(from, to, port); }
-  catch (error) {
-    throw new StarterRuntimeProofError([StarterRuntimeProofError.diagnostic(error, "occupied_proof_setup")]);
+function proofError(items: readonly (ProofDiagnostic | StarterRuntimeProofError)[]) {
+  return new StarterRuntimeProofError(items.flatMap(item => item instanceof StarterRuntimeProofError ? item.records : [item]));
+}
+
+type ProofLabel = string | number;
+type SiteOptions = { labels?: readonly ProofLabel[]; exit?: number | boolean | null; legacy?: boolean };
+
+export function site<T>(step: string, reason: string, operation: () => T, options: SiteOptions = {}): T {
+  if (options.legacy) return operation();
+  const classify = (error: unknown): never => {
+    if (error instanceof StarterRuntimeProofError) throw error;
+    const status = options.exit === true ? (error as { status?: unknown } | null)?.status : options.exit;
+    throw proofError([{ step: [step, ...options.labels ?? []].join("."), reason,
+      exit: typeof status === "number" && Number.isInteger(status) ? status : null }]);
+  };
+  try {
+    const result = operation();
+    return result instanceof Promise ? result.catch(classify) as T : result;
+  } catch (error) { return classify(error); }
+}
+
+export class ProofFailures {
+  private readonly errors: StarterRuntimeProofError[] = [];
+  private escaped = false;
+  keep(error: unknown) {
+    if (error instanceof StarterRuntimeProofError) this.errors.push(error);
+    else this.escaped = true;
   }
+  attempt(operation: () => unknown) {
+    try { operation(); } catch (error) { this.keep(error); }
+  }
+  finish() {
+    if (this.errors.length) throw proofError(this.errors.splice(0));
+    if (this.escaped) throw new Error();
+  }
+}
+
+export async function proveStarterRuntimeUpgrade(from: string, to: string, port: number, deferCompletion = false) {
+  const started = performance.now();
+  await runStarterRuntimeUpgrade(from, to, port);
+  if (!deferCompletion) completeStarterRuntimeProof(started);
+  return started;
+}
+
+export function completeStarterRuntimeProof(started: number) {
+  site("proof_progress_write", "proof_completion_write_failed",
+    () => process.stdout.write("Starter runtime occupied proof completed in " + Math.round(performance.now() - started) + " ms\n"), { labels: ["complete"] });
 }
 
 async function runStarterRuntimeUpgrade(from: string, to: string, port: number) {
-  const substep = (step: string, ...labels: (string | number)[]) => [step, ...labels].join(".");
-  const fail = (step: string, status: number | null = null, reason?: string): never => {
-    throw new StarterRuntimeProofError(step, status, reason);
-  };
-  if (process.platform !== "linux" || port === 4319) fail("occupied_proof_admission", null, "unsupported_runner_or_port");
-  const started = performance.now();
-  const project = "starter-runtime-" + randomBytes(6).toString("hex");
-  const scratch = mkdtempSync(join(tmpdir(), project + "-"));
-  const dockerBin = realpathSync("/usr/bin/docker");
-  const env: NodeJS.ProcessEnv = { ...isolatedConsumerEnv(), COMPOSE_PROJECT_NAME: project, OPENLUP_STARTER_PORT: String(port) };
-  const fresh = { ...env };
-  delete fresh.COMPOSE_PROJECT_NAME;
+  site("occupied_proof_admission", "unsupported_runner_or_port", () => assert(process.platform === "linux" && port !== 4319));
+  const project = "starter-runtime-" + site("proof_project_random", "proof_project_random", () => randomBytes(6)).toString("hex");
+  const source = site("proof_runtime_home", "proof_runtime_home",
+    () => join(homedir(), ".local/state/openlup/neutral-store", project, "runtime-password"));
+  const scratch = site("proof_scratch_create", "proof_scratch_create", () => mkdtempSync(join(tmpdir(), project + "-")));
+  const failures = new ProofFailures();
   const alternate = project + "-next";
-  const selectNext = { ...env, COMPOSE_PROJECT_NAME: alternate };
-  const composeFor = (step: string, activeProject: string, ...args: string[]) =>
-    run(step, from, "docker", ["compose", "--project-name", activeProject, ...args]);
-  const compose = (step: string, ...args: string[]) => composeFor(step, project, ...args);
-  const failures: string[] = [];
-  function run(step: string, cwd: string, command: string, args: string[], input?: string, environment: NodeJS.ProcessEnv = env) {
-    let child;
-    try {
-      child = spawnSync(command, args, { cwd, env: environment, input, encoding: "utf8",
-        stdio: ["pipe", "pipe", "pipe"], timeout: 300_000, maxBuffer: 16 * 1024 * 1024 });
-    } catch { return fail(step, null, "spawn_failed"); }
-    if (child.error) fail(step, child.status, (child.error as NodeJS.ErrnoException).code === "ENOBUFS"
-      ? "capture_failed" : "command_failed");
-    return { step, status: child.status, signal: child.signal, stdout: child.stdout ?? "", stderr: child.stderr ?? "" };
+  let dockerBin = "/usr/bin/docker";
+  let env: NodeJS.ProcessEnv = {};
+  const projectFile = join(from, ".context/compose-project");
+  type Expected = number | "nonzero" | "SIGKILL";
+  function requireExit(result: { status: number | null; signal: string | null }, expected: Expected) {
+    if (expected === "SIGKILL" ? result.signal !== expected
+      : expected === "nonzero" ? result.status === 0 || result.status === null : result.status !== expected) {
+      throw { status: result.status };
+    }
   }
-  const checked = (result: ReturnType<typeof run>, expected = 0) => {
-    if (result.status !== expected) fail(result.step, result.status, "unexpected_exit");
-    return result.stdout.trim();
-  };
-  function downProject(step: string, name: string) {
-    try {
-      checked(run(step, from, dockerBin,
-        ["compose", "--project-name", name, "down", "--volumes", "--remove-orphans", "--rmi", "local"]));
-    } catch (error) { failures.push(StarterRuntimeProofError.diagnostic(error, substep(step, "exception"))); }
+  function run(cwd: string, command: string, args: string[], input?: string, environment = env, expected: Expected = 0) {
+    const child = spawnSync(command, args, { cwd, env: environment, input, encoding: "utf8",
+      stdio: ["pipe", "pipe", "pipe"], timeout: 300_000, maxBuffer: 16 * 1024 * 1024 });
+    if (child.error) throw { status: child.status };
+    requireExit(child, expected);
+    return { status: child.status, signal: child.signal, stdout: child.stdout ?? "", stderr: child.stderr ?? "" };
   }
-  const sql = (step: string, text: string, database = "neutral_store", activeProject = project) => checked(run(step, from, "docker",
+  const composeFor = (activeProject: string, ...args: string[]) =>
+    run(from, "docker", ["compose", "--project-name", activeProject, ...args]);
+  const compose = (...args: string[]) => composeFor(project, ...args);
+  const checked = (result: ReturnType<typeof run>) => result.stdout.trim();
+  const downProject = (name: string) => run(from, dockerBin,
+    ["compose", "--project-name", name, "down", "--volumes", "--remove-orphans", "--rmi", "local"]);
+  const rawSql = (text: string, database = "neutral_store", activeProject = project) => checked(run(from, "docker",
     ["compose", "--project-name", activeProject, "exec", "-T", "database", "psql", "-XAtq", "-w",
       "-v", "ON_ERROR_STOP=1", "-U", database === "postgres" ? "postgres" : "starter_install", "-d", database, "-c", text]));
-  const source = join(homedir(), ".local/state/openlup/neutral-store", project, "runtime-password");
-  const projectFile = join(from, ".context/compose-project");
-  const container = (step: string, service: string, activeProject = project) => checked(composeFor(step, activeProject, "ps", "-q", service));
-  const up = (step: string, code = 0) => checked(run(step, from, "./lifecycle", ["up", "--configuration", "coffee", "--json"]), code);
+  const composeWithExit = (name: string, args: string[], expected: Expected) => run(from, "docker", ["compose", "--project-name", name, ...args], undefined, env, expected);
+  const container = (service: string, activeProject = project) => checked(composeFor(activeProject, "ps", "-q", service));
+  const up = (code = 0) => checked(run(from, "./lifecycle", ["up", "--configuration", "coffee", "--json"], undefined, env, code));
+  const digest = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
   const identity = (step: string, activeProject = project) => {
-    const id = container(substep(step, "container"), "database", activeProject);
+    const id = site("database_identity_container", "database_identity_container", () => container("database", activeProject), { labels: [step], exit: true });
     const format = "{{.State.StartedAt}} {{range .Mounts}}{{if eq .Destination \"/var/lib/postgresql/data\"}}{{.Name}}{{end}}{{end}}";
-    return [id, checked(run(substep(step, "mount"), from, "docker", ["inspect", "--format", format, id])),
-      sql(substep(step, "oid"), "select oid from pg_database where datname = current_database()", "neutral_store", activeProject)
-        + ":" + sql(substep(step, "system_id"), "select system_identifier from pg_control_system()", "postgres", activeProject),
-      sql(substep(step, "hba_file"), "show hba_file", "postgres", activeProject)];
+    return [id, site("database_identity_mount", "database_identity_mount", () => run(from, "docker", ["inspect", "--format", format, id]).stdout.trim(), { labels: [step], exit: true }),
+      site("database_identity_oid", "database_identity_oid", () => rawSql("select oid from pg_database where datname = current_database()", "neutral_store", activeProject), { labels: [step], exit: true })
+        + ":" + site("database_identity_system_id", "database_identity_system_id", () => rawSql("select system_identifier from pg_control_system()", "postgres", activeProject), { labels: [step], exit: true }),
+      site("database_identity_hba_file", "database_identity_hba_file", () => rawSql("show hba_file", "postgres", activeProject), { labels: [step], exit: true })];
   };
   const retained = (step: string) => [
-    sql(substep(step, "products"), "select jsonb_agg(to_jsonb(t) order by id) from public.catalog_products t"),
-    sql(substep(step, "skus"), "select jsonb_agg(to_jsonb(t) order by id) from public.catalog_skus t"),
-    sql(substep(step, "prices"), "select jsonb_agg(to_jsonb(t) order by id) from public.price_entries t"),
-    sql(substep(step, "migrations"), "select jsonb_agg(to_jsonb(t) order by position) from public.platform_schema_migrations t"),
+    site("retained_seed_products", "retained_seed_products", () => rawSql("select jsonb_agg(to_jsonb(t) order by id) from public.catalog_products t"), { labels: [step], exit: true }),
+    site("retained_seed_skus", "retained_seed_skus", () => rawSql("select jsonb_agg(to_jsonb(t) order by id) from public.catalog_skus t"), { labels: [step], exit: true }),
+    site("retained_seed_prices", "retained_seed_prices", () => rawSql("select jsonb_agg(to_jsonb(t) order by id) from public.price_entries t"), { labels: [step], exit: true }),
+    site("retained_seed_migrations", "retained_seed_migrations", () => rawSql("select jsonb_agg(to_jsonb(t) order by position) from public.platform_schema_migrations t"), { labels: [step], exit: true }),
   ];
-  const mark = (label: string) => process.stdout.write("Starter runtime " + label + " PASS\n");
-  function parseJson(step: string, text: string) {
-    try { return JSON.parse(text); } catch { return fail(step, null, "invalid_json"); }
-  }
+  const mark = (role: string, label: string, ...ordinals: number[]) => site("proof_progress_write", "proof_progress_write",
+    () => process.stdout.write("Starter runtime " + label + " PASS\n"), { labels: [role, ...ordinals] });
   const origin = `http://127.0.0.1:${port}`;
   type CheckoutResult = { ok: boolean; code?: string; value?: Record<string, unknown> };
-  async function checkoutAction(step: string, action: string, body: Record<string, unknown>): Promise<CheckoutResult> {
-    try {
-      // Receipt reads carry no cookies from the original checkout.
-      const response = await fetch(`${origin}/api/actions/${action}`, {
-        method: "POST", signal: AbortSignal.timeout(15_000),
-        headers: { Origin: origin, "X-Starter-Request": "1", "Idempotency-Key": randomUUID(),
-          "Content-Type": "application/json", Connection: "close" },
-        body: JSON.stringify(body),
-      });
-      const result = await response.json() as CheckoutResult;
-      if (result.ok === response.ok) return result;
-    } catch { /* Keep private checkout responses out of diagnostics. */ }
-    return fail(step, null, "invalid_response");
+  async function checkoutAction(labels: readonly ProofLabel[], action: string, body: Record<string, unknown>): Promise<CheckoutResult> {
+    const id = site("checkout_request_id", "checkout_request_id", () => randomUUID(), { labels });
+    const encoded = site("checkout_request_encode", "checkout_request_encode", () => JSON.stringify(body), { labels });
+    // Receipt reads carry no cookies from the original checkout.
+    const response = await site("checkout_request", "checkout_request", () => fetch(`${origin}/api/actions/${action}`, {
+      method: "POST", signal: AbortSignal.timeout(15_000),
+      headers: { Origin: origin, "X-Starter-Request": "1", "Idempotency-Key": id,
+        "Content-Type": "application/json", Connection: "close" },
+      body: encoded,
+    }), { labels });
+    const result = await site("checkout_response_decode", "checkout_response_decode", () => response.json() as Promise<CheckoutResult>, { labels });
+    site("checkout_response_consistency", "checkout_response_consistency", () => assert(result && result.ok === response.ok), { labels });
+    return result;
   }
-  const settledFacts = (step: string, ref: string, activeProject = project) => {
-    if (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(ref)) fail(substep(step, "invalid_order_key"));
-    return sql(substep(step, "query"), `select jsonb_build_object(
+  const settledFacts = (labels: readonly ProofLabel[], ref: string, activeProject = project) => {
+    site("settled_order_key", "settled_order_key", () => assert(/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(ref)), { labels });
+    return site("settled_record_query", "settled_record_query", () => rawSql(`select jsonb_build_object(
       'orders', coalesce((select jsonb_agg(to_jsonb(o) order by o.id) from public.commerce_orders o where o.id = '${ref}'), '[]'),
       'lines', coalesce((select jsonb_agg(to_jsonb(l) order by l.id) from public.commerce_order_items l where l.order_id = '${ref}'), '[]'),
       'payments', coalesce((select jsonb_agg(to_jsonb(p) order by p.id) from public.commerce_settlement_intents p where p.order_id = '${ref}'), '[]'),
       'attempts', coalesce((select jsonb_agg(to_jsonb(a) order by a.id) from public.payment_simulator_attempts a
-        join public.commerce_settlement_intents p on p.id = a.settlement_intent_id where p.order_id = '${ref}'), '[]'))`,
-      "neutral_store", activeProject);
+        join public.commerce_settlement_intents p on p.id = a.settlement_intent_id where p.order_id = '${ref}'), '[]'))`, "neutral_store", activeProject), { labels, exit: true });
   };
   async function createSettledReceipt(step: string) {
-    const response = await fetch(`${origin}/api/config`, { signal: AbortSignal.timeout(15_000) });
-    if (!response.ok) fail(substep(step, "configuration_http"));
-    const { config } = await response.json() as { config?: StoreConfig };
-    if (config?.id !== "coffee") return fail(substep(step, "configuration_selection"));
-    const order = { configuration: config.id, locale: config.market.defaultLocale, country: config.market.country,
-      email: `buyer-${randomUUID()}@example.test`, firstName: "Example", lastName: "Buyer", phone: "000000000",
+    const labels = [step];
+    const response = await site("settlement_configuration_request", "settlement_configuration_request",
+      () => fetch(`${origin}/api/config`, { signal: AbortSignal.timeout(15_000) }), { labels });
+    site("settlement_configuration_http", "settlement_configuration_http", () => assert(response.ok), { labels });
+    const envelope = await site("settlement_configuration_decode", "settlement_configuration_decode",
+      () => response.json() as Promise<{ config?: StoreConfig }>, { labels });
+    const config = site("settlement_configuration_selection", "settlement_configuration_selection", () => {
+      assert(envelope?.config?.id === "coffee");
+      return envelope.config;
+    }, { labels });
+    const buyer = site("settlement_buyer_id", "settlement_buyer_id", () => randomUUID(), { labels });
+    const order = site("settlement_order_input", "settlement_order_input", () => ({
+      configuration: config.id, locale: config.market.defaultLocale, country: config.market.country,
+      email: `buyer-${buyer}@example.test`, firstName: "Example", lastName: "Buyer", phone: "000000000",
       line1: "1 Example Lane", city: "Example City", postalCode: "00000", termsAccepted: true, termsRevision: config.legal.revision,
       cart: { schemaVersion: 1, configuration: config.id, mode: "one_time", cadenceDays: null,
-        lines: [{ sku: config.offer.products[0].sku, quantity: config.offer.minUnits }] } };
-    const quote = await checkoutAction(substep(step, "quote_response"), "offer.validate", order);
-    if (!quote.ok || !quote.value?.expectedTotal) return fail(substep(step, "quote_validation"));
-    const checkout = await checkoutAction(substep(step, "checkout_response"), "checkout.create", { ...order,
-      quoteAcceptance: quote.value.quoteAcceptance, expectedTotal: quote.value.expectedTotal });
-    const { orderRef, token } = checkout.value ?? {};
-    if (!checkout.ok || typeof orderRef !== "string" || typeof token !== "string" || !token) return fail(substep(step, "checkout_validation"));
-    const reference = { orderRef, token };
-    const paid = await checkoutAction(substep(step, "payment_response"), "payment.simulate", { ...reference, outcome: "captured" });
-    if (!paid.ok || paid.value?.status !== "paid" || paid.value.orderRef !== orderRef) fail(substep(step, "payment_validation"));
-    const facts = settledFacts(substep(step, "records"), orderRef);
-    const { orders, lines, payments, attempts } = parseJson(substep(step, "record_format"), facts);
-    if (orders.length !== 1 || orders[0].status !== "paid" || lines.length !== 1 || payments.length !== 1
-      || payments[0].status !== "settled" || attempts.length !== 1 || attempts[0].state !== "captured") fail(substep(step, "record_validation"));
+        lines: [{ sku: config.offer.products[0].sku, quantity: config.offer.minUnits }] },
+    }), { labels });
+    const quote = await checkoutAction([step, "quote"], "offer.validate", order);
+    const accepted = site("quote_validation", "quote_validation", () => {
+      assert(quote.ok && quote.value?.expectedTotal);
+      return quote.value;
+    }, { labels });
+    const checkout = await checkoutAction([step, "checkout"], "checkout.create", { ...order,
+      quoteAcceptance: accepted.quoteAcceptance, expectedTotal: accepted.expectedTotal });
+    const reference = site("checkout_validation", "checkout_validation", () => {
+      const { orderRef, token } = checkout.value ?? {};
+      assert(checkout.ok && typeof orderRef === "string" && typeof token === "string" && token);
+      return { orderRef, token };
+    }, { labels });
+    const { orderRef } = reference;
+    const paid = await checkoutAction([step, "payment"], "payment.simulate", { ...reference, outcome: "captured" });
+    site("payment_validation", "payment_validation", () => assert(paid.ok || paid.value?.status !== "paid" || paid.value.orderRef !== orderRef), { labels: [step] });
+    const facts = settledFacts([step, "records"], orderRef);
+    const records = site("settled_record_decode", "settled_record_decode", () => JSON.parse(facts), { labels, exit: 0 });
+    site("settled_record_shape", "settled_record_shape", () => {
+      const { orders, lines, payments, attempts } = records;
+      assert(orders.length === 1 && orders[0].status === "paid" && lines.length === 1 && payments.length === 1
+        && payments[0].status === "settled" && attempts.length === 1 && attempts[0].state === "captured");
+    }, { labels, exit: 0 });
     return { reference, facts };
   }
   async function readSettlementContinuity(
     step: string, witness: Awaited<ReturnType<typeof createSettledReceipt>>, activeProject = project, receiptReference = witness.reference,
   ) {
-    const records = settledFacts(substep(step, "retained_records"), witness.reference.orderRef, activeProject);
-    const receipt = await checkoutAction(substep(step, "receipt_response"), "checkout.read", receiptReference);
-    const matches = records === witness.facts && receipt.ok && receipt.value?.status === "paid"
-      && receipt.value.orderRef === witness.reference.orderRef;
+    const records = settledFacts([step, "retained_records"], witness.reference.orderRef, activeProject);
+    const receipt = await checkoutAction([step, "receipt"], "checkout.read", receiptReference);
+    const matches = site("receipt_comparison", "receipt_comparison", () =>
+      records === witness.facts && receipt.ok && receipt.value?.status === "paid"
+        && receipt.value.orderRef === witness.reference.orderRef, { labels: [step] });
     return { records, receipt, matches };
   }
   try {
-    const predecessor: string = parseJson("predecessor_origin_format", readFileSync(join(from, ".starter-origin.json"), "utf8")).sourceRevision;
-    if (!/^[a-f0-9]{40}$/u.test(predecessor)) fail("predecessor_identity");
-    const old = starterUpgradeSnapshot(from, "1.0.0"), next = starterUpgradeSnapshot(to, "1.0.1");
-    const oldCompose = join(from, "compose.yaml"), oldLifecycle = readFileSync(join(from, "lifecycle.mjs"), "utf8");
-    if (existsSync(source)) fail("unexpected_runtime_file");
-    up("predecessor_start");
+    dockerBin = site("proof_docker_realpath", "proof_docker_realpath", () => realpathSync("/usr/bin/docker"));
+    env = site("proof_environment", "proof_environment",
+      () => ({ ...isolatedConsumerEnv(), COMPOSE_PROJECT_NAME: project, OPENLUP_STARTER_PORT: String(port) }));
+    const fresh = { ...env };
+    delete fresh.COMPOSE_PROJECT_NAME;
+    const selectNext = { ...env, COMPOSE_PROJECT_NAME: alternate };
+    const originText = site("predecessor_origin_read", "predecessor_origin_read",
+      () => readFileSync(join(from, ".starter-origin.json"), "utf8"));
+    const originMetadata = site("predecessor_origin_format", "predecessor_origin_format", () => JSON.parse(originText));
+    const predecessor = originMetadata?.sourceRevision;
+    site("predecessor_identity", "predecessor_identity", () => assert(/^[a-f0-9]{40}$/u.test(predecessor)));
+    const old = site("predecessor_upgrade_snapshot", "predecessor_upgrade_snapshot", () => starterUpgradeSnapshot(from, "1.0.0"));
+    const next = site("candidate_upgrade_snapshot", "candidate_upgrade_snapshot", () => starterUpgradeSnapshot(to, "1.0.1"));
+    const oldCompose = join(from, "compose.yaml");
+    const oldLifecycle = site("predecessor_lifecycle_read", "predecessor_lifecycle_read",
+      () => readFileSync(join(from, "lifecycle.mjs"), "utf8"));
+    const predecessorSourceExists = site("predecessor_runtime_source_exists", "predecessor_runtime_source_exists", () => existsSync(source));
+    site("unexpected_runtime_file", "unexpected_runtime_file", () => assert(!predecessorSourceExists));
+    site("predecessor_start", "predecessor_start", () => up(), { exit: true });
     const before = retained("initial_seed"), original = identity("initial_database");
     for (const [index, value] of before.entries()) {
-      if (!value || !parseJson(substep("initial_seed_format", index), value).length)
-        fail(substep("empty_retained_seed", index));
+      const seed = value && site("initial_seed_format", "initial_seed_format", () => JSON.parse(value), { labels: [index], exit: 0 });
+      site("empty_retained_seed", "empty_retained_seed", () => assert(seed?.length), { labels: [index], exit: 0 });
     }
     const settled = await createSettledReceipt("predecessor_settled_receipt");
-    mark("predecessor checkout settled with keyed records");
-    const schema: unknown = parseJson("initial_schema_format", before[3]!);
-    if (!Array.isArray(schema)) return fail("installed_schema", null, "invalid_shape");
-    const count = schema.length;
-    const catalogue = (app: string) => readFileSync(join(app, "node_modules/@openlup/platform/sql/manifest.json"));
-    if (!catalogue(from).equals(catalogue(to))) fail("catalogue_mismatch");
-    const predecessorApp = container("predecessor_application", "application");
-    const socketImage = checked(run("predecessor_image", from, "docker", ["inspect", "--format", "{{.Image}}", predecessorApp]));
+    mark("predecessor_checkout_settled_with_keyed_records", "predecessor checkout settled with keyed records");
+    const schema: unknown = site("initial_schema_format", "initial_schema_format", () => JSON.parse(before[3]!), { exit: 0 });
+    const count = site("installed_schema", "installed_schema", () => {
+      assert(Array.isArray(schema));
+      return schema.length;
+    }, { exit: 0 });
+    const oldCatalogue = site("predecessor_catalogue_read", "predecessor_catalogue_read",
+      () => readFileSync(join(from, "node_modules/@openlup/platform/sql/manifest.json")));
+    const nextCatalogue = site("candidate_catalogue_read", "candidate_catalogue_read",
+      () => readFileSync(join(to, "node_modules/@openlup/platform/sql/manifest.json")));
+    site("catalogue_mismatch", "catalogue_mismatch", () => assert(oldCatalogue.equals(nextCatalogue)));
+    const predecessorApp = site("predecessor_application", "predecessor_application", () => container("application"), { exit: true });
+    const socketImage = site("predecessor_image", "predecessor_image", () => run(from, "docker", ["inspect", "--format", "{{.Image}}", predecessorApp]).stdout.trim(), { exit: true });
     const statusCode = `import {createPlatformPostgresMigrationRunner} from '@openlup/platform/migrations';
       const runner=createPlatformPostgresMigrationRunner({connectionString:'postgresql://starter_install@localhost/neutral_store?host=/var/run/postgresql'},
         {installation:{generation:'qualified-v2',roleMode:'installer-managed',migrationLogin:'starter_install',bootstrapLogin:'postgres',runtimeLogin:'starter_runtime',restoreLogin:'starter_restore'}});
       const status=await runner.status(); console.log(JSON.stringify({pending:status.pending.length,applied:status.applied.length})); process.exit(0);`;
     for (const [index, app] of [from, to].entries()) {
-      const status = parseJson(substep("qualified_schema_format", index), checked(run(substep("qualified_schema_query", index), from, "docker", ["run", "--rm", "--network", "none",
+      const labels = [index === 0 ? "from" : "to", index];
+      const result = site("qualified_schema_query", "qualified_schema_query", () => run(from, "docker", ["run", "--rm", "--network", "none",
         "--volume", project + "_installation-socket:/var/run/postgresql", "--volume", app + ":/candidate:ro",
-        "--workdir", "/candidate", socketImage, "node", "--input-type=module", "-e", statusCode])));
-      if (status.pending || status.applied !== count) fail(substep("qualified_schema_validation", index));
+        "--workdir", "/candidate", socketImage, "node", "--input-type=module", "-e", statusCode]), { labels, exit: true });
+      const status = site("qualified_schema_format", "qualified_schema_format", () => JSON.parse(result.stdout), { labels, exit: result.status });
+      site("qualified_schema_validation", "qualified_schema_validation", () => assert(!status.pending && status.applied === count), { labels, exit: result.status });
     }
-    mark("common installed schema " + count);
-    checked(compose("stop_predecessor_application", "stop", "application"));
+    mark("common_installed_schema", "common installed schema " + count);
+    site("stop_predecessor_application", "stop_predecessor_application", () => compose("stop", "application").stdout.trim(), { exit: true });
     const stoppedApplication = (step: string) => {
-      const id = checked(compose(substep(step, "inventory"), "ps", "--all", "-q", "application"));
-      if (!id) fail(substep(step, "missing"));
-      return id + " " + checked(run(substep(step, "status"), from, "docker", ["inspect", "--format", "{{.State.Status}} {{.State.StartedAt}}", id]));
+      const id = site("stopped_application_inventory", "stopped_application_inventory", () => compose("ps", "--all", "-q", "application").stdout.trim(), { labels: [step], exit: true });
+      site("stopped_application_missing", "stopped_application_missing", () => assert(id), { labels: [step], exit: 0 });
+      return id + " " + site("stopped_application_status", "stopped_application_status", () => run(from, "docker", ["inspect", "--format", "{{.State.Status}} {{.State.StartedAt}}", id]).stdout.trim(), { labels: [step], exit: true });
     };
     const originalApp = stoppedApplication("original_predecessor_application");
-    for (const [label, snapshot] of [["from", old], ["to", next]] as const) {
+    for (const [index, snapshot] of [old, next].entries()) {
+      const role = index === 0 ? "from" : "to", labels = [role, index];
       snapshot.schema = { min: count, max: count };
-      writeFileSync(join(scratch, label + ".json"), JSON.stringify(snapshot));
+      const snapshotText = site("upgrade_snapshot_encode", "upgrade_snapshot_encode", () => JSON.stringify(snapshot), { labels });
+      site("upgrade_snapshot_write", "upgrade_snapshot_write", () => writeFileSync(join(scratch, role + ".json"), snapshotText), { labels });
     }
     const cli = join(to, "node_modules/.bin/openlup");
     const options = ["--root", from, "--from", join(scratch, "from.json"), "--to", join(scratch, "to.json"), "--schema-version", String(count), "--json"];
-    const upgrade = (step: string, action: string, expected = 0) => parseJson(substep(step, "report"),
-      checked(run(step, from, cli, ["upgrade", action, ...options]), expected));
+    const upgrade = (labels: readonly ProofLabel[], action: string, expected = 0) => {
+      const result = site("upgrade_command", "upgrade_command",
+        () => run(from, cli, ["upgrade", action, ...options], undefined, env, expected), { labels, exit: true });
+      return site("upgrade_report_decode", "upgrade_report_decode", () => JSON.parse(result.stdout), { labels, exit: result.status });
+    };
     const files = [...new Set([...Object.keys(old.files), ...Object.keys(next.files)])];
-    const identityOfFiles = () => files.map(path => existsSync(join(from, path)) ? createHash("sha256").update(readFileSync(join(from, path))).digest("hex") : null);
-    writeFileSync(oldCompose, old.files["compose.yaml"] + "\n# Adopter configuration\n");
-    const dirty = identityOfFiles();
+    function identityOfFiles(step: string, ...ordinals: number[]) {
+      const hashes: (string | null)[] = [];
+      for (const [index, path] of files.entries()) {
+        const labels = [step, ...ordinals, index];
+        const pathOnDisk = join(from, path);
+        const exists = site("managed_file_exists", "managed_file_exists", () => existsSync(pathOnDisk), { labels });
+        const bytes = exists && site("managed_file_read", "managed_file_read", () => readFileSync(pathOnDisk), { labels });
+        hashes.push(bytes ? site("managed_file_hash", "managed_file_hash", () => digest(bytes), { labels }) : null);
+      }
+      return hashes;
+    }
+    site("dirty_compose_write", "dirty_compose_write", () => writeFileSync(oldCompose, old.files["compose.yaml"] + "\n# Adopter configuration\n"));
+    const dirty = identityOfFiles("dirty");
     for (const [index, action] of ["plan", "apply"].entries()) {
-      const refusal = upgrade(substep("dirty_upgrade", index), action, 1);
-      if (!refusal.conflicts?.some((row: { path: string }) => row.path === "compose.yaml") ||
-        JSON.stringify(dirty) !== JSON.stringify(identityOfFiles())) fail(substep("conflict_changed_files", index));
+      const refusal = upgrade(["dirty", index], action, 1);
+      site("dirty_upgrade_conflict", "dirty_upgrade_conflict", () => assert(refusal.conflicts?.some((row: { path: string }) => row.path === "compose.yaml")), { labels: [index], exit: 1 });
+      const afterRefusal = identityOfFiles("after_refusal", index);
+      site("dirty_upgrade_file_identity", "dirty_upgrade_file_identity", () => assert.deepEqual(dirty, afterRefusal), { labels: [index] });
     }
-    writeFileSync(oldCompose, old.files["compose.yaml"]!);
-    upgrade("clean_upgrade_plan", "plan");
+    site("clean_compose_restore", "clean_compose_restore", () => writeFileSync(oldCompose, old.files["compose.yaml"]!));
+    upgrade(["clean_plan"], "plan");
     const preload = join(scratch, "interrupt.mjs");
-    writeFileSync(preload, `import { promises as fs } from 'node:fs'; const rename = fs.rename.bind(fs);
-      fs.rename = async (...args) => { await rename(...args); if (String(args[1]) === ${JSON.stringify(oldCompose)}) process.kill(process.pid, 'SIGKILL'); };`);
-    const interrupted = run("interrupt_upgrade", from, process.execPath, ["--import", preload, cli, "upgrade", "apply", ...options]);
-    if (interrupted.signal !== "SIGKILL" || readFileSync(oldCompose, "utf8") !== next.files["compose.yaml"]
-      || readFileSync(join(from, "lifecycle.mjs"), "utf8") !== oldLifecycle) fail("interrupt_arm");
-    const oldUp = run("mixed_startup", from, "./lifecycle", ["up", "--configuration", "coffee", "--json"]);
-    if (oldUp.status === 0) fail("mixed_lifecycle_started");
+    const targetText = site("interruption_preload_encode", "interruption_preload_encode", () => JSON.stringify(oldCompose));
+    site("interruption_preload_write", "interruption_preload_write", () => writeFileSync(preload,
+      `import { promises as fs } from 'node:fs'; const rename = fs.rename.bind(fs);
+      fs.rename = async (...args) => { await rename(...args); if (String(args[1]) === ${targetText}) process.kill(process.pid, 'SIGKILL'); };`));
+    site("interrupt_upgrade", "interrupt_upgrade", () => run(from, process.execPath, ["--import", preload, cli, "upgrade", "apply", ...options], undefined, env, "SIGKILL"), { exit: true });
+    const interruptedCompose = site("interrupt_compose_read", "interrupt_compose_read", () => readFileSync(oldCompose, "utf8"));
+    const interruptedLifecycle = site("interrupt_lifecycle_read", "interrupt_lifecycle_read",
+      () => readFileSync(join(from, "lifecycle.mjs"), "utf8"));
+    site("interrupt_arm", "interrupt_arm", () => assert(interruptedCompose === next.files["compose.yaml"] && interruptedLifecycle === oldLifecycle));
+    site("mixed_startup", "mixed_lifecycle_started", () => run(from, "./lifecycle", ["up", "--configuration", "coffee", "--json"], undefined, undefined, "nonzero"), { exit: true });
     const staged = join(scratch, "source");
-    const stagedPassword = randomBytes(32).toString("hex");
-
-    writeFileSync(staged, stagedPassword + "\n", { mode: 0o444 });
+    const stagedPassword = site("staged_credential_random", "staged_credential_random", () => randomBytes(32)).toString("hex");
+    site("staged_credential_write", "staged_credential_write", () => writeFileSync(staged, stagedPassword + "\n", { mode: 0o444 }));
     for (const [index, service] of ["database", "application"].entries()) {
-      const blocked = run(substep("compose_gate_command", index), from, "docker", ["compose", "--project-name", project, "up", "--no-build", "--force-recreate", "-d", service],
-        undefined, { ...env, OPENLUP_STARTER_RUNTIME_SOURCE: staged });
-      if (blocked.status === 0 || !blocked.stderr.includes("starter_runtime_preflight_handoff_missing")) fail(substep("compose_gate_refusal", index));
+      const blocked = site("compose_gate_command", "compose_gate_command", () => run(from, "docker", ["compose", "--project-name", project, "up", "--no-build", "--force-recreate", "-d", service], undefined, { ...env, OPENLUP_STARTER_RUNTIME_SOURCE: staged }, "nonzero"), { labels: [index], exit: true });
+      site("compose_gate_refusal", "compose_gate_refusal", () => assert(!(blocked.status === 0 || !blocked.stderr.includes("starter_runtime_preflight_handoff_missing"))), { labels: [index], exit: blocked.status });
     }
-    if (stoppedApplication("interrupted_application") !== originalApp || JSON.stringify(identity("interrupted_database")) !== JSON.stringify(original)
-      || JSON.stringify(retained("interrupted_seed")) !== JSON.stringify(before)) fail("interrupted_data_changed");
-    mark("mixed files and startup gate");
-    if (!upgrade("resume_upgrade_apply", "apply").files.some((row: { path: string; action: string }) => row.path === "compose.yaml" && row.action === "already-applied"))
-      fail("compose_not_resumed");
-    const applied = identityOfFiles();
-    if (upgrade("replay_upgrade_apply", "apply").applied.length || JSON.stringify(applied) !== JSON.stringify(identityOfFiles())) fail("replay_wrote_files");
-    for (const file of ["package-lock.json", ".starter-origin.json", ...readdirSync(join(to, "artifacts")).map(name => "artifacts/" + name)])
-      writeFileSync(join(from, file), readFileSync(join(to, file)));
-    checked(run("refresh_packages", from, "npm", ["ci", "--ignore-scripts", "--no-audit"]));
-    if (existsSync(source)) fail("early_runtime_file");
+    const interruptedApp = stoppedApplication("interrupted");
+    site("interrupted_application_changed", "interrupted_application_changed", () => assert.equal(interruptedApp, originalApp));
+    const interruptedDatabase = identity("interrupted");
+    site("interrupted_database_changed", "interrupted_database_changed", () => assert.deepEqual(interruptedDatabase, original));
+    const interruptedSeed = retained("interrupted");
+    site("interrupted_data_changed", "interrupted_data_changed", () => assert.deepEqual(interruptedSeed, before));
+    mark("mixed_files_and_startup_gate", "mixed files and startup gate");
+    const resumed = upgrade(["resume_apply"], "apply");
+    site("compose_not_resumed", "compose_not_resumed", () => assert(resumed.files.some((row: { path: string; action: string }) =>
+      row.path === "compose.yaml" && row.action === "already-applied")), { exit: 0 });
+    const applied = identityOfFiles("applied");
+    const replayed = upgrade(["replay_apply"], "apply");
+    site("upgrade_replay_report", "upgrade_replay_report", () => assert(!replayed.applied.length), { exit: 0 });
+    const afterReplay = identityOfFiles("after_replay");
+    site("replay_wrote_files", "replay_wrote_files", () => assert.deepEqual(applied, afterReplay));
+    const artefacts = site("candidate_artifact_list", "candidate_artifact_list", () => readdirSync(join(to, "artifacts")));
+    for (const [index, file] of ["package-lock.json", ".starter-origin.json", ...artefacts.map(name => "artifacts/" + name)].entries()) {
+      const bytes = site("upgrade_artifact_read", "upgrade_artifact_read", () => readFileSync(join(to, file)), { labels: [index] });
+      site("upgrade_artifact_write", "upgrade_artifact_write", () => writeFileSync(join(from, file), bytes), { labels: [index] });
+    }
+    site("refresh_packages", "refresh_packages", () => run(from, "npm", ["ci", "--ignore-scripts", "--no-audit"]), { exit: true });
+    const earlySource = site("early_runtime_source_exists", "early_runtime_source_exists", () => existsSync(source));
+    site("early_runtime_file", "early_runtime_file", () => assert(!earlySource));
     const volume = original[1]?.split(" ").at(-1);
-    if (!volume || volume !== project + "_database") fail("predecessor_volume_missing");
-    const predecessorImage = checked(run("predecessor_database_image", from, dockerBin,
-      ["inspect", "--format", "{{.Config.Image}}", original[0]!]));
-    const guide = readFileSync(join(from, "node_modules/@openlup/core/docs/guide/how-to/build/customize-the-starter.md"), "utf8");
-    function recipe(step: string, heading: string, level = "###") {
+    site("predecessor_volume_missing", "predecessor_volume_missing", () => assert(volume || volume !== project + "_database"));
+    const predecessorImage = site("predecessor_database_image", "predecessor_database_image", () => run(from, dockerBin, ["inspect", "--format", "{{.Config.Image}}", original[0]!]).stdout.trim(), { exit: true });
+    const guide = site("installed_cutover_guide_read", "installed_cutover_guide_read",
+      () => readFileSync(join(from, "node_modules/@openlup/core/docs/guide/how-to/build/customize-the-starter.md"), "utf8"));
+    function recipe(heading: string, level = "###") {
       const body = guide.split(level + " " + heading + "\n")[1]?.match(/```sh\n([^]*?)\n```/u)?.[1];
-      if (!body) return fail(step, null, "missing_recipe");
+      assert(body);
       return body;
     }
-    const recover = (step: string) => run(step, from, "/bin/sh", ["-ec", recipe(substep(step, "lock_recovery_recipe"), "Recover a stale database lock")], undefined,
-      { ...env, VOLUME: volume, DATABASE_IMAGE: predecessorImage });
-    const fingerprint = (step: string) => checked(run(step, from, dockerBin, ["run", "--rm", "--network", "none",
+    const recover = (step: string, expected = 0) => {
+      const script = site("lock_recovery_recipe", "lock_recovery_recipe", () => recipe("Recover a stale database lock"), { labels: [step] });
+      return site("lock_recovery_command", "lock_recovery_command", () => run(from, "/bin/sh", ["-ec", script], undefined, { ...env, VOLUME: volume, DATABASE_IMAGE: predecessorImage }, expected), { labels: [step], exit: true });
+    };
+    const fingerprint = (step: string) => site("volume_fingerprint", "volume_fingerprint", () => run(from, dockerBin, ["run", "--rm", "--network", "none",
       "--volume", volume + ":/predecessor:ro", "--entrypoint", "/bin/sh", predecessorImage, "-ec",
-      "cd /predecessor; find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum"]));
+      "cd /predecessor; find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum"]).stdout.trim(), { labels: [step], exit: true });
     const guard = (step: string) => {
-      const result = run(step, from, dockerBin, ["compose", "--project-name", project, "run", "--rm", "--no-deps", "-T", "database"],
-        undefined, { ...env, OPENLUP_STARTER_PREFLIGHT_HANDOFF: "/dev/null" });
-      if (result.status !== 1 || !result.stderr.includes("starter_runtime_database_lock_held")
-        || !result.stderr.includes("docker ps --filter volume=" + volume)) fail(substep(step, "refusal"));
+      const result = site("database_guard_command", "database_guard_command", () => run(from, dockerBin, ["compose", "--project-name", project, "run", "--rm", "--no-deps", "-T", "database"], undefined, { ...env, OPENLUP_STARTER_PREFLIGHT_HANDOFF: "/dev/null" }, 1), { labels: [step], exit: true });
+      site("database_guard_refusal", "database_guard_refusal", () => assert(!(result.status !== 1 || !result.stderr.includes("starter_runtime_database_lock_held")
+        || !result.stderr.includes("docker ps --filter volume=" + volume))), { labels: [step], exit: result.status });
     };
     guard("responsive_predecessor_guard");
-    checked(run("pause_predecessor", from, dockerBin, ["pause", original[0]!]));
+    site("pause_predecessor", "pause_predecessor", () => run(from, dockerBin, ["pause", original[0]!]).stdout.trim(), { exit: true });
     try {
-      checked(run("unresponsive_postmaster", from, dockerBin, ["run", "--rm", "--network", "none",
+      site("unresponsive_postmaster", "unresponsive_postmaster", () => run(from, dockerBin, ["run", "--rm", "--network", "none",
         "--volume", project + "_installation-socket:/var/run/postgresql", "--entrypoint", "/usr/bin/pg_isready",
-        predecessorImage, "-q", "-t", "1", "-h", "/var/run/postgresql"]), 2);
+        predecessorImage, "-q", "-t", "1", "-h", "/var/run/postgresql"], undefined, undefined, 2).stdout.trim(), { exit: true });
       const paused = fingerprint("paused_volume_before_guard");
       guard("paused_predecessor_guard");
-      const blocked = recover("paused_volume_recovery");
-      if (blocked.status !== 1 || !blocked.stderr.includes("A running container still mounts " + volume)
-        || checked(run("paused_owner_ids", from, dockerBin, ["ps", "--no-trunc", "-q", "--filter", "volume=" + volume])) !== original[0]
-        || fingerprint("paused_volume_after_guard") !== paused) fail("unresponsive_owner_data_changed");
-    } finally { checked(run("unpause_predecessor", from, dockerBin, ["unpause", original[0]!])); }
-    if (JSON.stringify(identity("guarded_database")) !== JSON.stringify(original) || JSON.stringify(retained("guarded_seed")) !== JSON.stringify(before))
-      fail("live_owner_identity_changed");
-    mark("responsive and paused predecessor refuse a second postmaster; volume fingerprint unchanged");
-    checked(run("kill_predecessor_database", from, dockerBin, ["kill", "--signal", "KILL", original[0]!]));
-    checked(run("stale_predecessor_lock_and_hba", from, dockerBin, ["run", "--rm", "--network", "none",
+      const blocked = recover("paused_volume_recovery", 1);
+      site("paused_recovery_refusal", "paused_recovery_refusal",
+        () => assert(blocked.stderr.includes("A running container still mounts " + volume)), { exit: blocked.status });
+      const owner = site("paused_owner_ids", "paused_owner_ids", () => run(from, dockerBin,
+        ["ps", "--no-trunc", "-q", "--filter", "volume=" + volume]).stdout.trim(), { exit: true });
+      site("paused_owner_unchanged", "paused_owner_unchanged", () => assert.equal(owner, original[0]));
+      const afterGuard = fingerprint("after_guard");
+      site("unresponsive_owner_data_changed", "unresponsive_owner_data_changed", () => assert.equal(afterGuard, paused));
+    } catch (error) { failures.keep(error); }
+    finally { failures.attempt(() => site("unpause_predecessor", "unpause_predecessor",
+      () => run(from, dockerBin, ["unpause", original[0]!]), { exit: true })); }
+    failures.finish();
+    const guardedDatabase = identity("guarded");
+    site("live_owner_identity_changed", "live_owner_identity_changed", () => assert.deepEqual(guardedDatabase, original));
+    const guardedSeed = retained("guarded");
+    site("live_seed_changed", "live_seed_changed", () => assert.deepEqual(guardedSeed, before));
+    mark("responsive_and_paused_predecessor_refuse_a_second_postmaster_volume_fingerprint_unchanged", "responsive and paused predecessor refuse a second postmaster; volume fingerprint unchanged");
+    site("kill_predecessor_database", "kill_predecessor_database", () => run(from, dockerBin, ["kill", "--signal", "KILL", original[0]!]).stdout.trim(), { exit: true });
+    site("stale_predecessor_lock_and_hba", "stale_predecessor_lock_and_hba", () => run(from, dockerBin, ["run", "--rm", "--network", "none",
       "--volume", volume + ":/predecessor:ro", "--entrypoint", "/bin/sh", predecessorImage, "-ec",
-      'test -s /predecessor/postmaster.pid && grep -Eq "^host[[:space:]].*[[:space:]]trust$" /predecessor/pg_hba.conf']));
-    const cutover = (step: string) => run(step, from, "/bin/sh", ["-ec", recipe(substep(step, "cutover_recipe"), "Database login", "##")], undefined,
-      { ...fresh, OPENLUP_STARTER_PORT: undefined, PROJECT: project, CONFIGURATION: "coffee", PORT: String(port) });
-    const lockedCutover = cutover("locked_cutover");
-    if (lockedCutover.status !== 2 || !lockedCutover.stderr.includes("starter_runtime_database_lock_held")
-      || !lockedCutover.stderr.includes("docker ps --filter volume=" + volume)) fail("stale_lock_remedy");
-    checked(recover("documented_predecessor_recovery"));
-    checked(cutover("documented_cutover_from_fresh_shell"));
-    const upgradedApp = container("cutover_application", "application");
-    if (!upgradedApp || upgradedApp === predecessorApp || !(await readSettlementContinuity("cutover_receipt", settled)).matches)
-      fail("settled_data_continuity");
-    mark("settled data continuity and original receipt");
-    mark("original receipt and keyed records checked before startup replay");
-    const recovered = checked(compose("recovery_logs", "logs", "--no-color", "database"));
-    if (!/database system was interrupted|automatic recovery in progress/u.test(recovered)) fail("predecessor_recovery_missing");
-    const initial = readFileSync(source, "utf8").trim();
-    const verifier = (step: string) => sql(step, "select rolpassword from pg_authid where rolname = 'starter_runtime'", "postgres");
-    const live = identity("cutover_database");
-    if (live[0] === original[0] || live[1]?.split(" ").at(-1) !== original[1]?.split(" ").at(-1)
-      || live[2] !== original[2] || live[3] !== "/etc/postgresql/starter-pg-hba.conf" ||
-      JSON.stringify(retained("cutover_seed")) !== JSON.stringify(before)) fail("cutover_identity");
-    const cutoverResponse = await fetch(`http://127.0.0.1:${port}/api/config`);
-    if (cutoverResponse.status !== 200 ||
-      (await cutoverResponse.json() as { config?: { id?: unknown } }).config?.id !== "coffee" ||
-      readFileSync(projectFile, "utf8") !== project + "\n") fail("starter_http_or_project_record");
-    mark("occupied same-volume file upgrade");
-    mark("verbatim documented cutover from a fresh shell preserves the custom project, coffee configuration and listener port");
-    const committedVerifier = verifier("cutover_verifier");
-    up("startup_replay");
-    if (readFileSync(source, "utf8").trim() !== initial || verifier("replay_verifier") !== committedVerifier) fail("credential_replay_changed");
-    if (identity("replayed_database")[2] !== original[2] || JSON.stringify(retained("replayed_seed")) !== JSON.stringify(before))
-      fail("predecessor_retry_identity");
-    mark("predecessor SIGKILL with stale PID and legacy HBA, documented recovery and retry");
-    mark("ordinary runtime credential and verifier replay");
+      'test -s /predecessor/postmaster.pid && grep -Eq "^host[[:space:]].*[[:space:]]trust$" /predecessor/pg_hba.conf']).stdout.trim(), { exit: true });
+    const cutover = (step: string, expected = 0) => {
+      const script = site("cutover_recipe", "cutover_recipe", () => recipe("Database login", "##"), { labels: [step] });
+      return site("cutover_command", "cutover_command", () => run(from, "/bin/sh", ["-ec", script], undefined, { ...fresh, OPENLUP_STARTER_PORT: undefined, PROJECT: project, CONFIGURATION: "coffee", PORT: String(port) }, expected), { labels: [step], exit: true });
+    };
+    const lockedCutover = cutover("locked_cutover", 2);
+    site("stale_lock_remedy", "stale_lock_remedy", () => assert(!(lockedCutover.status !== 2 || !lockedCutover.stderr.includes("starter_runtime_database_lock_held")
+      || !lockedCutover.stderr.includes("docker ps --filter volume=" + volume))), { exit: lockedCutover.status });
+    recover("documented_predecessor_recovery");
+    cutover("documented_cutover_from_fresh_shell");
+    const upgradedApp = site("cutover_application", "cutover_application", () => container("application"), { exit: true });
+    site("cutover_application_replacement", "cutover_application_replacement", () => assert(upgradedApp && upgradedApp !== predecessorApp));
+    const continuity = await readSettlementContinuity("cutover_receipt", settled);
+    site("settled_data_continuity", "settled_data_continuity", () => assert(continuity.matches));
+    mark("settled_data_continuity_and_original_receipt", "settled data continuity and original receipt");
+    mark("original_receipt_and_keyed_records_checked_before_startup_replay", "original receipt and keyed records checked before startup replay");
+    const recovered = site("recovery_logs", "recovery_logs", () => compose("logs", "--no-color", "database"), { exit: true });
+    site("predecessor_recovery_missing", "predecessor_recovery_missing",
+      () => assert(/database system was interrupted|automatic recovery in progress/u.test(recovered.stdout)), { exit: recovered.status });
+    const initial = site("cutover_credential_read", "cutover_credential_read", () => readFileSync(source, "utf8").trim());
+    const verifier = (step: string, ...ordinals: number[]) => site("runtime_verifier", "runtime_verifier",
+      () => rawSql("select rolpassword from pg_authid where rolname = 'starter_runtime'", "postgres"), { labels: [step, ...ordinals], exit: true });
+    const live = identity("cutover");
+    site("cutover_identity", "cutover_identity", () => assert(live[0] !== original[0] &&
+      live[1]?.split(" ").at(-1) === original[1]?.split(" ").at(-1) && live[2] === original[2] && live[3] === "/etc/postgresql/starter-pg-hba.conf"));
+    const liveSeed = retained("cutover");
+    site("cutover_seed_changed", "cutover_seed_changed", () => assert.deepEqual(liveSeed, before));
+    const cutoverResponse = await site("cutover_configuration_request", "cutover_configuration_request", () => fetch(`${origin}/api/config`));
+    site("cutover_configuration_http", "cutover_configuration_http", () => assert.equal(cutoverResponse.status, 200));
+    const cutoverEnvelope = await site("cutover_configuration_decode", "cutover_configuration_decode",
+      () => cutoverResponse.json() as Promise<{ config?: { id?: unknown } }>);
+    site("cutover_configuration_selection", "cutover_configuration_selection", () => assert.equal(cutoverEnvelope?.config?.id, "coffee"));
+    const projectRecord = site("cutover_project_record_read", "cutover_project_record_read", () => readFileSync(projectFile, "utf8"));
+    site("cutover_project_record_match", "cutover_project_record_match", () => assert.equal(projectRecord, project + "\n"));
+    mark("occupied_same_volume_file_upgrade", "occupied same-volume file upgrade");
+    mark("verbatim_documented_cutover", "verbatim documented cutover from a fresh shell preserves the custom project, coffee configuration and listener port");
+    const committedVerifier = verifier("cutover");
+    site("startup_replay", "startup_replay", () => up(), { exit: true });
+    const replayCredential = site("replay_credential_read", "replay_credential_read", () => readFileSync(source, "utf8").trim());
+    site("credential_replay_changed", "credential_replay_changed", () => assert.equal(replayCredential, initial));
+    const replayVerifier = verifier("replay");
+    site("verifier_replay_changed", "verifier_replay_changed", () => assert.equal(replayVerifier, committedVerifier));
+    const replayIdentity = identity("replayed");
+    site("predecessor_retry_identity", "predecessor_retry_identity", () => assert.equal(replayIdentity[2], original[2]));
+    const replaySeed = retained("replayed");
+    site("predecessor_retry_seed", "predecessor_retry_seed", () => assert.deepEqual(replaySeed, before));
+    mark("predecessor_sigkill", "predecessor SIGKILL with stale PID and legacy HBA, documented recovery and retry");
+    mark("credential_verifier_replay", "ordinary runtime credential and verifier replay");
 
     // Teardown can replace the bridge and its addresses before another fresh connection.
-    const databaseIp = (step: string) => {
-      const address = checked(run(step, from, "docker", ["inspect", "--format",
-        "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}", container(substep(step, "bridge_container"), "database")]));
-      if (!isIPv4(address) || address.startsWith("127.")) fail(substep(step, "address"));
+    const databaseIp = (labels: readonly ProofLabel[]) => {
+      const db = site("tcp_bridge_container", "tcp_bridge_container", () => container("database"), { labels, exit: true });
+      const address = site("tcp_bridge_inspect", "tcp_bridge_inspect", () => run(from, "docker", ["inspect", "--format",
+        "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}", db]).stdout.trim(), { labels, exit: true });
+      site("tcp_bridge_address", "tcp_bridge_address", () => assert(isIPv4(address) && !address.startsWith("127.")), { labels, exit: 0 });
       return address;
     };
-    const postgresImage = checked(run("database_image", from, "docker", ["inspect", "--format", "{{.Config.Image}}", container("client_database_container", "database")]));
+    const clientDB = site("client_database_container", "client_database_container", () => container("database"), { exit: true });
+    const postgresImage = site("database_image", "database_image", () => run(from, "docker", ["inspect", "--format", "{{.Config.Image}}", clientDB]).stdout.trim(), { exit: true });
     const passfile = join(scratch, "client.pgpass");
     const peerPassfile = "/run/proof.pgpass";
     const separator = "\u0000client-diagnostic\n";
     const probeCommand = 'env -0 >&2; printf "\\000client-diagnostic\\n" >&2; exec /usr/bin/psql "$@"';
-    function tcpClient(step: string, peer: boolean, password: string, user: string, db: string) {
-      const address = databaseIp(substep(step, "database_ip"));
+    function tcpClient(role: string, clientIndex: number, password: string, expected: Expected,
+      user = "starter_runtime", db = "neutral_store") {
+      const labels = [role, clientIndex], peer = clientIndex === 0;
+      const address = databaseIp(labels);
       const connect = ["-XAtw", "-h", address, "-p", "5432", "-U", user, "-d", db, "-c", "select session_user"];
       const clientEnv: NodeJS.ProcessEnv = { ...env, PGCONNECT_TIMEOUT: "4", LC_ALL: "C", PGPASSFILE: passfile };
       delete clientEnv.PGPASSWORD;
-      writeFileSync(passfile, password ? `${address}:5432:${db}:${user}:${password}\n` : "", { mode: 0o600, flag: "wx" });
+      site("tcp_passfile_write", "tcp_passfile_write", () => writeFileSync(passfile,
+        password ? `${address}:5432:${db}:${user}:${password}\n` : "", { mode: 0o600, flag: "wx" }), { labels });
       try {
         const probe = ["-ec", probeCommand, "client", ...connect];
         const result = peer
-          ? run(substep(step, "peer_psql"), from, dockerBin, ["run", "--rm", "--network", project + "_default", "--entrypoint", "/bin/sh",
+          ? site("tcp_peer_command", "tcp_peer_command", () => run(from, dockerBin, ["run", "--rm", "--network", project + "_default", "--entrypoint", "/bin/sh",
             "--mount", `type=bind,src=${passfile},dst=${peerPassfile},readonly`,
             "--env", "PGPASSFILE=" + peerPassfile, "--env", "PGCONNECT_TIMEOUT=4", "--env", "LC_ALL=C",
-            postgresImage, ...probe], undefined, clientEnv)
-          : run(substep(step, "native_psql"), from, "/bin/sh", probe, undefined, clientEnv);
+            postgresImage, ...probe], undefined, clientEnv, expected), { labels, exit: true })
+          : site("tcp_native_command", "tcp_native_command", () => run(from, "/bin/sh", probe, undefined, clientEnv, expected), { labels, exit: true });
         const parts = result.stderr.split(separator);
-        if (parts.length !== 2) fail(substep(step, "environment_probe"));
+        site("tcp_environment_probe", "tcp_environment_probe", () => assert(parts.length === 2), { labels, exit: result.status });
         const [environment, stderr] = parts as [string, string];
-        if (environment.split("\0").some(entry => entry.startsWith("PGPASSWORD=")))
-          fail(substep(step, "password_environment"), result.status, "password_variable_present");
+        site("tcp_password_environment", "tcp_password_environment", () => assert(!environment.split("\0").some(entry => entry.startsWith("PGPASSWORD="))), { labels, exit: result.status });
         return { ...result, stderr };
-      } finally { rmSync(passfile); }
+      } catch (error) { failures.keep(error); }
+      finally {
+        failures.attempt(() => site("tcp_passfile_remove", "tcp_passfile_remove", () => rmSync(passfile), { labels }));
+        failures.finish();
+      }
+      return undefined as never;
     }
-    const peer = (step: string, password: string, user = "starter_runtime", db = "neutral_store") => tcpClient(step, true, password, user, db);
-    const native = (step: string, password: string, user = "starter_runtime", db = "neutral_store") => tcpClient(step, false, password, user, db);
-    const refusedPassword = randomBytes(32).toString("hex");
+    const refusedPassword = site("tcp_refused_password_random", "tcp_refused_password_random", () => randomBytes(32)).toString("hex");
 
-    for (const [index, client] of [peer, native].entries()) {
-      const noPassword = client(substep("tcp_no_password", index), "");
-      const wrong = client(substep("tcp_wrong_password", index), refusedPassword);
-      if (noPassword.status === 0 || !/no password supplied/u.test(noPassword.stderr) ||
-        wrong.status === 0 || !/password authentication failed/u.test(wrong.stderr) || checked(client(substep("tcp_valid_password", index), initial)) !== "starter_runtime" ||
-        !/pg_hba.conf rejects connection/u.test(client(substep("tcp_postgres_denied", index), "", "postgres").stderr) ||
-        !/pg_hba.conf rejects connection/u.test(client(substep("tcp_other_database_denied", index), "", "starter_runtime", "postgres").stderr)) fail(substep("tcp_admission", index));
+    for (const [index] of ["peer", "native"].entries()) {
+      const noPassword = tcpClient("passwordless", index, "", "nonzero");
+      const wrong = tcpClient("wrong_password", index, refusedPassword, "nonzero");
+      site("tcp_passwordless_admission", "tcp_passwordless_admission", () => assert(/no password supplied/u.test(noPassword.stderr)), { labels: [index], exit: noPassword.status });
+      site("tcp_wrong_password_admission", "tcp_wrong_password_admission", () => assert(/password authentication failed/u.test(wrong.stderr)), { labels: [index], exit: wrong.status });
+      const valid = tcpClient("valid_login", index, initial, 0);
+      site("tcp_valid_login_admission", "tcp_valid_login_admission", () => assert.equal(valid.stdout.trim(), "starter_runtime"), { labels: [index], exit: valid.status });
+      const deniedRole = tcpClient("denied_role", index, "", "nonzero", "postgres");
+      site("tcp_denied_role_admission", "tcp_denied_role_admission", () => assert(/pg_hba.conf rejects connection/u.test(deniedRole.stderr)), { labels: [index], exit: deniedRole.status });
+      const deniedDB = tcpClient("denied_database", index, "", "nonzero", "starter_runtime", "postgres");
+      site("tcp_denied_database_admission", "tcp_denied_database_admission", () => assert(/pg_hba.conf rejects connection/u.test(deniedDB.stderr)), { labels: [index], exit: deniedDB.status });
     }
-    mark("native host and peer SCRAM admission");
-    if (sql("owner_socket_superuser", "select session_user", "postgres") !== "postgres" || sql("owner_socket_installer", "select session_user") !== "starter_install" ||
-      sql("owner_socket_passwordless", "select (rolpassword is null)::text from pg_authid where rolname='postgres'", "postgres") !== "true") fail("owner_socket");
-    const socket = (step: string, user: string, db: string) => compose(step, "exec", "-T", "database", "psql", "-XAtw", "-U", user, "-d", db, "-c", "select session_user");
+    mark("native_host_and_peer_scram_admission", "native host and peer SCRAM admission");
+    const superuser = site("owner_socket_superuser", "owner_socket_superuser", () => rawSql("select session_user", "postgres"), { exit: true });
+    site("owner_socket", "owner_socket", () => assert.equal(superuser, "postgres"), { exit: 0 });
+    const installer = site("owner_socket_installer", "owner_socket_installer", () => rawSql("select session_user"), { exit: true });
+    site("owner_socket_installer_login", "owner_socket_installer_login", () => assert.equal(installer, "starter_install"), { exit: 0 });
+    const passwordless = site("owner_socket_passwordless", "owner_socket_passwordless",
+      () => rawSql("select (rolpassword is null)::text from pg_authid where rolname='postgres'", "postgres"), { exit: true });
+    site("owner_socket_passwordless_login", "owner_socket_passwordless_login", () => assert.equal(passwordless, "true"), { exit: 0 });
+    const socket = (user: string, db: string) => composeWithExit(project,
+      ["exec", "-T", "database", "psql", "-XAtw", "-U", user, "-d", db, "-c", "select session_user"], "nonzero");
     for (const [index, [user, db]] of [["postgres", "neutral_store"], ["starter_install", "postgres"], ["starter_runtime", "neutral_store"],
-      ["starter_restore", "neutral_store"], ["openlup_catalog_publication", "neutral_store"]].entries())
-      if (!/pg_hba.conf rejects connection/u.test(socket(substep("socket_psql", index), user!, db!).stderr)) fail(substep("socket_denial", index));
-    const hbaRules = sql("runtime_hba_rules", "select type, database, user_name, address, netmask, auth_method, options, error from pg_hba_file_rules order by line_number", "postgres");
-    if (hbaRules !== [
+      ["starter_restore", "neutral_store"], ["openlup_catalog_publication", "neutral_store"]].entries()) {
+      const denied = site("socket_psql", "socket_psql", () => socket(user!, db!), { labels: [index], exit: true });
+      site("socket_denial", "socket_denial", () => assert(/pg_hba.conf rejects connection/u.test(denied.stderr)), { labels: [index], exit: denied.status });
+    }
+    const hbaRules = site("runtime_hba_rules", "runtime_hba_rules", () => rawSql("select type, database, user_name, address, netmask, auth_method, options, error from pg_hba_file_rules order by line_number", "postgres"), { exit: true });
+    site("parsed_runtime_hba", "parsed_runtime_hba", () => assert(!(hbaRules !== [
       "local|{postgres}|{postgres}|||trust||",
       "local|{neutral_store}|{starter_install}|||trust||",
       "local|{all}|{all}|||reject||",
       "host|{neutral_store}|{openlup_catalog_publication}|all||scram-sha-256||",
       "host|{neutral_store}|{starter_runtime}|all||scram-sha-256||",
       "host|{all}|{all}|all||reject||",
-    ].join("\n")) fail("parsed_runtime_hba");
+    ].join("\n"))), { exit: 0 });
     for (const [index, host] of ["", " host=127.0.0.1"].entries()) {
-      const result = compose(substep("replication_refusal", index), "exec", "-T", "database", "psql", "-XAtw",
-        "user=postgres dbname=postgres replication=true" + host, "-c", "IDENTIFY_SYSTEM");
-      if (result.status === 0 || !/no pg_hba.conf entry|pg_hba.conf rejects connection/u.test(result.stderr)) fail(substep("physical_replication_hba", index));
+      const result = site("replication_refusal", "replication_refusal", () => composeWithExit(project, ["exec", "-T", "database", "psql", "-XAtw", "user=postgres dbname=postgres replication=true" + host, "-c", "IDENTIFY_SYSTEM"], "nonzero"), { labels: [index], exit: true });
+      site("physical_replication_hba", "physical_replication_hba", () => assert(!(result.status === 0 || !/no pg_hba.conf entry|pg_hba.conf rejects connection/u.test(result.stderr))), { labels: [index], exit: result.status });
     }
-    mark("ordered HBA rules and physical replication refusal");
-    const publication = checked(compose("publication_input", "exec", "-T", "application",
-      "cat", "/application/.context/catalogue-builds/.publication-password"));
+    mark("ordered_hba_rules_and_physical_replication_refusal", "ordered HBA rules and physical replication refusal");
+    const publication = site("publication_input", "publication_input", () => compose("exec", "-T", "application", "cat", "/application/.context/catalogue-builds/.publication-password").stdout.trim(), { exit: true });
 
-    if (checked(peer("publication_login", publication, "openlup_catalog_publication")) !== "openlup_catalog_publication" ||
-      !/password authentication failed/u.test(peer("runtime_as_publication_login", initial, "openlup_catalog_publication").stderr)) fail("publication_isolation");
-    const fallback = checked(compose("fallback_hba", "exec", "-T", "database", "sh", "-c", 'cat "$PGDATA/pg_hba.conf"'));
-    if (fallback !== "local all all reject\nhost all all all reject"
-      || checked(compose("fallback_permissions", "exec", "-T", "database", "sh", "-c",
-        'stat -c "%U:%G %a" "$PGDATA/pg_hba.conf"')) !== "postgres:postgres 600") fail("occupied_fallback");
-    mark("installer socket, publication and occupied fallback");
+    const publicationLogin = tcpClient("publication_login", 0, publication, 0, "openlup_catalog_publication");
+    site("publication_login_valid", "publication_login_valid", () => assert.equal(publicationLogin.stdout.trim(), "openlup_catalog_publication"), { exit: publicationLogin.status });
+    const runtimeAsPublication = tcpClient("runtime_as_publication", 0, initial, "nonzero", "openlup_catalog_publication");
+    site("publication_isolation", "publication_isolation", () => assert(/password authentication failed/u.test(runtimeAsPublication.stderr)), { exit: runtimeAsPublication.status });
+    const fallback = site("fallback_hba", "fallback_hba", () => compose("exec", "-T", "database", "sh", "-c", 'cat "$PGDATA/pg_hba.conf"').stdout.trim(), { exit: true });
+    site("occupied_fallback", "occupied_fallback", () => assert.equal(fallback, "local all all reject\nhost all all all reject"), { exit: 0 });
+    const permission = site("fallback_permissions", "fallback_permissions", () =>
+      compose("exec", "-T", "database", "sh", "-c", 'stat -c "%U:%G %a" "$PGDATA/pg_hba.conf"').stdout.trim(), { exit: true });
+    site("occupied_fallback_permissions", "occupied_fallback_permissions", () => assert.equal(permission, "postgres:postgres 600"), { exit: 0 });
+    mark("installer_socket_publication_and_occupied_fallback", "installer socket, publication and occupied fallback");
 
     const different = await createSettledReceipt("different_paid_receipt");
     const substituted = await readSettlementContinuity("substituted_receipt", settled, project, different.reference);
-    if (different.reference.orderRef === settled.reference.orderRef || substituted.records !== settled.facts
+    site("different_paid_receipt_red_control", "different_paid_receipt_red_control", () => assert(!(different.reference.orderRef === settled.reference.orderRef || substituted.records !== settled.facts
       || !substituted.receipt.ok || substituted.receipt.value?.status !== "paid"
-      || substituted.receipt.value.orderRef !== different.reference.orderRef || substituted.matches)
-      fail("different_paid_receipt_red_control");
-    mark("different paid receipt refused against the original records");
+      || substituted.receipt.value.orderRef !== different.reference.orderRef || substituted.matches)));
+    mark("different_paid_receipt_refused_against_the_original_records", "different paid receipt refused against the original records");
 
     const mounted = ["renewal", "care", "checkout-recovery"];
     const renewalConfig = join(from, "owned/renewal.config.ts");
-    const oldRenewal = readFileSync(renewalConfig, "utf8");
-    if (!oldRenewal.includes("enabled: false")) fail("renewal_fixture");
-    writeFileSync(renewalConfig, oldRenewal.replace("enabled: false", "enabled: true"));
-    up("renewal_fixture_start");
+    const oldRenewal = site("renewal_config_read", "renewal_config_read", () => readFileSync(renewalConfig, "utf8"));
+    site("renewal_fixture", "renewal_fixture", () => assert(oldRenewal.includes("enabled: false")));
+    site("renewal_config_write", "renewal_config_write", () => writeFileSync(renewalConfig, oldRenewal.replace("enabled: false", "enabled: true")));
+    site("renewal_fixture_start", "renewal_fixture_start", () => up(), { exit: true });
     const olderCompose = env.OPENLUP_STARTER_COMPOSE_V2;
     const currentCompose = env.OPENLUP_STARTER_COMPOSE_V5;
-    if (!olderCompose || !currentCompose) fail("both_compose_releases_required");
+    site("both_compose_releases_required", "both_compose_releases_required", () => assert(olderCompose || !currentCompose));
     const mountedExec = `PROJECT=$( (cd .context && cat compose-project) 2>/dev/null) && [ -n "$PROJECT" ] ||
       { printf '%s\\n' 'Run ./lifecycle up first.' >&2; exit 1; }
       exec "$1" --project-name "$PROJECT" exec -T application ./lifecycle "\${@:2}"`;
-    const exec = (step: string, release: string, command: string, args: string[], input?: string) =>
-      run(step, from, "bash", ["-c", mountedExec, "starter", release, command, ...args], input);
+    const exec = (release: string, command: string, args: string[], input?: string, expected = 0) =>
+      run(from, "bash", ["-c", mountedExec, "starter", release, command, ...args], input, env, expected);
     const configuration = ["--configuration", "coffee"];
-    const policy = JSON.stringify({ revision: "runtime-preview-fixture", renewalProtectionDays: 21 });
-    const sku = sql("coffee_stock_sku", "select sku from public.fulfillment_stock_current where source_key='starter-demo:coffee' order by sku limit 1");
-    if (!/^[A-Za-z0-9_-]+$/u.test(sku)) fail("invalid_stock_fixture_sku");
-    const stock = sql("coffee_stock_quantity", "select for_sale_quantity from public.fulfillment_stock_current where source_key='starter-demo:coffee' and sku='" + sku + "'");
-    sql("supplements_stock_fixture", `insert into public.fulfillment_stock_current (source_key,sku,total_quantity,for_sale_quantity,reserved_unavailable_quantity,
+    const policy = site("mounted_preview_policy_encode", "mounted_preview_policy_encode", () => JSON.stringify({ revision: "runtime-preview-fixture", renewalProtectionDays: 21 }));
+    const sku = site("coffee_stock_sku", "coffee_stock_sku", () => rawSql("select sku from public.fulfillment_stock_current where source_key='starter-demo:coffee' order by sku limit 1"), { exit: true });
+    site("invalid_stock_fixture_sku", "invalid_stock_fixture_sku", () => assert(/^[A-Za-z0-9_-]+$/u.test(sku)), { exit: 0 });
+    const stock = site("coffee_stock_quantity", "coffee_stock_quantity", () => rawSql("select for_sale_quantity from public.fulfillment_stock_current where source_key='starter-demo:coffee' and sku='" + sku + "'"), { exit: true });
+    site("supplements_stock_fixture", "supplements_stock_fixture", () => rawSql(`insert into public.fulfillment_stock_current (source_key,sku,total_quantity,for_sale_quantity,reserved_unavailable_quantity,
       inventory_class,last_synced_at,stale_after,sync_run_id,idempotency_key,operation_fingerprint)
       select 'starter-demo:supplements',sku,0,0,0,inventory_class,last_synced_at,stale_after,sync_run_id,'runtime-stock-control',operation_fingerprint
-      from public.fulfillment_stock_current where source_key='starter-demo:coffee' and sku='${sku}'`);
+      from public.fulfillment_stock_current where source_key='starter-demo:coffee' and sku='${sku}'`), { exit: true });
     const jobs = ["subscription-renewal:demo:coffee", "subscription-care:coffee", "starter-checkout:coffee"];
-    const jobCount = (step: string, name: string, successful = false) => Number(sql(step,
+    const jobCount = (name: string, successful = false) => Number(rawSql(
       "select count(*) from platform_job_runs where job_name = '" + name + "'" + (successful ? " and status = 'success'" : "")));
     const preview = ["preview", "inventory_renewal_protection", ...configuration, "--value", "-", "--sku", sku, "--json"];
-    const exerciseJobs = (step: string, release: string, missingBind = false) => {
+    const exerciseJobs = (role: string, releaseIndex: number, release: string, missingBind = false) => {
       for (const [index, command] of mounted.entries()) {
-        const name = jobs[index]!, beforePass = jobCount(substep(step, "count_before", index), name, !missingBind);
-        const result = exec(substep(step, "exec", index), release, command, configuration);
+        const labels = [role, releaseIndex, index], name = jobs[index]!;
+        const beforePass = site("mounted_job_count_before", "mounted_job_count_before", () => jobCount(name, !missingBind), { labels, exit: true });
+        const result = site("mounted_job_command", "mounted_job_command", () => exec(release, command, configuration, undefined, missingBind ? 2 : 0), { labels, exit: true });
         if (missingBind) {
-          if (result.status !== 2 || !result.stderr.includes("starter_runtime_credential_read_failed") || jobCount(substep(step, "count_refused", index), name) !== beforePass)
-            fail(substep(step, "missing_bind", index));
+          site("mounted_job_missing_bind", "mounted_job_missing_bind",
+            () => assert(result.stderr.includes("starter_runtime_credential_read_failed")), { labels, exit: result.status });
+          const refused = site("mounted_job_count_refused", "mounted_job_count_refused", () => jobCount(name), { labels, exit: true });
+          site("mounted_job_refusal_count", "mounted_job_refusal_count", () => assert.equal(refused, beforePass), { labels });
         } else {
-          checked(result);
-          if (jobCount(substep(step, "count_completed", index), name, true) <= beforePass) fail(substep(step, "job_claim", index));
+          const completed = site("mounted_job_count_completed", "mounted_job_count_completed", () => jobCount(name, true), { labels, exit: true });
+          site("mounted_job_claim", "mounted_job_claim", () => assert(completed > beforePass), { labels });
         }
       }
     };
     const releases = [[olderCompose!, "2.40.3"], [currentCompose!, "5.5.0"]] as const;
     for (const [releaseIndex, [release, expected]] of releases.entries()) {
-      const version = checked(run(substep("compose_version_query", releaseIndex), from, release, ["version", "--short"])).replace(/^v/u, "");
-      if (version !== expected) fail(substep("compose_version_required", releaseIndex));
-      checked(exec(substep("settings_show", releaseIndex), release, "settings", ["show", "inventory_renewal_protection", "--json"]));
-      const result = parseJson(substep("settings_preview_format", releaseIndex),
-        checked(exec(substep("settings_preview_exec", releaseIndex), release, "settings", preview, policy)));
-      const at = new Date(result.asOf).toISOString();
-      const quantity = (step: string, source: string) => Number(sql(step, `select public.inventory_available_to_promise(
+      const version = site("compose_version_query", "compose_version_query", () => run(from, release, ["version", "--short"]).stdout.trim(), { labels: [releaseIndex], exit: true }).replace(/^v/u, "");
+      site("compose_version_required", "compose_version_required", () => assert(!(version !== expected)), { labels: [releaseIndex], exit: 0 });
+      site("settings_show", "settings_show", () => exec(release, "settings", ["show", "inventory_renewal_protection", "--json"]).stdout.trim(), { labels: [releaseIndex], exit: true });
+      const previewResult = site("settings_preview_exec", "settings_preview_exec", () => exec(release, "settings", preview, policy), { labels: [releaseIndex], exit: true });
+      const result = site("settings_preview_format", "settings_preview_format", () => JSON.parse(previewResult.stdout), { labels: [releaseIndex], exit: previewResult.status });
+      const at = site("settings_preview_timestamp", "settings_preview_timestamp", () => new Date(result.asOf).toISOString(), { labels: [releaseIndex], exit: previewResult.status });
+      const quantity = (source: string) => Number(rawSql(`select public.inventory_available_to_promise(
         'starter-demo:${source}','${sku}','${at}',false)->>'available_quantity'`));
-      const row = result.effect?.skus?.[0];
-      if (!stock || row?.sku !== sku || row.source !== "provider" ||
-        row.currentAvailableForNewPurchases !== quantity(substep("preview_coffee_quantity", releaseIndex), "coffee") ||
-        quantity(substep("comparison_coffee_quantity", releaseIndex), "coffee")
-          === quantity(substep("comparison_supplements_quantity", releaseIndex), "supplements")) fail(substep("nondefault_stock_source", releaseIndex));
-      exerciseJobs(substep("mounted_jobs", releaseIndex), release);
+      const row = result?.effect?.skus?.[0];
+      site("settings_preview_source", "settings_preview_source", () => assert(stock && row?.sku === sku && row.source === "provider"), { labels: [releaseIndex] });
+      const coffee = site("preview_coffee_quantity", "preview_coffee_quantity", () => quantity("coffee"), { labels: [releaseIndex], exit: true });
+      site("settings_preview_coffee_stock", "settings_preview_coffee_stock", () => assert.equal(row.currentAvailableForNewPurchases, coffee), { labels: [releaseIndex] });
+      const coffeeControl = site("comparison_coffee_quantity", "comparison_coffee_quantity", () => quantity("coffee"), { labels: [releaseIndex], exit: true });
+      const supplements = site("comparison_supplements_quantity", "comparison_supplements_quantity", () => quantity("supplements"), { labels: [releaseIndex], exit: true });
+      site("nondefault_stock_source", "nondefault_stock_source", () => assert.notEqual(coffeeControl, supplements), { labels: [releaseIndex] });
+      exerciseJobs("mounted", releaseIndex, release);
       const held = projectFile + ".held";
-      renameSync(projectFile, held);
+      site("project_record_hold", "project_record_hold", () => renameSync(projectFile, held), { labels: [releaseIndex] });
       try {
-        const missing = exec(substep("missing_project_exec", releaseIndex), release, "renewal", configuration);
-        if (missing.status !== 1 || !missing.stderr.includes("Run ./lifecycle up first.")) fail(substep("missing_project_refusal", releaseIndex));
-      } finally { renameSync(held, projectFile); }
-      const unchangedApp = container(substep("handoff_application_before", releaseIndex), "application");
-      const unchangedDatabase = container(substep("handoff_database_before", releaseIndex), "database");
+        const missing = site("missing_project_exec", "missing_project_exec", () => exec(release, "renewal", configuration, undefined, 1), { labels: [releaseIndex], exit: true });
+        site("missing_project_refusal", "missing_project_refusal", () => assert(missing.stderr.includes("Run ./lifecycle up first.")), { labels: [releaseIndex], exit: missing.status });
+      } catch (error) { failures.keep(error); }
+      finally { failures.attempt(() => site("project_record_restore", "project_record_restore", () => renameSync(held, projectFile), { labels: [releaseIndex] })); }
+      failures.finish();
+      const unchangedApp = site("handoff_application_before", "handoff_application_before", () => container("application"), { labels: [releaseIndex], exit: true });
+      const unchangedDatabase = site("handoff_database_before", "handoff_database_before", () => container("database"), { labels: [releaseIndex], exit: true });
       for (const [serviceIndex, service] of ["database", "application"].entries()) {
-        const denied = run(substep("required_handoff_command", releaseIndex, serviceIndex), from, release, ["--project-name", project, "up", "--no-build", "--force-recreate", "-d", service],
-          undefined, { ...env, OPENLUP_STARTER_RUNTIME_SOURCE: source });
-        if (denied.status === 0 || !denied.stderr.includes("starter_runtime_preflight_handoff_missing") ||
-          container(substep("handoff_application_after", releaseIndex, serviceIndex), "application") !== unchangedApp ||
-          container(substep("handoff_database_after", releaseIndex, serviceIndex), "database") !== unchangedDatabase)
-          fail(substep("required_handoff_refusal", releaseIndex, serviceIndex));
+        const denied = site("required_handoff_command", "required_handoff_command", () => run(from, release, ["--project-name", project, "up", "--no-build", "--force-recreate", "-d", service], undefined, { ...env, OPENLUP_STARTER_RUNTIME_SOURCE: source }, "nonzero"), { labels: [releaseIndex, serviceIndex], exit: true });
+        const labels = [releaseIndex, serviceIndex];
+        site("required_handoff_refusal", "required_handoff_refusal", () => assert(denied.stderr.includes("starter_runtime_preflight_handoff_missing")), { labels, exit: denied.status });
+        const appAfter = site("handoff_application_after", "handoff_application_after", () => container("application"), { labels, exit: true });
+        site("required_handoff_application_unchanged", "required_handoff_application_unchanged", () => assert.equal(appAfter, unchangedApp), { labels });
+        const dbAfter = site("handoff_database_after", "handoff_database_after", () => container("database"), { labels, exit: true });
+        site("required_handoff_database_unchanged", "required_handoff_database_unchanged", () => assert.equal(dbAfter, unchangedDatabase), { labels });
       }
-      mark("project-record commands, settings, job readback and startup gate on Compose " + expected);
+      mark("project_record_commands_settings_job_readback_and_startup_gate_on_compose", "project-record commands, settings, job readback and startup gate on Compose " + expected, releaseIndex);
     }
-    const { prepareRuntimeHandoff } = await import("../../examples/neutral-store/host/runtime-database.ts");
-    const handoff = prepareRuntimeHandoff(project, [from]);
+    const { prepareRuntimeHandoff } = await site("runtime_handoff_import", "runtime_handoff_import",
+      () => import("../../examples/neutral-store/host/runtime-database.ts"));
+    const handoff = site("missing_bind_handoff_prepare", "missing_bind_handoff_prepare", () => prepareRuntimeHandoff(project, [from]));
     const override = join(scratch, "missing-bind.yaml");
-    writeFileSync(override, 'services:\n  application:\n    command: ["sleep", "infinity"]\n    volumes: !override []\n');
     try {
-      checked(run("missing_bind_fixture", from, "docker", ["compose", "--project-name", project, "-f", "compose.yaml", "-f", override,
-        "up", "--no-deps", "--no-build", "--force-recreate", "-d", "application"], undefined, { ...env, ...handoff.environment }));
-    } finally { handoff.cleanup(); }
+      site("missing_bind_override_write", "missing_bind_override_write",
+        () => writeFileSync(override, 'services:\n  application:\n    command: ["sleep", "infinity"]\n    volumes: !override []\n'));
+      site("missing_bind_fixture", "missing_bind_fixture", () => run(from, "docker", ["compose", "--project-name", project, "-f", "compose.yaml", "-f", override,
+        "up", "--no-deps", "--no-build", "--force-recreate", "-d", "application"], undefined, { ...env, ...handoff.environment }), { exit: true });
+    } catch (error) { failures.keep(error); }
+    finally { failures.attempt(() => site("missing_bind_handoff_cleanup", "missing_bind_handoff_cleanup", () => handoff.cleanup())); }
+    failures.finish();
     for (const [releaseIndex, [release]] of releases.entries()) {
-      exerciseJobs(substep("unbound_jobs", releaseIndex), release, true);
+      exerciseJobs("missing_bind", releaseIndex, release, true);
       for (const [modeIndex, mode] of ["show", "preview"].entries()) {
-        const help = parseJson(substep("unbound_settings_help_format", releaseIndex, modeIndex),
-          checked(exec(substep("unbound_settings_help_exec", releaseIndex, modeIndex), release, "settings", [mode, "--help", "--json"])));
-        if (!help.help?.includes("settings (experimental) " + mode)) fail(substep("settings_help_output", releaseIndex, modeIndex));
+        const labels = [releaseIndex, modeIndex];
+        const helpResult = site("unbound_settings_help_exec", "unbound_settings_help_exec",
+          () => exec(release, "settings", [mode, "--help", "--json"]), { labels, exit: true });
+        const help = site("unbound_settings_help_format", "unbound_settings_help_format", () => JSON.parse(helpResult.stdout), { labels, exit: helpResult.status });
+        site("settings_help_output", "settings_help_output", () => assert(help?.help?.includes("settings (experimental) " + mode)), { labels, exit: helpResult.status });
       }
-      const result = exec(substep("unbound_settings_preview_exec", releaseIndex), release, "settings", preview, policy);
-      if (result.status !== 2 || parseJson(substep("unbound_settings_preview_format", releaseIndex), result.stdout).findings?.[0]?.code !== "starter_runtime_credential_read_failed")
-        fail(substep("unbound_settings_preview_refusal", releaseIndex));
+      const result = site("unbound_settings_preview_exec", "unbound_settings_preview_exec", () => exec(release, "settings", preview, policy, 2), { labels: [releaseIndex], exit: true });
+      const refusedPreview = site("unbound_settings_preview_format", "unbound_settings_preview_format", () => JSON.parse(result.stdout), { labels: [releaseIndex], exit: result.status });
+      site("unbound_settings_preview_refusal", "unbound_settings_preview_refusal", () => assert.equal(refusedPreview?.findings?.[0]?.code, "starter_runtime_credential_read_failed"), { labels: [releaseIndex], exit: result.status });
     }
-    up("restore_application_bind");
-    for (const [releaseIndex, [release]] of releases.entries()) exerciseJobs(substep("restored_bind_jobs", releaseIndex), release);
-    mark("lifecycle settings show and preview help work without a credential bind on both Compose versions");
-    mark("missing credential bind refusal and restoration on both Compose versions");
+    site("restore_application_bind", "restore_application_bind", () => up(), { exit: true });
+    for (const [releaseIndex, [release]] of releases.entries()) exerciseJobs("restored_bind", releaseIndex, release);
+    mark("lifecycle_settings_show_and_preview_help_work_without_a_credential_bind_on_both_compose_versions", "lifecycle settings show and preview help work without a credential bind on both Compose versions");
+    mark("missing_credential_bind_refusal_and_restoration_on_both_compose_versions", "missing credential bind refusal and restoration on both Compose versions");
 
     const firstAdmin = `import {argv} from 'node:process';
       import {runtimeConnectionString} from './host/runtime-database.ts';
       import {createPostgresOperatorIdentityStore} from '@openlup/platform/identity';
       const operators=createPostgresOperatorIdentityStore({connectionString:await runtimeConnectionString()});
       try { await operators.bootstrapFirstAdministrator({email:argv[1]}); } finally { await operators.close(); }`;
-    checked(compose("first_administrator", "exec", "-T", "--user", "node", "application", "node",
-      "--input-type=module", "-e", firstAdmin, "operator@example.test"));
-    if (sql("first_administrator_count", "select count(*) from public.platform_human_principals where email='operator@example.test'") !== "1")
-      fail("first_administrator_invitation");
-    mark("first administrator invitation through mounted runtime resolver");
+    site("first_administrator", "first_administrator", () => compose("exec", "-T", "--user", "node", "application", "node", "--input-type=module", "-e", firstAdmin, "operator@example.test").stdout.trim(), { exit: true });
+    const administrators = site("first_administrator_count", "first_administrator_count",
+      () => rawSql("select count(*) from public.platform_human_principals where email='operator@example.test'"), { exit: true });
+    site("first_administrator_invitation", "first_administrator_invitation", () => assert.equal(administrators, "1"), { exit: 0 });
+    mark("first_administrator_invitation", "first administrator invitation through mounted runtime resolver");
 
-    const afterRotation = randomBytes(32).toString("hex");
-
-    const previousApp = container("pre_rotation_application", "application");
+    const afterRotation = site("rotation_credential_random", "rotation_credential_random", () => randomBytes(32)).toString("hex");
+    const previousApp = site("pre_rotation_application", "pre_rotation_application", () => container("application"), { exit: true });
     const replacement = source + ".next";
-    writeFileSync(replacement, afterRotation + "\n", { mode: 0o444 });
-    renameSync(replacement, source);
-    const rotated = prepareRuntimeHandoff(project, [from]);
+    site("rotation_replacement_write", "rotation_replacement_write", () => writeFileSync(replacement, afterRotation + "\n", { mode: 0o444 }));
+    site("rotation_replacement_rename", "rotation_replacement_rename", () => renameSync(replacement, source));
+    const rotated = site("rotation_handoff_prepare", "rotation_handoff_prepare", () => prepareRuntimeHandoff(project, [from]));
     try {
-      checked(run("interrupt_after_installer", from, "docker", ["compose", "--project-name", project, "run", "--rm", "-T", "--no-deps",
-        "installation", "node", "lifecycle.mjs", "install", "--configuration", "coffee", "--json"], undefined, { ...env, ...rotated.environment }));
-    } finally { rotated.cleanup(); }
-    const changedVerifier = verifier("interrupted_installer_verifier");
-    if (changedVerifier === committedVerifier || container("interrupted_installer_application", "application") !== previousApp ||
-      (await fetch(`http://127.0.0.1:${port}/api/config`)).status !== 200) fail("interrupted_replacement_fixture");
-    const stale = compose("stale_mount_probe_command", "exec", "-T", "application", "node", "lifecycle.mjs", "runtime-probe");
-    if (stale.status !== 2 || stale.stdout.trim() !== "starter_runtime_database_auth_failed") fail("stale_mount_probe_refusal");
-    up("resume_runtime_rotation");
-    if (verifier("resumed_rotation_verifier") !== changedVerifier || container("resumed_rotation_application", "application") === previousApp
-      || checked(native("resumed_rotation_login", afterRotation)) !== "starter_runtime"
-      || !/password authentication failed/u.test(native("resumed_rotation_old_login", initial).stderr)) fail("rotation_failed");
-    mark("credential replacement, interrupted recreation and fresh runtime read");
+      site("interrupt_after_installer", "interrupt_after_installer", () => run(from, "docker", ["compose", "--project-name", project, "run", "--rm", "-T", "--no-deps",
+        "installation", "node", "lifecycle.mjs", "install", "--configuration", "coffee", "--json"], undefined, { ...env, ...rotated.environment }), { exit: true });
+    } catch (error) { failures.keep(error); }
+    finally { failures.attempt(() => site("rotation_handoff_cleanup", "rotation_handoff_cleanup", () => rotated.cleanup())); }
+    failures.finish();
+    const changedVerifier = verifier("interrupted_installer");
+    site("interrupted_verifier_unchanged", "interrupted_verifier_unchanged", () => assert.notEqual(changedVerifier, committedVerifier));
+    const interruptedInstallerApp = site("interrupted_installer_application", "interrupted_installer_application", () => container("application"), { exit: true });
+    site("interrupted_installer_app_unchanged", "interrupted_installer_app_unchanged", () => assert.equal(interruptedInstallerApp, previousApp));
+    const interruptedResponse = await site("interrupted_replacement_http_request", "interrupted_replacement_http_request", () => fetch(`${origin}/api/config`));
+    site("interrupted_replacement_fixture", "interrupted_replacement_fixture", () => assert.equal(interruptedResponse.status, 200));
+    const stale = site("stale_mount_probe_command", "stale_mount_probe_command", () => composeWithExit(project, ["exec", "-T", "application", "node", "lifecycle.mjs", "runtime-probe"], 2), { exit: true });
+    site("stale_mount_probe_refusal", "stale_mount_probe_refusal", () => assert.equal(stale.stdout.trim(), "starter_runtime_database_auth_failed"), { exit: stale.status });
+    site("resume_runtime_rotation", "resume_runtime_rotation", () => up(), { exit: true });
+    const resumedVerifier = verifier("resumed_rotation");
+    site("resumed_rotation_verifier_unchanged", "resumed_rotation_verifier_unchanged", () => assert.equal(resumedVerifier, changedVerifier));
+    const resumedApp = site("resumed_rotation_application", "resumed_rotation_application", () => container("application"), { exit: true });
+    site("resumed_rotation_app_changed", "resumed_rotation_app_changed", () => assert.notEqual(resumedApp, previousApp));
+    const rotatedLogin = tcpClient("resumed_rotation_login", 1, afterRotation, 0);
+    site("resumed_rotation_login_valid", "resumed_rotation_login_valid", () => assert.equal(rotatedLogin.stdout.trim(), "starter_runtime"), { exit: rotatedLogin.status });
+    const rotatedOld = tcpClient("resumed_rotation_old_login", 1, initial, "nonzero");
+    site("rotation_failed", "rotation_failed", () => assert(/password authentication failed/u.test(rotatedOld.stderr)), { exit: rotatedOld.status });
+    mark("interrupted_credential_recreation", "credential replacement, interrupted recreation and fresh runtime read");
 
     const heldSource = source + ".held";
-    checked(run("rotation_from_fresh_shell", from, "/bin/sh", ["-ec", recipe("rotation_recipe", "Rotate the runtime credential")], undefined,
-      { ...fresh, OPENLUP_STARTER_PORT: undefined, CONFIGURATION: "coffee", PORT: String(port) }));
-    const rotatedResponse = await fetch(`http://127.0.0.1:${port}/api/config`);
-    if (rotatedResponse.status !== 200 ||
-      (await rotatedResponse.json() as { config?: { id?: unknown } }).config?.id !== "coffee") fail("rotation_configuration");
-    const current = readFileSync(source, "utf8").trim(), currentVerifier = verifier("documented_rotation_verifier");
+    const rotationScript = site("rotation_recipe", "rotation_recipe", () => recipe("Rotate the runtime credential"));
+    site("rotation_from_fresh_shell", "rotation_from_fresh_shell", () => run(from, "/bin/sh", ["-ec", rotationScript], undefined,
+      { ...fresh, OPENLUP_STARTER_PORT: undefined, CONFIGURATION: "coffee", PORT: String(port) }), { exit: true });
+    const rotatedResponse = await site("rotation_configuration_request", "rotation_configuration_request", () => fetch(`${origin}/api/config`));
+    site("rotation_configuration_http", "rotation_configuration_http", () => assert.equal(rotatedResponse.status, 200));
+    const rotatedEnvelope = await site("rotation_configuration_decode", "rotation_configuration_decode",
+      () => rotatedResponse.json() as Promise<{ config?: { id?: unknown } }>);
+    site("rotation_configuration", "rotation_configuration", () => assert.equal(rotatedEnvelope?.config?.id, "coffee"));
+    const current = site("rotated_credential_read", "rotated_credential_read", () => readFileSync(source, "utf8").trim());
+    const currentVerifier = verifier("documented_rotation");
+    site("rotation_credential_replaced", "rotation_credential_replaced", () => assert.notEqual(current, afterRotation));
+    const currentLogin = tcpClient("documented_rotation_login", 1, current, 0);
+    site("documented_rotation_login_valid", "documented_rotation_login_valid", () => assert.equal(currentLogin.stdout.trim(), "starter_runtime"), { exit: currentLogin.status });
+    const currentOld = tcpClient("documented_rotation_old_login", 1, afterRotation, "nonzero");
+    site("documented_rotation_old_login_refused", "documented_rotation_old_login_refused", () => assert(/password authentication failed/u.test(currentOld.stderr)), { exit: currentOld.status });
+    const rotatedDB = identity("documented_rotation");
+    site("documented_rotation_database_retained", "documented_rotation_database_retained", () => assert.equal(rotatedDB[2], original[2]));
+    const rotatedProject = site("rotation_project_record_read", "rotation_project_record_read", () => readFileSync(projectFile, "utf8"));
+    site("stopped_rotation", "stopped_rotation", () => assert.equal(rotatedProject, project + "\n"));
+    mark("verbatim_documented_rotation", "verbatim documented rotation preserves the custom project, coffee configuration and listener port");
 
-    if (current === afterRotation || checked(native("documented_rotation_login", current)) !== "starter_runtime"
-      || !/password authentication failed/u.test(native("documented_rotation_old_login", afterRotation).stderr) || identity("documented_rotation_database")[2] !== original[2]
-      || readFileSync(projectFile, "utf8") !== project + "\n") fail("stopped_rotation");
-    mark("verbatim documented rotation preserves the custom project, coffee configuration and listener port");
-
-    function refusal(result: ReturnType<typeof run>, code: string, jsonMode: boolean) {
-      let observed: unknown;
-      try {
-        observed = jsonMode ? JSON.parse(result.stdout).findings?.[0]?.code
-          : result.stderr.split("\n").find(line => /^starter_[a-z0-9_]+$/u.test(line));
-      } catch { fail(result.step, result.status, "invalid_refusal_envelope"); }
-      if (result.status !== 2 || observed !== code) fail(result.step, result.status, "unexpected_finding");
-      if (!jsonMode && !["Cause:", "Fix:", "Recheck:"].every(label => result.stderr.includes(label))) fail(result.step, result.status, "incomplete_refusal_details");
+    function refusal(labels: readonly ProofLabel[], result: ReturnType<typeof run>, code: string, jsonMode: boolean) {
+      const options = { labels, exit: result.status };
+      const observed = jsonMode
+        ? site("refusal_envelope_decode", "refusal_envelope_decode", () => JSON.parse(result.stdout), options)?.findings?.[0]?.code
+        : result.stderr.split("\n").find(line => /^starter_[a-z0-9_]+$/u.test(line));
+      site("refusal_finding", "refusal_finding", () => assert(observed === code), options);
+      if (!jsonMode) site("refusal_text_details", "refusal_text_details",
+        () => assert(["Cause:", "Fix:", "Recheck:"].every(label => result.stderr.includes(label))), options);
     }
-    const projectBefore = container("before_project_mismatch", "application");
-    const wrongProject = run("wrong_project", from, "./lifecycle", ["up", "--configuration", "coffee", "--json"], undefined, selectNext);
-    refusal(wrongProject, "starter_runtime_project_mismatch", true);
-    if (!wrongProject.stdout.includes("./lifecycle down") || readFileSync(projectFile, "utf8") !== project + "\n"
-      || container("after_project_mismatch", "application") !== projectBefore || checked(run("unused_project", from, dockerBin,
-        ["ps", "-aq", "--filter", "label=com.docker.compose.project=" + alternate]))) fail("other_project_mutation");
-    renameSync(source, heldSource);
-    try { checked(run("stop_with_missing_credential", from, "./lifecycle", ["down"], undefined, fresh)); }
-    finally { renameSync(heldSource, source); }
-    if (existsSync(projectFile)) fail("down_did_not_clear_project");
+    const projectBefore = site("before_project_mismatch", "before_project_mismatch", () => container("application"), { exit: true });
+    const wrongProject = site("wrong_project", "wrong_project", () => run(from, "./lifecycle", ["up", "--configuration", "coffee", "--json"], undefined, selectNext, 2), { exit: true });
+    refusal(["wrong_project"], wrongProject, "starter_runtime_project_mismatch", true);
+    site("mismatch_project_guidance", "mismatch_project_guidance", () => assert(wrongProject.stdout.includes("./lifecycle down")), { exit: wrongProject.status });
+    const mismatchRecord = site("mismatch_project_record_read", "mismatch_project_record_read", () => readFileSync(projectFile, "utf8"));
+    site("mismatch_project_record_unchanged", "mismatch_project_record_unchanged", () => assert.equal(mismatchRecord, project + "\n"));
+    const mismatchApp = site("after_project_mismatch", "after_project_mismatch", () => container("application"), { exit: true });
+    site("mismatch_project_application_unchanged", "mismatch_project_application_unchanged", () => assert.equal(mismatchApp, projectBefore));
+    const unused = site("unused_project", "unused_project", () => run(from, dockerBin,
+      ["ps", "-aq", "--filter", "label=com.docker.compose.project=" + alternate]).stdout.trim(), { exit: true });
+    site("other_project_mutation", "other_project_mutation", () => assert(!unused), { exit: 0 });
+    site("missing_credential_hold", "missing_credential_hold", () => renameSync(source, heldSource));
+    try { site("stop_with_missing_credential", "stop_with_missing_credential", () => run(from, "./lifecycle", ["down"], undefined, fresh), { exit: true }); }
+    catch (error) { failures.keep(error); }
+    finally { failures.attempt(() => site("missing_credential_restore", "missing_credential_restore", () => renameSync(heldSource, source))); }
+    failures.finish();
+    const downRecord = site("down_project_record_exists", "down_project_record_exists", () => existsSync(projectFile));
+    site("down_did_not_clear_project", "down_did_not_clear_project", () => assert(!downRecord));
     const alternateSource = join(dirname(dirname(source)), alternate, "runtime-password");
     try {
-      if (checked(run("replacement_volume_inventory", from, dockerBin,
-        ["volume", "ls", "-q", "--filter", "label=com.docker.compose.project=" + alternate]))) fail("replacement_volume_not_fresh");
-      checked(run("start_second_project", from, "./lifecycle", ["up", "--configuration", "coffee", "--json"], undefined, selectNext));
-      const alternatePassword = readFileSync(alternateSource, "utf8").trim();
-
-      if (readFileSync(projectFile, "utf8") !== alternate + "\n" || alternatePassword === current) fail("second_project_record");
-      const replacement = identity("blank_replacement_database", alternate);
-      if (replacement[1]?.split(" ").at(-1) !== alternate + "_database" || replacement[2] === live[2]
-        || checked(composeFor("replacement_listener", alternate, "port", "application", String(port))) !== `127.0.0.1:${port}`
-        || sql("blank_replacement_order_count", "select count(*) from public.commerce_orders", "neutral_store", alternate) !== "0")
-        fail("blank_replacement_volume_identity");
+      const existingVolumes = site("replacement_volume_inventory", "replacement_volume_inventory", () => run(from, dockerBin,
+        ["volume", "ls", "-q", "--filter", "label=com.docker.compose.project=" + alternate]).stdout.trim(), { exit: true });
+      site("replacement_volume_not_fresh", "replacement_volume_not_fresh", () => assert(!existingVolumes), { exit: 0 });
+      site("start_second_project", "start_second_project", () => run(from, "./lifecycle", ["up", "--configuration", "coffee", "--json"], undefined, selectNext), { exit: true });
+      const alternatePassword = site("alternate_credential_read", "alternate_credential_read", () => readFileSync(alternateSource, "utf8").trim());
+      const alternateRecord = site("alternate_project_record_read", "alternate_project_record_read", () => readFileSync(projectFile, "utf8"));
+      site("second_project_record", "second_project_record", () => assert(alternateRecord === alternate + "\n" && alternatePassword !== current));
+      const replacement = identity("blank_replacement", alternate);
+      site("blank_replacement_volume_identity", "blank_replacement_volume_identity",
+        () => assert(replacement[1]?.split(" ").at(-1) === alternate + "_database" && replacement[2] !== live[2]));
+      const listener = site("replacement_listener", "replacement_listener", () => composeFor(alternate, "port", "application", String(port)).stdout.trim(), { exit: true });
+      site("replacement_listener_identity", "replacement_listener_identity", () => assert.equal(listener, `127.0.0.1:${port}`), { exit: 0 });
+      const blankOrders = site("blank_replacement_order_count", "blank_replacement_order_count",
+        () => rawSql("select count(*) from public.commerce_orders", "neutral_store", alternate), { exit: true });
+      site("blank_replacement_orders", "blank_replacement_orders", () => assert.equal(blankOrders, "0"), { exit: 0 });
       const missing = await readSettlementContinuity("blank_replacement_receipt", settled, alternate);
-      const absent = parseJson("blank_replacement_record_format", missing.records) as Record<string, unknown[]>;
-      if (Object.values(absent).some(rows => rows.length) || missing.receipt.ok
-        || missing.receipt.code !== "starter_recovery_unavailable" || missing.matches)
-        fail("blank_replacement_volume_red_control");
-      mark("blank replacement volume refused the original order and receipt");
-      checked(run("stop_second_project", from, "./lifecycle", ["down"], undefined, fresh));
-    } finally {
-      try {
-        checked(run("remove_blank_project", from, dockerBin,
-          ["compose", "--project-name", alternate, "down", "--volumes", "--remove-orphans"], undefined, selectNext));
-      } catch (error) { failures.push(StarterRuntimeProofError.diagnostic(error, "remove_blank_project_exception")); }
-      try { rmSync(dirname(alternateSource), { recursive: true, force: true }); }
-      catch (error) { failures.push(StarterRuntimeProofError.diagnostic(error, "remove_blank_state")); }
+      const absent = site("blank_replacement_record_format", "blank_replacement_record_format", () => JSON.parse(missing.records), { exit: 0 }) as Record<string, unknown[]>;
+      site("blank_replacement_volume_red_control", "blank_replacement_volume_red_control", () => assert(!(Object.values(absent).some(rows => rows.length) || missing.receipt.ok
+        || missing.receipt.code !== "starter_recovery_unavailable" || missing.matches)));
+      mark("blank_replacement_volume_refused_the_original_order_and_receipt", "blank replacement volume refused the original order and receipt");
+      site("stop_second_project", "stop_second_project", () => run(from, "./lifecycle", ["down"], undefined, fresh).stdout.trim(), { exit: true });
+    } catch (error) { failures.keep(error); }
+    finally {
+      failures.attempt(() => site("remove_blank_project", "remove_blank_project", () => run(from, dockerBin,
+        ["compose", "--project-name", alternate, "down", "--volumes", "--remove-orphans"], undefined, selectNext), { exit: true }));
+      failures.attempt(() => site("remove_blank_state", "remove_blank_state", () => rmSync(dirname(alternateSource), { recursive: true, force: true })));
     }
-    if (failures.length) throw new StarterRuntimeProofError(failures.splice(0));
-    up("return_to_original_project");
-    if (identity("restored_original_database")[2] !== original[2] || verifier("restored_original_verifier") !== currentVerifier) fail("original_project_changed");
-    mark("one project per directory, down clears record and permits switching");
+    failures.finish();
+    site("return_to_original_project", "return_to_original_project", () => up(), { exit: true });
+    const restoredDB = identity("restored_original");
+    site("original_project_changed", "original_project_changed", () => assert.equal(restoredDB[2], original[2]));
+    const restoredVerifier = verifier("restored_original");
+    site("original_project_verifier_changed", "original_project_verifier_changed", () => assert.equal(restoredVerifier, currentVerifier));
+    mark("one_project_per_directory_down_clears_record_and_permits_switching", "one project per directory, down clears record and permits switching");
 
     const listener = project + "-port-holder";
     try {
-      checked(run("occupy_listener_port", from, dockerBin, ["run", "-d", "--name", listener,
-        "-p", "127.0.0.1::5432", "--entrypoint", "sleep", postgresImage, "120"]));
-      const portMapping = checked(run("occupied_port", from, dockerBin, ["port", listener, "5432/tcp"]));
+      site("occupy_listener_port", "occupy_listener_port", () => run(from, dockerBin, ["run", "-d", "--name", listener,
+        "-p", "127.0.0.1::5432", "--entrypoint", "sleep", postgresImage, "120"]).stdout.trim(), { exit: true });
+      const portMapping = site("occupied_port", "occupied_port", () => run(from, dockerBin, ["port", listener, "5432/tcp"]).stdout.trim(), { exit: true });
       const occupied = portMapping.match(/^127\.0\.0\.1:([0-9]+)$/u)?.[1];
-      if (!occupied || occupied === "4319") fail("unsafe_occupied_port");
-      const result = run("occupied_listener_refusal", from, "./lifecycle", ["up", "--configuration", "coffee", "--json"], undefined,
-        { ...env, OPENLUP_STARTER_PORT: occupied });
-      refusal(result, "starter_installation_failed", true);
-      if (!/port is already allocated|address already in use|failed to bind/u.test(result.stderr)) fail("lost_listener_diagnostic");
-    } finally {
-      if (checked(run("listener_holder_inventory", from, dockerBin, ["ps", "-aq", "--filter", "name=^/" + listener + "$"]))) {
-        checked(run("listener_holder_cleanup", from, dockerBin, ["rm", "-f", listener]));
-      }
+      site("unsafe_occupied_port", "unsafe_occupied_port", () => assert(occupied || occupied === "4319"), { exit: 0 });
+      const result = site("occupied_listener_refusal", "occupied_listener_refusal", () => run(from, "./lifecycle", ["up", "--configuration", "coffee", "--json"], undefined, { ...env, OPENLUP_STARTER_PORT: occupied }, 2), { exit: true });
+      refusal(["occupied_listener"], result, "starter_installation_failed", true);
+      site("lost_listener_diagnostic", "lost_listener_diagnostic", () => assert(/port is already allocated|address already in use|failed to bind/u.test(result.stderr)), { exit: result.status });
+    } catch (error) { failures.keep(error); }
+    finally {
+      failures.attempt(() => {
+        if (site("listener_holder_inventory", "listener_holder_inventory", () => run(from, dockerBin, ["ps", "-aq", "--filter", "name=^/" + listener + "$"]).stdout.trim(), { exit: true })) {
+          site("listener_holder_cleanup", "listener_holder_cleanup", () => run(from, dockerBin, ["rm", "-f", listener]), { exit: true });
+        }
+      });
     }
-    up("restart_after_listener_refusal");
-    const dockerfile = join(from, "Dockerfile"), originalDockerfile = readFileSync(dockerfile);
-    const redactedFixture = randomBytes(32).toString("hex");
+    failures.finish();
+    site("restart_after_listener_refusal", "restart_after_listener_refusal", () => up(), { exit: true });
+    const dockerfile = join(from, "Dockerfile");
+    const originalDockerfile = site("proof_dockerfile_read", "proof_dockerfile_read", () => readFileSync(dockerfile));
+    const redactedFixture = site("build_fixture_random", "build_fixture_random", () => randomBytes(32)).toString("hex");
 
     try {
-      writeFileSync(dockerfile, Buffer.concat([originalDockerfile, Buffer.from(`\nRUN echo '${redactedFixture}' >&2; exit 17\n`)]));
-      const build = run("failing_build", from, "./lifecycle", ["up", "--configuration", "coffee", "--json"]);
-      refusal(build, "starter_installation_failed", true);
-      if (!build.stderr.includes("exit code: 17") || !build.stderr.includes("[redacted]")
-        || build.stderr.includes(redactedFixture)) fail("lost_or_unsanitized_build_diagnostic");
-    } finally { writeFileSync(dockerfile, originalDockerfile); }
-    mark("occupied listener and failing build retain sanitized Docker diagnostics");
+      site("build_fixture_write", "build_fixture_write",
+        () => writeFileSync(dockerfile, Buffer.concat([originalDockerfile, Buffer.from(`\nRUN echo '${redactedFixture}' >&2; exit 17\n`)])));
+      const build = site("failing_build", "failing_build", () => run(from, "./lifecycle", ["up", "--configuration", "coffee", "--json"], undefined, undefined, 2), { exit: true });
+      refusal(["failing_build"], build, "starter_installation_failed", true);
+      site("lost_or_unsanitized_build_diagnostic", "lost_or_unsanitized_build_diagnostic", () => assert(!(!build.stderr.includes("exit code: 17") || !build.stderr.includes("[redacted]")
+        || build.stderr.includes(redactedFixture))), { exit: build.status });
+    } catch (error) { failures.keep(error); }
+    finally { failures.attempt(() => site("proof_dockerfile_restore", "proof_dockerfile_restore", () => writeFileSync(dockerfile, originalDockerfile))); }
+    failures.finish();
+    mark("occupied_listener_and_failing_build_retain_sanitized_docker_diagnostics", "occupied listener and failing build retain sanitized Docker diagnostics");
 
     const alias = source + ".linked";
-    linkSync(source, alias);
+    site("credential_hard_link_create", "credential_hard_link_create", () => linkSync(source, alias));
     try {
-      refusal(run("hard_link_refusal", from, "./lifecycle", ["up", "--configuration", "coffee", "--json"]), "starter_runtime_credential_source_invalid", true);
-      const linkedProbe = compose("linked_runtime_probe", "exec", "-T", "application", "node", "lifecycle.mjs", "runtime-probe");
-      if (linkedProbe.status !== 2 || linkedProbe.stdout.trim() !== "starter_runtime_credential_read_failed") fail("linked_reader_admitted");
-    } finally { rmSync(alias); }
-    mark("host preflight and mounted reader refuse hard links");
+      refusal(["hard_link"], site("hard_link_refusal", "hard_link_refusal", () => run(from, "./lifecycle", ["up", "--configuration", "coffee", "--json"], undefined, undefined, 2), { exit: true }), "starter_runtime_credential_source_invalid", true);
+      const linkedProbe = site("linked_runtime_probe", "linked_runtime_probe", () => composeWithExit(project, ["exec", "-T", "application", "node", "lifecycle.mjs", "runtime-probe"], 2), { exit: true });
+      site("linked_reader_admitted", "linked_reader_admitted", () => assert(!(linkedProbe.status !== 2 || linkedProbe.stdout.trim() !== "starter_runtime_credential_read_failed")), { exit: linkedProbe.status });
+    } catch (error) { failures.keep(error); }
+    finally { failures.attempt(() => site("credential_hard_link_remove", "credential_hard_link_remove", () => rmSync(alias))); }
+    failures.finish();
+    mark("host_preflight_and_mounted_reader_refuse_hard_links", "host preflight and mounted reader refuse hard links");
 
     // Refuse shape, permissions and special files before Compose build.
-    const installedApp = container("before_invalid_credential_application", "application");
+    const installedApp = site("before_invalid_credential_application", "before_invalid_credential_application", () => container("application"), { exit: true });
     for (const [kindIndex, kind] of ["bad-mode", "payload", "fifo"].entries()) {
-      renameSync(source, heldSource);
+      site("invalid_credential_hold", "invalid_credential_hold", () => renameSync(source, heldSource), { labels: [kindIndex] });
       try {
-        if (kind === "fifo") checked(run(substep("fifo_fixture", kindIndex), from, "mkfifo", [source]));
-        else writeFileSync(source, kind === "payload" ? "DEMO_SETTING=fixture\n" : current + "\n",
-          { mode: kind === "bad-mode" ? 0o000 : 0o444 });
-        for (const [modeIndex, mode] of [false, true].entries()) refusal(run(substep("credential_source_refusal", kindIndex, modeIndex), from, "./lifecycle",
-          ["up", "--configuration", "coffee", ...(mode ? ["--json"] : [])]), "starter_runtime_credential_source_invalid", mode);
-        if (container(substep("invalid_source_application", kindIndex), "application") !== installedApp ||
-          verifier(substep("invalid_source_verifier", kindIndex)) !== currentVerifier)
-          fail(substep("invalid_source_mutation", kindIndex));
-      } finally { rmSync(source, { force: true }); renameSync(heldSource, source); }
+        if (kind === "fifo") site("fifo_fixture", "fifo_fixture", () => run(from, "mkfifo", [source]), { labels: [kindIndex], exit: true });
+        else site("invalid_credential_write", "invalid_credential_write", () => writeFileSync(source, kind === "payload" ? "DEMO_SETTING=fixture\n" : current + "\n",
+          { mode: kind === "bad-mode" ? 0o000 : 0o444 }), { labels: [kindIndex] });
+        for (const [modeIndex, mode] of [false, true].entries()) {
+          const labels = [kindIndex, modeIndex];
+          const rejected = site("credential_source_refusal", "credential_source_refusal", () => run(from, "./lifecycle",
+            ["up", "--configuration", "coffee", ...(mode ? ["--json"] : [])], undefined, env, 2), { labels, exit: true });
+          refusal(["credential_source", ...labels], rejected, "starter_runtime_credential_source_invalid", mode);
+        }
+        const app = site("invalid_source_application", "invalid_source_application", () => container("application"), { labels: [kindIndex], exit: true });
+        site("invalid_source_application_unchanged", "invalid_source_application_unchanged", () => assert.equal(app, installedApp), { labels: [kindIndex] });
+        const invalidVerifier = verifier("invalid_source", kindIndex);
+        site("invalid_source_mutation", "invalid_source_mutation", () => assert.equal(invalidVerifier, currentVerifier), { labels: [kindIndex] });
+      } catch (error) { failures.keep(error); }
+      finally {
+        failures.attempt(() => site("invalid_credential_remove", "invalid_credential_remove", () => rmSync(source, { force: true }), { labels: [kindIndex] }));
+        failures.attempt(() => site("invalid_credential_restore", "invalid_credential_restore", () => renameSync(heldSource, source), { labels: [kindIndex] }));
+      }
+      failures.finish();
     }
-    mark("invalid sources refused before build");
+    mark("invalid_sources_refused_before_build", "invalid sources refused before build");
 
-    const synthetic = randomBytes(24).toString("hex"), wrongPassword = randomBytes(32).toString("hex");
-
-
+    const synthetic = site("changed_source_fixture_random", "changed_source_fixture_random", () => randomBytes(24)).toString("hex");
+    const wrongPassword = site("auth_fixture_random", "auth_fixture_random", () => randomBytes(32)).toString("hex");
     const shim = join(scratch, "docker");
-    writeFileSync(shim, `#!/bin/sh
+    site("proof_docker_shim_write", "proof_docker_shim_write", () => writeFileSync(shim, `#!/bin/sh
 "${dockerBin}" "$@" || exit $?
 case " $STARTER_PROOF_FAULT $* " in
   *" auth "*" run "*" installation "*)
@@ -2080,63 +2282,91 @@ case " $STARTER_PROOF_FAULT $* " in
     fi
     ;;
 esac
-`, { mode: 0o700 });
+`, { mode: 0o700 }));
     for (const [faultIndex, fault] of ["mount", "read"].entries()) for (const [modeIndex, mode] of [false, true].entries()) {
       try {
-        const result = run(substep("changed_source_up", faultIndex, modeIndex), from, "./lifecycle", ["up", "--configuration", "coffee", ...(mode ? ["--json"] : [])], undefined,
-          { ...env, PATH: scratch + ":" + env.PATH, STARTER_PROOF_FAULT: fault, STARTER_PROOF_VALUE: synthetic });
-        refusal(result, "starter_runtime_credential_" + fault + "_failed", mode);
-        const config = run(substep("changed_source_model", faultIndex, modeIndex), from, dockerBin, ["compose", "--project-name", project, "config", "--format", "json"], undefined,
-          { ...env, OPENLUP_STARTER_PREFLIGHT_HANDOFF: "/dev/null", OPENLUP_STARTER_RUNTIME_SOURCE: source });
+        const result = site("changed_source_up", "changed_source_up", () => run(from, "./lifecycle", ["up", "--configuration", "coffee", ...(mode ? ["--json"] : [])], undefined, { ...env, PATH: scratch + ":" + env.PATH, STARTER_PROOF_FAULT: fault, STARTER_PROOF_VALUE: synthetic }, 2), { labels: [faultIndex, modeIndex], exit: true });
+        refusal(["changed_source", faultIndex, modeIndex], result, "starter_runtime_credential_" + fault + "_failed", mode);
+        const config = site("changed_source_model", "changed_source_model", () => run(from, dockerBin, ["compose", "--project-name", project, "config", "--format", "json"], undefined, { ...env, OPENLUP_STARTER_PREFLIGHT_HANDOFF: "/dev/null", OPENLUP_STARTER_RUNTIME_SOURCE: source }), { labels: [faultIndex, modeIndex], exit: true });
         const model = checked(config);
-        const inspected = checked(run(substep("inspect_service_environments", faultIndex, modeIndex), from, dockerBin, ["inspect", "--format", "{{json .Config.Env}}",
-          container(substep("changed_source_database", faultIndex, modeIndex), "database"),
-          container(substep("changed_source_application", faultIndex, modeIndex), "application")]));
-        if ([model, inspected].some(value => value.includes("STARTER_SAMPLE") || value.includes(synthetic))) fail(substep("changed_source_reached_environment", faultIndex, modeIndex));
-      } finally { rmSync(source, { force: true }); renameSync(heldSource, source); }
-      up(substep("restore_changed_source", faultIndex, modeIndex));
+        const labels = [faultIndex, modeIndex];
+        const db = site("changed_source_database", "changed_source_database", () => container("database"), { labels, exit: true });
+        const app = site("changed_source_application", "changed_source_application", () => container("application"), { labels, exit: true });
+        const inspected = site("inspect_service_environments", "inspect_service_environments", () => run(from, dockerBin,
+          ["inspect", "--format", "{{json .Config.Env}}", db, app]).stdout.trim(), { labels, exit: true });
+        site("changed_source_reached_environment", "changed_source_reached_environment", () => assert(![model, inspected].some(value =>
+          value.includes("STARTER_SAMPLE") || value.includes(synthetic))), { labels });
+      } catch (error) { failures.keep(error); }
+      finally { failures.attempt(() => {
+        const labels = [faultIndex, modeIndex];
+        if (site("changed_held_credential_exists", "changed_held_credential_exists", () => existsSync(heldSource), { labels })) {
+          failures.attempt(() => site("changed_credential_remove", "changed_credential_remove", () => rmSync(source, { force: true }), { labels }));
+          failures.attempt(() => site("changed_credential_restore", "changed_credential_restore", () => renameSync(heldSource, source), { labels }));
+        }
+      }); }
+      failures.finish();
+      site("restore_changed_source", "restore_changed_source", () => up(), { labels: [faultIndex, modeIndex], exit: true });
     }
-    mark("changed source mount and bounded read refusal with environment isolation");
+    mark("changed_source_mount_and_bounded_read_refusal_with_environment_isolation", "changed source mount and bounded read refusal with environment isolation");
     for (const [modeIndex, mode] of [false, true].entries()) {
-      writeFileSync(replacement, current + "\n", { mode: 0o444 });
-      renameSync(replacement, source);
+      const labels = [modeIndex];
+      site("auth_replacement_write", "auth_replacement_write", () => writeFileSync(replacement, current + "\n", { mode: 0o444 }), { labels });
+      site("auth_replacement_rename", "auth_replacement_rename", () => renameSync(replacement, source), { labels });
       try {
-        refusal(run(substep("application_authentication_refusal", modeIndex), from, "./lifecycle", ["up", "--configuration", "coffee", ...(mode ? ["--json"] : [])], undefined,
-          { ...env, PATH: scratch + ":" + env.PATH, STARTER_PROOF_FAULT: "auth", STARTER_PROOF_VALUE: wrongPassword }),
-        "starter_runtime_database_auth_failed", mode);
-      } finally {
-        if (existsSync(heldSource)) { rmSync(source, { force: true }); renameSync(heldSource, source); }
-      }
-      up(substep("restore_authenticated_source", modeIndex));
+        const rejected = site("application_authentication_refusal", "application_authentication_refusal", () => run(from, "./lifecycle",
+          ["up", "--configuration", "coffee", ...(mode ? ["--json"] : [])], undefined,
+          { ...env, PATH: scratch + ":" + env.PATH, STARTER_PROOF_FAULT: "auth", STARTER_PROOF_VALUE: wrongPassword }, 2), { labels, exit: true });
+        refusal(["application_authentication", modeIndex], rejected, "starter_runtime_database_auth_failed", mode);
+      } catch (error) { failures.keep(error); }
+      finally { failures.attempt(() => {
+        if (site("auth_held_credential_exists", "auth_held_credential_exists", () => existsSync(heldSource), { labels })) {
+          failures.attempt(() => site("auth_credential_remove", "auth_credential_remove", () => rmSync(source, { force: true }), { labels }));
+          failures.attempt(() => site("auth_credential_restore", "auth_credential_restore", () => renameSync(heldSource, source), { labels }));
+        }
+      }); }
+      failures.finish();
+      site("restore_authenticated_source", "restore_authenticated_source", () => up(), { labels: [modeIndex], exit: true });
     }
-    mark("application authentication refusal and same-store retry");
+    mark("application_authentication_refusal_and_same_store_retry", "application authentication refusal and same-store retry");
 
-    checked(run("crash_database", from, dockerBin, ["kill", "--signal", "KILL", container("crashed_database_container", "database")]));
-    if (parseJson("occupied_stale_lock_report", up("occupied_stale_lock_startup", 2)).findings?.[0]?.code !== "starter_runtime_database_lock_held") fail("occupied_stale_lock");
-    checked(recover("documented_occupied_recovery"));
-    up("restart_after_database_recovery");
-    if (identity("recovered_database")[2] !== live[2] || readFileSync(source, "utf8").trim() !== current || verifier("recovered_database_verifier") !== currentVerifier)
-      fail("crash_restart_changed_store");
-    mark("PostgreSQL crash recovery with unchanged occupied fallback");
+    const crashedDB = site("crashed_database_container", "crashed_database_container", () => container("database"), { exit: true });
+    site("crash_database", "crash_database", () => run(from, dockerBin, ["kill", "--signal", "KILL", crashedDB]), { exit: true });
+    const staleLock = site("occupied_stale_lock_startup", "occupied_stale_lock_startup", () => up(2), { exit: true });
+    const staleReport = site("occupied_stale_lock_report", "occupied_stale_lock_report", () => JSON.parse(staleLock), { exit: 2 });
+    site("occupied_stale_lock", "occupied_stale_lock", () => assert.equal(staleReport?.findings?.[0]?.code, "starter_runtime_database_lock_held"), { exit: 2 });
+    recover("documented_occupied_recovery");
+    site("restart_after_database_recovery", "restart_after_database_recovery", () => up(), { exit: true });
+    const recoveredDB = identity("recovered");
+    site("crash_restart_changed_store", "crash_restart_changed_store", () => assert.equal(recoveredDB[2], live[2]));
+    const recoveredCredential = site("recovered_credential_read", "recovered_credential_read", () => readFileSync(source, "utf8").trim());
+    site("crash_restart_changed_credential", "crash_restart_changed_credential", () => assert.equal(recoveredCredential, current));
+    const recoveredVerifier = verifier("recovered");
+    site("crash_restart_changed_verifier", "crash_restart_changed_verifier", () => assert.equal(recoveredVerifier, currentVerifier));
+    mark("postgresql_crash_recovery_with_unchanged_occupied_fallback", "PostgreSQL crash recovery with unchanged occupied fallback");
 
-    const { browserContainerArguments, resolveBrowserImage } = await import("../starter-browser-ci.mjs");
+    const { browserContainerArguments, resolveBrowserImage } = await site("browser_module_import", "browser_module_import", () => import("../starter-browser-ci.mjs"));
     const localImage = env.OPENLUP_STARTER_LOCAL_IMAGE;
-    const browser = await resolveBrowserImage(undefined, localImage);
+    const browser = await site("browser_image_resolve", "browser_image_resolve", () => resolveBrowserImage(undefined, localImage), { exit: true });
     const readiness = join(scratch, "browser-ready");
-    mkdirSync(readiness);
+    site("browser_readiness_directory", "browser_readiness_directory", () => mkdirSync(readiness));
     const fixtures = join(from, ".context/care-browser"), builds = join(from, ".context/catalogue-builds");
-    for (const directory of [fixtures, builds]) mkdirSync(directory, { recursive: true });
+    for (const [index, directory] of [fixtures, builds].entries()) site("browser_fixture_directory", "browser_fixture_directory",
+      () => mkdirSync(directory, { recursive: true }), { labels: [index] });
     const mounts = ["--mount", `type=bind,src=${fixtures},dst=/app/.context/care-browser`,
       "--mount", `type=bind,src=${builds},dst=/app/.context/catalogue-builds`,
       "--mount", `type=bind,src=${readiness},dst=/readiness`];
     const browserName = project + "-installed-browser";
-    const args = browserContainerArguments(from, browser, browserName, localImage, mounts);
+    const args = site("browser_container_arguments", "browser_container_arguments", () => browserContainerArguments(from, browser, browserName, localImage, mounts));
     try {
-      checked(run("installed_browser_container", from, "docker", [args[0]!, "--detach", ...args.slice(1), "sleep", "120"]));
-      const inspected = parseJson("installed_browser_mount_format", checked(run("installed_browser_mounts", from, "docker", ["inspect", "--format", "{{json .Mounts}}", browserName])));
+      site("installed_browser_container", "installed_browser_container", () => run(from, "docker", [args[0]!, "--detach", ...args.slice(1), "sleep", "120"]).stdout.trim(), { exit: true });
+      const inventory = site("installed_browser_mounts", "installed_browser_mounts", () => run(from, "docker",
+        ["inspect", "--format", "{{json .Mounts}}", browserName]), { exit: true });
+      const inspected = site("installed_browser_mount_format", "installed_browser_mount_format", () => JSON.parse(inventory.stdout), { exit: inventory.status });
+      site("installed_browser_mount_shape", "installed_browser_mount_shape", () => assert(Array.isArray(inspected) &&
+        inspected.every(mount => mount && typeof mount.Type === "string" && (mount.Type !== "bind" || typeof mount.Source === "string"))), { exit: inventory.status });
       for (const [index, mount] of inspected.entries()) if (mount.Type === "bind") {
-        const root = realpathSync(mount.Source);
-        if (source === root || source.startsWith(root + "/")) fail(substep("installed_browser_mount_overlap", index));
+        const root = site("installed_browser_mount_realpath", "installed_browser_mount_realpath", () => realpathSync(mount.Source), { labels: [index] });
+        site("installed_browser_mount_overlap", "installed_browser_mount_overlap", () => assert(source !== root && !source.startsWith(root + "/")), { labels: [index] });
       }
       const opens = `const fs=require('node:fs'), {argv}=require('node:process');
         for(const path of argv.slice(1)) {
@@ -2144,37 +2374,41 @@ esac
           catch(error) { if (['ENOENT','EACCES'].includes(error.code)) continue; throw error; }
           process.exit(2);
         } console.log('PASS');`;
-      const hidden = checked(run("installed_browser_credential_visibility", from, "docker", ["exec", browserName,
-        "timeout", "5", "node", "-e", opens, source, "/run/secrets/starter_runtime_password"]));
+      const hidden = site("installed_browser_credential_visibility", "installed_browser_credential_visibility", () => run(from, "docker", ["exec", browserName,
+        "timeout", "5", "node", "-e", opens, source, "/run/secrets/starter_runtime_password"]).stdout.trim(), { exit: true });
       const browserCheck = `const {chromium}=require('@playwright/test'), {argv}=require('node:process');
         (async()=>{const browser=await chromium.launch({headless:true});
         try{const page=await browser.newPage(); const response=await page.goto(argv[1]);
         if (response.status()!==200) process.exitCode=2; } finally{await browser.close();}})();`;
-      checked(run("installed_browser_http", from, "docker", ["exec", browserName, "timeout", "15", "node", "-e",
-        browserCheck, `http://127.0.0.1:${port}/`]));
-      if (hidden !== "PASS") fail("installed_browser_open");
-    } finally {
-      if (checked(run("browser_container_inventory", from, dockerBin, ["ps", "-aq", "--no-trunc", "--filter", "name=^/" + browserName + "$"]))) {
-        checked(run("installed_browser_cleanup", from, dockerBin, ["rm", "-f", browserName]));
-      }
+      site("installed_browser_http", "installed_browser_http", () => run(from, "docker", ["exec", browserName, "timeout", "15", "node", "-e",
+        browserCheck, `http://127.0.0.1:${port}/`]).stdout.trim(), { exit: true });
+      site("installed_browser_open", "installed_browser_open", () => assert(!(hidden !== "PASS")), { exit: 0 });
+    } catch (error) { failures.keep(error); }
+    finally {
+      failures.attempt(() => {
+        if (site("browser_container_inventory", "browser_container_inventory", () => run(from, dockerBin, ["ps", "-aq", "--no-trunc", "--filter", "name=^/" + browserName + "$"]).stdout.trim(), { exit: true })) {
+          site("installed_browser_cleanup", "installed_browser_cleanup", () => run(from, dockerBin, ["rm", "-f", browserName]), { exit: true });
+        }
+      });
     }
-    mark("installed browser, mount inventory and both credential opens");
+    failures.finish();
+    mark("installed_browser_mount_inventory_and_both_credential_opens", "installed browser, mount inventory and both credential opens");
 
-    const image = checked(run("application_image", from, "docker", ["inspect", "--format", "{{.Image}}", container("credential_check_application", "application")]));
-    const imagePaths = checked(run("application_image_file_list", from, "docker", ["run", "--rm", "--network", "none", image,
-      "find", "/application", "/run", "-name", "runtime-password", "-o", "-name", "starter_runtime_password"]));
-    if (imagePaths) fail("credential_path_in_image");
+    const credentialApp = site("credential_check_application", "credential_check_application", () => container("application"), { exit: true });
+    const image = site("application_image", "application_image", () => run(from, "docker", ["inspect", "--format", "{{.Image}}", credentialApp]).stdout.trim(), { exit: true });
+    const imagePaths = site("application_image_file_list", "application_image_file_list", () => run(from, "docker", ["run", "--rm", "--network", "none", image,
+      "find", "/application", "/run", "-name", "runtime-password", "-o", "-name", "starter_runtime_password"]).stdout.trim(), { exit: true });
+    site("credential_path_in_image", "credential_path_in_image", () => assert(!imagePaths), { exit: 0 });
   } catch (error) {
-    failures.push(StarterRuntimeProofError.diagnostic(error, "occupied_proof"));
+    failures.keep(error);
   } finally {
-    downProject("primary_project_down", project);
-    downProject("replacement_project_down", alternate);
-    for (const [index, path] of [dirname(source), join(dirname(dirname(source)), alternate), scratch].entries()) {
-      try { rmSync(path, { recursive: true, force: true }); }
-      catch (error) { failures.push(StarterRuntimeProofError.diagnostic(error, substep("remove_proof_state", index))); }
+    failures.attempt(() => site("primary_project_down", "primary_project_down", () => downProject(project), { exit: true }));
+    failures.attempt(() => site("replacement_project_down", "replacement_project_down", () => downProject(alternate), { exit: true }));
+    const cleanup = [dirname(source), join(dirname(dirname(source)), alternate), scratch];
+    for (const [index, path] of cleanup.entries()) {
+      failures.attempt(() => site("remove_proof_state", "remove_proof_state",
+        () => rmSync(path, { recursive: true, force: true }), { labels: [index] }));
     }
-    // No foreign errors, causes, or captured output cross the proof boundary.
   }
-  if (failures.length) throw new StarterRuntimeProofError(failures);
-  mark("occupied proof completed in " + Math.round(performance.now() - started) + " ms");
+  failures.finish();
 }

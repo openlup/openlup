@@ -6,7 +6,7 @@ import { rm } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { env } from "node:process";
 import { imageReference, readCiImage } from "../ci-image-pull.mjs";
 import { browserContainerArguments, starterBrowserFailure } from "../starter-browser-ci.mjs";
@@ -18,77 +18,180 @@ import { assertCompleteStarter, assertUpgradeConflict, previousPublishedSet, mig
   starterSubscriptionOffer, reconcileSubscriptionOfferCustomization, starterEditorPorts, starterDocumentFiles,
   reconcileDocumentCustomization, proveDistributionCliConsumer, proveInstalledCatalogueUpgrade, starterCheckoutFiles, mergeStarterCareFile, needsStarterCareUpgrade } from "./distribution-cli-proof.ts";
 
-it("gives occupied starter proof failure sites distinct diagnostic labels", () => {
-  const file = new URL("./distribution-cli-proof.ts", import.meta.url);
-  const source = ts.createSourceFile(file.pathname, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true);
-  const roots = source.statements.filter(node => ts.isFunctionDeclaration(node) &&
-    ["proveStarterRuntimeUpgrade", "runStarterRuntimeUpgrade"].includes(node.name?.text ?? ""));
-  const helpers = new Set(["client"]);
-  const calls: ts.CallExpression[] = [];
-  function visit(node: ts.Node) {
-    if (ts.isFunctionDeclaration(node) && node.name && node.parameters[0]?.name.getText(source) === "step")
-      helpers.add(node.name.text);
-    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer &&
-      ts.isArrowFunction(node.initializer) && node.initializer.parameters[0]?.name.getText(source) === "step")
-      helpers.add(node.name.text);
-    if (ts.isCallExpression(node)) calls.push(node);
-    ts.forEachChild(node, visit);
-  }
-  roots.forEach(visit);
+const contractFiles = ["distribution-cli-proof.ts", "exact-set-qualification.mjs"];
+const contractPaths = contractFiles.map(name => join(dirname(fileURLToPath(import.meta.url)), name));
+const tokens = /^[a-z][a-z0-9_]*$/u;
+const contractRoots = [["proveStarterRuntimeUpgrade", "runStarterRuntimeUpgrade", "completeStarterRuntimeProof"],
+  ["prepareStarterCandidate", "prepareReleasedStarter", "qualifyCandidateOccupied"]];
+const adapters = new Set("runCandidate run requireExit rawSql checked compose composeFor composeWithExit container up downProject socket exec jobCount quantity digest sha256 recipe validateCandidateLockfile".split(" "));
+const operations = new Set(("assert mkdirSync readFileSync writeFileSync existsSync readdirSync renameSync rmSync realpathSync mkdtempSync cpSync linkSync " +
+  "fetch randomBytes randomUUID homedir isolatedConsumerEnv starterUpgradeSnapshot readCurrentPackManifest parsePackagesConfig qualificationReceipt " +
+  "prepareRuntimeHandoff resolveBrowserImage browserContainerArguments createHash spawnSync execFileSync JSON.parse JSON.stringify process.stdout.write import Date").split(" "));
+const pure = new Set("Array.isArray AbortSignal.timeout Object.assign Object.fromEntries Object.keys Object.values Buffer.concat Buffer.from Number String Boolean Math.round performance.now tmpdir join dirname resolve Set isIPv4".split(" "));
+const methods = new Set("at entries filter find includes indexOf map slice some every sort split startsWith endsWith trim toString test replace match push join equals get has values update digest toISOString".split(" "));
+const roles = new Set("identity retained verifier mark checkoutAction createSettledReceipt settledFacts readSettlementContinuity stoppedApplication upgrade identityOfFiles recover cutover fingerprint guard databaseIp tcpClient exerciseJobs refusal".split(" "));
+const delegates = new Set([...roles, ...contractRoots.flat(), "attempt", "keep", "finish"]);
+const asynchronous = new Set("fetch import json resolveBrowserImage proveStarterRuntimeUpgrade runStarterRuntimeUpgrade qualifyCandidateOccupied checkoutAction createSettledReceipt readSettlementContinuity".split(" "));
 
-  // Track each enclosing loop so a step must name every iteration it can run in.
-  function loopIndices(site: ts.Node): string[] {
-    const indices: string[] = [];
-    for (let node = site.parent; node; node = node.parent) {
-      if (!ts.isForOfStatement(node)) {
-        if (ts.isForStatement(node) || ts.isForInStatement(node) || ts.isWhileStatement(node) || ts.isDoStatement(node))
-          indices.push("<unlabelled loop>");
-        continue;
-      }
-      const binding = ts.isVariableDeclarationList(node.initializer) ? node.initializer.declarations[0]?.name : undefined;
-      const first = binding && ts.isArrayBindingPattern(binding) ? binding.elements[0] : undefined;
-      const entries = ts.isCallExpression(node.expression) && ts.isPropertyAccessExpression(node.expression.expression)
-        && node.expression.expression.name.text === "entries";
-      indices.push(entries && first && ts.isBindingElement(first) && ts.isIdentifier(first.name)
-        ? first.name.text : "<unlabelled loop>");
+function scanDiagnosticContract(texts: string[]) {
+  const compilerOptions = { allowJs: true, noLib: true, noResolve: true };
+  const host = ts.createCompilerHost(compilerOptions);
+  host.getSourceFile = name => {
+    const index = contractPaths.indexOf(name);
+    return index < 0 ? undefined : ts.createSourceFile(name, texts[index]!, ts.ScriptTarget.Latest, true);
+  };
+  const program = ts.createProgram(contractPaths, compilerOptions, host), checker = program.getTypeChecker();
+  const issues: string[] = [], reasons = new Set<string>();
+  const counts = [0, 0];
+  let constructors = 0;
+  for (const [index, path] of contractPaths.entries()) {
+    const source = program.getSourceFile(path)!;
+    const roots = new Map<string, ts.Node>(), sites = new Map<ts.Node, number>(), calls = new Map<string, Set<string>>();
+    const text = (node?: ts.Node) => node?.getText(source) ?? "";
+    function issue(rule: string, node: ts.Node, label = "") {
+      issues.push(`${rule} ${contractFiles[index]}:${source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1} ${tokens.test(label) ? label : ""}`.trim());
     }
-    return indices;
+    function name(node: ts.Node) {
+      if (ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node)) return text(node.name);
+      return node.parent && ts.isVariableDeclaration(node.parent) && node.parent.initializer === node ? text(node.parent.name) : "";
+    }
+    function declaration(node: ts.Node) {
+      return (ts.isShorthandPropertyAssignment(node.parent) ? checker.getShorthandAssignmentValueSymbol(node.parent)
+        : checker.getSymbolAtLocation(node))?.declarations?.[0];
+    }
+    function values(node?: ts.Node): ts.Node[] {
+      if (!node) return [];
+      if (ts.isSpreadElement(node) || ts.isNonNullExpression(node)) return values(node.expression);
+      if (ts.isArrayLiteralExpression(node)) return node.elements.flatMap(values);
+      if (ts.isConditionalExpression(node)) return [...values(node.whenTrue), ...values(node.whenFalse)];
+      const binding = ts.isIdentifier(node) ? declaration(node) : undefined;
+      return binding && ts.isVariableDeclaration(binding) && binding.initializer ? values(binding.initializer) : [node];
+    }
+    function loopIndices(ancestors: ts.Node[]) {
+      return ancestors.filter(ts.isForOfStatement).map(loop => {
+        const init = loop.initializer;
+        const binding = ts.isVariableDeclarationList(init) && init.declarations[0]?.name;
+        const first = binding && ts.isArrayBindingPattern(binding) && binding.elements[0];
+        return first && ts.isBindingElement(first) && text(loop.expression).endsWith(".entries()") ? text(first.name) : "<ordinal>";
+      });
+    }
+    function options(node?: ts.Node): ts.Node[] {
+      if (node && ts.isObjectLiteralExpression(node)) return node.properties.flatMap(property =>
+        ts.isSpreadAssignment(property) ? options(property.expression)
+          : "name" in property && text(property.name) === "labels" ? values(ts.isPropertyAssignment(property) ? property.initializer : property.name) : []);
+      const binding = node && declaration(node);
+      return binding && ts.isVariableDeclaration(binding) ? options(binding.initializer) : [];
+    }
+    function validLabels(labels: ts.Node[], loops: string[]) {
+      return loops.every(loop => labels.some(label => text(label) === loop)) && labels.every(label =>
+        ts.isStringLiteral(label) ? tokens.test(label.text) : ts.isNumericLiteral(label) || ts.isIdentifier(label) &&
+          (loops.includes(label.text) || ((ts.isParameter(declaration(label) ?? label) || ts.isBindingElement(declaration(label) ?? label) && label.text === "labels") && /^(step|role|clientIndex|releaseIndex|labels|ordinals)$/u.test(label.text))));
+    }
+    function walk(node: ts.Node, ancestors: ts.Node[] = []) {
+      const parent = node.parent;
+      const root = contractRoots[index]!.includes(name(node)) || ts.isBlock(node) && ts.isIfStatement(parent) && parent.thenStatement === node && text(parent.expression) === "tag === '--candidate-occupied'";
+      if (root) roots.set(name(node) || "occupied_cli", node);
+      const scope = ancestors.find(ancestor => [...roots.values()].includes(ancestor));
+      const callback = ancestors.find(ancestor => sites.has(ancestor)), lexical = ancestors.findLast(ancestor => (scope && adapters.has(name(ancestor))) ||
+        index === 1 && ["runCandidate", "sha256", "validateCandidateLockfile"].includes(name(ancestor)));
+      if (scope && ts.isThrowStatement(node) && !(lexical && ["run", "requireExit"].includes(name(lexical)))) issue("unclassified_throw", node);
+      if (ts.isIdentifier(node) && node.text === "StarterRuntimeProofError") {
+        if (ts.isNewExpression(parent) && parent.expression === node) {
+          constructors++;
+          if (!ancestors.some(ancestor => name(ancestor) === "proofError")) issue("constructor", node);
+        } else if (!(ts.isClassDeclaration(parent) || ts.isImportSpecifier(parent) && parent.name === node || ts.isTypeReferenceNode(parent) ||
+          ts.isBinaryExpression(parent) && parent.operatorToken.kind === ts.SyntaxKind.InstanceOfKeyword)) issue("constructor_alias", node);
+      }
+      if (ts.isIdentifier(node) && node.text === "site" && !(ts.isImportSpecifier(parent) && parent.name === node || ts.isFunctionDeclaration(parent) ||
+        ts.isCallExpression(parent) && parent.expression === node)) issue("site_alias", node);
+      if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
+        const args = node.arguments ?? [], callee = text(node.expression), member = callee.split(".").at(-1)!;
+        const loops = loopIndices(ancestors);
+        if (callee === "site") {
+          const [step, reason, operation, config] = args, binding = declaration(node.expression);
+          const shared = binding && (ts.isImportSpecifier(binding)
+            ? text(binding.parent.parent.parent.moduleSpecifier) === "'./distribution-cli-proof.ts'"
+            : ts.isFunctionDeclaration(binding) && binding.parent === source);
+          if (!step || !reason || !ts.isStringLiteral(step) || !ts.isStringLiteral(reason) || !tokens.test(step.text) ||
+            !tokens.test(reason.text) || !operation || !ts.isArrowFunction(operation) || callback || !shared) issue("site_identity", node);
+          else {
+            if (reasons.has(reason.text)) issue("duplicate_reason", node, reason.text);
+            reasons.add(reason.text); counts[index]!++;
+            if (!validLabels(options(config), loops)) issue("labels", node, reason.text);
+            if (reason.text === "occupied_entry_invariant") {
+              if (!ts.isCallExpression(operation.body) || text(operation.body.expression) !== "qualifyCandidateOccupied" ||
+                args.length !== 3 || !declaration(operation.body.expression)) issue("sentinel", node);
+            } else sites.set(operation, 0);
+          }
+        } else if (scope || lexical) {
+          const terminal = operations.has(callee) || /^(assert\.|.*\.json$|(?:handoff|rotated)\.cleanup$)/u.test(callee) ||
+            adapters.has(callee) && callee !== "checked" && callee !== "requireExit";
+          const resolved = !ts.isIdentifier(node.expression) || declaration(node.expression) || ["assert", "fetch", "Date"].includes(callee);
+          if (terminal && resolved) {
+            if (callback) sites.set(callback, sites.get(callback)! + 1);
+            else if (!lexical) issue("unwrapped_operation", node, member);
+          } else if (!pure.has(callee) && !methods.has(member) && !delegates.has(member) &&
+            !["checked", "requireExit", "ProofFailures", "refuse"].includes(callee) && !(callee === "process.stderr.write" && text(args[0]) === "error.message + '\\n'")) issue("unknown_callee", node, member);
+          if (asynchronous.has(member) && !(callback ? ts.isAwaitExpression(callback.parent.parent) || ts.isReturnStatement(callback.parent.parent)
+            : ts.isAwaitExpression(parent) || callee === "qualifyCandidateOccupied")) issue("unawaited", node, member);
+          if (roles.has(callee) || callee === "prepareStarterCandidate") {
+            const labels = values(args[callee === "prepareStarterCandidate" ? 4 : 0]);
+            if (["mark", "tcpClient", "exerciseJobs", "identityOfFiles", "verifier"].includes(callee)) labels.push(...args.slice(1, callee === "mark" ? 1 : undefined).filter(arg => loops.includes(text(arg))));
+            if (callee === "mark") labels.push(...args.slice(2));
+            const role = labels.find(ts.isStringLiteral)?.text;
+            if (!validLabels(labels, loops) || callee === "prepareStarterCandidate" && role !== "from" && role !== "to") issue("forwarded_labels", node, callee);
+            const used = calls.get(callee) ?? new Set();
+            if (role && used.has(role)) issue("duplicate_role", node, callee);
+            if (role) { used.add(role); calls.set(callee, used); }
+          }
+        }
+      }
+      ts.forEachChild(node, child => walk(child, [...ancestors, node]));
+    }
+    if (program.getSyntacticDiagnostics(source).length) issue("syntax", source);
+    walk(source);
+    for (const [callback, operations] of sites) {
+      const siteCall = callback.parent;
+      const code = ts.isCallExpression(siteCall) && siteCall.arguments[1];
+      const decision = code && ts.isStringLiteral(code) ? code.text : "";
+      const decisions = ["receipt_comparison", "settlement_order_input", "starter_dependency_preparation_failed",
+        "candidate_locked_package_version", "candidate_generated_lockfile_normalize", "candidate_artifact_lock_binding"];
+      if (operations !== (decisions.includes(decision) ? 0 : 1))
+        issue("operation_count", callback, decision);
+    }
+    for (const root of [...contractRoots[index]!, ...(index === 1 ? ["occupied_cli"] : [])]) {
+      const node = roots.get(root);
+      if (!node || !/\b(?:site|runStarterRuntimeUpgrade|completeStarterRuntimeProof)\(/u.test(text(node))) issue("empty_root", node ?? source);
+    }
+    if (!counts[index] || !sites.size) issue("empty_census", source);
   }
+  if (constructors !== 1) issues.push("constructor_count");
+  return { issues, counts };
+}
 
-  const names: string[] = [], invalid: string[] = [];
-  function record(label: ts.Node | undefined, prefix = "") {
-    if (label && ts.isStringLiteral(label) && /^[a-z][a-z0-9_]*$/u.test(label.text)) names.push(prefix + label.text);
-    else invalid.push(label?.getText(source) ?? "<missing label>");
+it("binds proof diagnostics to literal sites and rejects contract mutations", () => {
+  const sources = contractPaths.map(path => readFileSync(path, "utf8"));
+  const clean = scanDiagnosticContract(sources);
+  expect(clean.issues).toEqual([]);
+  for (const [index, before, after, rule] of [
+    [0, '"candidate_upgrade_snapshot", "candidate_upgrade_snapshot"', '"candidate_upgrade_snapshot", "predecessor_upgrade_snapshot"', "duplicate_reason"],
+    [0, 'const predecessor = originMetadata?.sourceRevision;', 'throw new StarterRuntimeProofError([]);', "constructor"],
+    [0, 'const originText = site("predecessor_origin_read", "predecessor_origin_read",\n      () => readFileSync(join(from, ".starter-origin.json"), "utf8"));', 'const originBytes = readFileSync(join(from, ".starter-origin.json"), "utf8"); const originText = site("predecessor_origin_read", "predecessor_origin_read", () => originBytes);', "unwrapped_operation"],
+    [1, "() => run('tar',", "() => (run('git', ['archive']), run('tar',", "operation_count"],
+    [0, 'site("predecessor_identity"', 'site(predecessor', "site_identity"],
+    [1, '() => qualifyCandidateOccupied(', '() => fetch(', "sentinel"],
+    [0, 'await runStarterRuntimeUpgrade(from, to, port);', 'unknownCall();', "unknown_callee"],
+    [0, 'await runStarterRuntimeUpgrade(from, to, port);', 'runStarterRuntimeUpgrade(from, to, port);', "unawaited"],
+    [0, 'await runStarterRuntimeUpgrade(from, to, port);\n  if (!deferCompletion) completeStarterRuntimeProof(started);', '', "empty_root"],
+    [0, 'const labels = [role, releaseIndex, index], name', 'const labels = [role, releaseIndex], name', "labels"],
+    [0, 'exerciseJobs("restored_bind"', 'exerciseJobs("missing_bind"', "duplicate_role"],
+    [0, 'labels: [faultIndex, modeIndex], exit: true', 'labels: [source, faultIndex, modeIndex], exit: true', "labels"],
+  ] as const) {
+    const modified = sources[index]!.replace(before, after);
+    expect(modified).not.toBe(sources[index]);
+    const issues = scanDiagnosticContract(sources.with(index, rule === "operation_count" ? modified.replace("'-C', source]),", "'-C', source])),") : modified)).issues;
+    expect(issues.some(issue => issue.startsWith(rule + " ")) && !issues.some(issue => issue.startsWith("syntax ")), rule).toBe(true);
   }
-  for (const call of calls) {
-    const helper = call.expression.getText(source);
-    if (!helpers.has(helper) && helper !== "StarterRuntimeProofError.diagnostic") continue;
-    const label = call.arguments[helper === "StarterRuntimeProofError.diagnostic" ? 1 : 0];
-    if (helper === "substep") {
-      const forwarded = label?.getText(source) === "step";
-      record(call.arguments[forwarded ? 1 : 0], forwarded ? "suffix." : "");
-      const parts = call.arguments.slice(forwarded ? 2 : 1).map(part => part.getText(source));
-      const indices = loopIndices(call);
-      if (new Set(indices).size !== indices.length || indices.some(index => !parts.includes(index)) ||
-        parts.some(part => !/^\d+$/u.test(part) && !indices.includes(part)))
-        invalid.push(call.getText(source));
-    } else if (label && ts.isCallExpression(label) && label.expression.getText(source) === "substep") {
-      // The nested call above owns this label.
-    } else if (label && ["step", "result.step"].includes(label.getText(source))) {
-      if (helper === "fail") {
-        const reason = call.arguments[2];
-        if (reason && ts.isConditionalExpression(reason)) {
-          record(reason.whenTrue, "forwarded.");
-          record(reason.whenFalse, "forwarded.");
-        } else record(reason, "forwarded.");
-      }
-    } else {
-      if (loopIndices(call).length) invalid.push(call.getText(source));
-      record(label);
-    }
-  }
-  expect({ foundSites: names.length > 0, labels: names, invalid })
-    .toEqual({ foundSites: true, labels: [...new Set(names)], invalid: [] });
 });
 
 const directories: string[] = [];
