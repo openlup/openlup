@@ -33,9 +33,10 @@ import { pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { PACKAGES_CONFIG_PATH, RELEASE_VERSION, SET_VERSION, parsePackagesConfig, releaseVersionAbove, type PackageEntry, type PackagesConfig } from "./package-manifest-policy.ts";
 
-import { readChangelogFragments, type ChangelogFragment } from "./changelog-fragments.ts";
+import { parseChangelogFragment, readChangelogFragments, type ChangelogFragment } from "./changelog-fragments.ts";
 import { documentationGit } from "../documentation-routing.ts";
-import { assembleUpgradePage, rebaseCoreGuideLinks, planReleaseGuide, previousCoreTag, upgradePagePath } from "./release-docs-pass.ts";
+import { STARTER_SECTION_HEADING, addUpgradeIndexLink, assembleUpgradePage, rebaseCoreGuideLinks, planReleaseGuide, previousCoreTag, upgradePagePath } from "./release-docs-pass.ts";
+import { RELEASE_INDEX_PATH, deriveReleaseIndexEntry, formatReleaseIndex, parseReleaseIndex, updateReleaseIndex } from "./release-index.ts";
 
 type Json = Record<string, unknown>;
 type Edit = { path: readonly string[]; from: string | number; to: string | number };
@@ -71,6 +72,54 @@ export function setVersionFields(file: string, text: string, fields: readonly st
   return setStringFields(file, text, fields.map((path) => ({ path, from, to })));
 }
 
+export const CHANGELOG_MAX_RETAINED_RELEASES = 3;
+const DEFAULT_HISTORY_HEADER = [
+  "# Changelog history",
+  "",
+  "Releases moved verbatim out of the packed `CHANGELOG.md`, which keeps the current release and the two previous ones.",
+  "",
+  "",
+].join("\n");
+
+/**
+ * Keeps the current release and the two previous releases (`maxRetainedReleases = 3`) in `CHANGELOG.md`,
+ * moving older `## [...]` sections verbatim to the top of `CHANGELOG-HISTORY.md`.
+ */
+export function rotateChangelogHistory(
+  changelogText: string,
+  historyText: string | undefined,
+  maxRetainedReleases = CHANGELOG_MAX_RETAINED_RELEASES,
+): { changelog: string; history: string | undefined; rotated: boolean } {
+  if (!Number.isSafeInteger(maxRetainedReleases) || maxRetainedReleases < 1) {
+    throw new RangeError(`maxRetainedReleases must be an integer >= 1 (received ${String(maxRetainedReleases)})`);
+  }
+  const unreleased = UNRELEASED.exec(changelogText);
+  if (!unreleased) return { changelog: changelogText, history: historyText, rotated: false };
+  const afterUnreleased = unreleased.index + unreleased[0].length;
+  const rest = changelogText.slice(afterUnreleased);
+  const sectionOffsets = [...rest.matchAll(/^## \[/gmu)].map((match) => afterUnreleased + match.index!);
+  if (sectionOffsets.length <= maxRetainedReleases) {
+    return { changelog: changelogText, history: historyText, rotated: false };
+  }
+  const cutIndex = sectionOffsets[maxRetainedReleases]!;
+  const kept = changelogText.slice(0, cutIndex).replace(/\n+$/u, "\n");
+  const overflow = changelogText.slice(cutIndex);
+  const separatedOverflow = overflow.endsWith("\n\n") ? overflow : overflow.endsWith("\n") ? `${overflow}\n` : `${overflow}\n\n`;
+  let updatedHistory: string;
+  if (historyText === undefined || !historyText.trim()) {
+    updatedHistory = `${DEFAULT_HISTORY_HEADER}${overflow.endsWith("\n") ? overflow : `${overflow}\n`}`;
+  } else {
+    const firstHistorySection = /^## /mu.exec(historyText);
+    if (firstHistorySection) {
+      updatedHistory = `${historyText.slice(0, firstHistorySection.index)}${separatedOverflow}${historyText.slice(firstHistorySection.index)}`;
+    } else {
+      const base = historyText.endsWith("\n\n") ? historyText : historyText.endsWith("\n") ? `${historyText}\n` : `${historyText}\n\n`;
+      updatedHistory = `${base}${overflow.endsWith("\n") ? overflow : `${overflow}\n`}`;
+    }
+  }
+  return { changelog: kept, history: updatedHistory, rotated: true };
+}
+
 /** `text` with the Unreleased entries under a new `## [<version>]` heading that opens with the "Publishable" line. */
 export function addReleaseSection(file: string, text: string, version: string, tag: string, fragments: readonly ChangelogFragment[] = []): string {
   const unreleased = UNRELEASED.exec(text);
@@ -80,7 +129,23 @@ export function addReleaseSection(file: string, text: string, version: string, t
   const next = /^## /mu.exec(text.slice(end));
   const history = next ? end + next.index : text.length;
   const legacy = text.slice(end, history);
-  const notes = fragments.length === 0 ? legacy : [legacy, ...fragments.map(fragment => rebaseCoreGuideLinks(fragment, "docs/guide/"))].filter((body) => body.trim()).map((body) => `${body.trimEnd()}\n\n`).join("");
+  let notes = legacy;
+  if (fragments.length > 0) {
+    const npmParts: string[] = [];
+    const starterParts: string[] = [];
+    for (const fragment of fragments) {
+      const { meta } = parseChangelogFragment(fragment);
+      const rebased = rebaseCoreGuideLinks(fragment, "docs/guide/");
+      if (!rebased.trim()) continue;
+      if (meta.audience === "starter") starterParts.push(`${rebased.trimEnd()}\n\n`);
+      else npmParts.push(`${rebased.trimEnd()}\n\n`);
+    }
+    notes = [
+      ...(legacy.trim() ? [`${legacy.trimEnd()}\n\n`] : []),
+      ...npmParts,
+      ...(starterParts.length ? [`${STARTER_SECTION_HEADING}\n\n`, ...starterParts] : []),
+    ].join("");
+  }
   return `${text.slice(0, end)}## [${version}]\n\n- Publishable on the npm \`latest\` dist-tag as \`${version}\`, from tag\n  \`${tag}\`.\n\n${notes}${text.slice(history)}`;
 }
 
@@ -142,7 +207,12 @@ function bumpFiles(root: string, config: PackagesConfig, entries: readonly Packa
     if (own && entry.publish) {
       const changelog = `${entry.directory}/CHANGELOG.md`;
       const notes = readChangelogFragments(root, entry.directory);
-      writes.push([changelog, addReleaseSection(changelog, read(changelog), version, `openlup-${entry.directory.slice("packages/".length)}-v${version}`, notes)]);
+      const updatedChangelog = addReleaseSection(changelog, read(changelog), version, `openlup-${entry.directory.slice("packages/".length)}-v${version}`, notes);
+      const historyPath = `${entry.directory}/CHANGELOG-HISTORY.md`;
+      const existingHistory = existsSync(join(root, historyPath)) ? read(historyPath) : undefined;
+      const rotation = rotateChangelogHistory(updatedChangelog, existingHistory);
+      writes.push([changelog, rotation.changelog]);
+      if (rotation.rotated && rotation.history !== undefined) writes.push([historyPath, rotation.history]);
       fragments.push(...notes);
       consumed.push(...notes.map(({ path }) => path));
       // The growth baseline is the version this one replaces, as published.
@@ -198,14 +268,38 @@ export function bumpSet(root: string, version: string, packed: PublishedPackedBy
   const page = upgradePagePath(version);
   if (lstatSync(join(root, page), { throwIfNoEntry: false })) throw new Error(`${page}: upgrade page already exists`);
   const planned = bumpFiles(root, config, publishable, from, version, packed);
-  const upgrade = assembleUpgradePage({ root, version, since: previousCoreTag(root), fragments: planned.fragments });
+  const since = previousCoreTag(root);
+  const upgrade = assembleUpgradePage({ root, version, since, fragments: planned.fragments });
   for (const violation of upgrade.violations) console.warn(`release:bump: warning: ${violation}`);
   planned.writes.push([page, upgrade.text]);
+  const existingReleaseIndex = existsSync(join(root, RELEASE_INDEX_PATH))
+    ? parseReleaseIndex(readFileSync(join(root, RELEASE_INDEX_PATH), "utf8"))
+    : undefined;
+  const releaseIndexEntry = deriveReleaseIndexEntry({
+    root,
+    version,
+    previousVersion: from,
+    since,
+    fragments: planned.fragments,
+  });
+  planned.writes.push([RELEASE_INDEX_PATH, formatReleaseIndex(updateReleaseIndex(existingReleaseIndex, releaseIndexEntry))]);
   const repositoryRoot = resolve(root);
-  const guide = planReleaseGuide(repositoryRoot, version, { [join(repositoryRoot, page)]: upgrade.text });
+  const upgradeIndexPath = "packages/core/docs/guide/upgrade/README.md";
+  const upgradeIndexFile = join(repositoryRoot, upgradeIndexPath);
+  const pendingGuide: Record<string, string> = { [join(repositoryRoot, page)]: upgrade.text };
+  const staged = new Set([page]);
+  if (existsSync(upgradeIndexFile)) {
+    const currentIndex = readFileSync(upgradeIndexFile, "utf8");
+    const updatedIndex = addUpgradeIndexLink(currentIndex, version);
+    if (updatedIndex !== currentIndex) {
+      planned.writes.push([upgradeIndexPath, updatedIndex]);
+      pendingGuide[upgradeIndexFile] = updatedIndex;
+      staged.add(upgradeIndexPath);
+    }
+  }
+  const guide = planReleaseGuide(repositoryRoot, version, pendingGuide);
   for (const violation of guide.violations) console.warn(`release:bump: warning: ${violation}`);
   const writes = new Map(planned.writes);
-  const staged = new Set([page]);
   for (const [file, source] of guide.writes) {
     const path = relative(repositoryRoot, file).split(sep).join("/");
     writes.set(path, source);
