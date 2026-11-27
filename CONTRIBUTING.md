@@ -1281,13 +1281,13 @@ suite path itself). Hardcoded control suites (`tests/postgres/nativeStoreForward
 `tests/postgres/nativeStoreForwardCatalog.noServiceRole.test.ts`,
 `tests/postgres/reviewedBatchForwards.test.ts`, and
 `tests/postgres/subscriptionExactInstallation.test.ts`), `PG_BASE_INPUTS`,
-`PG_AXES`, `SHARED_INPUTS`, `ROOT_DOC_FILES`, `NON_BAILOUT_SCRIPTS`, and
-`PENDING_POSTGRES_SUITE_CLOSURES` stay hardcoded in
+`PG_AXES`, `SHARED_INPUTS`, `ROOT_DOC_FILES`, and `NON_BAILOUT_SCRIPTS` stay
+hardcoded in
 [ci-test-scope.mjs](scripts/ci-test-scope.mjs) (`scripts/ci-test-scope.mjs` is
 a `NATIVE_CATALOG_CONTROLS` control file). `loadPostgresSuiteClosures` parses
 the registry fail-closed with a duplicate-key JSON scanner and rejects syntax
 errors, duplicate keys, unknown axes, broad `tests/postgres/` prefixes,
-unsorted keys/inputs, or collisions with control or pending suites. When a PR
+unsorted keys/inputs, or collisions with control suites. When a PR
 adds SQL under `db/platform/migrations/` or `supabase/migrations/`,
 [reviewed-platform-forward.ts](scripts/reviewed-platform-forward.ts) enforces
 that [config/ci-postgres-suite-closures.json](config/ci-postgres-suite-closures.json)
@@ -2071,7 +2071,10 @@ npm run landing:merge
 If a newly added SQL migration uses a slot at or before the latest timestamp on
 `origin/main`, the helper stops before builds and prints the next free UTC slot.
 Run `npm run landing:merge -- --re-slot` to opt into moving that migration and
-updating its registries and SQL mirror. An authored reference to the old filename
+updating its registries and SQL mirror, or pass
+`--target <YYYYMMDDHHMMSS>` with `--re-slot` to place the first unlanded plain
+migration at a specific strictly-later UTC slot (advancing any remaining plain
+migrations sequentially from there). An authored reference to the old filename
 in code, tests, SQL, or documentation makes this operation refuse with file and
 line locations. The changed SQL remains subject to integration review.
 

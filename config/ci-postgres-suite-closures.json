@@ -52,11 +52,25 @@
       "tests/postgres/catalogPublicationFixture.ts",
       "tests/postgres/customerAccountMutations.fixture.ts"
     ],
+    "tests/postgres/catalogAdmissionOwnerWrite.test.ts": [
+      "@starter",
+      "tests/postgres/catalogAdmissionOwnerWrite.fixture.ts",
+      "tests/postgres/catalogPublicationFixture.ts",
+      "tests/postgres/subscriptionLifecycleClosureFixture.ts",
+      "tests/postgres/subscriptionNativeFixture.ts"
+    ],
     "tests/postgres/catalogAdmissionPrelock.test.ts": [
       "@starter",
       "tests/postgres/catalogPublicationFixture.ts",
       "tests/postgres/destinationDocumentFixture.ts",
       "tests/postgres/destinationReceiptFixture.ts",
+      "tests/postgres/subscriptionLifecycleClosureFixture.ts",
+      "tests/postgres/subscriptionNativeFixture.ts"
+    ],
+    "tests/postgres/catalogAdmissionRuntimeCommit.test.ts": [
+      "@starter",
+      "tests/postgres/catalogAdmissionOwnerWrite.fixture.ts",
+      "tests/postgres/catalogPublicationFixture.ts",
       "tests/postgres/subscriptionLifecycleClosureFixture.ts",
       "tests/postgres/subscriptionNativeFixture.ts"
     ],
@@ -845,6 +859,15 @@
     "tests/postgres/qualifiedRuntimeLockCompletion.test.ts": [
       "tests/postgres/destinationDocumentFixture.ts",
       "tests/postgres/destinationReceiptFixture.ts",
+      "tests/postgres/subscriptionNativeFixture.ts"
+    ],
+    "tests/postgres/renewalOrderDestinationV2.test.ts": [
+      "@src",
+      "tests/postgres/customerAccountMutations.fixture.ts",
+      "tests/postgres/destinationDocumentFixture.ts",
+      "tests/postgres/destinationReceiptFixture.ts",
+      "tests/postgres/orderMoneyV2Storage.fixture.ts",
+      "tests/postgres/renewalOrderDestinationV2.fixture.ts",
       "tests/postgres/subscriptionNativeFixture.ts"
     ],
     "tests/postgres/retainedClientSubscriptionImport.test.ts": [],

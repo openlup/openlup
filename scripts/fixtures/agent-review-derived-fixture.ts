@@ -11,6 +11,7 @@ import { carrierLocale, landingMerge } from '../agent-review-landing.mjs';
 import { captureCommittedReviewCandidate, proveReviewIntegration } from '../agent-review-session.mjs';
 import { fixtureNpmCli, linkFixtureInstallation, localFixtureEnvironment } from './landing-test-environment.ts';
 import { checkPlatformMigrationProjection } from '../packages/platform-migration-projection.ts';
+import { selectPlatformMigrationManifest, type PlatformMigrationManifest } from '../platform-migration-manifest.ts';
 
 export const CATALOGUE = 'config/openlup-publication-catalog.json';
 export const SQL_REFERENCE = 'packages/core/docs/guide/reference/sql.md';
@@ -36,8 +37,8 @@ export const json = (value: unknown) => JSON.stringify(value, null, 2) + '\n';
 
 const runLandingMerge = landingMerge as (
   root: string,
-  options?: { reSlot?: boolean; runCommand?: (command: string, args: string[]) => unknown },
-) => Promise<{ head: string; main: string; inventoryRefreshed: boolean }>;
+  options?: { reSlot?: boolean; verify?: boolean; target?: string; runCommand?: (command: string, args: string[]) => unknown },
+) => Promise<{ head: string; main: string; inventoryRefreshed: boolean; verified?: boolean }>;
 
 export interface DerivedFixture {
   root: string;
@@ -252,8 +253,29 @@ export async function createDerivedFixture(options: { runInitialLanding?: boolea
           // Real Docker PostgreSQL measurement is witnessed in scripts/agent-review-derived-inventory.test.ts;
           // keep this unlisted scanner suite Docker-free while preserving exact current-only envelope semantics.
           const env = inventoryEnvelope(state.read(INVENTORY_PATH));
-          const nextCurrent = structuredClone(env.value.current) as { profiles: Record<string, { objectInventorySha256: string }> };
+          const manifest = JSON.parse(state.read(MIGRATION_REGISTRIES[0])) as PlatformMigrationManifest;
+          const selections = {
+            legacy: selectPlatformMigrationManifest(manifest, 'legacy'),
+            bootstrap: selectPlatformMigrationManifest(manifest, 'qualified-v2', { migrationIsBootstrap: true, hasRestore: true }),
+            separate: selectPlatformMigrationManifest(manifest, 'qualified-v2', { migrationIsBootstrap: false, hasRestore: true }),
+            'admin-managed': selectPlatformMigrationManifest(manifest, 'qualified-admin', { roleMode: 'installer-managed' }),
+            'admin-operator': selectPlatformMigrationManifest(manifest, 'qualified-admin', { roleMode: 'operator-provisioned' }),
+          };
+          const tailAnchor = 'db/platform/migrations/20261109150000_subscription_auto_resume_paid_history.sql';
+          const nextCurrent = structuredClone(env.value.current) as {
+            profiles: Record<string, {
+              count: number;
+              exactTailCount: number;
+              objectInventorySha256: string;
+              tail: { file: string; sha256: string }[];
+            }>;
+          };
           for (const [profile, entry] of Object.entries(nextCurrent.profiles)) {
+            const plan = selections[profile as keyof typeof selections];
+            const tail = [plan.baseline, ...plan.forward].reverse();
+            entry.count = tail.length;
+            entry.exactTailCount = tail.findIndex(({ file }) => file === tailAnchor);
+            entry.tail = tail;
             entry.objectInventorySha256 = createHash('sha256')
               .update(`derived-fixture:${profile}:${state.read(MIGRATION_REGISTRIES[0])}`)
               .digest('hex');

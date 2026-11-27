@@ -184,7 +184,6 @@ const validPgInputPath = path => {
 };
 export function readPgSuiteClosures(source, {
   controlSuites = CONTROL_POSTGRES_SUITES,
-  pendingSuites = [],
   validAxes = PG_CLOSURE_AXES,
 } = {}) {
   check(typeof source === 'string' && Buffer.byteLength(source) <= 1024 * 1024 && !source.includes('\uFFFD') && !source.includes('\0'), 'unreadable or oversized blob');
@@ -194,7 +193,6 @@ export function readPgSuiteClosures(source, {
   const suites = closures.suites;
   check(suites && typeof suites === 'object' && !Array.isArray(suites), 'pg suite closures map');
   const controlSet = toSet(controlSuites, CONTROL_POSTGRES_SUITES);
-  const pendingSet = toSet(pendingSuites, []);
   const axisSet = toSet(validAxes, PG_CLOSURE_AXES);
   const keys = Object.keys(suites);
   check(keys.every((entry, index) => index === 0 || compare(keys[index - 1], entry) < 0), 'pg suite closures key order');
@@ -202,7 +200,6 @@ export function readPgSuiteClosures(source, {
     check(PG_SUITE_KEY.test(suite) && !suite.includes('..') && !suite.includes('//') && !suite.includes('\\') &&
       !suite.split('/').some(part => part === '.' || part === '..' || part === '' || part.startsWith('.')), `pg suite closures invalid suite key: ${suite}`);
     check(!controlSet.has(suite), `pg suite closures control suite collision: ${suite}`);
-    check(!pendingSet.has(suite), `pg suite closures pending suite collision: ${suite}`);
     const inputs = suites[suite];
     check(Array.isArray(inputs), `pg suite closures inputs array: ${suite}`);
     check(inputs.every((entry, index) => typeof entry === 'string' && (index === 0 || compare(inputs[index - 1], entry) < 0)), `pg suite closures input order: ${suite}`);
