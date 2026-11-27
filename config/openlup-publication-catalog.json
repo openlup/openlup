@@ -11826,6 +11826,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/subscriptions/postgresProviderRenewalBinding.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/subscriptions/postgresStockWaitStore.test.ts",
       "class": "public-output"
     },
