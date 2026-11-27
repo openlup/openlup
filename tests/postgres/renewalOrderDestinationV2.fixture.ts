@@ -71,7 +71,7 @@ export async function subject({ owner, runtime }: Pick<JourneyInstallation, "own
   return { root, ctx, checkout, ny, origin, pair, reservation };
 }
 
-export function edit(db: Db, ctx: Context, previous: string,
+export function edit(db: Db, ctx: Context, previous: string | null,
   service = { ...testServicePin, deliverySelectionRef: "selected-west", adapterRevision: "adapter-west" }) {
   const original = {
     address: { line1: "Sample Avenue", city: "Sacramento", postalCode: "95814", countryCode: "US", subdivisionCode: "CA" },

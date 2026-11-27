@@ -1,0 +1,3 @@
+- Destination v2 now verifies checkout acquisition before returning an inherited subscription selection or accepting a fresh edit. If the operation returns `destination_evidence_unavailable` on `subscriptionId`, repeat the authorized subscription lookup and resolve the evidence with the subscription owner before retrying the edit with the verified current revision.
+- Checkout registration replays the original checkout binding. If it returns `destination_order_binding_occupied`, recover the original binding through the authorized order workflow. The document privacy export reports incomplete coverage when it withholds unverified order pins.
+- The renewal destination writer has no production caller.
