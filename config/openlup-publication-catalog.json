@@ -1658,6 +1658,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/browser/route-stub.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/browser/storefront-anchors.spec.ts",
       "class": "public-output"
     },
