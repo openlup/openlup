@@ -28,6 +28,10 @@ export {
 } from "./providerError.js";
 
 const PRODUCT_PACKS_SEGMENT = "packs";
+const MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
+const BASE_RETRY_BACKOFF_MS = 25;
+const MAX_RETRY_BACKOFF_MS = 1_000;
+const MAX_RETRY_AFTER_MS = 10_000;
 
 export interface OmnipackClientConfig {
   baseUrl: string;
@@ -181,13 +185,16 @@ async function requestJson(
     let responseBodyRead: boolean | undefined;
     const dispatchFacts = () => operation === "createOrder" ? { submissionAttempted: submitted,
       ...(responseBodyRead !== undefined ? { responseBodyRead } : {}) } : {};
+    let retryDelayMs: number | null = null;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), config.timeoutMs);
     try {
       const base = new URL(config.baseUrl);
       const url = new URL(path, base);
       if (url.origin !== base.origin || url.username || url.password || url.protocol !== "https:") throw new Error("Invalid fulfillment path");
-      const response = await fetchWithTimeout(fetchImpl, url, config, init, () => { submitted = true; });
+      const response = await fetchWithSignal(fetchImpl, url, config, init, controller.signal, () => { submitted = true; });
       responseBodyRead = false;
-      const body = await readJsonBody(response).then(value => { responseBodyRead = true; return value; }).catch(error => {
+      const body = await readJsonBody(response, controller.signal, MAX_RESPONSE_BYTES).then(value => { responseBodyRead = true; return value; }).catch(error => {
         if (response.ok) throw error;
         return null;
       });
@@ -203,6 +210,7 @@ async function requestJson(
         mayHaveSucceeded: mayPostHaveSucceeded(method, response.status),
       }), dispatchFacts());
       if (!retryable || attempt === attempts) throw lastError;
+      retryDelayMs = computeRetryDelayMs(response.headers?.get("retry-after") ?? null, attempt, config.timeoutMs);
     } catch (error) {
       const retryable = method === "GET" && attempt < attempts;
       lastError = submitted && error instanceof OmnipackProviderError
@@ -215,51 +223,144 @@ async function requestJson(
           mayHaveSucceeded: submitted && mayPostHaveSucceeded(method, null),
         }), dispatchFacts());
       if (!retryable || (refuseRedirectRetry && lastError.code === "redirect_refused")) throw lastError;
+      retryDelayMs = computeRetryDelayMs(null, attempt, config.timeoutMs);
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (retryDelayMs !== null && retryDelayMs > 0) {
+      await waitMs(retryDelayMs);
     }
   }
 
   throw lastError;
 }
 
-async function fetchWithTimeout(
+async function fetchWithSignal(
   fetchImpl: typeof fetch,
   url: URL,
   config: OmnipackClientConfig,
   init: RequestInit,
+  signal: AbortSignal,
   onSubmit: () => void,
 ): Promise<Response> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), config.timeoutMs);
-  try {
-    const credentials = await config.credentials();
-    const requestInit: RequestInit = {
-      ...init,
-      signal: controller.signal,
-      redirect: "error",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        Authorization: `Basic ${Buffer.from(`${credentials.username}:${credentials.password}`).toString("base64")}`,
-        ...(init.headers ?? {}),
-      },
+  const credentials = await config.credentials();
+  const requestInit: RequestInit = {
+    ...init,
+    signal,
+    redirect: "error",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Authorization: `Basic ${Buffer.from(`${credentials.username}:${credentials.password}`).toString("base64")}`,
+      ...(init.headers ?? {}),
+    },
+  };
+  new Request(url, requestInit); // Validate construction before crossing the submission boundary.
+  signal.throwIfAborted();
+  onSubmit();
+  return await fetchImpl(url, requestInit);
+}
+
+async function readJsonBody(response: Response, signal: AbortSignal, maxBytes: number): Promise<unknown> {
+  signal.throwIfAborted();
+  const contentLength = response.headers?.get("content-length") ?? null;
+  if (contentLength !== null && /^\d+$/u.test(contentLength.trim()) && Number(contentLength.trim()) > maxBytes) {
+    await response.body?.cancel().catch(() => {});
+    throw new Error("Response body exceeded byte limit");
+  }
+  const body = response.body;
+  if (body === null) return {};
+  if (body === undefined) {
+    const text = await raceAbort(response.text(), signal);
+    if (Buffer.byteLength(text, "utf8") > maxBytes) throw new Error("Response body exceeded byte limit");
+    return parseJsonText(text);
+  }
+  const reader = body.getReader();
+  let onAbort: (() => void) | undefined;
+  const aborted = new Promise<never>((_resolve, reject) => {
+    const fail = () => {
+      reject(signal.reason ?? new Error("Response body aborted"));
+      void reader.cancel().catch(() => {});
     };
-    new Request(url, requestInit); // Validate construction before crossing the submission boundary.
-    controller.signal.throwIfAborted();
-    onSubmit();
-    return await fetchImpl(url, requestInit);
+    if (signal.aborted) {
+      fail();
+      return;
+    }
+    onAbort = fail;
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+  aborted.catch(() => {});
+  try {
+    const chunks: Uint8Array[] = [];
+    let totalBytes = 0;
+    for (;;) {
+      const chunk = await Promise.race([reader.read(), aborted]);
+      signal.throwIfAborted();
+      if (chunk.done) break;
+      totalBytes += chunk.value.byteLength;
+      if (totalBytes > maxBytes) {
+        await reader.cancel().catch(() => {});
+        throw new Error("Response body exceeded byte limit");
+      }
+      chunks.push(chunk.value);
+    }
+    return parseJsonText(Buffer.concat(chunks, totalBytes).toString("utf8"));
   } finally {
-    clearTimeout(timeout);
+    if (onAbort) signal.removeEventListener("abort", onAbort);
+    try { reader.releaseLock(); } catch { /* stream already cancelled or locked */ }
   }
 }
 
-async function readJsonBody(response: Response): Promise<unknown> {
-  const text = await response.text();
+function parseJsonText(text: string): unknown {
   if (!text) return {};
   try {
     return sanitizeOmnipackPayload(JSON.parse(text) as Record<string, unknown>);
   } catch {
     return {};
   }
+}
+
+async function raceAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  signal.throwIfAborted();
+  let onAbort: (() => void) | undefined;
+  const aborted = new Promise<never>((_resolve, reject) => {
+    onAbort = () => reject(signal.reason ?? new Error("Response body aborted"));
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+  aborted.catch(() => {});
+  try {
+    const value = await Promise.race([promise, aborted]);
+    signal.throwIfAborted();
+    return value;
+  } finally {
+    if (onAbort) signal.removeEventListener("abort", onAbort);
+  }
+}
+
+function parseRetryAfterMs(header: string | null): number | null {
+  if (!header) return null;
+  const trimmed = header.trim();
+  if (!trimmed) return null;
+  if (/^\d+(?:\.\d+)?$/u.test(trimmed)) {
+    const seconds = Number(trimmed);
+    return Number.isFinite(seconds) && seconds >= 0 ? Math.ceil(seconds * 1000) : null;
+  }
+  const dateMs = Date.parse(trimmed);
+  return Number.isFinite(dateMs) ? Math.max(0, dateMs - Date.now()) : null;
+}
+
+function computeRetryDelayMs(retryAfterHeader: string | null, attempt: number, timeoutMs: number): number {
+  const cap = Math.min(MAX_RETRY_AFTER_MS, timeoutMs);
+  const retryAfterMs = parseRetryAfterMs(retryAfterHeader);
+  if (retryAfterMs !== null) return Math.min(cap, retryAfterMs);
+  const backoff = BASE_RETRY_BACKOFF_MS * (2 ** Math.min(attempt - 1, 10));
+  return Math.min(MAX_RETRY_BACKOFF_MS, cap, backoff);
+}
+
+function waitMs(ms: number): Promise<void> {
+  return new Promise(resolve => {
+    setTimeout(resolve, ms);
+  });
 }
 
 // A non-retried JSON POST init (mutations must not be silently re-sent — requestJson keys retry
