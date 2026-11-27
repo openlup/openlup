@@ -1,0 +1,1 @@
+- `@openlup/platform/storefront/testing`: `createPageHandle`'s `fill` commits typed text by blurring the field. Every details fill of the runner (arrangement, its repeat after a reload, an edited payload, re-typing under an adapter's `arrange`) types the text fields, settles, ticks consent, settles and ticks it once more.

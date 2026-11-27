@@ -33,12 +33,27 @@ export interface ProviderReconciliationStatus {
  */
 
 
+export interface PaymentReadbackIdInput {
+  providerPaymentId?: string | null;
+  intentProviderPaymentId?: string | null;
+  providerAttemptId?: string | null;
+  providerSessionId?: string | null;
+}
+
 export interface PaymentProviderReconciliationProvider {
   readPayment(input: {
     providerPaymentId: string;
     attempt?: ClaimedPaymentAttempt;
     purpose?: ProviderReadPurpose;
   }): Promise<ProviderReconciliationStatus>;
+  /**
+   * Optional provider-owned resolution of the live readback identifier from an
+   * attempt snapshot. Returning a non-empty string selects that identifier;
+   * returning `null` reports no usable readback identifier without falling back
+   * to display-only attempt references; returning `undefined` defers to the
+   * caller's default fallback order.
+   */
+  resolveReadbackId?(snapshot: PaymentReadbackIdInput): string | null | undefined;
   /** Atomically close an incomplete provider object before minting a replacement. */
   closePayment?(input: { providerPaymentId: string }): Promise<ProviderReconciliationStatus>;
 

@@ -8,11 +8,15 @@ import type { CommercePriceAuthorityPort, PricingResolverPort } from "../../../s
 import type { CommercePromoDataPort } from "./promoDataPort.js";
 import type { CommerceSettingsPort } from "./commerceSettingsPort.js";
 import type { PromotionCodeQuotePort } from "./promotionCodeQuotePort.js";
-import { applyPromotionCodesV2 } from "./quotePromotionCodeAdjustments.js";
+import { createQuotePromotionCodeAdjustments } from "@openlup/platform/promotions";
+import { MINIMUM_PRODUCT_PAYABLE_MINOR } from "./promotionCodePreview.js";
 import { resolveAutomaticQuotePromotions } from "./quoteAutomaticPromotions.js";
 import { catalogEnergyPerUnit, roundCoverage } from "./dbBackedCommerceQuoteHelpers.js";
 import { createLegacyCommerceQuoteCatalogReadPort, type CommerceQuoteCatalogReadPort } from "./commerceQuoteCatalogReadPort.js";
-export { assertSupportedCommerceTaxProfile } from "./commerceTaxProfileGuard.js";
+export { assertSupportedCommerceTaxProfile } from "@openlup/platform/pricing";
+export const { applyPromotionCodesV2 } = createQuotePromotionCodeAdjustments({
+  minimumProductPayableMinor: MINIMUM_PRODUCT_PAYABLE_MINOR,
+});
 interface DbBackedCommerceQuotePortBaseDeps {
   /**
    * Optional. When provided, the quote evaluates active promotions and emits

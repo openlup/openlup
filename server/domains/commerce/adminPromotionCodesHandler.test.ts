@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { VercelRequest, VercelResponse } from "../../_lib/types/vercel.js";
-import type { AdminPromotionCodesDataPort } from "./adminPromotionCodesDataPort.js";
+import type { AdminPromotionCodesDataPort } from "@openlup/platform/promotions";
 import {
   createAdminPromotionCodeCreateHandler,
   createAdminPromotionCodePreviewHandler,

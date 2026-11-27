@@ -26,9 +26,12 @@ function destinationPrivacy({
       { owner: id, resource: "commerce.destination-order-binding-pins", disposition: "erase" as const, reasonCode, remote: false },
       { owner: id, resource: "commerce.destination-order-binding-markers", disposition: "retain" as const,
         reasonCode: "PSEUDONYMOUS_ERASURE_FENCE", remote: false },
-        { owner: id, resource: "subscription.destination-selection-pins", disposition: "erase" as const, reasonCode, remote: false },
+      { owner: id, resource: "subscription.destination-selection-pins", disposition: "erase" as const, reasonCode, remote: false },
       { owner: id, resource: "subscription.destination-selection-markers", disposition: "retain" as const,
         reasonCode: "PSEUDONYMOUS_ERASURE_FENCE", remote: false },
+      { owner: id, resource: "commerce.order-money-destination-pins", disposition: "erase" as const, reasonCode, remote: false },
+      { owner: id, resource: "commerce.order-money-retained-facts", disposition: "retain" as const,
+        reasonCode: "ACCEPTED_ORDER_MONEY_RECORD", remote: false },
     ] : []),
   ];
   return {

@@ -10,6 +10,7 @@ import type { Pool } from "pg";
 import * as jose from "jose";
 import * as renewal from "@openlup/platform/subscriptions";
 import { expect } from "vitest";
+import { disposition as orderDraftReceiptDisposition } from "./orderDraftReceiptsV2.fixture.js";
 import { createCapturedTransactionalDelivery, createPostgresTransactionalDeliveryStore, createTransactionalDelivery, createPostgresDeliveryReconciliationPort } from "@openlup/platform/communications";
 import { refusedNoticeSources, noticeSessionWithRecipientFault } from "./m19NoticeFixture.js";
 import { createPostgresPrivacyStore, createPostgresPrivacyUnitOfWork, createOidcIdentityVerifier } from "@openlup/platform/identity";
@@ -426,8 +427,8 @@ export async function seedRetainedTransferStore(
   const historicalVersions = Object.fromEntries(nativePrivacyContributors(createPostgresPrivacyStore())
     .filter(owner => owner.id !== "customer-saved-addresses").map(owner => [owner.id, owner.version]));
   await source.owner.query(`INSERT INTO public.identity_privacy_erasures(erasure_id,idempotency_key,principal_id,actor_principal_id,contract_version,contributor_versions,dispositions,retained_obligations,completed_at)
-    VALUES($1,$2,$3,$4,'identity.erasure.v1',$5,'[]','[]','2022-01-01T03:04:05.123456Z')`,
-  [retainedErasure.erasureId, retainedErasure.key, erased, admin, historicalVersions]);
+    VALUES($1,$2,$3,$4,'identity.erasure.v1',$5,$6,'[]','2022-01-01T03:04:05.123456Z')`,
+  [retainedErasure.erasureId, retainedErasure.key, erased, admin, historicalVersions, JSON.stringify([orderDraftReceiptDisposition])]);
   await source.owner.query("INSERT INTO public.identity_privacy_erasure_reconciliations(erasure_id,contributor_id,evidence_ref) VALUES($1,'customer-saved-addresses',$2)",
     [retainedErasure.erasureId, randomUUID()]);
   const media = await mediaFixture(source, graph, mediaCleanup);

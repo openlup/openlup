@@ -4,7 +4,7 @@ import {
   TransactionalDeliveryConflictError,
   TransactionalDeliveryUnavailableError,
   createTransactionalDelivery,
-} from "./transactionalDelivery.js";
+} from "@openlup/platform/communications";
 import { createCapturedTransactionalDelivery } from "../../adapters/captured/transactionalDelivery.js";
 import type {
   CapturedTransactionalDeliveryPort,

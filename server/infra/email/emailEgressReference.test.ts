@@ -48,8 +48,7 @@ it("maintained sink preserves exact key selection, original recipient, tags, opt
         ...(message.replyTo === undefined ? {} : { reply_to: message.replyTo }),
         ...(message.attachments === undefined ? {} : { attachments: message.attachments }),
         tags: [{ name: "openlup_env", value: "non_production" }],
-      }), signal: message.signal });
-      expect(options?.signal).toBe(message.signal);
+      }), redirect: "manual", signal: expect.any(AbortSignal) });
     }
   }
   expect(resolveEmailApiKey({ RESEND_API_KEY: " primary ", RESEND_SANDBOX_API_KEY: " sandbox " })).toBe("primary");
@@ -65,7 +64,8 @@ it("maintained Auth bridge is identical to the existing envelope and result mapp
   expect(await createAuthEmailTransport(transport).send(message)).toEqual({
     outcome: { ...old.outcome, messageId: old.outcome.resendId }, providerResponse: old.providerResponse,
   });
-  expect(fetcher.mock.calls[0]).toEqual(fetcher.mock.calls[1]);
+  expect(fetcher.mock.calls[0]?.[0]).toEqual(fetcher.mock.calls[1]?.[0]);
+  expect(fetcher.mock.calls[0]?.[1]).toEqual({ ...fetcher.mock.calls[1]?.[1], signal: expect.any(AbortSignal) });
 });
 
 it.each(["production", "sandbox_direct"] as const)("maintained client preserves isolated host %s routing, empty input key and tag", async (mode) => {

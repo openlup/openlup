@@ -326,7 +326,7 @@ exist in this tree):
 ### O-P3b-2 reference support and root rebinding (2026-10-22)
 
 Coordinator decision option (i) approves exactly eleven experimental vendor-only
-exports, enumerated in the [package reference-support surface](../../../packages/platform/README.md#reference-support-surface).
+exports, enumerated in the [package reference-support surface](../PLATFORM_PACKAGE_REFERENCE.md#reference-support-surface).
 Each re-exports its existing implementation and names its reference consumer in
 TSDoc. No neutral export, extra exported type, dependency or release-gate row is
 added. SDK/environment/flags, repair handoffs and payer fallback remain host-owned.

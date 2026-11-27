@@ -1,0 +1,1 @@
+- Batch catalogue publication projection queries across SKUs and price operations (GTIN conflict checks, ordered price-context locking, SKU inserts and updates, identifier upserts and compensation cleanup, and effective base-price verification) and deduplicate publication login checks and definition-pack inspection during installation.

@@ -62,14 +62,29 @@ function fenceRefusal(error: unknown, locks: boolean) {
 function monitorConnections() {
   const aborted = rejection();
   let failed = false;
-  const onError = (error: Error) => { failed = true; aborted.reject(error); };
+  const watched = new Set<FenceConnection>();
+  const listeners = new Map<FenceConnection, (error: Error) => void>();
   return {
     abort: aborted.promise,
     get failed() { return failed; },
-    watch(client: FenceConnection) { client.on?.("error", onError); },
+    watch(client: FenceConnection) {
+      const onError = (error: Error) => {
+        if (!watched.has(client)) return;
+        failed = true;
+        aborted.reject(error);
+      };
+      watched.add(client);
+      listeners.set(client, onError);
+      client.on?.("error", onError);
+    },
     release(client: FenceConnection, discard: boolean) {
+      watched.delete(client);
+      const onError = listeners.get(client);
+      listeners.delete(client);
       try { client.release(discard); } catch { /* Settlement already chose the outcome. */ }
-      try { client.removeListener?.("error", onError); } catch { /* The connection was released. */ }
+      if (onError) {
+        try { client.removeListener?.("error", onError); } catch { /* The connection was released. */ }
+      }
     },
   };
 }
@@ -246,12 +261,18 @@ async function runFence<T, Connection extends FenceConnection>(
   const abort = Promise.race([budget.wall, monitor.abort]);
   try {
     const [writer, probe] = await reservePair(pool, budget, monitor, abort);
-    let writerFailed = false, probeFailed = false, probePending = false;
+    let writerFailed = false, probeFailed = false, probePending = false, probeReleased = false;
     let preparing = true, reading = false, writerPending = false;
     let committing = false, receiptPresent = false;
     let authorizationFailure: { error: unknown } | undefined;
     let originalLockMs = 0;
     let originalStatement = "";
+
+    function releaseProbe(destroy = false) {
+      if (probeReleased) return;
+      probeReleased = true;
+      monitor.release(probe, destroy || probePending || probeFailed || monitor.failed);
+    }
 
     function activeRemaining() {
       const ms = budget.remaining();
@@ -345,6 +366,7 @@ async function runFence<T, Connection extends FenceConnection>(
         throw error;
       } finally {
         probePending = false;
+        releaseProbe(probeFailed);
       }
       activeRemaining();
       if (!frozen.primary || !current?.primary) throw unavailable();
@@ -411,7 +433,7 @@ async function runFence<T, Connection extends FenceConnection>(
       throw error;
     } finally {
       monitor.release(writer, writerFailed || monitor.failed);
-      monitor.release(probe, probePending || probeFailed || monitor.failed);
+      releaseProbe();
     }
   } finally {
     budget.stop();

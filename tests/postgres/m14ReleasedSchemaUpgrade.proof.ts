@@ -92,7 +92,8 @@ async function releasedApplication(input: ReleasedApplication) {
   const catalog = json(join(dirname(resolveExport("@openlup/platform/package.json")), "sql/manifest.json")).catalog.qualified;
   return { root, runnerPath, units: [catalog.baseline, ...catalog.forward] as { file: string; sha256: string }[],
     migrations: await load("@openlup/platform/migrations"), payments: await load("@openlup/platform/payments"),
-    fulfillment: await load("@openlup/platform/fulfillment"), readiness: await load("@openlup/core/readiness") };
+    fulfillment: await load("@openlup/platform/fulfillment"), jobLedger: await load("@openlup/platform/job-ledger"),
+    outbox: await load("@openlup/outbox/postgres"), readiness: await load("@openlup/core/readiness") };
 }
 
 async function runReleasedPair(input: ReleasedSchemaPair) {
@@ -186,6 +187,9 @@ async function runReleasedPair(input: ReleasedSchemaPair) {
     assert.deepEqual(await runner(to).apply(), { applied: [] });
     await invariant();
     for (const f of [retained, earlier]) await openCase(pool, f);
+    await pool.query(
+      "INSERT INTO public.platform_job_controls (job_name, enabled, active_driver) VALUES ('released_pair_compat', true, 'worker') ON CONFLICT (job_name) DO NOTHING",
+    );
     for (const [phase, app] of [to, from, to].entries()) {
       const port = payments(app), fresh = await paymentInput();
       assert.partialDeepStrictEqual(await port.readEvent(initial.event.id), { event: { id: initial.event.id, state: "settled" } });
@@ -204,6 +208,56 @@ async function runReleasedPair(input: ReleasedSchemaPair) {
         assert.partialDeepStrictEqual(await arrival.recordArrival({ ...event, requestKey: `arrival-0-${f.shipment}` }), { replayed: true });
         assert.deepEqual(await snapshot(f.subscription), after, "subscription_monotonic_clamp: replay stacked extension");
       }
+      const outboxStore = app.outbox.createPostgresOutboxStore(executor(pool));
+      const outboxEventType = "released_pair.compat";
+      const outboxAggregateId = randomUUID();
+      const outboxIdempotencyKey = `released-pair-${phase}-${outboxAggregateId}`;
+      await pool.query(
+        "INSERT INTO public.outbox_events (aggregate_type, aggregate_id, event_type, idempotency_key, payload) VALUES ('released_pair', $1, $2, $3, $4::jsonb)",
+        [outboxAggregateId, outboxEventType, outboxIdempotencyKey, JSON.stringify({ phase })],
+      );
+      assert.equal(await outboxStore.hasPendingEventType(outboxEventType), true);
+      const claimedBatch = await outboxStore.claimBatch({
+        eventTypes: [outboxEventType],
+        knownEventTypes: [outboxEventType],
+        batchSize: 10,
+        visibilitySeconds: 300,
+        maxAttempts: 5,
+      });
+      const claimedEvent = claimedBatch.find((row: { idempotency_key: string }) => row.idempotency_key === outboxIdempotencyKey);
+      assert.ok(claimedEvent, "released_pair_outbox_claim_missing");
+      const claimToken = (claimedEvent.metadata as { claimToken?: unknown } | null)?.claimToken;
+      assert.equal(typeof claimToken, "string", "released_pair_outbox_claim_token_missing");
+      assert.deepEqual(
+        await outboxStore.markProcessed({ eventId: claimedEvent.id, claimToken: claimToken as string, metadata: { phase } }),
+        { applied: true },
+      );
+      assert.equal(await outboxStore.hasPendingEventType(outboxEventType), false);
+
+      const jobLedger = app.jobLedger.createPostgresPlatformJobRunLedger(executor(pool), {
+        releaseCorrelation: () => ({ phase: String(phase) }),
+        defaultFailureReason: "released_pair_failed",
+      });
+      const invocation = { triggerKind: "worker" as const, invocationSource: "released-pair-qualification" };
+      const jobClaim = await jobLedger.claimJobRun("released_pair_compat", invocation, 60);
+      assert.equal(jobClaim.acquired, true, "released_pair_job_claim_failed");
+      assert.equal(typeof jobClaim.runId, "string", "released_pair_job_run_id_missing");
+      const jobFinished = await jobLedger.finishJobRun(
+        "released_pair_compat",
+        jobClaim.runId,
+        invocation,
+        "success",
+        { checked: 1, updated: 1, failures: 0, skipped: 0 },
+        { compatPhase: phase },
+      );
+      assert.equal(jobFinished, true, "released_pair_job_finish_failed");
+      const backstop = await jobLedger.readJobBackstopState("released_pair_compat");
+      assert.equal(backstop?.lastStatus, "success");
+      assert.ok(backstop?.lastSuccessAt, "released_pair_job_backstop_timestamp_missing");
+      const latestMetadata = await jobLedger.readLatestTerminalRunMetadata("released_pair_compat");
+      assert.equal(latestMetadata?.compatPhase, phase);
+
+      assert.equal((await readiness()).state, "ready");
       await invariant();
       assert.deepEqual(await ledger(), expected);
       assert.deepEqual((await runner(to).status()).pending, []);
@@ -211,7 +265,15 @@ async function runReleasedPair(input: ReleasedSchemaPair) {
     return { result: "PASS", profile: installation.generation, postgresMajor: Math.floor(Number((await pool.query("SHOW server_version_num")).rows[0].server_version_num) / 10000),
       from: input.from.identity, to: input.to.identity,
       catalogueSha256: { from: sha256(JSON.stringify(from.units)), to: sha256(JSON.stringify(to.units)) },
-      operations: ["payments.readEvent", "payments.ingestEvent", "fulfillment.recordArrival"], codeSequence: ["target", "predecessor", "target"],
+      operations: [
+        "payments.readEvent",
+        "payments.ingestEvent",
+        "fulfillment.recordArrival",
+        "outbox.claimAndProcess",
+        "jobLedger.claimFinishReadback",
+        "readiness.checkReadiness",
+      ],
+      codeSequence: ["target", "predecessor", "target"],
       forwardUnits: pending.length, insideUnitInterruption: interruption ? true : "not-applicable: no forward migrations in this pair",
       incompleteRefusal: interruption ? "OPENLUP_E_SCHEMA_BEHIND/version_mismatch" : null,
       resume: interruption, replayApplied: 0, compatibleCodeRollback: true, subscriptionInvariant: "subscription_monotonic_clamp",

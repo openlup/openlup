@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { disposition as orderDraftReceiptDisposition } from "./orderDraftReceiptsV2.fixture.js";
 import { afterEach, expect, it, vi } from "vitest";
 import { createPostgresPrivacyStore, createPostgresPrivacyUnitOfWork, createVerifierResultOnlyEmailTrustPolicy,
   readRequiredPrivacyContributorIds, PrivacyRefusal } from "@openlup/platform/identity";
@@ -42,7 +43,8 @@ async function replayFixture(db: AccountMutationsStore) {
     await db.owner.query("INSERT INTO public.clients(id,email) VALUES ($1,$2)", [subject.contactId, `${subject.contactId}@example.invalid`]);
     await db.owner.query(`INSERT INTO public.identity_privacy_erasures
       (erasure_id,idempotency_key,client_id,actor_principal_id,contract_version,contributor_versions,dispositions,retained_obligations,completed_at)
-      VALUES ($1,$2,$3,$4,'identity.erasure.v1',$5,'[]','[]',now())`, [erasureId, idempotencyKey, subject.contactId, actor.principalId, versions]);
+      VALUES ($1,$2,$3,$4,'identity.erasure.v1',$5,$6,'[]',now())`,
+    [erasureId, idempotencyKey, subject.contactId, actor.principalId, versions, JSON.stringify([orderDraftReceiptDisposition])]);
     return { erasureId, input: { subject, idempotencyKey } };
   }
   const uncovered = await receipt(false), covered = await receipt(true);

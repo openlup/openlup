@@ -47,7 +47,7 @@ These relations contain pack metadata and no customer foreign keys, so they need
 no client-absorption policy row or personal-data erasure contributor. Restore
 inserts immutable versions on a pristine target; normal UPDATE and DELETE remain
 refused by the definition trigger. See the
-[package catalogue owner](../../../packages/platform/README.md#catalog) for explicit
+[package catalogue owner](../PLATFORM_PACKAGE_REFERENCE.md#catalog) for explicit
 install executors, readiness observations and the unbound write guard.
 
 The native [subscription profile forward](../../../db/platform/migrations/20261124230000_subscription_profiles.sql)
@@ -93,7 +93,7 @@ stage. After migration, an explicit migration-owner call to
 ascending-ID batches. Only positive legacy grams with absent content convert;
 zero stays unknown, existing quantities and gross mass are never overwritten.
 No install hook runs automatically, and runtime has no backfill EXECUTE. See the
-[package catalogue owner](../../../packages/platform/README.md#catalog) for the driver
+[package catalogue owner](../PLATFORM_PACKAGE_REFERENCE.md#catalog) for the driver
 and the [catalogue lock order](../CANONICAL_CONTRACTS.md#catalogue-lock-order).
 The managed rail does not supply this feature. Its twin needs the same nullable
 SKU groups under the managed table's grants and RLS, with an administrative
@@ -114,7 +114,7 @@ active-SKU partial uniqueness on `(product_id, combination_digest)`; it preserve
 legacy rows, codes, ownership and constraints. Old readers ignore the expansion.
 Future V2 readers and publications require complete typed evidence. Code rollback
 keeps the expansion and retained data intact. The
-[package catalogue owner](../../../packages/platform/README.md#catalog) describes
+[package catalogue owner](../PLATFORM_PACKAGE_REFERENCE.md#catalog) describes
 the separate V2 trusted canonicalizer and pure conflict validator; SQL storage
 does not certify caller bytes or supply a publisher. Publication and lifecycle
 integration, including explicit legacy mapping and incremental capacity
@@ -145,7 +145,7 @@ owner path. A separate 2,048-byte UTF-8 limit on each projected text slot,
 including the whole localized map, keeps prepared rows within the landed
 unconditional composite B-tree index on the qualified stock PostgreSQL profile;
 oversized slots refuse with `attribute_projection_text_too_large`. The aggregate
-canonical-input bound remains separate. See the [catalogue package owner](../../../packages/platform/README.md#catalog)
+canonical-input bound remains separate. See the [catalogue package owner](../PLATFORM_PACKAGE_REFERENCE.md#catalog)
 for wire shapes, reference visibility evidence, exact numeric handling and
 readiness refusal. This adds no migration or transfer disposition. Old readers
 continue to ignore nullable values; future V2 readers require publication
@@ -188,7 +188,7 @@ rows. A restricted administrative principal owns projection maintenance; runtime
 projection access remains denied until a later explicit grant/policy, and browser
 roles receive no direct writes. These semantics are expressible by managed
 grants and RLS. Mandatory food-column relaxation remains later reader work.
-See the [package catalogue owner](../../../packages/platform/README.md#catalog) and
+See the [package catalogue owner](../PLATFORM_PACKAGE_REFERENCE.md#catalog) and
 [catalogue lock order](../CANONICAL_CONTRACTS.md#catalogue-lock-order).
 
 The experimental [compatible-row utility](../../../packages/platform/src/portability/postgresRows.ts)
@@ -527,6 +527,15 @@ and document by subject, exports verified pins and erases them. It retains paren
 refs as an erasure fence. `destination-receipts` (`commerce.destination-receipts.v1`)
 joins by client ID, exports the receipt and erases the outcome.
 
+If a restored order binding or subscription selection points to another
+client's snapshot, the subject's export succeeds and appends one identifier-free
+`destination_binding_invalid` verification marker for each affected class.
+The marker field is `orderBindings` or `subscriptionSelections`, in that order
+when both apply. The contributor reports incomplete coverage with its withheld
+evidence notice. Escalate cross-client links to the destination owner. Coverage
+stays incomplete until an authorized repair, and no correction tool is supported.
+Expiry applies only to unbound evidence. Scrubbing retains the link keys.
+
 Require `destination-receipts` and `destination-documents` in the same
 registry used for native privacy operations. Assemble the two experimental
 factories from `@openlup/platform/identity` and keep the registry installed
@@ -613,7 +622,7 @@ in local owner custody.
 sensitive owner transfer stream. It has no parent relation. Connected restore
 copies the full history, including original actor references and recorded
 times. The owner appends through the
-[installed coverage operation](../../../packages/platform/README.md#install-and-inspect-tax-coverage).
+[installed coverage operation](../PLATFORM_PACKAGE_REFERENCE.md#install-and-inspect-tax-coverage).
 The runtime has execution access to the scoped reader alone. The reader's
 arguments filter a trusted host's query scope.
 

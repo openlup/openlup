@@ -64,9 +64,36 @@ export function loadShardWeights(weightsPath = DEFAULT_WEIGHTS_PATH, rootDir = R
 }
 
 /**
+ * Test files that each run for minutes while spawning Git clones, npm, tsc or
+ * PostgreSQL children. Two of them in one shard start together on its three
+ * workers and slow each other past their explicit deadlines, so
+ * `partitionShards` places at most one per shard; with more members than
+ * shards, the lightest ones share. This list is the only owner of that class;
+ * `ci-vitest-shard.test.ts` checks it against every test file that imports a
+ * landing or Git-fixture helper.
+ */
+export const GIT_FIXTURE_SUITES = Object.freeze([
+  "scripts/agent-review-derived-carriers.test.ts",
+  "scripts/agent-review-derived-inventory.test.ts",
+  "scripts/agent-review-derived-notes.test.ts",
+  "scripts/agent-review-derived-reslot-overlap.test.ts",
+  "scripts/agent-review-derived-slots.test.ts",
+  "scripts/agent-review-derived.test.ts",
+  "scripts/packages/distribution-cli-proof.test.ts",
+  "scripts/preflight-integration-cold-api.test.ts",
+  "scripts/preflight-integration-settings-cold.test.ts",
+  "scripts/preflight-integration-settings.test.ts",
+  "scripts/preflight-integration.test.ts",
+  "tests/postgres/migrationFinalization.test.ts",
+]);
+const GIT_FIXTURE_SUITE_SET = new Set(GIT_FIXTURE_SUITES);
+
+/**
  * Deterministically partitions `files` into `totalShards` bins using Longest
  * Processing Time first (LPT) bin-packing with code-unit lexicographical
- * tie-breaking.
+ * tie-breaking. `GIT_FIXTURE_SUITES` members are placed first, each on the
+ * shard with the fewest members (then the lowest estimate, then the lowest
+ * index); every other file then follows the plain LPT rule.
  */
 export function partitionShards(files, totalShards, manifest) {
   if (!Number.isInteger(totalShards) || totalShards < 1) {
@@ -84,16 +111,32 @@ export function partitionShards(files, totalShards, manifest) {
     estimatedDurationMs: 0,
     files: [],
   }));
+  const gitFixtureCounts = shards.map(() => 0);
+  const place = (item, target) => {
+    target.estimatedDurationMs += item.weightMs;
+    target.files.push(item.file);
+  };
 
-  for (const item of weighted) {
+  for (const item of weighted.filter(({ file }) => GIT_FIXTURE_SUITE_SET.has(file))) {
+    let best = 0;
+    for (let index = 1; index < shards.length; index += 1) {
+      const fewer = gitFixtureCounts[index] - gitFixtureCounts[best];
+      if (fewer < 0 || (fewer === 0 && shards[index].estimatedDurationMs < shards[best].estimatedDurationMs)) {
+        best = index;
+      }
+    }
+    gitFixtureCounts[best] += 1;
+    place(item, shards[best]);
+  }
+
+  for (const item of weighted.filter(({ file }) => !GIT_FIXTURE_SUITE_SET.has(file))) {
     let target = shards[0];
     for (let index = 1; index < shards.length; index += 1) {
       if (shards[index].estimatedDurationMs < target.estimatedDurationMs) {
         target = shards[index];
       }
     }
-    target.estimatedDurationMs += item.weightMs;
-    target.files.push(item.file);
+    place(item, target);
   }
 
   for (const shard of shards) {
@@ -508,6 +551,20 @@ export function argsForFiles(invocation, files) {
   return [...invocation.args.slice(0, start), ...files, ...invocation.args.slice(start + invocation.files.length)];
 }
 
+const FILE_PARALLELISM_ARG = /^--(no-)?file-?parallelism(=|$)/iu;
+
+/**
+ * Arguments for the single retry. Two or more retried files run one after
+ * another: rerun side by side they contend for the same runner again, which
+ * is what the retry is meant to rule out.
+ */
+export function retryArgsForFiles(invocation, files) {
+  const args = argsForFiles(invocation, files);
+  return files.length > 1 && !args.some((arg) => FILE_PARALLELISM_ARG.test(arg))
+    ? [...args, "--no-file-parallelism"]
+    : args;
+}
+
 function spawnStatus(spawnImpl, command, args, cwd, env) {
   const result = spawnImpl(command, args, { cwd, stdio: "inherit", env });
   if (result.error) {
@@ -539,7 +596,7 @@ function runWithFileRetry(invocation, { cwd, env, spawnImpl, reportDir, reportFl
     return first.status;
   }
   log(`[ci-retry] Retrying ${decision.files.length} failed test file(s) once: ${decision.files.join(", ")}`);
-  const retryArgs = argsForFiles(invocation, decision.files);
+  const retryArgs = retryArgsForFiles(invocation, decision.files);
   const second = runReported(spawnImpl, invocation.command, retryArgs, { cwd, env, reportDir, label: `${invocation.kind}-retry` });
   if (second.status === null) return null;
   const settled = settleFileRetry(decision.files, second);

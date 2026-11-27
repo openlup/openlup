@@ -8,6 +8,7 @@ import { stripVTControlCharacters } from 'node:util';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { readStarterDiagnostic, starterDiagnostic } from './shared/refusals.ts';
 import { seedPhysicalGuidance } from './shared/seed-physical.ts';
+import { actionPath } from './shared/action-path.ts';
 import { assertRuntimeIdentity, connectRuntime, mountedRuntimeLine, prepareRuntimeHandoff,
   runtimeAuthFailed, runtimeConnectionString, runtimeMounted, runtimeReadFailed, runtimeUrl } from './host/runtime-database.ts';
 import { applicationHealthcheck } from './host/healthcheck.ts';
@@ -622,7 +623,7 @@ async function catalogueApply(argv) {
       try {
         if (mode === '--reprice' && operation === 'operator.catalogPublication' && body.action === 'price-apply')
           repriceStarted = true;
-        response = await fetch(new URL(`/api/actions/${operation}`, origin), { method: 'POST', redirect: 'error',
+        response = await fetch(new URL(actionPath(operation), origin), { method: 'POST', redirect: 'error',
           headers: { Origin: origin, 'X-Starter-Request': '1', 'Content-Type': 'application/json', 'Idempotency-Key': key,
             ...(sessionCookie ? { Cookie: sessionCookie } : {}) }, body: JSON.stringify(body) });
         result = await response.json();

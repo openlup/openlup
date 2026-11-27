@@ -29,7 +29,7 @@ import {
   projectPromotionQuoteMoney,
   stableJson,
   type PromotionQuoteMismatchField,
-} from "./promotionQuoteBinding.js";
+} from "@openlup/platform/promotions";
 
 const NOW = new Date("2026-09-09T10:00:00.000Z");
 const KEYRING = { current: "z".repeat(48) };

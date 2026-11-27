@@ -23,13 +23,13 @@ export const activationUnits = [
 export const repairName = "subscription_reconcile_paid_activation_gaps";
 export const alternateFingerprint = "f".repeat(64);
 
-export async function seedCapturedActivation(db: Database) {
+export async function seedCapturedActivation(db: Database, paidAtOverride?: string) {
   const { orderId, clientId } = await seedRegistration(db);
   const { id: intentId, settled_at: paidAt } = (await db.query(`INSERT INTO public.commerce_settlement_intents
     (order_id,channel_key,status,amount_minor,currency_code,external_ref,open_idempotency_key,settled_at)
     VALUES($1::uuid,'fixture-channel','settled',1,'XXX',$1::text,'open:'||$1::text,
-      date_trunc('milliseconds',clock_timestamp())+interval '123 microseconds')
-    RETURNING id, settled_at::text`, [orderId])).rows[0];
+      COALESCE($2::timestamptz,date_trunc('milliseconds',clock_timestamp())+interval '123 microseconds'))
+    RETURNING id, settled_at::text`, [orderId, paidAtOverride ?? null])).rows[0];
   await db.query("UPDATE public.commerce_orders SET status='paid',paid_at=$2::timestamptz WHERE id=$1", [orderId, paidAt]);
   return { orderId, clientId, intentId: String(intentId), paidAt: String(paidAt), key: `activate:${orderId}`,
     fingerprint: createHash("sha256").update(orderId).digest("hex") };

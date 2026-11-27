@@ -190,3 +190,80 @@ describe("direct apply SAVEPOINT preview guard", () => {
     expect(f.executedSql.some(sql => sql.includes("subscription_command_apply("))).toBe(true);
   });
 });
+
+describe("save-offer accept admission read deduplication", () => {
+  it("reuses prefetched isolation and payment_blocker without querying them a second time", async () => {
+    const executedSql: string[] = [];
+    const offerRow = {
+      id,
+      actor_id: id,
+      client_id: id,
+      status: "active",
+      template_version: "1",
+      next_cycle_number: "2",
+      marker_key: "save-offer:v1:marker",
+      consumed: false,
+      next_cycle_at: "2026-09-11T12:00:00.123456Z",
+      slide_target: null,
+      edit_open: true,
+      payment_blocker: "payment_failed",
+      action_available: true,
+    };
+    const query = vi.fn<SubscriptionQueryExecutor["query"]>(async sql => {
+      executedSql.push(sql);
+      if (sql.includes("pg_advisory_xact_lock")) return { rows: [] };
+      if (sql.includes("FROM public.subscriptions WHERE id=$1::uuid AND client_id=$2::uuid FOR UPDATE")) {
+        return { rows: [{ id, client_id: id, status: "active", actor_id: id, isolation: "read committed" }] };
+      }
+      if (sql.includes("FROM public.subscription_command_receipts WHERE actor_id=$1::uuid")) return { rows: [] };
+      if (sql.includes("FROM public.subscription_renewal_terms WHERE subscription_id=$1::uuid FOR UPDATE")) return { rows: [] };
+      if (sql.includes("WITH owned AS MATERIALIZED")) return { rows: [offerRow] };
+      if (sql.includes("subscription_command_apply(")) {
+        return { rows: [{ response: { status: "applied", subscriptionId: id, subscriptionStatus: "active", templateVersion: 1, nextCycleAt: "2026-09-25T12:00:00Z", eventId: "evt-1" } }] };
+      }
+      if (sql.includes("UPDATE public.subscription_command_receipts")) return { rows: [{ command_fingerprint: "fp-offer-1" }] };
+      if (sql.includes("INSERT INTO public.subscription_events")) return { rows: [{ id: "marker-1" }] };
+      throw new Error(`unexpected SQL: ${sql}`);
+    });
+    const admitSubscriptionCommand = vi.fn<NonNullable<Parameters<typeof createPostgresSubscriptionSaveOfferAcceptor>[0]["admitSubscriptionCommand"]>>();
+    const service = createPostgresSubscriptionSaveOfferAcceptor({
+      withTransaction: work => work({ query }),
+      admitSubscriptionCommand,
+      lifecycleTerms: { pauseDays: 9, pauseMonths: 2, slideMinDays: 4, slideMaxDays: 40, orderNowDelayMinutes: 17, reactivateDelayDays: 6 },
+      offerPolicy: {
+        offerPresentation: "ask_permission_first",
+        defaultOffer: "skip",
+        allowedPausePresets: [],
+        preselectedPausePreset: "1_month",
+        rescheduleOfferDays: 3,
+      },
+    });
+    const actor = { kind: "customer" as const, actorId: id, clientId: id };
+    const presentations = await service.readPresentations({ actor, subscriptionIds: [id], now: "2026-09-01T12:00:00.000Z" });
+    const presentation = presentations.get(id);
+    if (!presentation || presentation.kind !== "skip") throw new Error("expected skip presentation");
+
+    executedSql.length = 0;
+    admitSubscriptionCommand.mockClear();
+
+    const receipt = await service.accept({
+      actor,
+      subscriptionId: id,
+      idempotencyKey: "save-offer-accept-key-0001",
+      now: "2026-09-01T12:00:00.000Z",
+      generation: presentation.generation,
+      kind: "skip",
+    });
+
+    expect(receipt).toMatchObject({ outcome: "applied", commandFingerprint: "fp-offer-1" });
+    expect(admitSubscriptionCommand).toHaveBeenCalledExactlyOnceWith({
+      action: "skip",
+      pausePreset: null,
+      reason: null,
+      subscriptionStatus: "active",
+      paymentBlocker: "payment_failed",
+    });
+    expect(executedSql.filter(sql => sql.includes("current_setting('transaction_isolation')"))).toHaveLength(1);
+    expect(executedSql.filter(sql => sql.includes("subscription_dunning_cases"))).toHaveLength(1);
+  });
+});
