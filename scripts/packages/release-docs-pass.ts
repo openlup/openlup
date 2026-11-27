@@ -201,8 +201,9 @@ export function extractDeclarationSymbolName(line: string): string | undefined {
 
 function expandExportListBlock(codeLines: readonly string[], blockLeading: readonly string[], deprecated: boolean): Array<{ key: string; entry: Declaration }> | null {
   const joined = codeLines.map((line) => line.trim()).filter(Boolean).join("\n");
-  const list = /^export\s+(type\s+)?\{([^{}]*)\}(?:\s*from\s*("[^"]*"|'[^']*'))?\s*;?(?:\s*(?:\/\/[^\n]*|\/\*[\s\S]*?\*\/))*$/u.exec(joined);
+  const list = /^export\s+(type\s+)?\{([^{}]*)\}(?:\s*from\s*("[^"]*"|'[^']*'))?\s*;?/u.exec(joined);
   if (!list) return null;
+  if (joined.slice(list[0].length).replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/gu, "").trim() !== "") return null;
   const isTypeExport = Boolean(list[1]);
   const rawBody = list[2]!.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/gu, "");
   const specifiers = rawBody.split(",").map((spec) => spec.replace(/\s+/gu, " ").trim()).filter(Boolean);
