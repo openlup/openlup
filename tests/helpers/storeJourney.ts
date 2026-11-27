@@ -172,6 +172,7 @@ export function storeJourneyResources(options?: { isolatedCluster?: boolean; cat
             if (!measured) throw new Error("Scoped store journey catalogue was not measured");
             scopedManifest.qualified.objectInventorySha256.separateMigrator.withRestore = measured;
             writeFileSync(join(catalogueRoot, "config/platform-migration-manifest.json"), JSON.stringify(scopedManifest));
+            expect(await runner.apply()).toEqual({ applied: [] });
           }
           expect((await runner.status()).pending).toEqual([]);
           expect((await templateOwner.query("SELECT catalog_path,sha256,position FROM public.platform_schema_migrations ORDER BY position")).rows)
