@@ -145,6 +145,7 @@ it("prints a bounded installation hint after the existing refusal and preserves 
   write("installation/refusals.ts", readFileSync(resolve("examples/neutral-store/installation/refusals.ts"), "utf8"));
   write("shared/refusals.ts", readFileSync(resolve("examples/neutral-store/shared/refusals.ts"), "utf8"));
   write("shared/seed-physical.ts", readFileSync(resolve("examples/neutral-store/shared/seed-physical.ts"), "utf8"));
+  write("shared/action-path.ts", readFileSync(resolve("examples/neutral-store/shared/action-path.ts"), "utf8"));
   const message = "checkout_recovery_schedule_change_blocked_open_episodes (2 blocking orders)";
   for (const [fields, expected] of [
     [{ hint: "  Retry after\n those orders\tclose.  " }, "Retry after those orders close.\n"],

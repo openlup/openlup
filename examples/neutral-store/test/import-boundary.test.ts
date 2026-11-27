@@ -187,4 +187,11 @@ test('the lifecycle transport witness copies every module lifecycle.mjs loads at
   const copied = new Set([...list.matchAll(/'([^']+)'/g)].map(match => match[1]!));
   const missing = [...modules].map(path => path.slice(root.length + 1)).filter(path => !copied.has(path));
   assert.deepEqual(missing, []);
+  // In the source checkout, the upgrade proof's installation-hint witness copies the same start-up modules.
+  const upgradeProof = readSource(resolve(root, '../../scripts/packages/distribution-cli-proof.test.ts'));
+  if (upgradeProof !== undefined) {
+    const written = new Set([...upgradeProof.matchAll(/write\((?:starterLifecycle|"([^"]+)")/g)].map(match => match[1] ?? 'lifecycle.mjs'));
+    const absent = [...modules].map(path => path.slice(root.length + 1)).filter(path => !written.has(path));
+    assert.deepEqual(absent, []);
+  }
 });
