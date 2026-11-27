@@ -19,10 +19,17 @@ function vetoErasure(parents: { status: string }[]) {
 function unavailableOccurrenceScope(cause?: unknown): never {
   throw nativePrivacyUnavailable(cause, {
     observed: "Renewal occurrence evidence could not be qualified.",
-    cause: "The resolved contact, parent subscriptions, receipt aliases or occurrence rows may be hidden or inconsistent.",
-    fix: "Ask the installation owner to verify the catalogue and runtime pairing, carrier SELECT and policy lookup access for the helper owner and runtime role, the runtime role's row visibility, and the correlation of the retained evidence.",
+    cause: "Installed access, row visibility or evidence correlation could not be verified.",
+    fix: "Ask the installation owner to verify the catalogue and runtime pairing on a READ COMMITTED connection. Check the installed helper ACL and the effective runtime role’s EXECUTE against the approved grants. Verify schema USAGE, carrier SELECT and policy lookup access for the roles performing each read, the helper owner’s authoritative access, the runtime role’s row visibility, and the correlation of contact, parent, receipt and occurrence evidence.",
     recheck: "Retry the original request after the scoped checks pass.",
   });
+}
+
+function mapOccurrenceReadError(cause: unknown): never {
+  if (cause instanceof PrivacyRefusal) throw cause;
+  if (cause instanceof Error && "code" in cause && (cause.code === "42501"
+    || (cause.code === "P0001" && cause.message === "occurrence_privacy_scope_unavailable"))) unavailableOccurrenceScope(cause);
+  throw nativePrivacyUnavailable(cause);
 }
 
 async function readOccurrences(db: PgQueryExecutor, subject: Pick<ResolvedPrivacySubject, "contactId" | "principalId">,
@@ -40,7 +47,6 @@ async function readOccurrences(db: PgQueryExecutor, subject: Pick<ResolvedPrivac
           WHERE catalog_path ~ '^db/platform/migrations/[0-9]{14}_'
             AND catalog_path COLLATE "C" >= 'db/platform/migrations/20261129130001_')) AS occurrence_catalogue,
       has_column_privilege(c.oid,'client_id','SELECT') AS carrier_readable,
-      has_function_privilege(p.oid,'EXECUTE') AS helper_executable,
       p.proowner = c.relowner AND p.prosecdef AND p.provolatile = 's' AND p.prorettype = 'jsonb'::regtype
         AND (NOT $1::boolean OR has_function_privilege(p.oid,'EXECUTE'))
         AND p.proconfig = ARRAY['search_path=pg_catalog, pg_temp']
@@ -60,8 +66,7 @@ async function readOccurrences(db: PgQueryExecutor, subject: Pick<ResolvedPrivac
         && pairing.registered === false && pairing.occurrence_catalogue === false && pairing.incumbent_catalogue === true) {
         return { parents, occurrences: [] };
       }
-      if (paired && pairing.carrier_readable === false) unavailableOccurrenceScope();
-      throw new Error("renewal_occurrence_privacy_unavailable");
+      unavailableOccurrenceScope();
     }
 
     // Both the operation and the comparison with the owner view use these caller-visible rows.
@@ -76,12 +81,7 @@ async function readOccurrences(db: PgQueryExecutor, subject: Pick<ResolvedPrivac
           'principal', ($1::uuid IS NOT NULL OR EXISTS (SELECT FROM public.platform_human_principals WHERE principal_id = $2)),
           'receipt', EXISTS (SELECT FROM public.identity_privacy_erasures WHERE client_id = $1 OR principal_id = $2),
           'count', (SELECT count(*)::text FROM public.subscription_cycle_occurrences WHERE client_id = $1)
-        ) END AS proof`, [subject.contactId, subject.principalId, erase]).catch((cause: unknown) => {
-      if (pairing.helper_executable === true && cause instanceof Error && "code" in cause && cause.code === "42501") {
-        unavailableOccurrenceScope(cause);
-      }
-      throw cause;
-    });
+        ) END AS proof`, [subject.contactId, subject.principalId, erase]);
     if (!Array.isArray(visible?.parents)) unavailableOccurrenceScope();
     const parents = visible.parents as { id: string; status: string }[];
     if (erase) vetoErasure(parents);
@@ -97,10 +97,7 @@ async function readOccurrences(db: PgQueryExecutor, subject: Pick<ResolvedPrivac
       || parsed.data.some(row => !ids.has(row.subscriptionId))) unavailableOccurrenceScope();
     return { parents, occurrences: parsed.data };
   } catch (cause) {
-    if (cause instanceof PrivacyRefusal) throw cause;
-    if (cause instanceof Error && "code" in cause && cause.code === "P0001"
-      && cause.message === "occurrence_privacy_scope_unavailable") unavailableOccurrenceScope(cause);
-    throw nativePrivacyUnavailable(cause);
+    return mapOccurrenceReadError(cause);
   }
 }
 
@@ -123,7 +120,8 @@ export async function verifyMissingSubscriptionsPrivacySubject(db: PgQueryExecut
       OR EXISTS (SELECT FROM policies p WHERE p.polrelid=r.oid AND NOT p.polpermissive AND NOT p.all_rows)))
     AND NOT EXISTS (SELECT FROM public.clients WHERE id = $1 OR principal_id = $2)
     AND NOT EXISTS (SELECT FROM public.identity_privacy_erasures WHERE principal_id = $2)
-    AND NOT EXISTS (SELECT FROM public.platform_human_principals WHERE principal_id = $2) AS absent`, [contactId, principalId]);
+    AND NOT EXISTS (SELECT FROM public.platform_human_principals WHERE principal_id = $2) AS absent`, [contactId, principalId])
+    .catch(mapOccurrenceReadError);
   if (scope?.absent !== true) unavailableOccurrenceScope();
 }
 
