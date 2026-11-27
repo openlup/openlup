@@ -840,11 +840,25 @@ it("requires the same-order tombstone and receipt on the erased restore arm", as
   };
   const partialLocks = restoreTables.filter(table => table !== fees);
   await expectMismatch(transaction(store.owner, db => restore(db, partialLocks)), "/taxEvidence");
-  // Temporarily disabled the fee relation's restore lock requirement in a disposable database transaction.
-  await transaction(store.owner, async db => {
-    await mutateRoutine(db, routine, [[
-      ",'public.commerce_order_fee_lines'::regclass))=7", "))=6",
+  const omitFeeLockFromChildGuard = (db: PoolClient) => mutateRoutine(db,
+    "public.commerce_order_money_v2_erased_insert_refused(uuid)", [[
+      ", 'public.commerce_order_fee_lines'::regclass)) = 7", ")) = 6",
     ]]);
+  const omitFeeLockFromAssertion = (db: PoolClient) => mutateRoutine(db, routine, [[
+    ",'public.commerce_order_fee_lines'::regclass))=7", "))=6",
+  ]]);
+  // Verify each guard still requires the fee lock when the other's check is disabled.
+  await transaction(store.owner, async db => {
+    await omitFeeLockFromChildGuard(db);
+    await expectMismatch(restore(db, partialLocks), "/taxEvidence");
+  }, "ROLLBACK");
+  await transaction(store.owner, async db => {
+    await omitFeeLockFromAssertion(db);
+    await expectMismatch(restore(db, partialLocks), "/taxEvidence", lifecycleRemedy);
+  }, "ROLLBACK");
+  await transaction(store.owner, async db => {
+    await omitFeeLockFromAssertion(db);
+    await omitFeeLockFromChildGuard(db);
     await restore(db, partialLocks);
   }, "ROLLBACK");
   await transaction(store.owner, db => restore(db, restoreTables));
