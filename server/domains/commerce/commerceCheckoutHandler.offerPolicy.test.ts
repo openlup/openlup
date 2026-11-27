@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import type { CreateQuoteResponse } from "../../../src/domains/commerce/contracts.js";
-import type { CheckoutOfferPolicyPort } from "./checkoutOfferPolicyPort.js";
+import type { CheckoutOfferPolicyPort as CoreCheckoutOfferPolicyPort } from "@openlup/platform/commerce/server";
+import type { ConfiguratorIntent } from "../../../src/domains/commerce/configuratorIntentContracts.js";
+type CheckoutOfferPolicyPort = CoreCheckoutOfferPolicyPort<ConfiguratorIntent, CreateQuoteResponse["quote"]>;
 import { createCommerceCheckoutHandler } from "./commerceCheckoutHandler.js";
 import {
   CLIENT_ID,

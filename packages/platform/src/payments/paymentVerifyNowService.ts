@@ -38,10 +38,21 @@ export async function verifyPaymentAttemptNow(input: {
   }
 
   const provider = input.providers[snapshot.provider];
-  const providerPaymentId = input.providerPaymentId
-    ?? snapshot.providerAttemptId
-    ?? snapshot.intentProviderPaymentId
-    ?? snapshot.providerSessionId;
+  let providerPaymentId: string | null;
+  if (input.providerPaymentId !== undefined) {
+    providerPaymentId = input.providerPaymentId;
+  } else {
+    const providerResolved = provider?.resolveReadbackId?.(snapshot);
+    if (providerResolved !== undefined) {
+      providerPaymentId = typeof providerResolved === "string" && providerResolved.trim().length > 0
+        ? providerResolved.trim()
+        : null;
+    } else {
+      providerPaymentId = snapshot.providerAttemptId
+        ?? snapshot.intentProviderPaymentId
+        ?? snapshot.providerSessionId;
+    }
+  }
   if (!provider || !providerPaymentId) {
     return { status: "unavailable", verified: false, applied: false, providerPaymentId, attempt: null };
   }

@@ -370,7 +370,7 @@ marking records an externally completed refund; it moves no money, sends no
 refund mail, creates no fiscal reversal and changes no subscription. Execute
 real refunds through their own owner. Invalid reasons, missing confirmation,
 stale status and conflicting commands refuse; native receipts own replay. Reasons
-use the native trimmed-text boundary in the [order control schemas](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/README.md#commerce-contracts).
+use the native trimmed-text boundary in the [order control schemas](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#commerce-contracts).
 
 Signed-in customers request returns for positive quantities from their own paid
 or fulfilled orders using configured reason codes. Keep the returned request

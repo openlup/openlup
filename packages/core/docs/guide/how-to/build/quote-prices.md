@@ -95,7 +95,7 @@ with no effective revision does not fall back to legacy pricing.
 
 Use this authority for current quote money. Keep frozen renewal obligations
 on the subscription path; do not replace their saved money with a new quote.
-See the [pricing reference](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/README.md#pricing)
+See the [pricing reference](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#pricing)
 for the surrounding contract.
 
 ## Price a fixed one-time offer

@@ -24,6 +24,7 @@ import { selectConfiguration } from '../owned/store.config.ts';
 import { copy } from '../owned/copy.ts';
 import { routes } from '../shared/routes.ts';
 import { operations as declaredOperations } from '../shared/api.ts';
+import { stubFirst } from './route-stub.ts';
 
 /** Fresh installed PostgreSQL only; owns identities and the documented owner roster step. */
 const test = base.extend<{ composeProject: string }>({ composeProject: ['', { option: true }] });
@@ -623,8 +624,9 @@ test('installed adopter pack refuses missing builds and resumes exact-pair autho
   await expect(saveForm.locator('.action-result')).toContainText(missing.code);
   expect(await prepare(savedId)).toMatchObject(missing);
   await expect(prepareForm.locator('.action-result')).toContainText(missing.code);
-  await page.route('**' + actionPath, route => route.continue({ headers: { ...route.request().headers(), 'idempotency-key': originalKey } }), { times: 1 });
+  const replay = await stubFirst(page, '**' + actionPath, route => route.continue({ headers: { ...route.request().headers(), 'idempotency-key': originalKey } }));
   expect(await save(savedId, savedPayload)).toMatchObject({ ok: true, replayed: true });
+  expect(replay.hits, 'the save went out under the original key').toBeGreaterThanOrEqual(1);
 
   const report = JSON.parse(execFileSync('./lifecycle', ['up', '--configuration', 'coffee', '--json'],
     { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...env, COMPOSE_PROJECT_NAME: composeProject } }));

@@ -163,7 +163,7 @@ function scanDiagnosticContract(texts: string[]) {
       const adapterName = name(node);
       if (adapters.has(adapterName) && (index === 0 && ancestors.some(ancestor => name(ancestor) === "runStarterRuntimeUpgrade") ||
         index === 1 && ["runCandidate", "sha256", "validateCandidateLockfile"].includes(adapterName))) adapterCalls.set(node, []);
-      const root = contractRoots[index]!.includes(name(node)) || ts.isBlock(node) && ts.isIfStatement(parent) && parent.thenStatement === node && text(parent.expression) === "tag === '--candidate-occupied'";
+      const root = contractRoots[index]!.includes(name(node)) || ts.isBlock(node) && ts.isIfStatement(parent) && parent.thenStatement === node && text(parent.expression) === "parsed.kind === 'candidate-occupied'";
       if (root) roots.set(name(node) || "occupied_cli", node);
       const scope = ancestors.find(ancestor => [...roots.values()].includes(ancestor));
       const callback = ancestors.find(ancestor => sites.has(ancestor)), lexical = ancestors.findLast(ancestor => adapterCalls.has(ancestor));

@@ -98,13 +98,16 @@ export function createPostgresProviderRenewalBinding(input: {
     if (frozen.settlementChannelKey !== input.channelKey) throw new Error("settlement_channel_not_configured");
     return { row, frozen, cycle };
   }
-  async function handoff(intent: string, attempt: string) {
-    const failure = (await db.query(`SELECT r.input FROM public.subscription_retry_receipts r
-      JOIN public.subscription_retry_obligations o ON o.id=r.obligation_id
-      WHERE o.settlement_intent_id=$1::uuid AND r.kind='failure' AND r.input->>'paymentAttemptId'=$2
-      ORDER BY r.id LIMIT 1`, [intent, attempt])).rows[0];
-    if (!failure) throw new Error("subscription_dunning_failed_attempt_unattributed");
-    const facts = subscriptionRecord(failure.input);
+  async function handoff(intent: string, attempt: string, prefetchedFacts?: Record<string, unknown>) {
+    let facts = prefetchedFacts;
+    if (!facts) {
+      const failure = (await db.query(`SELECT r.input FROM public.subscription_retry_receipts r
+        JOIN public.subscription_retry_obligations o ON o.id=r.obligation_id
+        WHERE o.settlement_intent_id=$1::uuid AND r.kind='failure' AND r.input->>'paymentAttemptId'=$2
+        ORDER BY r.id LIMIT 1`, [intent, attempt])).rows[0];
+      if (!failure) throw new Error("subscription_dunning_failed_attempt_unattributed");
+      facts = subscriptionRecord(failure.input);
+    }
     const result = subscriptionRecord((await db.query(`SELECT public.payment_reconciliation_open_dunning_from_failed_result(
       $1,$2::uuid,NULL,$3,$4::timestamptz,$5,$6::uuid,$7,$8) AS response`,
     [`provider-attempt:${attempt}:dunning`, intent, facts.reason, facts.occurredAt, facts.failureClass, attempt,
@@ -182,7 +185,7 @@ export function createPostgresProviderRenewalBinding(input: {
         || Number(row.amount_minor) !== request.amountMinor || row.currency_code !== request.currency) {
         throw new Error("subscription_renewal_provider_readback_mismatch");
       }
-      return observe(request.settlementIntentId, request.externalAttemptRef, false);
+      return observe(request.settlementIntentId, request.externalAttemptRef, false, { operationRow: row });
     },
   };
   async function applyRequiresActionAttempt(
@@ -212,8 +215,17 @@ export function createPostgresProviderRenewalBinding(input: {
     const obligation = await createPostgresRetryStore(db).read(operationId);
     if ((obligation?.retryAttempt ?? 1) >= 1) await handoff(intentId, attemptId);
   }
-  async function observe(intent: string, remote: string | null, retry: boolean): ReturnType<NativeRetryDriverOptions["payments"]["readOutcome"]> {
-    const { row } = await operation(intent), attempt = await payments.readAttempt(intent);
+  async function observe(
+    intent: string,
+    remote: string | null,
+    retry: boolean,
+    prefetched?: {
+      operationRow?: Record<string, unknown>;
+      attempt?: ProviderRenewalAttempt | null;
+    },
+  ): ReturnType<NativeRetryDriverOptions["payments"]["readOutcome"]> {
+    const row = prefetched?.operationRow ?? (await operation(intent)).row;
+    const attempt = prefetched && "attempt" in prefetched ? prefetched.attempt : await payments.readAttempt(intent);
     if (!attempt || attempt.paymentAttempt.provider !== payments.provider) throw new Error("payment_control_result_active_attempt_not_found");
     const a = attempt.paymentAttempt, checkedAt = nativeInstant(input.now());
     const empty: RenewalPaymentEvidence = { operationId: String(row.id), requestFingerprint: String(row.operation_fingerprint),
@@ -228,7 +240,7 @@ export function createPostgresProviderRenewalBinding(input: {
       const method = attempt.requestPayload.storedMethod;
       if (method && typeof method === "object") subscriptionRecord(method);
       await applyRequiresActionAttempt(String(row.order_id), intent, String(row.id), a.id, executionKey);
-      return observe(intent, remote, retry);
+      return observe(intent, remote, retry, { operationRow: row });
     }
     if (a.status === "failed") {
       const receipt = (await db.query(`SELECT r.receipt_key,r.input FROM public.subscription_retry_receipts r
@@ -236,7 +248,7 @@ export function createPostgresProviderRenewalBinding(input: {
         AND r.kind='failure' AND r.input->>'paymentAttemptId'=$2 ORDER BY r.id LIMIT 1`, [row.id, a.id])).rows[0];
       if (!receipt) return empty;
       const facts = subscriptionRecord(receipt.input);
-      await handoff(intent, a.id);
+      await handoff(intent, a.id, facts);
       return { ...empty, status: "failed", disposition: "observed", eventKey: String(receipt.receipt_key),
         verifiedEvidenceRef: String(facts.evidenceKey), externalAttemptRef: facts.externalRef == null ? null : String(facts.externalRef),
         occurredAt: String(facts.occurredAt), firstRecordedAt: String(facts.firstRecordedAt), reason: String(facts.reason),
@@ -277,7 +289,7 @@ export function createPostgresProviderRenewalBinding(input: {
         if (current?.settlementStatus !== "settled") return empty;
       }
     }
-    if (retry && observed.kind === "failed") return observe(intent, remote, true);
+    if (retry && observed.kind === "failed") return observe(intent, remote, true, { operationRow: row });
     return { ...empty, status: observed.kind, disposition: "observed", eventKey: `${key}:recovery`,
       verifiedEvidenceRef: recorded.reconciliationId, occurredAt, amountMinor: observed.observedMoney.amountMinor,
       currency: observed.observedMoney.currency, reason: observed.kind === "failed" ? "provider_failed" : null };
@@ -324,7 +336,7 @@ export function createPostgresProviderRenewalBinding(input: {
     execute: rail.execute,
     async readOutcome(prepared) {
       const a = await payments.readAttempt(prepared.settlementIntentId);
-      return observe(prepared.settlementIntentId, a?.paymentAttempt.providerAttemptId ?? null, true);
+      return observe(prepared.settlementIntentId, a?.paymentAttempt.providerAttemptId ?? null, true, { attempt: a });
     },
   };
   function composeWebhook<C extends ProviderRenewalWebhookControl>(event: ProviderRenewalWebhook, control: C): Omit<C, "applyPaymentResult"> & { applyPaymentResult: NonNullable<ProviderRenewalWebhookControl["applyPaymentResult"]> } {

@@ -1,3 +1,13 @@
+import {
+  CARRIER_LABEL_RESPONSE_MAX_BYTES,
+  CARRIER_SOAP_RESPONSE_MAX_BYTES,
+  CARRIER_SOAP_TIMEOUT_MS,
+  CarrierSoapResponseTooLargeError,
+  callCarrierSoap,
+  extractFault,
+  extractXmlValue,
+} from "./adminDhlSoap.js";
+
 export const DHL_ENDPOINT = "https://dhl24.com.pl/webapi2/provider/service.html?ws=1";
 export const DHL_NAMESPACE = "https://dhl24.com.pl/webapi2/provider/service.html?ws=1";
 export const DEFAULT_COUNTRY_CODE = "PL";
@@ -35,6 +45,9 @@ export interface DhlSoapCallDeps {
   shipmentDate: string;
   fetchImpl?: typeof fetch;
   decodeBase64?: (value: string) => Uint8Array;
+  signal?: AbortSignal;
+  timeoutMs?: number;
+  maxBodyBytes?: number;
 }
 
 export async function createDhlShipmentWithLabel({
@@ -44,9 +57,16 @@ export async function createDhlShipmentWithLabel({
   shipmentDate,
   fetchImpl = fetch,
   decodeBase64 = defaultDecodeBase64,
+  signal,
+  timeoutMs,
+  maxBodyBytes,
 }: DhlSoapCallDeps): Promise<DhlShipmentResult> {
   const createXml = buildCreateShipmentsEnvelope(shipper, receiver, auth, shipmentDate);
-  const createResponse = await callDhl(fetchImpl, `${DHL_NAMESPACE}#createShipments`, createXml);
+  const createResponse = await callDhl(fetchImpl, "createShipments", createXml, {
+    signal,
+    timeoutMs,
+    maxBodyBytes: maxBodyBytes ?? CARRIER_SOAP_RESPONSE_MAX_BYTES,
+  });
   const trackingNumber =
     extractXmlValue(createResponse, "shipmentId") ??
     extractXmlValue(createResponse, "shipmentTrackingNumber");
@@ -60,7 +80,11 @@ export async function createDhlShipmentWithLabel({
 
   let labelPdf: Uint8Array | null = null;
   const labelXml = buildGetLabelsEnvelope(auth, trackingNumber);
-  const labelResponse = await callDhl(fetchImpl, `${DHL_NAMESPACE}#getLabels`, labelXml);
+  const labelResponse = await callDhl(fetchImpl, "getLabels", labelXml, {
+    signal,
+    timeoutMs,
+    maxBodyBytes: maxBodyBytes ?? CARRIER_LABEL_RESPONSE_MAX_BYTES,
+  });
   const labelData = extractXmlValue(labelResponse, "labelData");
   if (labelData) labelPdf = decodeBase64(labelData);
 
@@ -79,30 +103,42 @@ export class DhlProviderFault extends Error {
   }
 }
 
-async function callDhl(fetchImpl: typeof fetch, soapAction: string, body: string): Promise<string> {
-  let response: Response;
+async function callDhl(
+  fetchImpl: typeof fetch,
+  operation: string,
+  body: string,
+  options: { signal?: AbortSignal; timeoutMs?: number; maxBodyBytes?: number },
+): Promise<string> {
+  let response: { ok: boolean; status: number; text: string };
   try {
-    response = await fetchImpl(DHL_ENDPOINT, {
-      method: "POST",
-      headers: {
-        "Content-Type": "text/xml; charset=utf-8",
-        SOAPAction: soapAction,
-      },
-      body,
+    response = await callCarrierSoap(fetchImpl, operation, body, {
+      timeoutMs: options.timeoutMs ?? CARRIER_SOAP_TIMEOUT_MS,
+      maxBodyBytes: options.maxBodyBytes ?? CARRIER_LABEL_RESPONSE_MAX_BYTES,
+      signal: options.signal,
     });
   } catch (error) {
+    if (error instanceof CarrierSoapResponseTooLargeError) {
+      throw new DhlProviderFault(sanitizeProviderText(error), false);
+    }
     throw new DhlProviderFault(sanitizeProviderText(error), true);
   }
-  const text = await response.text();
+  const text = response.text;
   const fault = extractFault(text);
   if (fault) throw new DhlProviderFault(sanitizeProviderText(fault), false);
   if (text.includes("<h1>CException</h1>") || text.includes("<html")) {
-    throw new DhlProviderFault(sanitizeProviderText(text.match(/<p>(.*?)<\/p>/)?.[1] ?? "DHL returned HTML error"), !response.ok || response.status >= 500);
+    throw new DhlProviderFault(
+      sanitizeProviderText(text.match(/<p>(.*?)<\/p>/)?.[1] ?? "DHL returned HTML error"),
+      !response.ok || isRetryableHttpStatus(response.status),
+    );
   }
   if (!response.ok) {
-    throw new DhlProviderFault(`DHL HTTP ${response.status}`, response.status >= 500);
+    throw new DhlProviderFault(`DHL HTTP ${response.status}`, isRetryableHttpStatus(response.status));
   }
   return text;
+}
+
+function isRetryableHttpStatus(status: number): boolean {
+  return status >= 500 || status === 429 || status === 408;
 }
 
 export function parseStreet(fullStreet: string): { street: string; houseNumber: string } {
@@ -173,16 +209,6 @@ function partyXml(party: DhlParty, includeCountry: boolean): string {
     <name>${escapeXml(party.name)}</name><postalCode>${escapeXml(cleanPostalCode(party.postalCode))}</postalCode>
     <city>${escapeXml(party.city)}</city><street>${escapeXml(party.street)}</street><houseNumber>${escapeXml(party.houseNumber)}</houseNumber>
     <contactPerson>${escapeXml(party.contactPerson ?? party.name)}</contactPerson><contactPhone>${escapeXml(party.phone)}</contactPhone><contactEmail>${escapeXml(party.email)}</contactEmail>`;
-}
-
-function extractFault(xml: string): string | null {
-  return extractXmlValue(xml, "faultstring");
-}
-
-function extractXmlValue(xml: string, tagName: string): string | null {
-  const nsMatch = xml.match(new RegExp(`<[^:]+:${tagName}[^>]*>([^<]*)<\\/[^:]+:${tagName}>`, "i"));
-  if (nsMatch) return nsMatch[1];
-  return xml.match(new RegExp(`<${tagName}[^>]*>([^<]*)<\\/${tagName}>`, "i"))?.[1] ?? null;
 }
 
 function cleanPostalCode(code: string): string {

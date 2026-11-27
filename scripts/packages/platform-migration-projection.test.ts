@@ -20,6 +20,8 @@ it("generates the owner header and exact canonical bodies, and refuses projectio
     writeFileSync(join(root, "config/platform-migration-manifest.json"), JSON.stringify(canonical));
     writeFileSync(join(root,file),content);
     expect(checkPlatformMigrationProjection(root,true)).toEqual([]);
+    writeFileSync(join(root, "packages/platform/sql/portable-advisories.json"), JSON.stringify({ schemaVersion: 1, advisories: [] }) + "\n");
+    expect(checkPlatformMigrationProjection(root)).toEqual([]);
     const selectionPath = join(root, "packages/platform/src/migrations/catalog.ts");
     const selection = readFileSync(selectionPath);
     const headerEnd = selection.indexOf(0x0a) + 1;
