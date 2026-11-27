@@ -266,6 +266,40 @@ it("upgrades shared acquisition with byte-identical checkout results and preserv
   });
 }, postgresSetupTimeoutMs);
 
+it("refuses cross-subscription cycle lineage with the predecessor acquisition diagnosis", async () => {
+  await measuredUpgrade(acquisition.file, "contradictory-acquisition-upgrade", async store => {
+    const { owner, runtime } = store, f = await subject(store), other = await subject(store);
+    const target = await stagePreparation(owner, f), otherCycle = await bookCycle(owner, other);
+    const read = () => data(runtime, `SELECT convert_to(
+      public.commerce_read_destination_v2($1,'subscription',$2,$3)::text,'UTF8') AS bytes`,
+    [f.ctx, f.ctx.scopeRef, f.ny.binding]);
+    const validBytes = await read();
+    expect(JSON.parse(validBytes[0].bytes.toString("utf8"))).toMatchObject({ binding: f.ny.binding });
+    await owner.query("UPDATE public.commerce_orders SET subscription_cycle_id=$2 WHERE id=$1", [f.origin, otherCycle]);
+    const [verified] = await data(owner, `SELECT public.commerce_destination_v2_valid_pins(b.selection,b.service,d.scope_ref) AS pins,
+        public.commerce_destination_v2_check_document(d,'subscriptionId')->>'verified' AS verified,
+        convert_to(public.classify_order_destination(o.id,d,'acquisition')::text,'UTF8') AS bytes
+      FROM public.commerce_orders o JOIN public.subscription_cycles c ON c.id=o.subscription_cycle_id
+      JOIN public.subscription_activations a ON a.order_id=o.id AND a.state='active'
+      JOIN public.commerce_destination_v2_order_bindings b ON b.order_id=o.id
+      JOIN public.commerce_destination_v2_documents d USING (snapshot_ref)
+      WHERE o.id=$1 AND a.subscription_id<>c.subscription_id AND d.purpose='checkout'`, [f.origin]);
+    expect(verified).toMatchObject({ pins: true, verified: "true" });
+    expect(JSON.parse(verified.bytes.toString("utf8"))).toMatchObject(sharedUnavailable);
+    // The predecessor's public reader accepted these bytes; its private acquisition check refused them.
+    expect(await read()).toStrictEqual(validBytes);
+    const writerRefuses = () => ownerTransaction(owner, db =>
+      expectBindRefused(db, f, target, unavailable(), "cross-subscription acquisition cycle"), false);
+    await writerRefuses();
+
+    expect(await store.runner.apply()).toEqual({ applied: [acquisition.file] });
+    expect(await read()).toStrictEqual([{ bytes: verified.bytes }]);
+    await writerRefuses();
+    expect(await readSnapshot(runtime, f.checkout, f.ny.binding, f.origin, "order"))
+      .toMatchObject({ code: "destination_binding_invalid", field: "orderBindings" });
+  });
+}, postgresSetupTimeoutMs);
+
 it("keeps the renewal writer dormant and the destination helpers owner-only under permissive defaults", async () => {
   const { owner, runtime } = store;
   const classifier = "classify_order_destination";
@@ -680,29 +714,30 @@ it("keeps a direct choice ahead of a repointed origin and independently verifies
   }, false);
 });
 
-it("checks inherited edit evidence again after the document wait and permits an initial direct edit", async () => {
+const acquisitionBusy = {
+  outcome: "refused", code: "destination_busy", field: "subscriptionId",
+  fix: "Retry the same scoped operation.", recheck: "Roll back and retry with the same authenticated evidence.",
+};
+
+const transactionWrites = (db: Db) => data(db, `SELECT relid, n_tup_ins, n_tup_upd, n_tup_del
+  FROM pg_stat_xact_user_tables ORDER BY relid`);
+
+it("refuses a locked inherited document without consuming the edit and permits an initial direct edit", async () => {
   const { owner } = store, f = await subject(store), empty = await subject(store);
   await owner.query("DELETE FROM public.subscription_activations WHERE order_id=$1", [empty.origin]);
   expect(await edit(owner, empty.ctx, null)).toMatchObject({ outcome: "applied_from_next_parcel" });
-  const blocker = await owner.connect(), editor = await owner.connect();
-  try {
-    await Promise.all([blocker.query("BEGIN"), editor.query("BEGIN; SET LOCAL statement_timeout='8s'")]);
-    await blocker.query("UPDATE public.commerce_destination_v2_documents SET document_digest=repeat('1',64) WHERE snapshot_ref=$1", [f.ny.binding.snapshotRef]);
-    const wait = await waitFor(owner, editor, blocker, "commerce_destination_v2_documents");
-    const pending = edit(editor, f.ctx, f.ny.selectionRevision);
-    void pending.catch(() => undefined);
-    await wait();
-    await blocker.query("COMMIT");
-    const before = await data(owner, `SELECT count(*)::int AS total FROM public.commerce_destination_v2_documents WHERE client_id=$1`, [f.ctx.clientId]);
-    expect(await pending).toMatchObject(sharedUnavailable);
-    await editor.query("COMMIT");
-    expect(await data(owner, `SELECT count(*)::int AS total FROM public.commerce_destination_v2_documents WHERE client_id=$1`, [f.ctx.clientId]))
-      .toEqual(before);
-  } finally {
-    await Promise.all([blocker.query("ROLLBACK"), editor.query("ROLLBACK")]);
-    blocker.release();
-    editor.release();
-  }
+  const key = randomUUID();
+  await ownerTransaction(owner, async blocker => {
+    await blocker.query("SELECT 1 FROM public.commerce_destination_v2_documents WHERE snapshot_ref=$1 FOR UPDATE", [f.ny.binding.snapshotRef]);
+    await ownerTransaction(owner, async editor => {
+      await editor.query("SET LOCAL statement_timeout='8s'");
+      const before = await transactionWrites(editor);
+      expect(await edit(editor, f.ctx, f.ny.selectionRevision, undefined, key)).toMatchObject(acquisitionBusy);
+      expect(await transactionWrites(editor)).toEqual(before);
+    });
+  });
+  expect(await edit(owner, f.ctx, f.ny.selectionRevision, undefined, key))
+    .toMatchObject({ outcome: "applied_from_next_parcel", replayed: false });
 });
 
 it.each(["inherited", "explicit"] as const)("refuses checkout replay for verified %s renewal bindings after ownership and evidence checks without writes", async kind => {
@@ -806,11 +841,9 @@ it.each(["inherited", "explicit"])("replays the %s binding with zero writes and 
   expect(original).toStrictEqual(selected.binding);
   const beforeReplay = await effects(owner, f);
   await ownerTransaction(owner, async db => {
-    const writeCounts = () => data(db, `SELECT relid, n_tup_ins, n_tup_upd, n_tup_del
-      FROM pg_stat_xact_user_tables ORDER BY relid`);
-    const beforeWrites = await writeCounts();
+    const beforeWrites = await transactionWrites(db);
     expect(await bind(db, f.ctx, target.order, selected)).toStrictEqual(original);
-    expect(await writeCounts()).toStrictEqual(beforeWrites);
+    expect(await transactionWrites(db)).toStrictEqual(beforeWrites);
   });
   expect(await effects(owner, f)).toStrictEqual(beforeReplay);
 

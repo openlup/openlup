@@ -6,6 +6,7 @@ DECLARE
   v_order public.commerce_orders;
   v_bound public.commerce_destination_v2_order_bindings;
   v_issuer text := CASE WHEN p_document.purpose = 'checkout' THEN 'checkout' ELSE 'subscription' END;
+  v_unavailable constant jsonb := public.commerce_destination_v2_refusal('subscription_unavailable', 'subscriptionId');
   v_invalid constant jsonb := public.commerce_destination_v2_refusal('stored_binding', 'orderBindings');
 BEGIN
   SELECT * INTO v_order FROM public.commerce_orders WHERE id = p_order_id AND client_id = p_document.client_id;
@@ -24,16 +25,16 @@ BEGIN
       WHERE c.id = v_order.subscription_cycle_id
         AND (a.order_id, a.subscription_id, a.client_id, s.client_id) IS DISTINCT FROM
           (v_order.id, s.id, v_order.client_id, v_order.client_id)
-    ) THEN RETURN v_invalid; END IF;
+    ) THEN RETURN CASE WHEN p_use = 'acquisition' THEN v_unavailable ELSE v_invalid END; END IF;
     IF p_use = 'acquisition' AND (v_issuer <> 'checkout' OR (v_order.subscription_cycle_id IS NOT NULL AND NOT EXISTS (
       SELECT 1 FROM public.subscription_cycles c JOIN public.subscription_activations a ON a.subscription_id = c.subscription_id
       WHERE c.id = v_order.subscription_cycle_id AND a.order_id = v_order.id AND a.client_id = v_order.client_id AND a.state = 'active'
-    ))) THEN RETURN public.commerce_destination_v2_refusal('subscription_unavailable', 'subscriptionId'); END IF;
+    ))) THEN RETURN v_unavailable; END IF;
     IF v_issuer <> 'checkout' OR v_bound.snapshot_ref IS DISTINCT FROM p_document.snapshot_ref OR
       NOT public.commerce_destination_v2_valid_pins(v_bound.selection, v_bound.service, p_document.scope_ref) THEN RETURN v_invalid; END IF;
     RETURN jsonb_build_object('document_issuer', v_issuer, 'binding_origin', 'checkout');
   END IF;
-  IF p_use = 'acquisition' THEN RETURN public.commerce_destination_v2_refusal('subscription_unavailable', 'subscriptionId'); END IF;
+  IF p_use = 'acquisition' THEN RETURN v_unavailable; END IF;
   IF NOT EXISTS (
     SELECT 1 FROM public.subscription_cycle_preparations p
     JOIN public.subscription_cycles c ON c.id = p.cycle_id
@@ -340,20 +341,26 @@ BEGIN
   IF cardinality(v_origins) = 0 THEN RETURN '{}'::jsonb; END IF;
   IF cardinality(v_origins) <> 1 OR (v_origins[1]).client_id IS DISTINCT FROM v_client THEN RETURN v_unavailable; END IF;
   v_origin := v_origins[1];
-  PERFORM 1 FROM public.commerce_orders WHERE id = v_origin.order_id AND client_id = v_client FOR SHARE;
-  IF NOT FOUND THEN RETURN v_unavailable; END IF;
-  PERFORM 1 FROM public.subscription_activations WHERE id = v_origin.id AND order_id = v_origin.order_id
-    AND subscription_id = p_id AND client_id = v_client AND state = 'active' FOR SHARE;
-  IF NOT FOUND THEN RETURN v_unavailable; END IF;
-  SELECT snapshot_ref INTO v_snapshot FROM public.commerce_destination_v2_order_bindings
-    WHERE order_id = v_origin.order_id FOR SHARE;
-  v_bound := FOUND;
-  IF v_bound THEN
-    PERFORM 1 FROM public.commerce_destination_v2_documents WHERE snapshot_ref = v_snapshot
-      AND client_id = v_client AND owner_scope = p_ctx->'owner' FOR SHARE;
+  -- Order-first operations can already own the origin while waiting on the edit's parent guards.
+  BEGIN
+    PERFORM 1 FROM public.commerce_orders WHERE id = v_origin.order_id AND client_id = v_client FOR SHARE NOWAIT;
     IF NOT FOUND THEN RETURN v_unavailable; END IF;
-  END IF;
-  -- Recensus after the last wait, including waits on a binding that was removed.
+    PERFORM 1 FROM public.subscription_activations WHERE id = v_origin.id AND order_id = v_origin.order_id
+      AND subscription_id = p_id AND client_id = v_client AND state = 'active' FOR SHARE NOWAIT;
+    IF NOT FOUND THEN RETURN v_unavailable; END IF;
+    SELECT snapshot_ref INTO v_snapshot FROM public.commerce_destination_v2_order_bindings
+      WHERE order_id = v_origin.order_id FOR SHARE NOWAIT;
+    v_bound := FOUND;
+    IF v_bound THEN
+      PERFORM 1 FROM public.commerce_destination_v2_documents WHERE snapshot_ref = v_snapshot
+        AND client_id = v_client AND owner_scope = p_ctx->'owner' FOR SHARE NOWAIT;
+      IF NOT FOUND THEN RETURN v_unavailable; END IF;
+    END IF;
+  EXCEPTION WHEN lock_not_available THEN
+    RETURN public.commerce_destination_v2_refusal('busy', 'subscriptionId') ||
+      '{"observed":"The acquisition evidence is locked.","cause":"Editing requires immediate shared locks on acquisition evidence."}'::jsonb;
+  END;
+  -- Recensus once all available guards are held, including when the binding was absent.
   v_origins := public.subscription_destination_v2_origins(p_id);
   IF cardinality(v_origins) <> 1 OR (v_origins[1]).id IS DISTINCT FROM v_origin.id THEN RETURN v_unavailable; END IF;
   IF NOT v_bound THEN RETURN '{}'::jsonb; END IF;

@@ -14621,12 +14621,12 @@
     },
     {
       "path": "db/platform/migrations/20261129130509_subscription_destination_renewal_acquisition_v2.sql",
-      "sha256": "efd2b4e2880f84577ab92d4588926c227d3a8d60dd9bd1878e7d073d3d82379b",
+      "sha256": "8fc9ab49d117ceddc5a968c8d26c474ba66b6a8e822a02a0211bb1e8fbdfc7b3",
       "functions": [
         {
           "signature": "public.classify_order_destination(uuid,public.commerce_destination_v2_documents,text)",
           "beforeSha256": "569a67ec70d5dfdfd6043d17abef59552fbd592068c7635683312ef25c30d1a9",
-          "afterSha256": "72a3f8bd08080bd95e8a91677069843b78411fcd4a530fb8b446d7ccbef8280d"
+          "afterSha256": "1cdf19dea7323a5ae7cb8752033976924f45b357e7d9aca0c241c3c15c02c172"
         },
         {
           "signature": "public.commerce_destination_v2_check_retained(jsonb,public.commerce_destination_v2_order_bindings,text)",
@@ -14661,7 +14661,7 @@
         {
           "signature": "public.subscription_destination_v2_current_for_edit(jsonb,uuid)",
           "beforeSha256": null,
-          "afterSha256": "8b019b5afb546f99f3273ec6296749eb46350bc71b10eb3f3b319663c631d7ee"
+          "afterSha256": "576218643973419621bab67b5c7d67ca334691ee64cb2a1ab4a9ea3e7cc830a3"
         }
       ]
     }
