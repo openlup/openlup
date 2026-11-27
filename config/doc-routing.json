@@ -211,6 +211,7 @@
         "packages/core/smoke/**",
         "packages/core/package-lock.json",
         "packages/core/meta/release-index.json",
+        "packages/core/skills/**",
         "packages/core/release-gates.json",
         "packages/core/repository-policy.json",
         "packages/core/vitest.config.ts",
@@ -226,7 +227,8 @@
       "paths": [
         "packages/core/src/agent-context-cli.ts",
         "packages/core/src/agent-context-mcp.ts",
-        "packages/core/src/openlup-context.js"
+        "packages/core/src/openlup-context.js",
+        "packages/core/src/upgrade-impact.ts"
       ],
       "doc": "packages/core/README.md",
       "anchor": "#agent-context-lookup"

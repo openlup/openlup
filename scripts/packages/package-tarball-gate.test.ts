@@ -37,6 +37,18 @@ describe("tarball gate", () => {
     const readPlatform = (key: string) => key === "packages/platform/package.json" || key === `packages/platform/${path}` ? encode("{}") : undefined;
     expect(checkTarballEntries(platform, [{ path: "package.json", bytes: encode("{}") }, { path, bytes: encode("{}") }], readPlatform).map((f) => f.rule)).toEqual(["package-content-allowlist"]);
   });
+  it("admits tracked skills/<slug>/SKILL.md only for @openlup/core and refuses non-skill files under skills/", () => {
+    const path = "skills/openlup-upgrade/SKILL.md";
+    const read = (key: string) => key === `packages/core/${path}` ? encode("---\nname: openlup-upgrade\n---\n") : readTracked(key);
+    expect(checkTarballEntries(entry, packed([[path, "---\nname: openlup-upgrade\n---\n"]]), read)).toEqual([]);
+    expect(checkTarballEntries(entry, packed([[path, "changed\n"]]), read).map((f) => f.rule)).toEqual(["changed-file"]);
+    expect(rules(packed([[path, "---\nname: openlup-upgrade\n---\n"]]))).toEqual(["unlisted-file"]);
+    expect(rules(packed([["skills/openlup-upgrade/helper.js", "export {};"]]))).toEqual(["package-content-allowlist"]);
+    expect(rules(packed([["skills/UpperCase/SKILL.md", "# bad"]]))).toEqual(["package-content-allowlist"]);
+    const platform = { name: "@openlup/platform", directory: "packages/platform", publish: true };
+    const readPlatform = (key: string) => key === "packages/platform/package.json" || key === `packages/platform/${path}` ? encode("{}") : undefined;
+    expect(checkTarballEntries(platform, [{ path: "package.json", bytes: encode("{}") }, { path, bytes: encode("{}") }], readPlatform).map((f) => f.rule)).toEqual(["package-content-allowlist"]);
+  });
   it("admits only the two tracked Platform settings artefacts", () => {
     const platform = { name: "@openlup/platform", directory: "packages/platform", publish: true };
     const files = ["settings-catalog.json", "settings-refusals.json"];

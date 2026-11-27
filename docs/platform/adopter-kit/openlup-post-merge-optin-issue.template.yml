@@ -1,0 +1,197 @@
+# Optional post-merge workflow for an application that installs @openlup/* from npm.
+# Copy to `.github/workflows/openlup-post-merge-optin-issue.yml`.
+#
+# Security posture (zero RCE):
+# - Runs ONLY on reviewed, merged commits to `main` touching `package-lock.json`
+#   (never `pull_request_target`, never untrusted PR code).
+# - Minimal least-privilege permissions: `contents: read` and `issues: write` only.
+# - Installs with `--ignore-scripts` and invokes only the already-reviewed local
+#   `openlup-context impact` CLI to create or update one deduplicated Opt-in Backlog Issue.
+name: OpenLup Post-Merge Opt-In Backlog
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "package-lock.json"
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: openlup-post-merge-optin-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  opt-in-backlog:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout merged revision with full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Detect @openlup/core version change in package-lock.json
+        id: delta
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
+        run: |
+          node --input-type=module - <<'EOF'
+          import { execFileSync } from "node:child_process";
+          import { appendFileSync, readFileSync } from "node:fs";
+          import { env as runtimeEnv } from "node:process";
+
+          const output = runtimeEnv.GITHUB_OUTPUT;
+          const SEMVER_RE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u;
+          const compareSemver = (left, right) => {
+            const a = SEMVER_RE.exec(left);
+            const b = SEMVER_RE.exec(right);
+            if (!a || !b) return null;
+            for (const idx of [1, 2, 3]) {
+              const av = BigInt(a[idx]);
+              const bv = BigInt(b[idx]);
+              if (av !== bv) return av < bv ? -1 : 1;
+            }
+            const ap = a[4];
+            const bp = b[4];
+            if (ap === undefined && bp === undefined) return 0;
+            if (ap === undefined) return 1;
+            if (bp === undefined) return -1;
+            const aIds = ap.split(".");
+            const bIds = bp.split(".");
+            const len = Math.min(aIds.length, bIds.length);
+            for (let i = 0; i < len; i++) {
+              const ai = aIds[i];
+              const bi = bIds[i];
+              if (ai === bi) continue;
+              const aNum = /^(?:0|[1-9]\d*)$/u.test(ai);
+              const bNum = /^(?:0|[1-9]\d*)$/u.test(bi);
+              if (aNum && bNum) {
+                const av = BigInt(ai);
+                const bv = BigInt(bi);
+                return av < bv ? -1 : 1;
+              }
+              if (aNum !== bNum) return aNum ? -1 : 1;
+              return ai < bi ? -1 : 1;
+            }
+            return aIds.length < bIds.length ? -1 : aIds.length > bIds.length ? 1 : 0;
+          };
+
+          const readLockVersion = (ref) => {
+            try {
+              const raw = ref === "WORKTREE"
+                ? readFileSync("package-lock.json", "utf8")
+                : execFileSync("git", ["show", `${ref}:package-lock.json`], {
+                    encoding: "utf8",
+                    maxBuffer: 64 * 1024 * 1024,
+                  });
+              const lock = JSON.parse(raw);
+              return lock?.packages?.["node_modules/@openlup/core"]?.version ?? "";
+            } catch {
+              return "";
+            }
+          };
+
+          const beforeSha = runtimeEnv.BEFORE_SHA ?? "";
+          const validBefore = /^[0-9a-f]{40}$/u.test(beforeSha) && beforeSha !== "0000000000000000000000000000000000000000";
+          const from = validBefore ? readLockVersion(beforeSha) : "";
+          const to = readLockVersion("WORKTREE");
+          const cmp = SEMVER_RE.test(from) && SEMVER_RE.test(to) ? compareSemver(from, to) : null;
+          const changed = cmp !== null && cmp < 0;
+          if (from && to && !changed) {
+            console.log(`Skipping opt-in backlog issue for non-upgrade transition: ${from} -> ${to}`);
+          }
+          appendFileSync(output, `changed=${changed}\nfrom=${changed ? from : ""}\nto=${changed ? to : ""}\n`);
+          EOF
+
+      - name: Setup Node.js 24
+        if: steps.delta.outputs.changed == 'true'
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install reviewed lockfile without lifecycle scripts
+        if: steps.delta.outputs.changed == 'true'
+        run: npm ci --ignore-scripts
+
+      - name: Compute offline upgrade impact and upsert deduplicated backlog issue
+        if: steps.delta.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          FROM_VERSION: ${{ steps.delta.outputs.from }}
+          TO_VERSION: ${{ steps.delta.outputs.to }}
+        run: |
+          ./node_modules/.bin/openlup-context impact \
+            --from "$FROM_VERSION" \
+            --to "$TO_VERSION" \
+            --exclude-starter \
+            --format json > /tmp/openlup-impact.json
+
+          ./node_modules/.bin/openlup-context impact \
+            --from "$FROM_VERSION" \
+            --to "$TO_VERSION" \
+            --exclude-starter \
+            --format markdown > /tmp/openlup-impact.md
+
+          node --input-type=module - <<'EOF'
+          import { execFileSync } from "node:child_process";
+          import { readFileSync, writeFileSync } from "node:fs";
+          import { env as runtimeEnv } from "node:process";
+
+          const from = runtimeEnv.FROM_VERSION;
+          const to = runtimeEnv.TO_VERSION;
+          const report = JSON.parse(readFileSync("/tmp/openlup-impact.json", "utf8"));
+          const markdown = readFileSync("/tmp/openlup-impact.md", "utf8");
+
+          const hasItems =
+            report.actionRequiredOnYourImports.length > 0 ||
+            report.newOptInInYourDomains.length > 0 ||
+            report.sqlAndSettingsDelta.sqlAdded.length > 0 ||
+            report.sqlAndSettingsDelta.settingsDelta.added.length > 0 ||
+            report.sqlAndSettingsDelta.settingsDelta.changed.length > 0 ||
+            report.sqlAndSettingsDelta.settingsDelta.removed.length > 0;
+
+          if (!hasItems) {
+            console.log(`No opt-in or follow-up backlog items for ${from} -> ${to}.`);
+            process.exit(0);
+          }
+
+          const marker = `<!-- openlup-optin-backlog:${to} -->`;
+          const title = `OpenLup ${to}: opt-in capabilities and follow-up (${from} -> ${to})`;
+          const body = `${marker}\n\n${markdown}\n---\nGenerated automatically on merged \`main\` after updating \`@openlup/*\` from \`${from}\` to \`${to}\`.\n`;
+          writeFileSync("/tmp/openlup-issue-body.md", body, "utf8");
+
+          const repo = runtimeEnv.GH_REPO;
+          if (!repo) {
+            throw new Error("GH_REPO environment variable is required.");
+          }
+          const searchQuery = `"${marker}" in:body`;
+          const openIssues = JSON.parse(
+            execFileSync(
+              "gh",
+              ["issue", "list", "--repo", repo, "--state", "open", "--search", searchQuery, "--limit", "100", "--json", "number,body"],
+              { encoding: "utf8" },
+            ),
+          );
+          const existing = openIssues.find((issue) => typeof issue.body === "string" && issue.body.includes(marker));
+
+          if (existing) {
+            execFileSync(
+              "gh",
+              ["issue", "edit", String(existing.number), "--repo", repo, "--title", title, "--body-file", "/tmp/openlup-issue-body.md"],
+              { stdio: "inherit" },
+            );
+          } else {
+            execFileSync(
+              "gh",
+              ["issue", "create", "--repo", repo, "--title", title, "--body-file", "/tmp/openlup-issue-body.md"],
+              { stdio: "inherit" },
+            );
+          }
+          EOF
