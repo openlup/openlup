@@ -77,10 +77,10 @@ export function catalogPackInstallIssues(pack: CatalogPackInput): CatalogDefinit
  * @experimental
  */
 export async function installCatalogDefinitions(installExecutor: PgQueryExecutor, pack: CatalogPackInput): Promise<CatalogDefinitionInstallReceipt> {
-  const issues = catalogPackInstallIssues(pack);
+  const { issues, prepared } = inspectInstall(pack);
   if (issues[0]) throw invalidCatalogPack(issues[0]);
   verifyCatalogRulesAtInstall(pack, true);
-  const { manifest, canonicalManifest, profileDeclarationBytes } = inspectInstall(pack).prepared!;
+  const { manifest, canonicalManifest, profileDeclarationBytes } = prepared!;
   const payload = {
     manifest: canonicalManifest,
     types: pack.types.map(type => ({ canonicalDefinition: catalogDefinitionJson(type) })),
