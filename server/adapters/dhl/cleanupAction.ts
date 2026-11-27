@@ -9,7 +9,7 @@ import {
 } from "../../infra/dhl/adminDhlSoap.js";
 
 export const CLEANUP_URL = CARRIER_ENDPOINT;
-export { escapeXml, extractXmlValue };
+export { CARRIER_DISPLAY_NAME, escapeXml, extractXmlValue };
 
 export interface CleanupClient {
   auth: {
@@ -108,7 +108,7 @@ export function createCleanupAction({
             if (result === "true" || result === "1") {
               providerDeleted = true;
             } else {
-              providerError = extractXmlValue(responseText, "error") || "DHL nie potwierdził usunięcia";
+              providerError = extractXmlValue(responseText, "error") || `${CARRIER_DISPLAY_NAME} nie potwierdził usunięcia`;
             }
           }
         } catch (error) {

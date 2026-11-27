@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { CARRIER_DISPLAY_NAME } from "./adminDhlSoap.js";
 import {
   createDhlShipmentWithLabel,
   parseStreet,
@@ -69,7 +70,7 @@ describe("commerce DHL SOAP adapter", () => {
         fetchImpl: fetchImpl as never,
       })).rejects.toMatchObject({
         name: "DhlProviderFault",
-        message: `DHL HTTP ${status}`,
+        message: `${CARRIER_DISPLAY_NAME} HTTP ${status}`,
         retryable: expectedRetryable,
       });
     }
@@ -104,7 +105,7 @@ describe("commerce DHL SOAP adapter", () => {
   it("times out stalled response body reads and rejects oversized responses", async () => {
     const stalledStream = new ReadableStream<Uint8Array>({
       start(controller) {
-        controller.enqueue(new TextEncoder().encode("<shipmentId>DHL"));
+        controller.enqueue(new TextEncoder().encode("<shipmentId>TRK"));
       },
     });
     const stalledFetch = vi.fn(async () => new Response(stalledStream, { status: 200 }));

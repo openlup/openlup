@@ -1,5 +1,4 @@
 import { mapDhlTrackingStatus as mapCarrierTrackingStatus } from "../../../src/domains/fulfillment/status.js";
-import { CARRIER_SOAP_TIMEOUT_MS } from "../../infra/dhl/adminDhlSoap.js";
 import {
   beginTrackingJobRun,
   finishTrackingJobRun,
@@ -8,7 +7,7 @@ import {
   type TrackingDriver,
   type TrackingLedgerClient,
 } from "./trackingJobLedger.js";
-import { pollCarrierTracking } from "./trackingPoller.js";
+import { CARRIER_SOAP_TIMEOUT_MS, pollCarrierTracking } from "./trackingPoller.js";
 
 export const TRACKING_BATCH_SIZE = 60;
 export const TRACKING_TIME_BUDGET_MS = 45_000;

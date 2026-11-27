@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  CARRIER_DISPLAY_NAME,
   CLEANUP_URL,
   createCleanupAction,
   escapeXml,
@@ -162,7 +163,7 @@ describe("cleanup action", () => {
       authorization: "Bearer token",
       body: { tracking_number: "TRK-1" },
     })).then((response) => response.json())).resolves.toEqual(
-      cleanupBody({ providerError: "DHL HTTP 302", labelDeleted: true }),
+      cleanupBody({ providerError: `${CARRIER_DISPLAY_NAME} HTTP 302`, labelDeleted: true }),
     );
     expect(redirectFixture.fetchImpl).toHaveBeenCalledWith(
       CLEANUP_URL,

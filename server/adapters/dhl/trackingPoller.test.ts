@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { CarrierSoapResponseTooLargeError } from "../../infra/dhl/adminDhlSoap.js";
 import {
   CARRIER_TRACKING_ENDPOINT,
   CARRIER_HTTP_ERROR_PREFIX,
+  CarrierSoapResponseTooLargeError,
   buildCarrierTrackingEnvelope,
   extractCarrierTrackingEvents,
   pollCarrierTracking,

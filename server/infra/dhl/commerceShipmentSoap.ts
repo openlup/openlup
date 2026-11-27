@@ -3,7 +3,6 @@ import {
   CARRIER_SOAP_RESPONSE_MAX_BYTES,
   CARRIER_SOAP_TIMEOUT_MS,
   CarrierSoapResponseTooLargeError,
-  DEFAULT_COUNTRY_CODE,
   callCarrierSoap,
   extractFault,
   extractXmlValue,
@@ -11,7 +10,7 @@ import {
 
 export const DHL_ENDPOINT = "https://dhl24.com.pl/webapi2/provider/service.html?ws=1";
 export const DHL_NAMESPACE = "https://dhl24.com.pl/webapi2/provider/service.html?ws=1";
-export { DEFAULT_COUNTRY_CODE };
+export const DEFAULT_COUNTRY_CODE = "PL";
 export const WARSAW_TIME_ZONE = "Europe/Warsaw";
 
 export interface DhlAuthConfig {

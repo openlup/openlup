@@ -2,12 +2,14 @@ import {
   CARRIER_DISPLAY_NAME,
   CARRIER_NAMESPACE,
   CARRIER_SOAP_RESPONSE_MAX_BYTES,
+  CARRIER_SOAP_TIMEOUT_MS,
+  CarrierSoapResponseTooLargeError,
   callCarrierSoap,
   escapeXml,
   extractFault,
 } from "../../infra/dhl/adminDhlSoap.js";
 
-export { CARRIER_NAMESPACE as CARRIER_TRACKING_ENDPOINT };
+export { CARRIER_NAMESPACE as CARRIER_TRACKING_ENDPOINT, CARRIER_SOAP_TIMEOUT_MS, CarrierSoapResponseTooLargeError };
 export const CARRIER_HTTP_ERROR_PREFIX = `${CARRIER_DISPLAY_NAME} HTTP`;
 
 export type CarrierTrackingEvents = { codes: string[]; descriptions: string[] };

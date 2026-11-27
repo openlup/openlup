@@ -1,6 +1,7 @@
+import { DEFAULT_COUNTRY_CODE } from "./commerceShipmentSoap.js";
+
 export const CARRIER_ENDPOINT = "https://dhl24.com.pl/webapi2/provider/service.html?ws=1";
 export const CARRIER_NAMESPACE = CARRIER_ENDPOINT;
-export const DEFAULT_COUNTRY_CODE = "PL";
 export const CARRIER_SOAP_TIMEOUT_MS = 15_000;
 export const CARRIER_LABEL_RESPONSE_MAX_BYTES = 5 * 1024 * 1024;
 export const CARRIER_SOAP_RESPONSE_MAX_BYTES = 512 * 1024;
