@@ -24,7 +24,7 @@ const PROVIDER_ERROR_MAX = 240;
 const PROVIDER_ERROR_CODE_MAX = 80;
 const EMAIL_ADDRESS_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
 const BEARER_TOKEN_PATTERN = /\bBearer\s+[A-Za-z0-9._~+/=-]+/gi;
-const RESEND_KEY_PATTERN = /\bre_[A-Za-z0-9_]+\b/g;
+const RESEND_KEY_PATTERN = /\bre_[A-Za-z0-9_]{6,}\b/g;
 const WEBHOOK_SECRET_PATTERN = /\bwhsec_[A-Za-z0-9+/=_-]+/g;
 
 function truncate(value: string, max: number): string {
