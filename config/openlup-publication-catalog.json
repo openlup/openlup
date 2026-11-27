@@ -32006,6 +32006,14 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/renewalOrderDestinationV2.fixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/renewalOrderDestinationV2.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/retainedClientSubscriptionImport.test.ts",
       "class": "public-output"
     },

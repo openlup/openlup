@@ -42,6 +42,10 @@ export const readResult = z.strictObject({
     contact: z.strictObject(Object.fromEntries(contactKeys.map(key => [key, z.string().optional()]))),
   }),
 });
+export const retainedReadResult = z.union([
+  readResult,
+  readResult.extend({ documentPurpose: z.literal("subscription"), evidenceExpiresAt: z.null() }),
+]);
 const serviceSchema = z.strictObject({
   deliverySelectionRef: serviceRef, providerRef: serviceRef, carrierRef: serviceRef, serviceRef,
   servicePolicyRevision: serviceRef, adapterRevision: serviceRef,
