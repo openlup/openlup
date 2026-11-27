@@ -29,9 +29,18 @@ async function unselected(db: Db, f: RootFixture) {
     UNION ALL SELECT operation_id FROM public.${generations} WHERE cycle_key=$2`, [f.subscriptionId, f.cycleKey])).rows).toEqual([]);
 }
 
+async function expectShiftedRoot(db: Db, f: RootFixture) {
+  expect((await db.query(`SELECT o.scheduled_at=c.original_anchor_at AS anchored,
+    c.effective_due_at>c.original_anchor_at AS shifted,o.identity_key
+    FROM public.${occurrence} c JOIN public.${operations} o ON o.id=c.operation_id WHERE c.cycle_key=$1`, [f.cycleKey])).rows)
+    .toEqual([{ anchored: true, shifted: true, identity_key: `subscription:${f.subscriptionId}:renewal-v3:${f.cycleKey}` }]);
+}
+
 const effectTables = ["subscriptions", "subscription_cycles", "commerce_orders", "commerce_settlement_intents",
   "fulfillment_inventory_reservations", "subscription_cycle_stock_holds", "subscription_cycle_preparations",
-  "subscription_cycle_tax_bindings", "subscription_cycle_payment_attempts", "payment_provider_attempts", "communication_recipient_consents", "outbox_events"];
+  "subscription_cycle_tax_bindings", "subscription_cycle_tax_issuances", "subscription_cycle_payment_attempts",
+  "payment_provider_attempts", "payment_simulator_attempts", "transactional_delivery_receipts",
+  "communication_recipient_consents", "outbox_events"];
 const effects = (db: Db, tables = effectTables) => Promise.all(tables.map(table =>
   db.query(`SELECT to_jsonb(t) AS row FROM public.${table} t ORDER BY to_jsonb(t)`).then(r => r.rows)));
 
@@ -47,12 +56,15 @@ const rootTest = it.extend("owner", async ({ onTestFinished }) => {
   return store.migrator;
 });
 rootTest.for([30, 3600])("commits the equal pair and one %i-second lease after the producer commit", { timeout: postgresSetupTimeoutMs }, async (lease, { owner }) => {
-  const f = await rootFixture(owner), before = await snapshot(owner, f);
+  const f = await rootFixture(owner);
+  await owner.query(`UPDATE public.${occurrence} SET effective_due_at=original_anchor_at+interval '1 day' WHERE cycle_key=$1`, [f.cycleKey]);
+  const before = await snapshot(owner, f);
   const outside = await effects(owner), values = args(f, f.agreement, lease), { operationId } = f.agreement;
   await expect(transaction(owner, async db => {
     await db.query("SET CONSTRAINTS public.cycle_occurrence_selected_pair_fkey IMMEDIATE");
     return claim(db, f, values);
   })).rejects.toMatchObject({ code: "23503", constraint: "cycle_occurrence_selected_pair_fkey" });
+  expect(await effects(owner)).toEqual(outside);
   await expect(transaction(owner, async db => {
     await db.query(`CREATE FUNCTION pg_temp.refuse_generation() RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER AS $$
       BEGIN
@@ -67,6 +79,7 @@ rootTest.for([30, 3600])("commits the equal pair and one %i-second lease after t
   })).rejects.toMatchObject({ message: "generation failure witness" });
   await unselected(owner, f);
   expect(await snapshot(owner, f)).toEqual(before);
+  expect(await effects(owner)).toEqual(outside);
   const created = await transaction(owner, async db => {
     await db.query("SET TRANSACTION ISOLATION LEVEL READ COMMITTED");
     return claim(db, f, values);
@@ -77,6 +90,8 @@ rootTest.for([30, 3600])("commits the equal pair and one %i-second lease after t
     agreement: f.agreement, claimToken: expect.stringMatching(/^[a-f\d-]{36}$/u),
     leaseExpiresAt: expect.stringMatching(/T\d\d:\d\d:\d\d\.\d{6}Z$/u) });
   const durable = await snapshot(owner, f);
+  await expectShiftedRoot(owner, f);
+  expect(await effects(owner)).toEqual(outside);
   expect(durable.occurrence).toEqual({ ...before.occurrence, operation_id: operationId, commercial_generation_id: operationId });
   expect(durable.root).toMatchObject({ id: operationId, subscription_id: f.subscriptionId, cycle_number: f.cycleNumber,
     identity_key: `subscription:${f.subscriptionId}:renewal-v3:${f.cycleKey}`, operation_fingerprint: agreementFingerprint,
@@ -95,6 +110,7 @@ rootTest.for([30, 3600])("commits the equal pair and one %i-second lease after t
   expect(await selected(owner, f)).toEqual(await call(owner, lock, f.scope));
   const replay = { ...created, outcome: "existing", claimToken: null, leaseExpiresAt: null };
   expect(await claim(owner, f)).toEqual(replay);
+  await expectShiftedRoot(owner, f);
   expect(await snapshot(owner, f)).toEqual(durable);
   await owner.query(`UPDATE public.${occurrence} SET effective_due_at=clock_timestamp()+interval '1 day' WHERE cycle_key=$1`, [f.cycleKey]);
   await owner.query(`UPDATE public.${generations} SET claim_token=$2,lease_generation=2,lease_expires_at='2004-03-02Z' WHERE cycle_key=$1`,
@@ -125,6 +141,17 @@ rootTest.for([30, 3600])("commits the equal pair and one %i-second lease after t
   }, "ROLLBACK");
   expect(await effects(owner)).toEqual(outside);
 });
+
+rootTest("refuses a fresh agreement with only the digest wrong", async ({ owner }) => {
+  const f = await rootFixture(owner), before = await snapshot(owner, f), outside = await effects(owner);
+  const wrongDigest = "0".repeat(64);
+  expect(args(f)[6]).not.toBe(wrongDigest);
+  await expect(claim(owner, f, changed(f, 6, wrongDigest))).rejects.toMatchObject(mismatch);
+  expect(await snapshot(owner, f)).toEqual(before);
+  await unselected(owner, f);
+  expect(await effects(owner)).toEqual(outside);
+  expect(await claim(owner, f)).toMatchObject({ outcome: "created" });
+}, postgresSetupTimeoutMs);
 
 rootTest("uses the ordered scope, eligibility, counter and agreement refusals without effects", async ({ owner: db }) => {
   const f = await rootFixture(db), legacy = await rootFixture(db, "legacy");
@@ -192,6 +219,7 @@ rootTest("uses the ordered scope, eligibility, counter and agreement refusals wi
       .toEqual([{ id: incumbent.operationId }]);
     await db.query(`DELETE FROM public.${operations} WHERE id=$1`, [incumbent.operationId]);
     expect(await claim(db, test)).toMatchObject({ outcome: "created" });
+    await expectShiftedRoot(db, test);
   }
 }, postgresSetupTimeoutMs);
 
@@ -213,9 +241,21 @@ rootTest("serializes exact replay, competing selection and due changes at the pa
         await waitForParent(tx);
         return created;
       });
-      expect(first).toMatchObject({ outcome: "created" });
+      expect(first).toMatchObject({ outcome: "created", operationId: f.agreement.operationId });
       expect(await contender).toMatchObject(competing ? stale : { outcome: "existing", operationId: other, claimToken: null, leaseExpiresAt: null });
-      expect((await snapshot(owner, f)).generation).toMatchObject({ operation_id: f.agreement.operationId, lease_generation: 1 });
+      const { operationId, claimToken, leaseExpiresAt } = first;
+      expect(claimToken).toMatch(/^[a-f\d-]{36}$/u);
+      expect(leaseExpiresAt).toMatch(/\.\d{6}Z$/u);
+      expect((await owner.query(`SELECT id,claim_token AS token,claim_generation::text AS lease,
+        to_char(lease_expires_at AT TIME ZONE 'UTC',${utc}) AS expiry
+        FROM public.${operations} WHERE subscription_id=$1 OR id=$2`, [f.subscriptionId, other])).rows)
+        .toEqual([{ id: operationId, token: claimToken, lease: "1", expiry: leaseExpiresAt }]);
+      expect((await owner.query(`SELECT operation_id,commercial_generation_id,claim_token AS token,lease_generation::text AS lease,
+        to_char(lease_expires_at AT TIME ZONE 'UTC',${utc}) AS expiry
+        FROM public.${generations} WHERE cycle_key=$1 OR operation_id IN
+          (SELECT id FROM public.${operations} WHERE subscription_id=$2)`, [f.cycleKey, f.subscriptionId])).rows)
+        .toEqual([{ operation_id: operationId, commercial_generation_id: operationId, token: claimToken, lease: "1", expiry: leaseExpiresAt }]);
+      expect(await selected(owner, f)).toMatchObject({ operationId, commercialGenerationId: operationId });
     }
     for (const postpone of [false, true]) {
       const f = await rootFixture(owner);
@@ -234,6 +274,7 @@ rootTest("serializes exact replay, competing selection and due changes at the pa
       });
       expect(await contender).toMatchObject(postpone ? blocked : { outcome: "created" });
       if (postpone) await unselected(owner, f);
+      else await expectShiftedRoot(owner, f);
     }
   } finally { follower.release(); }
 }, postgresSetupTimeoutMs);
@@ -279,30 +320,50 @@ rootTest("preserves the outstanding replacement and never enters delivery confir
   const delivery = await fixture(owner), control = await openCase(owner, delivery);
   const arrived = await replacement(owner, delivery);
   await owner.query("UPDATE public.fulfillment_shipments SET status='delivered',delivered_at=clock_timestamp() WHERE id=$1", [arrived]);
-  let outstanding = "";
+  let outstanding = "", caseId = "", predecessor = "";
   const f = await rootFixture(owner, "v3", undefined, async (db, paid) => {
     const originalShipment = { ...delivery, order: paid.orderId, shipment: randomUUID() };
     await db.query(`INSERT INTO public.fulfillment_shipments(id,order_id,port_key,provider_type,create_idempotency_key)
       SELECT $1::uuid,$2,port_key,provider_type,$1::uuid::text FROM public.fulfillment_shipments WHERE id=$3`,
     [originalShipment.shipment, paid.orderId, delivery.shipment]);
-    await openCase(db, originalShipment);
+    caseId = (await openCase(db, originalShipment)).id;
+    predecessor = originalShipment.shipment;
     outstanding = await replacement(db, originalShipment);
   });
   const before = await snapshot(owner, f);
   const deliveryState = (db: Db) => effects(db, ["fulfillment_shipments", "subscription_delivery_alignment_cases",
     "subscription_delivery_alignment_arrivals", "subscriptions"]);
-  expect((await owner.query("SELECT delivered_at FROM public.fulfillment_shipments WHERE id=$1", [outstanding])).rows).toEqual([{ delivered_at: null }]);
+  const assertOutstanding = async (db: Db) => {
+    expect((await db.query(`SELECT c.id FROM public.${occurrence} o
+      JOIN public.subscription_delivery_alignment_cases c ON c.subscription_id=o.subscription_id
+      JOIN public.fulfillment_shipments s ON s.order_id=c.predecessor_order_id AND s.replaces_shipment_id=c.shipment_id
+      WHERE o.cycle_key=$1 AND c.id=$2 AND c.predecessor_order_id=$3 AND c.shipment_id=$4 AND s.id=$5
+        AND c.predecessor_cycle_id=$6 AND c.state IN ('protected','manual_review') AND c.captured_mode='auto_align'
+        AND o.original_anchor_at=$7::timestamptz AND o.effective_due_at=$7::timestamptz
+        AND c.aligned_at IS NULL AND c.aligned_next_cycle_at IS NULL AND c.delivered_at IS NULL AND s.delivered_at IS NULL
+        AND NOT EXISTS (SELECT FROM public.fulfillment_shipments successor WHERE successor.replaces_shipment_id=s.id)`,
+    [f.cycleKey, caseId, f.orderId, predecessor, outstanding, f.cycleId, f.originalAnchorAt])).rows).toEqual([{ id: caseId }]);
+  };
+  await assertOutstanding(owner);
   const state = await deliveryState(owner);
   const confirmation = "subscription_delivery_alignment_confirm_replacement";
-  const definitions = (await owner.query(`SELECT proname,prosrc FROM pg_proc
-    WHERE proname=ANY($1::text[]) OR oid IN (SELECT tgfoid FROM pg_trigger WHERE NOT tgisinternal
-    AND tgrelid=ANY($2::regclass[]))`, [[read, lock, writer], [occurrence, operations, generations].map(name => `public.${name}`)])).rows;
-  const publicBodies = (await owner.query("SELECT oid,proname,prosrc FROM pg_proc WHERE pronamespace='public'::regnamespace")).rows;
-  const visited = new Set<number>();
-  for (const { prosrc } of definitions) {
-    expect(prosrc).not.toContain(confirmation);
-    for (const body of publicBodies) if (!visited.has(body.oid) && prosrc.includes(`public.${body.proname}(`)) {
-      visited.add(body.oid); definitions.push(body);
+  const { rows: bodies } = await owner.query<{ oid: string; proname: string; prosrc: string; entry: boolean; dependencies: string[] }>(`
+    SELECT p.oid::text, p.proname, p.prosrc,
+      (p.pronamespace='public'::regnamespace AND p.proname=ANY($1::text[])) OR p.oid IN
+        (SELECT tgfoid FROM pg_trigger WHERE NOT tgisinternal AND tgrelid=ANY($2::regclass[])) AS entry,
+      ARRAY(SELECT d.refobjid::text FROM pg_depend d WHERE d.classid='pg_proc'::regclass
+        AND d.refclassid='pg_proc'::regclass AND d.objid=p.oid) AS dependencies
+    FROM pg_proc p WHERE p.pronamespace NOT IN ('pg_catalog'::regnamespace,'information_schema'::regnamespace)`,
+  [[read, lock, writer], [occurrence, operations, generations].map(name => `public.${name}`)]);
+  const entries = bodies.filter(body => body.entry), visited = new Set(entries.map(body => body.oid));
+  for (const { proname, prosrc, dependencies } of entries) {
+    expect(proname).not.toBe(confirmation);
+    expect(prosrc.toLowerCase()).not.toContain(confirmation);
+    const calls = new Set([...prosrc.matchAll(/(?:"([a-z_][\w$]*)"|\b([a-z_][\w$]*))\s*\(/giu)]
+      .map(([, quoted, unquoted]) => quoted ?? unquoted!.toLowerCase()));
+    for (const body of bodies) if (!visited.has(body.oid) && (dependencies.includes(body.oid) || calls.has(body.proname))) {
+      visited.add(body.oid);
+      entries.push(body);
     }
   }
   const count = await probe(owner, confirmation, `public.${confirmation}(uuid,text)`, "fixture_confirmation_entries");
@@ -317,9 +378,10 @@ rootTest("preserves the outstanding replacement and never enters delivery confir
     expect(await count()).toBe(3);
     await savepoint(tx, async () => {
       const unchanged = async () => {
+        await assertOutstanding(tx);
         expect(await deliveryState(tx)).toEqual(state);
-        expect(await selected(tx, f)).toMatchObject({ originalAnchorAt: f.originalAnchorAt, effectiveDueAt: f.originalAnchorAt });
       };
+      await unchanged();
       expect(await selected(tx, f)).toMatchObject({ operationId: null }); await unchanged();
       expect(await call(tx, lock, f.scope)).toMatchObject({ operationId: null }); await unchanged();
       expect(await claim(tx, f)).toMatchObject({ outcome: "created" }); await unchanged();
@@ -330,6 +392,7 @@ rootTest("preserves the outstanding replacement and never enters delivery confir
     });
     expect(await count()).toBe(3);
   }, "ROLLBACK");
+  await assertOutstanding(owner);
   expect(await deliveryState(owner)).toEqual(state);
   expect(await snapshot(owner, f)).toEqual(before);
   expect(await count()).toBe(3);
