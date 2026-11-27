@@ -1661,19 +1661,33 @@ it("uses persisted gaps across column INSERT, inherited authority, replay and ow
     GRANT SELECT ON public.commerce_orders, public.subscription_cycles, public.subscriptions TO upgrade_arrival_member;
     GRANT INSERT (id, order_id, port_key, provider_type, create_idempotency_key, delivered_at)
       ON public.fulfillment_shipments TO upgrade_arrival_member`);
+  const writer = await admin.connect();
   try {
+    const qualified = await renewalPurchase(false, undefined, days(at, 3));
+    const first = randomUUID(), shipment = randomUUID();
+    const insert = (id: string, orderId: string, arrived: string) => writer.query(
+      `INSERT INTO public.fulfillment_shipments(id, order_id, port_key, provider_type, create_idempotency_key, delivered_at)
+       VALUES($1::uuid,$2,'g7-parcels','3pl',($1::uuid)::text,$3)`, [id, orderId, arrived]);
     await grantArrivalAlignment(role);
+    await writer.query("BEGIN; SET LOCAL ROLE upgrade_arrival_member");
+    expect((await writer.query(`SELECT has_table_privilege('public.fulfillment_shipments','INSERT') AS full_insert,
+      has_column_privilege('public.fulfillment_shipments','delivered_at','UPDATE') AS arrival_update`)).rows)
+      .toEqual([{ full_insert: false, arrival_update: false }]);
+    const qualifiedAt = days(deliveredAt, 4);
+    await insert(first, qualified.orderId, qualifiedAt);
+    await writer.query("COMMIT");
+    expect(await alignmentState(admin, qualified.subscriptionId)).toMatchObject({
+      next_cycle_at: new Date(days(qualifiedAt, facts.cadenceDays)), cases: [{ state: "aligned" }],
+    });
+
     await admin.query("REVOKE UPDATE (next_cycle_at) ON public.subscriptions FROM upgrade_alignment_parent");
-    const shipment = randomUUID(), before = await alignmentState(admin, f.subscriptionId);
-    const insert = () => transaction(async tx => {
-      await tx.query("SET LOCAL ROLE upgrade_arrival_member");
-      expect((await tx.query(`SELECT has_table_privilege('public.fulfillment_shipments','INSERT') AS full_insert,
-        has_column_privilege('public.fulfillment_shipments','delivered_at','UPDATE') AS arrival_update`)).rows)
-        .toEqual([{ full_insert: false, arrival_update: false }]);
-      await tx.query(`INSERT INTO public.fulfillment_shipments(id, order_id, port_key, provider_type, create_idempotency_key, delivered_at)
-        VALUES($1::uuid,$2,'g7-parcels','3pl',($1::uuid)::text,$3)`, [shipment, f.orderId, deliveredAt]);
-    }, admin);
-    expect(await readRenewalUpgradeReport(admin, { afterCut: insert })).toEqual({ operations: [], alignment: [] });
+    const before = await alignmentState(admin, f.subscriptionId);
+    await writer.query("BEGIN; SET LOCAL ROLE upgrade_arrival_member");
+    await insert(shipment, f.orderId, deliveredAt);
+    // The old writer is still admitted while the new route receives evidence.
+    expect(await recordArrival(first, qualifiedAt, runtime)).toMatchObject({ replayed: false });
+    expect(await readRenewalUpgradeReport(admin, { afterCut: async () => { await writer.query("COMMIT"); } }))
+      .toEqual({ operations: [], alignment: [] });
     expect(await alignmentState(admin, f.subscriptionId)).toEqual(before);
     const listed = reportGap(f.subscriptionId, shipment, { observed_due_at: new Date(originalDue),
       latest_delivery_at: new Date(deliveredAt), occupying_operation_id: null });
@@ -1695,6 +1709,8 @@ it("uses persisted gaps across column INSERT, inherited authority, replay and ow
     expect(await binding(d, () => shifted).services.run()).toMatchObject({ renewals: [{ status: "succeeded" }] });
     expect(d.execute.mock.calls.map(([charge]) => charge.amountMinor)).toEqual([300]);
   } finally {
+    await writer.query("ROLLBACK");
+    writer.release();
     await admin.query("DROP OWNED BY upgrade_arrival_member, upgrade_alignment_parent; DROP ROLE upgrade_arrival_member, upgrade_alignment_parent");
   }
 }, 30_000);
@@ -2320,6 +2336,15 @@ it("keeps v3 schedule and delivery ownership out of the check and scoped repair"
     await linkPredecessor(null);
     await owner.query(`INSERT INTO public.subscription_cycle_delivery_assignments(obligation_ref,assigned_cycle_key)
       VALUES($1,$2)`, [assigning.orderId, assigning.key]);
+    expect((await report()).alignment).toHaveLength(2);
+    await unchanged(assigning.subscriptionId);
+    const legacyAssignment = randomUUID();
+    await owner.query(`INSERT INTO public.subscription_cycle_occurrences
+      (cycle_key,subscription_id,client_id,original_anchor_at,effective_due_at,cadence_seconds,rail,lifecycle,is_current)
+      VALUES($1,$2,$3,$4,$4,2419200,'legacy','active',true)`,
+    [legacyAssignment, assigning.subscriptionId, assigning.clientId, assigning.anchor]);
+    await owner.query(`UPDATE public.subscription_cycle_delivery_assignments
+      SET marker_cycle_key=assigned_cycle_key,assigned_cycle_key=$2 WHERE obligation_ref=$1`, [assigning.orderId, legacyAssignment]);
     await transaction(async tx => {
       // The booked graph uses the existing paid activation at ordinal zero. Its cycle and order
       // operation links stay null, so neither the v3 tag nor the unknown-ordinal fence decides.
