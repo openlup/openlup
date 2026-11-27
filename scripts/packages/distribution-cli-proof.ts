@@ -1473,7 +1473,7 @@ export async function proveStarterRuntimeUpgrade(from: string, to: string, port:
 
 export function completeStarterRuntimeProof(started: number) {
   site("proof_progress_write", "proof_completion_write_failed",
-    () => process.stdout.write("Starter runtime occupied proof completed in " + Math.round(performance.now() - started) + " ms\n"), { labels: ["complete"] });
+    () => process.stdout.write("Starter runtime occupied proof completed in " + Math.round(performance.now() - started) + " ms PASS\n"), { labels: ["complete"] });
 }
 
 async function runStarterRuntimeUpgrade(from: string, to: string, port: number) {

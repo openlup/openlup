@@ -11,7 +11,7 @@ import { env } from "node:process";
 import { imageReference, readCiImage } from "../ci-image-pull.mjs";
 import { browserContainerArguments, starterBrowserFailure } from "../starter-browser-ci.mjs";
 import { proveInstalledCareUpgrade, qualificationReceipt, qualifyReleasedSet } from "./exact-set-qualification.mjs";
-import { assertCompleteStarter, assertUpgradeConflict, previousPublishedSet, migrateStarterOwned,
+import { assertCompleteStarter, assertUpgradeConflict, completeStarterRuntimeProof, previousPublishedSet, migrateStarterOwned,
   includeSettingsHost, starterSettingsHost, reconcileLifecycleCustomization, reconcileStarterLocalPort, proveStarterPortRefusals, reconcileReminderInstallationTest, proveStarterCatalogueWrappers, retiresStarterCatalogue, proveStarterCatalogue130,
   reminderInstallationTest, starterLifecycle, starterOptionalOwnedFiles, starterUpgradeSnapshot,
   starterDisplayFiles, reconcileDisplayCustomization, reconcileStarterAgentGuide,
@@ -191,6 +191,18 @@ it("binds proof diagnostics to literal sites and rejects contract mutations", ()
     expect(modified).not.toBe(sources[index]);
     const issues = scanDiagnosticContract(sources.with(index, rule === "operation_count" ? modified.replace("'-C', source]),", "'-C', source])),") : modified)).issues;
     expect(issues.some(issue => issue.startsWith(rule + " ")) && !issues.some(issue => issue.startsWith("syntax ")), rule).toBe(true);
+  }
+});
+
+it("preserves the occupied proof completion line", () => {
+  const now = vi.spyOn(performance, "now").mockReturnValue(140);
+  const stdout = vi.spyOn(process.stdout, "write").mockReturnValue(true);
+  try {
+    completeStarterRuntimeProof(100);
+    expect(stdout.mock.calls).toEqual([["Starter runtime occupied proof completed in 40 ms PASS\n"]]);
+  } finally {
+    stdout.mockRestore();
+    now.mockRestore();
   }
 });
 
