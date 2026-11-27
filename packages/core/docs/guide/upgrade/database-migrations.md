@@ -124,10 +124,8 @@ claim. Later accepted edits apply to later cycles.
 Platform 1.4.0 refuses a first claim with `subscription_renewal_snapshot_stale`
 when the snapshot carries version evidence that proves it stale. Bare legacy
 claims without build-version evidence are admitted as before. Custom legacy
-callers can read the template version with the snapshot and supply it as
-`buildTemplateVersion` alongside `cycleSnapshot` in the
-`platform.subscription.renewal.claim-build.v1` envelope used by the shipped
-legacy adapter. Alternatively, build and claim in one transaction holding the
+callers get the same protection by claiming through the shipped legacy adapter,
+or by building the snapshot and claiming it in one transaction that holds the
 subscription row lock. Re-read and rebuild the snapshot on the stale refusal.
 
 ```sql

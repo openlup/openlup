@@ -2,4 +2,4 @@
 
 Migration:
 
-- Follow the renewal checklist in the database upgrade guide. Pause and drain renewal and retry dispatch and template-edit acceptance before the forward. Run the read-only report and reconcile the listed work. Immediately before resuming dispatch, confirm that no row lists a reason other than `provider_state_open_after_cancellation`. Custom legacy callers supply the shipped adapter's build-version evidence or build and claim under one subscription lock. Re-read and rebuild on `subscription_renewal_snapshot_stale`.
+- Follow the renewal checklist in the database upgrade guide. Pause and drain renewal and retry dispatch and template-edit acceptance before the forward. Run the read-only report and reconcile the listed work. Immediately before resuming dispatch, confirm that no row lists a reason other than `provider_state_open_after_cancellation`. Custom legacy callers claim through the shipped legacy adapter or build and claim under one subscription lock. Re-read and rebuild on `subscription_renewal_snapshot_stale`.
