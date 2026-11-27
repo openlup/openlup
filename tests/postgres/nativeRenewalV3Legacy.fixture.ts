@@ -3,7 +3,7 @@ import type { Pool, PoolClient } from "pg";
 import { fixture, openCase, schedule } from "../helpers/fulfillmentNative.js";
 import type { AccountMutationsStore } from "./customerAccountMutations.fixture.js";
 import { bindSubscriptionJob } from "../helpers/subscriptionJob.fixture.js";
-import { AT, call, later, recordRenewalMethod, renewal, seedRenewal, type RenewalSeed } from "./subscriptionNativeFixture.js";
+import { AT, call, claimFixtureRenewal, later, recordRenewalMethod, seedRenewal, type RenewalSeed } from "./subscriptionNativeFixture.js";
 
 export async function observeRenewalWrites({ owner, runtime }: AccountMutationsStore, relations: string[]) {
   const writes: string[] = [], seen = new WeakSet<PoolClient>();
@@ -48,13 +48,14 @@ async function renewalEffects(db: Pool, f: RenewalSeed) {
   return { ...rows[0], schedule: await schedule(db, f.subscription) };
 }
 
-export async function exerciseLegacyRenewals({ owner, runtime }: AccountMutationsStore) {
-  const expiring = await renewal(owner);
+export async function exerciseLegacyRenewals({ owner, runtime }: Pick<AccountMutationsStore, "owner" | "runtime">,
+  seedSubject: (available: number) => Promise<RenewalSeed> = available => seedRenewal(owner, available)) {
+  const expiring = await claimFixtureRenewal(runtime, await seedSubject(10));
   expect(await call(owner, "fulfillment_reserve_subscription_renewal", [expiring.operation, expiring.token, 900, AT]))
     .toMatchObject({ reserved: true, replayed: false });
   await owner.query("UPDATE public.subscriptions SET next_cycle_at=$2 WHERE id=$1", [expiring.subscription, later(48)]);
 
-  const due = await seedRenewal(owner);
+  const due = await seedSubject(10);
   await recordRenewalMethod(owner, due, "frozen-method");
   expect(await call(runtime, "subscription_read_renewal", [due.identity])).toBeNull();
   const dueJob = bindSubscriptionJob(runtime, due);
@@ -81,7 +82,7 @@ export async function exerciseLegacyRenewals({ owner, runtime }: AccountMutation
   expect(recovered).toMatchObject({ frozen: true, retry: "recovered", cycle: "paid", settlement: "settled" });
   expect(dueJob.execute).toHaveBeenCalledTimes(2);
 
-  const stock = await seedRenewal(owner, 0);
+  const stock = await seedSubject(0);
   await recordRenewalMethod(owner, stock, "frozen-method");
   const stockJob = bindSubscriptionJob(runtime, stock);
   const stockRun = await mounted(stockJob);
@@ -133,6 +134,12 @@ export async function exerciseLegacyRenewals({ owner, runtime }: AccountMutation
 
   // Compare stable effects, with each store's generated identities verified above.
   const dispatch = [dueJob, stockJob].map(job => job.execute.mock.calls.length);
+  const readbacks: { state: string; terminalReason: string | null; cycleNumber: number }[] = [];
+  for (const subject of [expiring, due, stock]) {
+    const readback = await call(runtime, "subscription_read_renewal", [subject.identity]);
+    expect(readback).toMatchObject({ identityKey: subject.identity, operationFingerprint: subject.fingerprint, cycleSnapshot: subject.snapshot });
+    readbacks.push({ state: readback.state, terminalReason: readback.terminalReason, cycleNumber: readback.cycleNumber });
+  }
   return { dueRun, retryRun, stockRun, resumedRun, declined, expired, recovered, waiting, secured, directEffects, aligned, deliveryEffects, commands, dispatch,
-    cancelled: cancelledSchedule };
+    readbacks, cancelled: cancelledSchedule };
 }
