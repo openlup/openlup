@@ -322,7 +322,7 @@ test('native support roster, catalogue administration, replay and operator admis
   console.log('operation tally', JSON.stringify({ declared: status.length, bound: status.filter((row: { bound: boolean }) => row.bound).length }));
 });
 
-type PublicationFixture = { id: string; baseURL: string; ownerUrl: string; runtimeUrl: string; state: string };
+type PublicationFixture = { id: string; baseURL: string; ownerUrl: string; runtimeUrl: string; state: string; catalogueBuildDirectory: string };
 
 async function isolatePublicationFixture(selected: PublicationFixture) {
   const admin = new pg.Client({ connectionString: selected.ownerUrl });
@@ -354,7 +354,8 @@ async function isolatePublicationFixture(selected: PublicationFixture) {
     const password = decodeURIComponent(runtime.password);
     runtime.password = '';
     host = spawn(process.execPath, ['--experimental-strip-types', '--input-type=module', '-', '--configuration', selected.id, '--port', String(port)],
-      { env: { PGPASSWORD: password }, stdio: ['pipe', 'ignore', 'ignore'] });
+      { env: { PGPASSWORD: password, OPENLUP_STARTER_BROWSER_CATALOGUE_BUILDS: selected.catalogueBuildDirectory },
+        stdio: ['pipe', 'ignore', 'ignore'] });
     host.stdin!.end(`
       import { readFileSync } from 'node:fs';
       import { createApplication } from './host/server.ts';
@@ -415,7 +416,7 @@ test('authenticated Publish discloses only owned degraded jobs and supports exac
     }).toBe(true);
     expect((await (await send('auth.operator', { token })).json()).ok).toBe(true);
 
-    const catalogue = starterCatalogue(), type = catalogue.current!;
+    const catalogue = starterCatalogue(selected.catalogueBuildDirectory), type = catalogue.current!;
     const grams = { dimension: 'mass', unit: 'openlup:g', unscaled: '100', scale: 0 } as const;
     const { release, activation } = buildCatalogReleaseDraftV3({ namespace: 'fixture', type: { key: type.key, version: type.version },
       slug: 'readiness-article', name: 'Readiness article', presentation: { title: 'Readiness article' }, skus: [{
