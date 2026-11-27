@@ -1340,6 +1340,53 @@ describe("shift-left preflight guards and --affected discovery", () => {
       }
     });
 
+    it("rejects extra unexpected current.profiles keys and malformed forward/baseline entries without masking earlier errors", () => {
+      const extraProfileDir = createMigrationParityTree();
+      try {
+        const invPath = join(extraProfileDir, "tests/postgres/current-installation-inventory.json");
+        const inv = JSON.parse(readFileSync(invPath, "utf8"));
+        inv.current.profiles["unexpected-profile"] = structuredClone(inv.current.profiles.legacy);
+        writeFileSync(invPath, `${JSON.stringify(inv, null, 2)}\n`);
+        expect(checkMigrationManifestAndInventory(extraProfileDir)).toContain(
+          "tests/postgres/current-installation-inventory.json: unexpected current.profiles key(s): unexpected-profile",
+        );
+      } finally {
+        rmSync(extraProfileDir, { recursive: true, force: true });
+      }
+
+      const malformedForwardDir = createMigrationParityTree();
+      try {
+        const manifestPath = join(malformedForwardDir, "config/platform-migration-manifest.json");
+        const originalManifest = readFileSync(manifestPath, "utf8");
+        const manifest = JSON.parse(originalManifest);
+        manifest.forward[0] = null;
+        manifest.qualified.baseline = { file: 123, sha256: "abc" };
+        writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+        const nullErrs = checkMigrationManifestAndInventory(malformedForwardDir);
+        expect(nullErrs).toContainEqual(expect.stringContaining("platform migration manifest.forward[0]"));
+        expect(nullErrs).toContain("config/platform-migration-manifest.json: invalid baseline/forward entry in legacy");
+        expect(nullErrs).toContain("config/platform-migration-manifest.json: invalid baseline/forward entry in bootstrap");
+
+        const nonStringShaManifest = JSON.parse(originalManifest);
+        const targetFile = nonStringShaManifest.forward[0].file;
+        for (const plan of [nonStringShaManifest, nonStringShaManifest.qualified, nonStringShaManifest.qualifiedAdmin]) {
+          plan.forward = plan.forward.map((entry: { file: string; sha256: string }) => (
+            entry.file === targetFile ? { file: entry.file, sha256: null } : entry
+          ));
+        }
+        writeFileSync(manifestPath, `${JSON.stringify(nonStringShaManifest, null, 2)}\n`);
+        writeFileSync(join(malformedForwardDir, "packages/platform/sql/manifest.json"), "{}\n");
+        const driftAndInvalidErrs = checkMigrationManifestAndInventory(malformedForwardDir);
+        expect(driftAndInvalidErrs).toContainEqual(expect.stringContaining("platform migration manifest.forward[0].sha256"));
+        expect(driftAndInvalidErrs).toContain(
+          "packaged platform migration manifest drift: regenerate the package projection (packages/platform/README.md)",
+        );
+        expect(driftAndInvalidErrs).toContain("config/platform-migration-manifest.json: invalid baseline/forward entry in legacy");
+      } finally {
+        rmSync(malformedForwardDir, { recursive: true, force: true });
+      }
+    });
+
     it("fails fast in Wave 1 before typecheck on dirty manifest/inventory changes across default, --affected, and --area", async () => {
       const dir = createMigrationParityTree();
       const prevCwd = process.cwd();

@@ -630,6 +630,12 @@ export const MIGRATION_MANIFEST_TRIGGER = /^(?:db\/platform\/migrations\/|packag
 
 const INVENTORY_TAIL_ANCHOR = "db/platform/migrations/20261109150000_subscription_auto_resume_paid_history.sql";
 
+const isManifestEntry = (value: unknown): value is { file: string; sha256: string } => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return typeof record.file === "string" && typeof record.sha256 === "string";
+};
+
 function checkFiveProfileInventoryParity(root: string): string[] {
   let rawManifest: unknown;
   try {
@@ -674,6 +680,11 @@ function checkFiveProfileInventoryParity(root: string): string[] {
     return [`${PLATFORM_MIGRATION_MANIFEST}: unable to select all 5 profiles: ${message}`];
   }
   const errors: string[] = [];
+  const expectedProfiles = new Set(selections.map(([profileName]) => profileName));
+  const extraProfiles = Object.keys(profileMap).filter((name) => !expectedProfiles.has(name)).sort();
+  if (extraProfiles.length > 0) {
+    errors.push(`${INVENTORY_PATH}: unexpected current.profiles key(s): ${extraProfiles.join(", ")}`);
+  }
   for (const [profileName, plan] of selections) {
     const rawProfile = profileMap[profileName];
     if (!rawProfile || typeof rawProfile !== "object" || Array.isArray(rawProfile)) {
@@ -684,8 +695,8 @@ function checkFiveProfileInventoryParity(root: string): string[] {
     if (profile.objectInventorySha256 !== plan.objectInventorySha256) {
       errors.push(`${INVENTORY_PATH}: current.profiles.${profileName}.objectInventorySha256 does not match ${PLATFORM_MIGRATION_MANIFEST} (run npm run inventory:refresh with Docker)`);
     }
-    if (!plan.baseline || !Array.isArray(plan.forward)) {
-      errors.push(`${PLATFORM_MIGRATION_MANIFEST}: invalid baseline/forward in ${profileName}`);
+    if (!isManifestEntry(plan.baseline) || !Array.isArray(plan.forward) || !plan.forward.every(isManifestEntry)) {
+      errors.push(`${PLATFORM_MIGRATION_MANIFEST}: invalid baseline/forward entry in ${profileName}`);
       continue;
     }
     const expectedTail = [plan.baseline, ...plan.forward].reverse().map(({ file, sha256 }) => ({ file, sha256 }));
@@ -721,7 +732,11 @@ export function checkMigrationManifestAndInventory(root = process.cwd()): string
   } catch (error) {
     errors.push(error instanceof Error ? error.message : String(error));
   }
-  errors.push(...checkFiveProfileInventoryParity(root));
+  try {
+    errors.push(...checkFiveProfileInventoryParity(root));
+  } catch (error) {
+    errors.push(error instanceof Error ? error.message : String(error));
+  }
   return errors;
 }
 

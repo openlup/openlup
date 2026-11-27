@@ -1036,7 +1036,8 @@ It checks worktree cleanliness, mergeability against `origin/main` (skipped when
 points to an unlanded stack base), both neutrality gates, ast-grep scan and hygiene, `eslint-changed`
 on changed non-deleted JS/TS files, conditional `client-secret-boundary` and `site-routes` guards, the
 published-tree self-check (`oss:published-tree -- --self-check`, including committed-tree append-only
-migration history and package API `Migration:` blocks when `HEAD` differs from its base), changelog fragments, added
+migration history and package API `Migration:` blocks when `HEAD` differs from its base), pure-Node
+migration manifest/projection/5-profile inventory parity (`migration projection`), changelog fragments, added
 test-line date/expiry warnings, `gitleaks`, conditional guide-contract and package-manifest checks,
 and DCO sign-off across all commits (merge commits included). `WARN` and `SKIP` statuses surface
 without failing `--fast`. If fetch fails, it uses the local `origin/main`.
@@ -1044,9 +1045,11 @@ The fast tier does not replace full preflight or hosted CI.
 
 Run `npm run preflight -- --area` for a Docker-free, area-scoped check over changes since
 `git merge-base HEAD origin/main` plus uncommitted and untracked files: it runs `eslint changed`,
-triggered Docker-free, consumer-pack-free tooling guard tests from `scripts/ci-test-scope.mjs` (plus
-`scripts/catalog-document-boundary.test.ts` on catalog, script or doc edits) through `test:hosted`,
-and `sql admit` when SQL under `db/` or `packages/*/sql/` changed.
+`migration manifest` (pure-Node canonical manifest, projection, and 5-profile inventory parity when
+manifest, SQL, projection, or inventory inputs changed), triggered Docker-free, consumer-pack-free
+tooling guard tests from `scripts/ci-test-scope.mjs` (plus `scripts/catalog-document-boundary.test.ts`
+on catalog, script or doc edits) through `test:hosted`, and `sql admit` when SQL under `db/` or
+`packages/*/sql/` changed.
 
 Run `npm run preflight -- --affected` to run default preflight with test discovery expanded via
 `scripts/affected-tests.mjs` (reverse-import graph and contract-pin rules) so source-only edits
@@ -1067,6 +1070,11 @@ one `PASS`, `WARN`, `SKIP` or `FAIL` line per check:
   when `src/`, `server/`, `api/`, `config/environment-variables.json`, or the guard script changed;
 - `site-routes`: `node scripts/site-routes.mjs --public-reference` when `config/site-routes.json`,
   `config/public-reference-site-routes.json`, or `scripts/site-routes*` changed;
+- `migration manifest`: pure-Node canonical migration manifest, package projection,
+  and 5-profile inventory parity (`count`, `exactTailCount`, `tail`, and
+  `objectInventorySha256`) in Wave 1 before package builds/typecheck when
+  manifest, SQL, projection, or `tests/postgres/current-installation-inventory.json`
+  inputs changed;
 - `sql admit`: `npm run sql:admit` when SQL under `db/` or `packages/*/sql/`
   changed; reports `WARN` when the working tree has uncommitted or untracked
   changes;
