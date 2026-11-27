@@ -11,6 +11,7 @@ import { imageReference, pullWithRetry, readCiImage } from '../ci-image-pull.mjs
 import { needsStarterCareUpgrade, previousPublishedSet, proveDistributionCliConsumer, proveStarterRuntimeUpgrade, proveSettingsDiscovery, proveSettingsMcp,
   StarterRuntimeProofError, starterCareJourney, starterCareWitness, starterSettingsHost } from './distribution-cli-proof.ts';
 import { assertInstalledPackages, isolatedConsumerEnv, readCurrentPackManifest } from './pack-manifest-input.ts';
+import { parsePackagesConfig } from './package-manifest-policy.ts';
 import { generateExactSetReleaseBom } from './generate-release-bom.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -172,51 +173,88 @@ export function qualificationReceipt(tag, commit, runnerImage = { image: env.Ima
   return { schemaVersion: 1, setVersion: tag.slice(14), tag, tagCommit: commit, runnerImage, startedAt: new Date().toISOString(), endedAt: null, result: 'FAIL', extraction: null, packages: [], checks: [] };
 }
 
+export const candidatePreparationStages = Object.freeze({
+  checkoutLookup: ['candidate_checkout', 'checkout_lookup_failed'],
+  wrongCheckout: ['candidate_checkout', 'wrong_checkout'],
+  workspace: ['candidate_workspace', 'workspace_failed'],
+  revisionLookup: ['candidate_revision', 'revision_lookup_failed'],
+  revisionMismatch: ['candidate_revision', 'revision_mismatch'],
+  sourceExtraction: ['candidate_source', 'source_extraction_failed'],
+  sourceInputs: ['candidate_inputs', 'source_input_validation_failed'],
+  manifest: ['candidate_manifest', 'manifest_validation_failed'],
+  lockfileGeneration: ['candidate_lockfile', 'lockfile_generation_failed'],
+  generatedLockfile: ['candidate_lockfile_validation', 'generated_lockfile_validation_failed'],
+  starterExtraction: ['candidate_extraction', 'starter_extraction_failed'],
+  artifactStaging: ['candidate_artifacts', 'artifact_staging_failed'],
+  dependencyInstall: ['candidate_install', 'npm_install_failed'],
+});
+
 function prepareReleasedStarter(receipt, temporary, run, candidateManifest = undefined, qualifyProvider = true,
-  stage = (_step, _reason, operation) => operation()) {
+  stage = (_stage, operation) => operation()) {
   const { tag, tagCommit: expectedCommit } = receipt;
   const revision = candidateManifest ? expectedCommit : `refs/tags/${tag}`;
-  const resolvedRevision = stage('candidate_revision', 'revision_lookup_failed', () => run('git', ['rev-parse', `${revision}^{commit}`]).trim());
-  stage('candidate_revision', 'revision_mismatch', () => assert.equal(resolvedRevision, expectedCommit, 'source commit mismatch'));
+  const resolvedRevision = stage('revisionLookup', () => run('git', ['rev-parse', `${revision}^{commit}`]).trim());
+  stage('revisionMismatch', () => assert.equal(resolvedRevision, expectedCommit, 'source commit mismatch'));
   const archive = join(temporary, 'source.tar'), source = join(temporary, 'source');
-  stage('candidate_source', 'source_extraction_failed', () => {
+  stage('sourceExtraction', () => {
     mkdirSync(source);
     run('git', ['archive', '--format=tar', `--output=${archive}`, revision]);
     run('tar', ['-xf', archive, '-C', source]);
   });
-  const starter = join(source, 'examples/neutral-store'), input = join(temporary, 'input'); mkdirSync(input);
-  const inventory = json(join(source, 'config/openlup-packages.json')).packages.filter(entry => entry.publish);
-  const packs = candidateManifest && stage('candidate_manifest', 'manifest_validation_failed',
+  const starter = join(source, 'examples/neutral-store'), input = join(temporary, 'input');
+  const inventory = stage('sourceInputs', () => {
+    const contents = readFileSync(join(source, 'config/openlup-packages.json'), 'utf8');
+    const config = candidateManifest ? parsePackagesConfig(contents) : JSON.parse(contents);
+    return config.packages.filter(entry => entry.publish).map(({ name, directory }) => {
+      const metadata = json(join(source, directory, 'package.json'));
+      if (candidateManifest) assert.equal(metadata.name, name, 'source package name mismatch');
+      assert.equal(metadata.version, receipt.setVersion, `${name}: source version mismatch`);
+      return { name, version: metadata.version };
+    });
+  });
+  const packs = candidateManifest && stage('manifest',
     () => readCurrentPackManifest(source, candidateManifest, expectedCommit));
-  const application = json(join(starter, 'package.json'));
-  const profile = application.providerQualification;
-  const qualification = Boolean(packs && profile && qualifyProvider);
-  delete application.providerQualification;
-  if (qualification) Object.assign(application.dependencies, profile.dependencies);
-  else if (profile) delete application.scripts['provider:qualify'];
-  for (const section of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
-    for (const name of Object.keys(application[section] ?? {})) if (name.startsWith('@openlup/')) application[section][name] = packs ? `file:${packs.get(name).path}` : receipt.setVersion;
-  }
-  writeFileSync(join(input, 'package.json'), JSON.stringify(application));
-  stage('candidate_lockfile', 'npm_install_failed',
+  const qualification = stage('sourceInputs', () => {
+    mkdirSync(input);
+    const application = json(join(starter, 'package.json'));
+    const profile = application.providerQualification;
+    const enabled = Boolean(packs && profile && qualifyProvider);
+    delete application.providerQualification;
+    if (enabled) Object.assign(application.dependencies, profile.dependencies);
+    else if (profile) delete application.scripts['provider:qualify'];
+    for (const section of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
+      for (const name of Object.keys(application[section] ?? {})) if (name.startsWith('@openlup/')) application[section][name] = packs ? `file:${packs.get(name).path}` : receipt.setVersion;
+    }
+    writeFileSync(join(input, 'package.json'), JSON.stringify(application));
+    return enabled;
+  });
+  stage('lockfileGeneration',
     () => run('npm', ['install', '--package-lock-only', '--ignore-scripts', '--no-audit', '--fund=false'], input));
-  const lockfile = join(input, 'package-lock.json'), lock = json(lockfile);
-  if (packs) for (const section of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
-    for (const name of Object.keys(lock.packages[''][section] ?? {})) if (packs.has(name)) lock.packages[''][section][name] = receipt.setVersion;
-  }
-  if (packs) { for (const pack of packs.values()) lock.packages[`node_modules/${pack.name}`].resolved = `file:${pack.path}`; writeFileSync(lockfile, JSON.stringify(lock, null, 2) + '\n'); }
-  const packages = inventory.map(({ name, directory }) => {
-    const metadata = json(join(source, directory, 'package.json'));
-    assert.equal(metadata.version, receipt.setVersion, `${name}: source version mismatch`);
-    const entry = lock.packages[`node_modules/${name}`];
-    if (!entry || entry.version !== receipt.setVersion) refuse(`${name}: missing or mismatched locked package`);
-    return { name, version: receipt.setVersion, integrity: entry.integrity };
+  const lockfile = join(input, 'package-lock.json');
+  const packages = stage('generatedLockfile', () => {
+    const lock = packs ? readCandidateLockfile(lockfile) : json(lockfile);
+    if (packs) for (const section of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
+      for (const name of Object.keys(lock.packages[''][section] ?? {})) if (packs.has(name)) lock.packages[''][section][name] = receipt.setVersion;
+    }
+    if (packs) {
+      for (const pack of packs.values()) {
+        const entry = lock.packages[`node_modules/${pack.name}`];
+        assert.equal(entry?.integrity, pack.integrity);
+        entry.resolved = `file:${pack.path}`;
+      }
+      writeFileSync(lockfile, JSON.stringify(lock, null, 2) + '\n');
+    }
+    return inventory.map(({ name, version }) => {
+      const entry = lock.packages[`node_modules/${name}`];
+      if (!entry || entry.version !== version) refuse(`${name}: missing or mismatched locked package`);
+      return { name, version, integrity: entry.integrity };
+    });
   });
   const manifest = join(input, 'manifest.json');
-  writeFileSync(manifest, JSON.stringify({ schemaVersion: 2, commit: expectedCommit, packages }));
-  const mode = packs ? 'candidate' : readFileSync(join(starter, 'extract.mjs'), 'utf8').includes('const releasedExtractionSchemaVersion = 2;') ? 'released' : 'reconstructed';
   const extracted = join(temporary, 'application');
-  receipt.extraction = stage('candidate_extraction', 'starter_extraction_failed', () => {
+  receipt.extraction = stage('starterExtraction', () => {
+    writeFileSync(manifest, JSON.stringify({ schemaVersion: 2, commit: expectedCommit, packages }));
+    const mode = packs ? 'candidate' : readFileSync(join(starter, 'extract.mjs'), 'utf8').includes('const releasedExtractionSchemaVersion = 2;') ? 'released' : 'reconstructed';
     run(process.execPath, [join(root, 'examples/neutral-store/extract.mjs'), extracted, '--source', starter,
       '--mode', mode, '--set-version', receipt.setVersion, '--source-revision', expectedCommit, '--manifest', packs ? resolve(candidateManifest) : manifest, '--lockfile', lockfile,
       ...(qualification ? ['--provider-qualification', 'enabled'] : []),
@@ -495,32 +533,45 @@ const runCandidate = (file, args, cwd = root) => execFileSync(file, args, {
   cwd, env: isolatedConsumerEnv(), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
 });
 
-function candidateStage(step, reason, operation) {
+function candidateStage(stage, operation) {
   try { return operation(); }
   catch (error) {
     if (error instanceof StarterRuntimeProofError) throw error;
     const status = Number.isInteger(error?.status) ? error.status : null;
+    const [step, reason] = candidatePreparationStages[stage];
     throw new StarterRuntimeProofError(step, status, reason);
   }
 }
 
-export function prepareStarterCandidate(commit, manifest, scratch) {
-  candidateStage('candidate_workspace', 'workspace_failed', () => mkdirSync(scratch, { recursive: true }));
-  const { packs, receipt } = candidateStage('candidate_manifest', 'manifest_validation_failed', () => {
+function readCandidateLockfile(path) {
+  const lock = json(path);
+  assert.equal(lock.lockfileVersion, 3);
+  assert(lock.packages && typeof lock.packages === 'object' && !Array.isArray(lock.packages));
+  const root = lock.packages[''];
+  assert(root && typeof root === 'object' && !Array.isArray(root));
+  return lock;
+}
+
+export function prepareStarterCandidate(commit, manifest, scratch, run = runCandidate) {
+  candidateStage('workspace', () => mkdirSync(scratch, { recursive: true }));
+  const { packs, receipt } = candidateStage('manifest', () => {
     const packs = readCurrentPackManifest(root, manifest, commit);
     return { packs, receipt: qualificationReceipt('openlup-core-v' + packs.get('@openlup/core').version, commit) };
   });
-  const { application, packages } = candidateStage('candidate_inputs', 'installation_inputs_failed',
-    () => prepareReleasedStarter(receipt, scratch, runCandidate, manifest, false, candidateStage));
+  const { application, packages } = prepareReleasedStarter(receipt, scratch, run, manifest, false, candidateStage);
   receipt.packages = packages;
-  candidateStage('candidate_artifacts', 'artifact_staging_failed', () => {
+  const lockfile = join(application, 'package-lock.json');
+  const lock = candidateStage('generatedLockfile', () => {
+    const lock = readCandidateLockfile(lockfile);
+    for (const [name, pack] of packs) assert.equal(lock.packages[`node_modules/${name}`]?.integrity, pack.integrity);
+    return lock;
+  });
+  candidateStage('artifactStaging', () => {
     mkdirSync(join(application, 'artifacts'), { recursive: true });
-    const lockfile = join(application, 'package-lock.json'), lock = json(lockfile);
     for (const [name, pack] of packs) {
-      const target = `artifacts/openlup-${name.slice(9)}.tgz`, edge = lock.packages[`node_modules/${name}`];
-      assert.equal(edge.integrity, pack.integrity);
+      const target = `artifacts/openlup-${name.slice(9)}.tgz`;
       cpSync(pack.path, join(application, target));
-      edge.resolved = 'file:' + target;
+      lock.packages[`node_modules/${name}`].resolved = 'file:' + target;
     }
     const preparedLock = JSON.stringify(lock) + '\n';
     writeFileSync(lockfile, preparedLock);
@@ -529,8 +580,8 @@ export function prepareStarterCandidate(commit, manifest, scratch) {
       ...receipt.extraction, lockfileSha256: receipt.buildContextLockfileSha256,
     }, null, 2) + '\n');
   });
-  candidateStage('candidate_install', 'npm_install_failed',
-    () => runCandidate('npm', ['ci', '--ignore-scripts', '--no-audit', '--fund=false'], application));
+  candidateStage('dependencyInstall',
+    () => run('npm', ['ci', '--ignore-scripts', '--no-audit', '--fund=false'], application));
   return { application, receipt };
 }
 
@@ -565,10 +616,9 @@ async function qualifyCandidateOccupied(predecessor, previousManifest, candidate
   const failures = [];
   let scratch;
   try {
-    const checkedOut = candidateStage('candidate_checkout', 'checkout_lookup_failed',
-      () => runCandidate('git', ['rev-parse', 'HEAD']).trim());
-    if (checkedOut !== candidate) throw new StarterRuntimeProofError('candidate_checkout', null, 'wrong_checkout');
-    scratch = candidateStage('candidate_workspace', 'workspace_failed', () => mkdtempSync(join(tmpdir(), 'openlup-occupied-upgrade-')));
+    const checkedOut = candidateStage('checkoutLookup', () => runCandidate('git', ['rev-parse', 'HEAD']).trim());
+    candidateStage('wrongCheckout', () => assert.equal(checkedOut, candidate, 'candidate checkout mismatch'));
+    scratch = candidateStage('workspace', () => mkdtempSync(join(tmpdir(), 'openlup-occupied-upgrade-')));
     const from = prepareStarterCandidate(predecessor, previousManifest, join(scratch, 'from'));
     const to = prepareStarterCandidate(candidate, candidateManifest, join(scratch, 'to'));
     await proveStarterRuntimeUpgrade(from.application, to.application, Number(port));
