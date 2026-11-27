@@ -897,7 +897,7 @@ describe("client state between the runs (R40–R46)", () => {
     const stop = storeDouble();
     const stopped = recorded(stop, rejectingOn(stop, 1));
     await expect(runStorefrontScenario({ ...options(stop, "decline_retry", { page: stopped.page, observer: stopped.observer }), stopAt: "checkout.declined" }))
-      .rejects.toThrow(/^storefront_stop_state_unreached: The clean run of decline_retry recorded no step was the last step, and state:declined was not visible after any step \(first finding: page_failed\)\. Cause: /);
+      .rejects.toThrow(/^storefront_stop_state_unreached: The clean run of decline_retry recorded no step, so state:declined was never visible \(first finding: page_failed\)\. Cause: /);
     expect(stopped.log).toEqual(["ledger clean", "clearClientState"]);
     expect(stop.calls).toEqual([]);
     expect(stop.produced).toEqual([]);

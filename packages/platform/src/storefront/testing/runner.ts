@@ -939,7 +939,8 @@ export async function runStorefrontScenario(options: StorefrontRunOptions): Prom
     const last = clean.steps.at(-1);
     const first = [...judged].sort((a, b) => a.group - b.group || a.rank - b.rank || a.order - b.order)[0];
     throw refuse("storefront_stop_state_unreached",
-      `${last === undefined ? `The clean run of ${scenario.id} recorded no step` : describe(last.index, "clean")} was the last step, and ${stopState} was not visible after any step${first === undefined ? "" : ` (first finding: ${first.finding.code})`}.`,
+      `${last === undefined ? `The clean run of ${scenario.id} recorded no step, so ${stopState} was never visible`
+        : `${describe(last.index, "clean")} was the last step, and ${stopState} was not visible after any step`}${first === undefined ? "" : ` (first finding: ${first.finding.code})`}.`,
       "stop-at drives the clean run only until the state is visible, and the run ended without showing it.",
       "Fix what the first finding names, or stop at a state this store reaches; run the scenario without stopAt for a full verdict.");
   }
