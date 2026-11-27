@@ -691,6 +691,9 @@ it("preserves pinned incumbent export and erase-only effects on both empty catal
 async function checkPrivacyAcl(db: AccountMutationsStore) {
   const { rows: [acl] } = await db.owner.query(`SELECT pg_get_userbyid(p.proowner) AS owner, p.prosecdef AS definer,
     p.proconfig AS settings, p.proowner=c.relowner AS owns_carrier, to_regrole('service_role') IS NOT NULL AS service,
+    ARRAY(SELECT oid::regclass::text FROM pg_class WHERE relforcerowsecurity AND oid IN (
+      'public.clients'::regclass, 'public.platform_human_principals'::regclass, 'public.identity_privacy_erasures'::regclass,
+      'public.subscriptions'::regclass, c.oid)) AS forced_rls,
     ARRAY(SELECT coalesce(r.rolname::text,'PUBLIC') FROM aclexplode(p.proacl) a LEFT JOIN pg_roles r ON r.oid=a.grantee
       WHERE a.privilege_type='EXECUTE' ORDER BY 1) AS roles,
     coalesce((SELECT bool_or(a.is_grantable) FROM aclexplode(p.proacl) a
@@ -698,7 +701,7 @@ async function checkPrivacyAcl(db: AccountMutationsStore) {
     ARRAY(SELECT r.rolname::text FROM pg_roles r WHERE r.rolname IN ('anon','authenticated')
       AND has_function_privilege(r.oid,p.oid,'EXECUTE')) AS forbidden
     FROM pg_proc p, pg_class c WHERE p.oid=$1::regprocedure AND c.oid='public.subscription_cycle_occurrences'::regclass`, [occurrenceHelper]);
-  expect(acl).toMatchObject({ definer: true, owns_carrier: true, settings: ["row_security=off", "search_path=pg_catalog, pg_temp"], forbidden: [], service_grantable: false });
+  expect(acl).toMatchObject({ definer: true, owns_carrier: true, settings: ["search_path=pg_catalog, pg_temp"], forced_rls: [], forbidden: [], service_grantable: false });
   expect(acl.roles).toEqual([acl.owner, ...(acl.service ? ["service_role"] : [])].sort());
   expect((await db.runtime.query("SELECT has_function_privilege(current_user,$1,'EXECUTE') AS helper", [occurrenceHelper])).rows[0].helper).toBe(true);
   if (db.installation.generation !== "legacy") await transaction(db.runtime, async lane => {
@@ -1146,6 +1149,13 @@ it("isolates direct helper reads from the mounted operation on another subject",
   const coordinates = [[b.clientId, null], [null, unlinked]];
   const read = (lane: PgQueryExecutor | Pool, pair: (string | null)[]) =>
     lane.query("SELECT public.subscriptions__read_renewal_occurrences_for_privacy($1,$2) AS evidence", pair).then(r => r.rows[0].evidence);
+  await transaction(db.runtime, async lane => {
+    await lane.query("SET LOCAL row_security = on");
+    expect(await read(lane, coordinates[0]!)).toMatchObject({ parentCount: "1" });
+    expect((await lane.query("SHOW row_security")).rows).toEqual([{ row_security: "on" }]);
+    expect(await read(lane, [randomUUID(), null])).toEqual({ missing: true });
+    expect((await lane.query("SHOW row_security")).rows).toEqual([{ row_security: "on" }]);
+  });
   const expected = await Promise.all(coordinates.map(pair => read(db.runtime, pair)));
   expect(expected).toEqual([{ occurrences: [expect.objectContaining({ subscriptionId: b.subscriptionId, cycleKey: b.cycleKey })], hasReceipt: false, parentCount: "1" },
     { occurrences: [], hasReceipt: false, parentCount: "0" }]);
