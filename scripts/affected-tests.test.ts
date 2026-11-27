@@ -531,5 +531,89 @@ describe("affected-tests", () => {
       path: "scripts/ci-test-scope.test.ts",
       reasons: ["contract-pin"],
     });
+
+    const renewalSuiteResult = findAffectedTests({
+      changedFiles: ["tests/postgres/renewalOrderDestinationV2.test.ts"],
+    });
+    expect(renewalSuiteResult.affectedTests).toContainEqual({
+      path: "scripts/ci-test-scope.test.ts",
+      reasons: ["contract-pin"],
+    });
+    expect(renewalSuiteResult.affectedTests).toContainEqual({
+      path: "tests/postgres/renewalOrderDestinationV2.test.ts",
+      reasons: ["direct"],
+    });
+
+    const renewalFixtureResult = findAffectedTests({
+      changedFiles: ["tests/postgres/renewalOrderDestinationV2.fixture.ts"],
+    });
+    expect(renewalFixtureResult.affectedTests).toContainEqual({
+      path: "scripts/ci-test-scope.test.ts",
+      reasons: ["contract-pin"],
+    });
+    expect(renewalFixtureResult.affectedTests).toContainEqual({
+      path: "tests/postgres/renewalOrderDestinationV2.test.ts",
+      reasons: ["import-graph"],
+    });
+  });
+
+  it("pins scripts/ci-test-scope.test.ts for tests/postgres/ and tests/helpers/ changes (excluding inventory) even with includePostgres: false", () => {
+    const dir = createTempRepo({
+      "scripts/ci-test-scope.test.ts": "// scope test\n",
+      "tests/postgres/existing.test.ts": "// existing pg test\n",
+      "tests/postgres/sample.fixture.ts": "// fixture\n",
+      "tests/postgres/fixtures/setup.sql": "SELECT 1;\n",
+      "tests/postgres/worker.mjs": "export const w = 1;\n",
+      "tests/postgres/current-installation-inventory.json": "{}\n",
+      "tests/helpers/postgresContainer.ts": "export const c = 1;\n",
+    });
+
+    expect(
+      findAffectedTests({ changedFiles: ["tests/postgres/existing.test.ts"], rootDir: dir }).affectedTests,
+    ).toEqual([
+      { path: "scripts/ci-test-scope.test.ts", reasons: ["contract-pin"] },
+      { path: "tests/postgres/existing.test.ts", reasons: ["direct"] },
+    ]);
+
+    expect(
+      findAffectedTests({ changedFiles: ["tests/postgres/deleted.test.ts"], rootDir: dir }).affectedTests,
+    ).toEqual([
+      { path: "scripts/ci-test-scope.test.ts", reasons: ["contract-pin"] },
+    ]);
+
+    for (const filePath of [
+      "tests/postgres/sample.fixture.ts",
+      "tests/postgres/fixtures/setup.sql",
+      "tests/postgres/worker.mjs",
+      "tests/helpers/postgresContainer.ts",
+    ]) {
+      expect(
+        findAffectedTests({ changedFiles: [filePath], rootDir: dir }).affectedTests,
+        filePath,
+      ).toEqual([
+        { path: "scripts/ci-test-scope.test.ts", reasons: ["contract-pin"] },
+      ]);
+    }
+
+    expect(
+      findAffectedTests({ changedFiles: ["tests/postgres/current-installation-inventory.json"], rootDir: dir }).affectedTests,
+    ).toEqual([]);
+
+    expect(
+      findAffectedTests({
+        changedFiles: ["tests/postgres/existing.test.ts"],
+        rootDir: dir,
+        includePostgres: false,
+      }),
+    ).toMatchObject({
+      affectedTests: [
+        { path: "scripts/ci-test-scope.test.ts", reasons: ["contract-pin"] },
+      ],
+      runners: {
+        rootVitest: ["scripts/ci-test-scope.test.ts"],
+        coreVitest: [],
+        separate: [],
+      },
+    });
   });
 });

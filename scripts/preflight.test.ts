@@ -12,8 +12,8 @@ vi.mock("node:child_process", async (original) => {
 });
 
 import {
-  CLIENT_SECRET_BOUNDARY_TRIGGER, SITE_ROUTES_TRIGGER,
-  addedLines, affectedTestCandidates, areaGuardTests, formatCheckLine, inventoryClosureDigest, isTestEntry, isTestFile, missingFragments, nearDates,
+  CLIENT_SECRET_BOUNDARY_TRIGGER, MIGRATION_MANIFEST_TRIGGER, SITE_ROUTES_TRIGGER,
+  addedLines, affectedTestCandidates, areaGuardTests, checkMigrationManifestAndInventory, formatCheckLine, inventoryClosureDigest, isTestEntry, isTestFile, missingFragments, nearDates,
   parseNameStatus, main, neutralityVerdict, releasedPackageSource, separateTestFiles, shortExpiries,
   sqlTreeChanges, testDiscoveryVerdict, vitestFiles, type AddedLine, type Change,
 } from "./preflight.ts";
@@ -1246,5 +1246,197 @@ describe("shift-left preflight guards and --affected discovery", () => {
     expect(await main(now, ["--fast", "--affected"])).toBe(2);
     expect(await main(now, ["--area", "--affected"])).toBe(2);
     expect(stderr).toHaveBeenCalledTimes(2);
+  });
+
+  describe("pure-Node migration manifest, projection, and 5-profile inventory parity", () => {
+    function createMigrationParityTree(): string {
+      const dir = mkdtempSync(join(tmpdir(), "preflight-migration-parity-"));
+      for (const rel of [
+        "config/platform-migration-manifest.json",
+        "scripts/platform-migration-manifest.ts",
+        "packages/platform/src/migrations/catalog.ts",
+        "tests/postgres/current-installation-inventory.json",
+      ]) {
+        mkdirSync(join(dir, rel, ".."), { recursive: true });
+        cpSync(join(process.cwd(), rel), join(dir, rel));
+      }
+      for (const dirRel of ["db/platform/migrations", "packages/platform/sql"]) {
+        cpSync(join(process.cwd(), dirRel), join(dir, dirRel), { recursive: true });
+      }
+      return dir;
+    }
+
+    it("matches MIGRATION_MANIFEST_TRIGGER on manifest, SQL, projection, and inventory inputs", () => {
+      for (const path of [
+        "db/platform/migrations/20990101000000_example.sql",
+        "packages/platform/sql/manifest.json",
+        "packages/platform/sql/00000000000000_platform_baseline.sql",
+        "packages/platform/src/migrations/catalog.ts",
+        "config/platform-migration-manifest.json",
+        "tests/postgres/current-installation-inventory.json",
+        "scripts/platform-migration-manifest.ts",
+        "scripts/packages/platform-migration-projection.ts",
+      ]) {
+        expect(MIGRATION_MANIFEST_TRIGGER.test(path), path).toBe(true);
+      }
+      for (const path of ["README.md", "src/pages/Home.tsx", "scripts/preflight.ts"]) {
+        expect(MIGRATION_MANIFEST_TRIGGER.test(path), path).toBe(false);
+      }
+      expect(checkMigrationManifestAndInventory(process.cwd())).toEqual([]);
+    });
+
+    it("detects all 4 failure modes: manifest error, projection drift, inventory digest mismatch, and inventory ledger/tail mismatch", () => {
+      // 1. Manifest check failure (unmanifested SQL file)
+      const unmanifestedDir = createMigrationParityTree();
+      try {
+        writeFileSync(join(unmanifestedDir, "db/platform/migrations/20990101000000_unmanifested.sql"), "SELECT 1;\n");
+        expect(checkMigrationManifestAndInventory(unmanifestedDir)).toContain(
+          "platform migration manifest: unmanifested catalog file db/platform/migrations/20990101000000_unmanifested.sql",
+        );
+      } finally {
+        rmSync(unmanifestedDir, { recursive: true, force: true });
+      }
+
+      // 2. Projection check failure (packaged manifest / catalog drift)
+      const projectionDir = createMigrationParityTree();
+      try {
+        writeFileSync(join(projectionDir, "packages/platform/sql/manifest.json"), "{}\n");
+        expect(checkMigrationManifestAndInventory(projectionDir)).toContain(
+          "packaged platform migration manifest drift: regenerate the package projection (packages/platform/README.md)",
+        );
+      } finally {
+        rmSync(projectionDir, { recursive: true, force: true });
+      }
+
+      // 3. 5-profile inventory objectInventorySha256 mismatch
+      const digestDir = createMigrationParityTree();
+      try {
+        const invPath = join(digestDir, "tests/postgres/current-installation-inventory.json");
+        const inv = JSON.parse(readFileSync(invPath, "utf8"));
+        inv.current.profiles["admin-operator"].objectInventorySha256 = "0".repeat(64);
+        writeFileSync(invPath, `${JSON.stringify(inv, null, 2)}\n`);
+        expect(checkMigrationManifestAndInventory(digestDir)).toContainEqual(
+          expect.stringContaining("current.profiles.admin-operator.objectInventorySha256 does not match"),
+        );
+      } finally {
+        rmSync(digestDir, { recursive: true, force: true });
+      }
+
+      // 4. 5-profile inventory count, exactTailCount, and tail mismatch
+      const ledgerDir = createMigrationParityTree();
+      try {
+        const invPath = join(ledgerDir, "tests/postgres/current-installation-inventory.json");
+        const inv = JSON.parse(readFileSync(invPath, "utf8"));
+        inv.current.profiles.legacy.count += 1;
+        inv.current.profiles.bootstrap.exactTailCount += 1;
+        inv.current.profiles.separate.tail[0].sha256 = "f".repeat(64);
+        writeFileSync(invPath, `${JSON.stringify(inv, null, 2)}\n`);
+        const errs = checkMigrationManifestAndInventory(ledgerDir);
+        expect(errs).toContainEqual(expect.stringContaining("current.profiles.legacy.count"));
+        expect(errs).toContainEqual(expect.stringContaining("current.profiles.bootstrap.exactTailCount"));
+        expect(errs).toContainEqual(expect.stringContaining("current.profiles.separate.tail does not match"));
+      } finally {
+        rmSync(ledgerDir, { recursive: true, force: true });
+      }
+    });
+
+    it("rejects extra unexpected current.profiles keys and malformed forward/baseline entries without masking earlier errors", () => {
+      const extraProfileDir = createMigrationParityTree();
+      try {
+        const invPath = join(extraProfileDir, "tests/postgres/current-installation-inventory.json");
+        const inv = JSON.parse(readFileSync(invPath, "utf8"));
+        inv.current.profiles["unexpected-profile"] = structuredClone(inv.current.profiles.legacy);
+        writeFileSync(invPath, `${JSON.stringify(inv, null, 2)}\n`);
+        expect(checkMigrationManifestAndInventory(extraProfileDir)).toContain(
+          "tests/postgres/current-installation-inventory.json: unexpected current.profiles key(s): unexpected-profile",
+        );
+      } finally {
+        rmSync(extraProfileDir, { recursive: true, force: true });
+      }
+
+      const malformedForwardDir = createMigrationParityTree();
+      try {
+        const manifestPath = join(malformedForwardDir, "config/platform-migration-manifest.json");
+        const originalManifest = readFileSync(manifestPath, "utf8");
+        const manifest = JSON.parse(originalManifest);
+        manifest.forward[0] = null;
+        manifest.qualified.baseline = { file: 123, sha256: "abc" };
+        writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+        const nullErrs = checkMigrationManifestAndInventory(malformedForwardDir);
+        expect(nullErrs).toContainEqual(expect.stringContaining("platform migration manifest.forward[0]"));
+        expect(nullErrs).toContain("config/platform-migration-manifest.json: invalid baseline/forward entry in legacy");
+        expect(nullErrs).toContain("config/platform-migration-manifest.json: invalid baseline/forward entry in bootstrap");
+
+        const nonStringShaManifest = JSON.parse(originalManifest);
+        const targetFile = nonStringShaManifest.forward[0].file;
+        for (const plan of [nonStringShaManifest, nonStringShaManifest.qualified, nonStringShaManifest.qualifiedAdmin]) {
+          plan.forward = plan.forward.map((entry: { file: string; sha256: string }) => (
+            entry.file === targetFile ? { file: entry.file, sha256: null } : entry
+          ));
+        }
+        writeFileSync(manifestPath, `${JSON.stringify(nonStringShaManifest, null, 2)}\n`);
+        writeFileSync(join(malformedForwardDir, "packages/platform/sql/manifest.json"), "{}\n");
+        const driftAndInvalidErrs = checkMigrationManifestAndInventory(malformedForwardDir);
+        expect(driftAndInvalidErrs).toContainEqual(expect.stringContaining("platform migration manifest.forward[0].sha256"));
+        expect(driftAndInvalidErrs).toContain(
+          "packaged platform migration manifest drift: regenerate the package projection (packages/platform/README.md)",
+        );
+        expect(driftAndInvalidErrs).toContain("config/platform-migration-manifest.json: invalid baseline/forward entry in legacy");
+      } finally {
+        rmSync(malformedForwardDir, { recursive: true, force: true });
+      }
+    });
+
+    it("fails fast in Wave 1 before typecheck on dirty manifest/inventory changes across default, --affected, and --area", async () => {
+      const dir = createMigrationParityTree();
+      const prevCwd = process.cwd();
+      const invPath = join(dir, "tests/postgres/current-installation-inventory.json");
+      const inv = JSON.parse(readFileSync(invPath, "utf8"));
+      inv.current.profiles.legacy.objectInventorySha256 = "0".repeat(64);
+      writeFileSync(invPath, `${JSON.stringify(inv, null, 2)}\n`);
+
+      try {
+        for (const modeArgs of [[], ["--affected"], ["--area"]] as const) {
+          process.chdir(prevCwd);
+          const events: string[] = [];
+          const lines: string[] = [];
+          let migrationFailedBeforePrelint = false;
+          mockChildProcesses((bin, args) => {
+            const call = `${bin} ${(args ?? []).join(" ")}`;
+            events.push(call);
+            if (call === "git rev-parse --show-toplevel") return { status: 0, stdout: dir, stderr: "" };
+            if (call === "git merge-base HEAD origin/main") return { status: 0, stdout: "a".repeat(40), stderr: "" };
+            if (call === "git ls-files --others --exclude-standard -z") return { status: 0, stdout: "", stderr: "" };
+            if (args?.includes("--name-status")) {
+              return { status: 0, stdout: "M\0tests/postgres/current-installation-inventory.json\0", stderr: "" };
+            }
+            if (args?.[0] === "status") {
+              return { status: 0, stdout: " M tests/postgres/current-installation-inventory.json\0", stderr: "" };
+            }
+            if (call === "npm run prelint") {
+              migrationFailedBeforePrelint = lines.some((l) => l.startsWith("FAIL migration manifest:"));
+              return { status: 0, stdout: "", stderr: "" };
+            }
+            if (bin === "gitleaks") {
+              return { status: null, stdout: "", stderr: "", error: Object.assign(new Error("missing"), { code: "ENOENT" }) };
+            }
+            return { status: 0, stdout: "", stderr: "" };
+          });
+          vi.spyOn(console, "log").mockImplementation((value) => { lines.push(String(value)); });
+          vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+
+          const exit = await main(now, [...modeArgs]);
+          expect(exit).toBe(1);
+          expect(lines).toContainEqual(expect.stringMatching(/^FAIL migration manifest: .*legacy\.objectInventorySha256/u));
+          if (!modeArgs.includes("--area")) {
+            expect(migrationFailedBeforePrelint).toBe(true);
+          }
+          vi.restoreAllMocks();
+        }
+      } finally {
+        process.chdir(prevCwd);
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
   });
 });

@@ -176,6 +176,11 @@ Enable evaluation writes only after every native privacy handler that serves
 the store includes the tax-calculation contributor.
 Export includes verified evaluation outcomes. Erasure keeps only an evaluation
 identifier and any pseudonymous marker needed to fence provider reference reuse.
+The sealed adapter money and its result digest are private subject-linked tax
+evidence. The same erasure operation clears both fields. The reporting verifier
+checks request references against the original issued request. The server trusts
+assessment IDs from its qualified adapter binding and admits only bounded ASCII
+tokens without whitespace, control characters, or `@`.
 
 For native order draft receipts, add
 `createOrderDraftReceiptsPrivacyContributor()` from `@openlup/platform/identity`
@@ -292,10 +297,12 @@ contributor `registry` and current human administrator `actor`. Pass
 operation commits the selected contributor's disposition with the approval
 binding. Repeating the same binding returns `null`. If the binding is refused
 as `PRIVACY_RECONCILIATION_APPROVAL_UNVERIFIED`, verify the original approval
-in owner custody. Close the owner session and retry the original erasure
-request once its required coverage is complete. Keep retained obligations
-from reconciliation with the owner approval, while replay preserves the
-original receipt and its obligations.
+in owner custody. If the contributor’s result is invalid or contains an
+unresolved obligation, correct the contributor or resolve the obligation before
+retrying the same approval binding. Close the owner session and retry the
+original erasure request once its required coverage is complete. Keep retained
+obligations from reconciliation with the owner approval, while replay preserves
+the original receipt and its obligations.
 
 ### Native coverage gaps
 

@@ -71,7 +71,15 @@ export function incompletePrivacyReceiptCoverage(ids: readonly string[]): Privac
   });
 }
 
-export function unverifiedPrivacyReconciliationApproval(): PrivacyRefusal {
+export function unverifiedPrivacyReconciliationApproval(reason: "binding" | "disposition" = "binding"): PrivacyRefusal {
+  if (reason === "disposition") {
+    return governedRefusal("PRIVACY_RECONCILIATION_APPROVAL_UNVERIFIED", {
+      observed: "The contributor's reconciliation disposition could not be verified.",
+      cause: "The disposition is malformed, does not match the registered contributor, or contains an unresolved obligation.",
+      fix: "Correct the contributor's result to match its registration and settle unresolved obligations through their owners.",
+      recheck: "Retry with the same verified approval binding, then replay the original subject and idempotency key.",
+    });
+  }
   return governedRefusal("PRIVACY_RECONCILIATION_APPROVAL_UNVERIFIED", {
     observed: "The approval reference could not be bound to this erasure and owner.",
     cause: "The receipt or contributor is outside this installation's declared scope, or the pair and reference are already bound differently.",

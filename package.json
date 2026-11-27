@@ -56,9 +56,13 @@
     "test:scoped": "scope_file=$(mktemp) && trap 'rm -f \"$scope_file\"' EXIT && export OPENLUP_VITEST_EXCLUDE_FILE=\"$scope_file\" && node scripts/ci-test-scope.mjs && npm test",
     "inventory:refresh": "node --import tsx scripts/installation-inventory-refresh.ts",
     "landing:merge": "node scripts/agent-review-landing.mjs",
+    "lane:inbox": "node scripts/harness/inbox.mjs",
     "migration:finalize": "node scripts/migration-finalize.mjs",
     "migration:sync": "node --experimental-strip-types scripts/migration-sync.ts",
+    "pr:open": "node scripts/harness/pr-open.mjs",
+    "pr:watch": "node scripts/harness/stall-watch.mjs",
     "preflight": "node --experimental-strip-types scripts/preflight.ts",
+    "safe:run": "node scripts/harness/safe-run.mjs",
     "sql:admit": "node --experimental-strip-types scripts/sql-admit.ts",
     "test:hosted": "node scripts/test-hosted.mjs"
   },

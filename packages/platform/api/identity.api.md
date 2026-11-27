@@ -2205,7 +2205,7 @@ export declare function privacyRefusalDetails(error: PrivacyRefusal): {
 export declare function nativePrivacyUnavailable(cause: unknown): PrivacyRefusal;
 export declare function missingPrivacyContributors(ids: readonly string[], installed: boolean): PrivacyRefusal;
 export declare function incompletePrivacyReceiptCoverage(ids: readonly string[]): PrivacyRefusal;
-export declare function unverifiedPrivacyReconciliationApproval(): PrivacyRefusal;
+export declare function unverifiedPrivacyReconciliationApproval(reason?: "binding" | "disposition"): PrivacyRefusal;
 ```
 ## dist/identity/response.d.ts
 
