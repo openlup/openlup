@@ -85,7 +85,7 @@ persists typed attributes and immediate positive gross base-price commands as
 data; it does not mount a writer. Its versioned resume preserves old abandonment
 receipts and reservations. Stateless candidate preparation uses injected
 authorized revision, definition and full publication-head readers; it grants no
-human publisher authority. See the [package catalogue owner](../../../packages/platform/README.md#catalog)
+human publisher authority. See the [package catalogue owner](../../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md#catalog)
 for versioned APIs, reader upgrade order and the native-only boundary. Existing
 v1 commands and the managed baseline remain unchanged.
 
@@ -156,6 +156,6 @@ coordinate. Mounting needs separate dispatcher or registry evidence, and even a
 mounted reference interface is not proof that an adopter deployment exposes it.
 
 Draft payload v3's publication input envelope and opt-in readers are owned by the
-[package catalogue contract](../../../packages/platform/README.md#catalog).
+[package catalogue contract](../../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md#catalog).
 The source reference composition remains unbound; neither draft persistence nor
 candidate preview executes publication operations or enables a capability.

@@ -59,7 +59,7 @@ protected cases whose arrival meets open dunning or a successor cycle, keep
 deferring until resolved.
 Subsequent stores require their own
 transaction, replay, contention and refusal proofs before serving composition.
-The [package owner](../../../packages/platform/README.md#subscription-contracts-and-renewal-port)
+The [package owner](../PLATFORM_PACKAGE_REFERENCE.md#subscription-contracts-and-renewal-port)
 and [canonical contract](../CANONICAL_CONTRACTS.md#subscription-port-boundary)
 own public behavior; this design does not certify implementation or adoption.
 

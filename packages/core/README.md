@@ -1,9 +1,29 @@
-# Commerce Core
+# @openlup/core
 
-`@openlup/core` provides framework-independent TypeScript contracts and pure logic
-for subscription and bundle commerce. An application binds its ports and owns
-composition. Pin an exact version and upgrade all
-`@openlup/*` packages together after reading their changelogs.
+Framework-independent TypeScript contracts and pure domain engines for headless subscription, bundle, pricing, promotion, and fulfillment commerce. Zero infrastructure lock-in: `zod` is the only runtime dependency, kernel exports perform no I/O, and your application owns composition and ports.
+
+[![Node >=24](https://img.shields.io/badge/node-%3E%3D24-339933)](https://nodejs.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6)](https://www.typescriptlang.org)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/core/LICENSE)
+[![npm provenance](https://img.shields.io/badge/npm-provenance-CB3837)](https://www.npmjs.com/package/@openlup/core)
+
+[Reader Guide](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/core/docs/guide/README.md) ·
+[Changelog](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/core/CHANGELOG.md) ·
+[Upgrade Guide](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/core/docs/guide/upgrade/README.md) ·
+[Stability Policy](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/core/docs/guide/reference/stability.md#public-api) ·
+[Agent Guide](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/core/AGENTS.md)
+
+## Which `@openlup/*` package do I need?
+
+| Package | Role | Install when you need |
+| --- | --- | --- |
+| [`@openlup/core`](https://www.npmjs.com/package/@openlup/core) | Pure TypeScript kernels & contracts | I/O-free subscription, bundle, pricing, promo, fulfillment, readiness, and outbox contracts (required peer of all other `@openlup/*` packages) |
+| [`@openlup/outbox`](https://www.npmjs.com/package/@openlup/outbox) | Transactional PostgreSQL outbox rail | Transactional PostgreSQL event enqueue, at-least-once dispatch, lease-bound schedules, and handler composition |
+| [`@openlup/platform`](https://www.npmjs.com/package/@openlup/platform) | Full Node.js & PostgreSQL commerce runtime | Headless checkout, payments, subscriptions, fulfillment, invoicing, promotions, catalog, identity, migrations, and HTTP/BFF server runtime |
+
+## Install & Quickstart
+
+Pin exact versions and upgrade all `@openlup/*` packages together. Node 24 or newer is required.
 
 ```sh
 npm install --save-exact @openlup/core
@@ -15,15 +35,7 @@ import { platformEnvSchema } from "@openlup/core/platform-runtime";
 const env = platformEnvSchema.parse({ APP_BASE_URL: "https://shop.example" });
 ```
 
-Node 24 or newer is required; the source adoption recipe uses npm 11.19.0. Declaration maps connect `dist/` declarations to
-shipped `src/`; JavaScript source maps are not shipped. Read [AGENTS.md](AGENTS.md) for the compiled wiring
-example and application ownership rules.
-
-The published `1.1.0` set is the first qualified stable npm set and image
-([qualification run](https://github.com/openlup/openlup/actions/runs/44263843134)).
-It includes the required owned-file migration, cadence widening and native
-forward 151. It supersedes `1.0.0`, which later passed qualification as an npm
-set without an image ([requalification run](https://github.com/openlup/openlup/actions/runs/44256496392)).
+Declaration maps connect `dist/` declarations to shipped `src/`; JavaScript source maps are not shipped. Read the [Agent Guide](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/core/AGENTS.md) for the compiled wiring example and application ownership boundaries, or start with the [Adoption Guide](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/core/docs/guide/start/adopt-from-npm.md) and [Tutorial](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/core/docs/guide/start/tutorial.md).
 
 ## Package Surface Maturity
 
@@ -48,330 +60,58 @@ set without an image ([requalification run](https://github.com/openlup/openlup/a
 | `./standard-schema` | kernel | experimental | `smoke/standardSchemaStandalone.test.ts` |
 | `./testing` | testing | testing | `smoke/testingStandalone.test.ts` |
 
-The table follows `release-gates.json`: stable exports use SemVer from 1.0.0; experimental and testing exports are excluded; `./package.json` exports the manifest itself.
+The table follows `release-gates.json`: stable exports follow SemVer from `1.0.0`; experimental and testing exports are excluded; `./package.json` exports the manifest itself. See the [release evidence boundary](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/core/docs/guide/reference/stability.md#release-evidence) and [glossary](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/core/docs/guide/glossary.md).
 
-`release-gates.json` records four distinct evidence classes:
+## Key Domain Contracts
 
-- `packageSmokeEvidence`: required hermetic build/import/pack/publish-refusal
-  proof for this package;
-- `conformanceEvidence`: required only when a declared port/adapter seam needs
-  a framework-free suite;
-- `dogfoodEvidence`: first-party integration seams, not independent adoption;
-- `externalConsumerEvidence`: first-party demo-store and production evidence;
-  see the [release evidence boundary](docs/guide/reference/stability.md#release-evidence).
-
-## Channel and stability
-
-- **Channel:** npm, on the `latest` dist-tag. Each version is published with
-  provenance from its release tag `openlup-core-v<version>` after a protected
-  release approval. Versions up to `0.11.0` were published on the `preview`
-  dist-tag only. `npm publish` from this directory is refused.
-- **Versions and stability:** follow the [stable API contract](docs/guide/reference/stability.md#public-api)
-  and upgrade the coherent package set together. Unions and literal sets are open:
-  additions are minor; consumers must keep a default branch for unknown values.
-  Read [the changelog](CHANGELOG.md) before upgrading.
-
-The `./outbox`, `./standard-schema` and `./readiness` subpaths
-provide infrastructure contracts. `checkReadiness` checks inert contributions,
-complete host inventory, actual schedule/route function bindings and a bounded
-schema probe. It never migrates, leases or sends. Only `ready` admits a candidate;
-`unknown` and `unsatisfied` retain the serving candidate. The host owns immutable
-artifact/configuration/schema identity and admission at every work entrance.
-Legacy artifacts require one contribution per non-kernel package; selected logical
-modules use [module readiness](#module-readiness).
-
-For PostgreSQL catalog inspection, import `buildGroupedPostgresSchemaProbe`,
-`decodeGroupedPostgresSchemaRows` and `PostgresSchemaCatalogEntry` from
-`@openlup/core/readiness`. The builder accepts the existing `SchemaObject`
-identities and returns one SQL statement with bound values. Tables use
-`to_regclass` and must be ordinary or partitioned; columns split the final name
-component exactly as the scalar builder does and exclude system/dropped
-attributes; functions use `to_regprocedure` with the exact signature (omission
-means zero arguments). PostgreSQL retains responsibility for name resolution
-and invalid-name errors. Duplicate requests retain separate one-based integer
-ordinals; an empty request executes a valid empty catalog read.
-
-Rows carry `ordinal`, boolean `present` and `shape`. The decoder requires exactly
-one row per input, in ordinal order. Legitimate absence is `false` with SQL
-`NULL`; presence requires nonempty JSON text parsing to a nonnull, nonarray object.
-Parsed driver objects are refused.
-Missing, extra, duplicate, reordered or noninteger ordinals, malformed presence,
-inconsistent absence and invalid/nonobject JSON throw a bounded generic error
-without catalog bodies. Extra row columns are ignored. JSON.parse property and
-nested array order are retained without sorting, canonicalization or rebuilding; input objects and
-rows are not mutated. Database/driver errors propagate to the host.
-
-Each shape is `pg_catalog.jsonb_build_object(...)::text`, retaining PostgreSQL
-jsonb field ordering as parsed by the consumer. Shape fields are: functions expose `definition`, `owner`,
-`acl`, `config`, `securityDefiner`, `volatility`; tables expose `kind`, `owner`,
-`acl`, `rls`, `forceRls`, `constraints`, `indexes`, `triggers`, `policies`; columns
-expose `type`, `notNull`, `identity`, `generated`, `default`, `acl`. Catalog nulls
-are retained. Constraint/index/noninternal-trigger aggregates contain definition
-strings ordered by constraint name, index OID cast to regclass text or trigger
-name, and remain null when empty. Policies use `pg_catalog.pg_policy`, ordered
-by policy name, with `name`, raw role OID array `roles`, command code `cmd`,
-boolean `permissive`, and expression strings/nulls `qual`, `check`; the aggregate
-remains null when empty. Definitions come from PostgreSQL's `pg_get_*` functions
-and column types from `format_type`.
-
-The host executes and decodes the query through its own driver and owns
-connection/TLS/role, any `READ ONLY REPEATABLE READ` snapshot, requirements,
-independently observed identity and migration ledgers, digest policy,
-invalidation and admission. Catalog shapes do not establish SQL behavior,
-effective grants, recovery or authorization. The grouped helpers add no I/O,
-transaction, retry or deadline and do not change `createSchemaProbe`,
-`SchemaObservation` or readiness codes. A host maps decoder/driver failures to
-its existing unknown policy. Focused decoder tests extend the existing
-standalone readiness suite. Actual installed-tarball SQL and shape-order proof
-runs in the existing Outbox disposable PostgreSQL tier in the source repository.
-
-Contributor package verification keeps the existing code/docs class and file
-ceilings. Its aggregate budgets in `release-gates.json` follow the measured
-decision its `$budgetReason` records; later growth still needs its own
-measured budget decision. Passing a local pack does not authorize publication.
-
-`./fulfillment` owns pure status, tracking-progress, current-parcel and canonical fact-parser helpers.
-
-## Use in an application
-
-[Start](docs/guide/start/README.md), [adopt from npm](docs/guide/start/adopt-from-npm.md),
-[the tutorial](docs/guide/start/tutorial.md) and [upgrade an application](docs/guide/upgrade/README.md).
-Use the [glossary](docs/guide/glossary.md) for shared terms.
-
-### Module readiness
-
-Selected `./readiness` modules retain independent schema requirements.
-Dependencies use the same or an earlier layer:
-`kernel`, `rail`, `capability`, `implementation`.
-See the optional current-source [module contributions, identity, and readiness
-guidance](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#contributions-seams-and-readiness)
-for selection, bindings, refusals and diagnostics; it is not version-specific
-migration guidance. For an installed package, its declarations for the selected
-version remain authoritative; the source checkout's `api/readiness.api.md` is a
-snapshot reference, and the host owns inventory.
+- **Subscriptions & bundles (`./subscription`, `./bundle`):** Pure renewal cycle math, monotonic late-delivery clamping, bundle composition rules, and cadence contracts.
+- **Pricing, promotions & catalog (`./pricing`, `./promo`, `./catalog`, `./inventory`):** Integer minor-unit pricing, offer quotes, promotion eligibility, and catalogue contract validation.
+- **Payments, fulfillment & shipping (`./payment`, `./fulfillment`, `./shipping`, `./risk`):** Status mapping, tracking progress, current-parcel projection, canonical fact parsers, and bounded scheme-retry helpers (`withinSchemeRetryCeiling` checks only its local 15-attempt/30-day numeric bound; the host and provider enforce actual decline advice and scheme rules).
+- **Partners & marketing (`./partners`, `./marketing/research`):** Inquiry and research contracts; see [Compose marketing handlers](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/core/docs/guide/how-to/build/marketing.md) and [offline catalogue extension recipes](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/core/docs/guide/how-to/extend/catalogue-extension.md).
+- **Infrastructure contracts (`./outbox`, `./readiness`, `./standard-schema`, `./platform-runtime`):** Pure ports and readiness admission contracts consumed by `@openlup/outbox` and `@openlup/platform`.
 
 ## Readiness contract
 
-The optional `ReadinessInput.catalogRegistry` observation carries live product
-type references, installed definition digests and matching composed-registry
-digests for the candidate database. Missing versions or unequal digests yield
-`registry_missing_referenced_version`; `complete: false`, a NULL installed digest,
-malformed evidence or mismatched database evidence is unknown. Applications obtain this inert observation through the platform's
-explicit catalogue probe before `openlup verify --app`. Existing inputs without
-it keep their behaviour. No observer, installer or boot hook is added to Core.
+`./readiness` evaluates inert package contributions against a complete host inventory and bounded schema observation (`checkReadiness`). Only `ready` admits a candidate; `unknown` and `unsatisfied` retain the serving candidate. Readiness helpers never run migrations, lease jobs, or activate modules — the host owns database access, transactions, and admission policy.
 
-The `./readiness` export evaluates inert package contributions against a complete
-host inventory and bounded schema observation. Its grouped PostgreSQL probe
-preserves request ordinals and distinguishes legitimate absence from malformed
-or incomplete results. Readiness evaluation calls the host's schema observation
-port; `createSchemaProbe` invokes the supplied identity callback and SQL executor.
-The grouped query builder and result decoder perform no I/O. The application
-retains database access, transaction and admission policy; these helpers do not
-run migrations, schedule work or activate a module.
+- **Catalog registry checks:** Optional `ReadinessInput.catalogRegistry` verifies live product-type references and installed definition digests; missing versions or mismatched digests report `registry_missing_referenced_version`, while incomplete or malformed observations report `unknown`.
+- **Grouped PostgreSQL catalog probes:** `buildGroupedPostgresSchemaProbe` and `decodeGroupedPostgresSchemaRows` inspect PostgreSQL table, column, and function shapes in one bound query without performing I/O. See the [grouped PostgreSQL schema probe reference](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#core-grouped-postgresql-schema-probe) for shape fields and decoder invariants.
 
-### Partner lifecycle contracts
+### Module readiness
 
-[Compose marketing handlers](docs/guide/how-to/build/marketing.md); inquiry contracts are in the shipped `src/partners/`.
+Selected `./readiness` modules retain independent schema requirements across ordered layers (`kernel`, `rail`, `capability`, `implementation`). See [module contributions, identity, and readiness](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#contributions-seams-and-readiness) for selection, bindings, and diagnostics.
 
-## Payment contracts
+## For AI Coding Agents
 
-The `./payment` export's `withinSchemeRetryCeiling` helper checks only its local
-15-attempt/30-day numeric bound. A passing result does not authorize a retry or
-certify compliance; the host/provider must apply actual decline advice and
-current applicable rules, including any narrower limits.
+`@openlup/core` ships the offline reader guide (`docs/guide/`), `AGENTS.md`, TypeScript sources (`src/`), and the `openlup-context` CLI + MCP server directly inside the npm tarball — no network access required.
 
-## Agent context lookup
+### Agent context lookup
+
+Search installed OpenLup documentation, declarations, exports, and changelogs offline from your application root:
 
 ```sh
 ./node_modules/.bin/openlup-context search "subscription renewal"
 ```
 
-The command searches core's installed reader guide under `docs/guide/`, package
-`AGENTS.md`, `README.md`, declarations and exports, and `CHANGELOG.md` for upgrade
-questions. It returns file-and-line citations offline. Add `--code` for a bounded local application source scan, or
-`--package-code` to inspect the installed packages' `src/` files.
-Both scans are opt-in and may be incomplete; use direct `rg` when a path or
-symbol is known. Add `--json` for structured results, including a `scans` array
-for executed declaration, application and package-source scans. Each summary
-reports its scope, package when applicable, budget-consuming `scannedFiles`,
-`fileLimit` and conservative `limitReached` flag. The flag is true even when
-the count exactly equals the limit; it does not prove another file exists.
-A false flag does not prove exhaustive coverage: filters and other bounds still
-apply. An exact package-source path consumes budget even when its contents are
-not read. Text output notices reached limits, including when there are no hits.
-The top-eight result cap is separate from these scan limits. It never downloads
-packages or starts a service. Its Node-only launcher is isolated from the
-I/O-free kernel exports and adds no runtime dependency.
-
-Nested Markdown headings return separate spans. Read the installed package version
-and cited source before changing a contract; a result locates evidence and grants
-no application policy or execution authority.
-
-A declaration hit is a textual occurrence with an unverified public import. It
-may be internal, imported, aliased, type-only or ambiguous. Read the installed
-manifest's exports and that version's examples to establish the public specifier
-and type/value usage; a declaration path is not a legal deep-import recipe.
-
-An export hit for a symbol, such as `@openlup/core/pricing (symbolName)`, carries
-`maturity` in `--json` output and in the MCP tool's structured hits, and the text
-output ends it with `; maturity <value>`. The value is `experimental` when the
-declaration, or the re-export statement that exports it, is tagged `@experimental`,
-unless the declaration carries a tag of its own; otherwise it is the subpath's
-maturity from `release-gates.json` (`stable`, `experimental` or `testing`).
-`@deprecated` adds `deprecated: true`. Tags are read as the TypeScript compiler reads
-the doc comment before a declaration; a tag on a member does not count. `maturity` is
-absent when the declaration is not found inside the installed package, for example a
-re-export from another `@openlup` package, or when no subpath maturity is known and no
-`@experimental` tag applies. In either case, read the declaration. A one-line
-`/** ... */ export declare ...`, a declaration that follows a comment on its line, and a
-later declarator of `export declare const A: T, B: U` yield an export hit only when a
-named re-export reaches them, in any scanned declaration file including the entry file.
-
-Run from the selected application's `package.json` directory. Lookup selects its
-reachable declared OpenLup dependencies plus required Core through Node's normal
-`node_modules` resolution, including npm workspace hoisting and linked package
-roots. It does not select another application's undeclared packages. Without an
-application manifest, local `node_modules/@openlup` installations remain usable.
-Node package self-references from a checkout are refused: source bytes are not
-installed dependency evidence. Run from an adopter application root.
-Uninstalled non-Core declarations are skipped; lookup does not validate a complete
-application installation.
-Selected versions must agree with each other and with their entries in the
-application's owning `package-lock.json`, when present. Layouts without Node-resolvable
-`node_modules` packages are unsupported. `--code` always scans only the current
-application directory; hoisting does not widen that source boundary.
-
-When npm hoists Core, resolve its installed manifest and declared executable from
-the application root, then invoke it directly with Node:
-
-```sh
-OPENLUP_CONTEXT_BIN="$(node --input-type=module -e '
-import { findPackageJSON } from "node:module";
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-const manifest = findPackageJSON("@openlup/core", `${process.cwd()}/package.json`);
-const bin = JSON.parse(readFileSync(manifest, "utf8")).bin["openlup-context"];
-console.log(resolve(dirname(manifest), bin));
-')" && node "$OPENLUP_CONTEXT_BIN" search "subscription renewal"
-```
-
-This reads installed metadata only, requires no public `package.json` export, and
-uses neither a registry nor an npm command cache. Core must already be installed.
-
-## Agent context over MCP
-
-Connect an MCP client to the installed context tool over stdio. Set the working
-directory to your application root (the directory containing its `package.json`):
+Connect an MCP client over stdio (`search_openlup_context` and `read_openlup_file`):
 
 ```json
 {
   "mcpServers": {
     "openlup-context": {
-      "command": "node",
-      "args": ["/path/to/installed-core/src/openlup-context.js", "mcp"],
+      "command": "./node_modules/.bin/openlup-context",
+      "args": ["mcp"],
       "cwd": "/path/to/your-application"
     }
   }
 }
 ```
 
-Replace the first argument with the installed executable path resolved above
-(`OPENLUP_CONTEXT_BIN`). A local installation can also run
-`./node_modules/.bin/openlup-context mcp` directly. Configure the working directory in your client's
-settings if it does not accept `cwd`.
+Add `--json` for structured hits (including per-symbol `maturity`), `--code` for a bounded application source scan, or `--package-code` to scan installed `@openlup/*` `src/` files. See [Core agent context internals](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/docs/platform/DEVELOPMENT_AND_RELEASE.md#core-agent-context-internals) for workspace hoisting, scan limits, and MCP framing rules.
 
-Use `search_openlup_context` when the owner or extension seam is unclear, then
-`read_openlup_file` with the returned application-relative path and optional
-inclusive `startLine`/`endLine` (starting at 1). Search also returns structured
-results; `includeApplicationCode` and `includePackageCode` opt into the same
-bounded scans as the CLI flags. Read accepts only ordinary selected installed
-`node_modules/@openlup/<name>/` files up to 200,000 bytes, including the exact
-prefix returned by search, including a hoisted or sibling installation. Symlinked package roots
-are supported; file realpaths must stay inside the resolved package root. Read
-refuses other traversal and never fetches release-tag source URLs. These checks guard
-against wrong paths and links present when the file is read; they do not defend
-against a process that rewrites `node_modules` during the read, which can already
-change the code the application runs. Read repository-only sources and application source hits with your client's own
-file tool. Search tasks are limited to 1,000 characters, and each
-incoming message line to 1 MiB. Oversized messages receive one error and are
-discarded through the next newline; the server continues serving. End stdin to
-stop the process.
+## Upgrading & Compatibility
 
-## Local verification from source
-
-See [the contribution guide](CONTRIBUTING.md) for source checks; the npm tarball
-omits development scripts and tests.
-
-```sh
-npm ci
-npm run ci
-```
-
-Focused proofs are `npm run api:check`, `npm run release:check`, and
-`npm run test:consumer`. The root test script skips this suite.
-The shared repository gate runs this package's API check before expensive
-proofs, then `ci:required` retains the mechanical obligations once through
-`release:admission`. That mode skips only the absolute live dependency audit;
-repository admission checks newly selected vulnerable production dependencies
-against the base instead. Unchanged inherited advisories remain alerts.
-`release:check`, standalone `ci` and publication packs retain the full audit.
-The standalone `ci` command keeps its API check for manual package verification.
-In the monorepo, required CI supplies `OPENLUP_PACK_MANIFEST` and
-`OPENLUP_PACK_COMMIT` together to the same consumer. It verifies the complete
-publishable set and both tarball digests, then uses the named core artifact
-without rebuilding or repacking it. A missing or damaged supplied input refuses;
-it never falls back to a source-directory install. The consumer still audits the
-packed files, imports every public code export, checks NodeNext and Bundler types,
-and builds with Vite. It installs Zod from a separately packed locked runtime
-input and uses explicitly located host TypeScript/Vite tools. The isolated
-consumer records the core artifact hashes and rejects package symlinks or
-ancestor module-resolution overrides. Without either supplied input, the manual
-source command retains its own build and pack.
-`npm run docs:check` requires relative links in shipped Markdown to resolve to
-files actually packed in the tarball; a target present only in source refuses.
-Ambiguous destinations refuse explicitly: use literal punctuation or
-percent-encoded filenames, with ASCII whitespace before an optional title.
-Raw ampersands, angle characters and Unicode whitespace in local destinations
-require a canonical rewrite rather than passing an incomplete link check.
-It also type-checks TypeScript examples in `README.md` and `AGENTS.md` against
-the built package, holds `AGENTS.md` to a size cap, and checks the reader guide
-under `docs/guide/` if it exists; a guide without a detected source repository
-root refuses. `npm run docs:check -- --write` refreshes generated regions in
-`README.md`, `AGENTS.md` and the guide.
-
-The [repository neutrality checks](https://github.com/openlup/openlup/blob/main/CONTRIBUTING.md#contribution-checks)
-reuse the source scanner through `./scripts/neutrality-tree-counts.ts` relative
-to this source package. This process interface reads JSON containing source paths,
-contents and a policy
-from standard input, then emits finding counts for each path. Shell sources
-retain the scanner's existing shell handling. The interface adds no package
-export and changes no matcher or kernel behavior.
-
-Repository lint keeps this package's production source independent of configured
-provider SDKs and explicit industry contract names. Adopter adapters compose
-providers; generic ports can forward opaque extension data. See the
-[syntax scope and exceptions](https://github.com/openlup/openlup/blob/main/CONTRIBUTING.md#contribution-checks).
-
-The repository checker also calls the UI neutrality counting process with
-`--counts-json` to count its existing patterns over the supplied sources. Running that checker without
-arguments still scans the UI source directory and refuses any forbidden hit.
-Published Tree CI runs the repository ratchet in required `self-check` and its
-CLI refusal tests in required root `test`. This package's independent proof
-belongs to `install-proof`; see [repository testing](https://github.com/openlup/openlup/blob/main/CONTRIBUTING.md#test-scope-and-diagnostics).
-
-## Package artifact limits
-
-The monorepo's package artifact checker enforces this package's
-`release-gates.json` caps and packed content allowlist. Only
-`--release-set <version>` checks compressed growth against the last released
-baseline, with explanations in the new set's changelog section and release body. See the
-[package artifact policy](https://github.com/openlup/openlup/blob/main/.github/VERSIONING_AND_EOL.md#package-artifact-limits)
-for measured sizes, current caps, the S1 baseline refresh and refusal remedies.
-Artifact checks require a clean package directory; `--manifest-only` supplies no
-artifact evidence.
-
-## Release notes
-
-Read [the changelog](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/core/CHANGELOG-HISTORY.md#100) before upgrading the package set.
-
-Catalogue pack authors: [offline extension recipes and skeleton](docs/guide/how-to/extend/catalogue-extension.md).
+- **Release channel & provenance:** Published to npm on the `latest` dist-tag with OIDC provenance from annotated release tags (`openlup-core-v<version>`).
+- **SemVer & open unions:** Stable subpaths follow the [stable API contract](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/core/docs/guide/reference/stability.md#public-api). Unions and literal sets are open — additions are minor, so consumers must keep a default branch for unknown values.
+- **Upgrade the set together:** Pin exact versions and read [CHANGELOG.md](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/core/CHANGELOG.md) and the [Upgrade Guide](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/core/docs/guide/upgrade/README.md) before upgrading.
+- **Contributing from source:** See [CONTRIBUTING.md](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/CONTRIBUTING.md) and [Core local verification from source](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/docs/platform/DEVELOPMENT_AND_RELEASE.md#core-local-verification-from-source) for monorepo checks, neutrality scans, and tarball budgets.
