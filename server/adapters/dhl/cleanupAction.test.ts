@@ -191,6 +191,47 @@ describe("cleanup action", () => {
     );
     expect(oversizedFixture.remove).toHaveBeenCalledWith(["TRK-1.pdf"]);
   });
+
+  it("blocks path-traversal tracking numbers from invoking storage removal", async () => {
+    for (const unsafeTracking of ["../other/label", "nested/label", "a\\b", "bad..id", " TRK-1 "]) {
+      const fixture = cleanupFixture({ responseText: "<result>true</result>" });
+      await expect(fixture.action(request({
+        authorization: "Bearer token",
+        body: { tracking_number: unsafeTracking },
+      })).then((response) => response.json())).resolves.toEqual(
+        cleanupBody({ providerDeleted: true, labelDeleted: false }),
+      );
+      expect(fixture.remove).not.toHaveBeenCalled();
+    }
+  });
+
+  it("redacts secrets, tokens, emails, and phones from cleanup errors and logs", async () => {
+    const log = vi.fn();
+    const faultFixture = cleanupFixture({
+      responseText: "<envelope><password>topsecret</password><faultstring>Failed for user@example.com +48 500 600 700 Bearer tok_123</faultstring></envelope>",
+      log,
+    });
+    const faultBody = await faultFixture.action(request({
+      authorization: "Bearer token",
+      body: { tracking_number: "TRK-1" },
+    })).then((response) => response.json());
+    expect(faultBody.dhl_error).toBe("Failed for [redacted-email] [redacted-phone] Bearer [redacted]");
+    const logged = log.mock.calls.flat().join(" ");
+    expect(logged).not.toContain("topsecret");
+    expect(logged).not.toContain("user@example.com");
+    expect(logged).not.toContain("tok_123");
+
+    const errorFixture = cleanupFixture({
+      fetchError: new Error("auth failed token=abc123 user@example.com"),
+      log,
+    });
+    const errorBody = await errorFixture.action(request({
+      authorization: "Bearer token",
+      body: { tracking_number: "TRK-1" },
+    })).then((response) => response.json());
+    expect(errorBody.dhl_error).toBe("Error: auth failed token: [redacted] [redacted-email]");
+    expect(errorBody.dhl_error).not.toContain("abc123");
+  });
 });
 
 function cleanupAction(options: { createClient?: () => CleanupClient } = {}) {
@@ -216,6 +257,7 @@ function cleanupFixture(options: {
   removeThrow?: Error;
   username?: string;
   password?: string;
+  log?: (...args: unknown[]) => void;
 } = {}) {
   const events: string[] = [];
   const fetchImpl = options.hangFetch
@@ -260,6 +302,7 @@ function cleanupFixture(options: {
       fetchImpl: fetchImpl as never,
       username: options.username ?? "user",
       password: options.password ?? "pass",
+      log: options.log,
       timeoutMs: options.timeoutMs,
       maxBodyBytes: options.maxBodyBytes,
     }),

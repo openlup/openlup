@@ -8,6 +8,7 @@ export const CARRIER_SOAP_RESPONSE_MAX_BYTES = 512 * 1024;
 /** The provider's externally visible name; response and audit text use this exact value. */
 export const CARRIER_DISPLAY_NAME = "DHL";
 export const CARRIER_PROVIDER_ID = "dhl";
+export const CARRIER_LABELS_BUCKET = `${CARRIER_PROVIDER_ID}-labels`;
 export const CARRIER_PROVIDER_ERROR_CODE = "DHL_PROVIDER";
 export const CARRIER_ENV_KEYS = {
   username: "DHL_API_USERNAME",
@@ -49,13 +50,80 @@ export function parseStreet(fullStreet: string): { street: string; houseNumber: 
   return { street: match[1].trim(), houseNumber: match[2].replace(/\s+/g, "") };
 }
 
+const MAX_SANITIZE_INPUT_CHARS = 4096;
+
 export function sanitizeCarrierError(error: unknown): string {
-  const result = String(error ?? `${CARRIER_DISPLAY_NAME} request failed`)
+  const bounded = String(error ?? `${CARRIER_DISPLAY_NAME} request failed`).slice(0, MAX_SANITIZE_INPUT_CHARS);
+  const result = bounded
+    .replace(
+      /<((?:[^:\s<>/]+:)?(?:authData|password|pass|username|login|token|secret|apiKey|accountNumber))\b[^>]*>[\s\S]*?<\/\1>/gi,
+      "$1: [redacted]",
+    )
     .replace(/<[^>]*>/g, " ")
-    .replace(/\b(password|pass|username|login)\s*[:=]\s*\S+/gi, "$1: [redacted]")
+    .replace(/\bauthorization\s*[:=]\s*(?:(?:Bearer|Basic|Token)\s+)?\S+/gi, "authorization: [redacted]")
+    .replace(/\b(Bearer|Basic)\s+\S+/gi, "$1 [redacted]")
+    .replace(/(?:^|[\s,;(])([a-z0-9_-]*(?:password|pass|username|login|token|secret|api[_-]?key))\s*[:=]\s*\S+/gi, " $1: [redacted]")
+    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[redacted-email]")
+    .replace(/(?:\+\d{1,3}[\s.-]?(?:\(\d{2,4}\)[\s.-]?)?\d{2,4}[\s.-]\d{3}[\s.-]\d{3,4}|\(\d{2,4}\)[\s.-]?\d{3}[\s.-]\d{3,4})/g, "[redacted-phone]")
     .replace(/\s+/g, " ")
     .trim();
   return (result || `${CARRIER_DISPLAY_NAME} request failed`).slice(0, 300);
+}
+
+function hasControlChar(value: string): boolean {
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i);
+    if (code <= 0x1f || code === 0x7f) return true;
+  }
+  return false;
+}
+
+export function safeObjectKey(value: string): boolean {
+  if (value.length === 0 || value.trim() !== value) return false;
+  if (
+    value.startsWith("/") ||
+    value.endsWith("/") ||
+    value.includes("\\") ||
+    value.includes("..") ||
+    value.includes("%") ||
+    value.includes("?") ||
+    value.includes("#")
+  ) {
+    return false;
+  }
+  if (hasControlChar(value)) return false;
+  if (value.split("/").some((segment) => segment.length === 0 || segment.startsWith(".") || /\s/.test(segment))) {
+    return false;
+  }
+  return true;
+}
+
+export function safeTrackingLabelObjectKey(trackingNumber: string): string | null {
+  if (
+    trackingNumber.length === 0 ||
+    trackingNumber.trim() !== trackingNumber ||
+    trackingNumber.includes("/") ||
+    trackingNumber.includes("\\") ||
+    trackingNumber.startsWith(".")
+  ) {
+    return null;
+  }
+  const key = `${trackingNumber}.pdf`;
+  return safeObjectKey(key) ? key : null;
+}
+
+export function privateLabelObjectKey(value: string): string | null {
+  if (value.trim() !== value || value.length === 0) return null;
+  if (!/^https?:\/\//i.test(value)) return safeObjectKey(value) ? value : null;
+  try {
+    const path = new URL(value).pathname;
+    const match = path.match(/^\/storage\/v1\/object\/(?:public|sign|authenticated)\/([^/]+)\/(.+)$/);
+    if (!match || match[1] !== CARRIER_LABELS_BUCKET) return null;
+    const objectKey = decodeURIComponent(match[2]);
+    return safeObjectKey(objectKey) ? objectKey : null;
+  } catch {
+    return null;
+  }
 }
 
 export type CallCarrierSoapOptions = {

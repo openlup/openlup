@@ -1,11 +1,14 @@
 import {
   CARRIER_DISPLAY_NAME,
   CARRIER_ENDPOINT,
+  CARRIER_LABELS_BUCKET,
   CARRIER_SOAP_RESPONSE_MAX_BYTES,
   callCarrierSoap,
   escapeXml,
   extractFault,
   extractXmlValue,
+  safeTrackingLabelObjectKey,
+  sanitizeCarrierError,
 } from "../../infra/dhl/adminDhlSoap.js";
 
 export const CLEANUP_URL = CARRIER_ENDPOINT;
@@ -96,11 +99,11 @@ export function createCleanupAction({
             },
           );
           const responseText = response.text;
-          log("[CLEANUP] deleteShipments response:", responseText.slice(0, 500));
+          log("[CLEANUP] deleteShipments response:", sanitizeCarrierError(responseText));
 
           const fault = extractFault(responseText);
           if (fault) {
-            providerError = fault;
+            providerError = sanitizeCarrierError(fault);
           } else if (!response.ok) {
             providerError = `${CARRIER_DISPLAY_NAME} HTTP ${response.status}`;
           } else {
@@ -108,28 +111,35 @@ export function createCleanupAction({
             if (result === "true" || result === "1") {
               providerDeleted = true;
             } else {
-              providerError = extractXmlValue(responseText, "error") || `${CARRIER_DISPLAY_NAME} nie potwierdził usunięcia`;
+              providerError = sanitizeCarrierError(
+                extractXmlValue(responseText, "error") || `${CARRIER_DISPLAY_NAME} nie potwierdził usunięcia`,
+              );
             }
           }
         } catch (error) {
-          providerError = String(error);
-          log("[CLEANUP] provider error:", error);
+          providerError = sanitizeCarrierError(error);
+          log("[CLEANUP] provider error:", providerError);
         }
       }
 
       if (trackingNumber) {
-        try {
-          const { error } = await client.storage.from("dhl-labels").remove([`${trackingNumber}.pdf`]);
-          labelDeleted = !error;
-          if (error) log("[CLEANUP] Storage remove error:", error.message);
-        } catch (error) {
-          log("[CLEANUP] Storage error:", error);
+        const objectKey = safeTrackingLabelObjectKey(trackingNumber);
+        if (!objectKey) {
+          log("[CLEANUP] Skipping unsafe label object key");
+        } else {
+          try {
+            const { error } = await client.storage.from(CARRIER_LABELS_BUCKET).remove([objectKey]);
+            labelDeleted = !error;
+            if (error) log("[CLEANUP] Storage remove error:", sanitizeCarrierError(error.message));
+          } catch (error) {
+            log("[CLEANUP] Storage error:", sanitizeCarrierError(error));
+          }
         }
       }
 
       return json(cleanupResponse(providerDeleted, providerError, labelDeleted));
     } catch (error) {
-      return json(cleanupResponse(false, String(error), false));
+      return json(cleanupResponse(false, sanitizeCarrierError(error), false));
     }
   };
 }
