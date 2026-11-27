@@ -35,3 +35,7 @@ export {
   storefrontProofFileJsonSchema,
   type StorefrontProofFile,
 } from "./storefrontProofFile.js";
+export {
+  storefrontCapabilities,
+  type StorefrontCapability,
+} from "./storefrontCapabilities.js";

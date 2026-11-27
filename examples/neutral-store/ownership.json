@@ -36,7 +36,8 @@
     "owned/invoice-provider.ts",
     "owned/invoice-provider.test.ts",
     "owned/renewal-policy.ts",
-    "owned/market.config.ts"
+    "owned/market.config.ts",
+    "owned/storefront-proof.json"
   ],
   "managed": [
     "host/account-renewal.ts",
@@ -177,6 +178,9 @@
     "browser/storefront-anchors.spec.ts",
     "browser/checkout-controller.spec.ts",
     "test/checkout-anchors.test.ts",
+    "browser/storefront-proof-kit.ts",
+    "shared/action-path.ts",
+    "test/storefront-proof-kit.test.ts",
     "client/quote-acceptance.ts",
     "host/quote-secret.ts",
     "test/acquisition-quote.test.ts",

@@ -4557,6 +4557,12 @@ evidence from `@openlup/platform/lifecycle`, without importing test support:
 - **Digest.** `digestStorefrontFiles` is the one client-build digest:
   `sha256:` over a manifest of relative POSIX paths and their SHA-256, sorted
   by UTF-16 code units (not locale or UTF-8 byte order).
+- **Capabilities.** `storefrontCapabilities` is the frozen list of
+  capabilities a selling store may need. Each `StorefrontCapability` states its
+  `level` in this version (`supported` or `unsupported`; a reader keeps a
+  default branch for a level added later), what a store does `meanwhile`, who
+  closes it (`closedBy`) and the stores it affects (`appliesTo`). Ids are never
+  renamed; delivering a capability changes its `level`.
 - **Open sets.** Tiers, channels, results, runs, phases, control, observer,
   build-source and adapter kinds, and finding codes accept values added later
   (`^[a-z][a-z0-9_]*$`); a reader keeps a default branch. Unknown fields are
@@ -4598,9 +4604,12 @@ and never in a buyer's bundle: a browser bundle of the entry fails, and the
 - **`PageHandle` and `createPageHandle(page, options?)`.** Wraps a Playwright
   page without importing a browser library: navigation, the current path
   without query, the width, anchor lookup and visibility, the visible
-  `state:` and `action:` anchors, clicking, filling, request interception
+  `state:` and `action:` anchors, clicking, filling (a typed value is committed
+  by blurring the field, as a buyer leaving it does), request interception
   (`pass`, `withhold`, which delivers the request and fails the page's
-  response, or `block`) and `settled({ quietMs, timeoutMs })`, which resolves
+  response, or `block`), `clearClientState()`, which clears the client state
+  the `PageHandle` table lists, and `settled({ quietMs, timeoutMs })`,
+  which resolves
   once every intercepted request, followed through its redirects, has finished
   and `quietMs` passed with no new request, and otherwise rejects after
   `timeoutMs` naming the requests still open. An anchor is visible when its box is
@@ -4613,6 +4622,31 @@ and never in a buyer's bundle: a browser bundle of the entry fails, and the
   a descendant or an ancestor of it. An anchor not already shown in full is
   scrolled into view before it is measured, and every scroll position is restored afterwards, instantly
   whatever the page's `scroll-behavior`. The handle reads no clock.
+
+  `clearClientState()` clears the client state the `PageHandle` table lists,
+  and nothing more, without sending a request or navigating. The `PageHandle` declaration in
+  the [API report](../../packages/platform/api/storefront-testing.api.md)
+  holds the one table of what it clears on each path. In short: with the
+  browser context's `setStorageState` (a Playwright context) it clears every
+  cookie of the context, the local storage, IndexedDB and service-worker
+  registrations of every origin the context visited, the HTTP cache and the
+  virtual WebAuthn credentials created through the context's credentials API
+  (not an authenticator added through the browser's debugging protocol);
+  without it, every cookie and the document's
+  local storage only. On both paths it clears this tab's session storage on
+  the store's origin (session storage is per tab: other tabs keep theirs),
+  and never Cache Storage. On a document with no origin,
+  such as `about:blank`, no session storage is cleared, and the fallback
+  clears cookies only. When `options.origin` is given, a document on another
+  `http:` or `https:` origin rejects
+  `storefront_page_client_state_foreign_origin` before anything is cleared. A
+  page without `context()` rejects `storefront_page_input_invalid`. A harness
+  sets any state it needs (a preview sign-in cookie, local or session
+  storage, IndexedDB, WebAuthn credentials) in its arrangement, not before
+  the run.
+  The member is optional on `PageHandle` so that a hand-built handle still
+  compiles; without it the runner clears nothing between the two runs
+  (below).
 
   Whether the buyer can bring an anchor into view is judged per axis before
   anything moves, walking its scrollers from the anchor outward: the overflow
@@ -4692,7 +4726,15 @@ adapter: the default arrangement opens the selection entry, performs
 values (`email` must resolve; it carries the run's subject,
 `storefront-<runId>-clean@example.test` or `…-control@example.test`). After a
 reload a declared selection entry is arranged again; otherwise an adapter's
-`arrange` arranged the run and only the details are re-typed. The clean run
+`arrange` arranged the run and only the details are re-typed. Wherever the
+runner types the details (arrangement, re-arrangement, edited payload,
+re-typing), it fills every text field first (`page.fill` commits each),
+waits for the page to settle, ticks consent (`terms_accepted`), waits for the
+page to settle again and ticks it once more, so a page whose details check
+resets consent given before that check keeps the tick; an adapter's `arrange`
+should do the same. The handle cannot read a checkbox back, so a page that
+resets consent again after the second tick sends nothing on submit, and the
+run's findings say so. The clean run
 reads the subject's ledger first, then routes every request through one
 interceptor that classifies it by the create and read matchers and records
 whether each command reused an earlier key (the key value is compared, never
@@ -4705,8 +4747,24 @@ where the scenario says so, the outcomes after it; `other_policy` changes
 nothing and must not show the progress of the changed-payload policy the proof
 file does not declare. An arrangement that fails under the control is the
 control's effect: the remaining steps are skipped and the settle window still
-samples the page. The clean and control runs share the page and its browser
-storage.
+samples the page.
+
+**Client state.** The clean and control runs are two buyers on one page. Each
+run calls `page.clearClientState()` after its first ledger read (and the
+exclusive database's count) and before its interceptor, so the control run
+starts without the state the `PageHandle` table clears on the path in use; on
+both paths that is every cookie of the browser context, and the store's local
+storage and this tab's session storage when the page shows a store document.
+State the table does not clear on that path can still carry over. A rejection ends that run with `page_failed` (step `null`), so the
+result is `not_run` unless the clean run already proved ledger harm. One such
+rejection: when `createPageHandle` was given `options.origin` and the clean
+run ends on another `http:` or `https:` origin, it refuses the control run's
+clear (`storefront_page_client_state_foreign_origin`). A handle
+without the member clears nothing between the runs: an admitted scenario with a
+control run then ends `not_run` with `client_state_unisolated` only, before any
+page, observer or driver call, and is never `passed` or `vacuous`; a
+`safety_only` scenario has one buyer and runs as before. Fix it with
+`createPageHandle`, which provides the member, or by adding the member.
 
 | Scenario | Stimulus | Safety | Progress | Control | Requires |
 | --- | --- | --- | --- | --- | --- |
@@ -4772,7 +4830,7 @@ visible after a step, removes the interceptor and resolves
 `{ kind: "stopped", stoppedAt, steps }` with the page left there: no control
 run and no verdict. A state not reached rejects
 `storefront_stop_state_unreached` naming the last step, as does a scenario that
-is not admitted, before any call.
+is not admitted or a page handle without `clearClientState`, before any call.
 
 **Judgement.** Every failed check adds a finding with its run, step, the field
 at fault where there is one, and texts saying what was observed, why and how
@@ -4781,7 +4839,7 @@ to fix it, and the recheck command (`recheck` from the adapter or proof file,
 
 | Order | Check | Codes | Result |
 | --- | --- | --- | --- |
-| 0 | Admitted: every required outcome known and declared | `tier_unreachable` | `not_run` |
+| 0 | Admitted: every required outcome known and declared; then, with a control run, a page handle with `clearClientState` | `tier_unreachable`, then `client_state_unisolated` | `not_run` |
 | 1 | Page, observer, arrangement and outcome driver worked | `page_failed`, `observer_failed`, `arrange_failed`, `outcome_failed` | `not_run` |
 | 2 | No order before the arrangement; one after the first matched create | `observer_subject_unseen` | `not_run` |
 | 3 | The first order appeared in a step with a matched create; every withhold applied; declared auto-progress was performed; every outcome shows its ledger effect | `stimulus_not_create`, `stimulus_not_applied`, `auto_progress_not_performed`, `outcome_failed` | `not_run` |

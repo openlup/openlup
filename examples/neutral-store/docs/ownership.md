@@ -321,8 +321,9 @@ The host requires the slot-27 first-duty buyer-capture entry; slot 28 preserves
 absence of explicit buyer facts during recreation. `./lifecycle up` installs the
 complete history. No duty or historical invoice is backfilled.
 
-`payment.simulate`, `checkout.payment` and recreated `checkout.recovery` simulation
-share one capture/activation helper. Retained acquisition renewal availability
+`payment.simulate`, `checkout.paymentSimulate` and recreated `checkout.recoverySimulate`
+simulation share one capture/activation helper; the retained `action: "simulate"` form of
+`checkout.payment` and `checkout.recovery` runs the same code and retires in a later release. Retained acquisition renewal availability
 validates before a capture observation is recorded. After successful native ingress,
 an initial subscription declaration activates through its native acquisition or
 classic renewal branch. Capture and activation keep their existing transaction

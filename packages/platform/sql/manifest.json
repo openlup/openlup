@@ -934,9 +934,17 @@
       {
         "file": "db/platform/migrations/20261129130508_renewal_order_destination_v2.sql",
         "sha256": "cf9f42b785b31b6849da83b46101568e61fd5e4a89500574067602e5f376931f"
+      },
+      {
+        "file": "db/platform/migrations/20261129160000_tax_calculation_adapter_money_v1.sql",
+        "sha256": "87513fd800efdb97405d8ea5c644a63769e08842a077e6595800bf65aed3761d"
+      },
+      {
+        "file": "db/platform/migrations/20261129160001_tax_calculation_adapter_money_activation.sql",
+        "sha256": "a6fa96a9bd34839097a289aa9efa8461ce1e2433eaa0a6c8171b395da1f45104"
       }
     ],
-    "objectInventorySha256": "58120ae785a66d6813f8dbaff7db52365150a39833a44d788b0b4c8cc6f6a49a",
+    "objectInventorySha256": "d3b1f0599384834381a9f20aada26b678678cca55d174477fa3bdb6bdf1ac4b0",
     "qualified": {
       "baseline": {
         "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1894,14 +1902,22 @@
         {
           "file": "db/platform/migrations/20261129130508_renewal_order_destination_v2.sql",
           "sha256": "cf9f42b785b31b6849da83b46101568e61fd5e4a89500574067602e5f376931f"
+        },
+        {
+          "file": "db/platform/migrations/20261129160000_tax_calculation_adapter_money_v1.sql",
+          "sha256": "87513fd800efdb97405d8ea5c644a63769e08842a077e6595800bf65aed3761d"
+        },
+        {
+          "file": "db/platform/migrations/20261129160001_tax_calculation_adapter_money_activation.sql",
+          "sha256": "a6fa96a9bd34839097a289aa9efa8461ce1e2433eaa0a6c8171b395da1f45104"
         }
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "1f4b313d2dd0d04d7054ab8dea44e66ef456b3ae27b9e6cfcc32c947971b682a"
+          "withRestore": "7a06c178e958ab5ea8a9b3c1b23a6df3c4ff481a4fdea90c5c0fb657edb378ad"
         },
         "separateMigrator": {
-          "withRestore": "c4132c6256c61dfd4cdc1cb32d4784c4782ba63411bd0aaa3fe2c5896b84e540"
+          "withRestore": "bf4d45f4af24a01c46bc883f3848b2b0f93b14fc1eb6090927560aa5a18a3456"
         }
       }
     },
@@ -2854,11 +2870,19 @@
         {
           "file": "db/platform/migrations/20261129130508_renewal_order_destination_v2.sql",
           "sha256": "cf9f42b785b31b6849da83b46101568e61fd5e4a89500574067602e5f376931f"
+        },
+        {
+          "file": "db/platform/migrations/20261129160000_tax_calculation_adapter_money_v1.sql",
+          "sha256": "87513fd800efdb97405d8ea5c644a63769e08842a077e6595800bf65aed3761d"
+        },
+        {
+          "file": "db/platform/migrations/20261129160001_tax_calculation_adapter_money_activation.sql",
+          "sha256": "a6fa96a9bd34839097a289aa9efa8461ce1e2433eaa0a6c8171b395da1f45104"
         }
       ],
       "objectInventorySha256": {
-        "installerManaged": "5ec848692b0c51d0bc6dc2089bed26084e6c493d787417d133b7f909507a971d",
-        "operatorProvisioned": "510cf913a5358bc2cfa71b93a9c15bfbecfe32ebdc8c62087b004914dce1b974"
+        "installerManaged": "e4679656f8db637dae8b4d17b15770b432a4d59028400643b7a899282036c9a5",
+        "operatorProvisioned": "fd411c011e54dbb627122918a749932c9d543cd5c3e53fcb3a959328410f4108"
       }
     }
   },
@@ -4027,6 +4051,16 @@
       "file": "20261129130508_renewal_order_destination_v2.sql",
       "source": "db/platform/migrations/20261129130508_renewal_order_destination_v2.sql",
       "sha256": "cf9f42b785b31b6849da83b46101568e61fd5e4a89500574067602e5f376931f"
+    },
+    {
+      "file": "20261129160000_tax_calculation_adapter_money_v1.sql",
+      "source": "db/platform/migrations/20261129160000_tax_calculation_adapter_money_v1.sql",
+      "sha256": "87513fd800efdb97405d8ea5c644a63769e08842a077e6595800bf65aed3761d"
+    },
+    {
+      "file": "20261129160001_tax_calculation_adapter_money_activation.sql",
+      "source": "db/platform/migrations/20261129160001_tax_calculation_adapter_money_activation.sql",
+      "sha256": "a6fa96a9bd34839097a289aa9efa8461ce1e2433eaa0a6c8171b395da1f45104"
     },
     {
       "file": "q2_00000000000000_platform_baseline.sql",
