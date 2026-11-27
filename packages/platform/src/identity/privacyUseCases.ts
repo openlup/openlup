@@ -1,12 +1,19 @@
 import { privacyExportResponseSchema, erasureReceiptSchema, privacySubjectSchema, privacyEraseRequestSchema } from "./contracts/privacy.js";
 import { PrivacyRefusal, type NativePrivacyStore, type PrivacyStore, type PrivacyUseCaseDependencies, type AuthorizedHumanAdministrator, type PrivacyOperations } from "./privacyPorts.js";
 import type { PrivacySubjectRef, PrivacyEraseRequest, PrivacyExport, ErasureReceipt } from "./contracts/privacy.js";
+import { hasOrderDraftReceiptDisposition, orderDraftReceiptContributorId } from "./orderDraftReceiptCoverage.js";
 import { incompletePrivacyReceiptCoverage, missingPrivacyContributors, nativePrivacyUnavailable, validateOrderedPrivacyContributorIds, validateRequiredPrivacyContributorIds } from "./requiredPrivacyContributors.js";
 
 type PrivacyStoreBinding<C> = {
   store: PrivacyStore<C>;
   native?: Pick<NativePrivacyStore<C>, "readRequiredContributorIds" | "findErasureReplay">;
 };
+
+function installedContributors<C>(deps: PrivacyUseCaseDependencies<C>, required?: readonly string[]) {
+  const { contributors } = deps.registry;
+  return required && !required.includes(orderDraftReceiptContributorId)
+    ? contributors.filter(contributor => contributor.id !== orderDraftReceiptContributorId) : contributors;
+}
 
 function bindPrivacyStore<C>(store: PrivacyUseCaseDependencies<C>["store"]): PrivacyStoreBinding<C> {
   if (store.privacyRail !== "native") return { store };
@@ -44,11 +51,11 @@ async function exportUsingStore<C>(deps: PrivacyUseCaseDependencies<C>, input: P
   const subject = privacySubjectSchema.parse(input);
   const binding = pinnedStore ?? bindPrivacyStore(deps.store);
   const { store } = binding;
-  return withPrivacyTransaction(deps, binding, async context => {
+  return withPrivacyTransaction(deps, binding, async (context, required) => {
     const resolved = await store.resolve(context, subject);
     if (!resolved) throw new PrivacyRefusal("PRIVACY_SUBJECT_NOT_FOUND");
     const documents = [];
-    for (const contributor of deps.registry.contributors) {
+    for (const contributor of installedContributors(deps, required)) {
       const document = await contributor.export(context, resolved);
       if (document.contributorId !== contributor.id || document.version !== contributor.version) throw new PrivacyRefusal("PRIVACY_OWNERSHIP_UNDECLARED");
       documents.push(document);
@@ -72,9 +79,13 @@ async function eraseUsingStore<C>(deps: PrivacyUseCaseDependencies<C>, actor: Au
   if (missing.length) throw binding.native
     ? missingPrivacyContributors(missing, false) : new PrivacyRefusal("PRIVACY_CONTRIBUTOR_MISSING");
   return withPrivacyTransaction(deps, binding, async (context, required) => {
+    const contributors = installedContributors(deps, required);
+    const receiptOwner = required && contributors.find(contributor => contributor.id === orderDraftReceiptContributorId);
+    // Clear the receipt while the subject link is still available.
+    const erasureOrder = receiptOwner ? [receiptOwner, ...contributors.filter(contributor => contributor !== receiptOwner)] : contributors;
     await store.prepareErasure(context);
     // Domain relation locks precede subject/member row locks and remain held to commit.
-    for (const contributor of deps.registry.contributors) await contributor.prepareErasure(context);
+    for (const contributor of erasureOrder) await contributor.prepareErasure(context);
     const resolved = await store.resolve(context, input.subject, actor);
     await store.authorizeErasure(context, actor);
     const previous = binding.native
@@ -83,13 +94,16 @@ async function eraseUsingStore<C>(deps: PrivacyUseCaseDependencies<C>, actor: Au
     if (previous) return erasureReceiptSchema.parse({ ...previous, outcome: "ALREADY_ERASED" });
     if (!resolved) throw new PrivacyRefusal("PRIVACY_SUBJECT_NOT_FOUND");
     const assessments = [];
-    for (const contributor of deps.registry.contributors) {
+    for (const contributor of erasureOrder) {
       const assessment = await contributor.assessErasure(context, resolved);
       if (assessment.obligations.some(o => o.disposition === "unresolved")) throw new PrivacyRefusal("PRIVACY_OWNERSHIP_UNDECLARED");
       assessments.push(assessment);
     }
     const dispositions = [];
-    for (let i = 0; i < deps.registry.contributors.length; i++) dispositions.push(await deps.registry.contributors[i]!.eraseOrRetain(context, resolved, assessments[i]!, actor));
+    for (const [index, contributor] of erasureOrder.entries()) {
+      dispositions.push(await contributor.eraseOrRetain(context, resolved, assessments[index]!, actor));
+    }
+    if (receiptOwner && !hasOrderDraftReceiptDisposition(dispositions)) throw new PrivacyRefusal("PRIVACY_OWNERSHIP_UNDECLARED");
     const receipt = erasureReceiptSchema.parse({ version: "identity.erasure.v1", erasureId: deps.randomId(), completedAt: deps.now().toISOString(), outcome: "ERASED", obligations: dispositions.flatMap(d => d.obligations) });
     await store.saveReceipt(context, resolved, actor, input.idempotencyKey, receipt, dispositions);
     return receipt;

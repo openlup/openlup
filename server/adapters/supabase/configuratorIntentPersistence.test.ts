@@ -12,7 +12,7 @@ import {
   createSupabaseConfiguratorIntentPersistencePort,
   type ConfiguratorIntentSupabaseClient,
 } from "./configuratorIntentPersistence.js";
-import { ConfiguratorIntentPersistenceConflictError } from "../../domains/commerce/configuratorIntentPersistenceHandler.js";
+import { ConfiguratorIntentPersistenceConflictError } from "@openlup/platform/commerce/server";
 
 const CLIENT_ID = "11111111-1111-4111-8111-111111111111";
 const PET_ID = "22222222-2222-4222-8222-222222222222";

@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { createPostgresPrivacyUnitOfWork, createPostgresPrivacyStore, createManagedPrivacyStore, createIdentityPersonalDataContributor,
   createPersonalDataContributorRegistry, createPrivacyOperations, createPrivacyExportHandler, createPrivacyEraseHandler,
   createDestinationReceiptPrivacyContributor, createDestinationDocumentPrivacyContributor, createTaxCalculationPrivacyContributor,
+  createOrderDraftReceiptsPrivacyContributor,
   createCustomerSavedAddressPrivacyContributor, createCustomerPreferencePrivacyContributor, isNativePrivacyOperations,
   nativePrivacyUnavailable, privacyRefusalDetails, readBearerToken, createFulfillmentParcelContactPrivacyContributor,
   createCustomerBillingPrivacyContributor, type ManagedIdentityClient, type IdentityPrivacyPolicy, type NativePrivacyStore,
@@ -24,7 +25,8 @@ export function nativePrivacyContributors(store: PrivacyStore<PgQueryExecutor>) 
   return [createIdentityPersonalDataContributor(store, policy, randomUUID), createSubscriptionsPrivacyContributor(),
     createFulfillmentParcelContactPrivacyContributor(), createCustomerBillingPrivacyContributor(),
     createEcommerceEventPrivacyContributor(), createDestinationReceiptPrivacyContributor(), createDestinationDocumentPrivacyContributor(),
-    createCustomerSavedAddressPrivacyContributor(), createCustomerPreferencePrivacyContributor(), createTaxCalculationPrivacyContributor()];
+    createCustomerSavedAddressPrivacyContributor(), createCustomerPreferencePrivacyContributor(), createTaxCalculationPrivacyContributor(),
+    createOrderDraftReceiptsPrivacyContributor()];
 }
 
 export function composeNativePrivacy(
@@ -34,6 +36,7 @@ export function composeNativePrivacy(
   const registry = createPersonalDataContributorRegistry(nativePrivacyContributors(deps.store), { requiredContributorIds: [
     "identity", "subscriptions", "fulfillment-parcel-contacts", "customer-billing", "communication-events",
     "destination-receipts", "destination-documents", "customer-saved-addresses", "customer-preferences", "tax-calculations",
+    "order-draft-receipts",
   ] });
   const operations = createPrivacyOperations({ ...deps, registry, now: () => new Date(), randomId: randomUUID });
   if (!isNativePrivacyOperations(operations)) throw nativePrivacyUnavailable(new Error("native_privacy_operations_required"));

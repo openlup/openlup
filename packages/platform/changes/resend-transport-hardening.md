@@ -1,0 +1,1 @@
+- `@openlup/platform/communications/resend` enforces a default 15-second request timeout across fetch and response body reading (while honoring caller `AbortSignal`), sets `redirect: "manual"` on outbound HTTP requests, caps response bodies at 256 KiB, and redacts bearer tokens, provider keys, webhook secrets, and email addresses from sanitized provider errors.

@@ -129,10 +129,13 @@ async function waitFor(observer: Db, waiting: PoolClient, blocker: PoolClient, r
 
 it("upgrades in place with byte-identical checkout export and retained reads, including a cycle without acquisition activation", async () => {
   const prefix = structuredClone(manifest);
-  for (const plan of [prefix, prefix.qualified, prefix.qualifiedAdmin]) {
-    const index = plan.forward.findIndex(entry => entry.file === migration.file);
+  const throughRenewal = structuredClone(manifest);
+  for (const [before, after] of [[prefix, throughRenewal], [prefix.qualified, throughRenewal.qualified],
+    [prefix.qualifiedAdmin, throughRenewal.qualifiedAdmin]] as const) {
+    const index = before.forward.findIndex(entry => entry.file === migration.file);
     expect(index).toBeGreaterThan(0);
-    plan.forward.splice(index);
+    before.forward.splice(index);
+    after.forward.splice(index + 1);
   }
   const previousUnits = [prefix.qualified.baseline, ...prefix.qualified.forward].map(unit => unit.file);
   const suffix = manifest.qualified.forward.slice(prefix.qualified.forward.length).map(unit => unit.file);
@@ -146,12 +149,12 @@ it("upgrades in place with byte-identical checkout export and retained reads, in
   await withPlatformCatalog(prefix, async root => {
     const installation = await installAccountMutations("bootstrap", true, "renewal-destination-upgrade", root, process.cwd());
     try {
+      const runnerAt = (catalogRoot: string) => createPostgresMigrationRunner({
+        connectionString: installation.migrator.options.connectionString!,
+      }, { installation: installation.installation, root: catalogRoot, poolFactory: () => installation.migrator });
       prefix.qualified.objectInventorySha256.bootstrapMigrator.withRestore = installation.inventory;
       writeFileSync(join(root, "config/platform-migration-manifest.json"), JSON.stringify(prefix));
-      const prefixRunner = createPostgresMigrationRunner({ connectionString: installation.migrator.options.connectionString! }, {
-        installation: installation.installation, root, poolFactory: () => installation.migrator,
-      });
-      expect(await prefixRunner.apply()).toEqual({ applied: [] });
+      expect(await runnerAt(root).apply()).toEqual({ applied: [] });
       const previous = await definitions(installation.owner);
       expect(new Set(previous.map(row => row.proname))).toEqual(new Set(predecessorRoutines));
       const acquired = await subject(installation), historical = await subject(installation);
@@ -182,9 +185,26 @@ it("upgrades in place with byte-identical checkout export and retained reads, in
       expect(status.applied).toStrictEqual(previousUnits);
       expect(status.pending[0]).toBe(migration.file);
       expect(status.pending).toStrictEqual(suffix);
-      expect(await installation.runner.apply()).toStrictEqual({ applied: suffix });
-      expect(installation.inventory).toBe(manifest.qualified.objectInventorySha256.bootstrapMigrator.withRestore);
+      const renewal = await withPlatformCatalog(throughRenewal, async renewalRoot => {
+        const measured = await installAccountMutations("bootstrap", true, "renewal-destination-boundary", renewalRoot);
+        try {
+          throughRenewal.qualified.objectInventorySha256.bootstrapMigrator.withRestore = measured.inventory;
+        } finally { await measured.close(); }
+        writeFileSync(join(renewalRoot, "config/platform-migration-manifest.json"), JSON.stringify(throughRenewal));
+        return runnerAt(renewalRoot).apply();
+      });
+      expect(renewal).toStrictEqual({ applied: [migration.file] });
       expect(await definitions(installation.owner)).toStrictEqual(previous);
+      expect(await Promise.all(subjects.map(checkoutBytes))).toStrictEqual(before);
+
+      const remainder = suffix.slice(1);
+      const afterRenewal = await installation.runner.status();
+      expect(afterRenewal.applied).toStrictEqual([...previousUnits, migration.file]);
+      expect(afterRenewal.pending).toStrictEqual(remainder);
+      const later = await installation.runner.apply();
+      expect(later).toStrictEqual({ applied: remainder });
+      expect([...renewal.applied, ...later.applied]).toStrictEqual(suffix);
+      expect(installation.inventory).toBe(manifest.qualified.objectInventorySha256.bootstrapMigrator.withRestore);
       expect(await Promise.all(subjects.map(checkoutBytes))).toStrictEqual(before);
     } finally {
       await installation.close();

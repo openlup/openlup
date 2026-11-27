@@ -52,5 +52,9 @@ export function resolvePaymentTruthBinding(
 
 async function defaultPool({ connectionString }: { connectionString: string }): Promise<PoolLike> {
   const pg = await import("pg");
-  return new pg.default.Pool({ connectionString }) as unknown as PoolLike;
+  const pool = new pg.default.Pool({ connectionString });
+  pool.on?.("error", (error: Error) => {
+    console.error(`[openlup/server:payment-truth] idle postgres error: ${error instanceof Error ? error.message : String(error)}`);
+  });
+  return pool as unknown as PoolLike;
 }

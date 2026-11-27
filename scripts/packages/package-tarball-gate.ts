@@ -58,7 +58,8 @@ export function checkTarballEntries(entry: PackageEntry, entries: readonly Tarba
     const catalogueSample = entry.name === "@openlup/core" && isCatalogueSkeleton(`${entry.directory}/${path}`);
     const releaseIndex = entry.name === "@openlup/core" && /^meta\/release-index\.json$/u.test(path);
     const settingsData = entry.name === "@openlup/platform" && /^(?:settings-catalog|settings-refusals)\.json$/u.test(path);
-    if (!catalogueSample && !releaseIndex && !settingsData && (FORBIDDEN_CONTENT.test(declarationMap ? path.slice(0, -4) : path) || !ALLOWED_CONTENT.test(path))) { finding(path, "package-content-allowlist", "this file kind does not ship; remove it from the package"); continue; }
+    const platformSqlAdvisory = entry.name === "@openlup/platform" && path === "sql/portable-advisories.json";
+    if (!catalogueSample && !releaseIndex && !settingsData && !platformSqlAdvisory && (FORBIDDEN_CONTENT.test(declarationMap ? path.slice(0, -4) : path) || !ALLOWED_CONTENT.test(path))) { finding(path, "package-content-allowlist", "this file kind does not ship; remove it from the package"); continue; }
     const derived = DERIVED.exec(path);
     if (derived) {
       const stem = `${entry.directory}/src/${derived[1]}`;

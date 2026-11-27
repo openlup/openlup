@@ -145,7 +145,7 @@ without catalog bodies. Extra row columns are ignored. Parsed property and
 nested array order remain intact; inputs are not mutated.
 
 Shapes retain catalog nulls and PostgreSQL's parsed JSON ordering. Use the
-[grouped-probe source contract](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/core/README.md#channel-and-stability)
+[grouped-probe source contract](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#core-grouped-postgresql-schema-probe)
 for exact shape fields and aggregate ordering. The host owns its driver, connection role, snapshot,
 independently observed database and migration identity, digest policy and
 invalidation. Catalog shapes establish neither SQL behavior nor effective

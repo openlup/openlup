@@ -361,6 +361,7 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
       },
       async addProductPack(sku, pack) {
         requireSync();
+        requireProductSku(sku);
         if (!/^\d{8,14}$/u.test(pack.ean) || !Number.isSafeInteger(pack.quantity) || pack.quantity <= 0) throw new OmnipackSyncError("malformed", "sync");
         try { await client.createProductPack(sku, { ean: pack.ean, quantity: pack.quantity }, pack.ean); }
         catch (error) { throw syncFailure("createProductPack", error); }

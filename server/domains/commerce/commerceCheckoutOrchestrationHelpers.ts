@@ -4,14 +4,15 @@ import type {
 import type {
   CreateQuoteRequest,
 } from "../../../src/domains/commerce/contracts.js";
-import type {
-  CheckoutInvoicePreference,
-  CheckoutKind,
+import {
+  invoiceBuyerSnapshotSchema,
+  type CheckoutInvoicePreference,
+  type CheckoutKind,
 } from "../../../src/domains/commerce/checkoutContracts.js";
 import type {
   CommerceCustomerDefaultsSnapshot,
 } from "../../../src/domains/commerce/customerDefaultsSnapshotContracts.js";
-import { buildCheckoutInvoiceBuyerSnapshot } from "./checkoutInvoiceBuyerSnapshot.js";
+import { buildCheckoutInvoiceBuyerSnapshot } from "@openlup/platform/commerce/server";
 import {
   OFFER_POLICY_V2_CAPABILITY,
   type PricingPolicySnapshot,
@@ -110,7 +111,7 @@ export function runtimeMetadata(
     checkoutIntent: checkoutKind,
     cadenceDays: intent.mode === "subscription" ? intent.cadenceDays : null,
     requiresReusablePaymentMethod: checkoutKind === "subscription_initial",
-    invoiceBuyerSnapshot: buildCheckoutInvoiceBuyerSnapshot(intent, invoicePreference),
+    invoiceBuyerSnapshot: buildCheckoutInvoiceBuyerSnapshot(intent, invoicePreference, invoiceBuyerSnapshotSchema),
     // Pet name rides into the order metadata so the post-checkout recap can greet
     // the customer by their dog's name on any device (the thank-you page no longer
     // depends on the configurator's localStorage snapshot — see order-recap endpoint).

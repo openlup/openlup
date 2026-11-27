@@ -2,14 +2,17 @@
   "name": "@openlup/outbox",
   "version": "1.4.0",
   "private": false,
-  "description": "Transactional PostgreSQL outbox rail.",
+  "description": "Transactional PostgreSQL outbox rail with at-least-once dispatch, lease-bound schedules, and registry composition.",
   "keywords": [
     "openlup",
     "outbox",
     "transactional-outbox",
     "postgresql",
+    "ecommerce",
+    "headless-commerce",
     "job-queue",
     "scheduler",
+    "event-driven",
     "at-least-once",
     "typescript"
   ],

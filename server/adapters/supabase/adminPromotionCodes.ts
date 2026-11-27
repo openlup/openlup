@@ -8,7 +8,7 @@ import type {
   AdminPromotionCodesDataPort,
   PromotionCodeCreateResult,
   PromotionCodeUpdateResult,
-} from "../../domains/commerce/adminPromotionCodesDataPort.js";
+} from "@openlup/platform/promotions";
 
 export interface AdminPromotionCodesSupabaseClient {
   rpc(fn: string, args: Record<string, unknown>): PromiseLike<{ data: unknown; error: unknown }>;

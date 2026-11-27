@@ -31,26 +31,32 @@ function requireCondition(condition: unknown, reason: AdmissionDiagnostic = "cat
 
 const equal = (left: unknown, right: unknown) => publicationJson(left) === publicationJson(right);
 
-async function verifiedIssue(db: PgQueryExecutor, publicationId: string, productId?: string) {
-  // Admission seals the graph. Bind the exact document and original result
-  // without replaying every issued SKU to read one retained page.
-  const { rows } = await db.query(`SELECT p.id,p.product_id,p.revision,p.canonical_state,p.digest,r.result,
+const ISSUE_SELECT = `SELECT p.id,p.product_id,p.revision,p.canonical_state,p.digest,r.result,
+    r.publication_id AS receipt_publication_id,
     p.command_key,p.command_fingerprint,p.actor_id,
     to_char(p.committed_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS committed_at,
     d.digest AS document_digest,
     jsonb_build_object('id',d.id,'productId',d.product_id,'revisionNo',d.revision_no,
       'schemaId',d.schema_id,'documentRef',d.document_ref,'sourceRef',d.source_ref,'digest',d.digest) AS document_reference
     FROM public.catalog_publications p
-    LEFT JOIN public.catalog_product_document_revisions d ON (d.product_id,d.id)=(p.product_id,p.document_revision_id)
-    JOIN public.catalog_operator_receipts r ON (r.scope_id,r.command_key)=(p.product_id,p.command_key)
-      AND r.kind='publish' AND r.publication_id=p.id AND r.actor_id=p.actor_id AND r.fingerprint=p.command_fingerprint
-    WHERE p.id=$1::uuid AND ($2::uuid IS NULL OR p.product_id=$2::uuid)`, [publicationId, productId ?? null]);
-  if (!rows.length) return null;
-  const row = rows[0]!;
-  requireCondition(rows.length === 1 && row.id === publicationId && (productId === undefined || row.product_id === productId));
+    LEFT JOIN public.catalog_product_document_revisions d ON (d.product_id,d.id)=(p.product_id,p.document_revision_id)`;
+
+type IssueRow = Record<string, unknown>;
+
+function decodeIssueHeader(row: IssueRow, publicationId: string, productId?: string) {
+  requireCondition(row.id === publicationId && (productId === undefined || row.product_id === productId));
   const head = headSchema.parse({ publicationId, revision: row.revision, documentDigest: row.document_digest });
   const manifest = requireDecodedPublication(decodePublicationPacket({ manifest: row.canonical_state }));
-  await db.query("SELECT public.catalog_publication_manifest_text($1,$2,$3,false)", [row.product_id, row.canonical_state, row.digest]);
+  return { head, manifest };
+}
+
+type DecodedIssueHeader = ReturnType<typeof decodeIssueHeader>;
+
+function verifyDecodedIssue(
+  row: IssueRow,
+  head: DecodedIssueHeader["head"],
+  manifest: DecodedIssueHeader["manifest"],
+) {
   requireCondition(equal(manifest.product.document, row.document_reference), "catalog_publication_document_invalid");
   requireCondition(manifest.product.id === row.product_id && manifest.product.document?.digest === head.documentDigest
     && publicationDigest(manifest) === row.digest, "catalog_publication_manifest_invalid");
@@ -61,6 +67,21 @@ async function verifiedIssue(db: PgQueryExecutor, publicationId: string, product
     "catalog_publication_receipt_invalid");
   publicationJson({ outcome: "found", receipt }, limits.receiptBytes);
   return { head, manifest, receipt };
+}
+
+async function verifiedIssue(db: PgQueryExecutor, publicationId: string, productId?: string) {
+  // Admission seals the graph. Bind the exact document and original result
+  // without replaying every issued SKU to read one retained page.
+  const { rows } = await db.query(`${ISSUE_SELECT}
+    JOIN public.catalog_operator_receipts r ON (r.scope_id,r.command_key)=(p.product_id,p.command_key)
+      AND r.kind='publish' AND r.publication_id=p.id AND r.actor_id=p.actor_id AND r.fingerprint=p.command_fingerprint
+    WHERE p.id=$1::uuid AND ($2::uuid IS NULL OR p.product_id=$2::uuid)`, [publicationId, productId ?? null]);
+  if (!rows.length) return null;
+  const row = rows[0]!;
+  requireCondition(rows.length === 1);
+  const { head, manifest } = decodeIssueHeader(row, publicationId, productId);
+  await db.query("SELECT public.catalog_publication_manifest_text($1,$2,$3,false)", [row.product_id, row.canonical_state, row.digest]);
+  return verifyDecodedIssue(row, head, manifest);
 }
 type Issue = NonNullable<Awaited<ReturnType<typeof verifiedIssue>>>;
 type PublicationReadFailure = CatalogPublicationFailure & { message: string };
@@ -233,29 +254,54 @@ export function createPostgresCatalogPublicationReads<Context>(deps: CatalogPubl
         return await read(async db => {
           const start = await currentIssue(db, productId);
           const highWater = pointer?.highWater ?? start?.head.revision ?? 0;
-          const { rows } = await db.query(`SELECT id,revision FROM public.catalog_publications
-            WHERE product_id=$1 AND revision<=$2 AND ($3::integer IS NULL OR revision<$3)
-            ORDER BY revision DESC LIMIT $4`, [productId, highWater, pointer?.before ?? null, limits.pageItems + 1]);
+          const { rows } = await db.query(`${ISSUE_SELECT}
+            LEFT JOIN public.catalog_operator_receipts r ON (r.scope_id,r.command_key)=(p.product_id,p.command_key)
+              AND r.kind='publish' AND r.publication_id=p.id AND r.actor_id=p.actor_id AND r.fingerprint=p.command_fingerprint
+            WHERE p.product_id=$1 AND p.revision<=$2 AND ($3::integer IS NULL OR p.revision<$3)
+            ORDER BY p.revision DESC LIMIT $4`, [productId, highWater, pointer?.before ?? null, limits.pageItems + 1]);
           const receipts: CatalogPublicationReceipt[] = [];
+          const checkedRows: IssueRow[] = [];
           let itemBytes = 0;
           let nextCursor: string | null = null;
+          let tooLarge = false;
           for (const [index, row] of rows.slice(0, limits.pageItems).entries()) {
-            requireCondition(id.safeParse(row.id).success);
-            const issue = await verifiedIssue(db, row.id as string, productId);
-            requireCondition(issue && issue.head.revision === row.revision);
+            requireCondition(id.safeParse(row.id).success && row.receipt_publication_id === row.id);
+            const { head, manifest } = decodeIssueHeader(row, row.id as string, productId);
+            const issue = verifyDecodedIssue(row, head, manifest);
+            requireCondition(issue.head.revision === row.revision);
+            checkedRows.push(row);
             const item = legacyPublicationReceipt(issue.receipt);
             const continuation = index + 1 < rows.length
               ? encodeCursor({ kind: "history", productId, highWater, before: issue.head.revision }) : null;
             const itemSize = Buffer.byteLength(publicationJson(item)) + (index === 0 ? 0 : 1);
             const envelope = Buffer.byteLength(publicationJson({ outcome: "page", receipts: [], limit: limits.pageItems, nextCursor: continuation }));
             if (envelope + itemBytes + itemSize > limits.historyBytes) {
-              requireCondition(receipts.length, "catalog_publication_history_item_too_large");
+              if (!receipts.length) tooLarge = true;
               break;
             }
             itemBytes += itemSize;
             receipts.push(item);
             nextCursor = continuation;
           }
+          if (checkedRows.length) {
+            const { rows: manifestRows } = await db.query(
+              `SELECT m.ord::int AS ord,
+                public.catalog_publication_manifest_text(m.product_id,m.canonical_state,m.digest,false) IS NOT NULL AS verified
+                FROM unnest($1::uuid[],$2::text[],$3::text[]) WITH ORDINALITY AS m(product_id,canonical_state,digest,ord)
+                ORDER BY m.ord`,
+              [
+                checkedRows.map(row => row.product_id),
+                checkedRows.map(row => row.canonical_state),
+                checkedRows.map(row => row.digest),
+              ],
+            );
+            requireCondition(
+              manifestRows.length === checkedRows.length
+                && manifestRows.every((row, index) => row.ord === index + 1 && row.verified === true),
+              "catalog_publication_manifest_invalid",
+            );
+          }
+          if (tooLarge) refuse("catalog_publication_history_item_too_large");
           const result = { outcome: "page" as const, receipts, limit: limits.pageItems, nextCursor };
           publicationJson(result, limits.historyBytes);
           return result;

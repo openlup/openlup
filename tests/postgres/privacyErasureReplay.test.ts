@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { disposition as orderDraftReceiptDisposition } from "./orderDraftReceiptsV2.fixture.js";
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -72,7 +73,7 @@ async function seed(db: AccountMutationsStore) {
   const registry = identity.createPersonalDataContributorRegistry(owners, { requiredContributorIds: [] });
   const operations = identity.createPrivacyOperations({ store, unitOfWork: unitOfWork(db.runtime), registry, now: () => new Date(), randomId: randomUUID });
   const required = await identity.readRequiredPrivacyContributorIds(db.runtime);
-  const full = Object.fromEntries(owners.map(owner => [owner.id, owner.version]));
+  const full = Object.fromEntries(owners.filter(owner => required.includes(owner.id)).map(owner => [owner.id, owner.version]));
   expect(Object.keys(full).sort()).toEqual(required);
   const { [addresses]: _omitted, ...historical } = full;
   await db.owner.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES ($1,'admin@example.invalid'),($2,'historical@example.invalid')", [actor.principalId, principalId]);
@@ -82,7 +83,9 @@ async function seed(db: AccountMutationsStore) {
   await db.owner.query("INSERT INTO public.customer_payment_preferences(client_id,scope,method_kind) VALUES ($1,'any','card')", [contactId]);
   await db.owner.query(`INSERT INTO ${receipts}
     (erasure_id,idempotency_key,client_id,principal_id,actor_principal_id,contract_version,contributor_versions,dispositions,retained_obligations,completed_at)
-    VALUES ($1,$2,$3,$4,$5,'identity.erasure.v1',$6,'[]','[]',now())`, [erasureId, idempotencyKey, contactId, principalId, actor.principalId, historical]);
+    VALUES ($1,$2,$3,$4,$5,'identity.erasure.v1',$6,$7,'[]',now())`,
+  [erasureId, idempotencyKey, contactId, principalId, actor.principalId, historical,
+    JSON.stringify(required.includes(orderDraftReceiptDisposition.contributorId) ? [orderDraftReceiptDisposition] : [])]);
   const input = { subject: { kind: "contact" as const, contactId }, idempotencyKey };
   const alias = { subject: { kind: "principal" as const, principalId }, idempotencyKey: randomUUID() };
   const approval = { erasure_id: erasureId, contributor_id: addresses, evidence_ref: randomUUID() };
@@ -153,6 +156,8 @@ it.each(profiles)("installs, upgrades and reconciles in %s", async profile => {
     expect(await f.count()).toBe(0);
     expect(await f.preferenceCount()).toBe(1);
     expect(await f.original()).toBe(oldReceipt);
+    await expect(reconcilePostgresPrivacyErasure(context, { ...f.approval,
+      contributor_id: orderDraftReceiptDisposition.contributorId, evidence_ref: randomUUID() })).resolves.toEqual(orderDraftReceiptDisposition);
     for (const input of [f.input, f.alias]) await expect(f.operations.erase(f.actor, input))
       .resolves.toMatchObject({ outcome: "ALREADY_ERASED", erasureId: f.approval.erasure_id, obligations: [] });
   } finally {
@@ -172,7 +177,7 @@ it("keeps coverage, bindings, privileges and rollback scoped to the original rec
     await expect(replay()).rejects.toMatchObject({ code: coverageCode, facts: { observed: `A prior erasure is missing recorded coverage for the required owners (${addresses}).` } });
     await expect(f.operations.erase(f.actor, { ...f.input, subject: { kind: "contact", contactId: randomUUID() } }))
       .rejects.toMatchObject({ code: "PRIVACY_IDEMPOTENCY_CONFLICT" });
-    await f.versions(Object.fromEntries(Object.keys(f.full).map(id => [id, "historical.v2"])));
+    await f.versions(Object.fromEntries(Object.keys(f.full).map(id => [id, id === orderDraftReceiptDisposition.contributorId ? orderDraftReceiptDisposition.version : "historical.v2"])));
     await expect(replay()).resolves.toMatchObject({ outcome: "ALREADY_ERASED" });
     for (const value of [null, [], { ...f.full, identity: { version: "identity.v1" } }, { ...f.full, identity: 1 },
       Object.fromEntries(Array.from({ length: 10_001 }, (_, index) => [`fixture-${index}`, "fixture.v1"]))]) {

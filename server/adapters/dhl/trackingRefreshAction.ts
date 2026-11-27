@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from "node:crypto";
 import { mapDhlTrackingStatus as mapCarrierTrackingStatus } from "../../../src/domains/fulfillment/status.js";
 import {
   beginTrackingJobRun,
@@ -7,7 +8,7 @@ import {
   type TrackingDriver,
   type TrackingLedgerClient,
 } from "./trackingJobLedger.js";
-import { pollCarrierTracking } from "./trackingPoller.js";
+import { CARRIER_SOAP_TIMEOUT_MS, pollCarrierTracking, sanitizeCarrierError } from "./trackingPoller.js";
 
 export const TRACKING_BATCH_SIZE = 60;
 export const TRACKING_TIME_BUDGET_MS = 45_000;
@@ -110,11 +111,24 @@ export function createTrackingRefreshAction({
       let remaining = 0;
       for (const tester of testers ?? []) {
         if (!tester.tracking_number) continue;
-        if (now().getTime() >= deadline) {
+        const remainingBudgetMs = deadline - now().getTime();
+        if (remainingBudgetMs <= 0) {
           remaining += 1;
           continue;
         }
-        await checkTester({ client, fetchImpl, callSendEmailImpl, providerUsername, providerPassword, now, tester, results, log });
+        await checkTester({
+          client,
+          fetchImpl,
+          callSendEmailImpl,
+          providerUsername,
+          providerPassword,
+          now,
+          tester,
+          results,
+          log,
+          timeoutMs: Math.min(CARRIER_SOAP_TIMEOUT_MS, remainingBudgetMs),
+          signal: request.signal,
+        });
       }
 
       const updated = results.filter((result) => result.new_status).length;
@@ -138,10 +152,11 @@ export function createTrackingRefreshAction({
         error_count: errorCount, remaining, batch_size: TRACKING_BATCH_SIZE, results,
       });
     } catch (error) {
+      const safeError = sanitizeCarrierError(error);
       if (active && !active.finished) {
-        await finishSafely(active.client, active.runId, active.driver, "failed", null, null, String(error), undefined, {}, log);
+        await finishSafely(active.client, active.runId, active.driver, "failed", null, null, safeError, undefined, {}, log);
       }
-      return json({ error: String(error) }, 500);
+      return json({ error: safeError }, 500);
     }
   };
 }
@@ -156,19 +171,25 @@ async function checkTester(input: {
   tester: Tester;
   results: Result[];
   log: (...values: unknown[]) => void;
+  timeoutMs: number;
+  signal?: AbortSignal;
 }): Promise<void> {
   const { client, tester, results } = input;
   try {
     const poll = await pollCarrierTracking({
-      fetchImpl: input.fetchImpl, trackingNumber: tester.tracking_number!,
-      username: input.providerUsername, password: input.providerPassword,
+      fetchImpl: input.fetchImpl,
+      trackingNumber: tester.tracking_number!,
+      username: input.providerUsername,
+      password: input.providerPassword,
+      timeoutMs: input.timeoutMs,
+      signal: input.signal,
     });
     await client.from("testers").update({
       dhl_last_response: truncateResponse(poll.responseText), dhl_last_checked_at: input.now().toISOString(),
       dhl_last_codes: poll.events.codes, dhl_last_descriptions: poll.events.descriptions,
     }).eq("id", tester.id);
     if (poll.providerError) {
-      results.push(result(tester, null, { error: poll.providerError }));
+      results.push(result(tester, null, { error: sanitizeCarrierError(poll.providerError) }));
       return;
     }
     const status = mapCarrierTrackingStatus(poll.events);
@@ -180,14 +201,17 @@ async function checkTester(input: {
     if (status === "delivered") updates.delivered_at = input.now().toISOString();
     const { error } = await client.from("testers").update(updates).eq("id", tester.id);
     if (error) {
-      results.push(result(tester, null, { codes: poll.events.codes, error: `update failed: ${error.message}` }));
+      results.push(result(tester, null, {
+        codes: poll.events.codes,
+        error: `update failed: ${sanitizeCarrierError(error.message ?? "unknown")}`,
+      }));
       return;
     }
     const email = await input.callSendEmailImpl(tester.id, status === "in_transit" ? "in-transit" : "delivered", TRACKING_JOB_NAME);
     if (!email.ok) input.log(`[WARN] ${TRACKING_JOB_NAME}: send-email HTTP ${email.status} for ${tester.id}`);
     results.push(result(tester, status, { codes: poll.events.codes }));
   } catch (error) {
-    results.push(result(tester, null, { error: String(error) }));
+    results.push(result(tester, null, { error: sanitizeCarrierError(error) }));
   }
 }
 
@@ -203,7 +227,7 @@ async function authorizeTrackingRequest(
     { source: "cron:header", secret: request.headers.get("x-cron-secret")?.trim() ?? null },
     { source: "cron:body", secret: cleanMetadata(body.cron_secret, Number.MAX_SAFE_INTEGER) },
   ];
-  const environmentMatch = candidates.find(({ secret }) => Boolean(cronSecret && secret && secret === cronSecret));
+  const environmentMatch = candidates.find(({ secret }) => timingSafeSecretEquals(secret, cronSecret));
   if (environmentMatch) return { authorized: true, source: environmentMatch.source };
   for (const candidate of candidates) {
     if (!candidate.secret) continue;
@@ -215,6 +239,13 @@ async function authorizeTrackingRequest(
   if (!user) return { authorized: false, source: "" };
   const { data: admin } = await client.from("admin_users").select("id").eq("id", user.id).maybeSingle();
   return admin ? { authorized: true, source: `admin:${user.id}` } : { authorized: false, source: "" };
+}
+
+function timingSafeSecretEquals(presented: string | null, expected: string): boolean {
+  if (!presented || !expected) return false;
+  const presentedDigest = createHash("sha256").update(presented, "utf8").digest();
+  const expectedDigest = createHash("sha256").update(expected, "utf8").digest();
+  return timingSafeEqual(presentedDigest, expectedDigest);
 }
 
 async function requestBody(request: Request): Promise<Record<string, unknown>> {
@@ -231,7 +262,9 @@ async function finishSafely(
 ): Promise<void> {
   if (!runId) return;
   try { await finishTrackingJobRun(client, runId, status, driver, checked, updated, error, supportCode, metadata); }
-  catch (finishError) { log(`[WARN] ${TRACKING_JOB_NAME}: failed to finish job run ${runId}: ${String(finishError)}`); }
+  catch (finishError) {
+    log(`[WARN] ${TRACKING_JOB_NAME}: failed to finish job run ${runId}: ${sanitizeCarrierError(finishError)}`);
+  }
 }
 
 function result(tester: Tester, status: Result["new_status"], extra: Omit<Result, "tester_id" | "tracking_number" | "old_status" | "new_status">): Result {

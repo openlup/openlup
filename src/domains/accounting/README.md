@@ -59,7 +59,7 @@ Correction/delivery jobs and native continuity remain separate boundaries.
 
 The important internal boundaries are:
 
-- [accountingCanonicalProviderLines.ts](../../../server/domains/accounting/accountingCanonicalProviderLines.ts)
+- [accountingCanonicalProviderLines.ts](../../../packages/platform/src/invoicing/accountingCanonicalProviderLines.ts)
   independently checks persisted item/delivery amounts, discount allocation,
   VAT and header sums. It must not invent document amounts from presentation
   copy or a current quote.

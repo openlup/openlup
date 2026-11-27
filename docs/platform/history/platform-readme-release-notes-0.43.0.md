@@ -3,7 +3,7 @@
 Status: historical evidence, archived on 2026-11-17.
 The following block is preserved from the package README, with relative links
 rebased. Its release-specific claims and checkpoints are not current composition
-instructions. Use the [current package guidance](../../../packages/platform/README.md#upgrade-guidance)
+instructions. Use the [current package guidance](../PLATFORM_PACKAGE_REFERENCE.md#upgrade-guidance)
 and the selected release's [changelog](../../../packages/platform/CHANGELOG.md).
 
 ## Release notes

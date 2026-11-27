@@ -34,7 +34,7 @@ names the offline falsifiers and their limits.
 
 The Node `payments/stripe` subpath exposes its M07 factory,
 configuration type and observed capability descriptor, plus the bounded
-[reference-support surface](../../packages/platform/README.md#reference-support-surface). The host owns SDK and
+[reference-support surface](PLATFORM_PACKAGE_REFERENCE.md#reference-support-surface). The host owns SDK and
 transport construction, customer association, mode policy and explicit activation.
 No import installs a route, binding or schedule. Attempt identity, fingerprint
 and provider idempotency key pass through to the donor execution seam. A
@@ -1117,7 +1117,7 @@ platform package. Its retained browser policy schemas consume those version
 constants through the package entry; schema validation and wire pairing remain
 unchanged. The quote and provenance modules retain their wire-version constants; the offer
 module also exposes the additive v3 constant. Money/evidence DTOs erase at build time. The inventory admits no pricing server entry, token crypto, readiness
-or secret configuration. [The pricing package](../../packages/platform/README.md#pricing)
+or secret configuration. [The pricing package](PLATFORM_PACKAGE_REFERENCE.md#pricing)
 owns the extracted authority and DTOs. Acquisition DTOs and protocol identities
 are additive. `pricing/browser` directly re-exports the existing
 `createCommerceQuotePrimitives`, `acquisitionCapabilitySchema`,
@@ -1336,7 +1336,7 @@ Bounded keyset scanning refuses excess cardinality/pages, duplicate variant or
 code and repeated cursor without partial success. Known quote catalog errors
 retain their class; unexpected failures become authority unavailable. This is
 current-direct authority, without a publication-wide snapshot or head-qualified
-publication. See the [catalog package contract](../../packages/platform/README.md#catalog)
+publication. See the [catalog package contract](PLATFORM_PACKAGE_REFERENCE.md#catalog)
 for the callback, limits and existing runtime SELECT capability.
 
 `createPromotionQuoteAcceptance` accepts explicit `shippingTerms` on each issue
