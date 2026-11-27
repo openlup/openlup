@@ -1,6 +1,11 @@
 import { actionRequestTimeoutMs, type ActionInput, type ActionResult, type Operation } from './api.ts';
 import { isRecord } from './offer.ts';
 
+/** The request path of one starter action. Every client and command builds action paths here, and only here. */
+export function actionPath(operation: Operation): string {
+  return `/api/actions/${operation}`;
+}
+
 /**
  * Sends one starter action under `commandKey` and reads its answer. It never throws: a lost or unreadable answer
  * resolves `starter_transport_unavailable` or `starter_response_invalid`. `timeoutMs` bounds the request; a
@@ -9,7 +14,7 @@ import { isRecord } from './offer.ts';
 export async function act(operation: Operation, input: ActionInput, commandKey: string,
   timeoutMs: number = actionRequestTimeoutMs): Promise<ActionResult> {
   try {
-    const response = await fetch(`/api/actions/${operation}`, {
+    const response = await fetch(actionPath(operation), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Starter-Request': '1', 'Idempotency-Key': commandKey },
       credentials: 'same-origin',
