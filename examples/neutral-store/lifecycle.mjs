@@ -957,6 +957,7 @@ async function databaseBrowserRecipe(argv, prepareCatalogueTemplate = true) {
   const { readStarterCatalogueRules } = await import('./host/editor-catalogue.ts');
   const application = root;
   const directory = resolve(application, '.context/care-browser');
+  const buildRoot = resolve(directory, `catalogue-builds-${randomUUID()}`);
   const upgrade = await readFile(resolve(directory, 'upgrade.json'), 'utf8')
     .then(JSON.parse, error => { if (error.code !== 'ENOENT') throw error; });
   const previous = upgrade && createRequire(resolve(upgrade.predecessor, 'package.json'));
@@ -1048,8 +1049,9 @@ async function databaseBrowserRecipe(argv, prepareCatalogueTemplate = true) {
       if ((await runner.status()).pending.length)
         throw new Error('starter_database_browser_installation_incomplete');
       await owner.query(`COMMENT ON DATABASE neutral_store IS '${demonstrationMarker}'`);
+      const catalogueBuildDirectory = resolve(buildRoot, config.id);
       await applyDemoSeed(config, { connection: owner, installRole: 'postgres', runtimeRole: 'starter_runtime',
-        catalogueRules: readStarterCatalogueRules(), close: async () => { } });
+        catalogueBuildDirectory, catalogueRules: readStarterCatalogueRules(), close: async () => { } });
       const state = resolve(directory, config.id);
       await mkdir(state, { recursive: true, mode: 0o700 });
       const publicationPasswordFile = resolve(state, 'publication-password');
@@ -1074,7 +1076,8 @@ async function databaseBrowserRecipe(argv, prepareCatalogueTemplate = true) {
       await new Promise(done => probe.close(() => done()));
       const host = spawn(process.execPath, ['--experimental-strip-types', resolve(application, 'host/server.ts'),
         '--configuration', config.id, '--port', String(port), '--database-url', runtimeUrl, '--quote-acceptance-key-file', keyring,
-        '--catalogue-publication-password-file', publicationPasswordFile], { cwd: state, stdio: ['ignore', 'pipe', 'pipe'] });
+        '--catalogue-publication-password-file', publicationPasswordFile], { cwd: state,
+        env: { ...env, OPENLUP_STARTER_BROWSER_CATALOGUE_BUILDS: catalogueBuildDirectory }, stdio: ['ignore', 'pipe', 'pipe'] });
       hosts.push(host);
       let logs = '';
       host.stdout?.on('data', value => { logs += value.toString(); });
@@ -1118,5 +1121,6 @@ async function databaseBrowserRecipe(argv, prepareCatalogueTemplate = true) {
       }
       catch { /* only this recipe's named containers */ }
     }
+    await rm(buildRoot, { recursive: true, force: true });
   }
 }

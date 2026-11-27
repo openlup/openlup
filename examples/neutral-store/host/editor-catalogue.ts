@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { env } from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { CommerceQuoteCatalogReadError } from '@openlup/platform/pricing';
 import { CATALOG_CANONICAL_UNITS, type CatalogQuantity } from '@openlup/core/catalog';
@@ -126,7 +127,7 @@ export function stagePackBuild(pack: CatalogPackInput, receipt: CatalogDefinitio
     'The target already contains different build bytes for this pack version.'), true);
 }
 
-export function starterCatalogue(directory = buildDirectory) {
+export function starterCatalogue(directory = env.OPENLUP_STARTER_BROWSER_CATALOGUE_BUILDS ?? buildDirectory) {
   const artifact = readStarterCatalogueRules();
   const pack = artifact && starterCataloguePack(artifact);
   const current = pack && createCatalogProductTypeRegistry(pack.types).resolve(pack.types[0]!);
