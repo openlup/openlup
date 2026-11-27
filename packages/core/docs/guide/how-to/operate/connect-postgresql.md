@@ -47,7 +47,7 @@ replace missing grants with an owner login in request handling.
 For a `qualified-v2` installation, provision the restricted login and pass its
 name as `installation.runtimeLogin` when
 [installing the complete catalogue](../../upgrade/database-migrations.md#select-the-complete-catalogue).
-The starter's [installer](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/examples/neutral-store/installation/install.ts)
+The starter's [installer](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/examples/neutral-store/installation/install.ts)
 shows the runtime login DDL and the installer-managed role bindings in
 `bootstrapDemonstration`. Use that login's connection string in the storefront
 host once the migrations have applied the required grants.

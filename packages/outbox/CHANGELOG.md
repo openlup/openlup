@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+## [1.4.0]
+
+- Publishable on the npm `latest` dist-tag as `1.4.0`, from tag
+  `openlup-outbox-v1.4.0`.
+
+- `composeIndependentHandlers` composes same-event destinations with separate durable receipts, bounded concurrency, deterministic outcomes and an explicit acknowledgement metadata projection.
+
+For the next 1.x release. Adds `sql/0002_outbox_active_partial_indexes.sql` to
+`@openlup/outbox` (registered in `sql/manifest.json`) with three partial indexes
+scoped to active `public.outbox_events` rows (`pending`, `processing`, `failed`).
+
+Migration: apply `sql/0002_outbox_active_partial_indexes.sql` after
+`sql/0001_outbox.sql`. The migration is additive and idempotent
+(`CREATE INDEX IF NOT EXISTS`).
+
 ## [1.3.0]
 
 - Publishable on the npm `latest` dist-tag as `1.3.0`, from tag

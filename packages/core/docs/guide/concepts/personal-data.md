@@ -99,7 +99,7 @@ no retention period or remote-provider operation.
    intake and retries, and keep new owner writers dormant.
    The reference wrappers are `api/bff/[...path].ts` and the two routes under
    `server/bff/admin/identity/privacy/`.
-   See [the reference runtime policy](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/docs/platform/RUNTIME_AND_SELF_HOSTING.md#runtime-model)
+   See [the reference runtime policy](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/docs/platform/RUNTIME_AND_SELF_HOSTING.md#runtime-model)
    and the `#deployment-route-policy` binding.
 2. Drain admitted requests and retry work. Check the admission counters and
    database sessions and transactions against the ingress census. Record zero
@@ -113,7 +113,7 @@ no retention period or remote-provider operation.
    advisory lock and locks the relation census before copying retained rows.
    For capture, the authorized restricted migrator uses the host's owner window
    when needed. Verify the sealed role graph after the window closes.
-   See [connected-store transfer](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/docs/platform/migrations/compatible-data-transfer.md#compatible-data-transfer).
+   See [connected-store transfer](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/docs/platform/migrations/compatible-data-transfer.md#compatible-data-transfer).
    The source entry points are `captureConnectedNativeStore` in
    `server/adapters/postgres/connectedStoreCapture.ts` and
    `restoreConnectedNativeStore` in `server/adapters/postgres/connectedStoreRestore.ts`.
@@ -226,7 +226,7 @@ An `ERASED` identity receipt does not mean all platform data has been deleted.
 
 Already-issued customer tokens can remain cryptographically valid until expiry.
 The direct session binding allows a lifetime within its configured range; see
-the [maintainer token limits](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/docs/platform/IDENTITY.md#admin-operations-and-token-limits)
+the [maintainer token limits](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/docs/platform/IDENTITY.md#admin-operations-and-token-limits)
 for the default and accepted range.
 After its link is cleared, customer `me` returns HTTP 403 /
 `FORBIDDEN` with “No customer account linked to this session.” Operator

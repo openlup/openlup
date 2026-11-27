@@ -17,13 +17,13 @@ refusals while running it.
 The opt-in subscription reference does not demonstrate automatic renewals,
 fulfillment, failed-renewal recovery or the complete late-delivery journey.
 A renewal date is a planned charge date, not a delivery promise. Follow its
-[local evaluation recipe](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/docs/platform/SUBSCRIPTION_REFERENCE.md)
+[local evaluation recipe](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/docs/platform/SUBSCRIPTION_REFERENCE.md)
 for setup and buyer/account verification.
 
 To evaluate a source reference, choose an immutable release tag and follow that
 revision's README and release notes, including its toolchain and test
 prerequisites. A source build does not start a complete commerce application.
-See the [install support policy](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/.github/INSTALL_SUPPORT_POLICY.md)
+See the [install support policy](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/.github/INSTALL_SUPPORT_POLICY.md)
 for the installation boundary.
 
 ## Subscription cadence representation
@@ -173,7 +173,7 @@ shadow, review or enforcement policy; a result alone authorizes no order or paym
 Starting the starter host without a runtime database connection leaves its
 native actions unbound. Its lifecycle supplies that connection for the local
 demonstration database; configuration health alone does not establish live
-operations. The [local image quickstart](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/deploy/neutral-store/README.md)
+operations. The [local image quickstart](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/deploy/neutral-store/README.md)
 does not establish rollback after a schema or package upgrade. Follow the
 [database upgrade procedure](../upgrade/database-migrations.md) for that boundary.
 
@@ -193,7 +193,7 @@ paid orders awaiting subscription activation.
 ## Starter refusal responses
 
 The app’s `/limits` and `/ograniczenia` pages and unavailable-action buttons use the
-[canonical limits table](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/examples/neutral-store/shared/limits.ts).
+[canonical limits table](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/examples/neutral-store/shared/limits.ts).
 A visible refusal button displays the code and explanation locally; it does not submit an operation.
 API refusals return an object such as `{"ok":false,"code":"host_binding_required"}`.
 Unknown operations return HTTP 404; other action refusals normally return HTTP 409 unless the handler supplies another status.
