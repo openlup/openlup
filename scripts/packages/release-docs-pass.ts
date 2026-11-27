@@ -60,9 +60,13 @@ export function previousCoreTag(root: string): string | undefined {
   return documentationGit(root, ["describe", "--tags", "--abbrev=0", "--match", "openlup-core-v*", "HEAD"]).toString("utf8").trim();
 }
 
+function resolveCommitRef(root: string, ref: string): string {
+  return documentationGit(root, ["rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`]).toString("utf8").trim();
+}
+
 function releaseChanges(root: string, since: string, targetRef = "HEAD"): ReleaseChange[] {
-  const base = documentationGit(root, ["rev-parse", "--verify", "--end-of-options", `${since}^{commit}`]).toString("utf8").trim();
-  const head = documentationGit(root, ["rev-parse", "--verify", "--end-of-options", `${targetRef}^{commit}`]).toString("utf8").trim();
+  const base = resolveCommitRef(root, since);
+  const head = resolveCommitRef(root, targetRef);
   return parseReleaseChanges(documentationGit(root, ["diff", "--name-status", "-z", "--find-renames", "--no-ext-diff", "--no-textconv", base, head, "--"]).toString("utf8"));
 }
 
@@ -172,6 +176,7 @@ export type SettingsDelta = {
 };
 
 export const STARTER_SECTION_HEADING = "### Starter application (examples/neutral-store)";
+export const UPGRADE_STARTER_SECTION_HEADING = "## Starter application (examples/neutral-store)";
 const ADDED_SYMBOLS_INLINE_LIMIT = 10;
 
 function hasDeprecatedTag(leading: readonly string[]): boolean {
@@ -185,7 +190,7 @@ function hasDeprecatedTag(leading: readonly string[]): boolean {
 
 /** Extract the exported symbol identifier from a single declaration or per-specifier export line. */
 export function extractDeclarationSymbolName(line: string): string | undefined {
-  const trimmed = line.trim();
+  const trimmed = line.replace(/^(?:[\t\n\r ]+|\/\*[\s\S]*?\*\/|\/\/[^\r\n]*)*/u, "").trim();
   const exportList = /^export\s+(?:type\s+)?\{\s*(?:type\s+)?([A-Za-z_$][A-Za-z0-9_$]*)(?:\s+as\s+([A-Za-z_$][A-Za-z0-9_$]*))?\s*\}/u.exec(trimmed);
   if (exportList) return exportList[2] ?? exportList[1];
   const exportNs = /^export\s+(?:type\s+)?\*\s+as\s+([A-Za-z_$][A-Za-z0-9_$]*)\b/u.exec(trimmed);
@@ -195,23 +200,24 @@ export function extractDeclarationSymbolName(line: string): string | undefined {
 }
 
 function expandExportListBlock(codeLines: readonly string[], blockLeading: readonly string[], deprecated: boolean): Array<{ key: string; entry: Declaration }> | null {
-  const joined = codeLines.map((line) => line.trim()).join(" ");
-  const list = /^export\s+(type\s+)?\{([^{}]*)\}(?:\s*from\s*("[^"]*"|'[^']*'))?\s*;?$/u.exec(joined);
+  const joined = codeLines.map((line) => line.trim()).filter(Boolean).join("\n");
+  const list = /^export\s+(type\s+)?\{([^{}]*)\}(?:\s*from\s*("[^"]*"|'[^']*'))?\s*;?(?:\s*(?:\/\/[^\n]*|\/\*[\s\S]*?\*\/))*$/u.exec(joined);
   if (!list) return null;
   const isTypeExport = Boolean(list[1]);
-  const rawBody = list[2]!.replace(/\/\*[\s\S]*?\*\//gu, "");
+  const rawBody = list[2]!.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/gu, "");
   const specifiers = rawBody.split(",").map((spec) => spec.replace(/\s+/gu, " ").trim()).filter(Boolean);
   if (specifiers.length === 0) return null;
   const fromClause = list[3] ? ` from ${list[3]}` : "";
   const leadingLines = blockLeading.map((line) => line.trimEnd());
   return specifiers.map((spec) => {
+    const isTypeSpec = isTypeExport || /^type\s+/u.test(spec);
     const withoutType = spec.replace(/^type\s+/u, "");
     const asMatch = /^([A-Za-z_$][A-Za-z0-9_$]*)\s+as\s+([A-Za-z_$][A-Za-z0-9_$]*)$/u.exec(withoutType);
     const symbol = asMatch ? asMatch[2]! : /^[A-Za-z_$][A-Za-z0-9_$]*$/u.test(withoutType) ? withoutType : undefined;
     const normalized = `export ${isTypeExport ? "type " : ""}{ ${spec} }${fromClause};`;
     const text = leadingLines.length ? [...leadingLines, normalized].join("\n").trimEnd() : normalized;
     return {
-      key: symbol ? `export ${symbol}` : normalized,
+      key: symbol ? `${isTypeSpec ? "export-type" : "export"} ${symbol}` : normalized,
       entry: { first: normalized, text, symbol, exported: true, deprecated },
     };
   });
@@ -295,6 +301,16 @@ function unmatchedDeclarationEntries(blocks: Declaration[], opposite: Declaratio
   });
 }
 
+function exportedSymbols(blocks: ReadonlyMap<string, Declaration[]>): Set<string> {
+  const symbols = new Set<string>();
+  for (const family of blocks.values()) {
+    for (const entry of family) {
+      if (entry.exported && entry.symbol) symbols.add(entry.symbol);
+    }
+  }
+  return symbols;
+}
+
 function exportedDeprecatedSymbols(blocks: ReadonlyMap<string, Declaration[]>): Set<string> {
   const deprecated = new Set<string>();
   for (const family of blocks.values()) {
@@ -359,11 +375,13 @@ export function summarizeSemanticApiDiff(before: string, after: string): Semanti
   }
   const finalAdded = addedItems.filter((_, index) => !pairedAdded.has(index));
   const finalRemoved = removedItems.filter((_, index) => !pairedRemoved.has(index));
+  const beforeExported = exportedSymbols(oldBlocks);
+  const afterExported = exportedSymbols(newBlocks);
   const beforeDeprecated = exportedDeprecatedSymbols(oldBlocks);
   const afterDeprecated = exportedDeprecatedSymbols(newBlocks);
   const symbolsDeprecated = [...afterDeprecated].filter((sym) => !beforeDeprecated.has(sym)).sort(bytewise);
-  const symbolsAdded = [...new Set(finalAdded.filter((item) => item.exported && item.symbol).map((item) => item.symbol!))].sort(bytewise);
-  const symbolsRemoved = [...new Set(finalRemoved.filter((item) => item.exported && item.symbol).map((item) => item.symbol!))].sort(bytewise);
+  const symbolsAdded = [...afterExported].filter((sym) => !beforeExported.has(sym)).sort(bytewise);
+  const symbolsRemoved = [...beforeExported].filter((sym) => !afterExported.has(sym)).sort(bytewise);
   return {
     added: finalAdded.map((item) => item.display),
     removed: finalRemoved.map((item) => item.display),
@@ -402,9 +420,10 @@ function snapshotSections(source: string) {
 }
 
 function readApiSurface(root: string, ref: string, directory: string) {
+  const commit = resolveCommitRef(root, ref);
   const gates = `${directory}/release-gates.json`;
-  const paths = documentationGit(root, ["ls-tree", "-r", "-z", "--name-only", ref, "--", `${directory}/api`, gates]).toString("utf8").split("\0");
-  const read = (path: string) => documentationGit(root, ["show", `${ref}:${path}`]).toString("utf8");
+  const paths = documentationGit(root, ["ls-tree", "-r", "-z", "--name-only", commit, "--", `${directory}/api`, gates]).toString("utf8").split("\0");
+  const read = (path: string) => documentationGit(root, ["show", "--end-of-options", `${commit}:${path}`]).toString("utf8");
   const files = new Map<string, { body: string; report: string; carriers: Set<string>; conflicting: boolean }>();
   const unheaded = new Map<string, string>();
   for (const report of paths.filter((path) => API_REPORT.test(path)).sort(bytewise)) {
@@ -442,7 +461,7 @@ const SETTINGS_CATALOG_PATH = "packages/platform/settings-catalog.json";
 
 function readGitFileAtRef(root: string, ref: string, path: string): string | undefined {
   try {
-    return documentationGit(root, ["show", `${ref}:${path}`]).toString("utf8");
+    return documentationGit(root, ["show", "--end-of-options", `${ref}:${path}`]).toString("utf8");
   } catch {
     return undefined;
   }
@@ -470,6 +489,8 @@ export function collectSqlDelta(root: string, since: string | undefined, targetR
 /** Added, removed and changed keys in `packages/platform/settings-catalog.json` between `since` and `targetRef`. */
 export function collectSettingsDelta(root: string, since: string | undefined, targetRef = "HEAD"): SettingsDelta {
   if (!since) return { added: [], removed: [], changed: [] };
+  const base = resolveCommitRef(root, since);
+  const head = resolveCommitRef(root, targetRef);
   const parseCatalog = (source: string | undefined): Map<string, string> => {
     if (!source) return new Map();
     const parsed = JSON.parse(source) as { entries?: Array<{ key?: unknown }> };
@@ -479,8 +500,8 @@ export function collectSettingsDelta(root: string, since: string | undefined, ta
     }
     return map;
   };
-  const before = parseCatalog(readGitFileAtRef(root, since, SETTINGS_CATALOG_PATH));
-  const after = parseCatalog(readGitFileAtRef(root, targetRef, SETTINGS_CATALOG_PATH));
+  const before = parseCatalog(readGitFileAtRef(root, base, SETTINGS_CATALOG_PATH));
+  const after = parseCatalog(readGitFileAtRef(root, head, SETTINGS_CATALOG_PATH));
   const added = [...after.keys()].filter((key) => !before.has(key)).sort(bytewise);
   const removed = [...before.keys()].filter((key) => !after.has(key)).sort(bytewise);
   const changed = [...after.keys()].filter((key) => before.has(key) && before.get(key) !== after.get(key)).sort(bytewise);
@@ -503,10 +524,30 @@ function qualifySubpath(packageName: string, subpath: string): string {
   return subpath.startsWith("./") ? `${packageName}/${subpath.slice(2)}` : `${packageName}/${subpath}`;
 }
 
+function collectSurfaceSymbols(surface: ReturnType<typeof readApiSurface>): { exported: Set<string>; deprecated: Set<string> } {
+  const exported = new Set<string>();
+  const deprecated = new Set<string>();
+  const addBlocks = (source: string) => {
+    if (!source) return;
+    for (const family of apiDeclarations(source).values()) {
+      for (const entry of family) {
+        if (!entry.exported || !entry.symbol) continue;
+        exported.add(entry.symbol);
+        if (entry.deprecated) deprecated.add(entry.symbol);
+      }
+    }
+  };
+  for (const { body } of surface.files.values()) addBlocks(body);
+  for (const body of surface.unheaded.values()) addBlocks(body);
+  return { exported, deprecated };
+}
+
 /** Collect semantic API surface summary across all changed packages between `since` and `targetRef`. */
 export function collectApiSurfaceSummary(root: string, since: string | undefined, targetRef = "HEAD"): ApiSurfaceSummary {
   if (!since) return { subpathsAdded: [], subpathsRemoved: [], symbolsAdded: [], symbolsRemoved: [], symbolsDeprecated: [] };
-  const changes = releaseChanges(root, since, targetRef);
+  const base = resolveCommitRef(root, since);
+  const head = resolveCommitRef(root, targetRef);
+  const changes = releaseChanges(root, base, head);
   const paths = changes.flatMap(changedPaths);
   const directories = [...new Set(paths.filter((path) => API_REPORT.test(path) || GATES.test(path)).map((path) => path.split("/").slice(0, 2).join("/")))].sort(bytewise);
   const subpathsAdded = new Set<string>();
@@ -515,27 +556,21 @@ export function collectApiSurfaceSummary(root: string, since: string | undefined
   const symbolsRemoved = new Set<string>();
   const symbolsDeprecated = new Set<string>();
   for (const directory of directories) {
-    const before = readApiSurface(root, since, directory);
-    const after = readApiSurface(root, targetRef, directory);
+    const before = readApiSurface(root, base, directory);
+    const after = readApiSurface(root, head, directory);
     const pkgName = packageNameForDirectory(root, directory);
     for (const subpath of after.subpaths.keys()) if (!before.subpaths.has(subpath)) subpathsAdded.add(qualifySubpath(pkgName, subpath));
     for (const subpath of before.subpaths.keys()) if (!after.subpaths.has(subpath)) subpathsRemoved.add(qualifySubpath(pkgName, subpath));
-    const compare = (oldText: string, newText: string) => {
-      if (oldText === newText) return;
-      const diff = summarizeSemanticApiDiff(oldText, newText);
-      for (const sym of diff.symbolsAdded) symbolsAdded.add(sym);
-      for (const sym of diff.symbolsRemoved) symbolsRemoved.add(sym);
-      for (const sym of diff.symbolsDeprecated) symbolsDeprecated.add(sym);
-    };
-    for (const file of new Set([...before.files.keys(), ...after.files.keys()])) {
-      compare(before.files.get(file)?.body ?? "", after.files.get(file)?.body ?? "");
+    const beforeSurface = collectSurfaceSymbols(before);
+    const afterSurface = collectSurfaceSymbols(after);
+    for (const sym of afterSurface.exported) {
+      if (!beforeSurface.exported.has(sym)) symbolsAdded.add(sym);
     }
-    for (const { status, path, previousPath } of changes) {
-      if (!path.startsWith(`${directory}/`) && !previousPath?.startsWith(`${directory}/`)) continue;
-      const oldReport = previousPath ?? path;
-      const old = status === "A" ? "" : before.unheaded.get(oldReport) ?? "";
-      const current = status === "D" ? "" : after.unheaded.get(path) ?? "";
-      compare(old, current);
+    for (const sym of beforeSurface.exported) {
+      if (!afterSurface.exported.has(sym)) symbolsRemoved.add(sym);
+    }
+    for (const sym of afterSurface.deprecated) {
+      if (!beforeSurface.deprecated.has(sym)) symbolsDeprecated.add(sym);
     }
   }
   return {
@@ -653,6 +688,11 @@ export function addUpgradeIndexLink(readmeSource: string, version: string): stri
   if (readmeSource.includes(`(${filename})`) || readmeSource.includes(link)) return readmeSource;
   const existing = /\[Upgrading to [^\]]+\]\(v[0-9A-Za-z-]+\.md\)/u.exec(readmeSource);
   if (existing) {
+    const lineStart = readmeSource.lastIndexOf("\n", existing.index - 1) + 1;
+    const linePrefix = readmeSource.slice(lineStart, existing.index);
+    if (/^[ \t]*-\s+$/u.test(linePrefix)) {
+      return `${readmeSource.slice(0, lineStart)}${linePrefix}${link}\n${readmeSource.slice(lineStart)}`;
+    }
     return `${readmeSource.slice(0, existing.index)}${link},\n${readmeSource.slice(existing.index)}`;
   }
   const perRelease = /^## Per-release notes[ \t]*\r?\n/mu.exec(readmeSource);
@@ -706,7 +746,7 @@ function renderUpgradePageSections({ root, version, since, fragments }: { root: 
   const api = ["## API changes", ...(since ? apiSections(root, since) : ["The previous release could not be determined: no core release tag is an ancestor of HEAD."])];
   const deltas = renderDeltaSections(root, since);
   const starterSection = starterNotes.length
-    ? [STARTER_SECTION_HEADING, ...starterNotes.map((fragment) => rebaseCoreGuideLinks(fragment, "../").trimEnd())]
+    ? [UPGRADE_STARTER_SECTION_HEADING, ...starterNotes.map((fragment) => rebaseCoreGuideLinks(fragment, "../").trimEnd())]
     : [];
   return {
     text: `${[...intro, ...notesSections, ...api, ...deltas, ...starterSection].join("\n\n")}\n`,

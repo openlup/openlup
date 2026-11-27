@@ -190,16 +190,23 @@ describe("release-index", () => {
   it("ships a valid seeded 1.4.0 baseline at packages/core/meta/release-index.json", () => {
     const source = readFileSync(resolve(RELEASE_INDEX_PATH), "utf8");
     const index = parseReleaseIndex(source);
+    const coreVersion = (JSON.parse(readFileSync(resolve("packages/core/package.json"), "utf8")) as { version: string }).version;
     expect(index.schemaVersion).toBe(1);
-    expect(index.currentVersion).toBe("1.4.0");
-    expect(index.releases[0]).toMatchObject({
+    expect(index.currentVersion).toBe(coreVersion);
+    expect(index.releases[0]?.version).toBe(coreVersion);
+    const baseline = index.releases.find((row) => row.version === "1.4.0");
+    expect(baseline).toBeDefined();
+    expect(baseline).toMatchObject({
       version: "1.4.0",
       previousVersion: "1.3.0",
       actionRequired: true,
     });
-    expect(index.releases[0]!.subpathsAdded).toContain("@openlup/platform/adapter-kit");
-    expect(index.releases[0]!.symbolsDeprecated).toHaveLength(17);
-    expect(index.releases[0]!.sqlAdded.length).toBeGreaterThan(0);
-    expect(index.releases[0]!.settingsDelta.added.length).toBeGreaterThan(0);
+    expect(baseline!.subpathsAdded).toContain("@openlup/platform/adapter-kit");
+    expect(baseline!.symbolsDeprecated).toHaveLength(17);
+    expect(baseline!.sqlAdded.length).toBeGreaterThan(0);
+    expect(baseline!.settingsDelta.added.length).toBeGreaterThan(0);
+    expect(baseline!.symbolsAdded).not.toContain("CommunicationsAdapterConformanceEvidence");
+    expect(baseline!.symbolsAdded).not.toContain("CommunicationsAdapterConformanceSubject");
+    expect(baseline!.symbolsAdded).not.toContain("runCommunicationsAdapterConformance");
   });
 });
