@@ -50,6 +50,7 @@ import {
   transferredPrivacy,
   type Installation,
 } from "./connectedStoreTransfer.fixture.js";
+import { bind, bookCycle, edit, insertLocalAttempt, ownerTransaction, prepareGraph, subject } from "./renewalOrderDestinationV2.fixture.js";
 
 // destinationDocumentFixture.snapshot() uses withCatalogAdmissionFence (pg_current_snapshot()),
 // so keep this suite on its own isolated per-suite template container instead of the shared broker.
@@ -764,6 +765,31 @@ it("exports class markers for restored cross-client destination links and preser
       [renewalContext.scopeRef, renewalOrder]);
       const empty = await receiptClient(db);
 
+      const bindRenewal = async () => {
+        const fixture = await subject(source);
+        const { ctx, ny, pair } = fixture;
+        const selected = await edit(db, ctx, ny.selectionRevision);
+        expect(selected.outcome).toBe("applied_from_next_parcel");
+        const cycle = await bookCycle(db, fixture);
+        const order = await ownerTransaction(db, async connection => {
+          const prepared = await prepareGraph(connection, fixture, selected, cycle);
+          expect(await bind(connection, ctx, prepared.order, selected)).toEqual(selected.binding);
+          await insertLocalAttempt(connection, fixture, prepared);
+          return prepared.order;
+        });
+        return { ctx, binding: selected.binding, cycleKey: pair.cycle_key, order };
+      };
+      const withheldRenewal = await bindRenewal(), crossClientRenewal = await bindRenewal();
+      const crossClientOrderOwner = await receiptClient(db);
+      expect(await readSnapshot(db, withheldRenewal.ctx, withheldRenewal.binding, withheldRenewal.order, "order"))
+        .toMatchObject({ binding: withheldRenewal.binding, documentPurpose: "subscription" });
+      await db.query(`UPDATE public.subscription_cycle_tax_bindings
+        SET live_evidence=jsonb_set(live_evidence,'{service,adapterRevision}','"different"') WHERE cycle_key=$1`,
+      [withheldRenewal.cycleKey]);
+      // Model restored ownership drift after the writer has pinned the renewal to its subscription document.
+      await db.query("UPDATE public.commerce_orders SET client_id=$1 WHERE id=$2", [crossClientOrderOwner, crossClientRenewal.order]);
+      isolated.push({ id: crossClientOrderOwner, field: orderClass });
+
       const ledger = async (owner: Pool) => (await owner.query("SELECT catalog_path,sha256,position FROM public.platform_schema_migrations ORDER BY position")).rows;
       const prefixLedger = [prefix.qualified.baseline, ...prefix.qualified.forward]
         .map(({ file, sha256 }, position) => ({ catalog_path: file, sha256, position }));
@@ -788,7 +814,7 @@ it("exports class markers for restored cross-client destination links and preser
       const cases = [
         ...isolated.map(({ id, field }) => ({ id, fields: [field] })),
         { id: mixed.clientId, fields: [orderClass, subscriptionClass] },
-        ...[foreign.clientId, consistent.clientId, empty].map(id => ({ id, fields: [] })),
+        ...[foreign.clientId, consistent.clientId, empty, withheldRenewal.ctx.clientId].map(id => ({ id, fields: [] })),
       ];
       const observe = async () => {
         const reader = await restored.runtime.connect();
@@ -842,11 +868,18 @@ it("exports class markers for restored cross-client destination links and preser
       expect((await runner.status()).pending).toEqual([]);
       const after = await observe();
       expect(after.acl).toEqual(before.acl);
-      for (const [index, { fields }] of cases.entries()) {
+      expect(await readSnapshot(restored.runtime, withheldRenewal.ctx, withheldRenewal.binding, withheldRenewal.order, "order"))
+        .toMatchObject({ code: "destination_binding_invalid", field: orderClass });
+      const withheldExport = JSON.parse(after.exports.at(-1)!.bytes) as { snapshotRef?: string }[];
+      const renewalRow = withheldExport.find(row => row.snapshotRef === withheldRenewal.binding.snapshotRef);
+      expect(renewalRow).toMatchObject({ document: expect.any(Object), verification: verification(orderClass) });
+      expect(renewalRow).not.toHaveProperty(orderClass);
+      expect(withheldExport.filter(row => !row.snapshotRef)).toEqual([]);
+      for (const [index, { id, fields }] of cases.entries()) {
         const old = before.exports[index]!, next = after.exports[index]!;
         if (!fields.length) { expect(next).toEqual(old); continue; }
         if (index < isolated.length) expect(old).toMatchObject({ bytes: "[]", contributor: { coverage: { complete: true } } });
-        expect(next.contributor).toEqual({ ...old.contributor, data: [...JSON.parse(old.bytes), ...fields.map(marker)],
+        expect(next.contributor, `destination markers for order or subscription owner ${id}`).toEqual({ ...old.contributor, data: [...JSON.parse(old.bytes), ...fields.map(marker)],
           coverage: { ...old.contributor.coverage, complete: false, unavailable: [
             "Review withheld destination evidence with the destination owner. After cutoff, run commerce_destination_v2_expire for unbound documents and export again.",
           ] } });
