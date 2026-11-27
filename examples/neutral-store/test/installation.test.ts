@@ -123,6 +123,7 @@ const inventoryProtectionStatements = [upsertPolicySetting];
 const reminderScheduleStatements = [upsertPolicySetting, installReminderSchedule];
 
 
+let installSequence = 0;
 function installation(identity = { login: 'demo_install', role: 'demo_install', marker: demonstrationMarker }) {
   const calls: Array<{ text: string; values: unknown[] | undefined }> = [];
   let closed = 0;
@@ -139,7 +140,7 @@ function installation(identity = { login: 'demo_install', role: 'demo_install', 
       if (text.startsWith('SELECT public.catalog_definition_install')) {
         const { manifest } = JSON.parse(String(values?.[2]));
         const { id: packId, version: packVersion, types, subscriptionProfileDefinitions } = JSON.parse(manifest);
-        return { rows: [{ receipt: { packId, packVersion, installedAt: '2000-01-01T00:00:00.000Z',
+        return { rows: [{ receipt: { packId, packVersion, installedAt: new Date(Date.UTC(2000, 0, 1) + installSequence++ * 1000).toISOString(),
           manifestDigest: createHash('sha256').update(manifest).digest('hex'), types,
           ...(subscriptionProfileDefinitions === undefined ? {} : { canonicalManifest: manifest, subscriptionProfileDefinitions }) } }] };
       }
