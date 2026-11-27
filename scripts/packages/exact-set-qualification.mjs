@@ -339,6 +339,7 @@ export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = f
     }
   } else {
     assert(!(upgrade && schema), 'released qualification runs --upgrade and --schema-upgrade as separate steps');
+    assert.notEqual(receipt.mode, 'candidate', 'released qualification refuses a candidate receipt');
   }
   const applicationsPath = resolve(receiptPath + '.applications');
   if (candidateManifest && upgrade && schema) {
@@ -406,7 +407,7 @@ export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = f
         Object.assign(receipt.schemaUpgrade, proof);
         assert.equal(proof.result, 'PASS', 'released-pair schema compatibility failed');
         // Candidate pre-publish qualification completes here; released qualification seals PASS only after BOM + canary.
-        if (receipt.mode === 'candidate') receipt.result = 'PASS';
+        if (candidateManifest) receipt.result = 'PASS';
       } catch (error) { receipt.error = error.message; throw error; }
       finally {
         try { if (admin) { try { await admin.query(`DROP DATABASE IF EXISTS ${database} WITH (FORCE)`); } finally { await admin.end(); } } }

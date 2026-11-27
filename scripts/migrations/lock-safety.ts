@@ -37,7 +37,7 @@ type ParsedStatement = {
 };
 
 const LOCK_SAFETY_ANNOTATION = /^--[ \t]*lock-safety:[ \t]*\S/iu;
-const ZERO_TIMEOUT_LITERAL = /^0+(?:\.0+)?(?:us|ms|s|min|h|d)?$/iu;
+const ZERO_TIMEOUT_LITERAL = /^[+-]?(?:0+(?:\.0*)?|\.0+)[ \t]*(?:us|ms|s|min|h|d)?$/iu;
 const NON_COLUMN_ADD_KEYWORDS = new Set([
   "CONSTRAINT",
   "CHECK",

@@ -13330,6 +13330,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/migrations/lock-safety.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/migrations/lock-safety.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/migrations/native-store-admission.ts",
       "class": "public-output"
     },
