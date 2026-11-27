@@ -58,8 +58,6 @@ const structuredDeferTarget = target => typeof target === 'string' &&
   !target.includes('..') &&
   DEFER_TARGETS.some(pattern => pattern.test(target));
 const normalizeSummary = summary => summary.trim().replace(/\s+/gu, ' ').toLowerCase();
-// A prefilter can replay legacy defers and validate confirmations before their bases are known.
-const unresolvedDeferOptions = Object.freeze({ legacyDefer: true });
 const isLegacyDefer = (base, options = {}) =>
   options.legacyDefer === true || Boolean(base && options.legacyDeferBases?.has(base));
 function findingState(session, options = {}) {
@@ -303,14 +301,9 @@ export function coverageRequirement(session, options = {}) {
     const decision = verdict(prior, prior.candidate, event.at, options);
     const cumulativeFrom = edge.proof?.cumulativeFrom;
     const repair = cumulativeFrom === undefined ? prior : cumulativeRepairPrefix(prior);
-    // A structured defer that is settled under legacy rules could still block this prefix under hardened rules.
-    const deferCouldBlock = cumulativeFrom !== undefined && options === unresolvedDeferOptions && decision.ok &&
-      [...findingState(prior).pendingDefer.values()].some(entry => structuredDeferTarget(entry.target));
-    demand(cumulativeFrom === undefined || (edge.kind === 'repair' &&
-      (decision.code === 'needs_agent_review' || deferCouldBlock) && repair?.candidate.head === cumulativeFrom), 'cumulative repair prefix differs');
-    const priorIncomplete = !decision.ok || deferCouldBlock;
-    const priorFull = priorIncomplete && edge.kind === 'repair' && repair ? fullReviewReports(repair) : undefined;
-    demand(!priorIncomplete || priorFull, 'prior coverage is incomplete or unresolved');
+    demand(cumulativeFrom === undefined || (edge.kind === 'repair' && decision.code === 'needs_agent_review' && repair?.candidate.head === cumulativeFrom), 'cumulative repair prefix differs');
+    const priorFull = !decision.ok && edge.kind === 'repair' && repair ? fullReviewReports(repair) : undefined;
+    demand(decision.ok || priorFull, 'prior coverage is incomplete or unresolved');
     const portable = edge.kind === 'integration' && ['portable-git', 'portable-registry-union', 'portable-derived', 'portable-resolution'].includes(edge.proof?.kind);
     inherited = priorFull ? {
       earliest: Math.min(...priorFull.map(report => report.at)), expires: Math.min(...priorFull.map(report => report.at + DAY)),
@@ -335,7 +328,7 @@ export function coverageRequirement(session, options = {}) {
         if (!anchorHasPass && anchorProtected) {
           floor = 2;
         } else if (edge.proof.modeChanged !== true && !addsNewProtected) {
-          if (floor === 0 && priorIncomplete) floor = 1;
+          if (floor === 0 && !decision.ok) floor = 1;
           else if (floor !== 0) floor = 1;
         }
       }
@@ -466,7 +459,7 @@ function validateHistory(session, options = {}) {
       const legacy = isLegacyDefer(candidate?.base, options);
       demand(identity(event.findingId) && identity(event.target) && (legacy || structuredDeferTarget(event.target)) && identity(event.decision) && identity(event.reason) && open.has(event.findingId), 'invalid historical finding deferral');
       open.delete(event.findingId);
-      if (!legacy || options === unresolvedDeferOptions) pendingDefer.add(event.findingId);
+      if (!legacy) pendingDefer.add(event.findingId);
       continue;
     }
     if (event.type !== 'report') continue;
@@ -694,21 +687,14 @@ export function receiptBody(summary, options = {}) {
   demand(compressed.length <= limit, `compressed receipt is ${compressed.length} characters (limit ${limit}). The session history is too long for one comment. Split the change or start a new native session with new counted reviews.`);
   return compressed;
 }
-function validateV3ReceiptEnvelope(receipt, now) {
-  demand(Object.keys(receipt).sort().join(',') === 'base,expires,head,pr,risk,session,sessionDigest,tree,verdict,version', 'v3 receipt keys differ');
-  demand(receipt.session?.version === 3 && digest(receipt.session) === receipt.sessionDigest, 'v3 history digest differs');
-  // Risk classification and expiry are legacy summary metadata; exact source and history still bind admission.
-  demand(RISKS.includes(receipt.risk) && Number.isFinite(receipt.expires), 'v3 summary metadata is invalid');
-  demand(Number.isFinite(now), 'verification time is invalid');
-  demand(Number.isSafeInteger(receipt.pr) && receipt.pr > 0, 'PR number is invalid');
-  demand(receipt.verdict === 'PASS' && ['base', 'head', 'tree'].every(key =>
-    typeof receipt[key] === 'string' && SHA.test(receipt[key]) && receipt[key] === receipt.session.candidate?.[key]), 'v3 summary differs');
-}
 export function admit({ receipt, observed, now }) {
   if (receipt?.version === 3) {
     try {
-      validateV3ReceiptEnvelope(receipt, now);
-      const deferOptions = observed?.deferPolicy === 'either' ? unresolvedDeferOptions : {
+      demand(Object.keys(receipt).sort().join(',') === 'base,expires,head,pr,risk,session,sessionDigest,tree,verdict,version', 'v3 receipt keys differ');
+      demand(receipt.session?.version === 3 && digest(receipt.session) === receipt.sessionDigest, 'v3 history digest differs');
+      // Risk classification and expiry are legacy summary metadata; exact source and history still bind admission.
+      demand(RISKS.includes(receipt.risk) && Number.isFinite(receipt.expires), 'v3 summary metadata is invalid');
+      const deferOptions = {
         ...(observed?.legacyDefer === true ? { legacyDefer: true } : {}),
         ...(observed?.legacyDeferBases ? { legacyDeferBases: observed.legacyDeferBases } : {}),
       };

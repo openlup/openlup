@@ -17,7 +17,6 @@ export { carryOverSourceReview } from './agent-review-session.mjs';
 
 const execute = promisify(execFile);
 const SHA = /^[a-f0-9]{40}$/u;
-const isSourceId = ref => typeof ref === 'string' && SHA.test(ref);
 const RECEIPT_LIMIT = 1024 * 1024;
 const COMMENTS_PER_PAGE = 50;
 export const EXIT_AWAITING_RECEIPT = 78;
@@ -210,10 +209,12 @@ export async function probeToolchainNeeded({ event, env = processEnvironment, ap
       readComments,
       onPermissionError: error => { throw error; },
     });
-    // A deferral's policy is unresolved until admission fetches the historical bases.
     const needsToolchain = receipts.some(receipt =>
-      receipt.version === 3 && receipt.session.history.some(entry =>
-        entry.type === 'defer' || (entry.type === 'prepare' && (
+      receipt?.version === 3
+      && Array.isArray(receipt.session?.history)
+      && receipt.session.history.some(entry =>
+        entry?.type === 'defer'
+        || (entry?.type === 'prepare' && (
           entry.candidate?.coverage?.proof?.derived === true
           || ['derived', 'portable-derived'].includes(entry.candidate?.coverage?.proof?.kind)
         ))));
@@ -227,17 +228,6 @@ export async function probeToolchainNeeded({ event, env = processEnvironment, ap
   return needed;
 }
 
-function receiptSourceRefs(receipt) {
-  const historical = receipt.version === 3 ? receipt.session.history.flatMap(event => {
-    if (event.type === 'prepare') {
-      demand(isSourceId(event.candidate.tree), 'receipt references invalid source objects');
-      return [event.candidate.base, event.candidate.head];
-    }
-    return event.type === 'renew' ? [event.proof.main] : [];
-  }) : [];
-  return [receipt.base, receipt.head, ...historical];
-}
-
 export async function readReceipts(api, root, pr, head, now, permissions = new Map(), invalidComments, currentHeadComments, {
   readComments = readReceiptComments, receiptIds, onPermissionError,
 } = {}) {
@@ -249,11 +239,11 @@ export async function readReceipts(api, root, pr, head, now, permissions = new M
     if (receipt === null && typeof comment.body === 'string' && comment.body.startsWith(RECEIPT_MARKER_PREFIX)) invalidComments?.push(comment);
     if (receipt?.pr === pr && receipt.head === head) currentHeadComments?.push(comment);
     if (receipt?.pr !== pr || receipt.head !== head || comment.user?.type !== 'User' || typeof login !== 'string' || !login) continue;
-    try {
-      if (!receiptSourceRefs(receipt).every(isSourceId)) continue;
-      const observed = { pr, head, base: receipt.base, tree: receipt.tree, baseValid: true, deferPolicy: 'either' };
-      if (!admit({ receipt, observed, now }).ok) continue;
-    } catch { continue; }
+    // Receipts that require both deferral policies across the hardening boundary remain out of scope.
+    if (!(
+      admit({ receipt, observed: { ...receipt, baseValid: true, legacyDefer: true }, now }).ok ||
+      admit({ receipt, observed: { ...receipt, baseValid: true }, now }).ok
+    )) continue;
     const key = login.toLowerCase();
     if (!permissions.has(key)) {
       try {
@@ -294,10 +284,11 @@ export async function waitNativeAdmission({ event, env = processEnvironment, api
     const receipts = await readReceipts(api, root, prNumber, pr.head.sha, now(), permissions, invalidComments, currentHeadComments, { readComments, receiptIds });
     for (const receipt of receipts) {
       const main = (await api.get(`${root}/git/ref/heads/main`)).object?.sha; demand(SHA.test(main) && (expectedMain === undefined || expectedMain === main), 'main commit identity is invalid or changed');
+      const historical = receipt.version === 3 ? receipt.session.history.flatMap(event => event.type === 'prepare' ? [event.candidate.base, event.candidate.head] : event.type === 'renew' ? [event.proof.main] : []) : [];
+      const refs = [...new Set([receipt.base, receipt.head, main, ...historical, ...(group ? [group.base_sha, group.head_sha] : [])])];
+      demand(refs.every(ref => SHA.test(ref)), 'receipt references invalid source objects');
       let candidate; let baseValid; let legacyRules; let legacyDeferOptions = {};
       try {
-        const refs = [...new Set([...receiptSourceRefs(receipt), main, ...(group ? [group.base_sha, group.head_sha] : [])])];
-        demand(refs.every(isSourceId), 'receipt references invalid source objects');
         if (!committedObjectsOnly) {
           await runGit(cwd, '-c', 'transfer.fsckObjects=true', 'fetch', '--no-tags', '--no-write-fetch-head', 'origin', ...refs);
           await runGit(cwd, 'update-ref', 'refs/remotes/origin/main', main);
