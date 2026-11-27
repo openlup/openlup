@@ -15186,6 +15186,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/adapters/postgres/connectedManagedIdentity.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/adapters/postgres/connectedManagedRetained.ts",
       "class": "public-output"
     },
@@ -15251,6 +15255,10 @@
     },
     {
       "path": "server/adapters/postgres/connectedStoreRestore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedTransferPacket.ts",
       "class": "public-output"
     },
     {
