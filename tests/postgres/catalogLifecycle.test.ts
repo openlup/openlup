@@ -750,6 +750,12 @@ it.each(["service_role", "catalog_runtime"])("claims, prepares and updates accep
     await db.query("BEGIN");
     const store = createPostgresRenewalStore(db, codec);
     const snapshot = await store.buildCycleSnapshots(owner.schedule);
+    const wire = codec.encode(snapshot);
+    await db.query("SAVEPOINT invalid_renewal_roster");
+    await expect(call(db, "subscription_claim_due_renewal", [codec.identity(snapshot), codec.fingerprint(snapshot),
+      { ...wire, lines: [{ ...snapshot.orderSnapshot.lines[0], quantity: 2 }] }, role, 300, new Date().toISOString()]))
+      .rejects.toMatchObject(refusal("catalog_acceptance_line_mismatch"));
+    await db.query("ROLLBACK TO SAVEPOINT invalid_renewal_roster");
     const claim = await store.claimDue({ snapshot, workerId: role, now: new Date().toISOString() });
     expect(claim).toMatchObject({ acquired: true, catalogAcceptance: acceptance });
     expect((await db.query(`SELECT catalog_acceptance,catalog_acceptance_fingerprint FROM public.subscription_renewal_operations

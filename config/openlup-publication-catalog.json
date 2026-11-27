@@ -990,6 +990,14 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/adopter-kit/openlup-post-merge-optin-issue.template.yml",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/adopter-kit/openlup-release-watcher-issue.template.yml",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/assets/velipet-storefront-en.png",
       "class": "public-output"
     },
@@ -2738,6 +2746,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/meta/release-index.json",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/package-lock.json",
       "class": "public-output"
     },
@@ -2831,6 +2843,10 @@
     },
     {
       "path": "packages/core/scripts/repository-policy-contract.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/skills/openlup-upgrade/SKILL.md",
       "class": "public-output"
     },
     {
@@ -3250,6 +3266,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/src/upgrade-impact.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/test/agent-context-cli.test.ts",
       "class": "public-output"
     },
@@ -3403,6 +3423,10 @@
     },
     {
       "path": "packages/core/test/targetPriceAllocation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/test/upgradeImpact.test.ts",
       "class": "public-output"
     },
     {
@@ -4598,6 +4622,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/publicationAdmission.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/publicationAuthorship.ts",
       "class": "public-output"
     },
@@ -4630,11 +4658,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/publicationOperationReplay.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/publicationPorts.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/src/catalog/publicationPreparation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/publicationReadinessChecks.ts",
       "class": "public-output"
     },
     {
@@ -13799,6 +13835,14 @@
     },
     {
       "path": "scripts/packages/release-gate.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/release-index.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/release-index.ts",
       "class": "public-output"
     },
     {
@@ -31694,6 +31738,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/nativeRenewalOccurrence.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/nativeRenewalOccurrenceDormancy.test.ts",
       "class": "public-output"
     },
@@ -31702,7 +31750,15 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/nativeRenewalOccurrenceWriter.fixture.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/nativeRenewalV3Legacy.fixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/nativeRenewalV3Root.test.ts",
       "class": "public-output"
     },
     {

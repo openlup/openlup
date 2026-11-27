@@ -55,6 +55,8 @@
     "SECURITY.md",
     "docs/SUBSCRIPTION_ENGINE.md",
     "docs/guide/**",
+    "meta/release-index.json",
+    "skills/**",
     "release-gates.json"
   ],
   "scripts": {

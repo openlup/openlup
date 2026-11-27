@@ -682,6 +682,16 @@
     "tests/postgres/nativeRenewalDueFairness.test.ts": [
       "tests/postgres/subscriptionNativeFixture.ts"
     ],
+    "tests/postgres/nativeRenewalOccurrence.test.ts": [
+      "@src",
+      "tests/postgres/customerAccountMutations.fixture.ts",
+      "tests/postgres/nativeRenewalOccurrence.fixture.ts",
+      "tests/postgres/nativeRenewalOccurrenceWriter.fixture.ts",
+      "tests/postgres/orderMoneyV2Storage.fixture.ts",
+      "tests/postgres/subscriptionActivationFixture.ts",
+      "tests/postgres/subscriptionNativeFixture.ts",
+      "tests/postgres/subscriptionRegistrationFixture.ts"
+    ],
     "tests/postgres/nativeRenewalOccurrenceDormancy.test.ts": [
       "@api",
       "@managedCompat",
@@ -689,6 +699,7 @@
       "@starter",
       "tests/postgres/customerAccountMutations.fixture.ts",
       "tests/postgres/nativeRenewalOccurrence.fixture.ts",
+      "tests/postgres/nativeRenewalOccurrenceWriter.fixture.ts",
       "tests/postgres/nativeRenewalV3Legacy.fixture.ts",
       "tests/postgres/orderMoneyV2Storage.fixture.ts",
       "tests/postgres/subscriptionActivationFixture.ts",
@@ -699,6 +710,16 @@
       "@src",
       "tests/postgres/customerAccountMutations.fixture.ts",
       "tests/postgres/nativeRenewalOccurrence.fixture.ts",
+      "tests/postgres/orderMoneyV2Storage.fixture.ts",
+      "tests/postgres/subscriptionActivationFixture.ts",
+      "tests/postgres/subscriptionNativeFixture.ts",
+      "tests/postgres/subscriptionRegistrationFixture.ts"
+    ],
+    "tests/postgres/nativeRenewalV3Root.test.ts": [
+      "@src",
+      "tests/postgres/customerAccountMutations.fixture.ts",
+      "tests/postgres/nativeRenewalOccurrence.fixture.ts",
+      "tests/postgres/nativeRenewalOccurrenceWriter.fixture.ts",
       "tests/postgres/orderMoneyV2Storage.fixture.ts",
       "tests/postgres/subscriptionActivationFixture.ts",
       "tests/postgres/subscriptionNativeFixture.ts",
@@ -1072,6 +1093,9 @@
     ],
     "tests/postgres/subscriptionPublicRenewal.test.ts": [
       "@src",
+      "docs/platform/SUBSCRIPTION_WORKFLOWS.md",
+      "packages/core/docs/guide/upgrade/database-migrations.md",
+      "packages/core/docs/guide/upgrade/v1-4-0.md",
       "tests/postgres/subscriptionNativeFixture.ts",
       "tests/postgres/subscriptionPublicRenewal.worker.mjs",
       "tests/postgres/subscriptionPublicRenewalFixture.ts",

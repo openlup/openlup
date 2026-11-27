@@ -145,15 +145,23 @@ export function createPostgresRenewalStore(executor: SubscriptionQueryExecutor, 
             ? codec.withDestination!(input.snapshot, ref) : input.snapshot;
           return store.claimDue({ ...input, snapshot });
         }
-        if (input.snapshot.frozenRevision === "native.purchase-renewal.v2") {
-          let fresh = codec.freeze(await header(input.snapshot, db), input.snapshot);
-          const destination = input.snapshot.orderSnapshot.shippingAddressRef;
-          if (destination) fresh = codec.withDestination!(fresh, destination);
-          if (codec.fingerprint(fresh) !== codec.fingerprint(input.snapshot)) throw new Error("subscription_renewal_snapshot_stale");
-        }
+        const current = input.snapshot.frozenRevision === "native.purchase-renewal.v2" ? await header(input.snapshot, db) : null;
         const document = subscriptionRecord((await db.query("SELECT public.commerce_read_destination('subscription',$1::uuid) AS destination", [input.snapshot.subscriptionId])).rows[0]?.destination);
         const snapshot = codec.withDestination!(input.snapshot, String(document.destinationId));
-        return store.claimDue({ ...input, snapshot });
+        const claim = await store.claimDue({ ...input, snapshot });
+        if (current) {
+          let fresh = codec.freeze(current, input.snapshot);
+          const destination = input.snapshot.orderSnapshot.shippingAddressRef;
+          if (destination) fresh = codec.withDestination!(fresh, destination);
+          if (codec.fingerprint(fresh) !== codec.fingerprint(input.snapshot)) {
+            throw Object.assign(new Error("subscription_renewal_snapshot_fingerprint_mismatch"), {
+              code: "22023",
+              detail: "/cycleSnapshot",
+              hint: "Re-read the due subscription and rebuild its cycle snapshot before claiming again.",
+            });
+          }
+        }
+        return claim;
       });
       const cadenceDays = input.snapshot.templateSnapshot.cadenceDays;
       if (cadenceDays > MAX_CADENCE_DAYS) {

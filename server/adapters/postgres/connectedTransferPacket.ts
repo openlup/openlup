@@ -105,6 +105,7 @@ export function captureTables(packet: ConnectedNativeStoreCapture): Map<Connecte
 export function copyCapture(
   input: ConnectedNativeStoreCapture,
   shape: ConnectedStoreSourceShape = "current",
+  profileTables: readonly ConnectedStoreTableName[] = connectedNativeStoreTables,
 ): ConnectedNativeStoreCapture {
   try {
     const copy = JSON.parse(JSON.stringify(input)) as ConnectedNativeStoreCapture;
@@ -132,7 +133,7 @@ export function copyCapture(
     if (shape === "unsupported") refuseSourceSchema();
     validateRequiredPrivacyContributorIds(copy.requiredPrivacyContributorIds);
     const all = captureTables(copy);
-    if (all.size !== connectedNativeStoreTables.length || connectedNativeStoreTables.some(table => !all.has(table))) {
+    if (all.size !== profileTables.length || profileTables.some(table => !all.has(table))) {
       throw new PostgresTransferError("invalid_input");
     }
     let count = 0, bytes = 0;

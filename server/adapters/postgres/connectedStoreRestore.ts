@@ -17,6 +17,7 @@ import {
   connectedStoreSettingsTables,
 } from "./connectedStoreDomains/index.js";
 import { paymentsDomain } from "./connectedStoreDomains/payments.js";
+import { renewalUpgradeCohort, tablesForRenewalUpgradeCohort } from "./connectedStoreDomains/subscriptions.js";
 import {
   captureTables as tables,
   copyCapture,
@@ -74,8 +75,11 @@ export async function restoreConnectedNativeStore(input: {
   const profile = installation.generation === "qualified-admin" ? installation.roleMode
     : installation.migrationLogin === installation.bootstrapLogin ? "bootstrap" : "separate";
   const manifest = expectedManifest(installation);
+  const cohortInstalled = manifest.forward.some(unit => renewalUpgradeCohort.forward.test(unit.file));
+  const profileTables = tablesForRenewalUpgradeCohort(connectedNativeStoreTables, cohortInstalled);
   const shape = connectedStoreSourceShape(profile, input.packet?.compatible?.catalogueId, manifest.objectInventorySha256);
-  const packet = copyCapture(input.packet, shape), fresh = copyCapture(input.freshTarget);
+  const packet = copyCapture(input.packet, shape, profileTables);
+  const fresh = copyCapture(input.freshTarget, "current", profileTables);
   if (packet.observation.cluster === fresh.observation.cluster
     && packet.observation.database === fresh.observation.database) fail("invalid_input");
   const source = tables(packet), baseline = tables(fresh);
@@ -154,13 +158,13 @@ export async function restoreConnectedNativeStore(input: {
       JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
       WHERE n.nspname='public' AND c.relname=ANY($1::pg_catalog.text[]) AND c.relkind='r'
       AND a.attnum>0 AND NOT a.attisdropped AND a.attgenerated='' AND a.attidentity=''
-      ORDER BY c.relname,a.attnum`, [[...connectedNativeStoreTables]]);
+      ORDER BY c.relname,a.attnum`, [[...profileTables]]);
     for (const row of attributeRows) {
       const list = actualColumnsByTable.get(row.table);
       if (list) list.push({ name: row.name, type: row.type });
       else actualColumnsByTable.set(row.table, [{ name: row.name, type: row.type }]);
     }
-    for (const table of connectedNativeStoreTables) {
+    for (const table of profileTables) {
       const actual = actualColumnsByTable.get(table) ?? [];
       const columns = source.get(table)!.columns.map(({ name, type }) => ({ name, type }));
       if (JSON.stringify(actual) !== JSON.stringify(columns)) refuseSourceSchema(table);
@@ -170,7 +174,7 @@ export async function restoreConnectedNativeStore(input: {
     if (!replayed && paymentTables.some(table => source.get(table)!.rows.length > 0)) {
       await client.query(`DELETE FROM ${paymentQualificationRelation}`);
     }
-    await assertOutsideEmpty(client, relations, replayed);
+    await assertOutsideEmpty(client, relations, profileTables, replayed);
     // Sized bindings cannot be replayed as final rows through the insert guard.
     // Refuse before restoring settings or inserting any retained source data.
     if (source.get("subscriptions")!.rows.some(row =>
@@ -186,7 +190,7 @@ export async function restoreConnectedNativeStore(input: {
     } else {
       // This is an equality check against actual pristine installation data, not
       // caller fresh=true. The host's real creation/qualification remains required.
-      for (const table of connectedNativeStoreTables) {
+      for (const table of profileTables) {
         if (!settings.includes(table as SettingsTable) && baseline.get(table)!.rows.length) fail("target_conflict", table);
       }
       if (!await equalCensus(client, baseline)) fail("target_conflict");
@@ -200,7 +204,7 @@ export async function restoreConnectedNativeStore(input: {
         .map(row => JSON.parse(row) as { order_id: string; destination_erased: boolean })
         .filter(row => row.destination_erased).map(row => row.order_id);
       let neutralized = 0;
-      for (const table of order) {
+      for (const table of tablesForRenewalUpgradeCohort(order, cohortInstalled)) {
         const rows = source.get(table)!;
         if (table === "commerce_orders" && erasedOrders.length > 0) {
           await client.query("SELECT public.commerce_order_money_v2_mark_restore_orders($1::uuid[])", [erasedOrders]);
@@ -315,7 +319,7 @@ export async function restoreConnectedNativeStore(input: {
       if (erasedOrders.length > 0) {
         await client.query("DELETE FROM public.commerce_order_money_v2_restore_marks WHERE transaction_id=pg_catalog.pg_current_xact_id()");
       }
-      await assertOutsideEmpty(client, relations);
+      await assertOutsideEmpty(client, relations, profileTables);
       if (!await equalCensus(client, source)) fail("target_conflict");
       if (JSON.stringify((await client.query("SELECT tableoid::pg_catalog.text,ctid::pg_catalog.text,xmin::pg_catalog.text FROM acquisition_private.installation_key")).rows) !== JSON.stringify(keyIdentity.rows)) fail("target_conflict", "acquisition_private.installation_key");
       if (installation.generation === "qualified-admin") await closeRestrictedOwnerWindow(client, installation);
@@ -393,10 +397,11 @@ async function equalCensus(client: PoolClient, expected: Map<TableName, Rows>): 
   }
   return true;
 }
-async function assertOutsideEmpty(client: PoolClient, relations: readonly { schema: string; table: string }[], replayed = false): Promise<void> {
+async function assertOutsideEmpty(client: PoolClient, relations: readonly { schema: string; table: string }[],
+  profileTables: readonly TableName[], replayed = false): Promise<void> {
   const outside = relations.filter(({ schema, table }) => {
     const name = `${schema}.${table}`;
-    return !(schema === "public" && (connectedNativeStoreTables.includes(table as TableName) || table === requiredPrivacyDeclarationTable))
+    return !(schema === "public" && (profileTables.includes(table as TableName) || table === requiredPrivacyDeclarationTable))
       && !connectedStoreOutsideProfileRelations.get(name)?.preserveTarget
       && (!replayed || name !== paymentQualificationRelation);
   });

@@ -10,6 +10,7 @@ import { createPostgresSandboxPaymentSimulator } from "@openlup/platform/payment
 import type { PgQueryExecutor } from "@openlup/platform/data";
 import { connectedNativeStoreTables, type ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
+import { renewalUpgradeCohort, tablesForRenewalUpgradeCohort } from "../../server/adapters/postgres/connectedStoreDomains/subscriptions.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 import { withPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
 import { captureStoreJourney, journeySelection, storeJourneyResources, type JourneyTargetTemplate } from "../helpers/storeJourney.js";
@@ -805,7 +806,9 @@ it("exports class markers for restored cross-client destination links and preser
           .toMatchObject({ replayed: false, captureSha256: packet.sha256 });
       } finally { cwd.mockRestore(); }
       expect(await ledger(restored.owner)).toEqual(prefixLedger);
-      const retained = await census(restored.owner);
+      const predecessorTables = tablesForRenewalUpgradeCohort(connectedNativeStoreTables,
+        prefix.qualified.forward.some(unit => renewalUpgradeCohort.forward.test(unit.file)));
+      const retained = await census(restored.owner, predecessorTables);
       for (const table of [documentTable, orderBindingTable, selections]) {
         const name = table.slice("public.".length);
         expect(retained[name]).toEqual([...packet.owned.find(entry => entry.table === name)!.rows].sort());
@@ -894,7 +897,7 @@ it("exports class markers for restored cross-client destination links and preser
             "Review withheld destination evidence with the destination owner. After cutoff, run commerce_destination_v2_expire for unbound documents and export again.",
           ] } });
       }
-      expect(await census(restored.owner)).toEqual(retained);
+      expect(await census(restored.owner, predecessorTables)).toEqual(retained);
     } finally { await predecessor.close(); }
   });
 }, 120_000);

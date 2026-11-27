@@ -3,11 +3,15 @@
 import { spawn } from "node:child_process";
 import { Console } from "node:console";
 import { promises as fs } from "node:fs";
-import { resolve } from "node:path";
+import { findPackageJSON } from "node:module";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs, types } from "node:util";
 
 const help = `openlup upgrade plan|apply --root DIR --from SNAPSHOT.json --to SNAPSHOT.json --schema-version N [--json]
+openlup upgrade impact --from <version> [--to <version>] [--manifest <path>] [--rail <managed|native>] [--exclude-starter] [--include-dormant] [--format <json|markdown>] [--json] [--root DIR]
+openlup doctor [--root DIR] [--receipt <path>] [--json]
+openlup agents sync [--root DIR] [--check] [--json]
 openlup verify [--app ./application-observations.mjs] [--json]
 openlup catalogue schema [--json]
 openlup catalogue check --packs ./owned/catalogue.json [--json]
@@ -18,6 +22,7 @@ openlup settings check --app <module> [--configuration <id>] [--json] (experimen
 openlup recipe list|show|add|scaffold|verify [--help] [--json] (experimental)
 
 Upgrade snapshots use the existing AppVersionSnapshot contract. All unlisted paths are application-owned; upstream-unchanged files preserve local edits. Apply requires an exclusive maintenance window. Rerun identical inputs to resume. No SQL, package installation or hooks run.
+Upgrade impact, doctor and agents sync delegate directly to the installed @openlup/core openlup-context tool offline.
 Verify loads no app implicitly. --app explicitly trusts and imports application code exporting createVerificationInput(); that module must only assemble observations and read-only probes, must not write stdout, and must close its own resources before returning/report completion. The CLI does not sandbox that module. Only the supplied schema observer is invoked by diagnosis; routes and jobs never run.
 Catalogue check reads inert JSON. Catalogue project imports an explicitly trusted module exporting catalogueConformance with the operator’s process permissions and checks an external scratch subject. PASS grants no install, migration, publication or activation authority.
 Settings reads the catalogue offline by default. Connected show and preview use --database-url and explicit --app bindings where needed. Preview takes --value <json> or --value - for stdin. Settings JSON uses schemaVersion=1. A completed preview with an invalid policy exits 0, refusals exit 1, invalid syntax/input exits 64, and unavailable operations exit 74. For settings check, a missing app module or factory export exits 74, while a module that throws during loading or binding exits 1 with the cause.
@@ -401,6 +406,42 @@ function runSettingsToolProcess(argv, stdin) {
   });
 }
 
+async function runCoreContextSubcommand(subcommand, forwardedArgs) {
+  let manifestPath;
+  try {
+    manifestPath = findPackageJSON("@openlup/core", join(process.cwd(), "package.json"));
+  } catch { /* fallback to import.meta.resolve below */ }
+  if (!manifestPath) {
+    try {
+      manifestPath = fileURLToPath(import.meta.resolve("@openlup/core/package.json"));
+    } catch { /* handled below */ }
+  }
+  if (!manifestPath) {
+    refuse(74, "OPENLUP_E_CLI_FAILURE", "Installed @openlup/core package could not be resolved.", "Install matching @openlup/core alongside @openlup/platform and rerun the command.");
+    return;
+  }
+  let binPath;
+  try {
+    const coreRoot = dirname(manifestPath);
+    const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8"));
+    const relBin = manifest?.bin?.["openlup-context"];
+    if (typeof relBin !== "string" || !relBin) throw new Error("missing_bin");
+    const candidate = resolve(coreRoot, relBin);
+    const rel = relative(coreRoot, candidate);
+    if (isAbsolute(rel) || rel === ".." || rel.startsWith(`..${sep}`)) throw new Error("bin_escape");
+    binPath = candidate;
+  } catch {
+    refuse(74, "OPENLUP_E_CLI_FAILURE", "Installed @openlup/core does not expose a valid openlup-context bin.", "Install a compatible @openlup/core version and rerun the command.");
+    return;
+  }
+  const exitCode = await new Promise(resolveExit => {
+    const child = spawn(process.execPath, [binPath, subcommand, ...forwardedArgs], { stdio: "inherit" });
+    child.on("error", () => resolveExit(74));
+    child.on("close", code => resolveExit(code ?? 74));
+  });
+  process.exitCode = exitCode;
+}
+
 const cliOptions = {
   json: { type: "boolean" }, help: { type: "boolean" },
   root: { type: "string" }, from: { type: "string" }, to: { type: "string" },
@@ -425,6 +466,21 @@ async function main(args) {
     validatingInput = false;
     const { runCatalogueSchema } = await import("./catalogueSchema.mjs");
     await runCatalogueSchema(emit);
+    return;
+  }
+  if (args[0] === "upgrade" && args[1] === "impact") {
+    validatingInput = false;
+    await runCoreContextSubcommand("impact", args.slice(2));
+    return;
+  }
+  if (args[0] === "doctor") {
+    validatingInput = false;
+    await runCoreContextSubcommand("doctor", args.slice(1));
+    return;
+  }
+  if (args[0] === "agents" && args[1] === "sync") {
+    validatingInput = false;
+    await runCoreContextSubcommand("agents-sync", args.slice(2));
     return;
   }
   if (args[0] === "recipe") {

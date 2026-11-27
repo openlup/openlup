@@ -1,45 +1,23 @@
-import { createHash } from "node:crypto";
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { readdirSync, readFileSync } from "node:fs";
 import { Client, Pool, type QueryConfig } from "pg";
 import { expect, it, vi } from "vitest";
 import { configurations } from "../../examples/neutral-store/owned/store.config.ts";
 import { runScheduledRenewal } from "../../examples/neutral-store/host/scheduled-renewal.ts";
-import { PLATFORM_MIGRATION_MANIFEST, readPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
-import { readReviewedForwardRegistry, REVIEWED_FORWARD_PATH } from "../../scripts/reviewed-platform-forward.js";
-import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
-import { qualifiedPostgresCatalogPayload, qualifiedPostgresStartupOptions, type QualifiedPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
-import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from "../../server/adapters/postgres/selectedCatalogProjection.js";
-import { withPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
+import { qualifiedPostgresStartupOptions } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { closePostgres, postgresSetupTimeoutMs, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
-import { installAccountMutations, type AccountMutationsStore, type AccountProfile } from "./customerAccountMutations.fixture.js";
+import type { AccountMutationsStore, AccountProfile } from "./customerAccountMutations.fixture.js";
 import { exerciseLegacyRenewals } from "./nativeRenewalV3Legacy.fixture.js";
 import { transaction } from "./orderMoneyV2Storage.fixture.js";
 import { activatedRenewal, activation, allocate, probe, producer, signature } from "./nativeRenewalOccurrence.fixture.js";
-import { AT, call, later, seedRenewalStock, type Db } from "./subscriptionNativeFixture.js";
+import { applyMeasuredStarterPrefix, args, canonical, installMeasuredAccountPrefix, lock, occurrence, occurrenceCatalogue as current,
+  occurrenceForwardPath, operations, plans, read, rootFixture, sha256, sliceOccurrencePlan, writer, writerParameters,
+  writerPath, writerPlan } from "./nativeRenewalOccurrenceWriter.fixture.js";
+import { AT, call, later, sandboxRenewal, seedRenewalStock, type Db } from "./subscriptionNativeFixture.js";
 
-const current = readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest | null;
-if (current?.schemaVersion !== 3) throw new Error("Expected the full native migration catalogue");
-const registry = readReviewedForwardRegistry(readFileSync(REVIEWED_FORWARD_PATH));
-const producerSlots = registry.nativeStoreForwardClass?.slots.filter(slot =>
-  slot.createdFunctions.some(fn => fn.signature === signature)) ?? [];
-if (producerSlots.length !== 1) throw new Error(`Expected one registered producer forward for ${signature}`);
-const producerPath = producerSlots[0]!.path;
+const producerPath = occurrenceForwardPath(signature);
 const sql = readFileSync(producerPath, "utf8");
-
-type CompleteManifest = Extract<PlatformMigrationManifest, { schemaVersion: 3 }>;
-const plans = (manifest: CompleteManifest) => [manifest, manifest.qualified, manifest.qualifiedAdmin] as const;
-
-function atProducer(manifest: CompleteManifest, boundary: "before" | "through") {
-  const plan = structuredClone(manifest);
-  for (const profile of plans(plan)) {
-    const index = profile.forward.findIndex(({ file }) => file === producerPath);
-    if (index < 0) throw new Error(`Missing producer migration ${producerPath}`);
-    profile.forward = profile.forward.slice(0, boundary === "through" ? index + 1 : index);
-  }
-  return plan;
-}
-
+const atProducer = (manifest: typeof current, boundary: "before" | "through") =>
+  sliceOccurrencePlan(manifest, producerPath, boundary === "through");
 const catalogue = atProducer(current, "through"), predecessor = atProducer(current, "before");
 it("includes new predecessor units and excludes stacked forwards at the registered producer path", () => {
   const extended = structuredClone(current);
@@ -48,95 +26,88 @@ it("includes new predecessor units and excludes stacked forwards at the register
   for (const plan of plans(extended)) {
     const cut = plan.forward.findIndex(({ file }) => file === producerPath);
     plan.forward.splice(cut, 1, newPredecessor, plan.forward[cut]!, stacked);
+    plan.forward.push({ ...stacked, file: stacked.file.replace("stacked", "after_writer") });
   }
   const before = plans(atProducer(extended, "before"));
   const through = plans(atProducer(extended, "through"));
+  const writerPlans = plans(writerPlan(extended));
   for (const [index, plan] of plans(predecessor).entries()) {
     const producerUnit = plans(catalogue)[index]!.forward[plan.forward.length];
     expect(producerUnit?.file).toBe(producerPath);
     expect(before[index]!.forward).toEqual([...plan.forward, newPredecessor]);
     expect(through[index]!.forward).toEqual([...plan.forward, newPredecessor, producerUnit]);
+    expect(writerPlans[index]!.forward.at(-1)?.file).toBe(writerPath);
   }
 });
 
-async function verifyMeasuredPrefix(root: string, manifest: CompleteManifest, profile: AccountProfile, inventory: string,
-  runner: AccountMutationsStore["runner"]) {
-  if (!inventory) throw new Error("The sliced installation did not produce an object inventory");
-  const pinned = structuredClone(manifest);
-  switch (profile) {
-    case "legacy": pinned.objectInventorySha256 = inventory; break;
-    case "bootstrap": pinned.qualified.objectInventorySha256.bootstrapMigrator.withRestore = inventory; break;
-    case "separate": pinned.qualified.objectInventorySha256.separateMigrator.withRestore = inventory; break;
-    case "admin-managed": pinned.qualifiedAdmin.objectInventorySha256.installerManaged = inventory; break;
-    case "admin-operator": pinned.qualifiedAdmin.objectInventorySha256.operatorProvisioned = inventory; break;
-  }
-  writeFileSync(join(root, PLATFORM_MIGRATION_MANIFEST), JSON.stringify(pinned));
-  expect(await runner.apply()).toEqual({ applied: [] });
-}
-
-async function withMeasuredAccountPrefix<T>(manifest: CompleteManifest, profile: AccountProfile, label: string,
+const boundaries = {
+  before: predecessor,
+  through: catalogue,
+  beforeWriter: sliceOccurrencePlan(current, writerPath, false),
+  writer: writerPlan(),
+};
+async function withMeasuredAccountPrefix<T>(manifest: typeof current, profile: AccountProfile, label: string,
   exercise: (store: AccountMutationsStore) => Promise<T>) {
-  return withPlatformCatalog(manifest, async root => {
-    // The install commits the slice before checking its object inventory.
-    const store = await installAccountMutations(profile, true, label, root, root);
-    try {
-      await verifyMeasuredPrefix(root, manifest, profile, store.inventory, store.runner);
-      return await exercise(store);
-    } finally { await store.close(); }
-  });
-}
-
-async function installMeasuredPrefix(manifest: CompleteManifest, pool: Pool,
-  installation: { generation: "legacy" } | QualifiedPostgresInstallation, profile: "legacy" | "bootstrap") {
-  await withPlatformCatalog(manifest, async root => {
-    let inventory = "";
-    const runner = createPostgresMigrationRunner({ connectionString: pool.options.connectionString! }, {
-      root, installation, poolFactory: () => pool,
-      catalogProjectionPayload: async db => {
-        const payload = installation.generation === "legacy"
-          ? selectedCatalogProjectionPayload(await readSelectedCatalogProjection(db))
-          : await qualifiedPostgresCatalogPayload(db, installation, "openlup:public-platform-migrations:v1");
-        inventory = createHash("sha256").update(payload).digest("hex");
-        return payload;
-      },
-    });
-    try { await runner.apply(); }
-    catch (error) {
-      if (!inventory || !(error instanceof Error) || error.message !==
-        "platform migration inventory rejected: platform migration manifest: object inventory SHA-256 mismatch") throw error;
-    }
-    await verifyMeasuredPrefix(root, manifest, profile, inventory, runner);
-  });
+  const store = await installMeasuredAccountPrefix(manifest, profile, label);
+  try { return await exercise(store); } finally { await store.close(); }
 }
 
 const denied = { code: "42501", message: `permission denied for function ${producer}` };
 
-async function assertAcl(db: Db) {
+async function assertAcl(db: Db, sig = signature, args = 4, definer = false) {
   expect((await db.query(`SELECT p.provolatile AS volatility,p.prosecdef AS definer,p.proconfig AS settings,
-    p.proowner=c.relowner AND p.proowner=current_user::regrole AS owns,b.lanname AS language,
+    p.proowner=c.relowner AND p.proowner=current_user::regrole
+      AND p.proowner=(SELECT relowner FROM pg_class WHERE oid='public.subscription_cycle_generations'::regclass) AS owns,b.lanname AS language,
+    (SELECT count(*)::int FROM pg_proc WHERE proname=p.proname AND pronamespace=p.pronamespace) AS overloads,
     p.pronargs AS args,p.pronargdefaults AS defaults,p.prorettype='jsonb'::regtype AS returns_json,
     ARRAY(SELECT privilege_type FROM aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) WHERE grantee<>p.proowner) AS grants
     FROM pg_proc p JOIN pg_language b ON b.oid=p.prolang CROSS JOIN pg_class c
-    WHERE p.oid=$1::regprocedure AND c.oid='public.subscription_cycle_occurrences'::regclass`, [signature])).rows)
-    .toEqual([{ volatility: "v", definer: false, settings: ["search_path=pg_catalog, pg_temp"],
-      owns: true, language: "plpgsql", args: 4, defaults: 0, returns_json: true, grants: [] }]);
-  expect((await db.query(`SELECT COUNT(*)::int AS overloads FROM pg_proc WHERE proname=$1 AND pronamespace='public'::regnamespace`, [producer])).rows)
-    .toEqual([{ overloads: 1 }]);
+    WHERE p.oid=$1::regprocedure AND c.oid='public.subscription_cycle_occurrences'::regclass`, [sig])).rows)
+    .toEqual([{ volatility: "v", definer, settings: ["search_path=pg_catalog, pg_temp"],
+      owns: true, language: "plpgsql", args, defaults: 0, returns_json: true, grants: [], overloads: 1 }]);
 }
 
-async function assertNoCallers(db: Db) {
-  expect((await db.query(`SELECT proname::text FROM pg_proc WHERE oid<>$1::regprocedure AND strpos(lower(prosrc),$2)>0
+async function assertNoCallers(db: Db, sig = signature, name = producer, internalCaller?: string) {
+  expect((await db.query(`SELECT proname::text AS caller FROM pg_proc WHERE oid<>$1::regprocedure AND strpos(lower(prosrc),$2)>0
     UNION ALL SELECT rulename::text FROM pg_rewrite WHERE strpos(lower(pg_get_ruledef(oid)),$2)>0
     UNION ALL SELECT tgname::text FROM pg_trigger WHERE NOT tgisinternal AND strpos(lower(pg_get_triggerdef(oid)),$2)>0
     UNION ALL SELECT classid::regclass::text FROM pg_depend WHERE refclassid='pg_proc'::regclass AND refobjid=$1::regprocedure`,
-  [signature, producer])).rows).toEqual([]);
+  [sig, name])).rows).toEqual(internalCaller ? [{ caller: internalCaller }] : []);
 }
 
-async function assertDeniedPaths(db: Db, f: Awaited<ReturnType<typeof activation>>) {
+async function assertNoExecute(db: Db, sig: string) {
   expect((await db.query(`SELECT r.rolname FROM pg_roles r CROSS JOIN pg_proc p
     WHERE p.oid=$1::regprocedure AND (pg_has_role(current_user,r.oid,'USAGE') OR pg_has_role(current_user,r.oid,'SET'))
-      AND has_function_privilege(r.oid,p.oid,'EXECUTE')`, [signature])).rows).toEqual([]);
+      AND has_function_privilege(r.oid,p.oid,'EXECUTE')`, [sig])).rows).toEqual([]);
+}
+async function assertDeniedPaths(db: Db, f: Awaited<ReturnType<typeof activation>>) {
+  await assertNoExecute(db, signature);
   await expect(allocate(db, f)).rejects.toMatchObject(denied);
+}
+
+const writerNames = [read, lock, writer];
+const writerSignatures = writerNames.map(name => `public.${name}(${name === writer ? writerParameters : "uuid,uuid,uuid"})`);
+
+async function assertWriterAcl(db: Db) {
+  for (const [index, sig] of writerSignatures.entries()) {
+    await assertAcl(db, sig, index === 2 ? 9 : 3, index === 2);
+    await assertNoCallers(db, sig, writerNames[index]!, writerNames[index + 1]);
+  }
+}
+
+async function probeWriter(owner: Pool) {
+  await assertWriterAcl(owner);
+  const f = await rootFixture(owner);
+  const count = await probe(owner, writer, writerSignatures[2]!, "fixture_writer_entries");
+  const input = args(f);
+  expect(await count()).toBe(1);
+  await transaction(owner, async db => {
+    expect(await call(db, writer, input)).toMatchObject({ outcome: "created" });
+  }, "ROLLBACK");
+  await owner.query("UPDATE public.subscriptions SET next_cycle_at='2050-01-01Z' WHERE id=$1", [f.subscriptionId]);
+  await owner.query("DELETE FROM public.outbox_events WHERE aggregate_id=$1 AND event_type IN ('commerce.order.paid','commerce.order.paid.email')", [f.orderId]);
+  expect(await count()).toBe(2);
+  return { input, scope: f.scope, count };
 }
 
 function watchAttempts() {
@@ -145,6 +116,7 @@ function watchAttempts() {
     const input = args[0] as string | QueryConfig;
     const text = typeof input === "string" ? input : input.text;
     if (text?.toLowerCase().includes(producer)) attempts.push(this.user ?? "");
+    for (const name of writerNames) if (text?.toLowerCase().includes(name)) attempts.push(`${this.user}:${name}`);
     return Reflect.apply(query, this, args);
   });
   return { attempts, close: () => listener.mockRestore() };
@@ -197,28 +169,25 @@ async function dispatchEffects(db: Db) {
     (SELECT count(*)::int FROM public.payment_provider_attempts) AS provider_attempts,
     (SELECT count(*)::int FROM public.payment_simulator_attempts) AS simulator_attempts,
     (SELECT count(*)::int FROM public.transactional_delivery_receipts) AS send_receipts,
+    (SELECT count(*)::int FROM public.communication_recipient_consents) AS consents,
     (SELECT jsonb_agg(jsonb_build_array(event_type,status) ORDER BY event_type,status) FROM public.outbox_events) AS outbox`)).rows[0];
 }
 
 it.each([false, true])("preserves the mounted native worker with owner login and service role present=%s", async withService => {
-  async function exercise(candidate: boolean) {
-    if (!withService) {
-      return withMeasuredAccountPrefix(candidate ? catalogue : predecessor, "legacy", "occurrence-mount", store => run(store, candidate));
-    }
-    const container = await runPostgresContainer({ name: `occurrence-legacy-service-${process.pid}`, password: "synthetic-occurrence" });
-    const owner = new Pool({ connectionString: container.connectionString });
-    try {
-      expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
-      await owner.query("CREATE ROLE service_role NOLOGIN NOINHERIT BYPASSRLS");
-      await installMeasuredPrefix(candidate ? catalogue : predecessor, owner, { generation: "legacy" }, "legacy");
-      return await run({ owner, runtime: owner }, candidate);
-    } finally { await closePostgres(container, owner); }
+  async function exercise(boundary: keyof typeof boundaries) {
+    const store = await installMeasuredAccountPrefix(boundaries[boundary], withService ? "legacy-with-service" : "legacy", "occurrence-mount");
+    try { return await run(store, boundary); } finally { await store.close(); }
   }
 
-  async function run(pools: { owner: Pool; runtime: Pool }, candidate: boolean) {
-    const { owner, runtime } = pools;
+  async function run(pools: { owner: Pool; runtime: Pool }, boundary: keyof typeof boundaries) {
+    const { owner, runtime } = pools, candidate = boundary !== "before";
+    const writerProbe = boundary === "writer" ? await probeWriter(owner) : undefined;
     expect((await runtime.query("SELECT session_user,current_user")).rows).toEqual([{ session_user: "postgres", current_user: "postgres" }]);
-    const retained: Awaited<ReturnType<typeof occurrenceRows>> = [];
+    if (withService) expect((await owner.query(`SELECT
+      has_column_privilege('service_role','public.${occurrence}','client_id','SELECT') AS census,
+      has_table_privilege('service_role','public.${occurrence}','SELECT,INSERT,UPDATE,DELETE') AS table_access`)).rows)
+      .toEqual([{ census: true, table_access: false }]);
+    const retained = await occurrenceRows(owner);
     let count: (() => Promise<number>) | undefined;
     if (candidate) {
       await assertAcl(owner);
@@ -235,10 +204,15 @@ it.each([false, true])("preserves the mounted native worker with owner login and
           const login = new URL(owner.options.connectionString!);
           login.username = "fixture_occurrence_plain";
           login.password = "synthetic-occurrence";
-          if (!retained.length) {
+          if (retained.length === Number(Boolean(writerProbe))) {
             const negative = new Pool({ connectionString: login.toString() });
-            try { await assertDeniedPaths(negative, subject); } finally { await negative.end(); }
-            expect(watch.attempts.splice(0)).toEqual(["fixture_occurrence_plain"]);
+            try {
+              await assertDeniedPaths(negative, subject);
+              if (writerProbe) for (const entry of writerNames) await expect(call(negative, entry,
+                entry === writer ? writerProbe.input : writerProbe.scope)).rejects.toMatchObject({ code: "42501" });
+            } finally { await negative.end(); }
+            expect(watch.attempts.splice(0)).toEqual(["fixture_occurrence_plain",
+              ...(writerProbe ? writerNames.map(name => `fixture_occurrence_plain:${name}`) : [])]);
           }
           expect(await allocate(owner, subject)).toMatchObject({ outcome: "created", originalAnchorAt: subject.due });
           expect(watch.attempts.splice(0)).toEqual(["postgres"]);
@@ -249,19 +223,23 @@ it.each([false, true])("preserves the mounted native worker with owner login and
       expect(watch.attempts).toEqual([]);
       if (candidate) {
         expect(await count!()).toBe(4);
-        expect(retained).toHaveLength(3);
+        expect(retained).toHaveLength(3 + Number(Boolean(writerProbe)));
         expect(await occurrenceRows(owner)).toEqual(expect.arrayContaining(retained));
-        expect(await occurrenceRows(owner)).toHaveLength(3);
+        expect(await occurrenceRows(owner)).toHaveLength(retained.length);
+        if (writerProbe) expect(await writerProbe.count()).toBe(2);
         await emptyV3(owner);
       }
       return { effects, dispatch: await dispatchEffects(owner) };
     } finally { watch.close(); }
   }
-  expect(await exercise(true)).toEqual(await exercise(false));
+  const through = await exercise("through");
+  expect(through).toEqual(await exercise("before"));
+  expect(await exercise("writer")).toEqual(await exercise("beforeWriter"));
 }, postgresSetupTimeoutMs);
 
 it("compares a paid renewal under the actual starter login with a fixed occurrence on the renewed subscription", async () => {
-  async function exercise(candidate: boolean) {
+  async function exercise(boundary: keyof typeof boundaries) {
+    const candidate = boundary !== "before";
     const container = await runPostgresContainer({ name: `occurrence-starter-${process.pid}`, password: "synthetic-occurrence" });
     const owner = new Pool({ connectionString: container.connectionString });
     const installation = { generation: "qualified-v2", roleMode: "installer-managed", migrationLogin: "postgres",
@@ -273,7 +251,24 @@ it("compares a paid renewal under the actual starter login with a fixed occurren
       expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
       await owner.query(`CREATE ROLE starter_runtime LOGIN NOINHERIT PASSWORD 'synthetic-occurrence';
         CREATE ROLE starter_restore LOGIN NOINHERIT PASSWORD 'synthetic-occurrence'`);
-      await installMeasuredPrefix(candidate ? catalogue : predecessor, migration, installation, "bootstrap");
+      const prefix = boundary === "writer" ? boundaries.beforeWriter : boundaries[boundary];
+      await applyMeasuredStarterPrefix(prefix, migration, installation);
+      const definitions = () => owner.query(`SELECT oid::regprocedure::text,pg_get_functiondef(oid),proacl
+        FROM pg_proc WHERE pronamespace='public'::regnamespace AND proname IN
+        ('subscription_claim_due_renewal','commerce_prepare_subscription_renewal',
+        'customer_preferences_export','customer_preferences_prepare_erasure')
+        UNION ALL SELECT tgname::text,pg_get_triggerdef(oid),NULL FROM pg_trigger WHERE NOT tgisinternal
+        AND tgrelid IN ('public.subscription_renewal_operations'::regclass,'public.subscription_cycle_occurrences'::regclass)
+        ORDER BY 1`).then(r => r.rows);
+      const preimages = await definitions();
+      if (boundary === "writer") {
+        await applyMeasuredStarterPrefix(boundaries.writer, migration, installation, [writerPath]);
+        expect(await definitions()).toEqual(preimages);
+      }
+      const expired = await sandboxRenewal(migration);
+      expect(await call(migration, "fulfillment_reserve_subscription_renewal", [expired.operation, expired.token, 900, AT])).toMatchObject({ reserved: true });
+      await migration.query("UPDATE public.subscriptions SET next_cycle_at='2050-01-01Z' WHERE id=$1", [expired.subscription]);
+      const writerProbe = boundary === "writer" ? await probeWriter(migration) : undefined;
       const f = await transaction(migration, async db => {
         await call(db, "subscription_delivery_alignment_set_mode", ["off"]);
         const subject = await activation(db, 28, later(-29 * 24));
@@ -287,7 +282,7 @@ it("compares a paid renewal under the actual starter login with a fixed occurren
         }]);
         expect(await call(db, "subscription_complete_renewal_attachment", [subject.orderId]))
           .toMatchObject({ subscriptionId: subject.subscriptionId, replayed: false });
-        return { ...subject, destinationId };
+        return { ...subject, destinationId, source, basket };
       }, "COMMIT");
       // Isolate delivery produced by the mounted renewal from the activation's paid mail.
       await owner.query("DELETE FROM public.outbox_events WHERE event_type='commerce.order.paid.email'");
@@ -308,16 +303,53 @@ it("compares a paid renewal under the actual starter login with a fixed occurren
           expect(await count()).toBe(2);
           fixed = await occurrenceRows(owner);
         }
-        const run = await runScheduledRenewal(url.toString(), config);
+        const query = Pool.prototype.query;
+        let controlled = false;
+        const inject = writerProbe && vi.spyOn(Pool.prototype, "query").mockImplementation(function (this: Pool, ...input: Parameters<typeof query>) {
+          if (controlled || !String(input[0]).includes("session_user AS login,current_user AS role")) return Reflect.apply(query, this, input);
+          controlled = true;
+          return (async () => {
+            await expect(allocate(this, f)).rejects.toMatchObject(denied);
+            for (const name of writerNames) await expect(call(this, name, name === writer ? writerProbe.input : writerProbe.scope)).rejects.toMatchObject({ code: "42501" });
+            expect(watch.attempts.splice(0)).toEqual(["starter_runtime", ...writerNames.map(name => `starter_runtime:${name}`)]);
+            expect(await writerProbe.count()).toBe(2);
+            expect(await count?.()).toBe(2);
+            return Reflect.apply(query, this, input);
+          })();
+        });
+        const run = await runScheduledRenewal(url.toString(), config).finally(() => inject?.mockRestore());
+        if (writerProbe) { expect(controlled).toBe(true); expect(await writerProbe.count()).toBe(2); }
         expect(run).toMatchObject({ retries: [], renewals: [{ subscriptionId: f.subscriptionId, status: "succeeded" }],
           paidMail: { claimed: 0, processed: 0 } });
         if (!("renewals" in run)) throw new Error("Starter renewal did not run");
         expect(run.renewals).toHaveLength(1);
+        expect((await owner.query("SELECT status,terminal_reason FROM public.fulfillment_inventory_reservations WHERE renewal_operation_id=$1",
+          [expired.operation])).rows).toEqual([{ status: "expired", terminal_reason: "reservation_expired" }]);
         const [result] = run.renewals;
         const readback = await call(runtime, "subscription_read_renewal", [result!.identityKey]);
         expect(readback).toMatchObject({ operationId: result!.operationId, state: "succeeded",
           cycleSnapshot: { subscriptionId: f.subscriptionId, orderSnapshot: { shippingAddressRef: f.destinationId } } });
-        const persisted = (await owner.query(`SELECT o.state, c.status AS cycle, ord.status AS "order", i.status AS settlement,
+        const { frozenFingerprint, ...wire } = readback.cycleSnapshot;
+        expect(frozenFingerprint).toBe(sha256(canonical(wire)));
+        expect(readback.operationFingerprint).toBe(frozenFingerprint);
+        const ids = { client: f.clientId, subscription: f.subscriptionId, activationCycle: f.cycleId,
+          activationOrder: f.orderId, destination: f.destinationId, stockSource: f.source, operation: readback.operationId,
+          claim: readback.claimToken, reservation: readback.reservationId, cycle: readback.cycleId,
+          order: readback.orderId, intent: readback.settlementIntentId,
+          ...Object.fromEntries(f.basket.map(({ sku, lineOrdinal }) => [`stockItem${lineOrdinal}`, sku.slice("SKU-".length)])) };
+        const normalizedBytes = (value: unknown) => Object.entries(ids).reduce((bytes, [label, id]) =>
+          typeof id === "string" ? bytes.replaceAll(id, `<${label}>`) : bytes, canonical(value));
+        const normalizedFingerprint = sha256(normalizedBytes(wire));
+        const retained = { ...readback, operationFingerprint: normalizedFingerprint,
+          cycleSnapshot: { ...wire, frozenFingerprint: normalizedFingerprint },
+          externalAttemptRef: readback.externalAttemptRef.replace(/:\d{4}-\d{2}-\d{2}T[\d:.]+Z$/u, ":<attempt-time>") };
+        for (const key of ["leaseExpiresAt", "externalAttemptAcknowledgedAt", "terminalAt"]) {
+          if (retained[key] === null) continue;
+          expect(Number.isFinite(Date.parse(retained[key])), key).toBe(true);
+          retained[key] = "<runtime-time>";
+        }
+        const persisted = (await owner.query(`SELECT o.state, o.cycle_snapshot AS snapshot, o.operation_fingerprint AS fingerprint,
+          c.status AS cycle, ord.status AS "order", i.status AS settlement,
           r.status AS reservation, s.next_cycle_at > $2::timestamptz AS advanced,
           o.external_attempt_ref LIKE ('sandbox-renewal:'||o.id::text||':succeeded:%') AS acknowledged,
           (SELECT count(*)::int FROM public.subscription_renewal_outcomes a WHERE a.renewal_operation_id=o.id
@@ -329,7 +361,8 @@ it("compares a paid renewal under the actual starter login with a fixed occurren
           JOIN public.commerce_settlement_intents i ON i.renewal_operation_id=o.id
           JOIN public.fulfillment_inventory_reservations r ON r.renewal_operation_id=o.id
           WHERE o.id=$1 AND s.id=$3`, [readback.operationId, AT, f.subscriptionId])).rows;
-        expect(persisted).toEqual([{ state: "succeeded", cycle: "paid", order: "paid", settlement: "settled",
+        expect(persisted).toEqual([{ state: "succeeded", snapshot: readback.cycleSnapshot, fingerprint: frozenFingerprint,
+          cycle: "paid", order: "paid", settlement: "settled",
           reservation: "consumed", advanced: true, acknowledged: true, observations: 1 }]);
         expect(watch.attempts).toEqual([]);
         if (count) {
@@ -342,18 +375,68 @@ it("compares a paid renewal under the actual starter login with a fixed occurren
         const dispatch = await dispatchEffects(owner);
         expect(dispatch).toMatchObject({ provider_attempts: 0, simulator_attempts: 0, send_receipts: 0 });
         return { transcript: { status, reason, replayed, retries: run.retries, paidMail },
-          readback: { state: readback.state, terminalReason: readback.terminalReason, cycleNumber: readback.cycleNumber },
-          persisted, dispatch };
+          retained: normalizedBytes(retained), dispatch, preimages };
       } finally { watch.close(); }
     } finally { await closePostgres(container, [runtime, migration, owner]); }
   }
-  expect(await exercise(true)).toEqual(await exercise(false));
+  const through = await exercise("through");
+  expect(through).toEqual(await exercise("before"));
+  expect(await exercise("writer")).toEqual(await exercise("beforeWriter"));
 }, postgresSetupTimeoutMs);
 
 it("has no mounted source callers and is absent from managed migrations", () => {
-  for (const root of ["server", "src", "api", "packages/platform/src", "examples/neutral-store", "supabase/migrations"]) {
+  for (const root of ["server", "src", "api", ...readdirSync("packages", { withFileTypes: true })
+    .filter(entry => entry.isDirectory() && readdirSync(`packages/${entry.name}`).includes("src")).map(entry => `packages/${entry.name}/src`),
+    "examples/neutral-store", "supabase/migrations"]) {
     for (const file of readdirSync(root, { recursive: true, encoding: "utf8" }).filter(path => /\.(?:[cm]?[jt]sx?|sql)$/u.test(path))) {
-      expect(readFileSync(`${root}/${file}`, "utf8").toLowerCase().includes(producer), `${root}/${file}`).toBe(false);
+      const content = readFileSync(`${root}/${file}`, "utf8").toLowerCase();
+      for (const routine of [producer, read, lock, writer]) expect(content.includes(routine), `${root}/${file}`).toBe(false);
     }
   }
 });
+
+it.each(["bootstrap", "separate", "admin-managed", "admin-operator"] as const)(
+  "keeps the three writer routines private under the installed %s roles and permissive defaults", profile => withMeasuredAccountPrefix(boundaries.writer, profile, "writer-acl", async store => {
+    const owner = store.migrator, f = await rootFixture(owner);
+    const pristine = await occurrenceRows(owner);
+    await assertWriterAcl(owner);
+    await assertNoCallers(owner);
+    for (const [index, name] of writerNames.entries()) {
+      const input = name === writer ? args(f) : f.scope;
+      await assertNoExecute(store.runtime, writerSignatures[index]!);
+      await expect(call(store.runtime, name, input)).rejects.toMatchObject({ code: "42501" });
+      await transaction(store.owner, async db => {
+        await db.query(`CREATE ROLE fixture_writer_other LOGIN NOINHERIT;
+          CREATE FUNCTION public.fixture_writer_relay() RETURNS jsonb LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+          AS ${db.escapeLiteral(`SELECT public.${name}(${input.map(value => db.escapeLiteral(String(value))).join(",")})`)};
+          ALTER FUNCTION public.fixture_writer_relay() OWNER TO fixture_writer_other`);
+        await expect(call(db, "fixture_writer_relay", [])).rejects.toMatchObject({ code: "42501" });
+      }, "ROLLBACK");
+      expect(await occurrenceRows(owner)).toEqual(pristine);
+    }
+    const { role } = (await owner.query("SELECT current_user AS role")).rows[0];
+    const { login } = (await store.runtime.query("SELECT session_user AS login")).rows[0];
+    await transaction(store.owner, async db => {
+      await db.query(`SET LOCAL ROLE ${db.escapeIdentifier(String(role))}`);
+      await db.query(`DROP FUNCTION ${writerSignatures.join(",")};
+        ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon,authenticated,service_role;
+        CREATE FUNCTION public.fixture_writer_default_control() RETURNS boolean LANGUAGE sql AS 'SELECT true'`);
+      expect((await db.query(`SELECT grantee::regrole::text AS role FROM pg_proc p,aclexplode(p.proacl)
+        WHERE p.oid='public.fixture_writer_default_control()'::regprocedure AND grantee NOT IN (0,p.proowner) ORDER BY role`)).rows)
+        .toEqual(["anon", "authenticated", "service_role"].map(role => ({ role })));
+      await db.query(readFileSync(writerPath, "utf8"));
+      await assertWriterAcl(db);
+      expect(await call(db, writer, args(f))).toMatchObject({ outcome: "created" });
+      await db.query("RESET ROLE");
+      for (const nonOwner of ["anon", "authenticated", "service_role", String(login)]) {
+        for (const name of writerNames) {
+          await db.query(`SAVEPOINT denial; SET LOCAL ROLE ${db.escapeIdentifier(nonOwner)}`);
+          await expect(call(db, name, name === writer ? args(f) : f.scope)).rejects.toMatchObject({ code: "42501" });
+          await db.query("ROLLBACK TO SAVEPOINT denial; RELEASE SAVEPOINT denial");
+        }
+      }
+    }, "ROLLBACK");
+    expect(await occurrenceRows(owner)).toEqual(pristine);
+    expect((await store.runtime.query(`SELECT EXISTS(SELECT FROM public.${operations} WHERE subscription_id=$1) AS created`,
+      [f.subscriptionId])).rows).toEqual([{ created: false }]);
+  }), postgresSetupTimeoutMs);

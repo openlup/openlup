@@ -10302,8 +10302,50 @@
         "dataStatements": []
       },
       {
+        "row": "subscription-renewal-current-template",
+        "path": "db/platform/migrations/20261129160009_subscription_renewal_current_template.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.subscription_claim_due_renewal(text,text,jsonb,text,integer,timestamptz)",
+            "beforeSha256": "2254be1e89681884dbd9823ab13f1f55961071fe75325e22e019343c9edf5248",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_delivery_alignment_on_delivery()",
+            "beforeSha256": "7a7bc2bd0e926b7d4c4be060fc14937cabc4b4b057607dccf54b864502aad21f",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": [
+          "INSERT INTO public.subscription_renewal_upgrade_cohort (renewal_operation_id, unknown_provenance)\nWITH billing_operations AS MATERIALIZED (\n  SELECT o.id, o.subscription_id,\n         jsonb_path_query_first(o.cycle_snapshot, 'strict $.templateSnapshot.version ? (\n           @.type() == \"number\" && @ > 0 && @ <= 2147483647 && @.floor() == @\n         )', '{}'::jsonb, true) AS snapshot_version\n    FROM public.subscription_renewal_operations o\n   WHERE CASE\n     WHEN jsonb_typeof(o.cycle_snapshot->'lines') IS DISTINCT FROM 'array'\n       OR o.cycle_snapshot->>'contractVersion' = 'platform.subscription.renewal.v3' THEN false\n     WHEN pg_input_is_valid(o.cycle_snapshot->>'totalAmountMinor', 'bigint') THEN\n       btrim(o.cycle_snapshot->>'settlementChannelKey') <> ''\n       AND o.cycle_snapshot->>'currency' ~ '^[A-Z]{3}$'\n       AND (o.cycle_snapshot->>'totalAmountMinor')::bigint > 0\n       AND jsonb_array_length(o.cycle_snapshot->'lines') > 0\n       AND NOT EXISTS (\n         SELECT 1 FROM jsonb_array_elements(o.cycle_snapshot->'lines') AS line(value)\n          WHERE (CASE\n            WHEN pg_input_is_valid(value->>'quantity', 'integer')\n              AND pg_input_is_valid(value->>'unitAmountMinor', 'bigint')\n            THEN btrim(value->>'sku') <> ''\n              AND (value->>'quantity')::integer > 0\n              AND (value->>'unitAmountMinor')::bigint >= 0\n          END) IS NOT TRUE\n       )\n     ELSE false\n   END\n)\nSELECT o.id, o.snapshot_version IS NULL\n  FROM billing_operations o\n  JOIN public.subscriptions s ON s.id = o.subscription_id\n WHERE o.snapshot_version IS DISTINCT FROM to_jsonb(s.template_version);"
+        ]
+      },
+      {
+        "row": "native-renewal-occurrence-writer",
+        "path": "db/platform/migrations/20261129160010_native_renewal_occurrence_writer.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.subscriptions__read_renewal_occurrence(uuid,uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscriptions__lock_renewal_occurrence(uuid,uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscriptions__create_renewal_v3_root(uuid,uuid,uuid,uuid,integer,text,text,text,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "subscription-destination-renewal-acquisition",
-        "path": "db/platform/migrations/20261129160009_subscription_destination_renewal_acquisition_v2.sql",
+        "path": "db/platform/migrations/20261129160011_subscription_destination_renewal_acquisition_v2.sql",
         "replacedFunctions": [
           {
             "signature": "public.classify_order_destination(uuid,public.commerce_destination_v2_documents,text)",
@@ -10352,7 +10394,7 @@
       },
       {
         "row": "commerce-destination-v2-renewal-replay-guidance",
-        "path": "db/platform/migrations/20261129160010_commerce_destination_v2_renewal_replay_guidance.sql",
+        "path": "db/platform/migrations/20261129160012_commerce_destination_v2_renewal_replay_guidance.sql",
         "replacedFunctions": [
           {
             "signature": "public.commerce_register_order_destination_v2(jsonb,uuid,text,uuid,uuid,jsonb,jsonb)",
@@ -15115,7 +15157,44 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261129160009_subscription_destination_renewal_acquisition_v2.sql",
+      "path": "db/platform/migrations/20261129160009_subscription_renewal_current_template.sql",
+      "sha256": "2ea799158ecb569eed5d9c2ec42f2d14c10ff80273d9502c8b16632d672129cf",
+      "functions": [
+        {
+          "signature": "public.subscription_claim_due_renewal(text,text,jsonb,text,integer,timestamptz)",
+          "beforeSha256": "2254be1e89681884dbd9823ab13f1f55961071fe75325e22e019343c9edf5248",
+          "afterSha256": "622a88ba93a289ac28ed55ada351ad4f587b1e8cee40b404768db11ef78bf41f"
+        },
+        {
+          "signature": "public.subscription_delivery_alignment_on_delivery()",
+          "beforeSha256": "7a7bc2bd0e926b7d4c4be060fc14937cabc4b4b057607dccf54b864502aad21f",
+          "afterSha256": "08dfa7056ce94ed23e896f036d42e401a5bfe66ac34de256f65465966c231239"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261129160010_native_renewal_occurrence_writer.sql",
+      "sha256": "6eea804c693944bbf0af377ebfa122d1ad213a4da62c939e68dfa7bf9cf6d6fc",
+      "functions": [
+        {
+          "signature": "public.subscriptions__read_renewal_occurrence(uuid,uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "5b3072d2f80fa22c9fe1ba86b836aaa87d8963a2070d4eb100d926b7797647f6"
+        },
+        {
+          "signature": "public.subscriptions__lock_renewal_occurrence(uuid,uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "3d19e8336fbf63ae4cbd07edfe1efed693ddce9444e9e7087bf3ca536a8e540e"
+        },
+        {
+          "signature": "public.subscriptions__create_renewal_v3_root(uuid,uuid,uuid,uuid,integer,text,text,text,integer)",
+          "beforeSha256": null,
+          "afterSha256": "58a3a94c7e23bbd4f22ececaa78c471b2022d8b80f497cd5131b46e572d29eda"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261129160011_subscription_destination_renewal_acquisition_v2.sql",
       "sha256": "1e18cd76321acec4ffdd46294f79247c83614d9ff985b262d84f495fca14b8ac",
       "functions": [
         {
@@ -15161,7 +15240,7 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261129160010_commerce_destination_v2_renewal_replay_guidance.sql",
+      "path": "db/platform/migrations/20261129160012_commerce_destination_v2_renewal_replay_guidance.sql",
       "sha256": "b4fbd6403eea9ef3446f45dbcaef587d29d774e67d969be4712107bc2efb49c7",
       "functions": [
         {

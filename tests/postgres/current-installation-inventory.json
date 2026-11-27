@@ -2,17 +2,25 @@
   "current": {
     "profiles": {
       "legacy": {
-        "count": 244,
-        "exactTailCount": 134,
-        "objectInventorySha256": "1eba87b5e61557250466b14135ffbf57c71c743a39d8511e7f4140d013e0aef1",
+        "count": 246,
+        "exactTailCount": 136,
+        "objectInventorySha256": "c9f9f2a80e146117bf996d3bea268133910a737796e93b94fa7dc491597199db",
         "tail": [
           {
-            "file": "db/platform/migrations/20261129160010_commerce_destination_v2_renewal_replay_guidance.sql",
+            "file": "db/platform/migrations/20261129160012_commerce_destination_v2_renewal_replay_guidance.sql",
             "sha256": "b4fbd6403eea9ef3446f45dbcaef587d29d774e67d969be4712107bc2efb49c7"
           },
           {
-            "file": "db/platform/migrations/20261129160009_subscription_destination_renewal_acquisition_v2.sql",
+            "file": "db/platform/migrations/20261129160011_subscription_destination_renewal_acquisition_v2.sql",
             "sha256": "1e18cd76321acec4ffdd46294f79247c83614d9ff985b262d84f495fca14b8ac"
+          },
+          {
+            "file": "db/platform/migrations/20261129160010_native_renewal_occurrence_writer.sql",
+            "sha256": "6eea804c693944bbf0af377ebfa122d1ad213a4da62c939e68dfa7bf9cf6d6fc"
+          },
+          {
+            "file": "db/platform/migrations/20261129160009_subscription_renewal_current_template.sql",
+            "sha256": "2ea799158ecb569eed5d9c2ec42f2d14c10ff80273d9502c8b16632d672129cf"
           },
           {
             "file": "db/platform/migrations/20261129160008_native_renewal_occurrence_producer.sql",
@@ -985,17 +993,25 @@
         ]
       },
       "bootstrap": {
-        "count": 250,
-        "exactTailCount": 135,
-        "objectInventorySha256": "47a1f1b92e7821d42ccb9e738cb0f921b2f6b97663a584135c608d35a6dde387",
+        "count": 252,
+        "exactTailCount": 137,
+        "objectInventorySha256": "68e7c09bbbf5ee2b592fc4514766ff127de1d9d248159a2dcc91739911883765",
         "tail": [
           {
-            "file": "db/platform/migrations/20261129160010_commerce_destination_v2_renewal_replay_guidance.sql",
+            "file": "db/platform/migrations/20261129160012_commerce_destination_v2_renewal_replay_guidance.sql",
             "sha256": "b4fbd6403eea9ef3446f45dbcaef587d29d774e67d969be4712107bc2efb49c7"
           },
           {
-            "file": "db/platform/migrations/20261129160009_subscription_destination_renewal_acquisition_v2.sql",
+            "file": "db/platform/migrations/20261129160011_subscription_destination_renewal_acquisition_v2.sql",
             "sha256": "1e18cd76321acec4ffdd46294f79247c83614d9ff985b262d84f495fca14b8ac"
+          },
+          {
+            "file": "db/platform/migrations/20261129160010_native_renewal_occurrence_writer.sql",
+            "sha256": "6eea804c693944bbf0af377ebfa122d1ad213a4da62c939e68dfa7bf9cf6d6fc"
+          },
+          {
+            "file": "db/platform/migrations/20261129160009_subscription_renewal_current_template.sql",
+            "sha256": "2ea799158ecb569eed5d9c2ec42f2d14c10ff80273d9502c8b16632d672129cf"
           },
           {
             "file": "db/platform/migrations/20261129160008_native_renewal_occurrence_producer.sql",
@@ -1992,17 +2008,25 @@
         ]
       },
       "separate": {
-        "count": 250,
-        "exactTailCount": 135,
-        "objectInventorySha256": "689909718e83ff91bdf8b682aae6e7160a0a9cef7c22b1f46e776b89593f0a4e",
+        "count": 252,
+        "exactTailCount": 137,
+        "objectInventorySha256": "a8e34da7488853e6ace21b6f080a49adb91531e4a93ecd23e81953067571549d",
         "tail": [
           {
-            "file": "db/platform/migrations/20261129160010_commerce_destination_v2_renewal_replay_guidance.sql",
+            "file": "db/platform/migrations/20261129160012_commerce_destination_v2_renewal_replay_guidance.sql",
             "sha256": "b4fbd6403eea9ef3446f45dbcaef587d29d774e67d969be4712107bc2efb49c7"
           },
           {
-            "file": "db/platform/migrations/20261129160009_subscription_destination_renewal_acquisition_v2.sql",
+            "file": "db/platform/migrations/20261129160011_subscription_destination_renewal_acquisition_v2.sql",
             "sha256": "1e18cd76321acec4ffdd46294f79247c83614d9ff985b262d84f495fca14b8ac"
+          },
+          {
+            "file": "db/platform/migrations/20261129160010_native_renewal_occurrence_writer.sql",
+            "sha256": "6eea804c693944bbf0af377ebfa122d1ad213a4da62c939e68dfa7bf9cf6d6fc"
+          },
+          {
+            "file": "db/platform/migrations/20261129160009_subscription_renewal_current_template.sql",
+            "sha256": "2ea799158ecb569eed5d9c2ec42f2d14c10ff80273d9502c8b16632d672129cf"
           },
           {
             "file": "db/platform/migrations/20261129160008_native_renewal_occurrence_producer.sql",
@@ -2999,17 +3023,25 @@
         ]
       },
       "admin-managed": {
-        "count": 248,
-        "exactTailCount": 134,
-        "objectInventorySha256": "5cf334c6ad4f69ab8cfc70051253d058e4bed83255410ec8de688887103375b4",
+        "count": 250,
+        "exactTailCount": 136,
+        "objectInventorySha256": "9610cbb7f1e7be3a47019f1616857ae572ce6a923b16afaf3432fc972ade76df",
         "tail": [
           {
-            "file": "db/platform/migrations/20261129160010_commerce_destination_v2_renewal_replay_guidance.sql",
+            "file": "db/platform/migrations/20261129160012_commerce_destination_v2_renewal_replay_guidance.sql",
             "sha256": "b4fbd6403eea9ef3446f45dbcaef587d29d774e67d969be4712107bc2efb49c7"
           },
           {
-            "file": "db/platform/migrations/20261129160009_subscription_destination_renewal_acquisition_v2.sql",
+            "file": "db/platform/migrations/20261129160011_subscription_destination_renewal_acquisition_v2.sql",
             "sha256": "1e18cd76321acec4ffdd46294f79247c83614d9ff985b262d84f495fca14b8ac"
+          },
+          {
+            "file": "db/platform/migrations/20261129160010_native_renewal_occurrence_writer.sql",
+            "sha256": "6eea804c693944bbf0af377ebfa122d1ad213a4da62c939e68dfa7bf9cf6d6fc"
+          },
+          {
+            "file": "db/platform/migrations/20261129160009_subscription_renewal_current_template.sql",
+            "sha256": "2ea799158ecb569eed5d9c2ec42f2d14c10ff80273d9502c8b16632d672129cf"
           },
           {
             "file": "db/platform/migrations/20261129160008_native_renewal_occurrence_producer.sql",
@@ -3998,17 +4030,25 @@
         ]
       },
       "admin-operator": {
-        "count": 248,
-        "exactTailCount": 134,
-        "objectInventorySha256": "40b651aad7e07c64d02a77a18b6918ed06e6304626eacf2fb9e9c9122a96cb6d",
+        "count": 250,
+        "exactTailCount": 136,
+        "objectInventorySha256": "3e1592e699fc6e7276f9c4cbee1c4ec2221fd79547afd255663cf6d6f4ba6e16",
         "tail": [
           {
-            "file": "db/platform/migrations/20261129160010_commerce_destination_v2_renewal_replay_guidance.sql",
+            "file": "db/platform/migrations/20261129160012_commerce_destination_v2_renewal_replay_guidance.sql",
             "sha256": "b4fbd6403eea9ef3446f45dbcaef587d29d774e67d969be4712107bc2efb49c7"
           },
           {
-            "file": "db/platform/migrations/20261129160009_subscription_destination_renewal_acquisition_v2.sql",
+            "file": "db/platform/migrations/20261129160011_subscription_destination_renewal_acquisition_v2.sql",
             "sha256": "1e18cd76321acec4ffdd46294f79247c83614d9ff985b262d84f495fca14b8ac"
+          },
+          {
+            "file": "db/platform/migrations/20261129160010_native_renewal_occurrence_writer.sql",
+            "sha256": "6eea804c693944bbf0af377ebfa122d1ad213a4da62c939e68dfa7bf9cf6d6fc"
+          },
+          {
+            "file": "db/platform/migrations/20261129160009_subscription_renewal_current_template.sql",
+            "sha256": "2ea799158ecb569eed5d9c2ec42f2d14c10ff80273d9502c8b16632d672129cf"
           },
           {
             "file": "db/platform/migrations/20261129160008_native_renewal_occurrence_producer.sql",
@@ -4997,7 +5037,7 @@
         ]
       }
     },
-    "connectedTableCount": 197
+    "connectedTableCount": 198
   },
   "historical": {}
 }

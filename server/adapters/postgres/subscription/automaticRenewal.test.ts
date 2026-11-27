@@ -61,8 +61,15 @@ describe("postgres automatic renewal adapters", () => {
     expect(claim?.[0]).toContain("$1::text");
     expect(claim?.[1]).toEqual([
       `subscription:${SUBSCRIPTION_ID}:cycle:${SCHEDULED_AT}`,
-      automaticRenewalFingerprint(snapshot), JSON.stringify(snapshot), "worker-a", 300, SCHEDULED_AT,
+      automaticRenewalFingerprint(snapshot), JSON.stringify({
+        contractVersion: "platform.subscription.renewal.claim-build.v1", buildTemplateVersion: 2, cycleSnapshot: snapshot,
+      }), "worker-a", 300, SCHEDULED_AT,
     ]);
+    for (const input of [{ ...snapshot }, snapshot]) {
+      if (input === snapshot) input.totalAmountMinor++;
+      await port.claimDue({ snapshot: input, workerId: "worker-a", now: SCHEDULED_AT });
+      expect(query.mock.lastCall?.[1]?.[2]).toBe(JSON.stringify(input));
+    }
   });
 
   it("keeps ATP reservation/release/expiry behind narrow parameterized functions", async () => {
@@ -121,7 +128,7 @@ describe("postgres automatic renewal adapters", () => {
 
 function header() {
   return {
-    subscription_id: SUBSCRIPTION_ID, client_id: CLIENT_ID,
+    subscription_id: SUBSCRIPTION_ID, client_id: CLIENT_ID, template_version: 2,
     scheduled_at: SCHEDULED_AT, cycle_number: 4,
     currency_code: "XTS", stock_source_key: "primary", settlement_channel_key: "configured",
     authorization_ref: "authorization-1", unattended_charge_authorized_at: SCHEDULED_AT,
