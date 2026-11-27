@@ -93,7 +93,8 @@ async function readOccurrences(db: PgQueryExecutor, subject: Pick<ResolvedPrivac
     return { parents, occurrences: parsed.data };
   } catch (cause) {
     if (cause instanceof PrivacyRefusal) throw cause;
-    if (cause instanceof Error && cause.message === "occurrence_privacy_scope_unavailable") unavailableOccurrenceScope(cause);
+    if (cause instanceof Error && "code" in cause && cause.code === "P0001"
+      && cause.message === "occurrence_privacy_scope_unavailable") unavailableOccurrenceScope(cause);
     throw nativePrivacyUnavailable(cause);
   }
 }

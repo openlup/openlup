@@ -418,6 +418,7 @@ DECLARE
   receipt_count bigint;
   parent_count bigint;
   previous_row_security text;
+  reading regclass[];
   helper constant regprocedure := 'public.subscriptions__read_renewal_occurrences_for_privacy(uuid,uuid)'::regprocedure;
 BEGIN
   -- Refuse unexpected inherited default privileges before any subject read.
@@ -435,50 +436,64 @@ BEGIN
     RAISE EXCEPTION 'occurrence_privacy_scope_unavailable';
   END IF;
 
-  -- Refuse filtered evidence and restore the caller's setting before returning.
-  previous_row_security := current_setting('row_security');
-  PERFORM set_config('row_security', 'off', true);
-  WITH aliases AS (
-    SELECT id AS client_id, principal_id FROM public.clients WHERE id = p_client OR principal_id = p_principal
-    UNION
-    SELECT client_id, principal_id FROM public.identity_privacy_erasures WHERE client_id = p_client OR principal_id = p_principal
-  )
-  SELECT EXISTS (SELECT FROM aliases
-      WHERE (client_id IS NOT NULL AND client_id IS DISTINCT FROM p_client)
-         OR (principal_id IS NOT NULL AND principal_id IS DISTINCT FROM p_principal))
-    OR (p_client IS NOT NULL AND p_principal IS NOT NULL AND NOT EXISTS (
-        SELECT FROM aliases WHERE client_id = p_client AND principal_id = p_principal))
-  INTO invalid_scope;
-  IF invalid_scope THEN RAISE EXCEPTION 'occurrence_privacy_scope_unavailable'; END IF;
-  SELECT count(*) INTO receipt_count
-  FROM public.identity_privacy_erasures WHERE client_id = p_client OR principal_id = p_principal;
-  IF receipt_count > 1 THEN RAISE EXCEPTION 'occurrence_privacy_scope_unavailable'; END IF;
-  IF receipt_count = 0
-    AND NOT EXISTS (SELECT FROM public.clients WHERE id = p_client)
-    AND NOT EXISTS (SELECT FROM public.platform_human_principals WHERE principal_id = p_principal) THEN
-    PERFORM set_config('row_security', previous_row_security, true);
-    RETURN '{"missing":true}'::jsonb;
-  END IF;
-  SELECT count(*) INTO parent_count FROM public.subscriptions WHERE client_id = p_client;
+  BEGIN
+    -- Refuse filtered evidence and restore the caller's setting before returning.
+    previous_row_security := current_setting('row_security');
+    PERFORM set_config('row_security', 'off', true);
+    reading := ARRAY['public.clients'::regclass, 'public.identity_privacy_erasures'::regclass];
+    WITH aliases AS (
+      SELECT id AS client_id, principal_id FROM public.clients WHERE id = p_client OR principal_id = p_principal
+      UNION
+      SELECT client_id, principal_id FROM public.identity_privacy_erasures WHERE client_id = p_client OR principal_id = p_principal
+    )
+    SELECT EXISTS (SELECT FROM aliases
+        WHERE (client_id IS NOT NULL AND client_id IS DISTINCT FROM p_client)
+           OR (principal_id IS NOT NULL AND principal_id IS DISTINCT FROM p_principal))
+      OR (p_client IS NOT NULL AND p_principal IS NOT NULL AND NOT EXISTS (
+          SELECT FROM aliases WHERE client_id = p_client AND principal_id = p_principal))
+    INTO invalid_scope;
+    IF invalid_scope THEN RAISE EXCEPTION 'occurrence_privacy_scope_unavailable'; END IF;
+    reading := ARRAY['public.identity_privacy_erasures'::regclass];
+    SELECT count(*) INTO receipt_count
+    FROM public.identity_privacy_erasures WHERE client_id = p_client OR principal_id = p_principal;
+    IF receipt_count > 1 THEN RAISE EXCEPTION 'occurrence_privacy_scope_unavailable'; END IF;
+    reading := ARRAY['public.clients'::regclass, 'public.platform_human_principals'::regclass];
+    IF receipt_count = 0
+      AND NOT EXISTS (SELECT FROM public.clients WHERE id = p_client)
+      AND NOT EXISTS (SELECT FROM public.platform_human_principals WHERE principal_id = p_principal) THEN
+      PERFORM set_config('row_security', previous_row_security, true);
+      RETURN '{"missing":true}'::jsonb;
+    END IF;
+    reading := ARRAY['public.subscriptions'::regclass];
+    SELECT count(*) INTO parent_count FROM public.subscriptions WHERE client_id = p_client;
 
-  SELECT coalesce(jsonb_agg(jsonb_build_object(
-      'subscriptionId', o.subscription_id, 'cycleKey', o.cycle_key, 'rail', o.rail, 'lifecycle', o.lifecycle,
-      'originalAnchorAt', to_char(o.original_anchor_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
-      'effectiveDueAt', to_char(o.effective_due_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
-      'cancellationEffectiveAt', to_char(o.cancellation_effective_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')
-    ) ORDER BY o.subscription_id, o.cycle_key), '[]'::jsonb),
-    coalesce(bool_or(o.client_id IS DISTINCT FROM p_client OR s.client_id IS DISTINCT FROM p_client
-      OR t.minimum < '0001-01-01 00:00:00+00' OR t.maximum >= '10000-01-01 00:00:00+00'), false)
-    INTO occurrences, invalid_scope
-    FROM public.subscription_cycle_occurrences o LEFT JOIN public.subscriptions s ON s.id = o.subscription_id
-    CROSS JOIN LATERAL (
-      SELECT least(o.original_anchor_at, o.effective_due_at, o.cancellation_effective_at) AS minimum,
-             greatest(o.original_anchor_at, o.effective_due_at, o.cancellation_effective_at) AS maximum
-    ) t
-    WHERE o.client_id = p_client OR s.client_id = p_client;
-  PERFORM set_config('row_security', previous_row_security, true);
-  IF invalid_scope THEN RAISE EXCEPTION 'occurrence_privacy_scope_unavailable'; END IF;
-  RETURN jsonb_build_object('occurrences', occurrences, 'hasReceipt', receipt_count = 1, 'parentCount', parent_count::text);
+    reading := ARRAY['public.subscription_cycle_occurrences'::regclass, 'public.subscriptions'::regclass];
+    SELECT coalesce(jsonb_agg(jsonb_build_object(
+        'subscriptionId', o.subscription_id, 'cycleKey', o.cycle_key, 'rail', o.rail, 'lifecycle', o.lifecycle,
+        'originalAnchorAt', to_char(o.original_anchor_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
+        'effectiveDueAt', to_char(o.effective_due_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
+        'cancellationEffectiveAt', to_char(o.cancellation_effective_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')
+      ) ORDER BY o.subscription_id, o.cycle_key), '[]'::jsonb),
+      coalesce(bool_or(o.client_id IS DISTINCT FROM p_client OR s.client_id IS DISTINCT FROM p_client
+        OR t.minimum < '0001-01-01 00:00:00+00' OR t.maximum >= '10000-01-01 00:00:00+00'), false)
+      INTO occurrences, invalid_scope
+      FROM public.subscription_cycle_occurrences o LEFT JOIN public.subscriptions s ON s.id = o.subscription_id
+      CROSS JOIN LATERAL (
+        SELECT least(o.original_anchor_at, o.effective_due_at, o.cancellation_effective_at) AS minimum,
+               greatest(o.original_anchor_at, o.effective_due_at, o.cancellation_effective_at) AS maximum
+      ) t
+      WHERE o.client_id = p_client OR s.client_id = p_client;
+    PERFORM set_config('row_security', previous_row_security, true);
+    IF invalid_scope THEN RAISE EXCEPTION 'occurrence_privacy_scope_unavailable'; END IF;
+    RETURN jsonb_build_object('occurrences', occurrences, 'hasReceipt', receipt_count = 1, 'parentCount', parent_count::text);
+  EXCEPTION WHEN insufficient_privilege THEN
+    -- The subtransaction restored row_security. RLS is checked during rewrite, before relation ACLs.
+    IF has_schema_privilege('public', 'USAGE')
+      AND EXISTS (SELECT FROM unnest(reading) AS r(relation) WHERE row_security_active(r.relation)) THEN
+      RAISE EXCEPTION 'occurrence_privacy_scope_unavailable';
+    END IF;
+    RAISE;
+  END;
 END;
 $$;
 
