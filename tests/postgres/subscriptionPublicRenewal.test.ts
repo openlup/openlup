@@ -407,25 +407,29 @@ async function parcel(orderId: string, db = executor) {
   return (await spine.createShipment({ idempotencyKey: `parcel:${orderId}`, orderId, requestedAt: at })).shipmentId;
 }
 
+async function grantArrivalAlignment(role: "renewal_column_arrival" | "upgrade_alignment_parent") {
+  await admin.query(`GRANT EXECUTE ON FUNCTION public.subscription_delivery_alignment_get_mode(),
+    public.subscription_delivery_alignment_upsert_case(uuid,uuid,uuid,uuid,integer,text,text,timestamptz,text) TO ${role};
+    GRANT UPDATE (next_cycle_at,updated_at) ON public.subscriptions TO ${role};
+    GRANT INSERT (shipment_id,predecessor_order_id,subscription_id,predecessor_cycle_id,predecessor_cycle_number,
+      captured_mode,state,evidence_kind,observed_next_cycle_at,manual_review_reason,metadata)
+      ON public.subscription_delivery_alignment_cases TO ${role};
+    GRANT UPDATE (updated_at,observed_next_cycle_at,evidence_kind,state,captured_mode,manual_review_reason,
+      delivered_at,aligned_next_cycle_at,aligned_at) ON public.subscription_delivery_alignment_cases TO ${role};
+    GRANT SELECT ON public.fulfillment_shipments,public.subscription_delivery_alignment_cases,public.subscription_delivery_alignment_control,
+      public.subscription_renewal_terms,public.subscription_renewal_operations,public.subscription_dunning_cases,
+      public.subscription_delivery_alignment_cycles TO ${role}`);
+}
+
 async function columnGrantedArrivalLogin() {
   const role = "renewal_column_arrival", password = randomUUID();
   await admin.query(`CREATE ROLE renewal_column_arrival LOGIN PASSWORD '${password}';
     GRANT USAGE ON SCHEMA public TO renewal_column_arrival;
-    GRANT EXECUTE ON FUNCTION public.fulfillment_record_alignment_arrival(text,uuid,timestamptz,text),
-      public.subscription_delivery_alignment_get_mode(),
-      public.subscription_delivery_alignment_upsert_case(uuid,uuid,uuid,uuid,integer,text,text,timestamptz,text) TO renewal_column_arrival;
+    GRANT EXECUTE ON FUNCTION public.fulfillment_record_alignment_arrival(text,uuid,timestamptz,text) TO renewal_column_arrival;
     GRANT SELECT,INSERT ON public.subscription_delivery_alignment_arrivals TO renewal_column_arrival;
     GRANT UPDATE (delivered_at,updated_at) ON public.fulfillment_shipments TO renewal_column_arrival;
-    GRANT UPDATE (next_cycle_at,updated_at) ON public.subscriptions TO renewal_column_arrival;
-    GRANT INSERT (shipment_id,predecessor_order_id,subscription_id,predecessor_cycle_id,predecessor_cycle_number,
-      captured_mode,state,evidence_kind,observed_next_cycle_at,manual_review_reason,metadata)
-      ON public.subscription_delivery_alignment_cases TO renewal_column_arrival;
-    GRANT UPDATE (updated_at,observed_next_cycle_at,evidence_kind,state,captured_mode,manual_review_reason,
-      delivered_at,aligned_next_cycle_at,aligned_at) ON public.subscription_delivery_alignment_cases TO renewal_column_arrival;
-    GRANT SELECT ON public.fulfillment_shipments,public.commerce_orders,public.subscription_cycles,
-      public.subscriptions,public.subscription_delivery_alignment_cases,public.subscription_delivery_alignment_control,
-      public.subscription_renewal_terms,public.subscription_renewal_operations,public.subscription_dunning_cases,
-      public.subscription_delivery_alignment_cycles TO renewal_column_arrival`);
+    GRANT SELECT ON public.commerce_orders,public.subscription_cycles,public.subscriptions TO renewal_column_arrival`);
+  await grantArrivalAlignment(role);
   const url = new URL(loginConnection(runtimeUrl, role));
   url.password = password;
   return new Pool({ connectionString: url.toString() });
@@ -503,6 +507,7 @@ it.each(deliveryArrivalCases)("aligns after a mounted stale refusal (parcels=$pa
         has_table_privilege('public.subscription_delivery_alignment_cases','UPDATE') AS case_update`)).rows)
         .toEqual([{ session_user: "renewal_column_arrival", current_user: "renewal_column_arrival",
           service_member: false, subscription_update: false, case_update: false }]);
+      expect((await readRenewalUpgradeReport(admin)).arrivalRoles.map(row => row.role_name)).not.toContain("renewal_column_arrival");
     }
     const arrival = fulfillment.createPostgresDeliveryAlignmentPort(direct ?? executor);
     const evidence = (parcelRef: string, arrivalTime: string) =>
@@ -1581,12 +1586,19 @@ async function renewalAmounts(db: Pool, orderId: string) {
     FROM public.commerce_orders o JOIN public.commerce_settlement_intents i ON i.order_id=o.id WHERE o.id=$1`, [orderId])).rows;
 }
 
-async function renewalUpgradeReport(db: Pool, hooks: { beforeCut?: () => Promise<void>; afterCut?: () => Promise<void> } = {}) {
+type UpgradeReportHooks = { beforeCut?: () => Promise<void>; afterCut?: () => Promise<void> };
+type ArrivalRoleFinding = { role_name: string; reason: string; missing_privileges: string[] };
+
+function upgradeReportStatements() {
   const guide = readFileSync("packages/core/docs/guide/upgrade/database-migrations.md", "utf8");
   const sql = guide.split("## Reconcile stale native renewals")[1]!.split("```sql\n")[1]!.split("```")[0]!;
   const statements = sql.trim().split(/;\s*(?:\n|$)/u).filter(Boolean);
-  expect(statements).toHaveLength(4);
-  const [begin, readCut, population, commit] = statements as [string, string, string, string];
+  expect(statements).toHaveLength(5);
+  return statements as [string, string, string, string, string];
+}
+
+async function readRenewalUpgradeReport(db: Pool, hooks: UpgradeReportHooks = {}) {
+  const [begin, readCut, population, arrivalGrants, commit] = upgradeReportStatements();
   const client = await db.connect();
   try {
     await client.query(begin);
@@ -1596,14 +1608,105 @@ async function renewalUpgradeReport(db: Pool, hooks: { beforeCut?: () => Promise
     expect((await client.query("SHOW transaction_read_only")).rows).toEqual([{ transaction_read_only: "on" }]);
     expect((await client.query("SHOW transaction_isolation")).rows).toEqual([{ transaction_isolation: "repeatable read" }]);
     await hooks.afterCut?.();
-    const { rows } = await client.query(population);
+    const { rows: operations } = await client.query(population);
+    const { rows: arrivalRoles } = await client.query<ArrivalRoleFinding>(arrivalGrants);
     await client.query(commit);
-    return rows;
+    return { operations, arrivalRoles };
   } finally {
     await client.query("ROLLBACK");
     client.release();
   }
 }
+
+async function renewalUpgradeReport(db: Pool, hooks?: UpgradeReportHooks) {
+  return (await readRenewalUpgradeReport(db, hooks)).operations;
+}
+
+async function documentedArrivalFallbackPrivileges() {
+  const [, , , arrivalGrants] = upgradeReportStatements();
+  const end = arrivalGrants.indexOf("\nSELECT r.rolname AS role_name,");
+  if (end < 0) throw new Error("arrival role report projection missing");
+  // Read the required set before role filtering so even a change to a grant
+  // already held by every fixture role fails parity.
+  const { rows } = await admin.query<{ privilege: string }>(arrivalGrants.slice(0, end) + `
+    SELECT privilege || COALESCE(' (' || column_name || ')', '') || ' ON ' || object_kind || ' ' || object_name AS privilege
+    FROM required_privileges`);
+  return rows.map(row => row.privilege).sort();
+}
+
+async function installedArrivalFallbackPrivileges() {
+  const { rows: [{ prosrc }] } = await admin.query<{ prosrc: string }>(
+    "SELECT prosrc FROM pg_proc WHERE oid='public.subscription_delivery_alignment_on_delivery()'::regprocedure");
+  const guard = prosrc.match(/<<qualify_arrival>>[\s\S]*?IF NOT \(\s*([\s\S]*?)\) THEN\s+EXIT qualify_arrival;/u)?.[1];
+  if (!guard) throw new Error("arrival fallback privilege guard missing");
+  const direct = [...guard.matchAll(/has_(function|table|column)_privilege\('([^']+)', (?:'([^']+)', )?'([^']+)'\)/gu)];
+  const grouped = [...guard.matchAll(/unnest\(ARRAY\[([^\]]+)\]\) AS required\(column_name\)\s+WHERE NOT has_column_privilege\('([^']+)', column_name, '([^']+)'\)/gu)];
+  expect(guard.match(/\bhas_\w+_privilege\(/gu)).toHaveLength(direct.length + grouped.length);
+  return [
+    ...direct.map(([, kind, object, column, privilege]) =>
+      `${privilege}${column ? ` (${column})` : ""} ON ${kind === "function" ? "FUNCTION" : "TABLE"} ${object}`),
+    ...grouped.flatMap(([, columns, table, privilege]) => [...columns!.matchAll(/'([^']+)'/gu)]
+      .map(([, column]) => `${privilege} (${column}) ON TABLE ${table}`)),
+  ].sort();
+}
+
+it("reports missing arrival grants only in auto-align and matches the installed fallback checks", async () => {
+  await admin.query(`CREATE ROLE upgrade_arrival_insert;
+    CREATE ROLE upgrade_arrival_update;
+    GRANT INSERT ON public.fulfillment_shipments TO upgrade_arrival_insert;
+    GRANT UPDATE (delivered_at) ON public.fulfillment_shipments TO upgrade_arrival_update`);
+  const findings = async (hooks?: UpgradeReportHooks) =>
+    (await readRenewalUpgradeReport(admin, hooks)).arrivalRoles.filter(row =>
+      row.role_name === "upgrade_arrival_insert" || row.role_name === "upgrade_arrival_update");
+  try {
+    const expected = await installedArrivalFallbackPrivileges();
+    expect(await documentedArrivalFallbackPrivileges()).toEqual(expected);
+    expect(await findings()).toEqual([]);
+    await admin.query("DELETE FROM public.subscription_delivery_alignment_control WHERE singleton");
+    expect(await findings()).toEqual([]);
+    await admin.query("INSERT INTO public.subscription_delivery_alignment_control (singleton, mode) VALUES (true, 'shadow')");
+    expect(await findings()).toEqual([]);
+    await rpc("subscription_delivery_alignment_set_mode", ["auto_align"], admin);
+    const listed = await findings({ afterCut: async () => {
+      await rpc("subscription_delivery_alignment_set_mode", ["off"], admin);
+    } });
+    expect(listed.map(row => ({ ...row, missing_privileges: [...row.missing_privileges].sort() }))).toEqual(
+      ["upgrade_arrival_insert", "upgrade_arrival_update"].map(role_name => ({
+        role_name, reason: "arrival_role_missing_alignment_grants", missing_privileges: expected,
+      })));
+    expect(await findings()).toEqual([]);
+  } finally {
+    await admin.query(`INSERT INTO public.subscription_delivery_alignment_control (singleton, mode) VALUES (true, 'off')
+      ON CONFLICT (singleton) DO UPDATE SET mode='off';
+      DROP OWNED BY upgrade_arrival_insert, upgrade_arrival_update;
+      DROP ROLE upgrade_arrival_insert, upgrade_arrival_update`);
+  }
+}, 30_000);
+
+it("uses inherited alignment grants and clears roles that lose arrival authority", async () => {
+  await admin.query(`CREATE ROLE upgrade_alignment_parent;
+    CREATE ROLE upgrade_arrival_member INHERIT;
+    GRANT INSERT ON public.fulfillment_shipments TO upgrade_arrival_member;
+    GRANT upgrade_alignment_parent TO upgrade_arrival_member`);
+  const findings = async () => (await readRenewalUpgradeReport(admin)).arrivalRoles
+    .filter(row => row.role_name === "upgrade_arrival_member" || row.role_name === "upgrade_alignment_parent");
+  try {
+    await grantArrivalAlignment("upgrade_alignment_parent");
+    await rpc("subscription_delivery_alignment_set_mode", ["auto_align"], admin);
+    expect(await findings()).toEqual([]);
+    await admin.query("REVOKE UPDATE (next_cycle_at) ON public.subscriptions FROM upgrade_alignment_parent");
+    expect(await findings()).toEqual([{
+      role_name: "upgrade_arrival_member", reason: "arrival_role_missing_alignment_grants",
+      missing_privileges: ["UPDATE (next_cycle_at) ON TABLE public.subscriptions"],
+    }]);
+    await admin.query("REVOKE INSERT ON public.fulfillment_shipments FROM upgrade_arrival_member");
+    expect(await findings()).toEqual([]);
+  } finally {
+    await rpc("subscription_delivery_alignment_set_mode", ["off"], admin);
+    await admin.query(`DROP OWNED BY upgrade_arrival_member, upgrade_alignment_parent;
+      DROP ROLE upgrade_arrival_member, upgrade_alignment_parent`);
+  }
+}, 30_000);
 
 async function prepareIncumbent(entry: Awaited<ReturnType<typeof upgradeRenewal>>) {
   const op = await entry.claim();
@@ -1886,6 +1989,10 @@ it("preserves arrival and claim authority for an existing directly granted fulfi
       await rpc("subscription_delivery_alignment_set_mode", ["auto_align"], owner);
       expect(await rpc("subscription_delivery_alignment_get_mode", [], direct)).toBe("auto_align");
       await arrival(arrivals[2]!);
+      expect((await readRenewalUpgradeReport(owner)).arrivalRoles).toContainEqual(expect.objectContaining({
+        role_name: role, reason: "arrival_role_missing_alignment_grants",
+        missing_privileges: expect.arrayContaining(["UPDATE (next_cycle_at) ON TABLE public.subscriptions"]),
+      }));
     } finally {
       await direct.end();
     }

@@ -92,10 +92,10 @@ throughout this procedure.
    acceptance before applying the forward and keep it paused until the forward commits.
 2. Apply the bundled PostgreSQL forward and confirm it in the migration ledger.
 3. Run the report below on one authorized server-side PostgreSQL connection with
-   complete visibility into the renewal and payment records. Use the installation
-   owner if the runtime login lacks that visibility. An error or incomplete
-   visibility invalidates the run. Record the cut and operation IDs in the
-   restricted upgrade record.
+   complete visibility into renewal, payment, and delivery-alignment records. Use the
+   installation owner if the runtime login lacks that visibility. An error or
+   incomplete visibility invalidates the run. Record the cut, listed operation
+   IDs, and listed roles in the restricted upgrade record.
 4. Re-read each item's live state and reconcile it through its existing owner.
    Use the subscription and inventory owners for unprepared roots and stock
    waits. Use verified provider readback, webhook replay, settlement, or authorized
@@ -106,8 +106,10 @@ throughout this procedure.
    reason other than `provider_state_open_after_cancellation` is resolved. Follow
    the [known issue for cancelled renewals](#cancelled-renewals-with-open-provider-state)
    for rows that list only that reason.
+   For `arrival_role_missing_alignment_grants`, grant the listed privileges to the
+   role or revoke its arrival authority before resuming dispatch.
 5. Repeat the report after reconciliation. **Immediately before resuming
-   dispatch**, confirm that no row lists a reason other than
+   dispatch**, confirm that neither result set lists a reason other than
    `provider_state_open_after_cancellation`. Resume through the ordinary scheduler.
 
 **Known limitation.** The final report describes its database snapshot.
@@ -268,6 +270,48 @@ SELECT o.id AS operation_id, o.subscription_id, o.scheduled_at, o.state AS opera
 FROM roots o JOIN listed l USING (id) JOIN stock s USING (id)
 ORDER BY o.id;
 
+-- Arrival roles that can skip alignment in auto_align mode.
+WITH required_privileges(object_kind, object_name, column_name, privilege) AS (
+  VALUES
+    ('FUNCTION', 'public.subscription_delivery_alignment_get_mode()', NULL, 'EXECUTE'),
+    ('FUNCTION', 'public.subscription_delivery_alignment_upsert_case(uuid,uuid,uuid,uuid,integer,text,text,timestamptz,text)', NULL, 'EXECUTE'),
+    ('TABLE', 'public.subscription_delivery_alignment_control', NULL, 'SELECT'),
+    ('TABLE', 'public.subscription_renewal_terms', NULL, 'SELECT'),
+    ('TABLE', 'public.subscription_renewal_operations', NULL, 'SELECT'),
+    ('TABLE', 'public.subscription_dunning_cases', NULL, 'SELECT'),
+    ('TABLE', 'public.subscription_delivery_alignment_cycles', NULL, 'SELECT'),
+    ('TABLE', 'public.fulfillment_shipments', NULL, 'SELECT'),
+    ('TABLE', 'public.subscription_delivery_alignment_cases', NULL, 'SELECT'),
+    ('TABLE', 'public.subscriptions', 'next_cycle_at', 'UPDATE'),
+    ('TABLE', 'public.subscriptions', 'updated_at', 'UPDATE')
+  UNION ALL
+  SELECT 'TABLE', 'public.subscription_delivery_alignment_cases', c.column_name, w.privilege
+  FROM (VALUES
+    ('INSERT', ARRAY['shipment_id', 'predecessor_order_id', 'subscription_id', 'predecessor_cycle_id',
+      'predecessor_cycle_number', 'captured_mode', 'state', 'evidence_kind', 'observed_next_cycle_at',
+      'manual_review_reason', 'metadata']),
+    ('UPDATE', ARRAY['updated_at', 'observed_next_cycle_at', 'evidence_kind', 'state', 'captured_mode',
+      'manual_review_reason', 'delivered_at', 'aligned_next_cycle_at', 'aligned_at'])
+  ) AS w(privilege, columns)
+  CROSS JOIN LATERAL unnest(w.columns) AS c(column_name)
+)
+SELECT r.rolname AS role_name, 'arrival_role_missing_alignment_grants' AS reason,
+       array_agg(format('%s%s ON %s %s', p.privilege,
+         CASE WHEN p.column_name IS NULL THEN '' ELSE format(' (%I)', p.column_name) END,
+         p.object_kind, p.object_name)
+         ORDER BY p.object_kind, p.object_name, p.privilege, p.column_name) AS missing_privileges
+FROM pg_roles r CROSS JOIN required_privileges p
+WHERE (SELECT mode FROM public.subscription_delivery_alignment_control WHERE singleton) = 'auto_align'
+  AND (has_table_privilege(r.oid, 'public.fulfillment_shipments', 'INSERT')
+    OR has_column_privilege(r.oid, 'public.fulfillment_shipments', 'delivered_at', 'UPDATE'))
+  AND NOT CASE
+    WHEN p.object_kind = 'FUNCTION' THEN has_function_privilege(r.oid, p.object_name, p.privilege)
+    WHEN p.column_name IS NULL THEN has_table_privilege(r.oid, p.object_name, p.privilege)
+    ELSE has_column_privilege(r.oid, p.object_name, p.column_name, p.privilege)
+  END
+GROUP BY r.rolname
+ORDER BY r.rolname;
+
 COMMIT;
 ```
 
@@ -284,6 +328,13 @@ still record an attempt against the open provider state. Do not call
 `recordAttempt` for a renewal listed under `provider_state_open_after_cancellation`.
 Keep the operation ID in the restricted upgrade record so the payment owner can
 follow up. A later release refuses such attempts.
+
+### Late arrivals with missing alignment privileges
+
+In `auto_align` mode, an arrival recorded by a role without the fallback
+privileges can skip the due-time shift. The report lists these roles and their
+missing privileges. Grant the listed privileges before resuming dispatch, or
+revoke the role's arrival authority.
 
 ## Prepare the optional checkout owner
 
