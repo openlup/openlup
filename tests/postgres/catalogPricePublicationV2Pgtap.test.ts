@@ -301,7 +301,52 @@ it("preserves raw verdict, gross preview and readiness, and v1 replay bytes acro
         }
         return bytes;
       };
+      const explicitDiagnosisPackets = () => transaction(owner, async db => {
+        await db.query("SAVEPOINT explicit_subscription_receipt");
+        const priceReceipt = JSON.parse(committedPrice.toString()).receipt;
+        const completed = { ...priceCommand, schemaVersion: 2, commandKey: "explicit-completed-price",
+          expectedListAmountBasis: "tax_inclusive", expected: { entryId: null, unitPriceMinor: null, amountKind: null } };
+        const fresh = { ...completed, commandKey: "explicit-fresh-price",
+          expected: { entryId: priceReceipt.current.entryId, unitPriceMinor: 1200, amountKind: "gross" } };
+        const response = { outcome: "committed", receipt: { ...priceReceipt, commandKey: completed.commandKey,
+          amountBasis: "tax_inclusive", current: { ...priceReceipt.current, amountKind: "gross" } } };
+        await db.query(`INSERT INTO public.catalog_price_setup_receipts(scope,idempotency_key,request_fingerprint,status,response_payload,metadata)
+          VALUES ('catalog.price_setup.base',$1,$2,'completed',$3,$4)`,
+        [completed.commandKey, hash(json(completed)), response, { actorId, variantId: issue.skuId, priceListId }]);
+        const context = { priceListId, regionCode: "ZZ", currency: "XXX", amountBasis: "tax_inclusive", tax: null };
+        const skuFacts = { status: "active", isAddon: false, sellableStandalone: true, sellableInSubscription: true };
+        const facts = { product: { id: issue.productId, schemaVersion: 3, lifecycleState: "active" },
+          skus: [{ id: issue.skuId, lifecycleState: "active", ...skuFacts }] };
+        const bytes: string[] = [];
+        for (const policy of policyStates) for (const stored of storedStates) {
+          await db.query("SAVEPOINT explicit_subscription_shape");
+          await setMatrixPricing(db, priceListId, issue.skuId, policy, stored, 2000);
+          for (const kind of ["gross", "net"] as const) {
+            await db.query("UPDATE public.price_entries SET amount_kind=$2 WHERE id=$1", [priceReceipt.current.entryId, kind]);
+            const target = { skuId: issue.skuId, requiredModes: ["one_time", "subscription"], skuFacts };
+            const verdict = await db.query<{ bytes: string }>(
+              "SELECT public.catalog_publication_target_price_verdict($1,$2)::text AS bytes", [{ targets: [target] }, at]);
+            bytes.push(verdict.rows[0]!.bytes);
+            for (const operation of [fresh, completed]) {
+              const operations = json([{ productId: issue.productId, skuId: issue.skuId, operation }]);
+              const result = await db.query<{ bytes: string }>(
+                "SELECT public.catalog_publication_decide_prices_v2($1,$1,$2,$3,$4,$5)::text AS bytes",
+                [facts, operations, context, { lane: "assessment", actor: actorId }, at]);
+              const raw = result.rows[0]!.bytes;
+              if (policy === "positive" && stored === "none" && operation === completed) {
+                if (kind === "gross") expect(JSON.parse(raw)).toMatchObject({ outcome: "pass" });
+                else expect(JSON.parse(raw)).toMatchObject({ reason: "catalog_publication_price_changed" });
+              }
+              bytes.push(raw);
+            }
+          }
+          await db.query("ROLLBACK TO SAVEPOINT explicit_subscription_shape; RELEASE SAVEPOINT explicit_subscription_shape");
+        }
+        await db.query("ROLLBACK TO SAVEPOINT explicit_subscription_receipt; RELEASE SAVEPOINT explicit_subscription_receipt");
+        return bytes;
+      });
       const decisions = await decisionPackets();
+      const explicitDiagnoses = await explicitDiagnosisPackets();
       const priceReceiptBytes = () => owner.query("SELECT response_payload::text AS bytes FROM public.catalog_price_setup_receipts WHERE idempotency_key=$1", [commandKey]);
       expect((await priceReceiptBytes()).rows).toEqual([{ bytes: committedPrice.toString() }]);
       await owner.query("UPDATE public.catalog_skus SET title='Live drift' WHERE id=$1", [issue.skuId]);
@@ -310,6 +355,7 @@ it("preserves raw verdict, gross preview and readiness, and v1 replay bytes acro
       await upgrade();
       expect(await grossPackets()).toEqual(gross);
       expect(await decisionPackets()).toEqual(decisions);
+      expect(await explicitDiagnosisPackets()).toEqual(explicitDiagnoses);
       expect((await priceReceiptBytes()).rows).toEqual([{ bytes: committedPrice.toString() }]);
       const fresh = await issueV1();
       expect(JSON.parse(fresh.originalPublication.toString("utf8"))).toMatchObject({ productId: fresh.issue.productId, head: { revision: 1 } });
@@ -374,8 +420,9 @@ function standaloneCorePrice() {
   return { data, priceListId, entryId, edit };
 }
 
-async function seedStandaloneCorePrice(owner: Pool, { data, priceListId, entryId }: ReturnType<typeof standaloneCorePrice>) {
-  await installPublicationActors(owner);
+async function seedStandaloneCorePrice(owner: Pool, { data, priceListId, entryId }: ReturnType<typeof standaloneCorePrice>,
+  { installActors = true, withPolicy = true } = {}) {
+  if (installActors) await installPublicationActors(owner);
   await owner.query(`INSERT INTO public.commerce_settings(key,value_text) VALUES('settlement_region','ZZ'),('settlement_currency','XXX')
     ON CONFLICT(key) DO UPDATE SET value_text=EXCLUDED.value_text`);
   await owner.query("SELECT public.commerce_capture_offer_policy_v2_legacy_baseline()");
@@ -405,11 +452,7 @@ async function seedStandaloneCorePrice(owner: Pool, { data, priceListId, entryId
   await owner.query("INSERT INTO public.price_lists(id,name,region_code,currency,valid_from) VALUES($1,'Gross','ZZ','XXX','-infinity')", [priceListId]);
   await owner.query(`INSERT INTO public.price_entries(id,variant_id,price_list_id,mode,unit_price_minor,valid_from)
     VALUES($1,$2,$3,'one_time',150,'-infinity')`, [entryId, data.skuId, priceListId]);
-  await owner.query(`INSERT INTO public.subscription_price_policy_revisions
-    (id,revision_no,price_list_id,region_code,currency,channel,effective_from,discount_bps,rounding_quantum_minor,rounding_rule,digest)
-    SELECT id,1,$1,'ZZ','XXX','D2C',at,0,10,'FLOOR_TO_QUANTUM',
-      public.catalog_price_setup_policy_digest(id,1,$1,'ZZ','XXX','D2C',at,NULL,0,10,'FLOOR_TO_QUANTUM')
-    FROM (SELECT gen_random_uuid() AS id,date_trunc('milliseconds',clock_timestamp()-interval '1 hour') AS at) timing`, [priceListId]);
+  if (withPolicy) await insertMatrixPolicy(owner, priceListId, 10);
   return publication;
 }
 
@@ -686,7 +729,7 @@ it("refuses a below-quantum edit for an inherited standalone core SKU at issuanc
       expect(draft.publish.skus).toEqual(publication.publish.skus);
       expect(draft.publish.skus[0]).toMatchObject({ status: "active", isAddon: false, sellableStandalone: true, sellableInSubscription: false });
       await expect(transaction(owner, issueAsPublisher)).rejects.toMatchObject({ code: "23514",
-        constraint: "catalog_publication_sku_price_not_ready", detail: "SKU and required mode" });
+        constraint: "catalog_publication_sku_price_not_ready", detail: "Effective subscription pricing policy" });
       expect(await pricePublicationEffects(owner, subject)).toBe(before);
 
       await transaction(owner, async db => {
@@ -712,6 +755,75 @@ it("refuses a below-quantum edit for an inherited standalone core SKU at issuanc
   });
 }, postgresSetupTimeoutMs);
 
+const policyStates = ["absent", "positive", "non-positive", "ineffective"] as const;
+const storedStates = ["none", "valid", "wrong-kind", "wrong-threshold"] as const;
+type PolicyState = typeof policyStates[number];
+type StoredState = typeof storedStates[number];
+
+const shapeInvalid = "price_shape_invalid";
+const notReady = "catalog_publication_sku_price_not_ready";
+const baseKindInvalid = "base_price_amount_kind_invalid";
+const priceChanged = "catalog_publication_price_changed";
+const baseHint = "End the conflicting entries through the price configuration owner and read the sole compatible base again.";
+const priceChangedHint = "Read the current predecessor ID, amount and kind and use them in a fresh edit.";
+const restoreKindHint = " Restore the recorded base amount kind before retrying locked readback.";
+const subscriptionHints = {
+  add: "Have the pricing configuration owner configure one compatible stored subscription price for this SKU on the effective list.",
+  replace: "Have the pricing configuration owner end or correct the conflicting stored subscription entries so one compatible positive entry remains for this SKU.",
+  end: "Have the pricing configuration owner end every effective stored subscription entry for this SKU. The effective policy already derives a positive price.",
+  derive: "Have the pricing configuration owner ensure exactly one compatible subscription policy is effective. Adjust the policy or the base price so it derives a positive subscription price.",
+  endAndDerive: "Have the pricing configuration owner end every effective stored subscription entry for this SKU. Ensure exactly one compatible subscription policy is effective and adjust the policy or the base price so it derives a positive subscription price.",
+};
+const expectedDiagnosis = [
+  [policyStates[0], [subscriptionHints.add, null, subscriptionHints.replace, subscriptionHints.replace]],
+  [policyStates[1], [null, subscriptionHints.end, subscriptionHints.end, subscriptionHints.end]],
+  [policyStates[2], [subscriptionHints.derive, subscriptionHints.endAndDerive, subscriptionHints.endAndDerive, subscriptionHints.endAndDerive]],
+  [policyStates[3], [subscriptionHints.derive, subscriptionHints.endAndDerive, subscriptionHints.endAndDerive, subscriptionHints.endAndDerive]],
+] as const;
+
+function insertMatrixPolicy(db: Pool | PoolClient, listId: string, quantum: number,
+  from = "2000-01-01T00:00:00Z", to: string | null = null, revision = 1) {
+  return db.query(`INSERT INTO public.subscription_price_policy_revisions
+    (id,revision_no,price_list_id,region_code,currency,channel,effective_from,effective_to,discount_bps,rounding_quantum_minor,rounding_rule,digest)
+    SELECT id,$5,$1,'ZZ','XXX','D2C',$3,$4,0,$2,'FLOOR_TO_QUANTUM',
+      public.catalog_price_setup_policy_digest(id,$5,$1,'ZZ','XXX','D2C',$3,$4,0,$2,'FLOOR_TO_QUANTUM')
+    FROM (SELECT gen_random_uuid() AS id) policy`, [listId, quantum, from, to, revision]);
+}
+
+async function insertMatrixStored(db: Pool | PoolClient, listId: string, skuId: string, state: StoredState, from: string | null = "-infinity") {
+  if (state === "none") return null;
+  const id = randomUUID();
+  await db.query(`INSERT INTO public.price_entries(id,price_list_id,variant_id,mode,amount_kind,min_qty,unit_price_minor,valid_from)
+    VALUES($1,$2,$3,'subscription',$4,$5,100,coalesce($6::timestamptz,statement_timestamp()))`,
+  [id, listId, skuId, state === "wrong-kind" ? "net" : "gross", state === "wrong-threshold" ? 2 : 1, from]);
+  return id;
+}
+
+async function setMatrixPricing(db: Pool | PoolClient, listId: string, skuId: string, policy: PolicyState, stored: StoredState,
+  nonPositiveQuantum: number) {
+  if (policy !== "absent") await insertMatrixPolicy(db, listId, policy === "positive" ? 1 : nonPositiveQuantum,
+    undefined, policy === "ineffective" ? "2000-02-01T00:00:00Z" : null);
+  return insertMatrixStored(db, listId, skuId, stored);
+}
+
+async function repairMatrixPricing(db: Pool | PoolClient, listId: string, skuId: string, policy: PolicyState, storedId: string | null) {
+  if (storedId) await db.query("UPDATE public.price_entries SET active=false,valid_to=statement_timestamp() WHERE id=$1", [storedId]);
+  if (policy === "absent") {
+    await insertMatrixStored(db, listId, skuId, "valid", null);
+  } else if (policy !== "positive") {
+    const { rows: [{ at }] } = await db.query("SELECT date_trunc('milliseconds',clock_timestamp())::text AS at");
+    if (policy === "non-positive") await db.query("UPDATE public.subscription_price_policy_revisions SET effective_to=$2 WHERE price_list_id=$1", [listId, at]);
+    await insertMatrixPolicy(db, listId, 1, at, null, 2);
+  }
+}
+
+function matrixSubscriptionRefusal(state: StoredState, hint: string, drift = false) {
+  const reason = state === "wrong-kind" || state === "wrong-threshold" ? shapeInvalid : notReady;
+  return { code: "23514", message: reason, constraint: reason,
+    detail: hint === subscriptionHints.derive ? "Effective subscription pricing policy" : "Effective subscription entry",
+    hint: hint + (drift ? restoreKindHint : "") };
+}
+
 it("points inferred subscription shape refusals at the conflicting subscription entry", async () => {
   const candidate = prefix(coreModesForward, true);
   await withPlatformCatalog(candidate, async root => {
@@ -736,7 +848,7 @@ it("points inferred subscription shape refusals at the conflicting subscription 
         ["subscription", "gross", 2, "Effective subscription entry"],
         ["one_time", "gross", 2, "Effective base entry"],
       ] as const;
-      const subscriptionRemedy = "Have the pricing configuration owner end the conflicting entry and configure a compatible entry for this SKU and mode, or switch the context to a separate, correctly configured list. When the effective subscription policy already derives a positive price, ending the conflicting subscription entry is sufficient.";
+      const subscriptionRemedy = subscriptionHints.end;
       for (const [mode, kind, minQty, field] of entries) {
         const entryId = randomUUID(), reason = "price_shape_invalid";
         const remedy = mode === "subscription" ? subscriptionRemedy
@@ -751,6 +863,115 @@ it("points inferred subscription shape refusals at the conflicting subscription 
         expect(await assess()).toMatchObject({ outcome: "pass", targets: [{ previous: { entryId: subject.entryId } }] });
       }
       expect(JSON.parse(await issue())).toMatchObject({ head: { revision: 2 }, changes: [] });
+    } finally { await store.close(); }
+  });
+}, postgresSetupTimeoutMs);
+
+it("recovers each inferred subscription diagnosis through fresh assessment and publication", async () => {
+  const candidate = prefix(coreModesForward, true);
+  await withPlatformCatalog(candidate, async root => {
+    const store = await installAccountMutations("bootstrap", true, "fresh-core-price-diagnosis", root);
+    const { owner } = store;
+    try {
+      await verifyPrefix(candidate, root, store);
+      await installPublicationActors(owner);
+      await owner.query(pairedGrants());
+      let previousList: string | null = null;
+      for (const [policy, hints] of expectedDiagnosis) for (const [index, stored] of storedStates.entries()) {
+        await owner.query("UPDATE public.price_lists SET status='draft' WHERE id=$1", [previousList]);
+        const subject = standaloneCorePrice();
+        const { priceListId, data: { skuId } } = subject;
+        previousList = priceListId;
+        const publication = await seedStandaloneCorePrice(owner, subject, { installActors: false, withPolicy: false });
+        const storedId = await setMatrixPricing(owner, priceListId, skuId, policy, stored, 10);
+        const operation = { ...subject.edit, commandKey: randomUUID(), unitPriceMinor: policy === "non-positive" ? 9 : 120 };
+        const draft = await prepareInheritedPricePublication(owner, publication, operation);
+        const assess = () => transaction(owner, async db => {
+          await db.query("SELECT set_config('request.jwt.claims',$1,true)", [actorClaims()]);
+          const result = await db.query<{ bytes: string }>("SELECT public.catalog_publication_assess_prices_v2($1) AS bytes", [draft.assessment]);
+          return JSON.parse(result.rows[0]!.bytes);
+        });
+        const issue = () => transaction(owner, async db => {
+          await db.query("SET LOCAL SESSION AUTHORIZATION openlup_catalog_publication");
+          return issueInheritedPrice(db, draft);
+        });
+        const refused = async (reason: ReturnType<typeof matrixSubscriptionRefusal>) => {
+          const before = await pricePublicationEffects(owner, subject);
+          expect(await assess(), `${policy} / ${stored}`).toMatchObject({ outcome: "blocked-input",
+            reason: reason.constraint, sqlstate: reason.code, field: reason.detail, remedy: reason.hint });
+          await expect(issue()).rejects.toMatchObject(reason);
+          expect(await pricePublicationEffects(owner, subject)).toBe(before);
+        };
+
+        await owner.query("UPDATE public.price_entries SET amount_kind='net' WHERE id=$1", [subject.entryId]);
+        await refused({ code: "23514", message: baseKindInvalid, constraint: baseKindInvalid, detail: "Effective base entry", hint: baseHint });
+        await owner.query("UPDATE public.price_entries SET amount_kind='gross' WHERE id=$1", [subject.entryId]);
+        const hint = hints[index];
+        if (hint) {
+          await refused(matrixSubscriptionRefusal(stored, hint));
+          await transaction(owner, db => repairMatrixPricing(db, priceListId, skuId, policy, storedId));
+        }
+        expect(await assess()).toMatchObject({ outcome: "pass" });
+        expect(JSON.parse(await issue())).toMatchObject({ head: { revision: 2 }, changes: [] });
+        expect((await owner.query("SELECT unit_price_minor FROM public.price_entries WHERE variant_id=$1 AND active AND mode='one_time'",
+          [skuId])).rows).toEqual([{ unit_price_minor: operation.unitPriceMinor }]);
+      }
+    } finally { await store.close(); }
+  });
+}, postgresSetupTimeoutMs);
+
+it("keeps inferred subscription shape evidence through completed receipt proof and locked readback", async () => {
+  const candidate = prefix(coreModesForward, true);
+  await withPlatformCatalog(candidate, async root => {
+    const store = await installAccountMutations("bootstrap", true, "locked-core-price-diagnosis", root);
+    const { owner } = store;
+    try {
+      await verifyPrefix(candidate, root, store);
+      const subject = standaloneCorePrice();
+      const { priceListId, data: { skuId } } = subject;
+      const publication = await seedStandaloneCorePrice(owner, subject, { withPolicy: false });
+      const storedOriginal = await insertMatrixStored(owner, priceListId, skuId, "valid", null);
+      const draft = await prepareInheritedPricePublication(owner, publication, { ...subject.edit, unitPriceMinor: 120 });
+      await owner.query(pairedGrants());
+      const issuedBytes = await transaction(owner, async db => {
+        await db.query("SET LOCAL SESSION AUTHORIZATION openlup_catalog_publication");
+        return issueInheritedPrice(db, draft);
+      });
+      const { rows: [{ id: currentEntry }] } = await owner.query("SELECT id FROM public.price_entries WHERE variant_id=$1 AND active AND mode='one_time'", [skuId]);
+      await transaction(owner, async db => {
+        await db.query("SELECT set_config('request.jwt.claims',$1,true)", [actorClaims()]);
+        const read = async (reason?: ReturnType<typeof matrixSubscriptionRefusal>) => {
+          const before = await pricePublicationEffects(db, subject);
+          await db.query("SAVEPOINT readback");
+          await db.query("SET LOCAL SESSION AUTHORIZATION openlup_catalog_publication");
+          const locked = db.query("SELECT * FROM public.catalog_publication_lock_effective_base_price_v2($1,$2,$3)",
+            [skuId, priceListId, draft.publish.approvalId]);
+          if (reason) await expect(locked).rejects.toMatchObject(reason);
+          else expect((await locked).rows).toEqual([{ id: currentEntry, unit_price_minor: 120, amount_kind: "gross" }]);
+          await db.query("ROLLBACK TO SAVEPOINT readback; RELEASE SAVEPOINT readback");
+          expect(await pricePublicationEffects(db, subject)).toBe(before);
+        };
+        for (const [policy, hints] of expectedDiagnosis) for (const [index, stored] of storedStates.entries()) {
+          await db.query("SAVEPOINT matrix_price_state");
+          await db.query("UPDATE public.price_entries SET active=false WHERE id=$1", [storedOriginal]);
+          const storedId = await setMatrixPricing(db, priceListId, skuId, policy, stored, 1000);
+          const hint = hints[index];
+          await read(hint ? matrixSubscriptionRefusal(stored, hint) : undefined);
+          await db.query("UPDATE public.price_entries SET amount_kind='net' WHERE id=$1", [currentEntry]);
+          if (hint && (stored === "wrong-kind" || stored === "wrong-threshold")) {
+            await read(matrixSubscriptionRefusal(stored, hint, true));
+          } else {
+            await read({ code: "40001", message: priceChanged, constraint: priceChanged, detail: "expected, receipt entries", hint: priceChangedHint });
+          }
+          await db.query("UPDATE public.price_entries SET amount_kind='gross' WHERE id=$1", [currentEntry]);
+          if (hint) await repairMatrixPricing(db, priceListId, skuId, policy, storedId);
+          await read();
+          await db.query("SET LOCAL SESSION AUTHORIZATION openlup_catalog_publication");
+          const replay = await db.query<{ bytes: string }>(recordPricePublication, [draft.publish]);
+          expect(replay.rows[0]!.bytes).toBe(issuedBytes);
+          await db.query("ROLLBACK TO SAVEPOINT matrix_price_state; RELEASE SAVEPOINT matrix_price_state");
+        }
+      });
     } finally { await store.close(); }
   });
 }, postgresSetupTimeoutMs);
