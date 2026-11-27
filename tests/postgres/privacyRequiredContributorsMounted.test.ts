@@ -753,11 +753,7 @@ it.each(["legacy", "legacy-with-service", "bootstrap", "separate", "admin-manage
           }, "ROLLBACK");
           await expect(db.runtime.query(read, [f.clientId])).rejects.toMatchObject({ code: "P0001", message: "occurrence_privacy_scope_unavailable" });
           for (const operation of ["export", "erase"] as const) {
-            const denied = await mounted.mounted("public", operation, subject);
-            refusal(denied, unavailableCode);
-            expect(denied.body.error?.details?.fix).toMatch(/installation owner.*row visibility.*correlation/u);
-            expect(JSON.stringify(denied.body)).not.toContain(f.clientId);
-            expect(JSON.stringify(denied.body)).not.toContain(f.subscriptionId);
+            expectOccurrenceScope(await mounted.mounted("public", operation, subject), f.clientId, f.subscriptionId);
           }
           expect(await state(db.owner)).toEqual(before);
         } finally { await db.owner.query(`ALTER TABLE ${carrier} NO FORCE ROW LEVEL SECURITY`); }
@@ -765,7 +761,7 @@ it.each(["legacy", "legacy-with-service", "bootstrap", "separate", "admin-manage
         try {
           await expect(db.runtime.query(read, [f.clientId])).rejects.toMatchObject({ code: "42501", routine: "aclcheck_error" });
           for (const operation of ["export", "erase"] as const) {
-            expectCarrierReadRefusal(await mounted.mounted("public", operation, subject), f);
+            expectOccurrenceScope(await mounted.mounted("public", operation, subject), f.clientId, f.subscriptionId);
           }
           expect(await state(db.owner)).toEqual(before);
         } finally { await db.migrator.query(`GRANT SELECT ON ${carrier} TO CURRENT_USER`); }
@@ -1065,12 +1061,68 @@ it("exports subscriptions and occurrences from one READ COMMITTED snapshot", () 
   codeAt(await mounted.mounted("public", "erase", subject), "PRIVACY_ACTIVE_SUBSCRIPTION");
 }), postgresSetupTimeoutMs);
 
-function expectCarrierReadRefusal(wire: Wire, subject: { clientId: string; subscriptionId: string }) {
+function expectOccurrenceScope(wire: Wire, ...fixtureIds: string[]) {
   refusal(wire, unavailableCode);
-  expect(wire.body.error?.details?.fix).toMatch(/installation owner.*carrier SELECT.*row visibility.*correlation/u);
-  expect(JSON.stringify(wire.body)).not.toContain(subject.clientId);
-  expect(JSON.stringify(wire.body)).not.toContain(subject.subscriptionId);
+  const error = wire.body.error!, details = error.details!;
+  // This projection is captured by running the R4 cases on be5f59aaa before the recovery assertions.
+  expect(JSON.stringify([wire.status, error.code, details.privacyCode, Object.keys(details)]))
+    .toBe('[503,"UPSTREAM_UNAVAILABLE","PRIVACY_ASSESSMENT_UNAVAILABLE",["privacyCode","observed","cause","fix","recheck"]]');
+  const serialized = JSON.stringify(wire.body);
+  for (const id of fixtureIds) expect(serialized).not.toContain(id);
+  expect({ cause: details.cause, fix: details.fix }).toEqual({
+    cause: "Installed access, row visibility or evidence correlation could not be verified.",
+    fix: "Ask the installation owner to verify the catalogue and runtime pairing on a READ COMMITTED connection. Check the installed helper ACL and the effective runtime role’s EXECUTE against the approved grants. Verify schema USAGE, carrier SELECT and policy lookup access for the roles performing each read, the helper owner’s authoritative access, the runtime role’s row visibility, and the correlation of contact, parent, receipt and occurrence evidence.",
+  });
 }
+
+it.each([
+  ["R4A-1 recovers when helper EXECUTE is revoked after pairing", false],
+  ["R4B-1 recovers when the helper ACL guard refuses with EXECUTE still effective", true],
+] as const)("%s", (_, guard) => withPrivacyStore(async db => {
+  const actor = await privacyActor(db.owner), f = await rootFixture(db.migrator);
+  await persistRoot(db.migrator, f);
+  await verifyCancellation(db.owner, f, await cancelOccurrence(db.migrator, f, actor.principalId));
+  const subject = inputFor(f.clientId), before = await state(db.owner);
+  const grantee = "fixture_occurrence_grantee";
+  if (guard) await db.owner.query(`CREATE ROLE ${grantee} NOLOGIN`);
+  let paired = false, proofError: unknown;
+  const mounted = mounts(db, actor, operations(db, undefined, undefined, {
+    run: work => transaction(db.runtime, async reader => {
+      await rc(reader);
+      return work({ query: async (sql, values) => {
+        const result = await reader.query(sql, values ? [...values] : undefined).catch((error: unknown) => {
+          if (sql.includes("AS proof")) proofError = error;
+          throw error;
+        });
+        if (!paired && sql.includes("AS safe")) {
+          expect(result.rows[0]).toMatchObject({ isolation: "read committed", safe: true, carrier_readable: true });
+          const readerPid = await pidOf(reader);
+          await transaction(db.owner, async owner => {
+            expect(await pidOf(owner)).not.toBe(readerPid);
+            await owner.query(guard ? `GRANT EXECUTE ON FUNCTION ${occurrenceHelper} TO ${grantee}`
+              : `REVOKE EXECUTE ON FUNCTION ${occurrenceHelper} FROM service_role`);
+          });
+          expect((await reader.query("SELECT has_function_privilege(current_user,$1,'EXECUTE') AS executable", [occurrenceHelper])).rows)
+            .toEqual([{ executable: guard }]);
+          paired = true;
+        }
+        return result;
+      } });
+    }), close: async () => {},
+  }));
+  let denied: Wire;
+  try {
+    denied = await mounted.mounted("public", "export", subject);
+    expect(paired).toBe(true);
+    expect(proofError).toMatchObject({ code: "42501", routine: guard ? "exec_stmt_raise" : "aclcheck_error" });
+    expect(await state(db.owner)).toEqual(before);
+  } finally {
+    await db.owner.query(guard ? `REVOKE EXECUTE ON FUNCTION ${occurrenceHelper} FROM ${grantee}; DROP ROLE ${grantee}`
+      : `GRANT EXECUTE ON FUNCTION ${occurrenceHelper} TO service_role`);
+  }
+  checkProjection(await readExport(mounted, subject), f);
+  expectOccurrenceScope(denied, f.clientId, f.subscriptionId, f.cycleKey, f.agreement.operationId, actor.principalId, subject.idempotencyKey, grantee);
+}), postgresSetupTimeoutMs);
 
 it("uses the original RLS-bound login for fresh scope and fails closed without supported EXECUTE", () => withPrivacyStore(async db => {
   const actor = await privacyActor(db.owner);
@@ -1089,9 +1141,10 @@ it("uses the original RLS-bound login for fresh scope and fails closed without s
   await db.owner.query(`CREATE POLICY fixture_hide_link ON public.clients AS RESTRICTIVE FOR SELECT TO service_role
     USING (principal_id IS DISTINCT FROM '${unlinked}'::uuid AND principal_id IS DISTINCT FROM '${customerPrincipal}'::uuid)`);
   for (const operation of ["export", "erase"] as const) {
-    refusal(await mounted.mounted("public", operation, principalInput), unavailableCode);
-    refusal(await mounted.mounted("public", operation, { ...principalInput, subject: { kind: "principal", principalId: customerPrincipal } }), unavailableCode);
-    refusal(await mounted.mounted("public", operation, inputFor(randomUUID())), unavailableCode);
+    expectOccurrenceScope(await mounted.mounted("public", operation, principalInput), unlinked);
+    expectOccurrenceScope(await mounted.mounted("public", operation, { ...principalInput, subject: { kind: "principal", principalId: customerPrincipal } }), customerPrincipal);
+    const absent = randomUUID();
+    expectOccurrenceScope(await mounted.mounted("public", operation, inputFor(absent)), absent);
   }
   await db.owner.query("DROP POLICY fixture_hide_link ON public.clients");
   expect((await readExport(mounted, principalInput)).documents.find(d => d.contributorId === "customer-preferences")?.data)
@@ -1102,10 +1155,7 @@ it("uses the original RLS-bound login for fresh scope and fails closed without s
   const parentOnly = await activation(db.migrator);
   const before = await state(db.owner);
   for (const operation of ["export", "erase"] as const) {
-    const denied = await mounted.mounted("public", operation, subject);
-    refusal(denied, unavailableCode);
-    expect(denied.body.error?.details?.fix).toMatch(/installation owner.*row visibility.*correlation/u);
-    expect(JSON.stringify(denied.body.error?.details)).not.toContain(f.clientId);
+    expectOccurrenceScope(await mounted.mounted("public", operation, subject), f.clientId, f.subscriptionId);
   }
   expect(await state(db.owner)).toEqual(before);
   await db.owner.query(`DROP POLICY fixture_hide_occurrence ON public.${occurrence}`);
@@ -1117,38 +1167,41 @@ it("uses the original RLS-bound login for fresh scope and fails closed without s
     await expect(db.runtime.query(`SELECT client_id FROM public.${occurrence} WHERE client_id=$1`, [f.clientId]))
       .rejects.toMatchObject({ code: "42501", message: "permission denied for table fixture_occurrence_lookup" });
     for (const operation of ["export", "erase"] as const) {
-      expectCarrierReadRefusal(await mounted.mounted("public", operation, subject), f);
+      expectOccurrenceScope(await mounted.mounted("public", operation, subject), f.clientId, f.subscriptionId);
     }
     expect(await state(db.owner)).toEqual(before);
   } finally {
     await db.owner.query(`DROP POLICY fixture_check_lookup ON public.${occurrence}; DROP TABLE public.fixture_occurrence_lookup`);
   }
   await db.owner.query(`REVOKE SELECT (client_id) ON public.${occurrence} FROM service_role`);
-  const unreadable = await mounted.mounted("public", "erase", subject);
-  refusal(unreadable, unavailableCode);
-  expect(unreadable.body.error?.details?.fix).toMatch(/row visibility/u);
+  expectOccurrenceScope(await mounted.mounted("public", "erase", subject), f.clientId, f.subscriptionId);
   await db.owner.query(`GRANT SELECT (client_id) ON public.${occurrence} TO service_role`);
   await db.owner.query(`ALTER TABLE public.subscriptions ENABLE ROW LEVEL SECURITY;
     CREATE POLICY fixture_hide_parent ON public.subscriptions FOR SELECT TO service_role USING (id <> '${parentOnly.subscriptionId}'::uuid)`);
-  refusal(await mounted.mounted("public", "erase", inputFor(parentOnly.clientId)), unavailableCode);
+  expectOccurrenceScope(await mounted.mounted("public", "erase", inputFor(parentOnly.clientId)), parentOnly.clientId, parentOnly.subscriptionId);
   await db.owner.query("DROP POLICY fixture_hide_parent ON public.subscriptions; ALTER TABLE public.subscriptions DISABLE ROW LEVEL SECURITY");
 
   const { definition } = (await db.owner.query("SELECT pg_get_functiondef($1::regprocedure) AS definition", [occurrenceHelper])).rows[0];
-  for (const mutation of ["RAISE EXCEPTION 'fixture unavailable';", "RETURN '{}'::jsonb;"]) {
+  for (const mutation of ["RAISE EXCEPTION 'fixture unavailable';", "RETURN '{}'::jsonb;"] as const) {
     await db.owner.query(definition.replace(/\nBEGIN\n/u, `\nBEGIN\n  ${mutation}\n`));
-    refusal(await mounted.mounted("public", "export", subject), unavailableCode);
-    refusal(await mounted.mounted("public", "erase", subject), unavailableCode);
+    for (const operation of ["export", "erase"] as const) {
+      const denied = await mounted.mounted("public", operation, subject);
+      if (mutation.startsWith("RAISE")) {
+        refusal(denied, unavailableCode);
+        expect(denied.body.error?.details?.observed).toBe("Native privacy prerequisites could not be verified.");
+      } else expectOccurrenceScope(denied, f.clientId, f.subscriptionId);
+    }
     codeAt(await mounted.mounted("public", "erase", inputFor(parentOnly.clientId)), "PRIVACY_ACTIVE_SUBSCRIPTION");
     expect(await state(db.owner)).toEqual(before);
   }
   await db.owner.query(definition);
   await db.owner.query(`REVOKE EXECUTE ON FUNCTION ${occurrenceHelper} FROM service_role`);
-  refusal(await mounted.mounted("public", "erase", empty), unavailableCode);
+  expectOccurrenceScope(await mounted.mounted("public", "erase", empty), empty.idempotencyKey);
   for (const operation of ["export", "erase"] as const) {
     codeAt(await mounted.mounted("public", operation, inputFor(randomUUID())), "PRIVACY_SUBJECT_NOT_FOUND");
   }
   const protectedSubject = { subject: { kind: "principal" as const, principalId: actor.principalId }, idempotencyKey: randomUUID() };
-  refusal(await mounted.mounted("public", "erase", protectedSubject), unavailableCode);
+  expectOccurrenceScope(await mounted.mounted("public", "erase", protectedSubject), actor.principalId, protectedSubject.idempotencyKey);
   expect(await state(db.owner)).toEqual(before);
   await db.owner.query(`GRANT EXECUTE ON FUNCTION ${occurrenceHelper} TO service_role`);
   codeAt(await mounted.mounted("public", "erase", protectedSubject), "PRIVACY_PROTECTED_OPERATOR");
@@ -1180,7 +1233,7 @@ it("uses the original RLS-bound login for fresh scope and fails closed without s
       } });
     }), close: async () => {},
   }));
-  refusal(await outside.mounted("public", "export", subject), unavailableCode);
+  expectOccurrenceScope(await outside.mounted("public", "export", subject), f.clientId, f.subscriptionId);
   expect(reachedHelper).toBe(true);
   await transaction(db.owner, async lane => {
     await lane.query("SET LOCAL ROLE fixture_custom_eraser");
