@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PG_CLOSURE_AXES } from './agent-review-registry.mjs';
-import { ALL_WORKFLOW_SCOPES_TRUE, CONTROL_POSTGRES_SUITES, excludedToolingTests, isGlobalBailoutScript, loadPostgresSuiteClosures, NON_BAILOUT_SCRIPTS, parsePostgresSuiteClosures, PG_AXES, POSTGRES_SUITE_CLOSURES_PATH, resolveGitExecutable, ROOT_DOC_FILES, scopeFromEvent, scopeFromLocal, SHARED_INPUTS, TOOLING_INPUTS, workflowScopeFromEvent, workflowScopeFromPaths, writeTestScope, writeWorkflowScope } from './ci-test-scope.mjs';
+import { ALL_WORKFLOW_SCOPES_TRUE, CONTROL_POSTGRES_SUITES, excludedToolingTests, isGlobalBailoutScript, loadPostgresSuiteClosures, NON_BAILOUT_SCRIPTS, PACKAGE_DOC_MD, PACKAGES_NON_DOC, parsePostgresSuiteClosures, PG_AXES, POSTGRES_SUITE_CLOSURES_PATH, resolveGitExecutable, ROOT_DOC_FILES, scopeFromEvent, scopeFromLocal, SHARED_INPUTS, TOOLING_INPUTS, workflowScopeFromEvent, workflowScopeFromPaths, writeTestScope, writeWorkflowScope } from './ci-test-scope.mjs';
 
 const base = 'a'.repeat(40);
 const all = Object.keys(TOOLING_INPUTS).sort();
@@ -33,7 +33,7 @@ describe('conservative tooling scope', () => {
       .map(([test]) => test).sort());
     expect(excludedToolingTests(['packages/core/src/index.ts']))
       .toEqual(Object.entries(TOOLING_INPUTS)
-        .filter(([, inputs]) => !inputs.includes('packages/') && !inputs.includes('packages/core/src/'))
+        .filter(([, inputs]) => !inputs.includes('packages/') && !inputs.includes(PACKAGES_NON_DOC) && !inputs.includes('packages/core/src/'))
         .map(([test]) => test).sort());
   });
   it.each(['package.json', 'package-lock.json', 'vitest.config.ts', 'tsconfig.json', 'tsconfig.app.json',
@@ -437,6 +437,19 @@ describe('conservative tooling scope', () => {
       expect(dataDocTrigger).not.toContain(suite);
     }
     expect(dataDocTrigger).toContain('tests/postgres/catalogPublication.test.ts');
+
+    const genericPackageDoc = excludedToolingTests(['packages/core/docs/guide/concepts/personal-data.md']);
+    expect(genericPackageDoc).toContain('tests/postgres/catalogPublication.test.ts');
+    expect(genericPackageDoc).toContain('tests/postgres/catalogStorefrontPage.test.ts');
+
+    const quotePricesDoc = excludedToolingTests(['packages/core/docs/guide/how-to/build/quote-prices.md']);
+    expect(quotePricesDoc).not.toContain('tests/postgres/commerceMoneyLimitsV2.test.ts');
+    expect(quotePricesDoc).not.toContain('tests/postgres/commerceQuoteV2.test.ts');
+    expect(quotePricesDoc).toContain('tests/postgres/catalogPublication.test.ts');
+
+    const customizeStarterDoc = excludedToolingTests(['packages/core/docs/guide/how-to/build/customize-the-starter.md']);
+    expect(customizeStarterDoc).not.toContain('tests/postgres/catalogStorefrontPage.test.ts');
+    expect(customizeStarterDoc).toContain('tests/postgres/catalogPublication.test.ts');
   });
   it('runs every declared test when any of its declared inputs changes', () => {
     for (const [test, inputs] of Object.entries(TOOLING_INPUTS)) {
@@ -588,7 +601,9 @@ describe('PostgreSQL AST closure soundness', () => {
   const BARE_ROOT_DIRS = new Set(['src', 'api', 'mcp', 'examples', 'supabase', 'docs']);
   const KNOWN_PREFIXES = ['src/', 'api/', 'mcp/', 'examples/', 'supabase/', 'docs/', 'config/', 'tests/', 'db/', 'packages/', 'server/', 'scripts/'];
   const VITEST_MOCK_METHODS = new Set(['mock', 'doMock', 'importActual', 'importMock']);
-  const covers = (input: string, target: string) => (input.endsWith('/') ? target === input || target.startsWith(input) : target === input);
+  const covers = (input: string, target: string) => (input === PACKAGES_NON_DOC
+    ? target.startsWith('packages/') && !PACKAGE_DOC_MD.test(target)
+    : input.endsWith('/') ? target === input || target.startsWith(input) : target === input);
 
   function createAstClosureScanner(rootDir: string) {
     const pkgExports = new Map<string, { dir: string; exports: Record<string, unknown> }>();
@@ -878,7 +893,7 @@ describe('PostgreSQL AST closure soundness', () => {
       if (!declaredInputs.some(input => covers(input, testPath))) {
         violations.push(`${testPath}: does not cover its own file path`);
       }
-      const closureDeps = collectClosure(testPath, { stopAtPackages: declaredInputs.includes('packages/') });
+      const closureDeps = collectClosure(testPath, { stopAtPackages: declaredInputs.includes('packages/') || declaredInputs.includes(PACKAGES_NON_DOC) });
       for (const dep of closureDeps) {
         if (dep.includes('//')) {
           violations.push(`${testPath}: AST closure emitted unnormalized '//' path ${dep}`);
@@ -1061,6 +1076,20 @@ describe('workflow scope gate (--workflow-outputs)', () => {
     }
 
     expect(workflowScopeFromPaths(['packages/core/src/index.ts'])).toEqual({
+      run_pgtap: false,
+      run_reference_build: true,
+      run_package_gates: true,
+      run_install_browser: true,
+      run_install_pack: true,
+    });
+    expect(workflowScopeFromPaths(['packages/core/docs/guide/concepts/personal-data.md'])).toEqual({
+      run_pgtap: false,
+      run_reference_build: false,
+      run_package_gates: true,
+      run_install_browser: false,
+      run_install_pack: true,
+    });
+    expect(workflowScopeFromPaths(['packages/core/docs/guide/how-to/extend/catalogue-pack-skeleton/pack.ts'])).toEqual({
       run_pgtap: false,
       run_reference_build: true,
       run_package_gates: true,

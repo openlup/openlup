@@ -45,7 +45,11 @@ export const NON_BAILOUT_SCRIPTS = [
   'scripts/agent-ci-queued-diagnose.ts',
   'scripts/agent-context/evaluate.mjs',
 ];
-const coversInput = (input, path) => (input.endsWith('/') ? path === input || path.startsWith(input) : path === input);
+export const PACKAGE_DOC_MD = /^packages\/core\/docs\/.+\.md$/u;
+export const PACKAGES_NON_DOC = 'packages/@non-doc';
+const coversInput = (input, path) => (input === PACKAGES_NON_DOC
+  ? path.startsWith('packages/') && !PACKAGE_DOC_MD.test(path)
+  : input.endsWith('/') ? path === input || path.startsWith(input) : path === input);
 export function isGlobalBailoutScript(path) {
   if (!path.startsWith('scripts/')) return false;
   if (SCRIPT_TEST_FILE.test(path)) return false;
@@ -117,7 +121,7 @@ const PG_BASE_INPUTS = [
   'config/platform-migration-manifest.json',
   'config/reviewed-platform-forwards.json',
   'db/platform/migrations/',
-  'packages/',
+  PACKAGES_NON_DOC,
   'server/',
   'tests/helpers/',
 ];
@@ -298,7 +302,7 @@ const WORKFLOW_REFERENCE_BUILD_INPUTS = [
   'src/',
   'server/',
   'api/',
-  'packages/',
+  PACKAGES_NON_DOC,
   'public/',
   'config/',
 ];
@@ -318,7 +322,7 @@ const WORKFLOW_PACKAGE_GATES_INPUTS = [
   'AGENTS.md',
 ];
 const WORKFLOW_INSTALL_BROWSER_INPUTS = [
-  'packages/',
+  PACKAGES_NON_DOC,
   'examples/neutral-store/',
   'config/openlup-packages.json',
   'config/ci-images.json',
