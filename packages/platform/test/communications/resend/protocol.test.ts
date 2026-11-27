@@ -154,7 +154,8 @@ it("R12 W2 polling mapping preserves pending and terminal states and bounded GET
   expect(h.fetcher).toHaveBeenCalledTimes(9);
   for (const [url, options] of h.fetcher.mock.calls) {
     expect(url).toBe("https://api.resend.com/emails/message%2F1");
-    expect(options).toEqual({ method: "GET", headers: { Authorization: "Bearer synthetic-read-only" }, signal: h.signal });
+    expect(options).toMatchObject({ method: "GET", headers: { Authorization: "Bearer synthetic-read-only" }, redirect: "manual" });
+    expect(options!.signal).toBeInstanceOf(AbortSignal);
   }
 });
 it("R13 W2 only 404 abandons; auth/network/outage and malformed success never recover-send", async () => {
@@ -194,4 +195,42 @@ it("R15 W2 event time fallback retains provider, signed timestamp, then receipt 
     await h.handle(signed(JSON.stringify({ ...payload, created_at }), timestamp));
     expect(h.port.applyObservation).toHaveBeenCalledWith(expect.objectContaining({ eventAt: expected, metadata: expect.objectContaining({ eventTimeSource: source }) }));
   }
+});
+
+it("R16 polling enforces default 15s timeout across fetch and stalled body, redirect: manual, and 256 KiB cap", async () => {
+  vi.useFakeTimers();
+  try {
+    const timedOut = polling();
+    timedOut.fetcher.mockImplementation((_url, init) => new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(init.signal?.reason ?? new DOMException("aborted", "AbortError")));
+    }));
+    const pending = timedOut.run();
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(await pending).toMatchObject({ checked: 1, failures: 1, failureBreakdown: { network: 1 } });
+
+    const bodyHang = polling();
+    let cancelled = false;
+    bodyHang.fetcher.mockImplementation(async () => new Response(new ReadableStream({
+      start() {},
+      cancel() { cancelled = true; },
+    }), { status: 200 }));
+    const pendingBody = bodyHang.run();
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(await pendingBody).toMatchObject({ checked: 1, failures: 1, failureBreakdown: { network: 1 } });
+    expect(cancelled).toBe(true);
+  } finally {
+    vi.useRealTimers();
+  }
+
+  const redirected = polling();
+  redirected.fetcher.mockImplementation(async () => new Response(null, { status: 302, headers: { location: "https://evil.example.invalid" } }));
+  expect(await redirected.run()).toMatchObject({ checked: 1, failures: 1, failureBreakdown: { other: 1 } });
+  expect(redirected.fetcher.mock.calls[0][1]?.redirect).toBe("manual");
+
+  const oversized = polling();
+  oversized.fetcher.mockImplementation(async () => new Response("{}", {
+    status: 200,
+    headers: { "content-length": String(256 * 1024 + 1) },
+  }));
+  expect(await oversized.run()).toMatchObject({ checked: 1, failures: 1, failureBreakdown: { network: 1 } });
 });

@@ -1,3 +1,5 @@
+import { redactResendSensitiveText } from "../../infra/resend/resendEmailClient.js";
+
 /**
  * One uniform, greppable signal for a swallowed `email_sends` ledger-insert
  * failure, shared by every email port. The send itself already happened (or
@@ -9,15 +11,15 @@
  */
 
 function safeError(error: unknown): string {
-  if (error instanceof Error) return error.message;
+  if (error instanceof Error) return redactResendSensitiveText(error.message);
   if (error && typeof error === "object") {
     try {
-      return JSON.stringify(error);
+      return redactResendSensitiveText(JSON.stringify(error));
     } catch {
       return "[unserializable error]";
     }
   }
-  return String(error);
+  return redactResendSensitiveText(String(error));
 }
 
 export function logEmailLedgerInsertFailure(input: {

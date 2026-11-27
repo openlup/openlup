@@ -18,20 +18,141 @@ export function createResendTransport(input: {
 }
 
 const RESEND_ENDPOINT = "https://api.resend.com/emails";
+const DEFAULT_RESEND_TIMEOUT_MS = 15_000;
+const MAX_RESEND_RESPONSE_BYTES = 256 * 1024;
 const PROVIDER_ERROR_MAX = 240;
 const PROVIDER_ERROR_CODE_MAX = 80;
 const EMAIL_ADDRESS_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+const BEARER_TOKEN_PATTERN = /\bBearer\s+[A-Za-z0-9._~+/=-]+/gi;
+const RESEND_KEY_PATTERN = /\bre_[A-Za-z0-9_]+\b/g;
+const WEBHOOK_SECRET_PATTERN = /\bwhsec_[A-Za-z0-9+/=_-]+/g;
 
 function truncate(value: string, max: number): string {
   return value.length > max ? `${value.slice(0, max - 1)}...` : value;
 }
 
+function redactSensitiveText(value: string): string {
+  return value
+    .replace(BEARER_TOKEN_PATTERN, "Bearer [redacted]")
+    .replace(RESEND_KEY_PATTERN, "[redacted]")
+    .replace(WEBHOOK_SECRET_PATTERN, "[redacted]")
+    .replace(EMAIL_ADDRESS_PATTERN, "[email]");
+}
+
 function sanitizeProviderText(value: string): string {
-  return truncate(value.replace(EMAIL_ADDRESS_PATTERN, "[email]").replace(/\s+/g, " ").trim(), PROVIDER_ERROR_MAX);
+  return truncate(redactSensitiveText(value).replace(/\s+/g, " ").trim(), PROVIDER_ERROR_MAX);
 }
 
 function sanitizeProviderCode(value: string): string {
   return truncate(value.replace(/[^A-Za-z0-9._:-]/g, "_"), PROVIDER_ERROR_CODE_MAX);
+}
+
+interface RequestAbortScope {
+  readonly signal: AbortSignal;
+  readonly abortPromise: Promise<never>;
+  readonly cleanup: () => void;
+}
+
+function createRequestAbortScope(callerSignal: AbortSignal | undefined, timeoutMs: number): RequestAbortScope {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const onCallerAbort = () => {
+    controller.abort(callerSignal?.reason);
+  };
+  if (callerSignal) {
+    if (callerSignal.aborted) {
+      controller.abort(callerSignal.reason);
+    } else {
+      callerSignal.addEventListener("abort", onCallerAbort, { once: true });
+    }
+  }
+  if (!controller.signal.aborted) {
+    timer = setTimeout(() => {
+      controller.abort(new DOMException("Resend request timed out", "TimeoutError"));
+    }, timeoutMs);
+  }
+  let onAbortPromise: (() => void) | undefined;
+  const abortPromise = new Promise<never>((_resolve, reject) => {
+    const rejectAbort = () => {
+      const reason = controller.signal.reason;
+      reject(reason instanceof Error ? reason : new DOMException("Request aborted", "AbortError"));
+    };
+    if (controller.signal.aborted) {
+      rejectAbort();
+    } else {
+      onAbortPromise = rejectAbort;
+      controller.signal.addEventListener("abort", rejectAbort, { once: true });
+    }
+  });
+  abortPromise.catch(() => {});
+  const cleanup = () => {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      timer = undefined;
+    }
+    if (callerSignal) {
+      callerSignal.removeEventListener("abort", onCallerAbort);
+    }
+    if (onAbortPromise) {
+      controller.signal.removeEventListener("abort", onAbortPromise);
+      onAbortPromise = undefined;
+    }
+  };
+  return { signal: controller.signal, abortPromise, cleanup };
+}
+
+function parseJsonRecord(text: string): Record<string, unknown> {
+  if (!text) return {};
+  try {
+    const parsed: unknown = JSON.parse(text);
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+async function readBoundedJsonBody(
+  res: Response,
+  maxBytes: number,
+  abortPromise: Promise<never>,
+): Promise<Record<string, unknown>> {
+  const contentLengthHeader = res.headers?.get?.("content-length");
+  if (contentLengthHeader !== null && contentLengthHeader !== undefined) {
+    const declaredBytes = Number(contentLengthHeader.trim());
+    if (Number.isFinite(declaredBytes) && declaredBytes > maxBytes) {
+      await res.body?.cancel().catch(() => {});
+      throw new Error(`Resend response body exceeded ${maxBytes} bytes`);
+    }
+  }
+  const reader = res.body?.getReader();
+  if (!reader) {
+    const text = await Promise.race([res.text(), abortPromise]);
+    if (Buffer.byteLength(text, "utf8") > maxBytes) {
+      throw new Error(`Resend response body exceeded ${maxBytes} bytes`);
+    }
+    return parseJsonRecord(text);
+  }
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    for (;;) {
+      const chunk = await Promise.race([reader.read(), abortPromise]);
+      if (chunk.done) break;
+      totalBytes += chunk.value.byteLength;
+      if (totalBytes > maxBytes) {
+        await reader.cancel().catch(() => {});
+        throw new Error(`Resend response body exceeded ${maxBytes} bytes`);
+      }
+      chunks.push(chunk.value);
+    }
+  } catch (err) {
+    await reader.cancel().catch(() => {});
+    throw err;
+  }
+  const text = Buffer.concat(chunks, totalBytes).toString("utf8");
+  return parseJsonRecord(text);
 }
 
 function providerErrorFromBody(body: Record<string, unknown>, httpStatus: number): string {
@@ -81,29 +202,47 @@ async function postResendEmail(
   };
   if (input.idempotencyKey !== undefined) headers["Idempotency-Key"] = input.idempotencyKey;
   if (context.mode === "sandbox_sink") headers["X-Original-Recipient"] = context.intendedRecipient;
+  const scope = createRequestAbortScope(input.signal, DEFAULT_RESEND_TIMEOUT_MS);
   try {
-    const res = await fetcher(RESEND_ENDPOINT, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        from: input.from,
-        to: [context.recipient],
-        subject: input.subject,
-        html: input.html,
-        ...(input.text === undefined ? {} : { text: input.text }),
-        ...(input.replyTo === undefined ? {} : { reply_to: input.replyTo }),
-        ...(input.attachments === undefined ? {} : { attachments: input.attachments }),
-        tags: [{
-          name: environmentTagName,
-          value: context.environmentTag,
-        }],
+    const res = await Promise.race([
+      fetcher(RESEND_ENDPOINT, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          from: input.from,
+          to: [context.recipient],
+          subject: input.subject,
+          html: input.html,
+          ...(input.text === undefined ? {} : { text: input.text }),
+          ...(input.replyTo === undefined ? {} : { reply_to: input.replyTo }),
+          ...(input.attachments === undefined ? {} : { attachments: input.attachments }),
+          tags: [{
+            name: environmentTagName,
+            value: context.environmentTag,
+          }],
+        }),
+        redirect: "manual",
+        signal: scope.signal,
       }),
-      signal: input.signal,
-    });
-    const parsed = await res.json().catch(() => ({}));
-    const body = typeof parsed === "object" && parsed !== null
-      ? (parsed as Record<string, unknown>)
-      : {};
+      scope.abortPromise,
+    ]);
+    if (res.status >= 300 && res.status < 400) {
+      await res.body?.cancel().catch(() => {});
+      return {
+        outcome: {
+          ok: false,
+          resendId: null,
+          httpStatus: res.status,
+          providerError: `Resend HTTP ${res.status}`,
+          providerErrorCode: null,
+          aborted: false,
+          egressMode: context.mode,
+          egressReason: context.reason,
+        },
+        providerResponse: providerErrorResponse({}, res.status),
+      };
+    }
+    const body = await readBoundedJsonBody(res, MAX_RESEND_RESPONSE_BYTES, scope.abortPromise);
     if (!res.ok) {
       const providerErrorMessage = providerErrorFromBody(body, res.status);
       const providerErrorCode = providerErrorCodeFromBody(body);
@@ -137,7 +276,8 @@ async function postResendEmail(
   } catch (err) {
     const aborted =
       input.signal?.aborted === true ||
-      (err instanceof Error && err.name === "AbortError");
+      scope.signal.aborted ||
+      (err instanceof Error && (err.name === "AbortError" || err.name === "TimeoutError"));
     const msg = err instanceof Error ? err.message : String(err);
     return {
       outcome: {
@@ -151,6 +291,8 @@ async function postResendEmail(
       },
       providerResponse: { exception: true, aborted },
     };
+  } finally {
+    scope.cleanup();
   }
 }
 
@@ -178,13 +320,28 @@ async function getResendEmail(input: {
   resendId: string;
   signal?: AbortSignal;
 }, fetcher: typeof fetch): Promise<ResendEmailReadResult> {
+  const scope = createRequestAbortScope(input.signal, DEFAULT_RESEND_TIMEOUT_MS);
   try {
-    const res = await fetcher(`${RESEND_ENDPOINT}/${encodeURIComponent(input.resendId)}`, {
-      method: "GET",
-      headers: { Authorization: `Bearer ${input.apiKey}` },
-      signal: input.signal,
-    });
-    const parsed = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    const res = await Promise.race([
+      fetcher(`${RESEND_ENDPOINT}/${encodeURIComponent(input.resendId)}`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${input.apiKey}` },
+        redirect: "manual",
+        signal: scope.signal,
+      }),
+      scope.abortPromise,
+    ]);
+    if (res.status >= 300 && res.status < 400) {
+      await res.body?.cancel().catch(() => {});
+      return {
+        ok: false,
+        httpStatus: res.status,
+        lastEvent: null,
+        recipientEmail: null,
+        providerError: `Resend HTTP ${res.status}`,
+      };
+    }
+    const parsed = await readBoundedJsonBody(res, MAX_RESEND_RESPONSE_BYTES, scope.abortPromise);
     if (!res.ok) {
       return {
         ok: false,
@@ -208,8 +365,10 @@ async function getResendEmail(input: {
       httpStatus: 0,
       lastEvent: null,
       recipientEmail: null,
-      providerError: error instanceof Error ? sanitizeProviderCode(error.message) : "fetch_failed",
+      providerError: error instanceof Error ? sanitizeProviderText(error.message) : "fetch_failed",
     };
+  } finally {
+    scope.cleanup();
   }
 }
 
