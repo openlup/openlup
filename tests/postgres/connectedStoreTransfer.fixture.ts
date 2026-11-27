@@ -97,12 +97,13 @@ export async function capture(
 }
 
 // Independent whole-row readback; no importer/capture comparison helper is used.
-export async function census(db: Pool): Promise<Record<string, string[]>> {
+export async function census(db: Pool,
+  tables: readonly (typeof connectedNativeStoreTables)[number][] = connectedNativeStoreTables): Promise<Record<string, string[]>> {
   const result: Record<string, string[]> = {};
   const client = await db.connect();
   try {
     await client.query("BEGIN READ ONLY"); await client.query("SET LOCAL TimeZone='UTC'");
-    for (const table of connectedNativeStoreTables) {
+    for (const table of tables) {
       result[table] = (await client.query(`SELECT to_jsonb(t)::text AS value FROM public."${table}" t`)).rows.map(row => String(row.value)).sort();
     }
     await client.query("COMMIT"); return result;
