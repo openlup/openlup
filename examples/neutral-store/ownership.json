@@ -179,6 +179,7 @@
     "browser/checkout-controller.spec.ts",
     "test/checkout-anchors.test.ts",
     "browser/storefront-proof-kit.ts",
+    "shared/action-path.ts",
     "test/storefront-proof-kit.test.ts",
     "client/quote-acceptance.ts",
     "host/quote-secret.ts",

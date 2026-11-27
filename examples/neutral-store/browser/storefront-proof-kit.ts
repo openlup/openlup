@@ -20,7 +20,7 @@ import {
   type StorefrontProofFile, type StorefrontVerdict,
 } from '@openlup/platform/lifecycle';
 import { refusal } from '../shared/refusals.ts';
-import { actionPath } from '../shared/transport.ts';
+import { actionPath } from '../shared/action-path.ts';
 import { sandboxOutcomeAttribute } from '../shared/storefront-bindings.ts';
 import { routes } from '../shared/routes.ts';
 import { selectionEntryPath } from '../shared/selection-entry.ts';
@@ -96,7 +96,8 @@ export async function readStorefrontProof(root: string): Promise<StorefrontProof
   try {
     bytes = await readFile(path);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+    // Only a path with no entry at all is absent; a dangling link or any other entry that cannot be read refuses.
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT' && !await lstat(path).then(() => true, () => false)) {
       return { source: 'shipped', proofFile: shippedStorefrontProof, digest: null, configuration: shippedStorefrontProof.configurations[0]! };
     }
     throw refusal('starter_storefront_proof_file_unreadable', proofPath, `${proofPath} exists but cannot be read as a file (${(error as NodeJS.ErrnoException).code ?? 'unknown error'}).`,
@@ -145,7 +146,13 @@ export function assertRunnerIsolates(handle: object & { clearClientState?: unkno
 
 type MatchedRequest = { readonly method: string; readonly path: string };
 const createPath = actionPath('checkout.create');
-/** Every authoritative status read the managed pages send. Sandbox outcomes have operations of their own. */
+/**
+ * Every authoritative status read the pages that show a storefront state send. Sandbox outcomes have operations of
+ * their own, so blocking these never blocks an outcome. Matching is by path: blocking `checkout.recovery` also blocks
+ * its `pay` action, which is a payment, not a read; no scenario sends it under a read block. `account.orders` and
+ * `payment.recover` are not matched: the account and authenticated repair pages that send them need a signed-in
+ * customer and show no storefront state, so they cannot report a scenario's outcome.
+ */
 const readPaths: ReadonlySet<string> = new Set((['checkout.read', 'checkout.continuation', 'checkout.recovery', 'checkout.payment'] satisfies Operation[]).map(actionPath));
 
 /** The starter's create and read matchers and its command key header. */

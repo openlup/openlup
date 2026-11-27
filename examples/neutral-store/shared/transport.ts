@@ -1,10 +1,8 @@
 import { actionRequestTimeoutMs, type ActionInput, type ActionResult, type Operation } from './api.ts';
 import { isRecord } from './offer.ts';
+import { actionPath } from './action-path.ts';
 
-/** The request path of one starter action. Every client and command builds action paths here, and only here. */
-export function actionPath(operation: Operation): string {
-  return `/api/actions/${operation}`;
-}
+export { actionPath };
 
 /**
  * Sends one starter action under `commandKey` and reads its answer. It never throws: a lost or unreadable answer

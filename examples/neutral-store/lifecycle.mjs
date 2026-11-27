@@ -8,7 +8,7 @@ import { stripVTControlCharacters } from 'node:util';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { readStarterDiagnostic, starterDiagnostic } from './shared/refusals.ts';
 import { seedPhysicalGuidance } from './shared/seed-physical.ts';
-import { actionPath } from './shared/transport.ts';
+import { actionPath } from './shared/action-path.ts';
 import { assertRuntimeIdentity, connectRuntime, mountedRuntimeLine, prepareRuntimeHandoff,
   runtimeAuthFailed, runtimeConnectionString, runtimeMounted, runtimeReadFailed, runtimeUrl } from './host/runtime-database.ts';
 import { applicationHealthcheck } from './host/healthcheck.ts';

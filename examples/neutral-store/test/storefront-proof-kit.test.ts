@@ -3,7 +3,7 @@
 // driver over the sandbox marker, the build identity, the verdict file and the summary text.
 import { afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -142,10 +142,14 @@ test('K3 row 9: an adapter module refuses at this tier and is never imported', a
   await assert.rejects(stat(marker), { code: 'ENOENT' });
 });
 
-test('K3 row 10: a directory or an unreadable file at the path refuses', async () => {
+test('K3 row 10: a directory, a dangling link or an unreadable file at the path refuses', async () => {
   const directory = await application();
   await mkdir(join(directory, 'owned/storefront-proof.json'), { recursive: true });
   assertFourParts(await refusalOf(() => readStorefrontProof(directory)), 'starter_storefront_proof_file_unreadable');
+  const dangling = await application();
+  await mkdir(join(dangling, 'owned'));
+  await symlink(join(dangling, 'owned/missing.json'), join(dangling, 'owned/storefront-proof.json'));
+  assertFourParts(await refusalOf(() => readStorefrontProof(dangling)), 'starter_storefront_proof_file_unreadable');
   if (process.getuid?.() !== 0) {
     const locked = await application({ 'owned/storefront-proof.json': await shippedText() });
     await chmod(join(locked, 'owned/storefront-proof.json'), 0o000);
@@ -497,6 +501,16 @@ test('K8b T8 row 11: every status read of the managed pages is a read operation,
   for (const file of ['client/pages/checkout.ts', 'client/purchase.ts', 'shared/storefront-bindings.ts']) {
     assert.doesNotMatch(await readFile(join(root, file), 'utf8'), /'simulate'/, file);
   }
+  // Only the checkout and payment-status pages show a storefront state; the account and repair pages, which send the
+  // unmatched account.orders and payment.recover, show none, so those answers never report a scenario's outcome.
+  const clientFiles = (await readdir(join(root, 'client'), { recursive: true })).filter(name => name.endsWith('.ts'));
+  const stateRenderers: string[] = [];
+  for (const name of clientFiles) if ((await readFile(join(root, 'client', name), 'utf8')).includes('storefrontAnchor.state')) stateRenderers.push(name);
+  assert.deepEqual(stateRenderers, ['pages/checkout.ts']);
+  for (const name of clientFiles) {
+    const source = await readFile(join(root, 'client', name), 'utf8');
+    if (/'(?:account\.orders|payment\.recover)'/.test(source)) assert.ok(!stateRenderers.includes(name.split(sep).join('/')), name);
+  }
   // The sandbox outcome groups post the sandbox operations.
   const posted = requests.filter(item => item.file === 'client/pages/checkout.ts').map(item => item.operation);
   for (const operation of ['checkout.paymentSimulate', 'checkout.recoverySimulate', 'payment.simulate']) assert.ok(posted.includes(operation), operation);
@@ -693,15 +707,17 @@ test('K13: act requests actionPath(operation), the host routes it, and no other 
     for (const entry of await readdir(directory, { withFileTypes: true })) {
       const path = join(directory, entry.name);
       if (entry.isDirectory()) {
-        if (!['node_modules', 'dist', 'test', 'browser', 'docs', 'artifacts', 'public', 'release-inputs', '.context'].includes(entry.name)) await collect(path);
+        // Tests, specs, documentation, owned files and tool output (dependencies, builds, reports, hidden directories).
+        if (!entry.name.startsWith('.') && !['node_modules', 'dist', 'test', 'browser', 'docs', 'artifacts', 'public', 'release-inputs', 'owned',
+          'coverage', 'playwright-report', 'test-results', 'blob-report'].includes(entry.name)) await collect(path);
       } else if (/\.(?:ts|mts|mjs|js|cjs)$/.test(entry.name)) production.push(path);
     }
   }
   await collect(root);
   const builders: string[] = [];
   for (const path of production) if ((await readFile(path, 'utf8')).includes('/api/actions/')) builders.push(relative(root, path).split(sep).join('/'));
-  // shared/transport.ts builds the path; host/server.ts reads it from the request (proven above to accept actionPath).
-  assert.deepEqual(builders.sort(), ['host/server.ts', 'shared/transport.ts']);
+  // shared/action-path.ts builds the path; host/server.ts reads it from the request (proven above to accept actionPath).
+  assert.deepEqual(builders.sort(), ['host/server.ts', 'shared/action-path.ts']);
 });
 
 // ---------------------------------------------------------------------------------------------------------------

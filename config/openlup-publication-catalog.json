@@ -2178,6 +2178,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/shared/action-path.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/shared/api.ts",
       "class": "public-output"
     },
