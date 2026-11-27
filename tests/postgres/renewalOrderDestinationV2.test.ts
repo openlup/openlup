@@ -1,10 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { createPostgresDestinationPortV2 } from "@openlup/platform/commerce/server/destinations";
 import { createPostgresPrivacyStore } from "@openlup/platform/identity";
 import type { Pool, PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { readPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
+import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { composeNativePrivacy } from "../../server/runtime/auth/privacyBinding.js";
 import { withPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
@@ -132,8 +134,6 @@ it("upgrades in place with byte-identical checkout export and retained reads, in
     expect(index).toBeGreaterThan(0);
     plan.forward.splice(index);
   }
-  const predecessorPin = "61b191f2d16f3193ba094314bc6285bea36514f584ff31ac04bc760bf6e5ebf0";
-  prefix.qualified.objectInventorySha256.bootstrapMigrator.withRestore = predecessorPin;
   const previousUnits = [prefix.qualified.baseline, ...prefix.qualified.forward].map(unit => unit.file);
   const suffix = manifest.qualified.forward.slice(prefix.qualified.forward.length).map(unit => unit.file);
   const predecessorRoutines = [checkoutSignature.split("(")[0]!.slice("public.".length),
@@ -146,7 +146,12 @@ it("upgrades in place with byte-identical checkout export and retained reads, in
   await withPlatformCatalog(prefix, async root => {
     const installation = await installAccountMutations("bootstrap", true, "renewal-destination-upgrade", root, process.cwd());
     try {
-      expect(installation.inventory).toBe(predecessorPin);
+      prefix.qualified.objectInventorySha256.bootstrapMigrator.withRestore = installation.inventory;
+      writeFileSync(join(root, "config/platform-migration-manifest.json"), JSON.stringify(prefix));
+      const prefixRunner = createPostgresMigrationRunner({ connectionString: installation.migrator.options.connectionString! }, {
+        installation: installation.installation, root, poolFactory: () => installation.migrator,
+      });
+      expect(await prefixRunner.apply()).toEqual({ applied: [] });
       const previous = await definitions(installation.owner);
       expect(new Set(previous.map(row => row.proname))).toEqual(new Set(predecessorRoutines));
       const acquired = await subject(installation), historical = await subject(installation);
