@@ -3,8 +3,9 @@
 CREATE TABLE public.commerce_order_money_v2_redaction_marks (
   transaction_id xid8 NOT NULL,
   order_id uuid NOT NULL,
-  delivery_bucket boolean NOT NULL,
-  PRIMARY KEY (transaction_id, order_id, delivery_bucket)
+  -- The empty key denotes the order snapshot. Delivery headers require a nonempty key.
+  bucket_key text NOT NULL,
+  PRIMARY KEY (transaction_id, order_id, bucket_key)
 );
 ALTER TABLE public.commerce_order_money_v2_redaction_marks ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.commerce_order_money_v2_redaction_marks FROM PUBLIC;
@@ -20,12 +21,12 @@ DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') TH
 END IF; END; $$;
 
 -- Only consume a private mark for a deferred trigger in the current transaction.
-CREATE FUNCTION public.commerce_order_money_v2_consume_redaction_mark(p_order_id uuid, p_delivery_bucket boolean)
+CREATE FUNCTION public.commerce_order_money_v2_consume_redaction_mark(p_order_id uuid, p_bucket_key text)
 RETURNS boolean LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
   IF pg_trigger_depth() = 0 THEN RETURN false; END IF;
   DELETE FROM public.commerce_order_money_v2_redaction_marks
-    WHERE transaction_id = pg_current_xact_id() AND order_id = p_order_id AND delivery_bucket = p_delivery_bucket;
+    WHERE transaction_id = pg_current_xact_id() AND order_id = p_order_id AND bucket_key = p_bucket_key;
   RETURN FOUND AND EXISTS (
     SELECT FROM public.commerce_orders o
     JOIN public.commerce_order_tax_snapshots s ON s.order_id = o.id
@@ -77,7 +78,8 @@ BEGIN
         OR after_row->'destination_erased' IS DISTINCT FROM 'true'::jsonb
         OR (before_row - copies - 'destination_erased') IS DISTINCT FROM (after_row - copies - 'destination_erased')
         OR EXISTS (SELECT FROM unnest(copies) f WHERE after_row->f IS DISTINCT FROM 'null'::jsonb)
-        OR NOT public.commerce_order_money_v2_consume_redaction_mark(NEW.order_id, is_delivery_bucket)
+        OR NOT public.commerce_order_money_v2_consume_redaction_mark(
+          NEW.order_id, CASE WHEN is_delivery_bucket THEN before_row->>'bucket_key' ELSE '' END)
       THEN
         RAISE EXCEPTION 'commerce_order_money_v2_mismatch' USING ERRCODE = '23514', COLUMN = '/taxEvidence',
           HINT = 'Keep the accepted facts and use the owning order lifecycle operation.';
@@ -92,19 +94,19 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.commerce_order_money_v2_consume_redaction_mark(uuid,boolean) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.commerce_order_money_v2_consume_redaction_mark(uuid,text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.commerce_order_money_v2_child_guard() FROM PUBLIC;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_order_money_v2_consume_redaction_mark(uuid,boolean) FROM anon';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_order_money_v2_consume_redaction_mark(uuid,text) FROM anon';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_order_money_v2_consume_redaction_mark(uuid,boolean) FROM authenticated';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_order_money_v2_consume_redaction_mark(uuid,text) FROM authenticated';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_order_money_v2_consume_redaction_mark(uuid,boolean) FROM service_role';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_order_money_v2_consume_redaction_mark(uuid,text) FROM service_role';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
-  EXECUTE 'GRANT EXECUTE ON FUNCTION public.commerce_order_money_v2_consume_redaction_mark(uuid,boolean) TO service_role';
+  EXECUTE 'GRANT EXECUTE ON FUNCTION public.commerce_order_money_v2_consume_redaction_mark(uuid,text) TO service_role';
 END IF; END; $$;
 
 CREATE CONSTRAINT TRIGGER trg_commerce_order_tax_snapshots_money_v2 AFTER INSERT OR UPDATE OR DELETE ON public.commerce_order_tax_snapshots DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.commerce_order_money_v2_child_guard();
@@ -153,17 +155,17 @@ BEGIN
       WHERE o.id = s.order_id AND o.client_id = p_client_id AND NOT s.destination_erased
       RETURNING s.order_id
     )
-    INSERT INTO public.commerce_order_money_v2_redaction_marks(transaction_id, order_id, delivery_bucket)
-      SELECT pg_current_xact_id(), order_id, false FROM redacted WHERE ledger_was_empty;
+    INSERT INTO public.commerce_order_money_v2_redaction_marks(transaction_id, order_id, bucket_key)
+      SELECT pg_current_xact_id(), order_id, '' FROM redacted WHERE ledger_was_empty;
     WITH redacted AS (
       UPDATE public.commerce_order_delivery_buckets b
       SET destination_erased = true, carrier_ref = NULL, service_ref = NULL
       FROM public.commerce_orders o
       WHERE o.id = b.order_id AND o.client_id = p_client_id AND b.part_no = 0 AND NOT b.destination_erased
-      RETURNING b.order_id
+      RETURNING b.order_id, b.bucket_key
     )
-    INSERT INTO public.commerce_order_money_v2_redaction_marks(transaction_id, order_id, delivery_bucket)
-      SELECT pg_current_xact_id(), order_id, true FROM redacted WHERE ledger_was_empty;
+    INSERT INTO public.commerce_order_money_v2_redaction_marks(transaction_id, order_id, bucket_key)
+      SELECT pg_current_xact_id(), order_id, bucket_key FROM redacted WHERE ledger_was_empty;
   END;
   RETURN v_count;
 END;

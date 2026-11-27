@@ -931,7 +931,7 @@
     },
     {
       "file": "db/platform/migrations/20261129130508_order_money_v2_child_guards.sql",
-      "sha256": "6fc46ea8d578458768a46e20e5c7804760d958b554b4292347faee0c217f5150"
+      "sha256": "50f6c909d9ee28823aeeb3638bb56c696e9865fb3395a62fa22ff9a19ab24f43"
     },
     {
       "file": "db/platform/migrations/20261129130509_order_draft_receipts_v2.sql",
@@ -946,7 +946,7 @@
       "sha256": "1f11757213628148547e2d2b500f0e85feced698252e4afdf7dba030b245a174"
     }
   ],
-  "objectInventorySha256": "84b3e74ec87b88a916bd080d2d9e7b43df53eb3cb831c9ff79ef37a031e74f37",
+  "objectInventorySha256": "9e8a07c7f0d31de2d8359be5e722046abefc152bb9cc97c6228f701d4a32572b",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1903,7 +1903,7 @@
       },
       {
         "file": "db/platform/migrations/20261129130508_order_money_v2_child_guards.sql",
-        "sha256": "6fc46ea8d578458768a46e20e5c7804760d958b554b4292347faee0c217f5150"
+        "sha256": "50f6c909d9ee28823aeeb3638bb56c696e9865fb3395a62fa22ff9a19ab24f43"
       },
       {
         "file": "db/platform/migrations/20261129130509_order_draft_receipts_v2.sql",
@@ -1920,10 +1920,10 @@
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "952481120ef4937dc22ecfe45f97e3996f49a71b1a3054d0aeb8780ea81af247"
+        "withRestore": "e491f65f738c72d3b0d9cb227810e163a9bfe7b4a222db67002c510f412996d3"
       },
       "separateMigrator": {
-        "withRestore": "19b0626f1d5e14c806952b562634df8956d7577a95d1a47b1f45593bb8d761f6"
+        "withRestore": "4ffc618393fa9fed4a31b5ce17783edd0f6ff62575e8ad42cf71166811c111b0"
       }
     }
   },
@@ -2875,7 +2875,7 @@
       },
       {
         "file": "db/platform/migrations/20261129130508_order_money_v2_child_guards.sql",
-        "sha256": "6fc46ea8d578458768a46e20e5c7804760d958b554b4292347faee0c217f5150"
+        "sha256": "50f6c909d9ee28823aeeb3638bb56c696e9865fb3395a62fa22ff9a19ab24f43"
       },
       {
         "file": "db/platform/migrations/20261129130509_order_draft_receipts_v2.sql",
@@ -2891,8 +2891,8 @@
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "c1a524968a57e2c15a191747b6062df71942050ed86697e0a22ba74061588fe7",
-      "operatorProvisioned": "b6b544ddac6b74fb2f17f7ead159969045cbeb5c1593f215ab5a141705de217b"
+      "installerManaged": "36884f182bdbfa04f80d8f4d98ed2ba591e52872e3808126ece2a30d3b6fc4d8",
+      "operatorProvisioned": "a6322c7b863d44bc0b4facb32dfeac214d89738320d90792ee824f7bd7b11679"
     }
   }
 }

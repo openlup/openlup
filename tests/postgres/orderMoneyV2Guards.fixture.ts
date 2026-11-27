@@ -30,12 +30,13 @@ export function reseal(body: Body, quoteId: string = randomUUID()): CommerceQuot
 
 export async function issue(store: Pick<AccountMutationsStore, "owner" | "runtime">, sku: Sku, inclusive: boolean,
   edit: (body: Body) => Body = body => body,
-  { pending = false, legacySeal = false, promotions = [], paymentBounds }: {
+  { pending = false, legacySeal = false, promotions = [], paymentBounds, context }: {
     pending?: boolean; legacySeal?: boolean; promotions?: readonly PromotionTarget[];
+    context?: Parameters<typeof fixture>[2];
     paymentBounds?: Pick<Body["paymentLimits"], "minMinor" | "maxMinor">;
   } = {}) {
   const at = (await store.owner.query<{ now: Date }>("SELECT date_trunc('milliseconds',clock_timestamp()) AS now")).rows[0]!.now;
-  const value = await fixture(store, at.toISOString());
+  const value = await fixture(store, at.toISOString(), context);
   const input = value.begin(inclusive ? fiscalKind : exclusiveKind, !legacySeal);
   if (paymentBounds && input.pin.composition) {
     Object.assign(input.pin.composition.limits, paymentBounds, { effective: paymentBounds });

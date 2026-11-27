@@ -400,7 +400,7 @@ it("commits mounted erasure and retains its evidence after a released savepoint"
   const value = await inReleasedSavepoint(store.runtime, async db => {
     // A direct call fails even while the authorized transaction holds both live marks.
     expect((await db.query(`SELECT public.commerce_order_draft_receipt_v2_consume_erasure_mark($1,$2,$3) AS receipt,
-      public.commerce_order_money_v2_consume_redaction_mark($1,false) AS money`,
+      public.commerce_order_money_v2_consume_redaction_mark($1,'') AS money`,
     [id, fresh.input.owner.customerOrSessionRef, fresh.input.owner.principalRef])).rows)
       .toStrictEqual([{ receipt: false, money: false }]);
   }).erase(actor, erase);

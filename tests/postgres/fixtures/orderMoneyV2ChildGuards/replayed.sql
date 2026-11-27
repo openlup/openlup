@@ -17,10 +17,12 @@ SELECT ok((SELECT proowner=current_user::regrole AND provolatile='v' AND prosecd
   AND NOT EXISTS (SELECT FROM aclexplode(coalesce(proacl,acldefault('f',proowner)))
     WHERE grantee<>proowner AND NOT coalesce(grantee=to_regrole('service_role') AND privilege_type='EXECUTE' AND NOT is_grantable, false))
   AND (to_regrole('service_role') IS NULL OR has_function_privilege(to_regrole('service_role'),oid,'EXECUTE'))
-  FROM pg_proc WHERE oid='public.commerce_order_money_v2_consume_redaction_mark(uuid,boolean)'::regprocedure),
+  FROM pg_proc WHERE oid='public.commerce_order_money_v2_consume_redaction_mark(uuid,text)'::regprocedure),
   'only owner and optional service role can execute the definer helper');
 
 SELECT ok((SELECT relowner=current_user::regrole AND relrowsecurity AND NOT relforcerowsecurity
+  AND EXISTS (SELECT FROM pg_constraint WHERE conrelid=c.oid AND contype='p'
+    AND pg_get_constraintdef(oid)='PRIMARY KEY (transaction_id, order_id, bucket_key)')
   AND NOT EXISTS (SELECT FROM pg_policy WHERE polrelid=c.oid)
   AND NOT EXISTS (SELECT FROM aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) WHERE grantee<>c.relowner)
   AND NOT EXISTS (SELECT FROM pg_attribute a CROSS JOIN LATERAL aclexplode(a.attacl) WHERE a.attrelid=c.oid)

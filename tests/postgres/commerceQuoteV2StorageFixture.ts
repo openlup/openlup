@@ -33,8 +33,9 @@ const fee = { feeKey: "fee-a", jurisdictionRef: "district-a", feeKind: "fee-kind
   providerPositionRef: "provider-position-a" };
 const price = { priceListRef: "list-a", priceContextDigest: digest, priceEvidenceRef: "price-a", classMapRevision: "classes-a" };
 
-async function fixture(store: Pick<JourneyInstallation, "owner" | "runtime">, taxDate = fixtureTaxDate) {
-  const ctx = await destinationContext(store.owner);
+async function fixture(store: Pick<JourneyInstallation, "owner" | "runtime">, taxDate = fixtureTaxDate,
+  context?: Awaited<ReturnType<typeof destinationContext>>) {
+  const ctx = context ?? await destinationContext(store.owner);
   const issued = await snapshot(store.runtime, ctx);
   const { address } = snapshotCommand(ctx).command.validated;
   const { installationRef, principalRef } = ctx.owner;

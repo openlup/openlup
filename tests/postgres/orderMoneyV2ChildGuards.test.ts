@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import type { Pool, PoolClient, QueryConfig } from "pg";
 import type { PgQueryExecutor } from "@openlup/platform/data";
 import type { HttpRequest, HttpResponse } from "@openlup/platform/http";
-import { createPostgresPrivacyStore, createPrivacyEraseHandler } from "@openlup/platform/identity";
+import { createPostgresPrivacyStore, createPostgresPrivacyUnitOfWork, createPrivacyEraseHandler } from "@openlup/platform/identity";
 import { erasureReceiptSchema } from "@openlup/platform/identity/contracts";
 import { PostgresTransferError } from "@openlup/platform/portability";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
@@ -12,8 +12,9 @@ import { restoreConnectedNativeStore } from "../../server/adapters/postgres/conn
 import { composeNativePrivacy } from "../../server/runtime/auth/privacyBinding.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 import { createAccountMutationsTemplate, installAccountMutationsBeforeForward, type AccountMutationsStore } from "./customerAccountMutations.fixture.js";
-import { deferred, testServicePin } from "./destinationDocumentFixture.js";
+import { deferred, destinationContext, testServicePin } from "./destinationDocumentFixture.js";
 import { awaitReceiptWait, backendPid, receiptClient } from "./destinationReceiptFixture.js";
+import { prepareReceipt, receipts, writeReceipt } from "./orderDraftReceiptsV2.fixture.js";
 import { issue, write, type Evidence } from "./orderMoneyV2Guards.fixture.js";
 import { allocations, buckets, capture, expectSqlError, fees, insert, itemTable, orderTable, positions, rejected, seedSku,
   snapshots, sources, storageTables, transaction } from "./orderMoneyV2Storage.fixture.js";
@@ -84,35 +85,45 @@ it("applies the child guards first and preserves the installed assertion, reader
     [signature])).rows).toEqual([{ login: store.installation.generation === "qualified-v2" ? store.installation.runtimeLogin : "", execute: false }]);
 });
 
-function fullEvidence(db: AccountMutationsStore, variant: typeof sku) {
-  const promotion = "offer-" + randomUUID();
-  const allocation = randomUUID();
+function fullEvidence(db: AccountMutationsStore, variant: typeof sku,
+  { multiple = false, context }: { multiple?: boolean; context?: Awaited<ReturnType<typeof destinationContext>> } = {}) {
+  const count = multiple ? 2 : 1;
+  const promotions = Array.from({ length: count }, () => ({ id: "offer-" + randomUUID(), lineKey: "article" }));
   return issue(db, variant, false, body => {
     const source = body.lines[0]!;
     const state = (basis: number) => ({
       basisMinor: basis, netMinor: basis, taxMinor: 0,
       taxPositions: [{ ...source.taxPositions[0]!, taxableMinor: basis }],
     });
-    const after = state(99);
+    const paid = 100 - count;
+    const after = state(paid);
+    const first = {
+      ...source, lineKey: "article", preDiscountMinor: 100, effectiveMinor: paid, netMinor: paid, lineTotalMinor: paid,
+      taxPositions: after.taxPositions,
+      discountAllocations: promotions.map(({ id }, index) => ({
+        allocationId: randomUUID(), adjustmentRef: id, sequence: index + 1, source: "legacy_promotion" as const,
+        basisReductionMinor: 1, netReductionMinor: 1, taxReductionMinor: 0, evidenceRef: "b".repeat(64),
+        before: state(100 - index), after: state(99 - index),
+      })),
+    };
+    const netTotal = paid + (count - 1) * 100 + count * 2;
     return {
       ...body,
-      lines: [{
-        ...source, lineKey: "article", preDiscountMinor: 100, effectiveMinor: 99, netMinor: 99, lineTotalMinor: 99,
-        taxPositions: after.taxPositions,
-        discountAllocations: [{ allocationId: allocation, adjustmentRef: promotion, sequence: 1, source: "legacy_promotion",
-          basisReductionMinor: 1, netReductionMinor: 1, taxReductionMinor: 0, evidenceRef: "b".repeat(64), before: state(100), after }],
-      }],
-      deliveryBuckets: [{
-        bucketKey: "handling", kind: "handling", carrierRef: testServicePin.carrierRef, serviceRef: testServicePin.serviceRef,
-        taxClassKey: "class-a", assignmentRef: "assignment-a", cost: { ref: "cost", currency: "XXX", amountMinor: 2 },
+      lines: multiple ? [first, { ...source, lineKey: "article-2", sourceOrdinal: 2, taxPositions: [] }] : [first],
+      deliveryBuckets: Array.from({ length: count }, (_, index) => ({
+        bucketKey: index === 0 ? "handling" : "handling-2", kind: "handling",
+        carrierRef: testServicePin.carrierRef, serviceRef: testServicePin.serviceRef, taxClassKey: "class-a",
+        assignmentRef: "assignment-a", cost: { ref: "cost", currency: "XXX", amountMinor: 2 },
         separatelyStated: false, parts: [{ preDiscountMinor: 2, effectiveMinor: 2, netMinor: 2, taxMinor: 0,
           lineTotalMinor: 2, taxPositions: [], discountAllocations: [] }],
-      }],
-      feeLines: [{ feeKey: "fee", jurisdictionRef: "district", feeKind: "service", amountMinor: 3,
-        scope: { kind: "order" }, refundRule: { ref: "rule", revision: "1" } }],
-      netTotal: 101, feeTotal: 3, payableMinor: 104,
+      })),
+      feeLines: Array.from({ length: count }, (_, index) => ({
+        feeKey: index === 0 ? "fee" : "fee-2", jurisdictionRef: "district", feeKind: "service", amountMinor: 3,
+        scope: { kind: "order" }, refundRule: { ref: "rule", revision: "1" },
+      })),
+      netTotal, feeTotal: count * 3, payableMinor: netTotal + count * 3,
     };
-  }, { promotions: [{ id: promotion, lineKey: "article" }] });
+  }, { promotions, context });
 }
 
 const guardName = (table: string) => `trg_${table}_money_v2`;
@@ -253,14 +264,14 @@ function erasure(target: AccountMutationsStore, principalId: string,
         await sqlStore.saveReceipt(db, subject, actor, key, receipt, records);
       },
     },
-    unitOfWork: { run: <T>(work: (db: PgQueryExecutor) => Promise<T>) =>
+    unitOfWork: hooks.start || hooks.releaseSavepoint ? { run: <T>(work: (db: PgQueryExecutor) => Promise<T>) =>
       transaction(target.runtime, async db => {
         if (hooks.start) hooks.start(await backendPid(db));
         if (hooks.releaseSavepoint) await db.query("SAVEPOINT mounted_erasure");
         const result = await work(db);
         if (hooks.releaseSavepoint) await db.query("RELEASE SAVEPOINT mounted_erasure");
         return result;
-      }) },
+      }) } : createPostgresPrivacyUnitOfWork({ connectionString: "" }, { pool: target.runtime }),
   }).operations;
   const handler = createPrivacyEraseHandler({
     operations, authorizeAdmin: async () => ({ ok: true, role: "admin", principalId, isMachineActor: false }),
@@ -341,6 +352,51 @@ async function refusesUnlistedGuard(input: Awaited<ReturnType<typeof restoreInpu
   expect(error).toMatchObject({ code: "insert_trigger_requires_owner", table: fees,
     message: `postgres_transfer_insert_trigger_requires_owner:${fees}` });
 }
+
+it.each([
+  { mode: "the default top-level transaction", releaseSavepoint: false },
+  { mode: "a released savepoint", releaseSavepoint: true },
+])("erases each delivery header and both owner receipts in $mode", async ({ releaseSavepoint }) => {
+  const [actor, context] = await Promise.all([operator(store.owner), destinationContext(store.owner)]);
+  const evidence = await fullEvidence(store, sku, { multiple: true, context });
+  const other = await issue(store, sku, false, undefined, { context: { ...context, scopeRef: randomUUID() } });
+  const firstReceipt = await prepareReceipt(store, sku, randomUUID(), evidence);
+  const secondReceipt = await prepareReceipt(store, sku, randomUUID(), other);
+  const [orderId, otherId] = await transaction(store.owner, async db => [
+    await writeReceipt(db, firstReceipt.input, evidence, sku),
+    await writeReceipt(db, secondReceipt.input, other, sku),
+  ] as const);
+
+  const readRows = async (table: string) => (await store.owner.query<{ row: Record<string, unknown> }>(
+    `SELECT to_jsonb(c) AS row FROM public.${table} c WHERE order_id=$1 ORDER BY to_jsonb(c)::text`, [orderId])).rows.map(({ row }) => row);
+  const unchangedTables = [itemTable, adjustments, sources, allocations, positions, fees];
+  const retained = await Promise.all(unchangedTables.map(readRows));
+  expect(retained.every(rows => rows.length >= 2)).toBe(true);
+  const delivery = await readRows(buckets);
+  expect(delivery.filter(row => row.part_no === 0).map(row => row.bucket_key).sort()).toEqual(["handling", "handling-2"]);
+  expect(delivery.filter(row => row.part_no === 1)).toHaveLength(2);
+
+  const erase = erasure(store, actor, { releaseSavepoint });
+  const key = randomUUID();
+  const accepted = receipt(await erase(evidence.clientId, key), "ERASED");
+  expect((await store.owner.query("SELECT erasure_id FROM public.identity_privacy_erasures WHERE client_id=$1",
+    [evidence.clientId])).rows).toStrictEqual([{ erasure_id: accepted.erasureId }]);
+  expect((await store.owner.query(`SELECT order_id FROM public.${snapshots} WHERE order_id=ANY($1::uuid[])
+    AND destination_erased ORDER BY order_id`, [[orderId, otherId]])).rows.map(row => row.order_id))
+    .toEqual([orderId, otherId].sort());
+  expect((await store.owner.query(`SELECT order_id FROM public.${receipts} WHERE order_id=ANY($1::uuid[])
+    AND principal_ref IS NULL AND customer_or_session_ref IS NULL ORDER BY order_id`, [[orderId, otherId]])).rows.map(row => row.order_id))
+    .toEqual([orderId, otherId].sort());
+  const erasedDelivery = await readRows(buckets);
+  expect(erasedDelivery).toEqual(expect.arrayContaining(delivery.map(row => row.part_no === 0
+    ? { ...row, carrier_ref: null, service_ref: null, destination_erased: true } : row)));
+  expect(erasedDelivery).toHaveLength(delivery.length);
+  expect(await Promise.all(unchangedTables.map(readRows))).toStrictEqual(retained);
+  for (const table of ["commerce_order_money_v2_redaction_marks", "commerce_order_draft_receipt_erasure_marks"]) {
+    expect((await store.owner.query(`SELECT order_id FROM public.${table} WHERE order_id=ANY($1::uuid[])`, [[orderId, otherId]])).rows).toEqual([]);
+  }
+  expect(receipt(await erase(evidence.clientId, key), "ALREADY_ERASED").erasureId).toBe(accepted.erasureId);
+});
 
 it("order_money_survives_erasure_and_restore", async () => {
   const template = await createAccountMutationsTemplate("bootstrap", "money-erasure-restore", undefined, undefined, { isolatedCluster: true });
