@@ -21,16 +21,20 @@ and erasure receipts as unavailable.
 versions and owned resources. Each contributor describes its export coverage
 and its erase, retain or unresolved obligations. Duplicate IDs refuse with
 `PRIVACY_CONTRIBUTOR_DUPLICATE`. Export reports missing host-only contributors.
-Erasure refuses when a required owner or the identity owner is absent. A
-successful export is only as complete as its reported coverage.
+Native export and erasure both refuse if a contributor in the installed
+declaration is absent. Erasure also requires the identity owner and every
+contributor required by the host registry. A successful export is only as
+complete as its reported coverage.
 
 Register the owners of the features your application uses. Account-event
 payloads require the `account-support` contributor and an explicit retention
 decision; clearing the contact profile does not clear that ledger. Native
 billing data requires `customer-billing`: editable billing profiles erase while
 frozen invoice buyer components remain under invoice retention. Native parcel
-preparation requires `fulfillment-parcel-contacts`: private parcel and order contacts and retained correction responses
-erase while payload-free erasure markers remain. A composed `risk` contributor
+preparation requires `fulfillment-parcel-contacts`. Its export includes
+contacts projected from retained destination bindings. Private parcel and
+order contacts and retained correction responses erase while payload-free
+erasure markers remain. A composed `risk` contributor
 exports declared resources and retains facts only under an explicit policy;
 missing policy or ownership blocks erasure. These obligations do not disappear
 when identity erasure succeeds.

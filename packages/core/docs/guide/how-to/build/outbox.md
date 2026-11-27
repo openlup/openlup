@@ -6,7 +6,10 @@ across retries. Compose the store, handlers and host entrypoints explicitly.
 ## PostgreSQL installation and transactions
 
 Apply the package's [baseline SQL](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/outbox/sql/0001_outbox.sql)
-through your migration chain on a fresh PostgreSQL database. Its
+through your migration chain on a fresh PostgreSQL database. Then apply the
+[active-row indexes](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/outbox/sql/0002_outbox_active_partial_indexes.sql).
+On an existing installation of the baseline, apply the additive index forward
+through the same chain. The
 [manifest](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/outbox/sql/manifest.json)
 binds the bytes to their migration owner. Use
 [a supported PostgreSQL version](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/outbox/README.md#postgresql-installation-and-transactions).

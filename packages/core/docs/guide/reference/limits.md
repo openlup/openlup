@@ -204,11 +204,12 @@ In the tables, “—” means the boundary has no dedicated refusal code.
 
 | Action | What happens | Refusal code |
 | --- | --- | --- |
-| Edit live products, SKUs, price lists, price entries or promotions | These are demonstration seed data; there is no runtime editor. Bundle and catalogue drafts have separate operator editors. | `starter_promotion_write_unavailable` |
+| Edit live products, SKUs, price lists, price entries or promotions directly in the operator UI | Direct writes are unavailable. Bundle and catalogue drafts have separate operator editors. On the marked demo, use the [catalogue activation workflow](../how-to/build/customize-the-starter.md#release-price-and-activate-a-demo-product) for authored products or the [price review workflow](../how-to/build/customize-the-starter.md#change-a-products-price) for eligible live base prices. | `starter_promotion_write_unavailable` for promotion writes |
 | Enter checkout promotion codes | Nonempty promotion-code input is rejected. | `starter_promotion_codes_unsupported` |
 | Publish a catalogue draft from the operator UI | The button displays a local refusal. Use the [operator API to prepare, approve and publish a saved version 3 draft](../how-to/build/customize-the-starter.md#publish-a-saved-catalogue-draft). | `starter_catalog_publication_unavailable` |
 | Evaluate a promotion with line targeting | `line_with_variant` and `line_with_category` are stored. The Core promotion evaluator calculates each kind as `order_total`. | — |
 | Purchase an activated bundle | Activation does not make a bundle available to this storefront or checkout. | —; no purchase control |
+| Start a fresh governed purchase after catalogue activation | Published SKUs can list and quote when eligible. Fresh checkout still requires governed purchase authority, which the starter does not enable. | `catalog_admission_quote_authority_required` |
 | List a published SKU without one-time sellability | The starter lists only SKUs sellable for one-time purchase. Enable that mode through the catalogue workflow, then reread the SKU. | `starter_catalogue_one_time_required` |
 | Use lot traceability, locations or stock movements | The starter supplies none of these inventory facilities. The limits-page action refuses. | `starter_inventory_traceability_unavailable` |
 | Run the starter against a hosted database | The supplied installation is a local demonstration database recipe. It provides no hosted-database setup. | —; no hosted installation recipe |
@@ -647,7 +648,7 @@ private-capture cleanup.
 | Hold without proven provider-exception scope or recovery classification | Zero automatic release, `provider_exception_scope_unproven`. An authorized operator handles the hold. Human and terminal exception holds remain manual. |
 | Erased contact or missing carrier selection | No reconstruction of contact; unknown carrier/service stay null. Supply only independently authorized current evidence. |
 | Missing, malformed or resized pagination metadata | Begin at page zero. A checkpoint-read error aborts before GET and writes no replacement checkpoint; repair storage before retrying. |
-| Delivered observation with no admitted tracking reference | Status evidence persists and an eligible hold can heal, but arrival and alignment remain unchanged. Use an authorized operator tracking/delivery command or a later observation carrying a reference. |
+| Delivered observation without an incoming tracking reference | A verified webhook can record arrival for an exactly correlated parcel with an existing unambiguous provider-bound reference and a proven occurrence time. Without that evidence, arrival and alignment stay unchanged. Use the [authorized tracking and delivery path](../how-to/build/fulfillment.md#bind-provider-intake-and-reconciliation) when the provider cannot supply sufficient evidence. |
 
 Native intake composes existing commands and the job ledger; it installs no
 scheduler. Public tracking access, label create/void, independent split shipments,

@@ -42,6 +42,9 @@ organization, website and brand identifiers from your origin. `schemaWeight`
 converts `unscaled` and `scale` to a quantitative value; `GRAM` and `G` map to
 `GRM`.
 
+`productLd` omits `gtin13` for 13-digit restricted-circulation numbers with
+prefixes `02`, `04` or `20`–`29`. These include store-local catalogue identifiers.
+
 Combine nodes with `jsonLdGraph`. It removes each node's local `@context` and
 keeps the first node with a repeated nonempty `@id`. `serializeJsonLd` escapes
 script-breaking characters while retaining the parsed JSON value. Passing nodes
