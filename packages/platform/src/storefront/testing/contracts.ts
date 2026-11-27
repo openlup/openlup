@@ -125,7 +125,10 @@ export type StorefrontScenario = {
  * @experimental
  */
 export type StorefrontAdapter = {
-  /** Store-owned steps up to the first buyer action. `edit` names a field to change on a rearrangement, else `null`. */
+  /**
+   * Store-owned steps up to the first buyer action. `edit` names a field to change on a rearrangement, else `null`.
+   * Like the default arrangement, tick consent only after `page.settled` returned from the last text change.
+   */
   readonly arrange?: (context: {
     readonly scenario: StorefrontScenario;
     readonly buyer: Readonly<Record<string, string | boolean>>;

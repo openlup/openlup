@@ -108,6 +108,11 @@ export type StoreDoubleSwitches = {
    * for another buyer sends nothing and shows `details_changed`, until the client state is cleared.
    */
   readonly sessionCarriesRecord?: boolean;
+  /**
+   * Each text-field change starts a quote that lands on the next settle; a quote started while terms were not ticked
+   * clears the tick when it lands, and place-order sends nothing while terms are not ticked.
+   */
+  readonly lateQuoteUnticksTerms?: boolean;
 };
 
 /** Every outcome kind the double's driver can produce. */
@@ -164,6 +169,8 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: {
   const produced: [string, string][] = [];
   const answers = new Map<string, number>();
   const queue: Array<() => void> = [];
+  // Quotes started by text-field changes, landed by the next settle.
+  const quotes: Array<() => void> = [];
   const tasks = new Set<Promise<unknown>>();
   let decide: Decide | null = null;
   let view: View = "blank";
@@ -421,6 +428,7 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: {
         return true;
       }
       if (name === "action:place_order") {
+        if (switches.lateQuoteUnticksTerms === true && fields.terms_accepted !== true) return true;
         if (placing && switches.noSubmitGuard !== true && switches.noSubmitGuardSameKey !== true) return false;
         if (switches.firstSubmitSendsNothing === true && !firstSubmitSkipped) {
           firstSubmitSkipped = true;
@@ -457,6 +465,12 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: {
       acted(`fill ${name}`);
       if (present().get(name) === undefined) return false;
       fields[name.slice("field:".length)] = value;
+      if (switches.lateQuoteUnticksTerms === true && typeof value === "string") {
+        const tickedAtStart = fields.terms_accepted === true;
+        void track(new Promise<void>((resolve) => quotes.push(resolve)).then(() => {
+          if (!tickedAtStart) delete fields.terms_accepted;
+        }));
+      }
       return true;
     },
     async clearClientState() {
@@ -484,6 +498,7 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: {
         view = "awaiting_payment";
       }
       progressOnItsOwn();
+      for (const land of quotes.splice(0)) land();
       for (;;) {
         await turn();
         if (queue.length > 0) {

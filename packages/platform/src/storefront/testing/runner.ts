@@ -384,7 +384,13 @@ type RunRecord = {
  * installs one interceptor that classifies requests by the create and read
  * matchers, records each command's key reuse (key values are compared in
  * memory, never stored) and applies the armed withhold or hold, then runs the
- * steps. Every step ends only when the page has settled: every request the
+ * steps. Wherever the runner types the buyer's details (the default
+ * arrangement, its repeat after a reload, an edited payload, and the re-typing
+ * after a reload under an adapter's `arrange`), it fills every text field
+ * first and sets consent and other toggle fields (`terms_accepted`) only after
+ * the page settled from the last text change, so a page that re-validates the
+ * details and resets consent given before that check keeps the tick. Every
+ * step ends only when the page has settled: every request the
  * interceptor saw finished and `quietMs` passed with no new request. Then the
  * runner reads the ledger, the visible anchors and the path. After the last
  * step a settle window waits once more and reads them again. The control run
@@ -717,8 +723,14 @@ export async function runStorefrontScenario(options: StorefrontRunOptions): Prom
       }
       return false;
     };
+    // Every text field first; consent and other toggles only after the page settled from the last text change, so a
+    // page that re-validates the details (a quote that resets consent given before it started) keeps the tick.
     const fillDetails = async (index: number, edit: string | undefined): Promise<boolean> => {
-      for (const [field, value] of Object.entries(buyer)) {
+      const entries = Object.entries(buyer);
+      const texts = entries.filter(([, value]) => typeof value === "string");
+      const toggles = entries.filter(([, value]) => typeof value !== "string");
+      for (const [position, [field, value]] of [...texts, ...toggles].entries()) {
+        if (position === texts.length && toggles.length > 0) await page.settled({ quietMs, timeoutMs: timeoutMs + quietMs });
         const target = targetOf("field", field);
         // The e-mail carries the subject and must resolve; the other fields are filled where the form has them.
         const found = await page.find(target, { timeoutMs: field === "email" ? timeoutMs : 0 });

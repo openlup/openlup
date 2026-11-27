@@ -1,0 +1,1 @@
+- `@openlup/platform/storefront/testing`: the runner's default arrangement ticks consent (`terms_accepted`) only after the page settled from the last text field it typed, so a page that resets consent when re-checking the details no longer ends `not_run`.

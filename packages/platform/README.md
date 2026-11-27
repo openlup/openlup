@@ -4165,7 +4165,12 @@ adapter: the default arrangement opens the selection entry, performs
 values (`email` must resolve; it carries the run's subject,
 `storefront-<runId>-clean@example.test` or `…-control@example.test`). After a
 reload a declared selection entry is arranged again; otherwise an adapter's
-`arrange` arranged the run and only the details are re-typed. The clean run
+`arrange` arranged the run and only the details are re-typed. Wherever the
+runner types the details (arrangement, re-arrangement, edited payload,
+re-typing), it fills every text field first and ticks consent
+(`terms_accepted`) only after the page settled from the last text change, so a
+page whose details check resets consent given before it started keeps the
+tick; an adapter's `arrange` should do the same. The clean run
 reads the subject's ledger first, then routes every request through one
 interceptor that classifies it by the create and read matchers and records
 whether each command reused an earlier key (the key value is compared, never

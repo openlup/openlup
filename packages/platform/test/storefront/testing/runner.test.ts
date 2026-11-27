@@ -971,6 +971,32 @@ describe("client state between the runs (R40–R46)", () => {
   });
 });
 
+describe("consent after the page settled from the last text change (R48)", () => {
+  it.each(["lost_response_reload", "lost_response_edited_payload", "duplicate_submit"])("ticks terms only after a late quote landed, so %s sends its creates", async (id) => {
+    const { verdict, double } = await run(id, { lateQuoteUnticksTerms: true });
+    expect(verdict.findings).toEqual([]);
+    expect(verdict.result).toBe(id === "duplicate_submit" ? "safety_only" : "passed");
+    const arrangement = double.calls.slice(0, double.calls.indexOf("perform action:place_order"));
+    const tick = arrangement.indexOf("fill field:terms_accepted");
+    expect(arrangement.slice(arrangement.lastIndexOf("fill field:postal_code"), tick)).toEqual(["fill field:postal_code", "settled", "find field:terms_accepted"]);
+  });
+
+  it("re-types the details after a reload with a custom arrange the same way", async () => {
+    const adapter: StorefrontAdapter = {
+      async arrange({ page, buyer }) {
+        await page.navigate("/select/one_time");
+        await page.perform({ attribute: "action", value: "proceed_to_checkout" }, { timeoutMs: 0 });
+        for (const [field, value] of Object.entries(buyer)) if (typeof value === "string") await page.fill({ attribute: "field", value: field }, value, { timeoutMs: 0 });
+        await page.settled({ quietMs: 0 });
+        await page.fill({ attribute: "field", value: "terms_accepted" }, true, { timeoutMs: 0 });
+      },
+    };
+    const { verdict } = await run("lost_response_reload", { lateQuoteUnticksTerms: true }, { adapter, proofFile: { formatVersion: 1, configurations: ["default"], widths: [1280] } });
+    expect(verdict.findings).toEqual([]);
+    expect(verdict.result).toBe("passed");
+  });
+});
+
 describe("the verdict shape (R12)", () => {
   it("gives every verdict above to the parser, with no key value and no query", () => {
     expect(verdicts.length).toBeGreaterThan(25);
