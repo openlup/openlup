@@ -13762,6 +13762,10 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/preflight-integration-settings-cold.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/preflight-integration-settings.test.ts",
       "class": "public-output"
     },
@@ -32303,6 +32307,10 @@
     },
     {
       "path": "tests/postgres/subscriptionWinback.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/taxCalculationAdapterMoneyV1.test.ts",
       "class": "public-output"
     },
     {

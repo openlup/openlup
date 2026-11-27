@@ -2,13 +2,21 @@
   "current": {
     "profiles": {
       "legacy": {
-        "count": 234,
-        "exactTailCount": 124,
-        "objectInventorySha256": "52ff48a09952db47889ef23bd06d094ba251464225410ac3c9d712103b431ce0",
+        "count": 236,
+        "exactTailCount": 126,
+        "objectInventorySha256": "68bea52ce92dd5daec0342ef403ddd1b143224637057bde4174aaa2f9d0fdd77",
         "tail": [
           {
-            "file": "db/platform/migrations/20261129130509_subscription_renewal_current_template.sql",
+            "file": "db/platform/migrations/20261129160002_subscription_renewal_current_template.sql",
             "sha256": "62f99a582643926653e73213cec1e6c72707f91c83c59ff0a31886220a9bd949"
+          },
+          {
+            "file": "db/platform/migrations/20261129160001_tax_calculation_adapter_money_activation.sql",
+            "sha256": "a6fa96a9bd34839097a289aa9efa8461ce1e2433eaa0a6c8171b395da1f45104"
+          },
+          {
+            "file": "db/platform/migrations/20261129160000_tax_calculation_adapter_money_v1.sql",
+            "sha256": "87513fd800efdb97405d8ea5c644a63769e08842a077e6595800bf65aed3761d"
           },
           {
             "file": "db/platform/migrations/20261129130508_renewal_order_destination_v2.sql",
@@ -945,13 +953,21 @@
         ]
       },
       "bootstrap": {
-        "count": 240,
-        "exactTailCount": 125,
-        "objectInventorySha256": "002ac21777efbe298f73ee7a8b58bcfe122431e4bb56643e8de3ce43c426f874",
+        "count": 242,
+        "exactTailCount": 127,
+        "objectInventorySha256": "b8978dcb409eb26d0dd57d3ff599f7a0f5621de8a3d200f6e7597ababfdffb1c",
         "tail": [
           {
-            "file": "db/platform/migrations/20261129130509_subscription_renewal_current_template.sql",
+            "file": "db/platform/migrations/20261129160002_subscription_renewal_current_template.sql",
             "sha256": "62f99a582643926653e73213cec1e6c72707f91c83c59ff0a31886220a9bd949"
+          },
+          {
+            "file": "db/platform/migrations/20261129160001_tax_calculation_adapter_money_activation.sql",
+            "sha256": "a6fa96a9bd34839097a289aa9efa8461ce1e2433eaa0a6c8171b395da1f45104"
+          },
+          {
+            "file": "db/platform/migrations/20261129160000_tax_calculation_adapter_money_v1.sql",
+            "sha256": "87513fd800efdb97405d8ea5c644a63769e08842a077e6595800bf65aed3761d"
           },
           {
             "file": "db/platform/migrations/20261129130508_renewal_order_destination_v2.sql",
@@ -1912,13 +1928,21 @@
         ]
       },
       "separate": {
-        "count": 240,
-        "exactTailCount": 125,
-        "objectInventorySha256": "582a6760c6ee2b39f3a5442c1f371f79d84fe6b42d514ea77b45f09272b366a9",
+        "count": 242,
+        "exactTailCount": 127,
+        "objectInventorySha256": "e7ef8b5a309c5a72a7b83243a6b7d3a6d4c226e18ac75b2865676ebad31cd732",
         "tail": [
           {
-            "file": "db/platform/migrations/20261129130509_subscription_renewal_current_template.sql",
+            "file": "db/platform/migrations/20261129160002_subscription_renewal_current_template.sql",
             "sha256": "62f99a582643926653e73213cec1e6c72707f91c83c59ff0a31886220a9bd949"
+          },
+          {
+            "file": "db/platform/migrations/20261129160001_tax_calculation_adapter_money_activation.sql",
+            "sha256": "a6fa96a9bd34839097a289aa9efa8461ce1e2433eaa0a6c8171b395da1f45104"
+          },
+          {
+            "file": "db/platform/migrations/20261129160000_tax_calculation_adapter_money_v1.sql",
+            "sha256": "87513fd800efdb97405d8ea5c644a63769e08842a077e6595800bf65aed3761d"
           },
           {
             "file": "db/platform/migrations/20261129130508_renewal_order_destination_v2.sql",
@@ -2879,13 +2903,21 @@
         ]
       },
       "admin-managed": {
-        "count": 238,
-        "exactTailCount": 124,
-        "objectInventorySha256": "bf988cf38b274fddf8c13e57a1f8f187e0dc9ba70e9158e10f83e52b671c9356",
+        "count": 240,
+        "exactTailCount": 126,
+        "objectInventorySha256": "8eeedfb76fde067f2a61569440c3b403d68bda8119ff8b6def9e11ea4f1582bc",
         "tail": [
           {
-            "file": "db/platform/migrations/20261129130509_subscription_renewal_current_template.sql",
+            "file": "db/platform/migrations/20261129160002_subscription_renewal_current_template.sql",
             "sha256": "62f99a582643926653e73213cec1e6c72707f91c83c59ff0a31886220a9bd949"
+          },
+          {
+            "file": "db/platform/migrations/20261129160001_tax_calculation_adapter_money_activation.sql",
+            "sha256": "a6fa96a9bd34839097a289aa9efa8461ce1e2433eaa0a6c8171b395da1f45104"
+          },
+          {
+            "file": "db/platform/migrations/20261129160000_tax_calculation_adapter_money_v1.sql",
+            "sha256": "87513fd800efdb97405d8ea5c644a63769e08842a077e6595800bf65aed3761d"
           },
           {
             "file": "db/platform/migrations/20261129130508_renewal_order_destination_v2.sql",
@@ -3838,13 +3870,21 @@
         ]
       },
       "admin-operator": {
-        "count": 238,
-        "exactTailCount": 124,
-        "objectInventorySha256": "04ac8c2ed9c8c27a0339e3dc0d5a0917ad72358d8efe3f721ba70bf26f9700ec",
+        "count": 240,
+        "exactTailCount": 126,
+        "objectInventorySha256": "338af985318af8b1b4ac93602139cf88ea9d079dc8b9a90a6445eaff5631b4ec",
         "tail": [
           {
-            "file": "db/platform/migrations/20261129130509_subscription_renewal_current_template.sql",
+            "file": "db/platform/migrations/20261129160002_subscription_renewal_current_template.sql",
             "sha256": "62f99a582643926653e73213cec1e6c72707f91c83c59ff0a31886220a9bd949"
+          },
+          {
+            "file": "db/platform/migrations/20261129160001_tax_calculation_adapter_money_activation.sql",
+            "sha256": "a6fa96a9bd34839097a289aa9efa8461ce1e2433eaa0a6c8171b395da1f45104"
+          },
+          {
+            "file": "db/platform/migrations/20261129160000_tax_calculation_adapter_money_v1.sql",
+            "sha256": "87513fd800efdb97405d8ea5c644a63769e08842a077e6595800bf65aed3761d"
           },
           {
             "file": "db/platform/migrations/20261129130508_renewal_order_destination_v2.sql",
