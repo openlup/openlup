@@ -243,6 +243,9 @@ async function createResources(connectionString: string): Promise<DirectResource
   const pg = await import("pg");
   const PoolCtor = (pg.default?.Pool ?? pg.Pool) as typeof import("pg").Pool;
   const pool = new PoolCtor({ connectionString });
+  pool.on?.("error", (error: Error) => {
+    console.error(`[openlup/server:order-review] idle postgres error: ${error instanceof Error ? error.message : String(error)}`);
+  });
   return {
     executor: { query: (sql, values) => pool.query(sql, values) },
     transaction: {
