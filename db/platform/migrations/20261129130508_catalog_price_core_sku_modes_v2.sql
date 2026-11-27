@@ -11,7 +11,6 @@ DECLARE
   operation jsonb;
   with_observations boolean := jsonb_typeof(p_targets)='object';
   sku_id uuid;
-  explicit_subscription boolean;
   needs_subscription boolean;
   reason text;
   current_entry jsonb;
@@ -22,14 +21,10 @@ DECLARE
   subscription_valid boolean;
   subscription_ready boolean;
   wrong_kind_count integer;
-  wrong_base_shape boolean;
-  wrong_subscription_shape boolean;
   wrong_shape boolean;
   history_count integer;
   policy_count integer;
   policy_valid boolean;
-  policy_derives boolean;
-  subscription_recovery text;
   discount integer;
   quantum integer;
   results jsonb := '[]';
@@ -48,8 +43,7 @@ BEGIN
   FOR target IN SELECT value FROM jsonb_array_elements(CASE WHEN with_observations THEN p_targets->'targets' ELSE p_targets END) LOOP
     sku_id := (target->>'skuId')::uuid;
     operation := nullif(target->'operation','null'::jsonb);
-    explicit_subscription := coalesce((target->'requiredModes') ? 'subscription', false);
-    needs_subscription := explicit_subscription
+    needs_subscription := coalesce((target->'requiredModes') ? 'subscription', false)
       OR (target #>> '{skuFacts,status}'='active' AND target #> '{skuFacts,isAddon}'='false'::jsonb
         AND (target #> '{skuFacts,sellableStandalone}'='true'::jsonb
           OR target #> '{skuFacts,sellableInSubscription}'='true'::jsonb)) IS TRUE;
@@ -61,15 +55,12 @@ BEGIN
       count(*) FILTER (WHERE e.mode='subscription'),
       bool_and(e.min_qty=1 AND e.unit_price_minor>0) FILTER (WHERE e.mode='subscription'),
       count(*) FILTER (WHERE e.mode IN ('one_time','any') AND e.amount_kind<>kind),
-      bool_or(e.mode='any' OR (e.mode='one_time' AND e.min_qty<>1)),
-      bool_or(e.mode='subscription' AND (e.min_qty<>1 OR e.amount_kind<>kind))
-    INTO base_count, base_minor, current_entry, current_start, subscription_count, subscription_valid,
-      wrong_kind_count, wrong_base_shape, wrong_subscription_shape
+      bool_or(e.mode='any' OR e.min_qty<>1 OR (e.mode='subscription' AND e.amount_kind<>kind))
+    INTO base_count, base_minor, current_entry, current_start, subscription_count, subscription_valid, wrong_kind_count, wrong_shape
     FROM public.price_entries e
     WHERE e.price_list_id=list_id AND e.variant_id=sku_id AND e.active
       AND e.valid_from<=p_at AND (e.valid_to IS NULL OR e.valid_to>p_at)
       AND (e.mode IN ('one_time','any') OR (needs_subscription AND e.mode='subscription'));
-    wrong_shape := wrong_base_shape OR wrong_subscription_shape;
 
     reason := CASE
       WHEN operation IS NOT NULL AND operation->>'priceListId' IS DISTINCT FROM list_id::text THEN 'price_list_not_active'
@@ -88,7 +79,6 @@ BEGIN
       WHEN operation IS NULL AND (base_count=0 OR base_minor<=0) THEN 'catalog_publication_sku_price_not_ready'
     END;
     subscription_ready := NOT needs_subscription;
-    subscription_recovery := NULL;
     IF needs_subscription AND (reason IS NULL OR with_observations) THEN
       SELECT count(*),count(*) FILTER (WHERE w.effective),bool_and(p.rounding_rule='FLOOR_TO_QUANTUM'
         AND p.rounding_quantum_minor>0 AND p.discount_bps BETWEEN 0 AND 10000
@@ -99,31 +89,16 @@ BEGIN
       FROM public.subscription_price_policy_revisions p
       CROSS JOIN LATERAL (SELECT p.effective_from<=p_at AND (p.effective_to IS NULL OR p.effective_to>p_at) AS effective) w
       WHERE p.price_list_id=list_id AND p.region_code=region AND p.currency=settlement_currency AND p.channel='D2C';
-      policy_derives := coalesce(history_count>0 AND policy_count=1 AND policy_valid
-        AND (subscription_count=0 OR with_observations AND NOT explicit_subscription)
-        AND CASE WHEN quantum>0 THEN coalesce((operation->>'unitPriceMinor')::bigint,base_minor)
-          *(10000-discount)/10000/quantum*quantum END>0,false);
       subscription_ready := coalesce((history_count=0 AND subscription_count=1 AND subscription_valid)
-        OR (policy_derives AND subscription_count=0),false);
-      IF with_observations AND NOT explicit_subscription AND (NOT subscription_ready OR wrong_subscription_shape) THEN
-        subscription_recovery := CASE
-          WHEN history_count=0 AND subscription_count=0 THEN 'add_stored'
-          WHEN history_count=0 THEN 'replace_stored'
-          WHEN subscription_count=0 THEN 'restore_derivation'
-          WHEN policy_derives THEN 'end_stored'
-          ELSE 'end_stored_and_restore_derivation'
-        END;
-      END IF;
+        OR (history_count>0 AND policy_count=1 AND policy_valid AND subscription_count=0
+          AND CASE WHEN quantum>0 THEN coalesce((operation->>'unitPriceMinor')::bigint,base_minor)
+            *(10000-discount)/10000/quantum*quantum END>0),false);
       IF reason IS NULL AND NOT subscription_ready THEN reason := 'catalog_publication_sku_price_not_ready'; END IF;
     END IF;
     results := results || jsonb_build_array(jsonb_build_object('skuId',sku_id,'reason',reason,'previous',current_entry)
       || CASE WHEN with_observations THEN jsonb_build_object('observations',jsonb_build_object(
         'baseCount',base_count,'wrongKindCount',wrong_kind_count,'wrongShape',wrong_shape,
-        'currentStart',current_start,'subscriptionReady',subscription_ready)
-        || CASE WHEN subscription_recovery IS NULL THEN '{}'::jsonb ELSE jsonb_build_object(
-          'subscriptionRecovery',subscription_recovery,
-          'subscriptionShape',wrong_subscription_shape AND NOT wrong_base_shape) END)
-      ELSE '{}'::jsonb END);
+        'currentStart',current_start,'subscriptionReady',subscription_ready)) ELSE '{}'::jsonb END);
   END LOOP;
   RETURN jsonb_build_object('priceListId',list_id,'regionCode',region,'currency',settlement_currency,'amountBasis',basis,'targets',results);
 END;
@@ -157,8 +132,6 @@ DECLARE
   first_replayed jsonb;
   refusal text;
   price_reason text;
-  subscription_recovery text;
-  restore_base_kind boolean;
   replay_failed boolean;
   completed boolean;
   rank integer;
@@ -348,7 +321,6 @@ BEGIN
       fresh := coalesce(lane='assessment' AND NOT FOUND OR claims #>> ARRAY[operation->>'commandKey','outcome']='claimed',false);
       completed := NOT fresh OR written;
       replay_failed := false;
-      possible_kind_drift := false;
       observations := actual->'observations';
       wrong_kind := (observations->>'wrongKindCount')::integer>0;
       IF NOT completed THEN
@@ -397,13 +369,6 @@ BEGIN
       IF rank<best_rank THEN
         best_rank := rank;
         refusal := price_reason;
-        subscription_recovery := CASE
-          WHEN price_reason='price_shape_invalid' AND (observations->>'subscriptionShape')::boolean
-            OR price_reason='catalog_publication_sku_price_not_ready' AND (NOT completed
-              OR observations->'baseCount'='1'::jsonb AND (actual #>> '{previous,unitPriceMinor}')::integer>0)
-          THEN observations->>'subscriptionRecovery'
-        END;
-        restore_base_kind := lane='reader' AND possible_kind_drift AND NOT wrong_kind;
         selected := target;
       END IF;
       IF target->'skuId'=p_observed_evidence->'skuId' AND target->'priceListId'=p_observed_evidence->'priceListId' THEN
@@ -446,20 +411,6 @@ BEGIN
     ('catalog_publication_price_changed','expected, receipt entries','Read the current predecessor ID, amount and kind and use them in a fresh edit.'),
     ('catalog_publication_sku_price_not_ready','SKU and required mode','Configure a compatible price or effective subscription policy for the required mode.')
   ) AS remedies(reason,f,r) ON reason=code.value;
-  IF subscription_recovery IS NOT NULL THEN
-    field := CASE subscription_recovery WHEN 'restore_derivation' THEN 'Effective subscription pricing policy'
-      ELSE 'Effective subscription entry' END;
-    remedy := CASE subscription_recovery
-      WHEN 'add_stored' THEN 'Have the pricing configuration owner configure one compatible stored subscription price for this SKU on the effective list.'
-      WHEN 'replace_stored' THEN 'Have the pricing configuration owner end or correct the conflicting stored subscription entries so one compatible positive entry remains for this SKU.'
-      WHEN 'end_stored' THEN 'Have the pricing configuration owner end every effective stored subscription entry for this SKU. The effective policy already derives a positive price.'
-      WHEN 'restore_derivation' THEN 'Have the pricing configuration owner ensure exactly one compatible subscription policy is effective. Adjust the policy or the base price so it derives a positive subscription price.'
-      WHEN 'end_stored_and_restore_derivation' THEN 'Have the pricing configuration owner end every effective stored subscription entry for this SKU. Ensure exactly one compatible subscription policy is effective and adjust the policy or the base price so it derives a positive subscription price.'
-    END;
-    IF restore_base_kind THEN
-      remedy := remedy || ' Restore the recorded base amount kind before retrying locked readback.';
-    END IF;
-  END IF;
   IF lane<>'assessment' THEN
     RAISE EXCEPTION '%',refusal USING ERRCODE=state, CONSTRAINT=refusal, DETAIL=field, HINT=remedy;
   END IF;
