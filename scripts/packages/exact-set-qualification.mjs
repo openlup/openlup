@@ -326,9 +326,26 @@ export function assertSbomPackages(sbom, packages) {
 }
 
 export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = false, schema = false, bom = false, canary = false, candidateManifest = undefined) {
-  const receipt = !candidateManifest && (upgrade || schema || bom || canary) ? json(receiptPath) : qualificationReceipt(tag, expectedCommit);
-  if (candidateManifest) { assert(upgrade && !schema && !bom && !canary, 'candidate requires adjacent upgrade only'); Object.assign(receipt, { mode: 'candidate', verificationSource: 'candidate, local digest-verified', candidateManifest: resolve(candidateManifest) }); }
+  const candidateResume = Boolean(candidateManifest) && !upgrade && schema && !bom && !canary;
+  const receipt = (!candidateManifest || candidateResume) && (upgrade || schema || bom || canary) ? json(receiptPath) : qualificationReceipt(tag, expectedCommit);
+  if (candidateManifest) {
+    assert((upgrade || schema) && !bom && !canary, 'candidate supports adjacent upgrade and schema upgrade only');
+    const resolvedManifest = resolve(candidateManifest);
+    if (candidateResume) {
+      assert.equal(receipt.mode, 'candidate', 'candidate schema upgrade requires a candidate adjacent receipt');
+      assert.equal(receipt.candidateManifest, resolvedManifest, 'candidate schema upgrade manifest mismatch');
+    } else {
+      Object.assign(receipt, { mode: 'candidate', verificationSource: 'candidate, local digest-verified', candidateManifest: resolvedManifest });
+    }
+  } else {
+    assert(!(upgrade && schema), 'released qualification runs --upgrade and --schema-upgrade as separate steps');
+    assert.notEqual(receipt.mode, 'candidate', 'released qualification refuses a candidate receipt');
+  }
   const applicationsPath = resolve(receiptPath + '.applications');
+  if (candidateManifest && upgrade && schema) {
+    qualifyReleasedSet(tag, expectedCommit, receiptPath, true, false, false, false, candidateManifest);
+    return qualifyReleasedSet(tag, expectedCommit, receiptPath, false, true, false, false, candidateManifest);
+  }
   if (canary) {
     const qualified = receipt.result === 'PASS';
     receipt.result = 'FAIL'; receipt.endedAt = null;
@@ -389,7 +406,8 @@ export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = f
           database: { connectionString: url.toString() } });
         Object.assign(receipt.schemaUpgrade, proof);
         assert.equal(proof.result, 'PASS', 'released-pair schema compatibility failed');
-        // The BOM step records provisional PASS; canary completion grants final qualification PASS.
+        // Candidate pre-publish qualification completes here; released qualification seals PASS only after BOM + canary.
+        if (candidateManifest) receipt.result = 'PASS';
       } catch (error) { receipt.error = error.message; throw error; }
       finally {
         try { if (admin) { try { await admin.query(`DROP DATABASE IF EXISTS ${database} WITH (FORCE)`); } finally { await admin.end(); } } }
@@ -469,7 +487,10 @@ export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = f
       if (!env.OPENLUP_QUALIFICATION_DATABASE_URL) refuse('qualification PostgreSQL connection required');
       run(process.execPath, ['--input-type=module', '-e', "import pg from 'pg'; import { env } from 'node:process'; const pool = new pg.Pool({ connectionString: env.OPENLUP_QUALIFICATION_DATABASE_URL }); try { const {rows} = await pool.query('show server_version_num'); if (Math.floor(Number(rows[0].server_version_num) / 10000) !== 17) throw new Error('qualification requires PostgreSQL 17'); } finally { await pool.end(); }"], extracted);
     }
-    if (upgrade) renameSync(temporary, applicationsPath);
+    if (upgrade) {
+      rmSync(applicationsPath, { recursive: true, force: true });
+      renameSync(temporary, applicationsPath);
+    }
     receipt.result = 'PASS';
   } catch (error) { receipt.error = error.message; throw error; }
   finally {
@@ -545,19 +566,44 @@ async function qualifyCandidateOccupied(predecessor, previousManifest, candidate
   } finally { rmSync(scratch, { recursive: true, force: true }); }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  const [tag, commit, receipt, mode, candidateManifest] = process.argv.slice(2);
+export function parseQualificationCliArgs(args) {
+  const [tag, commit, receipt, mode, fifth, sixth] = args;
   if (tag === '--candidate-canary') {
-    if (process.argv.length !== 6) refuse('use --candidate-canary commit manifest receipt');
-    await qualifyCandidateCanary(commit, receipt, mode);
-  } else if (tag === '--candidate-occupied') {
-    if (process.argv.length !== 8) refuse('use --candidate-occupied predecessor previous-manifest candidate candidate-manifest free-port');
-    await qualifyCandidateOccupied(...process.argv.slice(3));
+    if (args.length !== 4) refuse('use --candidate-canary commit manifest receipt');
+    return { kind: 'candidate-canary', commit, manifest: receipt, receipt: mode };
+  }
+  if (tag === '--candidate-occupied') {
+    if (args.length !== 6) refuse('use --candidate-occupied predecessor previous-manifest candidate candidate-manifest free-port');
+    return { kind: 'candidate-occupied', params: args.slice(1) };
+  }
+  if (args.length === 3) {
+    return { kind: 'qualify', tag, commit, receipt, upgrade: false, schema: false, bom: false, canary: false, candidateManifest: undefined };
+  }
+  if (args.length === 4 && ['--upgrade', '--schema-upgrade', '--bom', '--canary'].includes(mode)) {
+    return { kind: 'qualify', tag, commit, receipt, upgrade: mode === '--upgrade', schema: mode === '--schema-upgrade', bom: mode === '--bom', canary: mode === '--canary', candidateManifest: undefined };
+  }
+  if (args.length === 5 && mode === '--candidate') {
+    return { kind: 'qualify', tag, commit, receipt, upgrade: true, schema: false, bom: false, canary: false, candidateManifest: fifth };
+  }
+  if (args.length === 6 && mode === '--candidate' && sixth === '--schema-upgrade') {
+    return { kind: 'qualify', tag, commit, receipt, upgrade: true, schema: true, bom: false, canary: false, candidateManifest: fifth };
+  }
+  if (args.length === 6 && mode === '--schema-upgrade' && fifth === '--candidate') {
+    return { kind: 'qualify', tag, commit, receipt, upgrade: false, schema: true, bom: false, canary: false, candidateManifest: sixth };
+  }
+  refuse('use release-tag full-tag-commit receipt-path');
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  const parsed = parseQualificationCliArgs(process.argv.slice(2));
+  if (parsed.kind === 'candidate-canary') {
+    await qualifyCandidateCanary(parsed.commit, parsed.manifest, parsed.receipt);
+  } else if (parsed.kind === 'candidate-occupied') {
+    await qualifyCandidateOccupied(...parsed.params);
   } else {
-    if (!(process.argv.length === 7 && mode === '--candidate') && process.argv.length !== 5 && !(process.argv.length === 6 && ['--upgrade', '--schema-upgrade', '--bom', '--canary'].includes(mode))) refuse('use release-tag full-tag-commit receipt-path');
     // Finish module evaluation before recovery imports this module; incomplete work exits nonzero.
     process.exitCode = 1;
-    Promise.resolve(qualifyReleasedSet(tag, commit, receipt, mode === '--upgrade' || mode === '--candidate', mode === '--schema-upgrade', mode === '--bom', mode === '--canary', candidateManifest))
+    Promise.resolve(qualifyReleasedSet(parsed.tag, parsed.commit, parsed.receipt, parsed.upgrade, parsed.schema, parsed.bom, parsed.canary, parsed.candidateManifest))
       .then(() => { process.exitCode = 0; }, error => { console.error(error); });
   }
 }

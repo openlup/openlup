@@ -7,7 +7,7 @@ catalogue units, sold under one operator-set target price.
 ## Owns / does not own
 
 The application implementation now lives in
-[`@openlup/platform/catalog`](../../../packages/platform/README.md#catalog).
+[`@openlup/platform/catalog`](../../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md#catalog).
 This directory keeps named rule/availability compatibility bindings and local
 browser schema definitions. The server compatibility paths bind the existing
 admin kit, operation spec/flags, validators, responder and versions; BundleRpcError

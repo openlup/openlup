@@ -2,12 +2,28 @@ import type { ResolvedSavedPaymentMethod, SavedPaymentMethodRecurringModel } fro
 import { mintCheckoutRefusalContinuation } from "./checkoutRefusalContinuation.js";
 import type { VercelRequest, VercelResponse } from "../../_lib/types/vercel.js";
 import {
+  bffResponder,
   sendBffError,
   sendBffSuccess,
+  sendMethodNotAllowed,
 } from "../../_lib/bff/response.js";
+import { readOrCreateObservedRequestContext } from "../../_lib/observability/requestContext.js";
 import {
   CHECKOUT_CONTRACT_VERSION,
+  type CheckoutKind,
+  type CheckoutResponse,
+  type checkoutRequestSchema,
 } from "../../../src/domains/commerce/checkoutContracts.js";
+import {
+  commerceCustomerDefaultsSnapshotSchema,
+  type CommerceCustomerDefaultsSnapshot,
+} from "../../../src/domains/commerce/customerDefaultsSnapshotContracts.js";
+import {
+  createCheckoutTimingLogger as createPlatformCheckoutTimingLogger,
+  createCommerceCheckoutHandler as bindHandler,
+  readCheckoutCustomerDefaultsOrRespond as readPlatformCheckoutCustomerDefaultsOrRespond,
+  type CheckoutOfferPolicyPort as CoreCheckoutOfferPolicyPort,
+} from "@openlup/platform/commerce/server";
 import type {
   ConfiguratorIntentPersistencePort,
   CommerceQuotePort,
@@ -18,11 +34,8 @@ import type { CommerceCheckoutRuntimePort } from "../../../src/domains/commerce/
 import {
   orchestratePaidOrder,
   type CheckoutCompensationPort,
+  type OrchestratedCheckoutResult,
 } from "./commerceCheckoutOrchestration.js";
-import {
-  createCheckoutTimingLogger,
-  type CheckoutTimingOutcome,
-} from "./commerceCheckoutTiming.js";
 import { providerPayerFromRequest } from "./commerceCheckoutProviderPayment.js";
 import {
   previewCheckoutDiagnosticsEnabled,
@@ -39,7 +52,6 @@ import {
   resolveResumeOpenOrderResponse,
   type CheckoutResumeGuardDeps,
 } from "./commerceCheckoutResumeGuard.js";
-import { readCheckoutCustomerDefaultsOrRespond } from "./commerceCheckoutCustomerDefaults.js";
 import type { CheckoutSavedPaymentMethodResolverPort } from "./savedPaymentMethodResolverPort.js";
 import { resolveSavedTpayPaymentMethodForCheckout } from "./commerceCheckoutSavedPaymentMethod.js";
 import type { CreateQuoteRequest } from "../../../src/domains/commerce/contracts.js";
@@ -76,18 +88,27 @@ export interface CommerceCheckoutHandlerDeps extends CheckoutResumeGuardDeps, Ch
   starterPackEnabled?: () => boolean;
   /** Server-authoritative first-order re-check for the starter lane. */
   isFirstOrderEligible?: (clientId: string | null) => Promise<boolean>;
-  offerPolicy?: import("./checkoutOfferPolicyPort.js").CheckoutOfferPolicyPort;
+  offerPolicy?: CoreCheckoutOfferPolicyPort<ConfiguratorIntent, CreateQuoteResponse["quote"]>;
   starterTermsPort?: import("../../../src/domains/commerce/starterTermsPort.js").StarterTermsPort;
   mintPaymentContinuationCookie?: CheckoutPaymentContinuationMinter;
 }
-import { createCommerceCheckoutHandler as bindHandler } from "@openlup/platform/commerce/server";
-import { sendMethodNotAllowed } from "../../_lib/bff/response.js";
 import type { ConfiguratorIntent } from "../../../src/domains/commerce/configuratorIntentContracts.js";
 import type { ConfiguratorIntentPersistenceResponse } from "../../../src/domains/commerce/configuratorIntentPersistenceContracts.js";
-import type { CheckoutResponse, checkoutRequestSchema } from "../../../src/domains/commerce/checkoutContracts.js";
 import type { CreateQuoteResponse } from "../../../src/domains/commerce/contracts.js";
-import type { CommerceCustomerDefaultsSnapshot } from "../../../src/domains/commerce/customerDefaultsSnapshotContracts.js";
-import type { OrchestratedCheckoutResult } from "./commerceCheckoutOrchestration.js";
+
+export function createCheckoutTimingLogger(req: VercelRequest) {
+  return createPlatformCheckoutTimingLogger(readOrCreateObservedRequestContext(req).requestId, "/api/bff/commerce/checkout");
+}
+
+function readCheckoutCustomerDefaultsOrRespond(input: {
+  port: CommerceCustomerDefaultsReadPort | undefined;
+  clientId: string;
+  checkoutKind: CheckoutKind;
+  recordStage: <T>(operation: () => Promise<T>) => Promise<T>;
+  res: VercelResponse;
+}) {
+  return readPlatformCheckoutCustomerDefaultsOrRespond(input, commerceCustomerDefaultsSnapshotSchema, bffResponder);
+}
 const createHandler = bindHandler<CommerceCheckoutHandlerDeps, ConfiguratorIntent, ConfiguratorIntentPersistenceResponse, ReturnType<typeof checkoutRequestSchema.parse>, CreateQuoteResponse, CommerceCustomerDefaultsSnapshot, OrchestratedCheckoutResult, CheckoutResponse, ResolvedSavedPaymentMethod["providerAliasType"], SavedPaymentMethodRecurringModel>({
   responder: { sendBffError, sendBffSuccess, sendMethodNotAllowed }, mintPaymentContinuationOnFreshAction, mintCheckoutRefusalContinuation, createCheckoutTimingLogger, previewCheckoutDiagnosticsEnabled,
   admitCheckoutRequest, persistCheckoutIdentityOrRespond, resolveSavedPaymentMethodForCheckout: resolveSavedTpayPaymentMethodForCheckout, respondToSavedPaymentMethodRejection,

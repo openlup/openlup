@@ -81,7 +81,7 @@ captured money refuses `native_account_order_money_unavailable`; summaries retai
 recorded total/currency and the line reader retains recorded amounts. Paid
 provisional activation is read through its owned order companion, with no
 subscription association invented before activation completes. See the
-[native account boundary](../packages/platform/README.md#native-account-persistence-reads).
+[native account boundary](../docs/platform/PLATFORM_PACKAGE_REFERENCE.md#native-account-persistence-reads).
 
 The default sandbox selection and the explicit provider host composition have
 separate configuration requirements. Support for the named installation does

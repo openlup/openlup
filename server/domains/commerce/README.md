@@ -164,7 +164,7 @@ and mutations retain their frozen policy.
   in-flight recovery state. Do not widen generic checkout compensation across
   that boundary.
 - The promotion acceptance token binds **money, not presentation**.
-  The named `promotionQuoteBinding.ts` shim delegates to the promotions package,
+  Callers import directly from `@openlup/platform/promotions`,
   which owns the one canonical projection both surfaces
   hash — currency, the five totals, shipping and its discount, per-line
   sku/quantity/unit and line gross plus the VAT rate and split, and per-discount

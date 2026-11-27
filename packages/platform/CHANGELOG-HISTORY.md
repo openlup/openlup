@@ -3360,7 +3360,7 @@ Custom native stores must provide binding-scoped `findByMessageId`, bounded
 surface. Supply explicit provider/binding identities and full catalogue admission.
 Hosts preserving older opt-out page bytes retain their own presentation binding;
 token purposes, verification and existing HTTP status/header semantics remain.
-See the [package composition guidance](README.md#communications-import).
+See the [package composition guidance](../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md#communications-import).
 
 Growth reading: +61.4% against the retained initial `0.16.0` baseline (256,973
 packed bytes), measured before S1 notes at 414,808 bytes; final S1 measurements

@@ -53,7 +53,7 @@ import {
   proveCatalogConformanceConsumer,
   runPlatformColdConsumer
 } from "./platform-cold-consumer.ts";
-import { proveSelfServiceConsumer, proveSavedAddressFormatsConsumer } from "./platform-cold-consumer.ts";
+import { proveSelfServiceConsumer, proveSavedAddressFormatsConsumer, proveHeavyManagedConsumer } from "./platform-cold-consumer.ts";
 import { ACCOUNT_SUPPORT_COMPOSITION_PROOFS, proveAccountSupportCompositionConsumer } from "./platform-cold-consumer.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -2094,4 +2094,45 @@ it("stages the canonical migration manifest as a consumer file so oversized mani
   } finally {
     rmSync(consumer, { recursive: true, force: true });
   }
+});
+
+function heavyManagedConsumerFixture() {
+  const consumer = scratch();
+  writeFileSync(join(consumer, "package.json"), JSON.stringify({ name: "heavy-managed-canary", private: true, type: "module" }));
+  for (const [pkg, dir, extras] of [
+    ["@openlup/core", "packages/core", []],
+    ["@openlup/outbox", "packages/outbox", []],
+    ["@openlup/platform", "packages/platform", ["sql"]],
+  ] as const) {
+    const dest = join(consumer, "node_modules", pkg);
+    mkdirSync(dest, { recursive: true });
+    copyFileSync(join(root, dir, "package.json"), join(dest, "package.json"));
+    cpSync(join(root, dir, "dist"), join(dest, "dist"), { recursive: true });
+    for (const extra of extras) {
+      if (existsSync(join(root, dir, extra))) cpSync(join(root, dir, extra), join(dest, extra), { recursive: true });
+    }
+  }
+  cpSync(join(root, "node_modules/zod"), join(consumer, "node_modules/zod"), { recursive: true });
+  return consumer;
+}
+
+it("proves the heavy managed standalone non-starter subpath surface against built packages", () => {
+  const consumer = heavyManagedConsumerFixture();
+  expect(() => proveHeavyManagedConsumer(consumer)).not.toThrow();
+});
+
+it.each([
+  ["commerce OMS ladder predicate drift", "node_modules/@openlup/platform/dist/commerce/model/omsOperationalLadder.js", "shipping_address_id IS NULL", "shipping_address_id = ''"],
+  ["invoicing identity mismatch classification", "node_modules/@openlup/platform/dist/invoicing/paymentReadback.js", "provider_payment_identity_mismatch", "provider_other_mismatch"],
+  ["migrations runner mutual exclusion guard", "node_modules/@openlup/platform/dist/migrations/postgresRunner.js", "postgres_pool_and_factory_mutually_exclusive", "other_error"],
+  ["composition node host http readiness guard", "node_modules/@openlup/platform/dist/composition/nodeHost.js", "has no http runtime", "different message"],
+  ["payments verifyPaymentAttemptNow amount guard", "node_modules/@openlup/platform/dist/payments/paymentVerifyNowService.js", "terminalAmountMismatch(attempt, providerStatus)", "false"],
+  ["outbox composeIndependentHandlers", "node_modules/@openlup/outbox/dist/registry.js", "projectProcessedDetail?.(", "undefined; //"],
+] as const)("turns the heavy managed consumer canary red on %s", (_label, relPath, needle, replacement) => {
+  const consumer = heavyManagedConsumerFixture();
+  const target = join(consumer, relPath);
+  const original = readFileSync(target, "utf8");
+  expect(original).toContain(needle);
+  writeFileSync(target, original.replace(needle, replacement));
+  expect(() => proveHeavyManagedConsumer(consumer)).toThrow();
 });

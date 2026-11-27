@@ -264,7 +264,8 @@ in [Upgrade the database](../upgrade/database-migrations.md).
 | [`20261129160003_order_draft_receipts_v2.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/sql/20261129160003_order_draft_receipts_v2.sql) |
 | [`20261129160004_order_draft_receipt_privacy_v2.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/sql/20261129160004_order_draft_receipt_privacy_v2.sql) |
 | [`20261129160005_order_draft_payment_entry_fence.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/sql/20261129160005_order_draft_payment_entry_fence.sql) |
-| [`20261129160006_subscription_renewal_current_template.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/sql/20261129160006_subscription_renewal_current_template.sql) |
+| [`20261129160006_catalog_price_core_sku_modes_v2.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/sql/20261129160006_catalog_price_core_sku_modes_v2.sql) |
+| [`20261129160007_subscription_renewal_current_template.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/sql/20261129160007_subscription_renewal_current_template.sql) |
 | [`q2_00000000000000_platform_baseline.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/sql/q2_00000000000000_platform_baseline.sql) |
 | [`q2_20260810180001_self_host_actor_auth.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/sql/q2_20260810180001_self_host_actor_auth.sql) |
 | [`q2_20260816140000_acquisition_case_foundation.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/sql/q2_20260816140000_acquisition_case_foundation.sql) |
