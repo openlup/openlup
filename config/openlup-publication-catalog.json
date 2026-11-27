@@ -20326,10 +20326,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/communications/communicationSyncWorker.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/communications/customerCommunicationPreferencesHandler.test.ts",
       "class": "public-output"
     },
@@ -20358,18 +20354,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/communications/emailHealthAssessment.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/communications/emailHealthMetricsPort.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/communications/emailHealthMetricsPort.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/communications/emailNotificationControlReadiness.test.ts",
       "class": "public-output"
     },
@@ -20394,15 +20378,7 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/communications/ports.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/communications/preferencesToken.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/communications/preferencesToken.ts",
       "class": "public-output"
     },
     {
@@ -20427,10 +20403,6 @@
     },
     {
       "path": "server/domains/communications/transactionalDelivery.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/communications/transactionalDelivery.ts",
       "class": "public-output"
     },
     {

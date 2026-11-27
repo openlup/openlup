@@ -1442,7 +1442,6 @@
     "server/domains/communications/deliveryObservation.test.ts": 29,
     "server/domains/communications/effectsComposition.test.ts": 19,
     "server/domains/communications/emailHealthAssessment.test.ts": 8,
-    "server/domains/communications/emailHealthMetricsPort.test.ts": 3,
     "server/domains/communications/emailNotificationControlReadiness.test.ts": 4,
     "server/domains/communications/newsletterWebhookHandler.test.ts": 13,
     "server/domains/communications/notificationRecipientsHandler.test.ts": 15,
