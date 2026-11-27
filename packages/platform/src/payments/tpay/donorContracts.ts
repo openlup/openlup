@@ -89,6 +89,12 @@ export type ProviderRecoveryAction = { kind: "redirect"; url: string };
 export interface PaymentProviderRecoveryProvider {
   resolvePaymentReference(input: { providerAttemptId: string | null; intentProviderPaymentId: string | null;
     providerSessionId: string | null }): string | null;
+  resolveReadbackId?(snapshot: {
+    providerPaymentId?: string | null;
+    intentProviderPaymentId?: string | null;
+    providerAttemptId?: string | null;
+    providerSessionId?: string | null;
+  }): string | null | undefined;
   readPayment(input: { providerPaymentId: string; attempt?: ClaimedPaymentAttempt;
     purpose?: ProviderReadPurpose }): Promise<ProviderReconciliationStatus>;
   readRecoveryPayment(input: { providerPaymentId: string; attempt: Pick<ClaimedPaymentAttempt, "amountMinor" | "currency">;

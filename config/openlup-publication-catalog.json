@@ -3934,6 +3934,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/portable-advisories.json",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/account-support/accountReadFacade.ts",
       "class": "public-output"
     },
@@ -10914,7 +10918,15 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/migrations/portableAdvisories.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/migrations/postgresRunner.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/observability/deprecationTelemetry.test.ts",
       "class": "public-output"
     },
     {
@@ -11275,6 +11287,10 @@
     },
     {
       "path": "packages/platform/test/payments/verifyHandler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/verifyReadbackId.test.ts",
       "class": "public-output"
     },
     {
