@@ -10273,6 +10273,20 @@
         "createdFunctions": [],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "commerce-destination-v2-export-ownership",
+        "path": "db/platform/migrations/20261129160007_commerce_destination_v2_export_ownership.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.commerce_destination_v2_export(uuid)",
+            "beforeSha256": "985153688bfbd5484f6f3c87381be1abc34438392bbed069393ec63a3c15e171",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -14999,6 +15013,17 @@
           "signature": "public.catalog_publication_decide_prices_v2(jsonb,jsonb,jsonb,jsonb,jsonb,timestamptz)",
           "beforeSha256": "5c60dbf17dd95760c4fec40f78f53891534e002f124dec25fb01ae990bc97606",
           "afterSha256": "6eb1e66baea605bac4a0a70a5646327a3d6a17f716abd16dcbfd4b407b47cd07"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261129160007_commerce_destination_v2_export_ownership.sql",
+      "sha256": "452df0d2a5e3f18d6f0f80f5f332188d8f6f9f402abda88f0f3c788dba1807e6",
+      "functions": [
+        {
+          "signature": "public.commerce_destination_v2_export(uuid)",
+          "beforeSha256": "985153688bfbd5484f6f3c87381be1abc34438392bbed069393ec63a3c15e171",
+          "afterSha256": "5200538b1f253ae809f03596938a689f06e4a469436bedaf0bac9ec9e8320f28"
         }
       ]
     }

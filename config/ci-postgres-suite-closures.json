@@ -355,6 +355,8 @@
     ],
     "tests/postgres/connectedStoreTransferScenarios.test.ts": [
       "@src",
+      "tests/helpers/issuedPlatformCatalog.ts",
+      "tests/helpers/storeJourney.ts",
       "tests/postgres/commerceQuoteV2StorageFixture.ts",
       "tests/postgres/connectedStoreTransfer.fixture.ts",
       "tests/postgres/customerAccountMutations.fixture.ts",
@@ -363,7 +365,9 @@
       "tests/postgres/m19NoticeFixture.ts",
       "tests/postgres/orderDraftReceiptsV2.fixture.ts",
       "tests/postgres/orderMoneyV2Guards.fixture.ts",
-      "tests/postgres/orderMoneyV2Storage.fixture.ts"
+      "tests/postgres/orderMoneyV2Storage.fixture.ts",
+      "tests/postgres/renewalOrderDestinationV2.fixture.ts",
+      "tests/postgres/subscriptionNativeFixture.ts"
     ],
     "tests/postgres/contactClientRegistrar.test.ts": [
       "@src"
