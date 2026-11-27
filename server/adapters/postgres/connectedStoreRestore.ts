@@ -1,11 +1,9 @@
 import { nativeCatalogPublication } from "@openlup/platform/catalog";
-import { createHash } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import {
   PostgresTransferError, restoreCompatiblePostgresRows,
   type CompatiblePostgresPacket,
 } from "@openlup/platform/portability";
-import { deriveOidcPrincipalId, validateRequiredPrivacyContributorIds } from "@openlup/platform/identity";
 import { evaluatePlatformMigrationManifest, readPlatformMigrationManifest, readPlatformMigrations, selectPlatformMigrationManifest, type PlatformMigrationManifest } from "../../../scripts/platform-migration-manifest.js";
 import { qualifiedAdminPostgresCatalogPayload, qualifiedPostgresCatalogPayload,
   assertQualifiedAdminPostgresSelection, type QualifiedAdminPostgresInstallation, type QualifiedPostgresInstallation } from "./qualifiedInstall.js";
@@ -20,15 +18,29 @@ import {
 } from "./connectedStoreDomains/index.js";
 import { paymentsDomain } from "./connectedStoreDomains/payments.js";
 import { renewalUpgradeCohort, tablesForRenewalUpgradeCohort } from "./connectedStoreDomains/subscriptions.js";
+import {
+  captureTables as tables,
+  copyCapture,
+  digest,
+  listUserRelations,
+  quoteRestoreIdentifier as quoted,
+  refuseSourceSchema,
+  type ConnectedStoreSourceShape as SourceShape,
+  type ConnectedStoreTableName as TableName,
+  type ConnectedStoreTableRows as Rows,
+} from "./connectedTransferPacket.js";
+
+export {
+  mapManagedIdentityForConnectedRestore,
+  type ManagedIdentityMappingResult,
+  type ManagedIdentityMappingSource,
+} from "./connectedManagedIdentity.js";
 
 const { catalogPublicationAdmissionRefusal, decodePublicationPacket, requireDecodedPublication } = nativeCatalogPublication;
 
-type TableName = typeof connectedNativeStoreTables[number];
-type Rows = { table: TableName; columns: readonly { name: string; type: string }[]; rows: readonly string[] };
 const migrationLock = "openlup:public-platform-migrations:v1";
 const paymentTables = ["commerce_settlement_intents", ...Object.values(paymentsDomain.restore).flat()] as const;
 const paymentQualificationRelation = "public.payment_capture_time_test_qualification";
-type SourceShape = "current" | "unsupported";
 
 export function connectedStoreSourceShape(
   _profile: "bootstrap" | "separate" | QualifiedAdminPostgresInstallation["roleMode"],
@@ -39,218 +51,6 @@ export function connectedStoreSourceShape(
 
 const settings = connectedStoreSettingsTables satisfies readonly TableName[];
 type SettingsTable = typeof settings[number];
-
-/** Explicit source evidence for the finite managed identity portion of a transfer. */
-export interface ManagedIdentityMappingSource {
-  sourceId: string;
-  issuer: string;
-  observation: ConnectedNativeStoreCapture["observation"];
-  subjects: readonly { managedId: string; subject: string }[];
-  clients: readonly Record<string, unknown>[];
-  adminUsers: readonly Record<string, unknown>[];
-  revokeAudit: readonly Record<string, unknown>[];
-  erasures: readonly Record<string, unknown>[];
-  lifecycleEvents: readonly Record<string, unknown>[];
-}
-export interface ManagedIdentityMappingResult {
-  packet: ConnectedNativeStoreCapture;
-  subjects: readonly { managedId: string; issuer: string; subject: string; principalId: string }[];
-  auditReferences: readonly { sourceId: string; sourceRowId: string; targetAuditId: string }[];
-}
-
-/**
- * Translate only the explicitly evidenced identity portion into #414's fixed
- * qualified-target capture. The caller owns source snapshot/completeness proof;
- * this routine never treats an email or raw managed UUID as an OIDC subject.
- */
-export async function mapManagedIdentityForConnectedRestore(input: {
-  source: ManagedIdentityMappingSource;
-  freshTarget: ConnectedNativeStoreCapture;
-  targetOwner: Pool;
-}): Promise<ManagedIdentityMappingResult> {
-  const source = structuredClone(input.source);
-  const packet = copyCapture(input.freshTarget);
-  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  const validRow = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
-  const onlyKeys = (row: Record<string, unknown>, keys: readonly string[]) =>
-    Object.keys(row).sort().join("\0") === [...keys].sort().join("\0");
-  const validIssuer = (value: unknown): value is string => {
-    if (typeof value !== "string") return false;
-    try {
-      const parsed = new URL(value);
-      return parsed.protocol === "https:" && !parsed.username && !parsed.password && !parsed.search
-        && !parsed.hash && parsed.href === value;
-    } catch { return false; }
-  };
-  if (!source || !Array.isArray(source.subjects) || !Array.isArray(source.clients)
-    || !Array.isArray(source.adminUsers) || !Array.isArray(source.revokeAudit)
-    || !Array.isArray(source.erasures) || !Array.isArray(source.lifecycleEvents)
-    || typeof source.sourceId !== "string" || !source.sourceId || source.sourceId.length > 1024
-    || !validIssuer(source.issuer)
-    || !source.observation || Object.values(source.observation).some(value => typeof value !== "string" || !value)) fail("invalid_input");
-  const binding = new Map<string, { managedId: string; issuer: string; subject: string; principalId: string }>();
-  const principalIds = new Set<string>();
-  for (const value of source.subjects) {
-    if (!validRow(value) || typeof value.managedId !== "string" || !uuid.test(value.managedId)
-      || typeof value.subject !== "string" || !value.subject
-      || value.subject.length > 1024 || Array.from(String(value.subject)).some(character => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)
-      || binding.has(value.managedId.toLowerCase())) fail("invalid_input");
-    const principalId = deriveOidcPrincipalId(source.issuer, value.subject);
-    if (principalIds.has(principalId)) fail("target_conflict", "platform_human_principals");
-    principalIds.add(principalId);
-    binding.set(value.managedId.toLowerCase(), { managedId: value.managedId.toLowerCase(), issuer: source.issuer,
-      subject: value.subject, principalId });
-  }
-  const mapped = (id: unknown): string => {
-    if (typeof id !== "string" || !uuid.test(id)) fail("invalid_input");
-    const result = binding.get(id.toLowerCase());
-    if (!result) fail("invalid_input");
-    return result.principalId;
-  };
-  const nullable = (id: unknown): string | null => id === null ? null : mapped(id);
-  const clients: Record<string, unknown>[] = [];
-  const clientIds = new Set<string>();
-  const linkedPrincipals = new Set<string>();
-  for (const row of source.clients) {
-    if (!validRow(row) || typeof row.id !== "string" || !uuid.test(row.id) || clientIds.has(row.id.toLowerCase())
-      || !onlyKeys(row, ["id", "created_at", "updated_at", "email", "first_name", "last_name", "phone", "country",
-        "lifecycle_stage", "acquisition_source", "external_ref", "metadata", "preferences", "auth_user_id", "identity_kind", "marketing_contact_id"])
-      || row.identity_kind !== "customer" || row.marketing_contact_id !== null
-      || !validRow(row.preferences) || Object.keys(row.preferences).length !== 0) fail("invalid_input");
-    clientIds.add(row.id.toLowerCase());
-    const mappedRow: Record<string, unknown> = {};
-    for (const column of packet.compatible.tables.find(table => table.table === "clients")!.columns) {
-      mappedRow[column.name] = column.name === "principal_id" ? nullable(row.auth_user_id) : row[column.name];
-      if (mappedRow[column.name] === undefined) fail("invalid_input");
-    }
-    if (mappedRow.principal_id !== null) {
-      const principalId = String(mappedRow.principal_id);
-      if (linkedPrincipals.has(principalId)) fail("target_conflict", "clients");
-      linkedPrincipals.add(principalId);
-    }
-    clients.push(mappedRow);
-  }
-  const principals: Record<string, unknown>[] = [], memberships: Record<string, unknown>[] = [];
-  const operatorIds = new Set<string>();
-  for (const row of source.adminUsers) {
-    if (!validRow(row) || typeof row.id !== "string" || !uuid.test(row.id) || operatorIds.has(row.id.toLowerCase())
-      || !onlyKeys(row, ["id", "email", "created_at", "role", "is_machine_actor", "membership_state", "membership_provenance",
-        "membership_accepted_at", "membership_revoked_at", "membership_revoked_by", "membership_revocation_reason"])
-      || row.is_machine_actor !== false || typeof row.email !== "string" || !row.email) fail("invalid_input");
-    operatorIds.add(row.id.toLowerCase());
-    const principalId = mapped(row.id);
-    principals.push({ principal_id: principalId, email: row.email, created_at: row.created_at });
-    memberships.push({ principal_id: principalId, role: row.role, membership_state: row.membership_state,
-      membership_provenance: row.membership_provenance, membership_accepted_at: row.membership_accepted_at,
-      membership_revoked_at: row.membership_revoked_at, membership_revoked_by: nullable(row.membership_revoked_by),
-      membership_revocation_reason: row.membership_revocation_reason });
-  }
-  const audit: Record<string, unknown>[] = [];
-  const auditReferences: ManagedIdentityMappingResult["auditReferences"][number][] = [];
-  const auditedTargets = new Set<string>();
-  for (const row of source.revokeAudit) {
-    if (!validRow(row) || row.action !== "revoke" || typeof row.id !== "string" || !uuid.test(row.id)
-      || typeof row.actor_admin_id !== "string"
-      || !onlyKeys(row, ["id", "actor_admin_id", "actor_email", "actor_kind", "action", "source", "entity_type",
-        "entity_id", "target_admin_id", "target_email", "old_value", "new_value", "occurred_at", "idempotency_key", "request_id"])
-      || typeof row.target_admin_id !== "string" || !operatorIds.has(row.actor_admin_id.toLowerCase())
-      || !operatorIds.has(row.target_admin_id.toLowerCase()) || !validRow(row.old_value) || !validRow(row.new_value)) fail("invalid_input");
-    const targetId = row.target_admin_id.toLowerCase();
-    const target = source.adminUsers.find(value => value.id === targetId || String(value.id).toLowerCase() === targetId)!;
-    const oldValue = row.old_value, newValue = row.new_value;
-    if (auditedTargets.has(targetId) || row.actor_kind !== "human" || row.entity_type !== "admin_user_membership"
-      || row.entity_id !== row.target_admin_id || target.membership_state !== "revoked"
-      || !onlyKeys(oldValue, ["membershipState", "role"])
-      || !onlyKeys(newValue, Object.hasOwn(newValue, "revocationReason")
-        ? ["membershipState", "revokedAt", "revokedBy", "revocationReason"] : ["membershipState", "revokedAt", "revokedBy"])
-      || oldValue.membershipState !== "active" || oldValue.role !== target.role
-      || newValue.membershipState !== "revoked" || newValue.revokedAt !== target.membership_revoked_at
-      || typeof target.membership_revoked_by !== "string"
-      || target.membership_revoked_by.toLowerCase() !== row.actor_admin_id.toLowerCase()
-      || newValue.revokedBy !== row.actor_admin_id || (newValue.revocationReason ?? null) !== target.membership_revocation_reason) {
-      fail("target_conflict", "platform_human_membership_audit_events");
-    }
-    auditedTargets.add(targetId);
-    auditReferences.push({ sourceId: source.sourceId, sourceRowId: row.id, targetAuditId: row.id });
-    audit.push({ id: row.id, actor_principal_id: mapped(row.actor_admin_id),
-      target_principal_id: mapped(row.target_admin_id), action: "revoke", old_value: oldValue,
-      new_value: { ...newValue, revokedBy: mapped(row.actor_admin_id), sourceAuditRef: { sourceId: source.sourceId, rowId: row.id } },
-      reason: newValue.revocationReason ?? null, occurred_at: row.occurred_at });
-  }
-  if (source.adminUsers.some(row => row.membership_state === "revoked" && !auditedTargets.has(String(row.id).toLowerCase()))) {
-    fail("invalid_input");
-  }
-  const erasures: Record<string, unknown>[] = [];
-  const erasedClientIds = new Set<string>();
-  const erasedPrincipalIds = new Set<string>();
-  for (const row of source.erasures) {
-    if (!validRow(row) || row.contract_version !== "identity.erasure.v1"
-      || !onlyKeys(row, ["erasure_id", "idempotency_key", "client_id", "principal_id", "actor_principal_id",
-        "contract_version", "contributor_versions", "dispositions", "retained_obligations", "completed_at"])
-      || row.client_id !== null && (typeof row.client_id !== "string" || !clientIds.has(row.client_id.toLowerCase()))
-      || typeof row.actor_principal_id !== "string" || !operatorIds.has(row.actor_principal_id.toLowerCase())) fail("invalid_input");
-    if (typeof row.client_id === "string") erasedClientIds.add(row.client_id.toLowerCase());
-    if (row.principal_id !== null) erasedPrincipalIds.add(mapped(row.principal_id));
-    erasures.push({ erasure_id: row.erasure_id, idempotency_key: row.idempotency_key,
-      client_id: row.client_id, principal_id: nullable(row.principal_id),
-      actor_principal_id: mapped(row.actor_principal_id), contract_version: row.contract_version,
-      contributor_versions: row.contributor_versions, dispositions: row.dispositions,
-      retained_obligations: row.retained_obligations, completed_at: row.completed_at });
-  }
-  for (const row of source.clients) {
-    if (typeof row.email !== "string" || !row.email) fail("invalid_input");
-    if (row.email.startsWith("erased+")) {
-      if (!row.email.endsWith("@identity.invalid") || !erasedClientIds.has(String(row.id).toLowerCase()) || row.auth_user_id !== null
-        || row.first_name !== null || row.last_name !== null || row.phone !== null || row.country !== null) fail("invalid_input");
-    } else if (erasedClientIds.has(String(row.id).toLowerCase())) fail("invalid_input");
-  }
-  for (const row of source.adminUsers) {
-    const erased = erasedPrincipalIds.has(mapped(row.id));
-    const redacted = typeof row.email === "string" && row.email.startsWith("erased+")
-      && row.email.endsWith("@identity.invalid");
-    if (erased ? !redacted || row.membership_state !== "revoked" || row.membership_revocation_reason !== null
-      : redacted) fail("invalid_input");
-  }
-  if (clients.some(row => row.principal_id !== null && erasedPrincipalIds.has(String(row.principal_id)))) fail("invalid_input");
-  const lifecycle = source.lifecycleEvents.map(row => {
-    if (!validRow(row) || typeof row.client_id !== "string" || !clientIds.has(row.client_id.toLowerCase())) fail("invalid_input");
-    return row;
-  });
-  const replacements = new Map<string, Record<string, unknown>[]>([
-    ["clients", clients], ["platform_human_principals", principals], ["platform_human_memberships", memberships],
-    ["platform_human_membership_audit_events", audit], ["identity_privacy_erasures", erasures],
-    ["customer_subject_lifecycle_events", lifecycle],
-  ]);
-  for (const [table, values] of replacements) {
-    const held = packet.compatible.tables.find(entry => entry.table === table)
-      ?? packet.owned.find(entry => entry.table === table);
-    if (!held || held.rows.length) fail("target_conflict", table);
-    const columns = held.columns.map(column => column.name);
-    const rows: string[] = [];
-    for (const value of values) {
-      if (Object.keys(value).sort().join("\0") !== [...columns].sort().join("\0")) fail("invalid_input");
-      let result: { rows: { value: string }[] };
-      try {
-        result = await input.targetOwner.query<{ value: string }>(
-          `SELECT pg_catalog.set_config('TimeZone','UTC',true) AS zone,pg_catalog.to_jsonb(p)::pg_catalog.text AS value FROM pg_catalog.jsonb_populate_record(NULL::public.${quoted(table)},$1::jsonb) p`,
-          [JSON.stringify(value)]);
-      } catch (error) {
-        if (typeof (error as { code?: unknown })?.code === "string" && /^2[23]/.test((error as { code: string }).code)) fail("invalid_input");
-        throw error;
-      }
-      if (result.rows.length !== 1) fail("invalid_input");
-      rows.push(result.rows[0]!.value);
-    }
-    held.rows = rows.sort();
-  }
-  packet.compatible.sourceId = source.sourceId;
-  packet.observation = source.observation;
-  const { sha256: _inner, ...inner } = packet.compatible;
-  packet.compatible.sha256 = digest(JSON.stringify(inner));
-  const { sha256: _outer, ...outer } = packet;
-  packet.sha256 = digest(JSON.stringify(outer));
-  return { packet, subjects: [...binding.values()], auditReferences };
-}
 
 // Explicit owner order, not schema discovery or a general FK/translation engine.
 const order = connectedStoreRestoreOrder satisfies readonly TableName[];
@@ -278,7 +78,8 @@ export async function restoreConnectedNativeStore(input: {
   const cohortInstalled = manifest.forward.some(unit => renewalUpgradeCohort.forward.test(unit.file));
   const profileTables = tablesForRenewalUpgradeCohort(connectedNativeStoreTables, cohortInstalled);
   const shape = connectedStoreSourceShape(profile, input.packet?.compatible?.catalogueId, manifest.objectInventorySha256);
-  const packet = copyCapture(input.packet, profileTables, shape), fresh = copyCapture(input.freshTarget, profileTables);
+  const packet = copyCapture(input.packet, shape, profileTables);
+  const fresh = copyCapture(input.freshTarget, "current", profileTables);
   if (packet.observation.cluster === fresh.observation.cluster
     && packet.observation.database === fresh.observation.database) fail("invalid_input");
   const source = tables(packet), baseline = tables(fresh);
@@ -334,10 +135,7 @@ export async function restoreConnectedNativeStore(input: {
     const keyIdentity = await client.query("SELECT tableoid::pg_catalog.text,ctid::pg_catalog.text,xmin::pg_catalog.text FROM acquisition_private.installation_key");
     // Lock the whole public/app census, including excluded tables. Unknown data
     // cannot appear during import, and no observer sees intermediate rows.
-    const relations = (await client.query<{ schema: string; table: string }>(`SELECT n.nspname AS schema,c.relname AS table
-      FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
-      WHERE pg_catalog.left(n.nspname,3)<>'pg_' AND n.nspname<>'information_schema'
-      AND c.relkind IN ('r','p') ORDER BY n.nspname,c.relname`)).rows;
+    const relations = await listUserRelations(client);
     if (relations.length > 0) {
       const lockedRelations = relations.map(relation => `${quoted(relation.schema)}.${quoted(relation.table)}`).join(",");
       await client.query(`LOCK TABLE ${lockedRelations} IN SHARE ROW EXCLUSIVE MODE`);
@@ -551,64 +349,6 @@ export async function restoreConnectedNativeStore(input: {
   return result;
 }
 
-function refuseSourceSchema(table?: TableName): never {
-  const error = new PostgresTransferError("schema_conflict", table);
-  const remedy = "capture the source and restore it with the same OpenLup version on a pristine target of the same profile; upgrade the source within its installed profile first if it is older";
-  error.message += ` (${remedy})`;
-  throw Object.assign(error, { remedy });
-}
-
-function copyCapture(input: ConnectedNativeStoreCapture, profileTables: readonly TableName[] = connectedNativeStoreTables,
-  shape: SourceShape = "current"): ConnectedNativeStoreCapture {
-  try {
-    const copy = JSON.parse(JSON.stringify(input)) as ConnectedNativeStoreCapture;
-    const { sha256, ...body } = copy;
-    if (copy.format !== "openlup.native-retained-store.v1" || digest(JSON.stringify(body)) !== sha256) fail("invalid_input");
-    if (!copy.observation || Object.keys(copy.observation).sort().join("\0") !== "cluster\0database\0login\0snapshot"
-      || Object.values(copy.observation).some(value => typeof value !== "string" || !value)) fail("invalid_input");
-    if (!Array.isArray(copy.outsideProfileCensus)) fail("invalid_input");
-    for (const entry of copy.outsideProfileCensus) {
-      if (!entry || typeof entry !== "object" || Array.isArray(entry)
-        || Object.keys(entry).sort().join("\0") !== "disposition\0owner\0relation\0rows"
-        || typeof entry.relation !== "string" || !entry.relation || typeof entry.owner !== "string" || !entry.owner
-        || typeof entry.rows !== "string" || !entry.rows || /[^0-9]/.test(entry.rows)) fail("invalid_input");
-      const disposition = connectedStoreOutsideProfileRelations.get(entry.relation)?.disposition ?? "unsupported-empty";
-      if (entry.disposition !== disposition || disposition === "unsupported-empty" && entry.rows !== "0") fail("invalid_input");
-    }
-    if (shape === "unsupported") refuseSourceSchema();
-    validateRequiredPrivacyContributorIds(copy.requiredPrivacyContributorIds);
-    const all = tables(copy);
-    if (all.size !== profileTables.length || profileTables.some(table => !all.has(table))) fail("invalid_input");
-    let count = 0, bytes = 0;
-    for (const table of all.values()) {
-      for (const column of table.columns) quoted(column.name);
-      if (!table.columns.length || new Set(table.columns.map(column => column.name)).size !== table.columns.length) fail("invalid_input");
-      for (const row of table.rows) {
-        const value = JSON.parse(row) as Record<string, unknown>;
-        if (table.table === "identity_privacy_erasure_reconciliations" && !isPrivacyApprovalRow(value)) fail("invalid_input", table.table);
-        if (!value || Array.isArray(value) || Object.keys(value).sort().join("\0") !== table.columns.map(column => column.name).sort().join("\0")) fail("invalid_input");
-        count++; bytes += Buffer.byteLength(row);
-      }
-    }
-    if (count > 10000 || bytes > 64 * 1024 * 1024) fail("limit_exceeded");
-    return copy;
-  } catch (error) { if (error instanceof PostgresTransferError) throw error; fail("invalid_input"); }
-}
-
-function isPrivacyApprovalRow(value: unknown): boolean {
-  if (!value || typeof value !== "object" || Array.isArray(value)
-    || Object.keys(value).sort().join("\0") !== "contributor_id\0erasure_id\0evidence_ref") return false;
-  const { contributor_id, erasure_id, evidence_ref } = value as Record<string, unknown>;
-  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
-  return typeof contributor_id === "string" && /^[a-z][a-z0-9.-]{0,99}$/u.test(contributor_id)
-    && typeof erasure_id === "string" && uuid.test(erasure_id) && typeof evidence_ref === "string" && uuid.test(evidence_ref);
-}
-
-function tables(packet: ConnectedNativeStoreCapture): Map<TableName, Rows> {
-  const all: Rows[] = [...packet.compatible.tables, ...packet.owned];
-  if (new Set(all.map(table => table.table)).size !== all.length) fail("invalid_input");
-  return new Map<TableName, Rows>(all.map(table => [table.table, table]));
-}
 function expectedManifest(installation: QualifiedPostgresInstallation | QualifiedAdminPostgresInstallation) {
   const root = process.cwd(), raw = readPlatformMigrationManifest(root), catalog = readPlatformMigrations(root);
   if (!raw || catalog.errors.length || evaluatePlatformMigrationManifest({ manifest: raw, migrations: catalog.migrations }).length) fail("schema_conflict");
@@ -778,11 +518,6 @@ async function neutralizeHistoricalNotifications(client: PoolClient, source: Map
   }
   return removed;
 }
-function quoted(value: string): string {
-  if (!/^[a-z][a-z0-9_]{0,62}$/.test(value)) fail("invalid_input");
-  return `"${value}"`;
-}
-function digest(value: string): string { return createHash("sha256").update(value).digest("hex"); }
 function fail(code: "invalid_input" | "schema_conflict" | "target_conflict" | "unsupported_table" | "limit_exceeded" | "insert_trigger_requires_owner", table?: string): never {
   throw new PostgresTransferError(code, table);
 }

@@ -4594,6 +4594,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/publicationAuthorship.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/publicationCodec.ts",
       "class": "public-output"
     },
@@ -4618,7 +4622,15 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/publicationOperationHelpers.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/publicationPorts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/publicationPreparation.ts",
       "class": "public-output"
     },
     {
@@ -9439,6 +9451,10 @@
     },
     {
       "path": "packages/platform/test/catalog/catalogPublicationInterpreter.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/catalogReadsBatching.test.ts",
       "class": "public-output"
     },
     {
@@ -15206,6 +15222,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/adapters/postgres/connectedManagedIdentity.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/adapters/postgres/connectedManagedRetained.ts",
       "class": "public-output"
     },
@@ -15271,6 +15291,10 @@
     },
     {
       "path": "server/adapters/postgres/connectedStoreRestore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedTransferPacket.ts",
       "class": "public-output"
     },
     {
@@ -18706,10 +18730,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/accounting/accountingCanonicalProviderLines.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/accounting/accountingDocumentSync.test.ts",
       "class": "public-output"
     },
@@ -18747,10 +18767,6 @@
     },
     {
       "path": "server/domains/accounting/accountingLineAllocation.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/accounting/accountingLineAllocation.ts",
       "class": "public-output"
     },
     {
@@ -20446,10 +20462,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/customers/customerAccountReadDiagnostics.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/customers/customerAddressesHandler.test.ts",
       "class": "public-output"
     },
@@ -20490,10 +20502,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/customers/customerInvoiceDocumentStatus.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/customers/customerInvoiceDownloadHandler.test.ts",
       "class": "public-output"
     },
@@ -20510,10 +20518,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/customers/customerMeHandler.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/customers/customerOrderHistoryMoney.test.ts",
       "class": "public-output"
     },
@@ -20527,10 +20531,6 @@
     },
     {
       "path": "server/domains/customers/customerOrderLinePricing.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/customers/customerOrderLinePricing.ts",
       "class": "public-output"
     },
     {
