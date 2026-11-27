@@ -69,12 +69,14 @@ export function stageStarterCatalogueBuild(artifact: Buffer, receipt: CatalogDef
 }
 
 type StagedBuild = { publish(): void; discard(): void };
-function stageBuild(directory: string, filename: string, bytes: Buffer, conflict: () => Error, adopter = false): StagedBuild | undefined {
+function stageBuild(directory: string, filename: string, bytes: Buffer, conflict: () => Error,
+  equivalentPack?: (previous: Buffer) => boolean): StagedBuild | undefined {
+  const matches = (previous: Buffer) => previous.equals(bytes) || equivalentPack?.(previous);
   mkdirSync(directory, { recursive: true });
   const target = join(directory, filename);
   const previous = readOptional(target);
   if (previous) {
-    if (!previous.equals(bytes)) throw conflict();
+    if (!matches(previous)) throw conflict();
     return;
   }
   const temp = mkdtempSync(join(directory, '.pending-'));
@@ -91,8 +93,8 @@ function stageBuild(directory: string, filename: string, bytes: Buffer, conflict
       catch (error) {
         let retained;
         try { retained = readOptional(target); } catch { throw error; }
-        if (retained?.equals(bytes)) return;
-        throw adopter && retained ? conflict() : error;
+        if (retained && matches(retained)) return;
+        throw equivalentPack && retained ? conflict() : error;
       }
     },
     discard,
@@ -121,9 +123,17 @@ export function stagePackBuild(pack: CatalogPackInput, receipt: CatalogDefinitio
   if (!verifiesPack(pack, receipt)) throw buildRefusal('starter_catalogue_install_receipt_invalid', '',
     'The receipt does not verify the adopter pack build.');
   const types = pack.types.map(({ validateContent: _callback, ...metadata }) => metadata);
-  const bytes = Buffer.from(buildJson({ pack: { ...pack, types }, asset: Buffer.from(artifact).toString('base64'), receipt }));
-  return stageBuild(join(directory, 'packs'), filename, bytes, () => buildRefusal('starter_catalogue_build_conflict', '',
-    'The target already contains different build bytes for this pack version.'), true);
+  const build = { pack: { ...pack, types }, asset: Buffer.from(artifact).toString('base64'), receipt };
+  const encode = (installedAt: string) => Buffer.from(buildJson({ ...build, receipt: { ...receipt, installedAt } }));
+  function samePack(previous: Buffer): boolean {
+    try {
+      const retained = JSON.parse(previous.toString()) as { receipt?: { installedAt?: unknown } } | null;
+      const installedAt = retained?.receipt?.installedAt;
+      return typeof installedAt === 'string' && previous.equals(encode(installedAt));
+    } catch { return false; }
+  }
+  return stageBuild(join(directory, 'packs'), filename, encode(receipt.installedAt),
+    () => buildRefusal('starter_catalogue_build_conflict', '', 'The target already contains different build bytes for this pack version.'), samePack);
 }
 
 export function starterCatalogue(directory = buildDirectory) {

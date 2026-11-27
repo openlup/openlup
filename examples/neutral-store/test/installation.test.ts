@@ -934,7 +934,11 @@ test('host_resolves_pack_type_exact_pair and verifies the complete immutable bui
       const target = resolve(directory, 'packs', `${pack.id}@${pack.version}.json`);
       await assert.rejects(stat(target), { code: 'ENOENT' });
       const identical = stagePackBuild(bound, receipt, artifact, directory)!;
+      const laterReceipt = { ...receipt, installedAt: '2026-01-02T00:00:00.000Z' };
+      assert.notEqual(laterReceipt.installedAt, receipt.installedAt);
+      const later = stagePackBuild(bound, laterReceipt, artifact, directory)!;
       stage.publish(); stage.discard(); identical.publish(); identical.discard();
+      later.publish(); later.discard();
       const raw = await readFile(target);
       const build = JSON.parse(raw.toString('utf8'));
       assert.ok(raw.length > 1_048_576);
@@ -943,6 +947,7 @@ test('host_resolves_pack_type_exact_pair and verifies the complete immutable bui
       assert.deepEqual(build.pack.taxClasses, pack.taxClasses);
       assert.equal(build.pack.types.some((type: object) => Object.hasOwn(type, 'validateContent')), false);
       assert.equal(stagePackBuild(bound, receipt, artifact, directory), undefined);
+      assert.equal(stagePackBuild(bound, laterReceipt, artifact, directory), undefined);
       assert.deepEqual(await readFile(target), raw);
     }
     for (const pair of [ref!, newRef!, sibling!]) {
