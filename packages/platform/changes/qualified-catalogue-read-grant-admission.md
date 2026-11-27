@@ -1,1 +1,0 @@
-Native migration admission allows one exact grant of the two catalogue read entry points to the qualified-v2 catalogue publication login when the local migration ledger records the applied authority migration.

@@ -1,1 +1,0 @@
-`@openlup/platform/storefront` also exports `recoverAmbiguousSubmit` and its result type `AmbiguousSubmitRecovery`, which replay a failed submit at most once, with the same request, only when the host's failure classifier reports a timeout or a transport failure, and send nothing after an in-flight refusal or an unrecognized failure.

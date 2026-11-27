@@ -201,8 +201,7 @@ export type DestinationIssueResultV2 = {
     eventId: UUID;
     replayed: boolean;
 };
-/** @experimental Destination evidence verified by the native owner. Keep it server-side. */
-export type DestinationVerifiedReadV2 = {
+type CheckoutDestinationRead = {
     binding: DestinationBindingV2;
     documentDigest: Digest;
     evidenceExpiresAt: UtcMillis;
@@ -216,6 +215,11 @@ export type DestinationVerifiedReadV2 = {
         contact: Contact;
     };
 };
+/** @experimental Destination evidence verified by the native owner. Keep it server-side. */
+export type DestinationVerifiedReadV2 = CheckoutDestinationRead | (Omit<CheckoutDestinationRead, "evidenceExpiresAt"> & {
+    documentPurpose: "subscription";
+    evidenceExpiresAt: null;
+});
 type Check = {
     kind: "checkout";
     scopeRef: UUID;
@@ -249,7 +253,7 @@ type SubscriptionRechecked = Omit<Rechecked, "selection"> & {
 type CurrentSubscriptionDestination = Pick<Rechecked, "binding" | "service"> & {
     selectionRevision: UUID;
 };
-type SubscriptionRead = Omit<DestinationVerifiedReadV2, "evidenceExpiresAt"> & SubscriptionRechecked & {
+type SubscriptionRead = Omit<CheckoutDestinationRead, "evidenceExpiresAt"> & SubscriptionRechecked & {
     evidenceExpiresAt: null;
 };
 type SubscriptionCheck = Omit<Check, "kind"> & {
@@ -263,6 +267,7 @@ export interface DestinationPortV2 {
     snapshot(ctx: DestinationContextV2, command: SnapshotCommand, now: UtcMillis): Promise<Decision<DestinationIssueResultV2 | Erased>>;
     read(ctx: DestinationContextV2, kind: "subscription", id: UUID, expectedBinding: null): Promise<SubscriptionDecision<CurrentSubscriptionDestination>>;
     read(ctx: DestinationContextV2, kind: "subscription", id: UUID, expectedBinding: DestinationBindingV2): Promise<SubscriptionDecision<SubscriptionRead>>;
+    read(ctx: DestinationContextV2, kind: "snapshot", id: UUID, expectedBinding: DestinationBindingV2): Promise<Decision<CheckoutDestinationRead>>;
     read(ctx: DestinationContextV2, kind: "snapshot" | "order" | "shipment", id: UUID, expectedBinding: DestinationBindingV2): Promise<Decision<DestinationVerifiedReadV2>>;
     recheck(ctx: DestinationContextV2, check: SubscriptionCheck): Promise<SubscriptionDecision<SubscriptionRechecked>>;
     recheck(ctx: DestinationContextV2, check: Check): Promise<Decision<Rechecked>>;

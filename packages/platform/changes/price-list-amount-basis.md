@@ -1,1 +1,0 @@
-- Added the reserved nullable `price_lists.amount_basis` column with the `price_lists_basis_check` constraint (`tax_inclusive` or `tax_exclusive`). `NULL` keeps the legacy gross basis; no released path reads or writes the column yet.

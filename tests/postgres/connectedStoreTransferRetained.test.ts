@@ -463,7 +463,7 @@ describe("retained graph transfer and replay", () => {
     await expect(transferredPrivacy(target).erase({ principalId: deriveOidcPrincipalId(issuer, adminManagedId) }, {
       subject: { kind: "contact", contactId: erasedClient }, idempotencyKey: sourceRows.erasures[0]!.idempotency_key,
     })).rejects.toMatchObject({ code: "PRIVACY_RECEIPT_COVERAGE_INCOMPLETE",
-      facts: { observed: expect.stringMatching(/fulfillment-parcel-contacts, identity, subscriptions/u) } });
+      facts: { observed: expect.stringMatching(/fulfillment-parcel-contacts, identity, order-draft-receipts, subscriptions/u) } });
     expect((await target.owner.query("SELECT email,first_name,last_name,phone,country,metadata,principal_id FROM public.clients WHERE id=$1", [erasedClient])).rows)
       .toEqual([{ email: `erased+${erasedClient}@identity.invalid`, first_name: null, last_name: null,
         phone: null, country: null, metadata: {}, principal_id: null }]);

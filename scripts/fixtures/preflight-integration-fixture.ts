@@ -1,7 +1,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { expect } from "vitest";
 
 import { carrierLocale } from "../agent-review-landing.mjs";
@@ -21,7 +21,10 @@ export function createPreflightIntegrationFixture() {
   const run = (bin: string, ...args: string[]) => execFileSync(bin, args, options()).trim();
   const git = (...args: string[]) => run("git", ...args);
   const path = (file: string) => join(root, file);
-  const put = (file: string, bytes: string) => writeFileSync(path(file), bytes);
+  const put = (file: string, bytes: string) => {
+    mkdirSync(dirname(path(file)), { recursive: true });
+    writeFileSync(path(file), bytes);
+  };
   const get = (file: string) => readFileSync(path(file), "utf8");
   const commit = (message: string) => {
     git("add", "-A");
@@ -139,4 +142,28 @@ export function verifyStaleApiReportRepair(fixture: PreflightIntegrationFixture,
   fixture.run(process.execPath, "packages/platform/scripts/api-contract.ts", "--update");
   fixture.commit("Regenerate the API report");
   fixture.fast(`API repaired (${cache})`, []);
+}
+
+export function verifyStaleSettingsRepair(fixture: PreflightIntegrationFixture, cache: "warm-seeded" | "cold", warm: boolean) {
+  fixture.reset(warm);
+  const dataPath = "packages/platform/src/inventory/settings-data.json";
+  const entries: { kind: string }[] = JSON.parse(fixture.get(dataPath));
+  fixture.put(
+    dataPath,
+    JSON.stringify([
+      ...entries,
+      { ...entries.find(entry => entry.kind === "invariant"), key: "inventory.fixtureFreshness", goal: "Describe the freshness fixture." },
+    ], null, 2) + "\n",
+  );
+  fixture.put("packages/platform/changes/fixture-freshness.md", "- Exercise the settings catalogue owner.\n");
+  fixture.commit("Add the fixture setting with its original catalogue");
+  fixture.fast(
+    `settings stale (${cache})`,
+    ["settings-catalogue"],
+    "settings-catalogue: FAIL packages/platform/settings-catalog.json is stale",
+    "node scripts/settings-catalogue.ts --write",
+  );
+  fixture.run(process.execPath, "scripts/settings-catalogue.ts", "--write");
+  fixture.commit("Regenerate the settings carriers");
+  fixture.fast(`settings repaired (${cache})`, []);
 }

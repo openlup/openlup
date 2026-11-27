@@ -399,9 +399,15 @@ export async function restoreConnectedNativeStore(input: {
         await restoreSettings(client, baseline.get(table)!, source.get(table)!);
       }
       const governedProducts = new Set(source.get("catalog_publications")!.rows.map(row => (JSON.parse(row) as { product_id: string }).product_id));
+      const erasedOrders = source.get("commerce_order_tax_snapshots")!.rows
+        .map(row => JSON.parse(row) as { order_id: string; destination_erased: boolean })
+        .filter(row => row.destination_erased).map(row => row.order_id);
       let neutralized = 0;
       for (const table of order) {
         const rows = source.get(table)!;
+        if (table === "commerce_orders" && erasedOrders.length > 0) {
+          await client.query("SELECT public.commerce_order_money_v2_mark_restore_orders($1::uuid[])", [erasedOrders]);
+        }
         const copyingPrivacyReceipts = table === "identity_privacy_erasures" && rows.rows.length > 0;
         if (copyingPrivacyReceipts) await client.query("SELECT pg_catalog.set_config('app.tax_historical_receipt_restore',$1,true)", [facts.xid]);
         if (table === "subscription_price_policy_revisions") {
@@ -509,6 +515,9 @@ export async function restoreConnectedNativeStore(input: {
       await restoreSettings(client, baseline.get("subscription_delivery_alignment_control")!, source.get("subscription_delivery_alignment_control")!);
       await nativeCatalogPublication.assertPublishedSkuIdentity(client);
       await client.query("SET CONSTRAINTS ALL IMMEDIATE");
+      if (erasedOrders.length > 0) {
+        await client.query("DELETE FROM public.commerce_order_money_v2_restore_marks WHERE transaction_id=pg_catalog.pg_current_xact_id()");
+      }
       await assertOutsideEmpty(client, relations);
       if (!await equalCensus(client, source)) fail("target_conflict");
       if (JSON.stringify((await client.query("SELECT tableoid::pg_catalog.text,ctid::pg_catalog.text,xmin::pg_catalog.text FROM acquisition_private.installation_key")).rows) !== JSON.stringify(keyIdentity.rows)) fail("target_conflict", "acquisition_private.installation_key");

@@ -77,3 +77,4 @@ export { createCustomerPreferencePrivacyContributor } from './customerPreference
 export { createCustomerBillingPrivacyContributor } from './billingProfilePrivacy.js';
 export { createDestinationReceiptPrivacyContributor, createDestinationDocumentPrivacyContributor } from "./destinationPrivacy.js";
 export { createTaxCalculationPrivacyContributor } from "./taxCalculationPrivacy.js";
+export { createOrderDraftReceiptsPrivacyContributor } from "./orderDraftReceiptsPrivacy.js";

@@ -1,1 +1,0 @@
-- With `buildCatalogReleaseDraftV3`, publish release, price SKUs, then activate.

@@ -372,6 +372,6 @@ artifact evidence.
 
 ## Release notes
 
-Read [the changelog](CHANGELOG.md#100) before upgrading the package set.
+Read [the changelog](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/core/CHANGELOG-HISTORY.md#100) before upgrading the package set.
 
 Catalogue pack authors: [offline extension recipes and skeleton](docs/guide/how-to/extend/catalogue-extension.md).

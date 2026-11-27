@@ -424,6 +424,10 @@ starter type uses `<type-version>.json` one directory above `packs/`, with a
 separate `{ type, asset, installed }` envelope. Copy only the requested pack
 file and keep it server-side.
 
+If another database installs the exact same build into this directory, the
+starter keeps the first file and its original receipt timestamp. Each database
+records its own installation timestamp.
+
 1. Load the server-owned pack build and the matching
    `CatalogDefinitionInstallReceipt` returned by `installCatalogDefinitions`.
    For a build with a portable rules artifact, bind the retained artifact with
