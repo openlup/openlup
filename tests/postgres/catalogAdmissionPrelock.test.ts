@@ -368,7 +368,12 @@ it.each(stageCases)("bounds $stage with prelock=$hooked", async ({ stage, prefix
     if (blocker) await waitForBlock(writerPid, await pid(blocker), table ? "relation" : "advisory", table && `public.${table}`);
     expectFenceError(await result, { message: unavailable, hint: sameKey });
     if (stage === "rollback") expect(performance.now() - start).toBeLessThanOrEqual(input.timeoutMs + wallMarginMs);
-    expect(releases).toEqual(stage === "reservation" ? [[0, false]] : [[0, true], [1, stage === "probe"]]);
+    const expectedReleases: [number, boolean][] = stage === "reservation"
+      ? [[0, false]]
+      : stage === "clock sample" || stage === "restore"
+        ? [[1, false], [0, true]]
+        : [[0, true], [1, stage === "probe"]];
+    expect(releases).toEqual(expectedReleases);
     const refusedTrace = [...trace];
     resume.resolve();
     await settled.wait();
@@ -454,35 +459,39 @@ it.each(["writer", "restore", "callback", "probe", "read", "COMMIT"] as const)("
   expect(read).toHaveBeenCalledTimes(stage === "read" || stage === "COMMIT" ? 2 : 0);
 });
 
-it.each([false, true])("waits for a pending read before refusing on a standalone probe error with prelock=%s", async hooked => {
+it.each([false, true])("releases probe before read so a later probe pool error does not abort read with prelock=%s", async hooked => {
   const owner = installation.owner, clients: PoolClient[] = [];
   const atRead = latch(), resume = latch<string>();
   const trace: string[] = [];
   const pool = pair((index, db) => { clients[index] = db; }, (_, sql) => { trace.push(sql); });
   const release = vi.fn();
+  const poolError = vi.fn();
   owner.on("release", release);
+  owner.on("error", poolError);
   const result = withCatalogAdmissionFence(pool, scope(), () => {
     atRead.resolve();
     return resume.promise;
-  }, hooked ? { prelock: guard } : undefined).catch(error => error);
+  }, hooked ? { prelock: guard } : undefined);
   try {
     await atRead.wait(result);
+    expect(release).toHaveBeenCalledTimes(1);
+    expect(release).toHaveBeenCalledWith(false, clients[1]);
     clients[1]!.emit("error", new Error("private probe connection diagnostic"));
     await yieldTurn();
     await yieldTurn();
-    expect(release).not.toHaveBeenCalled();
     resume.resolve("read complete");
-    expectFenceError(await result, { message: unavailable, hint: checklist });
+    expect(await result).toBe("read complete");
+    expect(poolError).toHaveBeenCalledTimes(1);
     expect(release).toHaveBeenCalledTimes(2);
-    expect(release).toHaveBeenCalledWith(true, clients[0]);
-    expect(release).toHaveBeenCalledWith(true, clients[1]);
+    expect(release).toHaveBeenCalledWith(false, clients[0]);
   } finally {
     resume.resolve("read complete");
-    await result;
+    await result.catch(() => {});
     owner.removeListener("release", release);
+    owner.removeListener("error", poolError);
   }
   await yieldTurn();
-  expect(trace).not.toContain("COMMIT");
+  expect(trace).toContain("COMMIT");
 });
 
 it.each([false, true])("preserves the active read query rejection after asynchronous cleanup with prelock=%s", async hooked => {
@@ -552,7 +561,7 @@ it.each([
     else expectFenceError(error, { message: unavailable, hint: checklist });
     expect(trace).not.toContain("COMMIT");
     expect(release).toHaveBeenCalledWith(true, clients[0]);
-    expect(release).toHaveBeenCalledWith(true, clients[1]);
+    expect(release).toHaveBeenCalledWith(false, clients[1]);
   } finally {
     owner.removeListener("release", release);
   }
