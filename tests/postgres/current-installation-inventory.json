@@ -2,10 +2,14 @@
   "current": {
     "profiles": {
       "legacy": {
-        "count": 232,
-        "exactTailCount": 122,
-        "objectInventorySha256": "2494b30966120917b8202600dc6714fc8511e16c2cb52f1229d5e5dfef8ea536",
+        "count": 233,
+        "exactTailCount": 123,
+        "objectInventorySha256": "d77a1ccdf72d22740fa3dd88fe21587000cfec77acdb970e54d872c3668bfaf1",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261129130508_catalog_price_core_sku_modes_v2.sql",
+            "sha256": "81a068c40825376536f6673dc192d6d16edd8fa4264020c3e55e99df66211ddb"
+          },
           {
             "file": "db/platform/migrations/20261129130507_settings_wave3b_return_reasons_and_payment_preferences.sql",
             "sha256": "0f3a48e4bf37494cc69d46a6dfa11706a1215d1e482fac8f94a948f5ca88e539"
@@ -937,10 +941,14 @@
         ]
       },
       "bootstrap": {
-        "count": 238,
-        "exactTailCount": 123,
-        "objectInventorySha256": "ef40568d172a252b4d5d534ba7b47468df445d05561835d674fa4aefe411d9eb",
+        "count": 239,
+        "exactTailCount": 124,
+        "objectInventorySha256": "b827d666d4029581b4e6f3af355c70fc717f2823fd573b328e21a6a9bbabad75",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261129130508_catalog_price_core_sku_modes_v2.sql",
+            "sha256": "81a068c40825376536f6673dc192d6d16edd8fa4264020c3e55e99df66211ddb"
+          },
           {
             "file": "db/platform/migrations/20261129130507_settings_wave3b_return_reasons_and_payment_preferences.sql",
             "sha256": "0f3a48e4bf37494cc69d46a6dfa11706a1215d1e482fac8f94a948f5ca88e539"
@@ -1896,10 +1904,14 @@
         ]
       },
       "separate": {
-        "count": 238,
-        "exactTailCount": 123,
-        "objectInventorySha256": "45ecfd9ba146754510936d48a5ccf8d12863c94b7ca6320e6acbc54d94fdaa91",
+        "count": 239,
+        "exactTailCount": 124,
+        "objectInventorySha256": "e8ae5ddcda946824411c56e3c602d1adf3cb3d7e5f14994e8849c8d3c3898727",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261129130508_catalog_price_core_sku_modes_v2.sql",
+            "sha256": "81a068c40825376536f6673dc192d6d16edd8fa4264020c3e55e99df66211ddb"
+          },
           {
             "file": "db/platform/migrations/20261129130507_settings_wave3b_return_reasons_and_payment_preferences.sql",
             "sha256": "0f3a48e4bf37494cc69d46a6dfa11706a1215d1e482fac8f94a948f5ca88e539"
@@ -2855,10 +2867,14 @@
         ]
       },
       "admin-managed": {
-        "count": 236,
-        "exactTailCount": 122,
-        "objectInventorySha256": "15e425b49066bc6f38d913d6b3e31a06a0b65b59b5d54583f232606c6d453247",
+        "count": 237,
+        "exactTailCount": 123,
+        "objectInventorySha256": "3c4ed8565ecf4b50b56cd0e490ff577100030b3dd07f61b9bdfcbd39dce7378a",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261129130508_catalog_price_core_sku_modes_v2.sql",
+            "sha256": "81a068c40825376536f6673dc192d6d16edd8fa4264020c3e55e99df66211ddb"
+          },
           {
             "file": "db/platform/migrations/20261129130507_settings_wave3b_return_reasons_and_payment_preferences.sql",
             "sha256": "0f3a48e4bf37494cc69d46a6dfa11706a1215d1e482fac8f94a948f5ca88e539"
@@ -3806,10 +3822,14 @@
         ]
       },
       "admin-operator": {
-        "count": 236,
-        "exactTailCount": 122,
-        "objectInventorySha256": "463dc293d3e09fb136252194fed24fb244bfba6fe2f22cffdfb0c4e2adaa783d",
+        "count": 237,
+        "exactTailCount": 123,
+        "objectInventorySha256": "683f231b0af597d6c8ba9fed140b2fe95a59154138a0fe243cf80046d002b596",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261129130508_catalog_price_core_sku_modes_v2.sql",
+            "sha256": "81a068c40825376536f6673dc192d6d16edd8fa4264020c3e55e99df66211ddb"
+          },
           {
             "file": "db/platform/migrations/20261129130507_settings_wave3b_return_reasons_and_payment_preferences.sql",
             "sha256": "0f3a48e4bf37494cc69d46a6dfa11706a1215d1e482fac8f94a948f5ca88e539"
