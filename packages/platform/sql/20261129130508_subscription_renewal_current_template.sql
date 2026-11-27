@@ -310,6 +310,24 @@ BEGIN
     -- A refused claim may have left admission with no case or only shadow cases.
     <<qualify_arrival>>
     BEGIN
+      -- Plan the optional fallback only under its existing execution and table
+      -- rights. A narrow fulfillment login must still record the arrival.
+      IF NOT (
+        has_function_privilege('public.subscription_delivery_alignment_get_mode()', 'EXECUTE')
+        AND has_function_privilege('public.subscription_delivery_alignment_upsert_case(uuid,uuid,uuid,uuid,integer,text,text,timestamptz,text)', 'EXECUTE')
+        AND has_table_privilege('public.subscription_delivery_alignment_control', 'SELECT')
+        AND has_table_privilege('public.subscription_renewal_terms', 'SELECT')
+        AND has_table_privilege('public.subscription_renewal_operations', 'SELECT')
+        AND has_table_privilege('public.subscription_dunning_cases', 'SELECT')
+        AND has_table_privilege('public.subscription_delivery_alignment_cycles', 'SELECT')
+        AND has_table_privilege('public.fulfillment_shipments', 'SELECT')
+        AND has_table_privilege('public.subscription_delivery_alignment_cases', 'INSERT')
+        AND has_table_privilege('public.subscription_delivery_alignment_cases', 'UPDATE')
+        AND has_table_privilege('public.subscriptions', 'UPDATE')
+      ) THEN
+        EXIT qualify_arrival;
+      END IF;
+
       IF (TG_OP = 'UPDATE' AND OLD.delivered_at IS NOT NULL)
         OR v_subscription.status <> 'active'
         OR EXISTS (SELECT 1 FROM public.fulfillment_shipments WHERE replaces_shipment_id = NEW.id)

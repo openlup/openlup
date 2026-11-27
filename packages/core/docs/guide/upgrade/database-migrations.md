@@ -124,9 +124,9 @@ claim. Later accepted edits apply to later cycles.
 Platform 1.4.0 refuses a first claim with `subscription_renewal_snapshot_stale`
 when the snapshot carries version evidence that proves it stale. Bare legacy
 claims without build-version evidence are admitted as before. Custom legacy
-callers get the same protection by claiming through the shipped legacy adapter,
-or by building the snapshot and claiming it in one transaction that holds the
-subscription row lock. Re-read and rebuild the snapshot on the stale refusal.
+callers get the same protection by locking the subscription row before
+building the snapshot and holding that lock through the claim in the same
+transaction. Re-read and rebuild the snapshot on the stale refusal.
 
 ```sql
 BEGIN ISOLATION LEVEL REPEATABLE READ, READ ONLY;

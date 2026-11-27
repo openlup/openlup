@@ -1486,10 +1486,21 @@ const rawReadback = "SELECT public.subscription_read_renewal($1::text)::text AS 
 
 const renewalTemplateForward = /_subscription_renewal_current_template\.sql$/u;
 const dueClaimSignature = "subscription_claim_due_renewal(text,text,jsonb,text,integer,timestamptz)";
+const deliveryTriggerSignature = "subscription_delivery_alignment_on_delivery()";
+const arrivalSignature = "fulfillment_record_alignment_arrival(text,uuid,timestamptz,text)";
 type UpgradeTarget = Parameters<Parameters<typeof withOccupiedRenewalPrefix>[0]>[0];
 const withTemplateUpgrade = (work: (target: UpgradeTarget) => Promise<void>) =>
   withOccupiedRenewalPrefix(work, file => renewalTemplateForward.test(file));
 const upgradeTransaction = (db: Pool): typeof transaction => work => transaction(work, db);
+
+async function applyTemplateForwardWithCustomGrants(owner: Pool) {
+  // The qualified runner restricts catalogue access to its selected principals.
+  // Apply the bundled SQL with the existing custom grants in place.
+  const { forward } = selectPlatformMigrationManifest(
+    JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")), "legacy");
+  const { file } = forward.find(unit => renewalTemplateForward.test(unit.file))!;
+  await owner.query(readFileSync(file, "utf8"));
+}
 
 function predecessorRetryTarget(db: Pool) {
   return { executor: db, transaction: upgradeTransaction(db) };
@@ -1782,17 +1793,75 @@ it("preserves fresh and stale first claims for an existing directly granted logi
         JSON.parse((await direct.query(rawClaim, claimWire(entry.d, entry.snapshot))).rows[0].result);
       expect(await claim(before)).toMatchObject({ acquired: true });
       const acl = await generationAcl(owner, dueClaimSignature);
-      // Exercise the bundled upgrade with direct grants already in place.
-      // The qualified runner restricts catalogue access to its selected principals.
-      const { forward } = selectPlatformMigrationManifest(
-        JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")), "legacy");
-      const { file } = forward.find(unit => renewalTemplateForward.test(unit.file))!;
-      await owner.query(readFileSync(file, "utf8"));
+      await applyTemplateForwardWithCustomGrants(owner);
       expect(await generationAcl(owner, dueClaimSignature)).toEqual(acl);
       expect(await claim(fresh)).toMatchObject({ acquired: true });
       await expect(claim(stale)).rejects.toMatchObject(staleClaim);
       expect((await db.query("SELECT id FROM public.subscription_renewal_operations WHERE subscription_id=$1",
         [stale.f.subscriptionId])).rows).toEqual([]);
+    } finally {
+      await direct.end();
+    }
+  });
+}, postgresSetupTimeoutMs);
+
+it("keeps case-free verified arrivals available to an existing directly granted fulfillment login", async () => {
+  await withTemplateUpgrade(async target => {
+    const { db, owner } = target;
+    const spine = fulfillment.createPostgresFulfillmentShipmentSpinePort(db, { portKey: "g7-parcels" });
+    const arrivals: { shipmentId: string; subscriptionId: string }[] = [];
+    for (let i = 0; i < 3; i++) {
+      const { orderId, subscriptionId } = await renewalPurchase(false, target);
+      const { shipmentId } = await spine.createShipment({ idempotencyKey: `parcel:${orderId}`, orderId, requestedAt: at });
+      arrivals.push({ shipmentId, subscriptionId });
+    }
+    const role = "renewal_direct_arrival", password = randomUUID();
+    await owner.query(`CREATE ROLE renewal_direct_arrival LOGIN PASSWORD '${password}';
+      GRANT USAGE ON SCHEMA public TO renewal_direct_arrival;
+      GRANT EXECUTE ON FUNCTION public.${arrivalSignature} TO renewal_direct_arrival;
+      GRANT SELECT,INSERT ON public.subscription_delivery_alignment_arrivals TO renewal_direct_arrival;
+      GRANT SELECT ON public.fulfillment_shipments,public.commerce_orders,public.subscription_cycles,
+        public.subscriptions,public.subscription_delivery_alignment_cases TO renewal_direct_arrival;
+      GRANT UPDATE (delivered_at,updated_at) ON public.fulfillment_shipments TO renewal_direct_arrival;
+      GRANT UPDATE (updated_at) ON public.subscriptions,public.subscription_delivery_alignment_cases TO renewal_direct_arrival`);
+    const url = new URL(loginConnection(target.connectionString, role));
+    url.password = password;
+    const direct = new Pool({ connectionString: url.toString() });
+    try {
+      expect((await direct.query(`SELECT session_user, current_user,
+        pg_has_role(current_user,'service_role','MEMBER') AS service_member,
+        has_function_privilege('public.subscription_delivery_alignment_get_mode()', 'EXECUTE') AS read_mode`)).rows)
+        .toEqual([{ session_user: role, current_user: role, service_member: false, read_mode: false }]);
+      const arrival = async ({ shipmentId, subscriptionId }: (typeof arrivals)[number]) => {
+        const requestKey = `verified:${shipmentId}`, deliveredAt = days(at, 35), evidenceRef = `evidence:${shipmentId}`;
+        const cases = () => owner.query("SELECT id FROM public.subscription_delivery_alignment_cases WHERE subscription_id=$1", [subscriptionId]);
+        expect((await cases()).rows).toEqual([]);
+        const due = (await owner.query("SELECT next_cycle_at FROM public.subscriptions WHERE id=$1", [subscriptionId])).rows;
+        expect(await rpc("fulfillment_record_alignment_arrival", [requestKey, shipmentId, deliveredAt, evidenceRef], direct))
+          .toEqual({ replayed: false });
+        expect((await owner.query(`SELECT a.shipment_id, a.evidence_ref, a.delivered_at, s.delivered_at AS shipment_delivered_at
+          FROM public.subscription_delivery_alignment_arrivals a
+          JOIN public.fulfillment_shipments s ON s.id=a.shipment_id WHERE a.request_key=$1`, [requestKey])).rows)
+          .toEqual([{ shipment_id: shipmentId, evidence_ref: evidenceRef,
+            delivered_at: new Date(deliveredAt), shipment_delivered_at: new Date(deliveredAt) }]);
+        expect((await cases()).rows).toEqual([]);
+        expect((await owner.query("SELECT next_cycle_at FROM public.subscriptions WHERE id=$1", [subscriptionId])).rows).toEqual(due);
+      };
+      const acl = await Promise.all([deliveryTriggerSignature, arrivalSignature].map(signature => generationAcl(owner, signature)));
+      expect(acl.map(([routine]) => routine.definer)).toEqual([false, false]);
+      expect(await rpc("subscription_delivery_alignment_get_mode", [], owner)).toBe("off");
+      await arrival(arrivals[0]!);
+      await applyTemplateForwardWithCustomGrants(owner);
+      expect(await Promise.all([deliveryTriggerSignature, arrivalSignature].map(signature => generationAcl(owner, signature))))
+        .toEqual(acl);
+      await arrival(arrivals[1]!);
+
+      // A mode reader alone still lacks the fallback's other capabilities.
+      await owner.query(`GRANT EXECUTE ON FUNCTION public.subscription_delivery_alignment_get_mode() TO renewal_direct_arrival;
+        GRANT SELECT ON public.subscription_delivery_alignment_control TO renewal_direct_arrival`);
+      await rpc("subscription_delivery_alignment_set_mode", ["auto_align"], owner);
+      expect(await rpc("subscription_delivery_alignment_get_mode", [], direct)).toBe("auto_align");
+      await arrival(arrivals[2]!);
     } finally {
       await direct.end();
     }
