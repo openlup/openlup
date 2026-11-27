@@ -972,26 +972,32 @@ describe("client state between the runs (R40–R46)", () => {
 });
 
 describe("consent after the page settled from the last text change (R48)", () => {
-  it.each(["lost_response_reload", "lost_response_edited_payload", "duplicate_submit"])("ticks terms only after a late quote landed, so %s sends its creates", async (id) => {
-    const { verdict, double } = await run(id, { lateQuoteUnticksTerms: true });
-    expect(verdict.findings).toEqual([]);
-    expect(verdict.result).toBe(id === "duplicate_submit" ? "safety_only" : "passed");
-    const arrangement = double.calls.slice(0, double.calls.indexOf("perform action:place_order"));
-    const tick = arrangement.indexOf("fill field:terms_accepted");
-    expect(arrangement.slice(arrangement.lastIndexOf("fill field:postal_code"), tick)).toEqual(["fill field:postal_code", "settled", "find field:terms_accepted"]);
-  });
+  const modes = ["input", "change"] as const;
+  it.each(modes.flatMap((mode) => ["lost_response_reload", "lost_response_edited_payload", "duplicate_submit"].map((id) => [mode, id] as const)))(
+    "with quotes on %s, ticks terms after the page settled and once more after a second settle, so %s sends its creates", async (quoteOn, id) => {
+      const { verdict, double } = await run(id, { quoteOn });
+      expect(verdict.findings).toEqual([]);
+      expect(verdict.result).toBe(id === "duplicate_submit" ? "safety_only" : "passed");
+      const arrangement = double.calls.slice(0, double.calls.indexOf("perform action:place_order"));
+      const last = arrangement.lastIndexOf("fill field:postal_code");
+      expect(arrangement.slice(last, last + 6)).toEqual([
+        "fill field:postal_code", "settled", "find field:terms_accepted", "fill field:terms_accepted", "settled", "fill field:terms_accepted",
+      ]);
+    });
 
-  it("re-types the details after a reload with a custom arrange the same way", async () => {
+  it.each(modes)("with quotes on %s, re-types the details after a reload under a custom arrange the same way", async (quoteOn) => {
     const adapter: StorefrontAdapter = {
       async arrange({ page, buyer }) {
         await page.navigate("/select/one_time");
         await page.perform({ attribute: "action", value: "proceed_to_checkout" }, { timeoutMs: 0 });
         for (const [field, value] of Object.entries(buyer)) if (typeof value === "string") await page.fill({ attribute: "field", value: field }, value, { timeoutMs: 0 });
-        await page.settled({ quietMs: 0 });
-        await page.fill({ attribute: "field", value: "terms_accepted" }, true, { timeoutMs: 0 });
+        for (let pass = 0; pass < 2; pass += 1) {
+          await page.settled({ quietMs: 0 });
+          await page.fill({ attribute: "field", value: "terms_accepted" }, true, { timeoutMs: 0 });
+        }
       },
     };
-    const { verdict } = await run("lost_response_reload", { lateQuoteUnticksTerms: true }, { adapter, proofFile: { formatVersion: 1, configurations: ["default"], widths: [1280] } });
+    const { verdict } = await run("lost_response_reload", { quoteOn }, { adapter, proofFile: { formatVersion: 1, configurations: ["default"], widths: [1280] } });
     expect(verdict.findings).toEqual([]);
     expect(verdict.result).toBe("passed");
   });

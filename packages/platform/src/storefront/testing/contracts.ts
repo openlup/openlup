@@ -127,7 +127,8 @@ export type StorefrontScenario = {
 export type StorefrontAdapter = {
   /**
    * Store-owned steps up to the first buyer action. `edit` names a field to change on a rearrangement, else `null`.
-   * Like the default arrangement, tick consent only after `page.settled` returned from the last text change.
+   * Like the default arrangement, tick consent only after `page.settled` returned from the last text change, then
+   * settle and tick it once more.
    */
   readonly arrange?: (context: {
     readonly scenario: StorefrontScenario;
@@ -193,7 +194,9 @@ export type StorefrontObserver = {
  *   `action:<value>` anchors, sorted; `locators` maps such a name to a custom
  *   CSS locator that replaces its attribute anchor.
  * - `perform` clicks, and resolves `false` without clicking when the target is
- *   absent or disabled; `fill` types a string or sets a checkbox, `false` when
+ *   absent or disabled; `fill` types a string and commits it as a buyer
+ *   leaving the field does (the field is blurred, so a page that reacts on
+ *   `input`, `change` or `blur` sees the value), or sets a checkbox, `false` when
  *   absent.
  * - `intercept(decide)` routes every request through `decide`, with the request
  *   path and no query string or fragment; a `decide` that throws blocks the

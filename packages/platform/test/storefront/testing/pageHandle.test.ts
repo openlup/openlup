@@ -50,6 +50,7 @@ function fakePage(state: {
     async isEnabled(options: { timeout: number }) { log.push(`isEnabled ${selector} ${options.timeout}`); return !state.disabled?.has(selector); },
     async click(options: { timeout: number }) { log.push(`click ${selector} ${options.timeout}`); },
     async fill(value: string, options: { timeout: number }) { log.push(`fill ${selector} ${value} ${options.timeout}`); },
+    async blur(options: { timeout: number }) { log.push(`blur ${selector} ${options.timeout}`); },
     async setChecked(checked: boolean, options: { timeout: number }) { log.push(`setChecked ${selector} ${checked} ${options.timeout}`); },
   });
   const page = {
@@ -302,7 +303,7 @@ describe("createPageHandle over a recording page (H1)", () => {
     await expect(createPageHandle(page as unknown as typeof fake.page).find({ locator: "#x" }, { timeoutMs: 5 })).rejects.toThrow("has been closed");
   });
 
-  it("performs only an enabled anchor and fills text or a checkbox", async () => {
+  it("performs only an enabled anchor, fills and commits text (blurs it, as a buyer leaving the field), and sets a checkbox", async () => {
     const fake = fakePage({ elements: { "#go": [shown], "#off": [shown], "#email": [shown], "#terms": [shown] }, disabled: new Set(["#off"]) });
     const handle = createPageHandle(fake.page);
     expect(await handle.perform({ locator: "#off" }, { timeoutMs: 100 })).toBe(false);
@@ -311,8 +312,8 @@ describe("createPageHandle over a recording page (H1)", () => {
     expect(await handle.fill({ locator: "#email" }, "buyer@example.test", { timeoutMs: 100 })).toBe(true);
     expect(await handle.fill({ locator: "#terms" }, true, { timeoutMs: 100 })).toBe(true);
     expect(await handle.fill({ locator: "#missing" }, "x", { timeoutMs: 100 })).toBe(false);
-    expect(fake.log.filter((line) => /^(?:click|fill|setChecked)/.test(line))).toEqual([
-      "click #go 100", "fill #email buyer@example.test 100", "setChecked #terms true 100",
+    expect(fake.log.filter((line) => /^(?:click|fill|blur|setChecked)/.test(line))).toEqual([
+      "click #go 100", "fill #email buyer@example.test 100", "blur #email 100", "setChecked #terms true 100",
     ]);
     expect(fake.log).toContain("isEnabled #off 100");
   });

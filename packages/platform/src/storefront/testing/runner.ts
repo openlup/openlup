@@ -387,9 +387,13 @@ type RunRecord = {
  * steps. Wherever the runner types the buyer's details (the default
  * arrangement, its repeat after a reload, an edited payload, and the re-typing
  * after a reload under an adapter's `arrange`), it fills every text field
- * first and sets consent and other toggle fields (`terms_accepted`) only after
- * the page settled from the last text change, so a page that re-validates the
- * details and resets consent given before that check keeps the tick. Every
+ * first (`page.fill` commits each), waits for the page to settle, sets consent
+ * and other toggle fields (`terms_accepted`), waits for the page to settle
+ * again and sets the toggles once more. A page that re-checks the details and
+ * resets consent given before that check thus keeps the tick; setting a toggle
+ * to the value it has changes nothing, and the handle cannot read a toggle
+ * back, so a page that resets consent again after the second pass sends
+ * nothing on submit and the step's findings say so. Every
  * step ends only when the page has settled: every request the
  * interceptor saw finished and `quietMs` passed with no new request. Then the
  * runner reads the ledger, the visible anchors and the path. After the last
@@ -723,14 +727,18 @@ export async function runStorefrontScenario(options: StorefrontRunOptions): Prom
       }
       return false;
     };
-    // Every text field first; consent and other toggles only after the page settled from the last text change, so a
-    // page that re-validates the details (a quote that resets consent given before it started) keeps the tick.
+    // Every text field first (the page handle commits each as a buyer leaving it does); toggles such as consent only
+    // after the page settled from the last text change; then, after a second settle, the toggles once more, so a page
+    // that re-checks the details and resets consent given before that check keeps the tick. Setting a toggle to the
+    // value it has changes nothing, and the handle cannot read a toggle back, so the second pass is not repeated.
     const fillDetails = async (index: number, edit: string | undefined): Promise<boolean> => {
       const entries = Object.entries(buyer);
       const texts = entries.filter(([, value]) => typeof value === "string");
       const toggles = entries.filter(([, value]) => typeof value !== "string");
+      const settle = () => page.settled({ quietMs, timeoutMs: timeoutMs + quietMs });
+      const set: (readonly [string, string | boolean])[] = [];
       for (const [position, [field, value]] of [...texts, ...toggles].entries()) {
-        if (position === texts.length && toggles.length > 0) await page.settled({ quietMs, timeoutMs: timeoutMs + quietMs });
+        if (position === texts.length) await settle();
         const target = targetOf("field", field);
         // The e-mail carries the subject and must resolve; the other fields are filled where the form has them.
         const found = await page.find(target, { timeoutMs: field === "email" ? timeoutMs : 0 });
@@ -740,10 +748,16 @@ export async function runStorefrontScenario(options: StorefrontRunOptions): Prom
           return false;
         }
         const typed = field === edit && typeof value === "string" ? `${value} Changed` : value;
-        if (!(await page.fill(target, typed, { timeoutMs })) && field === "email") {
+        if (!(await page.fill(target, typed, { timeoutMs }))) {
+          if (field !== "email") continue;
           if (checksAnchors(index)) add("adapter_anchor_missing", "field", run, index, { at: at(index), name: `field:${field}`, seen: await seenNow() });
           return false;
         }
+        if (typeof value !== "string") set.push([field, value]);
+      }
+      if (set.length > 0) {
+        await settle();
+        for (const [field, value] of set) await page.fill(targetOf("field", field), value, { timeoutMs });
       }
       return true;
     };

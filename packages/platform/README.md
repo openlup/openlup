@@ -4044,7 +4044,8 @@ and never in a buyer's bundle: a browser bundle of the entry fails, and the
 - **`PageHandle` and `createPageHandle(page, options?)`.** Wraps a Playwright
   page without importing a browser library: navigation, the current path
   without query, the width, anchor lookup and visibility, the visible
-  `state:` and `action:` anchors, clicking, filling, request interception
+  `state:` and `action:` anchors, clicking, filling (a typed value is committed
+  by blurring the field, as a buyer leaving it does), request interception
   (`pass`, `withhold`, which delivers the request and fails the page's
   response, or `block`), `clearClientState()`, which clears the client state
   the `PageHandle` table lists, and `settled({ quietMs, timeoutMs })`,
@@ -4167,10 +4168,13 @@ values (`email` must resolve; it carries the run's subject,
 reload a declared selection entry is arranged again; otherwise an adapter's
 `arrange` arranged the run and only the details are re-typed. Wherever the
 runner types the details (arrangement, re-arrangement, edited payload,
-re-typing), it fills every text field first and ticks consent
-(`terms_accepted`) only after the page settled from the last text change, so a
-page whose details check resets consent given before it started keeps the
-tick; an adapter's `arrange` should do the same. The clean run
+re-typing), it fills every text field first (`page.fill` commits each),
+waits for the page to settle, ticks consent (`terms_accepted`), waits for the
+page to settle again and ticks it once more, so a page whose details check
+resets consent given before that check keeps the tick; an adapter's `arrange`
+should do the same. The handle cannot read a checkbox back, so a page that
+resets consent again after the second tick sends nothing on submit, and the
+run's findings say so. The clean run
 reads the subject's ledger first, then routes every request through one
 interceptor that classifies it by the create and read matchers and records
 whether each command reused an earlier key (the key value is compared, never

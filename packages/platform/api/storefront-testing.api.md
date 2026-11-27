@@ -168,7 +168,8 @@ export type StorefrontScenario = {
 export type StorefrontAdapter = {
     /**
      * Store-owned steps up to the first buyer action. `edit` names a field to change on a rearrangement, else `null`.
-     * Like the default arrangement, tick consent only after `page.settled` returned from the last text change.
+     * Like the default arrangement, tick consent only after `page.settled` returned from the last text change, then
+     * settle and tick it once more.
      */
     readonly arrange?: (context: {
         readonly scenario: StorefrontScenario;
@@ -239,7 +240,9 @@ export type StorefrontObserver = {
  *   `action:<value>` anchors, sorted; `locators` maps such a name to a custom
  *   CSS locator that replaces its attribute anchor.
  * - `perform` clicks, and resolves `false` without clicking when the target is
- *   absent or disabled; `fill` types a string or sets a checkbox, `false` when
+ *   absent or disabled; `fill` types a string and commits it as a buyer
+ *   leaving the field does (the field is blurred, so a page that reacts on
+ *   `input`, `change` or `blur` sees the value), or sets a checkbox, `false` when
  *   absent.
  * - `intercept(decide)` routes every request through `decide`, with the request
  *   path and no query string or fragment; a `decide` that throws blocks the
@@ -368,6 +371,10 @@ type StructuralLocator = {
     fill(value: string, options: {
         timeout: number;
     }): Promise<void>;
+    /** Commits a typed value as a buyer leaving the field does; a Playwright locator has it. */
+    blur?(options: {
+        timeout: number;
+    }): Promise<void>;
     setChecked(checked: boolean, options: {
         timeout: number;
     }): Promise<void>;
@@ -409,7 +416,8 @@ type StructuralPage = {
  * page today and reads only through the members it uses: `goto`, `reload`,
  * `url`, `viewportSize`, `waitForTimeout`, `on` and `off` (`request`,
  * `requestfinished`, `requestfailed`), `locator` with `first`, `waitFor`,
- * `evaluateAll`, `isEnabled`, `click`, `fill`, `setChecked`, and `route` and
+ * `evaluateAll`, `isEnabled`, `click`, `fill`, `blur` (when present, after
+ * typing), `setChecked`, and `route` and
  * `unroute` with `request()`, `continue()`, `fetch()` and `abort()`; a request
  * reads `method()`, `url()`, `headers()` and `redirectedFrom()`, so a redirect
  * hop, which the browser does not route, is claimed from its own `request`
@@ -579,9 +587,13 @@ type StorefrontRunResult = {
  * steps. Wherever the runner types the buyer's details (the default
  * arrangement, its repeat after a reload, an edited payload, and the re-typing
  * after a reload under an adapter's `arrange`), it fills every text field
- * first and sets consent and other toggle fields (`terms_accepted`) only after
- * the page settled from the last text change, so a page that re-validates the
- * details and resets consent given before that check keeps the tick. Every
+ * first (`page.fill` commits each), waits for the page to settle, sets consent
+ * and other toggle fields (`terms_accepted`), waits for the page to settle
+ * again and sets the toggles once more. A page that re-checks the details and
+ * resets consent given before that check thus keeps the tick; setting a toggle
+ * to the value it has changes nothing, and the handle cannot read a toggle
+ * back, so a page that resets consent again after the second pass sends
+ * nothing on submit and the step's findings say so. Every
  * step ends only when the page has settled: every request the
  * interceptor saw finished and `quietMs` passed with no new request. Then the
  * runner reads the ledger, the visible anchors and the path. After the last

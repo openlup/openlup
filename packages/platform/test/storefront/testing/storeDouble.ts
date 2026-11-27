@@ -109,10 +109,12 @@ export type StoreDoubleSwitches = {
    */
   readonly sessionCarriesRecord?: boolean;
   /**
-   * Each text-field change starts a quote that lands on the next settle; a quote started while terms were not ticked
-   * clears the tick when it lands, and place-order sends nothing while terms are not ticked.
+   * The page quotes the details: on every text fill (`input`), or when a changed text field is committed (`change`),
+   * that is when focus moves to another field or control (the double's `fill` does not commit by itself, as a handle
+   * that only types would not). A quote lands on the next settle; one started while terms were not ticked clears the
+   * tick when it lands. Place-order sends nothing while terms are not ticked.
    */
-  readonly lateQuoteUnticksTerms?: boolean;
+  readonly quoteOn?: "input" | "change";
 };
 
 /** Every outcome kind the double's driver can produce. */
@@ -169,8 +171,10 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: {
   const produced: [string, string][] = [];
   const answers = new Map<string, number>();
   const queue: Array<() => void> = [];
-  // Quotes started by text-field changes, landed by the next settle.
+  // Quotes started by text-field changes, landed by the next settle; the focused field and whether it changed.
   const quotes: Array<() => void> = [];
+  let focused: string | null = null;
+  let changed = false;
   const tasks = new Set<Promise<unknown>>();
   let decide: Decide | null = null;
   let view: View = "blank";
@@ -193,6 +197,20 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: {
   let paidRevealed = false;
 
   const turn = () => new Promise<void>((resolve) => setImmediate(resolve));
+  /** Starts a quote that lands on the next settle and clears a tick it did not see at its start. */
+  const quote = () => {
+    const tickedAtStart = fields.terms_accepted === true;
+    void track(new Promise<void>((resolve) => quotes.push(resolve)).then(() => {
+      if (!tickedAtStart) delete fields.terms_accepted;
+    }));
+  };
+  /** Moves focus to a field or control; leaving a changed text field commits it (`change`), which starts a quote. */
+  const focus = (to: string) => {
+    if (focused === to) return;
+    if (switches.quoteOn === "change" && changed) quote();
+    focused = to;
+    changed = false;
+  };
   const track = <T>(task: Promise<T>) => {
     tasks.add(task);
     void task.finally(() => tasks.delete(task));
@@ -376,12 +394,16 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: {
       if (stuck && switches.stuckNavigateRejects === true) throw new Error("net::ERR_ABORTED");
       if (!stuck) view = path.startsWith("/select/") ? "cart" : "blank";
       fields = {};
+      focused = null;
+      changed = false;
       load(false);
     },
     async reload() {
       acted("reload");
       storage.reloaded = true;
       fields = {};
+      focused = null;
+      changed = false;
       if (PAYMENT_VIEWS.has(view)) {
         // During a payment the page reads the status and shows the state it last knew until an answer arrives.
         view = storage.lastView ?? "paying";
@@ -420,6 +442,7 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: {
       const name = nameOf(target);
       acted(`perform ${name}`);
       if (present().get(name) !== true) return false;
+      focus(name);
       if (name === "action:proceed_to_checkout") {
         view = "checkout";
         fields = {};
@@ -428,7 +451,7 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: {
         return true;
       }
       if (name === "action:place_order") {
-        if (switches.lateQuoteUnticksTerms === true && fields.terms_accepted !== true) return true;
+        if (switches.quoteOn !== undefined && fields.terms_accepted !== true) return true;
         if (placing && switches.noSubmitGuard !== true && switches.noSubmitGuardSameKey !== true) return false;
         if (switches.firstSubmitSendsNothing === true && !firstSubmitSkipped) {
           firstSubmitSkipped = true;
@@ -464,13 +487,10 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: {
       const name = nameOf(target);
       acted(`fill ${name}`);
       if (present().get(name) === undefined) return false;
+      focus(name);
       fields[name.slice("field:".length)] = value;
-      if (switches.lateQuoteUnticksTerms === true && typeof value === "string") {
-        const tickedAtStart = fields.terms_accepted === true;
-        void track(new Promise<void>((resolve) => quotes.push(resolve)).then(() => {
-          if (!tickedAtStart) delete fields.terms_accepted;
-        }));
-      }
+      if (typeof value === "string" && switches.quoteOn === "input") quote();
+      if (typeof value === "string" && switches.quoteOn === "change") changed = true;
       return true;
     },
     async clearClientState() {

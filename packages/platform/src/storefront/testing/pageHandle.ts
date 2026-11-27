@@ -11,6 +11,8 @@ type StructuralLocator = {
   isEnabled(options: { timeout: number }): Promise<boolean>;
   click(options: { timeout: number }): Promise<void>;
   fill(value: string, options: { timeout: number }): Promise<void>;
+  /** Commits a typed value as a buyer leaving the field does; a Playwright locator has it. */
+  blur?(options: { timeout: number }): Promise<void>;
   setChecked(checked: boolean, options: { timeout: number }): Promise<void>;
 };
 type RequestEvent = "request" | "requestfinished" | "requestfailed";
@@ -101,7 +103,8 @@ async function appeared(locator: StructuralLocator, timeout: number): Promise<bo
  * page today and reads only through the members it uses: `goto`, `reload`,
  * `url`, `viewportSize`, `waitForTimeout`, `on` and `off` (`request`,
  * `requestfinished`, `requestfailed`), `locator` with `first`, `waitFor`,
- * `evaluateAll`, `isEnabled`, `click`, `fill`, `setChecked`, and `route` and
+ * `evaluateAll`, `isEnabled`, `click`, `fill`, `blur` (when present, after
+ * typing), `setChecked`, and `route` and
  * `unroute` with `request()`, `continue()`, `fetch()` and `abort()`; a request
  * reads `method()`, `url()`, `headers()` and `redirectedFrom()`, so a redirect
  * hop, which the browser does not route, is claimed from its own `request`
@@ -218,7 +221,11 @@ export function createPageHandle(page: StructuralPage, options: { readonly origi
       const first = page.locator(selectorOf(target)).first();
       if (!(await appeared(first, timeout))) return false;
       if (typeof value === "boolean") await first.setChecked(value, { timeout });
-      else await first.fill(value, { timeout });
+      else {
+        await first.fill(value, { timeout });
+        // Typing fires only `input`; leaving the field fires `change` and `blur`, which some pages quote on.
+        await first.blur?.({ timeout });
+      }
       return true;
     },
     async intercept(decide) {
