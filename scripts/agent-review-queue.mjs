@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { gunzipSync, inflateRawSync } from 'node:zlib';
-import { admit, demand, RECEIPT_MARKER, ECONOMY_RECEIPT_MARKER, COMPRESSED_RECEIPT_MARKER, RECEIPT_DETAILS_HEADER, validateV3ReceiptEnvelope } from './agent-review-decide.mjs';
+import { admit, demand, RECEIPT_MARKER, ECONOMY_RECEIPT_MARKER, COMPRESSED_RECEIPT_MARKER, RECEIPT_DETAILS_HEADER } from './agent-review-decide.mjs';
 import { captureCommittedReviewCandidate, captureReviewRules, carryOverSourceReview, git, sessionLegacyDeferOptions, validateEconomySession } from './agent-review-session.mjs';
 import { RECEIPT_MARKER_PREFIX } from './ci-receipt-rerun.mjs';
 import { assertCoLocatedForwardApproval, hasExactManagedForward, isNativeStoreMigrationPath, PG_SUITE_CLOSURES_PATH, REVIEWED_FORWARD_PATH } from './reviewed-platform-forward.ts';
@@ -227,12 +227,6 @@ export async function probeToolchainNeeded({ event, env = processEnvironment, ap
   return needed;
 }
 
-function couldUseMixedDeferPolicy(receipt) {
-  // Only histories prepared on distinct bases can require both defer modes.
-  if (receipt.version !== 3 || !receipt.session.history.some(event => event.type === 'defer')) return false;
-  return new Set(receipt.session.history.filter(event => event.type === 'prepare').map(event => event.candidate.base)).size >= 2;
-}
-
 function receiptSourceRefs(receipt) {
   const historical = receipt.version === 3 ? receipt.session.history.flatMap(event => {
     if (event.type === 'prepare') {
@@ -257,14 +251,8 @@ export async function readReceipts(api, root, pr, head, now, permissions = new M
     if (receipt?.pr !== pr || receipt.head !== head || comment.user?.type !== 'User' || typeof login !== 'string' || !login) continue;
     try {
       if (!receiptSourceRefs(receipt).every(isSourceId)) continue;
-      const observed = { ...receipt, baseValid: true };
-      const uniformAdmission = admit({ receipt, observed: { ...observed, legacyDefer: true }, now }).ok
-        || (receipt.version === 3 && admit({ receipt, observed, now }).ok);
-      if (!uniformAdmission) {
-        if (!couldUseMixedDeferPolicy(receipt)) continue;
-        // A mixed history can defer policy replay, but still needs a valid envelope.
-        validateV3ReceiptEnvelope(receipt, now);
-      }
+      const observed = { pr, head, base: receipt.base, tree: receipt.tree, baseValid: true, deferPolicy: 'either' };
+      if (!admit({ receipt, observed, now }).ok) continue;
     } catch { continue; }
     const key = login.toLowerCase();
     if (!permissions.has(key)) {

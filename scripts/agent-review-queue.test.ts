@@ -470,6 +470,20 @@ describe('hosted receipt comments', () => {
       expect(badDigestApi.get.mock.calls).toEqual([['/repos/openlup/openlup/issues/12/comments?per_page=50&page=1']]);
       expect(invalidMixed).toEqual([]);
 
+      for (const defect of ['candidate differs from the last prepare', 'non-monotonic history']) {
+        const session = structuredClone(mixedSummary.session);
+        if (defect === 'candidate differs from the last prepare') {
+          session.candidate = { ...session.candidate, changedPaths: [...session.candidate.changedPaths, 'other.ts'] };
+        } else {
+          session.history.findLast(event => event.type === 'defer')!.at = time + 5;
+        }
+        const summary = { ...mixedSummary, session, sessionDigest: digest(session) };
+        const body = `${ECONOMY_RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(summary)}\n\`\`\``;
+        const api = receiptApi(hardenedBase, integratedHead, body);
+        await expect.soft(readReceipts(api, '/repos/openlup/openlup', 12, integratedHead, time + 10), defect).resolves.toEqual([]);
+        expect.soft(api.get.mock.calls, defect).toEqual([['/repos/openlup/openlup/issues/12/comments?per_page=50&page=1']]);
+      }
+
       git('merge-base', '--is-ancestor', legacyBase, integratedHead);
       git('-C', runner, 'init', '-q', '-b', 'main');
       git('-C', runner, 'remote', 'add', 'origin', cwd);

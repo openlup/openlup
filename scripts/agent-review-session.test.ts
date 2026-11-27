@@ -1321,6 +1321,69 @@ describe('native review decisions', () => {
     expect(coverageRequirement(docsRepaired).floor).toBe(1);
   });
 
+  it('prefilters with legacy defer validation and allows only valid historical confirmations', () => {
+    const failed = recordReport(prepare({ rules: { version: 3 } }), report({
+      verdict: 'FAIL', findings: [{ id: 'D-1', summary: 'Follow-up required', material: true }],
+    }), time);
+    const deferred = deferFinding(failed, { findingId: 'D-1', target: '#123', decision: 'CM-1', reason: 'Follow up' }, time + 1);
+    const pass = report({ reviewer: 'reviewer-2' });
+    const now = time + 2;
+    const legacy = { legacyDefer: true };
+    const either = { deferPolicy: 'either' };
+    const decide = (receipt: ReturnType<typeof receiptSummary>, policy = {}) =>
+      admit({ receipt, observed: { ...observed, pr: 12, baseValid: true, ...policy }, now });
+
+    const legacySummary = receiptSummary(recordReport(deferred, pass, now, legacy), 12, now, legacy);
+    expect(decide(legacySummary, either)).toEqual(decide(legacySummary, legacy));
+    expect(decide(legacySummary, either).ok).toBe(true);
+
+    const confirmed = recordReport(deferred, { ...pass, acceptsDefer: ['D-1'] }, now);
+    const summary = receiptSummary(confirmed, 12, now);
+    expect(decide(summary).ok).toBe(true);
+    expect(decide(summary, either)).toEqual(decide(summary));
+    expect(decide(summary, legacy)).toMatchObject({ ok: false, reason: expect.stringContaining('invalid historical acceptsDefer') });
+
+    for (const patch of [{ acceptsDefer: ['unknown'] }, { acceptsDefer: ['D-1', 'D-1'] }, { verdict: 'FAIL' }, { reviewer: 'author' }]) {
+      const session = structuredClone(confirmed);
+      Object.assign(session.history.at(-1)!.report, patch);
+      const invalid = { ...summary, session, sessionDigest: digest(session) };
+      expect(decide(invalid).ok, JSON.stringify(patch)).toBe(false);
+      expect(decide(invalid, either), JSON.stringify(patch)).toEqual(decide(invalid));
+    }
+  });
+
+  it('prefilters a cumulative repair whose prior round needed a defer confirmation', () => {
+    const anchor = recordReport(prepare({ rules: { version: 3 } }), report({
+      verdict: 'FAIL', findings: [{ id: 'D-1', summary: 'Follow-up required', material: true }],
+    }), time);
+    const repair = (prior: typeof anchor, suffix: string, at: number, paths: string[], cumulativeFrom?: string) => {
+      const { base, head, tree } = prior.candidate;
+      return prepareCandidate(prior, {
+        ...prior.candidate, head: 'b'.repeat(39) + suffix, tree: 'c'.repeat(39) + suffix, intent, authorSessionId: 'author',
+        coverage: { kind: 'repair', previous: digest(prior.history), from: { base, head, tree }, delta: suffix.repeat(64),
+          proof: { paths, cumulativeFrom },
+        },
+      }, at);
+    };
+    const first = repair(anchor, '1', time + 1, ['source.txt']);
+    const deltaReport = { tree: first.candidate.tree, ordinary: true, delta: '1'.repeat(64) };
+    const passed = recordReport(first, report(deltaReport), time + 2);
+    const failed = recordReport(passed, report({ ...deltaReport, reviewer: 'reviewer-2', verdict: 'FAIL' }), time + 2);
+    const deferred = deferFinding(failed, { findingId: 'D-1', target: '#123', decision: 'CM-1', reason: 'Follow up' }, time + 3);
+    expect(verdict(deferred, deferred.candidate, time + 3).reason).toContain('acceptsDefer');
+    expect(verdict(deferred, deferred.candidate, time + 3, { legacyDefer: true }).ok).toBe(true);
+
+    const cumulative = repair(deferred, '2', time + 4, ['return.md'], anchor.candidate.head);
+    const confirmed = recordReport(cumulative, report({
+      tree: cumulative.candidate.tree, ordinary: true, delta: '2'.repeat(64), acceptsDefer: ['D-1'],
+    }), time + 5);
+    const summary = receiptSummary(confirmed, 12, time + 5);
+    const observed = { ...confirmed.candidate, pr: 12, baseValid: true, deferPolicy: 'either' };
+    expect(admit({ receipt: summary, observed, now: time + 5 }).ok).toBe(true);
+    const incomplete = { ...summary, session: cumulative, sessionDigest: digest(cumulative) };
+    expect(admit({ receipt: incomplete, observed, now: time + 5 }).reason).toContain('1 independent PASS');
+  });
+
   it('preserves pre-PR-4 legacy defer receipt compat without relaxing post-hardening defers and trims transition rules in computeRegroupAdvisory', () => {
     const legacyBase = '4'.repeat(40);
     const hardenedBase = '5'.repeat(40);
