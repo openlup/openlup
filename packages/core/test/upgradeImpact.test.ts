@@ -1,5 +1,5 @@
-import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { Readable, Writable } from "node:stream";
@@ -361,14 +361,127 @@ describe("analyzeUpgradeImpact", () => {
     expect(report.actionRequiredOnYourImports.some((item) => item.symbol === "RenewalCyclePolicy")).toBe(true);
   });
 
-  it("validates semver ordering and normalizes singular/plural domains", () => {
+  it("validates semver ordering per SemVer 2.0.0 §11.4 and normalizes singular/plural domains", () => {
     expect(compareSemver("1.3.0", "1.4.0")).toBe(-1);
     expect(compareSemver("1.4.0", "1.4.0")).toBe(0);
     expect(compareSemver("1.4.0", "1.4.0-rc.1")).toBe(1);
+    expect(compareSemver("1.4.0-rc.2", "1.4.0-rc.10")).toBe(-1);
+    expect(compareSemver("1.4.0-rc.10", "1.4.0-rc.2")).toBe(1);
+    expect(compareSemver("1.4.0-1", "1.4.0-alpha")).toBe(-1);
+    expect(compareSemver("1.4.0-alpha", "1.4.0-1")).toBe(1);
+    expect(compareSemver("1.4.0-alpha", "1.4.0-alpha.1")).toBe(-1);
+    expect(compareSemver("1.4.0-alpha.1", "1.4.0-alpha")).toBe(1);
+    expect(compareSemver("1.4.0-rc.2+build.1", "1.4.0-rc.2+build.2")).toBe(0);
     expect(domainOfSubpath("@openlup/core/subscription")).toBe("subscriptions");
     expect(domainOfSubpath("@openlup/platform/subscriptions/contracts")).toBe("subscriptions");
     expect(domainOfSubpath("@openlup/core/promo")).toBe("promotions");
     expect(() => analyzeUpgradeImpact({ root: createAppFixture({ releaseIndex: multiHopIndex }), from: "1.5.0", to: "1.4.0" })).toThrow(/must not be greater/);
+
+    // Multi-hop prerelease sorting follows SemVer 2.0.0 §11.4 (rc.2 before rc.10)
+    const prereleaseIndex: ReleaseIndex = {
+      schemaVersion: 1,
+      currentVersion: "1.4.0-rc.10",
+      releases: [
+        {
+          version: "1.4.0-rc.10",
+          previousVersion: "1.4.0-rc.2",
+          actionRequired: false,
+          subpathsAdded: [],
+          symbolsAdded: [],
+          symbolsDeprecated: [],
+          sqlAdded: [],
+          settingsDelta: { added: [], removed: [], changed: [] },
+          starterEntriesCount: 0,
+        },
+        {
+          version: "1.4.0-rc.2",
+          previousVersion: "1.4.0-rc.1",
+          actionRequired: false,
+          subpathsAdded: [],
+          symbolsAdded: [],
+          symbolsDeprecated: [],
+          sqlAdded: [],
+          settingsDelta: { added: [], removed: [], changed: [] },
+          starterEntriesCount: 0,
+        },
+      ],
+    };
+    const root = createAppFixture({ coreVersion: "1.4.0-rc.10", releaseIndex: prereleaseIndex });
+    const preReport = analyzeUpgradeImpact({ root, from: "1.4.0-rc.1", to: "1.4.0-rc.10" });
+    expect(preReport.hops).toEqual(["1.4.0-rc.2", "1.4.0-rc.10"]);
+    expect(preReport.missingIntermediateHops).toBe(false);
+  });
+
+  it("matches CommonJS require() and export * as namespace against deprecated symbols and structured changes[]", () => {
+    const indexWithPricingChange: ReleaseIndex = {
+      ...multiHopIndex,
+      releases: [
+        {
+          ...multiHopIndex.releases[0]!,
+          changes: [
+            ...(multiHopIndex.releases[0]!.changes ?? []),
+            {
+              kind: "action_required",
+              audience: "npm",
+              subpath: "@openlup/core/pricing",
+              symbol: "calculateCatalogueMoneyV2",
+              summary: "Check pricing rounding inputs for require() callers.",
+            },
+          ],
+        },
+        multiHopIndex.releases[1]!,
+      ],
+    };
+    const root = createAppFixture({ coreVersion: "1.4.0", releaseIndex: indexWithPricingChange });
+    writeAppFile(root, "src/legacy.cjs", 'const pricing = require("@openlup/core/pricing");\nmodule.exports = pricing;\n');
+    writeAppFile(root, "src/reexport-ns.ts", 'export * as subNs from "@openlup/core/subscription";\n');
+
+    const report = analyzeUpgradeImpact({ root, from: "1.2.0", to: "1.4.0" });
+    expect(report.actionRequiredOnYourImports).toEqual(expect.arrayContaining([
+      expect.objectContaining({ file: "src/legacy.cjs", line: 1, subpath: "@openlup/core/pricing", symbol: "legacyPriceHelper", kind: "symbol_deprecated", version: "1.3.0" }),
+      expect.objectContaining({ file: "src/legacy.cjs", line: 1, subpath: "@openlup/core/pricing", symbol: "calculateCatalogueMoneyV2", kind: "action_required", version: "1.4.0" }),
+      expect.objectContaining({ file: "src/reexport-ns.ts", line: 1, subpath: "@openlup/core/subscription", symbol: "RenewalCyclePolicy", kind: "symbol_deprecated", version: "1.4.0" }),
+      expect.objectContaining({ file: "src/reexport-ns.ts", line: 1, subpath: "@openlup/core/subscription", symbol: "nextRetryAttemptAt", kind: "action_required", version: "1.4.0" }),
+    ]));
+  });
+
+  it("rejects malformed changes[] elements in release-index.json with a schema error instead of TypeError", () => {
+    const root = createAppFixture();
+    const badNullManifest = join(root, "bad-null-changes.json");
+    writeFileSync(badNullManifest, JSON.stringify({
+      schemaVersion: 1,
+      currentVersion: "1.4.0",
+      releases: [{
+        ...multiHopIndex.releases[0]!,
+        changes: [null],
+      }],
+    }));
+    expect(() => analyzeUpgradeImpact({ root, from: "1.3.0", manifestPath: badNullManifest }))
+      .toThrow(/changes\[0\]: change entry must be a plain object/);
+
+    const badKindManifest = join(root, "bad-kind-changes.json");
+    writeFileSync(badKindManifest, JSON.stringify({
+      schemaVersion: 1,
+      currentVersion: "1.4.0",
+      releases: [{
+        ...multiHopIndex.releases[0]!,
+        changes: [{ kind: "unknown_kind", summary: "oops" }],
+      }],
+    }));
+    expect(() => analyzeUpgradeImpact({ root, from: "1.3.0", manifestPath: badKindManifest }))
+      .toThrow(/changes\[0\]: kind must be one of/);
+
+    const badSummaryManifest = join(root, "bad-summary-changes.json");
+    writeFileSync(badSummaryManifest, JSON.stringify({
+      schemaVersion: 1,
+      currentVersion: "1.4.0",
+      releases: [{
+        ...multiHopIndex.releases[0]!,
+        changes: [{ kind: "fix", summary: 123 }],
+      }],
+    }));
+    expect(() => analyzeUpgradeImpact({ root, from: "1.3.0", manifestPath: badSummaryManifest }))
+      .toThrow(/changes\[0\]: summary must be a non-empty string/);
   });
 });
 
@@ -499,6 +612,144 @@ describe("idempotent syncAgentsMd", () => {
     writeFileSync(join(root, "AGENTS.md"), broken);
     expect(() => syncAgentsMd({ root })).toThrow(/Malformed openlup-agent-rules markers/);
     expect(readFileSync(join(root, "AGENTS.md"), "utf8")).toBe(broken);
+  });
+
+  it("matches docs/platform/adopter-kit/AGENTS.template.md byte-for-byte with zero drift", () => {
+    const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
+    const templatePath = join(repoRoot, "docs/platform/adopter-kit/AGENTS.template.md");
+    const templateBytes = readFileSync(templatePath, "utf8");
+    const root = createAppFixture();
+    writeFileSync(join(root, "AGENTS.md"), templateBytes, "utf8");
+
+    expect(syncAgentsMd({ root, check: true })).toEqual({
+      formatVersion: 1,
+      path: "AGENTS.md",
+      status: "up_to_date",
+      action: "none",
+      changed: false,
+    });
+    expect(readFileSync(join(root, "AGENTS.md"), "utf8")).toBe(templateBytes);
+  });
+
+  it("refuses symlinked AGENTS.md targets (existing or dangling) without reading or writing through them", () => {
+    const root = createAppFixture();
+    const outsideDir = mkdtempSync(join(tmpdir(), "openlup-agents-outside-"));
+    roots.push(outsideDir);
+
+    // Symlink to an existing file outside root
+    const existingOutside = join(outsideDir, "secret.md");
+    writeFileSync(existingOutside, "do not overwrite\n", "utf8");
+    symlinkSync(existingOutside, join(root, "AGENTS.md"));
+    expect(() => syncAgentsMd({ root, check: true })).toThrow(/symbolic link/i);
+    expect(() => syncAgentsMd({ root })).toThrow(/symbolic link/i);
+    expect(readFileSync(existingOutside, "utf8")).toBe("do not overwrite\n");
+
+    // Dangling symlink pointing outside root
+    rmSync(join(root, "AGENTS.md"));
+    const danglingOutside = join(outsideDir, "should-not-be-created.md");
+    symlinkSync(danglingOutside, join(root, "AGENTS.md"));
+    expect(() => syncAgentsMd({ root, check: true })).toThrow(/symbolic link/i);
+    expect(() => syncAgentsMd({ root })).toThrow(/symbolic link/i);
+    expect(existsSync(danglingOutside)).toBe(false);
+  });
+});
+
+describe("adopter workflow templates hardening", () => {
+  const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
+
+  it("release-watcher template sets GH_REPO, passes --repo and --search in:body, and stays zero-RCE", () => {
+    const template = readFileSync(join(repoRoot, "docs/platform/adopter-kit/openlup-release-watcher-issue.template.yml"), "utf8");
+    expect(template).toContain("GH_REPO: ${{ github.repository }}");
+    expect(template).toContain('"issue", "list", "--repo", repo, "--state", "all", "--search", searchQuery');
+    expect(template).toContain('`"${marker}" in:body`');
+    expect(template).toContain('"issue", "edit", String(match.number), "--repo", repo');
+    expect(template).toContain('"issue", "create", "--repo", repo');
+    const nonCommentLines = template
+      .split("\n")
+      .filter((line) => !/^\s*#/u.test(line))
+      .join("\n");
+    expect(nonCommentLines).not.toContain("actions/checkout");
+    expect(nonCommentLines).not.toContain("npm install");
+    expect(nonCommentLines).not.toContain("npm ci");
+  });
+
+  it("post-merge opt-in template pins action SHAs to published-tree-ci.yml, uses persist-credentials:false + fetch-depth:0, and validates SemVer upgrades", () => {
+    const ci = readFileSync(join(repoRoot, ".github/workflows/published-tree-ci.yml"), "utf8");
+    const checkoutSha = /actions\/checkout@[0-9a-f]{40}/u.exec(ci)?.[0];
+    const setupNodeSha = /actions\/setup-node@[0-9a-f]{40}/u.exec(ci)?.[0];
+    expect(checkoutSha).toBeTruthy();
+    expect(setupNodeSha).toBeTruthy();
+
+    const template = readFileSync(join(repoRoot, "docs/platform/adopter-kit/openlup-post-merge-optin-issue.template.yml"), "utf8");
+    expect(template).toContain(`uses: ${checkoutSha}`);
+    expect(template).toContain(`uses: ${setupNodeSha}`);
+    expect(template).toContain("persist-credentials: false");
+    expect(template).toContain("fetch-depth: 0");
+    expect(template).toContain("GH_REPO: ${{ github.repository }}");
+    expect(template).toContain('"issue", "list", "--repo", repo, "--state", "open", "--search", searchQuery');
+    expect(template).toContain('"issue", "edit", String(existing.number), "--repo", repo');
+    expect(template).toContain('"issue", "create", "--repo", repo');
+
+    // Extract and run the inline delta-detection ESM script against a real multi-commit git repo
+    const deltaMatch = /Detect @openlup\/core version change[\s\S]*?node --input-type=module - <<'EOF'\n([\s\S]*?)\n\s+EOF/u.exec(template);
+    expect(deltaMatch?.[1]).toBeTruthy();
+    const deltaScript = deltaMatch![1]!.replace(/^ {10}/gmu, "");
+
+    const gitDir = mkdtempSync(join(tmpdir(), "openlup-post-merge-delta-"));
+    roots.push(gitDir);
+    const git = (args: string[]) => execFileSync("git", args, {
+      cwd: gitDir,
+      encoding: "utf8",
+      env: { ...process.env, GIT_AUTHOR_NAME: "Test", GIT_AUTHOR_EMAIL: "test@example.com", GIT_COMMITTER_NAME: "Test", GIT_COMMITTER_EMAIL: "test@example.com" },
+    }).trim();
+
+    git(["init", "-b", "main"]);
+    const commitLock = (version: string) => {
+      writeFileSync(join(gitDir, "package-lock.json"), JSON.stringify({
+        packages: { "node_modules/@openlup/core": { version } },
+      }));
+      git(["add", "package-lock.json"]);
+      git(["commit", "-m", `set ${version}`]);
+      return git(["rev-parse", "HEAD"]);
+    };
+
+    const runDelta = (beforeSha: string) => {
+      const outPath = join(gitDir, "github-output.txt");
+      writeFileSync(outPath, "", "utf8");
+      const res = spawnSync(process.execPath, ["--input-type=module", "-"], {
+        cwd: gitDir,
+        input: deltaScript,
+        encoding: "utf8",
+        env: { ...process.env, GITHUB_OUTPUT: outPath, BEFORE_SHA: beforeSha },
+      });
+      expect(res.status, res.stderr).toBe(0);
+      return Object.fromEntries(
+        readFileSync(outPath, "utf8").trim().split("\n").map((line) => {
+          const eq = line.indexOf("=");
+          return [line.slice(0, eq), line.slice(eq + 1)];
+        }),
+      );
+    };
+
+    const sha120 = commitLock("1.2.0");
+    commitLock("1.3.0");
+    const sha140 = commitLock("1.4.0");
+    // Multi-commit upgrade push (2 commits ahead of BEFORE_SHA)
+    expect(runDelta(sha120)).toEqual({ changed: "true", from: "1.2.0", to: "1.4.0" });
+
+    // Downgrade/revert must skip cleanly (changed=false)
+    commitLock("1.3.0");
+    expect(runDelta(sha140)).toEqual({ changed: "false", from: "", to: "" });
+
+    // Prerelease numeric ordering (rc.2 -> rc.10) is an upgrade
+    const shaRc2 = commitLock("1.5.0-rc.2");
+    commitLock("1.5.0-rc.10");
+    expect(runDelta(shaRc2)).toEqual({ changed: "true", from: "1.5.0-rc.2", to: "1.5.0-rc.10" });
+
+    // Non-SemVer value in lockfile skips cleanly
+    const shaGood = commitLock("1.5.0");
+    commitLock("not-semver");
+    expect(runDelta(shaGood)).toEqual({ changed: "false", from: "", to: "" });
   });
 });
 

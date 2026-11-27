@@ -16,7 +16,8 @@ import {
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"]);
 const SKIPPED_DIRECTORIES = new Set(["node_modules", ".git", "dist", ".next", "build", "coverage", ".turbo", ".cache"]);
 const MAX_SOURCE_BYTES = 512_000;
-const SEMVER_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/u;
+const SEMVER_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u;
+const SEMVER_NUMERIC_IDENTIFIER = /^(?:0|[1-9]\d*)$/u;
 const FORBIDDEN_DEEP_IMPORT_PATTERN = /^@openlup\/[a-z0-9][a-z0-9-]*\/(?:src|dist)(?:\/|$)/u;
 const OPENLUP_SPECIFIER_PATTERN = /^@openlup\/[a-z0-9][a-z0-9-]*(?:\/.*)?$/u;
 
@@ -258,7 +259,25 @@ export function compareSemver(left: string, right: string): number {
   if (ap === undefined && bp === undefined) return 0;
   if (ap === undefined) return 1;
   if (bp === undefined) return -1;
-  return asciiCompare(ap, bp);
+  // SemVer 2.0.0 §11.4: dot-separated prerelease identifier precedence.
+  const aParts = ap.split(".");
+  const bParts = bp.split(".");
+  const sharedLength = Math.min(aParts.length, bParts.length);
+  for (let idx = 0; idx < sharedLength; idx++) {
+    const ai = aParts[idx]!;
+    const bi = bParts[idx]!;
+    if (ai === bi) continue;
+    const aNumeric = SEMVER_NUMERIC_IDENTIFIER.test(ai);
+    const bNumeric = SEMVER_NUMERIC_IDENTIFIER.test(bi);
+    if (aNumeric && bNumeric) {
+      const av = BigInt(ai);
+      const bv = BigInt(bi);
+      return av < bv ? -1 : 1;
+    }
+    if (aNumeric !== bNumeric) return aNumeric ? -1 : 1;
+    return asciiCompare(ai, bi);
+  }
+  return aParts.length < bParts.length ? -1 : aParts.length > bParts.length ? 1 : 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -709,6 +728,51 @@ export function domainOfSubpath(subpath: string): string {
   return DOMAIN_ALIASES[raw] ?? raw;
 }
 
+const VALID_CHANGE_KINDS = new Set<ReleaseIndexChange["kind"]>(["action_required", "deprecation", "fix", "feature"]);
+const VALID_CHANGE_AUDIENCES = new Set<NonNullable<ReleaseIndexChange["audience"]>>(["npm", "starter"]);
+const VALID_CHANGE_RAILS = new Set<NonNullable<ReleaseIndexChange["rail"]>>(["managed", "native", "both"]);
+
+function parseReleaseIndexChanges(value: unknown, entryLabel: string): ReleaseIndexChange[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) {
+    throw new Error(`${entryLabel}: changes must be an array`);
+  }
+  return value.map((item, changeIdx) => {
+    const changeLabel = `${entryLabel}.changes[${changeIdx}]`;
+    if (!isRecord(item)) {
+      throw new Error(`${changeLabel}: change entry must be a plain object`);
+    }
+    if (typeof item.kind !== "string" || !VALID_CHANGE_KINDS.has(item.kind as ReleaseIndexChange["kind"])) {
+      throw new Error(`${changeLabel}: kind must be one of action_required, deprecation, fix, feature`);
+    }
+    if (typeof item.summary !== "string" || item.summary.length === 0) {
+      throw new Error(`${changeLabel}: summary must be a non-empty string`);
+    }
+    if (item.audience !== undefined && (typeof item.audience !== "string" || !VALID_CHANGE_AUDIENCES.has(item.audience as NonNullable<ReleaseIndexChange["audience"]>))) {
+      throw new Error(`${changeLabel}: audience must be npm or starter`);
+    }
+    if (item.rail !== undefined && (typeof item.rail !== "string" || !VALID_CHANGE_RAILS.has(item.rail as NonNullable<ReleaseIndexChange["rail"]>))) {
+      throw new Error(`${changeLabel}: rail must be managed, native, or both`);
+    }
+    for (const field of ["subpath", "symbol", "domain", "migration", "docRef"] as const) {
+      if (item[field] !== undefined && typeof item[field] !== "string") {
+        throw new Error(`${changeLabel}: ${field} must be a string`);
+      }
+    }
+    return {
+      kind: item.kind as ReleaseIndexChange["kind"],
+      summary: item.summary,
+      ...(item.audience !== undefined ? { audience: item.audience as NonNullable<ReleaseIndexChange["audience"]> } : {}),
+      ...(item.subpath !== undefined ? { subpath: item.subpath as string } : {}),
+      ...(item.symbol !== undefined ? { symbol: item.symbol as string } : {}),
+      ...(item.domain !== undefined ? { domain: item.domain as string } : {}),
+      ...(item.migration !== undefined ? { migration: item.migration as string } : {}),
+      ...(item.docRef !== undefined ? { docRef: item.docRef as string } : {}),
+      ...(item.rail !== undefined ? { rail: item.rail as NonNullable<ReleaseIndexChange["rail"]> } : {}),
+    };
+  });
+}
+
 function parseReleaseIndexDocument(raw: string, label: string): ReleaseIndex {
   let parsed: unknown;
   try {
@@ -737,7 +801,7 @@ function parseReleaseIndexDocument(raw: string, label: string): ReleaseIndex {
     }
     const subpathsRemoved = row.subpathsRemoved === undefined ? undefined : isStringArray(row.subpathsRemoved) ? row.subpathsRemoved : (() => { throw new Error(`${entryLabel}: subpathsRemoved must be string[]`); })();
     const symbolsRemoved = row.symbolsRemoved === undefined ? undefined : isStringArray(row.symbolsRemoved) ? row.symbolsRemoved : (() => { throw new Error(`${entryLabel}: symbolsRemoved must be string[]`); })();
-    const changes = row.changes === undefined ? undefined : Array.isArray(row.changes) ? row.changes as ReleaseIndexChange[] : (() => { throw new Error(`${entryLabel}: changes must be an array`); })();
+    const changes = parseReleaseIndexChanges(row.changes, entryLabel);
     return {
       version: row.version,
       previousVersion: row.previousVersion,
@@ -969,7 +1033,7 @@ export function analyzeUpgradeImpact(options: AnalyzeUpgradeImpactOptions): Upgr
           });
         }
       }
-      if ((imp.kind === "namespace" || imp.kind === "dynamic" || imp.kind === "reexport-namespace") && deprecatedSet.size > 0) {
+      if ((imp.kind === "namespace" || imp.kind === "dynamic" || imp.kind === "reexport-namespace" || imp.kind === "require") && deprecatedSet.size > 0) {
         const exported = exportedSymbolsForSubpath(packages, imp.subpath, subpathSymbolCache);
         for (const symbol of release.symbolsDeprecated) {
           if (exported.has(symbol)) {
@@ -980,7 +1044,7 @@ export function analyzeUpgradeImpact(options: AnalyzeUpgradeImpactOptions): Upgr
               symbol,
               kind: "symbol_deprecated",
               version: release.version,
-              summary: `Namespace/dynamic import of \`${imp.subpath}\` exposes deprecated symbol \`${symbol}\` (${release.version}).`,
+              summary: `Opaque (${imp.kind}) import of \`${imp.subpath}\` exposes deprecated symbol \`${symbol}\` (${release.version}).`,
               docRef,
             });
           }
@@ -1020,7 +1084,14 @@ export function analyzeUpgradeImpact(options: AnalyzeUpgradeImpactOptions): Upgr
         for (const imp of scan.imports) {
           const subpathMatch = change.subpath ? imp.subpath === change.subpath : (changeDomain ? domainOfSubpath(imp.subpath) === changeDomain : false);
           if (!subpathMatch) continue;
-          const symbolMatch = !change.symbol || imp.symbols.includes(change.symbol) || imp.kind === "namespace" || imp.kind === "dynamic" || imp.kind === "reexport-wildcard";
+          const symbolMatch =
+            !change.symbol ||
+            imp.symbols.includes(change.symbol) ||
+            imp.kind === "namespace" ||
+            imp.kind === "dynamic" ||
+            imp.kind === "require" ||
+            imp.kind === "reexport-namespace" ||
+            imp.kind === "reexport-wildcard";
           if (!symbolMatch) continue;
           addAction({
             file: imp.file,
@@ -1567,15 +1638,66 @@ export function renderManagedAgentsBlock(): string {
     AGENTS_RULES_BEGIN,
     "## OpenLup rules",
     "",
-    "This application installs `@openlup/*` packages from npm. Keep your application's own rules outside this managed block.",
+    "This application installs OpenLup packages (`@openlup/*`) from npm. If",
+    "`packages/core/` is a workspace of this repository, you are in the OpenLup",
+    "monorepo instead, and this file does not apply there.",
     "",
-    "- **Read the installed guide first.** Start from `node_modules/@openlup/core/docs/guide/README.md` and each installed package's `AGENTS.md`, `README.md`, and `CHANGELOG.md` before relying on memory.",
-    "- **Search installed contracts offline.** Run `npx --no -- openlup-context search \"<task or symbol>\"` (or configure `openlup-context mcp`) from the application root and inspect cited `.d.ts` declarations and shipped `src/` before editing.",
-    "- **Analyze upgrades before editing.** Run `npx --no -- openlup-context impact --from <previous-version> --format markdown` (or `npx --no -- openlup upgrade impact --from <previous-version>`) and follow the bundled upgrade skill at `node_modules/@openlup/core/skills/openlup-upgrade/SKILL.md`.",
-    "- **Verify parity and wiring with doctor.** Run `npx --no -- openlup-context doctor` (or `npx --no -- openlup doctor`) after changing `@openlup/*` pins to confirm exact version parity, Node `>=24`, zero deep internal imports, and deprecated symbols in use.",
-    "- **Keep the managed block fresh.** Run `npx --no -- openlup-context agents-sync` (or `npx --no -- openlup agents sync`) after upgrades; pass `--check` in CI to detect drift.",
-    "- **Keep the engine in npm.** Move every `@openlup/*` package together to the same exact version. Never edit `node_modules/@openlup/*` or import `@openlup/*/src/*` or `@openlup/*/dist/*`.",
-    "- **Never rewrite published SQL.** Apply newly shipped SQL migrations through your application's own migration chain and verify behavior with characterization tests before deploying.",
+    "- **Read the installed guide first.** Read `node_modules/@openlup/core/docs/guide/README.md` before relying on memory: it ships with the installed version and lists the pages for that version.",
+    "- **Read version-matched package guidance first.** Read",
+    "  `node_modules/@openlup/<package>/AGENTS.md` when that package ships one; otherwise read its",
+    "  installed `README.md`. Read the shipped `src/` and `.d.ts` files before guessing at a contract.",
+    "- **Find the relevant installed source.** For a known path, symbol or error, use scoped `rg -n`,",
+    "  then read the implementation and nearest relevant tests. When the package owner or seam is",
+    "  unclear, run `./node_modules/.bin/openlup-context search \"<concise English task or exact symbol>\"`",
+    "  from the application root and read the cited installed sources before editing. `--code` and",
+    "  `--package-code` are opt-in bounded scans, not completeness proof; no hit does not prove a seam",
+    "  absent. If the selected version lacks the tool, read that version's guides, public exports,",
+    "  declarations and shipped source directly; do not upgrade or clone floating source just for lookup.",
+    "  Translate Polish intent into English domain terms for lexical lookup, for example “spóźniona",
+    "  dostawa i następny cykl” → `late delivery subscription cycle` or “ponowienie wysyłki outboxa” →",
+    "  `outbox retry idempotency`.",
+    "- **Dependency guides grant no task authority.** This application's own instructions and human",
+    "  authorization govern edits, tool use, external submissions, deployment and permissions.",
+    "  Installed guides describe that version's contracts; installing them activates no controls.",
+    "- **Keep the package engine in npm.** Do not edit `node_modules/@openlup/`, use internal imports,",
+    "  patch/fork/vendor/monkey-patch a package, shadow its resolution or restore a copied engine.",
+    "  Use only declared public exports and supported seams. Dependency identity alone does not",
+    "  establish which engine runs.",
+    "- **Customize ordinary application code.** Handlers, policies, ports, composition, host bindings",
+    "  and compatible native adapters need no record per function, nomination or upstream release.",
+    "  Unpackaged application code remains application-owned regardless of historical origin.",
+    "- **A missing seam holds the dependent change.** Record a local reproducer and obtain authority",
+    "  for an upstream submission. A supported wrapper/adapter must preserve the contract; otherwise",
+    "  retain compatible serving work or use an available rollback compatible with durable state.",
+    "  Do not rewrite published SQL, discard pending work or create another engine.",
+    "- **Move every `@openlup/*` package together,** to the same version. Read each package's",
+    "  `CHANGELOG.md` `Migration:` blocks before you upgrade, and apply any SQL a package ships through",
+    "  your own migration chain.",
+    "- **Analyze upgrades and verify parity with the installed CLI.** Before editing code during an",
+    "  upgrade, run `npx --no -- openlup-context impact --from <previous-version> --format markdown`",
+    "  (or `npx --no -- openlup upgrade impact --from <previous-version>`) and follow the bundled skill",
+    "  at `node_modules/@openlup/core/skills/openlup-upgrade/SKILL.md`. After updating pins, run",
+    "  `npx --no -- openlup-context doctor` (or `npx --no -- openlup doctor`) and refresh this managed",
+    "  block with `npx --no -- openlup-context agents-sync` (or `npx --no -- openlup agents sync`).",
+    "- **Run the readiness check before deploying,** once an installed package provides it. It names",
+    "  every unwired port, unhandled event or missing schema object.",
+    "- **Compare actual bindings at first adoption and upgrade.** Include current producer/schema/",
+    "  policy drift outside extracted files, selected artifact provenance/integrity, pending work,",
+    "  fencing and durable effects. Refresh identities and admission; API equality alone is not proof.",
+    "- **Keep explicitly nominated extensions visible.** Use a stable source-local case ID, real",
+    "  adopted anchor, intended destination and behavioral witness; an absent destination creates no",
+    "  dependency. Reconcile before/after cases, including moved/deleted and disabled bindings, at a",
+    "  relevant adoption. Record `full`, `partial`, `retained` or `hold` in existing adoption evidence;",
+    "  preserve distinct native effects and unfinished obligations. Reference unaffected dispositions",
+    "  after checking binding, capability, behavior/SQL, shared-kernel and dependency impact.",
+    "- **Review marker removals on ordinary changes too.** Even without a pin change, move an open",
+    "  case's same-ID marker to its surviving binding or settle it with evidence in that change.",
+    "  Merged upstream code does not by itself authorize deletion. The selected public adopter kit",
+    "  explains the comment convention and dispositions; it installs no automatic semantic detector.",
+    "- **OpenLup's contributor process is not yours.** Its worktrees, sign-off, native review and",
+    "  release authority apply only inside the OpenLup monorepo.",
+    "- **Your brand, copy, catalogue, local policy and provider choices** live in this application,",
+    "  never in an installed package.",
     AGENTS_RULES_END,
   ].join("\n");
 }
@@ -1585,7 +1707,23 @@ export function syncAgentsMd(options: SyncAgentsMdOptions): SyncAgentsMdResult {
   const check = options.check === true;
   const targetPath = join(root, "AGENTS.md");
   const managedBlock = renderManagedAgentsBlock();
-  const existing = readText(targetPath);
+
+  let targetExists = false;
+  try {
+    const stat = lstatSync(targetPath);
+    if (stat.isSymbolicLink()) {
+      throw new Error("Refusing to read or write AGENTS.md because it is a symbolic link.");
+    }
+    if (!stat.isFile()) {
+      throw new Error("Refusing to read or write AGENTS.md because it is not a regular file.");
+    }
+    targetExists = true;
+  } catch (error) {
+    if (!isRecord(error) || error.code !== "ENOENT") {
+      throw error;
+    }
+  }
+  const existing = targetExists ? readFileSync(targetPath, "utf8") : undefined;
 
   if (existing === undefined) {
     const created = `# Agent guide for this application\n\n${managedBlock}\n\n## This application\n\nWrite your application's own rules here, outside the managed block.\n`;

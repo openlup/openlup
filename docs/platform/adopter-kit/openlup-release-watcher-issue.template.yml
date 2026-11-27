@@ -28,7 +28,7 @@ jobs:
       - name: Read npm latest metadata and tagged release-index.json without installing code
         env:
           GH_TOKEN: ${{ github.token }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
+          GH_REPO: ${{ github.repository }}
         run: |
           node --input-type=module - <<'EOF'
           import { execFileSync } from "node:child_process";
@@ -87,17 +87,34 @@ jobs:
           ];
           writeFileSync("/tmp/openlup-release-issue.md", lines.join("\n"), "utf8");
 
+          const repo = process.env.GH_REPO;
+          if (!repo) {
+            throw new Error("GH_REPO environment variable is required.");
+          }
+          const searchQuery = `"${marker}" in:body`;
           const existingIssues = JSON.parse(
-            execFileSync("gh", ["issue", "list", "--state", "all", "--limit", "100", "--json", "number,state,body"], { encoding: "utf8" }),
+            execFileSync(
+              "gh",
+              ["issue", "list", "--repo", repo, "--state", "all", "--search", searchQuery, "--limit", "100", "--json", "number,state,body"],
+              { encoding: "utf8" },
+            ),
           );
           const match = existingIssues.find((issue) => typeof issue.body === "string" && issue.body.includes(marker));
           if (match) {
             if (match.state === "OPEN") {
-              execFileSync("gh", ["issue", "edit", String(match.number), "--title", title, "--body-file", "/tmp/openlup-release-issue.md"], { stdio: "inherit" });
+              execFileSync(
+                "gh",
+                ["issue", "edit", String(match.number), "--repo", repo, "--title", title, "--body-file", "/tmp/openlup-release-issue.md"],
+                { stdio: "inherit" },
+              );
             } else {
               console.log(`Issue #${match.number} for ${latestVersion} already closed; skipping.`);
             }
           } else {
-            execFileSync("gh", ["issue", "create", "--title", title, "--body-file", "/tmp/openlup-release-issue.md"], { stdio: "inherit" });
+            execFileSync(
+              "gh",
+              ["issue", "create", "--repo", repo, "--title", title, "--body-file", "/tmp/openlup-release-issue.md"],
+              { stdio: "inherit" },
+            );
           }
           EOF
