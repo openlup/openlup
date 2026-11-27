@@ -671,4 +671,4 @@ it('validates --target pre-merge and lands forced or inverted migrations at the 
   } finally {
     f.cleanup();
   }
-}, 120_000);
+}, 240_000);

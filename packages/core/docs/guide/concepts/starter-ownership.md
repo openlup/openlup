@@ -235,8 +235,10 @@ answers HTTP 400 with `starter_input_invalid`.
 
 The token from `resume` authorises the same operations as the creating
 response: `checkout.read`, `checkout.recovery` `inspect` and `pay`,
-`checkout.payment` `inspect` and `simulate`, `checkout.tokenPay` and
-`payment.simulate`. A key holder can therefore start a payment attempt, which
+`checkout.recoverySimulate`, `checkout.payment` `inspect`,
+`checkout.paymentSimulate`, `checkout.tokenPay` and `payment.simulate`.
+`checkout.payment` and `checkout.recovery` still accept `simulate` in this
+release; it retires in a later one. A key holder can therefore start a payment attempt, which
 makes the order not abandonable.
 
 A client that owns its checkout page follows these rules:
@@ -368,7 +370,7 @@ marking records an externally completed refund; it moves no money, sends no
 refund mail, creates no fiscal reversal and changes no subscription. Execute
 real refunds through their own owner. Invalid reasons, missing confirmation,
 stale status and conflicting commands refuse; native receipts own replay. Reasons
-use the native trimmed-text boundary in the [order control schemas](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/README.md#commerce-contracts).
+use the native trimmed-text boundary in the [order control schemas](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#commerce-contracts).
 
 Signed-in customers request returns for positive quantities from their own paid
 or fulfilled orders using configured reason codes. Keep the returned request

@@ -1,4 +1,18 @@
-export const CLEANUP_URL = "https://dhl24.com.pl/webapi2/provider/service.html?ws=1";
+import {
+  CARRIER_DISPLAY_NAME,
+  CARRIER_ENDPOINT,
+  CARRIER_LABELS_BUCKET,
+  CARRIER_SOAP_RESPONSE_MAX_BYTES,
+  callCarrierSoap,
+  escapeXml,
+  extractFault,
+  extractXmlValue,
+  safeTrackingLabelObjectKey,
+  sanitizeCarrierError,
+} from "../../infra/dhl/adminDhlSoap.js";
+
+export const CLEANUP_URL = CARRIER_ENDPOINT;
+export { CARRIER_DISPLAY_NAME, escapeXml, extractXmlValue };
 
 export interface CleanupClient {
   auth: {
@@ -27,6 +41,8 @@ export interface CleanupActionDeps {
   username: string;
   password: string;
   log?: (...args: unknown[]) => void;
+  timeoutMs?: number;
+  maxBodyBytes?: number;
 }
 
 export interface CleanupResponse {
@@ -37,32 +53,14 @@ export interface CleanupResponse {
   error?: unknown;
 }
 
-export function escapeXml(value: unknown): string {
-  const text = String(value ?? "");
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
-}
-
-export function extractXmlValue(xml: string, tagName: string): string | null {
-  const namespaced = new RegExp(`<[^:]+:${tagName}[^>]*>([^<]*)<\\/[^:]+:${tagName}>`, "i");
-  const namespacedMatch = xml.match(namespaced);
-  if (namespacedMatch) return namespacedMatch[1];
-
-  const plain = new RegExp(`<${tagName}[^>]*>([^<]*)<\\/${tagName}>`, "i");
-  const plainMatch = xml.match(plain);
-  return plainMatch ? plainMatch[1] : null;
-}
-
 export function createCleanupAction({
   createClient,
   fetchImpl,
   username,
   password,
   log = () => undefined,
+  timeoutMs,
+  maxBodyBytes,
 }: CleanupActionDeps) {
   return async function runCleanupAction(request: Request): Promise<Response> {
     if (request.method === "OPTIONS") return new Response("ok");
@@ -90,47 +88,58 @@ export function createCleanupAction({
 
       if (trackingNumber) {
         try {
-          const response = await fetchImpl(CLEANUP_URL, {
-            method: "POST",
-            headers: {
-              "Content-Type": "text/xml; charset=utf-8",
-              SOAPAction: `${CLEANUP_URL}#deleteShipments`,
+          const response = await callCarrierSoap(
+            fetchImpl,
+            "deleteShipments",
+            deletionEnvelope(trackingNumber, username, password),
+            {
+              timeoutMs,
+              maxBodyBytes: maxBodyBytes ?? CARRIER_SOAP_RESPONSE_MAX_BYTES,
+              signal: request.signal,
             },
-            body: deletionEnvelope(trackingNumber, username, password),
-          });
-          const responseText = await response.text();
-          log("[CLEANUP] deleteShipments response:", responseText.slice(0, 500));
+          );
+          const responseText = response.text;
+          log("[CLEANUP] deleteShipments response:", sanitizeCarrierError(responseText));
 
-          const fault = extractXmlValue(responseText, "faultstring");
+          const fault = extractFault(responseText);
           if (fault) {
-            providerError = fault;
+            providerError = sanitizeCarrierError(fault);
+          } else if (!response.ok) {
+            providerError = `${CARRIER_DISPLAY_NAME} HTTP ${response.status}`;
           } else {
             const result = extractXmlValue(responseText, "result");
             if (result === "true" || result === "1") {
               providerDeleted = true;
             } else {
-              providerError = extractXmlValue(responseText, "error") || "DHL nie potwierdził usunięcia";
+              providerError = sanitizeCarrierError(
+                extractXmlValue(responseText, "error") || `${CARRIER_DISPLAY_NAME} nie potwierdził usunięcia`,
+              );
             }
           }
         } catch (error) {
-          providerError = String(error);
-          log("[CLEANUP] provider error:", error);
+          providerError = sanitizeCarrierError(error);
+          log("[CLEANUP] provider error:", providerError);
         }
       }
 
       if (trackingNumber) {
-        try {
-          const { error } = await client.storage.from("dhl-labels").remove([`${trackingNumber}.pdf`]);
-          labelDeleted = !error;
-          if (error) log("[CLEANUP] Storage remove error:", error.message);
-        } catch (error) {
-          log("[CLEANUP] Storage error:", error);
+        const objectKey = safeTrackingLabelObjectKey(trackingNumber);
+        if (!objectKey) {
+          log("[CLEANUP] Skipping unsafe label object key");
+        } else {
+          try {
+            const { error } = await client.storage.from(CARRIER_LABELS_BUCKET).remove([objectKey]);
+            labelDeleted = !error;
+            if (error) log("[CLEANUP] Storage remove error:", sanitizeCarrierError(error.message));
+          } catch (error) {
+            log("[CLEANUP] Storage error:", sanitizeCarrierError(error));
+          }
         }
       }
 
       return json(cleanupResponse(providerDeleted, providerError, labelDeleted));
     } catch (error) {
-      return json(cleanupResponse(false, String(error), false));
+      return json(cleanupResponse(false, sanitizeCarrierError(error), false));
     }
   };
 }

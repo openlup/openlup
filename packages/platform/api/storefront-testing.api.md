@@ -166,7 +166,11 @@ export type StorefrontScenario = {
  * @experimental
  */
 export type StorefrontAdapter = {
-    /** Store-owned steps up to the first buyer action. `edit` names a field to change on a rearrangement, else `null`. */
+    /**
+     * Store-owned steps up to the first buyer action. `edit` names a field to change on a rearrangement, else `null`.
+     * Like the default arrangement, tick consent only after `page.settled` returned from the last text change, then
+     * settle and tick it once more.
+     */
     readonly arrange?: (context: {
         readonly scenario: StorefrontScenario;
         readonly buyer: Readonly<Record<string, string | boolean>>;
@@ -236,7 +240,9 @@ export type StorefrontObserver = {
  *   `action:<value>` anchors, sorted; `locators` maps such a name to a custom
  *   CSS locator that replaces its attribute anchor.
  * - `perform` clicks, and resolves `false` without clicking when the target is
- *   absent or disabled; `fill` types a string or sets a checkbox, `false` when
+ *   absent or disabled; `fill` types a string and commits it as a buyer
+ *   leaving the field does (the field is blurred, so a page that reacts on
+ *   `input`, `change` or `blur` sees the value), or sets a checkbox, `false` when
  *   absent.
  * - `intercept(decide)` routes every request through `decide`, with the request
  *   path and no query string or fragment; a `decide` that throws blocks the
@@ -248,6 +254,46 @@ export type StorefrontObserver = {
  *   with `storefront_page_settle_timeout` naming each unfinished request's
  *   method and path: an open stream (`EventSource`), a long poll or a request
  *   in flight when the page closed keeps it pending until that bound.
+ * - `clearClientState()` clears the client state the table below lists, and
+ *   nothing more; it sends no request and never navigates. The runner calls
+ *   it before each run, so the control run starts without the state the table
+ *   clears on the path in use; state the table does not clear can still carry
+ *   over. It is optional so that a hand-built handle written before it still
+ *   compiles, but a handle without it clears nothing between the two runs:
+ *   every admitted scenario with a control run then ends `not_run` with
+ *   `client_state_unisolated`. `createPageHandle` always provides it, and
+ *   this table is the one statement of what it clears. It takes the context
+ *   path when the page's browser context has `setStorageState` (a Playwright
+ *   context), else the fallback path (`clearCookies` and in-page clears).
+ *   "Visited origins" are the origins the browser context has loaded.
+ *
+ *   | State | Context path | Fallback path |
+ *   | --- | --- | --- |
+ *   | Cookies | every cookie of the browser context | every cookie of the browser context |
+ *   | Local storage | every visited origin | the document's origin only, when it has one |
+ *   | Session storage (per tab) | this tab, on the store's origin only; other tabs never | this tab, on the store's origin only; other tabs never |
+ *   | IndexedDB | every visited origin; deletion started, not awaited | not cleared |
+ *   | HTTP cache | cleared where the browser supports it | not cleared |
+ *   | Virtual WebAuthn credentials created through the context's credentials API | removed | not removed |
+ *   | An authenticator added through the browser's debugging protocol | not touched | not touched |
+ *   | Service-worker registrations | unregistered on every visited origin | not unregistered |
+ *   | Cache Storage | not cleared | not cleared |
+ *
+ *   By document: on the store's origin, as the table says. On a document
+ *   with no origin, such as `about:blank`, no session storage is cleared,
+ *   and the fallback path clears no local storage either (cookies only); the
+ *   call resolves. When `createPageHandle` was given `options.origin`, on
+ *   another `http:` or `https:` origin it rejects
+ *   `storefront_page_client_state_foreign_origin` before clearing anything;
+ *   without `options.origin`, every `http:` or `https:` origin counts as the
+ *   store's. The context path also fires storage events in open pages.
+ *   Guaranteed on both paths: every cookie of the context, and the store's
+ *   local storage and this tab's session storage when the page shows a
+ *   document of the store's origin. Everything else depends on the path, so
+ *   a harness sets any state it needs (a preview or test-environment sign-in
+ *   cookie, local storage, IndexedDB, WebAuthn credentials) in its
+ *   arrangement, not before the run, and starts each test in a fresh browser
+ *   context when it leaves the store's origin between runs.
  *
  * @experimental
  */
@@ -280,6 +326,7 @@ export type PageHandle = {
         readonly quietMs: number;
         readonly timeoutMs?: number;
     }): Promise<void>;
+    clearClientState?(): Promise<void>;
 };
 export {};
 ```
@@ -324,11 +371,23 @@ type StructuralLocator = {
     fill(value: string, options: {
         timeout: number;
     }): Promise<void>;
+    /** Commits a typed value as a buyer leaving the field does; a Playwright locator has it. */
+    blur?(options: {
+        timeout: number;
+    }): Promise<void>;
     setChecked(checked: boolean, options: {
         timeout: number;
     }): Promise<void>;
 };
 type RequestEvent = "request" | "requestfinished" | "requestfailed";
+/** The browser context members `clearClientState` uses; a Playwright context has both. */
+type StructuralContext = {
+    setStorageState?(state: {
+        cookies: [];
+        origins: [];
+    }): Promise<void>;
+    clearCookies?(): Promise<void>;
+};
 /**
  * The page `createPageHandle` reads: the members of a Playwright page it uses,
  * typed structurally so this module imports no browser library.
@@ -349,18 +408,33 @@ type StructuralPage = {
     };
     route(url: string, handler: (route: StructuralRoute) => Promise<void>): Promise<unknown>;
     unroute(url: string, handler: (route: StructuralRoute) => Promise<void>): Promise<unknown>;
+    /** Read only by `clearClientState`; a page without it cannot clear client state. */
+    context?(): StructuralContext;
 };
 /**
  * Wraps a browser page as a storefront `PageHandle`. It accepts a Playwright
  * page today and reads only through the members it uses: `goto`, `reload`,
  * `url`, `viewportSize`, `waitForTimeout`, `on` and `off` (`request`,
  * `requestfinished`, `requestfailed`), `locator` with `first`, `waitFor`,
- * `evaluateAll`, `isEnabled`, `click`, `fill`, `setChecked`, and `route` and
+ * `evaluateAll`, `isEnabled`, `click`, `fill`, `blur` (when present, after
+ * typing), `setChecked`, and `route` and
  * `unroute` with `request()`, `continue()`, `fetch()` and `abort()`; a request
  * reads `method()`, `url()`, `headers()` and `redirectedFrom()`, so a redirect
  * hop, which the browser does not route, is claimed from its own `request`
  * event. `options.origin` resolves
  * relative paths for `navigate`; without it the page's own base URL does.
+ *
+ * `clearClientState` follows the table on `PageHandle`, the one statement of
+ * what it clears on each path and document. It reads `context()`
+ * (`setStorageState`, else `clearCookies`) and runs one self-contained
+ * function over the `:root` locator's `evaluateAll`. It reads the document's
+ * origin in the page first: when `options.origin` is given, a document on
+ * another `http:` or `https:` origin rejects
+ * `storefront_page_client_state_foreign_origin` before anything is cleared.
+ * Then `setStorageState({ cookies: [], origins: [] })`, or without it
+ * `clearCookies()` and a local-storage clear in the page; last, on the store's
+ * origin, session storage is cleared in the page. A page without `context`
+ * rejects `storefront_page_input_invalid`.
  *
  * `withhold` is `fetch()` then `abort()`: the request reaches the server, its
  * response is discarded and the page sees a failure. `block` is `abort()`. All
@@ -510,7 +584,17 @@ type StorefrontRunResult = {
  * installs one interceptor that classifies requests by the create and read
  * matchers, records each command's key reuse (key values are compared in
  * memory, never stored) and applies the armed withhold or hold, then runs the
- * steps. Every step ends only when the page has settled: every request the
+ * steps. Wherever the runner types the buyer's details (the default
+ * arrangement, its repeat after a reload, an edited payload, and the re-typing
+ * after a reload under an adapter's `arrange`), it fills every text field
+ * first (`page.fill` commits each), waits for the page to settle, sets consent
+ * and other toggle fields (`terms_accepted`), waits for the page to settle
+ * again and sets the toggles once more. A page that re-checks the details and
+ * resets consent given before that check thus keeps the tick; setting a toggle
+ * to the value it has changes nothing, and the handle cannot read a toggle
+ * back, so a page that resets consent again after the second pass sends
+ * nothing on submit and the step's findings say so. Every
+ * step ends only when the page has settled: every request the
  * interceptor saw finished and `quietMs` passed with no new request. Then the
  * runner reads the ledger, the visible anchors and the path. After the last
  * step a settle window waits once more and reads them again. The control run
@@ -527,6 +611,18 @@ type StorefrontRunResult = {
  * next expected state is not shown, the declaration is wrong:
  * `auto_progress_not_performed` (`not_run`).
  *
+ * Client state: the clean and control runs are two buyers on one page. Each
+ * run calls `page.clearClientState()` after its ledger read (and the
+ * exclusive database's count) and before its interceptor, so it starts without
+ * the state `PageHandle`'s table clears on the path in use; a rejection is
+ * `page_failed` of that run (step `null`). So when `createPageHandle` was
+ * given `options.origin` and the clean run ends on another `http:` or
+ * `https:` origin, the control run's clear is refused, and the result is
+ * `not_run` unless the clean run proved ledger harm first. A handle without the
+ * member clears nothing between the runs: an admitted scenario with a control run
+ * then ends `not_run` with `client_state_unisolated` only, before any page,
+ * observer or driver call; a `safety_only` scenario runs as before.
+ *
  * Outcomes: an `outcome` step asks the `outcomes` driver for one outcome
  * (`declined`, `pending`, `settled`, `settled_after_pending`,
  * `activation_pending`). A scenario runs only when every outcome in its
@@ -542,7 +638,8 @@ type StorefrontRunResult = {
  * outcome whose effect the ledger does not show, is `outcome_failed` and stops
  * the run.
  *
- * Judgement, first failing group decides: 0 admitted; 1 page, observer,
+ * Judgement, first failing group decides: 0 admitted, then a page handle with
+ * `clearClientState`; 1 page, observer,
  * arrangement and outcome driver worked; 2 no order before the arrangement and
  * one after the first matched create; 3 the first order appeared in a step with
  * a matched create, every withhold applied, every outcome shows its ledger
@@ -577,13 +674,13 @@ type StorefrontRunResult = {
  * steps until that state is visible, removes its interceptor and leaves the
  * page there: no control run and no verdict; a state not reached rejects
  * `storefront_stop_state_unreached` naming the last step, as does a scenario
- * that is not admitted, before any call. An arrangement that
+ * that is not admitted or a page handle without `clearClientState`, before any
+ * call. An arrangement that
  * fails under a control is the control's effect: the remaining steps are
  * skipped and the settle window still samples the page. Anchors and the ledger
  * are sampled after each step settles and in the settle window, so a state
  * shown only inside a step is not seen. A fault's text keeps its code and
- * first sentence with every URL replaced. The clean and control runs share the
- * page and its browser storage.
+ * first sentence with every URL replaced.
  *
  * @experimental
  */

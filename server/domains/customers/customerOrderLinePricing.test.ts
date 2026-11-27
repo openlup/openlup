@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { lineListTotalMinor } from "./customerOrderLinePricing.js";
+import { lineListTotalMinor } from "@openlup/platform/account-support";
 
 describe("lineListTotalMinor", () => {
   it("sums base-unit pricing components from an immutable order snapshot", () => {

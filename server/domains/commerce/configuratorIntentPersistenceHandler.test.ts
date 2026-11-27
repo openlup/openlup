@@ -11,8 +11,22 @@ import {
 import type { ConfiguratorIntentPersistencePort } from "../../../src/domains/commerce/ports.js";
 import {
   ConfiguratorIntentPersistenceConflictError,
-  createConfiguratorIntentPersistenceHandler,
-} from "./configuratorIntentPersistenceHandler.js";
+  createConfiguratorIntentPersistenceHandler as createPlatformConfiguratorIntentPersistenceHandler,
+} from "@openlup/platform/commerce/server";
+import { sendBffError, sendBffSuccess, sendMethodNotAllowed } from "../../_lib/bff/response.js";
+import {
+  configuratorIntentPersistenceRequestSchema,
+  configuratorIntentPersistenceResponseSchema,
+} from "../../../src/domains/commerce/configuratorIntentPersistenceContracts.js";
+
+function createConfiguratorIntentPersistenceHandler(deps: { persistencePort: ConfiguratorIntentPersistencePort }) {
+  return createPlatformConfiguratorIntentPersistenceHandler({
+    ...deps,
+    responder: { sendBffError, sendBffSuccess, sendMethodNotAllowed },
+    requestSchema: configuratorIntentPersistenceRequestSchema,
+    responseSchema: configuratorIntentPersistenceResponseSchema,
+  });
+}
 
 describe("configurator intent persistence handler", () => {
   it("persists hidden configurator intents through the shared envelope", async () => {

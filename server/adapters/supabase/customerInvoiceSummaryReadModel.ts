@@ -6,7 +6,7 @@ import {
   resolveAccountingDocumentHistory,
   type AccountingDocumentHistoryEntry,
 } from "../../../src/domains/accounting/contracts.js";
-import { deriveCustomerDocumentDeliveryStatus } from "../../domains/customers/customerInvoiceDocumentStatus.js";
+import { deriveCustomerDocumentDeliveryStatus } from "@openlup/platform/account-support";
 import { accountingPreviewTestPdfEligible } from "../../_lib/config/featureFlags.js";
 
 type Row = Record<string, unknown>;

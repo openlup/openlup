@@ -68,6 +68,47 @@ function check(text = sql(), mutate?: (value: ReviewedForwardRegistry) => void) 
 }
 const encode = (value: ReviewedForwardRegistry) => Buffer.from(JSON.stringify(value));
 
+describe("adapter money activation admission", () => {
+  const manifest = readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest;
+  const index = production.nativeStoreForwardClass!.slots.findIndex(slot => slot.row === "tax-calculation-adapter-money-activation");
+  const slot = production.nativeStoreForwardClass!.slots[index]!;
+  const path = slot.path;
+  const text = readFileSync(path, "utf8");
+  const prefix = [manifest.baseline, ...manifest.forward.filter(entry => entry.file < path)]
+    .map(({ file }) => ({ path: file, bytes: readFileSync(file) }));
+  const check = (candidate: string, predecessor = prefix) => {
+    const registry = structuredClone(production);
+    for (const source of predecessor) {
+      const binding = registry.nativeStoreForwards!.find(entry => entry.path === source.path);
+      if (binding) binding.sha256 = sqlSha256(source.bytes);
+    }
+    bind(registry, index, candidate);
+    return assertNativeStoreForward(registry, path, Buffer.from(candidate), predecessor);
+  };
+
+  it("admits the registered forward after the private validator", () => {
+    expect(prefix.at(-1)?.path).toMatch(/_tax_calculation_adapter_money_v1\.sql$/u);
+    expect(check(text).slot).toStrictEqual(slot);
+  });
+
+  it("checks the actual transition preimage and the replacement attributes", () => {
+    const drift = prefix.map(source => source.path.endsWith("_tax_calculation_claim_seal.sql")
+      ? { ...source, bytes: Buffer.from(source.bytes.toString("utf8").replace(
+        "Read the original pin under the client fence.", "Read the stored pin under the client fence.")) } : source);
+    expect(() => check(text, drift)).toThrow("actual base function before-hash drifted");
+    const header = text.replace("RETURNS trigger\nLANGUAGE plpgsql VOLATILE SECURITY INVOKER",
+      "RETURNS trigger\nLANGUAGE plpgsql VOLATILE SECURITY DEFINER");
+    expect(header).not.toBe(text);
+    expect(() => check(header)).toThrow("replacement header drifted");
+  });
+
+  it("refuses an additional existing-table alteration after rebinding the file", () => {
+    const extra = "ALTER TABLE public.tax_calculations ADD COLUMN unwanted_detail text;\n";
+    expect(() => check(text.replace("CREATE OR REPLACE FUNCTION", extra + "CREATE OR REPLACE FUNCTION")))
+      .toThrow("existing-table statement unlisted, duplicate or out of order");
+  });
+});
+
 describe("checkout owner execute admission", () => {
   function candidate(text = grantSql, definitions = definitionSql) {
     const value = registry();

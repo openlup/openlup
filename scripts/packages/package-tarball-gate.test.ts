@@ -63,6 +63,19 @@ describe("tarball gate", () => {
     expect(check([packedFile("src/inventory/settings-data.json")])).toEqual(["package-content-allowlist"]);
     expect(rules(packed([[files[0]!, "{}"]]))).toEqual(["package-content-allowlist"]);
   });
+  it("admits tracked sql/portable-advisories.json only for @openlup/platform", () => {
+    const platform = { name: "@openlup/platform", directory: "packages/platform", publish: true };
+    const advisory = "sql/portable-advisories.json";
+    const packedFile = (path: string, bytes = "{}") => ({ path, bytes: encode(bytes) });
+    const read = (path: string) => ["package.json", advisory].some(file => path === "packages/platform/" + file)
+      ? encode("{}") : undefined;
+    const check = (data: TarballEntry[]) => checkTarballEntries(platform, [packedFile("package.json"), ...data], read)
+      .map(({ rule }) => rule);
+    expect(check([packedFile(advisory)])).toEqual([]);
+    expect(check([packedFile(advisory, "{ }")])).toEqual(["changed-file"]);
+    expect(check([packedFile("sql/other-advisories.json")])).toEqual(["package-content-allowlist"]);
+    expect(rules(packed([[advisory, "{}"]]))).toEqual(["package-content-allowlist"]);
+  });
   it("actual npm files lists exclude fragments for every admitted package; the tarball gate refuses a leak", () => {
     for (const name of ["core", "outbox", "platform"]) {
       const root = mkdtempSync(join(tmpdir(), "fragment-pack-"));

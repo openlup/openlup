@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { disposition as orderDraftReceiptDisposition } from "./orderDraftReceiptsV2.fixture.js";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -94,8 +95,8 @@ async function seed(db: AccountMutationsStore, uncarried?: true) {
     VALUES ($1,'shipping','Fixture Street','Fixture Town','00000')`, [subject.contactId]);
   await db.owner.query(`INSERT INTO public.identity_privacy_erasures
     (erasure_id,idempotency_key,client_id,actor_principal_id,contract_version,contributor_versions,dispositions,retained_obligations,completed_at)
-    VALUES ($1,$2,$3,$4,'identity.erasure.v1',$5,'[]','[]',now())`,
-  [erasureId, input.idempotencyKey, subject.contactId, actor.principalId, versions]);
+    VALUES ($1,$2,$3,$4,'identity.erasure.v1',$5,$6,'[]',now())`,
+  [erasureId, input.idempotencyKey, subject.contactId, actor.principalId, versions, JSON.stringify([orderDraftReceiptDisposition])]);
   if (uncarried) {
     // An installed nonempty relation outside connected capture's carried set.
     const ref = { key: "fixture:repeat", version: 1 };

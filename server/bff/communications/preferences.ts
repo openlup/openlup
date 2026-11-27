@@ -3,7 +3,7 @@ import { resolveCommunicationPreferenceBinding } from "../../runtime/communicati
 import { withObservedRoute } from "../../_lib/observability/route.js";
 import { sendBffError, sendBffSuccess, sendMethodNotAllowed } from "../../_lib/bff/response.js";
 import type { VercelRequest, VercelResponse } from "../../_lib/types/vercel.js";
-import { verifyCommunicationPreferenceToken } from "../../domains/communications/preferencesToken.js";
+import { verifyCommunicationPreferenceToken } from "@openlup/platform/communications";
 import { createSupabasePublicCommunicationPreferencesGateway } from "../../adapters/supabase/communications/gateway.js";
 
 async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {

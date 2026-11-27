@@ -27,7 +27,7 @@ window. Enforces "subscription is cheapest per unit".
 ## Strict current-price authority
 
 `commercePriceAuthority.ts` and the authority additions in `ports.ts` are named
-compatibility exports from [the pricing module](../../../packages/platform/README.md#pricing).
+compatibility exports from [the pricing module](../../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md#pricing).
 Its exact current-money algorithm differs from the tier resolver below: it
 requires one active list and one gross base entry, validates the base before
 history, and queries history with that base's price-list identity. Legacy

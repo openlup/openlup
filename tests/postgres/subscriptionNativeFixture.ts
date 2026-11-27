@@ -11,21 +11,19 @@ export async function call(db:Db,name:string,args:unknown[]) {
 }
 export async function seedRenewal(pool:Db,availability=10,lines=1,subscription=randomUUID(),correlated=false,settlementChannelKey='fixture') {
  await call(pool,'subscription_delivery_alignment_set_mode',['off']);
- const client=randomUUID(),source=randomUUID();
+ const client=randomUUID();
  await pool.query("INSERT INTO public.clients(id,email) VALUES($1,$2)",[client,`${client}@example.invalid`]);
  await pool.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at) VALUES($1,$2,28,$3)",[subscription,client,AT]);
+ return seedRenewalTerms(pool,{client,subscription},{availability,lines,correlated,settlementChannelKey});
+}
+export async function seedRenewalTerms<Client extends string, Subscription extends string>(pool:Db,
+ {client,subscription}:{client:Client;subscription:Subscription},
+ {availability=10,lines=1,correlated=false,settlementChannelKey='fixture'}={}) {
+ const {source,basket}=await seedRenewalStock(pool,availability,lines);
  await pool.query(`INSERT INTO public.subscription_renewal_terms(subscription_id,next_cycle_number,currency_code,stock_source_key,
  settlement_channel_key,unattended_charge_authorized_at,authorization_ref) VALUES($1,2,'XXX',$2,$4,$3,'frozen-mandate')`,[subscription,source,AT,settlementChannelKey]);
- const basket:{lineOrdinal:number;sku:string;quantity:number;unitAmountMinor:number}[]=[];
- for(let n=1;n<=lines;n++) {
-  const id=randomUUID(),sku=`SKU-${id}`;
-  await pool.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1,$2,'Fixture')",[id,sku]);
-  await pool.query("INSERT INTO public.catalog_skus(id,product_id,sku,title) VALUES($1,$1,$2,'Fixture')",[id,sku]);
-  await pool.query('INSERT INTO public.subscription_renewal_term_lines(subscription_id,line_ordinal,sku,quantity,unit_amount_minor) VALUES($1,$2,$3,2,100)',[subscription,n,sku]);
-  await pool.query(`INSERT INTO public.fulfillment_stock_current(source_key,sku,total_quantity,for_sale_quantity,reserved_unavailable_quantity,
-  inventory_class,last_synced_at,stale_after,sync_run_id,idempotency_key,operation_fingerprint) VALUES($1,$2,$3,$3,0,'sellable',$4,now()+interval '1 year','fixture',$2,$5)`,[source,sku,availability,AT,'a'.repeat(64)]);
-  basket.push({lineOrdinal:n,sku,quantity:2,unitAmountMinor:100});
- }
+ for(const line of basket) await pool.query('INSERT INTO public.subscription_renewal_term_lines(subscription_id,line_ordinal,sku,quantity,unit_amount_minor) VALUES($1,$2,$3,$4,$5)',
+  [subscription,line.lineOrdinal,line.sku,line.quantity,line.unitAmountMinor]);
  const snapshot={contractVersion:'platform.subscription.renewal.v1',subscriptionId:subscription,clientId:client,scheduledAt:AT,cycleNumber:2,
   currency:'XXX',stockSourceKey:source,settlementChannelKey,authorizationRef:'frozen-mandate',payerAccountRef:null,totalAmountMinor:200*lines,lines:basket,
   ...(correlated ? {cycle:{status:'correlated',logicalCycleNumber:3,nativeRenewalCounter:2,activationCycleId:randomUUID(),evidenceRef:'fixture:paid-history'},externalAttemptSequence:0} : {})};
@@ -33,10 +31,25 @@ export async function seedRenewal(pool:Db,availability=10,lines=1,subscription=r
  const identity=await call(pool,'subscription_renewal_identity',[subscription,AT]);
  return {client,subscription,source,snapshot,fingerprint,identity};
 }
-export type RenewalSeed=Awaited<ReturnType<typeof seedRenewal>>;
+export async function seedRenewalStock(pool:Db,availability=10,lines=1) {
+ const source=randomUUID();
+ const basket:{lineOrdinal:number;sku:string;quantity:number;unitAmountMinor:number}[]=[];
+ for(let n=1;n<=lines;n++) {
+  const id=randomUUID(),sku=`SKU-${id}`;
+  await pool.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1,$2,'Fixture')",[id,sku]);
+  await pool.query("INSERT INTO public.catalog_skus(id,product_id,sku,title) VALUES($1,$1,$2,'Fixture')",[id,sku]);
+  await pool.query(`INSERT INTO public.fulfillment_stock_current(source_key,sku,total_quantity,for_sale_quantity,reserved_unavailable_quantity,
+  inventory_class,last_synced_at,stale_after,sync_run_id,idempotency_key,operation_fingerprint) VALUES($1,$2,$3,$3,0,'sellable',$4,now()+interval '1 year','fixture',$2,$5)`,[source,sku,availability,AT,'a'.repeat(64)]);
+  basket.push({lineOrdinal:n,sku,quantity:2,unitAmountMinor:100});
+ }
+ return {source,basket};
+}
+export type RenewalSeed=Awaited<ReturnType<typeof seedRenewalTerms>>;
 export async function renewal(...args:Parameters<typeof seedRenewal>) {
- const seed=await seedRenewal(...args);
- const op=await call(args[0],'subscription_claim_due_renewal',[seed.identity,seed.fingerprint,seed.snapshot,'fixture',300,AT]);
+ return claimFixtureRenewal(args[0],await seedRenewal(...args));
+}
+export async function claimFixtureRenewal<Seed extends RenewalSeed>(db:Db,seed:Seed) {
+ const op=await call(db,'subscription_claim_due_renewal',[seed.identity,seed.fingerprint,seed.snapshot,'fixture',300,AT]);
  return {...seed,operation:op.operationId as string,token:op.claimToken as string};
 }
 // Recovery scheduling owns its due time through PostgreSQL now(), not the fixture calendar.

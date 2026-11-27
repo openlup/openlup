@@ -1,4 +1,10 @@
-import { createPostgresCommunicationSyncStore, runCommunicationSyncDispatch, type NewsletterSyncProviderPort } from "@openlup/platform/communications";
+import {
+  createPostgresCommunicationSyncStore,
+  runCommunicationSyncDispatch,
+  runCommunicationSyncDispatchForProviders,
+  type CommunicationSyncRunResult,
+  type NewsletterSyncProviderPort,
+} from "@openlup/platform/communications";
 import { createPostgresOutboxStore } from "@openlup/outbox/postgres";
 import { runNativeCommunicationJob } from "./communicationDeliveryReconciliationJob.js";
 import type { VercelRequest } from "../../server/_lib/types/vercel.js";
@@ -7,10 +13,6 @@ import {
   readSupabaseDataGatewayEnv,
   type SupabaseDataGatewayEnv,
 } from "../../server/adapters/supabase/dataGatewayClientFactory.js";
-import {
-  runCommunicationSyncDispatchForProviders,
-  type CommunicationSyncRunResult,
-} from "../../server/domains/communications/communicationSyncWorker.js";
 import { createNewsletterSyncProviderRegistry } from "../../server/runtime/communications/newsletterProviderRegistry.js";
 import { createSupabaseCommunicationSyncStore } from "../../server/adapters/supabase/communications/communicationSync.js";
 import type { DataGatewayPort } from "../../src/domains/platform-runtime/ports.js";

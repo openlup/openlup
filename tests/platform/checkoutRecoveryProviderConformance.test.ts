@@ -1,4 +1,4 @@
-import { buildStartedRuntimeResponse } from "../../server/domains/commerce/commerceRuntimeStartResponse.js";
+import { buildStartedRuntimeResponse } from "../../server/domains/commerce/commerceRuntimeService.js";
 import { createStripeSandboxPaymentExecutionAdapter } from "@openlup/platform/payments/stripe";
 import { createCommerceCheckoutHandler } from "../../server/domains/commerce/commerceCheckoutHandler.js";
 import { CLIENT_ID, ORDER_ID, PAYMENT_INTENT_ID, PET_ID, createPorts, createResponse, intent, request } from "../../server/domains/commerce/commerceCheckoutHandler.testFixtures.js";
