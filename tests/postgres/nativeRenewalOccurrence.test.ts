@@ -43,7 +43,7 @@ async function moveDue(db: Db, f: RootFixture, validPair = true) {
 }
 
 it.for(["legacy", "legacy-with-service", "bootstrap", "separate", "admin-managed", "admin-operator"] as const)(
-  "retains the exact views, original-anchor clamp, and qualified transfer on %s", async (profile, { onTestFinished }) => {
+  "retains the exact views, original-anchor clamp, and qualified transfer on %s", { timeout: postgresSetupTimeoutMs }, async (profile, { onTestFinished }) => {
     const store = await installOccurrenceStore(profile);
     onTestFinished(store.close);
     const owner = store.migrator, f = await rootFixture(owner);
@@ -157,4 +157,4 @@ it.for(["legacy", "legacy-with-service", "bootstrap", "separate", "admin-managed
         await expectUnavailable(target.migrator, test, field);
       expect((await capture(target.owner, target.inventory, "renewal-occurrence-restored")).owned).toEqual(packet.owned);
     }
-  }, postgresSetupTimeoutMs);
+  });

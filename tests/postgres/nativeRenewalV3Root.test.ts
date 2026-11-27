@@ -46,7 +46,7 @@ const rootTest = it.extend("owner", async ({ onTestFinished }) => {
   onTestFinished(store.close);
   return store.migrator;
 });
-rootTest.for([30, 3600])("commits the equal pair and one %i-second lease after the producer commit", async (lease, { owner }) => {
+rootTest.for([30, 3600])("commits the equal pair and one %i-second lease after the producer commit", { timeout: postgresSetupTimeoutMs }, async (lease, { owner }) => {
   const f = await rootFixture(owner), before = await snapshot(owner, f);
   const outside = await effects(owner), values = args(f, f.agreement, lease), { operationId } = f.agreement;
   await expect(transaction(owner, async db => {
@@ -124,7 +124,7 @@ rootTest.for([30, 3600])("commits the equal pair and one %i-second lease after t
     await expect(claim(db, f, request)).rejects.toMatchObject(conflict);
   }, "ROLLBACK");
   expect(await effects(owner)).toEqual(outside);
-}, postgresSetupTimeoutMs);
+});
 
 rootTest("uses the ordered scope, eligibility, counter and agreement refusals without effects", async ({ owner: db }) => {
   const f = await rootFixture(db), legacy = await rootFixture(db, "legacy");

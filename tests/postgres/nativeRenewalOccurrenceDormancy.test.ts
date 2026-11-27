@@ -111,7 +111,7 @@ function watchAttempts() {
     const input = args[0] as string | QueryConfig;
     const text = typeof input === "string" ? input : input.text;
     if (text?.toLowerCase().includes(producer)) attempts.push(this.user ?? "");
-    if (text?.toLowerCase().includes(writer)) attempts.push(`${this.user}:${writer}`);
+    for (const name of writerNames) if (text?.toLowerCase().includes(name)) attempts.push(`${this.user}:${name}`);
     return Reflect.apply(query, this, args);
   });
   return { attempts, close: () => listener.mockRestore() };
@@ -206,8 +206,8 @@ it.each([false, true])("preserves the mounted native worker with owner login and
               if (writerProbe) for (const entry of writerNames) await expect(call(negative, entry,
                 entry === writer ? writerProbe.input : writerProbe.scope)).rejects.toMatchObject({ code: "42501" });
             } finally { await negative.end(); }
-            expect(watch.attempts.splice(0)).toEqual(writerProbe
-              ? ["fixture_occurrence_plain", `fixture_occurrence_plain:${writer}`] : ["fixture_occurrence_plain"]);
+            expect(watch.attempts.splice(0)).toEqual(["fixture_occurrence_plain",
+              ...(writerProbe ? writerNames.map(name => `fixture_occurrence_plain:${name}`) : [])]);
           }
           expect(await allocate(owner, subject)).toMatchObject({ outcome: "created", originalAnchorAt: subject.due });
           expect(watch.attempts.splice(0)).toEqual(["postgres"]);
@@ -246,7 +246,7 @@ it("compares a paid renewal under the actual starter login with a fixed occurren
       expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
       await owner.query(`CREATE ROLE starter_runtime LOGIN NOINHERIT PASSWORD 'synthetic-occurrence';
         CREATE ROLE starter_restore LOGIN NOINHERIT PASSWORD 'synthetic-occurrence'`);
-      await applyMeasuredStarterPrefix(boundary === "writer" ? catalogue : boundaries[boundary], migration, installation);
+      await applyMeasuredStarterPrefix(boundary === "writer" ? sliceOccurrencePlan(current, writerPath, false) : boundaries[boundary], migration, installation);
       const definitions = () => owner.query(`SELECT oid::regprocedure::text,pg_get_functiondef(oid),proacl
         FROM pg_proc WHERE pronamespace='public'::regnamespace AND proname IN
         ('subscription_claim_due_renewal','commerce_prepare_subscription_renewal',
@@ -304,8 +304,8 @@ it("compares a paid renewal under the actual starter login with a fixed occurren
           controlled = true;
           return (async () => {
             await expect(allocate(this, f)).rejects.toMatchObject(denied);
-            await expect(call(this, writer, writerProbe.input)).rejects.toMatchObject({ code: "42501" });
-            expect(watch.attempts.splice(0)).toEqual(["starter_runtime", `starter_runtime:${writer}`]);
+            for (const name of writerNames) await expect(call(this, name, name === writer ? writerProbe.input : writerProbe.scope)).rejects.toMatchObject({ code: "42501" });
+            expect(watch.attempts.splice(0)).toEqual(["starter_runtime", ...writerNames.map(name => `starter_runtime:${name}`)]);
             expect(await writerProbe.count()).toBe(2);
             expect(await count?.()).toBe(2);
             return Reflect.apply(query, this, input);
