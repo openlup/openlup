@@ -8758,10 +8758,6 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/storefront/testing/clientStorage.ts",
-      "class": "public-output"
-    },
-    {
       "path": "packages/platform/src/storefront/testing/contracts.ts",
       "class": "public-output"
     },
