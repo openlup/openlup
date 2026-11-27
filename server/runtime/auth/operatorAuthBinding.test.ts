@@ -38,14 +38,28 @@ function executor(respond: (sql: string, values: unknown[]) => Record<string, un
   return { query, db: { query } as unknown as PgQueryExecutor };
 }
 it.each([["active", "PRIVACY_ACTIVE_SUBSCRIPTION"], ["paused", "PRIVACY_RESUMABLE_SUBSCRIPTION"], ["unknown", "PRIVACY_ASSESSMENT_UNAVAILABLE"]])("subscription %s veto precedes every identity mutation and never changes a subscription", async (status, code) => {
-  const { db, query } = executor(sql => sql.startsWith("SELECT status") ? [{ status }] : []);
+  const pairingQuery = /^SELECT\s+current_setting\('transaction_isolation'\) AS isolation,/u;
+  const parentsQuery = "SELECT id, status FROM public.subscriptions WHERE client_id = $1 ORDER BY id";
+  const { db, query } = executor(sql => {
+    if (pairingQuery.test(sql)) return [{
+      isolation: "read committed", helper: false, carrier: false, registered: false,
+      incumbent_catalogue: true, occurrence_catalogue: false, carrier_readable: null, safe: null,
+    }];
+    if (sql === parentsQuery) return [{ id: "55555555-5555-4555-8555-555555555555", status }];
+    return [];
+  });
   const subscriptions = createSubscriptionsPrivacyContributor(); const store = createPostgresPrivacyStore();
   store.readRequiredContributorIds = async () => ["identity", "subscriptions"];
   store.prepareErasure = async () => {}; store.authorizeErasure = async () => {}; store.resolve = async () => structuredClone(subject); store.findErasureReplay = async () => null;
   const erase = vi.spyOn(store, "eraseIdentity"); const save = vi.spyOn(store, "saveReceipt");
   const registry = createPersonalDataContributorRegistry([createIdentityPersonalDataContributor(store, { retainedContactFields: {} }, () => K), subscriptions], { requiredContributorIds: ["identity", "subscriptions"] });
   const ops = createPrivacyOperations({ store, registry, unitOfWork: { run: work => work(db) }, now: () => new Date(), randomId: () => K });
-  await expect(ops.erase(actor, { subject: { kind: "contact", contactId: C }, idempotencyKey: K })).rejects.toThrow(code);
+  await expect(ops.erase(actor, { subject: { kind: "contact", contactId: C }, idempotencyKey: K })).rejects.toMatchObject({ code });
   expect(erase).not.toHaveBeenCalled(); expect(save).not.toHaveBeenCalled();
-  expect(query.mock.calls.map(([sql]) => sql)).toEqual(["LOCK TABLE public.subscriptions IN SHARE MODE", "SELECT status FROM public.subscriptions WHERE client_id = $1"]);
+  expect(query.mock.calls).toEqual([
+    ["LOCK TABLE public.subscriptions IN SHARE MODE"],
+    [expect.stringMatching(pairingQuery), [true]],
+    [parentsQuery, [C]],
+  ]);
+  expect(query.mock.calls.map(([sql]) => sql).join("\n")).not.toMatch(/\b(?:INSERT|UPDATE|DELETE)\b/iu);
 });
