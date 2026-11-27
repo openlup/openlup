@@ -1099,7 +1099,7 @@ async function databaseBrowserRecipe(argv, prepareCatalogueTemplate = true) {
       await writeFile(resolve(state, 'host.private.log'), logs, { mode: 0o600 });
       if (!ready)
         throw new Error('starter_database_browser_host_unavailable');
-      entries.push({ id: config.id, baseURL, runtimeUrl, ownerUrl, state, catalogueBuildDirectory, upgrade, legacy });
+      entries.push({ id: config.id, baseURL, runtimeUrl, ownerUrl, state, upgrade, legacy });
     }
     await writeFile(resolve(application, '.context/database-ui-hosts.json'), JSON.stringify(entries.map(({ id, baseURL }) => ({ id, baseURL }))), { mode: 0o600 });
     await writeFile(resolve(directory, 'fixtures.json'), JSON.stringify(entries), { mode: 0o600 });

@@ -64,7 +64,7 @@ test('quote and checkout refuse callers without acquisition capability by name',
 
 test.describe('database subscription care', () => {
 interface LegacyCancel { email: string; subscriptionRef: string; input: Record<string, unknown>; key: string; receipt: object; snapshot: object }
-interface Material { id: string; baseURL: string; ownerUrl: string; runtimeUrl: string; state: string; catalogueBuildDirectory: string;
+interface Material { id: string; baseURL: string; ownerUrl: string; runtimeUrl: string; state: string;
   upgrade?: { customized: boolean }; legacy?: Record<Locale, LegacyCancel> }
 interface Purchase { orderRef: string; email: string; subscriptionId: string; clientId: string; nextCycleAt: string; cadenceDays: number }
 let material: Material, owner: pg.Pool, runtime: pg.Pool;
@@ -400,7 +400,7 @@ async function withOwnedCarePolicy(run: (baseURL: string) => Promise<void>) {
   `;
   const host = spawn(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(settings)}`,
     resolve('host/server.ts'), '--configuration', material.id, '--port', String(port), '--database-url', database.href], {
-    cwd: material.state, env: { PGPASSWORD: password, OPENLUP_STARTER_BROWSER_CATALOGUE_BUILDS: material.catalogueBuildDirectory }, stdio: 'ignore',
+    cwd: material.state, env: { PGPASSWORD: password }, stdio: 'ignore',
   });
   const exited = once(host, 'exit').catch(() => []);
   try {
@@ -1485,8 +1485,7 @@ for (const locale of market.locales) {
     const connection = new URL(material.runtimeUrl), password = decodeURIComponent(connection.password); connection.password = '';
     const start = async () => {
       const child = spawn(process.execPath, ['--experimental-strip-types', resolve('host/server.ts'), '--configuration', material.id,
-        '--port', String(port), '--database-url', connection.href], { cwd: material.state,
-        env: { PGPASSWORD: password, OPENLUP_STARTER_BROWSER_CATALOGUE_BUILDS: material.catalogueBuildDirectory }, stdio: ['ignore','pipe','pipe'] });
+        '--port', String(port), '--database-url', connection.href], { cwd: material.state, env: { PGPASSWORD: password }, stdio: ['ignore','pipe','pipe'] });
       let diagnostic = '';
       child.stdout?.on('data', value => { diagnostic += String(value); }); child.stderr?.on('data', value => { diagnostic += String(value); });
       try { await expect.poll(async () => fetch(address + '/api/config').then(r => r.ok).catch(() => false)).toBe(true); }
@@ -2424,7 +2423,7 @@ for (const locale of market.locales) {
       const port=(probe.address() as {port:number}).port;await new Promise<void>(done=>probe.close(()=>done()));
       const child=spawn(process.execPath,['--experimental-strip-types',resolve('host/server.ts'),'--configuration',material.id,
         '--port',String(port),'--listen','127.0.0.1','--database-url',connection.href,'--quote-acceptance-key-file',keyFile],
-      {cwd:material.state,env:{PGPASSWORD:password,OPENLUP_STARTER_BROWSER_CATALOGUE_BUILDS:material.catalogueBuildDirectory},stdio:['ignore','pipe','pipe']});
+      {cwd:material.state,env:{PGPASSWORD:password},stdio:['ignore','pipe','pipe']});
       processes.push(child.pid!);
       let diagnostic='';child.stdout.on('data',value=>{diagnostic+=String(value);});child.stderr.on('data',value=>{diagnostic+=String(value);});
       stopHost=async()=>{

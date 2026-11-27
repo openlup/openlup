@@ -3,7 +3,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { readFileSync } from 'node:fs';
-import { cp, mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { expect, test, type APIRequestContext } from '@playwright/test';
@@ -28,7 +28,7 @@ const imageSlug = 'illustrated-article';
 const imageName = 'Article with image';
 const imageRef = '/media/collection.svg';
 const currency = configurations.coffee!.market.currency;
-type Fixture = { id: keyof typeof configurations; baseURL: string; runtimeUrl: string; ownerUrl: string; state: string; catalogueBuildDirectory: string };
+type Fixture = { id: keyof typeof configurations; baseURL: string; runtimeUrl: string; ownerUrl: string; state: string };
 type Selection = { sku: string; title: string; price: number };
 
 function action(request: APIRequestContext, origin: string, operation: string, data: Record<string, unknown>) {
@@ -86,7 +86,7 @@ async function author(fixture: Fixture) {
     }));
     const definition = pack.types[0]!;
     const installed = await withOwner(owner, db => installCatalogDefinitions(db, pack));
-    const staged = stageStarterCatalogueBuild(artifact, installed, fixture.catalogueBuildDirectory, definition);
+    const staged = stageStarterCatalogueBuild(artifact, installed, undefined, definition);
     try { staged?.publish(); } finally { staged?.discard(); }
     await owner.query("INSERT INTO public.platform_human_principals (principal_id,email) VALUES ($1,'catalogue-proof@example.invalid')", [actor]);
     await owner.query(`INSERT INTO public.platform_human_memberships
@@ -219,8 +219,6 @@ test.beforeAll(async ({ request, baseURL }, info) => {
   await admin.query(`COMMENT ON DATABASE ${database} IS '${demonstrationMarker}'`);
   const state = await mkdtemp(join(selected.state, 'catalogue-'));
   resources.state = state;
-  const catalogueBuildDirectory = join(state, 'catalogue-builds');
-  await cp(selected.catalogueBuildDirectory, catalogueBuildDirectory, { recursive: true });
   const installer = new pg.Client({ connectionString: owner.href });
   await installer.connect();
   let keyFile: string;
@@ -228,14 +226,12 @@ test.beforeAll(async ({ request, baseURL }, info) => {
     keyFile = await prepareDemonstrationQuoteKey(installer, state);
   } finally { await installer.end(); }
   const port = await loopbackPort();
-  fixture = { ...selected, baseURL: `http://127.0.0.1:${port}`, ownerUrl: owner.href, runtimeUrl: runtime.href, state, catalogueBuildDirectory };
+  fixture = { ...selected, baseURL: `http://127.0.0.1:${port}`, ownerUrl: owner.href, runtimeUrl: runtime.href, state };
   const password = decodeURIComponent(runtime.password);
   runtime.password = '';
   // The demo CLI pins the installed database name. Use the same native bindings through the programmatic server entry.
   const host = spawn(process.execPath, ['--experimental-strip-types', '--input-type=module', '-', '--configuration', fixture.id,
-    '--port', String(port), '--listen', '127.0.0.1'], {
-    env: { PGPASSWORD: password, OPENLUP_STARTER_BROWSER_CATALOGUE_BUILDS: catalogueBuildDirectory }, stdio: ['pipe', 'ignore', 'ignore'],
-  });
+    '--port', String(port), '--listen', '127.0.0.1'], { env: { PGPASSWORD: password }, stdio: ['pipe', 'ignore', 'ignore'] });
   resources.host = host;
   host.stdin.end(`
     import { createApplication } from './host/server.ts';
@@ -341,9 +337,7 @@ test('a disconnected mounted reader fails the same published selection', async (
   const port = await loopbackPort();
   const baseURL = `http://127.0.0.1:${port}`;
   const child = spawn(process.execPath, ['--experimental-strip-types', '--input-type=module', '-', '--configuration',
-    fixture.id, '--port', String(port), '--listen', '127.0.0.1'], {
-    env: { OPENLUP_STARTER_BROWSER_CATALOGUE_BUILDS: fixture.catalogueBuildDirectory }, stdio: ['pipe', 'ignore', 'ignore'],
-  });
+    fixture.id, '--port', String(port), '--listen', '127.0.0.1'], { stdio: ['pipe', 'ignore', 'ignore'] });
   child.stdin.end(`
     import pg from 'pg';
     import { createApplication } from './host/server.ts';
