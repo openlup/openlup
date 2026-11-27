@@ -322,7 +322,8 @@ it("checks strict submitted rules, elapsed cutoffs, sticky rails and conflicting
     for (const rail of ["legacy", "v3"]) await rolledBack(db, async () => {
       await allocate(db, f, rail);
       const opposite = rail === "legacy" ? "v3" : "legacy";
-      await refuses(db, () => allocate(db, f, opposite, null), badRail);
+      await refuses(db, () => allocate(db, f, opposite, null), badRule);
+      await refuses(db, () => allocate(db, f, opposite), badRail);
       await refuses(db, () => allocate(db, f, rail, { ...defaultRule, leadSeconds: 0 }), unavailable("current_conflict"));
       const cases = [
         ["is_current=false, lifecycle='retired'", unavailable("noncurrent_occurrence")],

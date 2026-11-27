@@ -36,6 +36,24 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM public.subscriptions WHERE id = p_subscription_id AND client_id = p_client_id) THEN
       RAISE EXCEPTION 'subscription_command_forbidden' USING ERRCODE = '22023', DETAIL = '/subscriptionId';
     END IF;
+    IF jsonb_typeof(rule) = 'object'
+      AND rule - ARRAY['schemaVersion','deadlineRuleRef','deadlineRuleRevision','leadSeconds','lateCancelDisposition'] = '{}'::jsonb
+      AND rule->'schemaVersion' = '1'::jsonb
+      AND jsonb_typeof(rule->'deadlineRuleRef') = 'string' AND jsonb_typeof(rule->'lateCancelDisposition') = 'string'
+      AND jsonb_typeof(rule->'deadlineRuleRevision') = 'number' AND jsonb_typeof(rule->'leadSeconds') = 'number' THEN
+      rule_ref := rule->>'deadlineRuleRef';
+      disposition := rule->>'lateCancelDisposition';
+      revision := (rule->'deadlineRuleRevision')::numeric;
+      lead := (rule->'leadSeconds')::numeric;
+    END IF;
+    IF rule_ref IS NULL OR octet_length(convert_to(rule_ref, 'UTF8')) NOT BETWEEN 1 AND 200
+      OR rule_ref COLLATE "C" SIMILAR TO blank_ref
+      OR revision NOT BETWEEN 1 AND 9007199254740991 OR revision <> trunc(revision)
+      OR lead < 0 OR lead <> trunc(lead)
+      OR disposition NOT IN ('hold_current', 'allow_current_first_charge_if_authorized') THEN
+      RAISE EXCEPTION 'renewal_deadline_rule_unsupported' USING ERRCODE = '22023', DETAIL = '/deadlineRuleRef';
+    END IF;
+
     PERFORM 1 FROM public.clients WHERE id = p_client_id FOR SHARE;
     IF NOT FOUND THEN
       RAISE EXCEPTION 'renewal_cycle_unavailable' USING ERRCODE = '22023', DETAIL = '/cycleKey privacy_evidence_unavailable';
@@ -174,21 +192,7 @@ BEGIN
       END IF;
     END IF;
 
-    IF jsonb_typeof(rule) = 'object'
-      AND rule - ARRAY['schemaVersion','deadlineRuleRef','deadlineRuleRevision','leadSeconds','lateCancelDisposition'] = '{}'::jsonb
-      AND rule->'schemaVersion' = '1'::jsonb
-      AND jsonb_typeof(rule->'deadlineRuleRef') = 'string' AND jsonb_typeof(rule->'lateCancelDisposition') = 'string'
-      AND jsonb_typeof(rule->'deadlineRuleRevision') = 'number' AND jsonb_typeof(rule->'leadSeconds') = 'number' THEN
-      rule_ref := rule->>'deadlineRuleRef';
-      disposition := rule->>'lateCancelDisposition';
-      revision := (rule->'deadlineRuleRevision')::numeric;
-      lead := (rule->'leadSeconds')::numeric;
-    END IF;
-    IF rule_ref IS NULL OR octet_length(convert_to(rule_ref, 'UTF8')) NOT BETWEEN 1 AND 200
-      OR rule_ref COLLATE "C" SIMILAR TO blank_ref
-      OR revision NOT BETWEEN 1 AND 9007199254740991 OR revision <> trunc(revision)
-      OR lead < 0 OR lead >= cadence OR lead <> trunc(lead)
-      OR disposition NOT IN ('hold_current', 'allow_current_first_charge_if_authorized') THEN
+    IF lead >= cadence THEN
       RAISE EXCEPTION 'renewal_deadline_rule_unsupported' USING ERRCODE = '22023', DETAIL = '/deadlineRuleRef';
     END IF;
     IF parent.next_cycle_at - lead::bigint * interval '1 second' < first_utc THEN
@@ -475,4 +479,5 @@ $$;
 REVOKE ALL ON FUNCTION public.subscriptions__read_renewal_occurrences_for_privacy(uuid,uuid) FROM PUBLIC;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.subscriptions__read_renewal_occurrences_for_privacy(uuid,uuid) FROM anon;'; END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.subscriptions__read_renewal_occurrences_for_privacy(uuid,uuid) FROM authenticated;'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.subscriptions__read_renewal_occurrences_for_privacy(uuid,uuid) FROM service_role;'; END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.subscriptions__read_renewal_occurrences_for_privacy(uuid,uuid) TO service_role;'; END IF; END; $$;

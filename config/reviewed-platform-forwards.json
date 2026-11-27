@@ -14524,12 +14524,12 @@
     },
     {
       "path": "db/platform/migrations/20261129130509_native_renewal_occurrence_privacy.sql",
-      "sha256": "168efb720844241b4e4a38af931a226b0d86027502326c091973b52670e2e3a6",
+      "sha256": "f6b19248a19d6f92ac7098414c266afc53596348f89c5d9bfa99ef4490628d4d",
       "functions": [
         {
           "signature": "public.subscriptions__allocate_renewal_occurrence(uuid,uuid,text,jsonb)",
           "beforeSha256": "5010069482c117b5d06ae3e653545a8523162a93ba8bad2fce1b93337af0a501",
-          "afterSha256": "0cbbb8e1a4cfab0bc673dab01c3bdbd911249ffa77a4b527a7266c753e0b0eb6"
+          "afterSha256": "3a85ebad954789bc08c343de18d6ed382d6ffa5da8bb6cbe46e6d3bba028201f"
         },
         {
           "signature": "public.subscriptions__create_renewal_v3_root(uuid,uuid,uuid,uuid,integer,text,text,text,integer)",

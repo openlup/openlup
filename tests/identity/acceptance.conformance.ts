@@ -45,7 +45,7 @@ export function identityReferenceJwks(publicKey: KeyObject, keyId: string): stri
   return JSON.stringify({ keys: [{ ...publicKey.export({ format: "jwk" }), kid: keyId, alg: "ES256", use: "sig" }] });
 }
 /** Bundle the existing policy seam only for this disposable runtime. */
-export async function buildIdentityReferenceRuntime(entry: string, outDir: string) {
+export async function buildIdentityReferenceRuntime(entry: string, outDir: string, sourceRoot = process.cwd()) {
   const packages = new Map<string, LoadedPackage>();
   let inventoryComplete = true;
   await build({ configFile: false, logLevel: "silent", plugins: [react(), {
@@ -73,7 +73,7 @@ export async function buildIdentityReferenceRuntime(entry: string, outDir: strin
       for (const chunk of Object.values(output)) if (chunk.type === "chunk"
         && [...chunk.imports, ...chunk.dynamicImports].some(id => id.startsWith("@openlup/"))) inventoryComplete = false;
     },
-  }], resolve: { alias: { "@": resolve("src"), "#deployment-route-policy": resolve("server/runtime/auth/referenceIdentityPolicy.ts") } }, ssr: { noExternal: [/^@openlup\//] }, build: { ssr: entry, outDir, rollupOptions: { output: { entryFileNames: "runtime.mjs" } } } });
+  }], resolve: { alias: { "@": resolve(sourceRoot, "src"), "#deployment-route-policy": resolve(sourceRoot, "server/runtime/auth/referenceIdentityPolicy.ts") } }, ssr: { noExternal: [/^@openlup\//] }, build: { ssr: entry, outDir, rollupOptions: { output: { entryFileNames: "runtime.mjs" } } } });
   return { loadedPackages: [...packages.values()], inventoryComplete };
 }
 /** Bind the same application route and policy modules for the disposable host. */
