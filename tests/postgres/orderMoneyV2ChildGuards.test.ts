@@ -573,8 +573,9 @@ it("refuses mixed marker arms, old receipts and redaction that changes any retai
 it("refuses borrowed, pending, corrupted and legacy-sealed evidence at the installed boundary", async () => {
   const borrowed = await issue(store, sku, false);
   await mismatch(writeOrder(store, borrowed, sku, { clientId: await receiptClient(store.owner) }), "/taxEvidence", recoverEvidence);
-  for (const options of [{ pending: true }, { legacySeal: true }]) {
-    await mismatch(writeOrder(store, await issue(store, sku, false, undefined, options), sku), "/taxEvidence", recoverEvidence);
+  // Exclusive money now completes only with verified adapter money, so legacy-sealed evidence is issued inclusive.
+  for (const [inclusive, options] of [[false, { pending: true }], [true, { legacySeal: true }]] as const) {
+    await mismatch(writeOrder(store, await issue(store, sku, inclusive, undefined, options), sku), "/taxEvidence", recoverEvidence);
   }
   const corrupted = await issue(store, sku, false);
   // Temporarily disabled the calculation storage guard in a disposable database transaction.
