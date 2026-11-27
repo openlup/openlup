@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CommunicationAdminEmailSendsReadPort } from "../../../src/domains/communications/ports.js";
-import type { EmailHealthMetrics } from "../../domains/communications/emailHealthMetricsPort.js";
+import type { EmailHealthMetrics } from "@openlup/platform/communications";
 import type { Client, EmailSendWithTesterRow } from "./adminEmailSendsPort.js";
 
 type UntypedSupabaseClient = SupabaseClient;

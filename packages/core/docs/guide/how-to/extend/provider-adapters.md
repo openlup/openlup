@@ -106,10 +106,10 @@ The released 0.43.0 starter retains its original managed composition and
 ### Card and wallet payment template
 
 Construct `createStripePaymentAdapter` from the card/wallet protocol entry listed
-in the installed export map. Its [configuration and capability declarations](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/README.md#opt-in-payment-example)
+in the installed export map. Its [configuration and capability declarations](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#opt-in-payment-example)
 own the exact public surface. Inject a structural client, `webhookSigningSecrets`,
 explicit `mode` and a nonempty `supportedCurrencies` array of canonical currency
-codes. The [card adapter configuration](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/README.md#opt-in-payment-example)
+codes. The [card adapter configuration](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#opt-in-payment-example)
 owns the currency shape and `toleranceSeconds` default; `clock` returns UTC seconds. Your host constructs the SDK, associates stored methods with
 customers and confirms unattended requests. Interactive offers use the declared
 card/wallet flow. Construction performs no provider I/O.
@@ -152,7 +152,7 @@ becomes an invented lifecycle timestamp.
 ### Bank redirect and code payment template
 
 Construct `createTpayPaymentAdapter` from the bank/code protocol entry in that
-map; consult its [configuration and capability declarations](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/README.md#opt-in-bank-and-code-payment-example)
+map; consult its [configuration and capability declarations](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#opt-in-bank-and-code-payment-example)
 for the public surface. Supply
 `http: { baseUrl, clientId, clientSecret, fetchImpl, timeoutMs? }`,
 `urls: { notificationUrl, successUrl, errorUrl }`, `modelOActivationEnabled`,
@@ -163,7 +163,7 @@ access policy. Both root and resolved certificates must be valid at verification
 
 Verify notifications over original bytes. Only signed protected-header `iat`
 supplies provider time; absent time stays null. Notification age and clock skew
-use the defaults in the [bank/code adapter contract](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/README.md#opt-in-bank-and-code-payment-example).
+use the defaults in the [bank/code adapter contract](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#opt-in-bank-and-code-payment-example).
 The age allowance is an assumption, not a verified provider schedule. Both
 limits must be finite and nonnegative and apply only with a signed issue time; a time outside
 the window refuses as `stale`. Receipt time checks freshness without inventing
@@ -204,7 +204,7 @@ certificates and raw bodies. Missing failure provenance stays absent.
 
 ### Reuse existing payment bindings
 
-For an existing binding, inspect the [reference-support inventory](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/README.md#reference-support-surface)
+For an existing binding, inspect the [reference-support inventory](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#reference-support-surface)
 and its linked API reports before selecting a helper. Infer types from the
 functions where no separate type is exported. Reuse the same
 `ProviderAttemptPreDispatchError` constructor across wrappers so `instanceof`

@@ -6,6 +6,7 @@
 // Quota: each case makes at most 3 metered creates and 2 repeats under keys of its own, about 40 in all within 20 s,
 // more than the 36 per address per 180 s that later specs in the same installation share. So each case starts from an
 // empty attempt ledger, and afterAll empties it again for the specs after this one.
+// Stubs: a stub for the first matching request stays installed (`stubFirst`, browser/route-stub.ts), never `{ times }`.
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -19,6 +20,7 @@ import { runCheckoutRecovery } from '../host/paid-mail.ts';
 import { createPrivateCapture } from '../host/private-capture.ts';
 import { routes } from '../shared/routes.ts';
 import { checkoutContinuationCopy } from '../shared/limits.ts';
+import { stubFirst } from './route-stub.ts';
 
 interface Material { id: string; baseURL: string; ownerUrl: string; runtimeUrl: string; state: string }
 let material: Material, owner: pg.Pool, runtime: pg.Pool;
@@ -195,11 +197,12 @@ test('checkout controller: the payment-status page shows an expired order and ke
   await sweepExpired(page, orderRef);
   // The recovery read would offer a replacement order; without it the page reads the order itself, which the host
   // answers as expired. That read is where the page cleared the record before.
-  await page.route('**/api/actions/checkout.recovery', route => route.fulfill({ status: 409, contentType: 'application/json',
-    body: JSON.stringify({ ok: false, code: 'starter_recovery_unavailable' }) }), { times: 1 });
+  const recovery = await stubFirst(page, '**/api/actions/checkout.recovery', route => route.fulfill({ status: 409,
+    contentType: 'application/json', body: JSON.stringify({ ok: false, code: 'starter_recovery_unavailable' }) }));
   const read = page.waitForResponse(row => row.url().endsWith('/api/actions/checkout.read'));
   await page.goto(routes.completion[locale]);
   expect(await (await read).json()).toEqual({ ok: true, value: { status: 'expired', orderRef } });
+  expect(recovery.hits, 'the page read recovery before the order').toBeGreaterThanOrEqual(1);
   await expect(page.locator('main')).toContainText(t.recoveryExpired);
   expect(await record(page)).toEqual(kept);
 });
@@ -335,10 +338,11 @@ for (const code of ['minimum_units', 'starter_checkout_request_stale']) {
     await openCheckout(page);
     await details(page, email);
     const sent = creates(page);
-    await page.route('**/api/actions/checkout.create', route => route.fulfill({ status: 409, contentType: 'application/json',
-      body: JSON.stringify({ ok: false, code }) }), { times: 1 });
+    const refused = await stubFirst(page, '**/api/actions/checkout.create', route => route.fulfill({ status: 409,
+      contentType: 'application/json', body: JSON.stringify({ ok: false, code }) }));
     await placeOrder(page).click();
     await expect(output(page)).toContainText(code);
+    expect(refused.hits, 'the refused create was stubbed').toBeGreaterThanOrEqual(1);
     await details(page, email, '4 Corrected Lane');
     await placed(page);
     expect(sent.map(keyOf)).toEqual([keyOf(sent[0]!), keyOf(sent[0]!)]);
@@ -357,10 +361,11 @@ for (const code of ['starter_purchase_unavailable', 'starter_attempt_limited', '
     await openCheckout(page);
     await details(page, email);
     const sent = creates(page);
-    await page.route('**/api/actions/checkout.create', route => route.fulfill({ status: 409, contentType: 'application/json',
-      body: JSON.stringify({ ok: false, code }) }), { times: 1 });
+    const refused = await stubFirst(page, '**/api/actions/checkout.create', route => route.fulfill({ status: 409,
+      contentType: 'application/json', body: JSON.stringify({ ok: false, code }) }));
     await placeOrder(page).click();
     await expect(output(page)).toContainText(code);
+    expect(refused.hits, 'the refused create was stubbed').toBeGreaterThanOrEqual(1);
     await details(page, email, '6 Corrected Lane');
     await placeOrder(page).click();
     await expect(output(page)).toContainText(managed('changedUnconfirmed'));
@@ -554,10 +559,11 @@ test('checkout controller: a late answer to a replaced view renders nothing and 
   await page.getByRole('button', { name: t.checkout, exact: true }).click();
   await expect(panel(page)).toBeVisible();
   // The earlier order is answered as not payable, so the buyer starts a different purchase.
-  await page.route('**/api/actions/checkout.continuation', route => route.fulfill({ status: 409, contentType: 'application/json',
-    body: JSON.stringify({ ok: false, code: 'starter_checkout_not_payable' }) }), { times: 1 });
+  const notPayable = await stubFirst(page, '**/api/actions/checkout.continuation', route => route.fulfill({ status: 409,
+    contentType: 'application/json', body: JSON.stringify({ ok: false, code: 'starter_checkout_not_payable' }) }));
   await choice(page, 'resume').click();
   await choice(page, 'different').click();
+  expect(notPayable.hits, 'the resume was answered as not payable').toBeGreaterThanOrEqual(1);
   await expect(panel(page)).toContainText(managed('differentStarted'));
   await details(page, email);
   const newer = await placed(page);

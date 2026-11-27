@@ -223,18 +223,29 @@ it.each([
 });
 
 
-it("commits and replays net with the same ledger and refuses a gross kind on the exclusive list", async () => {
+it("commits and replays an exclusive core price with the legacy aggregate already present", async () => {
   const command = await seedSku(false), exclusive = randomUUID();
   await owner.query("UPDATE public.price_lists SET status='draft' WHERE id=$1", [list]);
   try {
     await owner.query(`INSERT INTO public.price_lists(id,name,region_code,currency,amount_basis,valid_from)
       VALUES($1,'Test exclusive list','ZZ','XXX','tax_exclusive',clock_timestamp()-interval '1 hour')`, [exclusive]);
+    await owner.query(`INSERT INTO public.price_entries(price_list_id,variant_id,mode,amount_kind,unit_price_minor,valid_from)
+      VALUES($1,$2,'subscription','net',125,'-infinity')`, [exclusive, command.variantId]);
+    const aggregate = () => owner.query(`SELECT public.commerce_offer_policy_v2_readiness()->'reasons'
+      ? 'catalog_1490_legacy_1340_invalid' AS present`);
+    expect((await aggregate()).rows).toEqual([{ present: true }]);
     const net = { ...command, priceListId: exclusive, expectedListAmountBasis: "tax_exclusive", amountKind: "net" };
     expect(await apply({ ...net, amountKind: "gross" })).toEqual({ outcome: "validation_issue", reason: "catalog_price_setup_basis_mismatch" });
     expect(await receipts(net.commandKey)).toEqual([]);
     const result = await apply(net);
     expect(result).toMatchObject({ outcome: "committed", receipt: { amountBasis: "tax_exclusive", previous: null, current: { amountKind: "net" } } });
     expect(await apply(net)).toEqual({ ...result, outcome: "replayed" });
+    const target = { skuId: command.variantId, requiredModes: ["one_time"],
+      skuFacts: { status: "active", isAddon: false, sellableStandalone: true, sellableInSubscription: false } };
+    expect((await owner.query(`SELECT public.catalog_publication_target_price_verdict($1,statement_timestamp()) AS result`,
+      [{ targets: [target] }])).rows[0].result).toMatchObject({ amountBasis: "tax_exclusive",
+      targets: [{ skuId: command.variantId, reason: null, observations: { subscriptionReady: true } }] });
+    expect((await aggregate()).rows).toEqual([{ present: true }]);
   } finally {
     await owner.query("UPDATE public.price_lists SET status='draft' WHERE id=$1", [exclusive]);
     await owner.query("UPDATE public.price_lists SET status='active' WHERE id=$1", [list]);

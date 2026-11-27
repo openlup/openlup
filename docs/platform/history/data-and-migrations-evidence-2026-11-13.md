@@ -1963,7 +1963,7 @@ unchanged. Existing parcel contact ownership
 and carrier-completeness checks remain decisive; frozen nulls are preserved.
 Saved snapshots use the existing destination personal-data and finite-transfer
 boundary. No new destination export/erasure path or blanket erasure coverage is
-claimed. See [the package composition](../../../packages/platform/README.md#saved-subscription-shipping-selection).
+claimed. See [the package composition](../PLATFORM_PACKAGE_REFERENCE.md#saved-subscription-shipping-selection).
 
 ## Scoped customer preference data
 
@@ -1997,7 +1997,7 @@ retention period is supplied. Finite native capture/qualified restore carries ex
 rows after clients, with unchanged replay. Legacy installations are capture
 sources; the compatible-row copier is unchanged. Managed-source nonempty
 preferences have no typed projection and explicitly refuse. See the
-[composition recipe](../../../packages/platform/README.md#customer-delivery-and-payment-preferences)
+[composition recipe](../PLATFORM_PACKAGE_REFERENCE.md#customer-delivery-and-payment-preferences)
 for the trusted checkout-client boundary, required billing-hint reader and
 redacted `applied:false` defaults. No defaults are applied during import.
 
@@ -2071,7 +2071,7 @@ and components after invoice duties, with exact row/replay witnesses. Legacy
 is capture-only. Unsupported nonempty managed-source profile relations refuse
 rather than disappear. No restore applies profile defaults, rewrites invoices,
 performs fiscal/provider work or activates a target. See the
-[package recipe](../../../packages/platform/README.md#customer-billing-profiles-and-frozen-invoice-buyers)
+[package recipe](../PLATFORM_PACKAGE_REFERENCE.md#customer-billing-profiles-and-frozen-invoice-buyers)
 for explicit ports, handler binding and the required privacy contributor.
 
 ## First-duty invoice buyer capture

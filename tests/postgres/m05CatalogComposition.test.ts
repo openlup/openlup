@@ -17,7 +17,7 @@ import { createPostgresCommercePriceAuthorityPort } from "../../server/adapters/
 import { createM05CatalogBinding } from "../../server/runtime/public-reference/m05CatalogBinding.js";
 import { m05CatalogSchema } from "../../server/runtime/public-reference/m05CatalogSchema.js";
 import { resolveAutomaticQuotePromotions } from "../../server/domains/commerce/quoteAutomaticPromotions.js";
-import { applyPromotionCodesV2 } from "../../server/domains/commerce/quotePromotionCodeAdjustments.js";
+import { applyPromotionCodesV2 } from "../../server/domains/commerce/dbBackedCommerceQuotePort.js";
 import { createRoutePromotionAcceptanceIssuer } from "../../server/bff/commerce/promotionCodeQuoteComposition.js";
 import { deriveOfferAvailability } from "../../src/domains/commerce/offerAvailability.js";
 import { createResponse } from "../helpers/catalogRouteResponse.js";

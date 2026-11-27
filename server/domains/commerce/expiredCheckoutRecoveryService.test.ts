@@ -8,7 +8,7 @@ import type {
 import { CommerceOrderDraftPriceChangedError } from "../../../src/domains/commerce/ports.js";
 import type { CommerceCheckoutRuntimePort } from "../../../src/domains/commerce/runtimePorts.js";
 import type { CheckoutCompensationPort } from "./commerceCheckoutCompensation.js";
-import { CheckoutOrchestrationError } from "./commerceCheckoutOrchestrationError.js";
+import { CheckoutOrchestrationError } from "@openlup/platform/commerce/server";
 import type { CheckoutRecoveryOrderSnapshot } from "./checkoutRecoveryOrderPort.js";
 import {
   ExpiredCheckoutRecoveryConflictError,
@@ -145,7 +145,14 @@ describe("expired checkout recovery service", () => {
   });
 
   it("reports order_changed on commercial drift before creating a draft", async () => {
-    const deps = depsFor({ freshQuote: quote({ totalGross: money(5998), netTotal: money(5554), taxTotal: money(444) }) });
+    const deps = depsFor({
+      freshQuote: quote({
+        shippingGross: money(1000),
+        totalGross: money(5998),
+        netTotal: money(5554),
+        taxTotal: money(444),
+      }),
+    });
     const service = createExpiredCheckoutRecoveryService(deps);
 
     await expect(service.recreate({
@@ -263,6 +270,30 @@ describe("expired checkout recovery service", () => {
       }),
     }));
     expect(deps.compensationPort.cancelAbandonedOrder).not.toHaveBeenCalled();
+  });
+
+  it("validates and recreates a subscription_cycle order with non-null subscriptionId and subscriptionCycleId", async () => {
+    const deps = depsFor({ paymentProvider: "hidden_rehearsal" });
+    const cycleOrder = order({
+      mode: "subscription_cycle",
+      subscriptionId: "77777777-7777-4777-8777-777777777777",
+      subscriptionCycleId: "88888888-8888-4888-8888-888888888888",
+    });
+
+    const service = createExpiredCheckoutRecoveryService(deps);
+    await expect(service.validate(cycleOrder)).resolves.toBe(true);
+    await expect(service.recreate({
+      order: cycleOrder,
+      clientId: CLIENT_ID,
+      paymentProvider: "hidden_rehearsal",
+    })).resolves.toMatchObject({ orderId: REPLACEMENT_ID, status: "paid" });
+
+    expect(deps.paymentSafetyPort.verifyPriorPayment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subscriptionId: "77777777-7777-4777-8777-777777777777",
+        subscriptionCycleId: "88888888-8888-4888-8888-888888888888",
+      }),
+    );
   });
 
   it("surfaces the finalize refusal when a legacy pet-less subscription order is recovered", async () => {

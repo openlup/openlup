@@ -64,10 +64,12 @@ it("E05 W1 optional payload and exact idempotency bytes", async () => {
   expect(Object.hasOwn(absentOptions.headers!, "Idempotency-Key"), "E05 absent idempotency key").toBe(false);
   for (const idempotencyKey of [undefined, "", " \t ", "  exact:key\t "]) {
     const h = harness();
-    const signal = new AbortController().signal;
-    await h.send({ ...message, text: "", replyTo: "reply@example.invalid", attachments: [], signal, idempotencyKey });
+    const controller = new AbortController();
+    await h.send({ ...message, text: "", replyTo: "reply@example.invalid", attachments: [], signal: controller.signal, idempotencyKey });
     const options = h.fetcher.mock.calls[0][1]!;
-    expect(options.signal, "E05 signal identity").toBe(signal);
+    expect(options.redirect, "E05 manual redirect").toBe("manual");
+    expect(options.signal, "E05 signal present").toBeInstanceOf(AbortSignal);
+    expect(options.signal!.aborted, "E05 signal active before caller abort").toBe(false);
     expect(Object.keys(JSON.parse(options.body as string)), "E05 present optional keys and wire order").toEqual(["from", "to", "subject", "html", "text", "reply_to", "attachments", "tags"]);
     expect(JSON.parse(options.body as string), "E05 empty text, reply-to and empty attachments").toMatchObject({ text: "", reply_to: "reply@example.invalid", attachments: [] });
     expect(Object.hasOwn(options.headers!, "Idempotency-Key"), `E05 idempotency presence ${JSON.stringify(idempotencyKey)}`).toBe(idempotencyKey !== undefined);
@@ -104,4 +106,100 @@ it.each([["E10", "abort"], ["E11", "network"]] as const)("%s W1 %s has no retry 
 it("E12 exports exactly the three approved functions", () => {
   expect(Object.keys(resend).sort()).toEqual(["createResendTransport", "createResendWebhookHandler", "runResendDeliveryReconciliation"]);
   for (const value of Object.values(resend)) expect(typeof value).toBe("function");
+});
+
+it("E13 enforces default 15s timeout across fetch and stalled body read, and honors caller signal", async () => {
+  vi.useFakeTimers();
+  try {
+    const fetchHang = harness();
+    fetchHang.fetcher.mockImplementation((_url, init) => new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(init.signal?.reason ?? new DOMException("aborted", "AbortError")));
+    }));
+    const pendingFetch = fetchHang.send();
+    await vi.advanceTimersByTimeAsync(15_000);
+    const fetchResult = await pendingFetch;
+    expect(fetchResult.outcome).toMatchObject({ ok: false, httpStatus: 0, aborted: true });
+    expect(fetchResult.providerResponse).toEqual({ exception: true, aborted: true });
+
+    const bodyHang = harness();
+    let cancelled = false;
+    bodyHang.fetcher.mockImplementation(async () => new Response(new ReadableStream({
+      start() {},
+      cancel() { cancelled = true; },
+    }), { status: 200 }));
+    const pendingBody = bodyHang.send();
+    await vi.advanceTimersByTimeAsync(15_000);
+    const bodyResult = await pendingBody;
+    expect(cancelled).toBe(true);
+    expect(bodyResult.outcome).toMatchObject({ ok: false, httpStatus: 0, aborted: true });
+
+    const callerAbort = harness();
+    const controller = new AbortController();
+    callerAbort.fetcher.mockImplementation((_url, init) => new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(new DOMException("caller-cancelled", "AbortError")));
+    }));
+    const pendingCaller = callerAbort.send({ ...message, signal: controller.signal });
+    controller.abort(new DOMException("caller-cancelled", "AbortError"));
+    const callerResult = await pendingCaller;
+    expect(callerResult.outcome).toMatchObject({ ok: false, httpStatus: 0, aborted: true, providerError: "caller-cancelled" });
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("E14 uses redirect: manual and refuses 3xx redirects without reading body", async () => {
+  const h = harness();
+  let cancelled = false;
+  h.fetcher.mockImplementation(async () => new Response(new ReadableStream({
+    start(controller) { controller.enqueue(new TextEncoder().encode("redirect body")); },
+    cancel() { cancelled = true; },
+  }), { status: 302, headers: { location: "https://evil.example.invalid/steal" } }));
+  const result = await h.send();
+  expect(h.fetcher.mock.calls[0][1]?.redirect).toBe("manual");
+  expect(cancelled).toBe(true);
+  expect(result.outcome).toMatchObject({ ok: false, resendId: null, httpStatus: 302, providerError: "Resend HTTP 302", aborted: false });
+});
+
+it("E15 enforces 256 KiB response body cap on Content-Length and streaming chunks", async () => {
+  const declared = harness();
+  declared.fetcher.mockImplementation(async () => new Response("{}", {
+    status: 200,
+    headers: { "content-length": String(256 * 1024 + 1) },
+  }));
+  const declaredResult = await declared.send();
+  expect(declaredResult.outcome).toMatchObject({ ok: false, httpStatus: 0, aborted: false });
+  expect(declaredResult.outcome.providerError).toContain("exceeded");
+
+  const streamed = harness();
+  let cancelled = false;
+  let pulled = 0;
+  streamed.fetcher.mockImplementation(async () => new Response(new ReadableStream({
+    pull(controller) {
+      pulled += 1;
+      controller.enqueue(new Uint8Array(64 * 1024));
+    },
+    cancel() { cancelled = true; },
+  }), { status: 200 }));
+  const streamedResult = await streamed.send();
+  expect(cancelled).toBe(true);
+  expect(pulled).toBeLessThanOrEqual(6);
+  expect(streamedResult.outcome).toMatchObject({ ok: false, httpStatus: 0, aborted: false });
+  expect(streamedResult.outcome.providerError).toContain("exceeded");
+});
+
+it("E16 redacts bearer tokens, provider keys, webhook secrets and emails in error messages", async () => {
+  const h = harness();
+  h.fetcher.mockImplementationOnce(async () => Response.json({
+    message: "Invalid Authorization Bearer secret_tok.123 with key re_live_ABC123_xyz and whsec_dGVzdA== for alice@example.invalid",
+  }, { status: 401 }));
+  const httpErr = await h.send();
+  expect(httpErr.outcome.providerError).toBe(
+    "Invalid Authorization Bearer [redacted] with key [redacted] and [redacted] for [email]",
+  );
+
+  h.fetcher.mockRejectedValueOnce(new Error("Upstream rejected Bearer tok_999 key re_test_9999 for bob@example.invalid"));
+  const netErr = await h.send();
+  expect(netErr.outcome.providerError).toBe(
+    "Upstream rejected Bearer [redacted] key [redacted] for [email]",
+  );
 });

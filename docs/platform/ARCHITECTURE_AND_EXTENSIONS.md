@@ -96,7 +96,7 @@ unchanged.
 
 Reference renewal execution, readback, recovery guidance, setup routes, channel
 list and activation use the experimental
-[reference-support exports](../../packages/platform/README.md#reference-support-surface).
+[reference-support exports](PLATFORM_PACKAGE_REFERENCE.md#reference-support-surface).
 SDK/HTTP construction, flags and the simulator stay host-owned. Prepared attempts
 re-export the package's `ProviderAttemptPreDispatchError` with one class identity.
 
@@ -496,7 +496,7 @@ owner TEST evidence. See [the payment adapter contract](CANONICAL_CONTRACTS.md#o
 and [A2 ledger](plans/oss-a2-payment-adapters.md).
 
 The vendor subpaths also expose the eleven bounded experimental
-[reference-support helpers](../../packages/platform/README.md#reference-support-surface).
+[reference-support helpers](PLATFORM_PACKAGE_REFERENCE.md#reference-support-surface).
 The root execution/readback bindings consume those contributed implementations
 instead of retaining duplicate algorithms. Reference flags, SDK construction,
 payer fallback, repair handoffs and localized return presentation stay with the
@@ -2318,7 +2318,7 @@ explicit future acceptance.
 Place server orchestration in the existing platform package's exact
 `subscriptions` entry and browser-shareable declarations in its type-only
 `subscriptions/contracts` entry. No new package, dependency, testing subpath or
-star export is needed. The [package entry](../../packages/platform/README.md#subscription-contracts-and-renewal-port)
+star export is needed. The [package entry](PLATFORM_PACKAGE_REFERENCE.md#subscription-contracts-and-renewal-port)
 links to this owner for concrete carriers, the unchanged hosted
 cycle/refusal/failure contribution and its characterization. Hosted RPC carriers stay distinct from native claims;
 the local prepared-attempt type projection preserves the existing M07 shape
@@ -3581,7 +3581,7 @@ remain [M14 obligations](plans/oss-m14-operations-portability.md), including the
 ## Normalized channel ingest
 
 The channels module lives at existing Platform subpaths; see the
-[package contract](../../packages/platform/README.md#channels). Browser-safe
+[package contract](PLATFORM_PACKAGE_REFERENCE.md#channels). Browser-safe
 contracts/helpers remain separate from Node orchestration. Hosts inject the
 existing order, payment, inventory, catalog-history and connection owners,
 provider decoding and enablement. This module creates no second stock, payment,

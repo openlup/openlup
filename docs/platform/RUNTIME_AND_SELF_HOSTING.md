@@ -315,7 +315,7 @@ builder and vendor-subpath mappings.
 The [M06 shipping binding](../../server/runtime/public-reference/m06ShippingBinding.ts)
 composes selection, address and flat-rate ports with host schemas and authority.
 Native address writes require a complete selected
-[saved-address port](../../packages/platform/README.md#saved-customer-address-book).
+[saved-address port](PLATFORM_PACKAGE_REFERENCE.md#saved-customer-address-book).
 Native flat-rate save requires the native rate port, a ready Core report and a
 same-database `nativeRateSchema` observation; managed BFFs retain their gates.
 
@@ -814,7 +814,7 @@ closes it after success or failure through the package binding.
 
 The inert [shipping binding](../../server/runtime/public-reference/m06ShippingBinding.ts)
 requires selected ports and host authority. Native address writes require an explicitly selected complete
-[saved-address port](../../packages/platform/README.md#saved-customer-address-book);
+[saved-address port](PLATFORM_PACKAGE_REFERENCE.md#saved-customer-address-book);
 unbound or incomplete native writers remain refused.
 Native flat-rate save requires a selected native rate port, a Core report in
 state `ready` and a same-database `nativeRateSchema` observation. Construct the
@@ -1042,7 +1042,7 @@ The Node reference start function accepts an admitted outbox candidate and a hos
 ### Account and support read bindings
 
 Customer profile and invoice-correction handlers are supplied as explicitly bound
-package mechanisms; [account mutation composition](../../packages/platform/README.md#customer-account-events-and-mutations)
+package mechanisms; [account mutation composition](PLATFORM_PACKAGE_REFERENCE.md#customer-account-events-and-mutations)
 requires host authentication and a principal/client scope. Each profile query and
 its subsequent event append commits separately. No default route, starter editor,
 mail consumer or fiscal operation is installed. Hosts using these writes must also
@@ -1126,7 +1126,7 @@ describe their shared typed refusal.
 
 Reference payment composition now calls the experimental vendor-subpath
 execution, reconciliation, HTTP, mapping and evidence helpers documented in the
-[package reference-support surface](../../packages/platform/README.md#reference-support-surface).
+[package reference-support surface](PLATFORM_PACKAGE_REFERENCE.md#reference-support-surface).
 Checkout, renewal, recovery/setup, channels, accounting payout SDK calls and
 activation keep their host wiring and flags. The bank/code binding translates `petId` to the
 package subject input and translates the outgoing account path/query and

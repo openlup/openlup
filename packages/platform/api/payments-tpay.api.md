@@ -235,6 +235,12 @@ export interface PaymentProviderRecoveryProvider {
         intentProviderPaymentId: string | null;
         providerSessionId: string | null;
     }): string | null;
+    resolveReadbackId?(snapshot: {
+        providerPaymentId?: string | null;
+        intentProviderPaymentId?: string | null;
+        providerAttemptId?: string | null;
+        providerSessionId?: string | null;
+    }): string | null | undefined;
     readPayment(input: {
         providerPaymentId: string;
         attempt?: ClaimedPaymentAttempt;

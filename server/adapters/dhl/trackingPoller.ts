@@ -1,10 +1,21 @@
 import {
   CARRIER_DISPLAY_NAME,
   CARRIER_NAMESPACE,
+  CARRIER_SOAP_RESPONSE_MAX_BYTES,
+  CARRIER_SOAP_TIMEOUT_MS,
+  CarrierSoapResponseTooLargeError,
+  callCarrierSoap,
   escapeXml,
+  extractFault,
+  sanitizeCarrierError,
 } from "../../infra/dhl/adminDhlSoap.js";
 
-export { CARRIER_NAMESPACE as CARRIER_TRACKING_ENDPOINT };
+export {
+  CARRIER_NAMESPACE as CARRIER_TRACKING_ENDPOINT,
+  CARRIER_SOAP_TIMEOUT_MS,
+  CarrierSoapResponseTooLargeError,
+  sanitizeCarrierError,
+};
 export const CARRIER_HTTP_ERROR_PREFIX = `${CARRIER_DISPLAY_NAME} HTTP`;
 
 export type CarrierTrackingEvents = { codes: string[]; descriptions: string[] };
@@ -42,16 +53,21 @@ export async function pollCarrierTracking(input: {
   trackingNumber: string;
   username: string;
   password: string;
+  timeoutMs?: number;
+  maxBodyBytes?: number;
+  signal?: AbortSignal;
 }): Promise<CarrierTrackingPollResult> {
-  const response = await input.fetchImpl(CARRIER_NAMESPACE, {
-    method: "POST",
-    headers: {
-      "Content-Type": "text/xml; charset=utf-8",
-      SOAPAction: `${CARRIER_NAMESPACE}#getTrackAndTraceInfo`,
+  const response = await callCarrierSoap(
+    input.fetchImpl,
+    "getTrackAndTraceInfo",
+    buildCarrierTrackingEnvelope(input.trackingNumber, input.username, input.password),
+    {
+      timeoutMs: input.timeoutMs,
+      maxBodyBytes: input.maxBodyBytes ?? CARRIER_SOAP_RESPONSE_MAX_BYTES,
+      signal: input.signal,
     },
-    body: buildCarrierTrackingEnvelope(input.trackingNumber, input.username, input.password),
-  });
-  const responseText = await response.text();
+  );
+  const responseText = response.text;
   const providerError =
     extractFault(responseText) ??
     (response.ok === false
@@ -71,8 +87,4 @@ function allTagValues(xml: string, name: string): string[] {
     if (match[1].trim()) values.push(match[1].trim());
   }
   return values;
-}
-
-function extractFault(xml: string): string | null {
-  return xml.match(/<faultstring[^>]*>([^<]*)<\/faultstring>/i)?.[1] ?? null;
 }

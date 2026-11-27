@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { PartnersB2BInquirySubmitRequest } from "../../../src/domains/partners/contracts.js";
 import { isFreeEmailDomain } from "../../../src/lib/schemas/fields/identity.js";
-import type { PublicIntakeDeliveryMessage, PublicIntakeDeliveryPort } from "../communications/ports.js";
+import type { PublicIntakeDeliveryMessage, PublicIntakeDeliveryPort } from "@openlup/platform/communications/contracts";
 
 const B2B_SPECIFIC_BLOCKED_EMAIL_DOMAINS = new Set([
   "yahoo.co.uk", "yahoo.fr", "yahoo.de", "yahoo.es", "hotmail.co.uk",

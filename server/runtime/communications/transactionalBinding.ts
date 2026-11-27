@@ -14,7 +14,7 @@ import {
   TransactionalDeliveryUnavailableError,
   TransactionalDeliveryValidationError,
   createTransactionalDelivery,
-} from "../../domains/communications/transactionalDelivery.js";
+} from "@openlup/platform/communications";
 import {
   DEFAULT_PLATFORM_BUNDLE,
   getBundleDescriptor,

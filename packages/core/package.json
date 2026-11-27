@@ -1,14 +1,20 @@
 {
   "name": "@openlup/core",
   "version": "1.4.0",
-  "description": "Neutral D2C subscription and bundle commerce kernels.",
+  "description": "Headless TypeScript contracts and pure engines for subscription, bundle, pricing, and fulfillment commerce.",
   "keywords": [
     "openlup",
+    "ecommerce",
+    "headless-commerce",
     "subscription",
     "subscription-commerce",
     "d2c",
     "bundles",
     "pricing",
+    "promotions",
+    "checkout",
+    "payments",
+    "fulfillment",
     "commerce",
     "typescript"
   ],

@@ -174,12 +174,12 @@ profile does not select it for checkout.
 
 Select the mutation port as the self-service facade's `profile` lane. It also
 supplies `requestInvoiceCorrection` and metadata-only `readEvents` for the
-recent events within the [mutation port's read bound](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/README.md#customer-account-events-and-mutations). Profile names collapse whitespace; empty or null clears a
+recent events within the [mutation port's read bound](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#customer-account-events-and-mutations). Profile names collapse whitespace; empty or null clears a
 field, and omission preserves it. Email is not an editable field. Your phone
 policy supplies the calling prefix and must preserve the native phone shape.
 
 The schema policy may narrow the native text and collection limits, but cannot
-widen them. Consult the [mutation schema contract](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/README.md#customer-account-events-and-mutations)
+widen them. Consult the [mutation schema contract](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#customer-account-events-and-mutations)
 for the exact bounds and phone shape. Invalid policy construction throws
 `customer_account_policy_invalid`.
 
@@ -207,7 +207,7 @@ The billing-profile handler supports GET/POST/PATCH/DELETE with authenticated
 identity, strict requests/responses and your responder/messages. Consumer
 signatures require no driver types. Tax policy cannot widen the fixed limits
 or bypass the native weighted checksum. Exact validation belongs to the
-[billing schema contract](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/README.md#customer-billing-profiles-and-frozen-invoice-buyers). Customer-supplied verification level,
+[billing schema contract](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#customer-billing-profiles-and-frozen-invoice-buyers). Customer-supplied verification level,
 source and evidence are stored facts, not a registry verification workflow.
 
 Updating a missing or foreign profile refuses with

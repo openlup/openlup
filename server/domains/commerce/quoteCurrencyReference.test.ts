@@ -68,7 +68,7 @@ describe("reference quote currency", () => {
 
   it("names no quote-factory currency default outside its configured owner", () => {
     const root = resolve(import.meta.dirname, "../../..");
-    const paths = ["server/domains/commerce/dbBackedCommerceQuotePort.ts", "server/domains/commerce/commerceQuoteCatalogReadPort.ts", "server/domains/commerce/quoteAutomaticPromotions.ts", "server/domains/commerce/quotePromotionCodeAdjustments.ts"];
+    const paths = ["server/domains/commerce/dbBackedCommerceQuotePort.ts", "server/domains/commerce/commerceQuoteCatalogReadPort.ts", "server/domains/commerce/quoteAutomaticPromotions.ts"];
     for (const path of paths) {
       expect(readFileSync(resolve(root, path), "utf8")).not.toMatch(/currency\s*(?:\?\s*:|:|=)\s*"[A-Za-z]{3}"/i);
     }
@@ -84,12 +84,11 @@ describe("current promotion floor observation", () => {
     const preview = await import("./promotionCodePreview.js");
     vi.stubEnv("COMMERCE_MIN_PRODUCT_PAYABLE_MINOR", "19");
     await import("./quotePromotionV2.js");
-    await import("./quotePromotionCodeAdjustments.js");
     await import("./dbBackedCommerceQuotePort.js");
     expect(preview.MINIMUM_PRODUCT_PAYABLE_MINOR).toBe(7);
   });
 
-  it.each(["./promotionCodePreview.js", "./quotePromotionV2.js", "./quotePromotionCodeAdjustments.js", "./dbBackedCommerceQuotePort.js"])(
+  it.each(["./promotionCodePreview.js", "./quotePromotionV2.js", "./dbBackedCommerceQuotePort.js"])(
     "%s refuses a malformed floor during import", async (entry) => {
       vi.resetModules();
       vi.stubEnv("COMMERCE_MIN_PRODUCT_PAYABLE_MINOR", "invalid");

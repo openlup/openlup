@@ -960,11 +960,15 @@
         "sha256": "9beb09c9508a79b29d856f71abc736014e3cf1e99a9fe26896018e45813e45ec"
       },
       {
-        "file": "db/platform/migrations/20261129160006_commerce_destination_v2_export_ownership.sql",
+        "file": "db/platform/migrations/20261129160006_catalog_price_core_sku_modes_v2.sql",
+        "sha256": "81a068c40825376536f6673dc192d6d16edd8fa4264020c3e55e99df66211ddb"
+      },
+      {
+        "file": "db/platform/migrations/20261129160007_commerce_destination_v2_export_ownership.sql",
         "sha256": "452df0d2a5e3f18d6f0f80f5f332188d8f6f9f402abda88f0f3c788dba1807e6"
       }
     ],
-    "objectInventorySha256": "c05c578affe03befc703c853588c31fed4697e8a580341609c21681af668885b",
+    "objectInventorySha256": "ebe63acd39d101a496626c4dba55c1ceea46ef1872132073fd709a171a06f517",
     "qualified": {
       "baseline": {
         "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1948,16 +1952,20 @@
           "sha256": "9beb09c9508a79b29d856f71abc736014e3cf1e99a9fe26896018e45813e45ec"
         },
         {
-          "file": "db/platform/migrations/20261129160006_commerce_destination_v2_export_ownership.sql",
+          "file": "db/platform/migrations/20261129160006_catalog_price_core_sku_modes_v2.sql",
+          "sha256": "81a068c40825376536f6673dc192d6d16edd8fa4264020c3e55e99df66211ddb"
+        },
+        {
+          "file": "db/platform/migrations/20261129160007_commerce_destination_v2_export_ownership.sql",
           "sha256": "452df0d2a5e3f18d6f0f80f5f332188d8f6f9f402abda88f0f3c788dba1807e6"
         }
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "949f5082e5b63fed367d029a3692092b4c67e4501a1944fd09016ef209d044f7"
+          "withRestore": "012e636c9e37908f699116cf7e3033b08eccf8a7aa45820ff348a69cb0447366"
         },
         "separateMigrator": {
-          "withRestore": "78fcd11e0335616f238a2297a379a7b0b755440e94e31fcc5b0e1dff2e00eda5"
+          "withRestore": "46a17f505d5686215b40a8785eae9d4db9e942ee9fc5b6c93c3e564d6a08d9e3"
         }
       }
     },
@@ -2936,13 +2944,17 @@
           "sha256": "9beb09c9508a79b29d856f71abc736014e3cf1e99a9fe26896018e45813e45ec"
         },
         {
-          "file": "db/platform/migrations/20261129160006_commerce_destination_v2_export_ownership.sql",
+          "file": "db/platform/migrations/20261129160006_catalog_price_core_sku_modes_v2.sql",
+          "sha256": "81a068c40825376536f6673dc192d6d16edd8fa4264020c3e55e99df66211ddb"
+        },
+        {
+          "file": "db/platform/migrations/20261129160007_commerce_destination_v2_export_ownership.sql",
           "sha256": "452df0d2a5e3f18d6f0f80f5f332188d8f6f9f402abda88f0f3c788dba1807e6"
         }
       ],
       "objectInventorySha256": {
-        "installerManaged": "546595bcdf3d127160fd1a7387769f0da1231c745a34e98ac450d0f916daaaa2",
-        "operatorProvisioned": "4af951322261cf92e1c36c98cbb27abfbec297777b35d20bb38df0238367d04a"
+        "installerManaged": "4d2b08e5a4caf83e2c8648b680f98e62c596e761377d388b9409261357a9e45b",
+        "operatorProvisioned": "fe65ac63bcc39922ab1fd7396d81916abbdb4598fdbb899616b0712a1b62d0ac"
       }
     }
   },
@@ -4143,8 +4155,13 @@
       "sha256": "9beb09c9508a79b29d856f71abc736014e3cf1e99a9fe26896018e45813e45ec"
     },
     {
-      "file": "20261129160006_commerce_destination_v2_export_ownership.sql",
-      "source": "db/platform/migrations/20261129160006_commerce_destination_v2_export_ownership.sql",
+      "file": "20261129160006_catalog_price_core_sku_modes_v2.sql",
+      "source": "db/platform/migrations/20261129160006_catalog_price_core_sku_modes_v2.sql",
+      "sha256": "81a068c40825376536f6673dc192d6d16edd8fa4264020c3e55e99df66211ddb"
+    },
+    {
+      "file": "20261129160007_commerce_destination_v2_export_ownership.sql",
+      "source": "db/platform/migrations/20261129160007_commerce_destination_v2_export_ownership.sql",
       "sha256": "452df0d2a5e3f18d6f0f80f5f332188d8f6f9f402abda88f0f3c788dba1807e6"
     },
     {
