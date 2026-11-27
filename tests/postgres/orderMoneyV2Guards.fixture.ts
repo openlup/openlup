@@ -183,13 +183,14 @@ async function verifyExclusive(store: Store, value: Fixture, input: Begin, body:
 
 export async function issue(store: Store, sku: Sku, inclusive: boolean,
   edit: (body: Body) => Body = body => body,
-  { pending = false, legacySeal = false, promotions = [], paymentBounds, measureCompletion = false }: {
+  { pending = false, legacySeal = false, promotions = [], paymentBounds, context, measureCompletion = false }: {
     pending?: boolean; legacySeal?: boolean; promotions?: readonly PromotionTarget[];
+    context?: Parameters<typeof fixture>[2];
     paymentBounds?: Pick<Body["paymentLimits"], "minMinor" | "maxMinor">;
     measureCompletion?: boolean;
   } = {}) {
   const at = (await store.owner.query<{ now: Date }>("SELECT date_trunc('milliseconds',clock_timestamp()) AS now")).rows[0]!.now;
-  const value = await fixture(store, at.toISOString());
+  const value = await fixture(store, at.toISOString(), context);
   const input = value.begin(inclusive ? fiscalKind : exclusiveKind, !legacySeal);
   if (paymentBounds && input.pin.composition) {
     Object.assign(input.pin.composition.limits, paymentBounds, { effective: paymentBounds });

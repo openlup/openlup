@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { expect, it, vi } from "vitest";
 import { createOmnipackClient } from "../../../src/fulfillment/omnipack/client.js";
 import { buildOmnipackDispatchCommand } from "../../../src/fulfillment/omnipack/omnipackDispatchPayload.js";
-import { candidate, config, jsonResponse } from "./fixtures.js";
+import { candidate, config, jsonResponse, stock, stockEvidence } from "./fixtures.js";
 
 it("requests fresh credentials for every HTTP attempt and retains no returned credential object", async () => {
   let generation = 0; let reads = 0;
@@ -45,4 +45,84 @@ it("has no environment reader, ambient fetch default or import-time transport ca
   const fetchImpl = vi.fn(); const credentials = vi.fn();
   imported.createOmnipackClient({ ...config, credentials }, fetchImpl);
   expect(fetchImpl).not.toHaveBeenCalled(); expect(credentials).not.toHaveBeenCalled();
+});
+it("enforces timeout across stalled response body reads and cancels the stream", async () => {
+  vi.useFakeTimers();
+  try {
+    const cancel = vi.fn();
+    const fetchImpl = vi.fn(async () => new Response(new ReadableStream({ start() {}, cancel }), { status: 200 }));
+    const deadline = 50;
+    let settled = false;
+    const pending = createOmnipackClient({ ...config, timeoutMs: deadline, safeReadRetries: 0 }, fetchImpl).getStock();
+    void pending.then(() => { settled = true; }, () => { settled = true; });
+    const rejection = expect(pending).rejects.toMatchObject({ status: null, code: "network_error", retryable: false });
+    await vi.advanceTimersByTimeAsync(deadline - 1);
+    expect(settled).toBe(false);
+    expect(cancel).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    await rejection;
+    expect(settled).toBe(true);
+    expect(cancel).toHaveBeenCalledOnce();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+it("refuses oversized response bodies and cancels the stream", async () => {
+  const cancel = vi.fn();
+  const chunk = new Uint8Array(1024 * 1024);
+  let emitted = 0;
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      emitted += 1;
+      controller.enqueue(chunk);
+    },
+    cancel,
+  }, { highWaterMark: 0 });
+  const fetchImpl = vi.fn(async () => new Response(stream, { status: 200 }));
+  await expect(createOmnipackClient({ ...config, safeReadRetries: 0 }, fetchImpl).getStock()).rejects.toMatchObject({
+    status: null,
+    code: "network_error",
+    retryable: false,
+  });
+  expect(cancel).toHaveBeenCalledOnce();
+  expect(emitted).toBe(6);
+
+  const declaredCancel = vi.fn();
+  const declaredStream = new ReadableStream({ start() {}, cancel: declaredCancel });
+  const declaredFetch = vi.fn(async () => new Response(declaredStream, {
+    status: 200,
+    headers: { "Content-Length": String(5 * 1024 * 1024 + 1) },
+  }));
+  await expect(createOmnipackClient({ ...config, safeReadRetries: 0 }, declaredFetch).getStock()).rejects.toMatchObject({
+    status: null,
+    code: "network_error",
+    retryable: false,
+  });
+  expect(declaredCancel).toHaveBeenCalledOnce();
+});
+it("respects and caps Retry-After delay on retryable GET responses", async () => {
+  vi.useFakeTimers();
+  try {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: "RATE_LIMITED" }), { status: 429, headers: { "Retry-After": "2" } }))
+      .mockResolvedValueOnce(jsonResponse(stock));
+    const pending = createOmnipackClient({ ...config, timeoutMs: 5_000, safeReadRetries: 1 }, fetchImpl).getStock();
+    await vi.advanceTimersByTimeAsync(1_999);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(pending).resolves.toEqual(stockEvidence);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+
+    const cappedFetch = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: "RATE_LIMITED" }), { status: 429, headers: { "Retry-After": "60" } }))
+      .mockResolvedValueOnce(jsonResponse(stock));
+    const capped = createOmnipackClient({ ...config, timeoutMs: 15_000, safeReadRetries: 1 }, cappedFetch).getStock();
+    await vi.advanceTimersByTimeAsync(9_999);
+    expect(cappedFetch).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(capped).resolves.toEqual(stockEvidence);
+    expect(cappedFetch).toHaveBeenCalledTimes(2);
+  } finally {
+    vi.useRealTimers();
+  }
 });
