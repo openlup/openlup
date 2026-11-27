@@ -77,6 +77,8 @@ it("renews projected managed terms without a method row after connected restore 
     for (const file of ["20261030121000_channel_retained_basis.sql", "20261030122000_channel_purchased_source.sql"])
       await source.query(readFileSync(`supabase/migrations/${file}`, "utf8"));
     await source.query("RESET ROLE");
+    expect((await source.query(`SELECT to_regprocedure(
+      'public.subscriptions__allocate_renewal_occurrence(uuid,uuid,text,jsonb)') AS producer`)).rows).toEqual([{ producer: null }]);
     const client = randomUUID(), user = randomUUID(), subscription = randomUUID(), product = randomUUID(), sku = randomUUID(), price = randomUUID(), line = randomUUID();
     // Synthetic source-rail history, not target renewal terms or method state.
     await source.query("INSERT INTO auth.users(id,email) VALUES($1,'retained-health@example.invalid')", [user]);

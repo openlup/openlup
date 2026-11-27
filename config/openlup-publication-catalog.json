@@ -31690,6 +31690,18 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/nativeRenewalOccurrence.fixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/nativeRenewalOccurrenceDormancy.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/nativeRenewalOccurrenceProducer.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/nativeRenewalV3Legacy.fixture.ts",
       "class": "public-output"
     },

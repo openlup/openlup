@@ -10287,6 +10287,19 @@
         "createdFunctions": [],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "native-renewal-occurrence-producer",
+        "path": "db/platform/migrations/20261129160008_native_renewal_occurrence_producer.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.subscriptions__allocate_renewal_occurrence(uuid,uuid,text,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -15024,6 +15037,17 @@
           "signature": "public.commerce_destination_v2_export(uuid)",
           "beforeSha256": "985153688bfbd5484f6f3c87381be1abc34438392bbed069393ec63a3c15e171",
           "afterSha256": "5200538b1f253ae809f03596938a689f06e4a469436bedaf0bac9ec9e8320f28"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261129160008_native_renewal_occurrence_producer.sql",
+      "sha256": "31a544c3848c94585c4d0959c09edd875cbf781a4fe5d475a0559496cc1a07eb",
+      "functions": [
+        {
+          "signature": "public.subscriptions__allocate_renewal_occurrence(uuid,uuid,text,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "5010069482c117b5d06ae3e653545a8523162a93ba8bad2fce1b93337af0a501"
         }
       ]
     }
