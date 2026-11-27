@@ -282,7 +282,7 @@ matrix covers two v2 price plans, abandonment, resume and original replay.
 Apply schema first, then compatible v1/v2 readers before enabling authoring.
 Rollback stops new v2 writes and retains a reader for existing v2 history.
 The managed rail does not supply this feature; the
-[migration note](../../../packages/platform/CHANGELOG.md#100) records its managed design.
+[migration note](../../../packages/platform/CHANGELOG-HISTORY.md#100) records its managed design.
 
 None of these four relations references `public.clients`, so no client
 absorption-policy entry applies. Revision `actor_id` is an opaque operator
