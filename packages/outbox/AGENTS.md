@@ -39,7 +39,7 @@ export const bindStore = (executor: SqlExecutor) => createPostgresOutboxStore(ex
 
 The executor must commit each operation before resolving. Follow
 [installation and transaction ownership](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/core/docs/guide/how-to/build/outbox.md#postgresql-installation-and-transactions)
-and [deliver events with the outbox](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/outbox.md).
+and [deliver events with the outbox](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/core/docs/guide/how-to/build/outbox.md).
 
 ## Sources and declarations
 
