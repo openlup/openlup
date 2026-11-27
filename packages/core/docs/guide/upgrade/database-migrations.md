@@ -81,6 +81,377 @@ Use those assets in your complete chain or use the catalogue that defines them.
 Applying both attempts to recreate functions and fails. Importing
 `@openlup/platform/job-ledger` applies no SQL.
 
+## Reconcile stale native renewals
+
+If this renewal forward is pending on your installation, start this checklist before applying it. It applies to installations upgrading from Platform 1.0.0 through 1.4.x. Keep verified payment and fulfillment evidence intake available throughout.
+
+1. **Pause and drain renewal snapshot building (including builds that graduate a subscription's terms), renewal claim creation, renewal and retry dispatch, and template-edit acceptance before applying the forward.** Stop new builds and claims from mounted and custom callers, including direct callers. Wait until in-flight build and claim-creating transactions have committed or rolled back. An RPC returning inside an open transaction does not complete the drain. Stop acceptance on every template-edit route and drain its open transactions. Keep builds, claims and edit acceptance paused through forward commit. Stop new sends at the shared provider execution boundary and drain all in-flight sends there, including callers already past local preparation. Keep verified payment and fulfillment intake available throughout. Defer independent lifecycle changes that affect schedules or eligibility, including manual and timed resume and reactivation, for the affected population through cutover. Drain any in-flight reactivation before the forward. Run the forward separately from owner maintenance or restore that can change the captured rows or their schema. Authorized reconciliation and verified evidence remain available.
+2. Apply the bundled PostgreSQL forward and confirm it in the ledger. Before the first cut or repair, pause and drain independent table rewrites, truncation and relevant DDL on the relations the checks use, and replacement creation and other independent shipment-lineage changes for the affected population. Keep these fences through resume. Continue accepting verified evidence for existing shipments.
+3. In `auto_align`, verify each live arrival route using its actual writer, row visibility, enabled trigger and `READ COMMITTED` write transaction. Exercise an eligible late arrival on the same installation profile. Include direct, inherited, owner and owner-executed command routes. Bring a qualified route up before switching traffic away from an unqualified one. Drain transactions admitted through the old authority or transaction context. An unresolved route blocks resume.
+4. Run both read-only checks on one authorized primary connection with complete visibility. Use the shared ownership predicate in both statements. Record the cut, operation IDs and affected subscription IDs in the restricted upgrade record. Evidence committed before the first read is visible. Later ordinary commits appear on a rerun. Errors, incomplete visibility or a broken fence invalidate the run.
+5. Re-read live state. Use subscription and inventory owners for unprepared work and stock waits. Use verified readback, webhook replay, settlement or authorized closure for payment work. Preserve frozen money and artifact identity. Use the payment recovery owner for retries and incomplete handoffs. Resolve any occupying work before the installation-owner schedule repair. Reopening or completing a handoff can leave a row chargeable.
+6. Keep effective roles, grants, memberships, ownership, trigger configuration, transaction context, route bindings and alignment mode stable from qualification through resume. If a fence changes, restore it, requalify where applicable and take a new cut. **Immediately before resuming dispatch**, confirm zero alignment rows and no billing row with a reason other than `provider_state_open_after_cancellation`. Resume through the ordinary scheduler.
+
+A verified webhook committed before the first read is visible in the report.
+A later commit leaves the earlier state visible. The forward records historical
+billing claims with a stale accepted version or no usable template version
+(`unknown_provenance`).
+Claims that were current at the forward and new claims use the price frozen at
+claim. Later accepted edits apply to later cycles.
+
+With the forward installed, the node-postgres renewal rail refuses a first claim with `subscription_renewal_snapshot_stale`
+when the snapshot carries version evidence that proves it stale. Bare legacy
+claims without build-version evidence are admitted as before. Custom legacy
+callers get the same protection by locking the subscription row before
+building the snapshot and holding that lock through the claim in the same
+transaction. Re-read and rebuild the snapshot on the stale refusal.
+
+### Shared renewal ownership predicate
+
+Copy this SQL fragment verbatim into both marked positions in the read-only
+checks. It excludes native v3 work using the operation, schedule, and delivery
+lineage bound by each statement.
+
+```sql
+NOT EXISTS (
+  SELECT 1
+  FROM ownership_subjects subject
+  WHERE subject.contract_version = 'platform.subscription.renewal.v3'
+     OR EXISTS (
+       SELECT 1
+       FROM public.subscription_cycle_occurrences x
+       WHERE x.subscription_id = subject.subscription_id
+         AND x.client_id = subject.client_id
+         AND x.rail = 'v3'
+         AND (
+           (subject.check_current AND x.is_current)
+           OR EXISTS (
+             SELECT 1 FROM public.subscription_cycle_generations g
+             WHERE g.operation_id = subject.operation_id AND g.cycle_key = x.cycle_key
+           )
+           OR EXISTS (
+             SELECT 1 FROM public.subscription_cycle_delivery_assignments a
+             WHERE a.obligation_ref = subject.order_id
+               AND x.cycle_key IN (a.assigned_cycle_key, a.marker_cycle_key)
+           )
+           OR EXISTS (
+             SELECT 1 FROM public.subscription_cycle_preparations p
+             WHERE p.cycle_id = subject.cycle_id AND p.order_id = subject.order_id
+               AND p.cycle_key = x.cycle_key
+           )
+         )
+     )
+)
+```
+
+### Run the read-only checks
+
+```sql
+BEGIN ISOLATION LEVEL REPEATABLE READ, READ ONLY;
+
+SELECT pg_current_snapshot()::text AS cut_snapshot,
+       statement_timestamp() AS cut_statement_started_at;
+
+WITH roots AS MATERIALIZED (
+  SELECT o.*, s.status AS subscription_status, s.next_cycle_at,
+         cohort.unknown_provenance
+  FROM public.subscription_renewal_upgrade_cohort cohort
+  JOIN public.subscription_renewal_operations o ON o.id = cohort.renewal_operation_id
+  JOIN public.subscriptions s ON s.id = o.subscription_id
+  CROSS JOIN LATERAL (
+  WITH ownership_subjects(subscription_id, client_id, contract_version, operation_id, cycle_id, order_id, check_current) AS (
+    SELECT s.id, s.client_id, o.cycle_snapshot->>'contractVersion',
+           o.id, booked_order.subscription_cycle_id, booked_order.id, false
+    FROM (VALUES (o.id)) operation(id)
+    LEFT JOIN public.subscription_cycles booked_cycle ON booked_cycle.renewal_operation_id = operation.id
+    LEFT JOIN public.commerce_settlement_intents linked_intent ON linked_intent.renewal_operation_id = operation.id
+    LEFT JOIN public.subscription_retry_obligations linked_retry ON linked_retry.renewal_operation_id = operation.id
+    LEFT JOIN public.commerce_orders booked_order ON booked_order.renewal_operation_id = operation.id
+      OR booked_order.subscription_cycle_id = booked_cycle.id
+      OR booked_order.id IN (linked_intent.order_id, linked_retry.order_id)
+  )
+  SELECT
+/* Paste the shared renewal ownership predicate here. */
+) ownership(is_legacy)
+  WHERE ownership.is_legacy
+), financial AS (
+  SELECT o.id, o.state, o.attempt_prepared_at, o.external_attempt_acknowledged_at,
+         o.cycle_snapshot->>'settlementChannelKey' AS channel, i.channel_key AS intent_channel,
+         r.id AS retry_id, r.state AS retry_state, r.retry_attempt, r.attempt_sequence,
+         r.next_retry_at, r.renewal_quarantined_until, prep.id AS prepare_receipt_id,
+         failure.id AS failure_receipt_id, d.id AS case_id, d.status AS case_status,
+         d.retry_attempt AS case_rung,
+         c.id AS cycle_id, c.status AS cycle_state, ord.id AS order_id, ord.status AS order_state,
+         i.id AS intent_id, i.status AS intent_state, ps.status AS provider_state,
+         pa.id AS provider_attempt_id, pa.status AS provider_attempt_state,
+         COALESCE(pa.provider_attempt_id, pa.provider_session_id) IS NOT NULL AS provider_has_remote_reference,
+         open_attempts.unresolved_provider_attempts,
+         sim.id AS simulator_attempt_id, sim.state AS simulator_attempt_state,
+         COALESCE(exact_provider.id, exact_sim.id) AS retry_attempt_id,
+         COALESCE(exact_provider.status, exact_sim.state) AS retry_attempt_state,
+         COALESCE(exact_provider.provider_attempt_id, exact_provider.provider_session_id) IS NOT NULL AS retry_has_remote_reference,
+         (ord.id IS NULL OR ord.status = 'pending_payment') AS payable,
+         (i.id IS NULL OR i.status IN ('created', 'failed')) AS unsettled,
+         (ps.status NOT IN ('succeeded','cancelled','refunded','partially_refunded','disputed')) AS provider_open,
+         CASE
+           WHEN failure.id IS NULL AND (o.attempt_prepared_at IS NULL OR i.status IS DISTINCT FROM 'failed') THEN NULL
+           WHEN d.id IS NULL THEN 'case_missing'
+           WHEN d.retry_attempt < COALESCE(r.retry_attempt, 1) THEN 'case_behind'
+           WHEN d.retry_attempt = r.retry_attempt AND failure.input ? 'paymentAttemptId'
+             AND (failure.input->>'paymentAttemptId') IS DISTINCT FROM attribution.failed_payment_attempt_id::text
+             THEN 'case_attribution_conflict'
+           WHEN r.id IS NOT NULL AND r.case_id IS DISTINCT FROM d.id THEN 'case_binding_conflict'
+           ELSE 'recorded'
+         END AS failure_handoff
+  FROM roots o
+  LEFT JOIN public.subscription_retry_obligations r ON r.renewal_operation_id = o.id
+  LEFT JOIN public.subscription_cycles owned_cycle ON owned_cycle.renewal_operation_id = o.id
+  LEFT JOIN public.commerce_settlement_intents direct_intent ON direct_intent.renewal_operation_id = o.id
+  LEFT JOIN public.commerce_orders ord ON ord.renewal_operation_id = o.id
+    OR ord.subscription_cycle_id = owned_cycle.id OR ord.id IN (direct_intent.order_id, r.order_id)
+  LEFT JOIN public.subscription_cycles c ON c.id = COALESCE(ord.subscription_cycle_id, owned_cycle.id, r.cycle_id)
+  LEFT JOIN public.commerce_settlement_intents i ON i.order_id = ord.id
+  LEFT JOIN public.payment_provider_states ps ON ps.id = i.id
+  LEFT JOIN public.payment_provider_attempts pa ON pa.id = ps.active_attempt_id
+  LEFT JOIN LATERAL (
+    SELECT jsonb_agg(jsonb_build_object('id', a.id, 'status', a.status,
+      'has_remote_reference', COALESCE(a.provider_attempt_id, a.provider_session_id) IS NOT NULL)
+      ORDER BY a.id) AS unresolved_provider_attempts
+    FROM public.payment_provider_attempts a
+    WHERE a.settlement_intent_id = i.id AND a.status IN ('created','sent_to_provider','requires_action','processing')
+  ) open_attempts ON true
+  LEFT JOIN public.payment_simulator_attempts sim ON sim.settlement_intent_id = i.id AND sim.is_active
+  LEFT JOIN public.subscription_retry_receipts prep ON prep.obligation_id = r.id
+    AND prep.kind = 'prepare' AND prep.attempt_sequence = r.attempt_sequence AND r.state = 'prepared'
+  LEFT JOIN public.subscription_retry_receipts failure ON failure.obligation_id = r.id
+    AND failure.kind = 'failure' AND failure.attempt_sequence = r.retry_attempt - 1
+  LEFT JOIN public.subscription_dunning_cases d ON d.cycle_id = c.id
+  LEFT JOIN public.payment_dunning_case_attribution attribution ON attribution.case_id = d.id
+  LEFT JOIN public.payment_provider_attempts exact_provider ON exact_provider.settlement_intent_id = i.id
+    AND i.id = r.settlement_intent_id AND prep.input->>'paymentIntentId' = i.id::text
+    AND exact_provider.idempotency_key = prep.input->>'idempotencyKey'
+    AND exact_provider.request_payload->>'providerIdempotencyKey' = prep.input->>'providerIdempotencyKey'
+    AND exact_provider.request_payload->>'providerRequestFingerprint' = prep.input->>'providerRequestFingerprint'
+  LEFT JOIN public.payment_simulator_attempts exact_sim ON exact_sim.settlement_intent_id = i.id
+    AND i.id = r.settlement_intent_id AND prep.input->>'paymentIntentId' = i.id::text
+    AND exact_sim.request_key = prep.input->>'idempotencyKey'
+    AND exact_sim.request_fingerprint = prep.input->>'providerRequestFingerprint'
+), stock AS (
+  SELECT o.id, w.id AS stock_wait_id, w.state AS stock_wait_state,
+         a.id AS reservation_id, a.status AS reservation_state,
+         (o.state = 'reserved' AND a.status = 'held'
+           AND a.operation_fingerprint = o.operation_fingerprint) AS held_reservation,
+         (o.state = 'refused' AND o.terminal_reason IN ('inventory_unavailable','reservation_expired')
+           AND (w.id IS NULL OR (w.state IN ('waiting','stock_secured') AND w.identity_key = o.identity_key
+             AND w.fingerprint = o.operation_fingerprint AND w.cycle_snapshot = o.cycle_snapshot))
+           AND (a.id IS NULL OR (a.operation_fingerprint = o.operation_fingerprint AND a.source_key = o.cycle_snapshot->>'stockSourceKey'
+             AND (a.status IN ('expired','released') OR (a.status = 'held' AND w.state = 'stock_secured'))))
+           AND o.external_attempt_acknowledged_at IS NULL
+           AND ((o.subscription_status = 'active' AND public.subscription_stock_wait_frozen(o.subscription_id, o.scheduled_at) IS NOT NULL)
+             OR (o.subscription_status = 'paused' AND w.state IN ('waiting','stock_secured') AND w.scheduled_at = o.next_cycle_at
+               AND o.attempt_prepared_at IS NULL AND o.external_attempt_acknowledged_at IS NULL
+               AND NOT EXISTS (SELECT 1 FROM financial f WHERE f.id = o.id
+                 AND COALESCE(f.cycle_id, f.order_id, f.intent_id) IS NOT NULL)))
+           AND NOT EXISTS (SELECT 1 FROM public.subscription_renewal_outcomes e
+             WHERE e.renewal_operation_id = o.id AND (e.outcome <> 'refused'
+               OR e.reason IS NULL OR e.reason NOT IN ('inventory_unavailable','reservation_expired')
+               OR e.external_ref IS NOT NULL OR e.operation_fingerprint <> o.operation_fingerprint
+               OR e.event_key NOT IN (o.identity_key||':inventory', o.identity_key||':reservation-expired')))) AS recoverable_wait
+  FROM roots o
+  LEFT JOIN public.subscription_stock_wait_cases w ON w.renewal_operation_id = o.id
+  LEFT JOIN public.fulfillment_inventory_reservations a ON a.renewal_operation_id = o.id
+), routes AS (
+  SELECT o.id, reason
+  FROM roots o JOIN stock s USING (id)
+  CROSS JOIN LATERAL (VALUES
+    ('first_charge', o.state = 'claimed' OR s.held_reservation),
+    ('stock_wait', s.recoverable_wait OR (s.held_reservation AND s.stock_wait_state = 'stock_secured'))
+  ) AS route(reason, chargeable)
+  WHERE chargeable
+  UNION ALL
+  SELECT f.id, reason FROM financial f
+  CROSS JOIN LATERAL (VALUES
+    ('prepared_first_charge', f.state = 'attempt_prepared' AND f.unsettled AND f.payable),
+    ('unpaid_intent', f.intent_id IS NOT NULL AND f.unsettled AND f.payable),
+    ('provider_attempt', f.unresolved_provider_attempts IS NOT NULL OR (f.provider_open AND f.unsettled AND f.payable)),
+    ('record_attempt', f.provider_open AND f.intent_state <> 'cancelled'),
+    ('provider_state_open_after_cancellation', f.intent_state = 'cancelled' AND f.provider_open),
+    ('sandbox_attempt', f.intent_channel = 'sandbox' AND f.payable
+      AND f.intent_state <> 'settled'),
+    ('sandbox_ack', f.channel = 'sandbox' AND f.state = 'attempt_prepared'
+      AND (f.external_attempt_acknowledged_at IS NULL OR f.unsettled)),
+    ('retry', f.retry_state IN ('waiting','prepared') AND f.cycle_state = 'payment_pending' AND f.unsettled),
+    ('failure_handoff', f.failure_handoff <> 'recorded' AND f.cycle_state = 'payment_pending'
+      AND f.unsettled AND f.payable)
+  ) AS route(reason, chargeable)
+  WHERE chargeable
+), listed AS (
+  SELECT id, array_agg(DISTINCT reason ORDER BY reason) AS reasons FROM routes GROUP BY id
+)
+SELECT o.id AS operation_id, o.subscription_id, o.scheduled_at, o.state AS operation_state,
+       o.subscription_status, o.next_cycle_at, o.terminal_reason,
+       o.cycle_snapshot->'totalAmountMinor' AS frozen_amount_minor, o.cycle_snapshot->>'currency' AS currency,
+       CASE WHEN o.unknown_provenance AND l.reasons <> ARRAY['provider_state_open_after_cancellation']
+         THEN l.reasons || ARRAY['unknown_provenance'] ELSE l.reasons END AS reasons,
+       s.stock_wait_id,
+       CASE WHEN s.recoverable_wait AND s.stock_wait_id IS NULL THEN 'uncaptured' ELSE s.stock_wait_state END AS stock_wait_state,
+       s.reservation_id, s.reservation_state,
+       (SELECT jsonb_agg(to_jsonb(f) - ARRAY['id','state','channel','intent_channel','payable','unsettled','provider_open',
+           'attempt_prepared_at','external_attempt_acknowledged_at'] ORDER BY f.order_id)
+        FROM financial f WHERE f.id = o.id AND COALESCE(f.cycle_id, f.order_id, f.intent_id) IS NOT NULL) AS payment_artifacts
+FROM roots o JOIN listed l USING (id) JOIN stock s USING (id)
+ORDER BY o.id;
+
+-- Late arrivals whose persisted renewal schedule still needs alignment.
+SELECT s.id AS subscription_id, c.id AS predecessor_cycle_id, c.order_id AS predecessor_order_id,
+       leaf.shipment_id, s.next_cycle_at AS observed_due_at, leaf.latest_delivery_at, s.cadence_days,
+       o.id AS occupying_operation_id, o.state AS occupying_operation_state,
+       conflict.successor_cycle_id, 'late_arrival_alignment_pending' AS reason
+FROM public.subscriptions s
+JOIN public.subscription_renewal_terms t ON t.subscription_id = s.id AND t.delivery_admission = 'allowed'
+JOIN public.subscription_delivery_alignment_cycles c ON c.subscription_id = s.id
+  AND c.status = 'paid' AND c.cycle_number IS NOT NULL
+LEFT JOIN public.subscription_renewal_operations predecessor ON predecessor.id = c.renewal_operation_id
+LEFT JOIN public.subscription_renewal_operations o ON o.subscription_id = s.id AND o.scheduled_at = s.next_cycle_at
+CROSS JOIN LATERAL (
+  WITH ownership_subjects(subscription_id, client_id, contract_version, operation_id, cycle_id, order_id, check_current) AS (
+    SELECT s.id, s.client_id, predecessor.cycle_snapshot->>'contractVersion',
+           predecessor.id, c.id, c.order_id, true
+    UNION ALL
+    SELECT s.id, s.client_id, o.cycle_snapshot->>'contractVersion',
+           o.id, booked_order.subscription_cycle_id, booked_order.id, false
+    FROM (VALUES (o.id)) operation(id)
+    LEFT JOIN public.subscription_cycles booked_cycle ON booked_cycle.renewal_operation_id = operation.id
+    LEFT JOIN public.commerce_settlement_intents linked_intent ON linked_intent.renewal_operation_id = operation.id
+    LEFT JOIN public.subscription_retry_obligations linked_retry ON linked_retry.renewal_operation_id = operation.id
+    LEFT JOIN public.commerce_orders booked_order ON booked_order.renewal_operation_id = operation.id
+      OR booked_order.subscription_cycle_id = booked_cycle.id
+      OR booked_order.id IN (linked_intent.order_id, linked_retry.order_id)
+  )
+  SELECT
+/* Paste the shared renewal ownership predicate here. */
+) ownership(is_legacy)
+CROSS JOIN LATERAL (
+  SELECT (array_agg(p.id ORDER BY p.delivered_at DESC, p.id))[1] AS shipment_id,
+         max(p.delivered_at) AS latest_delivery_at
+  FROM public.fulfillment_shipments p
+  WHERE p.order_id = c.order_id AND NOT EXISTS (
+    SELECT 1 FROM public.fulfillment_shipments successor WHERE successor.replaces_shipment_id = p.id)
+  HAVING count(*) = count(p.delivered_at) AND max(p.delivered_at) > s.next_cycle_at
+) leaf
+CROSS JOIN LATERAL (
+  SELECT (array_agg(x.id ORDER BY x.id) FILTER (WHERE x.renewal_operation_id = o.id
+           AND x.scheduled_at = o.scheduled_at AND x.cycle_number > c.cycle_number
+           AND x.status <> 'paid'))[1] AS successor_cycle_id,
+         count(*) FILTER (WHERE (x.renewal_operation_id = o.id AND x.scheduled_at = o.scheduled_at
+           AND x.cycle_number > c.cycle_number AND x.status <> 'paid') IS NOT TRUE) AS blockers
+  FROM public.subscription_delivery_alignment_cycles x
+  WHERE x.subscription_id = s.id AND (
+    x.cycle_number > c.cycle_number OR (x.cycle_number IS NULL AND x.id <> c.id)
+    OR (x.status = 'paid' AND x.cycle_number = c.cycle_number AND x.order_id IS DISTINCT FROM c.order_id))
+) conflict
+WHERE (SELECT mode FROM public.subscription_delivery_alignment_control WHERE singleton) = 'auto_align'
+  AND s.status = 'active' AND s.next_cycle_at IS NOT NULL AND conflict.blockers = 0
+  AND ownership.is_legacy
+  AND NOT EXISTS (SELECT 1 FROM public.subscription_dunning_cases d
+    WHERE d.subscription_id = s.id AND d.status IN ('open', 'expired'))
+  AND NOT EXISTS (SELECT 1 FROM public.subscription_delivery_alignment_cases a
+    WHERE (a.predecessor_order_id = c.order_id AND a.state <> 'shadow')
+       OR (a.subscription_id = s.id AND a.state IN ('protected', 'manual_review')
+           AND (a.predecessor_cycle_number IS NULL OR a.predecessor_cycle_number >= c.cycle_number)))
+ORDER BY s.id;
+
+COMMIT;
+```
+
+Retry attempt identifiers refer to the current prepare receipt. A remote-reference
+flag records presence. Use the payment owner's readback or closure procedure to
+resolve the attempt.
+
+### Repair a pending delivery alignment
+
+1. **Resolve occupants first.** Route a `claimed` or `reserved` operation without preparation through the subscription or inventory owner. Release or refuse it using the exact stored claim and valid token. If needed, use ordinary exact takeover solely for release authority after forward commit, with dispatch paused. Close recoverable stock waits and held reservations. Preserve the operation row, due instant, wire, fingerprint and history. The old `refused` row keeps occupying that instant and remains visible while the schedule gap persists.
+2. **Use the payment owner for prepared or uncertain work.** Resolve the original attempt with verified truth or authorized closure, preserving identity and amount. A successor cycle, live financial work, open or recoverable stock, or uncertain disposition blocks the schedule write. If the artifact remains, use the lifecycle owner for safe disposition. Keep affected dispatch paused until it is resolved. Any authorized suspension or closure must remove the subscription from the resumed population, and reactivation requires owner verification of the appropriate due date.
+3. **Revalidate under the subscription lock.** The installation owner begins `READ COMMITTED`, locks the subscription `FOR UPDATE`, then reruns the exact alignment statement, with the shared ownership predicate, for that subscription in the next statement. A v3 exclusion yields zero schedule or case writes, including when an earlier report identified the gap. Verify changed candidates afresh. Write only with no occupant or with a durably `refused` occupant, no prepared or acknowledged attempt, no open or recoverable stock and no linked cycle, order, intent or retry. Keep the lineage fence from revalidation through commit. Use the verified arrival route’s time zone and the incumbent calendar-day arithmetic. If eligibility or time-zone provenance is ambiguous, keep affected dispatch paused for owner review.
+4. **Apply the clamp and case settlement together.** Use `subscription_delivery_alignment_upsert_case` with `auto_align`, `overdue_renewal`, the correlated predecessor and locked observed due. Prefer the selected leaf’s shadow case. For a replacement with no direct case, use the first order shadow by `created_at, id`, with its shipment ID if present and the selected leaf otherwise. Record the selected case’s verified timestamp with `LEAST(COALESCE(delivered_at, verified_at), verified_at)`. Set `next_cycle_at = GREATEST(next_cycle_at, latest_unsuperseded_delivery + make_interval(days => cadence_days))`, update its timestamp and settle the promoted and shadow cases as aligned with the returned due. Commit together. A rerun finds no gap and writes nothing. Preserve shipment facts, arrival receipts and the payment graph. Ordinary arrival replay leaves the timestamp intact, case resolution releases without shifting, and replacement confirmation computes from its own time.
+
+Use the installation owner. Substitute the verified arrival writer's time zone and
+the reported subscription ID below. Paste the full statement that returns
+`late_arrival_alignment_pending`, including the shared ownership predicate, in place of the SQL comment, without its final
+semicolon. Use a fresh transaction for each subscription.
+
+```sql
+BEGIN ISOLATION LEVEL READ COMMITTED;
+SET LOCAL TIME ZONE '<arrival time zone>';
+
+DO $repair$
+DECLARE
+  target_subscription constant uuid := '<subscription ID>';
+  gap record;
+  case_shipment uuid;
+  repaired_due timestamptz;
+BEGIN
+  PERFORM id FROM public.subscriptions WHERE id = target_subscription FOR UPDATE;
+  FOR gap IN
+    SELECT pending.* FROM (
+      /* Paste the expanded alignment statement here. */
+    ) pending
+    LEFT JOIN public.subscription_renewal_operations o ON o.id = pending.occupying_operation_id
+    WHERE pending.subscription_id = target_subscription
+      AND pending.successor_cycle_id IS NULL
+      AND (o.id IS NULL OR (
+        o.state = 'refused' AND o.attempt_prepared_at IS NULL AND o.external_attempt_acknowledged_at IS NULL
+        AND NOT EXISTS (SELECT 1 FROM public.fulfillment_inventory_reservations a
+          WHERE a.renewal_operation_id = o.id AND a.status = 'held')
+        AND NOT EXISTS (SELECT 1 FROM public.subscription_stock_wait_cases w
+          WHERE w.renewal_operation_id = o.id AND w.state IN ('waiting', 'stock_secured'))
+        AND public.subscription_stock_wait_frozen(o.subscription_id, o.scheduled_at) IS NULL
+        AND NOT EXISTS (SELECT 1 FROM public.subscription_cycles c WHERE c.renewal_operation_id = o.id)
+        AND NOT EXISTS (SELECT 1 FROM public.commerce_orders ord WHERE ord.renewal_operation_id = o.id)
+        AND NOT EXISTS (SELECT 1 FROM public.commerce_settlement_intents i WHERE i.renewal_operation_id = o.id)
+        AND NOT EXISTS (SELECT 1 FROM public.subscription_retry_obligations r WHERE r.renewal_operation_id = o.id)
+      ))
+  LOOP
+    SELECT a.shipment_id INTO case_shipment
+    FROM public.subscription_delivery_alignment_cases a
+    JOIN public.fulfillment_shipments leaf ON leaf.id = gap.shipment_id
+    WHERE a.predecessor_order_id = gap.predecessor_order_id AND a.state = 'shadow'
+      AND (a.shipment_id = leaf.id OR leaf.replaces_shipment_id IS NOT NULL)
+    ORDER BY (a.shipment_id IS NOT DISTINCT FROM leaf.id) DESC, a.created_at, a.id
+    LIMIT 1;
+    case_shipment := COALESCE(case_shipment, gap.shipment_id);
+    PERFORM public.subscription_delivery_alignment_upsert_case(
+      case_shipment, gap.predecessor_order_id, gap.subscription_id, gap.predecessor_cycle_id,
+      (SELECT cycle_number FROM public.subscription_delivery_alignment_cycles
+       WHERE id = gap.predecessor_cycle_id AND order_id = gap.predecessor_order_id),
+      'auto_align', 'overdue_renewal', gap.observed_due_at);
+    UPDATE public.subscription_delivery_alignment_cases
+    SET delivered_at = LEAST(COALESCE(delivered_at, gap.latest_delivery_at), gap.latest_delivery_at),
+        updated_at = now()
+    WHERE shipment_id = case_shipment;
+    UPDATE public.subscriptions
+    SET next_cycle_at = GREATEST(next_cycle_at, gap.latest_delivery_at + make_interval(days => gap.cadence_days)),
+        updated_at = now()
+    WHERE id = gap.subscription_id
+    RETURNING next_cycle_at INTO repaired_due;
+    UPDATE public.subscription_delivery_alignment_cases
+    SET state = 'aligned', aligned_next_cycle_at = repaired_due, aligned_at = now(), updated_at = now()
+    WHERE predecessor_order_id = gap.predecessor_order_id AND state IN ('protected', 'shadow');
+  END LOOP;
+END;
+$repair$;
+
+COMMIT;
+```
+
+### Known issues and limitations
+
+**Late arrivals and writer changes.** With automatic alignment enabled, an under-granted writer can record an arrival while leaving the old due time. Repairing grants leaves previously recorded dates as they were. Use the alignment check and qualify affected routes before changing them, including after dispatch resumes. The checks describe their database snapshot. If a late arrival commits after the final check for an already-claimed renewal that has no alignment case or only shadow cases, takeover can still use the old due date.
+
+**Earlier schedule changes.** A prior pause, resume, or reschedule can change the due date used by the alignment check. If the due date changed after a late arrival, have the subscription owner review the original schedule and verified arrival before returning that subscription to billing.
+
+**Cancelled renewals with open provider state.** Lifecycle cancellation can leave provider state open after closing the settlement intent. Automatic provider preparation refuses the cancelled intent. Do not call `recordAttempt` for these rows. Retain the operation ID for payment-owner follow-up. A row with only `provider_state_open_after_cancellation` allows dispatch to resume.
+
 ## Prepare the optional checkout owner
 
 Ordinary upgrades on the four qualified profiles require no new login.

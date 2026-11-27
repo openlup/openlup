@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -10,6 +10,16 @@ import { prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER } from "
 import { definitionPath, definitionPin, definitionSlot, definitionSql, grantPath, grantSlot, grantSql, NATIVE_STORE_GUARD_CATALOGS } from "../tests/helpers/issuedPlatformCatalog.ts";
 import { nativeStoreRevokePublicMessages } from "./reviewed-platform-forward.ts";
 import { assertAppendOnlyPostgresSuiteClosures, PG_SUITE_CLOSURES_PATH, renderCheckoutOwnerGrant, renderNativeStoreSettingsOwnerWindow, NATIVE_SUCCESSOR_TABLE_SQL, NATIVE_CATALOG_CONTROLS, isNativeStoreMigrationPath, assertCoLocatedForwardApproval, assertNativeStoreForward, assertReviewedPlatformForward, assertSecurityDefinerSearchPath, assertUnchangedForwardApproval, checkConstraintSha256, expectedReplacedFunctionAttrs, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, reviewedFunctionDefinitions, renderQualifiedSecurityDefiner, qualifiedCatalogueStorageSelectSql, sqlStatements, isExpandOnlyPlatformForward, changedForwardApprovals, readReviewedForwardRegistry, sqlSha256, type NativeStoreForwardClass, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
+
+it("keeps dormant publication pricing out of package and host code", () => {
+  const result = spawnSync("git", ["grep", "--ignore-case", "--files-with-matches", "-e", "catalog_publication_lock_effective_base_price_v2", "-e", "catalog_publication_assess_prices_v2",
+    "-e", "assess_price_v2", "--",
+    ...["api", "examples", "mcp", "packages", "server", "src"].flatMap(root =>
+      ["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"].map(ext => `:(glob)${root}/**/*.${ext}`)),
+  ], { encoding: "utf8" });
+  if (result.error) throw result.error;
+  expect(result.status, result.stdout || result.stderr).toBe(1);
+});
 
 const fixture = (path: string) => readFileSync(`scripts/fixtures/reviewed-native-store/${path}`);
 const control = JSON.parse(fixture("registry.json").toString()) as NativeStoreForwardClass;
@@ -57,6 +67,47 @@ function check(text = sql(), mutate?: (value: ReviewedForwardRegistry) => void) 
   assertNativeStoreForward(value, control.slots[0]!.path, Buffer.from(text), [{ path: PLATFORM_BASELINE_FILE, bytes: before }]);
 }
 const encode = (value: ReviewedForwardRegistry) => Buffer.from(JSON.stringify(value));
+
+describe("adapter money activation admission", () => {
+  const manifest = readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest;
+  const index = production.nativeStoreForwardClass!.slots.findIndex(slot => slot.row === "tax-calculation-adapter-money-activation");
+  const slot = production.nativeStoreForwardClass!.slots[index]!;
+  const path = slot.path;
+  const text = readFileSync(path, "utf8");
+  const prefix = [manifest.baseline, ...manifest.forward.filter(entry => entry.file < path)]
+    .map(({ file }) => ({ path: file, bytes: readFileSync(file) }));
+  const check = (candidate: string, predecessor = prefix) => {
+    const registry = structuredClone(production);
+    for (const source of predecessor) {
+      const binding = registry.nativeStoreForwards!.find(entry => entry.path === source.path);
+      if (binding) binding.sha256 = sqlSha256(source.bytes);
+    }
+    bind(registry, index, candidate);
+    return assertNativeStoreForward(registry, path, Buffer.from(candidate), predecessor);
+  };
+
+  it("admits the registered forward after the private validator", () => {
+    expect(prefix.at(-1)?.path).toMatch(/_tax_calculation_adapter_money_v1\.sql$/u);
+    expect(check(text).slot).toStrictEqual(slot);
+  });
+
+  it("checks the actual transition preimage and the replacement attributes", () => {
+    const drift = prefix.map(source => source.path.endsWith("_tax_calculation_claim_seal.sql")
+      ? { ...source, bytes: Buffer.from(source.bytes.toString("utf8").replace(
+        "Read the original pin under the client fence.", "Read the stored pin under the client fence.")) } : source);
+    expect(() => check(text, drift)).toThrow("actual base function before-hash drifted");
+    const header = text.replace("RETURNS trigger\nLANGUAGE plpgsql VOLATILE SECURITY INVOKER",
+      "RETURNS trigger\nLANGUAGE plpgsql VOLATILE SECURITY DEFINER");
+    expect(header).not.toBe(text);
+    expect(() => check(header)).toThrow("replacement header drifted");
+  });
+
+  it("refuses an additional existing-table alteration after rebinding the file", () => {
+    const extra = "ALTER TABLE public.tax_calculations ADD COLUMN unwanted_detail text;\n";
+    expect(() => check(text.replace("CREATE OR REPLACE FUNCTION", extra + "CREATE OR REPLACE FUNCTION")))
+      .toThrow("existing-table statement unlisted, duplicate or out of order");
+  });
+});
 
 describe("checkout owner execute admission", () => {
   function candidate(text = grantSql, definitions = definitionSql) {

@@ -6,8 +6,9 @@ import { env as processEnvironment } from 'node:process';
 import { gzipSync } from 'node:zlib';
 import ts from 'typescript';
 import { describe, expect, it, vi } from 'vitest';
-import { admit, carryOver, COMPRESSED_RECEIPT_MARKER, digest, ECONOMY_RECEIPT_MARKER, prepareCandidate, receiptBody, RECEIPT_DETAILS_HEADER, RECEIPT_MARKER, receiptSummary, recordReport } from './agent-review-decide.mjs';
+import { admit, carryOver, COMPRESSED_RECEIPT_MARKER, DEFER_HARDENING, deferFinding, digest, ECONOMY_RECEIPT_MARKER, integrationReviewContext, prepareCandidate, receiptBody, RECEIPT_DETAILS_HEADER, RECEIPT_MARKER, receiptSummary, recordReport } from './agent-review-decide.mjs';
 import { carryOverSourceReview, createGitHubReadApi, diagnoseReceipt, enqueueAfterChecks, EXIT_AWAITING_RECEIPT, isMigrationQueueSerializedPath, parseReceipt, probeToolchainNeeded, readReceipts, reportQueueCliError, waitNativeAdmission } from './agent-review-queue.mjs';
+import { captureCommittedReviewCandidate, captureReviewRules, captureCoverageEdge, git as sourceGit } from './agent-review-session.mjs';
 import { createLocalQueueReadAdapter, observeQueueAdmission, parseQueueCommand, verifyQueueReview } from './agent-review-queue-planner.mjs';
 import { REQUIRED_CONTEXTS } from './packages/release-gate.ts';
 import { checkQueueArm } from './merge-queue-check-arm.mjs';
@@ -329,6 +330,162 @@ describe('hosted receipt comments', () => {
     expect(lines.filter(line => line.startsWith('```'))).toEqual(['```text', '```']);
     expect(parseReceipt(rendered)).toEqual(summary);
     await expect(waitFor(rendered)).resolves.toEqual(summary);
+  });
+
+  it('admits valid deferrals and refuses receipts that use the wrong deferral policy for their base', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'openlup-legacy-defer-'));
+    const git = (...args: string[]) => execFileSync('/usr/bin/git', [
+      '--no-replace-objects', '-C', cwd, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+      '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', ...args,
+    ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+    const put = (path: string, content: string) => {
+      const target = join(cwd, path);
+      mkdirSync(dirname(target), { recursive: true });
+      writeFileSync(target, content);
+    };
+    const commit = (msg: string) => {
+      git('add', '-A');
+      git('commit', '-qm', msg);
+      return git('rev-parse', 'HEAD');
+    };
+    try {
+      git('init', '-q', '-b', 'main');
+      put('scripts/agent-review-decide.mjs', 'export const REVIEW_RULES_VERSION = 3;\nexport function deferFinding(session) { return session; }\n');
+      put('app.ts', 'export const n = 1;\n');
+      const legacyBase = commit('pre-pr4 base');
+      git('update-ref', 'refs/remotes/origin/main', legacyBase);
+
+      put('app.ts', 'export const n = 2;\n');
+      const legacyHead = commit('pr on pre-pr4 base');
+      const legacyCand = await captureCommittedReviewCandidate(cwd, legacyBase, legacyHead);
+      const legacyRules = await captureReviewRules(cwd, legacyCand);
+      const intent = { risk: 'routine', criteria: 'Preserve legacy defer compatibility' };
+      const preSession = {
+        version: 3,
+        authorSessionId: 'author',
+        intent,
+        candidate: { ...legacyCand, rules: legacyRules },
+        preparedAt: time + 2,
+        history: [
+          { type: 'rules', version: 3, at: time },
+          { type: 'prepare', intent, candidate: { ...legacyCand, rules: legacyRules }, authorSessionId: 'author', at: time },
+          {
+            type: 'report', at: time,
+            report: { reviewer: 'leg-r1', cold: true, tree: legacyCand.tree, verdict: 'FAIL', documentation: 'Checked.', findings: [{ id: 'LEG-1', summary: 'legacy card', material: true }], closes: [], at: time },
+          },
+          { type: 'defer', at: time + 1, findingId: 'LEG-1', target: 'later', decision: 'CM-1', reason: 'pre-pr4 deferral' },
+          {
+            type: 'report', at: time + 2,
+            report: { reviewer: 'leg-r2', cold: true, tree: legacyCand.tree, verdict: 'PASS', documentation: 'Checked.', findings: [], closes: [], at: time + 2 },
+          },
+        ],
+      };
+      const legacySummary = receiptSummary(preSession, 12, time + 2, { legacyDefer: true });
+      const legacyBody = receiptBody(legacySummary, { legacyDefer: true });
+
+      const confirmedDeferReceipt = (candidate: Parameters<typeof prepareCandidate>[1]) => {
+        const session = prepareCandidate(undefined, candidate, time + 5);
+        const report = { cold: true, tree: session.candidate.tree, documentation: 'Checked.', closes: [] };
+        const failed = recordReport(session, {
+          ...report, reviewer: 'hard-r1', verdict: 'FAIL', findings: [{ id: 'HARD-1', summary: 'hardened card', material: true }],
+        }, time + 6);
+        const deferred = deferFinding(failed, { findingId: 'HARD-1', target: 'issue-2', decision: 'CM-2', reason: 'confirmed deferral' }, time + 7);
+        const confirmed = recordReport(deferred, {
+          ...report, reviewer: 'hard-r2', verdict: 'PASS', findings: [], acceptsDefer: ['HARD-1'],
+        }, time + 8);
+        return receiptSummary(confirmed, 12, time + 8);
+      };
+      const env = { GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_EVENT_NAME: 'pull_request' };
+      const pullRequestEvent = (head: string) => ({ number: 12, repository: { private: false }, pull_request: { head: { sha: head } } });
+      const receiptApi = (mainSha: string, prHead: string, receiptCommentBody: string) => {
+        const pr = { number: 12, state: 'open', draft: false, base: { ref: 'main' }, head: { sha: prHead } };
+        return {
+          get: vi.fn(async (path: string) => path.includes('/pulls/') ? pr
+            : path.includes('/issues/') ? [comment({ body: receiptCommentBody })]
+            : path.includes('/collaborators/') ? { permission: 'write' }
+            : { object: { sha: mainSha } }),
+        };
+      };
+      const admitReal = async (mainSha: string, prHead: string, receiptCommentBody: string) => {
+        const api = receiptApi(mainSha, prHead, receiptCommentBody);
+        const runGit = (dir: string, ...args: string[]) => args.includes('fetch') ? Promise.resolve('') : sourceGit(dir, ...args);
+        let clock = time + 10;
+        const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+        try {
+          return await waitNativeAdmission({
+            cwd, api, runGit, now: () => clock, sleep: async ms => { clock += ms; }, deadlineMs: 1,
+            event: pullRequestEvent(prHead), env,
+          });
+        } finally { log.mockRestore(); }
+      };
+
+      // Case 1: Pre-PR-4 base + pre-PR-4 defer receipt admits cleanly.
+      await expect(admitReal(legacyBase, legacyHead, legacyBody)).resolves.toEqual(legacySummary);
+
+      const forgedLegacy = confirmedDeferReceipt({ ...legacyCand, rules: legacyRules, intent, authorSessionId: 'author' });
+      const forgedLegacyBody = receiptBody(forgedLegacy);
+      const forgedLegacyApi = receiptApi(legacyBase, legacyHead, forgedLegacyBody);
+      await expect(readReceipts(forgedLegacyApi, '/repos/openlup/openlup', 12, legacyHead, time + 10)).resolves.toEqual([forgedLegacy]);
+      await expect(probeToolchainNeeded({
+        event: pullRequestEvent(legacyHead), env, api: forgedLegacyApi, now: () => time + 10,
+      })).resolves.toBe(true);
+      await expect(admitReal(legacyBase, legacyHead, forgedLegacyBody)).rejects.toThrow('invalid historical acceptsDefer');
+
+      // Advance main with PR-4 DEFER_HARDENING.
+      git('checkout', '-q', '--detach', legacyBase);
+      put('scripts/agent-review-decide.mjs', `export const REVIEW_RULES_VERSION = 3;\nexport const DEFER_HARDENING = '${DEFER_HARDENING}';\nexport function deferFinding(session) { return session; }\n`);
+      put('main-note.txt', 'post-pr4 main\n');
+      const hardenedBase = commit('post-pr4 base');
+      git('update-ref', 'refs/remotes/origin/main', hardenedBase);
+
+      // Case 2: Integrated PR carrying forward a pre-PR-4 deferred session onto post-PR-4 main also admits cleanly.
+      git('checkout', '-q', '--detach', legacyHead);
+      git('merge', '--no-ff', '-qm', 'merge post-pr4 main', hardenedBase);
+      const integratedHead = git('rev-parse', 'HEAD');
+      const integratedCand = await captureCommittedReviewCandidate(cwd, hardenedBase, integratedHead);
+      const integratedObserved = { ...integratedCand, rules: await captureReviewRules(cwd, integratedCand), intent, authorSessionId: 'author' };
+      const deferBases = { legacyDeferBases: new Set([legacyBase]) };
+      const integration = integrationReviewContext(preSession, integratedObserved, { parents: [legacyHead, hardenedBase], baseAncestor: true, mechanical: true }, time + 3, deferBases);
+      const coverage = await captureCoverageEdge(cwd, preSession, integratedObserved, time + 3);
+      const integratedSession = prepareCandidate(preSession, { ...integratedObserved, integration, coverage }, time + 3, false, deferBases);
+      const integratedSummary = receiptSummary(integratedSession, 12, time + 3, deferBases);
+      const integratedBody = receiptBody(integratedSummary, deferBases);
+      await expect(admitReal(hardenedBase, integratedHead, integratedBody)).resolves.toEqual(integratedSummary);
+
+      const hardened = confirmedDeferReceipt(integratedObserved);
+      const hardenedBody = receiptBody(hardened);
+      await expect(readReceipts(receiptApi(hardenedBase, integratedHead, hardenedBody), '/repos/openlup/openlup', 12, integratedHead, time + 10)).resolves.toEqual([hardened]);
+      await expect(admitReal(hardenedBase, integratedHead, hardenedBody)).resolves.toEqual(hardened);
+
+      // Case 3: A fresh unhardened defer created AFTER PR-4 DEFER_HARDENING landed is strictly refused.
+      git('checkout', '-q', '--detach', hardenedBase);
+      put('app.ts', 'export const n = 3;\n');
+      const forgedHead = commit('pr on post-pr4 base');
+      const forgedCand = await captureCommittedReviewCandidate(cwd, hardenedBase, forgedHead);
+      const forgedRules = await captureReviewRules(cwd, forgedCand);
+      const forgedSession = {
+        version: 3,
+        authorSessionId: 'author',
+        intent,
+        candidate: { ...forgedCand, rules: forgedRules },
+        preparedAt: time + 5,
+        history: [
+          { type: 'prepare', intent, candidate: { ...forgedCand, rules: forgedRules }, authorSessionId: 'author', at: time + 4 },
+          {
+            type: 'report', at: time + 4,
+            report: { reviewer: 'forged-r1', cold: true, tree: forgedCand.tree, verdict: 'FAIL', documentation: 'Checked.', findings: [{ id: 'FRG-1', summary: 'post-pr4 card', material: true }], closes: [], at: time + 4 },
+          },
+          { type: 'defer', at: time + 5, findingId: 'FRG-1', target: 'later', decision: 'CM-2', reason: 'bypass attempt' },
+          {
+            type: 'report', at: time + 5,
+            report: { reviewer: 'forged-r2', cold: true, tree: forgedCand.tree, verdict: 'PASS', documentation: 'Checked.', findings: [], closes: [], at: time + 5 },
+          },
+        ],
+      };
+      const forgedSummary = receiptSummary(forgedSession, 12, time + 5, { legacyDefer: true });
+      const forgedRawBody = `${ECONOMY_RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(forgedSummary)}\n\`\`\``;
+      await expect(admitReal(hardenedBase, forgedHead, forgedRawBody)).rejects.toThrow('receipt wait expired');
+    } finally { rmSync(cwd, { recursive: true, force: true }); }
   });
 });
 

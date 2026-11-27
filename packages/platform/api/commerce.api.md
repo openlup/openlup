@@ -2280,6 +2280,19 @@ export type PaidOrderMoneyV2 = OrderMoneyV2 & Readonly<{
     capturedAt: string;
     paidMinor: number;
 }>;
+type EraseDestination<Money extends PaidOrderMoneyV2> = Money extends PaidOrderMoneyV2 ? Omit<Money, "destination" | "deliverySelectionRef" | "deliveryBuckets"> & Readonly<{
+    destination: {
+        snapshotRef: string;
+        schemaVersion: 2;
+        erased: true;
+    };
+    deliveryBuckets: readonly Omit<Money["deliveryBuckets"][number], "carrierRef" | "serviceRef">[];
+}> : never;
+/** @experimental Original quote-based paid money with the destination copies erased. */
+export type ErasedPaidOrderMoneyV2 = EraseDestination<Extract<PaidOrderMoneyV2, {
+    acceptedQuoteRef: unknown;
+}>>;
+export {};
 ```
 ## dist/commerce/contracts/ports.d.ts
 

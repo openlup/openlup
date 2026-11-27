@@ -183,13 +183,17 @@ async function bindSettings({ database, app, configuration }) {
     // eslint-disable-next-line no-restricted-syntax -- tool entry composes existing installed capabilities only for connected settings
     const { readAccountSupportOperatorSlideMaxDaysOverride } = await import("@openlup/platform/account-support");
     // eslint-disable-next-line no-restricted-syntax -- tool entry composes existing installed capabilities only for connected settings
+    const { readCommerceReturnReasonsOverride } = await import("@openlup/platform/commerce/server");
+    // eslint-disable-next-line no-restricted-syntax -- tool entry composes existing installed capabilities only for connected settings
     const { describeRenewalStockProtectionSetting, readRenewalStockProtectionOverride, previewRenewalStockProtection } = await import("@openlup/platform/inventory");
     // eslint-disable-next-line no-restricted-syntax -- tool entry composes existing installed capabilities only for connected settings
     const { readPaymentMethodExpiryWarningDaysOverride, readPaymentDeclineNoticeTimingOverride } = await import("@openlup/platform/payments");
     // eslint-disable-next-line no-restricted-syntax -- tool entry composes existing installed capabilities only for connected settings
     const { readPromotionClaimHoldHoursOverride } = await import("@openlup/platform/promotions");
     // eslint-disable-next-line no-restricted-syntax -- tool entry composes existing installed capabilities only for connected settings
-    const { readSubscriptionEditQuoteTtlMinutesOverride, readSubscriptionRetryScheduleOverride } = await import("@openlup/platform/subscriptions");
+    const { readShippingPaymentMethodPreferencesOverride } = await import("@openlup/platform/shipping");
+    // eslint-disable-next-line no-restricted-syntax -- tool entry composes existing installed capabilities only for connected settings
+    const { readSubscriptionEditQuoteTtlMinutesOverride, readSubscriptionRescheduleTimeZoneOverride, readSubscriptionRetryScheduleOverride } = await import("@openlup/platform/subscriptions");
     const inventory = describeRenewalStockProtectionSetting().key;
     inventorySettingKey = inventory;
     return {
@@ -199,6 +203,10 @@ async function bindSettings({ database, app, configuration }) {
         account_support_operator_slide_max_days: async () => {
           const policy = await readAccountSupportOperatorSlideMaxDaysOverride(db);
           return policy ? { present: true, value: { ...policy }, revision: policy.revision } : { present: false };
+        },
+        "commerce.returnReasons": async () => {
+          const policy = await readCommerceReturnReasonsOverride(db);
+          return policy ? { present: true, value: { ...policy, reasons: [...policy.reasons] }, revision: policy.revision } : { present: false };
         },
         [inventory]: async () => {
           const policy = await readRenewalStockProtectionOverride(db);
@@ -216,8 +224,16 @@ async function bindSettings({ database, app, configuration }) {
           const policy = await readPromotionClaimHoldHoursOverride(db);
           return policy ? { present: true, value: { ...policy }, revision: policy.revision } : { present: false };
         },
+        "shipping.paymentMethodPreferences": async () => {
+          const policy = await readShippingPaymentMethodPreferencesOverride(db);
+          return policy ? { present: true, value: { ...policy, methodKinds: [...policy.methodKinds] }, revision: policy.revision } : { present: false };
+        },
         subscription_edit_quote_ttl_minutes: async () => {
           const policy = await readSubscriptionEditQuoteTtlMinutesOverride(db);
+          return policy ? { present: true, value: { ...policy }, revision: policy.revision } : { present: false };
+        },
+        "subscriptions.rescheduleTimeZone": async () => {
+          const policy = await readSubscriptionRescheduleTimeZoneOverride(db);
           return policy ? { present: true, value: { ...policy }, revision: policy.revision } : { present: false };
         },
         "subscriptions.retrySchedule": async () => {

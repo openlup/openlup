@@ -58,6 +58,8 @@ export const CAPABILITY_HINTS: readonly (readonly [RegExp, string])[] = [
     `bind exactly the appended portable forwards in config/platform-migration-manifest.json (${DOCS}#additive-forward-release-path)`],
   [/control characters/u,
     `remove control characters other than tab and line feed (${DOCS}#additive-forward-release-path)`],
+  [/^lock-safety:/u,
+    `bound hot-table DDL with SET LOCAL lock_timeout and use expand-and-contract (DEFAULT or nullable + backfill), NOT VALID constraints, partial indexes (WHERE), or -- lock-safety: <reason> (${DOCS}#additive-forward-release-path)`],
   [/^deferred trigger .* is not registered; (?:remove it, or register it|rename it to)/u,
     `declare and pin a reviewed row trigger using the documented target and clause rules (${DOCS}#declare-a-reviewed-trigger)`],
   [/slot path, row or order drifted|feature path, order or inventory drifted|closed signature, preimage or search_path drifted|requires a closed slots list|invalid fixed identity or hash/u,

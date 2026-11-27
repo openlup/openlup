@@ -393,6 +393,24 @@ const starterBrowserEntries = {
   regexes: ["^@openlup/platform(?!/(?:(?:[a-z-]+/)*contracts|account-support/read-contracts|pricing/browser|commerce|marketing|operations|storefront)$)"],
 };
 
+// Playwright specs under these directories stub "the first matching request" through a route that stays installed.
+// An expiring `{ times }` route turns request interception off without waiting, and Playwright can then lose the
+// events of a request the page starts in that moment. The selector covers `times: n`, shorthand `{ times }` and a
+// quoted key on any receiver's `.route(...)`; it does not follow options built elsewhere or spread in.
+const ROUTE_STUB_FILES = ["examples/neutral-store/browser/**/*.ts", "tests/preview/**/*.ts"];
+const ROUTE_STUB_MESSAGE = "Do not pass `times` to a Playwright route here: when it expires, the route turns request "
+  + "interception off without waiting, and Playwright can lose the events of a request the page sends in that moment. "
+  + "Use `stubFirst` (examples/neutral-store/browser/route-stub.ts) or a route that stays installed and calls route.fallback().";
+const routeStubRules = () => {
+  const rules = boundaryRules([packageExports]);
+  rules["no-restricted-syntax"].push({
+    selector: "CallExpression[callee.type='MemberExpression'][callee.property.name='route'] > ObjectExpression.arguments > "
+      + "Property:matches([key.name='times'], [key.value='times'])",
+    message: ROUTE_STUB_MESSAGE,
+  });
+  return rules;
+};
+
 export const TYPE_AWARE_RULES = {
   "@typescript-eslint/no-floating-promises": "error",
   "@typescript-eslint/no-misused-promises": ["error", { checksVoidReturn: { attributes: false } }],
@@ -435,6 +453,11 @@ export default tseslint.config(
     files: sourceFiles(),
     ignores: ["packages/**"],
     rules: boundaryRules([packageExports]),
+  },
+  {
+    // Core rule options replace earlier ones, so this block repeats packageExports.
+    files: ROUTE_STUB_FILES,
+    rules: routeStubRules(),
   },
   {
     // Core rule options replace earlier ones, so this block repeats packageExports.

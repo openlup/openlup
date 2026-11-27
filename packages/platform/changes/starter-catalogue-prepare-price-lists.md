@@ -1,1 +1,0 @@
-- Native catalogue Prepare reports missing or ineffective price lists at each affected draft operation's `priceListId` field. Publish still checks the list when issuing the publication.

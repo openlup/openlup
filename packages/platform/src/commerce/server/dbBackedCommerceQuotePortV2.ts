@@ -24,6 +24,7 @@ type TaxRequest = ReturnType<typeof makeTaxQuoteRequest>;
 type TaxInput = TaxRequest["input"];
 type AdapterResult = Awaited<ReturnType<TaxCalculationPortV1["quote"]>>;
 type AdapterSuccess = Extract<AdapterResult, { kind: "final" | "estimate" }>;
+type CheckoutDestinationRead = Extract<DestinationVerifiedReadV2, { evidenceExpiresAt: string }>;
 type Refusal = { kind: "refused"; code: string; field: string; remedy: string };
 type RetainedRequest = Omit<TaxRequest, "input"> & { input: Omit<TaxInput, "destination"> & {
   destination: Omit<TaxInput["destination"], "address">;
@@ -47,7 +48,7 @@ type ExclusiveBinding = {
   recovery: string | null;
   isDefinitive: (result: Extract<AdapterResult, { kind: "refused" }>) => boolean;
   readCoverage: (installationRef: string, accountRef: string) => Promise<TaxCoverageRevision | null>;
-  readTaxFacts: (owner: QuoteOwnerContext, plan: CommerceQuoteMoneyV2Plan, service: DestinationServicePinV2, document: DestinationVerifiedReadV2) =>
+  readTaxFacts: (owner: QuoteOwnerContext, plan: CommerceQuoteMoneyV2Plan, service: DestinationServicePinV2, document: CheckoutDestinationRead) =>
     Promise<Pick<TaxInput, "market" | "shipFromRef" | "policyRevision" | "required">>;
 };
 
@@ -65,7 +66,7 @@ export interface DbBackedCommerceQuotePortV2Deps {
   privacyRegistry: { readonly contributors: readonly { readonly id: string }[]; readonly missingContributors: readonly string[] };
   destination: Pick<DestinationPortV2, "snapshot" | "read">;
   snapshotCommand: (owner: QuoteOwnerContext, request: CommerceQuoteV2Request) => Promise<Parameters<DestinationPortV2["snapshot"]>[1]>;
-  readPlan: (owner: QuoteOwnerContext, request: CommerceQuoteV2Request, document: DestinationVerifiedReadV2) => Promise<FreshFacts>;
+  readPlan: (owner: QuoteOwnerContext, request: CommerceQuoteV2Request, document: CheckoutDestinationRead) => Promise<FreshFacts>;
   readLimits: (rail: Rail) => Promise<LimitsReadResult>;
   clockToleranceMs: number;
   readFiscal?: (owner: QuoteOwnerContext) => Promise<Fiscal>;

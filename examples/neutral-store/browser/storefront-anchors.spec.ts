@@ -7,10 +7,13 @@ import { randomUUID } from 'node:crypto';
 import pg from 'pg';
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { storefrontAnchor } from '@openlup/platform/storefront';
+import { createPageHandle } from '@openlup/platform/storefront/testing';
 import { copy } from '../owned/copy.ts';
 import { market } from '../owned/market.config.ts';
 import { configurations } from '../owned/store.config.ts';
 import { routes } from '../shared/routes.ts';
+import { checkoutContinuationCopy } from '../shared/limits.ts';
+import { stubFirst } from './route-stub.ts';
 
 interface Material { id: string; baseURL: string; ownerUrl: string }
 let material: Material, owner: pg.Pool;
@@ -40,7 +43,10 @@ async function openCheckout(page: Page) {
   await expect(page.getByRole('button', { name: t.placeOrder, exact: true })).toBeVisible();
 }
 
-/** B9: at most one element names a state; it is a status line with no form inside, outside the section that holds the forms. */
+/**
+ * B9: at most one element names a state; it is a status line with no form inside, outside the section that holds the
+ * forms. The line has visible text, so the storefront page handle, which counts only anchors it can see, reports it.
+ */
 async function oneStateLine(page: Page, expected: string | null): Promise<void> {
   if (expected === null) { await expect(states(page)).toHaveCount(0); return; }
   await expect(states(page)).toHaveCount(1);
@@ -49,6 +55,8 @@ async function oneStateLine(page: Page, expected: string | null): Promise<void> 
   await expect(line).toHaveAttribute('role', 'status');
   await expect(line.locator('form')).toHaveCount(0);
   await expect(page.locator('section[aria-live]').filter({ has: page.locator(`[${attribute.state}]`) })).toHaveCount(0);
+  expect((await createPageHandle(page).anchors()).filter(anchor => anchor.startsWith('state:'))).toEqual([`state:${expected}`]);
+  await expect(line).not.toBeEmpty();
 }
 
 /** Exactly one visible element carries the action, inside a form, and it is that form's submit button. */
@@ -87,6 +95,53 @@ test('storefront anchors: the checkout form names its nine fields and place_orde
   // No other action and no state on the checkout page yet.
   await expect(anyAction(page)).toHaveCount(1);
   await oneStateLine(page, null);
+});
+
+/** Fills the buyer details by their anchors and waits for the quote of exactly those details. */
+async function fill(page: Page, email: string, line1?: string) {
+  const quoted = page.waitForResponse(row => row.url().endsWith('/api/actions/offer.validate') && row.request().postDataJSON().email === email
+    && (line1 === undefined || row.request().postDataJSON().line1 === line1));
+  if (line1 !== undefined) await page.locator(`[${attribute.field}="${storefrontAnchor.field.address_line1}"]`).fill(line1);
+  const field = page.locator(`[${attribute.field}="${storefrontAnchor.field.email}"]`);
+  await field.fill(email);
+  await field.blur();
+  await (await quoted).finished();
+  await page.evaluate(() => new Promise<void>(done => requestAnimationFrame(() => done())));
+  await page.locator(`[${attribute.field}="${storefrontAnchor.field.terms_accepted}"]`).check();
+}
+const visibleAction = (page: Page, name: string) => page.locator(`[${attribute.action}="${name}"]:visible`);
+
+test('storefront anchors: after a create the checkout page names awaiting_payment and one continue_payment', async ({ page }) => {
+  await openCheckout(page);
+  await fill(page, `anchors-created-${randomUUID()}@example.test`);
+  await action(page, storefrontAnchor.action.place_order).click();
+  await expect(page.locator('main').getByRole('link', { name: t.completion, exact: true })).toBeVisible();
+  await oneStateLine(page, storefrontAnchor.state.awaiting_payment);
+  await expect(visibleAction(page, storefrontAnchor.action.continue_payment)).toHaveCount(1);
+  await expect(visibleAction(page, storefrontAnchor.action.continue_payment)).toHaveAccessibleName(t.completion);
+  await expect(action(page, storefrontAnchor.action.start_over)).toHaveCount(0);
+});
+
+test('storefront anchors: changed details name details_changed, continue_payment and start_over', async ({ page }) => {
+  await openCheckout(page);
+  const email = `anchors-changed-${randomUUID()}@example.test`;
+  await fill(page, email);
+  await action(page, storefrontAnchor.action.place_order).click();
+  await expect(page.locator('main').getByRole('link', { name: t.completion, exact: true })).toBeVisible();
+  await fill(page, email, '7 Changed Lane');
+  await action(page, storefrontAnchor.action.place_order).click();
+  await expect(page.locator('form.action-form .action-result')).toContainText('starter_checkout_changed');
+  await oneStateLine(page, storefrontAnchor.state.details_changed);
+  await expect(visibleAction(page, storefrontAnchor.action.continue_payment)).toHaveCount(1);
+  await expect(visibleAction(page, storefrontAnchor.action.start_over)).toHaveCount(1);
+  // The payment link below the form still shows, so it, not the resume button, continues the payment.
+  await expect(visibleAction(page, storefrontAnchor.action.continue_payment)).toHaveAccessibleName(t.completion);
+  const resumed = page.waitForResponse(row => row.url().endsWith('/api/actions/checkout.continuation'));
+  await page.getByRole('button', { name: checkoutContinuationCopy.resume[locale], exact: true }).click();
+  expect((await (await resumed).json()).ok).toBe(true);
+  await oneStateLine(page, storefrontAnchor.state.awaiting_payment);
+  await expect(page.locator('[data-checkout-continuation]').getByRole('link', { name: t.completion, exact: true })).toBeVisible();
+  await expect(visibleAction(page, storefrontAnchor.action.continue_payment)).toHaveCount(1);
 });
 
 test('storefront anchors: the payment-status page names its state and offers retry_payment only after a decline', async ({ page, context }) => {
@@ -186,7 +241,7 @@ test('storefront anchors: the blocked view after a capture names no state and of
   await expect.poll(() => live?.state, { message: 'the host answered the dispatched attempt' }).toBe('dispatched');
   const dispatched = live, earlier = order;
   if (dispatched === undefined || earlier === undefined) throw new Error('storefront anchors: no order or attempt answer was recorded');
-  await page.route('**/api/actions/checkout.recovery', route => route.fulfill({ json: earlier }), { times: 1 });
+  const recovery = await stubFirst(page, '**/api/actions/checkout.recovery', route => route.fulfill({ json: earlier }));
   await page.route('**/api/actions/checkout.payment', async route => {
     if (route.request().postDataJSON().action !== 'inspect') return route.fallback();
     await route.fulfill({ json: { ok: true, value: { ...dispatched, state: 'captured', paymentBlocked: true,
@@ -194,6 +249,7 @@ test('storefront anchors: the blocked view after a capture names no state and of
   });
   await advance(page.getByRole('button', { name: t.simulatePaid, exact: true }));
   await expect(page.locator('main p', { hasText: t.recoveryUnavailable })).toHaveCount(1);
+  await expect.poll(() => recovery.hits, { message: 'the page read the earlier order answer' }).toBeGreaterThanOrEqual(1);
   await oneStateLine(page, null);
   await expect(anyAction(page)).toHaveCount(0);
 });

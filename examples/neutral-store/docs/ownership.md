@@ -38,8 +38,9 @@ and price row sets from `StoreConfig`. `installation/install.ts` is managed and
 reachable only from lifecycle installation, never the HTTP host; it requires the
 install login/current role and a database-level demonstration marker. The
 bootstrap runs the complete packaged history in a one-shot container. Only that
-container receives the privileged Unix socket; the host receives the runtime
-TCP URL only. The missing installed API refuses
+container receives the installer socket. The application and installer receive
+the runtime credential through a read-only file bind. The ownership manifest
+records the generated adopter-owned `.context/compose-project` file. The missing installed API refuses
 `starter_installation_binding_required`, and an existing unmarked database is
 never adopted or marked. A customer environment must use its
 own data onboarding, never this seed or demonstration marker. The installer uses
@@ -87,9 +88,9 @@ application INSERTs. Checkout does not import the install-only seed.
 `host/checkout-recovery.ts` composes the separate private recovery mailbox;
 the host owns and closes the native token transaction lane.
 The host names its single role-free lane after its capability, checkout recovery tokens, owns it and closes it.
-`client/purchase.ts` owns tab continuation, including the checkout continuation
-record that keeps one checkout key per purchase, and visible-response redaction. Neither
-is an account authority. No demo customer seed or mandatory purchase sign-in exists.
+`client/purchase.ts` owns the purchase reload convenience and visible-response
+redaction; `shared/storefront-bindings.ts` owns the checkout continuation record
+that keeps one checkout key per purchase. Neither is an account authority. No demo customer seed or mandatory purchase sign-in exists.
 
 `playwright.database.config.ts` is the managed real-database UI recipe. Its
 ignored `.context/database-ui-hosts.json` contains two non-secret loopback UI
@@ -320,8 +321,9 @@ The host requires the slot-27 first-duty buyer-capture entry; slot 28 preserves
 absence of explicit buyer facts during recreation. `./lifecycle up` installs the
 complete history. No duty or historical invoice is backfilled.
 
-`payment.simulate`, `checkout.payment` and recreated `checkout.recovery` simulation
-share one capture/activation helper. Retained acquisition renewal availability
+`payment.simulate`, `checkout.paymentSimulate` and recreated `checkout.recoverySimulate`
+simulation share one capture/activation helper; the retained `action: "simulate"` form of
+`checkout.payment` and `checkout.recovery` runs the same code and retires in a later release. Retained acquisition renewal availability
 validates before a capture observation is recorded. After successful native ingress,
 an initial subscription declaration activates through its native acquisition or
 classic renewal branch. Capture and activation keep their existing transaction

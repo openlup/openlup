@@ -223,22 +223,130 @@ it.each([
 });
 
 
-it("commits and replays net with the same ledger and refuses a gross kind on the exclusive list", async () => {
+it("commits and replays an exclusive core price with the legacy aggregate already present", async () => {
   const command = await seedSku(false), exclusive = randomUUID();
   await owner.query("UPDATE public.price_lists SET status='draft' WHERE id=$1", [list]);
   try {
     await owner.query(`INSERT INTO public.price_lists(id,name,region_code,currency,amount_basis,valid_from)
       VALUES($1,'Test exclusive list','ZZ','XXX','tax_exclusive',clock_timestamp()-interval '1 hour')`, [exclusive]);
+    await owner.query(`INSERT INTO public.price_entries(price_list_id,variant_id,mode,amount_kind,unit_price_minor,valid_from)
+      VALUES($1,$2,'subscription','net',125,'-infinity')`, [exclusive, command.variantId]);
+    const aggregate = () => owner.query(`SELECT public.commerce_offer_policy_v2_readiness()->'reasons'
+      ? 'catalog_1490_legacy_1340_invalid' AS present`);
+    expect((await aggregate()).rows).toEqual([{ present: true }]);
     const net = { ...command, priceListId: exclusive, expectedListAmountBasis: "tax_exclusive", amountKind: "net" };
     expect(await apply({ ...net, amountKind: "gross" })).toEqual({ outcome: "validation_issue", reason: "catalog_price_setup_basis_mismatch" });
     expect(await receipts(net.commandKey)).toEqual([]);
     const result = await apply(net);
     expect(result).toMatchObject({ outcome: "committed", receipt: { amountBasis: "tax_exclusive", previous: null, current: { amountKind: "net" } } });
     expect(await apply(net)).toEqual({ ...result, outcome: "replayed" });
+    const target = { skuId: command.variantId, requiredModes: ["one_time"],
+      skuFacts: { status: "active", isAddon: false, sellableStandalone: true, sellableInSubscription: false } };
+    expect((await owner.query(`SELECT public.catalog_publication_target_price_verdict($1,statement_timestamp()) AS result`,
+      [{ targets: [target] }])).rows[0].result).toMatchObject({ amountBasis: "tax_exclusive",
+      targets: [{ skuId: command.variantId, reason: null, observations: { subscriptionReady: true } }] });
+    expect((await aggregate()).rows).toEqual([{ present: true }]);
   } finally {
     await owner.query("UPDATE public.price_lists SET status='draft' WHERE id=$1", [exclusive]);
     await owner.query("UPDATE public.price_lists SET status='active' WHERE id=$1", [list]);
   }
+});
+
+async function priceEffects(variantId: string, db: Pool | PoolClient = owner) {
+  return (await db.query(`SELECT
+    (SELECT jsonb_agg(to_jsonb(e) ORDER BY e.id) FROM public.price_entries e WHERE e.variant_id=$1) AS entries,
+    (SELECT jsonb_agg(to_jsonb(r) ORDER BY r.idempotency_key) FROM public.catalog_price_setup_receipts r
+      WHERE r.metadata->>'variantId'=$1::uuid::text) AS receipts`, [variantId])).rows;
+}
+
+it.each([
+  ["catalog_price_setup_pending_entry", "future"],
+  ["expected_state_mismatch", "amount"],
+  ["expected_state_mismatch", "kind"],
+  ["price_shape_invalid", "shape"],
+  ["base_price_amount_kind_invalid", "stored-kind"],
+  ["active_price_list_ambiguous", "list"],
+] as const)("leaves all price effects unchanged for %s (%s)", async (reason, variant) => {
+  const command = await seedSku(), other = randomUUID();
+  if (variant === "future") await owner.query(`INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from)
+    VALUES($1,$2,'one_time',200,clock_timestamp()+interval '1 day')`, [list, command.variantId]);
+  if (variant === "amount") command.expected.unitPriceMinor = 151;
+  if (variant === "kind") command.expected.amountKind = "net";
+  if (variant === "shape") await owner.query("UPDATE public.price_entries SET min_qty=2 WHERE id=$1", [command.expected.entryId]);
+  if (variant === "stored-kind") await owner.query("UPDATE public.price_entries SET min_qty=2,amount_kind='net' WHERE id=$1", [command.expected.entryId]);
+  if (variant === "list") await owner.query(`INSERT INTO public.price_lists(id,name,region_code,currency,valid_from)
+    VALUES($1,'Overlapping list','ZZ','XXX',clock_timestamp()-interval '1 hour')`, [other]);
+  try {
+    const before = await priceEffects(command.variantId);
+    expect(await apply(command)).toEqual({ outcome: reason === "expected_state_mismatch" ? "conflict" : "validation_issue", reason });
+    expect(await priceEffects(command.variantId)).toEqual(before);
+  } finally {
+    if (variant === "list") await owner.query("DELETE FROM public.price_lists WHERE id=$1", [other]);
+  }
+});
+
+async function claimAsOwner(db: PoolClient, input: unknown) {
+  await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: actorId, role: "authenticated" })]);
+  const text = json(input);
+  return (await db.query("SELECT public.catalog_price_setup_claim($1,$2) AS claim", [text, hash(text)])).rows[0].claim;
+}
+
+it("ignores a caller-selected v2 apply time even on the owner-only wrapper", async () => {
+  const command = await seedSku();
+  await transaction(owner, async db => {
+    const claim = await claimAsOwner(db, command);
+    const { rows: [result] } = await db.query(`SELECT public.catalog_price_setup_apply_claimed($1,clock_timestamp()+interval '1 day') AS result`, [claim]);
+    expect(result.result).toMatchObject({ outcome: "committed", receipt: { current: { unitPriceMinor: 180 } } });
+    expect((await db.query(`SELECT valid_from<=clock_timestamp() AS effective FROM public.price_entries
+      WHERE id=$1`, [result.result.receipt.current.entryId])).rows).toEqual([{ effective: true }]);
+  });
+});
+
+it("refuses to close a predecessor starting exactly at the locked PG instant", async () => {
+  const command = await seedSku();
+  const original = await priceEffects(command.variantId);
+  const writer = await owner.connect(), peer = await owner.connect();
+  let wait: Promise<unknown> | undefined;
+  try {
+    await writer.query("BEGIN");
+    const claim = await claimAsOwner(writer, command);
+    await peer.query("BEGIN");
+    await peer.query("SELECT public.catalog_price_setup_lock_context($1,$2)", [list, command.variantId]);
+    const { rows: [{ pid }] } = await writer.query("SELECT pg_backend_pid() AS pid");
+    wait = writer.query("SELECT public.catalog_price_setup_lock_context($1,$2)", [list, command.variantId]);
+    void wait.catch(() => undefined);
+    await waitOnAdvisory(peer, pid);
+    await peer.query("COMMIT");
+    await wait;
+    await writer.query("LOCK TABLE public.commerce_settings,public.price_lists,public.subscription_price_policy_revisions IN SHARE MODE NOWAIT");
+    await writer.query("LOCK TABLE public.price_entries IN SHARE ROW EXCLUSIVE MODE NOWAIT");
+    const { rows: [{ at }] } = await writer.query(`UPDATE public.price_entries SET valid_from=clock_timestamp()
+      WHERE id=$1 RETURNING valid_from::text AS at`, [command.expected.entryId]);
+    const before = await priceEffects(command.variantId, writer);
+    const { rows: [{ result }] } = await writer.query("SELECT public.catalog_price_setup_mutate_claimed($1,$2,NULL) AS result", [claim, at]);
+    expect(result).toEqual({ outcome: "validation_issue", reason: "catalog_price_setup_pending_entry" });
+    expect(await priceEffects(command.variantId, writer)).toEqual([{ entries: before[0].entries, receipts: null }]);
+  } finally {
+    await peer.query("ROLLBACK");
+    await wait?.catch(() => undefined);
+    await writer.query("ROLLBACK");
+    peer.release(); writer.release();
+  }
+  expect(await priceEffects(command.variantId)).toEqual(original);
+});
+
+it("requires issuance for a fresh approval-bound writer call", async () => {
+  const command = await seedSku();
+  const before = await priceEffects(command.variantId);
+  const text = json(command);
+  await transaction(owner, async db => {
+    await db.query("SET LOCAL ROLE openlup_catalog_publication");
+    await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: actorId, role: "authenticated" })]);
+    const { rows: [{ result }] } = await db.query("SELECT public.catalog_price_setup_apply_v2($1,$2,$3) AS result",
+      [text, hash(text), randomUUID()]);
+    expect(result).toEqual({ outcome: "validation_issue", reason: "catalog_publication_price_issue_required" });
+  });
+  expect(await priceEffects(command.variantId)).toEqual(before);
 });
 
 it("applies with a bound captured purchase and preserves the completed receipt under a fresh hard refusal", async () => {

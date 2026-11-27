@@ -252,7 +252,7 @@ subscription bands and catalog-price inputs keep their existing semantics.
 
 ## Promotion application package boundary
 
-The experimental [promotions module](../../../packages/platform/README.md#promotions)
+The experimental [promotions module](../../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md#promotions)
 owns quote application, benefit interpretation, read ports, preview, money binding,
 acceptance and passive recording. Reference wrappers retain the module-load floor,
 customer classifier, email/contact eligibility precedence, request projection and

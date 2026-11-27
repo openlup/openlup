@@ -201,6 +201,28 @@ describe("normalizeTpayTransaction", () => {
       providerSessionId: null,
       intentProviderPaymentId: "TR-merchant-title",
     })).toBeNull();
+    expect(provider.resolveReadbackId?.({
+      providerAttemptId: "TR-merchant-title",
+      providerSessionId: "transaction-id",
+      providerPaymentId: "other-id",
+      intentProviderPaymentId: "TR-merchant-title",
+    })).toBe("transaction-id");
+    expect(provider.resolveReadbackId?.({
+      providerAttemptId: "TR-merchant-title",
+      providerSessionId: null,
+      providerPaymentId: "01KZTPM9SVY8C9C2R70FSA63AJ",
+    })).toBe("01KZTPM9SVY8C9C2R70FSA63AJ");
+    expect(provider.resolveReadbackId?.({
+      providerAttemptId: "TR-merchant-title",
+      providerSessionId: null,
+      providerPaymentId: "TR-merchant-title",
+      intentProviderPaymentId: "TR-merchant-title",
+    })).toBeNull();
+    expect(provider.resolveReadbackId?.({
+      providerAttemptId: "TR-merchant-title",
+      providerSessionId: "   ",
+      providerPaymentId: "tr-lowercase-title",
+    })).toBeNull();
     await expect(provider.readRecoveryPayment({
       providerPaymentId: "transaction-id",
       attempt,

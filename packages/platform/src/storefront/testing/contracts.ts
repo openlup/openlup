@@ -39,7 +39,7 @@ type StorefrontRequestDecision = "pass" | "withhold" | "block";
  * - `budget.creates` is the number of create requests one run may send.
  * - `text` holds one sentence each on the stimulus, the safety rule, the
  *   progress and the control.
- * - Step, `noAttemptAfter`, `forbiddenStates.after` and `control.from` indices
+ * - Step, `noAttemptAfter` and `control.from` indices
  *   count from 0 within `steps`.
  *
  * @experimental
@@ -71,12 +71,26 @@ export type StorefrontScenario = {
     readonly maxHolds?: number;
     readonly maxAttempts?: number;
     readonly maxCaptures?: number;
-    /** No payment attempt after the step at this index. */
+    /** No payment attempt after the step at this index: every later ledger read shows the attempts read when that step ended. */
     readonly noAttemptAfter?: number;
-    /** Attempts never exceed declines plus one. */
+    /** Attempts never exceed the declines the outcome driver produced so far plus one. */
     readonly attemptsPerDecline?: boolean;
-    /** States that must not be shown after the step at index `after`. */
-    readonly forbiddenStates?: { readonly after: number; readonly states: readonly string[] };
+    /**
+     * States that must not be shown, per run. `control`: forbidden in the control
+     * run from its first sample on: outcomes a page whose status reads are blocked
+     * cannot know (awaiting states stay allowed; the state the control negates is
+     * left to `vacuous_progress`). `clean.ruledOut`: forbidden in
+     * the clean run from its first sample on: outcomes the scenario rules out.
+     * `clean.afterShowing`: once the clean run has shown `state`, each of
+     * `regressions` (a pre-outcome state) is forbidden too.
+     */
+    readonly forbiddenStates?: {
+      readonly control: readonly string[];
+      readonly clean: {
+        readonly ruledOut: readonly string[];
+        readonly afterShowing?: { readonly state: string; readonly regressions: readonly string[] };
+      };
+    };
   };
   readonly control: {
     readonly kind: "none" | "block_read" | "omit_action" | "other_policy" | (string & {});
@@ -87,7 +101,7 @@ export type StorefrontScenario = {
     readonly from?: number;
     /** `omit_action`: the omitted action. */
     readonly action?: string;
-    /** Whether outcome steps after the control's start run (`kept`) or not (`skipped`). */
+    /** Whether outcome steps from the control's start run (`kept`, the default) or not (`skipped`); an `omit_action` control starts at the omitted action. */
     readonly outcomes?: "kept" | "skipped";
   };
 };
@@ -111,7 +125,11 @@ export type StorefrontScenario = {
  * @experimental
  */
 export type StorefrontAdapter = {
-  /** Store-owned steps up to the first buyer action. `edit` names a field to change on a rearrangement, else `null`. */
+  /**
+   * Store-owned steps up to the first buyer action. `edit` names a field to change on a rearrangement, else `null`.
+   * Like the default arrangement, tick consent only after `page.settled` returned from the last text change, then
+   * settle and tick it once more.
+   */
   readonly arrange?: (context: {
     readonly scenario: StorefrontScenario;
     readonly buyer: Readonly<Record<string, string | boolean>>;
@@ -176,7 +194,9 @@ export type StorefrontObserver = {
  *   `action:<value>` anchors, sorted; `locators` maps such a name to a custom
  *   CSS locator that replaces its attribute anchor.
  * - `perform` clicks, and resolves `false` without clicking when the target is
- *   absent or disabled; `fill` types a string or sets a checkbox, `false` when
+ *   absent or disabled; `fill` types a string and commits it as a buyer
+ *   leaving the field does (the field is blurred, so a page that reacts on
+ *   `input`, `change` or `blur` sees the value), or sets a checkbox, `false` when
  *   absent.
  * - `intercept(decide)` routes every request through `decide`, with the request
  *   path and no query string or fragment; a `decide` that throws blocks the
@@ -188,6 +208,46 @@ export type StorefrontObserver = {
  *   with `storefront_page_settle_timeout` naming each unfinished request's
  *   method and path: an open stream (`EventSource`), a long poll or a request
  *   in flight when the page closed keeps it pending until that bound.
+ * - `clearClientState()` clears the client state the table below lists, and
+ *   nothing more; it sends no request and never navigates. The runner calls
+ *   it before each run, so the control run starts without the state the table
+ *   clears on the path in use; state the table does not clear can still carry
+ *   over. It is optional so that a hand-built handle written before it still
+ *   compiles, but a handle without it clears nothing between the two runs:
+ *   every admitted scenario with a control run then ends `not_run` with
+ *   `client_state_unisolated`. `createPageHandle` always provides it, and
+ *   this table is the one statement of what it clears. It takes the context
+ *   path when the page's browser context has `setStorageState` (a Playwright
+ *   context), else the fallback path (`clearCookies` and in-page clears).
+ *   "Visited origins" are the origins the browser context has loaded.
+ *
+ *   | State | Context path | Fallback path |
+ *   | --- | --- | --- |
+ *   | Cookies | every cookie of the browser context | every cookie of the browser context |
+ *   | Local storage | every visited origin | the document's origin only, when it has one |
+ *   | Session storage (per tab) | this tab, on the store's origin only; other tabs never | this tab, on the store's origin only; other tabs never |
+ *   | IndexedDB | every visited origin; deletion started, not awaited | not cleared |
+ *   | HTTP cache | cleared where the browser supports it | not cleared |
+ *   | Virtual WebAuthn credentials created through the context's credentials API | removed | not removed |
+ *   | An authenticator added through the browser's debugging protocol | not touched | not touched |
+ *   | Service-worker registrations | unregistered on every visited origin | not unregistered |
+ *   | Cache Storage | not cleared | not cleared |
+ *
+ *   By document: on the store's origin, as the table says. On a document
+ *   with no origin, such as `about:blank`, no session storage is cleared,
+ *   and the fallback path clears no local storage either (cookies only); the
+ *   call resolves. When `createPageHandle` was given `options.origin`, on
+ *   another `http:` or `https:` origin it rejects
+ *   `storefront_page_client_state_foreign_origin` before clearing anything;
+ *   without `options.origin`, every `http:` or `https:` origin counts as the
+ *   store's. The context path also fires storage events in open pages.
+ *   Guaranteed on both paths: every cookie of the context, and the store's
+ *   local storage and this tab's session storage when the page shows a
+ *   document of the store's origin. Everything else depends on the path, so
+ *   a harness sets any state it needs (a preview or test-environment sign-in
+ *   cookie, local storage, IndexedDB, WebAuthn credentials) in its
+ *   arrangement, not before the run, and starts each test in a fresh browser
+ *   context when it leaves the store's origin between runs.
  *
  * @experimental
  */
@@ -209,4 +269,5 @@ export type PageHandle = {
   fill(target: StorefrontPageTarget, value: string | boolean, options: { readonly timeoutMs: number }): Promise<boolean>;
   intercept(decide: (request: StorefrontMatchedRequest & { header(name: string): string | null }) => StorefrontRequestDecision | Promise<StorefrontRequestDecision>): Promise<() => Promise<void>>;
   settled(options: { readonly quietMs: number; readonly timeoutMs?: number }): Promise<void>;
+  clearClientState?(): Promise<void>;
 };

@@ -17,6 +17,8 @@ async function fixture(keepOperation = false) {
   await h.pool.query("INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES($1,'admin','active','legacy',$2)", [operator, AT]);
   await h.pool.query("INSERT INTO public.platform_communication_operators(principal_id,active) VALUES($1,true)", [operator]);
   await h.pool.query("UPDATE public.clients SET principal_id=$2,lifecycle_stage='customer' WHERE id=$1", [f.client, principal]);
+  // A prepared operation can survive a later schedule change.
+  if (keepOperation) await prepareOriginal(h.pool, f);
   await h.pool.query("UPDATE public.subscriptions SET next_cycle_at=$2,started_at='2026-01-01' WHERE id=$1", [f.subscription, later(240)]);
   await h.pool.query("INSERT INTO public.subscription_method_states(subscription_id,health_state) VALUES($1,'healthy')", [f.subscription]);
   return { ...f, operator, principal };
@@ -94,10 +96,6 @@ it.each(["short band", "address", "expired-dunning resume", "residual-unpaid res
     const cycle = randomUUID();
     await h.pool.query("INSERT INTO public.subscription_cycles(id,subscription_id,scheduled_at,status) VALUES($1,$2,$3,$4)", [cycle, f.subscription, AT, name.startsWith("expired") ? "paid" : "payment_pending"]);
     if (name.startsWith("expired")) await h.pool.query("INSERT INTO public.subscription_dunning_cases(id,subscription_id,cycle_id,client_id,status,opened_at,expired_at,idempotency_key) VALUES($1::uuid,$2,$3,$4,'expired',$5,$5,$1::uuid::text)", [randomUUID(), f.subscription, cycle, f.client, AT]);
-  }
-  if (name === "prepared-attempt pause") {
-    // Reuse the owner's prepared-operation fixture rather than synthesizing its state.
-    await prepareOriginal(h.pool, f);
   }
   const before = await snapshot();
   const native = createPostgresOperatorAuthority({ run: work => work(h.pool) }, { operatorId: f.operator, now: () => Date.parse(AT), recoveryPath: token => `/repair?token=${token}` });

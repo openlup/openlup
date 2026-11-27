@@ -17,10 +17,13 @@ import { z } from "zod";
  *   (the UI acted by itself without declaring it).
  * - The adapter or proof file: `adapter_matcher_unmatched` (a command matcher
  *   matched no request), `adapter_anchor_missing` (an anchor did not resolve),
- *   `anchor_hidden` (an anchor resolved but was not visible).
+ *   `anchor_hidden` (an anchor resolved but was not visible),
+ *   `auto_progress_not_performed` (an action declared in `autoProgress` that the
+ *   UI leaves to the buyer).
  * - The harness: `control_not_applied`, `arrange_failed`, `stimulus_not_create`,
  *   `stimulus_not_applied`, `tier_unreachable`, `page_failed`,
- *   `request_budget_exceeded`.
+ *   `request_budget_exceeded`, `client_state_unisolated` (the page handle
+ *   cannot clear client state between the clean and control runs).
  * - The outcome driver: `outcome_failed`.
  * - The observer: `observer_subject_unseen`, `observer_failed`.
  *
@@ -37,6 +40,7 @@ export type StorefrontFindingCode =
   | "policy_mismatch"
   | "vacuous_progress"
   | "auto_progress_undeclared"
+  | "auto_progress_not_performed"
   | "adapter_matcher_unmatched"
   | "adapter_anchor_missing"
   | "anchor_hidden"
@@ -50,6 +54,7 @@ export type StorefrontFindingCode =
   | "observer_failed"
   | "page_failed"
   | "request_budget_exceeded"
+  | "client_state_unisolated"
   | (string & {});
 
 /**

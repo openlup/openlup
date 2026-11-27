@@ -11,6 +11,7 @@ import type { PgQueryExecutor } from "../queryBuilder.js";
 const LIST_DUE_SQL = `SELECT due.*, due.scheduled_at::text AS scheduled_at
   FROM public.subscription_list_due_renewals($1::timestamptz, $2::integer) due`;
 const SNAPSHOT_SQL = `SELECT subscription.id AS subscription_id, subscription.client_id,
+    subscription.template_version,
     subscription.next_cycle_at::text AS scheduled_at, terms.next_cycle_number AS cycle_number,
     terms.currency_code, terms.stock_source_key, terms.settlement_channel_key,
     terms.authorization_ref, terms.payer_account_ref, terms.unattended_charge_authorized_at,
@@ -31,6 +32,8 @@ const READ_SQL = `SELECT public.subscription_read_renewal($1::text) AS response`
 export function createPostgresAutomaticRenewalPort(
   executor: PgQueryExecutor,
 ): AutomaticRenewalStorePort {
+  const builds = new WeakMap<AutomaticRenewalCycleSnapshot, { templateVersion: number; fingerprint: string }>();
+
   async function buildCycleSnapshots(input: {
     subscriptionId: string;
     scheduledAt: string;
@@ -67,6 +70,10 @@ export function createPostgresAutomaticRenewalPort(
       lines,
     };
     if (snapshot.totalAmountMinor < 1) throw new Error("subscription_renewal_snapshot_total_invalid");
+    builds.set(snapshot, {
+      templateVersion: positiveInteger(header.template_version, "template_version"),
+      fingerprint: automaticRenewalFingerprint(snapshot),
+    });
     return snapshot;
   }
 
@@ -109,10 +116,16 @@ export function createPostgresAutomaticRenewalPort(
         input.snapshot.scheduledAt,
       );
       const operationFingerprint = automaticRenewalFingerprint(input.snapshot);
+      const build = builds.get(input.snapshot);
+      const payload = build?.fingerprint === operationFingerprint ? {
+        contractVersion: "platform.subscription.renewal.claim-build.v1",
+        buildTemplateVersion: build.templateVersion,
+        cycleSnapshot: input.snapshot,
+      } : input.snapshot;
       const result = await executor.query(CLAIM_SQL, [
         identityKey,
         operationFingerprint,
-        JSON.stringify(input.snapshot),
+        JSON.stringify(payload),
         input.workerId,
         input.leaseSeconds ?? 300,
         input.now,

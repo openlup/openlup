@@ -26,6 +26,17 @@ describe("tarball gate", () => {
     }
     for (const path of [... ["registry.ts", "tsconfig.json", "extra.ts", "install.mjs"].map(file => base + file), "docs/guide/other/pack.ts"]) expect(rules(packed([[path, "sample"]]))).toEqual(["package-content-allowlist"]);
   });
+  it("admits tracked meta/release-index.json only for @openlup/core and refuses other meta files", () => {
+    const path = "meta/release-index.json";
+    const read = (key: string) => key === `packages/core/${path}` ? encode('{"schemaVersion":1}\n') : readTracked(key);
+    expect(checkTarballEntries(entry, packed([[path, '{"schemaVersion":1}\n']]), read)).toEqual([]);
+    expect(checkTarballEntries(entry, packed([[path, '{"schemaVersion":2}\n']]), read).map((f) => f.rule)).toEqual(["changed-file"]);
+    expect(rules(packed([[path, '{"schemaVersion":1}\n']]))).toEqual(["unlisted-file"]);
+    expect(rules(packed([["meta/other.json", "{}"]]))).toEqual(["package-content-allowlist"]);
+    const platform = { name: "@openlup/platform", directory: "packages/platform", publish: true };
+    const readPlatform = (key: string) => key === "packages/platform/package.json" || key === `packages/platform/${path}` ? encode("{}") : undefined;
+    expect(checkTarballEntries(platform, [{ path: "package.json", bytes: encode("{}") }, { path, bytes: encode("{}") }], readPlatform).map((f) => f.rule)).toEqual(["package-content-allowlist"]);
+  });
   it("admits only the two tracked Platform settings artefacts", () => {
     const platform = { name: "@openlup/platform", directory: "packages/platform", publish: true };
     const files = ["settings-catalog.json", "settings-refusals.json"];
@@ -39,6 +50,19 @@ describe("tarball gate", () => {
     expect(check([packedFile("settings-other.json")])).toEqual(["package-content-allowlist"]);
     expect(check([packedFile("src/inventory/settings-data.json")])).toEqual(["package-content-allowlist"]);
     expect(rules(packed([[files[0]!, "{}"]]))).toEqual(["package-content-allowlist"]);
+  });
+  it("admits tracked sql/portable-advisories.json only for @openlup/platform", () => {
+    const platform = { name: "@openlup/platform", directory: "packages/platform", publish: true };
+    const advisory = "sql/portable-advisories.json";
+    const packedFile = (path: string, bytes = "{}") => ({ path, bytes: encode(bytes) });
+    const read = (path: string) => ["package.json", advisory].some(file => path === "packages/platform/" + file)
+      ? encode("{}") : undefined;
+    const check = (data: TarballEntry[]) => checkTarballEntries(platform, [packedFile("package.json"), ...data], read)
+      .map(({ rule }) => rule);
+    expect(check([packedFile(advisory)])).toEqual([]);
+    expect(check([packedFile(advisory, "{ }")])).toEqual(["changed-file"]);
+    expect(check([packedFile("sql/other-advisories.json")])).toEqual(["package-content-allowlist"]);
+    expect(rules(packed([[advisory, "{}"]]))).toEqual(["package-content-allowlist"]);
   });
   it("actual npm files lists exclude fragments for every admitted package; the tarball gate refuses a leak", () => {
     for (const name of ["core", "outbox", "platform"]) {

@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "advisories": [
+    {
+      "id": "job-run-finish-lease-fence",
+      "introducedIn": "1.4.0",
+      "sourceSql": "20261125070000_job_run_finish_lease_fence.sql",
+      "category": "concurrency-safety",
+      "targetObjects": [
+        "public.platform_finish_job_run_v2",
+        "public.platform_job_controls",
+        "public.platform_job_runs"
+      ],
+      "requiresManagedAdaptation": true,
+      "transactionCaveat": "Safe inside a transaction block (CREATE OR REPLACE FUNCTION); acquires a brief DDL lock on public.platform_finish_job_run_v2.",
+      "securityDefinerNote": "Portable SQL defines public.platform_finish_job_run_v2 as SECURITY INVOKER with SET search_path = public, pg_catalog. Managed deployments exposing SECURITY DEFINER RPCs or role-scoped grants must preserve SECURITY DEFINER, REVOKE/GRANT EXECUTE, and pinned search_path when adapting.",
+      "summary": "Fences public.platform_finish_job_run_v2 against stale lease completions by locking public.platform_job_controls FOR NO KEY UPDATE before updating run rows and marking lost-lease runs skipped with error 'job_lease_lost'."
+    },
+    {
+      "id": "outbox-active-partial-indexes",
+      "introducedIn": "1.4.0",
+      "sourceSql": "20261124100000_outbox_active_partial_indexes.sql",
+      "category": "performance-index",
+      "targetObjects": [
+        "public.outbox_events",
+        "public.idx_outbox_events_active_claim",
+        "public.idx_outbox_events_active_aggregate_order",
+        "public.idx_outbox_events_active_event_type"
+      ],
+      "requiresManagedAdaptation": true,
+      "transactionCaveat": "Portable SQL uses CREATE INDEX IF NOT EXISTS inside migration transactions. Busy managed databases should adapt these statements to CREATE INDEX CONCURRENTLY outside a transaction block to avoid blocking concurrent outbox writes.",
+      "securityDefinerNote": "Index-only DDL; no SECURITY DEFINER wrapper or function execute grants are affected.",
+      "summary": "Adds partial indexes scoped to active outbox rows (status IN ('pending', 'processing', 'failed')) so claim, per-aggregate ordering, and pending event-type checks remain O(active rows) when terminal rows are retained."
+    },
+    {
+      "id": "fulfillment-advance-shipment-lock-order",
+      "introducedIn": "1.4.0",
+      "sourceSql": "20261124090000_fulfillment_advance_shipment_lock_order.sql",
+      "category": "deadlock-prevention",
+      "targetObjects": [
+        "public.fulfillment_advance_shipment",
+        "public.subscriptions",
+        "public.fulfillment_shipments"
+      ],
+      "requiresManagedAdaptation": true,
+      "transactionCaveat": "Safe inside a transaction block (CREATE OR REPLACE FUNCTION); acquires a brief DDL lock on public.fulfillment_advance_shipment.",
+      "securityDefinerNote": "Portable SQL defines public.fulfillment_advance_shipment as SECURITY INVOKER with SET search_path = public, pg_catalog. Managed deployments exposing SECURITY DEFINER RPCs must preserve SECURITY DEFINER, execute grants, and pinned search_path when porting the lock order.",
+      "summary": "Acquires the parent public.subscriptions row lock FOR UPDATE before locking public.fulfillment_shipments in public.fulfillment_advance_shipment to follow the canonical delivery-alignment lock order and prevent 40P01 deadlocks against concurrent renewal admission."
+    }
+  ]
+}

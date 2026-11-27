@@ -311,8 +311,9 @@ To use another free local port, export `OPENLUP_STARTER_PORT=4320` in the shell
 that runs `./lifecycle up` and `npm run catalogue:apply`. Use a decimal port
 from 1024 to 65535. With the default origin, exclude [ports blocked by Fetch](https://fetch.spec.whatwg.org/#port-blocking).
 An unset or empty value uses 4319, even if Compose has a
-different value in `.env`. Choose a distinct `COMPOSE_PROJECT_NAME` for each
-concurrent demo. A configured `publicOrigin` still governs request authority.
+different value in `.env`. Use a separate application directory,
+`COMPOSE_PROJECT_NAME`, and port for each concurrent demo.
+A configured `publicOrigin` still governs request authority.
 
 ## Host origin and local sessions
 
@@ -321,8 +322,10 @@ The default Host authorities are `127.0.0.1:<listening-port>` and
 its validation owner is `assertPublicOrigin` in `shared/config.ts`. The demonstration HBA and
 loopback-only Compose publication remain separate from origin selection.
 
-`./lifecycle up` supplies the passwordless runtime URL as a non-secret host
-argument; the application receives no install connection or socket. `npm start`
+The runtime credential file must stay in owner-only configuration. The starter
+validates it at start. `./lifecycle up` records the project in the adopter-owned
+`.context/compose-project` file. `./lifecycle down` stops that project and
+clears the record before this directory can start another project. `npm start`
 without `--database-url` is still the UI-only preview with pending bindings.
 The native runtime composition binds customer challenge request/redemption,
 sign-out, reduced customer profile/subscription-control and owned order reads,
@@ -398,7 +401,9 @@ Use a separate private terminal in the same Compose project to find the newest
 operator sign-in message for the invited administrator.
 
 ```sh
-docker compose exec -T --user node --workdir /application/.context application cat captured-messages/identity.jsonl
+PROJECT=$( (cd .context && cat compose-project) 2>/dev/null) && [ -n "$PROJECT" ] ||
+  { printf '%s\n' 'Run ./lifecycle up first.' >&2; exit 1; }
+docker compose --project-name "$PROJECT" exec -T --user node --workdir /application/.context application cat captured-messages/identity.jsonl
 ```
 
 Enter only the matching token at the hidden prompt.
@@ -424,13 +429,10 @@ transaction. It never marks an arbitrary existing database as a demo.
 `starter_seed_demonstration_database_required` name the refusal boundaries.
 The missing-binding refusal applies only when the installed migration API is absent.
 The complete history uses explicit `qualified-v2` / `installer-managed` selection.
-Only PostgreSQL and the one-shot installer mount the Unix socket that permits
-privileged local logins. The application has only the restricted runtime TCP
-URL, no socket, install credential or privileged connection environment. The
-database has no published port; its HBA admits only the runtime login over TCP
-and rejects all other logins. This passwordless local demonstration is isolated
-by container mounts and networking; it is not a customer authentication recipe.
-No deployment recipe may reuse this Compose file or its HBA.
+PostgreSQL and the one-shot installer share the Unix socket. The application
+uses the project’s read-only runtime credential bind. The database port stays
+unpublished. TCP admits the runtime and publication roles using separate
+credentials. Keep this Compose configuration in the local demonstration.
 An existing unmarked database fails closed before role or schema changes. Only
 a successful database creation in that invocation can set the marker. An
 interruption between creation and marking deliberately leaves a refused database.
@@ -490,7 +492,7 @@ has no classic exclusion facts.
 `host/editor-mail.ts` exports `composeSizedPaidEmailNote`, compatible with the
 paid-email handler's `describeParcel` callback. It composes quantities and exact
 physical identities from the frozen order and the renewal cycle's frozen
-cadence. Unprovable facts omit the note. The lifecycle renewal entry mounts the
+cadence. Unprovable facts omit the note. The mounted renewal command below runs the
 paid-email handler through `host/paid-mail.ts` with this callback. Proven sized
 renewal parcel notes appear in its private captured receipts when the stored
 subscription binding is sized at send time. Classic bindings and acquisition
@@ -631,11 +633,15 @@ After an uncertain checkout response, an unchanged retry under the same command
 key returns the saved order and, while it is unpaid, a further continuation
 token. A refreshed acceptance for the same stored terms is the same purchase;
 changed details are refused, never applied. `checkout.continuation` resumes or
-abandons that order by its key. The managed checkout page keeps one key per
-purchase in tab storage, across reloads and changed details; changed details
-answer `starter_checkout_changed` and a panel offers to pay or cancel the
-earlier order. It starts a new key only after that order is closed or no order
-can still arrive, or the buyer explicitly starts a different purchase. Other forms prepare a fresh key when the input changes or the
+abandons that order by its key. The managed checkout page runs on
+`createPurchaseContinuation` through `shared/storefront-bindings.ts`: it keeps
+one key per purchase in tab storage, across reloads and changed details, and
+repeats a create whose answer was lost once by itself. Changed details send
+nothing; the page shows `starter_checkout_changed` and a panel offers to pay or
+cancel the earlier order. It starts a new key only after that order is closed
+or no order can still arrive, or the buyer explicitly starts a different
+purchase, which it offers whenever an answer names the earlier order as not
+payable. An expired order keeps the key. Other forms prepare a fresh key when the input changes or the
 buyer starts a new action. The server still validates acceptance before any new
 draft is admitted.
 
@@ -731,14 +737,15 @@ sections keep their existing refusal.
 The [notice binder](host/lifecycle-notices.ts) renders copy for every
 configured locale through the separately owned private capture module and M04 receipt owner.
 It preserves one artifact and frozen token expiry per native notice command;
-access-grant references contain the native token UUID. The one-shot care command mounts the native lifecycle dispatcher with this binder. No parallel
+access-grant references contain the native token UUID. The [mounted care command](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#run-a-bounded-background-pass) uses this binder. No parallel
 subscription-notice outbox handler is registered. The separate paid-order
 handler below does not dispatch subscription notices. Signed opt-out retains its separate pending binding. The care command also selects native reminders, at-risk warnings and operator escalation with owned timing and caps; it activates no other retention planner.
 
 ### Private paid-order receipts
 
-The same `./lifecycle renewal` invocation mounts the package's paid-order email
-handler through [the paid-mail host](host/paid-mail.ts). Only
+The Compose renewal invocation mounts the package’s paid-order email
+handler through [the paid-mail host](host/paid-mail.ts). With the recorded project and selected configuration, run
+`docker compose --project-name "$PROJECT" exec -T application ./lifecycle renewal --configuration "$CONFIGURATION"`. Only
 `commerce.order.paid.email` is claimable. Other known event types stay untouched.
 The Core vocabulary includes the sibling `commerce.settlement.settled` fact.
 It stays pending without a handler or message record and cannot block the paid
@@ -873,8 +880,9 @@ The host requires the slot-27 first-duty buyer-capture entry; slot 28 preserves
 absence of explicit buyer facts during recreation. `./lifecycle up` installs the
 complete history. No duty or historical invoice is backfilled.
 
-`payment.simulate`, `checkout.payment` and recreated `checkout.recovery` simulation
-share one capture/activation helper. Retained acquisition renewal availability
+`payment.simulate`, `checkout.paymentSimulate` and recreated `checkout.recoverySimulate`
+simulation share one capture/activation helper; the retained `action: "simulate"` form of
+`checkout.payment` and `checkout.recovery` runs the same code and retires in a later release. Retained acquisition renewal availability
 validates before a capture observation is recorded. After successful native ingress,
 an initial subscription declaration activates through its native acquisition or
 classic renewal branch. Capture and activation keep their existing transaction

@@ -46,5 +46,6 @@ jobs:
             if ! grep -qxF "$branch" <<<"$live"; then
               echo "cancel $id ($branch)"
               gh api -X POST "repos/$REPO/actions/runs/$id/cancel" >/dev/null || echo "::warning::cancel $id failed"
+              gh api -X POST "repos/$REPO/actions/runs/$id/force-cancel" >/dev/null 2>&1 || true
             fi
           done <<<"$runs"

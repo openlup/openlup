@@ -258,12 +258,13 @@ export function createNpmReleaseChecks(input: {
 
 // The code budget counts dist JavaScript, declarations and shipped TypeScript
 // sources; the docs budget counts files at the package root (documentation and
-// metadata). The guide has its own budget; anything else counts only toward
-// the tarball total.
+// metadata). The guide has its own budget; `meta/release-index.json` and
+// anything else outside the root count only toward the tarball total.
 export function packFileClass(path: string): "code" | "docs" | "guide" | "other" {
   if (/^dist\/.+\.(?:js|d\.ts(?:\.map)?)$/.test(path) || /^src\/.+\.ts$/.test(path))
     return "code";
   if (/^docs\/guide\/.+$/.test(path)) return "guide";
+  if (/^meta\/release-index\.json$/.test(path)) return "other";
   return path.includes("/") ? "other" : "docs";
 }
 

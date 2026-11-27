@@ -3,7 +3,7 @@ import {
   runCommunicationSyncDispatch,
   runCommunicationSyncDispatchForProviders,
   runCommunicationSyncReconcile,
-} from "./communicationSyncWorker.js";
+} from "@openlup/platform/communications";
 import {
   defaultNewsletterProviderCapabilities,
   fullNewsletterProviderCapabilities,

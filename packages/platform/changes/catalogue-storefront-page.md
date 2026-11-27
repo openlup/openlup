@@ -1,1 +1,0 @@
-- Added experimental `readPostgresCatalogStorefrontPage` to `@openlup/platform/catalog` for displaying published offer SKUs with current prices. Checkout continues to resolve its own prices.

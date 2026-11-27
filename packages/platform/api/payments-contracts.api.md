@@ -492,6 +492,7 @@ export type { PaymentAdapterConformanceSubject, PaymentAdapterConformanceEvidenc
 export type { PaymentTruthOutcome, PaymentTruthRefusalClass, PaymentSourceEvidence, PaymentTruthEvent, PaymentReconciliationResult, PaymentTruthReadback, PaymentTruthPort, CanonicalPaymentSource, } from "./truth.js";
 export type { PaymentIngressPort } from "./evidence.js";
 export type { PaymentReadbackIdentityMismatch, ProviderReconciliationStatusKind, ProviderReconciliationStatus, PaymentProviderReconciliationProvider, ClaimedPaymentAttempt, PaymentProviderReconciliationPort, InteractivePreparedAttemptManualReconciliationPort, ManualInteractivePreparedAttemptAbsenceEvidence, InteractivePreparedAttemptReopenResult, PaymentProviderReconciliationWorkerResult, PaymentProviderReconciliationWorkerInput, SilenceWindowLookup, PaymentVerifyReadPort, VerifiableAttemptSnapshot, PaymentVerifyNowResult, } from "./reconciliation.js";
+export type { PaymentReadbackIdInput } from "./reconciliation.js";
 export type { PostgresPaymentTruthOptions } from "./truth.js";
 export type { ActivePaymentActionAuthority, CheckoutActivePaymentActionResolver, CheckoutRecoveryPaymentResolver, CheckoutRecoveryPaymentResolution, PaymentRecoveryAction, PaymentRepairMethodPort } from "./repair.js";
 export type { PaymentServicesOptions, PaymentServices } from "./repair.js";
@@ -669,12 +670,26 @@ export interface ProviderReconciliationStatus {
  * abandonment is the more expensive of the two errors to lose, so it is the
  * behaviour a caller gets by default rather than one it must opt into.
  */
+export interface PaymentReadbackIdInput {
+    providerPaymentId?: string | null;
+    intentProviderPaymentId?: string | null;
+    providerAttemptId?: string | null;
+    providerSessionId?: string | null;
+}
 export interface PaymentProviderReconciliationProvider {
     readPayment(input: {
         providerPaymentId: string;
         attempt?: ClaimedPaymentAttempt;
         purpose?: ProviderReadPurpose;
     }): Promise<ProviderReconciliationStatus>;
+    /**
+     * Optional provider-owned resolution of the live readback identifier from an
+     * attempt snapshot. Returning a non-empty string selects that identifier;
+     * returning `null` reports no usable readback identifier without falling back
+     * to display-only attempt references; returning `undefined` defers to the
+     * caller's default fallback order.
+     */
+    resolveReadbackId?(snapshot: PaymentReadbackIdInput): string | null | undefined;
     /** Atomically close an incomplete provider object before minting a replacement. */
     closePayment?(input: {
         providerPaymentId: string;

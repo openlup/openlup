@@ -191,7 +191,7 @@ const BEHAVIOUR: Record<string, (m: Modules) => Promise<void>> = {
   "release:bump --set moves every publishable package and every exact pin on one": async (m) => {
     const { root, read } = fixture();
     const asked: string[] = [];
-    expect(m.bump.bumpSet(root, "0.5.0", (name, version) => { asked.push(`${name}@${version}`); return 123456; }).sort()).toEqual(["package-lock.json", "packages/core/CHANGELOG.md", "packages/core/docs/guide/upgrade/v0-5-0.md", "packages/core/package-lock.json", "packages/core/package.json", "packages/core/release-gates.json", "packages/demo/package.json", "packages/kit/CHANGELOG.md", "packages/kit/package-lock.json", "packages/kit/package.json", "packages/kit/release-gates.json"]);
+    expect(m.bump.bumpSet(root, "0.5.0", (name, version) => { asked.push(`${name}@${version}`); return 123456; }).sort()).toEqual(["package-lock.json", "packages/core/CHANGELOG.md", "packages/core/docs/guide/upgrade/v0-5-0.md", "packages/core/meta/release-index.json", "packages/core/package-lock.json", "packages/core/package.json", "packages/core/release-gates.json", "packages/demo/package.json", "packages/kit/CHANGELOG.md", "packages/kit/package-lock.json", "packages/kit/package.json", "packages/kit/release-gates.json"]);
     expect(asked, "each baseline reads the version the set replaces").toEqual(["@openlup/core@0.4.0", "@openlup/kit@0.4.0"]);
     for (const name of ["core", "kit"]) expect(JSON.parse(read(`packages/${name}/release-gates.json`)).pack.baseline, name).toEqual({ version: "0.4.0", packedBytes: 123456 });
     const manifest = (name: string) => JSON.parse(read(`packages/${name}/package.json`));

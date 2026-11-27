@@ -1,3 +1,13 @@
+export const renewalUpgradeCohort = {
+  table: "subscription_renewal_upgrade_cohort",
+  // Capture and restore use the migration identity across installation plans and slots.
+  forward: /^db\/platform\/migrations\/[0-9]{14}_subscription_renewal_current_template\.sql$/u,
+} as const;
+
+export function tablesForRenewalUpgradeCohort<T extends string>(tables: readonly T[], installed: boolean): readonly T[] {
+  return installed ? tables : tables.filter(table => table !== renewalUpgradeCohort.table);
+}
+
 export const subscriptionsDomain = {
   owned: {
     renewalOccurrences: [
@@ -6,6 +16,7 @@ export const subscriptionsDomain = {
     ],
     renewalCases: ["subscription_cycle_cases"],
     renewalPreparations: ["subscription_cycle_preparations"],
+    renewalUpgradeCohort: [renewalUpgradeCohort.table],
     cancelFeedback: [
       "subscription_cancel_feedback",
     ],

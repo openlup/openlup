@@ -21,16 +21,20 @@ and erasure receipts as unavailable.
 versions and owned resources. Each contributor describes its export coverage
 and its erase, retain or unresolved obligations. Duplicate IDs refuse with
 `PRIVACY_CONTRIBUTOR_DUPLICATE`. Export reports missing host-only contributors.
-Erasure refuses when a required owner or the identity owner is absent. A
-successful export is only as complete as its reported coverage.
+Native export and erasure both refuse if a contributor in the installed
+declaration is absent. Erasure also requires the identity owner and every
+contributor required by the host registry. A successful export is only as
+complete as its reported coverage.
 
 Register the owners of the features your application uses. Account-event
 payloads require the `account-support` contributor and an explicit retention
 decision; clearing the contact profile does not clear that ledger. Native
 billing data requires `customer-billing`: editable billing profiles erase while
 frozen invoice buyer components remain under invoice retention. Native parcel
-preparation requires `fulfillment-parcel-contacts`: private parcel and order contacts and retained correction responses
-erase while payload-free erasure markers remain. A composed `risk` contributor
+preparation requires `fulfillment-parcel-contacts`. Its export includes
+contacts projected from retained destination bindings. Private parcel and
+order contacts and retained correction responses erase while payload-free
+erasure markers remain. A composed `risk` contributor
 exports declared resources and retains facts only under an explicit policy;
 missing policy or ownership blocks erasure. These obligations do not disappear
 when identity erasure succeeds.
@@ -49,14 +53,15 @@ owner declares required contributor IDs in the same ordered forward as the owner
 feature. The runtime can execute the declaration reader. Each admitted operation
 reads the current set once inside its transaction.
 Register working owners for every installed ID, including saved addresses,
-preferences and tax evaluations in the reference composition. Keep an ID declared while its
-scoped evidence remains.
+preferences, tax evaluations and order draft receipts in the reference
+composition. Keep an ID declared while its scoped evidence remains.
 
 Native store wrappers implement `NativePrivacyStore` and forward
 `readRequiredContributorIds` and `findErasureReplay` on the held transaction.
 Forward the original receipt and its covered contributor IDs. Receipt coverage
-includes recognized IDs regardless of their historical versions and approvals
-bound to that receipt. Inject the instance
+includes recognized IDs and approvals bound to that receipt. Order draft receipt
+coverage requires its recorded contributor version and obligations or an
+approval bound to the original erasure. Inject the instance
 returned by the serving module's `createPrivacyOperations` into the reference
 host. Use `decoratePrivacyRoute` to wrap each guarded handler with host request
 scope or lifecycle logic. Probe both operations on the exact serving build
@@ -99,7 +104,7 @@ no retention period or remote-provider operation.
    intake and retries, and keep new owner writers dormant.
    The reference wrappers are `api/bff/[...path].ts` and the two routes under
    `server/bff/admin/identity/privacy/`.
-   See [the reference runtime policy](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/docs/platform/RUNTIME_AND_SELF_HOSTING.md#runtime-model)
+   See [the reference runtime policy](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/docs/platform/RUNTIME_AND_SELF_HOSTING.md#runtime-model)
    and the `#deployment-route-policy` binding.
 2. Drain admitted requests and retry work. Check the admission counters and
    database sessions and transactions against the ingress census. Record zero
@@ -113,7 +118,7 @@ no retention period or remote-provider operation.
    advisory lock and locks the relation census before copying retained rows.
    For capture, the authorized restricted migrator uses the host's owner window
    when needed. Verify the sealed role graph after the window closes.
-   See [connected-store transfer](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/docs/platform/migrations/compatible-data-transfer.md#compatible-data-transfer).
+   See [connected-store transfer](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/docs/platform/migrations/compatible-data-transfer.md#compatible-data-transfer).
    The source entry points are `captureConnectedNativeStore` in
    `server/adapters/postgres/connectedStoreCapture.ts` and
    `restoreConnectedNativeStore` in `server/adapters/postgres/connectedStoreRestore.ts`.
@@ -171,6 +176,22 @@ Enable evaluation writes only after every native privacy handler that serves
 the store includes the tax-calculation contributor.
 Export includes verified evaluation outcomes. Erasure keeps only an evaluation
 identifier and any pseudonymous marker needed to fence provider reference reuse.
+The sealed adapter money and its result digest are private subject-linked tax
+evidence. The same erasure operation clears both fields. The reporting verifier
+checks request references against the original issued request. The server trusts
+assessment IDs from its qualified adapter binding and admits only bounded ASCII
+tokens without whitespace, control characters, or `@`.
+
+For native order draft receipts, add
+`createOrderDraftReceiptsPrivacyContributor()` from `@openlup/platform/identity`
+to the privacy registry when the catalogue declares `order-draft-receipts`.
+An export reports incomplete coverage when it can verify the contact's order
+but cannot verify the receipt's principal reference. Erasure clears the receipt's
+direct owner references and retains the order owner's order reference and the
+replay key derived from the original scope and request. Export includes the
+retained order reference when ownership can be verified and withholds the
+derived key and command digest. Reconcile earlier erasures against their
+original receipt and recorded aliases.
 
 The reference host exposes `POST /api/bff/admin/identity/privacy/export` and
 `POST /api/bff/admin/identity/privacy/erase`. Both require the application's
@@ -226,7 +247,7 @@ An `ERASED` identity receipt does not mean all platform data has been deleted.
 
 Already-issued customer tokens can remain cryptographically valid until expiry.
 The direct session binding allows a lifetime within its configured range; see
-the [maintainer token limits](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/docs/platform/IDENTITY.md#admin-operations-and-token-limits)
+the [maintainer token limits](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/docs/platform/IDENTITY.md#admin-operations-and-token-limits)
 for the default and accepted range.
 After its link is cleared, customer `me` returns HTTP 403 /
 `FORBIDDEN` with “No customer account linked to this session.” Operator
@@ -276,10 +297,12 @@ contributor `registry` and current human administrator `actor`. Pass
 operation commits the selected contributor's disposition with the approval
 binding. Repeating the same binding returns `null`. If the binding is refused
 as `PRIVACY_RECONCILIATION_APPROVAL_UNVERIFIED`, verify the original approval
-in owner custody. Close the owner session and retry the original erasure
-request once its required coverage is complete. Keep retained obligations
-from reconciliation with the owner approval, while replay preserves the
-original receipt and its obligations.
+in owner custody. If the contributor’s result is invalid or contains an
+unresolved obligation, correct the contributor or resolve the obligation before
+retrying the same approval binding. Close the owner session and retry the
+original erasure request once its required coverage is complete. Keep retained
+obligations from reconciliation with the owner approval, while replay preserves
+the original receipt and its obligations.
 
 ### Native coverage gaps
 

@@ -502,9 +502,15 @@ test('selection entry over a placed order cannot create a second order', async (
   await expect(page.locator('main')).toContainText(text.cartEmpty);
   await page.goto(selectionEntryPath(locale, cart('one_time', 2)));
   await expect(page.getByRole('spinbutton').first()).toHaveValue('2');
-  const second = await place();
-  expect(second).toMatchObject({ ok: false, code: 'starter_checkout_changed' });
-  await expect(page.locator('main')).toContainText('starter_checkout_changed');
+  // Changed details while the placed order may exist send nothing: the page answers starter_checkout_changed itself.
+  const sent: string[] = [];
+  page.on('request', request => { if (request.url().endsWith('/api/actions/checkout.create')) sent.push(request.url()); });
+  await page.locator(anchorSelector).click();
+  await expect(page.locator('.summary')).toBeVisible();
+  await terms.check();
+  await page.getByRole('button', { name: text.placeOrder, exact: true }).click();
+  await expect(page.locator('main form .action-result')).toContainText('starter_checkout_changed');
+  expect(sent).toEqual([]);
 });
 
 test('selection entry answers replace the history entry', async ({ page }) => {

@@ -36,7 +36,8 @@
     "owned/invoice-provider.ts",
     "owned/invoice-provider.test.ts",
     "owned/renewal-policy.ts",
-    "owned/market.config.ts"
+    "owned/market.config.ts",
+    "owned/storefront-proof.json"
   ],
   "managed": [
     "host/account-renewal.ts",
@@ -93,6 +94,7 @@
     "host/catalogue-storefront.ts",
     "host/e-composition.ts",
     "host/healthcheck.ts",
+    "host/runtime-database.ts",
     "host/native-composition.ts",
     "host/operator-composition.ts",
     "host/origin-policy.ts",
@@ -174,7 +176,12 @@
     "browser/catalogue-products.spec.ts",
     "browser/checkout-expected-total.spec.ts",
     "browser/storefront-anchors.spec.ts",
+    "browser/checkout-controller.spec.ts",
+    "browser/route-stub.ts",
     "test/checkout-anchors.test.ts",
+    "browser/storefront-proof-kit.ts",
+    "shared/action-path.ts",
+    "test/storefront-proof-kit.test.ts",
     "client/quote-acceptance.ts",
     "host/quote-secret.ts",
     "test/acquisition-quote.test.ts",
@@ -234,6 +241,7 @@
     ".git/",
     ".starter-origin.json",
     ".context/",
+    ".context/compose-project",
     "artifacts/identity.json",
     "artifacts/openlup-core.tgz",
     "artifacts/openlup-outbox.tgz",

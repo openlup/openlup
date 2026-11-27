@@ -116,8 +116,10 @@ test('native acquisition, replay, quotas, durable read and unresolved support au
   await expect(customerForms.nth(1).locator('.action-result')).toContainText('host_binding_required');
 
   const durable = native(`
+    import { runtimeConnectionString } from './host/runtime-database.ts';
+
     import { createPostgresAcquisitionCasePort } from '@openlup/platform/marketing/server/postgres';
-    const port = createPostgresAcquisitionCasePort({connectionString:'postgresql://starter_runtime@database:5432/neutral_store'});
+    const port = createPostgresAcquisitionCasePort({connectionString:runtimeConnectionString()});
     try { console.log(JSON.stringify(await port.list({scope:'public_tester_application',actorRef:${JSON.stringify(operatorRef)},limit:30}))); }
     finally { await port.close(); }
   `);
@@ -128,8 +130,10 @@ test('native acquisition, replay, quotas, durable read and unresolved support au
   expect(persisted.addressReference).toEqual(acquisitionAddresses[0]!.addressReference);
   expect(persisted.consent.sourcePath).toBe('/tester-application');
   const support = native(`
+    import { runtimeConnectionString } from './host/runtime-database.ts';
+
     import { createPostgresCustomerSupportJourneyPort } from '@openlup/platform/account-support/postgres';
-    const port = createPostgresCustomerSupportJourneyPort({connectionString:'postgresql://starter_runtime@database:5432/neutral_store',operatorId:${JSON.stringify(operatorRef)}});
+    const port = createPostgresCustomerSupportJourneyPort({connectionString:runtimeConnectionString(),operatorId:${JSON.stringify(operatorRef)}});
     const results = [];
     try { for (const work of [()=>port.searchCustomerJourney({query:${JSON.stringify(customerEmail)},pageSize:25}),
       ()=>port.getCustomerJourney({subjectId:${JSON.stringify(customerRef)},pageSize:25})]) {

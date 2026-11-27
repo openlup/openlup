@@ -8,7 +8,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { findPackageJSON } from 'node:module';
 import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
-import { env } from 'node:process';
+import { cwd, env } from 'node:process';
 import pg from 'pg';
 import { buildCatalogReleaseDraftV3, canonicalCatalogDraftJson, catalogInternalGtin,
   createPostgresCatalogDraftStoreV4, createPostgresCatalogPublicationCommands } from '@openlup/platform/catalog';
@@ -17,12 +17,14 @@ import { createPostgresOperatorIdentityStore } from '@openlup/platform/identity'
 import { catalogueWatchdogPrincipalId, startCatalogueReadinessJobs } from '../host/catalogue-readiness-jobs.ts';
 import { starterCatalogue } from '../host/editor-catalogue.ts';
 import { createPrivateCapture } from '../host/private-capture.ts';
+import { prepareRuntimeHandoff } from '../host/runtime-database.ts';
 import { runScheduledCare } from '../host/scheduled-renewal.ts';
 import { buildDemoSeed } from '../owned/demo-seed.ts';
 import { selectConfiguration } from '../owned/store.config.ts';
 import { copy } from '../owned/copy.ts';
 import { routes } from '../shared/routes.ts';
 import { operations as declaredOperations } from '../shared/api.ts';
+import { stubFirst } from './route-stub.ts';
 
 /** Fresh installed PostgreSQL only; owns identities and the documented owner roster step. */
 const test = base.extend<{ composeProject: string }>({ composeProject: ['', { option: true }] });
@@ -33,21 +35,29 @@ test('native support roster, catalogue administration, replay and operator admis
   if (!baseURL || !/^[a-z0-9-]+$/.test(composeProject)) throw new Error('native_operator_proof_fixture_required');
   const compose = (...args: string[]) => execFileSync('docker', ['compose', '--project-name', composeProject, ...args],
     { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-  const sql = (query: string, runtime = false) => compose('exec', '-T', 'database', 'psql', '-XAt', '-v', 'ON_ERROR_STOP=1',
-    ...(runtime ? ['-h', '127.0.0.1', '-U', 'starter_runtime'] : ['-U', 'starter_install']), '-d', 'neutral_store', '-c', query).trim();
+  const sql = (query: string, runtime = false) => runtime
+    ? compose('exec', '-T', 'application', 'node', '--input-type=module', '-e', `
+      import pg from 'pg'; import { runtimeConnectionString } from './host/runtime-database.ts';
+      const pool = new pg.Pool({ connectionString: runtimeConnectionString() });
+      try { for (const row of (await pool.query(process.argv[1])).rows) {
+        const [value] = Object.values(row); console.log(typeof value === 'object' ? JSON.stringify(value) : value);
+      } } finally { await pool.end(); }
+    `, query).trim()
+    : compose('exec', '-T', 'database', 'psql', '-XAt', '-v', 'ON_ERROR_STOP=1', '-U', 'starter_install', '-d', 'neutral_store', '-c', query).trim();
   const fixture = JSON.parse(compose('exec', '-T', 'application', 'node', '--input-type=module', '-e', `
+    import { runtimeConnectionString } from './host/runtime-database.ts';
+
     import { randomUUID } from 'node:crypto';
-import { env } from 'node:process';
     import { createPostgresOperatorIdentityStore, createPostgresAccountLinkStore } from '@openlup/platform/identity';
-    const connectionString='postgresql://starter_runtime@database:5432/neutral_store';
+    const connectionString=runtimeConnectionString();
     const operators=createPostgresOperatorIdentityStore({connectionString});
     const accounts=createPostgresAccountLinkStore({connectionString});
     try {
-      const operator=await operators.bootstrapFirstAdministrator({email:'operator@example.test'});
+      const operator=await operators.bootstrapFirstAdministrator({email:process.argv[1]});
       const customer=await accounts.createAccount({principalId:randomUUID(),email:'customer@example.test',acquisitionSource:'direct',lifecycleStage:'customer'});
       console.log(JSON.stringify({operator:operator.principalId,customer:customer.id}));
     } finally { await Promise.all([operators.close(),accounts.close()]); }
-  `));
+  `, 'operator@example.test'));
   const privileges = JSON.parse(sql(`SELECT json_agg(json_build_object('routine',p.oid::regprocedure::text,
     'execute',has_function_privilege(current_user,p.oid,'EXECUTE'))) FROM pg_proc p WHERE p.pronamespace='public'::regnamespace
     AND (p.proname LIKE 'admin_%bundle%' OR p.proname IN ('customer_support_search','customer_support_journey',
@@ -496,7 +506,7 @@ test('authenticated Publish discloses only owned degraded jobs and supports exac
     } finally { await blocker.query('ROLLBACK'); blocker.release(); }
     const core = findPackageJSON('@openlup/core/catalog', import.meta.url)!;
     const guide = readFileSync(join(dirname(core), 'docs/guide/how-to/build/customize-the-starter.md'), 'utf8');
-    expect(guide).toContain('./lifecycle care --configuration <id> --database-url <runtime-url>');
+    expect(guide).toContain('docker compose --project-name "$PROJECT" exec -T application ./lifecycle care --configuration "$CONFIGURATION"');
     // The CLI pins the demo database name. Run the same care handler against the isolated clone.
     expect(await runScheduledCare(fixture.runtimeUrl, config, { publicOrigin: fixture.baseURL,
       capture: createPrivateCapture(join(fixture.state, '.context/captured-messages')) })).toHaveProperty('messages');
@@ -515,15 +525,19 @@ test('installed adopter pack refuses missing builds and resumes exact-pair autho
   test.setTimeout(180_000);
   test.skip(!/^st1-pr2-recipe-[a-z0-9-]+$/u.test(composeProject), 'Requires the installed adopter-pack fixture.');
   if (!baseURL) throw new Error('starter_pack_recipe_fixture_required');
-  const compose = (...args: string[]) => execFileSync('docker', ['compose', '--project-name', composeProject, ...args],
-    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 8 * 1024 * 1024 });
+  const runCompose = (environment: NodeJS.ProcessEnv, ...args: string[]) => execFileSync('docker',
+    ['compose', '--project-name', composeProject, ...args],
+    { env: environment, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 8 * 1024 * 1024 });
+  const compose = (...args: string[]) => runCompose(env, ...args);
   const sql = (statement: string) => compose('exec', '-T', 'database', 'psql', '-XAt', '-v', 'ON_ERROR_STOP=1',
     '-U', 'starter_install', '-d', 'neutral_store', '-c', statement);
   const email = 'pack-operator@example.test', actionPath = '/api/actions/operator.catalogDrafts';
   if (sql("SELECT count(*) FROM public.platform_human_principals WHERE email='pack-operator@example.test'").trim() === '0')
     compose('exec', '-T', 'application', 'node', '--input-type=module', '-e', `
+    import { runtimeConnectionString } from './host/runtime-database.ts';
+
     import { createPostgresOperatorIdentityStore } from '@openlup/platform/identity';
-    const operators = createPostgresOperatorIdentityStore({connectionString:'postgresql://starter_runtime@database:5432/neutral_store'});
+    const operators = createPostgresOperatorIdentityStore({connectionString:runtimeConnectionString()});
     try { await operators.bootstrapFirstAdministrator({email:${JSON.stringify(email)}}); } finally { await operators.close(); }
   `);
   async function login() {
@@ -594,8 +608,13 @@ test('installed adopter pack refuses missing builds and resumes exact-pair autho
   const beforeBuild = buildDigest(), beforeReceipt = ledgerReceipt();
   expect(beforeBuild).toMatch(/^[a-f0-9]{64}$/u);
   expect(JSON.parse(beforeReceipt)).toMatchObject({ packId: 'stationery', packVersion: pair.version });
-  compose('run', '--rm', '--no-deps', '-T', 'installation', 'node', '-e', 'require("node:fs").unlinkSync(process.argv[1])', target);
-  compose('restart', 'application');
+  const handoff = prepareRuntimeHandoff(composeProject, [cwd()]);
+  try {
+    const environment = { ...env, ...handoff.environment };
+    runCompose(environment, 'run', '--rm', '--no-deps', '-T', 'installation', 'node', '-e',
+      'require("node:fs").unlinkSync(process.argv[1])', target);
+    runCompose(environment, 'restart', 'application');
+  } finally { handoff.cleanup(); }
   await expect.poll(async () => (await page.request.get(baseURL + '/api/config').catch(() => null))?.status()).toBe(200);
   await login();
   const missing = { ok: false, code: 'starter_catalogue_build_missing', path: '/packs/1/pack',
@@ -605,8 +624,9 @@ test('installed adopter pack refuses missing builds and resumes exact-pair autho
   await expect(saveForm.locator('.action-result')).toContainText(missing.code);
   expect(await prepare(savedId)).toMatchObject(missing);
   await expect(prepareForm.locator('.action-result')).toContainText(missing.code);
-  await page.route('**' + actionPath, route => route.continue({ headers: { ...route.request().headers(), 'idempotency-key': originalKey } }), { times: 1 });
+  const replay = await stubFirst(page, '**' + actionPath, route => route.continue({ headers: { ...route.request().headers(), 'idempotency-key': originalKey } }));
   expect(await save(savedId, savedPayload)).toMatchObject({ ok: true, replayed: true });
+  expect(replay.hits, 'the save went out under the original key').toBeGreaterThanOrEqual(1);
 
   const report = JSON.parse(execFileSync('./lifecycle', ['up', '--configuration', 'coffee', '--json'],
     { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...env, COMPOSE_PROJECT_NAME: composeProject } }));

@@ -80,6 +80,21 @@ acknowledgement, a reservation block and a timeout after dispatch. See
 [evidence and limits](#evidence-and-limits) before choosing a runnable test scope.
 
 
+### Dormant native renewal occurrence allocation
+
+The native migration owner can allocate the first occurrence of a proved paid
+native activation. The routine locks the scoped subscription in READ COMMITTED
+and reads its current due under that lock. The original anchor and effective
+due both preserve that instant, including any delivery adjustment already
+applied by the delivery owner. The occurrence retains the accepted fixed-days
+cadence, cancellation rule and rail. Identical replay returns the stored key
+without writing a row.
+
+Runtime roles receive no grant and the mounted renewal worker has no call path
+to the producer. Incumbent artifacts, conflicting retained facts and changed
+replay inputs require reconciliation by the Subscriptions owner. The producer
+has no caller in the managed topology.
+
 ## Recover payment
 
 [paymentRecoveryHandler.ts](../../server/domains/subscription/paymentRecoveryHandler.ts)
@@ -146,6 +161,10 @@ These are available source services, not evidence of mounting or profile
 activation. Trace an actual caller and capability declaration before describing
 them as a running flow. An adopter's composition must preserve their durable
 attempt and idempotency boundaries.
+
+If this renewal forward is pending, follow the
+[stale renewal upgrade checklist](../../packages/core/docs/guide/upgrade/database-migrations.md#reconcile-stale-native-renewals)
+before applying it. Complete the checklist before resuming renewal or retry dispatch.
 
 ## Evidence and limits
 

@@ -1,20 +1,37 @@
 import { describe, expect, it } from "vitest";
 import { parseStorefrontVerdict, type StorefrontVerdict } from "../../../src/lifecycle/index.js";
 import { runStorefrontScenario, serializeStorefrontVerdict, storefrontScenarios, type StorefrontAdapter, type StorefrontScenario } from "../../../src/storefront/testing/index.js";
-import { storeDouble, type StoreDoubleSwitches } from "./storeDouble.js";
+import { findingText, type CauseOf } from "../../../src/storefront/testing/findings.js";
+import { ALL_OUTCOMES, storeDouble, type StoreDoubleSwitches } from "./storeDouble.js";
+
+/** The cause text of forbidden_state_shown for one cause. */
+const findingCause = (cause: CauseOf<"forbidden_state_shown">) => findingText("forbidden_state_shown", cause, { at: "x" }).cause;
 
 type RunOptions = Parameters<typeof runStorefrontScenario>[0];
 type Double = ReturnType<typeof storeDouble>;
 
 const commands = { create: { method: "POST", path: "/api/orders" }, read: { method: "GET", path: "/api/orders/status" } } as const;
-const proofFile = { formatVersion: 1, configurations: ["default"], widths: [1280], routes: { selectionEntry: { one_time: "/select/one_time" } } } as const;
+const proofFile = {
+  formatVersion: 1, configurations: ["default"], widths: [1280], routes: { selectionEntry: { one_time: "/select/one_time", subscription: "/select/subscription" } },
+} as const;
 const verdicts: { verdict: StorefrontVerdict; double: Double }[] = [];
+
+/** The test proof file with extra fields. */
+const proofWith = (extra: Partial<NonNullable<RunOptions["proofFile"]>>): NonNullable<RunOptions["proofFile"]> => ({
+  ...proofFile, configurations: ["default"], widths: [1280], routes: { selectionEntry: { ...proofFile.routes.selectionEntry } }, ...extra,
+});
+
+/** The verdict of a full run; a stopped run fails the test. */
+function verdictOf(result: Awaited<ReturnType<typeof runStorefrontScenario>>): StorefrontVerdict {
+  if (result.kind !== "verdict") throw new Error(`expected a verdict, got ${result.kind}`);
+  return result.verdict;
+}
 
 function options(double: Double, scenario: RunOptions["scenario"], extra: Partial<RunOptions> = {}): RunOptions {
   let now = 1_000_000;
   return {
-    scenario, page: double.page, observer: double.observer, tier: "fixture_preview", profile: "default", width: 1280,
-    commands, proofFile: { ...proofFile, routes: { selectionEntry: { ...proofFile.routes.selectionEntry } }, configurations: ["default"], widths: [1280] },
+    scenario, page: double.page, observer: double.observer, outcomes: double.outcomes, tier: "fixture_preview", profile: "default", width: 1280,
+    commands, proofFile: proofWith({}),
     build: { packages: [{ name: "@openlup/platform", version: "1.3.0" }], clients: [], proofFile: null },
     harness: { runnerVersion: "1.3.0" }, runId: "run-0001-abcd", clock: { now: () => (now += 7) }, quietMs: 0, timeoutMs: 0,
     ...extra,
@@ -23,8 +40,7 @@ function options(double: Double, scenario: RunOptions["scenario"], extra: Partia
 
 async function run(scenario: string, switches: StoreDoubleSwitches = {}, extra: Partial<RunOptions> = {}, doubleOptions: Parameters<typeof storeDouble>[1] = {}) {
   const double = storeDouble(switches, doubleOptions);
-  const { kind, verdict } = await runStorefrontScenario(options(double, scenario, extra));
-  expect(kind).toBe("verdict");
+  const verdict = verdictOf(await runStorefrontScenario(options(double, scenario, extra)));
   verdicts.push({ verdict, double });
   return { verdict, double };
 }
@@ -187,7 +203,7 @@ describe("subject and stimulus ties (R7)", () => {
     const double = storeDouble();
     await runStorefrontScenario(options(double, "duplicate_submit"));
     const calls = double.calls.length;
-    const { verdict } = await runStorefrontScenario(options(double, "duplicate_submit"));
+    const verdict = verdictOf(await runStorefrontScenario(options(double, "duplicate_submit")));
     verdicts.push({ verdict, double });
     expect(verdict.result).toBe("not_run");
     expect(finding(verdict, "observer_subject_unseen")).toMatchObject({ run: "clean", step: null });
@@ -397,10 +413,26 @@ describe("input and admission", () => {
     ["a scenario object with an act and no action", { scenario: { ...storefrontScenarios[1]!, id: "broken_four", steps: [{ kind: "arrange" }, { kind: "act" }] } as never }, "storefront_run_input_invalid"],
     ["a scenario object whose control starts past its steps", { scenario: { ...storefrontScenarios[0]!, id: "broken_five", control: { ...storefrontScenarios[0]!.control, from: 9 } } }, "storefront_run_input_invalid"],
     ["a scenario object without requires", { scenario: { ...storefrontScenarios[1]!, id: "broken_six", requires: undefined } as never }, "storefront_run_input_invalid"],
+    ["a scenario object with an outcome step and no outcome", { scenario: { ...storefrontScenarios[1]!, id: "broken_seven", steps: [{ kind: "arrange" }, { kind: "outcome" }] } as never }, "storefront_run_input_invalid"],
+    ["a scenario object whose outcome step is not required", {
+      scenario: { ...storefrontScenarios[1]!, id: "broken_eight", steps: [{ kind: "arrange" }, { kind: "outcome", outcome: "settled" }] },
+    }, "storefront_run_input_invalid"],
+    ["a scenario object omitting an action it never performs", {
+      scenario: { ...storefrontScenarios[1]!, id: "broken_nine", control: { kind: "omit_action", action: "retry_payment", negates: "paid" } },
+    }, "storefront_run_input_invalid"],
+    ["a scenario object with an other_policy control and no expect by policy", {
+      scenario: { ...storefrontScenarios[0]!, id: "broken_ten", control: { kind: "other_policy", negates: null } },
+    }, "storefront_run_input_invalid"],
+    ["a scenario object with forbidden states in the single-window shape", {
+      scenario: { ...storefrontScenarios[1]!, id: "broken_eleven", safety: { forbiddenStates: { after: 1, states: ["paid"] } } } as never,
+    }, "storefront_run_input_invalid"],
+    ["an outcome driver without produce", { outcomes: { capabilities: ["settled"] } as never }, "storefront_run_input_invalid"],
+    ["an outcome driver declaring a capability that is not a name", { outcomes: { capabilities: ["settled", "Settled!"], produce: async () => undefined } }, "storefront_run_input_invalid: outcomes.capabilities\\[1\\] is \"Settled!\""],
+    ["an outcome driver declaring a capability that is not a string", { outcomes: { capabilities: [7], produce: async () => undefined } as never }, "storefront_run_input_invalid: outcomes.capabilities\\[0\\] is 7"],
   ];
   it.each(refusals)("refuses %s and drives nothing", async (_name, extra, code) => {
     const double = storeDouble();
-    await expect(runStorefrontScenario(options(double, "lost_response_reload", extra))).rejects.toThrow(new RegExp(`^${code}: .+ Cause: .+ Fix: .+ Recheck: `));
+    await expect(runStorefrontScenario(options(double, "lost_response_reload", extra))).rejects.toThrow(new RegExp(`^${code}${code.includes(":") ? "" : ": "}.+ Cause: .+ Fix: .+ Recheck: `));
     expect(double.calls).toEqual([]);
     expect(double.events).toEqual([]);
   });
@@ -408,7 +440,7 @@ describe("input and admission", () => {
   it("ends a scenario whose outcome is not declared not_run before any page or observer call", async () => {
     const double = storeDouble();
     const scenario: StorefrontScenario = { ...storefrontScenarios[1]!, id: "needs_later_outcome", requires: { outcomes: ["kind_added_later", "settled"] } };
-    const { verdict } = await runStorefrontScenario(options(double, scenario));
+    const verdict = verdictOf(await runStorefrontScenario(options(double, scenario, { outcomes: undefined })));
     verdicts.push({ verdict, double });
     expect(verdict.result).toBe("not_run");
     expect(verdict.findings).toHaveLength(1);
@@ -418,6 +450,556 @@ describe("input and admission", () => {
     expect(verdict.steps).toEqual([]);
     expect(double.calls).toEqual([]);
     expect(double.events).toEqual([]);
+  });
+});
+
+const CLEAN = "storefront-run-0001-abcd-clean@example.test";
+const CONTROL = "storefront-run-0001-abcd-control@example.test";
+const producedBy = (double: Double, subject: string) => double.produced.filter(([who]) => who === subject).map(([, outcome]) => outcome);
+
+describe.each([["synchronous", false], ["asynchronous", true]] as const)("all six scenarios on a correct double, %s (R20)", (_mode, async) => {
+  const controls: Record<string, StorefrontVerdict["control"]> = {
+    lost_response_reload: { kind: "block_read", negates: "awaiting_payment", applied: true },
+    duplicate_submit: { kind: "none", negates: null, applied: false },
+    lost_response_edited_payload: { kind: "other_policy", negates: "awaiting_payment", applied: true },
+    reload_pending_attempt: { kind: "block_read", negates: "paid", applied: true },
+    decline_retry: { kind: "omit_action", action: "retry_payment", negates: "paid", applied: true },
+    paid_pending_activation: { kind: "block_read", negates: "paid_pending_activation", applied: true },
+  };
+  it.each(storefrontScenarios.map((scenario) => scenario.id))("%s passes with its control applied", async (id) => {
+    const { verdict } = await run(id, { async });
+    expect(verdict.findings).toEqual([]);
+    expect(verdict.result).toBe(id === "duplicate_submit" ? "safety_only" : "passed");
+    expect(verdict.control).toEqual(controls[id]);
+    expect(verdict.harness.declaredOutcomes).toEqual([...ALL_OUTCOMES]);
+  });
+
+  it("passes the edited payload under a declared update_in_place, negating details_changed", async () => {
+    const { verdict } = await run("lost_response_edited_payload", { async, updateInPlace: true }, { proofFile: proofWith({ changedPayloadPolicy: "update_in_place" }) });
+    expect(verdict.findings).toEqual([]);
+    expect(verdict.result).toBe("passed");
+    expect(verdict.control).toEqual({ kind: "other_policy", negates: "details_changed", applied: true });
+    expect(stepsOf(verdict, "clean")[6]).toMatchObject({ expectedAnchor: "state:awaiting_payment" });
+  });
+});
+
+describe("an omitted action (R21)", () => {
+  it("skips the outcomes after the omitted action, and ends vacuous when the state is reached without it", async () => {
+    const correct = await run("decline_retry");
+    expect(producedBy(correct.double, CLEAN)).toEqual(["declined", "settled"]);
+    expect(producedBy(correct.double, CONTROL)).toEqual(["declined"]);
+    expect(stepsOf(correct.verdict, "control")[6]).toMatchObject({ phase: "control", action: null });
+    expect(correct.double.calls.filter((call) => call === "perform action:retry_payment")).toHaveLength(1);
+    const { verdict } = await run("decline_retry", { progressWithoutRetry: true });
+    expect(verdict.result).toBe("vacuous");
+    expect(codes(verdict)).toEqual(["vacuous_progress"]);
+    expect(finding(verdict, "vacuous_progress")).toMatchObject({ run: "control", step: 6 });
+    expect(finding(verdict, "vacuous_progress")!.cause).toContain("without the omitted action");
+  });
+});
+
+describe("declared auto-progress (R22, R23)", () => {
+  it("passes a page that retries by itself when it is declared, with a read-blocking control and no retry click (R22)", async () => {
+    const { verdict, double } = await run("decline_retry", { autoRetry: true }, { proofFile: proofWith({ autoProgress: ["retry_payment"] }) });
+    expect(verdict.findings).toEqual([]);
+    expect(verdict.result).toBe("passed");
+    expect(verdict.control).toEqual({ kind: "block_read", negates: "paid", applied: true });
+    expect(double.calls).not.toContain("perform action:retry_payment");
+    expect(stepsOf(verdict, "clean")[6]).toMatchObject({ action: null });
+    // The control blocks reads from the step before the omitted action.
+    expect(stepsOf(verdict, "control").map((step) => step.phase).slice(4, 7)).toEqual(["stimulus", "control", "control"]);
+    expect(verdict.harness.autoProgress).toEqual(["retry_payment"]);
+  });
+
+  it("names a page that retries by itself without declaring it (R23)", async () => {
+    const { verdict } = await run("decline_retry", { autoRetry: true });
+    expect(verdict.result).toBe("not_run");
+    expect(codes(verdict)).toEqual(["auto_progress_undeclared"]);
+    expect(finding(verdict, "auto_progress_undeclared")).toMatchObject({ run: "control", step: 6 });
+    expect(finding(verdict, "auto_progress_undeclared")!.fix).toContain("autoProgress");
+    expect(finding(verdict, "auto_progress_undeclared")!.observed).toContain("retry_payment");
+  });
+});
+
+describe("the changed-payload policy (R24)", () => {
+  it.each([
+    ["declared refuse_changed", { changedPayloadPolicy: "refuse_changed" }],
+    ["no declared policy", {}],
+    ["a policy this runner does not know", { changedPayloadPolicy: "merge_later" }],
+  ] as const)("fails a store that updates in place under %s", async (_name, policy) => {
+    const { verdict } = await run("lost_response_edited_payload", { updateInPlace: true }, { proofFile: proofWith(policy) });
+    expect(verdict.result).toBe("failed");
+    // The control run handles the changed details the same way, so it shows the other policy's progress too.
+    expect(codes(verdict)).toEqual(["policy_mismatch", "vacuous_progress"]);
+    expect(finding(verdict, "policy_mismatch")).toMatchObject({ run: "clean", step: 6 });
+    expect(finding(verdict, "policy_mismatch")!.observed).toContain("state:awaiting_payment");
+    expect(verdict.control.negates).toBe("awaiting_payment");
+  });
+
+  it("ends vacuous when the control run shows the other policy's progress", async () => {
+    const { verdict } = await run("lost_response_edited_payload", { updateInPlaceForControl: true });
+    expect(verdict.result).toBe("vacuous");
+    expect(codes(verdict)).toEqual(["vacuous_progress"]);
+    expect(finding(verdict, "vacuous_progress")).toMatchObject({ run: "control", step: 6 });
+  });
+});
+
+describe("a pending attempt and a reload (R25, R26)", () => {
+  it("negates only paid: awaiting_authority under the control passes, paid from page state is vacuous (R25)", async () => {
+    const correct = await run("reload_pending_attempt");
+    expect(correct.verdict.result).toBe("passed");
+    expect(stepsOf(correct.verdict, "control")[7]!.observedAnchors).toContain("state:awaiting_authority");
+    expect(producedBy(correct.double, CONTROL)).toEqual(["pending", "settled_after_pending"]);
+    const { verdict } = await run("reload_pending_attempt", { paidFromLocalState: true });
+    expect(verdict.result).toBe("vacuous");
+    expect(codes(verdict)).toEqual(["vacuous_progress"]);
+    expect(finding(verdict, "vacuous_progress")).toMatchObject({ run: "control", step: 8 });
+  });
+
+  it("fails a new payment attempt on reload (R26)", async () => {
+    const { verdict } = await run("reload_pending_attempt", { newAttemptOnReload: true });
+    expect(verdict.result).toBe("failed");
+    expect(finding(verdict, "second_attempt")).toMatchObject({ run: "clean", step: 6 });
+    expect(finding(verdict, "second_attempt")!.observed).toContain("2 payment attempts; the scenario allows 1");
+  });
+
+  it("fails more attempts than declines plus one", async () => {
+    const { verdict } = await run("decline_retry", { retryStartsTwo: true });
+    expect(verdict.result).toBe("failed");
+    expect(codes(verdict)).toEqual(["second_attempt"]);
+    expect(finding(verdict, "second_attempt")).toMatchObject({ run: "clean", step: 6 });
+    expect(finding(verdict, "second_attempt")!.observed).toContain("3 payment attempts; the scenario allows 2");
+  });
+});
+
+describe("paid with activation pending: the forbidden-state matrix (R27)", () => {
+  // Per run: the control run (status reads blocked from the outcome on) may never show an outcome it cannot know; the
+  // clean run may never show an outcome the scenario rules out, nor regress to a pre-outcome state once it showed the
+  // expected one. Awaiting states stay allowed in the control run.
+  // The state the control negates is not in the control list: a page that shows it is judged vacuous, as in every other
+  // block_read scenario, because the runner cannot tell a guess from a page that learned it over an unmatched request.
+  const rows: readonly (readonly [string, StoreDoubleSwitches, "passed" | "failed" | "vacuous", readonly [run: string, step: number, causeOrCode: CauseOf<"forbidden_state_shown"> | "vacuous_progress", state: string] | null])[] = [
+    ["a correct store", {}, "passed", null],
+    ["an honest polling store (awaiting_payment until its poll answers; the control run keeps it)", { slowPoll: true, awaitingPaymentUntilPoll: true }, "passed", null],
+    ["a control run that falls back to awaiting_payment when its read fails", { awaitingPaymentWhenReadFails: true }, "passed", null],
+    ["a control run that shows paid when its read fails", { paidWhenReadFails: true }, "failed", ["control", 4, "unknowable", "state:paid"]],
+    ["a control run that shows declined when its read fails", { declinedWhenReadFails: true }, "failed", ["control", 4, "unknowable", "state:declined"]],
+    ["a control run that shows the negated outcome from page state", { activationFromPageState: true }, "vacuous", ["control", 4, "vacuous_progress", "state:paid_pending_activation"]],
+    ["a clean run that shows paid beside the outcome", { showPaidWhilePending: true }, "failed", ["clean", 4, "ruled_out", "state:paid"]],
+    ["a clean run that regresses to awaiting_payment after it showed the outcome", { fallsBackAfterShowing: true }, "failed", ["clean", 5, "regression", "state:awaiting_payment"]],
+  ];
+  it.each(rows)("%s", async (_name, switches, result, expected) => {
+    const { verdict } = await run("paid_pending_activation", switches);
+    expect(verdict.result).toBe(result);
+    if (expected === null) {
+      expect(verdict.findings).toEqual([]);
+      return;
+    }
+    const [runName, step, cause, state] = expected;
+    if (cause === "vacuous_progress") {
+      expect(codes(verdict)).toEqual(["vacuous_progress"]);
+      expect(finding(verdict, "vacuous_progress")).toMatchObject({ run: runName, step });
+      return;
+    }
+    expect(codes(verdict)[0]).toBe("forbidden_state_shown");
+    const forbidden = verdict.findings.filter((entry) => entry.code === "forbidden_state_shown");
+    expect(forbidden).toHaveLength(1);
+    expect(forbidden[0]).toMatchObject({ run: runName, step });
+    expect(forbidden[0]!.observed).toContain(state);
+    expect(forbidden[0]!.cause).toBe(findingCause(cause));
+  });
+
+  it("lets the honest polling store keep awaiting_payment through the control run", async () => {
+    const { verdict } = await run("paid_pending_activation", { slowPoll: true, awaitingPaymentUntilPoll: true });
+    expect(stepsOf(verdict, "clean")[4]!.observedAnchors).toContain("state:awaiting_payment");
+    expect(stepsOf(verdict, "clean")[5]!.observedAnchors).toContain("state:paid_pending_activation");
+    expect(stepsOf(verdict, "control")[5]!.observedAnchors).toContain("state:awaiting_payment");
+    expect(stepsOf(verdict, "control").at(-1)!.observedAnchors).toContain("state:awaiting_payment");
+  });
+});
+
+describe("admission by declared outcomes (R28)", () => {
+  const partial = ["activation_pending", "declined", "pending", "settled"];
+  it.each(["fixture_preview", "postgres_sandbox"])("refuses a scenario whose outcome is not declared, before any call, at %s", async (tier) => {
+    const { verdict, double } = await run("reload_pending_attempt", {}, { tier }, { capabilities: partial });
+    expect(verdict.result).toBe("not_run");
+    expect(codes(verdict)).toEqual(["tier_unreachable"]);
+    expect(verdict.findings[0]).toMatchObject({ run: null, step: null });
+    expect(verdict.findings[0]!.cause).toContain("needs the outcomes settled_after_pending, which");
+    expect(verdict.harness.declaredOutcomes).toEqual(partial);
+    expect(double.calls).toEqual([]);
+    expect(double.events).toEqual([]);
+    expect(double.produced).toEqual([]);
+  });
+
+  it("refuses a required outcome this runner does not know, even when the driver declares it", async () => {
+    const double = storeDouble({}, { capabilities: [...ALL_OUTCOMES, "kind_added_later"] });
+    const scenario: StorefrontScenario = { ...storefrontScenarios[1]!, id: "needs_later_kind", requires: { outcomes: ["kind_added_later"] } };
+    const verdict = verdictOf(await runStorefrontScenario(options(double, scenario)));
+    verdicts.push({ verdict, double });
+    expect(verdict.result).toBe("not_run");
+    expect(codes(verdict)).toEqual(["tier_unreachable"]);
+    expect(verdict.findings[0]!.cause).toContain("kind_added_later");
+    expect(verdict.harness.declaredOutcomes).toEqual([...ALL_OUTCOMES, "kind_added_later"].sort());
+    expect(double.calls).toEqual([]);
+    expect(double.events).toEqual([]);
+  });
+
+  it("runs the others when the driver declares an unknown capability", async () => {
+    const { verdict } = await run("decline_retry", {}, {}, { capabilities: ["settled", "mystery_kind", "declined"] });
+    expect(verdict.result).toBe("passed");
+    expect(verdict.harness.declaredOutcomes).toEqual(["declined", "mystery_kind", "settled"]);
+  });
+});
+
+describe("faults of the outcome driver (R29)", () => {
+  it("ends not_run when produce rejects", async () => {
+    const { verdict } = await run("decline_retry", { driverRejects: true });
+    expect(verdict.result).toBe("not_run");
+    expect(codes(verdict)).toEqual(["outcome_failed"]);
+    expect(finding(verdict, "outcome_failed")).toMatchObject({ run: "clean", step: 4, field: "outcomes" });
+    expect(finding(verdict, "outcome_failed")!.observed).toContain("(outcome_driver_unavailable: the sandbox at <url> refused.).");
+    expect(stepsOf(verdict, "control")).toEqual([]);
+  });
+
+  it("ends not_run when produce resolves but the ledger shows no attempt", async () => {
+    const { verdict } = await run("decline_retry", { continueSendsNothing: true });
+    expect(verdict.result).toBe("not_run");
+    expect(codes(verdict)).toEqual(["outcome_failed"]);
+    expect(finding(verdict, "outcome_failed")).toMatchObject({ run: "clean", step: 4 });
+    expect(finding(verdict, "outcome_failed")!.cause).toContain("no payment attempt");
+  });
+});
+
+describe("stop-at (R30)", () => {
+  it("drives to the state, removes its interceptor and writes no verdict", async () => {
+    const double = storeDouble();
+    const result = await runStorefrontScenario({ ...options(double, "decline_retry"), stopAt: "checkout.declined" });
+    expect(result.kind).toBe("stopped");
+    if (result.kind !== "stopped") return;
+    expect(result.stoppedAt).toBe("checkout.declined");
+    expect("verdict" in result).toBe(false);
+    expect(result.steps.map((step) => step.index)).toEqual([0, 1, 2, 3, 4]);
+    expect(result.steps.every((step) => step.run === "clean")).toBe(true);
+    expect(await double.page.anchors()).toContain("state:declined");
+    expect(double.calls.filter((call) => call === "intercept")).toHaveLength(1);
+    expect(double.calls.at(-1)).toBe("unintercept");
+    expect(double.produced).toEqual([[CLEAN, "declined"]]);
+  });
+
+  it("refuses a state the scenario does not expect, driving nothing", async () => {
+    const double = storeDouble();
+    for (const stopAt of ["checkout.unknown", "checkout.paid_pending_activation", "declined"]) {
+      await expect(runStorefrontScenario({ ...options(double, "decline_retry"), stopAt }))
+        .rejects.toThrow(/^storefront_stop_state_unknown: .+ Cause: .+ Fix: .+ Recheck: /);
+    }
+    expect(double.calls).toEqual([]);
+  });
+
+  it("refuses to stop in a scenario that is not admitted, driving nothing", async () => {
+    const double = storeDouble({}, { capabilities: ["settled"] });
+    await expect(runStorefrontScenario({ ...options(double, "decline_retry"), stopAt: "checkout.declined" }))
+      .rejects.toThrow(/^storefront_stop_state_unreached: Scenario decline_retry was not admitted: the outcome driver does not declare declined\. Cause: /);
+    expect(double.calls).toEqual([]);
+    expect(double.events).toEqual([]);
+    expect(double.produced).toEqual([]);
+  });
+
+  it("refuses a state the run never showed, naming the last step", async () => {
+    const double = storeDouble({ neverDeclines: true });
+    await expect(runStorefrontScenario({ ...options(double, "decline_retry"), stopAt: "checkout.declined" }))
+      .rejects.toThrow(/^storefront_stop_state_unreached: Step 7 \(outcome settled\) of the clean run was the last step, and state:declined was not visible after any step \(first finding: /);
+    expect(double.calls.at(-1)).toBe("unintercept");
+  });
+});
+
+describe("declared auto-progress the page does not perform (R31)", () => {
+  it("ends not_run naming autoProgress when the skipped action is still offered and the state is not reached", async () => {
+    const { verdict, double } = await run("decline_retry", {}, { proofFile: proofWith({ autoProgress: ["retry_payment"] }) });
+    expect(verdict.result).toBe("not_run");
+    expect(codes(verdict)).toEqual(["auto_progress_not_performed"]);
+    expect(finding(verdict, "auto_progress_not_performed")).toMatchObject({ run: "clean", step: 7, field: "autoProgress" });
+    expect(finding(verdict, "auto_progress_not_performed")!.observed).toContain("action:retry_payment");
+    expect(stepsOf(verdict, "control")).toEqual([]);
+    expect(double.calls).not.toContain("perform action:retry_payment");
+  });
+});
+
+describe("the ledger effect of each outcome (R32)", () => {
+  it.each([
+    ["answers settled by leaving the attempt pending", "decline_retry", { driverSettlesAsPending: true }, 7],
+    ["answers settled without acting", "decline_retry", { driverIgnoresSettle: true }, 7],
+    ["answers activation_pending without acting", "paid_pending_activation", { driverIgnoresSettle: true }, 4],
+    ["captures on a decline", "decline_retry", { driverCapturesDecline: true }, 4],
+  ] as const)("ends not_run when the driver %s", async (_name, scenario, switches, step) => {
+    const { verdict } = await run(scenario, switches);
+    expect(verdict.result).toBe("not_run");
+    expect(codes(verdict)).toEqual(["outcome_failed"]);
+    expect(finding(verdict, "outcome_failed")).toMatchObject({ run: "clean", step, field: "outcomes" });
+    expect(finding(verdict, "outcome_failed")!.cause).toContain("ledger");
+    expect(stepsOf(verdict, "control")).toEqual([]);
+  });
+});
+
+describe("an outcome needs a new attempt (R32)", () => {
+  it("ends not_run when the retry started no attempt for the settling outcome to act on", async () => {
+    const { verdict } = await run("decline_retry", { retryStartsNone: true });
+    expect(verdict.result).toBe("not_run");
+    expect(codes(verdict)).toEqual(["outcome_failed"]);
+    expect(finding(verdict, "outcome_failed")).toMatchObject({ run: "clean", step: 7 });
+    expect(finding(verdict, "outcome_failed")!.observed).toContain("1 payment attempts against 1 at the previous outcome");
+  });
+});
+
+describe("harm proven before a fault (R33)", () => {
+  it("ranks a duplicate capture of the clean run above an outcome driver fault in the control run", async () => {
+    const { verdict } = await run("paid_pending_activation", { doubleCapture: true, driverRejectsForControl: true });
+    expect(verdict.result).toBe("failed");
+    expect(codes(verdict)[0]).toBe("duplicate_capture");
+    expect(finding(verdict, "duplicate_capture")).toMatchObject({ run: "clean" });
+    expect(finding(verdict, "outcome_failed")).toMatchObject({ run: "control", step: 4 });
+  });
+
+  it("ranks harm proven earlier in the same run above the run's fault", async () => {
+    const { verdict } = await run("paid_pending_activation", { doubleCapture: true, driverRejects: true });
+    expect(verdict.result).toBe("failed");
+    expect(codes(verdict)).toEqual(["duplicate_capture", "outcome_failed"]);
+    expect(finding(verdict, "duplicate_capture")).toMatchObject({ run: "clean", step: 1 });
+    expect(finding(verdict, "outcome_failed")).toMatchObject({ run: "clean", step: 4 });
+  });
+
+  it("ranks harm proven earlier in the clean run above a later stimulus check that ends not_run", async () => {
+    const { verdict } = await run("decline_retry", { twoAttempts: true }, { proofFile: proofWith({ autoProgress: ["retry_payment"] }) });
+    expect(verdict.result).toBe("failed");
+    expect(codes(verdict)).toEqual(["second_attempt", "auto_progress_not_performed"]);
+    expect(finding(verdict, "second_attempt")).toMatchObject({ run: "clean", step: 1 });
+    expect(finding(verdict, "auto_progress_not_performed")).toMatchObject({ run: "clean", step: 7 });
+  });
+
+  it("keeps a fault ahead when no harm was proven before it", async () => {
+    const { verdict } = await run("paid_pending_activation", { driverRejectsForControl: true });
+    expect(verdict.result).toBe("not_run");
+    // The stopped control run blocked nothing, which is reported after the fault.
+    expect(codes(verdict)).toEqual(["outcome_failed", "control_not_applied"]);
+  });
+});
+
+/** The double's page without `clearClientState`, as a hand-built handle written before it. */
+function unisolated(double: Double): RunOptions["page"] {
+  const { clearClientState: _omitted, ...rest } = double.page;
+  return rest;
+}
+
+/**
+ * Records, in one order, the observer's reads (`ledger <run>`, `count`) and the
+ * page handle's `clearClientState` and `intercept` calls over the store double.
+ * `clear` replaces the double's own member: a function, or `null` for none.
+ */
+function recorded(double: Double, clear?: (() => Promise<void>) | null) {
+  const log: string[] = [];
+  const own = double.page.clearClientState!;
+  const { clearClientState: _own, ...rest } = double.page;
+  const member = clear === undefined ? own : clear;
+  const page: RunOptions["page"] = {
+    ...rest,
+    ...(member === null ? {} : { async clearClientState() { log.push("clearClientState"); await member(); } }),
+    async intercept(decide) { log.push("intercept"); return double.page.intercept(decide); },
+  };
+  const observer: RunOptions["observer"] = {
+    kind: double.observer.kind,
+    async ledger(subject) { log.push(`ledger ${subject.endsWith("-control@example.test") ? "control" : "clean"}`); return double.observer.ledger(subject); },
+    ...(double.observer.payableOrdersInDatabase === undefined ? {} : {
+      async payableOrdersInDatabase() { log.push("count"); return double.observer.payableOrdersInDatabase!(); },
+    }),
+  };
+  return { log, page, observer };
+}
+
+/** A clearClientState that rejects on the given calls (1-based) and otherwise clears as the double does. */
+function rejectingOn(double: Double, ...calls: number[]) {
+  let count = 0;
+  return async () => {
+    count += 1;
+    if (calls.includes(count)) {
+      throw new Error("storefront_page_client_state_foreign_origin: the page is on https://other.example.test?token=secret-token-value while the store's origin is https://shop.example.test (options.origin). Cause: x.");
+    }
+    await double.page.clearClientState!();
+  };
+}
+
+const CONTROL_SCENARIOS = storefrontScenarios.filter((scenario) => scenario.control.kind !== "none").map((scenario) => scenario.id);
+
+describe("client state between the runs (R40–R46)", () => {
+  it("clears after the pre-arrangement reads and before the interceptor, in each run, and once without a control (R40, T0.1, T0.2)", async () => {
+    const double = storeDouble({}, { exclusive: true });
+    const { log, page, observer } = recorded(double);
+    const verdict = verdictOf(await runStorefrontScenario(options(double, "lost_response_reload", { page, observer })));
+    verdicts.push({ verdict, double });
+    expect(verdict.result).toBe("passed");
+    expect(log.filter((entry) => entry === "clearClientState" || entry === "intercept")).toEqual(["clearClientState", "intercept", "clearClientState", "intercept"]);
+    const at = (run: string) => log.indexOf(`ledger ${run}`);
+    expect(log.slice(at("clean"), at("clean") + 4)).toEqual(["ledger clean", "count", "clearClientState", "intercept"]);
+    expect(log.slice(at("control"), at("control") + 4)).toEqual(["ledger control", "count", "clearClientState", "intercept"]);
+    const single = storeDouble();
+    const once = recorded(single);
+    const safety = verdictOf(await runStorefrontScenario(options(single, "duplicate_submit", { page: once.page, observer: once.observer })));
+    verdicts.push({ verdict: safety, double: single });
+    expect(safety.result).toBe("safety_only");
+    expect(once.log.filter((entry) => entry === "clearClientState")).toHaveLength(1);
+    expect(once.log.slice(0, 3)).toEqual(["ledger clean", "clearClientState", "intercept"]);
+  });
+
+  it("ends a rejected clear as a page fault of its run, below ledger harm the clean run proved (R41, T0.9–T0.11)", async () => {
+    const clean = storeDouble();
+    const first = recorded(clean, rejectingOn(clean, 1));
+    const cleanFault = verdictOf(await runStorefrontScenario(options(clean, "lost_response_reload", { page: first.page, observer: first.observer })));
+    verdicts.push({ verdict: cleanFault, double: clean });
+    expect(cleanFault.result).toBe("not_run");
+    expect(codes(cleanFault)).toEqual(["page_failed"]);
+    expect(finding(cleanFault, "page_failed")).toMatchObject({ run: "clean", step: null });
+    expect(finding(cleanFault, "page_failed")!.observed).toContain("(storefront_page_client_state_foreign_origin: the page is on <url> while the store's origin is <url> (options.origin).)");
+    expect(stepsOf(cleanFault, "clean")).toEqual([]);
+    expect(stepsOf(cleanFault, "control")).toEqual([]);
+    expect(first.log).not.toContain("intercept");
+
+    const harmed = storeDouble({ secondPayableOrder: true });
+    const second = recorded(harmed, rejectingOn(harmed, 2));
+    const harm = verdictOf(await runStorefrontScenario(options(harmed, "lost_response_reload", { page: second.page, observer: second.observer })));
+    verdicts.push({ verdict: harm, double: harmed });
+    expect(harm.result).toBe("failed");
+    expect(codes(harm)[0]).toBe("duplicate_order");
+    expect(finding(harm, "duplicate_order")).toMatchObject({ run: "clean" });
+    expect(finding(harm, "page_failed")).toMatchObject({ run: "control", step: null });
+    expect(codes(harm).indexOf("page_failed")).toBeGreaterThan(codes(harm).indexOf("duplicate_order"));
+
+    const control = storeDouble();
+    const third = recorded(control, rejectingOn(control, 2));
+    const controlFault = verdictOf(await runStorefrontScenario(options(control, "lost_response_reload", { page: third.page, observer: third.observer })));
+    verdicts.push({ verdict: controlFault, double: control });
+    expect(controlFault.result).toBe("not_run");
+    expect(codes(controlFault)[0]).toBe("page_failed");
+    expect(finding(controlFault, "page_failed")).toMatchObject({ run: "control", step: null });
+    expect(stepsOf(controlFault, "control")).toEqual([]);
+  });
+
+  it("ends a safety_only run whose clear rejects as a page fault, and refuses stop-at when the clean run's clear rejects (R47)", async () => {
+    const single = storeDouble();
+    const safety = recorded(single, rejectingOn(single, 1));
+    const verdict = verdictOf(await runStorefrontScenario(options(single, "duplicate_submit", { page: safety.page, observer: safety.observer })));
+    verdicts.push({ verdict, double: single });
+    expect(verdict.result).toBe("not_run");
+    expect(codes(verdict)).toEqual(["page_failed"]);
+    expect(finding(verdict, "page_failed")).toMatchObject({ run: "clean", step: null });
+    expect(verdict.steps).toEqual([]);
+    expect(safety.log).toEqual(["ledger clean", "clearClientState"]);
+    expect(single.calls).toEqual([]);
+
+    const stop = storeDouble();
+    const stopped = recorded(stop, rejectingOn(stop, 1));
+    await expect(runStorefrontScenario({ ...options(stop, "decline_retry", { page: stopped.page, observer: stopped.observer }), stopAt: "checkout.declined" }))
+      .rejects.toThrow(/^storefront_stop_state_unreached: The clean run of decline_retry recorded no step, so state:declined was never visible \(first finding: page_failed\)\. Cause: /);
+    expect(stopped.log).toEqual(["ledger clean", "clearClientState"]);
+    expect(stop.calls).toEqual([]);
+    expect(stop.produced).toEqual([]);
+  });
+
+  it.each(CONTROL_SCENARIOS)("ends %s not_run with only client_state_unisolated when the handle cannot clear, calling nothing (R42, T0.4)", async (id) => {
+    const double = storeDouble();
+    const verdict = verdictOf(await runStorefrontScenario(options(double, id, { page: unisolated(double) })));
+    verdicts.push({ verdict, double });
+    expect(verdict.result).toBe("not_run");
+    expect(verdict.findings).toHaveLength(1);
+    expect(verdict.findings[0]).toMatchObject({ code: "client_state_unisolated", run: null, step: null, recheck: `Run scenario ${id} again with the same harness.` });
+    expect(verdict.findings[0]!.fix).toBe("Pass a page handle with clearClientState (createPageHandle provides it).");
+    expect(verdict.steps).toEqual([]);
+    expect(verdict.stimulus).toEqual({});
+    expect(verdict.control.applied).toBe(false);
+    expect(parseStorefrontVerdict(serializeStorefrontVerdict(verdict)).ok).toBe(true);
+    expect(double.calls).toEqual([]);
+    expect(double.events).toEqual([]);
+    expect(double.produced).toEqual([]);
+  });
+
+  it("refuses stop-at without the member before any call, and clears once before the clean run with it (R43, T0.7, T0.8)", async () => {
+    const bare = storeDouble();
+    await expect(runStorefrontScenario({ ...options(bare, "decline_retry", { page: unisolated(bare) }), stopAt: "checkout.declined" }))
+      .rejects.toThrow(/^storefront_stop_state_unreached: The page handle has no clearClientState\. Cause: the page handle cannot clear client state, .+ Fix: Pass a page handle with clearClientState \(createPageHandle provides it\)\. Recheck: /);
+    expect(bare.calls).toEqual([]);
+    expect(bare.events).toEqual([]);
+    const double = storeDouble();
+    const { log, page, observer } = recorded(double);
+    const result = await runStorefrontScenario({ ...options(double, "decline_retry", { page, observer }), stopAt: "checkout.declined" });
+    expect(result.kind).toBe("stopped");
+    expect(log.filter((entry) => entry === "clearClientState")).toHaveLength(1);
+    expect(log.slice(0, 3)).toEqual(["ledger clean", "clearClientState", "intercept"]);
+  });
+
+  it.each(["lost_response_reload", "lost_response_edited_payload"])("isolates the control buyer from the clean buyer's record in %s, and a clear that clears nothing does not (R44)", async (id) => {
+    const isolated = await run(id, { sessionCarriesRecord: true });
+    expect(isolated.verdict.findings).toEqual([]);
+    expect(isolated.verdict.result).toBe("passed");
+    const double = storeDouble({ sessionCarriesRecord: true });
+    const verdict = verdictOf(await runStorefrontScenario(options(double, id, { page: { ...double.page, clearClientState: async () => undefined } })));
+    verdicts.push({ verdict, double });
+    expect(verdict.result).toBe("not_run");
+    expect(verdict.findings.some((entry) => entry.run === "control" && ["stimulus_not_applied", "observer_subject_unseen"].includes(entry.code))).toBe(true);
+  });
+
+  it("admits first: a scenario that is not admitted ends tier_unreachable only, with or without the member, which is never called (R45, T0.3, T0.5)", async () => {
+    const partial = ["activation_pending", "declined", "pending", "settled"];
+    const present = await run("reload_pending_attempt", {}, {}, { capabilities: partial });
+    expect(codes(present.verdict)).toEqual(["tier_unreachable"]);
+    expect(present.verdict.steps).toEqual([]);
+    expect(present.double.calls).toEqual([]);
+    const double = storeDouble({}, { capabilities: partial });
+    const absent = verdictOf(await runStorefrontScenario(options(double, "reload_pending_attempt", { page: unisolated(double) })));
+    verdicts.push({ verdict: absent, double });
+    expect(absent.result).toBe("not_run");
+    expect(codes(absent)).toEqual(["tier_unreachable"]);
+    expect(double.calls).toEqual([]);
+    expect(double.events).toEqual([]);
+  });
+
+  it("runs a safety_only scenario without the member as before (R46, T0.6)", async () => {
+    const double = storeDouble();
+    const verdict = verdictOf(await runStorefrontScenario(options(double, "duplicate_submit", { page: unisolated(double) })));
+    verdicts.push({ verdict, double });
+    expect(verdict.findings).toEqual([]);
+    expect(verdict.result).toBe("safety_only");
+    expect(stepsOf(verdict, "clean").map((step) => step.index)).toEqual([0, 1, 2]);
+    expect(double.calls).not.toContain("clearClientState");
+  });
+});
+
+describe("consent after the page settled from the last text change (R48)", () => {
+  const modes = ["input", "change"] as const;
+  it.each(modes.flatMap((mode) => ["lost_response_reload", "lost_response_edited_payload", "duplicate_submit"].map((id) => [mode, id] as const)))(
+    "with quotes on %s, ticks terms after the page settled and once more after a second settle, so %s sends its creates", async (quoteOn, id) => {
+      const { verdict, double } = await run(id, { quoteOn });
+      expect(verdict.findings).toEqual([]);
+      expect(verdict.result).toBe(id === "duplicate_submit" ? "safety_only" : "passed");
+      const arrangement = double.calls.slice(0, double.calls.indexOf("perform action:place_order"));
+      const last = arrangement.lastIndexOf("fill field:postal_code");
+      expect(arrangement.slice(last, last + 6)).toEqual([
+        "fill field:postal_code", "settled", "find field:terms_accepted", "fill field:terms_accepted", "settled", "fill field:terms_accepted",
+      ]);
+    });
+
+  it.each(modes)("with quotes on %s, re-types the details after a reload under a custom arrange the same way", async (quoteOn) => {
+    const adapter: StorefrontAdapter = {
+      async arrange({ page, buyer }) {
+        await page.navigate("/select/one_time");
+        await page.perform({ attribute: "action", value: "proceed_to_checkout" }, { timeoutMs: 0 });
+        for (const [field, value] of Object.entries(buyer)) if (typeof value === "string") await page.fill({ attribute: "field", value: field }, value, { timeoutMs: 0 });
+        for (let pass = 0; pass < 2; pass += 1) {
+          await page.settled({ quietMs: 0 });
+          await page.fill({ attribute: "field", value: "terms_accepted" }, true, { timeoutMs: 0 });
+        }
+      },
+    };
+    const { verdict } = await run("lost_response_reload", { quoteOn }, { adapter, proofFile: { formatVersion: 1, configurations: ["default"], widths: [1280] } });
+    expect(verdict.findings).toEqual([]);
+    expect(verdict.result).toBe("passed");
   });
 });
 

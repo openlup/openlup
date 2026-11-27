@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   allocateChargedGrossTotals,
   allocateDiscountedGrossTotals,
-} from "./accountingLineAllocation.js";
+} from "@openlup/platform/invoicing";
 
 describe("accounting line allocation", () => {
   it("allocates charged gross with stable largest-remainder ties", () => {

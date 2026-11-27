@@ -27,7 +27,7 @@ The [membership read forward](../../../db/platform/migrations/20261124120000_cat
 adds a service-executable page and owner-only evidence helpers. The page uses
 the caller's statement snapshot. Its cursor binds the latest sealed issue
 across governed products. See the installed
-[catalogue entry](../../../packages/platform/README.md#read-governed-offer-memberships)
+[catalogue entry](../PLATFORM_PACKAGE_REFERENCE.md#read-governed-offer-memberships)
 for paging and refusal behavior.
 
 **Admission issue mode**
@@ -97,7 +97,7 @@ For each selected product, it uses the current-publication reader's matcher to
 compare the live product and its SKU roster with the sealed evidence. A
 mismatch refuses the batch.
 It writes nothing. See the
-[catalogue entry](../../../packages/platform/README.md#read-activation-readiness).
+[catalogue entry](../PLATFORM_PACKAGE_REFERENCE.md#read-activation-readiness).
 
 **Qualified publication authority**
 

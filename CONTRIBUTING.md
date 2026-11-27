@@ -1036,7 +1036,8 @@ It checks worktree cleanliness, mergeability against `origin/main` (skipped when
 points to an unlanded stack base), both neutrality gates, ast-grep scan and hygiene, `eslint-changed`
 on changed non-deleted JS/TS files, conditional `client-secret-boundary` and `site-routes` guards, the
 published-tree self-check (`oss:published-tree -- --self-check`, including committed-tree append-only
-migration history and package API `Migration:` blocks when `HEAD` differs from its base), changelog fragments, added
+migration history and package API `Migration:` blocks when `HEAD` differs from its base), pure-Node
+migration manifest/projection/5-profile inventory parity (`migration projection`), changelog fragments, added
 test-line date/expiry warnings, `gitleaks`, conditional guide-contract and package-manifest checks,
 and DCO sign-off across all commits (merge commits included). `WARN` and `SKIP` statuses surface
 without failing `--fast`. If fetch fails, it uses the local `origin/main`.
@@ -1044,9 +1045,11 @@ The fast tier does not replace full preflight or hosted CI.
 
 Run `npm run preflight -- --area` for a Docker-free, area-scoped check over changes since
 `git merge-base HEAD origin/main` plus uncommitted and untracked files: it runs `eslint changed`,
-triggered Docker-free, consumer-pack-free tooling guard tests from `scripts/ci-test-scope.mjs` (plus
-`scripts/catalog-document-boundary.test.ts` on catalog, script or doc edits) through `test:hosted`,
-and `sql admit` when SQL under `db/` or `packages/*/sql/` changed.
+`migration manifest` (pure-Node canonical manifest, projection, and 5-profile inventory parity when
+manifest, SQL, projection, or inventory inputs changed), triggered Docker-free, consumer-pack-free
+tooling guard tests from `scripts/ci-test-scope.mjs` (plus `scripts/catalog-document-boundary.test.ts`
+on catalog, script or doc edits) through `test:hosted`, and `sql admit` when SQL under `db/` or
+`packages/*/sql/` changed.
 
 Run `npm run preflight -- --affected` to run default preflight with test discovery expanded via
 `scripts/affected-tests.mjs` (reverse-import graph and contract-pin rules) so source-only edits
@@ -1067,6 +1070,11 @@ one `PASS`, `WARN`, `SKIP` or `FAIL` line per check:
   when `src/`, `server/`, `api/`, `config/environment-variables.json`, or the guard script changed;
 - `site-routes`: `node scripts/site-routes.mjs --public-reference` when `config/site-routes.json`,
   `config/public-reference-site-routes.json`, or `scripts/site-routes*` changed;
+- `migration manifest`: pure-Node canonical migration manifest, package projection,
+  and 5-profile inventory parity (`count`, `exactTailCount`, `tail`, and
+  `objectInventorySha256`) in Wave 1 before package builds/typecheck when
+  manifest, SQL, projection, or `tests/postgres/current-installation-inventory.json`
+  inputs changed;
 - `sql admit`: `npm run sql:admit` when SQL under `db/` or `packages/*/sql/`
   changed; reports `WARN` when the working tree has uncommitted or untracked
   changes;
@@ -1113,9 +1121,9 @@ only after the original callback drains. Missing Docker or PostgreSQL fails the
 witness rather than skipping it; this focused run does not replace the required
 package, coverage or full verification gates.
 
-Hosted `test-prep` runs `node scripts/ci-test-scope.mjs` and `node scripts/build-packages-incremental.mjs` once and uploads the exclusion list and built workspace `dist/` outputs as the `test-prep` artifact. Hosted `test-full-shard` jobs download that artifact and run `node scripts/ci-vitest-shard.mjs --shard N --total 8 --skip-pretest` (deterministic weighted LPT sharding over `config/vitest-shard-weights.json`, bypassing redundant per-shard `pretest` builds) in eight independent installations. Required `test` accepts only success from the whole matrix and from the `pgtap` job; failure, cancellation or a skipped dependency job refuses. There is no `test:required` script or separate `test-full` job. A successful shard can still report individually skipped cases; record missing proof.
+Hosted `test-prep` runs `node scripts/ci-test-scope.mjs` and `node scripts/build-packages-incremental.mjs` once and uploads the exclusion list and built workspace `dist/` outputs as the `test-prep` artifact. Hosted `test-full-shard` jobs download that artifact and run `node scripts/ci-vitest-shard.mjs --shard N --total 8 --skip-pretest` (deterministic weighted LPT sharding over `config/vitest-shard-weights.json` that places `GIT_FIXTURE_SUITES` members one per shard first, the lightest sharing a shard only when there are more members than shards, bypassing redundant per-shard `pretest` builds) in eight independent installations. Required `test` accepts only success from the whole matrix and from the `pgtap` job; failure, cancellation or a skipped dependency job refuses. There is no `test:required` script or separate `test-full` job. A successful shard can still report individually skipped cases; record missing proof.
 
-Vitest keeps `retry: 0`. In hosted CI (`CI=true`) only, each shard reruns its failed test files once in the same job, before the check reports, because a merge-queue entry is ejected on its first failing check. The shard passes only if every file passed on the first run or appears as passed in the rerun's report; a file missing, skipped or not run on the rerun fails it. More than 10 failed files, or any first-run error no test file accounts for (an unhandled error or rejection, an interrupted run, or a non-zero exit whose report shows no failed file), is not treated as transient: the shard fails without a rerun. Local runs never retry. Every file that passed only on the rerun prints `flaky-retry-passed: <file>`, emits a `Flaky test retried` warning annotation and is listed in the job summary; the retry is not acceptance. A file that repeatedly reports `flaky-retry-passed` is a defect to fix, for example a test that depends on order or on shared state.
+Vitest keeps `retry: 0`. In hosted CI (`CI=true`) only, each shard reruns its failed test files once in the same job, one file after another when there are several, before the check reports, because a merge-queue entry is ejected on its first failing check. The shard passes only if every file passed on the first run or appears as passed in the rerun's report; a file missing, skipped or not run on the rerun fails it. More than 10 failed files, or any first-run error no test file accounts for (an unhandled error or rejection, an interrupted run, or a non-zero exit whose report shows no failed file), is not treated as transient: the shard fails without a rerun. Local runs never retry. Every file that passed only on the rerun prints `flaky-retry-passed: <file>`, emits a `Flaky test retried` warning annotation and is listed in the job summary; the retry is not acceptance. A file that repeatedly reports `flaky-retry-passed` is a defect to fix, for example a test that depends on order or on shared state.
 
 Channel preservation tests live in `packages/platform/test/channels` and are
 discovered by the existing root Node project. The reference's adjacent guard
@@ -1234,7 +1242,7 @@ retry and other startup errors, and preserves a named volume and another
 container. Cross-run reclamation is limited to the labelled dead-owner contract
 above; it never authorizes pruning unlabeled resources or a live owner's stack.
 
-Root test/hook defaults are 10 seconds locally, or 30 with coverage or in hosted CI (`CI=true`), where shared runners slow tooling tests about twofold; externally supplied duration pins may raise them. Tests and hooks under `tests/postgres/` have a 60-second floor, preserving any larger derived or explicit per-test budget. These are deadlines, not expected runtimes or whole-file budgets. Process spawning, repeated tree copies, compilers, npm packs/installs, containers and intentional deadline waits are likely costs. Measure expensive additions and record command, revision, environment, workers and observed duration in existing task evidence. Simplify repeated setup or decision matrices before raising a timeout; give necessary integration work an explicit bounded deadline sized for hosted runners. Preserve `retry: 0` and required proof.
+Root test/hook defaults are 10 seconds locally, or 30 with coverage or in hosted CI (`CI=true`), where shared runners slow tooling tests about twofold; externally supplied duration pins may raise them. Tests and hooks under `tests/postgres/` have a 60-second floor, preserving any larger derived or explicit per-test budget. These are deadlines, not expected runtimes or whole-file budgets. Process spawning, repeated tree copies, compilers, npm packs/installs, containers and intentional deadline waits are likely costs. Measure expensive additions and record command, revision, environment, workers and observed duration in existing task evidence. Simplify repeated setup or decision matrices before raising a timeout; give necessary integration work an explicit bounded deadline sized for hosted runners. When you set or raise one, record the case's worst time from hosted shard logs in the task evidence. Preserve `retry: 0` and required proof.
 
 To find optimisation targets, read the per-file durations Vitest prints in a hosted shard log (`✓ <file> (<n> tests) <ms>`) or locally with `npm test -- <path>`, and rank by file time. On 2026-10-19 the slowest root files were repository-tooling tests (`scripts/packages/outbox-consumer-proof.test.ts`, `scripts/source-preview-release.test.ts`, `scripts/public-ci-neutrality.test.ts`), each 40–80 s; slim one by moving decisions into table-driven cases and keeping only the real-process witnesses its requirement needs.
 
@@ -1281,13 +1289,13 @@ suite path itself). Hardcoded control suites (`tests/postgres/nativeStoreForward
 `tests/postgres/nativeStoreForwardCatalog.noServiceRole.test.ts`,
 `tests/postgres/reviewedBatchForwards.test.ts`, and
 `tests/postgres/subscriptionExactInstallation.test.ts`), `PG_BASE_INPUTS`,
-`PG_AXES`, `SHARED_INPUTS`, `ROOT_DOC_FILES`, `NON_BAILOUT_SCRIPTS`, and
-`PENDING_POSTGRES_SUITE_CLOSURES` stay hardcoded in
+`PG_AXES`, `SHARED_INPUTS`, `ROOT_DOC_FILES`, and `NON_BAILOUT_SCRIPTS` stay
+hardcoded in
 [ci-test-scope.mjs](scripts/ci-test-scope.mjs) (`scripts/ci-test-scope.mjs` is
 a `NATIVE_CATALOG_CONTROLS` control file). `loadPostgresSuiteClosures` parses
 the registry fail-closed with a duplicate-key JSON scanner and rejects syntax
 errors, duplicate keys, unknown axes, broad `tests/postgres/` prefixes,
-unsorted keys/inputs, or collisions with control or pending suites. When a PR
+unsorted keys/inputs, or collisions with control suites. When a PR
 adds SQL under `db/platform/migrations/` or `supabase/migrations/`,
 [reviewed-platform-forward.ts](scripts/reviewed-platform-forward.ts) enforces
 that [config/ci-postgres-suite-closures.json](config/ci-postgres-suite-closures.json)
@@ -1737,6 +1745,28 @@ Include scope and delivery limits, full base/head SHAs, changed paths, check
 commands and exits, and unresolved evidence. Do not invent a receipt or claim
 hosted admission from local results. The supervisor follows the sequence below.
 
+### Agent coordination harness
+
+The repository ships a zero-dependency coordination harness under `scripts/harness/`
+for multi-lane contributor and agent workflows:
+
+- `npm run safe:run -- probe|exec ...`: pre-flight host probe (`git`, Node >= 22,
+  `gh` auth, optional worktree cleanliness) and fail-closed command execution
+  with exact exit-code propagation and optional remote branch/PR `headRefOid`
+  readback verification.
+- `npm run pr:open -- create|ready ...`: draft-by-default PR creation and
+  readiness promotion that verifies a clean worktree, commit and PR-body DCO
+  `Signed-off-by` trailers, affected preflight before ready promotion, and
+  remote `headRefOid` readback.
+- `npm run pr:watch -- [--repo owner/name] [--ack <pr>:<sha>] ...`: single-shot
+  GitHub GraphQL PR and stale-inbox monitor (exit `0` clean, `2` alerts, `1`
+  error) with SHA-scoped acknowledgements and local-worker self-exclusion.
+  Override default state paths via `OPENLUP_STALL_ACK_FILE` and
+  `OPENLUP_INBOX_DIR` (defaults under `.context/scratch/harness/`).
+- `npm run lane:inbox -- post|poll|ack|status ...`: file-locked JSONL lane
+  inbox for cross-lane handoffs, decisions, and alerts with idempotent
+  acknowledgements and stale-lock recovery.
+
 ## Deliver a change
 
 Follow this sequence within the accountable human's actual submission and merge
@@ -2071,7 +2101,10 @@ npm run landing:merge
 If a newly added SQL migration uses a slot at or before the latest timestamp on
 `origin/main`, the helper stops before builds and prints the next free UTC slot.
 Run `npm run landing:merge -- --re-slot` to opt into moving that migration and
-updating its registries and SQL mirror. An authored reference to the old filename
+updating its registries and SQL mirror, or pass
+`--target <YYYYMMDDHHMMSS>` with `--re-slot` to place the first unlanded plain
+migration at a specific strictly-later UTC slot (advancing any remaining plain
+migrations sequentially from there). An authored reference to the old filename
 in code, tests, SQL, or documentation makes this operation refuse with file and
 line locations. The changed SQL remains subject to integration review.
 

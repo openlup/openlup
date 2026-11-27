@@ -59,6 +59,48 @@ function isExternalOrAnchor(target: string): boolean {
 }
 
 export const guideAllowListPath = "config/documentation-guide-allowlist.json";
+/** Hard ceiling (48 KiB) for publishable package READMEs so npmjs never truncates at 65,536 bytes. */
+export const README_MAX_BYTES = 49_152;
+const staleHistoryAnchor = /CHANGELOG-HISTORY\.md#100\b/iu;
+const leakedBudgetReason = /\$budgetReason\b/u;
+const leakedTemplateVariable = /(?<![\\$A-Za-z0-9_])\$[a-z][A-Za-z0-9_]*\b/gu;
+
+function withoutFencedCode(source: string): string {
+  return source
+    .replace(/^ {0,3}(`{3,})[^`\r\n]*\r?\n[\s\S]*?^ {0,3}\1`*[ \t]*\r?$/gm, "")
+    .replace(/^ {0,3}(~{3,})[^\r\n]*\r?\n[\s\S]*?^ {0,3}\1~*[ \t]*\r?$/gm, "");
+}
+
+/**
+ * Enforces npmjs.com quality invariants on publishable package READMEs:
+ * - stays within 48 KiB (49,152 bytes) so npmjs never truncates at 64 KiB,
+ * - contains no bare relative Markdown/HTML links (which 404 on npmjs.com),
+ * - contains no stale `CHANGELOG-HISTORY.md#100` links,
+ * - contains no leaked template variables such as `$budgetReason`.
+ */
+export function assertPublishableReadmeContent(label: string, source: string, violations: string[]): void {
+  const bytes = Buffer.byteLength(source, "utf8");
+  if (bytes > README_MAX_BYTES) {
+    violations.push(`${label}: ${bytes} bytes exceeds the ${README_MAX_BYTES}-byte (48 KiB) npmjs README cap; move deep reference documentation to docs/platform/`);
+  }
+  const prose = withoutFencedCode(source);
+  for (const target of markdownLinkTargets(prose, () => undefined)) {
+    if (!isExternalOrAnchor(target)) {
+      violations.push(`${label}: bare relative link ${target} breaks on npmjs.com; use a tag-pinned GitHub URL or in-page #anchor`);
+    }
+  }
+  if (staleHistoryAnchor.test(prose)) {
+    violations.push(`${label}: stale CHANGELOG-HISTORY.md#100 link; link to the package's current CHANGELOG.md instead`);
+  }
+  if (leakedBudgetReason.test(prose)) {
+    violations.push(`${label}: leaked template variable $budgetReason`);
+  } else {
+    const leaked = [...new Set([...prose.matchAll(leakedTemplateVariable)].map((match) => match[0]))];
+    if (leaked.length > 0) {
+      violations.push(`${label}: leaked template variable (${leaked.join(", ")})`);
+    }
+  }
+}
 const absoluteFilesystemPath = /(?<![\w.~:/-])(?:file:\/\/)?\/(?:Users|home)\/[A-Za-z0-9._-]+|(?<![\w\\])[A-Za-z]:[\\/]Users[\\/][A-Za-z0-9._-]+/g;
 // Repository-internal language that a reader of the guide cannot resolve.
 const readerLanguagePatterns: ReadonlyArray<readonly [RegExp, string]> = [
@@ -341,13 +383,14 @@ export function assertPackageMarkdown(
   violations: string[],
   diagnosticLabel = label,
 ): void {
-  // A pinned repository URL in the guide is the published link form, not an extracted-root path.
+  // A pinned repository URL links to release source from the guide or a packed entry point.
   const scanned = guide ? source.replace(releaseUrlPattern(), "") : source;
+  const packedEntryPoint = packed.has(label) && (label === "README.md" || label === "AGENTS.md");
   // Generated release notes carry report headings and addition summaries as inline paths.
   const versionedUpgradePage = /^docs\/guide\/upgrade\/v\d+-\d+-\d+(?:-[A-Za-z0-9-]+)?\.md$/u.test(label);
   const pathSource = /^docs\/guide\/upgrade\/v[^/]*\.md$/.test(label)
     ? withoutGeneratedReportReferences(source, versionedUpgradePage).replace(releaseUrlPattern(), "")
-    : scanned;
+    : packedEntryPoint ? scanned.replace(releaseUrlPattern(), "") : scanned;
   if (monorepoPackagePath.test(pathSource)) violations.push(`${diagnosticLabel}: monorepo package path`);
   for (const [pattern, description] of forbiddenExtractedRootReferences) {
     if ((pattern as RegExp).test(scanned)) violations.push(`${diagnosticLabel}: ${description}`);

@@ -5,6 +5,7 @@ import { storefrontAnchor } from '@openlup/platform/storefront';
 import { act, uncertainAction } from './api.ts';
 import { append, button, el, renderValue } from './dom.ts';
 import { limitFor, nativeLimits, operationLimits, otherLimits } from '../shared/limits.ts';
+import { sandboxOutcomeAttribute } from '../shared/storefront-bindings.ts';
 
 export interface FieldSpec {
   name: string;
@@ -27,8 +28,7 @@ export type FieldAnchor = (typeof storefrontAnchor.field)[keyof typeof storefron
 /** A buyer action anchor. */
 export type ActionAnchor = (typeof storefrontAnchor.action)[keyof typeof storefrontAnchor.action];
 
-export interface ActionFormOptions {
-  operation: Operation;
+interface ActionFormBase {
   title?: CopyKey;
   submit: CopyKey | { label: string };
   fields?: FieldSpec[];
@@ -40,23 +40,30 @@ export interface ActionFormOptions {
   onFailure?: (code: string) => void;
   display?: (value: unknown) => unknown;
   resultMessage?: (value: unknown) => CopyKey | undefined;
-  /** A durable command key owned by the page. Without it the key lives in this form and a reset button starts a new one. */
-  continuation?: FormContinuation;
   /** A `storefrontAnchor.action` value, rendered as `data-openlup-action` on the submit button. */
   submitAnchor?: ActionAnchor;
+  /** A sandbox simulate button's outcome, rendered as `data-starter-sandbox-outcome` on the submit button. */
+  sandboxOutcome?: 'captured' | 'refused' | 'expired' | 'indeterminate';
 }
 
-export interface FormContinuation {
-  /** Called right before the request is sent; returns its key. */
-  dispatch(): string;
-  /** Called after every request returned, even when the form view is gone. */
-  settled(key: string, result: ActionResult): void;
-  /** Called after every request returned. It settles the page's record whatever the view; only while `current`
-   * it may update the page and return the output to show instead of the default. */
-  answer(key: string, result: ActionResult, current: boolean): HTMLElement | undefined;
-  /** True while the page has another request of this key in flight; the form then sends nothing. */
-  busy(): boolean;
-}
+/**
+ * The page sends the command itself, for example through a purchase-continuation controller, and owns its key.
+ * `reviewed` is the JSON of the form's values without `locale`; `body` is what `prepare` returned. It resolves to
+ * the answer the command applied, to the uncertain answer when none arrived, or to `null` when nothing was sent.
+ */
+export type FormSend = (input: { reviewed: string; body: ActionInput }) => Promise<ActionResult | null>;
+
+/**
+ * With `operation`, the form sends the action under a key it keeps, and a reset button starts a new one. With `send`,
+ * the page sends it: the form keeps no key and renders no reset button, and `answerView` may supply the output to
+ * show for each result instead of the default.
+ */
+export type ActionFormOptions = ActionFormBase & ({ operation: Operation; send?: undefined; answerView?: undefined } | {
+  operation?: undefined;
+  send: FormSend;
+  /** Called only while the form's view is current; `null` shows nothing, `undefined` the default. */
+  answerView?: (result: ActionResult | null) => HTMLElement | null | undefined;
+});
 
 let fieldCounter = 0;
 
@@ -99,6 +106,7 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
   }
   const submit = el('button', { type: 'submit' }, typeof options.submit === 'string' ? context.t(options.submit) : options.submit.label);
   if (options.submitAnchor) submit.setAttribute(storefrontAnchor.attribute.action, options.submitAnchor);
+  if (options.sandboxOutcome) submit.setAttribute(sandboxOutcomeAttribute, options.sandboxOutcome);
   // Keep command identity on an uncertain transport result. A changed input is a new command.
   let commandKey = crypto.randomUUID();
   let priorInput: string | null = null;
@@ -107,8 +115,8 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
   let generation = 0;
   form.addEventListener('input', () => { ++generation; });
   form.addEventListener('change', () => { ++generation; });
-  const continuation = options.continuation;
-  const reset = continuation ? undefined : button(context.t('newAction'), () => {
+  const send = options.send;
+  const reset = send ? undefined : button(context.t('newAction'), () => {
     if (inFlight) return;
     ++generation;
     commandKey = crypto.randomUUID();
@@ -117,11 +125,11 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
     output.replaceChildren();
   }, 'secondary');
   const busy = (value: boolean) => { inFlight = value; submit.disabled = value; if (reset) reset.disabled = value; };
-  append(form, continuation ? null : el('p', { class: 'muted small' }, context.t('idempotency')),
+  append(form, send ? null : el('p', { class: 'muted small' }, context.t('idempotency')),
     el('div', { class: 'actions' }, submit, reset), output);
   form.addEventListener('submit', event => {
     event.preventDefault();
-    if (inFlight || options.continuation?.busy() || submit.getAttribute('aria-disabled') === 'true' || !form.isConnected || !form.reportValidity()) return;
+    if (inFlight || submit.disabled || submit.getAttribute('aria-disabled') === 'true' || !form.isConnected || !form.reportValidity()) return;
     const requestGeneration = ++generation;
     const current = () => form.isConnected && generation === requestGeneration;
     void (async () => {
@@ -139,6 +147,7 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
         return;
       }
       const input = JSON.stringify(values);
+      const { locale: _locale, ...reviewed } = values;
       if (uncertain?.input === input) values = uncertain.prepared;
       else if (options.prepare) {
         busy(true);
@@ -150,26 +159,31 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
       }
       if (!current()) return;
       // A changed input is a new command. What prepare adds, such as a refreshed reviewed total, is not.
-      if (!continuation && priorInput !== null && priorInput !== input) commandKey = crypto.randomUUID();
+      if (!send && priorInput !== null && priorInput !== input) commandKey = crypto.randomUUID();
       priorInput = input;
       busy(true);
       form.setAttribute('aria-busy', 'true');
       output.replaceChildren(el('p', {}, context.t('loading')));
       try {
-        const key = continuation ? continuation.dispatch() : commandKey;
-        const result = await act(options.operation, values, key);
-        continuation?.settled(key, result);
+        const result = send ? await send({ reviewed: JSON.stringify(reviewed), body: values })
+          : await act(options.operation, values, commandKey);
+        if (result === null) {
+          if (current()) output.replaceChildren(...[options.answerView?.(null) ?? []].flat());
+          return;
+        }
         uncertain = uncertainAction(result)
           ? { input, prepared: values } : undefined;
+        // Every definite refusal of the command, or of its automatic repeat, runs the refusal hook.
         if (!result.ok && !uncertain) options.onRefusal?.(result.code);
-        const shown = current();
-        const custom = continuation?.answer(key, result, shown);
-        if (!shown) return;
+        if (!current()) return;
+        const custom = options.answerView?.(result);
+        if (custom === null) { output.replaceChildren(); return; }
+        const limit = options.operation === undefined ? undefined : operationLimits[options.operation];
         output.replaceChildren(custom ?? (result.ok
           ? el('section', {}, el('h4', {}, context.t('response')),
             options.resultMessage?.(result.value) ? el('p', {}, context.t(options.resultMessage(result.value)!)) : null,
             renderValue(options.display ? options.display(result.value) : result.value))
-          : refusal(context, result.code, operationLimits[options.operation]?.code === result.code ? operationLimits[options.operation]!.explanation[context.locale] : undefined)));
+          : refusal(context, result.code, limit?.code === result.code ? limit.explanation[context.locale] : undefined)));
         if (!result.ok && result.issues?.length) append(output, renderValue(result.issues));
         if (result.ok) {
           for (const { spec, control } of controls) if (spec.type === 'password') control.value = '';
