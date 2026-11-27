@@ -1036,7 +1036,8 @@ It checks worktree cleanliness, mergeability against `origin/main` (skipped when
 points to an unlanded stack base), both neutrality gates, ast-grep scan and hygiene, `eslint-changed`
 on changed non-deleted JS/TS files, conditional `client-secret-boundary` and `site-routes` guards, the
 published-tree self-check (`oss:published-tree -- --self-check`, including committed-tree append-only
-migration history and package API `Migration:` blocks when `HEAD` differs from its base), changelog fragments, added
+migration history and package API `Migration:` blocks when `HEAD` differs from its base), pure-Node
+migration manifest/projection/5-profile inventory parity (`migration projection`), changelog fragments, added
 test-line date/expiry warnings, `gitleaks`, conditional guide-contract and package-manifest checks,
 and DCO sign-off across all commits (merge commits included). `WARN` and `SKIP` statuses surface
 without failing `--fast`. If fetch fails, it uses the local `origin/main`.
@@ -1044,9 +1045,11 @@ The fast tier does not replace full preflight or hosted CI.
 
 Run `npm run preflight -- --area` for a Docker-free, area-scoped check over changes since
 `git merge-base HEAD origin/main` plus uncommitted and untracked files: it runs `eslint changed`,
-triggered Docker-free, consumer-pack-free tooling guard tests from `scripts/ci-test-scope.mjs` (plus
-`scripts/catalog-document-boundary.test.ts` on catalog, script or doc edits) through `test:hosted`,
-and `sql admit` when SQL under `db/` or `packages/*/sql/` changed.
+`migration manifest` (pure-Node canonical manifest, projection, and 5-profile inventory parity when
+manifest, SQL, projection, or inventory inputs changed), triggered Docker-free, consumer-pack-free
+tooling guard tests from `scripts/ci-test-scope.mjs` (plus `scripts/catalog-document-boundary.test.ts`
+on catalog, script or doc edits) through `test:hosted`, and `sql admit` when SQL under `db/` or
+`packages/*/sql/` changed.
 
 Run `npm run preflight -- --affected` to run default preflight with test discovery expanded via
 `scripts/affected-tests.mjs` (reverse-import graph and contract-pin rules) so source-only edits
@@ -1067,6 +1070,11 @@ one `PASS`, `WARN`, `SKIP` or `FAIL` line per check:
   when `src/`, `server/`, `api/`, `config/environment-variables.json`, or the guard script changed;
 - `site-routes`: `node scripts/site-routes.mjs --public-reference` when `config/site-routes.json`,
   `config/public-reference-site-routes.json`, or `scripts/site-routes*` changed;
+- `migration manifest`: pure-Node canonical migration manifest, package projection,
+  and 5-profile inventory parity (`count`, `exactTailCount`, `tail`, and
+  `objectInventorySha256`) in Wave 1 before package builds/typecheck when
+  manifest, SQL, projection, or `tests/postgres/current-installation-inventory.json`
+  inputs changed;
 - `sql admit`: `npm run sql:admit` when SQL under `db/` or `packages/*/sql/`
   changed; reports `WARN` when the working tree has uncommitted or untracked
   changes;
@@ -1281,13 +1289,13 @@ suite path itself). Hardcoded control suites (`tests/postgres/nativeStoreForward
 `tests/postgres/nativeStoreForwardCatalog.noServiceRole.test.ts`,
 `tests/postgres/reviewedBatchForwards.test.ts`, and
 `tests/postgres/subscriptionExactInstallation.test.ts`), `PG_BASE_INPUTS`,
-`PG_AXES`, `SHARED_INPUTS`, `ROOT_DOC_FILES`, `NON_BAILOUT_SCRIPTS`, and
-`PENDING_POSTGRES_SUITE_CLOSURES` stay hardcoded in
+`PG_AXES`, `SHARED_INPUTS`, `ROOT_DOC_FILES`, and `NON_BAILOUT_SCRIPTS` stay
+hardcoded in
 [ci-test-scope.mjs](scripts/ci-test-scope.mjs) (`scripts/ci-test-scope.mjs` is
 a `NATIVE_CATALOG_CONTROLS` control file). `loadPostgresSuiteClosures` parses
 the registry fail-closed with a duplicate-key JSON scanner and rejects syntax
 errors, duplicate keys, unknown axes, broad `tests/postgres/` prefixes,
-unsorted keys/inputs, or collisions with control or pending suites. When a PR
+unsorted keys/inputs, or collisions with control suites. When a PR
 adds SQL under `db/platform/migrations/` or `supabase/migrations/`,
 [reviewed-platform-forward.ts](scripts/reviewed-platform-forward.ts) enforces
 that [config/ci-postgres-suite-closures.json](config/ci-postgres-suite-closures.json)
@@ -2071,7 +2079,10 @@ npm run landing:merge
 If a newly added SQL migration uses a slot at or before the latest timestamp on
 `origin/main`, the helper stops before builds and prints the next free UTC slot.
 Run `npm run landing:merge -- --re-slot` to opt into moving that migration and
-updating its registries and SQL mirror. An authored reference to the old filename
+updating its registries and SQL mirror, or pass
+`--target <YYYYMMDDHHMMSS>` with `--re-slot` to place the first unlanded plain
+migration at a specific strictly-later UTC slot (advancing any remaining plain
+migrations sequentially from there). An authored reference to the old filename
 in code, tests, SQL, or documentation makes this operation refuse with file and
 line locations. The changed SQL remains subject to integration review.
 

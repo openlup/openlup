@@ -3,9 +3,8 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import { tmpdir } from 'node:os';
 import { env as processEnvironment } from 'node:process';
 import { delimiter, extname, join, posix, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { PG_CLOSURE_AXES } from './agent-review-registry.mjs';
 import { ALL_WORKFLOW_SCOPES_TRUE, CONTROL_POSTGRES_SUITES, excludedToolingTests, isGlobalBailoutScript, loadPostgresSuiteClosures, NON_BAILOUT_SCRIPTS, PACKAGE_DOC_MD, PACKAGES_NON_DOC, parsePostgresSuiteClosures, PG_AXES, POSTGRES_SUITE_CLOSURES_PATH, resolveGitExecutable, ROOT_DOC_FILES, scopeFromEvent, scopeFromLocal, SHARED_INPUTS, TOOLING_INPUTS, workflowScopeFromEvent, workflowScopeFromPaths, writeTestScope, writeWorkflowScope } from './ci-test-scope.mjs';
 
@@ -268,73 +267,56 @@ describe('conservative tooling scope', () => {
     expect(excludedToolingTests(['tests/postgres/managed-compat/supabase.sql'])).not.toContain('tests/postgres/reviewedBatchForwards.test.ts');
     expect(excludedToolingTests(['config/ci-postgres-packages.json'])).not.toContain('tests/postgres/reviewedBatchForwards.test.ts');
   });
-  const ownerWriteSuite = 'tests/postgres/catalogAdmissionOwnerWrite.test.ts';
-  const runtimeCommitSuite = 'tests/postgres/catalogAdmissionRuntimeCommit.test.ts';
-  const draftSuites = [ownerWriteSuite, runtimeCommitSuite];
-  const renewalDestinationSuite = 'tests/postgres/renewalOrderDestinationV2.test.ts';
-  const renewalDestinationFixture = 'tests/postgres/renewalOrderDestinationV2.fixture.ts';
-  const pendingSuites = [...draftSuites, renewalDestinationSuite];
-  const restoreSuite = 'tests/postgres/m14RestrictedConnectedRestore.test.ts';
-  const restoreFixtures = [
-    'tests/postgres/catalogAdmissionOwnerWrite.fixture.ts',
-    'tests/postgres/catalogPublicationFixture.ts',
-  ];
+  it('loads the migrated governed-draft and renewal-destination suites from config/ci-postgres-suite-closures.json and keeps unlisted tests running', () => {
+    const ownerWriteSuite = 'tests/postgres/catalogAdmissionOwnerWrite.test.ts';
+    const runtimeCommitSuite = 'tests/postgres/catalogAdmissionRuntimeCommit.test.ts';
+    const draftSuites = [ownerWriteSuite, runtimeCommitSuite];
+    const renewalDestinationSuite = 'tests/postgres/renewalOrderDestinationV2.test.ts';
+    const renewalDestinationFixture = 'tests/postgres/renewalOrderDestinationV2.fixture.ts';
+    const migratedSuites = [...draftSuites, renewalDestinationSuite];
+    const restoreSuite = 'tests/postgres/m14RestrictedConnectedRestore.test.ts';
+    const restoreFixtures = [
+      'tests/postgres/catalogAdmissionOwnerWrite.fixture.ts',
+      'tests/postgres/catalogPublicationFixture.ts',
+    ];
+    const unlistedPgSuite = 'tests/postgres/unlistedHypothetical.test.ts';
+    const closures = loadPostgresSuiteClosures();
+    const unrelated = excludedToolingTests(['docs/platform/README.md']);
 
-  it.each([
-    { scenario: 'owner-write only', present: [ownerWriteSuite] },
-    { scenario: 'runtime-commit only', present: [runtimeCommitSuite] },
-    { scenario: 'both draft suites present', present: draftSuites },
-    { scenario: 'renewal destination only', present: [renewalDestinationSuite] },
-    { scenario: 'no suites present', present: [] },
-    { scenario: 'owner-write throws EACCES', present: [runtimeCommitSuite], failure: { suite: ownerWriteSuite, code: 'EACCES' } },
-    { scenario: 'runtime-commit throws ELOOP', present: [ownerWriteSuite], failure: { suite: runtimeCommitSuite, code: 'ELOOP' } },
-  ])('registers present suites at import and keeps unlisted tests running ($scenario)', async ({ present, failure }) => {
-    vi.resetModules();
-    vi.doMock('node:fs', async () => {
-      const actual = await vi.importActual<typeof import('node:fs')>('node:fs');
-      const statSync = (...args: Parameters<typeof actual.statSync>) => {
-        const file = args[0] instanceof URL ? fileURLToPath(args[0]) : args[0];
-        const suite = pendingSuites.find(testPath => resolve(testPath) === file);
-        if (!suite) return actual.statSync(...args);
-        if (failure?.suite === suite) throw Object.assign(new Error('suite probe failed'), { code: failure.code });
-        return present.includes(suite) ? { isFile: () => true } : undefined;
-      };
-      return { ...actual, default: { ...actual, statSync }, statSync };
-    });
-    try {
-      const scope = await import('./ci-test-scope.mjs');
-      const unrelated = scope.excludedToolingTests(['docs/platform/README.md']);
-      for (const suite of pendingSuites) {
-        expect(Object.hasOwn(scope.TOOLING_INPUTS, suite), suite).toBe(present.includes(suite));
-        expect(unrelated.includes(suite), suite).toBe(present.includes(suite));
-      }
-      expect(unrelated).toContain(restoreSuite);
-      for (const input of [
-        ...restoreFixtures,
-        'tests/postgres/subscriptionLifecycleClosureFixture.ts',
-        'tests/postgres/subscriptionNativeFixture.ts',
-        'examples/neutral-store/host/server.ts',
-      ]) {
-        const excluded = scope.excludedToolingTests([input]);
-        for (const suite of draftSuites) expect(excluded, `${suite} <- ${input}`).not.toContain(suite);
-        if (restoreFixtures.includes(input)) expect(excluded, input).not.toContain(restoreSuite);
-      }
-      for (const input of [
-        renewalDestinationFixture,
-        'tests/postgres/customerAccountMutations.fixture.ts',
-        'tests/postgres/destinationDocumentFixture.ts',
-        'tests/postgres/destinationReceiptFixture.ts',
-        'tests/postgres/orderMoneyV2Storage.fixture.ts',
-        'tests/postgres/subscriptionNativeFixture.ts',
-      ]) {
-        const excluded = scope.excludedToolingTests([input]);
-        expect(excluded, `${renewalDestinationSuite} <- ${input}`).not.toContain(renewalDestinationSuite);
-      }
-      expect(scope.excludedToolingTests([renewalDestinationFixture])).toContain(restoreSuite);
-    } finally {
-      vi.doUnmock('node:fs');
-      vi.resetModules();
+    for (const suite of migratedSuites) {
+      expect(Object.hasOwn(closures, suite), suite).toBe(true);
+      expect(Object.hasOwn(TOOLING_INPUTS, suite), suite).toBe(true);
+      expect(unrelated, suite).toContain(suite);
     }
+    expect(Object.hasOwn(closures, unlistedPgSuite)).toBe(false);
+    expect(Object.hasOwn(TOOLING_INPUTS, unlistedPgSuite)).toBe(false);
+    expect(unrelated).not.toContain(unlistedPgSuite);
+    expect(unrelated).toContain(restoreSuite);
+
+    for (const input of [
+      ...restoreFixtures,
+      'tests/postgres/subscriptionLifecycleClosureFixture.ts',
+      'tests/postgres/subscriptionNativeFixture.ts',
+      'examples/neutral-store/host/server.ts',
+    ]) {
+      const excluded = excludedToolingTests([input]);
+      for (const suite of draftSuites) expect(excluded, `${suite} <- ${input}`).not.toContain(suite);
+      if (restoreFixtures.includes(input)) expect(excluded, input).not.toContain(restoreSuite);
+    }
+
+    for (const input of [
+      'src/pages/Home.tsx',
+      renewalDestinationFixture,
+      'tests/postgres/customerAccountMutations.fixture.ts',
+      'tests/postgres/destinationDocumentFixture.ts',
+      'tests/postgres/destinationReceiptFixture.ts',
+      'tests/postgres/orderMoneyV2Storage.fixture.ts',
+      'tests/postgres/subscriptionNativeFixture.ts',
+    ]) {
+      const excluded = excludedToolingTests([input]);
+      expect(excluded, `${renewalDestinationSuite} <- ${input}`).not.toContain(renewalDestinationSuite);
+    }
+    expect(excludedToolingTests([renewalDestinationFixture])).toContain(restoreSuite);
   });
   it('scopes all tests/postgres suites per-file and per-axis without broad tests/postgres/ prefixes', () => {
     const purePgSuites = [
@@ -1330,7 +1312,6 @@ describe('PostgreSQL suite closures registry', () => {
     ['non-test suite key', canon({ schemaVersion: 1, suites: { 'tests/postgres/a.ts': [] } })],
     ['control suite collision (subscriptionExactInstallation)', canon({ schemaVersion: 1, suites: { 'tests/postgres/subscriptionExactInstallation.test.ts': [] } })],
     ['control suite collision (reviewedBatchForwards)', canon({ schemaVersion: 1, suites: { 'tests/postgres/reviewedBatchForwards.test.ts': [] } })],
-    ['pending suite collision', canon({ schemaVersion: 1, suites: { 'tests/postgres/catalogAdmissionOwnerWrite.test.ts': [] } })],
     ['unknown @axis', canon({ schemaVersion: 1, suites: { 'tests/postgres/a.test.ts': ['@doesNotExist'] } })],
     ['broad tests/postgres/ prefix', canon({ schemaVersion: 1, suites: { 'tests/postgres/a.test.ts': ['tests/postgres/'] } })],
     ['parent traversal input path', canon({ schemaVersion: 1, suites: { 'tests/postgres/a.test.ts': ['../escape.ts'] } })],

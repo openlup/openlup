@@ -138,37 +138,14 @@ export const PG_AXES = {
   '@src': ['src/'],
   '@starter': ['examples/neutral-store/'],
 };
-const GOVERNED_DRAFT_SUITE_INPUTS = [
-  '@starter',
-  'tests/postgres/catalogAdmissionOwnerWrite.fixture.ts',
-  'tests/postgres/catalogPublicationFixture.ts',
-  'tests/postgres/subscriptionLifecycleClosureFixture.ts',
-  'tests/postgres/subscriptionNativeFixture.ts',
-];
 export const POSTGRES_SUITE_CLOSURES_PATH = PG_SUITE_CLOSURES_PATH;
 export { CONTROL_POSTGRES_SUITES };
 const CONTROL_POSTGRES_SUITE_SET = new Set(CONTROL_POSTGRES_SUITES);
-// These registrations land before the suites. Check each suite's own file.
-const PENDING_POSTGRES_SUITE_CLOSURES = {
-  'tests/postgres/catalogAdmissionOwnerWrite.test.ts': GOVERNED_DRAFT_SUITE_INPUTS,
-  'tests/postgres/catalogAdmissionRuntimeCommit.test.ts': GOVERNED_DRAFT_SUITE_INPUTS,
-  'tests/postgres/renewalOrderDestinationV2.test.ts': [
-    '@src',
-    'tests/postgres/customerAccountMutations.fixture.ts',
-    'tests/postgres/destinationDocumentFixture.ts',
-    'tests/postgres/destinationReceiptFixture.ts',
-    'tests/postgres/orderMoneyV2Storage.fixture.ts',
-    'tests/postgres/renewalOrderDestinationV2.fixture.ts',
-    'tests/postgres/subscriptionNativeFixture.ts',
-  ],
-};
-const PENDING_POSTGRES_SUITE_SET = new Set(Object.keys(PENDING_POSTGRES_SUITE_CLOSURES));
 export function parsePostgresSuiteClosures(source, {
   controlSuites = CONTROL_POSTGRES_SUITE_SET,
-  pendingSuites = PENDING_POSTGRES_SUITE_SET,
   axes = PG_AXES,
 } = {}) {
-  return readPgSuiteClosures(source, { controlSuites, pendingSuites, validAxes: axes }).closures.suites;
+  return readPgSuiteClosures(source, { controlSuites, validAxes: axes }).closures.suites;
 }
 export function loadPostgresSuiteClosures(
   pathOrOptions = new URL(`../${POSTGRES_SUITE_CLOSURES_PATH}`, import.meta.url),
@@ -184,19 +161,6 @@ const postgresSuiteInputs = (testPath, extras = []) => [
   testPath,
   ...extras.flatMap(entry => PG_AXES[entry] ?? [entry]),
 ];
-const safeFileProbe = isFile => testPath => {
-  try {
-    return isFile(testPath);
-  } catch {
-    return false;
-  }
-};
-function pendingPostgresSuiteInputs(isFile) {
-  const probe = safeFileProbe(isFile);
-  return Object.fromEntries(Object.entries(PENDING_POSTGRES_SUITE_CLOSURES)
-    .filter(([testPath]) => probe(testPath))
-    .map(([testPath, extras]) => [testPath, postgresSuiteInputs(testPath, extras)]));
-}
 const STATIC_TOOLING_INPUTS = {
   'scripts/agent-review-derived-inventory.test.ts': [
     'db/platform/migrations/',
@@ -280,17 +244,9 @@ for (const testPath of Object.keys(loadedPostgresSuiteClosures)) {
     throw new Error(`PostgreSQL suite closure collides with static tooling inputs: ${testPath}`);
   }
 }
-const pendingPostgresClosures = pendingPostgresSuiteInputs(testPath =>
-  statSync(new URL(`../${testPath}`, import.meta.url), { throwIfNoEntry: false })?.isFile() ?? false);
-for (const testPath of Object.keys(pendingPostgresClosures)) {
-  if (Object.hasOwn(STATIC_TOOLING_INPUTS, testPath) || Object.hasOwn(loadedPostgresSuiteClosures, testPath)) {
-    throw new Error(`Pending PostgreSQL suite closure collides with existing suite closure: ${testPath}`);
-  }
-}
 export const TOOLING_INPUTS = {
   ...STATIC_TOOLING_INPUTS,
   ...loadedPostgresSuiteClosures,
-  ...pendingPostgresClosures,
 };
 
 const WORKFLOW_PGTAP_INPUTS = [
