@@ -43,8 +43,9 @@ jobs:
           node --input-type=module - <<'EOF'
           import { execFileSync } from "node:child_process";
           import { appendFileSync, readFileSync } from "node:fs";
+          import { env as runtimeEnv } from "node:process";
 
-          const output = process.env.GITHUB_OUTPUT;
+          const output = runtimeEnv.GITHUB_OUTPUT;
           const SEMVER_RE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u;
           const compareSemver = (left, right) => {
             const a = SEMVER_RE.exec(left);
@@ -95,7 +96,7 @@ jobs:
             }
           };
 
-          const beforeSha = process.env.BEFORE_SHA ?? "";
+          const beforeSha = runtimeEnv.BEFORE_SHA ?? "";
           const validBefore = /^[0-9a-f]{40}$/u.test(beforeSha) && beforeSha !== "0000000000000000000000000000000000000000";
           const from = validBefore ? readLockVersion(beforeSha) : "";
           const to = readLockVersion("WORKTREE");
@@ -141,9 +142,10 @@ jobs:
           node --input-type=module - <<'EOF'
           import { execFileSync } from "node:child_process";
           import { readFileSync, writeFileSync } from "node:fs";
+          import { env as runtimeEnv } from "node:process";
 
-          const from = process.env.FROM_VERSION;
-          const to = process.env.TO_VERSION;
+          const from = runtimeEnv.FROM_VERSION;
+          const to = runtimeEnv.TO_VERSION;
           const report = JSON.parse(readFileSync("/tmp/openlup-impact.json", "utf8"));
           const markdown = readFileSync("/tmp/openlup-impact.md", "utf8");
 
@@ -165,7 +167,7 @@ jobs:
           const body = `${marker}\n\n${markdown}\n---\nGenerated automatically on merged \`main\` after updating \`@openlup/*\` from \`${from}\` to \`${to}\`.\n`;
           writeFileSync("/tmp/openlup-issue-body.md", body, "utf8");
 
-          const repo = process.env.GH_REPO;
+          const repo = runtimeEnv.GH_REPO;
           if (!repo) {
             throw new Error("GH_REPO environment variable is required.");
           }

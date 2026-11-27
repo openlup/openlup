@@ -2,6 +2,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { env as runtimeEnv } from "node:process";
 import { Readable, Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
@@ -700,7 +701,7 @@ describe("adopter workflow templates hardening", () => {
     const git = (args: string[]) => execFileSync("git", args, {
       cwd: gitDir,
       encoding: "utf8",
-      env: { ...process.env, GIT_AUTHOR_NAME: "Test", GIT_AUTHOR_EMAIL: "test@example.com", GIT_COMMITTER_NAME: "Test", GIT_COMMITTER_EMAIL: "test@example.com" },
+      env: { ...runtimeEnv, GIT_AUTHOR_NAME: "Test", GIT_AUTHOR_EMAIL: "test@example.com", GIT_COMMITTER_NAME: "Test", GIT_COMMITTER_EMAIL: "test@example.com" },
     }).trim();
 
     git(["init", "-b", "main"]);
@@ -720,7 +721,7 @@ describe("adopter workflow templates hardening", () => {
         cwd: gitDir,
         input: deltaScript,
         encoding: "utf8",
-        env: { ...process.env, GITHUB_OUTPUT: outPath, BEFORE_SHA: beforeSha },
+        env: { ...runtimeEnv, GITHUB_OUTPUT: outPath, BEFORE_SHA: beforeSha },
       });
       expect(res.status, res.stderr).toBe(0);
       return Object.fromEntries(

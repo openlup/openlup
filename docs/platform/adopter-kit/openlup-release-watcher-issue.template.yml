@@ -33,6 +33,7 @@ jobs:
           node --input-type=module - <<'EOF'
           import { execFileSync } from "node:child_process";
           import { writeFileSync } from "node:fs";
+          import { env as runtimeEnv } from "node:process";
 
           const registryRes = await fetch("https://registry.npmjs.org/@openlup%2Fcore/latest", {
             headers: { Accept: "application/json" },
@@ -87,7 +88,7 @@ jobs:
           ];
           writeFileSync("/tmp/openlup-release-issue.md", lines.join("\n"), "utf8");
 
-          const repo = process.env.GH_REPO;
+          const repo = runtimeEnv.GH_REPO;
           if (!repo) {
             throw new Error("GH_REPO environment variable is required.");
           }
