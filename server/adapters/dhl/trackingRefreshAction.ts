@@ -1,4 +1,5 @@
 import { mapDhlTrackingStatus as mapCarrierTrackingStatus } from "../../../src/domains/fulfillment/status.js";
+import { CARRIER_SOAP_TIMEOUT_MS } from "../../infra/dhl/adminDhlSoap.js";
 import {
   beginTrackingJobRun,
   finishTrackingJobRun,
@@ -110,11 +111,24 @@ export function createTrackingRefreshAction({
       let remaining = 0;
       for (const tester of testers ?? []) {
         if (!tester.tracking_number) continue;
-        if (now().getTime() >= deadline) {
+        const remainingBudgetMs = deadline - now().getTime();
+        if (remainingBudgetMs <= 0) {
           remaining += 1;
           continue;
         }
-        await checkTester({ client, fetchImpl, callSendEmailImpl, providerUsername, providerPassword, now, tester, results, log });
+        await checkTester({
+          client,
+          fetchImpl,
+          callSendEmailImpl,
+          providerUsername,
+          providerPassword,
+          now,
+          tester,
+          results,
+          log,
+          timeoutMs: Math.min(CARRIER_SOAP_TIMEOUT_MS, remainingBudgetMs),
+          signal: request.signal,
+        });
       }
 
       const updated = results.filter((result) => result.new_status).length;
@@ -156,12 +170,18 @@ async function checkTester(input: {
   tester: Tester;
   results: Result[];
   log: (...values: unknown[]) => void;
+  timeoutMs: number;
+  signal?: AbortSignal;
 }): Promise<void> {
   const { client, tester, results } = input;
   try {
     const poll = await pollCarrierTracking({
-      fetchImpl: input.fetchImpl, trackingNumber: tester.tracking_number!,
-      username: input.providerUsername, password: input.providerPassword,
+      fetchImpl: input.fetchImpl,
+      trackingNumber: tester.tracking_number!,
+      username: input.providerUsername,
+      password: input.providerPassword,
+      timeoutMs: input.timeoutMs,
+      signal: input.signal,
     });
     await client.from("testers").update({
       dhl_last_response: truncateResponse(poll.responseText), dhl_last_checked_at: input.now().toISOString(),

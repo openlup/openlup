@@ -1,4 +1,15 @@
-export const CLEANUP_URL = "https://dhl24.com.pl/webapi2/provider/service.html?ws=1";
+import {
+  CARRIER_DISPLAY_NAME,
+  CARRIER_ENDPOINT,
+  CARRIER_SOAP_RESPONSE_MAX_BYTES,
+  callCarrierSoap,
+  escapeXml,
+  extractFault,
+  extractXmlValue,
+} from "../../infra/dhl/adminDhlSoap.js";
+
+export const CLEANUP_URL = CARRIER_ENDPOINT;
+export { escapeXml, extractXmlValue };
 
 export interface CleanupClient {
   auth: {
@@ -27,6 +38,8 @@ export interface CleanupActionDeps {
   username: string;
   password: string;
   log?: (...args: unknown[]) => void;
+  timeoutMs?: number;
+  maxBodyBytes?: number;
 }
 
 export interface CleanupResponse {
@@ -37,32 +50,14 @@ export interface CleanupResponse {
   error?: unknown;
 }
 
-export function escapeXml(value: unknown): string {
-  const text = String(value ?? "");
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
-}
-
-export function extractXmlValue(xml: string, tagName: string): string | null {
-  const namespaced = new RegExp(`<[^:]+:${tagName}[^>]*>([^<]*)<\\/[^:]+:${tagName}>`, "i");
-  const namespacedMatch = xml.match(namespaced);
-  if (namespacedMatch) return namespacedMatch[1];
-
-  const plain = new RegExp(`<${tagName}[^>]*>([^<]*)<\\/${tagName}>`, "i");
-  const plainMatch = xml.match(plain);
-  return plainMatch ? plainMatch[1] : null;
-}
-
 export function createCleanupAction({
   createClient,
   fetchImpl,
   username,
   password,
   log = () => undefined,
+  timeoutMs,
+  maxBodyBytes,
 }: CleanupActionDeps) {
   return async function runCleanupAction(request: Request): Promise<Response> {
     if (request.method === "OPTIONS") return new Response("ok");
@@ -90,20 +85,24 @@ export function createCleanupAction({
 
       if (trackingNumber) {
         try {
-          const response = await fetchImpl(CLEANUP_URL, {
-            method: "POST",
-            headers: {
-              "Content-Type": "text/xml; charset=utf-8",
-              SOAPAction: `${CLEANUP_URL}#deleteShipments`,
+          const response = await callCarrierSoap(
+            fetchImpl,
+            "deleteShipments",
+            deletionEnvelope(trackingNumber, username, password),
+            {
+              timeoutMs,
+              maxBodyBytes: maxBodyBytes ?? CARRIER_SOAP_RESPONSE_MAX_BYTES,
+              signal: request.signal,
             },
-            body: deletionEnvelope(trackingNumber, username, password),
-          });
-          const responseText = await response.text();
+          );
+          const responseText = response.text;
           log("[CLEANUP] deleteShipments response:", responseText.slice(0, 500));
 
-          const fault = extractXmlValue(responseText, "faultstring");
+          const fault = extractFault(responseText);
           if (fault) {
             providerError = fault;
+          } else if (!response.ok) {
+            providerError = `${CARRIER_DISPLAY_NAME} HTTP ${response.status}`;
           } else {
             const result = extractXmlValue(responseText, "result");
             if (result === "true" || result === "1") {

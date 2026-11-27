@@ -155,6 +155,41 @@ describe("cleanup action", () => {
     await expect(action(request({ authorization: "Bearer token" })).then((response) => response.json()))
       .resolves.toEqual(cleanupBody({ providerError: "Error: client unavailable" }));
   });
+
+  it("passes manual redirect and AbortSignal, handles non-OK HTTP, and keeps timeout or oversized responses proceedable", async () => {
+    const redirectFixture = cleanupFixture({ status: 302, responseText: "" });
+    await expect(redirectFixture.action(request({
+      authorization: "Bearer token",
+      body: { tracking_number: "TRK-1" },
+    })).then((response) => response.json())).resolves.toEqual(
+      cleanupBody({ providerError: "DHL HTTP 302", labelDeleted: true }),
+    );
+    expect(redirectFixture.fetchImpl).toHaveBeenCalledWith(
+      CLEANUP_URL,
+      expect.objectContaining({
+        redirect: "manual",
+        signal: expect.any(AbortSignal),
+      }),
+    );
+
+    const timeoutFixture = cleanupFixture({ hangFetch: true, timeoutMs: 25 });
+    await expect(timeoutFixture.action(request({
+      authorization: "Bearer token",
+      body: { tracking_number: "TRK-1" },
+    })).then((response) => response.json())).resolves.toMatchObject(
+      cleanupBody({ providerError: expect.stringContaining("timed out"), labelDeleted: true }),
+    );
+    expect(timeoutFixture.remove).toHaveBeenCalledWith(["TRK-1.pdf"]);
+
+    const oversizedFixture = cleanupFixture({ responseText: "x".repeat(256), maxBodyBytes: 64 });
+    await expect(oversizedFixture.action(request({
+      authorization: "Bearer token",
+      body: { tracking_number: "TRK-1" },
+    })).then((response) => response.json())).resolves.toMatchObject(
+      cleanupBody({ providerError: expect.stringContaining("exceeded 64 bytes"), labelDeleted: true }),
+    );
+    expect(oversizedFixture.remove).toHaveBeenCalledWith(["TRK-1.pdf"]);
+  });
 });
 
 function cleanupAction(options: { createClient?: () => CleanupClient } = {}) {
@@ -171,22 +206,31 @@ function cleanupFixture(options: {
   authenticatedUser?: { id: string } | null;
   admin?: { id: string } | null;
   responseText?: string;
+  status?: number;
   fetchError?: Error;
+  hangFetch?: boolean;
+  timeoutMs?: number;
+  maxBodyBytes?: number;
   removeError?: { message: string } | null;
   removeThrow?: Error;
   username?: string;
   password?: string;
 } = {}) {
   const events: string[] = [];
-  const fetchImpl = options.fetchError
+  const fetchImpl = options.hangFetch
     ? vi.fn(async (_input: Parameters<typeof fetch>[0], _init?: RequestInit): Promise<Response> => {
       events.push("provider");
-      throw options.fetchError;
+      return new Promise<Response>(() => {});
     })
-    : vi.fn(async (_input: Parameters<typeof fetch>[0], _init?: RequestInit): Promise<Response> => {
-      events.push("provider");
-      return new Response(options.responseText ?? "<result>true</result>");
-    });
+    : options.fetchError
+      ? vi.fn(async (_input: Parameters<typeof fetch>[0], _init?: RequestInit): Promise<Response> => {
+        events.push("provider");
+        throw options.fetchError;
+      })
+      : vi.fn(async (_input: Parameters<typeof fetch>[0], _init?: RequestInit): Promise<Response> => {
+        events.push("provider");
+        return new Response(options.responseText ?? "<result>true</result>", { status: options.status ?? 200 });
+      });
   const remove = vi.fn(async () => {
     events.push("storage");
     if (options.removeThrow) throw options.removeThrow;
@@ -215,6 +259,8 @@ function cleanupFixture(options: {
       fetchImpl: fetchImpl as never,
       username: options.username ?? "user",
       password: options.password ?? "pass",
+      timeoutMs: options.timeoutMs,
+      maxBodyBytes: options.maxBodyBytes,
     }),
     clientFactory,
     fetchImpl,
