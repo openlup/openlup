@@ -10254,6 +10254,25 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "catalog-price-core-sku-modes-v2",
+        "path": "db/platform/migrations/20261129160006_catalog_price_core_sku_modes_v2.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.catalog_publication_target_price_verdict(jsonb,timestamptz)",
+            "beforeSha256": "e7d39341807886392a24600838679de4c84961d3e76e733beff79ec19801b8a2",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_decide_prices_v2(jsonb,jsonb,jsonb,jsonb,jsonb,timestamptz)",
+            "beforeSha256": "5c60dbf17dd95760c4fec40f78f53891534e002f124dec25fb01ae990bc97606",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -14964,6 +14983,22 @@
           "signature": "public.commerce_open_settlement_intent_for_provider(text,uuid,text,bigint,text,jsonb,timestamptz)",
           "beforeSha256": null,
           "afterSha256": "d384e925e0dbec58b41ae98445ea5328b3b51d825f64fb212e4057f9cc5a0933"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261129160006_catalog_price_core_sku_modes_v2.sql",
+      "sha256": "81a068c40825376536f6673dc192d6d16edd8fa4264020c3e55e99df66211ddb",
+      "functions": [
+        {
+          "signature": "public.catalog_publication_target_price_verdict(jsonb,timestamptz)",
+          "beforeSha256": "e7d39341807886392a24600838679de4c84961d3e76e733beff79ec19801b8a2",
+          "afterSha256": "c5ca36d25f0f197b94c23390e1c189a39e21f7fd1253c76b51b4fd937a795b5d"
+        },
+        {
+          "signature": "public.catalog_publication_decide_prices_v2(jsonb,jsonb,jsonb,jsonb,jsonb,timestamptz)",
+          "beforeSha256": "5c60dbf17dd95760c4fec40f78f53891534e002f124dec25fb01ae990bc97606",
+          "afterSha256": "6eb1e66baea605bac4a0a70a5646327a3d6a17f716abd16dcbfd4b407b47cd07"
         }
       ]
     }
