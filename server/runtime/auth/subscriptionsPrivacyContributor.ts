@@ -42,7 +42,7 @@ async function readOccurrences(db: PgQueryExecutor, subject: Pick<ResolvedPrivac
       has_column_privilege(c.oid,'client_id','SELECT') AS carrier_readable,
       p.proowner = c.relowner AND p.prosecdef AND p.provolatile = 's' AND p.prorettype = 'jsonb'::regtype
         AND (NOT $1::boolean OR has_function_privilege(p.oid,'EXECUTE'))
-        AND p.proconfig = ARRAY['row_security=off', 'search_path=pg_catalog, pg_temp']
+        AND p.proconfig = ARRAY['search_path=pg_catalog, pg_temp']
         AND NOT EXISTS (SELECT FROM aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
           LEFT JOIN pg_roles r ON r.oid = a.grantee
           WHERE a.grantee <> p.proowner AND (r.rolname IS DISTINCT FROM 'service_role' OR a.is_grantable)) AS safe

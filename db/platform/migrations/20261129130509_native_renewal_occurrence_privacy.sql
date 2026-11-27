@@ -411,12 +411,13 @@ $$;
 -- The caller verifies its own visibility against this authoritative subject read.
 CREATE FUNCTION public.subscriptions__read_renewal_occurrences_for_privacy(p_client uuid, p_principal uuid)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER
-SET row_security = off SET search_path = pg_catalog, pg_temp AS $$
+SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
   occurrences jsonb;
   invalid_scope boolean;
   receipt_count bigint;
   parent_count bigint;
+  previous_row_security text;
   helper constant regprocedure := 'public.subscriptions__read_renewal_occurrences_for_privacy(uuid,uuid)'::regprocedure;
 BEGIN
   -- Refuse unexpected inherited default privileges before any subject read.
@@ -434,6 +435,9 @@ BEGIN
     RAISE EXCEPTION 'occurrence_privacy_scope_unavailable';
   END IF;
 
+  -- Refuse filtered evidence and restore the caller's setting before returning.
+  previous_row_security := current_setting('row_security');
+  PERFORM set_config('row_security', 'off', true);
   WITH aliases AS (
     SELECT id AS client_id, principal_id FROM public.clients WHERE id = p_client OR principal_id = p_principal
     UNION
@@ -452,6 +456,7 @@ BEGIN
   IF receipt_count = 0
     AND NOT EXISTS (SELECT FROM public.clients WHERE id = p_client)
     AND NOT EXISTS (SELECT FROM public.platform_human_principals WHERE principal_id = p_principal) THEN
+    PERFORM set_config('row_security', previous_row_security, true);
     RETURN '{"missing":true}'::jsonb;
   END IF;
   SELECT count(*) INTO parent_count FROM public.subscriptions WHERE client_id = p_client;
@@ -471,6 +476,7 @@ BEGIN
              greatest(o.original_anchor_at, o.effective_due_at, o.cancellation_effective_at) AS maximum
     ) t
     WHERE o.client_id = p_client OR s.client_id = p_client;
+  PERFORM set_config('row_security', previous_row_security, true);
   IF invalid_scope THEN RAISE EXCEPTION 'occurrence_privacy_scope_unavailable'; END IF;
   RETURN jsonb_build_object('occurrences', occurrences, 'hasReceipt', receipt_count = 1, 'parentCount', parent_count::text);
 END;
