@@ -1,1 +1,0 @@
-- `@openlup/platform/storefront` adds the experimental `createPurchaseContinuation`, `PurchaseContinuation` and `PurchaseContinuationSnapshot`: one controller a store's UI renders a purchase from, composing the continuation-record, ambiguous-submit and pending-resume functions through host bindings; `ClientEventReporter` gains the event `stored_continuation_rejected`.

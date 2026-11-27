@@ -14,7 +14,7 @@ is scheduled for removal. Each package section lists these symbols after its sub
 | `stable` | `stable` |
 | `testing` | `testing` |
 
-[Compatibility policy mapping](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/core/scripts/public-api-config.ts)
+[Compatibility policy mapping](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/core/scripts/public-api-config.ts)
 <!-- /generated:compatibility-policies -->
 
 ## Reading the symbol tables
@@ -218,7 +218,7 @@ No symbol of this package differs from its subpath's maturity or is deprecated.
 | `./tax` | capability | experimental |
 | `./tax/contracts` | capability | experimental |
 
-5 subpaths omitted because their names are provider-specific. Complete list: [package.json](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/package.json) and [Subpath maturity](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/AGENTS.md#subpath-maturity).
+5 subpaths omitted because their names are provider-specific. Complete list: [package.json](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/package.json) and [Subpath maturity](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/AGENTS.md#subpath-maturity).
 <!-- /generated:maturity:platform -->
 
 Symbols whose maturity differs from their subpath, or that are deprecated:
@@ -682,6 +682,6 @@ Symbols whose maturity differs from their subpath, or that are deprecated:
 
 68 symbols are not listed because their declarations are not in this package's API reports.
 
-5 subpaths omitted because their names are provider-specific. Complete list: [package.json](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/package.json) and [Subpath maturity](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/AGENTS.md#subpath-maturity).
+5 subpaths omitted because their names are provider-specific. Complete list: [package.json](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/package.json) and [Subpath maturity](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/AGENTS.md#subpath-maturity).
 <!-- /generated:maturity-symbols:platform -->
 

@@ -1,2 +1,0 @@
-- Settings preview recognizes application settings declared by the selected app and points to `show` and `check` when a preview is unavailable. This refusal is also returned by the settings MCP tool.
-- When a settings goal matches no entries, text output suggests changing or omitting the goal.

@@ -1,1 +1,0 @@
-- Catalogue conformance findings show the observed fixture value and report definition issues alongside fixture issues for valid types. Five new advisory codes flag publication and listing limitations without changing the report state or exit code.
