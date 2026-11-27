@@ -2269,14 +2269,13 @@ it("keeps v3 schedule and delivery ownership out of the check and scoped repair"
       SET cycle_snapshot=jsonb_set(cycle_snapshot,'{contractVersion}',to_jsonb('platform.subscription.renewal.v3'::text)) WHERE id=$1`, [id]);
     await tag(op.operationId);
     const observedDue = days(now, 3), deliveredAt = days(observedDue, 1);
-    const subjects = [];
-    for (const { f, d } of [selected, unselected, legacy]) {
+    async function gap({ f, d }: typeof selected) {
       const shipment = await parcel(f.orderId, db);
       await owner.query("UPDATE public.subscriptions SET next_cycle_at=$2 WHERE id=$1", [f.subscriptionId, observedDue]);
       await recordArrival(shipment, deliveredAt, db);
-      subjects.push({ ...f, shipment, key: randomUUID(), anchor: d.due.scheduledAt });
+      return { ...f, shipment, key: randomUUID(), anchor: d.due.scheduledAt };
     }
-    const [booked, assigning, control] = subjects as [typeof subjects[number], typeof subjects[number], typeof subjects[number]];
+    const [booked, assigning, control] = await Promise.all([gap(selected), gap(unselected), gap(legacy)]);
     for (const subject of [booked, assigning]) {
       await owner.query(`INSERT INTO public.subscription_cycle_occurrences
         (cycle_key,subscription_id,client_id,original_anchor_at,effective_due_at,cadence_seconds,rail,lifecycle,is_current)
