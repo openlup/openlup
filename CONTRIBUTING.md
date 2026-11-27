@@ -1745,6 +1745,28 @@ Include scope and delivery limits, full base/head SHAs, changed paths, check
 commands and exits, and unresolved evidence. Do not invent a receipt or claim
 hosted admission from local results. The supervisor follows the sequence below.
 
+### Agent coordination harness
+
+The repository ships a zero-dependency coordination harness under `scripts/harness/`
+for multi-lane contributor and agent workflows:
+
+- `npm run safe:run -- probe|exec ...`: pre-flight host probe (`git`, Node >= 22,
+  `gh` auth, optional worktree cleanliness) and fail-closed command execution
+  with exact exit-code propagation and optional remote branch/PR `headRefOid`
+  readback verification.
+- `npm run pr:open -- create|ready ...`: draft-by-default PR creation and
+  readiness promotion that verifies a clean worktree, commit and PR-body DCO
+  `Signed-off-by` trailers, affected preflight before ready promotion, and
+  remote `headRefOid` readback.
+- `npm run pr:watch -- [--repo owner/name] [--ack <pr>:<sha>] ...`: single-shot
+  GitHub GraphQL PR and stale-inbox monitor (exit `0` clean, `2` alerts, `1`
+  error) with SHA-scoped acknowledgements and local-worker self-exclusion.
+  Override default state paths via `OPENLUP_STALL_ACK_FILE` and
+  `OPENLUP_INBOX_DIR` (defaults under `.context/scratch/harness/`).
+- `npm run lane:inbox -- post|poll|ack|status ...`: file-locked JSONL lane
+  inbox for cross-lane handoffs, decisions, and alerts with idempotent
+  acknowledgements and stale-lock recovery.
+
 ## Deliver a change
 
 Follow this sequence within the accountable human's actual submission and merge
