@@ -56,7 +56,7 @@ export function measuredOccurrencePlan(plan: OccurrenceCatalogue, profile: Accou
 async function verifyMeasuredPrefix(root: string, plan: OccurrenceCatalogue, profile: AccountProfile, inventory: string,
   runner: AccountMutationsStore["runner"]) {
   writeFileSync(join(root, PLATFORM_MIGRATION_MANIFEST), JSON.stringify(measuredOccurrencePlan(plan, profile, inventory)));
-  expect((await runner.status()).pending).toEqual([]);
+  expect(await runner.apply()).toEqual({ applied: [] });
 }
 type Profile = AccountProfile | "legacy-with-service";
 export const installMeasuredAccountPrefix = (plan: OccurrenceCatalogue, variant: Profile, label: string) =>
