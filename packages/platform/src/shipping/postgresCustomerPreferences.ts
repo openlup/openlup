@@ -12,7 +12,11 @@ export function createPostgresCustomerPreferencePort(db: SavedAddressQueryExecut
   const verify = (id: string) => { if (id.toLowerCase() !== scope.principalId.toLowerCase()) throw new Error('customer_preference_scope_mismatch'); };
   const rpc = async (name: string, args: unknown[]) => (await db.query(`SELECT public.${name}(${args.map((_,i) => `$${i+1}`).join(',')}) AS value`,args)).rows[0]?.value;
   const read = async (id: string) => { verify(id); return await rpc('customer_preferences_read',[scope.principalId,scope.clientId]) as { payment: Row[]; delivery: Row[] } | null; };
-  const payment = (r: Row): CustomerPaymentPreference => schemas.paymentResponse.parse({ scope: r.scope,methodKind: policy.methods[r.method_kind as keyof typeof policy.methods],lastSelectedAt: r.last_selected_at });
+  const mapMethod = (stored: unknown) => {
+    const key = String(stored);
+    return Object.prototype.hasOwnProperty.call(policy.methods, key) ? policy.methods[key] : stored;
+  };
+  const payment = (r: Row): CustomerPaymentPreference => schemas.paymentResponse.parse({ scope: r.scope,methodKind: mapMethod(r.method_kind),lastSelectedAt: r.last_selected_at });
   const delivery = (r: Row): CustomerDeliveryPreference => schemas.deliveryResponse.parse({ scope: r.scope,deliveryKind: r.delivery_kind,providerKind: r.provider_ref,carrierKind: r.carrier_kind,carrierCode: r.carrier_code,serviceCode: r.service_code,
     pickupPoint: r.pickup_point_id ? { id: r.pickup_point_id,name: r.pickup_point_name ?? r.pickup_point_id,address: r.pickup_point_address ?? null } : null,lastSelectedAt: r.last_selected_at });
   const family = (map: Record<string,string>, value: string) => Object.keys(map).find(key => map[key] === value)!;
@@ -39,12 +43,13 @@ export function createPostgresCustomerDefaultsPort(db: SavedAddressQueryExecutor
     async getCustomerDefaultsSnapshot(input: { clientId: string; checkoutKind: string }): Promise<CustomerPreferenceDefaultsSnapshot> {
       if (input.clientId.toLowerCase() !== scope.clientId.toLowerCase()) throw new Error('customer_preference_scope_mismatch');
       const [hints,orderers] = await Promise.all([rpc('customer_default_address_hints',[scope.clientId]),options.readOrdererHints(scope.clientId)]);
-      const h = hints as { shipping: string | null; billing: string | null; payment: { scope: CustomerPreferenceScope; methodKind: keyof typeof policy.methods }[] };
+      const h = hints as { shipping: string | null; billing: string | null; payment: { scope: CustomerPreferenceScope; methodKind: string }[] };
       const p = h.payment.find(r => r.scope === (input.checkoutKind === 'subscription_initial' ? 'subscription' : 'one_time')) ?? h.payment.find(r => r.scope === 'any');
       const orderer = orderers.find(r => r.isDefault) ?? orderers[0];
       if (orderer) z.guid().parse(orderer.id);
+      const mappedMethod = p ? (Object.prototype.hasOwnProperty.call(policy.methods, p.methodKind) ? policy.methods[p.methodKind] : p.methodKind) : null;
       return { version: 'commerce.customer_defaults_snapshot.v1' as const,clientId: scope.clientId,
-        payment: { available: Boolean(p),scope: p?.scope ?? null,methodKind: p ? policy.methods[p.methodKind] : null,source: 'customer_payment_preferences' as const,applied: false as const },
+        payment: { available: Boolean(p),scope: p?.scope ?? null,methodKind: mappedMethod,source: 'customer_payment_preferences' as const,applied: false as const },
         addresses: { hasDefaultShippingAddress: Boolean(h.shipping),defaultShippingAddressId: h.shipping,hasDefaultBillingAddress: Boolean(h.billing),defaultBillingAddressId: h.billing,
           hasDefaultOrdererProfile: Boolean(orderer),defaultOrdererProfileId: orderer?.id ?? null,hasDeliveryNotes: false,hasCourierInstructions: false,source: 'customer_address_profiles' as const,applied: false as const },
         redactedFields: ['contact','orderer_profile','shipping_address','billing_address','delivery_notes','courier_instructions','payment_provider','payment_secret'] as ('contact'|'orderer_profile'|'shipping_address'|'billing_address'|'delivery_notes'|'courier_instructions'|'payment_provider'|'payment_secret')[] };

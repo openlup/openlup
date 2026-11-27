@@ -581,6 +581,27 @@ function pristinePackedA1Fixture() {
   for (const [path, source] of packedA1Originals) writeFileSync(path, source);
   return packedA1Consumer;
 }
+it("resolves the v2 structural money schemas only through the packed pricing server entry", () => {
+  const consumer = pristinePackedA1Fixture();
+  assertConsumerIsolation(consumer, root);
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import * as pricing from "@openlup/platform/pricing";
+import * as contracts from "@openlup/platform/pricing/contracts";
+import * as browser from "@openlup/platform/pricing/browser";
+assert.deepEqual(Object.keys(pricing).filter(key => key.startsWith("commerceMoneyV2")).sort(), [
+  "commerceMoneyV2CurrencySchema", "commerceMoneyV2DeliveryBucketSchema", "commerceMoneyV2DigestSchema",
+  "commerceMoneyV2FactsSchema", "commerceMoneyV2FeeLineSchema", "commerceMoneyV2LineSchema",
+  "commerceMoneyV2MinorSchema", "commerceMoneyV2PriceSchema", "commerceMoneyV2PromotionEngineSchema",
+  "commerceMoneyV2ReferenceSchema", "commerceMoneyV2TaxEvidenceShape", "commerceMoneyV2UuidSchema",
+]);
+for (const key of Object.keys(pricing).filter(key => key.startsWith("commerceMoneyV2"))) {
+  assert.equal(key in contracts || key in browser, false);
+}
+assert.equal(pricing.commerceMoneyV2FactsSchema.shape.destination.safeParse({ schemaVersion: 2 }).success, false);
+`);
+});
+
 it("checks the packed inert catalogue skeleton and reports unavailable content evidence", () => {
   proveCatalogConformanceConsumer(pristinePackedA1Fixture());
 });
@@ -874,6 +895,7 @@ process.stdout.write(JSON.stringify(Object.fromEntries(Object.entries(entry).map
   expect(serverExports).toEqual({
     CHECKOUT_RECOVERY_TOKEN_PREFIX: "string",
     CheckoutRecoveryScheduleChangeBlockedError: "function",
+    DEFAULT_COMMERCE_RETURN_REASONS: "object",
     EXPIRED_CHECKOUT_RECOVERY_WINDOW_MS: "number",
     ORDER_DRAFT_RPC_NAME: "string",
     ORDER_DRAFT_SUPERSEDE_RPC_NAME: "string",
@@ -882,6 +904,10 @@ process.stdout.write(JSON.stringify(Object.fromEntries(Object.entries(entry).map
     describeCommerceMoneyLimitsV2Setting: "function",
     inspectCommerceMoneyLimitsV2: "function",
     installCommerceMoneyLimitsV2: "function",
+    installCommerceReturnReasonsPolicy: "function",
+    readCommerceReturnReasonsOverride: "function",
+    readCommerceReturnReasonsPolicy: "function",
+    validateCommerceReturnReasons: "function",
     installCheckoutRecoveryReminderSchedule: "function",
     readCheckoutRecoveryReminderSchedule: "function",
     readCheckoutRecoveryReminderObservation: "function",

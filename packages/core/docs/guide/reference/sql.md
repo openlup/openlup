@@ -255,6 +255,8 @@ in [Upgrade the database](../upgrade/database-migrations.md).
 | [`20261129130503_order_money_v2_restore_no_temp.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129130503_order_money_v2_restore_no_temp.sql) |
 | [`20261129130504_catalog_price_publication_recorder_v2.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129130504_catalog_price_publication_recorder_v2.sql) |
 | [`20261129130505_settings_wave4a_reschedule_timezone.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129130505_settings_wave4a_reschedule_timezone.sql) |
+| [`20261129130506_paid_order_money_v2_read.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129130506_paid_order_money_v2_read.sql) |
+| [`20261129130507_settings_wave3b_return_reasons_and_payment_preferences.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129130507_settings_wave3b_return_reasons_and_payment_preferences.sql) |
 | [`20261129130508_order_money_v2_child_guards.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129130508_order_money_v2_child_guards.sql) |
 | [`20261129130509_order_draft_receipts_v2.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129130509_order_draft_receipts_v2.sql) |
 | [`20261129130510_order_draft_receipt_privacy_v2.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129130510_order_draft_receipt_privacy_v2.sql) |

@@ -922,6 +922,14 @@
       "sha256": "8fdc4dffe112ddd7dad2765b921fbbf3556db874e21b20318568c1dfb1f76225"
     },
     {
+      "file": "db/platform/migrations/20261129130506_paid_order_money_v2_read.sql",
+      "sha256": "38c765551a254c374a04f72e8d1e49b9ac1f835b7359319ce745ecdfc9634466"
+    },
+    {
+      "file": "db/platform/migrations/20261129130507_settings_wave3b_return_reasons_and_payment_preferences.sql",
+      "sha256": "0f3a48e4bf37494cc69d46a6dfa11706a1215d1e482fac8f94a948f5ca88e539"
+    },
+    {
       "file": "db/platform/migrations/20261129130508_order_money_v2_child_guards.sql",
       "sha256": "6fc46ea8d578458768a46e20e5c7804760d958b554b4292347faee0c217f5150"
     },
@@ -938,7 +946,7 @@
       "sha256": "1f11757213628148547e2d2b500f0e85feced698252e4afdf7dba030b245a174"
     }
   ],
-  "objectInventorySha256": "00d754a9d73e61535d3899c9df352a888b4aba355397b15626f3f433a8e83dc4",
+  "objectInventorySha256": "84b3e74ec87b88a916bd080d2d9e7b43df53eb3cb831c9ff79ef37a031e74f37",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1886,6 +1894,14 @@
         "sha256": "8fdc4dffe112ddd7dad2765b921fbbf3556db874e21b20318568c1dfb1f76225"
       },
       {
+        "file": "db/platform/migrations/20261129130506_paid_order_money_v2_read.sql",
+        "sha256": "38c765551a254c374a04f72e8d1e49b9ac1f835b7359319ce745ecdfc9634466"
+      },
+      {
+        "file": "db/platform/migrations/20261129130507_settings_wave3b_return_reasons_and_payment_preferences.sql",
+        "sha256": "0f3a48e4bf37494cc69d46a6dfa11706a1215d1e482fac8f94a948f5ca88e539"
+      },
+      {
         "file": "db/platform/migrations/20261129130508_order_money_v2_child_guards.sql",
         "sha256": "6fc46ea8d578458768a46e20e5c7804760d958b554b4292347faee0c217f5150"
       },
@@ -1904,10 +1920,10 @@
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "d49aa302e8b925ddf123c431cc7542a0c130c01e0e4b0d3cefb4e557ab34be53"
+        "withRestore": "952481120ef4937dc22ecfe45f97e3996f49a71b1a3054d0aeb8780ea81af247"
       },
       "separateMigrator": {
-        "withRestore": "a2cb5816ace93515925029af02ff1ce3331a540e81070ee4d4cbeafb69af62dc"
+        "withRestore": "19b0626f1d5e14c806952b562634df8956d7577a95d1a47b1f45593bb8d761f6"
       }
     }
   },
@@ -2850,6 +2866,14 @@
         "sha256": "8fdc4dffe112ddd7dad2765b921fbbf3556db874e21b20318568c1dfb1f76225"
       },
       {
+        "file": "db/platform/migrations/20261129130506_paid_order_money_v2_read.sql",
+        "sha256": "38c765551a254c374a04f72e8d1e49b9ac1f835b7359319ce745ecdfc9634466"
+      },
+      {
+        "file": "db/platform/migrations/20261129130507_settings_wave3b_return_reasons_and_payment_preferences.sql",
+        "sha256": "0f3a48e4bf37494cc69d46a6dfa11706a1215d1e482fac8f94a948f5ca88e539"
+      },
+      {
         "file": "db/platform/migrations/20261129130508_order_money_v2_child_guards.sql",
         "sha256": "6fc46ea8d578458768a46e20e5c7804760d958b554b4292347faee0c217f5150"
       },
@@ -2867,8 +2891,8 @@
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "72b5d1d9465181bc14d511555202c4251741196e6d5cf2c0e844cc52116820b7",
-      "operatorProvisioned": "be42446f2169030538890b32048febf14a433cf65ee95b676fc9165fb8723a45"
+      "installerManaged": "c1a524968a57e2c15a191747b6062df71942050ed86697e0a22ba74061588fe7",
+      "operatorProvisioned": "b6b544ddac6b74fb2f17f7ead159969045cbeb5c1593f215ab5a141705de217b"
     }
   }
 }
