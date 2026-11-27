@@ -36,7 +36,8 @@ async function moveDue(db: Db, f: RootFixture, validPair = true) {
     [f.cycleKey, `2004-03-0${day}T12:00:00.123456Z`]);
     expect(rows).toEqual([{ due: "2004-03-11T12:00:00.123456Z" }]);
     if (validPair) {
-      expect(await call(db, lock, f.scope)).toMatchObject({ cycleKey: f.cycleKey, originalAnchorAt: original,
+      for (const view of [read, lock]) expect(await call(db, view, f.scope)).toMatchObject({
+        cycleKey: f.cycleKey, originalAnchorAt: original, effectiveDueAt: rows[0].due,
         operationId: f.agreement.operationId, commercialGenerationId: f.agreement.operationId });
     }
   }

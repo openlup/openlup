@@ -2191,7 +2191,7 @@ export declare function runRemoveAdminUserUseCase(request: {
 ## dist/identity/requiredPrivacyContributors.d.ts
 
 ```ts
-import { PrivacyRefusal } from "./privacyPorts.js";
+import { PrivacyRefusal, type PrivacyRefusalFacts } from "./privacyPorts.js";
 export declare const privacyContributorId: RegExp;
 export declare const privacyContributorVersion: RegExp;
 export declare function validateOrderedPrivacyContributorIds(value: unknown, maximum: number): readonly string[];
@@ -2205,7 +2205,7 @@ export declare function privacyRefusalDetails(error: PrivacyRefusal): {
     recheck?: string | undefined;
     privacyCode: "PRIVACY_SUBJECT_NOT_FOUND" | "PRIVACY_CONTRIBUTOR_DUPLICATE" | "PRIVACY_CONTRIBUTOR_MISSING" | "PRIVACY_ASSESSMENT_UNAVAILABLE" | "PRIVACY_OWNERSHIP_UNDECLARED" | "PRIVACY_ACTIVE_SUBSCRIPTION" | "PRIVACY_RESUMABLE_SUBSCRIPTION" | "PRIVACY_PROTECTED_OPERATOR" | "PRIVACY_IDEMPOTENCY_CONFLICT" | "PRIVACY_SUBJECT_ERASED" | "PRIVACY_STORE_PRIVILEGES_UNSAFE" | "PRIVACY_RECEIPT_COVERAGE_INCOMPLETE" | "PRIVACY_RECONCILIATION_APPROVAL_UNVERIFIED" | "MANAGED_PRIVACY_ERASURE_UNAVAILABLE";
 };
-export declare function nativePrivacyUnavailable(cause: unknown): PrivacyRefusal;
+export declare function nativePrivacyUnavailable(cause: unknown, facts?: PrivacyRefusalFacts): PrivacyRefusal;
 export declare function missingPrivacyContributors(ids: readonly string[], installed: boolean): PrivacyRefusal;
 export declare function incompletePrivacyReceiptCoverage(ids: readonly string[]): PrivacyRefusal;
 export declare function unverifiedPrivacyReconciliationApproval(): PrivacyRefusal;

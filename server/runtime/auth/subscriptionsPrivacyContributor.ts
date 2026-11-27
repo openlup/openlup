@@ -10,8 +10,24 @@ const retention: PersonalDataObligation = {
   reasonCode: "RENEWAL_OCCURRENCE_RETENTION", remote: false,
 };
 
-async function readOccurrences(db: PgQueryExecutor, subject: Pick<ResolvedPrivacySubject, "contactId" | "principalId">, missing = false) {
-  const unavailable = () => { throw new Error("renewal_occurrence_privacy_unavailable"); };
+function vetoErasure(parents: { status: string }[]) {
+  if (parents.some(row => row.status === "active")) throw new PrivacyRefusal("PRIVACY_ACTIVE_SUBSCRIPTION");
+  if (parents.some(row => row.status === "paused")) throw new PrivacyRefusal("PRIVACY_RESUMABLE_SUBSCRIPTION");
+  if (parents.some(row => row.status !== "cancelled")) throw new PrivacyRefusal("PRIVACY_ASSESSMENT_UNAVAILABLE");
+}
+
+function unavailableOccurrenceScope(cause?: unknown): never {
+  throw nativePrivacyUnavailable(cause, {
+    observed: "Renewal occurrence evidence could not be qualified.",
+    cause: "The resolved contact, parent subscriptions, receipt aliases or occurrence rows may be hidden or inconsistent.",
+    fix: "Ask the installation owner to verify the catalogue and runtime pairing, the original runtime role's row visibility, and the correlation of the retained evidence.",
+    recheck: "Retry the original request after the scoped checks pass.",
+  });
+}
+
+async function readOccurrences(db: PgQueryExecutor, subject: Pick<ResolvedPrivacySubject, "contactId" | "principalId">,
+  lane: "export" | "erase" | "missing" = "export") {
+  const erase = lane === "erase", missing = lane === "missing";
   try {
     const pairing = (await db.query(`SELECT
       current_setting('transaction_isolation') AS isolation, p.oid IS NOT NULL AS helper, c.oid IS NOT NULL AS carrier,
@@ -23,38 +39,61 @@ async function readOccurrences(db: PgQueryExecutor, subject: Pick<ResolvedPrivac
         OR EXISTS (SELECT FROM public.platform_schema_migrations
           WHERE catalog_path ~ '^db/platform/migrations/[0-9]{14}_'
             AND catalog_path COLLATE "C" >= 'db/platform/migrations/20261129130001_')) AS occurrence_catalogue,
+      has_column_privilege(c.oid,'client_id','SELECT') AS carrier_readable,
       p.proowner = c.relowner AND p.prosecdef AND p.provolatile = 's' AND p.prorettype = 'jsonb'::regtype
+        AND (NOT $1::boolean OR has_function_privilege(p.oid,'EXECUTE'))
         AND p.proconfig = ARRAY['row_security=off', 'search_path=pg_catalog, pg_temp']
         AND NOT EXISTS (SELECT FROM aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
           LEFT JOIN pg_roles r ON r.oid = a.grantee
           WHERE a.grantee <> p.proowner AND (r.rolname IS DISTINCT FROM 'service_role' OR a.is_grantable)) AS safe
       FROM (VALUES (1)) AS lane(id)
       LEFT JOIN pg_proc p ON p.oid = to_regprocedure('public.subscriptions__read_renewal_occurrences_for_privacy(uuid,uuid)')
-      LEFT JOIN pg_class c ON c.oid = to_regclass('public.subscription_cycle_occurrences')`)).rows[0];
-    if (pairing?.isolation !== "read committed") unavailable();
-    if (pairing?.helper === false && pairing.carrier === false && pairing.registered === false
-      && pairing.occurrence_catalogue === false && pairing.incumbent_catalogue === true) return [];
-    if (pairing?.safe !== true || pairing.registered !== true) unavailable();
-    // One snapshot compares the owner's evidence with the original executor's visibility.
-    const { rows: [visible] } = await db.query(`SELECT
-      public.subscriptions__read_renewal_occurrences_for_privacy($1, $2) AS evidence,
-      ($1::uuid IS NULL OR EXISTS (SELECT FROM public.clients WHERE id = $1)) AS contact,
-      ($1::uuid IS NOT NULL OR EXISTS (SELECT FROM public.platform_human_principals WHERE principal_id = $2)) AS principal,
-      EXISTS (SELECT FROM public.identity_privacy_erasures WHERE client_id = $1 OR principal_id = $2) AS receipt,
-      ARRAY(SELECT id FROM public.subscriptions WHERE client_id = $1) AS parents,
-      (SELECT count(*)::text FROM public.subscription_cycle_occurrences WHERE client_id = $1) AS count`,
-    [subject.contactId, subject.principalId]);
-    const evidence = visible?.evidence as { occurrences?: unknown; hasReceipt?: unknown; parentCount?: unknown; missing?: unknown } | null;
-    if (missing && evidence?.missing === true && Object.keys(evidence).length === 1) return [];
-    if (missing || !visible || !evidence || typeof evidence !== "object" || Object.keys(evidence).length !== 3
-      || typeof evidence.hasReceipt !== "boolean" || evidence.hasReceipt !== visible.receipt
-      || visible.contact !== true || visible.principal !== true || !Array.isArray(visible.parents)) return unavailable();
-    const occurrences = renewalOccurrencePrivacyEvidenceSchema.parse(evidence.occurrences);
-    const parents = new Set(visible.parents);
-    if (evidence.parentCount !== String(parents.size) || visible.count !== String(occurrences.length)
-      || occurrences.some(row => !parents.has(row.subscriptionId))) unavailable();
-    return occurrences;
+      LEFT JOIN pg_class c ON c.oid = to_regclass('public.subscription_cycle_occurrences')`, [erase])).rows[0];
+    const paired = pairing?.isolation === "read committed" && pairing.safe === true && pairing.registered === true;
+    if (!paired || pairing.carrier_readable !== true) {
+      const parents = !missing && subject.contactId ? (await db.query(
+        "SELECT id, status FROM public.subscriptions WHERE client_id = $1 ORDER BY id", [subject.contactId])).rows
+        .map(row => ({ id: String(row.id), status: String(row.status) })) : [];
+      if (erase) vetoErasure(parents);
+      if (pairing?.isolation === "read committed" && pairing.helper === false && pairing.carrier === false
+        && pairing.registered === false && pairing.occurrence_catalogue === false && pairing.incumbent_catalogue === true) {
+        return { parents, occurrences: [] };
+      }
+      if (paired && pairing.carrier_readable === false) unavailableOccurrenceScope();
+      throw new Error("renewal_occurrence_privacy_unavailable");
+    }
+
+    // Both the operation and the comparison with the owner view use these caller-visible rows.
+    const { rows: [visible] } = await db.query(`WITH parents AS MATERIALIZED (
+      SELECT id, status FROM public.subscriptions WHERE client_id = $1::uuid
+    )
+    SELECT (SELECT coalesce(jsonb_agg(jsonb_build_object('id', id, 'status', status) ORDER BY id), '[]'::jsonb) FROM parents) AS parents,
+      CASE WHEN NOT $3::boolean OR NOT EXISTS (SELECT FROM parents WHERE status IS DISTINCT FROM 'cancelled') THEN
+        jsonb_build_object(
+          'evidence', public.subscriptions__read_renewal_occurrences_for_privacy($1, $2),
+          'contact', ($1::uuid IS NULL OR EXISTS (SELECT FROM public.clients WHERE id = $1)),
+          'principal', ($1::uuid IS NOT NULL OR EXISTS (SELECT FROM public.platform_human_principals WHERE principal_id = $2)),
+          'receipt', EXISTS (SELECT FROM public.identity_privacy_erasures WHERE client_id = $1 OR principal_id = $2),
+          'count', (SELECT count(*)::text FROM public.subscription_cycle_occurrences WHERE client_id = $1)
+        ) END AS proof`, [subject.contactId, subject.principalId, erase]);
+    if (!Array.isArray(visible?.parents)) unavailableOccurrenceScope();
+    const parents = visible.parents as { id: string; status: string }[];
+    if (erase) vetoErasure(parents);
+    const proof = visible.proof as { evidence?: unknown; contact?: unknown; principal?: unknown; receipt?: unknown; count?: unknown } | null;
+    const evidence = proof?.evidence as { occurrences?: unknown; hasReceipt?: unknown; parentCount?: unknown; missing?: unknown } | null;
+    if (missing && evidence?.missing === true && Object.keys(evidence).length === 1) return { parents, occurrences: [] };
+    if (missing || !proof || !evidence || typeof evidence !== "object" || Object.keys(evidence).length !== 3
+      || typeof evidence.hasReceipt !== "boolean" || evidence.hasReceipt !== proof.receipt
+      || proof.contact !== true || proof.principal !== true) unavailableOccurrenceScope();
+    const parsed = renewalOccurrencePrivacyEvidenceSchema.safeParse(evidence.occurrences);
+    if (!parsed.success) unavailableOccurrenceScope(parsed.error);
+    const ids = new Set(parents.map(row => row.id));
+    if (evidence.parentCount !== String(ids.size) || proof.count !== String(parsed.data.length)
+      || parsed.data.some(row => !ids.has(row.subscriptionId))) unavailableOccurrenceScope();
+    return { parents, occurrences: parsed.data };
   } catch (cause) {
+    if (cause instanceof PrivacyRefusal) throw cause;
+    if (cause instanceof Error && cause.message === "occurrence_privacy_scope_unavailable") unavailableOccurrenceScope(cause);
     throw nativePrivacyUnavailable(cause);
   }
 }
@@ -79,7 +118,7 @@ export async function verifyMissingSubscriptionsPrivacySubject(db: PgQueryExecut
     AND NOT EXISTS (SELECT FROM public.clients WHERE id = $1 OR principal_id = $2)
     AND NOT EXISTS (SELECT FROM public.identity_privacy_erasures WHERE principal_id = $2)
     AND NOT EXISTS (SELECT FROM public.platform_human_principals WHERE principal_id = $2) AS absent`, [contactId, principalId]);
-  if (scope?.absent !== true) await readOccurrences(db, { contactId, principalId }, true);
+  if (scope?.absent !== true) await readOccurrences(db, { contactId, principalId }, "missing");
 }
 
 /** Reference-owned veto: identity never queries subscriptions or cancels them. */
@@ -88,23 +127,17 @@ export function createSubscriptionsPrivacyContributor(): PersonalDataContributor
     id: "subscriptions", version: "subscriptions.privacy-veto.v1", ownedResources: ["subscriptions.lifecycle", retention.resource],
     async prepareErasure(db) { await db.query("LOCK TABLE public.subscriptions IN SHARE MODE"); },
     async export(db, subject) {
-      const rows = subject.contactId ? (await db.query("SELECT id, status FROM public.subscriptions WHERE client_id = $1 ORDER BY id", [subject.contactId])).rows : [];
-      const renewalOccurrences = await readOccurrences(db, subject);
+      const { parents, occurrences: renewalOccurrences } = await readOccurrences(db, subject);
       return { contributorId: "subscriptions", version: "subscriptions.privacy-veto.v1",
-        data: rows.map(row => ({ id: String(row.id), status: String(row.status) })),
+        data: parents,
         ...(renewalOccurrences.length ? { renewalOccurrences } : {}),
         coverage: { complete: false, included: ["subscription IDs and statuses",
           ...(renewalOccurrences.length ? ["renewal occurrence evidence"] : [])], unavailable: ["full subscription export", "processor obligations"] },
         obligations: renewalOccurrences.length ? [...obligations, retention] : obligations };
     },
     async assessErasure(db, subject) {
-      if (subject.contactId) {
-        const rows = (await db.query("SELECT status FROM public.subscriptions WHERE client_id = $1", [subject.contactId])).rows;
-        if (rows.some(row => row.status === "active")) throw new PrivacyRefusal("PRIVACY_ACTIVE_SUBSCRIPTION");
-        if (rows.some(row => row.status === "paused")) throw new PrivacyRefusal("PRIVACY_RESUMABLE_SUBSCRIPTION");
-        if (rows.some(row => row.status !== "cancelled")) throw new PrivacyRefusal("PRIVACY_ASSESSMENT_UNAVAILABLE");
-      }
-      return { obligations: (await readOccurrences(db, subject)).length ? [...obligations, retention] : obligations };
+      const { occurrences } = await readOccurrences(db, subject, "erase");
+      return { obligations: occurrences.length ? [...obligations, retention] : obligations };
     },
     async eraseOrRetain(_db, _subject, assessment) { return { contributorId: "subscriptions", version: "subscriptions.privacy-veto.v1", obligations: assessment.obligations }; },
   };

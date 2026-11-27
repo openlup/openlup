@@ -937,10 +937,10 @@
       },
       {
         "file": "db/platform/migrations/20261129130509_native_renewal_occurrence_privacy.sql",
-        "sha256": "168efb720844241b4e4a38af931a226b0d86027502326c091973b52670e2e3a6"
+        "sha256": "f6b19248a19d6f92ac7098414c266afc53596348f89c5d9bfa99ef4490628d4d"
       }
     ],
-    "objectInventorySha256": "f8b87ac94a04d245a7587807c0d81a317524a738b0495d8306d5237d3f5c98e7",
+    "objectInventorySha256": "ed8bd792db0339b11082cdf608107dca2f6de48d59ee5702062e9c7f639b44fe",
     "qualified": {
       "baseline": {
         "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1901,15 +1901,15 @@
         },
         {
           "file": "db/platform/migrations/20261129130509_native_renewal_occurrence_privacy.sql",
-          "sha256": "168efb720844241b4e4a38af931a226b0d86027502326c091973b52670e2e3a6"
+          "sha256": "f6b19248a19d6f92ac7098414c266afc53596348f89c5d9bfa99ef4490628d4d"
         }
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "ebb923c6747b1957b355d728fabfad41f031020fe518cd6ab023d544989a5b27"
+          "withRestore": "05c428ad1b0a9062b566d60bde7302c490ef53f636ff672a77f06b78d13e21ea"
         },
         "separateMigrator": {
-          "withRestore": "1b913202c0b8d7181db730f8830acb43c1049c22baf841dd3e5ca473bc0337a1"
+          "withRestore": "20ccc1038f0960a8e235e66c13b57de0fbbd3cfafc5ec26563b24745cea54ad0"
         }
       }
     },
@@ -2865,12 +2865,12 @@
         },
         {
           "file": "db/platform/migrations/20261129130509_native_renewal_occurrence_privacy.sql",
-          "sha256": "168efb720844241b4e4a38af931a226b0d86027502326c091973b52670e2e3a6"
+          "sha256": "f6b19248a19d6f92ac7098414c266afc53596348f89c5d9bfa99ef4490628d4d"
         }
       ],
       "objectInventorySha256": {
-        "installerManaged": "77a34fa99e60a7864c2866b7e0afbe8acdd56621d78ee6e83d72837c43dd6df6",
-        "operatorProvisioned": "bc3e6391961f249057c63bc620f9993bb46e23ad3c1f73b77e67d5492c7a48da"
+        "installerManaged": "0b432bf43063aa93f79baa48aeeb397bf484a1645ed905e384dcf58a90407151",
+        "operatorProvisioned": "52906b20c0e4aef30d119168a42c4efdf2cede135836b5288f7698213718190e"
       }
     }
   },
@@ -4043,7 +4043,7 @@
     {
       "file": "20261129130509_native_renewal_occurrence_privacy.sql",
       "source": "db/platform/migrations/20261129130509_native_renewal_occurrence_privacy.sql",
-      "sha256": "168efb720844241b4e4a38af931a226b0d86027502326c091973b52670e2e3a6"
+      "sha256": "f6b19248a19d6f92ac7098414c266afc53596348f89c5d9bfa99ef4490628d4d"
     },
     {
       "file": "q2_00000000000000_platform_baseline.sql",

@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -51,7 +51,7 @@ type Runtime = typeof import("../../server/runtime/auth/referenceIdentity.js")
   & typeof import("../../server/runtime/bffDispatch.js")
   & Pick<typeof import("../../server/runtime/auth/privacyBinding.js"), "composeNativePrivacy" | "nativePrivacyContributors">
   & Pick<typeof import("../../server/runtime/auth/subscriptionsPrivacyContributor.js"), "verifyMissingSubscriptionsPrivacySubject">
-  & Pick<typeof identity, "createPrivacyOperations" | "createPostgresPrivacyStore" | "createPrivacyExportHandler" | "createPrivacyEraseHandler" | "PrivacyRefusal">;
+  & Pick<typeof identity, "createPostgresPrivacyUnitOfWork" | "createPrivacyOperations" | "createPostgresPrivacyStore" | "createPrivacyExportHandler" | "createPrivacyEraseHandler" | "PrivacyRefusal">;
 const hash = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
 const unit = (pool: Pool) => identity.createPostgresPrivacyUnitOfWork(
   { connectionString: "postgresql://unused.invalid/fixture" }, { poolFactory: () => pool },
@@ -196,11 +196,11 @@ function operations(db: AccountMutationsStore, fault?: "owner" | "reader", after
     verifyMissingSubject: runtime.verifyMissingSubscriptionsPrivacySubject, now: () => new Date(), randomId: randomUUID });
 }
 
-function mounts(db: AccountMutationsStore, actor: Seed["actor"], privacy = operations(db)) {
+function mounts(db: AccountMutationsStore, actor: Seed["actor"], privacy = operations(db), host = runtime) {
   const origin = "http://127.0.0.1:8080";
   const authorize = async () => ({ ...actor, ok: true as const, role: "admin" as const, isMachineActor: false as const });
   const env = { PLATFORM_BUNDLE: "node-postgres" };
-  const composed = runtime.createReferenceIdentity({
+  const composed = host.createReferenceIdentity({
     bundle: "node-postgres", migrationIdentity: db.inventory, env,
     ports: { privacy, operatorAuthorization: { authorize }, emailTrustPolicy: identity.createVerifierResultOnlyEmailTrustPolicy(),
       customerSession: { verifyAccessToken: vi.fn() }, customerProfile: { getCustomerMe: vi.fn() },
@@ -210,7 +210,7 @@ function mounts(db: AccountMutationsStore, actor: Seed["actor"], privacy = opera
       availability: "direct-postgres", handler: () => { throw new Error("Guarded reference handler required"); },
     })),
   });
-  const dispatch = runtime.createReferenceBffDispatcher(() => env, composed.preflight);
+  const dispatch = host.createReferenceBffDispatcher(() => env, composed.preflight);
   const profile = { origin, directory: scratch, bundle: "node-postgres" as const, runId: "disposable",
     async assertOwned() { expect(db.owner.ended).toBe(false); } };
   async function mounted(ingress: Ingress, operation: Operation, input: PrivacyEraseRequest, admitted = true): Promise<Wire> {
@@ -225,11 +225,11 @@ function mounts(db: AccountMutationsStore, actor: Seed["actor"], privacy = opera
     const invoke = async () => {
       if (ingress === "public") await dispatch(composed.routes, req, res);
       else if (ingress === "private") await composed.routes.find(entry => entry.route === route(operation))!.handler(req, res);
-      else await (operation === "export" ? runtime.createPrivacyExportHandler : runtime.createPrivacyEraseHandler)({
+      else await (operation === "export" ? host.createPrivacyExportHandler : host.createPrivacyEraseHandler)({
         operations: privacy, authorizeAdmin: authorize,
       })(req, res);
     };
-    if (admitted) await runtime.withIdentityReferencePolicy(profile, invoke);
+    if (admitted) await host.withIdentityReferencePolicy(profile, invoke);
     else await invoke();
     return wire;
   }
@@ -241,7 +241,7 @@ function mounts(db: AccountMutationsStore, actor: Seed["actor"], privacy = opera
   async function ready() {
     const candidate = { artifact: artifactDigest(), configuration: hash(JSON.stringify(env)), environment: "isolated",
       database: await databaseName(db.runtime), schema: db.inventory };
-    return runtime.admitReferenceIdentity({ runtime: composed, candidate, observed: packages,
+    return host.admitReferenceIdentity({ runtime: composed, candidate, observed: packages,
       currentIdentity: () => ({ ...candidate, artifact: artifactDigest() }),
       schemaProbe: createSchemaProbe({ query: (sql, values) => db.owner.query(sql, [...(values ?? [])]) },
         async () => ({ database: await databaseName(db.owner), version: db.inventory })),
@@ -630,15 +630,75 @@ function checkProjection(exported: PrivacyExport, f: { subscriptionId: string; c
   expect(exported.documents.find(entry => entry.contributorId === "customer-preferences")?.data).toEqual({ payment: [], delivery: [] });
 }
 
+let incumbentRuntime: Promise<Runtime> | undefined;
+function loadIncumbentRuntime() {
+  return incumbentRuntime ??= (async () => {
+    // Build the writer-prefix application and its own workspace packages from the pinned source.
+    const directory = join(scratch, "incumbent");
+    const archive = execFileSync("git", ["archive", "--format=tar.gz", "66cce50968fc68659f22eac5768d2863d88a95bd"],
+      { maxBuffer: 128 * 1024 * 1024 });
+    mkdirSync(directory);
+    execFileSync("tar", ["-xzf", "-", "-C", directory], { input: archive, timeout: 60_000 });
+    execFileSync("npm", ["ci", "--offline", "--ignore-scripts", "--no-audit", "--no-fund"], { cwd: directory, timeout: 120_000 });
+    execFileSync(process.execPath, ["scripts/build-packages-incremental.mjs"], { cwd: directory, timeout: 120_000 });
+    const entry = join(directory, "mounted.ts"), output = join(directory, "privacy-test");
+    writeFileSync(entry, [
+      'export * from "./server/runtime/auth/referenceIdentity.ts";',
+      'export * from "./server/runtime/auth/referenceIdentityPolicy.ts";',
+      'export { createReferenceBffDispatcher } from "./server/runtime/bffDispatch.ts";',
+      'export { composeNativePrivacy } from "./server/runtime/auth/privacyBinding.ts";',
+      'export { createPostgresPrivacyUnitOfWork, createPostgresPrivacyStore, createPrivacyExportHandler, createPrivacyEraseHandler } from "@openlup/platform/identity";',
+    ].join("\n"));
+    await buildIdentityReferenceRuntime(entry, output, directory);
+    return await import(pathToFileURL(join(output, "runtime.mjs")).href) as Runtime;
+  })();
+}
+
+async function incumbentMount(db: AccountMutationsStore, actor: Seed["actor"]) {
+  const host = await loadIncumbentRuntime();
+  const unitOfWork = host.createPostgresPrivacyUnitOfWork({ connectionString: "postgresql://unused.invalid/fixture" },
+    { poolFactory: () => db.runtime });
+  return mounts(db, actor, host.composeNativePrivacy({ store: host.createPostgresPrivacyStore(), unitOfWork }).operations, host);
+}
+
+const beforeCarrier = sliceOccurrencePlan(occurrenceCatalogue, "db/platform/migrations/20261129130001_native_renewal_v3_storage.sql", false);
+
+it("preserves pinned incumbent export and erase-only effects on both empty catalogues", async () => {
+  const results: unknown[] = [];
+  for (const plan of [beforeCarrier, privacyPlan]) {
+    const db = await installMeasuredAccountPrefix(plan, "bootstrap", "privacy-incumbent");
+    try {
+      const actor = await privacyActor(db.owner), subject = await contact(db.owner);
+      const id = subject.subject.kind === "contact" ? subject.subject.contactId : null;
+      await db.owner.query("UPDATE public.clients SET first_name='Fixture',created_at='2050-01-01Z',updated_at='2050-01-01Z' WHERE id=$1", [id]);
+      const mounted = await incumbentMount(db, actor);
+      const { documents } = await readExport(mounted, subject);
+      expect(documents.find(d => d.contributorId === "subscriptions")).not.toHaveProperty("renewalOccurrences");
+      await db.owner.query("REVOKE EXECUTE ON FUNCTION public.customer_preferences_export(uuid) FROM service_role");
+      expect((await db.runtime.query(`SELECT row_security_active('public.clients') AS rls,
+        has_function_privilege('public.customer_preferences_export(uuid)','EXECUTE') AS exports`)).rows).toEqual([{ rls: true, exports: false }]);
+      const { version, outcome, obligations, erasureId } = await eraseThrough(mounted, "public", subject);
+      const effects = (await db.owner.query(`SELECT c.email LIKE 'erased+%@identity.invalid' AS redacted,
+        c.first_name, r.retained_obligations, r.dispositions FROM public.identity_privacy_erasures r JOIN public.clients c ON c.id=r.client_id
+        WHERE r.erasure_id=$1`, [erasureId])).rows;
+      expect(effects).toMatchObject([{ redacted: true, first_name: null }]);
+      results.push({ documents: JSON.stringify(documents).replaceAll(id!, "<contact>"), version, outcome, obligations, effects });
+    } finally { await db.close(); }
+  }
+  expect(results[1]).toEqual(results[0]);
+}, postgresSetupTimeoutMs);
+
 async function checkPrivacyAcl(db: AccountMutationsStore) {
   const { rows: [acl] } = await db.owner.query(`SELECT pg_get_userbyid(p.proowner) AS owner, p.prosecdef AS definer,
     p.proconfig AS settings, p.proowner=c.relowner AS owns_carrier, to_regrole('service_role') IS NOT NULL AS service,
     ARRAY(SELECT coalesce(r.rolname::text,'PUBLIC') FROM aclexplode(p.proacl) a LEFT JOIN pg_roles r ON r.oid=a.grantee
       WHERE a.privilege_type='EXECUTE' ORDER BY 1) AS roles,
+    coalesce((SELECT bool_or(a.is_grantable) FROM aclexplode(p.proacl) a
+      WHERE a.grantee=to_regrole('service_role') AND a.privilege_type='EXECUTE'), false) AS service_grantable,
     ARRAY(SELECT r.rolname::text FROM pg_roles r WHERE r.rolname IN ('anon','authenticated')
       AND has_function_privilege(r.oid,p.oid,'EXECUTE')) AS forbidden
     FROM pg_proc p, pg_class c WHERE p.oid=$1::regprocedure AND c.oid='public.subscription_cycle_occurrences'::regclass`, [occurrenceHelper]);
-  expect(acl).toMatchObject({ definer: true, owns_carrier: true, settings: ["row_security=off", "search_path=pg_catalog, pg_temp"], forbidden: [] });
+  expect(acl).toMatchObject({ definer: true, owns_carrier: true, settings: ["row_security=off", "search_path=pg_catalog, pg_temp"], forbidden: [], service_grantable: false });
   expect(acl.roles).toEqual([acl.owner, ...(acl.service ? ["service_role"] : [])].sort());
   expect((await db.runtime.query("SELECT has_function_privilege(current_user,$1,'EXECUTE') AS helper", [occurrenceHelper])).rows[0].helper).toBe(true);
   if (db.installation.generation !== "legacy") await transaction(db.runtime, async lane => {
@@ -664,6 +724,9 @@ it.each(["legacy", "legacy-with-service", "bootstrap", "separate", "admin-manage
       }
       expect(await state(db.owner)).toEqual(before);
 
+      if (variant === "legacy-with-service") {
+        await db.migrator.query("ALTER DEFAULT PRIVILEGES GRANT EXECUTE ON FUNCTIONS TO service_role WITH GRANT OPTION");
+      }
       await applyMeasuredOccurrencePrefix(privacyPlan, db.migrator, db.installation,
         variant === "legacy-with-service" ? "legacy" : variant, [privacyForward]);
       await checkPrivacyAcl(db);
@@ -679,20 +742,27 @@ it.each(["legacy", "legacy-with-service", "bootstrap", "separate", "admin-manage
       const candidateEmpty = await eraseThrough(mounted, "public", empty);
       await receiptRetention(db.owner, candidateEmpty, []);
       if (profile !== "legacy") {
-        const baseline = await installMeasuredAccountPrefix(sliceOccurrencePlan(occurrenceCatalogue,
-          "db/platform/migrations/20261129130001_native_renewal_v3_storage.sql", false), profile, "privacy-before-occurrences");
+        const baseline = await installMeasuredAccountPrefix(beforeCarrier, profile, "privacy-before-occurrences");
         try {
           await baseline.owner.query("REVOKE EXECUTE ON FUNCTION public.customer_preferences_export(uuid) FROM service_role");
-          const baselineEmpty = await eraseThrough(mounts(baseline, await privacyActor(baseline.owner)), "public", await contact(baseline.owner));
+          const baselineEmpty = await eraseThrough(await incumbentMount(baseline, await privacyActor(baseline.owner)), "public", await contact(baseline.owner));
           expect(candidateEmpty).toEqual({ ...baselineEmpty, erasureId: candidateEmpty.erasureId, completedAt: candidateEmpty.completedAt });
           await receiptRetention(baseline.owner, baselineEmpty, []);
         } finally { await baseline.close(); }
       }
       const receipt = await eraseThrough(mounted, "public", subject);
       await receiptRetention(db.owner, receipt);
+      const other = variant === "bootstrap" ? await contact(db.owner) : undefined;
       const stored = await state(db.owner);
+      if (other) {
+        await db.owner.query(`REVOKE EXECUTE ON FUNCTION ${occurrenceHelper} FROM service_role`);
+        refusal(await mounted.mounted("public", "erase", other), unavailableCode);
+        codeAt(await mounted.mounted("public", "erase", { ...other, idempotencyKey: subject.idempotencyKey }),
+          "PRIVACY_IDEMPOTENCY_CONFLICT");
+      }
       expect(await eraseThrough(mounted, "public", subject)).toEqual({ ...receipt, outcome: "ALREADY_ERASED" });
       expect(await state(db.owner)).toEqual(stored);
+      if (other) await db.owner.query(`GRANT EXECUTE ON FUNCTION ${occurrenceHelper} TO service_role`);
       await expect(call(db.migrator, writer, args(f))).rejects.toMatchObject(erasedRenewal);
       await expect(call(db.migrator, writer, args(f, { altered: true }))).rejects.toMatchObject(erasedRenewal);
       if (variant === "admin-managed") {
@@ -900,6 +970,11 @@ it.each(defaults)("orders the owner fences and mounted erase under %s defaults",
         await lane.query("SET LOCAL lock_timeout = '100ms'");
         return allocate(lane, paid, "v3", { ...defaultRule, leadSeconds: 0 });
       })).rejects.toMatchObject({ code: "55P03" });
+      await expect(transaction(owner, async lane => {
+        await rc(lane);
+        await lane.query("SET LOCAL lock_timeout = '100ms'");
+        return allocate(lane, paid, "v3", { ...defaultRule, leadSeconds: 0.5 });
+      })).rejects.toMatchObject({ code: "22023", message: "renewal_deadline_rule_unsupported", detail: "/deadlineRuleRef" });
     }, (owner, paid, rail) => committedAllocation(owner, paid, rail, async (lane, scope, rail, policy) => {
       const waiting = await pidOf(lane);
       const allocation = allocate(lane, scope, rail, policy);
@@ -910,6 +985,38 @@ it.each(defaults)("orders the owner fences and mounted erase under %s defaults",
     codeAt(await request, "PRIVACY_ACTIVE_SUBSCRIPTION");
     await persistRoot(db.migrator, f);
   })), postgresSetupTimeoutMs);
+
+it("exports subscriptions and occurrences from one READ COMMITTED snapshot", () => withPrivacyStore(async db => {
+  const actor = await privacyActor(db.owner), subject = await contact(db.owner);
+  const clientId = subject.subject.kind === "contact" ? subject.subject.contactId : "";
+  let committed: Awaited<ReturnType<typeof allocate>> | undefined;
+  const mounted = mounts(db, actor, operations(db, undefined, undefined, {
+    run: work => transaction(db.runtime, async reader => {
+      await rc(reader);
+      const readerPid = await pidOf(reader);
+      return work({ query: async (sql, values) => {
+        const result = await reader.query(sql, values ? [...values] : undefined);
+        if (!committed && /FROM public\.subscriptions WHERE client_id = \$1/u.test(sql)) {
+          committed = await transaction(db.migrator, async writer => {
+            await rc(writer);
+            expect(await pidOf(writer)).not.toBe(readerPid);
+            expect((await reader.query("SHOW transaction_isolation")).rows[0].transaction_isolation).toBe("read committed");
+            const paid = await activation(writer, 7, undefined, clientId);
+            return allocate(writer, paid);
+          });
+        }
+        return result;
+      } });
+    }), close: async () => {},
+  }));
+  const snapshot = (await readExport(mounted, subject)).documents.find(d => d.contributorId === "subscriptions");
+  expect(committed).toMatchObject({ outcome: "created" });
+  expect(snapshot).toMatchObject({ data: [] });
+  expect(snapshot).not.toHaveProperty("renewalOccurrences");
+  checkProjection(await readExport(mounts(db, actor), subject), committed!);
+  await db.owner.query(`REVOKE EXECUTE ON FUNCTION ${occurrenceHelper} FROM service_role`);
+  codeAt(await mounted.mounted("public", "erase", subject), "PRIVACY_ACTIVE_SUBSCRIPTION");
+}), postgresSetupTimeoutMs);
 
 it("uses the original RLS-bound login for fresh scope and fails closed without supported EXECUTE", () => withPrivacyStore(async db => {
   const actor = await privacyActor(db.owner);
@@ -940,9 +1047,19 @@ it("uses the original RLS-bound login for fresh scope and fails closed without s
     USING (client_id <> '${f.clientId}'::uuid)`);
   const parentOnly = await activation(db.migrator);
   const before = await state(db.owner);
-  for (const operation of ["export", "erase"] as const) refusal(await mounted.mounted("public", operation, subject), unavailableCode);
+  for (const operation of ["export", "erase"] as const) {
+    const denied = await mounted.mounted("public", operation, subject);
+    refusal(denied, unavailableCode);
+    expect(denied.body.error?.details?.fix).toMatch(/installation owner.*row visibility.*correlation/u);
+    expect(JSON.stringify(denied.body.error?.details)).not.toContain(f.clientId);
+  }
   expect(await state(db.owner)).toEqual(before);
   await db.owner.query(`DROP POLICY fixture_hide_occurrence ON public.${occurrence}`);
+  await db.owner.query(`REVOKE SELECT (client_id) ON public.${occurrence} FROM service_role`);
+  const unreadable = await mounted.mounted("public", "erase", subject);
+  refusal(unreadable, unavailableCode);
+  expect(unreadable.body.error?.details?.fix).toMatch(/row visibility/u);
+  await db.owner.query(`GRANT SELECT (client_id) ON public.${occurrence} TO service_role`);
   await db.owner.query(`ALTER TABLE public.subscriptions ENABLE ROW LEVEL SECURITY;
     CREATE POLICY fixture_hide_parent ON public.subscriptions FOR SELECT TO service_role USING (id <> '${parentOnly.subscriptionId}'::uuid)`);
   refusal(await mounted.mounted("public", "erase", inputFor(parentOnly.clientId)), unavailableCode);
@@ -953,6 +1070,7 @@ it("uses the original RLS-bound login for fresh scope and fails closed without s
     await db.owner.query(definition.replace(/\nBEGIN\n/u, `\nBEGIN\n  ${mutation}\n`));
     refusal(await mounted.mounted("public", "export", subject), unavailableCode);
     refusal(await mounted.mounted("public", "erase", subject), unavailableCode);
+    codeAt(await mounted.mounted("public", "erase", inputFor(parentOnly.clientId)), "PRIVACY_ACTIVE_SUBSCRIPTION");
     expect(await state(db.owner)).toEqual(before);
   }
   await db.owner.query(definition);
@@ -989,7 +1107,7 @@ it("uses the original RLS-bound login for fresh scope and fails closed without s
       await rc(lane);
       await lane.query("SET LOCAL ROLE fixture_custom_eraser");
       return work({ query: (sql, values) => {
-        if (sql.includes("AS evidence")) reachedHelper = true;
+        if (sql.includes("AS proof")) reachedHelper = true;
         return lane.query(sql, values ? [...values] : undefined);
       } });
     }), close: async () => {},
@@ -1063,25 +1181,30 @@ it("serializes each installed destination path with owner calls and both erasure
     const destination = (lane: Db, input = ctx) => recheck
       ? call(lane, "commerce_recheck_destination_v2", [input, "subscription", input.scopeRef, null, null, null])
       : call(lane, "commerce_read_destination_v2", [input, "subscription", input.scopeRef, null]);
-    const reader = await db.runtime.connect(), owner = await db.migrator.connect(), guard = await db.owner.connect();
-    try {
-      await reader.query("BEGIN ISOLATION LEVEL READ COMMITTED");
-      await owner.query("BEGIN ISOLATION LEVEL READ COMMITTED");
-      await guard.query("BEGIN");
-      await guard.query("SELECT id FROM public.clients WHERE id=$1 FOR UPDATE", [f.clientId]);
-      const readerPid = await pidOf(reader), ownerPid = await pidOf(owner), guardPid = await pidOf(guard);
-      const reading = destination(reader).catch((error: unknown) => error);
-      await waitForBlock(db.owner, readerPid, guardPid);
-      const writing = selectRoot(owner, f).catch((error: unknown) => error);
-      await expect.poll(async () => (await db.owner.query("SELECT cardinality(pg_blocking_pids($1))>0 AS blocked", [ownerPid])).rows[0].blocked).toBe(true);
-      await guard.query("COMMIT");
-      expect(await reading).toMatchObject({ code: "destination_v2_selection_required" });
-      await waitForBlock(db.owner, ownerPid, readerPid);
-      await reader.query("COMMIT");
-      expect(await writing).toMatchObject({ outcome: "created" });
-      await owner.query("COMMIT");
-    } finally {
-      for (const lane of [guard, reader, owner]) { await lane.query("ROLLBACK"); lane.release(); }
+    for (const claim of [false, true]) {
+      const reader = await db.runtime.connect(), owner = await db.migrator.connect(), guard = await db.owner.connect();
+      try {
+        await reader.query("BEGIN ISOLATION LEVEL READ COMMITTED");
+        await owner.query("BEGIN ISOLATION LEVEL READ COMMITTED");
+        await guard.query("BEGIN");
+        await guard.query("SELECT id FROM public.clients WHERE id=$1 FOR UPDATE", [f.clientId]);
+        const readerPid = await pidOf(reader), ownerPid = await pidOf(owner), guardPid = await pidOf(guard);
+        const reading = destination(reader).catch((error: unknown) => error);
+        await waitForBlock(db.owner, readerPid, guardPid);
+        const writing = (claim ? selectRoot(owner, f) : allocate(owner, f, "v3", { ...defaultRule, leadSeconds: 0 })).catch((error: unknown) => error);
+        await expect.poll(async () => (await db.owner.query("SELECT cardinality(pg_blocking_pids($1))>0 AS blocked", [ownerPid])).rows[0].blocked).toBe(true);
+        await guard.query("COMMIT");
+        expect(await reading).toMatchObject({ code: "destination_v2_selection_required" });
+        await waitForBlock(db.owner, ownerPid, readerPid);
+        // The owner must hold a compatible contact share and be waiting on the parent.
+        expect((await db.owner.query(`SELECT relation::regclass::text AS relation FROM pg_locks
+          WHERE pid=$1 AND locktype='tuple'`, [ownerPid])).rows).toEqual([{ relation: "subscriptions" }]);
+        await reader.query("COMMIT");
+        expect(await writing).toMatchObject({ outcome: claim ? "created" : "existing" });
+        await owner.query("COMMIT");
+      } finally {
+        for (const lane of [guard, reader, owner]) { await lane.query("ROLLBACK"); lane.release(); }
+      }
     }
 
     await verifyCancellation(db.owner, f, await cancelOccurrence(db.migrator, f, actor.principalId));
