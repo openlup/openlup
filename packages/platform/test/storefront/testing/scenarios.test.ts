@@ -135,5 +135,6 @@ it("F4 covers every (code, cause) of the table with a judgement entry, and every
 
 it("gives every known outcome kind a one-line meaning", () => {
   expect(Object.keys(outcomeMeanings).sort()).toEqual([...knownOutcomes].sort());
+  expect(Object.isFrozen(outcomeMeanings)).toBe(true);
   for (const meaning of Object.values(outcomeMeanings)) expect(meaning).toMatch(/^[A-Z][^\n]+\.$/);
 });

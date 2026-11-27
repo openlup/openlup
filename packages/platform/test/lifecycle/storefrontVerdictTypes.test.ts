@@ -74,8 +74,9 @@ it("V9, P10, M2 and F5 keep the verdict and proof-file types equal to their sche
   expect(diagnostics).toEqual([]);
 }, 60_000);
 
-it("M2 gives every known result and tier a one-line meaning", () => {
+it("M2 gives every known result and tier a one-line meaning, frozen", () => {
   expect(Object.keys(resultMeanings)).toEqual([...knownResults]);
   expect(Object.keys(tierMeanings)).toEqual([...knownTiers]);
+  expect(Object.isFrozen(resultMeanings) && Object.isFrozen(tierMeanings)).toBe(true);
   for (const meaning of [...Object.values(resultMeanings), ...Object.values(tierMeanings)]) expect(meaning).toMatch(/^[A-Z][^\n]+\.$/);
 });

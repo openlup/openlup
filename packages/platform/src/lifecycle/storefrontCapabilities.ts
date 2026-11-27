@@ -7,8 +7,8 @@
  * - `level` is `supported` or `unsupported` in this version. The set is open: a
  *   reader keeps a default branch for a level added later. Every entry states
  *   its level; there is no default.
- * - `statement` says what the capability is, in one sentence that stays true
- *   when `level` changes. Derive "not yet" wording from `level`, never from
+ * - `statement` says what the capability is, in one sentence without a final
+ *   period that stays true when `level` changes. Derive "not yet" wording from `level`, never from
  *   `statement`.
  * - `meanwhile` says what a store does while the capability is not supported;
  *   it is `null` exactly when `level` is `supported`.
@@ -65,36 +65,36 @@ export const storefrontCapabilities: readonly StorefrontCapability[] = Object.fr
   }),
   entry({
     id: "embedded_card_element",
-    level: UNSUPPORTED, meanwhile: "Take card details on a payment page the provider hosts.",
+    level: UNSUPPORTED, meanwhile: "Take card details on a payment page the provider hosts, through a redirect handoff.",
     statement: "The checkout embeds a provider's card entry element",
     closedBy: "provider_module",
     appliesTo: { id: "takes_cards", text: "Stores that take cards" },
   }),
   entry({
-    id: "payment_method_setup",
-    level: UNSUPPORTED, meanwhile: "Let the buyer replace a stored payment method outside the storefront, with the provider.",
-    statement: "A buyer replaces a stored payment method",
+    id: "storefront_payment_method_setup",
+    level: UNSUPPORTED, meanwhile: "Start the setup with the server-side payment method setup and confirm its handoff in the store's own page.",
+    statement: "The storefront confirms a payment method setup in the buyer's browser",
     closedBy: "provider_module",
     appliesTo: { id: "replaces_payment_methods", text: "Stores that replace a stored payment method" },
   }),
   entry({
-    id: "tax_in_checkout_quote",
-    level: UNSUPPORTED, meanwhile: "Show prices that include tax, or state the tax outside the checkout quote.",
-    statement: "The checkout quote includes tax",
+    id: "destination_tax_at_checkout",
+    level: UNSUPPORTED, meanwhile: "Sell at tax-inclusive prices, which the checkout quote already taxes.",
+    statement: "Checkout adds tax calculated for the buyer's destination to tax-exclusive prices",
     closedBy: "platform",
-    appliesTo: { id: "adds_tax_at_checkout", text: "Stores that add tax at checkout" },
+    appliesTo: { id: "adds_tax_at_checkout", text: "Stores that sell at tax-exclusive prices and add tax at checkout" },
   }),
   entry({
     id: "address_region",
-    level: UNSUPPORTED, meanwhile: "Collect the region in an address line the store already holds.",
-    statement: "Addresses carry a region",
+    level: UNSUPPORTED, meanwhile: "Collect the region in a field of the store's own, outside the storefront's anchored fields.",
+    statement: "The storefront's buyer fields include an address region",
     closedBy: "platform",
     appliesTo: { id: "addresses_need_region", text: "Stores whose addresses need a region" },
   }),
   entry({
     id: "recurring_consent_evidence",
-    level: UNSUPPORTED, meanwhile: "Keep the buyer's consent to recurring payment as evidence in the store's own records.",
-    statement: "The buyer's consent to recurring payment is stored as evidence",
+    level: UNSUPPORTED, meanwhile: "Keep the buyer's acceptance, with the terms shown and its time, in the store's own records.",
+    statement: "The buyer's acceptance of recurring payment terms at checkout is stored as evidence",
     closedBy: "platform",
     appliesTo: { id: "subscriptions", text: "Stores that sell subscriptions" },
   }),

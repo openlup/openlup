@@ -173,8 +173,8 @@ export declare function inspectLegacyPostgresInstallRoles(db: PostgresInstallQue
  * - `level` is `supported` or `unsupported` in this version. The set is open: a
  *   reader keeps a default branch for a level added later. Every entry states
  *   its level; there is no default.
- * - `statement` says what the capability is, in one sentence that stays true
- *   when `level` changes. Derive "not yet" wording from `level`, never from
+ * - `statement` says what the capability is, in one sentence without a final
+ *   period that stays true when `level` changes. Derive "not yet" wording from `level`, never from
  *   `statement`.
  * - `meanwhile` says what a store does while the capability is not supported;
  *   it is `null` exactly when `level` is `supported`.

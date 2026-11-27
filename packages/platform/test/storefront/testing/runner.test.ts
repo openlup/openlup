@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { parseStorefrontVerdict, type StorefrontVerdict } from "../../../src/lifecycle/index.js";
 import { runStorefrontScenario, serializeStorefrontVerdict, storefrontScenarios, type StorefrontAdapter, type StorefrontScenario } from "../../../src/storefront/testing/index.js";
-import { findingText } from "../../../src/storefront/testing/findings.js";
+import { findingText, type CauseOf } from "../../../src/storefront/testing/findings.js";
 import { ALL_OUTCOMES, storeDouble, type StoreDoubleSwitches } from "./storeDouble.js";
 
 /** The cause text of forbidden_state_shown for one cause. */
-const findingCause = (cause: string) => findingText("forbidden_state_shown", cause, { at: "x" }).cause;
+const findingCause = (cause: CauseOf<"forbidden_state_shown">) => findingText("forbidden_state_shown", cause, { at: "x" }).cause;
 
 type RunOptions = Parameters<typeof runStorefrontScenario>[0];
 type Double = ReturnType<typeof storeDouble>;
@@ -578,7 +578,7 @@ describe("paid with activation pending: the forbidden-state matrix (R27)", () =>
   // expected one. Awaiting states stay allowed in the control run.
   // The state the control negates is not in the control list: a page that shows it is judged vacuous, as in every other
   // block_read scenario, because the runner cannot tell a guess from a page that learned it over an unmatched request.
-  const rows: readonly (readonly [string, StoreDoubleSwitches, "passed" | "failed" | "vacuous", readonly [string, number, string, string] | null])[] = [
+  const rows: readonly (readonly [string, StoreDoubleSwitches, "passed" | "failed" | "vacuous", readonly [string, number, CauseOf<"forbidden_state_shown"> | "vacuous_progress", string] | null])[] = [
     ["a correct store", {}, "passed", null],
     ["an honest polling store (awaiting_payment until its poll answers; the control run keeps it)", { slowPoll: true, awaitingPaymentUntilPoll: true }, "passed", null],
     ["a control run that falls back to awaiting_payment when its read fails", { awaitingPaymentWhenReadFails: true }, "passed", null],
