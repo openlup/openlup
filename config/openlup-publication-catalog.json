@@ -4590,6 +4590,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/publicationAuthorship.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/publicationCodec.ts",
       "class": "public-output"
     },
@@ -4614,7 +4618,15 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/publicationOperationHelpers.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/publicationPorts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/publicationPreparation.ts",
       "class": "public-output"
     },
     {
