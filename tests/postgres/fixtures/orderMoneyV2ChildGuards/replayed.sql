@@ -1,4 +1,4 @@
-SELECT plan(6);
+SELECT plan(8);
 
 SELECT ok((SELECT provolatile='v' AND NOT prosecdef AND prorettype='trigger'::regtype
   AND proconfig=ARRAY['search_path=pg_catalog, pg_temp']
@@ -28,6 +28,20 @@ SELECT ok((SELECT relowner=current_user::regrole AND relrowsecurity AND NOT relf
   AND NOT EXISTS (SELECT FROM pg_attribute a CROSS JOIN LATERAL aclexplode(a.attacl) WHERE a.attrelid=c.oid)
   FROM pg_class c WHERE oid='public.commerce_order_money_v2_redaction_marks'::regclass),
   'redaction marks are private');
+
+SELECT ok((SELECT relowner=current_user::regrole AND relrowsecurity AND NOT relforcerowsecurity
+  AND EXISTS (SELECT FROM pg_constraint WHERE conrelid=c.oid AND contype='p'
+    AND pg_get_constraintdef(oid)='PRIMARY KEY (transaction_id, order_id)')
+  AND NOT EXISTS (SELECT FROM pg_policy WHERE polrelid=c.oid)
+  AND NOT EXISTS (SELECT FROM aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) WHERE grantee<>c.relowner)
+  FROM pg_class c WHERE oid='public.commerce_order_money_v2_restore_marks'::regclass),
+  'restore marks are private');
+
+SELECT ok((SELECT proowner=current_user::regrole AND provolatile='v' AND prosecdef
+  AND prorettype='void'::regtype AND proconfig=ARRAY['search_path=pg_catalog, pg_temp']
+  AND NOT EXISTS (SELECT FROM aclexplode(coalesce(proacl,acldefault('f',proowner))) WHERE grantee<>proowner)
+  FROM pg_proc WHERE oid='public.commerce_order_money_v2_mark_restore_orders(uuid[])'::regprocedure),
+  'only the owner can execute the restore marker');
 
 SELECT set_eq(
   $$SELECT c.relname::text,t.tgname::text,t.tgtype::integer,t.tgdeferrable,t.tginitdeferred,t.tgenabled::text

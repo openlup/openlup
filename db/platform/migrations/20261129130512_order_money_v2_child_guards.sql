@@ -7,17 +7,38 @@ CREATE TABLE public.commerce_order_money_v2_redaction_marks (
   bucket_key text NOT NULL,
   PRIMARY KEY (transaction_id, order_id, bucket_key)
 );
+-- The restore adapter marks only absent order IDs while it holds the target locks.
+CREATE TABLE public.commerce_order_money_v2_restore_marks (
+  transaction_id xid8 NOT NULL,
+  order_id uuid NOT NULL,
+  PRIMARY KEY (transaction_id, order_id)
+);
+
 ALTER TABLE public.commerce_order_money_v2_redaction_marks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.commerce_order_money_v2_restore_marks ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.commerce_order_money_v2_redaction_marks FROM PUBLIC;
+REVOKE ALL ON TABLE public.commerce_order_money_v2_restore_marks FROM PUBLIC;
+
+CREATE FUNCTION public.commerce_order_money_v2_mark_restore_orders(p_order_ids uuid[])
+RETURNS void LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+  INSERT INTO public.commerce_order_money_v2_restore_marks(transaction_id, order_id)
+  SELECT pg_current_xact_id(), requested.order_id
+  FROM unnest(p_order_ids) AS requested(order_id)
+  WHERE pg_has_role(session_user, (SELECT relowner FROM pg_class WHERE oid = 'public.commerce_orders'::regclass), 'USAGE')
+    AND EXISTS (SELECT FROM pg_locks WHERE pid = pg_backend_pid() AND granted
+      AND mode = 'ShareRowExclusiveLock' AND relation = 'public.commerce_orders'::regclass)
+    AND NOT EXISTS (SELECT FROM public.commerce_orders o WHERE o.id = requested.order_id)
+$$;
+REVOKE ALL ON FUNCTION public.commerce_order_money_v2_mark_restore_orders(uuid[]) FROM PUBLIC;
 
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
-  EXECUTE 'REVOKE ALL ON TABLE public.commerce_order_money_v2_redaction_marks FROM anon';
+  EXECUTE 'REVOKE ALL ON TABLE public.commerce_order_money_v2_redaction_marks, public.commerce_order_money_v2_restore_marks FROM anon';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
-  EXECUTE 'REVOKE ALL ON TABLE public.commerce_order_money_v2_redaction_marks FROM authenticated';
+  EXECUTE 'REVOKE ALL ON TABLE public.commerce_order_money_v2_redaction_marks, public.commerce_order_money_v2_restore_marks FROM authenticated';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
-  EXECUTE 'REVOKE ALL ON TABLE public.commerce_order_money_v2_redaction_marks FROM service_role';
+  EXECUTE 'REVOKE ALL ON TABLE public.commerce_order_money_v2_redaction_marks, public.commerce_order_money_v2_restore_marks FROM service_role';
 END IF; END; $$;
 
 -- Only consume a private mark for a deferred trigger in the current transaction.
@@ -51,8 +72,9 @@ RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalo
       AND (coalesce(nullif(current_setting('role', true), 'none'), session_user::text) <> 'authenticated'
         OR EXISTS (SELECT FROM public.clients c WHERE c.id = o.client_id AND c.principal_id = auth.uid()))
   ) AND NOT (
-    -- Use the restore authority and locks required by the landed assertion.
-    pg_has_role(session_user, (SELECT relowner FROM pg_class WHERE oid = 'public.commerce_orders'::regclass), 'USAGE')
+    EXISTS (SELECT FROM public.commerce_order_money_v2_restore_marks m
+      WHERE m.transaction_id = pg_current_xact_id() AND m.order_id = p_order_id)
+    AND pg_has_role(session_user, (SELECT relowner FROM pg_class WHERE oid = 'public.commerce_orders'::regclass), 'USAGE')
     AND (SELECT count(DISTINCT relation) FROM pg_locks WHERE pid = pg_backend_pid() AND granted
       AND mode = 'ShareRowExclusiveLock' AND relation IN (
         'public.identity_privacy_erasures'::regclass,
@@ -124,13 +146,13 @@ DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') T
   EXECUTE 'GRANT EXECUTE ON FUNCTION public.commerce_order_money_v2_erased_insert_refused(uuid) TO authenticated';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_order_money_v2_consume_redaction_mark(uuid,text), public.commerce_order_money_v2_erased_insert_refused(uuid) FROM anon';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_order_money_v2_consume_redaction_mark(uuid,text), public.commerce_order_money_v2_erased_insert_refused(uuid), public.commerce_order_money_v2_mark_restore_orders(uuid[]) FROM anon';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_order_money_v2_consume_redaction_mark(uuid,text) FROM authenticated';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_order_money_v2_consume_redaction_mark(uuid,text), public.commerce_order_money_v2_mark_restore_orders(uuid[]) FROM authenticated';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_order_money_v2_consume_redaction_mark(uuid,text) FROM service_role';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_order_money_v2_consume_redaction_mark(uuid,text), public.commerce_order_money_v2_mark_restore_orders(uuid[]) FROM service_role';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
   EXECUTE 'GRANT EXECUTE ON FUNCTION public.commerce_order_money_v2_consume_redaction_mark(uuid,text), public.commerce_order_money_v2_erased_insert_refused(uuid) TO service_role';

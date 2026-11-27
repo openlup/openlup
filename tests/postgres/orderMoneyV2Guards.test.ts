@@ -800,6 +800,13 @@ it("split_items_map_to_source retains a one-cent tax reduction and the unpromote
   ]);
 });
 
+async function writeErasedRestore(db: PoolClient, evidence: Evidence, options: { orderId?: string; bucketErased?: boolean } = {}) {
+  const orderId = options.orderId ?? randomUUID();
+  await db.query("LOCK TABLE public.commerce_orders IN SHARE ROW EXCLUSIVE MODE");
+  await db.query("SELECT public.commerce_order_money_v2_mark_restore_orders($1::uuid[])", [[orderId]]);
+  await write(db, evidence, sku, { ...options, orderId, erased: true });
+}
+
 it("requires the same-order tombstone and receipt on the erased restore arm", async () => {
   const evidence = await issue(store, sku, false, body => ({
     ...body,
@@ -815,7 +822,7 @@ it("requires the same-order tombstone and receipt on the erased restore arm", as
   await transaction(store.owner, db => eraseEvidence(db, evidence.clientId));
   await expectMismatch(transaction(store.owner, async db => {
     await ownerRestore(db);
-    await write(db, evidence, sku, { erased: true });
+    await writeErasedRestore(db, evidence);
   }), "/taxEvidence", evidenceRemedy);
   // Temporarily restored the old replay hint for missing erased evidence.
   await transaction(store.owner, async db => {
@@ -824,19 +831,20 @@ it("requires the same-order tombstone and receipt on the erased restore arm", as
       "AND t.state='erased'\n  )) THEN\n    RAISE EXCEPTION 'commerce_order_money_v2_mismatch' USING ERRCODE='23514', COLUMN='/taxEvidence', HINT=remedy;",
     ]]);
     await ownerRestore(db);
-    await write(db, evidence, sku, { erased: true });
+    await writeErasedRestore(db, evidence);
     await expectMismatch(db.query("SET CONSTRAINTS ALL IMMEDIATE"), "/taxEvidence", replayRemedy);
   }, "ROLLBACK");
   await transaction(store.owner, db => recordErasure(db, evidence.clientId));
   await expectMismatch(transaction(store.owner, async db => {
     await ownerRestore(db);
-    await write(db, evidence, sku, { erased: true, bucketErased: false });
+    await writeErasedRestore(db, evidence, { bucketErased: false });
   }), "/deliveryBuckets");
   const id = randomUUID();
   const restore = async (db: PoolClient, tables: string[]) => {
     await ownerRestore(db, tables);
-    await write(db, evidence, sku, { orderId: id, erased: true });
+    await writeErasedRestore(db, evidence, { orderId: id });
     await db.query("SET CONSTRAINTS ALL IMMEDIATE");
+    await db.query("DELETE FROM public.commerce_order_money_v2_restore_marks WHERE transaction_id=pg_current_xact_id()");
   };
   const partialLocks = restoreTables.filter(table => table !== fees);
   await expectMismatch(transaction(store.owner, db => restore(db, partialLocks)), "/taxEvidence");
@@ -890,8 +898,9 @@ it("refuses a shipping-scoped discount moved to a handling bucket on erased rest
     deliveryBuckets: [{ ...evidence.quote.deliveryBuckets[0]!, kind: "handling" }] } };
   const restore = async (db: PoolClient, input: Evidence) => {
     await ownerRestore(db);
-    await write(db, input, sku, { erased: true });
+    await writeErasedRestore(db, input);
     await db.query("SET CONSTRAINTS ALL IMMEDIATE");
+    await db.query("DELETE FROM public.commerce_order_money_v2_restore_marks WHERE transaction_id=pg_current_xact_id()");
   };
   await expectMismatch(transaction(store.owner, db => restore(db, handling)), "/discountAllocations");
   // Temporarily disabled the shipping bucket kind check in a disposable database transaction.

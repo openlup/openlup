@@ -197,6 +197,15 @@ it("refuses a late private fact and a standalone adjustment INSERT from the qual
   // The retained assertion alone would accept a zero-value fee after erasure.
   await withoutGuard(fees, guardName(fees), lateFee);
   await mismatch(transaction(store.owner, lateFee), "/feeLines", immutable);
+  await mismatch(transaction(store.migrator, async db => {
+    await db.query(`LOCK TABLE public.${orderTable}, public.identity_privacy_erasures, public.${snapshots}, public.${sources},
+      public.${buckets}, public.${allocations}, public.${positions}, public.${fees} IN SHARE ROW EXCLUSIVE MODE`);
+    // Even under the restore locks, the marker cannot claim a previously committed order.
+    await db.query(`UPDATE public.${orderTable} SET updated_at=updated_at WHERE id=$1`, [id]);
+    await db.query("SELECT public.commerce_order_money_v2_mark_restore_orders($1::uuid[])", [[id]]);
+    expect((await db.query("SELECT order_id FROM public.commerce_order_money_v2_restore_marks WHERE order_id=$1", [id])).rows).toEqual([]);
+    await lateFee(db);
+  }), "/feeLines", immutable);
   await mismatch(transaction(store.runtime, lateAdjustment), "/discountAllocations", immutable);
   for (const table of [fees, adjustments]) {
     expect((await store.owner.query(`SELECT 1 FROM public.${table} WHERE order_id=$1`, [id])).rows).toEqual([]);

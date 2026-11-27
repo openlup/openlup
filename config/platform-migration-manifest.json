@@ -935,7 +935,7 @@
     },
     {
       "file": "db/platform/migrations/20261129130512_order_money_v2_child_guards.sql",
-      "sha256": "4c18626d27ed21d6e37acee1071752aedaabc9ba04e6191734436ad0663a2efd"
+      "sha256": "4c5f36867655a968bb1c0e29865f5b5d65a2c01569edc6a9e74024bbfd897b2d"
     },
     {
       "file": "db/platform/migrations/20261129130513_order_draft_receipts_v2.sql",
@@ -947,10 +947,10 @@
     },
     {
       "file": "db/platform/migrations/20261129130515_order_draft_payment_entry_fence.sql",
-      "sha256": "f93a5dfb6910bb06fd53f11b45403e678eebe74aa28e15ee63d6763b0605c1a0"
+      "sha256": "4773d5a5d52ba29d9a9d1b3c35d2629cd833b39c3c718ac31ab185b48f980514"
     }
   ],
-  "objectInventorySha256": "6e93c488a9695fe88eaaaa7941c6a90a861cced3239adda4038e2bc7c6856ea5",
+  "objectInventorySha256": "4673ba137574699c00bd898cd6ac669ffa58d41949019d1fa262c7e4c6d176d7",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1911,7 +1911,7 @@
       },
       {
         "file": "db/platform/migrations/20261129130512_order_money_v2_child_guards.sql",
-        "sha256": "4c18626d27ed21d6e37acee1071752aedaabc9ba04e6191734436ad0663a2efd"
+        "sha256": "4c5f36867655a968bb1c0e29865f5b5d65a2c01569edc6a9e74024bbfd897b2d"
       },
       {
         "file": "db/platform/migrations/20261129130513_order_draft_receipts_v2.sql",
@@ -1923,15 +1923,15 @@
       },
       {
         "file": "db/platform/migrations/20261129130515_order_draft_payment_entry_fence.sql",
-        "sha256": "f93a5dfb6910bb06fd53f11b45403e678eebe74aa28e15ee63d6763b0605c1a0"
+        "sha256": "4773d5a5d52ba29d9a9d1b3c35d2629cd833b39c3c718ac31ab185b48f980514"
       }
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "97cf5c30659e54527caca9703f4445b449133ca9112c463d2809bac740706f9c"
+        "withRestore": "28e1381749894fa2ada37081c22bace10b40d83cd9d6aa38865d62edd6f70d53"
       },
       "separateMigrator": {
-        "withRestore": "30de9c52a31b485083ea7f53ea7e38428049fcd9a56844aa486a80af3d19ceec"
+        "withRestore": "cd1a4b60d4e291177a6bf671417cb05d0cf73efe781886fe176b9260c51965a3"
       }
     }
   },
@@ -2887,7 +2887,7 @@
       },
       {
         "file": "db/platform/migrations/20261129130512_order_money_v2_child_guards.sql",
-        "sha256": "4c18626d27ed21d6e37acee1071752aedaabc9ba04e6191734436ad0663a2efd"
+        "sha256": "4c5f36867655a968bb1c0e29865f5b5d65a2c01569edc6a9e74024bbfd897b2d"
       },
       {
         "file": "db/platform/migrations/20261129130513_order_draft_receipts_v2.sql",
@@ -2899,12 +2899,12 @@
       },
       {
         "file": "db/platform/migrations/20261129130515_order_draft_payment_entry_fence.sql",
-        "sha256": "f93a5dfb6910bb06fd53f11b45403e678eebe74aa28e15ee63d6763b0605c1a0"
+        "sha256": "4773d5a5d52ba29d9a9d1b3c35d2629cd833b39c3c718ac31ab185b48f980514"
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "b0d885d842ed9d4c17fd4898fa983d49fcb207bd96f569e1229d176dcb26f9ea",
-      "operatorProvisioned": "84c69f4f26e1255b8a1ed0b4bc082321383be09f45167315d78c4d77cc189404"
+      "installerManaged": "61a84686c0a1c69fdb0e2dabebfcea119485480b20a2cafa22dc48ba9105987f",
+      "operatorProvisioned": "d9adf3f3ecdf0fbee7191fcb66083eb725f724e81d85106f2351871064f569a4"
     }
   }
 }
