@@ -18686,10 +18686,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/accounting/accountingCanonicalProviderLines.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/accounting/accountingDocumentSync.test.ts",
       "class": "public-output"
     },
@@ -18727,10 +18723,6 @@
     },
     {
       "path": "server/domains/accounting/accountingLineAllocation.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/accounting/accountingLineAllocation.ts",
       "class": "public-output"
     },
     {
