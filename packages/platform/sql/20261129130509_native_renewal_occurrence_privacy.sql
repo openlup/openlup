@@ -457,13 +457,6 @@ BEGIN
     SELECT count(*) INTO receipt_count
     FROM public.identity_privacy_erasures WHERE client_id = p_client OR principal_id = p_principal;
     IF receipt_count > 1 THEN RAISE EXCEPTION 'occurrence_privacy_scope_unavailable'; END IF;
-    reading := ARRAY['public.clients'::regclass, 'public.platform_human_principals'::regclass];
-    IF receipt_count = 0
-      AND NOT EXISTS (SELECT FROM public.clients WHERE id = p_client)
-      AND NOT EXISTS (SELECT FROM public.platform_human_principals WHERE principal_id = p_principal) THEN
-      PERFORM set_config('row_security', previous_row_security, true);
-      RETURN '{"missing":true}'::jsonb;
-    END IF;
     reading := ARRAY['public.subscriptions'::regclass];
     SELECT count(*) INTO parent_count FROM public.subscriptions WHERE client_id = p_client;
 

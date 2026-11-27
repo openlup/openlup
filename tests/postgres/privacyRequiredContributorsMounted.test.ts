@@ -566,9 +566,9 @@ async function privacyActor(db: Db) {
   return { principalId };
 }
 
-async function contact(db: Db, principalId: string | null = null) {
+async function contact(db: Db, principalId: string | null = null, firstName: string | null = null) {
   const id = randomUUID();
-  await db.query("INSERT INTO public.clients(id,email,principal_id) VALUES ($1::uuid,$1::uuid::text||'@example.invalid',$2)", [id, principalId]);
+  await db.query("INSERT INTO public.clients(id,email,principal_id,first_name) VALUES ($1::uuid,$1::uuid::text||'@example.invalid',$2,$3)", [id, principalId, firstName]);
   return inputFor(id);
 }
 
@@ -663,6 +663,14 @@ async function incumbentMount(db: AccountMutationsStore, actor: Seed["actor"]) {
 
 const beforeCarrier = sliceOccurrencePlan(occurrenceCatalogue, "db/platform/migrations/20261129130001_native_renewal_v3_storage.sql", false);
 
+async function persistedErasureEffects(db: Db, erasureId: string) {
+  const { rows } = await db.query(`SELECT c.email LIKE 'erased+%@identity.invalid' AS redacted, c.first_name,
+    r.retained_obligations, r.dispositions FROM public.identity_privacy_erasures r JOIN public.clients c ON c.id=r.client_id
+    WHERE r.erasure_id=$1`, [erasureId]);
+  expect(rows).toMatchObject([{ redacted: true, first_name: null }]);
+  return rows;
+}
+
 it("preserves pinned incumbent export and erase-only effects on both empty catalogues", async () => {
   const results: unknown[] = [];
   for (const plan of [beforeCarrier, privacyPlan]) {
@@ -678,10 +686,7 @@ it("preserves pinned incumbent export and erase-only effects on both empty catal
       expect((await db.runtime.query(`SELECT row_security_active('public.clients') AS rls,
         has_function_privilege('public.customer_preferences_export(uuid)','EXECUTE') AS exports`)).rows).toEqual([{ rls: true, exports: false }]);
       const { version, outcome, obligations, erasureId } = await eraseThrough(mounted, "public", subject);
-      const effects = (await db.owner.query(`SELECT c.email LIKE 'erased+%@identity.invalid' AS redacted,
-        c.first_name, r.retained_obligations, r.dispositions FROM public.identity_privacy_erasures r JOIN public.clients c ON c.id=r.client_id
-        WHERE r.erasure_id=$1`, [erasureId])).rows;
-      expect(effects).toMatchObject([{ redacted: true, first_name: null }]);
+      const effects = await persistedErasureEffects(db.owner, erasureId);
       results.push({ documents: JSON.stringify(documents).replaceAll(id!, "<contact>"), version, outcome, obligations, effects });
     } finally { await db.close(); }
   }
@@ -715,7 +720,7 @@ it.each(["legacy", "legacy-with-service", "bootstrap", "separate", "admin-manage
     const db = await installMeasuredAccountPrefix(writerPlan(), variant, "privacy-upgrade");
     try {
       const actor = await privacyActor(db.owner);
-      const empty = await contact(db.owner);
+      const empty = await contact(db.owner, null, "Fixture");
       const f = await rootFixture(db.migrator);
       const subject = inputFor(f.clientId);
       const mounted = mounts(db, actor);
@@ -756,10 +761,14 @@ it.each(["legacy", "legacy-with-service", "bootstrap", "separate", "admin-manage
           }
           expect(await state(db.owner)).toEqual(before);
         } finally { await db.owner.query(`ALTER TABLE ${carrier} NO FORCE ROW LEVEL SECURITY`); }
-        await transaction(db.migrator, async lane => {
-          await lane.query(`REVOKE SELECT ON ${carrier} FROM CURRENT_USER`);
-          await expect(lane.query(read, [f.clientId])).rejects.toMatchObject({ code: "42501", routine: "aclcheck_error" });
-        }, "ROLLBACK");
+        await db.migrator.query(`REVOKE SELECT ON ${carrier} FROM CURRENT_USER`);
+        try {
+          await expect(db.runtime.query(read, [f.clientId])).rejects.toMatchObject({ code: "42501", routine: "aclcheck_error" });
+          for (const operation of ["export", "erase"] as const) {
+            expectCarrierReadRefusal(await mounted.mounted("public", operation, subject), f);
+          }
+          expect(await state(db.owner)).toEqual(before);
+        } finally { await db.migrator.query(`GRANT SELECT ON ${carrier} TO CURRENT_USER`); }
       }
       const exported = await readExport(mounted, subject);
       checkProjection(exported, f);
@@ -776,9 +785,12 @@ it.each(["legacy", "legacy-with-service", "bootstrap", "separate", "admin-manage
         const baseline = await installMeasuredAccountPrefix(beforeCarrier, profile, "privacy-before-occurrences");
         try {
           await baseline.owner.query("REVOKE EXECUTE ON FUNCTION public.customer_preferences_export(uuid) FROM service_role");
-          const baselineEmpty = await eraseThrough(await incumbentMount(baseline, await privacyActor(baseline.owner)), "public", await contact(baseline.owner));
+          const baselineEmpty = await eraseThrough(await incumbentMount(baseline, await privacyActor(baseline.owner)), "public",
+            await contact(baseline.owner, null, "Fixture"));
           expect(candidateEmpty).toEqual({ ...baselineEmpty, erasureId: candidateEmpty.erasureId, completedAt: candidateEmpty.completedAt });
           await receiptRetention(baseline.owner, baselineEmpty, []);
+          expect(await persistedErasureEffects(db.owner, candidateEmpty.erasureId))
+            .toEqual(await persistedErasureEffects(baseline.owner, baselineEmpty.erasureId));
         } finally { await baseline.close(); }
       }
       const receipt = await eraseThrough(mounted, "public", subject);
@@ -1027,7 +1039,8 @@ it("exports subscriptions and occurrences from one READ COMMITTED snapshot", () 
       const readerPid = await pidOf(reader);
       return work({ query: async (sql, values) => {
         const result = await reader.query(sql, values ? [...values] : undefined);
-        if (!committed && /FROM public\.subscriptions WHERE client_id = \$1/u.test(sql)) {
+        if (!committed && values?.[0] === clientId
+          && /public\.subscriptions__read_renewal_occurrences_for_privacy\(\s*\$|FROM\s+public\.(?:subscriptions|subscription_cycle_occurrences)\s+WHERE\s+client_id\s*=\s*\$/iu.test(sql)) {
           committed = await transaction(db.migrator, async writer => {
             await rc(writer);
             expect(await pidOf(writer)).not.toBe(readerPid);
@@ -1040,14 +1053,24 @@ it("exports subscriptions and occurrences from one READ COMMITTED snapshot", () 
       } });
     }), close: async () => {},
   }));
-  const snapshot = (await readExport(mounted, subject)).documents.find(d => d.contributorId === "subscriptions");
+  const first = await mounted.mounted("public", "export", subject);
   expect(committed).toMatchObject({ outcome: "created" });
+  expect(first.status, "first export must return a coherent snapshot").toBe(200);
+  expect(first).toMatchObject({ cache: "no-store", body: { ok: true } });
+  const snapshot = (first.body.data as unknown as PrivacyExport).documents.find(d => d.contributorId === "subscriptions");
   expect(snapshot).toMatchObject({ data: [] });
   expect(snapshot).not.toHaveProperty("renewalOccurrences");
   checkProjection(await readExport(mounts(db, actor), subject), committed!);
   await db.owner.query(`REVOKE EXECUTE ON FUNCTION ${occurrenceHelper} FROM service_role`);
   codeAt(await mounted.mounted("public", "erase", subject), "PRIVACY_ACTIVE_SUBSCRIPTION");
 }), postgresSetupTimeoutMs);
+
+function expectCarrierReadRefusal(wire: Wire, subject: { clientId: string; subscriptionId: string }) {
+  refusal(wire, unavailableCode);
+  expect(wire.body.error?.details?.fix).toMatch(/installation owner.*carrier SELECT.*row visibility.*correlation/u);
+  expect(JSON.stringify(wire.body)).not.toContain(subject.clientId);
+  expect(JSON.stringify(wire.body)).not.toContain(subject.subscriptionId);
+}
 
 it("uses the original RLS-bound login for fresh scope and fails closed without supported EXECUTE", () => withPrivacyStore(async db => {
   const actor = await privacyActor(db.owner);
@@ -1068,7 +1091,7 @@ it("uses the original RLS-bound login for fresh scope and fails closed without s
   for (const operation of ["export", "erase"] as const) {
     refusal(await mounted.mounted("public", operation, principalInput), unavailableCode);
     refusal(await mounted.mounted("public", operation, { ...principalInput, subject: { kind: "principal", principalId: customerPrincipal } }), unavailableCode);
-    codeAt(await mounted.mounted("public", operation, inputFor(randomUUID())), "PRIVACY_SUBJECT_NOT_FOUND");
+    refusal(await mounted.mounted("public", operation, inputFor(randomUUID())), unavailableCode);
   }
   await db.owner.query("DROP POLICY fixture_hide_link ON public.clients");
   expect((await readExport(mounted, principalInput)).documents.find(d => d.contributorId === "customer-preferences")?.data)
@@ -1086,6 +1109,20 @@ it("uses the original RLS-bound login for fresh scope and fails closed without s
   }
   expect(await state(db.owner)).toEqual(before);
   await db.owner.query(`DROP POLICY fixture_hide_occurrence ON public.${occurrence}`);
+  await db.owner.query(`CREATE TABLE public.fixture_occurrence_lookup (allowed boolean);
+    REVOKE SELECT ON public.fixture_occurrence_lookup FROM service_role;
+    CREATE POLICY fixture_check_lookup ON public.${occurrence} AS RESTRICTIVE FOR SELECT TO service_role
+    USING (EXISTS (SELECT FROM public.fixture_occurrence_lookup WHERE allowed))`);
+  try {
+    await expect(db.runtime.query(`SELECT client_id FROM public.${occurrence} WHERE client_id=$1`, [f.clientId]))
+      .rejects.toMatchObject({ code: "42501", message: "permission denied for table fixture_occurrence_lookup" });
+    for (const operation of ["export", "erase"] as const) {
+      expectCarrierReadRefusal(await mounted.mounted("public", operation, subject), f);
+    }
+    expect(await state(db.owner)).toEqual(before);
+  } finally {
+    await db.owner.query(`DROP POLICY fixture_check_lookup ON public.${occurrence}; DROP TABLE public.fixture_occurrence_lookup`);
+  }
   await db.owner.query(`REVOKE SELECT (client_id) ON public.${occurrence} FROM service_role`);
   const unreadable = await mounted.mounted("public", "erase", subject);
   refusal(unreadable, unavailableCode);
@@ -1181,7 +1218,10 @@ it("isolates direct helper reads from the mounted operation on another subject",
     await lane.query("SET LOCAL row_security = on");
     expect(await read(lane, coordinates[0]!)).toMatchObject({ parentCount: "1" });
     expect((await lane.query("SHOW row_security")).rows).toEqual([{ row_security: "on" }]);
-    expect(await read(lane, [randomUUID(), null])).toEqual({ missing: true });
+    const bytes = (principal: string) => lane.query(
+      "SELECT convert_to(public.subscriptions__read_renewal_occurrences_for_privacy(NULL,$1)::text,'UTF8') AS bytes", [principal],
+    ).then(r => r.rows[0].bytes);
+    expect(await bytes(randomUUID())).toEqual(await bytes(unlinked));
     expect((await lane.query("SHOW row_security")).rows).toEqual([{ row_security: "on" }]);
   });
   const expected = await Promise.all(coordinates.map(pair => read(db.runtime, pair)));
@@ -1193,13 +1233,19 @@ it("isolates direct helper reads from the mounted operation on another subject",
   const inspect = async (lane: PgQueryExecutor) => {
     observations.push([await read(lane, coordinates[0]!), await read(lane, coordinates[1]!)]);
   };
-  const store = runtime.createPostgresPrivacyStore(), save = store.saveReceipt.bind(store);
+  const store = runtime.createPostgresPrivacyStore(), save = store.saveReceipt.bind(store), resolve = store.resolve.bind(store);
+  store.resolve = async (...args) => {
+    const subject = await resolve(...args);
+    if (!args[2] && subject?.contactId === a.clientId) await inspect(args[0]);
+    return subject;
+  };
   store.saveReceipt = async (...args) => { await save(...args); await inspect(args[0]); };
   const mounted = mounts(db, actor, operations(db, undefined, inspect, unit(db.runtime), store));
   checkProjection(await readExport(mounted, request), a);
+  expect(observations).toEqual([expected, expected]);
   await verifyCancellation(db.owner, a, await cancelOccurrence(db.migrator, a, actor.principalId));
   await receiptRetention(db.owner, await eraseThrough(mounted, "public", request));
-  expect(observations).toEqual([expected, expected, expected]);
+  expect(observations).toEqual([expected, expected, expected, expected]);
   const unlinkedReport = await readExport(mounted, { subject: { kind: "principal", principalId: unlinked }, idempotencyKey: randomUUID() });
   expect(unlinkedReport.documents.find(d => d.contributorId === "customer-preferences")?.data).toEqual([]);
 }), postgresSetupTimeoutMs);
