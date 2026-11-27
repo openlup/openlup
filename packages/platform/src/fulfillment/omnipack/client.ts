@@ -269,8 +269,8 @@ async function readJsonBody(response: Response, signal: AbortSignal, maxBytes: n
     throw new Error("Response body exceeded byte limit");
   }
   const body = response.body;
-  if (body === null) return {};
-  if (body === undefined) {
+  if (body == null) {
+    if (typeof response.text !== "function") return {};
     const text = await raceAbort(response.text(), signal);
     if (Buffer.byteLength(text, "utf8") > maxBytes) throw new Error("Response body exceeded byte limit");
     return parseJsonText(text);
