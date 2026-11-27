@@ -14,6 +14,15 @@ const quarantineCauses = new WeakMap<object, QuarantineCause>();
 const providerCooling = new WeakMap<object, number>();
 const REVISION = "2026-07-15";
 const ORIGIN = "https://a.klaviyo.com";
+const MAX_RETRY_AFTER_SECONDS = 86_400;
+function parseRetryAfterSeconds(header: string | null, nowMs: number, maxSeconds = MAX_RETRY_AFTER_SECONDS): number {
+  const trimmed = header?.trim();
+  if (!trimmed) return 60;
+  const parsed = /^\d+(?:\.\d+)?$/.test(trimmed) ? Number(trimmed) : (Date.parse(trimmed) - nowMs) / 1000;
+  if (!Number.isFinite(parsed) || parsed < 0) return 60;
+  const bounded = Math.min(maxSeconds, Math.max(1, Math.ceil(parsed)));
+  return Number.isFinite(nowMs + bounded * 1000) ? bounded : 60;
+}
 type Request = SyncRequest | ConsentPushRequest;
 type Result = SyncResult | ConsentPushResult;
 type Operation = Request["operation"];
@@ -373,9 +382,7 @@ export function createKlaviyoMarketingAdapter(input: Configuration): MarketingSy
           ...(body === undefined ? {} : { "Content-Type": "application/vnd.api+json" }) },
       }), abort]);
       if (response.status === 429) {
-        const value = response.headers.get("retry-after");
-        const parsed = value && /^\d+(?:\.\d+)?$/.test(value) ? Number(value) : value ? (Date.parse(value) - now()) / 1000 : NaN;
-        const afterSeconds = Number.isFinite(parsed) && parsed >= 0 && Number.isFinite(now() + Math.ceil(parsed) * 1000) ? Math.max(1, Math.ceil(parsed)) : 60;
+        const afterSeconds = parseRetryAfterSeconds(response.headers.get("retry-after"), now());
         // A lost cooldown write must never turn the withdrawal exemption into
         // permission to ignore an observed account-level provider rate limit.
         providerCooling.set(availability, Math.max(providerCooling.get(availability) ?? 0, now() + afterSeconds * 1000));
@@ -704,12 +711,12 @@ export function createKlaviyoMarketingAdapter(input: Configuration): MarketingSy
         void response.body?.cancel().catch(() => {});
         if (response.status === 202) return { kind: "accepted" };
         if (response.status === 429) {
-          const value = response.headers.get("retry-after");
-          const parsed = value && /^\d+(?:\.\d+)?$/.test(value) ? Number(value) : value ? (Date.parse(value) - now()) / 1000 : NaN;
-          const afterSeconds = Number.isFinite(parsed) && parsed >= 0 && Number.isFinite(now() + Math.ceil(parsed) * 1000) ? Math.max(1, Math.ceil(parsed)) : 60;
+          const afterSeconds = parseRetryAfterSeconds(response.headers.get("retry-after"), now());
           providerCooling.set(availability, Math.max(providerCooling.get(availability) ?? 0, now() + afterSeconds * 1000));
-          const next = await load(); next.ledger.coolingUntil = Math.max(next.ledger.coolingUntil, now() + afterSeconds * 1000);
-          if (await persist(next.raw, next.ledger) !== "saved") closeAccount();
+          try {
+            const next = await load(); next.ledger.coolingUntil = Math.max(next.ledger.coolingUntil, now() + afterSeconds * 1000);
+            if (await persist(next.raw, next.ledger) !== "saved") closeAccount();
+          } catch { closeAccount(); }
           return { kind: "retryable", reason: "cooling", afterSeconds };
         }
         if (response.status >= 400 && response.status < 500) return deny(response.status === 409 ? "identity_conflict" : "provider_refusal");
