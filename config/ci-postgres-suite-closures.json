@@ -961,6 +961,7 @@
     ],
     "tests/postgres/subscriptionPublicRenewal.test.ts": [
       "@src",
+      "packages/core/docs/guide/upgrade/database-migrations.md",
       "tests/postgres/subscriptionNativeFixture.ts",
       "tests/postgres/subscriptionPublicRenewal.worker.mjs",
       "tests/postgres/subscriptionPublicRenewalFixture.ts",
