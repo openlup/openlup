@@ -67,10 +67,10 @@ no runtime values and retain only the contracts entry as a metafile input.
 
 ### Unchanged contribution and reference binding
 
-The read-stage slice is contributed from the existing
-`server/domains/customers/customerAccountReadDiagnostics.ts` responsibility into
+The read-stage slice is contributed from the former
+`customerAccountReadDiagnostics.ts` responsibility under `server/domains/customers/` into
 `packages/platform/src/account-support/customerAccountReadDiagnostics.ts` with
-unchanged business logic. The old reference path re-exports the package helpers.
+unchanged business logic. Callers now import the package helpers directly.
 Wrapping preserves existing-stage errors and original causes; failure details,
 unknown fallback, log prefixes, field selection and 300-character trimmed
 provider diagnostics remain unchanged. No refactor is included.

@@ -12,7 +12,7 @@ import type { CustomerUserAuthenticationResult } from "./customerAuth.js";
 import {
   customerAccountReadFailureDetails,
   logCustomerAccountReadFailure,
-} from "./customerAccountReadDiagnostics.js";
+} from "@openlup/platform/account-support";
 import type { CustomerAccountPort } from "./ports.js";
 
 export interface CustomerAccountDeps {

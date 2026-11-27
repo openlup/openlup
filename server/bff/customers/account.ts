@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from "../../_lib/types/vercel.js";
 import { sendBffError } from "../../_lib/bff/response.js";
 import { withObservedRoute } from "../../_lib/observability/route.js";
 import { createCustomerAccountHandler } from "../../domains/customers/customerAccountHandler.js";
-import { withCustomerAccountReadStage } from "../../domains/customers/customerAccountReadDiagnostics.js";
+import { withCustomerAccountReadStage } from "@openlup/platform/account-support";
 import { createSupabaseCustomerSelfServicePort } from "../../adapters/supabase/customerSelfService.js";
 import { createCustomerDeliveryAlignmentRowsReader } from "../../adapters/subscriptionDeliveryAlignmentGateway.js";
 import {

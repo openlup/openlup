@@ -5,7 +5,7 @@ import {
   type CustomerAccountV2Response,
 } from "../../../src/domains/customers/accountV2Contracts.js";
 import type { CustomerUserAuthenticationResult } from "./customerAuth.js";
-import { CustomerAccountReadModelError } from "./customerAccountReadDiagnostics.js";
+import { CustomerAccountReadModelError } from "@openlup/platform/account-support";
 import type { CustomerAccountPort } from "./ports.js";
 import { createCustomerAccountHandler } from "./customerAccountHandler.js";
 

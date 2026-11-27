@@ -478,7 +478,6 @@
             "server/adapters/supabase/customerBillingProfileModels.ts",
             "server/domains/customers/customerBillingProfilesHandler.ts",
             "server/domains/customers/customerDeliveryPreferencesHandler.ts",
-            "server/domains/customers/customerMeHandler.ts",
             "server/domains/customers/customerPaymentMethodSetupHandler.ts",
             "server/domains/customers/customerPaymentMethodsHandler.ts",
             "server/domains/customers/customerPaymentRecoveryStartHandler.ts",
@@ -557,10 +556,8 @@
           "status": "refactor-ready-map",
           "sourceFiles": [
             "server/domains/customers/customerInvoiceCorrectionHandler.ts",
-            "server/domains/customers/customerInvoiceDocumentStatus.ts",
             "server/domains/customers/customerInvoiceDownloadHandler.ts",
             "server/adapters/supabase/customerInvoiceSummaryReadModel.ts",
-            "server/domains/customers/customerOrderLinePricing.ts",
             "server/domains/customers/customerOrderHistoryMoney.ts",
             "server/adapters/supabase/customerOrderHistoryReadModels.ts",
             "server/adapters/supabase/customerOrderTrackingModels.ts",
@@ -585,7 +582,6 @@
           "sourceFiles": [
             "server/adapters/supabase/customerAccountActionRequiredReadModel.ts",
             "server/domains/customers/customerAccountHandler.ts",
-            "server/domains/customers/customerAccountReadDiagnostics.ts",
             "server/adapters/supabase/customerAccountSubscriptionLinesReadModel.ts",
             "server/adapters/supabase/customerAccountV2ReadModels.ts",
             "server/domains/customers/customerSubscriptionDeliveryAlignmentReadModel.ts",

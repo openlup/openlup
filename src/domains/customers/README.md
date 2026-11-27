@@ -48,7 +48,7 @@ token-authenticated abandoned-checkout recovery.
 
 ## Where the code lives
 - Shared/frontend: `src/domains/customers/` (contracts and hidden BFF clients)
-- Server: `server/domains/customers/` (`customerMeHandler.ts`, preference/address/self-service handlers, ports)
+- Server: `server/domains/customers/` (preference/address/self-service handlers, ports)
 - BFF routes: `server/bff/customers/me.ts`, `preferences.ts`,
   `communication-preferences.ts`, `addresses.ts`, `account.ts`, `profile.ts`,
   `pets.ts`, `billing-profiles.ts`, `delivery-preferences.ts`,

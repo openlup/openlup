@@ -1,8 +1,10 @@
+import { createCustomerMeHandler } from "@openlup/platform/identity";
 import { withObservedRoute } from "../../_lib/observability/route.js";
+import { readObservedResponseContext } from "../../_lib/observability/requestContext.js";
 import { customerAuthUiEnabled } from "../../_lib/config/featureFlags.js";
 import type { VercelRequest, VercelResponse } from "../../_lib/types/vercel.js";
 import { sendBffError } from "../../_lib/bff/response.js";
-import { createCustomerMeHandler } from "../../domains/customers/customerMeHandler.js";
+import { customerMeResponseSchema } from "../../../src/domains/customers/contracts.js";
 import { createCustomerIdentityBinding } from "../../runtime/customers/customerIdentityBinding.js";
 
 /**
@@ -31,7 +33,11 @@ async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
     return;
   }
 
-  return createCustomerMeHandler(binding)(req, res);
+  return createCustomerMeHandler({
+    responseRequestId: (res) => readObservedResponseContext(res)?.requestId,
+    ...binding,
+    responseSchema: customerMeResponseSchema,
+  })(req, res);
 }
 
 export default withObservedRoute({
