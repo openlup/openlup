@@ -1485,7 +1485,7 @@ const rawPrepare = "SELECT public.commerce_prepare_subscription_renewal($1::uuid
 const rawReadback = "SELECT public.subscription_read_renewal($1::text)::text AS result";
 
 const renewalTemplateForward = /_subscription_renewal_current_template\.sql$/u;
-const staleSnapshotSignature = "subscription_renewal_snapshot_is_stale(integer,jsonb,integer)";
+const dueClaimSignature = "subscription_claim_due_renewal(text,text,jsonb,text,integer,timestamptz)";
 type UpgradeTarget = Parameters<Parameters<typeof withOccupiedRenewalPrefix>[0]>[0];
 const withTemplateUpgrade = (work: (target: UpgradeTarget) => Promise<void>) =>
   withOccupiedRenewalPrefix(work, file => renewalTemplateForward.test(file));
@@ -1556,12 +1556,11 @@ it("captures stale terminal history but excludes its settled graph from the repo
     expect(entry.d.execute.mock.calls.map(([request]) => request.amountMinor)).toEqual([200]);
     expect(await renewalAmounts(db, settled.orderId!)).toEqual([{ order: 200, intent: 200 }]);
     await applyForward();
-    expect((await target.owner.query(`SELECT state,
-      public.subscription_renewal_snapshot_is_stale(s.template_version, o.cycle_snapshot, NULL) AS stale
-      FROM public.subscription_renewal_operations o JOIN public.subscriptions s ON s.id=o.subscription_id
+    expect((await target.owner.query(`SELECT state, cohort.unknown_provenance
+      FROM public.subscription_renewal_operations o
       JOIN public.subscription_renewal_upgrade_cohort cohort ON cohort.renewal_operation_id=o.id
       WHERE o.id=$1`, [settled.operationId])).rows)
-      .toEqual([{ state: "succeeded", stale: true }]);
+      .toEqual([{ state: "succeeded", unknown_provenance: false }]);
     expect(await renewalUpgradeReport(target.owner)).toEqual([]);
   });
 }, postgresSetupTimeoutMs);
@@ -1664,13 +1663,10 @@ it("lists the claimed, reserved, and unknown legacy cohort until reconciled", as
     const bytes = await frozenOperation(db, claim.operationId);
     await applyForward();
     expect(await owners()).toEqual(predecessor);
-    for (const signature of [staleSnapshotSignature, "subscription_renewal_snapshot_is_billing(jsonb,boolean)"]) {
-      expect(await generationAcl(owner, signature)).toEqual([{ owner: "postgres", definer: false, volatility: "s",
-        config: ["search_path=pg_catalog, pg_temp"], acl: [["postgres", "EXECUTE", false], ["service_role", "EXECUTE", false]] }]);
-    }
-    expect((await owner.query(`SELECT data_type, is_nullable FROM information_schema.columns
-      WHERE table_schema='public' AND table_name='subscription_renewal_upgrade_cohort' AND column_name='renewal_operation_id'`)).rows)
-      .toEqual([{ data_type: "uuid", is_nullable: "NO" }]);
+    expect((await owner.query(`SELECT column_name, data_type, is_nullable FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='subscription_renewal_upgrade_cohort' ORDER BY ordinal_position`)).rows)
+      .toEqual([{ column_name: "renewal_operation_id", data_type: "uuid", is_nullable: "NO" },
+        { column_name: "unknown_provenance", data_type: "boolean", is_nullable: "NO" }]);
     expect((await owner.query(`SELECT contype FROM pg_constraint
       WHERE conrelid='public.subscription_renewal_upgrade_cohort'::regclass AND contype IN ('p','f')`)).rows)
       .toEqual([{ contype: "p" }]);
@@ -1728,6 +1724,78 @@ it("reports legacy billing with only a shipping reference in the order snapshot"
       occurredAt: later, outcome: "refused", externalRef: null, reason: "upgrade_reconciled" });
     await closeOrder(target, prepared.orderId);
     expect(await renewalUpgradeReport(owner)).toEqual([]);
+  });
+}, postgresSetupTimeoutMs);
+
+it("reports historical billing markers without a usable template version", async () => {
+  await withTemplateUpgrade(async target => {
+    const { db, owner, applyForward } = target;
+    const legacy = createPostgresAutomaticRenewalPort(db);
+    const claims: { operationId: string; claimToken: string }[] = [];
+    for (const markers of [
+      { frozenRevision: "native.purchase-renewal.v1" },
+      { templateSnapshot: { version: "1" } },
+      { templateSnapshot: { version: 2147483648 } },
+    ]) {
+      const entry = await upgradeRenewal(target, { edited: false });
+      const snapshot = { ...await legacy.buildCycleSnapshots(entry.d.due), ...markers };
+      const identity = automaticRenewalIdentity(snapshot.subscriptionId, snapshot.scheduledAt);
+      const op = JSON.parse((await db.query(rawClaim, [identity, automaticRenewalFingerprint(snapshot), snapshot, now])).rows[0].result);
+      expect(op).toMatchObject({ acquired: true });
+      claims.push(op);
+      await resizeForRenewal(entry.f, upgradeTransaction(db));
+    }
+    await applyForward();
+    expect(await renewalUpgradeReport(owner)).toEqual(claims.sort((a, b) => a.operationId.localeCompare(b.operationId))
+      .map(op => reportRow(op.operationId, ["first_charge", "unknown_provenance"], { frozen_amount_minor: 200 })));
+    for (const op of claims) {
+      await rpc("fulfillment_release_subscription_renewal", [op.operationId, op.claimToken, "upgrade_reconciled", now], db);
+    }
+    expect(await renewalUpgradeReport(owner)).toEqual([]);
+  });
+}, postgresSetupTimeoutMs);
+
+it("preserves fresh and stale first claims for an existing directly granted login", async () => {
+  await withTemplateUpgrade(async target => {
+    const { db, owner } = target;
+    const before = await upgradeRenewal(target, { edited: false });
+    const fresh = await upgradeRenewal(target, { edited: false });
+    const stale = await upgradeRenewal(target);
+    const role = "renewal_direct_claim", password = randomUUID();
+    await owner.query(`CREATE ROLE renewal_direct_claim LOGIN PASSWORD '${password}';
+      GRANT USAGE ON SCHEMA public TO renewal_direct_claim;
+      GRANT EXECUTE ON FUNCTION public.${dueClaimSignature},
+        public.subscription_renewal_identity(uuid,timestamptz),
+        public.subscription_renewal_operation_response(public.subscription_renewal_operations,boolean,boolean,text) TO renewal_direct_claim;
+      GRANT SELECT,UPDATE ON public.subscriptions TO renewal_direct_claim;
+      GRANT SELECT,INSERT,UPDATE ON public.subscription_renewal_operations TO renewal_direct_claim;
+      GRANT SELECT ON public.subscription_renewal_terms,public.fulfillment_inventory_reservations,
+        public.subscription_cycles,public.commerce_orders,public.commerce_settlement_intents TO renewal_direct_claim`);
+    const url = new URL(loginConnection(target.connectionString, role));
+    url.password = password;
+    const direct = new Pool({ connectionString: url.toString() });
+    try {
+      expect((await direct.query(`SELECT session_user, current_user,
+        pg_has_role(current_user,'service_role','MEMBER') AS service_member`)).rows)
+        .toEqual([{ session_user: role, current_user: role, service_member: false }]);
+      const claim = async (entry: typeof fresh) =>
+        JSON.parse((await direct.query(rawClaim, claimWire(entry.d, entry.snapshot))).rows[0].result);
+      expect(await claim(before)).toMatchObject({ acquired: true });
+      const acl = await generationAcl(owner, dueClaimSignature);
+      // Exercise the bundled upgrade with direct grants already in place.
+      // The qualified runner restricts catalogue access to its selected principals.
+      const { forward } = selectPlatformMigrationManifest(
+        JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")), "legacy");
+      const { file } = forward.find(unit => renewalTemplateForward.test(unit.file))!;
+      await owner.query(readFileSync(file, "utf8"));
+      expect(await generationAcl(owner, dueClaimSignature)).toEqual(acl);
+      expect(await claim(fresh)).toMatchObject({ acquired: true });
+      await expect(claim(stale)).rejects.toMatchObject(staleClaim);
+      expect((await db.query("SELECT id FROM public.subscription_renewal_operations WHERE subscription_id=$1",
+        [stale.f.subscriptionId])).rows).toEqual([]);
+    } finally {
+      await direct.end();
+    }
   });
 }, postgresSetupTimeoutMs);
 
@@ -2576,13 +2644,14 @@ it("checks exact generation ACLs on a native installation without the service ro
     const { baseline, forward } = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")), "legacy");
     const boundary = forward.findIndex(unit => renewalTemplateForward.test(unit.file));
     expect(boundary).toBeGreaterThan(0);
-    for (const { file } of [baseline, ...forward.slice(0, boundary + 1)]) await owner.query(readFileSync(file, "utf8"));
+    for (const { file } of [baseline, ...forward.slice(0, boundary)]) await owner.query(readFileSync(file, "utf8"));
+    const claimAcl = await generationAcl(owner, dueClaimSignature);
+    await owner.query(readFileSync(forward[boundary]!.file, "utf8"));
     await owner.query("CREATE ROLE renewal_unrelated NOLOGIN");
     expect((await owner.query("SELECT to_regrole('service_role') AS service")).rows).toEqual([{ service: null }]);
     expect(await generationAcl(owner)).toEqual([{ owner: "postgres", definer: false, volatility: "s",
       config: ["search_path=pg_catalog, pg_temp"], acl: [["postgres", "EXECUTE", false]] }]);
-    expect(await generationAcl(owner, staleSnapshotSignature)).toEqual([{ owner: "postgres", definer: false, volatility: "s",
-      config: ["search_path=pg_catalog, pg_temp"], acl: [["postgres", "EXECUTE", false]] }]);
+    expect(await generationAcl(owner, dueClaimSignature)).toEqual(claimAcl);
     expect((await owner.query(`SELECT rolname FROM pg_roles WHERE NOT rolsuper AND has_function_privilege(oid,$1,'EXECUTE')`,
       [frozenGenerationSignature])).rows).toEqual([]);
     const id = randomUUID();

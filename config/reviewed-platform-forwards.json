@@ -9933,19 +9933,10 @@
             "searchPath": "pg_catalog, pg_temp"
           }
         ],
-        "createdFunctions": [
-          {
-            "signature": "public.subscription_renewal_snapshot_is_billing(jsonb,boolean)",
-            "searchPath": "pg_catalog, pg_temp"
-          },
-          {
-            "signature": "public.subscription_renewal_snapshot_is_stale(integer,jsonb,integer)",
-            "searchPath": "pg_catalog, pg_temp"
-          }
-        ],
+        "createdFunctions": [],
         "grantOnlyFunctions": [],
         "dataStatements": [
-          "INSERT INTO public.subscription_renewal_upgrade_cohort (renewal_operation_id)\nWITH locked_subscriptions AS MATERIALIZED (\n  SELECT s.id, s.template_version\n    FROM public.subscriptions s\n   WHERE EXISTS (\n     SELECT 1 FROM public.subscription_renewal_operations o\n      WHERE o.subscription_id = s.id\n        AND public.subscription_renewal_snapshot_is_billing(o.cycle_snapshot, true)\n   )\n   ORDER BY s.id\n   FOR SHARE OF s\n)\nSELECT o.id\n  FROM public.subscription_renewal_operations o\n  JOIN locked_subscriptions s ON s.id = o.subscription_id\n WHERE public.subscription_renewal_snapshot_is_stale(s.template_version, o.cycle_snapshot, NULL)\n    OR (NOT (o.cycle_snapshot ?| ARRAY['frozenRevision', 'templateSnapshot'])\n      AND public.subscription_renewal_snapshot_is_billing(o.cycle_snapshot, true));"
+          "INSERT INTO public.subscription_renewal_upgrade_cohort (renewal_operation_id, unknown_provenance)\nWITH billing_operations AS MATERIALIZED (\n  SELECT o.id, o.subscription_id,\n         jsonb_path_query_first(o.cycle_snapshot, 'strict $.templateSnapshot.version ? (\n           @.type() == \"number\" && @ > 0 && @ <= 2147483647 && @.floor() == @\n         )', '{}'::jsonb, true) AS snapshot_version\n    FROM public.subscription_renewal_operations o\n   WHERE CASE\n     WHEN jsonb_typeof(o.cycle_snapshot->'lines') IS DISTINCT FROM 'array'\n       OR o.cycle_snapshot->>'contractVersion' = 'platform.subscription.renewal.v3' THEN false\n     WHEN pg_input_is_valid(o.cycle_snapshot->>'totalAmountMinor', 'bigint') THEN\n       btrim(o.cycle_snapshot->>'settlementChannelKey') <> ''\n       AND o.cycle_snapshot->>'currency' ~ '^[A-Z]{3}$'\n       AND (o.cycle_snapshot->>'totalAmountMinor')::bigint > 0\n       AND jsonb_array_length(o.cycle_snapshot->'lines') > 0\n       AND NOT EXISTS (\n         SELECT 1 FROM jsonb_array_elements(o.cycle_snapshot->'lines') AS line(value)\n          WHERE (CASE\n            WHEN pg_input_is_valid(value->>'quantity', 'integer')\n              AND pg_input_is_valid(value->>'unitAmountMinor', 'bigint')\n            THEN btrim(value->>'sku') <> ''\n              AND (value->>'quantity')::integer > 0\n              AND (value->>'unitAmountMinor')::bigint >= 0\n          END) IS NOT TRUE\n       )\n     ELSE false\n   END\n), locked_subscriptions AS MATERIALIZED (\n  SELECT s.id, s.template_version\n    FROM public.subscriptions s\n   WHERE EXISTS (SELECT 1 FROM billing_operations o WHERE o.subscription_id = s.id)\n   ORDER BY s.id\n   FOR SHARE OF s\n)\nSELECT o.id, o.snapshot_version IS NULL\n  FROM billing_operations o\n  JOIN locked_subscriptions s ON s.id = o.subscription_id\n WHERE o.snapshot_version IS DISTINCT FROM to_jsonb(s.template_version);"
         ]
       }
     ]
@@ -14464,27 +14455,17 @@
     },
     {
       "path": "db/platform/migrations/20261129130507_subscription_renewal_current_template.sql",
-      "sha256": "df6118ccfdde6c49c159541ae563b7045cb786c9ff678d44eacd3cdb38d49dad",
+      "sha256": "b91f93eb2d4512e8e1f9cbcb161e4d40e52901be3e8ecd1b8ae81726a238b586",
       "functions": [
         {
           "signature": "public.subscription_claim_due_renewal(text,text,jsonb,text,integer,timestamptz)",
           "beforeSha256": "2254be1e89681884dbd9823ab13f1f55961071fe75325e22e019343c9edf5248",
-          "afterSha256": "187e52c61c3b64c4f29477e56e920b28a0130f38a3d7990d2fa29a45e87590a0"
+          "afterSha256": "622a88ba93a289ac28ed55ada351ad4f587b1e8cee40b404768db11ef78bf41f"
         },
         {
           "signature": "public.subscription_delivery_alignment_on_delivery()",
           "beforeSha256": "7a7bc2bd0e926b7d4c4be060fc14937cabc4b4b057607dccf54b864502aad21f",
           "afterSha256": "2cf1091a35642f249923afaa7a0b59c89f58afbae80003ac3950a3709464f778"
-        },
-        {
-          "signature": "public.subscription_renewal_snapshot_is_billing(jsonb,boolean)",
-          "beforeSha256": null,
-          "afterSha256": "ca4693704cb99703512a260b4b585018e7502cc2776b25eaf4ec515621f4802f"
-        },
-        {
-          "signature": "public.subscription_renewal_snapshot_is_stale(integer,jsonb,integer)",
-          "beforeSha256": null,
-          "afterSha256": "71e4f593465e9cff76cac6f436639e5a1382d4f799951d774032db5006b35d4b"
         }
       ]
     }

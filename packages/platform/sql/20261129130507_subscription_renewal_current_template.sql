@@ -1,70 +1,9 @@
-CREATE FUNCTION public.subscription_renewal_snapshot_is_billing(p_wire jsonb, p_has_build_evidence boolean)
-RETURNS boolean
-LANGUAGE sql STABLE SECURITY INVOKER
-SET search_path = pg_catalog, pg_temp
-AS $$
-  SELECT CASE
-    WHEN jsonb_typeof(p_wire) IS DISTINCT FROM 'object'
-      OR p_wire->>'contractVersion' = 'platform.subscription.renewal.v3'
-      OR jsonb_typeof(p_wire->'lines') IS DISTINCT FROM 'array' THEN false
-    WHEN NOT p_has_build_evidence
-      AND NOT (p_wire ?| ARRAY['frozenRevision', 'templateSnapshot', 'pricingSnapshot'])
-      AND p_wire->'orderSnapshot' = jsonb_build_object(
-        'shippingAddressRef', p_wire#>'{orderSnapshot,shippingAddressRef}'
-      ) THEN false
-    WHEN pg_input_is_valid(p_wire->>'totalAmountMinor', 'bigint') THEN COALESCE(
-      btrim(p_wire->>'settlementChannelKey') <> ''
-      AND p_wire->>'currency' ~ '^[A-Z]{3}$'
-      AND (p_wire->>'totalAmountMinor')::bigint > 0
-      AND jsonb_array_length(p_wire->'lines') > 0
-      AND NOT EXISTS (
-        SELECT 1 FROM jsonb_array_elements(p_wire->'lines') AS line(value)
-        WHERE (CASE
-          WHEN pg_input_is_valid(value->>'quantity', 'integer')
-            AND pg_input_is_valid(value->>'unitAmountMinor', 'bigint')
-          THEN btrim(value->>'sku') <> ''
-            AND (value->>'quantity')::integer > 0
-            AND (value->>'unitAmountMinor')::bigint >= 0
-        END) IS NOT TRUE
-      ), false)
-    ELSE false
-  END;
-$$;
-
-CREATE FUNCTION public.subscription_renewal_snapshot_is_stale(
-  p_template_version integer, p_wire jsonb, p_build_template_version integer
-)
-RETURNS boolean
-LANGUAGE sql STABLE SECURITY INVOKER
-SET search_path = pg_catalog, pg_temp
-AS $$
-  SELECT COALESCE(CASE
-    WHEN NOT public.subscription_renewal_snapshot_is_billing(p_wire, COALESCE(p_build_template_version > 0, false)) THEN false
-    WHEN p_wire ?| ARRAY['frozenRevision', 'templateSnapshot'] THEN
-      jsonb_path_exists(p_wire, 'strict $.templateSnapshot.version ? (
-        @.type() == "number" && @ > 0 && @ <= 2147483647 && @.floor() == @
-      )', '{}'::jsonb, true)
-      AND p_wire#>'{templateSnapshot,version}' <> to_jsonb(p_template_version)
-    ELSE p_build_template_version > 0 AND p_template_version > p_build_template_version
-  END, false);
-$$;
-
-REVOKE ALL ON FUNCTION public.subscription_renewal_snapshot_is_billing(jsonb,boolean), public.subscription_renewal_snapshot_is_stale(integer,jsonb,integer) FROM PUBLIC;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.subscription_renewal_snapshot_is_billing(jsonb,boolean), public.subscription_renewal_snapshot_is_stale(integer,jsonb,integer) FROM anon;';
-END IF; END; $$;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.subscription_renewal_snapshot_is_billing(jsonb,boolean), public.subscription_renewal_snapshot_is_stale(integer,jsonb,integer) FROM authenticated;';
-END IF; END; $$;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
-  EXECUTE 'GRANT EXECUTE ON FUNCTION public.subscription_renewal_snapshot_is_billing(jsonb,boolean), public.subscription_renewal_snapshot_is_stale(integer,jsonb,integer) TO service_role;';
-END IF; END; $$;
-
 -- Historical membership is private to the installation owner. The operation
 -- ID deliberately has no foreign key: capture only reads the operations table
 -- while verified provider intake may be updating it.
 CREATE TABLE public.subscription_renewal_upgrade_cohort (
-  renewal_operation_id uuid PRIMARY KEY
+  renewal_operation_id uuid PRIMARY KEY,
+  unknown_provenance boolean NOT NULL
 );
 
 ALTER TABLE public.subscription_renewal_upgrade_cohort ENABLE ROW LEVEL SECURITY;
@@ -79,28 +18,47 @@ DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
   EXECUTE 'REVOKE ALL ON TABLE public.subscription_renewal_upgrade_cohort FROM service_role;';
 END IF; END; $$;
 
--- Lock billing candidates before evaluating staleness. A concurrent accepted
--- edit can change the locked row's version while capture is waiting.
--- The report considers complete billing fields even on a destination-only
--- order snapshot. Legacy claims still have no accepted version evidence.
-INSERT INTO public.subscription_renewal_upgrade_cohort (renewal_operation_id)
-WITH locked_subscriptions AS MATERIALIZED (
+-- Lock billing candidates before comparing their evidence to the accepted
+-- version. Keep roots without a usable version, including destination-only
+-- order snapshots with complete top-level billing fields.
+INSERT INTO public.subscription_renewal_upgrade_cohort (renewal_operation_id, unknown_provenance)
+WITH billing_operations AS MATERIALIZED (
+  SELECT o.id, o.subscription_id,
+         jsonb_path_query_first(o.cycle_snapshot, 'strict $.templateSnapshot.version ? (
+           @.type() == "number" && @ > 0 && @ <= 2147483647 && @.floor() == @
+         )', '{}'::jsonb, true) AS snapshot_version
+    FROM public.subscription_renewal_operations o
+   WHERE CASE
+     WHEN jsonb_typeof(o.cycle_snapshot->'lines') IS DISTINCT FROM 'array'
+       OR o.cycle_snapshot->>'contractVersion' = 'platform.subscription.renewal.v3' THEN false
+     WHEN pg_input_is_valid(o.cycle_snapshot->>'totalAmountMinor', 'bigint') THEN
+       btrim(o.cycle_snapshot->>'settlementChannelKey') <> ''
+       AND o.cycle_snapshot->>'currency' ~ '^[A-Z]{3}$'
+       AND (o.cycle_snapshot->>'totalAmountMinor')::bigint > 0
+       AND jsonb_array_length(o.cycle_snapshot->'lines') > 0
+       AND NOT EXISTS (
+         SELECT 1 FROM jsonb_array_elements(o.cycle_snapshot->'lines') AS line(value)
+          WHERE (CASE
+            WHEN pg_input_is_valid(value->>'quantity', 'integer')
+              AND pg_input_is_valid(value->>'unitAmountMinor', 'bigint')
+            THEN btrim(value->>'sku') <> ''
+              AND (value->>'quantity')::integer > 0
+              AND (value->>'unitAmountMinor')::bigint >= 0
+          END) IS NOT TRUE
+       )
+     ELSE false
+   END
+), locked_subscriptions AS MATERIALIZED (
   SELECT s.id, s.template_version
     FROM public.subscriptions s
-   WHERE EXISTS (
-     SELECT 1 FROM public.subscription_renewal_operations o
-      WHERE o.subscription_id = s.id
-        AND public.subscription_renewal_snapshot_is_billing(o.cycle_snapshot, true)
-   )
+   WHERE EXISTS (SELECT 1 FROM billing_operations o WHERE o.subscription_id = s.id)
    ORDER BY s.id
    FOR SHARE OF s
 )
-SELECT o.id
-  FROM public.subscription_renewal_operations o
+SELECT o.id, o.snapshot_version IS NULL
+  FROM billing_operations o
   JOIN locked_subscriptions s ON s.id = o.subscription_id
- WHERE public.subscription_renewal_snapshot_is_stale(s.template_version, o.cycle_snapshot, NULL)
-    OR (NOT (o.cycle_snapshot ?| ARRAY['frozenRevision', 'templateSnapshot'])
-      AND public.subscription_renewal_snapshot_is_billing(o.cycle_snapshot, true));
+ WHERE o.snapshot_version IS DISTINCT FROM to_jsonb(s.template_version);
 
 CREATE OR REPLACE FUNCTION public.subscription_claim_due_renewal(
   p_identity_key text,
@@ -120,12 +78,12 @@ DECLARE
   v_cycle_number integer;
   v_acceptance jsonb;
   v_build_template_version integer;
-  v_has_build_envelope boolean := false;
+  v_versioned boolean;
+  v_snapshot_version jsonb;
   v_subscription public.subscriptions%ROWTYPE;
   v_operation public.subscription_renewal_operations%ROWTYPE;
 BEGIN
   IF p_cycle_snapshot->>'contractVersion' = 'platform.subscription.renewal.claim-build.v1' THEN
-    v_has_build_envelope := true;
     IF jsonb_typeof(p_cycle_snapshot->'buildTemplateVersion') = 'number'
       AND pg_input_is_valid(p_cycle_snapshot->>'buildTemplateVersion', 'integer')
     THEN
@@ -211,20 +169,44 @@ BEGIN
     RETURN public.subscription_renewal_operation_response(v_operation, true, true, 'lease_taken_over');
   END IF;
 
-  IF p_cycle_snapshot ?| ARRAY['frozenRevision', 'templateSnapshot']
-    AND public.subscription_renewal_snapshot_is_billing(p_cycle_snapshot, v_has_build_envelope)
-    AND jsonb_path_exists(p_cycle_snapshot, 'strict $.templateSnapshot.version ? (
-      @.type() == "number" && @ > 0 && @ <= 2147483647 && @.floor() == @
-    )', '{}'::jsonb, true) IS NOT TRUE
-  THEN
-    RAISE EXCEPTION 'subscription_renewal_claim_invalid_snapshot' USING ERRCODE = '22023';
-  END IF;
-  IF public.subscription_renewal_snapshot_is_stale(
-    v_subscription.template_version, p_cycle_snapshot, v_build_template_version
-  ) THEN
-    RAISE EXCEPTION 'subscription_renewal_snapshot_stale' USING ERRCODE = '22023',
-      DETAIL = '/cycleSnapshot',
-      HINT = 'Re-read the due subscription and rebuild its cycle snapshot before claiming again.';
+  -- Run the proof inside the invoker RPC so its existing grants authorize
+  -- the same calls. Only versioned billing or a positive legacy build version
+  -- can furnish evidence here. Keep the billing fields in sync with capture.
+  v_versioned := p_cycle_snapshot ?| ARRAY['frozenRevision', 'templateSnapshot'];
+  IF (v_versioned OR v_build_template_version > 0) AND (CASE
+    WHEN jsonb_typeof(p_cycle_snapshot->'lines') = 'array'
+      AND pg_input_is_valid(p_cycle_snapshot->>'totalAmountMinor', 'bigint') THEN
+      btrim(p_cycle_snapshot->>'settlementChannelKey') <> ''
+      AND p_cycle_snapshot->>'currency' ~ '^[A-Z]{3}$'
+      AND (p_cycle_snapshot->>'totalAmountMinor')::bigint > 0
+      AND jsonb_array_length(p_cycle_snapshot->'lines') > 0
+      AND NOT EXISTS (
+        SELECT 1 FROM jsonb_array_elements(p_cycle_snapshot->'lines') AS line(value)
+         WHERE (CASE
+           WHEN pg_input_is_valid(value->>'quantity', 'integer')
+             AND pg_input_is_valid(value->>'unitAmountMinor', 'bigint')
+           THEN btrim(value->>'sku') <> ''
+             AND (value->>'quantity')::integer > 0
+             AND (value->>'unitAmountMinor')::bigint >= 0
+         END) IS NOT TRUE
+      )
+    ELSE false
+  END) THEN
+    IF v_versioned THEN
+      v_snapshot_version := jsonb_path_query_first(p_cycle_snapshot, 'strict $.templateSnapshot.version ? (
+        @.type() == "number" && @ > 0 && @ <= 2147483647 && @.floor() == @
+      )', '{}'::jsonb, true);
+      IF v_snapshot_version IS NULL THEN
+        RAISE EXCEPTION 'subscription_renewal_claim_invalid_snapshot' USING ERRCODE = '22023';
+      END IF;
+    END IF;
+    IF (v_versioned AND v_snapshot_version <> to_jsonb(v_subscription.template_version))
+      OR (NOT v_versioned AND v_subscription.template_version > v_build_template_version)
+    THEN
+      RAISE EXCEPTION 'subscription_renewal_snapshot_stale' USING ERRCODE = '22023',
+        DETAIL = '/cycleSnapshot',
+        HINT = 'Re-read the due subscription and rebuild its cycle snapshot before claiming again.';
+    END IF;
   END IF;
 
   SELECT catalog_acceptance INTO v_acceptance FROM public.subscription_renewal_terms WHERE subscription_id=v_subscription_id;

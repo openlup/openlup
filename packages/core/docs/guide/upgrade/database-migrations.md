@@ -116,9 +116,19 @@ and dispatch resumption. Changes in that interval fall outside the final cut.
 
 A verified webhook committed before the first read is visible in the report.
 A later commit leaves the earlier state visible. The forward records historical
-billing claims with a stale accepted version or unknown legacy provenance.
+billing claims with a stale accepted version or no usable template version
+(`unknown_provenance`).
 Claims that were current at the forward and new claims use the price frozen at
 claim. Later accepted edits apply to later cycles.
+
+Platform 1.4.0 refuses a first claim with `subscription_renewal_snapshot_stale`
+when the snapshot carries version evidence that proves it stale. Bare legacy
+claims without build-version evidence are admitted as before. Custom legacy
+callers can read the template version with the snapshot and supply it as
+`buildTemplateVersion` alongside `cycleSnapshot` in the
+`platform.subscription.renewal.claim-build.v1` envelope used by the shipped
+legacy adapter. Alternatively, build and claim in one transaction holding the
+subscription row lock. Re-read and rebuild the snapshot on the stale refusal.
 
 ```sql
 BEGIN ISOLATION LEVEL REPEATABLE READ, READ ONLY;
@@ -128,7 +138,7 @@ SELECT pg_current_snapshot()::text AS cut_snapshot,
 
 WITH roots AS MATERIALIZED (
   SELECT o.*, s.status AS subscription_status, s.next_cycle_at,
-         NOT (o.cycle_snapshot ?| ARRAY['frozenRevision', 'templateSnapshot']) AS unknown_provenance
+         cohort.unknown_provenance
   FROM public.subscription_renewal_upgrade_cohort cohort
   JOIN public.subscription_renewal_operations o ON o.id = cohort.renewal_operation_id
   JOIN public.subscriptions s ON s.id = o.subscription_id
