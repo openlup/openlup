@@ -401,9 +401,9 @@ it.each(["SIGKILL", "disconnect"] as const)("resumes an acknowledged normal rene
     .toEqual([{ next_cycle_at: new Date(days(operation.scheduled_at.toISOString(), facts.cadenceDays)) }]);
 }, 45_000);
 
-async function parcel(orderId: string) {
+async function parcel(orderId: string, db = executor) {
   // Parcel facts use the bounded writer and the installation's synthetic port.
-  const spine = fulfillment.createPostgresFulfillmentShipmentSpinePort(executor, { portKey: "g7-parcels" });
+  const spine = fulfillment.createPostgresFulfillmentShipmentSpinePort(db, { portKey: "g7-parcels" });
   return (await spine.createShipment({ idempotencyKey: `parcel:${orderId}`, orderId, requestedAt: at })).shipmentId;
 }
 
@@ -1766,22 +1766,46 @@ it("reports historical billing markers without a usable template version", async
   });
 }, postgresSetupTimeoutMs);
 
-it("preserves fresh and stale first claims for an existing directly granted login", async () => {
+async function verifyCaseFreeArrival(owner: Pool, direct: Pool, shipmentId: string, subscriptionId: string) {
+  const requestKey = `verified:${shipmentId}`, deliveredAt = days(at, 35), evidenceRef = `evidence:${shipmentId}`;
+  const cases = () => owner.query("SELECT id FROM public.subscription_delivery_alignment_cases WHERE subscription_id=$1", [subscriptionId]);
+  const due = () => owner.query("SELECT next_cycle_at FROM public.subscriptions WHERE id=$1", [subscriptionId]);
+  expect((await cases()).rows).toEqual([]);
+  const before = (await due()).rows;
+  expect(await rpc("fulfillment_record_alignment_arrival", [requestKey, shipmentId, deliveredAt, evidenceRef], direct))
+    .toEqual({ replayed: false });
+  expect((await owner.query(`SELECT a.shipment_id, a.evidence_ref, a.delivered_at, s.delivered_at AS shipment_delivered_at
+    FROM public.subscription_delivery_alignment_arrivals a
+    JOIN public.fulfillment_shipments s ON s.id=a.shipment_id WHERE a.request_key=$1`, [requestKey])).rows)
+    .toEqual([{ shipment_id: shipmentId, evidence_ref: evidenceRef,
+      delivered_at: new Date(deliveredAt), shipment_delivered_at: new Date(deliveredAt) }]);
+  expect((await cases()).rows).toEqual([]);
+  expect((await due()).rows).toEqual(before);
+}
+
+it("preserves first claims and case-free arrivals for an existing directly granted runtime login", async () => {
   await withTemplateUpgrade(async target => {
     const { db, owner } = target;
     const before = await upgradeRenewal(target, { edited: false });
     const fresh = await upgradeRenewal(target, { edited: false });
     const stale = await upgradeRenewal(target);
+    const beforeParcel = await parcel(before.f.orderId, db);
+    const afterParcel = await parcel(fresh.f.orderId, db);
     const role = "renewal_direct_claim", password = randomUUID();
     await owner.query(`CREATE ROLE renewal_direct_claim LOGIN PASSWORD '${password}';
       GRANT USAGE ON SCHEMA public TO renewal_direct_claim;
       GRANT EXECUTE ON FUNCTION public.${dueClaimSignature},
+        public.${arrivalSignature},
         public.subscription_renewal_identity(uuid,timestamptz),
         public.subscription_renewal_operation_response(public.subscription_renewal_operations,boolean,boolean,text) TO renewal_direct_claim;
       GRANT SELECT,UPDATE ON public.subscriptions TO renewal_direct_claim;
       GRANT SELECT,INSERT,UPDATE ON public.subscription_renewal_operations TO renewal_direct_claim;
+      GRANT SELECT,INSERT ON public.subscription_delivery_alignment_arrivals TO renewal_direct_claim;
+      GRANT UPDATE (delivered_at,updated_at) ON public.fulfillment_shipments TO renewal_direct_claim;
+      GRANT UPDATE (updated_at) ON public.subscription_delivery_alignment_cases TO renewal_direct_claim;
       GRANT SELECT ON public.subscription_renewal_terms,public.fulfillment_inventory_reservations,
-        public.subscription_cycles,public.commerce_orders,public.commerce_settlement_intents TO renewal_direct_claim`);
+        public.subscription_cycles,public.commerce_orders,public.commerce_settlement_intents,
+        public.fulfillment_shipments,public.subscription_delivery_alignment_cases TO renewal_direct_claim`);
     const url = new URL(loginConnection(target.connectionString, role));
     url.password = password;
     const direct = new Pool({ connectionString: url.toString() });
@@ -1791,10 +1815,25 @@ it("preserves fresh and stale first claims for an existing directly granted logi
         .toEqual([{ session_user: role, current_user: role, service_member: false }]);
       const claim = async (entry: typeof fresh) =>
         JSON.parse((await direct.query(rawClaim, claimWire(entry.d, entry.snapshot))).rows[0].result);
+      expect(await rpc("subscription_delivery_alignment_get_mode", [], owner)).toBe("off");
+      await verifyCaseFreeArrival(owner, direct, beforeParcel, before.f.subscriptionId);
       expect(await claim(before)).toMatchObject({ acquired: true });
-      const acl = await generationAcl(owner, dueClaimSignature);
+      const readAuthority = async () => (await owner.query<{ authority: string }>(`SELECT json_build_array(
+        claim.proacl::text, claim.proowner, claim.prosecdef, claim.provolatile, claim.proconfig,
+        delivery.proacl::text, t.oid, t.tgrelid, t.tgfoid, t.tgenabled, pg_get_triggerdef(t.oid)
+      )::text AS authority
+      FROM pg_trigger t
+      JOIN pg_proc delivery ON delivery.oid=t.tgfoid
+      JOIN pg_proc claim ON claim.oid=$1::regprocedure
+      WHERE t.tgrelid='public.fulfillment_shipments'::regclass
+        AND t.tgname='trg_subscription_delivery_alignment_on_delivery'
+        AND delivery.oid=$2::regprocedure`, [`public.${dueClaimSignature}`, `public.${deliveryTriggerSignature}`])).rows[0]?.authority;
+      const authority = await readAuthority();
+      expect(authority).toBeDefined();
       await applyTemplateForwardWithCustomGrants(owner);
-      expect(await generationAcl(owner, dueClaimSignature)).toEqual(acl);
+      expect(await readAuthority()).toBe(authority);
+      expect(await rpc("subscription_delivery_alignment_get_mode", [], owner)).toBe("off");
+      await verifyCaseFreeArrival(owner, direct, afterParcel, fresh.f.subscriptionId);
       expect(await claim(fresh)).toMatchObject({ acquired: true });
       await expect(claim(stale)).rejects.toMatchObject(staleClaim);
       expect((await db.query("SELECT id FROM public.subscription_renewal_operations WHERE subscription_id=$1",
@@ -1805,18 +1844,19 @@ it("preserves fresh and stale first claims for an existing directly granted logi
   });
 }, postgresSetupTimeoutMs);
 
-it("keeps case-free verified arrivals available to an existing directly granted fulfillment login", async () => {
+it("preserves arrival and claim authority for an existing directly granted fulfillment login", async () => {
   await withTemplateUpgrade(async target => {
     const { db, owner } = target;
-    const spine = fulfillment.createPostgresFulfillmentShipmentSpinePort(db, { portKey: "g7-parcels" });
+    const entry = await upgradeRenewal(target, { edited: false });
     const arrivals: { shipmentId: string; subscriptionId: string }[] = [];
     for (let i = 0; i < 3; i++) {
       const { orderId, subscriptionId } = await renewalPurchase(false, target);
-      const { shipmentId } = await spine.createShipment({ idempotencyKey: `parcel:${orderId}`, orderId, requestedAt: at });
-      arrivals.push({ shipmentId, subscriptionId });
+      arrivals.push({ shipmentId: await parcel(orderId, db), subscriptionId });
     }
     const role = "renewal_direct_arrival", password = randomUUID();
-    await owner.query(`CREATE ROLE renewal_direct_arrival LOGIN PASSWORD '${password}';
+    // Model an installation that restricts the claim RPC to its renewal logins.
+    await owner.query(`REVOKE EXECUTE ON FUNCTION public.${dueClaimSignature} FROM PUBLIC;
+      CREATE ROLE renewal_direct_arrival LOGIN PASSWORD '${password}';
       GRANT USAGE ON SCHEMA public TO renewal_direct_arrival;
       GRANT EXECUTE ON FUNCTION public.${arrivalSignature} TO renewal_direct_arrival;
       GRANT SELECT,INSERT ON public.subscription_delivery_alignment_arrivals TO renewal_direct_arrival;
@@ -1832,29 +1872,26 @@ it("keeps case-free verified arrivals available to an existing directly granted 
         pg_has_role(current_user,'service_role','MEMBER') AS service_member,
         has_function_privilege('public.subscription_delivery_alignment_get_mode()', 'EXECUTE') AS read_mode`)).rows)
         .toEqual([{ session_user: role, current_user: role, service_member: false, read_mode: false }]);
-      const arrival = async ({ shipmentId, subscriptionId }: (typeof arrivals)[number]) => {
-        const requestKey = `verified:${shipmentId}`, deliveredAt = days(at, 35), evidenceRef = `evidence:${shipmentId}`;
-        const cases = () => owner.query("SELECT id FROM public.subscription_delivery_alignment_cases WHERE subscription_id=$1", [subscriptionId]);
-        expect((await cases()).rows).toEqual([]);
-        const due = (await owner.query("SELECT next_cycle_at FROM public.subscriptions WHERE id=$1", [subscriptionId])).rows;
-        expect(await rpc("fulfillment_record_alignment_arrival", [requestKey, shipmentId, deliveredAt, evidenceRef], direct))
-          .toEqual({ replayed: false });
-        expect((await owner.query(`SELECT a.shipment_id, a.evidence_ref, a.delivered_at, s.delivered_at AS shipment_delivered_at
-          FROM public.subscription_delivery_alignment_arrivals a
-          JOIN public.fulfillment_shipments s ON s.id=a.shipment_id WHERE a.request_key=$1`, [requestKey])).rows)
-          .toEqual([{ shipment_id: shipmentId, evidence_ref: evidenceRef,
-            delivered_at: new Date(deliveredAt), shipment_delivered_at: new Date(deliveredAt) }]);
-        expect((await cases()).rows).toEqual([]);
-        expect((await owner.query("SELECT next_cycle_at FROM public.subscriptions WHERE id=$1", [subscriptionId])).rows).toEqual(due);
-      };
+      const arrival = ({ shipmentId, subscriptionId }: (typeof arrivals)[number]) =>
+        verifyCaseFreeArrival(owner, direct, shipmentId, subscriptionId);
+      const readClaimAcl = async () => (await owner.query<{ acl: string | null }>(
+        "SELECT proacl::text AS acl FROM pg_proc WHERE oid=$1::regprocedure", [`public.${dueClaimSignature}`])).rows[0]!.acl;
+      const expectClaimRefused = async () =>
+        expect(direct.query(rawClaim, claimWire(entry.d, entry.snapshot))).rejects.toMatchObject({
+          code: "42501", message: "permission denied for function subscription_claim_due_renewal",
+        });
       const acl = await Promise.all([deliveryTriggerSignature, arrivalSignature].map(signature => generationAcl(owner, signature)));
       expect(acl.map(([routine]) => routine.definer)).toEqual([false, false]);
       expect(await rpc("subscription_delivery_alignment_get_mode", [], owner)).toBe("off");
       await arrival(arrivals[0]!);
+      const claimAcl = await readClaimAcl();
+      await expectClaimRefused();
       await applyTemplateForwardWithCustomGrants(owner);
       expect(await Promise.all([deliveryTriggerSignature, arrivalSignature].map(signature => generationAcl(owner, signature))))
         .toEqual(acl);
       await arrival(arrivals[1]!);
+      await expectClaimRefused();
+      expect(await readClaimAcl()).toBe(claimAcl);
 
       // A mode reader alone still lacks the fallback's other capabilities.
       await owner.query(`GRANT EXECUTE ON FUNCTION public.subscription_delivery_alignment_get_mode() TO renewal_direct_arrival;
