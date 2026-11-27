@@ -733,6 +733,34 @@ it.each(["legacy", "legacy-with-service", "bootstrap", "separate", "admin-manage
       await applyMeasuredOccurrencePrefix(privacyPlan, db.migrator, db.installation,
         variant === "legacy-with-service" ? "legacy" : variant, [privacyForward]);
       await checkPrivacyAcl(db);
+      if (variant === "admin-managed") {
+        const carrier = `public.${occurrence}`;
+        const { rows } = await db.migrator.query(`SELECT r.rolname=current_user AS owner, r.rolsuper, r.rolbypassrls, c.relrowsecurity
+          FROM pg_proc p JOIN pg_roles r ON r.oid=p.proowner JOIN pg_class c ON c.relowner=r.oid
+          WHERE p.oid=$1::regprocedure AND c.oid=$2::regclass`, [occurrenceHelper, carrier]);
+        expect(rows).toEqual([{ owner: true, rolsuper: false, rolbypassrls: false, relrowsecurity: true }]);
+        const read = "SELECT public.subscriptions__read_renewal_occurrences_for_privacy($1,NULL)";
+        await db.owner.query(`ALTER TABLE ${carrier} FORCE ROW LEVEL SECURITY`);
+        try {
+          await transaction(db.migrator, async lane => {
+            await lane.query("SET LOCAL row_security = off");
+            await expect(lane.query(`SELECT client_id FROM ${carrier}`)).rejects.toMatchObject({ code: "42501", routine: "check_enable_rls" });
+          }, "ROLLBACK");
+          await expect(db.runtime.query(read, [f.clientId])).rejects.toMatchObject({ code: "P0001", message: "occurrence_privacy_scope_unavailable" });
+          for (const operation of ["export", "erase"] as const) {
+            const denied = await mounted.mounted("public", operation, subject);
+            refusal(denied, unavailableCode);
+            expect(denied.body.error?.details?.fix).toMatch(/installation owner.*row visibility.*correlation/u);
+            expect(JSON.stringify(denied.body)).not.toContain(f.clientId);
+            expect(JSON.stringify(denied.body)).not.toContain(f.subscriptionId);
+          }
+          expect(await state(db.owner)).toEqual(before);
+        } finally { await db.owner.query(`ALTER TABLE ${carrier} NO FORCE ROW LEVEL SECURITY`); }
+        await transaction(db.migrator, async lane => {
+          await lane.query(`REVOKE SELECT ON ${carrier} FROM CURRENT_USER`);
+          await expect(lane.query(read, [f.clientId])).rejects.toMatchObject({ code: "42501", routine: "aclcheck_error" });
+        }, "ROLLBACK");
+      }
       const exported = await readExport(mounted, subject);
       checkProjection(exported, f);
       expect(exported.documents.find(d => d.contributorId === "subscriptions")?.data).toEqual([{ id: f.subscriptionId, status: "cancelled" }]);
