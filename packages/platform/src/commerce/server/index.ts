@@ -294,3 +294,11 @@ export function createDbBackedCommerceQuotePortV2(deps: DbBackedCommerceQuotePor
     return createQuote(deps, owner, admitted, { snapshot, invalid, dependency, infrastructure });
   } };
 }
+export {
+  DEFAULT_COMMERCE_RETURN_REASONS,
+  validateCommerceReturnReasons,
+  installCommerceReturnReasonsPolicy,
+  readCommerceReturnReasonsOverride,
+  readCommerceReturnReasonsPolicy,
+} from "../returnReasonsPolicy.js";
+export type { CommerceReturnReasonsPolicy } from "../returnReasonsPolicy.js";

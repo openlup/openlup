@@ -11,7 +11,13 @@ it('pins closed families, strict envelopes and exact pickup/carrier bounds',() =
  expect(s.delivery.parse({ ...courierPreference,carrierCode: ' trim ' }).carrierCode).toBe('trim');
  for (const input of [{ ...courierPreference,carrierKind: 'x' },{ ...courierPreference,carrierCode: 'x'.repeat(81) },{ ...courierPreference,serviceCode: 'x'.repeat(121) },{ ...courierPreference,providerKind: 'other' },{ ...courierPreference,deliveryKind: 'parcel-locker',pickupPoint: null }]) expect(s.delivery.safeParse(input).success).toBe(false);
  expect(s.delivery.safeParse({ ...courierPreference,deliveryKind: 'parcel-locker',pickupPoint: { id: 'point',name: 'Point',address: null } }).success).toBe(true);
- expect(() => createCustomerPreferenceSchemas({ ...policy,methods: { ...policy.methods,extra: 'extra' } } as never)).toThrow('customer_preference_policy_invalid');
+ expect(() => createCustomerPreferenceSchemas({ ...policy,methods: {} })).toThrow('customer_preference_policy_invalid');
+ expect(() => createCustomerPreferenceSchemas({ ...policy,methods: { ...policy.methods,'Invalid Key': 'bad' } })).toThrow('customer_preference_policy_invalid');
+ expect(() => createCustomerPreferenceSchemas({ ...policy,methods: { ...policy.methods,wallet_express: policy.methods.card } })).toThrow('customer_preference_policy_invalid');
+ const custom = createCustomerPreferenceSchemas({ ...policy,methods: { card: 'card',wallet_express: 'wallet-express' } });
+ expect(custom.payment.safeParse({ scope: 'any',methodKind: 'wallet-express' }).success).toBe(true);
+ expect(custom.payment.safeParse({ scope: 'any',methodKind: 'transfer' }).success).toBe(false);
+ expect(custom.paymentResponse.safeParse({ scope: 'any',methodKind: 'transfer',lastSelectedAt: preferenceAt }).success).toBe(true);
  expect(() => createCustomerPreferenceSchemas({ ...policy,providers: { ...policy.providers,carrier: policy.providers.warehouse } })).toThrow('customer_preference_policy_invalid');
 });
 function response() { const res = { status: vi.fn(),json: vi.fn(),setHeader: vi.fn() };res.status.mockReturnValue(res);res.json.mockReturnValue(res);return res; }
