@@ -44,6 +44,12 @@ Browser request, contributor-document and receipt shapes come from
 
 ### Upgrade native privacy operations
 
+**Trust boundary.** The runtime login is the privacy authority in the database.
+The HTTP handler authorizes the human administrator. The occurrence privacy
+helper answers only for the requested subject. The function owner and
+`service_role`, when that role exists, can call it directly. Custom erase-only roles outside
+`service_role` fail closed with `PRIVACY_ASSESSMENT_UNAVAILABLE`.
+
 Apply the complete native catalogue for the selected rollout. The installation
 owner declares required contributor IDs in the same ordered forward as the owner
 feature. The runtime can execute the declaration reader. Each admitted operation
