@@ -5,7 +5,9 @@ import { env as processEnvironment } from 'node:process';
 import { pathToFileURL } from 'node:url';
 import { CONTROL_POSTGRES_SUITES, PG_SUITE_CLOSURES_PATH, readPgSuiteClosures } from './agent-review-registry.mjs';
 
-// Inputs are plain prefixes: an entry ending in '/' covers that directory and
+// Inputs are plain prefixes or exact files, plus the PACKAGES_NON_DOC sentinel
+// ('packages/@non-doc') which matches everything under packages/ except
+// packages/core/docs/**/*.md. An entry ending in '/' covers that directory and
 // everything below it (dot files included); any other entry is one exact file.
 // Glob matching is deliberately avoided: its '*' and '**' skip dot segments.
 // Broad shared triggers: every non-doc root file, every dot-prefixed segment
@@ -323,6 +325,7 @@ const WORKFLOW_PACKAGE_GATES_INPUTS = [
 ];
 const WORKFLOW_INSTALL_BROWSER_INPUTS = [
   PACKAGES_NON_DOC,
+  'packages/core/docs/guide/how-to/build/customize-the-starter.md',
   'examples/neutral-store/',
   'config/openlup-packages.json',
   'config/ci-images.json',

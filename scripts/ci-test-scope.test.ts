@@ -1089,6 +1089,13 @@ describe('workflow scope gate (--workflow-outputs)', () => {
       run_install_browser: false,
       run_install_pack: true,
     });
+    expect(workflowScopeFromPaths(['packages/core/docs/guide/how-to/build/customize-the-starter.md'])).toEqual({
+      run_pgtap: false,
+      run_reference_build: false,
+      run_package_gates: true,
+      run_install_browser: true,
+      run_install_pack: true,
+    });
     expect(workflowScopeFromPaths(['packages/core/docs/guide/how-to/extend/catalogue-pack-skeleton/pack.ts'])).toEqual({
       run_pgtap: false,
       run_reference_build: true,
