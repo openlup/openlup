@@ -2591,7 +2591,11 @@ it.each([true, false])("drains mounted and independent callers at the shared pro
       fingerprint: custom.op.operationFingerprint, providerIdempotencyKey: custom.preparation.providerIdempotencyKey,
       money: { amountMinor: 200, currency: "XXX" }, mode: "test", purpose: "renewal-unattended",
       orderRef: custom.prepared.orderId, clientId: custom.f.clientId, customerRef: custom.d.due.payerAccountRef!,
-      storedMethod: { reference: custom.methodRef, mandate: { recurringModel: null } } });
+      storedMethod: { reference: custom.methodRef, mandate: { recurringModel: null } } })
+      .then(() => custom.d.input.settlement.acknowledgeExternalAttempt({
+        operationId: custom.id, operationFingerprint: custom.op.operationFingerprint,
+        externalAttemptRef: `pi_${custom.id}`, acknowledgedAt: later,
+      }));
     try {
       for (const [entered, pending] of [[mountedEntered, mountedCall], [customEntered, customCall]] as const) {
         await Promise.race([entered.promise, pending.then(result => { throw new Error(
