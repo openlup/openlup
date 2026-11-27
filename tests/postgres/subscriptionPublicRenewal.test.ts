@@ -3,7 +3,7 @@ import { createPostgresRenewalSettlementPort as mainSettlement } from "../../ser
 import { createPostgresAutomaticRenewalPort, automaticRenewalIdentity, automaticRenewalFingerprint } from "../../server/adapters/postgres/subscription/automaticRenewal.js";
 import { connectedNativeStoreTables, readPrivacyDeclarationCensus, requiredPrivacyDeclarationTable } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { execFileSync } from "node:child_process";
-import { createHmac, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { DatabaseError, Pool, type PoolClient } from "pg";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
@@ -1639,7 +1639,8 @@ it("starts the checklist before a pending forward, including from released Platf
     expect(plan.forward.filter(({ file }: { file: string }) => renewalTemplateForward.test(file))).toHaveLength(1);
   }
   const releasedPage = "packages/core/docs/guide/upgrade/v1-4-0.md";
-  expect(readFileSync(releasedPage, "utf8")).toBe(fromGit("4b00b966765d18a44dff4f072fc65a55acc26d6c", releasedPage));
+  expect(createHash("sha256").update(readFileSync(releasedPage)).digest("hex"))
+    .toBe("91cb369c12542904ece4f6399e798eae1f759876bdee96930ddff724ada6630e");
 });
 
 type UpgradeReportHooks = { beforeCut?: () => Promise<void>; afterCut?: () => Promise<void> };
@@ -2949,15 +2950,14 @@ it("lets verified provider intake finish while cohort capture only reads the ope
 it("commits two verified arrivals during capture without an opposing subscription lock", async () => {
   await withTemplateUpgrade(target => withCaptureBarrier(target, async gate => {
     const { owner, db } = target;
-    const subjects = [];
-    for (let i = 0; i < 2; i++) {
+    async function arrival() {
       const { f, d, claim } = await upgradeRenewal(target);
       const root = await claim();
-      subjects.push({ id: f.subscriptionId, shipment: await parcel(f.orderId, db),
-        delivered: days(d.due.scheduledAt, 1), operation: root.operationId });
+      return { id: f.subscriptionId, shipment: await parcel(f.orderId, db),
+        delivered: days(d.due.scheduledAt, 1), operation: root.operationId };
     }
-    subjects.sort((a, b) => a.id.localeCompare(b.id));
-    const [lower, higher] = subjects as [typeof subjects[number], typeof subjects[number]];
+    const subjects = [await arrival(), await arrival()] as const;
+    const [lower, higher] = subjects[0].id < subjects[1].id ? subjects : [subjects[1], subjects[0]] as const;
     const intake = await db.connect();
     try {
       await intake.query("BEGIN");
