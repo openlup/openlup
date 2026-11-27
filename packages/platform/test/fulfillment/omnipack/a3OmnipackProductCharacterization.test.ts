@@ -1,4 +1,5 @@
 import { expect, it, vi } from "vitest";
+import { createOmnipackFulfillmentAdapter } from "../../../src/fulfillment/omnipack/index.js";
 import { createOmnipackClient } from "../../../src/fulfillment/omnipack/client.js";
 import { mapOmnipackProductResponse, mapOmnipackProductPackCreatedResponse } from "../../../src/fulfillment/omnipack/productSyncMappers.js";
 import { buildOmnipackProductPackPayload, omnipackPackKindForQuantity } from "../../../src/fulfillment/omnipack/omnipackProductPackPayload.js";
@@ -28,4 +29,29 @@ it("refuses missing EAN or invalid pack quantity and preserves unit/collective c
   expect(() => buildOmnipackProductPackPayload({ ean: " ", quantity: 1 })).toThrow("missing_ean");
   for (const quantity of [0, -1, 1.5, NaN]) expect(() => buildOmnipackProductPackPayload({ ean: "0000000000001", quantity })).toThrow("invalid_quantity");
   expect(omnipackPackKindForQuantity(1)).toBe("unit"); expect(omnipackPackKindForQuantity(12)).toBe("collective");
+});
+it("refuses dot-segment, blank, and lone-surrogate SKUs in productSync.addProductPack before credentials or HTTP", async () => {
+  const credentials = vi.fn(() => ({ username: "example", password: "placeholder" }));
+  const fetchImpl = vi.fn();
+  const adapter = createOmnipackFulfillmentAdapter({
+    http: { ...config, credentials, fetchImpl, safeReadRetries: 0 },
+    selected: true,
+    readiness: { ready: true },
+    resolveProduct: async () => ({}),
+    notification: { token: () => "placeholder", expectedEvent: "order.shipped" },
+    clock: () => "2026-06-10T09:00:00Z",
+    mintEvidenceReference: () => "evidence:test",
+    mintSyncRunId: () => "sync-1",
+    approveTrackingUrl: () => true,
+  });
+  for (const sku of ["..", ".", "   ", "", "\ud800"]) {
+    await expect(adapter.productSync.addProductPack(sku, { ean: "0000000000001", quantity: 1 })).rejects.toMatchObject({
+      reason: "malformed",
+      phase: "sync",
+      providerFailure: false,
+      retryable: false,
+    });
+  }
+  expect(credentials).not.toHaveBeenCalled();
+  expect(fetchImpl).not.toHaveBeenCalled();
 });

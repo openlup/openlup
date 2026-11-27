@@ -103,6 +103,18 @@ export type StoreDoubleSwitches = {
   readonly activationFromPageState?: boolean;
   /** Once `paid_pending_activation` was shown, the page's next settle falls back to `awaiting_payment` (a later poll that failed). */
   readonly fallsBackAfterShowing?: boolean;
+  /**
+   * One purchase record per browser session, as a refuse-changed store keeps it: once a create was sent, place-order
+   * for another buyer sends nothing and shows `details_changed`, until the client state is cleared.
+   */
+  readonly sessionCarriesRecord?: boolean;
+  /**
+   * The page quotes the details: on every text fill (`input`), or when a changed text field is committed (`change`),
+   * that is when focus moves to another field or control (the double's `fill` does not commit by itself, as a handle
+   * that only types would not). A quote lands on the next settle; one started while terms were not ticked clears the
+   * tick when it lands. Place-order sends nothing while terms are not ticked.
+   */
+  readonly quoteOn?: "input" | "change";
 };
 
 /** Every outcome kind the double's driver can produce. */
@@ -126,7 +138,8 @@ const VIEW_OF: Readonly<Record<PaymentStatus, PaymentView>> = {
 /**
  * A scripted page, in-memory server and observer sharing one state. `events`
  * records server and observer events in order (`create:start`,
- * `create:answered`, `ledger`); `calls` records every page handle call;
+ * `create:answered`, `ledger`); `calls` records every page handle call
+ * (`clearClientState`, which empties the page's session storage, included);
  * `keysSent` every command key the page sent; `withheld` the create answers
  * the server produced that the page never received, per buyer; `produced`
  * every outcome the driver was asked for, as `[subject, outcome]`.
@@ -158,12 +171,16 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: {
   const produced: [string, string][] = [];
   const answers = new Map<string, number>();
   const queue: Array<() => void> = [];
+  // Quotes started by text-field changes, landed by the next settle; the focused field and whether it changed.
+  const quotes: Array<() => void> = [];
+  let focused: string | null = null;
+  let changed = false;
   const tasks = new Set<Promise<unknown>>();
   let decide: Decide | null = null;
   let view: View = "blank";
   let fields: Record<string, string | boolean> = {};
-  // Session storage: survives a reload and a navigation.
-  const storage: { key?: string; cached?: boolean; reloaded?: boolean; email?: string; lastView?: View } = {};
+  // Session storage: survives a reload and a navigation; `clearClientState` empties it.
+  const storage: { key?: string; cached?: boolean; reloaded?: boolean; email?: string; lastView?: View; record?: string } = {};
   // Anchor reads while the page showed a decline, since the last buyer action; the page's own retry fires after two.
   let declinedReads = 0;
   let autoFired = false;
@@ -180,6 +197,20 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: {
   let paidRevealed = false;
 
   const turn = () => new Promise<void>((resolve) => setImmediate(resolve));
+  /** Starts a quote that lands on the next settle and clears a tick it did not see at its start. */
+  const quote = () => {
+    const tickedAtStart = fields.terms_accepted === true;
+    void track(new Promise<void>((resolve) => quotes.push(resolve)).then(() => {
+      if (!tickedAtStart) delete fields.terms_accepted;
+    }));
+  };
+  /** Moves focus to a field or control; leaving a changed text field commits it (`change`), which starts a quote. */
+  const focus = (to: string) => {
+    if (focused === to) return;
+    if (switches.quoteOn === "change" && changed) quote();
+    focused = to;
+    changed = false;
+  };
   const track = <T>(task: Promise<T>) => {
     tasks.add(task);
     void task.finally(() => tasks.delete(task));
@@ -363,12 +394,16 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: {
       if (stuck && switches.stuckNavigateRejects === true) throw new Error("net::ERR_ABORTED");
       if (!stuck) view = path.startsWith("/select/") ? "cart" : "blank";
       fields = {};
+      focused = null;
+      changed = false;
       load(false);
     },
     async reload() {
       acted("reload");
       storage.reloaded = true;
       fields = {};
+      focused = null;
+      changed = false;
       if (PAYMENT_VIEWS.has(view)) {
         // During a payment the page reads the status and shows the state it last knew until an answer arrives.
         view = storage.lastView ?? "paying";
@@ -407,6 +442,7 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: {
       const name = nameOf(target);
       acted(`perform ${name}`);
       if (present().get(name) !== true) return false;
+      focus(name);
       if (name === "action:proceed_to_checkout") {
         view = "checkout";
         fields = {};
@@ -415,6 +451,7 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: {
         return true;
       }
       if (name === "action:place_order") {
+        if (switches.quoteOn !== undefined && fields.terms_accepted !== true) return true;
         if (placing && switches.noSubmitGuard !== true && switches.noSubmitGuardSameKey !== true) return false;
         if (switches.firstSubmitSendsNothing === true && !firstSubmitSkipped) {
           firstSubmitSkipped = true;
@@ -424,8 +461,13 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: {
           view = "awaiting_payment";
           return true;
         }
+        if (switches.sessionCarriesRecord === true && storage.record !== undefined && storage.record !== buyer()) {
+          view = "details_changed";
+          return true;
+        }
         placing = true;
         storage.email = buyer();
+        storage.record = buyer();
         if (switches.noSubmitGuard === true || storage.key === undefined) storage.key = newKey();
         clicks += 1;
         void track(submit(storage.key, clicks));
@@ -445,8 +487,15 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: {
       const name = nameOf(target);
       acted(`fill ${name}`);
       if (present().get(name) === undefined) return false;
+      focus(name);
       fields[name.slice("field:".length)] = value;
+      if (typeof value === "string" && switches.quoteOn === "input") quote();
+      if (typeof value === "string" && switches.quoteOn === "change") changed = true;
       return true;
+    },
+    async clearClientState() {
+      calls.push("clearClientState");
+      for (const key of Object.keys(storage) as (keyof typeof storage)[]) delete storage[key];
     },
     async intercept(next) {
       calls.push("intercept");
@@ -469,6 +518,7 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: {
         view = "awaiting_payment";
       }
       progressOnItsOwn();
+      for (const land of quotes.splice(0)) land();
       for (;;) {
         await turn();
         if (queue.length > 0) {

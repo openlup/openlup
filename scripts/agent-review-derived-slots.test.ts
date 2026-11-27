@@ -288,6 +288,60 @@ it('plans shared migration slots across rails and UTC rollover', () => {
     nextFreeSlot: '20270101010001',
     changes: [{ target: 'db/platform/migrations/20270101010001_old.sql' }],
   });
+
+  // Explicit --target forces movement even when originalSlot > maxMainSlot and assigns sequential slots for multi-migration branches.
+  expect(landingSlotPlan(
+    ['db/platform/migrations/20990101030000_ahead.sql'],
+    ['db/platform/migrations/20990101020000_main.sql'],
+    { target: '20990101050000' },
+  )).toEqual({
+    maxMainSlot: '20990101020000',
+    nextFreeSlot: '20990101050000',
+    changes: [{
+      path: 'db/platform/migrations/20990101030000_ahead.sql',
+      target: 'db/platform/migrations/20990101050000_ahead.sql',
+    }],
+  });
+  expect(landingSlotPlan(
+    ['db/platform/migrations/20990101010000_first.sql', 'supabase/migrations/20990101030000_second.sql'],
+    ['db/platform/migrations/20990101020000_main.sql'],
+    { target: '20990101050000' },
+  )).toEqual({
+    maxMainSlot: '20990101020000',
+    nextFreeSlot: '20990101050000',
+    changes: [
+      { path: 'db/platform/migrations/20990101010000_first.sql', target: 'db/platform/migrations/20990101050000_first.sql' },
+      { path: 'supabase/migrations/20990101030000_second.sql', target: 'supabase/migrations/20990101050001_second.sql' },
+    ],
+  });
+
+  expect(() => landingSlotPlan(
+    ['db/platform/migrations/20990101010000_pr.sql'],
+    ['db/platform/migrations/20990101020000_main.sql'],
+    { target: '20990230000000' },
+  )).toThrow(/valid 14-digit UTC slot/u);
+  expect(() => landingSlotPlan([], ['db/platform/migrations/20990101020000_main.sql'], { target: '20990101050000' }))
+    .toThrow(/at least one unlanded plain migration/u);
+  expect(() => landingSlotPlan(
+    ['db/platform/migrations/q2_20990101010000_qualified.sql'],
+    ['db/platform/migrations/20990101020000_main.sql'],
+    { target: '20990101050000' },
+  )).toThrow(/at least one unlanded plain migration/u);
+  expect(() => landingSlotPlan(
+    ['db/platform/migrations/20990101030000_pr.sql'],
+    ['db/platform/migrations/20990101020000_main.sql'],
+    { target: '20990101030000' },
+  )).toThrow(/strictly later than 20990101030000/u);
+  expect(() => landingSlotPlan(
+    ['db/platform/migrations/20990101010000_pr.sql'],
+    ['db/platform/migrations/20990101020000_main.sql'],
+    { target: '20990101030000', branchMigrationPaths: ['db/platform/migrations/20990101040000_existing.sql'] },
+  )).toThrow(/strictly later than 20990101040000/u);
+  expect(() => landingSlotPlan(
+    ['db/platform/migrations/20990101010000_pr.sql'],
+    ['packages/platform/sql/20990101050000_PR.sql'],
+    { target: '20990101050000' },
+  )).toThrow(/collides with existing path or mirror/u);
 });
 
 it('refuses authored migration filenames before re-slot changes the tree', async () => {
@@ -534,3 +588,87 @@ it.each(['clean', 'derived-carrier'])('skips Docker inventory refresh on non-SQL
     f.git('update-ref', 'refs/remotes/origin/main', f.main);
   }
 }, 180000);
+
+it('validates --target pre-merge and lands forced or inverted migrations at the exact target slot as derived', async () => {
+  const f = await createDerivedFixture({ runInitialLanding: false, stubNpmEnv: false });
+  const runLanding = landingMerge as (
+    root: string,
+    options?: { reSlot?: boolean; verify?: boolean; target?: string; runCommand?: (command: string, args: string[]) => unknown },
+  ) => Promise<{ head: string; main: string; inventoryRefreshed: boolean }>;
+  try {
+    // 1. Pre-merge refusals on non-SQL branch before toolchain/merge/runCommand.
+    f.checkout(f.base);
+    f.write('README.md', `${f.read('README.md')}\nNon-SQL target refusal check\n`);
+    const nonSqlPr = f.commit();
+    f.checkout(f.base);
+    f.append('20990101020000');
+    const aheadMain = f.commit();
+    f.setMain(aheadMain);
+    f.checkout(nonSqlPr);
+
+    const invoked: string[][] = [];
+    const trackingRun = (command: string, args: string[]) => {
+      invoked.push(args);
+      if (args.includes(join(f.root, 'scripts/installation-inventory-refresh.ts'))) return;
+      f.fixtureCommand(command, args);
+    };
+    await expect(runLanding(f.root, { reSlot: false, target: '20990101050000', runCommand: trackingRun }))
+      .rejects.toThrow('--target requires --re-slot');
+    await expect(runLanding(f.root, { reSlot: true, target: '20990230000000', runCommand: trackingRun }))
+      .rejects.toThrow('valid 14-digit UTC slot');
+    await expect(runLanding(f.root, { reSlot: true, target: '20990101050000', runCommand: trackingRun }))
+      .rejects.toThrow('at least one unlanded plain migration');
+    expect(invoked).toEqual([]);
+    f.expectRestoredHead(nonSqlPr);
+
+    // 2. PR with migration already > maxMainSlot (20990101030000 > 20990101020000) forced to --target 20990101050000.
+    f.checkout(f.base);
+    f.append('20990101030000');
+    const aheadPr = f.commit();
+    f.checkout(aheadPr);
+    await expect(runLanding(f.root, { reSlot: true, target: '20990101030000', runCommand: trackingRun }))
+      .rejects.toThrow('strictly later than 20990101030000');
+    expect(invoked).toEqual([]);
+    f.expectRestoredHead(aheadPr);
+
+    const originalPath = 'db/platform/migrations/20990101030000_landing_fixture.sql';
+    const targetPath = 'db/platform/migrations/20990101050000_landing_fixture.sql';
+    const targetMirror = 'packages/platform/sql/20990101050000_landing_fixture.sql';
+    const originalSql = f.read(originalPath);
+    const landed = await runLanding(f.root, { reSlot: true, target: '20990101050000', runCommand: trackingRun });
+    expect(f.git('ls-files', originalPath)).toBe('');
+    expect(f.git('ls-files', targetPath)).toBe(targetPath);
+    expect(f.git('show', `HEAD:${targetMirror}`)).toBe(originalSql.trim());
+    expect(checkPlatformMigrationProjection(f.root, false)).toEqual([]);
+    expect(f.git('status', '--porcelain=v1')).toBe('');
+
+    const proof = await proveReviewIntegration(
+      f.root,
+      await captureCommittedReviewCandidate(f.root, f.base, aheadPr),
+      await captureCommittedReviewCandidate(f.root, aheadMain, landed.head),
+    );
+    expect(proof).toMatchObject({ kind: 'derived', derived: true });
+    expect(proof.resolution).toBeUndefined();
+
+    // 3. Multi-migration branch (one inverted, one ahead) lands sequentially starting at --target and proves as derived.
+    f.checkout(f.base);
+    f.append('20990101010000');
+    f.append('20990101020100');
+    const multiPr = f.commit();
+    const multiLanded = await runLanding(f.root, { reSlot: true, target: '20990101060000', runCommand: trackingRun });
+    expect(f.git('ls-files', 'db/platform/migrations/20990101060000_landing_fixture.sql')).toBe('db/platform/migrations/20990101060000_landing_fixture.sql');
+    expect(f.git('ls-files', 'db/platform/migrations/20990101060001_landing_fixture.sql')).toBe('db/platform/migrations/20990101060001_landing_fixture.sql');
+    expect(f.git('ls-files', 'db/platform/migrations/20990101010000_landing_fixture.sql')).toBe('');
+    expect(f.git('ls-files', 'db/platform/migrations/20990101020100_landing_fixture.sql')).toBe('');
+    expect(checkPlatformMigrationProjection(f.root, false)).toEqual([]);
+    const multiProof = await proveReviewIntegration(
+      f.root,
+      await captureCommittedReviewCandidate(f.root, f.base, multiPr),
+      await captureCommittedReviewCandidate(f.root, aheadMain, multiLanded.head),
+    );
+    expect(multiProof).toMatchObject({ kind: 'derived', derived: true });
+    expect(multiProof.resolution).toBeUndefined();
+  } finally {
+    f.cleanup();
+  }
+}, 240_000);

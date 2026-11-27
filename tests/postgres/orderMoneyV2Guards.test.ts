@@ -251,7 +251,7 @@ it("refuses an item when both line-sum constraints flush before its source is in
   const evidence = await issue(store, sku, false);
   const id = randomUUID();
   const insertItemFirst = (db: PoolClient) => write(db, evidence, sku, {
-    orderId: id, item: { unit_amount_minor: 0, line_amount_minor: 0 }, beforeSource: () =>
+    orderId: id, beforeSource: () =>
       db.query("SET CONSTRAINTS trg_commerce_order_items_line_sum, trg_commerce_orders_line_sum IMMEDIATE"),
   });
   const error = await rejected(transaction(store.owner, insertItemFirst));
@@ -655,8 +655,7 @@ async function recordErasure(db: PoolClient, clientId: string) {
 it("allows only the named, same-transaction erasure with immutable accepted facts", async () => {
   const evidence = await issue(store, sku, false);
   const { id } = await writeChecked(evidence);
-  // Supply the queued row images via a disposable witness trigger. The
-  // assertion forward has no storage-trigger registration.
+  // Supply the queued row images directly via a disposable witness trigger.
   const attemptRedaction = async (db: PoolClient, substituteDigest: boolean) => {
     await db.query(`CREATE FUNCTION public.fixture_check_redaction() RETURNS trigger
       LANGUAGE plpgsql AS $$ BEGIN
@@ -665,18 +664,28 @@ it("allows only the named, same-transaction erasure with immutable accepted fact
       END; $$;
       CREATE CONSTRAINT TRIGGER fixture_check_redaction AFTER UPDATE ON public.commerce_order_tax_snapshots
         DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.fixture_check_redaction()`);
-    await eraseEvidence(db, evidence.clientId);
-    await recordErasure(db, evidence.clientId);
+    await db.query("LOCK TABLE public.identity_privacy_erasures IN SHARE ROW EXCLUSIVE MODE");
+    // Queue the controlled snapshot transition before erasing the remaining evidence.
     await db.query(`UPDATE public.commerce_order_tax_snapshots SET destination_erased=true,
       destination_digest=NULL,destination_policy_revision=NULL,delivery_selection_ref=NULL,
       accepted_money_digest=CASE WHEN $2::boolean THEN repeat('b',64) ELSE accepted_money_digest END WHERE order_id=$1`,
     [id, substituteDigest]);
+    await eraseEvidence(db, evidence.clientId);
+    await recordErasure(db, evidence.clientId);
     await db.query("SET CONSTRAINTS ALL IMMEDIATE");
   };
-  const attempt = (substituteDigest: boolean) =>
-    transaction(store.owner, db => attemptRedaction(db, substituteDigest), "ROLLBACK");
+  // The production child guard refuses the direct update even with matching new ledger data.
+  await expectMismatch(transaction(store.owner, db => attemptRedaction(db, false), "ROLLBACK"),
+    "/taxEvidence", lifecycleRemedy);
+  const isolateLandedAssertion = (db: PoolClient) => db.query(`ALTER TABLE public.commerce_order_tax_snapshots
+    DISABLE TRIGGER trg_commerce_order_tax_snapshots_money_v2`);
+  const attempt = (substituteDigest: boolean) => transaction(store.owner, async db => {
+    await isolateLandedAssertion(db);
+    await attemptRedaction(db, substituteDigest);
+  }, "ROLLBACK");
   await expectMismatch(attempt(true), "/taxEvidence", lifecycleRemedy);
   await transaction(store.owner, async db => {
+    await isolateLandedAssertion(db);
     await mutateRoutine(db, routine, [[`HINT='${lifecycleRemedy}'`, "HINT=remedy"]]);
     await expectMismatch(attemptRedaction(db, true), "/taxEvidence", replayRemedy);
   }, "ROLLBACK");
@@ -791,6 +800,13 @@ it("split_items_map_to_source retains a one-cent tax reduction and the unpromote
   ]);
 });
 
+async function writeErasedRestore(db: PoolClient, evidence: Evidence, options: { orderId?: string; bucketErased?: boolean } = {}) {
+  const orderId = options.orderId ?? randomUUID();
+  await db.query("LOCK TABLE public.commerce_orders IN SHARE ROW EXCLUSIVE MODE");
+  await db.query("SELECT public.commerce_order_money_v2_mark_restore_orders($1::uuid[])", [[orderId]]);
+  await write(db, evidence, sku, { ...options, orderId, erased: true });
+}
+
 it("requires the same-order tombstone and receipt on the erased restore arm", async () => {
   const evidence = await issue(store, sku, false, body => ({
     ...body,
@@ -806,7 +822,7 @@ it("requires the same-order tombstone and receipt on the erased restore arm", as
   await transaction(store.owner, db => eraseEvidence(db, evidence.clientId));
   await expectMismatch(transaction(store.owner, async db => {
     await ownerRestore(db);
-    await write(db, evidence, sku, { erased: true });
+    await writeErasedRestore(db, evidence);
   }), "/taxEvidence", evidenceRemedy);
   // Temporarily restored the old replay hint for missing erased evidence.
   await transaction(store.owner, async db => {
@@ -815,27 +831,42 @@ it("requires the same-order tombstone and receipt on the erased restore arm", as
       "AND t.state='erased'\n  )) THEN\n    RAISE EXCEPTION 'commerce_order_money_v2_mismatch' USING ERRCODE='23514', COLUMN='/taxEvidence', HINT=remedy;",
     ]]);
     await ownerRestore(db);
-    await write(db, evidence, sku, { erased: true });
+    await writeErasedRestore(db, evidence);
     await expectMismatch(db.query("SET CONSTRAINTS ALL IMMEDIATE"), "/taxEvidence", replayRemedy);
   }, "ROLLBACK");
   await transaction(store.owner, db => recordErasure(db, evidence.clientId));
   await expectMismatch(transaction(store.owner, async db => {
     await ownerRestore(db);
-    await write(db, evidence, sku, { erased: true, bucketErased: false });
+    await writeErasedRestore(db, evidence, { bucketErased: false });
   }), "/deliveryBuckets");
   const id = randomUUID();
   const restore = async (db: PoolClient, tables: string[]) => {
     await ownerRestore(db, tables);
-    await write(db, evidence, sku, { orderId: id, erased: true });
+    await writeErasedRestore(db, evidence, { orderId: id });
     await db.query("SET CONSTRAINTS ALL IMMEDIATE");
+    await db.query("DELETE FROM public.commerce_order_money_v2_restore_marks WHERE transaction_id=pg_current_xact_id()");
   };
   const partialLocks = restoreTables.filter(table => table !== fees);
   await expectMismatch(transaction(store.owner, db => restore(db, partialLocks)), "/taxEvidence");
-  // Temporarily disabled the fee relation's restore lock requirement in a disposable database transaction.
-  await transaction(store.owner, async db => {
-    await mutateRoutine(db, routine, [[
-      ",'public.commerce_order_fee_lines'::regclass))=7", "))=6",
+  const omitFeeLockFromChildGuard = (db: PoolClient) => mutateRoutine(db,
+    "public.commerce_order_money_v2_erased_insert_refused(uuid)", [[
+      ", 'public.commerce_order_fee_lines'::regclass)) = 7", ")) = 6",
     ]]);
+  const omitFeeLockFromAssertion = (db: PoolClient) => mutateRoutine(db, routine, [[
+    ",'public.commerce_order_fee_lines'::regclass))=7", "))=6",
+  ]]);
+  // Verify each guard still requires the fee lock when the other's check is disabled.
+  await transaction(store.owner, async db => {
+    await omitFeeLockFromChildGuard(db);
+    await expectMismatch(restore(db, partialLocks), "/taxEvidence");
+  }, "ROLLBACK");
+  await transaction(store.owner, async db => {
+    await omitFeeLockFromAssertion(db);
+    await expectMismatch(restore(db, partialLocks), "/taxEvidence", lifecycleRemedy);
+  }, "ROLLBACK");
+  await transaction(store.owner, async db => {
+    await omitFeeLockFromAssertion(db);
+    await omitFeeLockFromChildGuard(db);
     await restore(db, partialLocks);
   }, "ROLLBACK");
   await transaction(store.owner, db => restore(db, restoreTables));
@@ -867,8 +898,9 @@ it("refuses a shipping-scoped discount moved to a handling bucket on erased rest
     deliveryBuckets: [{ ...evidence.quote.deliveryBuckets[0]!, kind: "handling" }] } };
   const restore = async (db: PoolClient, input: Evidence) => {
     await ownerRestore(db);
-    await write(db, input, sku, { erased: true });
+    await writeErasedRestore(db, input);
     await db.query("SET CONSTRAINTS ALL IMMEDIATE");
+    await db.query("DELETE FROM public.commerce_order_money_v2_restore_marks WHERE transaction_id=pg_current_xact_id()");
   };
   await expectMismatch(transaction(store.owner, db => restore(db, handling)), "/discountAllocations");
   // Temporarily disabled the shipping bucket kind check in a disposable database transaction.
@@ -1221,7 +1253,8 @@ async function countCombinedCommit(evidence: Evidence, expected: number) {
       const skip = "IF NOT check_seal AND NOT check_projection AND p_before IS NULL THEN RETURN; END IF;";
       await mutateRoutine(db, routine, [[skip, ""]]);
       await write(db, evidence, sku);
-      await db.query("SET CONSTRAINTS ALL IMMEDIATE");
+      // Count the header and item events in this mutation control.
+      await db.query("SET CONSTRAINTS trg_commerce_orders_line_sum, trg_commerce_order_items_line_sum IMMEDIATE");
       const calls = await count();
       expect(calls).toEqual({ validations: 51, reconciliations: 1 });
       console.info(`Combined order mutation: ${calls.validations} validations, ${calls.reconciliations} reconciliations`);
@@ -1297,54 +1330,59 @@ it("matches supplementary Unicode boundaries and records the bounded exclusive c
   } }))).rejects.toMatchObject({ code: "23514", table: snapshots });
 }, postgresSetupTimeoutMs);
 
-it.each([1, 2])("checks a combined order near both wire caps exactly %i times", async expected => {
+it.each([1, 2])("checks a combined order near the completion base wire cap exactly %i times", async expected => {
   const lineKey = "dense-source";
   const promotions = Array.from({ length: 20 }, () => ({ id: `offer-${randomUUID()}`, lineKey }));
-  const positionCount = 32 * (promotions.length * 2 + 1);
-  const sealWireCap = 1_048_576;
+  const positionsPerState = 20;
+  const baseWireCap = 1_048_576;
   const evidence = await issue(store, sku, false, body => {
     const line = body.lines[0]!, position = line.taxPositions[0]!;
-    const sized = (refBytes: number) => {
-      const state = (amount: number) => ({
-        basisMinor: amount, netMinor: amount, taxMinor: 0,
-        taxPositions: Array.from({ length: 32 }, (_, index) => ({
-          ...position, positionRef: `dense-position-${index}`, taxableMinor: amount,
-          providerLineRef: "p".repeat(Math.min(256, refBytes - 1)),
-          resolution: { ...position.resolution, sourceRef: "s".repeat(Math.max(1, refBytes - 256)) },
+    const state = (amount: number) => ({
+      basisMinor: amount, netMinor: amount, taxMinor: 0,
+      // The full 32-position plan exceeded the base cap even with one-byte refs.
+      // These refs fill the remaining room on the 20-position plan.
+      taxPositions: Array.from({ length: positionsPerState }, (_, index) => ({
+        ...position, positionRef: `dense-position-${index}`, taxableMinor: amount,
+        providerLineRef: "p".repeat(16 + Number(index < 7) + Number(index === 0)),
+        resolution: { ...position.resolution, sourceRef: "s" },
+      })),
+    });
+    return {
+      ...body, deliveryBuckets: boundedHandling(), feeLines: boundedFees(), netTotal: 50, feeTotal: 256, payableMinor: 306,
+      lines: [{ ...line, lineKey, unitBasisMinor: 21, preDiscountMinor: 21, effectiveMinor: 1, netMinor: 1,
+        lineTotalMinor: 1, taxPositions: state(1).taxPositions,
+        discountAllocations: promotions.map(({ id }, slot) => ({
+          allocationId: randomUUID(), adjustmentRef: id, sequence: slot + 1, source: "legacy_promotion" as const,
+          basisReductionMinor: 1, netReductionMinor: 1, taxReductionMinor: 0, evidenceRef: "b".repeat(64),
+          before: state(21 - slot), after: state(20 - slot),
         })),
-      });
-      return {
-        ...body, deliveryBuckets: boundedHandling(), feeLines: boundedFees(), netTotal: 50, feeTotal: 256, payableMinor: 306,
-        lines: [{ ...line, lineKey, unitBasisMinor: 21, preDiscountMinor: 21, effectiveMinor: 1, netMinor: 1,
-          lineTotalMinor: 1, taxPositions: state(1).taxPositions,
-          discountAllocations: promotions.map(({ id }, slot) => ({
-            allocationId: randomUUID(), adjustmentRef: id, sequence: slot + 1, source: "legacy_promotion" as const,
-            basisReductionMinor: 1, netReductionMinor: 1, taxReductionMinor: 0, evidenceRef: "b".repeat(64),
-            before: state(21 - slot), after: state(20 - slot),
-          })),
-        }, ...Array.from({ length: 49 }, (_, index) => ({
-          ...line, lineKey: `source-${index + 2}`, sourceOrdinal: index + 2, unitBasisMinor: 1,
-          preDiscountMinor: 1, effectiveMinor: 1, netMinor: 1, lineTotalMinor: 1, taxPositions: [], discountAllocations: [],
-        }))],
-      };
+      }, ...Array.from({ length: 49 }, (_, index) => ({
+        ...line, lineKey: `source-${index + 2}`, sourceOrdinal: index + 2, unitBasisMinor: 1,
+        preDiscountMinor: 1, effectiveMinor: 1, netMinor: 1, lineTotalMinor: 1, taxPositions: [], discountAllocations: [],
+      }))],
     };
-    // Reserve bytes for the quote and seal envelope, then fill the repeated references.
-    const room = Math.min(CATALOG_DRAFT_MAX_BYTES, sealWireCap) - 8_192 - Buffer.byteLength(JSON.stringify(sized(2)));
-    const refBytes = 2 + Math.floor(room / positionCount);
-    expect(refBytes).toBeGreaterThanOrEqual(2);
-    expect(refBytes).toBeLessThanOrEqual(512);
-    return sized(refBytes);
-  }, { promotions });
+  }, { promotions, measureCompletion: true });
+  const { base, supplement, assembled } = evidence.completionBytes!;
+  expect(base, JSON.stringify(evidence.completionBytes)).toBeGreaterThan(baseWireCap - 128);
+  expect(base).toBeLessThanOrEqual(baseWireCap);
+  expect(supplement).toBeLessThanOrEqual(baseWireCap);
+  expect(assembled).toBe(base + supplement + 22);
+  expect(assembled).toBeLessThanOrEqual(2_097_174);
+  // The base completion cap binds first.
   const quoteBytes = Buffer.byteLength(JSON.stringify(evidence.quote));
-  const { rows: [seal] } = await store.owner.query<{ bytes: number }>(
+  const { rows: [stored] } = await store.owner.query<{ bytes: number }>(
     "SELECT octet_length(outcome_text) AS bytes FROM public.tax_calculations WHERE calculation_id=$1",
     [evidence.quote.taxEvidence.calculationId]);
-  expect(quoteBytes).toBeGreaterThan(CATALOG_DRAFT_MAX_BYTES * 0.99);
   expect(quoteBytes).toBeLessThanOrEqual(CATALOG_DRAFT_MAX_BYTES);
-  expect(seal!.bytes).toBeGreaterThan(sealWireCap * 0.99);
-  expect(seal!.bytes).toBeLessThanOrEqual(sealWireCap);
+  expect(stored!.bytes).toBeGreaterThanOrEqual(0.99 * 1_048_576);
+  expect(stored!.bytes).toBeLessThanOrEqual(1_048_576);
   expect(evidence.quote.lines).toHaveLength(50);
-  console.info(`Combined order fixture: 50 items and sources, ${promotions.length} allocations, ${positionCount} positions, ${quoteBytes} quote bytes, ${seal!.bytes} seal bytes`);
+  expect(evidence.quote.deliveryBuckets).toHaveLength(256);
+  expect(evidence.quote.feeLines).toHaveLength(256);
+  expect(evidence.quote.lines[0]!.discountAllocations).toHaveLength(20);
+  expect(evidence.quote.lines[0]!.taxPositions).toHaveLength(positionsPerState);
+  console.info(`Combined order fixture (${expected}): ${base} base bytes, ${supplement} supplement bytes, `
+    + `${assembled} assembled bytes, ${quoteBytes} quote bytes, ${stored!.bytes} stored outcome bytes`);
   await countCombinedCommit(evidence, expected);
 }, postgresSetupTimeoutMs);
 

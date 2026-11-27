@@ -258,7 +258,13 @@ in [Upgrade the database](../upgrade/database-migrations.md).
 | [`20261129130506_paid_order_money_v2_read.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/sql/20261129130506_paid_order_money_v2_read.sql) |
 | [`20261129130507_settings_wave3b_return_reasons_and_payment_preferences.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/sql/20261129130507_settings_wave3b_return_reasons_and_payment_preferences.sql) |
 | [`20261129130508_renewal_order_destination_v2.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/sql/20261129130508_renewal_order_destination_v2.sql) |
-| [`20261129130509_catalog_price_core_sku_modes_v2.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/sql/20261129130509_catalog_price_core_sku_modes_v2.sql) |
+| [`20261129160000_tax_calculation_adapter_money_v1.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/sql/20261129160000_tax_calculation_adapter_money_v1.sql) |
+| [`20261129160001_tax_calculation_adapter_money_activation.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/sql/20261129160001_tax_calculation_adapter_money_activation.sql) |
+| [`20261129160002_order_money_v2_child_guards.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/sql/20261129160002_order_money_v2_child_guards.sql) |
+| [`20261129160003_order_draft_receipts_v2.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/sql/20261129160003_order_draft_receipts_v2.sql) |
+| [`20261129160004_order_draft_receipt_privacy_v2.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/sql/20261129160004_order_draft_receipt_privacy_v2.sql) |
+| [`20261129160005_order_draft_payment_entry_fence.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/sql/20261129160005_order_draft_payment_entry_fence.sql) |
+| [`20261129160006_catalog_price_core_sku_modes_v2.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/sql/20261129160006_catalog_price_core_sku_modes_v2.sql) |
 | [`q2_00000000000000_platform_baseline.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/sql/q2_00000000000000_platform_baseline.sql) |
 | [`q2_20260810180001_self_host_actor_auth.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/sql/q2_20260810180001_self_host_actor_auth.sql) |
 | [`q2_20260816140000_acquisition_case_foundation.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/sql/q2_20260816140000_acquisition_case_foundation.sql) |

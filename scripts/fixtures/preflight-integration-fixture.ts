@@ -143,3 +143,27 @@ export function verifyStaleApiReportRepair(fixture: PreflightIntegrationFixture,
   fixture.commit("Regenerate the API report");
   fixture.fast(`API repaired (${cache})`, []);
 }
+
+export function verifyStaleSettingsRepair(fixture: PreflightIntegrationFixture, cache: "warm-seeded" | "cold", warm: boolean) {
+  fixture.reset(warm);
+  const dataPath = "packages/platform/src/inventory/settings-data.json";
+  const entries: { kind: string }[] = JSON.parse(fixture.get(dataPath));
+  fixture.put(
+    dataPath,
+    JSON.stringify([
+      ...entries,
+      { ...entries.find(entry => entry.kind === "invariant"), key: "inventory.fixtureFreshness", goal: "Describe the freshness fixture." },
+    ], null, 2) + "\n",
+  );
+  fixture.put("packages/platform/changes/fixture-freshness.md", "- Exercise the settings catalogue owner.\n");
+  fixture.commit("Add the fixture setting with its original catalogue");
+  fixture.fast(
+    `settings stale (${cache})`,
+    ["settings-catalogue"],
+    "settings-catalogue: FAIL packages/platform/settings-catalog.json is stale",
+    "node scripts/settings-catalogue.ts --write",
+  );
+  fixture.run(process.execPath, "scripts/settings-catalogue.ts", "--write");
+  fixture.commit("Regenerate the settings carriers");
+  fixture.fast(`settings repaired (${cache})`, []);
+}
