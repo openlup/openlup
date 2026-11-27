@@ -48,14 +48,11 @@ the catalogue money calculator's rate grammar.
 Ships a runnable TypeScript catalogue pack and nine installed recipes for checking
 owned definitions and fixtures. The static JSON sample remains available.
 
-Migration: Keep `owned/catalogue.json` for the existing wrapper. For a pristine
-starter, take `owned/catalogue.ts` from a fresh extraction of the target set. For
-a customized starter, reconcile the target registration and lazy registry around
-your own types and validators. Preserve your validation behavior and retain
-the unit factor migration. Run both starter scripts, `catalogue:check` and
-`catalogue:check:source`. Correct invalid registry definitions
-before starting the host. Follow the starter's existing installed-rules
-procedure if you opt into rule installation. These wrappers require no database upgrade.
+Migration: Follow [Convert the owned module from 1.3.0](docs/guide/upgrade/v1-4-0.md#convert-the-owned-module-from-130),
+then run the starter's `catalogue:check:source` npm script from your application
+root. Correct invalid registry definitions before starting the host. Retain the
+unit factor migration and follow the starter's installed-rules procedure if
+you opt into rule installation. The conversion requires no database upgrade.
 
 ### Share original quote and order money
 
@@ -168,8 +165,7 @@ verifying the conversion.
 Upgrade replaces a pristine `package.json` and removes the old
 `catalogue:check` script. For a customized manifest, use the upgrade-conflict
 workflow to reconcile the manifest, then switch local and CI calls to the
-`catalogue:check:source` npm script. These steps supersede the dual-wrapper
-instructions in the catalogue transport recipes.
+`catalogue:check:source` npm script.
 
 Demo installation now uses each non-starter entry in declaration order. Use an
 application-owned ID and namespace, update references together, and supply and
@@ -423,7 +419,7 @@ configuration. The starter validates it at start.
 Migration: Stop the application, then run the updated `./lifecycle up` with the
 existing Compose project, configuration, and listener port. [Starter guide](docs/guide/how-to/build/customize-the-starter.md#database-login)
 
-- On marked starter demos, installation closes the exact obsolete subscription price rows and retains their history. Coffee and supplements keep their one-time bases and subscription amounts. One Light still quotes 4,200 XTS minor units. A one-time bundle gives 5% off at 12,000 minor units or more. Three Light go from 12,600 to 11,970 and one Dawn with two Noon goes from 12,900 to 12,255. The database-backed host runs the promotion claim sweep and watchdog in the background, with repair steps in the starter guide. A fresh one-time checkout records the server’s re-quoted total even when the submitted expected total is stale. Expected-total comparison is a separate checkout policy decision.
+- On marked starter demos, installation closes the exact obsolete subscription price rows and retains their history. Coffee and supplements keep their one-time bases and subscription amounts. One Light still quotes 4,200 XTS minor units. A one-time bundle gives 5% off at 12,000 minor units or more. Three Light go from 12,600 to 11,970 and one Dawn with two Noon goes from 12,900 to 12,255. The database-backed host runs the promotion claim sweep and watchdog in the background, with repair steps in the starter guide. On a fresh one-time checkout, the starter returns `starter_quote_price_changed` before creating an order if the submitted total differs from the server's re-quoted total.
 
 ### Native starter cancellation and save offers
 
