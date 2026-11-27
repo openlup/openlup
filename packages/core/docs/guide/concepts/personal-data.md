@@ -46,9 +46,12 @@ Browser request, contributor-document and receipt shapes come from
 
 **Trust boundary.** The runtime login is the privacy authority in the database.
 The HTTP handler authorizes the human administrator. The occurrence privacy
-helper answers only for the requested subject. The function owner and
-`service_role`, when that role exists, can call it directly. Custom erase-only roles outside
-`service_role` fail closed with `PRIVACY_ASSESSMENT_UNAVAILABLE`.
+helper answers only for the requested subject. The function owner and `service_role`,
+when present, can call it directly. A direct SQL call without `EXECUTE` gets a database
+permission error (`42501`). On the paired native catalogue, a fresh mounted occurrence
+assessment fails closed with `PRIVACY_ASSESSMENT_UNAVAILABLE` if the effective runtime
+role lacks helper `EXECUTE`. The subscription veto and qualified receipt replay are
+decided first and keep their own results.
 
 Apply the complete native catalogue for the selected rollout. The installation
 owner declares required contributor IDs in the same ordered forward as the owner
