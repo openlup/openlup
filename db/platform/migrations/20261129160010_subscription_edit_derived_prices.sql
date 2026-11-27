@@ -173,9 +173,6 @@ DECLARE
   v_can_apply boolean := true;
   v_missing_sku boolean := false;
 BEGIN
-  IF current_setting('transaction_isolation') NOT IN ('read committed', 'read uncommitted') THEN
-    RAISE EXCEPTION 'subscription_command_admission_isolation_unsupported' USING ERRCODE = '22023';
-  END IF;
   IF p_idempotency_key IS NULL OR p_idempotency_key <> btrim(p_idempotency_key)
     OR char_length(p_idempotency_key) NOT BETWEEN 8 AND 180
   THEN
@@ -184,7 +181,7 @@ BEGIN
   IF starts_with(p_idempotency_key, 'command:') THEN
     RAISE EXCEPTION 'subscription_command_reserved_idempotency_key' USING ERRCODE = '22023';
   END IF;
-  IF jsonb_typeof(p_core_lines) <> 'array'
+  IF jsonb_typeof(p_core_lines) IS DISTINCT FROM 'array'
     OR jsonb_array_length(p_core_lines) NOT BETWEEN 1 AND 6
     OR jsonb_typeof(COALESCE(p_addon_lines, '[]'::jsonb)) <> 'array'
     OR jsonb_array_length(COALESCE(p_addon_lines, '[]'::jsonb)) > 12
@@ -342,6 +339,9 @@ BEGIN
           v_quote.catalog_acceptance, public.catalog_quoted_edit_evidence_v2(v_quote.proposed_lines, false)->'basket'
         )) END;
   ELSE
+    IF current_setting('transaction_isolation') NOT IN ('read committed', 'read uncommitted') THEN
+      RAISE EXCEPTION 'subscription_command_admission_isolation_unsupported' USING ERRCODE = '22023';
+    END IF;
     IF NOT EXISTS (
       SELECT 1 FROM public.subscription_renewal_terms
       WHERE subscription_id = v_subscription.id AND currency_code = v_subscription.currency_code
@@ -456,9 +456,6 @@ DECLARE
  v_expires_at timestamptz;
  v_reschedule_tz text;
 BEGIN
- IF current_setting('transaction_isolation') NOT IN ('read committed','read uncommitted') THEN
-  RAISE EXCEPTION 'subscription_command_admission_isolation_unsupported' USING ERRCODE='22023';
- END IF;
  IF p_actor_id IS NULL OR p_client_id IS NULL OR p_now IS NULL OR NOT isfinite(p_now)
   OR p_key IS NULL OR p_key<>btrim(p_key) OR char_length(p_key) NOT BETWEEN 8 AND 180
   OR p_payload IS NULL OR jsonb_typeof(p_payload)<>'object' OR p_payload ? 'acceptedQuoteHash' OR p_action IS NULL THEN
@@ -476,6 +473,9 @@ BEGIN
    RETURN jsonb_build_object('status','refused','reason','subscription_command_idempotency_conflict');
   END IF;
   RETURN r.result;
+ END IF;
+ IF current_setting('transaction_isolation') NOT IN ('read committed','read uncommitted') THEN
+  RAISE EXCEPTION 'subscription_command_admission_isolation_unsupported' USING ERRCODE='22023';
  END IF;
  <<preview_command>>
  BEGIN

@@ -408,10 +408,10 @@ describe("derived renewal price context in PostgreSQL", () => {
     return id;
   }
 
-  async function asEditActor<T>(f: EditFixture, run: (db: PoolClient) => Promise<T>) {
+  async function asEditActor<T>(f: EditFixture, run: (db: PoolClient) => Promise<T>, repeatableRead = false) {
     const db = await admin.connect();
     try {
-      await db.query("BEGIN");
+      await db.query(repeatableRead ? "BEGIN ISOLATION LEVEL REPEATABLE READ" : "BEGIN");
       await db.query("SET LOCAL ROLE authenticated");
       await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: f.principal, role: "authenticated" })]);
       const answer = await run(db);
@@ -421,17 +421,17 @@ describe("derived renewal price context in PostgreSQL", () => {
     finally { db.release(); }
   }
 
-  function request(f: EditFixture, core: EditLine[], addons: EditLine[] = [], key = randomUUID()) {
-    const actorParams = [f.subscriptionId, key, JSON.stringify(core), JSON.stringify(addons), "{}", 28, 1];
+  function request(f: EditFixture, core: EditLine[] | null, addons: EditLine[] = [], key = randomUUID()) {
+    const actorParams = [f.subscriptionId, key, core === null ? null : JSON.stringify(core), JSON.stringify(addons), "{}", 28, 1];
     const payload = { expectedTemplateVersion: 1, cadenceDays: 28, coreLines: core, addonLines: addons, compositionConstraint: {} };
     return {
       key,
-      actorPreview: () => asEditActor(f, async db => (await db.query(`SELECT
-        public.customer_subscription_preview_bundle_as_actor($1,$2,$3,$4,$5,$6,$7)->'preview' AS result`, actorParams)).rows[0].result),
+      actorPreview: (repeatableRead = false) => asEditActor(f, async db => (await db.query(`SELECT
+        public.customer_subscription_preview_bundle_as_actor($1,$2,$3,$4,$5,$6,$7)->'preview' AS result`, actorParams)).rows[0].result, repeatableRead),
       actorApply: (hash: string) => asEditActor(f, async db => (await db.query(`SELECT
         public.customer_subscription_apply_bundle_as_actor($1,$2,$3,$4,$5,$6,$7,$8)->'subscriptionAction' AS result`,
       [...actorParams.slice(0, 2), hash, ...actorParams.slice(2)])).rows[0].result),
-      commandPreview: async () => (await runtime.query(`SELECT
+      commandPreview: async (db: typeof runtime | typeof executor = runtime) => (await db.query(`SELECT
         public.subscription_command_preview($1,$2,$3,$4,'update_package_template',$5,$6) AS result`,
       [f.commandActor, f.clientId, key, f.subscriptionId, payload, await clock()])).rows[0].result,
       commandApply: async (hash: string) => rpc("subscription_command_apply", [f.commandActor, f.clientId, key, f.subscriptionId,
@@ -624,6 +624,37 @@ describe("derived renewal price context in PostgreSQL", () => {
       expect(appliedRows.quotes).toContainEqual(expect.objectContaining({ id: saved.quotes[0].id, accepted_event_id: applied.eventId }));
       expect(appliedRows.events).toHaveLength(saved.events.length + 1);
     }
+  });
+
+  it.each(["actor", "command"] as const)("replays an accepted quote under REPEATABLE READ (%s)", async path => {
+    const f = await editFixture(), subject = await editSku(list, 125);
+    const edit = request(f, [{ variantId: subject.id, qty: 2 }]);
+    const original = path === "actor" ? await edit.actorPreview() : await edit.commandPreview();
+    expect(original.quoteHash).toMatch(/^[a-f0-9]{64}$/u);
+    const applied = await (path === "actor" ? edit.actorApply(original.quoteHash) : edit.commandApply(original.quoteHash));
+    expect(applied).toMatchObject({ status: "applied", templateVersion: 2, eventId: expect.any(String) });
+    const before = await editRows(f);
+    expect(before.quotes).toMatchObject([{ quote_hash: original.quoteHash, status: "accepted", accepted_event_id: applied.eventId }]);
+    const receipts = () => admin.query("SELECT to_jsonb(r) AS receipt FROM public.subscription_command_receipts r WHERE subscription_id=$1",
+      [f.subscriptionId]).then(result => result.rows);
+    const beforeReceipts = await receipts();
+    const replay = path === "actor" ? await edit.actorPreview(true) : await transaction(async db => {
+      await db.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+      return edit.commandPreview(db);
+    });
+    expect(replay).toEqual(path === "actor" ? { ...original, templateVersion: applied.templateVersion } : applied);
+    expect(await editRows(f)).toEqual(before);
+    expect(await receipts()).toEqual(beforeReceipts);
+  });
+
+  it("refuses SQL NULL core with a payable derived add-on without saving a quote", async () => {
+    const f = await editFixture(), subject = await editSku(list, 125);
+    const before = await editRows(f);
+    const edit = request(f, null, [{ variantId: subject.id, qty: 1 }]);
+    const [preview] = await Promise.allSettled([edit.actorPreview()]);
+    expect.soft(preview).toMatchObject({ status: "rejected",
+      reason: { code: "22023", message: "subscription_edit_invalid_lines" } });
+    expect(await editRows(f)).toEqual(before);
   });
 
   it.each([

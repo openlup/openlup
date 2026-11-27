@@ -569,8 +569,8 @@ The `subscription_edit_derived_prices` forward
 uses the subscription's existing stored selector for each edit line, including
 zero-priced lines. When a line has no stored price, the native previews derive
 its unit from the subscription's price list and currency. Both lookups use the
-same database instant after the subscription lock is acquired. Hosts must run
-both previews in `READ COMMITTED` or `READ UNCOMMITTED`. If a preview refuses with
+same database instant after the subscription lock is acquired. Run fresh
+previews in `READ COMMITTED` or `READ UNCOMMITTED`. If a preview refuses with
 `subscription_command_admission_isolation_unsupported`, roll back and retry in
 either mode. Choose an available bundle or restore eligible
 catalogue pricing if a fresh preview returns `subscription_edit_catalog_unavailable`.
