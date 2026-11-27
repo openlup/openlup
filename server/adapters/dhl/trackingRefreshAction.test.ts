@@ -162,6 +162,22 @@ describe("tracking refresh action", () => {
     expect(fixture.log).toHaveBeenCalledWith(expect.stringContaining("send-email HTTP 503"));
     expect(fixture.log).toHaveBeenCalledWith(expect.stringContaining("failed to finish job run run-1"));
   });
+
+  it("bounds each poll by the remaining time budget", async () => {
+    const hungFetch = vi.fn(() => new Promise<Response>(() => {}));
+    const fixture = trackingFixture({
+      testers: [tester("tester-1")],
+      now: sequenceNow([0, 44_970, 45_000]),
+      fetchImpl: hungFetch as never,
+    });
+
+    const response = await fixture.action(request());
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({
+      error: TRACKING_FAILURE_CODE,
+      results: [{ tester_id: "tester-1", error: expect.stringContaining("timed out after 30ms") }],
+    });
+  });
 });
 
 function trackingFixture(input: {
@@ -173,6 +189,7 @@ function trackingFixture(input: {
   sendEmailResult?: { ok: boolean; status: number };
   finishError?: { message: string } | null;
   now?: () => Date;
+  fetchImpl?: typeof fetch;
 } = {}) {
   const lease = input.lease ?? { acquired: true, run_id: "run-1", reason: "claimed", lease_until: "2030-01-01T00:20:00Z" };
   const finish = vi.fn();
@@ -204,7 +221,7 @@ function trackingFixture(input: {
       },
   } as unknown as CarrierTrackingClient;
   const sendEmail = vi.fn().mockResolvedValue(input.sendEmailResult ?? { ok: true, status: 200 });
-  const fetchImpl = vi.fn().mockResolvedValue(new Response(input.xml ?? "<status>DWP</status>"));
+  const fetchImpl = input.fetchImpl ?? vi.fn().mockResolvedValue(new Response(input.xml ?? "<status>DWP</status>"));
   const log = vi.fn();
   return {
     action: createTrackingRefreshAction({

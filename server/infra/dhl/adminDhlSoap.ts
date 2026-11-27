@@ -1,5 +1,10 @@
+import { DEFAULT_COUNTRY_CODE } from "./commerceShipmentSoap.js";
+
 export const CARRIER_ENDPOINT = "https://dhl24.com.pl/webapi2/provider/service.html?ws=1";
 export const CARRIER_NAMESPACE = CARRIER_ENDPOINT;
+export const CARRIER_SOAP_TIMEOUT_MS = 15_000;
+export const CARRIER_LABEL_RESPONSE_MAX_BYTES = 5 * 1024 * 1024;
+export const CARRIER_SOAP_RESPONSE_MAX_BYTES = 512 * 1024;
 /** The provider's externally visible name; response and audit text use this exact value. */
 export const CARRIER_DISPLAY_NAME = "DHL";
 export const CARRIER_PROVIDER_ID = "dhl";
@@ -53,16 +58,149 @@ export function sanitizeCarrierError(error: unknown): string {
   return (result || `${CARRIER_DISPLAY_NAME} request failed`).slice(0, 300);
 }
 
-export async function callCarrierSoap(fetchImpl: typeof fetch, operation: string, body: string) {
-  const response = await fetchImpl(CARRIER_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Content-Type": "text/xml; charset=utf-8",
-      SOAPAction: `${CARRIER_NAMESPACE}#${operation}`,
-    },
-    body,
+export type CallCarrierSoapOptions = {
+  timeoutMs?: number;
+  maxBodyBytes?: number;
+  signal?: AbortSignal;
+};
+
+export class CarrierSoapResponseTooLargeError extends Error {
+  constructor(public readonly maxBodyBytes: number) {
+    super(`${CARRIER_DISPLAY_NAME} SOAP response exceeded ${maxBodyBytes} bytes`);
+    this.name = "CarrierSoapResponseTooLargeError";
+  }
+}
+
+export async function callCarrierSoap(
+  fetchImpl: typeof fetch,
+  operation: string,
+  body: string,
+  options: CallCarrierSoapOptions = {},
+): Promise<{ ok: boolean; status: number; text: string }> {
+  const timeoutMs = options.timeoutMs ?? CARRIER_SOAP_TIMEOUT_MS;
+  const maxBodyBytes = options.maxBodyBytes ?? CARRIER_LABEL_RESPONSE_MAX_BYTES;
+  const timeoutController = new AbortController();
+  const signal = options.signal
+    ? AbortSignal.any([options.signal, timeoutController.signal])
+    : timeoutController.signal;
+
+  if (options.signal?.aborted) {
+    throw toAbortError(options.signal.reason);
+  }
+  if (timeoutMs <= 0) {
+    const error = new Error(`${CARRIER_DISPLAY_NAME} SOAP request timed out after ${timeoutMs}ms`);
+    timeoutController.abort(error);
+    throw error;
+  }
+
+  const timer = setTimeout(() => {
+    timeoutController.abort(new Error(`${CARRIER_DISPLAY_NAME} SOAP request timed out after ${timeoutMs}ms`));
+  }, timeoutMs);
+
+  try {
+    const response = await raceWithAbort(
+      fetchImpl(CARRIER_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "text/xml; charset=utf-8",
+          SOAPAction: `${CARRIER_NAMESPACE}#${operation}`,
+        },
+        body,
+        redirect: "manual",
+        signal,
+      }),
+      signal,
+    );
+    const text = await readBoundedResponseText(response, maxBodyBytes, signal);
+    return { ok: response.ok, status: response.status, text };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function toAbortError(reason: unknown): Error {
+  if (reason instanceof Error) return reason;
+  if (typeof reason === "string" && reason.trim()) return new Error(reason);
+  return new Error(`${CARRIER_DISPLAY_NAME} SOAP request aborted`);
+}
+
+function raceWithAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(toAbortError(signal.reason));
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(toAbortError(signal.reason));
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
   });
-  return { ok: response.ok, status: response.status, text: await response.text() };
+}
+
+async function readBoundedResponseText(
+  response: Response,
+  maxBodyBytes: number,
+  signal: AbortSignal,
+): Promise<string> {
+  const contentLengthHeader = response.headers?.get?.("content-length");
+  if (contentLengthHeader) {
+    const declaredLength = Number(contentLengthHeader);
+    if (Number.isFinite(declaredLength) && declaredLength > maxBodyBytes) {
+      await response.body?.cancel().catch(() => {});
+      throw new CarrierSoapResponseTooLargeError(maxBodyBytes);
+    }
+  }
+
+  if (response.body && typeof response.body.getReader === "function") {
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let totalBytes = 0;
+    const onAbort = () => {
+      void reader.cancel(signal.reason).catch(() => {});
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    try {
+      for (;;) {
+        if (signal.aborted) {
+          await reader.cancel(signal.reason).catch(() => {});
+          throw toAbortError(signal.reason);
+        }
+        const chunk = await raceWithAbort(reader.read(), signal);
+        if (chunk.done) break;
+        totalBytes += chunk.value.byteLength;
+        if (totalBytes > maxBodyBytes) {
+          await reader.cancel().catch(() => {});
+          throw new CarrierSoapResponseTooLargeError(maxBodyBytes);
+        }
+        chunks.push(chunk.value);
+      }
+    } finally {
+      signal.removeEventListener("abort", onAbort);
+      try {
+        reader.releaseLock();
+      } catch {
+        // Ignore if stream is already closed or errored.
+      }
+    }
+    const combined = new Uint8Array(totalBytes);
+    let offset = 0;
+    for (const chunk of chunks) {
+      combined.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return new TextDecoder().decode(combined);
+  }
+
+  const text = await raceWithAbort(response.text(), signal);
+  if (Buffer.byteLength(text, "utf8") > maxBodyBytes) {
+    throw new CarrierSoapResponseTooLargeError(maxBodyBytes);
+  }
+  return text;
 }
 
 function escapedTag(tag: string): string {
@@ -232,4 +370,3 @@ export function buildGetLabelsEnvelope(auth: CarrierAdminAuth, shipmentId: strin
   </soapenv:Body>
 </soapenv:Envelope>`;
 }
-import { DEFAULT_COUNTRY_CODE } from "./commerceShipmentSoap.js";
