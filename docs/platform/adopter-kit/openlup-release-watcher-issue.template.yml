@@ -1,0 +1,103 @@
+# Optional scheduled release watcher for an application that installs @openlup/* from npm.
+# Copy to `.github/workflows/openlup-release-watcher-issue.yml`.
+#
+# Security posture (zero RCE):
+# - Least-privilege permissions: `issues: write` ONLY.
+# - ZERO `npm install`, ZERO `actions/checkout`, ZERO execution of any downloaded JavaScript.
+# - Reads only static JSON from the npm registry (`@openlup/core/latest`) and the tagged
+#   `packages/core/meta/release-index.json` file on GitHub, then creates or updates one
+#   deduplicated tracking Issue.
+name: OpenLup Release Watcher
+
+on:
+  schedule:
+    - cron: "0 9 * * 1"
+  workflow_dispatch: {}
+
+permissions:
+  issues: write
+
+concurrency:
+  group: openlup-release-watcher
+  cancel-in-progress: false
+
+jobs:
+  watch-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read npm latest metadata and tagged release-index.json without installing code
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          node --input-type=module - <<'EOF'
+          import { execFileSync } from "node:child_process";
+          import { writeFileSync } from "node:fs";
+
+          const registryRes = await fetch("https://registry.npmjs.org/@openlup%2Fcore/latest", {
+            headers: { Accept: "application/json" },
+          });
+          if (!registryRes.ok) {
+            throw new Error(`npm registry returned HTTP ${registryRes.status}`);
+          }
+          const registryMeta = await registryRes.json();
+          const latestVersion = registryMeta?.version;
+          if (typeof latestVersion !== "string" || !/^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/u.test(latestVersion)) {
+            throw new Error(`Unexpected @openlup/core version from npm registry: ${String(latestVersion)}`);
+          }
+
+          const tag = `openlup-core-v${latestVersion}`;
+          const indexUrl = `https://raw.githubusercontent.com/openlup/openlup/${tag}/packages/core/meta/release-index.json`;
+          const indexRes = await fetch(indexUrl, { headers: { Accept: "application/json" } });
+          if (!indexRes.ok) {
+            throw new Error(`release-index.json for ${tag} returned HTTP ${indexRes.status}`);
+          }
+          const releaseIndex = await indexRes.json();
+          const entry = Array.isArray(releaseIndex?.releases)
+            ? releaseIndex.releases.find((row) => row?.version === latestVersion)
+            : undefined;
+          if (!entry) {
+            throw new Error(`release-index.json for ${tag} has no entry for ${latestVersion}`);
+          }
+
+          const marker = `<!-- openlup-release-watcher:${latestVersion} -->`;
+          const title = `OpenLup ${latestVersion} released${entry.actionRequired ? " (action required)" : ""}`;
+          const lines = [
+            marker,
+            "",
+            `# OpenLup \`${latestVersion}\` Release Summary`,
+            "",
+            `- **Previous version:** \`${entry.previousVersion ?? "initial"}\``,
+            `- **Action required:** ${entry.actionRequired ? "yes" : "no"}`,
+            `- **Subpaths added:** ${entry.subpathsAdded?.length ?? 0}`,
+            `- **Symbols added:** ${entry.symbolsAdded?.length ?? 0}`,
+            `- **Symbols deprecated:** ${entry.symbolsDeprecated?.length ?? 0}`,
+            `- **SQL migrations added:** ${entry.sqlAdded?.length ?? 0}`,
+            `- **Settings added / changed / removed:** ${entry.settingsDelta?.added?.length ?? 0} / ${entry.settingsDelta?.changed?.length ?? 0} / ${entry.settingsDelta?.removed?.length ?? 0}`,
+            "",
+            "## Next steps in your application checkout",
+            "",
+            "1. Bump all `@openlup/*` packages together to `" + latestVersion + "`.",
+            "2. Run `npx --no -- openlup-context impact --from <your-current-version> --to " + latestVersion + " --format markdown`.",
+            "3. Run `npx --no -- openlup-context doctor --receipt upgrade-receipt.json`.",
+            "4. Follow `node_modules/@openlup/core/skills/openlup-upgrade/SKILL.md` and run your characterization test suite.",
+            "",
+            `Source metadata: \`${indexUrl}\``,
+            "",
+          ];
+          writeFileSync("/tmp/openlup-release-issue.md", lines.join("\n"), "utf8");
+
+          const existingIssues = JSON.parse(
+            execFileSync("gh", ["issue", "list", "--state", "all", "--limit", "100", "--json", "number,state,body"], { encoding: "utf8" }),
+          );
+          const match = existingIssues.find((issue) => typeof issue.body === "string" && issue.body.includes(marker));
+          if (match) {
+            if (match.state === "OPEN") {
+              execFileSync("gh", ["issue", "edit", String(match.number), "--title", title, "--body-file", "/tmp/openlup-release-issue.md"], { stdio: "inherit" });
+            } else {
+              console.log(`Issue #${match.number} for ${latestVersion} already closed; skipping.`);
+            }
+          } else {
+            execFileSync("gh", ["issue", "create", "--title", title, "--body-file", "/tmp/openlup-release-issue.md"], { stdio: "inherit" });
+          }
+          EOF

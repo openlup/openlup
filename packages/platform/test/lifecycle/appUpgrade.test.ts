@@ -1,7 +1,8 @@
 import { promises as fs } from "node:fs";
-import { execFile } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -336,5 +337,44 @@ describe("application scaffold upgrade", () => {
     const input = await fixture();
     input.to.files = { "invalid.ts": "\ud800" };
     await expect(planAppUpgrade(input)).rejects.toThrow("valid UTF-8");
+  });
+
+  it("delegates openlup upgrade impact, doctor, and agents sync to installed @openlup/core", async () => {
+    const root = await scratch();
+    const coreManifestPath = fileURLToPath(import.meta.resolve("@openlup/core/package.json"));
+    const coreDir = dirname(coreManifestPath);
+    const coreVersion = (JSON.parse(await fs.readFile(coreManifestPath, "utf8")) as { version: string }).version;
+    await fs.mkdir(join(root, "node_modules/@openlup"), { recursive: true });
+    await fs.symlink(coreDir, join(root, "node_modules/@openlup/core"), "dir");
+    await put(root, "package.json", JSON.stringify({
+      name: "platform-cli-delegation-fixture",
+      private: true,
+      type: "module",
+      dependencies: { "@openlup/core": coreVersion },
+    }));
+    await put(root, "package-lock.json", JSON.stringify({
+      name: "platform-cli-delegation-fixture",
+      lockfileVersion: 3,
+      packages: { "": {}, "node_modules/@openlup/core": { version: coreVersion } },
+    }));
+    await put(root, "src/index.ts", 'export * from "@openlup/core/subscription";\n');
+
+    const cli = fileURLToPath(new URL("../../src/lifecycle/openlup.mjs", import.meta.url));
+    const impact = spawnSync(process.execPath, [cli, "upgrade", "impact", "--from", "1.3.0", "--format", "json"], { cwd: root, encoding: "utf8" });
+    expect(impact.status, impact.stderr).toBe(0);
+    const impactJson = JSON.parse(impact.stdout);
+    expect(impactJson.formatVersion).toBe(1);
+    expect(impactJson.wildcardReexports).toEqual([{ file: "src/index.ts", line: 1, subpath: "@openlup/core/subscription" }]);
+
+    const doctor = spawnSync(process.execPath, [cli, "doctor", "--json"], { cwd: root, encoding: "utf8" });
+    expect(doctor.status, doctor.stderr).toBe(0);
+    expect(JSON.parse(doctor.stdout).verdict).toBe("ready");
+
+    const agentsSync = spawnSync(process.execPath, [cli, "agents", "sync", "--json"], { cwd: root, encoding: "utf8" });
+    expect(agentsSync.status, agentsSync.stderr).toBe(0);
+    expect(JSON.parse(agentsSync.stdout).status).toBe("updated");
+    const agentsCheck = spawnSync(process.execPath, [cli, "agents", "sync", "--check", "--json"], { cwd: root, encoding: "utf8" });
+    expect(agentsCheck.status, agentsCheck.stderr).toBe(0);
+    expect(JSON.parse(agentsCheck.stdout).status).toBe("up_to_date");
   });
 });

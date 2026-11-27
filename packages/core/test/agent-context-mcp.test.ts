@@ -164,7 +164,7 @@ describe("installed context MCP protocol", () => {
 
   it("lists exact tool input schemas without an inexact output schema", async () => {
     const { result: response } = await result(fixture(), request("tools/list"));
-    expect(response.tools.map((tool: { name: string }) => tool.name)).toEqual(["search_openlup_context", "read_openlup_file"]);
+    expect(response.tools.map((tool: { name: string }) => tool.name)).toEqual(["search_openlup_context", "read_openlup_file", "impact_openlup_upgrade"]);
     expect(response.tools[0].inputSchema).toEqual({ type: "object", properties: {
       task: { type: "string" }, includeApplicationCode: { type: "boolean", default: false }, includePackageCode: { type: "boolean", default: false },
       limit: { type: "integer", minimum: 1, maximum: 50, default: 8 },
@@ -172,6 +172,10 @@ describe("installed context MCP protocol", () => {
     expect(response.tools[1].inputSchema).toEqual({ type: "object", properties: {
       path: { type: "string" }, startLine: { type: "integer", minimum: 1 }, endLine: { type: "integer", minimum: 1 },
     }, required: ["path"], additionalProperties: false });
+    expect(response.tools[2].inputSchema).toEqual({ type: "object", properties: {
+      from: { type: "string" }, to: { type: "string" }, rail: { type: "string", enum: ["managed", "native"] },
+      excludeStarter: { type: "boolean", default: false }, includeDormant: { type: "boolean", default: false },
+    }, required: ["from"], additionalProperties: false });
     for (const tool of response.tools) expect(tool.outputSchema).toBeUndefined();
   });
 

@@ -3,6 +3,7 @@ import { closeSync, constants, fstatSync, openSync, readFileSync, readSync, real
 import { isAbsolute, join, relative, sep, win32 } from "node:path";
 import type { Readable, Writable } from "node:stream";
 import { formatContextResult, installedPackageRoots, searchContext } from "./agent-context-cli.js";
+import { analyzeUpgradeImpact, formatUpgradeImpactMarkdown } from "./upgrade-impact.js";
 
 const versions = ["2025-06-18", "2024-11-05"];
 const maxFileBytes = 200_000;
@@ -30,6 +31,19 @@ const tools = [
         startLine: { type: "integer", minimum: 1 },
         endLine: { type: "integer", minimum: 1 },
       }, required: ["path"], additionalProperties: false,
+    },
+  },
+  {
+    name: "impact_openlup_upgrade",
+    description: "Analyze the impact of upgrading installed @openlup/* packages from a starting SemVer version to a target version against this application's static imports (including wildcard export * barrels). Returns deterministic 4-bucket structured impact (actionRequiredOnYourImports, freeFixesOnYourImports, newOptInInYourDomains, sqlAndSettingsDelta) and Markdown summary offline from the installed @openlup/core release index.",
+    inputSchema: {
+      type: "object", properties: {
+        from: { type: "string" },
+        to: { type: "string" },
+        rail: { type: "string", enum: ["managed", "native"] },
+        excludeStarter: { type: "boolean", default: false },
+        includeDormant: { type: "boolean", default: false },
+      }, required: ["from"], additionalProperties: false,
     },
   },
 ];
@@ -118,6 +132,12 @@ function callTool(cwd: string, params: ObjectValue, hooks: ReadHooks): ObjectVal
     requireParams(typeof args.path === "string" &&
       ["startLine", "endLine"].every(key => args[key] === undefined || (Number.isSafeInteger(args[key]) && (args[key] as number) >= 1)) &&
       Object.keys(args).every(key => ["path", "startLine", "endLine"].includes(key)));
+  } else if (params.name === "impact_openlup_upgrade") {
+    requireParams(typeof args.from === "string" &&
+      (args.to === undefined || typeof args.to === "string") &&
+      (args.rail === undefined || args.rail === "managed" || args.rail === "native") &&
+      ["excludeStarter", "includeDormant"].every(key => args[key] === undefined || typeof args[key] === "boolean") &&
+      Object.keys(args).every(key => ["from", "to", "rail", "excludeStarter", "includeDormant"].includes(key)));
   } else { throw new InvalidParams(`Unknown tool: ${params.name}`); }
   try {
     if (params.name === "search_openlup_context") {
@@ -133,6 +153,20 @@ function callTool(cwd: string, params: ObjectValue, hooks: ReadHooks): ObjectVal
       return {
         content: [{ type: "text", text: formatContextResult(cwd, result) }],
         structuredContent: { ...result, hits: result.hits.map(hit => ({ ...hit, file: relative(cwd, hit.file).split(sep).join("/") })) },
+      };
+    }
+    if (params.name === "impact_openlup_upgrade") {
+      const report = analyzeUpgradeImpact({
+        root: cwd,
+        from: args.from as string,
+        ...(args.to !== undefined ? { to: args.to as string } : {}),
+        ...(args.rail !== undefined ? { rail: args.rail as "managed" | "native" } : {}),
+        excludeStarter: args.excludeStarter === true,
+        includeDormant: args.includeDormant === true,
+      });
+      return {
+        content: [{ type: "text", text: formatUpgradeImpactMarkdown(report) }],
+        structuredContent: report,
       };
     }
     return { content: [{ type: "text", text: readInstalledFile(cwd, args.path as string, args.startLine as number | undefined, args.endLine as number | undefined, hooks) }] };
