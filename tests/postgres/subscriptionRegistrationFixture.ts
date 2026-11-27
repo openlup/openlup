@@ -8,9 +8,9 @@ export const registrationParents = [
 export type RegistrationParent = typeof registrationParents[number];
 type Database = Pool | PoolClient;
 
-export async function seedRegistration(db: Database) {
-  const clientId = randomUUID(), orderId = randomUUID();
-  await db.query("INSERT INTO public.clients(id,email) VALUES($1,$2)", [clientId, `${clientId}@example.invalid`]);
+export async function seedRegistration(db: Database, existingClientId?: string) {
+  const clientId = existingClientId ?? randomUUID(), orderId = randomUUID();
+  if (!existingClientId) await db.query("INSERT INTO public.clients(id,email) VALUES($1,$2)", [clientId, `${clientId}@example.invalid`]);
   await db.query("INSERT INTO public.commerce_orders(id,client_id,currency_code,total_amount_minor) VALUES($1,$2,'XXX',0)", [orderId, clientId]);
   await db.query("SELECT public.subscription_declare_provisional_activation($1::text,$2::uuid,28,clock_timestamp())",
     [`declare:${orderId}`, orderId]);

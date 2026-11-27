@@ -9951,6 +9951,30 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "native-renewal-occurrence-privacy",
+        "path": "db/platform/migrations/20261129130509_native_renewal_occurrence_privacy.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.subscriptions__allocate_renewal_occurrence(uuid,uuid,text,jsonb)",
+            "searchPath": "pg_catalog, pg_temp",
+            "beforeSha256": "5010069482c117b5d06ae3e653545a8523162a93ba8bad2fce1b93337af0a501"
+          },
+          {
+            "signature": "public.subscriptions__create_renewal_v3_root(uuid,uuid,uuid,uuid,integer,text,text,text,integer)",
+            "searchPath": "pg_catalog, pg_temp",
+            "beforeSha256": "58a3a94c7e23bbd4f22ececaa78c471b2022d8b80f497cd5131b46e572d29eda"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.subscriptions__read_renewal_occurrences_for_privacy(uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -14495,6 +14519,27 @@
           "signature": "public.subscriptions__create_renewal_v3_root(uuid,uuid,uuid,uuid,integer,text,text,text,integer)",
           "beforeSha256": null,
           "afterSha256": "58a3a94c7e23bbd4f22ececaa78c471b2022d8b80f497cd5131b46e572d29eda"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261129130509_native_renewal_occurrence_privacy.sql",
+      "sha256": "168efb720844241b4e4a38af931a226b0d86027502326c091973b52670e2e3a6",
+      "functions": [
+        {
+          "signature": "public.subscriptions__allocate_renewal_occurrence(uuid,uuid,text,jsonb)",
+          "beforeSha256": "5010069482c117b5d06ae3e653545a8523162a93ba8bad2fce1b93337af0a501",
+          "afterSha256": "0cbbb8e1a4cfab0bc673dab01c3bdbd911249ffa77a4b527a7266c753e0b0eb6"
+        },
+        {
+          "signature": "public.subscriptions__create_renewal_v3_root(uuid,uuid,uuid,uuid,integer,text,text,text,integer)",
+          "beforeSha256": "58a3a94c7e23bbd4f22ececaa78c471b2022d8b80f497cd5131b46e572d29eda",
+          "afterSha256": "4de4568ec4644c376821bc07c3d2c061014da3214c994f6e18d75ae316bee6e8"
+        },
+        {
+          "signature": "public.subscriptions__read_renewal_occurrences_for_privacy(uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "66a8189e4da339562ae64fa0802a71e23d13fe0fb0fe88825b223594529d9f59"
         }
       ]
     }

@@ -872,7 +872,13 @@
       "config/public-reference-subscription-supabase.toml",
       "config/site-routes.json",
       "tests/postgres/customerAccountMutations.fixture.ts",
-      "tests/postgres/fixtures/privacyReplayRecorded.json"
+      "tests/postgres/fixtures/privacyReplayRecorded.json",
+      "tests/postgres/nativeRenewalOccurrence.fixture.ts",
+      "tests/postgres/nativeRenewalOccurrenceWriter.fixture.ts",
+      "tests/postgres/orderMoneyV2Storage.fixture.ts",
+      "tests/postgres/subscriptionActivationFixture.ts",
+      "tests/postgres/subscriptionNativeFixture.ts",
+      "tests/postgres/subscriptionRegistrationFixture.ts"
     ],
     "tests/postgres/promotionsNative.test.ts": [],
     "tests/postgres/purchaseReservationDonor.test.ts": [

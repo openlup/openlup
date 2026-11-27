@@ -49,6 +49,7 @@ export type PrivacyUseCaseDependencies<Context> = {
   unitOfWork: PrivacyUnitOfWork<Context>;
   registry: PersonalDataContributorRegistry<Context>;
   store: NativePrivacyStore<Context> | (PrivacyStore<Context> & { readonly privacyRail?: never });
+  verifyMissingSubject?(context: Context, subject: PrivacySubjectRef): Promise<void>;
   now(): Date;
   randomId(): string;
 };

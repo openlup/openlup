@@ -11,7 +11,7 @@ import { createPostgresPrivacyUnitOfWork, createPostgresPrivacyStore, createMana
   type PrivacyStore, type PrivacyUseCaseDependencies } from "@openlup/platform/identity";
 import type { HttpRequest, HttpResponse } from "@openlup/platform/http";
 import { resolveAdminAuthBinding } from "./adminAuthBinding.js";
-import { createSubscriptionsPrivacyContributor } from "./subscriptionsPrivacyContributor.js";
+import { createSubscriptionsPrivacyContributor, verifyMissingSubscriptionsPrivacySubject } from "./subscriptionsPrivacyContributor.js";
 import { createServiceRoleClient, resolveSupabaseServiceRoleEnv } from "../../_lib/admin-domain/auth.js";
 import { sendBffError } from "../../_lib/bff/response.js";
 import { readObservedResponseContext } from "../../_lib/observability/requestContext.js";
@@ -35,7 +35,8 @@ export function composeNativePrivacy(
     "identity", "subscriptions", "fulfillment-parcel-contacts", "customer-billing", "communication-events",
     "destination-receipts", "destination-documents", "customer-saved-addresses", "customer-preferences", "tax-calculations",
   ] });
-  const operations = createPrivacyOperations({ ...deps, registry, now: () => new Date(), randomId: randomUUID });
+  const operations = createPrivacyOperations({ ...deps, registry, verifyMissingSubject: verifyMissingSubscriptionsPrivacySubject,
+    now: () => new Date(), randomId: randomUUID });
   if (!isNativePrivacyOperations(operations)) throw nativePrivacyUnavailable(new Error("native_privacy_operations_required"));
   return {
     operations, registry,
