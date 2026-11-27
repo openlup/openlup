@@ -228,8 +228,19 @@ export async function probeToolchainNeeded({ event, env = processEnvironment, ap
   return needed;
 }
 
+async function admitsMixedDeferReceipt(receipt, observed, now, cwd, runGit) {
+  // A session spanning the hardening can need both modes. Check commit IDs before reading Git objects.
+  const { session } = receipt;
+  if (!Array.isArray(session?.history) || session.history.some(event => event === null)) return false;
+  const bases = new Set([receipt.base, session.candidate?.base,
+    ...session.history.filter(event => event.type === 'prepare').map(event => event.candidate?.base)]);
+  if (bases.size < 2 || [...bases].some(base => typeof base !== 'string' || !SHA.test(base))) return false;
+  const deferOptions = await sessionLegacyDeferOptions(cwd, session, runGit, [receipt.base]);
+  return admit({ receipt, observed: { ...observed, ...deferOptions }, now }).ok;
+}
+
 export async function readReceipts(api, root, pr, head, now, permissions = new Map(), invalidComments, currentHeadComments, {
-  readComments = readReceiptComments, receiptIds, onPermissionError,
+  readComments = readReceiptComments, receiptIds, onPermissionError, cwd = process.cwd(), runGit = git,
 } = {}) {
   const comments = [...await readComments(api, root, pr)];
   const receipts = [];
@@ -238,7 +249,12 @@ export async function readReceipts(api, root, pr, head, now, permissions = new M
     const receipt = parseReceipt(comment.body); const login = comment.user?.login;
     if (receipt === null && typeof comment.body === 'string' && comment.body.startsWith(RECEIPT_MARKER_PREFIX)) invalidComments?.push(comment);
     if (receipt?.pr === pr && receipt.head === head) currentHeadComments?.push(comment);
-    if (receipt?.pr !== pr || receipt.head !== head || !admit({ receipt, observed: { ...receipt, baseValid: true, legacyDefer: true }, now }).ok || comment.user?.type !== 'User' || typeof login !== 'string' || !login) continue;
+    if (receipt?.pr !== pr || receipt.head !== head || comment.user?.type !== 'User' || typeof login !== 'string' || !login) continue;
+    const observed = { ...receipt, baseValid: true };
+    const uniformAdmission = admit({ receipt, observed: { ...observed, legacyDefer: true }, now }).ok
+      || (receipt.version === 3 && admit({ receipt, observed, now }).ok);
+    const history = receipt.session?.history;
+    if (!uniformAdmission && !(receipt.version === 3 && Array.isArray(history) && history.some(event => event?.type === 'defer'))) continue;
     const key = login.toLowerCase();
     if (!permissions.has(key)) {
       try {
@@ -250,7 +266,7 @@ export async function readReceipts(api, root, pr, head, now, permissions = new M
         /* A failed lookup never establishes trust; the next poll asks again. */
       }
     }
-    if (permissions.get(key)) {
+    if (permissions.get(key) && (uniformAdmission || await admitsMixedDeferReceipt(receipt, observed, now, cwd, runGit))) {
       receipts.push(receipt);
       receiptIds?.set(receipt, comment.id);
     }
@@ -276,7 +292,7 @@ export async function waitNativeAdmission({ event, env = processEnvironment, api
     const invalidComments = [];
     const currentHeadComments = [];
     const receiptIds = new Map();
-    const receipts = await readReceipts(api, root, prNumber, pr.head.sha, now(), permissions, invalidComments, currentHeadComments, { readComments, receiptIds });
+    const receipts = await readReceipts(api, root, prNumber, pr.head.sha, now(), permissions, invalidComments, currentHeadComments, { readComments, receiptIds, cwd, runGit });
     for (const receipt of receipts) {
       const main = (await api.get(`${root}/git/ref/heads/main`)).object?.sha; demand(SHA.test(main) && (expectedMain === undefined || expectedMain === main), 'main commit identity is invalid or changed');
       const historical = receipt.version === 3 ? receipt.session.history.flatMap(event => event.type === 'prepare' ? [event.candidate.base, event.candidate.head] : event.type === 'renew' ? [event.proof.main] : []) : [];

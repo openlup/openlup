@@ -6,7 +6,7 @@ import { env as processEnvironment } from 'node:process';
 import { gzipSync } from 'node:zlib';
 import ts from 'typescript';
 import { describe, expect, it, vi } from 'vitest';
-import { admit, carryOver, COMPRESSED_RECEIPT_MARKER, DEFER_HARDENING, digest, ECONOMY_RECEIPT_MARKER, integrationReviewContext, prepareCandidate, receiptBody, RECEIPT_DETAILS_HEADER, RECEIPT_MARKER, receiptSummary, recordReport } from './agent-review-decide.mjs';
+import { admit, carryOver, COMPRESSED_RECEIPT_MARKER, DEFER_HARDENING, deferFinding, digest, ECONOMY_RECEIPT_MARKER, integrationReviewContext, prepareCandidate, receiptBody, RECEIPT_DETAILS_HEADER, RECEIPT_MARKER, receiptSummary, recordReport } from './agent-review-decide.mjs';
 import { carryOverSourceReview, createGitHubReadApi, diagnoseReceipt, enqueueAfterChecks, EXIT_AWAITING_RECEIPT, isMigrationQueueSerializedPath, parseReceipt, probeToolchainNeeded, readReceipts, reportQueueCliError, waitNativeAdmission } from './agent-review-queue.mjs';
 import { captureCommittedReviewCandidate, captureReviewRules, captureCoverageEdge, git as sourceGit } from './agent-review-session.mjs';
 import { createLocalQueueReadAdapter, observeQueueAdmission, parseQueueCommand, verifyQueueReview } from './agent-review-queue-planner.mjs';
@@ -332,7 +332,7 @@ describe('hosted receipt comments', () => {
     await expect(waitFor(rendered)).resolves.toEqual(summary);
   });
 
-  it('admits pre-PR-4 legacy defer receipts via waitNativeAdmission while refusing unhardened post-PR-4 defers', async () => {
+  it('admits deferrals according to the Git base of each review round', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'openlup-legacy-defer-'));
     const git = (...args: string[]) => execFileSync('/usr/bin/git', [
       '--no-replace-objects', '-C', cwd, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
@@ -360,6 +360,17 @@ describe('hosted receipt comments', () => {
       const legacyCand = await captureCommittedReviewCandidate(cwd, legacyBase, legacyHead);
       const legacyRules = await captureReviewRules(cwd, legacyCand);
       const intent = { risk: 'routine', criteria: 'Preserve legacy defer compatibility' };
+      const deferBases = { legacyDeferBases: new Set([legacyBase]) };
+      const confirmDefer = (session: ReturnType<typeof prepareCandidate>, options = {}) => {
+        const report = { cold: true, tree: session.candidate.tree, documentation: 'Checked.', closes: [] };
+        const failed = recordReport(session, {
+          ...report, reviewer: 'hard-r1', verdict: 'FAIL', findings: [{ id: 'HARD-1', summary: 'hardened card', material: true }],
+        }, time + 6, options);
+        const deferred = deferFinding(failed, { findingId: 'HARD-1', target: 'issue-2', decision: 'CM-2', reason: 'confirmed deferral' }, time + 7);
+        return recordReport(deferred, {
+          ...report, reviewer: 'hard-r2', verdict: 'PASS', findings: [], acceptsDefer: ['HARD-1'],
+        }, time + 8, options);
+      };
       const preSession = {
         version: 3,
         authorSessionId: 'author',
@@ -406,6 +417,11 @@ describe('hosted receipt comments', () => {
       // Case 1: Pre-PR-4 base + pre-PR-4 defer receipt admits cleanly.
       await expect(admitReal(legacyBase, legacyHead, legacyBody)).resolves.toEqual(legacySummary);
 
+      const legacyObserved = { ...legacyCand, rules: legacyRules, intent, authorSessionId: 'author' };
+      const forgedLegacySession = confirmDefer(prepareCandidate(undefined, legacyObserved, time + 5));
+      const forgedLegacySummary = receiptSummary(forgedLegacySession, 12, time + 8);
+      await expect(admitReal(legacyBase, legacyHead, receiptBody(forgedLegacySummary))).rejects.toThrow('invalid historical acceptsDefer');
+
       // Advance main with PR-4 DEFER_HARDENING.
       git('checkout', '-q', '--detach', legacyBase);
       put('scripts/agent-review-decide.mjs', `export const REVIEW_RULES_VERSION = 3;\nexport const DEFER_HARDENING = '${DEFER_HARDENING}';\nexport function deferFinding(session) { return session; }\n`);
@@ -419,13 +435,21 @@ describe('hosted receipt comments', () => {
       const integratedHead = git('rev-parse', 'HEAD');
       const integratedCand = await captureCommittedReviewCandidate(cwd, hardenedBase, integratedHead);
       const integratedObserved = { ...integratedCand, rules: await captureReviewRules(cwd, integratedCand), intent, authorSessionId: 'author' };
-      const deferBases = { legacyDeferBases: new Set([legacyBase]) };
       const integration = integrationReviewContext(preSession, integratedObserved, { parents: [legacyHead, hardenedBase], baseAncestor: true, mechanical: true }, time + 3, deferBases);
       const coverage = await captureCoverageEdge(cwd, preSession, integratedObserved, time + 3);
       const integratedSession = prepareCandidate(preSession, { ...integratedObserved, integration, coverage }, time + 3, false, deferBases);
       const integratedSummary = receiptSummary(integratedSession, 12, time + 3, deferBases);
       const integratedBody = receiptBody(integratedSummary, deferBases);
       await expect(admitReal(hardenedBase, integratedHead, integratedBody)).resolves.toEqual(integratedSummary);
+
+      const hardenedSession = prepareCandidate(undefined, integratedObserved, time + 5);
+      const hardenedSummary = receiptSummary(confirmDefer(hardenedSession), 12, time + 8);
+      const hardenedBody = receiptBody(hardenedSummary);
+      const api = { get: vi.fn(async path => path.includes('/collaborators/') ? { permission: 'write' } : [comment({ body: hardenedBody })]) };
+      await expect(readReceipts(api, '/repos/openlup/openlup', 12, integratedHead, time + 8)).resolves.toEqual([hardenedSummary]);
+
+      const mixedSummary = receiptSummary(confirmDefer(integratedSession, deferBases), 12, time + 8, deferBases);
+      await expect(admitReal(hardenedBase, integratedHead, receiptBody(mixedSummary, deferBases))).resolves.toEqual(mixedSummary);
 
       // Case 3: A fresh unhardened defer created AFTER PR-4 DEFER_HARDENING landed is strictly refused.
       git('checkout', '-q', '--detach', hardenedBase);
