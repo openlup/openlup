@@ -556,6 +556,28 @@ describe("clearClientState over a recording page (H10, H13)", () => {
     expect(fallback.log).toEqual(["evaluateAll :root []", "clearCookies", "evaluateAll :root [\"localStorage\"]"]);
   });
 
+  // The table on PageHandle, per path and document: the browser calls each row makes (the in-page clear on a
+  // document with no origin meets a SecurityError and clears nothing, which H12 pins).
+  const STATE = "setStorageState {\"cookies\":[],\"origins\":[]}";
+  it.each([
+    ["context path", "the store's origin", "full", "https://shop.example.test", ["evaluateAll :root []", STATE, "evaluateAll :root [\"sessionStorage\"]"]],
+    ["context path", "a document with no origin", "full", "null", ["evaluateAll :root []", STATE]],
+    ["context path", "another web origin", "full", "https://other.example.test", null],
+    ["fallback path", "the store's origin", "cookies", "https://shop.example.test", ["evaluateAll :root []", "clearCookies", "evaluateAll :root [\"localStorage\",\"sessionStorage\"]"]],
+    ["fallback path", "a document with no origin", "cookies", "null", ["evaluateAll :root []", "clearCookies", "evaluateAll :root [\"localStorage\"]"]],
+    ["fallback path", "another web origin", "cookies", "https://other.example.test", null],
+  ] as const)("pins the PageHandle table: the %s on %s (H10, H13)", async (_path, _document, context, documentOrigin, calls) => {
+    const fake = fakePage({ context, documentOrigin });
+    const cleared = createPageHandle(fake.page, { origin: "https://shop.example.test" }).clearClientState!();
+    if (calls === null) {
+      await expect(cleared).rejects.toThrow(/^storefront_page_client_state_foreign_origin: /);
+      expect(fake.log).toEqual(["evaluateAll :root []"]);
+    } else {
+      await cleared;
+      expect(fake.log).toEqual(calls);
+    }
+  });
+
   it("refuses a page without a browser context, or whose context cannot clear cookies, touching nothing (H13, T0.12)", async () => {
     const bare = fakePage();
     await expect(createPageHandle(bare.page).clearClientState!()).rejects.toThrow(

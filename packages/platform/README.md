@@ -4046,9 +4046,9 @@ and never in a buyer's bundle: a browser bundle of the entry fails, and the
   without query, the width, anchor lookup and visibility, the visible
   `state:` and `action:` anchors, clicking, filling, request interception
   (`pass`, `withhold`, which delivers the request and fails the page's
-  response, or `block`), `clearClientState()`, which clears every cookie of
-  the browser context and the local and session storage of the store's
-  origin, and `settled({ quietMs, timeoutMs })`, which resolves
+  response, or `block`), `clearClientState()`, which resets the browser
+  context's state for a new buyer, and `settled({ quietMs, timeoutMs })`,
+  which resolves
   once every intercepted request, followed through its redirects, has finished
   and `quietMs` passed with no new request, and otherwise rejects after
   `timeoutMs` naming the requests still open. An anchor is visible when its box is
@@ -4062,34 +4062,25 @@ and never in a buyer's bundle: a browser bundle of the entry fails, and the
   scrolled into view before it is measured, and every scroll position is restored afterwards, instantly
   whatever the page's `scroll-behavior`. The handle reads no clock.
 
-  `clearClientState()` clears every cookie of the browser context and the
-  local and session storage of the store's origin, as for a new buyer, without
-  sending a request or navigating. It reads the document's origin in the page
-  first: a document on another `http:` or `https:` origin than
-  `options.origin` rejects `storefront_page_client_state_foreign_origin`
-  before anything is cleared (without `options.origin`, any such origin is the
-  store's). It then calls the browser context's
-  `setStorageState({ cookies: [], origins: [] })`, which also clears
-  IndexedDB, or without it `clearCookies()` and a local-storage clear in the
-  page, and last clears session storage in the page on the store's origin. A
-  page without `context()` rejects `storefront_page_input_invalid`. The
-  member is optional on `PageHandle` so that a hand-built handle still
+  `clearClientState()` resets the browser state a new buyer would not have,
+  without sending a request or navigating. The `PageHandle` declaration in
+  the [API report](https://github.com/openlup/openlup/blob/main/packages/platform/api/storefront-testing.api.md)
+  holds the one table of what it clears on each path. In short: with the
+  browser context's `setStorageState` (a Playwright context) it clears every
+  cookie of the context, the local storage, IndexedDB and service-worker
+  registrations of every origin the context visited, the HTTP cache and
+  virtual WebAuthn credentials; without it, every cookie and the document's
+  local storage only. On both paths it clears this tab's session storage on
+  the store's origin, and never Cache Storage. On a document with no origin,
+  such as `about:blank`, no session storage is cleared, and the fallback
+  clears cookies only. When `options.origin` is given, a document on another
+  `http:` or `https:` origin rejects
+  `storefront_page_client_state_foreign_origin` before anything is cleared. A
+  page without `context()` rejects `storefront_page_input_invalid`. A harness
+  sets any state it needs (a preview sign-in cookie, local storage,
+  IndexedDB, WebAuthn credentials) in its arrangement, not before the run.
+  The member is optional on `PageHandle` so that a hand-built handle still
   compiles; without it the runner cannot isolate the two buyers (below).
-  Stated limits:
-
-  - Cookies are cleared for the whole browser context, harness cookies such
-    as a preview or test-environment sign-in included: a harness that sets one
-    before the run sets it again in its arrangement.
-  - On a document with no origin, such as `about:blank`, the store's session
-    storage in that tab cannot be reached, nor its local storage where the
-    context has no `setStorageState`; the call then resolves without clearing
-    them. A harness that leaves the store's origin between runs starts each
-    test in a fresh browser context (Playwright's per-test context does).
-  - A context's own reset (Playwright's `setStorageState`) also drops the HTTP
-    cache, virtual WebAuthn credentials and the service-worker registrations
-    of the origins the context visited, and fires storage events; its
-    IndexedDB deletion is started, not awaited.
-  - Cache Storage and service-worker registrations are outside the guarantee.
 
   Whether the buyer can bring an anchor into view is judged per axis before
   anything moves, walking its scrollers from the anchor outward: the overflow
@@ -4190,8 +4181,8 @@ exclusive database's count) and before its interceptor, so the control buyer
 never meets a purchase record, cookie or other browser state the clean buyer
 left. A rejection ends that run with `page_failed` (step `null`), so the
 result is `not_run` unless the clean run already proved ledger harm. One such
-rejection: when the clean run ends on another `http:` or `https:` origin than
-the store's (`options.origin`), `createPageHandle` refuses the control run's
+rejection: when `createPageHandle` was given `options.origin` and the clean
+run ends on another `http:` or `https:` origin, it refuses the control run's
 clear (`storefront_page_client_state_foreign_origin`). A handle
 without the member cannot isolate the buyers: an admitted scenario with a
 control run then ends `not_run` with `client_state_unisolated` only, before any

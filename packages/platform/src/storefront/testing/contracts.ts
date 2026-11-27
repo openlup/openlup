@@ -202,29 +202,44 @@ export type StorefrontObserver = {
  *   with `storefront_page_settle_timeout` naming each unfinished request's
  *   method and path: an open stream (`EventSource`), a long poll or a request
  *   in flight when the page closed keeps it pending until that bound.
- * - `clearClientState()` clears every cookie of the browser context and the
- *   local and session storage of the store's origin, as for a new buyer; it
- *   sends no request and never navigates. The runner calls it before each
- *   run, so the control run's buyer never meets the clean run's state. It is
- *   optional so that a hand-built handle written before it still compiles,
- *   but a handle without it cannot isolate the two buyers: every admitted
- *   scenario with a control run then ends `not_run` with
- *   `client_state_unisolated`. `createPageHandle` always provides it. Stated
- *   limits:
- *   - Cookies are cleared for the whole browser context, harness cookies such
- *     as a preview or test-environment sign-in included: a harness that sets
- *     one before the run sets it again in its arrangement.
- *   - On a document with no origin, such as `about:blank`, the store's
- *     session storage in that tab cannot be reached, nor its local storage
- *     where the context has no `setStorageState`; the call then resolves
- *     without clearing them. A harness that leaves the store's origin between
- *     runs starts each test in a fresh browser context.
- *   - A context's own reset (Playwright's `setStorageState`) also drops the
- *     HTTP cache, virtual WebAuthn credentials and the service-worker
- *     registrations of the origins the context visited, and fires storage
- *     events; its IndexedDB deletion is started, not awaited.
- *   - Cache Storage and service-worker registrations are outside the
- *     guarantee.
+ * - `clearClientState()` resets the browser state a new buyer would not
+ *   have; it sends no request and never navigates. The runner calls it
+ *   before each run, so the control run's buyer never meets the clean run's
+ *   state. It is optional so that a hand-built handle written before it still
+ *   compiles, but a handle without it cannot isolate the two buyers: every
+ *   admitted scenario with a control run then ends `not_run` with
+ *   `client_state_unisolated`. `createPageHandle` always provides it, and
+ *   this table is the one statement of what it clears. It takes the context
+ *   path when the page's browser context has `setStorageState` (a Playwright
+ *   context), else the fallback path (`clearCookies` and in-page clears).
+ *   "Visited origins" are the origins the browser context has loaded.
+ *
+ *   | State | Context path | Fallback path |
+ *   | --- | --- | --- |
+ *   | Cookies | every cookie of the browser context | every cookie of the browser context |
+ *   | Local storage | every visited origin | the document's origin only, when it has one |
+ *   | Session storage | this tab, on the store's origin only | this tab, on the store's origin only |
+ *   | IndexedDB | every visited origin; deletion started, not awaited | not cleared |
+ *   | HTTP cache | cleared where the browser supports it | not cleared |
+ *   | Virtual WebAuthn credentials | removed | not removed |
+ *   | Service-worker registrations | unregistered on every visited origin | not unregistered |
+ *   | Cache Storage | not cleared | not cleared |
+ *
+ *   By document: on the store's origin, as the table says. On a document
+ *   with no origin, such as `about:blank`, no session storage is cleared,
+ *   and the fallback path clears no local storage either (cookies only); the
+ *   call resolves. On another `http:` or `https:` origin than
+ *   `createPageHandle`'s `options.origin`, it rejects
+ *   `storefront_page_client_state_foreign_origin` before clearing anything;
+ *   without `options.origin`, every `http:` or `https:` origin counts as the
+ *   store's. The context path also fires storage events in open pages.
+ *   Guaranteed on both paths: every cookie of the context, and the store's
+ *   local storage and this tab's session storage when the page shows a
+ *   document of the store's origin. Everything else depends on the path, so
+ *   a harness sets any state it needs (a preview or test-environment sign-in
+ *   cookie, local storage, IndexedDB, WebAuthn credentials) in its
+ *   arrangement, not before the run, and starts each test in a fresh browser
+ *   context when it leaves the store's origin between runs.
  *
  * @experimental
  */
