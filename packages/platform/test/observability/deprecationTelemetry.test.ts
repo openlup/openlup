@@ -21,8 +21,8 @@ describe("emitDeprecationNoticeOnce", () => {
       emitDeprecationNoticeOnce(
         {
           symbol: "legacyFactory",
-          subpath: "@openlup/platform/payments/tpay",
-          replacement: "createTpayPaymentAdapter",
+          subpath: "@openlup/platform/payments",
+          replacement: "createPaymentAdapter",
           removeIn: "2.0.0",
         },
         sink,
@@ -33,8 +33,8 @@ describe("emitDeprecationNoticeOnce", () => {
       emitDeprecationNoticeOnce(
         {
           symbol: "legacyFactory",
-          subpath: "@openlup/platform/payments/tpay",
-          replacement: "createTpayPaymentAdapter",
+          subpath: "@openlup/platform/payments",
+          replacement: "createPaymentAdapter",
           removeIn: "2.0.0",
         },
         sink,
@@ -45,12 +45,12 @@ describe("emitDeprecationNoticeOnce", () => {
     expect(events[0]).toMatchObject({
       kind: "deprecation",
       symbol: "legacyFactory",
-      subpath: "@openlup/platform/payments/tpay",
-      replacement: "createTpayPaymentAdapter",
+      subpath: "@openlup/platform/payments",
+      replacement: "createPaymentAdapter",
       removeIn: "2.0.0",
     });
     expect(events[0]!.message).toContain("legacyFactory");
-    expect(events[0]!.message).toContain("createTpayPaymentAdapter");
+    expect(events[0]!.message).toContain("createPaymentAdapter");
     expect(events[0]!.message).toContain("2.0.0");
     expect(Number.isNaN(Date.parse(events[0]!.timestamp))).toBe(false);
   });

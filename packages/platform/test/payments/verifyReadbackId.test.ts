@@ -4,7 +4,6 @@ import type {
   PaymentProviderReconciliationProvider,
   VerifiableAttemptSnapshot,
 } from "../../src/payments/contracts/reconciliation.js";
-import { createTpayPaymentReconciliationProvider } from "../../src/payments/tpay/tpayPaymentReconciliationProvider.js";
 
 const AT = "2026-11-27T12:00:00.000Z";
 
@@ -15,15 +14,15 @@ function baseSnapshot(overrides: Partial<VerifiableAttemptSnapshot> = {}): Verif
     orderMode: "one_time",
     paymentIntentId: "33333333-3333-4333-8333-333333333333",
     intentStatus: "processing",
-    intentProviderPaymentId: "TR-DISPLAY-TITLE",
+    intentProviderPaymentId: "DISP-TITLE-1",
     paymentAttemptId: "44444444-4444-4444-8444-444444444444",
     paymentId: "55555555-5555-4555-8555-555555555555",
     attemptStatus: "processing",
-    provider: "tpay",
-    providerAttemptId: "TR-DISPLAY-TITLE",
-    providerSessionId: "01KZTPM9SVY8C9C2R70FSA63AJ",
+    provider: "custom-rail",
+    providerAttemptId: "DISP-TITLE-1",
+    providerSessionId: "01KZXM9SVY8C9C2R70FSA63AJ",
     amountMinor: 14900,
-    currency: "PLN",
+    currency: "EUR",
     localUpdatedAt: AT,
     ...overrides,
   };
@@ -37,7 +36,7 @@ describe("verifyPaymentAttemptNow provider-owned resolveReadbackId", () => {
       occurredAt: null,
       failureReason: null,
       amountMinor: null,
-      currency: "PLN",
+      currency: "EUR",
       rawPayload: {},
     });
     const resolveReadbackId = vi.fn((snapshot: { providerSessionId?: string | null }) => snapshot.providerSessionId);
@@ -54,15 +53,15 @@ describe("verifyPaymentAttemptNow provider-owned resolveReadbackId", () => {
     expect(resolveReadbackId).toHaveBeenCalledExactlyOnceWith(snapshot);
     expect(readPayment).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
-        providerPaymentId: "01KZTPM9SVY8C9C2R70FSA63AJ",
-        attempt: expect.objectContaining({ providerPaymentId: "01KZTPM9SVY8C9C2R70FSA63AJ" }),
+        providerPaymentId: "01KZXM9SVY8C9C2R70FSA63AJ",
+        attempt: expect.objectContaining({ providerPaymentId: "01KZXM9SVY8C9C2R70FSA63AJ" }),
       }),
     );
     expect(result).toMatchObject({
       status: "pending",
       verified: true,
       applied: false,
-      providerPaymentId: "01KZTPM9SVY8C9C2R70FSA63AJ",
+      providerPaymentId: "01KZXM9SVY8C9C2R70FSA63AJ",
     });
   });
 
@@ -73,7 +72,7 @@ describe("verifyPaymentAttemptNow provider-owned resolveReadbackId", () => {
       occurredAt: null,
       failureReason: null,
       amountMinor: null,
-      currency: "PLN",
+      currency: "EUR",
       rawPayload: {},
     });
     const snapshot = baseSnapshot({
@@ -103,7 +102,7 @@ describe("verifyPaymentAttemptNow provider-owned resolveReadbackId", () => {
       occurredAt: null,
       failureReason: null,
       amountMinor: null,
-      currency: "PLN",
+      currency: "EUR",
       rawPayload: {},
     });
     const snapshot = baseSnapshot({
@@ -126,85 +125,29 @@ describe("verifyPaymentAttemptNow provider-owned resolveReadbackId", () => {
     expect(result.providerPaymentId).toBe("pi_intent");
   });
 
-  it("treats explicit null from resolveReadbackId as unavailable instead of falling back to TR-* title", async () => {
-    const getTransaction = vi.fn();
-    const tpayProvider = createTpayPaymentReconciliationProvider({ getTransaction });
+  it("treats explicit null from resolveReadbackId as unavailable without falling back to display-only ids", async () => {
+    const readPayment = vi.fn();
     const snapshot = baseSnapshot({
-      provider: "tpay",
-      providerAttemptId: "TR-7Y65-Z346CJX",
-      intentProviderPaymentId: "TR-7Y65-Z346CJX",
+      provider: "strict-rail",
+      providerAttemptId: "DISP-TITLE-1",
+      intentProviderPaymentId: "DISP-TITLE-1",
       providerSessionId: null,
     });
 
     const result = await verifyPaymentAttemptNow({
       snapshot,
       applyPort: { applyTerminalResult: vi.fn() },
-      providers: { tpay: tpayProvider },
+      providers: { "strict-rail": { readPayment, resolveReadbackId: () => null } },
       now: () => new Date(AT),
     });
 
-    expect(getTransaction).not.toHaveBeenCalled();
+    expect(readPayment).not.toHaveBeenCalled();
     expect(result).toEqual({
       status: "unavailable",
       verified: false,
       applied: false,
       providerPaymentId: null,
       attempt: null,
-    });
-  });
-
-  it("reads Tpay transaction via providerSessionId rather than TR-* providerAttemptId", async () => {
-    const getTransaction = vi.fn().mockResolvedValue({
-      transactionId: "01KZTPM9SVY8C9C2R70FSA63AJ",
-      title: "TR-7Y65-Z346CJX",
-      status: "correct",
-      transactionPaymentUrl: null,
-      amount: 149,
-      currency: "PLN",
-      requestId: "req-1",
-      payments: { amountPaid: "149.00" },
-    });
-    const applyTerminalResult = vi.fn().mockResolvedValue({
-      replayed: false,
-      correctionStatus: "corrected",
-      paymentResult: {
-        paymentIntentId: "33333333-3333-4333-8333-333333333333",
-        paymentAttemptId: "44444444-4444-4444-8444-444444444444",
-        paymentId: "55555555-5555-4555-8555-555555555555",
-        orderId: "11111111-1111-4111-8111-111111111111",
-        status: "succeeded",
-        kind: "applied",
-        replayed: false,
-      },
-      subscriptionWebhookDunning: null,
-    });
-    const tpayProvider = createTpayPaymentReconciliationProvider({ getTransaction });
-
-    const result = await verifyPaymentAttemptNow({
-      snapshot: baseSnapshot({
-        provider: "tpay",
-        providerAttemptId: "TR-7Y65-Z346CJX",
-        intentProviderPaymentId: "TR-7Y65-Z346CJX",
-        providerSessionId: "01KZTPM9SVY8C9C2R70FSA63AJ",
-      }),
-      applyPort: { applyTerminalResult },
-      providers: { tpay: tpayProvider },
-      now: () => new Date(AT),
-    });
-
-    expect(getTransaction).toHaveBeenCalledExactlyOnceWith("01KZTPM9SVY8C9C2R70FSA63AJ");
-    expect(applyTerminalResult).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({
-        provider: "tpay",
-        providerPaymentId: "01KZTPM9SVY8C9C2R70FSA63AJ",
-        resultStatus: "succeeded",
-      }),
-    );
-    expect(result).toMatchObject({
-      status: "succeeded",
-      verified: true,
-      applied: true,
-      providerPaymentId: "01KZTPM9SVY8C9C2R70FSA63AJ",
     });
   });
 
@@ -215,7 +158,7 @@ describe("verifyPaymentAttemptNow provider-owned resolveReadbackId", () => {
       occurredAt: null,
       failureReason: null,
       amountMinor: null,
-      currency: "PLN",
+      currency: "EUR",
       rawPayload: {},
     });
     const resolveReadbackId = vi.fn();
