@@ -32,3 +32,4 @@ Migration: No application changes required. Snapshot scoping does not alter publ
 
 - Publishable on the npm `latest` dist-tag as `1.2.0`, from tag
   `openlup-outbox-v1.2.0`.
+

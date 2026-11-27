@@ -144,4 +144,4 @@ artifact evidence.
 
 ## Release notes
 
-Read [the changelog](CHANGELOG.md#100) before upgrading the package set.
+Read [the changelog](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/outbox/CHANGELOG-HISTORY.md#100) before upgrading the package set.

@@ -823,7 +823,7 @@ stock inputs. Reminder schedule installation reports a typed refusal when open
 orders block a schedule change.
 
 Migration: Apply the ordered native migration catalogue through
-`20261125140000_checkout_recovery_reminder_install_outcome.sql`. Match
+`20261125150000_checkout_recovery_reminder_install_outcome.sql`. Match
 `FulfillmentStockReplayConflictError` or
 `CheckoutRecoveryScheduleChangeBlockedError` using `instanceof`. The reminder
 error exposes `blockingOrders` as a decimal string, and both errors retain the
@@ -1395,3 +1395,4 @@ The starter owns
 `subscriptionCreation.editWindowHours` (default 72) and validates it at startup
 with `starter_subscription_creation_invalid`; all initial activation routes pass
 it, including 72, and therefore opt in.
+

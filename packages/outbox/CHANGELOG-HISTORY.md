@@ -26,7 +26,6 @@ Migration: keep a default branch for unknown union and literal-set values. Check
 
 - Republish unchanged Outbox runtime, exports and SQL with the complete `0.43.0`
   package set and exact `@openlup/core@0.43.0` peer.
-
 ## [0.42.0]
 
 - Publishable on the npm `latest` dist-tag as `0.42.0`, from tag
