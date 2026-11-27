@@ -10349,6 +10349,20 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "commerce-destination-v2-renewal-replay-guidance",
+        "path": "db/platform/migrations/20261129160010_commerce_destination_v2_renewal_replay_guidance.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.commerce_register_order_destination_v2(jsonb,uuid,text,uuid,uuid,jsonb,jsonb)",
+            "searchPath": "pg_catalog, pg_temp",
+            "beforeSha256": "0f13659ca4a6eb11d769b03acaebf1544980a48b69209a4029edea6f8d2514e3"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -15143,6 +15157,17 @@
           "signature": "public.subscription_destination_v2_current_for_edit(jsonb,uuid)",
           "beforeSha256": null,
           "afterSha256": "576218643973419621bab67b5c7d67ca334691ee64cb2a1ab4a9ea3e7cc830a3"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261129160010_commerce_destination_v2_renewal_replay_guidance.sql",
+      "sha256": "b4fbd6403eea9ef3446f45dbcaef587d29d774e67d969be4712107bc2efb49c7",
+      "functions": [
+        {
+          "signature": "public.commerce_register_order_destination_v2(jsonb,uuid,text,uuid,uuid,jsonb,jsonb)",
+          "beforeSha256": "0f13659ca4a6eb11d769b03acaebf1544980a48b69209a4029edea6f8d2514e3",
+          "afterSha256": "97f7ae60699bdb57e99dfb24990b4012362788e0392f846a9024ccc8ef0b4760"
         }
       ]
     }

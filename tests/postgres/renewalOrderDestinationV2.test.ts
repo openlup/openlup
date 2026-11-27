@@ -142,7 +142,8 @@ function catalogueAt(file: string, include: boolean) {
 }
 
 const catalogPath = "config/platform-migration-manifest.json";
-async function measuredUpgrade(file: string, label: string, run: (store: AccountMutationsStore) => Promise<void>) {
+async function measuredUpgrade(file: string, label: string,
+  run: (store: AccountMutationsStore, replaySuffix: () => Promise<void>) => Promise<void>) {
   const prefix = catalogueAt(file, false), candidate = catalogueAt(file, true);
   await withPlatformCatalog(candidate, async upgradeRoot => {
     if (file !== manifest.qualified.forward.at(-1)?.file) {
@@ -158,10 +159,10 @@ async function measuredUpgrade(file: string, label: string, run: (store: Account
         if (store.installation.generation !== "qualified-v2") throw new Error("Expected restricted qualified runtime");
         prefix.qualified.objectInventorySha256.bootstrapMigrator.withRestore = store.inventory;
         writeFileSync(join(root, catalogPath), JSON.stringify(prefix));
-        const runner = createPostgresMigrationRunner({ connectionString: store.migrator.options.connectionString! }, {
-          installation: store.installation, root, poolFactory: () => store.migrator,
+        const runnerAt = (catalogueRoot: string) => createPostgresMigrationRunner({ connectionString: store.migrator.options.connectionString! }, {
+          installation: store.installation, root: catalogueRoot, poolFactory: () => store.migrator,
         });
-        expect(await runner.apply()).toEqual({ applied: [] });
+        expect(await runnerAt(root).apply()).toEqual({ applied: [] });
         expect(await data(store.runtime, `SELECT session_user AS login, rolsuper, rolcreaterole, rolbypassrls
           FROM pg_roles WHERE rolname=session_user`)).toEqual([{
           login: store.installation.runtimeLogin, rolsuper: false, rolcreaterole: false, rolbypassrls: false,
@@ -169,10 +170,16 @@ async function measuredUpgrade(file: string, label: string, run: (store: Account
         const tail = prefix.qualified.forward.at(-1)!;
         expect(await data(store.owner, "SELECT catalog_path,sha256 FROM public.platform_schema_migrations ORDER BY position DESC LIMIT 1"))
           .toEqual([{ catalog_path: tail.file, sha256: tail.sha256 }]);
-        expect(await store.runner.status()).toStrictEqual({
-          applied: [prefix.qualified.baseline, ...prefix.qualified.forward].map(unit => unit.file), pending: [file],
+        const previous = [prefix.qualified.baseline, ...prefix.qualified.forward].map(unit => unit.file);
+        expect(await store.runner.status()).toStrictEqual({ applied: previous, pending: [file] });
+        await run(store, async () => {
+          const current = runnerAt(process.cwd());
+          const [boundary, ...remainder] = manifest.qualified.forward.slice(prefix.qualified.forward.length).map(unit => unit.file);
+          expect(boundary).toBe(file);
+          expect(await current.status()).toStrictEqual({ applied: [...previous, file], pending: remainder });
+          expect(await current.apply()).toStrictEqual({ applied: remainder });
+          expect(await current.status()).toStrictEqual({ applied: [...previous, file, ...remainder], pending: [] });
         });
-        await run(store);
         expect(store.inventory).toBe(candidate.qualified.objectInventorySha256.bootstrapMigrator.withRestore);
       } finally { await store.close(); }
     });
@@ -227,7 +234,7 @@ it("upgrades in place with byte-identical checkout export and retained reads, in
     "fulfillment_capture_order_contact_for_shipment", "fulfillment_resolve_parcel_contact"];
   const definitions = (db: Db) => data(db, `SELECT proname::text, pg_get_functiondef(oid) AS definition, proacl, proowner, proconfig
     FROM pg_proc WHERE pronamespace='public'::regnamespace AND proname=ANY($1::text[]) ORDER BY oid`, [predecessorRoutines]);
-  await measuredUpgrade(migration.file, "renewal-destination-upgrade", async store => {
+  await measuredUpgrade(migration.file, "renewal-destination-upgrade", async (store, replaySuffix) => {
     const previous = await definitions(store.owner);
     expect(new Set(previous.map(row => row.proname))).toEqual(new Set(predecessorRoutines));
     const checkoutBytes = await checkoutControls(store);
@@ -235,6 +242,8 @@ it("upgrades in place with byte-identical checkout export and retained reads, in
     expect(await store.runner.apply()).toStrictEqual({ applied: [migration.file] });
     expect(await definitions(store.owner)).toStrictEqual(previous);
     expect(await checkoutBytes()).toStrictEqual(before);
+    await replaySuffix();
+    expect(await checkoutBytes(), "checkout bytes after replaying the full catalogue suffix").toStrictEqual(before);
   });
 }, postgresSetupTimeoutMs);
 
@@ -743,10 +752,21 @@ it("refuses a locked inherited document without consuming the edit and permits a
 it.each(["inherited", "explicit"] as const)("refuses checkout replay for verified %s renewal bindings after ownership and evidence checks without writes", async kind => {
   const { f, selected, target } = await boundRenewal(store, kind);
   const request = checkoutCheck(f.ctx.scopeRef, selected);
+  const port = createPostgresDestinationPortV2(store.runtime);
   const before = await effects(store.owner, f);
-  expect(await createPostgresDestinationPortV2(store.runtime).registerOrder(f.ctx, target.order, request)).toMatchObject({
+  const checkoutReplay = (service: Destination["service"]) => call(store.runtime, "commerce_register_order_destination_v2",
+    [f.checkout, f.origin, "checkout", f.checkout.scopeRef, f.ny.selectionRevision, f.ny.binding, service]);
+  const checkoutOccupied = await call(store.owner, "commerce_destination_v2_refusal", ["occupied", "orderId"]);
+  expect(checkoutOccupied).toMatchObject({
     code: "destination_order_binding_occupied", field: "orderId",
+    recheck: "Replay with the original authenticated evidence or resolve through the order owner.",
   });
+  expect(encode(await checkoutReplay(f.ny.service))).toStrictEqual(encode(f.ny.binding));
+  expect(encode(await checkoutReplay({ ...f.ny.service, serviceRef: "different-service" }))).toStrictEqual(encode(checkoutOccupied));
+  expect(await port.registerOrder(f.ctx, target.order, request)).toStrictEqual({
+    ...checkoutOccupied, recheck: "Use the authorized subscription workflow to read the retained destination for this order.",
+  });
+  expect(await port.read(f.ctx, "order", target.order, selected.binding)).toMatchObject({ binding: selected.binding });
   expect(await effects(store.owner, f)).toStrictEqual(before);
   await ownerTransaction(store.owner, async db => {
     const port = createPostgresDestinationPortV2(db);
