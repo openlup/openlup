@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { gunzipSync, inflateRawSync } from 'node:zlib';
-import { admit, demand, RECEIPT_MARKER, ECONOMY_RECEIPT_MARKER, COMPRESSED_RECEIPT_MARKER, RECEIPT_DETAILS_HEADER } from './agent-review-decide.mjs';
+import { admit, demand, RECEIPT_MARKER, ECONOMY_RECEIPT_MARKER, COMPRESSED_RECEIPT_MARKER, RECEIPT_DETAILS_HEADER, validateV3ReceiptEnvelope } from './agent-review-decide.mjs';
 import { captureCommittedReviewCandidate, captureReviewRules, carryOverSourceReview, git, sessionLegacyDeferOptions, validateEconomySession } from './agent-review-session.mjs';
 import { RECEIPT_MARKER_PREFIX } from './ci-receipt-rerun.mjs';
 import { assertCoLocatedForwardApproval, hasExactManagedForward, isNativeStoreMigrationPath, PG_SUITE_CLOSURES_PATH, REVIEWED_FORWARD_PATH } from './reviewed-platform-forward.ts';
@@ -17,6 +17,7 @@ export { carryOverSourceReview } from './agent-review-session.mjs';
 
 const execute = promisify(execFile);
 const SHA = /^[a-f0-9]{40}$/u;
+const isSourceId = ref => typeof ref === 'string' && SHA.test(ref);
 const RECEIPT_LIMIT = 1024 * 1024;
 const COMMENTS_PER_PAGE = 50;
 export const EXIT_AWAITING_RECEIPT = 78;
@@ -228,13 +229,19 @@ export async function probeToolchainNeeded({ event, env = processEnvironment, ap
 
 function couldUseMixedDeferPolicy(receipt) {
   // Only histories prepared on distinct bases can require both defer modes.
-  const { session } = receipt;
-  if (receipt.version !== 3 || receipt.verdict !== 'PASS' || session?.version !== 3) return false;
-  if (typeof receipt.base !== 'string' || !SHA.test(receipt.base) || receipt.base !== session.candidate?.base) return false;
-  const { history } = session;
-  if (!Array.isArray(history) || history.some(event => event === null) || !history.some(event => event.type === 'defer')) return false;
-  const bases = new Set(history.filter(event => event.type === 'prepare').map(event => event.candidate?.base));
-  return bases.size >= 2 && [...bases].every(base => typeof base === 'string' && SHA.test(base));
+  if (receipt.version !== 3 || !receipt.session.history.some(event => event.type === 'defer')) return false;
+  return new Set(receipt.session.history.filter(event => event.type === 'prepare').map(event => event.candidate.base)).size >= 2;
+}
+
+function receiptSourceRefs(receipt) {
+  const historical = receipt.version === 3 ? receipt.session.history.flatMap(event => {
+    if (event.type === 'prepare') {
+      demand(isSourceId(event.candidate.tree), 'receipt references invalid source objects');
+      return [event.candidate.base, event.candidate.head];
+    }
+    return event.type === 'renew' ? [event.proof.main] : [];
+  }) : [];
+  return [receipt.base, receipt.head, ...historical];
 }
 
 export async function readReceipts(api, root, pr, head, now, permissions = new Map(), invalidComments, currentHeadComments, {
@@ -248,10 +255,17 @@ export async function readReceipts(api, root, pr, head, now, permissions = new M
     if (receipt === null && typeof comment.body === 'string' && comment.body.startsWith(RECEIPT_MARKER_PREFIX)) invalidComments?.push(comment);
     if (receipt?.pr === pr && receipt.head === head) currentHeadComments?.push(comment);
     if (receipt?.pr !== pr || receipt.head !== head || comment.user?.type !== 'User' || typeof login !== 'string' || !login) continue;
-    const observed = { ...receipt, baseValid: true };
-    const uniformAdmission = admit({ receipt, observed: { ...observed, legacyDefer: true }, now }).ok
-      || (receipt.version === 3 && admit({ receipt, observed, now }).ok);
-    if (!uniformAdmission && !couldUseMixedDeferPolicy(receipt)) continue;
+    try {
+      if (!receiptSourceRefs(receipt).every(isSourceId)) continue;
+      const observed = { ...receipt, baseValid: true };
+      const uniformAdmission = admit({ receipt, observed: { ...observed, legacyDefer: true }, now }).ok
+        || (receipt.version === 3 && admit({ receipt, observed, now }).ok);
+      if (!uniformAdmission) {
+        if (!couldUseMixedDeferPolicy(receipt)) continue;
+        // A mixed history can defer policy replay, but still needs a valid envelope.
+        validateV3ReceiptEnvelope(receipt, now);
+      }
+    } catch { continue; }
     const key = login.toLowerCase();
     if (!permissions.has(key)) {
       try {
@@ -294,9 +308,8 @@ export async function waitNativeAdmission({ event, env = processEnvironment, api
       const main = (await api.get(`${root}/git/ref/heads/main`)).object?.sha; demand(SHA.test(main) && (expectedMain === undefined || expectedMain === main), 'main commit identity is invalid or changed');
       let candidate; let baseValid; let legacyRules; let legacyDeferOptions = {};
       try {
-        const historical = receipt.version === 3 ? receipt.session.history.flatMap(event => event.type === 'prepare' ? [event.candidate.base, event.candidate.head] : event.type === 'renew' ? [event.proof.main] : []) : [];
-        const refs = [...new Set([receipt.base, receipt.head, main, ...historical, ...(group ? [group.base_sha, group.head_sha] : [])])];
-        demand(refs.every(ref => typeof ref === 'string' && SHA.test(ref)), 'receipt references invalid source objects');
+        const refs = [...new Set([...receiptSourceRefs(receipt), main, ...(group ? [group.base_sha, group.head_sha] : [])])];
+        demand(refs.every(isSourceId), 'receipt references invalid source objects');
         if (!committedObjectsOnly) {
           await runGit(cwd, '-c', 'transfer.fsckObjects=true', 'fetch', '--no-tags', '--no-write-fetch-head', 'origin', ...refs);
           await runGit(cwd, 'update-ref', 'refs/remotes/origin/main', main);

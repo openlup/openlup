@@ -464,6 +464,12 @@ describe('hosted receipt comments', () => {
       await expect(readReceipts(api, '/repos/openlup/openlup', 12, integratedHead, time + 8)).resolves.toEqual([hardenedSummary]);
 
       const mixedSummary = receiptSummary(confirmDefer(integratedSession, deferBases), 12, time + 8, deferBases);
+      const badDigestBody = receiptBody({ ...mixedSummary, sessionDigest: digest([]) }, deferBases);
+      const badDigestApi = receiptApi(hardenedBase, integratedHead, badDigestBody);
+      const invalidMixed = await readReceipts(badDigestApi, '/repos/openlup/openlup', 12, integratedHead, time + 10);
+      expect(badDigestApi.get.mock.calls).toEqual([['/repos/openlup/openlup/issues/12/comments?per_page=50&page=1']]);
+      expect(invalidMixed).toEqual([]);
+
       git('merge-base', '--is-ancestor', legacyBase, integratedHead);
       git('-C', runner, 'init', '-q', '-b', 'main');
       git('-C', runner, 'remote', 'add', 'origin', cwd);

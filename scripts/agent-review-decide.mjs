@@ -687,13 +687,20 @@ export function receiptBody(summary, options = {}) {
   demand(compressed.length <= limit, `compressed receipt is ${compressed.length} characters (limit ${limit}). The session history is too long for one comment. Split the change or start a new native session with new counted reviews.`);
   return compressed;
 }
+export function validateV3ReceiptEnvelope(receipt, now) {
+  demand(Object.keys(receipt).sort().join(',') === 'base,expires,head,pr,risk,session,sessionDigest,tree,verdict,version', 'v3 receipt keys differ');
+  demand(receipt.session?.version === 3 && digest(receipt.session) === receipt.sessionDigest, 'v3 history digest differs');
+  // Risk classification and expiry are legacy summary metadata; exact source and history still bind admission.
+  demand(RISKS.includes(receipt.risk) && Number.isFinite(receipt.expires), 'v3 summary metadata is invalid');
+  demand(Number.isFinite(now), 'verification time is invalid');
+  demand(Number.isSafeInteger(receipt.pr) && receipt.pr > 0, 'PR number is invalid');
+  demand(receipt.verdict === 'PASS' && ['base', 'head', 'tree'].every(key =>
+    typeof receipt[key] === 'string' && SHA.test(receipt[key]) && receipt[key] === receipt.session.candidate?.[key]), 'v3 summary differs');
+}
 export function admit({ receipt, observed, now }) {
   if (receipt?.version === 3) {
     try {
-      demand(Object.keys(receipt).sort().join(',') === 'base,expires,head,pr,risk,session,sessionDigest,tree,verdict,version', 'v3 receipt keys differ');
-      demand(receipt.session?.version === 3 && digest(receipt.session) === receipt.sessionDigest, 'v3 history digest differs');
-      // Risk classification and expiry are legacy summary metadata; exact source and history still bind admission.
-      demand(RISKS.includes(receipt.risk) && Number.isFinite(receipt.expires), 'v3 summary metadata is invalid');
+      validateV3ReceiptEnvelope(receipt, now);
       const deferOptions = {
         ...(observed?.legacyDefer === true ? { legacyDefer: true } : {}),
         ...(observed?.legacyDeferBases ? { legacyDeferBases: observed.legacyDeferBases } : {}),
