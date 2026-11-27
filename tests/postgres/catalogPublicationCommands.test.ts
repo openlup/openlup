@@ -794,6 +794,64 @@ describe("publication activation prices", () => {
       .toEqual(skus.map(sku => ({ skuId: sku.id, logisticsRef: sku.logisticsRef, head })).sort((a, b) => a.skuId.localeCompare(b.skuId)));
   });
 
+  it("batches multi-sku projection, gtin, identifier, price context lock and effective price checks", async () => {
+    const recorded: { sql: string; args: unknown[] | undefined }[] = [];
+    const api = native((db, sql, args) => {
+      recorded.push({ sql, args });
+      return db.query(sql, args);
+    }, authorPool);
+    const who = (await api.authorize(actor))!;
+    const { release, activation } = buildCatalogReleaseDraftV3({
+      namespace: "example",
+      type: { key: installed.key, version: installed.version },
+      slug: "batched-two-finishes",
+      name: "Batched example article",
+      presentation: { title: "Batched example article" },
+      skus: [
+        { ...builderSku("BATCH-MATTE", 291, "100"), primary: true, options: { finish: { kind: "choice", value: "matte" } }, attributes: { finish: "matte" } },
+        { ...builderSku("BATCH-GLOSS", 292, "100"), options: { finish: { kind: "choice", value: "gloss" } }, attributes: { finish: "gloss" } },
+      ],
+    });
+    const data = { productId: release.payload.product.id, draftId: randomUUID(), payload: release.payload };
+    await save(data, 1, release.payload, authorPool);
+    const first = await prepare(data, 1, null, authorPool);
+    expect(await api.execute(first.approve, who)).toMatchObject({ outcome: "committed" });
+
+    recorded.length = 0;
+    const initial = await api.execute(first.publish, who);
+    if (!("receipt" in initial) || !("head" in initial.receipt)) throw new Error(JSON.stringify(initial));
+    const count = (pattern: RegExp) => recorded.filter(entry => pattern.test(entry.sql)).length;
+    expect(count(/current_user\s*=\s*'openlup_catalog_publication'/u)).toBe(1);
+    expect(count(/lpad\(i\.normalized_value,14,'0'\)/u)).toBe(1);
+    expect(count(/INSERT INTO public\.catalog_skus\(/u)).toBe(1);
+    expect(count(/UPDATE public\.catalog_skus s SET/u)).toBe(1);
+    expect(count(/INSERT INTO public\.catalog_sku_identifiers AS i/u)).toBe(1);
+
+    const pricedActivation = structuredClone(activation.payload);
+    for (const sku of pricedActivation.skus) {
+      sku.priceOperations = [{
+        schemaVersion: 1, commandKey: randomUUID(), variantId: sku.id, priceListId: authorListId,
+        mode: "one_time", minQty: 1, amountKind: "gross", unitPriceMinor: 1500,
+        expected: { entryId: null, unitPriceMinor: null },
+      }];
+    }
+    await save(data, 2, pricedActivation, authorPool);
+    const next = await prepare(data, 2, initial.receipt.head, authorPool);
+    expect(await api.execute(next.approve, who)).toMatchObject({ outcome: "committed" });
+
+    recorded.length = 0;
+    const activated = await api.execute(next.publish, who);
+    expect(activated).toMatchObject({ outcome: "committed" });
+    expect(count(/current_user\s*=\s*'openlup_catalog_publication'/u)).toBe(1);
+    expect(count(/lpad\(i\.normalized_value,14,'0'\)/u)).toBe(1);
+    const lockQueries = recorded.filter(entry => /public\.catalog_price_setup_lock_context\(/u.test(entry.sql));
+    expect(lockQueries).toHaveLength(1);
+    expect(lockQueries[0]!.args?.[1]).toEqual(pricedActivation.skus.map(sku => sku.id).sort());
+    expect(count(/UPDATE public\.catalog_skus s SET/u)).toBe(1);
+    expect(count(/INSERT INTO public\.catalog_sku_identifiers AS i/u)).toBe(1);
+    expect(count(/FOR NO KEY UPDATE OF entry/u)).toBe(1);
+  });
+
   it("quantity_option_in_ml_with_gram_net_content_publishes", async () => {
     const volume = { dimension: "volume", unit: "example:ml", unscaled: "50", scale: 0 } as const;
     const { skus } = await publishBuiltProduct({ namespace: "example", type: { key: volumeType.key, version: volumeType.version },

@@ -1,7 +1,10 @@
 import {
   buildGetLabelsEnvelope,
   callCarrierSoap,
+  CARRIER_LABELS_BUCKET,
   CARRIER_NAMESPACE,
+  privateLabelObjectKey,
+  sanitizeCarrierError,
 } from "../../infra/dhl/adminDhlSoap.js";
 
 export { CARRIER_NAMESPACE as CARRIER_LABEL_ENDPOINT };
@@ -107,7 +110,7 @@ export function createCarrierLabelAction({
       const objectKey = tester.label_url ? privateLabelObjectKey(tester.label_url) : null;
       if (objectKey) {
         const { data: signed, error } = await client.storage
-          .from("dhl-labels")
+          .from(CARRIER_LABELS_BUCKET)
           .createSignedUrl(objectKey, LABEL_URL_TTL_SECONDS);
         if (!error && signed?.signedUrl) return json({ success: true, label_url: signed.signedUrl });
         return json({ error: "Historical DHL label is unavailable in storage" });
@@ -115,27 +118,9 @@ export function createCarrierLabelAction({
 
       return json({ error: "Historical DHL label is not cached" });
     } catch (error) {
-      return json({ error: String(error) });
+      return json({ error: sanitizeCarrierError(error) });
     }
   };
-}
-
-function privateLabelObjectKey(value: string): string | null {
-  if (value.trim() !== value || value.length === 0) return null;
-  if (!/^https?:\/\//i.test(value)) return safeObjectKey(value) ? value : null;
-  try {
-    const path = new URL(value).pathname;
-    const match = path.match(/^\/storage\/v1\/object\/(?:public|sign|authenticated)\/dhl-labels\/(.+)$/);
-    if (!match) return null;
-    const objectKey = decodeURIComponent(match[1]);
-    return safeObjectKey(objectKey) ? objectKey : null;
-  } catch {
-    return null;
-  }
-}
-
-function safeObjectKey(value: string): boolean {
-  return value.length > 0 && !value.startsWith("/") && !value.includes("..");
 }
 
 function json(body: Record<string, unknown>): Response {

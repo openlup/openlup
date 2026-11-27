@@ -527,6 +527,15 @@ and document by subject, exports verified pins and erases them. It retains paren
 refs as an erasure fence. `destination-receipts` (`commerce.destination-receipts.v1`)
 joins by client ID, exports the receipt and erases the outcome.
 
+If a restored order binding or subscription selection points to another
+client's snapshot, the subject's export succeeds and appends one identifier-free
+`destination_binding_invalid` verification marker for each affected class.
+The marker field is `orderBindings` or `subscriptionSelections`, in that order
+when both apply. The contributor reports incomplete coverage with its withheld
+evidence notice. Escalate cross-client links to the destination owner. Coverage
+stays incomplete until an authorized repair, and no correction tool is supported.
+Expiry applies only to unbound evidence. Scrubbing retains the link keys.
+
 Require `destination-receipts` and `destination-documents` in the same
 registry used for native privacy operations. Assemble the two experimental
 factories from `@openlup/platform/identity` and keep the registry installed

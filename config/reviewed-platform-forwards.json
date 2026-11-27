@@ -10275,8 +10275,22 @@
         "dataStatements": []
       },
       {
+        "row": "commerce-destination-v2-export-ownership",
+        "path": "db/platform/migrations/20261129160007_commerce_destination_v2_export_ownership.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.commerce_destination_v2_export(uuid)",
+            "beforeSha256": "985153688bfbd5484f6f3c87381be1abc34438392bbed069393ec63a3c15e171",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "subscription-renewal-current-template",
-        "path": "db/platform/migrations/20261129160007_subscription_renewal_current_template.sql",
+        "path": "db/platform/migrations/20261129160008_subscription_renewal_current_template.sql",
         "replacedFunctions": [
           {
             "signature": "public.subscription_claim_due_renewal(text,text,jsonb,text,integer,timestamptz)",
@@ -15024,7 +15038,18 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261129160007_subscription_renewal_current_template.sql",
+      "path": "db/platform/migrations/20261129160007_commerce_destination_v2_export_ownership.sql",
+      "sha256": "452df0d2a5e3f18d6f0f80f5f332188d8f6f9f402abda88f0f3c788dba1807e6",
+      "functions": [
+        {
+          "signature": "public.commerce_destination_v2_export(uuid)",
+          "beforeSha256": "985153688bfbd5484f6f3c87381be1abc34438392bbed069393ec63a3c15e171",
+          "afterSha256": "5200538b1f253ae809f03596938a689f06e4a469436bedaf0bac9ec9e8320f28"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261129160008_subscription_renewal_current_template.sql",
       "sha256": "2ea799158ecb569eed5d9c2ec42f2d14c10ff80273d9502c8b16632d672129cf",
       "functions": [
         {

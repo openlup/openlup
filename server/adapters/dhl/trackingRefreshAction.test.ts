@@ -178,6 +178,67 @@ describe("tracking refresh action", () => {
       results: [{ tester_id: "tester-1", error: expect.stringContaining("timed out after 30ms") }],
     });
   });
+
+  it("verifies cron secrets with timing-safe comparison across lengths and encodings", async () => {
+    const fixture = trackingFixture();
+    const wrongSameLen = new Request("https://example.test", {
+      method: "POST",
+      headers: { Authorization: "Bearer cron-secreX", "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect((await fixture.action(wrongSameLen)).status).toBe(401);
+
+    const wrongDiffLen = new Request("https://example.test", {
+      method: "POST",
+      headers: { Authorization: "Bearer short", "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect((await fixture.action(wrongDiffLen)).status).toBe(401);
+
+    const wrongUtf8 = new Request("https://example.test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cron_secret: "cron-secręt" }),
+    });
+    expect((await fixture.action(wrongUtf8)).status).toBe(401);
+
+    const headerMatch = new Request("https://example.test", {
+      method: "POST",
+      headers: { "x-cron-secret": "cron-secret", "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect((await fixture.action(headerMatch)).status).toBe(200);
+  });
+
+  it("sanitizes secrets and PII from per-tester and fatal tracking errors", async () => {
+    const faultFixture = trackingFixture({
+      xml: "<faultstring>Auth failed password=s3cr3t user@example.com +48 500 600 700</faultstring>",
+    });
+    const faultRes = await faultFixture.action(request());
+    expect(faultRes.status).toBe(502);
+    const faultBody = await faultRes.json();
+    expect(faultBody.results[0].error).toBe("Auth failed password: [redacted] [redacted-email] [redacted-phone]");
+
+    const throwFixture = trackingFixture({
+      fetchImpl: vi.fn().mockRejectedValue(new Error("socket failed Bearer tok_999 user@example.com")) as never,
+    });
+    const throwBody = await throwFixture.action(request()).then((response) => response.json());
+    expect(throwBody.results[0].error).toBe("Error: socket failed Bearer [redacted] [redacted-email]");
+
+    const fatalAction = createTrackingRefreshAction({
+      createClient: () => { throw new Error("db error token=xyz789 user@example.com"); },
+      fetchImpl: vi.fn() as never,
+      callSendEmailImpl: vi.fn(),
+      providerUsername: "u",
+      providerPassword: "p",
+      cronSecret: "cron-secret",
+    });
+    const fatalRes = await fatalAction(request());
+    expect(fatalRes.status).toBe(500);
+    await expect(fatalRes.json()).resolves.toEqual({
+      error: "Error: db error token: [redacted] [redacted-email]",
+    });
+  });
 });
 
 function trackingFixture(input: {
