@@ -9,8 +9,8 @@ import type { AccountMutationsStore, AccountProfile } from "./customerAccountMut
 import { exerciseLegacyRenewals } from "./nativeRenewalV3Legacy.fixture.js";
 import { transaction } from "./orderMoneyV2Storage.fixture.js";
 import { activatedRenewal, activation, allocate, probe, producer, signature } from "./nativeRenewalOccurrence.fixture.js";
-import { applyMeasuredStarterPrefix, args, installMeasuredAccountPrefix, lock, occurrence, occurrenceCatalogue as current,
-  occurrenceForwardPath, operations, plans, read, rootFixture, sliceOccurrencePlan, writer, writerParameters,
+import { applyMeasuredStarterPrefix, args, canonical, installMeasuredAccountPrefix, lock, occurrence, occurrenceCatalogue as current,
+  occurrenceForwardPath, operations, plans, read, rootFixture, sha256, sliceOccurrencePlan, writer, writerParameters,
   writerPath, writerPlan } from "./nativeRenewalOccurrenceWriter.fixture.js";
 import { AT, call, later, sandboxRenewal, seedRenewalStock, type Db } from "./subscriptionNativeFixture.js";
 
@@ -283,7 +283,7 @@ it("compares a paid renewal under the actual starter login with a fixed occurren
         }]);
         expect(await call(db, "subscription_complete_renewal_attachment", [subject.orderId]))
           .toMatchObject({ subscriptionId: subject.subscriptionId, replayed: false });
-        return { ...subject, destinationId };
+        return { ...subject, destinationId, source, basket };
       }, "COMMIT");
       // Isolate delivery produced by the mounted renewal from the activation's paid mail.
       await owner.query("DELETE FROM public.outbox_events WHERE event_type='commerce.order.paid.email'");
@@ -330,7 +330,27 @@ it("compares a paid renewal under the actual starter login with a fixed occurren
         const readback = await call(runtime, "subscription_read_renewal", [result!.identityKey]);
         expect(readback).toMatchObject({ operationId: result!.operationId, state: "succeeded",
           cycleSnapshot: { subscriptionId: f.subscriptionId, orderSnapshot: { shippingAddressRef: f.destinationId } } });
-        const persisted = (await owner.query(`SELECT o.state, c.status AS cycle, ord.status AS "order", i.status AS settlement,
+        const { frozenFingerprint, ...wire } = readback.cycleSnapshot;
+        expect(frozenFingerprint).toBe(sha256(canonical(wire)));
+        expect(readback.operationFingerprint).toBe(frozenFingerprint);
+        const ids = { client: f.clientId, subscription: f.subscriptionId, activationCycle: f.cycleId,
+          activationOrder: f.orderId, destination: f.destinationId, stockSource: f.source, operation: readback.operationId,
+          claim: readback.claimToken, reservation: readback.reservationId, cycle: readback.cycleId,
+          order: readback.orderId, intent: readback.settlementIntentId,
+          ...Object.fromEntries(f.basket.map(({ sku, lineOrdinal }) => [`stockItem${lineOrdinal}`, sku.slice("SKU-".length)])) };
+        const normalizedBytes = (value: unknown) => Object.entries(ids).reduce((bytes, [label, id]) =>
+          typeof id === "string" ? bytes.replaceAll(id, `<${label}>`) : bytes, canonical(value));
+        const normalizedFingerprint = sha256(normalizedBytes(wire));
+        const retained = { ...readback, operationFingerprint: normalizedFingerprint,
+          cycleSnapshot: { ...wire, frozenFingerprint: normalizedFingerprint },
+          externalAttemptRef: readback.externalAttemptRef.replace(/:\d{4}-\d{2}-\d{2}T[\d:.]+Z$/u, ":<attempt-time>") };
+        for (const key of ["leaseExpiresAt", "externalAttemptAcknowledgedAt", "terminalAt"]) {
+          if (retained[key] === null) continue;
+          expect(Number.isFinite(Date.parse(retained[key])), key).toBe(true);
+          retained[key] = "<runtime-time>";
+        }
+        const persisted = (await owner.query(`SELECT o.state, o.cycle_snapshot AS snapshot, o.operation_fingerprint AS fingerprint,
+          c.status AS cycle, ord.status AS "order", i.status AS settlement,
           r.status AS reservation, s.next_cycle_at > $2::timestamptz AS advanced,
           o.external_attempt_ref LIKE ('sandbox-renewal:'||o.id::text||':succeeded:%') AS acknowledged,
           (SELECT count(*)::int FROM public.subscription_renewal_outcomes a WHERE a.renewal_operation_id=o.id
@@ -342,7 +362,8 @@ it("compares a paid renewal under the actual starter login with a fixed occurren
           JOIN public.commerce_settlement_intents i ON i.renewal_operation_id=o.id
           JOIN public.fulfillment_inventory_reservations r ON r.renewal_operation_id=o.id
           WHERE o.id=$1 AND s.id=$3`, [readback.operationId, AT, f.subscriptionId])).rows;
-        expect(persisted).toEqual([{ state: "succeeded", cycle: "paid", order: "paid", settlement: "settled",
+        expect(persisted).toEqual([{ state: "succeeded", snapshot: readback.cycleSnapshot, fingerprint: frozenFingerprint,
+          cycle: "paid", order: "paid", settlement: "settled",
           reservation: "consumed", advanced: true, acknowledged: true, observations: 1 }]);
         expect(watch.attempts).toEqual([]);
         if (count) {
@@ -355,8 +376,7 @@ it("compares a paid renewal under the actual starter login with a fixed occurren
         const dispatch = await dispatchEffects(owner);
         expect(dispatch).toMatchObject({ provider_attempts: 0, simulator_attempts: 0, send_receipts: 0 });
         return { transcript: { status, reason, replayed, retries: run.retries, paidMail },
-          readback: { state: readback.state, terminalReason: readback.terminalReason, cycleNumber: readback.cycleNumber },
-          persisted, dispatch, preimages };
+          retained: normalizedBytes(retained), dispatch, preimages };
       } finally { watch.close(); }
     } finally { await closePostgres(container, [runtime, migration, owner]); }
   }
