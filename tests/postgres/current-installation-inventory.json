@@ -8,7 +8,7 @@
         "tail": [
           {
             "file": "db/platform/migrations/20261129160006_subscription_renewal_current_template.sql",
-            "sha256": "62f99a582643926653e73213cec1e6c72707f91c83c59ff0a31886220a9bd949"
+            "sha256": "2ea799158ecb569eed5d9c2ec42f2d14c10ff80273d9502c8b16632d672129cf"
           },
           {
             "file": "db/platform/migrations/20261129160005_order_draft_payment_entry_fence.sql",
@@ -975,7 +975,7 @@
         "tail": [
           {
             "file": "db/platform/migrations/20261129160006_subscription_renewal_current_template.sql",
-            "sha256": "62f99a582643926653e73213cec1e6c72707f91c83c59ff0a31886220a9bd949"
+            "sha256": "2ea799158ecb569eed5d9c2ec42f2d14c10ff80273d9502c8b16632d672129cf"
           },
           {
             "file": "db/platform/migrations/20261129160005_order_draft_payment_entry_fence.sql",
@@ -1966,7 +1966,7 @@
         "tail": [
           {
             "file": "db/platform/migrations/20261129160006_subscription_renewal_current_template.sql",
-            "sha256": "62f99a582643926653e73213cec1e6c72707f91c83c59ff0a31886220a9bd949"
+            "sha256": "2ea799158ecb569eed5d9c2ec42f2d14c10ff80273d9502c8b16632d672129cf"
           },
           {
             "file": "db/platform/migrations/20261129160005_order_draft_payment_entry_fence.sql",
@@ -2957,7 +2957,7 @@
         "tail": [
           {
             "file": "db/platform/migrations/20261129160006_subscription_renewal_current_template.sql",
-            "sha256": "62f99a582643926653e73213cec1e6c72707f91c83c59ff0a31886220a9bd949"
+            "sha256": "2ea799158ecb569eed5d9c2ec42f2d14c10ff80273d9502c8b16632d672129cf"
           },
           {
             "file": "db/platform/migrations/20261129160005_order_draft_payment_entry_fence.sql",
@@ -3940,7 +3940,7 @@
         "tail": [
           {
             "file": "db/platform/migrations/20261129160006_subscription_renewal_current_template.sql",
-            "sha256": "62f99a582643926653e73213cec1e6c72707f91c83c59ff0a31886220a9bd949"
+            "sha256": "2ea799158ecb569eed5d9c2ec42f2d14c10ff80273d9502c8b16632d672129cf"
           },
           {
             "file": "db/platform/migrations/20261129160005_order_draft_payment_entry_fence.sql",

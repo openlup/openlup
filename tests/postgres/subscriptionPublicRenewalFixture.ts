@@ -9,7 +9,7 @@ import { rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
-import { Pool } from "pg";
+import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, vi } from "vitest";
 import { selectPlatformMigrationManifest, evaluateSelectedPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { qualifiedPostgresStartupOptions, assertQualifiedPostgresSession, qualifiedPostgresCatalogPayload, type QualifiedPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
@@ -182,8 +182,48 @@ export function loginConnection(connectionString: string, login: string) {
   return url.toString();
 }
 
+type CaptureInstrumentation = { key: number; onError?: (error: unknown) => void };
+
+async function applyWithCaptureBarrier(pool: Pool, apply: () => Promise<{ applied: string[] }>,
+  barrier: CaptureInstrumentation) {
+  const insert = "INSERT INTO public.subscription_renewal_upgrade_cohort ";
+  const afterCapture = "CREATE OR REPLACE FUNCTION public.subscription_claim_due_renewal(";
+  // Decorate only the execution of the installed unit. The runner still validates and
+  // records the canonical bytes, and catalogue verification sees no fixture objects.
+  let restore: (() => void) | undefined;
+  const decorate = (client: PoolClient) => {
+    const original = client.query;
+    restore = () => { client.query = original; };
+    client.query = new Proxy(original, {
+      apply(query, receiver, args) {
+        if (typeof args[0] !== "string" || !args[0].includes(insert)) return Reflect.apply(query, receiver, args);
+        expect(args[0].split(insert)).toHaveLength(2);
+        expect(args[0].split(afterCapture)).toHaveLength(2);
+        args[0] = args[0].replace(insert, `CREATE FUNCTION public.fixture_hold_renewal_capture()
+          RETURNS trigger LANGUAGE plpgsql AS $fixture$
+          BEGIN
+            PERFORM pg_advisory_xact_lock(${barrier.key});
+            RETURN NULL;
+          END $fixture$;
+          CREATE TRIGGER fixture_hold_renewal_capture AFTER INSERT ON public.subscription_renewal_upgrade_cohort
+            FOR EACH STATEMENT EXECUTE FUNCTION public.fixture_hold_renewal_capture();
+          ${insert}`).replace(afterCapture, `DROP TRIGGER fixture_hold_renewal_capture ON public.subscription_renewal_upgrade_cohort;
+          DROP FUNCTION public.fixture_hold_renewal_capture();
+          ${afterCapture}`);
+        return Promise.resolve(Reflect.apply(query, receiver, args)).catch((error: unknown) => {
+          barrier.onError?.(error);
+          throw error;
+        });
+      },
+    });
+  };
+  pool.once("acquire", decorate);
+  try { return await apply(); }
+  finally { pool.off("acquire", decorate); restore?.(); }
+}
+
 export async function withOccupiedRenewalPrefix(work: (target: {
-  owner: Pool; db: Pool; connectionString: string; applyForward: () => Promise<{ applied: string[] }>;
+  owner: Pool; db: Pool; connectionString: string; applyForward: (barrier?: CaptureInstrumentation) => Promise<{ applied: string[] }>;
 }) => Promise<void>, isForward: (file: string) => boolean = file => file === generationForward) {
   const full = renewalCatalogue(), boundary = full.forward.findIndex(unit => isForward(unit.file));
   expect(boundary).toBeGreaterThan(0);
@@ -205,7 +245,7 @@ export async function withOccupiedRenewalPrefix(work: (target: {
     expect((await preceding.apply()).applied).toEqual([plans[0]!.baseline, ...plans[0]!.forward].map(unit => unit.file));
     await seedRenewalDatabase(owner, db);
     const through = renewalFixtureRunner(connectionString, migrator, selection, plans[1]!);
-    await work({ owner, db, connectionString: runtimeConnection, applyForward: () => through.apply() });
+    await work({ owner, db, connectionString: runtimeConnection, applyForward: barrier => barrier ? applyWithCaptureBarrier(migrator, () => through.apply(), barrier) : through.apply() });
   });
 }
 

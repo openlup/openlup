@@ -18,9 +18,9 @@ DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
   EXECUTE 'REVOKE ALL ON TABLE public.subscription_renewal_upgrade_cohort FROM service_role;';
 END IF; END; $$;
 
--- Lock billing candidates before comparing their evidence to the accepted
--- version. Keep roots without a usable version, including destination-only
--- order snapshots with complete top-level billing fields.
+-- The pre-forward drain stabilizes claims and accepted template versions.
+-- Keep roots without a usable version, including destination-only order
+-- snapshots with complete top-level billing fields.
 INSERT INTO public.subscription_renewal_upgrade_cohort (renewal_operation_id, unknown_provenance)
 WITH billing_operations AS MATERIALIZED (
   SELECT o.id, o.subscription_id,
@@ -48,16 +48,10 @@ WITH billing_operations AS MATERIALIZED (
        )
      ELSE false
    END
-), locked_subscriptions AS MATERIALIZED (
-  SELECT s.id, s.template_version
-    FROM public.subscriptions s
-   WHERE EXISTS (SELECT 1 FROM billing_operations o WHERE o.subscription_id = s.id)
-   ORDER BY s.id
-   FOR SHARE OF s
 )
 SELECT o.id, o.snapshot_version IS NULL
   FROM billing_operations o
-  JOIN locked_subscriptions s ON s.id = o.subscription_id
+  JOIN public.subscriptions s ON s.id = o.subscription_id
  WHERE o.snapshot_version IS DISTINCT FROM to_jsonb(s.template_version);
 
 CREATE OR REPLACE FUNCTION public.subscription_claim_due_renewal(

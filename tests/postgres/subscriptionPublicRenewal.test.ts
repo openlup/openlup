@@ -2,9 +2,10 @@ import { createPostgresCommerceOmsPort } from "@openlup/platform/commerce/server
 import { createPostgresRenewalSettlementPort as mainSettlement } from "../../server/adapters/postgres/commerce/renewalSettlement.js";
 import { createPostgresAutomaticRenewalPort, automaticRenewalIdentity, automaticRenewalFingerprint } from "../../server/adapters/postgres/subscription/automaticRenewal.js";
 import { connectedNativeStoreTables, readPrivacyDeclarationCensus, requiredPrivacyDeclarationTable } from "../../server/adapters/postgres/connectedStoreCapture.js";
+import { execFileSync } from "node:child_process";
 import { createHmac, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { DatabaseError, Pool } from "pg";
+import { DatabaseError, Pool, type PoolClient } from "pg";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { closePostgres, postgresSetupTimeoutMs, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
 import { beforeEach, expect, it, vi } from "vitest";
@@ -1586,14 +1587,75 @@ async function renewalAmounts(db: Pool, orderId: string) {
     FROM public.commerce_orders o JOIN public.commerce_settlement_intents i ON i.order_id=o.id WHERE o.id=$1`, [orderId])).rows;
 }
 
+it("uses the one verbatim ownership definition for billing, candidate, occupant and locked repair", () => {
+  const fragment = guideSql("### Shared renewal ownership predicate");
+  const report = guideSql("### Run the read-only checks");
+  const [, , billing, alignment] = upgradeReportStatements();
+  expect(upgradeGuide().split("FROM ownership_subjects subject")).toHaveLength(2);
+  expect(report.split(ownershipMarker)).toHaveLength(3);
+  const selection = `  )
+  SELECT
+${fragment}
+) ownership(is_legacy)`;
+  expect(billing).toContain(`${selection}
+  WHERE ownership.is_legacy
+), financial AS (`);
+  expect(alignment).toContain(`${selection}
+CROSS JOIN LATERAL (`);
+  expect(alignment).toContain("  AND ownership.is_legacy\n  AND NOT EXISTS (SELECT 1 FROM public.subscription_dunning_cases");
+  const subjects = (statement: string) => statement.split("order_id, check_current) AS (\n")[1]?.split("\n  )\n  SELECT")[0];
+  const operation = subjects(billing);
+  expect(operation).toContain("o.id, booked_order.subscription_cycle_id, booked_order.id, false");
+  expect(subjects(alignment)).toBe(`    SELECT s.id, s.client_id, predecessor.cycle_snapshot->>'contractVersion',
+           predecessor.id, c.id, c.order_id, true
+    UNION ALL
+${operation}`);
+  for (const statement of [billing, alignment]) expect(statement.split(fragment)).toHaveLength(2);
+  const repair = ownerRepairSql(randomUUID());
+  expect(repair).toContain(`FOR UPDATE;
+  FOR gap IN
+    SELECT pending.* FROM (
+      ${alignment}
+    ) pending`);
+  expect(repair.split(fragment)).toHaveLength(2);
+});
+
+it("starts the checklist before a pending forward, including from released Platform 1.4.0", () => {
+  const guide = upgradeGuide();
+  const workflow = readFileSync("docs/platform/SUBSCRIPTION_WORKFLOWS.md", "utf8");
+  expect(guide).toContain("If this renewal forward is pending on your installation, start this checklist before applying it. It applies to installations upgrading from Platform 1.0.0 through 1.4.x.");
+  expect(workflow).toContain("If this renewal forward is pending, follow the\n"
+    + "[stale renewal upgrade checklist](../../packages/core/docs/guide/upgrade/database-migrations.md#reconcile-stale-native-renewals)\n"
+    + "before applying it. Complete the checklist before resuming renewal or retry dispatch.");
+  expect(guide).toContain("## Reconcile stale native renewals\n");
+  const fromGit = (revision: string, file: string) => execFileSync("git", ["show", `${revision}:${file}`], { encoding: "utf8" });
+  const manifestPath = "config/platform-migration-manifest.json";
+  const released = JSON.parse(fromGit("openlup-platform-v1.4.0", manifestPath));
+  const candidate = JSON.parse(readFileSync(manifestPath, "utf8"));
+  for (const plan of [released, released.qualified, released.qualifiedAdmin]) {
+    expect(plan.forward.some(({ file }: { file: string }) => renewalTemplateForward.test(file))).toBe(false);
+  }
+  for (const plan of [candidate, candidate.qualified, candidate.qualifiedAdmin]) {
+    expect(plan.forward.filter(({ file }: { file: string }) => renewalTemplateForward.test(file))).toHaveLength(1);
+  }
+  const releasedPage = "packages/core/docs/guide/upgrade/v1-4-0.md";
+  expect(readFileSync(releasedPage, "utf8")).toBe(fromGit("4b00b966765d18a44dff4f072fc65a55acc26d6c", releasedPage));
+});
+
 type UpgradeReportHooks = { beforeCut?: () => Promise<void>; afterCut?: () => Promise<void> };
 const upgradeGuide = () => readFileSync("packages/core/docs/guide/upgrade/database-migrations.md", "utf8");
 const guideSql = (heading: string) => upgradeGuide().split(heading)[1]!.split("```sql\n")[1]!.split("```")[0]!.trim();
 
+const ownershipMarker = "/* Paste the shared renewal ownership predicate here. */";
+const alignmentMarker = "/* Paste the expanded alignment statement here. */";
+
 function upgradeReportStatements() {
-  const statements = guideSql("## Reconcile stale native renewals").split(/;\s*(?:\n|$)/u).filter(Boolean);
+  const fragment = guideSql("### Shared renewal ownership predicate");
+  const report = guideSql("### Run the read-only checks");
+  const statements = report.split(/;\s*(?:\n|$)/u).filter(Boolean);
   expect(statements).toHaveLength(5);
-  return statements as [string, string, string, string, string];
+  const [begin, cut, billing, alignment, commit] = statements as [string, string, string, string, string];
+  return [begin, cut, billing.replace(ownershipMarker, fragment), alignment.replace(ownershipMarker, fragment), commit] as const;
 }
 
 async function readRenewalUpgradeReport(db: Pool, hooks: UpgradeReportHooks = {}) {
@@ -1624,7 +1686,7 @@ async function renewalUpgradeReport(db: Pool, hooks?: UpgradeReportHooks) {
 function ownerRepairSql(subscriptionId: string) {
   return guideSql("### Repair a pending delivery alignment")
     .replace("<arrival time zone>", "UTC").replace("<subscription ID>", subscriptionId)
-    .replace("/* Paste the alignment SELECT here. */", upgradeReportStatements()[3]);
+    .replace(alignmentMarker, upgradeReportStatements()[3]);
 }
 
 async function repairAlignment(owner: Pool, subscriptionId: string, sql = ownerRepairSql(subscriptionId)) {
@@ -2245,13 +2307,66 @@ it.each(["READ COMMITTED", "REPEATABLE READ"])("requires fresh arrival snapshots
   }
 }, 30_000);
 
+const captureBarrierKey = 846832107;
+
+async function withCaptureBarrier(target: UpgradeTarget, work: (gate: {
+  start: () => ReturnType<UpgradeTarget["applyForward"]>;
+  wait: (otherBlocker?: number) => Promise<{ pid: number; blocker: number }>;
+  release: () => Promise<void>;
+  captureError: () => unknown;
+}) => Promise<void>) {
+  const { owner, applyForward } = target, latch = await owner.connect();
+  let forward: ReturnType<typeof applyForward> | undefined, error: unknown;
+  let held = true;
+  const { rows: [{ pid }] } = await latch.query("SELECT pg_backend_pid() AS pid, pg_advisory_lock($1::bigint)", [captureBarrierKey]);
+  const release = async () => {
+    if (held) {
+      held = false;
+      await latch.query("SELECT pg_advisory_unlock($1::bigint)", [captureBarrierKey]);
+    }
+  };
+  try {
+    await work({
+      start: () => {
+        forward = applyForward({ key: captureBarrierKey, onError: failure => { error = failure; } });
+        void forward.catch(() => {});
+        return forward;
+      },
+      wait: async otherBlocker => {
+        let waiter: { pid: number; blocker: number; read_only: boolean } | undefined;
+        await expect.poll(async () => {
+          const { rows } = await owner.query(`SELECT a.pid, b.blocker, NOT EXISTS (
+            SELECT 1 FROM pg_locks l WHERE l.pid = a.pid AND l.granted
+              AND l.relation = 'public.subscription_renewal_operations'::regclass AND l.mode <> 'AccessShareLock'
+          ) AS read_only
+          FROM pg_stat_activity a CROSS JOIN LATERAL unnest(pg_blocking_pids(a.pid)) b(blocker)
+          WHERE a.datname = current_database() AND b.blocker = ANY($1::int[])
+            AND EXISTS (SELECT 1 FROM pg_locks l WHERE l.pid = a.pid AND l.granted
+              AND l.relation = 'public.subscription_renewal_operations'::regclass AND l.mode = 'AccessShareLock')`,
+          [[pid, ...(otherBlocker === undefined ? [] : [otherBlocker])]]);
+          waiter = rows[0];
+          return rows;
+        }, { timeout: 20_000 }).toEqual([{ pid: expect.any(Number), blocker: expect.any(Number), read_only: expect.any(Boolean) }]);
+        expect(waiter?.read_only).toBe(true);
+        return waiter!;
+      },
+      release,
+      captureError: () => error,
+    });
+  } finally {
+    await release();
+    await forward?.catch(() => {});
+    latch.release();
+  }
+}
+
 it.each(["drain", "omit drain", "keep closed", "reopen"])("fences claim admission through the cohort capture (%s)", async arm => {
-  await withTemplateUpgrade(async target => {
-    const { owner, db, applyForward } = target;
-    const stale = await upgradeRenewal(target), lockTarget = await upgradeRenewal(target), lockOp = await lockTarget.claim();
-    const writer = await db.connect(), locker = await db.connect();
+  await withTemplateUpgrade(target => withCaptureBarrier(target, async gate => {
+    const { owner, db } = target;
+    const stale = await upgradeRenewal(target);
+    const writer = await db.connect();
     const startedBefore = arm === "drain" || arm === "omit drain";
-    let claim: RenewalReadback | undefined, forward: ReturnType<typeof applyForward> | undefined;
+    let claim: RenewalReadback | undefined;
     const admit = async () => {
       await writer.query("BEGIN");
       expect((await writer.query(`SELECT catalog_acceptance FROM public.subscription_renewal_terms WHERE subscription_id=$1`,
@@ -2262,17 +2377,12 @@ it.each(["drain", "omit drain", "keep closed", "reopen"])("fences claim admissio
     try {
       if (startedBefore) await admit();
       if (arm === "drain") await writer.query("COMMIT");
-      await locker.query("BEGIN");
-      await locker.query("SELECT id FROM public.subscriptions WHERE id=$1 FOR UPDATE", [lockTarget.f.subscriptionId]);
-      const { rows: [{ pid }] } = await locker.query("SELECT pg_backend_pid() AS pid");
-      forward = applyForward();
-      void forward.catch(() => {});
-      await waitForSubscriptionLock(owner, pid);
+      const forward = gate.start();
+      await gate.wait();
       if (arm === "reopen") await admit();
       if (arm === "omit drain" || arm === "reopen") await writer.query("COMMIT");
-      await locker.query("COMMIT");
+      await gate.release();
       expect((await forward).applied).toEqual([expect.stringMatching(renewalTemplateForward)]);
-      await refuseUnprepared(lockTarget, lockOp);
       const cohort = (await owner.query(`SELECT c.renewal_operation_id
         FROM public.subscription_renewal_upgrade_cohort c JOIN public.subscription_renewal_operations o ON o.id=c.renewal_operation_id
         WHERE o.subscription_id=$1`, [stale.f.subscriptionId])).rows;
@@ -2292,15 +2402,12 @@ it.each(["drain", "omit drain", "keep closed", "reopen"])("fences claim admissio
       }
     } finally {
       await writer.query("ROLLBACK");
-      await locker.query("ROLLBACK");
-      await forward?.catch(() => {});
       writer.release();
-      locker.release();
     }
-  });
+  }));
 }, postgresSetupTimeoutMs);
 
-async function attachRenewalGeneration(owner: Pool, cycleKey: string, operationId: string) {
+async function attachRenewalGeneration(owner: Pool | PoolClient, cycleKey: string, operationId: string) {
   await owner.query(`INSERT INTO public.subscription_cycle_generations
     (cycle_key,operation_id,commercial_generation_id,agreement,agreement_fingerprint,claim_token,lease_expires_at,lease_generation)
     SELECT $1,id,id,'{}',operation_fingerprint,claim_token,lease_expires_at,1
@@ -2422,9 +2529,62 @@ it("keeps v3 schedule and delivery ownership out of the check and scoped repair"
   });
 }, postgresSetupTimeoutMs);
 
-it("captures an accepted edit that commits while the forward is waiting on its subscription lock", async () => {
+it("revalidates a refused occupant pinned to a non-current v3 occurrence after locking", async () => {
   await withTemplateUpgrade(async target => {
-    const { owner, db, applyForward } = target;
+    const { db, owner, applyForward } = target;
+    async function gap() {
+      const entry = await upgradeRenewal(target, { edited: false });
+      const { f, d } = entry, root = await entry.claim(), shipment = await parcel(f.orderId, db);
+      const delivered = days(d.due.scheduledAt, 1);
+      await recordArrival(shipment, delivered, db);
+      expect((await owner.query("SELECT cycle_snapshot->>'contractVersion' AS tag FROM public.subscription_renewal_operations WHERE id=$1",
+        [root.operationId])).rows).toEqual([{ tag: "platform.subscription.renewal.v1" }]);
+      return { entry, f, d, root, shipment, delivered };
+    }
+    const candidate = await gap(), control = await gap();
+    await applyForward();
+    await rpc("subscription_delivery_alignment_set_mode", ["auto_align"], owner);
+    const report = async () => (await readRenewalUpgradeReport(owner)).alignment;
+    expect(await report()).toEqual(expect.arrayContaining([candidate, control].map(({ f, shipment, root }) =>
+      reportGap(f.subscriptionId, shipment, { occupying_operation_id: root.operationId, occupying_operation_state: "claimed" }))));
+    await refuseUnprepared(candidate.entry, candidate.root);
+    await refuseUnprepared(control.entry, control.root);
+    const { f, d, root, shipment } = candidate;
+    expect(await report()).toContainEqual(reportGap(f.subscriptionId, shipment, { occupying_operation_state: "refused" }));
+    const before = await alignmentState(owner, f.subscriptionId);
+    const writer = await owner.connect();
+    let repair: Promise<void> | undefined;
+    try {
+      await writer.query("BEGIN");
+      await writer.query("SELECT id FROM public.subscriptions WHERE id=$1 FOR UPDATE", [f.subscriptionId]);
+      const { rows: [{ pid }] } = await writer.query("SELECT pg_backend_pid() AS pid");
+      repair = repairAlignment(owner, f.subscriptionId);
+      void repair.catch(() => {});
+      await waitForSubscriptionLock(owner, pid);
+      const cycle = randomUUID();
+      await writer.query(`INSERT INTO public.subscription_cycle_occurrences
+        (cycle_key,subscription_id,client_id,original_anchor_at,effective_due_at,cadence_seconds,rail,lifecycle,is_current)
+        VALUES($1,$2,$3,$4,$4,2419200,'v3','retired',false)`, [cycle, f.subscriptionId, f.clientId, d.due.scheduledAt]);
+      await attachRenewalGeneration(writer, cycle, root.operationId);
+      await writer.query("COMMIT");
+      await repair;
+      expect(await alignmentState(owner, f.subscriptionId)).toEqual(before);
+      expect(await report()).toEqual([reportGap(control.f.subscriptionId, control.shipment)]);
+      await repairAlignment(owner, control.f.subscriptionId);
+      expect(await alignmentState(owner, control.f.subscriptionId)).toMatchObject({
+        next_cycle_at: new Date(days(control.delivered, facts.cadenceDays)), cases: [{ state: "aligned" }],
+      });
+    } finally {
+      await writer.query("ROLLBACK");
+      await repair?.catch(() => {});
+      writer.release();
+    }
+  });
+}, postgresSetupTimeoutMs);
+
+it.each([true, false])("stabilizes accepted edits at cohort capture with the edit drain enabled=%s", async drain => {
+  await withTemplateUpgrade(target => withCaptureBarrier(target, async gate => {
+    const { owner, db } = target;
     const entry = await upgradeRenewal(target, { edited: false }), op = await entry.claim();
     const editor = await db.connect();
     const accepted = signal(), release = signal();
@@ -2441,26 +2601,112 @@ it("captures an accepted edit that commits while the forward is waiting on its s
       } catch (error) { accepted.reject(error); await editor.query("ROLLBACK"); throw error; }
     });
     void edit.catch(accepted.reject);
-    let forward: ReturnType<typeof applyForward> | undefined;
     try {
       await accepted.promise;
-      const { rows: [{ pid }] } = await editor.query("SELECT pg_backend_pid() AS pid");
-      forward = applyForward();
-      void forward.catch(() => {});
-      await waitForSubscriptionLock(owner, pid);
-      release.resolve();
-      await edit;
+      if (drain) { release.resolve(); await edit; }
+      const forward = gate.start();
+      await gate.wait();
+      if (!drain) { release.resolve(); await edit; }
+      await gate.release();
       expect((await forward).applied).toEqual([expect.stringMatching(renewalTemplateForward)]);
-      expect(await renewalUpgradeReport(owner)).toEqual([reportRow(op.operationId, ["first_charge"])]);
-      await refuseUnprepared(entry, op);
-      expect(await renewalUpgradeReport(owner)).toEqual([]);
+      const cohort = await owner.query("SELECT renewal_operation_id FROM public.subscription_renewal_upgrade_cohort WHERE renewal_operation_id=$1", [op.operationId]);
+      expect(cohort.rows).toEqual(drain ? [{ renewal_operation_id: op.operationId }] : []);
+      expect(await renewalUpgradeReport(owner)).toEqual(drain ? [reportRow(op.operationId, ["first_charge"])] : []);
+      if (drain) await refuseUnprepared(entry, op);
+      expect(await readRenewalUpgradeReport(owner)).toEqual({ operations: [], alignment: [] });
+      const tick = binding(entry.d, () => later, upgradeTransaction(db), db);
+      const resumed = await tick.services.run();
+      if (!drain) expect(resumed).toMatchObject({ renewals: [{ operationId: op.operationId, status: "succeeded" }] });
+      await tick.services.run();
+      expect(entry.d.execute.mock.calls.map(([charge]) => charge.amountMinor)).toEqual(drain ? [] : [200]);
     } finally {
       release.resolve();
       await edit.catch(() => {});
-      await forward?.catch(() => {});
       editor.release();
     }
-  });
+  }));
+}, postgresSetupTimeoutMs);
+
+it.each([true, false])("keeps the cohort complete at forward commit with the snapshot build drain enabled=%s", async drain => {
+  await withTemplateUpgrade(target => withCaptureBarrier(target, async gate => {
+    const { owner, db } = target;
+    const paid = await purchase(true, true, at, target);
+    const activation = await api.activateNativePurchaseWithRenewal(db, { ...paid, facts: { ...facts, renewalTerms: {
+      version: "native.renewal-terms.v1", minimumPayableMinor: 1, normalCadenceDays: [30],
+      starterPack: { schemaVersion: "1", starterIntervalDays: 28, basisTemplateVersion: 1,
+        delivery2: { discountBps: 0, discountMinor: 0, basisSubtotalMinor: 200 },
+        graduation: { cadenceDays: 30, lines: [{ sku: facts.lines[0]!.sku, qty: 3, sortOrder: 0, isAddon: false,
+          quoteLine: { unitPriceGross: { amountMinor: 100 }, lineSubtotalGross: { amountMinor: 300 } } }] } },
+    } } });
+    expect(activation.renewalAttachment).toBe("complete");
+    const id = String(activation.activation.subscriptionId), second = await deps(id, "succeeded", now, db);
+    second.input.settlement = api.createPostgresRenewalSettlementPort(db, second.codec, upgradeTransaction(db));
+    expect(await api.runOneAutomaticSubscriptionRenewal(second.input, second.due, now)).toMatchObject({ status: "succeeded" });
+
+    const claimAt = days(now, 28), resume = days(later, 28), d = await deps(id, "succeeded", claimAt, db);
+    expect(d.due.cycle).toMatchObject({ status: "correlated", logicalCycleNumber: 3 });
+    // A custom builder can freeze the existing terms without applying starter graduation.
+    const { rows: [header] } = await db.query(`SELECT t.*,s.id AS subscription_id,s.client_id,s.template_version,s.cadence_days,
+      o.subscription_cycle_id AS activation_cycle_id,ac.status='paid' AS activation_cycle_paid,
+      (SELECT count(*) FROM public.subscription_cycles c
+        WHERE c.subscription_id=s.id AND c.status='paid' AND c.scheduled_at<s.next_cycle_at) AS paid_cycle_count,
+      public.subscription_renewal_purchase_terms(s.id) AS purchase_facts,
+      (SELECT jsonb_agg(jsonb_build_object('lineOrdinal',l.line_ordinal,'sku',l.sku,'quantity',l.quantity,'unitAmountMinor',l.unit_amount_minor)
+          ORDER BY l.line_ordinal) FROM public.subscription_renewal_term_lines l WHERE l.subscription_id=s.id) AS lines
+      FROM public.subscriptions s JOIN public.subscription_renewal_terms t ON t.subscription_id=s.id
+      JOIN public.subscription_activations a ON a.subscription_id=s.id JOIN public.commerce_orders o ON o.id=a.order_id
+      JOIN public.subscription_cycles ac ON ac.id=o.subscription_cycle_id WHERE s.id=$1`, [id]);
+    const held = await bindRenewalDestination(d, d.codec.freeze({
+      ...header, unattended_charge_authorized_at: new Date(header.unattended_charge_authorized_at).toISOString(),
+    }, d.due), db);
+    expect(held.templateSnapshot.version).toBe(1);
+    expect(held.pricingSnapshot.totalAmountMinor).toBe(200);
+
+    const writer = await db.connect(), builder = await db.connect();
+    let build: ReturnType<typeof d.input.store.buildCycleSnapshots> | undefined;
+    try {
+      await writer.query("BEGIN");
+      const root = JSON.parse((await writer.query(rawClaim, claimWire(d, held, undefined, claimAt))).rows[0].result);
+      expect(root).toMatchObject({ acquired: true });
+      const { rows: [{ pid }] } = await writer.query("SELECT pg_backend_pid() AS pid");
+      await builder.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+      await builder.query("SELECT pg_current_snapshot()");
+      build = api.createPostgresRenewalStore(builder, d.codec, work => work(builder)).buildCycleSnapshots(d.due);
+      void build.catch(() => {});
+      await waitForSubscriptionLock(owner, pid);
+      await writer.query("COMMIT");
+      expect(await build).toMatchObject({ templateSnapshot: { version: 2 }, pricingSnapshot: { totalAmountMinor: 300 } });
+
+      // The drained path rolls back the in-flight build before applying the forward.
+      if (drain) await builder.query("ROLLBACK");
+      const forward = gate.start();
+      await gate.wait();
+      if (!drain) await builder.query("COMMIT");
+      await gate.release();
+      expect((await forward).applied).toEqual([expect.stringMatching(renewalTemplateForward)]);
+      const { rows } = await owner.query(`SELECT (o.cycle_snapshot#>>'{templateSnapshot,version}')::int AS built,
+        s.template_version AS accepted, c.renewal_operation_id IS NOT NULL AS captured
+        FROM public.subscription_renewal_operations o JOIN public.subscriptions s ON s.id=o.subscription_id
+        LEFT JOIN public.subscription_renewal_upgrade_cohort c ON c.renewal_operation_id=o.id WHERE o.id=$1`, [root.operationId]);
+      expect(rows.every(row => row.built >= row.accepted || row.captured)).toBe(drain);
+      expect(rows).toEqual([{ built: 1, accepted: drain ? 1 : 2, captured: false }]);
+      expect(await readRenewalUpgradeReport(owner)).toEqual({ operations: [], alignment: [] });
+      const tick = binding(d, () => resume, upgradeTransaction(db), db);
+      expect(await tick.services.run()).toMatchObject({ renewals: [{ operationId: root.operationId, status: "succeeded" }] });
+      await tick.services.run();
+      expect(d.execute.mock.calls.map(([charge]) => charge.amountMinor)).toEqual([200]);
+      const next = await deps(id, "succeeded", days(resume, 32), db);
+      expect(await next.input.store.buildCycleSnapshots(next.due)).toMatchObject({
+        templateSnapshot: { version: 2 }, pricingSnapshot: { totalAmountMinor: 300 },
+      });
+    } finally {
+      await writer.query("ROLLBACK");
+      await builder.query("ROLLBACK");
+      await build?.catch(() => {});
+      writer.release();
+      builder.release();
+    }
+  }));
 }, postgresSetupTimeoutMs);
 
 it("lists captured and allocator-refused frozen stock waits through recovery and closure", async () => {
@@ -2656,11 +2902,11 @@ it.each([true, false])("drains mounted and independent callers at the shared pro
 }, postgresSetupTimeoutMs);
 
 it("lets verified provider intake finish while cohort capture only reads the operations table", async () => {
-  await withTemplateUpgrade(async target => {
-    const { owner, db, applyForward } = target;
+  await withTemplateUpgrade(target => withCaptureBarrier(target, async gate => {
+    const { owner, db } = target;
     const intake = await db.connect(), entered = signal(), release = signal();
     let subscriptionId: string;
-    let delivery: Promise<void> | undefined, forward: ReturnType<typeof applyForward> | undefined;
+    let delivery: Promise<void> | undefined;
     try {
       const entry = await prepareWebhookRenewal(target, "succeeded", "dispatched", webhookProvider, async work => {
         await intake.query("BEGIN");
@@ -2678,34 +2924,73 @@ it("lets verified provider intake finish while cohort capture only reads the ope
         }
       });
       subscriptionId = entry.f.subscriptionId;
-      const { rows: [{ pid }] } = await intake.query("SELECT pg_backend_pid() AS pid");
       delivery = entry.deliver();
       void delivery.catch(entered.reject);
       await entered.promise;
-      forward = applyForward();
-      void forward.catch(() => {});
-      await expect.poll(async () => (await owner.query(`SELECT EXISTS (
-        SELECT 1 FROM pg_stat_activity a
-        WHERE a.datname = current_database() AND $1 = ANY(pg_blocking_pids(a.pid))
-          AND EXISTS (SELECT 1 FROM pg_locks l WHERE l.pid = a.pid AND l.granted
-            AND l.relation = 'public.subscription_renewal_operations'::regclass AND l.mode = 'AccessShareLock')
-          AND NOT EXISTS (SELECT 1 FROM pg_locks l WHERE l.pid = a.pid AND l.granted
-            AND l.relation = 'public.subscription_renewal_operations'::regclass AND l.mode <> 'AccessShareLock')
-      ) AS waiting_with_read_lock`, [pid])).rows, { timeout: 20_000 }).toEqual([{ waiting_with_read_lock: true }]);
+      const forward = gate.start();
+      await gate.wait();
       release.resolve();
       await delivery;
+      await gate.release();
       expect((await forward).applied).toEqual([expect.stringMatching(renewalTemplateForward)]);
       expect((await owner.query(`SELECT o.state FROM public.subscription_renewal_operations o
         JOIN public.subscription_renewal_upgrade_cohort cohort ON cohort.renewal_operation_id=o.id WHERE o.id=$1`,
         [entry.id])).rows).toEqual([{ state: "succeeded" }]);
       expect(await renewalUpgradeReport(owner)).toEqual([]);
     } finally {
+      await gate.release();
       release.resolve();
       await delivery?.catch(() => {});
-      await forward?.catch(() => {});
       intake.release();
     }
-  });
+  }));
+}, postgresSetupTimeoutMs);
+
+it("commits two verified arrivals during capture without an opposing subscription lock", async () => {
+  await withTemplateUpgrade(target => withCaptureBarrier(target, async gate => {
+    const { owner, db } = target;
+    const subjects = [];
+    for (let i = 0; i < 2; i++) {
+      const { f, d, claim } = await upgradeRenewal(target);
+      const root = await claim();
+      subjects.push({ id: f.subscriptionId, shipment: await parcel(f.orderId, db),
+        delivered: days(d.due.scheduledAt, 1), operation: root.operationId });
+    }
+    subjects.sort((a, b) => a.id.localeCompare(b.id));
+    const [lower, higher] = subjects as [typeof subjects[number], typeof subjects[number]];
+    const intake = await db.connect();
+    try {
+      await intake.query("BEGIN");
+      const { rows: [{ pid }] } = await intake.query("SELECT pg_backend_pid() AS pid");
+      expect(await recordArrival(higher.shipment, higher.delivered, intake)).toEqual({ replayed: false });
+      const forward = gate.start();
+      const waiter = await gate.wait(pid);
+      const second = recordArrival(lower.shipment, lower.delivered, intake);
+      void second.catch(() => {});
+      if (waiter.blocker === pid) {
+        await expect.poll(async () => (await owner.query("SELECT $1 = ANY(pg_blocking_pids($2)) AS blocked",
+          [waiter.pid, pid])).rows[0]?.blocked, { interval: 10, timeout: 900 }).toBe(true);
+        await gate.release();
+        const intakeFailure = await second.then(() => undefined, (error: unknown) => error);
+        await intake.query("ROLLBACK");
+        await forward.catch(() => {});
+        expect([intakeFailure, gate.captureError()]).toContainEqual(expect.objectContaining({ code: "40P01" }));
+        throw new Error("opposing verified intake and capture waits caused PostgreSQL deadlock 40P01");
+      }
+      expect(await second).toEqual({ replayed: false });
+      await intake.query("COMMIT");
+      expect((await owner.query(`SELECT s.id, s.delivered_at FROM public.fulfillment_shipments s
+        JOIN public.subscription_delivery_alignment_arrivals a ON a.shipment_id=s.id
+        WHERE s.id=ANY($1)`, [subjects.map(subject => subject.shipment)])).rows).toEqual(expect.arrayContaining(
+        subjects.map(subject => ({ id: subject.shipment, delivered_at: new Date(subject.delivered) }))));
+      await gate.release();
+      expect((await forward).applied).toEqual([expect.stringMatching(renewalTemplateForward)]);
+      expect((await renewalUpgradeReport(owner)).map(row => row.operation_id)).toEqual(subjects.map(subject => subject.operation).sort());
+    } finally {
+      await intake.query("ROLLBACK");
+      intake.release();
+    }
+  }));
 }, postgresSetupTimeoutMs);
 
 async function interruptProviderHandoff(owner: Pool, deliver: () => Promise<unknown>) {

@@ -1044,7 +1044,9 @@
     ],
     "tests/postgres/subscriptionPublicRenewal.test.ts": [
       "@src",
+      "docs/platform/SUBSCRIPTION_WORKFLOWS.md",
       "packages/core/docs/guide/upgrade/database-migrations.md",
+      "packages/core/docs/guide/upgrade/v1-4-0.md",
       "tests/postgres/subscriptionNativeFixture.ts",
       "tests/postgres/subscriptionPublicRenewal.worker.mjs",
       "tests/postgres/subscriptionPublicRenewalFixture.ts",
