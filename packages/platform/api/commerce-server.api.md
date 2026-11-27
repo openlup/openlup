@@ -2427,6 +2427,31 @@ export interface TransactionalEmailPort<Locale extends string = string> {
     sendShipmentExceptionNotice(input: ShipmentExceptionEmailInput<Locale>): Promise<TransactionalEmailSendOutcome>;
 }
 ```
+## dist/commerce/returnReasonsPolicy.d.ts
+
+```ts
+/** @experimental Default allowed return reason codes when no `commerce_return_reasons` setting row is installed. */
+export declare const DEFAULT_COMMERCE_RETURN_REASONS: readonly string[];
+/** @experimental Installed policy configuring the allowed return reason codes for new return requests. */
+export interface CommerceReturnReasonsPolicy {
+    revision: string;
+    reasons: string[];
+}
+interface Executor {
+    query(text: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+/** @experimental Validate a `commerce_return_reasons` policy document using SQL-equivalent rules. */
+export declare function validateCommerceReturnReasons(value: unknown): CommerceReturnReasonsPolicy;
+/** @experimental Install the commerce return reasons policy on a host-owned write-capable connection. */
+export declare function installCommerceReturnReasonsPolicy(db: Executor, policy: CommerceReturnReasonsPolicy): Promise<void>;
+/** @experimental Read an explicit `commerce_return_reasons` override, returning `undefined` when absent. */
+export declare function readCommerceReturnReasonsOverride(db: Executor): Promise<CommerceReturnReasonsPolicy | undefined>;
+/** @experimental Read the installed `commerce_return_reasons` policy or the default absence fallback. */
+export declare function readCommerceReturnReasonsPolicy(db: Executor): Promise<CommerceReturnReasonsPolicy>;
+export {};
+```
 ## dist/commerce/server/catalogAdmissionRefusal.d.ts
 
 ```ts
@@ -5668,6 +5693,8 @@ import type { CommerceQuotePortV2, DbBackedCommerceQuotePortV2Deps } from "./dbB
 export type { CommerceQuotePortV2, CommerceQuoteV2Request, DbBackedCommerceQuotePortV2Deps, QuoteOwnerContext, QuoteOutcome } from "./dbBackedCommerceQuotePortV2.js";
 /** @experimental Construct the native quote port with the same registry the host uses for privacy. */
 export declare function createDbBackedCommerceQuotePortV2(deps: DbBackedCommerceQuotePortV2Deps): CommerceQuotePortV2;
+export { DEFAULT_COMMERCE_RETURN_REASONS, validateCommerceReturnReasons, installCommerceReturnReasonsPolicy, readCommerceReturnReasonsOverride, readCommerceReturnReasonsPolicy, } from "../returnReasonsPolicy.js";
+export type { CommerceReturnReasonsPolicy } from "../returnReasonsPolicy.js";
 ```
 ## dist/commerce/server/nativeExpiredCheckoutRecovery.d.ts
 

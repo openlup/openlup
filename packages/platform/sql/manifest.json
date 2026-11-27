@@ -928,11 +928,15 @@
         "sha256": "38c765551a254c374a04f72e8d1e49b9ac1f835b7359319ce745ecdfc9634466"
       },
       {
-        "file": "db/platform/migrations/20261129130507_subscription_renewal_current_template.sql",
+        "file": "db/platform/migrations/20261129130507_settings_wave3b_return_reasons_and_payment_preferences.sql",
+        "sha256": "0f3a48e4bf37494cc69d46a6dfa11706a1215d1e482fac8f94a948f5ca88e539"
+      },
+      {
+        "file": "db/platform/migrations/20261129130508_subscription_renewal_current_template.sql",
         "sha256": "b91f93eb2d4512e8e1f9cbcb161e4d40e52901be3e8ecd1b8ae81726a238b586"
       }
     ],
-    "objectInventorySha256": "39400fede2d9c555f6fdf5b1ba583098387903cfac0e51a596a4cf169c909ec5",
+    "objectInventorySha256": "4d41926d2b0756a6816a26a992bff8e874bcd5fc9ef363c438b558b678da5b68",
     "qualified": {
       "baseline": {
         "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1884,16 +1888,20 @@
           "sha256": "38c765551a254c374a04f72e8d1e49b9ac1f835b7359319ce745ecdfc9634466"
         },
         {
-          "file": "db/platform/migrations/20261129130507_subscription_renewal_current_template.sql",
+          "file": "db/platform/migrations/20261129130507_settings_wave3b_return_reasons_and_payment_preferences.sql",
+          "sha256": "0f3a48e4bf37494cc69d46a6dfa11706a1215d1e482fac8f94a948f5ca88e539"
+        },
+        {
+          "file": "db/platform/migrations/20261129130508_subscription_renewal_current_template.sql",
           "sha256": "b91f93eb2d4512e8e1f9cbcb161e4d40e52901be3e8ecd1b8ae81726a238b586"
         }
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "95d7fdcdf57d4eabbbce1821216b4b015c6b7714b5e62a52ebcd303ea9fb0885"
+          "withRestore": "45a13f28fe75b0cf75de366796fb02081cf9003a4e74ba7a2f5458004d731bb2"
         },
         "separateMigrator": {
-          "withRestore": "b1f70b23ba7eb05209d498d29c0c6a7114514e6e3196be5d1d62e83858079af9"
+          "withRestore": "3980f76e41c5860ed867d67820c999b0645262355007ad1ca44d9193b0228435"
         }
       }
     },
@@ -2840,13 +2848,17 @@
           "sha256": "38c765551a254c374a04f72e8d1e49b9ac1f835b7359319ce745ecdfc9634466"
         },
         {
-          "file": "db/platform/migrations/20261129130507_subscription_renewal_current_template.sql",
+          "file": "db/platform/migrations/20261129130507_settings_wave3b_return_reasons_and_payment_preferences.sql",
+          "sha256": "0f3a48e4bf37494cc69d46a6dfa11706a1215d1e482fac8f94a948f5ca88e539"
+        },
+        {
+          "file": "db/platform/migrations/20261129130508_subscription_renewal_current_template.sql",
           "sha256": "b91f93eb2d4512e8e1f9cbcb161e4d40e52901be3e8ecd1b8ae81726a238b586"
         }
       ],
       "objectInventorySha256": {
-        "installerManaged": "b54bb82e69a05777eed110d4a7b17835cb685351e4b1780348e6c61d8dc913b0",
-        "operatorProvisioned": "54bc12bb3589fe48c7503171178db2f8b9e162aaa5078c1b67a8f6968edec3f9"
+        "installerManaged": "f27d4a1bb0f3defa116b880c47ae2330665a9d5468ba2b8eae5cca64d50766ef",
+        "operatorProvisioned": "a50af3a92d8fe45b58a18198a3381ee36fe14098d8eb0d61a49d8881db5c8f6f"
       }
     }
   },
@@ -4007,8 +4019,13 @@
       "sha256": "38c765551a254c374a04f72e8d1e49b9ac1f835b7359319ce745ecdfc9634466"
     },
     {
-      "file": "20261129130507_subscription_renewal_current_template.sql",
-      "source": "db/platform/migrations/20261129130507_subscription_renewal_current_template.sql",
+      "file": "20261129130507_settings_wave3b_return_reasons_and_payment_preferences.sql",
+      "source": "db/platform/migrations/20261129130507_settings_wave3b_return_reasons_and_payment_preferences.sql",
+      "sha256": "0f3a48e4bf37494cc69d46a6dfa11706a1215d1e482fac8f94a948f5ca88e539"
+    },
+    {
+      "file": "20261129130508_subscription_renewal_current_template.sql",
+      "source": "db/platform/migrations/20261129130508_subscription_renewal_current_template.sql",
       "sha256": "b91f93eb2d4512e8e1f9cbcb161e4d40e52901be3e8ecd1b8ae81726a238b586"
     },
     {
