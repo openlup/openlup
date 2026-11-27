@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { expect, it } from "vitest";
+import { knownFindingCodes } from "../../src/lifecycle/storefrontVerdictSchema.js";
 
 // The probe sits beside this test (an in-memory file at that path) and imports the
 // exported type and the internal schema module from source.
@@ -29,13 +30,15 @@ const adapters: Equals<Known<Verdict["harness"]["adapter"]["kind"]>, (typeof sch
 const observers: Equals<Known<Verdict["harness"]["observer"]>, (typeof schema.knownObserverKinds)[number]> = true;
 const codes: Equals<Known<StorefrontFindingCode>, (typeof schema.knownFindingCodes)[number]> = true;
 const openCode: StorefrontFindingCode = "code_added_later";
+// V12: the code a page handle without clearClientState gives is a known member.
+const unisolated: Equals<Extract<Known<StorefrontFindingCode>, "client_state_unisolated">, "client_state_unisolated"> = true;
 const proofShape: Equals<Declared<z.output<typeof schema.proofFileSchema>>, StorefrontProofFile> = true;
 const policies: Equals<Known<Exclude<StorefrontProofFile["changedPayloadPolicy"], undefined>>, (typeof schema.knownChangedPayloadPolicies)[number]> = true;
 const proofMissingOptional: Equals<Declared<z.output<typeof schema.proofFileSchema>>, Omit<StorefrontProofFile, "recheck">> = false;
 // Negative controls of the probe itself: a missing optional field and a dropped open set fail.
 const missingOptional: Equals<Declared<z.output<typeof schema.verdictSchema>>, Omit<Verdict, "width">> = false;
 const closedResult: Equals<Declared<z.output<typeof schema.verdictSchema>>, Omit<Verdict, "result"> & { result: Known<Verdict["result"]> }> = false;
-export { shape, tiers, channels, results, phases, runs, findingRuns, controls, sources, adapters, observers, codes, openCode, proofShape, policies, proofMissingOptional, missingOptional, closedResult };
+export { shape, tiers, channels, results, phases, runs, findingRuns, controls, sources, adapters, observers, codes, openCode, unisolated, proofShape, policies, proofMissingOptional, missingOptional, closedResult };
 `;
 
 it("V9 and P10 keep StorefrontVerdict and StorefrontProofFile exactly equal to the internal schemas and their open-set members", () => {
@@ -54,3 +57,8 @@ it("V9 and P10 keep StorefrontVerdict and StorefrontProofFile exactly equal to t
     .map(diagnostic => `${diagnostic.file!.getLineAndCharacterOfPosition(diagnostic.start!).line + 1}: ${ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")}`);
   expect(diagnostics).toEqual([]);
 }, 60_000);
+
+it("V12 knows client_state_unisolated as the twenty-fifth finding code", () => {
+  expect(knownFindingCodes).toHaveLength(25);
+  expect(knownFindingCodes).toContain("client_state_unisolated");
+});

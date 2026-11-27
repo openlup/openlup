@@ -103,6 +103,11 @@ export type StoreDoubleSwitches = {
   readonly activationFromPageState?: boolean;
   /** Once `paid_pending_activation` was shown, the page's next settle falls back to `awaiting_payment` (a later poll that failed). */
   readonly fallsBackAfterShowing?: boolean;
+  /**
+   * One purchase record per browser session, as a refuse-changed store keeps it: once a create was sent, place-order
+   * for another buyer sends nothing and shows `details_changed`, until the client state is cleared.
+   */
+  readonly sessionCarriesRecord?: boolean;
 };
 
 /** Every outcome kind the double's driver can produce. */
@@ -126,7 +131,8 @@ const VIEW_OF: Readonly<Record<PaymentStatus, PaymentView>> = {
 /**
  * A scripted page, in-memory server and observer sharing one state. `events`
  * records server and observer events in order (`create:start`,
- * `create:answered`, `ledger`); `calls` records every page handle call;
+ * `create:answered`, `ledger`); `calls` records every page handle call
+ * (`clearClientState`, which empties the page's session storage, included);
  * `keysSent` every command key the page sent; `withheld` the create answers
  * the server produced that the page never received, per buyer; `produced`
  * every outcome the driver was asked for, as `[subject, outcome]`.
@@ -162,8 +168,8 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: {
   let decide: Decide | null = null;
   let view: View = "blank";
   let fields: Record<string, string | boolean> = {};
-  // Session storage: survives a reload and a navigation.
-  const storage: { key?: string; cached?: boolean; reloaded?: boolean; email?: string; lastView?: View } = {};
+  // Session storage: survives a reload and a navigation; `clearClientState` empties it.
+  const storage: { key?: string; cached?: boolean; reloaded?: boolean; email?: string; lastView?: View; record?: string } = {};
   // Anchor reads while the page showed a decline, since the last buyer action; the page's own retry fires after two.
   let declinedReads = 0;
   let autoFired = false;
@@ -424,8 +430,13 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: {
           view = "awaiting_payment";
           return true;
         }
+        if (switches.sessionCarriesRecord === true && storage.record !== undefined && storage.record !== buyer()) {
+          view = "details_changed";
+          return true;
+        }
         placing = true;
         storage.email = buyer();
+        storage.record = buyer();
         if (switches.noSubmitGuard === true || storage.key === undefined) storage.key = newKey();
         clicks += 1;
         void track(submit(storage.key, clicks));
@@ -447,6 +458,10 @@ export function storeDouble(switches: StoreDoubleSwitches = {}, options: {
       if (present().get(name) === undefined) return false;
       fields[name.slice("field:".length)] = value;
       return true;
+    },
+    async clearClientState() {
+      calls.push("clearClientState");
+      for (const key of Object.keys(storage) as (keyof typeof storage)[]) delete storage[key];
     },
     async intercept(next) {
       calls.push("intercept");

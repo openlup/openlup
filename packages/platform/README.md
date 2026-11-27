@@ -4060,6 +4060,27 @@ and never in a buyer's bundle: a browser bundle of the entry fails, and the
   scrolled into view before it is measured, and every scroll position is restored afterwards, instantly
   whatever the page's `scroll-behavior`. The handle reads no clock.
 
+  `clearClientState()` leaves the page with no cookies, local storage or
+  session storage of the store's origin, as for a new buyer, without sending a
+  request or navigating. It reads the document's origin in the page first: a
+  document on another `http:` or `https:` origin than `options.origin` rejects
+  `storefront_page_client_state_foreign_origin` before anything is cleared
+  (without `options.origin`, any such origin is the store's). It then calls the
+  browser context's `setStorageState({ cookies: [], origins: [] })`, which
+  also clears IndexedDB, or without it `clearCookies()` and a local-storage
+  clear in the page, and last clears session storage in the page on the
+  store's origin. A page without `context()` rejects
+  `storefront_page_input_invalid`. Stated limits: cookies are cleared for the
+  whole browser context, harness cookies such as a preview or test-environment
+  sign-in included, so a harness that needs one sets it again in its own
+  arrangement; a page on `about:blank` cannot reach the store's earlier session
+  storage in that tab, so a harness that leaves the store's origin between runs
+  starts each test in a fresh browser context (Playwright's per-test context
+  does); Cache Storage and service-worker registrations are outside the
+  guarantee. The
+  member is optional on `PageHandle` so that a hand-built handle still
+  compiles; without it the runner cannot isolate the two buyers (below).
+
   Whether the buyer can bring an anchor into view is judged per axis before
   anything moves, walking its scrollers from the anchor outward: the overflow
   ancestors in its containing-block chain, then the viewport (whose overflow
@@ -4151,8 +4172,18 @@ where the scenario says so, the outcomes after it; `other_policy` changes
 nothing and must not show the progress of the changed-payload policy the proof
 file does not declare. An arrangement that fails under the control is the
 control's effect: the remaining steps are skipped and the settle window still
-samples the page. The clean and control runs share the page and its browser
-storage.
+samples the page.
+
+**Client state.** The clean and control runs are two buyers on one page. Each
+run calls `page.clearClientState()` after its first ledger read (and the
+exclusive database's count) and before its interceptor, so the control buyer
+never meets a purchase record, cookie or other browser state the clean buyer
+left. A rejection ends that run with `page_failed` (step `null`). A handle
+without the member cannot isolate the buyers: an admitted scenario with a
+control run then ends `not_run` with `client_state_unisolated` only, before any
+page, observer or driver call, and is never `passed` or `vacuous`; a
+`safety_only` scenario has one buyer and runs as before. Fix it with
+`createPageHandle`, which provides the member, or by adding the member.
 
 | Scenario | Stimulus | Safety | Progress | Control | Requires |
 | --- | --- | --- | --- | --- | --- |
@@ -4218,7 +4249,7 @@ visible after a step, removes the interceptor and resolves
 `{ kind: "stopped", stoppedAt, steps }` with the page left there: no control
 run and no verdict. A state not reached rejects
 `storefront_stop_state_unreached` naming the last step, as does a scenario that
-is not admitted, before any call.
+is not admitted or a page handle without `clearClientState`, before any call.
 
 **Judgement.** Every failed check adds a finding with its run, step, the field
 at fault where there is one, and texts saying what was observed, why and how
@@ -4227,7 +4258,7 @@ to fix it, and the recheck command (`recheck` from the adapter or proof file,
 
 | Order | Check | Codes | Result |
 | --- | --- | --- | --- |
-| 0 | Admitted: every required outcome known and declared | `tier_unreachable` | `not_run` |
+| 0 | Admitted: every required outcome known and declared; then, with a control run, a page handle that clears client state | `tier_unreachable`, then `client_state_unisolated` | `not_run` |
 | 1 | Page, observer, arrangement and outcome driver worked | `page_failed`, `observer_failed`, `arrange_failed`, `outcome_failed` | `not_run` |
 | 2 | No order before the arrangement; one after the first matched create | `observer_subject_unseen` | `not_run` |
 | 3 | The first order appeared in a step with a matched create; every withhold applied; declared auto-progress was performed; every outcome shows its ledger effect | `stimulus_not_create`, `stimulus_not_applied`, `auto_progress_not_performed`, `outcome_failed` | `not_run` |

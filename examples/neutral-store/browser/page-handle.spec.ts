@@ -1,11 +1,20 @@
-// Real-browser witness of the storefront page handle from the installed package: anchor visibility and request
-// interception, against static markup and a loopback server this spec starts. It needs no store host or database.
+// Real-browser witness of the storefront page handle from the installed package: anchor visibility, request
+// interception and clearing client state, against static markup and a loopback server this spec starts. Only the
+// last case, which clears the state the starter's checkout page keeps, uses the store host and its database.
 // CI: titles start "page handle:", so the file runs in the remainder browser group; every case is independent of the
-// store configuration, so it runs in the first project only (about 15 s, mostly the visibility table's pages).
+// store configuration, so it runs in the first project only (about 20 s, mostly the visibility table's pages).
+// Quota: the checkout case makes one metered create, after emptying the attempt ledger.
+import { readFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { randomUUID } from 'node:crypto';
+import pg from 'pg';
 import { test, expect, type Page } from '@playwright/test';
 import { createPageHandle } from '@openlup/platform/storefront/testing';
+import { copy } from '../owned/copy.ts';
+import { market } from '../owned/market.config.ts';
+import { configurations } from '../owned/store.config.ts';
+import { routes } from '../shared/routes.ts';
 
 const markup = `<!doctype html><html><head><meta charset="utf-8"><style>
   body { margin: 0; font: 16px sans-serif; } .box { display: block; width: 120px; height: 40px; margin: 4px; }
@@ -63,6 +72,19 @@ const answerDelayMs = 600;
 let server: Server, origin: string;
 const served = { received: 0, answered: 0, landed: 0 };
 const streams = new Set<import('node:http').ServerResponse>();
+// Every kind of client state the handle clears: an HttpOnly cookie from the server, a script cookie, local and
+// session storage, and an IndexedDB database whose connection is closed again.
+const storagePage = `<!doctype html><html><head><meta charset="utf-8"></head><body>
+  <output id="storage">waiting</output>
+  <script>
+    document.cookie = 'probe_script=1; path=/';
+    localStorage.setItem('probe', 'local');
+    sessionStorage.setItem('probe', 'session');
+    const opened = indexedDB.open('probe-db', 1);
+    opened.onupgradeneeded = () => opened.result.createObjectStore('records');
+    opened.onsuccess = () => { opened.result.close(); document.getElementById('storage').textContent = 'ready'; };
+  </script>
+</body></html>`;
 const streamPage = `<!doctype html><html><head><meta charset="utf-8"></head><body>
   <output id="stream">waiting</output>
   <script>new EventSource('/events?topic=order').onmessage = event => { document.getElementById('stream').textContent = event.data; };</script>
@@ -71,6 +93,10 @@ const streamPage = `<!doctype html><html><head><meta charset="utf-8"></head><bod
 test.beforeAll(async () => {
   server = createServer((request, response) => {
     if (request.url === '/purchase') { response.writeHead(200, { 'content-type': 'text/html' }).end(purchase); return; }
+    if (request.url === '/storage') {
+      response.writeHead(200, { 'content-type': 'text/html', 'set-cookie': 'probe_http_only=1; HttpOnly; Path=/; SameSite=Lax' }).end(storagePage);
+      return;
+    }
     if (request.url === '/stream') { response.writeHead(200, { 'content-type': 'text/html' }).end(streamPage); return; }
     // A server-sent event stream that never ends, as an order-status or chat widget keeps open.
     if (request.url?.startsWith('/events')) {
@@ -333,4 +359,81 @@ test('page handle: settling follows a redirect and waits for the redirected requ
   expect(served.landed).toBe(1);
   await expect(page.locator('#outcome')).toHaveText('landed');
   await remove();
+});
+
+/** Cookies, both storages and IndexedDB database names the page's own origin holds. */
+const clientState = async (page: Page) => ({
+  cookies: (await page.context().cookies()).map(cookie => cookie.name).sort(),
+  ...await page.evaluate(async () => ({
+    local: localStorage.getItem('probe'), session: sessionStorage.getItem('probe'),
+    databases: (await indexedDB.databases()).map(database => database.name),
+  })),
+});
+
+test('page handle: clearing client state removes cookies, local and session storage and IndexedDB, sending nothing', async ({ page }) => {
+  await page.goto(`${origin}/storage`);
+  await expect(page.locator('#storage')).toHaveText('ready');
+  expect(await clientState(page)).toEqual({ cookies: ['probe_http_only', 'probe_script'], local: 'local', session: 'session', databases: ['probe-db'] });
+  const url = page.url();
+  const sent: string[] = [];
+  page.on('request', request => sent.push(request.url()));
+  await createPageHandle(page, { origin }).clearClientState!();
+  expect(page.url(), 'the page did not navigate').toBe(url);
+  expect(sent, 'clearing sent no request').toEqual([]);
+  await expect.poll(() => clientState(page)).toEqual({ cookies: [], local: null, session: null, databases: [] });
+});
+
+test('page handle: clearing client state refuses a document on another origin than the store\'s, clearing nothing', async ({ page }) => {
+  await page.goto(`${origin}/storage`);
+  await expect(page.locator('#storage')).toHaveText('ready');
+  const store = 'http://127.0.0.1:9';
+  await expect(createPageHandle(page, { origin: store }).clearClientState!()).rejects.toThrow(
+    `storefront_page_client_state_foreign_origin: the page is on ${origin} while the store's origin is ${store} (options.origin).`);
+  expect(await clientState(page)).toEqual({ cookies: ['probe_http_only', 'probe_script'], local: 'local', session: 'session', databases: ['probe-db'] });
+});
+
+test.describe('page handle: the starter checkout page', () => {
+  interface Material { id: string; baseURL: string; ownerUrl: string }
+  let material: Material;
+  const locale = market.defaultLocale, t = copy[locale];
+  const recordPrefix = 'neutral-store:checkout-continuation:v1:';
+  const records = (page: Page) => page.evaluate(prefix => Object.keys(sessionStorage).filter(key => key.startsWith(prefix)), recordPrefix);
+
+  test.beforeAll(async ({ baseURL }, info) => {
+    const entries: Material[] = JSON.parse(await readFile('.context/care-browser/fixtures.json', 'utf8'));
+    const found = entries.find(row => row.id === info.project.name);
+    if (!found || found.baseURL !== baseURL) throw new Error('starter_care_browser_fixture_required');
+    material = found;
+  });
+
+  test('page handle: after clearing client state the checkout page neither keeps nor resumes the earlier buyer\'s order', async ({ page, baseURL }) => {
+    const owner = new pg.Pool({ connectionString: material.ownerUrl });
+    try { await owner.query('TRUNCATE public.commerce_checkout_attempt_ledger'); } finally { await owner.end(); }
+    await page.goto(routes.builder[locale]);
+    await page.getByLabel(t.purchaseMode, { exact: true }).selectOption('one_time');
+    await page.getByRole('spinbutton').first().fill(String(configurations[material.id]!.offer.minUnits));
+    await page.getByRole('button', { name: t.addBox, exact: true }).click();
+    await page.getByRole('button', { name: t.checkout, exact: true }).click();
+    const email = `page-handle-${randomUUID()}@example.test`;
+    const quoted = page.waitForResponse(row => row.url().endsWith('/api/actions/offer.validate') && row.request().postDataJSON().email === email);
+    const field = page.getByLabel(t.email, { exact: true });
+    await field.fill(email);
+    await field.blur();
+    await (await quoted).finished();
+    await page.getByLabel(t.termsAccept).check();
+    const created = page.waitForResponse(row => row.url().endsWith('/api/actions/checkout.create'));
+    await page.getByRole('button', { name: t.placeOrder, exact: true }).click();
+    expect((await (await created).json()).ok, 'the order was placed').toBe(true);
+    await expect.poll(() => records(page), 'the page keeps a continuation record of the order').toEqual([`${recordPrefix}${material.id}`]);
+
+    await createPageHandle(page, { origin: baseURL! }).clearClientState!();
+    expect(await page.context().cookies()).toEqual([]);
+    expect(await records(page)).toEqual([]);
+    const resumed: string[] = [];
+    page.on('request', request => { if (/\/api\/actions\/checkout\.(?:continuation|read)$/.test(request.url())) resumed.push(request.url()); });
+    await page.goto(routes.checkout[locale]);
+    await page.waitForLoadState('networkidle');
+    expect(resumed, 'no read or resume of the earlier order').toEqual([]);
+    expect(await records(page)).toEqual([]);
+  });
 });

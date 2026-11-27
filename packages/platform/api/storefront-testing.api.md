@@ -248,6 +248,20 @@ export type StorefrontObserver = {
  *   with `storefront_page_settle_timeout` naming each unfinished request's
  *   method and path: an open stream (`EventSource`), a long poll or a request
  *   in flight when the page closed keeps it pending until that bound.
+ * - `clearClientState()` leaves the page with no cookies, local storage or
+ *   session storage of the store's origin, as for a new buyer; it sends no
+ *   request and never navigates. The runner calls it before each run, so the
+ *   control run's buyer never meets the clean run's state. It is optional so
+ *   that a hand-built handle written before it still compiles, but a handle
+ *   without it cannot isolate the two buyers: every admitted scenario with a
+ *   control run then ends `not_run` with `client_state_unisolated`.
+ *   `createPageHandle` always provides it. Stated limits: cookies are cleared
+ *   for the whole browser context, harness cookies such as a preview sign-in
+ *   included, so a harness that needs one sets it again in its arrangement;
+ *   a page on `about:blank` cannot reach the store's earlier session storage
+ *   in that tab, so a harness that leaves the store's origin between runs
+ *   starts each test in a fresh browser context; Cache Storage and
+ *   service-worker registrations are outside the guarantee.
  *
  * @experimental
  */
@@ -280,6 +294,7 @@ export type PageHandle = {
         readonly quietMs: number;
         readonly timeoutMs?: number;
     }): Promise<void>;
+    clearClientState?(): Promise<void>;
 };
 export {};
 ```
@@ -329,6 +344,14 @@ type StructuralLocator = {
     }): Promise<void>;
 };
 type RequestEvent = "request" | "requestfinished" | "requestfailed";
+/** The browser context members `clearClientState` uses; a Playwright context has both. */
+type StructuralContext = {
+    setStorageState?(state: {
+        cookies: [];
+        origins: [];
+    }): Promise<void>;
+    clearCookies?(): Promise<void>;
+};
 /**
  * The page `createPageHandle` reads: the members of a Playwright page it uses,
  * typed structurally so this module imports no browser library.
@@ -349,6 +372,8 @@ type StructuralPage = {
     };
     route(url: string, handler: (route: StructuralRoute) => Promise<void>): Promise<unknown>;
     unroute(url: string, handler: (route: StructuralRoute) => Promise<void>): Promise<unknown>;
+    /** Read only by `clearClientState`; a page without it cannot clear client state. */
+    context?(): StructuralContext;
 };
 /**
  * Wraps a browser page as a storefront `PageHandle`. It accepts a Playwright
@@ -361,6 +386,19 @@ type StructuralPage = {
  * hop, which the browser does not route, is claimed from its own `request`
  * event. `options.origin` resolves
  * relative paths for `navigate`; without it the page's own base URL does.
+ *
+ * `clearClientState` also reads `context()` (`setStorageState`, else
+ * `clearCookies`), and runs one self-contained function over the `:root`
+ * locator's `evaluateAll`. It reads the document's origin in the page first:
+ * a document on another `http:` or `https:` origin than `options.origin`
+ * rejects `storefront_page_client_state_foreign_origin`
+ * before anything is cleared (without `options.origin`, any such origin is
+ * the store's). Then `setStorageState({ cookies: [], origins: [] })` clears
+ * the context's cookies, local storage and IndexedDB, or without it
+ * `clearCookies()` and a local-storage clear in the page do; last, on the
+ * store's origin, session storage is cleared in the page. It sends no request
+ * and never navigates. A page without `context` rejects
+ * `storefront_page_input_invalid`.
  *
  * `withhold` is `fetch()` then `abort()`: the request reaches the server, its
  * response is discarded and the page sees a failure. `block` is `abort()`. All
@@ -527,6 +565,15 @@ type StorefrontRunResult = {
  * next expected state is not shown, the declaration is wrong:
  * `auto_progress_not_performed` (`not_run`).
  *
+ * Client state: the clean and control runs are two buyers on one page. Each
+ * run calls `page.clearClientState()` after its ledger read (and the
+ * exclusive database's count) and before its interceptor, so it starts with no
+ * cookies, local storage or session storage of the store's origin; a
+ * rejection is `page_failed` of that run (step `null`). A handle without the
+ * member cannot isolate the buyers: an admitted scenario with a control run
+ * then ends `not_run` with `client_state_unisolated` only, before any page,
+ * observer or driver call; a `safety_only` scenario runs as before.
+ *
  * Outcomes: an `outcome` step asks the `outcomes` driver for one outcome
  * (`declined`, `pending`, `settled`, `settled_after_pending`,
  * `activation_pending`). A scenario runs only when every outcome in its
@@ -542,7 +589,8 @@ type StorefrontRunResult = {
  * outcome whose effect the ledger does not show, is `outcome_failed` and stops
  * the run.
  *
- * Judgement, first failing group decides: 0 admitted; 1 page, observer,
+ * Judgement, first failing group decides: 0 admitted, then client state
+ * isolated; 1 page, observer,
  * arrangement and outcome driver worked; 2 no order before the arrangement and
  * one after the first matched create; 3 the first order appeared in a step with
  * a matched create, every withhold applied, every outcome shows its ledger
@@ -577,13 +625,13 @@ type StorefrontRunResult = {
  * steps until that state is visible, removes its interceptor and leaves the
  * page there: no control run and no verdict; a state not reached rejects
  * `storefront_stop_state_unreached` naming the last step, as does a scenario
- * that is not admitted, before any call. An arrangement that
+ * that is not admitted or a page handle without `clearClientState`, before any
+ * call. An arrangement that
  * fails under a control is the control's effect: the remaining steps are
  * skipped and the settle window still samples the page. Anchors and the ledger
  * are sampled after each step settles and in the settle window, so a state
  * shown only inside a step is not seen. A fault's text keeps its code and
- * first sentence with every URL replaced. The clean and control runs share the
- * page and its browser storage.
+ * first sentence with every URL replaced.
  *
  * @experimental
  */

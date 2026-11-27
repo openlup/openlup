@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createPageHandle } from "../../../src/storefront/testing/index.js";
 import { anchorVisibility } from "../../../src/storefront/testing/anchorVisibility.js";
+import { clientStorage } from "../../../src/storefront/testing/clientStorage.js";
 
 type Decision = "pass" | "withhold" | "block";
 type FakeRequest = { method(): string; url(): string; headers(): Record<string, string>; redirectedFrom(): FakeRequest | null };
@@ -14,9 +15,15 @@ const shown: Measured = { attributes: [], width: 120, height: 40, insideScrollAr
  * A recording page with Playwright's shape: every call lands in `log`, element
  * queries answer from `elements` (selector to measured elements; an absent
  * selector never appears) and `disabled`, and `waitForTimeout` resolves only
- * when the test releases it.
+ * when the test releases it. `context` gives the page a browser context with
+ * both `setStorageState` and `clearCookies` (`full`), `clearCookies` only, or
+ * neither; the `:root` locator's `evaluateAll` answers `documentOrigin`
+ * (default the shop's origin).
  */
-function fakePage(state: { url?: string; viewport?: { width: number; height: number } | null; elements?: Record<string, Measured[]>; disabled?: Set<string> } = {}) {
+function fakePage(state: {
+  url?: string; viewport?: { width: number; height: number } | null; elements?: Record<string, Measured[]>; disabled?: Set<string>;
+  context?: "full" | "cookies" | "neither"; documentOrigin?: string;
+} = {}) {
   const log: string[] = [];
   const listeners = new Map<string, Set<(request: FakeRequest) => void>>();
   const routes = new Map<string, (route: unknown) => Promise<void>>();
@@ -32,6 +39,10 @@ function fakePage(state: { url?: string; viewport?: { width: number; height: num
     },
     async evaluateAll(pageFunction: unknown, arg: unknown) {
       log.push(`evaluateAll ${selector} ${JSON.stringify(arg)}`);
+      if (selector === ":root") {
+        expect(pageFunction).toBe(clientStorage);
+        return state.documentOrigin ?? "https://shop.example.test";
+      }
       expect(pageFunction).toBe(anchorVisibility);
       const found = elements[selector] ?? [];
       return first ? found.slice(0, 1) : found;
@@ -56,6 +67,12 @@ function fakePage(state: { url?: string; viewport?: { width: number; height: num
     locator: (selector: string) => locator(selector, false),
     async route(url: string, handler: (route: unknown) => Promise<void>) { log.push(`route ${url}`); routes.set(url, handler); },
     async unroute(url: string, handler: (route: unknown) => Promise<void>) { log.push(`unroute ${url}`); expect(routes.get(url)).toBe(handler); routes.delete(url); },
+    ...(state.context === undefined ? {} : {
+      context: () => ({
+        ...(state.context === "full" ? { async setStorageState(storageState: unknown) { log.push(`setStorageState ${JSON.stringify(storageState)}`); } } : {}),
+        ...(state.context === "neither" ? {} : { async clearCookies() { log.push("clearCookies"); } }),
+      }),
+    }),
   };
   /** Sends one request through the installed route and records what the handler did with it. */
   const send = (method: string, url: string, headers: Record<string, string> = {}) => {
@@ -509,6 +526,84 @@ function visibilityCases() {
     ] as const,
   };
 }
+
+describe("clearClientState over a recording page (H10, H13)", () => {
+  const navigation = (log: string[]) => log.filter((entry) => /^(goto|reload|route|unroute|waitForTimeout)/.test(entry));
+
+  it("clears through setStorageState, then the store's session storage, reading the origin first and never navigating (H10)", async () => {
+    const fake = fakePage({ context: "full" });
+    await createPageHandle(fake.page, { origin: "https://shop.example.test/base/" }).clearClientState!();
+    expect(fake.log).toEqual(["evaluateAll :root []", "setStorageState {\"cookies\":[],\"origins\":[]}", "evaluateAll :root [\"sessionStorage\"]"]);
+    expect(navigation(fake.log)).toEqual([]);
+  });
+
+  it("falls back to clearCookies and clears local and session storage in the page without setStorageState (H10, T0.14)", async () => {
+    const fake = fakePage({ context: "cookies" });
+    await createPageHandle(fake.page).clearClientState!();
+    expect(fake.log).toEqual(["evaluateAll :root []", "clearCookies", "evaluateAll :root [\"localStorage\",\"sessionStorage\"]"]);
+    expect(navigation(fake.log)).toEqual([]);
+  });
+
+  it("counts any http(s) origin as the store's without options.origin, and leaves session storage alone on a document of no origin", async () => {
+    const other = fakePage({ context: "full", documentOrigin: "http://127.0.0.1:4173" });
+    await createPageHandle(other.page).clearClientState!();
+    expect(other.log.at(-1)).toBe("evaluateAll :root [\"sessionStorage\"]");
+    const blank = fakePage({ context: "full", documentOrigin: "null" });
+    await createPageHandle(blank.page, { origin: "https://shop.example.test" }).clearClientState!();
+    expect(blank.log).toEqual(["evaluateAll :root []", "setStorageState {\"cookies\":[],\"origins\":[]}"]);
+    const fallback = fakePage({ context: "cookies", documentOrigin: "null" });
+    await createPageHandle(fallback.page, { origin: "https://shop.example.test" }).clearClientState!();
+    expect(fallback.log).toEqual(["evaluateAll :root []", "clearCookies", "evaluateAll :root [\"localStorage\"]"]);
+  });
+
+  it("refuses a page without a browser context, or whose context cannot clear cookies, touching nothing (H13, T0.12)", async () => {
+    const bare = fakePage();
+    await expect(createPageHandle(bare.page).clearClientState!()).rejects.toThrow(
+      /^storefront_page_input_invalid: the page has no browser context; pass a Playwright page or a page whose context\(\) offers setStorageState or clearCookies\.$/);
+    const neither = fakePage({ context: "neither" });
+    await expect(createPageHandle(neither.page).clearClientState!()).rejects.toThrow(/^storefront_page_input_invalid: the page has no browser context; /);
+    expect([...bare.log, ...neither.log]).toEqual([]);
+  });
+
+  it("refuses a document on another http(s) origin than the store's, naming both and clearing nothing (H13, T0.13)", async () => {
+    const fake = fakePage({ context: "full", documentOrigin: "http://127.0.0.1:4174" });
+    const refused = createPageHandle(fake.page, { origin: "http://127.0.0.1:4173" }).clearClientState!();
+    await expect(refused).rejects.toThrow(/^storefront_page_client_state_foreign_origin: the page is on http:\/\/127\.0\.0\.1:4174 while the store's origin is http:\/\/127\.0\.0\.1:4173 \(options\.origin\)\. Cause: .+ Fix: .+ Recheck: /);
+    expect(fake.log).toEqual(["evaluateAll :root []"]);
+  });
+});
+
+describe("the client storage function is self-contained (H12)", () => {
+  const rebuilt = new Function(`return ${clientStorage.toString()}`)() as typeof clientStorage;
+  const storage = () => {
+    const state = { cleared: 0 };
+    return { state, value: { clear() { state.cleared += 1; } } };
+  };
+  /** A root element whose window has the given origin and storage descriptors. */
+  const root = (origin: string, storages: Record<"localStorage" | "sessionStorage", PropertyDescriptor>) => {
+    const view = Object.defineProperties({ location: { origin } }, storages);
+    return [{ ownerDocument: { defaultView: view } }] as unknown as Element[];
+  };
+
+  it("returns the document's origin and clears exactly the storages named", () => {
+    const local = storage(), session = storage();
+    const elements = root("https://shop.example.test", { localStorage: { value: local.value }, sessionStorage: { value: session.value } });
+    expect(rebuilt(elements, [])).toBe("https://shop.example.test");
+    expect([local.state.cleared, session.state.cleared]).toEqual([0, 0]);
+    expect(rebuilt(elements, ["sessionStorage"])).toBe("https://shop.example.test");
+    expect([local.state.cleared, session.state.cleared]).toEqual([0, 1]);
+    expect(rebuilt(elements, ["localStorage", "sessionStorage", "indexedDB"])).toBe("https://shop.example.test");
+    expect([local.state.cleared, session.state.cleared]).toEqual([1, 2]);
+    expect(rebuilt([], ["sessionStorage"])).toBe("null");
+  });
+
+  it("swallows a SecurityError from a document of no origin and rethrows any other failure", () => {
+    const denied = { get() { throw new DOMException("Access is denied for this document.", "SecurityError"); } };
+    expect(rebuilt(root("null", { localStorage: denied, sessionStorage: denied }), ["localStorage", "sessionStorage"])).toBe("null");
+    const broken = root("https://shop.example.test", { localStorage: denied, sessionStorage: { value: { clear() { throw new TypeError("broken storage"); } } } });
+    expect(() => rebuilt(broken, ["sessionStorage"])).toThrow("broken storage");
+  });
+});
 
 describe("the visibility function is self-contained (H3)", () => {
   const rebuilt = new Function(`return ${anchorVisibility.toString()}`)() as typeof anchorVisibility;
