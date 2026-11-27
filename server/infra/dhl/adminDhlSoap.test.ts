@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   CARRIER_DISPLAY_NAME,
+  CARRIER_LABELS_BUCKET,
   CARRIER_NAMESPACE,
   CARRIER_PROVIDER_ID,
   CARRIER_SOAP_TIMEOUT_MS,
@@ -9,6 +10,9 @@ import {
   callCarrierSoap,
   extractCarrierPickupOrderId,
   parseStreet,
+  privateLabelObjectKey,
+  safeObjectKey,
+  safeTrackingLabelObjectKey,
   sanitizeCarrierError,
 } from "./adminDhlSoap.js";
 
@@ -130,5 +134,55 @@ describe("admin carrier SOAP", () => {
     await expect(
       callCarrierSoap(stubFetch as never, "getLabels", "<xml/>", { maxBodyBytes: 100 }),
     ).rejects.toBeInstanceOf(CarrierSoapResponseTooLargeError);
+  });
+
+  it("redacts XML secrets, tokens, credentials, emails, and phones in sanitizeCarrierError", () => {
+    const raw = [
+      "<tns:password>xmlSecret!</tns:password>",
+      "<username>xmlUser</username>",
+      "<accountNumber>99887766</accountNumber>",
+      "Bearer tok_live_abc",
+      "token=tok_eq",
+      "api_key: key_123",
+      "contact user@example.com",
+      "tel +48 500 600 700",
+    ].join(" ");
+    const sanitized = sanitizeCarrierError(raw);
+    expect(sanitized).toContain("tns:password: [redacted]");
+    expect(sanitized).toContain("username: [redacted]");
+    expect(sanitized).toContain("accountNumber: [redacted]");
+    expect(sanitized).toContain("Bearer [redacted]");
+    expect(sanitized).toContain("token: [redacted]");
+    expect(sanitized).toContain("api_key: [redacted]");
+    expect(sanitized).toContain("[redacted-email]");
+    expect(sanitized).toContain("[redacted-phone]");
+    expect(sanitized).not.toMatch(/xmlSecret|xmlUser|99887766|tok_live_abc|tok_eq|key_123|user@example\.com|500 600 700/);
+  });
+
+  it("validates safe object keys and private label keys against traversal", () => {
+    expect(safeObjectKey("tester-1/stored.pdf")).toBe(true);
+    expect(safeObjectKey("TRK-1.pdf")).toBe(true);
+    expect(safeObjectKey("/leading.pdf")).toBe(false);
+    expect(safeObjectKey("tester-1/../secret.pdf")).toBe(false);
+    expect(safeObjectKey("tester-1/./secret.pdf")).toBe(false);
+    expect(safeObjectKey("tester-1\\secret.pdf")).toBe(false);
+    expect(safeObjectKey("tester-1//secret.pdf")).toBe(false);
+    expect(safeObjectKey("tester-1/secret.pdf\0")).toBe(false);
+
+    expect(safeTrackingLabelObjectKey("TRK-1")).toBe("TRK-1.pdf");
+    expect(safeTrackingLabelObjectKey("../secret")).toBeNull();
+    expect(safeTrackingLabelObjectKey("nested/TRK-1")).toBeNull();
+    expect(safeTrackingLabelObjectKey("nested\\TRK-1")).toBeNull();
+
+    expect(privateLabelObjectKey("tester-1/stored.pdf")).toBe("tester-1/stored.pdf");
+    expect(
+      privateLabelObjectKey(`https://project.supabase.co/storage/v1/object/sign/${CARRIER_LABELS_BUCKET}/tester-1%2Fstored.pdf?token=exp`),
+    ).toBe("tester-1/stored.pdf");
+    expect(
+      privateLabelObjectKey(`https://project.supabase.co/storage/v1/object/sign/${CARRIER_LABELS_BUCKET}/..%2Fsecret.pdf`),
+    ).toBeNull();
+    expect(
+      privateLabelObjectKey("https://project.supabase.co/storage/v1/object/sign/other-bucket/tester-1%2Fstored.pdf"),
+    ).toBeNull();
   });
 });

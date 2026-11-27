@@ -65,9 +65,69 @@ describe("merge label documents action", () => {
     expect(fixture.download).toHaveBeenCalledWith("tester-1/one.pdf");
     expect(fetchSpy).not.toHaveBeenCalled();
   });
+
+  it("enforces max document count, total byte cap, and max page cap", async () => {
+    const tooManyDocs = mergeFixture({ maxDocuments: 2 });
+    const tooManyDocsRes = await tooManyDocs.action(request(["t-1", "t-2", "t-3"]));
+    expect(tooManyDocsRes.status).toBe(400);
+    await expect(tooManyDocsRes.json()).resolves.toEqual({
+      error: expect.stringContaining("maks. 2"),
+    });
+    expect(tooManyDocs.download).not.toHaveBeenCalled();
+
+    const tooLargeInput = mergeFixture({ maxTotalBytes: 2 });
+    const tooLargeInputRes = await tooLargeInput.action(request(["tester-1"]));
+    expect(tooLargeInputRes.status).toBe(413);
+    await expect(tooLargeInputRes.json()).resolves.toEqual({
+      error: expect.stringContaining("2 B"),
+    });
+
+    const tooLargeSaved = mergeFixture({ maxTotalBytes: 10, savedBytes: new Uint8Array(12) });
+    const tooLargeSavedRes = await tooLargeSaved.action(request(["tester-1"]));
+    expect(tooLargeSavedRes.status).toBe(413);
+
+    const tooManyPages = mergeFixture({ maxTotalPages: 1 });
+    const tooManyPagesRes = await tooManyPages.action(request(["tester-1"]));
+    expect(tooManyPagesRes.status).toBe(400);
+    await expect(tooManyPagesRes.json()).resolves.toEqual({
+      error: expect.stringContaining("maks. 1"),
+    });
+  });
+
+  it("encodes merged PDF bytes with Buffer base64 by default and redacts errors", async () => {
+    const fixture = mergeFixture({ useDefaultBase64: true, savedBytes: new Uint8Array([80, 68, 70]) });
+    await expect(fixture.action(request(["tester-1"])).then((response) => response.json())).resolves.toMatchObject({
+      success: true,
+      pdf_base64: Buffer.from([80, 68, 70]).toString("base64"),
+      label_count: 2,
+    });
+
+    const loadFail = mergeFixture({ loadError: new Error("corrupt pdf password=pw123 user@example.com") });
+    const loadFailBody = await loadFail.action(request(["tester-1"])).then((response) => response.json());
+    expect(loadFailBody.errors[0]).toBe("Good Label: Error: corrupt pdf password: [redacted] [redacted-email]");
+    expect(loadFailBody.errors[0]).not.toContain("pw123");
+
+    const outerFail = createMergeLabelDocumentsAction({
+      createClient: () => { throw new Error("boom Bearer secret_tok user@example.com"); },
+      createPdf: vi.fn(),
+      loadPdf: vi.fn(),
+    });
+    const outerBody = await outerFail(request(["tester-1"])).then((response) => response.json());
+    expect(outerBody.error).toBe("Error: boom Bearer [redacted] [redacted-email]");
+  });
 });
 
-function mergeFixture(input: { onlyMissing?: boolean; legacyUrl?: boolean; legacyStorageUrl?: boolean } = {}) {
+function mergeFixture(input: {
+  onlyMissing?: boolean;
+  legacyUrl?: boolean;
+  legacyStorageUrl?: boolean;
+  maxDocuments?: number;
+  maxTotalBytes?: number;
+  maxTotalPages?: number;
+  savedBytes?: Uint8Array;
+  useDefaultBase64?: boolean;
+  loadError?: Error;
+} = {}) {
   const testers = input.onlyMissing
     ? [{ id: "tester-2", first_name: "Bad", last_name: "Label", tracking_number: null, label_url: "tester-2/missing.pdf" }]
     : input.legacyUrl
@@ -87,7 +147,7 @@ function mergeFixture(input: { onlyMissing?: boolean; legacyUrl?: boolean; legac
     copyPages: vi.fn().mockResolvedValue(["page-1", "page-2"]),
     addPage: vi.fn((page: unknown) => pages.push(page)),
     getPageCount: vi.fn(() => pages.length),
-    save: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
+    save: vi.fn().mockResolvedValue(input.savedBytes ?? new Uint8Array([1, 2, 3])),
   };
   const client = {
     auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "admin-1" } }, error: null }) },
@@ -96,12 +156,18 @@ function mergeFixture(input: { onlyMissing?: boolean; legacyUrl?: boolean; legac
       : { select: () => ({ in: () => ({ not: vi.fn().mockResolvedValue({ data: testers, error: null }) }) }) },
     storage: { from: storageFrom },
   } as unknown as CarrierLabelClient;
+  const loadPdf = input.loadError
+    ? vi.fn().mockRejectedValue(input.loadError)
+    : vi.fn().mockResolvedValue({ getPageIndices: () => [0] });
   return {
     action: createMergeLabelDocumentsAction({
       createClient: () => client,
       createPdf: vi.fn().mockResolvedValue(merged),
-      loadPdf: vi.fn().mockResolvedValue({ getPageIndices: () => [0] }),
-      encodeBase64: () => "MERGED",
+      loadPdf,
+      ...(input.useDefaultBase64 ? {} : { encodeBase64: () => "MERGED" }),
+      maxDocuments: input.maxDocuments,
+      maxTotalBytes: input.maxTotalBytes,
+      maxTotalPages: input.maxTotalPages,
     }),
     download,
     storageFrom,
