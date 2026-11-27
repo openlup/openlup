@@ -1121,7 +1121,7 @@
     },
     {
       "id": "platform-storefront-verification",
-      "when": "Storefront verdict and proof-file contracts and the client-build digest",
+      "when": "Storefront verdict and proof-file contracts, the client-build digest and the storefront capability list",
       "paths": [
         "packages/platform/src/lifecycle/storefront*.ts",
         "packages/platform/test/lifecycle/storefront*.test.ts"
