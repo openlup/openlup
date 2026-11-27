@@ -86,35 +86,12 @@ Applying both attempts to recreate functions and fails. Importing
 For upgrades from Platform 1.3.0, keep verified provider evidence intake available
 throughout this procedure.
 
-1. Pause and drain renewal and retry dispatch for the affected population.
-   Include the mounted worker, retry driver, custom callers, and in-flight
-   invocations that already have permission to send. Pause and drain template-edit
-   acceptance before applying the forward and keep it paused until the forward commits.
-2. Apply the bundled PostgreSQL forward and confirm it in the migration ledger.
-3. Run the report below on one authorized server-side PostgreSQL connection with
-   complete visibility into renewal, payment, and delivery-alignment records. Use the
-   installation owner if the runtime login lacks that visibility. An error or
-   incomplete visibility invalidates the run. Record the cut, listed operation
-   IDs, and listed roles in the restricted upgrade record.
-4. Re-read each item's live state and reconcile it through its existing owner.
-   Use the subscription and inventory owners for unprepared roots and stock
-   waits. Use verified provider readback, webhook replay, settlement, or authorized
-   closure for existing payment work. Preserve the original amount, fingerprint,
-   and artifact IDs for money already dispatched. Use the payment recovery owner
-   for retries and incomplete handoffs. An operator reopen or a completed handoff
-   can leave the item chargeable. Keep dispatch paused until every item with a
-   reason other than `provider_state_open_after_cancellation` is resolved. Follow
-   the [known issue for cancelled renewals](#cancelled-renewals-with-open-provider-state)
-   for rows that list only that reason.
-   For `arrival_role_missing_alignment_grants`, grant the listed privileges to the
-   role or revoke its arrival authority before resuming dispatch.
-5. Repeat the report after reconciliation. **Immediately before resuming
-   dispatch**, confirm that neither result set lists a reason other than
-   `provider_state_open_after_cancellation`. Resume through the ordinary scheduler.
-
-**Known limitation.** The final report describes its database snapshot.
-A provider observation or other owner transaction can commit between that snapshot
-and dispatch resumption. Changes in that interval fall outside the final cut.
+1. **Pause and drain renewal claim creation and renewal and retry dispatch before applying the forward.** Stop new claims from mounted and custom callers, including direct callers. Wait until transactions that could create a claim under the old definitions have committed or rolled back. An RPC returning inside an open transaction does not complete the drain. Keep claim creation paused through forward commit. Stop new sends at the shared provider execution boundary and drain all in-flight sends there, including callers already past local preparation. Keep verified payment and fulfillment evidence intake available throughout. Pause and drain template-edit acceptance through forward commit. Defer independent lifecycle changes that affect schedules or eligibility, including manual and timed resume, for the affected population through cutover. Authorized reconciliation and verified evidence remain available.
+2. Apply the bundled PostgreSQL forward and confirm it in the ledger. Before the first cut or repair, pause and drain independent table rewrites, truncation and relevant DDL on the relations the checks use, and replacement creation and other independent shipment-lineage changes for the affected population. Keep these fences through resume. Continue accepting verified evidence for existing shipments.
+3. In `auto_align`, verify each live arrival route using its actual writer, row visibility, enabled trigger and `READ COMMITTED` write transaction. Exercise an eligible late arrival on the same installation profile. Include direct, inherited, owner and owner-executed command routes. Bring a qualified route up before switching traffic away from an unqualified one. Drain transactions admitted through the old authority or transaction context. An unresolved route blocks resume.
+4. Run both read-only checks on one authorized primary connection with complete visibility. Record the cut, operation IDs and affected subscription IDs in the restricted upgrade record. Evidence committed before the first read is visible. Later ordinary commits appear on a rerun. Errors, incomplete visibility or a broken fence invalidate the run.
+5. Re-read live state. Use subscription and inventory owners for unprepared work and stock waits. Use verified readback, webhook replay, settlement or authorized closure for payment work. Preserve frozen money and artifact identity. Use the payment recovery owner for retries and incomplete handoffs. Resolve any occupying work before the installation-owner schedule repair. Reopening or completing a handoff can leave a row chargeable.
+6. Keep effective roles, grants, memberships, ownership, trigger configuration, transaction context, route bindings and alignment mode stable from qualification through resume. If a fence changes, restore it, requalify where applicable and take a new cut. **Immediately before resuming dispatch**, confirm zero alignment rows and no billing row with a reason other than `provider_state_open_after_cancellation`. Resume through the ordinary scheduler.
 
 A verified webhook committed before the first read is visible in the report.
 A later commit leaves the earlier state visible. The forward records historical
@@ -123,7 +100,7 @@ billing claims with a stale accepted version or no usable template version
 Claims that were current at the forward and new claims use the price frozen at
 claim. Later accepted edits apply to later cycles.
 
-Platform 1.4.0 refuses a first claim with `subscription_renewal_snapshot_stale`
+With the forward installed, the node-postgres renewal rail refuses a first claim with `subscription_renewal_snapshot_stale`
 when the snapshot carries version evidence that proves it stale. Bare legacy
 claims without build-version evidence are admitted as before. Custom legacy
 callers get the same protection by locking the subscription row before
@@ -270,47 +247,57 @@ SELECT o.id AS operation_id, o.subscription_id, o.scheduled_at, o.state AS opera
 FROM roots o JOIN listed l USING (id) JOIN stock s USING (id)
 ORDER BY o.id;
 
--- Arrival roles that can skip alignment in auto_align mode.
-WITH required_privileges(object_kind, object_name, column_name, privilege) AS (
-  VALUES
-    ('FUNCTION', 'public.subscription_delivery_alignment_get_mode()', NULL, 'EXECUTE'),
-    ('FUNCTION', 'public.subscription_delivery_alignment_upsert_case(uuid,uuid,uuid,uuid,integer,text,text,timestamptz,text)', NULL, 'EXECUTE'),
-    ('TABLE', 'public.subscription_delivery_alignment_control', NULL, 'SELECT'),
-    ('TABLE', 'public.subscription_renewal_terms', NULL, 'SELECT'),
-    ('TABLE', 'public.subscription_renewal_operations', NULL, 'SELECT'),
-    ('TABLE', 'public.subscription_dunning_cases', NULL, 'SELECT'),
-    ('TABLE', 'public.subscription_delivery_alignment_cycles', NULL, 'SELECT'),
-    ('TABLE', 'public.fulfillment_shipments', NULL, 'SELECT'),
-    ('TABLE', 'public.subscription_delivery_alignment_cases', NULL, 'SELECT'),
-    ('TABLE', 'public.subscriptions', 'next_cycle_at', 'UPDATE'),
-    ('TABLE', 'public.subscriptions', 'updated_at', 'UPDATE')
-  UNION ALL
-  SELECT 'TABLE', 'public.subscription_delivery_alignment_cases', c.column_name, w.privilege
-  FROM (VALUES
-    ('INSERT', ARRAY['shipment_id', 'predecessor_order_id', 'subscription_id', 'predecessor_cycle_id',
-      'predecessor_cycle_number', 'captured_mode', 'state', 'evidence_kind', 'observed_next_cycle_at',
-      'manual_review_reason', 'metadata']),
-    ('UPDATE', ARRAY['updated_at', 'observed_next_cycle_at', 'evidence_kind', 'state', 'captured_mode',
-      'manual_review_reason', 'delivered_at', 'aligned_next_cycle_at', 'aligned_at'])
-  ) AS w(privilege, columns)
-  CROSS JOIN LATERAL unnest(w.columns) AS c(column_name)
-)
-SELECT r.rolname AS role_name, 'arrival_role_missing_alignment_grants' AS reason,
-       array_agg(format('%s%s ON %s %s', p.privilege,
-         CASE WHEN p.column_name IS NULL THEN '' ELSE format(' (%I)', p.column_name) END,
-         p.object_kind, p.object_name)
-         ORDER BY p.object_kind, p.object_name, p.privilege, p.column_name) AS missing_privileges
-FROM pg_roles r CROSS JOIN required_privileges p
+-- Late arrivals whose persisted renewal schedule still needs alignment.
+SELECT s.id AS subscription_id, c.id AS predecessor_cycle_id, c.order_id AS predecessor_order_id,
+       leaf.shipment_id, s.next_cycle_at AS observed_due_at, leaf.latest_delivery_at, s.cadence_days,
+       o.id AS occupying_operation_id, o.state AS occupying_operation_state,
+       conflict.successor_cycle_id, 'late_arrival_alignment_pending' AS reason
+FROM public.subscriptions s
+JOIN public.subscription_renewal_terms t ON t.subscription_id = s.id AND t.delivery_admission = 'allowed'
+JOIN public.subscription_delivery_alignment_cycles c ON c.subscription_id = s.id
+  AND c.status = 'paid' AND c.cycle_number IS NOT NULL
+LEFT JOIN public.subscription_renewal_operations predecessor ON predecessor.id = c.renewal_operation_id
+LEFT JOIN public.subscription_renewal_operations o ON o.subscription_id = s.id AND o.scheduled_at = s.next_cycle_at
+CROSS JOIN LATERAL (
+  SELECT (array_agg(p.id ORDER BY p.delivered_at DESC, p.id))[1] AS shipment_id,
+         max(p.delivered_at) AS latest_delivery_at
+  FROM public.fulfillment_shipments p
+  WHERE p.order_id = c.order_id AND NOT EXISTS (
+    SELECT 1 FROM public.fulfillment_shipments successor WHERE successor.replaces_shipment_id = p.id)
+  HAVING count(*) = count(p.delivered_at) AND max(p.delivered_at) > s.next_cycle_at
+) leaf
+CROSS JOIN LATERAL (
+  SELECT (array_agg(x.id ORDER BY x.id) FILTER (WHERE x.renewal_operation_id = o.id
+           AND x.scheduled_at = o.scheduled_at AND x.cycle_number > c.cycle_number
+           AND x.status <> 'paid'))[1] AS successor_cycle_id,
+         count(*) FILTER (WHERE (x.renewal_operation_id = o.id AND x.scheduled_at = o.scheduled_at
+           AND x.cycle_number > c.cycle_number AND x.status <> 'paid') IS NOT TRUE) AS blockers
+  FROM public.subscription_delivery_alignment_cycles x
+  WHERE x.subscription_id = s.id AND (
+    x.cycle_number > c.cycle_number OR (x.cycle_number IS NULL AND x.id <> c.id)
+    OR (x.status = 'paid' AND x.cycle_number = c.cycle_number AND x.order_id IS DISTINCT FROM c.order_id))
+) conflict
 WHERE (SELECT mode FROM public.subscription_delivery_alignment_control WHERE singleton) = 'auto_align'
-  AND (has_table_privilege(r.oid, 'public.fulfillment_shipments', 'INSERT')
-    OR has_column_privilege(r.oid, 'public.fulfillment_shipments', 'delivered_at', 'UPDATE'))
-  AND NOT CASE
-    WHEN p.object_kind = 'FUNCTION' THEN has_function_privilege(r.oid, p.object_name, p.privilege)
-    WHEN p.column_name IS NULL THEN has_table_privilege(r.oid, p.object_name, p.privilege)
-    ELSE has_column_privilege(r.oid, p.object_name, p.column_name, p.privilege)
-  END
-GROUP BY r.rolname
-ORDER BY r.rolname;
+  AND s.status = 'active' AND s.next_cycle_at IS NOT NULL AND conflict.blockers = 0
+  AND predecessor.cycle_snapshot->>'contractVersion' IS DISTINCT FROM 'platform.subscription.renewal.v3'
+  AND o.cycle_snapshot->>'contractVersion' IS DISTINCT FROM 'platform.subscription.renewal.v3'
+  AND NOT EXISTS (
+    SELECT 1 FROM public.subscription_cycle_occurrences x
+    WHERE x.subscription_id = s.id AND x.client_id = s.client_id AND x.rail = 'v3'
+      AND (x.is_current OR EXISTS (
+        SELECT 1 FROM public.subscription_cycle_delivery_assignments a
+        WHERE a.obligation_ref = c.order_id AND x.cycle_key IN (a.assigned_cycle_key, a.marker_cycle_key)
+      ) OR EXISTS (
+        SELECT 1 FROM public.subscription_cycle_preparations p
+        WHERE p.cycle_id = c.id AND p.order_id = c.order_id AND p.cycle_key = x.cycle_key
+      )))
+  AND NOT EXISTS (SELECT 1 FROM public.subscription_dunning_cases d
+    WHERE d.subscription_id = s.id AND d.status IN ('open', 'expired'))
+  AND NOT EXISTS (SELECT 1 FROM public.subscription_delivery_alignment_cases a
+    WHERE (a.predecessor_order_id = c.order_id AND a.state <> 'shadow')
+       OR (a.subscription_id = s.id AND a.state IN ('protected', 'manual_review')
+           AND (a.predecessor_cycle_number IS NULL OR a.predecessor_cycle_number >= c.cycle_number)))
+ORDER BY s.id;
 
 COMMIT;
 ```
@@ -319,22 +306,89 @@ Retry attempt identifiers refer to the current prepare receipt. A remote-referen
 flag records presence. Use the payment owner's readback or closure procedure to
 resolve the attempt.
 
-### Cancelled renewals with open provider state
+### Repair a pending delivery alignment
 
-Lifecycle cancellation can close the settlement intent, cycle, and order while
-leaving the provider state open. Automatic provider preparation refuses a fresh
-attempt against the cancelled intent. The exported `recordAttempt` operation can
-still record an attempt against the open provider state. Do not call
-`recordAttempt` for a renewal listed under `provider_state_open_after_cancellation`.
-Keep the operation ID in the restricted upgrade record so the payment owner can
-follow up. A later release refuses such attempts.
+1. **Resolve occupants first.** Route a `claimed` or `reserved` operation without preparation through the subscription or inventory owner. Release or refuse it using the exact stored claim and valid token. If needed, use ordinary exact takeover solely for release authority after forward commit, with dispatch paused. Close recoverable stock waits and held reservations. Preserve the operation row, due instant, wire, fingerprint and history. The old `refused` row keeps occupying that instant and remains visible while the schedule gap persists.
+2. **Use the payment owner for prepared or uncertain work.** Resolve the original attempt with verified truth or authorized closure, preserving identity and amount. A successor cycle, live financial work, open or recoverable stock, or uncertain disposition blocks the schedule write. If the artifact remains, use the lifecycle owner for safe disposition. Keep affected dispatch paused until it is resolved. Any authorized suspension or closure must remove the subscription from the resumed population, and reactivation requires owner verification of the appropriate due date.
+3. **Revalidate under the subscription lock.** The installation owner begins `READ COMMITTED`, locks the subscription `FOR UPDATE`, then reruns the same alignment selection for that subscription in the next statement. Re-read the current occurrence, the order’s delivery assignment and the booked cycle’s preparation lineage, applying all the v3 ownership predicates and both exact-tag exclusions against live state. A v3 exclusion yields zero schedule or case writes, including when an earlier report identified the gap. Verify changed candidates afresh. Write only with no occupant or with a durably `refused` occupant, no prepared or acknowledged attempt, no open or recoverable stock and no linked cycle, order, intent or retry. Keep the lineage fence from revalidation through commit. Use the verified arrival route’s time zone and the incumbent calendar-day arithmetic. If eligibility or time-zone provenance is ambiguous, keep affected dispatch paused for owner review.
+4. **Apply the clamp and case settlement together.** Use `subscription_delivery_alignment_upsert_case` with `auto_align`, `overdue_renewal`, the correlated predecessor and locked observed due. Prefer the selected leaf’s shadow case. For a replacement with no direct case, use the first order shadow by `created_at, id`, with its shipment ID if present and the selected leaf otherwise. Record the selected case’s verified timestamp with `LEAST(COALESCE(delivered_at, verified_at), verified_at)`. Set `next_cycle_at = GREATEST(next_cycle_at, latest_unsuperseded_delivery + make_interval(days => cadence_days))`, update its timestamp and settle the promoted and shadow cases as aligned with the returned due. Commit together. A rerun finds no gap and writes nothing. Preserve shipment facts, arrival receipts and the payment graph. Ordinary arrival replay leaves the timestamp intact, case resolution releases without shifting, and replacement confirmation computes from its own time.
 
-### Late arrivals with missing alignment privileges
+Use the installation owner. Substitute the verified arrival writer's time zone and
+the reported subscription ID below. Paste the SELECT that returns
+`late_arrival_alignment_pending` in place of the SQL comment, without its final
+semicolon. Use a fresh transaction for each subscription.
 
-In `auto_align` mode, an arrival recorded by a role without the fallback
-privileges can skip the due-time shift. The report lists these roles and their
-missing privileges. Grant the listed privileges before resuming dispatch, or
-revoke the role's arrival authority.
+```sql
+BEGIN ISOLATION LEVEL READ COMMITTED;
+SET LOCAL TIME ZONE '<arrival time zone>';
+
+DO $repair$
+DECLARE
+  target_subscription constant uuid := '<subscription ID>';
+  gap record;
+  case_shipment uuid;
+  repaired_due timestamptz;
+BEGIN
+  PERFORM id FROM public.subscriptions WHERE id = target_subscription FOR UPDATE;
+  FOR gap IN
+    SELECT pending.* FROM (
+      /* Paste the alignment SELECT here. */
+    ) pending
+    LEFT JOIN public.subscription_renewal_operations o ON o.id = pending.occupying_operation_id
+    WHERE pending.subscription_id = target_subscription
+      AND pending.successor_cycle_id IS NULL
+      AND (o.id IS NULL OR (
+        o.state = 'refused' AND o.attempt_prepared_at IS NULL AND o.external_attempt_acknowledged_at IS NULL
+        AND NOT EXISTS (SELECT 1 FROM public.fulfillment_inventory_reservations a
+          WHERE a.renewal_operation_id = o.id AND a.status = 'held')
+        AND NOT EXISTS (SELECT 1 FROM public.subscription_stock_wait_cases w
+          WHERE w.renewal_operation_id = o.id AND w.state IN ('waiting', 'stock_secured'))
+        AND public.subscription_stock_wait_frozen(o.subscription_id, o.scheduled_at) IS NULL
+        AND NOT EXISTS (SELECT 1 FROM public.subscription_cycles c WHERE c.renewal_operation_id = o.id)
+        AND NOT EXISTS (SELECT 1 FROM public.commerce_orders ord WHERE ord.renewal_operation_id = o.id)
+        AND NOT EXISTS (SELECT 1 FROM public.commerce_settlement_intents i WHERE i.renewal_operation_id = o.id)
+        AND NOT EXISTS (SELECT 1 FROM public.subscription_retry_obligations r WHERE r.renewal_operation_id = o.id)
+      ))
+  LOOP
+    SELECT a.shipment_id INTO case_shipment
+    FROM public.subscription_delivery_alignment_cases a
+    JOIN public.fulfillment_shipments leaf ON leaf.id = gap.shipment_id
+    WHERE a.predecessor_order_id = gap.predecessor_order_id AND a.state = 'shadow'
+      AND (a.shipment_id = leaf.id OR leaf.replaces_shipment_id IS NOT NULL)
+    ORDER BY (a.shipment_id IS NOT DISTINCT FROM leaf.id) DESC, a.created_at, a.id
+    LIMIT 1;
+    case_shipment := COALESCE(case_shipment, gap.shipment_id);
+    PERFORM public.subscription_delivery_alignment_upsert_case(
+      case_shipment, gap.predecessor_order_id, gap.subscription_id, gap.predecessor_cycle_id,
+      (SELECT cycle_number FROM public.subscription_delivery_alignment_cycles
+       WHERE id = gap.predecessor_cycle_id AND order_id = gap.predecessor_order_id),
+      'auto_align', 'overdue_renewal', gap.observed_due_at);
+    UPDATE public.subscription_delivery_alignment_cases
+    SET delivered_at = LEAST(COALESCE(delivered_at, gap.latest_delivery_at), gap.latest_delivery_at),
+        updated_at = now()
+    WHERE shipment_id = case_shipment;
+    UPDATE public.subscriptions
+    SET next_cycle_at = GREATEST(next_cycle_at, gap.latest_delivery_at + make_interval(days => gap.cadence_days)),
+        updated_at = now()
+    WHERE id = gap.subscription_id
+    RETURNING next_cycle_at INTO repaired_due;
+    UPDATE public.subscription_delivery_alignment_cases
+    SET state = 'aligned', aligned_next_cycle_at = repaired_due, aligned_at = now(), updated_at = now()
+    WHERE predecessor_order_id = gap.predecessor_order_id AND state IN ('protected', 'shadow');
+  END LOOP;
+END;
+$repair$;
+
+COMMIT;
+```
+
+### Known issues and limitations
+
+**Late arrivals and writer changes.** With automatic alignment enabled, an under-granted writer can record an arrival while leaving the old due time. Repairing grants leaves previously recorded dates as they were. Use the alignment check and qualify affected routes before changing them, including after dispatch resumes. The checks describe their database snapshot. If a late arrival commits after the final check for an already-claimed renewal that has no alignment case or only shadow cases, takeover can still use the old due date.
+
+**Earlier schedule changes.** A prior pause, resume, or reschedule can change the due date used by the alignment check. If the due date changed after a late arrival, have the subscription owner review the original schedule and verified arrival before returning that subscription to billing.
+
+**Cancelled renewals with open provider state.** Lifecycle cancellation can leave provider state open after closing the settlement intent. Automatic provider preparation refuses the cancelled intent. Do not call `recordAttempt` for these rows. Retain the operation ID for payment-owner follow-up. A row with only `provider_state_open_after_cancellation` allows dispatch to resume.
 
 ## Prepare the optional checkout owner
 

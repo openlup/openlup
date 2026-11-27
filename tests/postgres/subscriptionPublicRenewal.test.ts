@@ -407,8 +407,8 @@ async function parcel(orderId: string, db = executor) {
   return (await spine.createShipment({ idempotencyKey: `parcel:${orderId}`, orderId, requestedAt: at })).shipmentId;
 }
 
-async function grantArrivalAlignment(role: "renewal_column_arrival" | "upgrade_alignment_parent") {
-  await admin.query(`GRANT EXECUTE ON FUNCTION public.subscription_delivery_alignment_get_mode(),
+async function grantArrivalAlignment(role: "renewal_column_arrival" | "upgrade_alignment_parent", owner = admin) {
+  await owner.query(`GRANT EXECUTE ON FUNCTION public.subscription_delivery_alignment_get_mode(),
     public.subscription_delivery_alignment_upsert_case(uuid,uuid,uuid,uuid,integer,text,text,timestamptz,text) TO ${role};
     GRANT UPDATE (next_cycle_at,updated_at) ON public.subscriptions TO ${role};
     GRANT INSERT (shipment_id,predecessor_order_id,subscription_id,predecessor_cycle_id,predecessor_cycle_number,
@@ -507,7 +507,7 @@ it.each(deliveryArrivalCases)("aligns after a mounted stale refusal (parcels=$pa
         has_table_privilege('public.subscription_delivery_alignment_cases','UPDATE') AS case_update`)).rows)
         .toEqual([{ session_user: "renewal_column_arrival", current_user: "renewal_column_arrival",
           service_member: false, subscription_update: false, case_update: false }]);
-      expect((await readRenewalUpgradeReport(admin)).arrivalRoles.map(row => row.role_name)).not.toContain("renewal_column_arrival");
+      expect((await readRenewalUpgradeReport(admin)).alignment).toEqual([]);
     }
     const arrival = fulfillment.createPostgresDeliveryAlignmentPort(direct ?? executor);
     const evidence = (parcelRef: string, arrivalTime: string) =>
@@ -1587,18 +1587,17 @@ async function renewalAmounts(db: Pool, orderId: string) {
 }
 
 type UpgradeReportHooks = { beforeCut?: () => Promise<void>; afterCut?: () => Promise<void> };
-type ArrivalRoleFinding = { role_name: string; reason: string; missing_privileges: string[] };
+const upgradeGuide = () => readFileSync("packages/core/docs/guide/upgrade/database-migrations.md", "utf8");
+const guideSql = (heading: string) => upgradeGuide().split(heading)[1]!.split("```sql\n")[1]!.split("```")[0]!.trim();
 
 function upgradeReportStatements() {
-  const guide = readFileSync("packages/core/docs/guide/upgrade/database-migrations.md", "utf8");
-  const sql = guide.split("## Reconcile stale native renewals")[1]!.split("```sql\n")[1]!.split("```")[0]!;
-  const statements = sql.trim().split(/;\s*(?:\n|$)/u).filter(Boolean);
+  const statements = guideSql("## Reconcile stale native renewals").split(/;\s*(?:\n|$)/u).filter(Boolean);
   expect(statements).toHaveLength(5);
   return statements as [string, string, string, string, string];
 }
 
 async function readRenewalUpgradeReport(db: Pool, hooks: UpgradeReportHooks = {}) {
-  const [begin, readCut, population, arrivalGrants, commit] = upgradeReportStatements();
+  const [begin, readCut, population, alignmentCheck, commit] = upgradeReportStatements();
   const client = await db.connect();
   try {
     await client.query(begin);
@@ -1609,9 +1608,9 @@ async function readRenewalUpgradeReport(db: Pool, hooks: UpgradeReportHooks = {}
     expect((await client.query("SHOW transaction_isolation")).rows).toEqual([{ transaction_isolation: "repeatable read" }]);
     await hooks.afterCut?.();
     const { rows: operations } = await client.query(population);
-    const { rows: arrivalRoles } = await client.query<ArrivalRoleFinding>(arrivalGrants);
+    const { rows: alignment } = await client.query(alignmentCheck);
     await client.query(commit);
-    return { operations, arrivalRoles };
+    return { operations, alignment };
   } finally {
     await client.query("ROLLBACK");
     client.release();
@@ -1622,89 +1621,200 @@ async function renewalUpgradeReport(db: Pool, hooks?: UpgradeReportHooks) {
   return (await readRenewalUpgradeReport(db, hooks)).operations;
 }
 
-async function documentedArrivalFallbackPrivileges() {
-  const [, , , arrivalGrants] = upgradeReportStatements();
-  const end = arrivalGrants.indexOf("\nSELECT r.rolname AS role_name,");
-  if (end < 0) throw new Error("arrival role report projection missing");
-  // Read the required set before role filtering so even a change to a grant
-  // already held by every fixture role fails parity.
-  const { rows } = await admin.query<{ privilege: string }>(arrivalGrants.slice(0, end) + `
-    SELECT privilege || COALESCE(' (' || column_name || ')', '') || ' ON ' || object_kind || ' ' || object_name AS privilege
-    FROM required_privileges`);
-  return rows.map(row => row.privilege).sort();
+function ownerRepairSql(subscriptionId: string) {
+  return guideSql("### Repair a pending delivery alignment")
+    .replace("<arrival time zone>", "UTC").replace("<subscription ID>", subscriptionId)
+    .replace("/* Paste the alignment SELECT here. */", upgradeReportStatements()[3]);
 }
 
-async function installedArrivalFallbackPrivileges() {
-  const { rows: [{ prosrc }] } = await admin.query<{ prosrc: string }>(
-    "SELECT prosrc FROM pg_proc WHERE oid='public.subscription_delivery_alignment_on_delivery()'::regprocedure");
-  const guard = prosrc.match(/<<qualify_arrival>>[\s\S]*?IF NOT \(\s*([\s\S]*?)\) THEN\s+EXIT qualify_arrival;/u)?.[1];
-  if (!guard) throw new Error("arrival fallback privilege guard missing");
-  const direct = [...guard.matchAll(/has_(function|table|column)_privilege\('([^']+)', (?:'([^']+)', )?'([^']+)'\)/gu)];
-  const grouped = [...guard.matchAll(/unnest\(ARRAY\[([^\]]+)\]\) AS required\(column_name\)\s+WHERE NOT has_column_privilege\('([^']+)', column_name, '([^']+)'\)/gu)];
-  expect(guard.match(/\bhas_\w+_privilege\(/gu)).toHaveLength(direct.length + grouped.length);
-  return [
-    ...direct.map(([, kind, object, column, privilege]) =>
-      `${privilege}${column ? ` (${column})` : ""} ON ${kind === "function" ? "FUNCTION" : "TABLE"} ${object}`),
-    ...grouped.flatMap(([, columns, table, privilege]) => [...columns!.matchAll(/'([^']+)'/gu)]
-      .map(([, column]) => `${privilege} (${column}) ON TABLE ${table}`)),
-  ].sort();
+async function repairAlignment(owner: Pool, subscriptionId: string, sql = ownerRepairSql(subscriptionId)) {
+  const client = await owner.connect();
+  try { await client.query(sql); }
+  finally { await client.query("ROLLBACK"); client.release(); }
 }
 
-it("reports missing arrival grants only in auto-align and matches the installed fallback checks", async () => {
-  await admin.query(`CREATE ROLE upgrade_arrival_insert;
-    CREATE ROLE upgrade_arrival_update;
-    GRANT INSERT ON public.fulfillment_shipments TO upgrade_arrival_insert;
-    GRANT UPDATE (delivered_at) ON public.fulfillment_shipments TO upgrade_arrival_update`);
-  const findings = async (hooks?: UpgradeReportHooks) =>
-    (await readRenewalUpgradeReport(admin, hooks)).arrivalRoles.filter(row =>
-      row.role_name === "upgrade_arrival_insert" || row.role_name === "upgrade_arrival_update");
+function reportGap(subscription_id: string, shipment_id: string, facts: object = {}) {
+  return expect.objectContaining({ subscription_id, shipment_id, reason: "late_arrival_alignment_pending", ...facts });
+}
+
+async function alignmentState(owner: Pool, subscriptionId: string) {
+  return (await owner.query(`SELECT next_cycle_at, updated_at,
+    (SELECT COALESCE(jsonb_agg(c ORDER BY c.id),'[]') FROM public.subscription_delivery_alignment_cases c
+      WHERE c.subscription_id=s.id) AS cases
+    FROM public.subscriptions s WHERE id=$1`, [subscriptionId])).rows[0];
+}
+
+function recordArrival(shipment: string, deliveredAt: string, db: Parameters<typeof rpc>[2] = executor) {
+  return rpc("fulfillment_record_alignment_arrival", [`verified:${shipment}`, shipment, deliveredAt, `evidence:${shipment}`], db);
+}
+
+it("uses persisted gaps across column INSERT, inherited authority, replay and owner repair", async () => {
+  const f = await renewalPurchase(), d = await deps(f.subscriptionId, "succeeded");
+  const originalDue = d.due.scheduledAt, deliveredAt = days(originalDue, 1), shifted = days(deliveredAt, facts.cadenceDays);
+  const held = await d.input.store.buildCycleSnapshots(d.due);
+  await resizeForRenewal(f);
+  await expect(runtime.query(rawClaim, claimWire(d, held))).rejects.toMatchObject(staleClaim);
+  await rpc("subscription_delivery_alignment_set_mode", ["auto_align"], admin);
+  const role = "upgrade_alignment_parent";
+  await admin.query(`CREATE ROLE upgrade_alignment_parent; CREATE ROLE upgrade_arrival_member INHERIT;
+    GRANT upgrade_alignment_parent TO upgrade_arrival_member;
+    GRANT SELECT ON public.commerce_orders, public.subscription_cycles, public.subscriptions TO upgrade_arrival_member;
+    GRANT INSERT (id, order_id, port_key, provider_type, create_idempotency_key, delivered_at)
+      ON public.fulfillment_shipments TO upgrade_arrival_member`);
   try {
-    const expected = await installedArrivalFallbackPrivileges();
-    expect(await documentedArrivalFallbackPrivileges()).toEqual(expected);
-    expect(await findings()).toEqual([]);
-    await admin.query("DELETE FROM public.subscription_delivery_alignment_control WHERE singleton");
-    expect(await findings()).toEqual([]);
-    await admin.query("INSERT INTO public.subscription_delivery_alignment_control (singleton, mode) VALUES (true, 'shadow')");
-    expect(await findings()).toEqual([]);
-    await rpc("subscription_delivery_alignment_set_mode", ["auto_align"], admin);
-    const listed = await findings({ afterCut: async () => {
-      await rpc("subscription_delivery_alignment_set_mode", ["off"], admin);
-    } });
-    expect(listed.map(row => ({ ...row, missing_privileges: [...row.missing_privileges].sort() }))).toEqual(
-      ["upgrade_arrival_insert", "upgrade_arrival_update"].map(role_name => ({
-        role_name, reason: "arrival_role_missing_alignment_grants", missing_privileges: expected,
-      })));
-    expect(await findings()).toEqual([]);
+    await grantArrivalAlignment(role);
+    await admin.query("REVOKE UPDATE (next_cycle_at) ON public.subscriptions FROM upgrade_alignment_parent");
+    const shipment = randomUUID(), before = await alignmentState(admin, f.subscriptionId);
+    const insert = () => transaction(async tx => {
+      await tx.query("SET LOCAL ROLE upgrade_arrival_member");
+      expect((await tx.query(`SELECT has_table_privilege('public.fulfillment_shipments','INSERT') AS full_insert,
+        has_column_privilege('public.fulfillment_shipments','delivered_at','UPDATE') AS arrival_update`)).rows)
+        .toEqual([{ full_insert: false, arrival_update: false }]);
+      await tx.query(`INSERT INTO public.fulfillment_shipments(id, order_id, port_key, provider_type, create_idempotency_key, delivered_at)
+        VALUES($1::uuid,$2,'g7-parcels','3pl',($1::uuid)::text,$3)`, [shipment, f.orderId, deliveredAt]);
+    }, admin);
+    expect(await readRenewalUpgradeReport(admin, { afterCut: insert })).toEqual({ operations: [], alignment: [] });
+    expect(await alignmentState(admin, f.subscriptionId)).toEqual(before);
+    const listed = reportGap(f.subscriptionId, shipment, { observed_due_at: new Date(originalDue),
+      latest_delivery_at: new Date(deliveredAt), occupying_operation_id: null });
+    expect((await readRenewalUpgradeReport(admin)).alignment).toEqual([listed]);
+    await grantArrivalAlignment(role);
+    await admin.query("REVOKE INSERT (id, order_id, port_key, provider_type, create_idempotency_key, delivered_at) ON public.fulfillment_shipments FROM upgrade_arrival_member");
+    // Already recorded chronology stays unchanged even when the next writer has full authority.
+    expect(await recordArrival(shipment, deliveredAt, runtime)).toMatchObject({ replayed: false });
+    expect(await alignmentState(admin, f.subscriptionId)).toEqual(before);
+    expect((await readRenewalUpgradeReport(admin)).alignment).toEqual([listed]);
+    await repairAlignment(admin, f.subscriptionId);
+    const repaired = await alignmentState(admin, f.subscriptionId);
+    expect(repaired).toMatchObject({ next_cycle_at: new Date(shifted),
+      cases: [{ shipment_id: shipment, state: "aligned", evidence_kind: "overdue_renewal" }] });
+    await repairAlignment(admin, f.subscriptionId);
+    expect(await alignmentState(admin, f.subscriptionId)).toEqual(repaired);
+    expect((await readRenewalUpgradeReport(admin)).alignment).toEqual([]);
+    expect(await binding(d, () => deliveredAt).services.run()).toMatchObject({ renewals: [] });
+    expect(await binding(d, () => shifted).services.run()).toMatchObject({ renewals: [{ status: "succeeded" }] });
+    expect(d.execute.mock.calls.map(([charge]) => charge.amountMinor)).toEqual([300]);
   } finally {
-    await admin.query(`INSERT INTO public.subscription_delivery_alignment_control (singleton, mode) VALUES (true, 'off')
-      ON CONFLICT (singleton) DO UPDATE SET mode='off';
-      DROP OWNED BY upgrade_arrival_insert, upgrade_arrival_update;
-      DROP ROLE upgrade_arrival_insert, upgrade_arrival_update`);
+    await admin.query("DROP OWNED BY upgrade_arrival_member, upgrade_alignment_parent; DROP ROLE upgrade_arrival_member, upgrade_alignment_parent");
   }
 }, 30_000);
 
-it("uses inherited alignment grants and clears roles that lose arrival authority", async () => {
-  await admin.query(`CREATE ROLE upgrade_alignment_parent;
-    CREATE ROLE upgrade_arrival_member INHERIT;
-    GRANT INSERT ON public.fulfillment_shipments TO upgrade_arrival_member;
-    GRANT upgrade_alignment_parent TO upgrade_arrival_member`);
-  const findings = async () => (await readRenewalUpgradeReport(admin)).arrivalRoles
-    .filter(row => row.role_name === "upgrade_arrival_member" || row.role_name === "upgrade_alignment_parent");
+it("checks delivery effects under the authority of the tracking command owner", async () => {
+  const signature = "public.fulfillment_operator_record_tracking(text,uuid,jsonb,uuid)";
+  const withoutTracking = "public.fulfillment_intake_record_delivery_without_tracking(text,uuid,uuid)";
+  const deliveredAt = days(now, 1), shifted = new Date(days(deliveredAt, facts.cadenceDays));
+  const subjects = await Promise.all([renewalPurchase(), renewalPurchase(), renewalPurchase()]);
+  const [qualified, deficient, delegated] = await Promise.all(subjects.map(async f => ({ ...f, shipment: await parcel(f.orderId) })));
+  await admin.query("UPDATE public.fulfillment_shipments SET status='handed_over',created_at=$2 WHERE id=ANY($1::uuid[])",
+    [[qualified!.shipment, deficient!.shipment, delegated!.shipment], now]);
+  await rpc("subscription_delivery_alignment_set_mode", ["auto_align"], admin);
+  const client = await admin.connect();
   try {
-    await grantArrivalAlignment("upgrade_alignment_parent");
-    await rpc("subscription_delivery_alignment_set_mode", ["auto_align"], admin);
-    expect(await findings()).toEqual([]);
-    await admin.query("REVOKE UPDATE (next_cycle_at) ON public.subscriptions FROM upgrade_alignment_parent");
-    expect(await findings()).toEqual([{
-      role_name: "upgrade_arrival_member", reason: "arrival_role_missing_alignment_grants",
-      missing_privileges: ["UPDATE (next_cycle_at) ON TABLE public.subscriptions"],
-    }]);
-    await admin.query("REVOKE INSERT ON public.fulfillment_shipments FROM upgrade_arrival_member");
-    expect(await findings()).toEqual([]);
+    await client.query(`BEGIN;
+      CREATE ROLE upgrade_tracking_caller; CREATE ROLE upgrade_tracking_owner BYPASSRLS;
+      GRANT USAGE ON SCHEMA public TO upgrade_tracking_caller,upgrade_tracking_owner;
+      GRANT pg_read_all_data TO upgrade_tracking_owner;
+      GRANT UPDATE (updated_at) ON public.subscriptions,public.subscription_delivery_alignment_cases TO upgrade_tracking_owner;
+      GRANT UPDATE (status,delivered_at,updated_at) ON public.fulfillment_shipments TO upgrade_tracking_owner;
+      GRANT INSERT ON public.fulfillment_operator_receipts,public.fulfillment_shipment_operations,
+        public.subscription_delivery_alignment_arrivals,public.outbox_events TO upgrade_tracking_owner;
+      GRANT EXECUTE ON FUNCTION public.${arrivalSignature},public.fulfillment_emit_shipment_dispatched(uuid) TO upgrade_tracking_owner;
+      GRANT EXECUTE ON FUNCTION ${signature},${withoutTracking} TO upgrade_tracking_caller`);
+    const direct = (shipment: string) => rpc("fulfillment_operator_record_tracking",
+      [`tracking:${shipment}`, shipment, { status: "delivered", rawEvent: { occurredAt: deliveredAt } }, null], client);
+    await client.query("SET LOCAL ROLE upgrade_tracking_caller");
+    expect((await client.query(`SELECT has_column_privilege('public.fulfillment_shipments','delivered_at','UPDATE') AS direct`)).rows)
+      .toEqual([{ direct: false }]);
+    expect(await direct(qualified!.shipment)).toMatchObject({ status: "delivered" });
+    await client.query(`RESET ROLE; ALTER FUNCTION ${signature} OWNER TO upgrade_tracking_owner; SET LOCAL ROLE upgrade_tracking_caller`);
+    expect(await direct(deficient!.shipment)).toMatchObject({ status: "delivered" });
+    await client.query("RESET ROLE");
+    const { shipment, orderId } = delegated!, dispatch = randomUUID(), event = randomUUID();
+    await client.query(`INSERT INTO public.fulfillment_dispatch_refs
+      (id,request_key,shipment_id,order_id,parcel_ref,mode,status,evidence)
+      VALUES($1,$4,$2,$3,$4,'live','created','{"providerRef":"fixture-carrier"}')`, [dispatch, shipment, orderId, event]);
+    await client.query(`INSERT INTO public.shipment_external_refs(shipment_id,ref_role,provider_kind,external_id)
+      VALUES($1,'tracking','fixture-carrier',$2)`, [shipment, event]);
+    await rpc("fulfillment_intake_record_observation", [event, shipment, { eventKey: event, trackingRefs: [],
+      correlation: { fulfillmentRef: shipment }, intake: { occurredAt: deliveredAt, occurrenceKey: event },
+      fact: { providerKind: "fixture-carrier", canonicalStatus: "delivered", occurredAt: deliveredAt,
+        rawEvent: { reference: event }, provenance: { source: "provider_webhook", authority: "provider_asserted" } } }, days(deliveredAt, 0.001)], client);
+    await client.query(`INSERT INTO public.fulfillment_operator_status_evidence
+      (event_key,shipment_id,provider_status,occurred_at,canonical_status,occurrence_key)
+      VALUES($1,$2,'delivered',$3,'delivered',$1)`, [event, shipment, deliveredAt]);
+    await client.query("SET LOCAL ROLE upgrade_tracking_caller");
+    expect(await rpc("fulfillment_intake_record_delivery_without_tracking", [event, dispatch, shipment], client)).toEqual({ readBack: true });
+    await client.query("RESET ROLE");
+    const { rows: gaps } = await client.query(upgradeReportStatements()[3]);
+    expect(gaps).toEqual([deficient!, delegated!].sort((a, b) => a.subscriptionId.localeCompare(b.subscriptionId))
+      .map(f => reportGap(f.subscriptionId, f.shipment)));
+    expect((await client.query("SELECT next_cycle_at FROM public.subscriptions WHERE id=$1", [qualified!.subscriptionId])).rows)
+      .toEqual([{ next_cycle_at: shifted }]);
+  } finally { await client.query("ROLLBACK"); client.release(); }
+}, 30_000);
+
+it.each([true, false])("keeps rewrites outside the report cut (deferred=%s)", async defer => {
+  const f = await renewalPurchase(), shipment = await parcel(f.orderId);
+  await recordArrival(shipment, days(now, 1), runtime);
+  await rpc("subscription_delivery_alignment_set_mode", ["auto_align"], admin);
+  const rewrite = () => admin.query("ALTER TABLE public.fulfillment_shipments ADD COLUMN rewrite_witness timestamptz DEFAULT clock_timestamp()");
+  const listed = [reportGap(f.subscriptionId, shipment)];
+  try {
+    const cut = await readRenewalUpgradeReport(admin, { afterCut: async () => { if (!defer) await rewrite(); } });
+    expect(cut.alignment).toEqual(defer ? listed : []);
+    if (defer) await rewrite();
+    expect((await readRenewalUpgradeReport(admin)).alignment).toEqual(listed);
+  } finally { await admin.query("ALTER TABLE public.fulfillment_shipments DROP COLUMN IF EXISTS rewrite_witness"); }
+}, 30_000);
+
+it.each(["deferred", "raced", "already present"])("fences real OMS replacements through owner repair (%s)", async arm => {
+  const f = await renewalPurchase(), shipment = await parcel(f.orderId), deliveredAt = days(now, 1);
+  const intake = await renewalPurchase(), intakeShipment = await parcel(intake.orderId);
+  await recordArrival(shipment, deliveredAt, runtime);
+  const actor = randomUUID();
+  await admin.query("INSERT INTO public.commerce_operators(id,label) VALUES($1,'Fixture operator')", [actor]);
+  await rpc("fulfillment_capture_parcel_contact", [shipment, { schemaVersion: 1, source: "contact", revision: 1,
+    recipientName: "Recipient", contactPhone: "+000001", line1: "Fixture street", city: "Example", postalCode: "00000", country: "ZZ",
+    selectedDelivery: { providerKind: "warehouse", deliveryKind: "courier" } }], admin);
+  const replace = () => rpc("commerce_oms_request_replacement_shipment",
+    [`replacement:${shipment}`, f.orderId, "lost", actor, "warehouse", facts.stockSourceKey, {}], runtime);
+  await rpc("subscription_delivery_alignment_set_mode", ["auto_align"], admin);
+  const before = await alignmentState(admin, f.subscriptionId);
+  if (arm === "already present") {
+    await replace();
+    expect((await readRenewalUpgradeReport(admin)).alignment).toEqual([]);
+    await repairAlignment(admin, f.subscriptionId);
+    expect(await alignmentState(admin, f.subscriptionId)).toEqual(before);
+    return;
+  }
+
+  expect((await readRenewalUpgradeReport(admin)).alignment).toEqual([reportGap(f.subscriptionId, shipment)]);
+  const barrier = await admin.connect();
+  let pending: Promise<void> | undefined;
+  try {
+    await barrier.query("BEGIN; SELECT pg_advisory_xact_lock(71642, 1)");
+    pending = repairAlignment(admin, f.subscriptionId, ownerRepairSql(f.subscriptionId).replace(
+      "    PERFORM public.subscription_delivery_alignment_upsert_case(",
+      "    PERFORM pg_advisory_xact_lock(71642, 1);\n    PERFORM public.subscription_delivery_alignment_upsert_case("));
+    void pending.catch(() => {});
+    await expect.poll(async () => (await admin.query(`SELECT EXISTS (
+      SELECT 1 FROM pg_locks WHERE locktype='advisory' AND classid=71642 AND objid=1 AND NOT granted) AS waiting`)).rows,
+    { timeout: 10_000 }).toEqual([{ waiting: true }]);
+    if (arm === "raced") await replace();
+    await recordArrival(intakeShipment, deliveredAt, runtime);
+    await barrier.query("COMMIT");
+    await pending;
+    expect((await readRenewalUpgradeReport(admin)).alignment).toEqual([]);
+    expect(await alignmentState(admin, f.subscriptionId)).toMatchObject({
+      next_cycle_at: new Date(days(deliveredAt, facts.cadenceDays)), cases: [{ state: "aligned" }],
+    });
+    expect((await admin.query("SELECT delivered_at FROM public.fulfillment_shipments WHERE replaces_shipment_id=$1", [shipment])).rows)
+      .toEqual(arm === "raced" ? [{ delivered_at: null }] : []);
+    if (arm === "deferred") await replace();
   } finally {
-    await rpc("subscription_delivery_alignment_set_mode", ["off"], admin);
-    await admin.query(`DROP OWNED BY upgrade_arrival_member, upgrade_alignment_parent;
-      DROP ROLE upgrade_arrival_member, upgrade_alignment_parent`);
+    await barrier.query("ROLLBACK");
+    await pending?.catch(() => {});
+    barrier.release();
   }
 }, 30_000);
 
@@ -1989,13 +2099,270 @@ it("preserves arrival and claim authority for an existing directly granted fulfi
       await rpc("subscription_delivery_alignment_set_mode", ["auto_align"], owner);
       expect(await rpc("subscription_delivery_alignment_get_mode", [], direct)).toBe("auto_align");
       await arrival(arrivals[2]!);
-      expect((await readRenewalUpgradeReport(owner)).arrivalRoles).toContainEqual(expect.objectContaining({
-        role_name: role, reason: "arrival_role_missing_alignment_grants",
-        missing_privileges: expect.arrayContaining(["UPDATE (next_cycle_at) ON TABLE public.subscriptions"]),
-      }));
+      expect((await readRenewalUpgradeReport(owner)).alignment).toEqual(arrivals
+        .sort((one, two) => one.subscriptionId.localeCompare(two.subscriptionId))
+        .map(({ subscriptionId, shipmentId }) => reportGap(subscriptionId, shipmentId, { occupying_operation_id: null })));
     } finally {
       await direct.end();
     }
+  });
+}, postgresSetupTimeoutMs);
+
+async function waitForSubscriptionLock(owner: Pool, blockerPid: number) {
+  await expect.poll(async () => (await owner.query(`SELECT EXISTS (
+    SELECT 1 FROM pg_stat_activity a JOIN pg_locks l ON l.pid = a.pid
+    WHERE a.datname = current_database() AND $1 = ANY(pg_blocking_pids(a.pid))
+      AND l.relation = 'public.subscriptions'::regclass AND l.granted
+  ) AS waiting`, [blockerPid])).rows, { timeout: 20_000 }).toEqual([{ waiting: true }]);
+}
+
+it("keeps occupied gaps visible and repairs only after exact owner disposition", async () => {
+  await withTemplateUpgrade(async target => {
+    const { db, owner, applyForward } = target;
+    const entry = await upgradeRenewal(target, { edited: false }), prepared = await upgradeRenewal(target, { edited: false });
+    const { f, d, snapshot } = entry, shipment = await parcel(f.orderId, db), second = await parcel(prepared.f.orderId, db);
+    const deliveredAt = days(d.due.scheduledAt, 1), shifted = days(deliveredAt, facts.cadenceDays);
+    // The incumbent case-free arrival leaves the due date alone.
+    await recordArrival(shipment, deliveredAt, db);
+    await recordArrival(second, deliveredAt, db);
+    const op = await entry.claim(), competing = await prepareIncumbent(prepared);
+    const frozen = await frozenOperation(db, op.operationId);
+    await applyForward();
+    await rpc("subscription_delivery_alignment_set_mode", ["auto_align"], owner);
+    const expected = (state: string) => [
+      reportGap(f.subscriptionId, shipment, { occupying_operation_id: op.operationId, occupying_operation_state: state }),
+      reportGap(prepared.f.subscriptionId, second, { occupying_operation_id: competing.op.operationId, successor_cycle_id: competing.prepared.cycleId }),
+    ];
+    const report = await readRenewalUpgradeReport(owner);
+    expect(report.operations).toEqual([]);
+    expect(report.alignment).toHaveLength(2);
+    expect(report.alignment).toEqual(expect.arrayContaining(expected("claimed")));
+    for (const id of [f.subscriptionId, prepared.f.subscriptionId]) {
+      const before = await alignmentState(owner, id);
+      await repairAlignment(owner, id);
+      expect(await alignmentState(owner, id)).toEqual(before);
+    }
+    await reserveIncumbent(d, op);
+    const reserved = await alignmentState(owner, f.subscriptionId);
+    expect((await readRenewalUpgradeReport(owner)).alignment).toEqual(expect.arrayContaining(expected("reserved")));
+    await repairAlignment(owner, f.subscriptionId);
+    expect(await alignmentState(owner, f.subscriptionId)).toEqual(reserved);
+    const takeover = JSON.parse((await db.query(rawClaim, claimWire(d, snapshot, undefined, later))).rows[0].result);
+    expect(takeover).toMatchObject({ operationId: op.operationId, acquired: true });
+    await rpc("fulfillment_release_subscription_renewal", [op.operationId, takeover.claimToken, "upgrade_reconciled", later], db);
+    expect((await readRenewalUpgradeReport(owner)).alignment).toEqual(expect.arrayContaining(expected("refused")));
+    await repairAlignment(owner, f.subscriptionId);
+    expect(await frozenOperation(db, op.operationId)).toEqual(frozen);
+    expect((await readRenewalUpgradeReport(owner)).alignment).toEqual([expected("refused")[1]]);
+    await closeUnsent(competing, target);
+    await closeWaitingRetry(db, competing, competing.op.operationId, later);
+    const tick = binding(d, () => deliveredAt, upgradeTransaction(db), db);
+    expect(await tick.services.run()).toMatchObject({ renewals: [] });
+    expect(await binding(d, () => shifted, upgradeTransaction(db), db).services.run())
+      .toMatchObject({ renewals: [{ status: "succeeded" }] });
+    expect(d.execute.mock.calls.map(([charge]) => charge.amountMinor)).toEqual([200]);
+  });
+}, postgresSetupTimeoutMs);
+
+it.each(["READ COMMITTED", "REPEATABLE READ"])("requires fresh arrival snapshots for simultaneous split delivery (%s)", async isolation => {
+  const f = await renewalPurchase(), d = await deps(f.subscriptionId, "succeeded"), original = await parcel(f.orderId);
+  const { rows: [{ id: first }, { id: second }] } = await admin.query(`INSERT INTO public.fulfillment_shipments
+    (order_id,port_key,provider_type,create_idempotency_key,sequence_no,replaces_shipment_id,replacement_reason)
+    VALUES($1,'g7-parcels','3pl',$2,1,$4,'lost'),($1,'g7-parcels','3pl',$3,2,$4,'lost') RETURNING id`,
+  [f.orderId, randomUUID(), randomUUID(), original]);
+  const deliveredAt = days(d.due.scheduledAt, 1), shifted = days(deliveredAt, facts.cadenceDays);
+  await rpc("subscription_delivery_alignment_set_mode", ["auto_align"], admin);
+  const one = await runtime.connect(), two = await runtime.connect();
+  const update = "UPDATE public.fulfillment_shipments SET delivered_at=$2 WHERE id=$1";
+  let waiting: Promise<unknown> | undefined;
+  try {
+    await one.query("BEGIN ISOLATION LEVEL READ COMMITTED");
+    const { rows: [{ pid }] } = await one.query("SELECT pg_backend_pid() AS pid");
+    await one.query(update, [first, days(deliveredAt, -0.5)]);
+    await two.query(`BEGIN ISOLATION LEVEL ${isolation}`);
+    await two.query("SELECT pg_current_snapshot()");
+    waiting = two.query(update, [second, deliveredAt]);
+    void waiting.catch(() => {});
+    await waitForSubscriptionLock(admin, pid);
+    expect((await readRenewalUpgradeReport(admin)).alignment).toEqual([]);
+    await one.query("COMMIT");
+    await waiting;
+    await two.query("COMMIT");
+    const qualified = isolation === "READ COMMITTED";
+    expect(await alignmentState(admin, f.subscriptionId)).toMatchObject({
+      next_cycle_at: new Date(qualified ? shifted : d.due.scheduledAt),
+    });
+    expect((await readRenewalUpgradeReport(admin)).alignment).toEqual(qualified ? [] : [reportGap(f.subscriptionId, second)]);
+    await binding(d, () => deliveredAt).services.run();
+    expect(d.execute.mock.calls.map(([charge]) => charge.amountMinor)).toEqual(qualified ? [] : [200]);
+  } finally {
+    await one.query("ROLLBACK");
+    await waiting?.catch(() => {});
+    await two.query("ROLLBACK");
+    one.release();
+    two.release();
+  }
+}, 30_000);
+
+it.each(["drain", "omit drain", "keep closed", "reopen"])("fences claim admission through the cohort capture (%s)", async arm => {
+  await withTemplateUpgrade(async target => {
+    const { owner, db, applyForward } = target;
+    const stale = await upgradeRenewal(target), lockTarget = await upgradeRenewal(target), lockOp = await lockTarget.claim();
+    const writer = await db.connect(), locker = await db.connect();
+    const startedBefore = arm === "drain" || arm === "omit drain";
+    let claim: RenewalReadback | undefined, forward: ReturnType<typeof applyForward> | undefined;
+    const admit = async () => {
+      await writer.query("BEGIN");
+      expect((await writer.query(`SELECT catalog_acceptance FROM public.subscription_renewal_terms WHERE subscription_id=$1`,
+        [stale.f.subscriptionId])).rows).toEqual([{ catalog_acceptance: null }]);
+      claim = JSON.parse((await writer.query(rawClaim, claimWire(stale.d, stale.snapshot))).rows[0].result);
+      expect(claim).toMatchObject({ acquired: true });
+    };
+    try {
+      if (startedBefore) await admit();
+      if (arm === "drain") await writer.query("COMMIT");
+      await locker.query("BEGIN");
+      await locker.query("SELECT id FROM public.subscriptions WHERE id=$1 FOR UPDATE", [lockTarget.f.subscriptionId]);
+      const { rows: [{ pid }] } = await locker.query("SELECT pg_backend_pid() AS pid");
+      forward = applyForward();
+      void forward.catch(() => {});
+      await waitForSubscriptionLock(owner, pid);
+      if (arm === "reopen") await admit();
+      if (arm === "omit drain" || arm === "reopen") await writer.query("COMMIT");
+      await locker.query("COMMIT");
+      expect((await forward).applied).toEqual([expect.stringMatching(renewalTemplateForward)]);
+      await refuseUnprepared(lockTarget, lockOp);
+      const cohort = (await owner.query(`SELECT c.renewal_operation_id
+        FROM public.subscription_renewal_upgrade_cohort c JOIN public.subscription_renewal_operations o ON o.id=c.renewal_operation_id
+        WHERE o.subscription_id=$1`, [stale.f.subscriptionId])).rows;
+      expect(cohort).toEqual(arm === "drain" ? [{ renewal_operation_id: claim!.operationId }] : []);
+      if (arm === "drain") {
+        expect(await renewalUpgradeReport(owner)).toEqual([reportRow(claim!.operationId, ["first_charge"])]);
+        await refuseUnprepared(stale, claim!);
+      }
+      expect(await readRenewalUpgradeReport(owner)).toEqual({ operations: [], alignment: [] });
+      const tick = binding(stale.d, () => later, upgradeTransaction(db), db);
+      await tick.services.run();
+      await tick.services.run();
+      expect(stale.d.execute.mock.calls.map(([charge]) => charge.amountMinor))
+        .toEqual(arm === "keep closed" ? [300] : arm === "drain" ? [] : [200]);
+      if (arm === "omit drain" || arm === "reopen") {
+        expect((await stale.d.input.store.readRenewal(claim!.identityKey))?.operationId).toBe(claim!.operationId);
+      }
+    } finally {
+      await writer.query("ROLLBACK");
+      await locker.query("ROLLBACK");
+      await forward?.catch(() => {});
+      writer.release();
+      locker.release();
+    }
+  });
+}, postgresSetupTimeoutMs);
+
+it("keeps v3 schedule and delivery ownership out of the check and scoped repair", async () => {
+  await withTemplateUpgrade(async target => {
+    const { db, owner, applyForward } = target;
+    const selected = await upgradeRenewal(target), unselected = await upgradeRenewal(target), legacy = await upgradeRenewal(target);
+    const op = await selected.claim();
+    await reserveIncumbent(selected.d, op);
+    const tag = (id: string) => owner.query(`UPDATE public.subscription_renewal_operations
+      SET cycle_snapshot=jsonb_set(cycle_snapshot,'{contractVersion}',to_jsonb('platform.subscription.renewal.v3'::text)) WHERE id=$1`, [id]);
+    await tag(op.operationId);
+    const observedDue = days(now, 3), deliveredAt = days(observedDue, 1);
+    const subjects = [];
+    for (const { f, d } of [selected, unselected, legacy]) {
+      const shipment = await parcel(f.orderId, db);
+      await owner.query("UPDATE public.subscriptions SET next_cycle_at=$2 WHERE id=$1", [f.subscriptionId, observedDue]);
+      await recordArrival(shipment, deliveredAt, db);
+      subjects.push({ ...f, shipment, key: randomUUID(), anchor: d.due.scheduledAt });
+    }
+    const [booked, assigning, control] = subjects as [typeof subjects[number], typeof subjects[number], typeof subjects[number]];
+    for (const subject of [booked, assigning]) {
+      await owner.query(`INSERT INTO public.subscription_cycle_occurrences
+        (cycle_key,subscription_id,client_id,original_anchor_at,effective_due_at,cadence_seconds,rail,lifecycle,is_current)
+        VALUES($1,$2,$3,$4,$5,2419200,'v3','active',true)`,
+      [subject.key, subject.subscriptionId, subject.clientId, subject.anchor, days(observedDue, 1)]);
+    }
+    await owner.query(`WITH generation AS (
+      INSERT INTO public.subscription_cycle_generations
+        (cycle_key,operation_id,commercial_generation_id,agreement,agreement_fingerprint,claim_token,lease_expires_at,lease_generation)
+      SELECT $1,id,id,'{}',operation_fingerprint,claim_token,lease_expires_at,1
+      FROM public.subscription_renewal_operations WHERE id=$2 RETURNING *
+    ) UPDATE public.subscription_cycle_occurrences x SET operation_id=g.operation_id,commercial_generation_id=g.commercial_generation_id
+      FROM generation g WHERE x.cycle_key=g.cycle_key`, [booked.key, op.operationId]);
+    await applyForward();
+    await rpc("subscription_delivery_alignment_set_mode", ["auto_align"], owner);
+    const report = () => readRenewalUpgradeReport(owner);
+    const unchanged = async (id: string) => {
+      const before = await alignmentState(owner, id);
+      await repairAlignment(owner, id);
+      expect(await alignmentState(owner, id)).toEqual(before);
+    };
+    const legacyGap = [reportGap(control.subscriptionId, control.shipment)];
+    expect(await report()).toEqual({ operations: [], alignment: legacyGap });
+    await unchanged(booked.subscriptionId);
+    await unchanged(assigning.subscriptionId);
+
+    await owner.query(`UPDATE public.subscription_cycle_occurrences SET is_current=false,lifecycle='retired' WHERE cycle_key IN ($1,$2)`, [booked.key, assigning.key]);
+    expect((await report()).alignment).toHaveLength(3);
+    const operationSchedule = (when: string) => owner.query(
+      "UPDATE public.subscription_renewal_operations SET scheduled_at=$2 WHERE id=$1", [op.operationId, when]);
+    const beforeTag = (await report()).alignment.filter(row => row.subscription_id !== booked.subscriptionId);
+    await operationSchedule(observedDue);
+    expect((await report()).alignment).toEqual(beforeTag);
+    await unchanged(booked.subscriptionId);
+    await operationSchedule(booked.anchor);
+    const linkPredecessor = (operationId: string | null) => owner.query(`UPDATE public.subscription_cycles
+      SET renewal_operation_id=$2 WHERE id=(SELECT subscription_cycle_id FROM public.commerce_orders WHERE id=$1)`,
+    [booked.orderId, operationId]);
+    await linkPredecessor(op.operationId);
+    expect((await report()).alignment).toEqual(beforeTag);
+    await unchanged(booked.subscriptionId);
+    await linkPredecessor(null);
+    await owner.query(`INSERT INTO public.subscription_cycle_delivery_assignments(obligation_ref,assigned_cycle_key)
+      VALUES($1,$2)`, [assigning.orderId, assigning.key]);
+    await transaction(async tx => {
+      // The booked graph uses the existing paid activation at ordinal zero. Its cycle and order
+      // operation links stay null, so neither the v3 tag nor the unknown-ordinal fence decides.
+      await tx.query(`WITH coordinates AS (
+        SELECT o.id AS order_id, c.id AS cycle_id, i.id AS intent_id, gen_random_uuid() AS payment_id
+        FROM public.commerce_orders o JOIN public.subscription_delivery_alignment_cycles c ON c.order_id=o.id
+        JOIN public.commerce_settlement_intents i ON i.order_id=o.id
+        WHERE o.id=$3 AND o.renewal_operation_id IS NULL AND c.renewal_operation_id IS NULL AND c.cycle_number=0
+      ), provider AS (
+        INSERT INTO public.payment_provider_states(id,payment_id,target_kind)
+        SELECT intent_id,payment_id,'one_time_order' FROM coordinates RETURNING *
+      ), attempt AS (
+        INSERT INTO public.payment_provider_attempts(settlement_intent_id,payment_id,provider,idempotency_key,amount_minor,currency)
+        SELECT id,payment_id,'offline',id::text,200,'XXX' FROM provider RETURNING id
+      ), hold AS (
+        INSERT INTO public.subscription_cycle_stock_holds
+        SELECT gen_random_uuid(),$1,$2,$2,id,expires_at,'held' FROM public.fulfillment_inventory_reservations
+        WHERE renewal_operation_id=$2 RETURNING *
+      ), calculation AS (
+        INSERT INTO public.tax_calculations(calculation_id,state) VALUES(gen_random_uuid(),'erased') RETURNING calculation_id
+      ), issuance AS (
+        INSERT INTO public.subscription_cycle_tax_issuances
+        SELECT gen_random_uuid(),$2,$2,1,h.hold_incarnation_id,c.calculation_id,repeat('a',64),NULL,now()
+        FROM hold h CROSS JOIN calculation c RETURNING *
+      ), binding AS (
+        INSERT INTO public.subscription_cycle_tax_bindings
+        SELECT gen_random_uuid(),i.evaluation_id,$1,$2,$2,1,i.issued_calculation_id,repeat('a',64),repeat('a',64),
+          200,'XXX',now(),now()+interval '1 day',NULL,now() FROM issuance i RETURNING binding_ref
+      )
+      INSERT INTO public.subscription_cycle_preparations
+      SELECT gen_random_uuid(),$1,c.cycle_id,$2,$2,b.binding_ref,1,h.hold_incarnation_id,c.order_id,c.intent_id,
+        a.id,c.order_id::text,repeat('a',64),now(),NULL,NULL
+      FROM coordinates c CROSS JOIN binding b CROSS JOIN hold h CROSS JOIN attempt a`, [booked.key, op.operationId, booked.orderId]);
+    }, owner);
+    expect((await report()).alignment).toEqual(legacyGap);
+    await unchanged(booked.subscriptionId);
+    await unchanged(assigning.subscriptionId);
+    await repairAlignment(owner, control.subscriptionId);
+    expect((await report()).alignment).toEqual([]);
+    expect(await alignmentState(owner, control.subscriptionId)).toMatchObject({
+      next_cycle_at: new Date(days(deliveredAt, facts.cadenceDays)), cases: [{ state: "aligned" }],
+    });
   });
 }, postgresSetupTimeoutMs);
 
@@ -2024,11 +2391,7 @@ it("captures an accepted edit that commits while the forward is waiting on its s
       const { rows: [{ pid }] } = await editor.query("SELECT pg_backend_pid() AS pid");
       forward = applyForward();
       void forward.catch(() => {});
-      await expect.poll(async () => (await owner.query(`SELECT EXISTS (
-        SELECT 1 FROM pg_stat_activity a JOIN pg_locks l ON l.pid = a.pid
-        WHERE a.datname = current_database() AND $1 = ANY(pg_blocking_pids(a.pid))
-          AND l.relation = 'public.subscriptions'::regclass AND l.mode = 'RowShareLock' AND l.granted
-      ) AS waiting`, [pid])).rows, { timeout: 20_000 }).toEqual([{ waiting: true }]);
+      await waitForSubscriptionLock(owner, pid);
       release.resolve();
       await edit;
       expect((await forward).applied).toEqual([expect.stringMatching(renewalTemplateForward)]);
@@ -2161,7 +2524,8 @@ async function prepareWebhookRenewal(target: UpgradeTarget, outcome: "succeeded"
       failureClass: "soft_retryable", failureReason: "declined", nextRetryAt: null, occurredAt: later,
       amountMinor: 200, currency: "XXX",
     }),
-    async deliver(input: Partial<Pick<typeof event, "providerPaymentRef" | "providerOccurredAt" | "providerEventId" | "outcome">> = {}) {
+    async deliver(input: Partial<Pick<typeof event, "providerPaymentRef" | "providerOccurredAt" | "providerEventId" | "outcome" | "intentRef">> = {},
+      operationId = op.operationId) {
       const delivery = { ...event, ...input };
       const payload = JSON.stringify(delivery);
       deliveries.set(payload, delivery);
@@ -2169,13 +2533,67 @@ async function prepareWebhookRenewal(target: UpgradeTarget, outcome: "succeeded"
       expect(await rail.ingress.receive({
         rawBody: body, headers: { "x-fixture-signature": sign(body) }, receivedAt: delivery.providerOccurredAt,
       })).toMatchObject({ status: 200 });
-      if (input.providerPaymentRef === undefined) {
-        expect((await db.query("SELECT state FROM public.subscription_renewal_operations WHERE id=$1", [op.operationId])).rows)
+      if (input.providerPaymentRef === undefined || input.intentRef !== undefined) {
+        expect((await db.query("SELECT state FROM public.subscription_renewal_operations WHERE id=$1", [operationId])).rows)
           .toEqual([{ state: delivery.outcome === "succeeded" ? "succeeded" : "refused" }]);
       }
     },
   };
 }
+
+it.each([true, false])("drains mounted and independent callers at the shared provider boundary (custom drain=%s)", async customDrain => {
+  await withTemplateUpgrade(async target => {
+    const { owner, db, applyForward } = target;
+    const custom = await prepareWebhookRenewal(target, "succeeded", "intent");
+    const mounted = await upgradeRenewal(target, { providerBacked: true });
+    const customIntent = custom.prepared.settlementIntentId, customEntered = signal(), mountedEntered = signal();
+    const releaseCustom = signal(), releaseMounted = signal(), sentAfterForward: number[] = [];
+    let forwardStarted = false;
+    vi.spyOn(custom.rail.adapter.readbackPort, "readPayment").mockImplementation(async request => ({
+      kind: "unsupported", identity: request.identity, expectedMoney: request.expectedMoney, purpose: request.purpose,
+    }));
+    custom.execute.mockImplementation(async request => {
+      const independent = request.intentRef === customIntent;
+      (independent ? customEntered : mountedEntered).resolve();
+      await (independent ? releaseCustom : releaseMounted).promise;
+      if (forwardStarted) sentAfterForward.push(request.money.amountMinor);
+      return { outcome: { kind: "attempt", status: "processing" },
+        dispatch: { kind: "dispatched", providerPaymentRef: independent ? `pi_${custom.id}` : `pi_${request.intentRef}` }, diagnostics: {} };
+    });
+    const d = { ...mounted.d, input: { ...mounted.d.input, policy: api.createSandboxRenewalPolicy(mounted.f.methodRef),
+      paymentRails: custom.paymentRails } };
+    const mountedCall = runPreForwardRenewal({ ...mounted, d });
+    const customCall = custom.rail.execute({ attemptRef: custom.preparation.idempotencyKey, intentRef: customIntent,
+      fingerprint: custom.op.operationFingerprint, providerIdempotencyKey: custom.preparation.providerIdempotencyKey,
+      money: { amountMinor: 200, currency: "XXX" }, mode: "test", purpose: "renewal-unattended",
+      orderRef: custom.prepared.orderId, clientId: custom.f.clientId, customerRef: custom.d.due.payerAccountRef!,
+      storedMethod: { reference: custom.methodRef, mandate: { recurringModel: null } } });
+    try {
+      for (const [entered, pending] of [[mountedEntered, mountedCall], [customEntered, customCall]] as const) {
+        await Promise.race([entered.promise, pending.then(result => { throw new Error(
+          `provider_send_barrier_not_reached: ${JSON.stringify(result)}`); })]);
+      }
+      releaseMounted.resolve();
+      const mountedOp = (await mounted.d.input.store.readRenewal((await mountedCall).identityKey))!;
+      await custom.deliver({ intentRef: mountedOp.settlementIntentId!, providerPaymentRef: `pi_${mountedOp.settlementIntentId}`,
+        providerEventId: `evt_${mountedOp.operationId}` }, mountedOp.operationId);
+      if (customDrain) { releaseCustom.resolve(); await customCall; }
+      forwardStarted = true;
+      expect((await applyForward()).applied).toEqual([expect.stringMatching(renewalTemplateForward)]);
+      releaseCustom.resolve();
+      await customCall;
+      await custom.deliver();
+      expect(await readRenewalUpgradeReport(owner)).toEqual({ operations: [], alignment: [] });
+      expect(await binding(d, () => later, upgradeTransaction(db), db).services.run()).toMatchObject({ renewals: [], retries: [] });
+      expect(custom.execute.mock.calls.map(([request]) => request.money.amountMinor)).toEqual([200, 200]);
+      expect(sentAfterForward).toEqual(customDrain ? [] : [200]);
+    } finally {
+      releaseMounted.resolve();
+      releaseCustom.resolve();
+      await Promise.allSettled([mountedCall, customCall]);
+    }
+  });
+}, postgresSetupTimeoutMs);
 
 it("lets verified provider intake finish while cohort capture only reads the operations table", async () => {
   await withTemplateUpgrade(async target => {
