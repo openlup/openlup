@@ -84,7 +84,10 @@ jobs:
             try {
               const raw = ref === "WORKTREE"
                 ? readFileSync("package-lock.json", "utf8")
-                : execFileSync("git", ["show", `${ref}:package-lock.json`], { encoding: "utf8" });
+                : execFileSync("git", ["show", `${ref}:package-lock.json`], {
+                    encoding: "utf8",
+                    maxBuffer: 64 * 1024 * 1024,
+                  });
               const lock = JSON.parse(raw);
               return lock?.packages?.["node_modules/@openlup/core"]?.version ?? "";
             } catch {
@@ -149,7 +152,8 @@ jobs:
             report.newOptInInYourDomains.length > 0 ||
             report.sqlAndSettingsDelta.sqlAdded.length > 0 ||
             report.sqlAndSettingsDelta.settingsDelta.added.length > 0 ||
-            report.sqlAndSettingsDelta.settingsDelta.changed.length > 0;
+            report.sqlAndSettingsDelta.settingsDelta.changed.length > 0 ||
+            report.sqlAndSettingsDelta.settingsDelta.removed.length > 0;
 
           if (!hasItems) {
             console.log(`No opt-in or follow-up backlog items for ${from} -> ${to}.`);

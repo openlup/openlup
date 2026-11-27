@@ -808,4 +808,60 @@ describe("CLI and MCP integration", () => {
     expect(replies[1]).toMatchObject({ id: 2, error: { code: -32602 } });
     expect(replies[2]).toMatchObject({ id: 3, error: { code: -32602 } });
   });
+
+  it("lexes TSX closing tags, JSX apostrophes, and semicolon-free object import keys without losing imports", () => {
+    const tsxClosing = extractImportsFromSource(
+      "src/Footer.tsx",
+      [
+        'export const Footer = () => <footer>OpenLup</footer>',
+        'export * from "@openlup/core/subscription"',
+        'import { x } from "@openlup/core/src/internal"',
+      ].join("\n"),
+    );
+    expect(tsxClosing.wildcardReexports).toEqual([
+      { file: "src/Footer.tsx", line: 2, subpath: "@openlup/core/subscription" },
+    ]);
+    expect(tsxClosing.deepImports).toEqual([
+      { file: "src/Footer.tsx", line: 3, specifier: "@openlup/core/src/internal" },
+    ]);
+
+    const tsxDynamic = extractImportsFromSource(
+      "src/Page.tsx",
+      'export function Page() { return <div><span>Hello</span><button onClick={() => import("@openlup/core/subscription")}>Go</button></div>; }\n',
+    );
+    expect(tsxDynamic.imports).toEqual([
+      { file: "src/Page.tsx", line: 1, subpath: "@openlup/core/subscription", kind: "dynamic", symbols: [] },
+    ]);
+
+    const jsxApostrophe = extractImportsFromSource(
+      "src/Copy.tsx",
+      [
+        "export const Copy = () => <p>It's ok</p>",
+        'export * from "@openlup/core/pricing"',
+      ].join("\n"),
+    );
+    expect(jsxApostrophe.wildcardReexports).toEqual([
+      { file: "src/Copy.tsx", line: 2, subpath: "@openlup/core/pricing" },
+    ]);
+
+    const objectKey = extractImportsFromSource(
+      "src/config.ts",
+      [
+        "const cfg = {",
+        "  import: true,",
+        "}",
+        'import { evaluatePromos } from "@openlup/core/promo"',
+      ].join("\n"),
+    );
+    expect(objectKey.imports).toEqual([
+      { file: "src/config.ts", line: 4, subpath: "@openlup/core/promo", kind: "named", symbols: ["evaluatePromos"] },
+    ]);
+
+    const postMergeWorkflow = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "../../../docs/platform/adopter-kit/openlup-post-merge-optin-issue.template.yml"),
+      "utf8",
+    );
+    expect(postMergeWorkflow).toContain("maxBuffer: 64 * 1024 * 1024");
+    expect(postMergeWorkflow).toContain("report.sqlAndSettingsDelta.settingsDelta.removed.length > 0");
+  });
 });

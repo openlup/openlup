@@ -300,7 +300,7 @@ function canPrecedeRegex(prev: LexToken | undefined): boolean {
   if (!prev) return true;
   if (prev.kind === "ident") return REGEX_PREFIX_KEYWORDS.has(prev.value);
   if (prev.kind === "punct") {
-    return prev.value !== ")" && prev.value !== "]" && prev.value !== "++" && prev.value !== "--";
+    return prev.value !== ")" && prev.value !== "]" && prev.value !== "<" && prev.value !== "++" && prev.value !== "--";
   }
   return false;
 }
@@ -389,6 +389,8 @@ function tokenizeSource(source: string): LexToken[] {
     if (ch === "/" && canPrecedeRegex(tokens[tokens.length - 1])) {
       const startLine = line;
       let inClass = false;
+      let closed = false;
+      let endedWithNewline = false;
       index++;
       while (index < source.length) {
         const rc = source[index]!;
@@ -399,13 +401,23 @@ function tokenizeSource(source: string): LexToken[] {
         }
         if (rc === "[") inClass = true;
         else if (rc === "]") inClass = false;
-        if (rc === "\n") { line++; index++; break; }
+        if (rc === "\n") {
+          line++;
+          index++;
+          endedWithNewline = true;
+          break;
+        }
         index++;
-        if (rc === "/" && !inClass) break;
+        if (rc === "/" && !inClass) {
+          closed = true;
+          break;
+        }
       }
-      while (index < source.length && /[a-z]/iu.test(source[index]!)) index++;
+      if (closed) {
+        while (index < source.length && /[a-z]/iu.test(source[index]!)) index++;
+      }
       tokens.push({ kind: "other", value: "/re/", line: startLine, lineBreakBefore });
-      lineBreakBefore = false;
+      lineBreakBefore = endedWithNewline;
       continue;
     }
 
@@ -414,6 +426,7 @@ function tokenizeSource(source: string): LexToken[] {
       const quote = ch;
       const startLine = line;
       let value = "";
+      let endedWithNewline = false;
       index++;
       while (index < source.length) {
         const sc = source[index]!;
@@ -424,13 +437,18 @@ function tokenizeSource(source: string): LexToken[] {
           index += 2;
           continue;
         }
-        if (sc === "\n") { line++; index++; break; }
+        if (sc === "\n") {
+          line++;
+          index++;
+          endedWithNewline = true;
+          break;
+        }
         index++;
         if (sc === quote) break;
         value += sc;
       }
       tokens.push({ kind: "string", value, line: startLine, lineBreakBefore });
-      lineBreakBefore = false;
+      lineBreakBefore = endedWithNewline;
       continue;
     }
 
@@ -576,7 +594,12 @@ export function extractImportsFromSource(file: string, source: string): {
     // Static `import ...`
     if (isStatementStart && tok.kind === "ident" && tok.value === "import") {
       const next = tokens[i + 1];
-      if (!next || (next.kind === "punct" && (next.value === "(" || next.value === "."))) continue;
+      const validContinuation =
+        next !== undefined &&
+        (next.kind === "string" ||
+          next.kind === "ident" ||
+          (next.kind === "punct" && (next.value === "{" || next.value === "*")));
+      if (!validContinuation) continue;
       // Side-effect import statement
       if (next.kind === "string") {
         recordSpecifier(tok.line, next.value, "side-effect", []);
@@ -595,7 +618,7 @@ export function extractImportsFromSource(file: string, source: string): {
       let foundFrom = false;
       while (cursor < tokens.length) {
         const cur = tokens[cursor]!;
-        if (cur.kind === "punct" && cur.value === ";") break;
+        if (cur.kind === "punct" && (cur.value === ";" || cur.value === "}" || cur.value === ":" || cur.value === "=")) break;
         if (cur.kind === "punct" && cur.value === "{") {
           const parsed = parseNamedClause(tokens, cursor);
           symbols = parsed.symbols;
