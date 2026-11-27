@@ -14547,17 +14547,17 @@
     },
     {
       "path": "db/platform/migrations/20261129130508_catalog_price_core_sku_modes_v2.sql",
-      "sha256": "81a068c40825376536f6673dc192d6d16edd8fa4264020c3e55e99df66211ddb",
+      "sha256": "4d4bb95769593042f9d3c0abac8b709516f36d4c50a40983b76dfeb25dc6367f",
       "functions": [
         {
           "signature": "public.catalog_publication_target_price_verdict(jsonb,timestamptz)",
           "beforeSha256": "e7d39341807886392a24600838679de4c84961d3e76e733beff79ec19801b8a2",
-          "afterSha256": "c5ca36d25f0f197b94c23390e1c189a39e21f7fd1253c76b51b4fd937a795b5d"
+          "afterSha256": "df81f1b28141cb3b614dc85da1746610b01ee716f387879d49d4401e153ff917"
         },
         {
           "signature": "public.catalog_publication_decide_prices_v2(jsonb,jsonb,jsonb,jsonb,jsonb,timestamptz)",
           "beforeSha256": "5c60dbf17dd95760c4fec40f78f53891534e002f124dec25fb01ae990bc97606",
-          "afterSha256": "6eb1e66baea605bac4a0a70a5646327a3d6a17f716abd16dcbfd4b407b47cd07"
+          "afterSha256": "1837f1fa29a1ba2f794461058b2613022791a9f4ba866d5b37fa547675a68e3c"
         }
       ]
     }

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { Pool, type PoolClient } from "pg";
+import { DatabaseError, Pool, type PoolClient } from "pg";
 import { expect, it } from "vitest";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { withPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
@@ -413,6 +413,62 @@ async function seedStandaloneCorePrice(owner: Pool, { data, priceListId, entryId
   return publication;
 }
 
+const recordPricePublication = "SELECT public.catalog_publication_record_command($1) AS bytes";
+
+async function prepareInheritedPricePublication(owner: Pool, publication: Awaited<ReturnType<typeof seedStandaloneCorePrice>>,
+  operation: ReturnType<typeof standaloneCorePrice>["edit"]) {
+  return transaction(owner, async db => {
+    const { product, skus } = publication.publish;
+    const { draftId, revision } = product.source;
+    const { rows: [{ payload }] } = await db.query("SELECT payload FROM public.catalog_draft_revisions WHERE draft_id=$1 AND revision=$2", [draftId, revision]);
+    payload.product.sharedContent.catalogAction = "revise";
+    payload.publication = { kind: "release", operations: [], evidence: { priceContext: {
+      priceListId: operation.priceListId, regionCode: "ZZ", currency: "XXX", amountBasis: "tax_inclusive", tax: null,
+    } } };
+    payload.skus[0].priceOperations = [operation];
+    const source = { draftId, revision: revision + 1, commandKey: randomUUID(), fingerprint: hash(json(payload)) };
+    await db.query("UPDATE public.catalog_draft_heads SET revision=$2 WHERE draft_id=$1", [draftId, source.revision]);
+    await db.query(`INSERT INTO public.catalog_draft_revisions(draft_id,revision,product_id,status,payload,command_key,fingerprint,actor_id)
+      VALUES($1,$2,$3,'open',$4,$5,$6,$7)`, [draftId, source.revision, product.id, payload, source.commandKey, source.fingerprint, actorId]);
+    await db.query("INSERT INTO public.catalog_draft_command_receipts(draft_id,command_key,fingerprint,revision) VALUES($1,$2,$3,$4)",
+      [draftId, source.commandKey, source.fingerprint, source.revision]);
+    const expectedHead = JSON.parse(publication.bytes).head;
+    const candidateRef = `v1:${draftId}@${source.revision}/${expectedHead.publicationId}@${expectedHead.revision}`;
+    const candidateDigest = hash(json(["catalog-candidate", 1, payload, [{ ...product.type, definitionDigest: product.definitionDigest }], expectedHead]));
+    const nextProduct = { ...product, source, content: { ...product.content, catalogAction: "revise" as const } };
+    const seal = sealedState(nextProduct, skus.map(sku => ({ skuId: sku.id, digest: hash(json(sku)) })));
+    const common = { schemaVersion: 2, productId: product.id, candidateRef, candidateDigest };
+    const approvalKey = randomUUID();
+    await db.query("SELECT set_config('request.jwt.claims',$1,true)", [actorClaims()]);
+    await db.query(recordPricePublication, [{ ...common, action: "approve", commandKey: approvalKey, reason: null,
+      postStateText: seal, postStateDigest: hash(seal) }]);
+    const { rows: [{ id: approvalId }] } = await db.query("SELECT id FROM public.catalog_publication_decisions WHERE product_id=$1 AND command_key=$2",
+      [product.id, approvalKey]);
+    const command = { ...common, action: "publish", commandKey: randomUUID(), expectedHead, changes: [] };
+    return {
+      publish: { ...command, fingerprint: hash(json([command, actorId])), approvalId, product: nextProduct, skus },
+      assessment: { productId: product.id, candidateRef, candidateDigest, action: "assess_price_v2", postState: { canonicalText: seal, digest: hash(seal), skus } },
+    };
+  });
+}
+
+async function issueInheritedPrice(db: PoolClient, { publish }: Awaited<ReturnType<typeof prepareInheritedPricePublication>>) {
+  await db.query("SELECT set_config('request.jwt.claims',$1,true)", [actorClaims()]);
+  await db.query("UPDATE public.catalog_products SET publication_facts=$2 WHERE id=$1", [publish.productId, publish.product]);
+  return (await db.query<{ bytes: string }>(recordPricePublication, [publish])).rows[0]!.bytes;
+}
+
+async function pricePublicationEffects(db: Pool | PoolClient, { data }: ReturnType<typeof standaloneCorePrice>) {
+  return (await db.query(`SELECT jsonb_build_array(
+    (SELECT jsonb_agg(to_jsonb(e) ORDER BY e.id) FROM public.price_entries e WHERE variant_id=$1),
+    (SELECT jsonb_agg(to_jsonb(r) ORDER BY r.idempotency_key) FROM public.catalog_price_setup_receipts r WHERE metadata->>'variantId'=$1::uuid::text),
+    (SELECT jsonb_agg(to_jsonb(r) ORDER BY r.command_key) FROM public.catalog_operator_receipts r WHERE scope_id=$2),
+    (SELECT jsonb_agg(to_jsonb(p) ORDER BY p.revision) FROM public.catalog_publications p WHERE product_id=$2),
+    (SELECT jsonb_agg(to_jsonb(s) ORDER BY s.revision) FROM public.catalog_sku_revisions s WHERE sku_id=$1),
+    (SELECT to_jsonb(h) FROM public.catalog_publication_heads h WHERE product_id=$2),
+    (SELECT jsonb_agg(to_jsonb(o) ORDER BY o.id) FROM public.outbox_events o WHERE aggregate_id=$2))::text AS bytes`, [data.skuId, data.productId])).rows[0].bytes as string;
+}
+
 it("keeps a standalone core SKU ready at a later instant after an advisory wait", async () => {
   await withPriceUpgrade("bootstrap", coreModesForward, "later-price-readiness", async (prior, candidate) => {
     const subject = standaloneCorePrice();
@@ -487,11 +543,12 @@ it("keeps released price and readiness responses byte-identical with the paired 
       const v1 = json({ schemaVersion: 1, commandKey: "released-core-price", variantId: skuId, priceListId, mode: "one_time",
         minQty: 1, amountKind: "gross", unitPriceMinor: 160, expected: { entryId: edit.expected.entryId, unitPriceMinor: 150 } });
       const applySql = "SELECT public.catalog_price_setup_apply($1,$2)::text AS bytes";
-      const committed = await transaction(runtime, async db => {
+      const applyFreshV1 = (command: string) => transaction(runtime, async db => {
         await db.query("SET LOCAL ROLE authenticated");
         await db.query("SELECT set_config('request.jwt.claims',$1,true)", [actorClaims()]);
-        return JSON.parse((await db.query<{ bytes: string }>(applySql, [v1, hash(v1)])).rows[0]!.bytes);
+        return JSON.parse((await db.query<{ bytes: string }>(applySql, [command, hash(command)])).rows[0]!.bytes);
       });
+      const committed = await applyFreshV1(v1);
       expect(committed).toMatchObject({ outcome: "committed", receipt: { current: { unitPriceMinor: 160 } } });
       const operation = { ...edit, expected: { ...edit.expected, entryId: committed.receipt.current.entryId, unitPriceMinor: 160 } };
       const v2 = json(operation);
@@ -535,13 +592,13 @@ it("keeps released price and readiness responses byte-identical with the paired 
             await db.query("SELECT set_config('request.jwt.claims',$1,true)", [actorClaims()]);
             for (const [sql, args] of privateCalls) await denied(db, sql, args);
             for (const [label, allowed, sql, args, shape] of [
-              ["v1 apply", browser || publicationLogin, applySql, [v1, hash(v1)], { outcome: "replayed" }],
+              ["v1 price replay", browser || publicationLogin, applySql, [v1, hash(v1)], { outcome: "replayed" }],
               ["v2 dispatch", browser || publicationLogin, applySql, [v2, hash(v2)], JSON.parse(refusal)],
               ["preview", browser, "SELECT public.catalog_price_setup_preview($1,$2,NULL)::text AS bytes", [skuId, priceListId],
                 { outcome: "preview", inGate: true }],
               ["proposed preview", browser, "SELECT public.catalog_price_setup_preview($1,$2,9)::text AS bytes", [skuId, priceListId],
                 { outcome: "preview", inGate: true, proposed: { unitPriceMinor: 9 } }],
-              ["recorder", publicationLogin, "SELECT public.catalog_publication_record_command($1) AS bytes", [publication.publish],
+              ["v1 publication replay", publicationLogin, "SELECT public.catalog_publication_record_command($1) AS bytes", [publication.publish],
                 JSON.parse(publication.bytes)],
               ["locked base", publicationLogin, "SELECT to_jsonb(p)::text AS bytes FROM public.catalog_publication_lock_effective_base_price($1,$2) p",
                 [skuId, priceListId], { unit_price_minor: 160 }],
@@ -555,7 +612,7 @@ it("keeps released price and readiness responses byte-identical with the paired 
               const result = JSON.parse(bytes);
               if (typeof shape === "boolean") expect(result).toBe(shape);
               else expect(result, `${role} ${label}`).toMatchObject(shape);
-              if (label === "recorder") expect(bytes).toBe(publication.bytes);
+              if (label === "v1 publication replay") expect(bytes).toBe(publication.bytes);
               responses[`${role} ${label}`] = bytes;
             }
             const aggregate = "SELECT public.commerce_offer_policy_v2_readiness()::text AS bytes";
@@ -568,8 +625,20 @@ it("keeps released price and readiness responses byte-identical with the paired 
       };
       const decisionReason = async () => (await owner.query(`SELECT public.catalog_publication_decide_prices_v2(
         NULL,NULL,NULL,NULL,$1,statement_timestamp())->'reason' AS reason`, [evidence])).rows[0].reason;
+      const draft = await prepareInheritedPricePublication(owner, publication, operation);
+      const freshV2Refusal = async () => {
+        const before = await pricePublicationEffects(owner, subject);
+        const result = await transaction(publisher, db => issueInheritedPrice(db, draft)).catch((error: unknown) => {
+          if (!(error instanceof DatabaseError)) throw error;
+          return json({ code: error.code, message: error.message, constraint: error.constraint, detail: error.detail, hint: error.hint });
+        });
+        expect(result).toBe(json({ code: "23514", message: "command_invalid", constraint: "command_invalid" }));
+        expect(await pricePublicationEffects(owner, subject)).toBe(before);
+        return result;
+      };
       expect(await decisionReason()).toBeNull();
       const original = await probe();
+      const originalFreshRefusal = await freshV2Refusal();
       // One simple-query message gives both aggregate calls the same statement timestamp.
       const forward = current().forward.find(unit => coreModesForward.test(unit.file))!;
       await transaction(owner, async db => {
@@ -590,7 +659,99 @@ ${aggregate}`);
       await upgrade();
       expect(await decisionReason()).toBe("catalog_publication_sku_price_not_ready");
       expect(await probe()).toEqual(original);
+      expect(await freshV2Refusal()).toBe(originalFreshRefusal);
+      expect(await applyFreshV1(json({ ...JSON.parse(v1), commandKey: "fresh-released-core-price", unitPriceMinor: 170,
+        expected: { entryId: operation.expected.entryId, unitPriceMinor: 160 } })))
+        .toMatchObject({ outcome: "committed", receipt: { current: { unitPriceMinor: 170 } } });
     } finally { await publisher.end(); }
+  });
+}, postgresSetupTimeoutMs);
+
+it("refuses a below-quantum edit for an inherited standalone core SKU at issuance", async () => {
+  const candidate = prefix(coreModesForward, true);
+  await withPlatformCatalog(candidate, async root => {
+    const store = await installAccountMutations("bootstrap", true, "inherited-core-price", root);
+    const { owner } = store;
+    try {
+      await verifyPrefix(candidate, root, store);
+      const subject = standaloneCorePrice();
+      const publication = await seedStandaloneCorePrice(owner, subject);
+      const draft = await prepareInheritedPricePublication(owner, publication, subject.edit);
+      await owner.query(pairedGrants());
+      const issueAsPublisher = async (db: PoolClient) => {
+        await db.query("SET LOCAL SESSION AUTHORIZATION openlup_catalog_publication");
+        return issueInheritedPrice(db, draft);
+      };
+      const before = await pricePublicationEffects(owner, subject);
+      expect(draft.publish.skus).toEqual(publication.publish.skus);
+      expect(draft.publish.skus[0]).toMatchObject({ status: "active", isAddon: false, sellableStandalone: true, sellableInSubscription: false });
+      await expect(transaction(owner, issueAsPublisher)).rejects.toMatchObject({ code: "23514",
+        constraint: "catalog_publication_sku_price_not_ready", detail: "SKU and required mode" });
+      expect(await pricePublicationEffects(owner, subject)).toBe(before);
+
+      await transaction(owner, async db => {
+        const { rows: [{ definition }] } = await db.query<{ definition: string }>(
+          "SELECT pg_get_functiondef($1::regprocedure) AS definition", [decision]);
+        const withoutInheritedFacts = definition.replace("AND ref->'skuId'=t->'skuId'))",
+          "AND lane='reader' AND ref->'skuId'=t->'skuId'))");
+        expect(withoutInheritedFacts).not.toBe(definition);
+        await db.query("SAVEPOINT inherited_price_lookup");
+        await db.query(withoutInheritedFacts);
+        const bytes = await issueAsPublisher(db);
+        await db.query("SET CONSTRAINTS ALL IMMEDIATE");
+        await db.query("RESET SESSION AUTHORIZATION");
+        expect(JSON.parse(bytes)).toMatchObject({ head: { revision: 2 }, changes: [] });
+        expect((await db.query(`SELECT issued_count FROM public.catalog_publications WHERE product_id=$1 AND revision=2`,
+          [subject.data.productId])).rows).toEqual([{ issued_count: 0 }]);
+        expect((await db.query(`SELECT unit_price_minor FROM public.price_entries WHERE variant_id=$1 AND active`,
+          [subject.data.skuId])).rows).toEqual([{ unit_price_minor: 9 }]);
+        await db.query("ROLLBACK TO SAVEPOINT inherited_price_lookup; RELEASE SAVEPOINT inherited_price_lookup");
+      });
+      expect(await pricePublicationEffects(owner, subject)).toBe(before);
+    } finally { await store.close(); }
+  });
+}, postgresSetupTimeoutMs);
+
+it("points inferred subscription shape refusals at the conflicting subscription entry", async () => {
+  const candidate = prefix(coreModesForward, true);
+  await withPlatformCatalog(candidate, async root => {
+    const store = await installAccountMutations("bootstrap", true, "core-subscription-entry", root);
+    const { owner } = store;
+    try {
+      await verifyPrefix(candidate, root, store);
+      const subject = standaloneCorePrice();
+      const publication = await seedStandaloneCorePrice(owner, subject);
+      const draft = await prepareInheritedPricePublication(owner, publication, { ...subject.edit, unitPriceMinor: 120 });
+      await owner.query(pairedGrants());
+      const assess = () => transaction(owner, async db => {
+        await db.query("SELECT set_config('request.jwt.claims',$1,true)", [actorClaims()]);
+        return JSON.parse((await db.query<{ bytes: string }>("SELECT public.catalog_publication_assess_prices_v2($1) AS bytes", [draft.assessment])).rows[0]!.bytes);
+      });
+      const issue = () => transaction(owner, async db => {
+        await db.query("SET LOCAL SESSION AUTHORIZATION openlup_catalog_publication");
+        return issueInheritedPrice(db, draft);
+      });
+      const entries = [
+        ["subscription", "net", 1, "Effective subscription entry"],
+        ["subscription", "gross", 2, "Effective subscription entry"],
+        ["one_time", "gross", 2, "Effective base entry"],
+      ] as const;
+      const subscriptionRemedy = "Have the pricing configuration owner end the conflicting entry and configure a compatible entry for this SKU and mode, or switch the context to a separate, correctly configured list. When the effective subscription policy already derives a positive price, ending the conflicting subscription entry is sufficient.";
+      for (const [mode, kind, minQty, field] of entries) {
+        const entryId = randomUUID(), reason = "price_shape_invalid";
+        const remedy = mode === "subscription" ? subscriptionRemedy
+          : "End the conflicting entries through the price configuration owner and read the sole compatible base again.";
+        await owner.query(`INSERT INTO public.price_entries(id,price_list_id,variant_id,mode,amount_kind,min_qty,unit_price_minor,valid_from)
+          VALUES($1,$2,$3,$4,$5,$6,100,'-infinity')`, [entryId, subject.priceListId, subject.data.skuId, mode, kind, minQty]);
+        const before = await pricePublicationEffects(owner, subject);
+        expect(await assess()).toMatchObject({ outcome: "blocked-input", reason, sqlstate: "23514", field, remedy });
+        await expect(issue()).rejects.toMatchObject({ code: "23514", message: reason, constraint: reason, detail: field, hint: remedy });
+        expect(await pricePublicationEffects(owner, subject)).toBe(before);
+        await owner.query("UPDATE public.price_entries SET active=false,valid_to=statement_timestamp() WHERE id=$1", [entryId]);
+        expect(await assess()).toMatchObject({ outcome: "pass", targets: [{ previous: { entryId: subject.entryId } }] });
+      }
+      expect(JSON.parse(await issue())).toMatchObject({ head: { revision: 2 }, changes: [] });
+    } finally { await store.close(); }
   });
 }, postgresSetupTimeoutMs);
 

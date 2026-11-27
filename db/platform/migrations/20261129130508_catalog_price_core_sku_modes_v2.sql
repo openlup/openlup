@@ -11,6 +11,7 @@ DECLARE
   operation jsonb;
   with_observations boolean := jsonb_typeof(p_targets)='object';
   sku_id uuid;
+  explicit_subscription boolean;
   needs_subscription boolean;
   reason text;
   current_entry jsonb;
@@ -21,6 +22,8 @@ DECLARE
   subscription_valid boolean;
   subscription_ready boolean;
   wrong_kind_count integer;
+  wrong_base_shape boolean;
+  wrong_subscription_shape boolean;
   wrong_shape boolean;
   history_count integer;
   policy_count integer;
@@ -43,7 +46,8 @@ BEGIN
   FOR target IN SELECT value FROM jsonb_array_elements(CASE WHEN with_observations THEN p_targets->'targets' ELSE p_targets END) LOOP
     sku_id := (target->>'skuId')::uuid;
     operation := nullif(target->'operation','null'::jsonb);
-    needs_subscription := coalesce((target->'requiredModes') ? 'subscription', false)
+    explicit_subscription := coalesce((target->'requiredModes') ? 'subscription', false);
+    needs_subscription := explicit_subscription
       OR (target #>> '{skuFacts,status}'='active' AND target #> '{skuFacts,isAddon}'='false'::jsonb
         AND (target #> '{skuFacts,sellableStandalone}'='true'::jsonb
           OR target #> '{skuFacts,sellableInSubscription}'='true'::jsonb)) IS TRUE;
@@ -55,18 +59,24 @@ BEGIN
       count(*) FILTER (WHERE e.mode='subscription'),
       bool_and(e.min_qty=1 AND e.unit_price_minor>0) FILTER (WHERE e.mode='subscription'),
       count(*) FILTER (WHERE e.mode IN ('one_time','any') AND e.amount_kind<>kind),
-      bool_or(e.mode='any' OR e.min_qty<>1 OR (e.mode='subscription' AND e.amount_kind<>kind))
-    INTO base_count, base_minor, current_entry, current_start, subscription_count, subscription_valid, wrong_kind_count, wrong_shape
+      bool_or(e.mode='any' OR (e.mode='one_time' AND e.min_qty<>1)),
+      bool_or(e.mode='subscription' AND (e.min_qty<>1 OR e.amount_kind<>kind))
+    INTO base_count, base_minor, current_entry, current_start, subscription_count, subscription_valid,
+      wrong_kind_count, wrong_base_shape, wrong_subscription_shape
     FROM public.price_entries e
     WHERE e.price_list_id=list_id AND e.variant_id=sku_id AND e.active
       AND e.valid_from<=p_at AND (e.valid_to IS NULL OR e.valid_to>p_at)
       AND (e.mode IN ('one_time','any') OR (needs_subscription AND e.mode='subscription'));
+    wrong_shape := wrong_base_shape OR wrong_subscription_shape;
 
     reason := CASE
       WHEN operation IS NOT NULL AND operation->>'priceListId' IS DISTINCT FROM list_id::text THEN 'price_list_not_active'
       WHEN operation IS NOT NULL AND (operation->>'expectedListAmountBasis' IS DISTINCT FROM basis
         OR operation->>'amountKind' IS DISTINCT FROM kind) THEN 'catalog_price_setup_basis_mismatch'
       WHEN wrong_kind_count>0 THEN 'base_price_amount_kind_invalid'
+      -- Only the decision owner consumes the inferred subscription diagnosis.
+      WHEN wrong_shape AND with_observations AND NOT explicit_subscription AND NOT wrong_base_shape
+        THEN 'subscription_price_shape_invalid'
       WHEN wrong_shape THEN 'price_shape_invalid'
       WHEN base_count>1 THEN 'base_price_ambiguous'
       WHEN operation IS NOT NULL AND (current_start=p_at OR EXISTS (
@@ -132,6 +142,8 @@ DECLARE
   first_replayed jsonb;
   refusal text;
   price_reason text;
+  subscription_shape boolean;
+  subscription_shape_refusal boolean;
   replay_failed boolean;
   completed boolean;
   rank integer;
@@ -350,6 +362,10 @@ BEGIN
           first_replayed := coalesce(first_replayed,target);
         END IF;
       END IF;
+      subscription_shape := actual->>'reason'='subscription_price_shape_invalid';
+      IF subscription_shape THEN
+        actual := jsonb_set(actual,'{reason}','"price_shape_invalid"');
+      END IF;
       targets := targets || jsonb_build_array(actual-'observations');
       -- Completed receipts use row observations and receipt proof to select the refusal.
       SELECT reason,ord INTO price_reason,rank FROM unnest(ARRAY[
@@ -369,6 +385,7 @@ BEGIN
       IF rank<best_rank THEN
         best_rank := rank;
         refusal := price_reason;
+        subscription_shape_refusal := subscription_shape AND price_reason='price_shape_invalid';
         selected := target;
       END IF;
       IF target->'skuId'=p_observed_evidence->'skuId' AND target->'priceListId'=p_observed_evidence->'priceListId' THEN
@@ -411,6 +428,10 @@ BEGIN
     ('catalog_publication_price_changed','expected, receipt entries','Read the current predecessor ID, amount and kind and use them in a fresh edit.'),
     ('catalog_publication_sku_price_not_ready','SKU and required mode','Configure a compatible price or effective subscription policy for the required mode.')
   ) AS remedies(reason,f,r) ON reason=code.value;
+  IF subscription_shape_refusal THEN
+    field := 'Effective subscription entry';
+    remedy := 'Have the pricing configuration owner end the conflicting entry and configure a compatible entry for this SKU and mode, or switch the context to a separate, correctly configured list. When the effective subscription policy already derives a positive price, ending the conflicting subscription entry is sufficient.';
+  END IF;
   IF lane<>'assessment' THEN
     RAISE EXCEPTION '%',refusal USING ERRCODE=state, CONSTRAINT=refusal, DETAIL=field, HINT=remedy;
   END IF;
