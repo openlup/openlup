@@ -7282,6 +7282,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/lifecycle/storefrontCapabilities.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/lifecycle/storefrontDigest.ts",
       "class": "public-output"
     },
@@ -8747,6 +8751,14 @@
     },
     {
       "path": "packages/platform/src/storefront/testing/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/testing/judgement.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/testing/outcomes.ts",
       "class": "public-output"
     },
     {
@@ -10763,6 +10775,10 @@
     },
     {
       "path": "packages/platform/test/lifecycle/storefrontBuildIdentity.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/lifecycle/storefrontCapabilities.test.ts",
       "class": "public-output"
     },
     {
@@ -13759,6 +13775,10 @@
     },
     {
       "path": "scripts/preflight-integration-cold-api.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/preflight-integration-settings-cold.test.ts",
       "class": "public-output"
     },
     {
@@ -32303,6 +32323,10 @@
     },
     {
       "path": "tests/postgres/subscriptionWinback.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/taxCalculationAdapterMoneyV1.test.ts",
       "class": "public-output"
     },
     {

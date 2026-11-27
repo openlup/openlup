@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { Pool } from "pg";
 import { expect, it, vi } from "vitest";
+import type { PgQueryExecutor } from "@openlup/platform/data";
 import * as identity from "@openlup/platform/identity";
 import { readPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { nativePrivacyContributors } from "../../server/runtime/auth/privacyBinding.js";
@@ -85,7 +86,7 @@ async function seed(db: AccountMutationsStore) {
   const input = { subject: { kind: "contact" as const, contactId }, idempotencyKey };
   const alias = { subject: { kind: "principal" as const, principalId }, idempotencyKey: randomUUID() };
   const approval = { erasure_id: erasureId, contributor_id: addresses, evidence_ref: randomUUID() };
-  const count = () => db.owner.query("SELECT count(*)::int AS rows FROM public.customer_saved_addresses WHERE client_id=$1", [contactId]).then(result => result.rows[0].rows);
+  const count = (executor: PgQueryExecutor = db.owner) => executor.query("SELECT count(*)::int AS rows FROM public.customer_saved_addresses WHERE client_id=$1", [contactId]).then(result => result.rows[0].rows);
   const original = () => db.owner.query(`SELECT to_jsonb(e)::text AS bytes FROM ${receipts} e WHERE erasure_id=$1`, [erasureId]).then(result => result.rows[0].bytes);
   const versions = (value: unknown) => db.owner.query(`UPDATE ${receipts} SET contributor_versions=$2::jsonb WHERE erasure_id=$1`, [erasureId, JSON.stringify(value)]);
   const preferenceCount = () => db.owner.query("SELECT count(*)::int AS rows FROM public.customer_payment_preferences WHERE client_id=$1", [contactId]).then(result => result.rows[0].rows);
@@ -263,6 +264,74 @@ it("keeps coverage, bindings, privileges and rollback scoped to the original rec
       SELECT $1, contributor_id, evidence_ref FROM unnest($2::text[], $3::uuid[]) AS approval(contributor_id,evidence_ref)`,
     [f.approval.erasure_id, remaining, remaining.map(() => randomUUID())]);
     await expect(replay()).resolves.toMatchObject({ outcome: "ALREADY_ERASED" });
+  } finally { await template.close(); }
+}, postgresSetupTimeoutMs);
+
+it("refuses invalid dispositions before inserting an approval and accepts the corrected retry", async () => {
+  const template = await createAccountMutationsTemplate("separate", "privacy-disposition");
+  try {
+    const db = await template.clone(), f = await seed(db);
+    const ownerTransaction = unitOfWork(db.migrator);
+    const approvalInsert = vi.fn();
+    const observedTransaction: typeof ownerTransaction = {
+      ...ownerTransaction,
+      run: work => ownerTransaction.run(tx => work({
+        query(sql, values) {
+          if (sql.startsWith(`INSERT INTO ${table} `)) approvalInsert();
+          return tx.query(sql, values);
+        },
+      })),
+    };
+    const reconcile = () => identity.reconcilePostgresPrivacyErasure({
+      unitOfWork: observedTransaction, registry: f.registry, actor: f.actor,
+    }, f.approval);
+    const approvals = () => db.owner.query(`SELECT * FROM ${table}`).then(result => result.rows);
+    const replay = () => f.operations.erase(f.actor, f.input);
+    const originalBytes = await f.original();
+    const originalReceipt = await unitOfWork(db.runtime).run(tx =>
+      identity.createPostgresPrivacyStore().findReceipt(tx, f.input.subject, f.input.idempotencyKey));
+    expect(originalReceipt).not.toBeNull();
+
+    const invalidDispositions: [string, (valid: identity.ContributorDisposition) => unknown][] = [
+      ["null result", () => null],
+      ["missing obligations", ({ contributorId, version }) => ({ contributorId, version })],
+      ["non-array obligations", valid => ({ ...valid, obligations: {} })],
+      ["malformed obligation", valid => ({ ...valid, obligations: [...valid.obligations, {}] })],
+      ["sparse slot", valid => ({ ...valid, obligations: new Array(1) })],
+      ["wrong contributor ID", valid => ({ ...valid, contributorId: preferences })],
+      ["wrong contributor version", valid => ({ ...valid, version: "customer.saved-addresses.v2" })],
+      ["unresolved obligation", valid => ({
+        ...valid, obligations: [{ ...valid.obligations[0]!, disposition: "unresolved" }],
+      })],
+    ];
+    for (const [fault, invalidate] of invalidDispositions) {
+      f.effect.mockImplementationOnce(async (...args) => {
+        const valid = await f.eraseAddress(...args);
+        expect(await f.count(args[0]), fault).toBe(0);
+        return invalidate(valid) as identity.ContributorDisposition;
+      });
+      const refused = await reconcile().catch(error => error);
+      expect(refused, fault).toBeInstanceOf(identity.PrivacyRefusal);
+      expect(refused, fault).toMatchObject({ code: approvalCode, facts: {
+        observed: "The contributor's reconciliation disposition could not be verified.",
+        recheck: "Retry with the same verified approval binding, then replay the original subject and idempotency key.",
+      } });
+      expect(approvalInsert, fault).not.toHaveBeenCalled();
+      expect(await approvals(), fault).toEqual([]);
+      expect(await f.count(), fault).toBe(1);
+      await expect(replay(), fault).rejects.toMatchObject({ code: coverageCode });
+    }
+
+    const disposition = await reconcile();
+    expect(disposition).not.toBeNull();
+    expect(disposition).toBe(await f.effect.mock.results.at(-1)!.value);
+    expect(await f.count()).toBe(0);
+    expect(await approvals()).toEqual([f.approval]);
+    await expect(reconcile()).resolves.toBeNull();
+    expect(f.effect).toHaveBeenCalledTimes(invalidDispositions.length + 1);
+    expect(approvalInsert).toHaveBeenCalledTimes(1);
+    await expect(replay()).resolves.toEqual({ ...originalReceipt, outcome: "ALREADY_ERASED" });
+    expect(await f.original()).toBe(originalBytes);
   } finally { await template.close(); }
 }, postgresSetupTimeoutMs);
 

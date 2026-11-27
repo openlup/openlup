@@ -1,14 +1,15 @@
-import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { env as processEnvironment } from "node:process";
 import { describe, expect, it } from "vitest";
-import { digestKeyForPath } from "./ci-vitest-duration-keys.ts";
+import { digestKeyForPath, pinnedDurationMs } from "./ci-vitest-duration-keys.ts";
 import {
   DEFAULT_POSTGRES_DURATION_MS,
   DEFAULT_QUARANTINE_PATH,
   DEFAULT_WEIGHTS_PATH,
+  GIT_FIXTURE_SUITES,
   SHARD_PLAN_SCHEMA_VERSION,
   buildQuarantineRetryArgs,
   buildShardCommand,
@@ -34,9 +35,30 @@ import {
   readFailedFiles,
   readReportFiles,
   readRunErrors,
+  retryArgsForFiles,
   settleFileRetry,
 } from "./ci-vitest-shard.mjs";
 import RunErrorsReporter, { RUN_ERRORS_REPORT_ENV } from "./ci-vitest-run-errors-reporter.mjs";
+
+type Manifest = { defaultDurationMs: number; durationsMs: Record<string, number> };
+const weightOf = (manifest: Manifest) => (file: string) =>
+  pinnedDurationMs(manifest.durationsMs, file) ?? fallbackDurationMs(file, manifest.defaultDurationMs);
+
+// At most one GIT_FIXTURE_SUITES member per shard; with more members than
+// shards, only the lightest members share one.
+function expectGitFixtureSpread(shards: { files: string[] }[], weightMs: (file: string) => number) {
+  const members = new Set<string>(GIT_FIXTURE_SUITES);
+  const perShard = shards.map((shard) => shard.files.filter((file) => members.has(file))
+    .sort((left, right) => weightMs(right) - weightMs(left)));
+  const plan = perShard.map((files, index) => `${index + 1}: ${files.join(", ")}`).join("\n");
+  const count = perShard.flat().length;
+  const sharing = perShard.flatMap((files) => files.slice(1));
+  expect(sharing, plan).toHaveLength(Math.max(0, count - shards.length));
+  if (sharing.length > 0) {
+    const leads = perShard.filter((files) => files.length > 0).map((files) => weightMs(files[0]));
+    expect(Math.max(...sharing.map(weightMs)), plan).toBeLessThanOrEqual(Math.min(...leads));
+  }
+}
 
 describe("ci-vitest-shard", () => {
   it("parses valid CLI arguments and refuses malformed invocations", () => {
@@ -163,6 +185,31 @@ describe("ci-vitest-shard", () => {
     }
   });
 
+  it("never co-locates Git-fixture suites the way plain LPT put three of them in one shard", () => {
+    // The suite weights pinned during the 2026-11 queue failures; five heavier
+    // non-member files stand for the rest of the file list.
+    const durationsMs: Record<string, number> = {
+      "scripts/agent-review-derived-carriers.test.ts": 338911,
+      "scripts/agent-review-derived-inventory.test.ts": 99657,
+      "scripts/agent-review-derived-notes.test.ts": 245382,
+      "scripts/agent-review-derived-slots.test.ts": 170712,
+      "scripts/agent-review-derived.test.ts": 360626,
+      "scripts/packages/distribution-cli-proof.test.ts": 211607,
+      "scripts/preflight-integration-cold-api.test.ts": 211192,
+      "scripts/preflight-integration-settings.test.ts": 216466,
+      "scripts/preflight-integration.test.ts": 134885,
+      "tests/postgres/migrationFinalization.test.ts": 201733,
+    };
+    for (let index = 0; index < 5; index += 1) durationsMs[`src/heavy-${index}.test.ts`] = 600000;
+    const manifest = { defaultDurationMs: 18, durationsMs };
+    const shards = partitionShards(Object.keys(durationsMs), 8, manifest);
+    expectGitFixtureSpread(shards, weightOf(manifest));
+    const carriers = shards.find((shard) => shard.files.includes("scripts/agent-review-derived-carriers.test.ts"))!;
+    expect(carriers.files).not.toContain("scripts/packages/distribution-cli-proof.test.ts");
+    expect(carriers.files).not.toContain("scripts/agent-review-derived-slots.test.ts");
+    expect(partitionShards([...Object.keys(durationsMs)].reverse(), 8, manifest)).toEqual(shards);
+  });
+
   it("covers 100% of real repository test files across 8 shards with zero missing/duplicates and <= 1.15x imbalance", () => {
     const manifest = loadShardWeights(DEFAULT_WEIGHTS_PATH);
     const unfilteredEnv = { ...processEnvironment };
@@ -190,6 +237,11 @@ describe("ci-vitest-shard", () => {
     const weights = shards.map((shard) => shard.estimatedDurationMs);
     const ratio = Math.max(...weights) / Math.min(...weights);
     expect(ratio).toBeLessThanOrEqual(1.15);
+
+    expectGitFixtureSpread(shards, weightOf(manifest));
+    // A scoped run drops files; the spread holds for any subset.
+    const scoped = files.filter((file) => file !== "scripts/agent-review-derived-slots.test.ts");
+    expectGitFixtureSpread(partitionShards(scoped, 8, manifest), weightOf(manifest));
   }, 30_000);
 
   it("respects OPENLUP_VITEST_EXCLUDE_FILE when listing files", () => {
@@ -593,6 +645,38 @@ describe("ci-vitest-shard single file retry", () => {
     }
   });
 
+  it("reruns two or more failed files one after another, in normal and quarantined invocations", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "ci-vitest-retry-cwd-"));
+    try {
+      const options = { cwd, env: {}, retryFailedFiles: true, reportFlaky: () => {}, log: () => {} };
+      const serial = "--no-file-parallelism";
+
+      const pair = fakeVitest(cwd, [{ failed: ["a.test.ts", "b.test.ts"] }, {}]);
+      expect(runShardInvocations(invocation(["a.test.ts", "b.test.ts", "c.test.ts"]), { ...options, spawnImpl: pair.spawnImpl })).toBe(0);
+      expect(pair.calls[0]).not.toContain(serial);
+      expect(pair.calls[1].slice(0, 5)).toEqual(["run-vitest.mjs", "run", "a.test.ts", "b.test.ts", serial]);
+
+      const single = fakeVitest(cwd, [{ failed: ["b.test.ts"] }, {}]);
+      expect(runShardInvocations(invocation(["a.test.ts", "b.test.ts"]), { ...options, spawnImpl: single.spawnImpl })).toBe(0);
+      expect(single.calls[1]).not.toContain(serial);
+
+      const quarantined = [{ kind: "quarantined", files: ["q1.test.ts", "q2.test.ts"], command: "node", args: ["run-vitest.mjs", "run", "q1.test.ts", "q2.test.ts", "--retry=2"] }];
+      const both = fakeVitest(cwd, [{ failed: ["q1.test.ts", "q2.test.ts"] }, {}]);
+      expect(runShardInvocations(quarantined, { ...options, spawnImpl: both.spawnImpl })).toBe(0);
+      expect(both.calls[1].slice(0, 6)).toEqual(["run-vitest.mjs", "run", "q1.test.ts", "q2.test.ts", "--retry=2", serial]);
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps an explicit file-parallelism argument instead of adding a second one", () => {
+    const invocation = { kind: "normal", files: ["a.test.ts", "b.test.ts"], command: "node", args: ["run-vitest.mjs", "run", "a.test.ts", "b.test.ts", "--fileParallelism=true"] };
+    expect(retryArgsForFiles(invocation, ["a.test.ts", "b.test.ts"])).toEqual(invocation.args);
+    expect(retryArgsForFiles({ ...invocation, args: ["run-vitest.mjs", "run", "a.test.ts", "b.test.ts", "--no-file-parallelism"] }, ["a.test.ts", "b.test.ts"]))
+      .toEqual(["run-vitest.mjs", "run", "a.test.ts", "b.test.ts", "--no-file-parallelism"]);
+    expect(retryArgsForFiles(invocation, ["b.test.ts"])).toEqual(["run-vitest.mjs", "run", "b.test.ts", "--fileParallelism=true"]);
+  });
+
   it("fails without a further run on a failing retry, too many files, an unattributed error, or retry off", () => {
     const cwd = mkdtempSync(join(tmpdir(), "ci-vitest-retry-cwd-"));
     try {
@@ -624,5 +708,37 @@ describe("ci-vitest-shard single file retry", () => {
     } finally {
       rmSync(cwd, { recursive: true, force: true });
     }
+  });
+});
+
+describe("Git-fixture suite census", () => {
+  // A test file that imports a landing or Git-fixture helper, or clones a repository.
+  const SIGNALS = [
+    /from\s+["'][^"']*fixtures\/(?:agent-review-derived-fixture|preflight-integration-fixture|landing-test-environment)(?:\.ts)?["']/u,
+    /from\s+["'][^"']*agent-review-landing\.mjs["']/u,
+    /["']clone["']\s*,\s*["']-/u,
+    /\bgit\s+clone\b/u,
+  ];
+  // Signal users that stay outside GIT_FIXTURE_SUITES: none runs for minutes or builds.
+  const EXEMPT: Record<string, string> = {
+    "scripts/agent-review-registry.test.ts": "landingMerge with a stubbed runCommand on small synthetic repositories; no npm, build or typecheck",
+    "scripts/documentation-cli.test.ts": "shallow clones of small synthetic repositories; about 20 s",
+    "scripts/installation-inventory-refresh.test.ts": "imports inventory path helpers only; no Git",
+    "scripts/packages/registry-tutorial-workflow.test.ts": "one clone of a small synthetic origin; about 5 s",
+    "scripts/packages/release-workflow-authenticity.test.ts": "checkout clones of small synthetic origins; about 8 s",
+    "scripts/preflight.test.ts": "landing helpers on small synthetic repositories; about 30 s",
+  };
+
+  it("lists every landing or Git-fixture test file as a suite or a reasoned exemption, and nothing else", () => {
+    const files = execFileSync("git", ["ls-files", "-z", "--", "*.test.ts", "*.test.tsx", "*.test.mts", "*.test.mjs", "*.test.js"], { encoding: "utf8" })
+      .split("\0").filter(Boolean);
+    expect(files.length).toBeGreaterThan(2000);
+    const users = files.filter((file) => SIGNALS.some((signal) => signal.test(readFileSync(file, "utf8")))).sort();
+    const listed = new Set<string>([...GIT_FIXTURE_SUITES, ...Object.keys(EXEMPT)]);
+    expect(users.filter((file) => !listed.has(file)), "add to GIT_FIXTURE_SUITES or EXEMPT with a reason").toEqual([]);
+    expect(Object.keys(EXEMPT).filter((file) => !users.includes(file)), "stale exemption").toEqual([]);
+    expect(GIT_FIXTURE_SUITES.filter((file) => file in EXEMPT)).toEqual([]);
+    expect(GIT_FIXTURE_SUITES.filter((file) => !existsSync(file) || !files.includes(file)), "listed suite is not a tracked test file").toEqual([]);
+    expect([...GIT_FIXTURE_SUITES].sort()).toEqual(GIT_FIXTURE_SUITES);
   });
 });
