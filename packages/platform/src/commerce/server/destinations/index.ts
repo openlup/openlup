@@ -3,7 +3,7 @@ import { z } from "zod";
 import { createCheckoutCommandSchemas } from "../../checkoutCommandSchemas.js";
 import type { CheckoutCommandV2 } from "../../contracts/index.js";
 import {
-  bindingSchema, contactKeys as destinationContactKeys, jsonText, readResult, recheckResult, snapshotResult, subscriptionSuccessDecoders,
+  bindingSchema, contactKeys as destinationContactKeys, jsonText, readResult, recheckResult, retainedReadResult, snapshotResult, subscriptionSuccessDecoders,
   type SubscriptionSuccessComparison, utcMillis,
 } from "./destinationV2Prelock.js";
 
@@ -155,14 +155,17 @@ export type DestinationServicePinV2 = {
 export type DestinationIssueResultV2 = {
   binding: DestinationBindingV2; selection: DestinationSelectionV2; evidenceExpiresAt: UtcMillis; eventId: UUID; replayed: boolean;
 };
-/** @experimental Destination evidence verified by the native owner. Keep it server-side. */
-export type DestinationVerifiedReadV2 = {
+type CheckoutDestinationRead = {
   binding: DestinationBindingV2; documentDigest: Digest; evidenceExpiresAt: UtcMillis;
   document: DestinationBindingV2 & {
     revision: 1; owner: DestinationContextV2["owner"]; clientId: UUID;
     policyRef: string; classificationKeys: string[]; address: NativeAddress; contact: Contact;
   };
 };
+/** @experimental Destination evidence verified by the native owner. Keep it server-side. */
+export type DestinationVerifiedReadV2 = CheckoutDestinationRead | (Omit<CheckoutDestinationRead, "evidenceExpiresAt"> & {
+  documentPurpose: "subscription"; evidenceExpiresAt: null;
+});
 
 type Check = {
   kind: "checkout"; scopeRef: UUID; expectedSelectionRevision: UUID;
@@ -176,7 +179,7 @@ type Rechecked = { binding: DestinationBindingV2; selection: DestinationSelectio
 type SubscriptionSelection = Omit<DestinationSelectionV2, "kind"> & { kind: "subscription" };
 type SubscriptionRechecked = Omit<Rechecked, "selection"> & { selection: SubscriptionSelection };
 type CurrentSubscriptionDestination = Pick<Rechecked, "binding" | "service"> & { selectionRevision: UUID };
-type SubscriptionRead = Omit<DestinationVerifiedReadV2, "evidenceExpiresAt"> & SubscriptionRechecked & { evidenceExpiresAt: null };
+type SubscriptionRead = Omit<CheckoutDestinationRead, "evidenceExpiresAt"> & SubscriptionRechecked & { evidenceExpiresAt: null };
 type SubscriptionCheck = Omit<Check, "kind"> & { kind: "subscription" };
 type Erased = { evidenceDisposition: "erased" };
 
@@ -185,6 +188,8 @@ export interface DestinationPortV2 {
   snapshot(ctx: DestinationContextV2, command: SnapshotCommand, now: UtcMillis): Promise<Decision<DestinationIssueResultV2 | Erased>>;
   read(ctx: DestinationContextV2, kind: "subscription", id: UUID, expectedBinding: null): Promise<SubscriptionDecision<CurrentSubscriptionDestination>>;
   read(ctx: DestinationContextV2, kind: "subscription", id: UUID, expectedBinding: DestinationBindingV2): Promise<SubscriptionDecision<SubscriptionRead>>;
+  read(ctx: DestinationContextV2, kind: "snapshot", id: UUID,
+    expectedBinding: DestinationBindingV2): Promise<Decision<CheckoutDestinationRead>>;
   read(ctx: DestinationContextV2, kind: "snapshot" | "order" | "shipment", id: UUID,
     expectedBinding: DestinationBindingV2): Promise<Decision<DestinationVerifiedReadV2>>;
   recheck(ctx: DestinationContextV2, check: SubscriptionCheck): Promise<SubscriptionDecision<SubscriptionRechecked>>;
@@ -397,6 +402,8 @@ export function createPostgresDestinationPortV2(db: DestinationQueryExecutor): D
 
   function read(ctx: DestinationContextV2, kind: "subscription", id: UUID, binding: null): Promise<SubscriptionDecision<CurrentSubscriptionDestination>>;
   function read(ctx: DestinationContextV2, kind: "subscription", id: UUID, binding: DestinationBindingV2): Promise<SubscriptionDecision<SubscriptionRead>>;
+  function read(ctx: DestinationContextV2, kind: "snapshot", id: UUID,
+    binding: DestinationBindingV2): Promise<Decision<CheckoutDestinationRead>>;
   function read(ctx: DestinationContextV2, kind: "snapshot" | "order" | "shipment", id: UUID,
     binding: DestinationBindingV2): Promise<Decision<DestinationVerifiedReadV2>>;
   function read(ctx: DestinationContextV2, kind: string, id: UUID, binding: DestinationBindingV2 | null) {
@@ -406,6 +413,7 @@ export function createPostgresDestinationPortV2(db: DestinationQueryExecutor): D
     const requestedBinding = current ? null : jsonArgument(binding, "destination");
     const context = jsonArgument(ctx, "owner");
     const args = [context, kindArgument(kind), scope, requestedBinding];
+    if (kind === "order" || kind === "shipment") return invoke(sql, args, retainedReadResult);
     if (kind !== "subscription") return invoke(sql, args, readResult);
     const request = { context, kind, scope, binding: requestedBinding } as const;
     return current ? invoke(sql, args, subscriptionSuccessDecoder(subscriptionSuccessDecoders.current, request), true)

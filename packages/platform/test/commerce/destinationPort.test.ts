@@ -471,6 +471,22 @@ it("rejects malformed rows and expanded refusal or success shapes", async () => 
   }
 });
 
+it("accepts null expiry only for marked subscription documents on retained reads", async () => {
+  const subscriptionDocument = { ...verified, documentPurpose: "subscription", evidenceExpiresAt: null };
+  for (const [kind, id] of [["order", orderId], ["shipment", shipmentId]] as const) {
+    const { port } = scriptedDestination(verified, subscriptionDocument);
+    await expect(port.read(context, kind, id, binding)).resolves.toStrictEqual(verified);
+    await expect(port.read(context, kind, id, binding)).resolves.toStrictEqual(subscriptionDocument);
+    for (const malformed of [{ ...verified, evidenceExpiresAt: null },
+      { ...subscriptionDocument, documentPurpose: "checkout" }, { ...subscriptionDocument, evidenceExpiresAt }]) {
+      await expectInfrastructure(scriptedDestination(malformed).port.read(context, kind, id, binding));
+    }
+  }
+  const { port } = scriptedDestination(subscriptionDocument, { ...verified, evidenceExpiresAt: null });
+  await expectInfrastructure(port.read(context, "snapshot", snapshotRef, binding));
+  await expectInfrastructure(port.read(context, "snapshot", snapshotRef, binding));
+});
+
 it("checks UTF-8 policy revision bytes and the owner's space-blank rule", async () => {
   for (const policyRevision of [" ", "", "é".repeat(361), "\uD800", "\u0000"]) {
     const { port } = scriptedDestination({ ...binding, policyRevision });
