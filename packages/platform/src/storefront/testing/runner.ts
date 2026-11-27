@@ -1,7 +1,9 @@
 import { parseStorefrontVerdict, type StorefrontProofFile, type StorefrontVerdict } from "../../lifecycle/index.js";
 import { storefrontAnchor } from "../index.js";
 import type { PageHandle, StorefrontAdapter, StorefrontObserver, StorefrontScenario } from "./contracts.js";
-import { findingText, type FindingFacts } from "./findings.js";
+import { findingText, type CauseOf, type FindingCode, type FindingFacts } from "./findings.js";
+import { JUDGEMENT } from "./judgement.js";
+import { knownOutcomes } from "./outcomes.js";
 import { storefrontScenarios } from "./scenarios.js";
 import { utcInstant } from "./utcInstant.js";
 
@@ -74,7 +76,7 @@ const URL_LIKE = /\b[a-z][a-z0-9+.-]*:\/\/\S*/giu;
 const STEP_KINDS: ReadonlySet<string> = new Set(["arrange", "rearrange", "withhold", "act", "reload", "expect", "outcome"]);
 const CONTROL_KINDS: ReadonlySet<string> = new Set(["none", "block_read", "omit_action", "other_policy"]);
 /** The outcome kinds this runner knows. Each implies a payment attempt in the ledger after it is produced. */
-const KNOWN_OUTCOMES: ReadonlySet<string> = new Set(["declined", "pending", "settled", "settled_after_pending", "activation_pending"]);
+const KNOWN_OUTCOMES: ReadonlySet<string> = new Set(knownOutcomes);
 /** Outcomes that capture the payment: the ledger must then show more captures than at the end of the previous outcome. */
 const SETTLING_OUTCOMES: ReadonlySet<string> = new Set(["settled", "settled_after_pending", "activation_pending"]);
 /** The outcome that acts on an attempt an earlier outcome left pending; every other outcome acts on a new attempt. */
@@ -95,45 +97,6 @@ const DEFAULT_BUYER: Readonly<Record<string, string>> = {
   first_name: "Test", last_name: "Buyer", phone: "+15550100", address_line1: "1 Example Street", city: "Example City", postal_code: "00000",
 };
 const BUYER_FIELDS: ReadonlySet<string> = new Set(["first_name", "last_name", "phone", "address_line1", "address_line2", "city", "postal_code"]);
-
-/** Where a code sits in the judgement order, and the result it gives when it is the first failing check. */
-const JUDGEMENT: Readonly<Record<string, { readonly group: number; readonly rank: number; readonly result: StorefrontVerdict["result"] }>> = {
-  tier_unreachable: { group: 0, rank: 0, result: "not_run" },
-  // A page handle that cannot clear client state between the two buyers; admission is decided first.
-  client_state_unisolated: { group: 0, rank: 1, result: "not_run" },
-  page_failed: { group: 1, rank: 0, result: "not_run" },
-  "observer_failed:rejected": { group: 1, rank: 0, result: "not_run" },
-  arrange_failed: { group: 1, rank: 0, result: "not_run" },
-  "outcome_failed:rejected": { group: 1, rank: 0, result: "not_run" },
-  observer_subject_unseen: { group: 2, rank: 0, result: "not_run" },
-  stimulus_not_create: { group: 3, rank: 0, result: "not_run" },
-  stimulus_not_applied: { group: 3, rank: 0, result: "not_run" },
-  // An outcome the driver reported but the ledger does not show never counts as stimulus.
-  "outcome_failed:no_attempt": { group: 3, rank: 1, result: "not_run" },
-  "outcome_failed:no_effect": { group: 3, rank: 1, result: "not_run" },
-  // A declared auto-progress the page did not perform explains a missing outcome effect, so it ranks first.
-  auto_progress_not_performed: { group: 3, rank: 0, result: "not_run" },
-  duplicate_order: { group: 5, rank: 0, result: "failed" },
-  duplicate_hold: { group: 5, rank: 0, result: "failed" },
-  duplicate_capture: { group: 5, rank: 0, result: "failed" },
-  second_attempt: { group: 5, rank: 0, result: "failed" },
-  forbidden_state_shown: { group: 5, rank: 0, result: "failed" },
-  order_outside_subject: { group: 5, rank: 1, result: "failed" },
-  "observer_failed:unattributable": { group: 5, rank: 2, result: "not_run" },
-  // The run stopped before its progress and control were exercised, so it proves nothing either way (missing
-  // evidence, never a pass); a ledger violation observed before the stop is already proof of harm and outranks it.
-  request_budget_exceeded: { group: 5, rank: 3, result: "not_run" },
-  adapter_matcher_unmatched: { group: 6, rank: 0, result: "not_run" },
-  "adapter_anchor_missing:action": { group: 6, rank: 0, result: "not_run" },
-  "adapter_anchor_missing:field": { group: 6, rank: 0, result: "not_run" },
-  anchor_hidden: { group: 6, rank: 0, result: "not_run" },
-  progress_not_reached: { group: 7, rank: 0, result: "failed" },
-  policy_mismatch: { group: 7, rank: 0, result: "failed" },
-  "adapter_anchor_missing:state": { group: 7, rank: 0, result: "not_run" },
-  control_not_applied: { group: 8, rank: 0, result: "not_run" },
-  vacuous_progress: { group: 8, rank: 1, result: "vacuous" },
-  auto_progress_undeclared: { group: 8, rank: 1, result: "not_run" },
-};
 
 function refuse(code: string, observed: string, cause: string, fix: string): TypeError {
   return new TypeError(`${code}: ${observed} Cause: ${cause} Fix: ${fix} Recheck: call runStorefrontScenario again with the corrected options.`);
@@ -559,7 +522,7 @@ export async function runStorefrontScenario(options: StorefrontRunOptions): Prom
   if (!probe.ok) throw invalid(`The options give a verdict the parser refuses: ${probe.refusal.observed}`, probe.refusal.fix);
 
   const judged: Judged[] = [];
-  const add = (code: string, cause: string, run: RunName | null, step: number | null, facts: FindingFacts, field?: string) => {
+  const add = <C extends FindingCode>(code: C, cause: CauseOf<C>, run: RunName | null, step: number | null, facts: FindingFacts, field?: string) => {
     const text = findingText(code, cause, facts);
     const place = JUDGEMENT[`${code}:${cause}`] ?? JUDGEMENT[code]!;
     judged.push({
@@ -657,7 +620,9 @@ export async function runStorefrontScenario(options: StorefrontRunOptions): Prom
     };
 
     const fault = (code: "page_failed" | "observer_failed" | "arrange_failed", index: number | null, error: unknown) => {
-      add(code, code === "observer_failed" ? "rejected" : "only", run, index, { at: index === null ? `Before the arrangement of the ${run} run` : at(index), detail: describeError(error) });
+      const facts = { at: index === null ? `Before the arrangement of the ${run} run` : at(index), detail: describeError(error) };
+      if (code === "observer_failed") add(code, "rejected", run, index, facts);
+      else add(code, "only", run, index, facts);
       record.stopped = true;
     };
     const fromObserver = async <T>(index: number | null, call: () => Promise<T>): Promise<T | null> => {
@@ -976,12 +941,12 @@ export async function runStorefrontScenario(options: StorefrontRunOptions): Prom
     const { run, steps } = record;
     const where = (step: VerdictStep) => describe(step.index, run);
     const safety = scenario.safety;
-    const limits: readonly [string, keyof Ledger, number | undefined][] = [
+    const limits = [
       ["duplicate_order", "payableOrders", safety.maxPayableOrders],
       ["duplicate_hold", "holds", safety.maxHolds],
       ["duplicate_capture", "captures", safety.maxCaptures],
       ["second_attempt", "attempts", safety.maxAttempts],
-    ];
+    ] as const satisfies readonly (readonly [FindingCode, keyof Ledger, number | undefined])[];
     for (const [code, field, limit] of limits) {
       if (limit === undefined) continue;
       const over = steps.find((step) => step.ledger !== null && step.ledger[field] > limit);
@@ -1011,7 +976,7 @@ export async function runStorefrontScenario(options: StorefrontRunOptions): Prom
       // may never show a ruled-out outcome, nor regress to a pre-outcome state once it showed the expected one.
       const anchorsOf = (states: readonly string[]) => new Set(states.map((state) => `state:${state}`));
       const firstShowing = (names: ReadonlySet<string>, from: number) => steps.find((step) => step.index >= from && step.observedAnchors.some((name) => names.has(name)));
-      const report = (step: VerdictStep, names: ReadonlySet<string>, cause: string, detail?: string) => add("forbidden_state_shown", cause, run, step.index, {
+      const report = (step: VerdictStep, names: ReadonlySet<string>, cause: CauseOf<"forbidden_state_shown">, detail?: string) => add("forbidden_state_shown", cause, run, step.index, {
         at: where(step), name: step.observedAnchors.filter((name) => names.has(name)).join(", "), ...(detail === undefined ? {} : { detail }),
       });
       if (run === "control") {

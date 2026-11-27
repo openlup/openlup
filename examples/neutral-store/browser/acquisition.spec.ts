@@ -2378,7 +2378,7 @@ for (const locale of market.locales) {
     const started=await(await payment).json();expect(started.ok).toBe(true);
     await expect(page.locator('main')).toContainText(started.value.attemptRef);
     await accessible(page.locator('main'));
-    const captured=page.waitForResponse(r=>r.url().endsWith('/api/actions/checkout.recovery')&&r.request().postDataJSON()?.action==='simulate');
+    const captured=page.waitForResponse(r=>r.url().endsWith('/api/actions/checkout.recoverySimulate'));
     await page.getByRole('button',{name:copy[locale].simulatePaid,exact:true}).click();
     expect((await(await captured).json()).ok).toBe(true);
     await expect(page.locator('main')).toContainText(copy[locale].recoveryPaid);
@@ -2400,7 +2400,7 @@ for (const locale of market.locales) {
     await owner.query("UPDATE public.commerce_orders SET metadata=metadata #- '{quoteSnapshot,quote,context,starterRenewalTerms}' WHERE id=$1",[replacement]);
     await page.goto(routes.completion[locale]+'?token='+f.token);
     await expect(page.locator('main')).toContainText(started.value.attemptRef);
-    const capture=page.waitForResponse(r=>r.url().endsWith('/api/actions/checkout.recovery')&&r.request().postDataJSON()?.action==='simulate');
+    const capture=page.waitForResponse(r=>r.url().endsWith('/api/actions/checkout.recoverySimulate'));
     await page.getByRole('button',{name:copy[locale].simulatePaid,exact:true}).click();
     expect((await(await capture).json()).code).toBe('starter_recovery_unavailable');
     expect((await runtime.query('SELECT status FROM public.commerce_orders WHERE id=$1',[replacement])).rows[0].status).toBe('pending_payment');

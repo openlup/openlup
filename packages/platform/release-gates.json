@@ -888,7 +888,8 @@
         "test/lifecycle/storefrontVerdictTypes.test.ts",
         "test/lifecycle/storefrontProofFile.test.ts",
         "test/lifecycle/storefrontDigest.test.ts",
-        "test/lifecycle/storefrontBuildIdentity.test.ts"
+        "test/lifecycle/storefrontBuildIdentity.test.ts",
+        "test/lifecycle/storefrontCapabilities.test.ts"
       ],
       "entrypoint": "dist/lifecycle/index.d.ts",
       "snapshot": "api/lifecycle.api.md"
