@@ -3,83 +3,80 @@ import { Client, Pool, type QueryConfig } from "pg";
 import { expect, it, vi } from "vitest";
 import { configurations } from "../../examples/neutral-store/owned/store.config.ts";
 import { runScheduledRenewal } from "../../examples/neutral-store/host/scheduled-renewal.ts";
-import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { qualifiedPostgresStartupOptions } from "../../server/adapters/postgres/qualifiedInstall.js";
-import { withPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
 import { closePostgres, postgresSetupTimeoutMs, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
-import { installAccountMutations } from "./customerAccountMutations.fixture.js";
+import type { AccountMutationsStore, AccountProfile } from "./customerAccountMutations.fixture.js";
 import { exerciseLegacyRenewals } from "./nativeRenewalV3Legacy.fixture.js";
 import { transaction } from "./orderMoneyV2Storage.fixture.js";
-import { activatedRenewal, activation, allocate, occurrenceProducerPath, probe, producer, signature } from "./nativeRenewalOccurrence.fixture.js";
-import { args, lock, occurrence, occurrenceCatalogue as current, operations, pinOccurrencePlan, read, rootFixture, writer, writerParameters, writerPath, writerPlan } from "./nativeRenewalOccurrenceWriter.fixture.js";
+import { activatedRenewal, activation, allocate, probe, producer, signature } from "./nativeRenewalOccurrence.fixture.js";
+import { applyMeasuredStarterPrefix, args, installMeasuredAccountPrefix, lock, occurrence, occurrenceCatalogue as current,
+  occurrenceForwardPath, operations, plans, read, rootFixture, sliceOccurrencePlan, writer, writerParameters,
+  writerPath, writerPlan } from "./nativeRenewalOccurrenceWriter.fixture.js";
 import { AT, call, later, sandboxRenewal, seedRenewalStock, type Db } from "./subscriptionNativeFixture.js";
 
-const producerPath = occurrenceProducerPath();
+const producerPath = occurrenceForwardPath(signature);
 const sql = readFileSync(producerPath, "utf8");
-const pins = {
-  before: {
-    legacy: "ad21aac3e22b326824a3a38b8a9096409832deb46d88e08872ea416fa68397ce",
-    bootstrap: "61b191f2d16f3193ba094314bc6285bea36514f584ff31ac04bc760bf6e5ebf0",
-    separate: "e238b573f939aab810493c9c0d0917daf6ed3a4c82d2926a09deb9e6c01c9801",
-    admin: "e516ec534769f8326ae28b613d927f452e8b4923705ab0666b54d4dba61bac26",
-    operator: "7fc3f89dff9c70ed70db781d9ea410a8787a2936cdabb4156b47e545d7cf8c10",
-  },
-  through: {
-    legacy: "46659c8bb34d15c851d6b7d3934178bffefe2c38c9dbbca84827d90988f4c0e3",
-    bootstrap: "a8f71ea557fadc3383b5ce84de418422c89f40e9798d586e4dc78a08c204e55e",
-    separate: "85debe6c0fce0c278d81a1b6be52e110e8064365a28b15403b0f36fc1a1cabb8",
-    admin: "e4796504abfa3ba79061a4ec274d43856940fc7cbd8d53c1dc9a35691951a9c3",
-    operator: "9756a0b9191c992e58835cbde0ea61e6aa3d6e37d86b85e87014c7d546c9b8e7",
-  },
-};
-
-const plans = { before: pinOccurrencePlan(current, producerPath, pins.before, false),
-  through: pinOccurrencePlan(current, producerPath, pins.through, true), writer: writerPlan() };
-const { before: predecessor, through: catalogue, writer: writerCatalogue } = plans;
-it("selects the exact pinned prefixes even when every plan has a later forward", () => {
+const atProducer = (manifest: typeof current, boundary: "before" | "through") =>
+  sliceOccurrencePlan(manifest, producerPath, boundary === "through");
+const catalogue = atProducer(current, "through"), predecessor = atProducer(current, "before");
+it("includes new predecessor units and excludes stacked forwards at the registered producer path", () => {
   const extended = structuredClone(current);
-  const laterInventory = "a".repeat(64);
-  for (const plan of [extended, extended.qualified, extended.qualifiedAdmin]) {
-    plan.forward.push({ file: "db/platform/migrations/99991231235959_fixture_later_forward.sql", sha256: laterInventory });
+  const newPredecessor = { file: "db/platform/migrations/fixture_predecessor.sql", sha256: "a".repeat(64) };
+  const stacked = { file: "db/platform/migrations/fixture_stacked_forward.sql", sha256: "b".repeat(64) };
+  for (const plan of plans(extended)) {
+    const cut = plan.forward.findIndex(({ file }) => file === producerPath);
+    plan.forward.splice(cut, 1, newPredecessor, plan.forward[cut]!, stacked);
+    plan.forward.push({ ...stacked, file: stacked.file.replace("stacked", "after_writer") });
   }
-  extended.objectInventorySha256 = laterInventory;
-  extended.qualified.objectInventorySha256 = { bootstrapMigrator: { withRestore: laterInventory },
-    separateMigrator: { withRestore: laterInventory } };
-  extended.qualifiedAdmin.objectInventorySha256 = { installerManaged: laterInventory, operatorProvisioned: laterInventory };
-  expect(pinOccurrencePlan(extended, producerPath, pins.before, false)).toEqual(predecessor);
-  expect(pinOccurrencePlan(extended, producerPath, pins.through, true)).toEqual(catalogue);
-  expect(writerPlan(extended)).toEqual(writerCatalogue);
+  const before = plans(atProducer(extended, "before"));
+  const through = plans(atProducer(extended, "through"));
+  const writerPlans = plans(writerPlan(extended));
+  for (const [index, plan] of plans(predecessor).entries()) {
+    const producerUnit = plans(catalogue)[index]!.forward[plan.forward.length];
+    expect(producerUnit?.file).toBe(producerPath);
+    expect(before[index]!.forward).toEqual([...plan.forward, newPredecessor]);
+    expect(through[index]!.forward).toEqual([...plan.forward, newPredecessor, producerUnit]);
+    expect(writerPlans[index]!.forward.at(-1)?.file).toBe(writerPath);
+  }
 });
+
+const boundaries = { before: predecessor, through: catalogue, writer: writerPlan() };
+async function withMeasuredAccountPrefix<T>(manifest: typeof current, profile: AccountProfile, label: string,
+  exercise: (store: AccountMutationsStore) => Promise<T>) {
+  const store = await installMeasuredAccountPrefix(manifest, profile, label);
+  try { return await exercise(store); } finally { await store.close(); }
+}
+
 const denied = { code: "42501", message: `permission denied for function ${producer}` };
 
 async function assertAcl(db: Db, sig = signature, args = 4, definer = false) {
   expect((await db.query(`SELECT p.provolatile AS volatility,p.prosecdef AS definer,p.proconfig AS settings,
     p.proowner=c.relowner AND p.proowner=current_user::regrole
       AND p.proowner=(SELECT relowner FROM pg_class WHERE oid='public.subscription_cycle_generations'::regclass) AS owns,b.lanname AS language,
+    (SELECT count(*)::int FROM pg_proc WHERE proname=p.proname AND pronamespace=p.pronamespace) AS overloads,
     p.pronargs AS args,p.pronargdefaults AS defaults,p.prorettype='jsonb'::regtype AS returns_json,
     ARRAY(SELECT privilege_type FROM aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) WHERE grantee<>p.proowner) AS grants
     FROM pg_proc p JOIN pg_language b ON b.oid=p.prolang CROSS JOIN pg_class c
     WHERE p.oid=$1::regprocedure AND c.oid='public.subscription_cycle_occurrences'::regclass`, [sig])).rows)
     .toEqual([{ volatility: "v", definer, settings: ["search_path=pg_catalog, pg_temp"],
-      owns: true, language: "plpgsql", args, defaults: 0, returns_json: true, grants: [] }]);
-  expect((await db.query(`SELECT COUNT(*)::int AS overloads FROM pg_proc WHERE proname=(SELECT proname FROM pg_proc WHERE oid=$1::regprocedure)
-    AND pronamespace='public'::regnamespace`, [sig])).rows)
-    .toEqual([{ overloads: 1 }]);
+      owns: true, language: "plpgsql", args, defaults: 0, returns_json: true, grants: [], overloads: 1 }]);
 }
 
-async function installedCallers(db: Db, sig: string, name: string) {
-  return (await db.query(`SELECT proname::text AS caller FROM pg_proc WHERE oid<>$1::regprocedure AND strpos(lower(prosrc),$2)>0
+async function assertNoCallers(db: Db, sig = signature, name = producer, internalCaller?: string) {
+  expect((await db.query(`SELECT proname::text AS caller FROM pg_proc WHERE oid<>$1::regprocedure AND strpos(lower(prosrc),$2)>0
     UNION ALL SELECT rulename::text FROM pg_rewrite WHERE strpos(lower(pg_get_ruledef(oid)),$2)>0
     UNION ALL SELECT tgname::text FROM pg_trigger WHERE NOT tgisinternal AND strpos(lower(pg_get_triggerdef(oid)),$2)>0
     UNION ALL SELECT classid::regclass::text FROM pg_depend WHERE refclassid='pg_proc'::regclass AND refobjid=$1::regprocedure`,
-  [sig, name])).rows;
+  [sig, name])).rows).toEqual(internalCaller ? [{ caller: internalCaller }] : []);
 }
-const assertNoCallers = async (db: Db) => expect(await installedCallers(db, signature, producer)).toEqual([]);
 
-async function assertDeniedPaths(db: Db, f: Awaited<ReturnType<typeof activation>>) {
+async function assertNoExecute(db: Db, sig: string) {
   expect((await db.query(`SELECT r.rolname FROM pg_roles r CROSS JOIN pg_proc p
     WHERE p.oid=$1::regprocedure AND (pg_has_role(current_user,r.oid,'USAGE') OR pg_has_role(current_user,r.oid,'SET'))
-      AND has_function_privilege(r.oid,p.oid,'EXECUTE')`, [signature])).rows).toEqual([]);
+      AND has_function_privilege(r.oid,p.oid,'EXECUTE')`, [sig])).rows).toEqual([]);
+}
+async function assertDeniedPaths(db: Db, f: Awaited<ReturnType<typeof activation>>) {
+  await assertNoExecute(db, signature);
   await expect(allocate(db, f)).rejects.toMatchObject(denied);
 }
 
@@ -89,7 +86,7 @@ const writerSignatures = writerNames.map(name => `public.${name}(${name === writ
 async function assertWriterAcl(db: Db) {
   for (const [index, sig] of writerSignatures.entries()) {
     await assertAcl(db, sig, index === 2 ? 9 : 3, index === 2);
-    expect(await installedCallers(db, sig, writerNames[index]!)).toEqual(index === 2 ? [] : [{ caller: writerNames[index + 1] }]);
+    await assertNoCallers(db, sig, writerNames[index]!, writerNames[index + 1]);
   }
 }
 
@@ -121,35 +118,33 @@ function watchAttempts() {
 }
 
 it.each(["bootstrap", "separate", "admin-managed", "admin-operator"] as const)(
-  "installs the owner-only signature and denies the actual %s runtime and an unrelated definer", profile => withPlatformCatalog(catalogue, async root => {
-    const store = await installAccountMutations(profile, false, "occurrence-acl", root);
-    try {
-      const f = await transaction(store.migrator, db => activation(db), "COMMIT");
-      await assertAcl(store.migrator);
-      await assertNoCallers(store.migrator);
-      await assertDeniedPaths(store.runtime, f);
-      await transaction(store.owner, async db => {
-        await db.query(`CREATE ROLE fixture_unrelated_owner LOGIN NOINHERIT;
-          CREATE FUNCTION public.fixture_occurrence_relay(uuid,uuid) RETURNS jsonb LANGUAGE sql SECURITY DEFINER
-          SET search_path = pg_catalog, pg_temp AS 'SELECT public.${producer}($1,$2,''v3'',NULL)';
-          ALTER FUNCTION public.fixture_occurrence_relay(uuid,uuid) OWNER TO fixture_unrelated_owner`);
-        await expect(db.query("SELECT public.fixture_occurrence_relay($1,$2)", [f.clientId, f.subscriptionId])).rejects.toMatchObject(denied);
-      }, "ROLLBACK");
-      expect(await allocate(store.migrator, f)).toMatchObject({ outcome: "created" });
-      await transaction(store.migrator, async db => {
-        await db.query(`DROP FUNCTION ${signature};
-          ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon,authenticated,service_role;
-          CREATE FUNCTION public.fixture_permissive_default() RETURNS boolean LANGUAGE sql AS 'SELECT true'`);
-        expect((await db.query(`SELECT grantee::regrole::text AS role FROM pg_proc p,aclexplode(p.proacl)
-          WHERE p.oid='public.fixture_permissive_default()'::regprocedure AND grantee NOT IN (0,p.proowner) ORDER BY role`)).rows)
-          .toEqual(["anon", "authenticated", "service_role"].map(role => ({ role })));
-        await db.query(sql);
-        await assertAcl(db);
-        for (const role of ["anon", "authenticated", "service_role"]) {
-          expect((await db.query("SELECT has_function_privilege($1,$2,'EXECUTE') AS allowed", [role, signature])).rows).toEqual([{ allowed: false }]);
-        }
-      }, "ROLLBACK");
-    } finally { await store.close(); }
+  "installs the owner-only signature and denies the actual %s runtime and an unrelated definer",
+  profile => withMeasuredAccountPrefix(catalogue, profile, "occurrence-acl", async store => {
+    const f = await transaction(store.migrator, db => activation(db), "COMMIT");
+    await assertAcl(store.migrator);
+    await assertNoCallers(store.migrator);
+    await assertDeniedPaths(store.runtime, f);
+    await transaction(store.owner, async db => {
+      await db.query(`CREATE ROLE fixture_unrelated_owner LOGIN NOINHERIT;
+        CREATE FUNCTION public.fixture_occurrence_relay(uuid,uuid) RETURNS jsonb LANGUAGE sql SECURITY DEFINER
+        SET search_path = pg_catalog, pg_temp AS 'SELECT public.${producer}($1,$2,''v3'',NULL)';
+        ALTER FUNCTION public.fixture_occurrence_relay(uuid,uuid) OWNER TO fixture_unrelated_owner`);
+      await expect(db.query("SELECT public.fixture_occurrence_relay($1,$2)", [f.clientId, f.subscriptionId])).rejects.toMatchObject(denied);
+    }, "ROLLBACK");
+    expect(await allocate(store.migrator, f)).toMatchObject({ outcome: "created" });
+    await transaction(store.migrator, async db => {
+      await db.query(`DROP FUNCTION ${signature};
+        ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon,authenticated,service_role;
+        CREATE FUNCTION public.fixture_permissive_default() RETURNS boolean LANGUAGE sql AS 'SELECT true'`);
+      expect((await db.query(`SELECT grantee::regrole::text AS role FROM pg_proc p,aclexplode(p.proacl)
+        WHERE p.oid='public.fixture_permissive_default()'::regprocedure AND grantee NOT IN (0,p.proowner) ORDER BY role`)).rows)
+        .toEqual(["anon", "authenticated", "service_role"].map(role => ({ role })));
+      await db.query(sql);
+      await assertAcl(db);
+      for (const role of ["anon", "authenticated", "service_role"]) {
+        expect((await db.query("SELECT has_function_privilege($1,$2,'EXECUTE') AS allowed", [role, signature])).rows).toEqual([{ allowed: false }]);
+      }
+    }, "ROLLBACK");
   }), postgresSetupTimeoutMs);
 
 const emptyV3 = async (db: Db) => {
@@ -174,25 +169,12 @@ async function dispatchEffects(db: Db) {
 }
 
 it.each([false, true])("preserves the mounted native worker with owner login and service role present=%s", async withService => {
-  async function exercise(boundary: keyof typeof plans) {
-    const plan = plans[boundary];
-    if (!withService) {
-      return withPlatformCatalog(plan, async root => {
-        const store = await installAccountMutations("legacy", false, "occurrence-mount", root);
-        try { return await run(store, boundary); } finally { await store.close(); }
-      });
-    }
-    const container = await runPostgresContainer({ name: `occurrence-legacy-service-${process.pid}`, password: "synthetic-occurrence" });
-    const owner = new Pool({ connectionString: container.connectionString });
-    try {
-      expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
-      await owner.query("CREATE ROLE service_role NOLOGIN NOINHERIT BYPASSRLS");
-      for (const unit of [plan.baseline, ...plan.forward]) await owner.query(readFileSync(unit.file, "utf8"));
-      return await run({ owner, runtime: owner }, boundary);
-    } finally { await closePostgres(container, owner); }
+  async function exercise(boundary: keyof typeof boundaries) {
+    const store = await installMeasuredAccountPrefix(boundaries[boundary], withService ? "legacy-with-service" : "legacy", "occurrence-mount");
+    try { return await run(store, boundary); } finally { await store.close(); }
   }
 
-  async function run(pools: { owner: Pool; runtime: Pool }, boundary: keyof typeof plans) {
+  async function run(pools: { owner: Pool; runtime: Pool }, boundary: keyof typeof boundaries) {
     const { owner, runtime } = pools, candidate = boundary !== "before";
     const writerProbe = boundary === "writer" ? await probeWriter(owner) : undefined;
     expect((await runtime.query("SELECT session_user,current_user")).rows).toEqual([{ session_user: "postgres", current_user: "postgres" }]);
@@ -251,7 +233,7 @@ it.each([false, true])("preserves the mounted native worker with owner login and
 }, postgresSetupTimeoutMs);
 
 it("compares a paid renewal under the actual starter login with a fixed occurrence on the renewed subscription", async () => {
-  async function exercise(boundary: keyof typeof plans) {
+  async function exercise(boundary: keyof typeof boundaries) {
     const candidate = boundary !== "before";
     const container = await runPostgresContainer({ name: `occurrence-starter-${process.pid}`, password: "synthetic-occurrence" });
     const owner = new Pool({ connectionString: container.connectionString });
@@ -264,9 +246,7 @@ it("compares a paid renewal under the actual starter login with a fixed occurren
       expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
       await owner.query(`CREATE ROLE starter_runtime LOGIN NOINHERIT PASSWORD 'synthetic-occurrence';
         CREATE ROLE starter_restore LOGIN NOINHERIT PASSWORD 'synthetic-occurrence'`);
-      const apply = (plan: typeof catalogue) => withPlatformCatalog(plan, root => createPostgresMigrationRunner(
-        { connectionString: container.connectionString }, { root, installation, poolFactory: () => migration }).apply());
-      await apply(boundary === "writer" ? catalogue : plans[boundary]);
+      await applyMeasuredStarterPrefix(boundary === "writer" ? catalogue : boundaries[boundary], migration, installation);
       const definitions = () => owner.query(`SELECT oid::regprocedure::text,pg_get_functiondef(oid),proacl
         FROM pg_proc WHERE pronamespace='public'::regnamespace AND proname IN
         ('subscription_claim_due_renewal','commerce_prepare_subscription_renewal',
@@ -276,7 +256,7 @@ it("compares a paid renewal under the actual starter login with a fixed occurren
         ORDER BY 1`).then(r => r.rows);
       const preimages = await definitions();
       if (boundary === "writer") {
-        expect(await apply(writerCatalogue)).toEqual({ applied: [writerPath] });
+        await applyMeasuredStarterPrefix(boundaries.writer, migration, installation, [writerPath]);
         expect(await definitions()).toEqual(preimages);
       }
       const expired = await sandboxRenewal(migration);
@@ -390,52 +370,47 @@ it("has no mounted source callers and is absent from managed migrations", () => 
 });
 
 it.each(["bootstrap", "separate", "admin-managed", "admin-operator"] as const)(
-  "keeps the three writer routines private under the installed %s roles and permissive defaults", profile => withPlatformCatalog(writerCatalogue, async root => {
-    const store = await installAccountMutations(profile, false, "writer-acl", root);
-    try {
-      const owner = store.migrator, f = await rootFixture(owner);
-      const pristine = await occurrenceRows(owner);
-      await assertWriterAcl(owner);
-      await assertNoCallers(owner);
-      for (const [index, name] of writerNames.entries()) {
-        const input = name === writer ? args(f) : f.scope;
-        expect((await store.runtime.query(`SELECT r.rolname FROM pg_roles r,pg_proc p
-          WHERE p.oid=$1::regprocedure AND (pg_has_role(current_user,r.oid,'USAGE') OR pg_has_role(current_user,r.oid,'SET'))
-            AND has_function_privilege(r.oid,p.oid,'EXECUTE')`, [writerSignatures[index]])).rows).toEqual([]);
-        await expect(call(store.runtime, name, input)).rejects.toMatchObject({ code: "42501" });
-        await transaction(store.owner, async db => {
-          await db.query(`CREATE ROLE fixture_writer_other LOGIN NOINHERIT;
-            CREATE FUNCTION public.fixture_writer_relay() RETURNS jsonb LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp
-            AS ${db.escapeLiteral(`SELECT public.${name}(${input.map(value => db.escapeLiteral(String(value))).join(",")})`)};
-            ALTER FUNCTION public.fixture_writer_relay() OWNER TO fixture_writer_other`);
-          await expect(call(db, "fixture_writer_relay", [])).rejects.toMatchObject({ code: "42501" });
-        }, "ROLLBACK");
-        expect(await occurrenceRows(owner)).toEqual(pristine);
-      }
-      const { role } = (await owner.query("SELECT current_user AS role")).rows[0];
-      const { login } = (await store.runtime.query("SELECT session_user AS login")).rows[0];
+  "keeps the three writer routines private under the installed %s roles and permissive defaults", profile => withMeasuredAccountPrefix(boundaries.writer, profile, "writer-acl", async store => {
+    const owner = store.migrator, f = await rootFixture(owner);
+    const pristine = await occurrenceRows(owner);
+    await assertWriterAcl(owner);
+    await assertNoCallers(owner);
+    for (const [index, name] of writerNames.entries()) {
+      const input = name === writer ? args(f) : f.scope;
+      await assertNoExecute(store.runtime, writerSignatures[index]!);
+      await expect(call(store.runtime, name, input)).rejects.toMatchObject({ code: "42501" });
       await transaction(store.owner, async db => {
-        await db.query(`SET LOCAL ROLE ${db.escapeIdentifier(String(role))}`);
-        await db.query(`DROP FUNCTION ${writerSignatures.join(",")};
-          ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon,authenticated,service_role;
-          CREATE FUNCTION public.fixture_writer_default_control() RETURNS boolean LANGUAGE sql AS 'SELECT true'`);
-        expect((await db.query(`SELECT grantee::regrole::text AS role FROM pg_proc p,aclexplode(p.proacl)
-          WHERE p.oid='public.fixture_writer_default_control()'::regprocedure AND grantee NOT IN (0,p.proowner) ORDER BY role`)).rows)
-          .toEqual(["anon", "authenticated", "service_role"].map(role => ({ role })));
-        await db.query(readFileSync(writerPath!, "utf8"));
-        await assertWriterAcl(db);
-        expect(await call(db, writer, args(f))).toMatchObject({ outcome: "created" });
-        await db.query("RESET ROLE");
-        for (const nonOwner of ["anon", "authenticated", "service_role", String(login)]) {
-          for (const name of writerNames) {
-            await db.query(`SAVEPOINT denial; SET LOCAL ROLE ${db.escapeIdentifier(nonOwner)}`);
-            await expect(call(db, name, name === writer ? args(f) : f.scope)).rejects.toMatchObject({ code: "42501" });
-            await db.query("ROLLBACK TO SAVEPOINT denial; RELEASE SAVEPOINT denial");
-          }
-        }
+        await db.query(`CREATE ROLE fixture_writer_other LOGIN NOINHERIT;
+          CREATE FUNCTION public.fixture_writer_relay() RETURNS jsonb LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+          AS ${db.escapeLiteral(`SELECT public.${name}(${input.map(value => db.escapeLiteral(String(value))).join(",")})`)};
+          ALTER FUNCTION public.fixture_writer_relay() OWNER TO fixture_writer_other`);
+        await expect(call(db, "fixture_writer_relay", [])).rejects.toMatchObject({ code: "42501" });
       }, "ROLLBACK");
       expect(await occurrenceRows(owner)).toEqual(pristine);
-      expect((await store.runtime.query(`SELECT EXISTS(SELECT FROM public.${operations} WHERE subscription_id=$1) AS created`,
-        [f.subscriptionId])).rows).toEqual([{ created: false }]);
-    } finally { await store.close(); }
+    }
+    const { role } = (await owner.query("SELECT current_user AS role")).rows[0];
+    const { login } = (await store.runtime.query("SELECT session_user AS login")).rows[0];
+    await transaction(store.owner, async db => {
+      await db.query(`SET LOCAL ROLE ${db.escapeIdentifier(String(role))}`);
+      await db.query(`DROP FUNCTION ${writerSignatures.join(",")};
+        ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon,authenticated,service_role;
+        CREATE FUNCTION public.fixture_writer_default_control() RETURNS boolean LANGUAGE sql AS 'SELECT true'`);
+      expect((await db.query(`SELECT grantee::regrole::text AS role FROM pg_proc p,aclexplode(p.proacl)
+        WHERE p.oid='public.fixture_writer_default_control()'::regprocedure AND grantee NOT IN (0,p.proowner) ORDER BY role`)).rows)
+        .toEqual(["anon", "authenticated", "service_role"].map(role => ({ role })));
+      await db.query(readFileSync(writerPath, "utf8"));
+      await assertWriterAcl(db);
+      expect(await call(db, writer, args(f))).toMatchObject({ outcome: "created" });
+      await db.query("RESET ROLE");
+      for (const nonOwner of ["anon", "authenticated", "service_role", String(login)]) {
+        for (const name of writerNames) {
+          await db.query(`SAVEPOINT denial; SET LOCAL ROLE ${db.escapeIdentifier(nonOwner)}`);
+          await expect(call(db, name, name === writer ? args(f) : f.scope)).rejects.toMatchObject({ code: "42501" });
+          await db.query("ROLLBACK TO SAVEPOINT denial; RELEASE SAVEPOINT denial");
+        }
+      }
+    }, "ROLLBACK");
+    expect(await occurrenceRows(owner)).toEqual(pristine);
+    expect((await store.runtime.query(`SELECT EXISTS(SELECT FROM public.${operations} WHERE subscription_id=$1) AS created`,
+      [f.subscriptionId])).rows).toEqual([{ created: false }]);
   }), postgresSetupTimeoutMs);

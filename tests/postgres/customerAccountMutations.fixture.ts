@@ -143,7 +143,7 @@ function migrationStartupOptions(installation: AccountMutationsInstallation): st
   return undefined;
 }
 
-function createInventoryRunner(
+export function createInventoryRunner(
   migrationUrl: string,
   migrator: Pool,
   installation: AccountMutationsInstallation,
@@ -319,9 +319,10 @@ export async function installAccountMutations(
   label = "source",
   root?: string,
   upgradeRoot?: string,
-  options?: { isolatedCluster?: boolean },
+  options?: { isolatedCluster?: boolean; legacyServiceRole?: boolean },
 ): Promise<AccountMutationsStore> {
-  const brokerProfile = !measure && !root && !upgradeRoot && !options?.isolatedCluster ? ACCOUNT_BROKER_PROFILES[profile] : undefined;
+  const brokerProfile = !measure && !root && !upgradeRoot && !options?.isolatedCluster && !options?.legacyServiceRole
+    ? ACCOUNT_BROKER_PROFILES[profile] : undefined;
   if (brokerProfile) {
     const lease = await tryLeaseTemplateDatabase(brokerProfile, label);
     if (lease) return openBrokerBackedStore(profile, lease, upgradeRoot).store;
@@ -332,6 +333,7 @@ export async function installAccountMutations(
   try {
     if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("account_mutations_postgres_unavailable");
     const owner = pool(container.connectionString), password = randomUUID();
+    if (profile === "legacy" && options?.legacyServiceRole) await owner.query("CREATE ROLE service_role NOLOGIN NOINHERIT BYPASSRLS");
     const { installation, runtimeLogin } = await provisionAccountMutationsRoles(owner, container.connectionString, profile, password, "postgres");
     const migrationUrl = loginUrlFor(container.connectionString, installation.generation === "legacy" ? "postgres" : installation.migrationLogin, password);
     const migrator = pool(migrationUrl, migrationStartupOptions(installation));
