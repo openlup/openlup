@@ -36,8 +36,10 @@ const rootCalls = new Map([
 ]);
 const operations = new Set(("assert mkdirSync readFileSync writeFileSync existsSync readdirSync renameSync rmSync realpathSync mkdtempSync cpSync linkSync " +
   "fetch randomBytes randomUUID homedir isolatedConsumerEnv starterUpgradeSnapshot readCurrentPackManifest parsePackagesConfig qualificationReceipt " +
-  "prepareRuntimeHandoff resolveBrowserImage browserContainerArguments createHash spawnSync execFileSync JSON.parse JSON.stringify process.stdout.write import Date").split(" "));
+  "prepareRuntimeHandoff resolveBrowserImage browserContainerArguments createHash spawnSync execFileSync JSON.parse JSON.stringify decodeURIComponent process.stdout.write import Date").split(" "));
 const isListedOperation = (callee: string) => operations.has(callee) || /^(assert\.|.*\.json$|(?:handoff|rotated)\.cleanup$)/u.test(callee);
+const isTerminalOperation = (callee: string) => isListedOperation(callee) ||
+  adapters.has(callee) && !["checked", "requireExit"].includes(callee);
 const adapterOperations = new Map([
   ["runCandidate", "child,isolatedConsumerEnv"], ["readRecipeGuide", "file"],
   ["recipe", "assert"], ["digest", "createHash"], ["sha256", "createHash"],
@@ -63,7 +65,7 @@ function scanDiagnosticContract(texts: string[]) {
   for (const [index, path] of contractPaths.entries()) {
     const source = program.getSourceFile(path)!;
     const roots = new Map<string, ts.Node>(), sites = new Map<ts.Node, number>(), calls = new Map<string, Set<string>>();
-    const adapterCalls = new Map<ts.Node, (ts.CallExpression | ts.NewExpression)[]>();
+    const adapterCalls = new Map<ts.Node, ts.Expression[]>();
     const rootDelegations = new Map<ts.Node, Set<string>>();
     const text = (node?: ts.Node) => node?.getText(source) ?? "";
     function issue(rule: string, node: ts.Node, label = "") {
@@ -76,6 +78,10 @@ function scanDiagnosticContract(texts: string[]) {
     function declaration(node: ts.Node) {
       return (ts.isShorthandPropertyAssignment(node.parent) ? checker.getShorthandAssignmentValueSymbol(node.parent)
         : checker.getSymbolAtLocation(node))?.declarations?.[0];
+    }
+    function isResolvedTerminal(expression: ts.Expression, callee = text(expression)) {
+      return isTerminalOperation(callee) &&
+        (!ts.isIdentifier(expression) || declaration(expression) || ["assert", "fetch", "Date", "decodeURIComponent"].includes(callee));
     }
     function values(node?: ts.Node): ts.Node[] {
       if (!node) return [];
@@ -144,8 +150,8 @@ function scanDiagnosticContract(texts: string[]) {
     }
     function terminalCalls(adapter: ts.Node, chain = new Set<ts.Node>()): string[] {
       if (chain.has(adapter)) return ["cycle"];
-      return (adapterCalls.get(adapter) ?? []).flatMap(call => {
-        const callee = text(call.expression), target = callTarget(call.expression);
+      return (adapterCalls.get(adapter) ?? []).flatMap(expression => {
+        const callee = text(expression), target = callTarget(expression);
         if (["spawnSync", "execFileSync"].includes(callee)) return ["child"];
         if (filesystem.has(callee)) return ["file"];
         if (isListedOperation(callee)) return [callee];
@@ -174,8 +180,14 @@ function scanDiagnosticContract(texts: string[]) {
       if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
         const args = node.arguments ?? [], callee = text(node.expression), member = callee.split(".").at(-1)!;
         const loops = loopIndices(ancestors);
+        const references = ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) &&
+          /^(map|forEach|filter|flatMap|some|every|reduce|then)$/u.test(member)
+          ? args.slice(0, member === "then" ? 2 : 1).filter(arg =>
+            (ts.isIdentifier(arg) || ts.isPropertyAccessExpression(arg)) && isResolvedTerminal(arg))
+          : [];
+        if (callback && references.length) sites.set(callback, sites.get(callback)! + references.length);
         if (lexical) {
-          adapterCalls.get(lexical)!.push(node);
+          adapterCalls.get(lexical)!.push(node.expression, ...references);
           if (!hasLivePath(node, lexical) || ancestors.slice(ancestors.indexOf(lexical) + 1).some(ts.isFunctionLike))
             issue("adapter_primitives", node, name(lexical));
         }
@@ -206,10 +218,7 @@ function scanDiagnosticContract(texts: string[]) {
             sites.set(operation, 0);
           }
         } else if (scope || lexical) {
-          const terminal = isListedOperation(callee) ||
-            adapters.has(callee) && callee !== "checked" && callee !== "requireExit";
-          const resolved = !ts.isIdentifier(node.expression) || declaration(node.expression) || ["assert", "fetch", "Date"].includes(callee);
-          if (terminal && resolved) {
+          if (isResolvedTerminal(node.expression, callee)) {
             if (callback) sites.set(callback, sites.get(callback)! + 1);
             else if (!lexical) issue("unwrapped_operation", node, member);
           } else if (!pure.has(callee) && !methods.has(member) && !delegates.has(member) &&
@@ -282,6 +291,7 @@ it("binds proof diagnostics to literal sites and rejects contract mutations", ()
     [0, 'exerciseJobs("restored_bind"', 'exerciseJobs("missing_bind"', "duplicate_role"],
     [0, 'const up = (code = 0) => checked(run(from, "./lifecycle", ["up", "--configuration", "coffee", "--json"], undefined, env, code));', 'const up = (code = 0) => { run(from, "docker", ["version"]); return checked(run(from, "./lifecycle", ["up", "--configuration", "coffee", "--json"], undefined, env, code)); };', "adapter_primitives"],
     [0, 'function recipe(heading: string, level = "###") {', 'function recipe(heading: string, level = "###") { readFileSync(from);', "adapter_primitives"],
+    [0, 'assert(body);\n      return body;', 'assert(body);\n      return body.split("\\n").map(decodeURIComponent).join("\\n");', "adapter_primitives"],
     [0, '() => response.json() as Promise<CheckoutResult>', '() => { response.json(); return {}; }', "detached_promise"],
     [0, startupAdapter, startupAdapter.replace(/=> (.*);$/u, "=> JSON.parse($1);"), "adapter_primitives"],
     [0, '"unsupported_runner_or_port", () => assert(', '"unsupported_runner_or_port", async () => assert(', "unawaited"],
