@@ -13238,6 +13238,42 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/harness/exec.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/harness/inbox.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/harness/inbox.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/harness/pr-open.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/harness/pr-open.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/harness/safe-run.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/harness/safe-run.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/harness/stall-watch.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/harness/stall-watch.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/installation-inventory-refresh.test.ts",
       "class": "public-output"
     },
@@ -32472,6 +32508,16 @@
       "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
     },
     {
+      "name": "lane:inbox",
+      "command": "node scripts/harness/inbox.mjs",
+      "publicDocs": [
+        "CONTRIBUTING.md",
+        "README.md"
+      ],
+      "publicCiEntrypoint": ".github/workflows/published-tree-ci.yml",
+      "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
+    },
+    {
       "name": "migration:finalize",
       "command": "node scripts/migration-finalize.mjs",
       "publicDocs": [
@@ -32494,6 +32540,26 @@
     {
       "name": "lint",
       "command": "node scripts/ast-grep/check-filewide-ignore.mjs && ast-grep scan --error=no-suppress-all --error=unused-suppression && ast-grep test --skip-snapshot-tests && node scripts/run-eslint.mjs .",
+      "publicDocs": [
+        "CONTRIBUTING.md",
+        "README.md"
+      ],
+      "publicCiEntrypoint": ".github/workflows/published-tree-ci.yml",
+      "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
+    },
+    {
+      "name": "pr:open",
+      "command": "node scripts/harness/pr-open.mjs",
+      "publicDocs": [
+        "CONTRIBUTING.md",
+        "README.md"
+      ],
+      "publicCiEntrypoint": ".github/workflows/published-tree-ci.yml",
+      "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
+    },
+    {
+      "name": "pr:watch",
+      "command": "node scripts/harness/stall-watch.mjs",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -32554,6 +32620,16 @@
     {
       "name": "release:docs-pass",
       "command": "node --experimental-strip-types scripts/packages/release-docs-pass.ts",
+      "publicDocs": [
+        "CONTRIBUTING.md",
+        "README.md"
+      ],
+      "publicCiEntrypoint": ".github/workflows/published-tree-ci.yml",
+      "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
+    },
+    {
+      "name": "safe:run",
+      "command": "node scripts/harness/safe-run.mjs",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -32629,7 +32705,7 @@
     },
     {
       "path": "package.json",
-      "digest": "sha256-940b21b311fcc3de840233167b919602c75aa71ac582b879558bdd4ce0a97f51"
+      "digest": "sha256-855804e824a468046afbee3e2f06ca3090cc55d2c23d71b2e969d86d8c92be5b"
     },
     {
       "path": "packages/core/package.json",
