@@ -72,8 +72,8 @@ const answerDelayMs = 600;
 let server: Server, origin: string;
 const served = { received: 0, answered: 0, landed: 0 };
 const streams = new Set<import('node:http').ServerResponse>();
-// Every kind of client state the handle clears: an HttpOnly cookie from the server, a script cookie, local and
-// session storage, and an IndexedDB database whose connection is closed again.
+// The client state this case checks (rows of the PageHandle table, context path): an HttpOnly cookie from the
+// server, a script cookie, local and session storage, and an IndexedDB database whose connection is closed again.
 const storagePage = `<!doctype html><html><head><meta charset="utf-8"></head><body>
   <output id="storage">waiting</output>
   <script>

@@ -403,13 +403,13 @@ type RunRecord = {
  *
  * Client state: the clean and control runs are two buyers on one page. Each
  * run calls `page.clearClientState()` after its ledger read (and the
- * exclusive database's count) and before its interceptor, so it starts as a
- * new buyer (what is cleared is `PageHandle`'s table); a rejection is
+ * exclusive database's count) and before its interceptor, so it starts without
+ * the state `PageHandle`'s table clears on the path in use; a rejection is
  * `page_failed` of that run (step `null`). So when `createPageHandle` was
  * given `options.origin` and the clean run ends on another `http:` or
  * `https:` origin, the control run's clear is refused, and the result is
  * `not_run` unless the clean run proved ledger harm first. A handle without the
- * member cannot isolate the buyers: an admitted scenario with a control run
+ * member clears nothing between the runs: an admitted scenario with a control run
  * then ends `not_run` with `client_state_unisolated` only, before any page,
  * observer or driver call; a `safety_only` scenario runs as before.
  *
@@ -428,8 +428,8 @@ type RunRecord = {
  * outcome whose effect the ledger does not show, is `outcome_failed` and stops
  * the run.
  *
- * Judgement, first failing group decides: 0 admitted, then client state
- * isolated; 1 page, observer,
+ * Judgement, first failing group decides: 0 admitted, then a page handle with
+ * `clearClientState`; 1 page, observer,
  * arrangement and outcome driver worked; 2 no order before the arrangement and
  * one after the first matched create; 3 the first order appeared in a step with
  * a matched create, every withhold applied, every outcome shows its ledger
@@ -582,9 +582,9 @@ export async function runStorefrontScenario(options: StorefrontRunOptions): Prom
     add("tier_unreachable", "only", null, null, { at: `Scenario ${scenario.id}`, detail: missing.join(", ") });
     return finish({ stimulus: {}, steps: [], durations: { totalMs: 0, byPhase: {} }, applied: false });
   }
-  // Isolation: the clean and control runs are two buyers on one page. A handle that cannot clear the browser's client
-  // state between them ends every scenario with a control run before any page, observer or driver call; one buyer
-  // alone (a safety-only scenario) has nothing to isolate. Stop-at refuses it, as it refuses a scenario not admitted.
+  // Client state: the clean and control runs are two buyers on one page. A handle that cannot clear client state
+  // between them ends every scenario with a control run before any page, observer or driver call; one buyer alone (a
+  // safety-only scenario) has no second run to clear for. Stop-at refuses it, as it refuses a scenario not admitted.
   const isolates = typeof page.clearClientState === "function";
   if (!isolates && stopState !== undefined) {
     throw refuse("storefront_stop_state_unreached", "The page handle has no clearClientState.",
@@ -756,7 +756,7 @@ export async function runStorefrontScenario(options: StorefrontRunOptions): Prom
       if (counted === null) return record;
       record.databaseBefore = counted;
     }
-    // Each run starts as a new buyer: PageHandle's table says what clearClientState clears.
+    // Each run starts without the state PageHandle's table says clearClientState clears on the path in use.
     if (isolates) {
       try {
         await page.clearClientState!();

@@ -248,12 +248,13 @@ export type StorefrontObserver = {
  *   with `storefront_page_settle_timeout` naming each unfinished request's
  *   method and path: an open stream (`EventSource`), a long poll or a request
  *   in flight when the page closed keeps it pending until that bound.
- * - `clearClientState()` resets the browser state a new buyer would not
- *   have; it sends no request and never navigates. The runner calls it
- *   before each run, so the control run's buyer never meets the clean run's
- *   state. It is optional so that a hand-built handle written before it still
- *   compiles, but a handle without it cannot isolate the two buyers: every
- *   admitted scenario with a control run then ends `not_run` with
+ * - `clearClientState()` clears the client state the table below lists, and
+ *   nothing more; it sends no request and never navigates. The runner calls
+ *   it before each run, so the control run starts without the state the table
+ *   clears on the path in use; state the table does not clear can still carry
+ *   over. It is optional so that a hand-built handle written before it still
+ *   compiles, but a handle without it clears nothing between the two runs:
+ *   every admitted scenario with a control run then ends `not_run` with
  *   `client_state_unisolated`. `createPageHandle` always provides it, and
  *   this table is the one statement of what it clears. It takes the context
  *   path when the page's browser context has `setStorageState` (a Playwright
@@ -264,18 +265,19 @@ export type StorefrontObserver = {
  *   | --- | --- | --- |
  *   | Cookies | every cookie of the browser context | every cookie of the browser context |
  *   | Local storage | every visited origin | the document's origin only, when it has one |
- *   | Session storage | this tab, on the store's origin only | this tab, on the store's origin only |
+ *   | Session storage (per tab) | this tab, on the store's origin only; other tabs never | this tab, on the store's origin only; other tabs never |
  *   | IndexedDB | every visited origin; deletion started, not awaited | not cleared |
  *   | HTTP cache | cleared where the browser supports it | not cleared |
- *   | Virtual WebAuthn credentials | removed | not removed |
+ *   | Virtual WebAuthn credentials created through the context's credentials API | removed | not removed |
+ *   | An authenticator added through the browser's debugging protocol | not touched | not touched |
  *   | Service-worker registrations | unregistered on every visited origin | not unregistered |
  *   | Cache Storage | not cleared | not cleared |
  *
  *   By document: on the store's origin, as the table says. On a document
  *   with no origin, such as `about:blank`, no session storage is cleared,
  *   and the fallback path clears no local storage either (cookies only); the
- *   call resolves. On another `http:` or `https:` origin than
- *   `createPageHandle`'s `options.origin`, it rejects
+ *   call resolves. When `createPageHandle` was given `options.origin`, on
+ *   another `http:` or `https:` origin it rejects
  *   `storefront_page_client_state_foreign_origin` before clearing anything;
  *   without `options.origin`, every `http:` or `https:` origin counts as the
  *   store's. The context path also fires storage events in open pages.
@@ -590,13 +592,13 @@ type StorefrontRunResult = {
  *
  * Client state: the clean and control runs are two buyers on one page. Each
  * run calls `page.clearClientState()` after its ledger read (and the
- * exclusive database's count) and before its interceptor, so it starts as a
- * new buyer (what is cleared is `PageHandle`'s table); a rejection is
+ * exclusive database's count) and before its interceptor, so it starts without
+ * the state `PageHandle`'s table clears on the path in use; a rejection is
  * `page_failed` of that run (step `null`). So when `createPageHandle` was
  * given `options.origin` and the clean run ends on another `http:` or
  * `https:` origin, the control run's clear is refused, and the result is
  * `not_run` unless the clean run proved ledger harm first. A handle without the
- * member cannot isolate the buyers: an admitted scenario with a control run
+ * member clears nothing between the runs: an admitted scenario with a control run
  * then ends `not_run` with `client_state_unisolated` only, before any page,
  * observer or driver call; a `safety_only` scenario runs as before.
  *
@@ -615,8 +617,8 @@ type StorefrontRunResult = {
  * outcome whose effect the ledger does not show, is `outcome_failed` and stops
  * the run.
  *
- * Judgement, first failing group decides: 0 admitted, then client state
- * isolated; 1 page, observer,
+ * Judgement, first failing group decides: 0 admitted, then a page handle with
+ * `clearClientState`; 1 page, observer,
  * arrangement and outcome driver worked; 2 no order before the arrangement and
  * one after the first matched create; 3 the first order appeared in a step with
  * a matched create, every withhold applied, every outcome shows its ledger

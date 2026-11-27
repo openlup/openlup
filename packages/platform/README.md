@@ -4046,8 +4046,8 @@ and never in a buyer's bundle: a browser bundle of the entry fails, and the
   without query, the width, anchor lookup and visibility, the visible
   `state:` and `action:` anchors, clicking, filling, request interception
   (`pass`, `withhold`, which delivers the request and fails the page's
-  response, or `block`), `clearClientState()`, which resets the browser
-  context's state for a new buyer, and `settled({ quietMs, timeoutMs })`,
+  response, or `block`), `clearClientState()`, which clears the client state
+  the `PageHandle` table lists, and `settled({ quietMs, timeoutMs })`,
   which resolves
   once every intercepted request, followed through its redirects, has finished
   and `quietMs` passed with no new request, and otherwise rejects after
@@ -4062,25 +4062,30 @@ and never in a buyer's bundle: a browser bundle of the entry fails, and the
   scrolled into view before it is measured, and every scroll position is restored afterwards, instantly
   whatever the page's `scroll-behavior`. The handle reads no clock.
 
-  `clearClientState()` resets the browser state a new buyer would not have,
-  without sending a request or navigating. The `PageHandle` declaration in
+  `clearClientState()` clears the client state the `PageHandle` table lists,
+  and nothing more, without sending a request or navigating. The `PageHandle` declaration in
   the [API report](https://github.com/openlup/openlup/blob/main/packages/platform/api/storefront-testing.api.md)
   holds the one table of what it clears on each path. In short: with the
   browser context's `setStorageState` (a Playwright context) it clears every
   cookie of the context, the local storage, IndexedDB and service-worker
-  registrations of every origin the context visited, the HTTP cache and
-  virtual WebAuthn credentials; without it, every cookie and the document's
+  registrations of every origin the context visited, the HTTP cache and the
+  virtual WebAuthn credentials created through the context's credentials API
+  (not an authenticator added through the browser's debugging protocol);
+  without it, every cookie and the document's
   local storage only. On both paths it clears this tab's session storage on
-  the store's origin, and never Cache Storage. On a document with no origin,
+  the store's origin (session storage is per tab: other tabs keep theirs),
+  and never Cache Storage. On a document with no origin,
   such as `about:blank`, no session storage is cleared, and the fallback
   clears cookies only. When `options.origin` is given, a document on another
   `http:` or `https:` origin rejects
   `storefront_page_client_state_foreign_origin` before anything is cleared. A
   page without `context()` rejects `storefront_page_input_invalid`. A harness
-  sets any state it needs (a preview sign-in cookie, local storage,
-  IndexedDB, WebAuthn credentials) in its arrangement, not before the run.
+  sets any state it needs (a preview sign-in cookie, local or session
+  storage, IndexedDB, WebAuthn credentials) in its arrangement, not before
+  the run.
   The member is optional on `PageHandle` so that a hand-built handle still
-  compiles; without it the runner cannot isolate the two buyers (below).
+  compiles; without it the runner clears nothing between the two runs
+  (below).
 
   Whether the buyer can bring an anchor into view is judged per axis before
   anything moves, walking its scrollers from the anchor outward: the overflow
@@ -4177,14 +4182,16 @@ samples the page.
 
 **Client state.** The clean and control runs are two buyers on one page. Each
 run calls `page.clearClientState()` after its first ledger read (and the
-exclusive database's count) and before its interceptor, so the control buyer
-never meets a purchase record, cookie or other browser state the clean buyer
-left. A rejection ends that run with `page_failed` (step `null`), so the
+exclusive database's count) and before its interceptor, so the control run
+starts without the state the `PageHandle` table clears on the path in use; on
+both paths that is every cookie of the browser context, and the store's local
+storage and this tab's session storage when the page shows a store document.
+State the table does not clear on that path can still carry over. A rejection ends that run with `page_failed` (step `null`), so the
 result is `not_run` unless the clean run already proved ledger harm. One such
 rejection: when `createPageHandle` was given `options.origin` and the clean
 run ends on another `http:` or `https:` origin, it refuses the control run's
 clear (`storefront_page_client_state_foreign_origin`). A handle
-without the member cannot isolate the buyers: an admitted scenario with a
+without the member clears nothing between the runs: an admitted scenario with a
 control run then ends `not_run` with `client_state_unisolated` only, before any
 page, observer or driver call, and is never `passed` or `vacuous`; a
 `safety_only` scenario has one buyer and runs as before. Fix it with
@@ -4263,7 +4270,7 @@ to fix it, and the recheck command (`recheck` from the adapter or proof file,
 
 | Order | Check | Codes | Result |
 | --- | --- | --- | --- |
-| 0 | Admitted: every required outcome known and declared; then, with a control run, a page handle that clears client state | `tier_unreachable`, then `client_state_unisolated` | `not_run` |
+| 0 | Admitted: every required outcome known and declared; then, with a control run, a page handle with `clearClientState` | `tier_unreachable`, then `client_state_unisolated` | `not_run` |
 | 1 | Page, observer, arrangement and outcome driver worked | `page_failed`, `observer_failed`, `arrange_failed`, `outcome_failed` | `not_run` |
 | 2 | No order before the arrangement; one after the first matched create | `observer_subject_unseen` | `not_run` |
 | 3 | The first order appeared in a step with a matched create; every withhold applied; declared auto-progress was performed; every outcome shows its ledger effect | `stimulus_not_create`, `stimulus_not_applied`, `auto_progress_not_performed`, `outcome_failed` | `not_run` |
