@@ -12,5 +12,6 @@ replaces pristine copies of
 `examples/neutral-store/browser/checkout-controller.spec.ts`,
 `examples/neutral-store/browser/storefront-anchors.spec.ts`,
 `examples/neutral-store/browser/native-operator.proof.ts` and
-`examples/neutral-store/ownership.json`. A customised spec that still passes
-`{ times }` keeps working. No installed-policy step.
+`examples/neutral-store/ownership.json`. A customised copy of any of these
+files conflicts and is reconciled; a customised spec that still passes
+`{ times }` keeps running unchanged. No installed-policy step.

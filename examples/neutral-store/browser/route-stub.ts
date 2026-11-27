@@ -1,9 +1,9 @@
 // The single owner of "stub the first matching request" in the starter's browser specs.
-// A `page.route(..., { times })` route turns request interception off when it expires, without waiting for that to
-// finish. Playwright 1.62 can lose the `request` and `response` events of a request the page starts in that moment, so
-// a `waitForResponse` or request listener for it times out although the browser got the answer. This route stays
-// installed: it answers the first matching request with `first` and lets every later one through. ESLint refuses
-// `times` in route options under browser/ and tests/preview/.
+// Use stubFirst instead of a `page.route(..., { times })` route: when an expiring route is the page's last one,
+// Playwright turns request interception off without waiting, and can drop the page's next request from its `request`
+// and `response` events, so a `waitForResponse` or request listener for it times out. This route stays installed: it
+// answers the first matching request with `first` and passes later ones to the next matching route or the network
+// (`route.fallback()`).
 import type { Page, Route } from '@playwright/test';
 
 export interface StubCounter {
