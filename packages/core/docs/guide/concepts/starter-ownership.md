@@ -235,8 +235,10 @@ answers HTTP 400 with `starter_input_invalid`.
 
 The token from `resume` authorises the same operations as the creating
 response: `checkout.read`, `checkout.recovery` `inspect` and `pay`,
-`checkout.payment` `inspect` and `simulate`, `checkout.tokenPay` and
-`payment.simulate`. A key holder can therefore start a payment attempt, which
+`checkout.recoverySimulate`, `checkout.payment` `inspect`,
+`checkout.paymentSimulate`, `checkout.tokenPay` and `payment.simulate`.
+`checkout.payment` and `checkout.recovery` still accept `simulate` in this
+release; it retires in a later one. A key holder can therefore start a payment attempt, which
 makes the order not abandonable.
 
 A client that owns its checkout page follows these rules:

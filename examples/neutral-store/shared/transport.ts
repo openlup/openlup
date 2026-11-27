@@ -1,5 +1,8 @@
 import { actionRequestTimeoutMs, type ActionInput, type ActionResult, type Operation } from './api.ts';
 import { isRecord } from './offer.ts';
+import { actionPath } from './action-path.ts';
+
+export { actionPath };
 
 /**
  * Sends one starter action under `commandKey` and reads its answer. It never throws: a lost or unreadable answer
@@ -9,7 +12,7 @@ import { isRecord } from './offer.ts';
 export async function act(operation: Operation, input: ActionInput, commandKey: string,
   timeoutMs: number = actionRequestTimeoutMs): Promise<ActionResult> {
   try {
-    const response = await fetch(`/api/actions/${operation}`, {
+    const response = await fetch(actionPath(operation), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Starter-Request': '1', 'Idempotency-Key': commandKey },
       credentials: 'same-origin',

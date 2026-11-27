@@ -1662,6 +1662,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/browser/storefront-proof-kit.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/browser/subscription-api.spec.ts",
       "class": "public-output"
     },
@@ -2106,6 +2110,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/owned/storefront-proof.json",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/owned/subscription-editing.ts",
       "class": "public-output"
     },
@@ -2167,6 +2175,10 @@
     },
     {
       "path": "examples/neutral-store/release-inputs/openlup-core-v0.43.0/package-lock.json",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/shared/action-path.ts",
       "class": "public-output"
     },
     {
@@ -2427,6 +2439,10 @@
     },
     {
       "path": "examples/neutral-store/test/storefront-bindings.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/storefront-proof-kit.test.ts",
       "class": "public-output"
     },
     {
@@ -30655,6 +30671,10 @@
     },
     {
       "path": "tests/platform/neutralStoreCheckoutRetry.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/neutralStoreProofFile.test.ts",
       "class": "public-output"
     },
     {
