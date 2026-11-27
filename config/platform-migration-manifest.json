@@ -926,15 +926,55 @@
       "sha256": "38c765551a254c374a04f72e8d1e49b9ac1f835b7359319ce745ecdfc9634466"
     },
     {
-      "file": "db/platform/migrations/20261129130507_native_renewal_occurrence_producer.sql",
+      "file": "db/platform/migrations/20261129130507_settings_wave3b_return_reasons_and_payment_preferences.sql",
+      "sha256": "0f3a48e4bf37494cc69d46a6dfa11706a1215d1e482fac8f94a948f5ca88e539"
+    },
+    {
+      "file": "db/platform/migrations/20261129130508_renewal_order_destination_v2.sql",
+      "sha256": "cf9f42b785b31b6849da83b46101568e61fd5e4a89500574067602e5f376931f"
+    },
+    {
+      "file": "db/platform/migrations/20261129160000_tax_calculation_adapter_money_v1.sql",
+      "sha256": "87513fd800efdb97405d8ea5c644a63769e08842a077e6595800bf65aed3761d"
+    },
+    {
+      "file": "db/platform/migrations/20261129160001_tax_calculation_adapter_money_activation.sql",
+      "sha256": "a6fa96a9bd34839097a289aa9efa8461ce1e2433eaa0a6c8171b395da1f45104"
+    },
+    {
+      "file": "db/platform/migrations/20261129160002_order_money_v2_child_guards.sql",
+      "sha256": "4c5f36867655a968bb1c0e29865f5b5d65a2c01569edc6a9e74024bbfd897b2d"
+    },
+    {
+      "file": "db/platform/migrations/20261129160003_order_draft_receipts_v2.sql",
+      "sha256": "8cec09d45c9ea1652834280be7d1968d55aa50cd0a933f6b8ce2acf9b25fefc1"
+    },
+    {
+      "file": "db/platform/migrations/20261129160004_order_draft_receipt_privacy_v2.sql",
+      "sha256": "f78b935ecd7c3114c96736eca4c7fce7c59dbd15b75577d6cf210595d4707a76"
+    },
+    {
+      "file": "db/platform/migrations/20261129160005_order_draft_payment_entry_fence.sql",
+      "sha256": "9beb09c9508a79b29d856f71abc736014e3cf1e99a9fe26896018e45813e45ec"
+    },
+    {
+      "file": "db/platform/migrations/20261129160006_catalog_price_core_sku_modes_v2.sql",
+      "sha256": "81a068c40825376536f6673dc192d6d16edd8fa4264020c3e55e99df66211ddb"
+    },
+    {
+      "file": "db/platform/migrations/20261129160007_commerce_destination_v2_export_ownership.sql",
+      "sha256": "452df0d2a5e3f18d6f0f80f5f332188d8f6f9f402abda88f0f3c788dba1807e6"
+    },
+    {
+      "file": "db/platform/migrations/20261129160008_native_renewal_occurrence_producer.sql",
       "sha256": "31a544c3848c94585c4d0959c09edd875cbf781a4fe5d475a0559496cc1a07eb"
     },
     {
-      "file": "db/platform/migrations/20261129130508_native_renewal_occurrence_writer.sql",
+      "file": "db/platform/migrations/20261129160009_native_renewal_occurrence_writer.sql",
       "sha256": "6eea804c693944bbf0af377ebfa122d1ad213a4da62c939e68dfa7bf9cf6d6fc"
     }
   ],
-  "objectInventorySha256": "ac30b127bf781b831e3824914f0af93a5b794676c2679b3461d756c11c53b26d",
+  "objectInventorySha256": "8b565bfc9b6da1626383da0201ea76c8f0e54d3bef850cf18fadf340d61686bc",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1886,20 +1926,60 @@
         "sha256": "38c765551a254c374a04f72e8d1e49b9ac1f835b7359319ce745ecdfc9634466"
       },
       {
-        "file": "db/platform/migrations/20261129130507_native_renewal_occurrence_producer.sql",
+        "file": "db/platform/migrations/20261129130507_settings_wave3b_return_reasons_and_payment_preferences.sql",
+        "sha256": "0f3a48e4bf37494cc69d46a6dfa11706a1215d1e482fac8f94a948f5ca88e539"
+      },
+      {
+        "file": "db/platform/migrations/20261129130508_renewal_order_destination_v2.sql",
+        "sha256": "cf9f42b785b31b6849da83b46101568e61fd5e4a89500574067602e5f376931f"
+      },
+      {
+        "file": "db/platform/migrations/20261129160000_tax_calculation_adapter_money_v1.sql",
+        "sha256": "87513fd800efdb97405d8ea5c644a63769e08842a077e6595800bf65aed3761d"
+      },
+      {
+        "file": "db/platform/migrations/20261129160001_tax_calculation_adapter_money_activation.sql",
+        "sha256": "a6fa96a9bd34839097a289aa9efa8461ce1e2433eaa0a6c8171b395da1f45104"
+      },
+      {
+        "file": "db/platform/migrations/20261129160002_order_money_v2_child_guards.sql",
+        "sha256": "4c5f36867655a968bb1c0e29865f5b5d65a2c01569edc6a9e74024bbfd897b2d"
+      },
+      {
+        "file": "db/platform/migrations/20261129160003_order_draft_receipts_v2.sql",
+        "sha256": "8cec09d45c9ea1652834280be7d1968d55aa50cd0a933f6b8ce2acf9b25fefc1"
+      },
+      {
+        "file": "db/platform/migrations/20261129160004_order_draft_receipt_privacy_v2.sql",
+        "sha256": "f78b935ecd7c3114c96736eca4c7fce7c59dbd15b75577d6cf210595d4707a76"
+      },
+      {
+        "file": "db/platform/migrations/20261129160005_order_draft_payment_entry_fence.sql",
+        "sha256": "9beb09c9508a79b29d856f71abc736014e3cf1e99a9fe26896018e45813e45ec"
+      },
+      {
+        "file": "db/platform/migrations/20261129160006_catalog_price_core_sku_modes_v2.sql",
+        "sha256": "81a068c40825376536f6673dc192d6d16edd8fa4264020c3e55e99df66211ddb"
+      },
+      {
+        "file": "db/platform/migrations/20261129160007_commerce_destination_v2_export_ownership.sql",
+        "sha256": "452df0d2a5e3f18d6f0f80f5f332188d8f6f9f402abda88f0f3c788dba1807e6"
+      },
+      {
+        "file": "db/platform/migrations/20261129160008_native_renewal_occurrence_producer.sql",
         "sha256": "31a544c3848c94585c4d0959c09edd875cbf781a4fe5d475a0559496cc1a07eb"
       },
       {
-        "file": "db/platform/migrations/20261129130508_native_renewal_occurrence_writer.sql",
+        "file": "db/platform/migrations/20261129160009_native_renewal_occurrence_writer.sql",
         "sha256": "6eea804c693944bbf0af377ebfa122d1ad213a4da62c939e68dfa7bf9cf6d6fc"
       }
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "3a86da7673504399856c973891d37354010956b739d15b3d081f038beb7dd709"
+        "withRestore": "6491b7d756687d95dd3c8a17bc14222f11a64ff460f280a5f5ec92321e3efe05"
       },
       "separateMigrator": {
-        "withRestore": "41f552f08c6b77dfd9cbebea8f448b59f77c10279cd6a27b4216f64762a7ca4f"
+        "withRestore": "b7cdab7f691737542dacae4705940f0bd0ec80b53d6b0e344fbf81e7c37454e6"
       }
     }
   },
@@ -2846,17 +2926,57 @@
         "sha256": "38c765551a254c374a04f72e8d1e49b9ac1f835b7359319ce745ecdfc9634466"
       },
       {
-        "file": "db/platform/migrations/20261129130507_native_renewal_occurrence_producer.sql",
+        "file": "db/platform/migrations/20261129130507_settings_wave3b_return_reasons_and_payment_preferences.sql",
+        "sha256": "0f3a48e4bf37494cc69d46a6dfa11706a1215d1e482fac8f94a948f5ca88e539"
+      },
+      {
+        "file": "db/platform/migrations/20261129130508_renewal_order_destination_v2.sql",
+        "sha256": "cf9f42b785b31b6849da83b46101568e61fd5e4a89500574067602e5f376931f"
+      },
+      {
+        "file": "db/platform/migrations/20261129160000_tax_calculation_adapter_money_v1.sql",
+        "sha256": "87513fd800efdb97405d8ea5c644a63769e08842a077e6595800bf65aed3761d"
+      },
+      {
+        "file": "db/platform/migrations/20261129160001_tax_calculation_adapter_money_activation.sql",
+        "sha256": "a6fa96a9bd34839097a289aa9efa8461ce1e2433eaa0a6c8171b395da1f45104"
+      },
+      {
+        "file": "db/platform/migrations/20261129160002_order_money_v2_child_guards.sql",
+        "sha256": "4c5f36867655a968bb1c0e29865f5b5d65a2c01569edc6a9e74024bbfd897b2d"
+      },
+      {
+        "file": "db/platform/migrations/20261129160003_order_draft_receipts_v2.sql",
+        "sha256": "8cec09d45c9ea1652834280be7d1968d55aa50cd0a933f6b8ce2acf9b25fefc1"
+      },
+      {
+        "file": "db/platform/migrations/20261129160004_order_draft_receipt_privacy_v2.sql",
+        "sha256": "f78b935ecd7c3114c96736eca4c7fce7c59dbd15b75577d6cf210595d4707a76"
+      },
+      {
+        "file": "db/platform/migrations/20261129160005_order_draft_payment_entry_fence.sql",
+        "sha256": "9beb09c9508a79b29d856f71abc736014e3cf1e99a9fe26896018e45813e45ec"
+      },
+      {
+        "file": "db/platform/migrations/20261129160006_catalog_price_core_sku_modes_v2.sql",
+        "sha256": "81a068c40825376536f6673dc192d6d16edd8fa4264020c3e55e99df66211ddb"
+      },
+      {
+        "file": "db/platform/migrations/20261129160007_commerce_destination_v2_export_ownership.sql",
+        "sha256": "452df0d2a5e3f18d6f0f80f5f332188d8f6f9f402abda88f0f3c788dba1807e6"
+      },
+      {
+        "file": "db/platform/migrations/20261129160008_native_renewal_occurrence_producer.sql",
         "sha256": "31a544c3848c94585c4d0959c09edd875cbf781a4fe5d475a0559496cc1a07eb"
       },
       {
-        "file": "db/platform/migrations/20261129130508_native_renewal_occurrence_writer.sql",
+        "file": "db/platform/migrations/20261129160009_native_renewal_occurrence_writer.sql",
         "sha256": "6eea804c693944bbf0af377ebfa122d1ad213a4da62c939e68dfa7bf9cf6d6fc"
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "dd94e2db90c404bfdeded9507797867dc463c077f7db2fcaae3cbd6aca46a776",
-      "operatorProvisioned": "e0ffd16240231615335d4da69d23c5ed2a881687a98a61f90aa45c2cfcd99213"
+      "installerManaged": "f62c06da4a5b440253faa963a73808d75f63c8f717ca63cbe5223a8139ae45df",
+      "operatorProvisioned": "409163e0791a51ca94442da1f7328739c21d0566a10cc29ec267b351dc1b3a67"
     }
   }
 }

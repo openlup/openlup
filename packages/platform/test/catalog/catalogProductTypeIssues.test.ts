@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { catalogProductTypeIssues, createCatalogProductTypeRegistry } from "../../src/catalog/productTypeSchemas.js";
-import { CATALOG_CONFORMANCE_RULES, catalogVariantOptions } from "../../src/catalog/index.js";
+import { CATALOG_CONFORMANCE_RULES, catalogPackInstallIssues, catalogPackManifest, catalogVariantOptions,
+  installCatalogDefinitions, withCatalogPublicationRules } from "../../src/catalog/index.js";
 import { inspectCatalogPack, invalidCatalogPack } from "../../src/catalog/productTypeIssues.js";
 import * as browserContracts from "../../src/catalog/contracts/index.js";
+import type { CatalogPackInput } from "../../src/catalog/contracts/catalogPack.js";
 import type { CatalogProductTypeDefinition } from "../../src/catalog/contracts/productTypes.js";
 const definition: CatalogProductTypeDefinition = {
   key: "example:item", version: 1, units: [{ code: "openlup:piece", dimension: "count", integral: true }],
@@ -139,4 +141,52 @@ it.each(["openlup:piece", "openlup:l"])("refuses a factorless %s declared as mas
     code: "definition_unit_factor_invalid", path: `/types/1/units/${unitIndex}/factor`,
     quantityCause: "quantity_cross_dimension", fix: expect.any(String),
   }]);
+});
+
+it("installCatalogDefinitions inspects the pack only once before issuing SQL", async () => {
+  const rulesSource = Buffer.from(`module.exports = {
+    validateContent: () => [],
+    validateProduct: () => [],
+    identifyDocument: () => null,
+    inspectDocument: () => null,
+    matchesDocument: () => false,
+    deriveSkuFacts: () => ({}),
+    classifySkuChange: () => "inconclusive",
+  };`);
+  const base = withCatalogPublicationRules<CatalogPackInput>({
+    id: "example:single-inspect", namespace: "example", version: 1, openlupRange: "1.x",
+    capabilities: { publish: false }, types: [definition], taxClasses: [{ key: "example:standard" }],
+  }, () => rulesSource);
+  const expectedDigest = catalogPackManifest(base).digest;
+  let rangeReads = 0;
+  const tracked: CatalogPackInput = { ...base };
+  Object.defineProperty(tracked, "openlupRange", {
+    enumerable: true,
+    get() {
+      rangeReads += 1;
+      return base.openlupRange;
+    },
+  });
+  expect(catalogPackInstallIssues(tracked)).toEqual([]);
+  const readsPerInspection = rangeReads;
+  expect(readsPerInspection).toBeGreaterThan(0);
+
+  rangeReads = 0;
+  let queries = 0;
+  const receipt = await installCatalogDefinitions({
+    async query() {
+      queries += 1;
+      return {
+        rows: [{
+          receipt: {
+            packId: base.id, version: base.version, manifestDigest: expectedDigest,
+            installedAt: "2026-11-27T00:00:00.000Z", types: [], taxClasses: ["example:standard"],
+          },
+        }],
+      };
+    },
+  }, tracked);
+  expect(queries).toBe(1);
+  expect(receipt.manifestDigest).toBe(expectedDigest);
+  expect(rangeReads).toBe(readsPerInspection);
 });

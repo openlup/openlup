@@ -142,7 +142,7 @@ describe("connected store transfer core", () => {
 
   it("compares declaration authority at capture, copy and replay even when the catalogue matches", async () => {
     const initial = ["communication-events", "customer-billing", "customer-preferences", "customer-saved-addresses",
-      "destination-documents", "destination-receipts", "fulfillment-parcel-contacts", "identity", "subscriptions", "tax-calculations"];
+      "destination-documents", "destination-receipts", "fulfillment-parcel-contacts", "identity", "order-draft-receipts", "subscriptions", "tax-calculations"];
     expect(seed.packet).toHaveProperty("requiredPrivacyContributorIds", initial);
     expect(pristine).toHaveProperty("requiredPrivacyContributorIds", initial);
     const declaration = "identity_privacy_required_contributors";

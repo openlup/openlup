@@ -34,7 +34,7 @@ test('up_json_reports_four_fields_for_installer_refusal and verifies the real on
   const accepted = { formatVersion: 1, configuration: 'coffee', exitCode: 0, state: 'satisfied', packs: [summary], findings: [] };
   try {
     for (const path of ['lifecycle', 'lifecycle.mjs', 'browser-groups.mjs', 'lifecycle-refusals.mjs',
-      'host/healthcheck.ts', 'host/runtime-database.ts', 'installation/refusals.ts', 'shared/refusals.ts', 'shared/seed-physical.ts', 'shared/config.ts']) {
+      'host/healthcheck.ts', 'host/runtime-database.ts', 'installation/refusals.ts', 'shared/refusals.ts', 'shared/seed-physical.ts', 'shared/action-path.ts', 'shared/config.ts']) {
       mkdirSync(join(app, path, '..'), { recursive: true });
       cpSync(join(root, path), join(app, path));
     }

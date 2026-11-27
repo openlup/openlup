@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { agentsFileCap, assertCatalogueRecipeReachability, catalogueRecipeLinks, assertCompiledFences, assertDocumentationContract, assertGuideContract, assertPackageDocumentation, assertRefusalCodeReachability, declaredSymbolMaturities, listOpenRefusalTypes, planPackageDocumentationUpdates, providerSpecificKeys, refusalTypeSuffixes, renderGeneratedRegion, syncGeneratedRegions } from "../scripts/documentation-contract.ts";
+import { agentsFileCap, assertCatalogueRecipeReachability, catalogueRecipeLinks, assertCompiledFences, assertDocumentationContract, assertGuideContract, assertPackageDocumentation, assertPublishableReadmeContent, assertRefusalCodeReachability, declaredSymbolMaturities, listOpenRefusalTypes, planPackageDocumentationUpdates, providerSpecificKeys, README_MAX_BYTES, refusalTypeSuffixes, renderGeneratedRegion, syncGeneratedRegions } from "../scripts/documentation-contract.ts";
 
 const roots: string[] = [];
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -95,8 +95,15 @@ function agentGuide(overrides: { kind?: string; row?: string; example?: string }
 }
 
 // The fixture's packed file list stands in for `npm pack --dry-run`.
-function check(root: string, packed = ["AGENTS.md", "README.md", "package.json", "docs/guide.md"]): void {
+function check(root: string, packed = ["AGENTS.md", "CHANGELOG.md", "README.md", "package.json", "docs/guide.md"]): void {
   assertDocumentationContract(root, () => packed);
+}
+
+// Non-README packed Markdown fixture (CHANGELOG.md sits at package root, so package-local links resolve identically).
+function packedDocFixture(content: string): string {
+  const root = fixture("# Fixture\n");
+  writeFileSync(join(root, "CHANGELOG.md"), `# Changelog\n\n## [Unreleased]\n\n${content}\n`);
+  return root;
 }
 
 function surfaceTable(): string {
@@ -123,8 +130,8 @@ describe("extracted-root documentation contract", () => {
     expect(source).toContain('const retiredPackageScope = "veli";');
   });
 
-  it("accepts package-local links and declared commands", () => {
-    const root = fixture("[Guide](docs/guide.md)\n\n```sh\nnpm run ci\n```\n");
+  it("accepts package-local links in non-README packed docs and declared commands", () => {
+    const root = packedDocFixture("[Guide](docs/guide.md)\n\n```sh\nnpm run ci\n```\n");
     expect(() => check(root)).not.toThrow();
   });
 
@@ -137,77 +144,77 @@ describe("extracted-root documentation contract", () => {
   });
 
   it("refuses a shipped link to documentation present in source but absent from the tarball", () => {
-    const root = fixture("[Guide](docs/guide.md#setup)\n");
-    expect(() => check(root, ["AGENTS.md", "README.md", "package.json"])).toThrow(
-      "README.md: local link docs/guide.md#setup targets a file missing from npm pack",
+    const root = packedDocFixture("[Guide](docs/guide.md#setup)\n");
+    expect(() => check(root, ["AGENTS.md", "CHANGELOG.md", "README.md", "package.json"])).toThrow(
+      "CHANGELOG.md: local link docs/guide.md#setup targets a file missing from npm pack",
     );
   });
 
   it.each(['"Guide title"', "'Guide title'", "(Guide title)"])("checks packed inline links with the title %s", (title) => {
-    const root = fixture(`[Guide](docs/guide.md ${title})\n[Website](https://example.invalid/guide ${title})\n[Section](#setup ${title})\n`);
-    expect(() => check(root, ["AGENTS.md", "README.md", "package.json"])).toThrow(
-      "README.md: local link docs/guide.md targets a file missing from npm pack",
+    const root = packedDocFixture(`[Guide](docs/guide.md ${title})\n[Website](https://example.invalid/guide ${title})\n[Section](#setup ${title})\n`);
+    expect(() => check(root, ["AGENTS.md", "CHANGELOG.md", "README.md", "package.json"])).toThrow(
+      "CHANGELOG.md: local link docs/guide.md targets a file missing from npm pack",
     );
     expect(() => check(root)).not.toThrow();
   });
 
   it.each([0, 1, 2, 3])("checks packed reference links with %s spaces before the definition", (indent) => {
     const spaces = " ".repeat(indent);
-    const root = fixture(`[Guide][target]\n[Website][url]\n[Section][anchor]\n\n${spaces}[target]: docs/guide.md\n${spaces}[url]: https://example.invalid/guide\n${spaces}[anchor]: #setup\n`);
-    expect(() => check(root, ["AGENTS.md", "README.md", "package.json"])).toThrow(
-      "README.md: local link docs/guide.md targets a file missing from npm pack",
+    const root = packedDocFixture(`[Guide][target]\n[Website][url]\n[Section][anchor]\n\n${spaces}[target]: docs/guide.md\n${spaces}[url]: https://example.invalid/guide\n${spaces}[anchor]: #setup\n`);
+    expect(() => check(root, ["AGENTS.md", "CHANGELOG.md", "README.md", "package.json"])).toThrow(
+      "CHANGELOG.md: local link docs/guide.md targets a file missing from npm pack",
     );
     expect(() => check(root)).not.toThrow();
   });
 
   it.each(["Guide [subscription]", "Guide \\] subscription", "Guide [nested [label]]"])("checks packed destinations with the inline label %s", (label) => {
-    const root = fixture(`[${label}](docs/guide.md)\n[${label}](https://example.invalid/guide)\n[${label}](#setup)\n`);
-    expect(() => check(root, ["AGENTS.md", "README.md", "package.json"])).toThrow(
-      "README.md: local link docs/guide.md targets a file missing from npm pack",
+    const root = packedDocFixture(`[${label}](docs/guide.md)\n[${label}](https://example.invalid/guide)\n[${label}](#setup)\n`);
+    expect(() => check(root, ["AGENTS.md", "CHANGELOG.md", "README.md", "package.json"])).toThrow(
+      "CHANGELOG.md: local link docs/guide.md targets a file missing from npm pack",
     );
     expect(() => check(root)).not.toThrow();
   });
 
   it.each(["> ", "- ", "1. ", "> - ", "- Parent\n\n    "])("checks packed reference destinations in the container %s", (prefix) => {
-    const root = fixture(`[Guide][target]\n[Website][url]\n[Section][anchor]\n\n${prefix}[target]: docs/guide.md\n${prefix}[url]: https://example.invalid/guide\n${prefix}[anchor]: #setup\n`);
-    expect(() => check(root, ["AGENTS.md", "README.md", "package.json"])).toThrow(
-      "README.md: local link docs/guide.md targets a file missing from npm pack",
+    const root = packedDocFixture(`[Guide][target]\n[Website][url]\n[Section][anchor]\n\n${prefix}[target]: docs/guide.md\n${prefix}[url]: https://example.invalid/guide\n${prefix}[anchor]: #setup\n`);
+    expect(() => check(root, ["AGENTS.md", "CHANGELOG.md", "README.md", "package.json"])).toThrow(
+      "CHANGELOG.md: local link docs/guide.md targets a file missing from npm pack",
     );
     expect(() => check(root)).not.toThrow();
   });
 
   it("checks packed reference destinations with an escaped bracket in the label", () => {
-    const root = fixture("[Guide][tar\\]get]\n\n> [tar\\]get]: docs/guide.md\n");
-    expect(() => check(root, ["AGENTS.md", "README.md", "package.json"])).toThrow(
-      "README.md: local link docs/guide.md targets a file missing from npm pack",
+    const root = packedDocFixture("[Guide][tar\\]get]\n\n> [tar\\]get]: docs/guide.md\n");
+    expect(() => check(root, ["AGENTS.md", "CHANGELOG.md", "README.md", "package.json"])).toThrow(
+      "CHANGELOG.md: local link docs/guide.md targets a file missing from npm pack",
     );
     expect(() => check(root)).not.toThrow();
   });
 
   it.each(["```", "~~~"])("does not read index signatures as link definitions inside %s fences", (fence) => {
-    const root = fixture(`${fence}ts nocheck\n// A declaration excerpt; MissingType is not declared.\nexport type Data = {\n    [key: string]: MissingType;\n};\n${fence}\n[Guide][target]\n\n> [target]: docs/guide.md\n`);
+    const root = packedDocFixture(`${fence}ts nocheck\n// A declaration excerpt; MissingType is not declared.\nexport type Data = {\n    [key: string]: MissingType;\n};\n${fence}\n[Guide][target]\n\n> [target]: docs/guide.md\n`);
     expect(() => check(root)).not.toThrow();
-    expect(() => check(root, ["AGENTS.md", "README.md", "package.json"])).toThrow(
-      "README.md: local link docs/guide.md targets a file missing from npm pack",
+    expect(() => check(root, ["AGENTS.md", "CHANGELOG.md", "README.md", "package.json"])).toThrow(
+      "CHANGELOG.md: local link docs/guide.md targets a file missing from npm pack",
     );
   });
 
   it.each(["docs/guide(extra).md", "docs/guide(extra(details)).md"])("preserves the balanced-parentheses destination %s", (target) => {
-    const root = fixture(`[Guide](${target})\n`);
+    const root = packedDocFixture(`[Guide](${target})\n`);
     writeFileSync(join(root, target), "# Guide\n");
-    const packed = ["AGENTS.md", "README.md", "package.json"];
+    const packed = ["AGENTS.md", "CHANGELOG.md", "README.md", "package.json"];
     expect(() => check(root, packed)).toThrow(
-      `README.md: local link ${target} targets a file missing from npm pack`,
+      `CHANGELOG.md: local link ${target} targets a file missing from npm pack`,
     );
     expect(() => check(root, [...packed, target])).not.toThrow();
   });
 
   it("resolves escaped parentheses without treating them as destination nesting", () => {
     const target = "docs/guide(extra.md";
-    const root = fixture("[Guide](docs/guide\\(extra.md 'Guide')\n");
+    const root = packedDocFixture("[Guide](docs/guide\\(extra.md 'Guide')\n");
     writeFileSync(join(root, target), "# Guide\n");
-    const packed = ["AGENTS.md", "README.md", "package.json"];
-    expect(() => check(root, packed)).toThrow(`README.md: local link docs/guide\\(extra.md targets a file missing from npm pack`);
+    const packed = ["AGENTS.md", "CHANGELOG.md", "README.md", "package.json"];
+    expect(() => check(root, packed)).toThrow(`CHANGELOG.md: local link docs/guide\\(extra.md targets a file missing from npm pack`);
     expect(() => check(root, [...packed, target])).not.toThrow();
   });
 
@@ -217,50 +224,101 @@ describe("extracted-root documentation contract", () => {
     "docs/guide&#46;md",
     "docs/guide&period;md",
   ])("explicitly refuses the ambiguous destination %s even with a packed decoy", (destination) => {
-    const root = fixture(`[Guide](${destination})\n[Guide][ref]\n\n> [ref]: ${destination}\n`);
+    const root = packedDocFixture(`[Guide](${destination})\n[Guide][ref]\n\n> [ref]: ${destination}\n`);
     writeFileSync(join(root, "docs", "guide>extra.md"), "# Guide\n");
     writeFileSync(join(root, "docs", "guide&"), "# Decoy\n");
-    const packed = ["AGENTS.md", "README.md", "package.json", "docs/guide.md", "docs/guide&"];
+    const packed = ["AGENTS.md", "CHANGELOG.md", "README.md", "package.json", "docs/guide.md", "docs/guide&"];
     expect(() => check(root, packed)).toThrow("unsupported local link destination");
   });
 
   it.each(["docs/guide.md", "<docs/guide.md>"])("checks inline and reference targets before optional titles for %s", (destination) => {
-    const root = fixture(`[Guide](${destination} 'Title')\n[Guide][ref]\n\n[ref]: ${destination} "Title"\n`);
+    const root = packedDocFixture(`[Guide](${destination} 'Title')\n[Guide][ref]\n\n[ref]: ${destination} "Title"\n`);
     expect(() => check(root)).not.toThrow();
-    expect(() => check(root, ["AGENTS.md", "README.md", "package.json"])).toThrow("targets a file missing from npm pack");
+    expect(() => check(root, ["AGENTS.md", "CHANGELOG.md", "README.md", "package.json"])).toThrow("targets a file missing from npm pack");
   });
 
   it.each(["<docs/guide.md", "docs/guide(unbalanced.md"])("explicitly refuses an unsupported destination boundary %s", (destination) => {
-    const root = fixture(`[Guide](${destination} 'Title')\n`);
+    const root = packedDocFixture(`[Guide](${destination} 'Title')\n`);
     expect(() => check(root)).toThrow("unsupported Markdown link destination boundary");
   });
 
   it("resolves encoded reserved filename characters before checking the packed inventory", () => {
-    const root = fixture("[Guide](docs/a%23b%26c%3Ed.md#section)\n[Guide][ref]\n\n[ref]: docs/a%23b%26c%3Ed.md\n");
+    const root = packedDocFixture("[Guide](docs/a%23b%26c%3Ed.md#section)\n[Guide][ref]\n\n[ref]: docs/a%23b%26c%3Ed.md\n");
     const target = "docs/a#b&c>d.md";
     writeFileSync(join(root, target), "# Guide\n");
     expect(() => check(root)).toThrow("targets a file missing from npm pack");
-    expect(() => check(root, ["AGENTS.md", "README.md", "package.json", target])).not.toThrow();
+    expect(() => check(root, ["AGENTS.md", "CHANGELOG.md", "README.md", "package.json", target])).not.toThrow();
   });
 
   it("reports malformed local percent encoding as an actionable contract violation", () => {
-    const root = fixture("[Guide](docs/guide%ZZ.md)\n");
+    const root = packedDocFixture("[Guide](docs/guide%ZZ.md)\n");
     expect(() => check(root)).toThrow("malformed percent encoding in local link");
   });
 
   it("checks nested shipped Markdown and resolves reference links relative to that file", () => {
-    const root = fixture("[Guide](docs/guide.md)\n");
+    const root = packedDocFixture("[Guide](docs/guide.md)\n");
     writeFileSync(join(root, "docs", "guide.md"), "[Back][readme]\n\n[readme]: ../README.md#package-surface-maturity\n\n[Upgrade](SPLIT_AND_UPGRADE.md)\n");
     expect(() => check(root)).toThrow(
       "docs/guide.md: local link SPLIT_AND_UPGRADE.md targets a file missing from npm pack",
     );
-    expect(() => check(root, ["AGENTS.md", "README.md", "package.json", "docs/guide.md", "docs/SPLIT_AND_UPGRADE.md"])).not.toThrow();
+    expect(() => check(root, ["AGENTS.md", "CHANGELOG.md", "README.md", "package.json", "docs/guide.md", "docs/SPLIT_AND_UPGRADE.md"])).not.toThrow();
   });
 
   it("accepts external URLs, anchors and encoded packed paths without requiring their targets in source", () => {
-    const root = fixture("[Website](https://example.invalid/guide)\n[CDN](//example.invalid/guide)\n[Email](mailto:maintainer@example.invalid)\n[Section](#setup)\n[Guide](docs/a%20guide.md?view=full#setup)\n");
+    const root = packedDocFixture("[Website](https://example.invalid/guide)\n[CDN](//example.invalid/guide)\n[Email](mailto:maintainer@example.invalid)\n[Section](#setup)\n[Guide](docs/a%20guide.md?view=full#setup)\n");
     writeFileSync(join(root, "docs", "a guide.md"), "# Guide\n");
-    expect(() => check(root, ["AGENTS.md", "README.md", "package.json", "docs/a guide.md"])).not.toThrow();
+    expect(() => check(root, ["AGENTS.md", "CHANGELOG.md", "README.md", "package.json", "docs/a guide.md"])).not.toThrow();
+  });
+
+  it("accepts a release-pinned source link in the packed README", () => {
+    const repository = "https://github.com/openlup/openlup/blob/";
+    const changelog = "/packages/core/CHANGELOG.md";
+    expect(() => check(fixture(`[Changelog](${repository}openlup-core-v1.4.0${changelog})\n`))).not.toThrow();
+    expect(() => check(fixture(`[Changelog](${repository}main${changelog})\n`))).toThrow("monorepo package path");
+  });
+
+  it("enforces npmjs README guardrails: 48 KiB size cap, no bare relative links, no CHANGELOG-HISTORY.md#100, and no leaked template variables", () => {
+    const valid = "[Docs](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/core/CHANGELOG.md)\n[Section](#install)\nCost: $100, env: `$OPENLUP_CONTEXT_BIN`\n```sh\necho \"$budgetOk\"\n```\n";
+    const okViolations: string[] = [];
+    assertPublishableReadmeContent("README.md", valid, okViolations);
+    expect(okViolations).toEqual([]);
+
+    // Exact 48 KiB boundary passes; 48 KiB + 1 byte refuses
+    const exactViolations: string[] = [];
+    assertPublishableReadmeContent("README.md", "a".repeat(README_MAX_BYTES), exactViolations);
+    expect(exactViolations).toEqual([]);
+    const overViolations: string[] = [];
+    assertPublishableReadmeContent("README.md", "a".repeat(README_MAX_BYTES + 1), overViolations);
+    expect(overViolations).toContain(
+      `README.md: ${README_MAX_BYTES + 1} bytes exceeds the ${README_MAX_BYTES}-byte (48 KiB) npmjs README cap; move deep reference documentation to docs/platform/`,
+    );
+
+    // Bare relative links (inline, reference, HTML) refused
+    const linkViolations: string[] = [];
+    assertPublishableReadmeContent(
+      "README.md",
+      "[Agents](AGENTS.md)\n[Ref][r]\n<a href=\"CHANGELOG.md\">Log</a>\n\n[r]: docs/guide.md\n",
+      linkViolations,
+    );
+    expect(linkViolations).toEqual([
+      "README.md: bare relative link AGENTS.md breaks on npmjs.com; use a tag-pinned GitHub URL or in-page #anchor",
+      "README.md: bare relative link docs/guide.md breaks on npmjs.com; use a tag-pinned GitHub URL or in-page #anchor",
+      "README.md: bare relative link CHANGELOG.md breaks on npmjs.com; use a tag-pinned GitHub URL or in-page #anchor",
+    ]);
+
+    // Stale CHANGELOG-HISTORY.md#100 refused
+    const historyRoot = fixture("[History](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/core/CHANGELOG-HISTORY.md#100)\n");
+    expect(() => check(historyRoot)).toThrow("README.md: stale CHANGELOG-HISTORY.md#100 link");
+
+    // Leaked $budgetReason and camelCase template variables refused
+    expect(() => check(fixture("Budget recorded by `$budgetReason`.\n"))).toThrow("README.md: leaked template variable $budgetReason");
+    expect(() => check(fixture("Version is $releaseVersion.\n"))).toThrow("README.md: leaked template variable ($releaseVersion)");
+
+    // Enforced in assertPackageDocumentation as well (for @openlup/outbox and @openlup/platform)
+    const pkgRoot = fixture("Oversized " + "x".repeat(README_MAX_BYTES));
+    expect(() => assertPackageDocumentation(pkgRoot, "smoke/agentsWiringExample.ts", () => ["AGENTS.md", "README.md", "package.json"])).toThrow(
+      /48 KiB.*npmjs README cap/,
+    );
   });
 
   it("rejects dangling links, unknown commands, and monorepo paths", () => {
@@ -1641,4 +1699,33 @@ it("refusal_codes_page_contains_catalog_publication_tax_class_unavailable_with_f
     syncGeneratedRegions(read(`packages/core/docs/guide/reference/${page}.md`), page, repository, false, violations);
   }
   expect(violations).toEqual([]);
+});
+
+it("ignores links and indexed calls inside fenced code blocks in publishable README checks while still catching prose relative links", () => {
+  const fencedOnly = [
+    "# @openlup/core",
+    "",
+    "```ts",
+    "const out = handlers[kind](event);",
+    "```",
+    "",
+    "```md",
+    "[Guide](docs/guide.md)",
+    "```",
+    "",
+    "```html",
+    "<a href=\"checkout.html\">Pay</a>",
+    "```",
+    "",
+  ].join("\n");
+  const cleanViolations: string[] = [];
+  assertPublishableReadmeContent("README.md", fencedOnly, cleanViolations);
+  expect(cleanViolations).toEqual([]);
+
+  const withProseLink = `${fencedOnly}\nRead [Guide](docs/guide.md) outside fences.\n`;
+  const proseViolations: string[] = [];
+  assertPublishableReadmeContent("README.md", withProseLink, proseViolations);
+  expect(proseViolations).toEqual([
+    "README.md: bare relative link docs/guide.md breaks on npmjs.com; use a tag-pinned GitHub URL or in-page #anchor",
+  ]);
 });

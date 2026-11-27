@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deriveCustomerDocumentDeliveryStatus } from "./customerInvoiceDocumentStatus.js";
+import { deriveCustomerDocumentDeliveryStatus } from "@openlup/platform/account-support";
 
 describe("deriveCustomerDocumentDeliveryStatus", () => {
   it("maps customer-safe invoice and delivery states deterministically", () => {

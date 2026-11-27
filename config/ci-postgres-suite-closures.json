@@ -52,11 +52,25 @@
       "tests/postgres/catalogPublicationFixture.ts",
       "tests/postgres/customerAccountMutations.fixture.ts"
     ],
+    "tests/postgres/catalogAdmissionOwnerWrite.test.ts": [
+      "@starter",
+      "tests/postgres/catalogAdmissionOwnerWrite.fixture.ts",
+      "tests/postgres/catalogPublicationFixture.ts",
+      "tests/postgres/subscriptionLifecycleClosureFixture.ts",
+      "tests/postgres/subscriptionNativeFixture.ts"
+    ],
     "tests/postgres/catalogAdmissionPrelock.test.ts": [
       "@starter",
       "tests/postgres/catalogPublicationFixture.ts",
       "tests/postgres/destinationDocumentFixture.ts",
       "tests/postgres/destinationReceiptFixture.ts",
+      "tests/postgres/subscriptionLifecycleClosureFixture.ts",
+      "tests/postgres/subscriptionNativeFixture.ts"
+    ],
+    "tests/postgres/catalogAdmissionRuntimeCommit.test.ts": [
+      "@starter",
+      "tests/postgres/catalogAdmissionOwnerWrite.fixture.ts",
+      "tests/postgres/catalogPublicationFixture.ts",
       "tests/postgres/subscriptionLifecycleClosureFixture.ts",
       "tests/postgres/subscriptionNativeFixture.ts"
     ],
@@ -131,6 +145,7 @@
     ],
     "tests/postgres/catalogStorefrontPage.test.ts": [
       "@starter",
+      "packages/core/docs/guide/how-to/build/customize-the-starter.md",
       "tests/postgres/catalogPublicationFixture.ts"
     ],
     "tests/postgres/catalogSubscriptionProfiles.test.ts": [
@@ -236,7 +251,9 @@
       "@src",
       "tests/postgres/reviewedBatchCatalog.ts"
     ],
-    "tests/postgres/commerceMoneyLimitsV2.test.ts": [],
+    "tests/postgres/commerceMoneyLimitsV2.test.ts": [
+      "packages/core/docs/guide/how-to/build/quote-prices.md"
+    ],
     "tests/postgres/commerceMoneyLimitsV2Pgtap.test.ts": [
       "@managedCompat",
       "tests/postgres/customerAccountMutations.fixture.ts",
@@ -250,6 +267,7 @@
     ],
     "tests/postgres/commerceQuoteV2.test.ts": [
       "@src",
+      "packages/core/docs/guide/how-to/build/quote-prices.md",
       "tests/postgres/commerceQuoteV2StorageFixture.ts",
       "tests/postgres/destinationDocumentFixture.ts",
       "tests/postgres/destinationReceiptFixture.ts"
@@ -313,20 +331,43 @@
     "tests/postgres/connectedStoreStarterRelations.test.ts": [],
     "tests/postgres/connectedStoreTransfer.test.ts": [
       "@src",
+      "tests/postgres/commerceQuoteV2StorageFixture.ts",
       "tests/postgres/connectedStoreTransfer.fixture.ts",
-      "tests/postgres/m19NoticeFixture.ts"
+      "tests/postgres/customerAccountMutations.fixture.ts",
+      "tests/postgres/destinationDocumentFixture.ts",
+      "tests/postgres/destinationReceiptFixture.ts",
+      "tests/postgres/m19NoticeFixture.ts",
+      "tests/postgres/orderDraftReceiptsV2.fixture.ts",
+      "tests/postgres/orderMoneyV2Guards.fixture.ts",
+      "tests/postgres/orderMoneyV2Storage.fixture.ts"
     ],
     "tests/postgres/connectedStoreTransferRetained.test.ts": [
       "@src",
+      "tests/postgres/commerceQuoteV2StorageFixture.ts",
       "tests/postgres/connectedStoreTransfer.fixture.ts",
-      "tests/postgres/m19NoticeFixture.ts"
+      "tests/postgres/customerAccountMutations.fixture.ts",
+      "tests/postgres/destinationDocumentFixture.ts",
+      "tests/postgres/destinationReceiptFixture.ts",
+      "tests/postgres/m19NoticeFixture.ts",
+      "tests/postgres/orderDraftReceiptsV2.fixture.ts",
+      "tests/postgres/orderMoneyV2Guards.fixture.ts",
+      "tests/postgres/orderMoneyV2Storage.fixture.ts"
     ],
     "tests/postgres/connectedStoreTransferScenarios.test.ts": [
       "@src",
+      "tests/helpers/issuedPlatformCatalog.ts",
+      "tests/helpers/storeJourney.ts",
+      "tests/postgres/commerceQuoteV2StorageFixture.ts",
       "tests/postgres/connectedStoreTransfer.fixture.ts",
+      "tests/postgres/customerAccountMutations.fixture.ts",
       "tests/postgres/destinationDocumentFixture.ts",
       "tests/postgres/destinationReceiptFixture.ts",
-      "tests/postgres/m19NoticeFixture.ts"
+      "tests/postgres/m19NoticeFixture.ts",
+      "tests/postgres/orderDraftReceiptsV2.fixture.ts",
+      "tests/postgres/orderMoneyV2Guards.fixture.ts",
+      "tests/postgres/orderMoneyV2Storage.fixture.ts",
+      "tests/postgres/renewalOrderDestinationV2.fixture.ts",
+      "tests/postgres/subscriptionNativeFixture.ts"
     ],
     "tests/postgres/contactClientRegistrar.test.ts": [
       "@src"
@@ -760,8 +801,54 @@
       "tests/postgres/subscriptionLifecycleClosureFixture.ts",
       "tests/postgres/subscriptionNativeFixture.ts"
     ],
-    "tests/postgres/orderMoneyV2Storage.test.ts": [
+    "tests/postgres/orderDraftPaymentEntryFence.test.ts": [
+      "@src",
+      "tests/postgres/commerceQuoteV2StorageFixture.ts",
       "tests/postgres/customerAccountMutations.fixture.ts",
+      "tests/postgres/destinationDocumentFixture.ts",
+      "tests/postgres/destinationReceiptFixture.ts",
+      "tests/postgres/orderDraftReceiptsV2.fixture.ts",
+      "tests/postgres/orderMoneyV2Guards.fixture.ts",
+      "tests/postgres/orderMoneyV2Storage.fixture.ts"
+    ],
+    "tests/postgres/orderDraftReceiptPrivacy.test.ts": [
+      "@src",
+      "tests/postgres/commerceQuoteV2StorageFixture.ts",
+      "tests/postgres/customerAccountMutations.fixture.ts",
+      "tests/postgres/destinationDocumentFixture.ts",
+      "tests/postgres/destinationReceiptFixture.ts",
+      "tests/postgres/orderDraftReceiptsV2.fixture.ts",
+      "tests/postgres/orderMoneyV2Guards.fixture.ts",
+      "tests/postgres/orderMoneyV2Storage.fixture.ts"
+    ],
+    "tests/postgres/orderDraftReceiptsV2.test.ts": [
+      "@src",
+      "tests/postgres/commerceQuoteV2StorageFixture.ts",
+      "tests/postgres/customerAccountMutations.fixture.ts",
+      "tests/postgres/destinationDocumentFixture.ts",
+      "tests/postgres/destinationReceiptFixture.ts",
+      "tests/postgres/orderDraftReceiptsV2.fixture.ts",
+      "tests/postgres/orderMoneyV2Guards.fixture.ts",
+      "tests/postgres/orderMoneyV2Storage.fixture.ts"
+    ],
+    "tests/postgres/orderDraftReceiptsV2Pgtap.test.ts": [
+      "@managedCompat",
+      "@src",
+      "tests/postgres/commerceQuoteV2StorageFixture.ts",
+      "tests/postgres/customerAccountMutations.fixture.ts",
+      "tests/postgres/destinationDocumentFixture.ts",
+      "tests/postgres/destinationReceiptFixture.ts",
+      "tests/postgres/fixtures/orderDraftReceiptsV2/replayed.sql",
+      "tests/postgres/orderDraftReceiptsV2.fixture.ts",
+      "tests/postgres/orderMoneyV2Guards.fixture.ts",
+      "tests/postgres/orderMoneyV2Storage.fixture.ts"
+    ],
+    "tests/postgres/orderMoneyV2Storage.test.ts": [
+      "tests/postgres/commerceQuoteV2StorageFixture.ts",
+      "tests/postgres/customerAccountMutations.fixture.ts",
+      "tests/postgres/destinationDocumentFixture.ts",
+      "tests/postgres/destinationReceiptFixture.ts",
+      "tests/postgres/orderMoneyV2Guards.fixture.ts",
       "tests/postgres/orderMoneyV2Storage.fixture.ts"
     ],
     "tests/postgres/orderMoneyV2StoragePgtap.test.ts": [
@@ -847,13 +934,25 @@
     "tests/postgres/privacyErasureReplay.test.ts": [
       "@managedCompat",
       "@src",
+      "tests/postgres/commerceQuoteV2StorageFixture.ts",
       "tests/postgres/customerAccountMutations.fixture.ts",
-      "tests/postgres/fixtures/privacyErasureReconciliations.sql"
+      "tests/postgres/destinationDocumentFixture.ts",
+      "tests/postgres/destinationReceiptFixture.ts",
+      "tests/postgres/fixtures/privacyErasureReconciliations.sql",
+      "tests/postgres/orderDraftReceiptsV2.fixture.ts",
+      "tests/postgres/orderMoneyV2Guards.fixture.ts",
+      "tests/postgres/orderMoneyV2Storage.fixture.ts"
     ],
     "tests/postgres/privacyReplayFence.test.ts": [
       "@managedCompat",
       "@src",
-      "tests/postgres/customerAccountMutations.fixture.ts"
+      "tests/postgres/commerceQuoteV2StorageFixture.ts",
+      "tests/postgres/customerAccountMutations.fixture.ts",
+      "tests/postgres/destinationDocumentFixture.ts",
+      "tests/postgres/destinationReceiptFixture.ts",
+      "tests/postgres/orderDraftReceiptsV2.fixture.ts",
+      "tests/postgres/orderMoneyV2Guards.fixture.ts",
+      "tests/postgres/orderMoneyV2Storage.fixture.ts"
     ],
     "tests/postgres/privacyRequiredContributors.test.ts": [
       "@managedCompat",
@@ -871,8 +970,14 @@
       "config/public-reference-subscription-imports.json",
       "config/public-reference-subscription-supabase.toml",
       "config/site-routes.json",
+      "tests/postgres/commerceQuoteV2StorageFixture.ts",
       "tests/postgres/customerAccountMutations.fixture.ts",
-      "tests/postgres/fixtures/privacyReplayRecorded.json"
+      "tests/postgres/destinationDocumentFixture.ts",
+      "tests/postgres/destinationReceiptFixture.ts",
+      "tests/postgres/fixtures/privacyReplayRecorded.json",
+      "tests/postgres/orderDraftReceiptsV2.fixture.ts",
+      "tests/postgres/orderMoneyV2Guards.fixture.ts",
+      "tests/postgres/orderMoneyV2Storage.fixture.ts"
     ],
     "tests/postgres/promotionsNative.test.ts": [],
     "tests/postgres/purchaseReservationDonor.test.ts": [
@@ -884,6 +989,15 @@
     "tests/postgres/qualifiedRuntimeLockCompletion.test.ts": [
       "tests/postgres/destinationDocumentFixture.ts",
       "tests/postgres/destinationReceiptFixture.ts",
+      "tests/postgres/subscriptionNativeFixture.ts"
+    ],
+    "tests/postgres/renewalOrderDestinationV2.test.ts": [
+      "@src",
+      "tests/postgres/customerAccountMutations.fixture.ts",
+      "tests/postgres/destinationDocumentFixture.ts",
+      "tests/postgres/destinationReceiptFixture.ts",
+      "tests/postgres/orderMoneyV2Storage.fixture.ts",
+      "tests/postgres/renewalOrderDestinationV2.fixture.ts",
       "tests/postgres/subscriptionNativeFixture.ts"
     ],
     "tests/postgres/retainedClientSubscriptionImport.test.ts": [],

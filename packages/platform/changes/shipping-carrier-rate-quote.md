@@ -1,1 +1,0 @@
-Added the provider-neutral `CarrierRateQuotePort` contract and helpers to `@openlup/platform/shipping` and `@openlup/platform/shipping/contracts` (type-only), along with the offline `@openlup/platform/shipping/testing` conformance runner (`runShippingRateAdapterConformance`) and authenticated scripted transport fake (`createScriptedShippingRateFake`).

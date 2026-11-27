@@ -3,7 +3,7 @@
 Status: historical evidence, archived on 2026-11-17.
 The following block is preserved from the package README, with relative links
 rebased. Its release-specific claims and checkpoints are not current composition
-instructions. Use the [current package guidance](../../../packages/platform/README.md#upgrade-guidance)
+instructions. Use the [current package guidance](../PLATFORM_PACKAGE_REFERENCE.md#upgrade-guidance)
 and the selected release's [changelog](../../../packages/platform/CHANGELOG.md).
 
 ## Release notes
@@ -15,7 +15,7 @@ SQL wrappers persist it for eligible obligations. `InvoiceSellerRevision` is als
 available from the type-only contracts entry. Legacy obligations keep fallback.
 
 For the prepared `0.43.0` set, read the [adjacent-release migration and known
-limitations](../../../packages/platform/CHANGELOG.md#0430) before selecting optional services. This set
+limitations](../../../packages/platform/CHANGELOG-HISTORY.md#0430) before selecting optional services. This set
 adds neutral fulfillment capabilities, native dispatch, intake, reconciliation,
 replacement arrival/alignment, delivery-contact correction and an offline
 adapter testing entry. Native payment provider profiles preserve the existing

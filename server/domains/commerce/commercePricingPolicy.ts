@@ -13,7 +13,7 @@ import {
   offerPolicyV2RolloutBps,
   pricingPolicyTokenSecret,
 } from "../../_lib/config/featureFlags.js";
-import { resolvePricingPolicy } from "./pricingPolicyToken.js";
+import { resolvePricingPolicy } from "@openlup/platform/pricing";
 import {
   readOfferPolicyV2Readiness,
   type OfferPolicyReadinessPort,

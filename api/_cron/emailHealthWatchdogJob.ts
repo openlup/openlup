@@ -6,7 +6,7 @@ import {
 } from "../../server/adapters/supabase/dataGatewayClientFactory.js";
 import { readEmailHealthMetrics } from "../../server/adapters/supabase/adminEmailSendsDeliveryEvidence.js";
 import { readMandatoryNotificationControlReadiness } from "../../server/adapters/supabase/notificationControlsPort.js";
-import type { EmailHealthMetrics } from "../../server/domains/communications/emailHealthMetricsPort.js";
+import type { EmailHealthMetrics } from "@openlup/platform/communications";
 import type { MandatoryNotificationControlReadiness } from "../../server/domains/communications/emailNotificationControlReadiness.js";
 import { activeCustomerEmailFlowFlags } from "../../server/domains/communications/customerEmailFlowReadiness.js";
 import { readAccountingRuntimeConfig } from "../../server/domains/accounting/accountingRuntimeConfig.js";
@@ -22,7 +22,7 @@ type Env = Record<string, string | undefined>;
 type GatewayFactory = (env: SupabaseDataGatewayEnv) => DataGatewayPort;
 
 // Assessment layer (thresholds + verdict) lives in
-// server/domains/communications/emailHealthAssessment.ts; re-exported here so
+// @openlup/platform/communications; re-exported here so
 // existing importers keep their entry point.
 export {
   evaluateEmailHealth,
@@ -30,12 +30,12 @@ export {
   type EmailHealthAssessment,
   type EmailHealthBreach,
   type EmailHealthThresholds,
-} from "../../server/domains/communications/emailHealthAssessment.js";
+} from "@openlup/platform/communications";
 import {
   evaluateEmailHealth,
   readEmailHealthThresholds,
   type EmailHealthBreach,
-} from "../../server/domains/communications/emailHealthAssessment.js";
+} from "@openlup/platform/communications";
 
 export type { EmailHealthMetrics };
 

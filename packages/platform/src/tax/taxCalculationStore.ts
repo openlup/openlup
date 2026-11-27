@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { canonicalCatalogDraftJson, CATALOG_DRAFT_MAX_BYTES } from "../catalog/contracts/index.js";
-import { verifyTaxQuoteRequest, verifyTaxQuoteResult } from "./digest.js";
+import { checkedQuoteResult, verifyTaxQuoteRequest } from "./digest.js";
 import type { TaxQuoteRequestV1, TaxQuoteResultV1, TaxRefusal } from "./contracts/types.js";
 import { currency, digest, exclusiveComposition, fiscalComposition, fiscalSuccessEvidence, instant, uuid,
   type CheckoutComposition, type FiscalCheckoutComposition, type FiscalSuccessEvidence } from "./taxCalculationComposition.js";
@@ -131,10 +131,14 @@ const definitiveRemedy = "Request a new quote when the tax service is available.
 const historyRemedy = "Recover the verified original history through its owner.";
 const invalidClaimComposition = new Error("Invalid stored quote composition");
 const refusal = (code: string, field: string, remedy = remedies[code]!): Refusal => ({ kind: "refused", code, field, remedy });
+const moneyField = "/seal/adapterMoneyResult";
+const invalidMoney = () => refusal("tax_invalid_input", moneyField, "Supply the original verified adapter money through the native tax completion adapter.");
+const assessmentToken = /^[!-?A-~]{1,128}$/u;
 function fromDatabase(error: unknown): Refusal | undefined {
   if (!(error instanceof Error) || !("code" in error) || !["22023", "55000"].includes(String(error.code))
     || !Object.hasOwn(remedies, error.message) || !("detail" in error) || typeof error.detail !== "string") return;
   if (error.message === "tax_reference_conflict" && error.detail === "/coverage") return refusal(error.message, error.detail, historyRemedy);
+  if (error.code === "22023" && error.message === "tax_invalid_input" && error.detail === moneyField) return invalidMoney();
   if (error.message === "tax_invalid_input" && error.detail === "/pin/destination/policyRevision")
     return refusal(error.message, error.detail, "Obtain a supported revision from the destination owner.");
   if (error.message === "tax_invalid_input" && "hint" in error && error.hint === "tax_coverage_declaration_invalid")
@@ -159,15 +163,23 @@ function prepare<T extends z.ZodType>(schema: T, input: unknown): z.output<T> | 
   } catch { return refusal("tax_invalid_input", "/"); }
 }
 
-async function execute(lane: TaxCalculationTransactionLane, input: EvaluationScope & { operation: "lookup" | "claim" | "complete" }): Promise<BeginTaxCalculationResult> {
+async function execute(lane: TaxCalculationTransactionLane, input: EvaluationScope & { operation: "lookup" | "claim" | "complete" },
+  adapterMoneyText?: string): Promise<BeginTaxCalculationResult> {
   const statement = `SELECT public.tax_calculation_${input.operation === "complete" ? "complete" : "begin"}_v1($1::jsonb) AS result`;
   let wire: string;
   try { wire = canonicalCatalogDraftJson(input); }
   catch { return refusal("tax_invalid_input", "/"); }
+  if (adapterMoneyText !== undefined) {
+    // The canonical completion command ends in its seal object.
+    wire = wire.slice(0, -2) + ',"adapterMoneyResult":' + adapterMoneyText + "}}";
+    if (Buffer.byteLength(wire) > 2 * CATALOG_DRAFT_MAX_BYTES + 22) return invalidMoney();
+  }
   let awaitingCommit = false;
   try {
     const { reply: result, sampledAtMs, sentAt } = await lane.run(async db => {
       await db.query("SET TRANSACTION ISOLATION LEVEL READ COMMITTED");
+      // Completion and the row trigger both validate adapter money. JIT compilation dominates these bounded queries.
+      if (adapterMoneyText !== undefined) await db.query("SET LOCAL jit = off");
       const sentAt = performance.now();
       const { sampledAtMs, ...reply } = ((await db.query(statement, [wire])).rows[0]?.result ?? {}) as BeginTaxCalculationResult & { sampledAtMs?: number };
       if (!reply?.kind) throw new Error("Missing evaluation result");
@@ -236,18 +248,26 @@ export async function completeTaxCalculation(lane: TaxCalculationTransactionLane
   const success = "quote" in seal.outcome;
   if (compositionDigest !== undefined && !success) return refusal("tax_invalid_input", "/seal");
   let evidence = seal.evidence, disposition: string = seal.outcome.kind;
+  let adapterMoneyText: string | undefined;
   try {
     if (success) {
       if (seal.outcome.kind !== invocation.purpose) return refusal("tax_reference_conflict", "/taxEvidence");
       if (seal.kind === "tax_calculation") {
-        const request = adapter?.request as TaxQuoteRequestV1, result = adapter?.result as TaxQuoteResultV1;
-        if (result?.kind !== seal.outcome.kind || evaluationDigest("evaluation-request", request) !== seal.requestDigest) return refusal("tax_reference_conflict", "/taxEvidence");
-        const invalid = verifyTaxQuoteResult(request, result);
-        if (invalid) return invalid;
+        const request = adapter?.request as TaxQuoteRequestV1, reply = adapter?.result as TaxQuoteResultV1;
+        if (reply?.kind !== seal.outcome.kind || evaluationDigest("evaluation-request", request) !== seal.requestDigest) return refusal("tax_reference_conflict", "/taxEvidence");
+        // The native port reconstructs this request from the original stored claim before dispatch.
+        // The verifier binds request-derived references to its plan and required cells.
+        const checked = checkedQuoteResult(request, reply);
+        if ("kind" in checked) return checked;
+        const { result } = checked;
+        if (!result) return invalidMoney();
         evidence = { adapterEvidence: result.evidence, adapterDigest: result.evidenceDigest,
           ...(compositionDigest !== undefined ? { compositionDigest } : {}) };
         disposition = result.evidence.coverage.vector.every(row => row.decision === "out_of_scope") ? "skip" : "required";
         if (seal.validUntil > result.evidence.expiresAt) return refusal("tax_reference_conflict", "/taxEvidence/expiresAt");
+        if (result.evidence.positions.tax.some(row => !assessmentToken.test(row.positionRef))) return invalidMoney();
+        try { adapterMoneyText = canonicalCatalogDraftJson(result.money); }
+        catch { return invalidMoney(); }
       } else {
         disposition = "no_provider_posting";
         if (compositionDigest !== undefined) {
@@ -263,7 +283,7 @@ export async function completeTaxCalculation(lane: TaxCalculationTransactionLane
       remedy: definitiveRemedy } : seal.outcome;
     const { adapter: _adapter, ...rest } = parsed;
     const wire = { ...rest, operation: "complete" as const, seal: { ...seal, outcome, evidence, disposition } };
-    return await execute(lane, wire) as CompleteTaxCalculationResult;
+    return await execute(lane, wire, adapterMoneyText) as CompleteTaxCalculationResult;
   } catch (error) {
     if (error instanceof Error && error.message === "commerce_quote_v2_unavailable") throw error;
     return refusal("tax_invalid_input", "/seal");

@@ -1,2 +1,0 @@
-- Add the experimental `createPostgresCatalogPublicationReads` factory on `./catalog` for current heads, exact version 2 pages, authorized receipt recovery and history.
-- Qualified-v2 installations gain a dedicated restricted catalogue publication login. Native publication failures can report the rejected price-list ID as `subject`.
