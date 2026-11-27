@@ -46,6 +46,17 @@ BEGIN
   END IF;
 
   IF v_order.money_version IS NOT NULL THEN
+    IF v_order.status = 'pending_payment'
+      AND (v_order.total_amount_minor, v_order.currency_code) IS NOT DISTINCT FROM (p_amount_minor, p_currency_code)
+      AND p_requested_at IS NOT NULL
+      AND EXISTS (SELECT FROM public.commerce_settlement_intents WHERE open_idempotency_key = p_idempotency_key)
+    THEN
+      RAISE unique_violation USING
+        MESSAGE = 'duplicate key value violates unique constraint "commerce_settlement_intents_open_idempotency_key_key"',
+        DETAIL = format('Key (open_idempotency_key)=(%s) already exists.', p_idempotency_key),
+        SCHEMA = 'public', TABLE = 'commerce_settlement_intents',
+        CONSTRAINT = 'commerce_settlement_intents_open_idempotency_key_key';
+    END IF;
     RAISE EXCEPTION 'fiscal_confirmation_unenforceable' USING ERRCODE = '22023',
       DETAIL = '/paymentLimits/channelKey',
       HINT = 'Prepare payment for this order through the versioned-money payment preparation. Legacy settlement opening and provider intent creation do not apply to orders with versioned money.';
@@ -109,6 +120,16 @@ BEGIN
   RAISE EXCEPTION 'payment_control_intent_idempotency_conflict' USING ERRCODE='23505'; END IF;
  IF o.id IS NULL THEN RAISE EXCEPTION 'payment_control_intent_order_not_found' USING ERRCODE='22023'; END IF;
  IF o.money_version IS NOT NULL THEN
+   IF o.status = 'pending_payment' AND (o.total_amount_minor, o.currency_code) IS NOT DISTINCT FROM (p_amount_minor, p_currency)
+     AND ((p_target_kind = 'one_time_order' AND o.subscription_cycle_id IS NULL)
+       OR (p_target_kind = 'subscription_cycle' AND o.subscription_cycle_id = p_subscription_cycle_id
+         AND linked_subscription = p_subscription_id))
+     AND char_length(btrim(p_idempotency_key)) >= 8 AND char_length(p_channel_key) <= 64
+     AND NOT EXISTS (SELECT FROM public.commerce_settlement_intents WHERE order_id = p_order_id)
+     AND EXISTS (SELECT FROM public.commerce_settlement_intents WHERE open_idempotency_key = p_idempotency_key)
+   THEN
+     PERFORM public.commerce_open_settlement_intent(p_idempotency_key,p_order_id,p_channel_key,p_amount_minor,p_currency,p_metadata,p_at);
+   END IF;
    RAISE EXCEPTION 'fiscal_confirmation_unenforceable' USING ERRCODE = '22023',
      DETAIL = '/paymentLimits/channelKey',
      HINT = 'Prepare payment for this order through the versioned-money payment preparation. Legacy settlement opening and provider intent creation do not apply to orders with versioned money.';

@@ -151,6 +151,19 @@ it("mounts safely before the declaration, then requires verified reconciliation 
     expect(await readRequiredPrivacyContributorIds(prior.runtime)).toContain(contributorId);
     for (const unit of [first, second]) expect(sha256(readFileSync(unit.file, "utf8"))).toBe(unit.sha256);
     await insertReceipt(prior.owner, input, id);
+    expect((await prior.owner.query("SELECT principal_id FROM public.clients WHERE id=$1", [quote.clientId])).rows)
+      .toStrictEqual([{ principal_id: null }]);
+    expect(await mounted.store.resolve(prior.runtime, subject, actor)).toMatchObject({
+      contactId: quote.clientId, principalId: input.owner.principalRef,
+    });
+    const partial = (await mounted.operations.export(actor, subject)).documents.find(item => item.contributorId === contributorId);
+    expect(partial?.data).toStrictEqual({ receiptChunks: [[{
+      orderId: id, installationRef: input.owner.installationRef, principalKind: input.owner.principalKind,
+      createdAt: (await rawReceipt(prior.owner, keyOf(input))).created_at, customerOrSessionRef: quote.clientId,
+    }]] });
+    expect(partial?.coverage).toMatchObject({ complete: false,
+      unavailable: expect.arrayContaining(["Receipt principal reference unavailable"]) });
+    expect(partial?.coverage.unavailable).not.toContain("Receipt ownership unverified");
     expectPrivacyError(await rejected(mounted.operations.erase(actor, erase)), incompleteCode, true);
     const withoutOwner = createPrivacyOperations({ store: mounted.store, unitOfWork: mounted.unitOfWork,
       registry: createPersonalDataContributorRegistry(mounted.registry.contributors.filter(item => item.id !== contributorId),
@@ -231,7 +244,7 @@ it("withholds opposing aliases and verifies both one-coordinate export paths", a
   // Temporarily disabled receipt ownership verification in a disposable database.
   await transaction(store.owner, async db => {
     await replaceRoutineText(db, "public.commerce_order_draft_receipt_privacy_matches_v2(uuid,uuid,uuid)",
-      "v.agrees AND (p_principal IS NULL OR v.paired),", "true,");
+      "v.agrees AND (p_contact IS NOT NULL OR v.paired),", "true,");
     const unsafe = await exportRows(db, a.input.owner.customerOrSessionRef, a.input.owner.principalRef);
     expect(JSON.stringify(unsafe.data)).toContain(bId);
   }, "ROLLBACK");

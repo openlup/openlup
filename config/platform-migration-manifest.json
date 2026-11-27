@@ -935,7 +935,7 @@
     },
     {
       "file": "db/platform/migrations/20261129130512_order_money_v2_child_guards.sql",
-      "sha256": "50f6c909d9ee28823aeeb3638bb56c696e9865fb3395a62fa22ff9a19ab24f43"
+      "sha256": "4c18626d27ed21d6e37acee1071752aedaabc9ba04e6191734436ad0663a2efd"
     },
     {
       "file": "db/platform/migrations/20261129130513_order_draft_receipts_v2.sql",
@@ -943,14 +943,14 @@
     },
     {
       "file": "db/platform/migrations/20261129130514_order_draft_receipt_privacy_v2.sql",
-      "sha256": "733cb7f18218029b173e0b2bf700a7f871e28482f2912d5a8db558e7e6277ce7"
+      "sha256": "f78b935ecd7c3114c96736eca4c7fce7c59dbd15b75577d6cf210595d4707a76"
     },
     {
       "file": "db/platform/migrations/20261129130515_order_draft_payment_entry_fence.sql",
-      "sha256": "1f11757213628148547e2d2b500f0e85feced698252e4afdf7dba030b245a174"
+      "sha256": "f93a5dfb6910bb06fd53f11b45403e678eebe74aa28e15ee63d6763b0605c1a0"
     }
   ],
-  "objectInventorySha256": "61df8e20115cdb07e877b35f2a756ee68906afc18de10ee120b4aa5dc34bd1b3",
+  "objectInventorySha256": "6e93c488a9695fe88eaaaa7941c6a90a861cced3239adda4038e2bc7c6856ea5",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1911,7 +1911,7 @@
       },
       {
         "file": "db/platform/migrations/20261129130512_order_money_v2_child_guards.sql",
-        "sha256": "50f6c909d9ee28823aeeb3638bb56c696e9865fb3395a62fa22ff9a19ab24f43"
+        "sha256": "4c18626d27ed21d6e37acee1071752aedaabc9ba04e6191734436ad0663a2efd"
       },
       {
         "file": "db/platform/migrations/20261129130513_order_draft_receipts_v2.sql",
@@ -1919,19 +1919,19 @@
       },
       {
         "file": "db/platform/migrations/20261129130514_order_draft_receipt_privacy_v2.sql",
-        "sha256": "733cb7f18218029b173e0b2bf700a7f871e28482f2912d5a8db558e7e6277ce7"
+        "sha256": "f78b935ecd7c3114c96736eca4c7fce7c59dbd15b75577d6cf210595d4707a76"
       },
       {
         "file": "db/platform/migrations/20261129130515_order_draft_payment_entry_fence.sql",
-        "sha256": "1f11757213628148547e2d2b500f0e85feced698252e4afdf7dba030b245a174"
+        "sha256": "f93a5dfb6910bb06fd53f11b45403e678eebe74aa28e15ee63d6763b0605c1a0"
       }
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "395a5e742405222e566e5237de231e3fcb6a23b3524fd2e057577b974fc196d3"
+        "withRestore": "97cf5c30659e54527caca9703f4445b449133ca9112c463d2809bac740706f9c"
       },
       "separateMigrator": {
-        "withRestore": "5bf147b6da13a503c9cdbff763733449c8c12bd736b5def1d20a81162785a2d5"
+        "withRestore": "30de9c52a31b485083ea7f53ea7e38428049fcd9a56844aa486a80af3d19ceec"
       }
     }
   },
@@ -2887,7 +2887,7 @@
       },
       {
         "file": "db/platform/migrations/20261129130512_order_money_v2_child_guards.sql",
-        "sha256": "50f6c909d9ee28823aeeb3638bb56c696e9865fb3395a62fa22ff9a19ab24f43"
+        "sha256": "4c18626d27ed21d6e37acee1071752aedaabc9ba04e6191734436ad0663a2efd"
       },
       {
         "file": "db/platform/migrations/20261129130513_order_draft_receipts_v2.sql",
@@ -2895,16 +2895,16 @@
       },
       {
         "file": "db/platform/migrations/20261129130514_order_draft_receipt_privacy_v2.sql",
-        "sha256": "733cb7f18218029b173e0b2bf700a7f871e28482f2912d5a8db558e7e6277ce7"
+        "sha256": "f78b935ecd7c3114c96736eca4c7fce7c59dbd15b75577d6cf210595d4707a76"
       },
       {
         "file": "db/platform/migrations/20261129130515_order_draft_payment_entry_fence.sql",
-        "sha256": "1f11757213628148547e2d2b500f0e85feced698252e4afdf7dba030b245a174"
+        "sha256": "f93a5dfb6910bb06fd53f11b45403e678eebe74aa28e15ee63d6763b0605c1a0"
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "2eb29b7bb60f93f20f2c266aef35157fae17e291c56d58d2136453fae97e4554",
-      "operatorProvisioned": "ba97e53bb14a944ff9616f77668f010965aeeaf69573e4bb376c184d703ead65"
+      "installerManaged": "b0d885d842ed9d4c17fd4898fa983d49fcb207bd96f569e1229d176dcb26f9ea",
+      "operatorProvisioned": "84c69f4f26e1255b8a1ed0b4bc082321383be09f45167315d78c4d77cc189404"
     }
   }
 }

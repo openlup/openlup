@@ -173,7 +173,7 @@ it("legacy_and_unpaid_read_null", async () => {
     await insert(store.owner, truthTable, { settlement_intent_id: f.intent, source_event_id: randomUUID(),
       event_fingerprint: "a".repeat(64), ingest_idempotency_key: randomUUID(), outcome: review ? "captured" : "indeterminate",
       amount_minor: f.amount, currency_code: currency, source_evidence: {}, occurred_at: at, review_required_at: review ? at : null });
-    expect(await read(store.runtime, id)).toBeNull();
+    expect(await read(store.runtime, f.id)).toBeNull();
   }
 });
 

@@ -40,6 +40,28 @@ BEGIN
 END;
 $$;
 
+-- The landed assertion can validate the retained shape after erasure, when the
+-- original digest can no longer be reconstructed. Only restore inserts those rows.
+CREATE FUNCTION public.commerce_order_money_v2_erased_insert_refused(p_order_id uuid)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+  SELECT pg_trigger_depth() > 0 AND EXISTS (
+    SELECT FROM public.commerce_order_tax_snapshots s
+    JOIN public.commerce_orders o ON o.id = s.order_id
+    WHERE s.order_id = p_order_id AND s.destination_erased
+      AND (coalesce(nullif(current_setting('role', true), 'none'), session_user::text) <> 'authenticated'
+        OR EXISTS (SELECT FROM public.clients c WHERE c.id = o.client_id AND c.principal_id = auth.uid()))
+  ) AND NOT (
+    -- Use the restore authority and locks required by the landed assertion.
+    pg_has_role(session_user, (SELECT relowner FROM pg_class WHERE oid = 'public.commerce_orders'::regclass), 'USAGE')
+    AND (SELECT count(DISTINCT relation) FROM pg_locks WHERE pid = pg_backend_pid() AND granted
+      AND mode = 'ShareRowExclusiveLock' AND relation IN (
+        'public.identity_privacy_erasures'::regclass,
+        'public.commerce_order_tax_snapshots'::regclass, 'public.commerce_order_line_sources'::regclass,
+        'public.commerce_order_delivery_buckets'::regclass, 'public.commerce_order_line_allocations'::regclass,
+        'public.commerce_order_tax_positions'::regclass, 'public.commerce_order_fee_lines'::regclass)) = 7
+  );
+$$;
+
 CREATE FUNCTION public.commerce_order_money_v2_child_guard() RETURNS trigger
 LANGUAGE plpgsql VOLATILE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
@@ -50,6 +72,7 @@ DECLARE
     WHEN 'commerce_order_line_allocations' THEN '/discountAllocations'
     WHEN 'commerce_order_tax_positions' THEN '/taxEvidence'
     WHEN 'commerce_order_fee_lines' THEN '/feeLines'
+    WHEN 'commerce_order_adjustments' THEN '/discountAllocations'
   END;
   owner_path boolean := pg_has_role(current_user, (SELECT relowner FROM pg_class WHERE oid = TG_RELID), 'USAGE');
   is_delivery_bucket boolean := TG_TABLE_NAME = 'commerce_order_delivery_buckets';
@@ -57,7 +80,7 @@ DECLARE
   after_row jsonb;
   copies text[];
 BEGIN
-  IF TG_OP = 'DELETE' THEN
+  IF TG_OP = 'DELETE' OR (TG_OP = 'INSERT' AND public.commerce_order_money_v2_erased_insert_refused(NEW.order_id)) THEN
     RAISE EXCEPTION 'commerce_order_money_v2_mismatch' USING ERRCODE = '23514', COLUMN = field,
       HINT = 'Keep the accepted facts and use the owning order lifecycle operation.';
   END IF;
@@ -96,8 +119,12 @@ $$;
 
 REVOKE ALL ON FUNCTION public.commerce_order_money_v2_consume_redaction_mark(uuid,text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.commerce_order_money_v2_child_guard() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.commerce_order_money_v2_erased_insert_refused(uuid) FROM PUBLIC;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+  EXECUTE 'GRANT EXECUTE ON FUNCTION public.commerce_order_money_v2_erased_insert_refused(uuid) TO authenticated';
+END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_order_money_v2_consume_redaction_mark(uuid,text) FROM anon';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_order_money_v2_consume_redaction_mark(uuid,text), public.commerce_order_money_v2_erased_insert_refused(uuid) FROM anon';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
   EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_order_money_v2_consume_redaction_mark(uuid,text) FROM authenticated';
@@ -106,7 +133,7 @@ DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') TH
   EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_order_money_v2_consume_redaction_mark(uuid,text) FROM service_role';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
-  EXECUTE 'GRANT EXECUTE ON FUNCTION public.commerce_order_money_v2_consume_redaction_mark(uuid,text) TO service_role';
+  EXECUTE 'GRANT EXECUTE ON FUNCTION public.commerce_order_money_v2_consume_redaction_mark(uuid,text), public.commerce_order_money_v2_erased_insert_refused(uuid) TO service_role';
 END IF; END; $$;
 
 CREATE CONSTRAINT TRIGGER trg_commerce_order_tax_snapshots_money_v2 AFTER INSERT OR UPDATE OR DELETE ON public.commerce_order_tax_snapshots DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.commerce_order_money_v2_child_guard();

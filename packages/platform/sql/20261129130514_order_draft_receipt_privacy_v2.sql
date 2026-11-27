@@ -57,10 +57,10 @@ RETURNS TABLE(order_id uuid, installation_ref text, principal_kind text, created
   principal_ref uuid, customer_ref uuid, exportable boolean, principal_unavailable boolean, erasable boolean)
 LANGUAGE sql STABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
   SELECT r.order_id, r.installation_ref, r.principal_kind, r.created_at,
-    CASE WHEN p_principal IS NOT NULL THEN r.principal_ref END,
+    CASE WHEN p_principal IS NOT NULL AND v.paired THEN r.principal_ref END,
     CASE WHEN p_contact IS NOT NULL THEN r.customer_or_session_ref END,
-    v.agrees AND (p_principal IS NULL OR v.paired),
-    v.agrees AND p_principal IS NULL AND NOT v.paired,
+    v.agrees AND (p_contact IS NOT NULL OR v.paired),
+    v.agrees AND p_contact IS NOT NULL AND NOT v.paired,
     v.agrees AND CASE WHEN p_erasure_id IS NULL THEN v.paired AND ce.erasure_id IS NULL AND pe.erasure_id IS NULL
       ELSE (ce.erasure_id = p_erasure_id OR pe.erasure_id = p_erasure_id)
         AND (ce.erasure_id IS NULL OR ce.erasure_id = p_erasure_id)

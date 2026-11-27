@@ -190,6 +190,14 @@ it("refuses a late private fact and a standalone adjustment INSERT from the qual
   });
   await withoutGuard(adjustments, guardName(adjustments), lateAdjustment);
   await mismatch(transaction(store.runtime, lateAdjustment), "/deliveryBuckets");
+
+  const actor = await operator(store.owner);
+  const erased = receipt(await erasure(store, actor)(evidence.clientId, randomUUID()), "ERASED");
+  await provedErasure(store, evidence, id, erased.erasureId);
+  // The retained assertion alone would accept a zero-value fee after erasure.
+  await withoutGuard(fees, guardName(fees), lateFee);
+  await mismatch(transaction(store.owner, lateFee), "/feeLines", immutable);
+  await mismatch(transaction(store.runtime, lateAdjustment), "/discountAllocations", immutable);
   for (const table of [fees, adjustments]) {
     expect((await store.owner.query(`SELECT 1 FROM public.${table} WHERE order_id=$1`, [id])).rows).toEqual([]);
   }

@@ -28,17 +28,41 @@ const forward = manifest.forward.find(unit => unit.file.endsWith("_order_draft_p
 const sql = readFileSync(forward.file, "utf8");
 const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");
 
-function guard(record: string, indent: string) {
+const openerOccupied = `    IF v_order.status = 'pending_payment'
+      AND (v_order.total_amount_minor, v_order.currency_code) IS NOT DISTINCT FROM (p_amount_minor, p_currency_code)
+      AND p_requested_at IS NOT NULL
+      AND EXISTS (SELECT FROM public.commerce_settlement_intents WHERE open_idempotency_key = p_idempotency_key)
+    THEN
+      RAISE unique_violation USING
+        MESSAGE = 'duplicate key value violates unique constraint "commerce_settlement_intents_open_idempotency_key_key"',
+        DETAIL = format('Key (open_idempotency_key)=(%s) already exists.', p_idempotency_key),
+        SCHEMA = 'public', TABLE = 'commerce_settlement_intents',
+        CONSTRAINT = 'commerce_settlement_intents_open_idempotency_key_key';
+    END IF;
+`;
+const providerOccupied = `   IF o.status = 'pending_payment' AND (o.total_amount_minor, o.currency_code) IS NOT DISTINCT FROM (p_amount_minor, p_currency)
+     AND ((p_target_kind = 'one_time_order' AND o.subscription_cycle_id IS NULL)
+       OR (p_target_kind = 'subscription_cycle' AND o.subscription_cycle_id = p_subscription_cycle_id
+         AND linked_subscription = p_subscription_id))
+     AND char_length(btrim(p_idempotency_key)) >= 8 AND char_length(p_channel_key) <= 64
+     AND NOT EXISTS (SELECT FROM public.commerce_settlement_intents WHERE order_id = p_order_id)
+     AND EXISTS (SELECT FROM public.commerce_settlement_intents WHERE open_idempotency_key = p_idempotency_key)
+   THEN
+     PERFORM public.commerce_open_settlement_intent(p_idempotency_key,p_order_id,p_channel_key,p_amount_minor,p_currency,p_metadata,p_at);
+   END IF;
+`;
+
+function guard(record: string, indent: string, occupied: string) {
   return [
     `IF ${record}.money_version IS NOT NULL THEN`,
     `  RAISE EXCEPTION '${refusal}' USING ERRCODE = '22023',`,
     `    DETAIL = '${field}',`,
     `    HINT = '${hint}';`,
     "END IF;",
-  ].map(line => indent + line).join("\n") + "\n";
+  ].map(line => indent + line).join("\n").replace("THEN\n", "THEN\n" + occupied) + "\n";
 }
-const openerGuard = guard("v_order", "  ") + "\n";
-const providerGuard = guard("o", " ");
+const openerGuard = guard("v_order", "  ", openerOccupied) + "\n";
+const providerGuard = guard("o", " ", providerOccupied);
 
 const sourcePins = [
   {
@@ -116,6 +140,16 @@ function expectError(error: unknown, code: string, message: string, detail?: str
   expectSqlError(error, code, message);
   expect(error).toMatchObject({
     detail, hint: remedy, schema: undefined, table: undefined, column: undefined, dataType: undefined,
+  });
+}
+
+async function expectOccupiedOpening(run: Promise<unknown>, key: string) {
+  const error = await rejected(run);
+  const constraint = "commerce_settlement_intents_open_idempotency_key_key";
+  expectSqlError(error, "23505", `duplicate key value violates unique constraint "${constraint}"`, constraint);
+  expect(error).toMatchObject({
+    detail: `Key (open_idempotency_key)=(${key}) already exists.`,
+    schema: "public", table: "commerce_settlement_intents", hint: undefined, column: undefined, dataType: undefined,
   });
 }
 
@@ -220,8 +254,13 @@ it.each(["bootstrap", "admin-managed"] as const)("upgrades the qualified %s prof
         expect(await paymentFacts(owner)).toStrictEqual(before);
       }
     };
+    const crossOrderOpening = (db: Db) => expectOccupiedOpening(open(db, fresh, openingKey), openingKey);
+    const crossOrderProviderOpening = (db: Db) => expectOccupiedOpening(create(db, fresh, openingKey), openingKey);
+    const crossOrderProviderReceipt = async (db: Db) => expectError(await rejected(create(db, fresh, receiptKey)),
+      "23505", "payment_control_intent_idempotency_conflict");
     const incumbent = [openerReplay, openerConflict, providerReplay, providerConflict];
-    await unchanged(incumbent);
+    const occupied = [crossOrderOpening, crossOrderProviderOpening, crossOrderProviderReceipt];
+    await unchanged([...incumbent, ...occupied]);
 
     // Temporarily disabled each fresh guard in a disposable database.
     await showMutationFailure(fences[0]!, store, sql.replace(openerGuard, ""));
@@ -234,9 +273,12 @@ it.each(["bootstrap", "admin-managed"] as const)("upgrades the qualified %s prof
     for (const check of incumbent.slice(0, 2)) await showMutationFailure(check, store, earlyOpener);
     for (const check of incumbent.slice(2)) await showMutationFailure(check, store, earlyProvider);
 
+    await showMutationFailure(crossOrderOpening, store, sql.replace(openerOccupied, ""));
+    await showMutationFailure(crossOrderProviderOpening, store, sql.replace(providerOccupied, ""));
+
     expect((await store.runner.apply()).applied[0]).toBe(forward.file);
     expect(await routineAttributes(owner)).toStrictEqual(attrs);
-    await unchanged([...incumbent, ...fences]);
+    await unchanged([...incumbent, ...occupied, ...fences]);
 
     const { rows: [client] } = await owner.query("SELECT client_id FROM public.commerce_orders WHERE id=$1", [fresh.id]);
     const legacyOrder = async (): Promise<Order> => {
