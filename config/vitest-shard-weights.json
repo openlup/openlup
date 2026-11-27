@@ -413,6 +413,7 @@
     "packages/platform/test/lifecycle/postgresInstallQualification.test.ts": 10,
     "packages/platform/test/lifecycle/recipeCli.test.ts": 13383,
     "packages/platform/test/lifecycle/storefrontBuildIdentity.test.ts": 24,
+    "packages/platform/test/lifecycle/storefrontCapabilities.test.ts": 20,
     "packages/platform/test/lifecycle/storefrontDigest.test.ts": 21,
     "packages/platform/test/lifecycle/storefrontProofFile.test.ts": 58,
     "packages/platform/test/lifecycle/storefrontVerdict.test.ts": 413,

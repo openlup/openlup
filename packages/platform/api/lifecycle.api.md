@@ -104,6 +104,7 @@ export { verifyApp, APP_VERIFICATION_BOUNDARY, type AppVerificationFinding, type
 export { parseStorefrontVerdict, storefrontVerdictJsonSchema, type StorefrontVerdict, type StorefrontFindingCode, } from "./storefrontVerdict.js";
 export { digestStorefrontFiles } from "./storefrontDigest.js";
 export { parseStorefrontProofFile, storefrontProofFileJsonSchema, type StorefrontProofFile, } from "./storefrontProofFile.js";
+export { storefrontCapabilities, type StorefrontCapability, } from "./storefrontCapabilities.js";
 ```
 ## dist/lifecycle/postgresInstallQualification.d.ts
 
@@ -159,6 +160,50 @@ export interface LegacyPostgresInstallRoleReport {
  * Query/driver errors are redacted because they can contain connection credentials.
  */
 export declare function inspectLegacyPostgresInstallRoles(db: PostgresInstallQuery, request: LegacyPostgresInstallRequest): Promise<LegacyPostgresInstallRoleReport>;
+```
+## dist/lifecycle/storefrontCapabilities.d.ts
+
+```ts
+/**
+ * One capability a selling store may need, and whether this installed version
+ * of the package offers it.
+ *
+ * - `id` names the capability, never a gap (`^[a-z][a-z0-9_]*$`). It is never
+ *   renamed; a wrong entry is superseded by a new id.
+ * - `level` is `supported` or `unsupported` in this version. The set is open: a
+ *   reader keeps a default branch for a level added later. Every entry states
+ *   its level; there is no default.
+ * - `statement` says what the capability is, in one sentence without a final
+ *   period that stays true when `level` changes. Derive "not yet" wording from `level`, never from
+ *   `statement`.
+ * - `meanwhile` says what a store does while the capability is not supported;
+ *   it is `null` exactly when `level` is `supported`.
+ * - `closedBy` names who must act to make it supported.
+ * - `appliesTo` is the neutral condition under which the capability matters for
+ *   selling: an open-set `id` and a `text` that starts "Stores that" or "Stores
+ *   whose". A store that does not meet the condition is not affected.
+ *
+ * @experimental
+ */
+export type StorefrontCapability = {
+    readonly id: string;
+    readonly level: "supported" | "unsupported" | (string & {});
+    readonly statement: string;
+    readonly meanwhile: string | null;
+    readonly closedBy: "platform" | "provider_module" | "store" | (string & {});
+    readonly appliesTo: {
+        readonly id: string;
+        readonly text: string;
+    };
+};
+/**
+ * The capabilities a selling store may need, each with its level in this
+ * installed version, who closes it and the stores it affects. Frozen at every
+ * depth.
+ *
+ * @experimental
+ */
+export declare const storefrontCapabilities: readonly StorefrontCapability[];
 ```
 ## dist/lifecycle/storefrontDigest.d.ts
 
