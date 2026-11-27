@@ -2632,3 +2632,70 @@ publicationTest("issues verified v2 effects across the three installed price ent
     await publisher.end();
   }
 }, 60_000);
+
+it("batches multi-revision history reads and multi-draft V4 list reads into constant PG queries", async () => {
+  const data = authored(410);
+  const api = native();
+  const who = (await api.authorize(actor))!;
+  const heads: CatalogHeadRef[] = [];
+  for (let rev = 1; rev <= 4; rev++) {
+    if (rev === 1) {
+      await save(data, 1);
+    } else {
+      const revisedPayload = structuredClone(data.payload);
+      revisedPayload.product.sharedContent.catalogAction = "revise";
+      revisedPayload.product.sharedContent.presentation = { routePath: { en: `/batch-rev-${rev}` } };
+      revisedPayload.publication.operations = [{
+        op: "set_product_presentation",
+        productSlug: data.slug,
+        presentation: revisedPayload.product.sharedContent.presentation,
+      }];
+      await save(data, rev, revisedPayload);
+    }
+    const expectedHead = heads.at(-1) ?? null;
+    const prepared = await prepare(data, rev, expectedHead);
+    expect(await api.execute(prepared.approve, who)).toMatchObject({ outcome: "committed" });
+    const issued = await api.execute(prepared.publish, who);
+    expect(issued).toMatchObject({ outcome: "committed", receipt: { head: { revision: rev } } });
+    if (!("receipt" in issued) || !("head" in issued.receipt)) throw new Error("publication receipt required");
+    heads.push(issued.receipt.head);
+  }
+
+  const historyQueries: string[] = [];
+  const readers = createPostgresCatalogPublicationReads({
+    transactions: {
+      run: work => transaction(pool, db => work({
+        query: (sql, args) => {
+          historyQueries.push(sql);
+          return db.query(sql, args);
+        },
+      })),
+    },
+    authorizeHuman: async () => ({ ok: true, userId: actor, role: "admin", isMachineActor: false }),
+  });
+  const history = await readers.reads.history(data.productId, null);
+  expect(history).toMatchObject({
+    outcome: "page",
+    nextCursor: null,
+    receipts: [...heads].reverse().map(head => ({ head })),
+  });
+  // Constant O(1) queries per page: 2 tx setup + 3 currentIssue + 1 joined page + 1 batched manifest check = 7.
+  expect(historyQueries).toHaveLength(7);
+
+  // Save 4 valid drafts in legacyPool (free of intentionally corrupted drafts in pool) and verify V4 list uses 2 PG queries.
+  for (const seq of [411, 412, 413, 414]) {
+    const draft = authored(seq);
+    await save(draft, 1, draft.payload, legacyPool);
+  }
+  const listQueries: string[] = [];
+  const countingDb: PgQueryExecutor = {
+    query: (sql, args) => {
+      listQueries.push(sql);
+      return legacyPool.query(sql, args);
+    },
+  };
+  const draftPage = await createPostgresCatalogDraftStoreV4(countingDb).list({ limit: 10 }, actor);
+  expect(draftPage.items.length).toBeGreaterThanOrEqual(4);
+  expect(draftPage.items.every(item => item.payload.product.id === item.productId)).toBe(true);
+  expect(listQueries).toHaveLength(2);
+}, 60_000);
