@@ -341,13 +341,14 @@ export function assertPackageMarkdown(
   violations: string[],
   diagnosticLabel = label,
 ): void {
-  // A pinned repository URL in the guide is the published link form, not an extracted-root path.
+  // A pinned repository URL links to release source from the guide or a packed entry point.
   const scanned = guide ? source.replace(releaseUrlPattern(), "") : source;
+  const packedEntryPoint = packed.has(label) && (label === "README.md" || label === "AGENTS.md");
   // Generated release notes carry report headings and addition summaries as inline paths.
   const versionedUpgradePage = /^docs\/guide\/upgrade\/v\d+-\d+-\d+(?:-[A-Za-z0-9-]+)?\.md$/u.test(label);
   const pathSource = /^docs\/guide\/upgrade\/v[^/]*\.md$/.test(label)
     ? withoutGeneratedReportReferences(source, versionedUpgradePage).replace(releaseUrlPattern(), "")
-    : scanned;
+    : packedEntryPoint ? scanned.replace(releaseUrlPattern(), "") : scanned;
   if (monorepoPackagePath.test(pathSource)) violations.push(`${diagnosticLabel}: monorepo package path`);
   for (const [pattern, description] of forbiddenExtractedRootReferences) {
     if ((pattern as RegExp).test(scanned)) violations.push(`${diagnosticLabel}: ${description}`);

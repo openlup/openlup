@@ -1,1 +1,0 @@
-- Use `openlup catalogue schema --json` to inspect the installed catalogue authoring schemas, units, limits, caps and refusal fixes. The formatVersion 1 report supports additive changes.
