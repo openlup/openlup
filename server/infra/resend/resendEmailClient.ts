@@ -1,4 +1,3 @@
-import { createResendTransport } from "@openlup/platform/communications/resend";
 import { resolveEgressMode, type EgressMode } from "#communications-egress-policy";
 
 export interface ResendEmailSendInput {
@@ -48,9 +47,10 @@ const MAX_RESEND_RESPONSE_BYTES = 256 * 1024;
 // unspoofable positive prod-ref confirmation from resolveEgressMode.
 const EMAIL_ENVIRONMENT_TAG_NAME = "openlup_env";
 const PROVIDER_ERROR_MAX = 240;
+const PROVIDER_ERROR_CODE_MAX = 80;
 const EMAIL_ADDRESS_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
 const BEARER_TOKEN_PATTERN = /\bBearer\s+[A-Za-z0-9._~+/=-]+/gi;
-const RESEND_KEY_PATTERN = /\bre_[A-Za-z0-9_]+\b/g;
+const RESEND_KEY_PATTERN = /\bre_[A-Za-z0-9_]{8,}\b/g;
 const WEBHOOK_SECRET_PATTERN = /\bwhsec_[A-Za-z0-9+/=_-]+/g;
 
 function truncate(value: string, max: number): string {
@@ -69,6 +69,10 @@ function sanitizeProviderText(value: string): string {
   return truncate(redactResendSensitiveText(value).replace(/\s+/g, " ").trim(), PROVIDER_ERROR_MAX);
 }
 
+function sanitizeProviderCode(value: string): string {
+  return truncate(value.replace(/[^A-Za-z0-9._:-]/g, "_"), PROVIDER_ERROR_CODE_MAX);
+}
+
 function providerErrorFromBody(body: Record<string, unknown>, httpStatus: number): string {
   const errField = body.error;
   if (typeof errField === "string") return sanitizeProviderText(errField);
@@ -78,6 +82,33 @@ function providerErrorFromBody(body: Record<string, unknown>, httpStatus: number
   }
   if (typeof body.message === "string") return sanitizeProviderText(body.message);
   return `Resend HTTP ${httpStatus}`;
+}
+
+function providerErrorCodeFromBody(body: Record<string, unknown>): string | null {
+  const errField = body.error;
+  const errorRecord = errField && typeof errField === "object"
+    ? (errField as Record<string, unknown>)
+    : {};
+  const candidates = [
+    errorRecord.code,
+    errorRecord.name,
+    errorRecord.type,
+    body.code,
+    body.name,
+    body.type,
+  ];
+  const value = candidates.find((candidate) => typeof candidate === "string" && candidate.trim() !== "");
+  return typeof value === "string" ? sanitizeProviderCode(value) : null;
+}
+
+function providerErrorResponse(body: Record<string, unknown>, httpStatus: number): Record<string, unknown> {
+  const providerErrorMessage = providerErrorFromBody(body, httpStatus);
+  const providerErrorCode = providerErrorCodeFromBody(body);
+  return {
+    http_status: httpStatus,
+    provider_error_message: providerErrorMessage,
+    ...(providerErrorCode ? { provider_error_code: providerErrorCode } : {}),
+  };
 }
 
 interface RequestAbortScope {
@@ -232,28 +263,113 @@ export async function postResendEmail(input: ResendEmailSendInput): Promise<Rese
     };
   }
   const effectiveTo = egress.recipient ?? input.to;
-  const transport = createResendTransport({
-    policy: () => ({
-      mode: egress.mode as "production" | "sandbox_direct" | "sandbox_sink",
-      reason: egress.reason,
-      intendedRecipient: egress.intendedRecipient,
-      recipient: effectiveTo,
-      credential: egress.apiKeyOverride ?? input.apiKey,
-      environmentTag: egress.mode === "production" ? "production" : "non_production",
-    }),
-    environmentTagName: EMAIL_ENVIRONMENT_TAG_NAME,
-  });
-  return transport.send({
-    from: input.fromEmail,
-    to: input.to,
-    subject: input.subject,
-    html: input.html,
-    text: input.text,
-    replyTo: input.replyTo,
-    idempotencyKey: input.idempotencyKey,
-    attachments: input.attachments,
-    signal: input.signal,
-  });
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${egress.apiKeyOverride ?? input.apiKey}`,
+    "Content-Type": "application/json",
+  };
+  if (input.idempotencyKey !== undefined) {
+    headers["Idempotency-Key"] = input.idempotencyKey;
+  }
+  // Off-prod sink redirect: keep the intended recipient visible to testers,
+  // but never deliver to it.
+  if (egress.mode === "sandbox_sink") {
+    headers["X-Original-Recipient"] = egress.intendedRecipient;
+  }
+  const scope = createRequestAbortScope(input.signal, DEFAULT_RESEND_TIMEOUT_MS);
+  try {
+    const res = await Promise.race([
+      fetch(RESEND_ENDPOINT, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          from: input.fromEmail,
+          to: [effectiveTo],
+          subject: input.subject,
+          html: input.html,
+          ...(input.text === undefined ? {} : { text: input.text }),
+          ...(input.replyTo === undefined ? {} : { reply_to: input.replyTo }),
+          ...(input.attachments === undefined ? {} : { attachments: input.attachments }),
+          tags: [{
+            name: EMAIL_ENVIRONMENT_TAG_NAME,
+            value: egress.mode === "production" ? "production" : "non_production",
+          }],
+        }),
+        redirect: "manual",
+        signal: scope.signal,
+      }),
+      scope.abortPromise,
+    ]);
+    if (res.status >= 300 && res.status < 400) {
+      await res.body?.cancel().catch(() => {});
+      return {
+        outcome: {
+          ok: false,
+          resendId: null,
+          httpStatus: res.status,
+          providerError: `Resend HTTP ${res.status}`,
+          providerErrorCode: null,
+          aborted: false,
+          egressMode: egress.mode,
+          egressReason: egress.reason,
+        },
+        providerResponse: {
+          http_status: res.status,
+          provider_error_message: `Resend HTTP ${res.status}`,
+        },
+      };
+    }
+    const body = await readBoundedJsonBody(res, MAX_RESEND_RESPONSE_BYTES, scope.abortPromise);
+    if (!res.ok) {
+      const providerErrorMessage = providerErrorFromBody(body, res.status);
+      const providerErrorCode = providerErrorCodeFromBody(body);
+      return {
+        outcome: {
+          ok: false,
+          resendId: null,
+          httpStatus: res.status,
+          providerError: providerErrorMessage,
+          providerErrorCode,
+          aborted: false,
+          egressMode: egress.mode,
+          egressReason: egress.reason,
+        },
+        providerResponse: providerErrorResponse(body, res.status),
+      };
+    }
+    const id = typeof body.id === "string" ? body.id : null;
+    return {
+      outcome: {
+        ok: true,
+        resendId: id,
+        httpStatus: res.status,
+        providerError: null,
+        aborted: false,
+        egressMode: egress.mode,
+        egressReason: egress.reason,
+      },
+      providerResponse: { id },
+    };
+  } catch (err) {
+    const aborted =
+      input.signal?.aborted === true ||
+      scope.signal.aborted === true ||
+      (err instanceof Error && (err.name === "AbortError" || err.name === "TimeoutError"));
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      outcome: {
+        ok: false,
+        resendId: null,
+        httpStatus: 0,
+        providerError: sanitizeProviderText(msg),
+        aborted,
+        egressMode: egress.mode,
+        egressReason: egress.reason,
+      },
+      providerResponse: { exception: true, aborted },
+    };
+  } finally {
+    scope.cleanup();
+  }
 }
 
 export interface ResendEmailReadResult {
