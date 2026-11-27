@@ -4594,6 +4594,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/publicationAdmission.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/publicationAuthorship.ts",
       "class": "public-output"
     },
@@ -4626,11 +4630,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/publicationOperationReplay.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/publicationPorts.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/src/catalog/publicationPreparation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/publicationReadinessChecks.ts",
       "class": "public-output"
     },
     {
