@@ -7698,11 +7698,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/operations/server/settingsAppCheck.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/operations/server/settingsCatalog.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/src/operations/server/settingsCommand.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/operations/server/settingsCommandFormat.ts",
       "class": "public-output"
     },
     {
