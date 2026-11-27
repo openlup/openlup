@@ -21970,6 +21970,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/infra/resend/resendEmailClient.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/infra/resend/resendEmailClient.ts",
       "class": "public-output"
     },
