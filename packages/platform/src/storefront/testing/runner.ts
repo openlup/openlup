@@ -347,7 +347,17 @@ type RunRecord = {
  * installs one interceptor that classifies requests by the create and read
  * matchers, records each command's key reuse (key values are compared in
  * memory, never stored) and applies the armed withhold or hold, then runs the
- * steps. Every step ends only when the page has settled: every request the
+ * steps. Wherever the runner types the buyer's details (the default
+ * arrangement, its repeat after a reload, an edited payload, and the re-typing
+ * after a reload under an adapter's `arrange`), it fills every text field
+ * first (`page.fill` commits each), waits for the page to settle, sets consent
+ * and other toggle fields (`terms_accepted`), waits for the page to settle
+ * again and sets the toggles once more. A page that re-checks the details and
+ * resets consent given before that check thus keeps the tick; setting a toggle
+ * to the value it has changes nothing, and the handle cannot read a toggle
+ * back, so a page that resets consent again after the second pass sends
+ * nothing on submit and the step's findings say so. Every
+ * step ends only when the page has settled: every request the
  * interceptor saw finished and `quietMs` passed with no new request. Then the
  * runner reads the ledger, the visible anchors and the path. After the last
  * step a settle window waits once more and reads them again. The control run
@@ -364,6 +374,18 @@ type RunRecord = {
  * next expected state is not shown, the declaration is wrong:
  * `auto_progress_not_performed` (`not_run`).
  *
+ * Client state: the clean and control runs are two buyers on one page. Each
+ * run calls `page.clearClientState()` after its ledger read (and the
+ * exclusive database's count) and before its interceptor, so it starts without
+ * the state `PageHandle`'s table clears on the path in use; a rejection is
+ * `page_failed` of that run (step `null`). So when `createPageHandle` was
+ * given `options.origin` and the clean run ends on another `http:` or
+ * `https:` origin, the control run's clear is refused, and the result is
+ * `not_run` unless the clean run proved ledger harm first. A handle without the
+ * member clears nothing between the runs: an admitted scenario with a control run
+ * then ends `not_run` with `client_state_unisolated` only, before any page,
+ * observer or driver call; a `safety_only` scenario runs as before.
+ *
  * Outcomes: an `outcome` step asks the `outcomes` driver for one outcome
  * (`declined`, `pending`, `settled`, `settled_after_pending`,
  * `activation_pending`). A scenario runs only when every outcome in its
@@ -379,7 +401,8 @@ type RunRecord = {
  * outcome whose effect the ledger does not show, is `outcome_failed` and stops
  * the run.
  *
- * Judgement, first failing group decides: 0 admitted; 1 page, observer,
+ * Judgement, first failing group decides: 0 admitted, then a page handle with
+ * `clearClientState`; 1 page, observer,
  * arrangement and outcome driver worked; 2 no order before the arrangement and
  * one after the first matched create; 3 the first order appeared in a step with
  * a matched create, every withhold applied, every outcome shows its ledger
@@ -414,13 +437,13 @@ type RunRecord = {
  * steps until that state is visible, removes its interceptor and leaves the
  * page there: no control run and no verdict; a state not reached rejects
  * `storefront_stop_state_unreached` naming the last step, as does a scenario
- * that is not admitted, before any call. An arrangement that
+ * that is not admitted or a page handle without `clearClientState`, before any
+ * call. An arrangement that
  * fails under a control is the control's effect: the remaining steps are
  * skipped and the settle window still samples the page. Anchors and the ledger
  * are sampled after each step settles and in the settle window, so a state
  * shown only inside a step is not seen. A fault's text keeps its code and
- * first sentence with every URL replaced. The clean and control runs share the
- * page and its browser storage.
+ * first sentence with every URL replaced.
  *
  * @experimental
  */
@@ -530,6 +553,19 @@ export async function runStorefrontScenario(options: StorefrontRunOptions): Prom
         "a scenario runs only where every outcome it requires can be produced.", "Run it with an outcome driver that declares these outcomes.");
     }
     add("tier_unreachable", "only", null, null, { at: `Scenario ${scenario.id}`, detail: missing.join(", ") });
+    return finish({ stimulus: {}, steps: [], durations: { totalMs: 0, byPhase: {} }, applied: false });
+  }
+  // Client state: the clean and control runs are two buyers on one page. A handle that cannot clear client state
+  // between them ends every scenario with a control run before any page, observer or driver call; one buyer alone (a
+  // safety-only scenario) has no second run to clear for. Stop-at refuses it, as it refuses a scenario not admitted.
+  const isolates = typeof page.clearClientState === "function";
+  if (!isolates && stopState !== undefined) {
+    throw refuse("storefront_stop_state_unreached", "The page handle has no clearClientState.",
+      "the page handle cannot clear client state, so the stopped page could show an earlier buyer's state.",
+      findingText("client_state_unisolated", "only", { at: `Scenario ${scenario.id}` }).fix);
+  }
+  if (!isolates && control.kind !== "none") {
+    add("client_state_unisolated", "only", null, null, { at: `Scenario ${scenario.id}` });
     return finish({ stimulus: {}, steps: [], durations: { totalMs: 0, byPhase: {} }, applied: false });
   }
   const known = page.width();
@@ -656,8 +692,18 @@ export async function runStorefrontScenario(options: StorefrontRunOptions): Prom
       }
       return false;
     };
+    // Every text field first (the page handle commits each as a buyer leaving it does); toggles such as consent only
+    // after the page settled from the last text change; then, after a second settle, the toggles once more, so a page
+    // that re-checks the details and resets consent given before that check keeps the tick. Setting a toggle to the
+    // value it has changes nothing, and the handle cannot read a toggle back, so the second pass is not repeated.
     const fillDetails = async (index: number, edit: string | undefined): Promise<boolean> => {
-      for (const [field, value] of Object.entries(buyer)) {
+      const entries = Object.entries(buyer);
+      const texts = entries.filter(([, value]) => typeof value === "string");
+      const toggles = entries.filter(([, value]) => typeof value !== "string");
+      const settle = () => page.settled({ quietMs, timeoutMs: timeoutMs + quietMs });
+      const set: (readonly [string, string | boolean])[] = [];
+      for (const [position, [field, value]] of [...texts, ...toggles].entries()) {
+        if (position === texts.length) await settle();
         const target = targetOf("field", field);
         // The e-mail carries the subject and must resolve; the other fields are filled where the form has them.
         const found = await page.find(target, { timeoutMs: field === "email" ? timeoutMs : 0 });
@@ -667,10 +713,16 @@ export async function runStorefrontScenario(options: StorefrontRunOptions): Prom
           return false;
         }
         const typed = field === edit && typeof value === "string" ? `${value} Changed` : value;
-        if (!(await page.fill(target, typed, { timeoutMs })) && field === "email") {
+        if (!(await page.fill(target, typed, { timeoutMs }))) {
+          if (field !== "email") continue;
           if (checksAnchors(index)) add("adapter_anchor_missing", "field", run, index, { at: at(index), name: `field:${field}`, seen: await seenNow() });
           return false;
         }
+        if (typeof value !== "string") set.push([field, value]);
+      }
+      if (set.length > 0) {
+        await settle();
+        for (const [field, value] of set) await page.fill(targetOf("field", field), value, { timeoutMs });
       }
       return true;
     };
@@ -694,6 +746,15 @@ export async function runStorefrontScenario(options: StorefrontRunOptions): Prom
       const counted = await fromObserver(null, () => observer.payableOrdersInDatabase!());
       if (counted === null) return record;
       record.databaseBefore = counted;
+    }
+    // Each run starts without the state PageHandle's table says clearClientState clears on the path in use.
+    if (isolates) {
+      try {
+        await page.clearClientState!();
+      } catch (error) {
+        fault("page_failed", null, error);
+        return record;
+      }
     }
 
     let remove: (() => Promise<void>) | null = null;
@@ -868,7 +929,8 @@ export async function runStorefrontScenario(options: StorefrontRunOptions): Prom
     const last = clean.steps.at(-1);
     const first = [...judged].sort((a, b) => a.group - b.group || a.rank - b.rank || a.order - b.order)[0];
     throw refuse("storefront_stop_state_unreached",
-      `${last === undefined ? `The clean run of ${scenario.id} recorded no step` : describe(last.index, "clean")} was the last step, and ${stopState} was not visible after any step${first === undefined ? "" : ` (first finding: ${first.finding.code})`}.`,
+      `${last === undefined ? `The clean run of ${scenario.id} recorded no step, so ${stopState} was never visible`
+        : `${describe(last.index, "clean")} was the last step, and ${stopState} was not visible after any step`}${first === undefined ? "" : ` (first finding: ${first.finding.code})`}.`,
       "stop-at drives the clean run only until the state is visible, and the run ended without showing it.",
       "Fix what the first finding names, or stop at a state this store reaches; run the scenario without stopAt for a full verdict.");
   }

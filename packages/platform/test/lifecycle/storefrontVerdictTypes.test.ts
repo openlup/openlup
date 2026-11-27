@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { expect, it } from "vitest";
-import { knownResults, knownTiers, resultMeanings, tierMeanings } from "../../src/lifecycle/storefrontVerdictSchema.js";
+import { knownFindingCodes, knownResults, knownTiers, resultMeanings, tierMeanings } from "../../src/lifecycle/storefrontVerdictSchema.js";
 
 // The probe sits beside this test (an in-memory file at that path) and imports the
 // exported type and the internal schema module from source.
@@ -33,6 +33,8 @@ const adapters: Equals<Known<Verdict["harness"]["adapter"]["kind"]>, (typeof sch
 const observers: Equals<Known<Verdict["harness"]["observer"]>, (typeof schema.knownObserverKinds)[number]> = true;
 const codes: Equals<Known<StorefrontFindingCode>, (typeof schema.knownFindingCodes)[number]> = true;
 const openCode: StorefrontFindingCode = "code_added_later";
+// V12: the code a page handle without clearClientState gives is a known member.
+const unisolated: Equals<Extract<Known<StorefrontFindingCode>, "client_state_unisolated">, "client_state_unisolated"> = true;
 const proofShape: Equals<Declared<z.output<typeof schema.proofFileSchema>>, StorefrontProofFile> = true;
 const policies: Equals<Known<Exclude<StorefrontProofFile["changedPayloadPolicy"], undefined>>, (typeof schema.knownChangedPayloadPolicies)[number]> = true;
 const proofMissingOptional: Equals<Declared<z.output<typeof schema.proofFileSchema>>, Omit<StorefrontProofFile, "recheck">> = false;
@@ -54,7 +56,7 @@ const levelled: StorefrontCapability = { id: "x", level: "unsupported", statemen
 // @ts-expect-error an entry without a level does not compile
 const levelless: StorefrontCapability = { id: "x", statement: "X", meanwhile: "Y.", closedBy: "platform", appliesTo: { id: "x", text: "Stores that x" } };
 export { resultMeaningKeys, tierMeaningKeys, outcomeMeaningKeys, knownCause, unknownCause, unknownCode, levelled, levelless };
-export { shape, tiers, channels, results, phases, runs, findingRuns, controls, sources, adapters, observers, codes, openCode, proofShape, policies, proofMissingOptional, missingOptional, closedResult };
+export { shape, tiers, channels, results, phases, runs, findingRuns, controls, sources, adapters, observers, codes, openCode, unisolated, proofShape, policies, proofMissingOptional, missingOptional, closedResult };
 `;
 
 it("V9, P10, M2 and F5 keep the verdict and proof-file types equal to their schemas, the meanings complete and finding causes typed", () => {
@@ -73,6 +75,11 @@ it("V9, P10, M2 and F5 keep the verdict and proof-file types equal to their sche
     .map(diagnostic => `${diagnostic.file!.getLineAndCharacterOfPosition(diagnostic.start!).line + 1}: ${ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")}`);
   expect(diagnostics).toEqual([]);
 }, 60_000);
+
+it("V12 knows client_state_unisolated as the twenty-fifth finding code", () => {
+  expect(knownFindingCodes).toHaveLength(25);
+  expect(knownFindingCodes).toContain("client_state_unisolated");
+});
 
 it("M2 gives every known result and tier a one-line meaning, frozen", () => {
   expect(Object.keys(resultMeanings)).toEqual([...knownResults]);
