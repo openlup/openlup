@@ -516,6 +516,21 @@ capability reads readiness from the registry used by privacy operations.
 Account-event registration remains host composition.
 The native-store transfer carries parcel snapshots and erasure markers.
 
+The `commerce.destination-documents.v1` contributor clears the destination
+copies on order money snapshots and delivery bucket headers before it records
+the privacy receipt. The receipt records that order money and the original
+acceptance digest are retained.
+
+The native declaration enables the `order-draft-receipts` contributor. Custom
+native privacy hosts register `createOrderDraftReceiptsPrivacyContributor` from
+`@openlup/platform/identity`. Export returns verified order references and owner
+coordinates and reports when a persisted principal reference cannot be verified.
+Erasure clears both receipt owner coordinates. Owner history retains the original
+draft outcome, the order owner's linkable order reference and the replay key
+derived from the original owner scope and request key. Export reports that
+retention and withholds the key and command digest. The installation owner can
+reconcile an earlier erasure against the original receipt and its recorded aliases.
+
 The direct forward `20261018190000_identity_privacy_erasures` adds the retained
 receipt table. Relation locks precede contact/member locks with bounded lock
 and statement timeouts. The package customer challenge adapter holds an

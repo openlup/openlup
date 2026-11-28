@@ -321,7 +321,7 @@ function assertInstalledContextMcp(executable: string, consumerDir: string, vers
   assert(replies.every(reply => reply.jsonrpc === "2.0" && !reply.error && !reply.result.isError), "installed MCP request failed");
   assert(replies[0].result.protocolVersion === "2025-06-18" && replies[0].result.serverInfo.name === "openlup-context" && replies[0].result.serverInfo.version === version, "installed MCP initialize identity differs");
   assert(JSON.stringify(replies[0].result.capabilities) === '{"tools":{}}', "installed MCP capabilities differ");
-  assert(replies[1].result.tools.map((tool: { name: string }) => tool.name).join(",") === "search_openlup_context,read_openlup_file", "installed MCP tools differ");
+  assert(replies[1].result.tools.map((tool: { name: string }) => tool.name).join(",") === "search_openlup_context,read_openlup_file,impact_openlup_upgrade", "installed MCP tools differ");
   const search = replies[2].result;
   assert(search.structuredContent.version === version && search.structuredContent.hits.some((hit: { file: string }) => hit.file === seam), "installed MCP search did not return the relative installed guide page");
   assert(search.content[0].text.includes(`${prefix}/`), "installed MCP search did not format citations");

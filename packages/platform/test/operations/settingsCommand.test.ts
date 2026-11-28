@@ -821,6 +821,7 @@ it("checks every packaged schema against its default and valid examples", async 
     "catalog.bundleAvailabilityPolicy",
     "checkout.resumeWindowMinutes",
     "commerce.money_limits.v2",
+    "commerce.returnReasons",
     "communications.terminalPayloadRetentionDays",
     "inventory.offerLowStockThreshold",
     key,
@@ -829,6 +830,7 @@ it("checks every packaged schema against its default and valid examples", async 
     "payment_method_expiry_warning_days",
     "payments.declineNoticeTiming",
     "promotion_claim_hold_hours",
+    "shipping.paymentMethodPreferences",
     "shipping_flat_minor",
     "subscription_edit_quote_ttl_minutes",
     "subscription_minimum_base_units",
@@ -1170,7 +1172,7 @@ async function settingsParity() {
   }
   // Current package output includes the internal number recipe and the installed payment limits entry.
   expect(createHash("sha256").update(JSON.stringify(liveBytes)).digest("hex"))
-    .toBe("2caff59b5f2bae134d93cd565a6efb4dfcea7c3d8fc36341df58a7b794c27ec4");
+    .toBe("4afcfb1ff736e11516f77b785e0b6a68b27324dddc9d56a9500891c22c61d122");
   const checkKeys = liveData.entries.filter(({ kind }) => kind === "code" || kind === "installed").map(({ key }) => key);
   const representatives = bound.filter(({ args, fixture }) => fixture !== undefined &&
     (args[0] === "check" || args[1] === key || args[1] === "checkout_recovery_reminders" && args[0] === "show" ||

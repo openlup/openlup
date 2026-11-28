@@ -53,6 +53,17 @@ database bindings; UI navigation or a captured sandbox receipt does not qualify
 a live provider. See [application setup](../README.md) and the installed guide
 at `node_modules/@openlup/core/docs/guide/reference/limits.md`.
 
+## Occupied file upgrade proof
+
+The installed upgrade proof settles a sandbox order on the predecessor. It
+compares the keyed order, line and payment records through the owner socket on
+the retained database and volume. It reopens the original receipt in a fresh
+session immediately after the documented cutover, before the startup replay or
+the mounted renewal, care and checkout recovery commands.
+The same check refuses the original order and receipt on a separately initialized
+empty store and refuses a second paid receipt paired with the original records.
+Proof diagnostics carry only step names, exit codes, and reason codes.
+
 ## Published product and quote proof
 
 Run `./lifecycle browser browser/catalogue-products.spec.ts` in the extracted

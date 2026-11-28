@@ -1,22 +1,36 @@
 import { COMMERCE_CONTRACT_VERSION } from "../../../src/domains/commerce/types.js";
 import {
   applyHiddenCheckoutPaymentResultResponseSchema,
+  startHiddenCheckoutRuntimeResponseSchema,
   type ApplyHiddenCheckoutPaymentResultRequest,
   type ApplyHiddenCheckoutPaymentResultResponse,
+  type HiddenCheckoutRuntimeReadiness,
+  type HiddenCheckoutRuntimeReservation,
   type StartHiddenCheckoutRuntimeRequest,
   type StartHiddenCheckoutRuntimeResponse,
 } from "../../../src/domains/commerce/runtimeContracts.js";
+import { checkoutCommandV1Schema } from "../../../src/domains/commerce/checkoutCommandContracts.js";
+import type { CreateOrderDraftResponse, CreateQuoteResponse } from "../../../src/domains/commerce/contracts.js";
+import type { CheckoutPaymentExecution } from "../../../src/domains/commerce/paymentExecutionContracts.js";
 import {
   CommerceRuntimeConflictError,
   type CommerceCheckoutRuntimeOrderPort,
   type CommerceCheckoutRuntimePort,
   type CommerceRuntimeReadinessPort,
+  type FinalizedCheckoutOrder,
   type InventoryCheckoutReservationPort,
   type PaymentControlRuntimePort,
+  type PreparedProviderAttemptRuntimePort,
 } from "../../../src/domains/commerce/runtimePorts.js";
 import type { PaymentExecutionPort } from "../../../src/domains/payment/ports.js";
-import type { TpayTransientProviderInput } from "../../../src/domains/payment/types.js";
+import type {
+  PaymentExecutionProvider,
+  PaymentExecutionResult,
+  PaymentProviderFlow,
+  TpayTransientProviderInput,
+} from "../../../src/domains/payment/types.js";
 import { buildProviderAttemptIdentity } from "../../../src/lib/providerAttemptIdempotency.js";
+import { finalizeDeclinedAttempt } from "../../shared/finalizeDeclinedAttempt.js";
 import {
   executePreparedProviderAttempt,
   preserveProviderDispatchUncertainty,
@@ -26,7 +40,6 @@ import {
 } from "../../shared/preparedProviderAttempt.js";
 import { recordPaymentAttempt } from "../../shared/recordPaymentAttempt.js";
 import { tpayTransientInput } from "../../shared/tpayTransientInput.js";
-import { buildStartedRuntimeResponse } from "./commerceRuntimeStartResponse.js";
 import type {
   CommerceOrderDraftWritePort,
   CommerceQuotePort,
@@ -35,9 +48,52 @@ import type {
   CheckoutCommandRuntimePort,
   CheckoutCommandPersistencePort,
 } from "../../../src/domains/commerce/runtimePorts.js";
-import { executeCheckoutCommand } from "./commerceCheckoutCommandExecution.js";
 import type { CheckoutCompensationPort } from "./commerceCheckoutCompensation.js";
+import { orchestrateCheckoutJourney } from "./commerceCheckoutOrchestration.js";
 import { reopenExhaustedPreDispatchAttempt } from "./commerceProviderAttemptFailure.js";
+import type { ResolvedSavedPaymentMethod, SavedPaymentMethodRecurringModel } from "./savedPaymentMethodResolverPort.js";
+import {
+  createCheckoutCommandExecutor,
+  createCommerceRuntimeService as bindRuntime,
+  createRuntimeStartResponse,
+} from "@openlup/platform/commerce/server";
+
+export const { buildStartedRuntimeResponse } = createRuntimeStartResponse<
+  FinalizedCheckoutOrder,
+  HiddenCheckoutRuntimeReservation,
+  PaymentControlRuntimePort,
+  PaymentExecutionResult,
+  HiddenCheckoutRuntimeReadiness,
+  StartHiddenCheckoutRuntimeResponse
+>({
+  contractVersion: COMMERCE_CONTRACT_VERSION,
+  responseSchema: startHiddenCheckoutRuntimeResponseSchema,
+  runtimeResponseExtension: (order) => ({ petId: order.petId }),
+  finalizeDeclinedAttempt,
+});
+
+const { executeCheckoutCommand } = createCheckoutCommandExecutor<
+  { clientId: string; addressId: string; petId: string | null },
+  CreateQuoteResponse,
+  CreateOrderDraftResponse,
+  { petId: string | null },
+  StartHiddenCheckoutRuntimeResponse,
+  ApplyHiddenCheckoutPaymentResultResponse,
+  PaymentExecutionPort,
+  CheckoutPaymentExecution,
+  PaymentExecutionProvider,
+  PaymentProviderFlow,
+  ResolvedSavedPaymentMethod["providerAliasType"],
+  SavedPaymentMethodRecurringModel
+>({
+  commandSchema: checkoutCommandV1Schema,
+  commandProvisioned: (persistence) => ({
+    clientId: persistence.clientId,
+    petId: null,
+    addressId: persistence.shippingAddressId,
+  }),
+  orchestrateCheckoutJourney,
+});
 
 /** No-provider fallback; composition injects a registry adapter for real PSPs. */
 const defaultPaymentExecutionPort: PaymentExecutionPort = {
@@ -79,10 +135,6 @@ export interface CommerceRuntimeServiceDeps {
   now?: () => Date;
 }
 
-import { createCommerceRuntimeService as bindRuntime } from "@openlup/platform/commerce/server";
-import type { FinalizedCheckoutOrder, PreparedProviderAttemptRuntimePort } from "../../../src/domains/commerce/runtimePorts.js";
-import type { HiddenCheckoutRuntimeReservation, HiddenCheckoutRuntimeReadiness } from "../../../src/domains/commerce/runtimeContracts.js";
-import type { PaymentExecutionResult } from "../../../src/domains/payment/types.js";
 const createRuntime = bindRuntime<StartHiddenCheckoutRuntimeRequest, FinalizedCheckoutOrder, HiddenCheckoutRuntimeReservation, PaymentControlRuntimePort, PaymentExecutionResult, TpayTransientProviderInput, PaymentExecutionPort, PreparedProviderAttemptRuntimePort, ProviderAttemptPreDispatchError, HiddenCheckoutRuntimeReadiness, StartHiddenCheckoutRuntimeResponse, ApplyHiddenCheckoutPaymentResultRequest, ApplyHiddenCheckoutPaymentResultResponse, Parameters<typeof executePreparedProviderAttempt>[0]["provider"]>({
   defaultPaymentProvider: "hidden_rehearsal", defaultProviderFlow: "one_time_payment", preparedRecurringModel: (request) => request.providerFlow === "blik_recurring_activation" ? "O" : request.paymentMethodRecurringModel,
   contractVersion: COMMERCE_CONTRACT_VERSION, resultResponseSchema: applyHiddenCheckoutPaymentResultResponseSchema,

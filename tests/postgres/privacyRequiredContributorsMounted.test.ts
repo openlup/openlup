@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { disposition as orderDraftReceiptDisposition } from "./orderDraftReceiptsV2.fixture.js";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -22,7 +23,7 @@ import { createAccountMutationsTemplate, type AccountMutationsStore, type Accoun
 import { activation, allocate, defaultRule, utc } from "./nativeRenewalOccurrence.fixture.js";
 import { applyMeasuredOccurrencePrefix, args, committedAllocation, installMeasuredAccountPrefix, occurrence,
   occurrenceCatalogue, occurrenceForwardPath, original, paidRootFixture, rootFixture, sliceOccurrencePlan, writer,
-  writerPlan } from "./nativeRenewalOccurrenceWriter.fixture.js";
+} from "./nativeRenewalOccurrenceWriter.fixture.js";
 import { transaction } from "./orderMoneyV2Storage.fixture.js";
 import { call, type Db } from "./subscriptionNativeFixture.js";
 // A temporary scratch witness at aa98c60ba recorded this HTTP result through the
@@ -104,8 +105,8 @@ async function seed(db: AccountMutationsStore, uncarried?: true) {
     VALUES ($1,'shipping','Fixture Street','Fixture Town','00000')`, [subject.contactId]);
   await db.owner.query(`INSERT INTO public.identity_privacy_erasures
     (erasure_id,idempotency_key,client_id,actor_principal_id,contract_version,contributor_versions,dispositions,retained_obligations,completed_at)
-    VALUES ($1,$2,$3,$4,'identity.erasure.v1',$5,'[]','[]',now())`,
-  [erasureId, input.idempotencyKey, subject.contactId, actor.principalId, versions]);
+    VALUES ($1,$2,$3,$4,'identity.erasure.v1',$5,$6,'[]',now())`,
+  [erasureId, input.idempotencyKey, subject.contactId, actor.principalId, versions, JSON.stringify([orderDraftReceiptDisposition])]);
   if (uncarried) {
     // An installed nonempty relation outside connected capture's carried set.
     const ref = { key: "fixture:repeat", version: 1 };
@@ -546,6 +547,7 @@ it.each(profiles)("rehearses mounted cutover and rollback for $profile (uncarrie
 
 const occurrenceHelper = "public.subscriptions__read_renewal_occurrences_for_privacy(uuid,uuid)";
 const privacyForward = occurrenceForwardPath(occurrenceHelper);
+const beforePrivacy = sliceOccurrencePlan(occurrenceCatalogue, privacyForward, false);
 const privacyPlan = sliceOccurrencePlan(occurrenceCatalogue, privacyForward, true);
 const retention = { owner: "subscriptions", resource: "subscriptions.occurrence-evidence", disposition: "retain",
   reasonCode: "RENEWAL_OCCURRENCE_RETENTION", remote: false };
@@ -633,9 +635,14 @@ function checkProjection(exported: PrivacyExport, f: { subscriptionId: string; c
 let incumbentRuntime: Promise<Runtime> | undefined;
 function loadIncumbentRuntime() {
   return incumbentRuntime ??= (async () => {
-    // Build the writer-prefix application and its own workspace packages from the pinned source.
+    // Build the application and its workspace packages from the privacy predecessor's source revision.
+    const predecessor = beforePrivacy.forward.at(-1);
+    if (!predecessor) throw new Error("The privacy predecessor has no forward migration");
+    const revision = execFileSync("git", ["log", "--ignore-missing", "-1", "--format=%H", "HEAD", "MERGE_HEAD", "--", predecessor.file],
+      { encoding: "utf8" }).trim();
+    if (!revision) throw new Error(`Git history is missing the privacy predecessor ${predecessor.file}`);
     const directory = join(scratch, "incumbent");
-    const archive = execFileSync("git", ["archive", "--format=tar.gz", "66cce50968fc68659f22eac5768d2863d88a95bd"],
+    const archive = execFileSync("git", ["archive", "--format=tar.gz", revision],
       { maxBuffer: 128 * 1024 * 1024 });
     mkdirSync(directory);
     execFileSync("tar", ["-xzf", "-", "-C", directory], { input: archive, timeout: 60_000 });
@@ -662,6 +669,45 @@ async function incumbentMount(db: AccountMutationsStore, actor: Seed["actor"]) {
 }
 
 const beforeCarrier = sliceOccurrencePlan(occurrenceCatalogue, "db/platform/migrations/20261129130001_native_renewal_v3_storage.sql", false);
+// The order-draft receipt contributor's forwards follow the carrier in the catalogue, so only the
+// pre-carrier control lacks its entries. Each later arm must carry exactly these entries at exactly
+// these positions; the comparison removes only those verified entries and compares everything else.
+const laterContributor = "order-draft-receipts";
+const laterObligations = [
+  { owner: laterContributor, resource: "commerce.order-draft-receipt-owner-references", disposition: "erase",
+    reasonCode: "RECEIPT_OWNER_REFERENCES_CLEARED", remote: false },
+  { owner: laterContributor, resource: "commerce.order-draft-receipt-retained-facts", disposition: "retain",
+    reasonCode: "ORDER_REFERENCE_AND_DERIVED_REPLAY_KEY_RETAINED", remote: false },
+];
+const laterDocument = { contributorId: laterContributor, version: "commerce.order-draft-receipts.v1",
+  data: { receiptChunks: [] },
+  coverage: { complete: true,
+    included: ["Verified receipt coordinates and order facts", "Retained order reference remains linked through the order owner"],
+    unavailable: ["Derived replay key and command digest withheld. The key can link to a known original owner scope and request key."] },
+  obligations: laterObligations };
+const laterDisposition = { contributorId: laterContributor, version: "commerce.order-draft-receipts.v1", obligations: laterObligations };
+type ErasureEffects = Array<{ retained_obligations: unknown[]; dispositions: unknown[] } & Record<string, unknown>>;
+function expectNoLaterContributor(value: unknown) {
+  expect(JSON.stringify(value)).not.toContain(`"${laterContributor}"`);
+}
+function withoutLaterObligations<T extends { obligations: readonly unknown[] }>(value: T): T {
+  const copy = structuredClone(value) as T & { obligations: unknown[] };
+  expect(copy.obligations.splice(0, laterObligations.length)).toStrictEqual(laterObligations);
+  return copy;
+}
+function withoutLaterEffects(rows: ErasureEffects): ErasureEffects {
+  const copy = structuredClone(rows);
+  expect(copy).toHaveLength(1);
+  expect(copy[0].retained_obligations.splice(0, laterObligations.length)).toStrictEqual(laterObligations);
+  expect(copy[0].dispositions.splice(0, 1)).toStrictEqual([laterDisposition]);
+  return copy;
+}
+function withoutLaterDocument(documents: readonly unknown[], controlLength: number): unknown[] {
+  const copy = structuredClone([...documents]);
+  expect(copy).toHaveLength(controlLength + 1);
+  expect(copy.splice(controlLength, 1)).toStrictEqual([laterDocument]);
+  return copy;
+}
 
 async function persistedErasureEffects(db: Db, erasureId: string) {
   const { rows } = await db.query(`SELECT c.email LIKE 'erased+%@identity.invalid' AS redacted, c.first_name,
@@ -671,9 +717,9 @@ async function persistedErasureEffects(db: Db, erasureId: string) {
   return rows;
 }
 
-it("preserves pinned incumbent export and erase-only effects on both empty catalogues", async () => {
+it("preserves pinned incumbent export and erase-only effects on every empty catalogue boundary", async () => {
   const results: unknown[] = [];
-  for (const plan of [beforeCarrier, privacyPlan]) {
+  for (const plan of [beforeCarrier, beforePrivacy, privacyPlan]) {
     const db = await installMeasuredAccountPrefix(plan, "bootstrap", "privacy-incumbent");
     try {
       const actor = await privacyActor(db.owner), subject = await contact(db.owner);
@@ -687,10 +733,16 @@ it("preserves pinned incumbent export and erase-only effects on both empty catal
         has_function_privilege('public.customer_preferences_export(uuid)','EXECUTE') AS exports`)).rows).toEqual([{ rls: true, exports: false }]);
       const { version, outcome, obligations, erasureId } = await eraseThrough(mounted, "public", subject);
       const effects = await persistedErasureEffects(db.owner, erasureId);
-      results.push({ documents: JSON.stringify(documents).replaceAll(id!, "<contact>"), version, outcome, obligations, effects });
+      results.push({ documents: JSON.parse(JSON.stringify(documents).replaceAll(id!, "<contact>")) as unknown, version, outcome,
+        obligations, effects });
     } finally { await db.close(); }
   }
-  expect(results[1]).toEqual(results[0]);
+  expect(results[2]).toEqual(results[1]);
+  const [control, later] = results as Array<{ documents: unknown[]; obligations: unknown[]; effects: ErasureEffects }>;
+  expectNoLaterContributor(control);
+  const remainder = { ...withoutLaterObligations(later), documents: withoutLaterDocument(later.documents, control.documents.length),
+    effects: withoutLaterEffects(later.effects) };
+  expect(remainder).toStrictEqual(control);
 }, postgresSetupTimeoutMs);
 
 async function checkPrivacyAcl(db: AccountMutationsStore) {
@@ -716,8 +768,8 @@ async function checkPrivacyAcl(db: AccountMutationsStore) {
 }
 
 it.each(["legacy", "legacy-with-service", "bootstrap", "separate", "admin-managed", "admin-operator"] as const)(
-  "upgrades the measured writer prefix and retains scoped occurrence evidence on %s", async variant => {
-    const db = await installMeasuredAccountPrefix(writerPlan(), variant, "privacy-upgrade");
+  "upgrades the measured privacy predecessor and retains scoped occurrence evidence on %s", async variant => {
+    const db = await installMeasuredAccountPrefix(beforePrivacy, variant, "privacy-upgrade");
     try {
       const actor = await privacyActor(db.owner);
       const empty = await contact(db.owner, null, "Fixture");
@@ -777,16 +829,22 @@ it.each(["legacy", "legacy-with-service", "bootstrap", "separate", "admin-manage
       if (profile !== "legacy") await db.owner.query("REVOKE EXECUTE ON FUNCTION public.customer_preferences_export(uuid) FROM service_role");
       const candidateEmpty = await eraseThrough(mounted, "public", empty);
       await receiptRetention(db.owner, candidateEmpty, []);
-      if (profile !== "legacy") {
-        const baseline = await installMeasuredAccountPrefix(beforeCarrier, profile, "privacy-before-occurrences");
+      if (profile !== "legacy") for (const [plan, label] of [[beforeCarrier, "privacy-before-occurrences"],
+        [beforePrivacy, "privacy-before-reader"]] as const) {
+        const baseline = await installMeasuredAccountPrefix(plan, profile, label);
         try {
           await baseline.owner.query("REVOKE EXECUTE ON FUNCTION public.customer_preferences_export(uuid) FROM service_role");
           const baselineEmpty = await eraseThrough(await incumbentMount(baseline, await privacyActor(baseline.owner)), "public",
             await contact(baseline.owner, null, "Fixture"));
-          expect(candidateEmpty).toEqual({ ...baselineEmpty, erasureId: candidateEmpty.erasureId, completedAt: candidateEmpty.completedAt });
+          const exact = plan === beforePrivacy;
+          if (!exact) expectNoLaterContributor(baselineEmpty);
+          const candidate = exact ? candidateEmpty : withoutLaterObligations(candidateEmpty);
+          expect(candidate).toEqual({ ...baselineEmpty, erasureId: candidate.erasureId, completedAt: candidate.completedAt });
           await receiptRetention(baseline.owner, baselineEmpty, []);
-          expect(await persistedErasureEffects(db.owner, candidateEmpty.erasureId))
-            .toEqual(await persistedErasureEffects(baseline.owner, baselineEmpty.erasureId));
+          const candidateEffects = await persistedErasureEffects(db.owner, candidateEmpty.erasureId) as ErasureEffects;
+          const baselineEffects = await persistedErasureEffects(baseline.owner, baselineEmpty.erasureId);
+          if (!exact) expectNoLaterContributor(baselineEffects);
+          expect(exact ? candidateEffects : withoutLaterEffects(candidateEffects)).toEqual(baselineEffects);
         } finally { await baseline.close(); }
       }
       const receipt = await eraseThrough(mounted, "public", subject);
@@ -907,7 +965,8 @@ it.each(defaults)("preserves producer-only evidence and the mounted snapshot und
     const approvalContext = { actor, registry, unitOfWork: unit(db.migrator) };
     await expect(identity.reconcilePostgresPrivacyErasure({
       ...approvalContext, unitOfWork: { run: work => inStaleTransaction(db.migrator, work) },
-    }, approval)).rejects.toMatchObject({ code: unavailableCode });
+    }, approval)).rejects.toMatchObject({ code: unavailableCode, facts: {
+      fix: "Run the approval in a fresh READ COMMITTED transaction.", recheck: "Retry the same approval in that transaction." } });
     expect(await state(db.owner)).toEqual(before);
     const disposition = await identity.reconcilePostgresPrivacyErasure(approvalContext, approval);
     expect(retained(disposition!.obligations)).toEqual([retention]);
@@ -1059,6 +1118,13 @@ it("exports subscriptions and occurrences from one READ COMMITTED snapshot", () 
   checkProjection(await readExport(mounts(db, actor), subject), committed!);
   await db.owner.query(`REVOKE EXECUTE ON FUNCTION ${occurrenceHelper} FROM service_role`);
   codeAt(await mounted.mounted("public", "erase", subject), "PRIVACY_ACTIVE_SUBSCRIPTION");
+  // The visible veto also wins when the occurrence catalogue metadata cannot be read.
+  await db.owner.query("REVOKE SELECT ON public.platform_schema_migrations FROM service_role");
+  expect((await db.runtime.query("SELECT has_table_privilege('public.platform_schema_migrations','SELECT') AS readable")).rows)
+    .toEqual([{ readable: false }]);
+  codeAt(await mounted.mounted("public", "erase", subject), "PRIVACY_ACTIVE_SUBSCRIPTION");
+  refusal(await mounted.mounted("public", "export", subject), unavailableCode);
+  await db.owner.query("GRANT SELECT ON public.platform_schema_migrations TO service_role");
 }), postgresSetupTimeoutMs);
 
 function expectOccurrenceScope(wire: Wire, ...fixtureIds: string[]) {

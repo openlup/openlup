@@ -42,7 +42,14 @@ it("includes new predecessor units and excludes stacked forwards at the register
 
 const privacySignature = "public.subscriptions__read_renewal_occurrences_for_privacy(uuid,uuid)";
 const privacyPath = occurrenceForwardPath(privacySignature);
-const boundaries = { before: predecessor, through: catalogue, writer: writerPlan(), privacy: sliceOccurrencePlan(current, privacyPath, true) };
+const boundaries = {
+  before: predecessor,
+  through: catalogue,
+  beforeWriter: sliceOccurrencePlan(current, writerPath, false),
+  writer: writerPlan(),
+  beforePrivacy: sliceOccurrencePlan(current, privacyPath, false),
+  privacy: sliceOccurrencePlan(current, privacyPath, true),
+};
 async function withMeasuredAccountPrefix<T>(manifest: typeof current, profile: AccountProfile, label: string,
   exercise: (store: AccountMutationsStore) => Promise<T>) {
   const store = await installMeasuredAccountPrefix(manifest, profile, label);
@@ -178,7 +185,7 @@ it.each([false, true])("preserves the mounted native worker with owner login and
 
   async function run(pools: { owner: Pool; runtime: Pool }, boundary: keyof typeof boundaries) {
     const { owner, runtime } = pools, candidate = boundary !== "before";
-    const writerProbe = boundary === "writer" || boundary === "privacy" ? await probeWriter(owner) : undefined;
+    const writerProbe = boundary === "writer" || boundary === "beforePrivacy" || boundary === "privacy" ? await probeWriter(owner) : undefined;
     expect((await runtime.query("SELECT session_user,current_user")).rows).toEqual([{ session_user: "postgres", current_user: "postgres" }]);
     if (withService) expect((await owner.query(`SELECT
       has_column_privilege('service_role','public.${occurrence}','client_id','SELECT') AS census,
@@ -231,8 +238,8 @@ it.each([false, true])("preserves the mounted native worker with owner login and
   }
   const through = await exercise("through");
   expect(through).toEqual(await exercise("before"));
-  expect(await exercise("writer")).toEqual(through);
-  expect(await exercise("privacy")).toEqual(through);
+  expect(await exercise("writer")).toEqual(await exercise("beforeWriter"));
+  expect(await exercise("privacy")).toEqual(await exercise("beforePrivacy"));
 }, postgresSetupTimeoutMs);
 
 it("compares a paid renewal under the actual starter login with a fixed occurrence on the renewed subscription", async () => {
@@ -249,9 +256,9 @@ it("compares a paid renewal under the actual starter login with a fixed occurren
       expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
       await owner.query(`CREATE ROLE starter_runtime LOGIN NOINHERIT PASSWORD 'synthetic-occurrence';
         CREATE ROLE starter_restore LOGIN NOINHERIT PASSWORD 'synthetic-occurrence'`);
-      const before = boundary === "writer" ? sliceOccurrencePlan(current, writerPath, false)
-        : boundary === "privacy" ? boundaries.writer : boundaries[boundary];
-      await applyMeasuredStarterPrefix(before, migration, installation);
+      const prefix = boundary === "writer" ? boundaries.beforeWriter
+        : boundary === "privacy" ? boundaries.beforePrivacy : boundaries[boundary];
+      await applyMeasuredStarterPrefix(prefix, migration, installation);
       const definitions = () => owner.query(`SELECT oid::regprocedure::text,pg_get_functiondef(oid),proacl
         FROM pg_proc WHERE pronamespace='public'::regnamespace AND proname IN
         ('subscription_claim_due_renewal','commerce_prepare_subscription_renewal',
@@ -269,7 +276,7 @@ it("compares a paid renewal under the actual starter login with a fixed occurren
       const expired = await sandboxRenewal(migration);
       expect(await call(migration, "fulfillment_reserve_subscription_renewal", [expired.operation, expired.token, 900, AT])).toMatchObject({ reserved: true });
       await migration.query("UPDATE public.subscriptions SET next_cycle_at='2050-01-01Z' WHERE id=$1", [expired.subscription]);
-      const writerProbe = boundary === "writer" || boundary === "privacy" ? await probeWriter(migration) : undefined;
+      const writerProbe = boundary === "writer" || boundary === "beforePrivacy" || boundary === "privacy" ? await probeWriter(migration) : undefined;
       const f = await transaction(migration, async db => {
         await call(db, "subscription_delivery_alignment_set_mode", ["off"]);
         const subject = await activation(db, 28, later(-29 * 24));
@@ -382,8 +389,8 @@ it("compares a paid renewal under the actual starter login with a fixed occurren
   }
   const through = await exercise("through");
   expect(through).toEqual(await exercise("before"));
-  expect(await exercise("writer")).toEqual(through);
-  expect(await exercise("privacy")).toEqual(through);
+  expect(await exercise("writer")).toEqual(await exercise("beforeWriter"));
+  expect(await exercise("privacy")).toEqual(await exercise("beforePrivacy"));
 }, postgresSetupTimeoutMs);
 
 it("has no mounted source callers and is absent from managed migrations", () => {

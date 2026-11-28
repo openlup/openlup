@@ -359,7 +359,7 @@ Profile writes precede a separate event append; failures can leave an updated
 profile without a replay event. A recorded key returns current profile state
 without another write/event. Correction keys are stored without deduplication,
 and ownership is through the invoice document's order. Invoice bytes and fiscal
-state are unchanged. The [package recipe](../../packages/platform/README.md#customer-account-events-and-mutations)
+state are unchanged. The [package recipe](PLATFORM_PACKAGE_REFERENCE.md#customer-account-events-and-mutations)
 owns validation policy and handler composition.
 
 Payloads and client/document/key links are personal data, including free-text
@@ -396,7 +396,7 @@ fixed search paths and EXECUTE only for `service_role`; PUBLIC, anon and
 authenticated have no table or routine access. The table is `block` classified
 for lead absorption, with only the admitted client-ID census column/policy.
 Saved address and event writes retain their separate-commit failure/replay rules;
-see the [package recipe](../../packages/platform/README.md#saved-customer-address-book).
+see the [package recipe](PLATFORM_PACKAGE_REFERENCE.md#saved-customer-address-book).
 
 All row content, including canonical keys, company/tax/contact/free text,
 last-use/source metadata and possible pickup history, is personal data. The
@@ -462,7 +462,7 @@ is a sparse descriptor, not an install chain. The migration adds a catalogue-loc
 receipt relation and human-session preview/apply routines. No catalogue or
 subscription row is backfilled and no capability is activated. Existing readers
 retain ordinary price-entry storage; new callers explicitly bind the
-[pricing use case](../../packages/platform/README.md#pricing).
+[pricing use case](PLATFORM_PACKAGE_REFERENCE.md#pricing).
 
 Receipts and price history are authoritative connected-store transfer data.
 Capture and restore exact command keys, fingerprints, actor metadata and original
@@ -562,6 +562,27 @@ write locks. Policy arithmetic runs with the function owner's privileges.
 The [PostgreSQL parity witness](../../tests/postgres/catalogAdmission.test.ts)
 compares rounded quote and preview amounts and checks the readiness gates at
 zero and positive results.
+
+### Derived pricing for native bundle edits
+
+The `subscription_edit_derived_prices` forward
+uses the subscription's existing stored selector for each edit line, including
+zero-priced lines. When a line has no stored price, the native previews derive
+its unit from the subscription's price list and currency. Both lookups use the
+same database instant after the subscription lock is acquired. Run fresh
+previews in `READ COMMITTED` or `READ UNCOMMITTED`. If a preview refuses with
+`subscription_command_admission_isolation_unsupported`, roll back and retry in
+either mode. Choose an available bundle or restore eligible
+catalogue pricing if a fresh preview returns `subscription_edit_catalog_unavailable`.
+
+The customer preview requires matching renewal terms and a positive merchandise
+subtotal. Acceptance uses the saved quote to update the account template and
+future renewal terms together. The next cycle stays at its scheduled instant,
+and an existing renewal operation keeps its frozen terms. Re-previewing a
+saved quote retains its price and expiry. It reports that the quote cannot be
+applied if a quoted SKU was deleted, the subtotal is zero, the renewal terms
+are missing or in another currency, or attached catalogue acceptance covers
+different SKUs or quantities.
 
 ### Admission fence lock order
 

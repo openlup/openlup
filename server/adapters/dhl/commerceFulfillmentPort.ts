@@ -99,12 +99,14 @@ export function createDhlOrderPaidFulfillmentPort(
         try {
           const shipper = await readShipper(client);
           const receiver = receiverFromRow(row);
+          if (signal.aborted) return retryAbort();
           const shipment = await createDhlShipmentWithLabel({
             auth,
             shipper,
             receiver,
             shipmentDate,
             fetchImpl: deps.fetchImpl,
+            signal,
           });
           const labelUrl = shipment.labelPdf
             ? await uploadLabel(client, shipment.labelPdf)
@@ -122,6 +124,7 @@ export function createDhlOrderPaidFulfillmentPort(
           if (label.kind !== "completed") return label;
           status = text(label.detail?.status) || "label_created";
         } catch (error) {
+          if (signal.aborted) return retryAbort();
           const retryable = error instanceof DhlProviderFault ? error.retryable : true;
           const reason = sanitizeFulfillmentContactError(error, row);
           await recordAttempt(client, key("attempt"), fulfillmentOrderId, "failed", requestPayload, {}, reason);

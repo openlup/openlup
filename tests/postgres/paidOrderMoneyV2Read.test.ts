@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { Pool, PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
@@ -9,12 +10,11 @@ import {
   createPostgresProviderPaymentControlPort, createPostgresSandboxPaymentSimulator,
 } from "@openlup/platform/payments";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
-import { captureStoreJourney, journeySelection, storeJourneyResources } from "../helpers/storeJourney.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
-import { installAccountMutations, type AccountMutationsStore } from "./customerAccountMutations.fixture.js";
+import { installAccountMutations, installAccountMutationsBeforeForward, type AccountMutationsStore } from "./customerAccountMutations.fixture.js";
 import { quoteDigest } from "./commerceQuoteV2StorageFixture.js";
 import { issue, write } from "./orderMoneyV2Guards.fixture.js";
-import { buckets, insert, itemTable, orderTable, seedSku, snapshots, storageTables, transaction } from "./orderMoneyV2Storage.fixture.js";
+import { buckets, capture, insert, itemTable, orderTable, seedSku, snapshots, storageTables, transaction } from "./orderMoneyV2Storage.fixture.js";
 
 const reader = "public.commerce_read_paid_order_money_v2";
 const at = "2026-11-13T12:00:00.123456Z";
@@ -32,15 +32,29 @@ type Money = CommerceQuoteMoneyV2 & {
   orderId: string; moneyVersion: string; schemaVersion: number; acceptedMoneyDigest: string;
   acceptedQuoteRef: Json; intentId: string; captureEvidenceRef: string; capturedAt: string; paidMinor: number;
 };
-const resources = storeJourneyResources();
+const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as
+  Parameters<typeof installAccountMutationsBeforeForward>[0];
+const fence = manifest.forward.find(unit => unit.file.endsWith("_order_draft_payment_entry_fence.sql"));
+if (!fence) throw new Error("Expected the legacy payment entry fence");
+const fencePosition = manifest.qualified.forward.findIndex(unit => unit.file === fence.file);
+const remaining = manifest.qualified.forward.slice(fencePosition).map(unit => unit.file);
+
 let store: AccountMutationsStore;
 let sku: Awaited<ReturnType<typeof seedSku>>;
+let fixtures: Awaited<ReturnType<typeof prepareReaderFixtures>>;
+
+const installBeforeFence = (label: string) => installAccountMutationsBeforeForward(manifest, fence.file, "bootstrap", label);
+async function applyFence(target: AccountMutationsStore) {
+  expect((await target.runner.apply()).applied).toStrictEqual(remaining);
+}
 
 beforeAll(async () => {
-  store = await installAccountMutations("bootstrap", false, "paid-money");
+  store = await installBeforeFence("paid-money");
   sku = await seedSku(store.owner);
+  fixtures = await prepareReaderFixtures();
+  await applyFence(store);
 }, postgresSetupTimeoutMs);
-afterAll(async () => { await Promise.all([store?.close(), resources.close()]); }, postgresTeardownTimeoutMs);
+afterAll(() => store?.close(), postgresTeardownTimeoutMs);
 
 async function value<T>(db: Db, sql: string, params: unknown[] = []) {
   return (await db.query<{ value: T }>(sql, params)).rows[0]!.value;
@@ -60,18 +74,24 @@ async function committed(inclusive = false, edit?: (body: CommerceQuoteMoneyV2) 
   return { id, accepted };
 }
 
-async function prepare(id: string, amount: number, runtime = store.runtime) {
-  const control = createPostgresProviderPaymentControlPort(runtime, options);
-  const intent = await control.createIntent({ idempotencyKey: "intent:" + id, targetKind: "one_time_order", orderId: id,
-    subscriptionId: null, subscriptionCycleId: null, amountMinor: amount, currency, metadata: {}, channelKey: provider, at });
-  const input = { idempotencyKey: "prepare:" + id, paymentIntentId: intent.id, provider,
+const openProviderIntent = (id: string, amount: number, runtime = store.runtime) =>
+  createPostgresProviderPaymentControlPort(runtime, options).createIntent({
+    idempotencyKey: "intent:" + id, targetKind: "one_time_order", orderId: id,
+    subscriptionId: null, subscriptionCycleId: null, amountMinor: amount, currency, metadata: {}, channelKey: provider, at,
+  });
+
+async function prepare(id: string, amount: number, target = store as FixtureStore) {
+  const opened = await openProviderIntent(id, amount, target.runtime);
+  const { id: intent, paymentId } = opened;
+  const control = createPostgresProviderPaymentControlPort(target.runtime, options);
+  const input = { idempotencyKey: "prepare:" + id, paymentIntentId: intent, provider,
     providerIdempotencyKey: "provider:" + id, providerRequestFingerprint: "a".repeat(64),
     providerFlow: "one_time_payment" as const, requestPayload: {} };
   const { paymentAttemptId: attempt } = await control.prepareProviderAttempt(input);
   const remote = "payment:" + attempt, session = "session:" + attempt;
   await control.finalizeProviderAttempt({ ...input, idempotencyKey: "finalize:" + id, paymentAttemptId: attempt,
     providerAttemptId: remote, providerSessionId: session, attemptStatus: "processing", nextActionKind: null, responsePayload: {} });
-  return { id, amount, intent: intent.id, paymentId: intent.paymentId, attempt, remote, session };
+  return { id, amount, intent, paymentId, attempt, remote, session, opened };
 }
 type Payment = Awaited<ReturnType<typeof prepare>>;
 async function signed(payment: Payment, runtime = store.runtime, refund = false) {
@@ -127,6 +147,16 @@ function refuse(id: string, field = "/captureEvidenceRef") {
   return expect(read(store.runtime, id)).resolves.toStrictEqual({ kind: "refused", code: "paid_order_money_capture_mismatch", field });
 }
 
+it("preserves paid money and exact intent replay while fencing fresh versioned payments", async () => {
+  const { upgrade, upgradeBytes } = fixtures;
+  expect(await bytes(store.runtime, upgrade.id)).toBe(upgradeBytes);
+  const fresh = await committed();
+  await expect(openProviderIntent(fresh.id, fresh.accepted.quote.payableMinor)).rejects.toMatchObject({
+    code: "22023", message: "fiscal_confirmation_unenforceable", detail: "/paymentLimits/channelKey",
+  });
+  await expect(openProviderIntent(upgrade.id, upgrade.amount)).resolves.toStrictEqual({ ...upgrade.opened, replayed: true });
+});
+
 it("legacy_and_unpaid_read_null", async () => {
   expect(await read(store.runtime, randomUUID())).toBeNull();
   const legacy = randomUUID();
@@ -137,18 +167,18 @@ it("legacy_and_unpaid_read_null", async () => {
   expect(await read(store.runtime, legacy)).toBeNull();
   const { id } = await committed();
   expect(await read(store.runtime, id)).toBeNull();
-  const f = await prepare(id, 100);
-  expect(await read(store.runtime, id)).toBeNull();
+  const f = fixtures.unpaid;
+  expect(await read(store.runtime, f.id)).toBeNull();
   for (const review of [false, true]) {
     await insert(store.owner, truthTable, { settlement_intent_id: f.intent, source_event_id: randomUUID(),
       event_fingerprint: "a".repeat(64), ingest_idempotency_key: randomUUID(), outcome: review ? "captured" : "indeterminate",
       amount_minor: f.amount, currency_code: currency, source_evidence: {}, occurred_at: at, review_required_at: review ? at : null });
-    expect(await read(store.runtime, id)).toBeNull();
+    expect(await read(store.runtime, f.id)).toBeNull();
   }
 });
 
 it.each([["signed_capture_reads_paid_money", true], ["readback_capture_reads_paid_money", false]] as const)("%s", async (_name, inclusive) => {
-  const f = await paid(inclusive);
+  const f = inclusive ? fixtures.signed : fixtures.readback;
   await matchesLive(f.id, f.accepted, f.intent, f.event);
   expect(await value(store.owner, `SELECT (source_evidence->>'observedAt')::timestamptz=occurred_at
       AND occurred_at=$2::timestamptz AS value FROM public.${truthTable} WHERE id=$1`, [f.truth, at])).toBe(true);
@@ -160,7 +190,7 @@ it.each([["signed_capture_reads_paid_money", true], ["readback_capture_reads_pai
 });
 
 it("duplicate_observation_ignored", async () => {
-  const f = await paid(true);
+  const f = fixtures.duplicate;
   const before = await bytes(store.runtime, f.id);
   expect((await readback(f)).paymentResult.kind).toBe("ignored_duplicate_success");
   expect(await value(store.owner, `SELECT jsonb_build_array(
@@ -169,21 +199,26 @@ it("duplicate_observation_ignored", async () => {
   expect(await bytes(store.runtime, f.id)).toBe(before);
 });
 
-it("round trips a supplementary-plane acceptance reference through storage and the reader", async () => {
-  const acceptanceRef = "𐐷".repeat(256);
+const supplementaryAcceptanceRef = "𐐷".repeat(256);
+async function prepareSupplementaryReference() {
   const accepted = await issue(store, sku, true);
-  const { id } = await transaction(store.owner, db => write(db, accepted, sku, { snapshot: { acceptance_ref: acceptanceRef } }));
+  const { id } = await transaction(store.owner, db => write(db, accepted, sku, { snapshot: { acceptance_ref: supplementaryAcceptanceRef } }));
   await signed(await prepare(id, accepted.quote.payableMinor));
+  return id;
+}
+
+it("round trips a supplementary-plane acceptance reference through storage and the reader", async () => {
+  const id = fixtures.supplementary;
   const result = await read(store.runtime, id);
   const decoder = fileURLToPath(new URL("../../packages/platform/test/commerce/paidOrderMoneyV2Read.fixture.ts", import.meta.url));
   const output = execFileSync(process.execPath, ["--import", "tsx", decoder], {
     input: JSON.stringify({ id, result }), encoding: "utf8",
   });
-  expect(JSON.parse(output)).toMatchObject({ acceptedQuoteRef: { acceptanceRef } });
+  expect(JSON.parse(output)).toMatchObject({ acceptedQuoteRef: { acceptanceRef: supplementaryAcceptanceRef } });
 });
 
 it("paid_money_survives_refund", async () => {
-  const f = await paid(true);
+  const f = fixtures.refundable;
   const before = await bytes(store.runtime, f.id);
   await signed(f, store.runtime, true);
   expect(await value(store.owner, "SELECT status AS value FROM public.commerce_orders WHERE id=$1", [f.id])).toBe("refunded");
@@ -192,19 +227,24 @@ it("paid_money_survives_refund", async () => {
 });
 
 it("paid_money_survives_restore", async () => {
-  const source = await resources.installation("paid-source");
-  const target = await resources.installation("paid-target");
-  const product = await seedSku(source.owner);
-  const f = await committed(false, undefined, source, product);
-  const payment = await prepare(f.id, f.accepted.quote.payableMinor, source.runtime);
-  const event = await signed(payment, source.runtime);
-  await matchesLive(f.id, f.accepted, payment.intent, event, source);
-  const before = await bytes(source.runtime, f.id);
-  const packet = await captureStoreJourney(source.owner, "paid-source");
-  const freshTarget = await captureStoreJourney(target.owner, "paid-target");
-  await expect(restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet, freshTarget }))
-    .resolves.toMatchObject({ replayed: false });
-  expect(await bytes(target.runtime, f.id)).toBe(before);
+  const source = await installBeforeFence("paid-source");
+  let target: AccountMutationsStore | undefined;
+  try {
+    target = await installAccountMutations("bootstrap", false, "paid-target");
+    if (target.installation.generation !== "qualified-v2") throw new Error("Expected qualified restore target");
+    const product = await seedSku(source.owner);
+    const f = await committed(false, undefined, source, product);
+    const payment = await prepare(f.id, f.accepted.quote.payableMinor, source);
+    const event = await signed(payment, source.runtime);
+    await applyFence(source);
+    await matchesLive(f.id, f.accepted, payment.intent, event, source);
+    const before = await bytes(source.runtime, f.id);
+    const packet = await capture(source.owner, source.inventory, "paid-source");
+    const freshTarget = await capture(target.migrator, target.inventory, "paid-target");
+    await expect(restoreConnectedNativeStore({ owner: target.migrator, installation: target.installation, packet, freshTarget }))
+      .resolves.toMatchObject({ replayed: false });
+    expect(await bytes(target.runtime, f.id)).toBe(before);
+  } finally { await Promise.all([source.close(), target?.close()]); }
 }, postgresSetupTimeoutMs);
 
 const evidenceEdit = (f: Paid, edit: string, args: unknown[] = []) =>
@@ -219,7 +259,7 @@ async function truthEdit(f: Paid, edit: string, args: unknown[] = []) {
 }
 
 it("refuses a bound observation that crosses into UTC year 10000", async () => {
-  const f = await paid(true);
+  const f = fixtures.yearBoundary;
   const setObservation = (observedAt: string) => truthEdit(f,
     "occurred_at=($2::text)::timestamptz,source_evidence=jsonb_set(source_evidence,'{observedAt}',to_jsonb($2::text))", [observedAt]);
   await setObservation("9999-12-31T22:59:59.999999-01:00");
@@ -228,54 +268,46 @@ it("refuses a bound observation that crosses into UTC year 10000", async () => {
   await refuse(f.id);
 });
 
-it("capture_binding_refuses", async () => {
-  const other = await paid(true);
-  const fault: [string, (f: Paid) => Promise<unknown>, string?][] = [
-    ["missing truth", f => store.owner.query(`DELETE FROM public.${truthTable} WHERE id=$1`, [f.truth])],
-    ["foreign truth", f => store.owner.query(`UPDATE public.${truthTable} SET settlement_intent_id=$2 WHERE id=$1`, [f.truth, other.intent])],
-    ["foreign transition reference", f => store.owner.query(`UPDATE public.${transitionTable}
+type CaptureMutation = (order: Paid, other: Paid) => Promise<unknown>;
+const bindingFaults: [label: string, mutate: CaptureMutation, field?: string][] = [
+  ["missing truth", f => store.owner.query(`DELETE FROM public.${truthTable} WHERE id=$1`, [f.truth])],
+  ["foreign truth", (f, other) => store.owner.query(`UPDATE public.${truthTable} SET settlement_intent_id=$2 WHERE id=$1`, [f.truth, other.intent])],
+  ["foreign transition reference", (f, other) => store.owner.query(`UPDATE public.${transitionTable}
       SET payload=jsonb_set(payload,'{paymentTruthEventId}',to_jsonb($2::text)) WHERE id=$1`, [f.transition, other.truth])],
-    ["different transition", f => truthEdit(f, "settlement_transition_id=$2", [other.transition])],
-    ["different transition evidence", f => store.owner.query(`UPDATE public.${transitionTable}
+  ["different transition", (f, other) => truthEdit(f, "settlement_transition_id=$2", [other.transition])],
+  ["different transition evidence", f => store.owner.query(`UPDATE public.${transitionTable}
       SET payload=payload-'sourceEvidence' WHERE id=$1`, [f.transition])],
-    ["nonsettled intent", f => store.owner.query(`UPDATE public.${intentTable} SET status='created',settled_at=NULL WHERE id=$1`, [f.intent])],
-    ["additional applied capture", f => store.owner.query(`INSERT INTO public.${truthTable}
+  ["nonsettled intent", f => store.owner.query(`UPDATE public.${intentTable} SET status='created',settled_at=NULL WHERE id=$1`, [f.intent])],
+  ["additional applied capture", f => store.owner.query(`INSERT INTO public.${truthTable}
       (source_event_id,event_fingerprint,ingest_idempotency_key,settlement_intent_id,state,outcome,amount_minor,currency_code,
         source_evidence,settlement_transition_id,occurred_at,settled_at)
       SELECT $2,event_fingerprint,$2,settlement_intent_id,state,outcome,amount_minor,currency_code,source_evidence,
         settlement_transition_id,occurred_at,settled_at FROM public.${truthTable} WHERE id=$1`, [f.truth, randomUUID()])],
-    ["additional transition", f => insert(store.owner, transitionTable, { intent_id: f.intent, from_status: "created",
+  ["additional transition", f => insert(store.owner, transitionTable, { intent_id: f.intent, from_status: "created",
       to_status: "settled", outcome: "succeeded", idempotency_key: randomUUID() })],
-    ["wrong source event", f => truthEdit(f, "source_event_id='provider:'||$2", [randomUUID()])],
-    ["foreign evidence", f => evidenceEdit(f, "settlement_intent_id=$2", [other.intent])],
-    ["missing attempt reference", f => evidenceEdit(f, "payment_attempt_id=NULL")],
-    ["wrong evidence type", f => evidenceEdit(f, "event_type='payment.failed'")],
-    ["wrong basis", f => evidenceEdit(f, "captured_amount_basis=NULL")],
-    ["wrong fingerprint", f => evidenceEdit(f, "event_fingerprint=repeat('c',64)")],
-    ["unsigned evidence", f => evidenceEdit(f, "signature_verified=false")],
-    ["signed recorded as readback", f => evidenceEdit(f, "received_via='reconciliation_read.v1'")],
-    ["wrong truth observation", f => truthEdit(f, "source_evidence=jsonb_set(source_evidence,'{observedAt}',to_jsonb($2::text))", [millisecond])],
-    ["wrong amount before currency", f => evidenceEdit(f, "amount_minor=amount_minor+1,currency='YYY'"), "/paidMinor"],
-    ["wrong currency", f => evidenceEdit(f, "currency='YYY'"), "/currency"],
-  ];
-  for (const [label, mutate, field] of fault) {
-    const f = await paid(true);
-    await mutate(f);
+  ["wrong source event", f => truthEdit(f, "source_event_id='provider:'||$2", [randomUUID()])],
+  ["foreign evidence", (f, other) => evidenceEdit(f, "settlement_intent_id=$2", [other.intent])],
+  ["missing attempt reference", f => evidenceEdit(f, "payment_attempt_id=NULL")],
+  ["wrong evidence type", f => evidenceEdit(f, "event_type='payment.failed'")],
+  ["wrong basis", f => evidenceEdit(f, "captured_amount_basis=NULL")],
+  ["wrong fingerprint", f => evidenceEdit(f, "event_fingerprint=repeat('c',64)")],
+  ["unsigned evidence", f => evidenceEdit(f, "signature_verified=false")],
+  ["signed recorded as readback", f => evidenceEdit(f, "received_via='reconciliation_read.v1'")],
+  ["wrong truth observation", f => truthEdit(f, "source_evidence=jsonb_set(source_evidence,'{observedAt}',to_jsonb($2::text))", [millisecond])],
+  ["wrong amount before currency", f => evidenceEdit(f, "amount_minor=amount_minor+1,currency='YYY'"), "/paidMinor"],
+  ["wrong currency", f => evidenceEdit(f, "currency='YYY'"), "/currency"],
+];
+it("capture_binding_refuses", async () => {
+  for (const { label, mutate, field, order: f } of fixtures.bindingFaults) {
+    await mutate(f, fixtures.foreignCapture);
     expect(await read(store.runtime, f.id), label).toStrictEqual({
       kind: "refused", code: "paid_order_money_capture_mismatch", field: field ?? "/captureEvidenceRef",
     });
   }
-  const readbackOrder = await paid();
+  const readbackOrder = fixtures.unsignedReadback;
   await evidenceEdit(readbackOrder, "signature_verified=true");
   await refuse(readbackOrder.id);
-  for (const edge of [1, 2_147_483_647]) {
-    const f = await paid(true, body => {
-      const line = body.lines[0]!;
-      return { ...body, netTotal: edge, payableMinor: edge, lines: [
-        { ...line, unitBasisMinor: edge, preDiscountMinor: edge, effectiveMinor: edge, netMinor: edge, lineTotalMinor: edge,
-          taxPositions: line.taxPositions.map(position => ({ ...position, taxableMinor: edge })) },
-      ] };
-    }, { restore: true, ...(edge === 1 ? {} : { paymentBounds: { minMinor: 1, maxMinor: edge } }) });
+  for (const { edge, order: f } of fixtures.amountEdges) {
     expect(await read(store.runtime, f.id)).toMatchObject({ kind: "paid", money: { paidMinor: edge } });
     for (const delta of [-1, 1]) {
       await evidenceEdit(f, "amount_minor=$2", [edge + delta]);
@@ -285,9 +317,8 @@ it("capture_binding_refuses", async () => {
 });
 
 it("foreign_attempt_refuses", async () => {
-  const foreign = await paid(true);
-  for (const inclusive of [true, false]) {
-    const f = await paid(inclusive);
+  const foreign = fixtures.foreignAttempt;
+  for (const { inclusive, order: f } of fixtures.boundAttempts) {
     await evidenceEdit(f, "provider_payment_id=$2", [f.session]);
     if (inclusive) await refuse(f.id);
     else expect(await read(store.runtime, f.id)).toMatchObject({ kind: "paid" });
@@ -303,15 +334,12 @@ it("foreign_attempt_refuses", async () => {
   }
 });
 
-it("route_precedes_evidence", async () => {
-  const providerOrder = await paid(true);
-  await truthEdit(providerOrder, `source_event_id='provider:'||$2,
-    source_evidence=jsonb_set(source_evidence,'{sourceReference}',to_jsonb($2::text))`, [randomUUID()]);
-  await refuse(providerOrder.id);
-  const { id } = await committed();
-  const opened = await value<{ settlement: { id: string } }>(store.runtime,
-    "SELECT public.commerce_open_settlement_intent($1,$2,'sandbox',100,'XXX','{}',$3) AS value", [randomUUID(), id, at]);
-  const intent = opened.settlement.id;
+async function prepareSandboxCapture() {
+  const { id, accepted } = await committed();
+  const { settlement } = await value<{ settlement: { id: string } }>(store.runtime,
+    "SELECT public.commerce_open_settlement_intent($1,$2,'sandbox',$3,$4,'{}',$5) AS value",
+    [randomUUID(), id, accepted.quote.payableMinor, currency, at]);
+  const intent = settlement.id;
   const simulator = createPostgresSandboxPaymentSimulator(store.runtime, options);
   const attempt = await simulator.beginAttempt({ settlementIntentId: intent, idempotencyKey: randomUUID(), requestFingerprint: "b".repeat(64), at });
   for (const outcome of ["indeterminate", "captured"] as const) {
@@ -320,14 +348,22 @@ it("route_precedes_evidence", async () => {
       settlementIntentId: intent, attemptId: attempt.id, observationId: observation.id,
     })) })).status).toBe(200);
   }
+  return { id, intent };
+}
+
+it("route_precedes_evidence", async () => {
+  const providerOrder = fixtures.wrongRoute;
+  await truthEdit(providerOrder, `source_event_id='provider:'||$2,
+    source_evidence=jsonb_set(source_evidence,'{sourceReference}',to_jsonb($2::text))`, [randomUUID()]);
+  await refuse(providerOrder.id);
+  const { id, intent } = fixtures.sandbox;
   expect(await value(store.runtime, `SELECT jsonb_build_array(count(*), count(DISTINCT settlement_transition_id)) AS value
     FROM public.${truthTable} WHERE settlement_intent_id=$1 AND state='settled' AND outcome='captured'`, [intent])).toEqual([2, 1]);
   await refuse(id, "/captureRoute");
 });
 
 it("malformed_observation_refuses", async () => {
-  const signedOrder = await paid(true);
-  const readbackOrder = await paid();
+  const { malformedSigned: signedOrder, malformedReadback: readbackOrder } = fixtures;
   for (const malformed of ["not a date", "2026-02-30T12:00:00Z", millisecond]) {
     await truthEdit(signedOrder, "source_evidence=jsonb_set(source_evidence,'{observedAt}',to_jsonb($2::text))", [malformed]);
     await refuse(signedOrder.id);
@@ -341,7 +377,7 @@ it("malformed_observation_refuses", async () => {
 });
 
 it("fresh_readback_does_not_repair", async () => {
-  const f = await paid(true);
+  const f = fixtures.unrepairable;
   await evidenceEdit(f, "signature_verified=false");
   await refuse(f.id);
   const before = await bytes(store.runtime, f.id);
@@ -424,8 +460,7 @@ function keySets(actual: unknown, expected: unknown, path = "") {
   }
 }
 
-// The pre-guard fixture uses the already installed destination and tax erasers plus
-// the receipt and retained row images required by the order assertion.
+// Exercise the installed destination and tax erasers with the retained ledger evidence.
 async function eraseFixture(f: Paid) {
   await transaction(store.owner, async db => {
     await db.query(`LOCK TABLE ${[...storageTables, "identity_privacy_erasures"].map(table => "public." + table).join(",")}
@@ -441,20 +476,13 @@ async function eraseFixture(f: Paid) {
         { owner: "destination-documents", resource: "commerce.order-money-destination-pins", disposition: "erase", remote: false },
         { owner: "destination-documents", resource: "commerce.order-money-retained-facts", disposition: "retain", remote: false },
       ] }]), retained_obligations: "[]" });
-    await db.query(`UPDATE public.${snapshots} SET destination_erased=true,destination_digest=NULL,
-      destination_policy_revision=NULL,delivery_selection_ref=NULL WHERE order_id=$1`, [f.id]);
-    await db.query(`UPDATE public.${buckets} SET destination_erased=true,carrier_ref=NULL,service_ref=NULL
-      WHERE order_id=$1 AND part_no=0`, [f.id]);
     await db.query("UPDATE public.commerce_orders SET updated_at=updated_at WHERE id=$1", [f.id]);
     await db.query("SET CONSTRAINTS ALL IMMEDIATE");
   });
 }
 
 it.each([true, false])("reader_key_sets_closed, erased_order_reads_retained_money and erased_reader_key_sets_closed with cadence=%s", async cadence => {
-  const linePromotion = "offer-" + randomUUID(), shippingPromotion = "offer-" + randomUUID();
-  const f = await paid(cadence, richMoney(cadence, linePromotion, shippingPromotion), {
-    restore: true, promotions: [{ id: linePromotion, lineKey: "item-a" }, { id: shippingPromotion, bucketKey: "shipping" }],
-  });
+  const f = cadence ? fixtures.erasureCadence : fixtures.erasureOneTime;
   const expectedLive = await matchesLive(f.id, f.accepted, f.intent, f.event);
   keySets(await read(store.runtime, f.id), JSON.parse(JSON.stringify(expectedLive)));
   const before = await bytes(store.runtime, f.id);
@@ -476,3 +504,59 @@ it.each([true, false])("reader_key_sets_closed, erased_order_reads_retained_mone
   expect(await bytes(store.runtime, f.id)).toBe(expectedErased);
   keySets(await read(store.runtime, f.id), JSON.parse(expectedErased));
 });
+
+
+function prepareAmountEdge(edge: number) {
+  return paid(true, body => {
+    const line = body.lines[0]!;
+    return { ...body, netTotal: edge, payableMinor: edge, lines: [
+      { ...line, unitBasisMinor: edge, preDiscountMinor: edge, effectiveMinor: edge, netMinor: edge, lineTotalMinor: edge,
+        taxPositions: line.taxPositions.map(position => ({ ...position, taxableMinor: edge })) },
+    ] };
+  }, { restore: true, ...(edge === 1 ? {} : { paymentBounds: { minMinor: 1, maxMinor: edge } }) });
+}
+
+function prepareErasureOrder(cadence: boolean) {
+  const linePromotion = "offer-" + randomUUID(), shippingPromotion = "offer-" + randomUUID();
+  return paid(cadence, richMoney(cadence, linePromotion, shippingPromotion), {
+    restore: true, promotions: [{ id: linePromotion, lineKey: "item-a" }, { id: shippingPromotion, bucketKey: "shipping" }],
+  });
+}
+
+async function prepareReaderFixtures() {
+  const unpaidOrder = await committed();
+  expect(await read(store.runtime, unpaidOrder.id)).toBeNull();
+  const unpaid = await prepare(unpaidOrder.id, unpaidOrder.accepted.quote.payableMinor);
+  const upgrade = await paid(true);
+  const upgradeBytes = await bytes(store.runtime, upgrade.id);
+  await matchesLive(upgrade.id, upgrade.accepted, upgrade.intent, upgrade.event);
+
+  const captureFaultCases: { label: string; mutate: CaptureMutation; field?: string; order: Paid }[] = [];
+  for (const [label, mutate, field] of bindingFaults) {
+    captureFaultCases.push({ label, mutate, field, order: await paid(true) });
+  }
+  const amountEdges: { edge: number; order: Paid }[] = [];
+  for (const edge of [1, 2_147_483_647]) amountEdges.push({ edge, order: await prepareAmountEdge(edge) });
+  return {
+    upgrade, upgradeBytes, amountEdges,
+    bindingFaults: captureFaultCases,
+    unpaid,
+    signed: await paid(true),
+    readback: await paid(),
+    duplicate: await paid(true),
+    supplementary: await prepareSupplementaryReference(),
+    refundable: await paid(true),
+    yearBoundary: await paid(true),
+    foreignCapture: await paid(true),
+    unsignedReadback: await paid(),
+    foreignAttempt: await paid(true),
+    boundAttempts: [{ inclusive: true, order: await paid(true) }, { inclusive: false, order: await paid() }],
+    wrongRoute: await paid(true),
+    sandbox: await prepareSandboxCapture(),
+    malformedSigned: await paid(true),
+    malformedReadback: await paid(),
+    unrepairable: await paid(true),
+    erasureCadence: await prepareErasureOrder(true),
+    erasureOneTime: await prepareErasureOrder(false),
+  };
+}

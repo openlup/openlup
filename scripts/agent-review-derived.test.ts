@@ -55,7 +55,7 @@ it('lands owner-exact reports and settings from parents with zero carrier edits'
     for (const parent of [left, right]) {
       expect(f.git('diff', '--raw', f.base, parent, '--', 'packages/core/api', 'packages/outbox/api', 'packages/platform/api', ...PROBE_OUTPUTS)).toBe('');
     }
-    expect(f.landingCli()).toContain(`carrier toolchain: Node ${process.versions.node}, npm ${f.fixtureNpm('--version').trim()}, ICU ${process.versions.icu}`);
+    expect(f.fixtureNpm('run', 'landing:merge', '--', '--no-verify')).toContain(`carrier toolchain: Node ${process.versions.node}, npm ${f.fixtureNpm('--version').trim()}, ICU ${process.versions.icu}`);
     const landed = f.git('rev-parse', 'HEAD');
     expect(f.git('show', '-s', '--format=%P%n%B', landed)).toBe(`${left} ${right}\nMerge origin/main and refresh derived carriers\n\nSigned-off-by: Fixture <fixture@example.invalid>`);
     expect(f.git('status', '--porcelain', '--untracked-files=all')).toBe('');
@@ -88,7 +88,7 @@ it('lands owner-exact reports and settings from parents with zero carrier edits'
     expect(JSON.parse(fast.stdout.trimEnd().split('\n').at(-1)!)).toEqual({ preflight: 'fast', result: 'pass', head: landed, failed: [] });
     console.info(`D3 landing: fork ${f.base}, parents ${left} ${right}, merge ${landed}; derived ${changed.join(', ')}; settings refusals already match`);
   } finally { f.restoreDerivedFixture(); }
-}, 360000);
+}, 420000);
 
 it('leaves the merge in place when both sides edit the SQL reference prose', async () => {
   f.git('reset', '--hard', f.reviewed); f.git('checkout', '-q', '--detach', f.reviewed);

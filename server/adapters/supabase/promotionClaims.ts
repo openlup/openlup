@@ -8,8 +8,8 @@ import { promotionRedemptionMap } from "../../domains/commerce/promoDataPort.js"
 import type {
   PromotionClaimSweepCounts,
   PromotionClaimSweepPort,
-} from "../../domains/commerce/promotionClaimSweepPort.js";
-import { parsePromotionClaimSweepCounts } from "../../domains/commerce/promotionClaimSweepPort.js";
+} from "@openlup/platform/promotions";
+import { parsePromotionClaimSweepCounts } from "@openlup/platform/promotions";
 
 interface PromoDataQuery extends PromiseLike<{ data: unknown; count: number | null; error: unknown }> {
   select(columns: string, options?: { count?: "exact"; head?: boolean }): PromoDataQuery;

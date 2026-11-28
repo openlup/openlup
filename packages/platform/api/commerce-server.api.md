@@ -2427,6 +2427,31 @@ export interface TransactionalEmailPort<Locale extends string = string> {
     sendShipmentExceptionNotice(input: ShipmentExceptionEmailInput<Locale>): Promise<TransactionalEmailSendOutcome>;
 }
 ```
+## dist/commerce/returnReasonsPolicy.d.ts
+
+```ts
+/** @experimental Default allowed return reason codes when no `commerce_return_reasons` setting row is installed. */
+export declare const DEFAULT_COMMERCE_RETURN_REASONS: readonly string[];
+/** @experimental Installed policy configuring the allowed return reason codes for new return requests. */
+export interface CommerceReturnReasonsPolicy {
+    revision: string;
+    reasons: string[];
+}
+interface Executor {
+    query(text: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+/** @experimental Validate a `commerce_return_reasons` policy document using SQL-equivalent rules. */
+export declare function validateCommerceReturnReasons(value: unknown): CommerceReturnReasonsPolicy;
+/** @experimental Install the commerce return reasons policy on a host-owned write-capable connection. */
+export declare function installCommerceReturnReasonsPolicy(db: Executor, policy: CommerceReturnReasonsPolicy): Promise<void>;
+/** @experimental Read an explicit `commerce_return_reasons` override, returning `undefined` when absent. */
+export declare function readCommerceReturnReasonsOverride(db: Executor): Promise<CommerceReturnReasonsPolicy | undefined>;
+/** @experimental Read the installed `commerce_return_reasons` policy or the default absence fallback. */
+export declare function readCommerceReturnReasonsPolicy(db: Executor): Promise<CommerceReturnReasonsPolicy>;
+export {};
+```
 ## dist/commerce/server/catalogAdmissionRefusal.d.ts
 
 ```ts
@@ -5160,6 +5185,9 @@ type Fiscal = NonNullable<Extract<Pin, {
 type TaxRequest = ReturnType<typeof makeTaxQuoteRequest>;
 type TaxInput = TaxRequest["input"];
 type AdapterResult = Awaited<ReturnType<TaxCalculationPortV1["quote"]>>;
+type CheckoutDestinationRead = Extract<DestinationVerifiedReadV2, {
+    evidenceExpiresAt: string;
+}>;
 type Refusal = {
     kind: "refused";
     code: string;
@@ -5197,7 +5225,7 @@ type ExclusiveBinding = {
         kind: "refused";
     }>) => boolean;
     readCoverage: (installationRef: string, accountRef: string) => Promise<TaxCoverageRevision | null>;
-    readTaxFacts: (owner: QuoteOwnerContext, plan: CommerceQuoteMoneyV2Plan, service: DestinationServicePinV2, document: DestinationVerifiedReadV2) => Promise<Pick<TaxInput, "market" | "shipFromRef" | "policyRevision" | "required">>;
+    readTaxFacts: (owner: QuoteOwnerContext, plan: CommerceQuoteMoneyV2Plan, service: DestinationServicePinV2, document: CheckoutDestinationRead) => Promise<Pick<TaxInput, "market" | "shipFromRef" | "policyRevision" | "required">>;
 };
 /** @experimental Trusted host-authorized checkout owner. */
 export type QuoteOwnerContext = Omit<Begin["identity"], "evaluationKey">;
@@ -5229,7 +5257,7 @@ export interface DbBackedCommerceQuotePortV2Deps {
     };
     destination: Pick<DestinationPortV2, "snapshot" | "read">;
     snapshotCommand: (owner: QuoteOwnerContext, request: CommerceQuoteV2Request) => Promise<Parameters<DestinationPortV2["snapshot"]>[1]>;
-    readPlan: (owner: QuoteOwnerContext, request: CommerceQuoteV2Request, document: DestinationVerifiedReadV2) => Promise<FreshFacts>;
+    readPlan: (owner: QuoteOwnerContext, request: CommerceQuoteV2Request, document: CheckoutDestinationRead) => Promise<FreshFacts>;
     readLimits: (rail: Rail) => Promise<LimitsReadResult>;
     clockToleranceMs: number;
     readFiscal?: (owner: QuoteOwnerContext) => Promise<Fiscal>;
@@ -5668,6 +5696,8 @@ import type { CommerceQuotePortV2, DbBackedCommerceQuotePortV2Deps } from "./dbB
 export type { CommerceQuotePortV2, CommerceQuoteV2Request, DbBackedCommerceQuotePortV2Deps, QuoteOwnerContext, QuoteOutcome } from "./dbBackedCommerceQuotePortV2.js";
 /** @experimental Construct the native quote port with the same registry the host uses for privacy. */
 export declare function createDbBackedCommerceQuotePortV2(deps: DbBackedCommerceQuotePortV2Deps): CommerceQuotePortV2;
+export { DEFAULT_COMMERCE_RETURN_REASONS, validateCommerceReturnReasons, installCommerceReturnReasonsPolicy, readCommerceReturnReasonsOverride, readCommerceReturnReasonsPolicy, } from "../returnReasonsPolicy.js";
+export type { CommerceReturnReasonsPolicy } from "../returnReasonsPolicy.js";
 ```
 ## dist/commerce/server/nativeExpiredCheckoutRecovery.d.ts
 

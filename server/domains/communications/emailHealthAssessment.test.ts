@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { EmailHealthMetrics } from "./emailHealthMetricsPort.js";
 import {
   evaluateEmailHealth,
   readEmailHealthThresholds,
+  type EmailHealthMetrics,
   type EmailHealthThresholds,
-} from "./emailHealthAssessment.js";
+} from "@openlup/platform/communications";
 
 const THRESHOLDS: EmailHealthThresholds = {
   windowMinutes: 60,

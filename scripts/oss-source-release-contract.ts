@@ -4,9 +4,12 @@ import { PUBLICATION_CATALOG_PATH, PUBLIC_POLICY_REGISTRY_PATH, effectivePublicC
 import { PUBLIC_EXECUTION_ENTRYPOINTS, isDirectExecutionEntrypoint } from "./oss-publication-contract.ts";
 import { readPublicTypecheckCompatibility, type PublicTypecheckCompatibility } from "./oss-public-typecheck.ts";
 import { documentationGit } from "./documentation-routing.ts";
+import { assertMigrationLockSafety } from "./migrations/lock-safety.ts";
+import { closedHistoricalForwardPaths } from "./migrations/types.ts";
 import { assertReviewedPlatformForward, hasExactManagedForward, isExpandOnlyPlatformForward, isNativeStoreMigrationPath, readReviewedForwardRegistry, REVIEWED_FORWARD_PATH } from "./reviewed-platform-forward.ts";
 
 export { isExpandOnlyPlatformForward } from "./reviewed-platform-forward.ts";
+export { assertMigrationLockSafety, evaluateMigrationLockSafety, HOT_PRODUCTION_TABLES } from "./migrations/lock-safety.ts";
 
 export const SOURCE_RELEASE_CONTRACT_PATH = "config/openlup-source-release-contract.json";
 export const SOURCE_RELEASE_EVIDENCE_CLASS = "local-fixture";
@@ -181,14 +184,27 @@ const controlByte = (byte: number) => (byte < 0x20 && byte !== 0x09 && byte !== 
 export function assertAdmittedPlatformForward(root: string, base: string, head: string, path: string, bytes: Buffer, release = false): void {
   if (bytes.some(controlByte)) throw new Error(`migration SQL refuses control characters: ${path}`);
   let native = false;
+  let registry: ReturnType<typeof readReviewedForwardRegistry> | undefined;
   if (isNativeStoreMigrationPath(path)) {
     const hasRegistry = gitBytes(root, ["ls-tree", head, "--", REVIEWED_FORWARD_PATH]).length > 0;
-    const slots = hasRegistry ? readReviewedForwardRegistry(gitBytes(root, ["show", `${head}:${REVIEWED_FORWARD_PATH}`])).nativeStoreForwardClass?.slots ?? [] : undefined;
+    registry = hasRegistry ? readReviewedForwardRegistry(gitBytes(root, ["show", `${head}:${REVIEWED_FORWARD_PATH}`])) : undefined;
+    const slots = registry?.nativeStoreForwardClass?.slots ?? undefined;
     native = isNativeStoreMigrationPath(path, slots);
   }
   if (isQualifiedPlatformMigrationPath(path) || isChannelIngestMigrationPath(path) || native
     || !isExpandOnlyPlatformForward(bytes.toString("utf8")) || hasExactManagedForward(root, base, path)
     || (release && hasExactManagedForward(root, head, path))) assertReviewedPlatformForward(root, base, head, path, bytes, release);
+  if (!release && !isQualifiedPlatformMigrationPath(path)) {
+    if (!registry && root !== "/absent") {
+      try {
+        const hasRegistry = gitBytes(root, ["ls-tree", head, "--", REVIEWED_FORWARD_PATH]).length > 0;
+        if (hasRegistry) registry = readReviewedForwardRegistry(gitBytes(root, ["show", `${head}:${REVIEWED_FORWARD_PATH}`]));
+      } catch { /* Synthetic unit callers without a Git repo still run lock-safety directly. */ }
+    }
+    if (!registry || !closedHistoricalForwardPaths(registry).has(path)) {
+      assertMigrationLockSafety(bytes, path);
+    }
+  }
 }
 
 function assertPlatformSchemaForwards(root: string, previousCommit: string, targetCommit: string, old: GitInventoryEntry[], target: GitInventoryEntry[], readOld: SourceReleaseBlobReader, readTarget: SourceReleaseBlobReader): void {

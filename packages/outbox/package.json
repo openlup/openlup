@@ -1,15 +1,18 @@
 {
   "name": "@openlup/outbox",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "private": false,
-  "description": "Transactional PostgreSQL outbox rail.",
+  "description": "Transactional PostgreSQL outbox rail with at-least-once dispatch, lease-bound schedules, and registry composition.",
   "keywords": [
     "openlup",
     "outbox",
     "transactional-outbox",
     "postgresql",
+    "ecommerce",
+    "headless-commerce",
     "job-queue",
     "scheduler",
+    "event-driven",
     "at-least-once",
     "typescript"
   ],
@@ -53,7 +56,7 @@
     "test:consumer": "node --experimental-strip-types ./scripts/consumer-proof.ts"
   },
   "peerDependencies": {
-    "@openlup/core": "1.3.0"
+    "@openlup/core": "1.4.0"
   },
   "exports": {
     "./package.json": "./package.json",

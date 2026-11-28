@@ -89,13 +89,15 @@ async function restrictedPublicationLogin(db: PgQueryExecutor) {
   return rows[0]?.restricted === true;
 }
 
-export async function publicationRelationFence(db: PgQueryExecutor, productId: string) {
-  if (await restrictedPublicationLogin(db)) await db.query("SELECT public.catalog_publication_lock_projection()");
+export async function publicationRelationFence(db: PgQueryExecutor, productId: string): Promise<boolean> {
+  const restricted = await restrictedPublicationLogin(db);
+  if (restricted) await db.query("SELECT public.catalog_publication_lock_projection()");
   else await db.query(`LOCK TABLE public.catalog_products, public.catalog_skus, public.catalog_sku_identifiers,
     public.catalog_product_document_revisions, public.catalog_attribute_projection IN SHARE ROW EXCLUSIVE MODE NOWAIT`);
   await db.query("SELECT id FROM public.catalog_products WHERE id=$1 FOR NO KEY UPDATE NOWAIT", [productId]);
   await db.query("SELECT product_id FROM public.catalog_publication_heads WHERE product_id=$1 FOR NO KEY UPDATE NOWAIT", [productId]);
   await db.query("SELECT id FROM public.catalog_skus WHERE product_id=$1 ORDER BY id FOR NO KEY UPDATE NOWAIT", [productId]);
+  return restricted;
 }
 
 async function readPublicationHead(db: PgQueryExecutor, productId: string) {
@@ -220,9 +222,11 @@ async function lockPriceContexts(db: PgQueryExecutor, operations: Plan["priceOpe
   if (listId) for (const sku of priced) {
     contexts.set(`${listId}:${sku.id}`, { priceListId: listId, variantId: sku.id });
   }
-  for (const key of [...contexts.keys()].sort()) {
-    const operation = contexts.get(key)!;
-    await db.query("SELECT public.catalog_price_setup_lock_context($1,$2)", [operation.priceListId, operation.variantId]);
+  const ordered = [...contexts.keys()].sort().map(key => contexts.get(key)!);
+  if (ordered.length) {
+    await db.query(`SELECT public.catalog_price_setup_lock_context(t.price_list_id,t.variant_id)
+      FROM unnest($1::uuid[],$2::uuid[]) WITH ORDINALITY AS t(price_list_id,variant_id,ord)
+      ORDER BY t.ord`, [ordered.map(operation => operation.priceListId), ordered.map(operation => operation.variantId)]);
   }
   return listId;
 }
@@ -276,6 +280,8 @@ async function assertSkuPrices(db: PgQueryExecutor, priced: CatalogPublishedSku[
 }
 
 async function applyPrices(db: PgQueryExecutor, operations: Plan["priceOperations"], claims: Map<string, unknown> | null, actor: string) {
+  if (!operations.length) return;
+  const applied: { operation: Plan["priceOperations"][number]; entryId: string }[] = [];
   for (const operation of operations) {
     const claim = claims?.get(operation.commandKey) as { outcome: string } | undefined;
     const raw = !claim ? (await db.query(
@@ -291,33 +297,62 @@ async function applyPrices(db: PgQueryExecutor, operations: Plan["priceOperation
       && receipt.priceListId === operation.priceListId && (receipt.previous?.entryId ?? null) === operation.expected.entryId
       && (receipt.previous?.unitPriceMinor ?? null) === operation.expected.unitPriceMinor && receipt.current.unitPriceMinor === operation.unitPriceMinor,
     "catalog_publication_price_changed");
-    const effective = (await db.query(claims === null
-      ? "SELECT id,unit_price_minor FROM public.catalog_publication_lock_effective_base_price($1,$2)"
-      : `SELECT entry.id,entry.unit_price_minor FROM public.price_entries entry
-      JOIN public.price_lists list ON list.id=entry.price_list_id
-      WHERE entry.variant_id=$1 AND entry.price_list_id=$2 AND entry.mode='one_time' AND entry.min_qty=1 AND entry.active
+    applied.push({ operation, entryId: receipt.current.entryId });
+  }
+  const { rows: effectiveRows } = await db.query(claims === null
+    ? `SELECT target.ord,locked.id,locked.unit_price_minor
+      FROM unnest($1::uuid[],$2::uuid[]) WITH ORDINALITY AS target(variant_id,price_list_id,ord)
+      JOIN LATERAL public.catalog_publication_lock_effective_base_price(target.variant_id,target.price_list_id) locked ON true
+      ORDER BY target.ord,locked.id`
+    : `SELECT target.ord,entry.id,entry.unit_price_minor
+      FROM unnest($1::uuid[],$2::uuid[]) WITH ORDINALITY AS target(variant_id,price_list_id,ord)
+      JOIN public.price_entries entry
+        ON entry.variant_id=target.variant_id AND entry.price_list_id=target.price_list_id
+        AND entry.mode='one_time' AND entry.min_qty=1 AND entry.active
         AND entry.amount_kind='gross' AND entry.valid_from<=statement_timestamp()
         AND (entry.valid_to IS NULL OR entry.valid_to>statement_timestamp())
-        AND list.status='active' AND list.region_code=public.catalog_price_setup_region_code()
-        AND list.currency=public.catalog_price_setup_settlement_currency() AND list.valid_from<=statement_timestamp()
+      JOIN public.price_lists list
+        ON list.id=entry.price_list_id AND list.status='active'
+        AND list.region_code=public.catalog_price_setup_region_code()
+        AND list.currency=public.catalog_price_setup_settlement_currency()
+        AND list.valid_from<=statement_timestamp()
         AND (list.valid_to IS NULL OR list.valid_to>statement_timestamp())
-      ORDER BY entry.id LIMIT 2 FOR NO KEY UPDATE OF entry`, [operation.variantId, operation.priceListId])).rows;
-    requireProjection(effective.length === 1 && effective[0]?.id === receipt.current.entryId
+      ORDER BY target.ord,entry.id FOR NO KEY UPDATE OF entry`,
+  [applied.map(item => item.operation.variantId), applied.map(item => item.operation.priceListId)]);
+  const byOrd = new Map<number, Record<string, unknown>[]>();
+  for (const row of effectiveRows) {
+    const ord = Number(row.ord);
+    const bucket = byOrd.get(ord);
+    if (bucket) bucket.push(row);
+    else byOrd.set(ord, [row]);
+  }
+  for (const [index, { operation, entryId }] of applied.entries()) {
+    const effective = byOrd.get(index + 1) ?? [];
+    requireProjection(effective.length === 1 && effective[0]?.id === entryId
       && effective[0]?.unit_price_minor === operation.unitPriceMinor, "catalog_publication_price_changed");
   }
 }
 
-async function storeSku(db: PgQueryExecutor, sku: CatalogPublishedSku, definition: CatalogProductTypeDefinition,
+async function storeSkus(db: PgQueryExecutor, skus: CatalogPublishedSku[], definition: CatalogProductTypeDefinition,
   axes: string[], create: boolean) {
-  const identity = canonicalizeCatalogCombinationV2({ definition, axes, options: sku.options });
-  const values = [publicationJson(sku, undefined, SKU_PAGE_DEPTH), Buffer.from(identity.canonicalOptionBytes), Buffer.from(identity.combinationDigest)];
+  if (!skus.length) return;
+  const facts: string[] = [];
+  const canonicalOptionBytes: Buffer[] = [];
+  const combinationDigests: Buffer[] = [];
+  for (const sku of skus) {
+    const identity = canonicalizeCatalogCombinationV2({ definition, axes, options: sku.options });
+    facts.push(publicationJson(sku, undefined, SKU_PAGE_DEPTH));
+    canonicalOptionBytes.push(Buffer.from(identity.canonicalOptionBytes));
+    combinationDigests.push(Buffer.from(identity.combinationDigest));
+  }
   const statements = `SELECT f.id,f."productId",f.code,f.title,f.status,f."minQuantity",f."isAddon",
-    f."sellableStandalone",f."sellableInSubscription",f.attributes,f.options,$2::bytea,$3::bytea,
+    f."sellableStandalone",f."sellableInSubscription",f.attributes,f.options,u.canonical_option_bytes,u.combination_digest,
     (f."netContent"->>'unscaled')::integer,f."netContent"->>'dimension',f."netContent"->>'unit',
     (f."netContent"->>'scale')::integer,(f."netContent"->>'unscaled')::numeric,
     f."grossMass"->>'dimension',f."grossMass"->>'unit',(f."grossMass"->>'scale')::integer,(f."grossMass"->>'unscaled')::numeric,
-    f."assetRefs"->>0,$1::jsonb
-    FROM jsonb_to_record($1::jsonb) AS f(id uuid,"productId" uuid,code text,title text,status text,"minQuantity" integer,"isAddon" boolean,
+    f."assetRefs"->>0,u.facts
+    FROM unnest($1::jsonb[],$2::bytea[],$3::bytea[]) WITH ORDINALITY AS u(facts,canonical_option_bytes,combination_digest,ord)
+    CROSS JOIN LATERAL jsonb_to_record(u.facts) AS f(id uuid,"productId" uuid,code text,title text,status text,"minQuantity" integer,"isAddon" boolean,
       "sellableStandalone" boolean,"sellableInSubscription" boolean,attributes jsonb,options jsonb,
       "netContent" jsonb,"grossMass" jsonb,"assetRefs" jsonb)`;
   const columns = `id,product_id,sku,title,status,min_order_qty,is_addon,sellable_standalone,sellable_in_subscription,
@@ -334,49 +369,70 @@ async function storeSku(db: PgQueryExecutor, sku: CatalogPublishedSku, definitio
       = (n.title,n.status,n.min_order_qty,n.is_addon,n.sellable_standalone,n.sellable_in_subscription,
         n.attribute_values,n.option_values,n.canonical_option_bytes,n.combination_digest,n.net_weight_g,n.net_content_dimension,n.net_content_unit,
         n.net_content_scale,n.net_content_unscaled,n.gross_mass_dimension,n.gross_mass_unit,n.gross_mass_scale,n.gross_mass_unscaled,n.asset_ref,n.publication_facts,clock_timestamp())
-      FROM next n WHERE (s.id,s.product_id,s.sku)=(n.id,n.product_id,n.sku) RETURNING s.id`, values);
-  requireProjection(rows.length === 1, "catalog_publication_sku_identity_changed");
+      FROM next n WHERE (s.id,s.product_id,s.sku)=(n.id,n.product_id,n.sku) RETURNING s.id`,
+  [facts, canonicalOptionBytes, combinationDigests]);
+  requireProjection(rows.length === skus.length, "catalog_publication_sku_identity_changed");
 }
 
-async function checkPublicationGtins(db: PgQueryExecutor, sku: CatalogPublishedSku) {
-  for (const value of sku.identifiers) {
-    if (value.scheme !== "gs1:gtin") continue;
-    requireProjection(isValidGtin(value.value), "catalog_publication_gtin_invalid", "validation_issue");
-    const conflicting = (await db.query(`SELECT 1 FROM public.catalog_sku_identifiers
-      WHERE identifier_kind='gtin' AND normalized_value ~ '^[0-9]{8,14}$'
-        AND lpad(normalized_value,14,'0')=$1 AND (catalog_sku_id,issuer)<>($2::uuid,$3::text) LIMIT 1`,
-      [value.value.padStart(14, "0"), sku.id, value.issuer])).rows[0];
-    requireProjection(!conflicting, "catalog_publication_gtin_conflict");
+async function checkPublicationGtins(db: PgQueryExecutor, skus: CatalogPublishedSku[]) {
+  const checks: { gtin: string; skuId: string; issuer: string }[] = [];
+  for (const sku of skus) {
+    for (const value of sku.identifiers) {
+      if (value.scheme !== "gs1:gtin") continue;
+      requireProjection(isValidGtin(value.value), "catalog_publication_gtin_invalid", "validation_issue");
+      checks.push({ gtin: value.value.padStart(14, "0"), skuId: sku.id, issuer: value.issuer });
+    }
   }
+  if (!checks.length) return;
+  const conflicting = (await db.query(`SELECT 1 FROM jsonb_to_recordset($1::jsonb) AS c(gtin text,"skuId" uuid,issuer text)
+    JOIN public.catalog_sku_identifiers i
+      ON i.identifier_kind='gtin' AND i.normalized_value ~ '^[0-9]{8,14}$'
+      AND lpad(i.normalized_value,14,'0')=c.gtin AND (i.catalog_sku_id,i.issuer)<>(c."skuId",c.issuer)
+    LIMIT 1`, [JSON.stringify(checks)])).rows[0];
+  requireProjection(!conflicting, "catalog_publication_gtin_conflict");
 }
 
-async function storeIdentifiers(db: PgQueryExecutor, sku: CatalogPublishedSku, compensate: boolean) {
-  const identifiers = sku.identifiers.map(identifier => ({
-    ...identifier, normalized: identifier.scheme === "gs1:gtin" ? identifier.value.padStart(14, "0") : identifier.value,
-    kind: identifier.scheme === "gs1:gtin" ? "gtin" : "other", pack: identifier.packagingLevel === "unit" ? "unit" : "collective",
-  }));
-  const values = [sku.id, JSON.stringify(identifiers)];
+async function storeIdentifiers(db: PgQueryExecutor, skus: CatalogPublishedSku[], compensate: boolean) {
+  if (!skus.length) return;
+  const skuIds = skus.map(sku => sku.id);
+  const identifiers = skus.flatMap(sku => sku.identifiers.map(identifier => ({
+    skuId: sku.id,
+    ...identifier,
+    normalized: identifier.scheme === "gs1:gtin" ? identifier.value.padStart(14, "0") : identifier.value,
+    kind: identifier.scheme === "gs1:gtin" ? "gtin" : "other",
+    pack: identifier.packagingLevel === "unit" ? "unit" : "collective",
+  })));
+  const seen = new Set<string>();
+  for (const identifier of identifiers) {
+    const key = `${identifier.issuer}\0${identifier.normalized}`;
+    requireProjection(!seen.has(key), "catalog_publication_identifier_conflict");
+    seen.add(key);
+  }
+  const serialized = JSON.stringify(identifiers);
   if (compensate) {
-    await db.query(`DELETE FROM public.catalog_sku_identifiers i WHERE i.catalog_sku_id=$1
-      AND NOT EXISTS(SELECT 1 FROM jsonb_to_recordset($2::jsonb) AS keep(issuer text,normalized text)
-        WHERE (i.issuer,i.normalized_value)=(keep.issuer,keep.normalized))`, values);
-    await db.query(`UPDATE public.catalog_sku_identifiers i SET is_primary=false WHERE i.catalog_sku_id=$1 AND i.is_primary
-      AND NOT EXISTS(SELECT 1 FROM jsonb_to_recordset($2::jsonb) AS keep(issuer text,normalized text,"isPrimary" boolean)
-        WHERE keep."isPrimary" AND (i.issuer,i.normalized_value)=(keep.issuer,keep.normalized))`, values);
+    await db.query(`DELETE FROM public.catalog_sku_identifiers i WHERE i.catalog_sku_id=ANY($1::uuid[])
+      AND NOT EXISTS(SELECT 1 FROM jsonb_to_recordset($2::jsonb) AS keep("skuId" uuid,issuer text,normalized text)
+        WHERE (i.catalog_sku_id,i.issuer,i.normalized_value)=(keep."skuId",keep.issuer,keep.normalized))`,
+    [skuIds, serialized]);
+    await db.query(`UPDATE public.catalog_sku_identifiers i SET is_primary=false WHERE i.catalog_sku_id=ANY($1::uuid[]) AND i.is_primary
+      AND NOT EXISTS(SELECT 1 FROM jsonb_to_recordset($2::jsonb) AS keep("skuId" uuid,issuer text,normalized text,"isPrimary" boolean)
+        WHERE keep."isPrimary" AND (i.catalog_sku_id,i.issuer,i.normalized_value)=(keep."skuId",keep.issuer,keep.normalized))`,
+    [skuIds, serialized]);
   }
+  if (!identifiers.length) return;
   const { rows } = await db.query(`INSERT INTO public.catalog_sku_identifiers AS i
     (catalog_sku_id,issuer,identifier_kind,normalized_value,pack_kind,quantity,is_primary,scheme)
-    SELECT $1,issuer,kind,normalized,pack,quantity,"isPrimary",CASE WHEN kind='gtin' THEN 'gs1:gtin' END
-    FROM jsonb_to_recordset($2::jsonb) AS value(issuer text,kind text,normalized text,pack text,quantity integer,"isPrimary" boolean)
+    SELECT "skuId",issuer,kind,normalized,pack,quantity,"isPrimary",CASE WHEN kind='gtin' THEN 'gs1:gtin' END
+    FROM jsonb_to_recordset($1::jsonb) AS value("skuId" uuid,issuer text,kind text,normalized text,pack text,quantity integer,"isPrimary" boolean)
     ON CONFLICT(issuer,normalized_value) DO UPDATE SET identifier_kind=EXCLUDED.identifier_kind,pack_kind=EXCLUDED.pack_kind,
       quantity=EXCLUDED.quantity,is_primary=EXCLUDED.is_primary,scheme=EXCLUDED.scheme
-    WHERE i.catalog_sku_id=EXCLUDED.catalog_sku_id RETURNING i.id`, values);
+    WHERE i.catalog_sku_id=EXCLUDED.catalog_sku_id RETURNING i.id`, [serialized]);
   requireProjection(rows.length === identifiers.length, "catalog_publication_identifier_conflict");
 }
 
 export async function stagePublication(db: PgQueryExecutor, previous: Awaited<ReturnType<typeof readPreviousPublication>>,
   definition: CatalogProductTypeDefinition, plan: Plan, command: CatalogPublishCommand, actor: string, fingerprint: string,
-  compensation: boolean, references?: CatalogAttributeReferencePort) {
+  compensation: boolean, references?: CatalogAttributeReferencePort, restricted?: boolean) {
   const { product, skus } = plan;
   const prior = new Map(previous.evidence.skus.map(sku => [sku.id, sku]));
   const versions = new Map(previous.manifest?.skus.map(ref => [ref.skuId, ref.revision]));
@@ -391,7 +447,7 @@ export async function stagePublication(db: PgQueryExecutor, previous: Awaited<Re
     "catalog_publication_lifecycle_assertion_changed");
   const changed = skus.filter(sku => !prior.has(sku.id) || !same(prior.get(sku.id), sku));
   const projected = compensation ? skus : changed;
-  for (const sku of projected) await checkPublicationGtins(db, sku);
+  await checkPublicationGtins(db, projected);
   const attributeRows = prepareCatalogAttributeProjection(await validateCatalogAttributes(definition, {
     productAttributes: product.attributes, skus: skus.map(({ id, attributes }) => ({ id, attributes })),
   }, references), String((previous.head?.revision ?? 0) + 1));
@@ -412,10 +468,10 @@ export async function stagePublication(db: PgQueryExecutor, previous: Awaited<Re
     return sku.status === "active" && (sku.sellableStandalone && !(active && before?.sellable_standalone)
       || sku.sellableInSubscription && !(active && before?.sellable_in_subscription));
   });
-  const restricted = await restrictedPublicationLogin(db);
+  const isRestricted = restricted ?? await restrictedPublicationLogin(db);
   // The restricted login uses the atomic writer. It cannot leave a pending claim or choose a write timestamp.
-  const claims = restricted ? null : await claimPrices(db, plan.priceOperations);
-  const listId = restricted ? undefined : await lockPriceContexts(db, plan.priceOperations, priced);
+  const claims = isRestricted ? null : await claimPrices(db, plan.priceOperations);
+  const listId = isRestricted ? undefined : await lockPriceContexts(db, plan.priceOperations, priced);
   const currentDocuments = new Map(plan.documents.map(doc => [doc.reference.id, doc]));
   const allDocuments = new Map([...previous.evidence.documents, ...plan.documents].map(doc => [doc.reference.revisionNo, doc.reference.id]));
   async function movePointer(id: string) {
@@ -429,6 +485,7 @@ export async function stagePublication(db: PgQueryExecutor, previous: Awaited<Re
       WHERE transaction_id=pg_current_xact_id() AND product_id=$1`, [product.id])).rows;
     requireProjection(moved.length === 1 && !remaining.length, "catalog_publication_pointer_capability_unconsumed");
   }
+  const createdSkus: CatalogPublishedSku[] = [];
   for (const [index, operation] of plan.operations.entries()) {
     if (operation.op === "create_product") {
       await db.query("INSERT INTO public.catalog_products(id,slug,name,status) VALUES($1,$2,$3,'draft')",
@@ -453,14 +510,13 @@ export async function stagePublication(db: PgQueryExecutor, previous: Awaited<Re
         const final = skus.find(row => row.id === sku.id)!;
         Object.assign(sku, { schemaVersion: GOVERNED_PUBLICATION_VERSION, lifecycleState: "draft", optionDigest: final.optionDigest });
       }
-      await storeSku(db, sku, definition, product.axes, true);
+      createdSkus.push(sku);
     }
   }
+  await storeSkus(db, createdSkus, definition, product.axes, true);
   if (compensation && product.document) await movePointer(product.document.id);
-  for (const sku of projected) {
-    await storeSku(db, sku, definition, product.axes, false);
-    await storeIdentifiers(db, sku, compensation);
-  }
+  await storeSkus(db, projected, definition, product.axes, false);
+  await storeIdentifiers(db, projected, compensation);
   await db.query(`UPDATE public.catalog_products SET slug=$2,name=$3,status=$4,type_key=$5,type_version=$6,variant_axes=$7,
     attribute_values=$8,primary_sku_id=$9,publication_facts=$10,updated_at=clock_timestamp() WHERE id=$1`,
   [product.id, product.slug, product.name, product.status, product.type.key, product.type.version, product.axes,
@@ -475,7 +531,7 @@ export async function stagePublication(db: PgQueryExecutor, previous: Awaited<Re
     decodePublicationReadinessRefusal(error, true);
     throw error;
   }
-  await assertSkuPrices(db, priced, restricted ? await lockPriceContexts(db, plan.priceOperations, priced) : listId);
+  await assertSkuPrices(db, priced, isRestricted ? await lockPriceContexts(db, plan.priceOperations, priced) : listId);
   if (plan.activating || priced.length) {
     const { rows } = await db.query("SELECT public.commerce_offer_policy_v2_readiness() AS result").catch(error => {
       decodePublicationReadinessRefusal(error, false);

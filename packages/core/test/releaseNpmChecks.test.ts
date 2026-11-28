@@ -293,6 +293,8 @@ describe("release pack check", () => {
     expect(packFileClass("docs/guide/nested/page.md")).toBe("guide");
     expect(packFileClass("docs/guide/asset.png")).toBe("guide");
     expect(packFileClass("docs/SUBSCRIPTION_ENGINE.md")).toBe("other");
+    expect(packFileClass("meta/release-index.json")).toBe("other");
+    expect(packFileClass("skills/openlup-upgrade/SKILL.md")).toBe("other");
     expect(packFileClass("CHANGELOG.md")).toBe("docs");
     expect(packFileClass("release-gates.json")).toBe("docs");
     expect(packFileClass("dist/subscription/index.js.map")).toBe("other");

@@ -153,7 +153,7 @@ jobs:
   typecheck:
     name: typecheck
     needs: [reuse-gate]
-    if: ${{ always() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
+    if: ${{ !cancelled() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -184,7 +184,7 @@ jobs:
   install-pack:
     name: install-pack
     needs: [reuse-gate, scope-gate]
-    if: ${{ always() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && needs.scope-gate.result == 'success' && needs.reuse-gate.outputs.reuse != 'true' && github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
+    if: ${{ !cancelled() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && needs.scope-gate.result == 'success' && needs.reuse-gate.outputs.reuse != 'true' && github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -230,7 +230,7 @@ jobs:
   install-packages:
     name: install-packages
     needs: [install-pack]
-    if: ${{ always() && needs.install-pack.result == 'success' && github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
+    if: ${{ !cancelled() && needs.install-pack.result == 'success' && github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -307,7 +307,7 @@ jobs:
 
   install-browser:
     name: install-browser (${{ matrix.groups }})
-    if: ${{ always() && needs.install-pack.result == 'success' && needs.install-pack.outputs.run_browser != 'false' && github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
+    if: ${{ !cancelled() && needs.install-pack.result == 'success' && needs.install-pack.outputs.run_browser != 'false' && github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
     needs: [install-pack]
     runs-on: ubuntu-latest
     timeout-minutes: 12
@@ -354,7 +354,7 @@ jobs:
 
   install-proof:
     name: install-proof
-    if: ${{ always() && github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
+    if: ${{ !cancelled() && github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
     needs: [reuse-gate, install-pack, install-packages, install-browser]
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -373,7 +373,7 @@ jobs:
   test-prep:
     name: test-prep
     needs: [reuse-gate]
-    if: ${{ always() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && needs.reuse-gate.outputs.reuse != 'true' && github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
+    if: ${{ !cancelled() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && needs.reuse-gate.outputs.reuse != 'true' && github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -419,7 +419,7 @@ jobs:
   test-full-shard:
     name: test-full-shard (${{ matrix.shard }}/8)
     needs: [reuse-gate, test-prep]
-    if: ${{ always() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && needs.reuse-gate.outputs.reuse != 'true' && needs.test-prep.result == 'success' && github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
+    if: ${{ !cancelled() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && needs.reuse-gate.outputs.reuse != 'true' && needs.test-prep.result == 'success' && github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     permissions:
@@ -472,7 +472,7 @@ jobs:
 
   test:
     name: test
-    if: ${{ always() && github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
+    if: ${{ !cancelled() && github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
     needs: [reuse-gate, scope-gate, test-full-shard, pgtap]
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -591,7 +591,7 @@ jobs:
   pgtap:
     name: pgtap
     needs: [reuse-gate, scope-gate]
-    if: ${{ always() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && needs.scope-gate.result == 'success' && needs.reuse-gate.outputs.reuse != 'true' && needs.scope-gate.outputs.run_pgtap != 'false' && github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
+    if: ${{ !cancelled() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && needs.scope-gate.result == 'success' && needs.reuse-gate.outputs.reuse != 'true' && needs.scope-gate.outputs.run_pgtap != 'false' && github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -630,7 +630,7 @@ jobs:
 
   native-review:
     name: native-review
-    if: ${{ always() && needs.dco.result == 'success' && needs.typecheck.result == 'success' && needs.install-proof.result == 'success' && needs.test.result == 'success' && needs.self-check.result == 'success' && needs.gitleaks.result == 'success' && vars.OPENLUP_NATIVE_QUEUE == 'enabled' && github.event.repository.private == false && (github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
+    if: ${{ !cancelled() && needs.dco.result == 'success' && needs.typecheck.result == 'success' && needs.install-proof.result == 'success' && needs.test.result == 'success' && needs.self-check.result == 'success' && needs.gitleaks.result == 'success' && vars.OPENLUP_NATIVE_QUEUE == 'enabled' && github.event.repository.private == false && (github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'main' && github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
     needs: [dco, typecheck, install-proof, test, self-check, gitleaks]
     runs-on: ubuntu-latest
     timeout-minutes: 15
