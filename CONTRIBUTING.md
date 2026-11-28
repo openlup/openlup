@@ -1051,13 +1051,13 @@ tooling guard tests from `scripts/ci-test-scope.mjs` (plus `scripts/catalog-docu
 on catalog, script or doc edits) through `test:hosted`, and `sql admit` when SQL under `db/` or
 `packages/*/sql/` changed.
 
-Run `npm run preflight -- --affected` for pre-push proof. It runs affected root Vitest and
-repository-wide invariant suites together in `test:hosted`. A skipped or missing test in a
-selected suite blocks the proof. Changes adding, editing, deleting or moving `.sql` or `.pg`
-files select real PostgreSQL pgTAP through `ai-resource-gate`. The cold suites
-`scripts/preflight-integration-cold-api.test.ts` and `scripts/preflight-integration-settings-cold.test.ts`
-run in hosted CI. Affected warm preflight suites run locally with the invariant suites.
-Use `--affected-only` for the previous diagnostic. Preflight modes are mutually exclusive.
+Run `npm run preflight -- --affected` to run default preflight with test discovery expanded via
+`scripts/affected-tests.mjs` (reverse-import graph and contract-pin rules). Affected root Vitest
+suites and fixed repository-wide invariant suites run together through `test:hosted`. The two
+cold preflight integration suites run locally only when their test files change directly. Added,
+edited, deleted or moved `.sql` or `.pg` paths select real PostgreSQL pgTAP through `ai-resource-gate`.
+If selected PostgreSQL suites or pgTAP need Docker and it is unavailable, preflight names them and
+prints how to start the runtime before running tests. `--fast`, `--area`, and `--affected` are mutually exclusive.
 
 Without flags, `npm run preflight` is advisory and exits non-zero
 only when a check reports `FAIL`. It reads the change since
@@ -1795,11 +1795,10 @@ authority. Review evidence grants no merge, release, settings or credential righ
    Locally run only the tests being written,
    root test files with `npm run test:hosted -- <files>`, `npm run lint`, and
    `npx --no -- ast-grep scan --error=no-suppress-all --error=unused-suppression`.
-   Pass `npm run preflight -- --affected` on the committed head before pushing or
-   running `prepare`. Explain each `WARN` in the task record. Opt in with
-   `npm run preflight -- --install-hook` (remove with `--uninstall-hook`). The hook
-   checks the outgoing head, its local `origin/main` fork point and the proof profile.
-   It requires a checked-out preflight script with `--check-push` support.
+   As the standard pre-push gate (and before `prepare`), run
+   `npm run preflight -- --affected` (or default `npm run preflight` when full
+   area/smoke coverage is needed) and have it green, or explain each `WARN` in
+   the task record. Full local verification is optional.
 
    A PR that adds or changes a starter-owned file or its owned-file contract must
    include the packaged starter migration in a Core fragment and matching steps
