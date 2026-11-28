@@ -26,6 +26,7 @@ import {
   type PlatformMigrationPlan,
 } from "./platform-migration-manifest.ts";
 import { checkSettingsCandidates, isSettingsCandidateSourcePath } from "./settings-candidate-guard.ts";
+import { PGTAP_TEST_EXTENSIONS } from "./public-ci-pgtap.mjs";
 import { resolveResourceGateInvocation } from "./resource-gate.mjs";
 
 export type Status = "PASS" | "WARN" | "SKIP" | "FAIL";
@@ -590,13 +591,16 @@ const INVARIANT_TESTS = [
   "packages/platform/test/storefront/testing/exports.test.ts",
   "scripts/preflight.test.ts",
 ];
-const COLD_PREFLIGHT_TEST = /^scripts\/preflight-integration(?:-[\w-]+)?\.test\.ts$/u;
+const COLD_PREFLIGHT_TESTS = new Set([
+  "scripts/preflight-integration-cold-api.test.ts",
+  "scripts/preflight-integration-settings-cold.test.ts",
+]);
 
 function discoverTests(changes: readonly Change[], affected: boolean, proof: boolean): TestSelection {
   let candidates = affected
     ? affectedTestCandidates(changes)
     : changes.filter(({ path, deleted }) => !deleted && isTestEntry(path)).map(({ path }) => path);
-  if (proof) candidates = [...new Set([...candidates.filter((path) => !COLD_PREFLIGHT_TEST.test(path)), ...INVARIANT_TESTS])].sort();
+  if (proof) candidates = [...new Set([...candidates.filter((path) => !COLD_PREFLIGHT_TESTS.has(path)), ...INVARIANT_TESTS])].sort();
   if (candidates.length === 0) return { files: [], separate: [], unknown: [] };
   const files = vitestFiles(candidates);
   const outside = candidates.filter((path) => !files.includes(path));
@@ -624,11 +628,11 @@ async function hostedTests(selection: TestSelection | undefined, proof = false):
       const { testResults } = JSON.parse(readFileSync(report, "utf8")) as {
         testResults: Array<{ name: string; assertionResults: Array<{ status: string }> }>;
       };
-      const passed = new Set(testResults.filter(({ name, assertionResults }) => assertionResults.some(({ status }) => status === "passed")
-        && (!INVARIANT_TESTS.includes(relative(process.cwd(), name).split("\\").join("/"))
-          || assertionResults.every(({ status }) => status === "passed"))).map(({ name }) => resolve(name)));
+      // Vitest's JSON report does not distinguish optional skips from missing runtime proof.
+      const passed = new Set(testResults.filter(({ assertionResults }) => assertionResults.length > 0
+        && assertionResults.every(({ status }) => status === "passed")).map(({ name }) => resolve(name)));
       const skipped = files.filter((path) => !passed.has(resolve(path)));
-      if (skipped.length) return { check: "hosted tests", status: "FAIL", detail: `required tests skipped or missing: ${skipped.join(", ")}` };
+      if (skipped.length) return { check: "hosted tests", status: "FAIL", detail: `required tests skipped or missing: ${skipped.join(", ")}. Restore required test runtimes and rerun npm run test:hosted -- ${skipped.join(" ")}` };
     }
     return { check: "hosted tests", status: "PASS", detail: `${files.length} file(s) passed in hosted parity (${result.seconds} s)` };
   } finally {
@@ -1086,8 +1090,9 @@ function readForkChanges(target?: string): ForkChanges | { error: CheckResult } 
   return { base, untrackedPaths, changes };
 }
 
-const PROOF_PROFILE = "affected-hosted-invariants-pgtap-v1";
+const PROOF_PROFILE = "affected-hosted-invariants-pgtap-v2";
 const RERUN_PROOF = "npm run preflight -- --affected";
+const PUSH_CHECK_MARKER = "  // Supports OpenLup pre-push proof via --check-push.";
 
 function comparisonBase(head: string): string {
   return git(["merge-base", head, "origin/main"], "stdout").trim();
@@ -1113,6 +1118,10 @@ function hookInstallation(install: boolean): number {
 # Managed by OpenLup preflight.
 if ! command -v node >/dev/null || [ ! -f scripts/preflight.ts ]; then
   echo 'pre-push proof: restore Node and scripts/preflight.ts, then run ${RERUN_PROOF}' >&2
+  exit 1
+fi
+if ! grep -Fqx '${PUSH_CHECK_MARKER}' scripts/preflight.ts; then
+  echo 'pre-push proof: this checkout lacks --check-push support; check out a version with pre-push proof and run ${RERUN_PROOF}' >&2
   exit 1
 fi
 exec node --experimental-strip-types scripts/preflight.ts --check-push
@@ -1230,6 +1239,7 @@ async function areaPreflight(): Promise<number> {
 }
 
 export async function main(now: Date, args: readonly string[] = []): Promise<number> {
+  // Supports OpenLup pre-push proof via --check-push.
   const hookFlag = args.find((arg) => ["--install-hook", "--uninstall-hook", "--check-push"].includes(arg));
   if (hookFlag) {
     try {
@@ -1337,7 +1347,8 @@ export async function main(now: Date, args: readonly string[] = []): Promise<num
           ["release-gates headroom", () => releaseGatesHeadroom(changes, typecheckPassed)],
           ["inventory", () => inventory(changes)],
           ["hosted tests", () => hostedTests(selection, proof)],
-          ...(proof && changes.some(({ path }) => /\.sql$/iu.test(path)) ? [["pgTAP", pgtap] as const] : []),
+          ...(proof && changes.some(({ path }) => PGTAP_TEST_EXTENSIONS.some((extension) => path.toLowerCase().endsWith(extension)))
+            ? [["pgTAP", pgtap] as const] : []),
         ],
       },
     ]);

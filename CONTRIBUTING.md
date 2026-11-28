@@ -1052,8 +1052,11 @@ on catalog, script or doc edits) through `test:hosted`, and `sql admit` when SQL
 `packages/*/sql/` changed.
 
 Run `npm run preflight -- --affected` for pre-push proof. It runs affected root Vitest and
-repository-wide invariant suites together in `test:hosted`. SQL adds, edits, deletes and moves
-select real PostgreSQL pgTAP through `ai-resource-gate`. Cold preflight suites run in hosted CI.
+repository-wide invariant suites together in `test:hosted`. A skipped or missing test in a
+selected suite blocks the proof. Changes adding, editing, deleting or moving `.sql` or `.pg`
+files select real PostgreSQL pgTAP through `ai-resource-gate`. The cold suites
+`scripts/preflight-integration-cold-api.test.ts` and `scripts/preflight-integration-settings-cold.test.ts`
+run in hosted CI. Affected warm preflight suites run locally with the invariant suites.
 Use `--affected-only` for the previous diagnostic. Preflight modes are mutually exclusive.
 
 Without flags, `npm run preflight` is advisory and exits non-zero
@@ -1796,6 +1799,7 @@ authority. Review evidence grants no merge, release, settings or credential righ
    running `prepare`. Explain each `WARN` in the task record. Opt in with
    `npm run preflight -- --install-hook` (remove with `--uninstall-hook`). The hook
    checks the outgoing head, its local `origin/main` fork point and the proof profile.
+   It requires a checked-out preflight script with `--check-push` support.
 
    A PR that adds or changes a starter-owned file or its owned-file contract must
    include the packaged starter migration in a Core fragment and matching steps

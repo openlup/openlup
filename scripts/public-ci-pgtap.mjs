@@ -54,9 +54,11 @@ export const SERVER_FLAGS = Object.freeze(["-c", "shared_preload_libraries=pg_cr
 /** Password authentication on every TCP connection (dblink's non-superuser checks apply) and the managed ICU en-US database locale. */
 export const INITDB_ARGS = "--auth-local=trust --auth-host=scram-sha-256 --locale-provider=icu --icu-locale=en-US --locale=en_US.UTF-8";
 
+export const PGTAP_TEST_EXTENSIONS = Object.freeze([".pg", ".sql"]);
+
 /** The argv the retired Supabase CLI 2.122.0 lane used for `test db --debug`; `--verbose` keeps every assertion in the log. */
 export function pgProveArgs(directory) {
-  return ["pg_prove", "--ext", ".pg", "--ext", ".sql", "-r", directory, "--verbose"];
+  return ["pg_prove", ...PGTAP_TEST_EXTENSIONS.flatMap(extension => ["--ext", extension]), "-r", directory, "--verbose"];
 }
 
 export function parseArguments(argv) {

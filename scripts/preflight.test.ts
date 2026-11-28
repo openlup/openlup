@@ -1482,7 +1482,7 @@ describe("pre-push proof", () => {
   function mockProof(
     git: (args: string[]) => FakeSpawnResult,
     run: (command: string, args: string[]) => FakeSpawnResult = () => ok,
-    skipped?: string,
+    assertions: Record<string, Array<{ status: string }>> = {},
   ) {
     const hosted: string[][] = [];
     mockChildProcesses((bin, args) => {
@@ -1495,7 +1495,7 @@ describe("pre-push proof", () => {
       if (list[0] === "scripts/test-hosted.mjs") {
         hosted.push(files);
         if (output) writeFileSync(output.slice("--outputFile.json=".length), JSON.stringify({
-          testResults: files.map((file) => ({ name: join(process.cwd(), file), assertionResults: [{ status: file === skipped ? "pending" : "passed" }] })),
+          testResults: files.map((file) => ({ name: join(process.cwd(), file), assertionResults: assertions[file] ?? [{ status: "passed" }] })),
         }));
       }
       return run(bin, list);
@@ -1542,12 +1542,44 @@ describe("pre-push proof", () => {
 
   it("unions affected tests once, keeps cold suites hosted, and refuses skipped required tests", async () => {
     const affected = "scripts/ci-vitest-shard.test.ts";
-    const diff = `M\0scripts/ci-vitest-shard.mjs\0M\0${catalogGuard}\0M\0scripts/preflight-integration-cold-api.test.ts\0`;
-    const calls = mockProof(dirtyGit(diff), undefined, catalogGuard);
+    const diff = ["scripts/ci-vitest-shard.mjs", catalogGuard,
+      "scripts/preflight-integration-cold-api.test.ts", "scripts/preflight-integration-settings-cold.test.ts",
+    ].map((path) => `M\0${path}\0`).join("");
+    const calls = mockProof(dirtyGit(diff), undefined, { [catalogGuard]: [{ status: "skipped" }] });
     const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
     expect(await main(now, ["--affected"])).toBe(1);
     expect(calls).toEqual([[...invariantFiles, affected].sort()]);
     expect(stderr.mock.calls.flat().join("\n")).toContain(`required tests skipped or missing: ${catalogGuard}`);
+  });
+
+  it.each(["scripts/preflight-integration-settings.test.ts", "scripts/preflight-integration.test.ts"])(
+    "includes affected warm suite %s in the invariant invocation", async (warm) => {
+      const calls = mockProof(dirtyGit(`M\0${warm}\0`));
+      expect(await main(now, ["--affected"])).toBe(0);
+      expect(calls).toEqual([[...invariantFiles, warm].sort()]);
+    },
+  );
+
+  it("refuses mixed dunning results when Docker is unavailable", async () => {
+    const path = "tests/postgres/dunningLifecycleActiveRepair.test.ts";
+    const report = join(root, "dunning.json");
+    writeFileSync(join(root, "docker"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+    const { spawnSync: exec } = await actual;
+    const dunning = exec(process.execPath, [join(cwd, "node_modules/vitest/vitest.mjs"), "run", path,
+      "--reporter=json", `--outputFile.json=${report}`,
+    ], { cwd, encoding: "utf8", env: { ...processEnvironment, PATH: `${root}${delimiter}${processEnvironment.PATH}` } });
+    expect(dunning.status, dunning.stderr + dunning.stdout).toBe(0);
+    const { testResults: [{ assertionResults }] } = JSON.parse(readFileSync(report, "utf8")) as {
+      testResults: Array<{ assertionResults: Array<{ status: string; title: string }> }>;
+    };
+    expect(assertionResults.filter(({ status }) => status === "passed")).toHaveLength(1);
+    expect(assertionResults.filter(({ status }) => status === "skipped")).toHaveLength(9);
+    expect(assertionResults).toContainEqual(expect.objectContaining({ title: expect.stringMatching(/replay.*duplicate notice/u), status: "skipped" }));
+    const calls = mockProof(dirtyGit(`M\0${path}\0`), undefined, { [path]: assertionResults });
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await main(now, ["--affected"])).toBe(1);
+    expect(calls).toEqual([[...invariantFiles, path].sort()]);
+    expect(stderr.mock.calls.flat().join("\n")).toContain(`required tests skipped or missing: ${path}. Restore required test runtimes and rerun npm run test:hosted -- ${path}`);
   });
 
   it("runs brokered pgTAP for a real SQL rail move and propagates failure or missing execution", async () => {
@@ -1559,6 +1591,12 @@ describe("pre-push proof", () => {
     writeFileSync(join(root, source), "select 1;\n");
     git("add", ".");
     git("commit", "--quiet", "-m", "Fixture base");
+    const pg = "supabase/tests/fixture.pg";
+    writeFileSync(join(root, pg), "begin;\nselect plan(1);\nselect ok(true, 'pgTAP fixture');\nselect * from finish();\nrollback;\n");
+    git("add", pg);
+    const addedPg = git("diff", "--cached", "--name-status", "--no-renames", "-z");
+    expect(parseNameStatus(addedPg)).toEqual([{ path: pg, deleted: false }]);
+    git("rm", "-f", pg);
     renameSync(join(root, source), join(root, moved));
     git("add", "-A");
     expect(git("diff", "--cached", "--name-status", "-M")).toBe(`R100\t${source}\t${moved}`);
@@ -1570,8 +1608,8 @@ describe("pre-push proof", () => {
     vi.stubEnv("AI_RESOURCE_GATE_ACTIVE", undefined);
     vi.stubEnv("OPENLUP_HEAVY_ACTIVE", undefined);
     const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
-    const candidates = [diff, "A\0supabase/tests/new.sql\0", "M\0supabase/tests/edit.sql\0", "D\0supabase/tests/deleted.sql\0",
-      "A\0docs/moved.txt\0D\0supabase/tests/source.sql\0"];
+    const candidates = [diff, addedPg, "A\0supabase/tests/new.sql\0", "M\0supabase/tests/edit.sql\0", "D\0supabase/tests/deleted.sql\0",
+      "A\0docs/moved.txt\0D\0supabase/tests/source.pg\0"];
     for (const [change, outcome] of [...candidates.map((change) => [change, "fail"] as const), [diff, "skip"], [diff, "pass"]] as const) {
       const calls: string[][] = [];
       const readGit = dirtyGit(change, root);
@@ -1604,14 +1642,18 @@ describe("pre-push proof", () => {
     const { spawnSync: exec } = await actual;
     const env = localFixtureEnvironment();
     mkdirSync(join(root, "scripts"));
-    writeFileSync(join(root, "scripts/preflight.ts"), `import { main } from ${JSON.stringify(pathToFileURL(preflight).href)};
-process.exitCode = await main(new Date(), ["--check-push"]);
-`);
+    // The pre-feature script ignores --check-push and can pass its default checks.
+    writeFileSync(join(root, "scripts/preflight.ts"), 'console.log("default preflight ran");\n');
     git("add", ".");
     git("commit", "--quiet", "-m", "Fixture base");
     const base = git("rev-parse", "HEAD");
     git("update-ref", "refs/remotes/origin/main", base);
-    git("commit", "--quiet", "--allow-empty", "-m", "Proved");
+    writeFileSync(join(root, "scripts/preflight.ts"), `import { main } from ${JSON.stringify(pathToFileURL(preflight).href)};
+  // Supports OpenLup pre-push proof via --check-push.
+process.exitCode = await main(new Date(), process.argv.slice(2));
+`);
+    git("add", "scripts/preflight.ts");
+    git("commit", "--quiet", "-m", "Proved");
     const head = git("rev-parse", "HEAD");
     const command = (flag: string) => exec(process.execPath, [preflight, flag], { cwd: root, env, encoding: "utf8" });
     const existingHook = join(root, ".git", "hooks", "pre-push");
@@ -1632,6 +1674,13 @@ process.exitCode = await main(new Date(), ["--check-push"]);
       cwd: root, env, encoding: "utf8",
       input: objects.map((object, i) => `refs/heads/fixture-${i} ${object} refs/heads/fixture-${i} ${"0".repeat(40)}\n`).join(""),
     });
+    git("checkout", "--quiet", "--detach", base);
+    const unsupported = check(head);
+    expect(unsupported.status).toBe(1);
+    expect(unsupported.stdout).toBe("");
+    expect(unsupported.stderr).toContain("this checkout lacks --check-push support");
+    expect(unsupported.stderr).toContain("npm run preflight -- --affected");
+    git("checkout", "--quiet", "--detach", head);
     const unproved = check(head);
     expect(unproved.status).toBe(1);
     expect(unproved.stderr).toContain("npm run preflight -- --affected");
@@ -1653,7 +1702,7 @@ process.exitCode = await main(new Date(), ["--check-push"]);
     git("update-ref", "refs/remotes/origin/main", head);
     expect(check(head).stderr).toContain("comparison base or profile");
     git("update-ref", "refs/remotes/origin/main", base);
-    writeFileSync(file, JSON.stringify({ ...proof, profile: "affected-only" }));
+    writeFileSync(file, JSON.stringify({ ...proof, profile: "affected-hosted-invariants-pgtap-v1" }));
     expect(check(head).stderr).toContain("comparison base or profile");
     writeFileSync(file, JSON.stringify({ ...proof, failures: ["pgTAP"] }));
     expect(check(head).stderr).toContain("proof incomplete or failed (pgTAP)");
