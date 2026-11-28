@@ -258,9 +258,10 @@ export function bindNativeQuotes({ runtime, ...bindings }) {
 
 export function withPublishedTaxClasses(runtime, readFacts) {
   return async (owner, request, document) => {
-    const { facts, skuIdsByCode } = await readFacts(owner, request, document);
-    if ((facts.planInput.listBasis ?? "inclusive") !== "exclusive") return facts;
+    const { facts: hostFacts, skuIdsByCode } = await readFacts(owner, request, document);
+    if ((hostFacts.planInput.listBasis ?? "inclusive") !== "exclusive") return hostFacts;
 
+    const facts = structuredClone(hostFacts);
     const pairs = new Map();
     for (const { sku } of facts.planInput.lines) {
       const skuId = skuIdsByCode.get(sku);

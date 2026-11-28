@@ -1374,6 +1374,61 @@ it("executes the published tax recipe, pins repeated merchandise and replays acr
     "Have the coverage owner supply the required tax class mapping for /input/lines, then obtain a fresh quote."));
 });
 
+it("seals the original merchandise lines when the host removes a shared line during the assignment query", async ({ onTestFinished }) => {
+  const originalStore = store;
+  store = await resources.installation("quote-assignment-line-snapshot");
+  onTestFinished(() => { store = originalStore; });
+  const create = await publicationWriter(["class-0", "class-1"]);
+  const first = await create(1), second = await create(2);
+  const f = await installed({ basis: "exclusive", units: [120, 150, 170] });
+  const { request, query } = guideSelection(f, [first, first, second]);
+  const sharedLines = [...f.now.planInput.lines];
+  f.now.planInput = { ...f.now.planInput, lines: sharedLines };
+  const basket = [first, second];
+  const a = await expectedTaxLine(first, "class-0", basket), b = await expectedTaxLine(second, "class-1", basket);
+  query.mockImplementationOnce(async (sql, values) => {
+    const reply = await store.runtime.query(sql, values);
+    sharedLines.pop();
+    return reply;
+  });
+
+  const sealed = quote(await f.bind().createQuote(f.owner, request));
+  expect(query).toHaveBeenCalledTimes(1);
+  expect(sharedLines).toHaveLength(2);
+  expect(sealed.lines).toMatchObject([a, a, b]);
+});
+
+it("seals the original catalogue evidence and class-map revision when the host updates them during the assignment query", async ({ onTestFinished }) => {
+  const originalStore = store;
+  store = await resources.installation("quote-assignment-evidence-snapshot");
+  onTestFinished(() => { store = originalStore; });
+  const create = await publicationWriter(["class-0"]);
+  const selected = await create(1);
+  const f = await installed({ basis: "exclusive", units: [120] });
+  const { catalogueEvidenceRef, planInput: { price: { classMapRevision } } } = f.now;
+  const readPlan = f.deps.readPlan;
+  let sharedFacts: Facts;
+  f.deps.readPlan = async (...args) => {
+    sharedFacts = await readPlan(...args);
+    return sharedFacts;
+  };
+  const { request, query } = guideSelection(f, [selected]);
+  query.mockImplementationOnce(async (sql, values) => {
+    const reply = await store.runtime.query(sql, values);
+    sharedFacts.catalogueEvidenceRef = "catalogue-b";
+    Object.assign(sharedFacts.planInput.price, { classMapRevision: "classes-b" });
+    return reply;
+  });
+
+  quote(await f.bind().createQuote(f.owner, request));
+  expect(query).toHaveBeenCalledTimes(1);
+  expect(await row(f)).toMatchObject({ state: "terminal", pin: {
+    composition: { catalogueEvidenceRef, planInput: { price: { classMapRevision } } },
+    request: { input: { classMapRevision } },
+  } });
+  expect(f.taxInputs[0]?.input.classMapRevision).toBe(classMapRevision);
+});
+
 it("seals a quote when catalogue-wide diagnostics find unrelated corruption", async () => {
   const original = store;
   store = await resources.installation("published-quotes-unrelated-corruption");
