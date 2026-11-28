@@ -23,8 +23,8 @@ export const activationUnits = [
 export const repairName = "subscription_reconcile_paid_activation_gaps";
 export const alternateFingerprint = "f".repeat(64);
 
-export async function seedCapturedActivation(db: Database, paidAtOverride?: string) {
-  const { orderId, clientId } = await seedRegistration(db);
+export async function seedCapturedActivation(db: Database, paidAtOverride?: string, existingClientId?: string) {
+  const { orderId, clientId } = await seedRegistration(db, existingClientId);
   const { id: intentId, settled_at: paidAt } = (await db.query(`INSERT INTO public.commerce_settlement_intents
     (order_id,channel_key,status,amount_minor,currency_code,external_ref,open_idempotency_key,settled_at)
     VALUES($1::uuid,'fixture-channel','settled',1,'XXX',$1::text,'open:'||$1::text,

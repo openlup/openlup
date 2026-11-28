@@ -32074,6 +32074,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/privacyPrefix.fixture.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/privacyReplayFence.test.ts",
       "class": "public-output"
     },

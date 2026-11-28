@@ -173,7 +173,10 @@ async function erasePostgresIdentity(db: PgQueryExecutor, subject: ResolvedPriva
 }
 export function createPostgresPrivacyUnitOfWork(env: PostgresDataGatewayEnv, options: PostgresDataGatewayOptions = {}) {
   const lane = createPostgresRoleFreeTransactionLane<PgQueryExecutor>(env, options);
-  return { run: <T>(work: (context: PgQueryExecutor) => Promise<T>) => lane.run(work), close: lane.close };
+  return { run: <T>(work: (context: PgQueryExecutor) => Promise<T>) => lane.run(async db => {
+    await db.query("SET TRANSACTION ISOLATION LEVEL READ COMMITTED");
+    return work(db);
+  }), close: lane.close };
 }
 
 const bindingUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
@@ -221,6 +224,14 @@ export async function reconcilePostgresPrivacyErasure(
       }
       await store.authorizeErasure(db, actor);
       if (existing.length) return null;
+      if ((await db.query("SHOW transaction_isolation")).rows[0]?.transaction_isolation !== "read committed") {
+        throw nativePrivacyUnavailable(new Error("privacy_reconciliation_isolation_unavailable"), {
+          observed: "The approval transaction is not READ COMMITTED.",
+          cause: "Fresh owner reconciliation verifies contributor evidence only on a READ COMMITTED transaction.",
+          fix: "Run the approval in a fresh READ COMMITTED transaction.",
+          recheck: "Retry the same approval in that transaction.",
+        });
+      }
       await assertPrivacyStorePrivileges(db);
       await lockErasureChallenges(db);
       const registeredVersion = contributor.version;

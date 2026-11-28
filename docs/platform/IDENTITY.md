@@ -563,6 +563,16 @@ when expiry is strictly older than 24 hours.
 
 ### Retained responsibilities
 
+The native administrator export includes scoped renewal occurrence evidence under
+`renewalOccurrences`. Fresh erasure records one local retention obligation when
+that evidence exists. Apply the native catalogue before rolling out its runtime.
+Keep stores with populated occurrence evidence off older runtimes.
+
+An owner renewal entry refuses a contact with a committed erasure receipt.
+The installation owner can verify the receipt aliases and use the existing
+owner reconciliation procedure to record verified coverage when applicable.
+Preserve the original receipt and retained renewal history.
+
 See [data compatibility](../../packages/core/docs/guide/upgrade/database-migrations.md#check-application-compatibility) for
 installation ownership and [the package reference](../../packages/core/docs/guide/concepts/personal-data.md#personal-data-coverage)
 for source composition.

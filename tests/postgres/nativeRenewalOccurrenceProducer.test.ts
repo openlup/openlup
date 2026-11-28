@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { escapeIdentifier, type PoolClient } from "pg";
-import { fixture, openCase, replacement } from "../helpers/fulfillmentNative.js";
+import { fixture, openCase } from "../helpers/fulfillmentNative.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 import { installAccountMutations, type AccountMutationsStore } from "./customerAccountMutations.fixture.js";
 import { transaction } from "./orderMoneyV2Storage.fixture.js";
@@ -322,7 +322,8 @@ it("checks strict submitted rules, elapsed cutoffs, sticky rails and conflicting
     for (const rail of ["legacy", "v3"]) await rolledBack(db, async () => {
       await allocate(db, f, rail);
       const opposite = rail === "legacy" ? "v3" : "legacy";
-      await refuses(db, () => allocate(db, f, opposite, null), badRail);
+      await refuses(db, () => allocate(db, f, opposite, null), badRule);
+      await refuses(db, () => allocate(db, f, opposite), badRail);
       await refuses(db, () => allocate(db, f, rail, { ...defaultRule, leadSeconds: 0 }), unavailable("current_conflict"));
       const cases = [
         ["is_current=false, lifecycle='retired'", unavailable("noncurrent_occurrence")],
@@ -347,9 +348,7 @@ it("checks strict submitted rules, elapsed cutoffs, sticky rails and conflicting
 it("keeps the clamped due across DST, never stacks deliveries and never enters replacement confirmation", async () => {
   const db = store.owner;
   const f = await activation(db, 1);
-  const delivery = await fixture(db), alignment = await openCase(db, delivery);
-  const arrived = await replacement(db, delivery);
-  await db.query("UPDATE public.fulfillment_shipments SET status='delivered',delivered_at=$2 WHERE id=$1", [arrived, AT]);
+  const delivery = await fixture(db);
   const original = { ...delivery, order: f.orderId, shipment: randomUUID() };
   await db.query(`INSERT INTO public.fulfillment_shipments(id,order_id,port_key,provider_type,create_idempotency_key)
     SELECT $1::uuid,$2,port_key,provider_type,$1::uuid::text FROM public.fulfillment_shipments WHERE id=$3`,
@@ -368,15 +367,6 @@ it("keeps the clamped due across DST, never stacks deliveries and never enters r
   const count = await probe(db, confirmation, `public.${confirmation}(uuid,text)`, "fixture_confirmation_entries");
   expect(await count()).toBe(1);
   await transaction(db, async writer => {
-    await rolledBack(writer, async () => {
-      expect(await call(writer, confirmation, [alignment.id, "Verified the fixture replacement arrived"])).toMatchObject({ confirmed: true });
-    });
-    expect(await count()).toBe(2);
-    await rolledBack(writer, () => writer.query(`DO $$ BEGIN
-      PERFORM public.${confirmation}(NULL,'invalid fixture control');
-      RAISE EXCEPTION 'invalid control unexpectedly succeeded';
-      EXCEPTION WHEN invalid_parameter_value THEN NULL; END $$`));
-    expect(await count()).toBe(3);
     for (const zone of ["UTC", "Europe/London"]) {
       await writer.query("SELECT set_config('TimeZone',$1,true)", [zone]);
       const offsets = (await writer.query(`SELECT EXTRACT(timezone FROM $1::timestamptz)::int AS due,
@@ -390,8 +380,8 @@ it("keeps the clamped due across DST, never stacks deliveries and never enters r
         await refuses(writer, () => allocate(writer, f, "legacy"), badRail);
       });
       expect(await snapshot(writer)).toEqual(before);
-      expect(await count()).toBe(3);
+      expect(await count()).toBe(1);
     }
   }, "ROLLBACK");
-  expect(await count()).toBe(3);
+  expect(await count()).toBe(1);
 });

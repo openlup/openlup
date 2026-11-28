@@ -164,10 +164,20 @@ export interface PersonalDataObligation {
     reasonCode: string;
     remote: boolean;
 }
+export interface RenewalOccurrencePrivacyEvidence {
+    subscriptionId: string;
+    cycleKey: string;
+    rail: "legacy" | "v3";
+    lifecycle: "active" | "paused" | "stopped" | "retired";
+    originalAnchorAt: string;
+    effectiveDueAt: string;
+    cancellationEffectiveAt: string | null;
+}
 export interface PersonalDataDocument {
     contributorId: string;
     version: string;
     data: PrivacyJson;
+    renewalOccurrences?: RenewalOccurrencePrivacyEvidence[];
     coverage: {
         complete: boolean;
         included: string[];
@@ -196,6 +206,7 @@ export interface PrivacyExport {
 }
 export declare const privacySubjectSchema: OperatorSchema<PrivacySubjectRef>;
 export declare const personalDataObligationSchema: OperatorSchema<PersonalDataObligation>;
+export declare const renewalOccurrencePrivacyEvidenceSchema: OperatorSchema<RenewalOccurrencePrivacyEvidence[]>;
 export declare const personalDataDocumentSchema: OperatorSchema<PersonalDataDocument>;
 export declare const erasureReceiptSchema: OperatorSchema<ErasureReceipt>;
 export declare const privacyExportRequestSchema: OperatorSchema<{

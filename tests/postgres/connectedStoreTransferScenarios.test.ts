@@ -5,7 +5,7 @@ import { join } from "node:path";
 import type { Pool } from "pg";
 import * as renewal from "@openlup/platform/subscriptions";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { createPersonalDataContributorRegistry, createPostgresPrivacyStore, createPrivacyOperations } from "@openlup/platform/identity";
+import { createPersonalDataContributorRegistry, createPostgresPrivacyStore, createPostgresPrivacyUnitOfWork, createPrivacyOperations } from "@openlup/platform/identity";
 import { createPostgresSandboxPaymentSimulator } from "@openlup/platform/payments";
 import type { PgQueryExecutor } from "@openlup/platform/data";
 import { connectedNativeStoreTables, type ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
@@ -18,6 +18,7 @@ import { readPlatformMigrationManifest, selectPlatformMigrationManifest, type Pl
 import { readReviewedForwardRegistry } from "../../scripts/reviewed-platform-forward.js";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { nativePrivacyContributors } from "../../server/runtime/auth/privacyBinding.js";
+import { composePrivacyBeforeOccurrenceReader } from "./privacyPrefix.fixture.js";
 import {
   bindDestinationOrder,
   destinationContext,
@@ -819,7 +820,10 @@ it("exports class markers for restored cross-client destination links and preser
         { id: mixed.clientId, fields: [orderClass, subscriptionClass] },
         ...[foreign.clientId, consistent.clientId, empty, withheldRenewal.ctx.clientId].map(id => ({ id, fields: [] })),
       ];
-      const observe = async () => {
+      // The predecessor prefix ends before the occurrence privacy reader, so it mounts the contributor set that prefix supports.
+      const beforeReader = (target: typeof restored) => composePrivacyBeforeOccurrenceReader({ store: createPostgresPrivacyStore(),
+        unitOfWork: createPostgresPrivacyUnitOfWork({ connectionString: target.runtimeUrl }, { poolFactory: () => target.runtime }) }).operations;
+      const observe = async (privacyFor: (target: typeof restored) => ReturnType<typeof transferredPrivacy> = transferredPrivacy) => {
         const reader = await restored.runtime.connect();
         try {
           await reader.query("BEGIN READ ONLY");
@@ -836,7 +840,7 @@ it("exports class markers for restored cross-client destination links and preser
           expect(acl.roles.filter((role: string) => ["anon", "authenticated", "service_role"].includes(role))).toEqual(["service_role"]);
           const { rows } = await reader.query<{ id: string; bytes: string }>(`SELECT id, public.commerce_destination_v2_export(id)::text AS bytes
             FROM unnest($1::uuid[]) WITH ORDINALITY AS subjects(id,ordinal) ORDER BY ordinal`, [cases.map(({ id }) => id)]);
-          const privacy = transferredPrivacy(restored);
+          const privacy = privacyFor(restored);
           return { acl, exports: await Promise.all(rows.map(async ({ id, bytes }) => {
             const result = await privacy.export(actor, { kind: "contact", contactId: id });
             const contributor = result.documents.find(document => document.contributorId === "destination-documents")!;
@@ -845,7 +849,7 @@ it("exports class markers for restored cross-client destination links and preser
           })) };
         } finally { await reader.query("ROLLBACK"); reader.release(); }
       };
-      const before = await observe();
+      const before = await observe(beforeReader);
       const [{ contributor: mixedBefore }, { contributor: foreignBefore }, { contributor: consistentBefore }, emptyBefore] = before.exports.slice(isolated.length);
       expect(mixedBefore!.data).toEqual(expect.arrayContaining([
         { snapshotRef: failed.binding.snapshotRef, issuedAt: expect.any(String), evidenceDisposition: "available",

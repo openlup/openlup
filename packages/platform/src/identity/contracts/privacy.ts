@@ -3,8 +3,18 @@ import type { OperatorSchema } from "./operatorAuth.js";
 export type PrivacySubjectRef = { kind: "contact"; contactId: string } | { kind: "principal"; principalId: string };
 export type PrivacyJson = null | boolean | number | string | PrivacyJson[] | { [key: string]: PrivacyJson };
 export interface PersonalDataObligation { owner: string; resource: string; disposition: "erase" | "retain" | "unresolved"; reasonCode: string; remote: boolean }
+export interface RenewalOccurrencePrivacyEvidence {
+  subscriptionId: string;
+  cycleKey: string;
+  rail: "legacy" | "v3";
+  lifecycle: "active" | "paused" | "stopped" | "retired";
+  originalAnchorAt: string;
+  effectiveDueAt: string;
+  cancellationEffectiveAt: string | null;
+}
 export interface PersonalDataDocument {
   contributorId: string; version: string; data: PrivacyJson;
+  renewalOccurrences?: RenewalOccurrencePrivacyEvidence[];
   coverage: { complete: boolean; included: string[]; unavailable: string[] };
   obligations: PersonalDataObligation[];
 }
@@ -62,11 +72,45 @@ export const personalDataObligationSchema: OperatorSchema<PersonalDataObligation
   const row = fields(value, ["owner", "resource", "disposition", "reasonCode", "remote"]);
   return { owner: text(row.owner, 100), resource: text(row.resource), disposition: choice(row.disposition, ["erase", "retain", "unresolved"]), reasonCode: text(row.reasonCode, 100), remote: boolean(row.remote) };
 });
+function microsecondTimestamp(value: unknown): string {
+  const result = text(value, 27);
+  if (!/^(?!0000)\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{6}Z$/.test(result)) invalid();
+  timestamp(result.replace(/\d{3}Z$/, "Z"));
+  return result;
+}
+export const renewalOccurrencePrivacyEvidenceSchema: OperatorSchema<RenewalOccurrencePrivacyEvidence[]> = schema(value => {
+  if (!Array.isArray(value)) invalid();
+  const occurrences = value.map((item: unknown) => {
+    const row = fields(item, ["subscriptionId", "cycleKey", "rail", "lifecycle", "originalAnchorAt", "effectiveDueAt", "cancellationEffectiveAt"]);
+    return {
+      subscriptionId: uuid(row.subscriptionId), cycleKey: uuid(row.cycleKey),
+      rail: choice(row.rail, ["legacy", "v3"] as const), lifecycle: choice(row.lifecycle, ["active", "paused", "stopped", "retired"] as const),
+      originalAnchorAt: microsecondTimestamp(row.originalAnchorAt), effectiveDueAt: microsecondTimestamp(row.effectiveDueAt),
+      cancellationEffectiveAt: row.cancellationEffectiveAt === null ? null : microsecondTimestamp(row.cancellationEffectiveAt),
+    };
+  });
+  for (let i = 1; i < occurrences.length; i++) {
+    const previous = occurrences[i - 1]!, current = occurrences[i]!;
+    if (current.subscriptionId < previous.subscriptionId
+      || (current.subscriptionId === previous.subscriptionId && current.cycleKey <= previous.cycleKey)) invalid();
+  }
+  return occurrences;
+});
 export const personalDataDocumentSchema: OperatorSchema<PersonalDataDocument> = schema(value => {
-  const row = fields(value, ["contributorId", "version", "data", "coverage", "obligations"]), coverage = fields(row.coverage, ["complete", "included", "unavailable"]);
+  const keys = ["contributorId", "version", "data", "coverage", "obligations"];
+  const withOccurrences = !!value && typeof value === "object" && Object.hasOwn(value, "renewalOccurrences");
+  const row = fields(value, withOccurrences ? [...keys, "renewalOccurrences"] : keys);
+  const coverage = fields(row.coverage, ["complete", "included", "unavailable"]);
   const contributorId = text(row.contributorId, 100), version = text(row.version);
   if (!/^[a-z][a-z0-9.-]{0,99}$/.test(contributorId) || !/^[a-z][a-z0-9.-]*\.v[1-9][0-9]*$/.test(version)) invalid();
-  return { contributorId, version, data: json(row.data), coverage: { complete: boolean(coverage.complete), included: list(coverage.included, text), unavailable: list(coverage.unavailable, text) }, obligations: list(row.obligations, personalDataObligationSchema.parse) };
+  const document: PersonalDataDocument = { contributorId, version, data: json(row.data), coverage: { complete: boolean(coverage.complete), included: list(coverage.included, text), unavailable: list(coverage.unavailable, text) }, obligations: list(row.obligations, personalDataObligationSchema.parse) };
+  if (withOccurrences) {
+    if (contributorId !== "subscriptions" || version !== "subscriptions.privacy-veto.v1") invalid();
+    const occurrences = renewalOccurrencePrivacyEvidenceSchema.parse(row.renewalOccurrences);
+    if (!occurrences.length) invalid();
+    document.renewalOccurrences = occurrences;
+  }
+  return document;
 });
 export const erasureReceiptSchema: OperatorSchema<ErasureReceipt> = schema(value => {
   const row = fields(value, ["version", "erasureId", "completedAt", "outcome", "obligations"]);

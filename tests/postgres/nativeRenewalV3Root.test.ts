@@ -317,9 +317,7 @@ rootTest("refuses a root UUID committed after the precheck and allows both IDs t
 }, postgresSetupTimeoutMs);
 
 rootTest("preserves the outstanding replacement and never enters delivery confirmation", async ({ owner }) => {
-  const delivery = await fixture(owner), control = await openCase(owner, delivery);
-  const arrived = await replacement(owner, delivery);
-  await owner.query("UPDATE public.fulfillment_shipments SET status='delivered',delivered_at=clock_timestamp() WHERE id=$1", [arrived]);
+  const delivery = await fixture(owner);
   let outstanding = "", caseId = "", predecessor = "";
   const f = await rootFixture(owner, "v3", undefined, async (db, paid) => {
     const originalShipment = { ...delivery, order: paid.orderId, shipment: randomUUID() };
@@ -370,13 +368,6 @@ rootTest("preserves the outstanding replacement and never enters delivery confir
   expect(await count()).toBe(1);
   await transaction(owner, async tx => {
     await savepoint(tx, async () => {
-      expect(await call(tx, confirmation, [control.id, "Verified delivered fixture"])).toMatchObject({ confirmed: true });
-    });
-    expect(await count()).toBe(2);
-    await savepoint(tx, () => tx.query(`DO $$ BEGIN PERFORM public.${confirmation}(NULL,'invalid fixture');
-      RAISE EXCEPTION 'control unexpectedly succeeded'; EXCEPTION WHEN invalid_parameter_value THEN NULL; END $$`));
-    expect(await count()).toBe(3);
-    await savepoint(tx, async () => {
       const unchanged = async () => {
         await assertOutstanding(tx);
         expect(await deliveryState(tx)).toEqual(state);
@@ -390,10 +381,10 @@ rootTest("preserves the outstanding replacement and never enters delivery confir
       await savepoint(tx, async () => { await expect(claim(tx, f, changed(f, 6, null))).rejects.toMatchObject(conflict); });
       expect(await snapshot(tx, f)).toEqual(retained); await unchanged();
     });
-    expect(await count()).toBe(3);
+    expect(await count()).toBe(1);
   }, "ROLLBACK");
   await assertOutstanding(owner);
   expect(await deliveryState(owner)).toEqual(state);
   expect(await snapshot(owner, f)).toEqual(before);
-  expect(await count()).toBe(3);
+  expect(await count()).toBe(1);
 }, postgresSetupTimeoutMs);

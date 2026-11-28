@@ -53,7 +53,10 @@ async function exportUsingStore<C>(deps: PrivacyUseCaseDependencies<C>, input: P
   const { store } = binding;
   return withPrivacyTransaction(deps, binding, async (context, required) => {
     const resolved = await store.resolve(context, subject);
-    if (!resolved) throw new PrivacyRefusal("PRIVACY_SUBJECT_NOT_FOUND");
+    if (!resolved) {
+      if (binding.native) await deps.verifyMissingSubject?.(context, subject);
+      throw new PrivacyRefusal("PRIVACY_SUBJECT_NOT_FOUND");
+    }
     const documents = [];
     for (const contributor of installedContributors(deps, required)) {
       const document = await contributor.export(context, resolved);
@@ -92,7 +95,10 @@ async function eraseUsingStore<C>(deps: PrivacyUseCaseDependencies<C>, actor: Au
       ? qualifyReplay(await binding.native.findErasureReplay(context, input.subject, input.idempotencyKey), required!)
       : await store.findReceipt(context, input.subject, input.idempotencyKey);
     if (previous) return erasureReceiptSchema.parse({ ...previous, outcome: "ALREADY_ERASED" });
-    if (!resolved) throw new PrivacyRefusal("PRIVACY_SUBJECT_NOT_FOUND");
+    if (!resolved) {
+      if (binding.native) await deps.verifyMissingSubject?.(context, input.subject);
+      throw new PrivacyRefusal("PRIVACY_SUBJECT_NOT_FOUND");
+    }
     const assessments = [];
     for (const contributor of erasureOrder) {
       const assessment = await contributor.assessErasure(context, resolved);

@@ -12,6 +12,7 @@ import { write } from "./orderMoneyV2Guards.fixture.js";
 import { capture, expectSqlError, rejected, seedSku, snapshots, transaction } from "./orderMoneyV2Storage.fixture.js";
 import { assertRuntime, contributorId, contributorVersion, disposition, expectReceiptError, history, immutableHint, insertReceipt, keyOf,
   obligations, operator, outcome, prepareReceipt, privacy, rawReceipt, receipts, replaceRoutineText, restorePacket, scoped, writeReceipt } from "./orderDraftReceiptsV2.fixture.js";
+import { composePrivacyBeforeOccurrenceReader } from "./privacyPrefix.fixture.js";
 
 const manifest = readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest | null;
 if (manifest?.schemaVersion !== 3) throw new Error("Expected the native catalogue");
@@ -37,6 +38,12 @@ beforeAll(async () => {
 afterAll(() => template?.close(), postgresTeardownTimeoutMs);
 
 const subjectFor = (contactId: string): PrivacySubjectRef => ({ kind: "contact", contactId });
+// Prefixes that end before the occurrence privacy reader mount the contributor set they support.
+function privacyBeforeOccurrenceReader(pool: Pool) {
+  const store = createPostgresPrivacyStore();
+  const unitOfWork = { run: <T>(work: (db: PoolClient) => Promise<T>) => transaction(pool, work) };
+  return { ...composePrivacyBeforeOccurrenceReader({ store, unitOfWork }), store, unitOfWork };
+}
 type Db = Pool | PoolClient;
 async function exportRows(db: Db, contact: string | null, principal: string | null) {
   return personalDataDocumentSchema.parse((await db.query(
@@ -124,7 +131,7 @@ it("mounts safely before the declaration, then requires verified reconciliation 
     await assertRuntime(prior);
     const variant = await seedSku(prior.owner);
     const actor = await operator(prior.owner);
-    const mounted = privacy(prior.runtime);
+    let mounted = privacyBeforeOccurrenceReader(prior.runtime);
     const own = mounted.registry.contributors.find(value => value.id === contributorId)!;
     const callbacks = [vi.spyOn(own, "export"), vi.spyOn(own, "prepareErasure"), vi.spyOn(own, "assessErasure"), vi.spyOn(own, "eraseOrRetain")];
     const { input, quote } = await prepareReceipt(prior, variant);
@@ -148,6 +155,7 @@ it("mounts safely before the declaration, then requires verified reconciliation 
     for (const callback of callbacks) expect(callback).not.toHaveBeenCalled();
 
     expect((await prior.runner.apply()).applied.slice(0, 2)).toStrictEqual([first.file, second.file]);
+    mounted = privacy(prior.runtime);
     expect(await readRequiredPrivacyContributorIds(prior.runtime)).toContain(contributorId);
     for (const unit of [first, second]) expect(sha256(readFileSync(unit.file, "utf8"))).toBe(unit.sha256);
     await insertReceipt(prior.owner, input, id);
@@ -371,8 +379,8 @@ it("refuses a direct clear by the granted runtime login even with matching new l
     "42501", `permission denied for table ${marks}`);
 }, postgresSetupTimeoutMs);
 
-function inReleasedSavepoint(pool: Pool, afterErasure?: (db: PoolClient) => Promise<void>) {
-  const mounted = privacy(pool);
+function inReleasedSavepoint(pool: Pool, afterErasure?: (db: PoolClient) => Promise<void>, mount = privacy) {
+  const mounted = mount(pool);
   return createPrivacyOperations({ ...mounted, now: () => new Date(), randomId: randomUUID,
     unitOfWork: { run: work => transaction(pool, async db => {
       await db.query("SAVEPOINT mounted_erasure");
@@ -385,13 +393,15 @@ function inReleasedSavepoint(pool: Pool, afterErasure?: (db: PoolClient) => Prom
 
 it("commits mounted erasure in a released savepoint before the child guard forward", async () => {
   const prior = await installAccountMutationsBeforeForward(manifest, childGuards.file, "bootstrap", "before-child-guards");
+  // This prefix ends before the occurrence privacy reader, so both mounts use the contributor set it supports.
+  const privacy = privacyBeforeOccurrenceReader;
   try {
     const actor = await operator(prior.owner);
     const variant = await seedSku(prior.owner);
     const { quote } = await prepareReceipt(prior, variant);
     const { id } = await transaction(prior.owner, db => write(db, quote, variant));
     const erase = { subject: subjectFor(quote.clientId), idempotencyKey: randomUUID() };
-    const value = await inReleasedSavepoint(prior.runtime).erase(actor, erase);
+    const value = await inReleasedSavepoint(prior.runtime, undefined, privacy).erase(actor, erase);
     expect(value.outcome).toBe("ERASED");
     expect((await prior.owner.query(`SELECT s.destination_erased, d.evidence_disposition
       FROM public.${snapshots} s JOIN public.commerce_destination_v2_documents d ON d.snapshot_ref=s.destination_snapshot_ref
