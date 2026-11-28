@@ -491,6 +491,7 @@ Symbols whose maturity differs from their subpath, or that are deprecated:
 | `./commerce/server` | `readCheckoutRecoveryReminderObservation` | experimental | no |
 | `./commerce/server` | `readCommerceReturnReasonsOverride` | experimental | no |
 | `./commerce/server` | `readCommerceReturnReasonsPolicy` | experimental | no |
+| `./commerce/server` | `readPublishedSkuTaxAssignments` | experimental | no |
 | `./commerce/server` | `validateCommerceReturnReasons` | experimental | no |
 | `./commerce/server/destinations` | `DestinationBindingV2` | experimental | no |
 | `./commerce/server/destinations` | `DestinationContextV2` | experimental | no |

@@ -10463,6 +10463,27 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "catalog-publication-tax-assignments",
+        "path": "db/platform/migrations/20261129160015_catalog_publication_tax_assignments.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.catalog_publication_read_head_manifests(uuid[])",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_locate_sku_products(uuid[])",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_tax_assignments(jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -15357,6 +15378,27 @@
           "signature": "public.subscriptions__read_renewal_occurrences_for_privacy(uuid,uuid)",
           "beforeSha256": null,
           "afterSha256": "384d20b560cc0229cb7e3a19cd305537357a04180ab33534494a51d63dc9a1eb"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261129160015_catalog_publication_tax_assignments.sql",
+      "sha256": "47c891961fd89817daea0152c191f20955c3c125d485fff40599949c8a2f83f0",
+      "functions": [
+        {
+          "signature": "public.catalog_publication_read_head_manifests(uuid[])",
+          "beforeSha256": null,
+          "afterSha256": "2be57f39d79b7f7ac1e6893a883912719a135611757009d218fcfff2e7e59aaa"
+        },
+        {
+          "signature": "public.catalog_publication_locate_sku_products(uuid[])",
+          "beforeSha256": null,
+          "afterSha256": "51b15d316ddc6df56bd528817678ef0b18e3599a0f2cd1690ccd924856491dcc"
+        },
+        {
+          "signature": "public.catalog_publication_tax_assignments(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "6f4ad0c2e5c81492bf9bee277cf5930cc7acb822ba9c22ec85e8d8edbf8ae10c"
         }
       ]
     }

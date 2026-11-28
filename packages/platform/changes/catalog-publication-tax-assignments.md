@@ -1,0 +1,2 @@
+- Added the experimental `readPublishedSkuTaxAssignments` server helper to bind merchandise tax assignments to the exact SKU selection and its verified catalogue publications for exclusive quotes.
+- Migration: The experimental quote port now surfaces typed catalogue refusals from the helper when `readPlan` propagates them. Apply the native migration before adopting the published tax class recipe and handle its `/plan/skus` and `/plan/expectedSelectionDigest` refusals.

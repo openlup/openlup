@@ -901,6 +901,7 @@ process.stdout.write(JSON.stringify(Object.fromEntries(Object.entries(entry).map
     ORDER_DRAFT_SUPERSEDE_RPC_NAME: "string",
     bindCommerceMoneyLimitsV2Reader: "function",
     createDbBackedCommerceQuotePortV2: "function",
+    readPublishedSkuTaxAssignments: "function",
     describeCommerceMoneyLimitsV2Setting: "function",
     inspectCommerceMoneyLimitsV2: "function",
     installCommerceMoneyLimitsV2: "function",

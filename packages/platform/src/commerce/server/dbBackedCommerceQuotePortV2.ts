@@ -7,6 +7,7 @@ import type { TaxCalculationPortV1, TaxCalculationTransactionLane, TaxCoverageRe
 import type { DestinationContextV2, DestinationPortV2, DestinationServicePinV2, DestinationVerifiedReadV2 } from "./destinations/index.js";
 import type { LimitsReadResult, LimitsTuple } from "./commerceMoneyLimitsV2.js";
 import { destinationRefusal, expired, integrity, missingCoverage, pending, projectAdapterFailure, refused } from "./commerceQuoteV2Refusals.js";
+import { lookupPublishedSkuTaxAssignmentRefusal } from "./publishedSkuTaxAssignments.js";
 
 type Begin = Exclude<Parameters<typeof beginTaxCalculation>[1], Uint8Array>;
 type Complete = Exclude<Parameters<typeof completeTaxCalculation>[1], Uint8Array>;
@@ -141,11 +142,20 @@ async function freshPin(deps: DbBackedCommerceQuotePortV2Deps, owner: QuoteOwner
   if (read.binding.snapshotRef !== destination.snapshotRef || read.binding.destinationDigest !== destination.destinationDigest ||
     read.binding.policyRevision !== destination.policyRevision || read.evidenceExpiresAt !== issued.evidenceExpiresAt) return integrity();
   const doc = snapshot(read);
-  const resolved = await dependency("/plan", () => deps.readPlan(owner, request, doc));
+  const resolved = await dependency("/plan", async () => {
+    try {
+      return { facts: await deps.readPlan(owner, request, doc) };
+    } catch (cause) {
+      const refusal = lookupPublishedSkuTaxAssignmentRefusal(cause);
+      if (!refusal) throw cause;
+      return refused(refusal.code, refusal.field, refusal.remedy);
+    }
+  });
+  if ("kind" in resolved) return resolved;
   let planInput: Composition["planInput"];
   let facts: FreshFacts;
   try {
-    const { planInput: original, ...rest } = resolved;
+    const { planInput: original, ...rest } = resolved.facts;
     planInput = snapshot(original, "codeDiagnostics") as Composition["planInput"];
     facts = { ...snapshot(rest), planInput };
   } catch { return invalid("/planInput"); }

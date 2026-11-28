@@ -5690,6 +5690,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/server/publishedSkuTaxAssignments.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/server/referenceCheckoutHandler.ts",
       "class": "public-output"
     },
@@ -30875,6 +30879,10 @@
     },
     {
       "path": "tests/postgres/catalogPublicationReadiness.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogPublicationTaxAssignments.test.ts",
       "class": "public-output"
     },
     {

@@ -247,7 +247,7 @@ basis-aware plan for the ordered basket, its delivery and catalogue evidence,
 the selected rail and bounds, and the applicable fiscal profile or tax adapter.
 
 ```js
-import { bindCommerceMoneyLimitsV2Reader, createDbBackedCommerceQuotePortV2 } from "@openlup/platform/commerce/server";
+import { bindCommerceMoneyLimitsV2Reader, createDbBackedCommerceQuotePortV2, readPublishedSkuTaxAssignments } from "@openlup/platform/commerce/server";
 
 export function bindNativeQuotes({ runtime, ...bindings }) {
   return createDbBackedCommerceQuotePortV2({
@@ -255,7 +255,69 @@ export function bindNativeQuotes({ runtime, ...bindings }) {
     readLimits: rail => bindCommerceMoneyLimitsV2Reader(runtime, rail)(),
   });
 }
+
+function plainData(value) {
+  if (value === null || typeof value !== "object") return false;
+  const prototype = Object.getPrototypeOf(value);
+  if (Array.isArray(value) ? prototype !== Array.prototype : prototype !== Object.prototype && prototype !== null) return false;
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  return Reflect.ownKeys(descriptors).every(key => Object.hasOwn(descriptors[key], "value"));
+}
+
+export function withPublishedTaxClasses(runtime, readFacts) {
+  return async (owner, request, document) => {
+    const { facts: hostFacts, skuIdsByCode } = await readFacts(owner, request, document);
+    if (!plainData(hostFacts) || !plainData(hostFacts.planInput)) return hostFacts;
+    const { planInput } = hostFacts;
+    if ((planInput.listBasis ?? "inclusive") !== "exclusive") return hostFacts;
+    const { lines: hostLines } = planInput;
+    if (!Array.isArray(hostLines) || !plainData(hostLines) || !hostLines.every(plainData)) return hostFacts;
+
+    const { catalogueEvidenceRef } = hostFacts;
+    const capturedLines = hostLines.map(line => ({ ...line }));
+    const pairs = new Map();
+    for (const { sku } of capturedLines) {
+      const skuId = skuIdsByCode.get(sku);
+      pairs.set(JSON.stringify([skuId, sku]), { skuId, sku });
+    }
+    const { assignments } = await readPublishedSkuTaxAssignments(runtime, {
+      expectedSelectionDigest: null, skus: [...pairs.values()],
+    });
+    if (!plainData(hostFacts) || !plainData(hostFacts.planInput)) return hostFacts;
+    const bySku = new Map(assignments.map(row => [row.sku, row]));
+    const lines = capturedLines.map(line => {
+      const { taxClassKey, assignmentRef } = bySku.get(line.sku);
+      return { ...line, taxClassKey, assignmentRef };
+    });
+    return { ...hostFacts, catalogueEvidenceRef, planInput: { ...hostFacts.planInput, lines } };
+  };
+}
 ```
+
+The wrapper binds the SKU set, the merchandise lines it assigns, and the
+top-level `catalogueEvidenceRef` before reading the assignments. The port reads
+all other fields, including `price` and its `classMapRevision`, from the host's
+current facts. The wrapper passes non-plain fact objects through unchanged so
+the port applies the same admission rules as on the direct quote path.
+
+On the exclusive route, pass `withPublishedTaxClasses(runtime, readFacts)` as
+`readPlan`. Return the plan `facts` and a `skuIdsByCode` map from the host's
+trusted selection in `readFacts`. Use the restricted native runtime connection.
+Each merchandise assignment reference binds the exact SKU set and the verified
+current publications for that selection. Pass a known `expectedSelectionDigest`
+to pin it, or pass `null` to bind the current selection. Corruption in a selected
+product refuses the quote. Unrelated corruption leaves the quote available, and
+`catalog_publication_read_head()` still refuses when the catalogue-wide check
+finds inconsistent evidence. The host supplies delivery assignments and fiscal
+facts.
+
+| Refusal | Field | Next action |
+|---|---|---|
+| `tax_invalid_input` | `/plan/skus` or `/plan/expectedSelectionDigest` | Supply the documented published SKU selection and its selection digest, then repeat the read. |
+| `catalog_tax_assignment_evidence_invalid` | `/plan/skus` | Have the catalogue owner reconcile the original selection and publication evidence, then repeat the read. |
+| `catalog_tax_assignment_head_changed` | `/plan/expectedSelectionDigest` | Read the published selection again and request a fresh quote. |
+| `catalog_tax_assignment_unpublished` | `/plan/skus` | Choose published merchandise or have the catalogue owner publish the intended SKU, then request a fresh quote. |
+| `tax_class_missing` | `/plan/skus` | Choose published merchandise whose product type declares an active tax class, or have the catalogue owner publish replacement merchandise with such a type, then request a fresh quote. |
 
 Call `createQuote` with the trusted linked customer and checkout scope. Reuse the
 same key and invocation to read the original evaluation. A pending result directs
