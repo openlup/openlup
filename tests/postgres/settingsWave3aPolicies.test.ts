@@ -144,6 +144,9 @@ async function createPreviewFixture() {
     [subscription, sku],
   );
   await owner.query("INSERT INTO public.subscription_method_states(subscription_id,health_state) VALUES($1,'healthy')", [subscription]);
+  await owner.query(`INSERT INTO public.subscription_renewal_terms
+    (subscription_id,currency_code,stock_source_key,settlement_channel_key,unattended_charge_authorized_at,authorization_ref)
+    SELECT id,currency_code,'fixture-stock','sandbox',now(),'fixture-authorization' FROM public.subscriptions WHERE id=$1`, [subscription]);
   return { principal, client, subscription, sku, list };
 }
 

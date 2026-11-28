@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { Pool } from "pg";
+import { Client, Pool } from "pg";
 import type { CatalogHistoryResult, CatalogPublicationJson, CatalogPublicationRefusal } from "@openlup/platform/catalog/contracts";
 import { afterAll, beforeAll, expect, expectTypeOf, it } from "vitest";
 import { createPostgresCatalogPublicationReads } from "../../server/adapters/postgres/catalogPublicationReads.js";
@@ -17,11 +17,14 @@ import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresS
 const { catalogPublicationAdmissionRefusal, publicationJson, SKU_PAGE_DEPTH, limits: CATALOG_PUBLICATION_LIMITS } = nativeCatalogPublication;
 
 const migration = "db/platform/migrations/20261123190000_catalog_publication.sql";
+const publicationDatabase = "publication_fixtures";
+const upgradeDatabase = "publication_upgrade";
 let pool: Pool;
+let upgradePool: Pool;
 let container: PostgresContainer;
 
 beforeAll(async () => {
-  container = await runPostgresContainer({ name: `catalog-publication-${process.pid}`, password: randomUUID() });
+  container = await runPostgresContainer({ name: `catalog-publication-${process.pid}`, database: publicationDatabase, password: randomUUID() });
   if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Publication witnesses require PostgreSQL");
   pool = new Pool({ connectionString: container.connectionString });
   const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as {
@@ -38,9 +41,20 @@ beforeAll(async () => {
   await pool.query(readFileSync("db/platform/migrations/20261124160000_catalog_canonical_ascii_order.sql", "utf8"));
   await pool.query(readFileSync("db/platform/migrations/20261124170000_catalog_publication_commit_perf.sql", "utf8"));
   await installPublicationActors(pool);
+  // Detach the upgrade witness before either database has test rows or open sessions.
+  await pool.end();
+  const admin = new Client({ connectionString: container.connectionStringFor("postgres") });
+  try {
+    await admin.connect();
+    await admin.query(`CREATE DATABASE ${upgradeDatabase} TEMPLATE ${publicationDatabase}`);
+  } finally {
+    await admin.end();
+  }
+  pool = new Pool({ connectionString: container.connectionString });
+  upgradePool = new Pool({ connectionString: container.connectionStringFor(upgradeDatabase) });
 }, postgresSetupTimeoutMs);
 
-afterAll(() => closePostgres(container, pool), postgresTeardownTimeoutMs);
+afterAll(() => closePostgres(container, [pool, upgradePool]), postgresTeardownTimeoutMs);
 
 it.each(["child-first", "parent-first"] as const)("admits a complete %s issue at COMMIT", async order => {
   const data = fixture();
@@ -1284,7 +1298,7 @@ it.each([
   }
 });
 
-// Run the 10,000-SKU stress test last so earlier whole-DB checks (assertConnectedCatalogPublications) do not scan its leftover SKUs.
+// Run the 10,000-SKU stress case after the whole-database publication checks.
 // 20261124170000_catalog_publication_commit_perf.sql optimizes canonical JSON formatting and carrier scans at COMMIT,
 // but hosted merge-queue shards have exceeded 240 s here, so keep 600 s until their timings are well under it.
 it("admits the maximum inherited observation roster and refuses one more SKU", async () => {
@@ -1317,11 +1331,20 @@ it("admits the maximum inherited observation roster and refuses one more SKU", a
 }, 600_000);
 
 it("retains mixed issue dialects and rejects an incomplete governed final state at COMMIT", async () => {
+  const pool = upgradePool;
+  expect((await pool.query("SELECT count(*)::int AS count FROM public.catalog_publications")).rows).toEqual([{ count: 0 }]);
+  const retainedHead = await transaction(pool, async db => {
+    const issue = await graph(db, fixture());
+    await insertGraph(db, issue);
+    return issue.head;
+  });
+  const retainedManifest = await publicationManifestText(pool, retainedHead);
   await pool.query(readFileSync("db/platform/migrations/20261124120000_catalog_publication_reads.sql", "utf8"));
   await pool.query(readFileSync("db/platform/migrations/20261124140000_catalog_publication_readiness.sql", "utf8"));
   // This partial install omits earlier forwards whose functions the search-path forward pins.
   await installAfter(pool, "db/platform/migrations/20261124170000_catalog_publication_commit_perf.sql",
     file => /_function_search_path_pg_temp\.sql$/u.test(file));
+  expect(await publicationManifestText(pool, retainedHead)).toBe(retainedManifest);
   const result = await transaction(pool, async db => {
     const old = await graph(db, fixture());
     await insertGraph(db, old);

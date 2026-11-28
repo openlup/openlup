@@ -563,6 +563,27 @@ The [PostgreSQL parity witness](../../tests/postgres/catalogAdmission.test.ts)
 compares rounded quote and preview amounts and checks the readiness gates at
 zero and positive results.
 
+### Derived pricing for native bundle edits
+
+The `subscription_edit_derived_prices` forward
+uses the subscription's existing stored selector for each edit line, including
+zero-priced lines. When a line has no stored price, the native previews derive
+its unit from the subscription's price list and currency. Both lookups use the
+same database instant after the subscription lock is acquired. Run fresh
+previews in `READ COMMITTED` or `READ UNCOMMITTED`. If a preview refuses with
+`subscription_command_admission_isolation_unsupported`, roll back and retry in
+either mode. Choose an available bundle or restore eligible
+catalogue pricing if a fresh preview returns `subscription_edit_catalog_unavailable`.
+
+The customer preview requires matching renewal terms and a positive merchandise
+subtotal. Acceptance uses the saved quote to update the account template and
+future renewal terms together. The next cycle stays at its scheduled instant,
+and an existing renewal operation keeps its frozen terms. Re-previewing a
+saved quote retains its price and expiry. It reports that the quote cannot be
+applied if a quoted SKU was deleted, the subtotal is zero, the renewal terms
+are missing or in another currency, or attached catalogue acceptance covers
+different SKUs or quantities.
+
 ### Admission fence lock order
 
 The native fence runs under `REPEATABLE READ`. Mixed writers take commerce

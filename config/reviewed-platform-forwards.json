@@ -10407,8 +10407,42 @@
         "dataStatements": []
       },
       {
+        "row": "subscription-edit-derived-prices",
+        "path": "db/platform/migrations/20261129160013_subscription_edit_derived_prices.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.catalog_admission_derived_subscription_prices(text,jsonb,jsonb,timestamptz)",
+            "beforeSha256": "00084e9310c923ed26f0a58a2b42ec66b4b7d822c4cd47352ba8c121564b4537",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_subscription_preview_bundle_as_actor(uuid,text,jsonb,jsonb,jsonb,integer,integer)",
+            "beforeSha256": "7093c0d7209b5134ccfc74e41b46bc585a07024cb1ce2e60a08a0dc3a76997ff",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_command_preview(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
+            "beforeSha256": "8b0c0c1e7eb2fd8d501118e7feadf55b980996b14f18df0de97f0e4e0d382f1b",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_subscription_apply_bundle_as_actor(uuid,text,text,jsonb,jsonb,jsonb,integer,integer)",
+            "beforeSha256": "c18d536135f13db7c1c614c822352e99fa35e8a8db1d6ad281730c44260b6476",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.catalog_admission_derived_subscription_prices(uuid,text,uuid,integer,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "native-renewal-occurrence-privacy",
-        "path": "db/platform/migrations/20261129160013_native_renewal_occurrence_privacy.sql",
+        "path": "db/platform/migrations/20261129160014_native_renewal_occurrence_privacy.sql",
         "replacedFunctions": [
           {
             "signature": "public.subscriptions__allocate_renewal_occurrence(uuid,uuid,text,jsonb)",
@@ -15275,7 +15309,38 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261129160013_native_renewal_occurrence_privacy.sql",
+      "path": "db/platform/migrations/20261129160013_subscription_edit_derived_prices.sql",
+      "sha256": "a645d30d7718b2e30aa4f21713c7ea05609e559697e9e31f8cc042a01b4da2b0",
+      "functions": [
+        {
+          "signature": "public.catalog_admission_derived_subscription_prices(text,jsonb,jsonb,timestamptz)",
+          "beforeSha256": "00084e9310c923ed26f0a58a2b42ec66b4b7d822c4cd47352ba8c121564b4537",
+          "afterSha256": "9fa877e93bc552ff6f7e07a7f49f127e5d597711fbf7b4deb0aa350e421408f5"
+        },
+        {
+          "signature": "public.customer_subscription_preview_bundle_as_actor(uuid,text,jsonb,jsonb,jsonb,integer,integer)",
+          "beforeSha256": "7093c0d7209b5134ccfc74e41b46bc585a07024cb1ce2e60a08a0dc3a76997ff",
+          "afterSha256": "0ca5ff3b6682af5c7eced66112ebd6c38111ec7f00837356a5344e7196a50528"
+        },
+        {
+          "signature": "public.subscription_command_preview(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
+          "beforeSha256": "8b0c0c1e7eb2fd8d501118e7feadf55b980996b14f18df0de97f0e4e0d382f1b",
+          "afterSha256": "e90ce9d796a29f88b9e244899648e8844d7599c7ae04296c430b102364067c65"
+        },
+        {
+          "signature": "public.customer_subscription_apply_bundle_as_actor(uuid,text,text,jsonb,jsonb,jsonb,integer,integer)",
+          "beforeSha256": "c18d536135f13db7c1c614c822352e99fa35e8a8db1d6ad281730c44260b6476",
+          "afterSha256": "ce015e6368fc6453d25cb4417071e268c0cbef3047b007831cf0cf3a93934108"
+        },
+        {
+          "signature": "public.catalog_admission_derived_subscription_prices(uuid,text,uuid,integer,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "cf15e4bc2ec90546d28d3cac4e0d676cfafd870666ece63f57513970ebdd0711"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261129160014_native_renewal_occurrence_privacy.sql",
       "sha256": "1d9dd16d9fd87cd24019f212aff1ac8b18ed41cff2d335694475ddbde5ba03cf",
       "functions": [
         {

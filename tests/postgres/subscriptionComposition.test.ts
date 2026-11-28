@@ -4,6 +4,8 @@ import { createPostgresRetryStore } from "@openlup/platform/subscriptions";
 import * as subscriptions from "@openlup/platform/subscriptions";
 import type { AutomaticRenewalRunResult } from "@openlup/platform/subscriptions";
 import { createM10RetryDriver } from "../../server/runtime/public-reference/m10RetryDriver.js";
+import { createPostgresCustomerSubscriptionControlPort } from "../../server/adapters/postgres/customerSubscriptionControl.js";
+import { PLATFORM_DEFAULT_CURRENCY } from "../../src/lib/currency/settlementProfile.js";
 import { nativeHarness, openCase } from "../helpers/fulfillmentNative.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 import { bindSubscriptionJob, transaction } from "../helpers/subscriptionJob.fixture.js";
@@ -21,6 +23,61 @@ beforeEach(async () => {
   // Retire prior synthetic fixtures in this owned disposable database only.
   await h.pool.query("UPDATE public.subscriptions SET status='cancelled'");
 });
+it.each([
+  { source: "derived-only", mode: "one_time", price: 125, total: 220 },
+  { source: "legacy stored", mode: "subscription", price: 150, total: 300 },
+])("validates a blocked re-preview after deletion of a $source SKU", async ({ mode, price, total }) => {
+  const f = await nativeRenewal(h.pool);
+  const priceList = randomUUID(), variantId = randomUUID(), currency = PLATFORM_DEFAULT_CURRENCY;
+  await h.pool.query("UPDATE public.clients SET principal_id=id WHERE id=$1", [f.client]);
+  await h.pool.query("INSERT INTO public.price_lists(id,name,region_code,currency) VALUES($1,'Bundle fixture','ZY',$2)", [priceList, currency]);
+  await h.pool.query(`UPDATE public.subscriptions SET price_list_id=$2,currency_code=$3,next_cycle_at=now()+interval '28 days'
+    WHERE id=$1`, [f.subscription, priceList, currency]);
+  await h.pool.query("UPDATE public.subscription_renewal_terms SET currency_code=$2 WHERE subscription_id=$1", [f.subscription, currency]);
+  const retainedSku = f.snapshot.lines[0].sku;
+  await h.pool.query(`INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code)
+    SELECT $1,id,2,0,false,100,$2 FROM public.catalog_skus WHERE sku=$3`, [f.subscription, currency, retainedSku]);
+  await h.pool.query(`INSERT INTO public.catalog_skus(id,product_id,sku,title,sellable_in_subscription)
+    SELECT $1,product_id,$2,'Fixture',true FROM public.catalog_skus WHERE sku=$3`, [variantId, `SKU-${variantId}`, retainedSku]);
+  await h.pool.query("INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor) VALUES($1,$2,$3,$4)",
+    [priceList, variantId, mode, price]);
+  if (mode === "one_time") {
+    await h.pool.query(`WITH revision AS (SELECT gen_random_uuid() AS id,now() AS starts)
+      INSERT INTO public.subscription_price_policy_revisions
+        (id,price_list_id,region_code,currency,channel,revision_no,discount_bps,rounding_quantum_minor,rounding_rule,effective_from,digest)
+      SELECT r.id,l.id,l.region_code,l.currency,'D2C',1,500,10,'FLOOR_TO_QUANTUM',r.starts,
+        public.catalog_price_setup_policy_digest(r.id,1,l.id,l.region_code,l.currency,'D2C',r.starts,NULL,500,10,'FLOOR_TO_QUANTUM')
+      FROM revision r JOIN public.price_lists l ON l.id=$1`, [priceList]);
+  }
+
+  const port = createPostgresCustomerSubscriptionControlPort({
+    rpc: (name, args) => transaction(h.pool, async db => {
+      expect(name).toBe("customer_subscription_preview_bundle_as_actor");
+      await db.query("SET LOCAL ROLE authenticated");
+      await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: f.client, role: "authenticated" })]);
+      const { rows: [row] } = await db.query(`SELECT
+        public.customer_subscription_preview_bundle_as_actor($1,$2,$3,$4,$5,$6,$7) AS data`,
+      [args?.p_subscription_id, args?.p_idempotency_key, args?.p_core_lines, args?.p_addon_lines,
+        args?.p_composition_constraint, args?.p_cadence_days, args?.p_expected_template_version]);
+      return { data: row.data, error: null };
+    }),
+  });
+  const idempotencyKey = randomUUID();
+  const preview = async () => (await port.previewAction(f.client, { subscriptionAction: {
+    action: "update_bundle", subscriptionId: f.subscription, idempotencyKey,
+    coreLines: [{ variantId, qty: 2, isAddon: false }], addonLines: [],
+    compositionConstraint: {}, cadenceDays: 28, expectedTemplateVersion: 1,
+  } }))?.preview;
+  const saved = await preview();
+  expect(saved).toMatchObject({ canApply: true, quoteHash: expect.any(String), quoteExpiresAt: expect.any(String),
+    currentTotal: { amountMinor: 200, currency }, newTotal: { amountMinor: total, currency },
+    catalogAvailability: { status: "available", blockedReason: null } });
+  expect((await h.pool.query("DELETE FROM public.catalog_skus WHERE id=$1 RETURNING id", [variantId])).rows)
+    .toEqual([{ id: variantId }]);
+  expect(await preview()).toEqual({ ...saved, canApply: false,
+    catalogAvailability: { status: "blocked", blockedReason: null } });
+});
+
 const bind = (f: Renewal, enabled?: boolean, ambiguous?: Renewal, beforeQuery?: (sql: string) => Promise<void>) =>
   bindSubscriptionJob(h.pool, f, enabled, ambiguous, beforeQuery);
 async function predecessor(f: Renewal, mode: string) {
