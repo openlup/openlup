@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { access, mkdtemp, mkdir, readdir, readFile, rm } from 'node:fs/promises';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { resolve } from 'node:path';
@@ -44,12 +44,13 @@ function uuidFixture(profile: string) {
   const { signal } = controller;
   const pools: Pool[] = [];
   let container: PostgresContainer | undefined;
+  let dropDatabase: (() => Promise<unknown>) | undefined;
   let state: string | undefined;
   let child: { process: ChildProcess; closed: Promise<void>; closing?: Promise<void> } | undefined;
   let teardown: Promise<void> | undefined;
   let phase = 'initial';
   let setupFailed = false;
-  let setupWork: Promise<void> | undefined;
+  let setupWork: Promise<unknown> | undefined;
 
   async function stopHost() {
     if (!child) return;
@@ -99,6 +100,7 @@ function uuidFixture(profile: string) {
       }
     }
     await closePostgres(container, pools).catch(error => failures.push(error));
+    await dropDatabase?.().catch(error => failures.push(error));
     if (state) await rm(state, { recursive: true, force: true }).catch(error => failures.push(error));
     if (failures.length) {
       if (!setupFailed) throw new Error('uuid_fixture_cleanup_failed');
@@ -127,13 +129,14 @@ function uuidFixture(profile: string) {
         throw error;
       }
     },
-    async setup(action: () => Promise<void>, timeoutMs: number) {
+    async setup<T>(action: () => Promise<T>, timeoutMs: number) {
       const started = performance.now();
       let timer: ReturnType<typeof setTimeout> | undefined;
       try {
-        setupWork = action();
-        await Promise.race([
-          setupWork,
+        const work = action();
+        setupWork = work;
+        return await Promise.race([
+          work,
           new Promise<never>((_, reject) => {
             timer = setTimeout(() => {
               report(phase, 'deadline', started);
@@ -172,6 +175,16 @@ function uuidFixture(profile: string) {
       }
       container = acquired;
       return acquired;
+    },
+    async cloneDatabase(admin: { query(statement: string): Promise<unknown> }) {
+      signal.throwIfAborted();
+      await admin.query('CREATE DATABASE neutral_store TEMPLATE neutral_store_template');
+      const drop = () => admin.query('DROP DATABASE neutral_store WITH (FORCE)');
+      if (signal.aborted) {
+        await drop().catch(() => report('database-clone', 'late_cleanup_failed', performance.now()));
+        signal.throwIfAborted();
+      }
+      dropDatabase = drop;
     },
     pool(options: ConstructorParameters<typeof Pool>[0]) {
       signal.throwIfAborted();
@@ -303,6 +316,31 @@ it.each([false, true])('removes a UUID container returned after cancellation (af
   }
 });
 
+it('drops a UUID database cloned after the fixture teardown deadline', async () => {
+  vi.useFakeTimers();
+  const fixture = uuidFixture('controlled-clone');
+  let finishClone!: () => void;
+  const cloning = new Promise<void>(resolve => { finishClone = resolve; });
+  const query = vi.fn().mockReturnValueOnce(cloning).mockResolvedValueOnce(undefined);
+  const setup = fixture.setup(() => fixture.cloneDatabase({ query }), postgresSetupTimeoutMs);
+  const aborted = expect(setup).rejects.toMatchObject({ name: 'AbortError' });
+  const cleanup = fixture.teardown();
+  try {
+    await vi.advanceTimersByTimeAsync(setupJoinTimeoutMs);
+    await cleanup;
+    finishClone();
+    await aborted;
+    expect(query.mock.calls).toEqual([
+      ['CREATE DATABASE neutral_store TEMPLATE neutral_store_template'],
+      ['DROP DATABASE neutral_store WITH (FORCE)'],
+    ]);
+  } finally {
+    finishClone();
+    await cleanup;
+    vi.useRealTimers();
+  }
+});
+
 it('closes acquired UUID pools while a query is stalled and preserves the setup deadline', async () => {
   vi.useFakeTimers();
   const fixture = uuidFixture('controlled-query');
@@ -388,7 +426,49 @@ it('force-closes a UUID host that ignores graceful shutdown', async () => {
   }
 });
 
-describe.each(Object.values(configurations))('$id host UUID identity', config => {
+const uuidTemplate = uuidFixture('database-template');
+let templateReady: Promise<{ container: PostgresContainer; admin: Pool }> | undefined;
+
+function uuidDatabaseTemplate() {
+  return templateReady ??= uuidTemplate.setup(async () => {
+    const container = await uuidTemplate.phase('container', async () => {
+      if (!await dockerAvailable()) throw new Error('UUID host proof requires Docker PostgreSQL');
+      return uuidTemplate.start({
+        name: `starter-uuid-${process.pid}`, database: 'neutral_store_template', password: 'synthetic-conformance',
+      });
+    });
+    await uuidTemplate.phase('tcp-ready', async () => {
+      if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error('UUID PostgreSQL unavailable');
+    });
+    const admin = uuidTemplate.pool({ connectionString: container.connectionStringFor('postgres') });
+    await uuidTemplate.phase('roles-migrate-status', async () => {
+      for (const role of ['starter_runtime', 'starter_restore']) {
+        uuidTemplate.signal.throwIfAborted();
+        await admin.query(`CREATE ROLE ${role} LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
+          NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-conformance'`);
+      }
+      const selection = { generation: 'qualified-v2', roleMode: 'installer-managed', bootstrapLogin: 'postgres',
+        migrationLogin: 'postgres', runtimeLogin: 'starter_runtime', restoreLogin: 'starter_restore' } as const;
+      const migration = uuidTemplate.pool({ connectionString: container.connectionString, options: qualifiedPostgresStartupOptions(selection) });
+      try {
+        const runner = createPlatformPostgresMigrationRunner({ connectionString: container.connectionString }, {
+          installation: selection, poolFactory: () => migration,
+        });
+        await runner.apply();
+        uuidTemplate.signal.throwIfAborted();
+        expect((await runner.status()).pending).toEqual([]);
+      } finally { await migration.end(); }
+      await admin.query('ALTER DATABASE neutral_store_template ALLOW_CONNECTIONS = false');
+    });
+    return { container, admin };
+  }, postgresSetupTimeoutMs);
+}
+
+afterAll(async () => { if (templateReady) await uuidTemplate.teardown(); }, uuidTeardownTimeoutMs);
+
+// The real host requires the database name neutral_store. Profiles take turns
+// owning that name in the suite's isolated cluster.
+describe.sequential.each(Object.values(configurations))('$id host UUID identity', config => {
   const fixture = uuidFixture(config.id);
   let owner: Pool;
   let base: string;
@@ -561,34 +641,15 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
 
   beforeAll(() => fixture.setup(async () => {
     state = await fixture.phase('scratch', () => fixture.scratch());
-    const container = await fixture.phase('container', async () => {
-      if (!await dockerAvailable()) throw new Error('UUID host proof requires Docker PostgreSQL');
-      return fixture.start({
-        name: `starter-uuid-${config.id}-${process.pid}`, database: 'neutral_store', password: 'synthetic-conformance',
-      });
-    });
-    await fixture.phase('tcp-ready', async () => {
-      if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error('UUID PostgreSQL unavailable');
-    });
-    await fixture.phase('roles-migrate-status', async () => {
-      owner = fixture.pool({ connectionString: container.connectionString });
-      for (const role of ['starter_runtime', 'starter_restore']) {
-        fixture.signal.throwIfAborted();
-        await owner.query(`CREATE ROLE ${role} LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
-          NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-conformance'`);
-      }
-      const selection = { generation: 'qualified-v2', roleMode: 'installer-managed', bootstrapLogin: 'postgres',
-        migrationLogin: 'postgres', runtimeLogin: 'starter_runtime', restoreLogin: 'starter_restore' } as const;
-      const migration = fixture.pool({ connectionString: container.connectionString, options: qualifiedPostgresStartupOptions(selection) });
-      const runner = createPlatformPostgresMigrationRunner({ connectionString: container.connectionString }, {
-        installation: selection, poolFactory: () => {
-          fixture.signal.throwIfAborted();
-          return migration;
-        },
-      });
-      await runner.apply();
-      fixture.signal.throwIfAborted();
-      expect((await runner.status()).pending).toEqual([]);
+    const { container, admin } = await fixture.phase('database-template', uuidDatabaseTemplate);
+    const connectionString = container.connectionStringFor('neutral_store');
+    await fixture.phase('database-clone', async () => {
+      await fixture.cloneDatabase(admin);
+      owner = fixture.pool({ connectionString });
+      expect((await owner.query('SELECT count(*)::int AS count FROM public.commerce_orders')).rows).toEqual([{ count: 0 }]);
+      const key = await owner.query(`UPDATE acquisition_private.installation_key
+        SET key_bytes=$1, created_at=clock_timestamp() WHERE singleton`, [randomBytes(32)]);
+      expect(key.rowCount).toBe(1);
     });
     await fixture.phase('seed', async () => {
       await owner.query(`COMMENT ON DATABASE neutral_store IS '${demonstrationMarker}'`);
@@ -597,7 +658,7 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
         stock: createPostgresFulfillmentStockSyncPort(owner, { sourceKey: `starter-demo:${config.id}`, readLocalInventoryStock: async () => [] }),
         close: async () => {} });
     });
-    const runtimeUrl = new URL(container.connectionString);
+    const runtimeUrl = new URL(connectionString);
     runtimeUrl.username = 'starter_runtime';
     runtimeUrl.protocol = 'postgresql:';
     runtimeUrl.password = '';
@@ -1065,14 +1126,14 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     expect(await ledger()).toHaveLength(3);
   }, 30_000);
 
-  /** Polls until `minimum` backends wait on a lock held by `holder`, or the bound passes; returns how many did. */
-  async function blockedBy(holder: number, minimum: number, boundMs = 5_000) {
+  /** Returns how many backends wait on a lock held by `holder`, bounded by the observation deadline. */
+  async function blockedBy(holder: number, boundMs = 5_000) {
     const deadline = performance.now() + boundMs;
     for (;;) {
       const count = Number((await owner!.query(`SELECT count(*) AS n FROM pg_stat_activity
         WHERE wait_event_type='Lock' AND $1::integer = ANY(pg_blocking_pids(pid))`, [holder])).rows[0].n);
-      if (count >= minimum || performance.now() > deadline) return count;
-      await new Promise(resolve => setImmediate(resolve));
+      if (count > 0 || performance.now() > deadline) return count;
+      await new Promise(resolve => setTimeout(resolve, 10));
     }
   }
 
@@ -1088,7 +1149,7 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
       const waiting = call('checkout.continuation', { action: 'resume', locale: 'en' }, false, order.key)
         .finally(() => { settled = true; });
       // The continuation's session waits on the advisory key lock held here.
-      expect(await blockedBy(pid, 1)).toBe(1);
+      expect(await blockedBy(pid)).toBe(1);
       expect(settled).toBe(false);
       await holder.query('SELECT pg_advisory_unlock(hashtextextended($1,0))', [derivedKey(order.key)]);
       const resumed = await waiting;
@@ -1152,10 +1213,10 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
       await holder.query('SELECT id FROM public.commerce_orders WHERE id=$1 FOR UPDATE', [order.orderRef]);
       const racing = Promise.all([abandon(order.key),
         call('payment.simulate', { orderRef: order.orderRef, token: order.token, outcome: 'captured' })]);
-      // Contention is proved, not assumed: at least one racer waits on the held order row.
-      expect(await blockedBy(pid, 2)).toBeGreaterThanOrEqual(1);
-      await holder.query('ROLLBACK');
+      // One racer may wait on the other. Only one needs to wait directly on the held row.
+      const blocked = await blockedBy(pid).finally(() => holder.query('ROLLBACK'));
       outcomes = await racing;
+      expect(blocked).toBeGreaterThanOrEqual(1);
     } finally { holder.release(); }
     const [abandoned, captured] = outcomes;
     const status = await orderStatus(order.orderRef);
