@@ -29,7 +29,7 @@ const capabilities: AccountSupportCapabilities = {
   subscriptions: NATIVE_SUBSCRIPTION_CAPABILITIES, communicationGifts: { supported: false, refusalCode: "unsupported_preference" },
 };
 
-async function fixture() {
+async function fixture(isolation: "READ COMMITTED" | "READ UNCOMMITTED" = "READ COMMITTED") {
   const db = pool!, f = await renewal(db);
   await db.query("DELETE FROM public.subscription_renewal_operations WHERE id=$1", [f.operation]);
   await db.query("UPDATE public.subscriptions SET next_cycle_at=$2,started_at='2026-01-01' WHERE id=$1", [f.subscription, later(200)]);
@@ -45,7 +45,7 @@ async function fixture() {
   const owner = createPostgresSubscriptionCommandStore({
     async withTransaction<T>(work: (executor: SubscriptionQueryExecutor) => Promise<T>): Promise<T> {
       const client = await db.connect();
-      try { await client.query("BEGIN"); const result = await work(client); await client.query("COMMIT"); return result; }
+      try { await client.query(`BEGIN ISOLATION LEVEL ${isolation}`); const result = await work(client); await client.query("COMMIT"); return result; }
       catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
     },
   });
@@ -109,8 +109,13 @@ it("C7 applies the exact bundle owner receipt then persists and replays stale-te
   console.info(`C7 ms=${Math.round(performance.now() - started)}`);
 });
 
-it("C8 same-day slide is a noop with no event/version write and zero-delta noop replay", async () => {
-  const started = performance.now(), f = await fixture();
+it("projects a fresh stored-price bundle preview under READ UNCOMMITTED", async () => {
+  const f = await fixture("READ UNCOMMITTED"), result = await f.preview(f.request("read-uncommitted-preview"));
+  expect(result).toMatchObject({ kind: "projected", preview: { canApply: true, newTotalMinor: 1050, quoteHash: expect.any(String) } });
+});
+
+it.each(["READ COMMITTED", "READ UNCOMMITTED"] as const)("C8 same-day slide is a noop with no event/version write and zero-delta noop replay (%s)", async isolation => {
+  const started = performance.now(), f = await fixture(isolation);
   const before = await state(f), events = (await f.db.query("SELECT * FROM public.subscription_events WHERE subscription_id=$1", [f.subscription])).rows;
   const request = { ...f.request("same-day-slide"), action: "slide_next_cycle", payload: { newNextCycleAt: new Date(before.next_cycle_at.getTime() + 3_600_000).toISOString() } };
   const result = await f.apply(request); expect(result).toBe(f.ownerResult()); expect(result).toMatchObject({ status: "noop", eventId: null });

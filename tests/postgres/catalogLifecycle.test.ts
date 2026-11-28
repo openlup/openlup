@@ -1008,7 +1008,7 @@ it("binds the accepted revision in the classic command owner", async () => {
     catalog_sku_revision_id: owner.issued.lines[0].skuRevisionId }]);
 });
 
-async function bundleEdit(owner: Awaited<ReturnType<typeof activeEditPurchase>>, qty: number, acceptance?: CatalogAcceptanceV2) {
+async function previewBundleEdit(owner: Awaited<ReturnType<typeof activeEditPurchase>>, qty: number, acceptance?: CatalogAcceptanceV2) {
   const args = [owner.id, randomUUID(), [{ variantId: owner.skuId, qty }], [], {}, 30, 1];
   async function customer(kind: "preview" | "apply", values: unknown[]) {
     return transaction(runtime, async db => {
@@ -1017,16 +1017,21 @@ async function bundleEdit(owner: Awaited<ReturnType<typeof activeEditPurchase>>,
       return call(db, `customer_subscription_${kind}_bundle_as_actor`, values.map(value => Array.isArray(value) ? json(value) : value));
     });
   }
-  const preview = await customer("preview", args);
-  expect(preview.preview).toMatchObject({ canApply: true, quoteHash: expect.any(String) });
+  const rePreview = async () => (await customer("preview", args)).preview;
+  const preview = await rePreview();
+  expect(preview).toMatchObject({ canApply: true, quoteHash: expect.any(String) });
   if (acceptance) {
     const quote = (await pool.query("SELECT id FROM public.subscription_edit_quotes WHERE subscription_id=$1 AND quote_hash=$2",
-      [owner.id, preview.preview.quoteHash])).rows[0]!.id;
+      [owner.id, preview.quoteHash])).rows[0]!.id;
     await call(runtime, "catalog_attach_edit_quote_acceptance", [quote, acceptance]);
     expect((await pool.query("SELECT catalog_acceptance FROM public.subscription_edit_quotes WHERE id=$1", [quote])).rows)
       .toEqual([{ catalog_acceptance: acceptance }]);
   }
-  return customer("apply", [owner.id, args[1], preview.preview.quoteHash, ...args.slice(2)]);
+  return { preview, rePreview, apply: () => customer("apply", [owner.id, args[1], preview.quoteHash, ...args.slice(2)]) };
+}
+
+async function bundleEdit(...args: Parameters<typeof previewBundleEdit>) {
+  return (await previewBundleEdit(...args)).apply();
 }
 
 it("attaches acceptance to a customer quote through the service owner and binds it in authenticated apply", async () => {
@@ -1037,6 +1042,41 @@ it("attaches acceptance to a customer quote through the service owner and binds 
     .toEqual([{ catalog_acceptance: owner.issued }]);
   expect(await retainedAcceptance(owner.id)).toEqual([{ catalog_acceptance: owner.issued,
     catalog_sku_revision_id: owner.issued.lines[0].skuRevisionId }]);
+});
+
+it("blocks re-preview and refuses apply when attached acceptance covers one unit of a two-unit derived quote", async () => {
+  const owner = await activeEditPurchase(), reference = owner.issued.lines[0]!;
+  const { rows: [context] } = await pool.query(`SELECT s.price_list_id,k.product_id FROM public.subscriptions s
+    JOIN public.catalog_skus k ON k.id=$2 WHERE s.id=$1`, [owner.id, owner.skuId]);
+  await pool.query("UPDATE public.price_lists SET region_code='ZY' WHERE id=$1", [context.price_list_id]);
+  await pool.query("UPDATE public.price_entries SET mode='one_time',unit_price_minor=125 WHERE price_list_id=$1 AND variant_id=$2",
+    [context.price_list_id, owner.skuId]);
+  await pool.query(`WITH revision AS (SELECT gen_random_uuid() AS id,now() AS starts)
+    INSERT INTO public.subscription_price_policy_revisions
+      (id,price_list_id,region_code,currency,channel,revision_no,discount_bps,rounding_quantum_minor,rounding_rule,effective_from,digest)
+    SELECT r.id,l.id,l.region_code,l.currency,'D2C',1,500,10,'FLOOR_TO_QUANTUM',r.starts,
+      public.catalog_price_setup_policy_digest(r.id,1,l.id,l.region_code,l.currency,'D2C',r.starts,NULL,500,10,'FLOOR_TO_QUANTUM')
+    FROM revision r JOIN public.price_lists l ON l.id=$1`, [context.price_list_id]);
+  const digest = "a".repeat(64);
+  const issued: CatalogAcceptanceV2 = { ...owner.issued, admission: {
+    moneyVersion: "v0", quoteDigest: digest, priceEvidenceRef: `price.v1:${digest}`, policyEvidenceRef: `policy.v1:${digest}`,
+    consultedHeads: [{ productId: context.product_id, ...reference.publicationHead }],
+    lineBindings: [{ sourceOrdinal: 1, skuId: reference.skuId, skuCode: reference.skuCode, skuRevisionId: reference.skuRevisionId,
+      mode: "subscription", role: "core", source: "retained", quantity: 1 }],
+  } };
+  const edit = await previewBundleEdit(owner, 2, issued);
+  expect(edit.preview).toMatchObject({ newTotal: { amountMinor: 220, currency: "XXX" }, quoteExpiresAt: expect.any(String) });
+  const state = async () => (await pool.query(`SELECT to_jsonb(s) AS subscription,
+    (SELECT to_jsonb(t) FROM public.subscription_renewal_terms t WHERE subscription_id=s.id) AS renewal,
+    ARRAY(SELECT to_jsonb(l) FROM public.subscription_renewal_term_lines l WHERE subscription_id=s.id ORDER BY line_ordinal) AS terms,
+    ARRAY(SELECT to_jsonb(l) FROM public.subscription_lines l WHERE subscription_id=s.id ORDER BY sort_order) AS template,
+    ARRAY(SELECT to_jsonb(q) FROM public.subscription_edit_quotes q WHERE subscription_id=s.id ORDER BY id) AS quotes,
+    ARRAY(SELECT to_jsonb(e) FROM public.subscription_events e WHERE subscription_id=s.id ORDER BY id) AS events
+    FROM public.subscriptions s WHERE s.id=$1`, [owner.id])).rows[0];
+  const before = await state();
+  expect.soft(await edit.rePreview()).toEqual({ ...edit.preview, canApply: false });
+  await expect(edit.apply()).rejects.toMatchObject({ code: "22023", message: "catalog_acceptance_line_mismatch" });
+  expect(await state()).toEqual(before);
 });
 
 function plantExcludedCatalogueFields(node: unknown): void {

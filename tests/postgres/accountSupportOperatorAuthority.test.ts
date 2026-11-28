@@ -5,6 +5,8 @@ import { nativeHarness } from "../helpers/fulfillmentNative.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 import { renewal, AT, later, call, prepareOriginal } from "./subscriptionNativeFixture.js";
 import { createPostgresOperatorAuthority } from "@openlup/platform/account-support";
+import { createPostgresSubscriptionCommands } from "@openlup/platform/subscriptions";
+import type { SubscriptionCommand } from "@openlup/platform/subscriptions/contracts";
 const h = nativeHarness("m12-operator-authority");
 beforeAll(() => h.start(), postgresSetupTimeoutMs);
 afterAll(() => h.stop(), postgresTeardownTimeoutMs);
@@ -162,4 +164,66 @@ it("different-key racers serialize on the same anchor without stacking", async (
   const results = await Promise.all([invoke(f, `race-a-${randomUUID()}`, "slide_next_cycle", { newNextCycleAt: target }), invoke(f, `race-b-${randomUUID()}`, "slide_next_cycle", { newNextCycleAt: target })]);
   expect(results.map(r => r.outcome).sort()).toEqual(["applied", "noop"]);
   expect((await h.pool.query("SELECT next_cycle_at,template_version FROM public.subscriptions WHERE id=$1", [f.subscription])).rows[0]).toEqual({ next_cycle_at: new Date(target), template_version: 1 });
+});
+
+it("prices a trusted operator edit and preserves the support RPC action boundary", async () => {
+  const f = await fixture();
+  const variant = randomUUID(), list = randomUUID(), sku = `Example-${variant}`;
+  const { rows: [clock] } = await h.pool.query("SELECT clock_timestamp()::text AS now");
+  await h.pool.query("INSERT INTO public.price_lists(id,name,region_code,currency) VALUES($1,'Fixture','ZZ','XXX')", [list]);
+  await h.pool.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1,$2,'Fixture')", [variant, sku]);
+  await h.pool.query(`INSERT INTO public.catalog_skus(id,product_id,sku,title,sellable_in_subscription)
+    VALUES($1,$1,$2,'Fixture',true)`, [variant, sku]);
+  await h.pool.query(`INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor)
+    VALUES($1,$2,'one_time',125)`, [list, variant]);
+  await h.pool.query(`WITH policy AS (SELECT gen_random_uuid() AS id,now() AS starts)
+    INSERT INTO public.subscription_price_policy_revisions
+      (id,price_list_id,region_code,currency,channel,revision_no,discount_bps,rounding_quantum_minor,rounding_rule,effective_from,digest)
+    SELECT id,$1,'ZZ','XXX','D2C',1,500,10,'FLOOR_TO_QUANTUM',starts,
+      public.catalog_price_setup_policy_digest(id,1,$1,'ZZ','XXX','D2C',starts,NULL,500,10,'FLOOR_TO_QUANTUM') FROM policy`, [list]);
+  const anchor = (await h.pool.query(`UPDATE public.subscriptions SET price_list_id=$2,currency_code='XXX',
+    next_cycle_at=now()+interval '30 days' WHERE id=$1 RETURNING next_cycle_at::text`, [f.subscription, list])).rows[0].next_cycle_at;
+  let translated = 3, translations = 0;
+  const commands = createPostgresSubscriptionCommands({
+    async withTransaction(work) {
+      const db = await h.pool.connect();
+      try {
+        await db.query("BEGIN");
+        const value = await work(db);
+        await db.query("COMMIT");
+        return value;
+      } catch (error) { await db.query("ROLLBACK"); throw error; }
+      finally { db.release(); }
+    },
+    async futureTerms() {
+      translations++;
+      return { coreLines: [{ variantId: variant, qty: translated }], addonLines: [],
+        compositionConstraint: { kind: "units", value: translated } };
+    },
+  });
+  const command: Extract<SubscriptionCommand, { action: "edit_future_terms" }> = {
+    action: "edit_future_terms", actor: { kind: "operator", actorId: f.operator, clientId: f.client },
+    idempotencyKey: randomUUID(), subscriptionId: f.subscription, now: clock.now, shippingAddressId: "host-address",
+    planDays: 21, cadenceDays: 21, expectedTemplateVersion: 1, acceptedQuoteHash: "", confirmedChargeTiming: true,
+    coreLines: [{ sku, quantity: 3 }], addonLines: [], compositionConstraint: "host-units",
+  };
+  const preview = await commands.preview(command);
+  expect(preview).toMatchObject({ status: "previewed", canApply: true, newTotalMinor: 330,
+    lines: [{ variantId: variant, quantity: 3, unitPriceMinor: 110, currency: "XXX" }] });
+  expect(translations).toBe(1);
+  translated = 7;
+  expect(await commands.apply({ ...command, acceptedQuoteHash: String("quoteHash" in preview ? preview.quoteHash : "") }))
+    .toMatchObject({ outcome: "applied", actorId: f.operator, revision: "2" });
+  expect(translations).toBe(1);
+  expect((await h.pool.query(`SELECT command#>'{payload,coreLines}' AS core FROM public.subscription_command_receipts
+    WHERE actor_id=$1 AND idempotency_key=$2`, [f.operator, command.idempotencyKey])).rows).toEqual([{ core: [{ variantId: variant, qty: 3 }] }]);
+  expect((await h.pool.query(`SELECT line_ordinal,sku,quantity,unit_amount_minor::int,subscription_renewal_terms.currency_code,next_cycle_at::text
+    FROM public.subscription_renewal_term_lines JOIN public.subscription_renewal_terms USING (subscription_id)
+    JOIN public.subscriptions s ON s.id=subscription_id WHERE subscription_id=$1`,
+  [f.subscription])).rows).toEqual([{ line_ordinal: 1, sku, quantity: 3, unit_amount_minor: 110, currency_code: "XXX", next_cycle_at: anchor }]);
+  const before = await snapshot();
+  await expect(call(h.pool, "customer_support_apply_subscription_action_v1",
+    [f.operator, f.subscription, "edit_future_terms", {}, 2, randomUUID(), clock.now]))
+    .rejects.toMatchObject({ code: "22023", message: "customer_support_subscription_command_invalid" });
+  expect(await snapshot()).toEqual(before);
 });
