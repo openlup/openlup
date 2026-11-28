@@ -668,6 +668,22 @@ async function incumbentMount(db: AccountMutationsStore, actor: Seed["actor"]) {
   return mounts(db, actor, host.composeNativePrivacy({ store: host.createPostgresPrivacyStore(), unitOfWork }).operations, host);
 }
 
+const beforeCarrier = sliceOccurrencePlan(occurrenceCatalogue, "db/platform/migrations/20261129130001_native_renewal_v3_storage.sql", false);
+// The order-draft receipt contributor's forwards follow the carrier in the catalogue, so only the
+// pre-carrier control lacks its entries. Compare that control without exactly those entries.
+const laterContributor = "order-draft-receipts";
+function withoutLaterContributor<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value), (_key, entry: unknown) => Array.isArray(entry)
+    ? entry.filter(item => !(item && typeof item === "object" &&
+      ((item as { contributorId?: unknown }).contributorId === laterContributor || (item as { owner?: unknown }).owner === laterContributor)))
+    : entry) as T;
+}
+function expectLaterContributor(value: unknown, present: boolean) {
+  const text = JSON.stringify(value);
+  if (present) expect(text).toContain(`"${laterContributor}"`);
+  else expect(text).not.toContain(`"${laterContributor}"`);
+}
+
 async function persistedErasureEffects(db: Db, erasureId: string) {
   const { rows } = await db.query(`SELECT c.email LIKE 'erased+%@identity.invalid' AS redacted, c.first_name,
     r.retained_obligations, r.dispositions FROM public.identity_privacy_erasures r JOIN public.clients c ON c.id=r.client_id
@@ -676,9 +692,9 @@ async function persistedErasureEffects(db: Db, erasureId: string) {
   return rows;
 }
 
-it("preserves pinned incumbent export and erase-only effects on both empty catalogues", async () => {
+it("preserves pinned incumbent export and erase-only effects on every empty catalogue boundary", async () => {
   const results: unknown[] = [];
-  for (const plan of [beforePrivacy, privacyPlan]) {
+  for (const plan of [beforeCarrier, beforePrivacy, privacyPlan]) {
     const db = await installMeasuredAccountPrefix(plan, "bootstrap", "privacy-incumbent");
     try {
       const actor = await privacyActor(db.owner), subject = await contact(db.owner);
@@ -692,10 +708,14 @@ it("preserves pinned incumbent export and erase-only effects on both empty catal
         has_function_privilege('public.customer_preferences_export(uuid)','EXECUTE') AS exports`)).rows).toEqual([{ rls: true, exports: false }]);
       const { version, outcome, obligations, erasureId } = await eraseThrough(mounted, "public", subject);
       const effects = await persistedErasureEffects(db.owner, erasureId);
-      results.push({ documents: JSON.stringify(documents).replaceAll(id!, "<contact>"), version, outcome, obligations, effects });
+      results.push({ documents: JSON.parse(JSON.stringify(documents).replaceAll(id!, "<contact>")) as unknown, version, outcome,
+        obligations, effects });
     } finally { await db.close(); }
   }
-  expect(results[1]).toEqual(results[0]);
+  expect(results[2]).toEqual(results[1]);
+  expectLaterContributor(results[0], false);
+  expectLaterContributor(results[1], true);
+  expect(withoutLaterContributor(results[1])).toEqual(results[0]);
 }, postgresSetupTimeoutMs);
 
 async function checkPrivacyAcl(db: AccountMutationsStore) {
@@ -782,15 +802,20 @@ it.each(["legacy", "legacy-with-service", "bootstrap", "separate", "admin-manage
       if (profile !== "legacy") await db.owner.query("REVOKE EXECUTE ON FUNCTION public.customer_preferences_export(uuid) FROM service_role");
       const candidateEmpty = await eraseThrough(mounted, "public", empty);
       await receiptRetention(db.owner, candidateEmpty, []);
-      if (profile !== "legacy") {
-        const baseline = await installMeasuredAccountPrefix(beforePrivacy, profile, "privacy-before-reader");
+      if (profile !== "legacy") for (const [plan, label] of [[beforeCarrier, "privacy-before-occurrences"],
+        [beforePrivacy, "privacy-before-reader"]] as const) {
+        const baseline = await installMeasuredAccountPrefix(plan, profile, label);
         try {
           await baseline.owner.query("REVOKE EXECUTE ON FUNCTION public.customer_preferences_export(uuid) FROM service_role");
           const baselineEmpty = await eraseThrough(await incumbentMount(baseline, await privacyActor(baseline.owner)), "public",
             await contact(baseline.owner, null, "Fixture"));
-          expect(candidateEmpty).toEqual({ ...baselineEmpty, erasureId: candidateEmpty.erasureId, completedAt: candidateEmpty.completedAt });
+          const exact = plan === beforePrivacy;
+          expectLaterContributor(baselineEmpty, exact);
+          const compare = <T>(value: T) => exact ? value : withoutLaterContributor(value);
+          const candidate = compare(candidateEmpty);
+          expect(candidate).toEqual({ ...compare(baselineEmpty), erasureId: candidate.erasureId, completedAt: candidate.completedAt });
           await receiptRetention(baseline.owner, baselineEmpty, []);
-          expect(await persistedErasureEffects(db.owner, candidateEmpty.erasureId))
+          expect(compare(await persistedErasureEffects(db.owner, candidateEmpty.erasureId)))
             .toEqual(await persistedErasureEffects(baseline.owner, baselineEmpty.erasureId));
         } finally { await baseline.close(); }
       }

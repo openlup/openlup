@@ -4,8 +4,12 @@ kind: feature
 
 - Native privacy exports can include evidence about the subject's renewal occurrences.
 
-Migration: Existing calls compile and behave as before when the new field,
-callback, and argument are omitted.
+Migration: The new field, callback, and argument are optional, so existing
+source compiles unchanged. Native installations must apply the platform SQL
+migrations before deploying this runtime. A runtime-only upgrade against an
+installation that has the renewal occurrence storage but not the new privacy
+reader refuses native privacy export and erasure with a 503 until the SQL is
+applied.
 
 - The `identity-contracts`, `identity`, `marketing-server`, and `risk-server`
   snapshots gain two declarations, `RenewalOccurrencePrivacyEvidence` and
