@@ -34,8 +34,8 @@
       "paths": [
         ".github/workflows/**"
       ],
-      "doc": "CONTRIBUTING.md",
-      "anchor": "#contribution-checks"
+      "doc": "docs/platform/contributing/ci-checks.md",
+      "anchor": "#required-and-raw-checks"
     },
     {
       "id": "documentation",
@@ -194,8 +194,8 @@
         "packages/**/package-lock.json",
         "packages/*/changes/*.md"
       ],
-      "doc": "CONTRIBUTING.md",
-      "anchor": "#contribution-checks"
+      "doc": "docs/platform/contributing/package-checks.md",
+      "anchor": "#package-policy-and-release-checks"
     },
     {
       "id": "core",
@@ -276,8 +276,8 @@
         "tests/**",
         "src/test/**"
       ],
-      "doc": "CONTRIBUTING.md",
-      "anchor": "#contribution-checks"
+      "doc": "docs/platform/contributing/testing.md",
+      "anchor": "#test-scope-and-diagnostics"
     },
     {
       "id": "assets",
