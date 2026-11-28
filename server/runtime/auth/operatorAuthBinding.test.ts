@@ -58,8 +58,8 @@ it.each([["active", "PRIVACY_ACTIVE_SUBSCRIPTION"], ["paused", "PRIVACY_RESUMABL
   expect(erase).not.toHaveBeenCalled(); expect(save).not.toHaveBeenCalled();
   expect(query.mock.calls).toEqual([
     ["LOCK TABLE public.subscriptions IN SHARE MODE"],
-    [expect.stringMatching(pairingQuery), [true]],
     [parentsQuery, [C]],
   ]);
+  expect(query.mock.calls.some(([sql]) => pairingQuery.test(sql))).toBe(false);
   expect(query.mock.calls.map(([sql]) => sql).join("\n")).not.toMatch(/\b(?:INSERT|UPDATE|DELETE)\b/iu);
 });

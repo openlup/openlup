@@ -965,7 +965,8 @@ it.each(defaults)("preserves producer-only evidence and the mounted snapshot und
     const approvalContext = { actor, registry, unitOfWork: unit(db.migrator) };
     await expect(identity.reconcilePostgresPrivacyErasure({
       ...approvalContext, unitOfWork: { run: work => inStaleTransaction(db.migrator, work) },
-    }, approval)).rejects.toMatchObject({ code: unavailableCode });
+    }, approval)).rejects.toMatchObject({ code: unavailableCode, facts: {
+      fix: "Run the approval in a fresh READ COMMITTED transaction.", recheck: "Retry the same approval in that transaction." } });
     expect(await state(db.owner)).toEqual(before);
     const disposition = await identity.reconcilePostgresPrivacyErasure(approvalContext, approval);
     expect(retained(disposition!.obligations)).toEqual([retention]);
@@ -1117,6 +1118,13 @@ it("exports subscriptions and occurrences from one READ COMMITTED snapshot", () 
   checkProjection(await readExport(mounts(db, actor), subject), committed!);
   await db.owner.query(`REVOKE EXECUTE ON FUNCTION ${occurrenceHelper} FROM service_role`);
   codeAt(await mounted.mounted("public", "erase", subject), "PRIVACY_ACTIVE_SUBSCRIPTION");
+  // The visible veto also wins when the occurrence catalogue metadata cannot be read.
+  await db.owner.query("REVOKE SELECT ON public.platform_schema_migrations FROM service_role");
+  expect((await db.runtime.query("SELECT has_table_privilege('public.platform_schema_migrations','SELECT') AS readable")).rows)
+    .toEqual([{ readable: false }]);
+  codeAt(await mounted.mounted("public", "erase", subject), "PRIVACY_ACTIVE_SUBSCRIPTION");
+  refusal(await mounted.mounted("public", "export", subject), unavailableCode);
+  await db.owner.query("GRANT SELECT ON public.platform_schema_migrations TO service_role");
 }), postgresSetupTimeoutMs);
 
 function expectOccurrenceScope(wire: Wire, ...fixtureIds: string[]) {

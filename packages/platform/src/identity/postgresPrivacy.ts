@@ -225,7 +225,12 @@ export async function reconcilePostgresPrivacyErasure(
       await store.authorizeErasure(db, actor);
       if (existing.length) return null;
       if ((await db.query("SHOW transaction_isolation")).rows[0]?.transaction_isolation !== "read committed") {
-        throw new Error("privacy_reconciliation_isolation_unavailable");
+        throw nativePrivacyUnavailable(new Error("privacy_reconciliation_isolation_unavailable"), {
+          observed: "The approval transaction is not READ COMMITTED.",
+          cause: "Fresh owner reconciliation verifies contributor evidence only on a READ COMMITTED transaction.",
+          fix: "Run the approval in a fresh READ COMMITTED transaction.",
+          recheck: "Retry the same approval in that transaction.",
+        });
       }
       await assertPrivacyStorePrivileges(db);
       await lockErasureChallenges(db);

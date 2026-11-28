@@ -32,10 +32,18 @@ function mapOccurrenceReadError(cause: unknown): never {
   throw nativePrivacyUnavailable(cause);
 }
 
+async function readParents(db: PgQueryExecutor, contactId: string | null) {
+  return contactId ? (await db.query(
+    "SELECT id, status FROM public.subscriptions WHERE client_id = $1 ORDER BY id", [contactId])).rows
+    .map(row => ({ id: String(row.id), status: String(row.status) })) : [];
+}
+
 async function readOccurrences(db: PgQueryExecutor, subject: Pick<ResolvedPrivacySubject, "contactId" | "principalId">,
   lane: "export" | "erase" = "export") {
   const erase = lane === "erase";
   try {
+    // A caller-visible active or paused subscription vetoes erasure before any occurrence prerequisite is read.
+    if (erase) vetoErasure(await readParents(db, subject.contactId));
     const pairing = (await db.query(`SELECT
       current_setting('transaction_isolation') AS isolation, p.oid IS NOT NULL AS helper, c.oid IS NOT NULL AS carrier,
       EXISTS (SELECT 1 FROM public.client_absorption_policy WHERE table_name = 'subscription_cycle_occurrences') AS registered,
@@ -58,9 +66,7 @@ async function readOccurrences(db: PgQueryExecutor, subject: Pick<ResolvedPrivac
       LEFT JOIN pg_class c ON c.oid = to_regclass('public.subscription_cycle_occurrences')`, [erase])).rows[0];
     const paired = pairing?.isolation === "read committed" && pairing.safe === true && pairing.registered === true;
     if (!paired || pairing.carrier_readable !== true) {
-      const parents = subject.contactId ? (await db.query(
-        "SELECT id, status FROM public.subscriptions WHERE client_id = $1 ORDER BY id", [subject.contactId])).rows
-        .map(row => ({ id: String(row.id), status: String(row.status) })) : [];
+      const parents = await readParents(db, subject.contactId);
       if (erase) vetoErasure(parents);
       if (pairing?.isolation === "read committed" && pairing.helper === false && pairing.carrier === false
         && pairing.registered === false && pairing.occurrence_catalogue === false && pairing.incumbent_catalogue === true) {
