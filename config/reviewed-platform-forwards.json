@@ -10439,6 +10439,30 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "native-renewal-occurrence-privacy",
+        "path": "db/platform/migrations/20261129160014_native_renewal_occurrence_privacy.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.subscriptions__allocate_renewal_occurrence(uuid,uuid,text,jsonb)",
+            "searchPath": "pg_catalog, pg_temp",
+            "beforeSha256": "5010069482c117b5d06ae3e653545a8523162a93ba8bad2fce1b93337af0a501"
+          },
+          {
+            "signature": "public.subscriptions__create_renewal_v3_root(uuid,uuid,uuid,uuid,integer,text,text,text,integer)",
+            "searchPath": "pg_catalog, pg_temp",
+            "beforeSha256": "58a3a94c7e23bbd4f22ececaa78c471b2022d8b80f497cd5131b46e572d29eda"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.subscriptions__read_renewal_occurrences_for_privacy(uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -15312,6 +15336,27 @@
           "signature": "public.catalog_admission_derived_subscription_prices(uuid,text,uuid,integer,timestamptz)",
           "beforeSha256": null,
           "afterSha256": "cf15e4bc2ec90546d28d3cac4e0d676cfafd870666ece63f57513970ebdd0711"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261129160014_native_renewal_occurrence_privacy.sql",
+      "sha256": "1d9dd16d9fd87cd24019f212aff1ac8b18ed41cff2d335694475ddbde5ba03cf",
+      "functions": [
+        {
+          "signature": "public.subscriptions__allocate_renewal_occurrence(uuid,uuid,text,jsonb)",
+          "beforeSha256": "5010069482c117b5d06ae3e653545a8523162a93ba8bad2fce1b93337af0a501",
+          "afterSha256": "3a85ebad954789bc08c343de18d6ed382d6ffa5da8bb6cbe46e6d3bba028201f"
+        },
+        {
+          "signature": "public.subscriptions__create_renewal_v3_root(uuid,uuid,uuid,uuid,integer,text,text,text,integer)",
+          "beforeSha256": "58a3a94c7e23bbd4f22ececaa78c471b2022d8b80f497cd5131b46e572d29eda",
+          "afterSha256": "4de4568ec4644c376821bc07c3d2c061014da3214c994f6e18d75ae316bee6e8"
+        },
+        {
+          "signature": "public.subscriptions__read_renewal_occurrences_for_privacy(uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "384d20b560cc0229cb7e3a19cd305537357a04180ab33534494a51d63dc9a1eb"
         }
       ]
     }

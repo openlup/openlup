@@ -50,9 +50,23 @@ it('privacy panel clears personal readback and confirmation on subject change, i
 });
 
 const C = "11111111-1111-4111-8111-111111111111";
+const occurrenceDocument = {
+  contributorId: "subscriptions", version: "subscriptions.privacy-veto.v1", data: [{ id: C, status: "cancelled" }],
+  coverage: { complete: false, included: ["subscription IDs and statuses", "renewal occurrence evidence"],
+    unavailable: ["full subscription export", "processor obligations"] }, obligations: [],
+  renewalOccurrences: [{ subscriptionId: C, cycleKey: C, rail: "v3", lifecycle: "active",
+    originalAnchorAt: "2035-01-01T00:00:00.123456Z", effectiveDueAt: "2035-01-01T00:00:00.123456Z", cancellationEffectiveAt: null }],
+};
+it("renders occurrence evidence with its export coverage", async () => {
+  privacy.export.mockResolvedValueOnce({ documents: [occurrenceDocument] });
+  render(<IdentityPrivacyPanel accessToken="synthetic-token" />);
+  fireEvent.change(screen.getByLabelText('Subject ID'), { target: { value: C } });
+  fireEvent.click(screen.getByRole('button', { name: 'Export identity data' }));
+  expect(await screen.findByText(/"renewalOccurrences"/)).toHaveTextContent("2035-01-01T00:00:00.123456Z");
+});
 it("browser client uses strict contracts, authenticated POSTs and no storage or cache", async () => {
   const { exportIdentityPersonalData, eraseIdentityPersonalData } = await vi.importActual<typeof import('@/domains/auth/privacyClient')>('@/domains/auth/privacyClient');
-  const exported = { format: "personal-data.v1", generatedAt: "2026-01-01T00:00:00.000Z", subject: { kind: "contact", contactId: C }, documents: [], missingContributors: ["identity"], erasure: null };
+  const exported = { format: "personal-data.v1", generatedAt: "2035-01-01T00:00:00.000Z", subject: { kind: "contact", contactId: C }, documents: [occurrenceDocument], missingContributors: ["identity"], erasure: null };
   const fetcher = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ ok: true, data: exported }), { status: 200, headers: { "Content-Type": "application/json" } }));
   expect(await exportIdentityPersonalData("synthetic-token", { kind: "contact", contactId: C }, { fetcher })).toEqual(exported);
   expect(fetcher).toHaveBeenCalledWith("/api/bff/admin/identity/privacy/export", expect.objectContaining({ method: "POST", cache: "no-store", body: JSON.stringify({ subject: exported.subject }) }));

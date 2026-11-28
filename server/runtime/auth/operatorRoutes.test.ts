@@ -190,6 +190,10 @@ it.each(['export', 'erase'] as const)('admitted native %s refuses an absent inst
   expect(privacy.query).toHaveBeenCalledTimes(1);
 });
 async function mountedPrivacyQuery(sql: string) {
+  if (sql.includes("to_regprocedure('public.subscriptions__read_renewal_occurrences_for_privacy")) {
+    return { rows: [{ isolation: 'read committed', helper: false, carrier: false, registered: false,
+      occurrence_catalogue: false, incumbent_catalogue: true }] };
+  }
   if (sql.includes('identity_privacy_required_contributor_ids()')) return { rows: [{ ids: ['communication-events', 'customer-billing',
     'customer-preferences', 'customer-saved-addresses', 'destination-documents', 'destination-receipts',
     'fulfillment-parcel-contacts', 'identity', 'subscriptions', 'tax-calculations'] }] };

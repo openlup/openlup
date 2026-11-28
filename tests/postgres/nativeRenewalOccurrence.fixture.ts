@@ -21,8 +21,8 @@ export type Scope = { clientId: string | null; subscriptionId: string | null };
 export const allocate = (db: Db, scope: Scope, rail: string | null = "v3", policy: unknown = defaultRule) =>
   call(db, producer, [scope.clientId, scope.subscriptionId, rail, policy]);
 
-export async function activation(db: Db, days = 28, paidAt?: string) {
-  const f = await seedCapturedActivation(db, paidAt);
+export async function activation(db: Db, days = 28, paidAt?: string, existingClientId?: string) {
+  const f = await seedCapturedActivation(db, paidAt, existingClientId);
   await db.query("UPDATE public.subscription_activations SET cadence_days=$2 WHERE order_id=$1", [f.orderId, days]);
   const { subscriptionId } = await callEntry(db, 0, f);
   const { cycleId, due } = (await db.query(`UPDATE public.subscriptions s

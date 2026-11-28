@@ -368,6 +368,7 @@
       "tests/postgres/orderDraftReceiptsV2.fixture.ts",
       "tests/postgres/orderMoneyV2Guards.fixture.ts",
       "tests/postgres/orderMoneyV2Storage.fixture.ts",
+      "tests/postgres/privacyPrefix.fixture.ts",
       "tests/postgres/renewalOrderDestinationV2.fixture.ts",
       "tests/postgres/subscriptionNativeFixture.ts"
     ],
@@ -821,7 +822,8 @@
       "tests/postgres/destinationReceiptFixture.ts",
       "tests/postgres/orderDraftReceiptsV2.fixture.ts",
       "tests/postgres/orderMoneyV2Guards.fixture.ts",
-      "tests/postgres/orderMoneyV2Storage.fixture.ts"
+      "tests/postgres/orderMoneyV2Storage.fixture.ts",
+      "tests/postgres/privacyPrefix.fixture.ts"
     ],
     "tests/postgres/orderDraftReceiptsV2.test.ts": [
       "@src",
@@ -977,9 +979,14 @@
       "tests/postgres/destinationDocumentFixture.ts",
       "tests/postgres/destinationReceiptFixture.ts",
       "tests/postgres/fixtures/privacyReplayRecorded.json",
+      "tests/postgres/nativeRenewalOccurrence.fixture.ts",
+      "tests/postgres/nativeRenewalOccurrenceWriter.fixture.ts",
       "tests/postgres/orderDraftReceiptsV2.fixture.ts",
       "tests/postgres/orderMoneyV2Guards.fixture.ts",
-      "tests/postgres/orderMoneyV2Storage.fixture.ts"
+      "tests/postgres/orderMoneyV2Storage.fixture.ts",
+      "tests/postgres/subscriptionActivationFixture.ts",
+      "tests/postgres/subscriptionNativeFixture.ts",
+      "tests/postgres/subscriptionRegistrationFixture.ts"
     ],
     "tests/postgres/promotionsNative.test.ts": [],
     "tests/postgres/purchaseReservationDonor.test.ts": [

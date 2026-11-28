@@ -42,13 +42,13 @@ export function privacyRefusalDetails(error: PrivacyRefusal) {
   return { privacyCode: error.code, ...projectedFacts.get(error) };
 }
 
-export function nativePrivacyUnavailable(cause: unknown): PrivacyRefusal {
-  return governedRefusal("PRIVACY_ASSESSMENT_UNAVAILABLE", {
-    observed: "Native privacy prerequisites could not be verified.",
-    cause: "The native store or its installed declaration or receipt evidence is unavailable or invalid.",
-    fix: "Check the native handler and store binding, driver, connection and TLS, and CONNECT, schema USAGE and EXECUTE privileges. Ask the installation owner to recover the exact declared catalogue and its approved migration history or the original verified receipt evidence, as applicable.",
-    recheck: "Retry the original request.",
-  }, cause);
+export function nativePrivacyUnavailable(cause: unknown, facts: PrivacyRefusalFacts = {
+  observed: "Native privacy prerequisites could not be verified.",
+  cause: "The native store or its installed declaration or receipt evidence is unavailable or invalid.",
+  fix: "Check the native handler and store binding, driver, connection and TLS, and CONNECT, schema USAGE and EXECUTE privileges. Ask the installation owner to recover the exact declared catalogue and its approved migration history or the original verified receipt evidence, as applicable.",
+  recheck: "Retry the original request.",
+}): PrivacyRefusal {
+  return governedRefusal("PRIVACY_ASSESSMENT_UNAVAILABLE", facts, cause);
 }
 
 export function missingPrivacyContributors(ids: readonly string[], installed: boolean): PrivacyRefusal {

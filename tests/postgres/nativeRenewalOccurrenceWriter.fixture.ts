@@ -69,7 +69,8 @@ export const installMeasuredAccountPrefix = (plan: OccurrenceCatalogue, variant:
       return store;
     } catch (error) { await store.close(); throw error; }
   });
-export const applyMeasuredStarterPrefix = (plan: OccurrenceCatalogue, pool: Pool, installation: QualifiedPostgresInstallation, pending?: string[]) =>
+export const applyMeasuredOccurrencePrefix = (plan: OccurrenceCatalogue, pool: Pool,
+  installation: AccountMutationsStore["installation"], profile: AccountProfile, pending?: string[]) =>
   withPlatformCatalog(plan, async root => {
     let inventory = "";
     const runner = createInventoryRunner(pool.options.connectionString!, pool, installation, value => { inventory = value; }, root);
@@ -79,8 +80,10 @@ export const applyMeasuredStarterPrefix = (plan: OccurrenceCatalogue, pool: Pool
       if (!inventory || !(error instanceof Error) || error.message !==
         "platform migration inventory rejected: platform migration manifest: object inventory SHA-256 mismatch") throw error;
     }
-    await verifyMeasuredPrefix(root, plan, "bootstrap", inventory, runner);
+    await verifyMeasuredPrefix(root, plan, profile, inventory, runner);
   });
+export const applyMeasuredStarterPrefix = (plan: OccurrenceCatalogue, pool: Pool, installation: QualifiedPostgresInstallation, pending?: string[]) =>
+  applyMeasuredOccurrencePrefix(plan, pool, installation, "bootstrap", pending);
 export const installOccurrenceStore = (profile: Profile, side = "source") =>
   installMeasuredAccountPrefix(writerPlan(), profile, `renewal-occurrence-${side}`);
 
@@ -97,7 +100,7 @@ export const generations = "subscription_cycle_generations";
 export const original = "2004-03-01T12:00:00.123456Z";
 export const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
 
-async function paidRootFixture(db: Db, due = original) {
+export async function paidRootFixture(db: Db, due = original) {
   const f = await activation(db, 7);
   const { cycle_number: cycleNumber, authorized } = (await db.query(`SELECT count(*)::int+1 AS cycle_number,
     to_char($2::timestamptz AT TIME ZONE 'UTC',${utc}) AS authorized
@@ -114,11 +117,11 @@ async function paidRootFixture(db: Db, due = original) {
 const allocationState = (db: Db, cycleKey: string) => db.query(`SELECT is_current,operation_id,commercial_generation_id,
   cancellation_receipt_id,cancellation_effective_at,to_char(original_anchor_at AT TIME ZONE 'UTC',${utc}) AS anchor,
   to_char(effective_due_at AT TIME ZONE 'UTC',${utc}) AS due FROM public.${occurrence} WHERE cycle_key=$1`, [cycleKey]);
-async function committedAllocation(owner: Pool, f: Awaited<ReturnType<typeof paidRootFixture>>, rail: string) {
+export async function committedAllocation(owner: Pool, f: Awaited<ReturnType<typeof paidRootFixture>>, rail: string, invoke = allocate) {
   const allocation = await transaction(owner, async db => {
     await db.query("SET TRANSACTION ISOLATION LEVEL READ COMMITTED");
     expect((await db.query(`SELECT cycle_key FROM public.${occurrence} WHERE subscription_id=$1`, [f.subscriptionId])).rows).toEqual([]);
-    const result = await allocate(db, f, rail, { ...defaultRule, leadSeconds: 0 });
+    const result = await invoke(db, f, rail, { ...defaultRule, leadSeconds: 0 });
     expect(result.outcome).toBe("created");
     expect((await allocationState(owner, result.cycleKey)).rows).toEqual([]);
     return { cycleKey: String(result.cycleKey), originalAnchorAt: String(result.originalAnchorAt) };
@@ -129,10 +132,11 @@ async function committedAllocation(owner: Pool, f: Awaited<ReturnType<typeof pai
 }
 
 export async function rootFixture(owner: Pool, rail = "v3", due = original,
-  prepare?: (db: Pool, f: Awaited<ReturnType<typeof paidRootFixture>>) => Promise<unknown>) {
+  prepare?: (db: Pool, f: Awaited<ReturnType<typeof paidRootFixture>>) => Promise<unknown>,
+  allocateOccurrence = committedAllocation) {
   const f = await paidRootFixture(owner, due);
   await prepare?.(owner, f);
-  const { cycleKey, originalAnchorAt } = await committedAllocation(owner, f, rail);
+  const { cycleKey, originalAnchorAt } = await allocateOccurrence(owner, f, rail);
   const operationId = randomUUID();
   const cycle = { status: "correlated", logicalCycleNumber: 2, nativeRenewalCounter: f.cycleNumber,
     activationCycleId: f.cycleId, evidenceRef: "fixture:paid-activation" };

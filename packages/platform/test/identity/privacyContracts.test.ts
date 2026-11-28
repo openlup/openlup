@@ -19,3 +19,19 @@ it("JSON documents reject nonfinite numbers, excessive depth and credential obje
   let deep: unknown = null; for (let i = 0; i < 34; i++) deep = { value: deep };
   for (const data of [NaN, undefined, new Date(), deep, { password: "excluded" }]) expect(personalDataDocumentSchema.safeParse({ ...base, data }).success).toBe(false);
 });
+
+it("keeps only closed renewal occurrence evidence on the subscriptions document", () => {
+  const row = { subscriptionId: subject.contactId, cycleKey: "22222222-2222-4222-8222-222222222222",
+    rail: "v3", lifecycle: "stopped", originalAnchorAt: "2035-02-28T12:00:00.123456Z",
+    effectiveDueAt: "2035-03-01T12:00:00.000000Z", cancellationEffectiveAt: null };
+  const document = { contributorId: "subscriptions", version: "subscriptions.privacy-veto.v1",
+    data: [{ id: subject.contactId, status: "cancelled" }], coverage: { complete: false, included: [], unavailable: [] },
+    obligations: [], renewalOccurrences: [row] };
+  expect(personalDataDocumentSchema.parse(document)).toEqual(document);
+  for (const value of [{ ...document, contributorId: "identity" }, { ...document, renewalOccurrences: [] },
+    { ...document, renewalOccurrences: [row, row] },
+    { ...document, renewalOccurrences: [{ ...row, originalAnchorAt: "2035-02-30T12:00:00.123456Z" }] },
+    { ...document, renewalOccurrences: [{ ...row, operationId: subject.contactId }] }]) {
+    expect(personalDataDocumentSchema.safeParse(value).success).toBe(false);
+  }
+});
