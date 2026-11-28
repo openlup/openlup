@@ -8,6 +8,8 @@ import {
 import { insert } from "./orderMoneyV2Storage.fixture.js";
 import { AT, call, sandboxRenewal, type Db } from "./subscriptionNativeFixture.js";
 
+export { editSubscriptionDestination as edit } from "./destinationDocumentFixture.js";
+
 export const registerSignature = "public.commerce_register_renewal_order_destination_v2(jsonb,uuid,uuid,uuid,jsonb,jsonb)";
 export const registerName = registerSignature.split("(")[0]!.slice("public.".length);
 export const checkoutSignature = "public.commerce_register_order_destination_v2(jsonb,uuid,text,uuid,uuid,jsonb,jsonb)";
@@ -69,21 +71,6 @@ export async function subject({ owner, runtime }: Pick<JourneyInstallation, "own
   });
   await insert(owner, "subscription_cycle_delivery_assignments", { obligation_ref: origin, assigned_cycle_key: cycleKey });
   return { root, ctx, checkout, ny, origin, pair, reservation };
-}
-
-export function edit(db: Db, ctx: Context, previous: string,
-  service = { ...testServicePin, deliverySelectionRef: "selected-west", adapterRevision: "adapter-west" }) {
-  const original = {
-    address: { line1: "Sample Avenue", city: "Sacramento", postalCode: "95814", countryCode: "US", subdivisionCode: "CA" },
-    contact: { recipientName: "West Recipient", contactPhone: "+15550100102" },
-  };
-  const intent = { dialect: "subscription.destination.change.v2", subscriptionId: ctx.scopeRef, expectedTemplateVersion: 1,
-    expectedSelectionRevision: previous, requestKey: randomUUID(), original };
-  const requestDigest = destinationHash(canonicalCatalogDraftJson(["commerce.destination.request.v2", { ...intent, owner: ctx.owner }]));
-  return call(db, "subscription_change_shipping_destination_v2", [ctx, {
-    ...intent, requestDigest, service,
-    validated: { ...original, classificationKeys: ["example"], policyRef: "fixture.policy", policyRevision: "r2" },
-  }, new Date().toISOString()]).then(result => ({ ...result, service }));
 }
 
 export type Subject = Awaited<ReturnType<typeof subject>>;

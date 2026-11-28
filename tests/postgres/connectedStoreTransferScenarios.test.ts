@@ -859,6 +859,7 @@ it("exports class markers for restored cross-client destination links and preser
       expect(consistentBefore).toMatchObject({ coverage: { complete: true, unavailable: [] }, data: expect.arrayContaining([
         expect.objectContaining({ snapshotRef: checkout.binding.snapshotRef, orderBindings: [{ orderId: checkoutOrder, selection: checkout.selection, service: testServicePin }] }),
         expect.objectContaining({ snapshotRef: renewalDocument.binding.snapshotRef,
+          document: expect.any(Object),
           orderBindings: [{ orderId: renewalOrder, selection: renewalDocument.selection, service: testServicePin }],
           subscriptionSelections: [{ subscriptionId: renewalContext.scopeRef, selectionRevision: renewalDocument.selection.selectionRevision, service: testServicePin }] }),
         { snapshotRef: ownErased.binding.snapshotRef, issuedAt: expect.any(String), evidenceDisposition: "erased" },
@@ -880,6 +881,15 @@ it("exports class markers for restored cross-client destination links and preser
       expect(withheldExport.filter(row => !row.snapshotRef)).toEqual([]);
       for (const [index, { id, fields }] of cases.entries()) {
         const old = before.exports[index]!, next = after.exports[index]!;
+        if (id === consistent.clientId) {
+          const data = JSON.parse(old.bytes) as { snapshotRef: string; orderBindings?: unknown; verification?: unknown }[];
+          const lineageLess = data.find(row => row.snapshotRef === renewalDocument.binding.snapshotRef)!;
+          delete lineageLess.orderBindings;
+          lineageLess.verification = verification(orderClass);
+          expect(next.contributor).toEqual({ ...old.contributor, data,
+            coverage: { ...old.contributor.coverage, complete: false, unavailable: [expect.stringContaining("destination owner")] } });
+          continue;
+        }
         if (!fields.length) { expect(next).toEqual(old); continue; }
         if (index < isolated.length) expect(old).toMatchObject({ bytes: "[]", contributor: { coverage: { complete: true } } });
         expect(next.contributor, `destination markers for order or subscription owner ${id}`).toEqual({ ...old.contributor, data: [...JSON.parse(old.bytes), ...fields.map(marker)],

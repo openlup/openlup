@@ -84,7 +84,9 @@
     ],
     "tests/postgres/catalogDraftV2.test.ts": [],
     "tests/postgres/catalogLifecycle.test.ts": [
-      "tests/postgres/catalogPublicationFixture.ts"
+      "tests/postgres/catalogPublicationFixture.ts",
+      "tests/postgres/destinationDocumentFixture.ts",
+      "tests/postgres/destinationReceiptFixture.ts"
     ],
     "tests/postgres/catalogOrderProtection.test.ts": [
       "@starter",
