@@ -1006,6 +1006,22 @@
       "class": "platform-documentation"
     },
     {
+      "path": "docs/platform/contributing/ci-checks.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/contributing/delivery.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/contributing/package-checks.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/contributing/testing.md",
+      "class": "platform-documentation"
+    },
+    {
       "path": "docs/platform/history/data-and-migrations-evidence-2026-11-13.md",
       "class": "public-output"
     },
