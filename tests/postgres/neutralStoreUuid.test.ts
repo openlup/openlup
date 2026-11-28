@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createPostgresContactClientRegistrar, createPostgresOperatorIdentityStore } from '@openlup/platform/identity';
 import { env as processEnvironment } from 'node:process';
-import { Pool } from 'pg';
+import { escapeIdentifier, Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createPlatformPostgresMigrationRunner, qualifiedPostgresStartupOptions } from '@openlup/platform/migrations';
 import { configurations } from '../../examples/neutral-store/owned/store.config.ts';
@@ -22,6 +22,7 @@ import {
 } from '../helpers/postgresContainer.js';
 
 const ledgerSignature = 'public.commerce_record_checkout_attempt(text,text,text,bigint,bigint,bigint,bigint,bigint)';
+const observerRolePrefix = 'storefront_observer_reader_';
 const spellings = {
   uppercase: (id: string) => id.toUpperCase(),
   mixed: (id: string) => {
@@ -42,6 +43,7 @@ const uuidTeardownTimeoutMs = postgresTeardownTimeoutMs + 10_000;
 function uuidFixture(profile: string) {
   const controller = new AbortController();
   const { signal } = controller;
+  const databaseName = `neutral_store_${profile}`;
   const pools: Pool[] = [];
   let container: PostgresContainer | undefined;
   let dropDatabase: (() => Promise<unknown>) | undefined;
@@ -110,6 +112,7 @@ function uuidFixture(profile: string) {
 
   return {
     signal,
+    databaseName,
     async phase<T>(label: string, action: () => Promise<T>) {
       signal.throwIfAborted();
       phase = label;
@@ -178,8 +181,9 @@ function uuidFixture(profile: string) {
     },
     async cloneDatabase(admin: { query(statement: string): Promise<unknown> }) {
       signal.throwIfAborted();
-      await admin.query('CREATE DATABASE neutral_store TEMPLATE neutral_store_template');
-      const drop = () => admin.query('DROP DATABASE neutral_store WITH (FORCE)');
+      const name = escapeIdentifier(databaseName);
+      await admin.query(`CREATE DATABASE ${name} TEMPLATE neutral_store_template`);
+      const drop = () => admin.query(`DROP DATABASE ${name} WITH (FORCE)`);
       if (signal.aborted) {
         await drop().catch(() => report('database-clone', 'late_cleanup_failed', performance.now()));
         signal.throwIfAborted();
@@ -331,8 +335,8 @@ it('drops a UUID database cloned after the fixture teardown deadline', async () 
     finishClone();
     await aborted;
     expect(query.mock.calls).toEqual([
-      ['CREATE DATABASE neutral_store TEMPLATE neutral_store_template'],
-      ['DROP DATABASE neutral_store WITH (FORCE)'],
+      ['CREATE DATABASE "neutral_store_controlled-clone" TEMPLATE neutral_store_template'],
+      ['DROP DATABASE "neutral_store_controlled-clone" WITH (FORCE)'],
     ]);
   } finally {
     finishClone();
@@ -466,8 +470,54 @@ function uuidDatabaseTemplate() {
 
 afterAll(async () => { if (templateReady) await uuidTemplate.teardown(); }, uuidTeardownTimeoutMs);
 
-// The real host requires the database name neutral_store. Profiles take turns
-// owning that name in the suite's isolated cluster.
+it('provisions the next UUID profile while the expired clone still owns its database', async () => {
+  const { admin } = await uuidDatabaseTemplate();
+  const supplements = uuidFixture('supplements');
+  const coffee = uuidFixture('coffee');
+  let reportCreated!: () => void;
+  const created = new Promise<void>(resolve => { reportCreated = resolve; });
+  let releaseCreate!: () => void;
+  const createResponse = new Promise<void>(resolve => { releaseCreate = resolve; });
+  const databases = async () => (await admin.query<{ datname: string }>(`
+    SELECT datname FROM pg_catalog.pg_database WHERE datname = ANY($1::name[]) ORDER BY datname`,
+  [[supplements.databaseName, coffee.databaseName]])).rows.map(row => row.datname);
+
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  const heldAdmin = {
+    async query(statement) {
+      await admin.query(statement);
+      if (statement.startsWith('CREATE DATABASE ')) {
+        reportCreated();
+        await createResponse;
+      }
+    },
+  } satisfies Parameters<typeof supplements.cloneDatabase>[0];
+  let cloning!: Promise<void>;
+  const deadline = 'uuid_setup_deadline profile=supplements phase=initial';
+  const setup = supplements.setup(() => cloning = supplements.cloneDatabase(heldAdmin), postgresSetupTimeoutMs);
+  void setup.catch(() => undefined);
+  try {
+    await Promise.race([created, cloning]);
+    await vi.advanceTimersByTimeAsync(postgresSetupTimeoutMs);
+    await expect(setup).rejects.toThrow(deadline);
+    const cleanup = supplements.teardown();
+    await vi.advanceTimersByTimeAsync(setupJoinTimeoutMs);
+    await cleanup;
+    vi.useRealTimers();
+
+    await coffee.cloneDatabase(admin);
+    expect(await databases()).toEqual([coffee.databaseName, supplements.databaseName]);
+    releaseCreate();
+    await expect(cloning).rejects.toThrow(deadline);
+    expect(await databases()).toEqual([coffee.databaseName]);
+  } finally {
+    vi.useRealTimers();
+    releaseCreate();
+    await cloning.catch(() => undefined);
+    await Promise.all([supplements.teardown(), coffee.teardown()]);
+  }
+}, postgresSetupTimeoutMs);
+
 describe.sequential.each(Object.values(configurations))('$id host UUID identity', config => {
   const fixture = uuidFixture(config.id);
   let owner: Pool;
@@ -608,8 +658,9 @@ describe.sequential.each(Object.values(configurations))('$id host UUID identity'
         process.disconnect();
       }));
     `;
+    // The imported server parses the profile flag. Native composition inside the child uses the clone URL.
     const host = fixture.ownHost(() => spawn(process.execPath, ['--experimental-strip-types', '--input-type=module', '-e', bootstrap,
-      'starter-host-proof', '--configuration', config.id, '--database-url', runtimeConnection],
+      'starter-host-proof', '--configuration', config.id],
     { cwd: resolve('.'), env: { ...processEnvironment, PGPASSWORD: 'synthetic-conformance' },
       stdio: ['ignore', 'pipe', 'pipe', 'ipc'] }));
     let startupRefusal: string | undefined;
@@ -642,8 +693,10 @@ describe.sequential.each(Object.values(configurations))('$id host UUID identity'
   beforeAll(() => fixture.setup(async () => {
     state = await fixture.phase('scratch', () => fixture.scratch());
     const { container, admin } = await fixture.phase('database-template', uuidDatabaseTemplate);
-    const connectionString = container.connectionStringFor('neutral_store');
+    const connectionString = container.connectionStringFor(fixture.databaseName);
     await fixture.phase('database-clone', async () => {
+      expect((await admin.query('SELECT rolname FROM pg_catalog.pg_roles WHERE starts_with(rolname, $1)',
+        [observerRolePrefix])).rows).toEqual([]);
       await fixture.cloneDatabase(admin);
       owner = fixture.pool({ connectionString });
       expect((await owner.query('SELECT count(*)::int AS count FROM public.commerce_orders')).rows).toEqual([{ count: 0 }]);
@@ -652,7 +705,7 @@ describe.sequential.each(Object.values(configurations))('$id host UUID identity'
       expect(key.rowCount).toBe(1);
     });
     await fixture.phase('seed', async () => {
-      await owner.query(`COMMENT ON DATABASE neutral_store IS '${demonstrationMarker}'`);
+      await owner.query(`COMMENT ON DATABASE ${escapeIdentifier(fixture.databaseName)} IS '${demonstrationMarker}'`);
       fixture.signal.throwIfAborted();
       await applyDemoSeed(config, { connection: owner, installRole: 'postgres', runtimeRole: 'starter_runtime',
         stock: createPostgresFulfillmentStockSyncPort(owner, { sourceKey: `starter-demo:${config.id}`, readLocalInventoryStock: async () => [] }),
@@ -1429,16 +1482,18 @@ describe.sequential.each(Object.values(configurations))('$id host UUID identity'
       await expectObserved(ledgerOf(2, 0, holdsA, 2, 1), ledgerOf(1, 1, 1, 1, 1));
       // (6) A role with only USAGE and SELECT on the six tables is subject to row-level security on
       // public.clients and public.payment_provider_attempts: the observer refuses instead of reading zeros.
-      const restricted = `storefront_observer_reader_${config.id}`;
-      await owner!.query(`CREATE ROLE ${restricted} NOLOGIN NOSUPERUSER NOBYPASSRLS`);
-      await owner!.query(`GRANT USAGE ON SCHEMA public TO ${restricted}`);
-      await owner!.query(`GRANT SELECT ON public.commerce_orders, public.clients, public.fulfillment_inventory_reservations,
-        public.commerce_settlement_intents, public.payment_simulator_attempts, public.payment_provider_attempts TO ${restricted}`);
-      await reader.query(`SET ROLE ${restricted}`);
+      const restricted = escapeIdentifier(`${observerRolePrefix}${config.id}`);
+      await reader.query(`CREATE ROLE ${restricted} NOLOGIN NOSUPERUSER NOBYPASSRLS`);
       try {
+        await reader.query(`GRANT USAGE ON SCHEMA public TO ${restricted}`);
+        await reader.query(`GRANT SELECT ON public.commerce_orders, public.clients, public.fulfillment_inventory_reservations,
+          public.commerce_settlement_intents, public.payment_simulator_attempts, public.payment_provider_attempts TO ${restricted}`);
+        await reader.query(`SET ROLE ${restricted}`);
         await expect(observer.ledger(subjectB)).rejects.toThrow(/^storefront_observer_row_security: /);
         expect(await sessionAfter()).toEqual({ read_only: 'off', row_security: 'on' });
-      } finally { await reader.query('RESET ROLE'); }
+      } finally {
+        await reader.query(`RESET ROLE; DROP OWNED BY ${restricted}; DROP ROLE ${restricted}`);
+      }
     } finally {
       reader.release();
     }
