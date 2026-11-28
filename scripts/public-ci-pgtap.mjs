@@ -23,15 +23,11 @@ const debsInContainer = "/work/debs";
 const testPassword = "postgres";
 const DOWNLOAD_TIMEOUT_MS = 60_000;
 
-const MIGRATION_ROOT = "supabase/migrations";
-const SQL_TEST_ROOT = "supabase/tests";
-export const PGTAP_INPUT_ROOTS = Object.freeze([MIGRATION_ROOT, SQL_TEST_ROOT]);
-
 // Bind replay to committed bytes before starting any disposable service.
 export function readManagedMigrationChain(checkout) {
-  const folder = join(checkout, MIGRATION_ROOT);
+  const folder = join(checkout, "supabase/migrations");
   if (!lstatSync(folder).isDirectory() || lstatSync(folder).isSymbolicLink()) throw new Error("invalid managed migration directory");
-  const result = spawnSync("git", ["--no-replace-objects", "-C", checkout, "ls-tree", "-r", "-z", "HEAD", "--", MIGRATION_ROOT], { encoding: "utf8" });
+  const result = spawnSync("git", ["--no-replace-objects", "-C", checkout, "ls-tree", "-r", "-z", "HEAD", "--", "supabase/migrations"], { encoding: "utf8" });
   if (result.error || result.status !== 0) throw new Error("cannot read committed managed migration inventory");
   const entries = result.stdout.split("\0").filter(Boolean).map((entry) => {
     const match = /^(100644) blob ([a-f0-9]{40})\tsupabase\/migrations\/(\d{14}_[a-z0-9_]+\.sql)$/u.exec(entry);
@@ -189,7 +185,7 @@ async function main() {
   const image = await pullWithRetry(readCiImage(packagePins.image));
   console.log(`Pinned image ${image}; packages ${debs.join(", ")} (${elapsed()})`);
   // Tests and the replayed chain's .inc includes, mounted read-only; pg_prove discovers .sql/.pg, never .inc.
-  cpSync(join(root, SQL_TEST_ROOT), join(directory, "tests"), { recursive: true });
+  cpSync(join(root, "supabase/tests"), join(directory, "tests"), { recursive: true });
   for (const { name, contents } of migrations) writeFileSync(join(directory, "tests", `${name}.inc`), contents);
   mkdirSync(join(directory, "debs"));
   for (const name of debs) cpSync(join(cache, name), join(directory, "debs", name));

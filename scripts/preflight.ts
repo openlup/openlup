@@ -1,7 +1,7 @@
 // Local checks before review. The default checks the change since the fork
 // point plus working-tree edits; --fast runs the cheap readiness gate;
 // --area runs ESLint, Docker-free area tooling guards, and SQL admission;
-// --affected adds affected tests, repository invariants, and pgTAP for committed managed SQL changes.
+// --affected adds reverse-import affected tests and repository-wide invariant tests.
 import { spawn, spawnSync, type SpawnOptions, type SpawnSyncOptions } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -25,8 +25,6 @@ import {
   type PlatformMigrationManifest,
   type PlatformMigrationPlan,
 } from "./platform-migration-manifest.ts";
-import { PGTAP_INPUT_ROOTS } from "./public-ci-pgtap.mjs";
-import { resolveResourceGateInvocation } from "./resource-gate.mjs";
 import { checkSettingsCandidates, isSettingsCandidateSourcePath } from "./settings-candidate-guard.ts";
 
 export type Status = "PASS" | "WARN" | "SKIP" | "FAIL";
@@ -582,29 +580,30 @@ export function affectedTestCandidates(changes: readonly Change[], rootDir = pro
 
 const CATALOG_BOUNDARY_TEST = "scripts/catalog-document-boundary.test.ts";
 const INVARIANT_TESTS = [
+  "packages/platform/test/packageBoundary.test.ts",
+  "packages/platform/test/storefront/exports.test.ts",
+  "packages/platform/test/storefront/testing/exports.test.ts",
   CATALOG_BOUNDARY_TEST,
   "scripts/ci-test-scope.test.ts",
   "scripts/packages/package-size-policy.test.ts",
   "scripts/preflight.test.ts",
   "scripts/strip-types-entrypoint-specifiers.test.ts",
-  "packages/platform/test/packageBoundary.test.ts",
-  "packages/platform/test/storefront/exports.test.ts",
-  "packages/platform/test/storefront/testing/exports.test.ts",
 ];
 const COLD_PREFLIGHT_TESTS = new Set([
   "scripts/preflight-integration-cold-api.test.ts",
   "scripts/preflight-integration-settings-cold.test.ts",
 ]);
-function discoverTests(changes: readonly Change[], affected: boolean): TestSelection {
-  const direct = new Set(changes.filter(({ path, deleted }) => !deleted && isTestEntry(path)).map(({ path }) => path));
+
+function discoverTests(changes: readonly Change[], affected = false): TestSelection {
+  const direct = changes.filter(({ path, deleted }) => !deleted && isTestEntry(path)).map(({ path }) => path);
   const candidates = affected
     ? [...new Set([...INVARIANT_TESTS, ...affectedTestCandidates(changes)
-      .filter((path) => !COLD_PREFLIGHT_TESTS.has(path) || direct.has(path))])].sort()
-    : [...direct];
+      .filter((path) => !COLD_PREFLIGHT_TESTS.has(path) || direct.includes(path))])].sort()
+    : direct;
   if (candidates.length === 0) return { files: [], separate: [], unknown: [] };
   const files = vitestFiles(candidates);
   const missing = affected ? INVARIANT_TESTS.filter((path) => !files.includes(path)) : [];
-  if (missing.length) throw new Error(`root Vitest did not collect invariant suites: ${missing.join(", ")}`);
+  if (missing.length > 0) throw new Error(`root Vitest did not collect invariant suites: ${missing.join(", ")}`);
   const outside = candidates.filter((path) => !files.includes(path));
   const separate = outside.length > 0 ? separateTestFiles(outside) : [];
   return { files, separate, unknown: outside.filter((path) => !separate.some((entry) => entry.path === path)) };
@@ -618,28 +617,6 @@ async function hostedTests(selection: TestSelection | undefined): Promise<CheckR
   return result.code === 0
     ? { check: "hosted tests", status: "PASS", detail: `${files.length} file(s) passed in hosted parity (${result.seconds} s)` }
     : { check: "hosted tests", status: "FAIL", detail: `npm run test:hosted -- ${files.join(" ")} exited ${result.code ?? "on a signal"}`, notes: tail(result.output, 60) };
-}
-
-function selectPgtap(base: string): boolean {
-  if (git(["status", "--porcelain=v1", "--untracked-files=all", "--", ...PGTAP_INPUT_ROOTS], "stdout")) {
-    console.log(`preflight: pgTAP needs a commit first. Commit changes under ${PGTAP_INPUT_ROOTS.join(" or ")}.`);
-    return false;
-  }
-  return Boolean(git(["diff", "--name-only", "--no-renames", base, "HEAD", "--", ...PGTAP_INPUT_ROOTS], "stdout"));
-}
-
-async function pgtap(): Promise<CheckResult> {
-  if (processEnvironment.AI_RESOURCE_GATE_ACTIVE === "1" || processEnvironment.OPENLUP_HEAVY_ACTIVE) {
-    throw new Error("pgTAP needs its own ai-resource-gate lease. Run preflight outside the current broker.");
-  }
-  const gate = resolveResourceGateInvocation({
-    cwd: process.cwd(), profile: "openlup:pgtap", command: process.execPath, args: ["scripts/public-ci-pgtap.mjs"],
-    lane: "supabase-db", queueTimeout: 600, executionTimeout: 1800, requireBroker: true,
-  })!;
-  const result = await executeAsync(gate.command, gate.args);
-  return result.code === 0
-    ? { check: "pgTAP", status: "PASS", detail: `real PostgreSQL suite passed (${result.seconds} s)` }
-    : { check: "pgTAP", status: "FAIL", detail: `scripts/public-ci-pgtap.mjs exited ${result.code ?? "on a signal"}`, notes: tail(result.output, 60) };
 }
 
 async function neutrality(base: string): Promise<CheckResult> {
@@ -1162,11 +1139,6 @@ export async function main(now: Date, args: readonly string[] = []): Promise<num
   const optionalLocks = processEnvironment.GIT_OPTIONAL_LOCKS;
   processEnvironment.GIT_OPTIONAL_LOCKS = "0";
   try {
-    const discover = () => {
-      selection = discoverTests(changes, affected);
-      return testDiscoveryVerdict(selection);
-    };
-    const runPgtap = affected && selectPgtap(base);
     return await runCheckWaves(started, [
       {
         parallel: true,
@@ -1178,7 +1150,7 @@ export async function main(now: Date, args: readonly string[] = []): Promise<num
           ["settings-candidates", () => settingsCandidateGuard(base, changes, new Set(untrackedPaths))],
           ["test lines", () => testLineChecks(changedTestLines(base, changes, new Set(untrackedPaths)), now)],
           ["gitleaks", () => gitleaks(base, untrackedPaths)],
-          ["test discovery", discover],
+          ["test discovery", () => { selection = discoverTests(changes, affected); return testDiscoveryVerdict(selection); }],
           ["eslint changed", () => eslintChanged(changes)],
           ["client-secret-boundary", () => runTriggeredGuard(
             "client-secret-boundary", changes, CLIENT_SECRET_BOUNDARY_TRIGGER,
@@ -1201,7 +1173,6 @@ export async function main(now: Date, args: readonly string[] = []): Promise<num
           ["release-gates headroom", () => releaseGatesHeadroom(changes, typecheckPassed)],
           ["inventory", () => inventory(changes)],
           ["hosted tests", () => hostedTests(selection)],
-          ...(runPgtap ? [["pgTAP", pgtap] as const] : []),
         ],
       },
     ]);

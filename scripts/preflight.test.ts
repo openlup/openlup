@@ -1,8 +1,8 @@
 import { execFileSync, spawn, spawnSync, type ChildProcess, type SpawnOptions, type SpawnSyncOptions } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { delimiter, dirname, join } from "node:path";
+import { dirname, join } from "node:path";
 import { env as processEnvironment } from "node:process";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -1419,16 +1419,15 @@ describe("--affected execution", () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  function mockAffected(gitInput: string | ((...args: string[]) => string), {
+  function mockAffected(gitInput: string, {
     worktree = cwd,
-    run = (): FakeSpawnResult => ({ status: 0 }),
-  }: { worktree?: string; run?: (command: string, args: string[]) => FakeSpawnResult } = {}) {
+    runHosted = (): FakeSpawnResult => ({ status: 0 }),
+  }: { worktree?: string; runHosted?: (files: string[]) => FakeSpawnResult } = {}) {
     const hosted: string[][] = [];
     const fork = "a".repeat(40);
     mockChildProcesses((bin, args) => {
       const list = [...(args ?? [])];
       if (bin === "git") {
-        if (typeof gitInput === "function") return { status: 0, stdout: gitInput(...list) };
         if (list.includes("--show-toplevel")) return { status: 0, stdout: worktree };
         if (list[0] === "merge-base") return { status: 0, stdout: fork };
         if (list.includes("--name-status")) {
@@ -1441,8 +1440,12 @@ describe("--affected execution", () => {
         const files = list.filter((path) => path.endsWith(".test.ts"));
         writeFileSync(listing.slice("--json=".length), JSON.stringify(files.map((file) => ({ file: join(process.cwd(), file) }))));
       }
-      if (list[0] === "scripts/test-hosted.mjs") hosted.push(list.slice(1));
-      return run(bin, list);
+      if (bin === process.execPath && list[0] === "scripts/test-hosted.mjs") {
+        const files = list.slice(1);
+        hosted.push(files);
+        return runHosted(files);
+      }
+      return { status: 0 };
     });
     const stdout = vi.spyOn(console, "log").mockImplementation(() => {});
     vi.spyOn(process.stderr, "write").mockImplementation(() => true);
@@ -1469,7 +1472,7 @@ describe("--affected execution", () => {
     expect(affectedTestCandidates(changed(path), root)).toEqual([]);
     const { hosted, stdout } = mockAffected(`A\0${path}\0`, {
       worktree: root,
-      run: (_, args) => args[0] === "scripts/test-hosted.mjs" && args.includes(catalogGuard) ? catalog() : { status: 0 },
+      runHosted: (files) => files.includes(catalogGuard) ? catalog() : { status: 0 },
     });
     expect(await main(now, ["--affected"]), stdout.mock.calls.flat().join("\n")).toBe(1);
     expect(hosted).toEqual([invariantFiles]);
@@ -1489,88 +1492,5 @@ describe("--affected execution", () => {
     const { hosted } = mockAffected(`M\0${path}\0`);
     expect(await main(now, ["--affected"])).toBe(0);
     expect(hosted).toEqual([[...invariantFiles, path].sort()]);
-  });
-
-  describe("pgTAP selection", () => {
-    const source = "supabase/tests/fixture.sql";
-    const migration = "supabase/migrations/00000000000001_fixture.sql";
-    let git: (...args: string[]) => string;
-    let broker: string;
-    const commit = () => git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "Fixture change");
-
-    beforeEach(async () => {
-      const { execFileSync: exec } = await vi.importActual<typeof import("node:child_process")>("node:child_process");
-      git = (...args) => exec("git", args, { cwd: root, encoding: "utf8", env: localFixtureEnvironment() });
-      mkdirSync(join(root, dirname(source)), { recursive: true });
-      writeFileSync(join(root, source), "select 1;\n");
-      git("init", "--quiet", "--template=");
-      git("add", ".");
-      commit();
-      git("update-ref", "refs/remotes/origin/main", "HEAD");
-      broker = join(root, "ai-resource-gate");
-      writeFileSync(broker, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
-      vi.stubEnv("PATH", `${root}${delimiter}${processEnvironment.PATH}`);
-      vi.stubEnv("AI_RESOURCE_GATE_ACTIVE", undefined);
-      vi.stubEnv("OPENLUP_HEAVY_ACTIVE", undefined);
-    });
-
-    async function runAffected(brokerStatus = 0) {
-      const calls: string[][] = [];
-      const { hosted, stdout } = mockAffected(git, { run: (bin, args) => {
-        if (bin !== broker) return { status: 0 };
-        calls.push(args);
-        return { status: brokerStatus };
-      } });
-      const code = await main(now, ["--affected"]);
-      expect(hosted).toEqual([invariantFiles]);
-      return { calls, code, lines: stdout.mock.calls.flat() };
-    }
-
-    const brokerArgs = [
-      "run", "--wait", "--lane", "supabase-db", "--queue-timeout", "600", "--execution-timeout", "1800",
-      expect.stringMatching(/^openlup:pgtap:wt\d+$/u), "--", process.execPath, "scripts/public-ci-pgtap.mjs",
-    ];
-
-    it.each([
-      ["scripts/benchmarks/outbox-claim.sql", []],
-      [migration, [brokerArgs]],
-      ["supabase/tests/fixture.pg", [brokerArgs]],
-    ])("checks the runner's input roots for a committed change to %s", async (path, expectedCalls) => {
-      mkdirSync(join(root, dirname(path)), { recursive: true });
-      writeFileSync(join(root, path), "select 1;\n");
-      git("add", path);
-      commit();
-      const { calls, code, lines } = await runAffected();
-      expect(code, lines.join("\n")).toBe(0);
-      expect(calls).toEqual(expectedCalls);
-      expect(lines.join("\n")).not.toContain("pgTAP needs a commit first");
-    });
-
-    it.each(["untracked", "staged", "unstaged after a committed change"])("defers pgTAP for a %s migration edit", async (state) => {
-      mkdirSync(join(root, dirname(migration)), { recursive: true });
-      writeFileSync(join(root, migration), "select 1;\n");
-      if (state !== "untracked") git("add", migration);
-      if (state === "unstaged after a committed change") {
-        commit();
-        writeFileSync(join(root, migration), "select 2;\n");
-      }
-      const { calls, code, lines } = await runAffected();
-      expect(code, lines.join("\n")).toBe(0);
-      expect(calls).toEqual([]);
-      expect(lines.filter(line => line.includes("pgTAP"))).toEqual([
-        "preflight: pgTAP needs a commit first. Commit changes under supabase/migrations or supabase/tests.",
-      ]);
-    });
-
-    it("brokers pgTAP for a committed SQL rename out of the test tree and propagates its failure", async () => {
-      const moved = "fixture.txt";
-      renameSync(join(root, source), join(root, moved));
-      git("add", "-A", source, moved);
-      expect(git("diff", "--cached", "--name-status", "-M").trim()).toBe(`R100\t${source}\t${moved}`);
-      commit();
-      const { calls, code, lines } = await runAffected(1);
-      expect(code, lines.join("\n")).toBe(1);
-      expect(calls).toEqual([brokerArgs]);
-    });
   });
 });
