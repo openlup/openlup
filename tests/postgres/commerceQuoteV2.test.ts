@@ -1374,6 +1374,37 @@ it("executes the published tax recipe, pins repeated merchandise and replays acr
     "Have the coverage owner supply the required tax class mapping for /input/lines, then obtain a fresh quote."));
 });
 
+it("seals a quote when catalogue-wide diagnostics find unrelated corruption", async () => {
+  const original = store;
+  store = await resources.installation("published-quotes-unrelated-corruption");
+  try {
+    const create = await publicationWriter(["class-1", "class-0"]);
+    const selected = await create(1), unrelated = await create(2);
+    const assignment = await expectedTaxLine(selected, "class-1");
+    const db = await store.owner.connect();
+    try {
+      await db.query("BEGIN; SET LOCAL session_replication_role=replica");
+      const damaged = await db.query(`UPDATE public.catalog_publications SET canonical_state='{}'
+        WHERE id=(SELECT publication_id FROM public.catalog_publication_heads WHERE product_id=$1)`, [unrelated.productId]);
+      expect(damaged.rowCount).toBe(1);
+      await db.query("COMMIT");
+    } catch (error) { await db.query("ROLLBACK"); throw error; }
+    finally { db.release(); }
+
+    const f = await installed({ basis: "exclusive", units: [100] });
+    const { request, query } = guideSelection(f, [selected]);
+    expect(quote(await f.bind().createQuote(f.owner, request))).toMatchObject({ amountBasis: "exclusive", lines: [assignment] });
+    expect(query).toHaveBeenCalledTimes(1);
+    expect((await row(f)).state).toBe("terminal");
+    expect((await store.owner.query("SELECT public.catalog_publication_read_head() AS result")).rows[0]?.result)
+      .toStrictEqual({ kind: "refusal", reason: "inconsistent_evidence" });
+
+    const broken = await installed({ basis: "exclusive", units: [100] });
+    const damaged = guideSelection(broken, [unrelated]);
+    exact(await broken.bind().createQuote(broken.owner, damaged.request), catalogueRefusals[2]!);
+  } finally { store = original; }
+});
+
 it("quotes a published fiscal selection with an empty tax class table and no projection calls", async () => {
   const original = store;
   store = await resources.installation("published-fiscal-quotes");
