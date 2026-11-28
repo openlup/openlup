@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { build } from "esbuild";
 import { afterAll, beforeAll, expect, expectTypeOf, it, vi } from "vitest";
 import { canonicalCatalogDraftJson, createCatalogProductTypeRegistry, createPostgresCatalogDraftStoreV3,
@@ -1060,7 +1060,7 @@ it("preserves complete incumbent and fresh fiscal quote bytes across the native 
       resolveAutomaticQuotePromotions: async () => ({ discounts: [], codeRejections: [] }),
       applyPromotionCodesV2: async input => ({ discounts: input.discounts, codeRejections: [], codeRejectionDetails: [] }),
     });
-    const forward = readFileSync("db/platform/migrations/20261129060000_catalog_publication_tax_assignments.sql", "utf8");
+    const forward = readFileSync(`db/platform/migrations/${readdirSync("db/platform/migrations").find(file => file.endsWith("_catalog_publication_tax_assignments.sql"))}`, "utf8");
     const run = async () => {
       const incumbent = await Promise.all((["one_time", "subscription"] as const).map(mode => legacy.createQuote({
         mode, lines: [{ sku: selected.sku, quantity: 1 }], promoCodes: [], ...(mode === "subscription" ? { cadenceDays: 28 } : {}),

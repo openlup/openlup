@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -26,7 +26,7 @@ vi.mock("@openlup/platform/commerce/server", async importOriginal => {
 
 type Request = Parameters<typeof readPublishedSkuTaxAssignments>[1];
 type Pair = Request["skus"][number];
-const forward = "db/platform/migrations/20261129060000_catalog_publication_tax_assignments.sql";
+const forward = `db/platform/migrations/${readdirSync("db/platform/migrations").find(file => file.endsWith("_catalog_publication_tax_assignments.sql"))}`;
 const listing = "public.catalog_publication_read_head_manifests(uuid[])";
 const locator = "public.catalog_publication_locate_sku_products(uuid[])";
 const projection = "public.catalog_publication_tax_assignments(jsonb)";
