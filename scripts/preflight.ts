@@ -1,10 +1,10 @@
 // Local checks before review. The default checks the change since the fork
 // point plus working-tree edits; --fast runs the cheap readiness gate;
 // --area runs ESLint, Docker-free area tooling guards, and SQL admission;
-// --affected expands default preflight test discovery to reverse-import affected tests.
+// --affected adds affected tests, invariant tests, and real pgTAP for SQL changes.
 import { spawn, spawnSync, type SpawnOptions, type SpawnSyncOptions } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { env as processEnvironment } from "node:process";
@@ -26,6 +26,7 @@ import {
   type PlatformMigrationPlan,
 } from "./platform-migration-manifest.ts";
 import { checkSettingsCandidates, isSettingsCandidateSourcePath } from "./settings-candidate-guard.ts";
+import { resolveResourceGateInvocation } from "./resource-gate.mjs";
 
 export type Status = "PASS" | "WARN" | "SKIP" | "FAIL";
 export type CheckResult = { check: string; status: Status; detail: string; notes?: string[] };
@@ -578,10 +579,24 @@ export function affectedTestCandidates(changes: readonly Change[], rootDir = pro
   return [...new Set([...direct, ...affectedTests.map(({ path }) => path)])].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 }
 
-function discoverTests(changes: readonly Change[], affected = false): TestSelection {
-  const candidates = affected
+const CATALOG_BOUNDARY_TEST = "scripts/catalog-document-boundary.test.ts";
+const INVARIANT_TESTS = [
+  "scripts/packages/package-size-policy.test.ts",
+  CATALOG_BOUNDARY_TEST,
+  "scripts/ci-test-scope.test.ts",
+  "scripts/strip-types-entrypoint-specifiers.test.ts",
+  "packages/platform/test/packageBoundary.test.ts",
+  "packages/platform/test/storefront/exports.test.ts",
+  "packages/platform/test/storefront/testing/exports.test.ts",
+  "scripts/preflight.test.ts",
+];
+const COLD_PREFLIGHT_TEST = /^scripts\/preflight-integration(?:-[\w-]+)?\.test\.ts$/u;
+
+function discoverTests(changes: readonly Change[], affected: boolean, proof: boolean): TestSelection {
+  let candidates = affected
     ? affectedTestCandidates(changes)
     : changes.filter(({ path, deleted }) => !deleted && isTestEntry(path)).map(({ path }) => path);
+  if (proof) candidates = [...new Set([...candidates.filter((path) => !COLD_PREFLIGHT_TEST.test(path)), ...INVARIANT_TESTS])].sort();
   if (candidates.length === 0) return { files: [], separate: [], unknown: [] };
   const files = vitestFiles(candidates);
   const outside = candidates.filter((path) => !files.includes(path));
@@ -589,14 +604,52 @@ function discoverTests(changes: readonly Change[], affected = false): TestSelect
   return { files, separate, unknown: outside.filter((path) => !separate.some((entry) => entry.path === path)) };
 }
 
-async function hostedTests(selection: TestSelection | undefined): Promise<CheckResult> {
+async function hostedTests(selection: TestSelection | undefined, proof = false): Promise<CheckResult> {
   if (!selection) return { check: "hosted tests", status: "FAIL", detail: "test discovery failed; restore discovery before running changed root tests" };
   const { files } = selection;
+  const missing = proof ? INVARIANT_TESTS.filter((path) => !files.includes(path)) : [];
+  if (missing.length) return { check: "hosted tests", status: "FAIL", detail: `required invariant tests were not discovered: ${missing.join(", ")}` };
   if (files.length === 0) return { check: "hosted tests", status: "SKIP", detail: "no changed root Vitest file; see test discovery for separate runners and missing proof" };
-  const result = await executeAsync(process.execPath, ["scripts/test-hosted.mjs", ...files]);
-  return result.code === 0
-    ? { check: "hosted tests", status: "PASS", detail: `${files.length} file(s) passed in hosted parity (${result.seconds} s)` }
-    : { check: "hosted tests", status: "FAIL", detail: `npm run test:hosted -- ${files.join(" ")} exited ${result.code ?? "on a signal"}`, notes: tail(result.output, 60) };
+  const directory = proof ? mkdtempSync(join(tmpdir(), "openlup-hosted-proof-")) : undefined;
+  const report = directory && join(directory, "results.json");
+  try {
+    const result = await executeAsync(process.execPath, ["scripts/test-hosted.mjs", ...files,
+      ...(report ? ["--reporter=default", "--reporter=json", `--outputFile.json=${report}`] : [])]);
+    if (result.code !== 0) {
+      const failed = proof ? [...new Set([...result.output.matchAll(/^\s*FAIL\s+(\S+\.(?:test|spec)\.[cm]?[jt]sx?)/gmu)].map(([, path]) => path))] : [];
+      return { check: "hosted tests", status: "FAIL", detail: `npm run test:hosted -- ${(failed.length ? failed : files).join(" ")} exited ${result.code ?? "on a signal"}`, notes: tail(result.output, 60) };
+    }
+    if (report && !existsSync(report)) return { check: "hosted tests", status: "FAIL", detail: `missing Vitest execution report for ${files.join(", ")}` };
+    if (report) {
+      const { testResults } = JSON.parse(readFileSync(report, "utf8")) as {
+        testResults: Array<{ name: string; assertionResults: Array<{ status: string }> }>;
+      };
+      const passed = new Set(testResults.filter(({ name, assertionResults }) => assertionResults.some(({ status }) => status === "passed")
+        && (!INVARIANT_TESTS.includes(relative(process.cwd(), name).split("\\").join("/"))
+          || assertionResults.every(({ status }) => status === "passed"))).map(({ name }) => resolve(name)));
+      const skipped = files.filter((path) => !passed.has(resolve(path)));
+      if (skipped.length) return { check: "hosted tests", status: "FAIL", detail: `required tests skipped or missing: ${skipped.join(", ")}` };
+    }
+    return { check: "hosted tests", status: "PASS", detail: `${files.length} file(s) passed in hosted parity (${result.seconds} s)` };
+  } finally {
+    if (directory) rmSync(directory, { recursive: true, force: true });
+  }
+}
+
+async function pgtap(): Promise<CheckResult> {
+  if (processEnvironment.AI_RESOURCE_GATE_ACTIVE === "1" || processEnvironment.OPENLUP_HEAVY_ACTIVE) {
+    throw new Error("pgTAP needs its own ai-resource-gate lease; run preflight outside the current broker");
+  }
+  const gate = resolveResourceGateInvocation({
+    cwd: process.cwd(), profile: "openlup:pgtap", command: process.execPath, args: ["scripts/public-ci-pgtap.mjs"],
+    lane: "supabase-db", queueTimeout: 600, executionTimeout: 1800, requireBroker: true,
+  })!;
+  const result = await executeAsync(gate.command, gate.args);
+  const skip = /^\s*(?:ok\b.*|1\.\.0\s*)#\s*SKIP\b.*$/imu.exec(result.output)?.[0].trim();
+  if (skip) return { check: "pgTAP", status: "FAIL", detail: `required assertion or suite skipped: ${skip}` };
+  return result.code === 0 && /^Result: PASS\s*$/mu.test(result.output) && /^Files=\d+, Tests=[1-9]\d*/mu.test(result.output)
+    ? { check: "pgTAP", status: "PASS", detail: `real PostgreSQL suite passed (${result.seconds} s)` }
+    : { check: "pgTAP", status: "FAIL", detail: `scripts/public-ci-pgtap.mjs did not report a passing suite (exit ${result.code ?? "unavailable"})`, notes: tail(result.output, 60) };
 }
 
 async function neutrality(base: string): Promise<CheckResult> {
@@ -775,7 +828,6 @@ const AREA_EXCLUDED_TESTS = new Set([
   "scripts/packages/platform-cold-consumer.test.ts",
   "scripts/packages/reference-delegation-consumer.test.ts",
 ]);
-const CATALOG_BOUNDARY_TEST = "scripts/catalog-document-boundary.test.ts";
 const CATALOG_BOUNDARY_PREFIXES = [
   "packages/platform/src/catalog/",
   "packages/core/src/catalog/",
@@ -1021,17 +1073,106 @@ async function fastPreflight(now: Date): Promise<number> {
 
 type ForkChanges = { base: string; untrackedPaths: string[]; changes: Change[] };
 
-function readForkChanges(): ForkChanges | { error: CheckResult } {
+function readForkChanges(target?: string): ForkChanges | { error: CheckResult } {
   let base: string;
   try {
-    base = git(["merge-base", "HEAD", "origin/main"], "stdout").trim();
+    base = comparisonBase(target ?? "HEAD");
   } catch (error) {
-    return { error: { check: "fork point", status: "FAIL", detail: `${(error as Error).message}; fetch origin main first` } };
+    return { error: { check: "fork point", status: "FAIL", detail: `${(error as Error).message}; run git fetch origin main and retry preflight` } };
   }
-  const untrackedPaths = git(["ls-files", "--others", "--exclude-standard", "-z"], "stdout").split("\0").filter(Boolean);
-  const changes = [...parseNameStatus(git(["diff", "--name-status", "--no-renames", "-z", base], "stdout")), ...untrackedPaths.map((path) => ({ path, deleted: false }))];
-  console.log(`preflight: ${changes.length} changed path(s) since fork point ${base.slice(0, 12)} with origin/main, including uncommitted files`);
+  const untrackedPaths = target ? [] : git(["ls-files", "--others", "--exclude-standard", "-z"], "stdout").split("\0").filter(Boolean);
+  const changes = [...parseNameStatus(git(["diff", "--name-status", "--no-renames", "-z", base, ...(target ? [target] : [])], "stdout")), ...untrackedPaths.map((path) => ({ path, deleted: false }))];
+  console.log(`preflight: ${changes.length} changed path(s) since fork point ${base.slice(0, 12)} with origin/main${target ? "" : ", including uncommitted files"}`);
   return { base, untrackedPaths, changes };
+}
+
+const PROOF_PROFILE = "affected-hosted-invariants-pgtap-v1";
+const RERUN_PROOF = "npm run preflight -- --affected";
+
+function comparisonBase(head: string): string {
+  return git(["merge-base", head, "origin/main"], "stdout").trim();
+}
+
+function cleanWorktree(): boolean {
+  return git(["status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignore-submodules=none"], "stdout") === "";
+}
+
+function proofDirectory(): string {
+  return join(git(["rev-parse", "--absolute-git-dir"], "stdout").trim(), "openlup-preflight");
+}
+
+function hookInstallation(install: boolean): number {
+  const directory = proofDirectory();
+  const hooks = join(directory, "hooks");
+  const hook = join(hooks, "pre-push");
+  // Git can copy config.worktree when adding a sibling. Only this Git directory activates the include.
+  const include = `includeIf.gitdir:${dirname(directory).replace(/[\\*?[]/gu, "\\$&")}.path`;
+  const config = join(directory, "hook.config");
+  const current = git(["rev-parse", "--path-format=absolute", "--git-path", "hooks"], "stdout").trim();
+  const body = `#!/bin/sh
+# Managed by OpenLup preflight.
+if ! command -v node >/dev/null || [ ! -f scripts/preflight.ts ]; then
+  echo 'pre-push proof: restore Node and scripts/preflight.ts, then run ${RERUN_PROOF}' >&2
+  exit 1
+fi
+exec node --experimental-strip-types scripts/preflight.ts --check-push
+`;
+  if (!install) {
+    if (current !== hooks) throw new Error("this worktree has no managed hook; run npm run preflight -- --install-hook to enable it");
+    git(["config", "--worktree", "--fixed-value", "--unset-all", include, config]);
+    console.log("pre-push proof: managed hook disabled in this worktree");
+    return 0;
+  }
+  const configured = execute("git", ["config", "--get", "core.hooksPath"]);
+  if (current !== hooks && (configured.code !== 1 || (existsSync(current) &&
+    readdirSync(current).some((name) => !name.endsWith(".sample") && (statSync(join(current, name)).mode & 0o111) !== 0)))) {
+    throw new Error(`existing hooks would be shadowed; keep them and run ${RERUN_PROOF} before pushing`);
+  }
+  if (existsSync(hook) && (!lstatSync(hook).isFile() || readFileSync(hook, "utf8") !== body)) {
+    throw new Error(`managed hook path contains different content; preserve it and run ${RERUN_PROOF} before pushing`);
+  }
+  const extension = execute("git", ["config", "--local", "--type=bool", "--get", "extensions.worktreeConfig"]);
+  if (extension.stdout.trim() !== "true") {
+    const worktree = execute("git", ["config", "--get", "core.worktree"]);
+    const bare = execute("git", ["config", "--local", "--type=bool", "--get", "core.bare"]);
+    if (worktree.code !== 1 || (bare.code !== 1 && bare.stdout.trim() !== "false")) {
+      throw new Error(`worktree-specific Git configuration needs manual setup; run ${RERUN_PROOF} before pushing`);
+    }
+    git(["config", "--local", "extensions.worktreeConfig", "true"]);
+  }
+  mkdirSync(hooks, { recursive: true });
+  if (!existsSync(hook)) writeFileSync(hook, body, { mode: 0o755, flag: "wx" });
+  chmodSync(hook, 0o755);
+  git(["config", "--file", config, "core.hooksPath", hooks]);
+  if (current !== hooks) git(["config", "--worktree", "--add", include, config]);
+  console.log(`pre-push proof: managed hook enabled in this worktree; run ${RERUN_PROOF} on the committed head`);
+  return 0;
+}
+
+function checkPush(input: string): void {
+  for (const line of input.trim().split("\n").filter(Boolean)) {
+    const [ref, object, remote, oldObject, extra] = line.trim().split(/\s+/u);
+    if (!ref || !STACK_BASE_SHA.test(object ?? "") || !remote || !STACK_BASE_SHA.test(oldObject ?? "") || extra) {
+      throw new Error("invalid Git pre-push update; retry git push so Git supplies the outgoing refs");
+    }
+    if (/^0{40}$/u.test(object!)) continue; // A deletion has no outgoing commit.
+    const head = git(["rev-parse", "--verify", `${object}^{commit}`], "stdout").trim();
+    const base = comparisonBase(head);
+    const file = join(proofDirectory(), `${head}.json`);
+    if (existsSync(`${file}.running`)) throw new Error(`${ref} at ${head}: proof is incomplete; wait for checks or run ${RERUN_PROOF}`);
+    let proof: { profile?: string; base?: string; head?: string; failures?: string[] };
+    try {
+      proof = JSON.parse(readFileSync(file, "utf8")) ?? {};
+    } catch {
+      throw new Error(`${ref} at ${head}: missing or stale proof for the outgoing head; check out that head and run ${RERUN_PROOF}`);
+    }
+    if (proof.head !== head || proof.base !== base || proof.profile !== PROOF_PROFILE) {
+      throw new Error(`${ref} at ${head}: stale proof for the outgoing head, comparison base or profile; check out that head and run ${RERUN_PROOF}`);
+    }
+    if (!Array.isArray(proof.failures) || proof.failures.length) {
+      throw new Error(`${ref} at ${head}: proof incomplete or failed (${Array.isArray(proof.failures) ? proof.failures.join(", ") : "checks did not complete"}); run ${RERUN_PROOF}`);
+    }
+  }
 }
 
 type CheckSpec = readonly [string, () => Promise<CheckResult | CheckResult[]> | CheckResult | CheckResult[]];
@@ -1044,7 +1185,7 @@ async function executeCheckSpec([name, check]: CheckSpec): Promise<CheckResult[]
   }
 }
 
-async function runCheckWaves(started: number, waves: ReadonlyArray<{ parallel: boolean; checks: ReadonlyArray<CheckSpec> }>): Promise<number> {
+async function runCheckWaves(started: number, waves: ReadonlyArray<{ parallel: boolean; checks: ReadonlyArray<CheckSpec> }>): Promise<CheckResult[]> {
   const results: CheckResult[] = [];
   for (const wave of waves) {
     if (wave.parallel) {
@@ -1065,7 +1206,7 @@ async function runCheckWaves(started: number, waves: ReadonlyArray<{ parallel: b
   }
   const count = (status: Status) => results.filter((result) => result.status === status).length;
   console.log(`preflight: ${count("PASS")} PASS, ${count("WARN")} WARN, ${count("SKIP")} SKIP, ${count("FAIL")} FAIL in ${Math.round((Date.now() - started) / 1000)} s`);
-  return count("FAIL") > 0 ? 1 : 0;
+  return results;
 }
 
 async function areaPreflight(): Promise<number> {
@@ -1076,7 +1217,7 @@ async function areaPreflight(): Promise<number> {
     return 1;
   }
   const { changes } = fork;
-  return runCheckWaves(started, [{
+  const results = await runCheckWaves(started, [{
     parallel: false,
     checks: [
       ["eslint changed", () => eslintChanged(changes)],
@@ -1085,12 +1226,33 @@ async function areaPreflight(): Promise<number> {
       ["sql admit", () => sqlAdmit(changes)],
     ],
   }]);
+  return results.some(({ status }) => status === "FAIL") ? 1 : 0;
 }
 
 export async function main(now: Date, args: readonly string[] = []): Promise<number> {
+  const hookFlag = args.find((arg) => ["--install-hook", "--uninstall-hook", "--check-push"].includes(arg));
+  if (hookFlag) {
+    try {
+      if (args.length !== 1) throw new Error(`use npm run preflight -- ${hookFlag} on its own`);
+      process.chdir(git(["rev-parse", "--show-toplevel"], "stdout").trim());
+      if (hookFlag !== "--check-push") return hookInstallation(hookFlag === "--install-hook");
+      checkPush(readFileSync(0, "utf8"));
+      return 0;
+    } catch (error) {
+      const detail = (error as Error).message;
+      console.error(`pre-push proof: ${detail}${detail.startsWith("git ") ? `; restore the comparison history with git fetch origin main, then run ${RERUN_PROOF}` : ""}`);
+      return 1;
+    }
+  }
   const fast = args.includes("--fast");
   const area = args.includes("--area");
-  const affected = args.includes("--affected");
+  const proof = args.includes("--affected");
+  const legacyAffected = args.includes("--affected-only");
+  const affected = proof || legacyAffected;
+  if ((proof && legacyAffected) || (legacyAffected && (fast || area))) {
+    console.error("preflight: use --affected-only on its own");
+    return 2;
+  }
   if ((fast && area) || (fast && affected) || (area && affected)) {
     console.error("preflight: --fast, --area, and --affected are mutually exclusive");
     return 2;
@@ -1109,7 +1271,8 @@ export async function main(now: Date, args: readonly string[] = []): Promise<num
   process.chdir(git(["rev-parse", "--show-toplevel"], "stdout").trim());
   if (area) return await areaPreflight();
   const started = Date.now();
-  const fork = readForkChanges();
+  const head = proof && cleanWorktree() ? git(["rev-parse", "HEAD"], "stdout").trim() : undefined;
+  const fork = readForkChanges(head);
   if ("error" in fork) {
     print(fork.error);
     return 1;
@@ -1119,8 +1282,28 @@ export async function main(now: Date, args: readonly string[] = []): Promise<num
   let typecheckPassed = false;
   const optionalLocks = processEnvironment.GIT_OPTIONAL_LOCKS;
   processEnvironment.GIT_OPTIONAL_LOCKS = "0";
+  let lock: string | undefined;
   try {
-    return await runCheckWaves(started, [
+    const evidence = head ? { head, base, profile: PROOF_PROFILE } : undefined;
+    const file = evidence && join(proofDirectory(), `${evidence.head}.json`);
+    const save = (failures: string[]) => {
+      if (!file || !lock) return;
+      const temporary = join(lock, "proof.json");
+      writeFileSync(temporary, `${JSON.stringify({ ...evidence, failures })}\n`, { mode: 0o600 });
+      renameSync(temporary, file);
+    };
+    if (file) {
+      mkdirSync(dirname(file), { recursive: true });
+      try {
+        mkdirSync(`${file}.running`);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+        throw new Error(`proof is already running for ${head}. Wait for it, or if it stopped, remove its lock with rm -r -- "${file}.running", then run ${RERUN_PROOF}`);
+      }
+      lock = `${file}.running`;
+      rmSync(file, { force: true });
+    }
+    const results = await runCheckWaves(started, [
       {
         parallel: true,
         checks: [
@@ -1128,10 +1311,10 @@ export async function main(now: Date, args: readonly string[] = []): Promise<num
           ["ast-grep hygiene", () => astGrepHygiene()],
           ["neutrality", () => neutrality(base)],
           ["fragments", () => fragments(changes)],
-          ["settings-candidates", () => settingsCandidateGuard(base, changes, new Set(untrackedPaths))],
-          ["test lines", () => testLineChecks(changedTestLines(base, changes, new Set(untrackedPaths)), now)],
+          ["settings-candidates", () => settingsCandidateGuard(base, changes, new Set(untrackedPaths), head)],
+          ["test lines", () => testLineChecks(changedTestLines(base, changes, new Set(untrackedPaths), head), now)],
           ["gitleaks", () => gitleaks(base, untrackedPaths)],
-          ["test discovery", () => { selection = discoverTests(changes, affected); return testDiscoveryVerdict(selection); }],
+          ["test discovery", () => { selection = discoverTests(changes, affected, proof); return testDiscoveryVerdict(selection); }],
           ["eslint changed", () => eslintChanged(changes)],
           ["client-secret-boundary", () => runTriggeredGuard(
             "client-secret-boundary", changes, CLIENT_SECRET_BOUNDARY_TRIGGER,
@@ -1153,11 +1336,22 @@ export async function main(now: Date, args: readonly string[] = []): Promise<num
           ["typecheck", async () => { const res = await typecheck(); typecheckPassed = res.status === "PASS"; return res; }],
           ["release-gates headroom", () => releaseGatesHeadroom(changes, typecheckPassed)],
           ["inventory", () => inventory(changes)],
-          ["hosted tests", () => hostedTests(selection)],
+          ["hosted tests", () => hostedTests(selection, proof)],
+          ...(proof && changes.some(({ path }) => /\.sql$/iu.test(path)) ? [["pgTAP", pgtap] as const] : []),
         ],
       },
     ]);
+    const failures = results.filter(({ status }) => status === "FAIL")
+      .map(({ check, detail }) => check === "hosted tests" || check === "pgTAP" ? `${check}: ${detail}` : check);
+    if (evidence && (!cleanWorktree() || git(["rev-parse", "HEAD"], "stdout").trim() !== evidence.head || comparisonBase(evidence.head) !== base)) {
+      failures.push("head, comparison base or worktree changed during preflight");
+    }
+    save(failures);
+    if (proof && failures.length) console.error(`pre-push proof: ${failures.join("; ")}. Resolve the failures and run ${RERUN_PROOF}`);
+    if (proof && !head) console.log(`pre-push proof: commit the intended head and run ${RERUN_PROOF} to record evidence`);
+    return failures.length ? 1 : 0;
   } finally {
+    if (lock) rmSync(lock, { recursive: true, force: true });
     if (optionalLocks === undefined) delete processEnvironment.GIT_OPTIONAL_LOCKS;
     else processEnvironment.GIT_OPTIONAL_LOCKS = optionalLocks;
   }

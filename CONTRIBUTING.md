@@ -1051,10 +1051,10 @@ tooling guard tests from `scripts/ci-test-scope.mjs` (plus `scripts/catalog-docu
 on catalog, script or doc edits) through `test:hosted`, and `sql admit` when SQL under `db/` or
 `packages/*/sql/` changed.
 
-Run `npm run preflight -- --affected` to run default preflight with test discovery expanded via
-`scripts/affected-tests.mjs` (reverse-import graph and contract-pin rules) so source-only edits
-also run their affected root Vitest suites through `test:hosted`. `--fast`, `--area`, and `--affected`
-are mutually exclusive.
+Run `npm run preflight -- --affected` for pre-push proof. It runs affected root Vitest and
+repository-wide invariant suites together in `test:hosted`. SQL adds, edits, deletes and moves
+select real PostgreSQL pgTAP through `ai-resource-gate`. Cold preflight suites run in hosted CI.
+Use `--affected-only` for the previous diagnostic. Preflight modes are mutually exclusive.
 
 Without flags, `npm run preflight` is advisory and exits non-zero
 only when a check reports `FAIL`. It reads the change since
@@ -1792,10 +1792,10 @@ authority. Review evidence grants no merge, release, settings or credential righ
    Locally run only the tests being written,
    root test files with `npm run test:hosted -- <files>`, `npm run lint`, and
    `npx --no -- ast-grep scan --error=no-suppress-all --error=unused-suppression`.
-   As the standard pre-push gate (and before `prepare`), run
-   `npm run preflight -- --affected` (or default `npm run preflight` when full
-   area/smoke coverage is needed) and have it green, or explain each `WARN` in
-   the task record. Full local verification is optional.
+   Pass `npm run preflight -- --affected` on the committed head before pushing or
+   running `prepare`. Explain each `WARN` in the task record. Opt in with
+   `npm run preflight -- --install-hook` (remove with `--uninstall-hook`). The hook
+   checks the outgoing head, its local `origin/main` fork point and the proof profile.
 
    A PR that adds or changes a starter-owned file or its owned-file contract must
    include the packaged starter migration in a Core fragment and matching steps

@@ -1,9 +1,10 @@
 import { execFileSync, spawn, spawnSync, type ChildProcess, type SpawnOptions, type SpawnSyncOptions } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { env as processEnvironment } from "node:process";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("node:child_process", async (original) => {
@@ -1191,7 +1192,7 @@ describe("shift-left preflight guards and --affected discovery", () => {
     expect(affectedTestCandidates([{ path: "scripts/deleted-only.test.ts", deleted: true }])).toEqual([]);
   });
 
-  it("runs --affected end-to-end through discoverTests and scripts/test-hosted.mjs (skip, pass, and fail exit propagation)", async () => {
+  it("preserves the affected-only diagnostic (skip, pass, and fail exit propagation)", async () => {
     const fork = "b".repeat(40);
     const runAffected = async (diffStdout: string, hostedExit: number) => {
       const hostedCalls: string[][] = [];
@@ -1220,7 +1221,7 @@ describe("shift-left preflight guards and --affected discovery", () => {
       const lines: string[] = [];
       vi.spyOn(console, "log").mockImplementation((value) => { lines.push(String(value)); });
       vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-      const exit = await main(now, ["--affected"]);
+      const exit = await main(now, ["--affected-only"]);
       return { exit, lines, hostedCalls };
     };
 
@@ -1438,5 +1439,225 @@ describe("shift-left preflight guards and --affected discovery", () => {
         rmSync(dir, { recursive: true, force: true });
       }
     });
+  });
+});
+
+describe("pre-push proof", () => {
+  const invariantFiles = [
+    "packages/platform/test/packageBoundary.test.ts",
+    "packages/platform/test/storefront/exports.test.ts",
+    "packages/platform/test/storefront/testing/exports.test.ts",
+    "scripts/catalog-document-boundary.test.ts",
+    "scripts/ci-test-scope.test.ts",
+    "scripts/packages/package-size-policy.test.ts",
+    "scripts/preflight.test.ts",
+    "scripts/strip-types-entrypoint-specifiers.test.ts",
+  ];
+  const catalogGuard = "scripts/catalog-document-boundary.test.ts";
+  const preflight = fileURLToPath(new URL("./preflight.ts", import.meta.url));
+  const actual = vi.importActual<typeof import("node:child_process")>("node:child_process");
+  const fork = "a".repeat(40);
+  let root: string;
+  let cwd: string;
+  const ok = { status: 0, stdout: "", stderr: "" };
+
+  beforeEach(() => {
+    cwd = process.cwd();
+    root = mkdtempSync(join(tmpdir(), "openlup-proof-fixture-"));
+  });
+  afterEach(() => {
+    process.chdir(cwd);
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  async function fixtureGit() {
+    const { execFileSync: exec } = await actual;
+    const git = (...args: string[]) => exec("git", args, { cwd: root, encoding: "utf8", env: localFixtureEnvironment() }).trim();
+    git("init", "--quiet", "--template=");
+    git("config", "user.name", "Fixture");
+    git("config", "user.email", "fixture@example.invalid");
+    return git;
+  }
+
+  function mockProof(
+    git: (args: string[]) => FakeSpawnResult,
+    run: (command: string, args: string[]) => FakeSpawnResult = () => ok,
+    skipped?: string,
+  ) {
+    const hosted: string[][] = [];
+    mockChildProcesses((bin, args) => {
+      const list = [...(args ?? [])];
+      if (bin === "git") return git(list);
+      const files = list.filter((path) => path.endsWith(".test.ts"));
+      const listing = list.find((arg) => arg.startsWith("--json="));
+      if (listing) writeFileSync(listing.slice("--json=".length), JSON.stringify(files.map((file) => ({ file: join(process.cwd(), file) }))));
+      const output = list.find((arg) => arg.startsWith("--outputFile.json="));
+      if (list[0] === "scripts/test-hosted.mjs") {
+        hosted.push(files);
+        if (output) writeFileSync(output.slice("--outputFile.json=".length), JSON.stringify({
+          testResults: files.map((file) => ({ name: join(process.cwd(), file), assertionResults: [{ status: file === skipped ? "pending" : "passed" }] })),
+        }));
+      }
+      return run(bin, list);
+    });
+    return hosted;
+  }
+
+  function dirtyGit(diff: string, worktree = cwd) {
+    return (args: string[]) => {
+      if (args.includes("--show-toplevel")) return { ...ok, stdout: worktree };
+      if (args[0] === "merge-base") return { ...ok, stdout: fork };
+      if (args[0] === "status") return { ...ok, stdout: " M CONTRIBUTING.md\0" };
+      if (args.includes("--name-status")) return { ...ok, stdout: diff };
+      return ok;
+    };
+  }
+
+  it("fails the gate for a real global boundary regression outside the affected graph", async () => {
+    const path = "server/adapters/postgres/fixtureBoundary.ts";
+    for (const directory of ["db/platform/migrations", "src/domains/catalog", "packages/platform/src/catalog", dirname(path), "server/domains/catalog", "scripts"]) {
+      mkdirSync(join(root, directory), { recursive: true });
+    }
+    symlinkSync(join(cwd, "node_modules"), join(root, "node_modules"), "dir");
+    cpSync(join(cwd, catalogGuard), join(root, catalogGuard));
+    writeFileSync(join(root, "db/platform/migrations/20260827220000_catalog_document_revision_foundation.sql"), "");
+    writeFileSync(join(root, "packages/platform/src/catalog/catalogSkuEnvelope.ts"), "");
+    writeFileSync(join(root, "vitest.config.mjs"), "export default { test: { maxWorkers: 1 } };\n");
+    const { spawnSync: exec } = await actual;
+    const catalog = () => exec(process.execPath, [
+      join(cwd, "node_modules/vitest/vitest.mjs"), "run", catalogGuard, "-t", "scans exactly the portable/core catalog perimeter",
+    ], { cwd: root, encoding: "utf8" });
+    expect(catalog().status).toBe(0);
+    writeFileSync(join(root, path), 'export const query = "SELECT catalog_skus.gtin FROM catalog_skus";\n');
+    expect(affectedTestCandidates(changed(path), root)).toEqual([]);
+    const calls = mockProof(dirtyGit(`A\0${path}\0`, root), (_, args) =>
+      args[0] === "scripts/test-hosted.mjs" && args.includes(catalogGuard) ? catalog() : ok);
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+    const stdout = vi.spyOn(console, "log").mockImplementation(() => {});
+    expect(await main(now, ["--affected"])).toBe(1);
+    expect(calls).toEqual([invariantFiles]);
+    expect(stdout.mock.calls.flat().join("\n")).toContain(`${path}: reads dormant catalog_skus.gtin`);
+    expect(stderr.mock.calls.flat().join("\n")).toContain(catalogGuard);
+  });
+
+  it("unions affected tests once, keeps cold suites hosted, and refuses skipped required tests", async () => {
+    const affected = "scripts/ci-vitest-shard.test.ts";
+    const diff = `M\0scripts/ci-vitest-shard.mjs\0M\0${catalogGuard}\0M\0scripts/preflight-integration-cold-api.test.ts\0`;
+    const calls = mockProof(dirtyGit(diff), undefined, catalogGuard);
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await main(now, ["--affected"])).toBe(1);
+    expect(calls).toEqual([[...invariantFiles, affected].sort()]);
+    expect(stderr.mock.calls.flat().join("\n")).toContain(`required tests skipped or missing: ${catalogGuard}`);
+  });
+
+  it("runs brokered pgTAP for a real SQL rail move and propagates failure or missing execution", async () => {
+    const git = await fixtureGit();
+    const source = "supabase/tests/fixture.sql";
+    const moved = "db/platform/fixture.sql";
+    mkdirSync(join(root, dirname(source)), { recursive: true });
+    mkdirSync(join(root, dirname(moved)), { recursive: true });
+    writeFileSync(join(root, source), "select 1;\n");
+    git("add", ".");
+    git("commit", "--quiet", "-m", "Fixture base");
+    renameSync(join(root, source), join(root, moved));
+    git("add", "-A");
+    expect(git("diff", "--cached", "--name-status", "-M")).toBe(`R100\t${source}\t${moved}`);
+    const diff = git("diff", "--cached", "--name-status", "--no-renames", "-z");
+    expect(parseNameStatus(diff)).toEqual([{ path: moved, deleted: false }, { path: source, deleted: true }]);
+    const broker = join(root, "ai-resource-gate");
+    writeFileSync(broker, "", { mode: 0o755 });
+    vi.stubEnv("PATH", `${root}${delimiter}${processEnvironment.PATH}`);
+    vi.stubEnv("AI_RESOURCE_GATE_ACTIVE", undefined);
+    vi.stubEnv("OPENLUP_HEAVY_ACTIVE", undefined);
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+    const candidates = [diff, "A\0supabase/tests/new.sql\0", "M\0supabase/tests/edit.sql\0", "D\0supabase/tests/deleted.sql\0",
+      "A\0docs/moved.txt\0D\0supabase/tests/source.sql\0"];
+    for (const [change, outcome] of [...candidates.map((change) => [change, "fail"] as const), [diff, "skip"], [diff, "pass"]] as const) {
+      const calls: string[][] = [];
+      const readGit = dirtyGit(change, root);
+      mockProof((args) => {
+        if (change === diff && args.includes("--name-status")) {
+          expect(args).toContain("--no-renames");
+          return { ...ok, stdout: git("diff", "--cached", ...args.slice(1, -1), "HEAD") };
+        }
+        return readGit(args);
+      }, (bin, args) => {
+        if (bin === "docker") return { ...ok, status: 1 };
+        if (bin !== broker) return ok;
+        calls.push(args);
+        if (outcome === "pass") return { ...ok, stdout: "Files=1, Tests=1, 1 wallclock secs\nResult: PASS\n" };
+        if (outcome === "skip") return { ...ok, stdout: "ok 1 # SKIP fixture resource\nFiles=1, Tests=1\nResult: PASS\n" };
+        return change === diff ? { ...ok, status: 1, stderr: "fixture pgTAP failure" } : { ...ok, stdout: "Files=0, Tests=0\nResult: NOTESTS\n" };
+      });
+      expect(await main(now, ["--affected"]), change).toBe(outcome === "pass" ? 0 : 1);
+      expect(calls).toEqual([[
+        "run", "--wait", "--lane", "supabase-db", "--queue-timeout", "600", "--execution-timeout", "1800",
+        expect.stringMatching(/^openlup:pgtap:wt\d+$/u), "--", process.execPath, "scripts/public-ci-pgtap.mjs",
+      ]]);
+    }
+    expect(stderr.mock.calls.flat().join("\n")).toContain("pgTAP: scripts/public-ci-pgtap.mjs did not report a passing suite");
+    expect(stderr.mock.calls.flat().join("\n")).toContain("pgTAP: required assertion or suite skipped");
+  });
+
+  it("installs only in the selected worktree and refuses proof for a different head, base or profile", async () => {
+    const git = await fixtureGit();
+    const { spawnSync: exec } = await actual;
+    const env = localFixtureEnvironment();
+    mkdirSync(join(root, "scripts"));
+    writeFileSync(join(root, "scripts/preflight.ts"), `import { main } from ${JSON.stringify(pathToFileURL(preflight).href)};
+process.exitCode = await main(new Date(), ["--check-push"]);
+`);
+    git("add", ".");
+    git("commit", "--quiet", "-m", "Fixture base");
+    const base = git("rev-parse", "HEAD");
+    git("update-ref", "refs/remotes/origin/main", base);
+    git("commit", "--quiet", "--allow-empty", "-m", "Proved");
+    const head = git("rev-parse", "HEAD");
+    const command = (flag: string) => exec(process.execPath, [preflight, flag], { cwd: root, env, encoding: "utf8" });
+    const existingHook = join(root, ".git", "hooks", "pre-push");
+    mkdirSync(dirname(existingHook), { recursive: true });
+    writeFileSync(existingHook, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    expect(command("--install-hook").stderr).toContain("existing hooks would be shadowed");
+    expect(readFileSync(existingHook, "utf8")).toBe("#!/bin/sh\nexit 0\n");
+    rmSync(existingHook);
+    expect(command("--install-hook").status).toBe(0);
+    expect(command("--install-hook").status).toBe(0);
+    const hooks = git("config", "--get", "core.hooksPath");
+    const sibling = join(root, "sibling");
+    git("worktree", "add", "--quiet", "--detach", sibling, head);
+    expect(exec("git", ["config", "--get", "core.hooksPath"], { cwd: sibling, env }).status).toBe(1);
+    git("worktree", "remove", sibling);
+
+    const check = (...objects: string[]) => exec(join(hooks, "pre-push"), ["origin", "fixture"], {
+      cwd: root, env, encoding: "utf8",
+      input: objects.map((object, i) => `refs/heads/fixture-${i} ${object} refs/heads/fixture-${i} ${"0".repeat(40)}\n`).join(""),
+    });
+    const unproved = check(head);
+    expect(unproved.status).toBe(1);
+    expect(unproved.stderr).toContain("npm run preflight -- --affected");
+    mockProof((args) => exec("git", args, { cwd: root, env, encoding: "utf8" }));
+    expect(await main(now, ["--affected"])).toBe(0);
+    expect(check(head).status).toBe(0);
+    git("commit", "--quiet", "--allow-empty", "-m", "Unproved");
+    const otherHead = git("rev-parse", "HEAD");
+    expect(check(head).status).toBe(0);
+    const stale = check(head, otherHead);
+    expect(stale.status).toBe(1);
+    expect(stale.stderr).toContain(`${otherHead}: missing or stale proof for the outgoing head`);
+    const directory = join(git("rev-parse", "--absolute-git-dir"), "openlup-preflight");
+    const file = join(directory, `${head}.json`);
+    const proof = JSON.parse(readFileSync(file, "utf8"));
+    const otherFile = join(directory, `${otherHead}.json`);
+    writeFileSync(otherFile, JSON.stringify(proof));
+    expect(check(otherHead).stderr).toContain("stale proof for the outgoing head");
+    git("update-ref", "refs/remotes/origin/main", head);
+    expect(check(head).stderr).toContain("comparison base or profile");
+    git("update-ref", "refs/remotes/origin/main", base);
+    writeFileSync(file, JSON.stringify({ ...proof, profile: "affected-only" }));
+    expect(check(head).stderr).toContain("comparison base or profile");
+    writeFileSync(file, JSON.stringify({ ...proof, failures: ["pgTAP"] }));
+    expect(check(head).stderr).toContain("proof incomplete or failed (pgTAP)");
+    expect(command("--uninstall-hook").status).toBe(0);
+    expect(exec("git", ["config", "--get", "core.hooksPath"], { cwd: root, env }).status).toBe(1);
   });
 });
