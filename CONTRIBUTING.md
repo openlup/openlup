@@ -1054,10 +1054,11 @@ on catalog, script or doc edits) through `test:hosted`, and `sql admit` when SQL
 Run `npm run preflight -- --affected` to run default preflight with test discovery expanded via
 `scripts/affected-tests.mjs` (reverse-import graph and contract-pin rules). Affected root Vitest
 suites and fixed repository-wide invariant suites run together through `test:hosted`. The two
-cold preflight integration suites run locally only when their test files change directly. Added,
-edited, deleted or moved `.sql` or `.pg` paths select real PostgreSQL pgTAP through `ai-resource-gate`.
-If selected PostgreSQL suites or pgTAP need Docker and it is unavailable, preflight names them and
-prints how to start the runtime before running tests. `--fast`, `--area`, and `--affected` are mutually exclusive.
+cold preflight integration suites run locally only when their test files change directly. Committed
+changes under `supabase/migrations/` or `supabase/tests/` between the fork point and `HEAD` select
+real PostgreSQL pgTAP through `ai-resource-gate`. If either directory has uncommitted changes,
+preflight prints a notice to commit them first and continues without running pgTAP.
+`--fast`, `--area`, and `--affected` are mutually exclusive.
 
 Without flags, `npm run preflight` is advisory and exits non-zero
 only when a check reports `FAIL`. It reads the change since

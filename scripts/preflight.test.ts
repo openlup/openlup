@@ -11,9 +11,6 @@ vi.mock("node:child_process", async (original) => {
   return { ...actual, execFileSync: vi.fn(actual.execFileSync), spawn: vi.fn(actual.spawn), spawnSync: vi.fn(actual.spawnSync) };
 });
 
-vi.mock("../tests/helpers/postgresContainer.ts", () => ({ dockerAvailable: vi.fn() }));
-
-import { dockerAvailable } from "../tests/helpers/postgresContainer.ts";
 import {
   CLIENT_SECRET_BOUNDARY_TRIGGER, MIGRATION_MANIFEST_TRIGGER, SITE_ROUTES_TRIGGER,
   addedLines, affectedTestCandidates, areaGuardTests, checkMigrationManifestAndInventory, formatCheckLine, inventoryClosureDigest, isTestEntry, isTestFile, missingFragments, nearDates,
@@ -1416,14 +1413,13 @@ describe("--affected execution", () => {
   beforeEach(() => {
     cwd = process.cwd();
     root = mkdtempSync(join(tmpdir(), "openlup-affected-"));
-    vi.mocked(dockerAvailable).mockReset().mockResolvedValue(true);
   });
   afterEach(() => {
     process.chdir(cwd);
     rmSync(root, { recursive: true, force: true });
   });
 
-  function mockAffected(diff: string, {
+  function mockAffected(gitInput: string | ((...args: string[]) => string), {
     worktree = cwd,
     run = (): FakeSpawnResult => ({ status: 0 }),
   }: { worktree?: string; run?: (command: string, args: string[]) => FakeSpawnResult } = {}) {
@@ -1431,11 +1427,14 @@ describe("--affected execution", () => {
     const fork = "a".repeat(40);
     mockChildProcesses((bin, args) => {
       const list = [...(args ?? [])];
-      if (bin === "git" && list.includes("--show-toplevel")) return { status: 0, stdout: worktree };
-      if (bin === "git" && list[0] === "merge-base") return { status: 0, stdout: fork };
-      if (bin === "git" && list.includes("--name-status")) {
-        expect(list).toEqual(["diff", "--name-status", "--no-renames", "-z", fork]);
-        return { status: 0, stdout: diff };
+      if (bin === "git") {
+        if (typeof gitInput === "function") return { status: 0, stdout: gitInput(...list) };
+        if (list.includes("--show-toplevel")) return { status: 0, stdout: worktree };
+        if (list[0] === "merge-base") return { status: 0, stdout: fork };
+        if (list.includes("--name-status")) {
+          expect(list).toEqual(["diff", "--name-status", "--no-renames", "-z", fork]);
+          return { status: 0, stdout: gitInput };
+        }
       }
       if (bin === "npx" && list.includes("list")) {
         const listing = list.find((arg) => arg.startsWith("--json="))!;
@@ -1484,7 +1483,6 @@ describe("--affected execution", () => {
     const { hosted } = mockAffected(`M\0${fixture}\0M\0${catalogGuard}\0`);
     expect(await main(now, ["--affected"])).toBe(0);
     expect(hosted).toEqual([[...new Set([...invariantFiles, ...affected.filter((path) => !coldSuites.includes(path))])].sort()]);
-    expect(dockerAvailable).not.toHaveBeenCalled();
   });
 
   it.each(coldSuites)("runs directly changed cold suite %s", async (path) => {
@@ -1493,56 +1491,86 @@ describe("--affected execution", () => {
     expect(hosted).toEqual([[...invariantFiles, path].sort()]);
   });
 
-  it("refuses to start hosted tests when selected PostgreSQL suites have no Docker runtime", async () => {
-    const suites = ["tests/postgres/dunningLifecycleActiveRepair.test.ts", "tests/postgres/pgTemplateBroker.test.ts"];
-    vi.mocked(dockerAvailable).mockResolvedValue(false);
-    const { hosted, stdout } = mockAffected(suites.map((path) => `M\0${path}\0`).join(""));
-    expect(await main(now, ["--affected"])).toBe(1);
-    expect(dockerAvailable).toHaveBeenCalledTimes(1);
-    expect(hosted).toEqual([]);
-    expect(stdout).toHaveBeenCalledWith(expect.stringContaining(
-      `FAIL PostgreSQL runtime: Docker is unavailable for ${suites.join(", ")}. Start your runtime with \`docker desktop start\``,
-    ));
-  });
-
-  it("brokers pgTAP for an added .pg file and a SQL rename out of the test tree", async () => {
-    const { execFileSync: exec } = await vi.importActual<typeof import("node:child_process")>("node:child_process");
-    const git = (...args: string[]) => exec("git", args, { cwd: root, encoding: "utf8", env: localFixtureEnvironment() });
+  describe("pgTAP selection", () => {
     const source = "supabase/tests/fixture.sql";
-    const added = "supabase/tests/fixture.pg";
-    const moved = "docs/fixture.txt";
-    mkdirSync(join(root, dirname(source)), { recursive: true });
-    mkdirSync(join(root, dirname(moved)), { recursive: true });
-    writeFileSync(join(root, source), "select 1;\n");
-    git("init", "--quiet", "--template=");
-    git("add", ".");
-    git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "Fixture base");
-    writeFileSync(join(root, added), "select 1;\n");
-    git("add", added);
-    const gitDiff = () => git("diff", "--cached", "--name-status", "--no-renames", "-z");
-    const addition = gitDiff();
-    git("rm", "-f", added);
-    renameSync(join(root, source), join(root, moved));
-    git("add", "-A");
-    expect(git("diff", "--cached", "--name-status", "-M").trim()).toBe(`R100\t${source}\t${moved}`);
+    const migration = "supabase/migrations/00000000000001_fixture.sql";
+    let git: (...args: string[]) => string;
+    let broker: string;
+    const commit = () => git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "Fixture change");
 
-    const broker = join(root, "ai-resource-gate");
-    writeFileSync(broker, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
-    vi.stubEnv("PATH", `${root}${delimiter}${processEnvironment.PATH}`);
-    vi.stubEnv("AI_RESOURCE_GATE_ACTIVE", undefined);
-    vi.stubEnv("OPENLUP_HEAVY_ACTIVE", undefined);
-    for (const [diff, status] of [[addition, 0], [gitDiff(), 1]] as const) {
+    beforeEach(async () => {
+      const { execFileSync: exec } = await vi.importActual<typeof import("node:child_process")>("node:child_process");
+      git = (...args) => exec("git", args, { cwd: root, encoding: "utf8", env: localFixtureEnvironment() });
+      mkdirSync(join(root, dirname(source)), { recursive: true });
+      writeFileSync(join(root, source), "select 1;\n");
+      git("init", "--quiet", "--template=");
+      git("add", ".");
+      commit();
+      git("update-ref", "refs/remotes/origin/main", "HEAD");
+      broker = join(root, "ai-resource-gate");
+      writeFileSync(broker, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+      vi.stubEnv("PATH", `${root}${delimiter}${processEnvironment.PATH}`);
+      vi.stubEnv("AI_RESOURCE_GATE_ACTIVE", undefined);
+      vi.stubEnv("OPENLUP_HEAVY_ACTIVE", undefined);
+    });
+
+    async function runAffected(brokerStatus = 0) {
       const calls: string[][] = [];
-      const { stdout } = mockAffected(diff, { worktree: root, run: (bin, args) => {
+      const { hosted, stdout } = mockAffected(git, { run: (bin, args) => {
         if (bin !== broker) return { status: 0 };
         calls.push(args);
-        return { status };
+        return { status: brokerStatus };
       } });
-      expect(await main(now, ["--affected"]), stdout.mock.calls.flat().join("\n")).toBe(status);
-      expect(calls).toEqual([[
-        "run", "--wait", "--lane", "supabase-db", "--queue-timeout", "600", "--execution-timeout", "1800",
-        expect.stringMatching(/^openlup:pgtap:wt\d+$/u), "--", process.execPath, "scripts/public-ci-pgtap.mjs",
-      ]]);
+      const code = await main(now, ["--affected"]);
+      expect(hosted).toEqual([invariantFiles]);
+      return { calls, code, lines: stdout.mock.calls.flat() };
     }
+
+    const brokerArgs = [
+      "run", "--wait", "--lane", "supabase-db", "--queue-timeout", "600", "--execution-timeout", "1800",
+      expect.stringMatching(/^openlup:pgtap:wt\d+$/u), "--", process.execPath, "scripts/public-ci-pgtap.mjs",
+    ];
+
+    it.each([
+      ["scripts/benchmarks/outbox-claim.sql", []],
+      [migration, [brokerArgs]],
+      ["supabase/tests/fixture.pg", [brokerArgs]],
+    ])("checks the runner's input roots for a committed change to %s", async (path, expectedCalls) => {
+      mkdirSync(join(root, dirname(path)), { recursive: true });
+      writeFileSync(join(root, path), "select 1;\n");
+      git("add", path);
+      commit();
+      const { calls, code, lines } = await runAffected();
+      expect(code, lines.join("\n")).toBe(0);
+      expect(calls).toEqual(expectedCalls);
+      expect(lines.join("\n")).not.toContain("pgTAP needs a commit first");
+    });
+
+    it.each(["untracked", "staged", "unstaged after a committed change"])("defers pgTAP for a %s migration edit", async (state) => {
+      mkdirSync(join(root, dirname(migration)), { recursive: true });
+      writeFileSync(join(root, migration), "select 1;\n");
+      if (state !== "untracked") git("add", migration);
+      if (state === "unstaged after a committed change") {
+        commit();
+        writeFileSync(join(root, migration), "select 2;\n");
+      }
+      const { calls, code, lines } = await runAffected();
+      expect(code, lines.join("\n")).toBe(0);
+      expect(calls).toEqual([]);
+      expect(lines.filter(line => line.includes("pgTAP"))).toEqual([
+        "preflight: pgTAP needs a commit first. Commit changes under supabase/migrations or supabase/tests.",
+      ]);
+    });
+
+    it("brokers pgTAP for a committed SQL rename out of the test tree and propagates its failure", async () => {
+      const moved = "fixture.txt";
+      renameSync(join(root, source), join(root, moved));
+      git("add", "-A", source, moved);
+      expect(git("diff", "--cached", "--name-status", "-M").trim()).toBe(`R100\t${source}\t${moved}`);
+      commit();
+      const { calls, code, lines } = await runAffected(1);
+      expect(code, lines.join("\n")).toBe(1);
+      expect(calls).toEqual([brokerArgs]);
+    });
   });
 });

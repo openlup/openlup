@@ -1,7 +1,7 @@
 // Local checks before review. The default checks the change since the fork
 // point plus working-tree edits; --fast runs the cheap readiness gate;
 // --area runs ESLint, Docker-free area tooling guards, and SQL admission;
-// --affected adds affected tests, repository invariants, and pgTAP for SQL changes.
+// --affected adds affected tests, repository invariants, and pgTAP for committed managed SQL changes.
 import { spawn, spawnSync, type SpawnOptions, type SpawnSyncOptions } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -10,7 +10,6 @@ import { basename, dirname, join, relative, resolve } from "node:path";
 import { env as processEnvironment } from "node:process";
 import { pathToFileURL } from "node:url";
 
-import { dockerAvailable } from "../tests/helpers/postgresContainer.ts";
 import { findAffectedTests } from "./affected-tests.mjs";
 import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryEnvelope } from "./agent-review-derived.mjs";
 import { carrierLocale, carrierNpmCli, carrierPlan, describeCarrierToolchain, readReportOwners } from "./agent-review-landing.mjs";
@@ -26,7 +25,7 @@ import {
   type PlatformMigrationManifest,
   type PlatformMigrationPlan,
 } from "./platform-migration-manifest.ts";
-import { PGTAP_TEST_EXTENSIONS } from "./public-ci-pgtap.mjs";
+import { PGTAP_INPUT_ROOTS } from "./public-ci-pgtap.mjs";
 import { resolveResourceGateInvocation } from "./resource-gate.mjs";
 import { checkSettingsCandidates, isSettingsCandidateSourcePath } from "./settings-candidate-guard.ts";
 
@@ -596,15 +595,6 @@ const COLD_PREFLIGHT_TESTS = new Set([
   "scripts/preflight-integration-cold-api.test.ts",
   "scripts/preflight-integration-settings-cold.test.ts",
 ]);
-// These root suites start disposable PostgreSQL outside the tests/postgres tree.
-const OTHER_POSTGRES_SUITES = new Set([
-  "scripts/agent-review-derived-inventory.test.ts",
-  "scripts/packages/outbox-consumer-proof.test.ts",
-  "server/runtime/communications/marketingPostgresHost.test.ts",
-  "tests/platform/channels/channelConsumer.test.ts",
-  "tests/platform/inventory/inventoryConsumer.test.ts",
-]);
-
 function discoverTests(changes: readonly Change[], affected: boolean): TestSelection {
   const direct = new Set(changes.filter(({ path, deleted }) => !deleted && isTestEntry(path)).map(({ path }) => path));
   const candidates = affected
@@ -628,6 +618,14 @@ async function hostedTests(selection: TestSelection | undefined): Promise<CheckR
   return result.code === 0
     ? { check: "hosted tests", status: "PASS", detail: `${files.length} file(s) passed in hosted parity (${result.seconds} s)` }
     : { check: "hosted tests", status: "FAIL", detail: `npm run test:hosted -- ${files.join(" ")} exited ${result.code ?? "on a signal"}`, notes: tail(result.output, 60) };
+}
+
+function selectPgtap(base: string): boolean {
+  if (git(["status", "--porcelain=v1", "--untracked-files=all", "--", ...PGTAP_INPUT_ROOTS], "stdout")) {
+    console.log(`preflight: pgTAP needs a commit first. Commit changes under ${PGTAP_INPUT_ROOTS.join(" or ")}.`);
+    return false;
+  }
+  return Boolean(git(["diff", "--name-only", "--no-renames", base, "HEAD", "--", ...PGTAP_INPUT_ROOTS], "stdout"));
 }
 
 async function pgtap(): Promise<CheckResult> {
@@ -1168,20 +1166,7 @@ export async function main(now: Date, args: readonly string[] = []): Promise<num
       selection = discoverTests(changes, affected);
       return testDiscoveryVerdict(selection);
     };
-    const testDiscovery = affected ? await executeCheckSpec(["test discovery", discover]) : undefined;
-    const runPgtap = affected && changes.some(({ path }) =>
-      PGTAP_TEST_EXTENSIONS.some((extension) => path.toLowerCase().endsWith(extension)));
-    const postgresSuites = (selection?.files ?? []).filter((path) => path.startsWith("tests/postgres/") || OTHER_POSTGRES_SUITES.has(path));
-    if (runPgtap) postgresSuites.push("pgTAP");
-    if (postgresSuites.length && !await dockerAvailable()) {
-      print({
-        check: "PostgreSQL runtime", status: "FAIL",
-        detail: `Docker is unavailable for ${postgresSuites.join(", ")}. Start your runtime with ` +
-          "`docker desktop start` (Docker Desktop), `orbctl start` (OrbStack), or `sudo systemctl start docker` (systemd Linux), " +
-          "then rerun `npm run preflight -- --affected`.",
-      });
-      return 1;
-    }
+    const runPgtap = affected && selectPgtap(base);
     return await runCheckWaves(started, [
       {
         parallel: true,
@@ -1193,7 +1178,7 @@ export async function main(now: Date, args: readonly string[] = []): Promise<num
           ["settings-candidates", () => settingsCandidateGuard(base, changes, new Set(untrackedPaths))],
           ["test lines", () => testLineChecks(changedTestLines(base, changes, new Set(untrackedPaths)), now)],
           ["gitleaks", () => gitleaks(base, untrackedPaths)],
-          ["test discovery", () => testDiscovery ?? discover()],
+          ["test discovery", discover],
           ["eslint changed", () => eslintChanged(changes)],
           ["client-secret-boundary", () => runTriggeredGuard(
             "client-secret-boundary", changes, CLIENT_SECRET_BOUNDARY_TRIGGER,
