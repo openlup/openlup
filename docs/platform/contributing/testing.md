@@ -217,10 +217,10 @@ Acquisition server characterization belongs under
 container helper, applies the hash-checked migration-manifest prefix and calls
 package ports through a login granted only the acquisition runtime role. Docker
 absence throws as missing proof. The fixture owner is used only for setup, state
-inspection and the donor's append-only trigger proof. Port operations and
-separate SQL privilege-denial assertions use the runtime role, retaining all 11
-cases. The reference retains retirement, admin-auth binding and notification-copy
-checks.
+inspection and the original implementation's append-only trigger proof. Port
+operations and separate SQL privilege-denial assertions use the runtime role,
+retaining all 11 cases. The reference retains retirement, admin-auth binding and
+notification-copy checks.
 
 ### Sufficient evidence and material test gaps
 

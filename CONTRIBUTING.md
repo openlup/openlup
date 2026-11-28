@@ -263,6 +263,18 @@ navigation. See
 
 [Run structural, import and neutrality checks](docs/platform/contributing/ci-checks.md#commands-and-lint-rules).
 
+`portable-no-industry-contracts` and its TSX variant guard the clean portable
+source in every package's `src` (`packages/*/src`), so a newly imported module
+package is checked from its first commit. Explicit `pet`, `pets`,
+`dog`, `dogs`, `cat` or `cats` components in identifiers, property/type names,
+static declaration/access keys and literal types belong in adopter code, not generic
+contracts. For example, `petId`, `dogWeightKg`, `CatProfile` and
+`Record<"petId", string>` fail. `watchdog`, `dogfoodEvidence`, comments and
+ordinary runtime string values pass, as does forwarding opaque
+`Record<string, unknown>` extension data. Tests and fixtures are exempt. The
+rule covers TS/TSX syntax; it does not infer types, track aliases, inspect
+arbitrary payload values, or classify legacy application schemas.
+
 ### Test scope and diagnostics
 
 Use the pinned Node version in [.nvmrc](.nvmrc), npm 11.19.0 and the committed lockfile in your task worktree. Run the tests being written locally with `npm run test:hosted -- <files>` for hosted parity. See [required and raw checks](docs/platform/contributing/ci-checks.md#required-and-raw-checks) for hosted CI and optional full local verification.

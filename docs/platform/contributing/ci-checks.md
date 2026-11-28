@@ -236,12 +236,12 @@ and permits its market currency token only in its own source/test directories.
 Each vendor's full-content allowance matches only its own source/test paths.
 Paired real-scanner plants keep vendor and currency vocabulary outside those
 paths counted, including each vendor word inside the other adapter's source
-and test directories. Its offline witnesses retain all donor cases as moved-pending;
-the reporting zone is allowed only on the exact readback declaration at its
-exact source path, with outside-line/path plants and no baseline increase. An
-excess allowance fails closed with an actionable error naming the category,
-quoted path and negative remainder. Scanner-count plants exercise payment,
-communications and adoption subtraction lanes.
+and test directories. Its offline witnesses retain all cases from the original
+adapter as moved-pending. The reporting zone is allowed only on the exact
+readback declaration at its exact source path, with outside-line/path plants and
+no baseline increase. An excess allowance fails closed with an actionable error
+naming the category, quoted path and negative remainder. Scanner-count plants
+exercise payment, communications and adoption subtraction lanes.
 New attempt/redaction/envelope/validity/freshness cases are counted separately. The packed payment
 consumer imports both optional subpaths with ambient I/O disabled and no SDK.
 Focused loopback transport tests fence every socket except their disposable
@@ -707,17 +707,8 @@ lists every structural match, and `--rewrite '<replacement>' --update-all`
 applies a mechanical edit; call the binary `ast-grep`, because `sg` is also a
 system command on Linux.
 
-`portable-no-industry-contracts` and its TSX variant guard the clean portable
-source in every package's `src` (`packages/*/src`), so a newly imported module
-package is checked from its first commit. Explicit `pet`, `pets`,
-`dog`, `dogs`, `cat` or `cats` components in identifiers, property/type names,
-static declaration/access keys and literal types belong in adopter code, not generic
-contracts. For example, `petId`, `dogWeightKg`, `CatProfile` and
-`Record<"petId", string>` fail. `watchdog`, `dogfoodEvidence`, comments and
-ordinary runtime string values pass, as does forwarding opaque
-`Record<string, unknown>` extension data. Tests and fixtures are exempt. The
-rule covers TS/TSX syntax; it does not infer types, track aliases, inspect
-arbitrary payload values, or classify legacy application schemas. Provider
-isolation remains an ESLint responsibility. The existing packed-core audit
-also refuses the configured provider content, including the Vercel SDK
+See the [portable industry contract rule and examples](../../../CONTRIBUTING.md#commands-and-lint-rules).
+
+Provider isolation remains an ESLint responsibility. The existing packed-core
+audit also refuses the configured provider content, including the Vercel SDK
 namespace, in actual package artifacts. These checks add no command or CI job.
