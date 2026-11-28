@@ -1398,35 +1398,126 @@ it("seals the original merchandise lines when the host removes a shared line dur
   expect(sealed.lines).toMatchObject([a, a, b]);
 });
 
-it("seals the original catalogue evidence and class-map revision when the host updates them during the assignment query", async ({ onTestFinished }) => {
+it("seals the original catalogue evidence and SKU lines when the host changes them during the assignment query", async ({ onTestFinished }) => {
   const originalStore = store;
   store = await resources.installation("quote-assignment-evidence-snapshot");
   onTestFinished(() => { store = originalStore; });
-  const create = await publicationWriter(["class-0"]);
-  const selected = await create(1);
-  const f = await installed({ basis: "exclusive", units: [120] });
-  const { catalogueEvidenceRef, planInput: { price: { classMapRevision } } } = f.now;
+  const create = await publicationWriter(["class-0", "class-1"]);
+  const first = await create(1), second = await create(2);
+  const f = await installed({ basis: "exclusive", units: [120, 150] });
+  const { catalogueEvidenceRef } = f.now;
   const readPlan = f.deps.readPlan;
-  let sharedFacts: Facts;
+  let sharedFacts!: Facts;
   f.deps.readPlan = async (...args) => {
     sharedFacts = await readPlan(...args);
     return sharedFacts;
   };
-  const { request, query } = guideSelection(f, [selected]);
+  const { request, query } = guideSelection(f, [first, second]);
+  const sharedLines = [...f.now.planInput.lines];
+  f.now.planInput = { ...f.now.planInput, lines: sharedLines };
+  const basket = [first, second];
+  const assignments = await Promise.all(basket.map((selection, index) => expectedTaxLine(selection, `class-${index}`, basket)));
   query.mockImplementationOnce(async (sql, values) => {
     const reply = await store.runtime.query(sql, values);
     sharedFacts.catalogueEvidenceRef = "catalogue-b";
-    Object.assign(sharedFacts.planInput.price, { classMapRevision: "classes-b" });
+    Object.assign(sharedLines[0]!, { sku: second.sku, unitBasisMinor: 900 });
+    Object.assign(sharedLines.pop()!, { quantity: 2 });
     return reply;
   });
 
-  quote(await f.bind().createQuote(f.owner, request));
+  const sealed = quote(await f.bind().createQuote(f.owner, request));
   expect(query).toHaveBeenCalledTimes(1);
+  expect(JSON.parse(String(query.mock.calls[0]?.[1]?.[0]))).toStrictEqual({
+    expectedSelectionDigest: null, skus: basket.map(({ sku, skuId }) => ({ sku, skuId })).sort((a, b) => a.skuId.localeCompare(b.skuId)),
+  });
+  expect(sharedLines).toHaveLength(1);
+  expect(sealed).toMatchObject({ catalogueEvidenceRef, lines: assignments });
   expect(await row(f)).toMatchObject({ state: "terminal", pin: {
-    composition: { catalogueEvidenceRef, planInput: { price: { classMapRevision } } },
-    request: { input: { classMapRevision } },
+    composition: { catalogueEvidenceRef, planInput: { lines: [
+      { ...assignments[0], quantity: 1, unitBasisMinor: 120 }, { ...assignments[1], quantity: 1, unitBasisMinor: 150 },
+    ] } },
   } });
-  expect(f.taxInputs[0]?.input.classMapRevision).toBe(classMapRevision);
+});
+
+it("uses money evidence mutated during the assignment query as the direct quote path does", async ({ onTestFinished }) => {
+  const originalStore = store;
+  store = await resources.installation("quote-assignment-price-mutation");
+  onTestFinished(() => { store = originalStore; });
+  const create = await publicationWriter(["class-0"]);
+  const selected = await create(1);
+  const f = await installed({ basis: "exclusive", units: [120] });
+  const { price } = f.now.planInput;
+  const originalPrice = { ...price };
+  const changedPrice = { classMapRevision: "classes-b", priceEvidenceRef: "price-b" };
+  const assignment = await expectedTaxLine(selected, "class-0");
+  f.now.planInput = { ...f.now.planInput, lines: [{ ...f.now.planInput.lines[0]!, ...assignment }] };
+  // Return a stable outcome after dispatch so the comparison includes claim and adapter work.
+  f.now.taxFailure = { kind: "refused", code: "tax_rule_missing", field: "/input/classMapRevision", remedy: "Fixture adapter refusal" };
+  const { request, query, original } = guideSelection(f, [selected]);
+  const wrapped = f.bind();
+  query.mockImplementationOnce(async (sql, values) => {
+    const reply = await store.runtime.query(sql, values);
+    Object.assign(price, changedPrice);
+    return reply;
+  });
+
+  const wrappedOutcome = await wrapped.createQuote(f.owner, request);
+  const wrappedClaims = f.commands.filter(({ operation }) => operation === "claim").length;
+  const wrappedTaxInputs = f.taxInputs.splice(0);
+  expect(query).toHaveBeenCalledTimes(1);
+  expect(wrappedClaims).toBe(1);
+  expect(wrappedTaxInputs).toHaveLength(1);
+  expect(wrappedTaxInputs[0]?.input.classMapRevision).toBe(changedPrice.classMapRevision);
+  expect(await row(f, request.key)).toMatchObject({ state: "terminal", pin: { composition: { planInput: { price: changedPrice } } } });
+
+  Object.assign(price, originalPrice);
+  f.deps.readPlan = async (...args) => {
+    Object.assign(price, changedPrice);
+    return original(...args);
+  };
+  const directRequest = { ...request, key: randomUUID() };
+  const direct = await f.bind().createQuote(f.owner, directRequest);
+  expect(wrappedOutcome).toStrictEqual(direct);
+  expect(f.commands.filter(({ operation, identity }) => operation === "claim" && identity.evaluationKey === directRequest.key)).toHaveLength(wrappedClaims);
+  expect(f.taxInputs).toHaveLength(wrappedTaxInputs.length);
+  expect(f.taxInputs[0]?.input.classMapRevision).toBe(changedPrice.classMapRevision);
+  expect(await row(f, directRequest.key)).toMatchObject({ state: "terminal", pin: { composition: { planInput: { price: changedPrice } } } });
+});
+
+it.for([
+  { shape: "proxy", wrap: (price: Facts["planInput"]["price"]) => new Proxy(price, {}), coverageReads: 1,
+    expected: refusal("tax_coverage_undeclared", "/coverage/declarations",
+      "Have the coverage owner supply the required effective declarations under /coverage/declarations, then obtain a fresh quote.") },
+  { shape: "class instance", wrap: (price: Facts["planInput"]["price"]) => {
+    class PriceEvidence {}
+    return Object.assign(new PriceEvidence(), price);
+  }, coverageReads: 0, expected: refusal("tax_invalid_input", "/planInput", "Supply the documented input.") },
+])("preserves the port's outcome for $shape price evidence", async ({ wrap, coverageReads, expected }, { onTestFinished }) => {
+  const originalStore = store;
+  store = await resources.installation("quote-assignment-price-shape");
+  onTestFinished(() => { store = originalStore; });
+  const create = await publicationWriter(["class-0"]);
+  const selected = await create(1);
+  const f = await installed({ basis: "exclusive", units: [120], coverage: "absent" });
+  const price = wrap(f.now.planInput.price);
+  const assignment = await expectedTaxLine(selected, "class-0");
+  f.now.planInput = { ...f.now.planInput, price, lines: [{ ...f.now.planInput.lines[0]!, ...assignment }] };
+  const { request, query, original } = guideSelection(f, [selected]);
+
+  const wrapped = await f.bind().createQuote(f.owner, request);
+  expect(query).toHaveBeenCalledTimes(1);
+  exact(wrapped, expected);
+  expect(f.fresh.coverage).toBe(coverageReads);
+  const wrappedCommands = f.commands.splice(0).map(({ operation }) => operation);
+  expect(wrappedCommands).toStrictEqual(["lookup"]);
+  f.fresh.coverage = 0;
+
+  f.deps.readPlan = original;
+  const direct = await f.bind().createQuote(f.owner, request);
+  expect(JSON.stringify(wrapped)).toBe(JSON.stringify(direct));
+  expect(f.commands.map(({ operation }) => operation)).toStrictEqual(wrappedCommands);
+  expect(f.fresh.coverage).toBe(coverageReads);
+  expect(f.taxInputs).toStrictEqual([]);
 });
 
 it("seals a quote when catalogue-wide diagnostics find unrelated corruption", async () => {

@@ -259,9 +259,10 @@ export function bindNativeQuotes({ runtime, ...bindings }) {
 export function withPublishedTaxClasses(runtime, readFacts) {
   return async (owner, request, document) => {
     const { facts: hostFacts, skuIdsByCode } = await readFacts(owner, request, document);
-    if ((hostFacts.planInput.listBasis ?? "inclusive") !== "exclusive") return hostFacts;
+    const { planInput } = hostFacts;
+    if ((planInput.listBasis ?? "inclusive") !== "exclusive") return hostFacts;
 
-    const facts = structuredClone(hostFacts);
+    const facts = { ...hostFacts, planInput: { ...planInput, lines: planInput.lines.map(line => ({ ...line })) } };
     const pairs = new Map();
     for (const { sku } of facts.planInput.lines) {
       const skuId = skuIdsByCode.get(sku);
@@ -279,6 +280,10 @@ export function withPublishedTaxClasses(runtime, readFacts) {
   };
 }
 ```
+
+The wrapper captures the SKU set and top-level catalogue evidence before reading
+the assignments. The host is responsible for in-place changes to money evidence
+such as `price`, just as on the direct quote path.
 
 On the exclusive route, pass `withPublishedTaxClasses(runtime, readFacts)` as
 `readPlan`. Return the plan `facts` and a `skuIdsByCode` map from the host's
