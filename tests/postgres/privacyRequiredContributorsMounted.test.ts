@@ -670,18 +670,43 @@ async function incumbentMount(db: AccountMutationsStore, actor: Seed["actor"]) {
 
 const beforeCarrier = sliceOccurrencePlan(occurrenceCatalogue, "db/platform/migrations/20261129130001_native_renewal_v3_storage.sql", false);
 // The order-draft receipt contributor's forwards follow the carrier in the catalogue, so only the
-// pre-carrier control lacks its entries. Compare that control without exactly those entries.
+// pre-carrier control lacks its entries. Each later arm must carry exactly these entries at exactly
+// these positions; the comparison removes only those verified entries and compares everything else.
 const laterContributor = "order-draft-receipts";
-function withoutLaterContributor<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value), (_key, entry: unknown) => Array.isArray(entry)
-    ? entry.filter(item => !(item && typeof item === "object" &&
-      ((item as { contributorId?: unknown }).contributorId === laterContributor || (item as { owner?: unknown }).owner === laterContributor)))
-    : entry) as T;
+const laterObligations = [
+  { owner: laterContributor, resource: "commerce.order-draft-receipt-owner-references", disposition: "erase",
+    reasonCode: "RECEIPT_OWNER_REFERENCES_CLEARED", remote: false },
+  { owner: laterContributor, resource: "commerce.order-draft-receipt-retained-facts", disposition: "retain",
+    reasonCode: "ORDER_REFERENCE_AND_DERIVED_REPLAY_KEY_RETAINED", remote: false },
+];
+const laterDocument = { contributorId: laterContributor, version: "commerce.order-draft-receipts.v1",
+  data: { receiptChunks: [] },
+  coverage: { complete: true,
+    included: ["Verified receipt coordinates and order facts", "Retained order reference remains linked through the order owner"],
+    unavailable: ["Derived replay key and command digest withheld. The key can link to a known original owner scope and request key."] },
+  obligations: laterObligations };
+const laterDisposition = { contributorId: laterContributor, version: "commerce.order-draft-receipts.v1", obligations: laterObligations };
+type ErasureEffects = Array<{ retained_obligations: unknown[]; dispositions: unknown[] } & Record<string, unknown>>;
+function expectNoLaterContributor(value: unknown) {
+  expect(JSON.stringify(value)).not.toContain(`"${laterContributor}"`);
 }
-function expectLaterContributor(value: unknown, present: boolean) {
-  const text = JSON.stringify(value);
-  if (present) expect(text).toContain(`"${laterContributor}"`);
-  else expect(text).not.toContain(`"${laterContributor}"`);
+function withoutLaterObligations<T extends { obligations: readonly unknown[] }>(value: T): T {
+  const copy = structuredClone(value) as T & { obligations: unknown[] };
+  expect(copy.obligations.splice(0, laterObligations.length)).toStrictEqual(laterObligations);
+  return copy;
+}
+function withoutLaterEffects(rows: ErasureEffects): ErasureEffects {
+  const copy = structuredClone(rows);
+  expect(copy).toHaveLength(1);
+  expect(copy[0].retained_obligations.splice(0, laterObligations.length)).toStrictEqual(laterObligations);
+  expect(copy[0].dispositions.splice(0, 1)).toStrictEqual([laterDisposition]);
+  return copy;
+}
+function withoutLaterDocument(documents: readonly unknown[], controlLength: number): unknown[] {
+  const copy = structuredClone([...documents]);
+  expect(copy).toHaveLength(controlLength + 1);
+  expect(copy.splice(controlLength, 1)).toStrictEqual([laterDocument]);
+  return copy;
 }
 
 async function persistedErasureEffects(db: Db, erasureId: string) {
@@ -713,9 +738,11 @@ it("preserves pinned incumbent export and erase-only effects on every empty cata
     } finally { await db.close(); }
   }
   expect(results[2]).toEqual(results[1]);
-  expectLaterContributor(results[0], false);
-  expectLaterContributor(results[1], true);
-  expect(withoutLaterContributor(results[1])).toEqual(results[0]);
+  const [control, later] = results as Array<{ documents: unknown[]; obligations: unknown[]; effects: ErasureEffects }>;
+  expectNoLaterContributor(control);
+  const remainder = { ...withoutLaterObligations(later), documents: withoutLaterDocument(later.documents, control.documents.length),
+    effects: withoutLaterEffects(later.effects) };
+  expect(remainder).toStrictEqual(control);
 }, postgresSetupTimeoutMs);
 
 async function checkPrivacyAcl(db: AccountMutationsStore) {
@@ -810,13 +837,14 @@ it.each(["legacy", "legacy-with-service", "bootstrap", "separate", "admin-manage
           const baselineEmpty = await eraseThrough(await incumbentMount(baseline, await privacyActor(baseline.owner)), "public",
             await contact(baseline.owner, null, "Fixture"));
           const exact = plan === beforePrivacy;
-          expectLaterContributor(baselineEmpty, exact);
-          const compare = <T>(value: T) => exact ? value : withoutLaterContributor(value);
-          const candidate = compare(candidateEmpty);
-          expect(candidate).toEqual({ ...compare(baselineEmpty), erasureId: candidate.erasureId, completedAt: candidate.completedAt });
+          if (!exact) expectNoLaterContributor(baselineEmpty);
+          const candidate = exact ? candidateEmpty : withoutLaterObligations(candidateEmpty);
+          expect(candidate).toEqual({ ...baselineEmpty, erasureId: candidate.erasureId, completedAt: candidate.completedAt });
           await receiptRetention(baseline.owner, baselineEmpty, []);
-          expect(compare(await persistedErasureEffects(db.owner, candidateEmpty.erasureId)))
-            .toEqual(await persistedErasureEffects(baseline.owner, baselineEmpty.erasureId));
+          const candidateEffects = await persistedErasureEffects(db.owner, candidateEmpty.erasureId) as ErasureEffects;
+          const baselineEffects = await persistedErasureEffects(baseline.owner, baselineEmpty.erasureId);
+          if (!exact) expectNoLaterContributor(baselineEffects);
+          expect(exact ? candidateEffects : withoutLaterEffects(candidateEffects)).toEqual(baselineEffects);
         } finally { await baseline.close(); }
       }
       const receipt = await eraseThrough(mounted, "public", subject);
