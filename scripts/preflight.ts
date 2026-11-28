@@ -579,13 +579,14 @@ export function affectedTestCandidates(changes: readonly Change[], rootDir = pro
 }
 
 const CATALOG_BOUNDARY_TEST = "scripts/catalog-document-boundary.test.ts";
+const PACKAGE_SIZE_POLICY_TEST = "scripts/packages/package-size-policy.test.ts";
 const INVARIANT_TESTS = [
   "packages/platform/test/packageBoundary.test.ts",
   "packages/platform/test/storefront/exports.test.ts",
   "packages/platform/test/storefront/testing/exports.test.ts",
   CATALOG_BOUNDARY_TEST,
   "scripts/ci-test-scope.test.ts",
-  "scripts/packages/package-size-policy.test.ts",
+  PACKAGE_SIZE_POLICY_TEST,
   "scripts/preflight.test.ts",
   "scripts/strip-types-entrypoint-specifiers.test.ts",
 ];
@@ -594,15 +595,21 @@ const COLD_PREFLIGHT_TESTS = new Set([
   "scripts/preflight-integration-settings-cold.test.ts",
 ]);
 
-function discoverTests(changes: readonly Change[], affected = false): TestSelection {
+function discoverTests(changes: readonly Change[], affected: boolean, untrackedPaths: readonly string[]): TestSelection {
   const direct = changes.filter(({ path, deleted }) => !deleted && isTestEntry(path)).map(({ path }) => path);
+  const untrackedPackagePath = affected ? untrackedPaths.find((path) => path.startsWith("packages/")) : undefined;
+  if (untrackedPackagePath) {
+    console.log(`package-size-policy skipped locally: untracked package files (${untrackedPackagePath}); it runs in hosted CI, or stage the files to include it`);
+  }
+  const runsLocally = (path: string) => !untrackedPackagePath || path !== PACKAGE_SIZE_POLICY_TEST;
+  const invariants = affected ? INVARIANT_TESTS.filter(runsLocally) : [];
   const candidates = affected
-    ? [...new Set([...INVARIANT_TESTS, ...affectedTestCandidates(changes)
-      .filter((path) => !COLD_PREFLIGHT_TESTS.has(path) || direct.includes(path))])].sort()
+    ? [...new Set([...invariants, ...affectedTestCandidates(changes)
+      .filter((path) => runsLocally(path) && (!COLD_PREFLIGHT_TESTS.has(path) || direct.includes(path)))])].sort()
     : direct;
   if (candidates.length === 0) return { files: [], separate: [], unknown: [] };
   const files = vitestFiles(candidates);
-  const missing = affected ? INVARIANT_TESTS.filter((path) => !files.includes(path)) : [];
+  const missing = invariants.filter((path) => !files.includes(path));
   if (missing.length > 0) throw new Error(`root Vitest did not collect invariant suites: ${missing.join(", ")}`);
   const outside = candidates.filter((path) => !files.includes(path));
   const separate = outside.length > 0 ? separateTestFiles(outside) : [];
@@ -1150,7 +1157,7 @@ export async function main(now: Date, args: readonly string[] = []): Promise<num
           ["settings-candidates", () => settingsCandidateGuard(base, changes, new Set(untrackedPaths))],
           ["test lines", () => testLineChecks(changedTestLines(base, changes, new Set(untrackedPaths)), now)],
           ["gitleaks", () => gitleaks(base, untrackedPaths)],
-          ["test discovery", () => { selection = discoverTests(changes, affected); return testDiscoveryVerdict(selection); }],
+          ["test discovery", () => { selection = discoverTests(changes, affected, untrackedPaths); return testDiscoveryVerdict(selection); }],
           ["eslint changed", () => eslintChanged(changes)],
           ["client-secret-boundary", () => runTriggeredGuard(
             "client-secret-boundary", changes, CLIENT_SECRET_BOUNDARY_TRIGGER,

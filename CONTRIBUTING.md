@@ -1056,10 +1056,13 @@ Run `npm run preflight -- --affected` to run default preflight with test discove
 also run their affected root Vitest suites through `test:hosted`. `--fast`, `--area`, and `--affected`
 are mutually exclusive.
 
-That same `test:hosted` invocation always includes the repository-wide invariant
+That same `test:hosted` invocation includes the repository-wide invariant
 suites for package size policy, the catalog document boundary, CI test scope,
 entrypoint specifier stripping, the Platform package boundary, storefront
-exports, storefront testing exports, and preflight.
+exports, storefront testing exports, and preflight. When `packages/` contains
+untracked files, affected preflight skips the package size policy and reports
+the first untracked package path. The suite runs in hosted CI and can run in
+affected preflight after the package files are staged.
 
 Without flags, `npm run preflight` is advisory and exits non-zero
 only when a check reports `FAIL`. It reads the change since

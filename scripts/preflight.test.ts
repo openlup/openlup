@@ -1393,13 +1393,14 @@ describe("shift-left preflight guards and --affected discovery", () => {
 
 describe("--affected execution", () => {
   const catalogGuard = "scripts/catalog-document-boundary.test.ts";
+  const packageSizePolicy = "scripts/packages/package-size-policy.test.ts";
   const invariantFiles = [
     "packages/platform/test/packageBoundary.test.ts",
     "packages/platform/test/storefront/exports.test.ts",
     "packages/platform/test/storefront/testing/exports.test.ts",
     catalogGuard,
     "scripts/ci-test-scope.test.ts",
-    "scripts/packages/package-size-policy.test.ts",
+    packageSizePolicy,
     "scripts/preflight.test.ts",
     "scripts/strip-types-entrypoint-specifiers.test.ts",
   ];
@@ -1420,9 +1421,10 @@ describe("--affected execution", () => {
   });
 
   function mockAffected(gitInput: string, {
+    untracked = "",
     worktree = cwd,
     runHosted = (): FakeSpawnResult => ({ status: 0 }),
-  }: { worktree?: string; runHosted?: (files: string[]) => FakeSpawnResult } = {}) {
+  }: { untracked?: string; worktree?: string; runHosted?: (files: string[]) => FakeSpawnResult } = {}) {
     const hosted: string[][] = [];
     const fork = "a".repeat(40);
     mockChildProcesses((bin, args) => {
@@ -1430,6 +1432,7 @@ describe("--affected execution", () => {
       if (bin === "git") {
         if (list.includes("--show-toplevel")) return { status: 0, stdout: worktree };
         if (list[0] === "merge-base") return { status: 0, stdout: fork };
+        if (list[0] === "ls-files" && list[1] === "--others") return { status: 0, stdout: untracked };
         if (list.includes("--name-status")) {
           expect(list).toEqual(["diff", "--name-status", "--no-renames", "-z", fork]);
           return { status: 0, stdout: gitInput };
@@ -1451,6 +1454,27 @@ describe("--affected execution", () => {
     vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     return { hosted, stdout };
   }
+
+  it("skips package size policy for untracked package files even when selected by a contract pin", async () => {
+    const first = "packages/outbox/src/worktreePreflightProof.ts";
+    const gate = "packages/outbox/release-gates.json";
+    const affected = affectedTestCandidates(changed(first, gate));
+    expect(affected).toContain(packageSizePolicy);
+    const { hosted, stdout } = mockAffected(`M\0${gate}\0`, { untracked: `${first}\0packages/outbox/src/zSecond.ts\0` });
+    expect(await main(now, ["--affected"])).toBe(0);
+    expect(hosted).toEqual([[...new Set([...invariantFiles, ...affected])].filter((path) => path !== packageSizePolicy).sort()]);
+    expect(stdout.mock.calls.flat().filter((line) => line.startsWith("package-size-policy skipped locally:"))).toEqual([
+      `package-size-policy skipped locally: untracked package files (${first}); it runs in hosted CI, or stage the files to include it`,
+    ]);
+  });
+
+  it("runs package size policy for a tracked package change", async () => {
+    const { hosted, stdout } = mockAffected("M\0packages/outbox/src/index.ts\0");
+    expect(await main(now, ["--affected"])).toBe(0);
+    expect(hosted).toHaveLength(1);
+    expect(hosted[0]).toContain(packageSizePolicy);
+    expect(stdout.mock.calls.flat().join("\n")).not.toContain("package-size-policy skipped locally:");
+  });
 
   it("fails on a real catalog boundary regression outside the affected import graph", async () => {
     const path = "server/adapters/postgres/fixtureBoundary.ts";
